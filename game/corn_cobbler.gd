@@ -53,6 +53,17 @@ func _fire_at(direction: Vector2) -> void:
 	_recoil()
 
 
+## Placement is otherwise blind: the cob reaches RANGE and nothing on screen
+## says so. Only drawn while selected so an idle board doesn't fill with rings.
+func _draw() -> void:
+	if not _selected:
+		return
+	var fill := Color(0.35, 0.85, 0.45, 0.10)
+	var edge := Color(0.35, 0.85, 0.45, 0.55)
+	draw_circle(Vector2.ZERO, RANGE, fill)
+	draw_arc(Vector2.ZERO, RANGE, 0.0, TAU, 48, edge, 2.0, true)
+
+
 func _recoil() -> void:
 	if _sprite == null or not is_inside_tree():
 		return

@@ -13,6 +13,7 @@ var board: Board = null
 
 var _sprite: Sprite2D
 var _wobble_time: float = 0.0
+var _selected: bool = false
 
 
 func setup(id: StringName, at: Vector2i, on_board: Board) -> void:
@@ -79,3 +80,13 @@ func _furthest_along_in_range(pests: Array[Pest], radius: float) -> Pest:
 ## Sold/uprooted plants refund most of what they cost — see uproot_refund().
 func uproot_refund() -> int:
 	return int(floor(PlantCatalog.cost(kind) * 0.6))
+
+
+## Game toggles this when the plant is clicked/deselected. Base class just
+## tracks the flag and repaints; subclasses that draw a selection overlay
+## (e.g. a range ring) override `_draw()` and read `_selected`.
+func set_selected(value: bool) -> void:
+	if _selected == value:
+		return
+	_selected = value
+	queue_redraw()
