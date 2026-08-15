@@ -195,8 +195,10 @@ func spawn_pest(species: StringName, mutation: StringName = &"") -> void:
 func _on_pest_died(pest: Pest) -> void:
 	bank.add_seeds(pest.seed_value)
 	# Half again, as a husk — collectible for a bonus, or left to rot. See
-	# CompostMeter: this is what makes "sweep the field" worth doing.
-	var husk_value: int = maxi(1, int(ceil(pest.seed_value / 2.0)))
+	# CompostMeter: this is what makes "sweep the field" worth doing. Scaled by
+	# husk_multiplier() so a harder kill (a mutation) pays out more, tying the
+	# mutation and compost systems together instead of leaving them side by side.
+	var husk_value: int = maxi(1, int(ceil(pest.seed_value / 2.0 * pest.husk_multiplier())))
 	compost.drop_husk(pest.position, husk_value)
 
 

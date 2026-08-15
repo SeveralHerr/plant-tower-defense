@@ -26,7 +26,7 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
       Flower shows no ring at all when selected (`plant-tower-defense-42t`)
 - [x] Lane pressure readout — tint the road segment red where pests got
       furthest last wave, fading each wave (`plant-tower-defense-4wv`)
-- [ ] Mutated pests should drop a better husk — scale husk value by mutation
+- [x] Mutated pests should drop a better husk — scale husk value by mutation
       instead of paying the same amount regardless of `mutation`
       (`plant-tower-defense-1rh`)
 - [ ] Endless mode should mutate faster over time — `MUTATION_CHANCE` stays

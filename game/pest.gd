@@ -49,6 +49,17 @@ const MUTATION_ARMOURED := &"armoured"
 const MUTATION_WINGED := &"winged"
 const MUTATION_HUNGRY := &"hungry"
 
+## A mutated pest costs the player more to deal with than a plain one — the
+## husk it leaves should too, or the mutation and compost systems sit side by
+## side without ever touching. Armoured/winged both cost extra effort to kill
+## (double chew time; unreachable by a Chomp at all); hungry costs the most,
+## since a plant it reaches is destroyed outright rather than merely delayed.
+const MUTATION_HUSK_MULTIPLIER: Dictionary = {
+	MUTATION_ARMOURED: 1.5,
+	MUTATION_WINGED: 1.5,
+	MUTATION_HUNGRY: 2.0,
+}
+
 ## How close a hungry pest has to be to a plant to start eating it. Same
 ## reasoning as ChompFlower.GRAB_RADIUS: a pest walks the road, a plant stands
 ## one cell off it, so anything under one cell can never reach either.
@@ -240,6 +251,12 @@ func _play_death() -> void:
 
 func is_alive() -> bool:
 	return _alive
+
+
+## 1.0 for a plain pest; higher for a mutation, so a harder kill leaves a
+## better husk. Game._on_pest_died reads this when it drops one.
+func husk_multiplier() -> float:
+	return float(MUTATION_HUSK_MULTIPLIER.get(mutation, 1.0))
 
 
 func _escape() -> void:

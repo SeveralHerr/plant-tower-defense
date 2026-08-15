@@ -563,3 +563,28 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   gap filed.
   - [G-009] status: open | seen: 5 | harness: 0.19.0
   - Improvement: unchanged from the existing entry.
+
+## 2026-08-15 — Mutated pests drop a better husk for plant-tower-defense-1rh
+
+- Value: **warranted** — the live run confirmed the multiplier reaches an actual
+  `compost_state` value through the real signal chain, not just isolated unit math.
+  - Expected: `Game._on_pest_died` reads `pest.husk_multiplier()` when computing husk
+    value, so a mutated pest killed live should drop a strictly larger husk than an
+    identical unmutated pest — the diff shows the formula but not that the live
+    `compost_state` actually reflects it end to end (spawn → mutate → kill → drop_husk →
+    compost_state).
+  - Got: `spawn_pest` + `run-method kill` on a plain aphid dropped a husk worth `2`;
+    the same on a `hungry`-mutated aphid dropped `3` — matching
+    `maxi(1, ceil(seed_value/2 * multiplier))` exactly for both.
+  - Found: the same `Pest.died` → `Game._on_pest_died` → `CompostMeter.drop_husk` chain
+    the unit test already exercises headless-and-pumped also holds inside the actual
+    live window (real signal delivery through the running tree, real devtools verb
+    argument plumbing) — a narrower confirmation than the earlier two runs' actual bugs,
+    but a live-only claim rather than a restatement of the unit test.
+  - Cheaper: the `GAME_SCENE`-hosted unit test alone gets most of the way there for
+    free; the live run's marginal addition was specifically the running-window
+    confirmation above, which is real but modest next to the two bugs the prior two
+    runs caught.
+
+- Gap: none — `spawn_pest --args '{"mutation": "hungry"}'` worked first try (arg name
+  guessed correctly this time, unlike `place_plant`'s `plant`/`x`/`y` in G-011).
