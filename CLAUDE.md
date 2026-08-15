@@ -1,3 +1,6 @@
+# Workflow
+Look in todo.md and add it to your todo list tool, then complete every item in the list" Then inside the markdown make the last item add cool new features to your kanban.md and then replace your current todo list with the items in todo.md
+
 # Project Instructions for AI Agents
 
 This file provides instructions and context for AI coding agents working on this project.
