@@ -511,7 +511,7 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   `taskkill /F /PID <pid>` through the Bash tool's MSYS path translation still mangles
   `/F`; `Stop-Process -Id <pid> -Force` (via the PowerShell tool) is what actually worked,
   same fix as last time. No new gap filed — bumped the existing one.
-  - [G-009] status: open | seen: 4 | harness: 0.19.0
+  - [G-009] status: open | seen: 5 | harness: 0.19.0
   - Improvement: unchanged from the existing entry below.
 
 - Gap: **project verb arg names aren't discoverable from `list-commands` or `--help`** —
@@ -526,3 +526,40 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     printing each verb's `args.get(...)` keys (grep-able straight out of the handler, no
     schema needed) alongside the name would remove the guess-then-read-source step for
     every project verb, not just this one.
+
+## 2026-08-15 — Lane pressure readout for plant-tower-defense-4wv
+
+- Value: **warranted** — the live run found a real bug the diff read did not: a wave lost
+  to zero lives never committed its lane pressure, because `_process`'s own
+  `if game_over: return` guard skips `_check_wave_cleared` (the only committer) on that
+  exact path.
+  - Expected: Committing "furthest pest reached" to the board only happens through
+    `_check_wave_cleared` today; the live run would need to exercise both a normal wave
+    clear *and* a game-over-mid-wave loss to know whether the readout also updates on a
+    loss, since reading the diff alone couldn't say what `_process`'s early-return guard
+    does to a signal-driven commit still in flight.
+  - Got: `board_info` showed wave 1 clear normally at 5 lives, wave 2 auto-start and lose
+    the run at 0 lives — then `run-method --method lane_pressure_alpha --args "[[13,7]]"`
+    read back `1.0` for the last real path cell before the exit, and a screenshot showed
+    the red tile sitting exactly there. Before the fix, the same sequence left it at `0.0`
+    after a game-over loss (only a normal clear updated it).
+  - Found: losing the last life mid-wave sets `game_over = true`, and `_process`'s early
+    return means `_check_wave_cleared` never runs for that wave — the board silently kept
+    showing the *previous* wave's pressure forever on any run that ends in a loss (which,
+    per the design brief, is most of them). Fixed by committing directly from
+    `_on_pest_escaped` when lives hit 0; added
+    `test_lane_pressure_is_committed_even_when_the_last_life_is_lost_mid_wave`, which
+    fails without the fix and passes with it — the strongest evidence this run's own
+    Phase 4 methodology (design the test from the diff, run it live, then promote it) was
+    the reason the bug was caught at all rather than shipped.
+  - Cheaper: the three pure Board tests (`record_lane_pressure` lighting/ignoring/fading a
+    cell) would have been overkill alone — findable by inspection, no engine needed. The
+    game-over interaction specifically needed the live game; a careful enough re-read of
+    `_process`/`_check_wave_cleared`/`_on_pest_escaped` together might have caught it on
+    paper, but a first pass at writing the feature did not, and the live run did.
+
+- Gap: **`quit` reported "STILL ALIVE 10s after quit" a fifth time** this session — same
+  as G-009, same `taskkill` mangling, same `Stop-Process -Id <pid> -Force` fix. No new
+  gap filed.
+  - [G-009] status: open | seen: 5 | harness: 0.19.0
+  - Improvement: unchanged from the existing entry.

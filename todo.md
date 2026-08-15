@@ -24,7 +24,7 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 - [x] Selection needs a second cue beyond the range ring — outline/corner
       brackets drawn on the sprite in the base `Plant` class, since Chomp
       Flower shows no ring at all when selected (`plant-tower-defense-42t`)
-- [ ] Lane pressure readout — tint the road segment red where pests got
+- [x] Lane pressure readout — tint the road segment red where pests got
       furthest last wave, fading each wave (`plant-tower-defense-4wv`)
 - [ ] Mutated pests should drop a better husk — scale husk value by mutation
       instead of paying the same amount regardless of `mutation`

@@ -505,3 +505,71 @@ func test_a_sunflowers_selection_marker_is_shared_from_the_base_plant_class() ->
 		err = _T.assert_true(sunflower._selection_marker.visible, "selecting a plain plant shows it too")
 	_T.free_ui(sunflower)
 	return err
+
+
+# -- Lane pressure readout (plant-tower-defense-4wv) -------------------------
+
+
+func test_recording_lane_pressure_lights_up_the_cell_at_full_strength() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+	var cell: Vector2i = Board.PATH_CORNERS[0]
+	var err: String = _T.assert_eq(board.lane_pressure_alpha(cell), 0.0, "nothing recorded yet")
+	if err == "":
+		board.record_lane_pressure(cell)
+		err = _T.assert_eq(board.lane_pressure_alpha(cell), 1.0, "a fresh recording is full strength")
+	_T.free_ui(board)
+	return err
+
+
+## Cells off the road (an escaped pest's off-board position, a typo'd cell)
+## must not paint — record_lane_pressure is meant to answer "where on the
+## road", not "wherever a pest happened to be standing".
+func test_recording_lane_pressure_off_the_road_is_ignored() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+	board.record_lane_pressure(Vector2i(0, 0))  # (0,0) is grass, not path
+	var err: String = _T.assert_eq(board.lane_pressure_alpha(Vector2i(0, 0)), 0.0, "grass cells never light up")
+	_T.free_ui(board)
+	return err
+
+
+## The whole point of the readout is that it reads as *recent* pressure, not
+## a permanent stain from wave 1 — recording a new cell must fade the old one
+## rather than leaving it at full strength forever.
+func test_a_new_lane_pressure_cell_fades_the_previous_one() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+	var first: Vector2i = Board.PATH_CORNERS[0]
+	var second: Vector2i = Board.PATH_CORNERS[1]
+	board.record_lane_pressure(first)
+	board.record_lane_pressure(second)
+	var err: String = _T.assert_eq(board.lane_pressure_alpha(second), 1.0, "the newly recorded cell is full strength")
+	if err == "":
+		err = _T.assert_eq(board.lane_pressure_alpha(first), Board.LANE_PRESSURE_DECAY, "the earlier cell faded by exactly one decay step")
+	_T.free_ui(board)
+	return err
+
+
+## Caught live: losing the last life mid-wave sets game_over, and
+## Game._process's own `if game_over: return` guard means _check_wave_cleared
+## — the only place that used to commit lane pressure — never runs on that
+## path, so a wave lost outright left the readout silently a whole wave
+## stale forever. _on_pest_escaped must commit it itself before that guard
+## gets a chance to swallow it.
+func test_lane_pressure_is_committed_even_when_the_last_life_is_lost_mid_wave() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game._on_wave_started(1)
+	var cell: Vector2i = Board.PATH_CORNERS[0]
+	game._wave_worst_cell = cell
+	game._wave_worst_progress = 0.5
+	game.lives = 1
+	var err: String = _T.assert_eq(game.board.lane_pressure_alpha(cell), 0.0, "nothing committed yet")
+	if err == "":
+		game._on_pest_escaped(null)
+		err = _T.assert_true(game.game_over, "losing the last life ends the run")
+	if err == "":
+		err = _T.assert_eq(game.board.lane_pressure_alpha(cell), 1.0,
+			"the wave's lane pressure was committed on the losing escape, not lost to the _process(game_over) guard")
+	_T.free_ui(game)
+	return err

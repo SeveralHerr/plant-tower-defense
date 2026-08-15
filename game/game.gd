@@ -33,6 +33,12 @@ var _prep_left: float = 0.0
 var _wave_live: bool = false
 var _score_recorded: bool = false
 
+## The furthest any pest got this wave, so the lane pressure readout can be
+## committed to the board once the wave actually clears. -1.0 means nothing
+## has walked yet this wave (progress() itself never goes negative).
+var _wave_worst_cell: Vector2i = Vector2i(-1, -1)
+var _wave_worst_progress: float = -1.0
+
 
 func _ready() -> void:
 	add_to_group("game")
@@ -100,6 +106,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if game_over or victory:
 		return
+	_track_lane_pressure()
 	_check_wave_cleared()
 	if not _wave_live and director.has_more_waves():
 		_prep_left -= delta
@@ -119,8 +126,41 @@ func start_next_wave() -> bool:
 
 func _on_wave_started(number: int) -> void:
 	_wave_live = true
+	_wave_worst_cell = Vector2i(-1, -1)
+	_wave_worst_progress = -1.0
 	hud.show_message("Wave %d — %d pests." % [number, director.current_wave_pest_count()])
 	_refresh()
+
+
+## Which lane cell is losing ground right now: the furthest along the road
+## any pest has been this wave, dead or alive — a beetle killed at 90% still
+## says the lane was under real pressure, so this is not just "who is
+## currently alive and furthest along" (Plant._furthest_along_in_range's
+## question), it is a running high-water mark for the whole wave.
+func _track_lane_pressure() -> void:
+	if not _wave_live:
+		return
+	for node: Node in get_tree().get_nodes_in_group("pests"):
+		var pest := node as Pest
+		if pest == null:
+			continue
+		var p: float = pest.progress()
+		if p > _wave_worst_progress:
+			_wave_worst_progress = p
+			_wave_worst_cell = board.world_to_cell(pest.position)
+
+
+## Commits whatever _track_lane_pressure saw this wave to the board. Split
+## out of _check_wave_cleared because a wave does not only end by clearing —
+## losing the last life mid-wave ends it too, and _process's own
+## `if game_over: return` guard means _check_wave_cleared never runs on that
+## path (caught live: a wave lost to zero lives left the board's readout
+## permanently one wave stale). _on_pest_escaped calls this directly the
+## moment lives hits 0, before that guard ever gets a chance to skip it.
+func _commit_lane_pressure() -> void:
+	if _wave_worst_progress >= 0.0:
+		board.record_lane_pressure(_wave_worst_cell)
+		_wave_worst_progress = -1.0
 
 
 func _check_wave_cleared() -> void:
@@ -130,6 +170,7 @@ func _check_wave_cleared() -> void:
 		return
 	_wave_live = false
 	_prep_left = PREP_SECONDS
+	_commit_lane_pressure()
 	if director.has_more_waves():
 		hud.show_message("Wave %d cleared. Next one grows in %d seconds." % [director.current_wave, int(PREP_SECONDS)], 6.0)
 	else:
@@ -164,6 +205,7 @@ func _on_pest_escaped(_pest: Pest) -> void:
 	if lives <= 0:
 		lives = 0
 		game_over = true
+		_commit_lane_pressure()
 		_end_run("The garden is eaten")
 		get_tree().call_group("pests", "queue_free")
 	_refresh()

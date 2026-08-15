@@ -48,14 +48,24 @@ const GRASS_EDGE_TILE: Dictionary = {
 	0b1001: 72,
 }
 
+## Lane pressure readout: how much a recorded cell fades on the *next* wave
+## that records a different one, so the tint reads as "recent pressure", not
+## a permanent stain from wave 1.
+const LANE_PRESSURE_DECAY: float = 0.55
+const LANE_PRESSURE_MIN_ALPHA: float = 0.03
+
 var _path_cells: Dictionary = {}
 var _path_order: Array[Vector2i] = []
 var _route: PackedVector2Array = PackedVector2Array()
+var _pressure_overlay: LanePressureOverlay = null
 
 
 func _ready() -> void:
 	_build_path()
 	_build_tiles()
+	# Last child added = drawn last = on top of the tile sprites above.
+	_pressure_overlay = LanePressureOverlay.new()
+	add_child(_pressure_overlay)
 
 
 ## Every cell the path covers, in walk order. Built once, before the tiles.
@@ -157,3 +167,32 @@ func route() -> PackedVector2Array:
 
 func board_size() -> Vector2:
 	return Vector2(COLS * CELL, ROWS * CELL)
+
+
+## Called once per wave, with the path cell the furthest pest reached that
+## wave. Lights it up at full strength and fades whatever earlier waves left
+## behind, so the board reads as "which end is losing lately" rather than
+## accumulating a permanent red smear. Cells off the road are ignored — a
+## caller passing an escaped pest's off-board position should not paint one.
+func record_lane_pressure(cell: Vector2i) -> void:
+	if not is_path(cell) or _pressure_overlay == null:
+		return
+	var faded: Dictionary = {}
+	for key: Vector2i in _pressure_overlay.pressure:
+		if key == cell:
+			continue
+		var next: float = float(_pressure_overlay.pressure[key]) * LANE_PRESSURE_DECAY
+		if next >= LANE_PRESSURE_MIN_ALPHA:
+			faded[key] = next
+	faded[cell] = 1.0
+	_pressure_overlay.pressure = faded
+	_pressure_overlay.queue_redraw()
+
+
+## Current tint strength at `cell`, 0.0 if nothing has been recorded there
+## (or it has faded past LANE_PRESSURE_MIN_ALPHA). Test/devtools hook so
+## callers don't reach into the overlay node directly.
+func lane_pressure_alpha(cell: Vector2i) -> float:
+	if _pressure_overlay == null:
+		return 0.0
+	return float(_pressure_overlay.pressure.get(cell, 0.0))
