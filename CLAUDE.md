@@ -1,5 +1,14 @@
 # Workflow
-Look in todo.md and add it to your todo list tool, then complete every item in the list. Then inside the markdown make the last item add cool new features to your kanban.md and then replace your current todo list with the items in todo.md. commit iteratively as you go. 
+Read todo.md and track each item as a bd issue (see Beads Issue Tracker below — do not
+use TodoWrite for this). Complete every item, running `/verify` before considering any of
+them done, and commit after each item / bd issue closes rather than batching the whole
+session into one commit at the end. The last item on the list is always "add cool new
+features to kanban.md" — mine what the session's own work revealed, not just abstract
+ideas. Once every item is done, refill todo.md itself for next time: pick 3-5 concrete,
+not-yet-filed items out of kanban.md's "Cool new features" backlog, file them as bd
+issues, and write them into todo.md as a fresh unchecked checklist. Do not just leave
+todo.md with everything checked off — an already-done list is not what the next session's
+"read todo.md" step should find waiting for it.
 # Project Instructions for AI Agents
 
 This file provides instructions and context for AI coding agents working on this project.
