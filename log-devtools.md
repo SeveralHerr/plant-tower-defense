@@ -612,3 +612,51 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     conclusion.
 
 - Gap: none this run.
+
+## 2026-08-15 — Second bite frame for plant-tower-defense-rrx
+
+- Value: **warranted** — the live run confirmed the exact crossover frame on a real,
+  physics-driven chew, not a hand-picked test delta.
+  - Expected: the threshold swap is a one-line condition inside `_chew()`, so the logic
+    is knowable from the diff — the live run's value is confirming the actual rendered
+    `Sprite2D.texture` on a real, running chew (real `chew_seconds` countdown, real
+    grab/release signal timing) crosses at the right moment rather than a moment
+    early/late from an off-by-one or a `progress()` rounding edge, which only shows up
+    by watching the real timeline.
+  - Got: polling `chew_progress()` and the sprite's `texture` resource path together
+    across a real, slow-motion (0.1x) beetle chew: still `chomp_flower_eating.png` at
+    13%/29%/45% progress, already `chomp_flower_eating_late.png` at 61%, still there at
+    93%, back to `chomp_flower.png` the moment the chew released at 0%.
+  - Found: no off-by-one in the `> LATE_BITE_THRESHOLD` comparison, and the swap-back to
+    idle on release actually fires on a real chew end (not just in `release()` called
+    directly, which is all the unit test exercises).
+  - Cheaper: the three `ChompFlower` unit tests already assert the same crossover via
+    synthetic `_chew(delta)` calls with hand-picked deltas; the live run's real addition
+    was narrow but genuine — confirming it against the actual per-frame countdown.
+
+- Gap: **three separate live Godot processes were found still running simultaneously**
+  (`Get-Process | Where-Object ProcessName -like "*Godot*"` showed pids started at
+  6:02pm, 6:37pm and 6:39pm, all in this one session), after *every* `quit` in this
+  session reported "STILL ALIVE" (G-009) and every follow-up `Stop-Process -Id <pid>`
+  reported success. The pid `quit`'s warning names and the pid `Stop-Process` killed
+  successfully is the **bus-answering engine pid** — but on Windows, `launch`'s own
+  console-wrapper process (`..._console.exe`) spawns a separate child process that
+  actually owns the window and answers the bus, and `Stop-Process` on the wrapper's own
+  reported "Launched pid" does not reliably take the child down with it. Across 5+
+  quit/relaunch cycles this session, that left a trail of zombie engines all still
+  polling the same `user://` bus directory, which is exactly the "Crossed replies"
+  failure mode named in the harness's own gotchas — it presented as newly-spawned pest
+  nodes reporting "Node not found" seconds after a `scene-tree` call had just listed
+  them (a `spawn_pest`/`scene-tree`/`set-state` triplet hitting three different engine
+  instances). Fixed for the rest of this run with
+  `Get-Process | Where-Object { $_.ProcessName -like "*Godot*" } | Stop-Process -Force`
+  instead of killing one named pid.
+  - [G-012] status: open | seen: 1 | harness: 0.19.0
+  - Improvement: `quit --wait` already detects "STILL ALIVE" — it could also print
+    `Get-Process`-style guidance for Windows specifically (kill every process matching
+    the Godot binary's name, not just the one pid it tracked as bus owner), since the
+    pid it names is demonstrably not sufficient to guarantee a clean kill on this
+    platform. Named it G-012 rather than folding into G-009, since G-009 is about the
+    `taskkill`-vs-`Stop-Process` command form and this is about which pid to target at
+    all — the two compound (a session hitting G-009 five times in a row is exactly the
+    session at risk of also hitting this).

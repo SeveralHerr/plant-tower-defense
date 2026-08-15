@@ -439,6 +439,65 @@ func test_a_chomps_sprite_swaps_while_its_mouth_is_full() -> String:
 	return err
 
 
+# -- Second bite frame for a long chew (plant-tower-defense-rrx) ------------
+
+
+## A beetle's chew (2.6s) is long enough that the last ~40% of it is a
+## meaningfully long stretch, not just a flicker — the late frame should be
+## showing well before the meal is actually finished.
+func test_a_beetle_shows_the_late_bite_frame_past_60_percent_chew() -> String:
+	var chomp := ChompFlower.new()
+	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
+	var beetle: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	var host: Node2D = _host([chomp, beetle])
+	await _T.instantiate_scene(host)
+
+	if not chomp.is_busy():
+		chomp._act(0.016, [beetle])
+	var mid_texture: Texture2D = chomp._sprite.texture
+	var err: String = _T.assert_true(chomp.is_busy(), "grabbed the beetle")
+	if err == "":
+		# Just under the threshold: still the mid-bite frame.
+		chomp._chew(beetle.chew_seconds * 0.5)
+		err = _T.assert_eq(chomp._sprite.texture, mid_texture, "under 60%% chewed, still the mid-bite frame")
+	if err == "":
+		# Cross the threshold.
+		chomp._chew(beetle.chew_seconds * 0.2)
+		err = _T.assert_true(chomp.is_busy(), "sanity: still chewing, not finished")
+	if err == "":
+		err = _T.assert_true(chomp._sprite.texture != mid_texture,
+			"past 60%% chewed, a distinct 'almost done' frame swaps in")
+	_T.free_ui(host)
+	return err
+
+
+## The threshold is a fraction of chew_progress(), so it applies to any
+## species — an aphid's whole chew is just short enough that reaching it
+## also means the meal is nearly over, not that the frame never appears.
+func test_the_late_bite_frame_is_showing_by_the_time_any_chew_finishes() -> String:
+	var chomp := ChompFlower.new()
+	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
+	var aphid: Pest = _pest(Pest.APHID, Vector2.ZERO)
+	var host: Node2D = _host([chomp, aphid])
+	await _T.instantiate_scene(host)
+
+	if not chomp.is_busy():
+		chomp._act(0.016, [aphid])
+	var mid_texture: Texture2D = chomp._sprite.texture
+	var err: String = _T.assert_true(chomp.is_busy(), "grabbed the aphid")
+	if err == "":
+		# Just short of finishing (chew_progress() > LATE_BITE_THRESHOLD by
+		# construction, since LATE_BITE_THRESHOLD < 1.0), without triggering
+		# the kill that a full chew_seconds would.
+		chomp._chew(aphid.chew_seconds * 0.9)
+		err = _T.assert_true(chomp.is_busy(), "sanity: still chewing")
+	if err == "":
+		err = _T.assert_true(chomp._sprite.texture != mid_texture,
+			"even the aphid's short chew shows the late frame before it ends")
+	_T.free_ui(host)
+	return err
+
+
 func test_a_killed_pest_shows_a_dead_sprite_and_lingers_before_freeing() -> String:
 	var pest := Pest.new()
 	pest.setup(Pest.APHID, PackedVector2Array([Vector2.ZERO, Vector2(100, 0)]))

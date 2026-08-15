@@ -27,11 +27,21 @@ const CHEW_RING_RADIUS: float = 16.0
 ## sprite — swapped in for the whole chew and back on release.
 const EATING_TEXTURE_PATH := "res://assets/sprites/chomp_flower_eating.png"
 
+## The threshold is a fraction of chew_progress(), the same one the shrinking
+## chew ring already reads, so it fires for any pest — an aphid crosses it
+## too, just with only ~40% of its already-brief 0.45s chew left to show it,
+## which reads as instant either way. A beetle's 2.6s chew is long enough
+## that the last ~1s actually gets to show a second picture instead of the
+## mouth just staying wide open the whole time.
+const LATE_BITE_THRESHOLD: float = 0.6
+const EATING_LATE_TEXTURE_PATH := "res://assets/sprites/chomp_flower_eating_late.png"
+
 var _held: Pest = null
 var _chew_left: float = 0.0
 var _chew_total: float = 0.0
 var _idle_texture: Texture2D = null
 var _eating_texture: Texture2D = null
+var _eating_late_texture: Texture2D = null
 
 
 ## A hungry pest that eats the flower out from under a meal must not leave the
@@ -79,6 +89,8 @@ func _chew(delta: float) -> void:
 		release()
 		return
 	_chew_left -= delta
+	if chew_progress() > LATE_BITE_THRESHOLD and _sprite != null and _sprite.texture != _eating_late_texture:
+		_show_eating_late_sprite()
 	queue_redraw()
 	if _chew_left <= 0.0:
 		var meal: Pest = _held
@@ -141,6 +153,17 @@ func _show_eating_sprite() -> void:
 		_eating_texture = load(EATING_TEXTURE_PATH) as Texture2D
 	if _eating_texture != null:
 		_sprite.texture = _eating_texture
+
+
+func _show_eating_late_sprite() -> void:
+	if _sprite == null:
+		return
+	if _idle_texture == null:
+		_idle_texture = _sprite.texture
+	if _eating_late_texture == null:
+		_eating_late_texture = load(EATING_LATE_TEXTURE_PATH) as Texture2D
+	if _eating_late_texture != null:
+		_sprite.texture = _eating_late_texture
 
 
 func _show_idle_sprite() -> void:

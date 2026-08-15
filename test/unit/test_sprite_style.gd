@@ -17,6 +17,7 @@ const RETINA_DIR := "res://assets/sprites/retina"
 const EXPECTED_SIZE := {
 	"chomp_flower": 64,
 	"chomp_flower_eating": 64,
+	"chomp_flower_eating_late": 64,
 	"corn_cobbler": 64,
 	"corn_kernel": 16,
 	"pest_aphid": 64,
