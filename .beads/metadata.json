@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "plant_tower_defense",
+  "project_id": "75d2ad2d-46bb-4f16-9eb1-2859ac191741"
+}
