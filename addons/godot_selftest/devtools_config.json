@@ -23,7 +23,7 @@
     "right": 0,
     "bottom": 0
   },
-  "main_scene": "",
+  "main_scene": "res://game/game.tscn",
   "entry_hook": {
     "node_path": "",
     "method": ""

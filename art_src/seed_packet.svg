@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Seed packet: what you buy to unlock a plant that isn't free. -->
+
+  <path d="M14 12 L50 12 L50 54 Q 50 57 47 57 L17 57 Q 14 57 14 54 Z"
+        fill="#ECDCB8" stroke="#A69B81" stroke-width="2" stroke-linejoin="round"/>
+
+  <!-- torn top -->
+  <path d="M14 17 L14 12 L20.5 17 L27 12 L33.5 17 L40 12 L46.5 17 L50 12 L50 17 Z"
+        fill="#D7C9A8" stroke="#A69B81" stroke-width="2" stroke-linejoin="round"/>
+
+  <!-- sprout -->
+  <path d="M32 49 L32 35" fill="none" stroke="#1F8A4C" stroke-width="3" stroke-linecap="round"/>
+  <g stroke="#1F8A4C" stroke-width="1.5" stroke-linejoin="round">
+    <path d="M32 37 Q 24 30 20.5 36.5 Q 26 42.5 32 39.5 Z" fill="#2ECC71"/>
+    <path d="M32 37 Q 40 30 43.5 36.5 Q 38 42.5 32 39.5 Z" fill="#2ECC71"/>
+  </g>
+
+  <!-- seed -->
+  <ellipse cx="32" cy="51" rx="3.4" ry="4.2" fill="#C48647" stroke="#A8723B" stroke-width="1.5"/>
+</svg>

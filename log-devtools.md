@@ -199,3 +199,107 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     mints uids and skips existing ones) instead of `cp`, keeping the "never overwrite
     `commands.gd`" rule. `commands.example.gd`, `test_example.gd` and `smoke.json` are
     refreshable and fit the installer's normal path unchanged.
+
+## 2026-08-15 — Measured the Kenney TD style contract and authored the first six sprites
+
+- Value: **warranted** — the test runner caught a hard parse error in a file
+  `name_check` had just declared clean, which is the exact case the harness documents
+  as NOT COVERED, and the negative run proved the new art gate actually fires.
+  - Expected: that `test/unit/test_sprite_style.gd` would pass first try; `name_check
+    --only test/` had returned `No findings. errors: 0 | warnings: 0 | advisory: 0`.
+  - Got: `godot --headless --script res://tools/run_tests.gd -- --file test_sprite_style.gd`
+    exited **2** with seven copies of
+    `Parse Error: Cannot infer the type of "err" variable because the value doesn't have a set type`
+    — `var err := _T.assert_true(...)` where `_T` is the untyped injected runner.
+    After annotating `var err: String`, 7 tests / 49 assertions passed.
+  - Found: (a) that parse error — seven occurrences, invisible to `name_check`;
+    (b) proof the palette gate is not decorative: repainting the aphid's `#E74C3C`
+    body to `#FF00FF` and re-running gave
+    `[FAIL] test_every_colour_is_kit_palette_or_a_blend_of_two — pest_aphid stays on
+    the kit palette (worst pixel #ff00ff is 188.50 off, tolerance 12.0)`, exit 1,
+    restored after; (c) `Image.load_from_file()` emits a
+    "will not work on export" WARNING **per call**, 31.8 KB of stderr for six sprites —
+    swapped to `load_png_from_buffer`, which also cut the test from 161 ms to 68 ms.
+  - Cheaper: nothing for (a) — `name_check` is documented not to reach it and lint
+    would have caught it only by also compiling. For (b) nothing: an assertion you have
+    not seen fail is a guess.
+
+- Gap: **`run_tests.gd` blames the selector when the cause was a failed compile.** A test
+  script that fails to parse is excluded from the discovered count, so a `--file` selector
+  naming it "matches nothing" and the run ends on
+  `SELECTED NOTHING - file 'test_sprite_style.gd' selected 0 of 3 discovered test(s) (exit 2)`
+  followed by three lines of advice about how `--filter` matches method names. The real
+  cause — `[ERR] res://test/unit/test_sprite_style.gd: Script failed to compile` — is
+  printed above but is not what the verdict points at, and stderr above it was 60 lines
+  of backtrace. Worked around by scrolling back to the `[ERR]` line.
+  - [G-003] status: open | seen: 1 | harness: 0.18.0 | filed: SeveralHerr/godot-selftest-harness#10
+  - Improvement: track the count of scripts that failed to compile during discovery, and
+    when it is non-zero prefer that in the final verdict —
+    `SELECTED NOTHING - 1 test script failed to compile (see [ERR] above); selector
+    'test_sprite_style.gd' cannot match a script that did not load` — before falling back
+    to the selector-syntax advice, which is only correct when every script loaded.
+
+- Gap: **the DEVELOPMENT RULE is unsatisfiable on a project with no main scene, and
+  nothing says so.** `project.godot` has no `run/main_scene` and
+  `devtools_config.json` has `"main_scene": ""`, so `/verify`'s runtime phases have
+  nothing to launch; this change (art pipeline + tooling + tests) is real work that
+  cannot reach a running game. Ran the three headless gates instead —
+  `name_check` (errors 0), `lint_project.gd` (`Scripts: 9 compiled OK | UIDs: OK`,
+  exit 0), `run_tests.gd` (`Total: 10 | Passed: 10 | Assertions: 54`, exit 0) — and
+  am reporting that as "lint + tests green, runtime unreached", not as "verified".
+  - [G-004] status: open | seen: 1 | harness: 0.18.0 | filed: SeveralHerr/godot-selftest-harness#10
+  - Improvement: have `/verify` detect an empty `main_scene` up front and exit with an
+    explicit *degraded* verdict — run Phases 1–2, skip 3–4, and still write the Phase 5
+    ledger row with `reach: 0` and a `skipped: no main_scene` field — rather than leaving
+    the caller to decide whether an unlaunchable project counts as a pass.
+
+## 2026-08-15 — built the playable game: board, plants, pests, waves, economy, HUD
+
+- Value: **warranted** — runtime found four defects that lint, 43 green unit tests and
+  reading the diff all missed, two of them "the plant does nothing and says nothing".
+  - Expected: the board draws 126 tiles with a dirt corridor and no missing edge tile; a
+    Corn Cobbler placed next to the road actually kills an aphid before it reaches the
+    exit; a Chomp Flower holding a beetle blocks nothing else; and the HUD's seed/wave/
+    lives labels update from real game state — none of which the diff shows, because the
+    tile lookup, the targeting radius in pixels, and the Control layout are all only true
+    once rendered.
+  - Got: `{'seeds': 225, 'lives': 10, 'pests_alive': 1, 'plants': 1}` after
+    `step-time --seconds 6` with one aphid and one cob — the aphid was still alive and
+    seeds had not moved, i.e. the corn had been firing into empty ground for six seconds.
+    After the fix, the same sequence returned `{'seeds': 228, ..., 'pests_alive': 0}`.
+    For the Chomp, `run-method --method is_busy` returned `Result: true` only after the
+    radius fix; before it, `find-nodes --class Pest` came back `0 node(s) matched` with
+    the beetle long past and the flower never having closed.
+  - Found: (1) `Kernel.setup(global_position, …)` seeded a **sibling** from a global
+    coordinate — the entities layer is offset by the 72 px top bar, so every kernel
+    launched one bar-height below the cob and hit nothing. (2) `ChompFlower.GRAB_RADIUS`
+    was 62 px while a plant and the road lane beside it are exactly `CELL = 64` apart, so
+    the flower could never reach anything; "found no prey" and "there is no prey" are the
+    same observation. (3) Kenney tiles 038–045 read as grass variants by colour histogram
+    but are the kit's overlay markers (plot square, wrench, X, target) and scattered
+    obvious UI junk across the field. (4) the seed-packet button used the corn sprite;
+    `seed_packet.png`, authored last session, was wired to nothing.
+  - Cheaper: nothing. All four needed the running game. The two coordinate/radius bugs
+    were invisible to the unit tests *by construction* — every test placed plant and pest
+    in the same unoffset space, which is exactly the condition under which both bugs
+    disappear. Both now have regression tests that fail when reverted (verified by
+    reverting: `[FAIL] test_kernels_launch_from_the_cob_on_an_offset_layer`).
+
+- Gap: **`find-nodes` locates a node but the auto-generated name is the only handle you
+  get, and it is not stable across launches.** `find-nodes --class ChompFlower` returned
+  `/root/Game/Entities/@Node2D@128`, which is what every follow-up `run-method` and
+  `get-state` then has to be typed against; relaunch and it is `@Node2D@131`. Workaround
+  was to re-run `find-nodes` before every read and paste the path back in by hand.
+  - [G-005] status: open | seen: 1 | harness: 0.18.0
+  - Improvement: give `find-nodes` a `--call METHOD` / `--property NAME` pass-through that
+    invokes the read on each match and reports it beside the path, so identifying a node
+    and reading it are one command. `--property` already exists for properties; the
+    missing half is a method call, which is the only way to read anything behind a getter.
+
+- Gap: **[G-004] is now closed for this project — recording the transition rather than a
+  new entry.** `main_scene` was empty last session and `/verify` had nothing to launch;
+  this session set `run/main_scene` and `devtools_config.json`'s `main_scene` to
+  `res://game/game.tscn` and all runtime phases ran. The harness-side improvement
+  (an explicit *degraded* verdict when `main_scene` is empty) is still unshipped.
+  - [G-004] status: open | seen: 2 | harness: 0.18.0 | filed: SeveralHerr/godot-selftest-harness#10
+  - Improvement: unchanged from the original entry.

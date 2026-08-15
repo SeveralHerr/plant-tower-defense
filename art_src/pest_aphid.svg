@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Aphid: the small pest. Top-down, walks up-screen (-Y). -->
+
+  <!-- legs + antennae (behind the body) -->
+  <g stroke="#AF392D" stroke-width="2.5" stroke-linecap="round" fill="none">
+    <path d="M26 27 L16 22"/>
+    <path d="M25 34 L14 34"/>
+    <path d="M26 41 L16 46"/>
+    <path d="M38 27 L48 22"/>
+    <path d="M39 34 L50 34"/>
+    <path d="M38 41 L48 46"/>
+  </g>
+  <g stroke="#AF392D" stroke-width="2" stroke-linecap="round" fill="none">
+    <path d="M29 20 Q 24 13 20 11"/>
+    <path d="M35 20 Q 40 13 44 11"/>
+  </g>
+  <circle cx="20" cy="11" r="1.8" fill="#AF392D"/>
+  <circle cx="44" cy="11" r="1.8" fill="#AF392D"/>
+
+  <!-- abdomen -->
+  <ellipse cx="32" cy="36" rx="11" ry="12" fill="#E74C3C" stroke="#AF392D" stroke-width="2"/>
+  <g stroke="#AF392D" stroke-width="1.5" stroke-linecap="round" fill="none">
+    <path d="M23 36 Q 32 40 41 36"/>
+    <path d="M24.5 42 Q 32 45.5 39.5 42"/>
+  </g>
+
+  <!-- head -->
+  <circle cx="32" cy="21" r="7.5" fill="#D24536" stroke="#AF392D" stroke-width="2"/>
+  <circle cx="28.8" cy="19.5" r="2.2" fill="#FFFFFF"/>
+  <circle cx="35.2" cy="19.5" r="2.2" fill="#FFFFFF"/>
+  <circle cx="28.8" cy="19.5" r="1.1" fill="#7A2820"/>
+  <circle cx="35.2" cy="19.5" r="1.1" fill="#7A2820"/>
+</svg>
