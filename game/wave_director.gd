@@ -15,6 +15,13 @@ const MUTATION_START_WAVE: int = 8
 const MUTATION_CHANCE: float = 0.4
 const MUTATIONS: Array[StringName] = [Pest.MUTATION_ARMOURED, Pest.MUTATION_WINGED, Pest.MUTATION_HUNGRY]
 
+## Past the fixed table, _endless_groups already turns up count/gap every
+## wave — but MUTATION_CHANCE held flat forever, so wave 40 looked exactly as
+## "weird" as wave 8 even though everything else about it had escalated.
+## Climbing this too keeps a long endless run from going numb.
+const MUTATION_CHANCE_ENDLESS_STEP: float = 0.02
+const MUTATION_CHANCE_MAX: float = 0.85
+
 ## Each group: species, how many, and the gap in seconds between each one.
 ## `lead` is the pause before the group starts.
 const WAVES: Array[Array] = [
@@ -121,16 +128,28 @@ func _endless_groups(number: int) -> Array:
 	]
 
 
+## Flat MUTATION_CHANCE through the fixed table; climbs by
+## MUTATION_CHANCE_ENDLESS_STEP per wave past it once endless mode is the
+## thing still running waves, capped at MUTATION_CHANCE_MAX so a very long
+## run does not end up mutating every single pest.
+static func mutation_chance_for(wave: int) -> float:
+	var over: int = wave - WAVES.size()
+	if over <= 0:
+		return MUTATION_CHANCE
+	return minf(MUTATION_CHANCE_MAX, MUTATION_CHANCE + float(over) * MUTATION_CHANCE_ENDLESS_STEP)
+
+
 func _build_schedule(groups: Array) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	var cursor: float = 0.0
 	var mutating: bool = current_wave >= MUTATION_START_WAVE
+	var chance: float = mutation_chance_for(current_wave)
 	for group: Dictionary in groups:
 		cursor += float(group["lead"])
 		var gap: float = float(group["gap"])
 		for i: int in range(int(group["count"])):
 			var mutation: StringName = &""
-			if mutating and _rng.randf() < MUTATION_CHANCE:
+			if mutating and _rng.randf() < chance:
 				mutation = MUTATIONS[_rng.randi_range(0, MUTATIONS.size() - 1)]
 			out.append({"species": group["species"], "at": cursor, "mutation": mutation})
 			cursor += gap

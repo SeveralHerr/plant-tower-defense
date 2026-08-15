@@ -247,6 +247,62 @@ func test_mutations_appear_from_wave_eight_on() -> String:
 	return _T.assert_true(found, "with a ~30-pest wave 8 and a 40%% roll per pest, at least one should mutate")
 
 
+# -- Endless mode mutates faster over time (plant-tower-defense-1qi) --------
+
+
+func test_mutation_chance_is_flat_through_the_fixed_table() -> String:
+	for w: int in range(1, WaveDirector.WAVES.size() + 1):
+		var err: String = _T.assert_float_eq(WaveDirector.mutation_chance_for(w), WaveDirector.MUTATION_CHANCE, 0.0001,
+			"wave %d is still on the fixed table, so the rate has not started climbing" % w)
+		if err != "":
+			return err
+	return ""
+
+
+func test_mutation_chance_climbs_the_further_endless_mode_runs() -> String:
+	var table_end: int = WaveDirector.WAVES.size()
+	var at_table_end: float = WaveDirector.mutation_chance_for(table_end)
+	var one_past: float = WaveDirector.mutation_chance_for(table_end + 1)
+	var err: String = _T.assert_true(one_past > at_table_end, "the first endless wave already climbs past the flat rate")
+	if err == "":
+		var ten_past: float = WaveDirector.mutation_chance_for(table_end + 10)
+		err = _T.assert_true(ten_past > one_past, "and it keeps climbing the longer endless mode runs")
+	return err
+
+
+func test_mutation_chance_is_capped_so_a_long_run_never_mutates_everything() -> String:
+	var far_future: float = WaveDirector.mutation_chance_for(WaveDirector.WAVES.size() + 5000)
+	return _T.assert_float_eq(far_future, WaveDirector.MUTATION_CHANCE_MAX, 0.0001,
+		"an extremely long endless run stays capped, not creeping toward every pest mutating")
+
+
+## The point of the escalation, not just the formula: an endless run that has
+## gone on a while should actually roll mutations more often than the fixed
+## table's flat 40% ever did, aggregated over enough pests that one lucky (or
+## unlucky) roll cannot swing the result.
+func test_endless_waves_mutate_more_often_than_the_flat_baseline() -> String:
+	var director := WaveDirector.new()
+	director.endless = true
+	director.set_seed(7)
+	var mutated: int = 0
+	var total: int = 0
+	for w: int in range(1, WaveDirector.WAVES.size() + 25):
+		director.start_next_wave()
+		if director.current_wave < WaveDirector.MUTATION_START_WAVE:
+			continue
+		for entry: Dictionary in director._schedule:
+			total += 1
+			if entry["mutation"] != &"":
+				mutated += 1
+	director.free()
+	var err: String = _T.assert_true(total > 200, "sanity: aggregated enough pests (%d) for the ratio to be meaningful" % total)
+	if err == "":
+		var rate: float = float(mutated) / float(total)
+		err = _T.assert_true(rate > WaveDirector.MUTATION_CHANCE + 0.03,
+			"aggregate mutation rate across late endless waves (%.2f over %d pests) sits measurably above the flat 40%% baseline" % [rate, total])
+	return err
+
+
 # -- Seed packet tiers + Seed Sunflower (plant-tower-defense-e0w) -----------
 
 

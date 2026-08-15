@@ -588,3 +588,27 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
 
 - Gap: none — `spawn_pest --args '{"mutation": "hungry"}'` worked first try (arg name
   guessed correctly this time, unlike `place_plant`'s `plant`/`x`/`y` in G-011).
+
+## 2026-08-15 — Endless mode mutates faster over time for plant-tower-defense-1qi
+
+- Value: **overkill** — everything passed and confirmed exactly the shape the pure
+  function's own math already guaranteed.
+  - Expected: `mutation_chance_for` is a pure static function, so its whole curve
+    (flat, then a linear climb, then a cap) is knowable from the diff. The live run's
+    only job was confirming the *actual live `WaveDirector` instance* — not a fresh
+    `WaveDirector.new()` in a unit test — calls it the same way across the same range.
+  - Got: `curve --node /root/Game/WaveDirector --method mutation_chance_for --from 1
+    --to 40 --step 5` returned `min 0.4 max 0.85`, flat through wave 6, climbing from
+    wave 11 on, capped at `0.85` by wave 31 — exactly the shape the four unit tests
+    already proved.
+  - Found: nothing the unit tests hadn't already shown. Taking the `overkill` honestly
+    here, per the log's own note that it is the verdict most likely to go
+    under-reported — this session's other three entries were all `warranted`, and one
+    of these five items being an honest `overkill` is the expected shape, not a
+    surprise.
+  - Cheaper: the four unit tests (flat-through-table, climbs, capped, aggregate rate
+    above baseline over 200+ sampled pests) already prove the formula and its wiring
+    into `_build_schedule` headlessly; `curve` was a nice sanity check but changed no
+    conclusion.
+
+- Gap: none this run.

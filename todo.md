@@ -29,7 +29,7 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 - [x] Mutated pests should drop a better husk — scale husk value by mutation
       instead of paying the same amount regardless of `mutation`
       (`plant-tower-defense-1rh`)
-- [ ] Endless mode should mutate faster over time — `MUTATION_CHANCE` stays
+- [x] Endless mode should mutate faster over time — `MUTATION_CHANCE` stays
       fixed at 40% forever past wave 8; scale it (or widen `MUTATIONS`) as
       endless mode runs longer (`plant-tower-defense-1qi`)
 - [ ] Second bite frame for a beetle's long chew — swap in an "almost done"
