@@ -24,6 +24,7 @@ var _wobble_time: float = 0.0
 var _selected: bool = false
 var _health_back: ColorRect = null
 var _health_bar: ColorRect = null
+var _selection_marker: SelectionMarker = null
 
 
 func setup(id: StringName, at: Vector2i, on_board: Board) -> void:
@@ -55,6 +56,13 @@ func _build_visuals() -> void:
 	_health_bar.size = Vector2(32, 5)
 	_health_bar.visible = false
 	add_child(_health_bar)
+
+	# A sibling node, not something drawn inside this plant's own _draw() — see
+	# SelectionMarker's own header for why subclasses can't be trusted to paint
+	# this themselves.
+	_selection_marker = SelectionMarker.new()
+	_selection_marker.visible = false
+	add_child(_selection_marker)
 
 	# Planting pop: the sprites are centred on their own vertical axis, which is
 	# what makes a scale tween land without drifting off the cell.
@@ -132,4 +140,6 @@ func set_selected(value: bool) -> void:
 	if _selected == value:
 		return
 	_selected = value
+	if _selection_marker != null:
+		_selection_marker.visible = value
 	queue_redraw()

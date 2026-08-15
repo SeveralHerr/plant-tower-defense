@@ -469,3 +469,39 @@ func test_notebook_paging_wraps_in_both_directions() -> String:
 			"and paging before the first wraps to the last")
 	_T.free_ui(notebook)
 	return err
+
+
+# -- Selection marker (plant-tower-defense-42t) ------------------------------
+
+
+## ChompFlower fully overrides Plant._draw() to paint its own chew ring and
+## never chains to super — a selection cue that lived there would never have
+## rendered for this plant at all. The marker has to be a separate node to
+## survive that.
+func test_a_chomp_flowers_selection_marker_shows_even_though_it_owns_draw() -> String:
+	var chomp := ChompFlower.new()
+	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
+	await _T.instantiate_scene(_host([chomp]))
+	var err: String = _T.assert_false(chomp._selection_marker.visible, "starts deselected")
+	if err == "":
+		chomp.set_selected(true)
+		err = _T.assert_true(chomp._selection_marker.visible, "selecting shows the marker regardless of the subclass's own _draw()")
+	if err == "":
+		chomp.set_selected(false)
+		err = _T.assert_false(chomp._selection_marker.visible, "deselecting hides it again")
+	_T.free_ui(chomp)
+	return err
+
+
+## Every plant gets the same marker from the base class, not just the ones
+## that happen to draw a range ring — Sunflower has no overlay of its own.
+func test_a_sunflowers_selection_marker_is_shared_from_the_base_plant_class() -> String:
+	var sunflower := Sunflower.new()
+	sunflower.setup(PlantCatalog.SUNFLOWER, Vector2i(0, 0), null)
+	await _T.instantiate_scene(_host([sunflower]))
+	var err: String = _T.assert_true(sunflower._selection_marker is SelectionMarker, "Plant._build_visuals wires up a SelectionMarker")
+	if err == "":
+		sunflower.set_selected(true)
+		err = _T.assert_true(sunflower._selection_marker.visible, "selecting a plain plant shows it too")
+	_T.free_ui(sunflower)
+	return err

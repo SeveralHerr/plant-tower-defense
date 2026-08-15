@@ -21,7 +21,7 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 
 ## Items
 
-- [ ] Selection needs a second cue beyond the range ring — outline/corner
+- [x] Selection needs a second cue beyond the range ring — outline/corner
       brackets drawn on the sprite in the base `Plant` class, since Chomp
       Flower shows no ring at all when selected (`plant-tower-defense-42t`)
 - [ ] Lane pressure readout — tint the road segment red where pests got
@@ -35,5 +35,5 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 - [ ] Second bite frame for a beetle's long chew — swap in an "almost done"
       sprite past `chew_progress() > 0.6` so a 2.6s beetle chew reads
       differently than a quick aphid one (`plant-tower-defense-rrx`)
-- [ ] Add cool new features to `kanban.md` — mine what this session's own
+- [ ] Add cool new features or concrete improvements (either gameplay or UX) to `kanban.md` — mine what this session's own
       work revealed, not just abstract ideas

@@ -464,7 +464,7 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   through the Bash tool's MSYS path translation mangles `/F` into a phantom `F:/` path
   argument and fails outright — PowerShell's `Stop-Process -Id <n> -Force` is what actually
   worked.
-  - [G-009] status: open | seen: 3 | harness: 0.19.0
+  - [G-009] status: open | seen: 4 | harness: 0.19.0
   - Improvement: on Windows, `devtools.py quit`'s own follow-up guidance
     (`taskkill /F /PID <pid>`) is wrong for an agent shelling out through a POSIX-translating
     bash — either quote/escape the flag in the printed suggestion, or print the
@@ -484,3 +484,45 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     workflow section could say explicitly "after creating a new `class_name` file, run
     `--import` before the next lint/test pass" rather than leaving it to be rediscovered
     from the hint each time.
+
+## 2026-08-15 — Selection marker for plant-tower-defense-42t (second selection cue)
+
+- Value: **warranted** — runtime showed the deselection half of `Game._select()`'s
+  exclusivity working across two live plants, which the diff alone only asserts by naming.
+  - Expected: Selecting/deselecting a plant flips a separate `SelectionMarker` child's
+    visibility, and this works even for `ChompFlower`/`CornCobbler`, which fully override
+    `Plant._draw()` and never call `super._draw()` — something only observable by
+    inspecting the live scene tree and node state, not by reading the diff.
+  - Got: `get-state --property visible` on the first placed Corn Cobbler's marker read
+    `true` right after `place_plant` (auto-selects), then `false` after a second
+    `place_plant` call — confirming `_select()`'s "exactly one plant selected" invariant
+    holds at runtime, not just in the one-plant unit tests. A screenshot showed yellow
+    corner brackets on only the newly placed plant, distinct from its green range ring.
+  - Found: the marker node really does show up as its own scene-tree entry
+    (`res://game/selection_marker.gd`) as a sibling of the sprite/health bars, not folded
+    into the plant's own draw calls — confirms the "separate node, not `_draw()`" design
+    actually avoids the per-subclass `_draw()`-override trap it was built to avoid.
+  - Cheaper: the two unit tests (`test_a_chomp_flowers_selection_marker_shows_even_though_it_owns_draw`,
+    `test_a_sunflowers_selection_marker_is_shared_from_the_base_plant_class`) alone would
+    have covered the "marker exists and toggles" wiring; only the two-plant exclusivity
+    case needed the running game.
+
+- Gap: **`quit` reported "STILL ALIVE 10s after quit" again**, same as G-009 below —
+  `taskkill /F /PID <pid>` through the Bash tool's MSYS path translation still mangles
+  `/F`; `Stop-Process -Id <pid> -Force` (via the PowerShell tool) is what actually worked,
+  same fix as last time. No new gap filed — bumped the existing one.
+  - [G-009] status: open | seen: 4 | harness: 0.19.0
+  - Improvement: unchanged from the existing entry below.
+
+- Gap: **project verb arg names aren't discoverable from `list-commands` or `--help`** —
+  `place_plant`'s actual keys are `plant`/`x`/`y` (read from `devtools_ext/commands.gd`
+  source), but a first guess of `id`/`cell` (matching `Game.place_plant(id, cell)`'s own
+  signature) was silently accepted and planted the *default* plant at the *default* cell
+  instead of erroring on the unknown keys — `args.get("plant", "corn_cobbler")` treats a
+  wrong key name identically to an omitted one. Cost two wasted calls before reading the
+  handler source.
+  - [G-011] status: open | seen: 1 | harness: 0.19.0
+  - Improvement: `list-commands` already enumerates registered project verbs by name;
+    printing each verb's `args.get(...)` keys (grep-able straight out of the handler, no
+    schema needed) alongside the name would remove the guess-then-read-source step for
+    every project verb, not just this one.
