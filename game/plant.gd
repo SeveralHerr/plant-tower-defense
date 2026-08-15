@@ -7,13 +7,23 @@ extends Node2D
 ## currently on the board. Nothing here touches the scene tree for targeting —
 ## the pest list is passed down, so a subclass is testable without a Game.
 
+## A hungry pest (see Pest.is_hungry) eats a plant instead of walking past it —
+## this is what it eats through. Most plants never take a scratch in a normal
+## run; the bar only appears once they do, same as a pest's.
+const MAX_HEALTH: float = 40.0
+
+signal destroyed(plant: Plant)
+
 var kind: StringName = &""
 var cell: Vector2i = Vector2i.ZERO
 var board: Board = null
+var health: float = MAX_HEALTH
 
 var _sprite: Sprite2D
 var _wobble_time: float = 0.0
 var _selected: bool = false
+var _health_back: ColorRect = null
+var _health_bar: ColorRect = null
 
 
 func setup(id: StringName, at: Vector2i, on_board: Board) -> void:
@@ -31,6 +41,21 @@ func _build_visuals() -> void:
 	_sprite = Sprite2D.new()
 	_sprite.texture = load(PlantCatalog.texture_path(kind)) as Texture2D
 	add_child(_sprite)
+
+	_health_back = ColorRect.new()
+	_health_back.color = Color(0.12, 0.12, 0.12, 0.65)
+	_health_back.position = Vector2(-16, -34)
+	_health_back.size = Vector2(32, 5)
+	_health_back.visible = false
+	add_child(_health_back)
+
+	_health_bar = ColorRect.new()
+	_health_bar.color = Color(0.85, 0.25, 0.22)
+	_health_bar.position = Vector2(-16, -34)
+	_health_bar.size = Vector2(32, 5)
+	_health_bar.visible = false
+	add_child(_health_bar)
+
 	# Planting pop: the sprites are centred on their own vertical axis, which is
 	# what makes a scale tween land without drifting off the cell.
 	if not is_inside_tree():
@@ -80,6 +105,24 @@ func _furthest_along_in_range(pests: Array[Pest], radius: float) -> Pest:
 ## Sold/uprooted plants refund most of what they cost — see uproot_refund().
 func uproot_refund() -> int:
 	return int(floor(PlantCatalog.cost(kind) * 0.6))
+
+
+## A hungry pest calls this instead of walking past. Game listens for
+## `destroyed` and removes the plant from the board — no refund, it was eaten.
+func take_damage(amount: float) -> void:
+	if is_destroyed():
+		return
+	health = maxf(0.0, health - amount)
+	if _health_back != null:
+		_health_back.visible = true
+		_health_bar.visible = true
+		_health_bar.size = Vector2(32.0 * (health / MAX_HEALTH), 5)
+	if health <= 0.0:
+		destroyed.emit(self)
+
+
+func is_destroyed() -> bool:
+	return health <= 0.0
 
 
 ## Game toggles this when the plant is clicked/deselected. Base class just

@@ -18,9 +18,26 @@ extends Plant
 ## cells so it still only covers the lane it is actually next to.
 const GRAB_RADIUS: float = Board.CELL * 1.15
 
+## Radius of the "mouth full" ring at the start of a chew. It shrinks to 0 as
+## the meal finishes, so the busy-mouth trade the design doc describes — "takes
+## a while eating bigger pests" — is something the player can see, not infer.
+const CHEW_RING_RADIUS: float = 16.0
+
+## The design doc draws a Chomp mid-bite as its own picture, not a tinted idle
+## sprite — swapped in for the whole chew and back on release.
+const EATING_TEXTURE_PATH := "res://assets/sprites/chomp_flower_eating.png"
+
 var _held: Pest = null
 var _chew_left: float = 0.0
 var _chew_total: float = 0.0
+var _idle_texture: Texture2D = null
+var _eating_texture: Texture2D = null
+
+
+## A hungry pest that eats the flower out from under a meal must not leave the
+## mouth stuck "busy" pointing at a freed pest.
+func _on_setup() -> void:
+	destroyed.connect(func(_p: Plant) -> void: release())
 
 
 func _act(delta: float, pests: Array[Pest]) -> void:
@@ -36,7 +53,9 @@ func _nearest_free_pest(pests: Array[Pest]) -> Pest:
 	var best: Pest = null
 	var best_distance: float = GRAB_RADIUS
 	for pest: Pest in pests:
-		if pest.held_by != null:
+		# Winged (doc: "ignores ground plants") flies over a Chomp's reach — the
+		# mouth simply cannot close on it. It still walks into Corn's kernels.
+		if pest.held_by != null or pest.is_winged:
 			continue
 		var d: float = pest.global_position.distance_to(global_position)
 		if d <= best_distance:
@@ -51,6 +70,8 @@ func _grab(pest: Pest) -> void:
 	_chew_total = pest.chew_seconds
 	_chew_left = _chew_total
 	_bite()
+	_show_eating_sprite()
+	queue_redraw()
 
 
 func _chew(delta: float) -> void:
@@ -58,6 +79,7 @@ func _chew(delta: float) -> void:
 		release()
 		return
 	_chew_left -= delta
+	queue_redraw()
 	if _chew_left <= 0.0:
 		var meal: Pest = _held
 		release()
@@ -72,6 +94,8 @@ func release() -> void:
 	_held = null
 	_chew_left = 0.0
 	_chew_total = 0.0
+	_show_idle_sprite()
+	queue_redraw()
 
 
 func is_busy() -> bool:
@@ -89,9 +113,36 @@ func chew_progress() -> float:
 	return clampf(1.0 - _chew_left / _chew_total, 0.0, 1.0)
 
 
+## Shrinking ring around the flower while the mouth is full — the whole
+## Chomp/beetle trade-off ("mouth busy, lane open") made visible.
+func _draw() -> void:
+	if _held == null:
+		return
+	var radius: float = CHEW_RING_RADIUS * (1.0 - chew_progress())
+	if radius <= 0.5:
+		return
+	draw_arc(Vector2.ZERO, radius, 0.0, TAU, 24, Color(1.0, 0.55, 0.15, 0.85), 3.0, true)
+
+
 func _bite() -> void:
 	if _sprite == null or not is_inside_tree():
 		return
 	var tween := create_tween()
 	tween.tween_property(_sprite, "scale", Vector2(1.18, 0.82), 0.06)
 	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.12)
+
+
+func _show_eating_sprite() -> void:
+	if _sprite == null:
+		return
+	if _idle_texture == null:
+		_idle_texture = _sprite.texture
+	if _eating_texture == null:
+		_eating_texture = load(EATING_TEXTURE_PATH) as Texture2D
+	if _eating_texture != null:
+		_sprite.texture = _eating_texture
+
+
+func _show_idle_sprite() -> void:
+	if _sprite != null and _idle_texture != null:
+		_sprite.texture = _idle_texture

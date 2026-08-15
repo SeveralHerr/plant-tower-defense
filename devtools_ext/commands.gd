@@ -21,6 +21,8 @@ func register_commands(dev: Node) -> void:
 	_dev.register_command("buy_packet", _cmd_buy_packet)
 	_dev.register_command("upgrade_plant", _cmd_upgrade_plant)
 	_dev.register_command("board_info", _cmd_board_info)
+	_dev.register_command("compost_state", _cmd_compost_state)
+	_dev.register_command("collect_husk", _cmd_collect_husk)
 	# Merged into every reply: a session that has quietly lost its Game answers
 	# well-formed zeros otherwise, which reads exactly like a clean pass.
 	_dev.register_status_provider(_status)
@@ -86,9 +88,10 @@ func _cmd_spawn_pest(args: Dictionary) -> Dictionary:
 	var species := StringName(str(args.get("species", "aphid")))
 	if not Pest.SPECIES.has(species):
 		return _fail("unknown species '%s'" % species)
+	var mutation := StringName(str(args.get("mutation", "")))
 	var count: int = maxi(1, int(args.get("count", 1)))
 	for i: int in range(count):
-		game.spawn_pest(species)
+		game.spawn_pest(species, mutation)
 	return {
 		"success": true,
 		"message": "spawned %d %s" % [count, species],
@@ -117,18 +120,46 @@ func _cmd_start_wave(_args: Dictionary) -> Dictionary:
 	}
 
 
-func _cmd_buy_packet(_args: Dictionary) -> Dictionary:
+func _cmd_buy_packet(args: Dictionary) -> Dictionary:
 	var game: Game = _game()
 	if game == null:
 		return _fail("no Game in the tree")
-	var got: StringName = game.bank.buy_packet()
+	var tier := StringName(str(args.get("tier", "common")))
+	var got: StringName = game.bank.buy_packet(tier)
 	if got == &"":
-		return _fail("packet refused — check seeds and remaining locked plants")
+		return _fail("packet refused — check tier, seeds, and remaining locked plants")
 	return {
 		"success": true,
 		"message": "packet held %s" % got,
 		"data": {"plant": String(got), "seeds": game.bank.seeds},
 	}
+
+
+func _cmd_compost_state(_args: Dictionary) -> Dictionary:
+	var game: Game = _game()
+	if game == null:
+		return _fail("no Game in the tree")
+	return {
+		"success": true,
+		"message": "compost",
+		"data": {
+			"total_collected": game.compost.total_collected,
+			"husks_on_ground": game.compost.husk_count(),
+			"husks": game.compost.husks(),
+		},
+	}
+
+
+func _cmd_collect_husk(args: Dictionary) -> Dictionary:
+	var game: Game = _game()
+	if game == null:
+		return _fail("no Game in the tree")
+	var at := Vector2(float(args.get("x", 0.0)), float(args.get("y", 0.0)))
+	var value: int = game.compost.collect_at(at)
+	if value <= 0:
+		return _fail("no husk within collect radius of %s" % at)
+	game.bank.add_seeds(value)
+	return {"success": true, "message": "collected %d" % value, "data": {"seeds": game.bank.seeds}}
 
 
 func _cmd_upgrade_plant(args: Dictionary) -> Dictionary:

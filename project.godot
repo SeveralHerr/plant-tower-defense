@@ -11,13 +11,14 @@ config_version=5
 [application]
 
 config/name="plant-tower-defense"
-run/main_scene="uid://bha85lrujbbeu"
+run/main_scene="uid://ce2dtga2f08e"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
 [autoload]
 
 DevTools="*res://addons/godot_selftest/dev_tools.gd"
+RunConfig="*res://game/run_config.gd"
 
 [display]
 

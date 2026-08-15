@@ -5,9 +5,15 @@ extends Node
 ## wave is a list of groups rather than a flat count — a run of eight aphids
 ## followed by a beetle reads very differently from the two interleaved.
 
-signal spawn_requested(species: StringName)
+signal spawn_requested(species: StringName, mutation: StringName)
 signal wave_started(number: int)
 signal wave_spawning_finished(number: int)
+
+## Wave 8 is where the fixed table gets its first beetle-heavy mix (see WAVES
+## below) — the doc's mutations layer onto that rather than starting cold.
+const MUTATION_START_WAVE: int = 8
+const MUTATION_CHANCE: float = 0.4
+const MUTATIONS: Array[StringName] = [Pest.MUTATION_ARMOURED, Pest.MUTATION_WINGED, Pest.MUTATION_HUNGRY]
 
 ## Each group: species, how many, and the gap in seconds between each one.
 ## `lead` is the pause before the group starts.
@@ -41,13 +47,23 @@ const WAVES: Array[Array] = [
 ]
 
 var current_wave: int = 0
+## Set by the title screen (RunConfig.endless) before Game._ready() runs. Past
+## the fixed table, has_more_waves() never goes false — the run only ends by
+## running out of lives.
+var endless: bool = false
 
-## Flattened spawn schedule for the running wave: [{species, at}], `at` in
-## seconds from the moment the wave started.
+## Flattened spawn schedule for the running wave: [{species, at, mutation}],
+## `at` in seconds from the moment the wave started.
 var _schedule: Array[Dictionary] = []
 var _next: int = 0
 var _elapsed: float = 0.0
 var _running: bool = false
+var _rng := RandomNumberGenerator.new()
+
+
+## Fixes the mutation roll for tests and for reproducing a run.
+func set_seed(value: int) -> void:
+	_rng.seed = value
 
 
 func wave_count() -> int:
@@ -59,7 +75,15 @@ func is_spawning() -> bool:
 
 
 func has_more_waves() -> bool:
+	if endless:
+		return true
 	return current_wave < WAVES.size()
+
+
+## Pests actually scheduled for the wave in progress — unlike the static
+## pests_in_wave(), this works past the end of the fixed table (endless mode).
+func current_wave_pest_count() -> int:
+	return _schedule.size()
 
 
 ## Total pests a wave will send. Used by the HUD and by the tests, which is why it
@@ -77,7 +101,8 @@ func start_next_wave() -> int:
 	if not has_more_waves():
 		return 0
 	current_wave += 1
-	_schedule = _build_schedule(WAVES[current_wave - 1])
+	var groups: Array = WAVES[current_wave - 1] if current_wave <= WAVES.size() else _endless_groups(current_wave)
+	_schedule = _build_schedule(groups)
 	_next = 0
 	_elapsed = 0.0
 	_running = not _schedule.is_empty()
@@ -85,14 +110,29 @@ func start_next_wave() -> int:
 	return current_wave
 
 
+## Past the fixed table, endless keeps the same two-group shape (aphid swarm,
+## beetle knot) and just turns every knob up, so the curve does not visibly
+## reset the moment the table runs out.
+func _endless_groups(number: int) -> Array:
+	var over: int = number - WAVES.size()
+	return [
+		{"species": &"aphid", "count": 20 + over * 3, "gap": maxf(0.16, 0.30 - over * 0.01), "lead": 0.5},
+		{"species": &"beetle", "count": 6 + int(over / 2.0), "gap": maxf(0.5, 0.9 - over * 0.02), "lead": 1.5},
+	]
+
+
 func _build_schedule(groups: Array) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	var cursor: float = 0.0
+	var mutating: bool = current_wave >= MUTATION_START_WAVE
 	for group: Dictionary in groups:
 		cursor += float(group["lead"])
 		var gap: float = float(group["gap"])
 		for i: int in range(int(group["count"])):
-			out.append({"species": group["species"], "at": cursor})
+			var mutation: StringName = &""
+			if mutating and _rng.randf() < MUTATION_CHANCE:
+				mutation = MUTATIONS[_rng.randi_range(0, MUTATIONS.size() - 1)]
+			out.append({"species": group["species"], "at": cursor, "mutation": mutation})
 			cursor += gap
 	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["at"]) < float(b["at"]))
 	return out
@@ -103,7 +143,8 @@ func _process(delta: float) -> void:
 		return
 	_elapsed += delta
 	while _next < _schedule.size() and float(_schedule[_next]["at"]) <= _elapsed:
-		spawn_requested.emit(_schedule[_next]["species"])
+		var entry: Dictionary = _schedule[_next]
+		spawn_requested.emit(entry["species"], entry["mutation"])
 		_next += 1
 	if _next >= _schedule.size():
 		_running = false

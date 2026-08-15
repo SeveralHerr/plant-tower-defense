@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://ce2dtga2f08e"]
+
+[ext_resource type="Script" uid="uid://b25ayljb8mn0j" path="res://game/title_screen.gd" id="1_title"]
+
+[node name="TitleScreen" type="Control"]
+script = ExtResource("1_title")

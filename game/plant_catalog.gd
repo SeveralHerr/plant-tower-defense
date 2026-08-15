@@ -9,6 +9,7 @@ extends RefCounted
 
 const CORN := &"corn_cobbler"
 const CHOMP := &"chomp_flower"
+const SUNFLOWER := &"sunflower"
 
 const PLANTS: Dictionary = {
 	CORN: {
@@ -29,11 +30,20 @@ const PLANTS: Dictionary = {
 		"free_starter": false,
 		"blurb": "Eats small pests instantly. Big ones take a while — and it is busy the whole time.",
 	},
+	SUNFLOWER: {
+		"display": "Seed Sunflower",
+		"texture": "res://assets/sprites/sunflower.png",
+		"cost": 25,
+		"tier": 2,
+		"unlocked_at_start": false,
+		"free_starter": false,
+		"blurb": "Fights nothing. Grows seeds on a clock — plant it somewhere the lane doesn't need.",
+	},
 }
 
 ## Order the shop and the plant bar list plants in. Keeps the UI stable as more
 ## plants are added to PLANTS.
-const ORDER: Array[StringName] = [CORN, CHOMP]
+const ORDER: Array[StringName] = [CORN, CHOMP, SUNFLOWER]
 
 
 static func ids() -> Array[StringName]:
@@ -54,6 +64,11 @@ static func display_name(id: StringName) -> String:
 
 static func cost(id: StringName) -> int:
 	return int(entry(id).get("cost", 0))
+
+
+## Packet tiers use this to filter their pool — see SeedBank.PACKET_TIERS.
+static func tier(id: StringName) -> int:
+	return int(entry(id).get("tier", 1))
 
 
 static func texture_path(id: StringName) -> String:

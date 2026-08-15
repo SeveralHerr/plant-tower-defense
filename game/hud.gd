@@ -10,7 +10,7 @@ extends CanvasLayer
 ## breaks a test rather than nothing.
 
 signal plant_selected(id: StringName)
-signal packet_requested
+signal packet_requested(tier: StringName)
 signal next_wave_requested
 signal upgrade_requested
 signal uproot_requested
@@ -26,9 +26,11 @@ const LEAF := Color(0.180, 0.800, 0.443)
 var _seeds_label: Label
 var _wave_label: Label
 var _lives_label: Label
+var _compost_label: Label
 var _message_label: Label
 var _plant_bar: VBoxContainer
 var _packet_button: Button
+var _rare_packet_button: Button
 var _next_wave_button: Button
 var _selection_box: VBoxContainer
 var _selection_label: Label
@@ -67,6 +69,9 @@ func _build_top_bar(root: Control) -> void:
 	bar.add_child(_wave_label)
 	_lives_label = _make_label("LivesLabel", Vector2(560, 18), 26, PAPER)
 	bar.add_child(_lives_label)
+
+	_compost_label = _make_label("CompostLabel", Vector2(760, 18), 20, Color(0.78, 0.62, 0.38))
+	bar.add_child(_compost_label)
 
 	_message_label = _make_label("MessageLabel", Vector2(20, 46), 15, LEAF)
 	_message_label.size = Vector2(760, 22)
@@ -111,21 +116,35 @@ func _build_side_panel(root: Control) -> void:
 		_plant_bar.add_child(button)
 		_plant_buttons[id] = button
 
+	# Stacked full-width, not side-by-side: two 112px-wide buttons with an icon
+	# plus "Common (20)" had no room left for the text (findings caught this —
+	# button_text_overflow, 99px of text in less than that of actual space).
 	_packet_button = Button.new()
 	_packet_button.name = "PacketButton"
-	_packet_button.text = "Seed packet (%d)" % SeedBank.PACKET_COST
+	_packet_button.text = "Common Packet (%d)" % SeedBank.PACKET_TIERS[&"common"]["cost"]
 	_packet_button.icon = load("res://assets/sprites/seed_packet.png") as Texture2D
 	_packet_button.expand_icon = true
 	_packet_button.position = Vector2(12, 300)
-	_packet_button.size = Vector2(PANEL_WIDTH - 24, 48)
-	_packet_button.tooltip_text = "A packet holds one plant you do not have yet. Which one is up to the packet."
-	_packet_button.pressed.connect(func() -> void: packet_requested.emit())
+	_packet_button.size = Vector2(PANEL_WIDTH - 24, 40)
+	_packet_button.tooltip_text = "A packet holds one plant you do not have yet, tier 1 only. Which one is up to the packet."
+	_packet_button.pressed.connect(func() -> void: packet_requested.emit(&"common"))
 	panel.add_child(_packet_button)
+
+	_rare_packet_button = Button.new()
+	_rare_packet_button.name = "RarePacketButton"
+	_rare_packet_button.text = "Rare Packet (%d)" % SeedBank.PACKET_TIERS[&"rare"]["cost"]
+	_rare_packet_button.icon = load("res://assets/sprites/seed_packet.png") as Texture2D
+	_rare_packet_button.expand_icon = true
+	_rare_packet_button.position = Vector2(12, 344)
+	_rare_packet_button.size = Vector2(PANEL_WIDTH - 24, 40)
+	_rare_packet_button.tooltip_text = "Costlier, but the odds reach past tier 1 — the only reliable way to a Seed Sunflower."
+	_rare_packet_button.pressed.connect(func() -> void: packet_requested.emit(&"rare"))
+	panel.add_child(_rare_packet_button)
 
 	_selection_box = VBoxContainer.new()
 	_selection_box.name = "SelectionBox"
-	_selection_box.position = Vector2(12, 364)
-	_selection_box.size = Vector2(PANEL_WIDTH - 24, 180)
+	_selection_box.position = Vector2(12, 392)
+	_selection_box.size = Vector2(PANEL_WIDTH - 24, 152)
 	_selection_box.add_theme_constant_override("separation", 6)
 	_selection_box.visible = false
 	panel.add_child(_selection_box)
@@ -200,8 +219,15 @@ func _process(delta: float) -> void:
 func refresh(state: Dictionary) -> void:
 	var bank: SeedBank = state["bank"]
 	_seeds_label.text = "Seeds  %d" % bank.seeds
-	_wave_label.text = "Wave  %d / %d" % [state["wave"], state["wave_count"]]
+	if bool(state.get("endless", false)):
+		_wave_label.text = "Wave  %d — endless" % state["wave"]
+	else:
+		_wave_label.text = "Wave  %d / %d" % [state["wave"], state["wave_count"]]
 	_lives_label.text = "Garden  %d" % state["lives"]
+	var husks: int = int(state.get("husks_on_ground", 0))
+	_compost_label.text = "Compost  %d" % int(state.get("compost_total", 0))
+	if husks > 0:
+		_compost_label.text += " (%d ready)" % husks
 
 	var selected: StringName = state["selected_plant"]
 	for id: StringName in _plant_buttons:
@@ -218,7 +244,9 @@ func refresh(state: Dictionary) -> void:
 		button.modulate = Color.WHITE if (unlocked and bank.can_afford(id)) else Color(1, 1, 1, 0.55)
 		button.button_pressed = unlocked and id == selected
 
-	_packet_button.disabled = bank.locked_plants().is_empty() or bank.seeds < SeedBank.PACKET_COST
+	var locked_empty: bool = bank.locked_plants().is_empty()
+	_packet_button.disabled = locked_empty or bank.seeds < int(SeedBank.PACKET_TIERS[&"common"]["cost"])
+	_rare_packet_button.disabled = locked_empty or bank.seeds < int(SeedBank.PACKET_TIERS[&"rare"]["cost"])
 	_next_wave_button.disabled = not bool(state["can_start_wave"])
 	_refresh_selection(state)
 
@@ -230,6 +258,7 @@ func _refresh_selection(state: Dictionary) -> void:
 		return
 	_selection_box.visible = true
 	var corn := plant as CornCobbler
+	var sunflower := plant as Sunflower
 	if corn != null:
 		_selection_label.text = "%s — %s\n%d kernel(s) per shot" % [
 			PlantCatalog.display_name(plant.kind), corn.level_name(), corn.kernels_per_shot(),
@@ -241,6 +270,11 @@ func _refresh_selection(state: Dictionary) -> void:
 		else:
 			_upgrade_button.text = "Upgrade (%d)" % corn.upgrade_cost()
 			_upgrade_button.disabled = (state["bank"] as SeedBank).seeds < corn.upgrade_cost()
+	elif sunflower != null:
+		_selection_label.text = "%s\nNext %d seeds in %.0fs" % [
+			PlantCatalog.display_name(plant.kind), Sunflower.YIELD, sunflower.seconds_until_next_yield(),
+		]
+		_upgrade_button.visible = false
 	else:
 		_selection_label.text = "%s\n%s" % [PlantCatalog.display_name(plant.kind), PlantCatalog.blurb(plant.kind)]
 		_upgrade_button.visible = false

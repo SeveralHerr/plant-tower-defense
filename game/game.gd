@@ -17,6 +17,7 @@ var board: Board
 var bank: SeedBank
 var director: WaveDirector
 var hud: Hud
+var compost: CompostMeter
 
 var lives: int = LIVES
 var selected_plant: StringName = PlantCatalog.CORN
@@ -26,9 +27,11 @@ var victory: bool = false
 
 var _entities: Node2D
 var _cursor: ColorRect
+var _husk_layer: HuskLayer
 var _plants: Dictionary = {}
 var _prep_left: float = 0.0
 var _wave_live: bool = false
+var _score_recorded: bool = false
 
 
 func _ready() -> void:
@@ -40,7 +43,12 @@ func _ready() -> void:
 
 	director = WaveDirector.new()
 	director.name = "WaveDirector"
+	director.endless = RunConfig.endless
 	add_child(director)
+
+	compost = CompostMeter.new()
+	compost.name = "CompostMeter"
+	add_child(compost)
 
 	_entities = Node2D.new()
 	_entities.name = "Entities"
@@ -50,6 +58,11 @@ func _ready() -> void:
 	board = Board.new()
 	board.name = "Board"
 	_entities.add_child(board)
+
+	_husk_layer = HuskLayer.new()
+	_husk_layer.name = "HuskLayer"
+	_husk_layer.compost = compost
+	_entities.add_child(_husk_layer)
 
 	_cursor = ColorRect.new()
 	_cursor.name = "Cursor"
@@ -69,6 +82,9 @@ func _ready() -> void:
 
 	director.spawn_requested.connect(spawn_pest)
 	director.wave_started.connect(_on_wave_started)
+	director.wave_spawning_finished.connect(func(_n: int) -> void: _refresh())
+
+	compost.husk_collected.connect(func(_v: int) -> void: _refresh())
 
 	hud.plant_selected.connect(_on_plant_chosen)
 	hud.packet_requested.connect(_on_packet_requested)
@@ -103,7 +119,7 @@ func start_next_wave() -> bool:
 
 func _on_wave_started(number: int) -> void:
 	_wave_live = true
-	hud.show_message("Wave %d — %d pests." % [number, WaveDirector.pests_in_wave(number)])
+	hud.show_message("Wave %d — %d pests." % [number, director.current_wave_pest_count()])
 	_refresh()
 
 
@@ -118,22 +134,29 @@ func _check_wave_cleared() -> void:
 		hud.show_message("Wave %d cleared. Next one grows in %d seconds." % [director.current_wave, int(PREP_SECONDS)], 6.0)
 	else:
 		victory = true
-		hud.show_banner("The garden holds!")
+		_end_run("The garden holds!")
 	_refresh()
 
 
 ## Puts one pest on the road immediately. The wave director drives this; the
-## devtools `spawn_pest` verb uses it to stage a single bug without a whole wave.
-func spawn_pest(species: StringName) -> void:
+## devtools `spawn_pest` verb uses it to stage a single bug without a whole
+## wave. `mutation` is &"" outside wave 8+ or for a manually staged pest.
+func spawn_pest(species: StringName, mutation: StringName = &"") -> void:
 	var pest := Pest.new()
 	_entities.add_child(pest)
 	pest.setup(species, board.route())
+	if mutation != &"":
+		pest.apply_mutation(mutation)
 	pest.died.connect(_on_pest_died)
 	pest.escaped.connect(_on_pest_escaped)
 
 
 func _on_pest_died(pest: Pest) -> void:
 	bank.add_seeds(pest.seed_value)
+	# Half again, as a husk — collectible for a bonus, or left to rot. See
+	# CompostMeter: this is what makes "sweep the field" worth doing.
+	var husk_value: int = maxi(1, int(ceil(pest.seed_value / 2.0)))
+	compost.drop_husk(pest.position, husk_value)
 
 
 func _on_pest_escaped(_pest: Pest) -> void:
@@ -141,9 +164,22 @@ func _on_pest_escaped(_pest: Pest) -> void:
 	if lives <= 0:
 		lives = 0
 		game_over = true
-		hud.show_banner("The garden is eaten")
+		_end_run("The garden is eaten")
 		get_tree().call_group("pests", "queue_free")
 	_refresh()
+
+
+## Common tail of a run, win or lose: banners the result and files the seed
+## total against RunConfig's persisted high score exactly once.
+func _end_run(banner: String) -> void:
+	var new_record: bool = not _score_recorded and RunConfig.record_score(bank.seeds_earned_total)
+	_score_recorded = true
+	var line: String = "%s\nSeeds grown: %d" % [banner, bank.seeds_earned_total]
+	if new_record:
+		line += "  — new high score!"
+	else:
+		line += "  (best %d)" % RunConfig.high_score
+	hud.show_banner(line)
 
 
 # -- placement --------------------------------------------------------------
@@ -151,8 +187,18 @@ func _on_pest_escaped(_pest: Pest) -> void:
 
 func _on_plant_chosen(id: StringName) -> void:
 	selected_plant = id
-	selected_placed = null
+	_select(null)
 	_refresh()
+
+
+## Single point of truth for `selected_placed` — flips the range-ring/selection
+## flag on the outgoing and incoming plant so exactly one plant ever shows it.
+func _select(plant: Plant) -> void:
+	if selected_placed != null and is_instance_valid(selected_placed):
+		selected_placed.set_selected(false)
+	selected_placed = plant
+	if selected_placed != null:
+		selected_placed.set_selected(true)
 
 
 func plant_at(cell: Vector2i) -> Plant:
@@ -176,7 +222,10 @@ func place_plant(id: StringName, cell: Vector2i) -> String:
 	_entities.add_child(plant)
 	plant.setup(id, cell, board)
 	_plants[cell] = plant
-	selected_placed = plant
+	plant.destroyed.connect(_on_plant_destroyed)
+	if plant.has_signal("grew_seeds"):
+		plant.connect("grew_seeds", _on_plant_grew_seeds)
+	_select(plant)
 	_refresh()
 	return ""
 
@@ -185,8 +234,27 @@ func _new_plant(id: StringName) -> Plant:
 	match id:
 		PlantCatalog.CHOMP:
 			return ChompFlower.new()
+		PlantCatalog.SUNFLOWER:
+			return Sunflower.new()
 		_:
 			return CornCobbler.new()
+
+
+## A hungry pest (Pest.is_hungry) ate this plant down to 0 health instead of
+## walking past it. No refund — see uproot_selected() for the "sold on
+## purpose" path, which is the only one that pays anything back.
+func _on_plant_destroyed(plant: Plant) -> void:
+	if _plants.get(plant.cell) == plant:
+		_plants.erase(plant.cell)
+	if selected_placed == plant:
+		_select(null)
+	hud.show_message("A hungry pest ate your %s!" % PlantCatalog.display_name(plant.kind), 4.0)
+	plant.queue_free()
+	_refresh()
+
+
+func _on_plant_grew_seeds(amount: int) -> void:
+	bank.add_seeds(amount)
 
 
 func upgrade_selected() -> String:
@@ -213,13 +281,13 @@ func uproot_selected() -> String:
 	_plants.erase(plant.cell)
 	bank.refund(plant.uproot_refund())
 	plant.queue_free()
-	selected_placed = null
+	_select(null)
 	_refresh()
 	return ""
 
 
-func _on_packet_requested() -> void:
-	var got: StringName = bank.buy_packet()
+func _on_packet_requested(tier: StringName = &"common") -> void:
+	var got: StringName = bank.buy_packet(tier)
 	if got != &"":
 		selected_plant = got
 
@@ -260,12 +328,18 @@ func _update_cursor(screen_pos: Vector2) -> void:
 func _click_at(screen_pos: Vector2) -> void:
 	if screen_pos.y < Hud.BAR_HEIGHT or screen_pos.x > board.board_size().x:
 		return
-	var cell: Vector2i = board.world_to_cell(screen_pos - _entities.position)
+	var local: Vector2 = screen_pos - _entities.position
+	var swept: int = compost.collect_at(local)
+	if swept > 0:
+		bank.add_seeds(swept)
+		hud.show_message("Composted a husk for %d seeds." % swept, 2.0)
+		return
+	var cell: Vector2i = board.world_to_cell(local)
 	if not board.is_inside(cell):
 		return
 	var existing: Plant = plant_at(cell)
 	if existing != null:
-		selected_placed = existing
+		_select(existing)
 		_refresh()
 		return
 	var refusal: String = place_plant(selected_plant, cell)
@@ -299,4 +373,9 @@ func state() -> Dictionary:
 		"can_start_wave": not _wave_live and director.has_more_waves() and not game_over and not victory,
 		"game_over": game_over,
 		"victory": victory,
+		"endless": director.endless,
+		"seeds_earned_total": bank.seeds_earned_total,
+		"high_score": RunConfig.high_score,
+		"compost_total": compost.total_collected,
+		"husks_on_ground": compost.husk_count(),
 	}

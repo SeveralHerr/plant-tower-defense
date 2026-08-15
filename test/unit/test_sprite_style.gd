@@ -16,11 +16,15 @@ const RETINA_DIR := "res://assets/sprites/retina"
 ## projectile is deliberately smaller because it is not a tile-sized object.
 const EXPECTED_SIZE := {
 	"chomp_flower": 64,
+	"chomp_flower_eating": 64,
 	"corn_cobbler": 64,
 	"corn_kernel": 16,
 	"pest_aphid": 64,
+	"pest_aphid_dead": 64,
 	"pest_beetle": 64,
+	"pest_beetle_dead": 64,
 	"seed_packet": 64,
+	"sunflower": 64,
 }
 
 ## STYLE.md's palette, sampled by frequency from the kit's own PNGs, plus the

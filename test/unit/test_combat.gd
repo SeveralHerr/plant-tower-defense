@@ -270,7 +270,7 @@ func test_a_started_wave_schedules_exactly_the_pests_the_table_promises() -> Str
 	await _T.instantiate_scene(host)
 
 	var spawned: Array[StringName] = []
-	director.spawn_requested.connect(func(species: StringName) -> void: spawned.append(species))
+	director.spawn_requested.connect(func(species: StringName, _mutation: StringName) -> void: spawned.append(species))
 	director.start_next_wave()
 	var guard: int = 0
 	while director.is_spawning() and guard < 4000:

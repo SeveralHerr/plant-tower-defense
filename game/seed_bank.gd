@@ -14,9 +14,24 @@ signal plant_unlocked(id: StringName)
 signal purchase_failed(reason: String)
 
 const STARTING_SEEDS: int = 25
-const PACKET_COST: int = 30
+
+## Kept for existing callers/tests that just want "the" packet price — it is
+## the common tier's cost, the default buy_packet() reaches for.
+const PACKET_COST: int = 20
+
+## Packet tiers: cheap and common-only, or pricier with a shot at anything
+## unlocked so far including higher tiers. `max_tier` filters the pool; when
+## nothing in range is left to unlock, buy_packet() falls back to any locked
+## plant rather than refusing a packet the player can afford.
+const PACKET_TIERS: Dictionary = {
+	&"common": {"display": "Common Packet", "cost": PACKET_COST, "max_tier": 1},
+	&"rare": {"display": "Rare Packet", "cost": 45, "max_tier": 99},
+}
 
 var seeds: int = STARTING_SEEDS
+## Every seed ever gained (not net of spending) — the run's score for the
+## endless-mode high score. Refunds count too; they are still seeds earned.
+var seeds_earned_total: int = 0
 var unlocked: Array[StringName] = []
 ## Cleared the first time the free starter is planted. See placement_cost().
 var free_starter_available: bool = true
@@ -36,6 +51,8 @@ func set_seed(value: int) -> void:
 
 func add_seeds(amount: int) -> void:
 	seeds = maxi(0, seeds + amount)
+	if amount > 0:
+		seeds_earned_total += amount
 	seeds_changed.emit(seeds)
 
 
@@ -83,18 +100,28 @@ func refund(amount: int) -> void:
 	add_seeds(amount)
 
 
-## Buys one seed packet. Returns the plant it rolled, or &"" if it could not buy.
-func buy_packet() -> StringName:
+## Buys one seed packet of `tier` ("common" by default, or "rare"). Returns the
+## plant it rolled, or &"" if it could not buy.
+func buy_packet(tier: StringName = &"common") -> StringName:
+	var spec: Dictionary = PACKET_TIERS.get(tier, {}) as Dictionary
+	if spec.is_empty():
+		purchase_failed.emit("no such packet: %s" % tier)
+		return &""
 	var locked: Array[StringName] = locked_plants()
 	if locked.is_empty():
 		purchase_failed.emit("Every plant is already growing in your garden.")
 		return &""
-	if seeds < PACKET_COST:
-		purchase_failed.emit("A seed packet costs %d seeds." % PACKET_COST)
+	var cost: int = int(spec["cost"])
+	if seeds < cost:
+		purchase_failed.emit("A %s costs %d seeds." % [spec["display"], cost])
 		return &""
-	seeds -= PACKET_COST
+	var max_tier: int = int(spec["max_tier"])
+	var pool: Array[StringName] = locked.filter(func(id: StringName) -> bool: return PlantCatalog.tier(id) <= max_tier)
+	if pool.is_empty():
+		pool = locked
+	seeds -= cost
 	seeds_changed.emit(seeds)
-	var picked: StringName = locked[_rng.randi_range(0, locked.size() - 1)]
+	var picked: StringName = pool[_rng.randi_range(0, pool.size() - 1)]
 	unlocked.append(picked)
 	plant_unlocked.emit(picked)
 	return picked

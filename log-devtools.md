@@ -382,3 +382,105 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     and a clean result should not look identical. Narrower alternative: gate only on a
     public method that is **new in the diff** and has no reference outside its own file,
     which is the unfinished-wiring case without the callback noise.
+
+## 2026-08-15 — Wired Plant selection (closing G-007) and added the Chomp chew ring
+
+- Value: **warranted** — runtime proved the G-007 wiring gap is actually closed, which no
+  static gate can say (both lint and `--find-orphans` were the tools that *found* the gap
+  last run; only a live selection click can prove the fix).
+  - Expected: `set_selected()` now has a caller, so `CornCobbler`'s range ring renders on
+    selection; the new Chomp chew ring shrinks in step with `chew_progress()`.
+  - Got: after `place_plant`, `get-state _selected` read `true` immediately (previously
+    dead code). `sample-pixels --rect 190,90,36,30` on the ring's edge went from
+    `dominant_share 94%` / `brightest 0.196` (unselected baseline) to `dominant_share 47%`
+    / `brightest 0.302` while selected, then back to `95%` / `0.180` after switching the
+    plant bar selection away — a measurable ring, appearing and disappearing on cue. The
+    Chomp's timers were also verified over real time: `_held` null -> beetle object ->
+    `_chew_left` 2.6 -> 0.73 (after 2s) -> 0.0 and released (after 1 more second), matching
+    `chew_seconds` exactly.
+  - Found: confirmed G-007 is fixed — `set_selected` no longer appears in a
+    `--find-orphans` run at all. Also hit a real workflow snag: `cmd place_plant` takes
+    `x`/`y` args, not `cell`; a `{"cell":[1,1]}` call silently placed at the default (0,0)
+    instead of failing, which cost a few minutes of confused `find-nodes` before reading
+    `devtools_ext/commands.gd`.
+  - Cheaper: nothing for the selection-ring fix — this is exactly the "found by grepping,
+    not by a gate" case the prior session flagged, and only the running game can prove a
+    click now does the right thing. The Chomp ring's *pixel* isolation was closer to
+    overkill: the flower sprite's own orange/yellow palette confounds a small ring, so that
+    one check ended `blocked` rather than a clean pass (see gap below) — the state-machine
+    check (`_held`/`_chew_left` over real time) is what actually carried the confidence.
+
+- Gap: **`cmd place_plant`'s devtools arg name doesn't match the intuitive `cell` used
+  everywhere else in this project's own docs/tests, and a wrong key is silently ignored
+  rather than reported.** `_cmd_place_plant` reads `args.get("x", 0)` / `args.get("y", 0)`;
+  passing `{"plant":"...", "cell":[1,1]}` doesn't error, it just defaults both to 0 and
+  reports success at `(0, 0)` — which reads exactly like "I placed it where I asked."
+  - [G-008] status: open | seen: 1 | harness: 0.19.0
+  - Improvement: this is a project verb (`devtools_ext/commands.gd`), not harness core, so
+    the actual fix belongs there: accept `cell: [x,y]` as an alias, or reject unknown keys
+    when `x`/`y` are absent instead of defaulting silently. Noting it here because the
+    *pattern* — a project verb accepting an args dict with no key validation — is generic
+    enough that the harness's own `list-commands`/`cmd` help text could recommend project
+    verbs assert `args.has(...)` rather than `.get(key, default)` for anything spatial.
+
+## 2026-08-15 — Six features in one session: compost meter, pest mutations, seed packet tiers + Seed Sunflower, sprite pass 2, title screen + endless mode, Designer's Notebook
+
+- Value: **warranted** — runtime caught two real, un-Grep-able layout bugs and the headless
+  test run caught two silently-vacuous tests before either shipped.
+  - Expected: the six new bd issues integrate into the live game without breaking existing
+    plant/pest/economy behavior, and findings/lint/tests stay clean.
+  - Got: `findings` caught a real `button_text_overflow` on the new side-by-side packet
+    buttons and a real `signal_unconnected` on `WaveDirector.wave_spawning_finished`, both
+    fixed and re-verified clean. A live screenshot of the Designer's Notebook then showed
+    the *entire title screen* — Start/Endless/Notebook buttons, title, subtitle, high-score
+    — visible right through the notebook's supposedly-opaque backdrop, plus its two preview
+    images blown up to nearly the full screen instead of their 320x320 box.
+  - Found: (1) `entry_hook.node_path: "."` in devtools_config.json doesn't resolve via
+    `run-method` — needed the literal `/root/TitleScreen`, fixed in config. (2)
+    `Control.set_anchors_preset(PRESET_FULL_RECT)` silently resolves to a 0x0 rect for a
+    Control added as a bare scene root or via a plain `add_child()` outside a layout pass —
+    invisible on the title screen itself (INK is nearly the viewport's own clear colour)
+    but fatal for an overlay meant to hide what's under it. Fixed by switching to explicit
+    `position`/`size` assignment, matching the pattern `hud.gd` already used everywhere
+    else in this project — the working convention was right there and the new screens
+    didn't follow it. (3) `TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL` outside a Container
+    has no real "available width" to fit against and blew a 320x320 box up to most of the
+    screen; switched to `EXPAND_IGNORE_SIZE`. (4) GDScript lambda closures capture locals
+    **by value**, not by reference — two new unit tests (`grew_seeds`/`destroyed` signal
+    listeners assigning to an outer `bool`/`int`) silently verified nothing; both were
+    passing for the wrong reason until switched to a boxed single-element `Array`. (5) An
+    automatic physics tick during `instantiate_scene()`'s settle frames grabbed a test
+    pest before the test's own "idle" baseline was captured, because
+    `set_physics_process(false)` called on a node *before* it enters the tree does not
+    stick in Godot 4 — the flag is re-derived on enter-tree. Restructured the one test that
+    depended on ordering to not need it.
+  - Cheaper: nothing for the two layout bugs — pure rendering defects, invisible to lint,
+    name_check, and a headless `instantiate_ui` that never asserted on `.size`. The lambda
+    and physics-tick bugs needed the actual `run_tests.gd` execution, not a diff read.
+
+- Gap: **`quit` reported the launched process as "STILL ALIVE 10s after quit" three times
+  in one session** (pids 19132, 18560, and one earlier), every time requiring a manual
+  `Stop-Process -Force` before the next `launch` would proceed. `taskkill /F /PID <n>` run
+  through the Bash tool's MSYS path translation mangles `/F` into a phantom `F:/` path
+  argument and fails outright — PowerShell's `Stop-Process -Id <n> -Force` is what actually
+  worked.
+  - [G-009] status: open | seen: 3 | harness: 0.19.0
+  - Improvement: on Windows, `devtools.py quit`'s own follow-up guidance
+    (`taskkill /F /PID <pid>`) is wrong for an agent shelling out through a POSIX-translating
+    bash — either quote/escape the flag in the printed suggestion, or print the
+    PowerShell form (`Stop-Process -Id <pid> -Force`) as an alternative on Windows.
+
+- Gap: **`godot --headless --path . --import` must be re-run after adding any new
+  `class_name`-declared script, or every script that references it fails with
+  `Could not resolve external class member` / `stale class cache` — and the failure mode
+  cascades into completely unrelated files**, which reads like a broad regression rather
+  than "the cache needs a refresh." Hit twice this session: once after adding
+  `compost_meter.gd`/`husk_layer.gd`/`sunflower.gd`/`title_screen.gd`/`notebook_screen.gd`,
+  and once more after editing (not even adding) `notebook_screen.gd`/`title_screen.gd` for
+  the layout fix, which briefly looked like a *different* bug (`get_viewport_height()` not
+  found) before `lint_project.gd`'s own `class_cache_stale` hint pointed at the real cause.
+  - [G-010] status: open | seen: 2 | harness: 0.19.0
+  - Improvement: `lint_project.gd` already prints the `stale class cache` hint — the CLAUDE.md
+    workflow section could say explicitly "after creating a new `class_name` file, run
+    `--import` before the next lint/test pass" rather than leaving it to be rediscovered
+    from the hint each time.
