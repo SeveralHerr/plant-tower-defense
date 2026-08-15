@@ -41,7 +41,7 @@
   "godot_version": "4.7.1",
   "_scaffold_defaults": {
     "note": "Written by /scaffold-godot-harness. 'values' is what scaffold last left here and 'owned' lists the keys it may still update; edit a key and it becomes yours permanently. Safe to commit; delete to reset the tracking.",
-    "harness_version": "0.18.0",
+    "harness_version": "0.19.0",
     "owned": [
       "entry_hook",
       "entry_points",
@@ -55,7 +55,6 @@
       "log_check_globs",
       "log_check_value",
       "log_files",
-      "main_scene",
       "mute",
       "name_check_extra_types",
       "name_check_ignore",
@@ -94,7 +93,7 @@
         "right": 0,
         "bottom": 0
       },
-      "main_scene": "",
+      "main_scene": "res://game/game.tscn",
       "entry_hook": {
         "node_path": "",
         "method": ""

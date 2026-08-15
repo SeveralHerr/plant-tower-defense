@@ -303,3 +303,50 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   (an explicit *degraded* verdict when `main_scene` is empty) is still unshipped.
   - [G-004] status: open | seen: 2 | harness: 0.18.0 | filed: SeveralHerr/godot-selftest-harness#10
   - Improvement: unchanged from the original entry.
+
+## 2026-08-15 — Refreshed the self-test harness from 0.18.0 to 0.19.0 (/scaffold-godot-harness)
+
+- Value: **warranted** — the smoke check is the only thing that proved the 0.19.0 core
+  actually parses against this project's Godot 4.7.1, and the config merge misbehaved in
+  a way only a read-back caught.
+  - Expected: a no-op refresh — files bumped, `devtools_config.json` keys preserved,
+    lint still green.
+  - Got: `lint: godot-selftest-harness 0.19.0 | scan_root res:// … Scripts: 24 compiled
+    OK | UIDs: OK | res://game/game.tscn: OK | lint: 0 error(s), 0 warning(s) -> exit 0`,
+    and `name_check` `errors: 0 | warnings: 1 | advisory: 4` against
+    `engine index: Godot Engine v4.7.1.stable.official (1036 classes, 38 builtins)`.
+  - Found: the step 7 config merge silently cleared `godot_bin` and `godot_version`
+    (`^ godot_bin: "C:/Users/gotmi/Downloads/Godot_v4.7.1/…_console.exe" -> ""`). Restored
+    by hand before continuing; see the gap below. Also surfaced a real pre-existing
+    project finding lint does not gate on — `game/board.gd:124` loads
+    `res://assets/kenney/png/towerDefense_tile%03d.png`, which does not exist.
+  - Cheaper: nothing. `git diff` on the config would have shown the blanking only if I
+    had thought to look at a key the command's own step 11 was about to rewrite anyway.
+
+- Gap: **`scaffold_install.py config` treats an empty shipped default as a proposal, so a
+  refresh wipes `godot_bin`/`godot_version` before the step that re-detects them.** The
+  template ships `"godot_bin": ""`, the key is scaffold-owned, and step 7 runs *before*
+  step 11's binary detection — so every refresh transiently destroys a working recorded
+  path. Here step 11 put it back, but on a machine where the detection globs miss (binary
+  moved, `GODOT_BIN` unset) the refresh would leave the project with no binary at all,
+  having deleted the one an earlier run had found. Workaround: re-ran
+  `scaffold_install.py config --set godot_bin=… --set godot_version=…` by hand after
+  detection.
+  - [G-006] status: open | seen: 1 | harness: 0.19.0 | filed: SeveralHerr/godot-selftest-harness#7 (comment - same root cause as the open issue, new manifestation on the refresh path)
+  - Improvement: in `cmd_config`, an empty/None shipped default is a placeholder, not a
+    proposal — never let it clear a non-empty existing value unless `--set` names the key:
+
+    ```python
+            for key, value in proposed.items():
+                if key not in merged:
+                    ...
+                    continue
+    +           # An empty shipped default is a placeholder, not a proposal. It must not
+    +           # clear a value a previous run detected and recorded (e.g. godot_bin).
+    +           if (key not in overrides and value in ("", None)
+    +                   and merged.get(key) not in ("", None)):
+    +               owned.add(key)
+    +               print("  = %s kept as %s (shipped default is empty - not a proposal)"
+    +                     % (key, json.dumps(merged[key])))
+    +               continue
+    ```
