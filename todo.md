@@ -21,25 +21,19 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 
 ## Items
 
-- [x] Sprite pass 2: damaged / eating / dead states (`plant-tower-defense-eeq`)
-- [x] Chomp Flower "occupied" readout — the chew timer is the balance lever and
-      nothing on screen shows it (`chew_progress()` already exists, unused)
-- [x] Corn range indicator on the selected plant — placement is currently blind
-- [x] Seed packet tiers, so the packet is a gamble with stakes rather than a
-      two-item shuffle (needs a third plant) (`plant-tower-defense-e0w`) — third
-      plant is the Seed Sunflower
-- [x] Compost meter: pests leave husks, sweeping them pays seeds
-      (`plant-tower-defense-d0w`)
-- [x] Pest mutations from wave 8 (armoured / winged / hungry)
-      (`plant-tower-defense-b5k`)
-- [x] Title screen + endless mode with a seed high score
-      (`plant-tower-defense-5fu`)
-- [x] A "Designer's Notebook" screen showing `image1.jpg`–`image6.jpg` beside the
-      finished sprite for each plant (`plant-tower-defense-1qo`)
-- [x] Add cool new features to `kanban.md` — see "Cool new features" there,
-      including a fresh batch grown from watching this session's six features run
-
-All items closed 2026-08-15 — see `log-devtools.md` for the /verify writeup and
-`kanban.md` for the readable Done/backlog board. `bd ready` is empty; nothing new
-is filed yet. Canonical task state is **`bd ready`**; the readable board is
-`kanban.md`.
+- [ ] Selection needs a second cue beyond the range ring — outline/corner
+      brackets drawn on the sprite in the base `Plant` class, since Chomp
+      Flower shows no ring at all when selected (`plant-tower-defense-42t`)
+- [ ] Lane pressure readout — tint the road segment red where pests got
+      furthest last wave, fading each wave (`plant-tower-defense-4wv`)
+- [ ] Mutated pests should drop a better husk — scale husk value by mutation
+      instead of paying the same amount regardless of `mutation`
+      (`plant-tower-defense-1rh`)
+- [ ] Endless mode should mutate faster over time — `MUTATION_CHANCE` stays
+      fixed at 40% forever past wave 8; scale it (or widen `MUTATIONS`) as
+      endless mode runs longer (`plant-tower-defense-1qi`)
+- [ ] Second bite frame for a beetle's long chew — swap in an "almost done"
+      sprite past `chew_progress() > 0.6` so a 2.6s beetle chew reads
+      differently than a quick aphid one (`plant-tower-defense-rrx`)
+- [ ] Add cool new features to `kanban.md` — mine what this session's own
+      work revealed, not just abstract ideas

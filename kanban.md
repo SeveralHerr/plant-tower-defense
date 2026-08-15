@@ -74,8 +74,10 @@ idea backlog that isn't filed yet.
 
 ## Next up
 
-Nothing filed right now — `bd ready` is empty. See the idea backlog below for what's
-worth turning into the next beads.
+Five filed for next session, pulled from the idea backlog below: selection's second
+visual cue, the lane pressure readout, husk value scaled by mutation, endless mode
+mutating faster over time, and a second bite frame for a beetle's long chew.
+`plant-tower-defense-42t`, `-4wv`, `-1rh`, `-1qi`, `-rrx`
 
 ---
 
