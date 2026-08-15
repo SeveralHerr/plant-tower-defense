@@ -21,19 +21,15 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 
 ## Items
 
-- [x] Selection needs a second cue beyond the range ring — outline/corner
-      brackets drawn on the sprite in the base `Plant` class, since Chomp
-      Flower shows no ring at all when selected (`plant-tower-defense-42t`)
-- [x] Lane pressure readout — tint the road segment red where pests got
-      furthest last wave, fading each wave (`plant-tower-defense-4wv`)
-- [x] Mutated pests should drop a better husk — scale husk value by mutation
-      instead of paying the same amount regardless of `mutation`
-      (`plant-tower-defense-1rh`)
-- [x] Endless mode should mutate faster over time — `MUTATION_CHANCE` stays
-      fixed at 40% forever past wave 8; scale it (or widen `MUTATIONS`) as
-      endless mode runs longer (`plant-tower-defense-1qi`)
-- [x] Second bite frame for a beetle's long chew — swap in an "almost done"
-      sprite past `chew_progress() > 0.6` so a 2.6s beetle chew reads
-      differently than a quick aphid one (`plant-tower-defense-rrx`)
-- [ ] Add cool new features or concrete improvements (either gameplay or UX) to `kanban.md` — mine what this session's own
-      work revealed, not just abstract ideas
+- [ ] Husk size/glow should scale with value — a mutated pest's bigger husk
+      payout is currently invisible until clicked (`plant-tower-defense-afd`)
+- [ ] Endless mode should scale pest health/speed too, not just count/gap/
+      mutation chance, so late-game pressure isn't pure quantity
+      (`plant-tower-defense-nps`)
+- [ ] Lane pressure should record every cell pests were lost at, not just the
+      single worst one (`plant-tower-defense-j1h`)
+- [ ] Reuse SelectionMarker's sibling-node pattern for a placement preview cue
+      (`plant-tower-defense-rfh`)
+- [ ] Add cool new features or concrete improvements (either gameplay or UX)
+      to `kanban.md` — mine what this session's own work revealed, not just
+      abstract ideas

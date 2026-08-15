@@ -72,12 +72,42 @@ idea backlog that isn't filed yet.
     2026-08-15 for the full writeup, including two tests that verified nothing until a
     GDScript lambda-capture gotcha was found.
 
+- **Five more shipped and /verify'd, one session each with runtime evidence** —
+  selection's second visual cue, the lane pressure readout, husk value scaled by
+  mutation, endless mode mutating faster over time, and a second bite frame for a
+  beetle's long chew. `plant-tower-defense-42t`, `-4wv`, `-1rh`, `-1qi`, `-rrx`
+  - **SelectionMarker** — a separate child node, not code inside each plant's own
+    `_draw()`. CornCobbler and ChompFlower both fully override `_draw()` for their
+    own overlays and never call `super._draw()`, so a cue placed there would have
+    been silently dropped by exactly the subclasses most likely to want one — which
+    is how ChompFlower ended up with no selection feedback at all before this.
+  - **Lane pressure readout** — `Board.record_lane_pressure()` tints the road cell
+    where pests got furthest last wave, fading whatever an earlier wave lit up.
+    Caught live, not on read: losing the last life mid-wave sets `game_over`, and
+    `Game._process`'s own early-return guard meant the one place that committed
+    this never ran on that path — a run lost outright left the readout stuck on
+    whatever the previous wave showed, forever. Fixed and covered by a unit test
+    that reproduces the bug.
+  - **Husk value scaled by mutation** — `Pest.husk_multiplier()` (armoured/winged
+    1.5x, hungry 2x, since hungry destroys a plant outright). Ties the mutation and
+    compost systems together instead of leaving them side by side.
+  - **Endless mode mutates faster** — `WaveDirector.mutation_chance_for(wave)`
+    climbs 0.02/wave past the fixed table, capped at 0.85, instead of holding the
+    flat 40% forever.
+  - **Second bite frame** — `chomp_flower_eating_late.png` swaps in past
+    `chew_progress() > 0.6`, the same fraction the shrinking chew ring reads.
+  - A real harness gap surfaced verifying the last of these: three separate zombie
+    Godot processes were found alive at once mid-session, all still answering the
+    devtools bus — `quit`'s "STILL ALIVE" pid is the bus-answering engine process,
+    but on Windows the console-wrapper `launch` reports as "Launched pid" doesn't
+    reliably take that child process down with it when killed. Presented as
+    newly-spawned pest nodes reporting "Node not found" seconds after `scene-tree`
+    had just listed them. See `log-devtools.md` 2026-08-15 (G-012).
+
 ## Next up
 
-Five filed for next session, pulled from the idea backlog below: selection's second
-visual cue, the lane pressure readout, husk value scaled by mutation, endless mode
-mutating faster over time, and a second bite frame for a beetle's long chew.
-`plant-tower-defense-42t`, `-4wv`, `-1rh`, `-1qi`, `-rrx`
+Nothing filed right now — `bd ready` is empty. See the idea backlog below for what's
+worth turning into the next beads.
 
 ---
 
@@ -92,18 +122,43 @@ mutating faster over time, and a second bite frame for a beetle's long chew.
   UI element. A cool colour (cyan/white) or a dashed/outlined stroke instead of a
   filled arc would actually contrast against every pest and plant sprite in the kit,
   not just this one.
-- **Selection needs a second cue beyond the range ring.** Right now the *only* sign a
-  plant is selected is a translucent circle that, for a Chomp Flower (no ring drawn
-  at all — that's Corn's trick), means selecting it shows nothing whatsoever. A
-  thin outline or corner brackets on the sprite itself, drawn in `Plant` rather than
-  per-subclass, would make selection legible for every plant that gets added later.
-- **Lane pressure readout.** The board is one road, so "which end is losing" is
-  always answerable — tint the road segment red where pests got furthest last wave.
+- ~~Selection needs a second cue beyond the range ring~~ and ~~lane pressure
+  readout~~ both shipped this session — see **Done** above.
 - **Kernels should miss.** They fly straight and hit the first body in 18 px; a
   fast aphid crossing the volley diagonally survives. That is a *good* accident —
   lean into it and let the "bunch" upgrade be about covering the miss, not damage.
 
-#### Grown from *this* session's six features, after watching them run
+#### Grown from *this session's* five features, after watching them run
+
+- **A husk's size/glow should say how much it's worth.** `HuskLayer._draw()` draws
+  every husk at the same fixed 9px radius regardless of `value` — now that a
+  mutated pest's husk is worth 1.5-2x a plain one (`husk_multiplier()`), the bigger
+  payout is invisible until you actually click it. Scaling the circle radius (or
+  the ring's brightness) by value would let "that one's worth more" read from
+  across the board, the same way the mutation tint already does for the pest
+  itself.
+- **Endless mode's escalation is still only count/gap/mutation-chance.** Pest
+  `health`/`speed` stay exactly what `Pest.SPECIES` says forever, even as
+  `WaveDirector._endless_groups`/`mutation_chance_for` turn everything else up.
+  A long endless run gets *more* pests that mutate *more often*, but each
+  individual pest is exactly as tough at wave 60 as at wave 9 — scaling health or
+  speed slightly past some endless threshold (mirroring the mutation-chance climb
+  this session just added) would keep late-game pressure from being pure
+  quantity.
+- **The lane pressure overlay only ever lights up one cell.** `record_lane_pressure`
+  takes the single furthest-reached cell, so a wave where pests died at scattered
+  points along the lane (some to a Corn Cobbler near the start, one that broke
+  through near the exit) only ever shows the worst one. Recording every cell a
+  pest died/escaped at (not just the maximum) would draw the whole "where the
+  damage actually happened" picture instead of one hot pixel.
+- **The SelectionMarker pattern could cover a placement preview too.** Now that
+  a plant's selected-state cue lives in a sibling node instead of each
+  subclass's own `_draw()`, the same trick (a corner-bracket node, dimmer/dashed)
+  could show "this is where the cursor would place a plant" before the click
+  lands, reusing the exact node this session just built instead of a new cursor
+  overlay concept.
+
+#### Grown from the *previous* session's six features, after watching them run
 
 - **A Sunflower next to the road should look risky, not just cheap.** A hungry pest
   eats whatever is nearest, and a Sunflower has no way to fight back — right now
