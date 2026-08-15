@@ -1,0 +1,53 @@
+{
+  "files": {
+    "addons/godot_selftest/dev_tools.gd": {
+      "sha256": "8e2b9fc2c5676def2f7611065ec6adbc15235a05f1eac9e3298ec5b2da580c3b",
+      "version": "0.18.0"
+    },
+    "addons/godot_selftest/scene_validator.gd": {
+      "sha256": "5e1f24922239e536c1fe120168e16828b8f405bd4724ef0199bf0a64a6666047",
+      "version": "0.18.0"
+    },
+    "tools/capture.gd": {
+      "sha256": "8a974abc217b8836d677438d6c3822a295421e409f4030268e2add60c2aa9f2c",
+      "version": "0.18.0"
+    },
+    "tools/check_devtools_log.py": {
+      "sha256": "4bb82ee61f0a1e9b23a0c75d2cd874b5dc8d18b0684579980cead3c967b12f2e",
+      "version": "0.18.0"
+    },
+    "tools/devtools.py": {
+      "sha256": "9d099d1668046e2cf29f2feed416861315ba9e6329ed33b35c143923055ef6a2",
+      "version": "0.18.0"
+    },
+    "tools/eval.gd": {
+      "sha256": "cee39d7c712dfd40fa705e7b58d828de836a6bc1e5263498643ec9d52b709d66",
+      "version": "0.18.0"
+    },
+    "tools/import_check.py": {
+      "sha256": "a949aef3ea1bcc8a7ff013b68da82411afed35a7fd299a00de39cf91a0aaf729",
+      "version": "0.18.0"
+    },
+    "tools/lint_project.gd": {
+      "sha256": "8c11e4ce9b08b74ac7d9f7088aa52672cbd88d1aab3897c31b9c630950ed5218",
+      "version": "0.18.0"
+    },
+    "tools/name_check.py": {
+      "sha256": "c8682836cdc45fa82e5d584ffbe4ca5f848b404d9395f3331b0885a8a112128f",
+      "version": "0.18.0"
+    },
+    "tools/run_tests.gd": {
+      "sha256": "f0a2efbef501e56790ee9dadf314fd45d5915d3bd7b5cdc8ad3ff2166195f658",
+      "version": "0.18.0"
+    },
+    "tools/upstream_gaps.py": {
+      "sha256": "4444f92159d64405ffcc3c89f2a8caf3f8a2dc30b9cf42f98f307d2b947ae2e5",
+      "version": "0.18.0"
+    },
+    "tools/verify_ledger.py": {
+      "sha256": "d472c14f57d6112df902c157b0f802105369951b6789f9a47765d86d270a5340",
+      "version": "0.18.0"
+    }
+  },
+  "harness_version": "0.18.0"
+}

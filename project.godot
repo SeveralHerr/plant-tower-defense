@@ -14,6 +14,10 @@ config/name="plant-tower-defense"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
+[autoload]
+
+DevTools="*res://addons/godot_selftest/dev_tools.gd"
+
 [display]
 
 window/stretch/mode="canvas_items"
