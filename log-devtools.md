@@ -350,3 +350,35 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     +                     % (key, json.dumps(merged[key])))
     +               continue
     ```
+
+## 2026-08-15 — Committed the 0.19.0 refresh and the in-flight range-ring work
+
+- Value: **overkill** — lint and the unit suite were run as a pre-commit gate and both
+  passed, confirming what the diff already showed. The one real finding came from a grep.
+  - Expected: nothing. The harness diff was a version bump and the game diff added a flag
+    and a `_draw()`; neither could plausibly break a compile or an assertion.
+  - Got: `lint: 0 error(s), 0 warning(s) -> exit 0` with `Scripts: 24 compiled OK`, and
+    `Total: 43 | Passed: 43 | Failed: 0`, `Assertions: 323 executed`,
+    `Suite: 6 test script(s)`, `Autoloads: 1 of 1 ready`.
+  - Found: `Plant.set_selected()` has no caller anywhere in the project, so `_selected` is
+    never true and `CornCobbler._draw()`'s range ring can never appear. Committed as
+    explicitly incomplete rather than as a working feature. Found by grepping for the
+    method name — **not** by either gate above, both of which were green on a feature that
+    cannot fire.
+  - Cheaper: `lint --find-orphans`, ~20s. Confirmed after the fact that it does catch it:
+    `WARN: res://game/plant.gd: set_selected() has no reference outside its own file -
+    heuristic, may be a callback or called by name`.
+
+- Gap: **the check that catches a dead-on-arrival feature is opt-in, so the default gate
+  reports green on code that can never execute.** `--find-orphans` found `set_selected` in
+  one run, but nothing suggests reaching for it: plain lint does not mention orphans exist,
+  and `/verify` does not pass the flag. A method added in the same diff as its only reader,
+  with no caller, is the signature of unfinished wiring — and it is invisible to every gate
+  that runs by default.
+  - [G-007] status: open | seen: 1 | harness: 0.19.0
+  - Improvement: run the orphan pass always and print the count as a denominator line
+    (`Orphans: 0 of 24 script(s)`), the way `Shaders:` and `UIDs:` already report. Keep it
+    non-gating — the heuristic has real false positives on callbacks — but a silent absence
+    and a clean result should not look identical. Narrower alternative: gate only on a
+    public method that is **new in the diff** and has no reference outside its own file,
+    which is the unfinished-wiring case without the callback noise.
