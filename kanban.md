@@ -175,6 +175,112 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
 
 ## Cool new features (idea backlog)
 
+### New this cycle (7 of 30) — grown from the features above
+
+- **The rare packet's tooltip names one plant, and the packet now holds two.**
+  `PACKET_TOOLTIP[&"rare"]` (hud.gd:117) still reads "Costlier, but the odds reach past
+  tier 1 — the only reliable way to a Seed Sunflower", written when the Sunflower was the
+  only thing above tier 1. The catalogue now has two tier-2 entries — Seed Sunflower at 25
+  and Sticky Sundew at 30 (plant_catalog.gd:38, 47) — so 45 seeds buys a coin flip and the
+  button describes it as a purchase. `SeedBank.packet_pool(tier)` (seed_bank.gd:111)
+  already returns the exact list a click could roll, and `_refresh_packet_button` already
+  swaps the tooltip out for a reason when a packet cannot be bought (hud.gd:528), so the
+  surface that would say "2 left: Seed Sunflower or Sticky Sundew" is built and only ever
+  prints a constant. A gamble whose odds are not on screen is a gamble the player cannot
+  price, and the pool shrinks by one every time it pays out.
+- **"Tier" is a word this game only ever says while refusing you something.** `tier` is a
+  field on every catalogue entry (plant_catalog.gd:20, 29, 38, 47) and the *only* thing the
+  two packets differ by (`max_tier`, seed_bank.gd:30-33), yet the plant bar builds its
+  buttons as `"%s\nlocked"` / `"%s\n%d seeds"` (hud.gd:680-684) and never mentions it. So
+  the concept surfaces in exactly two places: a packet tooltip, and the refusal "A Common
+  Packet only holds tier-1 seeds, and you have them all" (seed_bank.gd:139), which by
+  construction can only be read by someone who has already spent the 20 seeds finding out.
+  Nothing relates a locked plant to the packet that could hold it, so "Chomp Flower /
+  locked" and "Sticky Sundew / locked" look like the same problem when one costs 20 to
+  solve and the other 45. `PlantCatalog.tier()` (plant_catalog.gd:80) is a static call, and
+  the bar is rebuilt from `PlantCatalog.ids()` on every refresh already.
+- **The one plant that cannot fight back is the one plant the defenceless-plant warning
+  refuses to draw for.** `Game._update_preview` sets `_preview.at_risk = _preview.reach <=
+  0.0 and board.is_road_adjacent(cell)` (game.gd:685), and PlacementPreview's own header
+  states the rule that encodes: the dashed amber ring is "only meaningful for a plant with
+  no reach of its own" (placement_preview.gd:81-84). A Sticky Sundew's reach is
+  `Board.CELL * 1.85` (sticky_sundew.gd:34), so it fails that test — while dealing "no
+  damage whatsoever" (sticky_sundew.gd:25), costing 30, and being worthless unless planted
+  hard against the road, which is precisely where `Pest.EAT_DPS` 14.0 (pest.gd:132) eats
+  `MAX_HEALTH` 40 in 2.9 seconds. The cue tests "has a radius" as a proxy for "can defend
+  itself", and the fourth plant is the first one where those two answers differ. A
+  `deals_damage` flag in the catalogue — or reading it off the subclass the way
+  `PlantCatalog.reach()` already does (plant_catalog.gd:92-104) — is a one-line fix to the
+  predicate, not a new cue.
+- **Two Sundews on the same ground cost 60 seeds, slow nothing extra, and the only thing on
+  screen says the opposite.** The source count in `_claim`/`_release_at`
+  (sticky_sundew.gd:136-159) is deliberate and right — a pest in two patches walks at 0.55,
+  not 0.30 — but `_draw` paints `PATCH_COLOR` at alpha 0.10 (sticky_sundew.gd:79, 230) once
+  per plant, so overlapping patches composite into a visibly *darker* wash over the one
+  stretch of road where the second plant contributes nothing at all. Placement knows
+  nothing about it either: `PlacementPreview` carries road, occupancy, affordability and
+  reach (placement_preview.gd:69-92) and has no notion of ground another plant already
+  covers, so nothing warns before the 30 seeds are gone. Meanwhile the plant's own priced
+  justification — `crossing_time_multiplier()`, "the number the plant is priced against, so
+  it is stated rather than left implied" (sticky_sundew.gd:186-190) — has no caller
+  anywhere outside `test/unit/test_placement.gd:748`, and the panel prints the rate instead
+  ("Slowing %d pest(s) to 55%% speed", hud.gd:745). "Every gun here gets 1.8x longer" is the
+  sentence that sells the plant; "55% speed" is the sentence that describes its
+  implementation.
+- **The game rolls every mutation in a wave before the first bug walks, and then tells the
+  player a total.** `_build_schedule` (wave_director.gd:260-275) draws all of them up front
+  at `mutation_chance_for(current_wave)` — flat 0.4 through the fixed table
+  (wave_director.gd:15), uniform over armoured/winged/hungry — so the instant
+  `start_next_wave()` returns, `_schedule` is a list that knows exactly how many winged
+  pests are coming and in what order. What reaches the player is `announce_wave(number,
+  current_wave_pest_count(), escalation_note(number))` (game.gd:205-206), which renders as
+  "22 pests" and nothing else, because `escalation_note` returns "" for every wave in the
+  campaign table (wave_director.gd:215-217) and `wave_note` (hud.gd:896) has nothing else to
+  say. Both answers to a winged pest — a Corn Cobbler, and now a Sticky Sundew — are
+  placements that must be bought during `PREP_SECONDS` 18.0, i.e. before any wings exist to
+  look at, so against a 40% mutation rate the only strategy is to insure against all three
+  every wave or eat the loss. Every entry in `_schedule` already carries its `mutation`;
+  counting them is one loop over an array the director is already holding.
+- **The number endless mode is actually scored on is loaded at launch, ridden in `state()`
+  every frame, and first shown to the player once the run is dead.** `RunConfig._load()`
+  reads the persisted best before the title screen draws (run_config.gd:68-83),
+  `Game.state()` puts `"seeds_earned_total"` and `"high_score"` into the dictionary the HUD
+  re-renders many times a second (game.gd:747-748), and `Hud.refresh` reads neither — the
+  two only ever meet in `RunSummary._score_line()` (run_summary.gd:131-139), on the
+  post-mortem card. The top bar's four readouts are Seeds, Wave, Garden and Compost, and
+  the first of those is the wallet balance, which goes *down* when you spend and is not the
+  thing being recorded. So a returning player — who was shown their best on the title
+  screen, and who in endless can only stop by dying — plays a forty-minute run with no idea
+  whether they are ahead of it, and learns the answer in the same sentence that tells them
+  they lost. This is most of the difference between a first run and a tenth, and it is one
+  label.
+- **Pricing the refund against health killed uproot-as-repair and left uproot-as-score
+  intact.** `SeedBank.add_seeds` increments `seeds_earned_total` for any positive amount
+  (seed_bank.gd:56-60), `refund()` is a direct call into it (seed_bank.gd:103-104), and the
+  field's own comment says so — "Refunds count too; they are still seeds earned"
+  (seed_bank.gd:37-38). That total is exactly what gets persisted:
+  `RunConfig.record_score(bank.seeds_earned_total)` (game.gd:324). So planting a pristine
+  Corn Cobbler for 10 and immediately uprooting it for `floor(10 * 0.6)` = 6
+  (plant.gd:266, UPROOT_RATE_FULL) costs 4 seeds of wallet and adds 6 to the recorded
+  score — repeatable for as long as there are spare seeds, +150 score out of a 100-seed
+  float, with no wave running and no risk. Cycle 7 correctly made recycling scrap value
+  rather than repair; the scoring channel the refund also feeds was never part of that
+  change. Either record net seeds, or keep refunds out of `seeds_earned_total` so the name
+  means what it says.
+- **Every plant gets one sentence of explanation and it lives behind a mouse hover.**
+  `PlantCatalog.blurb()` (plant_catalog.gd:111) has exactly one caller in the whole
+  project: `button.tooltip_text` on the plant bar (hud.gd:350). The single moment a plant
+  enters a run is a packet roll, and `_on_plant_unlocked` answers it with "The packet held
+  a Sticky Sundew!" (game.gd:612-613) — the name, on the 15px status row, with the sentence
+  explaining what the thing *does* sitting one Dictionary lookup away. The fallback
+  reference is the Designer's Notebook, whose `PAGES` (notebook_screen.gd:86-117) are five
+  drawings covering the Corn Cobbler, the brief, the kernel upgrade and two Chomp Flower
+  poses: the Sunflower and the Sundew were designed after the sketches, so half the
+  catalogue appears nowhere in the game's only reference screen. The title screen's lawn
+  has the same hole — `TitleScreen.PLANTS` (title_screen.gd:40-45) is a sunflower, two cobs
+  and a chomp. A plant-facts page in the notebook, keyed off `PlantCatalog` so it can never
+  fall behind the catalogue again, is the surface all three of these are missing.
+
 ### New this cycle (5 of 30) — grown from the five features above
 
 - **Eleven sounds shipped and not one of them is a plant doing its job.** `Sfx.SOUNDS`
