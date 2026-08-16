@@ -516,6 +516,10 @@ func test_every_event_id_the_call_sites_use_is_in_the_table() -> String:
 		Sfx.RUN_WON, Sfx.RUN_LOST, Sfx.PURCHASE_DENIED,
 		Sfx.PLANT_UPGRADED, Sfx.PLANT_UPROOTED,
 		Sfx.CORN_FIRED, Sfx.CHOMP_BITE, Sfx.SUNDEW_CLAIM,
+		# The Bomb Dandelion's pair. Two ids and not one because the seed
+		# leaving the head and the bomb bursting happen SeedBomb.FLIGHT_SECONDS
+		# and up to Dandelion.RANGE apart — see Sfx.DANDELION_PUFF.
+		Sfx.DANDELION_PUFF, Sfx.SEED_BOMB_BURST,
 		Sfx.SEEDS_GROWN, Sfx.BUTTON_PRESSED,
 	]
 	for event: StringName in used:
@@ -3307,14 +3311,17 @@ func test_every_plant_that_can_touch_a_pest_is_named_as_one() -> String:
 	# Named positively, and named exactly. A new plant landing in the catalogue
 	# has to be decided about here; it must not inherit an answer.
 	if err == "":
-		err = _T.assert_eq(Game.engaging_plants().size(), 2,
-			"two plants in this catalogue can touch a pest, and the list says which")
+		err = _T.assert_eq(Game.engaging_plants().size(), 3,
+			"three plants in this catalogue can touch a pest, and the list says which")
 	if err == "":
 		err = _T.assert_true(Game.engaging_plants().has(PlantCatalog.CORN),
-			"a kernel that lands is one of the two things that set Pest._ever_engaged")
+			"a kernel that lands is one of the things that set Pest._ever_engaged")
 	if err == "":
 		err = _T.assert_true(Game.engaging_plants().has(PlantCatalog.CHOMP),
-			"and a Chomp holding a pest still is the other")
+			"and a Chomp holding a pest still is another")
+	if err == "":
+		err = _T.assert_true(Game.engaging_plants().has(PlantCatalog.DANDELION),
+			"and a seed bomb bursting on one is the third — SeedBomb.detonate() calls take_damage")
 	if err != "":
 		return err
 

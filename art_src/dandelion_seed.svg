@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- The Bomb Dandelion's projectile: one seed under its parachute.
+
+       24px rather than the kit's 64, for the same reason corn_kernel.svg is 16 -
+       a projectile is not a tile-sized object - but half again bigger than a
+       kernel, because this one is the thing the player is meant to watch. A
+       kernel travels in a straight line and connects or does not; a seed bomb
+       arcs for SeedBomb.FLIGHT_SECONDS with a shadow tracking under it, and it
+       has to still read as a seed at the top of that arc where seed_bomb.gd
+       scales it up by SPRITE_APEX_SCALE.
+
+       The pappus is deliberately drawn as spokes under a disc rather than as a
+       solid blob: at the apex the sprite is 1.35x, and a blob at that size is a
+       cotton ball. The spokes are what say "dandelion" instead.
+
+       Facing is up-screen (pappus above seed) per STYLE.md. seed_bomb.gd tumbles
+       it in flight, which only works because the art is bilaterally symmetric
+       about x=12 - the same property test_sprite_style.gd's centring check
+       measures. -->
+
+  <!-- pappus spokes, drawn first so the disc caps them -->
+  <g stroke="#A69B81" stroke-width="1.2" stroke-linecap="round" fill="none">
+    <path d="M12 8.5 L12 2.2"/>
+    <path d="M12 8.5 L7.5 3.9"/>
+    <path d="M12 8.5 L16.5 3.9"/>
+    <path d="M12 8.5 L4.6 7.0"/>
+    <path d="M12 8.5 L19.4 7.0"/>
+  </g>
+
+  <!-- the pappus itself -->
+  <circle cx="12" cy="8.5" r="4.4" fill="#FFEDC6" stroke="#A69B81" stroke-width="1.2"/>
+
+  <!-- stalk down to the seed -->
+  <path d="M12 12.4 L12 16.4" fill="none" stroke="#A69B81" stroke-width="1.2" stroke-linecap="round"/>
+
+  <!-- the seed: the Dirt/seed family, the one hue on this sprite that is not the
+       pappus, so the payload is legible against the fluff carrying it. -->
+  <path d="M12 15.6 L14.1 18.4 L12 21 L9.9 18.4 Z"
+        fill="#C48647" stroke="#A8723B" stroke-width="1.2" stroke-linejoin="round"/>
+</svg>

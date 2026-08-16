@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Bomb Dandelion, frame 3 of 4: one shot left.
+
+       A crest of three and nothing else. The next seed empties it.
+
+       Four frames of ONE drawing, not four drawings. Only the tuft ring changes
+       between them (dandelion.gd swaps textures off its own fluff count), so the
+       leaves, the receptacle and the face are identical in all four and the plant
+       does not appear to move when it fires - it only goes bald.
+
+       Every tuft angle set is symmetric about the vertical axis, which is a gate
+       requirement and not a taste: test_sprite_style.gd's bilateral-centring check
+       measures the rendered content box, so dropping a tuft without dropping its
+       mirror shifts that box off x=32 and fails the render.
+
+       Geometry notes for whoever edits this:
+         * the leaves sit at rotate(70)/rotate(110) - 160 and 200 degrees round from
+           up-screen - and the tuft ring deliberately has NO tuft at 150, 180 or 210.
+           That gap is what the leaves show through, and it is what keeps a cream
+           tuft rim from ever landing on a green leaf: three unrelated hues meeting
+           in one anti-aliased pixel is the single way a palette-conformant drawing
+           fails test_every_colour_is_kit_palette_or_a_blend_of_two.
+         * a tuft stalk runs r=11 to r=16.4 and the receptacle's rim ends at r=10.5,
+           so the stalk stops half a pixel short of it. Same reason.
+         * the head is the Sand/paper family and the leaves are Foliage green. No
+           other plant on this board is cream, so the Dandelion is not read as a pale
+           Seed Sunflower at 64px. -->
+
+  <!-- leaves: deeply toothed, the dandelion's one unmistakable silhouette. Drawn
+       first so their bases are covered by the receptacle. The zigzag is symmetric
+       about its own long axis, which is what makes the rotate(70)/rotate(110) pair
+       an exact mirror of each other rather than an approximate one. -->
+  <g transform="translate(32,32)" fill="#2ECC71" stroke="#1F8A4C" stroke-width="2"
+     stroke-linejoin="round" stroke-linecap="round">
+    <g transform="rotate(70)">
+      <path d="M6 0 L10 -4 L13 -1.5 L17 -5.5 L20 -2 L24 -5 L27 0 L24 5 L20 2 L17 5.5 L13 1.5 L10 4 Z"/>
+    </g>
+    <g transform="rotate(110)">
+      <path d="M6 0 L10 -4 L13 -1.5 L17 -5.5 L20 -2 L24 -5 L27 0 L24 5 L20 2 L17 5.5 L13 1.5 L10 4 Z"/>
+    </g>
+  </g>
+
+  <!-- the clock: 3 seed parachute(s) on the r=20 ring, each a cream pappus
+       over three hairs, on a stalk back to the receptacle. -->
+  <g transform="rotate(0 32 32)">
+    <path d="M32 21 L32 15.6" fill="none" stroke="#A69B81" stroke-width="1" stroke-linecap="round"/>
+    <path d="M32 12 L32 7 M32 12 L27.6 10.2 M32 12 L36.4 10.2" fill="none" stroke="#A69B81" stroke-width="1" stroke-linecap="round"/>
+    <circle cx="32" cy="12" r="3.2" fill="#FFEDC6" stroke="#A69B81" stroke-width="1.2"/>
+  </g>
+  <g transform="rotate(60 32 32)">
+    <path d="M32 21 L32 15.6" fill="none" stroke="#A69B81" stroke-width="1" stroke-linecap="round"/>
+    <path d="M32 12 L32 7 M32 12 L27.6 10.2 M32 12 L36.4 10.2" fill="none" stroke="#A69B81" stroke-width="1" stroke-linecap="round"/>
+    <circle cx="32" cy="12" r="3.2" fill="#FFEDC6" stroke="#A69B81" stroke-width="1.2"/>
+  </g>
+  <g transform="rotate(300 32 32)">
+    <path d="M32 21 L32 15.6" fill="none" stroke="#A69B81" stroke-width="1" stroke-linecap="round"/>
+    <path d="M32 12 L32 7 M32 12 L27.6 10.2 M32 12 L36.4 10.2" fill="none" stroke="#A69B81" stroke-width="1" stroke-linecap="round"/>
+    <circle cx="32" cy="12" r="3.2" fill="#FFEDC6" stroke="#A69B81" stroke-width="1.2"/>
+  </g>
+
+  <!-- receptacle: the pale disc the seeds sat on. Sand/paper, not green, so the
+       bald frame still reads as a dandelion rather than as a stump. -->
+  <circle cx="32" cy="32" r="9.5" fill="#D7C9A8" stroke="#A69B81" stroke-width="2"/>
+  <ellipse cx="28.6" cy="28.6" rx="3.4" ry="2.6" fill="#ECDCB8"/>
+
+  <!-- face, in the same extrapolated dark-gold accent Corn Cobbler and Seed
+       Sunflower wear theirs in, so the fifth plant is visibly kin to the first. -->
+  <circle cx="28.6" cy="32" r="1.5" fill="#8A6D00"/>
+  <circle cx="35.4" cy="32" r="1.5" fill="#8A6D00"/>
+  <path d="M28.8 35.6 Q 32 38.2 35.2 35.6" fill="none" stroke="#8A6D00" stroke-width="1.8" stroke-linecap="round"/>
+</svg>

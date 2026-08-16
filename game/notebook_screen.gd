@@ -234,6 +234,14 @@ const PAGES: Array[Dictionary] = [
 		"note": "Also designed here rather than on paper. A Chomp Flower is forbidden from closing on a winged pest, so a lane walled with mouths did nothing at all to a flier. The dew is on the ground underneath, so it catches what flies over it — and gives every gun longer to shoot.",
 	},
 	{
+		"kind": KIND_PLANT,
+		"plant": &"dandelion",
+		"drawing": "res://assets/sprites/dandelion.png",
+		"sprite": "res://assets/sprites/dandelion.png",
+		"caption": "Bomb Dandelion",
+		"note": "The only plant that hits more than one bug at once. Its seeds arc and burst where they land, so pests walking together take the whole blast — but a seed is aimed where they were half a second ago, and wants something slowing them first. Three seeds a head, and it goes visibly bald throwing them.",
+	},
+	{
 		"kind": KIND_SHELF,
 		"plant": &"",
 		# Kept a real path even though the shelf page never shows it: Drawing is
