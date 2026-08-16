@@ -89,11 +89,11 @@ from pathlib import Path
 from typing import Optional  # noqa: F401
 
 
-# harness-version: 0.25.0
+# harness-version: 0.32.0
 # Version of the godot-selftest-harness this client was copied from. Compared against
 # the running game's own stamp by the `harness-version` verb, so a half-refreshed
 # install (new client, old autoload) is visible instead of mysterious.
-HARNESS_VERSION = "0.25.0"
+HARNESS_VERSION = "0.32.0"
 
 COMMANDS_FILE = "devtools_commands.json"
 RESULTS_FILE = "devtools_results.json"
@@ -1246,6 +1246,13 @@ def print_validation_result(result: dict, geometry_verb: str = ""):
                     mark = "PRE "
                 print(f"  {mark}[{severity}] {issue['code']}: {issue['message']}")
 
+    # plant-tower-defense:G-030: the records of a non-clean run are kept on disk
+    # so a transient can be investigated after the frame that produced it is
+    # gone. Printed whenever the game wrote it (i.e. the count was non-zero).
+    if data.get("last_findings_path"):
+        print(f"\nFull records kept at {data['last_findings_path']} "
+              "(overwritten by the next non-clean run).")
+
     if data.get("baseline_written"):
         print(f"\nBaseline written to {data.get('baseline_path', '?')}. "
               f"{data.get('pre_existing_count', 0)} finding(s) are now pre-existing; "
@@ -1347,7 +1354,10 @@ def cmd_performance(args, project_path: Path):
         # Lead with the fact rather than burying it after the metrics.
         if data.get("tree_paused"):
             print("TREE IS PAUSED - every number below describes a game that is not "
-                  "stepping. Unpause (or set entry_hook) before reading these as health.")
+                  "stepping. Call `unpause` if you paused it yourself, or set "
+                  "entry_hook in devtools_config.json to advance past a menu/title "
+                  "screen automatically on launch - check `ping`'s entry_hook_status "
+                  "if you already did and it is still paused.")
         elif "tree_paused" not in data:
             print("performance: the reply carried no 'tree_paused' key (installed harness "
                   "older than this client); whether the tree is paused is UNKNOWN - "
@@ -1683,6 +1693,18 @@ def cmd_ping(args, project_path: Path):
                     print(f"  WARNING: the answering game runs from {data['project_path']}, "
                           f"NOT {os.path.abspath(str(project_path))} - a different checkout "
                           "(git worktree?) is on this bus")
+            # gh#29: entry_hook must never again accept a value and do nothing -
+            # "not_configured" is silent on purpose (the common, correct case);
+            # anything else is worth a line, success included, since "fired" is
+            # the caller's confirmation the config actually did something.
+            hook_status = data.get("entry_hook_status")
+            if hook_status and hook_status != "not_configured":
+                if hook_status == "fired":
+                    result_val = data.get("entry_hook_result")
+                    suffix = f" -> {result_val}" if result_val is not None else ""
+                    print(f"  entry_hook: fired{suffix}")
+                else:
+                    print(f"  WARNING: entry_hook {hook_status}")
         else:
             print("DevTools responded but with error")
             sys.exit(1)
@@ -2017,6 +2039,75 @@ def _installed_addon_version(project_path: Path):
     return m.group(1) if m else None
 
 
+def _version_tuple(text):
+    try:
+        return tuple(int(x) for x in str(text).strip().split("."))
+    except ValueError:
+        return ()
+
+
+def _plugin_versions_on_this_machine() -> dict:
+    """The harness versions this MACHINE can offer, read from disk (H-064).
+
+    A project stays on the version it was scaffolded with until someone re-runs
+    /scaffold-godot-harness, and nothing used to say that a newer one was already
+    sitting in the plugin cache: two real projects ran 0.21.0 and 0.25.0 for a
+    day in which the harness shipped 0.26.0-0.31.0, and roughly half the gaps
+    their logs pooled upstream had been fixed releases earlier. Every value here
+    is what a file on disk says - no network, no guess about the newest release.
+
+    Keys: plugin_root (the plugin Claude Code is running THIS session from, if
+    $CLAUDE_PLUGIN_ROOT is set), plugin_cache (installed_plugins.json's record),
+    marketplace (the marketplace clone's plugin.json). Absent = unreadable.
+    """
+    out = {}
+    root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if root:
+        v = _read_plugin_json_version(Path(root) / ".claude-plugin" / "plugin.json")
+        if v:
+            out["plugin_root"] = v
+    home = Path(os.environ.get("USERPROFILE") or os.environ.get("HOME") or Path.home())
+    plugins = home / ".claude" / "plugins"
+    try:
+        installed = json.loads((plugins / "installed_plugins.json").read_text(encoding="utf-8"))
+        for key, entries in (installed.get("plugins") or {}).items():
+            if not key.startswith("godot-selftest-harness@"):
+                continue
+            versions = [e.get("version") for e in (entries or []) if _version_tuple(e.get("version"))]
+            if versions:
+                out["plugin_cache"] = max(versions, key=_version_tuple)
+    except (OSError, ValueError, AttributeError):
+        pass
+    v = _read_plugin_json_version(
+        plugins / "marketplaces" / "godot-selftest-harness" / ".claude-plugin" / "plugin.json")
+    if v:
+        out["marketplace"] = v
+    return out
+
+
+def _read_plugin_json_version(path: Path):
+    try:
+        return str(json.loads(path.read_text(encoding="utf-8")).get("version") or "") or None
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def _print_plugin_staleness(project_version: str) -> None:
+    """One line per source this machine has, and a verdict against the project."""
+    avail = _plugin_versions_on_this_machine()
+    if not avail:
+        return
+    labels = {"plugin_root": "this session's plugin", "plugin_cache": "plugin cache",
+              "marketplace": "marketplace clone"}
+    print("Machine: " + ", ".join(
+        f"{labels[k]} {avail[k]}" for k in ("plugin_root", "plugin_cache", "marketplace") if k in avail))
+    newest = max(avail.values(), key=_version_tuple)
+    if _version_tuple(newest) > _version_tuple(project_version):
+        print(f"  A newer harness ({newest}) is already on this machine than this project "
+              f"runs ({project_version}). /scaffold-godot-harness refreshes it; gaps you log "
+              f"against {project_version} may be fixed there already.", file=sys.stderr)
+
+
 def _harness_version_offline(project_path: Path, as_json: bool, why: str) -> int:
     """Print what disk alone can prove, and say plainly what is unknown.
 
@@ -2033,6 +2124,7 @@ def _harness_version_offline(project_path: Path, as_json: bool, why: str) -> int
             "harness_version": None,
             "bridge": "cold",
             "reason": why,
+            "machine": _plugin_versions_on_this_machine(),
         }, indent=2))
     else:
         print(f"Client:    {HARNESS_VERSION}  (tools/devtools.py)")
@@ -2041,6 +2133,7 @@ def _harness_version_offline(project_path: Path, as_json: bool, why: str) -> int
         print("Game:      unknown - the bridge is cold, so the RUNNING build was "
               "not asked.")
         print(f"  ({why})", file=sys.stderr)
+        _print_plugin_staleness(installed or HARNESS_VERSION)
     if installed is not None and installed != HARNESS_VERSION:
         print(f"\nWARNING: half-refreshed install - the addon on disk is {installed} "
               f"and this client is {HARNESS_VERSION}. Re-run /scaffold-godot-harness.",
@@ -2078,7 +2171,8 @@ def cmd_harness_version(args, project_path: Path):
 
     data = result.get("data") or {}
     if args.json:
-        print(json.dumps({"client": HARNESS_VERSION, **data}, indent=2))
+        print(json.dumps({"client": HARNESS_VERSION, **data,
+                          "machine": _plugin_versions_on_this_machine()}, indent=2))
         return
 
     game_version = data.get("harness_version")
@@ -2095,6 +2189,7 @@ def cmd_harness_version(args, project_path: Path):
         ext = data.get("extension_loaded")
         suffix = "" if ext is None else (", extension loaded" if ext else ", no extension")
         print(f"Verbs:   {data['handlers']} registered{suffix}")
+    _print_plugin_staleness(str(game_version))
 
     if game_version != HARNESS_VERSION:
         print(f"\nWARNING: half-refreshed install - the game is on {game_version} and this "
@@ -2376,6 +2471,42 @@ def cmd_set_game_speed(args, project_path: Path):
         sys.exit(1)
 
 
+def cmd_look_at(args, project_path: Path):
+    """Orient a Node3D (default: the active Camera3D) to face another node (gh#28)."""
+    cmd_args = {"node": normalize_node_path(args.node)}
+    if args.from_node:
+        cmd_args["from_node"] = normalize_node_path(args.from_node)
+    if args.up is not None:
+        if len(args.up) != 3:
+            print("Error: --up takes exactly X,Y,Z", file=sys.stderr)
+            sys.exit(1)
+        cmd_args["up"] = args.up
+    result = send_command(project_path, "look_at", cmd_args)
+    if result["success"]:
+        print(result["message"])
+    else:
+        print(f"Failed: {result['message']}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_fire_entry_point(args, project_path: Path):
+    """Fire a named entry_points entry from devtools_config.json (gh#29).
+
+    45s, not the usual 30: a scene-changing entry point polls for its node up to
+    ENTRY_HOOK_TIMEOUT_SEC (10s) game-side on top of however long the scene itself
+    takes to load.
+    """
+    result = send_command(project_path, "fire_entry_point", {"name": args.name}, timeout=45.0)
+    if result["success"]:
+        print(result["message"])
+        data = result.get("data") or {}
+        if data.get("scene_changed"):
+            print(f"  scene changed to reach {data.get('node_path')}")
+    else:
+        print(f"Failed: {result['message']}", file=sys.stderr)
+        sys.exit(1)
+
+
 def cmd_pause(args, project_path: Path):
     """Pause SceneTree.paused directly (gh#26)."""
     result = send_command(project_path, "pause", {})
@@ -2424,6 +2555,9 @@ def cmd_step_time(args, project_path: Path):
     if getattr(args, "hold", None):
         # G-084: hold an action pressed across the whole step, released at the end.
         cmd_args["hold"] = args.hold
+    if getattr(args, "then_pause", False):
+        # plant-tower-defense:G-016: freeze the tree the moment the step lands.
+        cmd_args["then_pause"] = True
     result = send_command(project_path, "step_time", cmd_args, timeout=timeout)
     if not result["success"]:
         print(f"Failed: {result['message']}", file=sys.stderr)
@@ -2440,6 +2574,12 @@ def cmd_step_time(args, project_path: Path):
         print(f"  Process time:   {float(data['process_seconds']):.4f}s (measured, +/- one frame)")
     if "frames_advanced" in data:
         print(f"  Frames:         {int(data['frames_advanced'])}")
+    if "elapsed_wall_ms" in data:
+        # G-016: the wall clock the step actually took, so the gap between "what
+        # I advanced" and "what really passed" is visible instead of inferred.
+        print(f"  Wall clock:     {int(data['elapsed_wall_ms']) / 1000.0:.3f}s")
+    if data.get("paused_after"):
+        print("  Tree left PAUSED (--then-pause); `unpause` resumes it.")
     if data.get("tree_paused"):
         # A paused tree still emits frames while nothing advances, so this would
         # otherwise look like a successful step of a frozen game.
@@ -2853,6 +2993,11 @@ def cmd_findings(args, project_path: Path):
         print("UI baseline: none on disk - every ui_layout finding gates. "
               "Run `findings --baseline-write` to accept the current UI set.")
 
+    # plant-tower-defense:G-030: full records survive the frame they came from.
+    if data.get("last_findings_path"):
+        print(f"Full records kept at {data['last_findings_path']} "
+              "(overwritten by the next non-clean run).")
+
     if not result.get("success"):
         sys.exit(1)
 
@@ -3043,6 +3188,32 @@ def cmd_aabb(args, project_path: Path):
 # ==================== LAUNCH / TILEMAP / SCRIPT CENSUS ====================
 
 
+def launch_log_errors(*logs) -> list:
+    """Every `ERROR:` line across the given launch logs, tagged with its file (gh#31).
+
+    Read from BOTH launch_stdout.log and launch_stderr.log, not stderr alone: Godot's
+    destination for a startup-abort message - "Main scene's path could not be
+    resolved from UID... Aborting", from an --import that had printed what looked
+    like a clean completion but never wrote uid_cache.bin - is not reliably stderr.
+    import_check.py already learned this for the identical reason and combines both
+    streams. Before this, a ping timeout tailed only stderr, so that ERROR: line sat
+    unread in the other log while the generic timeout read identically to gh#28's
+    unrelated missing-`--`-separator bug, and diagnosing it took a PowerShell
+    screen-scrape of a native alert dialog. A pure function of the log paths so it
+    can be tested without a real launch.
+    """
+    found = []
+    for log in logs:
+        try:
+            text = Path(log).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            if "ERROR:" in line:
+                found.append(f"{Path(log).name}: {line.strip()}")
+    return found
+
+
 def _await_bus(project_path: Path, session: str, bus_dir: str, seconds: float = 20.0):
     """Poll `ping` on the freshly launched instance's own bus. Reply dict or None.
 
@@ -3093,6 +3264,7 @@ def cmd_launch(args, project_path: Path):
     needing an engine flag (`--write-movie out/frame.png --fixed-fps 30`) no
     longer has to re-implement launching (gather:G-092).
     """
+    global _SESSION
     config = _read_harness_config(project_path)
     godot = args.godot or os.environ.get("GODOT_BIN") or str(config.get("godot_bin", "") or "")
     if not godot:
@@ -3103,6 +3275,54 @@ def cmd_launch(args, project_path: Path):
     if not godot_path.is_file():
         print(f"Error: Godot binary not found: {godot_path}", file=sys.stderr)
         sys.exit(2)
+
+    # gh#28: split passthrough into godot-native args and --devtools- prefixed ones
+    # BEFORE the owner pre-check below, not after - the pre-check reads _SESSION to
+    # pick which owner file to look at (_owner_file_path splices it in), and a bare
+    # `launch -- --devtools-session X` used to leave _SESSION empty this whole
+    # function, so the pre-check examined the DEFAULT bus's owner file instead of
+    # X's. With another instance alive on the default bus, that read as "a live
+    # process already owns this bus" and refused to launch a session that would
+    # never have touched it. Doing this split first, and adopting X into the global
+    # _SESSION the same way --isolated/--session already do, fixes both the
+    # pre-check and (further down) the actual command line and post-launch poll
+    # with the one parse instead of three separate ones that could drift apart.
+    #
+    # argparse.REMAINDER keeps the separator itself; drop it so `launch -- --foo`
+    # forwards `--foo` and not `-- --foo`.
+    passthrough = list(getattr(args, "godot_args", None) or [])
+    if passthrough and passthrough[0] == "--":
+        passthrough = passthrough[1:]
+    native_passthrough = []
+    devtools_passthrough = []
+    i = 0
+    while i < len(passthrough):
+        token = passthrough[i]
+        if token.startswith("--devtools-"):
+            devtools_passthrough.append(token)
+            if i + 1 < len(passthrough) and not passthrough[i + 1].startswith("--"):
+                i += 1
+                devtools_passthrough.append(passthrough[i])
+        else:
+            native_passthrough.append(token)
+        i += 1
+    passthrough_session = ""
+    passthrough_busdir = ""
+    for j, tok in enumerate(devtools_passthrough):
+        if tok == "--devtools-session" and j + 1 < len(devtools_passthrough):
+            passthrough_session = devtools_passthrough[j + 1]
+        elif tok == "--devtools-busdir" and j + 1 < len(devtools_passthrough):
+            passthrough_busdir = devtools_passthrough[j + 1]
+    if devtools_passthrough:
+        print(f"  note: --devtools- passthrough arg(s) routed after Godot's own -- "
+              f"so they actually reach the addon: {' '.join(devtools_passthrough)}")
+        if passthrough_session and not args.isolated:
+            if _SESSION and _SESSION != passthrough_session:
+                print(f"  WARNING: --session named {_SESSION!r} but passthrough also "
+                      f"names {passthrough_session!r} - the passthrough value is what "
+                      "reaches Godot; adopting it here too so the owner check and the "
+                      "post-launch poll agree with the game.")
+            _SESSION = passthrough_session
 
     # Refuse to add a second instance to a bus a LIVE process already owns
     # (gather:G-112): two instances answering one bus is silent data corruption,
@@ -3179,8 +3399,8 @@ def cmd_launch(args, project_path: Path):
 
     env = os.environ.copy()
     session = ""
-    bus_dir = ""
-    user_args = []
+    bus_dir = passthrough_busdir
+    user_args = list(devtools_passthrough)
     if args.isolated:
         session = uuid.uuid4().hex[:8]
         bus_dir = tempfile.mkdtemp(prefix="devtools_bus_")
@@ -3188,16 +3408,16 @@ def cmd_launch(args, project_path: Path):
         env["GODOT_DEVTOOLS_BUSDIR"] = bus_dir
         user_args = ["--devtools-session", session, "--devtools-busdir", bus_dir]
     elif _SESSION:
+        # Covers both the top-level --session flag AND a bare --devtools-session
+        # passthrough - the block above adopted the latter into _SESSION already,
+        # specifically so this is the only place that has to build the launch
+        # command from it.
         session = _SESSION
         env["GODOT_DEVTOOLS_SESSION"] = _SESSION
-        user_args = ["--devtools-session", _SESSION]
+        if not user_args:
+            user_args = ["--devtools-session", _SESSION]
 
-    # argparse.REMAINDER keeps the separator itself; drop it so `launch -- --foo`
-    # forwards `--foo` and not `-- --foo`.
-    passthrough = list(getattr(args, "godot_args", None) or [])
-    if passthrough and passthrough[0] == "--":
-        passthrough = passthrough[1:]
-    cmd += passthrough
+    cmd += native_passthrough
     if user_args:
         # Godot's own `--` separator: everything after it reaches
         # OS.get_cmdline_user_args(), which is where the autoload reads from.
@@ -3235,8 +3455,8 @@ def cmd_launch(args, project_path: Path):
     print(f"Launched pid {proc.pid}: {' '.join(cmd)}")
     print(f"  stdout: {out_log}")
     print(f"  stderr: {err_log}")
-    if passthrough:
-        print(f"  forwarded to Godot: {' '.join(passthrough)}")
+    if native_passthrough:
+        print(f"  forwarded to Godot: {' '.join(native_passthrough)}")
 
     if args.no_wait:
         print("  --no-wait: the bus was NOT verified. "
@@ -3247,6 +3467,11 @@ def cmd_launch(args, project_path: Path):
     if reply is None:
         print("\nERROR: launched, but the bus never answered a ping within 20s.",
               file=sys.stderr)
+        error_lines = launch_log_errors(out_log, err_log)
+        if error_lines:
+            print("The game's own log names the problem:", file=sys.stderr)
+            for line in error_lines[-10:]:
+                print(f"  {line}", file=sys.stderr)
         tail = ""
         try:
             tail = err_log.read_text(encoding="utf-8").strip()[-800:]
@@ -3572,6 +3797,32 @@ def cmd_first_frame(args, project_path: Path):
     print_geometry_caveat(data, "first-frame", only_if_suspect=True)
 
 
+def cmd_project_settings(args, project_path: Path):
+    """ProjectSettings as the running game sees them (bus verb: project_settings,
+    dave-game:G-003). Data keys read: settings, count, missing, filter."""
+    cmd_args = {}
+    if args.names:
+        cmd_args["names"] = args.names
+    elif args.filter:
+        cmd_args["filter"] = args.filter
+    result = send_command(project_path, "project_settings", cmd_args)
+    data = result.get("data") or {}
+    if "settings" not in data:
+        print(f"project-settings: the reply carried no 'settings' key. Keys: {sorted(data)}",
+              file=sys.stderr)
+        sys.exit(1)
+    if args.json:
+        print(json.dumps(data, indent=2))
+    else:
+        print(result.get("message", ""))
+        for key in sorted(data["settings"]):
+            print(f"  {key} = {_format_value(data['settings'][key])}")
+        for key in data.get("missing") or []:
+            print(f"  {key} = <no such setting>")
+    if not result["success"]:
+        sys.exit(1)
+
+
 def cmd_find_nodes(args, project_path: Path):
     """Find nodes by class/group/method and property predicates (bus verb:
     find_nodes, gather:G-109). Data keys read: nodes, count, truncated."""
@@ -3586,6 +3837,8 @@ def cmd_find_nodes(args, project_path: Path):
         cmd_args["root"] = normalize_node_path(args.root)
     if args.properties:
         cmd_args["properties"] = args.properties
+    if args.calls:
+        cmd_args["calls"] = args.calls
     where = {}
     for pair in args.where or []:
         if "=" not in pair:
@@ -3610,8 +3863,21 @@ def cmd_find_nodes(args, project_path: Path):
     print(f"{data.get('count', len(nodes))} node(s) matched:")
     for node in nodes:
         extra = node.get("properties") or {}
-        suffix = ("  " + "  ".join(f"{k}={_format_value(v)}" for k, v in extra.items())
-                  if extra else "")
+        # H-046: a property the resolver could not read used to print `=null`,
+        # identical to a property that genuinely holds null. The game side now
+        # sends the reason beside it; print that instead of the null.
+        errors = node.get("property_errors") or {}
+        parts = []
+        for k, v in extra.items():
+            if k in errors:
+                parts.append(f"{k}=<unresolved: {errors[k]}>")
+            else:
+                parts.append(f"{k}={_format_value(v)}")
+        for k, v in (node.get("calls") or {}).items():
+            parts.append(f"{k}()={_format_value(v)}")
+        for k, why in (node.get("call_errors") or {}).items():
+            parts.append(f"{k}()=<error: {why}>")
+        suffix = ("  " + "  ".join(parts)) if parts else ""
         print(f"  {node.get('path')}  [{node.get('type')}]{suffix}")
     if data.get("truncated"):
         print(f"  ... truncated at --limit {args.limit}")
@@ -4034,6 +4300,11 @@ def main():
                         "e.g. --where type=Elite --where slot_data.item.name='Iron Bar')")
     p.add_argument("--property", dest="properties", action="append", metavar="NAME",
                    help="Also report this property for each hit (repeatable)")
+    p.add_argument("--call", dest="calls", action="append", metavar="METHOD",
+                   help="Call this zero-argument method on each hit and print the result "
+                        "beside the path (repeatable) -- reads a getter without a second "
+                        "round-trip against an auto-generated node name that changes "
+                        "every launch")
     p.add_argument("--root", help="Search only this subtree (default: the whole tree)")
     p.add_argument("--limit", type=int, default=200, help="Max hits to return")
     p.set_defaults(func=cmd_find_nodes)
@@ -4072,6 +4343,18 @@ def main():
              "topmost Control, paused state, cursor mode")
     p.set_defaults(func=cmd_first_frame)
 
+    # project-settings
+    p = subparsers.add_parser(
+        "project-settings",
+        help="ProjectSettings as the RUNNING game sees them -- did the value written "
+             "to project.godot actually land?")
+    p.add_argument("--filter", metavar="PREFIX",
+                   help="Only settings under this prefix, e.g. rendering/ or display/window/")
+    p.add_argument("--name", dest="names", action="append", metavar="KEY",
+                   help="Exact setting key (repeatable); a key no setting has exits 1")
+    p.add_argument("--json", action="store_true", help="Raw JSON")
+    p.set_defaults(func=cmd_project_settings)
+
     # sample-pixels
     p = subparsers.add_parser(
         "sample-pixels", help="Mean / dominant colour over a screen rect")
@@ -4097,11 +4380,16 @@ def main():
     p.set_defaults(func=cmd_wait_frames)
 
     # step-time
-    p = subparsers.add_parser("step-time", help="Pause the tree and advance it by N game-seconds")
+    p = subparsers.add_parser("step-time", help="Run the game for N game-seconds and return "
+                              "(the tree is NOT paused or stepped; --then-pause freezes it afterwards)")
     p.add_argument("--seconds", "-s", type=float, required=True,
                    help="Game-seconds to advance (e.g. 0.05 to sample mid-tween)")
     p.add_argument("--hold", metavar="ACTION",
                    help="Action re-asserted pressed on every stepped frame, released at the end")
+    p.add_argument("--then-pause", dest="then_pause", action="store_true",
+                   help="Pause the tree the moment the step completes (lifting a "
+                        "pre-existing pause for the step itself), so successive "
+                        "step+read pairs carry zero ambient drift; `unpause` resumes")
     p.set_defaults(func=cmd_step_time)
 
     # tilemap-cells
@@ -4197,6 +4485,27 @@ def main():
     p.add_argument("--node", "-n", required=True,
                    help="Node path (e.g., /root/House/Living/tableCoffeeGlass)")
     p.set_defaults(func=cmd_aabb)
+
+    # look-at
+    p = subparsers.add_parser(
+        "look-at",
+        help="Orient a Node3D (default: the active Camera3D) to face another node")
+    p.add_argument("--node", "-n", required=True,
+                   help="Target to face (its AABB centre, or its position if it has no "
+                        "3D geometry)")
+    p.add_argument("--from-node", metavar="NODE",
+                   help="The Node3D to orient (default: get_viewport().get_camera_3d(), "
+                        "the active camera)")
+    p.add_argument("--up", type=coord_2_or_3, metavar="X,Y,Z",
+                   help="Up vector (default 0,1,0)")
+    p.set_defaults(func=cmd_look_at)
+
+    # fire-entry-point
+    p = subparsers.add_parser(
+        "fire-entry-point",
+        help="Fire a named entry_points entry from devtools_config.json")
+    p.add_argument("name", help="Key under entry_points in devtools_config.json")
+    p.set_defaults(func=cmd_fire_entry_point)
 
     args = parser.parse_args(_glue_leading_dash_values(sys.argv[1:]))
 

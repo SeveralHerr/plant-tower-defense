@@ -208,9 +208,16 @@ game; run them anytime:
 ```bash
 python tools/name_check.py                                       # names only — no engine at all
 godot --headless --path . --script res://tools/lint_project.gd   # UID + scene + dup-id + shader lint
-godot --headless --path . --script res://tools/run_tests.gd      # unit tests (test_dir)
+python tools/run_tests.py                                        # unit tests (test_dir) — NOT the bare .gd
 godot --path . --script res://tools/capture.gd -- --scene res://ui/hud.tscn --out shot.png
 ```
+
+**Run `run_tests.py`, not the bare `run_tests.gd`.** A test that aborts mid-method
+after already running one real assertion is reported `[PASS]` by `run_tests.gd` itself
+— the aborted coroutine's return value is coerced to `""`, identical to a genuine pass,
+and `[VACUOUS]` only catches zero assertions. `run_tests.py` wraps it, catches the
+`SCRIPT ERROR` the return value can't carry, and fails the run even when `run_tests.gd`
+reported `ALL TESTS PASSED` (0.27.0, gh#27). Same flags via `-- ...` passthrough.
 
 **Lint flags** (after `--`): `--strict` (warnings fail the run), `--baseline-write PATH` /
 `--baseline PATH` (split findings into `NEW` vs `PRE-EXISTING` against a saved snapshot —
@@ -254,7 +261,10 @@ that `name_check` reports clean, because every name in it resolves. Only
 If `name_check` was the only gate you could run, hand the work back saying that — not
 "verified". It prints this itself as a `NOT COVERED:` line. If it prints
 `engine index: NONE` the engine-name half was **skipped, not passed**; run
-`python tools/name_check.py --refresh-api` once.
+`python tools/name_check.py --refresh-api` once. `--require-compile FILE [FILE...]`
+closes the gap for named files without losing parallelism — one `godot --check-only`
+per file, verified read-only against `.godot/` — but needs the project imported once
+already, or a cross-file `class_name` false-positives as unresolved.
 
 **`capture.gd` must NOT be run headless** — note the missing `--headless` above.
 Headless has no renderer, so it exits `2` naming the fix rather than writing a blank
@@ -276,11 +286,11 @@ listed is silently ignored; `--offline` parses the scripts statically with no ga
 
 | Verb | Use |
 |---|---|
-| `get-state --node PATH [--property N ...]` | Read a node's properties. **Always pass `--property`** — an unfiltered `Label` is ~120 keys. Repeatable; dotted paths walk into Resources and Dictionaries (`slot_data.item.name`); unknown names are reported, not dropped |
+| `get-state --node PATH [--property N ...]` | Read a node's properties. **Always pass `--property`** — an unfiltered `Label` is ~120 keys. Repeatable; dotted paths walk into Resources, Dictionaries and struct components (`slot_data.item.name`, `position.x`, `modulate.a`); unknown names are reported, not dropped |
 | `scene-tree [--root PATH] [--depth N]` | Discover root scene name + node paths (don't assume names). Each node carries `script` and `scene_file`, so a changed file maps to the node that runs it |
-| `find-nodes [--class C\|--group G\|--method M] [--where N=V] [--property N]` | Locate nodes by what they *are*, not where they sit. `--class` takes a script `class_name` too (subclasses included) and **fails on a name that is neither**; `--where` is repeatable and takes dotted paths. Usually the right verb for identifying one node in a large tree |
+| `find-nodes [--class C\|--group G\|--method M] [--where N=V] [--property N] [--call M]` | Locate nodes by what they *are*, not where they sit. `--class` takes a script `class_name` too (subclasses included) and **fails on a name that is neither**; `--where` is repeatable and takes dotted paths; `--call METHOD` reads a zero-arg getter beside each hit, so an auto-named node is found and read in one trip. Usually the right verb for identifying one node in a large tree |
 | `run-method --node PATH --method N --args "[...]"` | Call a method — preferred over `set-state` when a signal should fire. Reports `returned_null` + `declared_return`, so a `-> void` that ran is distinguishable from a call that aborted |
-| `set-state --node PATH --property N --value V` | Set raw property (bypasses setters/signals) and print the read-back. Dotted paths write through — note that mutates the **Resource**, so a shared material changes for every node using it. Write `--value=-200,-296` with an `=` when it starts with `-` |
+| `set-state --node PATH --property N --value V` | Set raw property (bypasses setters/signals) and print the read-back. A JSON array is rebuilt as the property's typed Array (`Array[StringName]` works). Dotted paths write through — note that mutates the **Resource**, so a shared material changes for every node using it. Write `--value=-200,-296` with an `=` when it starts with `-` |
 | `node-bounds PATH` | Exact **screen-space** position/size — deterministic layout ground truth, ancestor `CanvasLayer` transforms applied. Prefer this over a screenshot |
 | `press --node PATH` | Emit `pressed` on the nearest `BaseButton` at or under PATH — a real press with no screen coordinates to guess. A disabled button is reported, not silently "pressed" |
 | `input press`/`release`/`tap` ACTION, `input state [ACTION ...]` | Simulate input actions; `state` polls what the game is actually seeing. `tap` releases on the NEXT frame and reports `pressed_during`/`pressed_after` |
@@ -294,13 +304,20 @@ Worth knowing exists, reach for `REFERENCE.md` when you need them — `validate-
 paused state, cursor mode — "what IS the screen showing", not "is anything wrong");
 `save-ui-baseline`, `ui-snapshot`, `ui-snapshot-diff` (structured UI state vs baseline);
 `aabb` (3D world-space bounds, `top_y`/`bottom_y`), `node-bounds`' 3D counterpart;
-`step-time`, `set-game-speed` (refuses a scale below 0.01 — that is a freeze, not a
-speed; use `pause`/`unpause` for a real freeze), `wait-frames` (advance time
-deterministically), `pause`/`unpause` (sets `SceneTree.paused` directly, bus keeps
-answering — catch a sub-second effect, poll for the moment, pause, then inspect at
-no rush);
+`look-at --node PATH` (points the active Camera3D, or `--from-node`, at a target's
+AABB centre — orientation only, never repositions);
+`step-time [--then-pause]` (`--then-pause` freezes the tree the moment the step lands,
+so step + read pairs carry no ambient drift), `set-game-speed` (refuses a scale below
+0.01 — that is a freeze, not a speed; use `pause`/`unpause` for a real freeze),
+`wait-frames` (advance time deterministically), `pause`/`unpause` (sets
+`SceneTree.paused` directly, bus keeps answering — catch a sub-second effect, poll for
+the moment, pause, then inspect at no rush);
+`project-settings [--filter PREFIX|--name KEY]` (ProjectSettings as the RUNNING game
+sees them — did the value written to `project.godot` actually land?);
 `raycast --from X,Y[,Z] --to X,Y[,Z]` (2D or 3D by arity; refuses a 2D ray on a
 3D-only tree), `sample-pixels`, `canvas-scale`, `set-resolution`;
+`fire-entry-point NAME` (fires a named `entry_points` entry on demand — switches
+scene first if one is configured, then calls the node/method with its `args`);
 `tilemap-cells`, `tilemap-region`; `curve` (a pure method over a range as one read);
 `input clear`, `input list`, `input sequence FILE`, `key NAME`,
 `mouse-move --relative DX,DY [--steps N]` (a real `InputEventMouseMotion` — the
@@ -311,7 +328,8 @@ holders see it, no relaunch);
 `touch press`/`release`/`drag`/`clear`/`list` (the only way to exercise multi-touch);
 `set-feature --touchscreen` (makes touch UI show itself on desktop — set it *before*
 the scene loads); `clear-nodes --via-method` (free nodes through the game's own removal
-path); `scripts-seen`, `new-uid`, `logs`, `harness-version`, `cmd <verb>`.
+path); `scripts-seen`, `new-uid`, `logs`, `harness-version` (also says when a newer
+harness is already on this machine than this project runs), `cmd <verb>`.
 
 #### Gotchas
 - **One command at a time, enforced.** One command file / one result file. Requests
@@ -319,8 +337,12 @@ path); `scripts-seen`, `new-uid`, `logs`, `harness-version`, `cmd <verb>`.
   another request's data. A command sent mid-handler waits on disk and runs after —
   deferred, never dropped, never concurrent. So a timeout can mean *your command never
   started*; the error says which, naming the verb hogging the bus. For parallel
-  instances use `launch --isolated`, which isolates the **bus only** — `user://` (saves,
-  screenshots, UI baselines, `.godot/`) stays shared unless you also set `GODOT_USERDATA`.
+  instances use `launch --isolated`, which isolates the **bus only**
+  (`GODOT_DEVTOOLS_BUSDIR` / `--devtools-busdir`) — `user://` (saves, screenshots, UI
+  baselines, `.godot/`) stays **shared, with no way to isolate it**: Godot has no
+  `--user-data-dir` flag and honours no `GODOT_USERDATA` env var (gh#28 — an earlier
+  version of this line implied setting one would isolate it; it does nothing). Parallel
+  `--isolated` instances can still collide on saves/screenshots/UI baselines.
 - **`game not running` in ~2s** means a dead game *or* the wrong `user://` dir; the
   error can't tell them apart. Check `--userdata` before assuming a crash.
 - **Assert transforms on `data.transform`, not the property dump.** Godot hides
@@ -366,6 +388,11 @@ and leaves the death state). Restoring a health value is usually not enough — 
 flag and state machine outlive it. And **a setter verb must leave the game in a state the
 game itself can reach**: a `set_combo` that sets the count but not the combo window tests
 nothing the moment the readout starts fading on that timer.
+
+**A `class_name X extends RefCounted` static-utility script (no node ever carries its
+script) is invisible to `scripts-seen`/`reach` no matter how much of it ran** — call
+`DevTools.mark_script_reached("res://path/to/it.gd")` once from each real entry point
+(static context included; DevTools is an autoload, reachable by name from anywhere).
 
 ### DEVTOOLS LOG (REQUIRED)
 At the end of **every** response, append an entry to `log-devtools.md`. Two required
@@ -424,8 +451,11 @@ A Phase 4 check that failed and was fixed keeps `"result": "fail"` with
 ### Config
 `res://addons/godot_selftest/devtools_config.json` holds thresholds and hooks:
 `fps_min`, `orphan_growth_max` (gate on this — `orphan_max: 0` is unreachable),
-`safe_area_inset`, `mute`, `main_scene`, `entry_hook {node_path, method}` (advances past
-a menu into the playable scene), `entry_points` (named alternates), `test_dir`,
+`safe_area_inset`, `mute`, `main_scene`, `entry_hook {node_path, method}` (fires
+**automatically, once**, shortly after launch — advances past a menu into the playable
+scene; check `ping`'s `entry_hook_status` if it does not seem to have fired: `fired` /
+`not_configured` / a specific error, never silent), `entry_points` (named alternates
+reached **on demand** via `fire-entry-point NAME`, not automatically), `test_dir`,
 `scan_root`, `hud_layer_name`, `name_check_extra_types` (types a GDExtension registers at
 runtime, which the static checker cannot see) and `name_check_ignore` (path prefixes).
 
@@ -438,8 +468,14 @@ runtime, which the static checker cannot see) and `name_check_ignore` (path pref
   `get_window().size` sits off-viewport headless and centred for a player. Confirm an
   off-screen verdict windowed before reporting it as a defect.
 - **`TREE IS PAUSED`** on `ping` / `performance` means every metric describes a game
-  that is not stepping — unpause (or set `entry_hook`) before believing them.
+  that is not stepping — call `unpause` if you paused it, or set `entry_hook` to
+  advance past whatever's pausing it automatically on launch, before believing them.
 - `get-state` dumps ~120 keys for a `Label` — pass `--property NAME` (repeatable).
+- `findings` / `validate-ui` keep the records of the last non-clean run at
+  `user://findings_last.json` (path printed when the count is non-zero) — a transient
+  is diagnosable after the frame that produced it is gone.
+- `press` emits `pressed` without moving the mouse: an open tooltip stays open and can
+  appear in a screenshot taken straight after. `mouse-move` first if the picture matters.
 - Run `/verify` **inline**; don't wrap routine validation in subagents/workflows.
 - On Windows, probe Python by running it (`python3` may be a Store alias stub that
   exists and refuses to run).

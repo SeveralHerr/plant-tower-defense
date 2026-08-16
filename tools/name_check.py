@@ -86,8 +86,8 @@ from bisect import bisect_right
 from datetime import datetime, timezone
 from pathlib import Path
 
-# harness-version: 0.25.0
-HARNESS_VERSION = "0.25.0"
+# harness-version: 0.32.0
+HARNESS_VERSION = "0.32.0"
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1
@@ -301,6 +301,18 @@ RE_STRING_REF = re.compile(
     r"\b(has_method|has_signal|emit_signal|call|call_deferred|connect|"
     r"disconnect|is_connected)[ \t]*\([ \t]*([\"'])")
 
+# `x as Type == y` / `!= y` with no parentheses (moving-in:G-053). GDScript's `as`
+# binds LOOSER than `==`, so `shape as ConcavePolygonShape3D == null` parses as
+# `shape as (ConcavePolygonShape3D == null)` - a cast to a bool - and the whole
+# surrounding expression is a hard parse error that took a real suite from green
+# to 48 failures. The parenthesised form `(x as T) == y` is never wrong, so flagging
+# the bare one costs nothing and the construct (`hit.get("collider") as X`) is
+# common. Anchored on `as` followed by a Type-shaped identifier followed by a
+# comparison; a `(` right after the type means the type is being called, not
+# compared, and is skipped by the character class.
+RE_AS_PRECEDENCE = re.compile(
+    r"\bas[ \t]+([A-Z][\w.]*)[ \t]*(==|!=)[ \t]*")
+
 
 def _match_paren(code, open_pos):
     """Index just past the `)` closing the `(` at open_pos, or -1.
@@ -389,6 +401,7 @@ class GDFile:
         self.root_refs = []               # (line, root_identifier, member or None)
         self.path_refs = []               # (line, kind, res_path)
         self.string_refs = []             # (line, verb, name)
+        self.as_precedence_refs = []      # (line, snippet) - `x as T == y` unparenthesised
         self.parse_error = None
 
     @property
@@ -584,6 +597,19 @@ def _collect_literal_refs(gd, src, code):
                   if src.line_of(other.start()) == line)
         if idx < len(candidates):
             gd.string_refs.append((line, m.group(1), candidates[idx]))
+
+    for m in RE_AS_PRECEDENCE.finditer(code):
+        # Skip when the `as` is already the last token inside a paren group -
+        # `(x as T) == null` puts a `)` between the type and the `==`, which the
+        # regex's [ \t]* cannot cross, so it never matches. What CAN match falsely
+        # is a type name that is really a call: `foo as Bar(...)` never happens in
+        # GDScript, so no guard is needed for it. Line-local: the whole `as ... ==`
+        # is one expression on one line in every real instance seen.
+        line = src.line_of(m.start())
+        line_start = code.rfind("\n", 0, m.start()) + 1
+        line_end = code.find("\n", m.end())
+        snippet = code[line_start:(line_end if line_end != -1 else len(code))].strip()
+        gd.as_precedence_refs.append((line, snippet))
 
 
 # ---------------------------------------------------------------------------
@@ -984,11 +1010,26 @@ def save_index(index, path):
     os.replace(tmp, path)
 
 
+# Why the last godot_version() probe failed, for the caller's error line.
+# BoomerShooter:G-102: `command -v godot` resolved a `#!/bin/sh` wrapper that Bash
+# runs happily and CreateProcess rejects (WinError 193, "not a valid Win32
+# application"); the only message was "could not read `<path> --version`", and
+# the path itself being the problem took a manual `file` to find.
+_LAST_PROBE_ERROR = ""
+
+
 def godot_version(godot_path):
+    global _LAST_PROBE_ERROR
+    _LAST_PROBE_ERROR = ""
     try:
         proc = subprocess.run([str(godot_path), "--version"], capture_output=True,
                               text=True, timeout=60)
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError) as exc:
+        _LAST_PROBE_ERROR = "%s: %s" % (type(exc).__name__, exc)
+        if getattr(exc, "winerror", None) == 193 or "193" in str(exc):
+            _LAST_PROBE_ERROR += (" -- this path is not a Win32 executable (a shell "
+                                  "wrapper script?); point godot_bin / GODOT_BIN at the "
+                                  "real .exe")
         return None
     for line in (proc.stdout or "").splitlines() + (proc.stderr or "").splitlines():
         line = line.strip()
@@ -1006,7 +1047,8 @@ def refresh_index(godot_path, force=False, timeout=300):
     """
     version = godot_version(godot_path)
     if not version:
-        return None, "could not read `%s --version`" % godot_path
+        why = (" (%s)" % _LAST_PROBE_ERROR) if _LAST_PROBE_ERROR else " (it ran, but printed no version line)"
+        return None, "could not read `%s --version`%s" % (godot_path, why)
     dest = cache_path_for(version)
     if dest.is_file() and not force:
         index = load_index(dest)
@@ -1033,6 +1075,74 @@ def refresh_index(godot_path, force=False, timeout=300):
     save_index(index, dest)
     index.source_path = dest
     return index, "dumped %s -> %s" % (index.engine or version, dest)
+
+
+# Same literal, case-insensitive substrings import_check.py scans the import log for -
+# duplicated deliberately rather than imported, so this tool keeps working when
+# import_check.py itself is the thing that is broken (H-034's own reasoning).
+_COMPILE_FAILURE_SIGNALS = ("SCRIPT ERROR", "Parse Error", "Failed to load script",
+                            "Compilation failed")
+_COMPILE_AT_RE = re.compile(r"^\s+at: ")
+
+
+def _resolve_compile_target(project_root, raw):
+    """A caller-given path (res://, project-relative, or absolute) -> (res_path, abs_path)
+    or (None, None) if it does not resolve to a file under project_root."""
+    text = str(raw)
+    if text.startswith("res://"):
+        rel = text[len("res://"):]
+    else:
+        p = Path(text).expanduser()
+        rel = str(p.relative_to(project_root)) if p.is_absolute() else text
+    abs_path = (project_root / rel).resolve()
+    try:
+        res_rel = abs_path.relative_to(project_root.resolve()).as_posix()
+    except ValueError:
+        return None, None
+    if not abs_path.is_file():
+        return None, None
+    return "res://" + res_rel, abs_path
+
+
+def _check_compile_one(godot_path, project_root, res_path, timeout=30):
+    """One `godot --check-only --script res_path`. Returns (ok, message).
+
+    gh#20.1 / plant-tower-defense:G-025: the only gate documented as parallel-safe
+    (this tool) explicitly does not compile; `--check-only` does, and was verified
+    (2026-08-16, harness 0.26.0) to write NOTHING under `.godot/` - not a new file,
+    not a changed mtime, on a real project with an established import cache, single
+    or concurrent (3 processes at once, byte-identical `.godot/` before and after).
+    It does NOT create `.godot/` on a project that has never been imported at all.
+    The cost: without a prior import (this project's own, or any launch that already
+    populated the class cache), a script referencing another file's `class_name`
+    reports a false "Could not find type" - `--check-only` reads the shared cache,
+    it does not build one. That is a real limitation, not a bug in this wrapper.
+    """
+    cmd = [str(godot_path), "--headless", "--path", str(project_root),
+           "--check-only", "--script", res_path]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return False, "timed out after %gs" % timeout
+    except OSError as exc:
+        return False, "could not run godot: %s" % exc
+    if proc.returncode == 0:
+        return True, ""
+    lines = (proc.stdout + proc.stderr).splitlines()
+    quoted = []
+    for i, raw_line in enumerate(lines):
+        line = raw_line.strip()
+        if not line or not any(s.lower() in line.lower() for s in _COMPILE_FAILURE_SIGNALS):
+            continue
+        detail = ""
+        if i + 1 < len(lines) and _COMPILE_AT_RE.match(lines[i + 1]):
+            detail = " " + lines[i + 1].strip()
+        quoted.append(line + detail)
+    if quoted:
+        return False, "; ".join(quoted[:3])
+    tail = [l.strip() for l in lines if l.strip()]
+    return False, "exit %d, no recognized error signal in output%s" % (
+        proc.returncode, (": " + tail[-1]) if tail else "")
 
 
 def find_cached_index(resolve_version=None):
@@ -1325,6 +1435,26 @@ class Checker:
                             str(required) if required == total
                             else "%d to %d" % (required, total)))
 
+    def check_as_precedence(self):
+        """`x as Type == y` with no parentheses is a hard parse error (moving-in:G-053).
+
+        GDScript's `as` binds looser than `==`, so this parses as a cast to a bool
+        and takes down the whole expression - a real suite went green -> 48 failures
+        on one such line. name_check's own NOT COVERED line already warns it does
+        not compile; this is one specific, common, cheap-to-spot instance of that gap
+        that a regex CAN see, since it is a shape and not a type question. Only
+        fires when the thing after `as` looks like a Type (PascalCase); a bare
+        `x as y == z` with lowercase y is left alone rather than guessed at.
+        """
+        for gd in self.project.files:
+            if gd.vendored:
+                continue
+            for line, snippet in gd.as_precedence_refs:
+                self.add(gd.res_path, line, "as_precedence", SEVERITY_ERROR, snippet,
+                         "`as` binds looser than `==`/`!=`, so this parses as a cast "
+                         "to a bool and is a hard parse error - parenthesise the cast: "
+                         "`(x as Type) == y`. Line: %s" % snippet)
+
     def check_class_cache(self):
         """Warn when `.godot/` and the source disagree -- without touching `.godot/`."""
         cached = _read_class_cache(self.project.root)
@@ -1349,6 +1479,7 @@ class Checker:
         if self.options.get("strings", True):
             self.check_string_refs()
         self.check_virtual_signatures()
+        self.check_as_precedence()
         self.check_class_cache()
         return self.findings
 
@@ -1400,8 +1531,14 @@ def _resolve_godot(args, project_path):
 
 
 def report(findings, index, project, counts, args, skipped, baseline_info,
-           engine_skew=None):
-    print("name_check %s - static name resolution, no engine launched" % HARNESS_VERSION)
+           engine_skew=None, compiled_ok=None):
+    if args.require_compile:
+        n_compiled = len(args.require_compile)
+        print("name_check %s - static name resolution PLUS %d file(s) compile-checked "
+              "via --require-compile (the only engine launch this tool ever does)"
+              % (HARNESS_VERSION, n_compiled))
+    else:
+        print("name_check %s - static name resolution, no engine launched" % HARNESS_VERSION)
     print("project: %s" % project.root)
     print("scanned: %d script(s), %d global class(es), %d autoload(s)%s"
           % (len(project.files), len(project.by_class), len(project.autoloads),
@@ -1441,13 +1578,27 @@ def report(findings, index, project, counts, args, skipped, baseline_info,
 
     print("errors: %d | warnings: %d | advisory: %d"
           % (counts["error"], counts["warning"], counts["advisory"]))
+    if args.require_compile:
+        if compiled_ok:
+            print("compiled OK: %s" % ", ".join(sorted(compiled_ok)))
+        n_failed = len(args.require_compile) - len(compiled_ok or [])
+        if n_failed:
+            print("compile FAILED: %d of %d file(s) - see compile_error findings above"
+                  % (n_failed, len(args.require_compile)))
     for note in skipped:
         print("SKIPPED: %s" % note)
     if not counts["error"]:
         # Said on exactly the run where it is dangerous. A clean verdict here is
         # the only gate a parallel agent is allowed to run, and twice now that has
-        # been read as "it builds" (moving-in:G-009).
-        print("NOT COVERED: %s" % NOT_COVERED)
+        # been read as "it builds" (moving-in:G-009). Narrowed, not silenced, when
+        # --require-compile actually closed that gap for specific files (gh#20.1):
+        # the caveat is still true for everything ELSE in the project.
+        if args.require_compile:
+            print("NOT COVERED: %s The %d file(s) named in --require-compile ARE "
+                  "compiled (this is the exception, not the rule)."
+                  % (NOT_COVERED, len(args.require_compile)))
+        else:
+            print("NOT COVERED: %s" % NOT_COVERED)
 
 
 def main():
@@ -1487,6 +1638,17 @@ def main():
     parser.add_argument("--baseline", metavar="PATH",
                         help="Compare against a baseline: only NEW findings gate")
     parser.add_argument("--json", action="store_true", help="Emit the verdict as JSON")
+    parser.add_argument("--require-compile", nargs="+", metavar="FILE", default=[],
+                        help="Shell one 'godot --check-only --script' per file (gh#20.1). "
+                             "The only way this tool ever launches Godot, and only for "
+                             "these files. Verified read-only against .godot/ (no import, "
+                             "no cache write) - safe alongside concurrent instances of "
+                             "itself or a running game. Needs the project's class cache "
+                             "already built once (a prior --import or launch); without one, "
+                             "a file referencing another file's class_name false-positives. "
+                             "Separately: --check-only does not resolve an autoload SINGLETON "
+                             "by its bare global name at all, import or not - a file calling "
+                             "an autoload that way false-positives too (0.29.0).")
     args = parser.parse_args()
 
     project_root = Path(args.project).expanduser().resolve()
@@ -1579,6 +1741,30 @@ def main():
         findings = [f for f in findings
                     if any(f["file"].startswith(p) for p in prefixes)]
 
+    # --- --require-compile: the only path that launches Godot (gh#20.1) ---
+    compiled_ok = []
+    if args.require_compile:
+        godot_path = _resolve_godot(args, project_root)
+        if godot_path is None:
+            print("Error: --require-compile needs a Godot binary. Pass --godot PATH, set "
+                  "$GODOT_BIN, or set \"godot_bin\" in "
+                  "addons/godot_selftest/devtools_config.json.", file=sys.stderr)
+            return EXIT_CANNOT_RUN
+        for raw in args.require_compile:
+            res_path, abs_path = _resolve_compile_target(project_root, raw)
+            if res_path is None:
+                findings.append(finding(str(raw), 0, "compile_error", SEVERITY_ERROR,
+                                        str(raw),
+                                        "--require-compile: not a file under this project"))
+                continue
+            ok, message = _check_compile_one(godot_path, project_root, res_path)
+            rel = res_path[len("res://"):]
+            if ok:
+                compiled_ok.append(rel)
+            else:
+                findings.append(finding(rel, 0, "compile_error", SEVERITY_ERROR, rel,
+                                        "does not compile: %s" % message))
+
     # --- baseline ---
     baseline_info = None
     if args.baseline_write:
@@ -1639,11 +1825,12 @@ def main():
             "not_covered": NOT_COVERED,
             "baseline": args.baseline,
             "findings": findings,
+            "compiled_ok": compiled_ok,
             "exit": exit_code,
         }, indent=2))
     else:
         report(findings, index, project, counts, args, skipped, baseline_info,
-               engine_skew)
+               engine_skew, compiled_ok)
 
     return exit_code
 

@@ -1328,6 +1328,12 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 	RunConfig.key_bindings = {}
 	RunConfig.campaign_high_score = 0
 	RunConfig.endless_high_score = 0
+	# See the sibling test's note: every field the writer emits has to be pinned,
+	# or the expected bytes below become a function of the developer's own save.
+	var stashed_colorblind: bool = RunConfig.colorblind_safe
+	var stashed_milestones: Dictionary = RunConfig.earned_milestones.duplicate()
+	RunConfig.colorblind_safe = false
+	RunConfig.earned_milestones = {}
 	KeyBindings.reset_all()
 
 	var screen := await _T.instantiate_ui(KeyBindingScreen.new(), Vector2i(1152, 648)) as KeyBindingScreen
@@ -1388,6 +1394,8 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 	RunConfig.load_status = stashed_status
 	RunConfig.campaign_high_score = stashed_campaign
 	RunConfig.endless_high_score = stashed_endless
+	RunConfig.colorblind_safe = stashed_colorblind
+	RunConfig.earned_milestones = stashed_milestones
 	for suffix: String in ["", ".tmp", ".bak"]:
 		if FileAccess.file_exists(path + suffix):
 			DirAccess.remove_absolute(path + suffix)
@@ -3365,6 +3373,12 @@ func test_hud_motion_never_leaves_the_panel_invisible_headlessly() -> String:
 func test_the_threat_tint_still_lands_exactly_when_animation_is_off() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var label: Label = game.hud.get_node_or_null("Root/TopBar/StatsRow/WaveLabel") as Label
+	# THREAT_HOT is the DEFAULT ramp's hot end, so the option has to be pinned: it
+	# is loaded from the real user:// save at startup, and a maintainer who has the
+	# accessibility ramp turned on would fail this against THREAT_HOT_SAFE with
+	# nothing wrong in the code.
+	var stashed_colorblind: bool = RunConfig.colorblind_safe
+	RunConfig.colorblind_safe = false
 	game.director.endless = true
 	game.director.current_wave = 200
 	game._refresh()
@@ -3380,6 +3394,7 @@ func test_the_threat_tint_still_lands_exactly_when_animation_is_off() -> String:
 		await _pump(game)
 		err = _T.assert_true(label.get_theme_color("font_color").is_equal_approx(Hud.PAPER),
 			"and comes back down exactly")
+	RunConfig.colorblind_safe = stashed_colorblind
 	_T.free_ui(game)
 	return err
 
@@ -4429,6 +4444,16 @@ func test_rebound_keys_survive_a_save_and_load() -> String:
 	RunConfig.save_path = path
 	RunConfig.campaign_high_score = 11
 	RunConfig.endless_high_score = 22
+	# Pinned, not inherited. Every field the writer puts in the file has to be set
+	# here or the expected bytes below are a function of the DEVELOPER's own save:
+	# `colorblind_safe` is loaded from the real user:// file at startup, so a
+	# maintainer who has the accessibility option turned on used to see this test
+	# fail with `cb1` against a hardcoded `cb0` — a red test that says nothing
+	# about the code. Same reasoning for the milestone set.
+	var stashed_colorblind: bool = RunConfig.colorblind_safe
+	var stashed_milestones: Dictionary = RunConfig.earned_milestones.duplicate()
+	RunConfig.colorblind_safe = false
+	RunConfig.earned_milestones = {}
 	KeyBindings.reset_all()
 
 	var err: String = _T.assert_eq(KeyBindings.overrides(), {},
@@ -4482,6 +4507,8 @@ func test_rebound_keys_survive_a_save_and_load() -> String:
 	RunConfig.load_status = stashed_status
 	RunConfig.campaign_high_score = stashed_campaign
 	RunConfig.endless_high_score = stashed_endless
+	RunConfig.colorblind_safe = stashed_colorblind
+	RunConfig.earned_milestones = stashed_milestones
 	for suffix: String in ["", ".tmp", ".bak"]:
 		if FileAccess.file_exists(path + suffix):
 			DirAccess.remove_absolute(path + suffix)

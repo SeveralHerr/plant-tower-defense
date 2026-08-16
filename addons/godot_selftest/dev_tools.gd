@@ -14,14 +14,14 @@ extends Node
 ## extension loads AFTER the generic handlers, a project may override a generic
 ## verb by registering the same action string (last-writer-wins).
 
-# harness-version: 0.25.0
+# harness-version: 0.32.0
 # --- Constants ---
 
 ## Version of the godot-selftest-harness these files were copied from. Reported by the
 ## `harness_version` verb and stamped into every copied tool script, so a gap logged
 ## against a project can name the version it was seen on, and a refresh can tell a
 ## stale file from a customized one. Bump with .claude-plugin/plugin.json.
-const HARNESS_VERSION: String = "0.25.0"
+const HARNESS_VERSION: String = "0.32.0"
 
 ## Default bus filenames. With a session id (see _resolve_session) the id is spliced in
 ## before the extension, so two instances can each own a bus in the same user:// dir.
@@ -120,6 +120,13 @@ const DEFAULT_CONFIG: Dictionary = {
 	"safe_area_inset": {"left": 0, "top": 0, "right": 0, "bottom": 0},
 	"main_scene": "",
 	"entry_hook": {"node_path": "", "method": ""},
+	# Named alternates to entry_hook, each {scene, node_path, method, args, match}.
+	# scene/method/args/match all optional; node_path required. Nothing here fires on
+	# its own - a caller reaches one by name via the fire_entry_point verb. `/verify`
+	# picks the one whose `match` substrings hit the diff (commands/verify.md), so a
+	# change to a boss/shop/level script gets a runtime path instead of only a code
+	# read. {} means none configured.
+	"entry_points": {},
 	"mute": true,
 	# Read by tools/verify_ledger.py, not by this core. Maps a script that reach can
 	# never observe -- a RefCounted or Resource that is never any node's script -- to
@@ -181,6 +188,17 @@ var _devtools_set_speed: Variant = null
 ## (G-074b/G-068): the existing tree is walked once at _ready to seed it, then
 ## `node_added` keeps it current. Keys are paths; values are `true`.
 var _scripts_seen: Dictionary = {}
+## entry_hook outcome, reported on every `ping` reply (gh#29): a config key that
+## silently did nothing was worse than an absent one, because the project LOOKED
+## configured. "not_configured" (default), "fired", or an error string naming what
+## went wrong ("node not found: X", "no such method: X.Y", "misconfigured: ...").
+## Never anything else, so a caller can branch on it without parsing prose.
+var _entry_hook_status: String = "not_configured"
+## The entry method's own return value, if it returned one. null otherwise -
+## including when the method legitimately returned null, which `ping`'s
+## entry_hook_result key cannot distinguish from "did not fire"; entry_hook_status
+## is what answers that question.
+var _entry_hook_result: Variant = null
 ## The "id" of the command currently being served, echoed verbatim onto its reply
 ## ("" when the request carried none).
 ##
@@ -273,6 +291,10 @@ func _ready() -> void:
 	if not _passive:
 		_clear_stale_files()
 		_write_owner_file()
+		# Fire-and-forget (gh#29): a --script runner has no real game to enter play
+		# on, so entry_hook only fires for an actual launch. Does not block the
+		# rest of _ready() - see _start_entry_hook().
+		_start_entry_hook()
 
 	# Script census (G-074b): seed from whatever is already in the tree (autoload
 	# order means the main scene is usually not up yet), then track every node
@@ -384,6 +406,28 @@ func register_command(action: String, handler: Callable) -> void:
 ## payload tiny: it rides on every single reply.
 func register_status_provider(provider: Callable) -> void:
 	_status_provider = provider
+
+
+## Lets a script self-report that it ran (gh#30 / plant-tower-defense:G-014).
+##
+## `scripts-seen` (and `reach`, which reads it) can only ever learn a script's path
+## from a NODE's `script` property, via node_added. A static-utility class
+## (`class_name Music extends RefCounted` with static entry points, or one that
+## builds a host Node with no script of its own attached) is never itself a node's
+## script, no matter how much of it actually ran — the identical shape as a base
+## class only a subclass instantiates (reached_base), one level further out, where
+## no descendant carries the base's own script either. Call this once from each real
+## entry point of a script that has this shape:
+##   DevTools.mark_script_reached(<its own res:// path>)
+## and it lands in the same `_scripts_seen` dictionary `scripts-seen` already
+## reports and `reach` already reads — a second way to populate the existing
+## signal, not a second signal a caller has to know to ask for separately. Get the
+## path from `get_script().resource_path` in an instance method, or hardcode the
+## literal in a purely static one (there is no `self` to ask). A no-op on an empty
+## path rather than an error, so a defensive call site costs nothing.
+func mark_script_reached(path: String) -> void:
+	if not path.is_empty():
+		_scripts_seen[path] = true
 
 
 # --- Setup ---
@@ -539,6 +583,8 @@ func _register_generic_handlers() -> void:
 	register_command("get_node_bounds", _cmd_get_node_bounds)
 	register_command("canvas_scale", _cmd_canvas_scale)
 	register_command("aabb", _cmd_aabb)
+	register_command("look_at", _cmd_look_at)
+	register_command("fire_entry_point", _cmd_fire_entry_point)
 	register_command("set_resolution", _cmd_set_resolution)
 	register_command("save_ui_baseline", _cmd_save_ui_baseline)
 	register_command("ui_snapshot_diff", _cmd_ui_snapshot_diff)
@@ -552,6 +598,7 @@ func _register_generic_handlers() -> void:
 	register_command("reachable_ui", _cmd_reachable_ui)
 	register_command("findings", _cmd_findings)
 	register_command("first_frame", _cmd_first_frame)
+	register_command("project_settings", _cmd_project_settings)
 
 
 func _load_extension() -> void:
@@ -841,6 +888,10 @@ func _cmd_ping(_args: Dictionary) -> Dictionary:
 			# Where this game's res:// is on disk, so a client can tell a
 			# worktree sibling's game from its own (plant-tower-defense:G-018).
 			"project_path": ProjectSettings.globalize_path("res://"),
+			# gh#29: "not_configured", "fired", or an error naming what went
+			# wrong - never silent. See _start_entry_hook().
+			"entry_hook_status": _entry_hook_status,
+			"entry_hook_result": _serialize_variant(_entry_hook_result),
 		},
 	}
 
@@ -1245,6 +1296,22 @@ func _resolve_property_path(root: Variant, path: String) -> Dictionary:
 					],
 				}
 			current = obj.get(segment)
+		elif _BUILTIN_COMPONENTS.has(typeof(current)):
+			# A built-in struct (Vector2/3, Color, Rect2, Transform...). `position.x`
+			# is plainly what the caller means, and Variant indexing by member
+			# name answers it (H-046: before this branch `find-nodes --property
+			# position.x` printed `null`, indistinguishable from a property that
+			# genuinely holds null, and get-state refused outright).
+			var members: Array = _BUILTIN_COMPONENTS[typeof(current)]
+			if not members.has(segment):
+				return {
+					"ok": false, "value": null,
+					"reason": "%s is a %s, which has no component .%s (has: %s)" % [
+						".".join(walked), type_string(typeof(current)), segment,
+						", ".join(PackedStringArray(members)),
+					],
+				}
+			current = current[segment]
 		else:
 			return {
 				"ok": false, "value": null,
@@ -1255,6 +1322,29 @@ func _resolve_property_path(root: Variant, path: String) -> Dictionary:
 		walked.append(segment)
 
 	return {"ok": true, "value": current, "reason": ""}
+
+
+## Named components readable off each built-in struct via Variant indexing
+## (`Vector2(1, 2)["x"]`). Consulted by _resolve_property_path so a dotted path may
+## end (or hop) inside a struct; writes still go through the whole-value path.
+const _BUILTIN_COMPONENTS: Dictionary = {
+	TYPE_VECTOR2: ["x", "y"],
+	TYPE_VECTOR2I: ["x", "y"],
+	TYPE_VECTOR3: ["x", "y", "z"],
+	TYPE_VECTOR3I: ["x", "y", "z"],
+	TYPE_VECTOR4: ["x", "y", "z", "w"],
+	TYPE_VECTOR4I: ["x", "y", "z", "w"],
+	TYPE_COLOR: ["r", "g", "b", "a", "r8", "g8", "b8", "a8", "h", "s", "v"],
+	TYPE_RECT2: ["position", "size", "end"],
+	TYPE_RECT2I: ["position", "size", "end"],
+	TYPE_QUATERNION: ["x", "y", "z", "w"],
+	TYPE_PLANE: ["x", "y", "z", "d", "normal"],
+	TYPE_AABB: ["position", "size", "end"],
+	TYPE_BASIS: ["x", "y", "z"],
+	TYPE_TRANSFORM2D: ["x", "y", "origin"],
+	TYPE_TRANSFORM3D: ["basis", "origin"],
+	TYPE_PROJECTION: ["x", "y", "z", "w"],
+}
 
 
 ## One member read off whatever _resolve_property_path() landed on. Dictionary and
@@ -1626,6 +1716,28 @@ func _cmd_set_state(args: Dictionary) -> Dictionary:
 				"data": {"property": property},
 			}
 		value = conversion["value"]
+		coerced = true
+	elif value is Array and current is Array and (current as Array).is_typed():
+		# plant-tower-defense:G-019: the bus carries a plain JSON Array, and
+		# assigning one to an `Array[StringName]` (or any typed array) property
+		# is a silent no-op in GDScript -- the read-back below catches that, but
+		# the caller wanted the write to WORK. Rebuild the value as the target's
+		# own typed array; Array's typed constructor converts each element (a
+		# String becomes a StringName) and drops the lot with an engine error
+		# when one cannot be converted, which the size check turns into a reply.
+		var typed: Array = current
+		var rebuilt: Array = Array(value, typed.get_typed_builtin(),
+			typed.get_typed_class_name(), typed.get_typed_script())
+		if rebuilt.size() != (value as Array).size():
+			return {
+				"success": false,
+				"message": "Cannot set %s.%s: %d element(s) do not convert to the property's element type %s" % [
+					node_path, property, (value as Array).size() - rebuilt.size(),
+					type_string(typed.get_typed_builtin()) if typed.get_typed_class_name().is_empty() else String(typed.get_typed_class_name()),
+				],
+				"data": {"property": property, "written": _serialize_variant(value)},
+			}
+		value = rebuilt
 		coerced = true
 
 	_write_member(target, leaf, value)
@@ -3007,6 +3119,18 @@ func _cmd_step_time(args: Dictionary) -> Dictionary:
 	if not hold_action.is_empty() and not InputMap.has_action(hold_action):
 		return {"success": false, "message": "Unknown input action for 'hold': %s" % hold_action}
 
+	# plant-tower-defense:G-016: every step + read pair used to cost unbounded
+	# ambient game time on top of the seconds requested, because the tree keeps
+	# running between the reply and the next command. `then_pause` freezes the
+	# tree the moment the step completes (and lifts a pre-existing pause for the
+	# step itself), so a short-lived state can be stepped INTO and then read at
+	# leisure. Nothing here is a manual tick -- see the limits above -- it only
+	# closes the gap AFTER the step. `unpause` (0.25.0) resumes.
+	var then_pause: bool = bool(args.get("then_pause", false))
+	var was_paused_before: bool = get_tree().paused
+	if then_pause and was_paused_before:
+		get_tree().paused = false
+
 	var ticks_per_second: int = Engine.physics_ticks_per_second
 	var target_physics_frames: int = ceili(seconds * float(ticks_per_second))
 	var previous_scale: float = Engine.time_scale
@@ -3055,6 +3179,8 @@ func _cmd_step_time(args: Dictionary) -> Dictionary:
 	var elapsed_ms: int = Time.get_ticks_msec() - start_msec
 	var tree_paused: bool = get_tree().paused
 	Engine.time_scale = previous_scale
+	if then_pause:
+		get_tree().paused = true
 
 	var data: Dictionary = {
 		"seconds_requested": seconds,
@@ -3069,6 +3195,8 @@ func _cmd_step_time(args: Dictionary) -> Dictionary:
 		"previous_time_scale": previous_scale,
 		"restored_time_scale": Engine.time_scale,
 		"tree_paused": tree_paused,
+		"paused_after": get_tree().paused,
+		"was_paused_before": was_paused_before,
 		"budget_exhausted": budget_exhausted,
 		"held_action": hold_action if not hold_action.is_empty() else null,
 	}
@@ -3078,6 +3206,8 @@ func _cmd_step_time(args: Dictionary) -> Dictionary:
 	]
 	if tree_paused:
 		message += " WARNING: get_tree().paused is true, so node processing did not actually advance."
+	if then_pause:
+		message += " Tree left PAUSED (then_pause); `unpause` resumes it."
 	if budget_exhausted:
 		message += " WARNING: frame budget exhausted before the target was reached -- the loop is starved."
 
@@ -3292,12 +3422,14 @@ func _cmd_validate_ui(args: Dictionary) -> Dictionary:
 			summary = "%d UI issues found" % issues.size()
 	if bool(baseline["written"]):
 		summary = "UI baseline written: %d finding(s) now pre-existing" % issues.size()
+	var last_path: String = _persist_last_findings("validate_ui", issues)
 
 	return {
 		"success": gating == 0,
 		"message": summary,
 		"data": {
 			"issues": issues,
+			"last_findings_path": last_path,
 			"baseline_in_use": baseline["in_use"],
 			"baseline_written": baseline["written"],
 			"baseline_path": baseline["path"],
@@ -4036,6 +4168,116 @@ func _cmd_aabb(args: Dictionary) -> Dictionary:
 	}
 
 
+## Orients a Node3D to face another node's world-space centre (moving-in:G-044,
+## seen twice the same day). `aabb` gives a node's exact world
+## centre and a project's own extension can teleport a node TO a position, but
+## nothing pointed a camera or the player AT one - framing a fixture for a
+## screenshot was four blind attempts at a heading in degrees. args:
+## {"node": PATH (required, the target to look at),
+##  "from_node": PATH (optional; default: get_viewport().get_camera_3d(), the
+##    active Camera3D - no project knowledge required to find "the camera"),
+##  "up": [x,y,z] (optional, default Vector3.UP)}.
+##
+## Orientation only - `from_node` is never moved, only rotated in place. A
+## "sensible standoff" is exactly the ambiguity that would have made this verb
+## a second source of guessing; positioning is what teleport/set-state already
+## do, and the reported blocker was heading, not position ("the player position
+## read back correctly... what is missing is any way to point the camera AT a
+## node").
+func _cmd_look_at(args: Dictionary) -> Dictionary:
+	var target_path: String = str(args.get("node", ""))
+	if target_path.is_empty():
+		return {"success": false, "message": "look_at requires 'node' (the target to look at)",
+			"data": {}}
+	var target_resolved: Dictionary = _resolve_node(target_path)
+	var target: Node = target_resolved["node"]
+	if target == null:
+		return {"success": false,
+			"message": ("look_at: target node not found: %s (also tried under /root)"
+				% target_path),
+			"data": {}}
+
+	var from_node: Node = null
+	var from_path: String = str(args.get("from_node", ""))
+	if not from_path.is_empty():
+		var from_resolved: Dictionary = _resolve_node(from_path)
+		from_node = from_resolved["node"]
+		if from_node == null:
+			return {"success": false,
+				"message": ("look_at: from_node not found: %s (also tried under /root)"
+					% from_path),
+				"data": {}}
+	else:
+		from_node = get_viewport().get_camera_3d()
+		if from_node == null:
+			return {"success": false,
+				"message": "look_at: no 'from_node' given and " +
+					"get_viewport().get_camera_3d() found no active Camera3D. Pass " +
+					"--from-node, or make a camera current first.",
+				"data": {}}
+	if not (from_node is Node3D):
+		return {"success": false,
+			"message": ("look_at: from_node %s is a %s, not a Node3D - there is no "
+				+ "heading to set. (2D has no look_at(); orient it via set_state "
+				+ "rotation instead.)") % [str(from_node.get_path()), from_node.get_class()],
+			"data": {}}
+
+	# The target's world-space AABB centre when it has geometry (same measurement
+	# `aabb` reports); its own global_position otherwise - a spawn marker, an empty
+	# Node3D, a Marker3D all have a position worth facing and no geometry to merge.
+	var target_center: Vector3
+	var center_source: String
+	if target is Node3D:
+		var geometry: Array = []
+		var excluded: Array = []
+		_collect_geometry_instances(target, geometry, excluded)
+		if not geometry.is_empty():
+			var box: AABB = AABB()
+			var have: bool = false
+			for entry: GeometryInstance3D in geometry:
+				var world_box: AABB = _world_aabb_of(entry)
+				box = world_box if not have else box.merge(world_box)
+				have = true
+			target_center = box.position + box.size * 0.5
+			center_source = "aabb centre (%d geometry node(s) merged)" % geometry.size()
+		else:
+			target_center = (target as Node3D).global_position
+			center_source = "global_position (no 3D geometry under it to merge an AABB from)"
+	else:
+		return {"success": false,
+			"message": ("look_at: target %s is a %s, not a Node3D - no world-space "
+				+ "position to face") % [target_resolved["path"], target.get_class()],
+			"data": {}}
+
+	var from3d: Node3D = from_node as Node3D
+	var from_pos: Vector3 = from3d.global_position
+	if from_pos.distance_to(target_center) < 0.0001:
+		return {"success": false,
+			"message": ("look_at: %s is already at the target's centre "
+				+ "(%.3f, %.3f, %.3f) - no direction to face") % [
+					str(from3d.get_path()), target_center.x, target_center.y, target_center.z],
+			"data": {}}
+	var up: Vector3 = Vector3.UP
+	if args.has("up"):
+		var up_v: Variant = _parse_vector3_or_null(args.get("up"))
+		if up_v is Vector3:
+			up = up_v
+	from3d.look_at(target_center, up)
+
+	return {
+		"success": true,
+		"message": "%s now faces %s at (%.3f, %.3f, %.3f) via %s" % [
+			str(from3d.get_path()), target_resolved["path"],
+			target_center.x, target_center.y, target_center.z, center_source],
+		"data": {
+			"from": str(from3d.get_path()),
+			"target": target_resolved["path"],
+			"target_center": _serialize_variant(target_center),
+			"center_source": center_source,
+		},
+	}
+
+
 ## Where a GeometryInstance3D's geometry actually sits in the world.
 ##
 ## The 3D sibling of _screen_rect_of(), and deliberately the same shape: take the
@@ -4479,6 +4721,142 @@ func _cmd_scripts_seen(_args: Dictionary) -> Dictionary:
 	}
 
 
+# --- Entry hook / entry points (gh#29) ---
+#
+# Before this, `entry_hook` accepted a value, validated fine, and was read by
+# nothing - the harness's own worst failure mode (a check that could not run must
+# be NAMED, not silently absent) applied to its own config. A project set it,
+# `ping` kept reporting the title screen, and the natural conclusion was that the
+# GAME was at fault. _entry_hook_status exists so that never happens again:
+# "not_configured" and "fired" are both facts a caller can act on, and a typo'd
+# node_path or method name is now an error, not silence.
+
+## How long _resolve_entry_hook keeps retrying before reporting "node not found".
+## Autoloads run before the main scene is instantiated, so the target usually does
+## not exist at _ready() - this is not a bug in the caller's config. Polled rather
+## than driven off node_added, so it terminates even if the scene tree stops
+## changing entirely (a genuine typo never fires another node_added to wake it).
+const ENTRY_HOOK_TIMEOUT_SEC: float = 10.0
+const ENTRY_HOOK_POLL_SEC: float = 0.2
+
+## Fire-and-forget from _ready(): does not block bridge startup on a scene that
+## might take seconds to load, or might never contain the configured node at all.
+func _start_entry_hook() -> void:
+	var hook: Variant = _config.get("entry_hook", {})
+	if not (hook is Dictionary):
+		return
+	var node_path: String = str(hook.get("node_path", ""))
+	var method: String = str(hook.get("method", ""))
+	if node_path.is_empty() and method.is_empty():
+		return  # "not_configured" is already the default; nothing to do.
+	if node_path.is_empty() or method.is_empty():
+		_entry_hook_status = ("misconfigured: both node_path and method are "
+			+ "required (got node_path=%r method=%r)") % [node_path, method]
+		push_error("DevTools: entry_hook " + _entry_hook_status)
+		return
+	_resolve_and_fire_hook(node_path, method, [])
+
+
+func _resolve_and_fire_hook(node_path: String, method: String, args: Array) -> void:
+	var elapsed: float = 0.0
+	var resolved: Dictionary = _resolve_node(node_path)
+	while resolved["node"] == null and elapsed < ENTRY_HOOK_TIMEOUT_SEC:
+		await get_tree().create_timer(ENTRY_HOOK_POLL_SEC).timeout
+		elapsed += ENTRY_HOOK_POLL_SEC
+		resolved = _resolve_node(node_path)
+	var node: Node = resolved["node"]
+	if node == null:
+		_entry_hook_status = "node not found: %s (waited %.0fs)" % [node_path, ENTRY_HOOK_TIMEOUT_SEC]
+		push_error("DevTools: entry_hook " + _entry_hook_status)
+		return
+	if not node.has_method(method):
+		_entry_hook_status = "no such method: %s.%s" % [node_path, method]
+		push_error("DevTools: entry_hook " + _entry_hook_status)
+		return
+	_entry_hook_result = node.callv(method, args)
+	_entry_hook_status = "fired"
+	print("DevTools: entry_hook fired %s.%s()%s" % [
+		node_path, method,
+		(" -> %s" % _entry_hook_result) if _entry_hook_result != null else ""])
+
+
+## `entry_points`: named alternates to entry_hook, reached on demand rather than
+## fired automatically - a boss/shop/level's own runtime path instead of only a
+## code read (see commands/verify.md for when an agent should reach for one).
+## Wire contract - args: {"name": String}. data keys: name, node_path, method,
+## result (the method's own return value, or null), scene_changed (bool).
+func _cmd_fire_entry_point(args: Dictionary) -> Dictionary:
+	var name: String = str(args.get("name", ""))
+	if name.is_empty():
+		return {"success": false, "message": "fire_entry_point requires 'name'", "data": {}}
+	var points: Variant = _config.get("entry_points", {})
+	if not (points is Dictionary) or not points.has(name):
+		var known: Array = (points.keys() if points is Dictionary else [])
+		known.sort()
+		return {"success": false,
+			"message": "no entry_point named %r in devtools_config.json. Known: %s"
+				% [name, ", ".join(known) if not known.is_empty() else "(none configured)"],
+			"data": {}}
+	var point: Variant = points[name]
+	if not (point is Dictionary):
+		return {"success": false,
+			"message": "entry_points.%s is not an object" % name, "data": {}}
+	var node_path: String = str(point.get("node_path", ""))
+	var method: String = str(point.get("method", ""))
+	if node_path.is_empty() or method.is_empty():
+		return {"success": false,
+			"message": ("entry_points.%s is misconfigured: both node_path and "
+				+ "method are required (got node_path=%r method=%r)")
+				% [name, node_path, method],
+			"data": {}}
+	var args_list: Array = point.get("args", [])
+	if not (args_list is Array):
+		args_list = []
+
+	var scene_changed: bool = false
+	var scene_path: String = str(point.get("scene", ""))
+	if not scene_path.is_empty():
+		var current: Node = get_tree().current_scene
+		var current_path: String = current.scene_file_path if current != null else ""
+		if current_path != scene_path:
+			var err: int = get_tree().change_scene_to_file(scene_path)
+			if err != OK:
+				return {"success": false,
+					"message": "entry_points.%s: change_scene_to_file(%s) failed: %s"
+						% [name, scene_path, error_string(err)],
+					"data": {}}
+			scene_changed = true
+			# The new scene is not in the tree yet even after a successful
+			# change_scene_to_file() call - it is deferred to the end of the
+			# frame. Same reasoning as _resolve_and_fire_hook: poll, don't guess
+			# a frame count.
+			var elapsed: float = 0.0
+			var resolved: Dictionary = _resolve_node(node_path)
+			while resolved["node"] == null and elapsed < ENTRY_HOOK_TIMEOUT_SEC:
+				await get_tree().create_timer(ENTRY_HOOK_POLL_SEC).timeout
+				elapsed += ENTRY_HOOK_POLL_SEC
+				resolved = _resolve_node(node_path)
+
+	var resolved: Dictionary = _resolve_node(node_path)
+	var node: Node = resolved["node"]
+	if node == null:
+		return {"success": false,
+			"message": "entry_points.%s: node not found: %s" % [name, node_path],
+			"data": {"scene_changed": scene_changed}}
+	if not node.has_method(method):
+		return {"success": false,
+			"message": "entry_points.%s: no such method: %s.%s" % [name, node_path, method],
+			"data": {"scene_changed": scene_changed}}
+	var result: Variant = node.callv(method, args_list)
+	return {
+		"success": true,
+		"message": "entry_points.%s fired %s.%s()%s" % [
+			name, node_path, method, (" -> %s" % result) if result != null else ""],
+		"data": {"name": name, "node_path": node_path, "method": method,
+			"result": _serialize_variant(result), "scene_changed": scene_changed},
+	}
+
+
 # --- Utility Functions ---
 
 # --- Query / interaction primitives ---
@@ -4498,9 +4876,11 @@ func _cmd_scripts_seen(_args: Dictionary) -> Dictionary:
 ##         "group": String, "method": String,
 ##         "where": Dictionary (property -> expected value, dotted paths allowed),
 ##         "properties": Array[String] (extra properties to report per hit),
+##         "calls": Array[String] (zero-arg methods to call and report per hit),
 ##         "root": String (subtree to search, default the whole tree),
 ##         "limit": int (default 200) }
-## data keys: nodes (Array of {path, name, type, properties}), count, truncated.
+## data keys: nodes (Array of {path, name, type, properties[, property_errors]
+##            [, calls, call_errors]}), count, truncated.
 func _cmd_find_nodes(args: Dictionary) -> Dictionary:
 	var root: Node = get_tree().root
 	var root_path: String = args.get("root", "")
@@ -4515,6 +4895,9 @@ func _cmd_find_nodes(args: Dictionary) -> Dictionary:
 	var method: String = args.get("method", "")
 	var where: Dictionary = args.get("where", {}) if args.get("where") is Dictionary else {}
 	var report: Array = args.get("properties", []) if args.get("properties") is Array else []
+	# G-005: a getter read beside each hit, so identifying a node whose auto-name
+	# changes every launch and reading it are one round-trip, not two.
+	var calls: Array = args.get("calls", []) if args.get("calls") is Array else []
 	var limit: int = int(args.get("limit", 200))
 
 	# A class that names nothing is a typo, not an absence (gh#15.2). Refusing
@@ -4550,16 +4933,38 @@ func _cmd_find_nodes(args: Dictionary) -> Dictionary:
 			truncated = true
 			break
 		var props: Dictionary = {}
+		var prop_errors: Dictionary = {}
 		for entry: Variant in report:
 			var name: String = str(entry)
 			var walk: Dictionary = _resolve_property_path(node, name)
-			props[name] = _serialize_variant(walk["value"]) if walk["ok"] else null
-		hits.append({
+			if walk["ok"]:
+				props[name] = _serialize_variant(walk["value"])
+			else:
+				# `null` alone is indistinguishable from a property that genuinely
+				# holds null (H-046); carry the resolver's reason beside it.
+				props[name] = null
+				prop_errors[name] = walk["reason"]
+		var call_results: Dictionary = {}
+		var call_errors: Dictionary = {}
+		for entry: Variant in calls:
+			var name: String = str(entry)
+			if not node.has_method(name):
+				call_errors[name] = "%s has no method %s" % [node.get_class(), name]
+				continue
+			call_results[name] = _serialize_variant(node.call(name))
+		var hit: Dictionary = {
 			"path": str(node.get_path()),
 			"name": str(node.name),
 			"type": node.get_class(),
 			"properties": props,
-		})
+		}
+		if not prop_errors.is_empty():
+			hit["property_errors"] = prop_errors
+		if not calls.is_empty():
+			hit["calls"] = call_results
+			if not call_errors.is_empty():
+				hit["call_errors"] = call_errors
+		hits.append(hit)
 
 	# An empty result is the one answer that must never be silent: "no node has
 	# mouse_filter=0" and "nothing here has a property by that name" are opposite
@@ -5225,6 +5630,49 @@ func _nearest_scroll_container(control: Control) -> ScrollContainer:
 	return null
 
 
+## ProjectSettings as the RUNNING game sees them (dave-game:G-003). A setting
+## written into project.godot that did not apply -- a typo'd key, an editor
+## overwrite, a value the engine ignores at runtime -- had no gate at all: lint
+## and validate-all reported clean while the game rendered on the stock clear
+## colour, and the only detection was opening a PNG. get_state cannot answer it
+## because ProjectSettings is not a node.
+##
+## args: { "filter": String (prefix, e.g. "rendering/"; empty = every setting),
+##         "names": Array[String] (exact keys; wins over filter) }
+## data keys: settings ({name: value}), count, missing (names asked for that no
+##            setting has), filter.
+func _cmd_project_settings(args: Dictionary) -> Dictionary:
+	var prefix: String = str(args.get("filter", ""))
+	var names: Array = args.get("names", []) if args.get("names") is Array else []
+	var settings: Dictionary = {}
+	var missing: Array = []
+	if not names.is_empty():
+		for entry: Variant in names:
+			var key: String = str(entry)
+			if ProjectSettings.has_setting(key):
+				settings[key] = _serialize_variant(ProjectSettings.get_setting(key))
+			else:
+				missing.append(key)
+	else:
+		for info: Dictionary in ProjectSettings.get_property_list():
+			var key: String = str(info.get("name", ""))
+			if key.is_empty() or (not prefix.is_empty() and not key.begins_with(prefix)):
+				continue
+			if not ProjectSettings.has_setting(key):
+				continue
+			settings[key] = _serialize_variant(ProjectSettings.get_setting(key))
+	var message: String = "%d setting(s)" % settings.size()
+	if not prefix.is_empty():
+		message += " under %s" % prefix
+	if not missing.is_empty():
+		message += "; %d asked-for name(s) do not exist: %s" % [missing.size(), ", ".join(PackedStringArray(missing))]
+	return {
+		"success": missing.is_empty(),
+		"message": message,
+		"data": {"settings": settings, "count": settings.size(), "missing": missing, "filter": prefix},
+	}
+
+
 ## What a player would see right now, in one call (H-059 -- moving-in's second
 ## `G-027`, filed the same turn as its first and lost to an id collision because
 ## `upstream_gaps.py` keys on id: two entries with one id pool as one, and the
@@ -5505,12 +5953,14 @@ func _cmd_findings(args: Dictionary) -> Dictionary:
 		findings.size(), checks_run.size(), FINDINGS_CHECKS.size(), int(vp.x), int(vp.y)]
 	if not checks_skipped.is_empty():
 		message += " (%d skipped)" % checks_skipped.size()
+	var last_path: String = _persist_last_findings("findings", findings)
 
 	return {
 		"success": findings.is_empty(),
 		"message": message,
 		"data": {
 			"findings": findings,
+			"last_findings_path": last_path,
 			"counts": counts,
 			"checks_run": checks_run,
 			"checks_skipped": checks_skipped,
@@ -5523,6 +5973,38 @@ func _cmd_findings(args: Dictionary) -> Dictionary:
 			"geometry_caveat": caveat,
 		},
 	}
+
+
+## Writes the full records of a NON-CLEAN findings / validate_ui run to
+## user://findings_last.json and returns its absolute path; a clean run writes
+## nothing and returns "" (so the file always holds the most recent run that had
+## something to say). plant-tower-defense:G-030: a finding that fires once on a
+## transient frame left nothing to investigate with -- the verb re-run seconds
+## later was a different frame and said [OK], and the only record was a count in a
+## line the caller had already truncated. The records exist in memory at the
+## moment they are counted; this is the cheapest possible way to keep them.
+const LAST_FINDINGS_FILE: String = "user://findings_last.json"
+
+func _persist_last_findings(verb: String, records: Array) -> String:
+	if records.is_empty():
+		return ""
+	var payload: Dictionary = {
+		"verb": verb,
+		"count": records.size(),
+		"unix_time": Time.get_unix_time_from_system(),
+		"iso_time": Time.get_datetime_string_from_system(true),
+		"process_frame": Engine.get_process_frames(),
+		"physics_frame": Engine.get_physics_frames(),
+		"tree_paused": get_tree().paused,
+		"current_scene": str(get_tree().current_scene.scene_file_path) if get_tree().current_scene != null else "",
+		"records": records,
+	}
+	var file: FileAccess = FileAccess.open(LAST_FINDINGS_FILE, FileAccess.WRITE)
+	if file == null:
+		return ""
+	file.store_string(JSON.stringify(payload, "  "))
+	file.close()
+	return ProjectSettings.globalize_path(LAST_FINDINGS_FILE)
 
 
 ## validate_ui codes whose verdict is a screen-space position -- the ones a
@@ -5586,7 +6068,15 @@ func _load_validator() -> GDScript:
 	var validator_path: String = _config.get("validator_script", "")
 	if validator_path.is_empty() or not ResourceLoader.exists(validator_path):
 		return null
-	return load(validator_path) as GDScript
+	var script: GDScript = load(validator_path) as GDScript
+	if script != null:
+		# gh#30: the validator is a static-utility class (GodotSelftestSceneValidator)
+		# never attached as any node's script, the exact shape mark_script_reached
+		# exists for. The core calls it directly here rather than the validator
+		# calling back into DevTools, since this call site already IS the core and
+		# already has the path - no autoload lookup, no extra hop.
+		_scripts_seen[validator_path] = true
+	return script
 
 
 func _serialize_variant(value: Variant) -> Variant:
