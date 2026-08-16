@@ -4335,3 +4335,337 @@ func test_the_placement_brackets_come_from_the_palette_and_still_look_the_same()
 		if err != "":
 			return err
 	return ""
+
+
+# -- what the suite never touches (plant-tower-defense-h8o) ------------------
+#
+# `tools/suite_reach_check.py` answers the one question no other gate here asks:
+# which parts of the game's public surface does the test suite never so much as
+# name. run_tests.gd prints `Assertions: 8718 executed` and lint prints
+# `Shaders: N of M`, but 8718 assertions all aimed at Board is 8718 assertions,
+# and nothing in the toolchain notices.
+#
+# These four checks are not a re-run of that tool -- they re-derive its two
+# central claims in GDScript, independently, so a bug in the Python cannot make
+# both halves agree. The baseline it ships is a list of symbols it asserts no
+# test names; if that list ever contains something a test DOES name, or something
+# the game no longer declares, the baseline has become a place to hide debt
+# rather than a record of it.
+
+
+const SUITE_REACH_BASELINE := "res://tools/suite_reach_baseline.json"
+const SUITE_REACH_CHECKER := "res://tools/suite_reach_check.py"
+
+
+## Comments stripped AND string bodies blanked.
+##
+## `_code_only` above does the first half only, which is right for its callers --
+## they look for an identifier, and an identifier quoted in a string is still a
+## mention. Here it would be wrong in both directions. "Sticky Sundew" is a HUD
+## caption, not a reference to the class; entry["spread_degrees"] is a dictionary
+## key that has nothing to do with CornCobbler.spread_degrees(), a function
+## nothing calls. Counting either as reach is how a coverage number comes out
+## flattering.
+##
+## A backslash escape inside a string skips the character after it. That is not
+## pedantry -- the first draft of this omitted it and the omission was caught by
+## the two scans disagreeing, on this very file: the blanker test below contains
+## the literal `"var x = entry[\"spread_degrees\"]"`, and an escape-blind reader
+## ends the string at the `\"`, leaves `spread_degrees` standing as bare code, and
+## concludes that a test names CornCobbler.spread_degrees(). Nothing does. The
+## Python side has always consumed escapes, so the disagreement pointed here.
+##
+## Line-oriented, so it does not understand a `"""` block spanning lines. Nothing
+## under test/unit uses one; if that changes, this reads the interior as code.
+func _code_without_strings(src: String) -> String:
+	var out: PackedStringArray = []
+	for line: String in _code_only(src).split("\n"):
+		var kept: String = ""
+		var quote: String = ""
+		var i: int = 0
+		while i < line.length():
+			var c: String = line[i]
+			if quote != "":
+				if c == "\\" and i + 1 < line.length():
+					# Two spaces for two characters: length is preserved so a hit
+					# can still be mapped back onto the original line.
+					kept += "  "
+					i += 2
+					continue
+				kept += " "
+				if c == quote:
+					quote = ""
+			elif c == "\"" or c == "'":
+				quote = c
+				kept += " "
+			else:
+				kept += c
+			i += 1
+		out.append(kept)
+	return "\n".join(out)
+
+
+## Every .gd under test/unit, concatenated, with comments and string bodies gone.
+##
+## The absence assertions below pass for two reasons -- the token really is
+## missing, or the haystack is -- so callers guard on the returned length. That
+## guard only catches the GROSS failure (a path typo, a DirAccess that returned
+## null, no .gd matched), which is the realistic one. It deliberately does not try
+## to catch a subtly broken blanker by measuring shrinkage: measured on this
+## suite, correct blanking keeps 74.7% of the non-whitespace characters and a
+## blanker bugged to swallow each line from its first quote onward keeps 70.3%,
+## and no threshold separates 74.7 from 70.3 without lying about its precision.
+## `_code_without_strings` is unit-tested directly instead, on input small enough
+## to state the right answer for.
+func _test_corpus() -> String:
+	var chunks: PackedStringArray = []
+	var dir := DirAccess.open("res://test/unit")
+	if dir == null:
+		return ""
+	dir.list_dir_begin()
+	var name: String = dir.get_next()
+	while name != "":
+		if name.ends_with(".gd"):
+			chunks.append(_code_without_strings(
+				FileAccess.get_file_as_string("res://test/unit".path_join(name))))
+		name = dir.get_next()
+	dir.list_dir_end()
+	return "\n".join(chunks)
+
+
+## {res:// path -> class_name} for every game script that declares one.
+func _game_class_names() -> Dictionary:
+	var out: Dictionary = {}
+	var dir := DirAccess.open("res://game")
+	if dir == null:
+		return out
+	var finder := RegEx.create_from_string("(?m)^class_name\\s+([A-Za-z_][A-Za-z0-9_]*)")
+	dir.list_dir_begin()
+	var name: String = dir.get_next()
+	while name != "":
+		if name.ends_with(".gd"):
+			var path: String = "res://game".path_join(name)
+			var m: RegExMatch = finder.search(_code_only(FileAccess.get_file_as_string(path)))
+			if m != null:
+				out[path] = m.get_string(1)
+		name = dir.get_next()
+	dir.list_dir_end()
+	return out
+
+
+## Baseline entries as [{path, kind, name}].
+func _suite_reach_baseline_entries() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var text: String = FileAccess.get_file_as_string(SUITE_REACH_BASELINE)
+	if text == "":
+		return out
+	var parsed: Variant = JSON.parse_string(text)
+	if not (parsed is Dictionary):
+		return out
+	var symbols: Variant = (parsed as Dictionary).get("symbols", [])
+	if not (symbols is Array):
+		return out
+	for raw: Variant in (symbols as Array):
+		var parts: PackedStringArray = str(raw).split("::")
+		if parts.size() == 3:
+			out.append({"path": parts[0], "kind": parts[1], "name": parts[2]})
+	return out
+
+
+## The file-level half of the reach claim, re-derived here rather than trusted.
+##
+## The Python says 27 of 27 game scripts are named by some test. That is a weak
+## clean -- named is not tested -- but it has to be TRUE, and it is the assertion
+## most easily faked by a broken scan: a corpus that came back empty would report
+## every symbol unreached and every file unreached, and a corpus whose string
+## blanking ate real code would do the same. This is the positive control for
+## both, and it doubles as the check that a newly added game script cannot arrive
+## with the suite silent about it.
+func test_every_game_class_is_at_least_named_somewhere_in_the_test_suite() -> String:
+	var corpus: String = _test_corpus()
+	var err: String = _T.assert_gt(corpus.length(), 0,
+		"the test corpus is non-empty -- an empty one would pass every check below")
+	if err != "":
+		return err
+
+	var classes: Dictionary = _game_class_names()
+	err = _T.assert_gt(classes.size(), 0, "game/ declares class_names to look for")
+	if err != "":
+		return err
+
+	for path: String in classes:
+		var cls: String = str(classes[path])
+		var finder := RegEx.create_from_string("\\b%s\\b" % cls)
+		err = _T.assert_true(finder.search(corpus) != null,
+			("%s declares `%s` and no test under test/unit names it in code."
+				% [path, cls])
+			+ " tools/suite_reach_check.py gates on exactly this; if it is passing"
+			+ " while this fails, its scan is broken rather than the suite")
+		if err != "":
+			return err
+	return ""
+
+
+## A baseline entry that no longer exists is debt that got deleted rather than
+## paid, and it is invisible from the Python side: suite_reach_check only ever
+## asks whether a CURRENT declaration is in the baseline, never whether a
+## baseline line still corresponds to anything. Left alone it rots into a list
+## that quietly forgives symbols by name -- so a future `func reset()` on some
+## other script would arrive pre-waived by an entry written about WaveDirector.
+func test_the_suite_reach_baseline_lists_only_symbols_the_game_still_declares() -> String:
+	var entries: Array[Dictionary] = _suite_reach_baseline_entries()
+	var err: String = _T.assert_gt(entries.size(), 0,
+		"tools/suite_reach_baseline.json parses and lists symbols."
+		+ " An unreadable or empty baseline would make every loop below vacuous")
+	if err != "":
+		return err
+
+	var sources: Dictionary = {}
+	for entry: Dictionary in entries:
+		var path: String = "res://" + str(entry["path"])
+		var kind: String = str(entry["kind"])
+		var name: String = str(entry["name"])
+		if not sources.has(path):
+			sources[path] = _code_only(FileAccess.get_file_as_string(path))
+		var src: String = str(sources[path])
+		err = _T.assert_gt(src.length(), 0,
+			"%s is readable -- a baseline naming a file that is gone is stale" % path)
+		if err != "":
+			return err
+		# Indent 0, optional annotations, optional `static`. The same shape the
+		# Python matches, written out again so the two have to agree.
+		var finder := RegEx.create_from_string(
+			"(?m)^(?:@[A-Za-z_][A-Za-z0-9_]*(?:\\([^)]*\\))?\\s+)*(?:static\\s+)?%s\\s+%s\\b"
+				% [kind, name])
+		err = _T.assert_true(finder.search(src) != null,
+			("the baseline claims %s declares %s `%s`, and it no longer does."
+				% [path, kind, name])
+			+ " Regenerate with `python tools/suite_reach_check.py --baseline-write"
+			+ " tools/suite_reach_baseline.json` -- a stale entry forgives the next"
+			+ " symbol that happens to share the name")
+		if err != "":
+			return err
+	return ""
+
+
+## The other direction, and the one that matters: a baseline entry naming
+## something a test DOES reach is a false finding frozen into a file, and it
+## makes the whole list untrustworthy. Re-derived here in GDScript against the
+## same corpus, so agreeing requires two independent scans to agree.
+func test_the_suite_reach_baseline_lists_only_symbols_no_test_names() -> String:
+	var entries: Array[Dictionary] = _suite_reach_baseline_entries()
+	var err: String = _T.assert_gt(entries.size(), 0, "the baseline lists symbols")
+	if err != "":
+		return err
+
+	var corpus: String = _test_corpus()
+	err = _T.assert_gt(corpus.length(), 0,
+		"and the corpus to check them against is non-empty")
+	if err != "":
+		return err
+
+	for entry: Dictionary in entries:
+		var name: String = str(entry["name"])
+		var finder := RegEx.create_from_string("\\b%s\\b" % name)
+		err = _T.assert_true(finder.search(corpus) == null,
+			("the baseline records %s `%s` (%s) as named by no test, but a test"
+				% [str(entry["kind"]), name, str(entry["path"])])
+			+ " does name it in code. Usually this means somebody wrote that test and"
+			+ " the debt list has not caught up: run `python tools/suite_reach_check.py`"
+			+ " -- its PROGRESS: line names the same symbols -- then"
+			+ " `--baseline-write tools/suite_reach_baseline.json` to bank it."
+			+ " If the Python does NOT agree, one of the two scans is dropping a match,"
+			+ " and a baseline with false entries stops being readable as debt at all")
+		if err != "":
+			return err
+	return ""
+
+
+## The blanker itself, on input small enough to state the right answer for.
+##
+## This exists because the obvious guard for the two absence checks above -- "the
+## corpus came back non-empty, and every game class is still findable in it" --
+## was measured against a deliberately broken blanker and PASSED. Swallowing each
+## line from its first quote to end-of-line still leaves every class_name findable
+## somewhere across 4600 lines, and still leaves 70% of the characters. A corpus
+## statistic cannot see that. Six characters of controlled input can.
+##
+## Every case is a way the two absence checks could go quietly vacuous.
+func test_the_reach_corpus_blanker_drops_string_bodies_and_keeps_code() -> String:
+	var cases: Array[Array] = [
+		# [source, token, present in the blanked output?, what it protects]
+		["var x = KeepMe.field()", "KeepMe", true,
+			"a bare code identifier survives -- if this fails the corpus is a hole"],
+		["var x = \"DropMe\"", "DropMe", false,
+			"an identifier inside a double-quoted string is not a reference"],
+		["var x = 'DropMeToo'", "DropMeToo", false,
+			"single quotes count as strings too"],
+		["# CommentToken", "CommentToken", false,
+			"prose is never reach -- the trap this repo has already been bitten by"],
+		["var x = entry[\"spread_degrees\"]", "spread_degrees", false,
+			"a dictionary key is not a call to the same-named function"],
+		# The closing quote MUST reset the state. Without it everything after the
+		# first string on a line vanishes, which is the exact bug this test caught.
+		["var x = \"gone\" + AfterTheString.here()", "AfterTheString", true,
+			"code after a closed string survives"],
+		["var a = \"one\"\nvar b = SecondLine.call()", "SecondLine", true,
+			"and a string does not leak across the newline"],
+		# The case that made the two scans disagree, kept as data. An escape-blind
+		# reader ends the string at the \" and reports EscapedInside as live code.
+		["var x = \"a\\\"b EscapedInside\"", "EscapedInside", false,
+			"a backslash escape does not end the string early"],
+		["var x = \"a\\\"b\" + AfterEscaped.go()", "AfterEscaped", true,
+			"and consuming the escape does not swallow the code after the real end"],
+	]
+	var err: String = _T.assert_gt(cases.size(), 0, "there are cases to run")
+	if err != "":
+		return err
+
+	var checked: int = 0
+	for case: Array in cases:
+		var out: String = _code_without_strings(str(case[0]))
+		var finder := RegEx.create_from_string("\\b%s\\b" % str(case[1]))
+		var found: bool = finder.search(out) != null
+		checked += 1
+		err = _T.assert_eq(found, bool(case[2]),
+			("blanking %s: `%s` should%s survive -- %s"
+				% [str(case[0]).replace("\n", "\\n"), str(case[1]),
+					"" if bool(case[2]) else " not", str(case[3])]))
+		if err != "":
+			return err
+
+	err = _T.assert_eq(checked, cases.size(), "every case actually ran")
+	if err == "":
+		# Length preservation is not cosmetic: it is what lets a caller map a hit
+		# back to a line, and it is why blanking writes spaces rather than deleting.
+		err = _T.assert_eq(_code_without_strings("var x = \"abcd\"").length(),
+			"var x = \"abcd\"".length(),
+			"blanking preserves length, so offsets still index the original")
+	return err
+
+
+## The house contract for a static checker (`.claude/skills/house-static-checker`)
+## is mostly prose, and the one clause that is load-bearing at runtime is the
+## `NOT COVERED:` line: it is what makes a deliberately weak tool trustworthy,
+## and it is the first thing a tidy-up deletes because it reads like a caveat
+## rather than a feature. The three exit codes are pinned for the same reason --
+## a checker that stopped returning 2 on a missing input would report "clean"
+## over nothing at all, which is the failure this repo watches for above all.
+func test_the_suite_reach_checker_still_declares_its_house_contract() -> String:
+	var src: String = FileAccess.get_file_as_string(SUITE_REACH_CHECKER)
+	var err: String = _T.assert_gt(src.length(), 0,
+		"tools/suite_reach_check.py is readable -- every assertion below is"
+		+ " vacuous against an empty string")
+	if err != "":
+		return err
+	for needle: Array in [
+		["NOT COVERED:", "the line that says what the tool structurally cannot see"],
+		["return 2", "the could-not-run exit code"],
+		["NOTE: nothing to check", "the spelled-out zero denominator"],
+		["suite-reach-check: ok", "the waiver, which has to be greppable to be usable"],
+	]:
+		err = _T.assert_true(src.contains(str(needle[0])),
+			"the checker still carries %s (`%s`)" % [str(needle[1]), str(needle[0])])
+		if err != "":
+			return err
+	return ""
