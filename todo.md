@@ -1,43 +1,46 @@
 # todo
 
-**Cycle 20 of 30.** Bump this each time you refill the Items list. See the Workflow
+**Cycle 21 of 30.** Bump this each time you refill the Items list. See the Workflow
 block in `CLAUDE.md` — this list is refilled, never left fully ticked.
 
-> **Paused here at the user's request after cycle 19.** The three ticked items below are
-> committed and gated. `4p1` was deliberately held back rather than started: it changes
-> what `suite_reach_check` counts, and the two items above it feed that gate, so running
-> it concurrently would have made the baseline churn meaningless. It is the natural
-> first item on resuming, along with a fresh idea pass.
+> Cycle 20 closed out three items: `4p1` shipped (the reach gate now distinguishes
+> naming a symbol from co-occurring with an `_T.assert_*` call), the self-test harness
+> was refreshed 0.23.0 → 0.24.0 (marketplace + plugin cache had drifted), and 20 new
+> juice/UX ideas were added to `kanban.md`'s backlog across plants, pests, HUD,
+> economy and meta systems. This cycle's five items are pulled straight from that
+> pass — all small, single-plant-or-screen game-juice items with an exact file/line
+> pointer already in hand, so none of them need a research pass before starting.
 
 ## Items
 
-- [x] **1av — Assert what `Pest.died` and `escaped` carry.** 15 signals still have
-  nothing asserting their payload, down from 17. `Pest.died` is the highest-value one
-  left: it is the income path with the most wiring under it — `Game._on_pest_died` drops
-  the husk, banks the seeds and notes the lane loss. `escaped` is its pair. Assert what
-  the signal carries and which paths fire it; merely *naming* it satisfies the reach gate
-  while proving nothing.
+- [ ] **88o — Corn Cobbler needs a readiness readout.** `_cooldown` (corn_cobbler.gd:88)
+  is read by nothing outside `_act()`. Sunflower's payout gauge and Chomp's shrinking
+  chew ring both already solve this for their own plant; Corn Cobbler is the one plant
+  whose "about to fire" moment is invisible.
 
-- [x] **zsb — Find tests that read state straight after `instantiate_scene`.**
-  `test_hosting_a_loaded_cob` asserted a volley had fired by the time `instantiate_scene`
-  returned. That frame count is unspecified, so the test was order-dependent — green two
-  cycles, red the moment unrelated tests shifted timing. Any test reading a group or a
-  live property straight after `instantiate_scene` without awaiting a *condition* has the
-  same exposure. A checker for that shape would name them.
+- [ ] **c03 — `PauseScreen` has no entrance or exit motion.** Its own header calls it
+  "shaped after `RunSummary`" for being a card over a live board, but `RunSummary` and
+  `TitleScreen` both rise their content in and `PauseScreen` has no `create_tween`
+  anywhere in the file — it is also the screen reached for most often, mid-run, under
+  time pressure.
 
-- [x] **egu — Tell the player unaimed ground still gets kills.** Coverage is now measured
-  in both directions and neither number is in the game. Under-promise: 7 kills on unaimed
-  ground at up to 202px, because a kernel flies until it leaves the board. Over-promise at
-  the pest: **zero of 116**. The board says "unaimed", which is exactly right — but a
-  player never learns that unaimed ground still gets kills, which is the thing that would
-  stop them over-buying cover.
+- [ ] **t5l — HUD readouts snap instead of punching on change.** `Hud.refresh()`
+  overwrites the seeds/lives/compost labels' `.text` outright every call, while the
+  same file already eases the wave label's colour with a proper `Tween` in
+  `_ease_threat_tint`. Give the three highest-frequency feedback moments (a kill
+  payout, a life lost, a husk composted) the motion vocabulary this file has already
+  proven out on one label.
 
-- [ ] **4p1 — Distinguish naming a symbol from checking it.** `suite_reach_check`
-  concedes *"naming is a floor, not exercise"* — a test writing `WaveDirector.reset()` and
-  asserting nothing counts as reach. The honest upgrade is not a stricter name match but a
-  second signal: whether the symbol appears inside an `assert_*` argument, or only in a
-  statement. That separates "called it" from "checked it" without pretending to understand
-  the test.
+- [ ] **yx0 — Selecting a plant has no motion.** `Plant.set_selected()` flips
+  `_selection_marker.visible` directly and the brackets snap to full size — no tween,
+  unlike the sprite's own 0.4x pop-in on placement. The one deliberate click a player
+  makes to inspect a plant's state is currently the one motion-free interaction on the
+  board.
+
+- [ ] **8kx — A refused purchase has a sentence and no other feedback.**
+  `purchase_failed` reaches only `hud.show_message(reason)`. `Sfx.SOUNDS` has an entry
+  for nearly everything else that happens on the board except a purchase bouncing off
+  — add a shake on the clicked control plus a denial cue.
 
 - [ ] **Add cool new features or concrete improvements** (UX, game juice, animations,
   enhancements, or full features) to `kanban.md`.
