@@ -1,6 +1,6 @@
 # todo
 
-**Cycle 8 of 30.** Bump this each time you refill the Items list. See the Workflow
+**Cycle 9 of 30.** Bump this each time you refill the Items list. See the Workflow
 loop at the top of `CLAUDE.md` — when this list is done, refill it and start again.
 
 ## The brief (original)
@@ -24,13 +24,13 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 
 ## Items
 
-- [ ] Nothing in the catalogue answers a hungry pest — every plant either damages
-      or funds, nothing protects a bed (`plant-tower-defense-aoq`)
-- [ ] A fifth plant will not fit in the plant bar — four fit with 8px to spare
-      (`plant-tower-defense-zij`)
-- [ ] There is no pause, and no way to leave a run you are done with
-      (`plant-tower-defense-lzu`)
-- [ ] An SVG style-contract linter that does not need the renderer
-      (`plant-tower-defense-9wu`)
+- [ ] Uproot-as-score: refunds credit `seeds_earned_total`, so plant-uproot
+      cycling inflates the high score (`plant-tower-defense-v3b`)
+- [ ] The rare packet's tooltip names one plant and the packet now holds two
+      (`plant-tower-defense-qjb`)
+- [ ] Two Sundews on the same ground cost 60 seeds, slow nothing extra, and the
+      overlap wash says the opposite (`plant-tower-defense-3lu`)
+- [ ] STYLE.md and the sprite gate's palette have drifted apart
+      (`plant-tower-defense-7kf`)
 - [ ] Add cool new features or concrete improvements (UX, game juice,
       animations, enhancements, or full features) to `kanban.md`

@@ -1725,3 +1725,46 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     non-zero. A transient would then be diagnosable after the fact instead of
     being a number that has already gone. Cheap: the records exist in memory at
     the moment they are counted.
+
+## 2026-08-16 — A source-asset gate the engine is not needed for (plant-tower-defense-9wu)
+
+- Value: **warranted** — a new gate that catches a defect class no existing check
+  asks about, verified by injection rather than by assertion.
+  - Expected: nothing runtime. This was a tooling pass; the claim to test was the
+    checker's own, and the only honest way to test a checker is to break something
+    on purpose.
+  - Got: clean over all 12 sprites, agreeing with `test_sprite_style.gd` (which is
+    also green), and on an injected `#FF00FF` fill it reported
+    `ERROR palette sunflower: #FF00FF is off the kit palette by 188.50` **and**
+    `ERROR outline sunflower: outline #1F8A4C is not darker than its fill
+    #FF00FF` — the second being a consequence the injection was not aiming at,
+    which is what a real check looks like. Exit codes verified: `0` clean, `2` on
+    a selector matching nothing.
+  - Found: the checker's first run reported **10 errors and 5 warnings over a
+    corpus known to be clean**, and every one was a bug in the checker. Open
+    stroked paths (legs, antennae, X-eyes — half the corpus) enclose no area, so
+    their unset fill paints nothing and is not the forbidden black. The two
+    foliage palette rows are 0.01 degrees of hue apart and deliberately mixed, so
+    the outline rule had to gate on hue distance rather than table membership.
+    And stroke-expanded geometric bounds run wider than the opaque-pixel bounds
+    the raster gate measures. Separately, the finished tool found a **real drift**:
+    the gate's `PALETTE` carries `#5E5E5E` and `#D7C9A8` that `STYLE.md` documents
+    nowhere, so an author reading the contract sees 30 colours while the build
+    enforces 32.
+  - Cheaper: nothing. A checker that has never been run against a known-good
+    corpus has not been tested, and that run is what produced every real finding
+    here.
+
+- Gap: **the harness has no defect class for source-asset conformance at all.**
+  `coverage_check.py` enumerates eight classes — UI layout, UI reachability,
+  unconnected signals, orphan growth, input path, scene validation, shader
+  compile, name resolution — and every one is about code or a live tree. A project
+  whose art is authored to a written contract has no way to ask "does the source
+  conform" without rendering, which needs the engine, which is not parallel-safe.
+  This whole issue existed because of that hole.
+  - [G-031] status: open | seen: 1 | harness: 0.23.0
+  - Improvement: an `asset_contract` class in `coverage_check.py`, covered by any
+    project-local checker that reads asset sources and is credited the way
+    `name_resolution` credits `name_check.py`. The harness need not ship the
+    checker — sprite contracts are project-specific — but naming the class is what
+    makes its absence visible, which is the tool's whole job.
