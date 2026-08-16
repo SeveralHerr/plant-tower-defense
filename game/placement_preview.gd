@@ -66,9 +66,46 @@ const DEAD_BAR_WIDTH: float = 3.0
 ## overlay rather than as a note about one cell.
 const DEAD_BAR_ANGLE: float = -PI * 0.25
 
+## The redundancy cue (plant-tower-defense-3lu): legal cell, real road under the
+## reach — and every one of those road cells is already inside a patch of the
+## same plant that is standing there now. A Sticky Sundew's slow does not stack
+## (StickySundew.META_SOURCES says why), so a second patch over exactly the same
+## road costs thirty seeds and multiplies the crossing time by
+## StickySundew.added_crossing_time_multiplier(1), which is 1.0. Nothing.
+##
+## Drawn in DEAD_COLOR, the same slate as dead ground, on purpose: the two are
+## the same KIND of statement — "you may put it here, and it will do nothing" —
+## so telling them apart is the *shape's* job, which is the rule the dead bar was
+## built on in the first place. Dead ground is one straight bar; redundant ground
+## is two parallel bars on that same angle. An equals sign laid over the cell:
+## "the same as the patch you already have". Countable at a glance, legible with
+## the colour thrown away, and still nothing but straight strokes, which no other
+## preview state draws outside the four corner arms.
+##
+## The evidence is already on screen and needs no extra drawing: a Sundew's dew
+## beads are always on (see StickySundew.DROPLETS), so the rim of the patch that
+## makes this one redundant is visible right next to the ring being previewed.
+const REDUNDANT_BAR_GAP: float = 8.0
+
 ## Reach of the plant being previewed, from PlantCatalog.reach(). 0.0 draws no
 ## ring at all, which is correct for the Sunflower rather than a missing case.
 var reach: float = 0.0
+
+## Which plant is being previewed, when the caller happens to know. Optional, and
+## the default is deliberately the useless-but-harmless one: left &"" the kind is
+## inferred from `reach` instead, because a Sticky Sundew is the only catalogue
+## entry whose reach is StickySundew.SAP_RADIUS. That inference is what lets the
+## cue work with no change at Game._update_preview's call site at all.
+##
+## Set it if you would rather not lean on that — one line, next to the existing
+## `_preview.reach = PlantCatalog.reach(selected_plant)`:
+##
+##     _preview.plant_id = selected_plant
+##
+## The day a second plant is priced at the same radius, the inference starts
+## warning about the wrong one and that line becomes required rather than
+## preferable.
+var plant_id: StringName = &""
 ## False for a cell that is road, off-board, occupied, or unaffordable. Only
 ## recolours; a blocked preview still draws, because "you cannot put it here"
 ## is the thing worth showing.
@@ -110,9 +147,18 @@ func _init() -> void:
 ##    plant with no reach of its own.
 ## 3. Dead zone (reach > 0, and it covers no road) — only reachable by a plant
 ##    that does have reach.
+## 4. Redundant coverage (reach > 0, it covers road, and every road cell it
+##    covers is already inside an existing patch of the same non-stacking
+##    plant) — only reachable by a plant that does have reach.
 ##
-## 2 and 3 are mutually exclusive by construction rather than by an `elif`: they
-## test opposite sides of `reach > 0.0`, so no cell can ever draw both.
+## 2 is mutually exclusive with 3 and 4 by construction rather than by an `elif`:
+## it tests the opposite side of `reach > 0.0`, so no cell can draw 2 alongside
+## either. 3 and 4 are mutually exclusive with each other the same way, on
+## opposite sides of "does it cover any road at all": dead ground covers none, so
+## covering_patch_count() answers 0 there and rule 3 keeps the cell to itself.
+## And 1 outranks all three in one place: `placeable` is a term in every one of
+## shows_dead_zone(), shows_redundant_coverage() and the `at_risk` branch below,
+## so a refusal is never annotated with a critique.
 func _draw() -> void:
 	marker_color = OK_COLOR if placeable else BLOCKED_COLOR
 	_draw_brackets()
@@ -126,11 +172,14 @@ func _draw() -> void:
 	if reach <= 0.0 or not placeable:
 		return
 	var dead: bool = shows_dead_zone()
-	var base: Color = DEAD_COLOR if dead else marker_color
+	var redundant: bool = shows_redundant_coverage()
+	var base: Color = DEAD_COLOR if dead or redundant else marker_color
 	var ring := Color(base.r, base.g, base.b, RING_ALPHA)
 	draw_arc(Vector2.ZERO, reach, 0.0, TAU, 48, ring, RING_WIDTH, true)
 	if dead:
 		_draw_dead_bar()
+	if redundant:
+		_draw_redundant_bars()
 
 
 ## Dashes rather than a solid ring, drawn as evenly spaced arc segments — a
@@ -152,6 +201,16 @@ func _draw_dead_bar() -> void:
 	draw_line(-arm_vec, arm_vec, DEAD_COLOR, DEAD_BAR_WIDTH, true)
 
 
+## The dead bar, doubled. Same angle, same width, same slate — the difference is
+## that you can count them, which survives greyscale, a colourblind player and a
+## screenshot at half size. See REDUNDANT_BAR_GAP.
+func _draw_redundant_bars() -> void:
+	var along: Vector2 = Vector2.from_angle(DEAD_BAR_ANGLE) * PREVIEW_HALF
+	var across: Vector2 = along.orthogonal().normalized() * (REDUNDANT_BAR_GAP * 0.5)
+	draw_line(-along + across, along + across, DEAD_COLOR, DEAD_BAR_WIDTH, true)
+	draw_line(-along - across, along - across, DEAD_COLOR, DEAD_BAR_WIDTH, true)
+
+
 ## Will the player actually see the dead-zone mark? The precedence rule above,
 ## as one predicate — geometry *and* legality, where covers_road() below is only
 ## the geometry. An illegal cell answers false however dead it is: red brackets
@@ -159,6 +218,87 @@ func _draw_dead_bar() -> void:
 ## refusal is what this cue is meant to avoid becoming.
 func shows_dead_zone() -> bool:
 	return placeable and reach > 0.0 and not covers_road()
+
+
+## Will the player see the redundancy mark? Same shape of question as
+## shows_dead_zone(), and it obeys the same rule 1: an illegal cell answers false
+## however redundant the ground under it is.
+##
+## The condition is not spelled out again here. It is read straight off the
+## plant's own value model: the mark fires exactly when one more patch would
+## multiply the crossing time of the road it covers by 1.0. If the balance ever
+## changes so that a second patch is worth something, that constant moves and
+## this cue stops firing on its own, rather than going on warning about a
+## purchase that has become worth making.
+func shows_redundant_coverage() -> bool:
+	if not placeable or reach <= 0.0:
+		return false
+	var added: float = StickySundew.added_crossing_time_multiplier(covering_patch_count())
+	return is_equal_approx(added, 1.0)
+
+
+## How many patches already on the board cover every road cell a patch placed on
+## the hovered cell would cover.
+##
+## 0 whenever this hover would put dew on road that nothing is sticky on yet —
+## and 0, benignly, in every case where the question does not apply: a plant that
+## is not a patch, a board that cannot be resolved, and dead ground, where there
+## is no covered road to be redundant about and rule 3 owns the cell.
+func covering_patch_count() -> int:
+	if not previewing_non_stacking_patch():
+		return 0
+	var on_board: Board = _board()
+	if on_board == null:
+		return 0
+	var mine: Array[Vector2i] = covered_road_cell_list(on_board,
+		on_board.world_to_cell(position), reach)
+	if mine.is_empty():
+		return 0
+	var already: Dictionary = {}
+	var sharing: int = 0
+	for patch: StickySundew in _existing_patches():
+		var theirs: Array[Vector2i] = covered_road_cell_list(on_board,
+			on_board.world_to_cell(patch.position), StickySundew.SAP_RADIUS)
+		var shares: bool = false
+		for road: Vector2i in theirs:
+			already[road] = true
+			if mine.has(road):
+				shares = true
+		if shares:
+			sharing += 1
+	for road: Vector2i in mine:
+		if not already.has(road):
+			# One cell of new road is enough. The second patch is then buying a
+			# stretch of lane the first never touched, which is the whole
+			# legitimate use of a second Sundew.
+			return 0
+	return sharing
+
+
+## Is the plant being previewed one whose effect does not stack — one where a
+## second copy over the same road is worth nothing? Today the Sticky Sundew, and
+## only it. See `plant_id` for why this can answer without being told.
+func previewing_non_stacking_patch() -> bool:
+	if plant_id != &"":
+		return plant_id == PlantCatalog.SUNDEW
+	return reach > 0.0 and is_equal_approx(reach, StickySundew.SAP_RADIUS)
+
+
+## The patches standing on the board right now, found the same way the Board is:
+## Game adds every plant as a sibling of this preview under Entities. A patch a
+## hungry pest has already killed does not count — its dew comes off the board
+## with it (StickySundew._on_destroyed), so a cell it used to cover is real
+## ground again.
+func _existing_patches() -> Array[StickySundew]:
+	var out: Array[StickySundew] = []
+	var parent: Node = get_parent()
+	if parent == null:
+		return out
+	for sibling: Node in parent.get_children():
+		var patch := sibling as StickySundew
+		if patch != null and is_instance_valid(patch) and not patch.is_destroyed():
+			out.append(patch)
+	return out
 
 
 ## Does the plant being previewed reach any road from the cell it is hovering?
@@ -185,23 +325,32 @@ func covers_road() -> bool:
 ## property of the board and the reach and needs no live preview node — which is
 ## what lets the tests pin it across the whole grid.
 static func covered_road_cells(on_board: Board, cell: Vector2i, reach_px: float) -> int:
+	return covered_road_cell_list(on_board, cell, reach_px).size()
+
+
+## Which road cells those are, rather than how many. The redundancy rule needs
+## the cells themselves: "does this patch cover any road the patches already down
+## do not" is a question about identity, and two patches covering three cells
+## each can easily be three different cells.
+static func covered_road_cell_list(on_board: Board, cell: Vector2i,
+		reach_px: float) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
 	if on_board == null or reach_px <= 0.0:
-		return 0
+		return out
 	# Forces the path build if the board has not had its _ready() yet — is_path()
 	# on an unbuilt board answers false for every cell, which would report the
 	# whole field dead rather than reporting that it could not tell.
 	if on_board.path_cell_count() <= 0:
-		return 0
+		return out
 	var origin: Vector2 = on_board.cell_to_world(cell)
-	var count: int = 0
 	for y: int in range(Board.ROWS):
 		for x: int in range(Board.COLS):
 			var road := Vector2i(x, y)
 			if not on_board.is_path(road):
 				continue
 			if origin.distance_to(on_board.cell_to_world(road)) <= reach_px:
-				count += 1
-	return count
+				out.append(road)
+	return out
 
 
 ## The board to measure against: the one handed in, else the sibling Game put

@@ -81,6 +81,36 @@ const DROPLET_COLOR := Color(0.64, 0.76, 0.78, 0.90)
 const DROPLET_RIM_COLOR := Color(0.46, 0.55, 0.56, 0.90)
 const DROPLET_RIM_WIDTH: float = 1.2
 
+## The wash is painted as a UNION, not as one disc per plant, and that is a
+## correctness fix rather than a polish pass (plant-tower-defense-3lu).
+##
+## Every patch used to fill its own disc at PATCH_COLOR's alpha 0.10. Alpha
+## blending is not idempotent: two of those laid over the same grass composite to
+## an effective 1 - 0.9^2 = 0.19, so the lens where two patches met came out
+## nearly twice as strong as either patch alone. The board was therefore drawing
+## "more slow here" over the one piece of ground where the slow is provably
+## identical — see META_SOURCES, where the refcount deliberately holds an
+## overlapped pest at SLOW_FACTOR rather than at SLOW_FACTOR squared. A player
+## could spend 60 seeds covering one stretch of road twice and be shown a darker
+## patch of grass as their receipt.
+##
+## So each patch subtracts the discs of every overlapping patch that got here
+## first (see _wash_order) and fills only what is left. The union is then painted
+## exactly once, at exactly the alpha a single patch is painted at, everywhere.
+##
+## What still shows there are two plants is the beads: each patch keeps its own
+## full rim of them, so two overlapping Sundews read as two bead rings crossing
+## over one evenly-washed piece of ground. That is the truth stated in pictures —
+## two plants, one slow.
+const WASH_SEGMENTS: int = 48
+
+## Paint order for that union. Of any two overlapping patches exactly one has to
+## own the lens they share, so the two need a total order they both agree on.
+## Assigned on construction and never reused: node order under Entities is not
+## usable for this, because it shifts every time any sibling is uprooted, and a
+## patch whose rank changed under it would hand the lens back and forth.
+static var _next_wash_order: int = 0
+
 ## The pests this particular Sundew currently holds a source on. Not a set of
 ## every slowed pest on the board — each patch tracks only its own claim, and the
 ## metadata above is what reconciles overlapping claims.
@@ -89,6 +119,13 @@ var _stuck: Array[Pest] = []
 ## leaves, so without this a field of Sundews would repaint every frame for a
 ## picture that did not move.
 var _drawn_radius: float = -1.0
+## This patch's rank in the paint order above. Stable for the node's whole life.
+var _wash_order: int = 0
+
+
+func _init() -> void:
+	_next_wash_order += 1
+	_wash_order = _next_wash_order
 
 
 ## A hungry pest can eat the Sundew out from under its own patch. If that left the
@@ -96,7 +133,15 @@ var _drawn_radius: float = -1.0
 ## lane would walk at 55% for the rest of the run with nothing on screen to explain
 ## it — the worst kind of bug, because it looks like balance.
 func _on_setup() -> void:
-	destroyed.connect(func(_p: Plant) -> void: release_all())
+	destroyed.connect(_on_destroyed)
+	# Plant.setup() has already put this node on its cell, so the neighbours it
+	# has to divide the wash with are knowable from here.
+	rewash_neighbourhood()
+
+
+func _on_destroyed(_plant: Plant) -> void:
+	release_all()
+	rewash_neighbourhood()
 
 
 ## Uprooting frees the node, which is the other way a patch can vanish. Plant does
@@ -105,6 +150,7 @@ func _on_setup() -> void:
 ## describes for `_draw`.
 func _exit_tree() -> void:
 	release_all()
+	rewash_neighbourhood()
 
 
 func _act(_delta: float, pests: Array[Pest]) -> void:
@@ -190,6 +236,24 @@ static func crossing_time_multiplier() -> float:
 	return 1.0 / SLOW_FACTOR
 
 
+## Pure: what ONE MORE patch would multiply the crossing time of a stretch of
+## road by, when `existing_sources` patches already cover that same stretch.
+##
+## This is plant-tower-defense-3lu written as arithmetic. The first patch is
+## worth crossing_time_multiplier() — 1.82x as long under every gun covering that
+## road. The second, and the third, and the tenth are worth 1.0: exactly nothing,
+## because the slow does not stack. Thirty seeds each for a number that does not
+## move.
+##
+## Stated here rather than left implied, and read by PlacementPreview so the cue
+## that warns about the second patch is derived from the balance rule instead of
+## being a second copy of it that can quietly drift off it.
+static func added_crossing_time_multiplier(existing_sources: int) -> float:
+	if existing_sources > 0:
+		return 1.0
+	return crossing_time_multiplier()
+
+
 ## How many patches are currently holding `pest`. 0 for an untouched pest, and
 ## still 0 for one that was released, since the metadata is removed rather than
 ## zeroed.
@@ -221,17 +285,120 @@ static func droplet_radius(stuck: int) -> float:
 	return lerpf(DROPLET_IDLE, DROPLET_FULL, t)
 
 
+## Pure: the patch disc as a polygon, centred on `center` in this patch's own
+## space.
+##
+## Wound the way Geometry2D hands an OUTER boundary back — the winding
+## is_polygon_clockwise() calls false — so an unclipped outline and a clipped one
+## are the same kind of thing and wash_polygons() can return either without the
+## caller having to know which it got. Pinned by a test, because it is a
+## convention of the engine's clipper rather than anything visible on screen.
+##
+## Every disc uses the same segment count and the same phase, so clipping one out
+## of another leaves no sliver of double-painted grass along the seam where the
+## two rims coincide.
+static func patch_outline(center: Vector2 = Vector2.ZERO) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for i: int in range(WASH_SEGMENTS):
+		var angle: float = TAU * float(i) / float(WASH_SEGMENTS)
+		out.append(center + Vector2.RIGHT.rotated(angle) * SAP_RADIUS)
+	return out
+
+
+## Pure: what this patch actually fills, given the offsets — relative to its own
+## centre — of the overlapping patches that own the ground they share.
+##
+## No neighbours gets the whole disc back, which is the common case and the one
+## PATCH_COLOR's alpha was tuned on. A patch whose ground is entirely claimed
+## (a second Sundew dropped on the very same spot) gets nothing at all and paints
+## nothing, which is the honest picture of what the second thirty seeds bought.
+static func wash_polygons(claimed: PackedVector2Array) -> Array[PackedVector2Array]:
+	var parts: Array[PackedVector2Array] = [patch_outline()]
+	for offset: Vector2 in claimed:
+		# Rims that only touch share no area; clipping on them would return the
+		# whole disc back as a slightly different polygon for no reason.
+		if offset.length() >= SAP_RADIUS * 2.0:
+			continue
+		var cutter: PackedVector2Array = patch_outline(offset)
+		var kept: Array[PackedVector2Array] = []
+		for part: PackedVector2Array in parts:
+			for piece: PackedVector2Array in Geometry2D.clip_polygons(part, cutter):
+				# Equal-radius discs cannot sit inside one another, so a single
+				# clip never punches a hole. Enough of them ringed around this
+				# patch can, though, and Geometry2D returns a hole wound the
+				# other way — filling one as if it were solid would paint back
+				# exactly the ground this whole function exists to leave alone.
+				if not Geometry2D.is_polygon_clockwise(piece):
+					kept.append(piece)
+		parts = kept
+	return parts
+
+
 # ---------------------------------------------------------------------- visuals
 
 ## Note there is no super._draw() call here, and there must not be: the selection
 ## brackets live in a SelectionMarker child precisely because an override like
 ## this one eats them. See SelectionMarker's header.
 func _draw() -> void:
-	draw_circle(Vector2.ZERO, SAP_RADIUS, PATCH_COLOR)
+	_draw_wash()
 	var radius: float = droplet_radius(stuck_count())
 	for bead: Vector2 in droplet_points():
 		draw_circle(bead, radius + DROPLET_RIM_WIDTH, DROPLET_RIM_COLOR)
 		draw_circle(bead, radius, DROPLET_COLOR)
+
+
+## This patch's share of the union — see WASH_SEGMENTS for why it is a share
+## rather than a disc.
+func _draw_wash() -> void:
+	var claimed: PackedVector2Array = shared_ground_offsets()
+	if claimed.is_empty():
+		# Nothing overlaps, so the share IS the disc. Kept as draw_circle rather
+		# than a 48-gon so the overwhelmingly common single patch is pixel-for-
+		# pixel what it always was.
+		draw_circle(Vector2.ZERO, SAP_RADIUS, PATCH_COLOR)
+		return
+	for part: PackedVector2Array in wash_polygons(claimed):
+		if part.size() >= 3:
+			draw_colored_polygon(part, PATCH_COLOR)
+
+
+## Offsets, in this patch's own space, of the overlapping patches that own the
+## ground the two share — the ones that got here first. Everything this patch
+## outranks paints around it instead, so between any pair the lens is filled
+## exactly once.
+func shared_ground_offsets() -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for other: StickySundew in _sibling_patches():
+		if other._wash_order >= _wash_order:
+			continue
+		var offset: Vector2 = other.position - position
+		if offset.length() >= SAP_RADIUS * 2.0:
+			continue
+		out.append(offset)
+	return out
+
+
+## Every patch sharing ground with this one repaints when this one arrives or
+## leaves. Without that, an uprooted patch leaves an unwashed crescent behind in
+## its neighbour — the neighbour is still painting around a disc that is no
+## longer there.
+func rewash_neighbourhood() -> void:
+	queue_redraw()
+	for other: StickySundew in _sibling_patches():
+		if other.position.distance_to(position) < SAP_RADIUS * 2.0:
+			other.queue_redraw()
+
+
+func _sibling_patches() -> Array[StickySundew]:
+	var out: Array[StickySundew] = []
+	var parent: Node = get_parent()
+	if parent == null:
+		return out
+	for sibling: Node in parent.get_children():
+		var other := sibling as StickySundew
+		if other != null and other != self and is_instance_valid(other):
+			out.append(other)
+	return out
 
 
 func _refresh_droplets() -> void:

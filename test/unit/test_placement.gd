@@ -847,3 +847,285 @@ func test_the_catalogue_id_for_a_sundew_builds_a_sticky_sundew() -> String:
 			"and it is a StickySundew — add `PlantCatalog.SUNDEW: return StickySundew.new()` to Game._new_plant")
 	_T.free_ui(game)
 	return err
+
+
+# -- Two Sundews on one stretch of road (plant-tower-defense-3lu) -------------
+#
+# The slow does not stack, and must not: a stacking slow is a stun as soon as you
+# can afford three, which deletes the Chomp Flower's whole reason to exist.
+# Everything below leaves that rule alone and goes after the two things that were
+# telling the player the opposite — a wash that composited darker where patches
+# overlapped, and a preview that drew an encouraging ring over ground an existing
+# patch already covered.
+
+
+## Shoelace, absolute. The wash is checked by area because "the lens is not
+## painted twice" is a claim about how much ground got covered, and a walk over
+## the vertices alone cannot tell a crescent from a whole disc.
+func _poly_area(poly: PackedVector2Array) -> float:
+	var total: float = 0.0
+	for i: int in range(poly.size()):
+		var a: Vector2 = poly[i]
+		var b: Vector2 = poly[(i + 1) % poly.size()]
+		total += a.x * b.y - b.x * a.y
+	return absf(total) * 0.5
+
+
+## The rule this whole issue is careful NOT to change, pinned before anything
+## that could change it. Two patches over one pest hold it at SLOW_FACTOR, and
+## the arithmetic that says so is the same arithmetic the new preview cue is
+## drawn from — so a future balance pass that makes a second patch worth
+## something moves this test and that cue together, instead of leaving the cue
+## warning about a purchase that has become worth making.
+func test_a_second_patch_over_the_same_road_is_worth_exactly_nothing() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var cell: Vector2i = _grass(game)
+	var first: StickySundew = _sundew_at(game, cell)
+	var second: StickySundew = _sundew_at(game, cell)
+	second.position += Vector2(Board.CELL * 0.5, 0.0)
+	var pest: Pest = _pest_at(game, game.board.cell_to_world(cell))
+	var crowd: Array[Pest] = [pest]
+	var base: float = pest.speed
+	var stacked: float = StickySundew.slowed_speed(StickySundew.slowed_speed(base))
+	var err: String = _T.assert_true(first.covers(pest) and second.covers(pest),
+		"the pest is standing in both patches at once")
+	if err == "":
+		first.apply_patch(crowd)
+		second.apply_patch(crowd)
+		err = _T.assert_eq(StickySundew.slow_sources(pest), 2, "both patches are claiming it")
+	if err == "":
+		err = _T.assert_float_eq(pest.speed, StickySundew.slowed_speed(base), 0.001,
+			"and it still walks at one patch's speed — 0.55 of base, never 0.30")
+	if err == "":
+		# Without this, the assert above would also pass on a build where
+		# SLOW_FACTOR is 1.0 and both numbers are just the pest's own speed.
+		err = _T.assert_gt(absf(pest.speed - stacked), 1.0,
+			"a stacking slow would be a visibly different number, so that claim bites")
+	# The same fact as arithmetic. crossing_time_multiplier() had no caller
+	# outside a test before this: the plant computed the number that explains its
+	# own price and then never showed it to anything.
+	if err == "":
+		err = _T.assert_float_eq(StickySundew.added_crossing_time_multiplier(0),
+			StickySundew.crossing_time_multiplier(), 0.001,
+			"the first patch on a stretch of road is worth the plant's whole multiplier")
+	if err == "":
+		err = _T.assert_gt(StickySundew.added_crossing_time_multiplier(0), 1.0,
+			"which is strictly more time under every gun covering that road")
+	for already: int in range(1, 4):
+		if err != "":
+			break
+		err = _T.assert_float_eq(StickySundew.added_crossing_time_multiplier(already), 1.0,
+			0.0001, "patch %d over that same road adds nothing at all" % [already + 1])
+	_T.free_ui(game)
+	return err
+
+
+## Half one, and the primary fix: the wash used to draw the opposite of the test
+## above. Every patch filled its own disc at PATCH_COLOR's alpha 0.10, and alpha
+## blending is not idempotent — two of them over the same grass composite to an
+## effective 0.19, so the lens where two patches met came out nearly twice as
+## strong as either patch alone. Asserted as geometry, because "it looks about
+## right" is exactly the check that let it ship: no patch may paint one square
+## pixel of ground an earlier patch already owns.
+func test_two_overlapping_patches_wash_the_ground_they_share_exactly_once() -> String:
+	var whole: Array[PackedVector2Array] = StickySundew.wash_polygons(PackedVector2Array())
+	var err: String = _T.assert_eq(whole.size(), 1, "a patch with no neighbours fills one shape")
+	if err == "":
+		err = _T.assert_eq(whole[0].size(), StickySundew.WASH_SEGMENTS,
+			"and that shape is its whole disc")
+	if err != "":
+		return err
+	var full_area: float = _poly_area(whole[0])
+	err = _T.assert_gt(full_area, 0.0, "with real area in it to give away")
+	if err == "":
+		# Geometry2D hands an outer boundary back wound one way and a hole the
+		# other. The disc has to be wound like an outer, or _draw_wash's hole
+		# guard would throw away the very shapes it exists to keep.
+		err = _T.assert_false(Geometry2D.is_polygon_clockwise(StickySundew.patch_outline()),
+			"the patch outline is wound the way Geometry2D returns an outer boundary")
+	if err != "":
+		return err
+	var apart := PackedVector2Array([Vector2(StickySundew.SAP_RADIUS * 2.0 + 1.0, 0.0)])
+	var kept: Array[PackedVector2Array] = StickySundew.wash_polygons(apart)
+	err = _T.assert_eq(kept.size(), 1, "a patch that overlaps nothing keeps its whole disc")
+	if err == "":
+		err = _T.assert_float_eq(_poly_area(kept[0]), full_area, 1.0,
+			"exactly the disc, not a re-cut copy of it")
+	if err != "":
+		return err
+	# One cell apart: how two Sundews flanking the same lane actually sit.
+	var offset := Vector2(Board.CELL, 0.0)
+	var share: Array[PackedVector2Array] = StickySundew.wash_polygons(
+		PackedVector2Array([offset]))
+	err = _T.assert_gt(share.size(), 0, "the later patch still has ground of its own to wash")
+	if err != "":
+		return err
+	var painted: float = 0.0
+	for part: PackedVector2Array in share:
+		painted += _poly_area(part)
+		for point: Vector2 in part:
+			err = _T.assert_gte(point.distance_to(offset), StickySundew.SAP_RADIUS - 0.5,
+				"no corner of the later patch's wash reaches inside the earlier patch's disc")
+			if err != "":
+				return err
+	err = _T.assert_gt(painted, 0.0, "and it painted that ground rather than giving up entirely")
+	if err == "":
+		err = _T.assert_gt(full_area, painted + 1000.0,
+			"while handing back a real share of the disc — the lens is painted once, not twice")
+	if err == "":
+		# Dropped on the identical spot, the second patch paints nothing at all,
+		# which is the honest picture of what the second thirty seeds bought.
+		var on_top: Array[PackedVector2Array] = StickySundew.wash_polygons(
+			PackedVector2Array([Vector2.ZERO]))
+		var left: float = 0.0
+		for part: PackedVector2Array in on_top:
+			left += _poly_area(part)
+		err = _T.assert_float_eq(left, 0.0, 1.0, "a patch on the very same spot washes nothing")
+	return err
+
+
+## Half two, on the real board. (2, 0) and (2, 2) sit on opposite sides of the
+## row-1 lane and cover the identical three road cells — sixty seeds for one
+## stretch of sticky road, which is the purchase this cue exists to talk a player
+## out of. (3, 2) is one cell along and picks up (4, 1) as well, so it is a second
+## patch worth buying and must draw nothing.
+func test_the_preview_warns_about_ground_an_existing_patch_already_covers() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var reach: float = PlantCatalog.reach(PlantCatalog.SUNDEW)
+	var here := Vector2i(2, 0)
+	var doubled := Vector2i(2, 2)
+	var extended := Vector2i(3, 2)
+	var mine: Array[Vector2i] = PlacementPreview.covered_road_cell_list(game.board, here, reach)
+	var same: Array[Vector2i] = PlacementPreview.covered_road_cell_list(game.board, doubled, reach)
+	var more: Array[Vector2i] = PlacementPreview.covered_road_cell_list(game.board, extended, reach)
+	# The board geometry the rest of this rides on, stated rather than assumed: a
+	# PATH_CORNERS change that moved these cells should fail here, loudly, rather
+	# than quietly turning every assertion below into a test of nothing.
+	var err: String = _T.assert_eq(mine.size(), 3, "a patch on (2, 0) covers three road cells")
+	if err == "":
+		err = _T.assert_eq(same.size(), 3, "and one on (2, 2) covers three of them too")
+	if err == "":
+		err = _T.assert_gt(more.size(), 0, "while (3, 2) covers road as well")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	for road: Vector2i in same:
+		err = _T.assert_true(mine.has(road), "(2, 2) covers %s, and so does (2, 0)" % road)
+		if err != "":
+			_T.free_ui(game)
+			return err
+	var new_road: int = 0
+	for road: Vector2i in more:
+		if not mine.has(road):
+			new_road += 1
+	err = _T.assert_gt(new_road, 0, "but (3, 2) reaches road that (2, 0) never touches")
+	var preview: PlacementPreview = _preview(game)
+	if err == "":
+		err = _T.assert_true(preview != null, "the game built a placement preview")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	preview.placeable = true
+	preview.at_risk = false
+	preview.reach = reach
+	preview.position = game.board.cell_to_world(doubled)
+	# Before and after, so a cue that simply fired on everything could not pass.
+	err = _T.assert_false(preview.shows_redundant_coverage(),
+		"with nothing planted yet, (2, 2) is ground worth covering")
+	if err == "":
+		err = _T.assert_eq(preview.covering_patch_count(), 0, "and no patch is covering it")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var patch: StickySundew = _sundew_at(game, here)
+	err = _T.assert_true(patch != null, "a real Sundew is standing on (2, 0)")
+	if err == "":
+		err = _T.assert_true(preview.previewing_non_stacking_patch(),
+			"the preview works out it is previewing a patch from the reach alone")
+	if err == "":
+		err = _T.assert_eq(preview.covering_patch_count(), 1,
+			"and finds the one patch already covering every road cell (2, 2) would")
+	if err == "":
+		err = _T.assert_true(preview.shows_redundant_coverage(),
+			"so hovering (2, 2) is marked as a second patch over the same road")
+	if err == "":
+		err = _T.assert_false(preview.shows_dead_zone(),
+			"and is not ALSO called dead ground — it does cover road, just somebody else's")
+	if err == "":
+		# Told rather than inferred: the one-line call-site change has to agree
+		# with the fallback, not quietly switch the cue off.
+		preview.plant_id = PlantCatalog.SUNDEW
+		err = _T.assert_true(preview.shows_redundant_coverage(),
+			"and says the same thing when the caller names the plant outright")
+	if err == "":
+		preview.plant_id = PlantCatalog.CORN
+		preview.reach = PlantCatalog.reach(PlantCatalog.CORN)
+		err = _T.assert_false(preview.shows_redundant_coverage(),
+			"a Corn Cobbler on that cell is not redundant — guns stack, dew does not")
+	if err == "":
+		preview.plant_id = PlantCatalog.SUNDEW
+		preview.reach = reach
+		preview.position = game.board.cell_to_world(extended)
+		err = _T.assert_eq(preview.covering_patch_count(), 0,
+			"one cell along, the existing patch no longer covers everything")
+	if err == "":
+		err = _T.assert_false(preview.shows_redundant_coverage(),
+			"so a patch that extends the sticky road is not warned about")
+	if err == "":
+		err = _T.assert_false(preview.shows_dead_zone(), "and is not dead ground either")
+	_T.free_ui(game)
+	return err
+
+
+## Precedence, all four rules over one board. An illegal cell gets exactly one
+## refusal; dead ground keeps the cue cycle 8 gave it; and the two marks are
+## mutually exclusive by construction — opposite sides of "does it cover any road
+## at all" — rather than by an `elif` somebody can delete.
+func test_the_redundancy_mark_never_lands_on_top_of_another_cue() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var reach: float = PlantCatalog.reach(PlantCatalog.SUNDEW)
+	var preview: PlacementPreview = _preview(game)
+	var err: String = _T.assert_true(preview != null, "the game built a placement preview")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var patch: StickySundew = _sundew_at(game, Vector2i(2, 0))
+	preview.plant_id = PlantCatalog.SUNDEW
+	preview.reach = reach
+	preview.at_risk = false
+	# Rule 1 over rule 4: the cell really is redundant, and the refusal still wins.
+	preview.position = game.board.cell_to_world(Vector2i(2, 2))
+	preview.placeable = true
+	err = _T.assert_true(patch != null and preview.shows_redundant_coverage(),
+		"(2, 2) is redundant ground while a patch stands on (2, 0)")
+	if err == "":
+		preview.placeable = false
+		err = _T.assert_false(preview.shows_redundant_coverage(),
+			"but an illegal hover draws only the refusal, never both cues")
+	if err == "":
+		err = _T.assert_eq(preview.covering_patch_count(), 1,
+			"the geometry is unchanged — legality is what suppressed the mark")
+	# Rule 3 over rule 4: dead ground covers no road at all, so there is no
+	# covered road for an existing patch to already own.
+	var dead := Vector2i(13, 0)
+	if err == "":
+		preview.placeable = true
+		preview.position = game.board.cell_to_world(dead)
+		err = _T.assert_eq(PlacementPreview.covered_road_cells(game.board, dead, reach), 0,
+			"(13, 0) puts no road at all under a Sundew's dew")
+	if err == "":
+		err = _T.assert_true(preview.shows_dead_zone(), "so it is still marked dead ground")
+	if err == "":
+		err = _T.assert_false(preview.shows_redundant_coverage(),
+			"and never also marked redundant — no cell can wear both marks")
+	# And the cue cycle 8 shipped is untouched for the plant it was built for.
+	if err == "":
+		preview.plant_id = PlantCatalog.CORN
+		preview.reach = PlantCatalog.reach(PlantCatalog.CORN)
+		err = _T.assert_true(preview.shows_dead_zone(),
+			"a Corn Cobbler on (13, 0) is dead ground exactly as before")
+	if err == "":
+		err = _T.assert_false(preview.shows_redundant_coverage(),
+			"with no second mark added on top of it")
+	_T.free_ui(game)
+	return err

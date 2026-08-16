@@ -709,6 +709,10 @@ func _update_preview(cell: Vector2i, free: bool) -> void:
 	_preview.visible = true
 	_preview.position = board.cell_to_world(cell)
 	_preview.reach = PlantCatalog.reach(selected_plant)
+	# Explicit rather than inferred. PlacementPreview falls back to deducing the
+	# kind from `reach`, which works only while no two plants share a radius --
+	# a coincidence, not a rule, and the redundant-coverage cue depends on it.
+	_preview.plant_id = selected_plant
 	# can_afford already folds in both the lock and the free starter
 	# (placement_cost returns 0 while it is available), so it is the whole
 	# money question in one call.
