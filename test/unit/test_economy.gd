@@ -1377,3 +1377,126 @@ func test_the_budgets_verb_and_the_startup_check_price_the_same_budgets() -> Str
 				% [reply["data"]["warnings"]])
 	_T.free_ui(game)
 	return err
+
+
+# -- The purse's signals as contracts, not as decoration ---------------------
+#
+# `suite_reach_check` reported 17 of 24 signals in this game named by no test.
+# A signal is the one thing in a Godot project with no compile-time contract at
+# all: a wrong argument count fails at emit time, a listener that stopped being
+# connected fails silently and forever, and neither is visible to lint. These
+# assert what the signal CARRIES and on which paths it fires, because naming it
+# would satisfy the checker while proving nothing.
+
+
+## Every path that moves the purse announces the new total — including refund,
+## which is the one that looks like it might not.
+##
+## `refund()` routes through `add_seeds(amount, false)`, and that `false` exists
+## to keep a refund off `seeds_earned_total` (crediting it made uproot a
+## repeatable score button). It would be an easy mistake to suppress the signal
+## on the same flag, which would leave the HUD showing a stale purse after every
+## uproot — visible only by eye, and only if you looked.
+func test_every_path_that_moves_the_purse_announces_the_new_total() -> String:
+	var bank := SeedBank.new()
+	var seen: Array[int] = []
+	bank.seeds_changed.connect(func(total: int) -> void: seen.append(total))
+
+	bank.add_seeds(10)
+	var err: String = _T.assert_eq(seen.size(), 1, "income announces once")
+	if err == "":
+		err = _T.assert_eq(seen[seen.size() - 1], bank.seeds,
+			"and carries the purse's new total, not the delta")
+
+	if err == "":
+		var before_refund: int = seen.size()
+		bank.refund(5)
+		err = _T.assert_eq(seen.size(), before_refund + 1,
+			"a refund announces too — the counts_as_income flag is about the SCORE,"
+				+ " and must not be read as 'stay quiet'")
+	if err == "":
+		err = _T.assert_eq(seen[seen.size() - 1], bank.seeds,
+			"and the refund's announcement is also the new total")
+
+	# And the score half of that same call, so the two cannot be conflated later.
+	if err == "":
+		err = _T.assert_eq(bank.seeds_earned_total, 10,
+			"while the refund stayed off the score, which is why the flag exists")
+
+	bank.free()
+	return err
+
+
+## A purchase announces; a refused purchase does not.
+##
+## The failure direction matters more than the success: an emit on the refusal
+## path would drive the HUD to redraw a purse that did not move, and every
+## readout would agree with itself while being wrong about whether you paid.
+func test_a_refused_purchase_says_nothing_about_the_purse() -> String:
+	var bank := SeedBank.new()
+	var announced: int = 0
+	var refusals: Array[String] = []
+	bank.seeds_changed.connect(func(_total: int) -> void: announced += 1)
+	bank.purchase_failed.connect(func(reason: String) -> void: refusals.append(reason))
+
+	# Locked by construction: the catalogue says so rather than this test assuming it.
+	var locked: Array[StringName] = bank.locked_plants()
+	var err: String = _T.assert_gt(locked.size(), 0,
+		"some plant starts locked, or the refusal below cannot happen")
+	if err != "":
+		bank.free()
+		return err
+
+	var paid: bool = bank.pay_for_plant(locked[0])
+	err = _T.assert_false(paid, "a locked plant cannot be bought")
+	if err == "":
+		err = _T.assert_eq(announced, 0, "and the purse announced nothing")
+	if err == "":
+		err = _T.assert_eq(refusals.size(), 1, "while the refusal was announced once")
+	if err == "":
+		err = _T.assert_true(refusals[0].length() > 0,
+			"with a reason a player could read, not an empty string")
+
+	bank.free()
+	return err
+
+
+## `plant_unlocked` carries the plant that was actually unlocked, and fires only
+## when one was. A packet that cannot afford itself, or has nothing left to give,
+## must not announce an unlock it did not perform.
+func test_the_packet_announces_only_the_plant_it_really_unlocked() -> String:
+	var bank := SeedBank.new()
+	bank.set_seed(12345)
+	var unlocked_ids: Array[StringName] = []
+	bank.plant_unlocked.connect(func(id: StringName) -> void: unlocked_ids.append(id))
+
+	# Too poor: no unlock, no announcement.
+	bank.seeds = 0
+	var got: StringName = bank.buy_packet()
+	var err: String = _T.assert_eq(String(got), "", "a packet nobody can afford buys nothing")
+	if err == "":
+		err = _T.assert_eq(unlocked_ids.size(), 0, "and announces nothing")
+	if err != "":
+		bank.free()
+		return err
+
+	# Affordable: exactly one unlock, and the id announced is the id returned.
+	bank.seeds = 999
+	var before: int = bank.unlocked.size()
+	got = bank.buy_packet()
+	err = _T.assert_true(String(got) != "", "a packet that can be afforded gives something")
+	if err == "":
+		err = _T.assert_eq(unlocked_ids.size(), 1, "and announces exactly once")
+	if err == "":
+		err = _T.assert_eq(unlocked_ids[0], got,
+			"and the id announced is the id returned — a listener and a caller"
+				+ " reading different plants is the whole failure this guards")
+	if err == "":
+		err = _T.assert_eq(bank.unlocked.size(), before + 1,
+			"and the purse's own list grew by exactly one")
+	if err == "":
+		err = _T.assert_true(bank.is_unlocked(got),
+			"and the announced plant really is unlocked afterwards")
+
+	bank.free()
+	return err
