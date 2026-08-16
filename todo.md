@@ -1,6 +1,6 @@
 # todo
 
-**Cycle 2 of 30.** Bump this each time you refill the Items list. See the Workflow
+**Cycle 3 of 30.** Bump this each time you refill the Items list. See the Workflow
 loop at the top of `CLAUDE.md` — when this list is done, refill it and start again.
 
 ## The brief (original)
@@ -24,17 +24,16 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 
 ## Items
 
-- [ ] HUD compost counter collides with the "Grow the next wave" button — the
-      `(N ready)` suffix runs under it, and no check catches sibling-Control
-      occlusion (`plant-tower-defense-kcj`)
-- [ ] A richer husk should rot faster, so sweep order becomes a decision
-      instead of every husk sharing one 10s timer (`plant-tower-defense-kh9`)
-- [ ] Show a readable threat level for endless mode — five scales now climb
-      independently and the player can see none of them
-      (`plant-tower-defense-o1p`)
-- [ ] Per-run lane pressure for the end-of-run post-mortem, alongside the
-      per-wave map that fades (`plant-tower-defense-dbg`)
-- [ ] Placement preview should warn when a non-combat plant is road-adjacent —
-      the preview already knows reach and legality (`plant-tower-defense-8bb`)
-- [ ] Add cool new features or concrete improvements (either gameplay or UX)
-      to `kanban.md` 
+- [ ] Uproot needs a confirm or an undo — it is the only irreversible misclick
+      in the game (`plant-tower-defense-zr4`)
+- [ ] Show a selected plant's health in the side panel, so "uproot and replant?"
+      is a decision the panel can actually support (`plant-tower-defense-5zc`)
+- [ ] A real end-of-run summary panel — every number is already computed and
+      currently lives in a message that expires (`plant-tower-defense-cw1`)
+- [ ] Tint the threat level as it climbs, so escalation is seen not read
+      (`plant-tower-defense-cuk`)
+- [ ] Project-identity devtools verb, so a session can prove which build it is
+      driving before trusting a runtime pass (`plant-tower-defense-gqs`)
+- [ ] Add cool new features or concrete improvements (UX, game juice,
+      animations, enhancements, or full features) to `kanban.md` — mine what
+      this cycle's own work revealed, not just abstract ideas

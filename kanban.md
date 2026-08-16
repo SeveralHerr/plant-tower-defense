@@ -136,16 +136,79 @@ idea backlog that isn't filed yet.
     measures a multiline Label as one joined line, gating on a banner that renders
     correctly (G-014). Plus G-015, reach treating a base class as unreached.
 
+- **Cycle 2 of 30 shipped five more** — the HUD top bar rebuilt as a container, husk
+  lifetime scaled by value, a readable endless threat level, an unfaded per-run lane
+  pressure post-mortem, and a hungry-pest warning on the placement preview.
+  `plant-tower-defense-kcj`, `-kh9`, `-o1p`, `-dbg`, `-8bb`
+  - **HUD top bar cannot self-collide** — four labels at hand-picked x positions became
+    an HBoxContainer with an expanding spacer and a clipped width budget per readout.
+    Two non-obvious failures on the way: an HBox will not shrink a child below its
+    minimum, so the spacer-only version shoved the button 97px off-screen instead of
+    overlapping; and trimming the button to 34px to fit two rows put it under the 40x40
+    minimum touch target, which `findings` flagged.
+  - **Richer husks rot faster** — 4.5s against 10s, so sweep order is a decision. The
+    value→urgency curve moved into `CompostMeter.value_fraction()` and `HuskLayer`
+    delegates to it, so size, glow and clock cannot disagree.
+  - **Readable threat level** — `threat_for()` prices a wave as total pest health scaled
+    by every endless multiplier; `threat_level()` is the log-scaled small integer the bar
+    shows, because the raw multiple hits x897 by wave 108. The wave-start message names
+    what climbed and drops a scale once it caps.
+  - **Per-run lane pressure** — the live overlay fades by design, so `Board` now also
+    keeps an unfaded run total and `_end_run` swaps the board to it. Verified on a real
+    lost run: painted map came out exactly `run_losses / max`, worst cell was the exit.
+  - **Hungry-pest warning** — a dashed amber ring on a defenceless plant hovering within
+    one cell of the road. Only plants with no reach of their own; a Corn Cobbler there is
+    the point of a Corn Cobbler.
+  - Four more harness gaps found and filed: `step-time` cannot isolate a state shorter
+    than a bus round-trip (G-016), a clipped Label's trimming is reported identically to
+    a real overflow (G-017), a sibling worktree silently answers your bus (G-018), and
+    `set-state` on a typed Array silently no-ops (G-019).
+
 ## Next up
 
-See the fresh checklist in `todo.md` — the five items filed out of the backlog below
-at the end of the 2026-08-15 session.
+See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
+`plant-tower-defense-zr4` (uproot confirm), `-5zc` (plant health in the panel),
+`-cw1` (end-of-run summary panel), `-cuk` (tint the threat level), `-gqs`
+(project-identity devtools verb).
 
 ---
 
 ## Cool new features (idea backlog)
 
-### New this session — grown from watching the four features run
+### New this cycle (2 of 30) — grown from watching the five features run
+
+- **Uproot has no undo and no confirmation.** Verifying the placement preview meant
+  repeatedly rebuilding a board, and the Uproot button refunds 60% instantly with no
+  "are you sure" — one stray click on a selected Sunflower late in a run silently
+  destroys the economy the whole run was built on. A confirm step, or a few seconds of
+  undo, costs nothing and removes the only irreversible misclick in the game.
+- **The threat level should colour, not just count.** `threat_level()` now produces a
+  small integer that climbs 1→25 over a long endless run, and it renders in the same
+  cream as everything else on the bar. Tinting it (green → amber → red as it climbs)
+  would make "this wave is worse than the last" preattentive rather than something the
+  player has to read and compare.
+- **Nothing shows a plant's own health.** Hungry pests chew plants down over several
+  seconds, and `Plant.health` is drawn as a bar — but the *selection panel* shows only
+  the name and blurb. Selecting a half-eaten Corn tells you nothing about whether to
+  uproot and replant it.
+- **The post-mortem is one line and then it is gone.** `_end_run` now paints the run's
+  whole damage map on the board and names the worst cell in a 30s message, which expires
+  while the player is still looking at the banner. A proper end-of-run panel — waves
+  survived, threat level reached, seeds earned, worst cell, husks missed — has all its
+  data already computed and nowhere to live.
+- **Husk urgency is invisible until you know the rule.** A rich husk is bigger, brighter
+  *and* on a 4.5s clock instead of 10s, but the rot ring sweeps at the same visual rate
+  for both because it is normalised per husk. Two husks dropped together now empty their
+  rings at visibly different speeds only if you watch closely. Making the ring's colour
+  shift toward red as it empties would sell the urgency the timer already has.
+- **A worktree sibling can hijack the devtools bus, and the project cannot detect it.**
+  Cost most of an item's runtime pass this cycle: another checkout of this same project
+  had a Godot running, `user://` is shared by project name, and its game answered every
+  verb. Symptoms were `no Game in the tree` and node-not-found on paths that existed.
+  A one-line project verb returning `ProjectSettings.globalize_path("res://")` would let
+  any session assert it is talking to its own build. Filed upstream as G-018.
+
+### From the previous cycle — grown from watching the four features run
 
 - **The compost readout collides with the wave button.** Caught in a screenshot while
   verifying husk scaling: with eleven husks on the ground the HUD reads
