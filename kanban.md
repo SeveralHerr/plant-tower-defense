@@ -1611,3 +1611,37 @@ of what the design doc already says, rather than being bolted on.
   `RISE_OFFSET` over the identical `RISE_SECONDS`, with no branch on `won`
   anywhere in it. The two headings already disagree about how the run went; the
   motion carrying them onto the screen currently does not.
+
+### New this cycle (23 of 30) — grown from the features above
+
+- **A kernel that connects and a kernel that whiffs both just vanish.** `Kernel._physics_process`
+  (kernel.gd:60-72) has exactly two exits: leave `_bounds` and `queue_free()`, or land
+  inside `HIT_RADIUS` of a pest, call `take_damage()`, and `queue_free()` — same call,
+  same frame, no distinction drawn on screen between the two. Every plant now has an
+  attack cue of its own (`y62`, this cycle) and every pest death fades instead of
+  popping (`3t9`, this cycle); the projectile connecting them is the one link in that
+  chain with no impact flash, spark, or even a differently-timed vanish to say a hit
+  landed rather than sailing off the board.
+
+- **The title screen is the first thing every player sees, and it is the one screen
+  in the game with zero motion.** `TitleBackdrop` (title_backdrop.gd) draws sky, glow,
+  ground, a scalloped grass edge and tufts — six `_draw_*` functions, all of them
+  static geometry, none of them touched by a `Tween` or a per-frame value. Contrast
+  everywhere else this session has been busy: plants sway idly (`04x`), selection
+  brackets grow in (`yx0`), HUD readouts punch (`t5l`), cards rise and fall (`c03`,
+  `9ti`). The screen a player stares at before any of that exists is the one place
+  none of it happens.
+
+- **This game has no music, only one-shot cues.** `Sfx.SOUNDS` (sfx.gd:68+) is
+  entirely footsteps, impacts, and stingers — every entry plays once and stops.
+  There is no `AudioStreamPlayer` anywhere driving a loop, no title theme, no bed
+  under a wave. Eight-plus attack/death/UI cues now layer onto complete silence
+  between them, which is a bigger gap the louder the sound design gets.
+
+- **The notebook's page counter repaints instantly while the page it is counting
+  turns with a tween.** `NotebookPage.current_page`'s setter calls `queue_redraw()`
+  and nothing else (notebook_page.gd:38-41), so the filled dot jumps to the new page
+  the instant `_page` changes (notebook_screen.gd:547), in the same frame
+  `_play_turn()` (notebook_screen.gd:577) is still partway through fading the
+  drawing and sprite in. The one readout built specifically to answer "how many
+  pages are left" is the one piece of the page turn that never turns.
