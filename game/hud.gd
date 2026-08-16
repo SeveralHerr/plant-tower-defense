@@ -19,7 +19,7 @@ const BAR_HEIGHT: int = 72
 const PANEL_WIDTH: int = 256
 
 ## Horizontal gap between the readouts in the top row.
-const STATS_SEPARATION: int = 18
+const STATS_SEPARATION: int = 14
 
 ## Level 1 is wave 1 by definition, and a player does not need telling that
 ## wave 1 is as hard as wave 1.
@@ -36,10 +36,23 @@ const NEXT_WAVE_BUTTON_SIZE := Vector2(216, 40)
 ## is the SUM: these plus the separations plus the button must stay inside the
 ## bar, and that is the invariant `test_the_stats_row_budget_fits_the_bar`
 ## pins. The wave slot is the widest because it carries the threat level too.
-const SEEDS_LABEL_WIDTH: float = 130.0
-const WAVE_LABEL_WIDTH: float = 320.0
-const LIVES_LABEL_WIDTH: float = 140.0
-const COMPOST_LABEL_WIDTH: float = 190.0
+const SEEDS_LABEL_WIDTH: float = 180.0
+const WAVE_LABEL_WIDTH: float = 315.0
+const LIVES_LABEL_WIDTH: float = 150.0
+const COMPOST_LABEL_WIDTH: float = 170.0
+
+## The longest string each readout can ever hold. Budgets are only meaningful
+## against these, and a clipped Label fails *silently* — it just renders
+## "Seeds  4…" and nothing complains, which is exactly how the first pass at
+## these numbers shipped a 130px seeds slot that could not hold a 3-digit
+## total. `test_no_readout_clips_its_own_worst_case` measures each of these
+## against its budget in the real theme font.
+const WORST_CASE_TEXT: Dictionary = {
+	"SeedsLabel": "Seeds  99999",
+	"WaveLabel": "Wave  9999 ∞   threat 99",
+	"LivesLabel": "Garden  10",
+	"CompostLabel": "Compost  9999",
+}
 
 ## The bar is two rows. Keeping them as named constants is what makes the gap
 ## between them checkable instead of implied by four scattered literals.

@@ -1484,10 +1484,10 @@ func test_the_escalation_note_is_silent_in_campaign_and_speaks_in_endless() -> S
 		if err != "":
 			return err
 	var note: String = WaveDirector.escalation_note(WaveDirector.WAVES.size() + 3)
-	err = _T.assert_true(note != "", "an endless wave names what climbed (got %r)" % note)
+	err = _T.assert_true(note != "", "an endless wave names what climbed (got %s)" % note)
 	if err == "":
 		err = _T.assert_true(note.contains("tougher") and note.contains("faster"),
-			"and both pest scales are in it while they are still climbing: %r" % note)
+			"and both pest scales are in it while they are still climbing: %s" % note)
 	return err
 
 
@@ -1500,7 +1500,7 @@ func test_a_capped_scale_stops_being_announced() -> String:
 		"sanity: health is capped this far out")
 	if err == "":
 		err = _T.assert_false(WaveDirector.escalation_note(far).contains("tougher"),
-			"a capped scale is not announced as still climbing: %r" % WaveDirector.escalation_note(far))
+			"a capped scale is not announced as still climbing: %s" % WaveDirector.escalation_note(far))
 	return err
 
 
@@ -1555,11 +1555,143 @@ func test_the_threat_readout_hides_itself_at_wave_one() -> String:
 	game._refresh()
 	var label: Label = game.hud.get_node("Root/TopBar/StatsRow/WaveLabel") as Label
 	var err: String = _T.assert_false(label.text.contains("threat"),
-		"wave 1 shows no threat multiple (got %r)" % label.text)
+		"wave 1 shows no threat level (got %s)" % label.text)
 	if err == "":
 		game.director.current_wave = WaveDirector.WAVES.size() + 20
 		game._refresh()
 		err = _T.assert_true(label.text.contains("threat"),
-			"a deep endless wave does show one (got %r)" % label.text)
+			"a deep endless wave does show one (got %s)" % label.text)
+	_T.free_ui(game)
+	return err
+
+
+# -- Per-run lane pressure post-mortem (plant-tower-defense-dbg) -------------
+
+
+## The whole reason for a second map: the per-wave one fades by design, so by
+## the end of a run the early damage is gone. The run total must not fade.
+func test_the_run_total_survives_fades_that_clear_the_wave_map() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+	var early: Vector2i = Board.PATH_CORNERS[0]
+	var late: Vector2i = Board.PATH_CORNERS[1]
+	board.record_lane_pressure_wave({early: 3})
+	# Enough later waves elsewhere to decay the early cell out of the live map.
+	for i: int in range(12):
+		board.record_lane_pressure_wave({late: 1})
+	var err: String = _T.assert_eq(board.lane_pressure_alpha(early), 0.0,
+		"the live map has forgotten the early cell entirely")
+	if err == "":
+		err = _T.assert_eq(int(board.run_losses().get(early, 0)), 3,
+			"but the run total still remembers all 3 losses there")
+	_T.free_ui(board)
+	return err
+
+
+## The post-mortem's headline: which single cell cost the most all run. Not the
+## most recent, and not the one the live overlay happens to be showing.
+func test_the_worst_run_cell_is_the_one_that_cost_the_most_overall() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+	var bad: Vector2i = Board.PATH_CORNERS[0]
+	var recent: Vector2i = Board.PATH_CORNERS[1]
+	board.record_lane_pressure_wave({bad: 9})
+	board.record_lane_pressure_wave({recent: 2})
+	var err: String = _T.assert_eq(board.worst_run_cell(), bad,
+		"the cell that lost 9 beats the cell that lost 2 most recently")
+	if err == "":
+		err = _T.assert_eq(board.lane_pressure_alpha(recent), 1.0,
+			"even though the live map is currently showing the recent one at full strength")
+	_T.free_ui(board)
+	return err
+
+
+## A run where nothing was ever lost must not point at a cell — (-1,-1) is the
+## caller's signal to say nothing rather than to praise column 0.
+func test_a_flawless_run_names_no_worst_cell() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+	var err: String = _T.assert_eq(board.worst_run_cell(), Vector2i(-1, -1),
+		"nothing lost, nothing to point at")
+	if err == "":
+		err = _T.assert_eq(board.run_pressure_alpha(Board.PATH_CORNERS[0]), 0.0,
+			"and no cell paints")
+	_T.free_ui(board)
+	return err
+
+
+## show_run_pressure repaints the overlay from the run total, so the board
+## itself becomes the post-mortem rather than needing a separate screen.
+func test_ending_a_run_repaints_the_board_with_the_whole_runs_damage() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+	var early: Vector2i = Board.PATH_CORNERS[0]
+	var late: Vector2i = Board.PATH_CORNERS[1]
+	# 30 at once beats 12 spread over 12 waves. Worth spelling out: the first
+	# version of this test used 8 and failed at 0.667, which was the code being
+	# right — twelve single losses really do outweigh eight in one go.
+	board.record_lane_pressure_wave({early: 30})
+	for i: int in range(12):
+		board.record_lane_pressure_wave({late: 1})
+	var err: String = _T.assert_eq(board.lane_pressure_alpha(early), 0.0, "faded out of the live map")
+	if err == "":
+		board.show_run_pressure()
+		err = _T.assert_eq(board.lane_pressure_alpha(early), 1.0,
+			"and back at full strength once the run ends, because 30 is the run's worst")
+	if err == "":
+		err = _T.assert_float_eq(board.lane_pressure_alpha(late), 12.0 / 30.0, 0.0001,
+			"while the 12 scattered losses show at exactly their share (got %.3f)"
+				% board.lane_pressure_alpha(late))
+	_T.free_ui(board)
+	return err
+
+
+## Through Game: losing the run must leave the post-mortem painted, which means
+## the run total has to be committed before _end_run swaps the overlay.
+func test_losing_the_run_leaves_the_post_mortem_on_the_board() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game._on_wave_started(1)
+	var cell: Vector2i = Board.PATH_CORNERS[0]
+	game._note_lane_loss(game.board.cell_to_world(cell))
+	game.lives = 1
+	game._on_pest_escaped(null)
+	var err: String = _T.assert_true(game.game_over, "the run ended")
+	if err == "":
+		err = _T.assert_true(game.board.run_losses().size() > 0,
+			"the run total was committed before the overlay was swapped, not after")
+	if err == "":
+		err = _T.assert_true(game.board.worst_run_cell().x >= 0,
+			"so the post-mortem has a cell to name")
+	_T.free_ui(game)
+	return err
+
+
+## A clipped Label fails silently — it renders "Seeds  4…" and nothing errors,
+## which is how a 130px seeds slot that could not hold a 3-digit total got
+## shipped and was only caught by looking at a screenshot. Measure every
+## readout's declared worst case against its budget in the real theme font.
+func test_no_readout_clips_its_own_worst_case() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var stats: HBoxContainer = game.hud.get_node("Root/TopBar/StatsRow") as HBoxContainer
+	var err: String = _T.assert_eq(Hud.WORST_CASE_TEXT.size(), 4,
+		"every readout in the row has a declared worst case")
+	# Reports every shortfall in one run rather than the first: with four
+	# budgets to balance, one-at-a-time means one relaunch per label.
+	var short: PackedStringArray = []
+	for name: String in Hud.WORST_CASE_TEXT:
+		var label: Label = stats.get_node_or_null(name) as Label
+		if label == null:
+			short.append("%s: no such readout" % name)
+			continue
+		var font: Font = label.get_theme_font("font")
+		var size: int = label.get_theme_font_size("font_size")
+		if size <= 0:
+			size = label.get_theme_default_font_size()
+		var needed: float = font.get_string_size(
+			String(Hud.WORST_CASE_TEXT[name]), HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+		if needed > label.custom_minimum_size.x:
+			short.append("%s needs %.0fpx, has %.0f" % [name, needed, label.custom_minimum_size.x])
+	if err == "":
+		err = _T.assert_eq(short.size(), 0, "readouts that clip their worst case: %s" % ", ".join(short))
 	_T.free_ui(game)
 	return err

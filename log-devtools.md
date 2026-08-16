@@ -981,3 +981,60 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     shorten the string) are both different from an untrimmed overflow. Combined with the
     multiline fix already proposed in [G-014], `ui_text_overflow` would then mean exactly
     one thing.
+
+## 2026-08-15 — Per-run lane pressure post-mortem for plant-tower-defense-dbg
+
+- Value: **warranted** — four findings, and the worst of them was that I had been
+  talking to the wrong game.
+  - Expected: losing a real run should repaint the board with the whole run's damage —
+    cells the live overlay had faded to nothing coming back. The unit tests drive
+    `Board` directly; only a live run proves `_end_run` fires the swap after the final
+    commit.
+  - Got: three waves against one Corn Cobbler took `lives` 10 -> 5 -> 1 -> 0. The
+    painted overlay after the loss read
+    `{(13,7): 1.0, (2,1): 0.2, (3,5): 0.1, (4,1): 0.2, (5,7): 0.2}` against
+    `run_losses = {(13,7): 10, (2,1): 2, (3,5): 1, (4,1): 2, (5,7): 2}` — exactly
+    `count / worst` for every cell, including the `(3,5)` the live map had faded from
+    0.25 to 0.1 across two waves. `worst_run_cell` = `(13, 7)`, the exit: this run died
+    to pests walking the whole road.
+  - Found: (1) **A sibling git worktree of this same project had its own Godot running
+    and was answering my bus.** `user://` is keyed on project name, so every worktree
+    shares it; `launch --isolated` isolates the bus directory but says plainly that
+    `user://` is not isolated. The symptom was `no Game in the tree` and
+    `Root node not found: /root/Game/Entities/Board` on paths that plainly existed,
+    which reads as your own code being broken. Confirmed by a live node whose script
+    was `res://game/title_backdrop.gd` — a file that does not exist in this checkout.
+    Every measurement in this item before that point is suspect and was re-taken on an
+    isolated bus. (2) `SeedsLabel` rendered as `Seeds  4…` — the width budgets I added
+    one item earlier were too narrow for a 3-digit seed total. Invisible to all three
+    rect-based tests, because the rect was exactly right; clipping is not overflow.
+    Caught by looking at a screenshot. Now pinned by
+    `test_no_readout_clips_its_own_worst_case`, which measures each readout's declared
+    worst-case string in the real theme font. (3) `%r` is not a GDScript format
+    specifier — six assertion messages printed their raw format string, so a failing
+    test said `%s needs %.0fpx for %r and has %.0fpx: Expected true but got false`. A
+    test that fails uninformatively is barely better than one that does not fail.
+    (4) Reading the pressure map cell-by-cell is 126 round trips and times out at two
+    minutes; the overlay's own `pressure` Dictionary is a single `get-state`.
+  - Cheaper: nothing. The swap needed a real lost run, and three of the four findings
+    only exist against a live game.
+
+- Gap: **a second Godot from a sibling git worktree silently answers your bus, and
+  nothing in the failure says so.** `launch` refuses a second instance *of the same
+  checkout* by pid, but a worktree is a different directory with the same project name,
+  so the guard does not fire and both processes poll the same
+  `%APPDATA%/Godot/app_userdata/plant-tower-defense`. Errors arrive as
+  `no Game in the tree` and `Root node not found`, i.e. as bugs in your own scene.
+  `launch --isolated` fixes it but you have to already suspect the problem to reach for
+  it, and its own banner says `user:// … (SHARED)` without saying what shares it.
+  - [G-018] status: open | seen: 1 | harness: 0.19.0
+  - Improvement: have `ping` and `launch` compare the answering game's `res://` project
+    path against the client's `--path`, and report a mismatch loudly
+    (`the game answering this bus is running from <other path>`). The bridge already
+    knows both. Failing that, make `launch`'s owner-file check key on project *path*
+    rather than pid, so a worktree instance is detected as a second owner.
+
+- Gap: **[G-012] seen again** — zombie Godot processes surviving `quit`. Two were alive
+  and `Responding` with neither matching the owner file's pid; only
+  `Get-Process Godot* | Stop-Process -Force`, twice, cleared them.
+  - [G-012] status: open | seen: 2 | harness: 0.19.0

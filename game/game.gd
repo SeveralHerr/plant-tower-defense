@@ -249,6 +249,16 @@ func _end_run(banner: String) -> void:
 	else:
 		line += "  (best %d)" % RunConfig.high_score
 	hud.show_banner(line)
+	# The post-mortem. While playing, the overlay shows the last wave and fades
+	# older ones, which is what makes it readable in the moment and useless
+	# afterwards — by the time a run ends, wave 3's disaster has decayed to
+	# nothing. Swap it for the run total, which was accumulated unfaded all
+	# along, so the board itself answers "where was my garden actually weak".
+	board.show_run_pressure()
+	var worst: Vector2i = board.worst_run_cell()
+	if worst.x >= 0:
+		hud.show_message("Your weakest ground was the road at column %d, row %d — %d pests lost there."
+			% [worst.x + 1, worst.y + 1, int(board.run_losses().get(worst, 0))], 30.0)
 
 
 # -- placement --------------------------------------------------------------

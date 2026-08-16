@@ -58,6 +58,10 @@ var _path_cells: Dictionary = {}
 var _path_order: Array[Vector2i] = []
 var _route: PackedVector2Array = PackedVector2Array()
 var _pressure_overlay: LanePressureOverlay = null
+## Road cell -> total pests lost there across the whole run. Never faded; see
+## run_losses(). Kept beside the overlay's decaying map rather than derived
+## from it, because the decay is lossy by design and cannot be undone.
+var _run_losses: Dictionary = {}
 
 
 func _ready() -> void:
@@ -208,6 +212,8 @@ func record_lane_pressure_wave(losses: Dictionary) -> void:
 		worst = maxf(worst, count)
 	if fresh.is_empty():
 		return
+	for cell: Vector2i in fresh:
+		_run_losses[cell] = int(_run_losses.get(cell, 0)) + int(fresh[cell])
 	var out: Dictionary = {}
 	for key: Vector2i in _pressure_overlay.pressure:
 		if fresh.has(key):
@@ -228,6 +234,52 @@ func record_lane_pressure_wave(losses: Dictionary) -> void:
 ## semantics, and the cell lands at full strength since it is its own worst.
 func record_lane_pressure(cell: Vector2i) -> void:
 	record_lane_pressure_wave({cell: 1})
+
+
+## Every loss of the whole run, never faded. The per-wave map answers "where
+## did I lose *this* wave" and fades by design, which is what makes it readable
+## while playing and useless afterwards — by the time a run ends, wave 3's
+## disaster has decayed to nothing. This is the other question: which ground
+## bled you all game.
+func run_losses() -> Dictionary:
+	return _run_losses.duplicate()
+
+
+## Run-total pressure at `cell`, normalised against the run's own worst cell so
+## it reads the same way the per-wave map does.
+func run_pressure_alpha(cell: Vector2i) -> float:
+	var worst: int = 0
+	for key: Vector2i in _run_losses:
+		worst = maxi(worst, int(_run_losses[key]))
+	if worst <= 0:
+		return 0.0
+	return maxf(LANE_PRESSURE_MIN_ALPHA, float(_run_losses.get(cell, 0)) / float(worst))
+
+
+## The single cell that cost the most over the whole run, or (-1, -1) if
+## nothing was ever lost. What the post-mortem points at.
+func worst_run_cell() -> Vector2i:
+	var best: Vector2i = Vector2i(-1, -1)
+	var most: int = 0
+	for cell: Vector2i in _run_losses:
+		var count: int = int(_run_losses[cell])
+		if count > most:
+			most = count
+			best = cell
+	return best
+
+
+## Swaps the overlay from the decaying per-wave map to the run total. One-way
+## and deliberately so: this is called once, when the run ends, and there is
+## nothing left to play that would want the live map back.
+func show_run_pressure() -> void:
+	if _pressure_overlay == null or _run_losses.is_empty():
+		return
+	var out: Dictionary = {}
+	for cell: Vector2i in _run_losses:
+		out[cell] = run_pressure_alpha(cell)
+	_pressure_overlay.pressure = out
+	_pressure_overlay.queue_redraw()
 
 
 ## Current tint strength at `cell`, 0.0 if nothing has been recorded there
