@@ -2853,3 +2853,45 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     as a third bucket (`reached_loaded`) beside `reached` and `reached_alias`. It
     is an observation rather than a declaration and would retire the whole class of
     alias entries projects write for RefCounted helpers.
+
+## 2026-08-16 — A colourblind-safe ramp for the health and threat bars (plant-tower-defense-xu0)
+
+- Value: **warranted** — a headless test caught a defect that would have shipped
+  looking exactly right, and the live pass proved the tween lands on the new stop.
+  - Expected: pressing C would swap the wave readout and the health fill onto the
+    blue/orange ramp and write the choice down; pressing it again would put both
+    back. The suite can assert the ramp *selection* as pure data
+    (`threat_color_on` / `health_color_on` take the flag), but not that the key
+    reaches the handler, that the easing tint tween ends on the new stop rather
+    than somewhere between the two, or that the option lands in the real save.
+  - Got: `key C` flipped `RunConfig.colorblind_safe` to true and
+    `theme_override_colors/font_color` on `WaveLabel` (threat 22) read back
+    `{r: 0.976, g: 0.647, b: 0.196}` — exactly `GardenTheme.SAFE_BAD`. A second
+    press returned it to `{0.85, 0.25, 0.22}` = `DANGER`. `user://highscore.save`
+    read `v4 / 3 / 3 / m2:campaign_cleared,threat_peak / cb1`, then `cb0` after the
+    next press — the real save path, not a scratch one.
+  - Found: **the first blue/orange pick was worse than the ramp it replaced.**
+    `test_the_safe_ramp_separates_its_ends_in_more_than_the_red_green_channel`
+    failed with "the safe ends differ in lightness by 0.157 against the default's
+    0.267" — a colourblind-safe pair *harder* to tell apart in greyscale than
+    green-against-red, which is the one property the whole option exists to fix. A
+    mid blue against a mid orange is the picture everyone has of this fix and it
+    reads as obviously correct in a diff; only a test asserting the property rather
+    than the colours produces that number. Fixed by pushing both stops apart in
+    lightness (0.33 against 0.69, gap 0.36). Also noted in passing, from one
+    `find-nodes --class ColorRect` sweep: the in-world plant health bar
+    (`Plant.HEALTH_BAR_HURT`) is a THIRD red-lerp bar still on the old ramp — out
+    of scope for an issue that names the two hud.gd sites, so filed rather than
+    widened.
+  - Cheaper: nothing for the tint. The ramp arithmetic is covered headless, but the
+    wave readout's colour is a theme *override* reached through an easing tween, so
+    "does the bar the player is looking at end up on the new ramp" is only
+    answerable by reading `theme_override_colors/font_color` off the live label
+    after the tween settles.
+
+- Gap: no gaps this turn. The one thing that needed a workaround —
+  `--userdata C:\...` with backslashes silently polling a path with the separators
+  eaten (`polling: C:UsersgotmiAppData...`) — is Git Bash mangling the argument
+  before Python sees it, not the harness; forward slashes fix it, and the error
+  message already prints the mangled path it is polling, which is what named the
+  cause.

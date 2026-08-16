@@ -44,6 +44,7 @@ const KEY_HELP: Array[Dictionary] = [
 	{"keys": "M", "does": "sound effects on or off", "codes": [KEY_M]},
 	{"keys": "N", "does": "music on or off", "codes": [KEY_N]},
 	{"keys": "R", "does": "start over, once the run is done", "codes": [KEY_R]},
+	{"keys": "C", "does": "colourblind-safe health and threat bars", "codes": [KEY_C]},
 ]
 
 var board: Board
@@ -1232,6 +1233,20 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key.keycode == KEY_N:
 		var music_muted: bool = Music.toggle_muted()
 		hud.show_message("Music off. Press N to bring it back." if music_muted else "Music on.", 2.5)
+		return
+	# Swaps the health fill and the threat readout onto GardenTheme's blue/orange
+	# ramp. A key rather than a menu because there is no settings screen yet; when
+	# one lands it should own this and the key should stay as its shortcut.
+	#
+	# _refresh() rather than waiting for the next state change: both bars are
+	# repainted from state, and the threat tint EASES toward its target, so a player
+	# who presses this between waves with nothing selected would otherwise see
+	# nothing happen and conclude the key does not work.
+	if key.keycode == KEY_C:
+		var safe: bool = RunConfig.toggle_colorblind_safe()
+		hud.show_message(
+			"Colourblind-safe bars on." if safe else "Colourblind-safe bars off.", 2.5)
+		_refresh()
 
 
 func _update_cursor(screen_pos: Vector2) -> void:

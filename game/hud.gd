@@ -118,6 +118,11 @@ const UPROOT_ARMED := GardenTheme.DANGER
 ## identical literals and a comment asking you to keep them that way.
 const THREAT_WARM := GardenTheme.AMBER
 const THREAT_HOT := GardenTheme.DANGER
+## The same two stops on the colourblind-safe ramp, chosen by
+## `RunConfig.colorblind_safe`. See GardenTheme.SAFE_GOOD for why the pair is
+## blue/orange and why these two bars are outside the board's solid-vs-broken rule.
+const THREAT_WARM_SAFE := GardenTheme.SAFE_MID
+const THREAT_HOT_SAFE := GardenTheme.SAFE_BAD
 ## Threat level at which the tint is fully red.
 ##
 ## 12, not the ~25 a long endless run reaches: threat_level is a logarithm, so the
@@ -341,6 +346,11 @@ const HEALTH_ROW_HEIGHT: float = 14.0
 const HEALTH_BACK := Color(GardenTheme.INK, 0.35)
 const HEALTH_FULL := GardenTheme.LEAF
 const HEALTH_LOW := GardenTheme.DANGER
+## And its colourblind-safe counterpart. HEALTH_LOW_SAFE is deliberately the same
+## value as THREAT_HOT_SAFE, exactly as HEALTH_LOW is the same value as THREAT_HOT:
+## whichever ramp is on, one colour still means "this costs you something".
+const HEALTH_FULL_SAFE := GardenTheme.SAFE_GOOD
+const HEALTH_LOW_SAFE := GardenTheme.SAFE_BAD
 
 var _seeds_label: Label
 var _wave_label: Label
@@ -602,7 +612,11 @@ func _build_side_panel(root: Control) -> void:
 
 	_health_fill = ColorRect.new()
 	_health_fill.name = "HealthFill"
-	_health_fill.color = HEALTH_FULL
+	# health_color(1.0), not HEALTH_FULL: the row is hidden until a plant is bitten,
+	# so this value is only ever seen for the frame between showing the row and the
+	# first _refresh_health -- and on the safe ramp a hard-coded LEAF would make that
+	# frame the one place the green survives.
+	_health_fill.color = health_color(1.0)
 	_health_fill.position = Vector2.ZERO
 	_health_fill.size = Vector2(PANEL_WIDTH - 24, HEALTH_ROW_HEIGHT)
 	_health_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -815,22 +829,51 @@ func _make_label(node_name: String, font_size: int, colour: Color) -> Label:
 	return label
 
 
-## Colour for a threat level, cream through amber to red.
+## Colour for a threat level, cream through amber to red — or through the
+## colourblind-safe ramp, if the player has asked for it.
 ##
 ## Static and pure so the whole ramp is assertable without a HUD — and so the
 ## devtools `curve` verb can sweep it as data rather than it being judged by eye
-## off a screenshot.
+## off a screenshot. The flag is the one thing it reads from outside itself;
+## `threat_color_on` is the half with no reads at all, which is what the ramp
+## tests drive so that they cannot be changed by a setting an earlier test left on.
 static func threat_color(level: int) -> Color:
+	return threat_color_on(level, RunConfig.colorblind_safe)
+
+
+static func threat_color_on(level: int, safe: bool) -> Color:
 	if level < THREAT_SHOW_FROM:
+		# Both ramps start at the bar's own cream. That is not a shared stop by
+		# accident: "nothing is wrong yet" should look like the bar, not like a
+		# colour, on either palette.
 		return PAPER
 	var span: float = float(THREAT_TINT_MAX - THREAT_SHOW_FROM)
 	var t: float = clampf(float(level - THREAT_SHOW_FROM) / span, 0.0, 1.0)
+	var warm: Color = THREAT_WARM_SAFE if safe else THREAT_WARM
+	var hot: Color = THREAT_HOT_SAFE if safe else THREAT_HOT
 	# Two segments rather than one lerp: cream straight to red passes through a
 	# muddy pink that reads as neither safe nor dangerous, and the amber midpoint
 	# is the whole point of a three-stop warning ramp.
 	if t < 0.5:
-		return PAPER.lerp(THREAT_WARM, t * 2.0)
-	return THREAT_WARM.lerp(THREAT_HOT, (t - 0.5) * 2.0)
+		return PAPER.lerp(warm, t * 2.0)
+	return warm.lerp(hot, (t - 0.5) * 2.0)
+
+
+## Colour for a plant's health fill at `fraction` of full.
+##
+## Pulled out of `_refresh_health` for the reason `threat_color` was pulled out of
+## `refresh`: it is the other bar a player reads by hue alone, and it was the only
+## one of the two that could not be swept as data. Now both go through one switch,
+## so a build cannot end up with a colourblind-safe threat readout above a
+## green-to-red health bar.
+static func health_color(fraction: float) -> Color:
+	return health_color_on(fraction, RunConfig.colorblind_safe)
+
+
+static func health_color_on(fraction: float, safe: bool) -> Color:
+	var low: Color = HEALTH_LOW_SAFE if safe else HEALTH_LOW
+	var full: Color = HEALTH_FULL_SAFE if safe else HEALTH_FULL
+	return low.lerp(full, clampf(fraction, 0.0, 1.0))
 
 
 func get_viewport_width() -> int:
@@ -1018,7 +1061,7 @@ func _refresh_health(plant: Plant) -> void:
 	_health_row.visible = true
 	var full_width: float = float(PANEL_WIDTH - 24)
 	_health_fill.size = Vector2(full_width * fraction, HEALTH_ROW_HEIGHT)
-	_health_fill.color = HEALTH_LOW.lerp(HEALTH_FULL, fraction)
+	_health_fill.color = health_color(fraction)
 	_health_text.text = "Health %d/%d" % [int(ceil(plant.health)), int(Plant.MAX_HEALTH)]
 
 

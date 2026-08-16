@@ -78,6 +78,43 @@ const DANGER := Color(0.85, 0.25, 0.22)
 ## surface ramping toward a warning wants this stop in the middle.
 const AMBER := Color(0.93, 0.72, 0.30)
 
+## The colourblind-safe alternative to the LEAF -> AMBER -> DANGER ramp, switched
+## on by `RunConfig.colorblind_safe`.
+##
+## The rule above ("a second channel that is not hue") is a rule about the BOARD,
+## and the two bars a player watches hardest in combat are not on it. A plant's
+## health fill is `HEALTH_LOW.lerp(HEALTH_FULL, fraction)` and the wave readout is
+## `Hud.threat_color(level)`; both are a solid block of colour that carries its
+## whole meaning in hue, with nothing else to read them by. Green-to-red is the
+## single worst pair to say that in — the two ends of it are the two ends of the
+## channel deuteranopia and protanopia flatten, so the "everything is fine" fill
+## and the "this plant is nearly gone" fill land on each other.
+##
+## Blue against orange is the conventional replacement and it is not merely a
+## different pair of hues: the ends differ in LIGHTNESS as well, so the ramp still
+## reads as a ramp in greyscale, which is the property red-green never had. The
+## threat ramp keeps PAPER at its calm end for the reason threat_color documents —
+## an early run should look like nothing is wrong — and warms toward the same
+## orange the health bar spends on "bad", so the two bars say bad the same way.
+##
+## Three stops, deliberately mirroring the three above rather than inventing a
+## second structure: SAFE_GOOD replaces LEAF, SAFE_MID replaces AMBER, SAFE_BAD
+## replaces DANGER.
+##
+## The exact values are pinned by measurement, not by taste, and the first pick
+## failed it. A mid blue against a mid orange is the picture everyone has of this
+## fix, and `test_the_safe_ramp_separates_its_ends_in_more_than_the_red_green_channel`
+## reported it as 0.157 of luminance between the ends against the green/red ramp's
+## own 0.267 — a "colourblind-safe" pair that was HARDER to tell apart in greyscale
+## than the one it replaced, and that would have shipped looking perfectly correct.
+## So SAFE_GOOD is a dark blue and SAFE_BAD a bright orange: 0.33 against 0.69, a
+## gap of 0.36, with the red-green distance between them less than half the green/
+## red ramp's. SAFE_MID sits between the two in lightness so the threat ramp is
+## still monotonic in the channel that survives.
+const SAFE_GOOD := Color(0.114, 0.353, 0.678)
+const SAFE_MID := Color(0.976, 0.780, 0.451)
+const SAFE_BAD := Color(0.976, 0.647, 0.196)
+
 ## Radius/border used by every button and panel, so a screen cannot half-adopt
 ## the look.
 const CORNER: int = 6

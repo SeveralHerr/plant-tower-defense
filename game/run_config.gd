@@ -29,9 +29,9 @@ const SAVE_PATH := "user://highscore.save"
 
 ## Bumped when the on-disk shape changes. Version 1 is the original single line;
 ## version 2 is a `vN` header followed by campaign then endless; version 3 adds a
-## fourth line holding the earned milestone ids. Actually parsed and compared now
-## — see `_parse_save`.
-const SAVE_VERSION: int = 3
+## fourth line holding the earned milestone ids; version 4 a fifth holding the
+## display options. Actually parsed and compared now — see `_parse_save`.
+const SAVE_VERSION: int = 4
 
 ## The milestone line's leading character, and the whole reason it has one.
 ##
@@ -44,6 +44,13 @@ const MILESTONE_PREFIX := "m"
 ## Characters an id may contain. Ids are written by this project, never by a player,
 ## so the set is deliberately narrow: anything outside it is corruption, not taste.
 const MILESTONE_ID_CHARS := "abcdefghijklmnopqrstuvwxyz0123456789_"
+
+## The options line, `cb0` or `cb1` and nothing else. Marked for the same reason the
+## milestone line is: a save truncated after the milestones hands the parser "", and
+## `bool("")` would happily read as "the option is off" — a setting silently reverting
+## on a player who needs it is the exact failure this option exists to prevent.
+const OPTIONS_COLORBLIND_OFF := "cb0"
+const OPTIONS_COLORBLIND_ON := "cb1"
 
 ## The file this autoload persists to. A variable rather than a constant for
 ## exactly one reason: the unit tests need to drive this code over a scratch file
@@ -84,6 +91,21 @@ var endless_high_score: int = 0
 ## half-reading a file to rescue the cheap half is the exact move `_parse_save`
 ## exists to refuse.
 var earned_milestones: Dictionary = {}
+
+## Draw the two combat bars — a plant's health fill and the wave readout's threat
+## tint — on GardenTheme's blue/orange ramp instead of the green/amber/red one.
+##
+## Persisted rather than held for a session, and that is the whole difference
+## between an accessibility option and a debug switch: a player who needs this
+## needs it on every launch, and one that resets is one they have to find and set
+## again every time. It lives here because this is already the file that outlives
+## the scene swap, and because the flag has to be readable from `Hud.threat_color`,
+## which is static and has no HUD instance to ask.
+##
+## The only thing that sets it today is the run's own C key (Game.KEY_HELP). That
+## is a placeholder for a settings screen, which does not exist yet — when one
+## lands, it should own this and the key should stay as the shortcut.
+var colorblind_safe: bool = false
 
 ## What `_load` made of the save file. Exists so that "there was no save" and
 ## "there was a save and it was refused" are distinguishable from the outside —
@@ -160,6 +182,25 @@ func record_milestones(ids: Array) -> Array[String]:
 	return fresh
 
 
+## Flips the colourblind-safe ramp and writes it down. Returns the new state, so a
+## caller can say which way it went without reading the flag back.
+##
+## A method rather than a bare assignment because the persisting is the point: an
+## accessibility option set for one session is one the player has to find again on
+## every launch. Writes only on an actual change — the save file is not a place to
+## record that someone pressed a key twice.
+func set_colorblind_safe(enabled: bool) -> bool:
+	if colorblind_safe == enabled:
+		return colorblind_safe
+	colorblind_safe = enabled
+	_save()
+	return colorblind_safe
+
+
+func toggle_colorblind_safe() -> bool:
+	return set_colorblind_safe(not colorblind_safe)
+
+
 ## Where `_save` assembles the next file before it replaces `save_path`.
 func _tmp_path() -> String:
 	return save_path + ".tmp"
@@ -234,8 +275,26 @@ func _milestone_line() -> String:
 	return "%s%d:%s" % [MILESTONE_PREFIX, ids.size(), ",".join(PackedStringArray(ids))]
 
 
+## The options line. Two exact spellings and nothing else — this is a bool, so
+## there is no third reading to be tolerant toward, and "" (a file truncated after
+## the milestones) is not one of them.
+##
+## Returns a bool, or `null` on anything that is not one of the two.
+static func _parse_options(text: String) -> Variant:
+	if text == OPTIONS_COLORBLIND_ON:
+		return true
+	if text == OPTIONS_COLORBLIND_OFF:
+		return false
+	return null
+
+
+func _options_line() -> String:
+	return OPTIONS_COLORBLIND_ON if colorblind_safe else OPTIONS_COLORBLIND_OFF
+
+
 func _parse_failed(reason: String) -> Dictionary:
-	return {"ok": false, "campaign": 0, "endless": 0, "milestones": [], "version": 0, "reason": reason}
+	return {"ok": false, "campaign": 0, "endless": 0, "milestones": [],
+		"colorblind_safe": false, "version": 0, "reason": reason}
 
 
 ## Validates an entire save file and only then hands back its contents.
@@ -272,7 +331,7 @@ func _parse_save(path: String) -> Dictionary:
 		# No build that wrote this shape ever had a milestone, so the empty set here
 		# is a reading and not a fallback.
 		return {"ok": true, "campaign": 0, "endless": int(header), "milestones": [],
-			"version": 1, "reason": "v1"}
+			"colorblind_safe": false, "version": 1, "reason": "v1"}
 
 	var version_text: String = header.substr(1)
 	if not version_text.is_valid_int():
@@ -308,11 +367,22 @@ func _parse_save(path: String) -> Dictionary:
 			return _parse_failed("its milestone line is not a milestone line")
 		milestones = parsed_ids as Array
 
+	# Version 4 adds the options line. Same migration shape again: an older file
+	# simply has none, and the options fall back to their defaults exactly once,
+	# on the launch that rewrites the file forward.
+	var colorblind: bool = false
+	if version >= 4:
+		var parsed_options: Variant = _parse_options(f.get_line().strip_edges())
+		if parsed_options == null:
+			return _parse_failed("its options line is not an options line")
+		colorblind = bool(parsed_options)
+
 	return {
 		"ok": true,
 		"campaign": int(campaign_text),
 		"endless": int(endless_text),
 		"milestones": milestones,
+		"colorblind_safe": colorblind,
 		"version": version,
 		"reason": "v%d" % version,
 	}
@@ -357,6 +427,7 @@ func _load() -> void:
 	earned_milestones = {}
 	for id: String in (parsed["milestones"] as Array):
 		earned_milestones[id] = true
+	colorblind_safe = bool(parsed["colorblind_safe"])
 	if recovered:
 		load_status = "recovered"
 		_save()
@@ -406,6 +477,7 @@ func _save() -> void:
 	f.store_line(str(campaign_high_score))
 	f.store_line(str(endless_high_score))
 	f.store_line(_milestone_line())
+	f.store_line(_options_line())
 	f.flush()
 	var write_error: int = f.get_error()
 	f.close()

@@ -2608,25 +2608,36 @@ func test_project_identity_is_registered_with_a_literal_name() -> String:
 ## The threat ramp, asserted as data. threat_color is static and pure precisely so
 ## the whole curve can be checked without a HUD -- a tint judged off a screenshot
 ## is judged by eye, and "is wave 9 redder than wave 6" is not an eye question.
+##
+## Driven through `threat_color_on(level, false)` rather than `threat_color(level)`
+## since the colourblind option landed: `threat_color` reads
+## `RunConfig.colorblind_safe`, which is process-global, so this test would
+## otherwise pass or fail on whatever an earlier test in the run happened to leave
+## set. The claims below -- cream, then red, then redder -- are claims about the
+## DEFAULT ramp specifically, so naming it is also more honest than it was.
 func test_the_threat_tint_climbs_from_cream_to_red() -> String:
-	var err: String = _T.assert_true(Hud.threat_color(1).is_equal_approx(Hud.PAPER),
+	var err: String = _T.assert_true(Hud.threat_color_on(1, false).is_equal_approx(Hud.PAPER),
 		"below the show-from level the readout is the bar's own cream")
 	if err == "":
-		err = _T.assert_true(Hud.threat_color(Hud.THREAT_SHOW_FROM).is_equal_approx(Hud.PAPER),
+		err = _T.assert_true(
+			Hud.threat_color_on(Hud.THREAT_SHOW_FROM, false).is_equal_approx(Hud.PAPER),
 			"and still cream at the level the number first appears")
 	if err == "":
-		err = _T.assert_true(Hud.threat_color(Hud.THREAT_TINT_MAX).is_equal_approx(Hud.THREAT_HOT),
+		err = _T.assert_true(
+			Hud.threat_color_on(Hud.THREAT_TINT_MAX, false).is_equal_approx(Hud.THREAT_HOT),
 			"fully red at the ceiling")
 	if err == "":
 		# Endless runs past the ceiling for hundreds of waves; the tint must pin
 		# rather than wrap, overshoot or start cooling off again.
-		err = _T.assert_true(Hud.threat_color(Hud.THREAT_TINT_MAX * 4).is_equal_approx(Hud.THREAT_HOT),
+		err = _T.assert_true(
+			Hud.threat_color_on(Hud.THREAT_TINT_MAX * 4, false).is_equal_approx(Hud.THREAT_HOT),
 			"and stays red far past it")
 	if err == "":
 		# Monotonic in the direction that matters: never gets less red as it climbs.
 		var previous: float = -1.0
 		for level: int in range(1, Hud.THREAT_TINT_MAX + 2):
-			var heat: float = Hud.threat_color(level).r - Hud.threat_color(level).g
+			var tint: Color = Hud.threat_color_on(level, false)
+			var heat: float = tint.r - tint.g
 			err = _T.assert_gte(heat, previous,
 				"threat %d is at least as hot as the level below it" % level)
 			if err != "":
@@ -5628,4 +5639,195 @@ func test_a_run_with_no_new_milestones_draws_no_ribbon() -> String:
 		err = _T.assert_true(card.get_node_or_null("MilestoneRibbon") == null,
 			"and no ribbon node was created for them")
 	_T.free_ui(host)
+	return err
+
+
+# -- colourblind-safe bars (plant-tower-defense-xu0) -------------------------
+#
+# Both combat bars ease through one hue family, which is the one thing a
+# red-green colour deficiency flattens. The ramp SELECTION is what these test:
+# `threat_color_on` / `health_color_on` are pure and take the flag, so the choice
+# can be asserted for both settings in one run without a HUD and without leaving
+# a process-global option set behind for the next test.
+
+
+## How far apart two colours are in the red-green channel alone -- the axis a
+## deuteranope or protanope cannot read. Small means "these two look alike to the
+## player this option exists for", whatever they look like here.
+func _red_green_gap(a: Color, b: Color) -> float:
+	return absf((a.r - a.g) - (b.r - b.g))
+
+
+func test_the_flag_actually_picks_a_different_ramp_for_both_bars() -> String:
+	## The selection itself, at both ends of both bars. A wiring mistake here is
+	## invisible on screen -- a bar drawn on the wrong ramp is still a plausible
+	## looking bar -- and it is the whole feature.
+	var err: String = _T.assert_true(
+		Hud.health_color_on(0.0, false).is_equal_approx(Hud.HEALTH_LOW),
+		"off, an empty health bar is the default red")
+	if err == "":
+		err = _T.assert_true(Hud.health_color_on(1.0, false).is_equal_approx(Hud.HEALTH_FULL),
+			"and a full one is the leaf green")
+	if err == "":
+		err = _T.assert_true(Hud.health_color_on(0.0, true).is_equal_approx(Hud.HEALTH_LOW_SAFE),
+			"on, an empty bar is the safe ramp's low stop")
+	if err == "":
+		err = _T.assert_true(Hud.health_color_on(1.0, true).is_equal_approx(Hud.HEALTH_FULL_SAFE),
+			"and a full one is its high stop")
+	if err == "":
+		err = _T.assert_true(
+			Hud.threat_color_on(Hud.THREAT_TINT_MAX, true).is_equal_approx(Hud.THREAT_HOT_SAFE),
+			"on, a runaway threat is the safe ramp's hot stop")
+	if err == "":
+		err = _T.assert_true(Hud.threat_color_on(1, true).is_equal_approx(Hud.PAPER),
+			"while a calm one is still the bar's own cream on either ramp -- an early "
+				+ "run must not look like something is wrong just because the option is on")
+	if err == "":
+		# The clamp, which the health bar needs and the old inline lerp never had:
+		# _refresh_health clamps before calling, so this is belt and braces, but a
+		# fraction out of range must not extrapolate past either stop.
+		err = _T.assert_true(Hud.health_color_on(-3.0, true).is_equal_approx(Hud.HEALTH_LOW_SAFE),
+			"a fraction below zero pins at the low stop rather than overshooting it")
+	if err == "":
+		err = _T.assert_true(Hud.health_color_on(9.0, false).is_equal_approx(Hud.HEALTH_FULL),
+			"and one above one pins at the high stop")
+	return err
+
+
+func test_the_safe_ramp_separates_its_ends_in_more_than_the_red_green_channel() -> String:
+	## The point of the option, stated as the measurement it is about. The default
+	## health ramp puts "fine" and "nearly gone" at opposite ends of exactly the
+	## axis this player cannot see, so it must be the safe ramp that separates them
+	## by MORE than that axis -- lightness -- and by less along it.
+	var default_full: Color = Hud.health_color_on(1.0, false)
+	var default_low: Color = Hud.health_color_on(0.0, false)
+	var safe_full: Color = Hud.health_color_on(1.0, true)
+	var safe_low: Color = Hud.health_color_on(0.0, true)
+
+	var default_luma: float = absf(default_full.get_luminance() - default_low.get_luminance())
+	var safe_luma: float = absf(safe_full.get_luminance() - safe_low.get_luminance())
+	var err: String = _T.assert_gt(safe_luma, default_luma,
+		"the safe ends differ in lightness by %.3f against the default's %.3f, so the ramp "
+			% [safe_luma, default_luma] + "still reads as a ramp with the colour taken away")
+	if err == "":
+		err = _T.assert_gt(_red_green_gap(default_full, default_low),
+			_red_green_gap(safe_full, safe_low),
+			"and it leans less on the red-green axis than the ramp it replaces")
+	if err == "":
+		# The threat bar's ends, same question. Its calm end is PAPER on both ramps,
+		# so what has to change is the hot end.
+		var hot_gap: float = _red_green_gap(Hud.PAPER, Hud.THREAT_HOT)
+		var safe_hot_gap: float = _red_green_gap(Hud.PAPER, Hud.THREAT_HOT_SAFE)
+		err = _T.assert_gt(hot_gap, safe_hot_gap,
+			"the threat bar's hot end is %.3f off cream in red-green terms by default and "
+				% hot_gap + "%.3f on the safe ramp" % safe_hot_gap)
+	return err
+
+
+func test_the_two_bars_agree_about_which_ramp_is_on() -> String:
+	## One switch, not two. A build where the threat readout went blue-orange and
+	## the health fill stayed green-red would be worse than either alone: the
+	## player would be reading two different languages on one screen.
+	var err: String = _T.assert_true(
+		Hud.health_color_on(0.0, true).is_equal_approx(Hud.threat_color_on(Hud.THREAT_TINT_MAX, true)),
+		"on the safe ramp, an empty health bar and a runaway threat are one colour")
+	if err == "":
+		err = _T.assert_true(
+			Hud.health_color_on(0.0, false).is_equal_approx(
+				Hud.threat_color_on(Hud.THREAT_TINT_MAX, false)),
+			"exactly as they are on the default one -- a red still means one thing")
+	return err
+
+
+func test_the_threat_ramp_still_climbs_without_going_backwards_on_the_safe_palette() -> String:
+	## The monotonicity claim the default ramp already carries, re-asked on the
+	## other palette in the terms that survive a colour deficiency: each level must
+	## be at least as dark as the one below it. A ramp that brightens in the middle
+	## is one a player reads as calming down.
+	var previous: float = 2.0
+	var err: String = ""
+	for level: int in range(Hud.THREAT_SHOW_FROM, Hud.THREAT_TINT_MAX + 2):
+		var luma: float = Hud.threat_color_on(level, true).get_luminance()
+		err = _T.assert_gte(previous, luma,
+			"threat %d is no lighter than the level below it (%.3f against %.3f)"
+				% [level, luma, previous])
+		if err != "":
+			break
+		previous = luma
+	return err
+
+
+func test_toggling_the_option_is_persisted_and_reversible() -> String:
+	## The flag's own round trip through the live autoload, restored either way --
+	## it is process-global, and a test that leaves it on changes what every later
+	## test's `threat_color()` returns. The save file's side of it is in
+	## test_economy.gd, over a scratch path.
+	var was: bool = RunConfig.colorblind_safe
+	RunConfig.colorblind_safe = false
+	var err: String = _T.assert_true(RunConfig.toggle_colorblind_safe(), "one toggle turns it on")
+	if err == "":
+		err = _T.assert_true(
+			Hud.threat_color(Hud.THREAT_TINT_MAX).is_equal_approx(Hud.THREAT_HOT_SAFE),
+			"and threat_color, which reads the flag, follows it without an argument")
+	if err == "":
+		err = _T.assert_true(Hud.health_color(0.0).is_equal_approx(Hud.HEALTH_LOW_SAFE),
+			"as does health_color, which is the other half of the same switch")
+	if err == "":
+		err = _T.assert_false(RunConfig.toggle_colorblind_safe(), "a second toggle turns it off")
+	if err == "":
+		err = _T.assert_true(Hud.threat_color(Hud.THREAT_TINT_MAX).is_equal_approx(Hud.THREAT_HOT),
+			"and the default red comes back")
+	if err == "":
+		err = _T.assert_true(Hud.health_color(0.0).is_equal_approx(Hud.HEALTH_LOW),
+			"on both bars at once")
+	RunConfig.set_colorblind_safe(was)
+	return err
+
+
+## Distance between two colours in RGB. Used instead of `is_equal_approx` for the
+## live-HUD check below: a plant regrows between the frame the fill was painted and
+## the frame the assertion reads it, so the exact fraction is a moving target -- but
+## "which of the two ramps is this closer to" is not.
+func _colour_distance(a: Color, b: Color) -> float:
+	return absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b)
+
+
+func test_the_health_bar_the_hud_draws_goes_through_the_switch() -> String:
+	## The wiring, not the arithmetic. `_refresh_health` used to lerp the two
+	## constants inline, which is exactly the shape that survives a palette option
+	## being added and silently ignores it.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var was: bool = RunConfig.colorblind_safe
+	RunConfig.colorblind_safe = true
+	game.bank.add_seeds(100)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "", "planted")
+	var fill: ColorRect = game.hud.get_node_or_null(
+		"Root/SidePanel/SelectionBox/HealthRow/HealthFill") as ColorRect
+	if err == "":
+		err = _T.assert_true(fill != null, "the health fill is where the panel puts it")
+	if err == "":
+		# Real damage through the path a pest takes, and the panel follows health
+		# from Game._process rather than from a signal -- same as
+		# test_the_selection_panel_reports_a_chewed_plants_health.
+		game.selected_placed.take_damage(Plant.MAX_HEALTH * 0.5)
+		game._process(0.016)
+		await _pump(game)
+		var fraction: float = clampf(game.selected_placed.health / Plant.MAX_HEALTH, 0.0, 1.0)
+		var to_safe: float = _colour_distance(fill.color, Hud.health_color_on(fraction, true))
+		var to_default: float = _colour_distance(fill.color, Hud.health_color_on(fraction, false))
+		err = _T.assert_true(to_safe < to_default,
+			"with the option on the fill %s is the safe ramp's colour (%.3f away) and not the "
+				% [fill.color, to_safe] + "default's (%.3f away)" % to_default)
+	if err == "":
+		RunConfig.colorblind_safe = false
+		game.selected_placed.take_damage(1.0)
+		game._process(0.016)
+		await _pump(game)
+		var fraction2: float = clampf(game.selected_placed.health / Plant.MAX_HEALTH, 0.0, 1.0)
+		var back_to_default: float = _colour_distance(fill.color, Hud.health_color_on(fraction2, false))
+		var still_safe: float = _colour_distance(fill.color, Hud.health_color_on(fraction2, true))
+		err = _T.assert_true(back_to_default < still_safe,
+			"and it goes back to the default ramp the moment the option does, got %s" % fill.color)
+	RunConfig.colorblind_safe = was
+	_T.free_ui(game)
 	return err

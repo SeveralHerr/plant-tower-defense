@@ -747,6 +747,8 @@ func _with_scratch_save(campaign: int, endless_best: int, contents: Variant, bod
 	# bytes `_save` writes, which is precisely what the byte-exact assertions below
 	# are reading.
 	RunConfig.earned_milestones = {}
+	# And the fourth. Same reasoning: it is one of the bytes `_save` writes.
+	RunConfig.colorblind_safe = false
 	var err: String = str(body.call())
 	_restore_run_config()
 	return err
@@ -772,6 +774,7 @@ func _stash_run_config() -> void:
 		# `record_milestones` and by `_load`, so stashing the reference would hand
 		# `_restore_run_config` the very object the test just changed.
 		"earned_milestones": RunConfig.earned_milestones.duplicate(),
+		"colorblind_safe": RunConfig.colorblind_safe,
 		# Private, and stashed anyway: a refusal leaves a quarantine pending, and
 		# leaking that into a later test means an unrelated `_save` tries to move a
 		# file this one deleted.
@@ -789,6 +792,7 @@ func _restore_run_config() -> void:
 	RunConfig.fresh_record = bool(_stashed_run_config["fresh_record"])
 	RunConfig.load_status = str(_stashed_run_config["load_status"])
 	RunConfig.earned_milestones = (_stashed_run_config["earned_milestones"] as Dictionary).duplicate()
+	RunConfig.colorblind_safe = bool(_stashed_run_config["colorblind_safe"])
 	RunConfig._refused_path = str(_stashed_run_config["_refused_path"])
 	_stashed_run_config = {}
 	_clear_scratch_save()
@@ -898,8 +902,8 @@ func test_a_well_formed_save_round_trips_exactly() -> String:
 	return _with_scratch_save(1234, 5678, null, func() -> String:
 		RunConfig._save()
 		var err: String = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-			"v%d\n1234\n5678\nm0\n" % RunConfig.SAVE_VERSION,
-			"the save is a version stamp, then campaign, then endless, then the milestone set")
+			"v%d\n1234\n5678\nm0\ncb0\n" % RunConfig.SAVE_VERSION,
+			"the save is a version stamp, campaign, endless, the milestone set, the options")
 		if err == "":
 			err = _T.assert_false(FileAccess.file_exists(HIGHSCORE_TEST_PATH + ".tmp"),
 				"and the temp file it was assembled in was renamed away, not left behind")
@@ -943,7 +947,7 @@ func test_a_refused_save_is_not_immediately_overwritten() -> String:
 				"the unreadable file was moved aside, not written over")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n9999\n8765\nm0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n9999\n8765\nm0\ncb0\n" % RunConfig.SAVE_VERSION,
 				"and the new save kept the endless record the refusal had preserved")
 		return err)
 
@@ -965,7 +969,7 @@ func test_a_version_one_save_still_migrates_into_the_endless_slot() -> String:
 		if err == "":
 			# A parse that fully succeeded is the one case that may rewrite the file.
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n0\n31337\nm0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n31337\nm0\ncb0\n" % RunConfig.SAVE_VERSION,
 				"and the ambiguity is resolved on disk once, not re-guessed every launch")
 		return err)
 
@@ -1017,7 +1021,7 @@ func test_a_run_with_milestones_round_trips_through_the_save() -> String:
 			# Sorted on the way out, so the bytes are a function of the SET rather
 			# than of the order the run happened to earn things in.
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n1234\n5678\nm2:campaign_cleared,hundred_pests\n" % RunConfig.SAVE_VERSION,
+				"v%d\n1234\n5678\nm2:campaign_cleared,hundred_pests\ncb0\n" % RunConfig.SAVE_VERSION,
 				"filing a milestone wrote the file, ids sorted")
 		if err == "":
 			# Deliberately not empty: a `_load` that assigned nothing would pass an
@@ -1071,7 +1075,7 @@ func test_a_version_two_save_migrates_forward_with_an_empty_milestone_set() -> S
 				"a player who predates milestones has earned none of them")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n4321\n8765\nm0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n4321\n8765\nm0\ncb0\n" % RunConfig.SAVE_VERSION,
 				"and the file is now the current shape, resolved once")
 		return err)
 
@@ -1110,7 +1114,10 @@ func test_a_milestone_id_this_build_has_never_heard_of_survives_a_round_trip() -
 	return _with_scratch_save(0, 0, "v3\n10\n20\nm2:from_the_future,hundred_pests\n",
 		func() -> String:
 			RunConfig._load()
-			var err: String = _T.assert_eq(RunConfig.load_status, "loaded", "the file reads")
+			# "migrated", not "loaded": the fixture is a v3 file and the current
+			# shape is v4, so this also pins that a version bump does not eat the
+			# milestone ids the older shape was carrying.
+			var err: String = _T.assert_eq(RunConfig.load_status, "migrated", "the file reads")
 			if err == "":
 				err = _T.assert_true(RunConfig.has_milestone("from_the_future"),
 					"an id with no rule in this build is still held")
@@ -1120,10 +1127,100 @@ func test_a_milestone_id_this_build_has_never_heard_of_survives_a_round_trip() -
 			if err == "":
 				RunConfig.record_milestones(["threat_peak"])
 				err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-					"v%d\n10\n20\nm3:from_the_future,hundred_pests,threat_peak\n"
+					"v%d\n10\n20\nm3:from_the_future,hundred_pests,threat_peak\ncb0\n"
 						% RunConfig.SAVE_VERSION,
 					"and the next save writes it back out rather than eating it")
 			return err)
+
+
+# -- display options (plant-tower-defense-xu0) -------------------------------
+#
+# The fifth line. An accessibility option that resets every launch is one the
+# player has to find again every launch, so it is persisted -- and persisting it
+# means it inherits every rule the scores above it live under.
+
+
+func test_the_colourblind_option_round_trips_through_the_save() -> String:
+	## Set it, write it, read it back over a deliberately wrong in-memory value.
+	return _with_scratch_save(11, 22, null, func() -> String:
+		var err: String = _T.assert_true(RunConfig.toggle_colorblind_safe(),
+			"one toggle turns the safe ramp on")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+				"v%d\n11\n22\nm0\ncb1\n" % RunConfig.SAVE_VERSION,
+				"and wrote it down rather than holding it for the session")
+		if err == "":
+			# Deliberately the wrong value, so a `_load` that assigned nothing at
+			# all could not pass this by doing nothing at all.
+			RunConfig.colorblind_safe = false
+			RunConfig._load()
+			err = _T.assert_true(RunConfig.colorblind_safe, "the option came back on")
+		if err == "":
+			err = _T.assert_false(RunConfig.toggle_colorblind_safe(), "a second toggle turns it off")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+				"v%d\n11\n22\nm0\ncb0\n" % RunConfig.SAVE_VERSION,
+				"and that is written down too -- off is a choice, not an absence")
+		return err)
+
+
+func test_setting_the_option_to_what_it_already_is_does_not_rewrite_the_save() -> String:
+	## `set_colorblind_safe` writes only on a change. The save file is not a place
+	## to record that someone pressed a key twice, and every write is a rename over
+	## the one file in this game holding a number that cannot be re-earned.
+	return _with_scratch_save(5, 6, null, func() -> String:
+		RunConfig.set_colorblind_safe(true)
+		var written: String = FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH)
+		var err: String = _T.assert_true(written.ends_with("cb1\n"), "the first set wrote the file")
+		if err == "":
+			# Move the scores under it. A second set that rewrites would pick these
+			# up; one that no-ops leaves the file as it was.
+			RunConfig.campaign_high_score = 999
+			err = _T.assert_true(RunConfig.set_colorblind_safe(true),
+				"setting it to what it already is still reports the state")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH), written,
+				"and the file was not touched")
+		return err)
+
+
+func test_a_v4_save_with_a_broken_options_line_is_refused_whole() -> String:
+	## Same rule as the milestone line, and the same reason for it: "" is what
+	## `get_line()` returns past the end of a truncated file, and `bool("")` is
+	## false -- which is a legal-looking reading of an option whose whole point is
+	## that it stays on.
+	var cases: Dictionary = {
+		"a v4 save cut before its options line": "v4\n4321\n8765\nm0\n",
+		"a bare 0 with no marker": "v4\n4321\n8765\nm0\n0\n",
+		"a spelled-out boolean": "v4\n4321\n8765\nm0\nfalse\n",
+		"an option value that is not one of the two": "v4\n4321\n8765\nm0\ncb2\n",
+	}
+	for what: String in cases:
+		var err: String = _with_scratch_save(4321, 8765, cases[what],
+			func() -> String: return _assert_refused(4321, 8765, what))
+		if err != "":
+			return err
+	return ""
+
+
+func test_a_v3_save_migrates_forward_with_the_option_off() -> String:
+	## A player who predates the option has not asked for it, and the default is
+	## the one that changes nothing about how the game already looked to them.
+	return _with_scratch_save(0, 0, "v3\n70\n80\nm1:threat_peak\n", func() -> String:
+		RunConfig.colorblind_safe = true
+		RunConfig._load()
+		var err: String = _T.assert_eq(RunConfig.load_status, "migrated", "a v3 file moves forward")
+		if err == "":
+			err = _T.assert_false(RunConfig.colorblind_safe,
+				"and the option it never carried defaults to off")
+		if err == "":
+			err = _T.assert_true(RunConfig.has_milestone("threat_peak"),
+				"while the milestone it did carry survives the bump")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+				"v%d\n70\n80\nm1:threat_peak\ncb0\n" % RunConfig.SAVE_VERSION,
+				"resolved on disk once rather than re-guessed every launch")
+		return err)
 
 
 # -- budget floors ----------------------------------------------------------
