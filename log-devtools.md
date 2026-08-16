@@ -2482,6 +2482,18 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     or have `launch` refuse/warn on that combination instead of reporting a
     generic 20s ping timeout that reads identically to a crashed engine — the
     symptom gives no hint that the fix is a different flag.
+  - Root cause, found afterward by reading the installed `cmd_launch()`
+    (`tools/devtools.py`): `-- --devtools-session X` with no top-level
+    `--session` flag leaves `user_args` empty, so the `cmd += ["--"] + user_args`
+    line that would add Godot's OWN `--` separator never runs — `cmd +=
+    passthrough` alone appends `--devtools-session plantwork` straight onto the
+    engine's command line as two unrecognized top-level tokens, which never
+    reach `OS.get_cmdline_user_args()` at all. Confirmed against my own printed
+    launch line, which shows no `--` before `--devtools-session`. A sibling
+    agent had already filed this precisely
+    (SeveralHerr/godot-selftest-harness#28, same root cause plus a related
+    `GODOT_USERDATA` claim bug) before I got to filing; added a confirming
+    comment with the CPU/memory signature above rather than duplicating it.
 
 - Also worth noting: re-running `--import` after an earlier crashed `--import`
   (exit 139, mid-scan) left `.godot/imported/` with 4 files instead of ~690,
