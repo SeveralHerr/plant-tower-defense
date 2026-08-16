@@ -32,6 +32,8 @@ python tools/name_check.py           # names (harness)
 python tools/world_control_check.py  # a Control over the playfield eats clicks
 python tools/meta_key_check.py       # set_meta/get_meta keys resolve at both ends
 python tools/svg_style_check.py      # sprite style contract
+python tools/group_leak_check.py     # a test that selects a node it did not create
+python tools/suite_reach_check.py    # the public surface no test names
 ```
 
 Each prints its own `NOT COVERED:` line. None of them compiles — only `import_check.py`

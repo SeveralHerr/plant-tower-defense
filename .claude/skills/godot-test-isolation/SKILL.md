@@ -119,3 +119,37 @@ Check these in order, cheapest first:
 A census that walks `tree.root` and tallies `node.get_groups()` catches groups nobody
 named; a census of groups you thought to list only confirms what you already suspected.
 Take it with no frame pumped, which is stricter than reality rather than weaker.
+
+## `[PASS]` with an error on stderr
+
+`[VACUOUS]` catches a test that executed no assertions. It does **not** catch a test that
+executed several, passed them, and *also* errored — because assertions did run. Two real
+cases here, both of which printed green:
+
+- an unconfigured `Kernel` has default `Rect2()` bounds, so it is outside its own bounds
+  on frame one and frees itself during `instantiate_scene`'s settle frames. The test
+  printed `[PASS]` on six assertions while stderr carried
+  `Nonexistent function 'setup' in base 'previously freed'`.
+- a test that scanned source matched the comment explaining why a token was absent.
+
+**Read stderr on every run, including green ones.** `[ERR]` lines are the only signal that
+a `-> String` test aborted partway: the method returns `""` from wherever it died, and
+`""` is a pass.
+
+```bash
+godot --headless --path . --script res://tools/run_tests.gd > out.txt 2>&1
+grep -aE "\[ERR\]|SCRIPT ERROR|Nonexistent|previously freed" out.txt
+```
+
+A run that is green **and** silent is the only green worth having.
+
+## `set_physics_process(false)` before tree entry does not stick
+
+Godot re-enables processing when the node enters the tree, so a test that disables it on a
+detached node and then parents it gets a node that moves anyway. Here a kernel flew 56px
+between construction and assertion (`Expected 160.0 but got 216.0`).
+
+Add the node to the tree **first**, then disable processing, and do not `await` afterwards.
+Existing tests in this repo survive the same pattern only because they happen to step
+exactly one frame — which is luck, not design, and is the same class of accident as a test
+that passes only in company.
