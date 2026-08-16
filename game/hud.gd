@@ -70,6 +70,14 @@ const LEAF := Color(0.180, 0.800, 0.443)
 ## this screen always means "this costs you something".
 const UPROOT_ARMED := Color(0.85, 0.25, 0.22)
 
+## The selection panel's health bar. Green at full, through amber, to the same
+## warning red as UPROOT_ARMED at nearly-dead — so the two reds in the panel mean
+## the same thing, and a plant worth replanting says so without being read.
+const HEALTH_ROW_HEIGHT: float = 14.0
+const HEALTH_BACK := Color(0.12, 0.15, 0.13, 0.35)
+const HEALTH_FULL := Color(0.180, 0.800, 0.443)
+const HEALTH_LOW := Color(0.85, 0.25, 0.22)
+
 var _seeds_label: Label
 var _wave_label: Label
 var _lives_label: Label
@@ -83,6 +91,9 @@ var _selection_box: VBoxContainer
 var _selection_label: Label
 var _upgrade_button: Button
 var _uproot_button: Button
+var _health_row: ColorRect
+var _health_fill: ColorRect
+var _health_text: Label
 var _banner: Label
 
 var _plant_buttons: Dictionary = {}
@@ -230,10 +241,49 @@ func _build_side_panel(root: Control) -> void:
 	_selection_box.visible = false
 	panel.add_child(_selection_box)
 
+	# 56, down from 76. The old height existed to fit the Chomp Flower's 86-character
+	# blurb at four wrapped lines — reference text the player has already read off the
+	# plant button's tooltip, which still carries it. Every branch below now spends
+	# those two lines on live state instead, and the 20px this frees is exactly what
+	# the health row costs, so SelectionBox's damaged height is unchanged at 168 and
+	# its foot stays 16px clear of the panel bottom.
 	_selection_label = _make_label("SelectionLabel", 15, INK)
-	_selection_label.custom_minimum_size = Vector2(0, 76)
+	_selection_label.custom_minimum_size = Vector2(0, 56)
 	_selection_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_selection_box.add_child(_selection_label)
+
+	# Hidden until the plant has actually been bitten, matching the in-world bar on
+	# the plant itself (Plant._health_back). A full bar on every selection would be
+	# 232px of panel saying "nothing is wrong", and the whole point of the readout is
+	# that it only ever appears when there is a decision to make.
+	_health_row = ColorRect.new()
+	_health_row.name = "HealthRow"
+	_health_row.color = HEALTH_BACK
+	_health_row.custom_minimum_size = Vector2(0, HEALTH_ROW_HEIGHT)
+	_health_row.visible = false
+	_health_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_selection_box.add_child(_health_row)
+
+	_health_fill = ColorRect.new()
+	_health_fill.name = "HealthFill"
+	_health_fill.color = HEALTH_FULL
+	_health_fill.position = Vector2.ZERO
+	_health_fill.size = Vector2(PANEL_WIDTH - 24, HEALTH_ROW_HEIGHT)
+	_health_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_health_row.add_child(_health_fill)
+
+	# The numbers ride ON the bar rather than in SelectionLabel. As a third label
+	# line they cost a whole 24px text row, which pushed SelectionBox's foot to
+	# exactly 648 — flush with the panel edge, no margin at all. Measured live;
+	# the headless box-fits test passed it because a foot exactly on the boundary
+	# satisfies `<=`.
+	_health_text = _make_label("HealthText", 11, PAPER)
+	_health_text.position = Vector2.ZERO
+	_health_text.size = Vector2(PANEL_WIDTH - 24, HEALTH_ROW_HEIGHT)
+	_health_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_health_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_health_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_health_row.add_child(_health_text)
 
 	_upgrade_button = Button.new()
 	_upgrade_button.name = "UpgradeButton"
@@ -399,8 +449,13 @@ func _refresh_selection(state: Dictionary) -> void:
 		]
 		_upgrade_button.visible = false
 	else:
-		_selection_label.text = "%s\n%s" % [PlantCatalog.display_name(plant.kind), PlantCatalog.blurb(plant.kind)]
+		var chomp := plant as ChompFlower
+		var busy: String = "Idle — waiting for a pest."
+		if chomp != null and chomp.is_busy():
+			busy = "Chewing — %d%% through this one." % int(round(chomp.chew_progress() * 100.0))
+		_selection_label.text = "%s\n%s" % [PlantCatalog.display_name(plant.kind), busy]
 		_upgrade_button.visible = false
+	_refresh_health(plant)
 	# Armed, the button says what the next click does rather than what the action
 	# is called. It stays the same node at the same size — the devtools bridge and
 	# the tests press UprootButton by path, and a second button would not fit under
@@ -411,6 +466,25 @@ func _refresh_selection(state: Dictionary) -> void:
 	else:
 		_uproot_button.text = "Uproot (+%d)" % plant.uproot_refund()
 		_uproot_button.remove_theme_color_override("font_color")
+
+
+## The bar under the selection blurb. Appears only once a plant has been bitten,
+## and reports the same number the in-world bar draws.
+##
+## The fill is sized against PANEL_WIDTH - 24 rather than the row's own `size`,
+## because a Container child measures 0 wide until the layout pass lands and the
+## first refresh after a selection happens before it — reading `_health_row.size.x`
+## here drew every freshly-selected plant a zero-width bar for one frame.
+func _refresh_health(plant: Plant) -> void:
+	var fraction: float = clampf(plant.health / Plant.MAX_HEALTH, 0.0, 1.0)
+	if fraction >= 1.0:
+		_health_row.visible = false
+		return
+	_health_row.visible = true
+	var full_width: float = float(PANEL_WIDTH - 24)
+	_health_fill.size = Vector2(full_width * fraction, HEALTH_ROW_HEIGHT)
+	_health_fill.color = HEALTH_LOW.lerp(HEALTH_FULL, fraction)
+	_health_text.text = "Health %d/%d" % [int(ceil(plant.health)), int(Plant.MAX_HEALTH)]
 
 
 func show_message(text: String, seconds: float = 3.0) -> void:

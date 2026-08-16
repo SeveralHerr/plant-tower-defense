@@ -6,6 +6,10 @@ extends RefCounted
 ## feature rather than by file, since that's how the bd issues were scoped.
 
 const GAME_SCENE := "res://game/game.tscn"
+## Clearance the selection box must keep between its own foot and the side panel's.
+## Non-zero on purpose: a foot resting exactly on the boundary is a button flush
+## with the bottom edge of the screen, which no `<=` assertion will ever object to.
+const SELECTION_FOOT_MARGIN: float = 8.0
 
 var _T
 
@@ -2168,5 +2172,84 @@ func test_an_armed_uproot_button_relabels_and_reddens() -> String:
 	if err == "":
 		err = _T.assert_true(button.text.begins_with("Uproot ("),
 			"and goes back to its resting label, got %s" % button.text)
+	_T.free_ui(game)
+	return err
+
+
+## The panel exists to answer "uproot and replant?", which is unanswerable without
+## the plant's health. Drives real damage rather than writing `health` directly, so
+## the readout is proved against the path a pest actually takes.
+func test_the_selection_panel_reports_a_chewed_plants_health() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "", "planted")
+	var row: ColorRect = game.hud.get_node_or_null("Root/SidePanel/SelectionBox/HealthRow") as ColorRect
+	var label: Label = game.hud.get_node_or_null("Root/SidePanel/SelectionBox/SelectionLabel") as Label
+	if err == "":
+		err = _T.assert_true(row != null and label != null, "the health row and label exist")
+	if err == "":
+		await _pump(game)
+		err = _T.assert_false(row.visible, "an unbitten plant shows no bar at all")
+	if err == "":
+		err = _T.assert_false(label.text.contains("Health"),
+			"and no health line, got %s" % label.text)
+	if err == "":
+		var text_before: String = (row.get_node_or_null("HealthText") as Label).text
+		game.selected_placed.take_damage(Plant.MAX_HEALTH * 0.5)
+		# The panel follows health from Game._process, not from a signal.
+		game._process(0.016)
+		await _pump(game)
+		err = _T.assert_true(row.visible, "half-eaten, the bar appears")
+		if err == "":
+			err = _T.assert_true((row.get_node_or_null("HealthText") as Label).text != text_before,
+				"and the panel's health readout changed")
+		if err == "":
+			var text: Label = row.get_node_or_null("HealthText") as Label
+			err = _T.assert_true(text != null, "the bar carries its own numbers")
+			if err == "":
+				err = _T.assert_eq(text.text, "Health %d/%d" % [int(Plant.MAX_HEALTH * 0.5), int(Plant.MAX_HEALTH)],
+					"reporting current/max on the bar")
+	if err == "":
+		var fill: ColorRect = row.get_node_or_null("HealthFill") as ColorRect
+		err = _T.assert_true(fill != null, "the bar has a fill")
+		if err == "":
+			err = _T.assert_float_eq(fill.size.x, float(Hud.PANEL_WIDTH - 24) * 0.5, 1.0,
+				"the fill is half the row at half health")
+	_T.free_ui(game)
+	return err
+
+
+## The health row was bought with 20px taken off SelectionLabel. If a future blurb
+## or a third line ever claws that back, the box grows past the panel foot and the
+## Uproot button walks off the bottom of the screen -- which renders as a perfectly
+## plausible panel until you look for the button that is no longer there.
+func test_the_selection_box_stays_inside_the_side_panel_when_damaged() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(300)
+	var err: String = ""
+	# Every plant kind, each at 1 hp -- the longest the panel ever gets, since that
+	# is a wrapped name line, a state line and the health line all at once.
+	for id: StringName in PlantCatalog.ids():
+		if err != "":
+			break
+		var cell: Vector2i = _grass(game)
+		if game.place_plant(id, cell) != "":
+			continue
+		game.selected_placed.take_damage(Plant.MAX_HEALTH - 1.0)
+		game._process(0.016)
+		await _pump(game)
+		var box: Control = game.hud.get_node_or_null("Root/SidePanel/SelectionBox") as Control
+		var panel: Control = game.hud.get_node_or_null("Root/SidePanel") as Control
+		err = _T.assert_true(box != null and panel != null, "panel and box are on screen")
+		if err == "":
+			var box_foot: float = box.global_position.y + box.size.y
+			var panel_foot: float = panel.global_position.y + panel.size.y
+			# A real margin, not `<=`. The first version of this test asserted only
+			# that the foot did not pass the panel, and passed a live layout sitting
+			# at exactly 648 on a 648px panel -- the Uproot button flush against the
+			# bottom of the screen, which is a bug that renders as a fine screenshot.
+			err = _T.assert_true(box_foot <= panel_foot - SELECTION_FOOT_MARGIN,
+				"%s: selection box foot %.0f keeps %dpx clear of the panel foot %.0f"
+					% [String(id), box_foot, int(SELECTION_FOOT_MARGIN), panel_foot])
 	_T.free_ui(game)
 	return err

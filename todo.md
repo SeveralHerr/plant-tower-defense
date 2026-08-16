@@ -24,7 +24,7 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 
 ## Items
 
-- [ ] Uproot needs a confirm or an undo — it is the only irreversible misclick
+- [x] Uproot needs a confirm or an undo — it is the only irreversible misclick
       in the game (`plant-tower-defense-zr4`)
 - [ ] Show a selected plant's health in the side panel, so "uproot and replant?"
       is a decision the panel can actually support (`plant-tower-defense-5zc`)

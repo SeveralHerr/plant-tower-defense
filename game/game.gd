@@ -55,6 +55,14 @@ var _score_recorded: bool = false
 var _uproot_armed: Plant = null
 var _uproot_left: float = 0.0
 
+## Last health reading of the selected plant, so the panel can follow a chew.
+##
+## Plant has no health_changed signal and damage is applied per physics frame by
+## every adjacent pest (Pest.EAT_DPS * delta), so wiring one would fire ~60x a
+## second and rebuild every HUD string with it. Watching the value here refreshes
+## on change only, and keeps the HUD stateless — it still holds no copy of this.
+var _selected_health: float = -1.0
+
 ## Road cell -> how many pests this wave were lost there (killed or escaped).
 ## Committed to the board as one batch when the wave ends; see
 ## Board.record_lane_pressure_wave.
@@ -137,6 +145,7 @@ func _process(delta: float) -> void:
 	# still disarm, or the trigger is left live under the cursor on the results
 	# screen and survives into whatever the player clicks next.
 	_tick_uproot_confirm(delta)
+	_watch_selected_health()
 	if game_over or victory:
 		return
 	_check_wave_cleared()
@@ -414,6 +423,17 @@ func request_uproot() -> String:
 ## button, and by the tests.
 func uproot_armed() -> bool:
 	return _uproot_armed != null and _uproot_armed == selected_placed and _uproot_left > 0.0
+
+
+## Refreshes the panel when — and only when — the selected plant's health moves.
+func _watch_selected_health() -> void:
+	if selected_placed == null or not is_instance_valid(selected_placed):
+		_selected_health = -1.0
+		return
+	if is_equal_approx(selected_placed.health, _selected_health):
+		return
+	_selected_health = selected_placed.health
+	_refresh()
 
 
 func _disarm_uproot() -> void:

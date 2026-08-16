@@ -1208,9 +1208,76 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   `python tools/devtools.py quit --kill` after a survivor warning, and the installed
   client answered `error: unrecognized arguments: --kill`. The orphan scan the
   workflow describes as "runs by default (0.21.0+)" also never appeared in lint output.
-  - [G-023] status: open | seen: 1 | harness: 0.19.0
+  - [G-023] status: fixed | fixed-in: 0.21.0 | seen: 1 | harness: 0.19.0
   - Improvement: have `/verify` Phase 0 fail loudly rather than advisorily when the
     bearing is `STALE`, since every later phase is then reading instructions written
     against a client the project does not have. A one-line
     `installed 0.19.0 < documented 0.21.0 - re-run /scaffold-godot-harness` at the
     top of the run would have cost nothing and pre-empted the `--kill` dead end.
+
+## 2026-08-15 — Refreshed the self-test harness from 0.19.0 to 0.21.0 (/scaffold-godot-harness)
+
+- Value: **warranted** — the smoke check is the only thing that distinguishes "13 files
+  overwritten" from "13 files overwritten and the project still parses".
+  - Expected: a clean overwrite of every shipped file (nothing local had been edited
+    since 0.19.0), config keys the project had customized preserved, and lint green.
+  - Got: `Scripts: 37 compiled OK | Shaders: none found | UIDs: OK | res://game/game.tscn:
+    OK | res://game/title.tscn: OK | lint: 0 error(s), 0 warning(s) -> exit 0`, and the
+    installer printed `= main_scene kept as "res://game/title.tscn" (project-owned)` plus
+    the same for `entry_hook`, `entry_points` and `reach_aliases`.
+  - Found: nothing broken by the refresh, but the installer's own detection line
+    (`[full] detected: main_scene=uid://ce2dtga2f08e`) exposed the gap below.
+  - Cheaper: nothing — a 337-line `dev_tools.gd` diff and a 570-line `devtools.py` diff
+    landing unreviewed is exactly the case where compiling the project is the check.
+
+- Gap: **`scaffold_install.py detect_main_scene()` does not resolve a `uid://` main scene**
+  — `project.godot` here holds `run/main_scene="uid://ce2dtga2f08e"` (what the Godot 4.4+
+  editor writes by default). The installer's regex returns that string verbatim, so
+  `full` printed `[full] detected: main_scene=uid://ce2dtga2f08e` and would have written a
+  `uid://` into `devtools_config.json` on a **fresh** install. This project only escaped it
+  because `main_scene` was already project-owned as `res://game/title.tscn`. The scaffold
+  doc compounds it: step 7 tells the agent to "open the main scene" to detect
+  `hud_layer_name`, which cannot be done from a uid without the same resolution step.
+  - [G-024] status: open | seen: 1 | harness: 0.21.0
+  - Improvement: in `detect_main_scene()`, when the value starts with `uid://`, grep the
+    project's `*.tscn` headers (`uid="uid://…"`) and `*.uid` sidecars for the id and return
+    the owning `res://` path; fall back to the raw uid only if nothing matches, and say so.
+
+## 2026-08-15 — Plant health in the selection panel (plant-tower-defense-5zc)
+
+- Value: **warranted** — runtime measured a layout the headless test had already
+  approved, and the two disagreed because the assertion was too weak.
+  - Expected: headless proves the numbers and the box geometry, but HealthFill is
+    a manually-sized ColorRect nested inside a ColorRect that a VBoxContainer
+    manages. Runtime should reveal whether the fill actually renders at the width
+    the test asserts, or whether the container's layout pass flattens it on screen.
+  - Got: the fill rendered `Rect: 908, 542, 116x14` against a 232-wide row — exactly
+    half at half health, so the container does not touch a non-container's child.
+    The colour ramp read `r 0.515 g 0.525 b 0.331` at 20/40 and `r 0.817 g 0.278
+    b 0.231` at 2/40. But `SelectionBox` measured `232x184`, foot at **exactly 648**
+    on a panel whose own foot is 648.
+  - Found: the `Health n/m` line appended to `SelectionLabel` pushed it to a third
+    wrapped text row, growing the box 16px and putting the Uproot button flush with
+    the bottom edge of the screen with zero margin. `test_the_selection_box_stays_
+    inside_the_side_panel_when_damaged` had passed that exact layout, because a foot
+    resting on the boundary satisfies `<=`. Moved the numbers onto the bar itself
+    (`HealthText`), which returns the box to `232x168` / foot 632, and rewrote the
+    assertion to demand `SELECTION_FOOT_MARGIN = 8.0` of real clearance.
+  - Cheaper: nothing. The defect is a wrapped label line changing a container's
+    height, which only the real font at the real width produces; the headless test
+    had the right shape and the wrong operator, and no amount of re-reading the
+    diff would have shown the operator was wrong.
+
+- Gap: **`find-nodes --class` did not resolve a script `class_name`** —
+  `python tools/devtools.py find-nodes --class CornCobbler --property health`
+  answered `0 node(s) matched:` against a board that provably held one
+  (`game_state` reported `plants 1`, and the node was sitting at
+  `/root/Game/Entities/@Node2D@129` with `script res://game/corn_cobbler.gd`).
+  Same for `--class Plant`. Workaround: dump `scene-tree --root /root/Game/Entities`
+  and match on the `script` field by hand, which is what `find-nodes` exists to
+  avoid. A silent `0 matched` is the bad shape here — it reads as "no such node"
+  rather than "that is not a class I can resolve".
+  - [G-024] status: fixed | fixed-in: 0.21.0 | seen: 1 | harness: 0.19.0
+  - Improvement: already shipped — 0.21.0's `--class` takes a script `class_name`
+    including subclasses, and fails on a name that is neither, which turns this
+    exact silent zero into an error.
