@@ -186,6 +186,13 @@ func spawn_pest(species: StringName, mutation: StringName = &"") -> void:
 	var pest := Pest.new()
 	_entities.add_child(pest)
 	pest.setup(species, board.route())
+	# Endless difficulty rides on the wave number, not on the endless flag —
+	# both scales are 1.0 inside the fixed table, so campaign spawns and a
+	# devtools-staged pest go through the identical call.
+	pest.apply_wave_scaling(
+		WaveDirector.health_scale_for(director.current_wave),
+		WaveDirector.speed_scale_for(director.current_wave)
+	)
 	if mutation != &"":
 		pest.apply_mutation(mutation)
 	pest.died.connect(_on_pest_died)

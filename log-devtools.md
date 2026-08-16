@@ -705,3 +705,43 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     class nor a registered `class_name`, exit 1 naming it as an unknown type instead of
     returning a clean zero-match. A predicate message must not be emitted for an empty
     candidate set.
+
+## 2026-08-15 — Endless mode scales pest health/speed for plant-tower-defense-nps
+
+- Value: **warranted** — the live wave confirmed the scaled pests still walk the road,
+  which is the failure this change could plausibly have introduced and which no headless
+  test can see, and it turned up a false gate in `validate-ui`.
+  - Expected: a live endless wave past the fixed table should spawn pests that are
+    measurably tougher/faster and still traverse the route correctly — the headless tests
+    assert the multipliers, not that a 1.6x aphid follows `_advance` legs without
+    overshooting a corner.
+  - Got: with `current_wave = 38` (over = 30, so 2.8x health / 1.45x speed),
+    `find-nodes --group pests --property health --property max_health --property speed`
+    returned `health=8.4 max_health=8.4 species=aphid speed=113.1` and
+    `health=44.8 max_health=44.8 species=beetle speed=55.1` — exactly 3.0x2.8, 16x2.8,
+    78x1.45 and 38x1.45, with `health == max_health` on both, i.e. spawning full rather
+    than pre-damaged. Feeding all 18 live pests' positions through
+    `Board.world_to_cell` and `Board.is_path` gave `off-road pests: 0`, and letting the
+    whole of wave 39 run took `lives` from 10 to 0 with `pests_alive: 0` — every pest
+    completed the route at 1.45x speed rather than clipping a corner or sticking.
+  - Found: `validate-ui` reported a NEW `ui_layout` finding against the game-over
+    banner — `Label 'Banner' text 'The garden is eaten\nSeeds grown: 0  (best 721)'
+    exceeds width (text: 1052px, label: 896px)`. A cropped screenshot shows the banner
+    rendering perfectly on two centred lines well inside its box: the check measures a
+    multiline Label's text as one joined line. Left unbaselined deliberately — baselining
+    it would also silence a genuine overflow of that same label later.
+  - Cheaper: the multiplier arithmetic needed nothing beyond the six new unit tests in
+    `test_selftest.gd`, and that is where it now lives. The route-traversal check at
+    1.45x speed and the banner false positive both needed the running game.
+
+- Gap: **`validate-ui`'s overflow check does not account for newlines or autowrap, so any
+  multiline `Label` is a permanent false positive.** The game-over banner is a two-line
+  Label; the check joined the lines and compared 1052px of text against an 896px box,
+  gating a run over UI that a screenshot shows is correct. There is no way to express
+  "this Label is multiline" short of baselining the node, which also suppresses real
+  overflow findings on it forever.
+  - [G-014] status: open | seen: 1 | harness: 0.19.0
+  - Improvement: measure per line. Split the Label's `text` on `\n` and compare the
+    widest line against the box; when `autowrap_mode != AUTOWRAP_OFF`, compare
+    `get_line_count() * get_line_height()` against the box *height* instead and skip the
+    width test entirely, since a wrapping Label is supposed to exceed its width.

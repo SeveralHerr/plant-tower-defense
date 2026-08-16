@@ -13,3 +13,7 @@
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# /verify scratch runner logs
+lint.log
+tests.log

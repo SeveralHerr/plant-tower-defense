@@ -813,3 +813,120 @@ func test_the_husks_the_game_really_drops_span_the_size_range() -> String:
 	if err == "":
 		err = _T.assert_eq(HuskLayer.glow_for(beetle), 1.0, "and glows at full brightness")
 	return err
+
+
+# -- Endless mode scales the pests themselves (plant-tower-defense-nps) ------
+
+
+## Campaign must be bit-for-bit unaffected. Both scales key off `wave - WAVES.size()`
+## with no endless flag involved, so this is the check that the shared shape
+## really does leave the fixed table alone.
+func test_pest_scaling_is_exactly_neutral_through_the_fixed_table() -> String:
+	for w: int in range(1, WaveDirector.WAVES.size() + 1):
+		var err: String = _T.assert_float_eq(WaveDirector.health_scale_for(w), 1.0, 0.0001,
+			"wave %d health is unscaled" % w)
+		if err == "":
+			err = _T.assert_float_eq(WaveDirector.speed_scale_for(w), 1.0, 0.0001,
+				"wave %d speed is unscaled" % w)
+		if err != "":
+			return err
+	return ""
+
+
+func test_pest_scaling_climbs_the_further_endless_mode_runs() -> String:
+	var table: int = WaveDirector.WAVES.size()
+	var early_health: float = WaveDirector.health_scale_for(table + 1)
+	var late_health: float = WaveDirector.health_scale_for(table + 10)
+	var err: String = _T.assert_true(late_health > early_health,
+		"health scale climbs (%.3f at +1 -> %.3f at +10)" % [early_health, late_health])
+	if err == "":
+		err = _T.assert_true(WaveDirector.speed_scale_for(table + 10) > WaveDirector.speed_scale_for(table + 1),
+			"and so does speed")
+	if err == "":
+		err = _T.assert_true(late_health > WaveDirector.speed_scale_for(table + 10),
+			"health is the bigger lever of the two, by design")
+	return err
+
+
+## Both are capped, and the caps are what keep the mode playable: an uncapped
+## speed ramp eventually outruns every plant's reaction window no matter what
+## the player built.
+func test_pest_scaling_is_capped_so_a_very_long_run_stays_playable() -> String:
+	var err: String = _T.assert_float_eq(WaveDirector.health_scale_for(10000), WaveDirector.ENDLESS_HEALTH_MAX, 0.0001,
+		"health saturates at its ceiling")
+	if err == "":
+		err = _T.assert_float_eq(WaveDirector.speed_scale_for(10000), WaveDirector.ENDLESS_SPEED_MAX, 0.0001,
+			"speed saturates at its ceiling")
+	if err == "":
+		var top: float = float(Pest.SPECIES[Pest.APHID]["speed"]) * WaveDirector.ENDLESS_SPEED_MAX
+		err = _T.assert_true(top * (1.0 / 60.0) < Board.CELL,
+			"even the fastest possible aphid (%.0f px/s) crosses less than one %dpx cell per frame, so it cannot skip past a plant's range between physics ticks"
+				% [top, int(Board.CELL)])
+	return err
+
+
+## A scaled pest must arrive with a full bar, not at species health out of a
+## raised maximum — that would read as pre-damaged and make the first several
+## hits look like they did nothing.
+func test_a_scaled_pest_spawns_at_full_health() -> String:
+	var pest := Pest.new()
+	pest.setup(Pest.BEETLE, PackedVector2Array([Vector2.ZERO, Vector2(100, 0)]))
+	var base: float = pest.max_health
+	pest.apply_wave_scaling(2.5, 1.2)
+	var err: String = _T.assert_float_eq(pest.max_health, base * 2.5, 0.0001, "the maximum went up")
+	if err == "":
+		err = _T.assert_float_eq(pest.health, pest.max_health, 0.0001, "and it spawned full, not pre-damaged")
+	pest.free()
+	return err
+
+
+## Mutations touch chew_seconds, wave scaling touches health/speed — the comment
+## on apply_wave_scaling claims they compose in either order, so check it rather
+## than trusting the claim.
+func test_wave_scaling_and_a_mutation_compose_in_either_order() -> String:
+	var route := PackedVector2Array([Vector2.ZERO, Vector2(100, 0)])
+	var first := Pest.new()
+	first.setup(Pest.BEETLE, route)
+	first.apply_wave_scaling(2.0, 1.5)
+	first.apply_mutation(Pest.MUTATION_ARMOURED)
+	var second := Pest.new()
+	second.setup(Pest.BEETLE, route)
+	second.apply_mutation(Pest.MUTATION_ARMOURED)
+	second.apply_wave_scaling(2.0, 1.5)
+	var err: String = _T.assert_float_eq(first.max_health, second.max_health, 0.0001, "same health either way")
+	if err == "":
+		err = _T.assert_float_eq(first.speed, second.speed, 0.0001, "same speed either way")
+	if err == "":
+		err = _T.assert_float_eq(first.chew_seconds, second.chew_seconds, 0.0001, "same chew time either way")
+	first.free()
+	second.free()
+	return err
+
+
+## The whole feature, through the path the game actually uses: Game.spawn_pest
+## must read the live wave number off the director, not spawn species defaults.
+func test_a_pest_spawned_deep_in_endless_is_tougher_than_a_wave_one_pest() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.director.current_wave = 1
+	game.spawn_pest(Pest.APHID)
+	var early: Pest = game.get_tree().get_nodes_in_group("pests")[0] as Pest
+	var base_health: float = early.max_health
+	var base_speed: float = early.speed
+	early.queue_free()
+
+	game.director.current_wave = WaveDirector.WAVES.size() + 20
+	game.spawn_pest(Pest.APHID)
+	var late: Pest = null
+	for p: Node in game.get_tree().get_nodes_in_group("pests"):
+		if p != early:
+			late = p as Pest
+	var err: String = _T.assert_true(late != null, "the late-wave pest spawned")
+	if err == "":
+		err = _T.assert_true(late.max_health > base_health,
+			"a wave-%d aphid has more health (%.1f) than a wave-1 one (%.1f)"
+				% [game.director.current_wave, late.max_health, base_health])
+	if err == "":
+		err = _T.assert_true(late.speed > base_speed,
+			"and walks faster (%.1f vs %.1f)" % [late.speed, base_speed])
+	_T.free_ui(game)
+	return err

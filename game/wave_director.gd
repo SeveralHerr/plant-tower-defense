@@ -22,6 +22,23 @@ const MUTATIONS: Array[StringName] = [Pest.MUTATION_ARMOURED, Pest.MUTATION_WING
 const MUTATION_CHANCE_ENDLESS_STEP: float = 0.02
 const MUTATION_CHANCE_MAX: float = 0.85
 
+## Count, gap and mutation chance all climb past the fixed table, but the pest
+## itself did not: a wave-60 aphid had the same 3 HP and 78 px/s as a wave-9
+## one, so the entire late game was a quantity problem and a board that could
+## clear wave 20 could clear wave 200 unattended. These scale the pest, so a
+## long run eventually demands upgrades rather than only more of them.
+##
+## Health is the main lever and speed the minor one, deliberately: health makes
+## a lane take longer to clear, which the player answers with damage, while
+## speed shortens the window a lane has to work in at all and turns punishing
+## fast. Hence a 3x health ceiling against a 1.6x speed one — at the cap an
+## aphid crosses a 64px cell in half a second, which a placed Corn Cobbler can
+## still act inside.
+const ENDLESS_HEALTH_STEP: float = 0.06
+const ENDLESS_HEALTH_MAX: float = 3.0
+const ENDLESS_SPEED_STEP: float = 0.015
+const ENDLESS_SPEED_MAX: float = 1.6
+
 ## Each group: species, how many, and the gap in seconds between each one.
 ## `lead` is the pause before the group starts.
 const WAVES: Array[Array] = [
@@ -137,6 +154,25 @@ static func mutation_chance_for(wave: int) -> float:
 	if over <= 0:
 		return MUTATION_CHANCE
 	return minf(MUTATION_CHANCE_MAX, MUTATION_CHANCE + float(over) * MUTATION_CHANCE_ENDLESS_STEP)
+
+
+## Multiplier on a spawned pest's health for `wave`. Exactly 1.0 through the
+## fixed table — same `over <= 0` shape as mutation_chance_for, so campaign mode
+## is untouched by construction rather than by a mode flag someone can forget.
+static func health_scale_for(wave: int) -> float:
+	var over: int = wave - WAVES.size()
+	if over <= 0:
+		return 1.0
+	return minf(ENDLESS_HEALTH_MAX, 1.0 + float(over) * ENDLESS_HEALTH_STEP)
+
+
+## Multiplier on a spawned pest's walking speed for `wave`. See the constants:
+## this climbs far more slowly than health and stops far sooner.
+static func speed_scale_for(wave: int) -> float:
+	var over: int = wave - WAVES.size()
+	if over <= 0:
+		return 1.0
+	return minf(ENDLESS_SPEED_MAX, 1.0 + float(over) * ENDLESS_SPEED_STEP)
 
 
 func _build_schedule(groups: Array) -> Array[Dictionary]:

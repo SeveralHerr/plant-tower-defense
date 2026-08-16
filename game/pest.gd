@@ -115,6 +115,21 @@ func setup(which: StringName, route: PackedVector2Array) -> void:
 		_dead_texture = load(dead_path) as Texture2D
 
 
+## Endless mode's per-wave difficulty multipliers, from
+## WaveDirector.health_scale_for / speed_scale_for. Called after setup(), which
+## is what seeded the species defaults these scale.
+##
+## `health` moves with `max_health` rather than being left at the species value,
+## so a scaled pest still spawns with a full bar — a beetle arriving at 16/48
+## would read as pre-damaged and the bar would barely move for its first three
+## hits. Mutations do not touch health or speed, so this composes with
+## apply_mutation() in either order.
+func apply_wave_scaling(health_multiplier: float, speed_multiplier: float) -> void:
+	max_health *= health_multiplier
+	health = max_health
+	speed *= speed_multiplier
+
+
 ## Applies one wave-8+ trait. Called by whoever spawns this pest, after setup()
 ## so the sprite already exists to tint. A no-op for &"" (the common case).
 func apply_mutation(which: StringName) -> void:
