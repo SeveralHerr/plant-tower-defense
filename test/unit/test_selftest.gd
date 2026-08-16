@@ -824,7 +824,7 @@ func test_notebook_content_stays_on_the_paper() -> String:
 	var err := ""
 	for node_name: String in [
 		"Heading", "Subheading", "BackButton", "Drawing", "DrawingFrame", "SourceLabel",
-		"Sprite", "Caption", "NoteLabel", "PrevButton", "PageLabel", "NextButton",
+		"Sprite", "Caption", "NoteLabel", "PrevButton", "PageLabel", "NextButton", "Shelf",
 	]:
 		var node: Control = notebook.get_node(node_name) as Control
 		var rect := Rect2(node.position, node.size)
@@ -6539,4 +6539,182 @@ func test_the_health_bar_the_hud_draws_goes_through_the_switch() -> String:
 			"and it goes back to the default ramp the moment the option does, got %s" % fill.color)
 	RunConfig.colorblind_safe = was
 	_T.free_ui(game)
+	return err
+
+
+# -- The milestone shelf (plant-tower-defense-qar) ---------------------------
+#
+# RunConfig.earned_milestones is loaded from the developer's own user:// save at
+# startup, so every test below pins the whole set and puts back what it found.
+# A shelf test that read the real file would pass or fail on how much of the game
+# whoever ran it had played, which is the failure three tests were just fixed for.
+
+
+func test_the_notebook_has_exactly_one_shelf_page() -> String:
+	var page: int = NotebookScreen.shelf_page()
+	var err: String = _T.assert_gt(page, -1,
+		"the notebook has a KIND_SHELF page — without it the earned set has nowhere to live")
+	if err != "":
+		return err
+	var shelves: int = 0
+	for entry: Dictionary in NotebookScreen.PAGES:
+		if String(entry.get("kind", NotebookScreen.KIND_DRAWING)) == NotebookScreen.KIND_SHELF:
+			shelves += 1
+	return _T.assert_eq(shelves, 1, "and exactly one, so shelf_page() names a single page")
+
+
+func test_the_milestone_shelf_lists_every_milestone_earned_or_not() -> String:
+	## The whole point of the page: `RunSummary.new_milestones()` draws only what
+	## a run was the first to do, so a shelf showing only the earned ones would
+	## repeat that and still leave a new player looking at an empty page.
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	# Exactly one earned, and deliberately not the first row.
+	RunConfig.earned_milestones = {"hundred_pests": true}
+	var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var shelf: Control = notebook.get_node_or_null("Shelf") as Control
+	var err: String = _T.assert_true(shelf != null, "the shelf is built")
+	if err == "":
+		err = _T.assert_false(shelf.visible, "and starts hidden — page 1 is a drawing")
+	if err == "":
+		notebook.go_to(NotebookScreen.shelf_page())
+		err = _T.assert_true(shelf.visible, "turning to the shelf page shows it")
+	if err == "":
+		err = _T.assert_false(notebook.get_node("Drawing").visible,
+			"and the photograph it shares the matte with is put away")
+	for row: Dictionary in Milestones.TABLE:
+		if err != "":
+			break
+		var id: String = String(row["id"])
+		var title: Label = shelf.get_node_or_null("ShelfTitle_%s" % id) as Label
+		err = _T.assert_true(title != null, "%s has a row on the shelf" % id)
+		if err == "":
+			err = _T.assert_eq(title.text, Milestones.title_of(id),
+				"and it is titled the way the post-mortem titles it")
+	if err == "":
+		err = _T.assert_eq(shelf.get_child_count(), Milestones.TABLE.size() * 3,
+			"a pip, a title and a note for each of the %d milestones and nothing else"
+				% Milestones.TABLE.size())
+	_T.free_ui(notebook)
+	RunConfig.earned_milestones = stashed
+	return err
+
+
+func test_the_shelf_tells_earned_from_unearned_without_using_colour() -> String:
+	## Same rule Plant.HEALTH_BAR_SEGMENTS states for the board: a cue carried by
+	## hue alone is a cue the colourblind-safe option exists because of. The pip's
+	## SIZE and the note's "Not yet" prefix are the two channels that survive the
+	## page being printed in one ink; this asserts them with the colours thrown
+	## away entirely.
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	var got: String = String(Milestones.TABLE[0]["id"])
+	var missing: String = String(Milestones.TABLE[1]["id"])
+	RunConfig.earned_milestones = {got: true}
+	var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var shelf: Control = notebook.get_node("Shelf") as Control
+	var earned_pip: ColorRect = shelf.get_node("ShelfPip_%s" % got) as ColorRect
+	var unearned_pip: ColorRect = shelf.get_node("ShelfPip_%s" % missing) as ColorRect
+	var err: String = _T.assert_gt(earned_pip.size.x, unearned_pip.size.x,
+		"an earned pip (%s) is bigger than an unearned one (%s), not merely a different green"
+			% [earned_pip.size, unearned_pip.size])
+	if err == "":
+		# Same centre line, or the column reads as two ragged left edges.
+		err = _T.assert_float_eq(earned_pip.position.x + earned_pip.size.x / 2.0,
+			unearned_pip.position.x + unearned_pip.size.x / 2.0, 0.001,
+			"and the two sizes share a centre line")
+	if err == "":
+		var note: Label = shelf.get_node("ShelfNote_%s" % missing) as Label
+		err = _T.assert_true(note.text.begins_with("Not yet"),
+			"an unearned row says so in words: \"%s\"" % note.text)
+	if err == "":
+		var got_note: Label = shelf.get_node("ShelfNote_%s" % got) as Label
+		err = _T.assert_eq(got_note.text, Milestones.note_of(got),
+			"and an earned one is left as the table wrote it")
+	if err == "":
+		# The wording itself, without a screen: the prefix lowercases the note's
+		# first letter so "Not yet — cleared it without an escape" is a sentence
+		# rather than two of them jammed together.
+		err = _T.assert_eq(NotebookScreen.shelf_note_text(missing, false),
+			"Not yet — %s" % (Milestones.note_of(missing).substr(0, 1).to_lower()
+				+ Milestones.note_of(missing).substr(1)),
+			"shelf_note_text writes the unearned form as one sentence")
+	if err == "":
+		err = _T.assert_eq(NotebookScreen.shelf_note_text(missing, true), Milestones.note_of(missing),
+			"and hands the table's own note straight back once it is earned")
+	_T.free_ui(notebook)
+	RunConfig.earned_milestones = stashed
+	return err
+
+
+func test_the_shelf_progress_line_counts_the_table_and_not_the_save() -> String:
+	## An id from a build that knew more milestones than this one is a real case —
+	## Milestones.is_met() already answers `false` for one rather than erroring —
+	## and counting `earned_milestones.size()` would print "8 of 7 earned" the day
+	## it happens. The count is over TABLE, intersected with the save.
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	var total: int = Milestones.TABLE.size()
+	RunConfig.earned_milestones = {}
+	var err: String = _T.assert_eq(NotebookScreen.shelf_progress_text(), "0 of %d earned" % total,
+		"a save with nothing in it reads as none earned, not as an empty line")
+	if err == "":
+		RunConfig.earned_milestones = {
+			String(Milestones.TABLE[0]["id"]): true, "a_milestone_from_the_future": true,
+		}
+		err = _T.assert_eq(NotebookScreen.shelf_progress_text(), "1 of %d earned" % total,
+			"an id this build has no row for is not counted toward the total it has no row in")
+	if err == "":
+		var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+		notebook.go_to(NotebookScreen.shelf_page())
+		var source: Label = notebook.get_node("SourceLabel") as Label
+		err = _T.assert_eq(source.text, "1 of %d earned" % total,
+			"and the shelf page's provenance line is that count rather than a file name")
+		_T.free_ui(notebook)
+	RunConfig.earned_milestones = stashed
+	return err
+
+
+func test_the_milestone_shelf_fits_the_page() -> String:
+	## Milestones.TABLE.size() rows at SHELF_ROW_PITCH is 297px against
+	## DRAWING_BOX's 300 — there is no room for an eighth entry at these numbers,
+	## and the failure it would cause is a row drawn off the bottom of the matte
+	## onto the dark backdrop, which nothing else here would catch. Two ways out
+	## when this fails: drop SHELF_ROW_PITCH, or split the shelf across both pages.
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	# Every row earned, so the pips are at their largest — the worst case for the
+	# box, staged rather than waited for.
+	var all_earned: Dictionary = {}
+	for row: Dictionary in Milestones.TABLE:
+		all_earned[String(row["id"])] = true
+	RunConfig.earned_milestones = all_earned
+	var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var shelf: Control = notebook.get_node("Shelf") as Control
+	var box := Rect2(Vector2.ZERO, NotebookScreen.DRAWING_BOX.size)
+	var err := ""
+	var rows: Array[Rect2] = []
+	for row: Dictionary in Milestones.TABLE:
+		var id: String = String(row["id"])
+		for child_name: String in ["ShelfPip_%s" % id, "ShelfTitle_%s" % id, "ShelfNote_%s" % id]:
+			var node: Control = shelf.get_node(child_name) as Control
+			var rect := Rect2(node.position, node.size)
+			err = _T.assert_true(box.encloses(rect),
+				"%s at %s stays inside the shelf's box %s" % [child_name, rect, box])
+			if err != "":
+				break
+		if err != "":
+			break
+		# Rows must not tread on each other either — the note of one row landing
+		# on the title of the next is 17px of overlap that still fits the box.
+		var note: Control = shelf.get_node("ShelfNote_%s" % id) as Control
+		var title: Control = shelf.get_node("ShelfTitle_%s" % id) as Control
+		var span := Rect2(title.position, Vector2(title.size.x,
+			note.position.y + note.size.y - title.position.y))
+		for prior: Rect2 in rows:
+			err = _T.assert_true(prior.intersection(span).get_area() <= 0.0,
+				"row %s at %s does not sit on the row at %s" % [id, span, prior])
+			if err != "":
+				break
+		if err != "":
+			break
+		rows.append(span)
+	_T.free_ui(notebook)
+	RunConfig.earned_milestones = stashed
 	return err

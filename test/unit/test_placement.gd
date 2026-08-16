@@ -2163,16 +2163,31 @@ func test_the_notebook_plant_pages_fit_their_card() -> String:
 	var font_size: int = spec.get_theme_font_size("font_size")
 	var drawn_pages: int = 0
 	var plant_pages: int = 0
+	var shelf_pages: int = 0
 	for page: int in NotebookScreen.PAGES.size():
 		if err != "":
 			break
 		notebook.go_to(page)
 		var entry: Dictionary = NotebookScreen.PAGES[page]
-		if String(entry.get("kind", NotebookScreen.KIND_DRAWING)) == NotebookScreen.KIND_DRAWING:
+		var kind: String = String(entry.get("kind", NotebookScreen.KIND_DRAWING))
+		if kind == NotebookScreen.KIND_DRAWING:
 			drawn_pages += 1
 			err = _T.assert_true(drawing.visible, "page %d shows the photograph it has" % [page + 1])
 			if err == "":
 				err = _T.assert_false(spec.visible, "and does not also stack a spec card on it")
+			continue
+		if kind == NotebookScreen.KIND_SHELF:
+			# The third thing the left page can hold, and it is about no plant at
+			# all — see NotebookScreen.KIND_SHELF. Only the exclusivity of the
+			# three is this test's business; the shelf's own contents are asserted
+			# in test_selftest.gd.
+			shelf_pages += 1
+			err = _T.assert_false(drawing.visible, "page %d is the shelf, not a photograph" % [page + 1])
+			if err == "":
+				err = _T.assert_false(spec.visible, "and not a spec card either")
+			if err == "":
+				err = _T.assert_true((notebook.get_node("Shelf") as Control).visible,
+					"the shelf itself is what the left page shows")
 			continue
 		plant_pages += 1
 		var id: StringName = StringName(entry.get("plant", &""))
@@ -2209,6 +2224,9 @@ func test_the_notebook_plant_pages_fit_their_card() -> String:
 			"at least one page is a plant page, or the loop above asserted nothing")
 	if err == "":
 		err = _T.assert_gt(drawn_pages, 0, "and at least one is still a photograph of paper")
+	if err == "":
+		err = _T.assert_eq(shelf_pages, 1,
+			"and exactly one is the shelf — three kinds of left page, every page exactly one of them")
 	if err == "":
 		err = _T.assert_eq(drawn_pages, NotebookScreen.drawing_pages().size(),
 			"drawing_pages() counts the same pages the screen treats as drawings")
