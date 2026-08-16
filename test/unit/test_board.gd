@@ -149,8 +149,16 @@ func test_lane_pressure_paints_a_hatch_and_not_a_fill() -> String:
 func test_the_lane_hatch_runs_at_one_angle_and_stays_inside_its_own_cell() -> String:
 	## A stripe that leaks past the cell edge paints a reading onto ground that did
 	## not earn it — the pressure map is per-cell, and a cell with no losses must
-	## stay clean. One angle throughout, because a hatch whose angle varies reads as
-	## two different marks rather than as one texture.
+	## stay clean.
+	##
+	## This used to say "one angle throughout, because a hatch whose angle varies
+	## reads as two different marks rather than as one texture." Two angles now
+	## ship, and the rationale was half right: varying the angle *freely* would
+	## read as noise, but a single mirrored pair reads as one texture with a lean,
+	## which is why orientation was the channel chosen for off-aim ground. What
+	## this test actually pins is unchanged and still the point — `|span.x| ==
+	## |span.y|`, i.e. every stripe is at 45 degrees in one direction or the other,
+	## so neither lean can drift into an arbitrary angle.
 	var cell := Vector2i(4, 1)
 	var segments: PackedVector2Array = LanePressureOverlay.hatch_segments(cell)
 	var err: String = _T.assert_gt(segments.size(), 0, "the cell hatches at all")
