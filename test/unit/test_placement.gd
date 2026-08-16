@@ -319,3 +319,178 @@ func test_upgrading_a_planted_cobbler_changes_what_it_draws() -> String:
 			"every level above the first was actually walked through")
 	_T.free_ui(game)
 	return err
+
+
+## The placement preview's own node, by the path Game builds it at. Reached
+## rather than rebuilt because the dead-zone cue resolves its Board from its own
+## siblings, and a preview constructed in isolation would never exercise that.
+func _preview(game: Game) -> PlacementPreview:
+	return game.get_node_or_null("Entities/PlacementPreview") as PlacementPreview
+
+
+## The measurement plant-tower-defense-61k is built on, pinned against the real
+## route rather than against a fixture: of 94 buildable cells, 15 cover no road
+## at a Corn Cobbler's reach and 34 cover none at a Chomp Flower's. If a future
+## PATH_CORNERS change strands more ground than that, this is the line that says
+## so — the numbers are the point, not an implementation detail of the cue.
+func test_the_real_route_strands_exactly_the_cells_it_was_measured_to_strand() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var corn_reach: float = PlantCatalog.reach(PlantCatalog.CORN)
+	var chomp_reach: float = PlantCatalog.reach(PlantCatalog.CHOMP)
+	# The catalog is the single source of truth the cue reads; these pin it to
+	# the plants' own constants, so a balance change cannot quietly decouple the
+	# warning from the gun.
+	var err: String = _T.assert_float_eq(corn_reach, CornCobbler.RANGE, 0.001,
+		"the previewed corn reach is the cobbler's own RANGE")
+	if err == "":
+		err = _T.assert_float_eq(chomp_reach, ChompFlower.GRAB_RADIUS, 0.001,
+			"and the previewed chomp reach is the flower's own GRAB_RADIUS")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var buildable: int = 0
+	var dead_corn: int = 0
+	var dead_chomp: int = 0
+	var corn_covered_total: int = 0
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if not game.board.is_buildable(cell):
+				continue
+			buildable += 1
+			var corn_cover: int = PlacementPreview.covered_road_cells(game.board, cell, corn_reach)
+			corn_covered_total += corn_cover
+			if corn_cover == 0:
+				dead_corn += 1
+			if PlacementPreview.covered_road_cells(game.board, cell, chomp_reach) == 0:
+				dead_chomp += 1
+	err = _T.assert_eq(buildable, 94, "the route leaves 94 buildable cells")
+	if err == "":
+		# Vacuity guards, ahead of the exact counts: a walk that found no ground
+		# at all, or a coverage function answering zero everywhere, would
+		# otherwise be indistinguishable from a board with nothing wrong on it.
+		err = _T.assert_gt(corn_covered_total, 0, "and some of them do cover road")
+	if err == "":
+		err = _T.assert_gt(dead_corn, 0, "and some of them cover none at all")
+	if err == "":
+		err = _T.assert_eq(dead_corn, 15, "15 cells are dead ground for a Corn Cobbler")
+	if err == "":
+		err = _T.assert_eq(dead_chomp, 34, "and 34 are dead ground for a Chomp Flower")
+	if err == "":
+		err = _T.assert_gt(dead_chomp, dead_corn,
+			"the shorter reach strands strictly more of the board")
+	_T.free_ui(game)
+	return err
+
+
+## Dead ground is a property of the plant, not of the cell — which is the whole
+## reason the cue cannot be baked into the board. (2, 3) is legal and empty, and
+## six road cells sit inside a Corn Cobbler's reach of it; a Chomp Flower
+## standing on the same square can touch none of them.
+func test_a_cell_can_be_dead_ground_for_a_chomp_and_good_ground_for_a_corn() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var split := Vector2i(2, 3)
+	var corn_reach: float = PlantCatalog.reach(PlantCatalog.CORN)
+	var chomp_reach: float = PlantCatalog.reach(PlantCatalog.CHOMP)
+	var err: String = _T.assert_true(game.board.is_buildable(split),
+		"(2, 3) is somewhere a plant may actually stand")
+	if err == "":
+		err = _T.assert_eq(PlacementPreview.covered_road_cells(game.board, split, corn_reach), 6,
+			"a Corn Cobbler there covers six road cells")
+	if err == "":
+		err = _T.assert_eq(PlacementPreview.covered_road_cells(game.board, split, chomp_reach), 0,
+			"and a Chomp Flower on the very same cell covers none")
+	# And the live node agrees with the static measurement, per plant, with
+	# nothing but its own position and reach to go on.
+	var preview: PlacementPreview = _preview(game)
+	if err == "":
+		err = _T.assert_true(preview != null, "the game built a placement preview")
+	if err == "":
+		preview.position = game.board.cell_to_world(split)
+		preview.placeable = true
+		preview.reach = chomp_reach
+		err = _T.assert_true(preview.shows_dead_zone(), "the preview marks it dead for a chomp")
+	if err == "":
+		preview.reach = corn_reach
+		err = _T.assert_false(preview.shows_dead_zone(),
+			"and marks the identical cell fine for a corn")
+	_T.free_ui(game)
+	return err
+
+
+## Precedence: an illegal cell gets one refusal, not a refusal plus a critique.
+## The geometry still says the cell is dead — that is what makes this a test of
+## the rule rather than of a cell that happens to be fine anyway.
+func test_an_illegal_cell_is_never_also_marked_dead_ground() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var dead := Vector2i(13, 0)
+	var preview: PlacementPreview = _preview(game)
+	var err: String = _T.assert_true(preview != null, "the game built a placement preview")
+	if err == "":
+		preview.position = game.board.cell_to_world(dead)
+		preview.reach = PlantCatalog.reach(PlantCatalog.CORN)
+		preview.placeable = true
+		err = _T.assert_false(preview.covers_road(),
+			"(13, 0) is out of a Corn Cobbler's reach of the road")
+	if err == "":
+		err = _T.assert_true(preview.shows_dead_zone(), "so a legal hover there is marked dead")
+	if err == "":
+		# Road, occupied and unaffordable all arrive here as the same flag.
+		preview.placeable = false
+		err = _T.assert_false(preview.shows_dead_zone(),
+			"but an illegal hover draws only the refusal, never both cues")
+	if err == "":
+		err = _T.assert_false(preview.covers_road(),
+			"the geometry is unchanged — legality is what suppressed the mark")
+	_T.free_ui(game)
+	return err
+
+
+## The other half of the precedence rule: the dead-zone mark and the at-risk
+## dashes test opposite sides of `reach > 0`, so nothing that fires one can fire
+## the other. A Seed Sunflower is never dead ground; it was never going to shoot.
+func test_a_plant_with_no_reach_is_warned_about_but_never_called_dead_ground() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var preview: PlacementPreview = _preview(game)
+	var err: String = _T.assert_true(preview != null, "the game built a placement preview")
+	if err == "":
+		err = _T.assert_float_eq(PlantCatalog.reach(PlantCatalog.SUNFLOWER), 0.0, 0.001,
+			"the sunflower reaches nothing by design")
+	var beside := Vector2i(-1, -1)
+	var stranded := Vector2i(-1, -1)
+	if err == "":
+		for y: int in range(Board.ROWS):
+			for x: int in range(Board.COLS):
+				var cell := Vector2i(x, y)
+				if not game.board.is_buildable(cell):
+					continue
+				if beside == Vector2i(-1, -1) and game.board.is_road_adjacent(cell):
+					beside = cell
+				var chomp: float = PlantCatalog.reach(PlantCatalog.CHOMP)
+				var cover: int = PlacementPreview.covered_road_cells(game.board, cell, chomp)
+				if stranded == Vector2i(-1, -1) and cover == 0:
+					stranded = cell
+		err = _T.assert_true(beside != Vector2i(-1, -1), "a cell beside the road exists")
+		if err == "":
+			err = _T.assert_true(stranded != Vector2i(-1, -1),
+				"and so does a cell no chomp could ever reach the road from")
+	for cell: Vector2i in [beside, stranded]:
+		if err != "":
+			break
+		preview.position = game.board.cell_to_world(cell)
+		preview.placeable = true
+		preview.reach = PlantCatalog.reach(PlantCatalog.SUNFLOWER)
+		preview.at_risk = game.board.is_road_adjacent(cell)
+		err = _T.assert_false(preview.shows_dead_zone(),
+			"a sunflower on %s is never dead ground" % cell)
+		if err == "":
+			err = _T.assert_true(preview.covers_road(),
+				"the coverage question is meaningless for it, and answers benignly")
+	if err == "":
+		preview.position = game.board.cell_to_world(beside)
+		preview.reach = PlantCatalog.reach(PlantCatalog.CORN)
+		preview.at_risk = false
+		err = _T.assert_false(preview.shows_dead_zone(),
+			"and a cobbler beside the road, which is the point of a cobbler, is not marked either")
+	_T.free_ui(game)
+	return err
