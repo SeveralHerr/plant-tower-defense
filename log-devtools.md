@@ -1928,3 +1928,34 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     false-pass. The helper is four lines and removes the need to know the trap.
     `findings`' `ui_text_trimmed` check already does this measurement internally,
     so the code exists — it is just not reachable from a test.
+
+## 2026-08-16 — Open the Designer's Notebook from a paused run (899)
+
+- Value: **warranted** — the headless suite caught a live 60px overlap regression in a
+  file this item never touched, which is the only reason it isn't already committed.
+  - Expected: the pause card growing from 390 to 450 tall would push its key rows into
+    something, and the notebook would either freeze under the pause or eat Escape wrong.
+  - Got: the card geometry was fine — `test_the_pause_card_is_tall_enough_for_whatever_it_holds`
+    and both overlap tests passed for free, because height, key-list offset and button
+    block are all derived from `BUTTONS.size()`. What failed was elsewhere:
+    `Subheading [P: (385.0, 94.0), S: (382.0, 23.0)] and DrawingPaneLabel
+    [P: (319.0, 112.0), S: (78.0, 23.0)] do not share pixels (60 overlapping)`.
+  - Found: that overlap, in `notebook_screen.gd`, from a *concurrent* agent's in-flight
+    edit. Neither agent would have seen it — one was restricted to `name_check`, the
+    other never opened the file. Only integrating and gating serially surfaced it.
+  - Cheaper: nothing. Both halves of this needed the suite: the pause geometry is
+    derived arithmetic that a human would re-derive wrong, and the cross-file regression
+    is invisible to any per-agent gate by construction.
+
+- Gap: **no gaps this turn** — the pairwise-overlap test did exactly the job it exists
+  for, across a file boundary, during a fan-out. Worth recording as the case *for* the
+  sibling-overlap check that G-018 asked the harness to generalize: a per-Control
+  measurement (`validate-ui`, `findings`) cannot see this class at all, and this is the
+  second time the project's hand-written pairwise version has caught something real.
+  - Improvement: none needed here; G-018 already carries the ask.
+
+- Note (not a harness gap): a subagent hit `Viewport.is_input_handled()` being **sticky
+  outside `push_input`** — once set by a direct `_input` call in a headless test it
+  never resets, silently disabling the guard under it. It redesigned around this. That
+  is Godot semantics, not harness behaviour, but it is exactly the kind of thing a
+  `godot-input-and-pause-semantics` skill should carry.
