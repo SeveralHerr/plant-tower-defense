@@ -3363,3 +3363,37 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     exit 2 on an argument it does not recognise rather than printing
     `(no selector)` beside a full-suite run. The parenthetical is already the
     evidence; it just isn't fatal.
+
+## 2026-08-16 — Pests got a walk cycle (plant-tower-defense-iue)
+
+- Value: **warranted** — the bridge produced the exact arithmetic identity the whole
+  feature rests on, on a live pest, which no headless test and no reading of the diff
+  could have produced.
+  - Expected: that `_sprite.rotation` would equal `_facing + _sway` on a walking pest,
+    that the mutation tint would survive the gait untouched, and that a pest killed
+    mid-stride would leave a corpse lying straight.
+  - Got: on a paused winged aphid, `_facing=-1.5707963267949`, `_sway=-0.0338831961131744`,
+    and the sprite's `rotation: -1.60467946529388` — the sum to the last digit, with
+    `modulate: {a 0.88, b 1.0, g 0.94, r 0.82}` still exactly `MUTATION_TINT[winged]`.
+    On a beetle stepped 0.1s with `step-time --then-pause`: `rotation: 1.64119553565979`
+    against `_facing 1.5707963267949 + _sway 0.0703991653428545`, `scale {x 0.945, y 1.055}`
+    (narrowed across the body, lengthened along it, |stretch| 0.0546 under GAIT_STRETCH
+    0.06). `run-method kill` on that same beetle then read back `rotation: 1.57079637050629`
+    and `scale {1.0, 1.0}` — the lean undone, the facing kept. Nine aphids spawned in one
+    burst reported nine distinct `_gait_phase` values (0.0, 2.400, 4.800, 0.917, 3.317,
+    5.717, 1.833, 4.233, 0.350) and nine different `_sway` values at the same instant.
+  - Found: nothing — the headless suite (507/507) had already pinned the composition
+    rule, and the live run agreed with it. `settle_read_check.py` did catch a real defect
+    in the new test mid-work: a `_gait_time` read after `instantiate_scene` with nothing
+    guarding the baseline, fixed by zeroing the clock in the test and asserting an exact
+    value instead of `> 0.0`.
+  - Cheaper: the headless tests alone would have carried the arithmetic. What they could
+    not carry is that a real pest on a real route, turning a real corner, keeps a live
+    sway across the turn — `_facing` moving PI -> -PI/2 between two reads while `_sway`
+    kept oscillating is the one claim that needed the running game.
+
+- Gap: no gaps this turn. `step-time --then-pause` plus `find-nodes --class Pest
+  --property _sway --property _gait_phase` was exactly the right pair of verbs for
+  reading a per-frame animation without a screenshot, and `quit` confirming
+  `user://: no file changed during this run` closed out the save-file worry from
+  [G-048] without a manual diff.
