@@ -121,6 +121,13 @@ func take_damage(amount: float) -> void:
 	if is_destroyed():
 		return
 	health = maxf(0.0, health - amount)
+	# A hungry pest calls this every physics frame, so this would be sixty plays
+	# a second if it were not gated — Sfx.REPEAT_MS[PLANT_BITTEN] is what turns
+	# that stream of calls into a repeating nibble, which is why the call site
+	# here stays unguarded. The bar below only appears once a plant is bitten,
+	# and a bar the player is not looking at is not a warning.
+	if amount > 0.0:
+		Sfx.play(Sfx.PLANT_BITTEN)
 	if _health_back != null:
 		_health_back.visible = true
 		_health_bar.visible = true

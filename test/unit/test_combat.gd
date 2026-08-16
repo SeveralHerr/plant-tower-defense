@@ -395,3 +395,159 @@ func test_every_mutation_the_game_can_roll_has_a_non_colour_cue() -> String:
 		if err != "":
 			return err
 	return ""
+
+
+# -- Sound ------------------------------------------------------------------
+#
+# The game shipped with no audio at all, so these assert the two things that are
+# observable without a listener: that the table Sfx plays from points at files
+# that really exist and really load, and that the gate deciding whether to play
+# says what it should. Nothing here claims a sound was AUDIBLE — that is not
+# observable headlessly, and a test that pretended otherwise would pass in
+# exactly the situation this issue was filed about.
+
+
+func test_every_sound_the_game_can_play_actually_loads() -> String:
+	## The test the issue asks for by name. A typo'd path fails in the most
+	## literal way sound can fail — silently — and it fails identically to the
+	## bug being fixed here, so nothing downstream would ever catch it.
+	var err: String = _T.assert_gt(Sfx.SOUNDS.size(), 0,
+		"there is a sound table to check at all")
+	if err != "":
+		return err
+	for event: StringName in Sfx.SOUNDS:
+		var path: String = String(Sfx.SOUNDS[event])
+		err = _T.assert_true(ResourceLoader.exists(path),
+			"'%s' points at a file that exists: %s" % [event, path])
+		if err != "":
+			return err
+		var stream: AudioStream = Sfx.stream_for(event)
+		err = _T.assert_true(stream != null,
+			"'%s' loads as an AudioStream, not just as a path that resolves (%s)" % [event, path])
+		if err != "":
+			return err
+	return ""
+
+
+func test_every_event_id_the_call_sites_use_is_in_the_table() -> String:
+	## The other half of the same guard. The constants are what game.gd and
+	## plant.gd actually pass, so a constant without a table row is a call site
+	## that compiles, runs, returns false and makes no sound forever.
+	var used: Array[StringName] = [
+		Sfx.PLANT_PLACED, Sfx.PLANT_BITTEN, Sfx.PLANT_DESTROYED,
+		Sfx.PEST_KILLED, Sfx.PEST_ESCAPED,
+		Sfx.HUSK_COLLECTED, Sfx.HUSK_ROTTED,
+		Sfx.WAVE_STARTED, Sfx.UPROOT_ARMED,
+		Sfx.RUN_WON, Sfx.RUN_LOST,
+	]
+	for event: StringName in used:
+		var err: String = _T.assert_true(Sfx.SOUNDS.has(event),
+			"'%s' has a sound behind it" % event)
+		if err != "":
+			return err
+	return _T.assert_eq(used.size(), Sfx.SOUNDS.size(),
+		"and the table holds nothing the game never plays")
+
+
+func test_playing_an_unknown_event_is_a_silent_no_op() -> String:
+	## Sound is decoration on a game that has to keep running without it, so a
+	## renamed or mistyped cue id must go quiet rather than take the frame with
+	## it. `play()` returns false; nothing errors.
+	var err: String = _T.assert_false(Sfx.should_play(&"no_such_cue", false, false),
+		"an unknown event never reaches a voice, even unmuted with a display")
+	if err == "":
+		err = _T.assert_false(Sfx.play(&"no_such_cue"),
+			"and play() reports that it did nothing instead of raising")
+	if err == "":
+		err = _T.assert_true(Sfx.stream_for(&"no_such_cue") == null,
+			"there is no stream behind it to find")
+	return err
+
+
+func test_muting_suppresses_every_event_in_the_table() -> String:
+	## Asserted against should_play() rather than against anything audible: it is
+	## the whole decision play() makes, as a pure function, so it is the state
+	## that drives playback and the only honest thing to assert headlessly.
+	var err: String = _T.assert_gt(Sfx.SOUNDS.size(), 0, "there are events to mute")
+	if err != "":
+		return err
+	for event: StringName in Sfx.SOUNDS:
+		err = _T.assert_true(Sfx.should_play(event, false, false),
+			"'%s' would play for a listening player" % event)
+		if err != "":
+			return err
+		err = _T.assert_false(Sfx.should_play(event, true, false),
+			"'%s' is suppressed by mute" % event)
+		if err != "":
+			return err
+		err = _T.assert_false(Sfx.should_play(event, false, true),
+			"'%s' is suppressed headless, which is why this suite is quiet" % event)
+		if err != "":
+			return err
+	return ""
+
+
+func test_the_mute_toggle_is_a_real_switch_and_leaves_no_sound_running() -> String:
+	## The player-facing half (Game binds it to M). Restores the flag on every
+	## path — a test that left the game muted would silence every run after it.
+	var was_muted: bool = Sfx.is_muted()
+	Sfx.set_muted(false)
+	var err: String = _T.assert_true(Sfx.toggle_muted(), "one press mutes")
+	if err == "":
+		err = _T.assert_true(Sfx.is_muted(), "and the flag agrees with what it returned")
+	if err == "":
+		err = _T.assert_false(Sfx.audio_enabled(), "so nothing is allowed to make a noise")
+	if err == "":
+		err = _T.assert_eq(Sfx.voices_playing(), 0, "and muting stopped whatever was sounding")
+	if err == "":
+		err = _T.assert_false(Sfx.play(Sfx.PEST_KILLED), "a cue fired while muted plays nothing")
+	if err == "":
+		err = _T.assert_false(Sfx.toggle_muted(), "a second press brings it back")
+	Sfx.set_muted(was_muted)
+	return err
+
+
+func test_a_husk_left_to_rot_says_so_instead_of_vanishing() -> String:
+	## The silent-death case the whole sound pass exists for. An expired husk used
+	## to erase itself with no cue at all, so "you were too slow" and "there was
+	## never a husk there" were the same event from the player's chair.
+	var meter := CompostMeter.new()
+	var rotted: Array[int] = []
+	meter.husk_rotted.connect(func(value: int) -> void: rotted.append(value))
+	meter.drop_husk(Vector2.ZERO, CompostMeter.FULL_VALUE)
+	meter._process(CompostMeter.lifetime_for(CompostMeter.FULL_VALUE) + 0.1)
+
+	var err: String = _T.assert_eq(rotted.size(), 1, "the rotted husk announced itself")
+	if err == "":
+		err = _T.assert_eq(rotted[0], CompostMeter.FULL_VALUE,
+			"and said what the player just threw away")
+	if err == "":
+		err = _T.assert_eq(meter.husk_count(), 0,
+			"a listener reading the board inside the signal sees the husk already gone")
+	if err == "":
+		err = _T.assert_true(Sfx.SOUNDS.has(Sfx.HUSK_ROTTED),
+			"and there is a cue behind it — the signal alone would still be silent")
+	meter.free()
+	return err
+
+
+func test_a_swept_husk_never_reports_itself_as_rotted() -> String:
+	## The two payouts must not be confusable: a husk the player collected paying
+	## the "you were too slow" cue would be worse than the silence it replaced.
+	var meter := CompostMeter.new()
+	var rotted: Array[int] = []
+	var collected: Array[int] = []
+	meter.husk_rotted.connect(func(value: int) -> void: rotted.append(value))
+	meter.husk_collected.connect(func(value: int) -> void: collected.append(value))
+	meter.drop_husk(Vector2.ZERO, CompostMeter.BASE_VALUE)
+	var paid: int = meter.collect_at(Vector2.ZERO)
+	meter._process(CompostMeter.HUSK_LIFETIME + 1.0)
+
+	var err: String = _T.assert_eq(paid, CompostMeter.BASE_VALUE, "the sweep paid out")
+	if err == "":
+		err = _T.assert_eq(collected.size(), 1, "and rang the collected cue once")
+	if err == "":
+		err = _T.assert_eq(rotted.size(), 0,
+			"and never rings the rot cue, however long the meter runs afterwards")
+	meter.free()
+	return err

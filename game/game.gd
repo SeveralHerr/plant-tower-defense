@@ -132,7 +132,13 @@ func _ready() -> void:
 	director.wave_started.connect(_on_wave_started)
 	director.wave_spawning_finished.connect(func(_n: int) -> void: _refresh())
 
-	compost.husk_collected.connect(func(_v: int) -> void: _refresh())
+	# Wired to the signal rather than to the click handler so every route into a
+	# collected husk pays the same cue — _click_at is the only one today, but the
+	# devtools verbs and the tests reach collect_at() directly.
+	compost.husk_collected.connect(_on_husk_collected)
+	# The silent-death case this whole sound pass exists for: a husk that rotted
+	# because the player was too slow used to leave the board with no cue at all.
+	compost.husk_rotted.connect(_on_husk_rotted)
 
 	hud.plant_selected.connect(_on_plant_chosen)
 	hud.packet_requested.connect(_on_packet_requested)
@@ -176,6 +182,7 @@ func start_next_wave() -> bool:
 func _on_wave_started(number: int) -> void:
 	_wave_live = true
 	_wave_losses = {}
+	Sfx.play(Sfx.WAVE_STARTED)
 	# Past the fixed table, say what actually got worse. The threat level on
 	# the bar answers "how much"; this answers "in what way", which is the half
 	# that tells a player whether to buy damage or buy coverage.
@@ -252,7 +259,24 @@ func spawn_pest(species: StringName, mutation: StringName = &"") -> void:
 	pest.escaped.connect(_on_pest_escaped)
 
 
+func _on_husk_collected(_value: int) -> void:
+	Sfx.play(Sfx.HUSK_COLLECTED)
+	_refresh()
+
+
+## The cue for a husk nobody swept. No _refresh(): a rotted husk changes nothing
+## the HUD reads except `husks_on_ground`, which the next frame's refresh picks
+## up anyway — and a rot storm at the end of a wave must not rebuild the bar once
+## per husk.
+func _on_husk_rotted(_value: int) -> void:
+	Sfx.play(Sfx.HUSK_ROTTED)
+
+
 func _on_pest_died(pest: Pest) -> void:
+	# Played here, not in Pest, on purpose: Pest._play_death() queue_frees the
+	# node DEATH_LINGER seconds later, and a freed node cannot finish a sound.
+	# Sfx's pool sits under the scene tree root, so nothing on the board owns it.
+	Sfx.play(Sfx.PEST_KILLED)
 	_note_lane_loss(pest.position)
 	bank.add_seeds(pest.seed_value)
 	# Half again, as a husk — collectible for a bonus, or left to rot. See
@@ -270,6 +294,7 @@ func _on_pest_escaped(_pest: Pest) -> void:
 	# lane finally failed. Deliberately not conditional on `_pest`; the tests
 	# and the losing-escape path both call this with null.
 	_note_lane_loss(board.cell_to_world(board.exit_cell()))
+	Sfx.play(Sfx.PEST_ESCAPED)
 	lives -= 1
 	if lives <= 0:
 		lives = 0
@@ -297,6 +322,10 @@ func _end_run(_banner: String) -> void:
 	# more than once in a frame (a losing escape also clears the pest group).
 	if _summary != null and is_instance_valid(_summary):
 		return
+	# Behind the idempotency guard rather than at the top of _end_run: both end
+	# paths can be reached twice in a frame, and the run-ender is the one cue in
+	# the game long enough for a doubled play to be audible as a doubled play.
+	Sfx.play(Sfx.RUN_WON if victory else Sfx.RUN_LOST)
 	_summary = RunSummary.build(summary_stats(new_record))
 	_summary_layer = CanvasLayer.new()
 	_summary_layer.name = "SummaryLayer"
@@ -381,6 +410,7 @@ func place_plant(id: StringName, cell: Vector2i) -> String:
 	_entities.add_child(plant)
 	plant.setup(id, cell, board)
 	_plants[cell] = plant
+	Sfx.play(Sfx.PLANT_PLACED)
 	plant.destroyed.connect(_on_plant_destroyed)
 	if plant.has_signal("grew_seeds"):
 		plant.connect("grew_seeds", _on_plant_grew_seeds)
@@ -407,6 +437,7 @@ func _on_plant_destroyed(plant: Plant) -> void:
 		_plants.erase(plant.cell)
 	if selected_placed == plant:
 		_select(null)
+	Sfx.play(Sfx.PLANT_DESTROYED)
 	hud.show_message("A hungry pest ate your %s!" % PlantCatalog.display_name(plant.kind), 4.0)
 	plant.queue_free()
 	_refresh()
@@ -447,6 +478,7 @@ func request_uproot() -> String:
 		return uproot_selected()
 	_uproot_armed = selected_placed
 	_uproot_left = UPROOT_CONFIRM_SECONDS
+	Sfx.play(Sfx.UPROOT_ARMED)
 	# IMPORTANT: this is an instruction with a live 4-second trigger behind it, and
 	# an ambient husk pickup used to wipe it mid-read.
 	hud.show_message("Click Uproot again to dig up your %s — it will not grow back."
@@ -533,8 +565,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		_click_at(click.position)
 		return
 	var key := event as InputEventKey
-	if key != null and key.pressed and key.keycode == KEY_R and (game_over or victory):
+	if key == null or not key.pressed:
+		return
+	if key.keycode == KEY_R and (game_over or victory):
 		get_tree().reload_current_scene()
+		return
+	# The project-level mute, which is what makes the sound pass something the
+	# player controls rather than something the engine's --mute flag controls for
+	# them. Deliberately live even on the results screen: a jingle the player
+	# wants to stop is exactly when they reach for this.
+	if key.keycode == KEY_M:
+		var muted: bool = Sfx.toggle_muted()
+		hud.show_message("Sound off. Press M to bring it back." if muted else "Sound on.", 2.5)
 
 
 func _update_cursor(screen_pos: Vector2) -> void:

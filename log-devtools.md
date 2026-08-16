@@ -1468,3 +1468,54 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   for G-027's attribution problem — produced `reached 1/1 changed file(s)` and a
   `warranted` that stuck, versus the `insufficient` the same shape of run earned
   two iterations ago.
+
+## 2026-08-15 — The game learns to make a noise (plant-tower-defense-988)
+
+- Value: **warranted** — every headless test in this change asserts `should_play`,
+  a pure decision function, so not one voice had ever been created before the run.
+  - Expected: every headless test asserts should_play, a pure decision function —
+    no voice has ever actually been created. Runtime should reveal whether the
+    lazy 8-voice pool really builds under the tree root, whether voices survive
+    the pest that triggered them being freed, and whether the repeat gate stops
+    five simultaneous deaths stacking into one loud sound.
+  - Got: `/root` grew an `SfxPool` holding 8 `AudioStreamPlayer` children on the
+    first `play()`, and `find-nodes --class AudioStreamPlayer --where playing=true`
+    caught `Voice0` mid-playback with
+    `stream=(res://assets/audio/jingles-pizzicato_00.ogg):<AudioStreamOggVorbis#…>`
+    — a real decoded stream, not a null that would have degraded to silence and
+    passed every test. After pressing the post-mortem's replay button, `/root`
+    read `['DevTools', 'RunConfig', 'SfxPool', 'Game']` with all 8 voices intact
+    while `Game` had been rebuilt, which is the whole reason the pool is parented
+    to root rather than to the node that triggers it.
+  - Found: the first `godot --headless --import` after adding 11 `.ogg` files and
+    a new `class_name` **crashed** — exit `3221225477`, i.e. `0xC0000005`, an
+    access violation — having written only part of its output. `import_check.py`
+    refused to read that as success: `no parse/load errors in the output, but
+    Godot exited 3221225477 - treat this as an import that did not complete`. A
+    bare `--import` judged on exit code alone would have moved straight to lint,
+    which would then have failed on a half-built class cache and sent me reading
+    GDScript instead of re-running the import. A second run completed and wrote
+    all 11 `.import` files.
+  - Cheaper: nothing. The headless tests deliberately assert `should_play` rather
+    than audibility, so no gate short of a live session could show that a voice
+    node is ever created — let alone that it survives the scene reload it exists
+    to survive.
+
+- Gap: **a static-only class that demonstrably ran is invisible to `reach`** —
+  `record` reported `reached 2/4 changed file(s) … NOT reached: game/sfx.gd`.
+  `Sfx` is `class_name Sfx extends RefCounted` with static entry points, so it
+  owns no node and can never appear in a `scene-tree` snapshot — even though this
+  run *observed the `SfxPool` node that only `sfx.gd` creates*, which is stronger
+  evidence than reach normally has for anything. Worked around with a
+  `reach_aliases` entry (`game/sfx.gd` vouched for by `game/game.gd` and
+  `game/plant.gd`), which the harness correctly buckets as a declaration rather
+  than an observation. This is the same shape as G-015 (a base class invisible
+  because only a subclass owned the live node).
+  - [G-028] status: open | seen: 1 | harness: 0.23.0
+  - Improvement: `scripts-seen` already records every script the engine *loaded*,
+    which for a static-only class is exactly the right signal and is an
+    observation rather than a declaration. Reach consults it today only as a
+    fallback for scripts absent from the tree; crediting a `scripts-seen` hit as
+    `reached_loaded` — a third bucket beside `reached` and `reached_alias` —
+    would retire the whole class of alias entries projects are currently writing
+    for RefCounted helpers.

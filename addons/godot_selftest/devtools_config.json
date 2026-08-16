@@ -22,6 +22,10 @@
     "game/selection_marker.gd": [
       "game/placement_preview.gd",
       "game/plant.gd"
+    ],
+    "game/sfx.gd": [
+      "game/game.gd",
+      "game/plant.gd"
     ]
   },
   "reach_headless_dirs": [

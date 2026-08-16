@@ -9,6 +9,12 @@ extends Node
 ## That's why this is seeds-in-seeds-out rather than a second currency to read.
 
 signal husk_collected(value: int)
+## A husk the player never got to. This used to happen in total silence — the
+## husk simply stopped being drawn — which made "you were too slow" and "there
+## was never a husk there" the same event from the player's chair. Game listens
+## for this and plays Sfx.HUSK_ROTTED, so the loss is announced rather than
+## merely rendered.
+signal husk_rotted(value: int)
 
 ## How long the *cheapest* husk sits on the ground before it rots away, and the
 ## ceiling for every husk.
@@ -109,5 +115,9 @@ func _process(delta: float) -> void:
 		h["life"] = float(h["life"]) - delta
 		if h["life"] <= 0.0:
 			expired.append(id)
+	# Erase first, THEN announce: a listener that reads husk_count() from inside
+	# the signal must not see the husk it is being told about still on the board.
 	for id: Variant in expired:
+		var value: int = int((_husks[id] as Dictionary)["value"])
 		_husks.erase(id)
+		husk_rotted.emit(value)
