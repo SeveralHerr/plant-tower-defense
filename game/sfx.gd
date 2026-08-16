@@ -36,6 +36,12 @@ const WAVE_STARTED := &"wave_started"
 const UPROOT_ARMED := &"uproot_armed"
 const RUN_WON := &"run_won"
 const RUN_LOST := &"run_lost"
+## A purchase SeedBank refused — not enough seeds, a locked plant, an empty
+## packet. Every one of those reasons already reaches hud.show_message(); this
+## is the one thing that used to reach nothing at all. See Game._ready, where
+## bank.purchase_failed is the single place this plays from, so every refusal
+## gets the same cue regardless of which of the four call sites emitted it.
+const PURCHASE_DENIED := &"purchase_denied"
 
 ## event -> the stream it plays. This dictionary is the whole contract: an event
 ## not in here is inaudible, and test_combat asserts every path in it actually
@@ -53,6 +59,10 @@ const SOUNDS: Dictionary = {
 	UPROOT_ARMED: "res://assets/audio/question_002.ogg",
 	RUN_WON: "res://assets/audio/jingles-pizzicato_00.ogg",
 	RUN_LOST: "res://assets/audio/bong_001.ogg",
+	# Reuses PEST_ESCAPED's stream rather than vendoring a second file: this
+	# project's audio pack has exactly one thing in it that already means
+	# "no" — see assets/audio/License.txt, which now names both consumers.
+	PURCHASE_DENIED: "res://assets/audio/error_002.ogg",
 }
 
 ## Per-event trim, in dB, for the handful that are not level with the rest.

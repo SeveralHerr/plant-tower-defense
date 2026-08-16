@@ -194,7 +194,13 @@ func _ready() -> void:
 	add_child(hud)
 
 	bank.seeds_changed.connect(func(_total: int) -> void: _refresh())
-	bank.purchase_failed.connect(func(reason: String) -> void: hud.show_message(reason))
+	# The sound is generic to every refusal, from all four purchase_failed call
+	# sites; the shake is not, and lands separately at each site below — see
+	# _click_at and _on_packet_requested — because only they know which control
+	# the player actually reached for.
+	bank.purchase_failed.connect(func(reason: String) -> void:
+		hud.show_message(reason)
+		Sfx.play(Sfx.PURCHASE_DENIED))
 	bank.plant_unlocked.connect(_on_plant_unlocked)
 
 	director.spawn_requested.connect(spawn_pest)
@@ -1091,6 +1097,8 @@ func _on_packet_requested(tier: StringName = &"common") -> void:
 	var got: StringName = bank.buy_packet(tier)
 	if got != &"":
 		selected_plant = got
+	else:
+		hud.shake_packet_button(tier)
 
 
 func _on_plant_unlocked(id: StringName) -> void:
@@ -1220,7 +1228,13 @@ func _click_at(screen_pos: Vector2) -> void:
 		_refresh()
 		return
 	var refusal: String = place_plant(selected_plant, cell)
-	if refusal != "" and refusal != "not paid for":
+	if refusal == "not paid for":
+		# The refusal fired on a board click, not a bar click — pay_for_plant()
+		# already told the player why through purchase_failed. What shakes here
+		# is the slot they picked the plant from, the one thing on screen that
+		# actually names what they were trying to buy.
+		hud.shake_plant_button(selected_plant)
+	elif refusal != "":
 		hud.show_message(refusal.capitalize() + ".")
 	# The cell under the cursor just changed state — either it now holds a
 	# plant, or the purchase drained the seeds that made it affordable. Either

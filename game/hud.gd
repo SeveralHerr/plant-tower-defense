@@ -287,6 +287,15 @@ const PANEL_RISE_SECONDS: float = 0.16
 const READOUT_PUNCH_SCALE: float = 1.22
 const READOUT_PUNCH_SECONDS: float = 0.16
 
+## The denial shake: rotation, not position. The plant bar's buttons are
+## GridContainer children, and a Container's sort pass writes `position` and
+## `size` on every child every time it runs — which a refresh() landing mid-shake
+## would trigger by simply re-setting a button's own text. `rotation` is never
+## touched by a sort pass, on a GridContainer child or the packet buttons' plain
+## ColorRect parent alike, so one shake implementation is safe on both.
+const DENIAL_SHAKE_SECONDS: float = 0.28
+const DENIAL_SHAKE_DEGREES: float = 6.0
+
 const HEALTH_ROW_HEIGHT: float = 14.0
 ## A wash of the bar's own INK rather than a fifth grey: the alpha is the whole
 ## difference, so it is derived from the shared value instead of retyping the
@@ -329,6 +338,9 @@ var _threat_tint_target: Color = PAPER
 ## _threat_tween is — a fresh Tween per refresh() would stack dozens of them
 ## onto one label's scale during a busy wave.
 var _readout_tweens: Dictionary = {}
+## Control -> its live shake Tween. Same reason as _readout_tweens: a button
+## denied twice in quick succession must restart its shake, not race two.
+var _shake_tweens: Dictionary = {}
 ## False until refresh() has run once. Guards the very first call: every
 ## readout's text goes from "" to its real value on that call, which is the
 ## screen appearing, not a change the player made — see refresh().
@@ -965,6 +977,43 @@ func _punch_readout(label: Label) -> void:
 	tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_property(label, "scale", Vector2.ONE, READOUT_PUNCH_SECONDS)
 	_readout_tweens[label] = tween
+
+
+## A refused plant placement, shaking the bar slot the player picked it from —
+## not the board cell they clicked, which is where the refusal actually fired
+## (see Game._click_at). The slot is what the player is looking at when a
+## click on the board comes back with nothing: the seeds it would have cost,
+## the lock icon, whatever made this one unaffordable right now.
+func shake_plant_button(id: StringName) -> void:
+	_shake_control(_plant_buttons.get(id) as Control)
+
+
+## A refused packet buy, shaking the actual button the player clicked.
+func shake_packet_button(tier: StringName) -> void:
+	_shake_control(_rare_packet_button if tier == &"rare" else _packet_button)
+
+
+## The denial cue itself: a few degrees left, right, and back to rest. See
+## DENIAL_SHAKE_SECONDS for why this animates `rotation` and not `position`.
+func _shake_control(control: Control) -> void:
+	if control == null or not is_instance_valid(control):
+		return
+	if not GardenTheme.animations_enabled():
+		return
+	var live: Tween = _shake_tweens.get(control)
+	if live != null and live.is_valid():
+		live.kill()
+	control.pivot_offset = control.size / 2.0
+	control.rotation = 0.0
+	var rad: float = deg_to_rad(DENIAL_SHAKE_DEGREES)
+	var beat: float = DENIAL_SHAKE_SECONDS / 4.0
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(control, "rotation", -rad, beat)
+	tween.tween_property(control, "rotation", rad, beat)
+	tween.tween_property(control, "rotation", -rad * 0.5, beat)
+	tween.tween_property(control, "rotation", 0.0, beat)
+	_shake_tweens[control] = tween
 
 
 ## A short rise as the selection panel opens.

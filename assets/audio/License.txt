@@ -30,7 +30,8 @@
 
 	From "Interface Sounds" (1.0):
 	  minimize_006.ogg            a husk left to rot away uncollected
-	  error_002.ogg               a pest reaching the exit — a life lost
+	  error_002.ogg               a pest reaching the exit — a life lost —
+	                              and, reused, a purchase SeedBank refused
 	  question_002.ogg            Uproot armed, awaiting a confirming click
 	  bong_001.ogg                the run lost
 

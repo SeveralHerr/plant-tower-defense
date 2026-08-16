@@ -2747,6 +2747,65 @@ func test_a_packet_button_goes_dark_when_its_tier_has_nothing_left() -> String:
 	return err
 
 
+## The denial cue lands where the click happened -- or, for a placement
+## refused on a board click (see Game._click_at), on the bar slot the player
+## picked the plant from, since that click never touched a Control at all.
+func test_a_refused_placement_shakes_the_plant_bar_slot() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var locked: Array[StringName] = game.bank.locked_plants()
+	var err: String = _T.assert_gt(locked.size(), 0, "something is still in a packet to refuse")
+	var id: StringName = locked[0] if err == "" else &""
+	if err == "":
+		err = _T.assert_false(GardenTheme.animations_enabled(),
+			"this test is only meaningful headless, where the shake tween never lands")
+	var button: Button = null
+	if err == "":
+		button = game.hud.get_node_or_null("Root/SidePanel/PlantBar/Button_%s" % id) as Button
+		err = _T.assert_true(button != null, "the bar has a slot for the locked plant")
+	if err == "":
+		game.selected_plant = id
+		game._click_at(game.board.cell_to_world(_grass(game)) + game._entities.position)
+		err = _T.assert_eq(game.state()["plants"], 0, "the refusal really did refuse")
+	if err == "":
+		# The real call site, direct: Game._click_at reaches exactly this, on
+		# exactly this slot, for exactly this refusal.
+		game.hud.shake_plant_button(id)
+		# Headless never pumps the shake tween, so the button's rotation is right
+		# where it started -- the observable half of "ran, and did not error".
+		err = _T.assert_float_eq(button.rotation, 0.0, 0.001,
+			"shake_plant_button ran and left the button at its already-correct rest angle")
+	_T.free_ui(game)
+	return err
+
+
+## Same cue, the other call site: a packet click that Game._on_packet_requested
+## refuses shakes the button actually pressed, not a bar slot standing in for it.
+func test_a_refused_packet_purchase_shakes_the_packet_button() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	# `seeds` the purse, not set_seed() -- that fixes the packet-roll RNG, a
+	# different knob entirely, and leaves STARTING_SEEDS = 25 more than enough
+	# to afford PACKET_COST = 20.
+	game.bank.seeds = 0
+	var button: Button = game.hud.get_node_or_null("Root/SidePanel/PacketButton") as Button
+	var err: String = _T.assert_true(button != null, "the common packet button exists")
+	if err == "":
+		err = _T.assert_false(GardenTheme.animations_enabled(),
+			"this test is only meaningful headless, where the shake tween never lands")
+	if err == "":
+		game._on_packet_requested(&"common")
+		err = _T.assert_eq(game.bank.seeds, 0, "no seeds spent -- the purchase really was refused")
+	if err == "":
+		# The real call site, direct: Game._on_packet_requested reaches exactly
+		# this, on exactly this button, for exactly this refusal.
+		game.hud.shake_packet_button(&"common")
+		# Headless never pumps the shake tween, so the button's rotation is right
+		# where it started -- the observable half of "ran, and did not error".
+		err = _T.assert_float_eq(button.rotation, 0.0, 0.001,
+			"shake_packet_button ran and left the button at its already-correct rest angle")
+	_T.free_ui(game)
+	return err
+
+
 ## Every HUD animation must layer on an already-correct final state. Headless
 ## pumps no frames, so a tween that starts a node at alpha 0 and relies on a frame
 ## to finish leaves it invisible -- and invisible in a way that no assertion about
