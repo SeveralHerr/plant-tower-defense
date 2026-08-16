@@ -13,6 +13,11 @@ extends Control
 ## is the same kind of object: a card over a live board that must not hide the
 ## board entirely.
 
+## What the card says under its heading. Set by Game before the screen enters the
+## tree, because "The wave is waiting." was a constant and pause fires at any
+## moment outside game-over -- so it was simply false between waves.
+var _note_text: String = "The garden is holding still."
+
 signal resume_requested
 signal restart_requested
 signal gate_requested
@@ -23,7 +28,13 @@ signal gate_requested
 const CARD := Rect2(288.0, 152.0, 320.0, 300.0)
 const BACKDROP_ALPHA: float = 0.55
 const BUTTON_SIZE := Vector2(248.0, 44.0)
-const FIRST_BUTTON_Y: float = 232.0
+## Offset from the card's own top, not an absolute viewport y. It was written as
+## a bare 232.0 -- the one offset in this file not relative to CARD -- and with
+## CARD at y=152 that put the buttons at 232 while the note's box ran 228..252, so
+## twenty of the note's twenty-four pixels sat under an opaque stylebox. Nothing
+## caught it: each Control fits its own box, and per-Control checks are all the UI
+## gates do. Relative means moving the card can never separate them again.
+const FIRST_BUTTON_OFFSET: float = 116.0
 const BUTTON_GAP: float = 12.0
 
 ## Node names are a contract: the devtools bridge presses these by path.
@@ -32,6 +43,15 @@ const BUTTONS: Array[Dictionary] = [
 	{"name": "RestartButton", "text": "Start over", "signal": "restart_requested"},
 	{"name": "GateButton", "text": "Back to the gate", "signal": "gate_requested"},
 ]
+
+
+## Built by Game so the note can describe the moment the run was actually paused.
+static func build(note: String) -> PauseScreen:
+	var screen := PauseScreen.new()
+	screen.name = "PauseScreen"
+	if note != "":
+		screen._note_text = note
+	return screen
 
 
 func _ready() -> void:
@@ -76,7 +96,7 @@ func _ready() -> void:
 
 	var note := Label.new()
 	note.name = "Note"
-	note.text = "The wave is waiting."
+	note.text = _note_text
 	note.position = Vector2(CARD.position.x, CARD.position.y + 76.0)
 	note.size = Vector2(CARD.size.x, 24.0)
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -88,7 +108,7 @@ func _ready() -> void:
 
 
 func _build_buttons() -> void:
-	var y: float = FIRST_BUTTON_Y
+	var y: float = CARD.position.y + FIRST_BUTTON_OFFSET
 	var first: Button = null
 	for spec: Dictionary in BUTTONS:
 		var button := Button.new()

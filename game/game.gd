@@ -321,8 +321,7 @@ func _on_pest_escaped(_pest: Pest) -> void:
 ## Common tail of a run, win or lose: banners the result and files the seed
 ## total against RunConfig's persisted high score exactly once.
 func _end_run(_banner: String) -> void:
-	var new_record: bool = not _score_recorded and RunConfig.record_score(bank.seeds_earned_total)
-	_score_recorded = true
+	var new_record: bool = bank_score()
 	# While playing, the lane overlay shows the last wave and fades older ones,
 	# which is what makes it readable in the moment and useless afterwards — by
 	# the time a run ends, wave 3's disaster has decayed to nothing. Swap it for
@@ -350,6 +349,40 @@ func _end_run(_banner: String) -> void:
 	_summary.gate_requested.connect(func() -> void: get_tree().change_scene_to_file(TITLE_SCENE))
 
 
+## Files the run's seed total against the high score for the mode being played,
+## at most once per run.
+##
+## _end_run used to be the only caller of RunConfig.record_score, reached only by
+## winning or by losing the last bed -- and `has_more_waves()` is unconditionally
+## true in endless, so victory is unreachable there. That made dying the only way
+## to bank an endless score, and then pause shipped two doors that walked out
+## past it. A player who quit a long run voluntarily filed nothing, which is to
+## say the run they were most likely to be proud of was the one guaranteed not to
+## count.
+##
+## Shares _score_recorded with _end_run, so quitting and then losing, or losing
+## and then quitting, still files exactly one score.
+## What the pause card says about the moment it interrupted. The old text was the
+## constant "The wave is waiting.", which is false between waves -- and pause can
+## fire at any moment outside game-over.
+func pause_note() -> String:
+	if _wave_live:
+		var alive: int = get_tree().get_nodes_in_group("pests").size()
+		if alive > 0:
+			return "%d pest(s) frozen mid-step." % alive
+		return "The wave is still arriving."
+	if not director.has_more_waves():
+		return "Nothing left to grow."
+	return "The next wave is %d seconds away." % int(ceil(_prep_left))
+
+
+func bank_score() -> bool:
+	if _score_recorded:
+		return false
+	_score_recorded = true
+	return RunConfig.record_score(bank.seeds_earned_total)
+
+
 ## Holds the run still. The prep countdown, the wave spawner, every plant timer
 ## and every pest all live on the paused tree, so one flag stops all of them --
 ## which is the point: a hand-rolled "paused" bool would have to be checked in
@@ -357,8 +390,7 @@ func _end_run(_banner: String) -> void:
 func pause_run() -> void:
 	if _pause_screen != null and is_instance_valid(_pause_screen):
 		return
-	_pause_screen = PauseScreen.new()
-	_pause_screen.name = "PauseScreen"
+	_pause_screen = PauseScreen.build(pause_note())
 	_pause_layer = CanvasLayer.new()
 	_pause_layer.name = "PauseLayer"
 	# Above the HUD at 10 and the post-mortem at 20, so a pause is always the
@@ -371,9 +403,11 @@ func pause_run() -> void:
 	_pause_layer.add_child(_pause_screen)
 	_pause_screen.resume_requested.connect(resume_run)
 	_pause_screen.restart_requested.connect(func() -> void:
+		bank_score()
 		get_tree().paused = false
 		get_tree().reload_current_scene())
 	_pause_screen.gate_requested.connect(func() -> void:
+		bank_score()
 		# Unpause before leaving: `paused` is a property of the tree, not of the
 		# scene, so it would survive the change and freeze the title screen.
 		get_tree().paused = false

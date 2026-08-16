@@ -3282,3 +3282,110 @@ func test_a_packet_tooltip_counts_what_its_tier_can_actually_reach() -> String:
 		err = _T.assert_true(Hud.packet_tooltip(&"nosuchtier").is_empty(),
 			"an unknown tier returns nothing rather than a half-built sentence")
 	return err
+
+
+## No two Controls on the pause card may share pixels.
+##
+## This is the check that was missing when the card shipped: FIRST_BUTTON_Y was an
+## absolute 232.0 while every other offset was CARD.position.y + N, so the note's
+## box ran 228..252 under a ResumeButton at 232..276 and twenty of its twenty-four
+## pixels were behind an opaque stylebox. Nothing failed, because every Control fit
+## its own box -- and per-Control measurement is all validate-ui and findings do.
+func test_no_two_pause_card_controls_share_pixels() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.pause_run()
+	await _pump(game)
+	var screen: Control = game.get_node_or_null("PauseLayer/PauseScreen") as Control
+	var err: String = _T.assert_true(screen != null, "the card is up")
+	if err == "":
+		var rects: Dictionary = {}
+		for child: Node in screen.get_children():
+			var control := child as Control
+			# The backdrop covers everything by design, and the card is the paper
+			# the rest sits on -- neither is a sibling competing for space.
+			if control == null or not control.visible or control.name in ["Backdrop", "Card"]:
+				continue
+			if control.size.x <= 0.0 or control.size.y <= 0.0:
+				continue
+			rects[String(control.name)] = Rect2(control.global_position, control.size)
+		err = _T.assert_gt(rects.size(), 1, "there are at least two Controls to compare")
+		if err == "":
+			var names: Array = rects.keys()
+			for i: int in range(names.size()):
+				for j: int in range(i + 1, names.size()):
+					var a: Rect2 = rects[names[i]]
+					var b: Rect2 = rects[names[j]]
+					err = _T.assert_false(a.intersects(b),
+						"%s %s overlaps %s %s" % [names[i], a, names[j], b])
+					if err != "":
+						break
+				if err != "":
+					break
+	if err == "":
+		# And everything stays on the paper it is drawn against.
+		var card: Control = screen.get_node_or_null("Card") as Control
+		for child: Node in screen.get_children():
+			var control := child as Control
+			if control == null or control.name in ["Backdrop", "Card"] or not control.visible:
+				continue
+			err = _T.assert_true(control.global_position.y + control.size.y
+					<= card.global_position.y + card.size.y,
+				"%s runs past the bottom of the card" % control.name)
+			if err != "":
+				break
+	game.resume_run()
+	_T.free_ui(game)
+	return err
+
+
+## Leaving a run must file the score. In endless, dying was the only way to bank
+## one -- has_more_waves() is unconditionally true there, so victory is
+## unreachable -- and pause then added two doors that walked out past _end_run.
+func test_quitting_a_run_through_pause_still_files_the_score() -> String:
+	var saved_c: int = RunConfig.campaign_high_score
+	var saved_e: int = RunConfig.endless_high_score
+	RunConfig.campaign_high_score = 0
+	RunConfig.endless_high_score = 0
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(320)
+	var earned: int = game.bank.seeds_earned_total
+	var err: String = _T.assert_gt(earned, 0, "the run earned something worth filing")
+	if err == "":
+		err = _T.assert_true(game.bank_score(), "quitting files the run's total")
+	if err == "":
+		err = _T.assert_eq(RunConfig.best_for(game.director.endless), earned,
+			"and it lands on the mode that was played")
+	if err == "":
+		# Filing twice would let one run set a record and then beat itself.
+		err = _T.assert_false(game.bank_score(), "a second attempt files nothing")
+	if err == "":
+		# And the losing path shares the same guard, so quit-then-lose is one score.
+		game.lives = 1
+		game._on_pest_escaped(null)
+		await _pump(game)
+		err = _T.assert_eq(RunConfig.best_for(game.director.endless), earned,
+			"losing after quitting does not file a second time")
+	RunConfig.campaign_high_score = saved_c
+	RunConfig.endless_high_score = saved_e
+	_T.free_ui(game)
+	return err
+
+
+func test_the_pause_note_describes_the_moment_it_interrupted() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game._wave_live = false
+	game._prep_left = 9.0
+	var between: String = game.pause_note()
+	var err: String = _T.assert_true(between.contains("9") or between.contains("10"),
+		"between waves it counts the wait, got: %s" % between)
+	if err == "":
+		# The old text was the constant "The wave is waiting.", which is exactly
+		# what it must not say when no wave is on its way.
+		err = _T.assert_false(between == "The wave is waiting.",
+			"and is not the constant it used to be")
+	if err == "":
+		game._wave_live = true
+		var during: String = game.pause_note()
+		err = _T.assert_true(during != between, "a live wave reads differently, got: %s" % during)
+	_T.free_ui(game)
+	return err
