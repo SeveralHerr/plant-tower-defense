@@ -3179,3 +3179,66 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     denominator. A partial import is currently indistinguishable from a clean one
     at the point where you could still act on it, and only becomes visible eleven
     failures later in a form that reads like a code regression.
+
+## 2026-08-16 — Save v6 (the two mutes) and a second door to the Options screen
+
+- Value: **warranted** — `node-bounds` at a real 1152x648 settled a card-geometry
+  question the diff could only guess at, and the headless suite caught a layout
+  invariant a previous session had written down and I would otherwise have broken.
+  - Expected: that adding a sixth button to the pause card would fit (the
+    arithmetic said 614 of 648) and that the live card would foot around 638.
+  - Got: `test_the_pause_card_centres_itself_and_fits_a_real_viewport` failed on two
+    assertions — "the card is centred: 24 above, 10 below" and "a sixth button would
+    need 670 of 648". Fitting was never the invariant; being centred with room for
+    one more row was, and `card_top()`'s `CARD_MIN_TOP` clamp had silently absorbed
+    the difference. After pairing Keys and Options on one row, the bridge measured
+    `Card 288, 45, 320x558` — byte-identical to the pre-Options measurement in
+    70e1f4d — with `KeysButton 324,273 120x44` and `OptionsButton 452,273 120x44`:
+    same top edge, 8px apart, right edge at 572 = exactly one full-width button's
+    span. `findings`: `0 finding(s) across 5 of 5 checks (1152x648)`.
+  - Found: two real defects, both fixed mid-run. (1) The v5->v6 bump would have
+    silently eaten a v5 save's milestones AND its rebound keys: all three v5 fields
+    were read behind `version >= SAVE_VERSION`, which stops meaning "this file has
+    them" the instant SAVE_VERSION moves, and the migration rewrite would then have
+    written them back out empty. Caught by reading the parser before editing it, not
+    by any gate — no test existed for "a v5 file reads forward" because until this
+    change v5 *was* current. (2) The Options screen's colourblind row repainted
+    nothing when flipped over a paused board: the C key's handler did the repaint
+    inline, so the switch reached from the new door took effect at the next wave.
+  - Cheaper: for the geometry, nothing — headless reports the card at a 64x64
+    window and the centring claim is about a real viewport. For everything else the
+    headless suite alone was enough; the live pass confirmed rather than discovered,
+    and its real value was the two numbers in the commit message.
+
+- Gap: **the headless suite rewrites the developer's real `user://highscore.save`,
+  and no gate says so.** Four tests in `test_selftest.gd` (`:679`, `:1014`, `:4326`,
+  `:4921`) stage low scores in memory and call `RunConfig.record_score()` while
+  `RunConfig.save_path` is still the real file; `record_score` calls `_save()`.
+  Observed across two full runs: `v5/308/5008` -> `v6/310/5010` -> `v6/2/2`. Both high
+  scores destroyed, recovered only from a copy taken into the scratchpad before the
+  work started. Every one of those tests stashes and restores the in-memory scores,
+  which is exactly what hides it — the FILE keeps the last number written, and the
+  suite reports `ALL TESTS PASSED`. Filed as `plant-tower-defense-csl`.
+  - [G-048] status: open | seen: 1 | harness: 0.33.0
+  - Improvement: the harness knows `test_dir` and it knows `user://`. A `/verify`
+    step that snapshots `user://` before the suite and diffs it after — printing
+    `user:// writes: N file(s) changed by the suite` as a denominator — would turn
+    this from an invisible loss into a line. Advisory is enough; a test suite
+    legitimately writes `user://`, but a suite that writes a file NO test named a
+    path for is a suite driving production state. Related to gh#33/gh#28: with two
+    agents in two worktrees sharing one `user://`, this is not a niche case.
+
+- Gap: **`run_tests.py` silently ignores a `--select` passed after `--`.** `python
+  tools/run_tests.py -- --select test_economy` printed `Selected: 491 of 491
+  discovered  (no selector)` and ran the whole suite. `run_tests.py --select ...`
+  without the `--` errors correctly (`unrecognized arguments: --select`), so the
+  passthrough form is the one that fails quietly. Cost here was small (two full
+  ~90s runs where one file would have done); the shape is the harness's own
+  documented worst failure mode — a denominator that reads fine while describing a
+  different run from the one you asked for.
+  - [G-049] status: open | seen: 1 | harness: 0.33.0
+  - Improvement: `run_tests.py` should forward everything after `--` into
+    `run_tests.gd`'s own argument parsing, or, failing that, `run_tests.gd` should
+    exit 2 on an argument it does not recognise rather than printing
+    `(no selector)` beside a full-suite run. The parenthetical is already the
+    evidence; it just isn't fatal.
