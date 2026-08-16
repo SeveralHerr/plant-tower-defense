@@ -3028,3 +3028,39 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   before Python sees it, not the harness; forward slashes fix it, and the error
   message already prints the mangled path it is polling, which is what named the
   cause.
+
+## 2026-08-16 — Keys screen reachable from the pause card (plant-tower-defense-ac0)
+
+- Value: **warranted** — `node-bounds` answered the one question the whole issue turned
+  on, and answered it windowed, where the headless suite could only answer it against a
+  constant.
+  - Expected: the pause card with a fifth button would foot past 648, since
+    `KeyBindingScreen`'s own header says so; deriving `card_top()` as a centred value
+    should put the foot at 603 with 45px of slack either side.
+  - Got: `Card (Panel)  Rect: 288, 45, 320x558`, tagged `Geometry: measured windowed
+    (what a player sees)` rather than `[HEADLESS geometry]`. Foot at 603 in a 648
+    viewport. `KeysButton  Rect: 324, 273, 248x44`, inside it. After
+    `press --node .../KeysButton`, `KeysScreen/Paper  Rect: 226, 24, 700x600` with
+    `process_mode: 3` (ALWAYS) on a tree the card had paused; `find-nodes --class
+    KeyBindingScreen` came back `0 node(s) matched` after Back.
+  - Found: a stale legend the diff would not have shown. The card builds its key rows
+    once from the table Game hands it, and the new button sits directly above those rows
+    — so a player could rebind pause and read a row still naming Esc. Added
+    `_refresh_key_list()` on close, and a test that drives the rebinding through the
+    screen's own `listen_for`/`capture` and asserts the Label text. Also noticed, and NOT
+    mine: `KeyRow4` measures `316, 553, 326x26` against a card ending at x=608 — a Label
+    whose assigned 264 width loses to its own minimum size, so the longest legend row
+    draws ~34px past the paper. Pre-existing (nothing here touches that row's x or
+    width); filed rather than widened into this issue.
+  - Cheaper: the headless assertion alone would have got the arithmetic right, but it
+    asserts against `ProjectSettings`' 648 rather than the window, and the existing
+    fits-the-viewport test already had a hardcoded 648 in it. The cheap half that proved
+    the new test can fail was a mutation run (`card_top()` → `return 140.0`,
+    `--filter pause_card`): `[FAIL] test_the_pause_card_centres_itself_and_fits_a_real_viewport`
+    plus `[FAIL] test_the_pause_card_is_tall_enough_for_whatever_it_holds`.
+
+- Gap: no gaps this turn. `launch --isolated --kill-survivors` came up first try,
+  `press` / `node-bounds` / `find-nodes --class` / `get-state --property` each answered
+  what they claim to, and `findings --no-scenes` reported `0 finding(s) across 4 of 5
+  checks (1152x648)` with the skipped one named by reason. The `--import` segfault at
+  exit (`exit=139`, `.godot/uid_cache.bin` written anyway) is G-044 and is not re-filed.
