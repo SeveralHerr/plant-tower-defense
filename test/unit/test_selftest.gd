@@ -4910,6 +4910,37 @@ func test_the_suite_reach_checker_still_declares_its_house_contract() -> String:
 	return ""
 
 
+# -- StickySundew's wash-order counter resets, not just climbs forever
+# -- (plant-tower-defense-qij) ----------------------------------------------
+
+
+func test_the_wash_order_counter_resets_once_the_last_patch_on_the_board_is_gone() -> String:
+	# Advance the counter first so this can't pass by accident of wherever the
+	# rest of the suite happened to leave it -- a fresh process also starts it
+	# at 0, and that would look identical to a reset that never fired.
+	var warmup := StickySundew.new()
+	var before_reset: int = StickySundew._next_wash_order
+	warmup.free()
+	var err: String = _T.assert_gt(before_reset, 0, "sanity: constructing a patch always advances the counter")
+	if err != "":
+		return err
+
+	var patch := StickySundew.new()
+	patch.setup(PlantCatalog.SUNDEW, Vector2i(0, 0), null)
+	var host: Node2D = _host([patch])
+	await _T.instantiate_scene(host)
+	err = _T.assert_true(StickySundew.live_patches().has(patch),
+		"sanity: this patch registered itself the moment it entered the tree")
+	_T.free_ui(host)  # frees the host's children too -- patch._exit_tree runs synchronously
+	if err == "":
+		err = _T.assert_true(StickySundew.live_patches().is_empty(),
+			"sanity: freeing the only patch on the board empties the live list")
+	if err == "":
+		err = _T.assert_eq(StickySundew._next_wash_order, 0,
+			"the counter resets to 0 the instant the last patch on the board is gone")
+	return err
+
+
 # -- A kernel hit gets its own cue (plant-tower-defense-7o3) ----------------
 
 
