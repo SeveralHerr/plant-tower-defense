@@ -1,34 +1,37 @@
 # todo
 
-**Cycle 17 of 30.** Bump this each time you refill the Items list. See the Workflow
+**Cycle 18 of 30.** Bump this each time you refill the Items list. See the Workflow
 block in `CLAUDE.md` — this list is refilled, never left fully ticked.
 
 ## Items
 
-- [ ] **2yz — Sweep `test/` for other group reads taken by index.** P1.
-  `test_kernels_launch` read `kernels[0]` out of a tree-global group and measured a
-  *leaked* object every run — green for months, red the moment four unrelated tests were
-  appended. Nothing enumerates the other group reads (`pests`, `husks`, `kernels`,
-  `plants`); any taken by index has the same defect. A sweep for
-  `get_nodes_in_group(...)[0]` across `test/` finds the rest in one pass.
+- [ ] **h8o — No gate says how much of the game the suite never touches.** `run_tests`
+  prints `Suite: 7 script(s)` and `Assertions: N`; the checkers print `N of M`; lint
+  prints `Shaders: N of M`. Nothing prints which `.gd` files are never loaded by *any*
+  test. The bridge already has `scripts-seen` and nothing compares it against the file
+  list. This is the one denominator the project lacks, and it is the one that says where
+  the suite is blind.
 
-- [ ] **02k — Tests leak nodes into groups and nothing notices.** The root cause under
-  2yz: a test that builds a `Kernel` and never frees it leaves it in the group for every
-  later test. `_T.free_ui` is called on hosts, but a kernel spawned by `_act` is parented
-  to the host's *parent*, not the host. A per-test assertion that group counts return to
-  where they started would catch the whole class.
+- [ ] **5lv — Tell the player which red means fought and which means unreachable.**
+  `coverage_frontier()` says how far the garden can reach; `LanePressureOverlay` says how
+  far pests got. The prep line compares them once, to pick a sentence. The board never
+  does — a player sees red tint and cannot tell "they got here and we fought" from "they
+  got here and nothing could touch them", which is the whole distinction the coverage work
+  just established. Note: a third red *surface* is ruled out; the hatch-versus-wash
+  separation exists so the cursor can be read over the tint.
 
-- [ ] **8fg — Warn at startup when a budget crosses its own tight threshold.**
-  `cmd budgets` reports tight/spent from outside, but nothing inside the game reacts —
-  and it currently says three tight, one spent. A startup `push_warning` means the next
-  person to spend one hears about it on the next run rather than on the next audit.
-  Reuses the entries the verb already computes.
+- [ ] **4no — Measure how far coverage over-promises.** The derived map is an upper
+  bound: a Corn shoots only the furthest-along pest, a busy Chomp grabs nothing, a winged
+  pest is unreachable by a Chomp at all. So "covered" over-promises exactly when a player
+  is losing. An *observed* map was correctly rejected because `_ever_engaged` is monotone
+  — but a per-cell record of "something was in range and did not fire" is **not** monotone
+  and would measure the over-promise directly.
 
-- [ ] **jrj — Map where the garden never reached, not just that it didn't.**
-  `was_engaged()` answers one question at one instant, at the exit. The same flag sampled
-  per road cell would say *where* the garden stopped reaching — the coverage-hole map the
-  post-mortem's "walked in untouched" line only aggregates. Genuinely different from lane
-  pressure: pressure says where they got to; this says where nothing could touch them.
+- [ ] **cjd — Let a plant declare whether it engages.** `Game.ENGAGING_PLANTS` is a
+  positive list of CORN and CHOMP two files away from the plants. A fifth plant fails a
+  test, which is the right failure, but it fails *after* someone has written the plant.
+  Careful: `PlantCatalog.reach()` is **not** this — it returns `SAP_RADIUS` for the
+  Sundew, correctly, for the dead-ground cue, and a Sundew engages nothing.
 
 - [ ] **Add cool new features or concrete improvements** (UX, game juice, animations,
   enhancements, or full features) to `kanban.md`.
