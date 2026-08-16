@@ -1998,3 +1998,34 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
 
 - Harness: checked `godot-selftest-harness` for a release — still **0.23.0** (`65103b7`),
   matching the installed version. No refresh.
+
+## 2026-08-16 — Road classification (ch3) and the husk budget (a1k)
+
+- Value: **warranted** — a test I wrote to check my own reasoning refuted it, twice,
+  and the second refutation came from a subagent reading the source I had summarised.
+  - Expected: ch3 was bookkeeping. I thought I already knew which four numbers were
+    road-dependent and only needed to write the classification down.
+  - Got: `husk_click_margin() does not mention route( — if it now does, it has become
+    road-dependent and the classification block above is wrong: Expected true but got
+    false`. My own assertion, failing on my own claim, 2ms in. Then the a1k agent
+    corrected the arithmetic underneath it: `COLLECT_RADIUS` is 28 and is the husk
+    sweep; the 32 is `Board.CELL / 2`, not a radius. Which flipped the answer BACK,
+    for a different reason — the route walk yields CELL/2 for any road.
+  - Found: two wrong classifications, in opposite directions, in one cycle. The
+    measurement test (32 cells / 2112 px, computed from `route()` at runtime) matched
+    the prose in `wave_director.gd` exactly, which is the one thing I guessed right.
+  - Cheaper: reading `placement_preview.gd:388-410` properly the first time. I had it
+    open and summarised it from its doc comment instead of its body. That is the whole
+    lesson of this entry.
+
+- Note: mutation-checked both tests before committing (`cells, 32` -> `33` printed the
+  full re-derivation list with the real measured numbers; the earlier subheading test
+  at budget 100 printed `draws 268px`). A test I have not watched fail is a test I have
+  not written — this is now three cycles running where the mutation check either caught
+  a dead assertion or confirmed a live one, and it costs ~30s.
+
+- Gap: **no gaps this turn.** The harness did what it should: `[VACU]` caught a test of
+  mine that assumed a `.tscn` which does not exist, and the source-reading test caught a
+  claim of mine that the code contradicted. Neither needed a feature the harness lacks.
+
+- Harness: still **0.23.0** upstream (`65103b7`) and installed. No refresh.
