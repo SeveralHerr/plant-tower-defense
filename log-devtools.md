@@ -2093,3 +2093,45 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
 - Gap: **no gaps this turn.**
 
 - Harness: still **0.23.0**. No refresh.
+
+## 2026-08-16 — Placement brackets (dhs), and a false clean from the import gate
+
+- Value: **warranted** — but the run's real product was a harness finding, not the feature.
+  - Expected: a two-line colour change. I expected the gates to be a formality.
+  - Got: `Assigned value for constant "OK_COLOR" isn't a constant expression` — my own
+    edit. `Color.lightened()` is a method call and a GDScript `const` initialiser must
+    be constant. It cascaded: `Failed to load script "res://devtools_ext/commands.gd"`,
+    and discovery fell from **331 to 164 tests**.
+  - Found: my own parse error, and then a gate that hides it (below). Also confirmed by
+    mutation that the replacement test has teeth — moving `DANGER` to (0.70, 0.15, 0.30)
+    fails with `BLOCKED_COLOR is 0.175 away from DANGER lightened`.
+  - Cheaper: nothing cheaper would have caught the const rule. But I had the right
+    diagnosis in the first thirty seconds and abandoned it because `import_check` said
+    OK — so the cost here was trusting a gate over a symptom.
+
+- Gap: **[G-034] `import_check.py` reports "Import OK" on a hard parse error.** New.
+  Reproduced deliberately, all four gates on the identical tree:
+  ```
+  name_check.py      -> exit 0   (correct; it does not compile)
+  import_check.py    -> exit 0   "Import OK: godot --import ran (exit 0) and its 28
+                                  line(s) of output contain no SCRIPT ERROR, Parse
+                                  Error, Failed to load script or Compilation failed."
+  lint_project.gd    -> exit 1   "lint: 2 error(s), 0 warning(s)"
+  run_tests.gd       -> exit 2   "Total: 164 | Passed: 149 | Failed: 15"
+  ```
+  The error text `SCRIPT ERROR: Parse Error: Assigned value for constant "OK_COLOR"
+  isn't a constant expression.` appears in `run_tests` output and in lint's findings,
+  but never in the import log import_check scans. Severity is bounded: lint catches it,
+  and lint runs alongside import in every `/verify` tier that reaches Phase 1, so
+  nothing ships broken. But import_check is documented as the gate that catches what
+  name_check cannot, and is positioned FIRST specifically so you fix the cause instead
+  of reading a cascade — and it was the one gate that missed. It also cost me the
+  detour above, because I had the diagnosis and dropped it when the gate disagreed.
+  - [G-034] status: open | seen: 1 | harness: 0.23.0
+  - Improvement: either `godot --import` does not surface errors for scripts it does
+    not re-import (in which case import_check cannot claim "the project parses" and its
+    success message should say what it actually verified), or the scan needs to catch
+    this error class. The success string is the specific thing to change — it currently
+    asserts the absence of four phrases and reads as a compile verdict.
+
+- Harness: checked upstream — still **0.23.0** (`65103b7`). No refresh.
