@@ -2878,3 +2878,68 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   a 0.2s cue unobservable.
 
 - Harness: **0.25.0**.
+## 2026-08-16 — Migrated seven inline scancode checks to a real InputMap, and built the Keys screen over it
+
+- Value: **warranted** — the live game contradicted a diff that read as obviously
+  correct, twice, on two different layers.
+  - Expected: that `input tap garden_pause` against the running game would open the
+    pause card, confirming the migration; and that a screenshot would confirm a
+    layout every rect assertion had already passed.
+  - Got: neither. `input tap garden_pause` returned `Tapped: garden_pause` and
+    `find-nodes --class PauseScreen` came back `0 node(s) matched` — the migrated
+    handlers had kept the `var key := event as InputEventKey` narrowing they needed
+    while they compared raw keycodes, so every one of the seven verbs was
+    unreachable from `Input.action_press`. And on the Keys screen the footer
+    rendered flush against the last row while `Rect2.intersects` reported no
+    overlap (it is false for two boxes sharing an edge) and `findings` reported
+    `0 finding(s) across 4 of 5 checks`.
+  - Found: the InputEventAction gap (fixed mid-run, now
+    `test_a_verb_arrives_as_an_action_event_as_well_as_a_key_event`) and the
+    zero-gap footer (fixed, now a minimum-gap assertion). Also one honest catch by
+    a *static* checker: `suite_reach_check` flagged that naming `KeyBindings.reset`
+    in a test silently marked `WaveDirector.reset` covered — renamed to
+    `reset_action`.
+  - Cheaper: nothing for the InputEventAction gap — no static gate in this project
+    reads what shape an `_input` handler accepts, and the unit tests were all
+    feeding it `InputEventKey`, which is exactly the shape that still worked. The
+    footer needed a screenshot specifically; every numeric check passed.
+
+- Gap: **`findings` and the layout gates have no concept of a minimum gap between
+  two Controls** — `python tools/devtools.py findings` reported
+  `0 finding(s) across 4 of 5 checks` over a Keys screen whose "← Back" button sat
+  at y=528 directly under a row button ending at y=528. `ui_layout` measures a
+  Control against its own box, and the project's own pair-wise checks
+  (`test_the_pause_card_lists_the_keys_and_still_fits_its_paper`, and the helper
+  written this session) use `Rect2.intersects`, which is false for boxes sharing an
+  edge. So "not overlapping" passes for "touching", and touching is what reads as
+  broken. Worked around with an explicit `assert_gte(gap, 16.0)` in the test.
+  - [G-046] status: open | seen: 1 | harness: 0.25.0
+  - Improvement: give the UI checks a `min_control_gap` threshold in
+    `devtools_config.json` (default 0 = today's behaviour) and have the sibling
+    comparison report `controls_touching` as its own finding class, so a flush
+    edge is named rather than being indistinguishable from a laid-out one.
+
+- Gap: **`--import` crashed twice in a row on the same asset in a fresh worktree,
+  and the retry advice does not cover it** — `python tools/import_check.py` exited
+  2 with `no parse/load errors in the output, but Godot exited 3221225477`
+  (0xC0000005) both times, `.devtools/import.log` ending at
+  `[ 0% ] reimport | question_002.ogg` on each run, and `.godot/imported` holding
+  only 12 `.tmp` files afterwards. This is G-044's shape (segfaulting `--import`)
+  but the documented "run it again" fix did not resolve it — the ogg importer
+  crashed at the same file every time. Unblocked by copying `.godot/imported`,
+  `uid_cache.bin` and `scene_groups_cache.cfg` from the main checkout, which is
+  valid because the import cache is keyed on the `res://` path, identical across
+  worktrees.
+  - [G-044] status: open | seen: 4 | harness: 0.25.0
+  - Improvement: `import_check.py` should notice that `.godot/imported` gained no
+    non-`.tmp` file across the run and say so, and — since every worktree of the
+    same project imports byte-identical results — offer to seed the cache from a
+    sibling checkout's `.godot/` rather than leaving the session to work out that
+    that is legal.
+
+- Note, not a harness gap: `user://highscore.save` is shared across worktrees and a
+  sibling agent's uncommitted branch is independently writing its own `v3` of that
+  file (`v3 / 140 / 0 / m0`, a mute-flags line where this branch writes a
+  key-binding count). Both parsers refuse the other's file rather than misreading
+  it, which is the designed outcome, but the two `SAVE_VERSION = 3` definitions
+  will conflict on merge.

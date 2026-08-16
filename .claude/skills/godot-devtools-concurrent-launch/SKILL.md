@@ -95,6 +95,35 @@ underlying tool as the segfault-then-clean-retry gap already logged against the 
 (G-044) — here the first run didn't error at all, it just silently didn't finish the one
 file the next launch depends on.
 
+### When the second `--import` crashes too
+
+Observed 2026-08-16 in a fresh worktree: `python tools/import_check.py` exited 2 twice in
+a row with `no parse/load errors in the output, but Godot exited 3221225477` (0xC0000005,
+an access violation), `.devtools/import.log` ending at the same line both times —
+
+```
+[   0% ] reimport | question_002.ogg
+```
+
+— and `.godot/imported` holding nothing but `.tmp` files afterwards. "Run it again" does
+not help when the importer is crashing deterministically on one asset.
+
+The fix is that **the import cache is keyed on the `res://` path, which is identical in
+every worktree of the same project**, so a sibling checkout's finished cache is byte-valid
+here:
+
+```bash
+rm -rf .godot/imported
+cp -rf <main-checkout>/.godot/imported .godot/imported
+cp -f  <main-checkout>/.godot/uid_cache.bin .godot/
+cp -f  <main-checkout>/.godot/scene_groups_cache.cfg .godot/
+python tools/import_check.py     # now exits 0 in seconds
+```
+
+Check the denominator before trusting it: `ls .godot/imported | wc -l` should be in the
+hundreds, not the dozen `.tmp` files a crashed run leaves. Then confirm
+`.godot/uid_cache.bin` exists, as above.
+
 `--isolated` does nothing to fix this — it isolates the command bus, not the import
 cache, and killing and relaunching just reproduces the same alert with a new pid. Rerun
 `--import` (and confirm `uid_cache.bin` exists) before touching `launch` again.

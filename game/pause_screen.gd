@@ -100,7 +100,7 @@ static func content_height() -> float:
 ## How many key rows the card will draw. Static so card_rect() can size for them
 ## before any instance exists; Game passes the same table it hands to build().
 static func key_row_count() -> int:
-	return Game.KEY_HELP.size()
+	return Game.key_help().size()
 
 
 ## Top of the key list, in card-local coordinates.
@@ -304,10 +304,15 @@ func _input(event: InputEvent) -> void:
 	# The guard only works because _close_notebook is deferred; see _open_notebook.
 	if notebook_open():
 		return
-	var key := event as InputEventKey
-	if key == null or not key.pressed or key.echo:
+	# Both shapes a verb can arrive in — see Game._unhandled_input for why the
+	# InputEventKey-only narrowing that used to be here made the close key
+	# unreachable from the devtools bridge.
+	if not (event is InputEventKey or event is InputEventAction):
 		return
-	if key.keycode == KEY_ESCAPE or key.keycode == KEY_P:
+	# The same action Game._unhandled_input opens this card with, so "the two keys
+	# that open it" stays true after a rebinding instead of being a sentence about
+	# Escape and P specifically.
+	if event.is_action_pressed(KeyBindings.ACTION_PAUSE):
 		# Already fading out — a second press here must not ask Game to resume a
 		# screen it is already in the middle of resuming.
 		if _closing:
