@@ -175,6 +175,26 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
 
 ## Cool new features (idea backlog)
 
+### Requested directly by James — not grown, asked for
+
+- **Animate all the plants and enemies.** Every plant and pest currently reads as
+  mostly static art with a handful of one-off tweens bolted on for specific events
+  (Chomp's bite squash, the cob's recoil). The ask is broader: idle motion — sway,
+  breathe, twitch — on every plant and pest, not just reaction poses for the
+  moments the game already hooks.
+- **More waves, and bosses.** The wave table (`WaveDirector`) currently ends at 8
+  fixed waves before endless mode takes over with escalating mutation chance on
+  the same two pests. Add real additional waves to the table, and at least one
+  boss pest — bigger health pool, a distinct sprite, a mechanic that isn't just
+  "armoured but more."
+- **An animated dandelion plant that blows its seeds as bombs**, shipped in an
+  "epic" seed packet tier above the current common/rare split. Seed-puff attack
+  animation (the dandelion visibly loses fluff as it fires), seeds arc and detonate
+  rather than travel like a Corn Cobbler's kernels or a Chomp's bite.
+- **Fix enemy facing direction.** Pests should visually face the direction they're
+  walking (the art style doc calls out up-screen facing as the convention;
+  pests moving down/left/right the road should not still render facing up-screen).
+
 ### New this cycle (12 of 30) — grown from the features above
 
 - **The lane pressure overlay answers a question the player has already stopped
@@ -1554,3 +1574,40 @@ of what the design doc already says, rather than being bolted on.
   Flower snapping shut are both silent on the attacker's end. (The Sticky Sundew's
   `_claim()`, sticky_sundew.gd:244-250, already got this note last cycle; it turns
   out the same gap runs through all three attacking plants, not just that one.)
+
+### New this cycle (22 of 30)
+
+- **`Plant` has a field for idle sway and nothing ever writes to it.**
+  `_wobble_time: float = 0.0` (plant.gd:104) is declared and never read or written
+  anywhere else in the file — a sweep of every `var` declared in `game/` turned up
+  exactly one field with no second reference, and this is it. It reads like a stub
+  for exactly the ambient motion James already asked for directly ("animate all the
+  plants and enemies", see the backlog entry above); the hook is already sitting
+  there, unwired.
+
+- **A pest's corpse pops out of existence the instant `DEATH_LINGER` ends.**
+  `_play_death()` (pest.gd:484-505) swaps to the dead-eyes texture and holds it for
+  0.35s, then `tween.tween_callback(queue_free)` — nothing tweens `modulate.a`
+  first, so the corpse is at full opacity on its very last frame and simply gone on
+  the next. Every other exit in this game fades: `Plant.play_exit_and_free()`
+  shrinks a sprite to zero before freeing it, and `Pest`'s own arrival fades it in
+  from nothing. The one death every wave produces dozens of is the one exit left
+  un-eased.
+
+- **The prep strip drains to zero with no final-second urgency.** `_refresh_prep_bar`
+  (hud.gd:671-682) shrinks `_prep_bar` in lockstep with `prep_left` and tints it by
+  `next_threat_level`, which is real information calmly delivered — but the last
+  second before a wave lands is exactly the moment a player most wants a nudge, and
+  today it gets the same steady shrink as the other seventeen. A brief pulse on
+  `_prep_bar.modulate` once `left` drops under a couple of seconds — the same
+  `_ease_threat_tint`-style kill-and-restart shape `t5l` reused for the readout
+  punches last cycle — would put the same clock the bar already draws under the
+  player's eye right as it matters most.
+
+- **A won run and a lost run rise onto the same card the same way.** `RunSummary`
+  picks a different heading text and colour for victory (`_build_heading`,
+  run_summary.gd:144-153, "The garden holds!" vs "The garden is eaten") but
+  `_play_entrance()` (run_summary.gd:462-470) rises every Control by the identical
+  `RISE_OFFSET` over the identical `RISE_SECONDS`, with no branch on `won`
+  anywhere in it. The two headings already disagree about how the run went; the
+  motion carrying them onto the screen currently does not.
