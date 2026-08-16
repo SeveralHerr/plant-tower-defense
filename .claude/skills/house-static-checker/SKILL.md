@@ -105,6 +105,34 @@ correct behaviour, because the file set the property per node.
 A checker that has never been observed to fail is not a checker. The same rule as a test:
 **green on first run means nothing until you have watched it go red for the right reason.**
 
+### Then mutate the checker, not just the input
+
+The fixture proves the checker fires on a bad file. It does **not** prove the checker is
+looking at what you think. For that, break each stage of the tool in turn and confirm the
+fixture goes red:
+
+- turn comment-stripping off → the comment-matching findings should appear
+- count string bodies as real code → the string-literal findings should appear
+- disable whatever name resolution you added → those symbols should go unresolved
+
+Restore, and the fixture must return to zero. This is a distinct discipline from writing
+the fixture and it is the one that catches a checker which is quietly matching the wrong
+thing. It found an escape-blind source blanker here — `"...entry[\"key\"]"` was read as
+live code because the blanker did not handle `\"` — which no amount of good-and-bad
+example files would have surfaced, because both files were being scanned wrongly in the
+same way.
+
+### Beware a positive control that cannot fail
+
+A vacuity guard like "the corpus still contains every known class" sounds like it proves
+the scan works. It does not: a deliberately broken blanker left ~70% of characters intact,
+and no threshold separates 74.7% from 70.3%. Guards of that shape pass against the exact
+breakage they exist to catch.
+
+Replace them with a **direct unit test of the transform** on a handful of controlled
+inputs, where the expected output is written out by hand. Nine lines of known-in,
+known-out beats any statistic over the real corpus.
+
 ## Registering it
 
 Add it to the parallel-safe list in **both** `CLAUDE.md` and `AGENTS.md` — they are
