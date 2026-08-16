@@ -3028,3 +3028,60 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   before Python sees it, not the harness; forward slashes fix it, and the error
   message already prints the mangled path it is polling, which is what named the
   cause.
+
+## 2026-08-16 — An Options screen for the three flags that only had keystrokes (plant-tower-defense-lgv)
+
+- Value: **warranted** — headless alone produced two claims reading the diff would
+  not have, and one of them was a test that was green for the wrong reason.
+  - Expected: the new screen would read and write `RunConfig.colorblind_safe`,
+    `Sfx._muted` and `Music._muted`; the fifth title button would fit above
+    `TitleBackdrop.HORIZON` at the retuned pitch; and the panel's footer would
+    stand clear of the last row.
+  - Got: `Total: 477 | Passed: 477 | Failed: 0`, `Assertions: 10405 executed`,
+    `Suite: 7 test script(s)`, `Errors: 0 emitted during the suite` — and, before
+    that, `[FAIL] ... and options cannot open on top of keys either: Expected true
+    but got false`, plus lint's `Scripts: 47 compiled OK / UIDs: OK / 0 error(s),
+    0 warning(s)`.
+  - Found: **two, both mid-run.** (1) The overlay-stacking assertion was written as
+    `get_node_or_null("OptionsScreen") == null` after a `_close_options()`.
+    `queue_free()` does not take effect until the frame ends and a unit test never
+    yields one, so that lookup hands back the corpse of the overlay just closed and
+    reads as "the guard failed" — and would have read as a PASS for the wrong
+    reason had the guard actually been broken and the node been fresh. Rewritten to
+    count children that are not `is_queued_for_deletion()`. (2)
+    `suite_reach_check.py` gated two NEW findings on `options_screen.gd` (`set_on`,
+    `get_viewport_height`); `set_on` is the absolute setter every button press goes
+    through and had only ever been reached through the `toggle()` sitting over it.
+  - Cheaper: for the layout, nothing — `test_title_controls_all_clear_the_scenery`
+    reads `MENU_BUTTON_NAMES` and the live positions, and five rows at the shipped
+    pitch overrun the horizon by 54px, which is not visible in a constants diff.
+    For the flags themselves, reading `run_config.gd:280-289`, `sfx.gd:224` and
+    `music.gd:136` would have given the same confidence about the setters; the
+    tests are worth more as the thing that stops the next screen writing the flags
+    directly.
+
+- Gap: **`godot --headless --import` exits having imported only part of the
+  project, and the symptom is eleven unrelated-looking test failures.** The first
+  `--import` of this session returned normally with `[ 0% ] Executing pre-reimport
+  operations... question_002.ogg` as its last line. The full suite then reported
+  `Passed: 466 | Failed: 11` with `Errors: 14 emitted during the suite` —
+  `SCRIPT ERROR: Cannot call method 'get_height' on a null value at
+  TitleScreen._build_scenery` and `Failed loading resource:
+  res://.godot/imported/towerDefense_tile050.png-...ctex` — and the named failures
+  were `test_every_sound_the_game_can_play_actually_loads`,
+  `test_the_title_lawn_shows_every_plant_in_the_catalogue`,
+  `test_a_chomps_sprite_swaps_while_its_mouth_is_full` and seven more, none of
+  which this change touches. Reading them, the honest first conclusion is "this
+  branch broke asset loading". Workaround: re-run `--import` to completion; the
+  same suite then reported `Passed: 477 | Failed: 0 | Errors: 0` with no code
+  change between the two runs. It also cost ~50MB of `.devtools/tests.log` and
+  roughly a 10x slower suite, since every one of those errors printed a full
+  GDScript backtrace.
+  - [G-044] status: open | seen: 5 | harness: 0.32.0
+  - Improvement: unchanged from the earlier sightings, and this one adds the
+    cheapest possible version of it — `import_check.py` (or `/verify`'s import
+    step) comparing each `.import` file's `dest_files=` against what actually
+    exists under `.godot/imported/` and printing `Imported: N of M` as a
+    denominator. A partial import is currently indistinguishable from a clean one
+    at the point where you could still act on it, and only becomes visible eleven
+    failures later in a form that reads like a code regression.
