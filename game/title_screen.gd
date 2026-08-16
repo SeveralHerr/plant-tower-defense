@@ -23,23 +23,32 @@ const GAME_SCENE := "res://game/game.tscn"
 ## row has to clear TitleBackdrop.HORIZON (0.74 of the height, 479px at 648)
 ## so the scenery never sits under a button.
 const TITLE_Y: float = 88.0
-const SUBTITLE_Y: float = 158.0
-const SCORE_Y: float = 190.0
+const SUBTITLE_Y: float = 154.0
+const SCORE_Y: float = 182.0
 ## The button column had three rows and room for exactly three. A fourth (Keys)
-## does not fit at the old pitch: everything on this screen has to end above
-## TitleBackdrop.HORIZON, which is 0.74 of the viewport, and the old block ran to
-## 418 with the hint at 428..450 against a horizon at 479. So the pitch came in
-## rather than the column growing downward into the lawn — 48/44 tall on a 10px
-## gap puts the fourth row's foot at 432 and the hint at 442..464, still clear.
+## did not fit at the shipped pitch, and a fifth (Options) does not fit at the
+## fourth's: everything on this screen has to end above TitleBackdrop.HORIZON,
+## which is 0.74 of the viewport — 479 at 648 — and the four-row block already
+## ran to 432 with the hint at 442..464.
+##
+## So the column paid for the fifth row out of three places at once rather than
+## growing downward into the lawn: the header came up 10 (subtitle 158 -> 154,
+## score 190 -> 182, top 218 -> 208), the two heights each lost 4, and the gap
+## lost 2. Five rows now foot at 448 with the hint at 454..476, still clear of
+## 479. Every one of those numbers is at its floor: the secondary height is 40
+## because `findings` gates an interactive Control at 40x40, and the header
+## cannot come up further without the subtitle running into the wordmark's box.
+## A SIXTH row does not fit at any pitch — it needs a different screen, which is
+## why Options is a sibling overlay rather than a second column somewhere.
 ## test_title_controls_all_clear_the_scenery is the check that says so.
-const BUTTON_TOP: float = 218.0
+const BUTTON_TOP: float = 208.0
 const BUTTON_WIDTH: float = 300.0
-const BUTTON_HEIGHT: float = 48.0
-## The two rows that are not "start a run": shorter, because they are not the
+const BUTTON_HEIGHT: float = 44.0
+## The three rows that are not "start a run": shorter, because they are not the
 ## thing the screen is for.
-const SECONDARY_BUTTON_HEIGHT: float = 44.0
-const BUTTON_GAP: float = 10.0
-const HINT_Y: float = 442.0
+const SECONDARY_BUTTON_HEIGHT: float = 40.0
+const BUTTON_GAP: float = 8.0
+const HINT_Y: float = 454.0
 
 ## Every button in the column, top to bottom. A list rather than four names spelled
 ## out at each call site: `_link_focus`, `_set_menu_active`, `_play_entrance` and
@@ -47,7 +56,7 @@ const HINT_Y: float = 442.0
 ## copy of it — which is how adding this fourth button broke them rather than being
 ## checked by them.
 const MENU_BUTTON_NAMES: Array[String] = [
-	"StartButton", "EndlessButton", "NotebookButton", "KeysButton",
+	"StartButton", "EndlessButton", "NotebookButton", "KeysButton", "OptionsButton",
 ]
 
 ## Where a decorative plant's stem meets the ground, and how much bigger than
@@ -108,8 +117,10 @@ var _start_button: Button
 var _endless_button: Button
 var _notebook_button: Button
 var _keys_button: Button
+var _options_button: Button
 var _notebook: NotebookScreen = null
 var _keys_screen: KeyBindingScreen = null
+var _options_screen: OptionsScreen = null
 
 var _plants: Array[Sprite2D] = []
 var _pests: Array[Sprite2D] = []
@@ -261,6 +272,15 @@ func _build_buttons() -> void:
 	# named them was the pause card, which needs a run in progress to reach.
 	_keys_button = _make_button("KeysButton", "Keys", left, y, SECONDARY_BUTTON_HEIGHT)
 	_keys_button.pressed.connect(_open_keys)
+	y += SECONDARY_BUTTON_HEIGHT + BUTTON_GAP
+
+	# The three persisted switches had exactly one surface between them: a
+	# keystroke during a run, answered by a HUD sentence that faded. The Keys
+	# screen could move those keys but not read what they were set to, so the one
+	# screen this game had for configuration was the one place a player could not
+	# see whether the colourblind bars were on.
+	_options_button = _make_button("OptionsButton", "Options", left, y, SECONDARY_BUTTON_HEIGHT)
+	_options_button.pressed.connect(_open_options)
 
 	# Explicit wrap-around, so Down off the last button returns to the first
 	# instead of dead-ending — the geometric default only ever walks the list.
@@ -486,13 +506,36 @@ func _close_keys() -> void:
 	_keys_button.grab_focus()
 
 
-## True while either overlay covers the menu. One shared guard rather than two:
-## the notebook and the keys screen both go inert-behind-me, and two independent
-## "is mine open" checks would happily stack one on the other.
+## The options screen, same overlay contract again — see _open_keys. A third
+## overlay is exactly why `overlay_open()` is one shared guard: three independent
+## "is mine open" checks would let any of them open on top of any other.
+func _open_options() -> void:
+	if overlay_open():
+		return
+	_options_screen = OptionsScreen.new()
+	_options_screen.name = "OptionsScreen"
+	_options_screen.back_requested.connect(_close_options)
+	add_child(_options_screen)
+	_set_menu_active(false)
+
+
+func _close_options() -> void:
+	if _options_screen != null and is_instance_valid(_options_screen):
+		_options_screen.queue_free()
+	_options_screen = null
+	_set_menu_active(true)
+	_options_button.grab_focus()
+
+
+## True while any overlay covers the menu. One shared guard rather than three:
+## the notebook, the keys screen and the options screen all go inert-behind-me,
+## and independent "is mine open" checks would happily stack one on another.
 func overlay_open() -> bool:
 	if _notebook != null and is_instance_valid(_notebook):
 		return true
-	return _keys_screen != null and is_instance_valid(_keys_screen)
+	if _keys_screen != null and is_instance_valid(_keys_screen):
+		return true
+	return _options_screen != null and is_instance_valid(_options_screen)
 
 
 func _set_menu_active(active: bool) -> void:

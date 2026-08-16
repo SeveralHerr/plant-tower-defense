@@ -1402,6 +1402,217 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 	return err
 
 
+# -- Options screen (plant-tower-defense-lgv) --------------------------------
+
+
+## The same overlay contract the notebook and the keys screen are held to, plus
+## the half only a THIRD overlay can be wrong about: `overlay_open()` is one
+## shared guard, so options must not open over keys and keys must not open over
+## options.
+func test_the_options_screen_is_reachable_from_the_title_and_does_not_stack() -> String:
+	var title := await _T.instantiate_ui("res://game/title.tscn", Vector2i(1152, 648)) as TitleScreen
+	var button: Button = title.get_node_or_null("OptionsButton") as Button
+	var err: String = _T.assert_true(button != null, "the title screen has an Options button")
+	if err == "":
+		err = _T.assert_true(button.size.x >= 40.0 and button.size.y >= 40.0,
+			"and it is a real touch target, got %s" % button.size)
+	if err == "":
+		button.pressed.emit()
+		err = _T.assert_true(title.get_node_or_null("OptionsScreen") is OptionsScreen,
+			"pressing it opens the options screen")
+	if err == "":
+		err = _T.assert_eq((title.get_node("StartButton") as Button).focus_mode, Control.FOCUS_NONE,
+			"and the menu behind it stops taking focus")
+	if err == "":
+		title._open_options()
+		err = _T.assert_eq(title.get_children().filter(
+			func(child: Node) -> bool: return child is OptionsScreen).size(), 1,
+			"pressing the button twice does not stack two of them")
+	if err == "":
+		title._open_keys()
+		err = _T.assert_true(title.get_node_or_null("KeysScreen") == null,
+			"and the keys screen cannot open on top of it")
+	if err == "":
+		title._close_options()
+		err = _T.assert_false(title.overlay_open(), "closing it leaves nothing over the menu")
+	if err == "":
+		# The other direction of the same guard: the two overlays are peers, and a
+		# guard that only knew about one of them would let this one through.
+		#
+		# Counted live rather than looked up by name. `queue_free()` does not take
+		# effect until the frame ends and this test never yields one, so the
+		# overlay closed on the line above is STILL a child here — a
+		# `get_node_or_null("OptionsScreen")` would hand that corpse back and read
+		# as "the guard failed", which is what the first draft of this assertion
+		# did.
+		title._open_keys()
+		title._open_options()
+		err = _T.assert_eq(title.get_children().filter(
+			func(child: Node) -> bool:
+				return child is OptionsScreen and not child.is_queued_for_deletion()).size(), 0,
+			"and options cannot open on top of keys either")
+		title._close_keys()
+	_T.free_ui(title)
+	return err
+
+
+## The screen against the flags. Every switch OPTIONS declares reads its owner's
+## live state and writes back through the owner's own setter.
+##
+## Everything this test touches is process-global and seeded from the developer's
+## real save at startup, so all of it is stashed and pinned: RunConfig's save
+## path plus every field its writer emits (a colourblind flip calls _save), and
+## the two static mute flags, which otherwise leak into whatever test runs next.
+func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
+	var path := "user://test_selftest_options_screen.save"
+	var stashed_path: String = RunConfig.save_path
+	var stashed_status: String = RunConfig.load_status
+	var stashed_bindings: Dictionary = RunConfig.key_bindings
+	var stashed_campaign: int = RunConfig.campaign_high_score
+	var stashed_endless: int = RunConfig.endless_high_score
+	var stashed_colorblind: bool = RunConfig.colorblind_safe
+	var stashed_milestones: Dictionary = RunConfig.earned_milestones.duplicate()
+	var stashed_sfx: bool = Sfx.is_muted()
+	var stashed_music: bool = Music.is_muted()
+	for suffix: String in ["", ".tmp", ".bak"]:
+		if FileAccess.file_exists(path + suffix):
+			DirAccess.remove_absolute(path + suffix)
+	RunConfig.save_path = path
+	RunConfig.key_bindings = {}
+	RunConfig.campaign_high_score = 0
+	RunConfig.endless_high_score = 0
+	RunConfig.earned_milestones = {}
+	RunConfig.colorblind_safe = false
+	Sfx.set_muted(false)
+	Music.set_muted(false)
+	KeyBindings.reset_all()
+
+	var declared: Array[StringName] = []
+	for row: Dictionary in OptionsScreen.OPTIONS:
+		declared.append(StringName(row["id"]))
+	var screen := await _T.instantiate_ui(OptionsScreen.new(), Vector2i(1152, 648)) as OptionsScreen
+	var err: String = _T.assert_eq(screen.rows(), declared,
+		"the screen draws every switch the table declares, in table order")
+	if err == "":
+		err = _T.assert_gt(screen.rows().size(), 0, "and there is at least one to check")
+	for i: int in screen.rows().size():
+		if err != "":
+			break
+		var id: StringName = screen.rows()[i]
+		var label: Label = screen.get_node_or_null("Row%d" % i) as Label
+		var key: Label = screen.get_node_or_null("RowKey%d" % i) as Label
+		var button: Button = screen.get_node_or_null("RowButton%d" % i) as Button
+		err = _T.assert_true(label != null and key != null and button != null,
+			"row %d (%s) has a name, a key and a button" % [i, id])
+		if err == "":
+			err = _T.assert_eq(label.text, OptionsScreen.describe(id), "row %d says what it is" % i)
+		if err == "":
+			# The keystroke is not replaced by this screen, so the row has to show
+			# the key the InputMap actually holds -- not a second table of codes.
+			err = _T.assert_eq(key.text, KeyBindings.label_for(OptionsScreen.action_for(id)),
+				"row %d shows the live key for %s" % [i, OptionsScreen.action_for(id)])
+		if err == "":
+			err = _T.assert_eq(button.text, OptionsScreen.state_text(OptionsScreen.is_on(id)),
+				"row %d reads the flag rather than a copy" % i)
+		if err == "":
+			err = _T.assert_true(button.size.x >= 40.0 and button.size.y >= 40.0,
+				"row %d's button is a real touch target" % i)
+		if err == "":
+			# The press, and both halves of what it has to move: the owner's flag
+			# and the row on screen.
+			var was: bool = OptionsScreen.is_on(id)
+			button.pressed.emit()
+			err = _T.assert_eq(OptionsScreen.is_on(id), not was, "pressing row %d flips %s" % [i, id])
+			if err == "":
+				err = _T.assert_eq(button.text, OptionsScreen.state_text(not was),
+					"and the button says so afterwards")
+			if err == "":
+				button.pressed.emit()
+				err = _T.assert_eq(OptionsScreen.is_on(id), was, "and pressing it again puts it back")
+	if err == "":
+		err = _T.assert_true(screen.get_node_or_null("RowButton%d" % screen.rows().size()) == null,
+			"and there is no row for a switch that does not exist")
+	if err == "":
+		# The mute rows are inverted on purpose: the owner stores "muted", and a
+		# row labelled Sound effects reading On while silent would be lying.
+		Sfx.set_muted(true)
+		Music.set_muted(true)
+		screen.refresh()
+		err = _T.assert_false(OptionsScreen.is_on(OptionsScreen.MUTE_SFX),
+			"a muted Sfx reads as Sound effects OFF, not on")
+		if err == "":
+			err = _T.assert_false(OptionsScreen.is_on(OptionsScreen.MUTE_MUSIC),
+				"and the same for Music")
+		if err == "":
+			err = _T.assert_eq((screen.get_node("RowButton1") as Button).text, OptionsScreen.OFF_TEXT,
+				"and refresh() reads the flag back rather than a copy the screen kept")
+		Sfx.set_muted(false)
+		Music.set_muted(false)
+		screen.refresh()
+	if err == "":
+		# An unknown id flips nothing rather than erroring -- a renamed switch
+		# should go quiet, not take the screen down.
+		err = _T.assert_false(OptionsScreen.toggle(&"not_a_switch"), "an undeclared switch cannot be flipped")
+		if err == "":
+			err = _T.assert_false(OptionsScreen.is_on(&"not_a_switch"), "and reads as off")
+	if err == "":
+		# set_on is the writer every button press goes through; named directly so
+		# the absolute setter is exercised and not only the toggle sitting over it.
+		err = _T.assert_true(OptionsScreen.set_on(OptionsScreen.MUTE_SFX, true),
+			"set_on turns a switch on and reports the state it left")
+		if err == "":
+			err = _T.assert_false(OptionsScreen.set_on(OptionsScreen.MUTE_SFX, false), "and off again")
+		if err == "":
+			err = _T.assert_true(OptionsScreen.set_on(OptionsScreen.MUTE_SFX, true), "idempotently")
+		Sfx.set_muted(false)
+		screen.refresh()
+	if err == "":
+		# The overlay has to cover the whole viewport it read its size from --
+		# PRESET_FULL_RECT resolves to 0x0 for a Control added by add_child()
+		# outside a layout pass, which is why these two getters exist at all.
+		err = _T.assert_eq(int(screen.size.x), screen.get_viewport_width(),
+			"the backdrop spans the viewport width it asked for")
+		if err == "":
+			err = _T.assert_eq(int(screen.size.y), screen.get_viewport_height(),
+				"and its height")
+	if err == "":
+		# The one switch that is actually in the save file, end to end. The bytes
+		# are pinned because a colourblind flip goes through RunConfig._save.
+		screen.flip(OptionsScreen.COLORBLIND)
+		err = _T.assert_true(RunConfig.colorblind_safe, "the colourblind row sets the flag")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(path),
+				"v%d\n0\n0\nm0\ncb1\n0\n" % RunConfig.SAVE_VERSION,
+				"and it is written down beside the scores, not held for the session")
+	if err == "":
+		# Nothing on the paper may run off it or sit on top of anything else, and
+		# the footer must stand CLEAR of the last row rather than merely not
+		# intersecting it -- Rect2.intersects is false for boxes sharing an edge,
+		# which is how the sibling screen's footer once sat flush and passed.
+		err = _screen_rows_fit_and_do_not_overlap(screen, OptionsScreen.PANEL)
+	if err == "":
+		var last: Button = screen.get_node("RowButton%d" % (screen.rows().size() - 1)) as Button
+		var back: Button = screen.get_node("BackButton") as Button
+		err = _T.assert_gte(back.position.y - (last.position.y + last.size.y), OptionsScreen.FOOTER_GAP,
+			"the footer stands clear of the last row by at least FOOTER_GAP")
+
+	_T.free_ui(screen)
+	RunConfig.save_path = stashed_path
+	RunConfig.load_status = stashed_status
+	RunConfig.key_bindings = stashed_bindings
+	RunConfig.campaign_high_score = stashed_campaign
+	RunConfig.endless_high_score = stashed_endless
+	RunConfig.colorblind_safe = stashed_colorblind
+	RunConfig.earned_milestones = stashed_milestones
+	Sfx.set_muted(stashed_sfx)
+	Music.set_muted(stashed_music)
+	KeyBindings.reset_all()
+	for suffix: String in ["", ".tmp", ".bak"]:
+		if FileAccess.file_exists(path + suffix):
+			DirAccess.remove_absolute(path + suffix)
+	return err
+
+
 # -- Selection marker (plant-tower-defense-42t) ------------------------------
 
 
