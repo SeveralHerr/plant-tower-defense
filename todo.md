@@ -13,7 +13,7 @@ block in `CLAUDE.md` — this list is refilled, never left fully ticked.
 
 ## Items
 
-- [ ] **88o — Corn Cobbler needs a readiness readout.** `_cooldown` (corn_cobbler.gd:88)
+- [x] **88o — Corn Cobbler needs a readiness readout.** `_cooldown` (corn_cobbler.gd:88)
   is read by nothing outside `_act()`. Sunflower's payout gauge and Chomp's shrinking
   chew ring both already solve this for their own plant; Corn Cobbler is the one plant
   whose "about to fire" moment is invisible.
