@@ -110,9 +110,41 @@ func _furthest_along_in_range(pests: Array[Pest], radius: float) -> Pest:
 	return best
 
 
-## Sold/uprooted plants refund most of what they cost — see uproot_refund().
+## What a pristine plant hands back, as a fraction of its cost. Strictly under 1.0
+## for every entry in the catalogue or replanting becomes an infinite seed printer
+## — test_uprooting_refunds_less_than_it_cost pins that.
+const UPROOT_RATE_FULL: float = 0.6
+
+## What a plant one bite from death hands back. It is deliberately NOT zero: a
+## refund that decays to nothing turns uprooting a wreck into a punishment for
+## having been attacked, and the whole point of the slope is to stop the player
+## recycling damaged plants, not to strand them on a cell they cannot clear. At
+## 0.2 the scrap value is real but never a repair — see uproot_refund().
+const UPROOT_RATE_WRECK: float = 0.2
+
+## And a hard floor under the fraction, so a hypothetical 3-seed plant still pays
+## something back rather than rounding down into nothing.
+const MIN_UPROOT_REFUND: int = 1
+
+
+## Sold/uprooted plants refund a share of what they cost, and the share slides
+## with what is left of the plant.
+##
+## Before this, the refund read only the catalogue cost, so a Corn Cobbler at 1hp
+## refunded the same 6 as one that had never been touched — which made
+## uproot-and-replant a 4-seed full heal, strictly better than leaving a damaged
+## plant standing, and made the health bar a readout with no decision attached to
+## it. Now a wreck refunds 2 and costs 10 to replace: recycling is scrap value,
+## never repair.
+##
+## Linear between the two rates rather than stepped, because the HUD prints this
+## number live (Hud._refresh_selection, refreshed by Game._watch_selected_health)
+## and a number that slides as the plant is eaten reads as a consequence; one that
+## jumps at a threshold reads as a bug.
 func uproot_refund() -> int:
-	return int(floor(PlantCatalog.cost(kind) * 0.6))
+	var fraction: float = clampf(health / MAX_HEALTH, 0.0, 1.0)
+	var rate: float = UPROOT_RATE_WRECK + (UPROOT_RATE_FULL - UPROOT_RATE_WRECK) * fraction
+	return maxi(MIN_UPROOT_REFUND, int(floor(PlantCatalog.cost(kind) * rate)))
 
 
 ## A hungry pest calls this instead of walking past. Game listens for

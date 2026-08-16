@@ -344,3 +344,161 @@ func test_a_run_counts_what_it_defeated_and_how_long_it_took() -> String:
 			err = _T.assert_gt(float(stats["run_seconds"]), 0.0, "with a duration")
 	_T.free_ui(game)
 	return err
+
+
+# -- Health-scaled uproot refund (plant-tower-defense-s2o) -------------------
+#
+# A plant's health only ever goes down and there is no heal path, so for as long
+# as the refund read only the catalogue cost, uproot-and-replant was a full heal
+# for the difference (4 seeds on a Corn Cobbler) — strictly better than leaving a
+# damaged plant standing, which made the health bar a readout with no decision
+# attached to it. The refund now slides with what is left of the plant.
+
+
+## One refund, taken at a given health, through the real damage path rather than
+## by assigning `health` — so these break if take_damage ever stops being the
+## thing that moves it.
+func _refund_at_health(id: StringName, hp: float) -> int:
+	var plant := Plant.new()
+	plant.kind = id
+	plant.take_damage(Plant.MAX_HEALTH - hp)
+	var refund: int = plant.uproot_refund()
+	plant.free()
+	return refund
+
+
+func test_the_uproot_refund_falls_as_the_plant_is_eaten() -> String:
+	## Every plant in the catalogue, not a hand-picked one: the slope is applied to
+	## a cost, and each cost rounds differently.
+	for id: StringName in PlantCatalog.ids():
+		var cost: int = PlantCatalog.cost(id)
+		var full: int = _refund_at_health(id, Plant.MAX_HEALTH)
+		var half: int = _refund_at_health(id, Plant.MAX_HEALTH * 0.5)
+		var wreck: int = _refund_at_health(id, 1.0)
+		# The full-health rate is unchanged — this issue makes damage cost you a
+		# refund, it does not quietly nerf selling a pristine plant.
+		var err: String = _T.assert_eq(full, int(floor(cost * Plant.UPROOT_RATE_FULL)),
+			"%s at full health still refunds the old flat rate" % id)
+		if err == "":
+			err = _T.assert_true(half < full,
+				"%s: half-eaten refunds %d, pristine refunds %d — damage must cost something"
+					% [id, half, full])
+		if err == "":
+			err = _T.assert_true(wreck < half,
+				"%s: at 1hp refunds %d, at half health %d — the slope keeps going" % [id, wreck, half])
+		if err != "":
+			return err
+	return ""
+
+
+func test_uprooting_refunds_less_than_it_cost_at_every_health() -> String:
+	## The infinite-seed-printer invariant, re-pinned across the whole slope. The
+	## full-health end is the one that binds — it is the largest refund a plant can
+	## ever pay — and it has to bind for every cost in the catalogue, not just 10.
+	for id: StringName in PlantCatalog.ids():
+		var cost: int = PlantCatalog.cost(id)
+		for hp: float in [Plant.MAX_HEALTH, Plant.MAX_HEALTH * 0.5, 1.0]:
+			var refund: int = _refund_at_health(id, hp)
+			var err: String = _T.assert_true(refund < cost,
+				"%s at %.0fhp refunds %d of %d — a refund at or above cost prints seeds"
+					% [id, hp, refund, cost])
+			if err != "":
+				return err
+	return ""
+
+
+func test_uprooting_a_wreck_still_pays_something_back() -> String:
+	## The other failure mode, and the reason the slope has a floor: a refund that
+	## decays to nothing makes clearing a chewed cell a punishment for having been
+	## attacked. A wreck is worth scrap, and scrap is never zero.
+	for id: StringName in PlantCatalog.ids():
+		var floor_value: int = maxi(Plant.MIN_UPROOT_REFUND,
+			int(floor(PlantCatalog.cost(id) * Plant.UPROOT_RATE_WRECK)))
+		var err: String = _T.assert_gt(floor_value, 0, "%s's floor is a real number of seeds" % id)
+		if err == "":
+			err = _T.assert_gte(_refund_at_health(id, 1.0), floor_value,
+				"%s at 1hp refunds at least its %d-seed floor" % [id, floor_value])
+		if err == "":
+			# Below 1hp a plant is destroyed rather than uprooted, but the arithmetic
+			# must not fall through zero on the way there either.
+			err = _T.assert_gte(_refund_at_health(id, 0.0), Plant.MIN_UPROOT_REFUND,
+				"%s never refunds nothing at all" % id)
+		if err != "":
+			return err
+	return ""
+
+
+func test_uprooting_and_replanting_a_wreck_costs_more_than_it_returns() -> String:
+	## The actual acceptance criterion: replacing a damaged plant has to be a real
+	## purchase, not a discount repair. Driven through a real bank so the claim is
+	## about seeds in the purse, not about a formula.
+	var bank := SeedBank.new()
+	bank.set_seed(21)
+	bank.add_seeds(5000)
+	var guard: int = 0
+	while not bank.locked_plants().is_empty() and guard < 40:
+		guard += 1
+		bank.buy_packet(&"rare")
+	# Burn the one free planting, or the Corn Cobbler's replant price is 0 and the
+	# exploit reads as free rather than as arithmetic.
+	bank.pay_for_plant(PlantCatalog.starting_unlocks()[0])
+	for id: StringName in PlantCatalog.ids():
+		var replant: int = bank.placement_cost(id)
+		var wreck: int = _refund_at_health(id, 1.0)
+		var before: int = bank.seeds
+		bank.refund(wreck)
+		var err: String = _T.assert_true(bank.pay_for_plant(id),
+			"replanting %s is affordable in this test" % id)
+		if err == "":
+			err = _T.assert_eq(bank.seeds, before + wreck - replant,
+				"%s: uproot (+%d) then replant (-%d) leaves the purse short" % [id, wreck, replant])
+		if err == "":
+			err = _T.assert_gt(replant, wreck,
+				"%s: a wreck returns %d and costs %d to replace — recycling is not a repair"
+					% [id, wreck, replant])
+		if err == "":
+			# And strictly worse than it used to be: under the old flat 0.6 refund a
+			# Corn Cobbler healed itself for 4 seeds, which is what made replanting
+			# dominant over leaving a damaged plant standing.
+			var old_loss: int = replant - int(floor(replant * Plant.UPROOT_RATE_FULL))
+			err = _T.assert_gt(replant - wreck, old_loss,
+				"%s: the round trip now costs %d, up from the old flat %d"
+					% [id, replant - wreck, old_loss])
+		if err != "":
+			return err
+	return ""
+
+
+func test_the_uproot_button_reprices_itself_as_the_plant_is_chewed() -> String:
+	## A refund the player cannot see before committing is not a decision. The
+	## button label is where this number lives, and it is refreshed off
+	## Game._watch_selected_health — a poll, not a signal, so it only lands if
+	## _process runs between the bite and the read.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(200)
+	var cell := Vector2i(-1, -1)
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			if game.board.is_buildable(Vector2i(x, y)) and game.plant_at(Vector2i(x, y)) == null:
+				cell = Vector2i(x, y)
+				break
+		if cell.x >= 0:
+			break
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "planted")
+	var button: Button = game.hud.get_node_or_null("Root/SidePanel/SelectionBox/UprootButton") as Button
+	if err == "":
+		err = _T.assert_true(button != null, "the uproot button is on screen")
+	if err == "":
+		err = _T.assert_eq(button.text, "Uproot (+%d)" % game.selected_placed.uproot_refund(),
+			"the resting label prints the live refund, got %s" % button.text)
+	if err == "":
+		var before: String = button.text
+		game.selected_placed.take_damage(Plant.MAX_HEALTH - 1.0)
+		game._process(0.016)
+		err = _T.assert_true(button.text != before,
+			"a chewed plant reprices its own uproot button, still says %s" % button.text)
+		if err == "":
+			err = _T.assert_eq(button.text, "Uproot (+%d)" % game.selected_placed.uproot_refund(),
+				"and prints exactly what uproot_selected would pay, got %s" % button.text)
+	_T.free_ui(game)
+	return err
