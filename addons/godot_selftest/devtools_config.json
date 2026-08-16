@@ -11,9 +11,18 @@
   "name_check_extra_types": [],
   "name_check_ignore": [],
   "reach_aliases": {
-    "game/plant.gd": ["game/corn_cobbler.gd", "game/chomp_flower.gd", "game/sunflower.gd"],
-    "game/plant_catalog.gd": ["game/game.gd"],
-    "game/selection_marker.gd": ["game/placement_preview.gd", "game/plant.gd"]
+    "game/plant.gd": [
+      "game/corn_cobbler.gd",
+      "game/chomp_flower.gd",
+      "game/sunflower.gd"
+    ],
+    "game/plant_catalog.gd": [
+      "game/game.gd"
+    ],
+    "game/selection_marker.gd": [
+      "game/placement_preview.gd",
+      "game/plant.gd"
+    ]
   },
   "reach_headless_dirs": [
     "tools/"
@@ -50,10 +59,8 @@
   "godot_version": "4.7.1",
   "_scaffold_defaults": {
     "note": "Written by /scaffold-godot-harness. 'values' is what scaffold last left here and 'owned' lists the keys it may still update; edit a key and it becomes yours permanently. Safe to commit; delete to reset the tracking.",
-    "harness_version": "0.19.0",
+    "harness_version": "0.21.0",
     "owned": [
-      "entry_hook",
-      "entry_points",
       "extension_script",
       "fps_min",
       "godot_bin",
@@ -69,7 +76,6 @@
       "name_check_ignore",
       "orphan_growth_max",
       "orphan_max",
-      "reach_aliases",
       "reach_headless_dirs",
       "safe_area_inset",
       "scan_root",
@@ -89,7 +95,20 @@
       ],
       "name_check_extra_types": [],
       "name_check_ignore": [],
-      "reach_aliases": {},
+      "reach_aliases": {
+        "game/plant.gd": [
+          "game/corn_cobbler.gd",
+          "game/chomp_flower.gd",
+          "game/sunflower.gd"
+        ],
+        "game/plant_catalog.gd": [
+          "game/game.gd"
+        ],
+        "game/selection_marker.gd": [
+          "game/placement_preview.gd",
+          "game/plant.gd"
+        ]
+      },
       "reach_headless_dirs": [
         "tools/"
       ],
@@ -102,12 +121,17 @@
         "right": 0,
         "bottom": 0
       },
-      "main_scene": "res://game/game.tscn",
+      "main_scene": "res://game/title.tscn",
       "entry_hook": {
-        "node_path": "",
-        "method": ""
+        "node_path": "/root/TitleScreen",
+        "method": "skip_to_game"
       },
-      "entry_points": {},
+      "entry_points": {
+        "campaign": {
+          "node_path": "/root/TitleScreen",
+          "method": "skip_to_game"
+        }
+      },
       "log_files": [
         "log-devtools.md"
       ],

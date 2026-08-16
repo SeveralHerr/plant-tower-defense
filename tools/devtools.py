@@ -89,11 +89,11 @@ from pathlib import Path
 from typing import Optional  # noqa: F401
 
 
-# harness-version: 0.19.0
+# harness-version: 0.21.0
 # Version of the godot-selftest-harness this client was copied from. Compared against
 # the running game's own stamp by the `harness-version` verb, so a half-refreshed
 # install (new client, old autoload) is visible instead of mysterious.
-HARNESS_VERSION = "0.19.0"
+HARNESS_VERSION = "0.21.0"
 
 COMMANDS_FILE = "devtools_commands.json"
 RESULTS_FILE = "devtools_results.json"
@@ -295,6 +295,8 @@ def pid_alive(pid) -> bool:
     """
     if not isinstance(pid, int) or pid <= 0:
         return False
+    if sys.platform == "win32":
+        return _pid_alive_windows(pid)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -302,10 +304,221 @@ def pid_alive(pid) -> bool:
     except PermissionError:
         return True          # exists, we just may not signal it
     except OSError:
-        return True          # Windows raises here for cases we cannot classify
+        return True
     except Exception:
         return True
     return True
+
+
+def _pid_alive_windows(pid: int) -> bool:
+    """Windows liveness via OpenProcess + GetExitCodeProcess (gh#6).
+
+    `os.kill(pid, 0)` cannot answer this on Windows: for a pid that no longer
+    exists it raises WinError 87 (ERROR_INVALID_PARAMETER), which is a plain
+    OSError, and the tolerant mapping above read that as "alive". So `quit`
+    could never see the game exit and warned `STILL ALIVE` after every --wait,
+    naming a pid `tasklist` no longer had - the reporter, correctly, stopped
+    reading that exit code. Measured here: a headless game that had exited was
+    reported alive for the whole 13s window. Unknown still counts as alive, for
+    the reason the docstring above gives; only a definite answer says dead.
+    """
+    try:
+        import ctypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            # 87 = no such process. 5 = exists but is not ours to open (alive).
+            return ctypes.get_last_error() != 87
+        try:
+            code = ctypes.c_ulong()
+            if k32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return code.value == STILL_ACTIVE
+            return True
+        finally:
+            k32.CloseHandle(handle)
+    except Exception:
+        return True
+
+
+def _pid_started_unix(pid: int):
+    """Process creation time as a unix timestamp, or None when unknowable.
+
+    A pid alone is not an identity - Windows recycles them onto unrelated
+    processes (findmyballs:G-004) - so a ledger of pids this client launched has
+    to be checked against WHEN each was started before it names anything a
+    survivor. Windows: OpenProcess + GetProcessTimes. Linux: /proc/<pid>/stat
+    field 22 against btime and CLK_TCK. Elsewhere: None, and the caller treats
+    the pid as unverifiable rather than as matching.
+    """
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            from ctypes import wintypes
+            k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            handle = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+            if not handle:
+                return None
+            try:
+                created = wintypes.FILETIME()
+                exited = wintypes.FILETIME()
+                kern = wintypes.FILETIME()
+                user = wintypes.FILETIME()
+                if not k32.GetProcessTimes(handle, ctypes.byref(created), ctypes.byref(exited),
+                                           ctypes.byref(kern), ctypes.byref(user)):
+                    return None
+                ticks = (created.dwHighDateTime << 32) | created.dwLowDateTime
+                return ticks / 10_000_000 - 11644473600  # 100ns since 1601 -> unix
+            finally:
+                k32.CloseHandle(handle)
+        stat = Path("/proc/%d/stat" % pid).read_text(encoding="utf-8", errors="replace")
+        fields = stat.rsplit(")", 1)[1].split()
+        start_ticks = int(fields[19])  # field 22, 1-based, after the (comm) split
+        btime = None
+        for line in Path("/proc/stat").read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("btime "):
+                btime = int(line.split()[1])
+        if btime is None:
+            return None
+        return btime + start_ticks / os.sysconf("SC_CLK_TCK")
+    except Exception:
+        return None
+
+
+def _kill_pid(pid: int) -> bool:
+    """Terminate one pid this client launched. Never by image name (H-056)."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            handle = k32.OpenProcess(0x0001, False, pid)  # PROCESS_TERMINATE
+            if not handle:
+                return False
+            try:
+                return bool(k32.TerminateProcess(handle, 1))
+            finally:
+                k32.CloseHandle(handle)
+        os.kill(pid, 9)
+        return True
+    except Exception:
+        return False
+
+
+def _kill_hint(pids) -> str:
+    """The kill command(s) to print for a survivor, in every shell the reader
+    might be in.
+
+    `taskkill /F /PID n` is right for cmd.exe and WRONG through Git-Bash/MSYS,
+    which rewrites `/F` into a phantom path and fails with
+    `Invalid argument/option - 'F:/'` - a message that reads as a bad path, not a
+    mangled flag, and cost a project five identical rounds (gh#12, plant:G-009).
+    So on Windows both forms are printed, with the symptom named.
+    """
+    pids = [int(p) for p in pids]
+    if sys.platform == "win32":
+        return ("  python tools/devtools.py quit --kill        (terminates exactly these pids)\n"
+                "  Stop-Process -Force -Id %s        (PowerShell)\n"
+                "  taskkill /F %s        (cmd.exe ONLY - through Git-Bash/MSYS the /F becomes "
+                "'F:/' and it fails with \"Invalid argument/option - 'F:/'\"; use "
+                "MSYS_NO_PATHCONV=1 or the PowerShell form there)"
+                % (",".join(str(p) for p in pids), " ".join("/PID %d" % p for p in pids)))
+    return "  kill -9 %s" % " ".join(str(p) for p in pids)
+
+
+LAUNCH_LEDGER_NAME = "launched.jsonl"
+
+
+def _launch_ledger_path(project_path: Path) -> Path:
+    return project_path / ".devtools" / LAUNCH_LEDGER_NAME
+
+
+def _ledger_record(project_path: Path, pid: int, role: str, extra: dict = None) -> None:
+    """Append one pid this client started (or saw answer the bus) to
+    .devtools/launched.jsonl. The owner file names only the CURRENT owner and
+    launch.json only the LAST launch, so a game abandoned two launches ago fell
+    out of both and no later `quit` could see it (gh#14.1). This ledger is what
+    lets quit/launch sweep everything this project ever started."""
+    started = _pid_started_unix(pid)
+    row = {"pid": int(pid), "role": role, "started_unix": started if started else time.time(),
+           "started_verified": started is not None, "recorded_unix": time.time()}
+    if extra:
+        row.update(extra)
+    try:
+        path = _launch_ledger_path(project_path)
+        path.parent.mkdir(exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row) + "\n")
+    except OSError:
+        pass
+
+
+def _ledger_survivors(project_path: Path, exclude=()):
+    """Every ledger pid still alive AND provably the process we started.
+
+    Alive-and-same-start-time is the test: a recycled pid whose creation time
+    is not within a few seconds of the recorded one is someone else's process
+    and is left alone. A pid whose start time cannot be read at all is reported
+    with `verified=False` and never killed automatically.
+    """
+    path = _launch_ledger_path(project_path)
+    if not path.is_file():
+        return []
+    rows = {}
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict) and isinstance(row.get("pid"), int):
+                rows[row["pid"]] = row  # last record for a pid wins
+    except OSError:
+        return []
+    out = []
+    for pid, row in rows.items():
+        if pid in exclude or pid == os.getpid() or not pid_alive(pid):
+            continue
+        now_started = _pid_started_unix(pid)
+        recorded = float(row.get("started_unix") or 0)
+        if now_started is None or not row.get("started_verified"):
+            verified = None  # cannot tell; report, never kill
+        else:
+            verified = abs(now_started - recorded) < 5.0
+            if not verified:
+                continue  # a recycled pid: not ours
+        out.append({"pid": pid, "role": str(row.get("role", "?")),
+                    "started_unix": recorded, "verified": verified})
+    out.sort(key=lambda r: r["started_unix"])
+    return out
+
+
+def _describe_survivors(rows) -> str:
+    parts = []
+    for r in rows:
+        when = time.strftime("%H:%M:%S", time.localtime(r["started_unix"]))
+        tag = "" if r["verified"] else "  (start time unverifiable - not auto-killed)"
+        parts.append("  pid %d  %-8s started %s%s" % (r["pid"], r["role"], when, tag))
+    return "\n".join(parts)
+
+
+def _kill_survivors(rows) -> list:
+    """Kill the verified survivors; returns the pids that are gone afterwards."""
+    gone = []
+    for r in rows:
+        if not r["verified"]:
+            continue
+        _kill_pid(r["pid"])
+    deadline = time.time() + 3.0
+    while time.time() < deadline:
+        gone = [r["pid"] for r in rows if r["verified"] and not pid_alive(r["pid"])]
+        if len(gone) == sum(1 for r in rows if r["verified"]):
+            break
+        time.sleep(0.1)
+    return gone
 
 
 #: How many missed heartbeats before an owner counts as not polling. The game
@@ -647,6 +860,26 @@ def _wait_for_pickup(commands_path: Path, user_data: Path, action: str):
     )
 
 
+def _unlink_retry(path: Path, attempts: int = 20, delay: float = 0.025) -> bool:
+    """Delete `path`, riding out the brief exclusive lock Windows holds while the
+    game writes it (gh#5). Since 0.20.0 the game writes the reply to a temp name
+    and renames it into place, so the reply file only ever exists complete and
+    this rarely fires; older game-side harnesses still open the target directly,
+    and a client that raced that write got `PermissionError: [WinError 32]` AFTER
+    the verb had taken effect - the worst shape for a scripted caller, who cannot
+    tell whether to retry. `exists()` is not a promise that `unlink()` will work.
+    Returns False only if the lock outlived every attempt (~0.5s)."""
+    for _ in range(attempts):
+        try:
+            path.unlink()
+            return True
+        except FileNotFoundError:
+            return True
+        except PermissionError:
+            time.sleep(delay)
+    return False
+
+
 def send_command(project_path: Path, action: str, args: dict = None, timeout: float = 30.0) -> dict:
     """Send a command to the running Godot instance and wait for the result.
 
@@ -668,8 +901,10 @@ def send_command(project_path: Path, action: str, args: dict = None, timeout: fl
     owner_before = owner_status(user_data)
 
     # Clear any existing result
-    if results_path.exists():
-        results_path.unlink()
+    if results_path.exists() and not _unlink_retry(results_path):
+        print(f"WARNING: could not clear a stale reply at {results_path} (locked by another "
+              "process for >0.5s); if the reply below is not for this request it will be "
+              "ignored by id, but check for a second client on this bus.", file=sys.stderr)
 
     # Write command
     request_id = uuid.uuid4().hex[:12]
@@ -702,7 +937,7 @@ def send_command(project_path: Path, action: str, args: dict = None, timeout: fl
                 time.sleep(0.1)
                 continue
 
-            results_path.unlink()
+            _unlink_retry(results_path)
 
             # Bus-identity check (G-036a): a reply from a pid that differs from
             # the recorded bus owner means a foreign instance answered. Older
@@ -728,11 +963,9 @@ def send_command(project_path: Path, action: str, args: dict = None, timeout: fl
                             "The recorded owner pid {owner_pid} is GONE, so pid "
                             "{reply_pid} is a survivor of an earlier run still "
                             "polling this bus - not the instance you think you are "
-                            "driving. Kill it and relaunch:\n  {kill}".format(
+                            "driving. Kill it and relaunch:\n{kill}".format(
                                 owner_pid=owner_pid, reply_pid=reply_pid,
-                                kill=("taskkill /F /PID %d" % reply_pid
-                                      if sys.platform == "win32"
-                                      else "kill -9 %d" % reply_pid)))
+                                kill=_kill_hint([reply_pid])))
                     raise ForeignInstanceError(
                         "Foreign instance on the bus: the reply to '{action}' came "
                         "from pid {reply_pid}, but {owner_file} says pid {owner_pid} "
@@ -843,8 +1076,20 @@ def cmd_screenshot(args, project_path: Path):
     if data.get("hidden"):
         print(f"Hidden for the capture (restored after): {', '.join(data['hidden'])}")
     elif args.hide or args.hide_group:
-        print("WARNING: --hide/--hide-group matched no CanvasItem - the capture "
-              "shows everything.", file=sys.stderr)
+        # Since 0.20.0 the game refuses (success:false, no file) when a --hide
+        # names nothing it can hide, so reaching here means an older game-side
+        # harness silently ignored the flag. That is not a capture of what was
+        # asked for (gh#5): exit 1, and remove the file so nothing downstream
+        # mistakes it for one.
+        print("ERROR: --hide/--hide-group matched nothing the game could hide, and the "
+              "installed harness wrote the capture anyway (older than this client). "
+              f"Discarding {data['path']} - a capture that ignored --hide is not the "
+              "capture asked for.", file=sys.stderr)
+        try:
+            Path(data["path"]).unlink()
+        except OSError:
+            pass
+        sys.exit(1)
 
 
 def cmd_validate(args, project_path: Path):
@@ -862,8 +1107,44 @@ def cmd_validate_all(args, project_path: Path):
     print_validation_result(result)
 
 
-def print_validation_result(result: dict):
-    """Pretty-print validation results."""
+def print_geometry_caveat(data: dict, verb: str, *, only_if_suspect: bool = False) -> None:
+    """Print the game's own warning that its screen geometry was measured headless (H-051).
+
+    Every verb that returns screen-space rects (node-bounds, ui-snapshot,
+    validate-ui, findings) carries `geometry_trustworthy` + `geometry_caveat`
+    since 0.20.0. Headless the window is 64x64 whatever the project designed, so
+    a node the game positions from the window size lands off-viewport there and
+    dead centre for a player. The number is faithful to the headless run; what
+    the reader must not do is take it for the player's screen. An off-viewport
+    verdict shipped to a published report that way before anyone ran the game
+    windowed.
+
+    `only_if_suspect` prints only when the caveat applies (headless), which is
+    right for the list-style verbs; node-bounds prints its trust state always,
+    because a single rect is read as an answer.
+
+    Loud on absence, to stderr, like canvas_scale: a key this client expects and
+    the game does not send means the two halves are at different versions, and
+    a silent skip is how three wire mismatches shipped unnoticed in 0.4.0.
+    """
+    if "geometry_trustworthy" not in data or "geometry_caveat" not in data:
+        print(f"{verb}: the reply carried no 'geometry_trustworthy'/'geometry_caveat' key "
+              "(installed harness older than this client?). Whether this geometry was "
+              f"measured headless is UNKNOWN. Keys: {sorted(data)}", file=sys.stderr)
+        return
+    if data["geometry_trustworthy"]:
+        if not only_if_suspect:
+            print("  Geometry:     measured windowed (what a player sees)")
+        return
+    print(f"  GEOMETRY CAVEAT: {_printable(str(data['geometry_caveat']))}")
+
+
+def print_validation_result(result: dict, geometry_verb: str = ""):
+    """Pretty-print validation results.
+
+    `geometry_verb` names the CLI verb when the reply is screen geometry
+    (validate-ui); the scene validators are not, and print no caveat.
+    """
     if result["success"]:
         print("[OK] " + result["message"])
     else:
@@ -910,6 +1191,9 @@ def print_validation_result(result: dict):
         # that fires on correct-by-design UI ends up being ignored entirely.
         print("\nNo UI findings baseline. Every finding gates. "
               "Run `validate-ui --baseline-write` to accept the current set.")
+
+    if geometry_verb:
+        print_geometry_caveat(data, geometry_verb, only_if_suspect=True)
 
     if not result["success"]:
         sys.exit(1)
@@ -977,6 +1261,15 @@ def cmd_performance(args, project_path: Path):
     result = send_command(project_path, "performance", cmd_args)
     if result["success"]:
         data = result["data"]
+        # gh#6: the bridge answers on a paused tree, and the numbers look fine.
+        # Lead with the fact rather than burying it after the metrics.
+        if data.get("tree_paused"):
+            print("TREE IS PAUSED - every number below describes a game that is not "
+                  "stepping. Unpause (or set entry_hook) before reading these as health.")
+        elif "tree_paused" not in data:
+            print("performance: the reply carried no 'tree_paused' key (installed harness "
+                  "older than this client); whether the tree is paused is UNKNOWN - "
+                  "check `ping`.", file=sys.stderr)
         print(f"FPS:              {data['fps']:.1f}")
         print(f"Frame time:       {data['frame_time_ms']:.2f} ms")
         print(f"Physics FPS:      {int(data['physics_fps'])}")
@@ -1305,20 +1598,87 @@ def cmd_quit(args, project_path: Path):
 
     if not isinstance(pid, int):
         print("  (no owner file, so there is no pid to confirm the exit against)")
+        _quit_sweep(args, project_path, exclude=())
         return
 
     deadline = time.time() + max(1.0, args.wait)
     while time.time() < deadline:
         if not pid_alive(pid):
             print(f"  pid {pid} exited")
+            _quit_sweep(args, project_path, exclude=(pid,))
             return
         time.sleep(0.2)
 
-    print(f"\nWARNING: pid {pid} is STILL ALIVE {args.wait:g}s after quit.\n"
+    # A slow-but-clean shutdown is not a survivor (gh#6). The reported case
+    # turned out to be pid_alive() itself - on Windows it could not see a dead
+    # pid at all (see _pid_alive_windows) - and that is fixed at the source. The
+    # grace re-poll stays for the genuine slow-exit case: an exit 1 that fires
+    # on a clean shutdown is an exit code people stop reading, which defeats
+    # the check, since a REAL survivor answers the bus alongside the next launch
+    # and the symptom is empty replies, not an error.
+    grace = 3.0
+    grace_deadline = time.time() + grace
+    while time.time() < grace_deadline:
+        if not pid_alive(pid):
+            print(f"  pid {pid} exited (slower than the {args.wait:g}s --wait, but it is gone; "
+                  f"pass --wait {int(args.wait) + int(grace) + 2} to stop seeing this)")
+            _quit_sweep(args, project_path, exclude=(pid,))
+            return
+        time.sleep(0.2)
+
+    # The owner is a survivor. Fold in everything else this project launched that
+    # is still alive - the console-wrapper sibling of this very launch, and the
+    # engine abandoned two launches ago (gh#14.1) - so one kill clears the lot.
+    others = _ledger_survivors(project_path, exclude=(pid,))
+    owner_row = {"pid": pid, "role": "owner", "started_unix": _pid_started_unix(pid) or time.time(),
+                 "verified": True}
+    all_rows = [owner_row] + others
+    print(f"\nWARNING: pid {pid} is STILL ALIVE {args.wait + grace:g}s after quit.\n"
           "A survivor answers the bus alongside any new instance, and the symptom "
-          "is empty replies, not an error. Kill it before launching again:\n"
-          + (f"  taskkill /F /PID {pid}" if sys.platform == "win32" else f"  kill -9 {pid}"),
+          "is empty replies, not an error.", file=sys.stderr)
+    if others:
+        print("%d other process(es) this project launched are ALSO still alive:\n%s"
+              % (len(others), _describe_survivors(others)), file=sys.stderr)
+    if getattr(args, "kill", False):
+        gone = _kill_survivors(all_rows)
+        left = [r["pid"] for r in all_rows if r["pid"] not in gone]
+        print("--kill: terminated %s%s" % (
+            ", ".join(str(p) for p in gone) or "nothing",
+            ("; STILL ALIVE: %s" % ", ".join(str(p) for p in left)) if left else ""),
+            file=sys.stderr)
+        sys.exit(1 if left else 0)
+    print("Kill before launching again:\n" + _kill_hint([r["pid"] for r in all_rows]),
           file=sys.stderr)
+    sys.exit(1)
+
+
+def _quit_sweep(args, project_path: Path, exclude) -> None:
+    """After a clean quit: anything else this project launched still alive?
+
+    This is the case the owner pid structurally cannot see (gh#14.1): the
+    `_console.exe` wrapper that spawned the engine, and any engine from an
+    earlier launch that stopped polling (so `launch` treated it as stale and
+    moved on) without exiting. Reported always; killed only under --kill.
+    """
+    rows = _ledger_survivors(project_path, exclude=exclude)
+    if not rows:
+        return
+    print("\nWARNING: %d process(es) this project launched EARLIER are still alive "
+          "(from %s):\n%s" % (len(rows), _launch_ledger_path(project_path).name,
+                                _describe_survivors(rows)), file=sys.stderr)
+    if getattr(args, "kill", False):
+        gone = _kill_survivors(rows)
+        left = [r["pid"] for r in rows if r["pid"] not in gone]
+        print("--kill: terminated %s%s" % (
+            ", ".join(str(p) for p in gone) or "nothing",
+            ("; STILL ALIVE: %s" % ", ".join(str(p) for p in left)) if left else ""),
+            file=sys.stderr)
+        if left:
+            sys.exit(1)
+        return
+    print("They answer the bus alongside the next instance (crossed replies, `Node not "
+          "found` on a node scene-tree just listed). Kill them:\n"
+          + _kill_hint([r["pid"] for r in rows]), file=sys.stderr)
     sys.exit(1)
 
 
@@ -1360,6 +1720,59 @@ def _read_harness_config(project_path: Path) -> dict:
 
 
 _REGISTER_COMMAND_RE = re.compile(r'register_command\(\s*"([A-Za-z0-9_]+)"')
+# register_command("name", _handler) / register_command("name", Callable(self, "_handler"))
+_REGISTER_HANDLER_RE = re.compile(
+    r'register_command\(\s*"([A-Za-z0-9_]+)"\s*,\s*'
+    r'(?:Callable\(\s*self\s*,\s*"([A-Za-z0-9_]+)"\s*\)|([A-Za-z_][A-Za-z0-9_]*))')
+_FUNC_DEF_RE = re.compile(r'^func\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)?', re.M)
+
+
+def _scan_verb_args(text: str) -> dict:
+    """verb -> the arg keys its handler reads, from a static scan of the script.
+
+    A wrong key name is silently accepted as "omitted" by `args.get("x", default)`,
+    so a guessed `cell` against a handler reading `x`/`y` planted the default at the
+    default cell and reported success (gh#14.2). The keys are grep-able straight
+    out of the handler body - `args.get("k")`, `args["k"]`, `args.has("k")` -
+    with no schema for the project author to write. Heuristic: a handler that
+    forwards its dict to another function, or reads keys through a variable,
+    shows fewer keys than it accepts; it never shows a key it does not read.
+    """
+    funcs = {}
+    matches = list(_FUNC_DEF_RE.finditer(text))
+    for i, m in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        funcs[m.group(1)] = (m.group(2) or "args", text[m.end():end])
+    out = {}
+    for m in _REGISTER_HANDLER_RE.finditer(text):
+        verb = m.group(1)
+        handler = m.group(2) or m.group(3)
+        if handler not in funcs:
+            continue
+        param, body = funcs[handler]
+        # Comment lines are dropped: the doc block ABOVE the next handler sits
+        # inside this span, and `## args["k"]` in it is not a read.
+        body = "\n".join(l for l in body.splitlines() if not l.lstrip().startswith("#"))
+        key_re = re.compile(
+            r'\b%s\s*(?:\.get\(|\.has\(|\[)\s*"([A-Za-z0-9_]+)"' % re.escape(param))
+        keys = []
+        for k in key_re.findall(body):
+            if k not in keys:
+                keys.append(k)
+        out[verb] = keys
+    return out
+
+
+def _print_verbs_with_args(actions, arg_map: dict, indent: str = "    "):
+    width = max((len(a) for a in actions), default=0)
+    for action in actions:
+        keys = arg_map.get(action)
+        if keys:
+            print(f"{indent}{action:<{width}}  args: {', '.join(keys)}")
+        elif keys == []:
+            print(f"{indent}{action:<{width}}  (reads no args)")
+        else:
+            print(f"{indent}{action}")
 
 
 def _list_commands_offline(args, project_path: Path):
@@ -1373,22 +1786,27 @@ def _list_commands_offline(args, project_path: Path):
     """
     core_path = project_path / "addons" / "godot_selftest" / "dev_tools.gd"
     generic = []
+    core_args = {}
     if core_path.is_file():
-        generic = sorted(set(_REGISTER_COMMAND_RE.findall(
-            core_path.read_text(encoding="utf-8"))))
+        core_text = core_path.read_text(encoding="utf-8")
+        generic = sorted(set(_REGISTER_COMMAND_RE.findall(core_text)))
+        core_args = _scan_verb_args(core_text)
 
     config = _read_harness_config(project_path)
     ext_res = str(config.get("extension_script", "") or "res://devtools_ext/commands.gd")
     ext_path = project_path / ext_res.replace("res://", "")
     project_verbs = []
+    project_args = {}
     if ext_path.is_file():
-        project_verbs = sorted(set(_REGISTER_COMMAND_RE.findall(
-            ext_path.read_text(encoding="utf-8"))))
+        ext_text = ext_path.read_text(encoding="utf-8")
+        project_verbs = sorted(set(_REGISTER_COMMAND_RE.findall(ext_text)))
+        project_args = _scan_verb_args(ext_text)
 
     if args.json:
         print(json.dumps({
             "generic": generic,
             "project": project_verbs,
+            "args": {**core_args, **project_args},
             "static_parse": True,
             "core_script": str(core_path),
             "extension_script": str(ext_path),
@@ -1397,14 +1815,14 @@ def _list_commands_offline(args, project_path: Path):
 
     print("Registered commands (STATIC PARSE of the scripts; the running game may differ):")
     print(f"  generic ({len(generic)}) from {core_path.name}:")
-    for action in generic:
-        print(f"    {action}")
+    _print_verbs_with_args(generic, core_args)
     if ext_path.is_file():
         print(f"  project ({len(project_verbs)}) from {ext_res}:")
-        for action in project_verbs:
-            print(f"    {action}")
+        _print_verbs_with_args(project_verbs, project_args)
     else:
         print(f"  project: no extension script at {ext_res}")
+    print("  args: keys the handler reads (args.get/has/[]), scanned from source - "
+          "a key not listed is silently ignored by that verb.")
 
 
 def cmd_list_commands(args, project_path: Path):
@@ -1419,13 +1837,28 @@ def cmd_list_commands(args, project_path: Path):
         sys.exit(1)
 
     actions = result.get("data", {}).get("actions", [])
+    # The game names the verbs; the arg keys come from a static scan of the
+    # scripts on disk (gh#14.2). Registered names are runtime truth, keys are a
+    # source read - a verb registered by a script this scan cannot see prints
+    # with no keys, not with wrong ones.
+    arg_map = {}
+    for rel in ("addons/godot_selftest/dev_tools.gd",
+                str(_read_harness_config(project_path).get("extension_script", "")
+                    or "res://devtools_ext/commands.gd").replace("res://", "")):
+        path = project_path / rel
+        if path.is_file():
+            try:
+                arg_map.update(_scan_verb_args(path.read_text(encoding="utf-8")))
+            except OSError:
+                pass
     if args.json:
-        print(json.dumps(actions, indent=2))
+        print(json.dumps({"actions": actions, "args": arg_map}, indent=2))
         return
 
     print(f"Registered commands ({len(actions)}):")
-    for action in actions:
-        print(f"  {action}")
+    _print_verbs_with_args(actions, arg_map, indent="  ")
+    print("  args: keys the handler reads, from a static scan of the scripts on disk - "
+          "a key not listed is silently ignored by that verb.")
 
 
 _ADDON_VERSION_RE = re.compile(
@@ -2058,6 +2491,8 @@ _FINDINGS_REQUIRED_KEYS = (
     "baseline_in_use",
     "new_count",
     "pre_existing_count",
+    "geometry_trustworthy",
+    "geometry_caveat",
 )
 
 # Most severe first, so the worst finding in a report is the one at the top.
@@ -2069,7 +2504,9 @@ def cmd_findings(args, project_path: Path):
     """Every live check the harness knows, in one call (bus verb: findings).
 
     Data keys read: findings, counts, checks_run, checks_skipped, viewport,
-    baseline_in_use, new_count, pre_existing_count.
+    baseline_in_use, new_count, pre_existing_count, scroll_reachable,
+    geometry_trustworthy, geometry_caveat (and a per-finding `caveat` on
+    headless geometry verdicts).
 
     Exit codes follow the rest of the tool: 0 clean, 1 gating findings, 2 could
     not run (which includes a reply whose shape this client does not recognize
@@ -2131,6 +2568,7 @@ def cmd_findings(args, project_path: Path):
         worst = min(_SEVERITY_ORDER.get(str(i.get("severity", "")), 3) for i in items)
         return (worst, -len(items), code)
 
+    caveated = 0
     for code, items in sorted(groups.items(), key=_rank):
         items.sort(key=lambda i: _SEVERITY_ORDER.get(str(i.get("severity", "")), 3))
         sources = sorted({str(i.get("source", "?")) for i in items})
@@ -2138,7 +2576,19 @@ def cmd_findings(args, project_path: Path):
         print(f"  {code:<22} {len(items):>3}  [{worst}] {', '.join(sources)}")
         for item in items:
             where = str(item.get("path", "")) or "-"
-            print(f"      {where}: {_printable(str(item.get('message', '')))}")
+            flag = "  [HEADLESS geometry - confirm windowed]" if item.get("caveat") else ""
+            caveated += 1 if item.get("caveat") else 0
+            print(f"      {where}: {_printable(str(item.get('message', '')))}{flag}")
+
+    # H-051: a screen-position finding measured headless is a finding about the
+    # headless run, not necessarily about what a player sees. It still gates
+    # (headless is where CI lives), but it must not be read as fact unqualified.
+    if not data["geometry_trustworthy"]:
+        if caveated:
+            print(f"\n{caveated} of {len(findings)} finding(s) are screen-position verdicts "
+                  f"measured HEADLESS - flagged above.\n  {_printable(str(data['geometry_caveat']))}")
+        else:
+            print(f"\nGeometry {_printable(str(data['geometry_caveat']))}")
 
     # Per-source counts, including the sources that ran and found nothing: a 0
     # and an absent source mean different things and must not print the same.
@@ -2146,6 +2596,12 @@ def cmd_findings(args, project_path: Path):
     if counts:
         print("\nBy check: " + ", ".join(
             f"{src}={counts[src]}" for src in sorted(counts)))
+    # gh#16: rows past the fold of a ScrollContainer are reachable by scrolling.
+    # They are reported so the number is visible, and never gate.
+    scroll_reachable = int(data.get("scroll_reachable", 0) or 0)
+    if scroll_reachable:
+        print(f"ui_reachable: {scroll_reachable} control(s) reachable only by scrolling a "
+              "ScrollContainer - reported, not gated (reachable-ui lists them as SCROLL TO REACH).")
 
     if checks_skipped:
         print(f"\n{len(checks_skipped)} check(s) did NOT run:")
@@ -2189,7 +2645,7 @@ def cmd_validate_ui(args, project_path: Path):
     if getattr(args, "no_baseline", False):
         cmd_args["use_baseline"] = False
     result = send_command(project_path, "validate_ui", cmd_args)
-    print_validation_result(result)
+    print_validation_result(result, geometry_verb="validate-ui")
 
 
 def cmd_save_ui_baseline(args, project_path: Path):
@@ -2242,6 +2698,7 @@ def cmd_ui_snapshot(args, project_path: Path):
     elements = data.get("elements", [])
     print(f"Viewport: {vp['width']}x{vp['height']}")
     print(f"UI Elements: {len(elements)}")
+    print_geometry_caveat(data, "ui-snapshot", only_if_suspect=True)
     print()
     for el in elements:
         r = el["global_rect"]
@@ -2290,6 +2747,9 @@ def cmd_node_bounds(args, project_path: Path):
         note = "" if (abs(cs["x"] - 1.0) < 1e-6 and abs(cs["y"] - 1.0) < 1e-6) else \
             "   <- not 1.0: this rect is screen space, but a CanvasLayer is scaling it"
         print(f"  Canvas scale: {cs['x']:.3f}, {cs['y']:.3f}{note}")
+    # Whether this rect is what a player sees, or a headless run's (H-051). A
+    # single rect is read as an answer, so the trust state prints either way.
+    print_geometry_caveat(data, "node-bounds")
 
 
 def cmd_aabb(args, project_path: Path):
@@ -2462,6 +2922,27 @@ def cmd_launch(args, project_path: Path):
     out_log = devtools_dir / "launch_stdout.log"
     err_log = devtools_dir / "launch_stderr.log"
 
+    # Independent of the owner file: every process THIS project ever launched
+    # that is still alive, start-time verified (gh#14.1). The owner check above
+    # sees only the current owner; a game abandoned two launches ago that
+    # stopped polling but never exited is invisible to it and still answers the
+    # bus. Warn always; --kill-survivors clears them first.
+    leftovers = _ledger_survivors(project_path)
+    if leftovers:
+        print("WARNING: %d process(es) this project launched earlier are still alive:\n%s"
+              % (len(leftovers), _describe_survivors(leftovers)), file=sys.stderr)
+        if args.kill_survivors:
+            gone = _kill_survivors(leftovers)
+            left = [r["pid"] for r in leftovers if r["pid"] not in gone]
+            print("--kill-survivors: terminated %s%s" % (
+                ", ".join(str(p) for p in gone) or "nothing",
+                ("; STILL ALIVE: %s" % ", ".join(str(p) for p in left)) if left else ""),
+                file=sys.stderr)
+        else:
+            print("Launching anyway. If verbs answer with another instance's state, that is "
+                  "why. Clear them with `launch --kill-survivors` or:\n"
+                  + _kill_hint([r["pid"] for r in leftovers]), file=sys.stderr)
+
     cmd = [str(godot_path), "--path", str(project_path)]
     if not args.no_mute:
         # Opt-out rather than unconditional: --write-movie records the audio bus
@@ -2518,6 +2999,10 @@ def cmd_launch(args, project_path: Path):
         "bus_dir": bus_dir,
         "started_unix": time.time(),
     }, indent=2), encoding="utf-8")
+    # The Popen pid is the LAUNCHER: with a `_console.exe` build it is a wrapper
+    # that spawns the engine as a child, and the bus answers with the child's
+    # pid. Both go in the ledger so `quit` can sweep both.
+    _ledger_record(project_path, proc.pid, "launcher", {"cmd": cmd[0], "session": session})
 
     print(f"Launched pid {proc.pid}: {' '.join(cmd)}")
     print(f"  stdout: {out_log}")
@@ -2546,6 +3031,9 @@ def cmd_launch(args, project_path: Path):
 
     data = reply.get("data") or {}
     print(f"  bus answered: pid {data.get('pid')}")
+    if isinstance(data.get("pid"), int) and data.get("pid") != proc.pid:
+        _ledger_record(project_path, data["pid"], "engine",
+                       {"launcher_pid": proc.pid, "session": session})
     if session:
         flags = f"--session {session}"
         if bus_dir:
@@ -2784,7 +3272,7 @@ def cmd_new_uid(args, project_path: Path):
 def cmd_reachable_ui(args, project_path: Path):
     """What a finger or cursor could actually hit right now (bus verb:
     reachable_ui, gather:G-129). Data keys read: controls, count, reachable,
-    viewport.
+    scroll_reachable, viewport, geometry_trustworthy, geometry_caveat.
 
     Diff this between `set-feature --touchscreen true` and `false` to catch an
     affordance that exists on one device and not the other.
@@ -2802,13 +3290,20 @@ def cmd_reachable_ui(args, project_path: Path):
     for c in data["controls"]:
         r = c.get("rect") or {}
         why = ""
-        if not c.get("on_screen"):
+        if not c.get("on_screen") and c.get("scroll_reachable"):
+            # gh#16: past the fold of an on-screen ScrollContainer - reachable
+            # by scrolling, and `findings` does not count it against the run.
+            why = f"  SCROLL TO REACH (inside {c.get('scroll_container')})"
+        elif not c.get("on_screen"):
             why = "  OFF-SCREEN"
+            if c.get("scroll_container"):
+                why += f"  (inside {c.get('scroll_container')}, outside its content extent)"
         elif c.get("blocked_by"):
             why = f"  BLOCKED BY {c['blocked_by']}"
         label = f' "{_printable(c["text"])}"' if c.get("text") else ""
         print(f"  {c.get('path')}{label}  [{c.get('kind')}] "
               f"{r.get('x'):.0f},{r.get('y'):.0f} {r.get('w'):.0f}x{r.get('h'):.0f}{why}")
+    print_geometry_caveat(data, "reachable-ui", only_if_suspect=True)
 
 
 def cmd_find_nodes(args, project_path: Path):
@@ -3050,6 +3545,11 @@ def main():
     p.add_argument("--wait", type=float, default=10.0, metavar="SECONDS",
                    help="How long to wait for the process to exit before reporting "
                         "a survivor (default 10; exits 1 if it is still alive)")
+    p.add_argument("--kill", action="store_true",
+                   help="Terminate any survivor: the owner pid if it outlives --wait, "
+                        "plus every process this project launched earlier that is still "
+                        "alive (start-time verified, from .devtools/launched.jsonl). "
+                        "Never by image name - other sessions run games on this machine.")
     p.set_defaults(func=cmd_quit)
 
     # cmd - arbitrary registered verb
@@ -3086,6 +3586,10 @@ def main():
     p.add_argument("--allow-second-instance", action="store_true",
                    help="Launch even when a live process already owns this bus "
                         "(two instances answering one bus is silent corruption)")
+    p.add_argument("--kill-survivors", action="store_true",
+                   help="Before launching, terminate every process this project launched "
+                        "earlier that is still alive (start-time verified). Without it "
+                        "they are listed and the launch proceeds.")
     p.add_argument("godot_args", nargs=argparse.REMAINDER, metavar="-- GODOT ARGS",
                    help="Passed straight to Godot after a bare --")
     p.set_defaults(func=cmd_launch)
