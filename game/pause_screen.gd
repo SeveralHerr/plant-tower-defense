@@ -28,9 +28,20 @@ signal gate_requested
 ## Same card geometry as the post-mortem, centred on the board rather than the
 ## window, so the two screens read as the same family and neither sits off to the
 ## side of the thing it is covering.
-## Taller than the post-mortem's card because it carries the key list as well as
-## the buttons. Still centred on the board rather than the window.
-const CARD := Rect2(288.0, 140.0, 320.0, 380.0)
+## Card geometry. The height is DERIVED, not written down.
+##
+## It was a hand-picked 380 against content ending at 370 -- ten pixels, which a
+## fourth button (56) or a fourth key row (26) silently spends, putting text onto
+## the backdrop over the live board while overlapping nothing, so no gate fires.
+## This card derived where its content starts and hardcoded where it must stop,
+## which is the same class of mistake as the absolute FIRST_BUTTON_Y it replaced.
+##
+## Not "the same geometry as the post-mortem" either, whatever this header used to
+## claim: RunSummary.CARD is 640x456 and this one is not.
+const CARD_WIDTH: float = 320.0
+const CARD_TOP: float = 140.0
+const CARD_X: float = 288.0
+const CARD_FOOT_PADDING: float = 24.0
 ## Gap between the last button and the key list. The list's own offset is derived
 ## from the button block rather than written down: a hand-picked 268.0 put the
 ## first key row at 408 under a GateButton ending at 412, which is the same
@@ -43,6 +54,22 @@ const KEY_LIST_GAP: float = 20.0
 ## banner declared 62 for a 48px font that rendered 67 -- so the rule is to leave
 ## real headroom over the font, never to match it.
 const KEY_ROW_HEIGHT: float = 26.0
+
+
+## The card, sized to whatever it actually contains.
+static func card_rect() -> Rect2:
+	return Rect2(CARD_X, CARD_TOP, CARD_WIDTH, content_height() + CARD_FOOT_PADDING)
+
+
+## Card-local y at which the last thing on the card ends.
+static func content_height() -> float:
+	return key_list_offset() + float(key_row_count()) * KEY_ROW_HEIGHT
+
+
+## How many key rows the card will draw. Static so card_rect() can size for them
+## before any instance exists; Game passes the same table it hands to build().
+static func key_row_count() -> int:
+	return Game.KEY_HELP.size()
 
 
 ## Top of the key list, in card-local coordinates.
@@ -104,8 +131,9 @@ func _ready() -> void:
 
 	var card := Panel.new()
 	card.name = "Card"
-	card.position = CARD.position
-	card.size = CARD.size
+	var rect: Rect2 = card_rect()
+	card.position = rect.position
+	card.size = rect.size
 	card.add_theme_stylebox_override("panel", GardenTheme.paper_panel())
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(card)
@@ -113,8 +141,8 @@ func _ready() -> void:
 	var heading := Label.new()
 	heading.name = "Heading"
 	heading.text = "Paused"
-	heading.position = Vector2(CARD.position.x, CARD.position.y + 30.0)
-	heading.size = Vector2(CARD.size.x, 44.0)
+	heading.position = Vector2(card_rect().position.x, card_rect().position.y + 30.0)
+	heading.size = Vector2(card_rect().size.x, 44.0)
 	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	heading.add_theme_font_size_override("font_size", 32)
 	heading.add_theme_color_override("font_color", GardenTheme.INK)
@@ -123,8 +151,8 @@ func _ready() -> void:
 	var note := Label.new()
 	note.name = "Note"
 	note.text = _note_text
-	note.position = Vector2(CARD.position.x, CARD.position.y + 76.0)
-	note.size = Vector2(CARD.size.x, 24.0)
+	note.position = Vector2(card_rect().position.x, card_rect().position.y + 76.0)
+	note.size = Vector2(card_rect().size.x, 24.0)
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	note.add_theme_font_size_override("font_size", 15)
 	note.add_theme_color_override("font_color", Color(GardenTheme.INK, 0.65))
@@ -135,13 +163,13 @@ func _ready() -> void:
 
 
 func _build_buttons() -> void:
-	var y: float = CARD.position.y + FIRST_BUTTON_OFFSET
+	var y: float = card_rect().position.y + FIRST_BUTTON_OFFSET
 	var first: Button = null
 	for spec: Dictionary in BUTTONS:
 		var button := Button.new()
 		button.name = String(spec["name"])
 		button.text = String(spec["text"])
-		button.position = Vector2(CARD.position.x + (CARD.size.x - BUTTON_SIZE.x) / 2.0, y)
+		button.position = Vector2(card_rect().position.x + (card_rect().size.x - BUTTON_SIZE.x) / 2.0, y)
 		button.size = BUTTON_SIZE
 		var which: String = String(spec["signal"])
 		button.pressed.connect(func() -> void: emit_signal(which))
@@ -158,14 +186,14 @@ func _build_buttons() -> void:
 func _build_key_list() -> void:
 	if _keys.is_empty():
 		return
-	var y: float = CARD.position.y + key_list_offset()
+	var y: float = card_rect().position.y + key_list_offset()
 	for i: int in range(_keys.size()):
 		var row: Dictionary = _keys[i]
 		var label := Label.new()
 		label.name = "KeyRow%d" % i
 		label.text = "%s   %s" % [String(row["keys"]), String(row["does"])]
-		label.position = Vector2(CARD.position.x + 28.0, y)
-		label.size = Vector2(CARD.size.x - 56.0, KEY_ROW_HEIGHT)
+		label.position = Vector2(card_rect().position.x + 28.0, y)
+		label.size = Vector2(card_rect().size.x - 56.0, KEY_ROW_HEIGHT)
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		label.add_theme_font_size_override("font_size", 13)
 		label.add_theme_color_override("font_color", Color(GardenTheme.INK, 0.55))

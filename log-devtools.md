@@ -1805,3 +1805,50 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   opaque stylebox. `validate-ui` and `findings` both reported clean over it, and
   correctly — each Control fits its own box, and per-Control measurement is all
   they do.
+
+## 2026-08-16 — The transient that was a real bug all along (cycle 10)
+
+- Value: **warranted** — it found a clipped HUD readout that had been shipping
+  since husks were added, and explained two earlier findings I had written off.
+  - Expected: the balance change is arithmetic the tests already sweep at 177
+    ranges, and the card height is arithmetic too. Runtime should confirm the
+    panel's new line renders on two lines rather than three, that the pause card
+    actually grew, and that a real volley lands what the dps table promises.
+  - Got: the card measured `320x394`, derived, against the hardcoded 380 it
+    replaced. The corn panel read `Corn Cobbler — bunch` / `7.0 dmg / 0.62s,
+    5 kernel(s)` in a box still `232x152`. And `findings` reported
+    `ui_text_trimmed: Label 'CompostLabel' text 'Compost  0 (1 ready)' is trimmed
+    by its box (text: 198px, label: 170px; clip_text) - the player sees a cut
+    string`.
+  - Found: three, the first of which retires **G-030**.
+    1. **The "transient" was real.** Twice this session a NEW `ui_layout` finding
+       fired and would not reproduce across targeted attempts, and I logged it as
+       an unreproducible gap. It reproduces exactly when husks are on the ground:
+       `CompostLabel` appends `" (N ready)"`, but `WORST_CASE_TEXT` declared only
+       `"Compost  9999"` — so the width test has only ever measured the string
+       someone wrote down, never the string the formatter can build. The file's
+       own comment cites `"Compost 0 (11 ready)"` as the cause of an *earlier*
+       overlap bug, so the suffix was known about and the worst case was never
+       updated. My hypothesis in G-030 (a Control caught mid-tween) was wrong.
+    2. Measuring all four stats-row budgets showed they were wrong in **both
+       directions at once**: Lives had 14px spare while Compost was 18px short.
+       They had been picked by eye. All four are now requirement-plus-7px,
+       measured in the real theme font — 161 / 302 / 136 / 188.
+    3. My own first draft of the corn panel line wrapped to a third row and pushed
+       `SelectionBox`'s foot to exactly the panel's 648, caught by the 8px
+       clearance test written three cycles ago for that same overflow.
+  - Cheaper: nothing. The readout only clips while husks are on the ground, which
+    is precisely why two earlier runs saw it and could not reproduce it.
+
+- Gap: **[G-030] status: fixed** — not by the harness, but by finding the cause.
+  The improvement I proposed there (write the last non-clean finding records to
+  `user://ui_findings_last.json`) is still worth having and stays filed upstream,
+  because the reason I chased the wrong hypothesis twice is that the count was all
+  I had: `1 NEW` with no node, no rule and no measurement. The third sighting only
+  became diagnosable because I happened to run `validate-ui` rather than `findings`
+  and it printed the full record. **A consolidated count is a worse signal than a
+  named finding, and `findings` gives the count.**
+  - [G-030] status: fixed | fixed-in: n/a (root cause was a project bug, not a
+    harness one) | seen: 3 | harness: 0.23.0
+  - Improvement: unchanged and still wanted — `findings` should print the same
+    per-finding detail `validate-ui` does, or name the file it wrote them to.

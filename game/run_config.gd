@@ -20,6 +20,17 @@ const SAVE_PATH := "user://highscore.save"
 const SAVE_VERSION: int = 2
 
 var endless: bool = false
+## True from the moment a run beats its mode's record until the title screen has
+## said so. Not persisted: it is about the journey the player just took, not about
+## the save file.
+##
+## Without it, a record set by quitting is silent. _end_run captures
+## record_score's return and hands it to the post-mortem's "a new best", but the
+## two pause exits call it as a bare statement and drop it -- so leaving on a
+## personal best said nothing at all, and the title screen renders the same
+## sentence whether the number moved a second ago or three sessions back.
+var fresh_record: bool = false
+
 var campaign_high_score: int = 0
 var endless_high_score: int = 0
 
@@ -44,6 +55,7 @@ func record_score(seeds_earned: int) -> bool:
 		endless_high_score = seeds_earned
 	else:
 		campaign_high_score = seeds_earned
+	fresh_record = true
 	_save()
 	return true
 

@@ -142,6 +142,10 @@ func _build_text() -> void:
 	score.add_theme_font_size_override("font_size", 15)
 	score.add_theme_color_override("font_color", GardenTheme.GOLD)
 	add_child(score)
+	# Announced once, on the first title screen after the record. Cleared here
+	# rather than inside high_score_text() so that builder stays pure and a test
+	# can call it twice without the second call disagreeing with the first.
+	RunConfig.fresh_record = false
 
 	var hint := Label.new()
 	hint.name = "HintLabel"
@@ -162,6 +166,13 @@ func _build_text() -> void:
 ## to claim every record belonged to endless whichever mode had set it. When only
 ## one mode has been played the other is simply omitted rather than shown as a
 ## zero — an absent record and a bad one should not look alike.
+##
+## It also marks a record set moments ago. Without that, leaving a run on a
+## personal best said nothing anywhere: _end_run hands record_score's return to
+## the post-mortem's "a new best", but the pause exits drop it, and this line
+## reads identically whether the number moved a second ago or three sessions back.
+## The flag is cleared by the screen that shows it, not here — a static builder
+## that mutates state cannot be called twice by a test.
 static func high_score_text() -> String:
 	var campaign: int = RunConfig.best_for(false)
 	var endless: int = RunConfig.best_for(true)
@@ -172,7 +183,10 @@ static func high_score_text() -> String:
 		parts.append("Campaign %d" % campaign)
 	if endless > 0:
 		parts.append("Endless %d" % endless)
-	return "Best seeds grown  —  %s" % " · ".join(parts)
+	var line: String = "Best seeds grown  —  %s" % " · ".join(parts)
+	if RunConfig.fresh_record:
+		return "%s   ← just now" % line
+	return line
 
 
 func _build_buttons() -> void:

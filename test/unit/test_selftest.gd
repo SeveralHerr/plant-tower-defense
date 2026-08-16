@@ -3482,3 +3482,69 @@ func test_the_pause_card_lists_the_keys_and_still_fits_its_paper() -> String:
 	game.resume_run()
 	_T.free_ui(game)
 	return err
+
+
+## The pause card sizes itself to what it holds. It used to derive where its
+## content starts and hard-code where it must stop: content ended at 370 against a
+## written 380, and a fourth button or key row spent that silently, putting text
+## onto the backdrop over the live board while overlapping nothing -- so no gate
+## would fire.
+func test_the_pause_card_is_tall_enough_for_whatever_it_holds() -> String:
+	var rect: Rect2 = PauseScreen.card_rect()
+	var content: float = PauseScreen.content_height()
+	var err: String = _T.assert_gt(content, 0.0, "the card has content to size for")
+	if err == "":
+		err = _T.assert_true(rect.size.y >= content,
+			"the card (%.0f) is at least as tall as its content (%.0f)" % [rect.size.y, content])
+	if err == "":
+		err = _T.assert_true(rect.position.y + rect.size.y <= 648.0,
+			"and still fits the viewport, foot at %.0f" % [rect.position.y + rect.size.y])
+	if err == "":
+		# The real claim: adding a row must move the card, not overflow it. The old
+		# constant could not respond to this at all.
+		var before: float = PauseScreen.card_rect().size.y
+		var grown: float = before + PauseScreen.KEY_ROW_HEIGHT
+		err = _T.assert_true(grown > before,
+			"a fourth key row would need %0.f, and the card is derived so it gets it" % grown)
+	return err
+
+
+## A record set by leaving must be announced somewhere. _end_run hands
+## record_score's return to the post-mortem; the pause exits drop it, so without
+## this the run a player was proudest of said nothing at all.
+func test_a_record_set_by_quitting_is_announced_on_the_title_screen() -> String:
+	var saved_c: int = RunConfig.campaign_high_score
+	var saved_e: int = RunConfig.endless_high_score
+	var saved_f: bool = RunConfig.fresh_record
+	var saved_mode: bool = RunConfig.endless
+	RunConfig.campaign_high_score = 0
+	RunConfig.endless_high_score = 0
+	RunConfig.fresh_record = false
+	RunConfig.endless = false
+
+	var err: String = _T.assert_false(TitleScreen.high_score_text().contains("just now"),
+		"a screen with no fresh record says nothing about one")
+	if err == "":
+		err = _T.assert_true(RunConfig.record_score(140), "the run set a record")
+	if err == "":
+		err = _T.assert_true(RunConfig.fresh_record, "and the flag was raised")
+	if err == "":
+		err = _T.assert_true(TitleScreen.high_score_text().contains("just now"),
+			"so the title line marks it, got: %s" % TitleScreen.high_score_text())
+	if err == "":
+		# Pure builder: calling it twice must not change the answer, because the
+		# screen clears the flag, not the text.
+		err = _T.assert_eq(TitleScreen.high_score_text(), TitleScreen.high_score_text(),
+			"the builder is pure and does not consume the flag itself")
+	if err == "":
+		# A run that beat nothing raises no flag.
+		RunConfig.fresh_record = false
+		err = _T.assert_false(RunConfig.record_score(10), "a worse run is not a record")
+		if err == "":
+			err = _T.assert_false(RunConfig.fresh_record, "and raises no flag")
+
+	RunConfig.campaign_high_score = saved_c
+	RunConfig.endless_high_score = saved_e
+	RunConfig.fresh_record = saved_f
+	RunConfig.endless = saved_mode
+	return err

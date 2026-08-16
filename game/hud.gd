@@ -36,10 +36,17 @@ const NEXT_WAVE_BUTTON_SIZE := Vector2(216, 40)
 ## is the SUM: these plus the separations plus the button must stay inside the
 ## bar, and that is the invariant `test_the_stats_row_budget_fits_the_bar`
 ## pins. The wave slot is the widest because it carries the threat level too.
-const SEEDS_LABEL_WIDTH: float = 180.0
-const WAVE_LABEL_WIDTH: float = 315.0
-const LIVES_LABEL_WIDTH: float = 150.0
-const COMPOST_LABEL_WIDTH: float = 170.0
+##
+## Measured, not guessed. In the real theme font the worst-case strings need
+## 161 / 302 / 136 / 188, so each of these is its requirement plus about seven
+## pixels of headroom, and the four together leave eight pixels in the row. The
+## previous numbers were picked by eye and were wrong in both directions at once:
+## Lives had fourteen pixels spare while Compost was eighteen short and had been
+## clipping in play since husks were added.
+const SEEDS_LABEL_WIDTH: float = 168.0
+const WAVE_LABEL_WIDTH: float = 310.0
+const LIVES_LABEL_WIDTH: float = 144.0
+const COMPOST_LABEL_WIDTH: float = 196.0
 
 ## The longest string each readout can ever hold. Budgets are only meaningful
 ## against these, and a clipped Label fails *silently* — it just renders
@@ -51,7 +58,9 @@ const WORST_CASE_TEXT: Dictionary = {
 	"SeedsLabel": "Seeds  99999",
 	"WaveLabel": "Wave  9999 ∞   threat 99",
 	"LivesLabel": "Garden  10",
-	"CompostLabel": "Compost  9999",
+	# Includes the husk suffix. Leaving it out is what let a clipped readout ship:
+	# the widest string this label can hold is not the widest one anyone wrote down.
+	"CompostLabel": "Compost  9999  +99",
 }
 
 ## The bar is two rows. Keeping them as named constants is what makes the gap
@@ -700,7 +709,12 @@ func refresh(state: Dictionary) -> void:
 	var husks: int = int(state.get("husks_on_ground", 0))
 	_compost_label.text = "Compost  %d" % int(state.get("compost_total", 0))
 	if husks > 0:
-		_compost_label.text += " (%d ready)" % husks
+		# "+N", not " (N ready)". The long form measured 198px in a 170px box and
+		# the player saw a cut string -- and it had been that way since husks were
+		# added, because WORST_CASE_TEXT declared only "Compost  9999" and the
+		# width test has only ever measured the string the table names, not the
+		# string the formatter can build.
+		_compost_label.text += "  +%d" % husks
 
 	var selected: StringName = state["selected_plant"]
 	for id: StringName in _plant_buttons:
@@ -748,8 +762,19 @@ func _refresh_selection(state: Dictionary) -> void:
 	var corn := plant as CornCobbler
 	var sunflower := plant as Sunflower
 	if corn != null:
-		_selection_label.text = "%s — %s\n%d kernel(s) per shot" % [
-			PlantCatalog.display_name(plant.kind), corn.level_name(), corn.kernels_per_shot(),
+		# The kernel count alone stopped being the story. Past ~80px most of a
+		# bunch's five kernels sail past the pest it aimed at, so what an upgrade
+		# actually buys is damage and rate — and for a while it bought neither,
+		# which is how a 45-seed upgrade ended up worse than a 20-seed one.
+		# Two lines, not three. The first draft spelled out kernels, damage and
+		# interval and wrapped to a third line, which pushed SelectionBox's foot to
+		# exactly the panel's own 648 — caught by the 8px clearance test written
+		# three cycles ago for the same overflow. Damage per volley is the number
+		# that actually changed and the one the upgrade is bought for.
+		_selection_label.text = "%s — %s\n%.1f dmg / %.2fs, %d kernel(s)" % [
+			PlantCatalog.display_name(plant.kind), corn.level_name(),
+			corn.kernel_damage() * float(corn.kernels_per_shot()),
+			corn.fire_interval(), corn.kernels_per_shot(),
 		]
 		_upgrade_button.visible = true
 		if corn.is_max_level():
