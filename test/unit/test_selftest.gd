@@ -4077,20 +4077,26 @@ func test_the_notebook_subheading_stays_narrower_than_the_paper() -> String:
 #     - the dead-ground count (15 of 94 cells).
 #     - the Sundew's coverage arithmetic: stated against how much road a
 #       single placement reaches on this route.
-#     - the husk clearance. I had this filed as road-INDEPENDENT, on the
-#       reasoning that it compares two pixel radii around a click. It does
-#       not: husk_click_margin() walks every route segment against every
-#       buildable cell, so the 4 px is a measurement of this road's proximity
-#       to its own build sites. Its doc comment says as much ("a road drawn
-#       along the board edge" eats into it) and I had read past it. The test
-#       below is what caught me, which is the entire reason it is a test and
-#       not a paragraph.
 #
-# So it is four of four, not three of four — the reassuring half of this
-# issue's premise was wrong. "Each is individually tested" is not partial
-# coverage of the road's shape; it is no coverage of it at all. Four tests
-# guard four numbers and not one of them asks whether the road still is what
-# those numbers were read off.
+#   READS THE ROAD BUT DOES NOT DEPEND ON IT — the category I kept collapsing
+#     - the husk clearance. Filed first as road-INDEPENDENT, reasoning it
+#       compared two pixel radii. Wrong: husk_click_margin() walks every route
+#       segment against every buildable cell. Filed second as road-DEPENDENT
+#       on the strength of that walk. Also wrong, and the subtler error — the
+#       walk returns CELL/2 for ANY road, because route() is one point per
+#       road-cell CENTRE and a centre cannot be nearer than half a cell to a
+#       neighbouring cell's box. So the 4 px is CELL/2 - COLLECT_RADIUS: two
+#       constants. Measured, not argued — see the last test in this block.
+#
+# So it is three of four, and the fourth is not the reassuring case either:
+# it is a number that LOOKS measured and is not. Both of my first two answers
+# were wrong, in opposite directions, and the second was the worse mistake —
+# provenance is not consequence. A function can read the road and still be
+# constant over every road.
+#
+# What survives of the issue's premise: "each is individually tested" is not
+# coverage of the road's SHAPE. Three tests guard three numbers and not one of
+# them asks whether the road is still what those numbers were read off.
 
 
 ## The measurements every calibration above was taken against. If this fails,
@@ -4121,9 +4127,9 @@ func test_the_road_is_still_the_road_the_constants_were_measured_against() -> St
 		+ " %d cells / %.0f px as 3.5 pests per cell of road" % [cells, length] \
 		+ "\n    - the dead-ground count (15 of 94 cells)" \
 		+ "\n    - the Sundew's coverage arithmetic" \
-		+ "\n    - PlacementPreview.husk_click_margin() — it walks every route" \
-		+ " segment against every buildable cell, so the 4 px clearance is a" \
-		+ " measurement of THIS road, not of two radii"
+		+ "\n  NOT affected: PlacementPreview.husk_click_margin(). It walks the" \
+		+ " route, but the walk yields CELL/2 for any road — see" \
+		+ " test_the_husk_margin_reads_the_road_but_does_not_depend_on_it"
 
 	err = _T.assert_eq(cells, 32,
 		"the road is 32 cells" + whose_problem)
@@ -4186,4 +4192,47 @@ func test_the_road_dependent_constants_are_the_ones_that_read_the_road() -> Stri
 	err = _T.assert_true(wd.contains("SIMULTANEOUS_PEST_CEILING: int = 40"),
 		"the ceiling is still the hand-derived literal these tests assume."
 			+ " If it became computed from route(), delete this and say so")
+	return err
+
+
+## The third pass at classifying the husk margin, and the one that settles it.
+##
+## First I had it road-INDEPENDENT, reasoning it compared two pixel radii.
+## Wrong: it walks every route segment against every buildable cell. Then I
+## had it road-DEPENDENT on the strength of that walk. Also wrong, and the
+## subtler error — provenance is not consequence. The walk reads the road and
+## then returns the same number for any road.
+##
+## Why: route() is one point per road-cell CENTRE, and buildable cells are
+## whole cells. The nearest a centre can be to a neighbouring cell's box is
+## half a cell, exactly, and it cannot be nearer because the two cells do not
+## overlap. So the minimum over the whole board is CELL/2 for any route that
+## has an adjacent buildable cell anywhere — which is every route that leaves
+## room to play. The 4 px is CELL/2 - COLLECT_RADIUS, and both terms are
+## constants.
+##
+## So the honest classification is: reads the road, does not depend on it.
+## That is a distinction the source-reading test above deliberately cannot
+## make, which is why this one measures instead.
+func test_the_husk_margin_reads_the_road_but_does_not_depend_on_it() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+
+	var lane: float = PlacementPreview.lane_to_buildable_distance(board)
+	var err: String = _T.assert_gt(lane, 0.0, "the lane distance measured something")
+	if err != "":
+		_T.free_ui(board)
+		return err
+
+	err = _T.assert_eq(lane, float(Board.CELL) / 2.0,
+		"the lane comes exactly half a cell from buildable ground. If this ever"
+			+ " differs, the margin HAS become a property of this particular road"
+			+ " and the classification block above needs revisiting a fourth time")
+	if err == "":
+		# And therefore the 4 px is two constants, not a measurement.
+		err = _T.assert_eq(
+			PlacementPreview.husk_click_margin(board),
+			float(Board.CELL) / 2.0 - CompostMeter.COLLECT_RADIUS,
+			"the margin is CELL/2 - COLLECT_RADIUS, both constants")
+	_T.free_ui(board)
 	return err
