@@ -32,7 +32,9 @@ const SAVE_PATH := "user://highscore.save"
 ## version 2 is a `vN` header followed by campaign then endless. Version 5 adds
 ## three fields under those, in this order: the earned milestone ids, the display
 ## options, and a count of rebound keys followed by that many
-## `action code [code...]` lines. Actually parsed and compared — see `_parse_save`.
+## `action code [code...]` lines. Version 6 widens the options line from the lone
+## `cb0`/`cb1` to three space-separated flags, `cb0 sfx0 mus0`, adding the two
+## audio mutes. Actually parsed and compared — see `_parse_save`.
 ##
 ## **There is deliberately no readable version 3 or 4.** Two development branches
 ## each minted their own `SAVE_VERSION = 3` in parallel — one writing the key
@@ -45,7 +47,31 @@ const SAVE_PATH := "user://highscore.save"
 ## ambiguity rather than end it. Both are refused below and quarantined by the
 ## existing `.bak` path — nothing is destroyed, and the only thing a player on
 ## this machine loses is a high score from a build that never shipped.
-const SAVE_VERSION: int = 5
+##
+## Version 6 is the first bump made with that history written down, and it is
+## deliberately narrow: it widens ONE line, keeps every other field in the same
+## place, and leaves the variable-length binding block last. A v5 file is read
+## forward rather than refused, because a v5 file is unambiguous — one branch
+## wrote it, and its options line has exactly one token where v6's has three.
+const SAVE_VERSION: int = 6
+
+## The version that introduced the milestone line, the options line and the
+## binding block — all three landed together, so one number covers them.
+##
+## Written as its own constant rather than as `SAVE_VERSION`, which is what the
+## three `version >= ...` reads in `_parse_save` used to say. That was correct for
+## exactly as long as those fields were the newest thing in the file: the moment
+## SAVE_VERSION moved to 6, `version >= SAVE_VERSION` would have meant "only a
+## v6 file has milestones", so a v5 save's milestones AND its rebound keys would
+## have been skipped, defaulted, and then written back out empty by the migration
+## rewrite — silent data loss caused by the bump itself rather than by the format.
+const VERSION_WITH_EXTRAS: int = 5
+
+## The version that put the two audio mutes on the options line. Same role as
+## VERSION_WITH_EXTRAS: the parser asks which SHAPE a line has by the version that
+## defined it, never by comparison against whatever the current version happens
+## to be.
+const VERSION_WITH_MUTES: int = 6
 
 ## The first version this build refuses on sight, and the last. See SAVE_VERSION.
 const AMBIGUOUS_VERSIONS: Array[int] = [3, 4]
@@ -67,12 +93,38 @@ const MILESTONE_PREFIX := "m"
 ## so the set is deliberately narrow: anything outside it is corruption, not taste.
 const MILESTONE_ID_CHARS := "abcdefghijklmnopqrstuvwxyz0123456789_"
 
-## The options line, `cb0` or `cb1` and nothing else. Marked for the same reason the
-## milestone line is: a save truncated after the milestones hands the parser "", and
-## `bool("")` would happily read as "the option is off" — a setting silently reverting
-## on a player who needs it is the exact failure this option exists to prevent.
+## The options line. Marked for the same reason the milestone line is: a save
+## truncated after the milestones hands the parser "", and `bool("")` would happily
+## read as "the option is off" — a setting silently reverting on a player who needs
+## it is the exact failure these options exist to prevent.
+##
+## In v5 the whole line was `cb0` or `cb1`. In v6 it is three space-separated flags
+## in a fixed order — `cb0 sfx0 mus0` — because the screen that shows these is one
+## list of three switches (see OptionsScreen.OPTIONS), and one screen reading one
+## line is one fewer place for the set to disagree with itself. The alternative
+## considered was a fourth line of its own for the mutes; it was rejected because
+## it would have split "the options" across two lines and two parsers for no gain,
+## and because a line per switch makes every future switch another version bump.
+##
+## Every flag carries its own PREFIX rather than being a bare `0`/`1` in a known
+## column. A bare triple reads perfectly when two of its fields are transposed —
+## a player's music mute silently becoming their colourblind setting — whereas
+## `sfx1` in the colourblind slot is refused. The cost is nine bytes.
+const OPTIONS_COLORBLIND_PREFIX := "cb"
+const OPTIONS_MUTE_SFX_PREFIX := "sfx"
+const OPTIONS_MUTE_MUSIC_PREFIX := "mus"
+## The v5 spellings, kept because a v5 file on disk is still read by this build and
+## its whole options line is one of these two exactly.
 const OPTIONS_COLORBLIND_OFF := "cb0"
 const OPTIONS_COLORBLIND_ON := "cb1"
+## The v6 options line's fields, in the order they are written and read. Order is
+## fixed by this array and by nothing else, so the writer and the reader cannot
+## drift apart.
+const OPTIONS_PREFIXES: Array[String] = [
+	OPTIONS_COLORBLIND_PREFIX,
+	OPTIONS_MUTE_SFX_PREFIX,
+	OPTIONS_MUTE_MUSIC_PREFIX,
+]
 
 ## The file this autoload persists to. A variable rather than a constant for
 ## exactly one reason: the unit tests need to drive this code over a scratch file
@@ -144,6 +196,23 @@ var earned_milestones: Dictionary = {}
 ## lands, it should own this and the key should stay as the shortcut.
 var colorblind_safe: bool = false
 
+## The two audio mutes, as the save records them: `true` means silent.
+##
+## The flags a player actually hears are `Sfx._muted` and `Music._muted`, which are
+## static and die with the process — these are their persisted record, and
+## `apply_audio_mutes()` is what puts one into the other. Exactly the arrangement
+## `key_bindings` uses, and for exactly the same reason: a `_load` that reached
+## into Sfx and Music directly would make every test that drives this parser over a
+## scratch file a test that silently mutes the whole suite's audio. That has
+## already happened once in this project with a different flag, which is why the
+## rule is stated here rather than left to be rediscovered.
+##
+## The corollary is that `set_mute_sfx` / `set_mute_music` are the only supported
+## writers: they move BOTH halves. Calling `Sfx.set_muted` directly changes what
+## the player hears without changing what the next save records.
+var mute_sfx: bool = false
+var mute_music: bool = false
+
 ## What `_load` made of the save file. Exists so that "there was no save" and
 ## "there was a save and it was refused" are distinguishable from the outside —
 ## both leave the scores where they were, and only one of them is a problem.
@@ -168,6 +237,7 @@ var _refused_path: String = ""
 func _ready() -> void:
 	_load()
 	apply_key_bindings()
+	apply_audio_mutes()
 
 
 ## Pushes whatever `_load` made of the save into the live InputMap. Separate from
@@ -289,6 +359,53 @@ func toggle_colorblind_safe() -> bool:
 	return set_colorblind_safe(not colorblind_safe)
 
 
+## Pushes whatever `_load` made of the two mutes into the classes that own them.
+## The audio twin of `apply_key_bindings`, separate from `_load` for the reason
+## `mute_sfx` spells out, and safe on every load path: a refused or absent save
+## leaves both flags false, which is the same instruction as "the game makes noise",
+## the state a player who has never touched either key is in.
+func apply_audio_mutes() -> void:
+	Sfx.set_muted(mute_sfx)
+	Music.set_muted(mute_music)
+
+
+## Silences (or unsilences) the one-shot cues and writes it down. Same shape and
+## same contract as `set_colorblind_safe`: writes only on an actual change, returns
+## the state afterwards — which, note, is the MUTED state, matching
+## `Sfx.set_muted`'s own return rather than inverting it halfway up the stack.
+##
+## Sets the owner unconditionally even when the persisted flag already matches, so
+## a process whose static flag was moved behind this file's back is resynced rather
+## than left disagreeing with the save it is about to be written into.
+func set_mute_sfx(muted: bool) -> bool:
+	Sfx.set_muted(muted)
+	if mute_sfx == muted:
+		return mute_sfx
+	mute_sfx = muted
+	_save()
+	return mute_sfx
+
+
+func toggle_mute_sfx() -> bool:
+	return set_mute_sfx(not Sfx.is_muted())
+
+
+## The music bed's half. `Music.set_muted` does more than gate the next play — it
+## has to bring a running bed back — which is why this goes through the setter
+## rather than assigning the flag, exactly as OptionsScreen.set_on documents.
+func set_mute_music(muted: bool) -> bool:
+	Music.set_muted(muted)
+	if mute_music == muted:
+		return mute_music
+	mute_music = muted
+	_save()
+	return mute_music
+
+
+func toggle_mute_music() -> bool:
+	return set_mute_music(not Music.is_muted())
+
+
 ## Where `_save` assembles the next file before it replaces `save_path`.
 func _tmp_path() -> String:
 	return save_path + ".tmp"
@@ -373,26 +490,67 @@ func _milestone_line() -> String:
 	return "%s%d:%s" % [MILESTONE_PREFIX, ids.size(), ",".join(PackedStringArray(ids))]
 
 
-## The options line. Two exact spellings and nothing else — this is a bool, so
-## there is no third reading to be tolerant toward, and "" (a file truncated after
-## the milestones) is not one of them.
-##
-## Returns a bool, or `null` on anything that is not one of the two.
-static func _parse_options(text: String) -> Variant:
-	if text == OPTIONS_COLORBLIND_ON:
+## One `<prefix>0` / `<prefix>1` flag, or `null` if it is not one. Exact spellings
+## and nothing else — these are bools, so there is no third reading to be tolerant
+## toward, and "" (a file truncated one line up) is not one of them.
+static func _parse_flag(text: String, prefix: String) -> Variant:
+	if text == prefix + "1":
 		return true
-	if text == OPTIONS_COLORBLIND_OFF:
+	if text == prefix + "0":
 		return false
 	return null
 
 
+## The options line, read in the shape the file's own version defines.
+##
+## v5 is the lone colourblind flag; v6 is OPTIONS_PREFIXES in order, space
+## separated, all three required. Split with empties KEPT, so `cb0  sfx0 mus0` is
+## four fields and is refused: two spaces is not a shape this writer produces, and
+## a parser that shrugs at it is a parser that would shrug at a half-written line.
+##
+## Returns {colorblind_safe, mute_sfx, mute_music}, or `null` on anything else.
+## A v5 line's two absent mutes read as false — a player who never had the setting
+## had a game that made noise, which is exactly what unmuted means.
+static func _parse_options(text: String, version: int) -> Variant:
+	if version < VERSION_WITH_MUTES:
+		# Compared against the two v5 spellings outright rather than run through
+		# `_parse_flag`. v5's line was one fixed word, not a prefixed field in a
+		# sequence, and reading a closed format with the open format's parser is how
+		# a shape nobody ever wrote (`cb0 ` with a trailing space, say) becomes
+		# readable years after the writer that would have produced it is gone.
+		if text == OPTIONS_COLORBLIND_ON:
+			return {"colorblind_safe": true, "mute_sfx": false, "mute_music": false}
+		if text == OPTIONS_COLORBLIND_OFF:
+			return {"colorblind_safe": false, "mute_sfx": false, "mute_music": false}
+		return null
+	var fields: PackedStringArray = text.split(" ")
+	if fields.size() != OPTIONS_PREFIXES.size():
+		return null
+	var values: Array[bool] = []
+	for i: int in range(OPTIONS_PREFIXES.size()):
+		var flag: Variant = _parse_flag(fields[i], OPTIONS_PREFIXES[i])
+		if flag == null:
+			return null
+		values.append(bool(flag))
+	return {"colorblind_safe": values[0], "mute_sfx": values[1], "mute_music": values[2]}
+
+
+static func _flag_text(prefix: String, on: bool) -> String:
+	return "%s%d" % [prefix, 1 if on else 0]
+
+
 func _options_line() -> String:
-	return OPTIONS_COLORBLIND_ON if colorblind_safe else OPTIONS_COLORBLIND_OFF
+	return " ".join(PackedStringArray([
+		_flag_text(OPTIONS_COLORBLIND_PREFIX, colorblind_safe),
+		_flag_text(OPTIONS_MUTE_SFX_PREFIX, mute_sfx),
+		_flag_text(OPTIONS_MUTE_MUSIC_PREFIX, mute_music),
+	]))
 
 
 func _parse_failed(reason: String) -> Dictionary:
 	return {"ok": false, "campaign": 0, "endless": 0, "milestones": [],
-		"colorblind_safe": false, "bindings": {}, "version": 0, "reason": reason}
+		"colorblind_safe": false, "mute_sfx": false, "mute_music": false,
+		"bindings": {}, "version": 0, "reason": reason}
 
 
 ## Validates an entire save file and only then hands back its contents.
@@ -431,7 +589,8 @@ func _parse_save(path: String) -> Dictionary:
 		# which is where it already was — and the empty milestone set here is a
 		# reading rather than a fallback.
 		return {"ok": true, "campaign": 0, "endless": int(header), "milestones": [],
-			"colorblind_safe": false, "bindings": {}, "version": 1, "reason": "v1"}
+			"colorblind_safe": false, "mute_sfx": false, "mute_music": false,
+			"bindings": {}, "version": 1, "reason": "v1"}
 
 	var version_text: String = header.substr(1)
 	if not version_text.is_valid_int():
@@ -470,26 +629,38 @@ func _parse_save(path: String) -> Dictionary:
 	# version-2 file has none of them, which is the migration — every one falls
 	# back to its default exactly once, on the launch that rewrites the file
 	# forward, exactly as a version-1 file is handled.
+	#
+	# Gated on VERSION_WITH_EXTRAS, never on SAVE_VERSION: see that constant for
+	# what `version >= SAVE_VERSION` here would have cost a v5 save the moment
+	# SAVE_VERSION became 6.
 	var milestones: Array = []
-	if version >= SAVE_VERSION:
+	if version >= VERSION_WITH_EXTRAS:
 		var parsed_ids: Variant = _parse_milestones(f.get_line().strip_edges())
 		if parsed_ids == null:
 			return _parse_failed("its milestone line is not a milestone line")
 		milestones = parsed_ids as Array
 
 	var colorblind: bool = false
-	if version >= SAVE_VERSION:
-		var parsed_options: Variant = _parse_options(f.get_line().strip_edges())
+	var muted_sfx: bool = false
+	var muted_music: bool = false
+	if version >= VERSION_WITH_EXTRAS:
+		# The one line whose SHAPE differs between two readable versions, so the
+		# version goes in rather than being compared against here — a v5 line has one
+		# field, a v6 line has three, and the parser is told which it is looking at.
+		var parsed_options: Variant = _parse_options(f.get_line().strip_edges(), version)
 		if parsed_options == null:
 			return _parse_failed("its options line is not an options line")
-		colorblind = bool(parsed_options)
+		var options := parsed_options as Dictionary
+		colorblind = bool(options["colorblind_safe"])
+		muted_sfx = bool(options["mute_sfx"])
+		muted_music = bool(options["mute_music"])
 
 	# The count is what makes a truncation here detectable at all — without it, a
 	# file cut after the options line is indistinguishable from a player who never
 	# opened the Keys screen, and the rebindings vanish with no error. Same
 	# reasoning as the empty-score case above, three fields along.
 	var bindings: Dictionary = {}
-	if version >= SAVE_VERSION:
+	if version >= VERSION_WITH_EXTRAS:
 		var count_text: String = f.get_line().strip_edges()
 		if not count_text.is_valid_int():
 			return _parse_failed("its key-binding count %s is not a number" % [count_text])
@@ -522,6 +693,8 @@ func _parse_save(path: String) -> Dictionary:
 		"endless": int(endless_text),
 		"milestones": milestones,
 		"colorblind_safe": colorblind,
+		"mute_sfx": muted_sfx,
+		"mute_music": muted_music,
 		"version": version,
 		"bindings": bindings,
 		"reason": "v%d" % version,
@@ -569,6 +742,10 @@ func _load() -> void:
 	for id: String in (parsed["milestones"] as Array):
 		earned_milestones[id] = true
 	colorblind_safe = bool(parsed["colorblind_safe"])
+	# Data only, like `key_bindings` above it: nothing here touches Sfx or Music.
+	# `apply_audio_mutes()` is the one place that does, and `_ready` calls it.
+	mute_sfx = bool(parsed["mute_sfx"])
+	mute_music = bool(parsed["mute_music"])
 	if recovered:
 		load_status = "recovered"
 		_save()

@@ -893,6 +893,12 @@ func pause_run() -> void:
 ## first would let the board come back to life while its own pause card is
 ## still dissolving on top of it.
 func resume_run() -> void:
+	# Before the fade, not after: the Options screen over the pause card can flip
+	# the colourblind ramp, and the board behind the card is still drawn on the
+	# palette it had when the run was held. Repainting here means the bars are
+	# already right in the frames the card is dissolving over. Cheap and idempotent
+	# on the common path where nothing changed — see repaint_for_palette.
+	repaint_for_palette()
 	if _pause_screen != null and is_instance_valid(_pause_screen):
 		await _pause_screen.play_exit()
 	get_tree().paused = false
@@ -1303,15 +1309,20 @@ func _unhandled_input(event: InputEvent) -> void:
 	# a single flag -- Music read Sfx.is_muted() directly -- so a run had
 	# exactly one volume and it silenced both at once. See Music._muted's own
 	# doc comment for the split.
+	#
+	# Through RunConfig rather than straight at Sfx/Music, so a mute set from the
+	# keyboard mid-run is the same act as one set on the Options screen and is
+	# written to the save either way. Calling the static setters here left the
+	# player's choice alive exactly as long as the process (plant-tower-defense-v6c).
 	if event.is_action_pressed(KeyBindings.ACTION_MUTE_SFX):
 		# The key named in the message is read back out of the InputMap, not typed
 		# here. "Press M to bring them back" printed at a player who had rebound
 		# the verb to F2 is worse than saying nothing at all.
-		hud.show_message(mute_message("Sound effects", Sfx.toggle_muted(),
+		hud.show_message(mute_message("Sound effects", RunConfig.toggle_mute_sfx(),
 			KeyBindings.ACTION_MUTE_SFX, "them"), 2.5)
 		return
 	if event.is_action_pressed(KeyBindings.ACTION_MUTE_MUSIC):
-		hud.show_message(mute_message("Music", Music.toggle_muted(),
+		hud.show_message(mute_message("Music", RunConfig.toggle_mute_music(),
 			KeyBindings.ACTION_MUTE_MUSIC), 2.5)
 		return
 	# Swaps the health fill and the threat readout onto GardenTheme's blue/orange
@@ -1329,12 +1340,26 @@ func _unhandled_input(event: InputEvent) -> void:
 		var safe: bool = RunConfig.toggle_colorblind_safe()
 		hud.show_message(
 			"Colourblind-safe bars on." if safe else "Colourblind-safe bars off.", 2.5)
-		_refresh()
-		# The third bar. _refresh() repaints the HUD's two; the in-world one is
-		# drawn from take_damage()/_regrow(), so a chewed plant nobody is currently
-		# eating would keep the old ramp until something bit it again.
-		for plant: Plant in _plants.values():
-			plant.repaint_health_bar()
+		repaint_for_palette()
+
+
+## Every bar the colourblind ramp reaches, repainted now rather than at whatever
+## the next state change happens to be.
+##
+## Three bars, and only two of them are the HUD's. `_refresh()` covers those; the
+## in-world plant bar is drawn from take_damage()/_regrow(), so a chewed plant
+## nobody is currently eating would keep the old ramp until something bit it again.
+##
+## A method rather than five lines inside the C-key handler because the keystroke
+## is no longer the only thing that can flip the switch mid-run: the Options screen
+## over the pause card can too, and `resume_run` calls this on the way out for that
+## reason. A player who opens Options mid-run to turn the accessibility bars on is
+## doing it because they cannot read the current ones — "it takes effect at the
+## next wave" is not an answer to that.
+func repaint_for_palette() -> void:
+	_refresh()
+	for plant: Plant in _plants.values():
+		plant.repaint_health_bar()
 
 
 func _update_cursor(screen_pos: Vector2) -> void:

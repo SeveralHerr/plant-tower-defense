@@ -38,11 +38,17 @@ signal notebook_requested
 ## Same arrangement for the Keys screen: a reader-and-editor over this card, not a
 ## change to the run, so Game would only hand it straight back.
 signal keys_requested
+## And the Options screen, the third of the same kind. The switches it flips are
+## owned by RunConfig, Sfx and Music, none of which this card or Game has to know
+## about -- so this signal is answered here too.
+signal options_requested
 
 ## The Designer's Notebook, while it covers this card. Null the rest of the time.
 var _notebook: NotebookScreen = null
 ## The Keys screen, while it covers this card. Null the rest of the time.
 var _keys_screen: KeyBindingScreen = null
+## The Options screen, while it covers this card. Null the rest of the time.
+var _options_screen: OptionsScreen = null
 ## Every button on the card, so the whole row block can be made inert under an
 ## overlay without naming them one at a time. Filled by _build_buttons().
 var _buttons: Array[Button] = []
@@ -171,11 +177,55 @@ static func key_row_count() -> int:
 
 
 ## Top of the key list, in card-local coordinates.
+##
+## Counted in ROWS, not in buttons: Keys and Options share one (see BUTTONS), and
+## `BUTTONS.size()` here would size the card for a row that is not drawn and push
+## the legend into the paper below it.
 static func key_list_offset() -> float:
 	return (FIRST_BUTTON_OFFSET
-		+ float(BUTTONS.size()) * BUTTON_SIZE.y
-		+ float(BUTTONS.size() - 1) * BUTTON_GAP
+		+ float(button_row_count()) * BUTTON_SIZE.y
+		+ float(button_row_count() - 1) * BUTTON_GAP
 		+ KEY_LIST_GAP)
+
+
+## How many ROWS the button block occupies. Every entry in BUTTONS is a row except
+## the ones marked `share_row`, which sit beside the entry above them.
+static func button_row_count() -> int:
+	var rows: int = 0
+	for spec: Dictionary in BUTTONS:
+		if not bool(spec.get("share_row", false)):
+			rows += 1
+	return rows
+
+
+## Where each button in BUTTONS goes, in viewport coordinates and in table order.
+##
+## Static and separate from `_build_buttons` so the geometry is assertable without
+## a paused game, and so the height the card sizes itself to and the boxes the
+## buttons are actually given come from the same arithmetic rather than from two
+## copies of it.
+##
+## A `share_row` entry does two things: it takes the right half of the row above,
+## and it SHRINKS the button already there to the left half. Written that way round
+## because the alternative is a lookahead in the loop that places the first one,
+## and a pair whose left half was sized before its partner was known is exactly how
+## two buttons end up overlapping by BUTTON_PAIR_GAP.
+static func button_rects() -> Array[Rect2]:
+	var out: Array[Rect2] = []
+	var card: Rect2 = card_rect()
+	var left: float = card.position.x + (card.size.x - BUTTON_SIZE.x) / 2.0
+	var half: float = (BUTTON_SIZE.x - BUTTON_PAIR_GAP) / 2.0
+	var y: float = card.position.y + FIRST_BUTTON_OFFSET
+	for i: int in range(BUTTONS.size()):
+		if i > 0 and bool(BUTTONS[i].get("share_row", false)):
+			var partner: Rect2 = out[i - 1]
+			out[i - 1] = Rect2(partner.position, Vector2(half, BUTTON_SIZE.y))
+			out.append(Rect2(Vector2(left + half + BUTTON_PAIR_GAP, partner.position.y),
+				Vector2(half, BUTTON_SIZE.y)))
+			continue
+		out.append(Rect2(Vector2(left, y), BUTTON_SIZE))
+		y += BUTTON_SIZE.y + BUTTON_GAP
+	return out
 const BACKDROP_ALPHA: float = 0.55
 const BUTTON_SIZE := Vector2(248.0, 44.0)
 ## Offset from the card's own top, not an absolute viewport y. It was written as
@@ -186,6 +236,8 @@ const BUTTON_SIZE := Vector2(248.0, 44.0)
 ## gates do. Relative means moving the card can never separate them again.
 const FIRST_BUTTON_OFFSET: float = 116.0
 const BUTTON_GAP: float = 12.0
+## Horizontal gap between the two halves of a shared row. See BUTTONS.
+const BUTTON_PAIR_GAP: float = 8.0
 
 ## Node names are a contract: the devtools bridge presses these by path.
 ##
@@ -200,10 +252,24 @@ const BUTTON_GAP: float = 12.0
 ## that moves one. Its label is the screen's own heading, same rule as the
 ## notebook's. It was reachable only from the title screen, which meant the player
 ## who had just pressed the wrong key mid-run had to abandon the run to move it.
+##
+## OptionsButton sits BESIDE Keys, sharing its row, and still above the two doors
+## that throw the run away. The moment a player most wants the colourblind bars is
+## the moment they cannot read the ones on screen, and that moment is mid-run -- so
+## a screen reachable only from the title was reachable only by abandoning the run
+## first, the same argument that gave Keys its second door.
+##
+## It shares rather than adding a sixth row because the card had run out of height
+## to give. Six full-width rows made it 614 tall in a 648 viewport: it still FIT,
+## but card_top() hit its CARD_MIN_TOP floor, so the card stopped being centred and
+## the next thing added to it would have hung off the bottom. Two half-width
+## buttons in one row is also the truer shape -- these two are the same kind of
+## thing, a door onto a screen, and neither ends the run.
 const BUTTONS: Array[Dictionary] = [
 	{"name": "ResumeButton", "text": "Back to the garden", "signal": "resume_requested"},
 	{"name": "NotebookButton", "text": "Designer's Notebook", "signal": "notebook_requested"},
 	{"name": "KeysButton", "text": "Keys", "signal": "keys_requested"},
+	{"name": "OptionsButton", "text": "Options", "signal": "options_requested", "share_row": true},
 	{"name": "RestartButton", "text": "Start over", "signal": "restart_requested"},
 	{"name": "GateButton", "text": "Back to the gate", "signal": "gate_requested"},
 ]
@@ -277,27 +343,31 @@ func _ready() -> void:
 	# hand it straight back.
 	notebook_requested.connect(_open_notebook)
 	keys_requested.connect(_open_keys)
+	options_requested.connect(_open_options)
 
 	if GardenTheme.animations_enabled():
 		_play_entrance()
 
 
 func _build_buttons() -> void:
-	var y: float = card_rect().position.y + FIRST_BUTTON_OFFSET
+	# Placed from button_rects(), not from a second run of the same arithmetic: the
+	# card's own height is derived from that function's row count, and two copies of
+	# the layout is how a button ends up on a card sized for a different one.
+	var rects: Array[Rect2] = button_rects()
 	var first: Button = null
-	for spec: Dictionary in BUTTONS:
+	for i: int in range(BUTTONS.size()):
+		var spec: Dictionary = BUTTONS[i]
 		var button := Button.new()
 		button.name = String(spec["name"])
 		button.text = String(spec["text"])
-		button.position = Vector2(card_rect().position.x + (card_rect().size.x - BUTTON_SIZE.x) / 2.0, y)
-		button.size = BUTTON_SIZE
+		button.position = rects[i].position
+		button.size = rects[i].size
 		var which: String = String(spec["signal"])
 		button.pressed.connect(func() -> void: emit_signal(which))
 		add_child(button)
 		_buttons.append(button)
 		if first == null:
 			first = button
-		y += BUTTON_SIZE.y + BUTTON_GAP
 	if first != null:
 		first.grab_focus()
 
@@ -388,8 +458,9 @@ func _input(event: InputEvent) -> void:
 	# let it through to unpause the run it is sitting on top of.
 	#
 	# The guard only works because _close_notebook is deferred; see _open_notebook.
-	# It asks about EITHER overlay: the keys screen is the second one, it answers
-	# Escape the same way, and it does not look at P at all either.
+	# It asks about ANY overlay: the keys screen and the options screen are the
+	# second and third, both answer Escape the same way, and neither looks at P at
+	# all either.
 	if overlay_open():
 		return
 	# Both shapes a verb can arrive in — see Game._unhandled_input for why the
@@ -420,12 +491,17 @@ func keys_open() -> bool:
 	return _keys_screen != null and is_instance_valid(_keys_screen)
 
 
-## True while EITHER overlay covers this card. One shared guard rather than two,
-## matching TitleScreen.overlay_open for the same reason: two independent "is mine
-## open" checks would happily stack the keys screen on the notebook, leaving the
-## notebook underneath still eating Escape.
+## True while the options screen covers this card.
+func options_open() -> bool:
+	return _options_screen != null and is_instance_valid(_options_screen)
+
+
+## True while ANY overlay covers this card. One shared guard rather than three,
+## matching TitleScreen.overlay_open for the same reason: three independent "is
+## mine open" checks would happily stack the options screen on the keys screen,
+## leaving the one underneath still eating Escape.
 func overlay_open() -> bool:
-	return notebook_open() or keys_open()
+	return notebook_open() or keys_open() or options_open()
 
 
 ## The Designer's Notebook, over the pause card.
@@ -520,6 +596,45 @@ func _close_keys() -> void:
 		button.grab_focus()
 
 
+## The Options screen, over the pause card. The third door of the same shape, and
+## the one whose absence hurt most: the switch a player reaches for mid-run is the
+## colourblind ramp, and wanting it is caused by not being able to read the board
+## they are currently playing on.
+##
+## Built through OptionsScreen.build() for the reason KeyBindingScreen.build()
+## exists -- the title menu opens the same overlay, and two hand-rolled
+## constructions is how one of them ends up without PROCESS_MODE_ALWAYS and freezes
+## under the pause it is sitting on.
+##
+## CONNECT_DEFERRED, exactly as _open_keys and _open_notebook use it, and it is not
+## optional: OptionsScreen emits back_requested from inside its own _input, so a
+## direct connection would null `_options_screen` DURING the very Escape the guard
+## in _input has to refuse -- this card would look, see nothing in the way, and
+## resume the run out from under the screen the player just closed.
+func _open_options() -> void:
+	if overlay_open():
+		return
+	_options_screen = OptionsScreen.build()
+	_options_screen.back_requested.connect(_close_options, CONNECT_DEFERRED)
+	add_child(_options_screen)
+	_set_card_active(false)
+
+
+## Back to the card, with the run still held. The legend is redrawn for the same
+## reason _close_keys redraws it: this screen shows the key beside each switch, and
+## while it cannot move one, it sits over a card whose rows are built once and the
+## cheap redraw is what keeps that from being a fact anyone has to remember.
+func _close_options() -> void:
+	if options_open():
+		_options_screen.queue_free()
+	_options_screen = null
+	_refresh_key_list()
+	_set_card_active(true)
+	var button: Button = get_node_or_null("OptionsButton") as Button
+	if button != null:
+		button.grab_focus()
+
+
 ## Re-reads the legend from Game rather than from anything this screen kept. The
 ## row COUNT cannot change at runtime -- it is KeyBindings' run-scope table, which
 ## is a const -- so this rewrites the labels in place rather than re-laying out a
@@ -540,7 +655,7 @@ static func _key_row_text(row: Dictionary) -> String:
 	return "%s   %s" % [String(row["keys"]), String(row["does"])]
 
 
-## Nothing under the notebook may still be live.
+## Nothing under an overlay may still be live.
 ##
 ## The overlay's Backdrop is a MOUSE_FILTER_STOP ColorRect, so these buttons
 ## cannot be *pressed* through it -- but focus is a separate channel, and Tab or

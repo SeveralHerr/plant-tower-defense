@@ -27,20 +27,45 @@ extends OverlayScreen
 ## match that one to the letter; the copy is now a shared base rather than a
 ## second transcription.
 ##
-## ## What persists and what does not
+## ## What persists
 ##
-## Only the colourblind flag survives a restart, because only it is in the save
-## (RunConfig.compose_save writes one options line, `cb0`/`cb1`). The two mute
-## flags are Sfx._muted / Music._muted, which are static and live exactly as long
-## as the process does — this screen does not change that either way, it gives
-## them the same lifetime they already had from their keystrokes. Extending the
-## save is a deliberate act on a format that is at v5 and has been collided on
-## twice; it is filed rather than smuggled in beside a UI change.
+## All three, now. This screen shipped with only the colourblind flag in the save,
+## which is exactly the inconsistency putting three switches in one list makes
+## visible to a player: two of the rows reset on every launch and the third did
+## not, with nothing on screen saying which was which. The save format was at v5
+## and had been collided on twice, so extending it was filed rather than smuggled
+## in beside a UI change (plant-tower-defense-v6c); v6 widens the options line to
+## `cb0 sfx0 mus0` and RunConfig.set_mute_sfx / set_mute_music are what this screen
+## calls. See RunConfig.SAVE_VERSION for the format and its history.
 ##
 ## Node paths are a contract — `Backdrop`, `BackButton`, `Note` and
 ## `Row%d` / `RowKey%d` / `RowButton%d` are asserted by test_selftest.gd and
 ## pressable from the devtools bridge. The row names deliberately match
 ## KeyBindingScreen's, so one bridge recipe drives either screen.
+
+## The node name both doors give it. A path the bridge and test_selftest.gd press
+## by name, so it is a contract and not a local choice. Same arrangement as
+## KeyBindingScreen.NODE_NAME.
+const NODE_NAME := "OptionsScreen"
+
+
+## The one place this screen is constructed. TitleScreen and PauseScreen both open
+## it, and building it twice by hand is how one of the two ends up with a different
+## name or a different process mode — which is exactly the drift KeyBindingScreen
+## grew `build()` to stop when it got its second door.
+##
+## PROCESS_MODE_ALWAYS is set outright rather than left to inherit. The pause card
+## holds the tree still, and an overlay frozen by the pause that owns it has dead
+## buttons, a Back that does nothing and no way out of it. Inheriting would resolve
+## to ALWAYS today, because the card is ALWAYS — but that is a fact about who the
+## parent happens to be, and it inverts silently the day this is reparented. It
+## costs nothing on the title screen, which is never paused, and it is a stated
+## property a test can read instead of an inherited one it must infer.
+static func build() -> OptionsScreen:
+	var screen := OptionsScreen.new()
+	screen.name = NODE_NAME
+	screen.process_mode = Node.PROCESS_MODE_ALWAYS
+	return screen
 
 ## The switches, in the order they are drawn. A table rather than three
 ## hand-placed rows for the same reason KeyBindings.ACTIONS is one: the row list,
@@ -97,7 +122,12 @@ const BUTTON_X: float = 518.0
 
 const ON_TEXT := "On"
 const OFF_TEXT := "Off"
-const NOTE_TEXT := "These stay set while you play. The key beside each one still works."
+## Says "remembered" rather than "stay set while you play", which is what it said
+## while two of the three switches died with the process. All three are in the save
+## now (RunConfig's options line), so the sentence a player reads and the thing the
+## file does finally agree — and the note is the only place on this screen that
+## makes a promise about lifetime at all.
+const NOTE_TEXT := "These are remembered next time you play. The key beside each one still works."
 
 var _rows: Array[StringName] = []
 var _key_labels: Array[Label] = []
@@ -135,17 +165,22 @@ static func is_on(id: StringName) -> bool:
 
 
 ## Sets a switch through its owner's own setter, never by assigning the flag.
-## That matters for all three: RunConfig.set_colorblind_safe persists, and
-## Music.set_muted has to bring the bed back rather than merely stop gating it
-## (see its doc comment). Returns the state afterwards.
+## That matters for all three: every one of them persists, and each setter does
+## something past the flag — Music.set_muted has to bring the bed back rather than
+## merely stop gating it (see its doc comment), and Sfx.set_muted stops the voices
+## already sounding. Returns the state afterwards.
+##
+## All three go through RunConfig now. The two mutes used to call Sfx/Music
+## directly, which set the flag the player hears without touching the one the save
+## records — see RunConfig.mute_sfx, which owns that pairing and writes both.
 static func set_on(id: StringName, enabled: bool) -> bool:
 	match id:
 		COLORBLIND:
 			RunConfig.set_colorblind_safe(enabled)
 		MUTE_SFX:
-			Sfx.set_muted(not enabled)
+			RunConfig.set_mute_sfx(not enabled)
 		MUTE_MUSIC:
-			Music.set_muted(not enabled)
+			RunConfig.set_mute_music(not enabled)
 	return is_on(id)
 
 
