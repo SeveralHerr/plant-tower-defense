@@ -1,6 +1,6 @@
 # todo
 
-**Cycle 4 of 30.** Bump this each time you refill the Items list. See the Workflow
+**Cycle 5 of 30.** Bump this each time you refill the Items list. See the Workflow
 loop at the top of `CLAUDE.md` — when this list is done, refill it and start again.
 
 ## The brief (original)
@@ -24,16 +24,11 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 
 ## Items
 
-- [ ] Common seed packets silently become rare ones once Chomp unlocks — a
-      20-seed packet can hand out the tier-2 Sunflower and both tooltips lie
-      (`plant-tower-defense-ha6`)
-- [ ] The message line has one slot, so cues stomp each other — the uproot
-      instruction dies to an incidental husk pickup (`plant-tower-defense-9q8`)
-- [ ] Nothing counts down the 18 seconds to the next wave — the threat tint says
-      how bad it will be, nothing says when (`plant-tower-defense-uk6`)
-- [ ] A mutated pest is a tint, and the two that change the rules — winged and
-      hungry — are unnamed (`plant-tower-defense-5tu`)
-- [ ] A Corn Cobbler at full bunch looks exactly like a fresh one, so the most
-      expensive decision in the game is invisible (`plant-tower-defense-nll`)
+- [ ] The common packet button stays lit once its tier is exhausted — every
+      click is now a refusal message (`plant-tower-defense-vo9`)
+- [ ] The game makes no sound at all — four cues shipped in two cycles and not
+      one of them makes a noise (`plant-tower-defense-988`)
+- [ ] The HUD is the only part of the game that never moves — every other node
+      tweens, the HUD snaps (`plant-tower-defense-9xm`)
 - [ ] Add cool new features or concrete improvements (UX, game juice,
       animations, enhancements, or full features) to `kanban.md`

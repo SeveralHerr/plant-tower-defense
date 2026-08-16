@@ -1402,3 +1402,32 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     the two numbers separately — "reached 2/2 of the files this run named, 0/2 of
     the rest of the dirty tree" — instead of collapsing them into one verdict that
     is wrong in both directions depending on commit timing.
+
+## 2026-08-15 — Mutation cues, muzzle fan, and the 0.23.0 refresh (5tu, nll)
+
+- Value: **warranted** — both features are drawn *behind* their own sprite, and
+  whether that leaves them visible is a question no headless assertion can reach.
+  - Expected: Node2D paints its own canvas item before its children, so both the
+    mutation markers and the muzzle fan land behind the sprite. Runtime should
+    reveal whether they actually protrude past the silhouette or are simply hidden
+    under it — a fan or a wing drawn entirely under a 64px sprite is invisible and
+    the tests would still pass.
+  - Got: the corn cell's grass dominance fell from `#31c56b (64%)` to
+    `(60%)` across the two upgrades — about 164 more non-grass pixels, matching
+    four extra pips at ~40px² each — while `muzzle_pip_positions()` went from
+    `[(20.0, 0.0)]` to five points spanning ±14.9px. Two aphids in identical 64x64
+    cells read `(87%)` grass plain against `(76%)` winged: the wings occupy ~450
+    more pixels, so they genuinely clear the silhouette.
+  - Found: nothing in these two. The defects this iteration surfaced were caught
+    by tests earlier — see the previous entry.
+  - Cheaper: nothing. The pixel share of a cell is the only measurement that
+    answers "is the thing behind the sprite actually visible", and both features
+    are drawn rather than positioned, so node-bounds says nothing about them.
+
+- Gap: **no gaps this turn.** 0.23.0 landed clean — every installed file was
+  pristine so nothing was backed up, all four project-owned config keys were kept
+  and named rather than re-detected, and `find-nodes --class CornCobbler` now
+  resolves the script class_name that returned `0 node(s) matched` two iterations
+  ago (G-024, confirmed fixed). `list-commands` printing arg keys
+  (`spawn_pest  args: species, mutation, count`) removed the guesswork that
+  previously cost a round trip per verb.
