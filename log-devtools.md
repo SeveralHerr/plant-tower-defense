@@ -2434,3 +2434,78 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   `WmiPrvSE` process).
 
 - Harness: **0.24.0**.
+
+
+## 2026-08-16 — Three HUD/results-screen feature beads: 9ti (win/loss entrance), d2a (wave-cleared cue), 7mi (prep bar pulse)
+
+- Value: **warranted** — the live game was the only way to see the two new
+  Tweens (RunSummary's TRANS_BACK win rise, the prep bar's looping pulse)
+  actually settle to the right resting state and actually oscillate, which
+  headless (no frames pumped, `animations_enabled() == false`) structurally
+  cannot show.
+  - Expected: the win/loss RunSummary entrance would land both branches back
+    at the same rest position (y=124) despite different offsets/durations;
+    the wave-cleared banner would show "Wave N cleared" / "N pests turned
+    back." at the same weight as the wave-started banner; the prep bar's
+    modulate.a would oscillate once `_prep_left` crossed 2.0s.
+  - Got: `node-bounds` on Heading read `128, 124, 640x47` after both the loss
+    run (game_over via a bled-out defense) and a forced win
+    (`set-state victory true` + `run-method _end_run`) -- same rest position,
+    confirmed by screenshot for both. The wave-cleared banner read
+    `text: "Wave 1 cleared"` / `"5 pests turned back."`, `visible: true`,
+    alongside the still-live status-row sentence, via screenshot. The prep
+    bar's modulate.a sampled at 0.998, 0.839, 0.457, 0.514, 0.713, 0.989,
+    0.964, 0.831 across 8 polls -- genuinely oscillating, not stuck.
+  - Found: nothing broken, but the exercise located a real gap in the OWN
+    reasoning process, not the game -- see the two Gaps below.
+  - Cheaper: nothing; this is exactly the class of check (Tween lands where
+    the code says, over enough real frames) headless cannot answer and the
+    unit tests (correctly) do not try to.
+
+- Gap: **the orchestrator-suggested `launch -- --devtools-session X` form
+  silently does not wire the session to the game.** Ran exactly
+  `python tools/devtools.py launch -- --devtools-session hudwork`; the
+  process launched, `ping --session hudwork` never got picked up (`game not
+  running` after the 2s grace). Root cause, read from `cmd_launch` in
+  `tools/devtools.py`: passthrough args after a bare `--` are appended
+  directly to the engine command line (`cmd += passthrough`) with **no**
+  Godot-side `--` inserted first, so `--devtools-session hudwork` never
+  reaches `OS.get_cmdline_user_args()` (which the addon reads at
+  `dev_tools.gd:405`) -- only `--isolated` or the top-level `--session`
+  flag correctly append `["--"] + user_args`. This project's own
+  AGENTS.md/CLAUDE.md never actually recommends the broken form (it only
+  shows `launch` and `launch --isolated`), so the instruction came from
+  outside this repo -- but the failure mode (a launch that "succeeds" and a
+  ping that then reads as a dead game, indistinguishable from a crash) is
+  exactly the kind of silent-wrong-mode this project's other G-entries keep
+  naming. Recovered by using `launch --isolated`, which the tool already
+  builds correctly.
+  - [G-042] status: open | seen: 1 | harness: 0.25.0
+  - Improvement: either have `cmd_launch` insert Godot's own `--` before ANY
+    passthrough token that starts with `--devtools-` (so the natural-looking
+    form works), or have `launch` print a one-line warning when passthrough
+    args contain `--devtools-session`/`--devtools-busdir` without a
+    preceding bare `--` reaching the engine, naming `--isolated`/`--session`
+    as the forms that actually wire it.
+
+- Gap: **CLAUDE.md/AGENTS.md's own words for `--isolated` promise something
+  `GODOT_USERDATA` cannot deliver.** The line read this session: "`user://`
+  ... stays shared unless you also set `GODOT_USERDATA`" -- phrased as if
+  setting it isolates `user://`. `addons/godot_selftest/dev_tools.gd:41`
+  says the opposite in its own comment: "Godot has no command line switch
+  for `user://` and honours no `GODOT_USERDATA`". Checked directly this
+  session: `godot --help` on this project's 4.7.1 build has no
+  `--user-data-dir`/`--userdata` engine flag at all, so there is no
+  mechanism by which setting the env var could change where the actual
+  Godot process's `user://` resolves -- confirmed by the sequence in this
+  session (`GODOT_USERDATA=/tmp/... launch` still wrote its owner file etc.
+  to the default `%APPDATA%/Godot/app_userdata/plant-tower-defense/`, not
+  the temp dir). The sentence in CLAUDE.md is the one a reader acts on; the
+  comment naming the true limit is three files away in the addon.
+  - [G-043] status: open | seen: 1 | harness: 0.25.0
+  - Improvement: reword the harness-generated CLAUDE.md/AGENTS.md line to
+    stop implying `GODOT_USERDATA` isolates `user://` -- e.g. "`user://` ...
+    stays shared; there is no supported way to isolate it (Godot has no
+    `--user-data-dir` flag), so saves/screenshots/baselines from parallel
+    `--isolated` instances can still collide" -- so a multi-agent
+    orchestrator stops handing out an instruction that cannot work.

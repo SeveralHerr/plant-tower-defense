@@ -33,6 +33,9 @@ const PEST_ESCAPED := &"pest_escaped"
 const HUSK_COLLECTED := &"husk_collected"
 const HUSK_ROTTED := &"husk_rotted"
 const WAVE_STARTED := &"wave_started"
+## A wave surviving rather than a wave arriving -- see WAVE_STARTED's own SOUNDS
+## comment for why it does not simply reuse that bell (plant-tower-defense-d2a).
+const WAVE_CLEARED := &"wave_cleared"
 const UPROOT_ARMED := &"uproot_armed"
 const RUN_WON := &"run_won"
 const RUN_LOST := &"run_lost"
@@ -63,6 +66,11 @@ const SOUNDS: Dictionary = {
 	HUSK_COLLECTED: "res://assets/audio/handleCoins.ogg",
 	HUSK_ROTTED: "res://assets/audio/minimize_006.ogg",
 	WAVE_STARTED: "res://assets/audio/impactBell_heavy_002.ogg",
+	# Reuses RUN_WON's jingle rather than vendoring a fourth file: a wave
+	# cleared is a small version of the same beat a run won is, so it wears the
+	# same instrument, trimmed quieter (see VOLUME_DB) so the real win still
+	# lands as the loudest cheer in the game (plant-tower-defense-d2a).
+	WAVE_CLEARED: "res://assets/audio/jingles-pizzicato_00.ogg",
 	UPROOT_ARMED: "res://assets/audio/question_002.ogg",
 	RUN_WON: "res://assets/audio/jingles-pizzicato_00.ogg",
 	RUN_LOST: "res://assets/audio/bong_001.ogg",
@@ -89,6 +97,10 @@ const VOLUME_DB: Dictionary = {
 	PEST_KILLED: -3.0,
 	RUN_WON: -4.0,
 	RUN_LOST: -4.0,
+	# Under RUN_WON's own -4.0, not level with it: this is the same jingle, so
+	# the run-won trim alone would leave the two indistinguishable by ear and
+	# the wave-to-wave cue as loud as the once-a-run one.
+	WAVE_CLEARED: -9.0,
 }
 
 ## Shortest gap between two plays of the SAME event, in milliseconds. Absent

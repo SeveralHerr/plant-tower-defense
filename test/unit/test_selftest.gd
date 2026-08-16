@@ -2690,6 +2690,45 @@ func test_the_prep_strip_drains_and_hides_itself_once_a_wave_is_live() -> String
 	return err
 
 
+## The final seconds got no nudge at all (plant-tower-defense-7mi): the strip
+## shrank at the same calm rate for all 18 seconds. A player who has stopped
+## watching it most needs the last two to say so.
+func test_the_prep_strip_pulses_in_its_final_seconds() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var bar: ColorRect = game.hud.get_node_or_null("Root/TopBar/PrepBar") as ColorRect
+	game._prep_left = Game.PREP_SECONDS
+	game._wave_live = false
+	game._refresh()
+	await _pump(game)
+	var err: String = _T.assert_true(bar.modulate.is_equal_approx(Color.WHITE),
+		"plenty of time left, so the strip is not pulsing yet")
+	if err == "":
+		err = _T.assert_false(game.hud._prep_bar_urgent, "and the urgency flag agrees")
+	if err == "":
+		# Past PREP_BAR_URGENT_SECONDS, not merely close to it -- the crossing is
+		# what starts the pulse, per _set_prep_bar_urgent's edge-detect guard.
+		game._prep_left = Hud.PREP_BAR_URGENT_SECONDS * 0.5
+		game._refresh()
+		err = _T.assert_true(game.hud._prep_bar_urgent, "urgency flips on inside the last stretch")
+	if err == "":
+		# Headless: GardenTheme.animations_enabled() is false, so no Tween ever
+		# runs and the strip must not be left stuck mid-fade -- the same
+		# contract every other gated tween in this file keeps.
+		err = _T.assert_true(bar.modulate.is_equal_approx(Color.WHITE),
+			"headless never pumps the pulse, so the strip is still fully opaque")
+	if err == "":
+		# Leaving the zone (a wave starting mid-pulse) must reset it rather than
+		# leave a dimmed strip behind for whatever shows next.
+		game._prep_left = Game.PREP_SECONDS
+		game._refresh()
+		err = _T.assert_false(game.hud._prep_bar_urgent, "stepping back out clears the flag")
+		if err == "":
+			err = _T.assert_true(bar.modulate.is_equal_approx(Color.WHITE),
+				"and leaves the strip at full opacity, not wherever the pulse left it")
+	_T.free_ui(game)
+	return err
+
+
 func test_the_prep_strip_wears_the_next_waves_threat_not_the_last_ones() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var bar: ColorRect = game.hud.get_node_or_null("Root/TopBar/PrepBar") as ColorRect
@@ -2854,14 +2893,16 @@ func test_the_threat_tint_still_lands_exactly_when_animation_is_off() -> String:
 	return err
 
 
-# -- The wave banner (plant-tower-defense-1ci) -------------------------------
+# -- The wave banner (plant-tower-defense-1ci, plant-tower-defense-d2a) ------
 #
 # The HUD's Banner had no callers at all once RunSummary replaced the
 # end-of-run banner: `show_banner`/`hide_banner` were dead, and the node was
 # built on every launch only ever to stay hidden. It was given the one job it is shaped
 # for -- announcing a wave -- instead of being deleted, and these are the
 # checks that keep it from drifting back to either failure mode: a surface
-# nobody calls, or a second dumping ground for status lines.
+# nobody calls, or a second dumping ground for status lines. d2a gave it a
+# second job of the same shape -- announcing that a wave was survived -- and
+# the checks below cover both by name.
 
 
 ## Both halves are built from runtime numbers into fixed-width boxes, and a
@@ -2896,8 +2937,14 @@ func test_the_wave_banner_fits_its_own_worst_case() -> String:
 			Hud.wave_note(9999, "tougher, faster and stranger"),
 			"the budgeted note is a string wave_note can actually build, not a comfortable fiction")
 	if err == "":
-		err = _T.assert_eq(String(Hud.BANNER_WORST_CASE_TEXT["Banner"]), Hud.wave_headline(9999),
-			"and so is the budgeted headline")
+		# Banner is shared with announce_wave_cleared now, and
+		# "Wave 9999 cleared" is the longer of the two events' headlines --
+		# see BANNER_WORST_CASE_TEXT's own comment for why that is the mark.
+		err = _T.assert_eq(String(Hud.BANNER_WORST_CASE_TEXT["Banner"]), Hud.wave_cleared_headline(9999),
+			"and so is the budgeted headline, against the longer of the two events it now carries")
+	if err == "":
+		err = _T.assert_gt(Hud.wave_cleared_headline(9999).length(), Hud.wave_headline(9999).length(),
+			"and it really is the longer of the two, not a tie this budget got lucky on")
 	_T.free_ui(game)
 	return err
 
@@ -2980,6 +3027,77 @@ func test_the_wave_banner_appears_on_announcement_and_clears_itself() -> String:
 	return err
 
 
+## The other event this surface now carries (plant-tower-defense-d2a). Same
+## shape as the wave-started check above, own text, own headline.
+func test_the_wave_cleared_banner_appears_on_announcement_and_clears_itself() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var banner: Label = game.hud.get_node_or_null("Root/Banner") as Label
+	var note: Label = game.hud.get_node_or_null("Root/BannerNote") as Label
+	var err: String = _T.assert_true(banner != null and note != null, "both banner rows exist")
+	if err == "":
+		err = _T.assert_false(banner.visible, "and nothing is announced at launch")
+	if err == "":
+		game.hud.announce_wave_cleared(7, 19)
+		err = _T.assert_true(banner.visible and note.visible, "announcing a cleared wave raises both rows")
+	if err == "":
+		err = _T.assert_eq(banner.text, "Wave 7 cleared",
+			"the headline names the wave and says it is over, not merely names it")
+	if err == "":
+		err = _T.assert_eq(note.text, "19 pests turned back.",
+			"and the note carries what the wave actually cost")
+	if err == "":
+		# Same hold-and-fade timer the wave-started banner uses -- comparable
+		# weight was the whole point, and a shorter hold here would quietly
+		# undercut it again.
+		game.hud._fade_banner(Hud.BANNER_HOLD_SECONDS - Hud.BANNER_FADE_SECONDS)
+		err = _T.assert_float_eq(banner.modulate.a, 1.0, 0.01,
+			"it is still fully opaque when the fade begins, not at %.2f" % banner.modulate.a)
+	if err == "":
+		game.hud._fade_banner(Hud.BANNER_FADE_SECONDS)
+		err = _T.assert_false(banner.visible or note.visible, "then it takes itself down like the other one")
+	_T.free_ui(game)
+	return err
+
+
+## Surviving a wave used to reach only `hud.show_message` -- a single 15px
+## status-row sentence, quieter than the wave it just outlasted, which fired a
+## banner and Sfx.WAVE_STARTED the instant it began. This is the fix, asserted
+## at the Game level rather than by calling the Hud method directly: it is the
+## wiring in _check_wave_cleared that plant-tower-defense-d2a is about, not
+## just the Hud method existing.
+func test_clearing_a_wave_gets_a_cue_as_loud_as_starting_one() -> String:
+	var game := await _T.instantiate_ui(GAME_SCENE, Vector2i(1152, 648)) as Game
+	var err: String = _T.assert_true(game.start_next_wave(), "wave 1 starts")
+	if err == "":
+		err = _T.assert_true(Sfx.should_play(Sfx.WAVE_CLEARED, false, false),
+			"the event this cue needs exists and is playable")
+	if err == "":
+		# Drive spawning to completion with large synthetic steps rather than
+		# real time -- the same shape
+		# test_a_started_wave_schedules_exactly_the_pests_the_table_promises
+		# already uses on the director directly.
+		var guard: int = 0
+		while game.director.is_spawning() and guard < 4000:
+			game.director._process(0.1)
+			guard += 1
+		err = _T.assert_false(game.director.is_spawning(), "wave 1 finished spawning")
+	if err == "":
+		# Every pest freed rather than killed still leaves the "pests" group,
+		# which is all _check_wave_cleared reads.
+		for pest: Node in game.get_tree().get_nodes_in_group("pests"):
+			pest.queue_free()
+		await _pump(game)
+		game._check_wave_cleared()
+		var banner: Label = game.hud.get_node_or_null("Root/Banner") as Label
+		err = _T.assert_true(banner != null and banner.visible,
+			"clearing the wave raised the same banner a wave-start would have")
+		if err == "":
+			err = _T.assert_eq(banner.text, Hud.wave_cleared_headline(1),
+				"naming the wave that was just held, not the one about to start")
+	_T.free_ui(game)
+	return err
+
+
 ## A run can end mid-hold. RunSummary's backdrop is deliberately translucent, so
 ## a leftover "Wave 12" would read straight through the post-mortem in 48px.
 func test_ending_a_run_takes_the_wave_banner_down() -> String:
@@ -3036,6 +3154,12 @@ func test_the_wave_banner_text_covers_both_escalation_branches() -> String:
 		# for every wave in the fixed table, which is most of a campaign run.
 		err = _T.assert_eq(WaveDirector.escalation_note(1), "",
 			"and wave 1 really does produce the empty note this branch exists for")
+	if err == "":
+		err = _T.assert_eq(Hud.wave_cleared_headline(1), "Wave 1 cleared",
+			"the cleared headline names the same wave, past tense")
+	if err == "":
+		err = _T.assert_eq(Hud.wave_cleared_note(5), "5 pests turned back.",
+			"and the cleared note carries what the wave actually cost")
 	return err
 
 

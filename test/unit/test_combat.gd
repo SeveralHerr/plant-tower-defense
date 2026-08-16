@@ -512,7 +512,7 @@ func test_every_event_id_the_call_sites_use_is_in_the_table() -> String:
 		Sfx.PLANT_PLACED, Sfx.PLANT_BITTEN, Sfx.PLANT_DESTROYED,
 		Sfx.PEST_KILLED, Sfx.PEST_ESCAPED,
 		Sfx.HUSK_COLLECTED, Sfx.HUSK_ROTTED,
-		Sfx.WAVE_STARTED, Sfx.UPROOT_ARMED,
+		Sfx.WAVE_STARTED, Sfx.WAVE_CLEARED, Sfx.UPROOT_ARMED,
 		Sfx.RUN_WON, Sfx.RUN_LOST, Sfx.PURCHASE_DENIED,
 		Sfx.PLANT_UPGRADED, Sfx.PLANT_UPROOTED,
 	]
@@ -1927,6 +1927,44 @@ func test_a_card_with_no_denominator_falls_back_to_the_bare_tally() -> String:
 	perfect.free()
 	partial.free()
 	empty.free()
+	return err
+
+
+## _build_heading already picks a different heading text and colour for
+## victory; the entrance must agree rather than rising every Control by the
+## same offset regardless of `won` (plant-tower-defense-9ti). `_play_entrance`
+## is called directly rather than through `_ready()`, the same way
+## `test_the_wave_banner_appears_on_announcement_and_clears_itself` reaches
+## `_fade_banner` directly -- headless never pumps the tween's frame, so the
+## position right after the call is the pre-tween offset, which is exactly
+## the number this test needs to tell the two branches apart.
+func test_the_entrance_rise_agrees_with_the_heading_about_won() -> String:
+	var win := RunSummary.build({"victory": true})
+	await _T.instantiate_ui(win, Vector2i(1152, 648))
+	var loss := RunSummary.build({"victory": false})
+	await _T.instantiate_ui(loss, Vector2i(1152, 648))
+
+	var win_heading: Label = win.get_node_or_null("Heading") as Label
+	var loss_heading: Label = loss.get_node_or_null("Heading") as Label
+	var err: String = _T.assert_true(win_heading != null and loss_heading != null,
+		"both cards built a heading")
+	if err == "":
+		var win_rest: float = win_heading.position.y
+		var loss_rest: float = loss_heading.position.y
+		win._play_entrance()
+		loss._play_entrance()
+		var win_offset: float = win_heading.position.y - win_rest
+		var loss_offset: float = loss_heading.position.y - loss_rest
+		err = _T.assert_float_eq(win_offset, RunSummary.RISE_OFFSET_WIN, 0.01,
+			"a win rises by its own offset, not the loss offset (%.1f)" % win_offset)
+		if err == "":
+			err = _T.assert_float_eq(loss_offset, RunSummary.RISE_OFFSET_LOSS, 0.01,
+				"and a loss rises by its own, distinct offset (%.1f)" % loss_offset)
+		if err == "":
+			err = _T.assert_true(not is_equal_approx(win_offset, loss_offset),
+				"win and loss must not have quietly ended up with the same motion")
+	_T.free_ui(win)
+	_T.free_ui(loss)
 	return err
 
 
