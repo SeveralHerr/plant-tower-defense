@@ -138,6 +138,18 @@ const THREAT_TINT_MAX: int = 12
 ## the same colour language answers "how bad" and "how long" at once.
 const PREP_BAR_HEIGHT: float = 4.0
 
+## Below this many seconds left, the strip stops only shrinking and starts
+## pulsing too (plant-tower-defense-7mi). PREP_SECONDS is roughly 18-20s of
+## calm shrink; the last two are the one stretch of the window where a player
+## who has stopped watching the strip most needs it to say so without being
+## read.
+const PREP_BAR_URGENT_SECONDS: float = 2.0
+## Half a pulse cycle -- bright to dim or back. Quick enough to read as urgency
+## rather than a slow breathing effect; two full cycles fit inside the last
+## two seconds it runs for.
+const PREP_BAR_PULSE_SECONDS: float = 0.24
+const PREP_BAR_PULSE_DIM: float = 0.45
+
 ## How far this wave's stopping depth has to move off the run's average before
 ## the prep line calls it a change rather than noise.
 ##
@@ -357,6 +369,13 @@ var _message_left: float = 0.0
 var _message_priority: int = MESSAGE_NORMAL
 var _message_queue: Array[Dictionary] = []
 var _prep_bar: ColorRect
+var _prep_bar_pulse: Tween = null
+## Edge-detected rather than re-read from `left` every call: refresh() runs
+## every frame while the strip is up, and starting a new kill-and-restart
+## tween each of those frames would never let one advance past its first
+## step -- the same reason _ease_threat_tint below gates on the target
+## actually changing instead of re-tweening to the same colour every call.
+var _prep_bar_urgent: bool = false
 var _threat_tween: Tween = null
 var _threat_tint_target: Color = PAPER
 
@@ -685,6 +704,7 @@ func _refresh_prep_bar(state: Dictionary) -> void:
 	var live: bool = bool(state.get("wave_live", false))
 	if live or total <= 0.0 or not bool(state.get("more_waves", false)):
 		_prep_bar.visible = false
+		_set_prep_bar_urgent(false)
 		return
 	var left: float = clampf(float(state.get("prep_left", 0.0)), 0.0, total)
 	_prep_bar.visible = true
@@ -692,6 +712,29 @@ func _refresh_prep_bar(state: Dictionary) -> void:
 	# The wave that is coming, not the one that just finished — the strip is a
 	# warning about the next thing, so it wears the next thing's colour.
 	_prep_bar.color = threat_color(int(state.get("next_threat_level", 1)))
+	# left > 0.0: at exactly 0 the strip is a frame from disappearing under
+	# `live` above, and starting a pulse nothing will see is wasted motion.
+	_set_prep_bar_urgent(left <= PREP_BAR_URGENT_SECONDS and left > 0.0)
+
+
+## Starts or stops the final-seconds pulse, once per crossing rather than once
+## per refresh() -- see _prep_bar_urgent's own comment for why that guard is
+## load-bearing here and not merely tidy.
+func _set_prep_bar_urgent(urgent: bool) -> void:
+	if urgent == _prep_bar_urgent:
+		return
+	_prep_bar_urgent = urgent
+	if _prep_bar_pulse != null and _prep_bar_pulse.is_valid():
+		_prep_bar_pulse.kill()
+	# Reset first, gate second: a run that leaves the urgent zone (or a
+	# headless run that never had a Tween) must not freeze the strip dim.
+	_prep_bar.modulate = Color.WHITE
+	if not urgent or not GardenTheme.animations_enabled():
+		return
+	_prep_bar_pulse = create_tween().set_loops()
+	_prep_bar_pulse.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_prep_bar_pulse.tween_property(_prep_bar, "modulate", Color(1, 1, 1, PREP_BAR_PULSE_DIM), PREP_BAR_PULSE_SECONDS)
+	_prep_bar_pulse.tween_property(_prep_bar, "modulate", Color.WHITE, PREP_BAR_PULSE_SECONDS)
 
 
 ## How the plant bar arranges `count` plants: one column while they still clear

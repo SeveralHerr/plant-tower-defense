@@ -2690,6 +2690,45 @@ func test_the_prep_strip_drains_and_hides_itself_once_a_wave_is_live() -> String
 	return err
 
 
+## The final seconds got no nudge at all (plant-tower-defense-7mi): the strip
+## shrank at the same calm rate for all 18 seconds. A player who has stopped
+## watching it most needs the last two to say so.
+func test_the_prep_strip_pulses_in_its_final_seconds() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var bar: ColorRect = game.hud.get_node_or_null("Root/TopBar/PrepBar") as ColorRect
+	game._prep_left = Game.PREP_SECONDS
+	game._wave_live = false
+	game._refresh()
+	await _pump(game)
+	var err: String = _T.assert_true(bar.modulate.is_equal_approx(Color.WHITE),
+		"plenty of time left, so the strip is not pulsing yet")
+	if err == "":
+		err = _T.assert_false(game.hud._prep_bar_urgent, "and the urgency flag agrees")
+	if err == "":
+		# Past PREP_BAR_URGENT_SECONDS, not merely close to it -- the crossing is
+		# what starts the pulse, per _set_prep_bar_urgent's edge-detect guard.
+		game._prep_left = Hud.PREP_BAR_URGENT_SECONDS * 0.5
+		game._refresh()
+		err = _T.assert_true(game.hud._prep_bar_urgent, "urgency flips on inside the last stretch")
+	if err == "":
+		# Headless: GardenTheme.animations_enabled() is false, so no Tween ever
+		# runs and the strip must not be left stuck mid-fade -- the same
+		# contract every other gated tween in this file keeps.
+		err = _T.assert_true(bar.modulate.is_equal_approx(Color.WHITE),
+			"headless never pumps the pulse, so the strip is still fully opaque")
+	if err == "":
+		# Leaving the zone (a wave starting mid-pulse) must reset it rather than
+		# leave a dimmed strip behind for whatever shows next.
+		game._prep_left = Game.PREP_SECONDS
+		game._refresh()
+		err = _T.assert_false(game.hud._prep_bar_urgent, "stepping back out clears the flag")
+		if err == "":
+			err = _T.assert_true(bar.modulate.is_equal_approx(Color.WHITE),
+				"and leaves the strip at full opacity, not wherever the pulse left it")
+	_T.free_ui(game)
+	return err
+
+
 func test_the_prep_strip_wears_the_next_waves_threat_not_the_last_ones() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var bar: ColorRect = game.hud.get_node_or_null("Root/TopBar/PrepBar") as ColorRect
