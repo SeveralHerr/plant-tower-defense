@@ -109,6 +109,10 @@ var plant_id: StringName = &""
 ## False for a cell that is road, off-board, occupied, or unaffordable. Only
 ## recolours; a blocked preview still draws, because "you cannot put it here"
 ## is the thing worth showing.
+##
+## Game sets it from Game.would_plant_at(), which is the same predicate
+## Game._click_at consults before it lets anything else have the click — so true
+## here is a promise that the click plants, not a hint that it might.
 var placeable: bool = true
 
 ## The cell is legal, but a hungry pest walking past can reach whatever stands
@@ -159,6 +163,15 @@ func _init() -> void:
 ## And 1 outranks all three in one place: `placeable` is a term in every one of
 ## shows_dead_zone(), shows_redundant_coverage() and the `at_risk` branch below,
 ## so a refusal is never annotated with a critique.
+##
+## There is deliberately no fifth state for "a husk will take this click". It
+## cannot happen — see husk_click_margin() for the 4 px that says so — and it is
+## the one thing here that would be *transient*: the three states above are facts
+## about the board and the plant, stable until something is planted, while a husk
+## rots on a 4.5-10 s timer and this node is only redrawn on mouse motion, on a
+## plant being picked, and after a click. A cue nobody moves the mouse to refresh
+## is a cue that goes on claiming something for seconds after it stopped being
+## true. Game._click_at carries that rule as precedence instead.
 func _draw() -> void:
 	marker_color = OK_COLOR if placeable else BLOCKED_COLOR
 	_draw_brackets()
@@ -351,6 +364,52 @@ static func covered_road_cell_list(on_board: Board, cell: Vector2i,
 			if origin.distance_to(on_board.cell_to_world(road)) <= reach_px:
 				out.append(road)
 	return out
+
+
+## How much clearance there is between a husk and ground a plant may stand on —
+## the measurement behind this class saying nothing at all about husks.
+##
+## A husk claims a 56 px-wide sweep target (CompostMeter.COLLECT_RADIUS is 28) on
+## a 64 px cell, which reads like a click a preview ought to warn about. It is
+## not, and the reason is geometry rather than luck: pests only ever walk
+## Board.route(), which is one point per road cell centre, so a husk's centre is
+## always at least CELL / 2 = 32 px from the nearest buildable cell — four clear
+## of the sweep. No click that sweeps a husk can land on ground a plant could have
+## gone into, so the green brackets never lie about one, and Game._click_at can
+## put placement first without ever making a husk hard to reach.
+##
+## Returned as a float rather than a bool because the number is the interesting
+## part: it is 4.0 today, and a wider COLLECT_RADIUS, a pest that gets knocked off
+## the lane, or a road drawn along the board edge all eat into it. At <= 0.0 the
+## conflict becomes real and this class needs a husk state after all.
+##
+## Exact, not sampled: every route segment is axis-aligned, so a segment's own
+## bounding box is the segment, and box-to-box distance is the true distance.
+static func husk_click_margin(on_board: Board) -> float:
+	if on_board == null or on_board.path_cell_count() <= 0:
+		return 0.0
+	var route: PackedVector2Array = on_board.route()
+	if route.size() < 2:
+		return 0.0
+	var closest: float = INF
+	for i: int in range(route.size() - 1):
+		var a: Vector2 = route[i]
+		var b: Vector2 = route[i + 1]
+		var lo := Vector2(minf(a.x, b.x), minf(a.y, b.y))
+		var hi := Vector2(maxf(a.x, b.x), maxf(a.y, b.y))
+		for y: int in range(Board.ROWS):
+			for x: int in range(Board.COLS):
+				var cell := Vector2i(x, y)
+				if not on_board.is_buildable(cell):
+					continue
+				var corner := Vector2(float(cell.x * Board.CELL), float(cell.y * Board.CELL))
+				var far: Vector2 = corner + Vector2(float(Board.CELL), float(Board.CELL))
+				var dx: float = maxf(maxf(lo.x - far.x, corner.x - hi.x), 0.0)
+				var dy: float = maxf(maxf(lo.y - far.y, corner.y - hi.y), 0.0)
+				closest = minf(closest, Vector2(dx, dy).length())
+	if is_inf(closest):
+		return 0.0
+	return closest - CompostMeter.COLLECT_RADIUS
 
 
 ## The board to measure against: the one handed in, else the sibling Game put

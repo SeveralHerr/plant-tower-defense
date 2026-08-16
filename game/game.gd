@@ -505,6 +505,31 @@ func plant_at(cell: Vector2i) -> Plant:
 	return _plants.get(cell, null) as Plant
 
 
+## Would a click on `cell` right now actually put the selected plant into the
+## ground? Exactly the question place_plant() answers with "", minus the paying:
+## a predicate rather than a trial call, because place_plant() charges the bank
+## and neither a hover cue nor a precedence test may spend the player's seeds to
+## find out what it would have said.
+##
+## It exists because it has two callers, and they are the two halves of one
+## promise. _update_preview draws the encouraging green brackets on it, and
+## _click_at hands it the click ahead of the compost sweep — so the ring is a
+## promise rather than a hint: if the preview shows a plant going in, the click
+## plants it. See _click_at for the rest of that rule.
+func would_plant_at(cell: Vector2i) -> bool:
+	if game_over or victory:
+		return false
+	if not PlantCatalog.has(selected_plant):
+		return false
+	if not board.is_buildable(cell):
+		return false
+	if _plants.has(cell):
+		return false
+	# can_afford folds in both the lock and the free starter, which is the whole
+	# money question — the same call _update_preview used to make on its own.
+	return bank.can_afford(selected_plant)
+
+
 ## Places `id` on `cell`, charging the bank. Returns "" on success, or the reason
 ## it refused — the devtools verbs and the tests both read that string.
 func place_plant(id: StringName, cell: Vector2i) -> String:
@@ -709,7 +734,7 @@ func _update_cursor(screen_pos: Vector2) -> void:
 	_cursor.visible = true
 	_cursor.position = Vector2(cell.x * Board.CELL, cell.y * Board.CELL)
 	var free: bool = board.is_buildable(cell) and not _plants.has(cell)
-	_cursor.color = Color(0.18, 0.80, 0.44, 0.30) if free else Color(0.91, 0.30, 0.24, 0.30)
+	_cursor.color = Color(GardenTheme.LEAF, 0.30) if free else Color(GardenTheme.DANGER, 0.30)
 	_update_preview(cell, free)
 
 
@@ -731,10 +756,11 @@ func _update_preview(cell: Vector2i, free: bool) -> void:
 	# kind from `reach`, which works only while no two plants share a radius --
 	# a coincidence, not a rule, and the redundant-coverage cue depends on it.
 	_preview.plant_id = selected_plant
-	# can_afford already folds in both the lock and the free starter
-	# (placement_cost returns 0 while it is available), so it is the whole
-	# money question in one call.
-	_preview.placeable = free and bank.can_afford(selected_plant)
+	# The same predicate _click_at obeys, so the brackets are a promise: green
+	# means this click plants. `free` is kept as the caller's override — the
+	# self-test suite drives this method with a forced value to pin the blocked
+	# rendering — and would_plant_at() recomputes it honestly from the board.
+	_preview.placeable = free and would_plant_at(cell)
 	# Only a plant that cannot defend itself is "at risk" beside the road. A
 	# Corn Cobbler there is the entire point of a Corn Cobbler; flagging it
 	# would teach the player to ignore the cue everywhere it matters.
@@ -742,16 +768,43 @@ func _update_preview(cell: Vector2i, free: bool) -> void:
 	_preview.queue_redraw()
 
 
+## One click, up to four things it could mean. The rule, in the sentence a player
+## would say it in: **a click that would plant, plants — a husk only takes clicks
+## that were never going to plant anything.**
+##
+## The sweep used to run first and unconditionally, so a husk within
+## CompostMeter.COLLECT_RADIUS (28 px, a 56 px target on a 64 px cell) of the
+## click ate it, and the player got "Composted a husk" on a cell the preview had
+## just drawn as legal, affordable and empty. The preview could not warn about it
+## either: it is redrawn on mouse motion, on picking a plant in the bar, and after
+## a click — nothing per-frame — while a husk rots on its own 4.5-10 s timer
+## (CompostMeter.lifetime_for), so any husk cue would go stale under a still
+## cursor. Precedence is the fix; a fourth preview state would have been a picture
+## that lies for up to ten seconds at a time.
+##
+## Harvesting is untouched by the reordering, and provably so rather than
+## hopefully so. Pests only ever walk Board.route(), which is one point per road
+## cell centre bracketed by two off-board tails, so every husk lands on the road —
+## and nothing may ever be planted on the road. A click on a husk therefore always
+## sweeps it, because would_plant_at() is false everywhere a husk can be reached
+## from. PlacementPreview.husk_click_margin() is that claim as a number, and
+## test_placement gates it: today the nearest a husk can come to ground a plant
+## may stand on is 32 px, four clear of the 28 px sweep.
 func _click_at(screen_pos: Vector2) -> void:
 	if screen_pos.y < Hud.BAR_HEIGHT or screen_pos.x > board.board_size().x:
 		return
 	var local: Vector2 = screen_pos - _entities.position
-	var swept: int = compost.collect_at(local)
-	if swept > 0:
-		bank.add_seeds(swept)
-		hud.show_message("Composted a husk for %d seeds." % swept, 2.0)
-		return
 	var cell: Vector2i = board.world_to_cell(local)
+	# Ahead of the is_inside() guard below, exactly where the sweep has always
+	# been: Board._build_route brackets the road with an off-board entry and exit,
+	# a Corn Cobbler can shoot a pest standing on either, and the husk that drops
+	# there belongs to no cell at all. It is still the player's to collect.
+	if not would_plant_at(cell):
+		var swept: int = compost.collect_at(local)
+		if swept > 0:
+			bank.add_seeds(swept)
+			hud.show_message("Composted a husk for %d seeds." % swept, 2.0)
+			return
 	if not board.is_inside(cell):
 		return
 	var existing: Plant = plant_at(cell)

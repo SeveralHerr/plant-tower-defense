@@ -1451,3 +1451,359 @@ func test_the_patch_list_hands_the_wash_its_neighbours_in_paint_order() -> Strin
 			"and the distant patch washes its whole disc, sharing with nothing")
 	_T.free_ui(game)
 	return err
+
+
+# -- A husk versus the click that would have planted (plant-tower-defense-0wg) -
+#
+# CompostMeter.COLLECT_RADIUS is 28, so a husk claims a 56 px sweep target on a
+# 64 px cell — 87.5% of its width — and Game._click_at ran that sweep first and
+# returned on any hit. A click on a cell the placement preview had just drawn
+# green composted instead of planting, and the preview said nothing about it,
+# because PlacementPreview does not know husks exist.
+#
+# The fix is precedence rather than a fifth preview state: **a click that would
+# plant, plants — a husk only takes clicks that were never going to plant
+# anything.** Game.would_plant_at() is that predicate, and the preview's own
+# `placeable` flag now reads it, so green is a promise rather than a hint.
+#
+# The reason this does not make husks hard to harvest is measured rather than
+# hoped for — see the margin test at the bottom of this block.
+
+
+## A click at a point in board space, through the same handler the mouse reaches.
+## Offset by the entities layer's own position rather than by a second copy of
+## Hud.BAR_HEIGHT, so a top bar that changes height cannot quietly aim every one
+## of these one row out and turn the block below into a test of nothing.
+func _click_world(game: Game, at: Vector2) -> void:
+	game._click_at(at + game._entities.position)
+
+
+## `n` distinct buildable, empty cells. `_grass()` answers with the first one
+## every time, which is the same cell twice for as long as nothing is planted.
+func _free_grass(game: Game, n: int) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if game.board.is_buildable(cell) and game.plant_at(cell) == null:
+				out.append(cell)
+				if out.size() >= n:
+					return out
+	return out
+
+
+## A click point inside the sweep radius of a husk dropped at `centre`, and still
+## inside `centre`'s own cell. Deliberately off-centre: a click landing exactly on
+## the husk would make the "is it really in range" guard trivially true, and that
+## guard is the only thing standing between these tests and a set of placement
+## assertions that pass because the husk was never a factor at all. Every caller
+## asserts both properties rather than trusting this.
+func _sweep_point(centre: Vector2) -> Vector2:
+	return centre + Vector2(CompostMeter.COLLECT_RADIUS - 4.0, 0.0)
+
+
+## The conflict itself, forced onto the board, then clicked twice.
+##
+## One cell, one husk, one click point. The first click plants, because the cell
+## was legal, empty and paid for. The second sweeps, because the cell now holds a
+## plant and there was nothing left to plant. Nothing about the click moved
+## between them — precedence did all of the work, which is what makes this an
+## assertion about the rule rather than about two different situations.
+func test_a_husk_never_takes_a_click_that_would_have_planted() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var cells: Array[Vector2i] = _free_grass(game, 2)
+	var err: String = _T.assert_eq(cells.size(), 2, "two free cells to work with")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# Burn the free starter somewhere else first, so the placement under test costs
+	# real seeds and "did that click plant or did it compost" is visible in the
+	# purse as well as on the board.
+	game.place_plant(PlantCatalog.CORN, cells[0])
+	game.bank.add_seeds(200)
+	var cell: Vector2i = cells[1]
+	var centre: Vector2 = game.board.cell_to_world(cell)
+	var aim: Vector2 = _sweep_point(centre)
+	var husk_value: int = 5
+	game.compost.drop_husk(centre, husk_value)
+	err = _T.assert_gte(CompostMeter.COLLECT_RADIUS, aim.distance_to(centre),
+		"the click really is inside the husk's sweep radius — without this the rest proves nothing")
+	if err == "":
+		err = _T.assert_eq(game.board.world_to_cell(aim), cell, "and inside the cell it aims at")
+	if err == "":
+		err = _T.assert_eq(game.compost.husk_count(), 1, "with exactly one husk on the ground")
+	if err == "":
+		err = _T.assert_true(game.would_plant_at(cell),
+			"and the preview would draw that cell green — legal, empty and paid for")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var seeds_before: int = game.bank.seeds
+	_click_world(game, aim)
+	err = _T.assert_true(game.plant_at(cell) != null, "so the click planted rather than composted")
+	if err == "":
+		err = _T.assert_eq(game.compost.husk_count(), 1,
+			"and left the husk lying there for a click that is not planting")
+	if err == "":
+		err = _T.assert_eq(game.compost.total_collected, 0, "nothing was swept at all")
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, seeds_before - PlantCatalog.cost(PlantCatalog.CORN),
+			"the purse paid for a plant rather than being paid for a husk")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# Same cell, same husk, same click point. The only thing that changed is that
+	# something is growing there now, so the click has nothing to plant.
+	err = _T.assert_false(game.would_plant_at(cell), "the cell has stopped being a placement")
+	if err == "":
+		seeds_before = game.bank.seeds
+		_click_world(game, aim)
+		err = _T.assert_eq(game.compost.husk_count(), 0, "so the identical click sweeps the husk")
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, seeds_before + husk_value, "and is paid for it")
+	if err == "":
+		err = _T.assert_eq(game.compost.total_collected, husk_value, "exactly once")
+	if err == "":
+		err = _T.assert_true(game.plant_at(cell) != null, "with the plant still standing there")
+	_T.free_ui(game)
+	return err
+
+
+## Harvesting on the road — which is where every husk the game itself drops
+## actually lands, so this is the harvest, not an edge case of it.
+##
+## Run with a full purse and a plant in hand on purpose: that is the exact
+## configuration a "placement wins the click" rule stands accused of breaking, and
+## the road is why it cannot. Nothing may ever be planted on a lane cell, so
+## would_plant_at() is false there however rich the player is.
+func test_a_husk_on_the_road_is_still_one_click_to_sweep() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(999)
+	game.selected_plant = PlantCatalog.CORN
+	var road: Vector2i = _road(game)
+	var centre: Vector2 = game.board.cell_to_world(road)
+	var aim: Vector2 = _sweep_point(centre)
+	var husk_value: int = 7
+	game.compost.drop_husk(centre, husk_value)
+	var err: String = _T.assert_gte(CompostMeter.COLLECT_RADIUS, aim.distance_to(centre),
+		"the click is inside the sweep radius")
+	if err == "":
+		err = _T.assert_eq(game.board.world_to_cell(aim), road, "and on the road cell it aims at")
+	if err == "":
+		err = _T.assert_true(game.bank.can_afford(PlantCatalog.CORN),
+			"with seeds in hand and a plant selected — the case the new rule has to survive")
+	if err == "":
+		err = _T.assert_false(game.would_plant_at(road),
+			"but no click on the lane ever plants, so sweeping is all it can mean")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var seeds_before: int = game.bank.seeds
+	_click_world(game, aim)
+	err = _T.assert_eq(game.compost.husk_count(), 0, "one click swept it")
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, seeds_before + husk_value, "and paid the seeds out")
+	if err == "":
+		err = _T.assert_eq(game.state()["plants"], 0, "with nothing planted on the lane")
+	_T.free_ui(game)
+	return err
+
+
+## The other two ways a click on buildable ground fails to be a placement, both on
+## grass, both still the husk's. Nothing selected, and nothing in the purse:
+## between them and the occupied cell in the first test, that is every branch of
+## would_plant_at() a player reaches by playing.
+func test_a_husk_on_grass_is_swept_by_any_click_that_was_not_going_to_plant() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var cells: Array[Vector2i] = _free_grass(game, 3)
+	var err: String = _T.assert_eq(cells.size(), 3, "three free cells to work with")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# Nothing in hand: PlantCatalog.has() is false for the empty id, so there is no
+	# plant for the click to prefer and the husk gets it.
+	var idle: Vector2i = cells[0]
+	var idle_centre: Vector2 = game.board.cell_to_world(idle)
+	var idle_aim: Vector2 = _sweep_point(idle_centre)
+	game.compost.drop_husk(idle_centre, 3)
+	game.selected_plant = &""
+	err = _T.assert_gte(CompostMeter.COLLECT_RADIUS, idle_aim.distance_to(idle_centre),
+		"the click is inside the sweep radius")
+	if err == "":
+		err = _T.assert_eq(game.board.world_to_cell(idle_aim), idle,
+			"and inside the cell it aims at")
+	if err == "":
+		err = _T.assert_true(game.board.is_buildable(idle),
+			"on ground a plant could perfectly well stand on")
+	if err == "":
+		err = _T.assert_false(game.would_plant_at(idle), "with nothing selected to put there")
+	if err == "":
+		var before: int = game.bank.seeds
+		_click_world(game, idle_aim)
+		err = _T.assert_eq(game.compost.husk_count(), 0, "so the husk takes the click")
+		if err == "":
+			err = _T.assert_eq(game.bank.seeds, before + 3, "and pays out")
+		if err == "":
+			err = _T.assert_true(game.plant_at(idle) == null, "leaving the cell empty")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# Broke. The cell is legal and empty and a plant is selected; the seeds are the
+	# only thing missing, and that alone hands the click to the husk.
+	game.place_plant(PlantCatalog.CORN, cells[1])
+	game.selected_plant = PlantCatalog.CORN
+	game.bank.seeds = 0
+	var skint: Vector2i = cells[2]
+	var skint_centre: Vector2 = game.board.cell_to_world(skint)
+	var skint_aim: Vector2 = _sweep_point(skint_centre)
+	game.compost.drop_husk(skint_centre, 4)
+	err = _T.assert_false(game.bank.can_afford(PlantCatalog.CORN), "the purse is empty")
+	if err == "":
+		err = _T.assert_gte(CompostMeter.COLLECT_RADIUS, skint_aim.distance_to(skint_centre),
+			"the click is inside the sweep radius")
+	if err == "":
+		err = _T.assert_eq(game.board.world_to_cell(skint_aim), skint,
+			"and inside the cell it aims at")
+	if err == "":
+		err = _T.assert_true(game.board.is_buildable(skint), "which is buildable and empty")
+	if err == "":
+		err = _T.assert_false(game.would_plant_at(skint), "and still refuses the plant")
+	if err == "":
+		_click_world(game, skint_aim)
+		err = _T.assert_eq(game.compost.husk_count(), 0, "so the husk takes that click too")
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, 4, "paying the seeds that buy the next plant")
+	if err == "":
+		err = _T.assert_true(game.plant_at(skint) == null, "with the cell still empty")
+	_T.free_ui(game)
+	return err
+
+
+## Why none of the three tests above can happen by itself, as a number.
+##
+## The conflict had to be forced onto the board because the game cannot produce
+## it: pests only ever walk Board.route(), which is one point per road cell centre
+## bracketed by two off-board tails, so a husk's centre is always at least
+## CELL / 2 = 32 px from the nearest buildable cell and the 28 px sweep never
+## reaches it. That is four pixels of clearance, which is exactly why this is a
+## gate and not a remark — a COLLECT_RADIUS of 33, or a pest that can be knocked
+## off the lane, turns a latent bug into a live one, and PlacementPreview would
+## then need the husk cue this issue deliberately did not add.
+func test_no_husk_the_game_can_drop_lands_within_a_click_of_buildable_ground() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	# The inputs first: the margin is a subtraction, and a build where either of
+	# these had drifted would still hand back a plausible-looking number.
+	var err: String = _T.assert_float_eq(CompostMeter.COLLECT_RADIUS, 28.0, 0.001,
+		"a husk sweeps at 28 px")
+	if err == "":
+		err = _T.assert_eq(Board.CELL, 64,
+			"on a 64 px cell — a 56 px target, 87.5% of the cell's width")
+	if err == "":
+		err = _T.assert_gt(float(Board.CELL) * 0.5, CompostMeter.COLLECT_RADIUS,
+			"and the sweep is narrower than half a cell, which is the whole reason this holds")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# husk_click_margin() answers 0.0 for a board it could not walk, so an empty
+	# route or an empty field fails here rather than sailing through.
+	var margin: float = PlacementPreview.husk_click_margin(game.board)
+	err = _T.assert_gt(margin, 0.0, "no husk can be swept from ground a plant may stand on")
+	if err == "":
+		err = _T.assert_float_eq(margin, float(Board.CELL) * 0.5 - CompostMeter.COLLECT_RADIUS,
+			0.001, "the clearance is exactly half a cell less the sweep radius — 4 px")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# The same claim as behaviour rather than as a measurement: walk the route and
+	# check that no point a click could sweep a husk from is standing on buildable
+	# ground. The rim is where the sweep disc reaches furthest and no 64 px cell
+	# fits inside a 56 px disc, so rim plus centre is the whole question.
+	var route: PackedVector2Array = game.board.route()
+	err = _T.assert_gt(route.size(), 2, "the route has segments to walk")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var checked: int = 0
+	for i: int in range(route.size() - 1):
+		if err != "":
+			break
+		for s: int in range(5):
+			if err != "":
+				break
+			var husk: Vector2 = route[i].lerp(route[i + 1], float(s) / 4.0)
+			for step: int in range(17):
+				var probe: Vector2 = husk
+				if step > 0:
+					var angle: float = TAU * float(step - 1) / 16.0
+					probe += Vector2.from_angle(angle) * CompostMeter.COLLECT_RADIUS
+				checked += 1
+				err = _T.assert_false(game.board.is_buildable(game.board.world_to_cell(probe)),
+					"a click at %s sweeps a husk at %s while standing on buildable %s"
+						% [probe, husk, game.board.world_to_cell(probe)])
+				if err != "":
+					break
+	if err == "":
+		err = _T.assert_gt(checked, 500,
+			"and that walk really covered the lane — %d sample clicks" % checked)
+	_T.free_ui(game)
+	return err
+
+
+## The other half of the rule: the brackets and the click now read the same
+## predicate, so green is a promise rather than a hint.
+##
+## Walked over every cell of the board rather than over one happy cell, because
+## agreeing about a single legal empty square is precisely what the two separate
+## expressions did before they became one call.
+func test_the_green_brackets_promise_exactly_what_a_click_will_do() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var green: int = 0
+	var blocked: int = 0
+	var err: String = ""
+	for y: int in range(Board.ROWS):
+		if err != "":
+			break
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			var free: bool = game.board.is_buildable(cell) and game.plant_at(cell) == null
+			game._update_preview(cell, free)
+			var promised: bool = game.would_plant_at(cell)
+			err = _T.assert_eq(game._preview.placeable, promised,
+				"the preview over %s draws exactly what a click there would do" % cell)
+			if err != "":
+				break
+			if promised:
+				green += 1
+			else:
+				blocked += 1
+	if err == "":
+		err = _T.assert_gt(green, 0, "some of the board reads as a placement")
+	if err == "":
+		err = _T.assert_gt(blocked, 0, "and some of it does not — the road, at the very least")
+	if err == "":
+		err = _T.assert_eq(green + blocked, Board.ROWS * Board.COLS, "every cell was walked")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# And the promise is kept, both ways round.
+	var cell: Vector2i = _grass(game)
+	err = _T.assert_true(game.would_plant_at(cell), "the first free cell promises a placement")
+	if err == "":
+		err = _T.assert_eq(game.place_plant(game.selected_plant, cell), "",
+			"and place_plant agrees, with no refusal at all")
+	if err == "":
+		err = _T.assert_false(game.would_plant_at(cell),
+			"the same cell stops promising the moment something grows on it")
+	if err == "":
+		err = _T.assert_false(game.would_plant_at(_road(game)), "and the road never promised")
+	if err == "":
+		game.bank.seeds = 0
+		var still_green: int = 0
+		for y: int in range(Board.ROWS):
+			for x: int in range(Board.COLS):
+				if game.would_plant_at(Vector2i(x, y)):
+					still_green += 1
+		err = _T.assert_eq(still_green, 0,
+			"and an empty purse turns the whole board off, which is what the click does too")
+	_T.free_ui(game)
+	return err
