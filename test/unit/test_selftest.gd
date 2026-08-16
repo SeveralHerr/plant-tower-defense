@@ -4862,6 +4862,81 @@ func test_the_pause_card_lists_the_keys_and_still_fits_its_paper() -> String:
 	return err
 
 
+## The legend rows are the widest thing on the pause card, and their text is not
+## authored on the card at all -- it comes from KeyBindings.ACTIONS, which also
+## feeds the Keys screen and the Options screen. So a phrase can be lengthened for
+## one of those two and silently stop fitting this one.
+##
+## It did: "C   colourblind-safe health and threat bars" drew 326px at x=316 in a
+## 264px box, ~34px past a card ending at 608, onto the dimmed backdrop over the
+## live board.
+##
+## Two separate failures let that through, and this test asserts against both.
+##
+## 1. THE BOX. `Control.set_size` clamps to the combined minimum size, and a
+##    Label's minimum width is its whole text until clip_text/overrun is set. The
+##    card set `size` before those overrides and before the font size, so the
+##    assigned 264 lost to a 326px minimum measured at the theme default 16.
+##    Asserted here as "the row's own rect stays on the paper".
+##
+## 2. THE TEXT. With the box fixed the overflow becomes an ellipsis instead --
+##    still a legend that does not say what the key does. Asserted here against
+##    PauseScreen.KEY_ROW_MAX_WIDTH.
+##
+## Neither is expressible with `get_minimum_size()`: clip_text makes it report the
+## ~1px clip stub, so `assert(row.get_minimum_size().x <= row.size.x)` passes
+## unconditionally on exactly these labels. `_T.text_width` measures through the
+## label's own resolved theme font instead.
+func test_no_pause_card_legend_row_draws_past_the_paper() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.pause_run()
+	await _pump(game)
+	var screen: Control = game.get_node_or_null("PauseLayer/PauseScreen") as Control
+	var err: String = _T.assert_true(screen != null, "the card is up")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var card: Control = screen.get_node_or_null("Card") as Control
+	err = _T.assert_true(card != null, "the card has paper to measure against")
+	if err != "":
+		game.resume_run()
+		_T.free_ui(game)
+		return err
+	var paper_right: float = card.global_position.x + card.size.x
+
+	var rows: int = Game.key_help().size()
+	err = _T.assert_gt(rows, 0, "there are legend rows to measure")
+	for i: int in range(rows):
+		if err != "":
+			break
+		var row: Label = screen.get_node_or_null("KeyRow%d" % i) as Label
+		err = _T.assert_true(row != null, "KeyRow%d is on the card" % i)
+		if err != "":
+			break
+		# (1) the box. A row whose Label won its own width back is already off the
+		# paper whatever the text says.
+		var right: float = row.global_position.x + row.size.x
+		err = _T.assert_true(right <= paper_right + 0.5,
+			"KeyRow%d's box ends at %.0f, the paper ends at %.0f -- the assigned width lost to the Label's minimum size (set clip_text and font_size BEFORE size)"
+				% [i, right, paper_right])
+		if err != "":
+			break
+		# (2) the text, measured through the font rather than through a
+		# get_minimum_size() that clip_text has already reduced to a stub.
+		var drawn: float = _T.text_width(row)
+		err = _T.assert_gt(drawn, 0.0, "KeyRow%d has text to measure" % i)
+		if err != "":
+			break
+		err = _T.assert_true(drawn <= PauseScreen.KEY_ROW_MAX_WIDTH,
+			"KeyRow%d draws %.0fpx, budget is %.0f -- shorten the 'does' phrase in KeyBindings.ACTIONS, or widen the card (%s)"
+				% [i, drawn, PauseScreen.KEY_ROW_MAX_WIDTH, row.text])
+
+	game.resume_run()
+	_T.free_ui(game)
+	return err
+
+
 ## The pause card sizes itself to what it holds. It used to derive where its
 ## content starts and hard-code where it must stop: content ended at 370 against a
 ## written 380, and a fourth button or key row spent that silently, putting text

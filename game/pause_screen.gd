@@ -68,13 +68,32 @@ var _buttons: Array[Button] = []
 ## "grows it past the bottom of the viewport", and it did, but only because the top
 ## was pinned where the height was not. Centred, the card absorbs half of every row
 ## or button it gains, and CARD_MIN_TOP is the floor where it stops being able to.
-const CARD_WIDTH: float = 320.0
+##
+## 360, not 320. The legend is the widest thing this card holds and its text is
+## not authored here -- it is KeyBindings.ACTIONS, shared with the Keys screen and
+## the Options screen. At 320 the longest row drew 265px into a 264px box: one
+## pixel of budget, which is the same "hand-picked number with no slack" this
+## header spends three paragraphs complaining about vertically. Widened rather
+## than shortening the phrase, because the phrase is the only thing on any of the
+## three screens that says WHICH bars the C key changes, and a 40px card is a
+## cheaper thing to spend than that sentence. See KEY_ROW_MAX_WIDTH.
+const CARD_WIDTH: float = 360.0
 ## Never higher than this, whatever the arithmetic says. A card taller than the
 ## viewport should hang off the bottom where the next thing added to it is visibly
 ## missing, rather than slide its heading off the top where the player cannot even
 ## tell which screen they are on.
 const CARD_MIN_TOP: float = 24.0
-const CARD_X: float = 288.0
+## What this card is centred ON -- the board, not the window (the window's own
+## centre is 576). It is RunSummary.CARD's centre too: that card spans 128..768,
+## and the two are the same kind of object over the same board, so they share a
+## spine.
+##
+## CARD_X is derived from it for the same reason card_top() is derived from
+## card_height(): the old bare 288.0 encoded this centre without naming it, so
+## widening the card by 40px would have slid it 40px right instead of 20px each
+## way, and nothing would have said why.
+const CARD_CENTRE_X: float = 448.0
+const CARD_X: float = CARD_CENTRE_X - CARD_WIDTH / 2.0
 const CARD_FOOT_PADDING: float = 24.0
 ## Gap between the last button and the key list. The list's own offset is derived
 ## from the button block rather than written down: a hand-picked 268.0 put the
@@ -88,6 +107,26 @@ const KEY_LIST_GAP: float = 20.0
 ## banner declared 62 for a 48px font that rendered 67 -- so the rule is to leave
 ## real headroom over the font, never to match it.
 const KEY_ROW_HEIGHT: float = 26.0
+## How far a legend row is held off each edge of the paper. Named rather than the
+## bare 28.0 / 56.0 pair it used to be written as, because the budget below is
+## derived from it and a test measures the longest row against that budget.
+const KEY_ROW_INSET: float = 28.0
+## What one legend row's TEXT has to fit inside, measured through the font rather
+## than trusted to the Label's box.
+##
+## Asserted the way NotebookScreen.SUBHEAD_MAX_WIDTH is, and for the same reason:
+## the row text is not authored here. It comes from KeyBindings.ACTIONS, which
+## also feeds the Keys screen and the Options screen, so the phrase that fits
+## those two can quietly stop fitting this card -- and did. "C   colourblind-safe
+## health and threat bars" drew 326px in a 264px box and put ~34px of legend onto
+## the dimmed backdrop over the live board.
+##
+## Nothing caught it, twice over. The card's own layout test checks vertical fit
+## and pairwise overlap only, and `clip_text` makes `Label.get_minimum_size()`
+## report the ~1px clip stub instead of the text -- so the obvious width assertion
+## passes unconditionally on exactly the labels that need it. Measure with
+## `_T.text_width`.
+const KEY_ROW_MAX_WIDTH: float = CARD_WIDTH - KEY_ROW_INSET * 2.0
 
 ## Entrance rise, borrowed outright from RunSummary rather than picked fresh:
 ## same offset, same duration, same curve as RISE_SECONDS / RISE_OFFSET there.
@@ -274,13 +313,24 @@ func _build_key_list() -> void:
 		var label := Label.new()
 		label.name = "KeyRow%d" % i
 		label.text = _key_row_text(row)
-		label.position = Vector2(card_rect().position.x + 28.0, y)
-		label.size = Vector2(card_rect().size.x - 56.0, KEY_ROW_HEIGHT)
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		# ORDER MATTERS, and this is the bug that put a legend row on the backdrop.
+		#
+		# `Control.set_size` clamps to `get_combined_minimum_size()`, and a Label's
+		# minimum width is its whole text UNLESS clip_text or a trimming overrun
+		# behaviour is already set -- only then does it collapse to the ~1px stub.
+		# Written the other way round, `size` was assigned while the label was still
+		# unclipped AND still on the theme's default font size (16, not 13), so the
+		# assigned 264 lost to a 326px minimum measured at the wrong size, and the
+		# later font_size/clip_text overrides lowered the minimum without ever
+		# shrinking the box back. Set the three things that decide the minimum
+		# first, and the assigned width is the one that survives.
 		label.add_theme_font_size_override("font_size", 13)
-		label.add_theme_color_override("font_color", Color(GardenTheme.INK, 0.55))
 		label.clip_text = true
 		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		label.position = Vector2(card_rect().position.x + KEY_ROW_INSET, y)
+		label.size = Vector2(KEY_ROW_MAX_WIDTH, KEY_ROW_HEIGHT)
+		label.add_theme_color_override("font_color", Color(GardenTheme.INK, 0.55))
 		add_child(label)
 		y += KEY_ROW_HEIGHT
 

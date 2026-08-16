@@ -109,10 +109,15 @@ const ACTIONS: Array[Dictionary] = [
 	},
 ]
 
-## `OS.get_keycode_string` is correct and long. The pause card is 320px wide and
-## its legend renders at font 13, so the handful of keys whose engine name does
-## not fit get a short form here. Anything absent falls through to the engine's
-## own name, which is what keeps this from becoming a second key table.
+## `OS.get_keycode_string` is correct and long. The pause card's legend is the
+## narrowest place any of this is drawn -- PauseScreen.KEY_ROW_MAX_WIDTH px at
+## font 13 -- so the handful of keys whose engine name does not fit get a short
+## form here. Anything absent falls through to the engine's own name, which is
+## what keeps this from becoming a second key table.
+##
+## The budget is named rather than repeated as a number: this comment said "the
+## pause card is 320px wide" and stayed saying it after the card was widened to
+## hold the longest `does` phrase.
 const SHORT_NAMES: Dictionary = {
 	KEY_ESCAPE: "Esc",
 	KEY_LEFT: "←",
