@@ -938,3 +938,304 @@ func test_a_bed_that_was_eaten_never_grows_back_out_of_the_ground() -> String:
 		err = _T.assert_false(plant.is_regrowing(), "a destroyed plant is never 'recovering'")
 	plant.free()
 	return err
+
+
+# -- The corn ladder is a ladder (plant-tower-defense-axt) --------------------
+#
+# The bug these exist for: a spread costs real damage, because Kernel's hit test is
+# a HIT_RADIUS circle around the pest's centre and an off-axis kernel's closest
+# approach is `distance * sin(offset)`. When each level re-spaced its kernels from
+# scratch (1 -> 2 -> 5 over 0 -> 14 -> 52 degrees) an upgrade MOVED shots instead of
+# adding them, and two levels came out strictly worse than the level below:
+#
+#   * level 2's +/-7 deg pair stopped connecting at 148 px, so from 148 px to the
+#     edge of its own 176 px ring it did 0.00 dps where level 1 did 1.25;
+#   * level 3 past 80 px landed only its middle kernel — 1.61 dps against level 2's
+#     2.78, for the most expensive upgrade in the game.
+#
+# The fix is structural, not a nudge: a fixed 13 deg step and odd kernel counts, so
+# every level's firing angles are a superset of the level below's. The first test is
+# the acceptance criterion (never worse at any range); the second is the property
+# that makes it hold for arrangements the first one never samples.
+
+
+func test_a_corn_upgrade_is_never_worse_at_any_range_the_cob_can_shoot() -> String:
+	## The load-bearing one. Swept across the whole of RANGE at 1 px, because the
+	## regression lived in bands: the old level 3 was fine out to 80 px and lost to
+	## the cheaper level 2 from 81 px onward, so any test that sampled one range had
+	## even odds of reporting the ladder healthy.
+	var levels: int = CornCobbler.LEVELS.size()
+	var err: String = _T.assert_gt(levels, 1, "there is a ladder to compare at all")
+	if err != "":
+		return err
+	var steps: int = int(CornCobbler.RANGE)
+	var samples: int = 0
+	for i: int in range(steps + 1):
+		var distance: float = CornCobbler.RANGE * float(i) / float(steps)
+		var previous: float = CornCobbler.single_target_dps(1, distance)
+		for level: int in range(2, levels + 1):
+			var here: float = CornCobbler.single_target_dps(level, distance)
+			err = _T.assert_gte(here, previous,
+				"at %.0f px level %d does %.3f dps to one pest, never less than level %d's %.3f"
+					% [distance, level, here, level - 1, previous])
+			if err != "":
+				return err
+			previous = here
+		samples += 1
+	err = _T.assert_gt(samples, 100, "the sweep actually walked the ring (%d samples)" % samples)
+	if err != "":
+		return err
+
+	# Non-decreasing is the floor. At the three ranges a player can name, the upgrade
+	# has to be a real gain — a ladder that merely ties everywhere would pass the
+	# sweep above and still be worth nobody's 45 seeds.
+	var named: Dictionary = {
+		"point blank": float(Board.CELL),
+		"mid range": CornCobbler.RANGE * 0.5,
+		"the edge of the ring": CornCobbler.RANGE,
+	}
+	for label: String in named:
+		var distance: float = named[label]
+		for level: int in range(2, levels + 1):
+			err = _T.assert_gt(CornCobbler.single_target_dps(level, distance),
+				CornCobbler.single_target_dps(level - 1, distance),
+				"at %s (%.0f px) level %d (%.3f dps) beats level %d (%.3f dps), not merely ties it"
+					% [label, distance, level, CornCobbler.single_target_dps(level, distance),
+						level - 1, CornCobbler.single_target_dps(level - 1, distance)])
+			if err != "":
+				return err
+
+	# The two filed cases, named so a reintroduction reads as itself in the failure.
+	if err == "":
+		err = _T.assert_gt(CornCobbler.single_target_dps(3, 100.0),
+			CornCobbler.single_target_dps(2, 100.0),
+			"the 45-seed level out-damages the 20-seed one at 100 px — it used to do 1.61 against 2.78")
+	if err == "":
+		err = _T.assert_gt(CornCobbler.single_target_dps(2, CornCobbler.RANGE),
+			CornCobbler.single_target_dps(1, CornCobbler.RANGE),
+			"and level 2 still connects at the edge of its own ring, where a +/-7 deg pair did not")
+	return err
+
+
+func test_every_corn_level_fires_through_every_angle_the_level_below_does() -> String:
+	## The property the test above is a consequence of, asserted directly because it
+	## is the thing that generalises: if level N fires through every angle level N-1
+	## does, plus more, no faster interval and no lower damage, then level N hits at
+	## least whatever level N-1 would have hit — at every range and against ANY
+	## arrangement of pests, including the ones no test enumerates.
+	var levels: int = CornCobbler.LEVELS.size()
+	var err: String = _T.assert_gt(levels, 1, "there is a ladder to compare at all")
+	if err != "":
+		return err
+	var tolerance: float = 0.0001
+	var compared: int = 0
+	for level: int in range(1, levels + 1):
+		var offsets: PackedFloat32Array = CornCobbler.kernel_angle_offsets(level)
+		var entry: Dictionary = CornCobbler.LEVELS[level - 1]
+
+		# Odd counts, so there is always a kernel on the aim line. This is what stops
+		# a level from doing literally nothing to the pest it picked: an even fan has
+		# every kernel off-axis, and off-axis kernels all run out of reach.
+		err = _T.assert_eq(offsets.size() % 2, 1,
+			"level %d fires an odd number of kernels (%d), so one of them is on the aim line"
+				% [level, offsets.size()])
+		if err != "":
+			return err
+		err = _T.assert_float_eq(offsets[offsets.size() >> 1], 0.0, tolerance,
+			"level %d's middle kernel flies straight at what the cob aimed at" % level)
+		if err != "":
+			return err
+
+		# The spread is the step times the gaps, not a number somebody typed. A
+		# retune that widens the arc without re-nesting the angles fails here.
+		err = _T.assert_float_eq(float(entry["spread_degrees"]), CornCobbler.spread_for(level), 0.001,
+			"level %d's %.1f deg spread is %d gaps of %.1f deg"
+				% [level, float(entry["spread_degrees"]), offsets.size() - 1, CornCobbler.KERNEL_STEP_DEGREES])
+		if err != "":
+			return err
+
+		if level == 1:
+			continue
+		var below: PackedFloat32Array = CornCobbler.kernel_angle_offsets(level - 1)
+		var previous: Dictionary = CornCobbler.LEVELS[level - 2]
+		for kept: float in below:
+			var found: bool = false
+			for offset: float in offsets:
+				if absf(offset - kept) <= tolerance:
+					found = true
+					break
+			err = _T.assert_true(found,
+				"level %d still fires through %.1f deg, which level %d fired through — an upgrade adds shots, it does not move them"
+					% [level, rad_to_deg(kept), level - 1])
+			if err != "":
+				return err
+			compared += 1
+		err = _T.assert_gt(offsets.size(), below.size(),
+			"and adds kernels on top of them (%d vs %d)" % [offsets.size(), below.size()])
+		if err == "":
+			err = _T.assert_gte(float(previous["interval"]), float(entry["interval"]),
+				"level %d never fires slower than level %d (%.2fs vs %.2fs)"
+					% [level, level - 1, float(entry["interval"]), float(previous["interval"])])
+		if err == "":
+			err = _T.assert_gte(float(entry["damage"]), float(previous["damage"]),
+				"and never hits softer (%.2f vs %.2f)" % [float(entry["damage"]), float(previous["damage"])])
+		if err != "":
+			return err
+	return _T.assert_gt(compared, 0,
+		"there were inherited angles to check, rather than an empty ladder passing quietly")
+
+
+func test_the_corn_spread_still_widens_with_every_level() -> String:
+	## The guard on the cheap fix. "Level 3 is worse against one pest" has an obvious
+	## and terrible answer — delete the spread — and it would pass every dps test in
+	## this file. The spray is the plant's whole identity and the muzzle fan draws
+	## `spread_degrees` directly, so a ladder that stopped widening would be a board
+	## on which the 45-seed upgrade is invisible again.
+	var levels: int = CornCobbler.LEVELS.size()
+	var err: String = _T.assert_gt(levels, 1, "there is a ladder to widen")
+	if err != "":
+		return err
+	for level: int in range(2, levels + 1):
+		var here: float = float(CornCobbler.LEVELS[level - 1]["spread_degrees"])
+		var below: float = float(CornCobbler.LEVELS[level - 2]["spread_degrees"])
+		err = _T.assert_gt(here, below,
+			"level %d sprays through %.0f deg, wider than level %d's %.0f" % [level, here, level - 1, below])
+		if err != "":
+			return err
+	# And the widening has to be worth drawing: a fan that grew by a degree a level
+	# would satisfy the loop above and still look identical on a 64 px cell.
+	var widest: float = float(CornCobbler.LEVELS[levels - 1]["spread_degrees"])
+	return _T.assert_gt(widest, CornCobbler.KERNEL_STEP_DEGREES * 2.0,
+		"and the top of the ladder is a genuine spray (%.0f deg), not a nudge" % widest)
+
+
+func test_a_corn_upgrade_clears_a_cluster_at_least_as_fast_as_the_level_below() -> String:
+	## The other half of the acceptance criterion. The single-target sweep only ever
+	## puts one pest on the aim line; these put pests where a wide volley is supposed
+	## to earn its keep, including arrangements that reward nobody in particular, so
+	## "level 3 is a crowd sidegrade" cannot quietly mean "level 3 is worse".
+	var levels: int = CornCobbler.LEVELS.size()
+	var err: String = _T.assert_gt(levels, 1, "there is a ladder to compare at all")
+	if err != "":
+		return err
+	var clusters: Array = [
+		PackedFloat32Array([0.0]),
+		PackedFloat32Array([-13.0, 0.0, 13.0]),
+		PackedFloat32Array([-26.0, -13.0, 0.0, 13.0, 26.0]),
+		PackedFloat32Array([8.0, 30.0]),
+		PackedFloat32Array([-20.0, 5.0, 22.0]),
+	]
+	var checks: int = 0
+	for angles: PackedFloat32Array in clusters:
+		for i: int in range(1, 18):
+			var distance: float = CornCobbler.RANGE * float(i) / 17.0
+			var previous: float = _corn_cluster_dps(1, distance, angles)
+			for level: int in range(2, levels + 1):
+				var here: float = _corn_cluster_dps(level, distance, angles)
+				err = _T.assert_gte(here, previous,
+					"against pests at %s deg, %.0f px out, level %d does %.3f dps — never less than level %d's %.3f"
+						% [angles, distance, level, here, level - 1, previous])
+				if err != "":
+					return err
+				previous = here
+				checks += 1
+	return _T.assert_gt(checks, 50,
+		"the cluster sweep actually compared something (%d comparisons)" % checks)
+
+
+func test_a_real_corn_volley_lands_exactly_what_the_dps_table_promises() -> String:
+	## The anti-tautology test. Everything above is computed from LEVELS through
+	## CornCobbler.single_target_dps(), so a model that quietly disagreed with the
+	## kernels the cob actually fires would let the whole section pass while the game
+	## kept the bug. This one fires real Kernels from a real cob through real physics
+	## frames and reads the damage off the pest.
+	var err: String = _T.assert_gte(CornCobbler.LEVELS.size(), 3, "there is a level 3 to fire")
+	if err != "":
+		return err
+	var far_three: float = await _corn_volley_damage(3, 110.0)
+	var far_two: float = await _corn_volley_damage(2, 110.0)
+	var near_three: float = await _corn_volley_damage(3, 30.0)
+
+	err = _T.assert_float_eq(far_three,
+		float(CornCobbler.kernels_connecting_at(3, 110.0)) * float(CornCobbler.LEVELS[2]["damage"]), 0.001,
+		"one level 3 volley at 110 px landed %.2f damage, which is what the table says it should" % far_three)
+	if err == "":
+		err = _T.assert_float_eq(far_two,
+			float(CornCobbler.kernels_connecting_at(2, 110.0)) * float(CornCobbler.LEVELS[1]["damage"]), 0.001,
+			"and one level 2 volley landed %.2f" % far_two)
+	if err == "":
+		# The filed complaint, measured rather than modelled. Per volley AND per
+		# second, because level 3 also fires faster and both have to point the
+		# same way for the upgrade to be worth buying.
+		err = _T.assert_gt(far_three, far_two,
+			"a level 3 volley hurts a lone pest at 110 px more than a level 2 volley (%.2f vs %.2f)"
+				% [far_three, far_two])
+	if err == "":
+		err = _T.assert_gt(far_three / float(CornCobbler.LEVELS[2]["interval"]),
+			far_two / float(CornCobbler.LEVELS[1]["interval"]),
+			"and more per second too (%.3f vs %.3f dps)"
+				% [far_three / float(CornCobbler.LEVELS[2]["interval"]),
+					far_two / float(CornCobbler.LEVELS[1]["interval"])])
+	if err == "":
+		# And the wide kernels are not decoration: inside 41 px the whole bunch
+		# connects, which is the crowd-clearing half of what the level is for.
+		err = _T.assert_gt(near_three, far_three * 4.0,
+			"the same volley at 30 px lands %.2f — every kernel of the bunch connects up close" % near_three)
+	return err
+
+
+## Damage per second a level puts into a group of pests all `distance` px out, at
+## `angles` degrees either side of the aim line. Each kernel dies on the first pest
+## it touches, so a kernel scores at most once and a pest can be struck by several —
+## which makes "hits" the count of kernels that pass within HIT_RADIUS of anything.
+func _corn_cluster_dps(level: int, distance: float, angles: PackedFloat32Array) -> float:
+	var entry: Dictionary = CornCobbler.LEVELS[level - 1]
+	var hits: int = 0
+	for offset: float in CornCobbler.kernel_angle_offsets(level):
+		for pest_angle: float in angles:
+			if Kernel.connects(distance, offset - deg_to_rad(pest_angle)):
+				hits += 1
+				break
+	return float(hits) * float(entry["damage"]) / float(entry["interval"])
+
+
+## Fires exactly one volley from a real cob at a real beetle `distance` px away and
+## returns the damage that actually landed. Only the kernels created by that volley
+## are stepped, so the shot the cob fires while the scene settles cannot be counted.
+func _corn_volley_damage(level: int, distance: float) -> float:
+	var corn := CornCobbler.new()
+	corn.level = level
+	corn.position = Vector2(200, 200)
+	# Parked outside RANGE for the settle frames. A loaded cob fires the instant it
+	# has a target, and up close that volley can kill the beetle before the
+	# measurement starts — at which point resetting `health` would hand back a
+	# corpse, since `_alive` does not come back with it.
+	var beetle: Pest = _pest(Pest.BEETLE, Vector2(200.0 + CornCobbler.RANGE * 3.0, 200.0))
+	var host: Node2D = _host([corn, beetle])
+	await _T.instantiate_scene(host)
+	# Entering the tree switches physics processing back on for anything that defines
+	# _physics_process, so the bug has walked itself down the road. Both are put back
+	# by hand here, and only now does the beetle come inside the ring.
+	corn.set_physics_process(false)
+	beetle.set_physics_process(false)
+	beetle.position = Vector2(200.0 + distance, 200.0)
+	beetle.health = beetle.max_health
+	var stale: Array[int] = []
+	for node: Node in host.get_tree().get_nodes_in_group("kernels"):
+		stale.append(node.get_instance_id())
+
+	var pests: Array[Pest] = [beetle]
+	corn._act(1.0, pests)
+	# No frames are pumped, so a kernel that hit stays in the group with its free
+	# still queued — stepping it again would score twice off one kernel.
+	var step: float = 1.0 / 60.0
+	for _frame: int in range(60):
+		for node: Node in host.get_tree().get_nodes_in_group("kernels"):
+			if stale.has(node.get_instance_id()) or node.is_queued_for_deletion():
+				continue
+			var kernel := node as Kernel
+			if kernel != null:
+				kernel._physics_process(step)
+	var dealt: float = beetle.max_health - beetle.health
+	_T.free_ui(host)
+	return dealt

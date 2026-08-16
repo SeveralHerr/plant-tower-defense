@@ -8,11 +8,47 @@ extends Plant
 
 const RANGE: float = 176.0
 
-## level -> firing pattern. `spread_degrees` is the total arc the kernels cover.
+## The angle between one kernel and the next, the same at every level. This is the
+## constant the whole upgrade ladder is built on, and it is what keeps an upgrade
+## from being a downgrade.
+##
+## A spread is only free if the kernels you already had stay where they were. When
+## the ladder was 1 -> 2 -> 5 kernels over 0 -> 14 -> 52 degrees, each level
+## re-spaced its kernels from scratch, so paying for one MOVED the shots you had
+## rather than adding to them. Both of the resulting holes were real:
+##
+##   * Level 2's two kernels sat at +/-7 deg with nothing on the aim line. A kernel
+##     fired `t` off the line passes a pest on the line at Kernel.HIT_RADIUS / sin t,
+##     so +/-7 deg stopped connecting at 148 px — inside RANGE (176). Between 148 px
+##     and the edge of its own ring, the 20-seed level did *zero* damage to the pest
+##     it was aiming at, where level 1 did 1.25 dps.
+##   * Level 3 re-spaced to +/-26, +/-13, 0. The outer pair stops connecting at 41 px
+##     and the inner pair at 80 px, so past 80 px only the middle kernel ever landed:
+##     1.61 dps against the 2.78 dps the *cheaper* level 2 was doing. The most
+##     expensive upgrade in the game made the cob worse at the thing it aimed at.
+##
+## Fixed step + odd counts fixes both by construction. Every level fires through
+## KERNEL_STEP_DEGREES * (kernels - 1) degrees, kernels are always odd, and each
+## level adds one pair to the outside of the level below. So level N's firing angles
+## are a strict superset of level N-1's, every level keeps a kernel on the aim line,
+## and the interval only ever shortens and the damage only ever rises. Together those
+## mean level N hits at least everything level N-1 would have hit, at least as hard,
+## at least as often — at every range, against any arrangement of pests. There is no
+## configuration left in which upgrading can lose.
+##
+## Off-axis kernels are still situational (see `reach_at_offset`): past 80 px the
+## bunch is one kernel plus four warning shots. `damage` is what the player is
+## actually buying at long range, and it is why it climbs with the level rather than
+## sitting flat at 1.0 the way it used to.
+const KERNEL_STEP_DEGREES: float = 13.0
+
+## level -> firing pattern. `spread_degrees` is the total arc the kernels cover, and
+## it is always KERNEL_STEP_DEGREES * (kernels - 1) — `test_combat` pins that, so a
+## hand-typed spread that breaks the nesting fails rather than shipping.
 const LEVELS: Array[Dictionary] = [
 	{"name": "single", "kernels": 1, "spread_degrees": 0.0, "interval": 0.80, "damage": 1.0, "upgrade_cost": 20},
-	{"name": "double", "kernels": 2, "spread_degrees": 14.0, "interval": 0.72, "damage": 1.0, "upgrade_cost": 45},
-	{"name": "bunch", "kernels": 5, "spread_degrees": 52.0, "interval": 0.62, "damage": 1.0, "upgrade_cost": 0},
+	{"name": "triple", "kernels": 3, "spread_degrees": 26.0, "interval": 0.72, "damage": 1.2, "upgrade_cost": 45},
+	{"name": "bunch", "kernels": 5, "spread_degrees": 52.0, "interval": 0.62, "damage": 1.4, "upgrade_cost": 0},
 ]
 
 ## Muzzle fan geometry. The upgrade ladder used to be invisible on the board —
@@ -24,9 +60,10 @@ const LEVELS: Array[Dictionary] = [
 ## would — retune LEVELS and the board retunes with it.
 ##
 ## The fan is projected from a pivot FAN_PIVOT behind the cob rather than measured
-## from the cob's centre. That magnifies the angles about a common origin: level
-## 2's real 14° would be a 6 px wobble on a 64 px cell — two pips fused into one
-## blob, i.e. exactly the "looks the same as level 1" bug this is fixing. The
+## from the cob's centre. That magnifies the angles about a common origin: a single
+## KERNEL_STEP_DEGREES step is a 7.7 px gap between neighbouring pips this way and
+## barely 3 px measured from the cob's centre — pips fused into one blob, i.e.
+## exactly the "looks the same as level 1" bug this is fixing. The
 ## projection is monotonic and shares its input with the shot, so wider spread is
 ## always a wider fan and level 1's zero spread is still a single pip; it makes a
 ## true difference visible rather than inventing one.
@@ -151,6 +188,34 @@ static func kernel_angle_offsets(for_level: int) -> PackedFloat32Array:
 	return out
 
 
+## The spread `for_level` fires through, derived rather than read back out of the
+## table. LEVELS quotes the same number; `test_combat` asserts they agree, which is
+## what stops a retune from widening the arc without re-nesting the angles.
+static func spread_for(for_level: int) -> float:
+	return KERNEL_STEP_DEGREES * float(int(_level_stats(for_level)["kernels"]) - 1)
+
+
+## How many of `for_level`'s kernels catch one pest sitting `distance` px straight
+## down the aim line. The only thing an off-axis kernel's fate turns on is how far
+## from the line it passes, so this is the whole of the single-target question —
+## see Kernel.connects().
+static func kernels_connecting_at(for_level: int, distance: float) -> int:
+	var hits: int = 0
+	for offset: float in kernel_angle_offsets(for_level):
+		if Kernel.connects(distance, offset):
+			hits += 1
+	return hits
+
+
+## Damage per second `for_level` lands on a single pest `distance` px away. This is
+## the number plant-tower-defense-axt was filed about: it used to fall from 2.78 to
+## 1.61 when the player paid 45 seeds. Kept as a function rather than a comment so
+## the claim is executable — `test_combat` sweeps it across the whole of RANGE.
+static func single_target_dps(for_level: int, distance: float) -> float:
+	var stats: Dictionary = _level_stats(for_level)
+	return float(kernels_connecting_at(for_level, distance)) * float(stats["damage"]) / float(stats["interval"])
+
+
 ## The point the fan is projected from, in the plant's own space: FAN_PIVOT behind
 ## the cob, opposite the way it is aiming. Every pip is exactly FAN_LENGTH from
 ## here, at exactly `aim + kernel_angle_offsets()[i]`.
@@ -219,3 +284,16 @@ func level_name() -> String:
 
 func kernels_per_shot() -> int:
 	return int(_stats()["kernels"])
+
+
+## What one kernel takes off a pest at this level. Public because it is now half of
+## what an upgrade buys — past 80 px it is the *whole* of what an upgrade buys — and
+## a selection panel quoting only `kernels_per_shot()` describes the level 3 cob as
+## five kernels while the player watches four of them sail past.
+func kernel_damage() -> float:
+	return float(_stats()["damage"])
+
+
+## Seconds between volleys at this level.
+func fire_interval() -> float:
+	return float(_stats()["interval"])
