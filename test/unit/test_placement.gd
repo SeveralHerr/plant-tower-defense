@@ -2933,6 +2933,49 @@ func test_the_budgets_verb_filters_by_id_and_refuses_an_unknown_one() -> String:
 	return err
 
 
+## plant-tower-defense-gzm: the verb used to refuse outright with no Game in
+## the tree, which is backwards for notebook_subhead in particular -- it is
+## about a title-screen subscreen, and requiring a run just to read it is
+## exactly the wrong direction. Now it degrades per entry instead.
+func test_the_budgets_verb_degrades_per_entry_with_no_game_in_the_tree() -> String:
+	var host := Node2D.new()
+	await _T.instantiate_scene(host)
+	# Precondition: nothing else left a Game in the "game" group for this test
+	# to accidentally find and answer against instead of the empty host below
+	# -- see the godot-test-isolation gotcha this guards against.
+	var err: String = _T.assert_true(host.get_tree().get_first_node_in_group("game") == null,
+		"nothing already in the 'game' group before this test starts")
+	if err != "":
+		_T.free_ui(host)
+		return err
+	var ext = preload(DEVTOOLS_EXT).new()
+	ext._dev = host
+	var reply: Dictionary = ext._cmd_budgets({})
+	err = _T.assert_true(bool(reply["success"]),
+		"the verb answers even with nothing in the 'game' group: %s" % reply["message"])
+	var data: Dictionary = reply.get("data", {}) as Dictionary
+	if err == "":
+		var notebook: Dictionary = _budget_entry(data, "notebook_subhead")
+		err = _T.assert_true(bool(notebook.get("computed", false)),
+			"notebook_subhead still answers -- it builds its own throwaway SubViewport")
+	if err == "":
+		var road: Dictionary = _budget_entry(data, "road_shape")
+		err = _T.assert_eq(str(road.get("state", "")), Game.BUDGET_DESCRIBED,
+			"road_shape still answers too -- Board's own statics self-heal outside any tree")
+	if err == "":
+		for id: String in ["husk_click", "hud_readouts", "hud_stats_row", "pest_road_ceiling"]:
+			var entry: Dictionary = _budget_entry(data, id)
+			err = _T.assert_gt(entry.size(), 0, "%s is still named in the reply" % id)
+			if err == "":
+				err = _T.assert_false(bool(entry.get("computed", true)),
+					"%s degrades to unmeasured rather than taking the whole reply down: %s"
+						% [id, entry.get("summary", "")])
+			if err != "":
+				break
+	_T.free_ui(host)
+	return err
+
+
 ## Every plant must SAY whether it can touch a pest.
 ##
 ## `PlantCatalog.engages()` defaults a missing key to false, which is the safe

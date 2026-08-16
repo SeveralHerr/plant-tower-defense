@@ -288,6 +288,12 @@ func _cmd_board_info(_args: Dictionary) -> Dictionary:
 
 ## Every declared budget with its current headroom.
 ##
+## Answers with no Game in the tree too (plant-tower-defense-gzm) -- a title
+## screen degrades four of the six entries to "unmeasured" (they read live
+## nodes or an instance method that groups them) rather than refusing the
+## whole reply, and the other two (notebook_subhead, road_shape) need nothing
+## a title screen doesn't already have, so they answer computed either way.
+##
 ## args: id (String, one budget's id, default all), waves (int, the sweep for the
 ## pest ceiling).
 ##
@@ -306,16 +312,26 @@ func _cmd_board_info(_args: Dictionary) -> Dictionary:
 ## (Array[String]).
 func _cmd_budgets(args: Dictionary) -> Dictionary:
 	var game: Game = _game()
-	if game == null:
-		return _fail("no Game in the tree")
 	var sweep: int = maxi(1, int(args.get("waves", Game.BUDGET_WAVE_SWEEP)))
 	var wanted: String = str(args.get("id", ""))
 	# The four the run prices itself, then the two only a bridge can ask about.
 	# Appended with a plain loop: game.budget_entries() hands back a typed Array
 	# and `+` between two of them is a place a typing mistake hides.
+	#
+	# game.budget_entries() needs a live instance for all four of its own --
+	# husk_click and both HUD entries read live nodes, and pest_road_ceiling is
+	# only reached through the instance method that groups them -- so on a
+	# title screen with no Game running, those four degrade to "unmeasured"
+	# instead of refusing the whole reply (plant-tower-defense-gzm).
+	# notebook_subhead and road_shape need nothing a title screen doesn't
+	# already have, so they still answer either way.
 	var all: Array[Dictionary] = []
-	for entry: Dictionary in game.budget_entries(sweep):
-		all.append(entry)
+	if game != null:
+		for entry: Dictionary in game.budget_entries(sweep):
+			all.append(entry)
+	else:
+		for entry: Dictionary in _budget_entries_without_game():
+			all.append(entry)
 	all.append(_budget_notebook_subhead())
 	all.append(_budget_road_shape(game))
 	# A plain loop, not Array.filter: filter hands back an untyped Array and
@@ -397,10 +413,39 @@ func _cmd_budgets(args: Dictionary) -> Dictionary:
 			"tightest": tightest,
 			"under_floor": regressions.size(),
 			"warnings": regressions,
-			"startup_check": str(game.budget_report.get("summary", "not read")),
+			"startup_check": (str(game.budget_report.get("summary", "not read")) if game != null
+				else "no Game in the tree -- the startup check has not run yet"),
 			"summary": headline,
 		},
 	}
+
+
+## What game.budget_entries() would have reported, degraded to "unmeasured"
+## because there is no Game to read the live nodes and statics those four
+## methods need. Same ids, constants and declared_in every other reply uses --
+## so `--id hud_readouts` finds the same name whether or not a run is live --
+## but the "why" points at Game.budget_entries() rather than duplicating the
+## paragraph each real method already carries next to its own arithmetic; a
+## copy here is exactly the fifth place this whole file exists to prevent one.
+func _budget_entries_without_game() -> Array[Dictionary]:
+	var why: String = "no Game in the tree"
+	var see_it: String = "see Game.budget_entries() in game.gd for what running out of this costs"
+	var out: Array[Dictionary] = [
+		Game.uncomputed_budget(Game.BUDGET_UNMEASURED, "husk_click", "CompostMeter.COLLECT_RADIUS",
+			"res://game/compost_meter.gd", "husk sweep radius", why, see_it,
+			Game.no_budget_observations()),
+		Game.uncomputed_budget(Game.BUDGET_UNMEASURED, "hud_readouts", "Hud.WORST_CASE_TEXT",
+			"res://game/hud.gd", "the widest readout's worst case", why, see_it,
+			Game.no_budget_observations()),
+		Game.uncomputed_budget(Game.BUDGET_UNMEASURED, "hud_stats_row", "Hud.stats_row_budget()",
+			"res://game/hud.gd", "the stats row's contents", why, see_it,
+			Game.no_budget_observations()),
+		Game.uncomputed_budget(Game.BUDGET_UNMEASURED, "pest_road_ceiling",
+			"WaveDirector.SIMULTANEOUS_PEST_CEILING", "res://game/wave_director.gd",
+			"pests on the road at once", why, see_it,
+			Game.no_budget_observations()),
+	]
+	return out
 
 
 ## NotebookScreen.SUBHEAD_MAX_WIDTH against the width the subheading actually
@@ -481,17 +526,31 @@ func _budget_notebook_subhead() -> Dictionary:
 ## fails naming them, and copying them here would make this the fifth place they
 ## can go stale.
 func _budget_road_shape(game: Game) -> Dictionary:
-	var board: Board = game.board
+	var board: Board = (game.board if game != null else null)
+	# road_shape reads nothing but Board's own statics -- PATH_CORNERS, the
+	# route and buildable set it produces -- and every one of is_path(),
+	# route() and path_cell_count() self-heals via _build_path() on a Board
+	# that never entered a tree (see is_path()'s own comment for why). So with
+	# no Game to borrow a live board from, this stands one up itself: the same
+	# throwaway shape _budget_notebook_subhead() uses for its screen, built,
+	# read and freed without ever entering the tree or drawing a frame.
+	var owns_board: bool = false
+	if board == null:
+		board = Board.new()
+		owns_board = true
 	var spends: String = "the road three other files were measured against"
 	var when_out: String = ("nothing breaks loudly -- WaveDirector.SIMULTANEOUS_PEST_CEILING, "
 		+ "the dead-ground count and the Sundew's coverage arithmetic all go on quoting a road "
 		+ "that no longer exists. test_the_road_is_still_the_road_the_constants_were_measured_against "
 		+ "is the alarm, and it names what has to be re-derived.")
-	if board == null or board.path_cell_count() <= 0:
-		return Game.uncomputed_budget(Game.BUDGET_UNMEASURED, "road_shape", "Board.PATH_CORNERS",
-			"res://game/board.gd", spends,
-			"no board, or a board whose path has not been built", when_out,
+	if board.path_cell_count() <= 0:
+		var unmeasured: Dictionary = Game.uncomputed_budget(Game.BUDGET_UNMEASURED, "road_shape",
+			"Board.PATH_CORNERS", "res://game/board.gd", spends,
+			"a board whose path could not be built", when_out,
 			Game.no_budget_observations())
+		if owns_board:
+			board.free()
+		return unmeasured
 	var route: PackedVector2Array = board.route()
 	var length: float = 0.0
 	for i: int in range(route.size() - 1):
@@ -526,12 +585,15 @@ func _budget_road_shape(game: Game) -> Dictionary:
 			id, Game.budget_number(reach), dead, buildable,
 		])
 	observations.append("the Sundew's coverage arithmetic is prose -- no number here can check it")
-	return Game.uncomputed_budget(Game.BUDGET_DESCRIBED, "road_shape", "Board.PATH_CORNERS",
-		"res://game/board.gd", spends,
+	var described: Dictionary = Game.uncomputed_budget(Game.BUDGET_DESCRIBED, "road_shape",
+		"Board.PATH_CORNERS", "res://game/board.gd", spends,
 		("the three couplings are prose reasoned against this road, not ceilings it approaches, "
 			+ "so there is nothing to subtract -- the measurements below are what they would "
 			+ "have to be re-derived against"),
 		when_out, observations)
+	if owns_board:
+		board.free()
+	return described
 
 
 # --- Which build is this? ---
