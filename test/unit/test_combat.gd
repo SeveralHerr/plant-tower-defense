@@ -551,3 +551,167 @@ func test_a_swept_husk_never_reports_itself_as_rotted() -> String:
 			"and never rings the rot cue, however long the meter runs afterwards")
 	meter.free()
 	return err
+
+
+# -- Seed Sunflower yield gauge (plant-tower-defense-6m2) --------------------
+
+
+func test_a_fresh_sunflowers_gauge_is_empty_and_is_brimming_just_before_a_payout() -> String:
+	## The two ends of the readout. Asserted on the state that _draw() consumes,
+	## not on pixels: `progress_at` is what decides the height of the column, so
+	## a wrong number here is a wrong picture there by construction.
+	var err: String = _T.assert_float_eq(Sunflower.progress_at(0.0), 0.0, 0.0001,
+		"the instant a payout lands the gauge is empty")
+	if err == "":
+		err = _T.assert_float_eq(Sunflower.progress_at(Sunflower.INTERVAL * 0.5), 0.5, 0.0001,
+			"halfway through the interval it is half full")
+	if err == "":
+		err = _T.assert_gt(Sunflower.progress_at(Sunflower.INTERVAL - 0.05), 0.99,
+			"and a frame before the next payout it is all but full")
+	if err == "":
+		err = _T.assert_float_eq(Sunflower.progress_at(Sunflower.INTERVAL), 1.0, 0.0001,
+			"exactly at the payout it reads full, never past it")
+	if err == "":
+		err = _T.assert_float_eq(Sunflower.progress_at(Sunflower.INTERVAL * 3.0), 1.0, 0.0001,
+			"and a frame long enough to overshoot clamps rather than overflowing the column")
+	if err == "":
+		var fresh := Sunflower.new()
+		err = _T.assert_float_eq(fresh.yield_progress(), 0.0, 0.0001,
+			"a just-planted Sunflower starts its first interval empty, not full")
+		fresh.free()
+	return err
+
+
+func test_the_sunflower_gauge_never_runs_backwards_inside_an_interval() -> String:
+	## A gauge that dips is read as "the payout got further away", which is the
+	## one thing this readout must never say. Sampled across the whole interval
+	## rather than at the ends, because clamping bugs hide in the middle.
+	var steps: int = 60
+	var previous: float = -1.0
+	for i: int in range(steps + 1):
+		var elapsed: float = Sunflower.INTERVAL * (float(i) / float(steps))
+		var progress: float = Sunflower.progress_at(elapsed)
+		var err: String = _T.assert_gte(progress, previous,
+			"the gauge at %.2fs (%.3f) is never behind where it was at the sample before (%.3f)"
+				% [elapsed, progress, previous])
+		if err != "":
+			return err
+		previous = progress
+	return _T.assert_float_eq(previous, 1.0, 0.0001,
+		"and the last sample of the interval is a full column")
+
+
+func test_the_sunflower_gauge_is_the_same_clock_as_the_panels_countdown() -> String:
+	## The failure this exists to stop: a board readout keeping its own timer and
+	## slowly disagreeing with "Next %d seeds in %.0fs" in the selection panel.
+	## Driven through the real _act() so it is the wiring under test, not the
+	## algebra — the panel calls seconds_until_next_yield(), the column calls
+	## yield_progress(), and they must describe one clock.
+	var sunflower := Sunflower.new()
+	sunflower.setup(PlantCatalog.SUNFLOWER, Vector2i(0, 0), null)
+	var host: Node2D = _host([sunflower])
+	await _T.instantiate_scene(host)
+	# Both after entering the tree: Godot turns physics processing back on when a
+	# node with _physics_process() enters, so a pre-emptive set_physics_process()
+	# would not stick, and whatever frames instantiate_scene pumped are cleared
+	# off the clock here so the steps below are the only time that passes.
+	sunflower.set_physics_process(false)
+	sunflower._timer = 0.0
+
+	var err: String = ""
+	var no_pests: Array[Pest] = []
+	for i: int in range(30):
+		sunflower._act(Sunflower.INTERVAL / 12.0, no_pests)
+		var seconds: float = sunflower.seconds_until_next_yield()
+		var expected: float = 1.0 - seconds / Sunflower.INTERVAL
+		err = _T.assert_float_eq(sunflower.yield_progress(), expected, 0.0001,
+			"step %d: the column (%.4f) agrees with the panel's %.2fs remaining"
+				% [i, sunflower.yield_progress(), seconds])
+		if err != "":
+			break
+	_T.free_ui(host)
+	return err
+
+
+func test_a_payout_empties_the_sunflower_gauge_instead_of_leaving_it_full() -> String:
+	## _bloom() fires at the payout and, headlessly, its tweens are skipped —
+	## GardenTheme.animations_enabled() is false with no renderer. The gauge must
+	## therefore come back to empty on its own rather than because a Tween landed,
+	## or every headless payout would leave a full gold column painted on a plant
+	## that has already paid.
+	var sunflower := Sunflower.new()
+	sunflower.setup(PlantCatalog.SUNFLOWER, Vector2i(0, 0), null)
+	var host: Node2D = _host([sunflower])
+	await _T.instantiate_scene(host)
+	sunflower.set_physics_process(false)
+	sunflower._timer = 0.0
+
+	var paid: Array[int] = []
+	sunflower.grew_seeds.connect(func(amount: int) -> void: paid.append(amount))
+	var no_pests: Array[Pest] = []
+	sunflower._act(Sunflower.INTERVAL - 0.1, no_pests)
+	var err: String = _T.assert_gt(sunflower.yield_progress(), 0.98, "the gauge fills up to the payout")
+	if err == "":
+		sunflower._act(0.2, no_pests)
+		err = _T.assert_eq(paid.size(), 1, "one interval, one payout")
+	if err == "":
+		err = _T.assert_true(sunflower.yield_progress() < 0.05,
+			"and the column drops back to (nearly) empty rather than sticking at full — it read %.3f"
+				% sunflower.yield_progress())
+	if err == "":
+		err = _T.assert_true(sunflower.yield_gauge_rect().size.y < Sunflower.GAUGE_HEIGHT * 0.05,
+			"which is what the drawn rect is measured from")
+	if err == "":
+		err = _T.assert_float_eq(sunflower._bloom_flash, 0.0, 0.0001,
+			"and the payout flash is left at its resting value, not stuck bright by a tween that never ran")
+	if err == "":
+		sunflower._act(Sunflower.INTERVAL * 0.5, no_pests)
+		err = _T.assert_gt(sunflower.yield_progress(), 0.4,
+			"the clock keeps running after a payout instead of stopping at the first one")
+	_T.free_ui(host)
+	return err
+
+
+func test_the_sunflower_gauge_clears_the_health_bar_the_brackets_and_the_chew_ring() -> String:
+	## Everything the column has to share a 64 px cell with. The sprite clearance
+	## is the load-bearing one: Node2D draws its own canvas item *under* its
+	## children, so a gauge inside the flower's silhouette is not dim, it is
+	## invisible — and invisible looks exactly like "the feature is not there".
+	var trough: Rect2 = Sunflower.gauge_trough_rect()
+	var health_bar := Rect2(-16, -34, 32, 5)
+	var err: String = _T.assert_false(trough.grow(1.0).intersects(health_bar),
+		"the gauge %s never overlaps the health bar %s" % [trough, health_bar])
+	if err == "":
+		err = _T.assert_true(Rect2(-32, -32, 64, 64).encloses(trough.grow(1.0)),
+			"and stays inside its own cell rather than spilling onto the neighbour's")
+	if err == "":
+		err = _T.assert_true(trough.end.x < -SelectionMarker.HALF,
+			"and sits outside the selection brackets' arms (%.0f vs %.0f)" % [trough.end.x, -SelectionMarker.HALF])
+	if err == "":
+		# sunflower.svg: the petal tips reach r = 26 from the centre.
+		var petal_tip_radius: float = 26.0
+		for corner: Vector2 in [trough.position, Vector2(trough.end.x, trough.position.y),
+				Vector2(trough.position.x, trough.end.y), trough.end]:
+			err = _T.assert_gte(corner.length(), petal_tip_radius,
+				"corner %s is clear of the sprite the gauge would otherwise be drawn behind" % corner)
+			if err != "":
+				break
+	if err == "":
+		# The chew ring is the readout this one must not be mistaken for. It is a
+		# stroked circle of at most CHEW_RING_RADIUS; the gauge is a straight
+		# column that starts well outside it, so the two never share a pixel even
+		# on adjacent cells' worth of glance.
+		var nearest_corner := Vector2(trough.end.x, trough.position.y)
+		err = _T.assert_gt(nearest_corner.length(), ChompFlower.CHEW_RING_RADIUS,
+			"and even its nearest corner (%.1f px out) lives outside the Chomp's %.0f px chew ring"
+				% [nearest_corner.length(), ChompFlower.CHEW_RING_RADIUS])
+	if err == "":
+		err = _T.assert_float_eq(Sunflower.gauge_fill_rect(1.0).size.y, Sunflower.GAUGE_HEIGHT, 0.0001,
+			"a full gauge fills the trough exactly")
+	if err == "":
+		err = _T.assert_float_eq(Sunflower.gauge_fill_rect(1.0).position.y, trough.position.y, 0.0001,
+			"topping out at the trough's own top edge")
+	if err == "":
+		err = _T.assert_float_eq(Sunflower.gauge_fill_rect(0.0).position.y, Sunflower.GAUGE_BOTTOM, 0.0001,
+			"and an empty one is a zero-height line at the bottom, so the column grows upward")
+	return err
