@@ -45,11 +45,22 @@ recurring shapes worth checking in a game like this one:
 - **What is a strictly dominant strategy?** If one choice is always right, the
   decision it belongs to is decoration.
 
-### 3. Check the filed issues first
-Run `bd list --status=open`. **Do not duplicate a filed issue** — say in the
-report which ones you deliberately avoided. Also read the existing backlog
-section; a re-worded version of an idea already sitting there is worse than
-nothing, because it makes the backlog look longer than it is.
+### 3. Check the filed issues AND what is in flight
+Run plain **`bd list`** — not `bd list --status=open`. That filter hides
+`in_progress`, which is exactly the set being implemented right now: on this
+skill's second run it showed 2 issues where plain `bd list` showed 4, and the two
+it hid were the two an agent was writing that hour. **Do not duplicate a filed
+issue** — say in the report which ones you deliberately avoided.
+
+Then run **`git status --short` and `git diff --stat`**. Anything modified is
+in-flight work by a concurrent agent, and an entry describing a problem that is
+being fixed as you write is worse than no entry. This has already happened: a
+draft entry about health being a one-way ratchet was correct when read and solved
+before the pass finished.
+
+Also read the existing backlog section; a re-worded version of an idea already
+sitting there is worse than nothing, because it makes the backlog look longer
+than it is.
 
 ### 4. Write 6–8 entries
 Append a new subsection at the **top** of the "Cool new features (idea backlog)"
@@ -67,10 +78,16 @@ specifics. Match the voice of the entries already there.
 | "Add sound effects for plants." | "**Eleven sounds shipped and not one of them is a plant doing its job.** Every entry in `Sfx.SOUNDS` is a pest, a husk, a wave or a run-ender; `_fire_at`, `_grab`, `_bite` and `_bloom` are all silent — so the half of the game the player *builds* makes no noise while the half that attacks them does." |
 | "Improve the difficulty curve." | "**The escalation note is a three-second line about a permanent change, and it goes quiet exactly when the ramp stops.** `ENDLESS_HEALTH_STEP` caps at 3.0 around wave 41 and `SPEED_STEP` at 1.6 around wave 48, while `threat_level` keeps climbing — so the number keeps rising after the thing it measures has stopped." |
 
-### 5. Verify your line numbers before reporting
-Citations drift while you draft. Re-open each file and confirm every `file:line`
-you are about to report. A wrong anchor costs the next session more than the entry
-is worth.
+### 5. Verify your line numbers AFTER writing, not before
+Citations drift while you draft, and in this repo they drift *because other agents
+are editing the same files*. Measured on one run: `hud.gd` went 886 → 934 lines
+and `plant.gd` gained 149 while the pass was being written; `announce_wave` moved
+from 850 to 898 between being read and being cited.
+
+So: cite by **symbol and line** (`hud.gd:898 announce_wave`), not line alone, and
+re-open every file to confirm the anchors **after** the entries are written rather
+than as you go. A wrong anchor costs the next session more than the entry is
+worth, and a right-when-read anchor is still wrong when filed.
 
 ## Scope discipline
 
