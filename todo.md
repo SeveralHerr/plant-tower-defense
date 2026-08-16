@@ -1,6 +1,6 @@
 # todo
 
-**Cycle 3 of 30.** Bump this each time you refill the Items list. See the Workflow
+**Cycle 4 of 30.** Bump this each time you refill the Items list. See the Workflow
 loop at the top of `CLAUDE.md` — when this list is done, refill it and start again.
 
 ## The brief (original)
@@ -24,15 +24,16 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 
 ## Items
 
-- [x] Uproot needs a confirm or an undo — it is the only irreversible misclick
-      in the game (`plant-tower-defense-zr4`)
-- [x] Show a selected plant's health in the side panel, so "uproot and replant?"
-      is a decision the panel can actually support (`plant-tower-defense-5zc`)
-- [x] A real end-of-run summary panel — every number is already computed and
-      currently lives in a message that expires (`plant-tower-defense-cw1`)
-- [x] Tint the threat level as it climbs, so escalation is seen not read
-      (`plant-tower-defense-cuk`)
-- [x] Project-identity devtools verb, so a session can prove which build it is
-      driving before trusting a runtime pass (`plant-tower-defense-gqs`)
-- [x] Add cool new features or concrete improvements (UX, game juice,
-      animations, enhancements, or full features) to `kanban.md` 
+- [ ] Common seed packets silently become rare ones once Chomp unlocks — a
+      20-seed packet can hand out the tier-2 Sunflower and both tooltips lie
+      (`plant-tower-defense-ha6`)
+- [ ] The message line has one slot, so cues stomp each other — the uproot
+      instruction dies to an incidental husk pickup (`plant-tower-defense-9q8`)
+- [ ] Nothing counts down the 18 seconds to the next wave — the threat tint says
+      how bad it will be, nothing says when (`plant-tower-defense-uk6`)
+- [ ] A mutated pest is a tint, and the two that change the rules — winged and
+      hungry — are unnamed (`plant-tower-defense-5tu`)
+- [ ] A Corn Cobbler at full bunch looks exactly like a fresh one, so the most
+      expensive decision in the game is invisible (`plant-tower-defense-nll`)
+- [ ] Add cool new features or concrete improvements (UX, game juice,
+      animations, enhancements, or full features) to `kanban.md`
