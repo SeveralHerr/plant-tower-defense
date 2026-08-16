@@ -3179,3 +3179,48 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     denominator. A partial import is currently indistinguishable from a clean one
     at the point where you could still act on it, and only becomes visible eleven
     failures later in a form that reads like a code regression.
+
+## 2026-08-16 - Extracted OverlayScreen out of the three overlays (plant-tower-defense-q7b)
+
+- Value: **warranted** - the live game answered the one question the headless suite
+  structurally cannot: that the extracted chrome still comes up under the *pause
+  card*, on a tree that is actually paused, with the node paths the bridge presses
+  by name still resolving.
+  - Expected: the refactor is pure motion, so the risk is not arithmetic but
+    lifecycle - a base-class `_ready()` a subclass silently replaces, an overlay
+    that comes up frozen because PROCESS_MODE_ALWAYS moved, or a renamed node path
+    only the bridge would notice.
+  - Got: `scene-tree --root .../KeysScreen --depth 1` listed `Backdrop, Paper,
+    Heading, Note, Row0..Row7, RowKey0..7, RowButton0..7, BackButton, ResetButton`
+    in the original order; `node-bounds RowButton7` = `744, 472, 150x40` and
+    `BackButton` = `258, 560, 150x40`, so the live footer clearance is 560 - 512 =
+    **48px against a FOOTER_GAP of 24** - the same number the headless assertion
+    computes, measured windowed. `get-state --property process_mode` returned `3`
+    (ALWAYS) on the pause-card copy, and `press BackButton` on the paused tree left
+    the pause card with no `KeysScreen` child at all. The notebook came up with all
+    18 of its nodes, `PageLabel` reading `1 / 8`, and Next moved it to `2 / 8`.
+    `findings --no-scenes` over the open notebook: `0 finding(s) across 4 of 5`.
+  - Found: nothing in the game - but the baseline re-run found something about the
+    *suite*: with the refactor stashed and `game/overlay_screen.gd` left on disk,
+    `test_every_game_class_is_at_least_named_somewhere_in_the_test_suite` failed.
+    That is the suite correctly refusing a new `class_name` no test names, and it
+    is worth knowing it fires while the class is still unwired rather than after.
+  - Cheaper: for the geometry, nothing - the headless test asserts the same 48px,
+    but only the live run proves the pause card's copy is the one being measured.
+    For the row and label styling, reading the diff was enough.
+
+- Gap: **`node-bounds` crashes on a Button whose text contains a non-cp1252
+  character.** `python tools/devtools.py node-bounds .../KeysScreen/BackButton`
+  exited with a Python traceback ending `UnicodeEncodeError: 'charmap' codec can't
+  encode character '←' in position 17` at `cmd_node_bounds`, devtools.py:3096
+  (`print(f"  Text: ...")`). The button's label is the left-arrow + " Back" that
+  every overlay in this game uses, so the most obvious verb to point at an
+  overlay's Back button is the one that cannot print it on a default Windows
+  console. Workaround: `PYTHONIOENCODING=utf-8` in front of the command, which is
+  not discoverable from the traceback.
+  - [G-048] status: open | seen: 1 | harness: 0.33.0
+  - Improvement: reconfigure stdout once in `main()` -
+    `sys.stdout.reconfigure(encoding="utf-8", errors="replace")` - so no verb can
+    take the whole client down over a character in game text. Failing that,
+    `_printable()` should strip unencodable characters, since it is already the
+    function every text field is routed through.

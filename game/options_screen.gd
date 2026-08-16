@@ -1,5 +1,5 @@
 class_name OptionsScreen
-extends Control
+extends OverlayScreen
 
 ## The screen that lets a player see and set the three switches this game has,
 ## over the title screen.
@@ -20,10 +20,12 @@ extends Control
 ## room in either direction, so the choice was a sibling screen or a redesign of
 ## the one screen that already works.
 ##
-## Same overlay contract as NotebookScreen and KeyBindingScreen, which is what
-## lets TitleScreen.overlay_open() treat all three alike: an opaque-ish Backdrop
-## that eats the mouse, a paper panel, a Back button, and a `back_requested`
-## signal rather than any knowledge of who opened it.
+## The overlay chrome — the Backdrop, the paper, the Back button and
+## `back_requested` — is OverlayScreen's, which is what lets
+## TitleScreen.overlay_open() treat all three overlays alike. This screen was
+## originally written by copying KeyBindingScreen, which is why its node names
+## match that one to the letter; the copy is now a shared base rather than a
+## second transcription.
 ##
 ## ## What persists and what does not
 ##
@@ -39,8 +41,6 @@ extends Control
 ## `Row%d` / `RowKey%d` / `RowButton%d` are asserted by test_selftest.gd and
 ## pressable from the devtools bridge. The row names deliberately match
 ## KeyBindingScreen's, so one bridge recipe drives either screen.
-
-signal back_requested
 
 ## The switches, in the order they are drawn. A table rather than three
 ## hand-placed rows for the same reason KeyBindings.ACTIONS is one: the row list,
@@ -75,25 +75,17 @@ const OPTIONS: Array[Dictionary] = [
 
 ## Panel rect, in viewport coordinates, SIZED FROM THE ROW COUNT rather than
 ## picked and then trusted to fit — the same discipline (and the same hard-won
-## reason) as KeyBindingScreen.PANEL. Three rows of 48 from ROWS_TOP put the last
-## button's foot at 392; the footer starts at 440. That 48px is a GAP, asserted
-## as one: `Rect2.intersects` is false for two boxes sharing an edge, so a footer
-## laid flush against the last row passes every overlap check ever written and is
-## wrong only in a screenshot.
+## reason) as KeyBindingScreen.PANEL. Three rows of OverlayScreen.ROW_HEIGHT from
+## ROWS_TOP put the last button's foot at 392; the footer starts at 440. That 48px
+## is a GAP, asserted as one against OverlayScreen.FOOTER_GAP, which is where that
+## rule lives for every overlay with rows: `Rect2.intersects` is false for two
+## boxes sharing an edge, so a footer laid flush against the last row passes every
+## overlap check ever written and is wrong only in a screenshot.
 const PANEL := Rect2(226.0, 144.0, 700.0, 360.0)
 
 const HEADING_Y: float = 164.0
 const NOTE_Y: float = 210.0
 const ROWS_TOP: float = 256.0
-## 48, matching KeyBindingScreen: the button in a row is 40 tall (`findings`
-## gates an interactive Control at 40x40 and is right to) and 8px of clearance
-## above it is what keeps the label of the row below off it.
-const ROW_HEIGHT: float = 48.0
-const ROW_BUTTON_SIZE := Vector2(150.0, 40.0)
-const FOOTER_HEIGHT: float = 40.0
-## The minimum clear space between the last row and the footer. Asserted rather
-## than merely achieved — see PANEL.
-const FOOTER_GAP: float = 24.0
 
 ## Column x offsets from the panel's left edge. Same three columns as the Keys
 ## screen, so the two read as one pair of screens rather than two designs.
@@ -109,8 +101,6 @@ const NOTE_TEXT := "These stay set while you play. The key beside each one still
 
 var _rows: Array[StringName] = []
 var _key_labels: Array[Label] = []
-var _buttons: Array[Button] = []
-var _back_button: Button
 
 
 # -- the state itself -------------------------------------------------------
@@ -191,58 +181,20 @@ static func state_text(on: bool) -> String:
 # -- the screen -------------------------------------------------------------
 
 
-func _ready() -> void:
-	# Explicit position+size rather than PRESET_FULL_RECT: added with add_child()
-	# outside a layout pass, where the preset resolves to 0x0. Same reason as
-	# TitleScreen, NotebookScreen, PauseScreen and KeyBindingScreen.
-	position = Vector2.ZERO
-	size = Vector2(get_viewport_width(), get_viewport_height())
-	theme = GardenTheme.build()
+func panel_rect() -> Rect2:
+	return PANEL
 
-	var backdrop := ColorRect.new()
-	backdrop.name = "Backdrop"
-	backdrop.color = Color(GardenTheme.INK, 0.88)
-	backdrop.position = Vector2.ZERO
-	backdrop.size = size
-	add_child(backdrop)
 
-	var paper := Panel.new()
-	paper.name = "Paper"
-	paper.position = PANEL.position
-	paper.size = PANEL.size
-	paper.add_theme_stylebox_override("panel", GardenTheme.paper_panel())
-	paper.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(paper)
-
+func _build_contents() -> void:
 	_build_header()
 	_build_rows()
 	_build_footer()
 	refresh()
-	_back_button.grab_focus()
 
 
 func _build_header() -> void:
-	var heading := Label.new()
-	heading.name = "Heading"
-	heading.text = "Options"
-	heading.position = Vector2(PANEL.position.x, HEADING_Y)
-	heading.size = Vector2(PANEL.size.x, 40.0)
-	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	heading.add_theme_font_size_override("font_size", 30)
-	heading.add_theme_color_override("font_color", GardenTheme.INK)
-	add_child(heading)
-
-	var note := Label.new()
-	note.name = "Note"
-	note.text = NOTE_TEXT
-	note.position = Vector2(PANEL.position.x, NOTE_Y)
-	note.size = Vector2(PANEL.size.x, 24.0)
-	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	note.add_theme_font_size_override("font_size", 15)
-	note.add_theme_color_override("font_color", Color(GardenTheme.INK, 0.65))
-	note.clip_text = true
-	note.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	add_child(note)
+	add_heading("Options", HEADING_Y)
+	add_note_label(NOTE_TEXT, NOTE_Y)
 
 
 ## One row per entry in OPTIONS, in table order — not a hand-written list, for
@@ -254,52 +206,23 @@ func _build_rows() -> void:
 		var index: int = _rows.size()
 		_rows.append(id)
 
-		var label := Label.new()
-		label.name = "Row%d" % index
-		label.text = String(row["name"])
-		label.position = Vector2(PANEL.position.x + NAME_X, y + 8.0)
-		label.size = Vector2(NAME_WIDTH, 24.0)
-		label.add_theme_font_size_override("font_size", 16)
-		label.add_theme_color_override("font_color", GardenTheme.INK)
-		label.clip_text = true
-		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		add_child(label)
+		add_row_label("Row%d" % index, String(row["name"]),
+			Vector2(PANEL.position.x + NAME_X, y + 8.0), Vector2(NAME_WIDTH, 24.0),
+			GardenTheme.INK)
 
-		var key := Label.new()
-		key.name = "RowKey%d" % index
-		key.position = Vector2(PANEL.position.x + KEY_X, y + 8.0)
-		key.size = Vector2(KEY_WIDTH, 24.0)
-		key.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		key.add_theme_font_size_override("font_size", 16)
-		key.add_theme_color_override("font_color", GardenTheme.LEAF_DARK)
-		key.clip_text = true
-		key.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		add_child(key)
-		_key_labels.append(key)
+		_key_labels.append(add_row_label("RowKey%d" % index, "",
+			Vector2(PANEL.position.x + KEY_X, y + 8.0), Vector2(KEY_WIDTH, 24.0),
+			GardenTheme.LEAF_DARK, HORIZONTAL_ALIGNMENT_CENTER))
 
-		var button := Button.new()
-		button.name = "RowButton%d" % index
-		button.position = Vector2(PANEL.position.x + BUTTON_X, y)
-		button.size = ROW_BUTTON_SIZE
 		# Bound, not read off the loop variable — a lambda closing over `id`
 		# directly is how three buttons all end up flipping the last switch.
-		button.pressed.connect(flip.bind(id))
-		add_child(button)
-		_buttons.append(button)
+		add_row_button(index, Vector2(PANEL.position.x + BUTTON_X, y)).pressed.connect(flip.bind(id))
 
 		y += ROW_HEIGHT
 
 
 func _build_footer() -> void:
-	var y: float = PANEL.position.y + PANEL.size.y - FOOTER_HEIGHT - 24.0
-
-	_back_button = Button.new()
-	_back_button.name = "BackButton"
-	_back_button.text = "← Back"
-	_back_button.position = Vector2(PANEL.position.x + NAME_X, y)
-	_back_button.size = Vector2(150.0, FOOTER_HEIGHT)
-	_back_button.pressed.connect(func() -> void: back_requested.emit())
-	add_child(_back_button)
+	add_back_button(Vector2(PANEL.position.x + NAME_X, footer_y()))
 
 
 ## Flips one switch and redraws. The only writer the buttons have, so "changed on
@@ -319,8 +242,8 @@ func refresh() -> void:
 		var id: StringName = _rows[i]
 		_key_labels[i].text = KeyBindings.label_for(action_for(id))
 		var on: bool = is_on(id)
-		_buttons[i].text = state_text(on)
-		_buttons[i].add_theme_color_override("font_color",
+		_row_buttons[i].text = state_text(on)
+		_row_buttons[i].add_theme_color_override("font_color",
 			GardenTheme.LEAF_DARK if on else GardenTheme.INK_SOFT)
 
 
@@ -329,22 +252,3 @@ func refresh() -> void:
 ## layer.
 func rows() -> Array[StringName]:
 	return _rows.duplicate()
-
-
-## Escape closes. Handled in `_input` rather than `_unhandled_input` for the same
-## reason NotebookScreen and KeyBindingScreen are: a focused Button eats keys for
-## focus navigation before an unhandled handler ever sees them.
-func _input(event: InputEvent) -> void:
-	if not (event is InputEventKey or event is InputEventAction):
-		return
-	if event.is_action_pressed(KeyBindings.ACTION_BACK):
-		back_requested.emit()
-		get_viewport().set_input_as_handled()
-
-
-func get_viewport_width() -> int:
-	return ProjectSettings.get_setting("display/window/size/viewport_width", 1152)
-
-
-func get_viewport_height() -> int:
-	return ProjectSettings.get_setting("display/window/size/viewport_height", 648)
