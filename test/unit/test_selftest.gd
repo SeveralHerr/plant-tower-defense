@@ -2130,3 +2130,43 @@ func test_an_unusable_cell_is_not_also_warned_about() -> String:
 			"and no warning ring is drawn over a cell that already refuses")
 	_T.free_ui(game)
 	return err
+
+
+## The armed Uproot button must LOOK armed, not just behave that way. The state
+## machine is covered in test_placement.gd; this is the render side of it, and it
+## is the half a headless behaviour test silently skips.
+func test_an_armed_uproot_button_relabels_and_reddens() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "", "planted")
+	var button: Button = game.hud.get_node_or_null("Root/SidePanel/SelectionBox/UprootButton") as Button
+	if err == "":
+		err = _T.assert_true(button != null, "the Uproot button is where the bridge presses it")
+	if err == "":
+		await _pump(game)
+		err = _T.assert_false(button.has_theme_color_override("font_color"),
+			"a resting Uproot button wears the panel's own colour")
+	if err == "":
+		err = _T.assert_eq(game.request_uproot(), "confirm needed", "armed")
+	if err == "":
+		await _pump(game)
+		err = _T.assert_true(button.text.begins_with("Really uproot?"),
+			"the armed button says what the next click does, got %s" % button.text)
+	if err == "":
+		err = _T.assert_true(button.has_theme_color_override("font_color"),
+			"and turns red while it is live")
+	if err == "":
+		err = _T.assert_true(button.get_theme_color("font_color").is_equal_approx(Hud.UPROOT_ARMED),
+			"specifically the HUD's one warning red")
+	if err == "":
+		# Disarming must put the colour back, or the first uproot of a run leaves
+		# every later one permanently red and the cue stops meaning anything.
+		game._process(Game.UPROOT_CONFIRM_SECONDS + 0.1)
+		await _pump(game)
+		err = _T.assert_false(button.has_theme_color_override("font_color"),
+			"and drops the red again when the window closes")
+	if err == "":
+		err = _T.assert_true(button.text.begins_with("Uproot ("),
+			"and goes back to its resting label, got %s" % button.text)
+	_T.free_ui(game)
+	return err

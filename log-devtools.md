@@ -1139,3 +1139,78 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     `launch --reap` that kills instances pointed at this project's `user://` before
     starting. A mid-run owner change should abort loudly rather than surface as one
     failed call among many.
+
+## 2026-08-15 — Checked whether anything still needed merging into main
+
+- Value: **overkill** — no harness involvement was warranted; this was a pure VCS
+  question answered by four read-only git commands.
+  - Expected: `feat/playable-tower-defense` would carry unmerged commits needing a merge
+    into `main`.
+  - Got: `git rev-list --count main..feat/playable-tower-defense` returned `0` in both
+    directions, and both refs resolve to `80888dc`.
+  - Found: nothing — no code changed, so no runtime claim was available to make.
+  - Cheaper: nothing cheaper existed; `git rev-list --count` both ways is the minimum.
+
+- Gap: no gaps this turn — the harness was correctly not used, since no gameplay,
+  script, or scene file was touched and `/verify` would have had an empty diff to reach.
+
+## 2026-08-15 — Uproot confirm gate (plant-tower-defense-zr4)
+
+- Value: **overkill** — every live probe confirmed what the headless tests already
+  said, and the one question the tests could not answer was settled faster by a
+  test I wrote mid-run than by the bridge.
+  - Expected: the headless tests prove the arm/commit/timeout/reselect state
+    machine, but they never render. Runtime should reveal whether
+    "Really uproot? (+60)" actually fits the 232px UprootButton at font 18 rather
+    than ellipsising, and whether the red override lands and is genuinely removed
+    on disarm.
+  - Got: `Rect: 908, 592, 232x40` with `Text: "Really uproot? (+6)"` — identical to
+    the resting rect, so the longer label does not grow the VBox or push
+    `SelectionBox` (`908, 464, 232x168`, foot at 632) past the panel bottom at 648.
+    Live `get_theme_color("font_color")` returned
+    `{"r": 0.850, "g": 0.25, "b": 0.220}`, exactly `Hud.UPROOT_ARMED`, and after
+    `set-game-speed 1.0` plus 5s it returned to `has_theme_color_override == false`
+    with the label back to `Uproot (+6)` and `plants = 1`.
+  - Found: nothing. No defect surfaced and nothing was fixed mid-run. Three live
+    reads of the armed colour returned the resting grey and all three were my
+    staging, not the code — see G-022.
+  - Cheaper: `test_an_armed_uproot_button_relabels_and_reddens` in
+    `test/unit/test_selftest.gd`, ~58ms, which asserts the relabel, the exact
+    colour and the revert. I wrote it as a diagnostic *because* the live probes
+    kept disagreeing, and it answered in one run what the bridge took six to say.
+
+- Gap: **a confirm window measured in seconds is shorter than a handful of bus
+  round-trips, and nothing in the reply says the state expired** — the window is
+  `Game.UPROOT_CONFIRM_SECONDS = 4.0`. Arming it with `press` and then reading the
+  button took two calls at ~1s each, so `run-method --method has_theme_color_override`
+  returned `Result: false` and `get-state --property text` returned `Uproot (+6)`,
+  both well-formed answers describing a state that had already lapsed. A second
+  attempt read `_uproot_left: 0.0` *after* a press, which looked like the press had
+  failed when in fact it had committed an arming left over from the previous block.
+  Workaround that worked: `python tools/devtools.py set-game-speed 0.02` (clamped to
+  `Game speed: 1.0 -> 0.0`), which freezes the countdown while the bridge keeps
+  answering, then `set-game-speed 1.0` to watch the expiry land.
+  - [G-022] status: open | seen: 1 | harness: 0.19.0
+  - Improvement: a `with-time-frozen` flag on `press`/`run-method` that pins
+    `time_scale` to 0 for the duration of the call, or — cheaper — document
+    `set-game-speed 0` as the standard technique for observing any state with a
+    lifetime shorter than a few seconds. `step-time` already exists for advancing
+    time deterministically; the inverse (hold it still while I look) is the missing
+    half, and every short-lived cue — a combo window, a hitstop, an i-frame, this
+    confirm — hits it.
+
+- Gap: **the installed harness is two minor versions stale, and the workflow text
+  handed to the session describes flags it does not have** — the drift check
+  reported all 12 files drifted, and `harness_history.json` gave a clean bearing:
+  `addons/godot_selftest/dev_tools.gd: matches 0.19.0, current is 0.21.0 -> STALE
+  install`, same for `devtools.py`, `verify_ledger.py`, `coverage_check.py`, with no
+  file carrying local edits. The concrete bite: Phase 5 instructed
+  `python tools/devtools.py quit --kill` after a survivor warning, and the installed
+  client answered `error: unrecognized arguments: --kill`. The orphan scan the
+  workflow describes as "runs by default (0.21.0+)" also never appeared in lint output.
+  - [G-023] status: open | seen: 1 | harness: 0.19.0
+  - Improvement: have `/verify` Phase 0 fail loudly rather than advisorily when the
+    bearing is `STALE`, since every later phase is then reading instructions written
+    against a client the project does not have. A one-line
+    `installed 0.19.0 < documented 0.21.0 - re-run /scaffold-godot-harness` at the
+    top of the run would have cost nothing and pre-empted the `--kill` dead end.

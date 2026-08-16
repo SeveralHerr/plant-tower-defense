@@ -65,6 +65,10 @@ const INK := Color(0.12, 0.15, 0.13)
 const PAPER := Color(0.925, 0.863, 0.722)
 const PAPER_DARK := Color(0.851, 0.788, 0.659)
 const LEAF := Color(0.180, 0.800, 0.443)
+## The one warning red in the HUD: an armed Uproot, and nothing else. Same hue
+## the in-world health bar and the lane-pressure overlay already use, so a red on
+## this screen always means "this costs you something".
+const UPROOT_ARMED := Color(0.85, 0.25, 0.22)
 
 var _seeds_label: Label
 var _wave_label: Label
@@ -397,7 +401,16 @@ func _refresh_selection(state: Dictionary) -> void:
 	else:
 		_selection_label.text = "%s\n%s" % [PlantCatalog.display_name(plant.kind), PlantCatalog.blurb(plant.kind)]
 		_upgrade_button.visible = false
-	_uproot_button.text = "Uproot (+%d)" % plant.uproot_refund()
+	# Armed, the button says what the next click does rather than what the action
+	# is called. It stays the same node at the same size — the devtools bridge and
+	# the tests press UprootButton by path, and a second button would not fit under
+	# SelectionBox anyway (the VBox already runs to within 16px of the panel foot).
+	if bool(state.get("uproot_armed", false)):
+		_uproot_button.text = "Really uproot? (+%d)" % plant.uproot_refund()
+		_uproot_button.add_theme_color_override("font_color", UPROOT_ARMED)
+	else:
+		_uproot_button.text = "Uproot (+%d)" % plant.uproot_refund()
+		_uproot_button.remove_theme_color_override("font_color")
 
 
 func show_message(text: String, seconds: float = 3.0) -> void:

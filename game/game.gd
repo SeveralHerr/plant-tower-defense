@@ -12,6 +12,16 @@ const LIVES: int = 10
 ## Seconds between a wave being cleared and the next one starting on its own. The
 ## button is still there; this stops a finished wave from stalling the run.
 const PREP_SECONDS: float = 18.0
+## How long an armed Uproot stays armed before it disarms itself.
+##
+## Uproot is the only irreversible click in the game — it refunds 60% and frees
+## the node, and a real undo would have to restore CornCobbler.level, the
+## Sunflower's yield clock, the plant's remaining health and the consumed free
+## starter, several of which cannot be recovered once queue_free lands. So the
+## click is gated going in rather than reversed coming out. Four seconds is long
+## enough to read the relabelled button and short enough that a wave arriving
+## mid-decision does not leave a live trigger sitting under the cursor.
+const UPROOT_CONFIRM_SECONDS: float = 4.0
 
 var board: Board
 var bank: SeedBank
@@ -36,6 +46,14 @@ var _plants: Dictionary = {}
 var _prep_left: float = 0.0
 var _wave_live: bool = false
 var _score_recorded: bool = false
+
+## The plant an Uproot click has armed, and how long it stays armed. Held here
+## rather than in the Hud because the HUD is deliberately stateless — it renders
+## whatever state() hands it and keeps no second copy of the truth (see hud.gd).
+## Keyed by the plant, not a bare bool, so arming one plant and then selecting
+## another cannot leave a live trigger pointed at the wrong garden bed.
+var _uproot_armed: Plant = null
+var _uproot_left: float = 0.0
 
 ## Road cell -> how many pests this wave were lost there (killed or escaped).
 ## Committed to the board as one batch when the wave ends; see
@@ -104,7 +122,10 @@ func _ready() -> void:
 	hud.packet_requested.connect(_on_packet_requested)
 	hud.next_wave_requested.connect(start_next_wave)
 	hud.upgrade_requested.connect(upgrade_selected)
-	hud.uproot_requested.connect(uproot_selected)
+	# The button goes through the confirm gate; uproot_selected() stays the
+	# unguarded mutator underneath it, which is what the devtools verbs and the
+	# placement tests drive.
+	hud.uproot_requested.connect(request_uproot)
 
 	_prep_left = PREP_SECONDS
 	_refresh()
@@ -112,6 +133,10 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	# Ahead of the game-over return: a run that ends while Uproot is armed must
+	# still disarm, or the trigger is left live under the cursor on the results
+	# screen and survives into whatever the player clicks next.
+	_tick_uproot_confirm(delta)
 	if game_over or victory:
 		return
 	_check_wave_cleared()
@@ -281,6 +306,12 @@ func _on_plant_chosen(id: StringName) -> void:
 func _select(plant: Plant) -> void:
 	if selected_placed != null and is_instance_valid(selected_placed):
 		selected_placed.set_selected(false)
+	# Changing selection cancels a pending Uproot. Keying the arming to the plant
+	# would already stop it firing on the wrong one, but leaving it armed means
+	# clicking back to the first plant re-enters a live window the player has
+	# stopped thinking about.
+	if plant != _uproot_armed:
+		_disarm_uproot()
 	selected_placed = plant
 	if selected_placed != null:
 		selected_placed.set_selected(true)
@@ -359,6 +390,56 @@ func upgrade_selected() -> String:
 	return ""
 
 
+## What the Uproot button is wired to. The first click arms; a second click on
+## the same plant within UPROOT_CONFIRM_SECONDS commits.
+##
+## Returns "" when the plant was actually uprooted, and otherwise the reason it
+## was not — "confirm needed" for the arming click, which is a refusal the caller
+## can distinguish from a real failure.
+func request_uproot() -> String:
+	if selected_placed == null or not is_instance_valid(selected_placed):
+		return "nothing is selected"
+	if _uproot_armed == selected_placed and _uproot_left > 0.0:
+		_disarm_uproot()
+		return uproot_selected()
+	_uproot_armed = selected_placed
+	_uproot_left = UPROOT_CONFIRM_SECONDS
+	hud.show_message("Click Uproot again to dig up your %s — it will not grow back."
+		% PlantCatalog.display_name(selected_placed.kind), UPROOT_CONFIRM_SECONDS)
+	_refresh()
+	return "confirm needed"
+
+
+## True while a second Uproot click would commit. Read by the HUD to relabel the
+## button, and by the tests.
+func uproot_armed() -> bool:
+	return _uproot_armed != null and _uproot_armed == selected_placed and _uproot_left > 0.0
+
+
+func _disarm_uproot() -> void:
+	_uproot_armed = null
+	_uproot_left = 0.0
+
+
+func _tick_uproot_confirm(delta: float) -> void:
+	if _uproot_left <= 0.0:
+		return
+	# A plant that was eaten mid-decision takes its arming with it, rather than
+	# leaving a freed instance armed for a cell something else can be planted on.
+	if _uproot_armed == null or not is_instance_valid(_uproot_armed):
+		_disarm_uproot()
+		_refresh()
+		return
+	_uproot_left -= delta
+	if _uproot_left <= 0.0:
+		_disarm_uproot()
+		hud.show_message("Uproot cancelled.", 2.0)
+		_refresh()
+
+
+## The unguarded mutator: removes the selected plant and pays the refund with no
+## confirmation. The button never reaches this directly — see request_uproot —
+## but the devtools verbs and the placement tests do, deliberately.
 func uproot_selected() -> String:
 	if selected_placed == null or not is_instance_valid(selected_placed):
 		return "nothing is selected"
@@ -486,6 +567,7 @@ func state() -> Dictionary:
 		"lives": lives,
 		"selected_plant": selected_plant,
 		"selected_placed": selected_placed,
+		"uproot_armed": uproot_armed(),
 		"plants": _plants.size(),
 		"pests_alive": get_tree().get_nodes_in_group("pests").size(),
 		"can_start_wave": not _wave_live and director.has_more_waves() and not game_over and not victory,
