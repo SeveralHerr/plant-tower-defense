@@ -8063,3 +8063,187 @@ func test_no_test_persists_through_the_players_own_save() -> String:
 		err = _T.assert_eq(", ".join(offenders), "",
 			"every test that persists redirects RunConfig.save_path first; these do not")
 	return err
+
+
+# -- Pests walk rather than slide (plant-tower-defense-iue) -----------------
+
+
+## The composition rule the whole feature rests on. Two features write
+## `_sprite.rotation`, and _advance() calls _update_facing() every frame, so a
+## gait that assigned rotation instead of adding to it would be erased sixty
+## times a second and look exactly like a gait that was never written.
+func test_the_gait_offsets_the_facing_rotation_rather_than_replacing_it() -> String:
+	var pest: Pest = _pest(Pest.APHID, Vector2.ZERO)
+	var host: Node2D = _host([pest])
+	await _T.instantiate_scene(host)
+
+	# Walking right: the cardinal facing _update_facing() picks for +X.
+	pest._update_facing(Vector2.RIGHT)
+	var err: String = _T.assert_float_eq(pest._facing, PI / 2.0, 0.0001,
+		"sanity: a pest walking right faces +X")
+	if err == "":
+		# Mid-stride, by hand rather than by waiting on a frame -- headless never
+		# pumps one and the point here is the arithmetic, not the clock.
+		pest._sway = 0.1
+		pest._apply_facing()
+		err = _T.assert_float_eq(pest._sprite.rotation, PI / 2.0 + 0.1, 0.0001,
+			"the sway is added to the facing, not written over it")
+	if err == "":
+		# And the frame's own facing update does not wipe it back out.
+		pest._update_facing(Vector2.RIGHT)
+		err = _T.assert_float_eq(pest._sprite.rotation, PI / 2.0 + 0.1, 0.0001,
+			"the next _update_facing() of the same leg keeps the sway alive")
+	if err == "":
+		pest._update_facing(Vector2.DOWN)
+		err = _T.assert_float_eq(pest._sprite.rotation, PI + 0.1, 0.0001,
+			"and turning a corner moves the facing term only")
+	_T.free_ui(host)
+	return err
+
+
+## The gate's other half. Headless is animations-off, so a pest here must sit at
+## exactly the static state that shipped before the gait existed -- a bare
+## cardinal rotation and the species' own sprite scale, not a transform frozen
+## a quarter of the way into a stride.
+func test_with_animations_off_a_pest_holds_its_bare_facing_and_scale() -> String:
+	var pest: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	var host: Node2D = _host([pest])
+	await _T.instantiate_scene(host)
+
+	var err: String = _T.assert_false(GardenTheme.animations_enabled(),
+		"sanity: headless is the animations-off case this test is about")
+	if err == "":
+		# Zeroed here rather than trusted: _pest() turns physics off, but the clock
+		# below is asserted to an exact value and a baseline the settle frames chose
+		# would make that assertion about the frame count instead of about _gait().
+		pest._gait_time = 0.0
+		for i: int in range(30):
+			pest._gait(0.016)
+		err = _T.assert_float_eq(pest._sway, 0.0, 0.0001, "no sway is ever accumulated")
+	if err == "":
+		err = _T.assert_float_eq(pest._sprite.rotation, pest._facing, 0.0001,
+			"the sprite sits on its bare facing rotation")
+	if err == "":
+		err = _T.assert_eq(pest._sprite.scale, Vector2(pest._sprite_scale, pest._sprite_scale),
+			"and on the species' own scale, unstretched")
+	if err == "":
+		# The clock still runs, same as Plant._wobble()'s does, so a mid-run
+		# toggle picks up a phase instead of forty pests snapping from 0.
+		err = _T.assert_float_eq(pest._gait_time, 30.0 * 0.016, 0.0001,
+			"the gait clock advances anyway, so turning animations on mid-run is not a snap")
+	_T.free_ui(host)
+	return err
+
+
+## Nine aphids spawned in a column should read as nine creatures. The phase is
+## what does that, so it is the thing worth pinning.
+func test_pests_spawned_in_a_column_walk_on_different_phases() -> String:
+	var seen: Dictionary = {}
+	for i: int in range(9):
+		var phase: float = Pest.gait_phase(i)
+		var err: String = _T.assert_true(phase >= 0.0 and phase < TAU,
+			"phase %d stays on the circle" % i)
+		if err != "":
+			return err
+		# Rounded, so "different" means visibly different rather than different
+		# in the eighth decimal place.
+		var key: int = int(round(phase * 20.0))
+		if seen.has(key):
+			return _T.assert_true(false,
+				"pests %d and %d spawn on the same phase and would animate in lockstep"
+					% [seen[key], i])
+		seen[key] = i
+	return _T.assert_eq(seen.size(), 9, "nine spawns, nine distinct phases")
+
+
+## The mutation tells. Each one is a claim about how the trait reads in motion,
+## and each is a pure function, so this needs no viewport at all.
+func test_each_mutation_gets_its_own_gait() -> String:
+	var plain_rate: float = Pest.gait_rate(Pest.GAIT_REFERENCE_SPEED, false, false)
+	var err: String = _T.assert_float_eq(plain_rate, Pest.GAIT_RATE, 0.0001,
+		"a pest walking at the reference speed runs the gait at exactly GAIT_RATE")
+	if err == "":
+		err = _T.assert_gt(Pest.gait_rate(Pest.GAIT_REFERENCE_SPEED, false, true), plain_rate,
+			"a winged pest flutters faster than a plain one")
+	if err == "":
+		err = _T.assert_true(Pest.gait_swing(false, true) < Pest.gait_swing(false, false),
+			"and shallower -- a flutter, not a bigger waggle")
+	if err == "":
+		err = _T.assert_true(Pest.gait_rate(Pest.GAIT_REFERENCE_SPEED, true, false) < plain_rate,
+			"an armoured pest plods")
+	if err == "":
+		err = _T.assert_true(Pest.gait_swing(true, false) < Pest.gait_swing(false, false),
+			"and rolls less, being plated")
+	if err == "":
+		# A pest carrying both traits gets both, exactly as markers_for() promises
+		# for the drawn marks.
+		err = _T.assert_float_eq(Pest.gait_swing(true, true),
+			Pest.GAIT_SWING * Pest.WINGED_SWING_MULTIPLIER * Pest.ARMOURED_SWING_MULTIPLIER,
+			0.0001, "two traits compose, the same way two markers do")
+	return err
+
+
+## The hungry lunge is a *shape* change, not a louder scuttle: cubing flattens
+## the middle of the stride wave and keeps its extremes. Both halves of that are
+## checked, because only having the second would also pass on a plain multiply.
+func test_a_hungry_pest_lunges_rather_than_scuttling_harder() -> String:
+	var err: String = _T.assert_true(
+		absf(Pest.gait_stretch(1.0, true)) > absf(Pest.gait_stretch(1.0, false)),
+		"at full stride a hungry pest reaches further")
+	if err == "":
+		err = _T.assert_true(
+			absf(Pest.gait_stretch(0.4, true)) < absf(Pest.gait_stretch(0.4, false)),
+			"but mid-stride it is stiller than a plain pest -- that gap is the lunge")
+	if err == "":
+		err = _T.assert_float_eq(Pest.gait_stretch(0.0, true), 0.0, 0.0001,
+			"and the wave still crosses zero, so the body returns to its own size")
+	if err == "":
+		err = _T.assert_float_eq(Pest.gait_stretch(-1.0, false), -Pest.GAIT_STRETCH, 0.0001,
+			"a plain pest's stretch is the plain wave, unshaped")
+	return err
+
+
+## Endless mode scales `speed`, and the gait rides it so a hurried pest visibly
+## hurries -- but a wave-30 beetle must not blur.
+func test_the_gait_rate_follows_speed_but_is_clamped_at_both_ends() -> String:
+	var slow: float = Pest.gait_rate(1.0, false, false)
+	var err: String = _T.assert_float_eq(slow, Pest.GAIT_RATE * Pest.GAIT_RATE_MIN, 0.0001,
+		"a barely-moving pest still animates, at the floor rate")
+	if err == "":
+		err = _T.assert_float_eq(Pest.gait_rate(100000.0, false, false),
+			Pest.GAIT_RATE * Pest.GAIT_RATE_MAX, 0.0001,
+			"and an absurdly hasted one is capped rather than blurring")
+	if err == "":
+		var aphid_speed: float = float(Pest.SPECIES[Pest.APHID]["speed"])
+		var beetle_speed: float = float(Pest.SPECIES[Pest.BEETLE]["speed"])
+		err = _T.assert_gt(Pest.gait_rate(aphid_speed, false, false),
+			Pest.gait_rate(beetle_speed, false, false),
+			"the small fast one scuttles faster than the big slow one, with no per-species constant")
+	return err
+
+
+## A pest killed mid-stride leaves a corpse lying straight. Without this the
+## husk keeps whatever quarter-stride lean it died on, which reads as a bug
+## still leaning into a step it will never finish.
+func test_a_pest_killed_mid_stride_leaves_a_straight_corpse() -> String:
+	var pest: Pest = _pest(Pest.APHID, Vector2.ZERO)
+	var host: Node2D = _host([pest])
+	await _T.instantiate_scene(host)
+
+	pest._update_facing(Vector2.LEFT)
+	# Hand-set rather than pumped: headless never runs _gait()'s applied half, and
+	# the claim here is about what kill() undoes, not about what set it.
+	pest._sway = 0.12
+	pest._apply_facing()
+	pest._sprite.scale = Vector2(pest._sprite_scale * 0.9, pest._sprite_scale * 1.1)
+
+	pest.kill()
+	var err: String = _T.assert_float_eq(pest._sprite.rotation, -PI / 2.0, 0.0001,
+		"the corpse lies on its facing -- still facing the way it was walking, but not mid-lean")
+	if err == "":
+		err = _T.assert_eq(pest._sprite.scale, Vector2(pest._sprite_scale, pest._sprite_scale),
+			"and back at its own scale, not frozen mid-stretch")
+	if err == "":
+		err = _T.assert_float_eq(pest._sway, 0.0, 0.0001, "with the sway cleared, not merely unread")
+	_T.free_ui(host)
+	return err

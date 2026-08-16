@@ -153,6 +153,59 @@ const HIT_FLASH_DURATION: float = 0.10
 ## reads as that pest's own hue gone bright, not as a third, unrelated colour.
 const HIT_FLASH_BOOST: float = 1.9
 
+## The walk cycle (plant-tower-defense-iue). Plant._wobble() is the reference
+## idiom: one accumulated clock per instance, one `sin()` off it per frame, no
+## Tween anywhere. That shape is the whole reason this is affordable — this runs
+## on every pest on the road, and WaveDirector.SIMULTANEOUS_PEST_CEILING puts
+## that at 40 at once. Two `sin()` calls and two property writes per pest per
+## frame is 4,800 sines a second at the ceiling, which is nothing; forty Tweens
+## being created and destroyed as pests spawn and die would not be.
+##
+## A bug seen from above does not bob up and down — it slews. So the motion is
+## a yaw waggle *around the facing rotation* plus a body-axis stretch: the
+## silhouette narrows and lengthens as it scuttles, which is exactly the shape
+## the drawn sprites already have (long axis up-screen, per STYLE.md).
+##
+## Peak yaw either side of the direction of travel. Read the composition rule in
+## _apply_facing(): this is added to `_facing`, never written over it.
+const GAIT_SWING: float = 0.13
+## Waggles per second at GAIT_REFERENCE_SPEED, in radians of clock.
+const GAIT_RATE: float = 8.5
+## The speed a pest walks at to get exactly GAIT_RATE — between the aphid's 78
+## and the beetle's 38, so the fast one scuttles fast and the slow one plods
+## without either needing a per-species constant. Endless-mode speed scaling
+## rides along for free (a hasted pest visibly hurries), clamped either side so
+## a wave-30 beetle flails rather than blurs.
+const GAIT_REFERENCE_SPEED: float = 60.0
+const GAIT_RATE_MIN: float = 0.55
+const GAIT_RATE_MAX: float = 1.9
+## Body-axis squash/stretch, as a fraction of the species' own sprite scale.
+const GAIT_STRETCH: float = 0.06
+## Strides per waggle: the body pulses twice per side-to-side sway, which is
+## what stops the two reading as one motion.
+const GAIT_STRETCH_RATE: float = 2.0
+
+## Each mutation's gait tell, so the trait is readable from movement alone and
+## not only from the hue + marker pair above. Winged flutters (fast, shallow);
+## armoured plods (slow, stiff); hungry lunges — see gait_stretch() for why that
+## one is a shape change rather than a bigger number.
+const WINGED_RATE_MULTIPLIER: float = 2.4
+const WINGED_SWING_MULTIPLIER: float = 0.45
+const ARMOURED_RATE_MULTIPLIER: float = 0.8
+const ARMOURED_SWING_MULTIPLIER: float = 0.6
+const HUNGRY_STRETCH_MULTIPLIER: float = 2.2
+
+## Per-pest phase, so nine aphids spawned in a column read as nine creatures
+## rather than one animation played nine times. The golden angle: successive
+## spawns land as far apart on the circle as any sequence can, so even the two
+## pests either side of a single spawn beat are visibly out of step.
+const GAIT_PHASE_STEP: float = 2.399963
+## The spawn counter wraps here rather than climbing for the length of an
+## endless run — `index * GAIT_PHASE_STEP` at a few million loses the precision
+## that makes neighbouring phases distinct, and 64 distinct phases is already
+## more than SIMULTANEOUS_PEST_CEILING can put on the road at once.
+const GAIT_PHASE_PERIOD: int = 64
+
 var species: StringName = APHID
 var health: float = 1.0
 var max_health: float = 1.0
@@ -177,6 +230,23 @@ var _health_back: ColorRect
 var _alive: bool = true
 var _dead_texture: Texture2D = null
 var _sprite_scale: float = 1.0
+
+## The walk cycle's own state. `_facing` is the cardinal rotation
+## _update_facing() decides; `_sway` is the gait's offset from it. They are kept
+## apart precisely because two features write one property: whichever of them
+## ran last would otherwise erase the other, and since _advance() calls
+## _update_facing() every single frame, the loser would always be the gait.
+var _facing: float = 0.0
+var _sway: float = 0.0
+var _gait_time: float = 0.0
+var _gait_phase: float = 0.0
+
+## Handed out at setup() and wrapped at GAIT_PHASE_PERIOD. Static because the
+## thing being spread out is *between* pests — a per-instance seed cannot know
+## what the pest beside it chose. StickySundew._next_wash_order is the same
+## pattern; unlike that one this needs no reset, because a phase is cosmetic and
+## the wrap keeps it bounded on its own.
+static var _next_gait_index: int = 0
 
 ## Did anything in the garden ever lay a finger on this pest?
 ##
@@ -209,6 +279,8 @@ func setup(which: StringName, route: PackedVector2Array) -> void:
 	if not _route.is_empty():
 		position = _route[0]
 	add_to_group("pests")
+	_gait_phase = gait_phase(_next_gait_index)
+	_next_gait_index = (_next_gait_index + 1) % GAIT_PHASE_PERIOD
 	_build_visuals(String(stats["texture"]), float(stats["scale"]))
 	var dead_path: String = String(stats.get("dead_texture", ""))
 	if dead_path != "":
@@ -421,6 +493,11 @@ static func _marker_source(marker: StringName) -> StringName:
 func _physics_process(delta: float) -> void:
 	if not _alive:
 		return
+	# Before the held/eating guards below on purpose: a pest in a Chomp's mouth
+	# or chewing a bed is still a live creature, and freezing it solid the moment
+	# it stopped travelling would put the static sprite back exactly where the
+	# player is looking hardest.
+	_gait(delta)
 	# Split out of the combined guard this used to share with `_alive`: being held
 	# is the one non-damaging way the garden engages a pest, and a Chomp that is
 	# destroyed mid-chew releases it unharmed. See _ever_engaged.
@@ -493,9 +570,79 @@ func _update_facing(direction: Vector2) -> void:
 	if absf(direction.x) < 0.01 and absf(direction.y) < 0.01:
 		return
 	if absf(direction.x) > absf(direction.y):
-		_sprite.rotation = PI / 2.0 if direction.x > 0.0 else -PI / 2.0
+		_facing = PI / 2.0 if direction.x > 0.0 else -PI / 2.0
 	else:
-		_sprite.rotation = PI if direction.y > 0.0 else 0.0
+		_facing = PI if direction.y > 0.0 else 0.0
+	_apply_facing()
+
+
+## The one place `_sprite.rotation` is written. Facing and gait each own one
+## term of the sum and neither can clobber the other; with animations off
+## `_sway` is a standing 0.0, so this reduces to exactly the bare cardinal
+## rotation that shipped before the gait existed — a correct static state, not
+## a half-applied transform.
+func _apply_facing() -> void:
+	if _sprite != null:
+		_sprite.rotation = _facing + _sway
+
+
+## One step of the walk cycle. Advances the clock unconditionally, the same way
+## Plant._wobble() does, so a mid-run animations toggle picks up a meaningful
+## phase instead of every pest on the board snapping from a frozen 0.
+func _gait(delta: float) -> void:
+	_gait_time += delta
+	if _sprite == null or not GardenTheme.animations_enabled():
+		return
+	var clock: float = _gait_time * gait_rate(speed, is_armoured, is_winged) + _gait_phase
+	_sway = sin(clock) * gait_swing(is_armoured, is_winged)
+	_apply_facing()
+	# Local to the sprite, so it follows the facing rotation: -Y is the body's
+	# long axis (STYLE.md's up-screen convention), which makes +Y stretch a
+	# lengthening and -X squash a narrowing, whichever way the bug is walking.
+	var stretch: float = gait_stretch(sin(clock * GAIT_STRETCH_RATE), is_hungry)
+	_sprite.scale = Vector2(_sprite_scale * (1.0 - stretch), _sprite_scale * (1.0 + stretch))
+
+
+## Pure: how fast this pest's walk cycle runs, in radians of clock per second.
+## Split out (with the two below) so the whole gait is assertable without a
+## viewport, a frame, or animations being on at all.
+static func gait_rate(for_speed: float, armoured: bool, winged: bool) -> float:
+	var scaled: float = clampf(for_speed / GAIT_REFERENCE_SPEED, GAIT_RATE_MIN, GAIT_RATE_MAX)
+	var rate: float = GAIT_RATE * scaled
+	if winged:
+		rate *= WINGED_RATE_MULTIPLIER
+	if armoured:
+		rate *= ARMOURED_RATE_MULTIPLIER
+	return rate
+
+
+## Pure: peak yaw either side of the direction of travel, in radians. Both
+## multipliers apply to a pest carrying both traits — markers_for() promises the
+## same thing about the drawn marks, and a gait that quietly picked one would
+## contradict a rule this file already advertises.
+static func gait_swing(armoured: bool, winged: bool) -> float:
+	var swing: float = GAIT_SWING
+	if winged:
+		swing *= WINGED_SWING_MULTIPLIER
+	if armoured:
+		swing *= ARMOURED_SWING_MULTIPLIER
+	return swing
+
+
+## Pure: the body-axis stretch for one point of the stride wave (`wave` in
+## -1..1). A hungry pest's is cubed rather than merely larger: cubing flattens
+## the middle of the wave and keeps the extremes, so the body sits still and
+## then snaps — a lunge. Raising the amplitude alone would only have given the
+## same scuttle, bigger.
+static func gait_stretch(wave: float, hungry: bool) -> float:
+	if hungry:
+		return wave * wave * wave * GAIT_STRETCH * HUNGRY_STRETCH_MULTIPLIER
+	return wave * GAIT_STRETCH
+
+
+## Pure: the phase the `index`-th pest spawned this run walks on.
+static func gait_phase(index: int) -> float:
+	return fposmod(float(index) * GAIT_PHASE_STEP, TAU)
 
 
 func take_damage(amount: float) -> void:
@@ -558,6 +705,15 @@ func _play_death() -> void:
 		_health_back.visible = false
 	if _health_bar != null:
 		_health_bar.visible = false
+	# set_physics_process(false) above stops the gait but does not undo it, and a
+	# corpse frozen at whatever quarter of a stride it died on reads as a bug
+	# still leaning into a step. Put the sprite back on its facing and its own
+	# scale so the husk lies straight under the fade below. `_facing` is kept,
+	# not zeroed: a beetle killed walking left should lie facing left.
+	if _sprite != null:
+		_sway = 0.0
+		_sprite.rotation = _facing
+		_sprite.scale = Vector2(_sprite_scale, _sprite_scale)
 	if _dead_texture != null and _sprite != null:
 		_sprite.texture = _dead_texture
 		_sprite.modulate = Color.WHITE
