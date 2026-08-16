@@ -127,6 +127,10 @@ func setup(id: StringName, at: Vector2i, on_board: Board) -> void:
 	add_to_group("plants")
 	_build_visuals()
 	_on_setup()
+	# Last, so it covers anything a subclass added in _on_setup() as well as the
+	# bars above. See the method for why a Control on the playfield is a click
+	# the player simply loses.
+	_make_world_controls_click_through()
 
 
 func _build_visuals() -> void:
@@ -139,6 +143,7 @@ func _build_visuals() -> void:
 	_health_back.position = HEALTH_BAR_ORIGIN
 	_health_back.size = HEALTH_BAR_SIZE
 	_health_back.visible = false
+	_health_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_health_back)
 
 	_health_bar = ColorRect.new()
@@ -146,6 +151,7 @@ func _build_visuals() -> void:
 	_health_bar.position = HEALTH_BAR_ORIGIN
 	_health_bar.size = HEALTH_BAR_SIZE
 	_health_bar.visible = false
+	_health_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_health_bar)
 
 	# After the bar, so they cut into it: children of a Node2D are painted in
@@ -160,8 +166,9 @@ func _build_visuals() -> void:
 		notch.visible = false
 		# The bars are Controls parked over the playfield, and a Control that
 		# stops the mouse over a plant is a Control that eats the click meant to
-		# select it. Explicit here because these are new; the two bars above
-		# predate it and are left as they are rather than changed under a cue fix.
+		# select it. Set here, on the two bars above, and swept again from
+		# setup() — see _make_world_controls_click_through() for why the sweep
+		# is the part that matters and this line is only documentation.
 		notch.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(notch)
 		_health_notches.append(notch)
@@ -181,6 +188,42 @@ func _build_visuals() -> void:
 	var tween := create_tween()
 	tween.tween_property(_sprite, "scale", Vector2(1.12, 1.12), 0.12)
 	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.10)
+
+
+## Every Control this plant owns stops taking mouse input.
+##
+## The viewport runs its GUI pass *before* `_unhandled_input`, and a Control
+## parented to a Node2D is still a GUI root — it is picked in world space with
+## the Node2D's transform applied, exactly where it is drawn. Game reads the
+## whole board out of `_unhandled_input` (Game._click_at), so any Control parked
+## over the playfield at the default MOUSE_FILTER_STOP swallows the press before
+## Game is ever offered it. Not "the click does the wrong thing": nothing at all
+## happens, which is the worst shape a bug can take on a board where every
+## action the player has is a click.
+##
+## The bar is HEALTH_BAR_SIZE at HEALTH_BAR_ORIGIN — the middle half of the top
+## three pixels of the plant's own cell, plus two pixels of the cell above — and
+## it only exists once the plant has been bitten. So the dead patch appeared on
+## exactly the plants the player was reaching for, and only after something had
+## gone wrong, which is the worst moment to lose a click on.
+##
+## Swept over the subtree rather than left as a rule at each construction site,
+## because the per-node version is a thing the next person has to already know:
+## the notches in _build_visuals() were added later and had to rediscover it,
+## while the two bars they were added between had it wrong from the beginning.
+## Called from setup() after _on_setup(), so a subclass that adds a Control of
+## its own is covered without knowing any of this.
+##
+## Pest carries a copy of this method for the same reason. Deliberately a copy
+## and not a shared static: Plant and Pest already name each other in their
+## signatures, and a static call across that cycle is not a dependency worth
+## taking on for six lines of `find_children`.
+func _make_world_controls_click_through() -> void:
+	for node: Node in find_children("*", "Control", true, false):
+		var control := node as Control
+		if control == null:
+			continue
+		control.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
 func _on_setup() -> void:

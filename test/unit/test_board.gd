@@ -324,3 +324,267 @@ func test_a_live_plants_bar_actually_wears_the_shape_it_is_told_to() -> String:
 		err = _T.assert_false(plant._health_notches[0].visible, "and its dividers with it")
 	plant.free()
 	return err
+
+
+# --- Clicks the board never received (plant-tower-defense-ygh) --------------
+#
+# Every action the player has on the playfield is a left click, and Game reads
+# all of them out of _unhandled_input (Game._click_at). The viewport's GUI pass
+# runs *first*, and a Control parented to a Node2D is a GUI root picked in world
+# space — so a bare ColorRect over the board at the default MOUSE_FILTER_STOP
+# does not misroute a click, it deletes one. Plant and Pest both park health
+# bars there.
+#
+# The three cases below are deliberately of two kinds. Two drive a real
+# InputEventMouseButton through the hosted viewport and assert what the *board*
+# did with it, because "the property is IGNORE" is a statement about a field and
+# "the click selected the plant" is a statement about the game. The third
+# enumerates every world-space Control the running game owns and demands the
+# property of all of them, because the first two only ever prove it about the
+# rects that happen to exist today.
+
+const GAME_SCENE := "res://game/game.tscn"
+
+
+func _left_click(at: Vector2) -> InputEventMouseButton:
+	var event := InputEventMouseButton.new()
+	event.button_index = MOUSE_BUTTON_LEFT
+	event.pressed = true
+	event.position = at
+	event.global_position = at
+	return event
+
+
+## First plot below the top row. Row 0 sits under the HUD bar, which is a
+## screen-space Control that is *supposed* to take the click, so a plant there
+## would make the assertions below say nothing.
+func _plot_below_the_top_row(game: Game) -> Vector2i:
+	for y: int in range(1, Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if game.board.is_buildable(cell) and game.plant_at(cell) == null:
+				return cell
+	return Vector2i(-1, -1)
+
+
+## Every Control that is NOT inside a CanvasLayer, i.e. everything drawn in board
+## space rather than on the screen. The HUD, the pause card and the run summary
+## all live under CanvasLayers and are excluded on purpose: a modal backdrop that
+## stops the mouse is doing its job, and RunSummary's says exactly that in its
+## own comment.
+func _world_space_controls(node: Node, under_layer: bool, out: Array[Control]) -> void:
+	var layered: bool = under_layer or node is CanvasLayer
+	var control := node as Control
+	if control != null and not layered:
+		out.append(control)
+	for child: Node in node.get_children():
+		_world_space_controls(child, layered, out)
+
+
+func test_a_damaged_plants_health_bar_does_not_eat_the_click_on_its_cell() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var cell: Vector2i = _plot_below_the_top_row(game)
+	err = _T.assert_true(game.board.is_buildable(cell), "there is a plot to plant on (got %s)" % cell)
+	if err != "":
+		_T.free_ui(game)
+		return err
+	game.bank.add_seeds(100)
+	err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "a plant goes in at %s" % cell)
+	var plant: Plant = game.plant_at(cell)
+	if err == "":
+		err = _T.assert_true(plant != null, "and the board hands it back")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var viewport: Viewport = game.get_viewport()
+	err = _T.assert_true(viewport != null, "there is a viewport to push events through")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# The bar only exists once something has bitten the plant, which is what made
+	# this easy to miss: the dead patch appears on the plants the player has a
+	# reason to click, and never on the ones they do not.
+	plant.take_damage(Plant.MAX_HEALTH * 0.25)
+	err = _T.assert_true(plant._health_back != null and plant._health_back.visible,
+		"a bitten plant is wearing its health bar")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# CONTROL. If this fails, nothing below means anything — the probe never
+	# reached Game at all, and a green run would be measuring the event pipeline
+	# rather than the health bar.
+	game._select(null)
+	_T.dispatch_events(viewport, [_left_click(plant.global_position)])
+	err = _T.assert_true(game.selected_placed == plant,
+		"CONTROL: a click at the middle of the cell reaches Game._click_at and selects the plant")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# Taken off the node rather than off HEALTH_BAR_ORIGIN, so the point is where
+	# the bar actually is and not where the constants say it should be — then
+	# checked against the cell, because a bar hanging entirely outside the
+	# clickable board would make the whole case moot.
+	var over_bar: Vector2 = plant._health_back.get_global_rect().get_center()
+	var entities_origin: Vector2 = plant.global_position - plant.position
+	err = _T.assert_eq(game.board.world_to_cell(over_bar - entities_origin), cell,
+		"the middle of the bar %s sits over the plant's own cell %s" % [over_bar, cell])
+	if err == "":
+		err = _T.assert_true(plant._health_back.get_global_rect().has_point(over_bar),
+			"and inside the bar's own rect %s" % plant._health_back.get_global_rect())
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	game._select(null)
+	err = _T.assert_true(game.selected_placed == null, "deselected, so the next click has to do the work")
+	if err == "":
+		_T.dispatch_events(viewport, [_left_click(over_bar)])
+		err = _T.assert_true(game.selected_placed == plant,
+			("a click on the health bar reaches the board too. At MOUSE_FILTER_STOP the "
+				+ "viewport's GUI pass swallows it and _unhandled_input never runs, so a "
+				+ "click on a damaged plant does nothing whatsoever"))
+	_T.free_ui(game)
+	return err
+
+
+func test_a_pests_health_bar_does_not_eat_the_click_on_the_husk_under_it() -> String:
+	## The same defect on a moving target, and the case that is worse than the
+	## plant's: husks only ever land on the road (Board.route() is one point per
+	## road cell, and pests walk nothing else), so a pest's bar drifts over the
+	## compost the player is reaching for and blanks the click that collects it.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var route: PackedVector2Array = game.board.route()
+	err = _T.assert_gt(route.size(), 13, "the road is long enough to hold two far-apart husks")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	game.spawn_pest(Pest.APHID)
+	var pests: Array[Node] = game.get_tree().get_nodes_in_group("pests")
+	err = _T.assert_eq(pests.size(), 1, "exactly one pest on the board, so the right one is picked")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var pest := pests[0] as Pest
+	err = _T.assert_true(pest != null, "and it is a Pest")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var viewport: Viewport = game.get_viewport()
+	err = _T.assert_true(viewport != null, "there is a viewport to push events through")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# Parked on a road cell rather than left at route()[0], which is the off-board
+	# entry point and is not ground anything can be clicked on.
+	pest.position = route[2]
+	var entities_origin: Vector2 = pest.global_position - pest.position
+	err = _T.assert_true(pest._health_back != null and pest._health_back.visible,
+		"a live pest always wears its bar — unlike a plant's, this one needs no damage first")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# CONTROL: a husk on bare road, far from the pest, collected through the same
+	# machinery. A failure here is the probe, not the bar.
+	var far: Vector2 = route[12]
+	err = _T.assert_gt(far.distance_to(pest.position), CompostMeter.COLLECT_RADIUS * 2.0,
+		"the control husk is well outside the sweep radius of the one under the pest")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	game.compost.drop_husk(far, 5)
+	var before: int = game.bank.seeds
+	_T.dispatch_events(viewport, [_left_click(far + entities_origin)])
+	err = _T.assert_eq(game.bank.seeds, before + 5,
+		"CONTROL: a click on open road sweeps the husk under it and pays for it")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var over_bar: Vector2 = pest._health_back.get_global_rect().get_center()
+	err = _T.assert_eq(game.board.world_to_cell(over_bar - entities_origin),
+		game.board.world_to_cell(pest.position),
+		"the middle of the pest's bar %s is over the road cell it stands on" % over_bar)
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# Dropped exactly under the bar rather than at the pest's feet: the claim being
+	# tested is that the click reaches Game, and putting the husk on the clicked
+	# point keeps CompostMeter.COLLECT_RADIUS out of the verdict.
+	game.compost.drop_husk(over_bar - entities_origin, 7)
+	before = game.bank.seeds
+	_T.dispatch_events(viewport, [_left_click(over_bar)])
+	err = _T.assert_eq(game.bank.seeds, before + 7,
+		("a click on the strip a pest's health bar covers still reaches the board. At "
+			+ "MOUSE_FILTER_STOP the husk under a passing pest is uncollectable, and the "
+			+ "player gets no cue at all that anything happened"))
+	_T.free_ui(game)
+	return err
+
+
+func test_every_world_space_control_in_a_live_game_is_click_transparent() -> String:
+	## Enumerated from the running tree rather than listed by hand, because a list
+	## is exactly what goes stale: the notch dividers were added to the health bar
+	## long after the two bars they sit between, and the rule they had to obey was
+	## written down nowhere except in those bars' own (wrong) filter. Anything
+	## Control-shaped that is not inside a CanvasLayer is drawn on the board, and
+	## the board is read through _unhandled_input, so all of it must pass a click.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var cell: Vector2i = _plot_below_the_top_row(game)
+	game.bank.add_seeds(100)
+	err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "a plant is on the board")
+	var plant: Plant = game.plant_at(cell)
+	if err == "":
+		err = _T.assert_true(plant != null, "and can be inspected")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# Bitten, so the bar, its backing and the regrowth notches are all real nodes
+	# in the tree by the time the sweep below walks it.
+	plant.take_damage(Plant.MAX_HEALTH * 0.5)
+	game.spawn_pest(Pest.APHID)
+
+	var found: Array[Control] = []
+	_world_space_controls(game, false, found)
+	err = _T.assert_gt(found.size(), 5,
+		"the sweep found the board's Controls at all (an empty sweep passes vacuously)")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var saw_plant_bar: bool = false
+	var saw_pest_bar: bool = false
+	for control: Control in found:
+		if control == plant._health_bar:
+			saw_plant_bar = true
+		err = _T.assert_eq(control.mouse_filter, Control.MOUSE_FILTER_IGNORE,
+			("%s (%s) is drawn on the playfield and stops the mouse — the viewport's GUI "
+				+ "pass eats the click before Game._unhandled_input is ever offered it")
+				% [game.get_path_to(control), control.get_class()])
+		if err != "":
+			break
+	if err == "":
+		for node: Node in game.get_tree().get_nodes_in_group("pests"):
+			var pest := node as Pest
+			if pest == null:
+				continue
+			if found.has(pest._health_bar):
+				saw_pest_bar = true
+	if err == "":
+		err = _T.assert_true(saw_plant_bar, "the plant's own health bar was one of the Controls checked")
+	if err == "":
+		err = _T.assert_true(saw_pest_bar, "and so was a pest's")
+	_T.free_ui(game)
+	return err

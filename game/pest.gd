@@ -179,6 +179,7 @@ func setup(which: StringName, route: PackedVector2Array) -> void:
 	var dead_path: String = String(stats.get("dead_texture", ""))
 	if dead_path != "":
 		_dead_texture = load(dead_path) as Texture2D
+	_make_world_controls_click_through()
 
 
 ## Endless mode's per-wave difficulty multipliers, from
@@ -264,13 +265,40 @@ func _build_visuals(texture_path: String, sprite_scale: float) -> void:
 	_health_back.color = Color(0.12, 0.12, 0.12, 0.65)
 	_health_back.position = Vector2(-16, -30)
 	_health_back.size = Vector2(32, 5)
+	_health_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_health_back)
 
 	_health_bar = ColorRect.new()
 	_health_bar.color = GardenTheme.LEAF
 	_health_bar.position = Vector2(-16, -30)
 	_health_bar.size = Vector2(32, 5)
+	_health_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_health_bar)
+
+
+## Every Control this pest owns stops taking mouse input.
+##
+## The same defect Plant._make_world_controls_click_through() documents at
+## length, on a target that moves. A Control parented to a Node2D is picked by
+## the viewport's GUI pass in world space, and that pass runs before the
+## `_unhandled_input` Game._click_at lives in — so a pest's 32x5 bar at the
+## default MOUSE_FILTER_STOP is a strip of board where the player's clicks stop
+## existing, and it walks the road at `speed` px/s.
+##
+## Worse here than on a plant, in a way worth naming: every husk in the game
+## lands on the road (Board.route() is one point per road cell, and pests only
+## ever walk it), so this bar drifts over the compost the player is trying to
+## sweep and blanks the only click that would collect it. A plant's bar sits
+## still and can at least be clicked around.
+##
+## Runs once from setup(), after the bars exist — a pest has no subclasses and
+## builds nothing later, so there is no second call site to keep in step.
+func _make_world_controls_click_through() -> void:
+	for node: Node in find_children("*", "Control", true, false):
+		var control := node as Control
+		if control == null:
+			continue
+		control.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
 ## The mutation cues. Drawn here rather than in a child node because Pest has no
