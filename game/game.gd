@@ -1330,6 +1330,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		hud.show_message(
 			"Colourblind-safe bars on." if safe else "Colourblind-safe bars off.", 2.5)
 		_refresh()
+		# The third bar. _refresh() repaints the HUD's two; the in-world one is
+		# drawn from take_damage()/_regrow(), so a chewed plant nobody is currently
+		# eating would keep the old ramp until something bit it again.
+		for plant: Plant in _plants.values():
+			plant.repaint_health_bar()
 
 
 func _update_cursor(screen_pos: Vector2) -> void:

@@ -824,7 +824,7 @@ func test_notebook_content_stays_on_the_paper() -> String:
 	var err := ""
 	for node_name: String in [
 		"Heading", "Subheading", "BackButton", "Drawing", "DrawingFrame", "SourceLabel",
-		"Sprite", "Caption", "NoteLabel", "PrevButton", "PageLabel", "NextButton",
+		"Sprite", "Caption", "NoteLabel", "PrevButton", "PageLabel", "NextButton", "Shelf",
 	]:
 		var node: Control = notebook.get_node(node_name) as Control
 		var rect := Rect2(node.position, node.size)
@@ -6816,6 +6816,289 @@ func test_the_health_bar_the_hud_draws_goes_through_the_switch() -> String:
 		var still_safe: float = _colour_distance(fill.color, Hud.health_color_on(fraction2, true))
 		err = _T.assert_true(back_to_default < still_safe,
 			"and it goes back to the default ramp the moment the option does, got %s" % fill.color)
+	RunConfig.colorblind_safe = was
+	_T.free_ui(game)
+	return err
+
+
+# -- The milestone shelf (plant-tower-defense-qar) ---------------------------
+#
+# RunConfig.earned_milestones is loaded from the developer's own user:// save at
+# startup, so every test below pins the whole set and puts back what it found.
+# A shelf test that read the real file would pass or fail on how much of the game
+# whoever ran it had played, which is the failure three tests were just fixed for.
+
+
+func test_the_notebook_has_exactly_one_shelf_page() -> String:
+	var page: int = NotebookScreen.shelf_page()
+	var err: String = _T.assert_gt(page, -1,
+		"the notebook has a KIND_SHELF page — without it the earned set has nowhere to live")
+	if err != "":
+		return err
+	var shelves: int = 0
+	for entry: Dictionary in NotebookScreen.PAGES:
+		if String(entry.get("kind", NotebookScreen.KIND_DRAWING)) == NotebookScreen.KIND_SHELF:
+			shelves += 1
+	return _T.assert_eq(shelves, 1, "and exactly one, so shelf_page() names a single page")
+
+
+func test_the_milestone_shelf_lists_every_milestone_earned_or_not() -> String:
+	## The whole point of the page: `RunSummary.new_milestones()` draws only what
+	## a run was the first to do, so a shelf showing only the earned ones would
+	## repeat that and still leave a new player looking at an empty page.
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	# Exactly one earned, and deliberately not the first row.
+	RunConfig.earned_milestones = {"hundred_pests": true}
+	var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var shelf: Control = notebook.get_node_or_null("Shelf") as Control
+	var err: String = _T.assert_true(shelf != null, "the shelf is built")
+	if err == "":
+		err = _T.assert_false(shelf.visible, "and starts hidden — page 1 is a drawing")
+	if err == "":
+		notebook.go_to(NotebookScreen.shelf_page())
+		err = _T.assert_true(shelf.visible, "turning to the shelf page shows it")
+	if err == "":
+		err = _T.assert_false(notebook.get_node("Drawing").visible,
+			"and the photograph it shares the matte with is put away")
+	for row: Dictionary in Milestones.TABLE:
+		if err != "":
+			break
+		var id: String = String(row["id"])
+		var title: Label = shelf.get_node_or_null("ShelfTitle_%s" % id) as Label
+		err = _T.assert_true(title != null, "%s has a row on the shelf" % id)
+		if err == "":
+			err = _T.assert_eq(title.text, Milestones.title_of(id),
+				"and it is titled the way the post-mortem titles it")
+	if err == "":
+		err = _T.assert_eq(shelf.get_child_count(), Milestones.TABLE.size() * 3,
+			"a pip, a title and a note for each of the %d milestones and nothing else"
+				% Milestones.TABLE.size())
+	_T.free_ui(notebook)
+	RunConfig.earned_milestones = stashed
+	return err
+
+
+func test_the_shelf_tells_earned_from_unearned_without_using_colour() -> String:
+	## Same rule Plant.HEALTH_BAR_SEGMENTS states for the board: a cue carried by
+	## hue alone is a cue the colourblind-safe option exists because of. The pip's
+	## SIZE and the note's "Not yet" prefix are the two channels that survive the
+	## page being printed in one ink; this asserts them with the colours thrown
+	## away entirely.
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	var got: String = String(Milestones.TABLE[0]["id"])
+	var missing: String = String(Milestones.TABLE[1]["id"])
+	RunConfig.earned_milestones = {got: true}
+	var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var shelf: Control = notebook.get_node("Shelf") as Control
+	var earned_pip: ColorRect = shelf.get_node("ShelfPip_%s" % got) as ColorRect
+	var unearned_pip: ColorRect = shelf.get_node("ShelfPip_%s" % missing) as ColorRect
+	var err: String = _T.assert_gt(earned_pip.size.x, unearned_pip.size.x,
+		"an earned pip (%s) is bigger than an unearned one (%s), not merely a different green"
+			% [earned_pip.size, unearned_pip.size])
+	if err == "":
+		# Same centre line, or the column reads as two ragged left edges.
+		err = _T.assert_float_eq(earned_pip.position.x + earned_pip.size.x / 2.0,
+			unearned_pip.position.x + unearned_pip.size.x / 2.0, 0.001,
+			"and the two sizes share a centre line")
+	if err == "":
+		var note: Label = shelf.get_node("ShelfNote_%s" % missing) as Label
+		err = _T.assert_true(note.text.begins_with("Not yet"),
+			"an unearned row says so in words: \"%s\"" % note.text)
+	if err == "":
+		var got_note: Label = shelf.get_node("ShelfNote_%s" % got) as Label
+		err = _T.assert_eq(got_note.text, Milestones.note_of(got),
+			"and an earned one is left as the table wrote it")
+	if err == "":
+		# The wording itself, without a screen: the prefix lowercases the note's
+		# first letter so "Not yet — cleared it without an escape" is a sentence
+		# rather than two of them jammed together.
+		err = _T.assert_eq(NotebookScreen.shelf_note_text(missing, false),
+			"Not yet — %s" % (Milestones.note_of(missing).substr(0, 1).to_lower()
+				+ Milestones.note_of(missing).substr(1)),
+			"shelf_note_text writes the unearned form as one sentence")
+	if err == "":
+		err = _T.assert_eq(NotebookScreen.shelf_note_text(missing, true), Milestones.note_of(missing),
+			"and hands the table's own note straight back once it is earned")
+	_T.free_ui(notebook)
+	RunConfig.earned_milestones = stashed
+	return err
+
+
+func test_the_shelf_progress_line_counts_the_table_and_not_the_save() -> String:
+	## An id from a build that knew more milestones than this one is a real case —
+	## Milestones.is_met() already answers `false` for one rather than erroring —
+	## and counting `earned_milestones.size()` would print "8 of 7 earned" the day
+	## it happens. The count is over TABLE, intersected with the save.
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	var total: int = Milestones.TABLE.size()
+	RunConfig.earned_milestones = {}
+	var err: String = _T.assert_eq(NotebookScreen.shelf_progress_text(), "0 of %d earned" % total,
+		"a save with nothing in it reads as none earned, not as an empty line")
+	if err == "":
+		RunConfig.earned_milestones = {
+			String(Milestones.TABLE[0]["id"]): true, "a_milestone_from_the_future": true,
+		}
+		err = _T.assert_eq(NotebookScreen.shelf_progress_text(), "1 of %d earned" % total,
+			"an id this build has no row for is not counted toward the total it has no row in")
+	if err == "":
+		var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+		notebook.go_to(NotebookScreen.shelf_page())
+		var source: Label = notebook.get_node("SourceLabel") as Label
+		err = _T.assert_eq(source.text, "1 of %d earned" % total,
+			"and the shelf page's provenance line is that count rather than a file name")
+		_T.free_ui(notebook)
+	RunConfig.earned_milestones = stashed
+	return err
+
+
+func test_the_milestone_shelf_fits_the_page() -> String:
+	## Milestones.TABLE.size() rows at SHELF_ROW_PITCH is 297px against
+	## DRAWING_BOX's 300 — there is no room for an eighth entry at these numbers,
+	## and the failure it would cause is a row drawn off the bottom of the matte
+	## onto the dark backdrop, which nothing else here would catch. Two ways out
+	## when this fails: drop SHELF_ROW_PITCH, or split the shelf across both pages.
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	# Every row earned, so the pips are at their largest — the worst case for the
+	# box, staged rather than waited for.
+	var all_earned: Dictionary = {}
+	for row: Dictionary in Milestones.TABLE:
+		all_earned[String(row["id"])] = true
+	RunConfig.earned_milestones = all_earned
+	var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var shelf: Control = notebook.get_node("Shelf") as Control
+	var box := Rect2(Vector2.ZERO, NotebookScreen.DRAWING_BOX.size)
+	var err := ""
+	var rows: Array[Rect2] = []
+	for row: Dictionary in Milestones.TABLE:
+		var id: String = String(row["id"])
+		for child_name: String in ["ShelfPip_%s" % id, "ShelfTitle_%s" % id, "ShelfNote_%s" % id]:
+			var node: Control = shelf.get_node(child_name) as Control
+			var rect := Rect2(node.position, node.size)
+			err = _T.assert_true(box.encloses(rect),
+				"%s at %s stays inside the shelf's box %s" % [child_name, rect, box])
+			if err != "":
+				break
+		if err != "":
+			break
+		# Rows must not tread on each other either — the note of one row landing
+		# on the title of the next is 17px of overlap that still fits the box.
+		var note: Control = shelf.get_node("ShelfNote_%s" % id) as Control
+		var title: Control = shelf.get_node("ShelfTitle_%s" % id) as Control
+		var span := Rect2(title.position, Vector2(title.size.x,
+			note.position.y + note.size.y - title.position.y))
+		for prior: Rect2 in rows:
+			err = _T.assert_true(prior.intersection(span).get_area() <= 0.0,
+				"row %s at %s does not sit on the row at %s" % [id, span, prior])
+			if err != "":
+				break
+		if err != "":
+			break
+		rows.append(span)
+	_T.free_ui(notebook)
+	RunConfig.earned_milestones = stashed
+	return err
+
+
+# -- The third bar (plant-tower-defense-b6v) ---------------------------------
+
+
+func test_the_in_world_plant_bar_reads_the_same_ramp_the_hud_does() -> String:
+	## plant-tower-defense-xu0 routed `Hud.health_color` and `Hud.threat_color`
+	## through RunConfig.colorblind_safe and stopped there. The bar a player
+	## actually watches during a chew is neither of those — the HUD's health row
+	## only appears for the SELECTED plant, while every bed being eaten draws its
+	## own ColorRect on the board — and it was a third green-to-red lerp the
+	## option never reached. Pure, on both ramps, so the claim is about the ramp
+	## and not about whatever palette this process was started with.
+	var err := ""
+	for safe: bool in [false, true]:
+		err = _T.assert_eq(Plant.health_bar_color_on(false, safe), Hud.health_color_on(0.0, safe),
+			"a bleeding bed is the HUD's own empty-health colour on the %s ramp"
+				% ("safe" if safe else "default"))
+		if err != "":
+			return err
+	# The regression itself: before this, both of the above were DANGER.
+	err = _T.assert_true(
+		Plant.health_bar_color_on(false, true) != Plant.health_bar_color_on(false, false),
+		"and the switch actually moves it — a bleeding bar that is the same colour either way "
+			+ "is the bug this issue is about")
+	if err == "":
+		err = _T.assert_true(
+			Plant.health_bar_color_on(true, true) != Plant.health_bar_color_on(true, false),
+			"the healing end moves too, or the safe ramp would still be half green-and-red")
+	if err == "":
+		# The shape channel is not superseded by the switch. A palette the player
+		# has to find in a menu cannot be the only cue, and the notches are what
+		# survives a screenshot, a greyscale print and a player who never presses
+		# the key. See Plant.HEALTH_BAR_SEGMENTS.
+		err = _T.assert_gt(Plant.health_bar_segments(true), Plant.health_bar_segments(false),
+			"and the notches are still there — the ramp is a second channel, not a replacement")
+	# And the reading half is wired to the pure one. `colorblind_safe` is
+	# process-global and seeded from the real save, so it is pinned both ways here
+	# and put back — this is the only test that may touch `health_bar_color` at all.
+	var was: bool = RunConfig.colorblind_safe
+	for safe: bool in [false, true]:
+		if err != "":
+			break
+		RunConfig.colorblind_safe = safe
+		for regrowing: bool in [false, true]:
+			err = _T.assert_eq(Plant.health_bar_color(regrowing),
+				Plant.health_bar_color_on(regrowing, safe),
+				"health_bar_color(%s) reads the option rather than one fixed ramp" % regrowing)
+			if err != "":
+				break
+	RunConfig.colorblind_safe = was
+	return err
+
+
+func test_toggling_the_option_repaints_the_bars_already_on_the_board() -> String:
+	## The in-world bar is drawn from take_damage() and _regrow(), i.e. only when
+	## the number moves. A chewed bed sitting quietly while the player presses the
+	## colourblind key is the case where that is wrong: nothing bites it, so
+	## nothing repaints it, and the one readout the option is most for keeps the
+	## ramp the player just turned off. Driven through Game's own handler rather
+	## than by calling repaint_health_bar() directly — a fix that lives in a method
+	## nobody calls is not a fix.
+	KeyBindings.reset_all()
+	var was: bool = RunConfig.colorblind_safe
+	RunConfig.colorblind_safe = false
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "", "planted")
+	var plant: Plant = game.selected_placed
+	if err == "":
+		err = _T.assert_true(plant != null, "and the placed bed is the one we hold")
+	if err == "":
+		# Bitten once and then left alone, which is the whole point: no further
+		# damage and no regrowth tick may happen between here and the assertion.
+		plant.take_damage(Plant.MAX_HEALTH * 0.5)
+		err = _T.assert_true(plant._health_bar.visible, "a bitten bed shows its bar")
+	if err == "":
+		var default_red: Color = plant._health_bar.color
+		err = _T.assert_float_eq(_colour_distance(default_red, Hud.health_color_on(0.0, false)),
+			0.0, 0.001, "which starts on the default ramp, got %s" % default_red)
+		if err == "":
+			game._unhandled_input(_action_press(KeyBindings.ACTION_COLORBLIND))
+			await _pump(game)
+			var now: Color = plant._health_bar.color
+			var to_safe: float = _colour_distance(now, Hud.health_color_on(0.0, true))
+			var to_default: float = _colour_distance(now, Hud.health_color_on(0.0, false))
+			err = _T.assert_true(to_safe < to_default,
+				"and the key repaints it to the safe ramp without anything biting it again: "
+					+ "%s is %.3f from safe and %.3f from default" % [now, to_safe, to_default])
+		if err == "":
+			game._unhandled_input(_action_press(KeyBindings.ACTION_COLORBLIND))
+			await _pump(game)
+			err = _T.assert_float_eq(_colour_distance(plant._health_bar.color, default_red), 0.0,
+				0.001, "and back again, got %s" % plant._health_bar.color)
+		if err == "":
+			# The method the handler reaches for, called directly, so a rename that
+			# left the loop above calling something else would fail here too.
+			RunConfig.colorblind_safe = true
+			plant.repaint_health_bar()
+			err = _T.assert_float_eq(
+				_colour_distance(plant._health_bar.color, Hud.health_color_on(0.0, true)), 0.0,
+				0.001, "repaint_health_bar() is what does it, got %s" % plant._health_bar.color)
 	RunConfig.colorblind_safe = was
 	_T.free_ui(game)
 	return err

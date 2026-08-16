@@ -123,8 +123,48 @@ const TURN_START_ALPHA: float = 0.15
 ## file, authored here — rather than a photograph, so the byte comparison above
 ## keeps meaning "no two pages are about the same thing". SourceLabel prints it
 ## either way, saying outright that this one was never on paper.
+##
+## KIND_SHELF is the third, and it is about the player rather than about the game.
+## A milestone was announced exactly once — RunSummary.new_milestones() reads only
+## the ids a run was the FIRST to earn, so the post-mortem's ribbon is the only
+## surface that ever drew one, and a milestone earned three runs ago sat in
+## RunConfig.earned_milestones with `has_milestone()` public and called by nothing.
+## The shelf is where the whole set lives. It goes in the notebook rather than on
+## the title screen because the title's button column is already full to the inch
+## (see TitleScreen.BUTTON_TOP: a fifth row foots below TitleBackdrop.HORIZON) and
+## because the pager here is exactly the structure a fixed-length list wanted.
+##
+## Unearned rows are drawn too, greyed and with their note prefixed. A shelf that
+## showed only what you have tells a new player nothing at all — the unearned rows
+## are the half that says what there is to go and try.
 const KIND_DRAWING := "drawing"
 const KIND_PLANT := "plant"
+const KIND_SHELF := "shelf"
+
+## The shelf's rows, laid out inside DRAWING_BOX — the same matte a photograph is
+## mounted on, for the reason SPEC_BOX gives: the frame stays on every page and
+## only its contents change.
+##
+## Milestones.TABLE.size() rows at this pitch is 7 * 42 + 3 = 297 against
+## DRAWING_BOX's 300, so the table has NO room for an eighth entry at these
+## numbers. That is deliberate rather than an oversight waiting to happen:
+## test_the_milestone_shelf_fits_the_page fails the moment TABLE grows, and names
+## the two ways out (drop the pitch, or split the shelf across both pages).
+const SHELF_ROW_PITCH: float = 42.0
+const SHELF_ROW_TOP: float = 3.0
+## The earned/unearned mark, and it is a SIZE difference rather than only a colour
+## one. Same rule Plant.HEALTH_BAR_SEGMENTS states for the board: a cue that is
+## carried by hue alone is a cue the colourblind-safe option exists because of.
+## The greying is the second channel and the "Not yet — " prefix on the note is a
+## third, so the shelf reads with the colour thrown away entirely.
+const SHELF_PIP_EARNED: float = 10.0
+const SHELF_PIP_UNEARNED: float = 4.0
+const SHELF_PIP_X: float = 4.0
+const SHELF_TEXT_X: float = 22.0
+const SHELF_TITLE_HEIGHT: float = 20.0
+const SHELF_NOTE_HEIGHT: float = 17.0
+const SHELF_TITLE_FONT_SIZE: int = 15
+const SHELF_NOTE_FONT_SIZE: int = 11
 
 const PAGES: Array[Dictionary] = [
 	{
@@ -178,6 +218,19 @@ const PAGES: Array[Dictionary] = [
 		"caption": "Sticky Sundew",
 		"note": "Also designed here rather than on paper. A Chomp Flower is forbidden from closing on a winged pest, so a lane walled with mouths did nothing at all to a flier. The dew is on the ground underneath, so it catches what flies over it — and gives every gun longer to shoot.",
 	},
+	{
+		"kind": KIND_SHELF,
+		"plant": &"",
+		# Kept a real path even though the shelf page never shows it: Drawing is
+		# loaded on every page (see go_to) so no layout check has to special-case
+		# a TextureRect holding null, and the byte-uniqueness check across pages
+		# wants something distinct here. The packet is the game's own picture of
+		# "something you got", which is what the whole page is about.
+		"drawing": "res://assets/sprites/seed_packet.png",
+		"sprite": "res://assets/sprites/seed_packet.png",
+		"caption": "The shelf",
+		"note": "Every first the garden can record, earned or not. A run announces one once on the post-mortem and then it lives here — and the greyed rows say outright what they want, so this is a list of things left to try rather than a list of things missed.",
+	},
 ]
 
 var _page: int = 0
@@ -185,6 +238,7 @@ var _paper: NotebookPage
 var _drawing_rect: TextureRect
 var _drawing_pane_label: Label
 var _spec: Label
+var _shelf: Control
 var _sprite_rect: TextureRect
 var _caption: Label
 var _note: Label
@@ -341,6 +395,8 @@ func _build_left_page() -> void:
 	_spec.visible = false
 	add_child(_spec)
 
+	_build_shelf()
+
 	_source = Label.new()
 	_source.name = "SourceLabel"
 	_source.position = Vector2(LEFT_CENTRE - TEXT_WIDTH / 2.0, SOURCE_Y)
@@ -349,6 +405,101 @@ func _build_left_page() -> void:
 	_source.add_theme_font_size_override("font_size", 13)
 	_source.add_theme_color_override("font_color", Color(GardenTheme.INK, 0.45))
 	add_child(_source)
+
+
+## The third thing the left page can hold: one row per entry in Milestones.TABLE,
+## in table order, earned or not.
+##
+## A plain Control and not a VBoxContainer, for the reason the file header gives
+## and one more: a Container would own its children's positions, and the pip's
+## whole job is to sit at a size the row's own text does not decide. Read once,
+## here — the notebook is rebuilt by TitleScreen._open_notebook every time it is
+## opened, and nothing can earn a milestone while it is up.
+func _build_shelf() -> void:
+	_shelf = Control.new()
+	_shelf.name = "Shelf"
+	_shelf.position = DRAWING_BOX.position
+	_shelf.size = DRAWING_BOX.size
+	_shelf.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_shelf.visible = false
+	add_child(_shelf)
+
+	var text_width: float = DRAWING_BOX.size.x - SHELF_TEXT_X - 4.0
+	for i: int in Milestones.TABLE.size():
+		var id: String = String(Milestones.TABLE[i]["id"])
+		var earned: bool = RunConfig.has_milestone(id)
+		var y: float = SHELF_ROW_TOP + float(i) * SHELF_ROW_PITCH
+
+		var pip := ColorRect.new()
+		pip.name = "ShelfPip_%s" % id
+		var side: float = SHELF_PIP_EARNED if earned else SHELF_PIP_UNEARNED
+		# Centred in the earned pip's slot, so the two sizes share a centre line
+		# and the column reads as one column rather than as ragged left edges.
+		var inset: float = (SHELF_PIP_EARNED - side) / 2.0
+		pip.position = Vector2(SHELF_PIP_X + inset, y + 5.0 + inset)
+		pip.size = Vector2(side, side)
+		pip.color = GardenTheme.LEAF_DARK if earned else Color(GardenTheme.INK, 0.35)
+		pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_shelf.add_child(pip)
+
+		var title := Label.new()
+		title.name = "ShelfTitle_%s" % id
+		title.text = Milestones.title_of(id)
+		title.position = Vector2(SHELF_TEXT_X, y)
+		title.size = Vector2(text_width, SHELF_TITLE_HEIGHT)
+		title.add_theme_font_size_override("font_size", SHELF_TITLE_FONT_SIZE)
+		title.add_theme_color_override("font_color",
+			GardenTheme.LEAF_DARK if earned else Color(GardenTheme.INK, 0.38))
+		title.clip_text = true
+		title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_shelf.add_child(title)
+
+		var note := Label.new()
+		note.name = "ShelfNote_%s" % id
+		note.text = shelf_note_text(id, earned)
+		note.position = Vector2(SHELF_TEXT_X, y + SHELF_TITLE_HEIGHT - 1.0)
+		note.size = Vector2(text_width, SHELF_NOTE_HEIGHT)
+		note.add_theme_font_size_override("font_size", SHELF_NOTE_FONT_SIZE)
+		note.add_theme_color_override("font_color",
+			Color(GardenTheme.INK, 0.7 if earned else 0.32))
+		note.clip_text = true
+		note.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		note.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_shelf.add_child(note)
+
+
+## What a shelf row's second line says. The prefix is the channel that survives
+## being printed in one colour: "Cleared it without an escape" and "Not yet —
+## cleared it without an escape" are the same fact in two tenses, and a player who
+## cannot tell the greyed rows from the earned ones by hue can still read which is
+## which. Static, so the wording is assertable without building the screen.
+static func shelf_note_text(id: String, earned: bool) -> String:
+	var note: String = Milestones.note_of(id)
+	if earned or note.is_empty():
+		return note
+	return "Not yet — %s%s" % [note.substr(0, 1).to_lower(), note.substr(1)]
+
+
+## "3 of 7 earned", the count the shelf's provenance line carries. Counted off
+## Milestones.TABLE rather than off earned_milestones.size(), so an id from a
+## newer build sitting in the save cannot push the total past the shelf's rows.
+static func shelf_progress_text() -> String:
+	var earned: int = 0
+	for row: Dictionary in Milestones.TABLE:
+		if RunConfig.has_milestone(String(row["id"])):
+			earned += 1
+	return "%d of %d earned" % [earned, Milestones.TABLE.size()]
+
+
+## Which page is the shelf, or -1. Same shape as page_for_plant(): the index is
+## derived from the table rather than written down, so appending a page above it
+## cannot silently point a test at a drawing.
+static func shelf_page() -> int:
+	for i: int in PAGES.size():
+		if String(PAGES[i].get("kind", KIND_DRAWING)) == KIND_SHELF:
+			return i
+	return -1
 
 
 func _build_right_page() -> void:
@@ -530,20 +681,35 @@ func go_to(page: int) -> void:
 	var previous: int = _page
 	_page = ((page % PAGES.size()) + PAGES.size()) % PAGES.size()
 	var entry: Dictionary = PAGES[_page]
-	var drawn: bool = String(entry.get("kind", KIND_DRAWING)) == KIND_DRAWING
+	var kind: String = String(entry.get("kind", KIND_DRAWING))
+	var drawn: bool = kind == KIND_DRAWING
+	var spec: bool = kind == KIND_PLANT
 	var file: String = String(entry["drawing"]).get_file()
-	# Loaded on both kinds of page even though a plant page keeps it hidden: a
+	# Loaded on every kind of page even though two of them keep it hidden: a
 	# Drawing left holding a null texture is a node every layout check has to
 	# special-case, and the load is a cached one either way.
 	_drawing_rect.texture = load(String(entry["drawing"])) as Texture2D
+	# Exactly one of the three is up at a time; they share the matte on purpose.
 	_drawing_rect.visible = drawn
-	_spec.visible = not drawn
-	_spec.text = "" if drawn else plant_spec(StringName(entry.get("plant", &"")))
-	_drawing_pane_label.text = "The drawing" if drawn else "No drawing — the spec"
-	# The provenance line, which is the whole difference between the two kinds of
-	# page: one names the photograph it is showing, the other says outright that
-	# there is no photograph and names the file that exists instead.
-	_source.text = file if drawn else "%s — never on paper" % file
+	_spec.visible = spec
+	_shelf.visible = kind == KIND_SHELF
+	_spec.text = plant_spec(StringName(entry.get("plant", &""))) if spec else ""
+	if drawn:
+		_drawing_pane_label.text = "The drawing"
+	elif spec:
+		_drawing_pane_label.text = "No drawing — the spec"
+	else:
+		_drawing_pane_label.text = "Every first the garden records"
+	# The provenance line, which is the whole difference between the kinds of
+	# page: a drawing page names the photograph it is showing, a plant page says
+	# outright that there is no photograph and names the file that exists
+	# instead, and the shelf has no artefact at all — it has a score.
+	if drawn:
+		_source.text = file
+	elif spec:
+		_source.text = "%s — never on paper" % file
+	else:
+		_source.text = shelf_progress_text()
 	_sprite_rect.texture = load(GardenTheme.retina_path(String(entry["sprite"]))) as Texture2D
 	_fit_sprite()
 	_caption.text = String(entry["caption"])
@@ -584,7 +750,7 @@ func _play_turn(direction: float) -> void:
 		return
 	var tween := create_tween()
 	tween.set_parallel(true)
-	for node: Control in [_drawing_rect, _spec, _sprite_rect, _caption, _note, _source]:
+	for node: Control in [_drawing_rect, _spec, _shelf, _sprite_rect, _caption, _note, _source]:
 		tween.tween_property(node, "modulate:a", 1.0, TURN_SECONDS).from(TURN_START_ALPHA)
 		tween.tween_property(node, "position:x", node.position.x, TURN_SECONDS) \
 			.from(node.position.x + TURN_NUDGE * direction) \

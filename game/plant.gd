@@ -50,10 +50,21 @@ const MAX_HEALTH: float = 40.0
 const REGROWTH_DELAY: float = 6.0
 const REGROWTH_RATE: float = 1.5
 
-## The in-world bar's two colours. Red is the bar that was always there; green is
-## the only cue the player gets that regrowth is a thing the game does, so it is
-## on the readout they are already looking at rather than on a new one.
-const HEALTH_BAR_HURT := GardenTheme.DANGER
+## The in-world bar's healing colour. Green is the only cue the player gets that
+## regrowth is a thing the game does, so it is on the readout they are already
+## looking at rather than on a new one.
+##
+## Its bleeding counterpart is NOT a constant here any more. `HEALTH_BAR_HURT` was
+## a third copy of the same red-lerp end the HUD draws twice, and when the
+## colourblind-safe ramp arrived it reached `Hud.health_color` and
+## `Hud.threat_color` and stopped there — leaving the one bar a player actually
+## watches through a chew (the HUD's copy only appears for the *selected* plant)
+## on the green-to-red pair the option exists to get rid of. So the bleeding end
+## is now read out of `Hud.health_color_on(0.0, safe)`: one ramp, one switch,
+## three bars that cannot disagree. See health_bar_color_on().
+##
+## The safe counterpart of this green is `Hud.HEALTH_FULL_SAFE` — the same "whole"
+## end the HUD's fill lands on — rather than a fourth hand-picked colour.
 const HEALTH_BAR_REGROWING := Color(0.36, 0.70, 0.34)
 
 ## Where that bar lives, in the plant's own local space. Named rather than typed
@@ -153,7 +164,10 @@ func _build_visuals() -> void:
 	add_child(_health_back)
 
 	_health_bar = ColorRect.new()
-	_health_bar.color = HEALTH_BAR_HURT
+	# Through the switch even here, where the bar is built hidden: a plant placed
+	# with the option already on and bitten before its first _refresh_health_bar()
+	# would otherwise flash the default ramp's red for a frame.
+	_health_bar.color = health_bar_color(false)
 	_health_bar.position = HEALTH_BAR_ORIGIN
 	_health_bar.size = HEALTH_BAR_SIZE
 	_health_bar.visible = false
@@ -444,6 +458,18 @@ func take_damage(amount: float) -> void:
 ## whole, which is the same rule that kept it hidden before the first bite: a full
 ## bar is not a warning, and leaving one painted over a recovered bed would make
 ## regrowth look like it had not happened.
+## Repaint the in-world bar without anything having happened to the plant.
+##
+## The bar is drawn from take_damage() and _regrow() — i.e. only when the number
+## moves — which is right for a readout and wrong for a *palette* change. A player
+## who presses the colourblind-safe key while a chewed plant sits quietly on the
+## board would otherwise watch nothing happen to the one bar the option is most
+## for, until something bit it again. Game's handler calls this for every placed
+## plant, the same reason it calls Hud._refresh() rather than waiting for state.
+func repaint_health_bar() -> void:
+	_refresh_health_bar()
+
+
 func _refresh_health_bar() -> void:
 	if _health_back == null or _health_bar == null:
 		return
@@ -464,9 +490,24 @@ func _refresh_health_bar() -> void:
 ##
 ## Kept as the *first* of two channels rather than the only one. See
 ## health_bar_segments() for the second and HEALTH_BAR_SEGMENTS for why a lone
-## red-versus-green readout was the wrong thing to have shipped.
+## red-versus-green readout was the wrong thing to have shipped — the notches are
+## not superseded by the switch below, they are the half of the cue that works on
+## a screenshot, in greyscale, and for a player who never finds the option.
+##
+## Split into a reading half and a pure half exactly as `Hud.health_color` /
+## `Hud.health_color_on` are, and for the same reason: the ramp tests drive the
+## pure one so they cannot be changed by a setting an earlier test left on.
 static func health_bar_color(regrowing: bool) -> Color:
-	return HEALTH_BAR_REGROWING if regrowing else HEALTH_BAR_HURT
+	return health_bar_color_on(regrowing, RunConfig.colorblind_safe)
+
+
+## The two states as the two ends of the HUD's own health ramp, so a build cannot
+## end up with a safe fill on the side panel and a green-to-red bar on the board
+## six inches away — which is precisely what it had.
+static func health_bar_color_on(regrowing: bool, safe: bool) -> Color:
+	if regrowing:
+		return Hud.HEALTH_FULL_SAFE if safe else HEALTH_BAR_REGROWING
+	return Hud.health_color_on(0.0, safe)
 
 
 ## Pure: how many blocks the bar reads as — 1 whole one while a plant is bleeding,

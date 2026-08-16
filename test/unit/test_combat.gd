@@ -1027,8 +1027,17 @@ func test_a_chewed_bed_grows_back_on_its_own_once_nothing_is_biting_it() -> Stri
 		err = _T.assert_false(corn._health_back.visible,
 			"and puts its bar away again, the same way it kept it hidden before the first bite")
 	if err == "":
-		err = _T.assert_true(Plant.health_bar_color(true) != Plant.health_bar_color(false),
+		# On both ramps, and through the pure half: `health_bar_color` reads
+		# RunConfig.colorblind_safe, which is process-global and seeded from the
+		# real save file, so the single-call form would be asserting whichever
+		# palette the machine happened to be carrying.
+		err = _T.assert_true(
+			Plant.health_bar_color_on(true, false) != Plant.health_bar_color_on(false, false),
 			"a regrowing bar is a different colour from a hurt one — the only cue the mechanic has")
+		if err == "":
+			err = _T.assert_true(
+				Plant.health_bar_color_on(true, true) != Plant.health_bar_color_on(false, true),
+				"and still is on the colourblind-safe ramp, where both ends were replaced")
 	_T.free_ui(host)
 	return err
 

@@ -3064,3 +3064,62 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   what they claim to, and `findings --no-scenes` reported `0 finding(s) across 4 of 5
   checks (1152x648)` with the skipped one named by reason. The `--import` segfault at
   exit (`exit=139`, `.godot/uid_cache.bin` written anyway) is G-044 and is not re-filed.
+
+## 2026-08-16 — A milestone shelf in the notebook, and the third health bar routed through the colourblind switch (plant-tower-defense-qar, -b6v)
+
+- Value: **warranted** — the shelf is a new hand-positioned page and the plant bar's
+  repaint is a *timing* claim, and runtime answered both in a way the diff could not.
+  - Expected: the shelf would render inside `DRAWING_BOX` with seven greyed rows, and
+    the in-world bar would follow `garden_colorblind` without anything biting the
+    plant again.
+  - Got: `node-bounds .../Notebook/Shelf` → `Rect: 178, 148, 360x300`, `In viewport:
+    True`, `Geometry: measured windowed`. `SourceLabel.text` → `0 of 7 earned`. With
+    three ids staged in memory, the screenshot shows three LEAF_DARK rows carrying a
+    10px pip against four grey rows with a 4px pip and a `Not yet — ` note. For the
+    bar: paused, `take_damage(24)` → `color {0.85, 0.25, 0.22}` (DANGER) at
+    `size 12.8x5`; one `input tap garden_colorblind` later, with nothing else
+    touching the plant, `color {0.976, 0.647, 0.196}` = `GardenTheme.SAFE_BAD`.
+  - Found: **the repaint gap, caught before it shipped rather than after.** The
+    obvious version of the fix routes `health_bar_color` through the switch and
+    stops there — which is what the issue asked for and is still wrong, because the
+    in-world bar is only ever painted from `take_damage()`/`_regrow()`. A chewed bed
+    nobody is currently eating would keep the old ramp until something bit it again,
+    i.e. the option would look broken on exactly the bar it was added for.
+    `Plant.repaint_health_bar()` and the loop in Game's colourblind handler exist
+    because of that, and
+    `test_toggling_the_option_repaints_the_bars_already_on_the_board` drives it
+    through `_unhandled_input` so the loop cannot be deleted silently.
+  - Cheaper: for the *arithmetic*, yes — `Plant.health_bar_color_on(false, safe) ==
+    Hud.health_color_on(0.0, safe)` is a pure assertion and needs no game, and it is
+    in the suite for that reason. For the repaint and for the shelf's layout, nothing
+    cheaper: one is about when a paint happens and the other is about where
+    hand-typed constants land on screen.
+
+- Gap: **`--isolated` isolates the bus, so a live check that exercises a persisted
+  setting has to write through the developer's real save and put it back by hand.**
+  Reading staged milestones back was safe (`set-state /root/RunConfig
+  earned_milestones` calls no `_save()`), but exercising the colourblind toggle at
+  all goes through `set_colorblind_safe()`, which writes `user://highscore.save` on
+  every press. The workaround was to read the original values first
+  (`colorblind_safe: false`, `earned_milestones: {}`), stage, screenshot, then press
+  the key an even number of times and re-read to confirm — a discipline nothing in
+  the harness enforces and which a crash mid-check would have skipped, leaving the
+  developer's own save altered by a verification run. (The 2026-08-16 entry above
+  files the *merge* half of this as "not a harness gap"; this is the other half —
+  not two checkouts disagreeing, one checkout mutating state it only meant to read.)
+  - [G-047] status: open | seen: 1 | harness: 0.32.0
+  - Improvement: a `--snapshot-userstate` flag on `launch` that copies `user://*.save`
+    aside and restores it on `quit` (or on the next launch, if the game died) would
+    make a live check that touches persisted settings safe by default rather than by
+    convention. It needs no `user://` isolation to work.
+
+- Gap: **`import_check.py`'s single retry was not enough** — the same crash signature
+  already filed, twice in a row before a third invocation succeeded: `godot --import
+  exited 3221225477 with no recognizable parse/load error`, `.devtools/import.log`
+  ending at `[ 0% ] reimport | question_002.ogg` both times, `.godot/uid_cache.bin`
+  absent after the tool gave up. Calling `import_check.py` a second time (i.e. a
+  third `--import` overall) completed and wrote the cache.
+  - [G-044] status: open | seen: 5 | harness: 0.32.0
+  - Improvement: unchanged in kind but sharper now that there is a count — retry
+    until the log's last line stops advancing rather than exactly once, since the
+    observed failure needs two retries and the existing cap is one.
