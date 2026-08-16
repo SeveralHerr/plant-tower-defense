@@ -111,3 +111,85 @@ for a `-> String` test is indistinguishable from a pass. So:
 - `assert_true(node != null)` before every dereference of a `get_node_or_null` result.
 - `assert_gt(SOME_TABLE.size(), 0)` before any loop over a table, or a suite that
   iterates an empty array reports a confident green.
+
+## Where a click actually goes
+
+The rules above are about *overlays*. These are about the other end: a `Control` that
+never wanted a click and takes one anyway. Two agents have now had to derive this from
+scratch to prove a one-line bug was real.
+
+### A Control under a Node2D is a GUI root, picked in world space
+
+A `Control` registers with the viewport on `NOTIFICATION_ENTER_CANVAS` when its ancestor
+chain holds **no other Control**. Parent it to a `Node2D` — a plant, a pest, a marker —
+and it is exactly that: a GUI root, hit-tested with the parent's transform applied, so it
+occupies a rectangle of the *playfield*.
+
+The viewport's GUI pass runs **before** `_unhandled_input`. So a Control with the default
+`MOUSE_FILTER_STOP` sitting over the board calls `set_input_as_handled()` on a hit, and
+any `_unhandled_input` click handler never runs.
+
+**The click is not misrouted. It is deleted, and nothing reports it.**
+
+This shipped here twice. Health-bar `ColorRect`s on `Plant` ate clicks on the plant's own
+cell *and* two pixels of the cell above; the same rects on `Pest` ate the click that
+collects a husk — unrecoverable, because every husk lands on the road and road cells route
+only to `compost.collect_at`.
+
+### The rule
+
+Every `Control` a world-space node owns must be `MOUSE_FILTER_IGNORE`. Set it in **one
+sweep after setup**, not per node:
+
+```gdscript
+func _make_world_controls_click_through() -> void:
+    for c: Control in find_children("*", "Control", true, false):
+        c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+```
+
+Per-node assignment is fine as documentation but must not be the thing that has to be
+remembered — the sixth rect is the one that forgets. Note `MOUSE_FILTER_IGNORE` on a
+parent does **not** propagate; each Control decides for itself, which is why this sweeps
+rather than sets one node.
+
+Under a `CanvasLayer` the default is usually *correct*: a `STOP` backdrop is how a modal
+screen stops clicks reaching what is behind it. The rule is about world space only.
+
+### Checking it
+
+`python tools/world_control_check.py` (this repo) asks it statically over the source and
+is parallel-safe. It cannot see a Control added by a `.tscn`, so pair it with a live test
+that enumerates every Control **not** under a `CanvasLayer` and asserts all are IGNORE —
+enumerate from the tree, never a hand-written list.
+
+Note what does *not* catch this: `name_check` resolves `mouse_filter` fine and "was it
+ever assigned" is not a name question; lint and import type-check, and a default value is
+not a type error; `reachable-ui`/`findings` ask whether an interactive Control that
+*wants* clicks is blocked, which is the mirror image of this.
+
+### Testing a click, not a property
+
+Assert what the board did, not what a field says. Drive a real `InputEventMouseButton`
+through the viewport, and **open with a control click that must succeed** — otherwise a
+dead event pipeline passes silently:
+
+```gdscript
+# 1. click an empty cell, assert it registered   <- proves the pipeline is live
+# 2. click the bar's own get_global_rect().get_center()
+# 3. assert the cell underneath received it
+```
+
+Take the click point off the node's own rect and then assert it really is inside that
+rect and maps to the expected cell, so the test cannot drift from the thing it targets.
+
+## Lazy getters answer confidently on an unbuilt node
+
+Adjacent trap, same family, three instances found here: `Board.is_path()`,
+`Board.path_index()` and `Board.exit_cell()` each read state that `_build_path()`
+populates, while only `path_cell_count()` built it first. On a `Board.new()` outside the
+tree they answered "there is no road anywhere" and `(-1, -1)` — not an error, a confident
+no — and every caller downstream inherited it. Tests built a bare instance, measured an
+empty board, and passed.
+
+If a getter depends on lazily-built state, build it in the getter. `_build_path()`
+early-returns on already-built, so the cost is one `is_empty()` check.
