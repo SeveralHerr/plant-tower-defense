@@ -2671,3 +2671,43 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   this fresh worktree checkout — expected, already documented, not a new gap.
 
 - Harness: **0.25.0**.
+
+## 2026-08-16 — Give Music its own independent mute, separate from Sfx's (plant-tower-defense-gle)
+
+- Value: **warranted** — the diff is two static-class flags plus an input-handler
+  branch; only a live keypress proves KEY_M and KEY_N actually route to two
+  different flags instead of one shared one, which was the entire bug.
+  - Expected: pressing M in a live run would silence only Sfx (HUD says "Sound
+    effects off/on") and leave Music playing, and pressing N would silence only
+    the run's music bed (HUD says "Music off/on") and leave Sfx cues untouched —
+    the coupling the bead exists to remove.
+  - Got: `key M` then `get-state --property text` on `MessageLabel` read
+    `Sound effects off. Press M to bring them back.`; `key N` right after read
+    `Music off. Press N to bring it back.` — two independent toggles, confirmed
+    against the actual HUD copy rather than the source read alone. The grown
+    pause card (`Card` at y=140 height=476, bottom 616) still holds `KeyRow3`
+    (bottom 592) inside its own paper on a real 1152x648 viewport via
+    `node-bounds`, so the fourth key row does not spill past the card the way
+    an earlier bug in this same file once let the note sit under a button.
+  - Found: nothing broken — confirmation run once the headless suite already
+    passed (433/433, including a new
+    `test_music_mute_is_independent_of_sfx_mute`).
+  - Cheaper: the headless round-trip test covers the flag independence for a
+    fraction of the cost; the live pass only closes what it structurally
+    cannot — that `_unhandled_input`'s two `if key.keycode == KEY_M/KEY_N`
+    branches are actually reachable from a real keypress and that the taller
+    card still fits a real window rather than a headless 64x64 one.
+
+- Gap: no gaps this turn. `launch --isolated --kill-survivors` worked first
+  try; `key M`/`key N` worked as documented; the one snag was mechanical, not
+  a harness gap — `verify_ledger.py record`'s first attempt reported
+  `reached 0/2` because the scene-tree/scripts-seen capture was taken from a
+  session that never pressed Start, so `game/game.gd`/`game/music.gd` were
+  never loaded in that session. Recapturing both files from a session that had
+  already entered `game.tscn` and pressed M/N fixed it to `reached 1/2`
+  (`game/music.gd` stays unreached because it is a static utility class with
+  no script attached to any node the scene-tree walk can see — `MusicHost` is
+  a bare `Node.new()`, not a scripted node — which is a structural limit of
+  reach-by-script-path, not something this run could have done differently).
+
+- Harness: **0.25.0**.

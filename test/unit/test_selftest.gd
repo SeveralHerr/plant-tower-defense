@@ -5210,15 +5210,15 @@ func test_music_play_for_scene_updates_current_track_headlessly() -> String:
 ## refresh_mute() and stop_all() touch only AudioStreamPlayer state, which
 ## headless never builds (Music._ensure_host is never reached — should_play
 ## is false before it), so the one thing left to assert headlessly is that
-## neither call disturbs the track *selection*, and that toggling Sfx's mute
-## and calling refresh_mute() around it is safe to do in either order. Mute
-## is restored to false at the end regardless of outcome, since it is process-
-## global state every later test shares.
+## neither call disturbs the track *selection*, and that toggling Music's own
+## mute and calling refresh_mute() around it is safe to do in either order.
+## Music's mute is process-global state every later test shares, so it is
+## restored to false at the end regardless of outcome.
 func test_music_refresh_mute_and_stop_all_do_not_touch_track_selection() -> String:
 	Music.play_title()
 	var err: String = _T.assert_eq(Music.current_track(), Music.TITLE, "starting selection is the title bed")
 	if err == "":
-		Sfx.set_muted(true)
+		Music.set_muted(true)
 		Music.refresh_mute()
 		err = _T.assert_eq(Music.current_track(), Music.TITLE,
 			"muting through refresh_mute() silences playback, not the selection")
@@ -5227,9 +5227,37 @@ func test_music_refresh_mute_and_stop_all_do_not_touch_track_selection() -> Stri
 		err = _T.assert_eq(Music.current_track(), Music.TITLE,
 			"stop_all() is a playback command too -- same non-effect on the selection")
 	if err == "":
-		Sfx.set_muted(false)
+		Music.set_muted(false)
 		Music.refresh_mute()
 		err = _T.assert_eq(Music.current_track(), Music.TITLE,
 			"unmuting resumes the same bed rather than picking a new one")
+	Music.set_muted(false)
+	return err
+
+
+## Music's own mute, mirrored against Sfx's own round-trip test
+## (test_combat.gd's Sfx toggle test) and asserted to be a state distinct from
+## Sfx's -- muting one must not move the other, which is the entire point of
+## plant-tower-defense-gle. Restored to false at the end for the same reason
+## as the test above: both mutes are process-global.
+func test_music_mute_is_independent_of_sfx_mute() -> String:
+	var music_was_muted: bool = Music.is_muted()
+	var sfx_was_muted: bool = Sfx.is_muted()
+	Music.set_muted(false)
 	Sfx.set_muted(false)
+	var err: String = _T.assert_true(Music.toggle_muted(), "one press mutes the music bed")
+	if err == "":
+		err = _T.assert_true(Music.is_muted(), "and the flag agrees with what it returned")
+	if err == "":
+		err = _T.assert_false(Sfx.is_muted(),
+			"muting Music leaves Sfx's own mute untouched -- they are separate flags")
+	if err == "":
+		err = _T.assert_true(Sfx.toggle_muted(), "Sfx has its own independent toggle")
+	if err == "":
+		err = _T.assert_true(Music.is_muted(),
+			"and toggling Sfx does not clear Music's own mute")
+	if err == "":
+		err = _T.assert_false(Music.toggle_muted(), "a second press brings the music bed back")
+	Music.set_muted(music_was_muted)
+	Sfx.set_muted(sfx_was_muted)
 	return err
