@@ -1314,3 +1314,200 @@ of what the design doc already says, rather than being bolted on.
   zero of 116. Both live only in commit messages and a comment. The board says
   "unaimed", which is exactly right, but a player never learns that unaimed ground still
   gets kills — which is the thing that would stop them over-buying cover.
+
+### New this cycle (20 of 30) — grown from the features above
+
+- **Corn Cobbler counts down to its next shot in a private variable, and nothing about
+  the plant says whether it is loaded.** Sunflower's payout clock got a gauge that
+  fills as the next `INTERVAL` nears (sunflower.gd:150-156, always on, no click
+  required) and Chomp Flower's chew gets a shrinking ring the instant its mouth is full
+  (`_draw`, chomp_flower.gd:130-136) — but `CornCobbler._cooldown` (corn_cobbler.gd:88,
+  decremented every frame at corn_cobbler.gd:95-97) is read by nothing outside `_act()`.
+  The always-on muzzle fan (`_draw_muzzle_fan`, corn_cobbler.gd:141-152) is a readout of
+  the *last* shot's spread, not the *next* one's timing, so a cob mid-reload and a cob
+  about to fire are pixel-identical.
+
+- **A Sticky Sundew catching a pest is a metadata write with no picture and no sound.**
+  `_claim()` (sticky_sundew.gd:244-250) sets `META_BASE_SPEED`/`META_SOURCES` and
+  multiplies `pest.speed` by `SLOW_FACTOR` — the entire content of "this pest is now
+  stuck" — and calls neither `Sfx.play()` nor a tween nor anything that touches the
+  caught pest's own sprite. Corn's `_recoil()` fires from `_fire_at()` and Chomp's
+  `_bite()` fires from `_grab()` — every other plant marks its verb at the instant it
+  lands, and Sundew is the one whose defining moment is currently silent on both ends.
+
+- **A field named for the fix already exists on `Plant`, and nothing ever writes to
+  it.** `var _wobble_time: float = 0.0` sits at plant.gd:104, and no method in the
+  class — not `_physics_process`, not `_act`, not `_draw` — reads or increments it.
+  Between events a placed plant is a completely static sprite, so a Corn Cobbler that
+  fired ten seconds ago and one that has never fired at all look the same at rest. A
+  small `sin(_wobble_time * k)` sway on `_sprite.rotation`, gated behind
+  `GardenTheme.animations_enabled()` the way `_bloom()` already gates itself
+  (sunflower.gd:171), would use the field for what its own name already promises.
+
+- **Selecting a plant is the one interactive click in the game with no motion attached
+  to it.** `Plant.set_selected()` (plant.gd:462-468) toggles
+  `_selection_marker.visible` directly, and `SelectionMarker._draw_brackets()`
+  (selection_marker.gd:41-46) draws the four corner brackets at a fixed size the
+  instant the flag flips — nothing between invisible and full-size, no tween anywhere
+  in either file. Contrast the plant underneath it: `_build_visuals()` pops the sprite
+  in from 0.4x scale over 0.22s on placement (plant.gd:187-190). The one moment a
+  player deliberately reaches for — clicking a plant to read its state — is the one
+  moment nothing on the board acknowledges having happened.
+
+- **A pest exists at full opacity the instant it exists; there is no frame where the
+  game says "one is coming."** `Game.spawn_pest` (game.gd:630) creates a `Pest`, adds
+  it as a child and calls `setup()`, which sets `position = _route[0]` in the same
+  call (pest.gd:192). Nothing tweens alpha or scale up from zero at the road's entry
+  cell, and each wave's own `lead` (0.5–2.0s in every `WAVES` row, wave_director.gd:96-121)
+  is spent silently before the first spawn rather than visibly counting it down.
+  `SunFlower._bloom_flash` (sunflower.gd:70, 176-181) already shows the codebase's
+  pattern for a `tween_method` ramp-in; nothing plays it at the moment every pest's
+  whole run begins.
+
+- **`kill()` is the single door every death walks through, so a kernel that ticks off
+  the last hit point and a Chomp that finishes a held meal look identical.** Both land
+  in the same `_play_death()` (pest.gd:484-505): swap to the dead-eyes texture, drop
+  the tint, hold `DEATH_LINGER` 0.35s, free. A pest shot from 176px away and a pest
+  held motionless in a mouth for 2.6s are staged by completely different plants, and
+  the corpse gives no sign which one actually happened — a ranged kill could stagger
+  back or crumple where it stood, and a Chomp kill could vanish into the mouth instead
+  of lingering on the road at all.
+
+- **`_on_pest_escaped` touches the scoreboard and nothing on the board.** The whole
+  handler (game.gd:697-718) is a sound cue, `lives -= 1`, and a HUD refresh — no flash
+  at `board.exit_cell()`, no shake, nothing keyed to the position the loss actually
+  happened at. The one thing that does record where it happened, `_note_lane_loss`
+  (game.gd:288-294), is not painted until wave end (`_commit_lane_pressure()`,
+  game.gd:304-313) — so even the lane pressure hatch is silent at the instant of the
+  escape it is about. A run can lose three lives in five seconds and the board looks
+  exactly as calm through all three as it did through zero.
+
+- **Wave 8 is the wave the whole mutation system switches on, and the banner cannot
+  tell the difference between it and wave 7.** `WaveDirector.MUTATION_START_WAVE` is 8
+  (wave_director.gd:14) — the first wave a player can see an armoured, winged or
+  hungry bug at all. But `Hud.announce_wave` always renders `wave_headline(number)`,
+  which is unconditionally `"Wave %d" % number` (hud.gd:991-992), through the
+  identical wave-started cue every wave plays. `escalation_note()` only speaks past
+  the fixed table (wave_director.gd:384-385), so wave 8's own banner note is empty
+  too — the wave that hands the player a new kind of bug reads with strictly less
+  text than a wave 40 endless escalation gets for merely being "tougher."
+
+- **`RunSummary._play_entrance` rises fourteen labels and two buttons in the same 0.28
+  seconds, and the card that most wants a sequence gets none.** It loops
+  `get_children()` and hands every non-`Backdrop` Control its own `create_tween()` at
+  identical `RISE_SECONDS` (run_summary.gd:462-470) — no delay, no offset between
+  rows — so all seven stat rows and both buttons arrive at once, the one card whose
+  whole point is a player reading down a list of numbers computed just now.
+  `TitleScreen._play_entrance` already solves exactly this with `ENTRANCE_STAGGER`
+  0.07 between its seven rows (title_screen.gd:389-391); the post-mortem's rows are
+  already built from one ordered table (`summary_rows()`), so a per-row delay keyed to
+  loop index costs the same borrowed constant and turns a stat dump into a card being
+  read out.
+
+- **Every HUD readout that changes every frame changes by simply overwriting `.text`.**
+  `Hud.refresh()` sets `_seeds_label.text`, `_lives_label.text` and
+  `_compost_label.text` outright on every call (hud.gd:731, 753, 755) — the same
+  method that already eases the wave label's *colour* toward `threat_color()` with a
+  killed-and-restarted `Tween` rather than snapping it (`_ease_threat_tint`,
+  hud.gd:898-911). A short scale-punch on the label that just changed, gated the same
+  way `_ease_threat_tint` already is, would give the one motion vocabulary this file
+  has proven out to the readouts that fire the most often — a kill payout, a life
+  lost, a husk composted.
+
+- **`NotebookPage`'s page dots repaint instantly while the page they are counting
+  turns with a tween.** `current_page`'s setter calls `queue_redraw()` and nothing
+  else (notebook_page.gd:38-41), so the filled dot jumps to the new page the instant
+  `go_to()` writes it, in the same frame `_play_turn()` is still 0.18 seconds into
+  fading the drawing and sprite in (notebook_screen.gd:577-587). The one readout built
+  specifically to answer "how much is left" is the one piece of the page turn that
+  never turns.
+
+- **`PauseScreen` is the only card-over-the-board screen with no tween anywhere in its
+  file.** Its own header calls it "shaped after RunSummary" for being "the same kind
+  of object: a card over a live board" (pause_screen.gd:12-14), but `RunSummary` and
+  `TitleScreen` both rise their content in against
+  `GardenTheme.animations_enabled()`, and `PauseScreen` has no `create_tween` or
+  `modulate` write at all — the card appears with `add_child` and disappears on
+  `_pause_layer.queue_free()` (game.gd:821) on the same frame Escape is pressed. It is
+  also the screen a player reaches for most often, mid-run, under time pressure, and
+  the one that currently snaps both ways while its two siblings ease at least one.
+
+- **The seed count only ever teleports.** `Hud.refresh()` sets `_seeds_label.text =
+  "Seeds  %d" % bank.seeds` (hud.gd:731) on every refresh, so a Sunflower's 3-seed
+  yield, a husk worth up to 9, and a 20-seed packet cost leaving the purse all land as
+  the same instantaneous digit swap. `SeedBank.seeds_changed` only ever carries the
+  new total, not the amount that moved, so there is not even the data a HUD-side cue
+  could read without diffing it itself. The compost stat two labels over already knows
+  how to show a delta — `_compost_label.text += "  +%d" % husks` (hud.gd:762) — but
+  that pattern never reaches the number every transaction in the game actually
+  changes.
+
+- **A refused purchase has a sentence and nothing else.** `SeedBank.pay_for_plant()`
+  and `buy_packet()` both emit `purchase_failed` with only a reason string on every
+  refusal (seed_bank.gd:111-121, 179-190), and `Game._ready` wires it straight to
+  `hud.show_message(reason)` — a caption in the shared status line, nothing more.
+  `Sfx.SOUNDS` has an entry for a plant going in, a plant dying, a pest dying, even a
+  wave starting, but none for a purchase bouncing. A one-frame red shake on the button
+  actually clicked, plus a short cue added to `SOUNDS`, would put the "no" where the
+  click landed instead of only in text a player mid-wave may not be reading.
+
+- **The packet's whole gamble resolves in the same frame it is bought.**
+  `SeedBank`'s own header calls a packet purchase "a gamble rather than a menu" and
+  says "with a short catalogue that reads as suspense" (seed_bank.gd:8-10), but
+  `buy_packet()` deducts the cost, rolls the pool and emits `plant_unlocked` in one
+  synchronous call (seed_bank.gd:192-197), landing as a text banner the instant the
+  button is released. There is no beat between spending the seeds and knowing the
+  result — no packet opening, no flicker through the tier-eligible pool before landing
+  on one — so the suspense the code's own comment promises is written in a docstring
+  and skipped entirely on screen.
+
+- **A swept husk vanishes and the seeds it paid appear somewhere else on the screen.**
+  `CompostMeter.collect_at()` erases the husk from `_husks` the instant it is clicked
+  (compost_meter.gd:147), and `Game._click_at` hands the value straight to
+  `bank.add_seeds(swept)` (game.gd:1205) — which lands in the Seeds stat at the top of
+  the HUD, well away from wherever on the board the click happened. A seed glyph that
+  flies from the husk's own position to the Seeds label, sized off
+  `HuskLayer.radius_for(value)` the way the husk already was, would carry the payout
+  across the screen instead of asking the player to read the same number twice in two
+  different places.
+
+- **The game binds four keys and none of them live in an `InputMap`.**
+  `project.godot` has no `[input]` section at all — every binding is a raw scancode
+  compared inline: `key.keycode == KEY_R` gated on `game_over or victory`
+  (game.gd:1109), `KEY_ESCAPE or KEY_P` for pause (game.gd:1114), `KEY_M` for mute
+  (game.gd:1121), and `NotebookScreen` repeats the pattern for its own three keys.
+  `Game.KEY_HELP` is the one place these are named, and it only ever renders as a
+  legend on the pause card — nothing has ever called `InputMap.add_action`. A settings
+  screen that reads/writes those four bindings through a real `InputMap`, persisted
+  beside `RunConfig`'s two scores, turns the printed legend into a configurable one.
+
+- **Every run computes its own post-mortem and none of it survives the scene it was
+  born in.** `RunSummary.summary_rows()` totals waves survived, pests killed, threat
+  reached, and more from data `Game` has been accumulating the whole run, and
+  `RunConfig._save()` writes exactly three lines — a version header,
+  `campaign_high_score`, `endless_high_score` (run_config.gd:268-270) — throwing every
+  one of those totals away the instant the title screen loads. A small persisted set
+  of milestone flags, checked once at `_end_run` against numbers the game is already
+  holding, is most of an achievements system without a single new gameplay counter.
+
+- **The Designer's Notebook already has a page for every plant, unlocked for a player
+  who has never planted one.** `NotebookScreen.PAGES` covers all four catalogue
+  entries, reachable from the title screen before a seed has been spent. But which
+  plants a save has actually pulled from a packet is never recorded —
+  `SeedBank.packet_pool()` draws are per-run and vanish with the scene, so a
+  brand-new player and someone who has cleared endless past wave 100 are handed the
+  exact same book. Gating each page behind "drawn at least once," backed by a small
+  persisted set next to `RunConfig`'s scores, would turn the packet gamble into a
+  discovery mechanic.
+
+- **The two readouts a player watches hardest in combat are both a single red-green
+  lerp, and the accessibility list only ever promised to protect the pests.** A
+  plant's health bar is `HEALTH_LOW.lerp(HEALTH_FULL, fraction)` (hud.gd:879, with the
+  constants at 281-282) and `threat_color()` eases cream through amber to the same red
+  across the whole difficulty ramp (hud.gd:692-702). The existing Accessibility entry
+  commits to keeping aphid and beetle visually distinct shapes as new pests are added;
+  it says nothing about these two bars, which are hue-only cues carrying the two
+  questions a run turns on — is this plant about to die, is the next wave about to
+  hurt. A colorblind-safe palette swap or a second channel — a tick mark, a hatch
+  density — for exactly these two ramps is the natural next entry under that same
+  heading.
