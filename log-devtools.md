@@ -1959,3 +1959,42 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   never resets, silently disabling the guard under it. It redesigned around this. That
   is Godot semantics, not harness behaviour, but it is exactly the kind of thing a
   `godot-input-and-pause-semantics` skill should carry.
+
+## 2026-08-16 — Lawn and notebook from the catalogue (6mv), and the overlap it caused
+
+- Value: **warranted** — the suite caught a regression the authoring agent could not
+  have seen, and then caught my own fix being vacuous.
+  - Expected: the catalogue rewrite was mostly data plumbing; I predicted the risk was
+    a page-count assumption in the pager, not layout.
+  - Got: the pager held (all three `% PAGES.size()` assertions passed untouched). What
+    broke was the *subheading*: it counts itself from `PAGES`, so two new pages grew
+    the sentence from ~336px to the full 382px panel width, reaching 12px into
+    `DrawingPaneLabel` against a 5px vertical overlap that was always there.
+    `12 x 5 = 60`, exactly the reported intersection.
+  - Found: that overlap; and a **vacuous test of my own** — my first fix assumed a
+    `res://game/notebook_screen.tscn` that does not exist (the screen is built in code),
+    so `instantiate_ui` aborted the method and it returned `""`. `[VACU]` flagged it at
+    62ms with zero assertions executed. Without that detector it would have read as a
+    pass and I would have committed an assertion that could never fire.
+  - Cheaper: nothing. The subheading width is emergent from a runtime string format
+    over a table that changed size; no diff shows it.
+
+- Note on the fix: the pairwise-overlap test *caught* this but *described* it badly —
+  a 60px intersection between two Controls that each fit their own box reads like a
+  positioning bug in the labels, not a sentence that got too long. Added
+  `SUBHEAD_MAX_WIDTH` and a test measuring the actual invariant, then mutation-checked
+  it (budget 100 -> `the subheading text draws 268px`, naming the sentence). A test I
+  did not watch fail is a test I have not written.
+
+- Gap: **[G-033] seen: 2** — `Control.get_minimum_size()` returning ~1px under
+  `clip_text` bit again, one item later, in a different file and a different surface.
+  First time it was the post-mortem card's value labels; here it was the notebook
+  subheading. Both times the obvious assertion would have passed unconditionally, and
+  both times it took prior knowledge to avoid.
+  - [G-033] status: open | seen: 2 | harness: 0.23.0
+  - Improvement: `_T.text_width(label)` measuring through `Font.get_string_size` with
+    the label's resolved theme font and size. Two sessions have now independently
+    written that same six-line preamble by hand.
+
+- Harness: checked `godot-selftest-harness` for a release — still **0.23.0** (`65103b7`),
+  matching the installed version. No refresh.
