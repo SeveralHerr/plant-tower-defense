@@ -1303,15 +1303,20 @@ func _unhandled_input(event: InputEvent) -> void:
 	# a single flag -- Music read Sfx.is_muted() directly -- so a run had
 	# exactly one volume and it silenced both at once. See Music._muted's own
 	# doc comment for the split.
+	#
+	# Through RunConfig rather than straight at Sfx/Music, so a mute set from the
+	# keyboard mid-run is the same act as one set on the Options screen and is
+	# written to the save either way. Calling the static setters here left the
+	# player's choice alive exactly as long as the process (plant-tower-defense-v6c).
 	if event.is_action_pressed(KeyBindings.ACTION_MUTE_SFX):
 		# The key named in the message is read back out of the InputMap, not typed
 		# here. "Press M to bring them back" printed at a player who had rebound
 		# the verb to F2 is worse than saying nothing at all.
-		hud.show_message(mute_message("Sound effects", Sfx.toggle_muted(),
+		hud.show_message(mute_message("Sound effects", RunConfig.toggle_mute_sfx(),
 			KeyBindings.ACTION_MUTE_SFX, "them"), 2.5)
 		return
 	if event.is_action_pressed(KeyBindings.ACTION_MUTE_MUSIC):
-		hud.show_message(mute_message("Music", Music.toggle_muted(),
+		hud.show_message(mute_message("Music", RunConfig.toggle_mute_music(),
 			KeyBindings.ACTION_MUTE_MUSIC), 2.5)
 		return
 	# Swaps the health fill and the threat readout onto GardenTheme's blue/orange

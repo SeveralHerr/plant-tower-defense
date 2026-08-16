@@ -1330,10 +1330,15 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 	RunConfig.endless_high_score = 0
 	# See the sibling test's note: every field the writer emits has to be pinned,
 	# or the expected bytes below become a function of the developer's own save.
+	# The two mutes joined that list at v6.
 	var stashed_colorblind: bool = RunConfig.colorblind_safe
 	var stashed_milestones: Dictionary = RunConfig.earned_milestones.duplicate()
+	var stashed_mute_sfx: bool = RunConfig.mute_sfx
+	var stashed_mute_music: bool = RunConfig.mute_music
 	RunConfig.colorblind_safe = false
 	RunConfig.earned_milestones = {}
+	RunConfig.mute_sfx = false
+	RunConfig.mute_music = false
 	KeyBindings.reset_all()
 
 	var screen := await _T.instantiate_ui(KeyBindingScreen.new(), Vector2i(1152, 648)) as KeyBindingScreen
@@ -1356,7 +1361,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 		err = _T.assert_eq(String(Game.key_help()[0]["keys"]), "F1", "the pause card's legend moved")
 	if err == "":
 		err = _T.assert_eq(FileAccess.get_file_as_string(path),
-			"v%d\n0\n0\nm0\ncb0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
+			"v%d\n0\n0\nm0\ncb0 sfx0 mus0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
 			"and it was written down beside the scores")
 	if err == "":
 		# A key another verb already answers to is refused, and said so.
@@ -1384,7 +1389,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 			"Put them all back restores the shipped keys")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(path),
-				"v%d\n0\n0\nm0\ncb0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n0\nm0\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
 				"and clears the overrides out of the save rather than pinning the defaults into it")
 
 	_T.free_ui(screen)
@@ -1396,6 +1401,8 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 	RunConfig.endless_high_score = stashed_endless
 	RunConfig.colorblind_safe = stashed_colorblind
 	RunConfig.earned_milestones = stashed_milestones
+	RunConfig.mute_sfx = stashed_mute_sfx
+	RunConfig.mute_music = stashed_mute_music
 	for suffix: String in ["", ".tmp", ".bak"]:
 		if FileAccess.file_exists(path + suffix):
 			DirAccess.remove_absolute(path + suffix)
@@ -1474,6 +1481,10 @@ func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
 	var stashed_milestones: Dictionary = RunConfig.earned_milestones.duplicate()
 	var stashed_sfx: bool = Sfx.is_muted()
 	var stashed_music: bool = Music.is_muted()
+	# Both halves of each mute, because v6 gave them two: the static flag the player
+	# hears and RunConfig's persisted record of it, which is what the writer emits.
+	var stashed_mute_sfx: bool = RunConfig.mute_sfx
+	var stashed_mute_music: bool = RunConfig.mute_music
 	for suffix: String in ["", ".tmp", ".bak"]:
 		if FileAccess.file_exists(path + suffix):
 			DirAccess.remove_absolute(path + suffix)
@@ -1483,6 +1494,8 @@ func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
 	RunConfig.endless_high_score = 0
 	RunConfig.earned_milestones = {}
 	RunConfig.colorblind_safe = false
+	RunConfig.mute_sfx = false
+	RunConfig.mute_music = false
 	Sfx.set_muted(false)
 	Music.set_muted(false)
 	KeyBindings.reset_all()
@@ -1582,7 +1595,7 @@ func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
 		err = _T.assert_true(RunConfig.colorblind_safe, "the colourblind row sets the flag")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(path),
-				"v%d\n0\n0\nm0\ncb1\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n0\nm0\ncb1 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
 				"and it is written down beside the scores, not held for the session")
 	if err == "":
 		# Nothing on the paper may run off it or sit on top of anything else, and
@@ -1604,6 +1617,8 @@ func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
 	RunConfig.endless_high_score = stashed_endless
 	RunConfig.colorblind_safe = stashed_colorblind
 	RunConfig.earned_milestones = stashed_milestones
+	RunConfig.mute_sfx = stashed_mute_sfx
+	RunConfig.mute_music = stashed_mute_music
 	Sfx.set_muted(stashed_sfx)
 	Music.set_muted(stashed_music)
 	KeyBindings.reset_all()
@@ -4626,13 +4641,13 @@ func test_the_binding_table_answers_about_itself() -> String:
 		# The writer's shape, asserted where a reader can see it. `_save` goes
 		# through this, so a field appended in the wrong place fails here.
 		err = _T.assert_eq(
-			RunConfig.compose_save(3, 4, "m0", "cb0", {"garden_pause": [KEY_F1, KEY_F2]}),
-			"v%d\n3\n4\nm0\ncb0\n1\ngarden_pause %d %d\n" % [RunConfig.SAVE_VERSION, KEY_F1, KEY_F2],
+			RunConfig.compose_save(3, 4, "m0", "cb0 sfx0 mus0", {"garden_pause": [KEY_F1, KEY_F2]}),
+			"v%d\n3\n4\nm0\ncb0 sfx0 mus0\n1\ngarden_pause %d %d\n" % [RunConfig.SAVE_VERSION, KEY_F1, KEY_F2],
 			"compose_save writes the header, both scores, the milestones, the options, "
 				+ "the count, then the rows")
 	if err == "":
-		err = _T.assert_eq(RunConfig.compose_save(0, 0, "m0", "cb0", {}),
-			"v%d\n0\n0\nm0\ncb0\n0\n" % RunConfig.SAVE_VERSION,
+		err = _T.assert_eq(RunConfig.compose_save(0, 0, "m0", "cb0 sfx0 mus0", {}),
+			"v%d\n0\n0\nm0\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
 			"and an untouched keyboard is a count of zero, not an absent line")
 	KeyBindings.reset_all()
 	return err
@@ -4660,11 +4675,17 @@ func test_rebound_keys_survive_a_save_and_load() -> String:
 	# `colorblind_safe` is loaded from the real user:// file at startup, so a
 	# maintainer who has the accessibility option turned on used to see this test
 	# fail with `cb1` against a hardcoded `cb0` — a red test that says nothing
-	# about the code. Same reasoning for the milestone set.
+	# about the code. Same reasoning for the milestone set, and for the two mute
+	# flags that joined the options line at v6: they are loaded from the same real
+	# file, so a maintainer who plays muted would otherwise read `sfx1` here.
 	var stashed_colorblind: bool = RunConfig.colorblind_safe
 	var stashed_milestones: Dictionary = RunConfig.earned_milestones.duplicate()
+	var stashed_mute_sfx: bool = RunConfig.mute_sfx
+	var stashed_mute_music: bool = RunConfig.mute_music
 	RunConfig.colorblind_safe = false
 	RunConfig.earned_milestones = {}
+	RunConfig.mute_sfx = false
+	RunConfig.mute_music = false
 	KeyBindings.reset_all()
 
 	var err: String = _T.assert_eq(KeyBindings.overrides(), {},
@@ -4676,7 +4697,7 @@ func test_rebound_keys_survive_a_save_and_load() -> String:
 	if err == "":
 		RunConfig.store_key_bindings(KeyBindings.overrides())
 		err = _T.assert_eq(FileAccess.get_file_as_string(path),
-			"v%d\n11\n22\nm0\ncb0\n1\ngarden_mute_music %d\n" % [RunConfig.SAVE_VERSION, KEY_F7],
+			"v%d\n11\n22\nm0\ncb0 sfx0 mus0\n1\ngarden_mute_music %d\n" % [RunConfig.SAVE_VERSION, KEY_F7],
 			"the save carries the count and one action row")
 	if err == "":
 		# Wipe every trace from memory, then read it all back off disk.
@@ -4720,6 +4741,8 @@ func test_rebound_keys_survive_a_save_and_load() -> String:
 	RunConfig.endless_high_score = stashed_endless
 	RunConfig.colorblind_safe = stashed_colorblind
 	RunConfig.earned_milestones = stashed_milestones
+	RunConfig.mute_sfx = stashed_mute_sfx
+	RunConfig.mute_music = stashed_mute_music
 	for suffix: String in ["", ".tmp", ".bak"]:
 		if FileAccess.file_exists(path + suffix):
 			DirAccess.remove_absolute(path + suffix)

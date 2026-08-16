@@ -749,6 +749,13 @@ func _with_scratch_save(campaign: int, endless_best: int, contents: Variant, bod
 	RunConfig.earned_milestones = {}
 	# And the fourth. Same reasoning: it is one of the bytes `_save` writes.
 	RunConfig.colorblind_safe = false
+	# The fifth and sixth, added to the options line at v6. These are the ones most
+	# likely to be inherited without noticing, because nothing in this suite has to
+	# mention audio to move them: RunConfig loads them from the developer's own save
+	# at startup, so a maintainer who plays muted would read `sfx1` in every
+	# byte-exact assertion below.
+	RunConfig.mute_sfx = false
+	RunConfig.mute_music = false
 	var err: String = str(body.call())
 	_restore_run_config()
 	return err
@@ -780,6 +787,14 @@ func _stash_run_config() -> void:
 		# `_restore_run_config` the very object the test just changed.
 		"earned_milestones": RunConfig.earned_milestones.duplicate(),
 		"colorblind_safe": RunConfig.colorblind_safe,
+		# The two mutes, both halves each. RunConfig's own fields are what the writer
+		# emits; Sfx's and Music's statics are what a player hears, and a test that
+		# went through the setters has moved both. Leaking either one is how a
+		# persisted flag reaches a test that never mentioned sound.
+		"mute_sfx": RunConfig.mute_sfx,
+		"mute_music": RunConfig.mute_music,
+		"sfx_is_muted": Sfx.is_muted(),
+		"music_is_muted": Music.is_muted(),
 		# Private, and stashed anyway: a refusal leaves a quarantine pending, and
 		# leaking that into a later test means an unrelated `_save` tries to move a
 		# file this one deleted.
@@ -799,6 +814,10 @@ func _restore_run_config() -> void:
 	RunConfig.key_bindings = _stashed_run_config["key_bindings"] as Dictionary
 	RunConfig.earned_milestones = (_stashed_run_config["earned_milestones"] as Dictionary).duplicate()
 	RunConfig.colorblind_safe = bool(_stashed_run_config["colorblind_safe"])
+	RunConfig.mute_sfx = bool(_stashed_run_config["mute_sfx"])
+	RunConfig.mute_music = bool(_stashed_run_config["mute_music"])
+	Sfx.set_muted(bool(_stashed_run_config["sfx_is_muted"]))
+	Music.set_muted(bool(_stashed_run_config["music_is_muted"]))
 	RunConfig._refused_path = str(_stashed_run_config["_refused_path"])
 	_stashed_run_config = {}
 	_clear_scratch_save()
@@ -909,7 +928,7 @@ func test_a_well_formed_save_round_trips_exactly() -> String:
 	return _with_scratch_save(1234, 5678, null, func() -> String:
 		RunConfig._save()
 		var err: String = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-			"v%d\n1234\n5678\nm0\ncb0\n0\n" % RunConfig.SAVE_VERSION,
+			"v%d\n1234\n5678\nm0\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
 			"the save is a version stamp, campaign, endless, the milestone set, the options, then a count of rebound keys")
 		if err == "":
 			err = _T.assert_false(FileAccess.file_exists(HIGHSCORE_TEST_PATH + ".tmp"),
@@ -954,7 +973,7 @@ func test_a_refused_save_is_not_immediately_overwritten() -> String:
 				"the unreadable file was moved aside, not written over")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n9999\n8765\nm0\ncb0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n9999\n8765\nm0\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
 				"and the new save kept the endless record the refusal had preserved")
 		return err)
 
@@ -976,7 +995,7 @@ func test_a_version_one_save_still_migrates_into_the_endless_slot() -> String:
 		if err == "":
 			# A parse that fully succeeded is the one case that may rewrite the file.
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n0\n31337\nm0\ncb0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n31337\nm0\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
 				"and the ambiguity is resolved on disk once, not re-guessed every launch")
 		return err)
 
@@ -1028,7 +1047,7 @@ func test_a_run_with_milestones_round_trips_through_the_save() -> String:
 			# Sorted on the way out, so the bytes are a function of the SET rather
 			# than of the order the run happened to earn things in.
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n1234\n5678\nm2:campaign_cleared,hundred_pests\ncb0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n1234\n5678\nm2:campaign_cleared,hundred_pests\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
 				"filing a milestone wrote the file, ids sorted")
 		if err == "":
 			# Deliberately not empty: a `_load` that assigned nothing would pass an
@@ -1082,7 +1101,7 @@ func test_a_version_two_save_migrates_forward_with_an_empty_milestone_set() -> S
 				"a player who predates milestones has earned none of them")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n4321\n8765\nm0\ncb0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
 				"and the file is now the current shape, resolved once")
 		return err)
 
@@ -1123,7 +1142,7 @@ func test_a_milestone_id_this_build_has_never_heard_of_survives_a_round_trip() -
 	# carrying the unknown id through a version bump is no longer a thing this test
 	# can express. What it is about — the parser keeping an id it has no rule for —
 	# is unchanged and is what stays asserted here.
-	return _with_scratch_save(0, 0, "v%d\n10\n20\nm2:from_the_future,hundred_pests\ncb0\n0\n"
+	return _with_scratch_save(0, 0, "v%d\n10\n20\nm2:from_the_future,hundred_pests\ncb0 sfx0 mus0\n0\n"
 			% RunConfig.SAVE_VERSION,
 		func() -> String:
 			RunConfig._load()
@@ -1137,7 +1156,7 @@ func test_a_milestone_id_this_build_has_never_heard_of_survives_a_round_trip() -
 			if err == "":
 				RunConfig.record_milestones(["threat_peak"])
 				err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-					"v%d\n10\n20\nm3:from_the_future,hundred_pests,threat_peak\ncb0\n0\n"
+					"v%d\n10\n20\nm3:from_the_future,hundred_pests,threat_peak\ncb0 sfx0 mus0\n0\n"
 						% RunConfig.SAVE_VERSION,
 					"and the next save writes it back out rather than eating it")
 			return err)
@@ -1157,7 +1176,7 @@ func test_the_colourblind_option_round_trips_through_the_save() -> String:
 			"one toggle turns the safe ramp on")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb1\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb1 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
 				"and wrote it down rather than holding it for the session")
 		if err == "":
 			# Deliberately the wrong value, so a `_load` that assigned nothing at
@@ -1169,7 +1188,7 @@ func test_the_colourblind_option_round_trips_through_the_save() -> String:
 			err = _T.assert_false(RunConfig.toggle_colorblind_safe(), "a second toggle turns it off")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
 				"and that is written down too -- off is a choice, not an absence")
 		return err)
 
@@ -1181,7 +1200,7 @@ func test_setting_the_option_to_what_it_already_is_does_not_rewrite_the_save() -
 	return _with_scratch_save(5, 6, null, func() -> String:
 		RunConfig.set_colorblind_safe(true)
 		var written: String = FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH)
-		var err: String = _T.assert_true(written.contains("\ncb1\n"), "the first set wrote the file")
+		var err: String = _T.assert_true(written.contains("\ncb1 sfx0 mus0\n"), "the first set wrote the file")
 		if err == "":
 			# Move the scores under it. A second set that rewrites would pick these
 			# up; one that no-ops leaves the file as it was.
@@ -1208,7 +1227,22 @@ func test_a_save_with_a_broken_options_line_is_refused_whole() -> String:
 		"a bare 0 with no marker": "v%d\n4321\n8765\nm0\n0\n" % RunConfig.SAVE_VERSION,
 		"a spelled-out boolean": "v%d\n4321\n8765\nm0\nfalse\n" % RunConfig.SAVE_VERSION,
 		"an option value that is not one of the two":
-			"v%d\n4321\n8765\nm0\ncb2\n" % RunConfig.SAVE_VERSION,
+			"v%d\n4321\n8765\nm0\ncb2 sfx0 mus0\n" % RunConfig.SAVE_VERSION,
+		# v6's own shapes. The line grew from one field to three, and every way a
+		# three-field line can be wrong is a way this parser must not shrug.
+		"a v5-shaped options line in a v6 file":
+			"v%d\n4321\n8765\nm0\ncb0\n" % RunConfig.SAVE_VERSION,
+		"an options line one field short":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0\n" % RunConfig.SAVE_VERSION,
+		"an options line with a fourth field":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 xyz1\n" % RunConfig.SAVE_VERSION,
+		# The whole reason each flag carries its own prefix. A bare `0 1 0` reads
+		# perfectly when two fields swap places, and the player's music mute quietly
+		# becomes their colourblind setting.
+		"an options line with its fields transposed":
+			"v%d\n4321\n8765\nm0\nsfx0 cb0 mus0\n" % RunConfig.SAVE_VERSION,
+		"an options line padded with a second space":
+			"v%d\n4321\n8765\nm0\ncb0  sfx0 mus0\n" % RunConfig.SAVE_VERSION,
 	}
 	for what: String in cases:
 		var err: String = _with_scratch_save(4321, 8765, cases[what],
@@ -1216,6 +1250,147 @@ func test_a_save_with_a_broken_options_line_is_refused_whole() -> String:
 		if err != "":
 			return err
 	return ""
+
+
+# -- the two audio mutes (plant-tower-defense-v6c) ---------------------------
+#
+# v6 widened the options line from `cb0` to `cb0 sfx0 mus0`. The Options screen
+# shows all three switches in one list, and before this two of them reset on every
+# launch while the third did not -- with nothing on screen saying which was which.
+
+
+func test_the_two_mutes_round_trip_through_the_save() -> String:
+	## Both, not one: a writer that emitted a single flag and a reader that read a
+	## single flag would agree perfectly on a file where the two happen to match, so
+	## the fixture below sets them to DIFFERENT values.
+	return _with_scratch_save(11, 22, null, func() -> String:
+		var err: String = _T.assert_true(RunConfig.set_mute_sfx(true),
+			"muting the cues reports the muted state, matching Sfx.set_muted's own return")
+		if err == "":
+			err = _T.assert_true(Sfx.is_muted(), "and the flag the player hears moved too")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+				"v%d\n11\n22\nm0\ncb0 sfx1 mus0\n0\n" % RunConfig.SAVE_VERSION,
+				"the options line carries all three switches, colourblind first")
+		if err == "":
+			err = _T.assert_true(RunConfig.set_mute_music(true), "and the bed mutes independently")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+				"v%d\n11\n22\nm0\ncb0 sfx1 mus1\n0\n" % RunConfig.SAVE_VERSION,
+				"which is a third field, not the same field written twice")
+		if err == "":
+			# Deliberately wrong in memory, and deliberately asymmetric: a `_load`
+			# that assigned nothing could not pass this by doing nothing, and one
+			# that assigned the same value to both could not pass it either.
+			RunConfig.set_mute_music(false)
+			RunConfig.mute_sfx = false
+			RunConfig.mute_music = true
+			# Straight at the owner, deliberately behind RunConfig's back: this is the
+			# state the next two assertions are about, and going through the setter
+			# would be the very thing they are checking `_load` does not do.
+			Sfx.set_muted(false)
+			RunConfig._load()
+			err = _T.assert_true(RunConfig.mute_sfx, "the cue mute came back muted")
+		if err == "":
+			err = _T.assert_false(RunConfig.mute_music, "and the bed came back unmuted, not merely 'the same as the other one'")
+		if err == "":
+			# The half `_load` deliberately does NOT do, for the same reason it does
+			# not touch the InputMap: a parser driven over a scratch file must not
+			# silence the suite that is driving it.
+			err = _T.assert_false(Sfx.is_muted(),
+				"_load alone left the live flag where it was -- applying it is a separate call")
+		if err == "":
+			RunConfig.apply_audio_mutes()
+			err = _T.assert_true(Sfx.is_muted(), "apply_audio_mutes is the step that silences the cues")
+		if err == "":
+			err = _T.assert_false(Music.is_muted(), "and it applied the bed's own flag, not the cue's")
+		if err == "":
+			# The keyboard's entry point (Game answers M and N with these). It flips
+			# what the player currently HEARS, not what the save last recorded, which
+			# is what makes a static flag moved behind RunConfig's back self-heal
+			# rather than needing two presses to catch up.
+			err = _T.assert_false(RunConfig.toggle_mute_sfx(), "one press brings the cues back")
+		if err == "":
+			err = _T.assert_true(RunConfig.toggle_mute_music(), "and one silences the bed")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+				"v%d\n11\n22\nm0\ncb0 sfx0 mus1\n0\n" % RunConfig.SAVE_VERSION,
+				"and both presses were written down, which is the whole point of the issue")
+		if err == "":
+			# Drift, staged deliberately: the live flag says muted, the save says not.
+			Sfx.set_muted(true)
+			err = _T.assert_false(RunConfig.toggle_mute_sfx(),
+				"the toggle reads the live flag, so one press still means 'undo what I hear'")
+		return err)
+
+
+func test_setting_a_mute_to_what_it_already_is_does_not_rewrite_the_save() -> String:
+	## Same rule as `set_colorblind_safe`, and the same reason: every write is a
+	## rename over the one file in this game holding a number that cannot be
+	## re-earned, and the save is not a place to record that someone pressed M twice.
+	return _with_scratch_save(5, 6, null, func() -> String:
+		RunConfig.set_mute_sfx(true)
+		var written: String = FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH)
+		var err: String = _T.assert_true(written.contains("\ncb0 sfx1 mus0\n"), "the first set wrote the file")
+		if err == "":
+			# Move a score under it. A second set that rewrites picks this up; one
+			# that no-ops leaves the file exactly as it was.
+			RunConfig.campaign_high_score = 999
+			err = _T.assert_true(RunConfig.set_mute_sfx(true),
+				"setting it to what it already is still reports the state")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH), written,
+				"and the file was not touched")
+		if err == "":
+			# The owner is still set unconditionally, so a static flag moved behind
+			# RunConfig's back is resynced rather than left disagreeing with the save.
+			Sfx.set_muted(false)
+			RunConfig.set_mute_sfx(true)
+			err = _T.assert_true(Sfx.is_muted(),
+				"a no-op for the save is still a write to the flag the player hears")
+		return err)
+
+
+func test_a_version_five_save_reads_forward_into_version_six() -> String:
+	## The migration, and the trap under it. Every v5 field was read behind
+	## `version >= SAVE_VERSION`, which meant "only a CURRENT file has milestones" --
+	## true while 5 was current, and silent data loss the moment SAVE_VERSION became
+	## 6: the milestones and the rebound keys would have been skipped, defaulted, and
+	## then written back out empty by this very rewrite. So the assertions that
+	## matter here are the two fields v6 did not touch.
+	var original: String = "v5\n70\n80\nm1:threat_peak\ncb1\n1\ngarden_pause 4194332\n"
+	return _with_scratch_save(0, 0, original, func() -> String:
+		RunConfig._load()
+		var err: String = _T.assert_eq(RunConfig.load_status, "migrated",
+			"a v5 file is read forward, not refused -- one branch wrote it and its shape is unambiguous")
+		if err == "":
+			err = _T.assert_eq(RunConfig.campaign_high_score, 70, "the campaign score came through")
+		if err == "":
+			err = _T.assert_eq(RunConfig.endless_high_score, 80, "and the endless one")
+		if err == "":
+			err = _T.assert_true(RunConfig.has_milestone("threat_peak"),
+				"the milestone line was READ, not skipped as 'a field only a v6 file has'")
+		if err == "":
+			err = _T.assert_eq(RunConfig.key_bindings, {"garden_pause": [4194332]},
+				"and so was the binding block under it")
+		if err == "":
+			err = _T.assert_true(RunConfig.colorblind_safe, "the v5 options line still means colourblind-safe")
+		if err == "":
+			err = _T.assert_false(RunConfig.mute_sfx,
+				"a v5 file has no mute fields, and a player who never had the setting had sound")
+		if err == "":
+			err = _T.assert_false(RunConfig.mute_music, "both of them")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+				"v%d\n70\n80\nm1:threat_peak\ncb1 sfx0 mus0\n1\ngarden_pause 4194332\n" % RunConfig.SAVE_VERSION,
+				"and the file is rewritten in the new shape once, keeping everything it carried")
+		if err == "":
+			# The rewritten file has to be one this build reads back as current,
+			# rather than one it migrates again on every launch.
+			RunConfig._load()
+			err = _T.assert_eq(RunConfig.load_status, "loaded",
+				"the migrated file loads as current the next time round")
+		return err)
 
 
 func test_a_v3_save_is_refused_because_two_builds_each_defined_one() -> String:
