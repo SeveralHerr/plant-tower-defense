@@ -2979,3 +2979,51 @@ func test_the_catalogue_and_the_game_agree_on_who_engages() -> String:
 		err = _T.assert_eq(from_catalogue, expected,
 			"and it is catalogue ORDER, not dictionary insertion order")
 	return err
+
+
+## The coverage sentence must not promise more than the map knows.
+##
+## It used to read "Nothing covers the last N% of the road." That is false, and
+## measurably so: Kernel._physics_process flies until the kernel leaves the board
+## and kills the first pest it touches, aimed at or not — 7 kills were measured on
+## unaimed ground at 202 px and 192 px from the nearest cob, outside its 176 px
+## ring. Things die on ground "nothing covers".
+##
+## The claim the map can actually support is about AIM, and it is the same word the
+## board's own mark uses: `unaimed`, deliberately never `unreachable`. A player told
+## "nothing covers" over-buys cover for ground already taking kills.
+##
+## This is a wording test, which is unusual and worth defending: the sentence is the
+## only place the coverage map talks to a player, and the difference between the two
+## verbs is the difference between a true statement and a false one. Pinning the
+## formatter is the only thing that stops a later edit reaching for the shorter word.
+func test_the_coverage_sentence_claims_aim_and_not_protection() -> String:
+	var note: String = Game.coverage_note_for(0.4)
+	var err: String = _T.assert_gt(note.length(), 0,
+		"a partial frontier produces a sentence at all")
+	if err != "":
+		return err
+
+	err = _T.assert_true(note.contains("aimed"),
+		"the sentence is about aim: %s" % note)
+	if err == "":
+		err = _T.assert_false(note.contains("covers"),
+			"and not about cover, which kernels overshoot: %s" % note)
+	if err == "":
+		# Nothing that would read as "you are safe" or "nothing can hurt them".
+		for word: String in ["protect", "safe", "unreachable", "cannot reach"]:
+			err = _T.assert_false(note.to_lower().contains(word),
+				"and does not claim \"%s\" — a kernel that leaves the board kills"
+					% word + " on unaimed ground: %s" % note)
+			if err != "":
+				return err
+
+	# And the declared worst case is the formatter's own output, not a literal
+	# somebody has to remember to re-copy when the wording changes. This is what
+	# caught the width spend when "covers" became "is aimed at".
+	if err == "":
+		err = _T.assert_true(
+			Game.COVERAGE_NOTE_WORST_CASE.contains(Game.coverage_note_for(0.001)),
+			"the worst case still contains what the formatter builds (%s vs %s)"
+				% [Game.COVERAGE_NOTE_WORST_CASE, Game.coverage_note_for(0.001)])
+	return err

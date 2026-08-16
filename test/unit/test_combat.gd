@@ -3370,11 +3370,11 @@ func test_the_coverage_line_is_silent_when_there_is_nothing_to_say() -> String:
 			"and a tail that rounds to 0% is a broken-looking readout, not good news")
 	if err == "":
 		err = _T.assert_eq(Game.coverage_note_for(0.0),
-			"Nothing covers the last 100% of the road.",
+			"Nothing is aimed at the last 100% of the road.",
 			"a garden covering only the entry cell leaves the whole road open")
 	if err == "":
 		err = _T.assert_eq(Game.coverage_note_for(0.5),
-			"Nothing covers the last 50% of the road.",
+			"Nothing is aimed at the last 50% of the road.",
 			"and half a road covered says so as a depth, the one spatial variable this road has")
 	return err
 
@@ -3430,7 +3430,7 @@ func test_the_prep_window_names_the_hole_when_the_wave_got_past_it() -> String:
 	if err == "":
 		var tail: int = int(round((1.0 - frontier) * 100.0))
 		err = _T.assert_eq(game.prep_note(),
-			"Nothing covers the last %d%% of the road." % tail,
+			"Nothing is aimed at the last %d%% of the road." % tail,
 			"and now the same wave is explained by the hole it walked out through")
 	if err == "":
 		err = _T.assert_eq(game.prep_note(), game.coverage_note(),

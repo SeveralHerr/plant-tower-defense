@@ -494,7 +494,12 @@ static func engaging_plants() -> Array[StringName]:
 ## cells suggests. test_the_coverage_note_fits_the_status_row pins this string to
 ## the formatter and measures it against both the row and Hud's declared worst
 ## case, so the arithmetic above is checked rather than trusted.
-const COVERAGE_NOTE_WORST_CASE: String = "Wave 9999 cleared. Nothing covers the last 100% of the road."
+##
+## Grew by five characters when "covers" became "is aimed at" — see
+## coverage_note_for() for why the wording had to change. The width is measured,
+## not assumed, so if that spend ever stops fitting the row the test says so
+## rather than the sentence quietly clipping.
+const COVERAGE_NOTE_WORST_CASE: String = "Wave 9999 cleared. Nothing is aimed at the last 100% of the road."
 
 
 ## How far a plant of `id` can actually touch a pest, in pixels; 0.0 for one that
@@ -601,13 +606,22 @@ func coverage_note() -> String:
 ## Silent again at 1.0, where the garden reaches the exit cell and there is no
 ## tail at all, and silent for anything that rounds to a 0% tail, because a
 ## readout that says zero reads as a broken measurement rather than as good news.
+## "Aimed at", not "covers". The word matters and the measurement says so.
+## Kernel._physics_process flies until the kernel leaves the board and kills the
+## first pest it touches, aimed at or not — 7 kills were measured on unaimed
+## ground, at 202 px and 192 px from the nearest cob, well outside its 176 px
+## ring. So "nothing covers it" is false: things die there. What is true is that
+## no plant has that stretch in reach, which is still the reading a purchase acts
+## on, and it is the same word the board's own mark uses (`unaimed`, never
+## `unreachable`). A player told "nothing covers" over-buys cover for ground that
+## is already taking kills.
 static func coverage_note_for(frontier: float) -> String:
 	if frontier < 0.0 or frontier >= 1.0:
 		return ""
 	var tail: int = int(round((1.0 - frontier) * 100.0))
 	if tail <= 0:
 		return ""
-	return "Nothing covers the last %d%% of the road." % tail
+	return "Nothing is aimed at the last %d%% of the road." % tail
 
 
 ## Puts one pest on the road immediately. The wave director drives this; the
