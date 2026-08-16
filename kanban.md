@@ -1511,3 +1511,46 @@ of what the design doc already says, rather than being bolted on.
   hurt. A colorblind-safe palette swap or a second channel — a tick mark, a hatch
   density — for exactly these two ramps is the natural next entry under that same
   heading.
+
+### New this cycle (21 of 30) — grown from the features above
+
+- **Upgrading a Corn Cobbler is `level += 1` and a redraw, with nothing marking the
+  instant it happens.** `CornCobbler.upgrade()` (corn_cobbler.gd:290-297) bumps
+  `level` and calls `queue_redraw()` so the muzzle fan picks up the new pip count on
+  its next paint — but that is a static fact about the plant at rest, not a cue at
+  the moment the player actually spent the seeds. Contrast `ChompFlower._bite()`
+  (chomp_flower.gd:139-144), which squashes its sprite through `Vector2(1.18, 0.82)`
+  and back on every single meal. A cob levelling up is a rarer, bigger moment than
+  any one bite and currently reads as quieter than one.
+
+- **Both ways a plant leaves the board end in the same bare `queue_free()`, and one
+  of them is completely silent.** `Game._on_plant_destroyed` (game.gd:987-995) at
+  least plays `Sfx.PLANT_DESTROYED` before freeing the eaten plant on the same
+  frame; `Game.uproot_selected` (game.gd:1084-1093) refunds the seeds and calls
+  `plant.queue_free()` with no `Sfx.play()` call anywhere in the function and no
+  animation in between — a plant the player deliberately removes just vanishes.
+  Neither path tweens the sprite out the way `_build_visuals()` tweens one in
+  (`plant.gd:187-190`, 0.4x to 1.12x to 1.0 over 0.22s); a `create_tween()` shrinking
+  `_sprite.scale` toward zero before either `queue_free()` call, gated behind
+  `GardenTheme.animations_enabled()`, would give leaving the board the same care
+  arriving on it already gets.
+
+- **Clearing a wave is the payoff for everything that happened in it, and it gets a
+  single status-row sentence.** `Game._check_wave_cleared()` (game.gd:322-338) sets
+  `_wave_live = false`, commits the lane pressure map, and calls
+  `hud.show_message(Hud.wave_cleared_line(...), 6.0)` — no `Sfx.play()`, no flash,
+  nothing on the board itself. `_on_wave_started` two hundred lines away plays
+  `Sfx.WAVE_STARTED` (game.gd:272) into a 48px banner the instant a wave begins
+  (`Hud.announce_wave`, hud.gd:1044-1053). The wave a player survives currently
+  announces itself more quietly than the wave that is about to attack them.
+
+- **None of the three plants that actually fight ever calls `Sfx.play()` for their
+  own attack.** `CornCobbler._fire_at()` (corn_cobbler.gd:116-132) spawns kernels
+  and calls `_recoil()` (corn_cobbler.gd:174) with no sound; `ChompFlower._grab()`
+  (chomp_flower.gd:77-84) closes the mouth and calls `_bite()` the same way. Every
+  combat sound in the game is centralised in `game.gd` and fires on the *pest's*
+  reaction instead — `Sfx.PEST_KILLED` when something dies, `Sfx.PLANT_BITTEN` when
+  a pest bites back — so a Corn Cobbler volleying five kernels at once and a Chomp
+  Flower snapping shut are both silent on the attacker's end. (The Sticky Sundew's
+  `_claim()`, sticky_sundew.gd:244-250, already got this note last cycle; it turns
+  out the same gap runs through all three attacking plants, not just that one.)
