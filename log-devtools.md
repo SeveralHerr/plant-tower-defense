@@ -2209,3 +2209,43 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   `exit 0, 0 findings` alongside `name_check` — its first use by someone other than me.
 
 - Harness: still **0.23.0**. No refresh.
+
+## 2026-08-16 — Correction: nothing leaks between tests, and I said it did
+
+- Value: **warranted** — a subagent measured the thing I had asserted, and I was wrong.
+  - Expected: I briefed the agent that `_T.free_ui` defers through `queue_free`, so tests
+    leak nodes into tree-global groups, and asked it to detect that.
+  - Got: `_T.free_ui` calls `target.free()` — immediate, synchronous, `run_tests.gd:901`,
+    and its own docstring says so ("frees it immediately (not queue_free), so the nodes
+    never show up in the orphan count"). A census after **every one of 358 tests**,
+    walking `tree.root` and tallying `node.get_groups()` with no frame pumped:
+    `tests that grew a group: 0`. Nothing leaks across any boundary.
+  - Found: the real mechanism, which is narrower and lives inside a single test.
+    `instantiate_scene` pumps settle frames, and a `CornCobbler` enters the tree already
+    loaded — so hosting one beside a pest fires a volley before the test body runs, and
+    `kernels[0]` was that setup kernel. The agent measured it directly:
+    `after instantiate_scene(host): kernels in group = 1`, already at (181, 232) rather
+    than the launch point.
+  - Cheaper: reading `run_tests.gd:884-901` — nine lines, and its docstring states the
+    answer outright. I asserted the opposite from memory and propagated it into a doc
+    comment, a skill, two commit messages and two logs before anyone counted.
+
+- **The correction that matters more than the fact.** The fixes I shipped (diff the group
+  around the action) are correct and were correct under both stories — which is exactly
+  why the wrong reasoning survived. A fix that works does not validate the model behind
+  it, and the model is what gets reused on the next bug. I have corrected the doc comment,
+  the skill (mechanism, description and intro), and both logs; the two commit messages are
+  history and are corrected by the follow-up commit rather than rewritten.
+
+- Also corrected in the skill: "check which your harness uses before theorising — do not
+  assume, and do not trust a comment saying which, including one you wrote." That last
+  clause is not rhetorical. The comment at `test_selftest.gd:80` asserting `queue_free`
+  was mine, written this cycle, and it is precisely what a future session would have
+  believed.
+
+- Gap: **no gaps this turn.** `group_leak_check.py` (new, parallel-safe, house style)
+  reports `7 test script(s), 13 function(s) read a tree-global group, 4 of those select a
+  single node, 0 waived, 2 finding(s)` — a real denominator and a 2-of-4 hit rate rather
+  than firing on everything. Its two findings are latent, not currently wrong.
+
+- Harness: still **0.23.0**. No refresh.

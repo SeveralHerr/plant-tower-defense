@@ -1,31 +1,41 @@
 ---
 name: godot-test-isolation
-description: Why a Godot test can be green for the wrong reason — tree-global groups outliving the test that filled them, queue_free deferring past the end of a test, and assertions that measure a leaked node from a previous run. Use when writing or reviewing tests that read get_nodes_in_group, when a test passes in the suite but fails alone (or vice versa), or when adding tests changes an unrelated test's result.
+description: Why a Godot test can be green for the wrong reason — tree-global groups returning a node your own settle frames created, indexed group reads that measure a stranger, and suite-order-dependent passes. Use when writing or reviewing tests that read get_nodes_in_group, when a test passes in the suite but fails alone (or vice versa), when adding tests changes an unrelated test's result, or before theorising about test pollution at all.
 ---
 
 # Tests that pass for the wrong reason
 
 The failure this is about does not look like a failure. It looks like a green suite, for
-months, while an assertion measures an object belonging to a test that finished long ago.
+months, while an assertion measures an object the test never meant to select.
+
+It also comes with a strong, wrong, ready-made explanation. Read the mechanism section
+before adopting one.
 
 ## The mechanism
 
-Two facts combine:
+**Measure before you believe a story about this.** The obvious story — that `queue_free()`
+defers and leaks nodes into the next test — was wrong in this repo, and I wrote it into a
+skill, a doc comment and two commit messages before someone counted. `free_ui` calls
+`free()` outright, and a group census taken after every one of 358 tests showed **no group
+growing across any test boundary**. If your harness frees immediately, cross-test leakage
+is not your problem and chasing it wastes the cycle.
+
+The real mechanism is narrower and lives *inside* one test:
 
 1. **`get_nodes_in_group()` is tree-global.** It returns every node in the group anywhere
-   in the SceneTree, not the ones your test made. Nothing scopes it to your subtree.
-2. **`queue_free()` defers to the end of the frame.** A test that frees its host and
-   returns has *scheduled* a free, not performed one. The next test starts with those
-   nodes still in the tree and still in their groups.
+   in the SceneTree, not the ones your test made, and not in an order you chose.
+2. **Instantiating a scene pumps settle frames.** Anything that acts on entering the tree
+   has already acted by the time your test body runs. So the group is *already populated*
+   by your own setup before you take `[0]`.
 
-So the next test's `get_nodes_in_group("pests")[0]` can hand back a pest from a game that
-no longer conceptually exists — and it will usually look plausible, because it is the same
-kind of object with the same defaults.
+`test_kernels_launch_from_the_cob_on_an_offset_layer` is the worked example. A
+`CornCobbler` enters the tree already loaded, so hosting one beside a pest fires a volley
+during the settle frames. Its `kernels[0]` was that setup kernel, never the shot under
+test. Green for months, because a setup kernel looks exactly like a fired one — and red
+only when unrelated tests changed what the tree happened to contain.
 
-**This was found here four times.** `test_kernels_launch_from_the_cob_on_an_offset_layer`
-read `kernels[0]`, measured a leaked kernel on every run, and was green for months. It
-turned red only when four *unrelated* tests were appended and shifted the suite order.
-Three more tests read `get_nodes_in_group("pests")[0]` straight after `spawn_pest`.
+Both stories have the same fix, which is why the fix survived the wrong diagnosis. Only
+the *reasoning* was wrong, and reasoning is what you reuse on the next bug.
 
 ## The signature
 
@@ -89,11 +99,23 @@ is the slower path to the same answer, and it misleads: reverting each of three 
 files individually can leave the failure in place, which looks like "none of them did it"
 rather than "none of them could have."
 
-## Other leak sources to check
+## Where the stranger can come from
 
+Check these in order, cheapest first:
+
+- **your own setup, during settle frames** — the common case, and the one that looks least
+  like a bug. Anything auto-acting on `_ready` has already run.
 - a node parented **outside** the freed subtree (a projectile added to `get_parent()`
-  rather than to the host the test frees)
-- `free()` vs `queue_free()` — one is immediate, one is not, and tests mix them
+  rather than to the host the test frees), which survives that host's teardown
+- `free()` vs `queue_free()` — one is immediate, one is not. **Check which your harness
+  uses before theorising**; do not assume, and do not trust a comment saying which,
+  including one you wrote.
 - a node added to a group before it enters the tree (it is not in `get_nodes_in_group`
-  until it does, which makes it *absent* rather than leaked — the opposite surprise)
+  until it does, which makes it *absent* rather than extra — the opposite surprise)
 - autoloads and statics, which survive `reload_current_scene()` and every test
+
+## Counting it
+
+A census that walks `tree.root` and tallies `node.get_groups()` catches groups nobody
+named; a census of groups you thought to list only confirms what you already suspected.
+Take it with no frame pumped, which is stricter than reality rather than weaker.

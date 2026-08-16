@@ -588,3 +588,202 @@ func test_every_world_space_control_in_a_live_game_is_click_transparent() -> Str
 		err = _T.assert_true(saw_pest_bar, "and so was a pest's")
 	_T.free_ui(game)
 	return err
+
+
+# -- Tree-global groups: who is in one, and why (plant-tower-defense-02k) ----
+#
+# `test_kernels_launch_from_the_cob_on_an_offset_layer` read
+# `get_nodes_in_group("kernels")[0]`, was green for months, and turned red when
+# four unrelated tests were appended. The fix that landed was right; the reason
+# written beside it is not, and a wrong reason sends the next reader after the
+# wrong defect. The three cases below pin what was actually measured.
+#
+# Measured at HEAD, with a tree-global group census taken after every one of the
+# suite's 355 test methods: no group grew across any test boundary, and the final
+# census was empty, identical to the baseline. Nothing leaks between tests. The
+# stranger that `kernels[0]` returned was fired by the SAME test, during the
+# settle frames `_T.instantiate_scene` pumps, because a CornCobbler enters the
+# tree already loaded.
+#
+# Both facts are load-bearing and neither is guaranteed by anything else, so each
+# gets a case:
+#   1. `_T.free_ui` frees synchronously. If the harness ever goes back to
+#      `queue_free`, the cross-test leak the fix's comment describes becomes real
+#      and this goes red first.
+#   2. Hosting a loaded cob beside a pest populates "kernels" BEFORE the test
+#      acts. That is the contamination, and it is intra-test.
+#   3. A host that is never freed does stay in the group. The exposure is real;
+#      free_ui is the only thing standing between it and every later test.
+#
+# The static half of this is `tools/group_leak_check.py`, which refuses a
+# selection out of a tree-global group that has neither a before/after diff nor
+# an exact cardinality assertion.
+
+
+func _combat_host(nodes: Array[Node]) -> Node2D:
+	var container := Node2D.new()
+	container.name = "GroupProvenanceHost"
+	for node: Node in nodes:
+		container.add_child(node)
+	return container
+
+
+## Every group with at least one member in the live tree. There is no SceneTree
+## API to enumerate groups, so walking is the only census that cannot miss one
+## nobody thought to name.
+func _census(tree: SceneTree) -> Dictionary:
+	var out: Dictionary = {}
+	_census_walk(tree.root, out)
+	return out
+
+
+func _census_walk(node: Node, out: Dictionary) -> void:
+	for group: StringName in node.get_groups():
+		var key: String = str(group)
+		if key.begins_with("_"):
+			continue  # engine-internal
+		out[key] = int(out.get(key, 0)) + 1
+	for child: Node in node.get_children():
+		_census_walk(child, out)
+
+
+func test_free_ui_empties_a_group_without_waiting_for_a_frame() -> String:
+	## The whole "nothing leaks between tests" result rests on one fact:
+	## `_T.free_ui` calls `free()`, not `queue_free()`. `free()` is immediate;
+	## `queue_free()` defers to the end of the frame, and a test that returns
+	## before that frame hands its nodes to the next test still in the group.
+	## Asserted with NO frame pumped in between, which is the only way to tell
+	## the two apart.
+	var pest := Pest.new()
+	pest.setup(Pest.APHID, PackedVector2Array([Vector2(10, 10), Vector2(610, 10)]))
+	var hosted_nodes: Array[Node] = [pest]
+	var host: Node2D = _combat_host(hosted_nodes)
+	var hosted: Node = await _T.instantiate_scene(host)
+	var err: String = _T.assert_true(hosted != null, "the host entered the tree")
+	if err != "":
+		_T.free_ui(host)
+		return err
+
+	var tree: SceneTree = host.get_tree()
+	err = _T.assert_true(tree != null, "and the host can see the SceneTree")
+	if err != "":
+		_T.free_ui(host)
+		return err
+
+	err = _T.assert_eq(tree.get_nodes_in_group("pests").size(), 1,
+		"the hosted pest registered with the tree-global group")
+	if err != "":
+		_T.free_ui(host)
+		return err
+
+	_T.free_ui(host)
+	# Deliberately no `await` here: a deferred free would still show a member.
+	err = _T.assert_eq(tree.get_nodes_in_group("pests").size(), 0,
+		"free_ui emptied the group synchronously - if this is 1, free_ui now defers "
+		+ "and every test can inherit the previous test's nodes")
+	if err == "":
+		err = _T.assert_eq(_census(tree).size(), 0,
+			"and no other group kept a member either")
+	return err
+
+
+func test_hosting_a_loaded_cob_puts_kernels_in_the_group_before_the_test_acts() -> String:
+	## The actual mechanism behind the false green. `_T.instantiate_scene` pumps
+	## settle frames, and a CornCobbler enters the tree already loaded, so hosting
+	## it beside a pest fires a volley before the test has called anything. Any
+	## later `get_nodes_in_group("kernels")[0]` therefore reads a kernel this test
+	## fired during its own setup - one that has already moved off the launch
+	## point - not the kernel the assertion is about.
+	##
+	## This is why the rule is "prove which node you got", not "stop other tests
+	## leaking": no other test is involved.
+	var corn := CornCobbler.new()
+	corn.level = corn.max_level()
+	corn.position = Vector2(160, 160)
+	var aphid := Pest.new()
+	aphid.setup(Pest.APHID, PackedVector2Array([Vector2(220, 160), Vector2(820, 160)]))
+	aphid.position = Vector2(220, 160)
+	aphid.set_physics_process(false)
+	var hosted_nodes: Array[Node] = [corn, aphid]
+	var host: Node2D = _combat_host(hosted_nodes)
+	host.position = Vector2(0, 72)
+
+	var hosted: Node = await _T.instantiate_scene(host)
+	var err: String = _T.assert_true(hosted != null, "the combat host entered the tree")
+	if err != "":
+		_T.free_ui(host)
+		return err
+	var tree: SceneTree = host.get_tree()
+	err = _T.assert_true(tree != null, "and can see the SceneTree")
+	if err != "":
+		_T.free_ui(host)
+		return err
+
+	var settled: Array[Node] = tree.get_nodes_in_group("kernels")
+	err = _T.assert_gt(settled.size(), 0,
+		"hosting alone already fired a volley - this is the contamination, and it "
+		+ "comes from this test's own setup, not from a previous test")
+	if err != "":
+		_T.free_ui(host)
+		return err
+
+	var stale: Dictionary = {}
+	for kernel: Node in settled:
+		stale[kernel.get_instance_id()] = true
+
+	var targets: Array[Pest] = [aphid]
+	corn._act(1.0, targets)
+	var fired: Array[Node] = []
+	for kernel: Node in tree.get_nodes_in_group("kernels"):
+		if not stale.has(kernel.get_instance_id()):
+			fired.append(kernel)
+	err = _T.assert_gt(fired.size(), 0, "and the cob fired again when acted on")
+	if err == "":
+		# The point of the whole exercise: index 0 is a settle-frame kernel, so a
+		# test reading it is not reading what it thinks it is.
+		var all_kernels: Array[Node] = tree.get_nodes_in_group("kernels")
+		err = _T.assert_gt(all_kernels.size(), 0, "the group is readable at all")
+		if err == "":
+			err = _T.assert_true(stale.has(all_kernels[0].get_instance_id()),
+				"kernels[0] is a settle-frame kernel, not the one _act just launched - "
+				+ "which is exactly what the old test measured and called a pass")
+	_T.free_ui(host)
+	return err
+
+
+func test_a_host_that_is_never_freed_keeps_its_nodes_in_the_group() -> String:
+	## The exposure, stated positively: free_ui is the ONLY thing keeping the
+	## group clean between tests. A test that aborts on a runtime error before its
+	## `_T.free_ui` line - which the runner reports as one failed test, not as a
+	## suite-wide contamination - leaves everything it hosted in every group it
+	## joined, for every test that follows. Measured over a full run at HEAD this
+	## never happens, but it is one uncaught error away.
+	var pest := Pest.new()
+	pest.setup(Pest.BEETLE, PackedVector2Array([Vector2(30, 30), Vector2(630, 30)]))
+	var hosted_nodes: Array[Node] = [pest]
+	var host: Node2D = _combat_host(hosted_nodes)
+	var hosted: Node = await _T.instantiate_scene(host)
+	var err: String = _T.assert_true(hosted != null, "the host entered the tree")
+	if err != "":
+		_T.free_ui(host)
+		return err
+	var tree: SceneTree = host.get_tree()
+	err = _T.assert_true(tree != null, "and can see the SceneTree")
+	if err != "":
+		_T.free_ui(host)
+		return err
+
+	err = _T.assert_eq(tree.get_nodes_in_group("pests").size(), 1, "one pest hosted")
+	if err == "":
+		# Frames pass, as they would between two tests that both await. Nothing
+		# reclaims the node: there is no automatic teardown behind free_ui.
+		await tree.process_frame
+		await tree.process_frame
+		err = _T.assert_eq(tree.get_nodes_in_group("pests").size(), 1,
+			"still in the group two frames later - nothing reclaims a host that was "
+			+ "never freed, so the next test would read this pest as its own")
+	_T.free_ui(host)
+	if err == "":
+		err = _T.assert_eq(tree.get_nodes_in_group("pests").size(), 0,
+			"and only the explicit free_ui clears it")
+	return err

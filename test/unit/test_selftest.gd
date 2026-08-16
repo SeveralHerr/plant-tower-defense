@@ -77,15 +77,24 @@ func test_an_uncollected_husk_rots_away() -> String:
 
 ## Spawn a pest and hand back THAT pest, not whichever one the group lists first.
 ##
-## `get_nodes_in_group` is tree-global and `_T.free_ui` frees through `queue_free`,
-## which defers to the end of the frame — so the group can still hold a previous
-## test's pests when this one starts, and `[0]` is then a node from a game that no
-## longer exists. That is not hypothetical: `test_kernels_launch` read `kernels[0]`
-## the same way, measured a leaked kernel every run, and was green for months
-## because it happened to be measuring a leftover that looked right. It only turned
-## red when four unrelated tests were appended and shifted the order.
+## `get_nodes_in_group` is tree-global, so `[0]` is whatever the tree lists first
+## and not necessarily the node this test just made.
 ##
-## Diffing the group around the spawn cannot pick up a stranger.
+## The stranger comes from THIS test, not a previous one. I first wrote here that
+## `_T.free_ui` deferred through `queue_free` and leaked across test boundaries.
+## It does not — it calls `free()` outright (`tools/run_tests.gd:901`), and a census
+## after every one of 358 tests shows no group growing across any boundary. The real
+## source is `instantiate_scene`, which pumps settle frames: anything that acts on
+## entering the tree has already acted by the time the test body runs.
+##
+## `test_kernels_launch` is the proof. A `CornCobbler` enters loaded, so hosting one
+## beside a pest fires a volley during those settle frames, and its `kernels[0]` was
+## that setup kernel rather than the shot under test. It was green for months because
+## the setup kernel looked plausible, and only turned red when unrelated tests shifted
+## what the tree contained.
+##
+## Diffing the group around the spawn cannot pick up either kind of stranger, which is
+## why it is the fix for both.
 func _spawn_and_take(game: Game, species: StringName) -> Pest:
 	var before: Dictionary = {}
 	for p: Node in game.get_tree().get_nodes_in_group("pests"):
