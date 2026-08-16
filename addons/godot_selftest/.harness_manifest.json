@@ -1,57 +1,57 @@
 {
   "files": {
     "addons/godot_selftest/dev_tools.gd": {
-      "sha256": "1cfaa8c9dfc84b7736b62700a44dff23ec777cc5d95166fecca6acb6d220e485",
-      "version": "0.21.0"
+      "sha256": "ca50181adab2a8c6dc002e6e5cb419314cb1f6d6842e3406ab32390912d69aab",
+      "version": "0.23.0"
     },
     "addons/godot_selftest/scene_validator.gd": {
-      "sha256": "f60d9863a22e0a333e548781d3c3e4cbe74aa2b0496622e4a5f38e2acfeb24ec",
-      "version": "0.21.0"
+      "sha256": "b72c2e1c40e3936f648adeb7e410ef3c5858847fdc2dc3b5f230350f9fe8d099",
+      "version": "0.23.0"
     },
     "tools/capture.gd": {
-      "sha256": "7c173a47f4711c9729f59b7357845be8f944fa8facdc163ce15f5d31c0e338d8",
-      "version": "0.21.0"
+      "sha256": "20f67b9c1ea1015c50d4470e86d9b7ceb7d8ba7560042f1c527b304d3803e8d9",
+      "version": "0.23.0"
     },
     "tools/check_devtools_log.py": {
-      "sha256": "fd180b66e4ad715359cf3d1497a8e51b3fac99b48585ae50cc18806e08f0f849",
-      "version": "0.21.0"
+      "sha256": "0b22b6d6f830c0b288deb8a61426424d3cd9f7fcab5855da2e65f0e7e939f950",
+      "version": "0.23.0"
     },
     "tools/coverage_check.py": {
-      "sha256": "ad72cb6a46f12a348d9f0f2140db8116f06a24e6b02e06bacd77c991628436e5",
-      "version": "0.21.0"
+      "sha256": "7183b7b3441243649aa6b3bd84b4f4ab07f299d0c955dae5e787623c24dc6141",
+      "version": "0.23.0"
     },
     "tools/devtools.py": {
-      "sha256": "9eedb5a9880235611832ba08cc19734786448282673490b74e8a49390d7c7ade",
-      "version": "0.21.0"
+      "sha256": "fc491d9fad9f8e61633e0dea31866cd0a42573d3e2228a1020632cb462e15658",
+      "version": "0.23.0"
     },
     "tools/eval.gd": {
-      "sha256": "0e75f52b057b990d5395633acb658546d3c68aa37c4787396d4d9f44cb3b9dbf",
-      "version": "0.21.0"
+      "sha256": "f194bea4a4b45bfb8760a5fd36ec2239173fe95d609338a6bc2d7ce3cce5b86a",
+      "version": "0.23.0"
     },
     "tools/import_check.py": {
-      "sha256": "6fe3c0292ac573b25b44ba050c6fa076342e0ebe99c1d2391667222f8d4d1418",
-      "version": "0.21.0"
+      "sha256": "46cf5440067ece6a9d9410ad2832c6201b55064a5e604cc1e71c49f47efc1fed",
+      "version": "0.23.0"
     },
     "tools/lint_project.gd": {
-      "sha256": "df35a3b3a45bdc0a2282f6d52187630dab6cfc7cbdbdaeb6495446624d8d4386",
-      "version": "0.21.0"
+      "sha256": "aa05b32b777b4e20e7771e4454f667988ae3fd8d5967c0be25144a365c06ab8a",
+      "version": "0.23.0"
     },
     "tools/name_check.py": {
-      "sha256": "970dbf5b7b3f9b559cde73c39ea907412b0d20823b27d55cc973955a6a7cc7f4",
-      "version": "0.21.0"
+      "sha256": "d72e3435582e2d1a8f921f3aae06329dde5a43e68fa96d8a35256890b4b0d94b",
+      "version": "0.23.0"
     },
     "tools/run_tests.gd": {
-      "sha256": "8882165e100201745f3c6609d5d0c25390b76057296d08f0fd9d62ee2f011f62",
-      "version": "0.21.0"
+      "sha256": "d1187d8141e92ef8a46c75ad93df3403ab743e083dbbfde0b661466ca210e0f2",
+      "version": "0.23.0"
     },
     "tools/upstream_gaps.py": {
-      "sha256": "aee260069ed6d6a5dd9fb734b65cd30371e47c8109ae008f400e18b1109f48da",
-      "version": "0.21.0"
+      "sha256": "a20cfde66855c4620723e6db3caecf6c34b82a9e49f9fff1771b5b53b24114a2",
+      "version": "0.23.0"
     },
     "tools/verify_ledger.py": {
-      "sha256": "e2b366608e5d9a734ff35db6134e81f60af4587934c482c2c0656c1f0a8d4f53",
-      "version": "0.21.0"
+      "sha256": "ee5dce2312d8260283bef365685a56753af119cc4771f832543f3cc15f38c983",
+      "version": "0.23.0"
     }
   },
-  "harness_version": "0.21.0"
+  "harness_version": "0.23.0"
 }
