@@ -10,6 +10,7 @@ extends RefCounted
 const CORN := &"corn_cobbler"
 const CHOMP := &"chomp_flower"
 const SUNFLOWER := &"sunflower"
+const SUNDEW := &"sticky_sundew"
 
 const PLANTS: Dictionary = {
 	CORN: {
@@ -39,11 +40,20 @@ const PLANTS: Dictionary = {
 		"free_starter": false,
 		"blurb": "Fights nothing. Grows seeds on a clock — plant it somewhere the lane doesn't need.",
 	},
+	SUNDEW: {
+		"display": "Sticky Sundew",
+		"texture": "res://assets/sprites/sticky_sundew.png",
+		"cost": 30,
+		"tier": 2,
+		"unlocked_at_start": false,
+		"free_starter": false,
+		"blurb": "Hurts nothing. Everything in its dew crawls at half speed — wings included, which no Chomp can say.",
+	},
 }
 
 ## Order the shop and the plant bar list plants in. Keeps the UI stable as more
 ## plants are added to PLANTS.
-const ORDER: Array[StringName] = [CORN, CHOMP, SUNFLOWER]
+const ORDER: Array[StringName] = [CORN, CHOMP, SUNFLOWER, SUNDEW]
 
 
 static func ids() -> Array[StringName]:
@@ -85,6 +95,11 @@ static func reach(id: StringName) -> float:
 			return CornCobbler.RANGE
 		CHOMP:
 			return ChompFlower.GRAB_RADIUS
+		SUNDEW:
+			# A Sundew fires nothing, but it does reach: a patch that touches no
+			# road is exactly as useless as a cob that can shoot none, and the
+			# dead-ground cue should say so before the 30 seeds are spent.
+			return StickySundew.SAP_RADIUS
 		_:
 			return 0.0
 

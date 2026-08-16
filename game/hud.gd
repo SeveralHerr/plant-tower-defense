@@ -680,9 +680,17 @@ func _refresh_selection(state: Dictionary) -> void:
 		_upgrade_button.visible = false
 	else:
 		var chomp := plant as ChompFlower
+		var sundew := plant as StickySundew
 		var busy: String = "Idle — waiting for a pest."
 		if chomp != null and chomp.is_busy():
 			busy = "Chewing — %d%% through this one." % int(round(chomp.chew_progress() * 100.0))
+		elif sundew != null:
+			# A Sundew is never busy and never idle — it is always working, and the
+			# only question is how many pests are in the patch. "Idle" was simply
+			# the wrong word for the one plant that cannot be.
+			busy = "Slowing %d pest(s) to %d%% speed." % [
+				sundew.stuck_count(), int(round(StickySundew.SLOW_FACTOR * 100.0)),
+			]
 		_selection_label.text = "%s\n%s" % [PlantCatalog.display_name(plant.kind), busy]
 		_upgrade_button.visible = false
 	_refresh_health(plant)

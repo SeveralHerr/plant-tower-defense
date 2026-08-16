@@ -25,6 +25,7 @@ const EXPECTED_SIZE := {
 	"pest_beetle": 64,
 	"pest_beetle_dead": 64,
 	"seed_packet": 64,
+	"sticky_sundew": 64,
 	"sunflower": 64,
 }
 

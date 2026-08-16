@@ -1606,3 +1606,35 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     treat `PackedScene.instantiate()` / `can_instantiate()` in a `test_dir` file as
     a strong token in its own right, since nothing else in a test suite calls it.
     The current rule tests for a spelling, not for the behaviour it stands for.
+
+## 2026-08-16 — A fourth plant (plant-tower-defense-fdm)
+
+- Value: **overkill** — the headless suite had already driven the mechanic and
+  asserted the same ratios; the live run's only unique claim was that the physics
+  path reaches it at all.
+  - Expected: the slow is applied through pest metadata with refcounting, and the
+    tests drive `apply_patch` by hand rather than through physics. Runtime should
+    reveal whether a pest walking into a real patch actually slows and — the case
+    a refcount bug hides — whether it gets its ORIGINAL speed back after crossing,
+    rather than being stranded at 55% forever.
+  - Got: an aphid read `speed: 78.0` outside the patch and `42.9` inside it
+    (78 x 0.55 exactly); a beetle went `38.0 -> 20.9 -> 38.0` across an entry and
+    an exit, so the release hands back the recorded original rather than a value
+    re-derived from the slowed one. `stuck_count()` read 3 with the wave in the
+    patch and fell to 0 when a held pest was freed. Three rare packets returned
+    `sunflower`, `chomp_flower`, `sticky_sundew` — the tier now rolls rather than
+    dispensing.
+  - Found: nothing. Every claim held first time, including the hand-authored SVG
+    passing the sprite-style palette and geometry contract on its first render —
+    which is the outcome worth noting, since that gate fails the build on a wrong
+    size, an off-centre axis, a clipped edge or a colour outside the kit.
+  - Cheaper: the headless suite alone. It already exercises `apply_patch`,
+    `slowed_speed` and the refcount release; only "the physics path actually calls
+    it" needed a live step, and one `step-time --seconds 0.2` settled that.
+
+- Gap: **no gaps this turn.** Worth recording instead that the toolchain caught the
+  ordering it is supposed to: rendering the new SVG printed
+  `Failed to load script "res://devtools_ext/commands.gd" with error "Compilation
+  failed"` because `StickySundew` was not yet in the class cache, and
+  `import_check.py` then reported a clean import that fixed it — the documented
+  "run --import after adding a class_name" sequence, working as written.

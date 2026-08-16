@@ -494,3 +494,356 @@ func test_a_plant_with_no_reach_is_warned_about_but_never_called_dead_ground() -
 			"and a cobbler beside the road, which is the point of a cobbler, is not marked either")
 	_T.free_ui(game)
 	return err
+
+
+# -- Sticky Sundew (plant-tower-defense-fdm) ---------------------------------
+#
+# The fourth plant, and the first that acts on more than one pest at a time. Its
+# whole mechanic is a number on a pest (`speed`) being turned down and put back,
+# which is exactly the kind of thing that looks fine on screen while leaving the
+# board permanently sticky — so most of what follows drives the patch by hand and
+# asserts the arithmetic rather than watching a bug walk.
+
+
+## A Sundew built directly onto the entities layer rather than through
+## `Game.place_plant`. Deliberate: everything below is about the mechanic, and
+## routing it through the catalogue would make every one of these tests also a
+## test of Game._new_plant's match statement. That claim gets its own test, at the
+## bottom, so a missing line there fails one test with the fix in the message
+## instead of failing nine with the same one.
+func _sundew_at(game: Game, cell: Vector2i) -> StickySundew:
+	var sundew := StickySundew.new()
+	game.get_node("Entities").add_child(sundew)
+	sundew.setup(PlantCatalog.SUNDEW, cell, game.board)
+	return sundew
+
+
+## A live aphid standing where you put it, in the same space the plants are in.
+## Built through `Pest.setup` so it carries the species' real speed — the number
+## under test is the one the game spawns with, not a fixture's.
+func _pest_at(game: Game, where: Vector2, mutation: StringName = &"") -> Pest:
+	var pest := Pest.new()
+	game.get_node("Entities").add_child(pest)
+	pest.setup(Pest.APHID, game.board.route())
+	if mutation != &"":
+		pest.apply_mutation(mutation)
+	pest.position = where
+	return pest
+
+
+## Every id, every field the HUD and the packet reveal read off it. A plant added
+## to PLANTS but left out of ORDER never appears in the shop; one with no blurb
+## prints an empty reveal card; one whose texture was never rendered draws
+## nothing at all and reports no error while doing it.
+func test_every_catalogue_entry_is_complete_and_orderly() -> String:
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_eq(ids.size(), PlantCatalog.PLANTS.size(),
+		"ORDER lists every plant in PLANTS — one missing is a plant no shop row shows")
+	if err != "":
+		return err
+	var seen: Array[StringName] = []
+	for id: StringName in ids:
+		err = _T.assert_false(seen.has(id), "%s appears in ORDER exactly once" % id)
+		if err != "":
+			return err
+		seen.append(id)
+		err = _T.assert_true(PlantCatalog.has(id), "%s has a catalogue entry" % id)
+		if err == "":
+			err = _T.assert_gt(PlantCatalog.display_name(id).length(), 0,
+				"%s has a display name" % id)
+		if err == "":
+			err = _T.assert_true(PlantCatalog.display_name(id) != String(id),
+				"%s's display name is written for a player, not left as the id" % id)
+		if err == "":
+			err = _T.assert_gt(PlantCatalog.blurb(id).length(), 0,
+				"%s has a blurb — the shop row and the packet reveal both print it" % id)
+		if err == "":
+			err = _T.assert_gt(PlantCatalog.cost(id), 0, "%s costs seeds" % id)
+		if err == "":
+			err = _T.assert_gte(PlantCatalog.tier(id), 1, "%s sits in a packet tier" % id)
+		if err == "":
+			err = _T.assert_gte(PlantCatalog.reach(id), 0.0,
+				"%s answers the reach question with a real number" % id)
+		var texture: String = PlantCatalog.texture_path(id)
+		if err == "":
+			err = _T.assert_true(texture.begins_with("res://assets/sprites/")
+				and texture.ends_with(".png"),
+				"%s points at a rendered sprite, got '%s'" % [id, texture])
+		if err == "":
+			# test_sprite_style.gd gates the sprites it has been told about; a brand
+			# new plant is by definition not in that list yet, so this is the only
+			# thing standing between "the SVG was authored" and "the PNG exists".
+			err = _T.assert_true(FileAccess.file_exists(texture),
+				"%s's sprite is on disk — run tools/render_svg.gd if it is not" % id)
+		if err != "":
+			return err
+	return err
+
+
+## The complaint this plant was built to answer. With exactly one tier-2 plant in
+## the catalogue the rare packet was a 45-seed button that worked once per run and
+## was a strictly worse common packet forever after — the catalogue was the
+## constraint, not the packet system. A packet is meant to be a gamble, and a
+## gamble needs at least two outcomes.
+func test_the_rare_packet_holds_more_than_one_thing_now() -> String:
+	var bank := SeedBank.new()
+	var common_cap: int = int(SeedBank.PACKET_TIERS[&"common"]["max_tier"])
+	var above: Array[StringName] = []
+	for id: StringName in PlantCatalog.ids():
+		if PlantCatalog.tier(id) > common_cap:
+			above.append(id)
+	var err: String = _T.assert_gt(above.size(), 1,
+		"more than one plant sits above the common cap, so a rare packet rolls rather than dispenses — got %s"
+			% [above])
+	if err == "":
+		err = _T.assert_true(above.has(PlantCatalog.SUNDEW), "and the Sticky Sundew is one of them")
+	if err == "":
+		err = _T.assert_gte(int(SeedBank.PACKET_TIERS[&"rare"]["max_tier"]),
+			PlantCatalog.tier(PlantCatalog.SUNDEW), "a rare packet can reach it")
+	if err == "":
+		err = _T.assert_gt(bank.packet_pool(&"rare").size(), bank.packet_pool(&"common").size(),
+			"and reaches strictly more of a fresh catalogue than a common one does")
+	# Priced as the dearest thing you can put in the ground, because it is the only
+	# one that multiplies everything else already covering that road.
+	if err == "":
+		err = _T.assert_gt(PlantCatalog.cost(PlantCatalog.SUNDEW),
+			PlantCatalog.cost(PlantCatalog.SUNFLOWER),
+			"it costs more than the other tier-2 pull")
+	if err == "":
+		err = _T.assert_gt(PlantCatalog.cost(PlantCatalog.SUNDEW), SeedBank.STARTING_SEEDS,
+			"and more than the opening purse, so a run never begins with one")
+	return err
+
+
+## The mechanic, both directions. The second half is the half that matters: a slow
+## applied and never handed back is a permanently slower board with nothing on
+## screen to explain it, which reads as balance rather than as a bug.
+func test_the_sundew_patch_slows_a_pest_and_hands_its_speed_back() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var cell: Vector2i = _grass(game)
+	var sundew: StickySundew = _sundew_at(game, cell)
+	var pest: Pest = _pest_at(game, game.board.cell_to_world(cell) + Vector2(Board.CELL, 0.0))
+	var crowd: Array[Pest] = [pest]
+	var base: float = pest.speed
+	var err: String = _T.assert_gt(base, 0.0, "the aphid arrives with a speed to lose")
+	if err == "":
+		err = _T.assert_true(sundew.covers(pest), "and is standing in the dew")
+	if err == "":
+		sundew.apply_patch(crowd)
+		err = _T.assert_float_eq(pest.speed, StickySundew.slowed_speed(base), 0.001,
+			"a caught pest walks at the model's speed, not its own")
+	if err == "":
+		err = _T.assert_gt(base, pest.speed, "which is slower than it arrived")
+	if err == "":
+		err = _T.assert_eq(sundew.stuck_count(), 1, "and the patch knows it holds one")
+	if err == "":
+		err = _T.assert_true(StickySundew.is_slowed(pest), "the pest agrees it is stuck")
+	if err == "":
+		# Out the far side. The slow is a place, not a debuff with a timer.
+		pest.position += Vector2(StickySundew.SAP_RADIUS * 2.0, 0.0)
+		err = _T.assert_false(sundew.covers(pest), "it has walked clear of the patch")
+	if err == "":
+		sundew.apply_patch(crowd)
+		err = _T.assert_float_eq(pest.speed, base, 0.001,
+			"leaving hands back exactly the speed it came in with")
+	if err == "":
+		err = _T.assert_eq(sundew.stuck_count(), 0, "and the patch is empty again")
+	_T.free_ui(game)
+	return err
+
+
+## Two patches over one pest. Both failure modes are silent and both are balance
+## bugs rather than crashes, which is why they are pinned by arithmetic: a slow
+## that stacks is a stun as soon as you can afford three Sundews, and a base speed
+## saved per-plant strands the pest at 55% of 55% forever once both let go.
+func test_two_overlapping_sundew_patches_slow_a_pest_once_not_twice() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var cell: Vector2i = _grass(game)
+	var first: StickySundew = _sundew_at(game, cell)
+	var second: StickySundew = _sundew_at(game, cell)
+	second.position += Vector2(Board.CELL, 0.0)
+	var pest: Pest = _pest_at(game, game.board.cell_to_world(cell) + Vector2(Board.CELL * 0.5, 0.0))
+	var crowd: Array[Pest] = [pest]
+	var base: float = pest.speed
+	var err: String = _T.assert_true(first.covers(pest) and second.covers(pest),
+		"the pest is standing in both patches at once")
+	if err == "":
+		first.apply_patch(crowd)
+		second.apply_patch(crowd)
+		err = _T.assert_eq(StickySundew.slow_sources(pest), 2, "two patches are claiming it")
+	if err == "":
+		err = _T.assert_float_eq(pest.speed, StickySundew.slowed_speed(base), 0.001,
+			"but it is slowed once, not squared — a stacking slow is a stun")
+	if err == "":
+		first.release_all()
+		err = _T.assert_float_eq(pest.speed, StickySundew.slowed_speed(base), 0.001,
+			"one patch letting go leaves the other one's dew on it")
+	if err == "":
+		err = _T.assert_eq(StickySundew.slow_sources(pest), 1, "with one claim outstanding")
+	if err == "":
+		second.release_all()
+		err = _T.assert_float_eq(pest.speed, base, 0.001,
+			"and the last one hands back the speed the pest was born with, not the slowed one")
+	if err == "":
+		err = _T.assert_false(StickySundew.is_slowed(pest), "nothing is holding it now")
+	_T.free_ui(game)
+	return err
+
+
+## A hungry pest eats the Sundew, or the player uproots it, and the patch stops
+## existing while pests are still standing in it. Freeing the node has to be a
+## release, or that lane stays sticky for the rest of the run.
+func test_a_sundew_that_leaves_the_board_unsticks_what_it_was_holding() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var cell: Vector2i = _grass(game)
+	var sundew: StickySundew = _sundew_at(game, cell)
+	var pest: Pest = _pest_at(game, game.board.cell_to_world(cell))
+	var crowd: Array[Pest] = [pest]
+	var base: float = pest.speed
+	sundew.apply_patch(crowd)
+	var err: String = _T.assert_float_eq(pest.speed, StickySundew.slowed_speed(base), 0.001,
+		"the pest is stuck to begin with")
+	if err == "":
+		sundew.free()
+		err = _T.assert_float_eq(pest.speed, base, 0.001,
+			"a patch that stops existing lets go of what it was holding")
+	if err == "":
+		err = _T.assert_false(StickySundew.is_slowed(pest),
+			"and leaves no claim behind on a pest with nothing left to explain it")
+	_T.free_ui(game)
+	return err
+
+
+## The threat the plant was designed against. A Chomp Flower is forbidden from
+## closing on a winged pest at all (ChompFlower._nearest_free_pest skips it), so
+## before this plant a lane walled with mouths did precisely nothing to a flier.
+## Both plants stand on the same cell here, so this is the mouth declining rather
+## than the mouth being out of range.
+func test_the_sundew_catches_the_winged_pest_a_chomp_is_forbidden_to_grab() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var cell: Vector2i = _grass(game)
+	var sundew: StickySundew = _sundew_at(game, cell)
+	var chomp := ChompFlower.new()
+	game.get_node("Entities").add_child(chomp)
+	chomp.setup(PlantCatalog.CHOMP, cell, game.board)
+	var pest: Pest = _pest_at(game, game.board.cell_to_world(cell), Pest.MUTATION_WINGED)
+	var crowd: Array[Pest] = [pest]
+	var base: float = pest.speed
+	var err: String = _T.assert_true(pest.is_winged, "the pest really is winged")
+	if err == "":
+		err = _T.assert_gt(ChompFlower.GRAB_RADIUS,
+			pest.global_position.distance_to(chomp.global_position),
+			"and stands well inside a Chomp Flower's grab radius")
+	if err == "":
+		chomp._act(0.016, crowd)
+		err = _T.assert_false(chomp.is_busy(),
+			"which the Chomp is still not allowed to close on")
+	if err == "":
+		err = _T.assert_true(pest.held_by == null, "nothing has hold of it")
+	if err == "":
+		sundew.apply_patch(crowd)
+		err = _T.assert_float_eq(pest.speed, StickySundew.slowed_speed(base), 0.001,
+			"but the dew is on the ground it is flying over, so the Sundew has it anyway")
+	if err == "":
+		err = _T.assert_gt(StickySundew.crossing_time_multiplier(), 1.0,
+			"and every gun covering that road gets strictly longer to shoot it")
+	_T.free_ui(game)
+	return err
+
+
+## The board readout, as pure geometry. The beads are the only thing telling the
+## player where the patch ends before they spend 30 seeds putting a cob next to
+## it, so a ring that drifted off SAP_RADIUS would be a lie the placement preview
+## could not catch.
+func test_the_dew_beads_ring_the_patch_and_swell_as_it_fills() -> String:
+	var beads: PackedVector2Array = StickySundew.droplet_points()
+	var err: String = _T.assert_eq(beads.size(), StickySundew.DROPLETS,
+		"one bead per DROPLETS")
+	if err != "":
+		return err
+	var step: float = beads[0].distance_to(beads[1])
+	for i: int in range(beads.size()):
+		err = _T.assert_float_eq(beads[i].length(), StickySundew.SAP_RADIUS, 0.01,
+			"bead %d sits on the rim of the patch it is advertising" % i)
+		if err == "":
+			err = _T.assert_float_eq(beads[i].distance_to(beads[(i + 1) % beads.size()]), step, 0.01,
+				"bead %d is spaced like every other" % i)
+		if err != "":
+			return err
+		# Symmetric about the vertical axis, like the sprite and like the kit.
+		var mirrored := Vector2(-beads[i].x, beads[i].y)
+		var closest: float = INF
+		for other: Vector2 in beads:
+			closest = minf(closest, other.distance_to(mirrored))
+		err = _T.assert_float_eq(closest, 0.0, 0.01, "bead %d has a mirror across the axis" % i)
+		if err != "":
+			return err
+	err = _T.assert_float_eq(StickySundew.droplet_radius(0), StickySundew.DROPLET_IDLE, 0.001,
+		"an empty patch draws idle beads")
+	if err == "":
+		err = _T.assert_float_eq(StickySundew.droplet_radius(StickySundew.DROPLET_SWELL_AT),
+			StickySundew.DROPLET_FULL, 0.001, "a working one draws them full size")
+	if err == "":
+		err = _T.assert_float_eq(StickySundew.droplet_radius(99), StickySundew.DROPLET_FULL, 0.001,
+			"and never past it, however many bugs are wading through")
+	for n: int in range(1, StickySundew.DROPLET_SWELL_AT + 1):
+		if err != "":
+			break
+		err = _T.assert_gt(StickySundew.droplet_radius(n), StickySundew.droplet_radius(n - 1),
+			"catching pest %d swells the beads past catching %d" % [n, n - 1])
+	return err
+
+
+## A Sundew fires nothing but it does reach, so unlike a Seed Sunflower the
+## dead-ground cue applies to it — and the number the preview draws has to be the
+## plant's own constant rather than a second copy that can drift off it.
+func test_a_sundews_previewed_reach_is_the_patch_it_actually_sticks_to() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var reach: float = PlantCatalog.reach(PlantCatalog.SUNDEW)
+	var err: String = _T.assert_float_eq(reach, StickySundew.SAP_RADIUS, 0.001,
+		"the previewed reach is the sundew's own SAP_RADIUS, not a second number")
+	if err == "":
+		err = _T.assert_gt(reach, float(Board.CELL),
+			"over a cell, or it could never touch the lane it stands beside")
+	if err == "":
+		err = _T.assert_gt(reach, ChompFlower.GRAB_RADIUS,
+			"wider than a Chomp Flower's grab, so it covers a stretch of road rather than a spot")
+	if err == "":
+		err = _T.assert_gt(CornCobbler.RANGE, reach,
+			"and narrower than a Corn Cobbler's range, so it can never blanket a cob's whole field of fire")
+	var covered: int = 0
+	var stranded: int = 0
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if not game.board.is_buildable(cell):
+				continue
+			if PlacementPreview.covered_road_cells(game.board, cell, reach) == 0:
+				stranded += 1
+			else:
+				covered += 1
+	if err == "":
+		err = _T.assert_gt(covered, 0, "some buildable ground puts road under the dew")
+	if err == "":
+		err = _T.assert_gt(stranded, 0,
+			"and some of it is dead ground for a sundew too, which is what the cue is for")
+	_T.free_ui(game)
+	return err
+
+
+## The one line for this plant that lives outside plant_catalog.gd: the match
+## statement in Game._new_plant. Everything else can be right and a placed Sticky
+## Sundew will still silently be a Corn Cobbler without it — same sprite lookup,
+## same health bar, same refund, no error anywhere.
+func test_the_catalogue_id_for_a_sundew_builds_a_sticky_sundew() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(500)
+	game.bank.unlocked.append(PlantCatalog.SUNDEW)
+	var cell: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.SUNDEW, cell), "",
+		"an unlocked, paid-for sundew goes into the ground")
+	if err == "":
+		err = _T.assert_true(game.plant_at(cell) is StickySundew,
+			"and it is a StickySundew — add `PlantCatalog.SUNDEW: return StickySundew.new()` to Game._new_plant")
+	_T.free_ui(game)
+	return err
