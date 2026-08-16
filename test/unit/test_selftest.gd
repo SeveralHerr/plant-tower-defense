@@ -75,10 +75,34 @@ func test_an_uncollected_husk_rots_away() -> String:
 	return err
 
 
+## Spawn a pest and hand back THAT pest, not whichever one the group lists first.
+##
+## `get_nodes_in_group` is tree-global and `_T.free_ui` frees through `queue_free`,
+## which defers to the end of the frame — so the group can still hold a previous
+## test's pests when this one starts, and `[0]` is then a node from a game that no
+## longer exists. That is not hypothetical: `test_kernels_launch` read `kernels[0]`
+## the same way, measured a leaked kernel every run, and was green for months
+## because it happened to be measuring a leftover that looked right. It only turned
+## red when four unrelated tests were appended and shifted the order.
+##
+## Diffing the group around the spawn cannot pick up a stranger.
+func _spawn_and_take(game: Game, species: StringName) -> Pest:
+	var before: Dictionary = {}
+	for p: Node in game.get_tree().get_nodes_in_group("pests"):
+		before[p.get_instance_id()] = true
+	game.spawn_pest(species)
+	for p: Node in game.get_tree().get_nodes_in_group("pests"):
+		if not before.has(p.get_instance_id()) and p is Pest:
+			return p as Pest
+	return null
+
+
 func test_a_dead_pest_leaves_a_collectible_husk() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
-	game.spawn_pest(Pest.APHID)
-	var pest: Pest = game.get_tree().get_nodes_in_group("pests")[0] as Pest
+	var pest: Pest = _spawn_and_take(game, Pest.APHID)
+	if pest == null:
+		_T.free_ui(game)
+		return _T.assert_true(false, "spawn_pest put a new pest in the pests group")
 	var husks_before: int = game.compost.husk_count()
 	pest.kill()
 	var err: String = _T.assert_eq(game.compost.husk_count(), husks_before + 1, "killing a pest drops exactly one husk")
@@ -125,8 +149,10 @@ func test_a_hungry_mutations_husk_is_worth_more_than_armoured_or_winged() -> Str
 ## when it drops a husk, not just that the multiplier exists in isolation.
 func test_a_mutated_pests_husk_is_worth_more_than_a_plain_ones() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
-	game.spawn_pest(Pest.APHID)
-	var plain: Pest = game.get_tree().get_nodes_in_group("pests")[0] as Pest
+	var plain: Pest = _spawn_and_take(game, Pest.APHID)
+	if plain == null:
+		_T.free_ui(game)
+		return _T.assert_true(false, "spawn_pest put a new pest in the pests group")
 	var plain_seed_value: int = plain.seed_value
 	plain.kill()
 	var plain_husk: int = 0
@@ -1242,8 +1268,10 @@ func test_wave_scaling_and_a_mutation_compose_in_either_order() -> String:
 func test_a_pest_spawned_deep_in_endless_is_tougher_than_a_wave_one_pest() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	game.director.current_wave = 1
-	game.spawn_pest(Pest.APHID)
-	var early: Pest = game.get_tree().get_nodes_in_group("pests")[0] as Pest
+	var early: Pest = _spawn_and_take(game, Pest.APHID)
+	if early == null:
+		_T.free_ui(game)
+		return _T.assert_true(false, "spawn_pest put a new pest in the pests group")
 	var base_health: float = early.max_health
 	var base_speed: float = early.speed
 	early.queue_free()
