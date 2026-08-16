@@ -89,11 +89,11 @@ from pathlib import Path
 from typing import Optional  # noqa: F401
 
 
-# harness-version: 0.36.0
+# harness-version: 0.38.0
 # Version of the godot-selftest-harness this client was copied from. Compared against
 # the running game's own stamp by the `harness-version` verb, so a half-refreshed
 # install (new client, old autoload) is visible instead of mysterious.
-HARNESS_VERSION = "0.36.0"
+HARNESS_VERSION = "0.38.0"
 
 COMMANDS_FILE = "devtools_commands.json"
 RESULTS_FILE = "devtools_results.json"
@@ -2302,6 +2302,24 @@ def _print_plugin_staleness(project_version: str) -> None:
               f"against {project_version} may be fixed there already.", file=sys.stderr)
 
 
+def _warn_shared_user_dir(user_dir: Path, project_path: Path) -> None:
+    """H-067: say when this checkout's user:// was last used by a game from ANOTHER
+    checkout - a copy or worktree of the same `config/name` resolves to the same
+    directory, and only `use_custom_user_dir=true` + `custom_user_dir_name` in the
+    copy's project.godot moves it (`custom_user_dir_name` alone is ignored, which is
+    how a 0.37.0 probe rewrote a developer's real save). The owner file already
+    carries the checkout path; this is the one place it is compared before launch."""
+    owner, _ = _read_owner(user_dir)
+    other = owner.get("project_path") if isinstance(owner, dict) else None
+    if not other or _same_project_dir(other, project_path):
+        return
+    print(f"user://: {user_dir} was last used by a game running from a DIFFERENT checkout "
+          f"({other}). A copy or worktree of this project shares the same saves, screenshots "
+          f"and baselines. `--snapshot-userstate` protects the save; to really separate it, "
+          f"set application/config/use_custom_user_dir=true AND custom_user_dir_name in this "
+          f"copy's project.godot (the name alone is ignored).", file=sys.stderr)
+
+
 def _harness_version_offline(project_path: Path, as_json: bool, why: str) -> int:
     """Print what disk alone can prove, and say plainly what is unknown.
 
@@ -3280,6 +3298,29 @@ def cmd_ui_snapshot(args, project_path: Path):
         print(f"  {el['name']} ({el['type']}) [{r['x']:.0f},{r['y']:.0f} {r['w']:.0f}x{r['h']:.0f}] {vis} alpha={el['modulate_a']:.1f}{text_preview}")
 
 
+def cmd_contained_in(args, project_path: Path):
+    """Is one Control's screen box inside another's? (bus verb: contained_in,
+    plant-tower-defense:G-048b). Data keys read: inside, overhang, control_rect,
+    within_rect, control_centre_inside, geometry_trustworthy, geometry_caveat.
+    Exit 0 inside, 1 not (or unmeasurable)."""
+    result = send_command(project_path, "contained_in", {
+        "node_path": normalize_node_path(args.node), "within": normalize_node_path(args.within)})
+    data = result.get("data") or {}
+    if "inside" not in data:
+        print(f"Failed: {result.get('message', '')}", file=sys.stderr)
+        sys.exit(1)
+    if args.json:
+        print(json.dumps(data, indent=2))
+    else:
+        print(result.get("message", ""))
+        c, w = data.get("control_rect", {}), data.get("within_rect", {})
+        print(f"  control: {c.get('x', 0):.0f},{c.get('y', 0):.0f} {c.get('w', 0):.0f}x{c.get('h', 0):.0f}"
+              f"   within: {w.get('x', 0):.0f},{w.get('y', 0):.0f} {w.get('w', 0):.0f}x{w.get('h', 0):.0f}")
+        print_geometry_caveat(data, "contained-in", only_if_suspect=True)
+    if not data["inside"]:
+        sys.exit(1)
+
+
 def cmd_node_bounds(args, project_path: Path):
     """Get bounds for a specific node."""
     args.node_path = normalize_node_path(args.node_path)  # G-025
@@ -3637,7 +3678,9 @@ def cmd_launch(args, project_path: Path):
     # back before anything else starts; then, if asked, take a fresh one.
     userstate_restore(project_path, "previous launch never quit cleanly")
     try:
-        userstate_stat_take(project_path, get_user_data_path(project_path))
+        launch_user_dir = get_user_data_path(project_path)
+        userstate_stat_take(project_path, launch_user_dir)
+        _warn_shared_user_dir(launch_user_dir, project_path)
     except FileNotFoundError:
         pass  # no user:// yet (first ever launch); nothing to diff against
     snapshot_patterns = getattr(args, "snapshot_userstate", None)
@@ -4194,7 +4237,23 @@ def cmd_sample_pixels(args, project_path: Path):
             print(f"  {key:<10} r={c.get('r'):.3f} g={c.get('g'):.3f} b={c.get('b'):.3f}")
 
 
+
+def _utf8_console() -> None:
+    """gh#34: the client inherits the Windows console's cp1252 stdout, so any verb
+    echoing game text with a glyph outside it (a Back button reading "\u2190 Back",
+    a key legend using arrows) died with UnicodeEncodeError - and the traceback read
+    as "this verb is broken on this node", not "the reporting is". `errors="replace"`
+    rather than bare utf-8: a console that genuinely cannot render a glyph shows `?`
+    and keeps going, instead of trading one crash for another."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError, ValueError):
+            pass
+
+
 def main():
+    _utf8_console()
     parser = argparse.ArgumentParser(description="DevTools CLI - interact with running Godot instance")
     parser.add_argument("--project", "-p", help="Path to Godot project", default=".")
     parser.add_argument("--userdata", "-u", help="Override user:// data directory (highest priority)")
@@ -4578,6 +4637,16 @@ def main():
         help="What a player would see right now: visible CanvasLayers, the "
              "topmost Control, paused state, cursor mode")
     p.set_defaults(func=cmd_first_frame)
+
+    # contained-in
+    p = subparsers.add_parser(
+        "contained-in",
+        help="Is one Control's screen box inside another's? Exit 1 with the per-side "
+             "overhang when it hangs off (e.g. a legend row past its pause card)")
+    p.add_argument("--node", "-n", required=True, help="The Control to test")
+    p.add_argument("--within", required=True, help="The Control (panel/card) it should sit inside")
+    p.add_argument("--json", action="store_true", help="Raw JSON")
+    p.set_defaults(func=cmd_contained_in)
 
     # project-settings
     p = subparsers.add_parser(

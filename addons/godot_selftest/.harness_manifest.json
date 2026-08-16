@@ -1,61 +1,61 @@
 {
   "files": {
     "addons/godot_selftest/dev_tools.gd": {
-      "sha256": "241225dba44f2967c4e06e86d5cac367a534b9d92d8ba58173aa1ac6b463bc59",
-      "version": "0.36.0"
+      "sha256": "39c0c7942b38bbad237a4f781d535a9ec953a2c6fb4233c2f2e5d3598233a66f",
+      "version": "0.38.0"
     },
     "addons/godot_selftest/scene_validator.gd": {
-      "sha256": "9d73c5ef2788f3f6d4f509a7f7b13ce73ca4c190a185ecd804437b7266717599",
-      "version": "0.36.0"
+      "sha256": "2542112fe1a1fc4e3705c6ab26ea975e9ba2499407d7f616a67911c1253211b4",
+      "version": "0.38.0"
     },
     "tools/capture.gd": {
-      "sha256": "f7973cb11bb780b8b825560a680381440e759f06f0f6ac471b36875187c0cc06",
-      "version": "0.36.0"
+      "sha256": "1212669731ace382693ae6d7a9d3cc6c96cb96440bf26672f0d98da7c868a6b5",
+      "version": "0.38.0"
     },
     "tools/check_devtools_log.py": {
-      "sha256": "b1ffecd363f7af143f6cc020d6db8afc1aa3abc4cffafddac5302533246ec607",
-      "version": "0.36.0"
+      "sha256": "8c9ee0df49cb2edacffc582423e91bed3dd93e3d7ee350d56cef81007dba5bec",
+      "version": "0.38.0"
     },
     "tools/coverage_check.py": {
-      "sha256": "ab8edb825dbd715b32aa13cbf11aac7267497657272d7611299621089a76bcf9",
-      "version": "0.36.0"
+      "sha256": "8badd249c7839a739e8c99943dcedfcbd9b22f81fbfb29e205063bb0a040772c",
+      "version": "0.38.0"
     },
     "tools/devtools.py": {
-      "sha256": "43dc1f9e98dc9b6dc575d29336965f35145dee7b818072d923734bee2644b36b",
-      "version": "0.36.0"
+      "sha256": "fd2b872f6056f2d20d5386a6d2ec50d8af49e67eec90d7ad8ce88992e7a52aa8",
+      "version": "0.38.0"
     },
     "tools/eval.gd": {
-      "sha256": "ea5ec56deb1cdf8839633afb98a5cadfda91fecb9b40bf1d0b40eb4f5f605a63",
-      "version": "0.36.0"
+      "sha256": "92dd31ff934675c252eb246e41aa6aff6eb31ea49ab0aa6d39d8b58d9372ade0",
+      "version": "0.38.0"
     },
     "tools/import_check.py": {
-      "sha256": "9d223e68a476b547294e39104a7f08a4c6a38b9e57308240e877e131d9551d8d",
-      "version": "0.36.0"
+      "sha256": "501043384f316b8db367d54ec262056b517fa0c16b310583e7090c68d7c34375",
+      "version": "0.38.0"
     },
     "tools/lint_project.gd": {
-      "sha256": "ab29238e9b7428a3729a76f657c79e87508b65c3f16dcdff9e2ae88bafe11340",
-      "version": "0.36.0"
+      "sha256": "735702147567d66abd3eb58ef8c4e1a6033545ad5af72adc80748fec4da160d3",
+      "version": "0.38.0"
     },
     "tools/name_check.py": {
-      "sha256": "e74aafe26a26e83e1020c1db3f82a2511395be0223edc91246c9b5ba4467a403",
-      "version": "0.36.0"
+      "sha256": "980e78eca4986a33c620f8e2b2d15d73b7e7e82692f999f861b1db779195c234",
+      "version": "0.38.0"
     },
     "tools/run_tests.gd": {
-      "sha256": "12f5612d96648150cb95c259c942e0c37ddefa0c51d4d9e22843f7d84fdceb33",
-      "version": "0.36.0"
+      "sha256": "5e27f2c86574e63d2780b687aa022816a805aa3d1966d374aa0bc3f6524e815d",
+      "version": "0.38.0"
     },
     "tools/run_tests.py": {
-      "sha256": "b70a75043a77bfa4faefd7eb708bf2580d3e1ef803cd46907ada69b2a47732b2",
-      "version": "0.36.0"
+      "sha256": "299e0a5d0352c3e26ad83ab37cf838763f8bf8fc81c3deaafd72592dfe8c3e74",
+      "version": "0.38.0"
     },
     "tools/upstream_gaps.py": {
-      "sha256": "13b2f1cb4240a596a77ec42aaf96bc061a5a9da841d4c64340aa361b6c25e482",
-      "version": "0.36.0"
+      "sha256": "4f467550e2055fc20b9ca4bf6c0c492e63f0b42fcfd79a9d3b7be242c8306e56",
+      "version": "0.38.0"
     },
     "tools/verify_ledger.py": {
-      "sha256": "c41b5a5bebf2da456d8c61643b86e92339c69901280962b6957f472336511a72",
-      "version": "0.36.0"
+      "sha256": "7265475f47fc13dcfb0aab6a73a6d6d15c7c2db5fba33504e3eb5d6d49b7df9d",
+      "version": "0.38.0"
     }
   },
-  "harness_version": "0.36.0"
+  "harness_version": "0.38.0"
 }

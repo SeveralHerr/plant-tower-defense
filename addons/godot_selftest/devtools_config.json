@@ -63,7 +63,7 @@
   "godot_version": "4.7.1",
   "_scaffold_defaults": {
     "note": "Written by /scaffold-godot-harness. 'values' is what scaffold last left here and 'owned' lists the keys it may still update; edit a key and it becomes yours permanently. Safe to commit; delete to reset the tracking.",
-    "harness_version": "0.36.0",
+    "harness_version": "0.38.0",
     "owned": [
       "extension_script",
       "fps_min",
