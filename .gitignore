@@ -17,3 +17,6 @@
 # /verify scratch runner logs
 lint.log
 tests.log
+
+# Agent git worktrees live inside the repo; never commit them as a nested repo.
+.claude/worktrees/

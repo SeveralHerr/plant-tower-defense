@@ -892,3 +892,51 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   `.claude/skills/godot-hud-occlusion-audit/` is still real and still unfiled as a
   numbered gap on purpose — it is written up in the issue linked from the previous
   entry rather than duplicated here. [G-013] / [G-014] / [G-015] not re-hit.
+
+## 2026-08-15 — A richer husk rots faster, for plant-tower-defense-kh9
+
+- Value: **warranted** — the live run proved the per-husk clock survives the real
+  pest-death path, and forced a technique change that the next timing check will reuse.
+  - Expected: in a real run, a hungry-beetle husk and an aphid husk dropped moments
+    apart should show different `max_life`, and the rich one should disappear from the
+    live board while the cheap one is still collectible — the unit test proves the
+    arithmetic, not that `_process` on the live meter actually races them.
+  - Got: `cmd compost_state` after killing one hungry beetle and one aphid returned
+    `value=9 max_life=4.50` beside `value=2 max_life=10.00`. Then, with the tree paused
+    and `run-method --node /root/Game/CompostMeter --method _process --args "[5.0]"`,
+    the board went from `[(9, 4.0), (5, 6.94), (2, 9.7), ...]` to
+    `[(5, 1.44), (2, 4.2), ...]` — the 9-seed husk gone, ten 2-seed husks still
+    sweepable. That is the acceptance criterion, live. The stray value-5 husk sitting
+    between them at `max_life ~7.6` also shows the curve is continuous rather than
+    two-valued.
+  - Found: (1) `godot --import` stripped `window/size/viewport_width` and
+    `viewport_height` out of `project.godot` **again** — second time in two sessions.
+    The Phase 1 guard caught it both times; this is recurring, not a one-off, and the
+    guard is the only thing standing between it and a silently committed resolution
+    change. (2) A race whose window is shorter than a bus round-trip cannot be observed
+    by stepping and polling. Four sequential `step-time --seconds 2` + `compost_state`
+    cycles blew clean past the entire 4.5s..10s window and reported `0 husk(s)` four
+    times in a row — which reads exactly like "the feature does not work". Real
+    wall-clock keeps running between round trips, so `step-time` is additive to it, not
+    a substitute for it.
+  - Cheaper: the lifetime curve and the two-husk race were already covered headlessly
+    by the five new tests. The live run's genuine additions were `drop_husk` storing the
+    per-husk clock through the actual death path, and the technique below.
+
+- Gap: **`step-time` cannot isolate a short-lived state, because the wall clock keeps
+  running between bus round trips — and nothing says so.** Observing a 4.5s husk expire
+  while a 10s one survives means sampling inside a 5.5s window, but each
+  `step-time` + read pair costs unbounded real game-time on top of the seconds
+  requested. The reply is honest about what *it* advanced
+  (`process_seconds: 1.008`) and silent about the ~0.5s of ambient time that elapsed
+  around it, so the numbers look exact while the experiment is not.
+  The workaround that did work is worth writing down:
+  `set-state --node /root --property paused --value true`, then
+  `run-method --node <the node> --method _process --args "[5.0]"` — the bridge answers
+  while paused, so the system under test can be stepped by hand with zero ambient
+  drift.
+  - [G-016] status: open | seen: 1 | harness: 0.19.0
+  - Improvement: give `step-time` a `--paused` flag that pauses the tree, advances by
+    calling the loop by hand, and restores the previous pause state — and have the reply
+    include `wall_seconds_elapsed` alongside `process_seconds` either way, so the gap
+    between "what I advanced" and "what actually passed" is visible instead of inferred.

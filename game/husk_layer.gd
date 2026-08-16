@@ -11,12 +11,6 @@ extends Node2D
 ## spending the click. Mutations already tint the pest itself; this is the same
 ## idea carried through to what the pest leaves behind.
 
-## The smallest husk the game can drop: ceil(aphid seeds 3 / 2) with no
-## mutation multiplier. Anything at or below this draws at BASE_RADIUS.
-const BASE_VALUE: int = 2
-## The biggest: ceil(beetle seeds 9 / 2 * hungry 2.0). Glow saturates here.
-const FULL_VALUE: int = 9
-
 const BASE_RADIUS: float = 8.0
 const MAX_RADIUS: float = 15.0
 const RADIUS_PER_SEED: float = 1.0
@@ -36,14 +30,19 @@ var compost: CompostMeter = null
 ## relationship is assertable without a viewport — see test_selftest.gd.
 static func radius_for(value: int) -> float:
 	return clampf(
-		BASE_RADIUS + float(value - BASE_VALUE) * RADIUS_PER_SEED, BASE_RADIUS, MAX_RADIUS
+		BASE_RADIUS + float(value - CompostMeter.BASE_VALUE) * RADIUS_PER_SEED,
+		BASE_RADIUS,
+		MAX_RADIUS
 	)
 
 
 ## 0 for the cheapest husk, 1 for the richest — the single knob both the ring
 ## colour and its width read, so brightness and weight can never disagree.
+## Delegates rather than recomputing: CompostMeter.value_fraction is the same
+## curve the rot timer uses, and a husk that draws as rich must also be the one
+## that rots fast or the two cues fight each other.
 static func glow_for(value: int) -> float:
-	return clampf(float(value - BASE_VALUE) / float(FULL_VALUE - BASE_VALUE), 0.0, 1.0)
+	return CompostMeter.value_fraction(value)
 
 
 func _process(_delta: float) -> void:
@@ -57,7 +56,11 @@ func _draw() -> void:
 	for h: Dictionary in compost.husks():
 		var pos: Vector2 = h["position"]
 		var value: int = int(h["value"])
-		var frac: float = clampf(float(h["life"]) / CompostMeter.HUSK_LIFETIME, 0.0, 1.0)
+		# Against this husk's own max_life, not the global ceiling: lifetimes
+		# differ per husk now, and dividing by the constant would leave a rich
+		# husk's ring showing two-thirds remaining as it disappears.
+		var span: float = maxf(0.001, float(h["max_life"]))
+		var frac: float = clampf(float(h["life"]) / span, 0.0, 1.0)
 		var radius: float = radius_for(value)
 		var glow: float = glow_for(value)
 		draw_circle(pos, radius, Color(0.64, 0.45, 0.25, 0.35 + 0.35 * frac))

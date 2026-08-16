@@ -1297,3 +1297,95 @@ func test_an_absurdly_long_readout_pushes_rather_than_underlaps() -> String:
 			"and it never shrank below its minimum width")
 	_T.free_ui(game)
 	return err
+
+
+# -- A richer husk rots faster (plant-tower-defense-kh9) ---------------------
+
+
+## The decision the feature exists to create: with one shared timer, sweep
+## order was free. Now the rich one is on a shorter clock.
+func test_a_richer_husk_rots_sooner_than_a_poorer_one() -> String:
+	var rich: float = CompostMeter.lifetime_for(CompostMeter.FULL_VALUE)
+	var poor: float = CompostMeter.lifetime_for(CompostMeter.BASE_VALUE)
+	var err: String = _T.assert_true(rich < poor,
+		"a %d-seed husk lasts %.1fs against a %d-seed husk's %.1fs"
+			% [CompostMeter.FULL_VALUE, rich, CompostMeter.BASE_VALUE, poor])
+	if err == "":
+		err = _T.assert_float_eq(poor, CompostMeter.HUSK_LIFETIME, 0.0001,
+			"the cheapest husk still gets the full lifetime, so nothing got worse")
+	if err == "":
+		err = _T.assert_float_eq(rich, CompostMeter.MIN_HUSK_LIFETIME, 0.0001,
+			"and the richest gets exactly the floor")
+	return err
+
+
+## Both ends clamp, so a husk outside the range the game drops still gets a
+## sane clock rather than a negative or runaway one.
+func test_every_husk_lifetime_stays_inside_its_two_bounds() -> String:
+	var err: String = ""
+	for value: int in [-5, 0, 1, 2, 5, 9, 50, 9999]:
+		var span: float = CompostMeter.lifetime_for(value)
+		err = _T.assert_true(span >= CompostMeter.MIN_HUSK_LIFETIME and span <= CompostMeter.HUSK_LIFETIME,
+			"value %d gives %.2fs, inside [%.1f, %.1f]"
+				% [value, span, CompostMeter.MIN_HUSK_LIFETIME, CompostMeter.HUSK_LIFETIME])
+		if err != "":
+			break
+	return err
+
+
+## The acceptance criterion, run as a race: two husks dropped at the same
+## instant, and the valuable one must be gone first.
+func test_of_two_husks_dropped_together_the_rich_one_vanishes_first() -> String:
+	var compost := CompostMeter.new()
+	compost.drop_husk(Vector2(0, 0), CompostMeter.FULL_VALUE)
+	compost.drop_husk(Vector2(200, 0), CompostMeter.BASE_VALUE)
+	# Step to just past the rich husk's clock but short of the poor one's.
+	var midpoint: float = (CompostMeter.MIN_HUSK_LIFETIME + CompostMeter.HUSK_LIFETIME) * 0.5
+	compost._process(midpoint)
+	var err: String = _T.assert_eq(compost.husk_count(), 1,
+		"at %.2fs exactly one of the two has rotted" % midpoint)
+	if err == "":
+		err = _T.assert_eq(compost.collect_at(Vector2(0, 0)), 0, "and it is the rich one that is gone")
+	if err == "":
+		err = _T.assert_eq(compost.collect_at(Vector2(200, 0)), CompostMeter.BASE_VALUE,
+			"while the cheap one is still there to sweep")
+	compost.free()
+	return err
+
+
+## The rot ring divides by the husk's own max_life. If it divided by the
+## constant, a rich husk would still show ~55% of its ring at the instant it
+## disappeared — visible only as "husks sometimes pop without warning".
+func test_the_rot_ring_empties_exactly_as_the_husk_expires() -> String:
+	var compost := CompostMeter.new()
+	compost.drop_husk(Vector2.ZERO, CompostMeter.FULL_VALUE)
+	var span: float = CompostMeter.lifetime_for(CompostMeter.FULL_VALUE)
+	compost._process(span * 0.9)
+	var h: Dictionary = compost.husks()[0]
+	var frac: float = float(h["life"]) / float(h["max_life"])
+	var err: String = _T.assert_float_eq(frac, 0.1, 0.02,
+		"at 90%% through its own life the ring reads ~10%% remaining, not %.0f%%" % (frac * 100.0))
+	if err == "":
+		err = _T.assert_true(float(h["max_life"]) < CompostMeter.HUSK_LIFETIME,
+			"and max_life really is this husk's own shorter clock, not the global one")
+	compost.free()
+	return err
+
+
+## Size, glow and urgency must all key off one curve — a husk that draws rich
+## and rots slow would be two cues pointing opposite ways.
+func test_size_glow_and_urgency_all_agree_about_which_husk_is_rich() -> String:
+	var rich: int = CompostMeter.FULL_VALUE
+	var poor: int = CompostMeter.BASE_VALUE
+	var err: String = _T.assert_true(HuskLayer.radius_for(rich) > HuskLayer.radius_for(poor),
+		"the rich husk draws bigger")
+	if err == "":
+		err = _T.assert_true(HuskLayer.glow_for(rich) > HuskLayer.glow_for(poor),
+			"and glows harder")
+	if err == "":
+		err = _T.assert_true(CompostMeter.lifetime_for(rich) < CompostMeter.lifetime_for(poor),
+			"and is the one on the shorter clock")
+	if err == "":
+		err = _T.assert_float_eq(HuskLayer.glow_for(rich), CompostMeter.value_fraction(rich), 0.0001,
+			"glow is literally the same curve the timer reads, not a parallel copy")
+	return err
