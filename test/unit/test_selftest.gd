@@ -1068,3 +1068,118 @@ func test_a_new_wave_starts_the_loss_tally_over() -> String:
 		err = _T.assert_eq(game._wave_losses.size(), 0, "the next wave starts from nothing")
 	_T.free_ui(game)
 	return err
+
+
+# -- Placement preview (plant-tower-defense-rfh) -----------------------------
+
+
+## The reuse the issue asked for: the preview must be the selection marker's
+## own geometry in a different key, not a second bracket implementation that
+## can drift out of shape from it.
+func test_the_placement_preview_is_a_selection_marker() -> String:
+	var preview := PlacementPreview.new()
+	var err: String = _T.assert_true(preview is SelectionMarker,
+		"PlacementPreview subclasses SelectionMarker rather than reimplementing brackets")
+	if err == "":
+		err = _T.assert_true(preview.half > SelectionMarker.HALF,
+			"and sits a size outside the selection brackets (%.0f vs %.0f) so the two are told apart"
+				% [preview.half, SelectionMarker.HALF])
+	if err == "":
+		err = _T.assert_true(PlacementPreview.OK_COLOR.a < SelectionMarker.MARKER_COLOR.a,
+			"and is dimmer, so a hover never outshouts the plant actually selected")
+	preview.free()
+	return err
+
+
+## The ring is the whole reason this exists — coverage used to be invisible
+## until after the seeds were spent. Sourced from each plant's own constant, so
+## this also pins that PlantCatalog.reach has not drifted from them.
+func test_reach_comes_from_each_plants_own_constant() -> String:
+	var err: String = _T.assert_float_eq(PlantCatalog.reach(PlantCatalog.CORN), CornCobbler.RANGE, 0.0001,
+		"the Corn ring is CornCobbler.RANGE, not a copy of the number")
+	if err == "":
+		err = _T.assert_float_eq(PlantCatalog.reach(PlantCatalog.CHOMP), ChompFlower.GRAB_RADIUS, 0.0001,
+			"the Chomp ring is its grab radius")
+	if err == "":
+		err = _T.assert_float_eq(PlantCatalog.reach(PlantCatalog.SUNFLOWER), 0.0, 0.0001,
+			"a Sunflower reaches nothing, so it draws no ring")
+	if err == "":
+		err = _T.assert_float_eq(PlantCatalog.reach(&"no_such_plant"), 0.0, 0.0001,
+			"an unknown id is 0.0, not an error mid-hover")
+	return err
+
+
+## Hovering a road cell, an occupied cell, or a cell you cannot pay for must
+## all read as blocked — a green ring over a cell that would refuse the click
+## is worse than no cue at all.
+func test_hovering_the_road_reads_as_blocked() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var road: Vector2i = Board.PATH_CORNERS[0]
+	game._update_preview(road, game.board.is_buildable(road) and game.plant_at(road) == null)
+	var err: String = _T.assert_false(game._preview.placeable, "a road cell is not placeable")
+	if err == "":
+		var grass: Vector2i = _grass(game)
+		game._update_preview(grass, true)
+		err = _T.assert_true(game._preview.placeable, "and free grass with the free starter in hand is")
+	_T.free_ui(game)
+	return err
+
+
+func test_a_cell_you_cannot_afford_reads_as_blocked() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var grass: Vector2i = _grass(game)
+	# Spend the free starter so the Corn has a real price, then empty the bank.
+	game.place_plant(PlantCatalog.CORN, grass)
+	game.bank.seeds = 0
+	var other: Vector2i = _grass(game)
+	game._update_preview(other, true)
+	var err: String = _T.assert_false(game._preview.placeable,
+		"a legal cell with no seeds to pay for it draws blocked, not encouraging green")
+	_T.free_ui(game)
+	return err
+
+
+## Two brackets stacked on one cell reads as a bug, and the plant already there
+## has its own marker and ring saying the truthful thing.
+func test_no_preview_is_drawn_over_a_cell_that_already_has_a_plant() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var grass: Vector2i = _grass(game)
+	game._update_preview(grass, true)
+	var err: String = _T.assert_true(game._preview.visible, "an empty cell previews")
+	if err == "":
+		game.place_plant(PlantCatalog.CORN, grass)
+		game._update_preview(grass, false)
+		err = _T.assert_false(game._preview.visible, "the same cell with a plant on it does not")
+	_T.free_ui(game)
+	return err
+
+
+## Switching plants in the bar must move the ring immediately: a Chomp and a
+## Corn differ by more than a factor of two in coverage, and a cue that waits
+## for the next mouse motion shows the wrong one in the meantime.
+func test_switching_the_selected_plant_redraws_the_ring_without_moving_the_mouse() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var grass: Vector2i = _grass(game)
+	game._hover_cell = grass
+	game._on_plant_chosen(PlantCatalog.CORN)
+	var corn_reach: float = game._preview.reach
+	game._on_plant_chosen(PlantCatalog.CHOMP)
+	var err: String = _T.assert_float_eq(corn_reach, CornCobbler.RANGE, 0.0001, "the Corn's reach was showing")
+	if err == "":
+		err = _T.assert_float_eq(game._preview.reach, ChompFlower.GRAB_RADIUS, 0.0001,
+			"and picking the Chomp swapped it with no mouse motion at all")
+	_T.free_ui(game)
+	return err
+
+
+## The preview is positioned in Entities space at the cell centre, so the ring
+## is actually centred on the cell it claims to cover. Placement bugs of this
+## shape render as a perfectly plausible picture.
+func test_the_preview_sits_on_the_centre_of_the_cell_it_previews() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var grass: Vector2i = _grass(game)
+	game._update_preview(grass, true)
+	var err: String = _T.assert_eq(game._preview.position, game.board.cell_to_world(grass),
+		"the preview node is at the cell's centre, not its corner")
+	_T.free_ui(game)
+	return err

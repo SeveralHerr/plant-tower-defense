@@ -27,6 +27,10 @@ var victory: bool = false
 
 var _entities: Node2D
 var _cursor: ColorRect
+var _preview: PlacementPreview
+## Last cell the cursor was over, or x < 0 for "off the board". Kept so the
+## preview can be re-drawn on events that are not mouse motion.
+var _hover_cell: Vector2i = Vector2i(-1, -1)
 var _husk_layer: HuskLayer
 var _plants: Dictionary = {}
 var _prep_left: float = 0.0
@@ -79,6 +83,11 @@ func _ready() -> void:
 	_cursor.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_cursor.visible = false
 	_entities.add_child(_cursor)
+
+	_preview = PlacementPreview.new()
+	_preview.name = "PlacementPreview"
+	_preview.visible = false
+	_entities.add_child(_preview)
 
 	hud = Hud.new()
 	hud.name = "HUD"
@@ -243,6 +252,12 @@ func _end_run(banner: String) -> void:
 func _on_plant_chosen(id: StringName) -> void:
 	selected_plant = id
 	_select(null)
+	# Picking a different plant while the cursor sits still must re-draw the
+	# ring: switching from a Chomp to a Corn triples the coverage, and a hover
+	# cue that only updates on mouse motion would show the old plant's reach
+	# until the player happened to move.
+	if _hover_cell.x >= 0:
+		_update_preview(_hover_cell, board.is_buildable(_hover_cell) and not _plants.has(_hover_cell))
 	_refresh()
 
 
@@ -373,11 +388,36 @@ func _update_cursor(screen_pos: Vector2) -> void:
 	var cell: Vector2i = board.world_to_cell(screen_pos - _entities.position)
 	if not board.is_inside(cell) or screen_pos.x > board.board_size().x:
 		_cursor.visible = false
+		_preview.visible = false
+		_hover_cell = Vector2i(-1, -1)
 		return
+	_hover_cell = cell
 	_cursor.visible = true
 	_cursor.position = Vector2(cell.x * Board.CELL, cell.y * Board.CELL)
 	var free: bool = board.is_buildable(cell) and not _plants.has(cell)
 	_cursor.color = Color(0.18, 0.80, 0.44, 0.30) if free else Color(0.91, 0.30, 0.24, 0.30)
+	_update_preview(cell, free)
+
+
+## Hover cue for the plant currently picked in the bar: brackets in the shape
+## it will wear once selected, plus the coverage it would have. Affordability
+## counts as "blocked" alongside road/occupied — hovering a legal cell you
+## cannot pay for should not draw an encouraging green ring.
+func _update_preview(cell: Vector2i, free: bool) -> void:
+	# Nothing to preview over a plant already there: that cell's own selection
+	# marker and range ring are the truthful answer, and stacking a second set
+	# of brackets on it reads as a bug.
+	if _plants.has(cell):
+		_preview.visible = false
+		return
+	_preview.visible = true
+	_preview.position = board.cell_to_world(cell)
+	_preview.reach = PlantCatalog.reach(selected_plant)
+	# can_afford already folds in both the lock and the free starter
+	# (placement_cost returns 0 while it is available), so it is the whole
+	# money question in one call.
+	_preview.placeable = free and bank.can_afford(selected_plant)
+	_preview.queue_redraw()
 
 
 func _click_at(screen_pos: Vector2) -> void:
@@ -400,6 +440,10 @@ func _click_at(screen_pos: Vector2) -> void:
 	var refusal: String = place_plant(selected_plant, cell)
 	if refusal != "" and refusal != "not paid for":
 		hud.show_message(refusal.capitalize() + ".")
+	# The cell under the cursor just changed state — either it now holds a
+	# plant, or the purchase drained the seeds that made it affordable. Either
+	# way the cue on screen is stale until the mouse moves, which it need not.
+	_update_preview(cell, board.is_buildable(cell) and not _plants.has(cell))
 
 
 # -- state ------------------------------------------------------------------

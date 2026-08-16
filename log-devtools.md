@@ -773,3 +773,51 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
 - Gap: no gaps this turn. `find-nodes`, `step-time`, `run-method` on `Board` methods with
   `Vector2i` args passed as `{"x":…,"y":…}`, and region `screenshot` all did what they
   say. [G-013] and [G-014] from earlier this session were not re-hit.
+
+## 2026-08-15 — Placement preview cue for plant-tower-defense-rfh
+
+- Value: **warranted** — `node-bounds` answered the one question the unit tests
+  structurally cannot ask, and the run turned up a reach blind spot around subclassing.
+  - Expected: runtime should show the preview node landing at the correct *screen*
+    position under a given mouse point — the headless tests assert `position` in Entities
+    space, and this project has already been bitten once by the 72px HUD-bar offset
+    between Entities space and screen space.
+  - Got: driving `_update_cursor` with mouse `(200, 300)` put the preview's
+    `global_rect` at `(224, 296)` — exactly `cell_to_world(3,3) = (224,224)` plus the
+    `Hud.BAR_HEIGHT` 72 offset, so the ring is centred on the cell the player is actually
+    pointing at. Hovering road gave `placeable=False` and a screenshot of red brackets
+    with no coverage ring; grass gave green brackets and the 176px Corn ring; off-board
+    hid it. Switching Corn -> Chomp with **no mouse motion** swapped `reach 176.0 ->
+    73.6` and flipped `placeable` to false, because the Chomp is still locked at run
+    start — a case I had not thought to write a test for and which the code got right
+    for free by routing affordability through `bank.can_afford`.
+  - Found: (1) `verify_ledger reach` scored `game/selection_marker.gd` unreached even
+    though `PlacementPreview extends SelectionMarker` and its `_draw_brackets()` ran for
+    the whole session — a live node reports only the script attached to it, never its
+    base class, so *every* base class in a project is structurally invisible to reach
+    unless some node instantiates it directly. Added a `reach_aliases` entry; the line
+    now reads `+2 by alias ... nothing left unreached`. (2) The first game instance
+    stopped polling the bus mid-session and exited with completely empty stdout *and*
+    stderr. Relaunched; every check re-passed with identical numbers, so it was not the
+    change — but a Godot that vanishes without writing a single line anywhere is worth
+    recording.
+  - Cheaper: nothing for the screen-space check — `node-bounds` through the live
+    CanvasLayer/offset chain is the only thing that answers it. The state machine
+    (`placeable` / `reach` / `visible` across road, grass, occupied, unaffordable,
+    off-board) was fully covered by the seven new unit tests and needed no game.
+
+- Gap: **reach treats a base class as unreached whenever only subclasses are
+  instantiated, which is silent and systematic rather than project-specific.**
+  `verify_ledger.py reach` printed `NOT reached: game/selection_marker.gd` for a script
+  whose `_draw_brackets()` ran on every frame of the session, because the only live node
+  running it was a `PlacementPreview`. `reach_aliases` fixes it per-pair by hand, but
+  that is a config declaration — the tool's own docs say an alias is "the project's
+  claim, not this run's observation" — being used to paper over something the tool could
+  observe on its own.
+  - [G-015] status: open | seen: 1 | harness: 0.19.0
+  - Improvement: walk the `extends` chain. For every `script` path in the scene-tree
+    snapshot, parse its `extends` (a `class_name` or a `res://` path) and credit the
+    whole ancestry as reached, in a distinct `reached_base` bucket so it stays
+    distinguishable from a directly-observed hit. That is a static read of files the tool
+    is already opening, and it would have credited `selection_marker.gd` with no config
+    at all.

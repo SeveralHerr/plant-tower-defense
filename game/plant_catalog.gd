@@ -71,6 +71,24 @@ static func tier(id: StringName) -> int:
 	return int(entry(id).get("tier", 1))
 
 
+## How far a plant of this kind reaches, in pixels; 0.0 for one that does not
+## reach at all (the Sunflower fires nothing and grabs nothing).
+##
+## Read straight off each subclass's own constant rather than re-listed as a
+## number here, so a balance change to CornCobbler.RANGE moves the placement
+## preview with it instead of leaving the ring quietly lying about coverage.
+## PlacementPreview is the caller: the ring has to be drawable before any plant
+## exists, which is why this is static and keyed on the id.
+static func reach(id: StringName) -> float:
+	match id:
+		CORN:
+			return CornCobbler.RANGE
+		CHOMP:
+			return ChompFlower.GRAB_RADIUS
+		_:
+			return 0.0
+
+
 static func texture_path(id: StringName) -> String:
 	return String(entry(id).get("texture", ""))
 
