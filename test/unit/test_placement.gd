@@ -1807,3 +1807,298 @@ func test_the_green_brackets_promise_exactly_what_a_click_will_do() -> String:
 			"and an empty purse turns the whole board off, which is what the click does too")
 	_T.free_ui(game)
 	return err
+
+
+# -- The title lawn and the notebook vs the catalogue (plant-tower-defense-6mv) -
+#
+# Both screens named their plants outright and both were written when the
+# catalogue was shorter, so the Sticky Sundew was absent from the first thing a
+# new player sees and neither tier-2 plant appeared anywhere in the only screen
+# that explains anything. Everything below is asserted against PlantCatalog.ids()
+# rather than against a count, so the next plant fails these tests instead of
+# quietly going unmentioned.
+
+
+## The decorations, in the order the lawn planted them. Read off the nodes rather
+## than off PLANT_X, so this measures what got built.
+func _lawn_sprites(title: Control) -> Array[Sprite2D]:
+	var out: Array[Sprite2D] = []
+	for child: Node in title.get_children():
+		var sprite := child as Sprite2D
+		if sprite != null and sprite.has_meta("plant"):
+			out.append(sprite)
+	return out
+
+
+func test_the_title_lawn_shows_every_plant_in_the_catalogue() -> String:
+	var title := await _T.instantiate_ui("res://game/title.tscn", Vector2i(1152, 648)) as TitleScreen
+	var err: String = _T.assert_true(title != null, "the title scene resolves headlessly")
+	if err != "":
+		return err
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var sprites: Array[Sprite2D] = _lawn_sprites(title)
+	# Vacuity guards ahead of everything: an empty catalogue, or a lawn that built
+	# no sprites at all, would otherwise satisfy every "each id is present" loop
+	# below without asserting a thing.
+	err = _T.assert_gt(ids.size(), 0, "the catalogue has plants to put on the lawn")
+	if err == "":
+		err = _T.assert_gt(sprites.size(), 0, "and the lawn actually built decorations")
+	if err == "":
+		err = _T.assert_gte(TitleScreen.PLANT_X.size(), ids.size(),
+			"there is a hand-placed slot for every plant — add an x to TitleScreen.PLANT_X, in x 60-371 or x 781-1092")
+	if err == "":
+		err = _T.assert_eq(sprites.size(), ids.size(),
+			"the lawn stands one of each catalogue plant, counted from the catalogue rather than written out")
+	if err != "":
+		_T.free_ui(title)
+		return err
+	var standing: Array[StringName] = []
+	for sprite: Sprite2D in sprites:
+		standing.append(StringName(sprite.get_meta("plant")))
+	for id: StringName in ids:
+		err = _T.assert_true(standing.has(id),
+			"%s is on the title lawn — the list is derived from PlantCatalog.ids(), got %s" % [id, standing])
+		if err != "":
+			break
+		# And it is that plant's own art, not a second copy of a neighbour's: the
+		# old lawn drew the Corn Cobbler twice and no Sundew at all.
+		var shown: Sprite2D = sprites[standing.find(id)]
+		err = _T.assert_eq(shown.texture.resource_path, PlantCatalog.texture_path(id),
+			"%s is drawn with the sprite the catalogue points at" % id)
+		if err != "":
+			break
+	if err == "":
+		# PLANT_ART_WIDTH is a written-down number that plant_span() reasons about
+		# without loading anything. This is what stops it drifting off the art.
+		err = _T.assert_float_eq(float(sprites[0].texture.get_width()), TitleScreen.PLANT_ART_WIDTH, 0.001,
+			"TitleScreen.PLANT_ART_WIDTH is the real board sprite width")
+	_T.free_ui(title)
+	return err
+
+
+## Two constraints the file states and nothing else checks. The buttons are
+## Controls and the lawn is Sprite2Ds, so no UI tool compares them — a decoration
+## parked under the Start button is a sunflower drawn through a label with
+## nothing to say so. The horizon is the other half: the scenery starts at
+## TitleBackdrop.HORIZON and no interactive row may dip into it.
+func test_the_title_lawn_clears_the_button_column_and_the_horizon() -> String:
+	var title := await _T.instantiate_ui("res://game/title.tscn", Vector2i(1152, 648)) as TitleScreen
+	var sprites: Array[Sprite2D] = _lawn_sprites(title)
+	var column: Vector2 = title.button_column()
+	var err: String = _T.assert_gt(sprites.size(), 0, "there are decorations to check")
+	if err == "":
+		err = _T.assert_gt(column.y, column.x, "and the buttons occupy a real column")
+	if err != "":
+		_T.free_ui(title)
+		return err
+	for i: int in sprites.size():
+		var sprite: Sprite2D = sprites[i]
+		var id: StringName = StringName(sprite.get_meta("plant"))
+		# The span the constant claims and the span the built node actually covers
+		# have to be the same thing before either is worth checking against a button.
+		var half: float = float(sprite.texture.get_width()) * sprite.scale.x / 2.0
+		var drawn := Vector2(sprite.position.x - half, sprite.position.x + half)
+		var span: Vector2 = TitleScreen.plant_span(i)
+		err = _T.assert_float_eq(drawn.x, span.x, 0.001, "%s covers the x span plant_span(%d) claims" % [id, i])
+		if err == "":
+			err = _T.assert_float_eq(drawn.y, span.y, 0.001, "and ends where it claims")
+		if err == "":
+			err = _T.assert_true(drawn.y < column.x or drawn.x > column.y,
+				"%s at x %s stays out of the button column %s" % [id, drawn, column])
+		if err != "":
+			break
+	if err != "":
+		_T.free_ui(title)
+		return err
+	var horizon: float = title.size.y * TitleBackdrop.HORIZON
+	err = _T.assert_gt(horizon, 0.0, "the backdrop has a horizon to clear")
+	for node_name: String in ["StartButton", "EndlessButton", "NotebookButton", "HintLabel"]:
+		if err != "":
+			break
+		var node: Control = title.get_node(node_name) as Control
+		err = _T.assert_gte(horizon, node.position.y + node.size.y,
+			"%s ends above the horizon at %.0f" % [node_name, horizon])
+	_T.free_ui(title)
+	return err
+
+
+## The gap this issue was filed for: a grep for `sunflower` or `sundew` across
+## notebook_screen.gd returned nothing, so the two plants unlocked latest and
+## understood least appeared nowhere in the only screen that explains anything.
+## Keyed on PlantCatalog.ids() rather than on a page count, so the fifth plant
+## fails here with the fix in the message.
+func test_the_notebook_has_a_page_for_every_plant_in_the_catalogue() -> String:
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_gt(ids.size(), 0, "the catalogue has plants to explain")
+	if err == "":
+		err = _T.assert_gt(NotebookScreen.PAGES.size(), 0, "and the notebook has pages")
+	if err != "":
+		return err
+	var claimed: Array[int] = []
+	for id: StringName in ids:
+		var page: int = NotebookScreen.page_for_plant(id)
+		err = _T.assert_gte(page, 0,
+			"%s has a notebook page — add one to NotebookScreen.PAGES, kind KIND_PLANT if it was never drawn on paper" % id)
+		if err != "":
+			return err
+		err = _T.assert_false(claimed.has(page), "%s has a page of its own, not one already spoken for" % id)
+		if err != "":
+			return err
+		claimed.append(page)
+		var entry: Dictionary = NotebookScreen.PAGES[page]
+		err = _T.assert_eq(String(entry["caption"]), PlantCatalog.display_name(id),
+			"%s's page is captioned with the name the shop uses" % id)
+		if err == "":
+			err = _T.assert_eq(String(entry["sprite"]), PlantCatalog.texture_path(id),
+				"%s's page shows the sprite the catalogue points at" % id)
+		if err != "":
+			return err
+	err = _T.assert_eq(claimed.size(), ids.size(), "one page per plant was actually walked")
+	if err != "":
+		return err
+	# The other direction: a `plant` key naming something the catalogue has never
+	# heard of is a page about a plant that does not exist, and page_for_plant()
+	# would never find it.
+	var named: int = 0
+	for entry: Dictionary in NotebookScreen.PAGES:
+		var id: StringName = StringName(entry.get("plant", &""))
+		if id == &"":
+			continue
+		named += 1
+		err = _T.assert_true(PlantCatalog.has(id), "the page keyed to '%s' names a real catalogue plant" % id)
+		if err != "":
+			return err
+	return _T.assert_eq(named, ids.size(), "every keyed page is one of the plants, and every plant is keyed")
+
+
+## PAGES got longer, and three separate things count it: the "%d / %d" label,
+## NotebookPage.page_count behind the dots, and go_to()'s modulo. A page added to
+## the table and missed by any one of those is a page you cannot reach, or cannot
+## see you are on.
+func test_the_notebook_pager_dots_and_wrap_agree_with_the_page_count() -> String:
+	var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var total: int = NotebookScreen.PAGES.size()
+	var label: Label = notebook.get_node("PageLabel") as Label
+	var paper: NotebookPage = notebook.get_node("Paper") as NotebookPage
+	var err: String = _T.assert_gt(total, NotebookScreen.drawing_pages().size(),
+		"the notebook holds more than its drawings now — otherwise this walks the old table")
+	if err == "":
+		err = _T.assert_eq(paper.page_count, total, "the dots count every page, not the five photographs")
+	if err == "":
+		err = _T.assert_eq(label.text, "1 / %d" % total, "and the pager opens on the first of that many")
+	var walked: int = 0
+	for page: int in total:
+		if err != "":
+			break
+		notebook.go_to(page)
+		walked += 1
+		err = _T.assert_eq(label.text, "%d / %d" % [page + 1, total], "page %d labels itself" % [page + 1])
+		if err == "":
+			err = _T.assert_eq(paper.current_page, page, "and fills its own dot")
+	if err == "":
+		err = _T.assert_eq(walked, total, "every page was actually turned to")
+	if err == "":
+		notebook.go_to(total)
+		err = _T.assert_eq(label.text, "1 / %d" % total, "Next off the last page wraps to the first")
+	if err == "":
+		err = _T.assert_eq(paper.current_page, 0, "and the dots wrapped with it")
+	if err == "":
+		notebook.go_to(-1)
+		err = _T.assert_eq(label.text, "%d / %d" % [total, total], "Prev off the first wraps to the last")
+	if err == "":
+		err = _T.assert_eq(paper.current_page, total - 1, "and so did the dots")
+	if err == "":
+		# _direction divides by the page count to pick the shorter way round, so it
+		# is the third thing a changed page count can quietly break — a wrap that
+		# nudges the wrong way is a page turn that reads backwards.
+		err = _T.assert_float_eq(NotebookScreen._direction(total - 1, 0), 1.0, 0.001,
+			"wrapping past the end still nudges forwards")
+	if err == "":
+		err = _T.assert_float_eq(NotebookScreen._direction(0, total - 1), -1.0, 0.001,
+			"and wrapping before the start still nudges backwards")
+	_T.free_ui(notebook)
+	return err
+
+
+## The two newest plants were designed in this repo, not on paper, so their pages
+## have no photograph to show and the left half becomes an index card built out of
+## PlantCatalog instead. Exactly one of Drawing and SpecLabel is up at a time, the
+## card says what the catalogue says, and it fits the box — a card that overflows
+## is silently ellipsised, which is how a plant's whole blurb would disappear with
+## nothing on screen to say so.
+func test_the_notebook_plant_pages_fit_their_card() -> String:
+	var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var drawing: Control = notebook.get_node("Drawing") as Control
+	var spec: Label = notebook.get_node("SpecLabel") as Label
+	var source: Label = notebook.get_node("SourceLabel") as Label
+	var err: String = _T.assert_true(NotebookScreen.PANEL.encloses(Rect2(spec.position, spec.size)),
+		"the spec card sits on the paper, not off the edge of the sheet")
+	var font: Font = spec.get_theme_font("font")
+	if err == "":
+		err = _T.assert_true(font != null, "and the card has a font to measure against")
+	if err != "":
+		_T.free_ui(notebook)
+		return err
+	var font_size: int = spec.get_theme_font_size("font_size")
+	var drawn_pages: int = 0
+	var plant_pages: int = 0
+	for page: int in NotebookScreen.PAGES.size():
+		if err != "":
+			break
+		notebook.go_to(page)
+		var entry: Dictionary = NotebookScreen.PAGES[page]
+		if String(entry.get("kind", NotebookScreen.KIND_DRAWING)) == NotebookScreen.KIND_DRAWING:
+			drawn_pages += 1
+			err = _T.assert_true(drawing.visible, "page %d shows the photograph it has" % [page + 1])
+			if err == "":
+				err = _T.assert_false(spec.visible, "and does not also stack a spec card on it")
+			continue
+		plant_pages += 1
+		var id: StringName = StringName(entry.get("plant", &""))
+		err = _T.assert_true(PlantCatalog.has(id), "page %d names a real plant" % [page + 1])
+		if err == "":
+			err = _T.assert_false(drawing.visible,
+				"page %d has no drawing, and does not pretend to one" % [page + 1])
+		if err == "":
+			err = _T.assert_true(spec.visible, "so the spec card is what the left page shows")
+		if err == "":
+			err = _T.assert_true(spec.text.contains("%d seeds" % PlantCatalog.cost(id)),
+				"the card prints %s's real cost off the catalogue, got: %s" % [id, spec.text])
+		if err == "":
+			err = _T.assert_true(spec.text.contains(PlantCatalog.blurb(id)),
+				"and the whole blurb the shop row prints, got: %s" % spec.text)
+		if err == "":
+			err = _T.assert_true(source.text.contains(String(entry["drawing"]).get_file()),
+				"the provenance line still names the file, got: %s" % source.text)
+		if err == "":
+			err = _T.assert_true(source.text.contains("never on paper"),
+				"and says outright that there is no drawing, got: %s" % source.text)
+		if err == "":
+			# The budget. NoteLabel's problem, one page to the left: clip_text turns
+			# an overlong card into a trimmed one rather than a visible overflow, so
+			# nothing on screen would report the missing sentence.
+			var needed: Vector2 = font.get_multiline_string_size(
+				spec.text, HORIZONTAL_ALIGNMENT_LEFT, spec.size.x, font_size)
+			err = _T.assert_gte(spec.size.y, needed.y,
+				"%s's card wraps to %.0fpx in a %.0fpx box — trim it or grow SPEC_BOX" % [
+					id, needed.y, spec.size.y,
+				])
+	if err == "":
+		err = _T.assert_gt(plant_pages, 0,
+			"at least one page is a plant page, or the loop above asserted nothing")
+	if err == "":
+		err = _T.assert_gt(drawn_pages, 0, "and at least one is still a photograph of paper")
+	if err == "":
+		err = _T.assert_eq(drawn_pages, NotebookScreen.drawing_pages().size(),
+			"drawing_pages() counts the same pages the screen treats as drawings")
+	if err == "":
+		# Every catalogue plant can be given a card, not only the two that have one
+		# today — the builder reads PlantCatalog, so a future plant page is content
+		# and prose, never a layout problem.
+		for id: StringName in PlantCatalog.ids():
+			err = _T.assert_gt(NotebookScreen.plant_spec(id).length(), 0,
+				"%s can be written onto a spec card" % id)
+			if err != "":
+				break
+	_T.free_ui(notebook)
+	return err

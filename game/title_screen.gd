@@ -32,17 +32,36 @@ const BUTTON_GAP: float = 12.0
 const HINT_Y: float = 428.0
 
 ## Where a decorative plant's stem meets the ground, and how much bigger than
-## its 64px board size it is drawn here.
+## its board size it is drawn here.
 const PLANT_BASE_Y: float = 514.0
 const PLANT_SCALE: float = 1.7
-## Decorations, as {sprite, x}. Kept clear of the centre column the buttons
-## occupy (x 426-726 at 1152 wide).
-const PLANTS: Array[Dictionary] = [
-	{"sprite": "res://assets/sprites/sunflower.png", "x": 132.0},
-	{"sprite": "res://assets/sprites/corn_cobbler.png", "x": 272.0},
-	{"sprite": "res://assets/sprites/chomp_flower.png", "x": 884.0},
-	{"sprite": "res://assets/sprites/corn_cobbler.png", "x": 1020.0},
-]
+## The board sprites are square art at this size; PLANT_SCALE enlarges them from
+## it. Written down rather than measured off a texture because plant_span()
+## below has to answer "does slot 3 clear the buttons" without loading anything —
+## test_the_title_lawn_shows_every_plant_in_the_catalogue pins it to the real
+## texture width so it cannot drift.
+const PLANT_ART_WIDTH: float = 64.0
+
+## One hand-placed slot per plant, in PlantCatalog.ids() order.
+##
+## The *list* is derived — _build_scenery walks the catalogue, so a plant added
+## to PlantCatalog stands on the lawn without anyone remembering a second list.
+## The lawn used to name its four plants outright and the Sticky Sundew was
+## therefore missing from the first thing a new player ever sees.
+##
+## The *placement* is not derived, and deliberately so: these four x positions
+## were chosen by eye against the backdrop's furrows, not divided evenly out of
+## the width, for the same reason nothing on this screen is in a Container. The
+## pairing that falls out of catalogue order happens to read, too — the two
+## tier-1 plants stand left of the buttons and the two you have to open a packet
+## for stand right of them.
+##
+## Every slot has to keep its whole sprite clear of the centre column the buttons
+## occupy (x 426-726 at 1152 wide). At PLANT_SCALE a decoration is 109px wide, so
+## a new slot may only live in x 60-371 or x 781-1092; there is room for about one
+## more in each band before they start to crowd. If the catalogue outgrows the
+## slots, lawn_plants() drops the surplus and says so — see the note there.
+const PLANT_X: Array[float] = [132.0, 272.0, 884.0, 1020.0]
 ## The bugs the plants are there to fight, marching across the soil.
 const PEST_BASE_Y: float = 606.0
 const PEST_SCALE: float = 1.15
@@ -239,6 +258,50 @@ func _link_focus(buttons: Array[Button]) -> void:
 		buttons[i].focus_next = below.get_path()
 
 
+## Which plants the lawn shows, in catalogue order.
+##
+## A catalogue longer than PLANT_X is a layout decision somebody has to make, not
+## something to paper over by cramming a fifth sprite into a band sized for two.
+## So the surplus is dropped, a warning names exactly which plants are not on the
+## title screen, and test_the_title_lawn_shows_every_plant_in_the_catalogue fails
+## with the fix in its message: add an x to PLANT_X inside one of the two clear
+## bands documented there, or move the lawn to two rows.
+## Built with a loop rather than `ids.slice(...)`: Array.slice hands back an
+## untyped Array, and returning one of those as Array[StringName] is a runtime
+## error on a path that only fires the day somebody adds the fifth plant — which
+## is the worst possible day to find out.
+static func lawn_plants() -> Array[StringName]:
+	var ids: Array[StringName] = PlantCatalog.ids()
+	if ids.size() <= PLANT_X.size():
+		return ids
+	var shown: Array[StringName] = []
+	var dropped: Array[StringName] = []
+	for i: int in ids.size():
+		if i < PLANT_X.size():
+			shown.append(ids[i])
+		else:
+			dropped.append(ids[i])
+	push_warning("TitleScreen: %d plants but %d lawn slots — %s is not on the title screen. Add an x to PLANT_X."
+		% [ids.size(), PLANT_X.size(), dropped])
+	return shown
+
+
+## The x span a decoration in `slot` covers on screen, as (left, right). The
+## sprite is centred on its slot, so this is the number the button column has to
+## be checked against — not PLANT_X itself, which is only the stem.
+static func plant_span(slot: int) -> Vector2:
+	var half: float = PLANT_ART_WIDTH * PLANT_SCALE / 2.0
+	return Vector2(PLANT_X[slot] - half, PLANT_X[slot] + half)
+
+
+## The x span the buttons occupy, as (left, right). Derived from BUTTON_WIDTH and
+## the viewport rather than written out, so the "426-726" in PLANT_X's comment
+## stays a description of this rather than a second source of truth.
+func button_column() -> Vector2:
+	var centre: float = float(get_viewport_width()) / 2.0
+	return Vector2(centre - BUTTON_WIDTH / 2.0, centre + BUTTON_WIDTH / 2.0)
+
+
 ## Sprite2D, not TextureRect, for every decoration.
 ##
 ## These move, and two of them walk off the edge of the screen on purpose. As
@@ -247,15 +310,19 @@ func _link_focus(buttons: Array[Button]) -> void:
 ## Controls and meaningless about scenery. A Node2D is simply not what those
 ## checks look at, which is the honest way to say "this is not UI".
 func _build_scenery() -> void:
-	for entry: Dictionary in PLANTS:
-		var sprite := _make_sprite(String(entry["sprite"]), PLANT_SCALE)
-		sprite.name = "Plant_%d" % _plants.size()
+	for id: StringName in lawn_plants():
+		var slot: int = _plants.size()
+		var sprite := _make_sprite(PlantCatalog.texture_path(id), PLANT_SCALE)
+		sprite.name = "Plant_%d" % slot
+		# Which plant is standing where, for a test and for the bridge — a node
+		# named by its slot cannot answer "is the Sundew on the lawn".
+		sprite.set_meta("plant", id)
 		# Origin at the base of the stem, art shifted up above it. `offset` is
 		# in texture pixels (applied before `scale`), and putting the node's own
 		# origin in the soil is what makes the sway below a lean rather than a
 		# slide — a Sprite2D rotates about its position, not about its picture.
 		sprite.offset = Vector2(0.0, -sprite.texture.get_height() / 2.0)
-		sprite.position = Vector2(float(entry["x"]), PLANT_BASE_Y)
+		sprite.position = Vector2(PLANT_X[slot], PLANT_BASE_Y)
 		add_child(sprite)
 		_plants.append(sprite)
 
@@ -284,7 +351,7 @@ func _process(delta: float) -> void:
 		return
 	_elapsed += delta
 	for i: int in _plants.size():
-		# Each plant is given its own phase, or four plants sway as one object.
+		# Each plant is given its own phase, or the whole lawn sways as one object.
 		_plants[i].rotation = sin(_elapsed * SWAY_RATE + float(i) * 1.7) * SWAY_RADIANS
 	_march_pests()
 

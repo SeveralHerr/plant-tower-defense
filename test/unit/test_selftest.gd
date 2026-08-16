@@ -4007,3 +4007,40 @@ func test_the_notebook_over_a_pause_is_not_frozen_by_the_pause_that_owns_it() ->
 	await _pump(game)
 	_T.free_ui(game)
 	return err
+
+
+## The subheading counts itself from PAGES, so its text grows as pages are added
+## — and its box is the full panel width while its bottom edge sits 5px below
+## PANE_LABEL_Y. That means the two pane labels are held off it by nothing but
+## the centred text being narrower than the panel.
+##
+## The pairwise-overlap test does catch the collision, but only once the text has
+## grown past the pane label's x — it reports a 60px intersection between two
+## Controls that both fit their own boxes, which reads like a positioning bug in
+## the labels rather than a sentence that got too long. This measures the actual
+## invariant, so the failure names the cause.
+func test_the_notebook_subheading_stays_narrower_than_the_paper() -> String:
+	var err := ""
+	var book := await _T.instantiate_ui(
+		NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var subhead := book.get_node_or_null("Subheading") as Label
+	err += _T.assert_true(subhead != null, "the notebook has a Subheading")
+	if subhead == null:
+		_T.free_ui(book)
+		return err
+
+	# Measured through the font, not get_minimum_size(): a Label with clip_text
+	# reports ~1px minimum, so the obvious form of this assertion cannot fail.
+	var font: Font = subhead.get_theme_font("font")
+	var size_px: int = subhead.get_theme_font_size("font_size")
+	err += _T.assert_gt(size_px, 0, "the subheading resolved a font size")
+	var drawn: float = font.get_string_size(
+		subhead.text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size_px).x
+	err += _T.assert_gt(drawn, 0.0, "the subheading has text to measure")
+	err += _T.assert_true(
+		drawn <= NotebookScreen.SUBHEAD_MAX_WIDTH,
+		"the subheading text draws %.0fpx, budget is %.0f — shorten it, or move PANE_LABEL_Y (%s)"
+			% [drawn, NotebookScreen.SUBHEAD_MAX_WIDTH, subhead.text])
+
+	_T.free_ui(book)
+	return err
