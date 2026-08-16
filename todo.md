@@ -1,51 +1,53 @@
 # todo
 
-**Cycle 24 of 30.** Bump this each time you refill the Items list. See the Workflow
+**Cycle 25 of 30.** Bump this each time you refill the Items list. See the Workflow
 block in `CLAUDE.md` — this list is refilled, never left fully ticked.
 
-> Cycle 23 shipped 8 items in one go, at the user's explicit request to fan out
-> further — three parallel git-worktree-isolated subagents instead of the usual one:
-> `129` (pest facing, cardinal-snapped rotation off each route leg), `3t9` (pest
-> corpse fades `modulate.a` instead of popping), `9ti` (RunSummary's entrance
-> branches on `won` — a faster overshoot rise for a win, a heavier plain rise for a
-> loss), `d2a` (wave-clear gets its own banner + `Sfx.WAVE_CLEARED`, not just a
-> status-row line), `7mi` (the prep bar pulses once under 2s left), `04x` (`Plant`'s
-> dead `_wobble_time` field now drives idle sway), `y62` (Corn Cobbler, Chomp Flower
-> and Sticky Sundew each sound their own attack instead of relying on the pest's
-> reaction cue), and `wfq` (a packet purchase gets a short flicker through
-> candidates before the reveal banner). All three worktree branches merged into
-> `main` cleanly (one real conflict, in `log-devtools.md`'s append-only tail — kept
-> both entries); a full `/verify` on the merged result stayed at 416/416 with no
-> new findings. Two real harness gaps were found and filed upstream along the way
-> (`launch -- --devtools-session X` silently fails to wire the bus; `GODOT_USERDATA`
-> does not actually isolate `user://` despite what this project's own generated
-> CLAUDE.md implies) — SeveralHerr/godot-selftest-harness#28 — plus a local skill,
-> `.claude/skills/godot-devtools-concurrent-launch/SKILL.md`, so the next fan-out
-> session hits the fix on the first try instead of losing time to it again. Four new
-> juice ideas went into `kanban.md`'s cycle 23 block; this cycle's items are exactly
-> those four.
+> Cycle 24 shipped 5 items via three more parallel git-worktree-isolated subagents:
+> `7o3` (a kernel hit now flashes the pest it connects with, `Pest.flash_hit()`),
+> `qij` (`StickySundew._next_wash_order` resets once the board's last patch is gone),
+> `yzt` (the title screen backdrop gained drifting clouds, swaying tufts, and a
+> breathing glow — all gated behind `animations_enabled()`), `9o6` (the notebook's
+> page-counter dot now eases toward the target page instead of snapping ahead of the
+> turn tween), and `btq` (a real music system — two crossfading Kenney "Music Loops"
+> tracks, title/in-run beds, `Sfx`'s mute toggle now silences both). All three
+> worktree branches merged clean into `main`; two real merge conflicts, both in
+> append-only files two sessions wrote to at the same tail (`log-devtools.md` twice,
+> `test/unit/test_selftest.gd` once) — resolved by keeping both sides' content, no
+> code lost. Full `/verify` on the merged result: 432/432 tests, clean lint/import,
+> live-bridge pass with zero runtime errors, screenshot-confirmed the new ambient
+> motion actually renders. Three new juice ideas went into `kanban.md`'s cycle 24
+> block, all grown directly from what this cycle just shipped (a partial cue,
+> `flash_hit()` only wired to one of three attackers, music's binary volume); this
+> cycle's five items are those three plus two pulled forward from the original
+> cycle-20/cycle-12 idea backlog that had never been filed.
 
 ## Items
 
-- [ ] **7o3 — A kernel hit and a kernel miss both just vanish.** `Kernel._physics_process`
-  (kernel.gd:60-72) calls `queue_free()` identically whether it left the board or
-  just landed a hit — no impact flash, spark, or distinct vanish either way. Every
-  plant now sounds its own attack and every pest death fades; this is the one link
-  between them with nothing marking a connect.
+- [ ] **1hr — `Pest.flash_hit()` exists and only `Kernel` ever calls it.** A ranged
+  kernel hit now flashes the pest it connects with; `ChompFlower._bite()` and
+  `StickySundew._claim()` land real damage/kills with no visual tell at all. Call it
+  from both at the moment damage lands.
 
-- [ ] **yzt — The title screen has zero motion anywhere.** `TitleBackdrop`'s six
-  `_draw_*` functions are all static geometry, no `Tween` in the file. The first
-  screen every player sees is now the only one with no idle motion at all, against
-  everything else this project has been busy adding.
+- [ ] **32u — A refused plant upgrade has no denial cue, unlike plant/packet
+  purchases.** `Game.upgrade_selected()` (game.gd:1012-1026) still answers an
+  underfunded upgrade with only `hud.show_message()` — the exact gap `8kx` closed
+  for the other two purchase paths.
 
-- [ ] **btq — No music system exists, only one-shot SFX.** `Sfx.SOUNDS` is entirely
-  footsteps/impacts/stingers; nothing loops. A bigger ask than the others here —
-  stand up a title theme + in-run bed at minimum, respecting the existing mute
-  toggle.
+- [ ] **gle — Music has exactly one volume: on or off.** `Music.BASE_VOLUME_DB` is a
+  fixed constant; the only control anywhere is `Sfx.set_muted()`/`KEY_M`, silencing
+  SFX and music together. At minimum, give Music its own mute/volume state.
 
-- [ ] **9o6 — Notebook page dots snap while the page turns with a tween.**
-  `NotebookPage.current_page`'s setter is a bare `queue_redraw()`; the dot jumps to
-  the new page a full tween ahead of `_play_turn()`'s own fade.
+- [ ] **o2b — A swept husk's seeds appear on the HUD with no visual connection to
+  where it was collected.** `Game._click_at` hands the value straight to
+  `bank.add_seeds()`; only a queued caption connects the click to the Seeds stat
+  changing. A seed glyph flying from the husk's position to the label would carry
+  the payout across the screen.
+
+- [ ] **4lv — Three warning colours on the board are the same red at different
+  alphas.** Lane pressure, a dying plant's health bar, and an armed Uproot all
+  resolve through `GardenTheme.DANGER` — worth a second channel (shape, hatch, tick
+  mark) so alpha alone doesn't have to carry three different meanings.
 
 - [ ] **Add cool new features or concrete improvements** (UX, game juice, animations,
   enhancements, or full features) to `kanban.md`.
