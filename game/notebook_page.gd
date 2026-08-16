@@ -35,13 +35,39 @@ const DOT_SPACING: float = 20.0
 
 ## Which dot is filled. Set by NotebookScreen.go_to(); a plain setter rather
 ## than a method so the redraw cannot be forgotten at a call site.
+##
+## The setter itself only records the target — see `_display_page` for the
+## value _draw_dots() actually reads. Without that split the filled dot used
+## to jump to the new page the instant this changed, a full page-turn ahead of
+## NotebookScreen._play_turn()'s own fade on the same call.
 var current_page: int = 0:
 	set(value):
+		var previous: int = current_page
 		current_page = value
-		queue_redraw()
+		if value == previous:
+			return
+		if not GardenTheme.animations_enabled() or not is_inside_tree():
+			_display_page = float(value)
+			return
+		var tween := create_tween()
+		# NotebookScreen.TURN_SECONDS, not a value written out here — this
+		# marker turns *with* that fade, so it borrows the same window rather
+		# than risking a second number that could drift from it.
+		tween.tween_property(self, "_display_page", float(value), NotebookScreen.TURN_SECONDS) \
+			.set_trans(Tween.TRANS_CUBIC) \
+			.set_ease(Tween.EASE_OUT)
 var page_count: int = 1:
 	set(value):
 		page_count = value
+		queue_redraw()
+
+## Continuous position of the filled dot, in page units — current_page is the
+## destination, this is where the marker actually is while it is easing
+## toward it. A plain float rather than an int so _draw_dots() can lerp the
+## marker's centre smoothly between two dot slots instead of snapping.
+var _display_page: float = 0.0:
+	set(value):
+		_display_page = value
 		queue_redraw()
 
 
@@ -104,8 +130,17 @@ func _draw_dots() -> void:
 	var span: float = float(page_count - 1) * DOT_SPACING
 	var start: float = size.x / 2.0 - span / 2.0
 	for i: int in page_count:
-		var centre := Vector2(start + float(i) * DOT_SPACING, DOTS_Y)
-		if i == current_page:
-			draw_circle(centre, DOT_RADIUS, GardenTheme.LEAF_DARK)
-		else:
-			draw_arc(centre, DOT_RADIUS, 0.0, TAU, 12, Color(GardenTheme.INK, 0.35), 1.5)
+		draw_arc(Vector2(start + float(i) * DOT_SPACING, DOTS_Y), DOT_RADIUS, 0.0, TAU, 12, Color(GardenTheme.INK, 0.35), 1.5)
+	# Drawn over the hollow row rather than swapped in for one of them, so the
+	# marker is free to sit between two dots mid-turn — see _display_page —
+	# instead of only ever being able to land on one.
+	draw_circle(Vector2(dot_marker_x(_display_page, page_count, size.x), DOTS_Y), DOT_RADIUS, GardenTheme.LEAF_DARK)
+
+
+## Pure: the filled marker's centre x for a fractional display position and
+## the current dot layout, split out of _draw_dots() so a test can assert the
+## marker lerps smoothly between two dot slots without waiting on a live tween.
+static func dot_marker_x(display_page: float, dot_count: int, width: float) -> float:
+	var span: float = float(dot_count - 1) * DOT_SPACING
+	var start: float = width / 2.0 - span / 2.0
+	return start + display_page * DOT_SPACING

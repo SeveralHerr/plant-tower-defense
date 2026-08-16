@@ -2586,7 +2586,6 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
 
 - Harness: **0.25.0**.
 
-
 ## 2026-08-16 — Kernel hit cue (plant-tower-defense-7o3) + StickySundew wash-order reset (plant-tower-defense-qij)
 
 - Value: **warranted** — the runtime confirmed two things a diff can't: that the
@@ -2637,3 +2636,38 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     crash" into "verified cleanly, noted a transient" — the same shape as the
     existing G- entry about `--import` racing another worktree's concurrent
     import, just caught one step earlier (segfault vs. truncated cache).
+
+## 2026-08-16 — Title backdrop ambient motion + notebook page-dot easing (plant-tower-defense-yzt, plant-tower-defense-9o6)
+
+- Value: **warranted** — the live bridge caught something a diff/headless-only pass
+  could not: whether the eased dot actually trails the page mid-turn, not just whether
+  the interpolation math compiles.
+  - Expected: with animations enabled and the tween running, `current_page` (the
+    target, set synchronously) and `_display_page` (the eased value) would visibly
+    diverge for a moment right after a page turn.
+  - Got: after `set-game-speed 0.02` then pressing NextButton on the live notebook,
+    `get-state --node /root/TitleScreen/Notebook/Paper --property current_page
+    --property _display_page` read `current_page: 2` / `_display_page:
+    1.14481645822525` in the same round trip — the setter had already advanced the
+    target while the marker was still mid-ease. A cropped `screenshot` of the dot row
+    at that moment showed the filled dot sitting visibly between two hollow slots,
+    matching the number.
+  - Found: nothing broken — this was a confirmation run, not a bug hunt. It is the
+    only way this specific claim ("it eases, not snaps") could be checked at all: a
+    headless test can assert the interpolation formula and the instant-snap fallback
+    (added two for exactly that), but headless never runs a live tween to sample
+    mid-flight.
+  - Cheaper: the two new headless tests (`dot_marker_x` interpolation,
+    `current_page`'s instant fallback with animations off) covered most of the
+    confidence for a fraction of the cost. The live pass exists only to close the one
+    gap they structurally cannot: proving a real tween is actually mid-flight when
+    sampled. Also used `screenshot` on the bare title screen to visually confirm the
+    new cloud puffs render subtly and don't clash with the wordmark/buttons, and
+    `findings --no-scenes` for a clean sweep before quitting.
+
+- Gap: no gaps this turn. `launch --isolated --kill-survivors` worked first try per
+  the local skill; the one hiccup was the very first `launch` failing with "Main
+  scene's path could not be resolved from UID" because `--import` had not yet run in
+  this fresh worktree checkout — expected, already documented, not a new gap.
+
+- Harness: **0.25.0**.

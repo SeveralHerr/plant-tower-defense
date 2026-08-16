@@ -796,6 +796,38 @@ func test_notebook_content_stays_on_the_paper() -> String:
 	return err
 
 
+func test_notebook_page_dot_marker_lerps_between_dots() -> String:
+	## NotebookPage.current_page's setter eases _display_page toward the
+	## target instead of snapping — see the setter's own comment — and
+	## _draw_dots() reads that fractional value through dot_marker_x() rather
+	## than an integer index. This is the interpolation itself, tested
+	## without a live tree or a tween to wait on.
+	var at_zero: float = NotebookPage.dot_marker_x(0.0, 3, 300.0)
+	var at_one: float = NotebookPage.dot_marker_x(1.0, 3, 300.0)
+	var midpoint: float = NotebookPage.dot_marker_x(0.5, 3, 300.0)
+	var err: String = _T.assert_float_eq(midpoint, (at_zero + at_one) / 2.0, 0.001,
+		"halfway through a turn the marker sits halfway between the two dots")
+	if err == "":
+		err = _T.assert_float_eq(at_one - at_zero, NotebookPage.DOT_SPACING, 0.001,
+			"a full page advances the marker by exactly one dot's spacing")
+	return err
+
+
+func test_notebook_page_current_page_moves_the_dot_without_waiting_on_a_tween() -> String:
+	## Headless never pumps the frame a tween needs
+	## (GardenTheme.animations_enabled() is false there), so current_page's
+	## setter falls back to setting _display_page directly — the same
+	## fallback Plant.play_exit_and_free() and TitleScreen._play_entrance()
+	## use — or every headless read of the dot would see it stuck on page 0.
+	var paper := await _T.instantiate_ui(NotebookPage.new(), Vector2i(600, 500)) as NotebookPage
+	paper.page_count = 3
+	paper.current_page = 2
+	var err: String = _T.assert_float_eq(paper._display_page, 2.0, 0.001,
+		"the marker lands on the target page immediately when animations are off")
+	_T.free_ui(paper)
+	return err
+
+
 ## Pairs that are supposed to share pixels: a matte and the photo mounted on it.
 const NOTEBOOK_NESTED_PAIRS: Array[Array] = [["DrawingFrame", "Drawing"]]
 
@@ -979,6 +1011,69 @@ func test_title_controls_all_clear_the_scenery() -> String:
 		if err != "":
 			break
 	_T.free_ui(title)
+	return err
+
+
+func test_title_backdrop_tuft_lean_is_zero_at_rest_and_stays_bounded() -> String:
+	## TitleBackdrop's tufts lean a few px in a slow breeze — TitleBackdrop.tuft_lean()
+	## is split out of _draw_tufts() so this can assert the sway without
+	## instantiating a Control or drawing a frame.
+	var err: String = _T.assert_float_eq(TitleBackdrop.tuft_lean(0.0, 0.0), 0.0, 0.0001,
+		"no lean the instant the backdrop starts, at the tuft with no phase offset")
+	if err == "":
+		for t: float in [0.3, 1.1, 4.0, 9.5]:
+			var lean: float = TitleBackdrop.tuft_lean(t, 40.0)
+			err = _T.assert_true(absf(lean) <= TitleBackdrop.TUFT_SWAY_PX + 0.0001,
+				"lean at t=%.1f (%.3f) stays within TUFT_SWAY_PX" % [t, lean])
+			if err != "":
+				break
+	return err
+
+
+func test_title_backdrop_glow_pulse_is_one_at_rest_and_stays_bounded() -> String:
+	## The glow behind the wordmark breathes rather than snapping — see
+	## TitleBackdrop.glow_pulse(), split out of _draw_glow() the same way.
+	var err: String = _T.assert_float_eq(TitleBackdrop.glow_pulse(0.0), 1.0, 0.0001,
+		"the glow starts at its resting radius")
+	if err == "":
+		for t: float in [0.5, 2.0, 7.0]:
+			var pulse: float = TitleBackdrop.glow_pulse(t)
+			err = _T.assert_true(
+				pulse >= 1.0 - TitleBackdrop.GLOW_PULSE_AMOUNT - 0.0001
+					and pulse <= 1.0 + TitleBackdrop.GLOW_PULSE_AMOUNT + 0.0001,
+				"pulse at t=%.1f (%.4f) stays within GLOW_PULSE_AMOUNT of 1.0" % [t, pulse])
+			if err != "":
+				break
+	return err
+
+
+func test_title_backdrop_clouds_stay_inside_their_wrapped_band() -> String:
+	## _draw_clouds() wraps each cloud back to the far edge via cloud_x() —
+	## the same fmod-and-margin trick TitleScreen._march_pests uses along the
+	## ground, one band up — rather than letting it drift off unbounded.
+	var w: float = 1152.0
+	var err := ""
+	for cloud: Dictionary in TitleBackdrop.CLOUDS:
+		for t: float in [0.0, 30.0, 500.0]:
+			var x: float = TitleBackdrop.cloud_x(cloud, t, w)
+			err = _T.assert_true(
+				x >= -TitleBackdrop.CLOUD_MARGIN - 0.001 and x <= w + TitleBackdrop.CLOUD_MARGIN + 0.001,
+				"cloud at t=%.0f (x=%.1f) stays inside its wrapped band" % [t, x])
+			if err != "":
+				return err
+	return err
+
+
+func test_title_backdrop_ambient_motion_is_gated_off_headless() -> String:
+	## GardenTheme.animations_enabled() is false under the test runner
+	## (headless), so _process() must not advance _elapsed there — otherwise
+	## this backdrop would be redrawing every frame in the one environment it
+	## can never actually be watched in.
+	var backdrop := TitleBackdrop.new()
+	backdrop._process(1.0)
+	var err: String = _T.assert_float_eq(backdrop._elapsed, 0.0, 0.0001,
+		"elapsed does not advance while animations are disabled")
+	backdrop.free()
 	return err
 
 
