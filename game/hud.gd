@@ -362,6 +362,9 @@ var _health_fill: ColorRect
 var _health_text: Label
 var _banner: Label
 var _banner_note: Label
+## Last child of `root`, so anything added here draws over every panel and
+## button — where a travelling seed glyph belongs. See fly_seed_glyph().
+var _fx_layer: Container
 
 var _plant_buttons: Dictionary = {}
 var _banner_left: float = 0.0
@@ -403,6 +406,30 @@ func _ready() -> void:
 	_build_top_bar(root)
 	_build_side_panel(root)
 	_build_banner(root)
+
+	# Added last, so its children paint over the panels and buttons above —
+	# a travelling glyph hidden behind the side panel would defeat the point.
+	#
+	# A bare Control here was two contradictory findings at once. Full-rect
+	# and zero-size are the only two shapes tried: full-rect reads to
+	# _hud_rects (test_selftest.gd) and to a human as a giant pane that
+	# "overlaps" every panel and button on the bar, since neither knows this
+	# one is never meant to be a surface; zero-size dodges that but then
+	# reads to devtools findings' own ui_zero_size check as a visible Control
+	# nobody sized — the exact shape of "the game forgot this exists" it is
+	# built to catch, without a waiver list to say otherwise.
+	#
+	# Container (base class, not a layout subclass) is full-rect and passes
+	# ui_zero_size, and _hud_rects skips it by class rather than by
+	# guessing intent — the same reason it already skips ColorRect. Base
+	# Container does no auto-layout of its own; that behaviour belongs to its
+	# subclasses (VBoxContainer, GridContainer, ...), so a SeedGlyph's own
+	# `position`, set once in SeedGlyph.launch(), is left alone.
+	_fx_layer = Container.new()
+	_fx_layer.name = "FxLayer"
+	_fx_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_fx_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_fx_layer)
 
 
 ## The top row is an HBoxContainer, not four labels at hand-picked x positions.
@@ -1024,6 +1051,28 @@ func _ease_threat_tint(target: Color) -> void:
 	_threat_tween.tween_method(
 		func(c: Color) -> void: _wave_label.add_theme_color_override("font_color", c),
 		from, target, THREAT_FADE_SECONDS)
+
+
+## Carries a swept husk's payout across the screen: a SeedGlyph.launch() from
+## `from_screen` (the husk's position, already translated to screen space by
+## the caller — see Game._on_husk_collected) to the Seeds label, sized off
+## `HuskLayer.radius_for(value)` so the disc reads as the husk it came from.
+##
+## No-op with animations off, and the no-op is total — the node is never
+## created, not created-and-left-static the way an entrance tween's gate
+## works elsewhere. This effect has no "final state" to reach: the seeds are
+## already banked and the husk already erased by the time the signal that
+## calls this fires (CompostMeter.collect_at), so a game that skips the
+## flourish loses nothing a player could point at.
+func fly_seed_glyph(from_screen: Vector2, value: int) -> void:
+	if not GardenTheme.animations_enabled():
+		return
+	if _fx_layer == null or _seeds_label == null:
+		return
+	var glyph := SeedGlyph.new()
+	_fx_layer.add_child(glyph)
+	glyph.launch(from_screen, _seeds_label.get_global_rect().get_center(),
+		HuskLayer.radius_for(value))
 
 
 ## The payout / loss / sweep punch: seeds, lives and compost jump to

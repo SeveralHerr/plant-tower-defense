@@ -8,7 +8,12 @@ extends Node
 ## rots, so staying engaged with a clearing lane earns more than tabbing away.
 ## That's why this is seeds-in-seeds-out rather than a second currency to read.
 
-signal husk_collected(value: int)
+## `at` is this husk's board position at the moment it was swept — carried so
+## a listener can draw something at the click rather than only knowing a
+## number changed. See HuskLayer for the same position drawn while the husk
+## was still on the ground, and Hud.fly_seed_glyph for the one caller that
+## reads it today.
+signal husk_collected(value: int, at: Vector2)
 ## A husk the player never got to. This used to happen in total silence — the
 ## husk simply stopped being drawn — which made "you were too slow" and "there
 ## was never a husk there" the same event from the player's chair. Game listens
@@ -143,10 +148,12 @@ func collect_at(at: Vector2) -> int:
 			best_id = id
 	if best_id == null:
 		return 0
-	var value: int = int((_husks[best_id] as Dictionary)["value"])
+	var husk: Dictionary = _husks[best_id]
+	var value: int = int(husk["value"])
+	var husk_position: Vector2 = husk["position"]
 	_husks.erase(best_id)
 	total_collected += value
-	husk_collected.emit(value)
+	husk_collected.emit(value, husk_position)
 	return value
 
 
