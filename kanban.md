@@ -1228,3 +1228,33 @@ of what the design doc already says, rather than being bolted on.
   exact line. A `BUDGETS.md`, or better a devtools verb that prints every declared
   budget with its current headroom, would make the set visible before someone
   goes looking.
+
+### New this cycle (16 of 30) — grown from the features above
+
+- **A test that passes for its own reasons is invisible until the order changes.**
+  `test_kernels_launch` read `kernels[0]` out of a tree-global group and measured a
+  leaked object every run; it was green for months and red the moment four unrelated
+  tests were appended. Nothing enumerates the other group reads — `pests`, `husks`,
+  `kernels`, `plants` — and any of them taken by index has the same defect. A sweep
+  for `get_nodes_in_group(...)[0]` in `test/` would find the rest in one pass.
+
+- **Tests leak nodes into groups and nothing notices.** The root cause under the above:
+  a test that builds a Kernel and does not free it leaves it in the group for every
+  later test. `_T.free_ui` is called on hosts, but a kernel spawned by `_act` is
+  parented to the host's parent, not the host. A per-test assertion that the tree's
+  group counts return to where they started would catch the whole class.
+
+- **Three budgets are tight and one is spent, and the game has no idea.**
+  `cmd budgets` now says so from outside, but nothing inside the game reacts.
+  `SIMULTANEOUS_PEST_CEILING` at 40 of 40 means the road has no slack for any future
+  wave shape; the two HUD budgets sit within 8 px and are *coupled*, since widening a
+  readout is paid out of the row sum. The interesting version is a startup
+  `push_warning` when any budget crosses its own tight threshold, so the next person
+  to spend one hears about it on the next run rather than on the next audit.
+
+- **Engagement is recorded at the exit and nowhere else.** `was_engaged()` answers one
+  question at one instant. The same flag, sampled per road cell, would say *where* the
+  garden stopped reaching — which is the coverage-hole map the post-mortem's "walked in
+  untouched" line currently only aggregates. That is the honest next step for the escape
+  work, and it is a genuinely different map from lane pressure: pressure says where they
+  got to, this would say where nothing could touch them.
