@@ -102,6 +102,12 @@ var health: float = MAX_HEALTH
 
 var _sprite: Sprite2D
 var _wobble_time: float = 0.0
+## Idle sway, the same shape TitleScreen's decorative lawn already uses
+## (TitleScreen.SWAY_RADIANS / SWAY_RATE): a small continuous rock rather than
+## a one-shot event tween like play_exit_and_free()'s pop. Kept subtle on
+## purpose — this runs on every placed plant, every frame, for the whole run.
+const WOBBLE_RADIANS: float = 0.055
+const WOBBLE_RATE: float = 1.15
 var _selected: bool = false
 var _health_back: ColorRect = null
 var _health_bar: ColorRect = null
@@ -255,7 +261,27 @@ func play_exit_and_free() -> void:
 ## plant. Same trap SelectionMarker's header describes for `_draw`.
 func _physics_process(delta: float) -> void:
 	_regrow(delta)
+	_wobble(delta)
 	_act(delta, _live_pests())
+
+
+## Advances the idle-sway clock every frame regardless of the gate below, so
+## `_wobble_time` stays meaningful (rather than frozen at 0) if animations are
+## ever toggled on mid-run; only the rotation it drives is gated. Reads `cell`
+## for a per-plant phase so a bed of identical plants doesn't rock as one
+## rigid slab — the same reason TitleScreen phases its lawn by array index,
+## which a planted Plant has none of.
+func _wobble(delta: float) -> void:
+	_wobble_time += delta
+	if _sprite == null or not GardenTheme.animations_enabled():
+		return
+	_sprite.rotation = sin(_wobble_time * WOBBLE_RATE + _wobble_phase(cell)) * WOBBLE_RADIANS
+
+
+## Pure: per-cell phase offset for the sway above. Split out so a test can
+## assert two neighbouring cells land on different phases without a live tree.
+static func _wobble_phase(at: Vector2i) -> float:
+	return float(at.x) * 1.7 + float(at.y) * 0.9
 
 
 ## One step of recovery. A destroyed plant never comes back — Game frees the node
