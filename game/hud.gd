@@ -1062,6 +1062,13 @@ func shake_packet_button(tier: StringName) -> void:
 	_shake_control(_rare_packet_button if tier == &"rare" else _packet_button)
 
 
+## A refused plant upgrade, shaking the Upgrade button itself — unlike a plant
+## placement refusal (see shake_plant_button), the control the player reached
+## for and the control that answers "no" are the same one here.
+func shake_upgrade_button() -> void:
+	_shake_control(_upgrade_button)
+
+
 ## The denial cue itself: a few degrees left, right, and back to rest. See
 ## DENIAL_SHAKE_SECONDS for why this animates `rotation` and not `position`.
 func _shake_control(control: Control) -> void:
