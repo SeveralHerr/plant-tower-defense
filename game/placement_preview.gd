@@ -31,6 +31,26 @@ const PREVIEW_ARM: float = 9.0
 
 ## Dim relative to SelectionMarker.MARKER_COLOR: a hover is a suggestion, and
 ## it should not compete with the marker on the plant actually selected.
+##
+## Derived from the palette rather than hand-typed, which is the last pair the
+## GardenTheme merge missed. They were `Color(0.55, 0.95, 0.62, 0.75)` and
+## `Color(0.95, 0.42, 0.36, 0.75)` — close to these, but independently chosen:
+## the old blocked red was *more* saturated in the red channel than DANGER
+## itself, so it was not a lightening of anything and no amount of reading the
+## constant would have told you it was meant to be the same red.
+##
+## They stay literals because they have to: `Color.lightened()` is a method
+## call, and a GDScript `const` initialiser must be a constant expression, so
+## `Color(GardenTheme.DANGER.lightened(0.25), 0.75)` is a hard parse error —
+## which cascades into every script that depends on this one.
+##
+## So the tie to the palette is enforced by a test instead of by the compiler:
+## test_the_placement_brackets_come_from_the_palette_and_still_look_the_same
+## asserts each of these is within a small tolerance of the palette colour it
+## belongs to, lightened. Change DANGER without changing this and the suite
+## says so. `lightened` rather than the raw palette value because the dimming
+## is the point — a hover is a suggestion, and the marker on the plant the
+## player actually selected has to stay the loudest thing on the board.
 const OK_COLOR := Color(0.55, 0.95, 0.62, 0.75)
 const BLOCKED_COLOR := Color(0.95, 0.42, 0.36, 0.75)
 ## Dimmer still — the ring covers a large area, so at bracket alpha it would

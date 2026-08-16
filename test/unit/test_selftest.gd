@@ -4236,3 +4236,65 @@ func test_the_husk_margin_reads_the_road_but_does_not_depend_on_it() -> String:
 			"the margin is CELL/2 - COLLECT_RADIUS, both constants")
 	_T.free_ui(board)
 	return err
+
+
+## The placement brackets were the last pair of hand-typed colours the
+## GardenTheme merge missed, and the reason they survived it is instructive:
+## BLOCKED_COLOR was *more* saturated in the red channel than DANGER, so it
+## did not look like a copy of anything. A grep for the palette's literals
+## would never have found it.
+##
+## This pins two separate things. That the brackets still derive from the
+## palette — so the next person who wants a different red changes it in one
+## place — and that the derivation still LANDS where the hand-typed colours
+## were, so unifying the source did not quietly restyle the board.
+func test_the_placement_brackets_come_from_the_palette_and_still_look_the_same() -> String:
+	var ok: Color = PlacementPreview.OK_COLOR
+	var blocked: Color = PlacementPreview.BLOCKED_COLOR
+
+	# The colours they replaced, recorded here because a regression to a
+	# hand-typed value is exactly what this test exists to catch, and a diff
+	# against nothing catches nothing.
+	var was_ok := Color(0.55, 0.95, 0.62, 0.75)
+	var was_blocked := Color(0.95, 0.42, 0.36, 0.75)
+
+	var err: String = _T.assert_true(
+		ok.a == 0.75 and blocked.a == 0.75,
+		"both brackets stay at the alpha that keeps a hover quieter than the marker")
+	if err != "":
+		return err
+
+	for pair: Array in [[ok, was_ok, "OK"], [blocked, was_blocked, "BLOCKED"]]:
+		var now: Color = pair[0]
+		var before: Color = pair[1]
+		var drift: float = maxf(maxf(absf(now.r - before.r), absf(now.g - before.g)),
+			absf(now.b - before.b))
+		err = _T.assert_true(drift < 0.08,
+			"%s_COLOR drifted %.3f from the hand-typed value it replaced (%s vs %s)."
+				% [pair[2], drift, now, before]
+				+ " Unifying the source was meant to be invisible on screen")
+		if err != "":
+			return err
+
+	# And the tie to the palette, which is the whole point and which the
+	# compiler cannot hold: `Color.lightened()` is a method call, so it is not
+	# a constant expression and these cannot be written as derived consts
+	# without a parse error that cascades through every dependent script. The
+	# relationship therefore lives here or nowhere. Change DANGER and leave
+	# BLOCKED_COLOR behind, and this is what says so.
+	for pair: Array in [
+		[blocked, GardenTheme.DANGER.lightened(0.25), "BLOCKED", "DANGER"],
+		[ok, GardenTheme.LEAF.lightened(0.45), "OK", "LEAF"],
+	]:
+		var now: Color = pair[0]
+		var want: Color = pair[1]
+		var off: float = maxf(maxf(absf(now.r - want.r), absf(now.g - want.g)),
+			absf(now.b - want.b))
+		err = _T.assert_true(off < 0.08,
+			"%s_COLOR is %.3f away from %s lightened (%s vs %s). The brackets are"
+				% [pair[2], off, pair[3], now, want]
+				+ " meant to be that palette colour, dimmed — if the palette moved,"
+				+ " move these with it rather than widening this tolerance")
+		if err != "":
+			return err
+	return ""
