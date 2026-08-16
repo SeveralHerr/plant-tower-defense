@@ -1286,3 +1286,31 @@ of what the design doc already says, rather than being bolted on.
   `Shaders: N of M`. Nothing says how much of the *game* the suite touches — which
   scripts are never loaded by any test. `scripts-seen` exists in the bridge and nothing
   compares it against the file list.
+
+### New this cycle (18 of 30) — grown from the features above
+
+- **Two tests in this repo now wait for a thing instead of assuming a frame count, and
+  nothing finds the third.** `test_hosting_a_loaded_cob` asserted a volley had fired by
+  the time `instantiate_scene` returned; the count is unspecified and it went red when
+  unrelated tests shifted timing. Any test that reads state straight after
+  `instantiate_scene` without awaiting a condition has the same exposure. A checker for
+  "reads a group or a live property within N statements of `instantiate_scene`, with no
+  intervening await-until" would name them.
+
+- **15 signals still have nothing asserting what they carry.** Down from 17. The purse's
+  three are done and were worth doing — one mutation showed a refund could stop
+  announcing while still moving the purse. The remaining clusters are `Hud`'s five
+  button signals, `PauseScreen`'s four, `Pest.died`/`escaped` and `WaveDirector`'s two.
+  `Pest.died` is the highest value: it is the income path with the most wiring under it.
+
+- **The reach gate can be satisfied without being served, and says so.** `naming is a
+  floor, not exercise` — a test writing `WaveDirector.reset()` and asserting nothing
+  counts. The honest upgrade is not a stricter name match but a second signal: whether
+  the named symbol appears inside an `assert_*` argument, or only in a statement. That
+  distinguishes "called it" from "checked it" without pretending to understand the test.
+
+- **Coverage is now measured in both directions and neither number is in the game.**
+  Under-promise: 7 kills on unaimed ground at up to 202px. Over-promise at the pest:
+  zero of 116. Both live only in commit messages and a comment. The board says
+  "unaimed", which is exactly right, but a player never learns that unaimed ground still
+  gets kills — which is the thing that would stop them over-buying cover.

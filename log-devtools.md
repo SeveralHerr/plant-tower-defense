@@ -2281,3 +2281,38 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
 - Gap: **no gaps this turn.**
 
 - Harness: still **0.23.0**. No refresh.
+
+## 2026-08-16 — Closing cycle 18: three refutations and a test that was wrong about itself
+
+- Value: **warranted** — the cycle's best output was a measurement that stopped a feature.
+  - Expected: `4no` would build a per-cell "in reach and did not act" map, since the
+    predicate is non-monotone and therefore not blocked the way `_ever_engaged` was.
+  - Got: the predicate works and the answer says don't. **0 of 116** pests that spent
+    their whole walk on covered ground went untouched, across 439 pests and 14 driven
+    waves, including runs losing 34 of 40 beds. At the cell it is 84% and useless — 66%
+    in a wave that killed 14 of 14 and lost nothing. 82% of it is a cob firing at a
+    different pest; only **3 of 3,909** were the map's geometry.
+  - Found: two of my own errors. I broke `suite_reach_baseline.json` with my signal tests
+    and did not regenerate — the agent reproduced it with its entire diff stashed to
+    prove whose it was. And `test_hosting_a_loaded_cob`, which I accepted two cycles ago,
+    asserted a volley had fired by the time `instantiate_scene` returned. That frame
+    count is unspecified, so the test was order-dependent: green for two cycles, red the
+    moment unrelated tests shifted timing — **the exact accident it was written to
+    document**.
+  - Cheaper: nothing. Every number here needed the real board, the real schedule and
+    frame-by-frame sampling.
+
+- Note: the signature was the inverse of the usual one — passes ALONE, fails in company.
+  I have been treating "fails alone, passes in suite" as the tell; both directions mean
+  the same thing, that the test depends on state it did not establish.
+
+- Note: `suite_reach_check` caught its own author twice in one cycle — my
+  `PlantCatalog.engaging_ids()` wrapper ten minutes after committing it, then my stale
+  baseline. A checker that fires on the person who just installed it is measuring
+  something real. Its own `NOT COVERED:` line concedes the weakness that matters:
+  *"naming is a floor, not exercise"* — a test that writes `WaveDirector.reset()` and
+  asserts nothing counts as reach, so the gate can be satisfied without being served.
+
+- Gap: **no gaps this turn.**
+
+- Harness: still **0.23.0**. No refresh.
