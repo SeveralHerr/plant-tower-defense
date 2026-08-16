@@ -44,9 +44,25 @@ Extracted by frequency from the kit's own PNGs. Use these verbatim.
 | Orange (fx) | `#C25000` | `#FF6600` | `#FF9C3C` |
 | White | — | `#FFFFFF` | — |
 
-Two shades are extrapolated along an existing hue because the kit has no darker
-member and a readable feature needed one — both are noted where used:
-`#8A6D00` (corn face features), `#8C2D24` / `#7A2820` (chomp maw interior).
+Five shades are extrapolated along an existing hue because the kit has no member
+at that value and a readable feature needed one. All five are in the gate's
+`PALETTE`, so a sprite may use them; they are listed here so a sprite author
+reading this page sees the same palette the build enforces.
+
+| Extrapolated | Along | Used for |
+|---|---|---|
+| `#8A6D00` | Gold / corn, darker than the rim | corn face features |
+| `#8C2D24` | Red / pest, darker than the rim | chomp maw interior |
+| `#7A2820` | Red / pest, darker still | chomp maw interior, deepest |
+| `#5E5E5E` | Stone / carapace, darker than the rim | beetle leg and seam strokes |
+| `#D7C9A8` | Sand / paper, between rim and base | seed packet's torn top |
+
+This list drifted once already: `#5E5E5E` and `#D7C9A8` were in the gate and in
+two shipped sprites while this page said nothing about them, and the count said
+"two" while three were named. An author reading the contract saw a 30-colour
+palette that the build enforced as 32. `tools/svg_style_check.py` now cross-checks
+the two and reports the difference as an advisory, so the next drift is noticed
+rather than discovered.
 
 ## Rendering
 
