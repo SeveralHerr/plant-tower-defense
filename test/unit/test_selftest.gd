@@ -1055,6 +1055,98 @@ func test_title_controls_all_clear_the_scenery() -> String:
 	return err
 
 
+## The title menu's real deliverable: there is a sixth slot, and a seventh.
+##
+## The old single column had neither at any pitch, and said so in a comment
+## instead of in a check -- so the thing that would have caught the next
+## destination arriving was a person reading prose. `menu_capacity()` computes the
+## ceiling from the same arithmetic that places the buttons, and this test is what
+## makes that number load-bearing.
+##
+## It asserts the ceiling in BOTH directions on purpose. "Room for more" alone is
+## satisfied by a capacity function that always says a large number; the refusal
+## at capacity + 1 is what proves it is measuring the horizon rather than
+## returning a constant.
+func test_the_title_menu_has_room_for_the_next_destination() -> String:
+	var now: int = TitleScreen.MENU_BUTTON_NAMES.size()
+	var cap: int = TitleScreen.menu_capacity()
+	var horizon: float = float(TitleScreen.viewport_height()) * TitleBackdrop.HORIZON
+
+	var err: String = _T.assert_true(cap >= now + 2,
+		"the menu holds %d and could hold %d -- a sixth AND a seventh destination fit" % [now, cap])
+	if err == "":
+		# The ceiling is a measurement, not a number: one more than capacity must
+		# actually run the hint past the grass line.
+		err = _T.assert_true(
+			TitleScreen.hint_y(cap + 1) + TitleScreen.HINT_HEIGHT > horizon,
+			"and %d buttons genuinely does not fit -- hint would foot at %.0f against a horizon at %.0f"
+				% [cap + 1, TitleScreen.hint_y(cap + 1) + TitleScreen.HINT_HEIGHT, horizon])
+	if err == "":
+		err = _T.assert_true(
+			TitleScreen.hint_y(cap) + TitleScreen.HINT_HEIGHT <= horizon,
+			"while %d does, footing at %.0f" % [cap, TitleScreen.hint_y(cap) + TitleScreen.HINT_HEIGHT])
+	return err
+
+
+## Every menu size the screen claims to support, laid out and checked -- not just
+## the five buttons that happen to exist today.
+##
+## This is the half a screenshot of the current screen cannot cover. A grid whose
+## cells overlap, or drift outside the band the lawn was measured against, or drop
+## a row below the 40px touch-target gate `findings` enforces, is wrong for a size
+## nobody has built yet, and nothing else in the suite would ever instantiate one.
+func test_every_title_menu_size_lays_out_inside_its_band_without_overlap() -> String:
+	var err := ""
+	var centre: float = float(TitleScreen.viewport_width()) / 2.0
+	var band_left: float = centre - TitleScreen.BUTTON_WIDTH / 2.0
+	var band_right: float = centre + TitleScreen.BUTTON_WIDTH / 2.0
+	var horizon: float = float(TitleScreen.viewport_height()) * TitleBackdrop.HORIZON
+
+	for count: int in range(1, TitleScreen.menu_capacity() + 1):
+		var rects: Array[Rect2] = []
+		for i: int in count:
+			rects.append(TitleScreen.button_rect(i, count))
+		for i: int in count:
+			var rect: Rect2 = rects[i]
+			err = _T.assert_true(rect.size.x > 0.0 and rect.size.y > 0.0,
+				"button %d of %d got a real rect, not the empty one button_rect returns for an index it cannot place"
+					% [i, count])
+			if err != "":
+				return err
+			# The gate `findings` applies to any interactive Control. The grid
+			# halves WIDTH; the day it starts halving height instead, this fails.
+			err = _T.assert_true(rect.size.x >= 40.0 and rect.size.y >= 40.0,
+				"button %d of %d is a real touch target at %s" % [i, count, rect.size])
+			if err != "":
+				return err
+			err = _T.assert_true(rect.position.x >= band_left - 0.001
+					and rect.position.x + rect.size.x <= band_right + 0.001,
+				"button %d of %d stays in the lawn's clear band (%.0f..%.0f), got %.0f..%.0f"
+					% [i, count, band_left, band_right, rect.position.x, rect.position.x + rect.size.x])
+			if err != "":
+				return err
+			err = _T.assert_true(rect.position.y + rect.size.y <= horizon,
+				"button %d of %d clears the horizon at %.0f, ending at %.0f"
+					% [i, count, horizon, rect.position.y + rect.size.y])
+			if err != "":
+				return err
+			for j: int in range(i + 1, count):
+				err = _T.assert_false(rect.intersects(rects[j]),
+					"buttons %d and %d of %d share pixels (%s vs %s)" % [i, j, count, rect, rects[j]])
+				if err != "":
+					return err
+		# menu_bottom() is what hint_y() and menu_capacity() are both built on, so
+		# it must agree with the rects rather than being a second arithmetic.
+		var lowest: float = 0.0
+		for rect: Rect2 in rects:
+			lowest = maxf(lowest, rect.position.y + rect.size.y)
+		err = _T.assert_float_eq(TitleScreen.menu_bottom(count), lowest, 0.001,
+			"menu_bottom(%d) agrees with where the buttons it placed actually end" % count)
+		if err != "":
+			return err
+	return err
+
+
 func test_title_backdrop_tuft_lean_is_zero_at_rest_and_stays_bounded() -> String:
 	## TitleBackdrop's tufts lean a few px in a slow breeze — TitleBackdrop.tuft_lean()
 	## is split out of _draw_tufts() so this can assert the sway without
@@ -1204,11 +1296,22 @@ func test_the_keys_screen_is_reachable_from_the_title_and_does_not_stack() -> St
 				if err != "":
 					break
 		if err == "":
-			# Not just the right names -- the right order down the screen, which is
+			# Not just the right names -- the right order on the screen, which is
 			# what the focus ring and the entrance stagger both read it for.
+			#
+			# READING order, not strictly downward. That was "sits below" while the
+			# menu was one column, and the secondary destinations sit two to a row
+			# now: MENU_BUTTON_NAMES order has to be left-to-right within a row and
+			# then top-to-bottom, which is the claim the focus ring and the stagger
+			# actually depend on. Weakening it to "does not sit above" would let a
+			# grid row hand its two cells back the wrong way round.
 			for i: int in range(1, column.size()):
-				err = _T.assert_gt(column[i].position.y, column[i - 1].position.y,
-					"%s sits below %s" % [column[i].name, column[i - 1].name])
+				var here: Vector2 = column[i].position
+				var prev: Vector2 = column[i - 1].position
+				err = _T.assert_true(
+					here.y > prev.y or (is_equal_approx(here.y, prev.y) and here.x > prev.x),
+					"%s (%s) follows %s (%s) in reading order"
+						% [column[i].name, here, column[i - 1].name, prev])
 				if err != "":
 					break
 	_T.free_ui(title)
