@@ -1645,3 +1645,29 @@ of what the design doc already says, rather than being bolted on.
   `_play_turn()` (notebook_screen.gd:577) is still partway through fading the
   drawing and sprite in. The one readout built specifically to answer "how many
   pages are left" is the one piece of the page turn that never turns.
+
+### New this cycle (24 of 30) — grown from the features above
+
+- **Music shipped with exactly one volume: on or off.** `Music.BASE_VOLUME_DB`
+  (music.gd:53) is a fixed constant every track plays at; the only lever anywhere is
+  `Sfx.set_muted()` / `KEY_M`, which now silences both the sound effects and the two
+  new music beds together. `Sfx.SOUNDS` has grown to eight-plus distinct cues this
+  session alone, layered over a bed that is always either full volume or gone — no
+  in-between for a player who wants the music quieter than the effects, or vice
+  versa. A settings surface (or even just two sliders reachable from the pause
+  card) is the natural next step now that there is a mix to actually balance.
+
+- **The denial cue covers two of the three ways a purchase can be refused, and
+  stops one short.** `Hud.shake_plant_button()`/`shake_packet_button()` plus
+  `Sfx.PURCHASE_DENIED` (game.gd:1128, 1303) now fire when a plant or a packet is
+  refused — but `Game.upgrade_selected()` (game.gd:1012-1026) still answers an
+  underfunded upgrade with a bare `hud.show_message()` and nothing else, the exact
+  gap `8kx` closed everywhere else this session. The Upgrade button is a `BaseButton`
+  like the other two; the same shake call is one line away.
+
+- **`Pest.flash_hit()` exists now, and only `Kernel` ever calls it.** The new hit
+  cue (`7o3`, kernel.gd:76) is a method on `Pest` itself, not something private to
+  the projectile — but a Chomp Flower's bite and a Sticky Sundew's claim, which
+  land just as real a hit, never call it. A ranged kernel now visibly marks the
+  pest it connects with; a melee plant's damage is exactly as invisible as it was
+  before this session started.
