@@ -19,7 +19,11 @@ const BAR_HEIGHT: int = 72
 const PANEL_WIDTH: int = 256
 
 ## Horizontal gap between the readouts in the top row.
-const STATS_SEPARATION: int = 26
+const STATS_SEPARATION: int = 18
+
+## Level 1 is wave 1 by definition, and a player does not need telling that
+## wave 1 is as hard as wave 1.
+const THREAT_SHOW_FROM: int = 2
 ## The wave button never shrinks below this, however long the readouts get.
 ## The 40px height is a floor, not a preference: `findings` raises
 ## `Interactive control ... below minimum 40x40` under it, and it was right to
@@ -27,9 +31,15 @@ const STATS_SEPARATION: int = 26
 ## fit. The rows had to give instead.
 const NEXT_WAVE_BUTTON_SIZE := Vector2(216, 40)
 
-## Width budget for the compost readout, which is the one stat whose text
-## grows without bound. Wide enough for "Compost 9999  (99 ready)".
-const COMPOST_LABEL_WIDTH: float = 230.0
+## Every readout gets a clipped width budget, so the row can never overflow
+## however long a counter grows. They are listed together because what matters
+## is the SUM: these plus the separations plus the button must stay inside the
+## bar, and that is the invariant `test_the_stats_row_budget_fits_the_bar`
+## pins. The wave slot is the widest because it carries the threat level too.
+const SEEDS_LABEL_WIDTH: float = 130.0
+const WAVE_LABEL_WIDTH: float = 320.0
+const LIVES_LABEL_WIDTH: float = 140.0
+const COMPOST_LABEL_WIDTH: float = 190.0
 
 ## The bar is two rows. Keeping them as named constants is what makes the gap
 ## between them checkable instead of implied by four scattered literals.
@@ -108,24 +118,10 @@ func _build_top_bar(root: Control) -> void:
 	stats.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.add_child(stats)
 
-	_seeds_label = _make_label("SeedsLabel", 26, PAPER)
-	stats.add_child(_seeds_label)
-	_wave_label = _make_label("WaveLabel", 26, PAPER)
-	stats.add_child(_wave_label)
-	_lives_label = _make_label("LivesLabel", 26, PAPER)
-	stats.add_child(_lives_label)
-	_compost_label = _make_label("CompostLabel", 20, Color(0.78, 0.62, 0.38))
-	# The only readout whose length is unbounded — seeds/wave/lives are all
-	# short and capped, but this one appends "(N ready)". Clipping it is what
-	# stops the row overflowing: an HBoxContainer will not shrink a child below
-	# its minimum size, and a Label's minimum size is its full text, so without
-	# this a long counter pushes the button off the right edge of the bar
-	# instead of colliding with it. Trading a collision for an off-screen
-	# button is not a fix, so cap the budget and ellipsize inside it.
-	_compost_label.clip_text = true
-	_compost_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	_compost_label.custom_minimum_size = Vector2(COMPOST_LABEL_WIDTH, 0)
-	stats.add_child(_compost_label)
+	_seeds_label = _add_stat(stats, "SeedsLabel", 26, PAPER, SEEDS_LABEL_WIDTH)
+	_wave_label = _add_stat(stats, "WaveLabel", 26, PAPER, WAVE_LABEL_WIDTH)
+	_lives_label = _add_stat(stats, "LivesLabel", 26, PAPER, LIVES_LABEL_WIDTH)
+	_compost_label = _add_stat(stats, "CompostLabel", 20, Color(0.78, 0.62, 0.38), COMPOST_LABEL_WIDTH)
 
 	# The one element that absorbs slack. Without it the readouts spread across
 	# the whole bar; with it they stay left-grouped and the button stays right.
@@ -253,6 +249,32 @@ func _build_banner(root: Control) -> void:
 	root.add_child(_banner)
 
 
+## One readout in the top row: a clipped, fixed-budget Label.
+##
+## Clipping is what stops the row overflowing, and it is not optional. An
+## HBoxContainer will not shrink a child below its minimum size, and a Label's
+## minimum size is its full text — so an unbudgeted readout does not get
+## squeezed, it shoves everything after it, and the wave button ends up off the
+## right edge of the screen. Every readout is budgeted rather than just the
+## long one, so adding a fifth later is a matter of finding room in the sum
+## instead of rediscovering this.
+func _add_stat(row: HBoxContainer, node_name: String, font_size: int, colour: Color, width: float) -> Label:
+	var label := _make_label(node_name, font_size, colour)
+	label.clip_text = true
+	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	label.custom_minimum_size = Vector2(width, 0)
+	row.add_child(label)
+	return label
+
+
+## The widths above are only safe as a sum. Anything that adds a readout, widens
+## one, or grows the button has to keep this true, and the unit test calls it
+## rather than re-deriving the arithmetic.
+static func stats_row_budget(readouts: int) -> float:
+	var widths: float = SEEDS_LABEL_WIDTH + WAVE_LABEL_WIDTH + LIVES_LABEL_WIDTH + COMPOST_LABEL_WIDTH
+	return widths + float(STATS_SEPARATION * readouts) + NEXT_WAVE_BUTTON_SIZE.x
+
+
 ## No position argument: every caller either puts the label in a container that
 ## positions it, or sets `position` itself right after. Passing a hand-picked
 ## x/y here is what produced the top bar's overlap bug, so the parameter is
@@ -294,9 +316,19 @@ func refresh(state: Dictionary) -> void:
 	var bank: SeedBank = state["bank"]
 	_seeds_label.text = "Seeds  %d" % bank.seeds
 	if bool(state.get("endless", false)):
-		_wave_label.text = "Wave  %d — endless" % state["wave"]
+		# "∞" rather than "— endless": at wave 509 with a threat level appended,
+		# the spelled-out version measured 397px against a 320px budget and was
+		# being ellipsised away. Caught by `findings` on the live bar, not here.
+		_wave_label.text = "Wave  %d ∞" % state["wave"]
 	else:
 		_wave_label.text = "Wave  %d / %d" % [state["wave"], state["wave_count"]]
+	# Threat rides with the wave number rather than taking a slot of its own:
+	# it is a property of the wave, and the bar has no room for a fifth stat.
+	# The level, not the raw multiple — see WaveDirector.threat_level for why
+	# "threat x897" was the first thing the live run threw out.
+	var level: int = int(state.get("threat_level", 1))
+	if level >= THREAT_SHOW_FROM:
+		_wave_label.text += "   threat %d" % level
 	_lives_label.text = "Garden  %d" % state["lives"]
 	var husks: int = int(state.get("husks_on_ground", 0))
 	_compost_label.text = "Compost  %d" % int(state.get("compost_total", 0))

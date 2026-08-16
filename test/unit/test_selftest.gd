@@ -1389,3 +1389,177 @@ func test_size_glow_and_urgency_all_agree_about_which_husk_is_rich() -> String:
 		err = _T.assert_float_eq(HuskLayer.glow_for(rich), CompostMeter.value_fraction(rich), 0.0001,
 			"glow is literally the same curve the timer reads, not a parallel copy")
 	return err
+
+
+# -- Readable threat level (plant-tower-defense-o1p) -------------------------
+
+
+## Wave 1 is the unit, by construction. If this drifts, every other threat
+## number on the bar silently rescales.
+func test_wave_one_is_the_threat_unit() -> String:
+	return _T.assert_float_eq(WaveDirector.threat_for(1), 1.0, 0.0001,
+		"wave 1 is x1.0, which is what makes every other number readable")
+
+
+## The fixed table has to climb too, or the readout is dead weight for the
+## whole campaign and only wakes up in endless.
+func test_threat_climbs_across_every_wave_of_the_fixed_table() -> String:
+	var err: String = ""
+	var previous: float = 0.0
+	for w: int in range(1, WaveDirector.WAVES.size() + 1):
+		var threat: float = WaveDirector.threat_for(w)
+		err = _T.assert_true(threat > previous,
+			"wave %d (x%.2f) is harder than wave %d (x%.2f)" % [w, threat, w - 1, previous])
+		if err != "":
+			break
+		previous = threat
+	return err
+
+
+## The point of the feature: past the table, five things climb independently
+## and the number has to keep moving for all of them.
+func test_threat_keeps_climbing_deep_into_endless() -> String:
+	var table: int = WaveDirector.WAVES.size()
+	var err: String = ""
+	var previous: float = WaveDirector.threat_for(table)
+	for w: int in range(table + 1, table + 40):
+		var threat: float = WaveDirector.threat_for(w)
+		err = _T.assert_true(threat > previous,
+			"endless wave %d (x%.2f) beats wave %d (x%.2f)" % [w, threat, w - 1, previous])
+		if err != "":
+			break
+		previous = threat
+	if err == "":
+		err = _T.assert_true(WaveDirector.threat_for(table + 40) > 10.0,
+			"and 40 waves past the table it is well over x10 (got x%.1f)"
+				% WaveDirector.threat_for(table + 40))
+	return err
+
+
+## Threat has to count *work*, not bodies — a beetle wave and an aphid wave of
+## the same size are not the same wave, and a headcount would say they were.
+func test_threat_weighs_a_beetle_heavier_than_an_aphid() -> String:
+	var aphid_health: float = float(Pest.SPECIES[Pest.APHID]["health"])
+	var beetle_health: float = float(Pest.SPECIES[Pest.BEETLE]["health"])
+	var err: String = _T.assert_true(beetle_health > aphid_health, "sanity: a beetle has more health")
+	if err == "":
+		# Wave 5 sends 3 beetles + 10 aphids; wave 2 sends 9 aphids. Wave 5 has
+		# only 4 more pests but far more work in them.
+		var w2: float = WaveDirector.threat_for(2)
+		var w5: float = WaveDirector.threat_for(5)
+		err = _T.assert_true(w5 > w2 * 2.0,
+			"wave 5 (13 pests, 3 of them beetles, x%.2f) is worth more than twice wave 2 (9 aphids, x%.2f)"
+				% [w5, w2])
+	return err
+
+
+## groups_for is the single answer to "what is in wave N" — the scheduler and
+## the threat readout both call it, so they cannot price different waves.
+func test_the_scheduler_and_the_threat_readout_read_the_same_wave() -> String:
+	var director := WaveDirector.new()
+	director.endless = true
+	var err: String = ""
+	for w: int in [1, 5, WaveDirector.WAVES.size(), WaveDirector.WAVES.size() + 7]:
+		var from_table: int = 0
+		for group: Dictionary in WaveDirector.groups_for(w):
+			from_table += int(group["count"])
+		director.current_wave = w - 1
+		director.start_next_wave()
+		err = _T.assert_eq(director.current_wave_pest_count(), from_table,
+			"wave %d: the scheduler built %d pests and groups_for says %d"
+				% [w, director.current_wave_pest_count(), from_table])
+		if err != "":
+			break
+	director.free()
+	return err
+
+
+## The escalation note answers "in what way", and must stay quiet through the
+## fixed table where the table itself is the escalation.
+func test_the_escalation_note_is_silent_in_campaign_and_speaks_in_endless() -> String:
+	var err: String = ""
+	for w: int in range(1, WaveDirector.WAVES.size() + 1):
+		err = _T.assert_eq(WaveDirector.escalation_note(w), "",
+			"wave %d is on the fixed table, so nothing is announced" % w)
+		if err != "":
+			return err
+	var note: String = WaveDirector.escalation_note(WaveDirector.WAVES.size() + 3)
+	err = _T.assert_true(note != "", "an endless wave names what climbed (got %r)" % note)
+	if err == "":
+		err = _T.assert_true(note.contains("tougher") and note.contains("faster"),
+			"and both pest scales are in it while they are still climbing: %r" % note)
+	return err
+
+
+## Once a scale saturates it must drop out of the note rather than keep being
+## announced — "tougher" every wave when health has been capped for 100 waves
+## is a lie the player learns to ignore.
+func test_a_capped_scale_stops_being_announced() -> String:
+	var far: int = WaveDirector.WAVES.size() + 500
+	var err: String = _T.assert_float_eq(WaveDirector.health_scale_for(far), WaveDirector.ENDLESS_HEALTH_MAX, 0.0001,
+		"sanity: health is capped this far out")
+	if err == "":
+		err = _T.assert_false(WaveDirector.escalation_note(far).contains("tougher"),
+			"a capped scale is not announced as still climbing: %r" % WaveDirector.escalation_note(far))
+	return err
+
+
+## The row's widths are only safe as a sum, and this is the invariant that has
+## to hold when a readout is added or widened.
+func test_the_stats_row_budget_fits_the_bar() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var stats: HBoxContainer = game.hud.get_node("Root/TopBar/StatsRow") as HBoxContainer
+	var needed: float = Hud.stats_row_budget(stats.get_child_count() - 1)
+	var err: String = _T.assert_true(needed <= stats.size.x,
+		"the readouts, separations and button need %.0fpx of the row's %.0fpx" % [needed, stats.size.x])
+	_T.free_ui(game)
+	return err
+
+
+## The readable form. The raw multiple runs to x897 by wave 108, which is not a
+## number a player can hold next to the one they saw last wave.
+func test_the_threat_level_stays_a_small_readable_number() -> String:
+	var table: int = WaveDirector.WAVES.size()
+	var err: String = _T.assert_eq(WaveDirector.threat_level(1), 1, "wave 1 is level 1")
+	if err == "":
+		err = _T.assert_true(WaveDirector.threat_level(table) <= 10,
+			"the whole campaign fits in single digits (wave %d is level %d)"
+				% [table, WaveDirector.threat_level(table)])
+	if err == "":
+		err = _T.assert_true(WaveDirector.threat_level(table + 100) <= 30,
+			"and 100 waves into endless it is still two digits (level %d, from a raw x%.0f)"
+				% [WaveDirector.threat_level(table + 100), WaveDirector.threat_for(table + 100)])
+	return err
+
+
+## A floor of a monotonic function: never goes down, and does not have to move
+## every wave. Both halves matter — a level that ticked every wave would just
+## be the wave number wearing a different hat.
+func test_the_threat_level_never_goes_down_and_does_eventually_climb() -> String:
+	var err: String = ""
+	var previous: int = 0
+	for w: int in range(1, WaveDirector.WAVES.size() + 60):
+		var level: int = WaveDirector.threat_level(w)
+		err = _T.assert_true(level >= previous, "wave %d level %d is not below wave %d's %d" % [w, level, w - 1, previous])
+		if err != "":
+			return err
+		previous = level
+	return _T.assert_true(previous > WaveDirector.threat_level(1) + 5,
+		"and it really did climb over 60-odd waves (1 -> %d)" % previous)
+
+
+## Threat only appears once it says something. At level 1 it is noise.
+func test_the_threat_readout_hides_itself_at_wave_one() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.director.current_wave = 1
+	game._refresh()
+	var label: Label = game.hud.get_node("Root/TopBar/StatsRow/WaveLabel") as Label
+	var err: String = _T.assert_false(label.text.contains("threat"),
+		"wave 1 shows no threat multiple (got %r)" % label.text)
+	if err == "":
+		game.director.current_wave = WaveDirector.WAVES.size() + 20
+		game._refresh()
+		err = _T.assert_true(label.text.contains("threat"),
+			"a deep endless wave does show one (got %r)" % label.text)
+	_T.free_ui(game)
+	return err

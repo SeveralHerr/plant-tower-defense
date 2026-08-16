@@ -37,9 +37,6 @@ var _prep_left: float = 0.0
 var _wave_live: bool = false
 var _score_recorded: bool = false
 
-## The furthest any pest got this wave, so the lane pressure readout can be
-## committed to the board once the wave actually clears. -1.0 means nothing
-## has walked yet this wave (progress() itself never goes negative).
 ## Road cell -> how many pests this wave were lost there (killed or escaped).
 ## Committed to the board as one batch when the wave ends; see
 ## Board.record_lane_pressure_wave.
@@ -137,7 +134,15 @@ func start_next_wave() -> bool:
 func _on_wave_started(number: int) -> void:
 	_wave_live = true
 	_wave_losses = {}
-	hud.show_message("Wave %d — %d pests." % [number, director.current_wave_pest_count()])
+	# Past the fixed table, say what actually got worse. The threat level on
+	# the bar answers "how much"; this answers "in what way", which is the half
+	# that tells a player whether to buy damage or buy coverage.
+	var note: String = WaveDirector.escalation_note(number)
+	if note == "":
+		hud.show_message("Wave %d — %d pests." % [number, director.current_wave_pest_count()])
+	else:
+		hud.show_message("Wave %d — %d pests, and %s than the last."
+			% [number, director.current_wave_pest_count(), note])
 	_refresh()
 
 
@@ -477,4 +482,6 @@ func state() -> Dictionary:
 		"high_score": RunConfig.high_score,
 		"compost_total": compost.total_collected,
 		"husks_on_ground": compost.husk_count(),
+		"threat": WaveDirector.threat_for(maxi(1, director.current_wave)),
+		"threat_level": WaveDirector.threat_level(maxi(1, director.current_wave)),
 	}

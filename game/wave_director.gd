@@ -39,6 +39,10 @@ const ENDLESS_HEALTH_MAX: float = 3.0
 const ENDLESS_SPEED_STEP: float = 0.015
 const ENDLESS_SPEED_MAX: float = 1.6
 
+## How much of a wave's threat a mutation roll is worth. Well under 1.0 because
+## a mutation makes a pest harder to remove, not a second pest.
+const MUTATION_THREAT_WEIGHT: float = 0.6
+
 ## Each group: species, how many, and the gap in seconds between each one.
 ## `lead` is the pause before the group starts.
 const WAVES: Array[Array] = [
@@ -125,7 +129,7 @@ func start_next_wave() -> int:
 	if not has_more_waves():
 		return 0
 	current_wave += 1
-	var groups: Array = WAVES[current_wave - 1] if current_wave <= WAVES.size() else _endless_groups(current_wave)
+	var groups: Array = groups_for(current_wave)
 	_schedule = _build_schedule(groups)
 	_next = 0
 	_elapsed = 0.0
@@ -137,12 +141,90 @@ func start_next_wave() -> int:
 ## Past the fixed table, endless keeps the same two-group shape (aphid swarm,
 ## beetle knot) and just turns every knob up, so the curve does not visibly
 ## reset the moment the table runs out.
-func _endless_groups(number: int) -> Array:
+## Static so threat_for() can price a wave that is not running — it reads only
+## `number` and the table size, never instance state.
+static func _endless_groups(number: int) -> Array:
 	var over: int = number - WAVES.size()
 	return [
 		{"species": &"aphid", "count": 20 + over * 3, "gap": maxf(0.16, 0.30 - over * 0.01), "lead": 0.5},
 		{"species": &"beetle", "count": 6 + int(over / 2.0), "gap": maxf(0.5, 0.9 - over * 0.02), "lead": 1.5},
 	]
+
+
+## The groups any wave will send, table or endless. One place that answers
+## "what is in wave N", so the schedule builder and the threat readout can
+## never be pricing different waves.
+static func groups_for(wave: int) -> Array:
+	if wave < 1:
+		return []
+	return WAVES[wave - 1] if wave <= WAVES.size() else _endless_groups(wave)
+
+
+## Raw threat: total pest health the wave will put on the road, scaled by the
+## per-pest multipliers and the mutation rate. Health is the weighting because
+## it is what a lane has to chew through — 22 aphids and 7 beetles are not
+## 29 interchangeable units, they are 66 and 112 points of work.
+static func _raw_threat(wave: int) -> float:
+	var total: float = 0.0
+	for group: Dictionary in groups_for(wave):
+		var stats: Dictionary = Pest.SPECIES[group["species"]]
+		total += float(group["count"]) * float(stats["health"])
+	if wave >= MUTATION_START_WAVE:
+		total *= 1.0 + mutation_chance_for(wave) * MUTATION_THREAT_WEIGHT
+	return total * health_scale_for(wave) * speed_scale_for(wave)
+
+
+## Wave `wave`'s difficulty as a multiple of wave 1, which is the only unit a
+## player has any feel for. Five things now climb independently past the fixed
+## table — count, gap, mutation chance, health and speed — and the HUD showed
+## none of them; "Wave 39" and "Wave 9" read identically. This collapses all of
+## them into one number the bar can carry.
+static func threat_for(wave: int) -> float:
+	var reference: float = _raw_threat(1)
+	if reference <= 0.0:
+		return 0.0
+	return _raw_threat(wave) / reference
+
+
+## Each threat level is this much more threat than the one below it.
+const THREAT_LEVEL_BASE: float = 1.45
+
+
+## The readable form of threat_for(), and the one the HUD shows.
+##
+## The raw multiple is precise and useless on a bar: wave 1 is five aphids, so
+## everything is measured against a tiny reference and the number runs away —
+## measured live, wave 28 reads x140 and wave 108 reads x897. "Threat 897" tells
+## a player nothing they can hold in their head. A log scale keeps the campaign
+## at levels 1-8 and puts wave 108 at 19, which is a number that means
+## something next to the one you saw last wave.
+##
+## Non-decreasing rather than strictly increasing, by construction — it is a
+## floor, so consecutive waves often share a level. That is the point: a level
+## that ticked every single wave would just be the wave number again.
+static func threat_level(wave: int) -> int:
+	var threat: float = threat_for(wave)
+	if threat <= 1.0:
+		return 1
+	return 1 + int(floor(log(threat) / log(THREAT_LEVEL_BASE)))
+
+
+## What actually got harder going into `wave`, for the wave-start message. Empty
+## inside the fixed table, where the table itself is the escalation and naming
+## "more pests" every wave would be noise.
+static func escalation_note(wave: int) -> String:
+	if wave <= WAVES.size():
+		return ""
+	var parts: PackedStringArray = []
+	if health_scale_for(wave) > health_scale_for(wave - 1):
+		parts.append("tougher")
+	if speed_scale_for(wave) > speed_scale_for(wave - 1):
+		parts.append("faster")
+	if mutation_chance_for(wave) > mutation_chance_for(wave - 1):
+		parts.append("stranger")
+	if parts.is_empty():
+		return ""
+	return " and ".join(parts) if parts.size() < 3 else "%s, %s and %s" % [parts[0], parts[1], parts[2]]
 
 
 ## Flat MUTATION_CHANCE through the fixed table; climbs by

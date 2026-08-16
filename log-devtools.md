@@ -940,3 +940,44 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     calling the loop by hand, and restores the previous pause state — and have the reply
     include `wall_seconds_elapsed` alongside `process_seconds` either way, so the gap
     between "what I advanced" and "what actually passed" is visible instead of inferred.
+
+## 2026-08-15 — Readable threat level for plant-tower-defense-o1p
+
+- Value: **warranted** — three findings, all about rendered text, none of which a rect
+  assertion can see. Two of them changed the design rather than just the code.
+  - Expected: the threat text should render on the live bar at a deep endless wave
+    without reintroducing the collision I just fixed — the budget sum is asserted
+    headlessly, but the rendered wave label at its longest is only measurable live.
+  - Got: first pass put the raw multiple on the bar and the live readout came back
+    `wave 28 -> x140`, `wave 108 -> x897`, `wave 508 -> x4183`. It renders, it fits, and
+    it is useless. After switching to a log-scaled level: `1 / 8 / 14 / 19 / 23 / 25`
+    across waves `1 / 8 / 28 / 108 / 508 / 999`, with the WaveLabel rect pinned at
+    `168..488` regardless of wave number.
+  - Found: (1) The raw multiple is unreadable at scale — wave 1 is five aphids, so
+    every later wave is measured against a tiny reference. `threat_level()` is now the
+    display form and `threat_for()` stays as the precise number underneath. (2) At wave
+    509 `validate-ui` reported `Label 'WaveLabel' text 'Wave 509 — endless   threat 23'
+    exceeds width (text: 397px, label: 320px)` — the clipped budget was doing its job and
+    silently *ellipsising the readout away*. Clipping converts an overflow bug into a
+    hidden-text bug, and none of the three rect-based unit tests I wrote last item
+    noticed, because the rects were exactly right. Shortened the marker to `∞`; clean at
+    wave 999. (3) `get_minimum_size()` returns ~1px on a `clip_text` Label, so the
+    technique I used last item to measure whether text fits stops working the moment the
+    budgets exist. `validate-ui`'s own `font.get_string_size` measurement is the
+    substitute.
+  - Cheaper: nothing. All three are about rendered glyph width, and the first is a
+    judgement that only surfaces from reading the actual number.
+
+- Gap: **a clipped Label silently hides its own overflow, and only `validate-ui` can
+  tell you — but its finding for that case is indistinguishable from the false positive
+  in [G-014].** Both arrive as `ui_text_overflow`. One meant "your readout is being
+  ellipsised away, fix it" and the other meant "this Label is multiline, ignore me", and
+  they were in the same run's output four lines apart. Triage was by eye.
+  - [G-017] status: open | seen: 1 | harness: 0.19.0
+  - Improvement: split the rule. When `clip_text` is true or
+    `text_overrun_behavior != OVERRUN_NO_TRIMMING`, the text is not overflowing its box,
+    it is being *trimmed* — report it as `ui_text_trimmed` with the trimmed rendering
+    quoted, since the consequence (the player cannot read it) and the fix (make room or
+    shorten the string) are both different from an untrimmed overflow. Combined with the
+    multiline fix already proposed in [G-014], `ui_text_overflow` would then mean exactly
+    one thing.

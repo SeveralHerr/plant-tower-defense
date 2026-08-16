@@ -37,5 +37,4 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 - [ ] Placement preview should warn when a non-combat plant is road-adjacent —
       the preview already knows reach and legality (`plant-tower-defense-8bb`)
 - [ ] Add cool new features or concrete improvements (either gameplay or UX)
-      to `kanban.md` — mine what this session's own work revealed, not just
-      abstract ideas
+      to `kanban.md` 
