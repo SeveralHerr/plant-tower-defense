@@ -1158,3 +1158,38 @@ of what the design doc already says, rather than being bolted on.
   *shapes*, not just red vs grey — keep that invariant when new pests are added.
 - **Slow-mode toggle** (global `time_scale`), so the game is playable by whoever
   drew it.
+
+### New this cycle (14 of 30) — grown from the features above
+
+- **The prep sentence and the hatch answer the same question in two registers,
+  and nothing reconciles them.** `prep_depth_note()` now says "they got 62% of
+  the way down" in words, while `LanePressureOverlay` paints where along the
+  road that happened. Those are the same fact at two resolutions, and a player
+  reading the sentence has no reason to look at the road, which carries the
+  part the sentence flattened away. The open question is whether the sentence
+  should point at the road ("deepest near the second bend") or whether the
+  road should acknowledge the number.
+
+- **The hatch angle is a free channel nobody is using.** Stripes run at 45
+  degrees on a board-space lattice. That direction is currently decorative —
+  but the road has a direction too, and pests walk one way along it. A hatch
+  leaning WITH the walk versus against it is a second bit of information for
+  free, at no extra ink and no new colour. Worth knowing whether it reads, or
+  whether it just looks like a defect.
+
+- **Every warning the player can act on is now shaped; every warning about the
+  past is not.** The solid-versus-broken rule in `GardenTheme.DANGER` came out
+  of one issue and happens to be a real design grammar. Nothing enforces it
+  beyond a doc comment and one test per site. A rule that holds by convention
+  across four files is a rule that will be broken by the fifth — the question
+  is whether it can be made checkable, e.g. a test that enumerates every
+  DANGER-coloured draw and demands each declare which side of the rule it is on.
+
+- **Three of the last four issues named the wrong target and the work was
+  better for it.** The husk margin was classified twice wrongly, the warning
+  channel named two cues that needed nothing and missed the pair that
+  collided, and the lane readout was premised on lanes the board does not
+  have. The backlog is written from reading the code; the corrections all came
+  from reading it *again*, harder, with a specific claim to test. That is worth
+  a process note: an issue that names a specific file:line is far more likely
+  to be right than one that names a concept.
