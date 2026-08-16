@@ -3912,6 +3912,8 @@ func _over_promise_run(wave: int, corn_cells: Array, chomp_cells: Array,
 	# tree-global group that Plant._live_pests() and Kernel._physics_process both
 	# read. A cob shooting somebody else's aphid would answer stays this run never
 	# staged. Counted rather than assumed clean; the tests assert it is zero.
+	# settle-read-check: ok - counted here, asserted zero by every caller. The
+	# guard is one frame up the stack and a function-scoped rule cannot see it.
 	var foreign: int = host.get_tree().get_nodes_in_group("pests").size()
 
 	var plants: Array[Plant] = []

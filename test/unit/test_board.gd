@@ -810,3 +810,115 @@ func test_a_host_that_is_never_freed_keeps_its_nodes_in_the_group() -> String:
 		err = _T.assert_eq(tree.get_nodes_in_group("pests").size(), 0,
 			"and only the explicit free_ui clears it")
 	return err
+
+
+## The premise `tools/settle_read_check.py` is built on, asserted at runtime
+## rather than argued from the harness source: a node that acts on entering the
+## tree has ALREADY ACTED by the time `_T.instantiate_scene()` returns, and it
+## keeps acting afterwards. So a value like this one is never "settled" — there is
+## no frame count at which it stops being a different number, which is why the
+## checker treats a physics-driven transform as volatile and a Control's size as
+## not.
+##
+## Written the way the checker asks tests to be written: the claim is "a hosted
+## mover moves with the test calling nothing", awaited as a BOUNDED CONDITION.
+## Asserting "it has moved by the time instantiate_scene returned" would be the
+## very defect this documents — it would pass or fail on how many settle frames
+## the harness happens to pump, a number no test states.
+func test_a_hosted_mover_is_never_settled_so_its_position_cannot_be_read_straight_off() -> String:
+	var pest := Pest.new()
+	pest.setup(Pest.APHID, PackedVector2Array([Vector2(100, 100), Vector2(700, 100)]))
+	pest.position = Vector2(100, 100)
+	# Captured BEFORE hosting, so it is not itself a settle-dependent read.
+	var launched_at: Vector2 = pest.position
+	var hosted_nodes: Array[Node] = [pest]
+	var host: Node2D = _combat_host(hosted_nodes)
+
+	var hosted: Node = await _T.instantiate_scene(host)
+	var err: String = _T.assert_true(hosted != null, "the combat host entered the tree")
+	if err != "":
+		_T.free_ui(host)
+		return err
+	var tree: SceneTree = host.get_tree()
+	err = _T.assert_true(tree != null, "and can see the SceneTree")
+	if err != "":
+		_T.free_ui(host)
+		return err
+	err = _T.assert_true(is_instance_valid(pest),
+		"the pest survived hosting — a freed one aborts this method into a silent pass")
+	if err != "":
+		_T.free_ui(host)
+		return err
+
+	var waited: int = 0
+	while is_instance_valid(pest) and pest.position == launched_at and waited < 120:
+		await tree.physics_frame
+		waited += 1
+	err = _T.assert_true(is_instance_valid(pest), "the pest is still alive after %d frames" % waited)
+	if err == "":
+		err = _T.assert_true(pest.position != launched_at,
+			("hosting alone walked the pest off %s within %d physics frames and this test "
+				+ "called nothing. There is therefore no number of settle frames at which "
+				+ "`pest.position` is a settled value, which is what settle_read_check "
+				+ "calls a volatile transform") % [launched_at, waited])
+	# And it does not stop: a second bounded wait finds it somewhere else again.
+	if err == "":
+		var moved_to: Vector2 = pest.position
+		var again: int = 0
+		while is_instance_valid(pest) and pest.position == moved_to and again < 120:
+			await tree.physics_frame
+			again += 1
+		err = _T.assert_true(is_instance_valid(pest) and pest.position != moved_to,
+			("and moved again over the next %d frames — it converges on nothing, so no "
+				+ "extra `await tree.process_frame` would have made it safe to read")
+				% again)
+	_T.free_ui(host)
+	return err
+
+
+## The other half of the same distinction, and the reason settle_read_check does
+## NOT flag a Control read. Layout CONVERGES: `UI_SETTLE_FRAMES` exists precisely
+## to pump it to a fixed point, and once there, further frames change nothing. A
+## checker that treated `panel.size` like `pest.position` produced 106 findings
+## over this repo and not one of them was real.
+func test_a_hosted_controls_size_settles_and_then_stops_changing() -> String:
+	var panel := Control.new()
+	panel.name = "SettleProbe"
+	panel.custom_minimum_size = Vector2(120.0, 40.0)
+	var label := Label.new()
+	label.text = "a readout wide enough to force a layout pass"
+	panel.add_child(label)
+
+	var hosted: Node = await _T.instantiate_ui(panel)
+	var err: String = _T.assert_true(hosted != null, "the panel entered the tree")
+	if err != "":
+		_T.free_ui(panel)
+		return err
+	var tree: SceneTree = panel.get_tree()
+	err = _T.assert_true(tree != null, "and can see the SceneTree")
+	if err != "":
+		_T.free_ui(panel)
+		return err
+
+	var settled: Vector2 = panel.size
+	# Without this the test would pass vacuously on (0, 0) == (0, 0), which is
+	# exactly what a Control looks like when it was never laid out at all.
+	err = _T.assert_gt(settled.x, 0.0,
+		"the panel actually got laid out — a zero size means no layout pass ran and "
+		+ "the comparison below would be (0, 0) against (0, 0)")
+	if err == "":
+		err = _T.assert_gt(settled.y, 0.0, "in both axes")
+	if err != "":
+		_T.free_ui(panel)
+		return err
+
+	var pumped: int = 0
+	while pumped < 20:
+		await tree.process_frame
+		pumped += 1
+	err = _T.assert_eq(panel.size, settled,
+		("%d further frames changed nothing: %s is a fixed point, not a moving "
+			+ "target. This is why a Control read straight after instantiate_ui is "
+			+ "the harness's contract rather than a defect") % [pumped, settled])
+	_T.free_ui(panel)
+	return err
