@@ -1,6 +1,6 @@
 # todo
 
-**Cycle 11 of 30.** Bump this each time you refill the Items list. See the Workflow
+**Cycle 12 of 30.** Bump this each time you refill the Items list. See the Workflow
 loop at the top of `CLAUDE.md` — when this list is done, refill it and start again.
 
 ## The brief (original)
@@ -24,11 +24,11 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 
 ## Items
 
-- [ ] A truncated save silently zeroes a high score that can never be restored —
-      `int("")` is 0 and `record_score` only raises (`plant-tower-defense-5el`)
-- [ ] Every Sundew redraw walks every pest on the board, and redraws are most
-      frequent when the pest count is highest (`plant-tower-defense-fp5`)
-- [ ] Node metadata is a cross-script contract that no gate can see
-      (`plant-tower-defense-dka`)
+- [ ] A husk eats the click that would have planted, and the preview's four
+      states cannot warn about it (`plant-tower-defense-0wg`)
+- [ ] The endless spawn gap floors at wave 22 and only the count keeps climbing —
+      ~100 aphids alive at once (`plant-tower-defense-efv`)
+- [ ] Two palettes, one game, and the HUD's private half is now the bigger one
+      (`plant-tower-defense-d9e`)
 - [ ] Add cool new features or concrete improvements (UX, game juice,
       animations, enhancements, or full features) to `kanban.md`
