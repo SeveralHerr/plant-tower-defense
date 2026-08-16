@@ -2495,3 +2495,130 @@ func test_ending_a_run_twice_leaves_exactly_one_summary() -> String:
 		err = _T.assert_eq(found, 1, "exactly one card, however many times the run ended")
 	_T.free_ui(game)
 	return err
+
+
+## The message row used to be two assignments, so every line destroyed the one
+## before it. These pin the three behaviours that replaced that.
+func test_an_important_message_is_not_wiped_by_an_ambient_one() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	var label: Label = hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+	var err: String = _T.assert_true(label != null, "the message row exists")
+	if err == "":
+		# Game._ready posts an 8-second starter tip. Drain it, or every assertion
+		# below is really about that line rather than the ones under test.
+		hud._process(9.0)
+		hud.show_message("Click Uproot again", 4.0, Hud.MESSAGE_IMPORTANT)
+		# Exactly the case that motivated this: a pest dies mid-instruction.
+		hud.show_message("A husk rotted away", 2.0, Hud.MESSAGE_NORMAL)
+		err = _T.assert_eq(label.text, "Click Uproot again",
+			"the instruction survives an ambient line arriving on top of it")
+	if err == "":
+		err = _T.assert_eq(hud.pending_messages(), 1, "and the ambient line waits its turn")
+	if err == "":
+		# Once the instruction expires the queued line takes over rather than
+		# being lost -- a dropped message and a deferred one look identical on
+		# screen at the moment of the collision, which is why this is asserted.
+		hud._process(4.1)
+		err = _T.assert_eq(label.text, "A husk rotted away", "then it gets its turn")
+	if err == "":
+		err = _T.assert_eq(hud.pending_messages(), 0, "and the queue drains")
+	_T.free_ui(game)
+	return err
+
+
+func test_an_important_message_can_cut_an_ambient_one_short() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	var label: Label = hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+	hud._process(9.0)
+	hud.show_message("Wave 3 cleared", 6.0, Hud.MESSAGE_NORMAL)
+	hud.show_message("Click Uproot again", 4.0, Hud.MESSAGE_IMPORTANT)
+	var err: String = _T.assert_eq(label.text, "Click Uproot again",
+		"the urgent line pre-empts the ambient one")
+	if err == "":
+		err = _T.assert_eq(hud.pending_messages(), 1,
+			"and the ambient line is deferred, not discarded")
+	_T.free_ui(game)
+	return err
+
+
+func test_the_message_queue_cannot_grow_without_bound() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	hud._process(9.0)
+	hud.show_message("live", 9.0, Hud.MESSAGE_NORMAL)
+	for i: int in range(12):
+		hud.show_message("spam %d" % i, 2.0, Hud.MESSAGE_NORMAL)
+	var err: String = _T.assert_true(hud.pending_messages() <= Hud.MESSAGE_QUEUE_MAX,
+		"a flood cannot back up minutes of stale narration, got %d" % hud.pending_messages())
+	if err == "":
+		# An important line must still get through when the queue is full of
+		# ambient ones. It pre-empts the live line outright, so assert at that
+		# moment -- pumping first would run past its own 3-second life and read
+		# whatever the queue served next, which is what the first draft did.
+		hud.show_message("urgent", 3.0, Hud.MESSAGE_IMPORTANT)
+		var label: Label = hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+		err = _T.assert_eq(label.text, "urgent",
+			"an important line gets through a full queue of ambient ones")
+	if err == "":
+		# And when it does expire, the queue is still bounded rather than having
+		# grown a backlog behind it.
+		hud._process(3.1)
+		err = _T.assert_true(hud.pending_messages() < Hud.MESSAGE_QUEUE_MAX,
+			"the queue drains rather than accumulating, got %d" % hud.pending_messages())
+	_T.free_ui(game)
+	return err
+
+
+## The prep strip: 18 seconds used to tick away in silence.
+func test_the_prep_strip_drains_and_hides_itself_once_a_wave_is_live() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var bar: ColorRect = game.hud.get_node_or_null("Root/TopBar/PrepBar") as ColorRect
+	var err: String = _T.assert_true(bar != null, "the prep strip exists")
+	if err == "":
+		game._prep_left = Game.PREP_SECONDS
+		game._wave_live = false
+		game._refresh()
+		await _pump(game)
+		err = _T.assert_true(bar.visible, "it shows while the garden is between waves")
+	var full: float = bar.size.x
+	if err == "":
+		err = _T.assert_gt(full, 0.0, "and starts with width")
+	if err == "":
+		game._prep_left = Game.PREP_SECONDS * 0.25
+		game._refresh()
+		await _pump(game)
+		err = _T.assert_true(bar.size.x < full * 0.5,
+			"it drains as the prep time runs down: %.0f then %.0f" % [full, bar.size.x])
+	if err == "":
+		# No _pump here on purpose: a wave flagged live with no pests on the board
+		# is a state the game undoes on its very next frame -- _check_wave_cleared
+		# sees nothing spawning and nothing alive and clears it straight back.
+		# Pumping would assert against the game's correction, not against this code.
+		game._wave_live = true
+		game._refresh()
+		err = _T.assert_false(bar.visible,
+			"and is hidden while a wave is live, so a full strip always means time left")
+	_T.free_ui(game)
+	return err
+
+
+func test_the_prep_strip_wears_the_next_waves_threat_not_the_last_ones() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var bar: ColorRect = game.hud.get_node_or_null("Root/TopBar/PrepBar") as ColorRect
+	game.director.endless = true
+	game.director.current_wave = 40
+	game._wave_live = false
+	game._prep_left = Game.PREP_SECONDS
+	game._refresh()
+	await _pump(game)
+	var expected: Color = Hud.threat_color(WaveDirector.threat_level(41))
+	var err: String = _T.assert_true(bar.color.is_equal_approx(expected),
+		"the strip previews wave 41's threat, not wave 40's")
+	if err == "":
+		err = _T.assert_false(
+			bar.color.is_equal_approx(Hud.threat_color(WaveDirector.threat_level(1))),
+			"and is not simply the calm default")
+	_T.free_ui(game)
+	return err

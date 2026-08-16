@@ -87,6 +87,27 @@ const THREAT_HOT := Color(0.85, 0.25, 0.22)
 ## colour, and endless simply stays pinned at red — which is the correct reading.
 const THREAT_TINT_MAX: int = 12
 
+## The prep countdown, drawn as a draining strip along the foot of the top bar.
+##
+## Not a fifth readout and not text on the wave button: the stats row's budget is
+## 815px of labels plus 70px of separations plus a 216px button against a 1112px
+## row — eleven pixels of slack — so anything that widens by a character breaks
+## `test_the_stats_row_budget_fits_the_bar`. A strip costs no width at all.
+##
+## It takes the tint of the wave that is *coming*, not the one that just ended, so
+## the same colour language answers "how bad" and "how long" at once.
+const PREP_BAR_HEIGHT: float = 4.0
+
+## Message priorities. NORMAL is ambient colour — a husk collected, a wave
+## cleared. IMPORTANT is anything the player must act on or has just been asked
+## to confirm, and it may cut a NORMAL line short.
+const MESSAGE_NORMAL: int = 0
+const MESSAGE_IMPORTANT: int = 1
+## How long a line is guaranteed on screen before an equal-priority one may
+## replace it. Roughly the time to read a short sentence.
+const MESSAGE_MIN_READABLE: float = 1.2
+const MESSAGE_QUEUE_MAX: int = 3
+
 const HEALTH_ROW_HEIGHT: float = 14.0
 const HEALTH_BACK := Color(0.12, 0.15, 0.13, 0.35)
 const HEALTH_FULL := Color(0.180, 0.800, 0.443)
@@ -112,6 +133,9 @@ var _banner: Label
 
 var _plant_buttons: Dictionary = {}
 var _message_left: float = 0.0
+var _message_priority: int = MESSAGE_NORMAL
+var _message_queue: Array[Dictionary] = []
+var _prep_bar: ColorRect
 
 
 func _ready() -> void:
@@ -189,6 +213,14 @@ func _build_top_bar(root: Control) -> void:
 	_message_label.clip_text = true
 	_message_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	bar.add_child(_message_label)
+
+	_prep_bar = ColorRect.new()
+	_prep_bar.name = "PrepBar"
+	_prep_bar.position = Vector2(0, float(BAR_HEIGHT) - PREP_BAR_HEIGHT)
+	_prep_bar.size = Vector2(get_viewport_width(), PREP_BAR_HEIGHT)
+	_prep_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_prep_bar.visible = false
+	bar.add_child(_prep_bar)
 
 
 func _build_side_panel(root: Control) -> void:
@@ -351,6 +383,26 @@ func _add_stat(row: HBoxContainer, node_name: String, font_size: int, colour: Co
 ## The widths above are only safe as a sum. Anything that adds a readout, widens
 ## one, or grows the button has to keep this true, and the unit test calls it
 ## rather than re-deriving the arithmetic.
+## The prep strip: how long until the next wave arrives on its own, and — in its
+## colour — how bad that wave will be.
+##
+## Hidden while a wave is live and once the waves run out, because an empty strip
+## and a full one would otherwise be the same picture: a bar that is always there
+## says nothing by being there.
+func _refresh_prep_bar(state: Dictionary) -> void:
+	var total: float = float(state.get("prep_total", 0.0))
+	var live: bool = bool(state.get("wave_live", false))
+	if live or total <= 0.0 or not bool(state.get("more_waves", false)):
+		_prep_bar.visible = false
+		return
+	var left: float = clampf(float(state.get("prep_left", 0.0)), 0.0, total)
+	_prep_bar.visible = true
+	_prep_bar.size = Vector2(float(get_viewport_width()) * (left / total), PREP_BAR_HEIGHT)
+	# The wave that is coming, not the one that just finished — the strip is a
+	# warning about the next thing, so it wears the next thing's colour.
+	_prep_bar.color = threat_color(int(state.get("next_threat_level", 1)))
+
+
 static func stats_row_budget(readouts: int) -> float:
 	var widths: float = SEEDS_LABEL_WIDTH + WAVE_LABEL_WIDTH + LIVES_LABEL_WIDTH + COMPOST_LABEL_WIDTH
 	return widths + float(STATS_SEPARATION * readouts) + NEXT_WAVE_BUTTON_SIZE.x
@@ -405,7 +457,7 @@ func _process(delta: float) -> void:
 	if _message_left > 0.0:
 		_message_left -= delta
 		if _message_left <= 0.0:
-			_message_label.text = ""
+			_advance_message_queue()
 
 
 ## The one call the Game makes every time anything changes. Passing the whole
@@ -460,6 +512,7 @@ func refresh(state: Dictionary) -> void:
 	_packet_button.disabled = locked_empty or bank.seeds < int(SeedBank.PACKET_TIERS[&"common"]["cost"])
 	_rare_packet_button.disabled = locked_empty or bank.seeds < int(SeedBank.PACKET_TIERS[&"rare"]["cost"])
 	_next_wave_button.disabled = not bool(state["can_start_wave"])
+	_refresh_prep_bar(state)
 	_refresh_selection(state)
 
 
@@ -526,9 +579,70 @@ func _refresh_health(plant: Plant) -> void:
 	_health_text.text = "Health %d/%d" % [int(ceil(plant.health)), int(Plant.MAX_HEALTH)]
 
 
-func show_message(text: String, seconds: float = 3.0) -> void:
+## Puts a line on the status row. Higher `priority` wins ties and can cut a
+## lower-priority line short; equal or lower priority waits its turn.
+##
+## This used to be two assignments, which meant every message destroyed the one
+## before it the instant it arrived. The uproot gate made the cost concrete: its
+## "click again" instruction is a 4-second read, and any pest dying in that window
+## replaced it with a 2-second husk line, leaving the player with an armed button
+## and no explanation of why. A message the player cannot finish reading is the
+## same as no message.
+func show_message(text: String, seconds: float = 3.0, priority: int = MESSAGE_NORMAL) -> void:
+	if _message_left > 0.0:
+		if priority > _message_priority:
+			_queue_message(_message_label.text, _message_left, _message_priority)
+		elif _message_left > MESSAGE_MIN_READABLE or priority < _message_priority:
+			# The line on screen has not been up long enough to have been read, or
+			# outranks this one. Wait rather than stomp.
+			_queue_message(text, seconds, priority)
+			return
 	_message_label.text = text
 	_message_left = seconds
+	_message_priority = priority
+
+
+## The queue is deliberately short. Messages describe things happening now, and a
+## backlog long enough to outlive its own subject is worse than a dropped line —
+## it puts stale narration over a board that has moved on. When it is full the
+## lowest-priority entry is dropped, so an important line still gets in.
+func _queue_message(text: String, seconds: float, priority: int) -> void:
+	if _message_queue.size() >= MESSAGE_QUEUE_MAX:
+		var lowest: int = 0
+		for i: int in range(_message_queue.size()):
+			if int(_message_queue[i]["priority"]) < int(_message_queue[lowest]["priority"]):
+				lowest = i
+		if int(_message_queue[lowest]["priority"]) >= priority:
+			return
+		_message_queue.remove_at(lowest)
+	_message_queue.append({"text": text, "seconds": seconds, "priority": priority})
+
+
+func _advance_message_queue() -> void:
+	if _message_queue.is_empty():
+		_message_label.text = ""
+		_message_priority = MESSAGE_NORMAL
+		return
+	# Highest priority first, earliest among equals — not simply the front. A
+	# strict FIFO left an urgent line waiting behind whatever ambient chatter
+	# happened to queue ahead of it, which is the same failure as stomping it,
+	# only slower.
+	var pick: int = 0
+	for i: int in range(_message_queue.size()):
+		if int(_message_queue[i]["priority"]) > int(_message_queue[pick]["priority"]):
+			pick = i
+	var next: Dictionary = _message_queue[pick]
+	_message_queue.remove_at(pick)
+	_message_label.text = String(next["text"])
+	_message_left = float(next["seconds"])
+	_message_priority = int(next["priority"])
+
+
+## What is on the status row and what is waiting behind it. Read by the tests —
+## a queue whose contents cannot be inspected can only be checked by watching a
+## Label over time, which is exactly the kind of check that never gets written.
+func pending_messages() -> int:
+	return _message_queue.size()
 
 
 func show_banner(text: String) -> void:

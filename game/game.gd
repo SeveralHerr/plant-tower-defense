@@ -447,8 +447,11 @@ func request_uproot() -> String:
 		return uproot_selected()
 	_uproot_armed = selected_placed
 	_uproot_left = UPROOT_CONFIRM_SECONDS
+	# IMPORTANT: this is an instruction with a live 4-second trigger behind it, and
+	# an ambient husk pickup used to wipe it mid-read.
 	hud.show_message("Click Uproot again to dig up your %s — it will not grow back."
-		% PlantCatalog.display_name(selected_placed.kind), UPROOT_CONFIRM_SECONDS)
+		% PlantCatalog.display_name(selected_placed.kind), UPROOT_CONFIRM_SECONDS,
+		Hud.MESSAGE_IMPORTANT)
 	_refresh()
 	return "confirm needed"
 
@@ -618,6 +621,10 @@ func state() -> Dictionary:
 		"wave": director.current_wave,
 		"wave_count": director.wave_count(),
 		"wave_live": _wave_live,
+		"prep_left": _prep_left,
+		"prep_total": PREP_SECONDS,
+		"more_waves": director.has_more_waves(),
+		"next_threat_level": WaveDirector.threat_level(maxi(1, director.current_wave + 1)),
 		"lives": lives,
 		"selected_plant": selected_plant,
 		"selected_placed": selected_placed,
