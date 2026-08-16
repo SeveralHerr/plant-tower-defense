@@ -17,6 +17,11 @@ block in `CLAUDE.md` — this list is refilled, never left fully ticked.
 > three of those four, plus two pulled from the standing backlog (one of them
 > James's own direct ask about pest facing).
 
+> **Paused here at the user's request after cycle 22.** Nothing below is started;
+> `129`, `3t9`, `9ti`, `d2a`, `wfq` are filed and ready, along with the kanban-addition
+> item. Resume by working the checklist below, starting wherever's convenient — none
+> of them depend on each other.
+
 ## Items
 
 - [ ] **129 — Pests never turn to face the direction they're walking.** Sprites are
