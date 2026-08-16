@@ -1357,3 +1357,48 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     parameter, so the bridge is stricter than the language it drives. Failing that,
     say so in the error: "the bus cannot type a null Object argument; call a wrapper
     or set the state directly" would have saved the guessing.
+
+## 2026-08-15 — Message priority queue, prep strip, packet tier fix (9q8, uk6, ha6)
+
+- Value: **warranted** as run, recorded as **insufficient** — and the ledger is
+  right to say so; see the gap below.
+  - Expected: the strip is 4px at the very foot of a dark bar — runtime should
+    reveal whether it actually renders there or is clipped/invisible against INK,
+    and whether the queued-message handoff looks right in a real frame.
+  - Got: `Rect: 0, 68, 1152x4  Visible: True  In viewport: True`, draining to
+    exactly `288x4` at 4.5 of 18 seconds (1152 x 0.25 = 288), and reading
+    `r 0.850 g 0.25 b 0.220` — THREAT_HOT — once the director was pushed to wave
+    200 endless. The status row held `IMPORTANT INSTRUCTION` with an ambient line
+    posted straight on top of it and `pending_messages` returning 2.
+  - Found: two defects, both caught by tests rather than by the live run. (1) The
+    message queue drained strictly FIFO, so an important line queued behind
+    ambient chatter waited its turn rather than jumping it — the same failure as
+    stomping it, only slower; `_advance_message_queue` now selects
+    highest-priority-first. (2) `test_a_packet_never_hands_back_something_you_
+    already_own` was green *only because of* the ha6 bug: it drains the catalogue
+    on the common tier, which terminated solely because common could illegally
+    reach the tier-2 Sunflower. With the fallback removed it would spin on a
+    refusal forever.
+  - Cheaper: nothing for the FIFO defect — it needed a test that queued two
+    priorities and pumped. The strip's geometry could have been computed from the
+    constants; its visibility against INK could not.
+
+- Gap: **in a fan-out, `reach` grades a run against the whole repo's dirty set, so
+  a run that fully verified its own slice is downgraded for someone else's** —
+  `verify_ledger record` answered
+  `downgraded warranted -> insufficient: no changed file was loaded at runtime
+  (game/corn_cobbler.gd, game/pest.gd)`. Both of those belong to two subagents
+  still mid-task; my own three items were committed moments earlier, so by record
+  time the working tree's changed set was entirely other people's work. The run
+  did load and exercise `game/hud.gd` and `game/game.gd` — it simply got no credit,
+  because reach is computed from `git status` rather than from what the run
+  claimed to be about. The inverse error is the dangerous one and it is equally
+  available: had I committed nothing, an agent's untouched files would have been
+  silently counted as *my* denominator.
+  - [G-027] status: open | seen: 1 | harness: 0.21.0
+  - Improvement: let `record` take `--about PATH...` (or read it from the run.json)
+    naming the files this run set out to verify, and compute reach against that
+    intersected with the changed set. Absent that, `reach` should at least report
+    the two numbers separately — "reached 2/2 of the files this run named, 0/2 of
+    the rest of the dirty tree" — instead of collapsing them into one verdict that
+    is wrong in both directions depending on commit timing.
