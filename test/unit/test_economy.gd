@@ -311,6 +311,24 @@ func test_each_mode_reports_its_own_best() -> String:
 
 ## The post-mortem could only report damage, because these were the two numbers
 ## nobody had ever written down.
+## Spawn a pest and hand back THAT pest, not whichever the group lists first.
+##
+## `get_nodes_in_group` is tree-global and `instantiate_scene` pumps settle frames,
+## so anything that acts on entering the tree has already acted before the test body
+## runs — index 0 is not necessarily the node under test. `assert_gt(size, 0)` does
+## not save you: it was true every time `test_kernels_launch` measured a kernel its
+## own setup had fired. Diffing the group around the spawn cannot pick up a stranger.
+func _spawn_and_take(game: Game, species: StringName) -> Pest:
+	var before: Dictionary = {}
+	for p: Node in game.get_tree().get_nodes_in_group("pests"):
+		before[p.get_instance_id()] = true
+	game.spawn_pest(species)
+	for p: Node in game.get_tree().get_nodes_in_group("pests"):
+		if not before.has(p.get_instance_id()) and p is Pest:
+			return p as Pest
+	return null
+
+
 func test_a_run_counts_what_it_defeated_and_how_long_it_took() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var err: String = _T.assert_eq(game.pests_defeated, 0, "a fresh run has defeated nothing")
@@ -322,12 +340,11 @@ func test_a_run_counts_what_it_defeated_and_how_long_it_took() -> String:
 		err = _T.assert_float_eq(game.run_seconds - started_at, 2.5, 0.01,
 			"the clock advances by exactly the delta it is given")
 	if err == "":
-		game.spawn_pest(Pest.APHID)
-		var pests: Array = game.get_tree().get_nodes_in_group("pests")
-		err = _T.assert_gt(pests.size(), 0, "a pest is on the board to kill")
+		var victim: Pest = _spawn_and_take(game, Pest.APHID)
+		err = _T.assert_true(victim != null, "a pest is on the board to kill")
 		if err == "":
 			# Through the real death path, not by touching the counter.
-			(pests[0] as Pest).take_damage(9999.0)
+			victim.take_damage(9999.0)
 			err = _T.assert_eq(game.pests_defeated, 1, "a kill is counted where kills funnel")
 	if err == "":
 		# The clock must stop when the run does, or it measures how long the player
@@ -575,15 +592,14 @@ func test_ordinary_income_still_raises_the_recorded_score() -> String:
 	## swept husks, which reach the bank the same way.
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var earned_before: int = game.bank.seeds_earned_total
-	game.spawn_pest(Pest.APHID)
-	var pests: Array = game.get_tree().get_nodes_in_group("pests")
-	var err: String = _T.assert_gt(pests.size(), 0, "a pest is on the board to kill")
+	var victim: Pest = _spawn_and_take(game, Pest.APHID)
+	var err: String = _T.assert_true(victim != null, "a pest is on the board to kill")
 	var value: int = 0
 	if err == "":
-		value = (pests[0] as Pest).seed_value
+		value = victim.seed_value
 		err = _T.assert_gt(value, 0, "and it is worth something to kill")
 	if err == "":
-		(pests[0] as Pest).take_damage(9999.0)
+		victim.take_damage(9999.0)
 		err = _T.assert_eq(game.bank.seeds_earned_total, earned_before + value,
 			"a kill is income, and income is the score")
 	if err == "":
