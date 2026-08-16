@@ -12,9 +12,7 @@ Do these steps in order, over and over:
    run `/verify`, then commit. One commit per item. Never batch several items into one
    commit at the end.
 3. **The last item is always "add cool new features or concrete improvements (UX, game
-   juice, animations, enhancements, or full features) to `kanban.md`".** Mine what
-   *this cycle's own work* just revealed — real things you hit while building and
-   verifying, not abstract ideas.
+   juice, animations, enhancements, or full features) to `kanban.md`".** 
 4. **Refill `todo.md`.** Pick 3-5 concrete, not-yet-filed items out of kanban.md's
    backlog, file them as bd issues, and write them into `todo.md` as a fresh unchecked
    checklist. Never leave `todo.md` with everything ticked off.
