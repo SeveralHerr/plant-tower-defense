@@ -196,11 +196,23 @@ func test_kernels_launch_from_the_cob_on_an_offset_layer() -> String:
 	await _T.instantiate_scene(host)
 
 	var pests: Array[Pest] = [aphid]
+	# The group is global to the tree, so it can hold kernels another test fired
+	# and never freed. Taking kernels[0] therefore measured whichever kernel
+	# happened to be first, and this test passed or failed on the order the suite
+	# ran in: green in a full run, red on its own, at HEAD and with any change
+	# that shifted the order. Diff the group instead, so it can only ever measure
+	# the kernel this cob just launched.
+	var before: Dictionary = {}
+	for k: Node in host.get_tree().get_nodes_in_group("kernels"):
+		before[k.get_instance_id()] = true
 	corn._act(1.0, pests)
-	var kernels: Array[Node] = host.get_tree().get_nodes_in_group("kernels")
-	var err: String = _T.assert_gt(kernels.size(), 0, "the cob fired")
+	var fired: Array[Kernel] = []
+	for k: Node in host.get_tree().get_nodes_in_group("kernels"):
+		if not before.has(k.get_instance_id()) and k is Kernel:
+			fired.append(k as Kernel)
+	var err: String = _T.assert_gt(fired.size(), 0, "the cob fired")
 	if err == "":
-		var kernel := kernels[0] as Kernel
+		var kernel: Kernel = fired[0]
 		err = _T.assert_true(kernel.position.distance_to(corn.position) < 1.0,
 			"the kernel starts at the cob (%s), not %s" % [corn.position, kernel.position])
 	_T.free_ui(host)
@@ -2754,4 +2766,301 @@ func test_a_run_that_held_nothing_is_still_told_what_the_red_road_is() -> String
 			err = _T.assert_eq(beds.text, "%d of %d beds" % [Game.LIVES, Game.LIVES],
 				"and reports the whole garden lost, once")
 	_T.free_ui(game)
+	return err
+
+
+# -- What an escape leaves behind -------------------------------------------
+
+
+## Stands up a real run, loses the whole garden through the real escape path with
+## real pests, and hands back the beds row the post-mortem printed for it.
+##
+## `fought` is the only difference between the two runs: whether anything in the
+## garden ever reached the bugs on their way down. Returns [error, row_text] —
+## GDScript has no out-params, and a helper that returned only the text would
+## report a failed setup as an empty string, which is exactly the shape of a
+## vacuous pass.
+##
+## Every bed goes, driven by the escapes themselves rather than by forcing
+## `lives`: the beds row computes LIVES - lives, so a shortened `lives` would
+## report the whole garden lost however few pests actually walked out.
+func _staged_escape_run(fought: bool) -> Array:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	if game == null:
+		return ["the game scene did not load", ""]
+	game._on_wave_started(1)
+	var staged: int = 0
+	for i: int in range(Game.LIVES):
+		var bug: Pest = _pest(Pest.APHID, Vector2.ZERO)
+		if fought:
+			# Half a kernel. The claim is that the garden reached it, not that
+			# the garden nearly won — an aphid has 3 health and walks on.
+			bug.take_damage(0.5)
+		game._on_pest_escaped(bug)
+		# Never added to the tree, so it is in no group and the losing frame's
+		# call_group("pests", "queue_free") cannot reach it. Ours to free.
+		bug.free()
+		staged += 1
+	await game.get_tree().process_frame
+	await game.get_tree().process_frame
+	if staged != Game.LIVES:
+		_T.free_ui(game)
+		return ["only %d of %d escapes were staged" % [staged, Game.LIVES], ""]
+	if not game.game_over:
+		_T.free_ui(game)
+		return ["the run did not end on its own escapes", ""]
+	var beds: Label = game.get_node_or_null("SummaryLayer/RunSummary/Value_Gardenlost") as Label
+	if beds == null:
+		_T.free_ui(game)
+		return ["the post-mortem card has no beds row", ""]
+	var text: String = beds.text
+	_T.free_ui(game)
+	return ["", text]
+
+
+## plant-tower-defense-2z8, staged end to end and both ways.
+##
+## The two runs the issue contrasts, made identical in everything the card could
+## previously see: the same ten beds, lost through the same exit cell, in the
+## same wave. Board._run_escapes files every one of them against exit_cell()
+## because the pest is off the board by then — that is deliberate, it is what
+## makes stops_at() a subtraction, and it means the spatial half of an escape is
+## a CONSTANT. So the distinction cannot be carried by a cell, and had to be
+## carried by something the pest itself knew.
+##
+## What it knew: whether anything ever reached it. Corn is the only damage in the
+## game (a Sundew slows and does not hurt, a Sunflower never touches a pest) and
+## it shoots whatever is furthest along the road, so a pest that reached the exit
+## untouched was never in range of anything — a hole in the coverage — while one
+## that was fought and got there anyway means the coverage was there and short.
+## More plants versus a bigger plant: the two things a player can buy.
+func test_a_leak_through_a_gap_and_a_leak_of_stragglers_no_longer_read_alike() -> String:
+	var gap: Array = await _staged_escape_run(false)
+	var err: String = _T.assert_eq(String(gap[0]), "", "the untouched run staged cleanly")
+	if err != "":
+		return err
+	var stragglers: Array = await _staged_escape_run(true)
+	err = _T.assert_eq(String(stragglers[0]), "", "the fought run staged cleanly")
+	if err != "":
+		return err
+
+	var gap_text: String = String(gap[1])
+	var straggler_text: String = String(stragglers[1])
+	err = _T.assert_gt(gap_text.length(), 0, "the untouched run printed a beds row")
+	if err == "":
+		err = _T.assert_gt(straggler_text.length(), 0, "and so did the fought one")
+	if err == "":
+		err = _T.assert_true(gap_text != straggler_text,
+			"two runs that lost the identical %d beds no longer read the same ('%s' vs '%s')"
+				% [Game.LIVES, gap_text, straggler_text])
+	if err == "":
+		err = _T.assert_eq(gap_text, "%d of %d beds — %d walked in untouched"
+			% [Game.LIVES, Game.LIVES, Game.LIVES],
+			"the gap run counts the pests that walked the whole road unopposed")
+	if err == "":
+		err = _T.assert_eq(straggler_text, "%d of %d beds — all were fought"
+			% [Game.LIVES, Game.LIVES],
+			"and the straggler run says the garden reached every one of them and came up short")
+	if err == "":
+		# The bed count itself is untouched. This row is the escape count and has
+		# been since the card shipped; the clause is evidence appended to it, not
+		# a replacement for it.
+		var stem: String = "%d of %d beds" % [Game.LIVES, Game.LIVES]
+		err = _T.assert_true(gap_text.begins_with(stem) and straggler_text.begins_with(stem),
+			"and neither run stopped reporting the beds it always reported")
+	return err
+
+
+## The reading itself, at the pest, with no run around it.
+##
+## Two ways the garden engages a bug, and they are the whole list. A kernel that
+## lands is the obvious one. The other is a Chomp, which deals no damage at all
+## and is wired to release() on `destroyed` — so a Chomp eaten out from under its
+## meal hands back a live pest at full health that had very much been fought.
+## Reading health alone would call that one a stroll through an empty lane.
+func test_a_pest_knows_whether_the_garden_ever_reached_it() -> String:
+	var clean: Pest = _pest(Pest.APHID, Vector2.ZERO)
+	var err: String = _T.assert_true(clean != null, "there is a pest to ask")
+	if err != "":
+		return err
+	err = _T.assert_false(clean.was_engaged(),
+		"a pest fresh off the entry cell has been touched by nothing")
+	if err == "":
+		clean.take_damage(0.0)
+		err = _T.assert_false(clean.was_engaged(),
+			"and a zero-damage hit is not a hit — 'something reached it' has to mean something landed")
+	if err == "":
+		clean.take_damage(1.0)
+		err = _T.assert_true(clean.was_engaged(), "while one kernel that lands is enough")
+	if err == "":
+		err = _T.assert_true(clean.is_alive(),
+			"and it is still walking, which is the only case this reading is ever taken in")
+	clean.free()
+
+	if err == "":
+		var held: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+		err = _T.assert_true(held != null, "there is a beetle for the mouth")
+		if err == "":
+			err = _T.assert_false(held.was_engaged(), "ungrabbed, it has been touched by nothing")
+		if err == "":
+			var mouth := ChompFlower.new()
+			held.held_by = mouth
+			held._physics_process(0.016)
+			held.held_by = null
+			err = _T.assert_true(held.was_engaged(),
+				"a pest a Chomp held was fought, though the Chomp never damaged it")
+			if err == "":
+				err = _T.assert_float_eq(held.health, held.max_health, 0.001,
+					"and its health cannot say so — unharmed by that measure, engaged by this one")
+			mouth.free()
+		held.free()
+	return err
+
+
+## The branch that keeps the row honest, and the one the existing suite leans on:
+## Game._on_pest_escaped is called with null by every test that stages a losing
+## run without bugs on the board, and _note_escape counts such an escape in
+## NEITHER tally. An unobserved pest is not evidence of a pest that was fought,
+## so the row degrades to the bare bed count it has always printed rather than
+## announcing "all were fought" about pests nothing ever looked at.
+func test_the_beds_row_says_only_what_the_run_actually_watched() -> String:
+	var err: String = _T.assert_gt(Game.LIVES, 4,
+		"the fixtures below need a garden with beds to spare")
+	if err != "":
+		return err
+	var seen: int = Game.LIVES - 4
+
+	var unwatched := RunSummary.build({"lives_lost": Game.LIVES})
+	err = _T.assert_true(unwatched != null, "a card for a run whose escapes carried no pest")
+	if err != "":
+		return err
+	var bare: String = unwatched.beds_text()
+	err = _T.assert_eq(bare, "%d of %d beds" % [Game.LIVES, Game.LIVES],
+		"prints the bed count it always printed and nothing else")
+	if err == "":
+		err = _T.assert_false(bare.contains("fought"),
+			"and never claims a fight it has no evidence for")
+	unwatched.free()
+
+	if err == "":
+		var gap := RunSummary.build({
+			"lives_lost": Game.LIVES,
+			"escapes_recorded": Game.LIVES,
+			"escapes_untouched": seen,
+		})
+		err = _T.assert_true(gap != null, "a card for a run leaking through a hole")
+		if err == "":
+			err = _T.assert_eq(gap.beds_text(), "%d of %d beds — %d walked in untouched"
+				% [Game.LIVES, Game.LIVES, seen],
+				"counts the ones nothing ever reached")
+		gap.free()
+
+	if err == "":
+		var shortfall := RunSummary.build({
+			"lives_lost": Game.LIVES,
+			"escapes_recorded": Game.LIVES,
+			"escapes_untouched": 0,
+		})
+		err = _T.assert_true(shortfall != null,
+			"a card for a run that fought them all and still lost")
+		if err == "":
+			var text: String = shortfall.beds_text()
+			err = _T.assert_eq(text, "%d of %d beds — all were fought"
+				% [Game.LIVES, Game.LIVES],
+				"says the coverage was there — the opposite purchase from the branch above")
+			if err == "":
+				# Not "0 walked in untouched". A zero on a results card reads as a
+				# missing measurement, and this branch carries a reading a player
+				# would act on.
+				err = _T.assert_false(text.contains("0 walked"),
+					"and does not phrase the strongest reading on the row as a zero")
+		shortfall.free()
+	return err
+
+
+## Height was never available (an eighth row foots at 486 against buttons at
+## 476), so this reading was folded into an existing row and is paid for in width
+## instead. The beds row is now the card's widest value, which the held-ground
+## row used to be — so it is the row the column has to be measured against, and
+## this is that measurement.
+##
+## Measured through the resolved theme font. Every value Label on this card sets
+## clip_text, and a clipping Label reports a 1px minimum width by design, so a
+## gate built on get_minimum_size() would pass for any string of any length.
+func test_the_worst_case_beds_row_still_fits_its_column() -> String:
+	# The worst case built by the formatter rather than written out: every bed
+	# lost, every escape read, and not one of them ever touched.
+	var panel := RunSummary.build({
+		"lives_lost": Game.LIVES,
+		"escapes_recorded": Game.LIVES,
+		"escapes_untouched": Game.LIVES,
+		"wave": 8,
+		"wave_count": 8,
+		"threat_level": 5,
+		"pests_defeated": 214,
+		"run_seconds": 640.0,
+		"compost_total": 127,
+		"compost_resolved": 214,
+		"stop_cell": Vector2i(13, 7),
+		"stop_cell_stops": 137,
+	})
+	await _T.instantiate_scene(panel)
+	var err: String = _T.assert_true(panel != null, "the card stood up")
+	if err != "":
+		return err
+	var beds: Label = panel.get_node_or_null("Value_Gardenlost") as Label
+	err = _T.assert_true(beds != null, "with a beds row on it")
+	if err != "":
+		_T.free_ui(panel)
+		return err
+	err = _T.assert_eq(beds.text, panel.beds_text(),
+		"and the row on screen is the string the formatter builds, not a second copy of the format")
+	if err != "":
+		_T.free_ui(panel)
+		return err
+
+	var font: Font = beds.get_theme_font("font")
+	var font_size: int = beds.get_theme_font_size("font_size")
+	err = _T.assert_true(font != null, "the row has a font to measure with")
+	if err != "":
+		_T.free_ui(panel)
+		return err
+	var column: float = RunSummary.CARD.size.x * 0.58 - RunSummary.ROW_INSET
+	var drawn: float = font.get_string_size(
+		beds.text, HORIZONTAL_ALIGNMENT_RIGHT, -1, font_size).x
+	err = _T.assert_gt(drawn, 1.0,
+		"the font really measured '%s' — a 1px answer is the clip_text stub, not a width" % beds.text)
+	if err == "":
+		err = _T.assert_gt(column, 1.0, "and there is a real column to measure it against")
+	if err == "":
+		err = _T.assert_true(drawn <= column,
+			"the worst-case beds row fits without ellipsis (%.0f of %.0f px)" % [drawn, column])
+
+	var rows: Array = panel.summary_rows()
+	var measured: int = 0
+	if err == "":
+		err = _T.assert_gt(rows.size(), 1, "there are sibling rows to compare it against")
+	if err == "":
+		for row: Array in rows:
+			var value: Label = panel.get_node_or_null(
+				"Value_%s" % String(row[0]).replace(" ", "")) as Label
+			if value == null:
+				err = "row '%s' has no value label" % String(row[0])
+				break
+			var wide: float = font.get_string_size(
+				value.text, HORIZONTAL_ALIGNMENT_RIGHT, -1, font_size).x
+			err = _T.assert_gt(wide, 1.0,
+				"row '%s' really measured — a 1px answer is the clip_text stub" % String(row[0]))
+			if err != "":
+				break
+			err = _T.assert_true(wide <= drawn,
+				"the beds row is the card's widest value, so it is the one worth gating: '%s' is %.0fpx against its %.0fpx"
+					% [value.text, wide, drawn])
+			if err != "":
+				break
+			measured += 1
+	if err == "":
+		err = _T.assert_eq(measured, rows.size(),
+			"every row was really measured — a short loop is what makes a width gate vacuous")
+	_T.free_ui(panel)
 	return err

@@ -160,6 +160,22 @@ var _alive: bool = true
 var _dead_texture: Texture2D = null
 var _sprite_scale: float = 1.0
 
+## Did anything in the garden ever lay a finger on this pest?
+##
+## Set by exactly the two things that can. A kernel landing (take_damage) and a
+## Chomp holding it still are the whole list: a Sundew "deals no damage
+## whatsoever" by its own doc comment, it only slows, and a Sunflower never
+## touches a pest at all. So a pest that walked a field of Sundews and reached
+## the exit really was never engaged, and this does not overstate the garden.
+##
+## Held counts, even though a Chomp does no damage. A Chomp eaten out from under
+## its meal calls release() (chomp_flower.gd wires `destroyed` to it) and hands
+## back a live pest at full health — which had very much been fought, and would
+## otherwise report itself as having strolled past an empty lane.
+##
+## The reading this exists for is at the moment of escape; see Game._note_escape.
+var _ever_engaged: bool = false
+
 
 func setup(which: StringName, route: PackedVector2Array) -> void:
 	species = which
@@ -383,7 +399,13 @@ static func _marker_source(marker: StringName) -> StringName:
 
 
 func _physics_process(delta: float) -> void:
-	if not _alive or held_by != null:
+	if not _alive:
+		return
+	# Split out of the combined guard this used to share with `_alive`: being held
+	# is the one non-damaging way the garden engages a pest, and a Chomp that is
+	# destroyed mid-chew releases it unharmed. See _ever_engaged.
+	if held_by != null:
+		_ever_engaged = true
 		return
 	if is_hungry:
 		var meal: Plant = _adjacent_plant()
@@ -432,6 +454,11 @@ func _advance(distance: float) -> void:
 func take_damage(amount: float) -> void:
 	if not _alive:
 		return
+	# A zero-damage call is not an engagement. Nothing in the game makes one
+	# today, but `amount` is a float off a kernel and a plant level table, and
+	# "something shot at it" must mean something landed.
+	if amount > 0.0:
+		_ever_engaged = true
 	health = maxf(0.0, health - amount)
 	if is_instance_valid(_health_bar):
 		_health_bar.size = Vector2(32.0 * (health / max_health), 5)
@@ -479,6 +506,16 @@ func _play_death() -> void:
 
 func is_alive() -> bool:
 	return _alive
+
+
+## True once anything in the garden has touched this pest — a kernel that landed
+## or a Chomp that held it. False for one that walked the whole road unopposed.
+##
+## Read by Game._note_escape at the instant `escaped` fires, which is the last
+## moment it can be: _escape() emits and then queue_frees, so a listener that
+## deferred the read would get a freed instance.
+func was_engaged() -> bool:
+	return _ever_engaged
 
 
 ## 1.0 for a plain pest; higher for a mutation, so a harder kill leaves a

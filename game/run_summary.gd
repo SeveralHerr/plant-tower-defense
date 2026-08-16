@@ -196,11 +196,48 @@ func summary_rows() -> Array:
 		["Pests defeated", "%d" % int(_stats.get("pests_defeated", 0))],
 		["Time in the garden", _duration_text()],
 		["Threat reached", "level %d" % int(_stats.get("threat_level", 1))],
-		["Garden lost", "%d of %d beds" % [int(_stats.get("lives_lost", 0)), Game.LIVES]],
+		["Garden lost", beds_text()],
 		["Compost swept", _compost_text()],
 		["Where you held them", _stop_cell_text()],
 	]
 	return rows
+
+
+## The beds row — the run's escape count, and now the only place the card says
+## anything about *how* they were lost.
+##
+## The escapes were the one event on this card carrying no evidence at all.
+## Board._run_escapes has exactly one key in every run by design (every escape is
+## filed against exit_cell(), because the pest is off the board by then), so the
+## spatial half of an escape is a constant and there is nothing there to read.
+## What is not constant is whether anything ever reached the pest on its way
+## down. Corn is the only damage in the game and it shoots whatever is furthest
+## along the road, so an untouched arrival means the road it walked had no
+## coverage over it, and a fought one means the coverage was there and short.
+## More plants versus a bigger plant — the two things a player can buy.
+##
+## Folded into this row rather than given an eighth, for the reason _compost_text
+## spells out at length: rows step by ROW_HEIGHT + ROW_GAP = 38 from FIRST_ROW_Y,
+## the seventh foots at 448 against BUTTON_Y = 476, and an eighth would foot at
+## 486 — below the buttons rather than merely inside BUTTON_CLEARANCE. This is
+## already the row that counts escapes, so it is the row their evidence belongs
+## on. It does cost the width it saves in height: this row now sets the card's
+## value-column high-water mark, which the held-ground row used to.
+##
+## Three branches, and the third is the one that matters. `escapes_recorded` is
+## how many escapes the run could read a pest off — Game._on_pest_escaped
+## tolerates a null pest and several callers hand it one — so a run that observed
+## none of its escapes falls back to the bare bed count it always printed rather
+## than announcing "all were fought" about pests nothing ever looked at.
+func beds_text() -> String:
+	var beds: String = "%d of %d beds" % [int(_stats.get("lives_lost", 0)), Game.LIVES]
+	var read: int = int(_stats.get("escapes_recorded", 0))
+	if read <= 0:
+		return beds
+	var untouched: int = int(_stats.get("escapes_untouched", 0))
+	if untouched <= 0:
+		return "%s — all were fought" % beds
+	return "%s — %d walked in untouched" % [beds, untouched]
 
 
 ## Compost as a fraction, not a bare tally: "12 of 19", the seeds swept against
@@ -216,8 +253,10 @@ func summary_rows() -> Array:
 ## ROW_GAP has already been cut once (8 to 4) to fit the seventh. Width is not
 ## the constraint: the value column is CARD.size.x * 0.58 - ROW_INSET = 335px,
 ## and "127 of 214" is shorter than the "3 of 5 beds" the Garden lost row above
-## already renders, never mind the stopping-point row that sets the real width
-## high-water mark. So the fraction is free and this row costs what it always did.
+## already renders, never mind the row that sets the real width high-water mark —
+## which was the stopping-point row and is now beds_text(), since that row learned
+## to say how the beds went. So the fraction is free and this row costs what it
+## always did.
 ##
 ## `total_resolved()` is the denominator, so a husk still on the ground when the
 ## run ended is in neither half — see CompostMeter.total_resolved for why.

@@ -112,6 +112,30 @@ var _wave_losses: Dictionary = {}
 ## number that is both. Committed in the same batch; see _commit_lane_pressure.
 var _wave_escapes: Dictionary = {}
 
+## How the run's escapes happened, as opposed to how many there were.
+##
+## The count has always been reported (as beds lost) and the place has always
+## been recorded — but the place is a constant. Board._run_escapes documents why:
+## every escape is filed against exit_cell(), because an escaped pest's own
+## position is off the board by the time `escaped` fires. So two runs that lost
+## the same beds left byte-identical evidence however differently they lost them.
+##
+## This is the one thing an escaping pest knows that the player can act on. Corn
+## is the game's only damage source and it shoots the pest furthest along the
+## road (Plant._furthest_along_in_range), so a pest that reaches the exit having
+## never been touched was never in range of anything the whole way down — a hole
+## in the coverage, answered by planting more. One that arrives having been
+## fought was in range and the damage merely ran out, answered by upgrading what
+## is already there or buying it time with a Sundew. Those are opposite purchases
+## and nothing else on the card separates them.
+##
+## `_escapes_recorded` is the denominator and is deliberately NOT `LIVES - lives`:
+## an escape whose pest could not be read counts toward neither of these, so the
+## card falls back to the bare bed count rather than reporting "all were fought"
+## about pests it never saw. See _note_escape.
+var _escapes_recorded: int = 0
+var _escapes_untouched: int = 0
+
 
 func _ready() -> void:
 	add_to_group("game")
@@ -363,12 +387,39 @@ func _on_pest_died(pest: Pest) -> void:
 	compost.drop_husk(pest.position, husk_value)
 
 
-func _on_pest_escaped(_pest: Pest) -> void:
+## Files what the escaping pest knew about its own walk — if there is a pest to
+## ask, which there frequently is not.
+##
+## The guard is the whole point of splitting this out rather than reading `pest`
+## inline. _on_pest_escaped is called with null by the tests that stage a losing
+## run without putting bugs on the board, and an unguarded deref there would
+## raise inside a test method — which aborts only that method and returns "",
+## which the runner cannot tell from a pass. So the tolerance is a named,
+## readable branch instead of an assumption.
+##
+## A null escape is counted in neither tally, not counted as "fought". An
+## unobserved pest is not evidence of a pest that was engaged, and the card's
+## fallback branch exists precisely so it never has to pretend otherwise.
+func _note_escape(pest: Pest) -> void:
+	if pest == null or not is_instance_valid(pest):
+		return
+	_escapes_recorded += 1
+	if not pest.was_engaged():
+		_escapes_untouched += 1
+
+
+func _on_pest_escaped(pest: Pest) -> void:
+	# Before the lives arithmetic below: losing the last bed calls _end_run in the
+	# same breath, and _end_run builds the card out of summary_stats(). A read
+	# filed after that point would be missing from the run that ended on it.
+	_note_escape(pest)
 	# An escaped pest is past the exit and off the board, so its own position
 	# is not a road cell and would be dropped. Attribute it to the last cell of
 	# the road instead — which is also the honest reading: that is where the
-	# lane finally failed. Deliberately not conditional on `_pest`; the tests
-	# and the losing-escape path both call this with null.
+	# lane finally failed. Deliberately not conditional on `pest`; the tests
+	# and the losing-escape path both call this with null, and the bed still
+	# counts. _note_escape above is the only part that needs a real pest, and it
+	# says so by returning rather than by guarding the whole handler.
 	_note_lane_loss(board.cell_to_world(board.exit_cell()), true)
 	Sfx.play(Sfx.PEST_ESCAPED)
 	lives -= 1
@@ -525,6 +576,11 @@ func summary_stats(new_record: bool) -> Dictionary:
 		# and point the player at ground that was never defended in the first place.
 		"stop_cell": stopped,
 		"stop_cell_stops": board.stops_at(stopped),
+		# How the beds went, not just how many. Both are 0 for a run whose escapes
+		# carried no pest to read, and RunSummary.beds_text treats that as "no
+		# evidence" rather than as "every one of them was fought".
+		"escapes_recorded": _escapes_recorded,
+		"escapes_untouched": _escapes_untouched,
 	}
 
 
