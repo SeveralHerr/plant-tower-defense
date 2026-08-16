@@ -88,17 +88,35 @@ a timer has a window, and the checker has no idea it missed it.
 ## What it reports, and what it deliberately does not
 
 Reported: a pair of visible, non-zero-size Controls under the HUD layer whose **screen**
-rects intersect by more than `--min-fraction` of the smaller, where one of them is
-opaque (a Button, Panel, ColorRect, ProgressBar…) and at least one carries text. That
-is the shape of "something is covering something a player needs to read or click".
+rects intersect by more than `--min-fraction` of the smaller, where the one **drawn on
+top** is opaque (a Button, Panel, ColorRect, ProgressBar…) and the one underneath is
+either opaque or carries text. That is the shape of "something is covering something a
+player needs to read or click".
 
 Not reported, on purpose:
 
 - **A child inside its own container.** A Label inside a PanelContainer shares pixels
   by design; the checker skips any pair where one path is an ancestor of the other.
-- **Two transparent nodes overlapping.** Without an opaque node in the pair nothing is
-  actually hidden.
+- **Two transparent nodes overlapping.** Without an opaque node on top nothing is hidden.
+- **An opaque node that is *behind* the other.** Draw order decides who the victim is:
+  a CanvasItem paints itself, then its children in order, so the node later in a
+  pre-order walk is on top and only it can hide anything. Without this rule a dim
+  full-screen `ColorRect` drawn first — the normal way to build an overlay — reports
+  once against every readable node in front of it.
+- **A textless rect that fully encloses the node on top of it.** That is a background,
+  a matte, a panel or a photo frame, and a background is never the victim.
+- **The empty half of a centred Label's box.** A centred full-width heading's *box*
+  overlaps anything parked in the left or right margin while its glyphs come nowhere
+  near it, so a non-wrapping Label is narrowed to its text extent and that extent is
+  placed by its `horizontal_alignment`. Wrapping Labels are left at full box width:
+  `get_minimum_size().x` on one of those is the longest *word*, and narrowing to that
+  would hide real overlaps.
 - **Anything outside the HUD layer.** World-space nodes overlap constantly and legally.
+
+**Measure one screen at a time.** Point `--layer` at the topmost thing on screen. Auditing
+a menu with a modal open over it reports the modal covering every control beneath it —
+all true, all intended, and enough to bury anything real. Close the overlay, or audit the
+overlay's own root.
 
 Screen rects come from `node-bounds`, which applies ancestor `CanvasLayer` transforms.
 Do not substitute a Control's own `position`/`size`: those are layer-local and will
