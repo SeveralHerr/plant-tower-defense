@@ -1348,6 +1348,19 @@ const BUDGET_WAVE_SWEEP: int = 120
 const BUDGET_UNMEASURED: String = "unmeasured"
 const BUDGET_DESCRIBED: String = "described"
 
+## A computed budget's fourth possible state, alongside "ok", "tight" and
+## "spent" — reported instead of "spent" when the caller declares the zero
+## headroom is the intended shape of the coupling rather than an accident that
+## happened to land on it. pest_road_ceiling is the one budget this applies to
+## today: ENDLESS_APHID_SHARE + ENDLESS_BEETLE_SHARE sum to
+## SIMULTANEOUS_PEST_CEILING exactly, which is what makes the bound hold by
+## construction rather than by tuning (see wave_director.gd). Plain "spent"
+## reads as "this ran out and nobody noticed"; a budget that can never read any
+## other way needs a different word, or every future glance at the report
+## mistakes the one alarm this table can still raise for the one row that was
+## never going to ring it.
+const BUDGET_SPENT_BY_DESIGN: String = "spent_by_design"
+
 ## What each budget had left the last time one was read and accepted. The only
 ## thing the startup warning fires on.
 ##
@@ -1497,13 +1510,20 @@ static func budget_regressions(entries: Array[Dictionary]) -> Array[String]:
 ## A budget whose headroom was measured this run. `spent` and `ceiling` come from
 ## the live call named in `measured_by`; the subtraction and the verdict happen
 ## here so no two entries can grade themselves differently.
+##
+## `by_design` reports BUDGET_SPENT_BY_DESIGN instead of "spent" when the
+## headroom lands at or below zero — for a coupling like pest_road_ceiling
+## whose ceiling is defined to be spent exactly, by construction, rather than
+## approached by accident. Every other caller leaves it false and gets the
+## plain "spent" a real regression should read as.
 static func computed_budget(id: String, constant: String, declared_in: String, spends: String,
 		spent: float, ceiling: float, units: String, measured_by: String,
-		when_it_runs_out: String, observations: Array[String]) -> Dictionary:
+		when_it_runs_out: String, observations: Array[String],
+		by_design: bool = false) -> Dictionary:
 	var headroom: float = ceiling - spent
 	var state: String = "ok"
 	if headroom <= 0.0:
-		state = "spent"
+		state = BUDGET_SPENT_BY_DESIGN if by_design else "spent"
 	elif ceiling > 0.0 and headroom < ceiling * BUDGET_TIGHT_FRACTION:
 		state = "tight"
 	return {
@@ -1726,4 +1746,8 @@ func _budget_pest_road_ceiling(sweep: int) -> Dictionary:
 		"WaveDirector.peak_simultaneous_pests() swept over waves 1-%d" % sweep,
 		("the road holds more pests than the pacing was sized for and the frame rate is the "
 			+ "thing that gives -- _paced_gap is the lever, not the wave table"),
-		observations)
+		observations,
+		# ENDLESS_APHID_SHARE + ENDLESS_BEETLE_SHARE sum to the ceiling exactly --
+		# see BUDGET_SPENT_BY_DESIGN's own comment for why that earns a state of
+		# its own instead of reading as an ordinary "spent".
+		true)

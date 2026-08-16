@@ -2483,6 +2483,7 @@ func test_the_budgets_verdicts_add_up_to_the_budgets_reported() -> String:
 		return err
 	var computed: int = 0
 	var spent: int = 0
+	var spent_by_design: int = 0
 	var tight: int = 0
 	var described: PackedStringArray = PackedStringArray()
 	for entry: Dictionary in entries:
@@ -2498,6 +2499,8 @@ func test_the_budgets_verdicts_add_up_to_the_budgets_reported() -> String:
 				break
 			if state == "spent":
 				spent += 1
+			elif state == Game.BUDGET_SPENT_BY_DESIGN:
+				spent_by_design += 1
 			elif state == "tight":
 				tight += 1
 			else:
@@ -2525,6 +2528,9 @@ func test_the_budgets_verdicts_add_up_to_the_budgets_reported() -> String:
 			"and so does the uncomputed one")
 	if err == "":
 		err = _T.assert_eq(spent, int(data["spent"]), "and the spent tally")
+	if err == "":
+		err = _T.assert_eq(spent_by_design, int(data["spent_by_design"]),
+			"and the spent-by-design tally")
 	if err == "":
 		err = _T.assert_eq(tight, int(data["tight"]), "and the tight tally")
 	if err == "":

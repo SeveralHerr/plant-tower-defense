@@ -1089,7 +1089,8 @@ func test_a_clean_launch_warns_about_no_budget_at_all() -> String:
 	for entry: Dictionary in entries:
 		if not Game.BUDGET_FLOOR.has(str(entry["id"])):
 			continue
-		if str(entry["state"]) == "tight" or str(entry["state"]) == "spent":
+		var state: String = str(entry["state"])
+		if state == "tight" or state == "spent" or state == Game.BUDGET_SPENT_BY_DESIGN:
 			near_the_end += 1
 	err = _T.assert_gt(near_the_end, 0,
 		"at least one declared budget really is tight or spent on this build -- without that, "
@@ -1308,6 +1309,38 @@ func test_every_declared_floor_names_a_budget_this_run_measures() -> String:
 	if err == "":
 		err = _T.assert_eq(checked, Game.BUDGET_FLOOR.size(),
 			"every declared floor was checked, not an empty table passing quietly")
+	_T.free_ui(game)
+	return err
+
+
+## SIMULTANEOUS_PEST_CEILING is spent to the pixel by construction --
+## ENDLESS_APHID_SHARE + ENDLESS_BEETLE_SHARE sum to it exactly, which is what
+## makes the bound hold without tuning (see wave_director.gd). A plain "spent"
+## state would read as a regression on every single glance at the report; this
+## pins the distinct one Game.BUDGET_SPENT_BY_DESIGN exists to give it.
+func test_the_pest_road_ceiling_reports_spent_by_design_not_a_plain_spent() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var entries: Array[Dictionary] = game.budget_entries(30)
+	var entry: Dictionary = _entry_by_id(entries, "pest_road_ceiling")
+	err = _T.assert_gt(entry.size(), 0, "the run reports pest_road_ceiling")
+	if err == "":
+		err = _T.assert_eq(float(entry["headroom"]), 0.0, "and it really is spent to the pixel")
+	if err == "":
+		err = _T.assert_eq(str(entry["state"]), Game.BUDGET_SPENT_BY_DESIGN,
+			"labelled distinctly from a budget that ran out by accident: %s" % entry["state"])
+	if err == "":
+		var lines: Array[String] = Game.budget_regressions(entries)
+		var mentions_ceiling: bool = false
+		for line: String in lines:
+			if line.contains("pest_road_ceiling"):
+				mentions_ceiling = true
+				break
+		err = _T.assert_false(mentions_ceiling,
+			("and the renamed state still never warns on its own -- BUDGET_FLOOR declares its "
+				+ "own floor at exactly 0.0: %s") % [lines])
 	_T.free_ui(game)
 	return err
 

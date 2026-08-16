@@ -292,8 +292,9 @@ func _cmd_board_info(_args: Dictionary) -> Dictionary:
 ## pest ceiling).
 ##
 ## data keys: budgets (Array of entry Dictionaries), count/computed/uncomputed/
-## spent/tight (int), tightest (String, the id with the least headroom left as a
-## fraction of its ceiling, or ""), summary (String, the same line as `message`),
+## spent/spent_by_design/tight (int), tightest (String, the id with the least
+## headroom left as a fraction of its ceiling, or ""), summary (String, the
+## same line as `message`),
 ## under_floor (int) and warnings (Array[String]) -- the budgets that have fallen
 ## below Game.BUDGET_FLOOR, which is what the run warns about at startup and is
 ## always the whole ledger's count rather than the --id filter's -- and
@@ -331,6 +332,7 @@ func _cmd_budgets(args: Dictionary) -> Dictionary:
 
 	var computed: int = 0
 	var spent: int = 0
+	var spent_by_design: int = 0
 	var tight: int = 0
 	var tightest: String = ""
 	var tightest_fraction: float = INF
@@ -341,6 +343,8 @@ func _cmd_budgets(args: Dictionary) -> Dictionary:
 		var state: String = str(entry["state"])
 		if state == "spent":
 			spent += 1
+		elif state == Game.BUDGET_SPENT_BY_DESIGN:
+			spent_by_design += 1
 		elif state == "tight":
 			tight += 1
 		var ceiling: float = float(entry["ceiling"])
@@ -350,9 +354,10 @@ func _cmd_budgets(args: Dictionary) -> Dictionary:
 		if fraction < tightest_fraction:
 			tightest_fraction = fraction
 			tightest = str(entry["id"])
-	var headline: String = "%d budget(s): %d computed, %d without a number -- %d spent, %d tight" % [
-		entries.size(), computed, entries.size() - computed, spent, tight,
-	]
+	var headline: String = (
+		"%d budget(s): %d computed, %d without a number -- %d spent, %d spent by design, %d tight") % [
+			entries.size(), computed, entries.size() - computed, spent, spent_by_design, tight,
+		]
 	if tightest != "":
 		for entry: Dictionary in entries:
 			if str(entry["id"]) == tightest:
@@ -360,10 +365,15 @@ func _cmd_budgets(args: Dictionary) -> Dictionary:
 				break
 	# Graded against the declared floors as well as against their own ceilings.
 	# `tight` says a budget is nearly out, and three of these are permanently
-	# tight by design; `under_floor` says one has been SPENT since somebody last
-	# looked, which is the only half of this table that is news. Regraded here
-	# from this reply's own measurements -- not read out of game.budget_report --
-	# so `--args '{"waves": 300}'` grades the sweep it was actually asked for.
+	# tight by design; `spent_by_design` says one is exactly at its ceiling by
+	# construction (pest_road_ceiling -- see Game.BUDGET_SPENT_BY_DESIGN) rather
+	# than an accident that happened to land there. `under_floor` is the only
+	# half of this table that is news: a budget SPENT since somebody last looked,
+	# plain "spent" and never "spent_by_design", because BUDGET_FLOOR declares
+	# pest_road_ceiling's own floor at 0.0 -- it cannot fall through a floor it
+	# is defined to sit on. Regraded here from this reply's own measurements --
+	# not read out of game.budget_report -- so `--args '{"waves": 300}'` grades
+	# the sweep it was actually asked for.
 	#
 	# Over `all` and not `entries`: --id is a display filter, and grading only the
 	# shown entry would report every floor whose budget was filtered out as a
@@ -382,6 +392,7 @@ func _cmd_budgets(args: Dictionary) -> Dictionary:
 			"computed": computed,
 			"uncomputed": entries.size() - computed,
 			"spent": spent,
+			"spent_by_design": spent_by_design,
 			"tight": tight,
 			"tightest": tightest,
 			"under_floor": regressions.size(),
