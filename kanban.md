@@ -175,6 +175,138 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
 
 ## Cool new features (idea backlog)
 
+### New this cycle (8 of 30) — grown from the features above
+
+- **In endless, the only way to bank a score is to die — and the game just shipped two
+  doors that throw it away.** `RunConfig.record_score(bank.seeds_earned_total)` is called
+  from exactly one place, `Game._end_run` (game.gd:324), which is reached from
+  `_check_wave_cleared`'s victory branch (game.gd:249-250) and from `_on_pest_escaped`
+  when lives hit 0 (game.gd:312-316). Endless never takes the first branch —
+  `has_more_waves()` returns `true` unconditionally (wave_director.gd:105-108) — so the
+  losing path is the whole scoreboard. Cycle 8's pause card added two more exits and
+  neither touches it: `restart_requested` calls `reload_current_scene()` (game.gd:373-375)
+  and `gate_requested` calls `change_scene_to_file(TITLE_SCENE)` (game.gd:376-380), both
+  after `paused = false` and neither after `_end_run`. So a player who takes a
+  forty-minute endless run to 3,000 seeds, gets bored, and clicks "Back to the gate"
+  returns to a title screen still showing their old best — the run is gone and the number
+  it earned was never filed. Worse, the correct play is now to deliberately feed ten pests
+  to the exit rather than press the button the pause card offers. `_end_run` is already
+  idempotent behind `_score_recorded` (game.gd:324-325) and already builds a post-mortem;
+  a voluntary exit either has to route through it or call `record_score` on its way out.
+
+- **The pause card's one sentence is a constant, it is false in the case a player is most
+  likely to pause in, and it is painted underneath the first button anyway.**
+  `note.text = "The wave is waiting."` (pause_screen.gd:79) is written once in `_ready()`
+  and never updated, while `pause_run()` fires on any Escape or P that is not a game-over
+  (game.gd:637) — so the sentence describing the frozen board reads identically with 22
+  aphids and 7 beetles mid-road as it does during an empty intermission. It is also very
+  nearly invisible. `FIRST_BUTTON_Y` is 232.0 (pause_screen.gd:26) and is the one offset in
+  the file written as an absolute screen y instead of `CARD.position.y + N` like the
+  heading at +30 and the note at +76 (pause_screen.gd:70, 80); with `CARD` at y=152
+  (pause_screen.gd:23) that puts the Note's 24px box at 228-252 and `ResumeButton`'s 44px
+  box at 232-276, overlapping by 20 of the note's 24 pixels — and the button is added last,
+  so its opaque `paper_panel` stylebox draws on top. This is precisely the sibling-pair
+  overlap `validate-ui` and `findings` structurally cannot see, since every Control here
+  fits its own rect. There is room: the last button ends at 388 against a card bottom of
+  452, 64px of empty paper. And everything a truthful note could say is already assembled —
+  `Game.state()` carries `wave_live`, `prep_left`, `prep_total`, `lives`, `seeds` and
+  `next_threat_level` (game.gd:729-737), and `Hud._refresh_prep_bar` (hud.gd:568) already
+  turns two of those into "how long until the next one".
+
+- **Uprooting a 10-seed plant takes two clicks and a red warning; discarding the whole run
+  takes one.** `UPROOT_CONFIRM_SECONDS` is 4.0 and its header states the rule — "Uproot is
+  the only irreversible click in the game" (game.gd:15-24) — enforced by an arm/confirm
+  cycle, a relabelled button ("Really uproot? (+2)"), a `UPROOT_ARMED` red override
+  (hud.gd:71) and a `Sfx.UPROOT_ARMED` cue (game.gd:543-546), all to protect ~6 seeds. As
+  of cycle 8 that header is simply wrong: `RestartButton` sits 12px under
+  `ResumeButton` (`BUTTON_GAP` 12.0, pause_screen.gd:27-33), is the same 248x44 size in the
+  same style, and one click reloads the scene with no arm, no relabel, no colour and no
+  sound. `ResumeButton` also takes focus on open (pause_screen.gd:105-106), so keyboard
+  Down-then-Enter — the exact reflex the title screen teaches with "Up / Down to choose ·
+  Enter to grow" (title_screen.gd:148) — lands on it. The confirm machinery already exists
+  and is proven; the destructive button that needs it is the one that does not have it.
+
+- **Regrowth painted a bed's health bar green, and the panel three inches to the right
+  paints the same bed red at the same instant.** `Plant.health_bar_color` returns
+  `HEALTH_BAR_REGROWING` (plant.gd:57, 312-313) whenever `is_regrowing()` is true — at any
+  health — while `Hud._refresh_health` (hud.gd:801) fills its bar with
+  `HEALTH_LOW.lerp(HEALTH_FULL, fraction)` between `HEALTH_LOW` red and `HEALTH_FULL`
+  green (hud.gd:227-228), where green means *full*. A Corn Cobbler at 8/40 that has been
+  quiet for six seconds therefore wears green over its head and red in the side panel
+  simultaneously, and the panel's only text is "Health 8/40" — the one number that is
+  identical whether the plant is recovering or has stopped. The information is sitting
+  right there unread: `seconds_until_regrowth()` (plant.gd:197) and the static
+  `seconds_to_full_from()` (plant.gd:173) have no caller anywhere outside
+  `test/unit/test_combat.gd`, and the panel is already refreshed live and already prints a
+  sliding `uproot_refund()` on the button below. "Whole again in 27s" against "Uproot
+  (+2)" *is* the decision `REGROWTH_RATE`'s own header claims to have created
+  (plant.gd:38-44), and neither half of it is currently on screen.
+
+- **The 45-seed Corn upgrade makes the plant worse against a single pest, and the panel
+  advertises it by the number that goes up.** `LEVELS` (corn_cobbler.gd:12-16) takes level
+  3 to 5 kernels over 52 degrees of spread; `kernel_angle_offsets` spaces them evenly and
+  symmetrically (corn_cobbler.gd:141-151), so they leave the cob at -26, -13, 0, +13 and
+  +26 degrees. A kernel is a straight line (kernel.gd:28-40) with `HIT_RADIUS` 18.0
+  (kernel.gd:8), so an outer kernel clears the pest it was aimed at past
+  18 / tan(26°) = 37 px — well under one 64px cell — and the ±13 pair past 78px, against a
+  `RANGE` of 176.0 (corn_cobbler.gd:9). Level 2's ±7 degrees, by contrast, still connects
+  out to 147px. So against one beetle at two cells: level 2 lands 2 kernels per 0.72s =
+  2.78 dps, and level 3 lands 1 per 0.62s = 1.61 dps. Forty-five seeds buys a 42%
+  *reduction*, unless the lane is dense enough for the strays to find someone else — which
+  is the real condition and is stated nowhere. `damage` is 1.0 at all three levels, so the
+  ladder never helps against 16hp of beetle either. Meanwhile the panel says
+  "5 kernel(s) per shot" (hud.gd:751) and the always-on muzzle fan draws a wider arc
+  (corn_cobbler.gd:104-115), which `_draw`'s header calls "the board-level readout of what
+  an upgrade bought" (corn_cobbler.gd:88-89) — both of them reporting the spread as the
+  benefit. Either the panel
+  names the condition ("wide spray — pays off against a crowd"), or level 3 stops being a
+  strict spread and starts being a shorter interval.
+
+- **"Grow the next wave" is a button whose only effect is to cost the player something.**
+  It is always available between waves (`can_start_wave`, game.gd:743) and `_process`
+  starts the wave on its own at `PREP_SECONDS` 18.0 anyway (game.gd:183-185), so pressing
+  it never unlocks anything — it only forfeits the remainder of the gap. And the gap is
+  worth real money now: every Sunflower pays `YIELD` 3 seeds per `INTERVAL` 6.0
+  (sunflower.gd:11-12), i.e. 0.5/s, a chewed bed regrows at `REGROWTH_RATE` 1.5/s for the
+  12 seconds past `REGROWTH_DELAY` (plant.gd:50-51), and a husk on the ground can rot in
+  `MIN_HUSK_LIFETIME` 4.5s (compost_meter.gd:27). Three sunflowers and one damaged Corn
+  make a full 18s gap worth ~27 seeds and ~18hp; the button hands all of it back for
+  nothing. So the optimal line is always to let the strip drain, the campaign carries a
+  144-second floor of pure waiting however well you play, and the only player who presses
+  the button is one who wants the game to end sooner. `_refresh_prep_bar` is already handed
+  `prep_left` and `prep_total` (hud.gd:568-576); a call-early bonus scaled by the fraction
+  left — seeds, or a compost multiplier for the wave — would turn a dominated button into
+  the tempo decision the whole prep phase is currently missing.
+
+- **The run has four keyboard verbs and no screen in the game names one of them.**
+  `Game._unhandled_input` binds R to replay after a run ends (game.gd:632), Escape and P to
+  pause (game.gd:637) and M to mute (game.gd:644); `NotebookScreen` adds Left, Right and
+  Escape (notebook_screen.gd:333-350). The only one ever mentioned in-game is mute, and
+  only in "Sound off. Press M to bring it back." (game.gd:646) — a message that by
+  construction can only be read by someone who has already found M. The title screen prints
+  its own two keys, "Up / Down to choose · Enter to grow" (title_screen.gd:148), which is
+  proof the project thinks this is worth saying and simply never says it about the part
+  with the keys in it. The pause card is the surface every other game puts this on, it is
+  now the first thing built out of `BUTTONS` (pause_screen.gd:30-34), and it has 64px of
+  unused card below its last button (see the note entry above). A four-line key list there
+  is the whole feature.
+
+- **Two green gates guard the sprites and neither one can tell you the PNG came from the
+  SVG.** `tools/svg_style_check.py` reads `art_src/*.svg` and never opens a raster;
+  `test/unit/test_sprite_style.gd` reads `assets/sprites/*.png` against a hand-written
+  `EXPECTED_SIZE` dictionary of twelve names (test_sprite_style.gd:17-30) and never opens a
+  source; `tools/render_svg.gd` is the only thing that has ever seen both, and it is run by
+  hand. So editing `sticky_sundew.svg` and forgetting to re-render leaves *both* gates
+  passing over a shipped sprite two edits behind its source: the contract and the shipped
+  art are now each certified in isolation and never once compared to each other. The same
+  seam has a second hole: a thirteenth SVG is checked by the Python tool and is invisible to the
+  raster gate until someone hand-edits `EXPECTED_SIZE`, and
+  `test_every_sprite_declared_by_the_contract_exists` (test_sprite_style.gd:57) will
+  happily report all twelve present. The checker's own LIMITS
+  section (svg_style_check.py:86-106) is candid about what rasterising would take and right
+  to be; this is not that. It is a mtime-or-hash comparison between two files that already
+  sit in the repo, plus deriving that dictionary from the directory instead of typing it.
+
 ### New this cycle (7 of 30) — grown from the features above
 
 - **The rare packet's tooltip names one plant, and the packet now holds two.**
