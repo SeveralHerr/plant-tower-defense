@@ -1,37 +1,37 @@
 # todo
 
-**Cycle 18 of 30.** Bump this each time you refill the Items list. See the Workflow
+**Cycle 19 of 30.** Bump this each time you refill the Items list. See the Workflow
 block in `CLAUDE.md` — this list is refilled, never left fully ticked.
 
 ## Items
 
-- [ ] **h8o — No gate says how much of the game the suite never touches.** `run_tests`
-  prints `Suite: 7 script(s)` and `Assertions: N`; the checkers print `N of M`; lint
-  prints `Shaders: N of M`. Nothing prints which `.gd` files are never loaded by *any*
-  test. The bridge already has `scripts-seen` and nothing compares it against the file
-  list. This is the one denominator the project lacks, and it is the one that says where
-  the suite is blind.
+- [ ] **1av — Assert what `Pest.died` and `escaped` carry.** 15 signals still have
+  nothing asserting their payload, down from 17. `Pest.died` is the highest-value one
+  left: it is the income path with the most wiring under it — `Game._on_pest_died` drops
+  the husk, banks the seeds and notes the lane loss. `escaped` is its pair. Assert what
+  the signal carries and which paths fire it; merely *naming* it satisfies the reach gate
+  while proving nothing.
 
-- [ ] **5lv — Tell the player which red means fought and which means unreachable.**
-  `coverage_frontier()` says how far the garden can reach; `LanePressureOverlay` says how
-  far pests got. The prep line compares them once, to pick a sentence. The board never
-  does — a player sees red tint and cannot tell "they got here and we fought" from "they
-  got here and nothing could touch them", which is the whole distinction the coverage work
-  just established. Note: a third red *surface* is ruled out; the hatch-versus-wash
-  separation exists so the cursor can be read over the tint.
+- [ ] **zsb — Find tests that read state straight after `instantiate_scene`.**
+  `test_hosting_a_loaded_cob` asserted a volley had fired by the time `instantiate_scene`
+  returned. That frame count is unspecified, so the test was order-dependent — green two
+  cycles, red the moment unrelated tests shifted timing. Any test reading a group or a
+  live property straight after `instantiate_scene` without awaiting a *condition* has the
+  same exposure. A checker for that shape would name them.
 
-- [ ] **4no — Measure how far coverage over-promises.** The derived map is an upper
-  bound: a Corn shoots only the furthest-along pest, a busy Chomp grabs nothing, a winged
-  pest is unreachable by a Chomp at all. So "covered" over-promises exactly when a player
-  is losing. An *observed* map was correctly rejected because `_ever_engaged` is monotone
-  — but a per-cell record of "something was in range and did not fire" is **not** monotone
-  and would measure the over-promise directly.
+- [ ] **egu — Tell the player unaimed ground still gets kills.** Coverage is now measured
+  in both directions and neither number is in the game. Under-promise: 7 kills on unaimed
+  ground at up to 202px, because a kernel flies until it leaves the board. Over-promise at
+  the pest: **zero of 116**. The board says "unaimed", which is exactly right — but a
+  player never learns that unaimed ground still gets kills, which is the thing that would
+  stop them over-buying cover.
 
-- [ ] **cjd — Let a plant declare whether it engages.** `Game.ENGAGING_PLANTS` is a
-  positive list of CORN and CHOMP two files away from the plants. A fifth plant fails a
-  test, which is the right failure, but it fails *after* someone has written the plant.
-  Careful: `PlantCatalog.reach()` is **not** this — it returns `SAP_RADIUS` for the
-  Sundew, correctly, for the dead-ground cue, and a Sundew engages nothing.
+- [ ] **4p1 — Distinguish naming a symbol from checking it.** `suite_reach_check`
+  concedes *"naming is a floor, not exercise"* — a test writing `WaveDirector.reset()` and
+  asserting nothing counts as reach. The honest upgrade is not a stricter name match but a
+  second signal: whether the symbol appears inside an `assert_*` argument, or only in a
+  statement. That separates "called it" from "checked it" without pretending to understand
+  the test.
 
 - [ ] **Add cool new features or concrete improvements** (UX, game juice, animations,
   enhancements, or full features) to `kanban.md`.
