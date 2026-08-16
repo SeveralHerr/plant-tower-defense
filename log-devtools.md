@@ -1684,3 +1684,44 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   after the complete declaration instead. Worth remembering as a rule rather than
   re-noticing: in a file where every constant carries provenance, "insert before
   the const" is almost always wrong.
+
+## 2026-08-16 — Regrowth in the real physics loop (plant-tower-defense-aoq)
+
+- Value: **warranted**, recorded as **partial** — one check could not be made to
+  run, and the ledger is right that a blocked check is not a passed one.
+  - Expected: the tests drive `_physics_process` by hand. Runtime should show
+    whether the real physics loop actually reaches regrowth on a planted bed, and
+    whether the health bar turns green while healing and then hides itself once
+    whole — the cue is the mechanic's only visible signal.
+  - Got: `seconds_until_regrowth` read `5.1` immediately after a bite with
+    `is_regrowing` false, so the delay gate holds. Health then climbed `15.0 ->
+    30.475 -> 35.45` under nothing but the real loop, about 1.5 hp/s as specified.
+    All three bar states confirmed: `r 0.850 g 0.25 b 0.220` visible when bitten,
+    `r 0.360 g 0.700 b 0.340` visible while regrowing, and `visible: false` once
+    whole.
+  - Found: a **NEW `ui_layout` finding fired once** at the end of a long probing
+    session and then could not be reproduced across five targeted attempts — fresh
+    scene, damaged plant, mid-regrowth, wave banner up, plant selected. Leading
+    hypothesis is a Control sampled mid-entrance-tween: the selection panel starts
+    at `modulate.a = 0` and tweens over 0.16s, and `validate-ui` has a
+    `ui_transparent` rule. That window is shorter than one bus round-trip, so it
+    cannot be caught deliberately. Recorded as `blocked`, not as passed and not as
+    fixed.
+  - Cheaper: nothing for the regrowth checks. A mechanic that ticks in
+    `_physics_process` and whose only cue is a bar colour is exactly what a live
+    session is for.
+
+- Gap: **a finding that fires once cannot be re-asked without re-creating the
+  frame that produced it.** `validate-ui` reports what is true at the instant it
+  samples, which is correct, but leaves nothing to investigate with: there is no
+  record of *which* node and rule fired, only a count in a consolidated line I had
+  already truncated. The verb re-run seconds later is a different frame and says
+  `[OK]`. Everything else in this harness is reproducible by construction — a
+  scene, a diff, a seed — and this is the one signal that is not.
+  - [G-030] status: open | seen: 1 | harness: 0.23.0
+  - Improvement: have `findings` and `validate-ui` write the full finding records
+    of the most recent non-clean run to `user://ui_findings_last.json` (node path,
+    rule, measured rect, timestamp), and print that path whenever the count is
+    non-zero. A transient would then be diagnosable after the fact instead of
+    being a number that has already gone. Cheap: the records exist in memory at
+    the moment they are counted.

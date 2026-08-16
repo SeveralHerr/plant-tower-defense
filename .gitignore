@@ -20,3 +20,7 @@ tests.log
 
 # Agent git worktrees live inside the repo; never commit them as a nested repo.
 .claude/worktrees/
+
+# Python bytecode from the tools/ scripts.
+__pycache__/
+*.pyc
