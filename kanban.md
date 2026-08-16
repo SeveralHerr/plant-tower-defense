@@ -1193,3 +1193,38 @@ of what the design doc already says, rather than being bolted on.
   from reading it *again*, harder, with a specific claim to test. That is worth
   a process note: an issue that names a specific file:line is far more likely
   to be right than one that names a concept.
+
+### New this cycle (15 of 30) — grown from the features above
+
+- **`_on_pest_escaped` throws away the only information it has.** Every escape is
+  filed against `Board.exit_cell()`, because an escaped pest's own position is
+  off-board by the time the signal fires. But the pest knows where it *entered*
+  the exit cell from, how long it survived, and what it walked past untouched.
+  A run that leaks eight beetles through one gap and a run that leaks eight
+  stragglers spread over forty waves produce byte-identical evidence. The
+  subtrahend fix made the post-mortem honest; it did not make the escape
+  informative.
+
+- **Every world-space Control now sweeps itself click-transparent, and nothing
+  stops the sixth one.** `Plant` and `Pest` each grew a
+  `_make_world_controls_click_through()`, deliberately duplicated rather than
+  shared. That is two copies of a rule with no third enforcement — the test
+  enumerates the live tree, so it *would* catch a new offender, but only if the
+  offender is on screen during that test. A `Control` that only appears on a boss
+  wave, or in a menu that test never opens, is invisible to it.
+
+- **The post-mortem names a cell the road may not be reddest at.** `stop_cell` is
+  now losses-minus-escapes while the tint under the translucent card is still
+  painted from raw losses. On a bleeding run the named cell and the reddest cell
+  genuinely differ, which is correct and is documented — but a player looking
+  from the number to the picture has to be told that, and nothing tells them.
+  Either the card should point at its own cell, or the tint under it should
+  switch to stops.
+
+- **Four constants now carry "moving me costs you X" comments and there is no
+  index of them.** `PATH_CORNERS`, `COLLECT_RADIUS`, `SUBHEAD_MAX_WIDTH` and the
+  HUD's `WORST_CASE_TEXT` budgets each warn a future editor about a coupling that
+  lives in another file. That is four warnings a person only finds by editing the
+  exact line. A `BUDGETS.md`, or better a devtools verb that prints every declared
+  budget with its current headroom, would make the set visible before someone
+  goes looking.
