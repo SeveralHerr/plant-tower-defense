@@ -1,6 +1,6 @@
 ---
 name: godot-input-and-pause
-description: Godot 4 input propagation and pause semantics for overlays — which node wins a keystroke, why a guard that reads is_input_handled() cannot work in a headless test, and when a signal connection must be deferred. Use when adding or testing any screen that opens over another (pause menus, notebooks, confirm dialogs, inventories).
+description: Godot 4 input routing and pause semantics, and the ways both fail silently — which node wins a keystroke, why a guard reading is_input_handled() cannot work in a headless test, when a signal connection must be deferred, and why a Control parented to a Node2D deletes clicks on the playfield rather than misrouting them. Use when adding or testing a screen that opens over another (pause menu, notebook, confirm dialog), when a click seems to go nowhere, or when adding any Control to a world-space node.
 ---
 
 # Input propagation and pause, for overlays
