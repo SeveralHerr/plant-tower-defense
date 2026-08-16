@@ -53,6 +53,25 @@ const SOIL := Color(0.361, 0.243, 0.157)
 ## (UPROOT_ARMED, THREAT_HOT, HEALTH_LOW) and `Plant.HEALTH_BAR_HURT` a fourth, at
 ## which point "the same red everywhere" was a comment rather than a fact.
 ## Semantic names still belong at each site; they alias this.
+##
+## What one value cannot do is say *which* sentence a given red is saying, and on
+## the board there are two: a live warning ("this costs you something right now" —
+## the hover cursor over a cell you may not build on, a plant being chewed) and a
+## record ("this already happened" — lane pressure). Both are DANGER, both are
+## painted over 64px cells, and the two are routinely stacked on the same pixels.
+##
+## So the board carries a **second channel that is not hue, and exactly one rule
+## for it: a solid red surface is a live warning, a broken one is not.** Lane
+## pressure is hatched (LanePressureOverlay.HATCH_SPACING), a bleeding plant's
+## health bar is solid and a regrowing one is notched (Plant.HEALTH_BAR_SEGMENTS).
+## Anything new that reaches for this constant owes an answer to "solid or broken",
+## and adding a fifth red is not one — the player this rule exists for cannot see
+## the difference between any two of them.
+##
+## The HUD is deliberately outside the rule. Its one red (Hud.UPROOT_ARMED) is on a
+## Button's font, not on a surface, and it is already the best-separated cue in the
+## game: the label rewrites itself to "Really uproot? (+N)" and Sfx.UPROOT_ARMED
+## plays. Text and sound are two channels that are not colour, so it needs no third.
 const DANGER := Color(0.85, 0.25, 0.22)
 ## The midpoint of that warning ramp. It exists because cream straight to DANGER
 ## passes through a muddy pink that reads as neither safe nor dangerous, so any

@@ -152,7 +152,18 @@ func is_inside(cell: Vector2i) -> bool:
 	return cell.x >= 0 and cell.x < COLS and cell.y >= 0 and cell.y < ROWS
 
 
+## Builds the path first, like path_cell_count() already did. Without that this
+## answers "there is no road anywhere" on a Board that has not entered the tree
+## — not an error, just a confident no — and every caller downstream
+## (is_buildable, is_road_adjacent, path_index) inherits it. A test that built a
+## Board without awaiting it therefore measured an empty board and passed, which
+## is how this was found: two hatch tests failed on their own vacuity guard
+## rather than on the hatch.
+##
+## _build_path() early-returns on a non-empty _path_order, so this costs one
+## is_empty() check per call.
 func is_path(cell: Vector2i) -> bool:
+	_build_path()
 	return _path_cells.has(cell)
 
 

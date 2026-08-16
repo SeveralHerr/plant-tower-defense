@@ -56,6 +56,43 @@ const REGROWTH_RATE: float = 1.5
 const HEALTH_BAR_HURT := GardenTheme.DANGER
 const HEALTH_BAR_REGROWING := Color(0.36, 0.70, 0.34)
 
+## Where that bar lives, in the plant's own local space. Named rather than typed
+## out four times, because the numbers are load-bearing elsewhere: the Sunflower's
+## yield gauge is positioned to clear this exact rect
+## (test_the_sunflower_gauge_clears_the_health_bar_the_brackets_and_the_chew_ring
+## asserts it against a hand-copied Rect2(-16, -34, 32, 5)), and the notches below
+## are derived from it rather than being a second set of magic offsets that could
+## drift away from the bar they are cut into.
+const HEALTH_BAR_ORIGIN := Vector2(-16, -34)
+const HEALTH_BAR_SIZE := Vector2(32, 5)
+
+## The bar's second channel (plant-tower-defense-e0m), and the plant's half of the
+## board-wide rule LanePressureOverlay's HATCH_* block states: **a solid red
+## surface is a live warning; a broken one is a record or a recovery.**
+##
+## The pair above is red versus green, in one rect, at one position, at one size —
+## the single most common colour-vision deficiency there is, sitting on the one
+## readout in this game where colour alone decides a purchase. "Bleeding" and
+## "healing" are what the player is choosing between when they weigh
+## uproot_refund() against seconds_to_full_from(): scrap the wreck for 2 seeds now,
+## or leave it and get a whole plant back in ~32s. A deuteranope was being asked to
+## make that call off a hue they cannot see, and the only thing pinning the cue
+## (test_combat.gd, `Plant.health_bar_color(true) != Plant.health_bar_color(false)`)
+## asserted precisely the channel that does not reach them.
+##
+## So a regrowing bar is cut into HEALTH_BAR_SEGMENTS blocks by notches and a hurt
+## one is left whole. The notches are drawn on the *slot*, not on the filled part,
+## and in near-black rather than the backing's grey, so they are visible over both
+## the fill and the empty remainder — a plant at 10% health still reads as notched,
+## which a divider spaced along the fill would not manage.
+##
+## Count, not hue: it is the same vocabulary PlacementPreview already uses to tell
+## dead ground (one bar) from redundant ground (two), so this is a second dialect
+## of an existing language rather than a third language on the board.
+const HEALTH_BAR_SEGMENTS: int = 4
+const HEALTH_BAR_NOTCH: float = 2.0
+const HEALTH_BAR_NOTCH_COLOR := Color(0.0, 0.0, 0.0, 0.8)
+
 signal destroyed(plant: Plant)
 
 var kind: StringName = &""
@@ -68,6 +105,11 @@ var _wobble_time: float = 0.0
 var _selected: bool = false
 var _health_back: ColorRect = null
 var _health_bar: ColorRect = null
+## HEALTH_BAR_SEGMENTS - 1 dividers, shown only while the plant is regrowing.
+## Built once and toggled rather than created on demand: a node spawned the frame
+## a plant starts healing is a node that has to be freed the frame it stops, and
+## the bar is refreshed from take_damage() at sixty calls a second.
+var _health_notches: Array[ColorRect] = []
 var _selection_marker: SelectionMarker = null
 ## Seconds since the last bite, capped at REGROWTH_DELAY. Capped rather than left
 ## to climb because nothing past the threshold reads it — regrowth_in_step() only
@@ -94,17 +136,35 @@ func _build_visuals() -> void:
 
 	_health_back = ColorRect.new()
 	_health_back.color = Color(0.12, 0.12, 0.12, 0.65)
-	_health_back.position = Vector2(-16, -34)
-	_health_back.size = Vector2(32, 5)
+	_health_back.position = HEALTH_BAR_ORIGIN
+	_health_back.size = HEALTH_BAR_SIZE
 	_health_back.visible = false
 	add_child(_health_back)
 
 	_health_bar = ColorRect.new()
 	_health_bar.color = HEALTH_BAR_HURT
-	_health_bar.position = Vector2(-16, -34)
-	_health_bar.size = Vector2(32, 5)
+	_health_bar.position = HEALTH_BAR_ORIGIN
+	_health_bar.size = HEALTH_BAR_SIZE
 	_health_bar.visible = false
 	add_child(_health_bar)
+
+	# After the bar, so they cut into it: children of a Node2D are painted in
+	# tree order, which is the same reason the bar itself is added after the
+	# sprite. A notch added before the bar would be a notch painted under it.
+	_health_notches = []
+	for slot: Rect2 in health_bar_notch_rects():
+		var notch := ColorRect.new()
+		notch.color = HEALTH_BAR_NOTCH_COLOR
+		notch.position = slot.position
+		notch.size = slot.size
+		notch.visible = false
+		# The bars are Controls parked over the playfield, and a Control that
+		# stops the mouse over a plant is a Control that eats the click meant to
+		# select it. Explicit here because these are new; the two bars above
+		# predate it and are left as they are rather than changed under a cue fix.
+		notch.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(notch)
+		_health_notches.append(notch)
 
 	# A sibling node, not something drawn inside this plant's own _draw() — see
 	# SelectionMarker's own header for why subclasses can't be trusted to paint
@@ -301,16 +361,52 @@ func _refresh_health_bar() -> void:
 		return
 	var fraction: float = clampf(health / MAX_HEALTH, 0.0, 1.0)
 	var whole: bool = fraction >= 1.0
+	var regrowing: bool = is_regrowing()
 	_health_back.visible = not whole
 	_health_bar.visible = not whole
-	_health_bar.size = Vector2(32.0 * fraction, 5)
-	_health_bar.color = health_bar_color(is_regrowing())
+	_health_bar.size = Vector2(HEALTH_BAR_SIZE.x * fraction, HEALTH_BAR_SIZE.y)
+	_health_bar.color = health_bar_color(regrowing)
+	# The shape channel. Hidden with the bar, so a whole plant wears neither.
+	for notch: ColorRect in _health_notches:
+		notch.visible = (not whole) and regrowing
 
 
 ## Pure: which colour the bar wears. Split out so the cue is assertable without a
 ## viewport — the bar is a ColorRect child, so nothing else about it is.
+##
+## Kept as the *first* of two channels rather than the only one. See
+## health_bar_segments() for the second and HEALTH_BAR_SEGMENTS for why a lone
+## red-versus-green readout was the wrong thing to have shipped.
 static func health_bar_color(regrowing: bool) -> Color:
 	return HEALTH_BAR_REGROWING if regrowing else HEALTH_BAR_HURT
+
+
+## Pure: how many blocks the bar reads as — 1 whole one while a plant is bleeding,
+## HEALTH_BAR_SEGMENTS while it is healing.
+##
+## The shape channel expressed as a number so a test can assert the two states
+## differ *with the colour thrown away*, which is the only form of the assertion
+## that says anything about the player this cue exists for.
+static func health_bar_segments(regrowing: bool) -> int:
+	return HEALTH_BAR_SEGMENTS if regrowing else 1
+
+
+## Pure: where the dividers sit, in the plant's own local space, evenly across the
+## whole slot rather than across the filled part — see HEALTH_BAR_SEGMENTS for why
+## the empty remainder has to carry them too.
+##
+## The drawn notches are built straight out of this, so the geometry a test pins
+## and the geometry on screen cannot drift apart.
+static func health_bar_notch_rects() -> Array[Rect2]:
+	var out: Array[Rect2] = []
+	if HEALTH_BAR_SEGMENTS < 2:
+		return out
+	for i: int in range(1, HEALTH_BAR_SEGMENTS):
+		var across: float = HEALTH_BAR_SIZE.x * float(i) / float(HEALTH_BAR_SEGMENTS)
+		var left: float = HEALTH_BAR_ORIGIN.x + across - HEALTH_BAR_NOTCH * 0.5
+		out.append(Rect2(Vector2(left, HEALTH_BAR_ORIGIN.y),
+			Vector2(HEALTH_BAR_NOTCH, HEALTH_BAR_SIZE.y)))
+	return out
 
 
 func is_destroyed() -> bool:
