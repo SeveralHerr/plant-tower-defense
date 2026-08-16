@@ -3534,3 +3534,353 @@ func test_the_coverage_note_fits_the_status_row() -> String:
 					+ "widest thing the status row can be handed") % [drawn, declared])
 	_T.free_ui(game)
 	return err
+
+
+# -- which red means fought, and which means nobody is looking (5lv) ---------
+#
+# Two maps of the same 32 road cells, and until now the board painted them with
+# one brush. LanePressureOverlay says how far pests got; Game.coverage_frontier()
+# says how far the garden can reach. They disagree constantly — driven live with
+# four cobs at the entry, 3 of 6, then 3 of 7, then 4 of 11 pressured cells were
+# cells nothing was aimed at — and they agree perfectly when the garden is good,
+# which is the signal profile a mark wants: silent until there is a purchase to
+# make. With a road covered end to end the off-aim set was empty for seven
+# straight waves, and went to 32 of 32 on the wave that ate every cob.
+#
+# The channel is stripe ORIENTATION, and the cases below are written to pin the
+# two things that make it worth having. It is not colour: the two cells assert
+# equal alpha and the same GardenTheme.DANGER, and are still told apart. It is
+# not density: the mirrored texture inks the same 57% and leaves the same 43%
+# bare, which is the gap Game._update_cursor's flat wash has to be read through.
+
+
+## The whole comparison, on a real run, in the one place it was missing: two road
+## cells, the same recorded pressure, the same tint — and different stripes.
+func test_the_road_marks_pressured_ground_the_garden_is_not_aimed_at() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var err: String = _T.assert_true(game != null, "the game scene loaded")
+	if err != "":
+		return err
+	err = _T.assert_true(game.board != null, "the run has a board")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var post := Vector2i(1, 0)
+	err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, post), "",
+		"the free starter cob goes in beside the entry")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var reached: Array[Vector2i] = PlacementPreview.covered_road_cell_list(
+		game.board, post, CornCobbler.RANGE)
+	err = _T.assert_gt(reached.size(), 0,
+		"and it reaches road — with nothing aimed anywhere there are no two states to tell apart")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var near: Vector2i = reached[0]
+	var far: Vector2i = game.board.exit_cell()
+	err = _T.assert_true(game.board.is_path(near) and game.board.is_path(far),
+		"both cells are road, so both can carry pressure")
+	if err == "":
+		err = _T.assert_false(reached.has(far),
+			"and the cob cannot reach the exit cell %s, which is the whole point of the pair" % far)
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# Placing the plant is what told the board. No extra call here on purpose:
+	# if Game._refresh() ever stops pushing coverage, this is where it shows.
+	err = _T.assert_false(game.board.is_unaimed(near),
+		"the cob's own ground %s is marked as ground something points at" % near)
+	if err == "":
+		err = _T.assert_true(game.board.is_unaimed(far),
+			"and the exit cell %s is marked as ground nothing does" % far)
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# Board.is_unaimed() reads the Board's own copy, which it keeps so a Board that
+	# never entered the tree can still answer. The node that actually paints is a
+	# separate object, and a mark that reached one and not the other would pass
+	# every assertion above while drawing nothing at all.
+	var overlay: LanePressureOverlay = null
+	for child: Node in game.board.get_children():
+		var found := child as LanePressureOverlay
+		if found != null:
+			overlay = found
+	err = _T.assert_true(overlay != null, "the board built its pressure overlay")
+	if err == "":
+		err = _T.assert_true(overlay.unaimed.has(far),
+			"and the node holding the brush knows %s is off aim" % far)
+	if err == "":
+		err = _T.assert_false(overlay.unaimed.has(near),
+			"and knows %s is not — the Board's copy and the painter's agree" % near)
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# Equal counts, so both cells normalise to the same alpha — identical colour,
+	# identical opacity, and a greyscale screenshot still separates them.
+	game.board.record_lane_pressure_wave({near: 2, far: 2})
+	var near_alpha: float = game.board.lane_pressure_alpha(near)
+	var far_alpha: float = game.board.lane_pressure_alpha(far)
+	err = _T.assert_gt(near_alpha, 0.0, "the near cell is painted at all")
+	if err == "":
+		err = _T.assert_float_eq(far_alpha, near_alpha, 0.0001,
+			("and the far cell is painted at exactly the same strength (%.3f), so nothing below "
+				+ "this line can be passing on a difference in red") % near_alpha)
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var checked: int = 0
+	for pair: Array in [[near, 1.0], [far, -1.0]]:
+		var cell: Vector2i = pair[0]
+		var want: float = float(pair[1])
+		var segments: PackedVector2Array = LanePressureOverlay.hatch_segments(
+			cell, game.board.is_unaimed(cell))
+		err = _T.assert_gt(segments.size(), 0, "cell %s hatches at all" % cell)
+		if err != "":
+			break
+		var i: int = 0
+		while i + 1 < segments.size():
+			var span: Vector2 = segments[i + 1] - segments[i]
+			checked += 1
+			err = _T.assert_gt(span.x * span.y * want, 0.0,
+				("stripe %s -> %s in cell %s leans the way that cell's coverage says it should "
+					+ "(aimed stripes fall one way, off-aim stripes the other)")
+					% [segments[i], segments[i + 1], cell])
+			i += 2
+			if err != "":
+				break
+		if err != "":
+			break
+	if err == "":
+		err = _T.assert_gt(checked, 8,
+			"both cells contributed several stripes each — one stripe is a line, not a texture")
+	_T.free_ui(game)
+	return err
+
+
+## The texture pair on its own, sampled. Same ink, same gaps, different mask —
+## which is the claim that stops somebody "improving" the off-aim state into a
+## denser hatch and quietly spending the 43% the cursor is read through.
+func test_the_off_aim_hatch_spends_no_more_ink_than_the_aimed_one() -> String:
+	var cell := Vector2i(4, 1)
+	var origin: Vector2 = Vector2(cell) * float(Board.CELL)
+	var aimed_ink: int = 0
+	var off_ink: int = 0
+	var differ: int = 0
+	var samples: int = 0
+	for sy: int in range(1, Board.CELL, 3):
+		for sx: int in range(1, Board.CELL, 3):
+			samples += 1
+			var point: Vector2 = origin + Vector2(float(sx), float(sy))
+			var aimed: bool = LanePressureOverlay.is_hatched(point, false)
+			var off: bool = LanePressureOverlay.is_hatched(point, true)
+			if aimed:
+				aimed_ink += 1
+			if off:
+				off_ink += 1
+			if aimed != off:
+				differ += 1
+	var err: String = _T.assert_gt(samples, 100,
+		"the sweep visited the cell (an empty sweep passes vacuously)")
+	if err == "":
+		err = _T.assert_gt(aimed_ink, 0, "the aimed texture inks something")
+	if err == "":
+		err = _T.assert_gt(off_ink, 0, "and so does the off-aim one")
+	if err == "":
+		err = _T.assert_true(absi(aimed_ink - off_ink) * 20 <= samples,
+			("the two textures spend the same ink (%d vs %d of %d samples). A denser off-aim "
+				+ "hatch would read as a second, deeper red rather than as a second channel")
+				% [aimed_ink, off_ink, samples])
+	if err == "":
+		err = _T.assert_gt(float(samples - off_ink) / float(samples), 0.2,
+			("and the off-aim texture leaves a real share of the cell bare (%d of %d): that gap "
+				+ "is what the cursor's flat DANGER wash is read through")
+				% [samples - off_ink, samples])
+	if err == "":
+		err = _T.assert_gt(float(differ) / float(samples), 0.25,
+			("while disagreeing over %d of %d sample points — the difference is WHERE the ink "
+				+ "sits, which is the one thing left that neither hue nor alpha is carrying")
+				% [differ, samples])
+	return err
+
+
+## The mark teaches itself, and this is the mechanism: buy a plant that covers a
+## leaking stretch and the stripes under it rotate on the spot, in the prep
+## window, with the pressure map still on screen. No legend, no tutorial line.
+func test_planting_a_cob_rotates_the_stripes_under_the_ground_it_now_covers() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var err: String = _T.assert_true(game != null, "the game scene loaded")
+	if err != "":
+		return err
+	err = _T.assert_true(game.board != null, "the run has a board")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var road: Array[Vector2i] = game.board.road_cells()
+	err = _T.assert_gt(road.size(), 0, "there is a road to mark")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# Game._ready() refreshes once, and an empty garden aims at nothing.
+	var unaimed_before: int = 0
+	for cell: Vector2i in road:
+		if game.board.is_unaimed(cell):
+			unaimed_before += 1
+	err = _T.assert_eq(unaimed_before, road.size(),
+		"an empty garden leaves all %d road cells off aim before a single plant goes in"
+			% road.size())
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var post := Vector2i(1, 0)
+	var reached: Array[Vector2i] = PlacementPreview.covered_road_cell_list(
+		game.board, post, CornCobbler.RANGE)
+	err = _T.assert_gt(reached.size(), 0, "a cob at %s would reach road" % post)
+	if err == "":
+		err = _T.assert_true(reached.size() < road.size(), "though not the whole of it")
+	if err == "":
+		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, post), "", "and the cob goes in")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var flipped: int = 0
+	for cell: Vector2i in reached:
+		if not game.board.is_unaimed(cell):
+			flipped += 1
+	err = _T.assert_eq(flipped, reached.size(),
+		("every one of the %d cells the cob reaches stopped being off aim the moment it landed "
+			+ "— that flip IS the legend") % reached.size())
+	if err == "":
+		var still: int = 0
+		for cell: Vector2i in road:
+			if game.board.is_unaimed(cell):
+				still += 1
+		err = _T.assert_eq(still, road.size() - reached.size(),
+			"and nothing else moved: %d cells are still off aim" % (road.size() - reached.size()))
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# The repaint economy. This runs on every seed payout; a redraw per call would
+	# repaint the whole road several times a second to show the same picture.
+	err = _T.assert_false(game.board.mark_unaimed_road(game.uncovered_road_cells()),
+		"a refresh that changed no plants reports no change, so it repaints nothing")
+	if err == "":
+		err = _T.assert_true(game.board.mark_unaimed_road(road),
+			"while a set that really moved is reported as moved")
+	if err == "":
+		err = _T.assert_true(game.board.is_unaimed(reached[0]),
+			"and took effect: %s is off aim again" % reached[0])
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# Ground that is not road is dropped, the same filter the pressure map applies:
+	# the overlay only ever draws road, so a mark elsewhere can never be cleared.
+	var grass: Array[Vector2i] = [post]
+	err = _T.assert_false(game.board.is_path(post), "%s is grass, not road" % post)
+	if err == "":
+		err = _T.assert_true(game.board.mark_unaimed_road(grass),
+			"handing the board a set of one grass cell is a change from the whole road")
+	if err == "":
+		err = _T.assert_false(game.board.is_unaimed(post),
+			"but the grass cell itself is dropped rather than marked")
+	_T.free_ui(game)
+	return err
+
+
+## The caveat, executable. game.gd's coverage block used to call the derived map
+## an upper bound on what happened. It is not a bound in either direction: a
+## Kernel flies until it leaves the board and kills the first pest it touches,
+## whoever it was aimed at, so a cob kills on ground its own ring never covered.
+##
+## Found by driving a real run, not by reading: four cobs at the entry over four
+## waves put 7 kills on cells the coverage map calls off aim — (6, 1) at 202 px
+## and (3, 5) at 192 px from the nearest cob, against a 176 px ring. This is that
+## case reduced to one cob, one kernel and one aphid, on a line the road happens
+## to run straight down.
+func test_a_kernel_can_kill_on_ground_the_coverage_map_calls_unaimed() -> String:
+	var probe := Board.new()
+	var post := Vector2i(2, 7)
+	var beyond := Vector2i(6, 7)
+	var err: String = _T.assert_true(probe.is_buildable(post),
+		"%s is grass a cob can stand on" % post)
+	if err == "":
+		err = _T.assert_true(probe.is_path(beyond), "%s is road a pest can stand on" % beyond)
+	if err != "":
+		probe.free()
+		return err
+	var from: Vector2 = probe.cell_to_world(post)
+	var to: Vector2 = probe.cell_to_world(beyond)
+	err = _T.assert_float_eq(from.y, to.y, 0.001,
+		"the cob sits level with the stretch of road it is firing down, so the shot is one line")
+	if err == "":
+		err = _T.assert_gt(from.distance_to(to), CornCobbler.RANGE,
+			("and %s is %.0f px away, outside the cob's %.0f px ring")
+				% [beyond, from.distance_to(to), CornCobbler.RANGE])
+	if err == "":
+		var reached: Array[Vector2i] = PlacementPreview.covered_road_cell_list(
+			probe, post, CornCobbler.RANGE)
+		err = _T.assert_gt(reached.size(), 0, "the cob covers some road, so the map is readable")
+		if err == "":
+			err = _T.assert_false(reached.has(beyond),
+				"and the coverage map agrees it does not cover %s" % beyond)
+	var bounds := Rect2(Vector2.ZERO, probe.board_size())
+	probe.free()
+	if err != "":
+		return err
+
+	var pest: Pest = _pest(Pest.APHID, to)
+	var host: Node2D = _host([pest])
+	await _T.instantiate_scene(host)
+	# The kernel joins AFTER the settle frames, and its physics is switched off on
+	# the same statement it enters on. Two things go wrong when it is hosted up
+	# front instead, and both were seen here rather than reasoned about:
+	#
+	#   - an unconfigured Kernel carries a default Rect2() for bounds, so it is
+	#     outside its own bounds on frame one and frees itself. The
+	#     `Nonexistent function 'setup' in base 'previously freed'` that follows
+	#     aborts the method and returns "", which the runner printed as [PASS].
+	#   - set_physics_process(false) called before the tree does NOT stick: Godot
+	#     turns it back on at entry, and the kernel flew 56 px on the settle
+	#     frames — measured, as `Expected 160.0 but got 216.0`.
+	#
+	# Nothing below awaits, so no physics frame runs that this test did not drive.
+	var kernel := Kernel.new()
+	kernel.setup(from, Vector2.RIGHT, 1.0, bounds)
+	host.add_child(kernel)
+	kernel.set_physics_process(false)
+	err = _T.assert_true(is_instance_valid(kernel),
+		"the kernel survived being added to the tree — a freed one aborts this test into a pass")
+	if err == "":
+		err = _T.assert_float_eq(kernel.position.x, from.x, 0.001,
+			"and has not flown anywhere on its own, so every pixel below is one this test drove")
+	if err != "":
+		_T.free_ui(host)
+		return err
+	var before: float = pest.health
+	err = _T.assert_gt(before, 0.0, "the aphid starts with health to lose")
+	if err == "":
+		var steps: int = 0
+		# 240 frames at 420 px/s is 1680 px, twice the width of the board.
+		while steps < 240 and pest.health >= before:
+			kernel._physics_process(1.0 / 60.0)
+			steps += 1
+		err = _T.assert_gt(steps, 0, "the kernel was actually stepped")
+		if err == "":
+			err = _T.assert_true(pest.health < before,
+				("the kernel killed into %s after %d frames, which the coverage map calls ground "
+					+ "nothing is aimed at (%.1f health left of %.1f). 'Off aim' means no plant has "
+					+ "this cell in reach — it never meant nothing can die here")
+					% [beyond, steps, pest.health, before])
+	_T.free_ui(host)
+	return err

@@ -98,6 +98,15 @@ var _last_wave_losses: Dictionary = {}
 ## for is subtracting, so the exit cell cannot claim to be a chokepoint on the
 ## strength of pests that were never stopped there at all.
 var _run_escapes: Dictionary = {}
+## Road cell -> true for every cell nothing standing in the garden can aim at.
+## Pushed in by Game (mark_unaimed_road) rather than derived here, because the
+## garden is Game's to know about and Board deliberately knows only the ground.
+##
+## Kept on the Board as well as on the overlay so it can be read back on a Board
+## that never entered the tree — the overlay is built in _ready(), and a query
+## that answered "everything is aimed at" for a Board without one would be a
+## confident wrong answer rather than a missing one.
+var _unaimed: Dictionary = {}
 
 
 func _ready() -> void:
@@ -525,3 +534,45 @@ func lane_pressure_alpha(cell: Vector2i) -> float:
 	if _pressure_overlay == null:
 		return 0.0
 	return float(_pressure_overlay.pressure.get(cell, 0.0))
+
+
+## Tells the road which of its cells no standing plant currently has in range,
+## so the pressure hatch can draw those cells at the mirrored angle. Game calls
+## this from _refresh() with uncovered_road_cells(); see LanePressureOverlay's
+## `unaimed` for the whole argument about why an angle and not a colour.
+##
+## Non-road cells are dropped, the same filter record_lane_pressure_wave applies
+## and for the same reason: the overlay only ever draws road, so a mark against
+## ground that is not road is a mark nothing can render and nothing can clear.
+##
+## Returns whether the set actually changed. That is not decoration — this is
+## called from every _refresh(), which fires on every seed payout, and a
+## queue_redraw() on each of those would repaint the whole road several times a
+## second to show the same picture. It is also the assertion a test wants: "the
+## stripes rotated when the plant landed" is a claim about a change.
+func mark_unaimed_road(cells: Array[Vector2i]) -> bool:
+	var next: Dictionary = {}
+	for cell: Vector2i in cells:
+		if is_path(cell):
+			next[cell] = true
+	if next.size() == _unaimed.size():
+		var same: bool = true
+		for cell: Vector2i in next:
+			if not _unaimed.has(cell):
+				same = false
+				break
+		if same:
+			return false
+	_unaimed = next
+	if _pressure_overlay != null:
+		_pressure_overlay.unaimed = _unaimed
+		_pressure_overlay.queue_redraw()
+	return true
+
+
+## Is `cell` currently marked as ground nothing is aimed at? The read-back beside
+## lane_pressure_alpha(), and for the same reason: callers ask the Board rather
+## than reaching into the overlay node, so a Board without one answers from its
+## own copy instead of answering false for everything.
+func is_unaimed(cell: Vector2i) -> bool:
+	return _unaimed.has(cell)

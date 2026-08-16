@@ -389,12 +389,23 @@ func prep_note() -> String:
 # and the placed plants — available DURING play, correct the frame a plant is
 # bought or uprooted, and free of any dependency on a pest having walked there.
 #
-# The two would still disagree, and the disagreement is not interesting: the
-# derived map says a cell is covered when a plant is in range of it, and a Corn
-# shoots only the pest furthest along, a Chomp with a full mouth grabs nothing and
-# a winged pest is unreachable by one at all. So it is an upper bound on what
-# actually happened. That is the right bound for the question being asked, which
-# is "could anything have touched a pest here", not "did it".
+# The two would still disagree, and the disagreement is not one-sided, which is
+# what this paragraph used to get wrong. It over-promises in the obvious
+# direction: a Corn shoots only the pest furthest along, a Chomp with a full mouth
+# grabs nothing, a winged pest is unreachable by one at all. It ALSO under-promises,
+# and that half was missed. A Kernel flies until it leaves the board
+# (Kernel._physics_process) and kills the first pest it touches whether or not that
+# pest was the one aimed at, so a cob's overshoot kills well past its own 176 px
+# ring. Driven live: four cobs at the entry, four waves, and 7 kills landed on
+# cells this map calls uncovered — (6, 1) and (3, 5), both a clean 200 px and
+# 192 px from the nearest cob — against 10 escapes at the exit.
+#
+# So this is not a bound in either direction. It answers exactly one question and
+# it answers it exactly: "is any standing plant in range of this cell". That is
+# still the question worth asking, because it is the one a purchase acts on — but
+# nothing built on it may be phrased as "nothing could touch them here", and
+# LanePressureOverlay's mark is named `unaimed` rather than `unreachable` for that
+# reason. See test_a_kernel_can_kill_on_ground_the_coverage_map_calls_unaimed.
 
 
 ## The plants that can lay a finger on a pest, and the whole list.
@@ -1150,6 +1161,17 @@ func _click_at(screen_pos: Vector2) -> void:
 
 
 func _refresh() -> void:
+	# Ahead of the hud guard, not after it. The road's off-aim marks are the one
+	# part of a refresh that is not the HUD's, and the headless suite drives a Game
+	# with no HUD at all — putting this below the return would make the board's
+	# second reading the only readout in the run that cannot be tested without one.
+	#
+	# Cheap enough to sit on the same funnel as the HUD: uncovered_road_cells() is
+	# one 126-cell sweep per engaging plant, and mark_unaimed_road() returns early
+	# without repainting when the set has not moved, which is every refresh except
+	# the ones where a plant was bought, uprooted or eaten.
+	if board != null and is_instance_valid(board):
+		board.mark_unaimed_road(uncovered_road_cells())
 	if hud == null:
 		return
 	hud.refresh(state())
