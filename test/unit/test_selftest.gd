@@ -5407,3 +5407,34 @@ func test_music_mute_is_independent_of_sfx_mute() -> String:
 	Music.set_muted(music_was_muted)
 	Sfx.set_muted(sfx_was_muted)
 	return err
+
+
+# -- The press, as opposed to what it went on to do (plant-tower-defense-aho) -
+
+
+## The press cue lives at Game's receiving end, not on the button, because the
+## HUD makes no sound anywhere in this project — every Sfx.play() is in game.gd
+## or in a plant. What that costs is one hop the wiring has to survive, which is
+## what this pins: the button must reach the handler that rings, and
+## start_next_wave() must NOT be what the signal lands on, or the prep countdown
+## running out would click a button nobody pressed.
+func test_the_wave_button_reaches_the_cue_handler_and_still_starts_the_wave() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var handlers: Array[String] = []
+	for entry: Dictionary in game.hud.next_wave_requested.get_connections():
+		handlers.append(String((entry["callable"] as Callable).get_method()))
+	var err: String = _T.assert_true(handlers.has("_on_next_wave_requested"),
+		"the button's signal lands on the handler that plays the press cue")
+	if err == "":
+		err = _T.assert_false(handlers.has("start_next_wave"),
+			"and no longer on the mutator, which the countdown and the devtools verb still call unheard")
+	if err == "":
+		var before: int = game.director.current_wave
+		# The real Button, not the handler by name: calling
+		# _on_next_wave_requested() directly would prove the cue and not the
+		# wiring, which is the half that can actually break here.
+		game.hud._next_wave_button.pressed.emit()
+		err = _T.assert_eq(game.director.current_wave, before + 1,
+			"and a real press still starts the wave through it")
+	_T.free_ui(game)
+	return err

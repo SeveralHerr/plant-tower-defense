@@ -2840,3 +2840,41 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   one thing I expected to have to work around.
 
 - Harness: **0.25.0**.
+
+## 2026-08-16 — A press cue for the wave button and the plant bar (plant-tower-defense-aho)
+
+- Value: **warranted** — the issue's premise was wrong in a way only the running
+  game corrects, and the correction is what set the cue's level.
+  - Expected: the press cue and WAVE_STARTED's bell should land on two separate
+    pool voices in the same frame, with the press at the lower trim — the point
+    of the -10 dB choice, and something no headless gate can observe since
+    `Sfx.play` returns early there.
+  - Got: after `press --node .../NextWaveButton`, `/root/SfxPool/Voice0` read
+    `minimize_006.ogg` at `volume_db: -10.0` and `/root/SfxPool/Voice1` read
+    `impactBell_heavy_002.ogg` at `0.0` — the eight-voice pool doing exactly
+    what it exists for, with `game_state` showing `wave: 1, wave_live: true`
+    from the same press. A plant-bar press was proved through state rather than
+    sound: `selected_plant` set to `sticky_sundew`, then
+    `press .../Button_corn_cobbler`, then `selected_plant: corn_cobbler`.
+  - Found: two things. The issue says `Sfx.WAVE_STARTED` "only plays later"; it
+    does not — `Game.start_next_wave()` reaches `WaveDirector.wave_started`
+    synchronously, so the bell is in the press's own frame. That is why
+    `BUTTON_PRESSED` is the quietest row in the table rather than a fourth
+    mid-level cue. Also caught mid-run: `run_tests` exited 1 on
+    `test_the_suite_reach_baseline_lists_only_symbols_no_test_names` because the
+    new test names `next_wave_requested`, which `tools/suite_reach_baseline.json`
+    still recorded as un-named debt — re-banked with
+    `suite_reach_check.py --baseline-write`.
+  - Cheaper: reading `wave_director.gd:175-185` would have shown the synchronous
+    emit, but not that the two cues land on separate voices at the levels
+    intended. `press --node` is also the only thing here that exercises the
+    button's own `pressed` wiring rather than the handler by name.
+
+- Gap: no gaps this turn. Worth recording as a technique instead: an
+  `AudioStreamPlayer` pool makes "did the right cue fire" a plain `get-state`
+  on `stream` + `volume_db`, which reads a sound in a `--mute`d session — a
+  finished sample leaves `playing: false` but the voice still holds what it was
+  handed, so the read survives the round-trip latency that would otherwise make
+  a 0.2s cue unobservable.
+
+- Harness: **0.25.0**.

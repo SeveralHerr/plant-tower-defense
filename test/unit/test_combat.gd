@@ -516,7 +516,7 @@ func test_every_event_id_the_call_sites_use_is_in_the_table() -> String:
 		Sfx.RUN_WON, Sfx.RUN_LOST, Sfx.PURCHASE_DENIED,
 		Sfx.PLANT_UPGRADED, Sfx.PLANT_UPROOTED,
 		Sfx.CORN_FIRED, Sfx.CHOMP_BITE, Sfx.SUNDEW_CLAIM,
-		Sfx.SEEDS_GROWN,
+		Sfx.SEEDS_GROWN, Sfx.BUTTON_PRESSED,
 	]
 	for event: StringName in used:
 		var err: String = _T.assert_true(Sfx.SOUNDS.has(event),
@@ -648,6 +648,26 @@ func test_a_grown_payout_shares_the_swept_ones_coins_but_not_its_level() -> Stri
 		err = _T.assert_gt(int(Sfx.REPEAT_MS.get(Sfx.SEEDS_GROWN, Sfx.DEFAULT_REPEAT_MS)),
 			Sfx.DEFAULT_REPEAT_MS,
 			"with a wider repeat gap, so a row of flowers coming due together rings once")
+	return err
+
+
+func test_a_button_press_is_the_quietest_thing_the_game_says() -> String:
+	## A press is punctuation, not an event. It shares its stream with the husk
+	## rotting away out on the board, and it fires in the same frame as
+	## WAVE_STARTED's bell (Game.start_next_wave reaches wave_started
+	## synchronously), so anything but the lowest trim in the table would put a
+	## click on top of the announcement it is meant to sit under. The refusal
+	## cue is checked here too: a denied press must still be the buzz alone.
+	var err: String = _T.assert_gt(float(Sfx.VOLUME_DB.get(Sfx.HUSK_ROTTED, 0.0)),
+		float(Sfx.VOLUME_DB.get(Sfx.BUTTON_PRESSED, 0.0)),
+		"the press sits under the rot cue it borrows its stream from")
+	if err == "":
+		err = _T.assert_gt(float(Sfx.VOLUME_DB.get(Sfx.WAVE_STARTED, 0.0)),
+			float(Sfx.VOLUME_DB.get(Sfx.BUTTON_PRESSED, 0.0)),
+			"and under the bell it sounds in the same frame as")
+	if err == "":
+		err = _T.assert_true(Sfx.SOUNDS.get(Sfx.BUTTON_PRESSED) != Sfx.SOUNDS.get(Sfx.PURCHASE_DENIED),
+			"a press and a refusal are never the same sample")
 	return err
 
 

@@ -219,7 +219,12 @@ func _ready() -> void:
 
 	hud.plant_selected.connect(_on_plant_chosen)
 	hud.packet_requested.connect(_on_packet_requested)
-	hud.next_wave_requested.connect(start_next_wave)
+	# Through a handler rather than straight onto start_next_wave(), so the
+	# mutator underneath stays unguarded for the devtools verb, the prep-timer
+	# expiry and the tests — the same split request_uproot() / uproot_selected()
+	# already uses. A wave that arrives because the countdown ran out is not a
+	# press and must not click.
+	hud.next_wave_requested.connect(_on_next_wave_requested)
 	hud.upgrade_requested.connect(upgrade_selected)
 	# The button goes through the confirm gate; uproot_selected() stays the
 	# unguarded mutator underneath it, which is what the devtools verbs and the
@@ -258,6 +263,23 @@ func _process(delta: float) -> void:
 
 
 # -- waves ------------------------------------------------------------------
+
+
+## The "Grow the next wave" button, as opposed to the wave itself.
+##
+## Every other HUD button already answers its own press: Upgrade rings
+## PLANT_UPGRADED or the denial, Uproot rings UPROOT_ARMED, a packet either
+## opens or is refused — which is why only this one and the plant bar (see
+## _on_plant_chosen) get a press cue, and why a refusal stays PURCHASE_DENIED
+## alone rather than becoming a click followed by a buzz.
+##
+## Note the bell that follows is not a later beat: start_next_wave() reaches
+## WaveDirector.wave_started synchronously, so WAVE_STARTED sounds in this same
+## frame. BUTTON_PRESSED is trimmed to sit under it (see Sfx.VOLUME_DB) — the
+## click of the button, not a second announcement of the wave.
+func _on_next_wave_requested() -> void:
+	Sfx.play(Sfx.BUTTON_PRESSED)
+	start_next_wave()
 
 
 func start_next_wave() -> bool:
@@ -903,7 +925,13 @@ func summary_stats(new_record: bool) -> Dictionary:
 # -- placement --------------------------------------------------------------
 
 
+## Picking a plant out of the bar. The other press with nothing of its own: a
+## selection pays nothing and places nothing, so until PLANT_PLACED rings on the
+## board — several seconds and one aimed click later — the bar answered a click
+## with silence. This is the only route in; there is no keyboard shortcut for
+## selecting a plant, so the cue cannot fall out of step with a second path.
 func _on_plant_chosen(id: StringName) -> void:
+	Sfx.play(Sfx.BUTTON_PRESSED)
 	selected_plant = id
 	_select(null)
 	# Picking a different plant while the cursor sits still must re-draw the

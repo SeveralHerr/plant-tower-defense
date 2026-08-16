@@ -14,7 +14,6 @@
     "game/hud.gd::func::get_viewport_height",
     "game/hud.gd::func::hide_banner",
     "game/hud.gd::func::refresh",
-    "game/hud.gd::signal::next_wave_requested",
     "game/hud.gd::signal::packet_requested",
     "game/hud.gd::signal::plant_selected",
     "game/hud.gd::signal::upgrade_requested",
