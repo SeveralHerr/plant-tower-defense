@@ -257,6 +257,12 @@ func test_draining_the_catalogue_never_repeats_a_plant() -> String:
 ## campaign record, while the title screen labelled it "Best endless run" whichever
 ## mode had actually set it.
 func test_a_campaign_run_cannot_take_the_endless_record() -> String:
+	# record_score() persists, so the path is redirected before the first call and
+	# not merely the numbers restored after the last. Staging campaign to 0 and then
+	# recording 300 wrote a 300 straight over the player's real campaign record;
+	# every assertion here passed while it happened.
+	var stashed_path: String = RunConfig.save_path
+	RunConfig.save_path = "user://test_economy_modes.save"
 	var campaign_before: int = RunConfig.campaign_high_score
 	var endless_before: int = RunConfig.endless_high_score
 	RunConfig.campaign_high_score = 0
@@ -284,6 +290,10 @@ func test_a_campaign_run_cannot_take_the_endless_record() -> String:
 	RunConfig.campaign_high_score = campaign_before
 	RunConfig.endless_high_score = endless_before
 	RunConfig.endless = false
+	RunConfig.save_path = stashed_path
+	for suffix: String in ["", ".tmp", ".bak"]:
+		if FileAccess.file_exists("user://test_economy_modes.save" + suffix):
+			DirAccess.remove_absolute("user://test_economy_modes.save" + suffix)
 	return err
 
 

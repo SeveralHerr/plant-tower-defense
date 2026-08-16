@@ -673,6 +673,22 @@ func test_notebook_images_stay_inside_their_box() -> String:
 
 
 func test_run_config_high_score_only_ever_goes_up() -> String:
+	# save_path is redirected FIRST, before anything calls a mutator. record_score()
+	# persists through _save(), so every run of this test used to raise the number in
+	# the developer's own user://highscore.save by one -- observed climbing 308 -> 309
+	# across two suite runs. Restoring the in-memory scores afterwards, which is what
+	# this test used to do, hides that completely: the file keeps the last number
+	# written and the suite prints ALL PASSED.
+	var stashed_path: String = RunConfig.save_path
+	RunConfig.save_path = "user://test_selftest_ratchet.save"
+	# The SCORES are stashed as well as the path, and both halves are load-bearing.
+	# Redirecting the path alone still leaves this test's raised number sitting in
+	# the autoload afterwards, and the next legitimate _save() -- the migration on a
+	# version bump, or any later test -- writes it to the real file. That is exactly
+	# what happened on the first attempt at this fix: the file went 308 -> 309 with
+	# the path correctly redirected the whole time.
+	var stashed_campaign: int = RunConfig.campaign_high_score
+	var stashed_endless_score: int = RunConfig.endless_high_score
 	# Scores are per mode now; this asserts the ratchet on whichever mode is live.
 	var was_endless: bool = RunConfig.endless
 	var before: int = RunConfig.best_for(was_endless)
@@ -691,6 +707,12 @@ func test_run_config_high_score_only_ever_goes_up() -> String:
 		RunConfig.endless = was_endless
 		err = _T.assert_eq(RunConfig.best_for(was_endless), before + 1,
 			"and the other mode's record did not disturb this one")
+	RunConfig.campaign_high_score = stashed_campaign
+	RunConfig.endless_high_score = stashed_endless_score
+	RunConfig.save_path = stashed_path
+	for suffix: String in ["", ".tmp", ".bak"]:
+		if FileAccess.file_exists("user://test_selftest_ratchet.save" + suffix):
+			DirAccess.remove_absolute("user://test_selftest_ratchet.save" + suffix)
 	return err
 
 
@@ -5193,6 +5215,13 @@ func test_the_pause_card_is_tall_enough_for_whatever_it_holds() -> String:
 ## record_score's return to the post-mortem; the pause exits drop it, so without
 ## this the run a player was proudest of said nothing at all.
 func test_a_record_set_by_quitting_is_announced_on_the_title_screen() -> String:
+	# Redirected before the first mutator, not merely restored after it. This test
+	# stages both scores to 0 and then records 140, and record_score() persists --
+	# so against the real save_path it wrote 140 over a player's actual record. The
+	# in-memory restore below is what made that invisible: the numbers came back,
+	# the FILE kept 140, and nothing failed.
+	var stashed_path: String = RunConfig.save_path
+	RunConfig.save_path = "user://test_selftest_record.save"
 	var saved_c: int = RunConfig.campaign_high_score
 	var saved_e: int = RunConfig.endless_high_score
 	var saved_f: bool = RunConfig.fresh_record
@@ -5227,6 +5256,10 @@ func test_a_record_set_by_quitting_is_announced_on_the_title_screen() -> String:
 	RunConfig.endless_high_score = saved_e
 	RunConfig.fresh_record = saved_f
 	RunConfig.endless = saved_mode
+	RunConfig.save_path = stashed_path
+	for suffix: String in ["", ".tmp", ".bak"]:
+		if FileAccess.file_exists("user://test_selftest_record.save" + suffix):
+			DirAccess.remove_absolute("user://test_selftest_record.save" + suffix)
 	return err
 
 
@@ -7598,6 +7631,14 @@ func test_toggling_the_option_is_persisted_and_reversible() -> String:
 	## it is process-global, and a test that leaves it on changes what every later
 	## test's `threat_color()` returns. The save file's side of it is in
 	## test_economy.gd, over a scratch path.
+	##
+	## This one needs a scratch path too, and the docstring above is why it did not
+	## have one: "the save file's side is tested elsewhere" is true and does not
+	## help, because `set_colorblind_safe()` persists on every call regardless of
+	## which test is asking. Restoring the flag in memory left the developer's real
+	## save carrying whatever the last toggle wrote.
+	var stashed_path: String = RunConfig.save_path
+	RunConfig.save_path = "user://test_selftest_option.save"
 	var was: bool = RunConfig.colorblind_safe
 	RunConfig.colorblind_safe = false
 	var err: String = _T.assert_true(RunConfig.toggle_colorblind_safe(), "one toggle turns it on")
@@ -7617,6 +7658,10 @@ func test_toggling_the_option_is_persisted_and_reversible() -> String:
 		err = _T.assert_true(Hud.health_color(0.0).is_equal_approx(Hud.HEALTH_LOW),
 			"on both bars at once")
 	RunConfig.set_colorblind_safe(was)
+	RunConfig.save_path = stashed_path
+	for suffix: String in ["", ".tmp", ".bak"]:
+		if FileAccess.file_exists("user://test_selftest_option.save" + suffix):
+			DirAccess.remove_absolute("user://test_selftest_option.save" + suffix)
 	return err
 
 
@@ -7949,4 +7994,72 @@ func test_toggling_the_option_repaints_the_bars_already_on_the_board() -> String
 				0.001, "repaint_health_bar() is what does it, got %s" % plant._health_bar.color)
 	RunConfig.colorblind_safe = was
 	_T.free_ui(game)
+	return err
+
+
+## No test may persist through the player's own save file.
+##
+## This is a source scan rather than a runtime check, and that is the point: the
+## damage it prevents is invisible at runtime. Three tests staged a score or an
+## option in memory, called a mutator that persists, and restored the in-memory
+## value afterwards -- so every assertion passed, the suite printed ALL PASSED, and
+## the only trace was `user://highscore.save` quietly carrying whatever the last
+## test wrote. Observed climbing 308 -> 309 across two runs, and one of the three
+## staged both scores to 0 first, so it wrote a 140 over a real record.
+##
+## The rule: a test function that calls a persisting RunConfig mutator must assign
+## `RunConfig.save_path` somewhere in the same function. Restoring the value is not
+## enough and is exactly what hid this -- see the two comments at those call sites.
+func test_no_test_persists_through_the_players_own_save() -> String:
+	var persisting: PackedStringArray = [
+		"RunConfig.record_score", "RunConfig._save()", "RunConfig.record_milestones",
+		"RunConfig.set_colorblind_safe", "RunConfig.set_mute_sfx", "RunConfig.set_mute_music",
+		"RunConfig.store_key_bindings",
+	]
+	var checked: int = 0
+	var offenders: PackedStringArray = []
+	for path: String in ["res://test/unit/test_selftest.gd", "res://test/unit/test_economy.gd"]:
+		var text: String = FileAccess.get_file_as_string(path)
+		var err_read: String = _T.assert_false(text.is_empty(), "%s is readable" % path)
+		if err_read != "":
+			return err_read
+		var name: String = ""
+		var body: String = ""
+		# A trailing sentinel so the final function in the file is judged too.
+		for raw_line: String in (text + "\nfunc __eof():").split("\n"):
+			# Comments are dropped BEFORE matching, and the first draft of this test
+			# is why the rule is stated here rather than assumed. It reported three
+			# offenders; two were prose -- `# RunConfig.record_score() only ever
+			# raises a record` sitting between two functions, attributed to whichever
+			# one came before it. A scan that reads its own explanations is the trap
+			# suite_reach_check.py's header already warns about, and this walked
+			# straight into it.
+			var line: String = raw_line
+			var hash_at: int = line.find("#")
+			if hash_at >= 0:
+				line = line.substr(0, hash_at)
+			if line.begins_with("func "):
+				if name != "":
+					var mutates: bool = false
+					for needle: String in persisting:
+						if body.contains(needle):
+							mutates = true
+							break
+					if mutates:
+						checked += 1
+						# `_with_scratch_save` is the helper that does the redirect for
+						# its callee, so a lambda handed to it is covered by it.
+						if not (body.contains("RunConfig.save_path =")
+								or body.contains("_with_scratch_save")):
+							offenders.append("%s (%s)" % [name, path.get_file()])
+				name = line.substr(5).split("(")[0]
+				body = ""
+			else:
+				body += line + "\n"
+	var err: String = _T.assert_gt(checked, 0,
+		"the scan actually found test functions that persist -- a zero here means the "
+			+ "needles stopped matching and this test is vacuous, not that it is clean")
+	if err == "":
+		err = _T.assert_eq(", ".join(offenders), "",
+			"every test that persists redirects RunConfig.save_path first; these do not")
 	return err
