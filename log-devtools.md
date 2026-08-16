@@ -2316,3 +2316,36 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
 - Gap: **no gaps this turn.**
 
 - Harness: still **0.23.0**. No refresh.
+
+## 2026-08-16 — Cycle 19, and the loop paused here
+
+- Value: **warranted** — two of three items corrected a claim, and one of the claims was
+  an agent's rather than mine.
+  - Expected: `zsb` would find a handful of tests reading state straight after
+    `instantiate_scene`; `1av` would close a wiring hole.
+  - Got: **22 candidates, all 22 hand-checked, zero real exposures.** The first cut
+    flagged 106 functions, nearly all Control size reads after `instantiate_ui` — which
+    is exactly what `UI_SETTLE_FRAMES` exists to converge, i.e. the harness's contract
+    rather than a defect. The distinction is not "physics-dependent" but CONVERGENCE.
+  - Found: `--import` had stripped `window/size/viewport_width|height` from
+    `project.godot` — the documented hazard, caught only because I diffed the file
+    before committing. The HUD's width budgets measure against `ProjectSettings`, so the
+    layout would have ridden on an engine default with nothing saying so.
+  - Cheaper: for `1av`, nothing. For `zsb`, the count could have come before the tool —
+    and to the agent's credit it reported the count first, as asked, and still argued
+    the tool earns its place as a regression gate rather than a discovery one.
+
+- **Corrected an agent's headline, which is new this session.** `1av` reported that
+  cutting `pest.escaped.connect` would leave the whole suite green and the game
+  unlosable. I cut the line: three tests fail, one of them
+  `test_every_signal_a_game_script_declares_has_a_listener`, pre-existing, in a file the
+  agent never opened. The agent had grepped for `.escaped` and found nothing — but that
+  test works by **enumerating declared signals at runtime**, so no grep for a symbol can
+  see it. Same blind spot the reach checker has, in the same direction: it credits reach
+  by name, so a test that enumerates and asserts over everything credits nothing.
+
+- Gap: **no gaps this turn.** Seven parallel-safe checkers now, all clean:
+  `name_check`, `world_control_check`, `meta_key_check`, `group_leak_check`,
+  `suite_reach_check`, `svg_style_check`, `settle_read_check`.
+
+- Harness: still **0.23.0**. Checked upstream this cycle; no release since `65103b7`.
