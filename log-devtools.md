@@ -1852,3 +1852,43 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     harness one) | seen: 3 | harness: 0.23.0
   - Improvement: unchanged and still wanted — `findings` should print the same
     per-finding detail `validate-ui` does, or name the file it wrote them to.
+
+## 2026-08-16 — Cycle 11: three fixes, and a bug in the harness's own blanker
+
+- Value: **overkill** for both runtime passes — each confirmed a claim the headless
+  tests had already made, which is the honest reading and is what the ledger now
+  records.
+  - Expected: the save logic runs at startup in an autoload before any game
+    exists, and the tests drive it with a redirected path. Runtime should confirm
+    the real boot path still loads the developer's actual save, and that
+    `load_status` reports honestly rather than silently starting at zero.
+  - Got: the real `user://highscore.save` (`v2\n140\n0`) read back as
+    `load_status: loaded, campaign_high_score: 140`. Truncated mid-number to
+    `v2\n14`, it read `load_status: refused` with `0/0` — and **the corrupt bytes
+    were still on disk afterwards**, which is the half that matters: the number is
+    recoverable rather than destroyed. Restoring returned both. Separately, the
+    Sundew patch list held exactly 2 entries while `Entities` held 24 children,
+    and held exactly 1 after `reload_current_scene` — the failure a `static var`
+    invites and the only one a per-test instantiation cannot produce.
+  - Found: nothing in either runtime pass. The three real findings this cycle all
+    came from reading: `FileAccess.open(WRITE)` truncating before writing (the
+    *producer* of the corrupt saves, so a read-side fix alone would not have been
+    one), and the metadata checker correcting its own issue's premise — all five
+    keys in this tree are single-file, not cross-script.
+  - Cheaper: the headless suites, in both cases. Only "the real `user://` boot
+    path behaves like the redirected one" and "a static list survives a scene
+    reload empty" needed a live session, and one launch each settled them.
+
+- Gap: **`name_check.py`'s string blanker drops a newline on a backslash
+  continuation, so every later finding in that file is reported one line early.**
+  At `tools/name_check.py:232-237`, a `\` + newline inside a string literal appends
+  `"  "` (two spaces) and increments the tracked `line`, but the blanked text it
+  builds `_line_starts` from is now one newline short. `coverage_check.py:213` has
+  the same shape. Latent in this project — no `.gd` here uses a continued string
+  literal, verified — so it costs nothing today and will silently mis-point
+  findings the moment one appears. Found by a checker I had written against this
+  blanker as a reference, which is the only reason it surfaced at all.
+  - [G-032] status: open | seen: 1 | harness: 0.23.0
+  - Improvement: one line —
+    `out.append(" \n" if text[i + 1] == "\n" else "  ")` — keeping the blank
+    length-preserving while restoring the newline the line index depends on.
