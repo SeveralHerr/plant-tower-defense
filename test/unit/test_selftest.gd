@@ -5569,6 +5569,290 @@ func test_escape_in_the_keys_screen_closes_it_without_unpausing_the_run() -> Str
 	return err
 
 
+# -- Options from the pause card (plant-tower-defense-syq) --------------------
+
+
+## Opens it the way a player does -- through the button's own signal. Same shape
+## and same reason as _open_pause_keys: calling PauseScreen._open_options()
+## directly would pass just as happily with nothing wired to the button.
+func _open_pause_options(screen: PauseScreen) -> String:
+	var button: Button = screen.get_node_or_null("OptionsButton") as Button
+	var err: String = _T.assert_true(button != null,
+		"the pause card offers a way into the options screen")
+	if err == "":
+		err = _T.assert_false(button.disabled, "and the way in is not disabled")
+	if err == "":
+		err = _T.assert_true(button.size.x >= 40.0 and button.size.y >= 40.0,
+			"and it is a real touch target, got %s" % button.size)
+	if err == "":
+		button.pressed.emit()
+	return err
+
+
+## The third door of the same shape, and the first one where "one overlay at a
+## time" has three things to be wrong about rather than two.
+func test_the_options_screen_opens_from_the_pause_card_and_the_run_stays_held() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	# Guarded against a vacuous pass: an empty table would report a confident green
+	# over a card with no buttons at all.
+	var err: String = _T.assert_gt(PauseScreen.BUTTONS.size(), 0, "the card has buttons to press")
+	if err == "":
+		err = _T.assert_gt(OptionsScreen.OPTIONS.size(), 0, "and there are switches to show")
+	if err == "":
+		game.pause_run()
+		await _pump(game)
+		err = _T.assert_true(game.is_paused(), "the run is held before the options screen is asked for")
+	var screen := game.get_node_or_null("PauseLayer/PauseScreen") as PauseScreen
+	if err == "":
+		err = _T.assert_true(screen != null, "and the pause card is up")
+	# The button emits `options_requested` and this screen answers it itself, the
+	# same arrangement the notebook and keys buttons have. Watched separately so a
+	# button wired straight to _open_options would still leave the declared signal
+	# dead and fail here.
+	var asked: Array[bool] = [false]
+	if err == "":
+		screen.options_requested.connect(func() -> void: asked[0] = true)
+		err = _open_pause_options(screen)
+	if err == "":
+		err = _T.assert_true(asked[0], "the button asks for the options screen by signal")
+	if err == "":
+		await _pump(game)
+		err = _T.assert_true(screen.options_open(), "pressing the button opens the options screen")
+	var options: OptionsScreen = null
+	if err == "":
+		# Found by the name `build()` gives it, which is the contract both doors share
+		# -- a card that named its own copy something else would fail here rather than
+		# quietly become a second version of this overlay.
+		options = screen.get_node_or_null(OptionsScreen.NODE_NAME) as OptionsScreen
+		err = _T.assert_true(options != null,
+			"and it is really on the card under the name build() gives it, not merely flagged open")
+	if err == "":
+		err = _T.assert_true(game.is_paused(), "and the run is STILL held with it open")
+	if err == "":
+		# Stated, not inherited -- see OptionsScreen.build. INHERIT resolves to ALWAYS
+		# today only because the card is ALWAYS, and the failure if that changes is a
+		# frozen screen with a Back button that does nothing.
+		err = _T.assert_eq(options.process_mode, Node.PROCESS_MODE_ALWAYS,
+			"the options screen runs while the tree it was opened from is paused")
+	if err == "":
+		# The declaration is one thing; this is the engine agreeing, while the tree
+		# really is paused.
+		err = _T.assert_true(options.can_process(), "and the engine agrees it still processes")
+	if err == "":
+		for node_name: String in ["BackButton", "RowButton0"]:
+			var b: Button = options.get_node_or_null(node_name) as Button
+			err = _T.assert_true(b != null and not b.disabled,
+				"%s is present and clickable while paused" % node_name)
+			if err == "":
+				err = _T.assert_true(b.can_process(), "%s is not frozen by the pause" % node_name)
+			if err != "":
+				break
+	if err == "":
+		err = _open_pause_options(screen)
+		if err == "":
+			await _pump(game)
+			err = _T.assert_eq(screen.get_children().filter(
+				func(child: Node) -> bool: return child is OptionsScreen).size(), 1,
+				"pressing it twice does not stack two options screens")
+	if err == "":
+		# The half only a THIRD overlay can be wrong about, in both directions: one
+		# shared guard, not three independent "is mine open" checks.
+		err = _open_pause_keys(screen)
+		if err == "":
+			await _pump(game)
+			err = _T.assert_false(screen.keys_open(),
+				"the keys screen cannot open on top of the options screen")
+	if err == "":
+		screen._open_notebook()
+		await _pump(game)
+		err = _T.assert_false(screen.notebook_open(),
+			"and neither can the notebook")
+	if err == "":
+		# And back the other way, which is the ordering the guard could pass by
+		# accident: close options, open keys, then try options over it.
+		(screen.get_node(OptionsScreen.NODE_NAME) as OptionsScreen).back_requested.emit()
+		await _pump(game)
+		err = _T.assert_false(screen.options_open(), "Back closes the options screen")
+		if err == "":
+			err = _open_pause_keys(screen)
+		if err == "":
+			await _pump(game)
+			err = _T.assert_true(screen.keys_open(), "the keys screen opens once nothing is in the way")
+		if err == "":
+			err = _open_pause_options(screen)
+		if err == "":
+			await _pump(game)
+			err = _T.assert_false(screen.options_open(),
+				"and options cannot open on top of the keys screen either")
+	if err == "":
+		err = _T.assert_true(game.is_paused(), "the run was held through all of it")
+	game.resume_run()
+	await _pump(game)
+	_T.free_ui(game)
+	return err
+
+
+## Escape is answered by BOTH screens: OptionsScreen._input emits back_requested,
+## PauseScreen._input emits resume_requested. Unresolved, one keystroke closes the
+## options screen AND drops the player onto a live board -- which is why the pause
+## side's connection is CONNECT_DEFERRED and the title side's is direct.
+##
+## Driven by calling the two handlers directly, in the order the engine would,
+## because that ordering is the thing under test.
+func test_escape_in_the_options_screen_closes_it_without_unpausing_the_run() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.pause_run()
+	await _pump(game)
+	var screen := game.get_node_or_null("PauseLayer/PauseScreen") as PauseScreen
+	var err: String = _T.assert_true(screen != null, "the pause card is up")
+	if err == "":
+		err = _open_pause_options(screen)
+	if err == "":
+		await _pump(game)
+		err = _T.assert_true(screen.options_open(), "the options screen is open")
+	if err == "":
+		var options := screen.get_node(OptionsScreen.NODE_NAME) as OptionsScreen
+		options._input(_key_press(KEY_ESCAPE))
+		screen._input(_key_press(KEY_ESCAPE))
+		err = _T.assert_true(game.is_paused(),
+			"the card declines the Escape the options screen just answered, rather than "
+				+ "resuming the run behind it in the same keystroke")
+	if err == "":
+		await _pump(game)
+		err = _T.assert_false(screen.options_open(), "and the Escape did close the options screen")
+	if err == "":
+		err = _T.assert_true(game.is_paused(), "with the run still held once it is gone")
+	if err == "":
+		# The half tree order does not cover: P is a resume key the options screen
+		# does not handle at all, so with it up P would reach the card unopposed.
+		err = _open_pause_options(screen)
+		if err == "":
+			await _pump(game)
+			screen._input(_key_press(KEY_P))
+			err = _T.assert_true(game.is_paused(), "P over an open options screen does not unpause")
+		if err == "":
+			err = _T.assert_true(screen.options_open(), "and leaves the options screen where it was")
+	if err == "":
+		# And with nothing over it the card's own Escape still works -- or the guard
+		# above would pass by breaking the pause menu, with every assertion green.
+		(screen.get_node(OptionsScreen.NODE_NAME) as OptionsScreen)._input(_key_press(KEY_ESCAPE))
+		await _pump(game)
+		err = _T.assert_false(screen.options_open(), "the options screen is out of the way again")
+		if err == "":
+			err = _T.assert_eq((screen.get_node("ResumeButton") as Button).focus_mode,
+				Control.FOCUS_ALL, "and the card behind it takes focus again")
+		if err == "":
+			screen._input(_key_press(KEY_ESCAPE))
+			await _pump(game)
+			err = _T.assert_false(game.is_paused(), "Escape on the bare pause card still resumes")
+	game.resume_run()
+	await _pump(game)
+	_T.free_ui(game)
+	return err
+
+
+## The reason the door is worth having, asserted as a state change rather than as
+## a screen that opened: a player reaches Options mid-run because they cannot read
+## the bars in front of them, and a switch that takes effect at the next wave is
+## not an answer to that. Game.repaint_for_palette is what closes it, and
+## resume_run calls it on the way out of every pause.
+##
+## RunConfig is process-global and seeded from the developer's own save, so the
+## save path and every field the writer emits are stashed and put back.
+func test_flipping_the_colourblind_bars_mid_run_repaints_the_board_on_resume() -> String:
+	var stashed_path: String = RunConfig.save_path
+	var stashed_colorblind: bool = RunConfig.colorblind_safe
+	var stashed_status: String = RunConfig.load_status
+	var stashed_milestones: Dictionary = RunConfig.earned_milestones.duplicate()
+	var stashed_bindings: Dictionary = RunConfig.key_bindings
+	var path := "user://test_selftest_pause_options.save"
+	RunConfig.save_path = path
+	RunConfig.colorblind_safe = false
+
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	# A bitten bed, left alone. Its bar is drawn from take_damage()/_regrow(), so
+	# nothing will repaint it on its own between here and the assertion -- which is
+	# the whole case the repaint exists for, and the one a paused board guarantees.
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "", "planted")
+	var plant: Plant = game.selected_placed
+	if err == "":
+		err = _T.assert_true(plant != null, "and the placed bed is the one we hold")
+	if err == "":
+		plant.take_damage(Plant.MAX_HEALTH * 0.5)
+		err = _T.assert_true(plant._health_bar.visible, "a bitten bed shows its bar")
+	var default_red := Color.WHITE
+	if err == "":
+		default_red = plant._health_bar.color
+		err = _T.assert_float_eq(_colour_distance(default_red, Hud.health_color_on(0.0, false)),
+			0.0, 0.001, "which starts on the default ramp, got %s" % default_red)
+	if err == "":
+		game.pause_run()
+		await _pump(game)
+	var screen := game.get_node_or_null("PauseLayer/PauseScreen") as PauseScreen
+	if err == "":
+		err = _T.assert_true(screen != null, "the pause card is up")
+	if err == "":
+		err = _open_pause_options(screen)
+	if err == "":
+		await _pump(game)
+		err = _T.assert_true(screen.options_open(), "the options screen is open over the held run")
+	if err == "":
+		var options := screen.get_node(OptionsScreen.NODE_NAME) as OptionsScreen
+		# Through the row's own button, not through RunConfig: the claim is that the
+		# screen a player reaches mid-run drives the same flag the C key does.
+		var index: int = options.rows().find(OptionsScreen.COLORBLIND)
+		err = _T.assert_gte(index, 0, "the colourblind row is on the screen")
+		if err == "":
+			(options.get_node("RowButton%d" % index) as Button).pressed.emit()
+			err = _T.assert_true(RunConfig.colorblind_safe,
+				"pressing it mid-run turns the safe ramp on")
+	if err == "":
+		err = _T.assert_true(FileAccess.file_exists(path),
+			"and it was written down from inside the run, not held for the session")
+	if err == "":
+		# Still on the old ramp while the card is up: nothing has bitten the bed and
+		# the screen that flipped the flag has no reach into the board. This is the
+		# state the fix is about, asserted rather than assumed.
+		err = _T.assert_float_eq(_colour_distance(plant._health_bar.color, default_red), 0.0,
+			0.001, "the bar behind the card is still on the ramp it was drawn with")
+	if err == "":
+		(screen.get_node(OptionsScreen.NODE_NAME) as OptionsScreen).back_requested.emit()
+		await _pump(game)
+		game.resume_run()
+		await _pump(game)
+		err = _T.assert_false(game.is_paused(), "the run comes back")
+	if err == "":
+		var now: Color = plant._health_bar.color
+		var to_safe: float = _colour_distance(now, Hud.health_color_on(0.0, true))
+		var to_default: float = _colour_distance(now, Hud.health_color_on(0.0, false))
+		err = _T.assert_true(to_safe < to_default,
+			"and resuming repaints the bed onto the safe ramp without anything biting it: "
+				+ "%s is %.3f from safe and %.3f from default" % [now, to_safe, to_default])
+	if err == "":
+		# The method resume_run reaches for, named directly, so a rename that left
+		# the resume path calling something else would fail here too.
+		RunConfig.colorblind_safe = false
+		game.repaint_for_palette()
+		err = _T.assert_float_eq(_colour_distance(plant._health_bar.color, default_red), 0.0,
+			0.001, "repaint_for_palette puts it back on the default ramp, got %s"
+				% plant._health_bar.color)
+	if err == "":
+		RunConfig.colorblind_safe = true
+		err = _T.assert_true(RunConfig.colorblind_safe, "with the option still settable")
+
+	_T.free_ui(game)
+	RunConfig.save_path = stashed_path
+	RunConfig.colorblind_safe = stashed_colorblind
+	RunConfig.load_status = stashed_status
+	RunConfig.earned_milestones = stashed_milestones
+	RunConfig.key_bindings = stashed_bindings
+	for suffix: String in ["", ".tmp", ".bak"]:
+		if FileAccess.file_exists(path + suffix):
+			DirAccess.remove_absolute(path + suffix)
+	return err
+
+
 ## The legend this card draws is built once, from the table Game handed it at
 ## construction. Until the Keys button existed nothing could move a binding while
 ## the card was alive; now the button directly above the legend can. Without a
@@ -5682,10 +5966,61 @@ func test_the_pause_card_centres_itself_and_fits_a_real_viewport() -> String:
 			"the card is centred: %.0f above, %.0f below" % [above, below])
 	if err == "":
 		# The real claim, and the one the old constant could not make: another button
-		# has to MOVE the card, not overflow it.
+		# ROW has to MOVE the card, not overflow it. A row, not a button -- Keys and
+		# Options share one, so BUTTONS.size() and the block's height differ now.
 		var grown: float = PauseScreen.card_height() + PauseScreen.BUTTON_SIZE.y + PauseScreen.BUTTON_GAP
 		err = _T.assert_true(grown <= float(height),
-			"a sixth button would need %.0f of %d, and the derived top can still give it" % [grown, height])
+			"another button row would need %.0f of %d, and the derived top can still give it"
+				% [grown, height])
+	if err == "":
+		err = _T.assert_gt(PauseScreen.button_row_count(), 0, "the card has button rows")
+	if err == "":
+		err = _T.assert_true(PauseScreen.button_row_count() < PauseScreen.BUTTONS.size(),
+			"and fewer rows than buttons, because two of them share one")
+	if err == "":
+		# The shared row itself, off the same function the buttons are placed from.
+		# One box per button, whatever the row count.
+		var rects: Array[Rect2] = PauseScreen.button_rects()
+		err = _T.assert_eq(rects.size(), PauseScreen.BUTTONS.size(),
+			"button_rects gives every button a box, not every row")
+		if err == "":
+			for i: int in range(rects.size()):
+				err = _T.assert_true(rects[i].size.x >= 40.0 and rects[i].size.y >= 40.0,
+					"button %d is a real touch target at %s" % [i, rects[i].size])
+				if err != "":
+					break
+		if err == "":
+			for i: int in range(rects.size()):
+				for j: int in range(i + 1, rects.size()):
+					err = _T.assert_false(rects[i].intersects(rects[j]),
+						"button %d overlaps button %d (%s vs %s)" % [i, j, rects[i], rects[j]])
+					if err != "":
+						break
+				if err != "":
+					break
+		if err == "":
+			# The pair specifically: same top edge, and a real gap between them.
+			# Rect2.intersects is false for boxes sharing an edge, so the check above
+			# passes on two buttons laid flush -- which is wrong only in a screenshot.
+			var pair: int = -1
+			for i: int in range(PauseScreen.BUTTONS.size()):
+				if bool(PauseScreen.BUTTONS[i].get("share_row", false)):
+					pair = i
+					break
+			err = _T.assert_gt(pair, 0, "some button shares a row with the one above it")
+			if err == "":
+				err = _T.assert_float_eq(rects[pair].position.y, rects[pair - 1].position.y, 0.001,
+					"a shared row is one row: both halves sit on the same top edge")
+			if err == "":
+				err = _T.assert_float_eq(
+					rects[pair].position.x - (rects[pair - 1].position.x + rects[pair - 1].size.x),
+					PauseScreen.BUTTON_PAIR_GAP, 0.001,
+					"with BUTTON_PAIR_GAP of clear air between them, not merely no overlap")
+			if err == "":
+				err = _T.assert_float_eq(
+					rects[pair].position.x + rects[pair].size.x,
+					rects[pair - 1].position.x + PauseScreen.BUTTON_SIZE.x, 0.001,
+					"and the pair spans exactly the width one full-width button would have")
 	return err
 
 

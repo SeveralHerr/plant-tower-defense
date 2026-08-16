@@ -893,6 +893,12 @@ func pause_run() -> void:
 ## first would let the board come back to life while its own pause card is
 ## still dissolving on top of it.
 func resume_run() -> void:
+	# Before the fade, not after: the Options screen over the pause card can flip
+	# the colourblind ramp, and the board behind the card is still drawn on the
+	# palette it had when the run was held. Repainting here means the bars are
+	# already right in the frames the card is dissolving over. Cheap and idempotent
+	# on the common path where nothing changed — see repaint_for_palette.
+	repaint_for_palette()
 	if _pause_screen != null and is_instance_valid(_pause_screen):
 		await _pause_screen.play_exit()
 	get_tree().paused = false
@@ -1334,12 +1340,26 @@ func _unhandled_input(event: InputEvent) -> void:
 		var safe: bool = RunConfig.toggle_colorblind_safe()
 		hud.show_message(
 			"Colourblind-safe bars on." if safe else "Colourblind-safe bars off.", 2.5)
-		_refresh()
-		# The third bar. _refresh() repaints the HUD's two; the in-world one is
-		# drawn from take_damage()/_regrow(), so a chewed plant nobody is currently
-		# eating would keep the old ramp until something bit it again.
-		for plant: Plant in _plants.values():
-			plant.repaint_health_bar()
+		repaint_for_palette()
+
+
+## Every bar the colourblind ramp reaches, repainted now rather than at whatever
+## the next state change happens to be.
+##
+## Three bars, and only two of them are the HUD's. `_refresh()` covers those; the
+## in-world plant bar is drawn from take_damage()/_regrow(), so a chewed plant
+## nobody is currently eating would keep the old ramp until something bit it again.
+##
+## A method rather than five lines inside the C-key handler because the keystroke
+## is no longer the only thing that can flip the switch mid-run: the Options screen
+## over the pause card can too, and `resume_run` calls this on the way out for that
+## reason. A player who opens Options mid-run to turn the accessibility bars on is
+## doing it because they cannot read the current ones — "it takes effect at the
+## next wave" is not an answer to that.
+func repaint_for_palette() -> void:
+	_refresh()
+	for plant: Plant in _plants.values():
+		plant.repaint_health_bar()
 
 
 func _update_cursor(screen_pos: Vector2) -> void:

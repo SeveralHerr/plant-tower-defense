@@ -509,11 +509,17 @@ func _close_keys() -> void:
 ## The options screen, same overlay contract again — see _open_keys. A third
 ## overlay is exactly why `overlay_open()` is one shared guard: three independent
 ## "is mine open" checks would let any of them open on top of any other.
+##
+## Built through OptionsScreen.build() rather than here, for the reason the keys
+## screen already is: the pause card is its second door now, and two call sites
+## constructing the same overlay by hand is how one of them ends up without
+## PROCESS_MODE_ALWAYS. The connection stays direct — nothing on this screen
+## answers Escape, so there is no keystroke for a mid-event close to fall through
+## to. The pause card defers its own for exactly that reason.
 func _open_options() -> void:
 	if overlay_open():
 		return
-	_options_screen = OptionsScreen.new()
-	_options_screen.name = "OptionsScreen"
+	_options_screen = OptionsScreen.build()
 	_options_screen.back_requested.connect(_close_options)
 	add_child(_options_screen)
 	_set_menu_active(false)

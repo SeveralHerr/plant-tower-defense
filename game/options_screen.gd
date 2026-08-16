@@ -43,6 +43,30 @@ extends Control
 
 signal back_requested
 
+## The node name both doors give it. A path the bridge and test_selftest.gd press
+## by name, so it is a contract and not a local choice. Same arrangement as
+## KeyBindingScreen.NODE_NAME.
+const NODE_NAME := "OptionsScreen"
+
+
+## The one place this screen is constructed. TitleScreen and PauseScreen both open
+## it, and building it twice by hand is how one of the two ends up with a different
+## name or a different process mode — which is exactly the drift KeyBindingScreen
+## grew `build()` to stop when it got its second door.
+##
+## PROCESS_MODE_ALWAYS is set outright rather than left to inherit. The pause card
+## holds the tree still, and an overlay frozen by the pause that owns it has dead
+## buttons, a Back that does nothing and no way out of it. Inheriting would resolve
+## to ALWAYS today, because the card is ALWAYS — but that is a fact about who the
+## parent happens to be, and it inverts silently the day this is reparented. It
+## costs nothing on the title screen, which is never paused, and it is a stated
+## property a test can read instead of an inherited one it must infer.
+static func build() -> OptionsScreen:
+	var screen := OptionsScreen.new()
+	screen.name = NODE_NAME
+	screen.process_mode = Node.PROCESS_MODE_ALWAYS
+	return screen
+
 ## The switches, in the order they are drawn. A table rather than three
 ## hand-placed rows for the same reason KeyBindings.ACTIONS is one: the row list,
 ## the reader and the writer all have to name the same set, and three separate
