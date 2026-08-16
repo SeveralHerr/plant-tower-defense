@@ -1,6 +1,6 @@
 # todo
 
-**Cycle 10 of 30.** Bump this each time you refill the Items list. See the Workflow
+**Cycle 11 of 30.** Bump this each time you refill the Items list. See the Workflow
 loop at the top of `CLAUDE.md` — when this list is done, refill it and start again.
 
 ## The brief (original)
@@ -24,11 +24,11 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 
 ## Items
 
-- [ ] The 45-seed Corn upgrade is worse than the 20-seed one against a single
-      pest — level 3 is 1.61 dps against level 2's 2.78 (`plant-tower-defense-axt`)
-- [ ] Two sprite gates and neither can tell you the PNG came from the SVG, so a
-      stale render passes both (`plant-tower-defense-cm9`)
-- [ ] Four keyboard verbs in a run and no screen names any of them
-      (`plant-tower-defense-mz4`)
+- [ ] A truncated save silently zeroes a high score that can never be restored —
+      `int("")` is 0 and `record_score` only raises (`plant-tower-defense-5el`)
+- [ ] Every Sundew redraw walks every pest on the board, and redraws are most
+      frequent when the pest count is highest (`plant-tower-defense-fp5`)
+- [ ] Node metadata is a cross-script contract that no gate can see
+      (`plant-tower-defense-dka`)
 - [ ] Add cool new features or concrete improvements (UX, game juice,
       animations, enhancements, or full features) to `kanban.md`
