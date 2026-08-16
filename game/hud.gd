@@ -223,22 +223,26 @@ const MESSAGE_IMPORTANT: int = 1
 const MESSAGE_MIN_READABLE: float = 1.2
 const MESSAGE_QUEUE_MAX: int = 3
 
-## The wave banner. One event, one caller, one surface.
+## The wave banner. Two events, two named callers, one surface.
 ##
 ## This node used to be a generic `show_banner(text)` that the end-of-run screen
 ## drove; RunSummary replaced that and left the surface with no callers at all.
-## It is kept — rather than deleted — because the game has exactly one
-## announcement the status row cannot carry: a wave starting. That line competes
-## on MessageLabel with husk chatter, refused purchases, the uproot confirmation
-## and the mute toggle, in 15px, clipped, on a row so oversubscribed it needed a
-## priority queue. A wave start is the loudest beat in the run and was getting
-## the same 15px as "Composted a husk for 3 seeds."
+## It is kept — rather than deleted — because the game has beats the status row
+## cannot carry: a wave starting, and — since plant-tower-defense-d2a — a wave
+## being survived. Both compete on MessageLabel with husk chatter, refused
+## purchases, the uproot confirmation and the mute toggle, in 15px, clipped, on
+## a row so oversubscribed it needed a priority queue. Getting through a wave
+## intact is at least as loud a beat as one arriving, and was getting the same
+## 15px as "Composted a husk for 3 seeds" while the wave that was about to
+## attack got a 48px banner and a bell.
 ##
-## The reason this does not simply become a second oversubscribed channel is the
-## API, not the pixels: `announce_wave(number, pests, note)` names its one event.
-## There is no generic setter to dump a second kind of line into, and a wave
-## starts roughly once every PREP_SECONDS, so the surface can never be contended.
-## If a second event ever wants a banner, that is a decision to make on purpose —
+## The reason this does not become a second oversubscribed channel is the API,
+## not the pixels: `announce_wave(number, pests, note)` and
+## `announce_wave_cleared(number, pests)` each name their one event. There is
+## no generic setter to dump a third kind of line into, and neither event can
+## fire more than roughly once every PREP_SECONDS, so the surface can never be
+## contended between them — a wave cannot start and clear in the same breath.
+## If a third event ever wants a banner, that is a decision to make on purpose —
 ## it should have to add a method here, not reuse one.
 ##
 ## Two Labels rather than one two-line Label. That is a real fix, not a style
@@ -271,8 +275,16 @@ const BANNER_FADE_SECONDS: float = 0.5
 ## measures both of these in the real theme font against the real box.
 ## "9999 pests" is well past anything a wave produces and every escalation note
 ## WaveDirector can emit is a subset of "tougher, faster and stranger".
+##
+## Both rows are shared between announce_wave and announce_wave_cleared now, so
+## each entry is the longer of the two events' text rather than either one
+## alone. `wave_cleared_headline(9999)` — "Wave 9999 cleared" — is longer than
+## `wave_headline(9999)` and is what actually sets Banner's high-water mark;
+## `wave_cleared_note(9999)` — "9999 pests turned back." — stays well short of
+## the escalation sentence below it, so BannerNote's mark is still set by
+## announce_wave's own worst case.
 const BANNER_WORST_CASE_TEXT: Dictionary = {
-	"Banner": "Wave 9999",
+	"Banner": "Wave 9999 cleared",
 	"BannerNote": "9999 pests — tougher, faster and stranger than the last",
 }
 
@@ -1119,6 +1131,22 @@ static func wave_note(pests: int, note: String) -> String:
 	return "%d pests — %s than the last" % [pests, note]
 
 
+## The headline half of the wave-cleared banner. A distinct string from
+## wave_headline rather than the same one twice — a player glancing up mid-fade
+## needs to tell "here it comes" from "you held it" without reading the note
+## underneath, and the two headings this mirrors (RunSummary's win/loss text)
+## make the same distinction for the same reason.
+static func wave_cleared_headline(number: int) -> String:
+	return "Wave %d cleared" % number
+
+
+## The detail half. Bounded the same way wave_note() is — `pests` is a wave's
+## own pest count, and BANNER_WORST_CASE_TEXT pins "9999" as the ceiling both
+## budgets are measured against.
+static func wave_cleared_note(pests: int) -> String:
+	return "%d pests turned back." % pests
+
+
 ## What the prep window says about the run, in the one place the board cannot.
 ##
 ## The tint on the road is a recency map: the last wave that drew blood at full
@@ -1158,11 +1186,25 @@ static func wave_cleared_line(number: int, note: String) -> String:
 	return "Wave %d cleared. %s" % [number, note]
 
 
-## The one thing this surface announces. Named for its event on purpose: see the
-## BANNER_* block above for why there is no generic `show_banner(text)` any more.
+## The wave-starting half of this surface. Named for its event on purpose: see
+## the BANNER_* block above for why there is no generic `show_banner(text)`.
 func announce_wave(number: int, pests: int, note: String) -> void:
-	_banner.text = wave_headline(number)
-	_banner_note.text = wave_note(pests, note)
+	_show_banner(wave_headline(number), wave_note(pests, note))
+
+
+## The wave-clearing half, added by plant-tower-defense-d2a so surviving a wave
+## gets a beat comparable to the one that opens it rather than a single line on
+## the status row. Same mechanism, same weight, its own event and its own text.
+func announce_wave_cleared(number: int, pests: int) -> void:
+	_show_banner(wave_cleared_headline(number), wave_cleared_note(pests))
+
+
+## The mechanism both events above drive. Not itself a generic setter — it is
+## private, and every caller still has to go through a method named for its own
+## event; see the BANNER_* block above for why that restriction is the point.
+func _show_banner(headline: String, note: String) -> void:
+	_banner.text = headline
+	_banner_note.text = note
 	# Correct before any fade touches it — the alpha ramp below only ever runs
 	# down from here, so a frame that never arrives cannot leave this invisible.
 	_banner.modulate = Color.WHITE

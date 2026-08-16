@@ -328,6 +328,12 @@ func _check_wave_cleared() -> void:
 	_prep_left = PREP_SECONDS
 	_commit_lane_pressure()
 	if director.has_more_waves():
+		# The wave that was about to attack got a banner and a bell the instant
+		# it started (_on_wave_started); the wave a player just survived was
+		# getting a single status-row sentence, quieter than the thing it
+		# outlasted. Same weight now, on purpose (plant-tower-defense-d2a).
+		Sfx.play(Sfx.WAVE_CLEARED)
+		hud.announce_wave_cleared(director.current_wave, director.current_wave_pest_count())
 		# After _commit_lane_pressure above, not before: prep_note() reads the
 		# batch that call just posted, and running it first would describe the
 		# wave before last for the whole of the window the player buys in.
