@@ -1,8 +1,9 @@
 extends Node
 
 ## Autoload. The one thing that has to survive the title-screen -> game.tscn
-## scene swap: which mode the player picked, plus the seed high scores, which by
-## definition have to outlive any single run.
+## scene swap: which mode the player picked, plus the seed high scores and the
+## earned milestone flags, all of which by definition have to outlive any single
+## run.
 ##
 ## `endless` is read once, by Game._ready() wiring it into WaveDirector; the
 ## title screen is the only writer. The scores are persisted to user:// so they
@@ -27,9 +28,22 @@ extends Node
 const SAVE_PATH := "user://highscore.save"
 
 ## Bumped when the on-disk shape changes. Version 1 is the original single line;
-## version 2 is a `vN` header followed by campaign then endless. Actually parsed
-## and compared now — see `_parse_save`.
-const SAVE_VERSION: int = 2
+## version 2 is a `vN` header followed by campaign then endless; version 3 adds a
+## fourth line holding the earned milestone ids. Actually parsed and compared now
+## — see `_parse_save`.
+const SAVE_VERSION: int = 3
+
+## The milestone line's leading character, and the whole reason it has one.
+##
+## `get_line()` returns "" past the end of a truncated file, so a v3 save cut after
+## the endless line hands the parser an empty milestone line — which is also what a
+## player who has earned nothing legitimately has. Those two must not read the same,
+## for exactly the reason `_is_score` spells out about `int("")`. So the empty set is
+## written `m0`, a length is carried, and "" is not a valid line at all.
+const MILESTONE_PREFIX := "m"
+## Characters an id may contain. Ids are written by this project, never by a player,
+## so the set is deliberately narrow: anything outside it is corruption, not taste.
+const MILESTONE_ID_CHARS := "abcdefghijklmnopqrstuvwxyz0123456789_"
 
 ## The file this autoload persists to. A variable rather than a constant for
 ## exactly one reason: the unit tests need to drive this code over a scratch file
@@ -54,6 +68,23 @@ var fresh_record: bool = false
 var campaign_high_score: int = 0
 var endless_high_score: int = 0
 
+## Milestone ids this player has earned, as a set (`id -> true`). See
+## `game/milestones.gd` for the table and the rules.
+##
+## A set rather than an Array because every operation this needs is a membership
+## test or a union, and because the on-disk order then has to be decided once, by
+## the writer, instead of drifting with whatever order a run happened to earn
+## things in — a save whose bytes change when nothing changed is a save you cannot
+## diff.
+##
+## Unlike the two scores, a lost flag is re-earnable: play another good run and it
+## comes back. That asymmetry is why the milestones ride in the same file rather
+## than getting a second one, and why a malformed milestone line still refuses the
+## WHOLE save — the scores in it are the part that cannot be re-earned, and
+## half-reading a file to rescue the cheap half is the exact move `_parse_save`
+## exists to refuse.
+var earned_milestones: Dictionary = {}
+
 ## What `_load` made of the save file. Exists so that "there was no save" and
 ## "there was a save and it was refused" are distinguishable from the outside —
 ## both leave the scores where they were, and only one of them is a problem.
@@ -61,7 +92,9 @@ var endless_high_score: int = 0
 ##   ""          `_load` has not run yet
 ##   "absent"    no file, first launch — the zeros are legitimate
 ##   "loaded"    a current-version file was read
-##   "migrated"  a version-1 file was read and rewritten in the new shape
+##   "migrated"  an older-version file was read and rewritten in the new shape
+##               (version 1's bare integer, or version 2's three lines with no
+##               milestone line under them)
 ##   "recovered" `save_path` was missing and an interrupted `_save`'s temp file
 ##               was complete, so it was adopted
 ##   "refused"   a file exists and could not be trusted; the scores were left alone
@@ -98,6 +131,35 @@ func record_score(seeds_earned: int) -> bool:
 	return true
 
 
+## Has this player ever earned this milestone?
+func has_milestone(id: String) -> bool:
+	return earned_milestones.has(id)
+
+
+## Files a finished run's milestones and hands back the ones that are NEW.
+##
+## The return value is the whole point: the card wants to say "you just did this
+## for the first time", and by the time it asks, the flag is already set — so a
+## caller that files first and reads after can only ever learn "you have this",
+## which is true of a milestone earned three sessions ago. The newness exists for
+## one instant, at the moment of the union, and this is that instant.
+##
+## Idempotent, deliberately. `Game._end_run` can be reached twice in a frame and
+## both pause doors bank a score; a second call with the same ids adds nothing,
+## returns nothing and — because nothing changed — does not write the file either.
+func record_milestones(ids: Array) -> Array[String]:
+	var fresh: Array[String] = []
+	for id: Variant in ids:
+		var text: String = String(id)
+		if text.is_empty() or has_milestone(text):
+			continue
+		earned_milestones[text] = true
+		fresh.append(text)
+	if not fresh.is_empty():
+		_save()
+	return fresh
+
+
 ## Where `_save` assembles the next file before it replaces `save_path`.
 func _tmp_path() -> String:
 	return save_path + ".tmp"
@@ -118,8 +180,62 @@ static func _is_score(text: String) -> bool:
 	return text.is_valid_int() and int(text) >= 0
 
 
+## The milestone line, or `null` if it is not one.
+##
+## Shape: `m0` for the empty set, `m3:alpha,beta,gamma` otherwise. The count is not
+## decoration — it is the only thing that can catch a line truncated at a comma,
+## which is the shape a short write actually leaves. A cut that lands mid-id still
+## parses (as an id this build does not know), and that is an accepted limit: the
+## cost is one milestone the player re-earns, whereas refusing the file would cost
+## the two scores they cannot.
+##
+## Ids are NOT checked against Milestones.TABLE. A save written by a later build
+## carries ids this one has no rule for, and dropping them here would silently
+## un-earn them the first time an older build touched the file.
+##
+## Returns Array[String] on success, `null` on anything else — a distinction
+## `[]` cannot make, since the empty set is a legitimate reading.
+static func _parse_milestones(text: String) -> Variant:
+	if not text.begins_with(MILESTONE_PREFIX):
+		return null
+	var body: String = text.substr(MILESTONE_PREFIX.length())
+	var colon: int = body.find(":")
+	var count_text: String = body if colon < 0 else body.substr(0, colon)
+	if not count_text.is_valid_int():
+		return null
+	var count: int = int(count_text)
+	if count < 0:
+		return null
+	if (count == 0) != (colon < 0):
+		# `m0:` and `m2` are both self-contradictory: a count with no list, or a
+		# list with no count. Neither is a shape this writer produces.
+		return null
+	var ids: Array[String] = []
+	if colon >= 0:
+		for token: String in body.substr(colon + 1).split(","):
+			if token.is_empty() or ids.has(token):
+				return null
+			for i: int in range(token.length()):
+				if not MILESTONE_ID_CHARS.contains(token[i]):
+					return null
+			ids.append(token)
+	if ids.size() != count:
+		return null
+	return ids
+
+
+## The milestone set as one line, ids sorted so the bytes are a function of the
+## set and not of the order it was assembled in.
+func _milestone_line() -> String:
+	var ids: Array = earned_milestones.keys()
+	ids.sort()
+	if ids.is_empty():
+		return "%s0" % MILESTONE_PREFIX
+	return "%s%d:%s" % [MILESTONE_PREFIX, ids.size(), ",".join(PackedStringArray(ids))]
+
+
 func _parse_failed(reason: String) -> Dictionary:
-	return {"ok": false, "campaign": 0, "endless": 0, "version": 0, "reason": reason}
+	return {"ok": false, "campaign": 0, "endless": 0, "milestones": [], "version": 0, "reason": reason}
 
 
 ## Validates an entire save file and only then hands back its contents.
@@ -153,7 +269,10 @@ func _parse_save(path: String) -> Dictionary:
 		# legacy value that did come from a campaign is merely a hard endless
 		# record, whereas the reverse migration would leave an unbeatable number
 		# sitting on the eight-wave mode.
-		return {"ok": true, "campaign": 0, "endless": int(header), "version": 1, "reason": "v1"}
+		# No build that wrote this shape ever had a milestone, so the empty set here
+		# is a reading and not a fallback.
+		return {"ok": true, "campaign": 0, "endless": int(header), "milestones": [],
+			"version": 1, "reason": "v1"}
 
 	var version_text: String = header.substr(1)
 	if not version_text.is_valid_int():
@@ -171,17 +290,29 @@ func _parse_save(path: String) -> Dictionary:
 	if version < 2:
 		return _parse_failed("version %d never had a %s header" % [version, header])
 
-	# Version 2: campaign, then endless, one per line.
+	# Version 2 and up: campaign, then endless, one per line.
 	var campaign_text: String = f.get_line().strip_edges()
 	var endless_text: String = f.get_line().strip_edges()
 	if not _is_score(campaign_text):
 		return _parse_failed("its campaign score %s is not a number" % [campaign_text])
 	if not _is_score(endless_text):
 		return _parse_failed("its endless score %s is not a number" % [endless_text])
+
+	# Version 3 adds the milestone line. A version-2 file simply has none, which is
+	# the migration: the flags start empty and `_load` rewrites the file in the new
+	# shape once, exactly as it does for a version-1 file.
+	var milestones: Array = []
+	if version >= 3:
+		var parsed_ids: Variant = _parse_milestones(f.get_line().strip_edges())
+		if parsed_ids == null:
+			return _parse_failed("its milestone line is not a milestone line")
+		milestones = parsed_ids as Array
+
 	return {
 		"ok": true,
 		"campaign": int(campaign_text),
 		"endless": int(endless_text),
+		"milestones": milestones,
 		"version": version,
 		"reason": "v%d" % version,
 	}
@@ -220,6 +351,12 @@ func _load() -> void:
 
 	campaign_high_score = int(parsed["campaign"])
 	endless_high_score = int(parsed["endless"])
+	# Replaced, not merged. A load is "this is what is on disk", and a union with
+	# whatever the process happened to be holding would make a save reloaded twice
+	# read differently from one loaded once.
+	earned_milestones = {}
+	for id: String in (parsed["milestones"] as Array):
+		earned_milestones[id] = true
 	if recovered:
 		load_status = "recovered"
 		_save()
@@ -268,6 +405,7 @@ func _save() -> void:
 	f.store_line("v%d" % SAVE_VERSION)
 	f.store_line(str(campaign_high_score))
 	f.store_line(str(endless_high_score))
+	f.store_line(_milestone_line())
 	f.flush()
 	var write_error: int = f.get_error()
 	f.close()

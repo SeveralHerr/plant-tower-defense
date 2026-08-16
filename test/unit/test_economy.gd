@@ -742,6 +742,11 @@ func _with_scratch_save(campaign: int, endless_best: int, contents: Variant, bod
 	RunConfig.save_path = HIGHSCORE_TEST_PATH
 	RunConfig.campaign_high_score = campaign
 	RunConfig.endless_high_score = endless_best
+	# The third persisted field, and the one a test is most likely to inherit
+	# without noticing: an earned flag left over from an earlier test changes the
+	# bytes `_save` writes, which is precisely what the byte-exact assertions below
+	# are reading.
+	RunConfig.earned_milestones = {}
 	var err: String = str(body.call())
 	_restore_run_config()
 	return err
@@ -763,6 +768,10 @@ func _stash_run_config() -> void:
 		"endless": RunConfig.endless,
 		"fresh_record": RunConfig.fresh_record,
 		"load_status": RunConfig.load_status,
+		# Duplicated, not aliased: the Dictionary is mutated in place by
+		# `record_milestones` and by `_load`, so stashing the reference would hand
+		# `_restore_run_config` the very object the test just changed.
+		"earned_milestones": RunConfig.earned_milestones.duplicate(),
 		# Private, and stashed anyway: a refusal leaves a quarantine pending, and
 		# leaking that into a later test means an unrelated `_save` tries to move a
 		# file this one deleted.
@@ -779,6 +788,7 @@ func _restore_run_config() -> void:
 	RunConfig.endless = bool(_stashed_run_config["endless"])
 	RunConfig.fresh_record = bool(_stashed_run_config["fresh_record"])
 	RunConfig.load_status = str(_stashed_run_config["load_status"])
+	RunConfig.earned_milestones = (_stashed_run_config["earned_milestones"] as Dictionary).duplicate()
 	RunConfig._refused_path = str(_stashed_run_config["_refused_path"])
 	_stashed_run_config = {}
 	_clear_scratch_save()
@@ -888,8 +898,8 @@ func test_a_well_formed_save_round_trips_exactly() -> String:
 	return _with_scratch_save(1234, 5678, null, func() -> String:
 		RunConfig._save()
 		var err: String = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-			"v%d\n1234\n5678\n" % RunConfig.SAVE_VERSION,
-			"the save is a version stamp, then campaign, then endless")
+			"v%d\n1234\n5678\nm0\n" % RunConfig.SAVE_VERSION,
+			"the save is a version stamp, then campaign, then endless, then the milestone set")
 		if err == "":
 			err = _T.assert_false(FileAccess.file_exists(HIGHSCORE_TEST_PATH + ".tmp"),
 				"and the temp file it was assembled in was renamed away, not left behind")
@@ -933,7 +943,7 @@ func test_a_refused_save_is_not_immediately_overwritten() -> String:
 				"the unreadable file was moved aside, not written over")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n9999\n8765\n" % RunConfig.SAVE_VERSION,
+				"v%d\n9999\n8765\nm0\n" % RunConfig.SAVE_VERSION,
 				"and the new save kept the endless record the refusal had preserved")
 		return err)
 
@@ -955,7 +965,7 @@ func test_a_version_one_save_still_migrates_into_the_endless_slot() -> String:
 		if err == "":
 			# A parse that fully succeeded is the one case that may rewrite the file.
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n0\n31337\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n31337\nm0\n" % RunConfig.SAVE_VERSION,
 				"and the ambiguity is resolved on disk once, not re-guessed every launch")
 		return err)
 
@@ -986,6 +996,134 @@ func test_an_interrupted_save_is_recovered_rather_than_read_as_zero() -> String:
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH), written,
 				"and the save is back where it belongs")
 		return err)
+
+
+# -- milestones (plant-tower-defense-4qi) ------------------------------------
+#
+# The third persisted field. Everything above is about not losing two numbers a
+# player cannot re-earn; a milestone flag IS re-earnable, and these tests are
+# about the same file not becoming less careful because a cheaper field moved
+# into it.
+
+
+func test_a_run_with_milestones_round_trips_through_the_save() -> String:
+	## The whole point: the flags outlive the scene AND the process. Two ids, not
+	## one, because a writer that joined nothing and a reader that split nothing
+	## would agree perfectly on a single-element list.
+	return _with_scratch_save(1234, 5678, null, func() -> String:
+		var fresh: Array[String] = RunConfig.record_milestones(["hundred_pests", "campaign_cleared"])
+		var err: String = _T.assert_eq(fresh.size(), 2, "both ids were new")
+		if err == "":
+			# Sorted on the way out, so the bytes are a function of the SET rather
+			# than of the order the run happened to earn things in.
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+				"v%d\n1234\n5678\nm2:campaign_cleared,hundred_pests\n" % RunConfig.SAVE_VERSION,
+				"filing a milestone wrote the file, ids sorted")
+		if err == "":
+			# Deliberately not empty: a `_load` that assigned nothing would pass an
+			# emptiness check by doing nothing at all.
+			RunConfig.earned_milestones = {"something_else": true}
+			RunConfig._load()
+			err = _T.assert_eq(RunConfig.load_status, "loaded", "the v3 file loads")
+		if err == "":
+			err = _T.assert_true(RunConfig.has_milestone("campaign_cleared"), "the clear came back")
+		if err == "":
+			err = _T.assert_true(RunConfig.has_milestone("hundred_pests"), "and so did the hundred")
+		if err == "":
+			err = _T.assert_false(RunConfig.has_milestone("something_else"),
+				"and the load replaced the in-memory set rather than merging into it")
+		return err)
+
+
+func test_filing_a_milestone_twice_is_not_a_second_first_time() -> String:
+	## `record_milestones` returns the NEW ids, and that return value is the only
+	## moment newness exists — by the time the card asks, the flag is set. Both end
+	## paths of a run can fire twice in a frame, so a second call announcing the
+	## same milestone again is the failure this guards.
+	return _with_scratch_save(1, 2, null, func() -> String:
+		var first: Array[String] = RunConfig.record_milestones(["threat_peak"])
+		var err: String = _T.assert_eq(first.size(), 1, "the first filing is new")
+		if err == "":
+			var again: Array[String] = RunConfig.record_milestones(["threat_peak", "clean_sweep"])
+			err = _T.assert_eq(again.size(), 1, "the second filing reports only the genuinely new one")
+		if err == "":
+			err = _T.assert_eq(str(RunConfig.record_milestones(["threat_peak"])), "[]",
+				"and a repeat of an already-earned id is nothing at all")
+		if err == "":
+			err = _T.assert_eq(RunConfig.earned_milestones.size(), 2, "two flags are held")
+		return err)
+
+
+func test_a_version_two_save_migrates_forward_with_an_empty_milestone_set() -> String:
+	## The migration that the version bump is actually for. A v2 file has three
+	## lines and no fourth, and reading it must not be confused with reading a v3
+	## file whose fourth line was lost — the version says which of those it is.
+	return _with_scratch_save(0, 0, "v2\n4321\n8765\n", func() -> String:
+		RunConfig._load()
+		var err: String = _T.assert_eq(RunConfig.load_status, "migrated",
+			"a v2 file is read and rewritten, not refused")
+		if err == "":
+			err = _T.assert_eq(RunConfig.campaign_high_score, 4321, "campaign survived the bump")
+		if err == "":
+			err = _T.assert_eq(RunConfig.endless_high_score, 8765, "and so did endless")
+		if err == "":
+			err = _T.assert_eq(RunConfig.earned_milestones.size(), 0,
+				"a player who predates milestones has earned none of them")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+				"v%d\n4321\n8765\nm0\n" % RunConfig.SAVE_VERSION,
+				"and the file is now the current shape, resolved once")
+		return err)
+
+
+func test_a_v3_save_with_a_broken_milestone_line_is_refused_whole() -> String:
+	## The line that exists because `get_line()` returns "" past the end of a
+	## truncated file — the same defect `_is_score` refuses for the scores, in the
+	## one field where "" would otherwise be a perfectly ordinary reading.
+	##
+	## Refused WHOLE, deliberately. The flags in this file are cheap and the two
+	## scores beside them are not, so the tempting move — take the scores, drop the
+	## milestones — is exactly the half-adoption `_parse_save` exists to refuse.
+	var cases: Dictionary = {
+		"a v3 save cut before its milestone line": "v3\n4321\n8765\n",
+		"a milestone line with no marker": "v3\n4321\n8765\n2:a,b\n",
+		"a count that disagrees with the list": "v3\n4321\n8765\nm3:alpha,beta\n",
+		"a count with no list": "v3\n4321\n8765\nm2\n",
+		"a list with no count": "v3\n4321\n8765\nm0:alpha\n",
+		"an empty id between two commas": "v3\n4321\n8765\nm3:alpha,,beta\n",
+		"an id with characters no build writes": "v3\n4321\n8765\nm1:Alpha Beta\n",
+		"the same id twice": "v3\n4321\n8765\nm2:alpha,alpha\n",
+	}
+	for what: String in cases:
+		var err: String = _with_scratch_save(4321, 8765, cases[what],
+			func() -> String: return _assert_refused(4321, 8765, what))
+		if err != "":
+			return err
+	return ""
+
+
+func test_a_milestone_id_this_build_has_never_heard_of_survives_a_round_trip() -> String:
+	## A save written by a later build carries ids with no rule here. Dropping them
+	## would silently un-earn them the moment an older build touched the file, which
+	## is a data loss with no error attached — so the parser takes any well-formed
+	## id and the writer hands it straight back.
+	return _with_scratch_save(0, 0, "v3\n10\n20\nm2:from_the_future,hundred_pests\n",
+		func() -> String:
+			RunConfig._load()
+			var err: String = _T.assert_eq(RunConfig.load_status, "loaded", "the file reads")
+			if err == "":
+				err = _T.assert_true(RunConfig.has_milestone("from_the_future"),
+					"an id with no rule in this build is still held")
+			if err == "":
+				err = _T.assert_true(Milestones.entry("from_the_future").is_empty(),
+					"and this build genuinely has no rule for it")
+			if err == "":
+				RunConfig.record_milestones(["threat_peak"])
+				err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+					"v%d\n10\n20\nm3:from_the_future,hundred_pests,threat_peak\n"
+						% RunConfig.SAVE_VERSION,
+					"and the next save writes it back out rather than eating it")
+			return err)
 
 
 # -- budget floors ----------------------------------------------------------

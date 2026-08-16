@@ -68,6 +68,39 @@ const BACKDROP_ALPHA: float = 0.55
 const BUTTON_SIZE := Vector2(232.0, 44.0)
 const BUTTON_Y: float = 476.0
 
+## The milestone ribbon: what this run did for the first time ever, listed BESIDE
+## the card rather than on it.
+##
+## Beside, because the card has no room and the arithmetic saying so is already
+## written down twice in this file — _compost_text and beds_text both fold a second
+## number into an existing row rather than add an eighth, because rows step by
+## ROW_HEIGHT + ROW_GAP = 38 from FIRST_ROW_Y and an eighth would foot at 486,
+## below the buttons at 476. A milestone list is variable-length, so it could not
+## take one row even if one were free.
+##
+## The space it uses is real estate the post-mortem already owns and has never
+## drawn in: the backdrop covers the whole viewport, and CARD ends at x = 768 while
+## the viewport runs to 1152. 792 leaves a 24px gutter off the card's edge and
+## another 24 off the right of the screen. Vertically it starts level with the
+## card and grows downward; at the full seven milestones it foots at 438, which
+## clears the card's own foot at 552 and is nowhere near MAP_LEGEND_Y = 588 — and
+## `test_the_milestone_ribbon_clears_the_card_and_the_map_legend` measures exactly
+## that rather than trusting this paragraph.
+##
+## Nothing is drawn at all when the run earned nothing new, same rule as the map
+## legend: an empty Panel is what `validate-ui` reports as a zero-content Control,
+## and "no first-times this run" is the common case, not an error state.
+const RIBBON_X: float = 792.0
+const RIBBON_WIDTH: float = 336.0
+const RIBBON_TOP: float = 96.0
+const RIBBON_PAD: float = 14.0
+const RIBBON_HEADING_HEIGHT: float = 26.0
+const RIBBON_HEADING_GAP: float = 8.0
+const RIBBON_ROW_HEIGHT: float = 40.0
+const RIBBON_TITLE_FONT_SIZE: int = 17
+const RIBBON_NOTE_FONT_SIZE: int = 12
+const RIBBON_HEADING_FONT_SIZE: int = 15
+
 ## The map legend's strip, in viewport coordinates. Every number here is measured
 ## against something that would break it, so none of them is a taste call:
 ##
@@ -145,6 +178,7 @@ func _ready() -> void:
 
 	_build_heading()
 	_build_rows()
+	_build_milestone_ribbon()
 	_build_map_legend()
 	_build_buttons()
 
@@ -380,6 +414,102 @@ func map_legend_text() -> String:
 	# which measures it through the resolved font rather than trusting the count.
 	return ("Red road: how far they got, escapes and all. Reddest at column %d, row %d"
 		+ " — the card above counts only what held.") % [reddest.x + 1, reddest.y + 1]
+
+
+## The ids this run earned for the first time, as `Game._end_run` filed them.
+##
+## Read through a method rather than inline so the whole ribbon — height, contents
+## and whether it exists at all — is assertable off a plain stats Dictionary with
+## no Control built, the same way summary_rows() is.
+func new_milestones() -> Array[String]:
+	var out: Array[String] = []
+	for id: Variant in (_stats.get("new_milestones", []) as Array):
+		var text: String = String(id)
+		if not text.is_empty():
+			out.append(text)
+	return out
+
+
+## How tall the ribbon is for `count` entries. A function rather than a literal
+## because the count is a runtime number and the clearance test has to be able to
+## ask about the worst case (every milestone in Milestones.TABLE at once) without
+## staging a run that earns them.
+static func ribbon_height(count: int) -> float:
+	if count <= 0:
+		return 0.0
+	return (RIBBON_PAD + RIBBON_HEADING_HEIGHT + RIBBON_HEADING_GAP
+		+ float(count) * RIBBON_ROW_HEIGHT + RIBBON_PAD)
+
+
+func _build_milestone_ribbon() -> void:
+	var earned: Array[String] = new_milestones()
+	if earned.is_empty():
+		return
+
+	var panel := Panel.new()
+	panel.name = "MilestoneRibbon"
+	panel.position = Vector2(RIBBON_X, RIBBON_TOP)
+	panel.size = Vector2(RIBBON_WIDTH, ribbon_height(earned.size()))
+	panel.add_theme_stylebox_override("panel", _ribbon_box())
+	# The backdrop is what stops clicks reaching the live side panel; nothing in
+	# this ribbon may become the thing that eats one on the way there.
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(panel)
+
+	var heading := Label.new()
+	heading.name = "MilestoneHeading"
+	# Plural-agnostic on purpose: "1 first" and "3 firsts" both need a branch, and
+	# a heading that names the count at all invites a test asserting the count off
+	# the string instead of off the rows.
+	heading.text = "First time"
+	heading.position = Vector2(RIBBON_PAD, RIBBON_PAD)
+	heading.size = Vector2(RIBBON_WIDTH - RIBBON_PAD * 2.0, RIBBON_HEADING_HEIGHT)
+	heading.add_theme_font_size_override("font_size", RIBBON_HEADING_FONT_SIZE)
+	heading.add_theme_color_override("font_color", GardenTheme.GOLD)
+	heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(heading)
+
+	var y: float = RIBBON_PAD + RIBBON_HEADING_HEIGHT + RIBBON_HEADING_GAP
+	for id: String in earned:
+		var title := Label.new()
+		title.name = "Milestone_%s" % id
+		title.text = Milestones.title_of(id)
+		title.position = Vector2(RIBBON_PAD, y)
+		title.size = Vector2(RIBBON_WIDTH - RIBBON_PAD * 2.0, 22.0)
+		title.add_theme_font_size_override("font_size", RIBBON_TITLE_FONT_SIZE)
+		# PAPER, not INK: this sits on the INK backdrop, not on the card's paper.
+		title.add_theme_color_override("font_color", GardenTheme.PAPER)
+		title.clip_text = true
+		title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.add_child(title)
+
+		var note := Label.new()
+		note.name = "MilestoneNote_%s" % id
+		note.text = Milestones.note_of(id)
+		note.position = Vector2(RIBBON_PAD, y + 20.0)
+		note.size = Vector2(RIBBON_WIDTH - RIBBON_PAD * 2.0, 18.0)
+		note.add_theme_font_size_override("font_size", RIBBON_NOTE_FONT_SIZE)
+		note.add_theme_color_override("font_color", Color(GardenTheme.PAPER, 0.62))
+		note.clip_text = true
+		note.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		note.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.add_child(note)
+
+		y += RIBBON_ROW_HEIGHT
+
+
+## Deliberately not GardenTheme.paper_panel(). That is the card's stock, and a
+## second slab of the same cream beside it reads as a piece of the card that fell
+## off. This is ink with a gold edge — the colour the game already spends on
+## compost and on button focus, which is to say on "something you got".
+func _ribbon_box() -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(GardenTheme.INK, 0.9)
+	box.set_corner_radius_all(10)
+	box.set_border_width_all(GardenTheme.BORDER)
+	box.border_color = GardenTheme.GOLD
+	return box
 
 
 func _build_map_legend() -> void:

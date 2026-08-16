@@ -761,7 +761,14 @@ func _end_run(_banner: String) -> void:
 	# Not a scene change, so play_for_scene has nothing to key off -- the run
 	# ending is the direct-override case SCENE_TRACKS' own doc comment names.
 	Music.play_title()
-	_summary = RunSummary.build(summary_stats(new_record))
+	var stats: Dictionary = summary_stats(new_record)
+	# Behind the same guard as the card, and evaluated against `stats` rather than
+	# against Game, so the flags a run files and the numbers its post-mortem prints
+	# are read from one snapshot and cannot disagree. `record_milestones` returns
+	# only what is new, which is the one thing that stops being knowable the instant
+	# it is written down.
+	stats["new_milestones"] = RunConfig.record_milestones(Milestones.earned_by(stats))
+	_summary = RunSummary.build(stats)
 	_summary_layer = CanvasLayer.new()
 	_summary_layer.name = "SummaryLayer"
 	# Above the HUD's layer 10, or the side panel draws over the card.

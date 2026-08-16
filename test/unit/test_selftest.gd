@@ -5368,3 +5368,264 @@ func test_music_mute_is_independent_of_sfx_mute() -> String:
 	Music.set_muted(music_was_muted)
 	Sfx.set_muted(sfx_was_muted)
 	return err
+
+
+# -- milestones (plant-tower-defense-4qi) ------------------------------------
+#
+# The evaluation half. RunConfig's own tests (test_economy.gd) cover the save
+# file; these cover the table and the rule behind each id, which is pure static
+# code over a Dictionary and needs no Game, no file and no Control.
+
+
+## The stats Dictionary a run hands `Milestones.earned_by`, with nothing in it
+## that earns anything. Every test below starts here and moves ONE field, so a
+## milestone that fires is unambiguously firing on the thing that changed.
+func _milestone_stats(overrides: Dictionary = {}) -> Dictionary:
+	var stats: Dictionary = {
+		"victory": false,
+		"endless": false,
+		"wave": 1,
+		"lives_lost": 3,
+		"pests_defeated": 0,
+		"threat_level": 1,
+		"compost_total": 0,
+		"compost_resolved": 0,
+	}
+	for key: Variant in overrides:
+		stats[key] = overrides[key]
+	return stats
+
+
+func test_a_dull_run_earns_no_milestone_at_all() -> String:
+	## The floor, and the one that makes every test under it mean something: if the
+	## baseline stats earned three milestones, "adding victory earns the clear"
+	## would pass without victory having done anything.
+	var earned: Array[String] = Milestones.earned_by(_milestone_stats())
+	return _T.assert_eq(earned.size(), 0,
+		"a lost run at wave 1 with nothing killed earns nothing, got %s" % str(earned))
+
+
+func test_each_milestone_fires_on_the_number_it_names_and_not_before() -> String:
+	## Every id, driven at its threshold and one step under it. The under-threshold
+	## half is what catches a `>=` that should be a `>` and, more usefully, a rule
+	## reading the wrong key -- a condition keyed on a field nothing sets is false
+	## everywhere, which the on-threshold half alone reports as a clean fail.
+	var cases: Array[Dictionary] = [
+		{"id": "campaign_cleared", "on": {"victory": true}, "off": {"victory": false}},
+		{
+			"id": "unbroken_garden",
+			"on": {"victory": true, "lives_lost": 0},
+			"off": {"victory": true, "lives_lost": 1},
+		},
+		{
+			"id": "hundred_pests",
+			"on": {"pests_defeated": Milestones.HUNDRED},
+			"off": {"pests_defeated": Milestones.HUNDRED - 1},
+		},
+		{
+			"id": "five_hundred_pests",
+			"on": {"pests_defeated": Milestones.FIVE_HUNDRED},
+			"off": {"pests_defeated": Milestones.FIVE_HUNDRED - 1},
+		},
+		{
+			"id": "endless_deep",
+			"on": {"endless": true, "wave": Milestones.ENDLESS_DEEP_WAVE},
+			"off": {"endless": true, "wave": Milestones.ENDLESS_DEEP_WAVE - 1},
+		},
+		{
+			"id": "threat_peak",
+			"on": {"threat_level": Milestones.THREAT_PEAK},
+			"off": {"threat_level": Milestones.THREAT_PEAK - 1},
+		},
+		{
+			"id": "clean_sweep",
+			"on": {
+				"compost_total": Milestones.SWEEP_FLOOR,
+				"compost_resolved": Milestones.SWEEP_FLOOR,
+			},
+			"off": {
+				"compost_total": Milestones.SWEEP_FLOOR - 1,
+				"compost_resolved": Milestones.SWEEP_FLOOR,
+			},
+		},
+	]
+	var err: String = _T.assert_eq(cases.size(), Milestones.TABLE.size(),
+		"every milestone in the table is driven here, %d rule(s) against %d entries"
+			% [cases.size(), Milestones.TABLE.size()])
+	if err != "":
+		return err
+	for case: Dictionary in cases:
+		var id: String = String(case["id"])
+		err = _T.assert_true(Milestones.is_met(id, _milestone_stats(case["on"] as Dictionary)),
+			"%s fires on %s" % [id, str(case["on"])])
+		if err != "":
+			return err
+		err = _T.assert_false(Milestones.is_met(id, _milestone_stats(case["off"] as Dictionary)),
+			"%s does not fire on %s" % [id, str(case["off"])])
+		if err != "":
+			return err
+	return ""
+
+
+func test_an_endless_run_that_never_ends_cannot_earn_the_campaign_clear() -> String:
+	## `victory` is unreachable in endless (WaveDirector.has_more_waves is
+	## unconditionally true there), so this is a statement about the pair rather
+	## than about one flag: an endless run deep enough to earn the wave-40
+	## milestone must not also collect the two that mean "you finished".
+	var earned: Array[String] = Milestones.earned_by(_milestone_stats({
+		"endless": true,
+		"wave": 120,
+		"threat_level": 3,
+		"pests_defeated": 40,
+	}))
+	var err: String = _T.assert_true(earned.has("endless_deep"), "the deep-endless flag is earned")
+	if err == "":
+		err = _T.assert_false(earned.has("campaign_cleared"),
+			"and a run with no end does not report clearing one, got %s" % str(earned))
+	if err == "":
+		err = _T.assert_false(earned.has("unbroken_garden"), "nor holding every bed through one")
+	return err
+
+
+func test_a_run_that_swept_nothing_because_nothing_dropped_is_not_a_clean_sweep() -> String:
+	## The branch SWEEP_FLOOR exists for. 0 of 0 is arithmetically a perfect sweep,
+	## and it is what a run that never let a pest die produces -- the worst run in
+	## the game earning the tidiest milestone.
+	var err: String = _T.assert_false(
+		Milestones.is_met("clean_sweep",
+			_milestone_stats({"compost_total": 0, "compost_resolved": 0})),
+		"0 of 0 is not a sweep")
+	if err == "":
+		err = _T.assert_false(
+			Milestones.is_met("clean_sweep", _milestone_stats({
+				"compost_total": Milestones.SWEEP_FLOOR - 1,
+				"compost_resolved": Milestones.SWEEP_FLOOR,
+			})),
+			"and leaving one husk on the ground is not one either")
+	return err
+
+
+func test_every_milestone_id_has_a_rule_and_a_title() -> String:
+	## The seam the table has: TABLE lists the ids and `is_met` answers them, and
+	## nothing but this test stops an entry being added to one and not the other.
+	## An id with no rule is a milestone that can never be earned, and it shows up
+	## at runtime as nothing at all.
+	var err: String = _T.assert_gt(Milestones.TABLE.size(), 0, "there are milestones to check")
+	if err != "":
+		return err
+	# A stats Dictionary that satisfies everything at once, so a rule that never
+	# returns true for ANY input is caught here rather than silently passing.
+	var everything: Dictionary = _milestone_stats({
+		"victory": true,
+		"endless": true,
+		"wave": 9999,
+		"lives_lost": 0,
+		"pests_defeated": 99999,
+		"threat_level": 99,
+		"compost_total": 999,
+		"compost_resolved": 999,
+	})
+	var seen: Dictionary = {}
+	for entry: Dictionary in Milestones.TABLE:
+		var id: String = String(entry.get("id", ""))
+		err = _T.assert_false(id.is_empty(), "every table entry names an id")
+		if err != "":
+			return err
+		err = _T.assert_false(seen.has(id), "%s appears once in the table" % id)
+		if err != "":
+			return err
+		seen[id] = true
+		err = _T.assert_true(Milestones.is_met(id, everything),
+			"%s has a rule that some run can actually satisfy" % id)
+		if err != "":
+			return err
+		err = _T.assert_eq(Milestones.title_of(id), String(entry["title"]),
+			"%s has the title the card prints" % id)
+		if err != "":
+			return err
+		err = _T.assert_false(Milestones.note_of(id).is_empty(), "%s has a note under it" % id)
+		if err != "":
+			return err
+		# Ids are the on-disk representation: RunConfig._parse_milestones refuses a
+		# save carrying anything outside this set, so an id with a capital letter or
+		# a space in it would be written and then refused on the next launch.
+		for i: int in range(id.length()):
+			err = _T.assert_true(RunConfig.MILESTONE_ID_CHARS.contains(id[i]),
+				"%s is spelled in characters the save file accepts, '%s' is not" % [id, id[i]])
+			if err != "":
+				return err
+	return ""
+
+
+## The card's side of it. The ribbon is variable-height and lives beside the card
+## rather than on it, so what can break is geometry: at its tallest it must still
+## start clear of the card, end inside the viewport, and stay off the map legend's
+## strip -- which is the one thing on this screen it could reach.
+func test_the_milestone_ribbon_clears_the_card_and_the_map_legend() -> String:
+	var worst: float = RunSummary.ribbon_height(Milestones.TABLE.size())
+	var foot: float = RunSummary.RIBBON_TOP + worst
+	var err: String = _T.assert_gt(worst, 0.0, "a full ribbon has height")
+	if err == "":
+		err = _T.assert_float_eq(RunSummary.ribbon_height(0), 0.0, 0.001,
+			"and a run that earned nothing new draws no panel at all")
+	if err == "":
+		var card_right: float = RunSummary.CARD.position.x + RunSummary.CARD.size.x
+		err = _T.assert_true(RunSummary.RIBBON_X >= card_right,
+			"the ribbon starts to the right of the card, %.0f against %.0f"
+				% [RunSummary.RIBBON_X, card_right])
+	if err == "":
+		var right: float = RunSummary.RIBBON_X + RunSummary.RIBBON_WIDTH
+		err = _T.assert_true(right <= 1152.0,
+			"and ends inside the viewport, right edge %.0f" % right)
+	if err == "":
+		err = _T.assert_true(foot <= RunSummary.MAP_LEGEND_Y,
+			"a full ribbon foots at %.0f, above the map legend strip at %.0f"
+				% [foot, RunSummary.MAP_LEGEND_Y])
+	return err
+
+
+func test_the_post_mortem_lists_the_milestones_the_run_just_earned() -> String:
+	## Built off a stats Dictionary rather than a played run, for the reason
+	## summary_rows() is: the card takes a plain Dictionary precisely so the whole
+	## of its rendering is reachable without staging the run that produces it.
+	var card := RunSummary.build({
+		"victory": true,
+		"new_milestones": ["campaign_cleared", "hundred_pests"],
+	})
+	var host: Node = await _T.instantiate_ui(card, Vector2i(1152, 648))
+	var err: String = _T.assert_true(host != null, "the card stood up")
+	if err == "":
+		err = _T.assert_eq(card.new_milestones().size(), 2, "it read both ids out of the stats")
+	if err == "":
+		var ribbon: Panel = card.get_node_or_null("MilestoneRibbon") as Panel
+		err = _T.assert_true(ribbon != null, "and drew the ribbon")
+		if err == "":
+			var row: Label = ribbon.get_node_or_null("Milestone_campaign_cleared") as Label
+			err = _T.assert_true(row != null, "with a row for the campaign clear")
+			if err == "":
+				err = _T.assert_eq(row.text, Milestones.title_of("campaign_cleared"),
+					"printing the table's own title rather than the raw id")
+		if err == "":
+			err = _T.assert_true(ribbon.get_node_or_null("Milestone_hundred_pests") != null,
+				"and a row for the hundred")
+		if err == "":
+			err = _T.assert_float_eq(ribbon.size.y, RunSummary.ribbon_height(2), 0.5,
+				"sized for exactly the two it is showing")
+	_T.free_ui(host)
+	return err
+
+
+func test_a_run_with_no_new_milestones_draws_no_ribbon() -> String:
+	## The common case -- most runs repeat what an earlier run already did -- and
+	## the one that has to leave no node behind. An empty Panel here is exactly what
+	## `validate-ui` reports as a zero-content Control finding.
+	var card := RunSummary.build({"victory": false})
+	var host: Node = await _T.instantiate_ui(card, Vector2i(1152, 648))
+	var err: String = _T.assert_true(host != null, "the card stood up")
+	if err == "":
+		err = _T.assert_eq(card.new_milestones().size(), 0, "no ids in the stats")
+	if err == "":
+		err = _T.assert_true(card.get_node_or_null("MilestoneRibbon") == null,
+			"and no ribbon node was created for them")
+	_T.free_ui(host)
+	return err

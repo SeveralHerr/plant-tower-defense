@@ -1511,7 +1511,7 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   `game/plant.gd`), which the harness correctly buckets as a declaration rather
   than an observation. This is the same shape as G-015 (a base class invisible
   because only a subclass owned the live node).
-  - [G-028] status: open | seen: 2 | harness: 0.23.0
+  - [G-028] status: open | seen: 3 | harness: 0.23.0
   - Second sighting, with a number this time. After a full session — launch, entry
     hook, an endless wave 100 driven to completion with pests spawning and dying —
     `scripts-seen` reported **15 scripts** and `game/` holds 27. Thirteen were
@@ -2809,3 +2809,47 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     path.
 
 - Harness: **0.25.0**.
+
+## 2026-08-16 — Persisted milestone flags on the post-mortem card (plant-tower-defense-4qi)
+
+- Value: **warranted** — the live run is what showed `_end_run` actually joins the
+  two halves the headless suite asserts separately.
+  - Expected: the card would grow a `MilestoneRibbon` listing what the run was the
+    first to do, and `RunConfig.earned_milestones` would hold the flag afterwards.
+    The suite covers the evaluation table (`Milestones.is_met` at and one under
+    every threshold) and the save round trip (a scratch `save_path`) as two
+    independent things; nothing in it runs the line between them.
+  - Got: staging `pests_defeated=120`, `lives=1` and calling `_on_pest_escaped(null)`
+    produced `MilestoneRibbon/Milestone_hundred_pests` reading "A hundred turned
+    back", `node-bounds` = `792, 96 336x102` **measured windowed** — exactly
+    `RunSummary.ribbon_height(1)` and clear of the card's right edge at 768 — and
+    `get-state /root/RunConfig --property earned_milestones` = `{"hundred_pests":
+    true}`. `findings --no-scenes` was `0 finding(s) across 4 of 5 checks` with the
+    ribbon on screen.
+  - Found: nothing broken in the diff, but the run surfaced a real environment fact
+    the gates structurally cannot. A sibling agent's game on the **pre-change**
+    build shares `user://`, read this build's v3 `highscore.save`, refused it as
+    "version 3 and this build reads at most 2", and quarantined it to
+    `highscore.save.bak` before writing its own v2 back. That is the version gate
+    doing exactly its job — but it means the on-disk half of the round trip is not
+    observable live while a second checkout is running, only through the scratch-
+    path unit tests. Worth knowing before reading a live save file as evidence of
+    anything.
+  - Cheaper: nothing for the wiring. Reading `game.gd:764` would have shown the
+    call; only the running game shows that the ids it files are the ids the card
+    renders, and that the ribbon lands at 792,96 on a real viewport rather than at
+    a headless 64x64 window's idea of it.
+
+- Gap: **a static-only class that demonstrably ran is invisible to `reach`** — same
+  shape as G-028, third sighting. `record` reported `reached 3/4 changed file(s) …
+  NOT reached: game/milestones.gd`. `Milestones` is `class_name Milestones extends
+  RefCounted` with only static functions, so it owns no node and cannot appear in a
+  `scene-tree` snapshot — even though this run's evidence that it executed is the
+  `MilestoneRibbon` sitting on screen, which `Milestones.earned_by` is the only
+  producer of. No alias was written this time; the ledger row carries the fact in
+  `found` instead, so the miss stays visible rather than being declared away.
+  - [G-028] status: open | seen: 3 | harness: 0.25.0
+  - Improvement: unchanged from the second sighting — credit a `scripts-seen` hit
+    as a third bucket (`reached_loaded`) beside `reached` and `reached_alias`. It
+    is an observation rather than a declaration and would retire the whole class of
+    alias entries projects write for RefCounted helpers.
