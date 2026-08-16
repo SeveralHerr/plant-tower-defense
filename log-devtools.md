@@ -2063,3 +2063,33 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     one call.
 
 - Harness: still **0.23.0**. No refresh.
+
+## 2026-08-16 — Second warning channel (e0m), closing cycle 14
+
+- Value: **warranted** — two test failures were the vacuity guard firing on a real
+  engine trap, not on the feature under test.
+  - Expected: a legibility change; I expected to need a screenshot to judge it, and to
+    have to argue about whether the hatch "reads".
+  - Got: `cell (4, 1) is road, so it can carry pressure: Expected true but got false`
+    — twice, on two different tests, 0ms in. (4,1) IS road: it sits on the first
+    segment of PATH_CORNERS. The board just had not built its path. `path_cell_count()`
+    calls `_build_path()`; `is_path()` did not, so it answered "there is no road
+    anywhere" on a Board outside the tree — a confident no, not an error — and
+    `is_buildable`, `is_road_adjacent` and `path_index` all inherited it.
+  - Found: that trap, fixed at the source rather than in the tests. Any past test that
+    built a bare `Board.new()` and asked `is_path` measured an empty board and passed.
+  - Cheaper: nothing. No screenshot shows this, and the geometry assertions (441 sample
+    points, 57% inked / 43% bare, lattice continuity across neighbouring cells) are
+    more precise than my eye would have been anyway — which is the answer to the
+    "surely this needs a visual check" instinct I started with.
+
+- Note: the vacuity guard earned its keep twice this cycle in different ways — it
+  caught a test of mine that assumed a non-existent `.tscn`, and here it caught a
+  production defect while guarding a feature test. Both times the failure was at 0-62ms
+  with zero assertions executed, which is a recognisable signature worth knowing:
+  **a test that fails instantly on its own precondition is usually telling you about
+  the world, not about the test.**
+
+- Gap: **no gaps this turn.**
+
+- Harness: still **0.23.0**. No refresh.
