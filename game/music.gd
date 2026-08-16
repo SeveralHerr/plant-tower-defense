@@ -54,6 +54,12 @@ const BASE_VOLUME_DB: float = -14.0
 const SILENT_DB: float = -80.0
 const CROSSFADE_SECONDS: float = 1.4
 
+## Music's own mute flag -- independent of Sfx.is_muted(). Before this existed,
+## Music had no state of its own at all: refresh_mute() read Sfx.is_muted()
+## directly, so the run had exactly one volume knob and it was labelled "sound"
+## despite silencing two different things. Same shape as Sfx._muted, mirrored
+## on purpose -- see set_muted()/is_muted()/toggle_muted() below.
+static var _muted: bool = false
 static var _host: Node = null
 static var _players: Array[AudioStreamPlayer] = []
 static var _active: int = -1
@@ -114,12 +120,37 @@ static func play_title() -> void:
 	_play(TITLE)
 
 
-## Re-applies the current mute state to whatever is already selected. Call
-## this alongside Sfx.toggle_muted() / Sfx.set_muted() -- Music keeps no mute
-## flag of its own, it reads Sfx's, so M stays the single switch for every
-## sound the game makes instead of growing a second one just for the bed.
+## Whether the bed can currently be heard. Independent of Sfx.is_muted() --
+## the run's sound effects and its music bed are muted separately now, see
+## the file header and _muted's own doc comment.
+static func is_muted() -> bool:
+	return _muted
+
+
+## Returns the new state, so a caller can report it without asking again.
+## Same shape as Sfx.set_muted(): mirrored deliberately, but the effect is not
+## identical. Sfx has nothing to resume -- its cues are one-shots that either
+## fire or don't. Music has a continuous bed, so unmuting has to bring it back
+## rather than merely stop gating the next one, which is why this calls
+## refresh_mute() itself rather than leaving that to the caller.
+static func set_muted(value: bool) -> bool:
+	_muted = value
+	refresh_mute()
+	return _muted
+
+
+static func toggle_muted() -> bool:
+	return set_muted(not _muted)
+
+
+## Re-applies the current mute state to whatever is already selected. Reads
+## Music's own _muted flag, not Sfx's -- the two used to be the same flag
+## (Sfx.is_muted(), read here directly), which meant a run had exactly one
+## volume and it silenced sound effects and the music bed together. Call this
+## after Music.set_muted() / Music.toggle_muted(); it has nothing to do with
+## Sfx's own mute toggle any more.
 static func refresh_mute() -> void:
-	if not should_play(_current_track, Sfx.is_muted(), is_headless()):
+	if not should_play(_current_track, _muted, is_headless()):
 		stop_all()
 		return
 	# Coming back from mute: the active player was stopped outright (below),
@@ -141,7 +172,7 @@ static func _play(track: StringName) -> void:
 	if track == _current_track:
 		return
 	_current_track = track
-	if not should_play(track, Sfx.is_muted(), is_headless()):
+	if not should_play(track, _muted, is_headless()):
 		stop_all()
 		return
 	if _host == null:

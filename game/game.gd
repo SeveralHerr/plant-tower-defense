@@ -41,7 +41,8 @@ const TITLE_SCENE := "res://game/title.tscn"
 ## covers them, so adding a binding without documenting it fails the build.
 const KEY_HELP: Array[Dictionary] = [
 	{"keys": "Esc  ·  P", "does": "hold the garden still", "codes": [KEY_ESCAPE, KEY_P]},
-	{"keys": "M", "does": "sound on or off", "codes": [KEY_M]},
+	{"keys": "M", "does": "sound effects on or off", "codes": [KEY_M]},
+	{"keys": "N", "does": "music on or off", "codes": [KEY_N]},
 	{"keys": "R", "does": "start over, once the run is done", "codes": [KEY_R]},
 ]
 
@@ -1199,10 +1200,19 @@ func _unhandled_input(event: InputEvent) -> void:
 	# player controls rather than something the engine's --mute flag controls for
 	# them. Deliberately live even on the results screen: a jingle the player
 	# wants to stop is exactly when they reach for this.
+	#
+	# M and N are two independent switches, not one shared one: M silences the
+	# one-shot cues (Sfx), N silences the looping bed (Music). They used to be
+	# a single flag -- Music read Sfx.is_muted() directly -- so a run had
+	# exactly one volume and it silenced both at once. See Music._muted's own
+	# doc comment for the split.
 	if key.keycode == KEY_M:
 		var muted: bool = Sfx.toggle_muted()
-		Music.refresh_mute()
-		hud.show_message("Sound off. Press M to bring it back." if muted else "Sound on.", 2.5)
+		hud.show_message("Sound effects off. Press M to bring them back." if muted else "Sound effects on.", 2.5)
+		return
+	if key.keycode == KEY_N:
+		var music_muted: bool = Music.toggle_muted()
+		hud.show_message("Music off. Press N to bring it back." if music_muted else "Music on.", 2.5)
 
 
 func _update_cursor(screen_pos: Vector2) -> void:
