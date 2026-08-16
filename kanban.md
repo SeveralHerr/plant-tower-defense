@@ -1678,3 +1678,24 @@ of what the design doc already says, rather than being bolted on.
   land just as real a hit, never call it. A ranged kernel now visibly marks the
   pest it connects with; a melee plant's damage is exactly as invisible as it was
   before this session started.
+
+### New this cycle (25 of 30) — grown from the features above
+
+- **A swept husk now flies a glyph to the Seeds label; the plant whose entire job
+  is paying seeds still doesn't.** `Game._on_husk_collected` (game.gd) plays
+  `Sfx.HUSK_COLLECTED` and calls `hud.fly_seed_glyph()` toward the HUD — but
+  `Game._on_plant_grew_seeds` (game.gd:1013-1014), the handler for every Sunflower
+  payout in the game, is one bare line: `bank.add_seeds(amount)`. No sound, no
+  glyph, nothing. The husk is an occasional bonus; the Sunflower's payout is its
+  entire reason to exist on the board, and it is now the quieter of the two events
+  by a wide margin.
+
+- **Every attack now has a sound and a hit has a flash; starting a wave still has
+  no click of its own.** `_next_wave_button.pressed` (hud.gd:486) just emits
+  `next_wave_requested` — the ensuing `Sfx.WAVE_STARTED` banner plays only once
+  `_on_wave_started` actually fires moments later, so the deliberate click that
+  starts the countdown is silent while everything downstream of it now has a
+  voice: the plants attack with sound, a kernel connecting flashes its target, a
+  wave clearing gets its own banner+cue. The one button a player presses to
+  actually begin the danger is the one press in this whole chain with no
+  feedback of its own.
