@@ -219,7 +219,12 @@ func _ready() -> void:
 
 	hud.plant_selected.connect(_on_plant_chosen)
 	hud.packet_requested.connect(_on_packet_requested)
-	hud.next_wave_requested.connect(start_next_wave)
+	# Through a handler rather than straight onto start_next_wave(), so the
+	# mutator underneath stays unguarded for the devtools verb, the prep-timer
+	# expiry and the tests — the same split request_uproot() / uproot_selected()
+	# already uses. A wave that arrives because the countdown ran out is not a
+	# press and must not click.
+	hud.next_wave_requested.connect(_on_next_wave_requested)
 	hud.upgrade_requested.connect(upgrade_selected)
 	# The button goes through the confirm gate; uproot_selected() stays the
 	# unguarded mutator underneath it, which is what the devtools verbs and the
@@ -258,6 +263,23 @@ func _process(delta: float) -> void:
 
 
 # -- waves ------------------------------------------------------------------
+
+
+## The "Grow the next wave" button, as opposed to the wave itself.
+##
+## Every other HUD button already answers its own press: Upgrade rings
+## PLANT_UPGRADED or the denial, Uproot rings UPROOT_ARMED, a packet either
+## opens or is refused — which is why only this one and the plant bar (see
+## _on_plant_chosen) get a press cue, and why a refusal stays PURCHASE_DENIED
+## alone rather than becoming a click followed by a buzz.
+##
+## Note the bell that follows is not a later beat: start_next_wave() reaches
+## WaveDirector.wave_started synchronously, so WAVE_STARTED sounds in this same
+## frame. BUTTON_PRESSED is trimmed to sit under it (see Sfx.VOLUME_DB) — the
+## click of the button, not a second announcement of the wave.
+func _on_next_wave_requested() -> void:
+	Sfx.play(Sfx.BUTTON_PRESSED)
+	start_next_wave()
 
 
 func start_next_wave() -> bool:
@@ -903,7 +925,13 @@ func summary_stats(new_record: bool) -> Dictionary:
 # -- placement --------------------------------------------------------------
 
 
+## Picking a plant out of the bar. The other press with nothing of its own: a
+## selection pays nothing and places nothing, so until PLANT_PLACED rings on the
+## board — several seconds and one aimed click later — the bar answered a click
+## with silence. This is the only route in; there is no keyboard shortcut for
+## selecting a plant, so the cue cannot fall out of step with a second path.
 func _on_plant_chosen(id: StringName) -> void:
+	Sfx.play(Sfx.BUTTON_PRESSED)
 	selected_plant = id
 	_select(null)
 	# Picking a different plant while the cursor sits still must re-draw the
@@ -980,7 +1008,14 @@ func place_plant(id: StringName, cell: Vector2i) -> String:
 	Sfx.play(Sfx.PLANT_PLACED)
 	plant.destroyed.connect(_on_plant_destroyed)
 	if plant.has_signal("grew_seeds"):
-		plant.connect("grew_seeds", _on_plant_grew_seeds)
+		# Bound here rather than added to Sunflower's own signal. What a plant
+		# knows about its payout is the amount; where on the board that happened
+		# is the plant itself, which Game already has in hand — the same split as
+		# `destroyed(plant)`, where the handler reads `plant.cell` off the subject
+		# instead of the signal carrying a copy of it. It also keeps the
+		# duck-typed contract above at one argument, so a future economy plant
+		# only has to emit a number to be wired up.
+		plant.connect("grew_seeds", _on_plant_grew_seeds.bind(plant))
 	_select(plant)
 	_refresh()
 	return ""
@@ -1012,8 +1047,21 @@ func _on_plant_destroyed(plant: Plant) -> void:
 	_refresh()
 
 
-func _on_plant_grew_seeds(amount: int) -> void:
+## A Sunflower's payout, given the same two channels a swept husk already had
+## (see _on_husk_collected): a cue, and a glyph that carries the number from the
+## thing that produced it to the readout it lands in. Without them the only sign
+## a Sunflower had ever earned its cell was the Seeds counter quietly ticking up
+## at the top of the screen, six seconds' walk away from the flower.
+##
+## `plant` is bound at connect time, not emitted — see place_plant. Its
+## `position` is board-local (Entities' own space, same as a husk's), so the one
+## to_global() crossing into the HUD's canvas is the same line, for the same
+## reason, as the husk's.
+func _on_plant_grew_seeds(amount: int, plant: Plant) -> void:
+	Sfx.play(Sfx.SEEDS_GROWN)
 	bank.add_seeds(amount)
+	if hud != null and is_instance_valid(hud) and is_instance_valid(plant):
+		hud.fly_seed_glyph(_entities.to_global(plant.position), amount)
 
 
 func upgrade_selected() -> String:

@@ -60,6 +60,17 @@ const PLANT_UPROOTED := &"plant_uprooted"
 const CORN_FIRED := &"corn_fired"
 const CHOMP_BITE := &"chomp_bite"
 const SUNDEW_CLAIM := &"sundew_claim"
+## A HUD button acknowledging the click itself, before whatever it went on to
+## do. Only the two presses that answered with nothing of their own use it —
+## "Grow the next wave" and the plant bar; see Game._on_next_wave_requested for
+## which buttons are deliberately left to their own outcome cues, and why a
+## refusal must stay PURCHASE_DENIED rather than becoming a press plus a denial.
+const BUTTON_PRESSED := &"button_pressed"
+## A Sunflower paying out (Sunflower.grew_seeds -> Game._on_plant_grew_seeds).
+## The other half of HUSK_COLLECTED: both are seeds arriving, one swept off the
+## ground by hand and one grown on a clock — see SOUNDS for why they share a
+## stream and VOLUME_DB for why this one sits under it.
+const SEEDS_GROWN := &"seeds_grown"
 
 ## event -> the stream it plays. This dictionary is the whole contract: an event
 ## not in here is inaudible, and test_combat asserts every path in it actually
@@ -102,6 +113,16 @@ const SOUNDS: Dictionary = {
 	# Reuses UPROOT_ARMED's stream — a light chime for a catch that only slows,
 	# not the heavier PEST_KILLED impact a Sundew never earns since it never kills.
 	SUNDEW_CLAIM: "res://assets/audio/question_002.ogg",
+	# Reuses HUSK_COLLECTED's coins for the same reason the flying glyph reuses
+	# the husk's gold: seeds arriving are seeds arriving, and a second currency
+	# sound for the same currency would say they were different things.
+	SEEDS_GROWN: "res://assets/audio/handleCoins.ogg",
+	# Reuses HUSK_ROTTED's stream, which is the one interface blip this pack
+	# vendored (Kenney's "minimize"): everything else in the table is a bell, an
+	# impact, a chime or a jingle, and a button that rang any of those would be
+	# claiming to be an event. The two are told apart by level and by place — a
+	# husk rots quietly out on the board at -6, a press answers the cursor.
+	BUTTON_PRESSED: "res://assets/audio/minimize_006.ogg",
 }
 
 ## Per-event trim, in dB, for the handful that are not level with the rest.
@@ -118,6 +139,16 @@ const VOLUME_DB: Dictionary = {
 	# the run-won trim alone would leave the two indistinguishable by ear and
 	# the wave-to-wave cue as loud as the once-a-run one.
 	WAVE_CLEARED: -9.0,
+	# Under HUSK_COLLECTED's 0.0, same stream: a sweep is something the player
+	# did and wants confirmed, a Sunflower payout arrives on its own clock every
+	# six seconds per flower whether or not anyone was watching. Ambience, not
+	# an answer to an act.
+	SEEDS_GROWN: -7.0,
+	# The quietest thing in the table, and it has to be. Game.start_next_wave()
+	# reaches WaveDirector.wave_started synchronously, so the press cue and
+	# WAVE_STARTED's bell sound in the SAME frame — this is meant to read as the
+	# click under that bell, not as a second event competing with it.
+	BUTTON_PRESSED: -10.0,
 }
 
 ## Shortest gap between two plays of the SAME event, in milliseconds. Absent
@@ -134,6 +165,11 @@ const REPEAT_MS: Dictionary = {
 	PLANT_BITTEN: 420,
 	PEST_KILLED: 70,
 	HUSK_ROTTED: 200,
+	# A row of Sunflowers planted in the same breath comes due in the same
+	# frame forever after — INTERVAL is a constant, so their clocks never drift
+	# apart on their own. Without this, four flowers pay out as one sound four
+	# times as loud rather than as four payouts.
+	SEEDS_GROWN: 200,
 }
 
 ## How many sounds can overlap. A tower defense's loudest moment is a volley

@@ -415,6 +415,45 @@ func test_a_placed_sunflower_is_wired_to_the_bank() -> String:
 	return err
 
 
+## The payout has to fly from the flower that grew it, and the only thing
+## carrying that position is the plant bound into the connection — `grew_seeds`
+## itself still emits nothing but an amount (see Game.place_plant).
+##
+## Asserted on the connection rather than on a glyph because the glyph is gated
+## off headless; what is checkable here is that the handler is handed a subject
+## with a real board position, and that the payout still lands. A bind whose
+## arity stopped matching the handler would leave add_seeds unreached, so the
+## bank assertion below is what catches a mis-shaped connection.
+func test_a_sunflower_payout_carries_the_flower_it_grew_on() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.unlocked.append(PlantCatalog.SUNFLOWER)
+	game.bank.add_seeds(500)
+	var cell: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.SUNFLOWER, cell), "", "planted")
+	var sunflower: Sunflower = game.plant_at(cell) as Sunflower
+	if err == "":
+		err = _T.assert_true(sunflower != null, "and the flower is on the board")
+	if err == "":
+		var bound: Array = []
+		for entry: Dictionary in sunflower.get_signal_connection_list("grew_seeds"):
+			bound.append_array((entry["callable"] as Callable).get_bound_arguments())
+		err = _T.assert_true(bound.has(sunflower),
+			"the payout connection binds the flower itself, so the handler has somewhere to fly from")
+	if err == "":
+		err = _T.assert_eq(sunflower.position, game.board.cell_to_world(cell),
+			"and that flower stands on its own cell, not at the board origin")
+	if err == "":
+		var before: int = game.bank.seeds
+		sunflower._act(Sunflower.INTERVAL + 0.1, [])
+		err = _T.assert_eq(game.bank.seeds, before + Sunflower.YIELD,
+			"a payout through the bound connection still credits the bank")
+	if err == "":
+		err = _T.assert_eq(game.hud._fx_layer.get_child_count(), 0,
+			"and headlessly the glyph the animation gate skipped leaves nothing behind")
+	_T.free_ui(game)
+	return err
+
+
 # -- Plant health / hungry-pest wiring through Game --------------------------
 
 
@@ -5367,4 +5406,35 @@ func test_music_mute_is_independent_of_sfx_mute() -> String:
 		err = _T.assert_false(Music.toggle_muted(), "a second press brings the music bed back")
 	Music.set_muted(music_was_muted)
 	Sfx.set_muted(sfx_was_muted)
+	return err
+
+
+# -- The press, as opposed to what it went on to do (plant-tower-defense-aho) -
+
+
+## The press cue lives at Game's receiving end, not on the button, because the
+## HUD makes no sound anywhere in this project — every Sfx.play() is in game.gd
+## or in a plant. What that costs is one hop the wiring has to survive, which is
+## what this pins: the button must reach the handler that rings, and
+## start_next_wave() must NOT be what the signal lands on, or the prep countdown
+## running out would click a button nobody pressed.
+func test_the_wave_button_reaches_the_cue_handler_and_still_starts_the_wave() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var handlers: Array[String] = []
+	for entry: Dictionary in game.hud.next_wave_requested.get_connections():
+		handlers.append(String((entry["callable"] as Callable).get_method()))
+	var err: String = _T.assert_true(handlers.has("_on_next_wave_requested"),
+		"the button's signal lands on the handler that plays the press cue")
+	if err == "":
+		err = _T.assert_false(handlers.has("start_next_wave"),
+			"and no longer on the mutator, which the countdown and the devtools verb still call unheard")
+	if err == "":
+		var before: int = game.director.current_wave
+		# The real Button, not the handler by name: calling
+		# _on_next_wave_requested() directly would prove the cue and not the
+		# wiring, which is the half that can actually break here.
+		game.hud._next_wave_button.pressed.emit()
+		err = _T.assert_eq(game.director.current_wave, before + 1,
+			"and a real press still starts the wave through it")
+	_T.free_ui(game)
 	return err
