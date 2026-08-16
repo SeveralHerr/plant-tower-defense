@@ -1094,7 +1094,23 @@ func uproot_selected() -> String:
 	return ""
 
 
+## Beat between a purchase landing and its reveal. SeedBank's own header calls
+## this "a gamble that reads as suspense" (seed_bank.gd), but buy_packet()
+## rolls and returns synchronously, so nothing used to separate the click from
+## the banner — the roll and the reveal happened in the same frame. The roll
+## itself stays exactly that synchronous and testable; only what the player
+## SEES of it is delayed, and only here, in the presentation layer.
+const PACKET_OPEN_STEP_SECONDS: float = 0.09
+const PACKET_OPEN_STEPS: int = 3
+
+## The tier being opened, set immediately before buy_packet() so
+## _on_plant_unlocked — which fires synchronously from inside that call — knows
+## which pool to flash candidates from.
+var _opening_tier: StringName = &"common"
+
+
 func _on_packet_requested(tier: StringName = &"common") -> void:
+	_opening_tier = tier
 	var got: StringName = bank.buy_packet(tier)
 	if got != &"":
 		selected_plant = got
@@ -1103,7 +1119,46 @@ func _on_packet_requested(tier: StringName = &"common") -> void:
 
 
 func _on_plant_unlocked(id: StringName) -> void:
-	hud.show_message("The packet held a %s!" % PlantCatalog.display_name(id), 5.0)
+	if not GardenTheme.animations_enabled():
+		# Headless never pumps the frames a wait needs, so the old instant
+		# reveal stays the whole story there — same rule every other flourish
+		# in this file follows.
+		_reveal_plant_unlock(id)
+		return
+	await _open_packet(id)
+
+
+## Flickers through a couple of the tier's other still-locked candidates
+## before landing on the real pick — PACKET_OPEN_STEPS steps of
+## PACKET_OPEN_STEP_SECONDS each, well under a second total, so it reads as a
+## beat rather than a wait. Falls back to `id` itself for a step if the pool
+## it drew from is down to nothing else (a packet with one thing left to give).
+##
+## Reads bank.packet_pool(_opening_tier) rather than the tier's whole catalogue:
+## by the time this runs, `id` is already unlocked (buy_packet() appends it
+## before emitting), so the pool is naturally everything BUT the real pick —
+## exactly the "other candidates" a flicker needs, with nothing to filter out.
+func _open_packet(id: StringName) -> void:
+	var pool: Array[StringName] = bank.packet_pool(_opening_tier)
+	for i: int in range(PACKET_OPEN_STEPS):
+		var flash: StringName = id if pool.is_empty() else pool[i % pool.size()]
+		# Same priority on every step, deliberately: show_message() only queues
+		# a message behind one still on screen for MESSAGE_MIN_READABLE seconds
+		# or a higher priority. Equal priority and a step well under that falls
+		# through to the immediate-overwrite branch instead, so each flicker
+		# replaces the last rather than queuing up behind it.
+		hud.show_message("...%s?" % PlantCatalog.display_name(flash),
+			PACKET_OPEN_STEP_SECONDS, Hud.MESSAGE_IMPORTANT)
+		await get_tree().create_timer(PACKET_OPEN_STEP_SECONDS).timeout
+	_reveal_plant_unlock(id)
+
+
+func _reveal_plant_unlock(id: StringName) -> void:
+	# IMPORTANT, matching every step of the flourish above it: an ambient
+	# message re-surfacing between those steps (see _open_packet) would
+	# otherwise queue the reveal itself behind it instead of showing it.
+	hud.show_message("The packet held a %s!" % PlantCatalog.display_name(id), 5.0,
+		Hud.MESSAGE_IMPORTANT)
 	_refresh()
 
 
