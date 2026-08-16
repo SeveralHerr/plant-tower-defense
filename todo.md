@@ -1,37 +1,34 @@
 # todo
 
-**Cycle 16 of 30.** Bump this each time you refill the Items list. See the Workflow
+**Cycle 17 of 30.** Bump this each time you refill the Items list. See the Workflow
 block in `CLAUDE.md` — this list is refilled, never left fully ticked.
 
 ## Items
 
-- [ ] **cl6 — A budgets verb that prints every declared coupling with its headroom.**
-  Four constants now carry "moving me costs you X" comments: `PATH_CORNERS`,
-  `COLLECT_RADIUS`, `SUBHEAD_MAX_WIDTH` and the HUD's `WORST_CASE_TEXT` budgets. Each
-  warns about a coupling that lives in another file, and a person only finds the warning
-  by editing that exact line. A devtools verb printing every declared budget with its
-  current headroom makes the set visible *before* someone goes looking.
+- [ ] **2yz — Sweep `test/` for other group reads taken by index.** P1.
+  `test_kernels_launch` read `kernels[0]` out of a tree-global group and measured a
+  *leaked* object every run — green for months, red the moment four unrelated tests were
+  appended. Nothing enumerates the other group reads (`pests`, `husks`, `kernels`,
+  `plants`); any taken by index has the same defect. A sweep for
+  `get_nodes_in_group(...)[0]` across `test/` finds the rest in one pass.
 
-- [ ] **e34 — The post-mortem names a cell the road under it may not be reddest at.**
-  `stop_cell` is losses-minus-escapes; the tint under the translucent summary card is
-  still painted from raw losses. On a bleeding run the named cell and the reddest cell
-  genuinely differ. That is correct and documented, but a player looking from the number
-  to the picture is told nothing. Either the card points at its own cell, or the tint
-  under it switches to stops.
+- [ ] **02k — Tests leak nodes into groups and nothing notices.** The root cause under
+  2yz: a test that builds a `Kernel` and never frees it leaves it in the group for every
+  later test. `_T.free_ui` is called on hosts, but a kernel spawned by `_act` is parented
+  to the host's *parent*, not the host. A per-test assertion that group counts return to
+  where they started would catch the whole class.
 
-- [ ] **2z8 — An escape records nothing about how it happened.** `_on_pest_escaped`
-  files every escape against `Board.exit_cell()`, because the pest's own position is
-  off-board by the time the signal fires. Eight beetles through one gap and eight
-  stragglers spread over forty waves produce byte-identical evidence. The pest knows
-  where it entered the exit cell from, how long it survived, and what it walked past
-  untouched.
+- [ ] **8fg — Warn at startup when a budget crosses its own tight threshold.**
+  `cmd budgets` reports tight/spent from outside, but nothing inside the game reacts —
+  and it currently says three tight, one spent. A startup `push_warning` means the next
+  person to spend one hears about it on the next run rather than on the next audit.
+  Reuses the entries the verb already computes.
 
-- [ ] **htt — Nothing stops the sixth world-space Control forgetting the rule.**
-  `Plant` and `Pest` each grew a `_make_world_controls_click_through()`, deliberately
-  duplicated rather than shared. Two copies of a rule with no third enforcement. The
-  test enumerates the live tree, so it *would* catch a new offender — but only one on
-  screen during that test. A Control that appears only on a boss wave, or in a menu the
-  test never opens, is invisible to it.
+- [ ] **jrj — Map where the garden never reached, not just that it didn't.**
+  `was_engaged()` answers one question at one instant, at the exit. The same flag sampled
+  per road cell would say *where* the garden stopped reaching — the coverage-hole map the
+  post-mortem's "walked in untouched" line only aggregates. Genuinely different from lane
+  pressure: pressure says where they got to; this says where nothing could touch them.
 
 - [ ] **Add cool new features or concrete improvements** (UX, game juice, animations,
   enhancements, or full features) to `kanban.md`.
