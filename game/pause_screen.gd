@@ -17,6 +17,9 @@ extends Control
 ## tree, because "The wave is waiting." was a constant and pause fires at any
 ## moment outside game-over -- so it was simply false between waves.
 var _note_text: String = "The garden is holding still."
+## The run's key bindings, passed in by Game so this screen never keeps its own
+## copy of a list that could disagree with what the game actually handles.
+var _keys: Array[Dictionary] = []
 
 signal resume_requested
 signal restart_requested
@@ -25,7 +28,29 @@ signal gate_requested
 ## Same card geometry as the post-mortem, centred on the board rather than the
 ## window, so the two screens read as the same family and neither sits off to the
 ## side of the thing it is covering.
-const CARD := Rect2(288.0, 152.0, 320.0, 300.0)
+## Taller than the post-mortem's card because it carries the key list as well as
+## the buttons. Still centred on the board rather than the window.
+const CARD := Rect2(288.0, 140.0, 320.0, 380.0)
+## Gap between the last button and the key list. The list's own offset is derived
+## from the button block rather than written down: a hand-picked 268.0 put the
+## first key row at 408 under a GateButton ending at 412, which is the same
+## absolute-offset mistake that once hid the note under ResumeButton. Deriving it
+## means adding a fourth button cannot silently land on the list.
+const KEY_LIST_GAP: float = 20.0
+## 26, not 22. A Label does not render at its declared size: at font 13 these
+## reported 23px against a declared 22 and each row overlapped the next by one
+## pixel. Third time this trap has bitten in this file's neighbourhood -- the wave
+## banner declared 62 for a 48px font that rendered 67 -- so the rule is to leave
+## real headroom over the font, never to match it.
+const KEY_ROW_HEIGHT: float = 26.0
+
+
+## Top of the key list, in card-local coordinates.
+static func key_list_offset() -> float:
+	return (FIRST_BUTTON_OFFSET
+		+ float(BUTTONS.size()) * BUTTON_SIZE.y
+		+ float(BUTTONS.size() - 1) * BUTTON_GAP
+		+ KEY_LIST_GAP)
 const BACKDROP_ALPHA: float = 0.55
 const BUTTON_SIZE := Vector2(248.0, 44.0)
 ## Offset from the card's own top, not an absolute viewport y. It was written as
@@ -46,11 +71,12 @@ const BUTTONS: Array[Dictionary] = [
 
 
 ## Built by Game so the note can describe the moment the run was actually paused.
-static func build(note: String) -> PauseScreen:
+static func build(note: String, keys: Array[Dictionary] = []) -> PauseScreen:
 	var screen := PauseScreen.new()
 	screen.name = "PauseScreen"
 	if note != "":
 		screen._note_text = note
+	screen._keys = keys
 	return screen
 
 
@@ -105,6 +131,7 @@ func _ready() -> void:
 	add_child(note)
 
 	_build_buttons()
+	_build_key_list()
 
 
 func _build_buttons() -> void:
@@ -124,6 +151,28 @@ func _build_buttons() -> void:
 		y += BUTTON_SIZE.y + BUTTON_GAP
 	if first != null:
 		first.grab_focus()
+
+
+## The keys a run answers to, listed where a player goes when they want to know
+## what their options are. Nothing here is authored: the rows come from Game.
+func _build_key_list() -> void:
+	if _keys.is_empty():
+		return
+	var y: float = CARD.position.y + key_list_offset()
+	for i: int in range(_keys.size()):
+		var row: Dictionary = _keys[i]
+		var label := Label.new()
+		label.name = "KeyRow%d" % i
+		label.text = "%s   %s" % [String(row["keys"]), String(row["does"])]
+		label.position = Vector2(CARD.position.x + 28.0, y)
+		label.size = Vector2(CARD.size.x - 56.0, KEY_ROW_HEIGHT)
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.add_theme_font_size_override("font_size", 13)
+		label.add_theme_color_override("font_color", Color(GardenTheme.INK, 0.55))
+		label.clip_text = true
+		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		add_child(label)
+		y += KEY_ROW_HEIGHT
 
 
 ## Escape and P both close it, matching the two keys that open it. Handled here

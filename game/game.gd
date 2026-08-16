@@ -27,6 +27,24 @@ const UPROOT_CONFIRM_SECONDS: float = 4.0
 ## game, and R reloaded the run without ever offering the menu.
 const TITLE_SCENE := "res://game/title.tscn"
 
+## Every key the run answers to, and what it does.
+##
+## A run had four keyboard verbs and no screen named one of them. The only mention
+## anywhere was "Press M to bring it back", printed after you had already found M.
+## The title screen documents its own three keys in a HintLabel, so the convention
+## existed; the run simply did not follow it.
+##
+## This is a table rather than three sentences on the pause card because a list of
+## bindings that is written by hand goes stale the first time someone adds a key
+## and forgets. `test_every_key_the_run_handles_is_named_on_the_pause_card` reads
+## the KEY_* constants out of _unhandled_input's own source and asserts this table
+## covers them, so adding a binding without documenting it fails the build.
+const KEY_HELP: Array[Dictionary] = [
+	{"keys": "Esc  ·  P", "does": "hold the garden still", "codes": [KEY_ESCAPE, KEY_P]},
+	{"keys": "M", "does": "sound on or off", "codes": [KEY_M]},
+	{"keys": "R", "does": "start over, once the run is done", "codes": [KEY_R]},
+]
+
 var board: Board
 var bank: SeedBank
 var director: WaveDirector
@@ -390,7 +408,7 @@ func bank_score() -> bool:
 func pause_run() -> void:
 	if _pause_screen != null and is_instance_valid(_pause_screen):
 		return
-	_pause_screen = PauseScreen.build(pause_note())
+	_pause_screen = PauseScreen.build(pause_note(), KEY_HELP)
 	_pause_layer = CanvasLayer.new()
 	_pause_layer.name = "PauseLayer"
 	# Above the HUD at 10 and the post-mortem at 20, so a pause is always the

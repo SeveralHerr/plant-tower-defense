@@ -3389,3 +3389,96 @@ func test_the_pause_note_describes_the_moment_it_interrupted() -> String:
 		err = _T.assert_true(during != between, "a live wave reads differently, got: %s" % during)
 	_T.free_ui(game)
 	return err
+
+
+## A hand-written list of key bindings goes stale the first time someone adds a
+## key and forgets. This reads the KEY_* constants out of Game's own source and
+## asserts KEY_HELP covers every one, so adding a binding without documenting it
+## fails the build rather than quietly shipping an undiscoverable verb.
+func test_every_key_the_run_handles_is_named_on_the_pause_card() -> String:
+	var src: String = FileAccess.get_file_as_string("res://game/game.gd")
+	var err: String = _T.assert_gt(src.length(), 0, "game.gd is readable")
+	if err != "":
+		return err
+
+	# Only the input handler's own body -- the table itself also mentions KEY_*,
+	# and counting those would let the list vouch for itself.
+	var start: int = src.find("func _unhandled_input")
+	err = _T.assert_gt(start, 0, "found _unhandled_input")
+	if err != "":
+		return err
+	var following: int = src.find("\nfunc ", start + 1)
+	var body: String = src.substr(start, (following - start) if following > start else -1)
+
+	var handled: Array[String] = []
+	var regex := RegEx.new()
+	regex.compile("KEY_[A-Z0-9_]+")
+	for m: RegExMatch in regex.search_all(body):
+		var name: String = m.get_string()
+		if not handled.has(name):
+			handled.append(name)
+	err = _T.assert_gt(handled.size(), 0,
+		"the handler references at least one key -- an empty scan would pass vacuously")
+	if err != "":
+		return err
+
+	var documented: Array[String] = []
+	for row: Dictionary in Game.KEY_HELP:
+		for code: int in (row["codes"] as Array):
+			documented.append(OS.get_keycode_string(code).to_upper())
+
+	for name: String in handled:
+		var bare: String = name.substr(4)  # KEY_ESCAPE -> ESCAPE
+		err = _T.assert_true(documented.has(bare),
+			"_unhandled_input answers to %s and KEY_HELP does not mention it; documented: %s"
+				% [name, documented])
+		if err != "":
+			return err
+	return err
+
+
+func test_the_pause_card_lists_the_keys_and_still_fits_its_paper() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.pause_run()
+	await _pump(game)
+	var screen: Control = game.get_node_or_null("PauseLayer/PauseScreen") as Control
+	var err: String = _T.assert_true(screen != null, "the card is up")
+	if err == "":
+		err = _T.assert_gt(Game.KEY_HELP.size(), 0, "there are bindings to list")
+	if err == "":
+		for i: int in range(Game.KEY_HELP.size()):
+			var row: Label = screen.get_node_or_null("KeyRow%d" % i) as Label
+			err = _T.assert_true(row != null and not row.text.is_empty(),
+				"key row %d is on the card" % i)
+			if err != "":
+				break
+	if err == "":
+		# The card grew to carry these; everything must still sit on the paper and
+		# nothing may overlap, which is how the note ended up under a button once.
+		var card: Control = screen.get_node_or_null("Card") as Control
+		var rects: Dictionary = {}
+		for child: Node in screen.get_children():
+			var control := child as Control
+			if control == null or not control.visible or control.name in ["Backdrop", "Card"]:
+				continue
+			if control.size.x <= 0.0 or control.size.y <= 0.0:
+				continue
+			err = _T.assert_true(control.global_position.y + control.size.y
+					<= card.global_position.y + card.size.y,
+				"%s runs past the bottom of the card" % control.name)
+			if err != "":
+				break
+			rects[String(control.name)] = Rect2(control.global_position, control.size)
+		if err == "":
+			var names: Array = rects.keys()
+			for i: int in range(names.size()):
+				for j: int in range(i + 1, names.size()):
+					err = _T.assert_false((rects[names[i]] as Rect2).intersects(rects[names[j]]),
+						"%s overlaps %s" % [names[i], names[j]])
+					if err != "":
+						break
+				if err != "":
+					break
+	game.resume_run()
+	_T.free_ui(game)
+	return err
