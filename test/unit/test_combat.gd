@@ -1746,8 +1746,8 @@ func test_the_compost_fraction_costs_the_post_mortem_card_no_height() -> String:
 		"run_seconds": 2754.0,
 		"worst_cell": Vector2i(7, 4),
 		"worst_cell_losses": 3,
-		# The stopping-point row reads these two now, not the pair above; a card
-		# built without them renders the "nothing was stopped" branch and stops
+		# The held-ground row reads these two now, not the pair above; a card
+		# built without them renders the "no ground held them" branch and stops
 		# being the widest row, which is what the last assertion here is about.
 		"stop_cell": Vector2i(13, 7),
 		"stop_cell_stops": 137,
@@ -1805,13 +1805,13 @@ func test_the_compost_fraction_costs_the_post_mortem_card_no_height() -> String:
 				err = _T.assert_true(wanted <= column,
 					"the fraction fits its column without ellipsis (%.0f of %.0f px)" % [wanted, column])
 			if err == "":
-				var worst: Label = panel.get_node_or_null("Value_Wheretheystopped") as Label
-				err = _T.assert_true(worst != null, "the stopping-point row exists")
+				var worst: Label = panel.get_node_or_null("Value_Whereyouheldthem") as Label
+				err = _T.assert_true(worst != null, "the held-ground row exists")
 				if err == "":
 					var widest: float = font.get_string_size(
 						worst.text, HORIZONTAL_ALIGNMENT_RIGHT, -1, font_size).x
 					err = _T.assert_gt(widest, wanted,
-						"and the stopping point, not compost, still sets the card's width (%.0f vs %.0f px)"
+						"and the held-ground row, not compost, still sets the card's width (%.0f vs %.0f px)"
 							% [widest, wanted])
 					if err == "":
 						# Which the old version of this test never asked: it proved
@@ -2121,7 +2121,7 @@ func test_a_defended_chokepoint_is_not_reported_as_weak_ground() -> String:
 	var stats: Dictionary = game.summary_stats(false)
 	if err == "":
 		err = _T.assert_true(stats.has("stop_cell") and stats.has("stop_cell_stops"),
-			"summary_stats carries the stopping-point reading")
+			"summary_stats carries the held-ground reading")
 	if err == "":
 		err = _T.assert_eq(stats["stop_cell"], choke, "and it is the chokepoint")
 	if err == "":
@@ -2144,10 +2144,10 @@ func test_a_defended_chokepoint_is_not_reported_as_weak_ground() -> String:
 				if err != "":
 					break
 	if err == "":
-		var value: Label = panel.get_node_or_null("Value_Wheretheystopped") as Label
-		err = _T.assert_true(value != null, "the stopping-point row is on the card")
+		var value: Label = panel.get_node_or_null("Value_Whereyouheldthem") as Label
+		err = _T.assert_true(value != null, "the held-ground row is on the card")
 		if err == "":
-			err = _T.assert_eq(value.text, "column %d, row %d — %d stopped"
+			err = _T.assert_eq(value.text, "column %d, row %d — %d held"
 				% [choke.x + 1, choke.y + 1, kills],
 				"and it reads as work the ground did, not as ground that failed")
 		if err == "":
@@ -2164,7 +2164,9 @@ func test_a_defended_chokepoint_is_not_reported_as_weak_ground() -> String:
 ## so a run that bleeds out hands the exit a loss count it earned by not
 ## fighting. Under the old heading that cell was "weakest ground": true, but the
 ## same cell every run, which is no reading at all. Under a bare relabel it would
-## have become "where they stopped", which is false. It stopped nothing.
+## have become "where they stopped", which is false. It stopped nothing — and
+## "stopped" is the tint's own word for its own reading anyway, which is why the
+## row now says "held".
 func test_escapes_cannot_buy_the_exit_a_chokepoint_it_never_earned() -> String:
 	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
 	var err: String = _T.assert_true(game != null, "the game scene loaded")
@@ -2221,10 +2223,10 @@ func test_escapes_cannot_buy_the_exit_a_chokepoint_it_never_earned() -> String:
 				"while the row's cell is the one that stopped the most")
 	if err == "":
 		var value: Label = game.get_node_or_null(
-			"SummaryLayer/RunSummary/Value_Wheretheystopped") as Label
-		err = _T.assert_true(value != null, "the stopping-point row is on the card")
+			"SummaryLayer/RunSummary/Value_Whereyouheldthem") as Label
+		err = _T.assert_true(value != null, "the held-ground row is on the card")
 		if err == "":
-			err = _T.assert_eq(value.text, "column %d, row %d — %d stopped"
+			err = _T.assert_eq(value.text, "column %d, row %d — %d held"
 				% [choke.x + 1, choke.y + 1, kills],
 				"naming the chokepoint and its real work, not the exit and its leak")
 	if err == "":
@@ -2293,11 +2295,11 @@ func test_a_cells_stops_are_its_losses_minus_the_pests_that_walked_out() -> Stri
 ## the card congratulated it.
 func test_a_run_that_stopped_nothing_is_not_congratulated() -> String:
 	var barren := RunSummary.build({"lives_lost": 10})
-	var err: String = _T.assert_true(barren != null, "the card built without a stopping point")
+	var err: String = _T.assert_true(barren != null, "the card built without any held ground")
 	if err != "":
 		return err
 	var text: String = barren._stop_cell_text()
-	err = _T.assert_eq(text, "nowhere — nothing was stopped",
+	err = _T.assert_eq(text, "nowhere — no ground held them",
 		"an absent measurement says so")
 	if err == "":
 		err = _T.assert_false(text.contains("past you"),
@@ -2308,13 +2310,14 @@ func test_a_run_that_stopped_nothing_is_not_congratulated() -> String:
 		var real := RunSummary.build({"stop_cell": Vector2i(6, 3), "stop_cell_stops": 41})
 		err = _T.assert_true(real != null, "the card built with one")
 		if err == "":
-			err = _T.assert_eq(real._stop_cell_text(), "column 7, row 4 — 41 stopped",
+			err = _T.assert_eq(real._stop_cell_text(), "column 7, row 4 — 41 held",
 				"and a chokepoint gets named one-based, like every coordinate the player sees")
 		real.free()
 	return err
 
 
-## The row's key grew from "Weakest ground" to "Where they stopped", and the key
+## The row's key grew from "Weakest ground" to "Where they stopped" to "Where you
+## held them" — each rename longer than the last — and the key
 ## and value boxes overlap by 36px by construction: the key spans ROW_INSET to
 ## 0.42w + ROW_INSET while the value starts at 0.42w. Left-aligned key against
 ## right-aligned value, so that overlap is only a collision if the key's own text
@@ -2380,4 +2383,375 @@ func test_no_post_mortem_key_runs_into_its_own_value_column() -> String:
 		err = _T.assert_eq(checked, rows.size(),
 			"every row was really measured — a short loop is what makes a width gate vacuous")
 	_T.free_ui(panel)
+	return err
+
+
+# -- The post-mortem card against the road it floats over --------------------
+
+
+## plant-tower-defense-e34, staged end to end.
+##
+## The card names a cell out of `stop_cell` (losses minus escapes) while the road
+## under it is painted from the RAW loss map, whose peak on a bleeding run is the
+## exit. Both are correct and a player wants both. What there was no way to know
+## was that they are two different questions — an unlabelled picture sitting next
+## to a number reads as a picture that number captions.
+##
+## The fix is a caption, not a collapse: `RunSummary.map_legend_text` names the
+## reddest cell out of `worst_cell`, which is the same value the paint is made
+## from, so the sentence and the tint cannot drift apart.
+func test_the_post_mortem_captions_the_red_road_instead_of_letting_it_read_as_the_row() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var err: String = _T.assert_true(game != null, "the game scene loaded")
+	if err != "":
+		return err
+	err = _T.assert_true(game.board != null, "the run has a board to record against")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var choke: Vector2i = Board.PATH_CORNERS[1]
+	var way_out: Vector2i = game.board.exit_cell()
+	err = _T.assert_true(game.board.is_path(choke) and game.board.is_path(way_out),
+		"both cells under test are road — an off-road cell is dropped and every count below is 0")
+	if err == "":
+		err = _T.assert_true(choke != way_out,
+			"and they are different cells, or the mismatch this test is about cannot exist")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# The bleeding run. Every life spent, so the beds row and the escape count
+	# agree — forcing `lives` down instead desynchronises them (LIVES - lives).
+	game._on_wave_started(1)
+	var kills: int = 4
+	var escapes: int = Game.LIVES
+	for i: int in range(kills):
+		game._note_lane_loss(game.board.cell_to_world(choke))
+	for i: int in range(escapes):
+		game._on_pest_escaped(null)
+	await game.get_tree().process_frame
+	await game.get_tree().process_frame
+	err = _T.assert_true(game.game_over, "the run ended and committed its tallies")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# The precondition the whole issue rests on, asserted rather than assumed:
+	# the reddest cell and the named cell really are different here.
+	err = _T.assert_eq(game.board.worst_run_cell(), way_out,
+		"the paint peaks at the exit (%d escapes beat %d kills)" % [escapes, kills])
+	if err == "":
+		err = _T.assert_eq(game.board.worst_stop_cell(), choke,
+			"while the row's cell is the one that actually fought")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var panel: RunSummary = game.get_node_or_null("SummaryLayer/RunSummary") as RunSummary
+	err = _T.assert_true(panel != null, "the post-mortem card is up")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var legend: Label = panel.get_node_or_null("MapLegend") as Label
+	err = _T.assert_true(legend != null,
+		"the road under the card carries a caption when there is paint on it")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	err = _T.assert_gt(legend.text.length(), 0, "and the caption is not an empty label")
+
+	var red_here: String = "column %d, row %d" % [way_out.x + 1, way_out.y + 1]
+	var held_here: String = "column %d, row %d" % [choke.x + 1, choke.y + 1]
+	if err == "":
+		err = _T.assert_true(legend.text.contains(red_here),
+			"the caption names the reddest cell (%s), which is what the player can see" % red_here)
+	if err == "":
+		err = _T.assert_false(legend.text.contains(held_here),
+			"and does not name the held cell — that is the card's job, and duplicating it here is how the two readings get confused again")
+	if err == "":
+		err = _T.assert_true(legend.text.to_lower().contains("how far they got"),
+			"and it states which question the paint answers, not merely which cell won it")
+
+	# The other half of the pair: the row still names the cell that fought, and
+	# says nothing about the exit.
+	var value: Label = panel.get_node_or_null("Value_Whereyouheldthem") as Label
+	if err == "":
+		err = _T.assert_true(value != null, "the held-ground row is on the card")
+	if err == "":
+		err = _T.assert_true(value.text.contains(held_here),
+			"the row names the cell that held (%s)" % held_here)
+	if err == "":
+		err = _T.assert_false(value.text.contains(red_here),
+			"and never the reddest one, which held nothing")
+	if err == "":
+		# The word collision that made this readable as one reading. Board.depth_of
+		# documents the mixed map's own contents as "every pest that STOPPED there",
+		# so a row headed "where they stopped" described the paint at least as well
+		# as it described this number.
+		var keys: Array = panel.summary_rows()
+		err = _T.assert_gt(keys.size(), 0, "the card has rows to read")
+		if err == "":
+			var checked: int = 0
+			for row: Array in keys:
+				err = _T.assert_false(String(row[0]).to_lower().contains("stopped"),
+					"no row borrows the tint's own word for a different measurement (found '%s')"
+						% String(row[0]))
+				if err != "":
+					break
+				checked += 1
+			if err == "":
+				err = _T.assert_eq(checked, keys.size(), "and every row key was really read")
+	_T.free_ui(game)
+	return err
+
+
+## Where the caption is allowed to sit, in numbers rather than by eye.
+##
+## Three things can be underneath it and only one of them is acceptable. The
+## card's paper foots at 552 and its drop shadow reaches further; the road's last
+## row is screen y 520..584 once Hud.BAR_HEIGHT is added, and a caption covering
+## THAT would hide the exact tint it exists to explain; and the viewport ends at
+## 648. Grass row 8 is the gap all three leave, and that is where it goes.
+func test_the_map_legend_clears_the_card_the_road_and_the_bottom_of_the_screen() -> String:
+	# A Board that never entered the tree, queried directly. exit_cell() is asked
+	# FIRST on purpose: it used to be the one public query on Board that did not
+	# build the road lazily, so this call answered (-1, -1) and every geometry
+	# number below would have been measured against a cell that does not exist —
+	# a whole test passing on nothing, which is the failure mode is_path()'s own
+	# docstring was written about.
+	var probe := Board.new()
+	var way_out: Vector2i = probe.exit_cell()
+	var err: String = _T.assert_true(way_out.x >= 0 and way_out.y >= 0,
+		"an untreed Board still knows its exit (%s) rather than answering (-1, -1)" % str(way_out))
+	if err == "":
+		err = _T.assert_gt(probe.path_cell_count(), 0, "and it really has a road")
+	if err == "":
+		err = _T.assert_true(probe.is_path(way_out), "whose last cell is that exit")
+	probe.free()
+	if err != "":
+		return err
+
+	var panel := RunSummary.build({
+		"victory": false,
+		"endless": false,
+		"wave": 6,
+		"wave_count": 8,
+		"threat_level": 4,
+		"lives_lost": Game.LIVES,
+		"seeds_earned_total": 512,
+		"high_score": 900,
+		"compost_total": 8,
+		"compost_resolved": 20,
+		"pests_defeated": 61,
+		"run_seconds": 402.0,
+		# The disagreeing pair, which is the branch that produces the long text.
+		"worst_cell": way_out,
+		"worst_cell_losses": Game.LIVES,
+		"stop_cell": Vector2i(9, 1),
+		"stop_cell_stops": 24,
+	})
+	await _T.instantiate_ui(panel, Vector2i(1152, 648))
+	var legend: Label = panel.get_node_or_null("MapLegend") as Label
+	err = _T.assert_true(legend != null, "the caption is on the screen")
+	if err != "":
+		_T.free_ui(panel)
+		return err
+
+	var top: float = legend.position.y
+	var foot: float = legend.position.y + legend.size.y
+	err = _T.assert_gt(legend.size.y, 0.0, "the caption has a box to measure")
+
+	# 1. Clear of the card, drop shadow included. Read off the stylebox rather
+	#    than hardcoded: a designer raising shadow_size must fail here, not ship a
+	#    caption sitting in a smudge.
+	if err == "":
+		var box: StyleBoxFlat = GardenTheme.paper_panel()
+		err = _T.assert_true(box != null, "the card's stylebox is readable")
+		if err == "":
+			var shadow_foot: float = (RunSummary.CARD.position.y + RunSummary.CARD.size.y
+				+ box.shadow_offset.y + float(box.shadow_size))
+			err = _T.assert_true(top >= shadow_foot,
+				"the caption starts at %.0f, below the card's shadow at %.0f" % [top, shadow_foot])
+
+	# 2. Clear of the road. This is the one that matters: the caption explains the
+	#    tint, so covering any of it is the failure mode with no visible symptom.
+	if err == "":
+		var road_foot: float = float(Hud.BAR_HEIGHT + (way_out.y + 1) * Board.CELL)
+		err = _T.assert_true(top >= road_foot,
+			"the caption starts at %.0f, below the last road row which ends at %.0f"
+				% [top, road_foot])
+
+	# 3. On the screen at all.
+	if err == "":
+		var screen: float = float(ProjectSettings.get_setting(
+			"display/window/size/viewport_height", 648))
+		err = _T.assert_true(foot <= screen,
+			"and it foots at %.0f inside a %.0f-tall viewport" % [foot, screen])
+
+	# 4. The text fits the box it was given. Measured through the resolved theme
+	#    font, NOT get_minimum_size(): every measurement of a Label on this card
+	#    has to be, and this one is a Label whose text is by far the longest string
+	#    the screen renders.
+	if err == "":
+		var font: Font = legend.get_theme_font("font")
+		var font_size: int = legend.get_theme_font_size("font_size")
+		err = _T.assert_true(font != null, "the caption has a font to measure with")
+		if err == "":
+			var drawn: float = font.get_string_size(
+				legend.text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size).x
+			err = _T.assert_gt(drawn, 1.0,
+				"the font really measured the caption — a 1px answer is a stub, not a width")
+			if err == "":
+				err = _T.assert_true(drawn <= legend.size.x,
+					"the caption fits its %.0fpx strip (%.0fpx drawn)" % [legend.size.x, drawn])
+
+	# 5. And it collides with nothing else the card put on screen. The Backdrop is
+	#    the whole viewport by design, so it is the one exemption.
+	if err == "":
+		var legend_rect := Rect2(legend.position, legend.size)
+		var compared: int = 0
+		for child: Node in panel.get_children():
+			var other := child as Control
+			if other == null or other == legend or other.name == "Backdrop":
+				continue
+			var rect := Rect2(other.position, other.size)
+			err = _T.assert_false(legend_rect.intersects(rect),
+				"the caption does not overlap '%s' at (%.0f, %.0f) %.0fx%.0f"
+					% [other.name, rect.position.x, rect.position.y, rect.size.x, rect.size.y])
+			if err != "":
+				break
+			compared += 1
+		if err == "":
+			err = _T.assert_gt(compared, 0,
+				"and there was really something to compare against — an empty loop is what makes an overlap gate vacuous")
+	_T.free_ui(panel)
+	return err
+
+
+## The two branches that are not "the cells disagree".
+##
+## A run that lost nothing anywhere gets no caption at all, because
+## Board.show_run_pressure() early-returns on an empty loss map and there is no
+## red road to explain. A run whose reddest cell IS the named cell still gets one:
+## "these are the same cell" is a reading, and saying nothing leaves the player to
+## assume it holds next run, when it will not.
+func test_the_caption_appears_only_where_there_is_paint_to_caption() -> String:
+	var blank := RunSummary.build({"compost_total": 3})
+	var err: String = _T.assert_true(blank != null, "a card built from a run with no losses")
+	if err != "":
+		return err
+	err = _T.assert_eq(blank.map_legend_text(), "",
+		"says nothing about a road that was never painted")
+	blank.free()
+
+	if err == "":
+		var agreeing := RunSummary.build({
+			"worst_cell": Vector2i(6, 3),
+			"worst_cell_losses": 9,
+			"stop_cell": Vector2i(6, 3),
+			"stop_cell_stops": 9,
+		})
+		err = _T.assert_true(agreeing != null, "a card whose two cells agree")
+		if err == "":
+			var text: String = agreeing.map_legend_text()
+			err = _T.assert_gt(text.length(), 0, "still captions the paint")
+			if err == "":
+				err = _T.assert_false(text.contains("column"),
+					"without naming a second cell the player would then go looking for")
+			if err == "":
+				err = _T.assert_true(text.to_lower().contains("how far they got"),
+					"and still says which question the paint answers")
+		agreeing.free()
+
+	if err == "":
+		var differing := RunSummary.build({
+			"worst_cell": Vector2i(13, 7),
+			"worst_cell_losses": 10,
+			"stop_cell": Vector2i(6, 3),
+			"stop_cell_stops": 9,
+		})
+		err = _T.assert_true(differing != null, "and a card whose cells disagree")
+		if err == "":
+			err = _T.assert_true(differing.map_legend_text().contains("column 14, row 8"),
+				"names the reddest cell one-based, like every coordinate the player sees")
+		differing.free()
+	return err
+
+
+## The worst run there is, which is also the one where the card and the road are
+## furthest apart: every pest walked out and nothing was stopped anywhere.
+##
+## `stop_cell` is (-1, -1), so the row reads "nowhere". The road, meanwhile, is at
+## its reddest — ten escapes stacked on the exit. A player reading "nowhere" over
+## a glowing exit corner has the strongest possible reason to think the card is
+## broken, so this is precisely the run the caption must not sit out.
+func test_a_run_that_held_nothing_is_still_told_what_the_red_road_is() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var err: String = _T.assert_true(game != null, "the game scene loaded")
+	if err != "":
+		return err
+	err = _T.assert_true(game.board != null, "the run has a board")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var way_out: Vector2i = game.board.exit_cell()
+	err = _T.assert_true(game.board.is_path(way_out), "the exit is real road")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	game._on_wave_started(1)
+	# No kills at all. Every life, through the real escape path.
+	for i: int in range(Game.LIVES):
+		game._on_pest_escaped(null)
+	await game.get_tree().process_frame
+	await game.get_tree().process_frame
+	err = _T.assert_true(game.game_over, "the run ended")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	err = _T.assert_eq(game.board.worst_stop_cell(), Vector2i(-1, -1),
+		"nothing was held anywhere, so there is no cell to name")
+	if err == "":
+		err = _T.assert_eq(game.board.worst_run_cell(), way_out,
+			"while the loss map is at its reddest on the exit")
+
+	var panel: RunSummary = game.get_node_or_null("SummaryLayer/RunSummary") as RunSummary
+	if err == "":
+		err = _T.assert_true(panel != null, "the post-mortem card is up")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var value: Label = panel.get_node_or_null("Value_Whereyouheldthem") as Label
+	if err == "":
+		err = _T.assert_true(value != null, "the held-ground row is on the card")
+	if err == "":
+		err = _T.assert_eq(value.text, "nowhere — no ground held them",
+			"the row says so plainly rather than congratulating the run")
+	if err == "":
+		# The old empty branch said "nothing was stopped" — the tint's own word,
+		# on the one run where the tint is loudest. That is the exact sentence a
+		# player would have read as a caption for the red corner.
+		err = _T.assert_false(value.text.contains("stopped"),
+			"and does not describe an empty kill count with the paint's own verb")
+	if err == "":
+		var legend: Label = panel.get_node_or_null("MapLegend") as Label
+		err = _T.assert_true(legend != null,
+			"the caption fires on the run that needs it most, not only when a cell was held")
+		if err == "":
+			err = _T.assert_true(legend.text.contains(
+				"column %d, row %d" % [way_out.x + 1, way_out.y + 1]),
+				"and it names the exit, which is the one cell the player can actually see")
+	if err == "":
+		# The escapes are still reported once, as beds, exactly as before.
+		var beds: Label = panel.get_node_or_null("Value_Gardenlost") as Label
+		err = _T.assert_true(beds != null, "the beds-lost row exists")
+		if err == "":
+			err = _T.assert_eq(beds.text, "%d of %d beds" % [Game.LIVES, Game.LIVES],
+				"and reports the whole garden lost, once")
+	_T.free_ui(game)
 	return err

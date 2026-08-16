@@ -12,15 +12,31 @@ extends Control
 ##
 ## The backdrop is deliberately not opaque. `Board.show_run_pressure()` paints
 ## the run's whole damage map onto the road at the same moment this appears, and
-## that map is the visual half of the same post-mortem — so the card floats over
-## it rather than replacing it, and the row naming a cell has that actual cell
-## tinted behind it.
+## that map is the visual half of the same post-mortem — so the screen floats
+## over it rather than replacing it.
 ##
-## The map and that row are deliberately not the same reading. The map is every
-## pest that left the road, escapes included, so its reddest cell is the exit on
-## a run that bled out; the row counts only the pests a cell stopped for good.
-## See _stop_cell_text — they agreed until the exit started winning a row headed
-## "weakest ground" with pests it had never touched.
+## The BACKDROP is what floats. The card is not: `GardenTheme.paper_panel()` is
+## opaque PAPER, and CARD covers screen x 128..768, y 96..552. Measured against
+## the road PATH_CORNERS traces (board local, offset by Hud.BAR_HEIGHT = 72),
+## that hides 19 of the 32 road cells outright, leaves 9 showing only their
+## bottom halves along row 7, and leaves exactly 4 fully visible: (0,1), (1,1),
+## (12,7) and the exit (13,7). So "the row naming a cell has that actual cell
+## tinted behind it" — which this comment used to claim — is false for most of
+## the board, and the one cell a player can always see is the exit.
+##
+## The map and the cell-naming row are deliberately not the same reading. The
+## map is every pest that left the road, escapes included, so its reddest cell is
+## the exit on a run that bled out; the row counts only the pests a cell stopped
+## for good. See _stop_cell_text — they agreed until the exit started winning a
+## row headed "weakest ground" with pests it had never touched.
+##
+## Put those two facts together and the player of a losing run sees one red
+## corner, bottom right, and a card naming a cell they cannot even look at. Both
+## halves are correct and both are wanted; nothing said they were two questions.
+## `map_legend_text` is the sentence that says so, and it is deliberately printed
+## on the board below the card rather than added as an eighth row — it captions a
+## picture, so it belongs beside the picture, and the strip it sits in is right
+## next to the only red the player can reliably see.
 ##
 ## Node names are a contract, same as the HUD's: the devtools bridge presses
 ## these buttons by path and test_selftest.gd reads these labels.
@@ -51,6 +67,24 @@ const BACKDROP_ALPHA: float = 0.55
 
 const BUTTON_SIZE := Vector2(232.0, 44.0)
 const BUTTON_Y: float = 476.0
+
+## The map legend's strip, in viewport coordinates. Every number here is measured
+## against something that would break it, so none of them is a taste call:
+##
+##   - the card's paper foots at 552 and its StyleBoxFlat shadow (size 14, offset
+##     (0, 6)) reaches 572, so anything above 572 sits in the drop shadow;
+##   - the road's last row is board row 7, which is screen y 520..584 once
+##     Hud.BAR_HEIGHT is added — a caption overlapping THAT would cover the very
+##     tint it is captioning, which is the one failure this label must not have;
+##   - the viewport is 648 tall.
+##
+## 588 clears both (4px under the road, 16 under the shadow) and 588 + 22 = 610
+## leaves 38px at the bottom. The width is the board's, not the card's, because
+## the sentence is about the board.
+const MAP_LEGEND_Y: float = 588.0
+const MAP_LEGEND_HEIGHT: float = 22.0
+const MAP_LEGEND_WIDTH: int = Board.COLS * Board.CELL
+const MAP_LEGEND_FONT_SIZE: int = 13
 
 ## Entrance rise, matching the title screen's idiom. Gated on
 ## GardenTheme.animations_enabled() — headless never pumps the tween, so the
@@ -100,6 +134,7 @@ func _ready() -> void:
 
 	_build_heading()
 	_build_rows()
+	_build_map_legend()
 	_build_buttons()
 
 	if GardenTheme.animations_enabled():
@@ -163,7 +198,7 @@ func summary_rows() -> Array:
 		["Threat reached", "level %d" % int(_stats.get("threat_level", 1))],
 		["Garden lost", "%d of %d beds" % [int(_stats.get("lives_lost", 0)), Game.LIVES]],
 		["Compost swept", _compost_text()],
-		["Where they stopped", _stop_cell_text()],
+		["Where you held them", _stop_cell_text()],
 	]
 	return rows
 
@@ -216,7 +251,7 @@ func _duration_text() -> String:
 ## Two things changed. The number is now `stop_cell_stops` — losses with the
 ## escapes taken back out, so the exit cell cannot bid for the row with pests it
 ## never touched (Board.worst_stop_cell). And the heading states what is measured
-## instead of interpreting it: "where they stopped" is true of a chokepoint and
+## instead of interpreting it: "where you held them" is true of a chokepoint and
 ## true of a last-ditch stand at the exit, and neither reading recommends tearing
 ## anything down.
 ##
@@ -226,6 +261,15 @@ func _duration_text() -> String:
 ## reddest cell IS the exit on a run that bled out. So the card carries both
 ## readings, in the two media each is honest in: a number for what stopped them,
 ## a picture for where they got to.
+##
+## The row wears "held", not "stopped", and that is the third change rather than
+## a synonym. "Stopped" is already the mixed map's own word for its own reading —
+## Board.depth_of documents `losses` as "every pest that STOPPED there, not every
+## pest that hurt you", kills and escapes alike. A row headed "Where they
+## stopped" therefore described the tint at least as well as it described this
+## number, which is exactly the collision that made a player read the number as a
+## caption for the picture. "Held" is true of a kill and false of an escape, so
+## it cannot be read off the tint at all. See map_legend_text for the other side.
 func _stop_cell_text() -> String:
 	var cell: Vector2i = _stats.get("stop_cell", Vector2i(-1, -1))
 	if cell.x < 0:
@@ -233,10 +277,77 @@ func _stop_cell_text() -> String:
 		# claim about escapes, made from an empty measurement of kills: the run
 		# that reaches this branch hardest is the one that stopped nothing at all
 		# anywhere, and it read as the compliment for a flawless run.
-		return "nowhere — nothing was stopped"
-	return "column %d, row %d — %d stopped" % [
+		#
+		# And note which run reaches it: one where every pest walked out. The road
+		# behind the card is at its reddest in exactly that run, so this branch and
+		# the tint are at their furthest apart here. map_legend_text still fires.
+		return "nowhere — no ground held them"
+	return "column %d, row %d — %d held" % [
 		cell.x + 1, cell.y + 1, int(_stats.get("stop_cell_stops", 0)),
 	]
+
+
+## The caption for the picture. This is the whole of the fix for "the post-mortem
+## names a cell the road under it may not be reddest at".
+##
+## The two readings are not collapsed, because a player wants both: "how far did
+## they get" is the tint, "where did my ground actually do work" is the row. What
+## was missing was any statement that they are two questions. An unlabelled
+## picture next to a number reads as a picture the number captions.
+##
+## On a run that bleeds out they are guaranteed to disagree, not merely likely to:
+## Game._on_pest_escaped files every one of the LIVES escapes against
+## Board.exit_cell(), so the exit accumulates 10 losses without stopping anything,
+## and worst_run_cell() goes to the one cell in the run that did the least. That
+## is the run this sentence exists for.
+##
+## Reads `worst_cell`, which summary_stats has always exported and no part of this
+## card has ever displayed — it is stored precisely because the paint is made from
+## it. So the legend names the reddest cell out of the same value the tint peaks
+## at, and the two cannot drift.
+##
+## Returns "" when nothing was lost anywhere: Board.show_run_pressure() early-
+## returns on an empty loss map, so there is no red road, and a legend for it
+## would be describing paint that was never applied.
+func map_legend_text() -> String:
+	var reddest: Vector2i = _stats.get("worst_cell", Vector2i(-1, -1))
+	if reddest.x < 0:
+		return ""
+	if reddest == _stats.get("stop_cell", Vector2i(-1, -1)):
+		# The agreeing case still gets a caption. Saying "these are the same cell"
+		# is a reading; saying nothing leaves the player to assume it, and the
+		# assumption is wrong on the next run.
+		return "Red road: how far they got, escapes and all. Reddest at the very cell the card above names."
+	# Kept short deliberately. The strip is MAP_LEGEND_WIDTH = 896px at font size
+	# 13 with no autowrap, and this is the longest string the screen draws; see
+	# test_the_map_legend_clears_the_card_the_road_and_the_bottom_of_the_screen,
+	# which measures it through the resolved font rather than trusting the count.
+	return ("Red road: how far they got, escapes and all. Reddest at column %d, row %d"
+		+ " — the card above counts only what held.") % [reddest.x + 1, reddest.y + 1]
+
+
+func _build_map_legend() -> void:
+	var text: String = map_legend_text()
+	# No node at all rather than an empty one: a zero-content Label here is what
+	# validate-ui reports as an offscreen/zero-size Control finding, and a run with
+	# nothing painted has nothing to say.
+	if text.is_empty():
+		return
+	var legend := Label.new()
+	legend.name = "MapLegend"
+	legend.text = text
+	legend.position = Vector2(0.0, MAP_LEGEND_Y)
+	legend.size = Vector2(float(MAP_LEGEND_WIDTH), MAP_LEGEND_HEIGHT)
+	legend.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	legend.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	# The backdrop already stops every click; this label must not become the thing
+	# that eats one on its way there.
+	legend.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	legend.add_theme_font_size_override("font_size", MAP_LEGEND_FONT_SIZE)
+	# PAPER, not INK: this one sits on the INK backdrop over dark road, not on the
+	# card's paper, and it is the only text on the screen that does.
+	legend.add_theme_color_override("font_color", Color(GardenTheme.PAPER, 0.82))
+	add_child(legend)
 
 
 func _build_rows() -> void:

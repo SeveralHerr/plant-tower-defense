@@ -239,7 +239,17 @@ func board_size() -> Vector2:
 ## was lost. An escaped pest's own position is off the board by then, and
 ## record_lane_pressure_wave rightly refuses to paint a cell that is not road,
 ## so the caller needs somewhere real to attribute the escape to.
+##
+## Builds the path first, for the reason is_path() spells out at length: without
+## it, a Board that has not entered the tree answers (-1, -1) — a confident "there
+## is no exit" rather than an error — and a caller written against that gets a
+## cell it will then quietly drop from every road-only filter. This was the last
+## public query on this class that did not build, so `Board.new().exit_cell()`
+## disagreed with `Board.new().path_cell_count()` about whether a road existed.
+## Caught writing a post-mortem test that read the exit off a probe Board and got
+## (-1, -1) back, which every subsequent assertion would have measured against.
 func exit_cell() -> Vector2i:
+	_build_path()
 	if _path_order.is_empty():
 		return Vector2i(-1, -1)
 	return _path_order[_path_order.size() - 1]
