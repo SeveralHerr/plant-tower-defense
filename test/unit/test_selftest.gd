@@ -567,10 +567,29 @@ func test_notebook_images_stay_inside_their_box() -> String:
 	## guessed was "available width" outside a Container, blowing a 320x320
 	## box up to most of the screen. A live screenshot caught this one too.
 	var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
-	var want := Vector2(320, 320)
-	var err: String = _T.assert_eq(notebook.get_node("Drawing").size, want, "the drawing stays in its box")
-	if err == "":
-		err = _T.assert_eq(notebook.get_node("Sprite").size, want, "and so does the sprite")
+	var err: String = _T.assert_eq(notebook.get_node("Drawing").size, NotebookScreen.DRAWING_BOX.size,
+		"the drawing stays in its box")
+	if err != "":
+		_T.free_ui(notebook)
+		return err
+	# The sprite's rect is not fixed: _fit_sprite() sizes it to a whole multiple
+	# of whichever texture the page carries, so enclosure and integer scale are
+	# the invariants, not one hard-coded size. Every page is checked, because
+	# corn_kernel@2x is 32px where every other sprite is 128 and it is the one
+	# that would come out fractional.
+	var sprite: TextureRect = notebook.get_node("Sprite") as TextureRect
+	for page: int in NotebookScreen.PAGES.size():
+		notebook.go_to(page)
+		var rect := Rect2(sprite.position, sprite.size)
+		err = _T.assert_true(NotebookScreen.SPRITE_BOX.encloses(rect),
+			"page %d's sprite %s stays inside %s" % [page + 1, rect, NotebookScreen.SPRITE_BOX])
+		if err != "":
+			break
+		var factor: float = sprite.size.x / float(sprite.texture.get_width())
+		err = _T.assert_eq(factor, floorf(factor),
+			"page %d's sprite is drawn at a whole-number zoom (%.2fx), so the pixel grid survives" % [page + 1, factor])
+		if err != "":
+			break
 	_T.free_ui(notebook)
 	return err
 
@@ -648,6 +667,296 @@ func test_notebook_paging_wraps_in_both_directions() -> String:
 		err = _T.assert_eq(page_label.text, "%d / %d" % [NotebookScreen.PAGES.size(), NotebookScreen.PAGES.size()],
 			"and paging before the first wraps to the last")
 	_T.free_ui(notebook)
+	return err
+
+
+# -- Notebook + title screen UX pass (plant-tower-defense-6k0, -dau) ---------
+
+
+func test_no_two_notebook_pages_show_the_same_drawing() -> String:
+	## `image1.jpg` and `image6.jpg` are the same photograph, byte for byte, and
+	## the original PAGES table listed both — so the notebook showed one picture
+	## twice under two captions describing different drawings. Every existing
+	## check passed over that: both files exist, both import, both load, and the
+	## two *paths* differ, so comparing paths proves nothing. Only the bytes do.
+	var seen: Array[Dictionary] = []
+	for entry: Dictionary in NotebookScreen.PAGES:
+		var path: String = String(entry["drawing"])
+		var bytes: PackedByteArray = FileAccess.get_file_as_bytes(path)
+		var err: String = _T.assert_gt(bytes.size(), 0, "%s is readable as raw bytes" % path)
+		if err != "":
+			return err
+		for prior: Dictionary in seen:
+			# Sizes first, so at most one full comparison ever runs per pair.
+			# (PackedByteArray has no hash() — that is a parse error, not a
+			# runtime one, so it fails the whole script rather than one test.)
+			if int(prior["size"]) != bytes.size():
+				continue
+			err = _T.assert_false(bytes == PackedByteArray(prior["bytes"]),
+				"%s and %s are not the same image — one page would be showing what another already showed"
+					% [String(prior["path"]), path])
+			if err != "":
+				return err
+		seen.append({"path": path, "size": bytes.size(), "bytes": bytes})
+	return _T.assert_eq(seen.size(), NotebookScreen.PAGES.size(), "every page shows a distinct drawing")
+
+
+func test_notebook_every_page_carries_a_caption_and_a_note() -> String:
+	## The screen this replaced showed a six-word caption and nothing else,
+	## which is why it read as a slideshow rather than a notebook: it said which
+	## drawing you were looking at and never what the drawing decided. A page
+	## with an empty or one-line note is that screen coming back.
+	for entry: Dictionary in NotebookScreen.PAGES:
+		var caption: String = String(entry.get("caption", ""))
+		var err: String = _T.assert_gt(caption.length(), 0, "every page is captioned")
+		if err != "":
+			return err
+		var note: String = String(entry.get("note", ""))
+		err = _T.assert_gt(note.length(), 80, "\"%s\" carries a real note, not a second label" % caption)
+		if err != "":
+			return err
+		# NOTE_RECT is 420x108 at font size 14 — about five wrapped lines. The
+		# Label ellipsises past that rather than overflowing, so an over-long
+		# note loses its last sentence silently. This is the budget.
+		err = _T.assert_true(note.length() <= 300,
+			"\"%s\" fits the note box (%d chars, budget 300)" % [caption, note.length()])
+		if err != "":
+			return err
+	return ""
+
+
+func test_notebook_content_stays_on_the_paper() -> String:
+	## Everything on this screen is hand-positioned against NotebookScreen.PANEL
+	## rather than laid out by a Container, so nothing stops a nudged constant
+	## from putting the note or the pager off the edge of the drawn sheet and
+	## onto the dark backdrop. Enclosure is the invariant that constant has to
+	## keep.
+	var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var paper := NotebookScreen.PANEL
+	var err := ""
+	for node_name: String in [
+		"Heading", "Subheading", "BackButton", "Drawing", "DrawingFrame", "SourceLabel",
+		"Sprite", "Caption", "NoteLabel", "PrevButton", "PageLabel", "NextButton",
+	]:
+		var node: Control = notebook.get_node(node_name) as Control
+		var rect := Rect2(node.position, node.size)
+		err = _T.assert_true(paper.encloses(rect), "%s at %s sits on the paper %s" % [node_name, rect, paper])
+		if err != "":
+			break
+	_T.free_ui(notebook)
+	return err
+
+
+## Pairs that are supposed to share pixels: a matte and the photo mounted on it.
+const NOTEBOOK_NESTED_PAIRS: Array[Array] = [["DrawingFrame", "Drawing"]]
+
+## Everything on the spread that a player reads or clicks, in draw order.
+const NOTEBOOK_CONTENT: Array[String] = [
+	"Heading", "Subheading", "BackButton", "DrawingPaneLabel", "DrawingFrame", "Drawing",
+	"SourceLabel", "SpritePaneLabel", "Sprite", "Caption", "NoteLabel",
+	"PrevButton", "PageLabel", "NextButton",
+]
+
+
+func test_no_two_things_on_the_notebook_spread_sit_on_top_of_each_other() -> String:
+	## The pair check `findings` structurally cannot do: it measures one Control
+	## against its own box, so two nodes that each fit perfectly and land on the
+	## same pixels are invisible to it. The live version of this
+	## (.claude/skills/godot-hud-occlusion-audit) caught the pane label running
+	## 5px into the top of the drawing frame while `findings` reported 0 across
+	## 4 of 4 checks over the same frame. This is that check, headless, so every
+	## future /verify re-runs it without a game.
+	var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var err := ""
+	for i: int in NOTEBOOK_CONTENT.size():
+		for j: int in range(i + 1, NOTEBOOK_CONTENT.size()):
+			var a_name: String = NOTEBOOK_CONTENT[i]
+			var b_name: String = NOTEBOOK_CONTENT[j]
+			if NOTEBOOK_NESTED_PAIRS.has([a_name, b_name]) or NOTEBOOK_NESTED_PAIRS.has([b_name, a_name]):
+				continue
+			var a := _painted_rect(notebook.get_node(a_name) as Control)
+			var b := _painted_rect(notebook.get_node(b_name) as Control)
+			var hit := a.intersection(b)
+			err = _T.assert_true(hit.get_area() <= 0.0,
+				"%s %s and %s %s do not share pixels (%.0f overlapping)" % [
+					a_name, a, b_name, b, hit.get_area(),
+				])
+			if err != "":
+				break
+		if err != "":
+			break
+	_T.free_ui(notebook)
+	return err
+
+
+## Where a Control's pixels actually land, which for a Label is not its box.
+##
+## A centred full-width heading is the normal way to put a title across a
+## screen, and its *box* then overlaps anything parked in the left or right
+## margin — the Back button, here — while its glyphs come nowhere near. Occlusion
+## is a question about pixels, so narrow a non-wrapping Label to its text extent
+## and place that extent according to its alignment. A wrapping Label is left
+## alone: `get_minimum_size().x` on one of those is the width of its longest
+## word, not of the paragraph, and narrowing to that would hide real overlaps.
+static func _painted_rect(node: Control) -> Rect2:
+	var rect := Rect2(node.position, node.size)
+	var label := node as Label
+	if label == null or label.autowrap_mode != TextServer.AUTOWRAP_OFF:
+		return rect
+	var text_width: float = label.get_minimum_size().x
+	if text_width <= 0.0 or text_width >= rect.size.x:
+		return rect
+	match label.horizontal_alignment:
+		HORIZONTAL_ALIGNMENT_CENTER:
+			rect.position.x += (rect.size.x - text_width) / 2.0
+		HORIZONTAL_ALIGNMENT_RIGHT:
+			rect.position.x += rect.size.x - text_width
+		HORIZONTAL_ALIGNMENT_FILL:
+			return rect
+	rect.size.x = text_width
+	return rect
+
+
+func test_notebook_arrow_keys_turn_the_page_and_escape_closes_it() -> String:
+	## The bridge can `press` a Button by path; nothing in the harness can prove
+	## a raw keycode is wired without a live game and a real keyboard. Calling
+	## the handler is still the real path — `_input` is the only place these
+	## three keys are interpreted, and a typo in the match arm fails here.
+	var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var page_label: Label = notebook.get_node("PageLabel") as Label
+	var closed: Array[bool] = [false]
+	notebook.back_requested.connect(func() -> void: closed[0] = true)
+	var total: int = NotebookScreen.PAGES.size()
+
+	notebook._input(_key_press(KEY_RIGHT))
+	var err: String = _T.assert_eq(page_label.text, "2 / %d" % total, "Right turns forward a page")
+	if err == "":
+		notebook._input(_key_press(KEY_LEFT))
+		err = _T.assert_eq(page_label.text, "1 / %d" % total, "and Left turns back")
+	if err == "":
+		notebook._input(_key_press(KEY_ESCAPE))
+		err = _T.assert_true(closed[0], "Escape asks to close the notebook")
+	_T.free_ui(notebook)
+	return err
+
+
+static func _key_press(keycode: Key) -> InputEventKey:
+	var event := InputEventKey.new()
+	event.keycode = keycode
+	event.pressed = true
+	return event
+
+
+func test_notebook_shows_the_2x_sprite_not_the_64px_board_art() -> String:
+	## A 64px sprite stretched into a 200px box is the blur the old screen had.
+	## tools/render_svg.gd already emits a 2x copy of every sprite; this asserts
+	## the notebook reaches for it, and that a path with no 2x twin (the .jpg
+	## photographs) is passed through untouched rather than 404ing.
+	var err: String = _T.assert_eq(GardenTheme.retina_path("res://assets/sprites/corn_cobbler.png"),
+		"res://assets/sprites/retina/corn_cobbler@2x.png", "a sprite with a 2x twin is upgraded to it")
+	if err == "":
+		err = _T.assert_eq(GardenTheme.retina_path("res://image1.jpg"), "res://image1.jpg",
+			"and a path with no 2x twin is left alone")
+	if err != "":
+		return err
+	var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var sprite: TextureRect = notebook.get_node("Sprite") as TextureRect
+	err = _T.assert_gt(sprite.texture.get_width(), 64, "the loaded texture is the 2x art, not the board sprite")
+	if err == "":
+		err = _T.assert_eq(sprite.texture_filter, CanvasItem.TEXTURE_FILTER_NEAREST,
+			"and it is point-sampled, so the one-pixel outlines survive the enlargement")
+	_T.free_ui(notebook)
+	return err
+
+
+func test_menu_buttons_are_not_left_on_the_default_theme() -> String:
+	## Both screens painted themselves cream-and-green and then left every
+	## Button on Godot's grey default, so the controls looked bolted on to a
+	## screen they did not belong to. A missing `normal` stylebox on Button is
+	## that regression, and it is invisible to every layout check — the boxes
+	## are all the right size, they are just the wrong game.
+	var title := await _T.instantiate_ui("res://game/title.tscn", Vector2i(1152, 648)) as Control
+	var err: String = _T.assert_true(title.theme != null, "the title screen carries a theme")
+	if err == "":
+		var box := title.theme.get_stylebox("normal", "Button") as StyleBoxFlat
+		err = _T.assert_true(box != null, "and that theme restyles Button, not only Label colours")
+		if err == "":
+			err = _T.assert_eq(box.bg_color, GardenTheme.PAPER, "buttons are paper stock, not Godot grey")
+	_T.free_ui(title)
+	return err
+
+
+func test_title_high_score_line_never_reads_as_a_zero_record() -> String:
+	## "Best endless run: 0 seeds grown" on a fresh install reads as a bug, not
+	## as an empty record.
+	var saved: int = RunConfig.high_score
+	RunConfig.high_score = 0
+	var err: String = _T.assert_false(TitleScreen.high_score_text().contains("0 seeds"),
+		"a fresh install is told there is no record yet")
+	if err == "":
+		RunConfig.high_score = 412
+		err = _T.assert_eq(TitleScreen.high_score_text(), "Best endless run: 412 seeds grown",
+			"and a real record is spelled out")
+	RunConfig.high_score = saved
+	return err
+
+
+func test_title_controls_all_clear_the_scenery() -> String:
+	## The backdrop's grass line is at TitleBackdrop.HORIZON, and the decorative
+	## plants stand on it as Sprite2Ds. Nothing checks a Control against a
+	## Node2D — not validate-ui, not the HUD occlusion audit, both of which only
+	## ever compare Controls — so a button that dips past the horizon is a
+	## button with a sunflower drawn through it and no tool would say so.
+	var title := await _T.instantiate_ui("res://game/title.tscn", Vector2i(1152, 648)) as Control
+	var horizon: float = title.size.y * TitleBackdrop.HORIZON
+	var err := ""
+	for node_name: String in ["StartButton", "EndlessButton", "NotebookButton", "HintLabel"]:
+		var node: Control = title.get_node(node_name) as Control
+		var bottom: float = node.position.y + node.size.y
+		err = _T.assert_true(bottom <= horizon,
+			"%s ends at %.0f, clear of the horizon at %.0f" % [node_name, bottom, horizon])
+		if err != "":
+			break
+	_T.free_ui(title)
+	return err
+
+
+func test_title_focus_ring_wraps_in_both_directions() -> String:
+	## Godot's geometric focus default walks the list and stops at each end. The
+	## hint on screen says "Up / Down to choose", so it has to be a ring.
+	var title := await _T.instantiate_ui("res://game/title.tscn", Vector2i(1152, 648)) as Control
+	var start: Button = title.get_node("StartButton") as Button
+	var last: Button = title.get_node("NotebookButton") as Button
+	var err: String = _T.assert_eq(String(start.get_node(start.focus_neighbor_top).name), "NotebookButton",
+		"Up from the first button reaches the last")
+	if err == "":
+		err = _T.assert_eq(String(last.get_node(last.focus_neighbor_bottom).name), "StartButton",
+			"and Down from the last returns to the first")
+	_T.free_ui(title)
+	return err
+
+
+func test_opening_the_notebook_takes_focus_away_from_the_menu_behind_it() -> String:
+	## The overlay's opaque Backdrop stops the mouse, but focus is a separate
+	## channel: with the notebook up, Tab and the arrow keys used to walk onto
+	## title-screen buttons the player could not see, and Enter would start a
+	## run from inside the notebook.
+	var title := await _T.instantiate_ui("res://game/title.tscn", Vector2i(1152, 648)) as Control
+	var start: Button = title.get_node("StartButton") as Button
+	title._open_notebook()
+	var err: String = _T.assert_eq(start.focus_mode, Control.FOCUS_NONE,
+		"the menu stops taking focus while the notebook is open")
+	if err == "":
+		err = _T.assert_true(title.get_node_or_null("Notebook") != null, "and the notebook is actually up")
+	if err == "":
+		title._open_notebook()
+		err = _T.assert_eq(title.get_children().filter(
+			func(child: Node) -> bool: return child is NotebookScreen).size(), 1,
+			"pressing the button twice does not stack two notebooks")
+	if err == "":
+		title._close_notebook()
+		err = _T.assert_eq(start.focus_mode, Control.FOCUS_ALL, "and closing it hands focus back")
+	_T.free_ui(title)
 	return err
 
 

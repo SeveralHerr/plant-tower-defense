@@ -892,3 +892,62 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   `.claude/skills/godot-hud-occlusion-audit/` is still real and still unfiled as a
   numbered gap on purpose — it is written up in the issue linked from the previous
   entry rather than duplicated here. [G-013] / [G-014] / [G-015] not re-hit.
+
+## 2026-08-15 — Title screen and Designer's Notebook UX pass (-dau, -6k0)
+
+- Value: **warranted** — the diff could not have told me the notebook was showing the
+  same photograph twice, and neither could any check already in the project.
+  - Expected: a screenshot to confirm the paper spread reads as a notebook, and the
+    occlusion audit to come back clean on two screens built entirely out of
+    hand-positioned sibling Controls.
+  - Got: neither. The audit reported `13 finding(s)` on the notebook, then `9` after
+    the first checker fix, then exactly one real one — `Panel 'DrawingFrame' is drawn
+    over Label 'The drawing', hiding 390 px (22% of the smaller)` — a 5px collision
+    between a pane label's box and the top of the photo frame. `findings` reported
+    `0 finding(s) across 4 of 4 checks` over that same frame, correctly: each of the
+    two Controls fits its own box.
+  - Found: three defects caught and fixed mid-run. (1) **`image1.jpg` and `image6.jpg`
+    are byte-identical** — same SHA, same 500452 bytes — and the PAGES table listed
+    both, so the notebook showed one drawing on two pages under two captions that
+    described different things. Spotted only because page 6's screenshot looked like
+    page 1's; confirmed by hashing all six files. The notebook is now 5 pages and
+    `test_no_two_notebook_pages_show_the_same_drawing` compares bytes, because the
+    *paths* differ and every path-level check passed. (2) The 5px pane-label overlap
+    above, now pinned headlessly by
+    `test_no_two_things_on_the_notebook_spread_sit_on_top_of_each_other`, which was
+    confirmed to fail on the old constant before the fix went back in. (3)
+    `corn_kernel@2x` is 32x32 where every other sprite is 128x128, so
+    `STRETCH_KEEP_ASPECT_CENTERED` into a 190px box rendered the kernel page as a
+    yellow smear; sprites are now sized to a whole-number multiple of their texture.
+  - Cheaper: nothing for (1) or (3) — both are visual facts about loaded assets that no
+    amount of reading the table would surface. (2) would have come out of `node-bounds`
+    on two nodes if I had already known which two to ask about, which is the whole
+    reason the pairwise audit exists.
+
+- Gap: **`press` bypasses the input path, so hover state never clears** — pressing a
+  button over the bus fires `pressed` directly, so a tooltip already open stays open and
+  renders over the overlay the press just created. A real click cancels the tooltip as
+  part of the mouse event; the bridge's press does not, so a screenshot taken after
+  `press` can contain a popup a player would never see. Cost roughly fifteen minutes
+  chasing a "tooltip bleeding through the notebook" bug that only exists under the
+  harness. Workaround: none needed in the end — those tooltips were the wrong design
+  anyway and their text moved into the button labels.
+  - [G-016] status: open | seen: 1 | harness: 0.19.0
+  - Improvement: have `press` push a synthetic `InputEventMouseButton` through
+    `Input.parse_input_event` when the target is under the pointer; failing that,
+    document on the verb that hover/tooltip state is not cleared and that a screenshot
+    taken straight afterwards may contain a stale popup.
+
+- Gap: **orphaned instances fight over the bus, and the error does not say so plainly** —
+  four Godot processes accumulated across a session of launch/quit/capture cycles. The
+  symptom was not `game not running` but `Foreign instance on the bus: the reply to
+  'scene_tree' came from pid 10584, but devtools_owner.json says pid 704 owns this bus`,
+  raised part-way through a checker that had already made twenty successful calls, so
+  half its measurements were from one process and half from another. Workaround: kill
+  every Godot process from PowerShell and relaunch.
+  - [G-017] status: open | seen: 1 | harness: 0.19.0
+  - Improvement: `launch` already refuses when a live bus answers; it should also
+    recognise a *stale* owner whose pid is dead and reclaim it, and grow a
+    `launch --reap` that kills instances pointed at this project's `user://` before
+    starting. A mid-run owner change should abort loudly rather than surface as one
+    failed call among many.
