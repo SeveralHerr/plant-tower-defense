@@ -1258,3 +1258,31 @@ of what the design doc already says, rather than being bolted on.
   untouched" line currently only aggregates. That is the honest next step for the escape
   work, and it is a genuinely different map from lane pressure: pressure says where they
   got to, this would say where nothing could touch them.
+
+### New this cycle (17 of 30) — grown from the features above
+
+- **Two maps of the road now exist and neither knows about the other.**
+  `coverage_frontier()` says how far the garden can reach; `LanePressureOverlay` says how
+  far pests got. The prep line already compares them once, to pick which sentence to
+  show. The board never does — a player sees red tint over cells and has no way to tell
+  "they got here and we fought" from "they got here and nothing could touch them", which
+  is the whole distinction the coverage work just established.
+
+- **`ENGAGING_PLANTS` is a positive list and the catalogue is not checked against it at
+  build time.** A fifth plant fails a test, which is the right failure — but it fails
+  *after* someone has written the plant. A `PlantCatalog` entry could declare whether it
+  engages, so the answer lives with the plant rather than in a list two files away that
+  has to be remembered.
+
+- **The derived coverage map is an upper bound and the gap is never shown.** A Corn shoots
+  only the furthest-along pest; a busy Chomp grabs nothing; a winged pest is unreachable
+  by a Chomp at all. So "covered" over-promises in exactly the situations a player is
+  losing. The observed-versus-derived difference was dismissed as unbuildable from a
+  monotone flag — but a *per-cell* record of "something was in range and did not fire"
+  is not monotone and would measure the over-promise directly.
+
+- **Every gate now prints a denominator except the one that matters most.** `run_tests`
+  says `Suite: 7 script(s)` and `Assertions: N`, the checkers say `N of M`, lint says
+  `Shaders: N of M`. Nothing says how much of the *game* the suite touches — which
+  scripts are never loaded by any test. `scripts-seen` exists in the bridge and nothing
+  compares it against the file list.

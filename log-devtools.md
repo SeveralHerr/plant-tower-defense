@@ -2249,3 +2249,35 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   than firing on everything. Its two findings are latent, not currently wrong.
 
 - Harness: still **0.23.0**. No refresh.
+
+## 2026-08-16 — Closing cycle 17: a premise refuted by test, and a warning that arrives
+
+- Value: **warranted** — two of four items ended by disproving the issue that requested
+  them, both with runtime evidence rather than argument.
+  - Expected: `jrj` would sample `was_engaged()` per road cell and paint a coverage map.
+  - Got: `the flag claims the garden reached every one of the 32 road cells` while
+    `covered_road_cell_list` says a cob beside the entry touches **4**. `_ever_engaged`
+    is monotone, so a per-cell sample is a prefix mask — blind to precisely the two hole
+    shapes that cost beds, since both lie after first contact. The test walks distinct
+    cells and asserts `visited.size() == road.size()`, so it cannot be N samples of one.
+  - Found: two silent bugs avoided in the brief I wrote — `PlantCatalog.reach()` returns
+    `SAP_RADIUS` for a Sundew, which engages nothing, so a map built on it would call a
+    lane walled in dew defended; and `reach_at_offset` is about which of a volley's
+    kernels connect at distance, not coverage, with the on-axis kernel at `INF`.
+  - Cheaper: nothing. Both refutations needed the real board and the real catalogue.
+
+- Live check that mattered: `cmd board_info` carries
+  `"budgets": "4 of 4 declared budget(s) measured, 0 under floor"` in its `status` block —
+  confirming the status provider rides on **every** bus reply, not just the budgets verb.
+  That was the load-bearing claim of `8fg`'s design (that `push_warning` reaches nobody,
+  because `launch` redirects stderr into `.devtools/`), and it is the half that could
+  only be checked against a running game.
+
+- Note: three agents this cycle mutation-checked their own work unprompted — SUNDEW into
+  `ENGAGING_PLANTS` (red), forcing the coverage branch to always win (red), a fixture of
+  four bad and four good patterns for `group_leak_check` (which caught two bugs in the
+  checker itself). The habit has propagated from the briefs into the work.
+
+- Gap: **no gaps this turn.**
+
+- Harness: still **0.23.0**. No refresh.
