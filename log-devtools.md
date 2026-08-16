@@ -1281,3 +1281,41 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   - Improvement: already shipped — 0.21.0's `--class` takes a script `class_name`
     including subclasses, and fails on a name that is neither, which turns this
     exact silent zero into an error.
+
+## 2026-08-15 — Threat tint and the project-identity verb (cuk, gqs)
+
+- Value: **overkill** — everything passed and confirmed what the unit tests had
+  already settled. The run's real service was being the first compile and first
+  execution of code a subagent could not run at all, which is a risk retired
+  rather than a defect found.
+  - Expected: the verb's git resolution was validated only by a Python port of the
+    logic, never by GDScript against a real bus — runtime should show whether it
+    reads the sha the repo actually has and whether `list-commands` discovers the
+    literal registration. For the tint, whether the override survives on the live
+    INK bar.
+  - Got: `cmd project_identity` returned
+    `plant-tower-defense at C:/Users/gotmi/Documents/GitHub/plant-tower-defense
+    (main @ 43bb8434)` with `git_sha 43bb8434a667f3047888b78e40942ee231d10ca6`,
+    identical to `git rev-parse HEAD`, and `list-commands --offline` printed
+    `project_identity  (reads no args)`. The wave readout measured exactly
+    `PAPER (0.925, 0.863, 0.722)` at wave 1 and exactly
+    `THREAT_HOT (0.850, 0.25, 0.220)` at wave 200 endless.
+  - Found: nothing. No defect surfaced and nothing was fixed.
+  - Cheaper: the headless suite alone, 40s — all six new tests pass there, and the
+    live sha check is the only assertion the suite structurally cannot make
+    (it cannot know what `git rev-parse` says).
+
+- Gap: **a subagent has no parallel-safe way to compile what it writes** — the one
+  gate documented as concurrency-safe is `name_check.py`, and it says of itself
+  `NOT COVERED: a clean name_check resolves names, it does not compile the file`.
+  So the agent implementing `project_identity` shipped a handler and four test
+  methods that had never been parsed by the engine and never executed; it reported
+  this honestly and worked around it by porting `_git_identity` line-for-line to
+  Python and running that against the repo instead. That workaround happened to be
+  sound, and is not one the next agent should have to invent.
+  - [G-025] status: open | seen: 1 | harness: 0.21.0
+  - Improvement: a `--project-copy` mode on `lint_project.gd` / `run_tests.gd` that
+    imports into a private `.godot/` under a temp dir, so N agents can type-check
+    and run tests concurrently. Failing that, `name_check --require-compile` that
+    shells one `godot --check-only` per changed file — slower than a full lint but
+    parallel-safe, and it would turn "names resolve" into "this file builds".

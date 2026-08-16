@@ -73,6 +73,20 @@ const UPROOT_ARMED := Color(0.85, 0.25, 0.22)
 ## The selection panel's health bar. Green at full, through amber, to the same
 ## warning red as UPROOT_ARMED at nearly-dead — so the two reds in the panel mean
 ## the same thing, and a plant worth replanting says so without being read.
+## The threat ramp on the wave readout. Starts at the bar's own cream so an early
+## run looks like nothing is wrong, warms through amber, and ends on the same red
+## as UPROOT_ARMED and HEALTH_LOW — every red in this HUD means the same thing.
+const THREAT_WARM := Color(0.93, 0.72, 0.30)
+const THREAT_HOT := Color(0.85, 0.25, 0.22)
+## Threat level at which the tint is fully red.
+##
+## 12, not the ~25 a long endless run reaches: threat_level is a logarithm, so the
+## back half of that range costs hundreds of waves to cross and a ramp stretched
+## across it would be indistinguishable from cream for the entire fixed campaign,
+## which tops out under 10. Saturating here means the campaign actually uses the
+## colour, and endless simply stays pinned at red — which is the correct reading.
+const THREAT_TINT_MAX: int = 12
+
 const HEALTH_ROW_HEIGHT: float = 14.0
 const HEALTH_BACK := Color(0.12, 0.15, 0.13, 0.35)
 const HEALTH_FULL := Color(0.180, 0.800, 0.443)
@@ -357,6 +371,24 @@ func _make_label(node_name: String, font_size: int, colour: Color) -> Label:
 	return label
 
 
+## Colour for a threat level, cream through amber to red.
+##
+## Static and pure so the whole ramp is assertable without a HUD — and so the
+## devtools `curve` verb can sweep it as data rather than it being judged by eye
+## off a screenshot.
+static func threat_color(level: int) -> Color:
+	if level < THREAT_SHOW_FROM:
+		return PAPER
+	var span: float = float(THREAT_TINT_MAX - THREAT_SHOW_FROM)
+	var t: float = clampf(float(level - THREAT_SHOW_FROM) / span, 0.0, 1.0)
+	# Two segments rather than one lerp: cream straight to red passes through a
+	# muddy pink that reads as neither safe nor dangerous, and the amber midpoint
+	# is the whole point of a three-stop warning ramp.
+	if t < 0.5:
+		return PAPER.lerp(THREAT_WARM, t * 2.0)
+	return THREAT_WARM.lerp(THREAT_HOT, (t - 0.5) * 2.0)
+
+
 func get_viewport_width() -> int:
 	return ProjectSettings.get_setting("display/window/size/viewport_width", 1152)
 
@@ -396,6 +428,13 @@ func refresh(state: Dictionary) -> void:
 	var level: int = int(state.get("threat_level", 1))
 	if level >= THREAT_SHOW_FROM:
 		_wave_label.text += "   threat %d" % level
+	# The whole readout takes the tint, not just the number after it. A Label
+	# cannot colour part of its own text, and the two alternatives both cost more
+	# than they are worth: a fifth StatsRow child has to be bought out of a bar
+	# that has already had one occlusion bug, and a RichTextLabel breaks every
+	# `as Label` cast the existing tests make. Tinting all of it is also honest —
+	# the wave and its threat are one fact, so "wave 14" going red is the message.
+	_wave_label.add_theme_color_override("font_color", threat_color(level))
 	_lives_label.text = "Garden  %d" % state["lives"]
 	var husks: int = int(state.get("husks_on_ground", 0))
 	_compost_label.text = "Compost  %d" % int(state.get("compost_total", 0))

@@ -2352,3 +2352,65 @@ func test_project_identity_is_registered_with_a_literal_name() -> String:
 		err = _T.assert_true(source.contains('register_command("project_identity"'),
 			"registered with a literal string so --offline discovery can see it")
 	return err
+
+
+## The threat ramp, asserted as data. threat_color is static and pure precisely so
+## the whole curve can be checked without a HUD -- a tint judged off a screenshot
+## is judged by eye, and "is wave 9 redder than wave 6" is not an eye question.
+func test_the_threat_tint_climbs_from_cream_to_red() -> String:
+	var err: String = _T.assert_true(Hud.threat_color(1).is_equal_approx(Hud.PAPER),
+		"below the show-from level the readout is the bar's own cream")
+	if err == "":
+		err = _T.assert_true(Hud.threat_color(Hud.THREAT_SHOW_FROM).is_equal_approx(Hud.PAPER),
+			"and still cream at the level the number first appears")
+	if err == "":
+		err = _T.assert_true(Hud.threat_color(Hud.THREAT_TINT_MAX).is_equal_approx(Hud.THREAT_HOT),
+			"fully red at the ceiling")
+	if err == "":
+		# Endless runs past the ceiling for hundreds of waves; the tint must pin
+		# rather than wrap, overshoot or start cooling off again.
+		err = _T.assert_true(Hud.threat_color(Hud.THREAT_TINT_MAX * 4).is_equal_approx(Hud.THREAT_HOT),
+			"and stays red far past it")
+	if err == "":
+		# Monotonic in the direction that matters: never gets less red as it climbs.
+		var previous: float = -1.0
+		for level: int in range(1, Hud.THREAT_TINT_MAX + 2):
+			var heat: float = Hud.threat_color(level).r - Hud.threat_color(level).g
+			err = _T.assert_gte(heat, previous,
+				"threat %d is at least as hot as the level below it" % level)
+			if err != "":
+				break
+			previous = heat
+	return err
+
+
+func test_the_wave_readout_actually_wears_the_threat_tint() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/StatsRow/WaveLabel") as Label
+	var err: String = _T.assert_true(label != null, "the wave readout is where the bar puts it")
+	if err == "":
+		game.director.current_wave = 1
+		game._refresh()
+		await _pump(game)
+		err = _T.assert_true(label.get_theme_color("font_color").is_equal_approx(Hud.PAPER),
+			"wave 1 reads as calm")
+	if err == "":
+		# Deep enough into endless that threat_level is past the ceiling.
+		game.director.endless = true
+		game.director.current_wave = 200
+		game._refresh()
+		await _pump(game)
+		var hot: Color = label.get_theme_color("font_color")
+		err = _T.assert_true(hot.r - hot.g > 0.3,
+			"a wave 200 readout is visibly red, got %s" % hot)
+	if err == "":
+		# And it must come back down -- the override is reapplied every refresh, so
+		# a run that restarts into wave 1 cannot keep yesterday's red.
+		game.director.endless = false
+		game.director.current_wave = 1
+		game._refresh()
+		await _pump(game)
+		err = _T.assert_true(label.get_theme_color("font_color").is_equal_approx(Hud.PAPER),
+			"and drops back to cream when the threat does")
+	_T.free_ui(game)
+	return err
