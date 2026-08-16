@@ -1306,6 +1306,76 @@ func test_the_husks_the_game_really_drops_span_the_size_range() -> String:
 	return err
 
 
+# -- A swept husk's payout flies to the Seeds label (plant-tower-defense-o2b) -
+
+
+## The glyph opens at the husk's own drawn size, not a fixed one — a beetle's
+## payout should read as the same husk that just sat there glowing, not a
+## generic sparkle every sweep produces identically.
+##
+## Parented under a live Hud's own FxLayer before launch(), not a bare
+## SeedGlyph.new() — create_tween() requires the node to already be inside a
+## SceneTree, exactly the requirement Hud.fly_seed_glyph satisfies in the
+## real game by adding the glyph before calling launch().
+func test_seed_glyph_opens_at_the_husks_own_radius_and_flies_to_where_its_told() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var glyph := SeedGlyph.new()
+	game.hud._fx_layer.add_child(glyph)
+	var from := Vector2(120.0, 300.0)
+	var to := Vector2(40.0, 20.0)
+	var radius: float = HuskLayer.radius_for(9)
+	glyph.launch(from, to, radius)
+	var err: String = _T.assert_eq(glyph.position, from,
+		"the glyph starts exactly where the husk was swept")
+	if err == "":
+		err = _T.assert_eq(glyph._radius, radius,
+			"and opens at HuskLayer.radius_for(9) rather than a fixed size")
+	if err == "":
+		err = _T.assert_true(glyph.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+			"a travelling decoration never eats a click")
+	_T.free_ui(game)
+	return err
+
+
+## Same rule as every other animation in this project: headless is an
+## already-correct final state with nothing left mid-flight, not a broken
+## flourish. Hud.fly_seed_glyph is the gate — a game that cannot animate must
+## not leave FxLayer accumulating glyphs nobody will ever finish tweening.
+func test_fly_seed_glyph_is_a_total_no_op_headless() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var err: String = _T.assert_false(GardenTheme.animations_enabled(),
+		"this test is only meaningful headless, where animations are off")
+	if err == "":
+		var before: int = game.hud._fx_layer.get_child_count()
+		game.hud.fly_seed_glyph(Vector2(50.0, 50.0), CompostMeter.FULL_VALUE)
+		err = _T.assert_eq(game.hud._fx_layer.get_child_count(), before,
+			"no SeedGlyph is created while animations are gated off")
+	_T.free_ui(game)
+	return err
+
+
+## End to end through the real signal chain, not the two halves tested apart:
+## CompostMeter.collect_at() -> husk_collected(value, at) ->
+## Game._on_husk_collected -> Hud.fly_seed_glyph. A husk collected through the
+## actual game must not error and must not leave FxLayer holding a glyph
+## headlessly, exercising the exact `at` Game hands to to_global() rather than
+## a value this test picks by hand.
+func test_collecting_a_real_husk_through_game_reaches_fly_seed_glyph_without_error() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var err: String = _T.assert_true(game.hud != null, "the real game builds a HUD")
+	if err == "":
+		var spot := Vector2(160.0, 160.0)
+		game.compost.drop_husk(spot, CompostMeter.BASE_VALUE)
+		var paid: int = game.compost.collect_at(spot)
+		err = _T.assert_eq(paid, CompostMeter.BASE_VALUE,
+			"the sweep still pays out with fly_seed_glyph wired into the signal")
+	if err == "":
+		err = _T.assert_eq(game.hud._fx_layer.get_child_count(), 0,
+			"and headlessly the glyph the gate skipped leaves nothing behind")
+	_T.free_ui(game)
+	return err
+
+
 # -- Endless mode scales the pests themselves (plant-tower-defense-nps) ------
 
 

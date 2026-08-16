@@ -2745,4 +2745,67 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   correctly does not count as reach — restructuring to call it directly, matching
   the existing shake_plant_button/shake_packet_button test shape, fixed it.
 
+## 2026-08-16 — Three warning colours in one hue (plant-tower-defense-4lv, closed as duplicate) + seed-fly effect (plant-tower-defense-o2b)
+
+- Value: **warranted** — the live bridge confirmed a claim a diff/headless-only
+  pass could not fully make: that SeedGlyph actually opens at the husk's own
+  radius on screen and travels toward the Seeds label, not just that the tween
+  code compiles and the coordinate math is right in isolation.
+  - Expected: at reduced game speed, a husk dropped and swept via
+    `run-method drop_husk` / `collect_at` would leave a `SeedGlyph` under
+    `Hud._fx_layer`, positioned at the husk's screen coordinates
+    (`_entities.to_global(at)`) with `_radius` starting at `HuskLayer.radius_for(9)`.
+  - Got: `find-nodes --class SeedGlyph` located it, `get-state --property
+    position --property _radius` read `{"x": 499.4, "y": 371.5}` / `14.98` —
+    matching the husk's board position (500, 300) plus the 72px Entities
+    offset, and radius essentially at HuskLayer.radius_for(9) = 15 a frame in —
+    and a cropped screenshot showed the gold disc sitting exactly on the husk.
+  - Found: `findings` caught a real defect mid-task: an early `_fx_layer` built
+    as a full-rect `Control` passed every headless test but produced a live
+    `ui_zero_size`-adjacent-but-opposite finding once the *other* fix (zero-size
+    instead) was tried — the two shapes contradicted two different checks
+    (`_hud_rects` in test_selftest.gd vs. `findings`' `ui_zero_size`), and only
+    running `findings` against the live tree surfaced the second one; grep and
+    the unit suite were both silent on it. Landed on `Container` (base class),
+    which is full-rect *and* excluded from `_hud_rects` by class the same way
+    `ColorRect` already is.
+  - Cheaper: nothing — this needed the running game specifically because the
+    conflict was between a live UI-layout scan and a headless pixel-rect test,
+    and neither alone would have shown both sides.
+
+- Gap: `launch --isolated --kill-survivors` hung at the classic "bus never
+  answered a ping within 20s" symptom the local `godot-devtools-concurrent-launch`
+  skill describes — but this was a *different* cause than the one that skill
+  documents, and the symptom is indistinguishable from the ping side: the process
+  was alive, `MainWindowHandle` was 0, one thread, 0.015s CPU, exactly like the
+  skill's malformed-cmdline signature. The actual cause was a plain, silent
+  Godot OS.alert() dialog titled "ALERT!" blocking the main thread on "Main
+  scene's path could not be resolved from UID. Make sure the project is
+  imported first." — after a `godot --headless --path . --import` had already
+  been run and appeared to finish (printed reimport steps through "[ DONE ]",
+  no visible error). `.godot/uid_cache.bin` was in fact absent after that first
+  import and present only after a second, identical `--import` call. `ping`'s
+  20s timeout gives zero signal that a blocking native dialog is the reason —
+  distinguishing "malformed cmdline hang" from "modal alert dialog hang" from
+  "still loading" currently requires reading `MainWindowTitle` via PowerShell
+  and, since the alert box draws no child controls `EnumChildWindows` can read,
+  screen-scraping it with `PrintWindow` into a PNG to read the message at all.
+  - [G-045] status: open | seen: 1 | harness: 0.25.0
+  - Improvement: two independent fixes would each have closed this faster.
+    (1) `--import` exiting non-zero (or printing a distinguishable warning)
+    when it does not end up writing `uid_cache.bin`, rather than looking
+    identical to a clean run — this is the same shape as the already-logged
+    G-044 (`--import` segfault-then-clean-retry) and G-036-ish concurrent-import
+    races, but here the first run didn't even error, it just quietly didn't
+    finish the one file that matters for the next launch. (2) `ping`'s timeout
+    message reading the launched process's own stdout/stderr tail (already
+    captured to `.devtools/launch_stdout.log` / `launch_stderr.log` by
+    `cmd_launch`) and surfacing a line like "the game already logged: ERROR:
+    Main scene's path could not be resolved from UID" instead of a bare
+    "never answered a ping" — since that exact diagnostic was sitting in the
+    log file the whole time from the FIRST launch attempt, and would have
+    named the fix immediately instead of sending the session toward the
+    concurrent-launch skill's (correct, but irrelevant here) troubleshooting
+    path.
+
 - Harness: **0.25.0**.

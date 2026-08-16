@@ -658,8 +658,14 @@ func spawn_pest(species: StringName, mutation: StringName = &"") -> void:
 	pest.escaped.connect(_on_pest_escaped)
 
 
-func _on_husk_collected(_value: int) -> void:
+func _on_husk_collected(value: int, at: Vector2) -> void:
 	Sfx.play(Sfx.HUSK_COLLECTED)
+	# `at` is board-local (Entities' own space, same as pest.position); the
+	# Seeds label it is flying toward lives on Hud's CanvasLayer. to_global()
+	# is the one line that crosses that gap — see SeedGlyph's own header for
+	# why nothing on the board side needs more than this.
+	if hud != null and is_instance_valid(hud):
+		hud.fly_seed_glyph(_entities.to_global(at), value)
 	_refresh()
 
 

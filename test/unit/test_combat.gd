@@ -615,7 +615,7 @@ func test_a_swept_husk_never_reports_itself_as_rotted() -> String:
 	var rotted: Array[int] = []
 	var collected: Array[int] = []
 	meter.husk_rotted.connect(func(value: int) -> void: rotted.append(value))
-	meter.husk_collected.connect(func(value: int) -> void: collected.append(value))
+	meter.husk_collected.connect(func(value: int, _at: Vector2) -> void: collected.append(value))
 	meter.drop_husk(Vector2.ZERO, CompostMeter.BASE_VALUE)
 	var paid: int = meter.collect_at(Vector2.ZERO)
 	meter._process(CompostMeter.HUSK_LIFETIME + 1.0)
