@@ -106,9 +106,32 @@ const WASH_SEGMENTS: int = 48
 
 ## Paint order for that union. Of any two overlapping patches exactly one has to
 ## own the lens they share, so the two need a total order they both agree on.
-## Assigned on construction and never reused: node order under Entities is not
-## usable for this, because it shifts every time any sibling is uprooted, and a
-## patch whose rank changed under it would hand the lens back and forth.
+## Assigned on construction and never reused WHILE A PATCH IT WAS COMPARED
+## AGAINST IS STILL ALIVE: node order under Entities is not usable for this,
+## because it shifts every time any sibling is uprooted, and a patch whose rank
+## changed under it would hand the lens back and forth.
+##
+## Reset to 0 the instant `_live` empties (see `_exit_tree`), rather than left
+## to climb for as long as the process lives (plant-tower-defense-qij). That
+## bound is deliberately looser than "never reused": what `shared_ground_offsets`
+## actually needs is that any two patches which ever COEXIST keep a stable
+## relative order the whole time they both do — nothing reads this number once
+## every patch that could have compared against it is gone, so handing it back
+## to a fresh generation the next time a Sundew is planted costs nothing. The
+## alternative, an int climbing once per Sundew ever planted for the life of the
+## Godot process, would take a save-scummed endless run past 2^31 sometime after
+## roughly 4.5 billion Sundews — safe in practice, but a number a static
+## checker can't tell apart from a real leak, which the reset is worth avoiding.
+##
+## Safe against the one gap this reasoning would otherwise have to rule out —
+## a patch constructed but not yet in the tree when a sibling's `_exit_tree`
+## empties `_live` and resets this to 0, which would let the pending patch's
+## already-assigned (pre-reset) number collide with the next patch built after
+## it — because every call site in this file's own tree (PlantCatalog spawns,
+## `Game.place_plant`) constructs and `add_child()`s a patch in one unbroken
+## call, the same assumption `_enter_tree`'s own doc comment already leans on.
+## Nothing in this codebase holds a constructed-but-unparented Sundew across a
+## frame boundary.
 static var _next_wash_order: int = 0
 
 ## Every patch currently in the tree, oldest `_wash_order` first.
@@ -196,8 +219,14 @@ func _enter_tree() -> void:
 ##
 ## Deregisters FIRST, so the rewash below tells the patches that are staying to
 ## repaint without this one counting itself among them.
+##
+## The last patch leaving also resets `_next_wash_order` — see that constant's
+## own doc comment for why an empty `_live` is the one moment resetting it costs
+## nothing: nothing alive could be compared against the number being handed back.
 func _exit_tree() -> void:
 	_live.erase(self)
+	if _live.is_empty():
+		_next_wash_order = 0
 	release_all()
 	rewash_neighbourhood()
 

@@ -4908,3 +4908,112 @@ func test_the_suite_reach_checker_still_declares_its_house_contract() -> String:
 		if err != "":
 			return err
 	return ""
+
+
+# -- StickySundew's wash-order counter resets, not just climbs forever
+# -- (plant-tower-defense-qij) ----------------------------------------------
+
+
+func test_the_wash_order_counter_resets_once_the_last_patch_on_the_board_is_gone() -> String:
+	# Advance the counter first so this can't pass by accident of wherever the
+	# rest of the suite happened to leave it -- a fresh process also starts it
+	# at 0, and that would look identical to a reset that never fired.
+	var warmup := StickySundew.new()
+	var before_reset: int = StickySundew._next_wash_order
+	warmup.free()
+	var err: String = _T.assert_gt(before_reset, 0, "sanity: constructing a patch always advances the counter")
+	if err != "":
+		return err
+
+	var patch := StickySundew.new()
+	patch.setup(PlantCatalog.SUNDEW, Vector2i(0, 0), null)
+	var host: Node2D = _host([patch])
+	await _T.instantiate_scene(host)
+	err = _T.assert_true(StickySundew.live_patches().has(patch),
+		"sanity: this patch registered itself the moment it entered the tree")
+	_T.free_ui(host)  # frees the host's children too -- patch._exit_tree runs synchronously
+	if err == "":
+		err = _T.assert_true(StickySundew.live_patches().is_empty(),
+			"sanity: freeing the only patch on the board empties the live list")
+	if err == "":
+		err = _T.assert_eq(StickySundew._next_wash_order, 0,
+			"the counter resets to 0 the instant the last patch on the board is gone")
+	return err
+
+
+# -- A kernel hit gets its own cue (plant-tower-defense-7o3) ----------------
+
+
+func test_hit_flash_color_boosts_channels_but_leaves_alpha_alone() -> String:
+	var base := Color(0.58, 0.66, 0.78, 0.6)  # an armoured tint, mid-fade alpha
+	var flashed: Color = Pest.hit_flash_color(base)
+	var err: String = _T.assert_float_eq(flashed.a, base.a, 0.0001, "alpha is untouched by the flash")
+	if err == "":
+		err = _T.assert_float_eq(flashed.r, base.r * Pest.HIT_FLASH_BOOST, 0.0001, "red is boosted, not replaced")
+	if err == "":
+		err = _T.assert_float_eq(flashed.g, base.g * Pest.HIT_FLASH_BOOST, 0.0001, "green is boosted, not replaced")
+	if err == "":
+		err = _T.assert_float_eq(flashed.b, base.b * Pest.HIT_FLASH_BOOST, 0.0001, "blue is boosted, not replaced")
+	return err
+
+
+func test_flash_hit_is_a_no_op_on_a_pest_that_is_already_dead() -> String:
+	var pest: Pest = _pest(Pest.APHID, Vector2.ZERO)
+	var host: Node2D = _host([pest])
+	await _T.instantiate_scene(host)
+
+	pest.kill()
+	var corpse_modulate: Color = pest._sprite.modulate
+	pest.flash_hit()
+	var err: String = _T.assert_eq(pest._sprite.modulate, corpse_modulate,
+		"a corpse does not also flash -- flash_hit() is only for a hit that lands on a pest still standing")
+	_T.free_ui(host)
+	return err
+
+
+## A beetle's 16 health survives one 1.0-damage kernel, which is exactly the
+## case this bd issue is about: before it, that connecting kernel and one that
+## sailed off the board looked identical.
+func test_a_kernel_that_connects_but_does_not_kill_flashes_the_pest_it_hit() -> String:
+	var beetle: Pest = _pest(Pest.BEETLE, Vector2(40, 0))
+	var host: Node2D = _host([beetle])
+	await _T.instantiate_scene(host)
+
+	# The kernel is built and armed with real bounds AFTER the settle pump above,
+	# not inside it: a fresh Kernel's _bounds defaults to an empty Rect2, which
+	# contains no point at all, so a settle-frame physics tick running before
+	# setup() would read that as "left the board" and free the node before this
+	# test ever gets a turn.
+	var kernel := Kernel.new()
+	kernel.setup(Vector2(40, 0), Vector2.RIGHT, 1.0, Rect2(Vector2(-2000, -2000), Vector2(4000, 4000)))
+	host.add_child(kernel)
+	var idle_modulate: Color = beetle._sprite.modulate
+	kernel._physics_process(0.016)
+	var err: String = _T.assert_true(beetle.is_alive(), "sanity: a beetle's 16 health survives one 1.0-damage kernel")
+	if err == "":
+		err = _T.assert_true(beetle.health < beetle.max_health, "and the hit still landed")
+	if err == "":
+		# GardenTheme.animations_enabled() is false headless (see flash_hit's own
+		# gate), so the Tween it would queue never runs -- this pins the no-crash,
+		# no-op path rather than a visible flash a windowed run actually shows.
+		err = _T.assert_eq(beetle._sprite.modulate, idle_modulate,
+			"headless: flash_hit() is a gated no-op here, not a frozen mid-flash tint")
+	_T.free_ui(host)
+	return err
+
+
+func test_a_kernel_that_kills_its_pest_leaves_it_dead() -> String:
+	var aphid: Pest = _pest(Pest.APHID, Vector2(10, 0))
+	var host: Node2D = _host([aphid])
+	await _T.instantiate_scene(host)
+
+	# See the sibling test above: the kernel is built and armed after the
+	# settle pump, not inside it.
+	var kernel := Kernel.new()
+	var lethal: float = float(Pest.SPECIES[Pest.APHID]["health"])
+	kernel.setup(Vector2(10, 0), Vector2.RIGHT, lethal, Rect2(Vector2(-2000, -2000), Vector2(4000, 4000)))
+	host.add_child(kernel)
+	kernel._physics_process(0.016)
+	var err: String = _T.assert_false(aphid.is_alive(), "a kernel dealing full health kills the aphid it connects with")
+	_T.free_ui(host)
+	return err

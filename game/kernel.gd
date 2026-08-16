@@ -68,5 +68,11 @@ func _physics_process(delta: float) -> void:
 			continue
 		if pest.global_position.distance_to(global_position) <= HIT_RADIUS:
 			pest.take_damage(damage)
+			# A hit that didn't kill gets its own cue; a hit that did already has
+			# one — the corpse swap, fade and Sfx.PEST_KILLED in Pest._play_death
+			# (plant-tower-defense-7o3). Without this split, "connected but the
+			# pest lived" looked exactly like the kernel simply missing.
+			if pest.is_alive():
+				pest.flash_hit()
 			queue_free()
 			return

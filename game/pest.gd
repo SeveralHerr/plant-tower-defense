@@ -139,6 +139,20 @@ const DEATH_LINGER: float = 0.35
 ## the corpse reads for a beat first, same as before this existed, then goes.
 const DEATH_FADE: float = 0.15
 
+## A kernel connecting and a kernel missing (leaving the board unaimed) used to
+## look identical — Kernel._physics_process called queue_free() on either exit
+## with nothing in between (plant-tower-defense-7o3). A killed pest already gets
+## its own unmistakable cue (the corpse swap and fade below, plus Sfx.PEST_KILLED
+## from Game._on_pest_died), so this is only for the other case: a hit that the
+## pest survives, where the health bar shrinking was the only tell.
+##
+## Total time the flash takes to rise and fall back to the sprite's normal tint.
+const HIT_FLASH_DURATION: float = 0.10
+## How hard the flash boosts the sprite's current colour channels — deliberately
+## a multiply, not a replacement, so a flash on an armoured or hungry pest still
+## reads as that pest's own hue gone bright, not as a third, unrelated colour.
+const HIT_FLASH_BOOST: float = 1.9
+
 var species: StringName = APHID
 var health: float = 1.0
 var max_health: float = 1.0
@@ -497,6 +511,30 @@ func take_damage(amount: float) -> void:
 		_health_bar.size = Vector2(32.0 * (health / max_health), 5)
 	if health <= 0.0:
 		kill()
+
+
+## Pure: what `flash_hit` boosts a sprite's current tint towards for the flash's
+## rising half — alpha untouched, so a partially transparent state (mid death
+## fade, say) stays exactly as transparent while it flashes. Split out so the
+## picture is checkable without a live tree, a Tween, or animations turned on.
+static func hit_flash_color(base: Color) -> Color:
+	return Color(base.r * HIT_FLASH_BOOST, base.g * HIT_FLASH_BOOST, base.b * HIT_FLASH_BOOST, base.a)
+
+
+## The visual tell for a hit this pest survived. Called by Kernel right after a
+## connecting take_damage() that did NOT kill — see HIT_FLASH_DURATION's comment
+## for why a lethal hit does not also call this (it has its own, bigger cue).
+##
+## Gated the same way every cosmetic Tween in this game is: headless pumps no
+## frames, so a Tween queued there never runs and this is a silent no-op rather
+## than a wasted node.
+func flash_hit() -> void:
+	if not _alive or _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
+		return
+	var base: Color = _sprite.modulate
+	var tween := create_tween()
+	tween.tween_property(_sprite, "modulate", hit_flash_color(base), HIT_FLASH_DURATION * 0.35)
+	tween.tween_property(_sprite, "modulate", base, HIT_FLASH_DURATION * 0.65)
 
 
 ## Death by any cause — kernels, or a Chomp finishing its meal.
