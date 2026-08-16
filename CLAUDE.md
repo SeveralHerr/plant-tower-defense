@@ -1,15 +1,35 @@
 # Workflow
-Read todo.md and track each item as a bd issue (see Beads Issue Tracker below — do not
-use TodoWrite for this). Complete every item, running `/verify` before considering any of
-them done, and commit after each item / bd issue closes rather than batching the whole
-session into one commit at the end. The last item on the list is always "add Cool new features or concrete improvements (either UX or features or enhancements) to kanban.md" — mine what the session's own work revealed, not just abstract
-ideas. Once every item is done, refill todo.md itself for next time: pick 3-5 concrete,
-not-yet-filed items out of kanban.md's "Cool new features or concrete improvements (either UX or features or enhancements)" backlog, file them as bd
-issues, and write them into todo.md as a fresh unchecked checklist. Do not just leave
-todo.md with everything checked off — an already-done list is not what the next session's
-"read todo.md" step should find waiting for it.
 
-Whenever a good skill that would've been useful has been identified, please create it locally in this repository. 
+**This is a loop. It does not end. Keep going until the user stops you.**
+
+Do these steps in order, over and over:
+
+1. **Read `todo.md`.** File every item on it as a bd issue (see Beads Issue Tracker
+   below — do NOT use TodoWrite for this).
+2. **Do the items one at a time.** For each one: claim the bd issue, write the code,
+   run `/verify`, then commit. One commit per item. Never batch several items into one
+   commit at the end.
+3. **The last item is always "add cool new features or concrete improvements to
+   `kanban.md`".** Mine what *this cycle's own work* just revealed — real things you
+   hit while building and verifying, not abstract ideas.
+4. **Refill `todo.md`.** Pick 3-5 concrete, not-yet-filed items out of kanban.md's
+   backlog, file them as bd issues, and write them into `todo.md` as a fresh unchecked
+   checklist. Never leave `todo.md` with everything ticked off.
+5. **Go straight back to step 1 and start the next cycle. Do not stop. Do not ask
+   whether to continue. Do not say "next session" — you are the next session.**
+
+The only reasons to stop are: the user tells you to, or you are genuinely blocked and
+need an answer only they can give.
+
+Keep a line at the top of `todo.md` saying which cycle you are on (`Cycle 7 of 30`) and
+bump it each time you refill, so the count survives a context compaction.
+
+Whenever a good skill that would've been useful has been identified, please create it
+locally in this repository.
+
+> This Workflow block is mirrored verbatim in `AGENTS.md`. The two files are
+> independent (not symlinked), and a sync that only knows about one of them silently
+> deleted this section once already — keep both copies in step.
 
 # Project Instructions for AI Agents
 

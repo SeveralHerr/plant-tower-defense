@@ -1,5 +1,8 @@
 # todo
 
+**Cycle 2 of 30.** Bump this each time you refill the Items list. See the Workflow
+loop at the top of `CLAUDE.md` — when this list is done, refill it and start again.
+
 ## The brief (original)
 
 I have added a bunch of pictures to this repository as requirements for this game.
