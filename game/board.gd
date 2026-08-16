@@ -16,6 +16,23 @@ const COLS: int = 14
 const ROWS: int = 9
 
 ## Corners of the pests' route, in walk order. Expanded to one waypoint per cell.
+##
+## MOVING THIS SPENDS A BUDGET YOU CANNOT SEE FROM HERE. Three numbers in other
+## files were measured against the road these corners happen to produce, and
+## nothing recomputes them:
+##
+##   - WaveDirector.SIMULTANEOUS_PEST_CEILING (40) is reasoned from "32 road
+##     cells, 2112 px, about 3.5 pests per cell". A shorter road makes 40 more
+##     crowded than the reasoning intends; a longer one stops it biting.
+##   - the dead-ground count (15 of 94 cells).
+##   - the Sundew's coverage arithmetic, stated against how much road one
+##     placement reaches on THIS route.
+##
+## `python tools/devtools.py cmd board_info` prints the husk click budget, which
+## is the one that is NOT at risk here — it walks the route, but the walk yields
+## CELL/2 for any road, so the 4 px clearance is two constants. See
+## test_the_road_is_still_the_road_the_constants_were_measured_against, which
+## measures the route and fails naming what has to be re-derived.
 const PATH_CORNERS: Array[Vector2i] = [
 	Vector2i(0, 1),
 	Vector2i(9, 1),

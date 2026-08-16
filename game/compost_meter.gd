@@ -28,6 +28,18 @@ const HUSK_LIFETIME: float = 10.0
 ## valuable, and those two readings point the same way.
 const MIN_HUSK_LIFETIME: float = 4.5
 ## How close a click has to land to sweep a husk.
+##
+## THERE ARE 4 PIXELS OF HEADROOM ABOVE THIS AND NO MORE. The nearest the lane
+## ever comes to buildable ground is half a cell — 32 px — because Board.route()
+## is one point per road-cell centre and a centre cannot be closer than that to
+## a neighbouring cell's box. So 32 - 28 = 4 px is the entire clearance between
+## "this click sweeps a husk" and "this click places a plant", and at <= 0 the
+## two become genuinely ambiguous and PlacementPreview needs a husk state it
+## does not currently have.
+##
+## Raising this to 32 does not merely narrow the margin, it closes it.
+## `python tools/devtools.py cmd board_info` prints the subtraction with both
+## terms; PlacementPreview.husk_click_margin() is the gate.
 const COLLECT_RADIUS: float = 28.0
 
 ## The husk value range the game can actually produce: ceil(aphid 3 / 2) with no
