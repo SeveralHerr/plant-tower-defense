@@ -175,6 +175,56 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
 
 ## Cool new features (idea backlog)
 
+### New this cycle (10 of 30) — grown from the features above
+
+- **A husk eats the click that would have planted, and the preview has four states
+  that all say the ground is fine.** `CompostMeter.COLLECT_RADIUS` is 28, so a husk
+  claims a 56px-wide target on a 64px cell — 88% of it. `Game._click_at` sweeps a
+  husk *before* it reaches the placement branch and returns, so a click on a cell
+  the preview has just drawn as legal composts instead of planting. Meanwhile
+  `PlacementPreview` now computes four states — illegal, at-risk, dead ground,
+  redundant coverage — and mentions husks exactly zero times. The one thing that
+  can silently take the click is the one thing the ring cannot warn about.
+
+- **Two husks closer than 56px share a click, and `collect_at` quietly takes the
+  nearer one.** It scans for the nearest husk inside `COLLECT_RADIUS` and returns
+  its value; nothing marks which one went. Husks drop where pests die, and pests
+  die in clumps at whatever cell is doing the killing, so overlapping targets are
+  the normal case near a good cob rather than an edge case. The player sees one
+  husk vanish, one remain, and no reason for the choice.
+
+- **The clickable husk is three and a half times the size of the drawn one, and the
+  generosity is invisible.** `HuskLayer` draws a husk between `BASE_RADIUS` 8 and
+  `MAX_RADIUS` 15 by value, against a click radius of 28. That forgiveness is the
+  right call — but because nothing shows it, a player calibrates on the picture and
+  learns to click dead-centre, so the misses they do have are misses they did not
+  need to have. A faint reach ring on hover, or a hover highlight, would teach the
+  real rule in one run.
+
+- **Two palettes, one game, and the HUD's half is now the bigger one.**
+  `garden_theme.gd` states outright that it does not touch the in-game HUD, and
+  `hud.gd` re-declares INK, PAPER, PAPER_DARK and LEAF with identical values. That
+  was a fair split when the HUD had four colours. It has since grown UPROOT_ARMED,
+  THREAT_WARM, THREAT_HOT, HEALTH_BACK, HEALTH_FULL and HEALTH_LOW — six more, none
+  of which the title screen, the notebook or the post-mortem can reach, even though
+  the post-mortem is a paper card that would want the same red for "this cost you
+  something". The HUD only references GardenTheme at all for `animations_enabled()`.
+
+- **A husk's worth is drawn but never written, and the range is 2 to 9.**
+  `CompostMeter.BASE_VALUE` 2 to `FULL_VALUE` 9 is a 4.5x spread, encoded as size
+  and glow. Size and glow are good for "hurry", but they are a poor way to answer
+  "is this one worth crossing the board for" — and the run's post-mortem counts
+  compost swept with no denominator, so a player never learns afterwards what they
+  left to rot either. The number exists at every moment and is shown at none.
+
+- **The game has no difficulty setting, and every constant that would be one is a
+  `const`.** `LIVES` 10, `PREP_SECONDS` 18, `STARTING_SEEDS` 25, and
+  `WaveDirector.WAVES` is a literal table. `threat_level()` can price any wave, and
+  `set_seed()` exists but has only test callers — so the machinery to describe and
+  to vary difficulty is both present and unreachable. The campaign is one curve for
+  everyone, and the only choice on the title screen is whether it ever ends.
+
+
 ### New this cycle (9 of 30) — grown from the features above
 
 - **The run tells you it beat your record only if it kills you.** `Game._end_run` opens
