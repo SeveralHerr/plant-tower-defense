@@ -2029,3 +2029,37 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   claim of mine that the code contradicted. Neither needed a feature the harness lacks.
 
 - Harness: still **0.23.0** upstream (`65103b7`) and installed. No refresh.
+
+## 2026-08-16 — Prep depth readout (842), and the first live pass in several cycles
+
+- Value: **warranted** — the live sweep confirmed a change that had shipped headless-only,
+  and the run's real yield was a P1 bug found by reading rather than by any gate.
+  - Expected: the prep line was a HUD text change; I expected the risk to be width
+    overflow on `MessageLabel`, the failure mode that has bitten three times.
+  - Got: width was fine (measured through the resolved theme font against the real
+    `size.x`, with an `assert_gt(drawn, 1.0)` guard so the `clip_text` 1px stub cannot
+    make it pass unconditionally). `findings` returned **0 across 5 of 5 checks** — all
+    five ran, none skipped. Then two live reads confirmed `Plant_0` is
+    `corn_cobbler.png` and `Plant_3` is `sticky_sundew.png`, i.e. the duplicate cob is
+    really gone from the title lawn.
+  - Found: a P1 defect no gate could see — `_note_lane_loss` fires from `_on_pest_died`
+    as well as `_on_pest_escaped`, so `_run_losses` counts kills; `run_summary.gd:201`
+    then labels the highest-count cell "Weakest ground", reporting the player's best
+    chokepoint as their weakest ground every run. Inverted advice, filed as `dwv`.
+  - Cheaper: the headless gates alone would have committed this item just as safely.
+    The live pass earned its keep on the OTHER items — three cycles of commits had
+    landed without one, and `8f4256b` in particular was a visual change verified only
+    by measurement until now.
+
+- Note: this is the argument for a live sweep on a CADENCE rather than per-item. Per
+  item it is overkill nearly every time; across ten commits it is the only thing that
+  looks at the accumulated result. `findings` is one command and ~90s.
+
+- Gap: **no gaps this turn.** `findings` named its denominator without being asked,
+  which is exactly what makes a clean result readable.
+  - One usability note, not a gap: `find-nodes --class Hud` returned `no node in the
+    tree matched class Hud` while sitting on the title screen, which is correct and
+    still read as a failure for a moment. `scene-tree --depth 2` disambiguated it in
+    one call.
+
+- Harness: still **0.23.0**. No refresh.
