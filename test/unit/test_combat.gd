@@ -715,3 +715,226 @@ func test_the_sunflower_gauge_clears_the_health_bar_the_brackets_and_the_chew_ri
 		err = _T.assert_float_eq(Sunflower.gauge_fill_rect(0.0).position.y, Sunflower.GAUGE_BOTTOM, 0.0001,
 			"and an empty one is a zero-height line at the bottom, so the column grows upward")
 	return err
+
+
+# -- Regrowth: the answer to a hungry pest (plant-tower-defense-aoq) ----------
+#
+# Plant.take_damage was the only writer of `health` in the whole project, so a bed
+# a hungry pest chewed and did not finish was damaged for the rest of the run —
+# and since uproot_refund() started sliding with remaining health, it could not
+# even be scrapped back to par. Plant.REGROWTH_* is the answer, and it lives on
+# Plant rather than on a fifth catalogue plant.
+#
+# The load-bearing half of these is the pair that says what regrowth must NOT do.
+# A heal that saved a bed mid-bite would delete the mutation, so the first test
+# below drives a real hungry Pest against a real Plant and pins the time-to-death
+# at exactly what it was before any of this existed.
+
+
+func test_a_hungry_pest_eats_a_bed_in_exactly_the_time_it_always_did() -> String:
+	## The guard on the entire mechanic. A pest mid-meal calls take_damage() every
+	## physics frame and every one of those resets the quiet clock, so regrowth
+	## contributes zero for the whole meal. Driven through Pest._physics_process
+	## rather than through take_damage() directly, so it is the real eating path
+	## being timed and not a re-implementation of it.
+	var plant := Plant.new()
+	plant.setup(PlantCatalog.CORN, Vector2i(0, 0), null)
+	var beetle: Pest = _pest(Pest.BEETLE, Vector2(0, -Board.CELL))
+	beetle.apply_mutation(Pest.MUTATION_HUNGRY)
+	var host: Node2D = _host([plant, beetle])
+	await _T.instantiate_scene(host)
+	# Entering the tree turns physics processing back on for anything that defines
+	# _physics_process, so the settle frames have already fed the beetle. Both are
+	# switched off and the bed put back to full, so the steps below are the only
+	# time that passes and the only damage that lands.
+	beetle.set_physics_process(false)
+	plant.set_physics_process(false)
+	plant.health = Plant.MAX_HEALTH
+	plant._quiet_time = Plant.REGROWTH_DELAY
+
+	var eaten: Array[Plant] = []
+	plant.destroyed.connect(func(p: Plant) -> void: eaten.append(p))
+
+	var step: float = 1.0 / 60.0
+	var elapsed: float = 0.0
+	var guard: int = 0
+	while not plant.is_destroyed() and guard < 1200:
+		# Both halves of a real frame, in the order Plant._physics_process runs
+		# them: the bed tries to grow, the bug eats.
+		plant._regrow(step)
+		beetle._physics_process(step)
+		elapsed += step
+		guard += 1
+
+	var expected: float = Plant.seconds_to_be_eaten(Pest.EAT_DPS)
+	var err: String = _T.assert_true(plant.is_destroyed(),
+		"a hungry pest still destroys a bed with regrowth in the build")
+	if err == "":
+		err = _T.assert_float_eq(elapsed, expected, step * 2.0,
+			"and takes %.3fs to do it — the same %.3fs it took before regrowth existed"
+				% [elapsed, expected])
+	if err == "":
+		err = _T.assert_eq(eaten.size(), 1, "and says so exactly once")
+	if err == "":
+		err = _T.assert_float_eq(plant.seconds_until_regrowth(), Plant.REGROWTH_DELAY, 0.0001,
+			"the quiet clock never got off zero during the meal, which is why none of it grew back")
+	_T.free_ui(host)
+	return err
+
+
+func test_regrowth_could_not_out_heal_a_hungry_pest_even_if_it_were_never_gated() -> String:
+	## Belt and braces on the test above. That one asserts the DELAY does its job;
+	## this one asserts the RATE is chosen so that even a version of this mechanic
+	## with no delay at all would still lose the bed — so a future change that
+	## shortens or removes REGROWTH_DELAY cannot silently turn the mutation into a
+	## non-event, it has to fail here first.
+	var bare: float = Plant.seconds_to_be_eaten(Pest.EAT_DPS)
+	var err: String = _T.assert_true(bare < 3.0,
+		"a bed still dies in %.2fs, which is what the jaw marker warns about" % bare)
+	if err == "":
+		err = _T.assert_gt(Pest.EAT_DPS, Plant.REGROWTH_RATE * 8.0,
+			"a hungry pest out-eats regrowth by at least 8 to 1 (%.1f dps vs %.1f hp/s)"
+				% [Pest.EAT_DPS, Plant.REGROWTH_RATE])
+	if err == "":
+		var ungated: float = Plant.seconds_to_be_eaten(Pest.EAT_DPS - Plant.REGROWTH_RATE)
+		err = _T.assert_true(ungated < bare * 1.25,
+			"and an ungated heal would stretch the meal from %.2fs only to %.2fs, never survive it"
+				% [bare, ungated])
+	return err
+
+
+func test_a_chewed_bed_grows_back_on_its_own_once_nothing_is_biting_it() -> String:
+	## The mechanic doing what it says, driven through _physics_process on a real
+	## catalogue plant rather than through _regrow on the base class. That is the
+	## point of the test: `_act` is the hook every subclass overrides and none of
+	## them chain to super, so a heal wired into the wrong hook would exist on
+	## Plant and on nothing the player can actually plant.
+	var corn := CornCobbler.new()
+	corn.setup(PlantCatalog.CORN, Vector2i(0, 0), null)
+	var host: Node2D = _host([corn])
+	await _T.instantiate_scene(host)
+	corn.set_physics_process(false)
+	corn.health = Plant.MAX_HEALTH
+	corn._quiet_time = Plant.REGROWTH_DELAY
+
+	var half: float = Plant.MAX_HEALTH * 0.5
+	corn.take_damage(half)
+	var err: String = _T.assert_float_eq(corn.health, half, 0.0001, "half the bed is gone")
+	if err == "":
+		err = _T.assert_false(corn.is_regrowing(),
+			"and it is not growing back the same frame it was bitten")
+	if err == "":
+		err = _T.assert_float_eq(corn.seconds_until_regrowth(), Plant.REGROWTH_DELAY, 0.0001,
+			"the whole delay is owed again from the last bite")
+
+	var step: float = 1.0 / 60.0
+	if err == "":
+		for _i: int in range(int(Plant.REGROWTH_DELAY / step)):
+			corn._physics_process(step)
+		err = _T.assert_float_eq(corn.health, half, 0.05,
+			"nothing has grown back by the delay boundary — it read %.3f" % corn.health)
+	if err == "":
+		corn._physics_process(step)
+		err = _T.assert_true(corn.is_regrowing(),
+			"one frame past the delay and the bed is recovering")
+	if err == "":
+		err = _T.assert_gt(corn.health, half, "with health that has actually moved up")
+	if err == "":
+		# seconds_to_full_from() is what the panel would quote; run that long and
+		# the plant must actually be whole, or the readout is a lie.
+		var owed: float = Plant.seconds_to_full_from(half)
+		for _i: int in range(int(owed / step) + 2):
+			corn._physics_process(step)
+		err = _T.assert_float_eq(corn.health, Plant.MAX_HEALTH, 0.0001,
+			"and after the %.1fs it quoted, the bed is whole again" % owed)
+	if err == "":
+		err = _T.assert_false(corn.is_regrowing(), "a whole bed has stopped regrowing")
+	if err == "":
+		err = _T.assert_false(corn._health_back.visible,
+			"and puts its bar away again, the same way it kept it hidden before the first bite")
+	if err == "":
+		err = _T.assert_true(Plant.health_bar_color(true) != Plant.health_bar_color(false),
+			"a regrowing bar is a different colour from a hurt one — the only cue the mechanic has")
+	_T.free_ui(host)
+	return err
+
+
+func test_regrowth_only_counts_the_part_of_a_step_past_the_delay() -> String:
+	## The boundary, on the pure function. A step that straddles the threshold must
+	## grow its tail and not the whole of itself, or a single long frame (a devtools
+	## step-time, a stalled physics tick) hands back seconds the plant never waited.
+	var err: String = _T.assert_float_eq(Plant.regrowth_in_step(0.0, 1.0), 0.0, 0.0001,
+		"a step entirely inside the delay grows nothing")
+	if err == "":
+		err = _T.assert_float_eq(Plant.regrowth_in_step(Plant.REGROWTH_DELAY - 1.0, 1.0), 0.0, 0.0001,
+			"and one that ends exactly on the threshold still grows nothing")
+	if err == "":
+		err = _T.assert_float_eq(Plant.regrowth_in_step(Plant.REGROWTH_DELAY - 0.5, 2.0),
+			1.5 * Plant.REGROWTH_RATE, 0.0001,
+			"a 2s step straddling the threshold grows the 1.5s of itself that was past it, not all 2s")
+	if err == "":
+		err = _T.assert_float_eq(Plant.regrowth_in_step(Plant.REGROWTH_DELAY, 1.0),
+			Plant.REGROWTH_RATE, 0.0001,
+			"and a step entirely past it grows at the full rate")
+	if err == "":
+		err = _T.assert_float_eq(Plant.regrowth_in_step(Plant.REGROWTH_DELAY, 0.0), 0.0, 0.0001,
+			"a zero-length step grows nothing, however long the quiet has been")
+	if err == "":
+		# Sixty small steps and one big one describe the same second of quiet.
+		var lumped: float = Plant.regrowth_in_step(Plant.REGROWTH_DELAY, 1.0)
+		var split: float = 0.0
+		for _i: int in range(60):
+			split += Plant.regrowth_in_step(Plant.REGROWTH_DELAY, 1.0 / 60.0)
+		err = _T.assert_float_eq(split, lumped, 0.0001,
+			"and the rate does not depend on the frame rate (%.4f split vs %.4f lumped)" % [split, lumped])
+	return err
+
+
+func test_a_wrecked_bed_costs_more_than_one_quiet_gap_between_waves() -> String:
+	## The cost, stated against the clock the player actually experiences:
+	## Game.PREP_SECONDS is the gap between a cleared wave and the next one, and it
+	## is the only window in which nothing is biting. Regrowth is priced so one gap
+	## never buys a whole bed back — otherwise chewing a plant is free and the
+	## uproot-refund slope in Plant.uproot_refund() has nothing left to decide.
+	var one_gap: float = Plant.regrowth_in_step(0.0, Game.PREP_SECONDS)
+	var err: String = _T.assert_true(one_gap < Plant.MAX_HEALTH * 0.5,
+		"one clean %.0fs gap returns %.0f hp, under half of a %.0f hp bed"
+			% [Game.PREP_SECONDS, one_gap, Plant.MAX_HEALTH])
+	if err == "":
+		err = _T.assert_gt(one_gap, 0.0,
+			"but more than nothing, or the delay has swallowed the whole intermission")
+	if err == "":
+		err = _T.assert_gt(Plant.seconds_to_full_from(1.0), Game.PREP_SECONDS,
+			"a bed left at 1 hp needs longer than one gap (%.1fs vs %.0fs) to be whole"
+				% [Plant.seconds_to_full_from(1.0), Game.PREP_SECONDS])
+	if err == "":
+		err = _T.assert_true(Plant.seconds_to_full_from(1.0) < Game.PREP_SECONDS * 2.0,
+			"but not longer than two, or waiting is never the answer and this is decoration")
+	if err == "":
+		err = _T.assert_true(
+			Plant.seconds_to_full_from(1.0) > Plant.seconds_to_full_from(Plant.MAX_HEALTH * 0.5),
+			"and a wreck always costs more patience than a scratch")
+	if err == "":
+		err = _T.assert_float_eq(Plant.seconds_to_full_from(Plant.MAX_HEALTH), 0.0, 0.0001,
+			"a plant that was never bitten owes no wait at all")
+	return err
+
+
+func test_a_bed_that_was_eaten_never_grows_back_out_of_the_ground() -> String:
+	## The other end of the mechanic. Game frees the node on `destroyed`, so a
+	## resurrection would normally be unobservable — but a Plant sitting at 0 for
+	## even one extra frame before that lands must stay at 0, or "destroyed" becomes
+	## a state the plant can leave and every listener downstream is wrong.
+	var plant := Plant.new()
+	plant.setup(PlantCatalog.CORN, Vector2i(0, 0), null)
+	plant.take_damage(Plant.MAX_HEALTH)
+	var err: String = _T.assert_true(plant.is_destroyed(), "the bed is gone")
+	if err == "":
+		for _i: int in range(int((Plant.REGROWTH_DELAY + Plant.MAX_HEALTH / Plant.REGROWTH_RATE) * 60.0) + 60):
+			plant._regrow(1.0 / 60.0)
+		err = _T.assert_float_eq(plant.health, 0.0, 0.0001,
+			"and stays gone however long the board is quiet — it read %.3f" % plant.health)
+	if err == "":
+		err = _T.assert_false(plant.is_regrowing(), "a destroyed plant is never 'recovering'")
+	plant.free()
+	return err

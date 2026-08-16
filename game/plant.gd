@@ -12,6 +12,50 @@ extends Node2D
 ## run; the bar only appears once they do, same as a pest's.
 const MAX_HEALTH: float = 40.0
 
+## How long a plant has to go unbitten before it starts putting health back on,
+## and how fast it does so once it has.
+##
+## Regrowth is the catalogue's answer to a hungry pest, and it deliberately lives
+## here rather than on a fifth plant. Every entry in PlantCatalog either damages a
+## pest (Corn, Chomp), funds the ones that do (Sunflower) or slows them (Sundew),
+## and none of those repair a bed — a chewed plant's health only ever went down,
+## for the whole rest of the run. That made "a hungry pest reached my Corn" a
+## permanent loss the player could not respond to in any way, and since
+## uproot_refund() started sliding with remaining health it was a loss they could
+## not even scrap their way out of.
+##
+## The two numbers are chosen against the two clocks that already exist:
+##
+##   * REGROWTH_DELAY is measured against Pest.EAT_DPS. A hungry pest calls
+##     take_damage() every physics frame while it is eating, and every one of
+##     those resets the clock below — so regrowth contributes exactly nothing to a
+##     bed that is under attack right now. A full plant still dies in
+##     MAX_HEALTH / Pest.EAT_DPS = 2.86s if the player does nothing, which is the
+##     same 2.86s it took before this existed. The mutation still takes beds; it
+##     just no longer takes them forever.
+##   * REGROWTH_RATE is measured against Game.PREP_SECONDS (18s, the gap between
+##     a cleared wave and the next one). One clean intermission is
+##     18 - 6 = 12 seconds of growing, i.e. 18hp, i.e. 45% of a bed. So a lightly
+##     chewed plant is whole again by the next wave, a half-eaten one is not quite
+##     (19.3s, just over one gap), and a wreck at 1hp needs 32s — closer to two.
+##     That gradient is the decision: uprooting a wrecked Corn Cobbler refunds 2
+##     against a 10-seed replant and loses its upgrade level, so the player is now
+##     choosing between ~8 seeds now and ~30 seconds of patience. Before this,
+##     patience bought nothing and the choice did not exist.
+##
+## Deliberately NOT enough to protect a bed mid-bite: Pest.EAT_DPS out-eats this
+## by more than 9 to 1, so even a hypothetical ungated version would only stretch
+## 2.86s to 3.19s. Protecting a plant while it is actually being eaten is a
+## different mechanic and is not this one.
+const REGROWTH_DELAY: float = 6.0
+const REGROWTH_RATE: float = 1.5
+
+## The in-world bar's two colours. Red is the bar that was always there; green is
+## the only cue the player gets that regrowth is a thing the game does, so it is
+## on the readout they are already looking at rather than on a new one.
+const HEALTH_BAR_HURT := Color(0.85, 0.25, 0.22)
+const HEALTH_BAR_REGROWING := Color(0.36, 0.70, 0.34)
+
 signal destroyed(plant: Plant)
 
 var kind: StringName = &""
@@ -25,6 +69,11 @@ var _selected: bool = false
 var _health_back: ColorRect = null
 var _health_bar: ColorRect = null
 var _selection_marker: SelectionMarker = null
+## Seconds since the last bite, capped at REGROWTH_DELAY. Capped rather than left
+## to climb because nothing past the threshold reads it — regrowth_in_step() only
+## cares how much of the step is past the delay — and an uncapped float would
+## quietly lose precision over a long endless run for no benefit at all.
+var _quiet_time: float = REGROWTH_DELAY
 
 
 func setup(id: StringName, at: Vector2i, on_board: Board) -> void:
@@ -51,7 +100,7 @@ func _build_visuals() -> void:
 	add_child(_health_back)
 
 	_health_bar = ColorRect.new()
-	_health_bar.color = Color(0.85, 0.25, 0.22)
+	_health_bar.color = HEALTH_BAR_HURT
 	_health_bar.position = Vector2(-16, -34)
 	_health_bar.size = Vector2(32, 5)
 	_health_bar.visible = false
@@ -78,8 +127,75 @@ func _on_setup() -> void:
 	pass
 
 
+## Regrowth runs here rather than in `_act()` on purpose: `_act` is the hook every
+## subclass overrides, and not one of them chains to super, so a heal written
+## there would exist on the base class and on nothing the player can actually
+## plant. Same trap SelectionMarker's header describes for `_draw`.
 func _physics_process(delta: float) -> void:
+	_regrow(delta)
 	_act(delta, _live_pests())
+
+
+## One step of recovery. A destroyed plant never comes back — Game frees the node
+## on `destroyed`, but the guard is here anyway so a plant that hits 0 in the same
+## frame something else is iterating cannot be resurrected by the next tick.
+func _regrow(delta: float) -> void:
+	if delta <= 0.0:
+		return
+	var gained: float = 0.0
+	if not is_destroyed() and health < MAX_HEALTH:
+		gained = regrowth_in_step(_quiet_time, delta)
+	_quiet_time = minf(_quiet_time + delta, REGROWTH_DELAY)
+	if gained <= 0.0:
+		return
+	health = minf(MAX_HEALTH, health + gained)
+	_refresh_health_bar()
+
+
+## Pure: hp put back during a `delta`-second step that begins `quiet_before`
+## seconds after the last bite.
+##
+## Only the part of the step past REGROWTH_DELAY counts, so a step straddling the
+## threshold grows its tail and not the whole of itself. That matters more than it
+## looks: without it, a 5-second devtools `step-time` landing one frame after the
+## delay would hand back 5 seconds of growth the plant had not earned, and the
+## boundary test below would pass on a mechanic that cheats at low frame rates.
+static func regrowth_in_step(quiet_before: float, delta: float) -> float:
+	if delta <= 0.0:
+		return 0.0
+	var growing: float = minf(delta, maxf(0.0, quiet_before + delta - REGROWTH_DELAY))
+	return growing * REGROWTH_RATE
+
+
+## Pure: how long a plant sitting at `from_health` needs to be whole again, with
+## nothing biting it in the meantime. Includes the delay, because the delay is
+## part of what the player is waiting out. 0.0 for a plant that is already whole.
+static func seconds_to_full_from(from_health: float) -> float:
+	var missing: float = clampf(MAX_HEALTH - from_health, 0.0, MAX_HEALTH)
+	if missing <= 0.0:
+		return 0.0
+	return REGROWTH_DELAY + missing / REGROWTH_RATE
+
+
+## Pure: how long a full-health bed lasts against something chewing it at `dps`.
+## Takes the rate as an argument rather than reading Pest.EAT_DPS so this file
+## stays ignorant of Pest — and so the test that pins "regrowth does not save a
+## bed under attack" has to name the number it is comparing against.
+static func seconds_to_be_eaten(dps: float) -> float:
+	if dps <= 0.0:
+		return INF
+	return MAX_HEALTH / dps
+
+
+## Whether this plant is currently putting health back on. What the bar's colour
+## follows, and what a readout would ask.
+func is_regrowing() -> bool:
+	return not is_destroyed() and health < MAX_HEALTH and _quiet_time >= REGROWTH_DELAY
+
+
+## Seconds of quiet still owed before regrowth starts; 0.0 once it has started.
+func seconds_until_regrowth() -> float:
+	return maxf(0.0, REGROWTH_DELAY - _quiet_time)
 
 
 func _act(_delta: float, _pests: Array[Pest]) -> void:
@@ -141,6 +257,12 @@ const MIN_UPROOT_REFUND: int = 1
 ## number live (Hud._refresh_selection, refreshed by Game._watch_selected_health)
 ## and a number that slides as the plant is eaten reads as a consequence; one that
 ## jumps at a threshold reads as a bug.
+##
+## Regrowth (see REGROWTH_RATE) is what turns this slope into a choice rather than
+## a tax. Scrapping a wrecked Corn Cobbler is 2 back against a 10-seed replant and
+## the loss of its upgrade level; leaving it standing is free and takes ~32s. The
+## refund is the price of not waiting, which is only a price now that waiting
+## works.
 func uproot_refund() -> int:
 	var fraction: float = clampf(health / MAX_HEALTH, 0.0, 1.0)
 	var rate: float = UPROOT_RATE_WRECK + (UPROOT_RATE_FULL - UPROOT_RATE_WRECK) * fraction
@@ -160,12 +282,35 @@ func take_damage(amount: float) -> void:
 	# and a bar the player is not looking at is not a warning.
 	if amount > 0.0:
 		Sfx.play(Sfx.PLANT_BITTEN)
-	if _health_back != null:
-		_health_back.visible = true
-		_health_bar.visible = true
-		_health_bar.size = Vector2(32.0 * (health / MAX_HEALTH), 5)
+		# THE line that keeps regrowth out of a fight. A pest mid-meal calls this
+		# every frame, so the quiet clock never leaves zero while it is eating and
+		# regrowth_in_step() therefore returns zero for every one of those frames.
+		# A 0-damage call is not a bite and does not reset it.
+		_quiet_time = 0.0
+	_refresh_health_bar()
 	if health <= 0.0:
 		destroyed.emit(self)
+
+
+## The in-world bar, for both directions. It hides itself again once the plant is
+## whole, which is the same rule that kept it hidden before the first bite: a full
+## bar is not a warning, and leaving one painted over a recovered bed would make
+## regrowth look like it had not happened.
+func _refresh_health_bar() -> void:
+	if _health_back == null or _health_bar == null:
+		return
+	var fraction: float = clampf(health / MAX_HEALTH, 0.0, 1.0)
+	var whole: bool = fraction >= 1.0
+	_health_back.visible = not whole
+	_health_bar.visible = not whole
+	_health_bar.size = Vector2(32.0 * fraction, 5)
+	_health_bar.color = health_bar_color(is_regrowing())
+
+
+## Pure: which colour the bar wears. Split out so the cue is assertable without a
+## viewport — the bar is a ColorRect child, so nothing else about it is.
+static func health_bar_color(regrowing: bool) -> Color:
+	return HEALTH_BAR_REGROWING if regrowing else HEALTH_BAR_HURT
 
 
 func is_destroyed() -> bool:
