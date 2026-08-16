@@ -5176,6 +5176,285 @@ func test_the_notebook_over_a_pause_is_not_frozen_by_the_pause_that_owns_it() ->
 	return err
 
 
+# -- The Keys screen, from inside a run (plant-tower-defense-ac0) ------------
+#
+# KeyBindingScreen was built in exactly one place -- TitleScreen._open_keys --
+# so the player who most wants to move a key, the one who just pressed the
+# wrong one mid-run, had to throw the run away to reach it. The pause card is
+# its second door, which puts it behind get_tree().paused and into the same
+# Escape collision the notebook is in, and grows the card that opens it.
+
+
+## Opens it the way a player does -- through the button's own signal. Calling
+## PauseScreen._open_keys() directly would pass just as happily with nothing wired
+## to the button, which is the failure this whole issue is.
+func _open_pause_keys(screen: PauseScreen) -> String:
+	var button: Button = screen.get_node_or_null("KeysButton") as Button
+	var err: String = _T.assert_true(button != null,
+		"the pause card offers a way into the keys screen")
+	if err == "":
+		err = _T.assert_false(button.disabled, "and the way in is not disabled")
+	if err == "":
+		err = _T.assert_true(button.size.x >= 40.0 and button.size.y >= 40.0,
+			"and it is a real touch target, got %s" % button.size)
+	if err == "":
+		button.pressed.emit()
+	return err
+
+
+func test_the_keys_screen_opens_from_the_pause_card_and_the_run_stays_held() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	# Guarded against a vacuous pass: the loops below walk this table, and an empty
+	# one would report a confident green over a card with no buttons at all.
+	var err: String = _T.assert_gt(PauseScreen.BUTTONS.size(), 0, "the card has buttons to press")
+	if err == "":
+		err = _T.assert_gt(KeyBindings.actions().size(), 0, "and there are verbs to rebind")
+	if err == "":
+		game.pause_run()
+		await _pump(game)
+		err = _T.assert_true(game.is_paused(), "the run is held before the keys screen is asked for")
+	var screen := game.get_node_or_null("PauseLayer/PauseScreen") as PauseScreen
+	if err == "":
+		err = _T.assert_true(screen != null, "and the pause card is up")
+	# The button emits `keys_requested` and this screen answers it itself, the same
+	# arrangement NotebookButton has. Watched here so the table row and the handler
+	# are asserted separately: a button wired straight to _open_keys would still
+	# open the screen while leaving the declared signal dead.
+	var asked: Array[bool] = [false]
+	if err == "":
+		screen.keys_requested.connect(func() -> void: asked[0] = true)
+		err = _open_pause_keys(screen)
+	if err == "":
+		err = _T.assert_true(asked[0], "the button asks for the keys screen by signal")
+	if err == "":
+		await _pump(game)
+		err = _T.assert_true(screen.keys_open(), "pressing the button opens the keys screen")
+	var keys: KeyBindingScreen = null
+	if err == "":
+		keys = screen.get_node_or_null(KeyBindingScreen.NODE_NAME) as KeyBindingScreen
+		err = _T.assert_true(keys != null,
+			"and it is really on the card, not merely flagged open")
+	if err == "":
+		err = _T.assert_true(game.is_paused(), "and the run is STILL held with it open")
+	if err == "":
+		# Stated, not inherited. It resolves to ALWAYS today because the card is
+		# ALWAYS; the day this is reparented to a CanvasLayer for z-order, INHERIT
+		# would silently freeze it -- a rebinding screen with dead buttons over a game
+		# the player cannot get back to.
+		err = _T.assert_eq(keys.process_mode, Node.PROCESS_MODE_ALWAYS,
+			"the keys screen runs while the tree it was opened from is paused")
+	if err == "":
+		# The declaration is one thing; this is the engine agreeing, while the tree
+		# really is paused.
+		err = _T.assert_true(keys.can_process(), "and the engine agrees it still processes")
+	if err == "":
+		for node_name: String in ["BackButton", "ResetButton", "RowButton0"]:
+			var b: Button = keys.get_node_or_null(node_name) as Button
+			err = _T.assert_true(b != null and not b.disabled,
+				"%s is present and clickable while paused" % node_name)
+			if err == "":
+				err = _T.assert_true(b.can_process(), "%s is not frozen by the pause" % node_name)
+			if err != "":
+				break
+	if err == "":
+		# One overlay at a time, and the SECOND overlay is the half only two of them
+		# can be wrong about: the notebook must not open on top of it either.
+		err = _open_pause_keys(screen)
+		if err == "":
+			await _pump(game)
+			err = _T.assert_eq(screen.get_children().filter(
+				func(child: Node) -> bool: return child is KeyBindingScreen).size(), 1,
+				"pressing it twice does not stack two keys screens")
+	if err == "":
+		screen._open_notebook()
+		await _pump(game)
+		err = _T.assert_false(screen.notebook_open(),
+			"and the notebook cannot open on top of the keys screen")
+	game.resume_run()
+	await _pump(game)
+	_T.free_ui(game)
+	return err
+
+
+## Escape is answered by BOTH screens: KeyBindingScreen._input emits
+## back_requested, PauseScreen._input emits resume_requested. Unresolved, one
+## keystroke closes the keys screen AND drops the player onto a live board.
+##
+## Driven by calling the two handlers directly, in the order the engine would,
+## because that ordering is the thing under test -- and because pumping a frame
+## between them hides the mid-event close entirely.
+func test_escape_in_the_keys_screen_closes_it_without_unpausing_the_run() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.pause_run()
+	await _pump(game)
+	var screen := game.get_node_or_null("PauseLayer/PauseScreen") as PauseScreen
+	var err: String = _T.assert_true(screen != null, "the pause card is up")
+	if err == "":
+		err = _open_pause_keys(screen)
+	if err == "":
+		await _pump(game)
+		err = _T.assert_true(screen.keys_open(), "the keys screen is open")
+	if err == "":
+		var keys := screen.get_node(KeyBindingScreen.NODE_NAME) as KeyBindingScreen
+		keys._input(_key_press(KEY_ESCAPE))
+		screen._input(_key_press(KEY_ESCAPE))
+		err = _T.assert_true(game.is_paused(),
+			"the card declines the Escape the keys screen just answered, rather than "
+				+ "resuming the run behind it in the same keystroke")
+	if err == "":
+		await _pump(game)
+		err = _T.assert_false(screen.keys_open(), "and the Escape did close the keys screen")
+	if err == "":
+		err = _T.assert_true(game.is_paused(), "with the run still held once it is gone")
+	if err == "":
+		# The half tree order does not cover: P is a resume key the keys screen does
+		# not handle at all, so with it up P would reach the card unopposed.
+		err = _open_pause_keys(screen)
+		if err == "":
+			await _pump(game)
+			screen._input(_key_press(KEY_P))
+			err = _T.assert_true(game.is_paused(), "P over an open keys screen does not unpause")
+		if err == "":
+			err = _T.assert_true(screen.keys_open(), "and leaves the keys screen where it was")
+	if err == "":
+		# And with nothing over it the card's own Escape still works -- or the guard
+		# above would pass by breaking the pause menu, with every assertion still green.
+		(screen.get_node(KeyBindingScreen.NODE_NAME) as KeyBindingScreen)._input(_key_press(KEY_ESCAPE))
+		await _pump(game)
+		err = _T.assert_false(screen.keys_open(), "the keys screen is out of the way again")
+		if err == "":
+			err = _T.assert_eq((screen.get_node("ResumeButton") as Button).focus_mode,
+				Control.FOCUS_ALL, "and the card behind it takes focus again")
+		if err == "":
+			screen._input(_key_press(KEY_ESCAPE))
+			await _pump(game)
+			err = _T.assert_false(game.is_paused(), "Escape on the bare pause card still resumes")
+	game.resume_run()
+	await _pump(game)
+	_T.free_ui(game)
+	return err
+
+
+## The legend this card draws is built once, from the table Game handed it at
+## construction. Until the Keys button existed nothing could move a binding while
+## the card was alive; now the button directly above the legend can. Without a
+## redraw a player rebinds pause, closes the screen, and reads a row still naming
+## the old key -- on the one screen whose job is to say what the keys are.
+##
+## Every field this touches is process-global (RunConfig loads the developer's own
+## save at startup), so the save path, the stored bindings and the InputMap are all
+## stashed and put back.
+func test_rebinding_from_the_pause_card_redraws_the_legend_under_it() -> String:
+	var stashed_path: String = RunConfig.save_path
+	var stashed_bindings: Dictionary = RunConfig.key_bindings
+	var stashed_status: String = RunConfig.load_status
+	var path := "user://test_selftest_pause_rebind.save"
+	RunConfig.save_path = path
+	KeyBindings.reset_all()
+
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.pause_run()
+	await _pump(game)
+	var screen := game.get_node_or_null("PauseLayer/PauseScreen") as PauseScreen
+	var err: String = _T.assert_true(screen != null, "the pause card is up")
+	# Which legend row carries the verb about to move. Found by action rather than
+	# assumed to be row 0: key_help() is KeyBindings' run-scope table and reordering
+	# it must not quietly turn this into a test of a different row.
+	var index: int = -1
+	if err == "":
+		var help: Array[Dictionary] = Game.key_help()
+		err = _T.assert_gt(help.size(), 0, "the legend has rows")
+		if err == "":
+			for i: int in range(help.size()):
+				if StringName(help[i]["action"]) == KeyBindings.ACTION_MUTE_SFX:
+					index = i
+					break
+			err = _T.assert_gt(index, -1, "and the verb being moved is one of them")
+	var row: Label = null
+	if err == "":
+		row = screen.get_node_or_null("KeyRow%d" % index) as Label
+		err = _T.assert_true(row != null, "the legend row is on the card")
+	if err == "":
+		err = _T.assert_true(row.text.contains("M"),
+			"and it starts on the shipped key, got: %s" % row.text)
+	if err == "":
+		err = _open_pause_keys(screen)
+	if err == "":
+		await _pump(game)
+		err = _T.assert_true(screen.keys_open(), "the keys screen is open over it")
+	if err == "":
+		# Through the screen's own row button and capture, not KeyBindings directly:
+		# the claim is that a rebinding a PLAYER can perform reaches the legend.
+		var keys := screen.get_node(KeyBindingScreen.NODE_NAME) as KeyBindingScreen
+		keys.listen_for(KeyBindings.ACTION_MUTE_SFX)
+		err = _T.assert_true(keys.capture(KEY_F7), "F7 is free, so the rebinding takes")
+		if err == "":
+			(keys.get_node("BackButton") as Button).pressed.emit()
+			await _pump(game)
+			err = _T.assert_false(screen.keys_open(), "and Back closes it")
+	if err == "":
+		err = _T.assert_true(row.text.contains("F7"),
+			"the legend under it now names the new key, got: %s" % row.text)
+	if err == "":
+		err = _T.assert_false(row.text.contains("M   "),
+			"and no longer the old one, got: %s" % row.text)
+	if err == "":
+		err = _T.assert_true(game.is_paused(), "with the run still held throughout")
+
+	game.resume_run()
+	await _pump(game)
+	_T.free_ui(game)
+	# apply_overrides, not reset_all: the InputMap is process-global and this suite
+	# has tests that read it, so putting back the DEFAULTS would be a different
+	# state from the one this test found -- for a developer whose own save moves a
+	# key, silently so.
+	KeyBindings.apply_overrides(stashed_bindings)
+	RunConfig.save_path = stashed_path
+	RunConfig.key_bindings = stashed_bindings
+	RunConfig.load_status = stashed_status
+	for suffix: String in ["", ".tmp", ".bak"]:
+		if FileAccess.file_exists(path + suffix):
+			DirAccess.remove_absolute(path + suffix)
+	return err
+
+
+## The card's TOP is derived now, not just its height. A hand-picked 140 left six
+## pixels of slack under a 648-tall viewport, which is exactly why the keys screen
+## could not live here: one more button overflowed it. Centring means the card
+## absorbs half of every button it gains, and this is the assertion that says so
+## rather than a comment claiming it.
+func test_the_pause_card_centres_itself_and_fits_a_real_viewport() -> String:
+	var height: int = ProjectSettings.get_setting("display/window/size/viewport_height", 648)
+	var rect: Rect2 = PauseScreen.card_rect()
+	var err: String = _T.assert_gt(PauseScreen.card_height(), 0.0, "the card has a height to place")
+	if err == "":
+		# The rect's top IS card_top(), not a second copy of the same arithmetic --
+		# a card_rect that placed the paper somewhere card_top() does not agree with
+		# would put every derived assertion below on the wrong box.
+		err = _T.assert_eq(rect.position.y, PauseScreen.card_top(),
+			"card_rect places the paper where card_top says it goes")
+	if err == "":
+		err = _T.assert_true(rect.position.y >= 0.0,
+			"the card's heading is not off the top, at %.0f" % rect.position.y)
+	if err == "":
+		err = _T.assert_true(rect.position.y + rect.size.y <= float(height),
+			"and its foot at %.0f fits a %d-tall viewport" % [rect.position.y + rect.size.y, height])
+	if err == "":
+		# Centred, not merely fitting: the slack above and below must match, or the
+		# next button added spends whichever side happens to be smaller.
+		var above: float = rect.position.y
+		var below: float = float(height) - (rect.position.y + rect.size.y)
+		err = _T.assert_true(absf(above - below) <= 1.0,
+			"the card is centred: %.0f above, %.0f below" % [above, below])
+	if err == "":
+		# The real claim, and the one the old constant could not make: another button
+		# has to MOVE the card, not overflow it.
+		var grown: float = PauseScreen.card_height() + PauseScreen.BUTTON_SIZE.y + PauseScreen.BUTTON_GAP
+		err = _T.assert_true(grown <= float(height),
+			"a sixth button would need %.0f of %d, and the derived top can still give it" % [grown, height])
+	return err
+
+
 ## The subheading counts itself from PAGES, so its text grows as pages are added
 ## — and its box is the full panel width while its bottom edge sits 5px below
 ## PANE_LABEL_Y. That means the two pane labels are held off it by nothing but

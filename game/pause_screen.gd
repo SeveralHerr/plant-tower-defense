@@ -35,9 +35,14 @@ signal gate_requested
 ## below stays uniform (every row is a name, a label and a signal) and Game does
 ## not have to know the notebook exists to let a player read it.
 signal notebook_requested
+## Same arrangement for the Keys screen: a reader-and-editor over this card, not a
+## change to the run, so Game would only hand it straight back.
+signal keys_requested
 
 ## The Designer's Notebook, while it covers this card. Null the rest of the time.
 var _notebook: NotebookScreen = null
+## The Keys screen, while it covers this card. Null the rest of the time.
+var _keys_screen: KeyBindingScreen = null
 ## Every button on the card, so the whole row block can be made inert under an
 ## overlay without naming them one at a time. Filled by _build_buttons().
 var _buttons: Array[Button] = []
@@ -55,8 +60,20 @@ var _buttons: Array[Button] = []
 ##
 ## Not "the same geometry as the post-mortem" either, whatever this header used to
 ## claim: RunSummary.CARD is 640x456 and this one is not.
+##
+## The TOP is derived now as well, for the same reason one edge further up. It was
+## a hand-picked 140, and with four buttons and five key rows the card footed at
+## 642 in a 648-tall viewport -- six pixels of slack. That is what made
+## KeyBindingScreen unreachable from a run: its own header said a fifth button
+## "grows it past the bottom of the viewport", and it did, but only because the top
+## was pinned where the height was not. Centred, the card absorbs half of every row
+## or button it gains, and CARD_MIN_TOP is the floor where it stops being able to.
 const CARD_WIDTH: float = 320.0
-const CARD_TOP: float = 140.0
+## Never higher than this, whatever the arithmetic says. A card taller than the
+## viewport should hang off the bottom where the next thing added to it is visibly
+## missing, rather than slide its heading off the top where the player cannot even
+## tell which screen they are on.
+const CARD_MIN_TOP: float = 24.0
 const CARD_X: float = 288.0
 const CARD_FOOT_PADDING: float = 24.0
 ## Gap between the last button and the key list. The list's own offset is derived
@@ -87,14 +104,25 @@ const RISE_OFFSET: float = 26.0
 var _closing: bool = false
 
 
-## The card, sized to whatever it actually contains.
+## The card, sized to whatever it actually contains and placed from that size.
 static func card_rect() -> Rect2:
-	return Rect2(CARD_X, CARD_TOP, CARD_WIDTH, content_height() + CARD_FOOT_PADDING)
+	return Rect2(CARD_X, card_top(), CARD_WIDTH, card_height())
 
 
 ## Card-local y at which the last thing on the card ends.
 static func content_height() -> float:
 	return key_list_offset() + float(key_row_count()) * KEY_ROW_HEIGHT
+
+
+## The whole card, content plus the paper below it.
+static func card_height() -> float:
+	return content_height() + CARD_FOOT_PADDING
+
+
+## Top edge: centred on the viewport, floored at CARD_MIN_TOP. Derived, so a button
+## or a key row added to the card costs it half the pixels it used to.
+static func card_top() -> float:
+	return maxf(CARD_MIN_TOP, (float(_viewport_height()) - card_height()) / 2.0)
 
 
 ## How many key rows the card will draw. Static so card_rect() can size for them
@@ -127,9 +155,16 @@ const BUTTON_GAP: float = 12.0
 ## the run away. Its label is the notebook's own heading rather than a promise the
 ## content does not keep: the five pages are about the drawings the game came from,
 ## so "Help" or "How to play" would be a lie told by a button.
+##
+## KeysButton sits third for the same reason and is directly under the legend it
+## edits: the rows below this block say what each key does, and this is the button
+## that moves one. Its label is the screen's own heading, same rule as the
+## notebook's. It was reachable only from the title screen, which meant the player
+## who had just pressed the wrong key mid-run had to abandon the run to move it.
 const BUTTONS: Array[Dictionary] = [
 	{"name": "ResumeButton", "text": "Back to the garden", "signal": "resume_requested"},
 	{"name": "NotebookButton", "text": "Designer's Notebook", "signal": "notebook_requested"},
+	{"name": "KeysButton", "text": "Keys", "signal": "keys_requested"},
 	{"name": "RestartButton", "text": "Start over", "signal": "restart_requested"},
 	{"name": "GateButton", "text": "Back to the gate", "signal": "gate_requested"},
 ]
@@ -202,6 +237,7 @@ func _ready() -> void:
 	# not a change to the run, and nothing in Game would do anything with it except
 	# hand it straight back.
 	notebook_requested.connect(_open_notebook)
+	keys_requested.connect(_open_keys)
 
 	if GardenTheme.animations_enabled():
 		_play_entrance()
@@ -237,7 +273,7 @@ func _build_key_list() -> void:
 		var row: Dictionary = _keys[i]
 		var label := Label.new()
 		label.name = "KeyRow%d" % i
-		label.text = "%s   %s" % [String(row["keys"]), String(row["does"])]
+		label.text = _key_row_text(row)
 		label.position = Vector2(card_rect().position.x + 28.0, y)
 		label.size = Vector2(card_rect().size.x - 56.0, KEY_ROW_HEIGHT)
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -302,7 +338,9 @@ func _input(event: InputEvent) -> void:
 	# let it through to unpause the run it is sitting on top of.
 	#
 	# The guard only works because _close_notebook is deferred; see _open_notebook.
-	if notebook_open():
+	# It asks about EITHER overlay: the keys screen is the second one, it answers
+	# Escape the same way, and it does not look at P at all either.
+	if overlay_open():
 		return
 	# Both shapes a verb can arrive in — see Game._unhandled_input for why the
 	# InputEventKey-only narrowing that used to be here made the close key
@@ -327,6 +365,19 @@ func notebook_open() -> bool:
 	return _notebook != null and is_instance_valid(_notebook)
 
 
+## True while the keys screen covers this card.
+func keys_open() -> bool:
+	return _keys_screen != null and is_instance_valid(_keys_screen)
+
+
+## True while EITHER overlay covers this card. One shared guard rather than two,
+## matching TitleScreen.overlay_open for the same reason: two independent "is mine
+## open" checks would happily stack the keys screen on the notebook, leaving the
+## notebook underneath still eating Escape.
+func overlay_open() -> bool:
+	return notebook_open() or keys_open()
+
+
 ## The Designer's Notebook, over the pause card.
 ##
 ## Built here rather than in Game because pause is the only surface a player can
@@ -349,7 +400,7 @@ func notebook_open() -> bool:
 ## notebook is still open for the whole of that event's propagation and shuts at the
 ## end of the frame instead.
 func _open_notebook() -> void:
-	if notebook_open():
+	if overlay_open():
 		return
 	_notebook = NotebookScreen.new()
 	_notebook.name = "Notebook"
@@ -376,6 +427,69 @@ func _close_notebook() -> void:
 		button.grab_focus()
 
 
+## The Keys screen, over the pause card.
+##
+## This is the door the title screen's copy could not be: the player who wants to
+## move a key is the one who just pressed the wrong one, and reaching the title
+## screen from there meant throwing the run away first.
+##
+## Everything structural about the overlay -- its name, its process mode -- comes
+## from KeyBindingScreen.build(), so this card and the title menu cannot end up
+## opening two different versions of it.
+##
+## CONNECT_DEFERRED for the same reason _open_notebook uses it, and it is not
+## optional here: back_requested is emitted from inside KeyBindingScreen._input,
+## so a direct connection would null `_keys_screen` DURING the very Escape the
+## guard in _input has to refuse -- this card would look, see nothing in the way,
+## and resume the run out from under the screen the player just closed.
+func _open_keys() -> void:
+	if overlay_open():
+		return
+	_keys_screen = KeyBindingScreen.build()
+	_keys_screen.back_requested.connect(_close_keys, CONNECT_DEFERRED)
+	add_child(_keys_screen)
+	_set_card_active(false)
+
+
+## Back to the card, with the run still held -- and with the legend redrawn.
+##
+## The redraw is the part that is easy to leave out. This card's key rows are built
+## once from the table Game handed it at construction, and until now nothing could
+## change a binding while the card existed. Now the button directly above the
+## legend can, so without this a player rebinds pause to K, closes the screen, and
+## reads a row still telling them it is Esc -- on the one screen in the game whose
+## whole job is to say what the keys are.
+func _close_keys() -> void:
+	if keys_open():
+		_keys_screen.queue_free()
+	_keys_screen = null
+	_refresh_key_list()
+	_set_card_active(true)
+	var button: Button = get_node_or_null("KeysButton") as Button
+	if button != null:
+		button.grab_focus()
+
+
+## Re-reads the legend from Game rather than from anything this screen kept. The
+## row COUNT cannot change at runtime -- it is KeyBindings' run-scope table, which
+## is a const -- so this rewrites the labels in place rather than re-laying out a
+## card whose height is already derived from that same count.
+func _refresh_key_list() -> void:
+	_keys = Game.key_help()
+	for i: int in range(_keys.size()):
+		var label: Label = get_node_or_null("KeyRow%d" % i) as Label
+		if label == null:
+			continue
+		label.text = _key_row_text(_keys[i])
+
+
+## One legend row, written in exactly one place. Built and refreshed by two
+## different methods, and two copies of this format string is how the redraw ends
+## up subtly unlike the row it replaces.
+static func _key_row_text(row: Dictionary) -> String:
+	return "%s   %s" % [String(row["keys"]), String(row["does"])]
+
+
 ## Nothing under the notebook may still be live.
 ##
 ## The overlay's Backdrop is a MOUSE_FILTER_STOP ColorRect, so these buttons
@@ -392,9 +506,11 @@ func _set_card_active(active: bool) -> void:
 		button.mouse_filter = filter
 
 
-func _viewport_width() -> int:
+## Static, because card_top() is: the card's own placement now depends on how tall
+## the window is, and card_rect() has to answer that before any instance exists.
+static func _viewport_width() -> int:
 	return ProjectSettings.get_setting("display/window/size/viewport_width", 1152)
 
 
-func _viewport_height() -> int:
+static func _viewport_height() -> int:
 	return ProjectSettings.get_setting("display/window/size/viewport_height", 648)

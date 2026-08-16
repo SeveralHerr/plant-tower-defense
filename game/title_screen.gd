@@ -463,11 +463,16 @@ func _close_notebook() -> void:
 ## The keys screen, same overlay contract as the notebook: one at a time, the menu
 ## behind it goes inert, and it is closed by its own signal rather than by knowing
 ## who opened it.
+##
+## Built through KeyBindingScreen.build() rather than here, because the pause card
+## is its second door now and the two must not drift into two versions of the same
+## overlay. The connection stays direct: nothing on this screen answers Escape, so
+## there is no keystroke for a mid-event close to fall through to. The pause card
+## defers its own for exactly that reason -- see PauseScreen._open_keys.
 func _open_keys() -> void:
 	if overlay_open():
 		return
-	_keys_screen = KeyBindingScreen.new()
-	_keys_screen.name = "KeysScreen"
+	_keys_screen = KeyBindingScreen.build()
 	_keys_screen.back_requested.connect(_close_keys)
 	add_child(_keys_screen)
 	_set_menu_active(false)

@@ -9,10 +9,17 @@ extends Control
 ## third copy of a binding anywhere — the row you are looking at, the handler that
 ## answers the key, and the line in the save file are all the same fact.
 ##
-## It lives on the TITLE screen, not on the pause card, for two reasons. A player
-## who has not started a run can still reach it; and the pause card derives its own
-## height from its contents (see PauseScreen.card_rect) and a fifth button there
-## grows it past the bottom of the viewport.
+## It has two doors: the title screen, so a player who has not started a run can
+## still reach it, and the pause card, because the player who most wants to move a
+## key is the one who just pressed the wrong one mid-run. It used to have only the
+## first, and this header used to say why: the pause card derives its height from
+## its contents and a fifth button there grew it past the bottom of the viewport.
+## That was true of a card whose TOP was a hand-picked constant. PauseScreen now
+## derives that edge too and centres itself, which buys back half of every button
+## it adds -- see PauseScreen.card_top.
+##
+## Both doors go through `build()` below. Two call sites constructing the same
+## overlay by hand is how one of them ends up without PROCESS_MODE_ALWAYS.
 ##
 ## Shaped after NotebookScreen, which is the other full-screen overlay this game
 ## has: opaque-ish Backdrop that eats the mouse, a paper panel, a Back button top
@@ -23,6 +30,29 @@ extends Control
 ## pressable from the devtools bridge.
 
 signal back_requested
+
+## The node name both doors give it. A path the bridge and test_selftest.gd press
+## by name, so it is a contract and not a local choice.
+const NODE_NAME := "KeysScreen"
+
+
+## The one place this screen is constructed. TitleScreen and PauseScreen both open
+## it, and building it twice by hand is how one of the two ends up with a different
+## name or a different process mode.
+##
+## PROCESS_MODE_ALWAYS is set outright rather than left to inherit. The pause card
+## holds the tree still, and an overlay frozen by the pause that owns it has dead
+## buttons, a Back that does nothing and no way out of it. Inheriting would resolve
+## to ALWAYS today, because the card is ALWAYS -- but that is a fact about who the
+## parent happens to be, and it inverts silently the day this is reparented to a
+## CanvasLayer. It costs nothing on the title screen, which is never paused, and it
+## is a stated property a test can read instead of an inherited one it must infer.
+static func build() -> KeyBindingScreen:
+	var screen := KeyBindingScreen.new()
+	screen.name = NODE_NAME
+	screen.process_mode = Node.PROCESS_MODE_ALWAYS
+	return screen
+
 
 ## Panel rect, in viewport coordinates. Everything else is placed against it.
 ##
