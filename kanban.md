@@ -175,6 +175,108 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
 
 ## Cool new features (idea backlog)
 
+### New this cycle (5 of 30) — grown from the five features above
+
+- **Eleven sounds shipped and not one of them is a plant doing its job.** `Sfx.SOUNDS`
+  (sfx.gd:44-56) is pests, husks, wave starts, run enders and one button state; the
+  three things the player actually bought are silent. `CornCobbler._fire_at`
+  (corn_cobbler.gd:68) spawns a `Kernel` with no cue, `ChompFlower._grab`
+  (chomp_flower.gd:77) and `_bite` (chomp_flower.gd:139) swallow a beetle over 5.2s
+  without a noise, and `Sunflower._bloom` (sunflower.gd:158) pays out in silence. The
+  economy is where that reads worst: sweeping a husk plays `handleCoins.ogg`
+  (sfx.gd:50) *and* posts "Composted a husk for %d seeds." (game.gd:640), while
+  `Game._on_plant_grew_seeds` (game.gd:457) is a bare `bank.add_seeds(amount)` — so the
+  one plant whose entire purpose is making seeds is the only seed source that makes no
+  sound. The closest thing the game has to combat audio is `PEST_KILLED` at
+  `REPEAT_MS` 70 (sfx.gd:82), which is the *pest* dying, never the plant firing. A cob
+  shot and a Sunflower payout are two more rows in a Dictionary that already has eleven.
+- **Nothing on screen ever mentions the M key, and the screen that plays a jingle
+  cannot mute it.** `Game._unhandled_input` (game.gd:588) is the only binding, and the
+  only place the game says so is the toggle's own reply — "Sound off. Press M to bring
+  it back." (game.gd:590) — which by construction can only be read by someone who
+  already found it. `TitleScreen`'s `HintLabel` (title_screen.gd:148) reads "Up / Down
+  to choose · Enter to grow" and stops there, and because the binding lives in `Game`
+  the title screen and the notebook have no mute at all. `Sfx._muted` is a static var
+  (sfx.gd:94) that resets every launch, and `RunConfig` (run_config.gd:22-24) persists
+  `endless` plus two high scores and no audio setting — so muting is a thing you do
+  again every session. There is also no volume anywhere: `VOLUME_DB` (sfx.gd:62) is a
+  per-event trim constant, not a control. One line on the title screen's hint, and one
+  more line in `_save()` (run_config.gd:51), is most of this.
+- **The post-mortem now counts what the run won, and still cannot say what it cost.**
+  `RunSummary.summary_rows()` (run_summary.gd:148-156) is seven rows and every one of
+  them is an outcome — waves, pests, minutes, threat, beds, compost, weakest cell.
+  Nothing counts spend: `bank.seeds_earned_total` rides in `state()` (game.gd:691) but
+  seeds *spent*, plants placed and upgrades bought do not exist as numbers anywhere, so
+  "3400 seeds grown" is unreadable without knowing whether that bought four plants or
+  forty. Two of them are now one line each: `_on_plant_destroyed` (game.gd:446) already
+  funnels every plant a hungry pest eats and does nothing but message and free it, and
+  `_on_husk_rotted` (game.gd:279) already receives the missed-husk signal the previous
+  cycle added — it plays `HUSK_ROTTED` and increments nothing, which is exactly why
+  "Compost swept 14" still has no denominator. The signal is wired; only the `+= 1` is
+  missing.
+- **The one number that decides whether you lose is the one readout that never changes
+  colour.** `_lives_label` is built as `_add_stat(stats, "LivesLabel", 26, PAPER,
+  LIVES_LABEL_WIDTH)` (hud.gd:264) and refreshed as `"Garden  %d" % state["lives"]`
+  (hud.gd:614) — identical cream at 10 lives and at 1. The readout sitting immediately
+  beside it has a three-stop ramp (`threat_color`, hud.gd:553) easing between tints over
+  `THREAT_FADE_SECONDS` 0.45, so the bar colour-codes how bad the *next* wave looks and
+  says nothing about how close the run is to over. `LIVES` is 10 (game.gd:11) and an
+  escaped pest costs exactly one (game.gd:307), so nine of those ten steps change
+  nothing on screen, and `Sfx.PEST_ESCAPED` plays `error_002.ogg` at the same volume for
+  the first as for the last. `board.show_run_pressure()` tells you where you bled after
+  the fact; nothing tells you you are bleeding out while it is still fixable. The ramp
+  already exists as a static pure function — pointing it at `lives` costs a second call.
+- **There is no pause, and no way to leave a run you are done with.**
+  `Game._unhandled_input` (game.gd:569-591) handles exactly four things: mouse motion,
+  a left click, `KEY_R` gated on `game_over or victory` (game.gd:582), and `KEY_M`. No
+  Escape, and `get_tree().paused` appears nowhere in `game/` — the only match for
+  "pause" in the whole directory is a comment about wave lead-in (wave_director.gd:47).
+  `TITLE_SCENE` (game.gd:28) has exactly one route into it: `RunSummary`'s
+  `GateButton`, which does not exist until the run ends. In endless that means the only
+  exits from a wave-200 run are deliberately feeding ten pests to the exit or killing
+  the process, and `PREP_SECONDS` 18.0 (game.gd:14) keeps counting toward the next wave
+  the entire time the player is away from the keyboard. The devtools notes make a point
+  of the bridge answering while the tree is paused, so a pause overlay is testable the
+  moment it exists.
+- **The preview counts road cells and then throws the count away.**
+  `PlacementPreview.covered_road_cells()` (placement_preview.gd:187) loops the whole
+  grid and returns an int; its only caller, `covers_road()` (placement_preview.gd:170),
+  collapses it to `> 0`, `shows_dead_zone()` (placement_preview.gd:160) collapses that
+  to a bool, and `_draw` (placement_preview.gd:116) paints one bar. So the game already
+  knows a cell covers 10 lane tiles and shows it the identical ring it shows a cell
+  covering 1. The dead-ground pass proved the number matters at the extremes — 15 of 94
+  cells dead for a Corn, 34 of 94 for a Chomp, best cell 10 road tiles, worst 0 — and
+  every actual placement decision lives in the middle of that range, where the cue is
+  currently silent. The loop is already run every mouse-move; a count under the
+  brackets, or ring alpha keyed to it, adds no work and no node.
+- **One road, every run, for both modes and for however many hundred waves.**
+  `Board.PATH_CORNERS` (board.gd:19-26) is six literal corners producing 32 road cells
+  out of 126, `_build_path` (board.gd:76) is the only writer of `_path_order`, and
+  `Game._ready` (game.gd:110) builds one `Board` with no shape or seed argument.
+  `WaveDirector.set_seed` (wave_director.gd:93) randomises the mutation rolls and
+  nothing else, so the map is a constant of the executable. That makes the whole
+  placement layer a fact learned once: the dead-cell counts above are properties of
+  this one path, the elbows at `(9,4)` and `(3,4)` are always the best cob ground, and
+  an endless high score is partly a memory test. `covered_road_cells` already takes the
+  board as a parameter and `GRASS_EDGE_TILE` (board.gd:39) already derives every tile
+  from a neighbour mask, so a second and third corner list — or one generated from a
+  seed the title screen shows — needs no new art and no new tile work.
+- **A new player's whole tutorial is one 8-second line, and wave 1 arrives whether they
+  read it or not.** `Game._ready` ends on `hud.show_message("Plant your free Corn
+  Cobbler on the grass, then grow the first wave.", 8.0)` (game.gd:163) — at
+  `MESSAGE_NORMAL`, in the 15px clipped status row, on the same channel as husk chatter
+  — and the line above it sets `_prep_left = PREP_SECONDS` 18.0 (game.gd:161), so
+  `_process` starts the first wave automatically at 18 seconds whether anything is
+  planted or not. Everything the sentence leaves out is never said anywhere: that a
+  husk is worth clicking and can rot in `MIN_HUSK_LIFETIME` 4.5s (compost_meter.gd:27),
+  that a packet is a random pull, that Uproot takes two clicks
+  (`UPROOT_CONFIRM_SECONDS` 4.0, game.gd:24), that a Corn upgrades at all, or that M is
+  the mute. The title screen's own `HintLabel` (title_screen.gd:146) explains only its
+  three buttons. A first-run-only prompt chain keyed off the events that already fire
+  (first husk dropped, first packet affordable, first plant selected), or a rules page
+  in the notebook the gate already links to, would put those somewhere that does not
+  erase itself.
+
 ### New this cycle (4 of 30) — grown from the five features above
 
 - **The post-mortem can only count what the run lost, because those are the only
