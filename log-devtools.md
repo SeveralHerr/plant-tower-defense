@@ -2585,3 +2585,55 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   lines gave it away).
 
 - Harness: **0.25.0**.
+
+
+## 2026-08-16 — Kernel hit cue (plant-tower-defense-7o3) + StickySundew wash-order reset (plant-tower-defense-qij)
+
+- Value: **warranted** — the runtime confirmed two things a diff can't: that the
+  flash Tween actually fires with a value above 1.0 in a real windowed process
+  (not just that headless takes the gated no-op branch), and that the counter
+  genuinely returns to 1 for a second patch rather than climbing to 2, in the
+  live game rather than in a unit test that only ever constructs and frees
+  StickySundew nodes directly.
+  - Expected: for the kernel cue, that a paused-then-stepped `step-time` sample
+    would land somewhere between 1.0 and HIT_FLASH_BOOST (1.9) mid-tween. For
+    the wash-order fix, that placing a second Sundew after freeing the first
+    would report `_wash_order=1` again instead of `2`.
+  - Got: `_sprite.modulate: {"r": 1.4286, "g": 1.4286, "b": 1.4286, "a": 1.0}`
+    caught via `step-time --seconds 0.02` immediately after forcing the cob's
+    `_cooldown` to 0 — a value the pure `hit_flash_color()` unit test alone
+    could not have produced, since headless never runs the Tween at all. And,
+    separately: `_wash_order=1` on a second live Sundew planted at a fresh
+    cell after the first was freed through its own `play_exit_and_free()` —
+    before this fix that would have read `2`.
+  - Found: nothing broken in either change; the live pass matched what the
+    headless tests already predicted. It did surface a testing-methodology
+    trap of my own making, not a code defect: calling `play_exit_and_free()`
+    directly (bypassing `Game.uproot_selected()`) left `_plants[cell]`
+    pointing at a freed node, and the next `place_plant` at that same cell
+    (plus `Game.covered_road_cells` / `Hud._refresh_selection`) then threw
+    `Trying to cast a freed object` — a reminder that the two-step "erase from
+    the dict, then free the node" order in the real uproot path is load-bearing
+    and not optional busywork.
+  - Cheaper: the headless unit tests alone (`hit_flash_color` pure-function
+    test, and the wash-order reset test built entirely from
+    `StickySundew.new()`/`.free()`) already prove both mechanisms correctly —
+    a reviewer could trust them without the live pass. The live pass bought
+    confidence that the *live* Tween and the *live* `_exit_tree` path (real
+    scene tree, real GardenTheme.animations_enabled() == true) behave the same
+    way the headless-gated tests assume, which is exactly the gap those tests
+    cannot close on their own.
+
+- Gap: `godot --headless --path . --import` segfaulted on its first run this
+  session (exit 139, mid-reimport of vendored audio) and produced a clean exit
+  0 on an immediate retry with no other change. Same signature as the
+  already-logged half-built-cache gap above (concurrent-agent load against a
+  shared `.godot/` import cache), but this time the crash was a hard segfault
+  rather than a truncated cache, and it happened on the FIRST import call of
+  the session rather than after `/verify` was already mid-run.
+  - [G-044] status: open | seen: 1 | harness: 0.25.0
+  - Improvement: `/verify`'s import step retrying once on a non-zero exit
+    before surfacing failure would turn "verified nothing, investigate a
+    crash" into "verified cleanly, noted a transient" — the same shape as the
+    existing G- entry about `--import` racing another worktree's concurrent
+    import, just caught one step earlier (segfault vs. truncated cache).
