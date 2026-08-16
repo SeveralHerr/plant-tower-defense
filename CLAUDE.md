@@ -22,6 +22,21 @@ need an answer only they can give.
 Keep a line at the top of `todo.md` saying which cycle you are on (`Cycle 7 of 30`) and
 bump it each time you refill, so the count survives a context compaction.
 
+**Parallel-safe gates.** The harness section below says `name_check.py` is the only gate
+safe to run in parallel. That is true of the *harness's* gates; this project ships three
+more stdlib-only checkers that open no project and write nothing to `.godot/`, so a
+fan-out agent can run them all:
+
+```bash
+python tools/name_check.py           # names (harness)
+python tools/world_control_check.py  # a Control over the playfield eats clicks
+python tools/meta_key_check.py       # set_meta/get_meta keys resolve at both ends
+python tools/svg_style_check.py      # sprite style contract
+```
+
+Each prints its own `NOT COVERED:` line. None of them compiles — only `import_check.py`
+and `lint_project.gd` do, and neither is parallel-safe.
+
 Whenever a good skill that would've been useful has been identified, please create it
 locally in this repository.
 
