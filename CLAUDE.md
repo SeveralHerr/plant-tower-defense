@@ -9,7 +9,7 @@ Do these steps in order, over and over:
 2. **Do the items one at a time.** For each one: claim the bd issue, write the code,
    run `/verify`, then commit. One commit per item. Never batch several items into one
    commit at the end.
-3. **The last item is always "add cool new features or concrete improvements to
+3. **The last item is always "add cool new features or concrete improvements (UX, game juice, animations, enhancements, or full features) to
    `kanban.md`".** Mine what *this cycle's own work* just revealed — real things you
    hit while building and verifying, not abstract ideas.
 4. **Refill `todo.md`.** Pick 3-5 concrete, not-yet-filed items out of kanban.md's

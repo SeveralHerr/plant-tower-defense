@@ -859,3 +859,36 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   distinct thing, and is worth upstreaming as a `validate-ui` sub-check rather than a
   fourth gap entry: `.claude/skills/godot-hud-occlusion-audit/` is a working
   implementation to lift.
+
+## 2026-08-15 — HUD top bar rebuilt as a container for plant-tower-defense-kcj
+
+- Value: **warranted** — two separate defects, one caught by the new unit test and one
+  by `findings`, neither visible on the page.
+  - Expected: the skill's own checker should now report clean at the husk count that
+    produced the collision — that's the check that failed before and is the only
+    end-to-end proof the layout fix holds against the real HUD rather than the test's
+    synthetic one.
+  - Got: `hud-occlusion: 0 finding(s) across 14 visible Control(s)` at 12 husks, the
+    exact state that reported the overlap yesterday. Every top-bar rect disjoint —
+    row 1 at `20..136`, `162..299`, `325..461`, `487..717`, `916..1132`, row 2 at
+    `y 47..70` — and `findings` back to `0 across 5 of 5`. Screenshot shows the
+    readouts evenly spaced by the container instead of by four hand-picked offsets.
+  - Found: (1) The spacer-only first version did **not** overlap — it shoved the button
+    97px off the right edge (`916 -> 1013`). An `HBoxContainer` will not shrink a child
+    below its minimum size and a `Label`'s minimum size is its full text, so an
+    unbounded counter pushes rather than compresses. Trading a collision for an
+    off-screen button is not a fix; the compost label now has a clipped 230px budget
+    with ellipsis. Caught by `test_an_absurdly_long_readout_pushes_rather_than_underlaps`
+    on its first run, and the assertion I had written ("the button was pushed left") was
+    itself wrong — the failure message is what corrected the design. (2) Fitting two
+    rows into `BAR_HEIGHT 72` had me trim the button to 34px high; `findings` raised
+    `Interactive control 'NextWaveButton' size 216x34 below minimum 40x40`. Rebalanced
+    the rows (stats 4..44, message 47..70) and put the 40px back.
+  - Cheaper: nothing. One defect came from the suite and one only from `findings`
+    against the live HUD, and the whole item was a layout whose failure modes are
+    invisible in a diff.
+
+- Gap: no gaps this turn. The sibling-occlusion blind spot that motivated
+  `.claude/skills/godot-hud-occlusion-audit/` is still real and still unfiled as a
+  numbered gap on purpose — it is written up in the issue linked from the previous
+  entry rather than duplicated here. [G-013] / [G-014] / [G-015] not re-hit.

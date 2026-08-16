@@ -1183,3 +1183,117 @@ func test_the_preview_sits_on_the_centre_of_the_cell_it_previews() -> String:
 		"the preview node is at the cell's centre, not its corner")
 	_T.free_ui(game)
 	return err
+
+
+# -- HUD top bar cannot self-collide (plant-tower-defense-kcj) ---------------
+
+
+## Containers lay their children out on a deferred sort, so a text change is not
+## reflected in any child's size until frames have been pumped. Two is the floor
+## for Controls; one reads the pre-sort geometry and passes over a broken layout.
+func _pump(node: Node) -> void:
+	await node.get_tree().process_frame
+	await node.get_tree().process_frame
+
+
+## Screen rects of every Control under `root`, keyed by name. Only leaf-ish
+## Controls with a real size; containers are skipped because a child sharing
+## its own parent's pixels is the normal case, not a finding.
+func _hud_rects(root: Node) -> Dictionary:
+	var out: Dictionary = {}
+	for node: Node in root.find_children("*", "Control", true, false):
+		var c := node as Control
+		if c is Container or c is ColorRect:
+			continue
+		if not c.visible or c.size.x <= 0.0 or c.size.y <= 0.0:
+			continue
+		out[c.name] = Rect2(c.global_position, c.size)
+	return out
+
+
+## The bug this replaced, reproduced as an assertion: the top row's readouts
+## grow at runtime, and at a fixed x the compost counter ran under the wave
+## button. Asserted at the longest text the game can actually produce, because
+## at the default text the broken layout also passed.
+func test_the_top_bar_readouts_never_overlap_the_wave_button() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	# Longest realistic state: 4-digit seeds, 2-digit wave, 2-digit husk count.
+	game.bank.seeds = 9999
+	game.director.current_wave = 42
+	for i: int in range(18):
+		game.compost.drop_husk(Vector2(float(i) * 8.0, 0.0), 9)
+	game._refresh()
+	await _pump(game)
+
+	var rects: Dictionary = _hud_rects(game.hud)
+	var err: String = _T.assert_true(rects.has("CompostLabel") and rects.has("NextWaveButton"),
+		"both the compost readout and the wave button are on screen to compare")
+	if err == "":
+		var compost: Rect2 = rects["CompostLabel"]
+		var button: Rect2 = rects["NextWaveButton"]
+		err = _T.assert_false(compost.intersects(button),
+			"compost %s does not run under the wave button %s at the longest text the game produces"
+				% [compost, button])
+	_T.free_ui(game)
+	return err
+
+
+## Generalises the above: no two sized top-bar Controls may share pixels, so a
+## readout added later inherits the check instead of needing its own.
+func test_no_two_top_bar_controls_share_pixels() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.seeds = 9999
+	game.director.current_wave = 42
+	for i: int in range(18):
+		game.compost.drop_husk(Vector2(float(i) * 8.0, 0.0), 9)
+	game.hud.show_message("A message long enough to want the whole width of the bar and then some more.")
+	game._refresh()
+	await _pump(game)
+
+	var bar: Node = game.hud.get_node("Root/TopBar")
+	var rects: Dictionary = _hud_rects(bar)
+	var names: Array = rects.keys()
+	var err: String = _T.assert_true(names.size() >= 4,
+		"found %d sized Controls in the top bar to compare" % names.size())
+	for i: int in range(names.size()):
+		if err != "":
+			break
+		for j: int in range(i + 1, names.size()):
+			var a: Rect2 = rects[names[i]]
+			var b: Rect2 = rects[names[j]]
+			if a.intersects(b):
+				err = _T.assert_false(true, "%s %s overlaps %s %s" % [names[i], a, names[j], b])
+				break
+	_T.free_ui(game)
+	return err
+
+
+## The layout must survive a counter longer than anything the game produces,
+## since that is what "cannot collide" means as opposed to "does not today".
+func test_an_absurdly_long_readout_pushes_rather_than_underlaps() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	await _pump(game)
+	var button: Button = game.hud.get_node("Root/TopBar/StatsRow/NextWaveButton") as Button
+	var before: float = button.global_position.x
+	var compost: Label = game.hud.get_node("Root/TopBar/StatsRow/CompostLabel") as Label
+	compost.text = "Compost 99999999  (99999 ready and then some)"
+	await _pump(game)
+	var err: String = _T.assert_false(
+		Rect2(compost.global_position, compost.size).intersects(Rect2(button.global_position, button.size)),
+		"even an absurd counter does not land under the button")
+	if err == "":
+		# The other way this breaks: rather than overlapping, an HBox that runs
+		# out of slack pushes its last child off the right edge. Caught exactly
+		# that here on the first run (916 -> 1013, i.e. 97px past the bar) before
+		# the compost label was given a clipped width budget.
+		err = _T.assert_float_eq(button.global_position.x, before, 0.5,
+			"the button did not move at all (%.0f -> %.0f); the counter ellipsised inside its budget instead of shoving"
+				% [before, button.global_position.x])
+	if err == "":
+		err = _T.assert_true(button.global_position.x + button.size.x <= float(game.hud.get_viewport_width()),
+			"and the button is still fully on screen")
+	if err == "":
+		err = _T.assert_true(button.size.x >= Hud.NEXT_WAVE_BUTTON_SIZE.x,
+			"and it never shrank below its minimum width")
+	_T.free_ui(game)
+	return err

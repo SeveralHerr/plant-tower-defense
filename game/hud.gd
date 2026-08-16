@@ -18,6 +18,26 @@ signal uproot_requested
 const BAR_HEIGHT: int = 72
 const PANEL_WIDTH: int = 256
 
+## Horizontal gap between the readouts in the top row.
+const STATS_SEPARATION: int = 26
+## The wave button never shrinks below this, however long the readouts get.
+## The 40px height is a floor, not a preference: `findings` raises
+## `Interactive control ... below minimum 40x40` under it, and it was right to
+## when a first pass at this layout trimmed the button to 34 to make the rows
+## fit. The rows had to give instead.
+const NEXT_WAVE_BUTTON_SIZE := Vector2(216, 40)
+
+## Width budget for the compost readout, which is the one stat whose text
+## grows without bound. Wide enough for "Compost 9999  (99 ready)".
+const COMPOST_LABEL_WIDTH: float = 230.0
+
+## The bar is two rows. Keeping them as named constants is what makes the gap
+## between them checkable instead of implied by four scattered literals.
+const STATS_ROW_Y: float = 4.0
+const STATS_ROW_HEIGHT: float = 40.0
+const MESSAGE_ROW_Y: float = 47.0
+const MESSAGE_ROW_HEIGHT: float = 20.0
+
 const INK := Color(0.12, 0.15, 0.13)
 const PAPER := Color(0.925, 0.863, 0.722)
 const PAPER_DARK := Color(0.851, 0.788, 0.659)
@@ -55,6 +75,23 @@ func _ready() -> void:
 	_build_banner(root)
 
 
+## The top row is an HBoxContainer, not four labels at hand-picked x positions.
+##
+## It used to be the latter, and the counters grow at runtime: once the compost
+## readout reached "Compost 0 (11 ready)" it ran underneath the wave button,
+## because a Label at a fixed x=760 has no idea a Button starts at x=916. That
+## bug also proved the checks cannot catch this shape — `findings` reported
+## `0 finding(s) across 5 of 5 checks` over the broken frame, since every
+## Control fits its own box and only the *pair* is wrong. So the fix has to be
+## a layout that cannot produce the collision, not better numbers.
+##
+## Two elements do that work: an expanding Spacer that keeps the readouts left
+## and the button right, and a clipped width budget on the compost label. The
+## budget is not optional — the first version had only the spacer, and an
+## over-long counter simply shoved the button 97px off the right edge of the
+## bar instead of overlapping it. A collision traded for an off-screen button
+## is not a fix; `test_an_absurdly_long_readout_pushes_rather_than_underlaps`
+## now pins both halves.
 func _build_top_bar(root: Control) -> void:
 	var bar := ColorRect.new()
 	bar.name = "TopBar"
@@ -63,27 +100,57 @@ func _build_top_bar(root: Control) -> void:
 	bar.size = Vector2(get_viewport_width(), BAR_HEIGHT)
 	root.add_child(bar)
 
-	_seeds_label = _make_label("SeedsLabel", Vector2(20, 18), 26, PAPER)
-	bar.add_child(_seeds_label)
-	_wave_label = _make_label("WaveLabel", Vector2(300, 18), 26, PAPER)
-	bar.add_child(_wave_label)
-	_lives_label = _make_label("LivesLabel", Vector2(560, 18), 26, PAPER)
-	bar.add_child(_lives_label)
+	var stats := HBoxContainer.new()
+	stats.name = "StatsRow"
+	stats.position = Vector2(20, STATS_ROW_Y)
+	stats.size = Vector2(get_viewport_width() - 40, STATS_ROW_HEIGHT)
+	stats.add_theme_constant_override("separation", STATS_SEPARATION)
+	stats.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(stats)
 
-	_compost_label = _make_label("CompostLabel", Vector2(760, 18), 20, Color(0.78, 0.62, 0.38))
-	bar.add_child(_compost_label)
+	_seeds_label = _make_label("SeedsLabel", 26, PAPER)
+	stats.add_child(_seeds_label)
+	_wave_label = _make_label("WaveLabel", 26, PAPER)
+	stats.add_child(_wave_label)
+	_lives_label = _make_label("LivesLabel", 26, PAPER)
+	stats.add_child(_lives_label)
+	_compost_label = _make_label("CompostLabel", 20, Color(0.78, 0.62, 0.38))
+	# The only readout whose length is unbounded — seeds/wave/lives are all
+	# short and capped, but this one appends "(N ready)". Clipping it is what
+	# stops the row overflowing: an HBoxContainer will not shrink a child below
+	# its minimum size, and a Label's minimum size is its full text, so without
+	# this a long counter pushes the button off the right edge of the bar
+	# instead of colliding with it. Trading a collision for an off-screen
+	# button is not a fix, so cap the budget and ellipsize inside it.
+	_compost_label.clip_text = true
+	_compost_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_compost_label.custom_minimum_size = Vector2(COMPOST_LABEL_WIDTH, 0)
+	stats.add_child(_compost_label)
 
-	_message_label = _make_label("MessageLabel", Vector2(20, 46), 15, LEAF)
-	_message_label.size = Vector2(760, 22)
-	bar.add_child(_message_label)
+	# The one element that absorbs slack. Without it the readouts spread across
+	# the whole bar; with it they stay left-grouped and the button stays right.
+	var spacer := Control.new()
+	spacer.name = "Spacer"
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stats.add_child(spacer)
 
 	_next_wave_button = Button.new()
 	_next_wave_button.name = "NextWaveButton"
 	_next_wave_button.text = "Grow the next wave"
-	_next_wave_button.position = Vector2(get_viewport_width() - 236, 16)
-	_next_wave_button.size = Vector2(216, 40)
+	_next_wave_button.custom_minimum_size = NEXT_WAVE_BUTTON_SIZE
+	_next_wave_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_next_wave_button.pressed.connect(func() -> void: next_wave_requested.emit())
-	bar.add_child(_next_wave_button)
+	stats.add_child(_next_wave_button)
+
+	# Second row, outside the container: it is a full-width status line, not a
+	# stat competing for space with the others.
+	_message_label = _make_label("MessageLabel", 15, LEAF)
+	_message_label.position = Vector2(20, MESSAGE_ROW_Y)
+	_message_label.size = Vector2(get_viewport_width() - 276, MESSAGE_ROW_HEIGHT)
+	_message_label.clip_text = true
+	_message_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	bar.add_child(_message_label)
 
 
 func _build_side_panel(root: Control) -> void:
@@ -94,7 +161,8 @@ func _build_side_panel(root: Control) -> void:
 	panel.size = Vector2(PANEL_WIDTH, get_viewport_height() - BAR_HEIGHT)
 	root.add_child(panel)
 
-	var heading := _make_label("Heading", Vector2(14, 12), 20, INK)
+	var heading := _make_label("Heading", 20, INK)
+	heading.position = Vector2(14, 12)
 	heading.text = "Garden"
 	panel.add_child(heading)
 
@@ -149,7 +217,7 @@ func _build_side_panel(root: Control) -> void:
 	_selection_box.visible = false
 	panel.add_child(_selection_box)
 
-	_selection_label = _make_label("SelectionLabel", Vector2.ZERO, 15, INK)
+	_selection_label = _make_label("SelectionLabel", 15, INK)
 	_selection_label.custom_minimum_size = Vector2(0, 76)
 	_selection_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_selection_box.add_child(_selection_label)
@@ -185,12 +253,18 @@ func _build_banner(root: Control) -> void:
 	root.add_child(_banner)
 
 
-func _make_label(node_name: String, at: Vector2, font_size: int, colour: Color) -> Label:
+## No position argument: every caller either puts the label in a container that
+## positions it, or sets `position` itself right after. Passing a hand-picked
+## x/y here is what produced the top bar's overlap bug, so the parameter is
+## gone rather than merely unused.
+func _make_label(node_name: String, font_size: int, colour: Color) -> Label:
 	var label := Label.new()
 	label.name = node_name
-	label.position = at
 	label.add_theme_font_size_override("font_size", font_size)
 	label.add_theme_color_override("font_color", colour)
+	# Mixed font sizes on one row: without this the 20px compost text sits on a
+	# different baseline from the 26px stats beside it.
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	return label
 
 
