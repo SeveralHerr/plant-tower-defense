@@ -1,6 +1,6 @@
 # todo
 
-**Cycle 7 of 30.** Bump this each time you refill the Items list. See the Workflow
+**Cycle 8 of 30.** Bump this each time you refill the Items list. See the Workflow
 loop at the top of `CLAUDE.md` — when this list is done, refill it and start again.
 
 ## The brief (original)
@@ -24,9 +24,13 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 
 ## Items
 
-- [ ] A plant's health only goes down, and uproot-and-replant is the cheapest
-      repair in the game (`plant-tower-defense-s2o`)
-- [ ] The rare packet is a button that works once per run, because the catalogue
-      has three plants in it (`plant-tower-defense-fdm`)
+- [ ] Nothing in the catalogue answers a hungry pest — every plant either damages
+      or funds, nothing protects a bed (`plant-tower-defense-aoq`)
+- [ ] A fifth plant will not fit in the plant bar — four fit with 8px to spare
+      (`plant-tower-defense-zij`)
+- [ ] There is no pause, and no way to leave a run you are done with
+      (`plant-tower-defense-lzu`)
+- [ ] An SVG style-contract linter that does not need the renderer
+      (`plant-tower-defense-9wu`)
 - [ ] Add cool new features or concrete improvements (UX, game juice,
       animations, enhancements, or full features) to `kanban.md`
