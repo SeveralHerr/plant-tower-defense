@@ -1,6 +1,6 @@
 # todo
 
-**Cycle 12 of 30.** Bump this each time you refill the Items list. See the Workflow
+**Cycle 13 of 30.** Bump this each time you refill the Items list. See the Workflow
 loop at the top of `CLAUDE.md` — when this list is done, refill it and start again.
 
 ## The brief (original)
@@ -24,11 +24,11 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 
 ## Items
 
-- [ ] A husk eats the click that would have planted, and the preview's four
-      states cannot warn about it (`plant-tower-defense-0wg`)
-- [ ] The endless spawn gap floors at wave 22 and only the count keeps climbing —
-      ~100 aphids alive at once (`plant-tower-defense-efv`)
-- [ ] Two palettes, one game, and the HUD's private half is now the bigger one
-      (`plant-tower-defense-d9e`)
+- [ ] The notebook is unreachable the moment a run starts — the player who needs
+      it is the one who cannot open it (`plant-tower-defense-899`)
+- [ ] Compost swept is a numerator with no denominator — `_on_husk_rotted`
+      receives the signal and counts nothing (`plant-tower-defense-g3l`)
+- [ ] The title screen's lawn and the notebook both predate half the catalogue
+      (`plant-tower-defense-6mv`)
 - [ ] Add cool new features or concrete improvements (UX, game juice,
       animations, enhancements, or full features) to `kanban.md`
