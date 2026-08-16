@@ -273,6 +273,20 @@ const THREAT_FADE_SECONDS: float = 0.45
 const PANEL_RISE: float = 10.0
 const PANEL_RISE_SECONDS: float = 0.16
 
+## The readout punch: seeds, lives and compost snapping straight to a new
+## number on every change while _ease_threat_tint eases the one label beside
+## them. 1.22, not something louder — TitleScreen's ENTRANCE_RISE and
+## RunSummary's RISE_OFFSET both keep their motion small, and this row redraws
+## far more often than either of those screens builds once, so a punch loud
+## enough to notice on its own would be a row that never stops moving.
+##
+## Scale, not position: these three Labels are direct children of StatsRow, an
+## HBoxContainer, and a Container only ever writes its children's `position`
+## and `size` during sort — never `scale` or `rotation` — so a scale tween
+## survives a refresh() landing mid-punch in a way a position tween would not.
+const READOUT_PUNCH_SCALE: float = 1.22
+const READOUT_PUNCH_SECONDS: float = 0.16
+
 const HEALTH_ROW_HEIGHT: float = 14.0
 ## A wash of the bar's own INK rather than a fifth grey: the alpha is the whole
 ## difference, so it is derived from the shared value instead of retyping the
@@ -310,6 +324,15 @@ var _message_queue: Array[Dictionary] = []
 var _prep_bar: ColorRect
 var _threat_tween: Tween = null
 var _threat_tint_target: Color = PAPER
+
+## Label -> its live punch Tween, killed and restarted the same way
+## _threat_tween is — a fresh Tween per refresh() would stack dozens of them
+## onto one label's scale during a busy wave.
+var _readout_tweens: Dictionary = {}
+## False until refresh() has run once. Guards the very first call: every
+## readout's text goes from "" to its real value on that call, which is the
+## screen appearing, not a change the player made — see refresh().
+var _readouts_seeded: bool = false
 
 
 func _ready() -> void:
@@ -728,7 +751,10 @@ func _process(delta: float) -> void:
 ## that can go stale.
 func refresh(state: Dictionary) -> void:
 	var bank: SeedBank = state["bank"]
-	_seeds_label.text = "Seeds  %d" % bank.seeds
+	var seeds_text: String = "Seeds  %d" % bank.seeds
+	if _readouts_seeded and seeds_text != _seeds_label.text:
+		_punch_readout(_seeds_label)
+	_seeds_label.text = seeds_text
 	if bool(state.get("endless", false)):
 		# "∞" rather than "— endless": at wave 509 with a threat level appended,
 		# the spelled-out version measured 397px against a 320px budget and was
@@ -750,16 +776,24 @@ func refresh(state: Dictionary) -> void:
 	# `as Label` cast the existing tests make. Tinting all of it is also honest —
 	# the wave and its threat are one fact, so "wave 14" going red is the message.
 	_ease_threat_tint(threat_color(level))
-	_lives_label.text = "Garden  %d" % state["lives"]
+	var lives_text: String = "Garden  %d" % state["lives"]
+	if _readouts_seeded and lives_text != _lives_label.text:
+		_punch_readout(_lives_label)
+	_lives_label.text = lives_text
+
 	var husks: int = int(state.get("husks_on_ground", 0))
-	_compost_label.text = "Compost  %d" % int(state.get("compost_total", 0))
+	var compost_text: String = "Compost  %d" % int(state.get("compost_total", 0))
 	if husks > 0:
 		# "+N", not " (N ready)". The long form measured 198px in a 170px box and
 		# the player saw a cut string -- and it had been that way since husks were
 		# added, because WORST_CASE_TEXT declared only "Compost  9999" and the
 		# width test has only ever measured the string the table names, not the
 		# string the formatter can build.
-		_compost_label.text += "  +%d" % husks
+		compost_text += "  +%d" % husks
+	if _readouts_seeded and compost_text != _compost_label.text:
+		_punch_readout(_compost_label)
+	_compost_label.text = compost_text
+	_readouts_seeded = true
 
 	var selected: StringName = state["selected_plant"]
 	for id: StringName in _plant_buttons:
@@ -909,6 +943,28 @@ func _ease_threat_tint(target: Color) -> void:
 	_threat_tween.tween_method(
 		func(c: Color) -> void: _wave_label.add_theme_color_override("font_color", c),
 		from, target, THREAT_FADE_SECONDS)
+
+
+## The payout / loss / sweep punch: seeds, lives and compost jump to
+## READOUT_PUNCH_SCALE and ease back to 1.0, the same killed-and-restarted
+## shape _ease_threat_tint already uses for the wave label beside them.
+##
+## pivot_offset is set on every call rather than once: these three Labels are
+## clipped to a fixed width but not a fixed text length, so their rendered
+## size can still change between punches and a stale pivot would scale the
+## text off-centre.
+func _punch_readout(label: Label) -> void:
+	if not GardenTheme.animations_enabled():
+		return
+	var live: Tween = _readout_tweens.get(label)
+	if live != null and live.is_valid():
+		live.kill()
+	label.pivot_offset = label.size / 2.0
+	label.scale = Vector2.ONE * READOUT_PUNCH_SCALE
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(label, "scale", Vector2.ONE, READOUT_PUNCH_SECONDS)
+	_readout_tweens[label] = tween
 
 
 ## A short rise as the selection panel opens.
