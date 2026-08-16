@@ -35,5 +35,4 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 - [ ] Project-identity devtools verb, so a session can prove which build it is
       driving before trusting a runtime pass (`plant-tower-defense-gqs`)
 - [ ] Add cool new features or concrete improvements (UX, game juice,
-      animations, enhancements, or full features) to `kanban.md` — mine what
-      this cycle's own work revealed, not just abstract ideas
+      animations, enhancements, or full features) to `kanban.md` 
