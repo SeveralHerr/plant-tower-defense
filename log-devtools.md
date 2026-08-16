@@ -1768,3 +1768,40 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     `name_resolution` credits `name_check.py`. The harness need not ship the
     checker — sprite contracts are project-specific — but naming the class is what
     makes its absence visible, which is the tool's whole job.
+
+## 2026-08-16 — Cycle 9: five defects, none of them found by playing
+
+- Value: **warranted** — the decisive check was a pixel comparison no polygon
+  assertion could make.
+  - Expected: the tests assert polygon vertices and areas. Runtime should reveal
+    whether the union actually renders as one even wash — a Geometry2D winding or
+    hole bug would produce correct-looking polygon data and a visibly wrong
+    picture, and the whole point of the change is what the overlap LOOKS like.
+  - Got: the same 16x16 region read `dominant #b57b4a (100%)` with one patch and
+    `#b57b4a (100%)` with two — pixel-identical — against bare ground at
+    `#b57b42`. The wash is applied exactly once; before the change two discs at
+    alpha 0.10 composited to an effective 0.19.
+  - Found: nothing in the feature, but two measurement traps of my own worth
+    recording. The first before/after comparison was contaminated by a pest
+    sitting in the sampled rect — `dominant #e64a3a` is pest red, not ground — and
+    then `clear-nodes --group pests` triggered `_check_wave_cleared`, which
+    spawned a fresh wave into the same rect. **Clearing a group can advance the
+    game's own state machine**; the second reading disagreed with the first for
+    that reason and neither was wrong about pixels.
+  - Cheaper: nothing. A winding or hole bug yields correct polygon data and a
+    wrong picture, so vertex assertions cannot see it.
+
+- Gap: **no gaps this turn.** Worth recording what did the finding instead, since
+  none of this cycle's five defects came from playing the game: the scoring
+  exploit and both pause regressions came from an idea pass reading code written
+  hours earlier, and the palette drift came from a linter built the cycle before.
+  The two pause bugs were mine, shipped one iteration earlier, and one of them —
+  quitting an endless run filing no score — was a data-loss bug in the feature
+  whose whole purpose was to let a player leave.
+
+  The pause-note overlap is the sharpest argument yet for the pairwise check:
+  `FIRST_BUTTON_Y` was an absolute `232.0` in a file where every other offset was
+  `CARD.position.y + N`, so twenty of the note's twenty-four pixels sat under an
+  opaque stylebox. `validate-ui` and `findings` both reported clean over it, and
+  correctly — each Control fits its own box, and per-Control measurement is all
+  they do.
