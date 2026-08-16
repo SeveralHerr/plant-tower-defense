@@ -44,25 +44,38 @@ recurring shapes worth checking in a game like this one:
   orphan scan (`Orphans:` line) hands you these for free.
 - **What is a strictly dominant strategy?** If one choice is always right, the
   decision it belongs to is decoration.
+- **What do two constants imply when multiplied together?** The single most
+  productive shape on one run, and the one nothing else prompts for. A spread
+  angle and a hit radius give the range at which a wider shot stops connecting;
+  a rot timer and a walk speed give whether a husk is reachable at all. Neither
+  constant is wrong on its own, which is why reading them one at a time never
+  finds it.
 
-### 3. Check the filed issues AND what is in flight
-Run plain **`bd list`** — not `bd list --status=open`. That filter hides
-`in_progress`, which is exactly the set being implemented right now: on this
-skill's second run it showed 2 issues where plain `bd list` showed 4, and the two
-it hid were the two an agent was writing that hour. **Do not duplicate a filed
-issue** — say in the report which ones you deliberately avoided.
+### 3. The diff is the authority on what is in flight — not the issue list
+Run **`git status --short` and `git diff --stat` first**. Anything modified is
+work a concurrent agent is doing right now, and an entry describing a problem
+being fixed as you write is worse than no entry. On one run this killed two
+drafted entries whose issues were closed before the pass finished.
 
-Then run **`git status --short` and `git diff --stat`**. Anything modified is
-in-flight work by a concurrent agent, and an entry describing a problem that is
-being fixed as you write is worse than no entry. This has already happened: a
-draft entry about health being a one-way ratchet was correct when read and solved
-before the pass finished.
+**Re-run the diff immediately before you write**, not only at the start. A clean
+`git status` goes stale in about ninety seconds here.
+
+Then run plain **`bd list`** for the filed set. Be aware it is *not* an in-flight
+signal: agents in this repo do not claim a bead before working, so a run that
+reported `0 in progress` had three of its four issues under active edit. Use it to
+avoid duplicating something already **filed**; use the diff to avoid duplicating
+something already **being fixed**. **Say in the report which ones you avoided.**
 
 Also read the existing backlog section; a re-worded version of an idea already
 sitting there is worse than nothing, because it makes the backlog look longer
 than it is.
 
-### 4. Write 6–8 entries
+### 4. Grep the backlog for the subsystem before reading it
+Before opening a file to mine it, `grep` `kanban.md` for its name. A subsystem
+already covered by an entry filed three cycles ago will produce the same
+observation again, and finding that out after writing it is wasted work.
+
+### 5. Write 6–8 entries
 Append a new subsection at the **top** of the "Cool new features (idea backlog)"
 section:
 
@@ -78,7 +91,7 @@ specifics. Match the voice of the entries already there.
 | "Add sound effects for plants." | "**Eleven sounds shipped and not one of them is a plant doing its job.** Every entry in `Sfx.SOUNDS` is a pest, a husk, a wave or a run-ender; `_fire_at`, `_grab`, `_bite` and `_bloom` are all silent — so the half of the game the player *builds* makes no noise while the half that attacks them does." |
 | "Improve the difficulty curve." | "**The escalation note is a three-second line about a permanent change, and it goes quiet exactly when the ramp stops.** `ENDLESS_HEALTH_STEP` caps at 3.0 around wave 41 and `SPEED_STEP` at 1.6 around wave 48, while `threat_level` keeps climbing — so the number keeps rising after the thing it measures has stopped." |
 
-### 5. Verify your line numbers AFTER writing, not before
+### 6. Verify your line numbers AFTER writing, not before
 Citations drift while you draft, and in this repo they drift *because other agents
 are editing the same files*. Measured on one run: `hud.gd` went 886 → 934 lines
 and `plant.gd` gained 149 while the pass was being written; `announce_wave` moved
