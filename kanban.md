@@ -175,6 +175,50 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
 
 ## Cool new features (idea backlog)
 
+### New this cycle (11 of 30) — grown from the features above
+
+- **The game's only explanation of anything is unreachable the moment a run
+  starts.** `NotebookScreen` is constructed in exactly one place —
+  `title_screen.gd`'s `_open_notebook()` — and nothing in `game.gd`, `hud.gd` or
+  `pause_screen.gd` can reach it. So the player who actually needs it, the one
+  mid-run holding a plant they do not understand, is the one player who cannot
+  open it. The pause card is now a full-screen surface that already lists the
+  keyboard verbs; a fourth button on it is the whole fix.
+
+- **Half the catalogue has no page in the book that explains the catalogue.** The
+  notebook's five pages cover the Corn Cobbler, the seed packet, the kernel, and
+  the Chomp Flower twice. The Seed Sunflower and the Sticky Sundew — both tier 2,
+  both unlocked late, both the plants a player has least intuition for — appear
+  nowhere. The pages are keyed to the five hand-drawn source images, which is a
+  good reason for the gap and not a reason it should stay: the two newest plants
+  were designed in this repo and could carry their own page about what they do
+  rather than where they came from.
+
+- **`_wash_order` is a monotonic static counter, and nothing ever resets it.**
+  `StickySundew` assigns each patch a rank from a class-level counter to give any
+  pair a total order. It is correct and it is never reused — but it also never
+  goes back to zero, not on `reload_current_scene`, not between runs. Nothing
+  breaks at any plausible count; it is simply a number that only goes up for as
+  long as the process lives, in a file that now also keeps a static list of live
+  patches. Worth a deliberate decision rather than an accident, because the next
+  static added there will be the one that matters.
+
+- **The post-mortem counts compost swept and cannot count compost missed.**
+  `CompostMeter` gained a `husk_rotted` signal in the sound pass, and
+  `Game._on_husk_rotted` receives it, plays a sound and increments nothing. So the
+  card reports a numerator with no denominator: "Compost swept 12" is unreadable
+  without knowing whether four rotted or forty did. Every other row on that card
+  is either a total or a bound, and this is the one that is neither.
+
+- **The title screen's lawn is a museum of the first two plants.** `TitlePlants`
+  draws a Sunflower, two Corn Cobblers and a Chomp — chosen when those were the
+  whole catalogue. The Sundew is not on the lawn, so the first thing a new player
+  sees advertises three quarters of a game that has since grown a fourth. Cheap to
+  fix and the sort of thing that silently stops being true every time the
+  catalogue moves, which argues for driving the lawn off `PlantCatalog.ids()`
+  rather than a literal list.
+
+
 ### New this cycle (10 of 30) — grown from the features above
 
 - **A husk eats the click that would have planted, and the preview has four states
