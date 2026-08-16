@@ -1568,3 +1568,41 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   `plant`, and I sent `kind`, which is silently ignored — 0.23.0's
   `list-commands` prints `place_plant  args: plant, x, y` precisely so that cannot
   happen, and I had already seen that line two iterations earlier.
+
+## 2026-08-16 — Closing a coverage class while three agents worked elsewhere
+
+- Value: **warranted** — `coverage_check.py` named a defect class this project had
+  never asked about, and closing it took one test.
+  - Expected: nothing runtime; this was a deliberate gap-filling pass while the
+    cycle-7 agents held the game files. The claim to check was
+    `coverage_check.py`'s, not the game's.
+  - Got: `UNCHECKED scene_validation — nothing loads a res:// scene, so a broken
+    .tscn is only found by running the game`, and after the new test,
+    `COVERED scene_validation  test/unit/test_selftest.gd:2976
+    load("res://game/game.tscn")`, moving the tally from
+    `2 covered … 3 UNCHECKED` to `3 covered … 2 UNCHECKED`.
+  - Found: the tool would not credit a *stronger* check than the one it asks for.
+    See the gap below.
+  - Cheaper: nothing — this was already the cheapest form. No engine launch, one
+    headless test, and `coverage_check.py` is parallel-safe so it ran while three
+    agents held every game file.
+
+- Gap: **`coverage_check.py` credits `scene_validation` only for a `res://….tscn`
+  literal inside `load`/`preload`, so a discovery-based scene walk — which is
+  strictly stronger — scores as no coverage at all.** The first version of
+  `test_every_scene_in_the_project_actually_instantiates` walked `res://` with
+  `DirAccess` and instantiated every `.tscn` it found, including any added later
+  by anyone. The tool still printed `UNCHECKED scene_validation`, because
+  `_scan_scene_loads` requires the path to be a literal (`coverage_check.py:530`:
+  "the only strong scene_validation token"). The check that covers *more* scenes
+  and cannot rot is the one that scores zero, and the fix is to add a hard-coded
+  list beside it — i.e. the tool rewards the weaker pattern. I did add the two
+  literals, and they are defensible on their own as "these two scenes must exist",
+  but they were written to satisfy the scanner rather than because the walk needed
+  them.
+  - [G-029] status: open | seen: 1 | harness: 0.23.0
+  - Improvement: also credit an instantiation of a path that is not a literal when
+    the same file contains a directory walk reaching `.tscn` — or, more simply,
+    treat `PackedScene.instantiate()` / `can_instantiate()` in a `test_dir` file as
+    a strong token in its own right, since nothing else in a test suite calls it.
+    The current rule tests for a spelling, not for the behaviour it stands for.

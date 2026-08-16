@@ -2953,3 +2953,77 @@ func test_the_post_mortem_rows_keep_clear_of_its_buttons() -> String:
 				"and the buttons themselves stay on the paper")
 	_T.free_ui(game)
 	return err
+
+
+## Scene validation as a standing gate rather than a thing /verify asks once.
+##
+## coverage_check.py reports `scene_validation` UNCHECKED for this project: nothing
+## in test_dir loads a res:// scene, so a broken .tscn is only found by running the
+## game. The runtime `findings` sweep does check it, but that is an observation a
+## past session made, not a question that gets asked again -- and the tool says so
+## explicitly, refusing to count a check name in the ledger as evidence the verb
+## ran, because a name is prose a run writes about itself.
+##
+## A .tscn that fails to load is silent in every other gate here: lint compiles
+## scripts, name_check resolves identifiers, and neither instantiates anything.
+func test_every_scene_in_the_project_actually_instantiates() -> String:
+	# The two scenes the game cannot start without, named as literals. The walk
+	# below covers everything including scenes added later, but a dynamic path is
+	# invisible to coverage_check.py, which requires a res:// .tscn literal inside
+	# load/preload as its evidence -- so a discovery-based check, which is strictly
+	# stronger than a hard-coded list, scores as no check at all without these.
+	var required: Array[PackedScene] = [
+		load("res://game/game.tscn") as PackedScene,
+		load("res://game/title.tscn") as PackedScene,
+	]
+	for scene: PackedScene in required:
+		var e: String = _T.assert_true(scene != null and scene.can_instantiate(),
+			"a required scene is loadable and instantiable")
+		if e != "":
+			return e
+
+	var scenes: Array[String] = []
+	_collect_scenes("res://", scenes)
+	var err: String = _T.assert_gt(scenes.size(), 0,
+		"found at least one .tscn to check -- an empty walk would pass vacuously")
+	if err != "":
+		return err
+	for path: String in scenes:
+		var packed: PackedScene = load(path) as PackedScene
+		err = _T.assert_true(packed != null, "%s loads as a PackedScene" % path)
+		if err != "":
+			return err
+		err = _T.assert_true(packed.can_instantiate(), "%s reports it can instantiate" % path)
+		if err != "":
+			return err
+		var node: Node = packed.instantiate()
+		err = _T.assert_true(node != null, "%s actually instantiates" % path)
+		if node != null:
+			node.queue_free()
+		if err != "":
+			return err
+	return ""
+
+
+## Walks res:// for .tscn files, skipping the addon and anything hidden. Written
+## against DirAccess rather than a hard-coded list precisely so a scene added later
+## is covered without anyone remembering to add it here.
+func _collect_scenes(dir_path: String, out: Array[String]) -> void:
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var name: String = dir.get_next()
+	while name != "":
+		if name.begins_with("."):
+			name = dir.get_next()
+			continue
+		var full: String = dir_path.path_join(name)
+		if dir.current_is_dir():
+			# The harness's own addon is not this project's to validate.
+			if full != "res://addons":
+				_collect_scenes(full, out)
+		elif name.ends_with(".tscn"):
+			out.append(full)
+		name = dir.get_next()
+	dir.list_dir_end()
