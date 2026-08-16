@@ -7,8 +7,10 @@ extends Control
 ## Drawn rather than authored as an image for two reasons. It has to resize with
 ## the viewport (the project stretches `canvas_items` on an `expand` aspect, so
 ## the title screen is one of the few things that genuinely sees a different
-## width), and it costs no import, no atlas and no extra megabyte for what is
-## eleven `draw_*` calls issued once.
+## width), and it costs no import, no atlas and no extra megabyte for what is a
+## couple dozen `draw_*` calls redrawn every frame while
+## GardenTheme.animations_enabled() is true — see the "Ambient motion" block
+## below — and issued once, statically, when it is not.
 ##
 ## This replaces a single full-screen `ColorRect` in INK. That ColorRect is why
 ## the title screen read as "unfinished placeholder": a flat fill gives the eye
@@ -60,10 +62,52 @@ const TUFT_SPACING: float = 46.0
 const TUFT_WIDTH: float = 13.0
 const TUFT_HEIGHT: float = 14.0
 
+## Ambient motion, all gated behind GardenTheme.animations_enabled() and all
+## continuous idle ambience rather than an event tween — this backdrop has no
+## start or end to play once, unlike TitleScreen's entrance and its lawn's own
+## sway, which this leaves alone entirely.
+##
+## Tufts lean a few px in a slow breeze; the phase is per-tuft x so the lean
+## reads as a wave passing through the row rather than the whole edge hinging
+## at once — the same reason Plant._wobble_phase varies by cell.
+const TUFT_SWAY_PX: float = 2.2
+const TUFT_SWAY_RATE: float = 0.9
+const TUFT_SWAY_PHASE: float = 0.045
+
+## The glow behind the wordmark breathes rather than pulses on a beat — slow
+## enough that it reads as ambient light, not a UI cue drawing the eye away
+## from the buttons it sits behind.
+const GLOW_PULSE_AMOUNT: float = 0.05
+const GLOW_PULSE_RATE: float = 0.6
+
+## Two soft puffs drifting through the sky band, each a few overlapping
+## circles like the glow rings above. `x0` is a fraction of the wrapped span,
+## `y` a fraction of the sky's own height (above the horizon, never through
+## it), `speed` in px/sec.
+const CLOUD_COLOR := Color(0.85, 0.80, 0.72, 0.05)
+const CLOUD_MARGIN: float = 90.0
+const CLOUDS: Array[Dictionary] = [
+	{"x0": 0.12, "y": 0.20, "speed": 5.5, "scale": 1.0},
+	{"x0": 0.62, "y": 0.34, "speed": 3.5, "scale": 0.7},
+]
+
+## Advances only while animations are enabled — headless never pumps a frame
+## to drive this from anyway, and a static backdrop there draws exactly the
+## same picture (elapsed 0.0) it always has, which is what
+## test_title_backdrop_actually_covers_the_viewport relies on.
+var _elapsed: float = 0.0
+
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:
 		queue_redraw()
+
+
+func _process(delta: float) -> void:
+	if not GardenTheme.animations_enabled():
+		return
+	_elapsed += delta
+	queue_redraw()
 
 
 func _draw() -> void:
@@ -73,6 +117,7 @@ func _draw() -> void:
 		return
 	var horizon: float = h * HORIZON
 	_draw_sky(w, horizon)
+	_draw_clouds(w, horizon)
 	_draw_glow(w, h)
 	_draw_ground(w, h, horizon)
 
@@ -89,9 +134,44 @@ func _draw_sky(w: float, horizon: float) -> void:
 func _draw_glow(w: float, h: float) -> void:
 	var centre := Vector2(w * GLOW_CENTRE.x, h * GLOW_CENTRE.y)
 	var tint := Color(GardenTheme.GOLD, GLOW_ALPHA)
+	var pulse: float = glow_pulse(_elapsed)
 	for i: int in GLOW_RINGS:
 		var t: float = float(i) / float(GLOW_RINGS - 1)
-		draw_circle(centre, lerpf(GLOW_MAX_RADIUS, GLOW_MIN_RADIUS, t), tint)
+		draw_circle(centre, lerpf(GLOW_MAX_RADIUS, GLOW_MIN_RADIUS, t) * pulse, tint)
+
+
+## Pure: the glow's radius multiplier at a given elapsed time, split out of
+## _draw_glow() so a test can assert it is 1.0 at rest and stays within
+## GLOW_PULSE_AMOUNT of 1.0 without instantiating a Control or drawing a frame.
+static func glow_pulse(elapsed: float) -> float:
+	return 1.0 + GLOW_PULSE_AMOUNT * sin(elapsed * GLOW_PULSE_RATE)
+
+
+## Drifts each cloud across the sky band and wraps it back to the far edge —
+## the same fmod-and-margin wraparound TitleScreen._march_pests uses along the
+## ground, one band up.
+func _draw_clouds(w: float, horizon: float) -> void:
+	for cloud: Dictionary in CLOUDS:
+		var x: float = cloud_x(cloud, _elapsed, w)
+		var y: float = horizon * float(cloud["y"])
+		_draw_puff(Vector2(x, y), float(cloud["scale"]))
+
+
+## Pure: one cloud's drifted, wrapped x position, split out of _draw_clouds()
+## so a test can assert the wraparound stays inside its band without waiting
+## on real time to pass.
+static func cloud_x(cloud: Dictionary, elapsed: float, w: float) -> float:
+	var span: float = w + CLOUD_MARGIN * 2.0
+	return fmod(float(cloud["x0"]) * span + elapsed * float(cloud["speed"]), span) - CLOUD_MARGIN
+
+
+## Three overlapping circles read as a puff rather than a disc — the same
+## trick _draw_tufts' triangle and _draw_scalloped_edge's circle row use to
+## keep this whole file's geometry looking drawn rather than plotted.
+func _draw_puff(centre: Vector2, scale: float) -> void:
+	draw_circle(centre, 22.0 * scale, CLOUD_COLOR)
+	draw_circle(centre + Vector2(-20.0, 4.0) * scale, 16.0 * scale, CLOUD_COLOR)
+	draw_circle(centre + Vector2(20.0, 5.0) * scale, 15.0 * scale, CLOUD_COLOR)
 
 
 func _draw_ground(w: float, h: float, horizon: float) -> void:
@@ -137,9 +217,19 @@ func _draw_tufts(w: float, line_y: float, colour: Color) -> void:
 	var x: float = 0.0
 	while x < w:
 		var height: float = TUFT_HEIGHT * (0.6 + 0.4 * sin(x * 0.07))
+		# Lean the tip, not the base — a blade pivots at the ground, so only
+		# the top point moves.
+		var lean: float = tuft_lean(_elapsed, x)
 		draw_colored_polygon(PackedVector2Array([
 			Vector2(x, line_y),
-			Vector2(x + TUFT_WIDTH * 0.5, line_y - height),
+			Vector2(x + TUFT_WIDTH * 0.5 + lean, line_y - height),
 			Vector2(x + TUFT_WIDTH, line_y),
 		]), colour)
 		x += TUFT_SPACING
+
+
+## Pure: how far a tuft's tip leans at a given elapsed time and x, split out of
+## _draw_tufts() so a test can assert it is 0.0 at rest and stays within
+## TUFT_SWAY_PX without instantiating a Control or drawing a frame.
+static func tuft_lean(elapsed: float, x: float) -> float:
+	return sin(elapsed * TUFT_SWAY_RATE + x * TUFT_SWAY_PHASE) * TUFT_SWAY_PX
