@@ -72,6 +72,20 @@ const KEY_LIST_GAP: float = 20.0
 ## real headroom over the font, never to match it.
 const KEY_ROW_HEIGHT: float = 26.0
 
+## Entrance rise, borrowed outright from RunSummary rather than picked fresh:
+## same offset, same duration, same curve as RISE_SECONDS / RISE_OFFSET there.
+## This card is "shaped after RunSummary" for being the same kind of object —
+## a card over a live board — and having it move differently on arrival would
+## contradict the one sentence this file already uses to justify its own shape.
+const RISE_SECONDS: float = 0.28
+const RISE_OFFSET: float = 26.0
+
+## True from the moment play_exit() starts until this node is freed. Stops a
+## second Escape/P landing mid-fade from firing a second resume_requested,
+## which would hand Game a screen it is already in the middle of resuming —
+## see _input and play_exit.
+var _closing: bool = false
+
 
 ## The card, sized to whatever it actually contains.
 static func card_rect() -> Rect2:
@@ -189,6 +203,9 @@ func _ready() -> void:
 	# hand it straight back.
 	notebook_requested.connect(_open_notebook)
 
+	if GardenTheme.animations_enabled():
+		_play_entrance()
+
 
 func _build_buttons() -> void:
 	var y: float = card_rect().position.y + FIRST_BUTTON_OFFSET
@@ -232,6 +249,41 @@ func _build_key_list() -> void:
 		y += KEY_ROW_HEIGHT
 
 
+## Every card Control rises in, matching RunSummary._play_entrance's own loop
+## exactly. Backdrop is excluded: it is not content, and fading a full-frame
+## ColorRect in on the same curve would still cost a frame of a board that
+## looks less dark than the pause it is announcing.
+func _play_entrance() -> void:
+	for child: Node in get_children():
+		var control := child as Control
+		if control == null or control.name == "Backdrop":
+			continue
+		control.position.y += RISE_OFFSET
+		var tween := create_tween()
+		tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		tween.tween_property(control, "position:y", control.position.y - RISE_OFFSET, RISE_SECONDS)
+
+
+## Fades the whole card out before Game frees it. Without this, resume used to
+## free the layer on the same frame Escape fired — an entrance with a curve and
+## an exit with none, which is only half a motion vocabulary for one screen.
+##
+## Awaited by Game.resume_run() so the layer is not freed out from under a
+## still-fading Control. Skipped outright with animations off, same as every
+## other gate in this file's family — headless pumps no frames, so an await on
+## a tween that never advances would hang the caller forever.
+func play_exit() -> void:
+	if _closing:
+		return
+	_closing = true
+	if not GardenTheme.animations_enabled():
+		return
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	tween.tween_property(self, "modulate:a", 0.0, RISE_SECONDS)
+	await tween.finished
+
+
 ## Escape and P both close it, matching the two keys that open it. Handled here
 ## rather than in Game because Game is paused and its _unhandled_input does not
 ## run — which is exactly the bug a pause menu ships with when the close key is
@@ -256,6 +308,11 @@ func _input(event: InputEvent) -> void:
 	if key == null or not key.pressed or key.echo:
 		return
 	if key.keycode == KEY_ESCAPE or key.keycode == KEY_P:
+		# Already fading out — a second press here must not ask Game to resume a
+		# screen it is already in the middle of resuming.
+		if _closing:
+			get_viewport().set_input_as_handled()
+			return
 		resume_requested.emit()
 		get_viewport().set_input_as_handled()
 

@@ -3474,6 +3474,35 @@ func test_every_key_the_run_handles_is_named_on_the_pause_card() -> String:
 	return err
 
 
+## resume_run() awaits this before it frees anything — see Game.resume_run.
+## Headless never pumps the fade tween, so play_exit must resolve synchronously
+## (marking itself closing and returning) rather than leaving the caller
+## awaiting a frame nobody will pump.
+func test_pause_screen_play_exit_marks_itself_closing_and_is_idempotent() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.pause_run()
+	await _pump(game)
+	var screen := game.get_node_or_null("PauseLayer/PauseScreen") as PauseScreen
+	var err: String = _T.assert_true(screen != null, "the card is up")
+	if err == "":
+		err = _T.assert_false(screen._closing, "not closing before play_exit runs")
+	if err == "":
+		screen.play_exit()
+		err = _T.assert_true(screen._closing,
+			"play_exit marks itself closing synchronously -- headless never reaches its own await")
+	if err == "":
+		# A second Escape/P landing mid-fade (guarded in _input, but callable
+		# directly too) must not restart the fade or error.
+		screen.play_exit()
+		err = _T.assert_true(screen._closing, "a second call is a no-op, not a second fade")
+	if err == "":
+		err = _T.assert_true(game.get_node_or_null("PauseLayer/PauseScreen") != null,
+			"and play_exit does not free anything itself -- that is resume_run's job")
+	game.resume_run()
+	_T.free_ui(game)
+	return err
+
+
 func test_the_pause_card_lists_the_keys_and_still_fits_its_paper() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	game.pause_run()

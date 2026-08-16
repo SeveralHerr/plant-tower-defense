@@ -815,7 +815,14 @@ func pause_run() -> void:
 	get_tree().paused = true
 
 
+## Awaits the card's own fade before freeing it — see PauseScreen.play_exit.
+## The tree stays paused for the whole fade: PauseScreen sets itself
+## PROCESS_MODE_ALWAYS in _ready, so its tween still advances, and unpausing
+## first would let the board come back to life while its own pause card is
+## still dissolving on top of it.
 func resume_run() -> void:
+	if _pause_screen != null and is_instance_valid(_pause_screen):
+		await _pause_screen.play_exit()
 	get_tree().paused = false
 	if _pause_layer != null and is_instance_valid(_pause_layer):
 		_pause_layer.queue_free()
