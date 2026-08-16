@@ -2281,3 +2281,602 @@ func test_the_husk_budget_never_reports_an_unmeasurable_board_as_clearance() -> 
 		err = _T.assert_true(str(blind["summary"]).contains("UNMEASURED"),
 			"and the prose refuses to read as a measurement -- got: %s" % blind["summary"])
 	return err
+
+
+# --- The `budgets` verb: every declared coupling, with what is left of it ---
+#
+# Four constants in this project carry a "moving me costs you X" doc comment and
+# every X lives in a different file. `budgets` is the index of that set, and the
+# whole value of it is that each number is COMPUTED from the same call the gate
+# asserts on rather than transcribed out of the comment beside it. So these tests
+# do not check that a key exists -- they call the real source themselves and
+# assert the readout agrees with it, because a verb that quietly drifts from the
+# thing it reports is worse than no verb: it is a fifth stale copy wearing the
+# authority of a measurement.
+
+
+## `budgets` as the bus would hand it back, with the extension pointed at the
+## hosted Game the same way _board_info() above does.
+func _budgets(game: Game, args: Dictionary) -> Dictionary:
+	var ext = preload(DEVTOOLS_EXT).new()
+	ext._dev = game
+	return ext._cmd_budgets(args)
+
+
+## One entry out of the reply, or {} if the verb never reported it. Returning an
+## empty Dictionary rather than null keeps the caller's vacuity guard a size
+## check instead of a null check, which is the one people forget.
+func _budget_entry(data: Dictionary, id: String) -> Dictionary:
+	if not data.has("budgets"):
+		return {}
+	for entry: Dictionary in (data["budgets"] as Array):
+		if str(entry["id"]) == id:
+			return entry
+	return {}
+
+
+## Everything in `data` has to survive JSON on its way across the bus.
+func _budget_value_is_wire_safe(value: Variant) -> bool:
+	if value is String or value is int or value is float or value is bool:
+		return true
+	if value is Array:
+		for item: Variant in (value as Array):
+			if not _budget_value_is_wire_safe(item):
+				return false
+		return true
+	if value is Dictionary:
+		var dict: Dictionary = value as Dictionary
+		for key: Variant in dict:
+			if not (key is String):
+				return false
+			if not _budget_value_is_wire_safe(dict[key]):
+				return false
+		return true
+	return false
+
+
+## The shape of the report, and the denominator that makes it readable.
+##
+## The failure this guards is a check quietly vanishing from a consolidated
+## report: a `budgets` that dropped the notebook entry would print a shorter,
+## cleaner list and nothing would say a coupling had stopped being watched. So
+## every id is named here, and every entry is asserted to carry the whole
+## contract rather than whichever half its own branch happened to fill in.
+func test_the_budgets_verb_reports_every_declared_coupling() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var reply: Dictionary = _budgets(game, {"waves": 30})
+	err = _T.assert_true(reply.has("success") and reply.has("message") and reply.has("data"),
+		"budgets keeps the three-key envelope -- got %s" % [reply.keys()])
+	if err == "":
+		err = _T.assert_eq(reply.size(), 3, "and carries nothing else")
+	if err == "":
+		err = _T.assert_true(bool(reply["success"]),
+			"and succeeds against a real Game: %s" % reply["message"])
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var data: Dictionary = reply["data"]
+
+	# Each of the four commented constants, plus the split of WORST_CASE_TEXT
+	# into "does a readout fit its slot" and "do the slots fit the row" -- those
+	# are two different budgets and widening one spends the other.
+	var wanted: Array[String] = [
+		"husk_click",
+		"notebook_subhead",
+		"hud_readouts",
+		"hud_stats_row",
+		"pest_road_ceiling",
+		"road_shape",
+	]
+	err = _T.assert_eq(wanted.size(), 6, "there are six budgets to look for")
+	if err == "":
+		err = _T.assert_eq(int(data["count"]), wanted.size(),
+			"the verb reports exactly that many -- got %d" % int(data["count"]))
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var contract: Array[String] = [
+		"id", "constant", "declared_in", "computed", "spends", "spent", "ceiling",
+		"headroom", "units", "state", "measured_by", "summary", "when_it_runs_out",
+		"observations",
+	]
+	for id: String in wanted:
+		var entry: Dictionary = _budget_entry(data, id)
+		err = _T.assert_gt(entry.size(), 0, "budgets reports %s" % id)
+		if err != "":
+			break
+		for key: String in contract:
+			err = _T.assert_true(entry.has(key), "%s carries %s -- got %s" % [id, key, entry.keys()])
+			if err != "":
+				break
+		if err != "":
+			break
+		# The half a bare key check misses: a "budget" with no summary and no
+		# advice is a row in a table, not a readout.
+		err = _T.assert_gt(str(entry["summary"]).length(), 0, "%s has a summary sentence" % id)
+		if err == "":
+			err = _T.assert_gt(str(entry["when_it_runs_out"]).length(), 0,
+				"%s says what breaks when it runs out" % id)
+		if err == "":
+			err = _T.assert_gt(str(entry["constant"]).length(), 0, "%s names its constant" % id)
+		if err == "":
+			err = _T.assert_true(FileAccess.file_exists(str(entry["declared_in"])),
+				"%s points at a file that exists: %s" % [id, entry["declared_in"]])
+		if err != "":
+			break
+	if err == "":
+		for key: Variant in data:
+			err = _T.assert_true(_budget_value_is_wire_safe(data[key]),
+				"data.%s survives JSON, got %s" % [key, type_string(typeof(data[key]))])
+			if err != "":
+				break
+	_T.free_ui(game)
+	return err
+
+
+## The verdict, and the denominator behind it.
+##
+## `computed` vs `uncomputed` is the honest half of this verb: five of the six
+## couplings have a ceiling that can be subtracted from and one does not, and a
+## report that hid that ratio would read as six measurements. So the two are
+## asserted to add up to the count, and the one described entry is asserted to be
+## the road -- not whichever entry happened to fail to measure this run.
+func test_the_budgets_verdicts_add_up_to_the_budgets_reported() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var data: Dictionary = _budgets(game, {"waves": 30})["data"]
+	var entries: Array = data["budgets"] as Array
+	err = _T.assert_gt(entries.size(), 0, "the verb reported something to grade")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var computed: int = 0
+	var spent: int = 0
+	var tight: int = 0
+	var described: PackedStringArray = PackedStringArray()
+	for entry: Dictionary in entries:
+		var state: String = str(entry["state"])
+		if bool(entry["computed"]):
+			computed += 1
+			# A computed entry's three numbers must actually subtract.
+			err = _T.assert_float_eq(float(entry["headroom"]),
+				float(entry["ceiling"]) - float(entry["spent"]), 0.001,
+				"%s: %s - %s really is the headroom it prints" % [
+					entry["id"], entry["ceiling"], entry["spent"]])
+			if err != "":
+				break
+			if state == "spent":
+				spent += 1
+			elif state == "tight":
+				tight += 1
+			else:
+				err = _T.assert_eq(state, "ok", "%s has a known verdict" % entry["id"])
+				if err != "":
+					break
+		else:
+			described.append("%s(%s)" % [entry["id"], state])
+			# -1.0, never 0.0: 0.0 is a real headroom and it is the worst one
+			# there is, so an entry that measured nothing must not be able to
+			# impersonate a budget that is exactly spent.
+			err = _T.assert_float_eq(float(entry["headroom"]), -1.0, 0.001,
+				"%s reports -1.0 rather than a headroom it never measured" % entry["id"])
+			if err == "":
+				err = _T.assert_float_eq(float(entry["ceiling"]), -1.0, 0.001,
+					"%s reports no ceiling either" % entry["id"])
+			if err != "":
+				break
+	if err == "":
+		err = _T.assert_eq(computed, int(data["computed"]),
+			"the computed tally matches the entries -- %d walked, %d reported"
+				% [computed, int(data["computed"])])
+	if err == "":
+		err = _T.assert_eq(entries.size() - computed, int(data["uncomputed"]),
+			"and so does the uncomputed one")
+	if err == "":
+		err = _T.assert_eq(spent, int(data["spent"]), "and the spent tally")
+	if err == "":
+		err = _T.assert_eq(tight, int(data["tight"]), "and the tight tally")
+	if err == "":
+		# Named, not counted: "one entry could not be measured" is a very
+		# different report from "one coupling has no number by nature".
+		err = _T.assert_eq(", ".join(described), "road_shape(described)",
+			"the only entry without a number is the road, and it is described rather than unmeasured")
+	if err == "":
+		err = _T.assert_gt(str(data["tightest"]).length(), 0,
+			"and the report names its tightest budget")
+	_T.free_ui(game)
+	return err
+
+
+## The husk entry is husk_click_budget(), not a second copy of it.
+##
+## This is the whole point of the verb stated as an assertion: `spent` is
+## CompostMeter.COLLECT_RADIUS, `ceiling` is the distance the lane keeps from
+## buildable ground, and `headroom` is the number the husk gate fails on. Any one
+## of those being a literal typed beside the verb would pass a "has the key"
+## check and fail this one.
+func test_the_budgets_husk_entry_is_the_margin_the_gate_asserts_on() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null and game.board != null,
+		"the main scene loads and brought its board")
+	if err != "":
+		return err
+	var entry: Dictionary = _budget_entry(_budgets(game, {"waves": 30})["data"], "husk_click")
+	err = _T.assert_gt(entry.size(), 0, "budgets reports husk_click")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var live: Dictionary = PlacementPreview.husk_click_budget(game.board)
+	err = _T.assert_true(bool(entry["computed"]),
+		"a real board gives a measured budget: %s" % entry["summary"])
+	if err == "":
+		err = _T.assert_float_eq(float(entry["spent"]), CompostMeter.COLLECT_RADIUS, 0.001,
+			"what is being spent is COLLECT_RADIUS itself (%.1f), not a literal beside it"
+				% float(entry["spent"]))
+	if err == "":
+		err = _T.assert_float_eq(float(entry["ceiling"]),
+			PlacementPreview.lane_to_buildable_distance(game.board), 0.001,
+			"the ceiling is lane_to_buildable_distance() itself (%.1f)" % float(entry["ceiling"]))
+	if err == "":
+		err = _T.assert_float_eq(float(entry["headroom"]),
+			PlacementPreview.husk_click_margin(game.board), 0.001,
+			"and the headroom is husk_click_margin(), the number the gate fails on (%.1f)"
+				% float(entry["headroom"]))
+	if err == "":
+		# It must not contradict board_info, which prints the same subtraction.
+		err = _T.assert_float_eq(float(entry["headroom"]), float(live["margin"]), 0.001,
+			"so budgets and board_info cannot report different clearances for one board")
+	if err == "":
+		err = _T.assert_gt(float(entry["headroom"]), 0.0,
+			"and there is still something left in it -- %.1f px" % float(entry["headroom"]))
+	if err == "":
+		# Not pinned to the literal "tight": lowering COLLECT_RADIUS is a real fix
+		# and must not fail a test. What must hold is that a budget this close to
+		# its end is never reported as a clean pass -- 4 px of 32 is the case the
+		# verdict exists for, and "ok" there is the readout lying by omission.
+		var fraction: float = float(entry["headroom"]) / float(entry["ceiling"])
+		if fraction < 0.15:
+			err = _T.assert_true(str(entry["state"]) == "tight" or str(entry["state"]) == "spent",
+				"%.0f px of %.0f (%.0f%% left) is not a clean pass -- got '%s'"
+					% [float(entry["headroom"]), float(entry["ceiling"]), fraction * 100.0,
+						entry["state"]])
+		else:
+			err = _T.assert_eq(str(entry["state"]), "ok",
+				"%.0f%% left reads as ok" % (fraction * 100.0))
+	if err == "":
+		err = _T.assert_true(str(entry["summary"]).contains("%d" % int(float(entry["headroom"]))),
+			"and the one-line summary carries the number: %s" % entry["summary"])
+	_T.free_ui(game)
+	return err
+
+
+## The notebook entry measures the sentence the screen actually builds.
+##
+## Independently re-measured here: the test instantiates its own NotebookScreen
+## and reads the Subheading's own text through its own resolved theme font, then
+## asserts the verb agrees. A verb that had transcribed 268 out of the comment
+## would pass every structural check and fail this the day the sentence changes,
+## which is exactly the day it matters.
+func test_the_budgets_notebook_entry_measures_the_sentence_the_screen_draws() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var entry: Dictionary = _budget_entry(_budgets(game, {"waves": 30})["data"], "notebook_subhead")
+	err = _T.assert_gt(entry.size(), 0, "budgets reports notebook_subhead")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	err = _T.assert_true(bool(entry["computed"]),
+		"the subheading was measured even though no notebook is open: %s" % entry["summary"])
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var book := await _T.instantiate_ui(
+		NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var subhead := book.get_node_or_null("Subheading") as Label
+	err = _T.assert_true(subhead != null, "an independently built notebook has a Subheading")
+	if err != "":
+		_T.free_ui(book)
+		_T.free_ui(game)
+		return err
+	# Through the font, not get_minimum_size(): a clip_text Label reports ~1px,
+	# so the obvious form of this comparison cannot fail.
+	var font: Font = subhead.get_theme_font("font")
+	var size_px: int = subhead.get_theme_font_size("font_size")
+	err = _T.assert_true(font != null, "and resolved a theme font to measure in")
+	if err == "":
+		err = _T.assert_gt(size_px, 0, "and a font size")
+	if err != "":
+		_T.free_ui(book)
+		_T.free_ui(game)
+		return err
+	var drawn: float = font.get_string_size(
+		subhead.text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size_px).x
+	err = _T.assert_gt(drawn, 0.0, "the subheading has text to measure")
+	if err == "":
+		err = _T.assert_float_eq(float(entry["spent"]), drawn, 0.5,
+			"the verb reports the width the screen really draws (%.1f vs %.1f)"
+				% [float(entry["spent"]), drawn])
+	if err == "":
+		err = _T.assert_float_eq(float(entry["ceiling"]), NotebookScreen.SUBHEAD_MAX_WIDTH, 0.001,
+			"against SUBHEAD_MAX_WIDTH itself")
+	if err == "":
+		err = _T.assert_true(str(entry["observations"]).contains(subhead.text),
+			"and quotes the sentence it measured: %s" % [entry["observations"]])
+	if err == "":
+		err = _T.assert_gt(float(entry["headroom"]), 0.0,
+			"the sentence still fits, with %.0f px to spare" % float(entry["headroom"]))
+	_T.free_ui(book)
+	_T.free_ui(game)
+	return err
+
+
+## The two HUD entries, each re-measured off the live row.
+##
+## They are separate budgets on purpose and the test says why: the fix for a
+## readout that clips is to widen its slot, and that width is spent out of the
+## row's total. Reporting only one of the two would let a reader "fix" the first
+## by breaking the second.
+func test_the_budgets_hud_entries_are_measured_off_the_live_stats_row() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null and game.hud != null,
+		"the main scene loads with its HUD")
+	if err != "":
+		return err
+	var stats := game.hud.get_node_or_null("Root/TopBar/StatsRow") as HBoxContainer
+	err = _T.assert_true(stats != null, "and the stats row is where the verb looks for it")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var data: Dictionary = _budgets(game, {"waves": 30})["data"]
+
+	# --- the row's own sum ---
+	var row: Dictionary = _budget_entry(data, "hud_stats_row")
+	err = _T.assert_gt(row.size(), 0, "budgets reports hud_stats_row")
+	if err == "":
+		err = _T.assert_true(bool(row["computed"]), "and measured it: %s" % row["summary"])
+	if err == "":
+		err = _T.assert_float_eq(float(row["spent"]),
+			Hud.stats_row_budget(stats.get_child_count() - 1), 0.001,
+			"the row's spend is Hud.stats_row_budget() itself (%.1f)" % float(row["spent"]))
+	if err == "":
+		err = _T.assert_float_eq(float(row["ceiling"]), stats.size.x, 0.001,
+			"against the live row's own width (%.1f)" % stats.size.x)
+	if err == "":
+		err = _T.assert_gt(float(row["headroom"]), 0.0,
+			"and the row still fits, by %.0f px" % float(row["headroom"]))
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# --- the tightest readout in it ---
+	var readouts: Dictionary = _budget_entry(data, "hud_readouts")
+	err = _T.assert_gt(readouts.size(), 0, "budgets reports hud_readouts")
+	if err == "":
+		err = _T.assert_true(bool(readouts["computed"]), "and measured it: %s" % readouts["summary"])
+	if err == "":
+		err = _T.assert_gt(Hud.WORST_CASE_TEXT.size(), 0,
+			"there are declared worst cases to re-measure")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# Re-derive the worst slot the same way the row is actually rendered, and
+	# assert the verb picked that one. A verb reporting the ROOMIEST readout
+	# would look identical in every structural check and be exactly backwards.
+	var worst_name: String = ""
+	var worst_needed: float = 0.0
+	var worst_slot: float = 0.0
+	var worst_left: float = INF
+	var measured: int = 0
+	for readout: String in Hud.WORST_CASE_TEXT:
+		var label := stats.get_node_or_null(readout) as Label
+		if label == null:
+			continue
+		var slot_font: Font = label.get_theme_font("font")
+		var slot_size: int = label.get_theme_font_size("font_size")
+		if slot_font == null or slot_size <= 0:
+			continue
+		measured += 1
+		var needed: float = slot_font.get_string_size(
+			String(Hud.WORST_CASE_TEXT[readout]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, slot_size).x
+		var slot: float = label.custom_minimum_size.x
+		if slot - needed < worst_left:
+			worst_left = slot - needed
+			worst_name = readout
+			worst_needed = needed
+			worst_slot = slot
+	err = _T.assert_eq(measured, Hud.WORST_CASE_TEXT.size(),
+		"every declared readout is a Label in the row (%d of %d)"
+			% [measured, Hud.WORST_CASE_TEXT.size()])
+	if err == "":
+		err = _T.assert_gt(worst_needed, 0.0, "and the worst of them measures something")
+	if err == "":
+		err = _T.assert_float_eq(float(readouts["spent"]), worst_needed, 0.5,
+			"the verb prices the TIGHTEST readout (%s needs %.1f), got %.1f"
+				% [worst_name, worst_needed, float(readouts["spent"])])
+	if err == "":
+		err = _T.assert_float_eq(float(readouts["ceiling"]), worst_slot, 0.001,
+			"against that readout's own clipped width")
+	if err == "":
+		err = _T.assert_true(str(readouts["spends"]).contains(worst_name),
+			"and names it, so the reader knows which slot to widen: %s" % readouts["spends"])
+	if err == "":
+		# Every readout, not only the worst: the point of the index is that the
+		# whole set is visible without opening hud.gd.
+		err = _T.assert_eq((readouts["observations"] as Array).size(), Hud.WORST_CASE_TEXT.size(),
+			"and lists all %d readouts, not only the tightest" % Hud.WORST_CASE_TEXT.size())
+	_T.free_ui(game)
+	return err
+
+
+## The pest ceiling is swept, not sampled.
+##
+## The peak lands early -- around wave 20, where the swarm and the column both
+## still sit on the road at their natural spacing -- so a verb that probed one
+## late wave would report the road half empty and be wrong in the reassuring
+## direction. The sweep is re-run here over the same range and compared.
+func test_the_budgets_pest_ceiling_is_the_worst_wave_in_its_own_sweep() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var sweep: int = 25
+	var entry: Dictionary = _budget_entry(
+		_budgets(game, {"waves": sweep})["data"], "pest_road_ceiling")
+	err = _T.assert_gt(entry.size(), 0, "budgets reports pest_road_ceiling")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var worst: int = 0
+	var worst_wave: int = 0
+	for wave: int in range(1, sweep + 1):
+		var peak: int = WaveDirector.peak_simultaneous_pests(wave)
+		if peak > worst:
+			worst = peak
+			worst_wave = wave
+	err = _T.assert_gt(worst, 0, "the sweep really walked the curve -- wave %d peaks at %d"
+		% [worst_wave, worst])
+	if err == "":
+		err = _T.assert_true(bool(entry["computed"]), "the entry was measured: %s" % entry["summary"])
+	if err == "":
+		err = _T.assert_float_eq(float(entry["spent"]), float(worst), 0.001,
+			"the verb reports the worst wave in the sweep (%d at wave %d), got %.0f"
+				% [worst, worst_wave, float(entry["spent"])])
+	if err == "":
+		err = _T.assert_float_eq(float(entry["ceiling"]),
+			float(WaveDirector.SIMULTANEOUS_PEST_CEILING), 0.001,
+			"against SIMULTANEOUS_PEST_CEILING itself")
+	if err == "":
+		err = _T.assert_true(str(entry["measured_by"]).contains("%d" % sweep),
+			"and says how far it swept, since a headroom off a short sweep is a smaller claim: %s"
+				% entry["measured_by"])
+	if err == "":
+		err = _T.assert_gt(float(entry["headroom"]), -0.0001,
+			"the road is still inside its ceiling -- %.0f of %.0f"
+				% [float(entry["spent"]), float(entry["ceiling"])])
+	_T.free_ui(game)
+	return err
+
+
+## The road entry refuses to invent a headroom, and measures anyway.
+##
+## PATH_CORNERS' three dependents are prose reasoned against the road, not
+## ceilings the road approaches, so there is nothing to subtract. The failure
+## worth guarding is a future edit "completing" the table by giving it a number:
+## that would be the fifth stale copy this verb exists to prevent, wearing the
+## authority of a measurement. What it must do instead is report what the road
+## measures NOW, which is what the prose would have to be re-derived against.
+func test_the_road_budget_reports_measurements_rather_than_a_made_up_headroom() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null and game.board != null,
+		"the main scene loads and brought its board")
+	if err != "":
+		return err
+	var entry: Dictionary = _budget_entry(_budgets(game, {"waves": 30})["data"], "road_shape")
+	err = _T.assert_gt(entry.size(), 0, "budgets reports road_shape")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	err = _T.assert_false(bool(entry["computed"]),
+		"the road has no ceiling to subtract from, and says so rather than printing one")
+	if err == "":
+		err = _T.assert_eq(str(entry["state"]), "described",
+			"and it is DESCRIBED, not 'unmeasured' -- the difference is whether a number exists")
+	if err == "":
+		err = _T.assert_float_eq(float(entry["headroom"]), -1.0, 0.001,
+			"headroom is -1.0, never 0.0 -- 0.0 would read as a budget exactly spent")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var observations: Array = entry["observations"] as Array
+	err = _T.assert_gt(observations.size(), 0,
+		"having no headroom does not excuse having nothing to say")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var text: String = "\n".join(PackedStringArray(observations))
+	# The live measurements, re-derived here. These are the numbers the three
+	# couplings would have to be re-derived against, so they have to be the
+	# CURRENT road rather than the one the comments were written against.
+	var cells: int = game.board.path_cell_count()
+	err = _T.assert_gt(cells, 0, "the board built a road to measure")
+	if err == "":
+		err = _T.assert_true(text.contains("%d cells" % cells),
+			"the observations quote the road's real length in cells (%d): %s" % [cells, text])
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var buildable: int = 0
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			if game.board.is_buildable(Vector2i(x, y)):
+				buildable += 1
+	err = _T.assert_gt(buildable, 0, "and left ground to plant on")
+	if err == "":
+		err = _T.assert_true(text.contains("%d buildable cells" % buildable),
+			"and quote the buildable count the dead-ground reasoning is stated against (%d): %s"
+				% [buildable, text])
+	if err == "":
+		# The dead-ground count is the one dependent that CAN be recomputed, and
+		# the reason it is an observation rather than a headroom: it has no
+		# ceiling, only a previously-recorded value living in another test.
+		var reach: float = PlantCatalog.reach(PlantCatalog.CORN)
+		err = _T.assert_gt(reach, 0.0, "the Corn Cobbler has a reach to measure dead ground at")
+		if err == "":
+			var dead: int = 0
+			for y: int in range(Board.ROWS):
+				for x: int in range(Board.COLS):
+					var cell := Vector2i(x, y)
+					if not game.board.is_buildable(cell):
+						continue
+					if PlacementPreview.covered_road_cells(game.board, cell, reach) == 0:
+						dead += 1
+			err = _T.assert_true(text.contains("%d of the %d buildable cells" % [dead, buildable]),
+				"and quote the live dead-ground count (%d of %d): %s" % [dead, buildable, text])
+	if err == "":
+		err = _T.assert_true(text.contains("Sundew"),
+			"and admit outright that the Sundew's arithmetic is prose nothing here can check: %s"
+				% text)
+	_T.free_ui(game)
+	return err
+
+
+## One budget at a time, and a refusal that names the alternatives.
+##
+## An unknown id answering success with an empty list is the failure mode: a
+## reader who asked for "husk" would conclude the husk budget had been retired
+## rather than that they had mistyped it.
+func test_the_budgets_verb_filters_by_id_and_refuses_an_unknown_one() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var one: Dictionary = _budgets(game, {"id": "husk_click", "waves": 30})
+	err = _T.assert_true(bool(one["success"]), "a known id succeeds")
+	if err == "":
+		err = _T.assert_eq(int((one["data"] as Dictionary)["count"]), 1,
+			"and reports exactly the one asked for")
+	if err == "":
+		var only: Array = (one["data"] as Dictionary)["budgets"] as Array
+		err = _T.assert_gt(only.size(), 0, "with an entry in it")
+		if err == "":
+			err = _T.assert_eq(str((only[0] as Dictionary)["id"]), "husk_click",
+				"and it is the right one")
+	if err == "":
+		var missing: Dictionary = _budgets(game, {"id": "husk", "waves": 30})
+		err = _T.assert_false(bool(missing["success"]),
+			"a mistyped id FAILS rather than reporting an empty, clean-looking set")
+		if err == "":
+			err = _T.assert_true(str(missing["message"]).contains("husk_click"),
+				"and the refusal names the ids that do exist: %s" % missing["message"])
+	_T.free_ui(game)
+	return err

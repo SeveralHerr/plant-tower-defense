@@ -28,6 +28,7 @@ func register_commands(dev: Node) -> void:
 	_dev.register_command("board_info", _cmd_board_info)
 	_dev.register_command("compost_state", _cmd_compost_state)
 	_dev.register_command("collect_husk", _cmd_collect_husk)
+	_dev.register_command("budgets", _cmd_budgets)
 	# Not a game verb: it answers "which checkout am I actually driving?" before any
 	# of the above are believed. Registered with a literal name so `list-commands
 	# --offline` can still find it with no game running.
@@ -226,6 +227,494 @@ func _cmd_board_info(_args: Dictionary) -> Dictionary:
 			"husk_click_budget": budget["summary"],
 		},
 	}
+
+
+# --- Every declared budget, and what is left of it -------------------------
+#
+# Four constants in this project carry a "moving me costs you X" doc comment,
+# and every one of the X's lives in a DIFFERENT file: Board.PATH_CORNERS names
+# three numbers measured against the road it produces, CompostMeter.COLLECT_RADIUS
+# has 4 px between it and a click that could place a plant, NotebookScreen's
+# SUBHEAD_MAX_WIDTH holds a centred sentence off two pane labels, and Hud's
+# WORST_CASE_TEXT prices four readouts against a row that has eleven pixels
+# spare. A person finds each of those warnings by editing that exact line, which
+# means they find it AFTER deciding to move it.
+#
+# `budgets` is the set, before anyone goes looking. Each entry says what is being
+# spent, what the ceiling is, what remains and what to look at when it runs out.
+#
+# What it deliberately does NOT do is transcribe. Every number below is the live
+# call the gate itself asserts on -- husk_click_budget(), stats_row_budget(), the
+# theme font over the real Label, peak_simultaneous_pests() -- because a verb
+# printing hand-copied constants would be a fifth place for them to go stale,
+# which is the exact disease it exists to cure. Where a coupling genuinely has no
+# ceiling to measure against, the entry says so in words and reports its live
+# measurements as observations rather than inventing a headroom for them.
+
+## A budget is "tight" once less than this fraction of its ceiling is unspent.
+##
+## 0.15 rather than something smaller because these budgets are small in absolute
+## terms and nearly all of them are already near their end: 4 px of 32 on the husk
+## sweep, ~7 px of 168 on the seeds readout, 11 px of 1112 on the stats row. A
+## threshold that called those comfortable would report a clean board right up to
+## the day one of them breaks, which is the failure mode this verb exists against.
+const BUDGET_TIGHT_FRACTION: float = 0.15
+
+## Waves swept when pricing the road's simultaneous-pest ceiling. The peak lands
+## around wave 20 -- see test_an_endless_wave_never_fills_the_road_past_the_stated_ceiling,
+## which sweeps 300 -- so this is well past it and still cheap enough to run on
+## the frame the bus answers from. Override with `--args '{"waves": 300}'`.
+const BUDGET_WAVE_SWEEP: int = 120
+
+## Reported when a budget's own inputs could not be read this run. Distinct from
+## "described", which means there was never a number to read: an unmeasured
+## budget is a hole in the readout and a described one is a property of the
+## coupling. Collapsing the two is how a check disappears from a report.
+const BUDGET_UNMEASURED: String = "unmeasured"
+const BUDGET_DESCRIBED: String = "described"
+
+
+## Every declared budget with its current headroom.
+##
+## args: id (String, one budget's id, default all), waves (int, the sweep for the
+## pest ceiling).
+##
+## data keys: budgets (Array of entry Dictionaries), count/computed/uncomputed/
+## spent/tight (int), tightest (String, the id with the least headroom left as a
+## fraction of its ceiling, or ""), summary (String, the same line as `message`).
+##
+## Entry keys, all JSON-safe: id, constant, declared_in, spends, units, state,
+## measured_by, summary, when_it_runs_out (String); computed (bool); spent,
+## ceiling, headroom (float, all -1.0 when computed is false); observations
+## (Array[String]).
+func _cmd_budgets(args: Dictionary) -> Dictionary:
+	var game: Game = _game()
+	if game == null:
+		return _fail("no Game in the tree")
+	var sweep: int = maxi(1, int(args.get("waves", BUDGET_WAVE_SWEEP)))
+	var wanted: String = str(args.get("id", ""))
+	var all: Array[Dictionary] = [
+		_budget_husk_click(game),
+		_budget_notebook_subhead(),
+		_budget_hud_readouts(game),
+		_budget_hud_stats_row(game),
+		_budget_pest_road_ceiling(sweep),
+		_budget_road_shape(game),
+	]
+	# A plain loop, not Array.filter: filter hands back an untyped Array and
+	# returning that as Array[Dictionary] is a runtime error the static checkers
+	# never see.
+	var entries: Array[Dictionary] = []
+	var names: PackedStringArray = PackedStringArray()
+	for entry: Dictionary in all:
+		names.append(str(entry["id"]))
+		if wanted == "" or str(entry["id"]) == wanted:
+			entries.append(entry)
+	if entries.is_empty():
+		return _fail("no budget called '%s' -- known ids: %s" % [wanted, ", ".join(names)])
+
+	var computed: int = 0
+	var spent: int = 0
+	var tight: int = 0
+	var tightest: String = ""
+	var tightest_fraction: float = INF
+	for entry: Dictionary in entries:
+		if not bool(entry["computed"]):
+			continue
+		computed += 1
+		var state: String = str(entry["state"])
+		if state == "spent":
+			spent += 1
+		elif state == "tight":
+			tight += 1
+		var ceiling: float = float(entry["ceiling"])
+		if ceiling <= 0.0:
+			continue
+		var fraction: float = float(entry["headroom"]) / ceiling
+		if fraction < tightest_fraction:
+			tightest_fraction = fraction
+			tightest = str(entry["id"])
+	var headline: String = "%d budget(s): %d computed, %d without a number -- %d spent, %d tight" % [
+		entries.size(), computed, entries.size() - computed, spent, tight,
+	]
+	if tightest != "":
+		for entry: Dictionary in entries:
+			if str(entry["id"]) == tightest:
+				headline += "; tightest %s: %s" % [tightest, entry["summary"]]
+				break
+	return {
+		"success": true,
+		"message": headline,
+		"data": {
+			"budgets": entries,
+			"count": entries.size(),
+			"computed": computed,
+			"uncomputed": entries.size() - computed,
+			"spent": spent,
+			"tight": tight,
+			"tightest": tightest,
+			"summary": headline,
+		},
+	}
+
+
+## A budget whose headroom was measured this run. `spent` and `ceiling` come from
+## the live call named in `measured_by`; the subtraction and the verdict happen
+## here so no two entries can grade themselves differently.
+func _computed_budget(id: String, constant: String, declared_in: String, spends: String,
+		spent: float, ceiling: float, units: String, measured_by: String,
+		when_it_runs_out: String, observations: Array[String]) -> Dictionary:
+	var headroom: float = ceiling - spent
+	var state: String = "ok"
+	if headroom <= 0.0:
+		state = "spent"
+	elif ceiling > 0.0 and headroom < ceiling * BUDGET_TIGHT_FRACTION:
+		state = "tight"
+	return {
+		"id": id,
+		"constant": constant,
+		"declared_in": declared_in,
+		"computed": true,
+		"spends": spends,
+		"spent": spent,
+		"ceiling": ceiling,
+		"headroom": headroom,
+		"units": units,
+		"state": state,
+		"measured_by": measured_by,
+		"summary": "%s %s of %s %s max -- %s %s left" % [
+			spends, _budget_number(spent), _budget_number(ceiling), units,
+			_budget_number(headroom), units,
+		],
+		"when_it_runs_out": when_it_runs_out,
+		"observations": observations,
+	}
+
+
+## A budget with no headroom number: either the coupling never had a ceiling
+## (BUDGET_DESCRIBED) or its inputs could not be read this run (BUDGET_UNMEASURED).
+##
+## The three numeric fields are -1.0 rather than 0.0, and for the reason
+## PlacementPreview.lane_to_buildable_distance() gives: 0.0 is a real headroom and
+## it is the worst one there is, so an entry that measured nothing must not be
+## able to impersonate a budget that is exactly spent.
+func _uncomputed_budget(state: String, id: String, constant: String, declared_in: String,
+		spends: String, why: String, when_it_runs_out: String,
+		observations: Array[String]) -> Dictionary:
+	var lead: String = "NO CEILING TO MEASURE AGAINST" if state == BUDGET_DESCRIBED else "UNMEASURED"
+	return {
+		"id": id,
+		"constant": constant,
+		"declared_in": declared_in,
+		"computed": false,
+		"spends": spends,
+		"spent": -1.0,
+		"ceiling": -1.0,
+		"headroom": -1.0,
+		"units": "",
+		"state": state,
+		"measured_by": "",
+		"summary": "%s -- %s: %s" % [spends, lead, why],
+		"when_it_runs_out": when_it_runs_out,
+		"observations": observations,
+	}
+
+
+## An entry that has nothing to observe. A named typed empty rather than a bare
+## `[]` at the call site: an untyped Array literal handed to an Array[String]
+## parameter is the class of mistake that only shows up at runtime.
+static func _no_observations() -> Array[String]:
+	var empty: Array[String] = []
+	return empty
+
+
+## Whole numbers print whole. "husk sweep 28 of 32 px max" is the sentence this
+## verb exists to produce, and "28.0 of 32.0" is the same sentence wearing a
+## spreadsheet.
+static func _budget_number(value: float) -> String:
+	if is_equal_approx(value, roundf(value)):
+		return "%d" % int(roundf(value))
+	return "%.1f" % value
+
+
+## CompostMeter.COLLECT_RADIUS against the closest the pests' lane comes to
+## ground a plant may stand on.
+##
+## Not recomputed here: this is PlacementPreview.husk_click_budget(), the same
+## call `board_info` prints and the same terms the gate asserts on, so the two
+## verbs cannot report different clearances for the same board.
+func _budget_husk_click(game: Game) -> Dictionary:
+	var budget: Dictionary = PlacementPreview.husk_click_budget(game.board)
+	var observations: Array[String] = [str(budget["summary"])]
+	if not bool(budget["measured"]):
+		return _uncomputed_budget(BUDGET_UNMEASURED, "husk_click",
+			"CompostMeter.COLLECT_RADIUS", "res://game/compost_meter.gd",
+			"husk sweep radius",
+			"the board has no route to walk, so there is no lane to measure from",
+			"a click could sweep a husk while standing on plantable ground",
+			observations)
+	return _computed_budget("husk_click", "CompostMeter.COLLECT_RADIUS",
+		"res://game/compost_meter.gd", "husk sweep",
+		float(budget["collect_radius"]), float(budget["lane_to_buildable"]), "px",
+		"PlacementPreview.husk_click_budget()",
+		("at 0 px a click is genuinely ambiguous between sweeping a husk and planting: "
+			+ "PlacementPreview needs a husk state it does not have, and Game._click_at "
+			+ "can no longer put placement first"),
+		observations)
+
+
+## NotebookScreen.SUBHEAD_MAX_WIDTH against the width the subheading actually
+## draws at in the real theme font.
+##
+## Measured through Font.get_string_size and not get_minimum_size(): the pane
+## labels are held off the subheading by nothing but the centred text being
+## narrower than the panel, and a clip_text Label reports a ~1px minimum, so the
+## obvious form of this measurement cannot fail.
+##
+## The screen is built to be measured. It is a title-screen subscreen and is
+## absent for the whole of play, so a budget that could only be read while it was
+## open would be unreadable exactly when someone is editing the sentence. It is
+## built inside a throwaway SubViewport rather than under the running game so
+## that NotebookScreen._ready()'s grab_focus() lands somewhere harmless, and it is
+## removed before this function returns, so no frame is ever drawn with it in.
+func _budget_notebook_subhead() -> Dictionary:
+	var screen := NotebookScreen.new()
+	var frame := SubViewport.new()
+	frame.size = Vector2i(screen.get_viewport_width(), screen.get_viewport_height())
+	frame.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_dev.add_child(frame)
+	frame.add_child(screen)
+	var drawn: float = -1.0
+	var text: String = ""
+	var subhead: Label = screen.get_node_or_null("Subheading") as Label
+	if subhead != null:
+		text = subhead.text
+		var font: Font = subhead.get_theme_font("font")
+		var size_px: int = subhead.get_theme_font_size("font_size")
+		if size_px <= 0:
+			size_px = subhead.get_theme_default_font_size()
+		if font != null and size_px > 0 and text != "":
+			drawn = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size_px).x
+	_dev.remove_child(frame)
+	frame.queue_free()
+
+	var observations: Array[String] = []
+	if text != "":
+		observations.append("the sentence measured: \"%s\"" % text)
+	if drawn <= 0.0:
+		return _uncomputed_budget(BUDGET_UNMEASURED, "notebook_subhead",
+			"NotebookScreen.SUBHEAD_MAX_WIDTH", "res://game/notebook_screen.gd",
+			"the centred subheading's drawn text",
+			"no Subheading Label, or no theme font to measure it in",
+			"the subheading reaches the two pane labels and the spread reads as one smear",
+			observations)
+	return _computed_budget("notebook_subhead", "NotebookScreen.SUBHEAD_MAX_WIDTH",
+		"res://game/notebook_screen.gd", "subheading text",
+		drawn, NotebookScreen.SUBHEAD_MAX_WIDTH, "px",
+		"Font.get_string_size() over the live Subheading Label",
+		("the centred sentence overhangs into \"The drawing\" and \"In the game\" -- it "
+			+ "collides before it clips, so shorten the sentence or move PANE_LABEL_Y"),
+		observations)
+
+
+## The four Hud.WORST_CASE_TEXT strings against the width each readout is clipped
+## to. Reported as the WORST of the four, with every one of them listed as an
+## observation: a row is only as safe as its tightest slot, and a mean would let
+## a clipping Compost label hide behind a roomy Lives one.
+##
+## Measured in the real theme font off the live Labels, which is what makes this
+## a readout rather than a copy of the comment in hud.gd -- a clipped Label
+## renders "Seeds  4..." and nothing errors.
+func _budget_hud_readouts(game: Game) -> Dictionary:
+	var stats: HBoxContainer = _stats_row(game)
+	if stats == null:
+		return _uncomputed_budget(BUDGET_UNMEASURED, "hud_readouts",
+			"Hud.WORST_CASE_TEXT", "res://game/hud.gd", "the widest readout's worst case",
+			"no Root/TopBar/StatsRow in the running HUD",
+			"a counter grows past its slot and renders trimmed, silently",
+			_no_observations())
+	var observations: Array[String] = []
+	var worst_name: String = ""
+	var worst_needed: float = 0.0
+	var worst_budget: float = 0.0
+	var worst_left: float = INF
+	for readout: String in Hud.WORST_CASE_TEXT:
+		var label: Label = stats.get_node_or_null(readout) as Label
+		if label == null:
+			observations.append("%s: declared a worst case but is not in the row" % readout)
+			continue
+		var font: Font = label.get_theme_font("font")
+		var size_px: int = label.get_theme_font_size("font_size")
+		if size_px <= 0:
+			size_px = label.get_theme_default_font_size()
+		if font == null or size_px <= 0:
+			observations.append("%s: no theme font resolved, not measured" % readout)
+			continue
+		var worst_case: String = String(Hud.WORST_CASE_TEXT[readout])
+		var needed: float = font.get_string_size(
+			worst_case, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size_px).x
+		var slot: float = label.custom_minimum_size.x
+		observations.append("%s: \"%s\" draws %s of %s px -- %s left" % [
+			readout, worst_case, _budget_number(needed), _budget_number(slot),
+			_budget_number(slot - needed),
+		])
+		if slot - needed < worst_left:
+			worst_left = slot - needed
+			worst_name = readout
+			worst_needed = needed
+			worst_budget = slot
+	if worst_name == "":
+		return _uncomputed_budget(BUDGET_UNMEASURED, "hud_readouts",
+			"Hud.WORST_CASE_TEXT", "res://game/hud.gd", "the widest readout's worst case",
+			"none of the declared readouts could be measured",
+			"a counter grows past its slot and renders trimmed, silently",
+			observations)
+	return _computed_budget("hud_readouts", "Hud.WORST_CASE_TEXT", "res://game/hud.gd",
+		"%s worst case" % worst_name, worst_needed, worst_budget, "px",
+		"Font.get_string_size() over each live readout in Root/TopBar/StatsRow",
+		("%s renders its longest value trimmed to an ellipsis and nothing errors -- widen "
+			+ "its slot, which spends the stats-row budget below") % worst_name,
+		observations)
+
+
+## Hud.stats_row_budget() -- the four slots plus the separations plus the wave
+## button -- against the width of the row they have to fit inside.
+##
+## The sum is the invariant, not any one width: widening a readout to fix the
+## entry above is paid for out of this one, which is the coupling the two entries
+## exist to make visible together.
+func _budget_hud_stats_row(game: Game) -> Dictionary:
+	var stats: HBoxContainer = _stats_row(game)
+	if stats == null or stats.get_child_count() <= 0 or stats.size.x <= 0.0:
+		return _uncomputed_budget(BUDGET_UNMEASURED, "hud_stats_row",
+			"Hud.stats_row_budget()", "res://game/hud.gd", "the stats row's contents",
+			"no Root/TopBar/StatsRow in the running HUD, or it has no width yet",
+			"the readouts push the wave button off the right edge of the bar",
+			_no_observations())
+	var needed: float = Hud.stats_row_budget(stats.get_child_count() - 1)
+	var observations: Array[String] = [
+		("%d children, so %d separations of %d px, plus a %d px wave button" % [
+			stats.get_child_count(), stats.get_child_count() - 1,
+			Hud.STATS_SEPARATION, int(Hud.NEXT_WAVE_BUTTON_SIZE.x),
+		]),
+	]
+	return _computed_budget("hud_stats_row", "Hud.stats_row_budget()", "res://game/hud.gd",
+		"stats row contents", needed, stats.size.x, "px",
+		"Hud.stats_row_budget() against the live StatsRow's width",
+		("the readouts stop fitting: with the Spacer in the row an over-long one shoves the "
+			+ "wave button off the bar rather than overlapping it, which is not a fix"),
+		observations)
+
+
+func _stats_row(game: Game) -> HBoxContainer:
+	if game.hud == null:
+		return null
+	return game.hud.get_node_or_null("Root/TopBar/StatsRow") as HBoxContainer
+
+
+## WaveDirector.SIMULTANEOUS_PEST_CEILING against the worst wave in a sweep.
+##
+## The one dependent of Board.PATH_CORNERS that has a real ceiling, so it is the
+## one that gets a number. Swept rather than sampled: the peak lands early, where
+## the swarm and the column both still sit on the road at their natural spacing,
+## and a probe at wave 100 would report the road half empty.
+func _budget_pest_road_ceiling(sweep: int) -> Dictionary:
+	var worst: int = 0
+	var worst_wave: int = 0
+	for wave: int in range(1, sweep + 1):
+		var peak: int = WaveDirector.peak_simultaneous_pests(wave)
+		if peak > worst:
+			worst = peak
+			worst_wave = wave
+	if worst <= 0:
+		return _uncomputed_budget(BUDGET_UNMEASURED, "pest_road_ceiling",
+			"WaveDirector.SIMULTANEOUS_PEST_CEILING", "res://game/wave_director.gd",
+			"pests on the road at once",
+			"the sweep of %d wave(s) found no wave that puts a pest on the road" % sweep,
+			"more pests walk the road at once than it was ever sized for",
+			_no_observations())
+	var observations: Array[String] = [
+		"worst of waves 1-%d is wave %d, at %d pests walking at once" % [sweep, worst_wave, worst],
+		("the ceiling itself is reasoned from the road's length -- see the road_shape entry, "
+			+ "which is what moving Board.PATH_CORNERS actually invalidates"),
+	]
+	return _computed_budget("pest_road_ceiling", "WaveDirector.SIMULTANEOUS_PEST_CEILING",
+		"res://game/wave_director.gd", "peak pests on the road",
+		float(worst), float(WaveDirector.SIMULTANEOUS_PEST_CEILING), "pests",
+		"WaveDirector.peak_simultaneous_pests() swept over waves 1-%d" % sweep,
+		("the road holds more pests than the pacing was sized for and the frame rate is the "
+			+ "thing that gives -- _paced_gap is the lever, not the wave table"),
+		observations)
+
+
+## Board.PATH_CORNERS. The one entry here with no headroom number, and it is not
+## an omission.
+##
+## Three things were measured against the road these corners happen to produce --
+## the pest ceiling's "3.5 pests per cell" reasoning, the dead-ground count, and
+## the Sundew's coverage arithmetic -- and none of them is a ceiling this road is
+## approaching. They are numbers written down once, in prose, against a road that
+## looked like this. So there is nothing to subtract, and a headroom invented for
+## them would be exactly the fiction this verb exists to prevent.
+##
+## What CAN be done is report what the road measures today, which is what the
+## prose would have to be re-derived against. Deliberately without the values it
+## was originally derived against: those already live in
+## test_the_road_is_still_the_road_the_constants_were_measured_against, which
+## fails naming them, and copying them here would make this the fifth place they
+## can go stale.
+func _budget_road_shape(game: Game) -> Dictionary:
+	var board: Board = game.board
+	var spends: String = "the road three other files were measured against"
+	var when_out: String = ("nothing breaks loudly -- WaveDirector.SIMULTANEOUS_PEST_CEILING, "
+		+ "the dead-ground count and the Sundew's coverage arithmetic all go on quoting a road "
+		+ "that no longer exists. test_the_road_is_still_the_road_the_constants_were_measured_against "
+		+ "is the alarm, and it names what has to be re-derived.")
+	if board == null or board.path_cell_count() <= 0:
+		return _uncomputed_budget(BUDGET_UNMEASURED, "road_shape", "Board.PATH_CORNERS",
+			"res://game/board.gd", spends,
+			"no board, or a board whose path has not been built", when_out,
+			_no_observations())
+	var route: PackedVector2Array = board.route()
+	var length: float = 0.0
+	for i: int in range(route.size() - 1):
+		length += route[i].distance_to(route[i + 1])
+	var observations: Array[String] = [
+		("the road is %d cells and %s px of walking, entry to exit -- the two numbers the pest "
+			+ "ceiling's reasoning is written against") % [
+				board.path_cell_count(), _budget_number(length),
+			],
+	]
+	var buildable: int = 0
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			if board.is_buildable(Vector2i(x, y)):
+				buildable += 1
+	observations.append("the route leaves %d buildable cells of %d" % [
+		buildable, Board.ROWS * Board.COLS,
+	])
+	for id: StringName in PlantCatalog.ids():
+		var reach: float = PlantCatalog.reach(id)
+		if reach <= 0.0:
+			continue
+		var dead: int = 0
+		for y: int in range(Board.ROWS):
+			for x: int in range(Board.COLS):
+				var cell := Vector2i(x, y)
+				if not board.is_buildable(cell):
+					continue
+				if PlacementPreview.covered_road_cells(board, cell, reach) == 0:
+					dead += 1
+		observations.append("%s reaches %s px: %d of the %d buildable cells are dead ground" % [
+			id, _budget_number(reach), dead, buildable,
+		])
+	observations.append("the Sundew's coverage arithmetic is prose -- no number here can check it")
+	return _uncomputed_budget(BUDGET_DESCRIBED, "road_shape", "Board.PATH_CORNERS",
+		"res://game/board.gd", spends,
+		("the three couplings are prose reasoned against this road, not ceilings it approaches, "
+			+ "so there is nothing to subtract -- the measurements below are what they would "
+			+ "have to be re-derived against"),
+		when_out, observations)
 
 
 # --- Which build is this? ---
