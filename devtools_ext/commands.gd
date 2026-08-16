@@ -262,7 +262,7 @@ func _cmd_board_info(_args: Dictionary) -> Dictionary:
 # three numbers measured against the road it produces, CompostMeter.COLLECT_RADIUS
 # has 4 px between it and a click that could place a plant, NotebookScreen's
 # SUBHEAD_MAX_WIDTH holds a centred sentence off two pane labels, and Hud's
-# WORST_CASE_TEXT prices four readouts against a row that has eleven pixels
+# WORST_CASE_TEXT prices four readouts against a row that has nineteen pixels
 # spare. A person finds each of those warnings by editing that exact line, which
 # means they find it AFTER deciding to move it.
 #

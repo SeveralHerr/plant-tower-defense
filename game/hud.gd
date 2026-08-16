@@ -19,7 +19,13 @@ const BAR_HEIGHT: int = 72
 const PANEL_WIDTH: int = 256
 
 ## Horizontal gap between the readouts in the top row.
-const STATS_SEPARATION: int = 14
+##
+## Trimmed from 14 (plant-tower-defense-73y): the four separations funded most
+## of the redistribution below without touching a single readout's clip
+## budget downward. Still a clearly visible gap at four labels plus a button —
+## nothing here reads as cramped, and `cmd budgets`' hud_stats_row entry is the
+## check that says so if a future pass disagrees.
+const STATS_SEPARATION: int = 10
 
 ## Level 1 is wave 1 by definition, and a player does not need telling that
 ## wave 1 is as hard as wave 1.
@@ -38,15 +44,23 @@ const NEXT_WAVE_BUTTON_SIZE := Vector2(216, 40)
 ## pins. The wave slot is the widest because it carries the threat level too.
 ##
 ## Measured, not guessed. In the real theme font the worst-case strings need
-## 161 / 302 / 136 / 188, so each of these is its requirement plus about seven
-## pixels of headroom, and the four together leave eight pixels in the row. The
-## previous numbers were picked by eye and were wrong in both directions at once:
-## Lives had fourteen pixels spare while Compost was eighteen short and had been
-## clipping in play since husks were added.
-const SEEDS_LABEL_WIDTH: float = 168.0
-const WAVE_LABEL_WIDTH: float = 310.0
-const LIVES_LABEL_WIDTH: float = 144.0
-const COMPOST_LABEL_WIDTH: float = 196.0
+## 161 / 302 / 136 / 188. The previous pass gave each of these its requirement
+## plus about seven pixels and left the row itself eight — both `cmd budgets`
+## entries "tight" by the verb's own <15% threshold, and coupled: any one
+## readout's slack is paid out of the row's, so a lopsided +7/+8/+8/+8 spent
+## almost all of it while still leaving Seeds the single tightest number in
+## the whole table (plant-tower-defense-73y).
+##
+## Re-proportioned to one flat number instead: every readout now carries the
+## SAME +10px margin, funded by trimming STATS_SEPARATION rather than by
+## taking room back from any label (a redistribution that improved one budget
+## by shrinking another would not be a fix, just a different tight spot). The
+## row's own headroom nearly triples, 8px to 19, and Seeds — the readout that
+## started this — gains 3px it did not have before.
+const SEEDS_LABEL_WIDTH: float = 171.0
+const WAVE_LABEL_WIDTH: float = 312.0
+const LIVES_LABEL_WIDTH: float = 146.0
+const COMPOST_LABEL_WIDTH: float = 198.0
 
 ## The longest string each readout can ever hold. Budgets are only meaningful
 ## against these, and a clipped Label fails *silently* — it just renders

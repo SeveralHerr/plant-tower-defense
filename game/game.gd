@@ -1327,7 +1327,7 @@ func state() -> Dictionary:
 ##
 ## 0.15 rather than something smaller because these budgets are small in absolute
 ## terms and nearly all of them are already near their end: 4 px of 32 on the husk
-## sweep, ~7 px of 168 on the seeds readout, 11 px of 1112 on the stats row. A
+## sweep, 10 px of 171 on the seeds readout, 19 px of 1112 on the stats row. A
 ## threshold that called those comfortable would report a clean board right up to
 ## the day one of them breaks, which is the failure mode the readout exists
 ## against. It is a label on a reading, NOT the startup warning's trigger -- see
@@ -1366,7 +1366,7 @@ const BUDGET_SPENT_BY_DESIGN: String = "spent_by_design"
 ##
 ## "Warn when a budget is tight" is the obvious rule and it is the wrong one:
 ## three of the four below are ALREADY tight and one is already spent, by design
-## -- 4 px of 32 on the husk sweep, 7 of 168 on the tightest readout, 8 of 1112
+## -- 4 px of 32 on the husk sweep, 10 of 171 on the tightest readout, 19 of 1112
 ## on the row, and the road sits at exactly its pest ceiling. That rule prints
 ## four warnings on every launch of a project that is behaving as intended, and
 ## four warnings that are always there are zero warnings.
@@ -1392,8 +1392,12 @@ const BUDGET_SPENT_BY_DESIGN: String = "spent_by_design"
 ## that has quietly stopped running.
 const BUDGET_FLOOR: Dictionary = {
 	"husk_click": 4.0,
-	"hud_readouts": 7.0,
-	"hud_stats_row": 8.0,
+	# Ratcheted up from 7.0 / 8.0 in the same commit that re-proportioned
+	# hud.gd's readout widths and STATS_SEPARATION (plant-tower-defense-73y) --
+	# the pattern budget_regressions()'s own warning names: accept a spend (or
+	# here, a gain) by moving the floor to what the build now actually has.
+	"hud_readouts": 10.0,
+	"hud_stats_row": 19.0,
 	"pest_road_ceiling": 0.0,
 }
 
