@@ -465,4 +465,10 @@ func set_selected(value: bool) -> void:
 	_selected = value
 	if _selection_marker != null:
 		_selection_marker.visible = value
+		if value:
+			# Grow-in only on the way in. Deselecting hides the marker outright,
+			# matching Hud._play_panel_entrance's own selection box: the box that
+			# just told the player what changed is not worth an animated exit,
+			# and losing selection often means a plant just died under it.
+			_selection_marker.play_entrance()
 	queue_redraw()

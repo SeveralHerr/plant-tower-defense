@@ -1057,6 +1057,33 @@ func test_a_sunflowers_selection_marker_is_shared_from_the_base_plant_class() ->
 	return err
 
 
+## Every animation in this project layers on an already-correct final state,
+## same rule GardenTheme.animations_enabled() enforces everywhere else.
+## Selecting a plant must leave its brackets fully shown and fully sized even
+## though headless never pumps SelectionMarker.play_entrance()'s own tween.
+func test_selecting_a_plant_never_leaves_the_marker_mid_grow_headlessly() -> String:
+	var sunflower := Sunflower.new()
+	sunflower.setup(PlantCatalog.SUNFLOWER, Vector2i(0, 0), null)
+	await _T.instantiate_scene(_host([sunflower]))
+	var marker: SelectionMarker = sunflower._selection_marker
+	var err: String = _T.assert_false(GardenTheme.animations_enabled(),
+		"this test is only meaningful headless, where animations are off")
+	if err == "":
+		sunflower.set_selected(true)
+		err = _T.assert_eq(marker.scale, Vector2.ONE,
+			"play_entrance is a no-op headless, so scale never drops below full")
+	if err == "":
+		err = _T.assert_eq(marker.modulate, Color.WHITE, "and modulate stays opaque")
+	if err == "":
+		# A second, direct call must not error or leave a tween nobody will ever
+		# pump a frame for.
+		marker.play_entrance()
+		err = _T.assert_eq(marker._entrance_tween, null,
+			"play_entrance never creates a tween while animations are gated off")
+	_T.free_ui(sunflower)
+	return err
+
+
 # -- Lane pressure readout (plant-tower-defense-4wv) -------------------------
 
 

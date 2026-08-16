@@ -26,12 +26,28 @@ const LINE_WIDTH: float = 2.0
 
 const _SIGNS: Array[float] = [-1.0, 1.0]
 
+## Grow-in for the one deliberate click that shows these brackets: a plant
+## being selected. Node2D, not Control, so neither `scale` nor `modulate` is
+## at any risk of a Container sort resetting it mid-tween — the trap
+## Hud._play_panel_entrance and TitleScreen both document for their own Controls
+## simply does not apply here.
+##
+## Not called from PlacementPreview. That subclass redraws on every mouse
+## motion as the cursor crosses from cell to cell — animating a cue that fires
+## that often would read as lag behind the cursor, not motion, and it is a
+## hover promise rather than the click it promises. See Plant.set_selected for
+## the one call site that plays this.
+const GROW_SECONDS: float = 0.14
+const GROW_START_SCALE: float = 0.55
+
 ## Subclass knobs. Vars rather than consts precisely so a subclass reuses the
 ## geometry instead of copying the numbers — see PlacementPreview.
 var marker_color: Color = MARKER_COLOR
 var half: float = HALF
 var arm: float = ARM
 var line_width: float = LINE_WIDTH
+
+var _entrance_tween: Tween = null
 
 
 func _draw() -> void:
@@ -44,3 +60,26 @@ func _draw_brackets() -> void:
 			var corner := Vector2(half * sx, half * sy)
 			draw_line(corner, corner + Vector2(-arm * sx, 0.0), marker_color, line_width)
 			draw_line(corner, corner + Vector2(0.0, -arm * sy), marker_color, line_width)
+
+
+## Grows the brackets in from GROW_START_SCALE and transparent, instead of the
+## instant show `visible = true` used to be the whole of. Killed and restarted
+## on every call — the same shape Hud._ease_threat_tint uses — so reselecting
+## a plant fast (or a second click before the first tween lands) cannot leave
+## two tweens racing over the same scale.
+##
+## A no-op with animations off: `scale` and `modulate` are left at whatever
+## they already were, which is Vector2.ONE and full white on a freshly-built
+## node — an already-correct final state, same as every other gate in this
+## project's animation family.
+func play_entrance() -> void:
+	if not GardenTheme.animations_enabled():
+		return
+	if _entrance_tween != null and _entrance_tween.is_valid():
+		_entrance_tween.kill()
+	scale = Vector2.ONE * GROW_START_SCALE
+	modulate = Color(1.0, 1.0, 1.0, 0.0)
+	_entrance_tween = create_tween().set_parallel(true)
+	_entrance_tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_entrance_tween.tween_property(self, "scale", Vector2.ONE, GROW_SECONDS)
+	_entrance_tween.tween_property(self, "modulate", Color.WHITE, GROW_SECONDS)
