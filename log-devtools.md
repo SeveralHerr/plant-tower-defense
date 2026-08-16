@@ -1519,3 +1519,52 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     `reached_loaded` — a third bucket beside `reached` and `reached_alias` —
     would retire the whole class of alias entries projects are currently writing
     for RefCounted helpers.
+
+## 2026-08-15 — Cycle 6: five features, three defects the gates caught (hmy, dlw, 1ci, 6m2, 61k)
+
+- Value: **warranted** — three separate defects surfaced, none of which any static
+  read would have shown, and one of which was actively disguised as a pass.
+  - Expected: the post-mortem grew from 5 rows to 7, and by my arithmetic the last
+    row now ends at y=472 against buttons at 476 — the same flush-boundary shape
+    that bit me two cycles ago. Runtime should also show whether the Sunflower
+    gauge and the dead-zone bar, both drawn behind their sprites, actually clear
+    the silhouette, and whether the two banner labels stay separated on screen.
+  - Got: the prediction was right — `Value_Weakestground` measured
+    `Rect: 397, 438, 335x34` (foot 472) against `ReplayButton` at
+    `Rect: 164, 476, 232x44`. The banner rendered `0, 236, 896x72` and
+    `0, 308, 896x28`, abutting exactly. The Sunflower's gauge strip read a dark
+    trough `#213129` with a cap at `(0.996, 0.973, 0.792)` where bare grass is
+    `#29c56b` at 100%. A dead preview cell rendered 24% non-grass against a live
+    cell's 20%.
+  - Found: three.
+    1. **Two existing tests were silently converted into passes by my own change.**
+       Removing `RunConfig.high_score` made
+       `test_run_config_high_score_only_ever_goes_up` and
+       `test_title_high_score_line_never_reads_as_a_zero_record` raise at runtime —
+       and in GDScript that aborts only the method and returns `""`, which for a
+       `-> String` test is byte-identical to a pass. The runner caught both as
+       `[VACU]`, by noticing they returned pass having executed **zero** of their
+       own `_T.assert_*` calls. This is the harness's stated worst failure mode
+       being detected instead of shipped, and nothing else in the run would have
+       seen it: lint was clean, the suite said 200 passed.
+    2. **The wave banner's two labels overlapped by 5px on screen.** The headline
+       was declared 62px tall, but a 48px font renders a 67px line box, so it ran
+       to y=303 while the note — positioned at `BANNER_Y + BANNER_HEIGHT` —
+       started at 298. A Label does not render at its declared size, and only a
+       pairwise sibling comparison can see it: every per-Control check passes,
+       because each fits its own box.
+    3. **The post-mortem's last row cleared its buttons by four pixels.** Nothing
+       failed, which is the point. Tightened the row gap and added
+       `BUTTON_CLEARANCE = 16` with a test, so the next row added to that card is a
+       build failure rather than a rendering accident.
+  - Cheaper: nothing. The VACUOUS catch needed the runner's own assertion
+    accounting, the overlap needed a pairwise comparison no per-Control check
+    makes, and four pixels of clearance is invisible to every gate that passed.
+
+- Gap: **no gaps this turn** — and worth recording *why*, because all three
+  findings came from harness features rather than from reading code: the vacuous
+  detector, a sibling-occlusion test written in `test_dir`, and `node-bounds`
+  against a live CanvasLayer. The one avoidable cost was mine: `place_plant` takes
+  `plant`, and I sent `kind`, which is silently ignored — 0.23.0's
+  `list-commands` prints `place_plant  args: plant, x, y` precisely so that cannot
+  happen, and I had already seen that line two iterations earlier.

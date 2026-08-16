@@ -115,6 +115,59 @@ const MESSAGE_IMPORTANT: int = 1
 const MESSAGE_MIN_READABLE: float = 1.2
 const MESSAGE_QUEUE_MAX: int = 3
 
+## The wave banner. One event, one caller, one surface.
+##
+## This node used to be a generic `show_banner(text)` that the end-of-run screen
+## drove; RunSummary replaced that and left the surface with no callers at all.
+## It is kept — rather than deleted — because the game has exactly one
+## announcement the status row cannot carry: a wave starting. That line competes
+## on MessageLabel with husk chatter, refused purchases, the uproot confirmation
+## and the mute toggle, in 15px, clipped, on a row so oversubscribed it needed a
+## priority queue. A wave start is the loudest beat in the run and was getting
+## the same 15px as "Composted a husk for 3 seeds."
+##
+## The reason this does not simply become a second oversubscribed channel is the
+## API, not the pixels: `announce_wave(number, pests, note)` names its one event.
+## There is no generic setter to dump a second kind of line into, and a wave
+## starts roughly once every PREP_SECONDS, so the surface can never be contended.
+## If a second event ever wants a banner, that is a decision to make on purpose —
+## it should have to add a method here, not reuse one.
+##
+## Two Labels rather than one two-line Label. That is a real fix, not a style
+## choice: `validate-ui` measures a Label's text as ONE joined line, so the old
+## two-line banner reported "text: 1052px, label: 896px" permanently and could
+## only be silenced by baselining a genuine-looking finding. Two single-line
+## Labels make the check's measurement and the rendered width the same number.
+const BANNER_Y: float = 236.0
+## 72, not the 62 this was written as. A Label does not render at its declared
+## size — a 48px font produces a 67px line box, so the headline ran to y=303 while
+## the note, positioned at BANNER_Y + BANNER_HEIGHT, started at 298 and the two
+## overlapped by five pixels. Caught by the banner's own occlusion test, which is
+## the only kind of check that compares a pair of siblings rather than measuring
+## each against its own box.
+const BANNER_HEIGHT: float = 72.0
+const BANNER_NOTE_HEIGHT: float = 26.0
+const BANNER_FONT_SIZE: int = 48
+const BANNER_NOTE_FONT_SIZE: int = 20
+
+## Total time a banner is on screen, of which the last BANNER_FADE_SECONDS is
+## spent fading. It sits over the board, so it has to leave on its own — the old
+## `hide_banner()` had no callers either, which is how a banner shown at wave
+## start would have stayed up for the whole wave.
+const BANNER_HOLD_SECONDS: float = 2.8
+const BANNER_FADE_SECONDS: float = 0.5
+
+## Same contract as WORST_CASE_TEXT above, for the same reason: the banner is a
+## fixed-width box whose text is built from runtime numbers, and a Label that
+## overruns it fails silently. `test_the_wave_banner_fits_its_own_worst_case`
+## measures both of these in the real theme font against the real box.
+## "9999 pests" is well past anything a wave produces and every escalation note
+## WaveDirector can emit is a subset of "tougher, faster and stranger".
+const BANNER_WORST_CASE_TEXT: Dictionary = {
+	"Banner": "Wave 9999",
+	"BannerNote": "9999 pests — tougher, faster and stranger than the last",
+}
+
 ## The selection panel's health bar. Green at full, through amber, to the same
 ## warning red as UPROOT_ARMED at nearly-dead — so the two reds in the panel mean
 ## the same thing, and a plant worth replanting says so without being read.
@@ -148,8 +201,10 @@ var _health_row: ColorRect
 var _health_fill: ColorRect
 var _health_text: Label
 var _banner: Label
+var _banner_note: Label
 
 var _plant_buttons: Dictionary = {}
+var _banner_left: float = 0.0
 var _message_left: float = 0.0
 var _message_priority: int = MESSAGE_NORMAL
 var _message_queue: Array[Dictionary] = []
@@ -366,20 +421,48 @@ func _build_side_panel(root: Control) -> void:
 	_selection_box.add_child(_uproot_button)
 
 
+## The wave banner, centred over the board rather than the window: the side
+## panel owns x >= viewport - PANEL_WIDTH, so a window-centred banner would sit
+## visibly off to the right of the thing it is announcing — the same reasoning
+## RunSummary.CARD is built on.
+##
+## The two Labels are siblings, not a parent Control with children. A sized
+## wrapper would share pixels with everything inside it, which is a real finding
+## for the pairwise occlusion checks and would have to be explained away forever.
 func _build_banner(root: Control) -> void:
-	_banner = Label.new()
-	_banner.name = "Banner"
-	_banner.position = Vector2(0, 240)
-	_banner.size = Vector2(get_viewport_width() - PANEL_WIDTH, 120)
-	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_banner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_banner.add_theme_font_size_override("font_size", 48)
-	_banner.add_theme_color_override("font_color", PAPER)
-	_banner.add_theme_color_override("font_shadow_color", INK)
-	_banner.add_theme_constant_override("shadow_offset_x", 3)
-	_banner.add_theme_constant_override("shadow_offset_y", 3)
-	_banner.visible = false
+	var width: float = float(get_viewport_width() - PANEL_WIDTH)
+
+	_banner = _make_banner_label("Banner", BANNER_FONT_SIZE, PAPER)
+	_banner.position = Vector2(0, BANNER_Y)
+	_banner.size = Vector2(width, BANNER_HEIGHT)
 	root.add_child(_banner)
+
+	# Stacked directly under the headline, sharing no pixels with it: the two
+	# rects abut at BANNER_Y + BANNER_HEIGHT rather than overlapping.
+	_banner_note = _make_banner_label("BannerNote", BANNER_NOTE_FONT_SIZE, PAPER)
+	_banner_note.position = Vector2(0, BANNER_Y + BANNER_HEIGHT)
+	_banner_note.size = Vector2(width, BANNER_NOTE_HEIGHT)
+	root.add_child(_banner_note)
+
+
+## Shared build for the banner's two rows. Both are single-line and clipped:
+## BANNER_WORST_CASE_TEXT plus its test say the text always fits, and the clip is
+## what makes a future regression render as a trimmed line instead of 48px text
+## running off the board and over the side panel.
+func _make_banner_label(node_name: String, font_size: int, colour: Color) -> Label:
+	var label := _make_label(node_name, font_size, colour)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.clip_text = true
+	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	# Drawn over the board, whose greens and browns are close enough to PAPER to
+	# swallow it without a shadow.
+	label.add_theme_color_override("font_shadow_color", INK)
+	label.add_theme_constant_override("shadow_offset_x", 3)
+	label.add_theme_constant_override("shadow_offset_y", 3)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.visible = false
+	return label
 
 
 ## One readout in the top row: a clipped, fixed-budget Label.
@@ -497,6 +580,8 @@ func _process(delta: float) -> void:
 		_message_left -= delta
 		if _message_left <= 0.0:
 			_advance_message_queue()
+	if _banner_left > 0.0:
+		_fade_banner(delta)
 
 
 ## The one call the Game makes every time anything changes. Passing the whole
@@ -557,6 +642,13 @@ func refresh(state: Dictionary) -> void:
 	_next_wave_button.disabled = not bool(state["can_start_wave"])
 	_refresh_prep_bar(state)
 	_refresh_selection(state)
+	# A run can end mid-hold — the last life goes while the wave banner is still
+	# up. RunSummary's backdrop is deliberately translucent so the board's damage
+	# map reads through it, which means a leftover "Wave 12" would read through
+	# it too, in 48px, across the post-mortem. The banner is about the wave that
+	# just started; once the run is over there is no such wave.
+	if bool(state.get("game_over", false)) or bool(state.get("victory", false)):
+		hide_banner()
 
 
 func _refresh_selection(state: Dictionary) -> void:
@@ -731,10 +823,56 @@ func pending_messages() -> int:
 	return _message_queue.size()
 
 
-func show_banner(text: String) -> void:
-	_banner.text = text
+## The headline half of a wave banner. Static and pure so every branch is
+## assertable without standing up a HUD — same reason `threat_color` is.
+static func wave_headline(number: int) -> String:
+	return "Wave %d" % number
+
+
+## The detail half. `note` is WaveDirector.escalation_note(), which is empty
+## inside the fixed table where the table itself is the escalation.
+static func wave_note(pests: int, note: String) -> String:
+	if note == "":
+		return "%d pests" % pests
+	return "%d pests — %s than the last" % [pests, note]
+
+
+## The one thing this surface announces. Named for its event on purpose: see the
+## BANNER_* block above for why there is no generic `show_banner(text)` any more.
+func announce_wave(number: int, pests: int, note: String) -> void:
+	_banner.text = wave_headline(number)
+	_banner_note.text = wave_note(pests, note)
+	# Correct before any fade touches it — the alpha ramp below only ever runs
+	# down from here, so a frame that never arrives cannot leave this invisible.
+	_banner.modulate = Color.WHITE
+	_banner_note.modulate = Color.WHITE
 	_banner.visible = true
+	_banner_note.visible = true
+	_banner_left = BANNER_HOLD_SECONDS
 
 
 func hide_banner() -> void:
+	_banner_left = 0.0
+	if not _banner.visible and not _banner_note.visible:
+		return
 	_banner.visible = false
+	_banner_note.visible = false
+	_banner.modulate = Color.WHITE
+	_banner_note.modulate = Color.WHITE
+
+
+## The fade is a pure function of the time left, not a Tween.
+##
+## A Tween here would need the usual GardenTheme.animations_enabled() gate and
+## would own the hide in its finished callback, which puts the banner's
+## visibility inside something headless never runs. Deriving alpha from the same
+## countdown that hides it means the banner is in a correct state on every frame
+## including the ones that never happen.
+func _fade_banner(delta: float) -> void:
+	_banner_left -= delta
+	if _banner_left <= 0.0:
+		hide_banner()
+		return
+	var alpha: float = minf(_banner_left / BANNER_FADE_SECONDS, 1.0)
+	_banner.modulate = Color(1, 1, 1, alpha)
+	_banner_note.modulate = Color(1, 1, 1, alpha)

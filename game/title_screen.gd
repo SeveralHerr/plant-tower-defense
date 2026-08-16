@@ -154,13 +154,25 @@ func _build_text() -> void:
 	add_child(hint)
 
 
-## Zero is not a score, it is the absence of one, and "Best endless run: 0 seeds
-## grown" reads like a bug on a first launch. Separated out so the wording is
-## assertable without building the screen.
+## Zero is not a score, it is the absence of one, and "Best garden: 0 seeds grown"
+## reads like a bug on a first launch. Separated out so the wording is assertable
+## without building the screen.
+##
+## Both modes are named, because they are two different games and this line used
+## to claim every record belonged to endless whichever mode had set it. When only
+## one mode has been played the other is simply omitted rather than shown as a
+## zero — an absent record and a bad one should not look alike.
 static func high_score_text() -> String:
-	if RunConfig.high_score <= 0:
-		return "No endless run on record yet."
-	return "Best endless run: %d seeds grown" % RunConfig.high_score
+	var campaign: int = RunConfig.best_for(false)
+	var endless: int = RunConfig.best_for(true)
+	if campaign <= 0 and endless <= 0:
+		return "No garden on record yet."
+	var parts: PackedStringArray = []
+	if campaign > 0:
+		parts.append("Campaign %d" % campaign)
+	if endless > 0:
+		parts.append("Endless %d" % endless)
+	return "Best seeds grown  —  %s" % " · ".join(parts)
 
 
 func _build_buttons() -> void:

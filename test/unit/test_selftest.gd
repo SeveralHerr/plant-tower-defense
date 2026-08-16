@@ -599,14 +599,24 @@ func test_notebook_images_stay_inside_their_box() -> String:
 
 
 func test_run_config_high_score_only_ever_goes_up() -> String:
-	var before: int = RunConfig.high_score
+	# Scores are per mode now; this asserts the ratchet on whichever mode is live.
+	var was_endless: bool = RunConfig.endless
+	var before: int = RunConfig.best_for(was_endless)
 	var raised: bool = RunConfig.record_score(before + 1)
 	var err: String = _T.assert_true(raised, "a strictly higher score updates the record")
 	if err == "":
-		err = _T.assert_eq(RunConfig.high_score, before + 1, "and is now the stored high")
+		err = _T.assert_eq(RunConfig.best_for(was_endless), before + 1, "and is now the stored high")
 	if err == "":
 		var raised_again: bool = RunConfig.record_score(before)
 		err = _T.assert_false(raised_again, "a lower score never overwrites a better one")
+	if err == "":
+		# The ratchet must be per mode, or one mode's record silently gates the other.
+		var other: int = RunConfig.best_for(not was_endless)
+		RunConfig.endless = not was_endless
+		RunConfig.record_score(other + 1)
+		RunConfig.endless = was_endless
+		err = _T.assert_eq(RunConfig.best_for(was_endless), before + 1,
+			"and the other mode's record did not disturb this one")
 	return err
 
 
@@ -893,15 +903,27 @@ func test_menu_buttons_are_not_left_on_the_default_theme() -> String:
 func test_title_high_score_line_never_reads_as_a_zero_record() -> String:
 	## "Best endless run: 0 seeds grown" on a fresh install reads as a bug, not
 	## as an empty record.
-	var saved: int = RunConfig.high_score
-	RunConfig.high_score = 0
-	var err: String = _T.assert_false(TitleScreen.high_score_text().contains("0 seeds"),
-		"a fresh install is told there is no record yet")
+	var saved_c: int = RunConfig.campaign_high_score
+	var saved_e: int = RunConfig.endless_high_score
+	RunConfig.campaign_high_score = 0
+	RunConfig.endless_high_score = 0
+	var err: String = _T.assert_false(TitleScreen.high_score_text().contains("0"),
+		"a fresh install is told there is no record yet, got %s" % TitleScreen.high_score_text())
 	if err == "":
-		RunConfig.high_score = 412
-		err = _T.assert_eq(TitleScreen.high_score_text(), "Best endless run: 412 seeds grown",
-			"and a real record is spelled out")
-	RunConfig.high_score = saved
+		RunConfig.endless_high_score = 412
+		var line: String = TitleScreen.high_score_text()
+		err = _T.assert_true(line.contains("412") and line.contains("Endless"),
+			"and a real record is spelled out and named by its mode, got %s" % line)
+	if err == "":
+		# The bug this replaced: one number labelled "Best endless run" whichever
+		# mode had set it. A campaign-only record must not claim to be endless.
+		RunConfig.endless_high_score = 0
+		RunConfig.campaign_high_score = 77
+		var line2: String = TitleScreen.high_score_text()
+		err = _T.assert_true(line2.contains("Campaign") and not line2.contains("Endless"),
+			"a campaign-only record is not called endless, got %s" % line2)
+	RunConfig.campaign_high_score = saved_c
+	RunConfig.endless_high_score = saved_e
 	return err
 
 
@@ -2705,5 +2727,229 @@ func test_the_threat_tint_still_lands_exactly_when_animation_is_off() -> String:
 		await _pump(game)
 		err = _T.assert_true(label.get_theme_color("font_color").is_equal_approx(Hud.PAPER),
 			"and comes back down exactly")
+	_T.free_ui(game)
+	return err
+
+
+# -- The wave banner (plant-tower-defense-1ci) -------------------------------
+#
+# The HUD's Banner had no callers at all once RunSummary replaced the
+# end-of-run banner: `show_banner`/`hide_banner` were dead, and the node was
+# built on every launch only ever to stay hidden. It was given the one job it is shaped
+# for -- announcing a wave -- instead of being deleted, and these are the
+# checks that keep it from drifting back to either failure mode: a surface
+# nobody calls, or a second dumping ground for status lines.
+
+
+## Both halves are built from runtime numbers into fixed-width boxes, and a
+## Label that overruns its box fails silently -- it just renders "Wave 12 …".
+## Same check, and the same reason, as test_no_readout_clips_its_own_worst_case.
+func test_the_wave_banner_fits_its_own_worst_case() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	await _pump(game)
+	var err: String = _T.assert_eq(Hud.BANNER_WORST_CASE_TEXT.size(), 2,
+		"both banner rows have a declared worst case")
+	var short: PackedStringArray = []
+	for name: String in Hud.BANNER_WORST_CASE_TEXT:
+		var label: Label = game.hud.get_node_or_null("Root/%s" % name) as Label
+		if label == null:
+			short.append("%s: no such node" % name)
+			continue
+		var font: Font = label.get_theme_font("font")
+		var size: int = label.get_theme_font_size("font_size")
+		if size <= 0:
+			size = label.get_theme_default_font_size()
+		var needed: float = font.get_string_size(
+			String(Hud.BANNER_WORST_CASE_TEXT[name]), HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+		if needed > label.size.x:
+			short.append("%s needs %.0fpx, has %.0f" % [name, needed, label.size.x])
+	if err == "":
+		err = _T.assert_eq(short.size(), 0, "banner rows that clip their worst case: %s" % ", ".join(short))
+	if err == "":
+		# The declared worst case has to be reachable text, not a comfortable
+		# fiction. Every escalation note WaveDirector emits is a subset of these
+		# three words, so the longest one it can build is the one budgeted for.
+		err = _T.assert_eq(String(Hud.BANNER_WORST_CASE_TEXT["BannerNote"]),
+			Hud.wave_note(9999, "tougher, faster and stranger"),
+			"the budgeted note is a string wave_note can actually build, not a comfortable fiction")
+	if err == "":
+		err = _T.assert_eq(String(Hud.BANNER_WORST_CASE_TEXT["Banner"]), Hud.wave_headline(9999),
+			"and so is the budgeted headline")
+	_T.free_ui(game)
+	return err
+
+
+## The two halves are siblings for a reason -- a sized wrapper Control would
+## share pixels with its own children -- and the banner sits over the board, so
+## it must not land on any other live HUD element either.
+func test_the_wave_banner_shares_no_pixels_with_the_rest_of_the_hud() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.hud.announce_wave(12, 24, "tougher and faster")
+	await _pump(game)
+
+	# From Root, not the CanvasLayer: Root is itself a full-rect Control, and a
+	# surface sharing pixels with the container it lives in is the normal case.
+	var rects: Dictionary = _hud_rects(game.hud.get_node("Root"))
+	var err: String = _T.assert_true(rects.has("Banner") and rects.has("BannerNote"),
+		"an announced banner is on screen with both rows sized, got %s" % [rects.keys()])
+	if err == "":
+		# Abutting, not overlapping: the note's top edge is the headline's bottom.
+		err = _T.assert_false((rects["Banner"] as Rect2).intersects(rects["BannerNote"] as Rect2),
+			"the headline %s and the note %s abut rather than overlap"
+				% [rects["Banner"], rects["BannerNote"]])
+	for row: String in ["Banner", "BannerNote"]:
+		if err != "":
+			break
+		for other: String in rects:
+			if other == "Banner" or other == "BannerNote":
+				continue
+			if (rects[row] as Rect2).intersects(rects[other] as Rect2):
+				err = _T.assert_false(true, "%s %s overlaps %s %s"
+					% [row, rects[row], other, rects[other]])
+				break
+	if err == "":
+		# And it stays clear of the side panel, which owns the right edge.
+		err = _T.assert_true(
+			(rects["Banner"] as Rect2).end.x <= float(game.hud.get_viewport_width() - Hud.PANEL_WIDTH),
+			"the banner stops where the side panel starts")
+	_T.free_ui(game)
+	return err
+
+
+## When it appears, what it says, and -- the half the old surface never had --
+## that it takes itself down. `hide_banner()` previously had no callers either,
+## so a banner raised at wave start would have stayed up for the whole wave.
+func test_the_wave_banner_appears_on_announcement_and_clears_itself() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var banner: Label = game.hud.get_node_or_null("Root/Banner") as Label
+	var note: Label = game.hud.get_node_or_null("Root/BannerNote") as Label
+	var err: String = _T.assert_true(banner != null and note != null, "both banner rows exist")
+	if err == "":
+		err = _T.assert_false(banner.visible, "and nothing is announced at launch")
+	if err == "":
+		game.hud.announce_wave(7, 19, "faster")
+		err = _T.assert_true(banner.visible and note.visible, "announcing a wave raises both rows")
+	if err == "":
+		err = _T.assert_eq(banner.text, "Wave 7", "the headline names the wave")
+	if err == "":
+		err = _T.assert_eq(note.text, "19 pests — faster than the last",
+			"and the note carries the count and what got worse")
+	if err == "":
+		# Straight to the start of the fade: still fully up, not already ghosting.
+		game.hud._fade_banner(Hud.BANNER_HOLD_SECONDS - Hud.BANNER_FADE_SECONDS)
+		err = _T.assert_float_eq(banner.modulate.a, 1.0, 0.01,
+			"it is still fully opaque when the fade begins, not at %.2f" % banner.modulate.a)
+	if err == "":
+		game.hud._fade_banner(Hud.BANNER_FADE_SECONDS * 0.5)
+		err = _T.assert_float_eq(banner.modulate.a, 0.5, 0.01,
+			"half a fade in, it is half faded, not %.2f" % banner.modulate.a)
+	if err == "":
+		err = _T.assert_true(banner.visible, "and still on screen while it fades")
+	if err == "":
+		game.hud._fade_banner(Hud.BANNER_FADE_SECONDS)
+		err = _T.assert_false(banner.visible or note.visible, "then it takes itself down")
+	if err == "":
+		# Hidden AND opaque again: a row left at alpha 0 would come back invisible
+		# on the next wave, which no assertion about `visible` alone would catch.
+		err = _T.assert_float_eq(banner.modulate.a, 1.0, 0.001,
+			"and is reset to opaque, so the next wave is not announced invisibly")
+	_T.free_ui(game)
+	return err
+
+
+## A run can end mid-hold. RunSummary's backdrop is deliberately translucent, so
+## a leftover "Wave 12" would read straight through the post-mortem in 48px.
+func test_ending_a_run_takes_the_wave_banner_down() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var banner: Label = game.hud.get_node_or_null("Root/Banner") as Label
+	game.hud.announce_wave(12, 30, "")
+	var err: String = _T.assert_true(banner.visible, "the banner is up mid-wave")
+	if err == "":
+		game.game_over = true
+		game._refresh()
+		err = _T.assert_false(banner.visible, "and the run ending clears it without the Game asking")
+	_T.free_ui(game)
+	return err
+
+
+## The banner's whole defence against becoming a second oversubscribed status
+## row is that it has no generic setter to dump lines into -- only an API named
+## for its one event. A `show_banner(text)` reintroduced later would undo that
+## silently, so it is asserted gone rather than merely deleted.
+func test_the_banner_has_no_generic_setter_to_become_a_second_message_row() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_false(game.hud.has_method("show_banner"),
+		"there is no generic show_banner(text) for a second kind of line to reuse")
+	if err == "":
+		err = _T.assert_true(game.hud.has_method("announce_wave"),
+			"only announce_wave, which names the single event this surface serves")
+	if err == "":
+		# The status row is what the banner exists to relieve; announcing a wave
+		# must not also queue a line there, or the move bought nothing.
+		var pending: int = game.hud.pending_messages()
+		var line: String = (game.hud.get_node("Root/TopBar/MessageLabel") as Label).text
+		game.hud.announce_wave(4, 11, "")
+		err = _T.assert_eq(game.hud.pending_messages(), pending,
+			"announcing a wave queues nothing on the status row")
+		if err == "":
+			err = _T.assert_eq((game.hud.get_node("Root/TopBar/MessageLabel") as Label).text, line,
+				"and does not stomp whatever line is already there")
+	_T.free_ui(game)
+	return err
+
+
+## Both halves are pure static text builders, so every branch is assertable
+## without a HUD at all -- the same reason Hud.threat_color is static.
+func test_the_wave_banner_text_covers_both_escalation_branches() -> String:
+	var err: String = _T.assert_eq(Hud.wave_headline(1), "Wave 1", "the headline is just the wave")
+	if err == "":
+		err = _T.assert_eq(Hud.wave_note(5, ""), "5 pests",
+			"inside the fixed table the note is the count alone, with no dangling clause")
+	if err == "":
+		err = _T.assert_eq(Hud.wave_note(5, "tougher"), "5 pests — tougher than the last",
+			"past it, the note names what actually got worse")
+	if err == "":
+		# The branch the empty note protects: WaveDirector.escalation_note is ""
+		# for every wave in the fixed table, which is most of a campaign run.
+		err = _T.assert_eq(WaveDirector.escalation_note(1), "",
+			"and wave 1 really does produce the empty note this branch exists for")
+	return err
+
+
+## The post-mortem grows a row every time the run learns to count something new,
+## and each one pushes the last row toward the buttons. At five rows there was
+## room; at seven the last row ended four pixels above them. This is the assertion
+## that makes the next row a build failure rather than a rendering accident.
+func test_the_post_mortem_rows_keep_clear_of_its_buttons() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.lives = 1
+	game._on_pest_escaped(null)
+	await _pump(game)
+	var panel: RunSummary = game.get_node_or_null("SummaryLayer/RunSummary") as RunSummary
+	var err: String = _T.assert_true(panel != null, "the card is up")
+	if err == "":
+		var rows: Array = panel.summary_rows()
+		err = _T.assert_gt(rows.size(), 0, "the card has rows to check")
+		if err == "":
+			var lowest: float = 0.0
+			for row: Array in rows:
+				var label: Label = panel.get_node_or_null(
+					"Value_%s" % String(row[0]).replace(" ", "")) as Label
+				if label != null:
+					lowest = maxf(lowest, label.position.y + label.size.y)
+			var button: Button = panel.get_node_or_null("ReplayButton") as Button
+			err = _T.assert_true(button != null, "the replay button exists")
+			if err == "":
+				err = _T.assert_true(lowest <= button.position.y - RunSummary.BUTTON_CLEARANCE,
+					"the last row foot %.0f keeps %dpx clear of the buttons at %.0f"
+						% [lowest, int(RunSummary.BUTTON_CLEARANCE), button.position.y])
+	if err == "":
+		# And the whole stack stays on the card, not just off the buttons.
+		var card: Control = panel.get_node_or_null("Card") as Control
+		err = _T.assert_true(card != null, "the card panel exists")
+		if err == "":
+			var button2: Button = panel.get_node_or_null("GateButton") as Button
+			err = _T.assert_true(button2.position.y + button2.size.y <= card.position.y + card.size.y,
+				"and the buttons themselves stay on the paper")
 	_T.free_ui(game)
 	return err

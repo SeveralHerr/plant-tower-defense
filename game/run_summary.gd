@@ -30,6 +30,14 @@ const CARD := Rect2(128.0, 96.0, 640.0, 456.0)
 const ROW_HEIGHT: float = 34.0
 const ROW_INSET: float = 36.0
 const FIRST_ROW_Y: float = 186.0
+## Gap between rows. 4, not the 8 this started at: the card grew from five rows to
+## seven when the run learned to count what it defeated, and at 8 the last row ran
+## to y=472 against buttons at 476 — four pixels, measured live. Not an overlap,
+## but the same flush-boundary shape that put the selection panel's foot exactly on
+## the panel edge two cycles ago, and BUTTON_CLEARANCE now refuses it.
+const ROW_GAP: float = 4.0
+## Minimum space the last row must leave above the buttons.
+const BUTTON_CLEARANCE: float = 16.0
 
 ## Alpha of the backdrop. Lower than the notebook's 0.88 on purpose: this screen
 ## has something worth seeing behind it.
@@ -125,7 +133,10 @@ func _score_line() -> String:
 	if bool(_stats.get("new_record", false)):
 		return "%d seeds grown — a new best" % earned
 	var best: int = int(_stats.get("high_score", 0))
-	return "%d seeds grown — your best is %d" % [earned, best]
+	# "your best" is now the record for the mode just played, not a single number
+	# shared between the eight-wave campaign and an unbounded endless run.
+	var mode: String = "endless" if bool(_stats.get("endless", false)) else "campaign"
+	return "%d seeds grown — your best %s is %d" % [earned, mode, best]
 
 
 ## Every row is `label: value`, built from one table so the order is readable in
@@ -136,12 +147,21 @@ func summary_rows() -> Array:
 	var waves: String = "%d" % wave if endless else "%d of %d" % [wave, int(_stats.get("wave_count", 0))]
 	var rows: Array = [
 		["Waves survived", waves],
+		["Pests defeated", "%d" % int(_stats.get("pests_defeated", 0))],
+		["Time in the garden", _duration_text()],
 		["Threat reached", "level %d" % int(_stats.get("threat_level", 1))],
 		["Garden lost", "%d of %d beds" % [int(_stats.get("lives_lost", 0)), Game.LIVES]],
 		["Compost swept", "%d" % int(_stats.get("compost_total", 0))],
 		["Weakest ground", _worst_cell_text()],
 	]
 	return rows
+
+
+## Minutes and seconds. A bare float of seconds is a number the player has to
+## convert, and "413.7" is not a thing anyone recognises about their own run.
+func _duration_text() -> String:
+	var total: int = int(round(float(_stats.get("run_seconds", 0.0))))
+	return "%d:%02d" % [total / 60, total % 60]
 
 
 func _worst_cell_text() -> String:
@@ -182,7 +202,7 @@ func _build_rows() -> void:
 		add_child(value)
 
 		_rows.append(value)
-		y += ROW_HEIGHT + 8.0
+		y += ROW_HEIGHT + ROW_GAP
 
 
 func _build_buttons() -> void:

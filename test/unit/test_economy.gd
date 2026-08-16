@@ -7,6 +7,8 @@ extends RefCounted
 ## a locked plant cannot be paid for at any price; and a packet is the only way
 ## to unlock one.
 
+const GAME_SCENE := "res://game/game.tscn"
+
 var _T
 
 
@@ -248,3 +250,97 @@ func test_draining_the_catalogue_never_repeats_a_plant() -> String:
 	if err2 != "":
 		return err2
 	return _T.assert_eq(bank.buy_packet(&"common"), &"", "including the cheap one")
+
+
+## Two modes, two records. One number shared between an eight-wave campaign and an
+## unbounded endless run meant a single endless result permanently retired the
+## campaign record, while the title screen labelled it "Best endless run" whichever
+## mode had actually set it.
+func test_a_campaign_run_cannot_take_the_endless_record() -> String:
+	var campaign_before: int = RunConfig.campaign_high_score
+	var endless_before: int = RunConfig.endless_high_score
+	RunConfig.campaign_high_score = 0
+	RunConfig.endless_high_score = 5000
+
+	# A campaign run scoring 300 against campaign's 0 IS a record, even though the
+	# same 300 is nowhere near the endless 5000. That is the whole point: the two
+	# numbers are not comparable, so one shared slot could only ever be wrong.
+	RunConfig.endless = false
+	var err: String = _T.assert_true(RunConfig.record_score(300),
+		"300 beats the campaign record of 0")
+	if err == "":
+		err = _T.assert_eq(RunConfig.campaign_high_score, 300,
+			"a campaign run files against campaign")
+	if err == "":
+		err = _T.assert_eq(RunConfig.endless_high_score, 5000,
+			"and leaves the endless record untouched")
+	if err == "":
+		RunConfig.endless = true
+		err = _T.assert_false(RunConfig.record_score(300),
+			"the same 300 is not an endless record, because endless holds 5000")
+	if err == "":
+		err = _T.assert_eq(RunConfig.campaign_high_score, 300, "and campaign is unchanged by that")
+
+	RunConfig.campaign_high_score = campaign_before
+	RunConfig.endless_high_score = endless_before
+	RunConfig.endless = false
+	return err
+
+
+func test_each_mode_reports_its_own_best() -> String:
+	var c: int = RunConfig.campaign_high_score
+	var e: int = RunConfig.endless_high_score
+	RunConfig.campaign_high_score = 111
+	RunConfig.endless_high_score = 999
+	var err: String = _T.assert_eq(RunConfig.best_for(false), 111, "campaign best")
+	if err == "":
+		err = _T.assert_eq(RunConfig.best_for(true), 999, "endless best")
+	if err == "":
+		# The title line names both rather than claiming one belongs to the other.
+		var line: String = TitleScreen.high_score_text()
+		err = _T.assert_true(line.contains("111") and line.contains("999"),
+			"the title screen shows both records, got %s" % line)
+	if err == "":
+		RunConfig.campaign_high_score = 0
+		err = _T.assert_false(TitleScreen.high_score_text().contains("0"),
+			"an unplayed mode is omitted, not shown as a zero: %s" % TitleScreen.high_score_text())
+	RunConfig.campaign_high_score = c
+	RunConfig.endless_high_score = e
+	return err
+
+
+## The post-mortem could only report damage, because these were the two numbers
+## nobody had ever written down.
+func test_a_run_counts_what_it_defeated_and_how_long_it_took() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_eq(game.pests_defeated, 0, "a fresh run has defeated nothing")
+	# Not asserted as 0: instantiate_scene pumps real frames, so the clock has
+	# legitimately been running since the scene loaded. The delta is the claim.
+	var started_at: float = game.run_seconds
+	if err == "":
+		game._process(2.5)
+		err = _T.assert_float_eq(game.run_seconds - started_at, 2.5, 0.01,
+			"the clock advances by exactly the delta it is given")
+	if err == "":
+		game.spawn_pest(Pest.APHID)
+		var pests: Array = game.get_tree().get_nodes_in_group("pests")
+		err = _T.assert_gt(pests.size(), 0, "a pest is on the board to kill")
+		if err == "":
+			# Through the real death path, not by touching the counter.
+			(pests[0] as Pest).take_damage(9999.0)
+			err = _T.assert_eq(game.pests_defeated, 1, "a kill is counted where kills funnel")
+	if err == "":
+		# The clock must stop when the run does, or it measures how long the player
+		# spent reading their own post-mortem.
+		game.game_over = true
+		var frozen: float = game.run_seconds
+		game._process(5.0)
+		err = _T.assert_float_eq(game.run_seconds, frozen, 0.001,
+			"the clock stops the instant the run ends")
+	if err == "":
+		var stats: Dictionary = game.summary_stats(false)
+		err = _T.assert_eq(int(stats["pests_defeated"]), 1, "and both reach the post-mortem")
+		if err == "":
+			err = _T.assert_gt(float(stats["run_seconds"]), 0.0, "with a duration")
+	_T.free_ui(game)
+	return err

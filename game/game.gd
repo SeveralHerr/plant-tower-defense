@@ -67,6 +67,15 @@ var _uproot_left: float = 0.0
 ## on change only, and keeps the HUD stateless — it still holds no copy of this.
 var _selected_health: float = -1.0
 
+## What the run did, as opposed to what it lost.
+##
+## The post-mortem could only ever report damage — waves survived, beds lost,
+## weakest ground — because these two were the numbers nobody had written down.
+## _on_pest_died is the single funnel every kill routes through, and nothing in
+## game/ called Time.* at all, so a run had no duration either.
+var pests_defeated: int = 0
+var run_seconds: float = 0.0
+
 ## The post-mortem card and the layer it sits on, built once when the run ends.
 var _summary: RunSummary = null
 var _summary_layer: CanvasLayer = null
@@ -162,6 +171,9 @@ func _process(delta: float) -> void:
 	_watch_selected_health()
 	if game_over or victory:
 		return
+	# After the early return, so the clock stops the instant the run does rather
+	# than counting the time the player spends reading the post-mortem.
+	run_seconds += delta
 	_check_wave_cleared()
 	if not _wave_live and director.has_more_waves():
 		_prep_left -= delta
@@ -186,12 +198,8 @@ func _on_wave_started(number: int) -> void:
 	# Past the fixed table, say what actually got worse. The threat level on
 	# the bar answers "how much"; this answers "in what way", which is the half
 	# that tells a player whether to buy damage or buy coverage.
-	var note: String = WaveDirector.escalation_note(number)
-	if note == "":
-		hud.show_message("Wave %d — %d pests." % [number, director.current_wave_pest_count()])
-	else:
-		hud.show_message("Wave %d — %d pests, and %s than the last."
-			% [number, director.current_wave_pest_count(), note])
+	hud.announce_wave(number, director.current_wave_pest_count(),
+		WaveDirector.escalation_note(number))
 	_refresh()
 
 
@@ -277,6 +285,7 @@ func _on_pest_died(pest: Pest) -> void:
 	# node DEATH_LINGER seconds later, and a freed node cannot finish a sound.
 	# Sfx's pool sits under the scene tree root, so nothing on the board owns it.
 	Sfx.play(Sfx.PEST_KILLED)
+	pests_defeated += 1
 	_note_lane_loss(pest.position)
 	bank.add_seeds(pest.seed_value)
 	# Half again, as a husk — collectible for a bonus, or left to rot. See
@@ -350,9 +359,11 @@ func summary_stats(new_record: bool) -> Dictionary:
 		"threat_level": WaveDirector.threat_level(maxi(1, director.current_wave)),
 		"lives_lost": LIVES - lives,
 		"seeds_earned_total": bank.seeds_earned_total,
-		"high_score": RunConfig.high_score,
+		"high_score": RunConfig.best_for(director.endless),
 		"new_record": new_record,
 		"compost_total": compost.total_collected,
+		"pests_defeated": pests_defeated,
+		"run_seconds": run_seconds,
 		"worst_cell": worst,
 		"worst_cell_losses": int(board.run_losses().get(worst, 0)),
 	}
@@ -678,8 +689,10 @@ func state() -> Dictionary:
 		"victory": victory,
 		"endless": director.endless,
 		"seeds_earned_total": bank.seeds_earned_total,
-		"high_score": RunConfig.high_score,
+		"high_score": RunConfig.best_for(director.endless),
 		"compost_total": compost.total_collected,
+		"pests_defeated": pests_defeated,
+		"run_seconds": run_seconds,
 		"husks_on_ground": compost.husk_count(),
 		"threat": WaveDirector.threat_for(maxi(1, director.current_wave)),
 		"threat_level": WaveDirector.threat_level(maxi(1, director.current_wave)),
