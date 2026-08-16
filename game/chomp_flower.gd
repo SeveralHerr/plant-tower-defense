@@ -142,6 +142,11 @@ func _bite() -> void:
 	# Sfx.play() gates its own headless silence, so there is nothing here for
 	# a unit test calling _grab() directly to trip over.
 	Sfx.play(Sfx.CHOMP_BITE)
+	# The catch itself, not a kill — the meal doesn't die until _chew_left runs
+	# out, so unlike Kernel's post-damage guard this is never racing a death
+	# this same frame. Same is_alive() guard anyway, kept for the pattern.
+	if is_instance_valid(_held) and _held.is_alive():
+		_held.flash_hit()
 	if _sprite == null or not is_inside_tree():
 		return
 	var tween := create_tween()
