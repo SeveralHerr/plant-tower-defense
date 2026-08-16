@@ -1638,3 +1638,49 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   failed"` because `StickySundew` was not yet in the class cache, and
   `import_check.py` then reported a clean import that fixed it — the documented
   "run --import after adding a class_name" sequence, working as written.
+
+## 2026-08-16 — Plant bar headroom and pause (zij, lzu)
+
+- Value: **warranted** — runtime caught a regression that every one of the three
+  new layout tests passed over.
+  - Expected: the pause card's whole risk is `PROCESS_MODE_ALWAYS` — get it wrong
+    and the card is frozen by the pause it owns and no button works, which
+    headless can assert as a property but not as a *press*. Runtime should confirm
+    the bridge reports `tree is PAUSED`, that a real press on the card still
+    lands, and that the plant bar's new grid puts real buttons where the
+    arithmetic says.
+  - Got: `ping` answered `tree is PAUSED (bridge still polling:
+    PROCESS_MODE_ALWAYS)`, and `_prep_left` read `5.38266633333376` twice across a
+    two-second real-time gap — the countdown genuinely stopped rather than being
+    hidden. A `press` on `ResumeButton` landed on the frozen tree, the layer was
+    freed, and the countdown resumed `3.659 -> 2.351` over one second. Leaving via
+    `GateButton` reached `TitleScreen` unfrozen.
+  - Found: two.
+    1. **Swapping the plant bar's `VBoxContainer` for a `GridContainer` silently
+       halved the buttons.** A VBox stretches its children horizontally for free;
+       a Grid does not, so they rendered at their icon's natural 128px instead of
+       the panel's 232px. All three new layout tests passed over it, because they
+       assert heights, rows and positions — and a half-width button is correct on
+       every one of those. `node-bounds` reported `232x248` for the bar and
+       `128x56` for each button in it, which is the pair that gives it away.
+    2. Two tests were caught as `[VACU]` rather than passing, for the third time
+       this session. The root cause was a real parse error — assigning a
+       `GridContainer` to a var declared `VBoxContainer` — which `name_check`
+       passed clean and only the import gate reported, quoting the line and the
+       type.
+  - Cheaper: nothing. A half-width button satisfies every assertion about height
+    and position, and "a press lands on a frozen tree" is not a property a
+    headless test can exercise.
+
+- Gap: **no gaps this turn** — the harness caught both defects itself. Worth
+  recording that `ping`'s pause line is doing real work: it names
+  `PROCESS_MODE_ALWAYS` as the reason the bridge still answers, which is the
+  single fact that makes a pause menu verifiable at all, and it is the same
+  property the menu itself has to get right.
+
+  A recurring **self**-error, not a harness one: for the second time I inserted a
+  block of constants directly above a `const` that already had a `##` doc comment,
+  orphaning that comment from its declaration. The fix both times was to insert
+  after the complete declaration instead. Worth remembering as a rule rather than
+  re-noticing: in a file where every constant carries provenance, "insert before
+  the const" is almost always wrong.

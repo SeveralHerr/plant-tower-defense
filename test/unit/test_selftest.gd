@@ -3082,3 +3082,152 @@ func _scripted_nodes(root: Node) -> Array[Node]:
 	for child: Node in root.get_children():
 		out.append_array(_scripted_nodes(child))
 	return out
+
+
+## The plant bar sizes itself to the catalogue instead of to a number that happened
+## to fit when it was written.
+##
+## The old bar was a 240px VBox of fixed 56px buttons: four plants ended at y=292
+## against a packet button hard-coded at y=300, so it fit with eight pixels to
+## spare and a fifth plant silently overlapped. Nothing failed -- overlapping
+## siblings each fit their own box -- which is why this is arithmetic on a pure
+## function rather than a rendering check.
+func test_the_plant_bar_fits_a_catalogue_larger_than_todays() -> String:
+	var span: float = Hud.PLANT_BAR_BOTTOM - Hud.PLANT_BAR_Y
+	var err: String = ""
+	for count: int in range(1, 11):
+		var layout: Dictionary = Hud.plant_bar_layout(count)
+		var rows: int = int(layout["rows"])
+		var height: float = float(layout["height"])
+		var used: float = float(rows) * height + float(Hud.PLANT_BAR_SEPARATION * (rows - 1))
+		err = _T.assert_true(used <= span + 0.01,
+			"%d plant(s): %d row(s) at %.1fpx use %.1f of %.1f available"
+				% [count, rows, height, used, span])
+		if err == "":
+			err = _T.assert_true(height >= Hud.PLANT_BUTTON_MIN_HEIGHT,
+				"%d plant(s): a %.1fpx button is below the %dpx touch minimum"
+					% [count, height, int(Hud.PLANT_BUTTON_MIN_HEIGHT)])
+		if err == "":
+			err = _T.assert_false(bool(layout.get("overflows", false)),
+				"%d plant(s) still fits without the bar needing to scroll" % count)
+		if err != "":
+			return err
+	return err
+
+
+func test_the_plant_bar_refuses_rather_than_shrinking_past_a_touch_target() -> String:
+	# Past what two columns can hold, the layout must say so rather than quietly
+	# returning a button too small to hit. A silent shrink is the failure the 40px
+	# gate exists to catch, and it would sail through the test above.
+	var layout: Dictionary = Hud.plant_bar_layout(24)
+	var err: String = _T.assert_true(bool(layout.get("overflows", false)),
+		"an absurd catalogue reports that it overflows")
+	if err == "":
+		err = _T.assert_true(float(layout["height"]) >= Hud.PLANT_BUTTON_MIN_HEIGHT,
+			"and never reports a height below the touch minimum")
+	return err
+
+
+## The live bar, against the real catalogue: every button on it must be a legal
+## touch target and none may reach the packet button below.
+func test_no_plant_button_overlaps_the_packet_buttons() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	await _pump(game)
+	var bar: Control = game.hud.get_node_or_null("Root/SidePanel/PlantBar") as Control
+	var packet: Control = game.hud.get_node_or_null("Root/SidePanel/PacketButton") as Control
+	var err: String = _T.assert_true(bar != null and packet != null, "bar and packet button exist")
+	if err == "":
+		err = _T.assert_gt(bar.get_child_count(), 0, "the bar has buttons on it")
+	if err == "":
+		var lowest: float = 0.0
+		for child: Node in bar.get_children():
+			var button := child as Button
+			if button == null:
+				continue
+			lowest = maxf(lowest, button.position.y + button.size.y)
+			err = _T.assert_true(button.size.y >= Hud.PLANT_BUTTON_MIN_HEIGHT,
+				"%s is %.0fpx tall, under the touch minimum" % [button.name, button.size.y])
+			if err != "":
+				break
+		if err == "":
+			err = _T.assert_true(bar.position.y + lowest <= packet.position.y,
+				"the lowest plant button foot %.0f stays above the packet button at %.0f"
+					% [bar.position.y + lowest, packet.position.y])
+	_T.free_ui(game)
+	return err
+
+
+## Pause. The game had none: get_tree().paused appeared nowhere in game/, so the
+## prep countdown kept running while the player was away from the keyboard, and
+## the only way out of a run in progress was to lose it.
+func test_pausing_a_run_actually_stops_the_prep_countdown() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game._wave_live = false
+	game._prep_left = Game.PREP_SECONDS
+	var err: String = _T.assert_false(game.is_paused(), "a fresh run is not paused")
+	if err == "":
+		game._process(1.0)
+		err = _T.assert_float_eq(game._prep_left, Game.PREP_SECONDS - 1.0, 0.01,
+			"the countdown runs while the run does")
+	if err == "":
+		game.pause_run()
+		await _pump(game)
+		err = _T.assert_true(game.is_paused(), "pausing sets the tree's own flag")
+	if err == "":
+		err = _T.assert_true(game.get_node_or_null("PauseLayer/PauseScreen") != null,
+			"and the card is on screen")
+	if err == "":
+		# The real claim. _process is not called on a paused node by the engine, so
+		# asserting the countdown directly means asserting that the pause reaches
+		# the thing the player actually loses to.
+		var held: float = game._prep_left
+		await _pump(game)
+		await _pump(game)
+		err = _T.assert_float_eq(game._prep_left, held, 0.001,
+			"the prep countdown does not advance while paused")
+	if err == "":
+		game.resume_run()
+		await _pump(game)
+		err = _T.assert_false(game.is_paused(), "resuming clears the flag")
+	if err == "":
+		err = _T.assert_true(game.get_node_or_null("PauseLayer") == null,
+			"and takes the card down with it")
+	_T.free_ui(game)
+	return err
+
+
+func test_the_pause_card_keeps_processing_while_the_game_it_paused_does_not() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.pause_run()
+	await _pump(game)
+	var screen: Control = game.get_node_or_null("PauseLayer/PauseScreen") as Control
+	var err: String = _T.assert_true(screen != null, "the card exists")
+	if err == "":
+		# Without PROCESS_MODE_ALWAYS the card is frozen by the pause it owns and
+		# none of its own buttons can be clicked -- a pause menu that cannot be
+		# dismissed. This is the single mistake this screen exists to not make.
+		err = _T.assert_eq(screen.process_mode, Node.PROCESS_MODE_ALWAYS,
+			"the card runs while the tree is paused")
+	if err == "":
+		var layer: CanvasLayer = game.get_node_or_null("PauseLayer") as CanvasLayer
+		err = _T.assert_eq(layer.process_mode, Node.PROCESS_MODE_ALWAYS,
+			"and so does the layer holding it")
+	if err == "":
+		for spec: Dictionary in PauseScreen.BUTTONS:
+			var b: Button = screen.get_node_or_null(String(spec["name"])) as Button
+			err = _T.assert_true(b != null and not b.disabled,
+				"%s is present and clickable" % String(spec["name"]))
+			if err != "":
+				break
+	if err == "":
+		# Pausing twice must not stack two cards.
+		game.pause_run()
+		await _pump(game)
+		var found: int = 0
+		for child: Node in game.get_node("PauseLayer").get_children():
+			if child is PauseScreen:
+				found += 1
+		err = _T.assert_eq(found, 1, "pausing twice leaves exactly one card")
+	game.resume_run()
+	_T.free_ui(game)
+	return err

@@ -80,6 +80,10 @@ var run_seconds: float = 0.0
 var _summary: RunSummary = null
 var _summary_layer: CanvasLayer = null
 
+## The pause card and its layer, built on demand and freed on resume.
+var _pause_screen: PauseScreen = null
+var _pause_layer: CanvasLayer = null
+
 ## Road cell -> how many pests this wave were lost there (killed or escaped).
 ## Committed to the board as one batch when the wave ends; see
 ## Board.record_lane_pressure_wave.
@@ -346,6 +350,51 @@ func _end_run(_banner: String) -> void:
 	_summary.gate_requested.connect(func() -> void: get_tree().change_scene_to_file(TITLE_SCENE))
 
 
+## Holds the run still. The prep countdown, the wave spawner, every plant timer
+## and every pest all live on the paused tree, so one flag stops all of them --
+## which is the point: a hand-rolled "paused" bool would have to be checked in
+## eight places and would be forgotten in the ninth.
+func pause_run() -> void:
+	if _pause_screen != null and is_instance_valid(_pause_screen):
+		return
+	_pause_screen = PauseScreen.new()
+	_pause_screen.name = "PauseScreen"
+	_pause_layer = CanvasLayer.new()
+	_pause_layer.name = "PauseLayer"
+	# Above the HUD at 10 and the post-mortem at 20, so a pause is always the
+	# top-most thing on screen.
+	_pause_layer.layer = 30
+	# The layer must keep processing too, or the Control inside it never draws
+	# the frame that shows it.
+	_pause_layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(_pause_layer)
+	_pause_layer.add_child(_pause_screen)
+	_pause_screen.resume_requested.connect(resume_run)
+	_pause_screen.restart_requested.connect(func() -> void:
+		get_tree().paused = false
+		get_tree().reload_current_scene())
+	_pause_screen.gate_requested.connect(func() -> void:
+		# Unpause before leaving: `paused` is a property of the tree, not of the
+		# scene, so it would survive the change and freeze the title screen.
+		get_tree().paused = false
+		get_tree().change_scene_to_file(TITLE_SCENE))
+	get_tree().paused = true
+
+
+func resume_run() -> void:
+	get_tree().paused = false
+	if _pause_layer != null and is_instance_valid(_pause_layer):
+		_pause_layer.queue_free()
+	_pause_layer = null
+	_pause_screen = null
+
+
+## True while the run is held. Read by the tests; the tree's own `paused` is the
+## single source of truth, so this never disagrees with it.
+func is_paused() -> bool:
+	return get_tree().paused
+
+
 ## Everything the post-mortem card reports. Split out from _end_run so a test can
 ## assert the numbers without building the Control, and so the panel takes a plain
 ## Dictionary rather than reaching into Game for each field.
@@ -582,6 +631,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if key.keycode == KEY_R and (game_over or victory):
 		get_tree().reload_current_scene()
+		return
+	# Not while the run is over: the post-mortem is already a modal surface, and
+	# pausing behind it would leave two cards stacked with no way to reach either.
+	if (key.keycode == KEY_ESCAPE or key.keycode == KEY_P) and not (game_over or victory):
+		pause_run()
 		return
 	# The project-level mute, which is what makes the sound pass something the
 	# player controls rather than something the engine's --mute flag controls for

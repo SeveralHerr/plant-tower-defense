@@ -95,6 +95,18 @@ const THREAT_TINT_MAX: int = 12
 ## the same colour language answers "how bad" and "how long" at once.
 const PREP_BAR_HEIGHT: float = 4.0
 
+## The plant bar's box. It runs from PLANT_BAR_Y down to PLANT_BAR_BOTTOM, which
+## is 8px clear of the packet button below it — hard numbers rather than a size
+## picked to suit exactly four plants, because the catalogue grows and the bar
+## used to be a 240px VBox of 56px buttons that fit four with 8px to spare and
+## overlapped the packet button at five.
+const PLANT_BAR_Y: float = 44.0
+const PLANT_BAR_BOTTOM: float = 292.0
+const PLANT_BAR_SEPARATION: int = 8
+## Below this a button stops being a touch target; `findings` gates interactive
+## Controls at 40x40 and was right to when an earlier pass trimmed one to 34.
+const PLANT_BUTTON_MIN_HEIGHT: float = 40.0
+
 ## The resting tooltip per packet tier. Held here rather than inline because
 ## _refresh_packet_button swaps in a reason when a packet cannot be bought and
 ## has to be able to put the original back. The common one's "tier 1 only" is
@@ -189,7 +201,9 @@ var _wave_label: Label
 var _lives_label: Label
 var _compost_label: Label
 var _message_label: Label
-var _plant_bar: VBoxContainer
+## A GridContainer, not a VBox: it runs one column until a fifth plant would
+## push the buttons under the touch minimum, then two. See plant_bar_layout.
+var _plant_bar: GridContainer
 var _packet_button: Button
 var _rare_packet_button: Button
 var _next_wave_button: Button
@@ -311,17 +325,26 @@ func _build_side_panel(root: Control) -> void:
 	heading.text = "Garden"
 	panel.add_child(heading)
 
-	_plant_bar = VBoxContainer.new()
+	var layout: Dictionary = plant_bar_layout(PlantCatalog.ids().size())
+	_plant_bar = GridContainer.new()
 	_plant_bar.name = "PlantBar"
-	_plant_bar.position = Vector2(12, 44)
-	_plant_bar.size = Vector2(PANEL_WIDTH - 24, 240)
-	_plant_bar.add_theme_constant_override("separation", 8)
+	_plant_bar.columns = int(layout["columns"])
+	_plant_bar.position = Vector2(12, PLANT_BAR_Y)
+	_plant_bar.size = Vector2(PANEL_WIDTH - 24, PLANT_BAR_BOTTOM - PLANT_BAR_Y)
+	_plant_bar.add_theme_constant_override("v_separation", PLANT_BAR_SEPARATION)
+	_plant_bar.add_theme_constant_override("h_separation", PLANT_BAR_SEPARATION)
 	panel.add_child(_plant_bar)
 
 	for id: StringName in PlantCatalog.ids():
 		var button := Button.new()
 		button.name = "Button_%s" % String(id)
-		button.custom_minimum_size = Vector2(0, 56)
+		button.custom_minimum_size = Vector2(0, float(layout["height"]))
+		# A VBoxContainer stretched its children across the panel for free; a
+		# GridContainer does not, and without this the buttons render at their
+		# icon's natural 128px instead of the 232px the bar is. Caught live -- the
+		# layout tests assert heights and positions, and a half-width button is
+		# correct on both.
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.icon = load(PlantCatalog.texture_path(id)) as Texture2D
 		button.expand_icon = true
 		button.tooltip_text = PlantCatalog.blurb(id)
@@ -523,6 +546,37 @@ func _refresh_prep_bar(state: Dictionary) -> void:
 	# The wave that is coming, not the one that just finished — the strip is a
 	# warning about the next thing, so it wears the next thing's colour.
 	_prep_bar.color = threat_color(int(state.get("next_threat_level", 1)))
+
+
+## How the plant bar arranges `count` plants: one column while they still clear
+## the 40px touch minimum, two once they do not.
+##
+## Two columns is available here only because plant buttons are icon-only. The
+## packet buttons below are stacked full-width for a documented reason — two
+## 112px buttons could not fit "Common Packet (20)" and `findings` caught the
+## overflow — but that is a constraint on *text*, and these carry none.
+##
+## Pure and static so the arithmetic is assertable without building a HUD, and so
+## a future catalogue size can be checked without adding the plant.
+static func plant_bar_layout(count: int) -> Dictionary:
+	var span: float = PLANT_BAR_BOTTOM - PLANT_BAR_Y
+	for columns: int in [1, 2]:
+		var rows: int = int(ceil(float(count) / float(columns)))
+		if rows <= 0:
+			continue
+		var height: float = (span - float(PLANT_BAR_SEPARATION * (rows - 1))) / float(rows)
+		if height >= PLANT_BUTTON_MIN_HEIGHT:
+			return {"columns": columns, "height": height, "rows": rows}
+	# Past what two columns can hold at a legible size. Report the two-column
+	# floor rather than silently shrinking below the touch minimum: whoever adds
+	# that plant needs to make the bar scroll, and a test says so.
+	var rows_max: int = int(ceil(float(count) / 2.0))
+	return {
+		"columns": 2,
+		"height": PLANT_BUTTON_MIN_HEIGHT,
+		"rows": rows_max,
+		"overflows": true,
+	}
 
 
 static func stats_row_budget(readouts: int) -> float:
