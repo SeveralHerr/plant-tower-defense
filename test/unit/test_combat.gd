@@ -164,6 +164,29 @@ func test_upgrading_stops_at_the_top_and_costs_nothing_there() -> String:
 	return err
 
 
+func test_a_headless_upgrade_does_not_queue_a_flourish_tween() -> String:
+	## _upgrade_flourish() is gated on GardenTheme.animations_enabled(), which is
+	## always false headless -- unlike _build_visuals()'s pop-in and _recoil(),
+	## which only check is_inside_tree(). Attach to a real tree so that guard is
+	## exercised too (unattached, as the test above leaves it, is_inside_tree()
+	## alone would already have skipped it), and prove the flourish queues
+	## nothing by reading scale immediately before and after upgrade() with no
+	## frame between the two reads -- only a Tween already ticking could move it.
+	var corn := CornCobbler.new()
+	corn.setup(PlantCatalog.CORN, Vector2i(0, 0), null)
+	var host: Node2D = _host([corn])
+	await _T.instantiate_scene(host)
+	var before: Vector2 = corn._sprite.scale
+	var err: String = _T.assert_true(corn.upgrade(), "the upgrade itself still lands")
+	if err == "":
+		err = _T.assert_eq(corn.level, 2, "and the level moved")
+	if err == "":
+		err = _T.assert_eq(corn._sprite.scale, before,
+			"no new Tween was queued -- animations_enabled() is false headless")
+	_T.free_ui(host)
+	return err
+
+
 func test_a_shot_puts_the_declared_number_of_kernels_on_the_board() -> String:
 	var corn := CornCobbler.new()
 	corn.level = corn.max_level()
@@ -491,6 +514,7 @@ func test_every_event_id_the_call_sites_use_is_in_the_table() -> String:
 		Sfx.HUSK_COLLECTED, Sfx.HUSK_ROTTED,
 		Sfx.WAVE_STARTED, Sfx.UPROOT_ARMED,
 		Sfx.RUN_WON, Sfx.RUN_LOST, Sfx.PURCHASE_DENIED,
+		Sfx.PLANT_UPGRADED,
 	]
 	for event: StringName in used:
 		var err: String = _T.assert_true(Sfx.SOUNDS.has(event),

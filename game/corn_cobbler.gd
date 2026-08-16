@@ -294,7 +294,24 @@ func upgrade() -> bool:
 	# Without this the fan keeps showing the level you paid to leave behind until
 	# something else happens to dirty the canvas.
 	queue_redraw()
+	_upgrade_flourish()
 	return true
+
+
+## The instant the seeds are spent, not just the fan's next repaint. Same
+## squash-and-recover shape _recoil() plays on every shot, pushed further and
+## held longer — an upgrade is one payment for the whole level, not one of
+## hundreds of volleys, so it earns a beat _recoil()'s per-shot twitch can't
+## spend. Gated the same way every cosmetic Tween in this class is: headless
+## pumps no frames, so a Tween queued here never runs, and _sprite is only
+## null before _build_visuals runs.
+func _upgrade_flourish() -> void:
+	if _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
+		return
+	var tween := create_tween()
+	tween.tween_property(_sprite, "scale", Vector2(0.72, 1.34), 0.10)
+	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.18)
+	Sfx.play(Sfx.PLANT_UPGRADED)
 
 
 func level_name() -> String:

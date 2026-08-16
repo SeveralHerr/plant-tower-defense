@@ -22,7 +22,8 @@
 	  footstep_grass_000.ogg      a plant going into the soil
 	  impactSoft_medium_002.ogg   a hungry pest taking a bite out of a plant
 	  impactSoft_heavy_000.ogg    a pest squashed
-	  impactBell_heavy_002.ogg    a wave starting
+	  impactBell_heavy_002.ogg    a wave starting — and, reused, a Corn
+	                              Cobbler upgrade landing
 
 	From "RPG Audio" (1.0):
 	  chop.ogg                    a plant eaten down to nothing

@@ -42,6 +42,10 @@ const RUN_LOST := &"run_lost"
 ## bank.purchase_failed is the single place this plays from, so every refusal
 ## gets the same cue regardless of which of the four call sites emitted it.
 const PURCHASE_DENIED := &"purchase_denied"
+## The instant a Corn Cobbler's upgrade lands (CornCobbler.upgrade()) — a cue
+## for the transaction itself, not just next volley's wider fan. See
+## corn_cobbler.gd's _upgrade_flourish() for the sprite half of this.
+const PLANT_UPGRADED := &"plant_upgraded"
 
 ## event -> the stream it plays. This dictionary is the whole contract: an event
 ## not in here is inaudible, and test_combat asserts every path in it actually
@@ -63,6 +67,10 @@ const SOUNDS: Dictionary = {
 	# project's audio pack has exactly one thing in it that already means
 	# "no" — see assets/audio/License.txt, which now names both consumers.
 	PURCHASE_DENIED: "res://assets/audio/error_002.ogg",
+	# Reuses WAVE_STARTED's bell rather than vendoring a third file: both are
+	# "something changed for the better" beats, and they never sound in the
+	# same breath — a wave starts in the calm between purchases.
+	PLANT_UPGRADED: "res://assets/audio/impactBell_heavy_002.ogg",
 }
 
 ## Per-event trim, in dB, for the handful that are not level with the rest.
