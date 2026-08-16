@@ -4044,3 +4044,146 @@ func test_the_notebook_subheading_stays_narrower_than_the_paper() -> String:
 
 	_T.free_ui(book)
 	return err
+
+
+# -- What is true of A road vs THIS road (plant-tower-defense-ch3) -----------
+#
+# PATH_CORNERS is six corners. Everything below is a number some other file
+# arrived at by measuring the road those corners happen to produce, and then
+# wrote down as a constant. Each of them is separately tested, so each will
+# fail on its own if the road moves — which sounds like coverage and is not.
+# It means a designer who nudges one corner gets four unrelated-looking test
+# failures across three files, none of which says "you changed the road".
+#
+# This is the one that says it. It measures the road at runtime and compares
+# it against the shape the calibrations assume, so it fails FIRST and names
+# what has to be re-derived.
+#
+# The classification, which is the actual deliverable of this issue:
+#
+#   PROPERTY OF *A* ROAD (survives any route; no re-derivation needed)
+#     - the CONCEPTS, and only the concepts: "a cell with no road within
+#       reach" (dead ground), "the nearest buildable cell is further from the
+#       lane than a husk click reaches" (husk clearance), "no wave paces more
+#       pests onto the road than it can hold". All three are well-defined for
+#       any route. Every NUMBER attached to them is not.
+#
+#   PROPERTY OF *THIS* ROAD (a new route invalidates it, silently)
+#     - SIMULTANEOUS_PEST_CEILING = 40. Derived in wave_director.gd from
+#       "32 road cells, 2112 px, so 3.5 pests per cell". A shorter road makes
+#       40 more crowded than the reasoning intends; a longer one makes the cap
+#       bite when it was not meant to. The constant does not change. Its
+#       justification does — silently, because nothing re-runs the derivation.
+#     - the dead-ground count (15 of 94 cells).
+#     - the Sundew's coverage arithmetic: stated against how much road a
+#       single placement reaches on this route.
+#     - the husk clearance. I had this filed as road-INDEPENDENT, on the
+#       reasoning that it compares two pixel radii around a click. It does
+#       not: husk_click_margin() walks every route segment against every
+#       buildable cell, so the 4 px is a measurement of this road's proximity
+#       to its own build sites. Its doc comment says as much ("a road drawn
+#       along the board edge" eats into it) and I had read past it. The test
+#       below is what caught me, which is the entire reason it is a test and
+#       not a paragraph.
+#
+# So it is four of four, not three of four — the reassuring half of this
+# issue's premise was wrong. "Each is individually tested" is not partial
+# coverage of the road's shape; it is no coverage of it at all. Four tests
+# guard four numbers and not one of them asks whether the road still is what
+# those numbers were read off.
+
+
+## The measurements every calibration above was taken against. If this fails,
+## do not fix the number here — re-derive the three road-dependent constants
+## the message names, then update these.
+func test_the_road_is_still_the_road_the_constants_were_measured_against() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+
+	var route: PackedVector2Array = board.route()
+	# Vacuity guard: an unbuilt board hands back an empty route, and every
+	# assertion below would then be measuring nothing while passing.
+	var err: String = _T.assert_gt(route.size(), 2, "the board built a route")
+	if err != "":
+		_T.free_ui(board)
+		return err
+
+	# route() is one point per road cell, bracketed by an off-board entry and
+	# exit — so the cell count is the interior, and the length includes the two
+	# bracket segments, exactly as wave_director.gd's 2112 px does.
+	var cells: int = route.size() - 2
+	var length: float = 0.0
+	for i: int in range(route.size() - 1):
+		length += route[i].distance_to(route[i + 1])
+
+	var whose_problem := "\n  Re-derive before touching this test:" \
+		+ "\n    - WaveDirector.SIMULTANEOUS_PEST_CEILING (40) — reasoned from" \
+		+ " %d cells / %.0f px as 3.5 pests per cell of road" % [cells, length] \
+		+ "\n    - the dead-ground count (15 of 94 cells)" \
+		+ "\n    - the Sundew's coverage arithmetic" \
+		+ "\n    - PlacementPreview.husk_click_margin() — it walks every route" \
+		+ " segment against every buildable cell, so the 4 px clearance is a" \
+		+ " measurement of THIS road, not of two radii"
+
+	err = _T.assert_eq(cells, 32,
+		"the road is 32 cells" + whose_problem)
+	if err == "":
+		err = _T.assert_eq(length, 2112.0,
+			"the road is 2112 px of walking" + whose_problem)
+	_T.free_ui(board)
+	return err
+
+
+## The half of the classification a measurement cannot make: WHICH constants
+## actually consult the route. Asserting it means the block above is checked
+## rather than believed — it already caught that block being wrong once, when
+## the husk margin was filed as road-independent and turned out to walk every
+## route segment on the board.
+##
+## Reads source rather than behaviour on purpose. "Is this number derived from
+## the road?" is a question about where the value comes from, and a function
+## that returns 4.0 answers it identically whether it measured the road or was
+## handed a literal.
+func test_the_road_dependent_constants_are_the_ones_that_read_the_road() -> String:
+	var src := FileAccess.get_file_as_string("res://game/placement_preview.gd")
+	var err: String = _T.assert_gt(src.length(), 0, "placement_preview.gd is readable")
+	if err != "":
+		return err
+
+	var start: int = src.find("static func husk_click_margin")
+	err = _T.assert_true(start >= 0, "husk_click_margin() still exists")
+	if err != "":
+		return err
+	# The body runs to the next top-level func, or to end of file.
+	var stop: int = src.find("\nfunc ", start)
+	var next_static: int = src.find("\nstatic func ", start + 1)
+	if next_static >= 0 and (stop < 0 or next_static < stop):
+		stop = next_static
+	if stop < 0:
+		stop = src.length()
+	var body: String = src.substr(start, stop - start)
+
+	# It reads the route today. If it ever stops, the 4 px stops being a
+	# statement about this road and the block above needs revisiting in the
+	# other direction — so this is asserted, not assumed, both ways round.
+	var reads_road := false
+	for token: String in ["route(", "PATH_CORNERS", "is_road", "is_buildable"]:
+		if body.contains(token):
+			reads_road = true
+			break
+	err = _T.assert_true(reads_road,
+		"husk_click_margin() still measures against the road, so the 4 px is a"
+			+ " property of THIS route and belongs in the road-dependent list")
+	if err != "":
+		return err
+
+	# And the ceiling's derivation is prose. Nothing recomputes it, which is
+	# precisely why the measurement test above has to hold the line for it.
+	var wd := FileAccess.get_file_as_string("res://game/wave_director.gd")
+	err = _T.assert_gt(wd.length(), 0, "wave_director.gd is readable")
+	if err != "":
+		return err
+	err = _T.assert_true(wd.contains("SIMULTANEOUS_PEST_CEILING: int = 40"),
+		"the ceiling is still the hand-derived literal these tests assume."
+			+ " If it became computed from route(), delete this and say so")
+	return err
