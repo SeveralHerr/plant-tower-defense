@@ -2940,3 +2940,42 @@ func test_reach_and_engages_are_not_the_same_question() -> String:
 		err = _T.assert_true(disagreeing.has(PlantCatalog.SUNDEW),
 			"and the Sundew is one of them (found %s)" % [disagreeing])
 	return err
+
+
+## `Game.engaging_plants()` is a one-line wrapper over `PlantCatalog.engaging_ids()`,
+## and a wrapper is exactly the shape that drifts: the coverage code reads the Game
+## side, every test read the Game side, and the catalogue side was reachable only
+## transitively — which suite_reach_check caught the moment it shipped.
+##
+## Naming both and asserting they agree pins the wrapper as a wrapper. It also pins
+## catalogue ORDER, since coverage iterates this and a set would make the map's
+## iteration order depend on dictionary insertion.
+func test_the_catalogue_and_the_game_agree_on_who_engages() -> String:
+	var from_catalogue: Array[StringName] = PlantCatalog.engaging_ids()
+	var from_game: Array[StringName] = Game.engaging_plants()
+	var err: String = _T.assert_gt(from_catalogue.size(), 0,
+		"some plant engages, or every assertion below is vacuous")
+	if err == "":
+		err = _T.assert_eq(from_catalogue.size(), from_game.size(),
+			"both sides name the same number of engaging plants")
+	if err != "":
+		return err
+
+	var checked: int = 0
+	for i: int in range(from_catalogue.size()):
+		err = _T.assert_eq(from_catalogue[i], from_game[i],
+			"and in the same order at %d — coverage iterates this, so order is not free" % i)
+		if err != "":
+			return err
+		checked += 1
+	if err == "":
+		err = _T.assert_eq(checked, from_catalogue.size(), "every entry was compared")
+	if err == "":
+		# The order claim, against the source of truth rather than against itself.
+		var expected: Array[StringName] = []
+		for id: StringName in PlantCatalog.ORDER:
+			if PlantCatalog.engages(id):
+				expected.append(id)
+		err = _T.assert_eq(from_catalogue, expected,
+			"and it is catalogue ORDER, not dictionary insertion order")
+	return err
