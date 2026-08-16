@@ -45,6 +45,13 @@
 	From "Music Jingles" (1.0), "Audio (Pizzicato)":
 	  jingles-pizzicato_00.ogg    the run won
 
+	From "Music Loops" (1.1) -- general-purpose instrumental beds, not written
+	for this game. Placeholder pairing chosen for mood until a purpose-made
+	theme is sourced or commissioned; see the note atop game/music.gd.
+	  Farm Frolics.ogg            title screen bed, and the bed a finished run
+	                              settles back onto for the post-mortem card
+	  Mission Plausible.ogg       in-run bed, while a wave is actually live
+
 			------------------------------
 
 	Donate:   http://support.kenney.nl

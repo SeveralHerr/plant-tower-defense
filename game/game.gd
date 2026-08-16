@@ -148,6 +148,7 @@ var _escapes_untouched: int = 0
 
 func _ready() -> void:
 	add_to_group("game")
+	Music.play_for_scene(scene_file_path)
 
 	bank = SeedBank.new()
 	bank.name = "SeedBank"
@@ -750,6 +751,9 @@ func _end_run(_banner: String) -> void:
 	# paths can be reached twice in a frame, and the run-ender is the one cue in
 	# the game long enough for a doubled play to be audible as a doubled play.
 	Sfx.play(Sfx.RUN_WON if victory else Sfx.RUN_LOST)
+	# Not a scene change, so play_for_scene has nothing to key off -- the run
+	# ending is the direct-override case SCENE_TRACKS' own doc comment names.
+	Music.play_title()
 	_summary = RunSummary.build(summary_stats(new_record))
 	_summary_layer = CanvasLayer.new()
 	_summary_layer.name = "SummaryLayer"
@@ -1197,6 +1201,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	# wants to stop is exactly when they reach for this.
 	if key.keycode == KEY_M:
 		var muted: bool = Sfx.toggle_muted()
+		Music.refresh_mute()
 		hud.show_message("Sound off. Press M to bring it back." if muted else "Sound on.", 2.5)
 
 
