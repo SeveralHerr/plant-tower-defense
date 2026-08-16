@@ -135,6 +135,10 @@ const EAT_DPS: float = 14.0
 ## is actually freed. Long enough to read as a beat, short enough not to pile up.
 const DEATH_LINGER: float = 0.35
 
+## How much of DEATH_LINGER's tail is spent fading out rather than held solid —
+## the corpse reads for a beat first, same as before this existed, then goes.
+const DEATH_FADE: float = 0.15
+
 var species: StringName = APHID
 var health: float = 1.0
 var max_health: float = 1.0
@@ -529,7 +533,15 @@ func _play_death() -> void:
 	# teardown that frees the tree immediately (free_ui, not queue_free) never
 	# fires this callback on a dangling instance.
 	var tween := create_tween()
-	tween.tween_interval(DEATH_LINGER)
+	if GardenTheme.animations_enabled():
+		# Full opacity for most of the linger, then fade the tail end — same
+		# "hold, then go" shape as the rest of a corpse's beat, just on alpha
+		# instead of a callback. Plant.play_exit_and_free() is the reference:
+		# a tween on the way off the board, gated the same way.
+		tween.tween_interval(DEATH_LINGER - DEATH_FADE)
+		tween.tween_property(_sprite, "modulate:a", 0.0, DEATH_FADE)
+	else:
+		tween.tween_interval(DEATH_LINGER)
 	tween.tween_callback(queue_free)
 
 
