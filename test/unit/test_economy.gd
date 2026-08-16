@@ -763,6 +763,11 @@ func _stash_run_config() -> void:
 		"endless": RunConfig.endless,
 		"fresh_record": RunConfig.fresh_record,
 		"load_status": RunConfig.load_status,
+		# Parsed out of the save alongside the scores, so a scratch fixture that
+		# carries rebindings would otherwise leave them in the autoload for every
+		# later test. `_load` deliberately does not touch the live InputMap, so
+		# this is the whole of the blast radius.
+		"key_bindings": RunConfig.key_bindings,
 		# Private, and stashed anyway: a refusal leaves a quarantine pending, and
 		# leaking that into a later test means an unrelated `_save` tries to move a
 		# file this one deleted.
@@ -779,6 +784,7 @@ func _restore_run_config() -> void:
 	RunConfig.endless = bool(_stashed_run_config["endless"])
 	RunConfig.fresh_record = bool(_stashed_run_config["fresh_record"])
 	RunConfig.load_status = str(_stashed_run_config["load_status"])
+	RunConfig.key_bindings = _stashed_run_config["key_bindings"] as Dictionary
 	RunConfig._refused_path = str(_stashed_run_config["_refused_path"])
 	_stashed_run_config = {}
 	_clear_scratch_save()
@@ -846,9 +852,10 @@ func test_a_garbage_save_leaves_the_records_alone() -> String:
 
 
 func test_a_save_from_a_newer_build_is_refused_not_reinterpreted() -> String:
-	## What `SAVE_VERSION` is now for. A v3 file's three lines might be endless
-	## first, or campaign plus some third record — reading them positionally as v2
-	## is how a later build's numbers land in the wrong slots with no error at all.
+	## What `SAVE_VERSION` is now for. A file one version ahead might be endless
+	## first, or campaign plus some fourth record — reading it positionally as the
+	## current shape is how a later build's numbers land in the wrong slots with no
+	## error at all.
 	## The scores in the fixture are deliberately valid-looking integers, so the
 	## version number is the only thing that can be rejecting them.
 	for ahead: int in [1, 7]:
@@ -888,8 +895,8 @@ func test_a_well_formed_save_round_trips_exactly() -> String:
 	return _with_scratch_save(1234, 5678, null, func() -> String:
 		RunConfig._save()
 		var err: String = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-			"v%d\n1234\n5678\n" % RunConfig.SAVE_VERSION,
-			"the save is a version stamp, then campaign, then endless")
+			"v%d\n1234\n5678\n0\n" % RunConfig.SAVE_VERSION,
+			"the save is a version stamp, campaign, endless, then a count of rebound keys")
 		if err == "":
 			err = _T.assert_false(FileAccess.file_exists(HIGHSCORE_TEST_PATH + ".tmp"),
 				"and the temp file it was assembled in was renamed away, not left behind")
@@ -933,7 +940,7 @@ func test_a_refused_save_is_not_immediately_overwritten() -> String:
 				"the unreadable file was moved aside, not written over")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n9999\n8765\n" % RunConfig.SAVE_VERSION,
+				"v%d\n9999\n8765\n0\n" % RunConfig.SAVE_VERSION,
 				"and the new save kept the endless record the refusal had preserved")
 		return err)
 
@@ -955,7 +962,7 @@ func test_a_version_one_save_still_migrates_into_the_endless_slot() -> String:
 		if err == "":
 			# A parse that fully succeeded is the one case that may rewrite the file.
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n0\n31337\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n31337\n0\n" % RunConfig.SAVE_VERSION,
 				"and the ambiguity is resolved on disk once, not re-guessed every launch")
 		return err)
 

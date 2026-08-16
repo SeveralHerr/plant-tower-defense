@@ -6,7 +6,8 @@ extends Node
 ##
 ## `endless` is read once, by Game._ready() wiring it into WaveDirector; the
 ## title screen is the only writer. The scores are persisted to user:// so they
-## are still there next launch, not just next scene.
+## are still there next launch, not just next scene — and, since v3 of the save,
+## so are the keys the player has moved (see `key_bindings`).
 ##
 ## There are two scores because there are two games. The fixed campaign ends
 ## after WaveDirector's eight-wave table; endless never ends. A campaign total
@@ -27,9 +28,15 @@ extends Node
 const SAVE_PATH := "user://highscore.save"
 
 ## Bumped when the on-disk shape changes. Version 1 is the original single line;
-## version 2 is a `vN` header followed by campaign then endless. Actually parsed
-## and compared now — see `_parse_save`.
-const SAVE_VERSION: int = 2
+## version 2 is a `vN` header followed by campaign then endless; version 3 adds a
+## count of rebound keys and that many `action code [code...]` lines. Actually
+## parsed and compared — see `_parse_save`.
+const SAVE_VERSION: int = 3
+
+## A `count` line claiming more rebound actions than the game has verbs is not a
+## file this build wrote. Bounded so a corrupt digit cannot ask the parser for a
+## million lines before it decides it does not like them.
+const MAX_BINDING_ROWS: int = 32
 
 ## The file this autoload persists to. A variable rather than a constant for
 ## exactly one reason: the unit tests need to drive this code over a scratch file
@@ -54,6 +61,22 @@ var fresh_record: bool = false
 var campaign_high_score: int = 0
 var endless_high_score: int = 0
 
+## The keys the player has moved, as {action_name: Array[int] of keycodes}. Only
+## the rows that differ from KeyBindings.ACTIONS live here — see
+## KeyBindings.overrides() for why the defaults must not be pinned into the save.
+##
+## It lives in this file rather than in a settings file of its own because this is
+## already the thing that survives a scene swap and already owns the one write to
+## user://. A second persistence mechanism would mean a second half-written-file
+## story, and this file's whole header is about how expensive that was to get
+## right once.
+##
+## Plain data, deliberately: `_load` sets it, and applying it to the InputMap is a
+## separate call (`apply_key_bindings`). A `_load` that reached into the global
+## InputMap would make every test that drives this parser over a scratch file a
+## test that silently rebinds the whole suite's keyboard.
+var key_bindings: Dictionary = {}
+
 ## What `_load` made of the save file. Exists so that "there was no save" and
 ## "there was a save and it was refused" are distinguishable from the outside —
 ## both leave the scores where they were, and only one of them is a problem.
@@ -75,6 +98,28 @@ var _refused_path: String = ""
 
 func _ready() -> void:
 	_load()
+	apply_key_bindings()
+
+
+## Pushes whatever `_load` made of the save into the live InputMap. Separate from
+## `_load` on purpose (see `key_bindings`), and safe on every load path: a refused
+## or absent save leaves `key_bindings` empty, which is the same instruction as
+## "put every verb back on the key it ships with".
+func apply_key_bindings() -> void:
+	var dropped: Array[String] = KeyBindings.apply_overrides(key_bindings)
+	if not dropped.is_empty():
+		# Not a refusal. A save naming a verb this build does not have is a save
+		# from a build that did — a downgrade, not damage — and the rest of it,
+		# including two high scores, is perfectly readable.
+		push_warning("RunConfig: ignoring saved bindings for %s — this build has no such action." % [dropped])
+
+
+## Records the player's rebindings and writes them out. The one entry point the
+## settings screen uses, so "changed on screen" and "changed on disk" cannot come
+## apart.
+func store_key_bindings(map: Dictionary) -> void:
+	key_bindings = map
+	_save()
 
 
 ## The record for a mode. Takes the flag rather than reading `endless`, so the
@@ -98,6 +143,28 @@ func record_score(seeds_earned: int) -> bool:
 	return true
 
 
+## The exact bytes of a current-version save. Split out of `_save` so the writer
+## has one shape rather than a run of `store_line` calls that a later field can be
+## appended to in the wrong place — and so the rows are sorted, which is what makes
+## a save byte-comparable between two runs that rebound the same keys in a
+## different order.
+static func compose_save(campaign: int, endless_best: int, bindings: Dictionary) -> String:
+	var out: PackedStringArray = [
+		"v%d" % SAVE_VERSION,
+		str(campaign),
+		str(endless_best),
+		str(bindings.size()),
+	]
+	var names: Array = bindings.keys()
+	names.sort()
+	for name: Variant in names:
+		var fields: PackedStringArray = [String(name)]
+		for code: Variant in (bindings[name] as Array):
+			fields.append(str(int(code)))
+		out.append(" ".join(fields))
+	return "\n".join(out) + "\n"
+
+
 ## Where `_save` assembles the next file before it replaces `save_path`.
 func _tmp_path() -> String:
 	return save_path + ".tmp"
@@ -118,8 +185,18 @@ static func _is_score(text: String) -> bool:
 	return text.is_valid_int() and int(text) >= 0
 
 
+## An action name in the save is a lowercase identifier and nothing else. This is
+## a check on the file's SHAPE, not on its vocabulary: a name this build does not
+## recognise is still well-formed, and is dropped by `apply_key_bindings` rather
+## than being allowed to condemn the two high scores sharing the file.
+static func _is_action_name(text: String) -> bool:
+	if text == "":
+		return false
+	return text.is_valid_ascii_identifier() and text == text.to_lower()
+
+
 func _parse_failed(reason: String) -> Dictionary:
-	return {"ok": false, "campaign": 0, "endless": 0, "version": 0, "reason": reason}
+	return {"ok": false, "campaign": 0, "endless": 0, "version": 0, "bindings": {}, "reason": reason}
 
 
 ## Validates an entire save file and only then hands back its contents.
@@ -153,7 +230,9 @@ func _parse_save(path: String) -> Dictionary:
 		# legacy value that did come from a campaign is merely a hard endless
 		# record, whereas the reverse migration would leave an unbeatable number
 		# sitting on the eight-wave mode.
-		return {"ok": true, "campaign": 0, "endless": int(header), "version": 1, "reason": "v1"}
+		# Version 1 predates key bindings entirely, so the migration leaves every
+		# verb on the key it ships with — which is where it already was.
+		return {"ok": true, "campaign": 0, "endless": int(header), "version": 1, "bindings": {}, "reason": "v1"}
 
 	var version_text: String = header.substr(1)
 	if not version_text.is_valid_int():
@@ -171,18 +250,53 @@ func _parse_save(path: String) -> Dictionary:
 	if version < 2:
 		return _parse_failed("version %d never had a %s header" % [version, header])
 
-	# Version 2: campaign, then endless, one per line.
+	# Version 2 onward: campaign, then endless, one per line.
 	var campaign_text: String = f.get_line().strip_edges()
 	var endless_text: String = f.get_line().strip_edges()
 	if not _is_score(campaign_text):
 		return _parse_failed("its campaign score %s is not a number" % [campaign_text])
 	if not _is_score(endless_text):
 		return _parse_failed("its endless score %s is not a number" % [endless_text])
+
+	# Version 3 adds the rebound keys: a count, then that many rows. The count is
+	# what makes a truncation here detectable at all — without it, a file cut
+	# after the endless score is indistinguishable from a player who never opened
+	# the settings screen, and the rebindings vanish with no error. Same reasoning
+	# as the empty-score case above, one field along.
+	var bindings: Dictionary = {}
+	if version >= 3:
+		var count_text: String = f.get_line().strip_edges()
+		if not count_text.is_valid_int():
+			return _parse_failed("its key-binding count %s is not a number" % [count_text])
+		var count: int = int(count_text)
+		if count < 0 or count > MAX_BINDING_ROWS:
+			return _parse_failed("it claims %d rebound keys and this build has at most %d verbs"
+				% [count, MAX_BINDING_ROWS])
+		for i: int in count:
+			var row: String = f.get_line().strip_edges()
+			var fields: PackedStringArray = row.split(" ", false)
+			if fields.size() < 2:
+				return _parse_failed("its key-binding row %d (%s) is not an action and at least one key" % [i, row])
+			var action: String = fields[0]
+			if not _is_action_name(action):
+				return _parse_failed("its key-binding row %d names %s, which is not an action name" % [i, action])
+			if bindings.has(action):
+				return _parse_failed("it binds %s twice" % [action])
+			if fields.size() - 1 > KeyBindings.MAX_KEYS_PER_ACTION:
+				return _parse_failed("it puts %d keys on %s" % [fields.size() - 1, action])
+			var codes: Array[int] = []
+			for k: int in range(1, fields.size()):
+				if not fields[k].is_valid_int() or int(fields[k]) <= 0:
+					return _parse_failed("its key-binding row %d has %s where a keycode belongs" % [i, fields[k]])
+				codes.append(int(fields[k]))
+			bindings[action] = codes
+
 	return {
 		"ok": true,
 		"campaign": int(campaign_text),
 		"endless": int(endless_text),
 		"version": version,
+		"bindings": bindings,
 		"reason": "v%d" % version,
 	}
 
@@ -220,6 +334,7 @@ func _load() -> void:
 
 	campaign_high_score = int(parsed["campaign"])
 	endless_high_score = int(parsed["endless"])
+	key_bindings = parsed["bindings"] as Dictionary
 	if recovered:
 		load_status = "recovered"
 		_save()
@@ -235,7 +350,7 @@ func _load() -> void:
 
 ## Assembles the file at a temp path and only then replaces `save_path`.
 ##
-## Judged warranted, not ceremony, for a three-line file. `FileAccess.WRITE`
+## Judged warranted, not ceremony, for a file this small. `FileAccess.WRITE`
 ## truncates its target the instant it opens, so the previous shape destroyed the
 ## only copy of an unregenerable number *before* writing a byte of the
 ## replacement — and it did that on every new record. A full or read-only user://
@@ -265,9 +380,7 @@ func _save() -> void:
 		push_warning("RunConfig: cannot write %s (%s). The record stands in memory only, and the previous save is untouched."
 			% [tmp, error_string(FileAccess.get_open_error())])
 		return
-	f.store_line("v%d" % SAVE_VERSION)
-	f.store_line(str(campaign_high_score))
-	f.store_line(str(endless_high_score))
+	f.store_string(compose_save(campaign_high_score, endless_high_score, key_bindings))
 	f.flush()
 	var write_error: int = f.get_error()
 	f.close()

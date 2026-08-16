@@ -28,7 +28,6 @@
     "game/pause_screen.gd::signal::gate_requested",
     "game/pause_screen.gd::signal::notebook_requested",
     "game/pause_screen.gd::signal::restart_requested",
-    "game/pause_screen.gd::signal::resume_requested",
     "game/pest.gd::func::marker_fill",
     "game/pest.gd::func::marker_ink",
     "game/pest.gd::func::tint_for",

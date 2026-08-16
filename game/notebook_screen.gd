@@ -441,18 +441,23 @@ func _build_footer() -> void:
 ## unhandled input runs the arrow keys are already gone. Only the three keys
 ## below are swallowed; Tab and Enter still reach the buttons normally.
 func _input(event: InputEvent) -> void:
-	var key := event as InputEventKey
-	if key == null or not key.pressed or key.echo:
+	# Both shapes a verb can arrive in — see Game._unhandled_input for why the
+	# InputEventKey-only narrowing that used to be here made these three
+	# unreachable from the devtools bridge.
+	if not (event is InputEventKey or event is InputEventAction):
 		return
-	match key.keycode:
-		KEY_LEFT:
-			go_to(_page - 1)
-		KEY_RIGHT:
-			go_to(_page + 1)
-		KEY_ESCAPE:
-			back_requested.emit()
-		_:
-			return
+	# Actions rather than keycodes — KeyBindings.SCOPE_NOTEBOOK is where these
+	# three are defined and where the settings screen rebinds them. The shadowing
+	# above is still the point: `garden_page_prev` ships on the same key as
+	# `ui_left`, and only being in `_input` is what gets it there first.
+	if event.is_action_pressed(KeyBindings.ACTION_PAGE_PREV):
+		go_to(_page - 1)
+	elif event.is_action_pressed(KeyBindings.ACTION_PAGE_NEXT):
+		go_to(_page + 1)
+	elif event.is_action_pressed(KeyBindings.ACTION_BACK):
+		back_requested.emit()
+	else:
+		return
 	get_viewport().set_input_as_handled()
 
 

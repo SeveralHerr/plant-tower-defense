@@ -27,24 +27,44 @@ const UPROOT_CONFIRM_SECONDS: float = 4.0
 ## game, and R reloaded the run without ever offering the menu.
 const TITLE_SCENE := "res://game/title.tscn"
 
-## Every key the run answers to, and what it does.
+## Every key the run answers to, and what it does — read out of the InputMap, not
+## written down here.
 ##
 ## A run had four keyboard verbs and no screen named one of them. The only mention
 ## anywhere was "Press M to bring it back", printed after you had already found M.
 ## The title screen documents its own three keys in a HintLabel, so the convention
 ## existed; the run simply did not follow it.
 ##
-## This is a table rather than three sentences on the pause card because a list of
-## bindings that is written by hand goes stale the first time someone adds a key
-## and forgets. `test_every_key_the_run_handles_is_named_on_the_pause_card` reads
-## the KEY_* constants out of _unhandled_input's own source and asserts this table
-## covers them, so adding a binding without documenting it fails the build.
-const KEY_HELP: Array[Dictionary] = [
-	{"keys": "Esc  ·  P", "does": "hold the garden still", "codes": [KEY_ESCAPE, KEY_P]},
-	{"keys": "M", "does": "sound effects on or off", "codes": [KEY_M]},
-	{"keys": "N", "does": "music on or off", "codes": [KEY_N]},
-	{"keys": "R", "does": "start over, once the run is done", "codes": [KEY_R]},
-]
+## This used to be a hand-written `const KEY_HELP` sitting beside the handler, with
+## `test_every_key_the_run_handles_is_named_on_the_pause_card` scanning
+## _unhandled_input's own source for KEY_* constants to stop the two drifting
+## apart. Now the handler asks the InputMap and so does this, so there is nothing
+## left to drift: rebinding pause to F1 relabels the pause card in the same frame.
+## The test still runs, and now asserts that every ACTION the handler answers to
+## has a row here — the same guarantee one level up.
+##
+## Rows are {keys, does, codes}, which is the shape PauseScreen._build_key_list
+## has always drawn.
+static func key_help() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for action: StringName in KeyBindings.actions_in(KeyBindings.SCOPE_RUN):
+		out.append({
+			"action": action,
+			"keys": KeyBindings.label_for(action),
+			"does": KeyBindings.describe(action),
+			"codes": KeyBindings.keys_for(action),
+		})
+	return out
+
+
+## What the HUD says when a mute is toggled. Split out because it is the one line
+## of run text that has to name a key: it used to say "Press M", which becomes a
+## lie the moment a player rebinds the verb. Static and pure so a test can read
+## the sentence without a running game.
+static func mute_message(what: String, muted: bool, action: StringName, pronoun: String = "it") -> String:
+	if not muted:
+		return "%s on." % what
+	return "%s off. Press %s to bring %s back." % [what, KeyBindings.label_for(action), pronoun]
 
 var board: Board
 var bank: SeedBank
@@ -813,7 +833,7 @@ func bank_score() -> bool:
 func pause_run() -> void:
 	if _pause_screen != null and is_instance_valid(_pause_screen):
 		return
-	_pause_screen = PauseScreen.build(pause_note(), KEY_HELP)
+	_pause_screen = PauseScreen.build(pause_note(), key_help())
 	_pause_layer = CanvasLayer.new()
 	_pause_layer.name = "PauseLayer"
 	# Above the HUD at 10 and the post-mortem at 20, so a pause is always the
@@ -1197,15 +1217,25 @@ func _unhandled_input(event: InputEvent) -> void:
 	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
 		_click_at(click.position)
 		return
-	var key := event as InputEventKey
-	if key == null or not key.pressed:
+	# A verb arrives as an InputEventKey off a keyboard and as an InputEventAction
+	# out of Input.action_press -- which is what the devtools bridge's `input tap`
+	# sends, and the only way any of these four is checkable in a running game.
+	# Narrowing to InputEventKey here, as this handler did while it compared raw
+	# keycodes, made every one of them unreachable from the bridge while looking
+	# perfectly correct to a player. `is_action_pressed` does the pressed and
+	# not-an-echo filtering the explicit guard used to.
+	if not (event is InputEventKey or event is InputEventAction):
 		return
-	if key.keycode == KEY_R and (game_over or victory):
+	# Actions, not keycodes: what these four verbs are bound to is KeyBindings.ACTIONS
+	# and, after a visit to the settings screen, whatever the player put there
+	# instead. Nothing in this handler may name a KEY_* constant again — the pause
+	# card's legend is rendered from the same InputMap these lines read.
+	if event.is_action_pressed(KeyBindings.ACTION_RESTART) and (game_over or victory):
 		get_tree().reload_current_scene()
 		return
 	# Not while the run is over: the post-mortem is already a modal surface, and
 	# pausing behind it would leave two cards stacked with no way to reach either.
-	if (key.keycode == KEY_ESCAPE or key.keycode == KEY_P) and not (game_over or victory):
+	if event.is_action_pressed(KeyBindings.ACTION_PAUSE) and not (game_over or victory):
 		pause_run()
 		return
 	# The project-level mute, which is what makes the sound pass something the
@@ -1218,13 +1248,16 @@ func _unhandled_input(event: InputEvent) -> void:
 	# a single flag -- Music read Sfx.is_muted() directly -- so a run had
 	# exactly one volume and it silenced both at once. See Music._muted's own
 	# doc comment for the split.
-	if key.keycode == KEY_M:
-		var muted: bool = Sfx.toggle_muted()
-		hud.show_message("Sound effects off. Press M to bring them back." if muted else "Sound effects on.", 2.5)
+	if event.is_action_pressed(KeyBindings.ACTION_MUTE_SFX):
+		# The key named in the message is read back out of the InputMap, not typed
+		# here. "Press M to bring them back" printed at a player who had rebound
+		# the verb to F2 is worse than saying nothing at all.
+		hud.show_message(mute_message("Sound effects", Sfx.toggle_muted(),
+			KeyBindings.ACTION_MUTE_SFX, "them"), 2.5)
 		return
-	if key.keycode == KEY_N:
-		var music_muted: bool = Music.toggle_muted()
-		hud.show_message("Music off. Press N to bring it back." if music_muted else "Music on.", 2.5)
+	if event.is_action_pressed(KeyBindings.ACTION_MUTE_MUSIC):
+		hud.show_message(mute_message("Music", Music.toggle_muted(),
+			KeyBindings.ACTION_MUTE_MUSIC), 2.5)
 
 
 func _update_cursor(screen_pos: Vector2) -> void:
