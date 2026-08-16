@@ -71,6 +71,38 @@ sane test would ever name, and gating on 216 of those would bury the 48 findings
 that are actually worth acting on. Counts are printed per file, ranked; `--consts`
 lists them.
 
+WHAT THE ASSERT SIGNAL COUNTS, AND WHAT THAT IS WORTH.
+
+Naming is still the floor and still the only thing that gates. On top of it,
+for every gating symbol that IS reached, this tool asks one more question: does
+that identifier ever sit inside the argument list of a `_T.assert_*(...)` call
+- this project's whole assertion vocabulary, `_T.assert_eq`, `_T.assert_true`,
+`_T.assert_false`, `_T.assert_float_eq`, `_T.assert_gt`, `_T.assert_gte` -
+anywhere in the test tree? If it never does, the only test contact on record
+for that symbol is a bare statement: `WaveDirector.reset()` with nothing ever
+asserted about what happened. That is the gap `string_only` cannot see, because
+`string_only` is about identifiers that never left a string; this is about
+identifiers that never entered an assertion.
+
+The check is deliberately global and call-blind: it does not require the
+mention inside the assert to be the same file, the same test method, or even
+the same call that first made the symbol count as reached - it only asks
+whether the token appears *somewhere* inside *some* assert call's arguments in
+the whole test tree. That is weaker than it sounds and is meant to be read that
+way: an unrelated `_T.assert_true(other_thing, "..." )` two hundred lines away
+that happens to pass a local variable named `reset` would satisfy this for
+`WaveDirector.reset` even though the two have nothing to do with each other.
+This tool cannot tell whether the assert's *subject* is the named symbol or
+merely another argument present in the same multi-arg call; it only knows the
+two co-occur inside parentheses that open with `_T.assert_`. Read the printed
+count as "at most this many are actually checked", never as "these were
+checked" - the same over-credits-so-it-under-reports posture as the rest of
+this file, applied one level deeper.
+
+Advisory only: printed as a NOTE next to the findings, never subtracted from
+the exit code, and not written into the baseline file - shrinking it is real
+progress, but nothing here can turn a clean run into a gating one.
+
 Parallel-safe by construction: opens no project, writes nothing to `.godot/`,
 takes no lock, stdlib only. Exit codes follow the house contract: 0 clean, 1
 findings, 2 could not run.
@@ -99,6 +131,10 @@ STRING_RE = re.compile(r'"""(?:.|\n)*?"""|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'
 AUTOLOAD_RE = re.compile(
     r'^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"\*?(res://[^"]+)"', re.M)
 WAIVER_RE = re.compile(r"suite-reach-check:\s*ok\b")
+# This project's entire assertion vocabulary is `_T.assert_*(...)` (see
+# tools/run_tests.gd) - matched loosely on the method name so a new assert_*
+# helper added later is picked up with no change here.
+ASSERT_CALL_RE = re.compile(r"_T\.assert_[A-Za-z_][A-Za-z0-9_]*\s*\(")
 
 GATING_KINDS = ("func", "signal", "var")
 ADVISORY_KINDS = ("const",)
@@ -166,6 +202,38 @@ def blank_strings(code: str) -> str:
     either way.
     """
     return STRING_RE.sub(lambda m: " " * len(m.group(0)), code)
+
+
+def assert_call_arg_tokens(blanked: str) -> set[str]:
+    """Identifiers sitting inside the argument list of every `_T.assert_*(...)`
+    call in `blanked` (string bodies already replaced with spaces, comments
+    already stripped, length and line breaks intact).
+
+    Walks parens by depth rather than matching a closing paren with a regex,
+    because an assert argument is often another call - `_T.assert_eq(compost
+    .husk_count(), 0, "...")` - and a naive `\\)` match would stop at the inner
+    call's close. Depth-counting on already-blanked text needs nothing smarter
+    than that: no string body can still hold an unbalanced paren to confuse it,
+    and no other Python-side bracket type needs tracking because only `(` / `)`
+    bound a call's argument list in GDScript.
+
+    Deliberately does not resolve which argument, or even which call, a given
+    identifier belongs to - see the module docstring's WHAT THE ASSERT SIGNAL
+    section. It reports raw co-occurrence, nothing more.
+    """
+    out: set[str] = set()
+    for m in ASSERT_CALL_RE.finditer(blanked):
+        depth = 1
+        i = m.end()
+        while i < len(blanked) and depth > 0:
+            c = blanked[i]
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+            i += 1
+        out.update(IDENT_RE.findall(blanked[m.end():i - 1]))
+    return out
 
 
 def gd_files(root: str) -> list[str]:
@@ -331,6 +399,11 @@ def main() -> int:
     test_tokens: set[str] = set()
     test_paths_named: set[str] = set()
     test_string_tokens: set[str] = set()
+    # Identifiers that appear inside a `_T.assert_*(...)` call's arguments,
+    # anywhere in the test tree. Global and call-blind by design -- see the
+    # module docstring's WHAT THE ASSERT SIGNAL section for why that is
+    # deliberately weaker than it sounds.
+    assert_arg_tokens: set[str] = set()
     for path in test_paths:
         try:
             raw = read(path)
@@ -339,8 +412,10 @@ def main() -> int:
                   % (path, exc), file=sys.stderr)
             return 2
         code = strip_comments(raw)
+        blanked = blank_strings(code)
         test_paths_named.update(RES_PATH_RE.findall(code))
-        test_tokens.update(IDENT_RE.findall(blank_strings(code)))
+        test_tokens.update(IDENT_RE.findall(blanked))
+        assert_arg_tokens.update(assert_call_arg_tokens(blanked))
         # Identifiers that occur ONLY inside string bodies. Not counted as reach --
         # a HUD caption reading "Sticky Sundew" is not a test of anything -- but
         # counted separately, because `has_method("announce_wave")` is a real if
@@ -412,12 +487,22 @@ def main() -> int:
     waived = 0
     gating: list[dict] = []
     advisory: list[dict] = []
+    # Reached gating symbols only (func/signal/var already counted as named
+    # above), cross-checked against assert_arg_tokens. Advisory, same as
+    # string_only -- see WHAT THE ASSERT SIGNAL in the module docstring.
+    reached_gating: list[dict] = []
     for f in files:
         for kind, name, line, is_waived in f["decls"]:
             if kind not in declared:
                 continue
             declared[kind] += 1
             if name in test_tokens:
+                if kind in GATING_KINDS:
+                    reached_gating.append({
+                        "key": "%s::%s::%s" % (f["rel"], kind, name),
+                        "rel": f["rel"], "kind": kind, "name": name, "line": line,
+                        "asserted": name in assert_arg_tokens,
+                    })
                 continue
             if is_waived:
                 waived += 1
@@ -521,6 +606,18 @@ def main() -> int:
               "of the policy's cost, printed rather than hidden."
               % (len(string_only),
                  ", ".join(sorted(i["name"] for i in string_only)[:6])))
+    assert_only = [i for i in reached_gating if not i["asserted"]]
+    if reached_gating:
+        print("  NOTE: of %d reached gating symbol(s) (func/signal/var a test names), "
+              "%d are named only in plain statements -- the token never once sits "
+              "inside a `_T.assert_*(...)` call's arguments anywhere in the test tree "
+              "(%s%s). Advisory, not a gate: naming still counts as reach above, and "
+              "this signal over-credits in the opposite direction of string_only -- it "
+              "cannot tell whether the assert's *subject* is the symbol or just another "
+              "argument present in the same call."
+              % (len(reached_gating), len(assert_only),
+                 ", ".join(sorted(set(i["name"] for i in assert_only))[:6]),
+                 ", ..." if len(set(i["name"] for i in assert_only)) > 6 else ""))
     if named_files == len(files):
         print("  NOTE: the file-level pass is saturated -- every game script is "
               "named somewhere. That is a weak clean: it says each file has been "
@@ -540,7 +637,11 @@ def main() -> int:
           "correctly, nothing about `.tscn` node wiring, and it does not know the "
           "bridge exists -- a symbol driven only through a devtools_ext verb reads "
           "as unreached. Nor does it compile anything -- only import_check.py and "
-          "lint_project.gd do that, and neither is parallel-safe.")
+          "lint_project.gd do that, and neither is parallel-safe. The assert-argument "
+          "signal above is looser still: it is global and call-blind, so it cannot "
+          "tell whether the assert's subject is the named symbol or just another "
+          "identifier present somewhere in the same multi-arg call, and a mention in "
+          "an unrelated assert elsewhere in the tree satisfies it just as well.")
 
     if advisory:
         by_file: dict[str, list[str]] = {}

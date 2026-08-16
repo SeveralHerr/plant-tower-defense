@@ -2349,3 +2349,36 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   `suite_reach_check`, `svg_style_check`, `settle_read_check`.
 
 - Harness: still **0.23.0**. Checked upstream this cycle; no release since `65103b7`.
+
+## 2026-08-16 — Assert-argument co-occurrence signal for suite_reach_check.py (plant-tower-defense-4p1)
+
+- Value: **overkill** — a stdlib-only static checker change with no engine surface;
+  running it against the repo's own tree was the whole verification, and lint/tests
+  were run only because the task's own workflow asked for them regardless.
+  - Expected: the new NOTE line would print a plausible reached/asserted split (283
+    reached gating symbols, some fraction never inside a `_T.assert_*` argument)
+    without moving the exit code or the existing findings/baseline counts.
+  - Got: exactly that — output grew from 12 to 13 printed lines, one new line:
+    `NOTE: of 283 reached gating symbol(s) ... 85 are named only in plain
+    statements -- the token never once sits inside a \`_T.assert_*(...)\` call's
+    arguments anywhere in the test tree (add_seeds, announce_wave, ...)`. Exit
+    code, baseline (`53 pre-existing, 0 NEW, 0 since fixed`), and every existing
+    finding were unchanged before/after (diffed the two full runs).
+  - Found: nothing. lint (`0 error(s), 0 warning(s) -> exit 0`), tests
+    (`Total: 396 | Passed: 396`, `Assertions: 9129 executed`), name_check and
+    import_check were all clean and stayed clean — none of them touch a `.py`
+    tool under `tools/`, so none of them could plausibly have reacted to this
+    change.
+  - Cheaper: reading the diff plus one manual run of the checker, which is
+    exactly what was done. No running game was needed or used — `suite_reach_check.py`
+    opens no project, and nothing under `game/` or `test/*.gd` changed.
+
+- Gap: no gaps this turn. Confirmed by grep that no sibling stdlib checker
+  (`world_control_check.py`, `meta_key_check.py`, `svg_style_check.py`,
+  `group_leak_check.py`, `settle_read_check.py`) has unit coverage in
+  `test/unit/`, so no new test pattern was invented here either — this project's
+  standing convention for these tools is dogfooding against its own tree, which
+  is what step 8 of the issue asked for and what was done.
+
+- Harness: still **0.24.0** at this run's `harness-version` read (installed
+  0.24.0, client 0.24.0; game not launched this run so its side is unknown).
