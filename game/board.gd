@@ -62,6 +62,12 @@ var _pressure_overlay: LanePressureOverlay = null
 ## run_losses(). Kept beside the overlay's decaying map rather than derived
 ## from it, because the decay is lossy by design and cannot be undone.
 var _run_losses: Dictionary = {}
+## The last batch record_lane_pressure_wave() actually accepted, raw counts and
+## unnormalised. A wave that lost nothing never reaches that function's body, so
+## this holds the last wave that *drew blood* rather than the last wave to end —
+## which is the same thing the decaying overlay shows, and deliberately so: the
+## prep line and the road must not describe two different waves.
+var _last_wave_losses: Dictionary = {}
 
 
 func _ready() -> void:
@@ -91,7 +97,11 @@ func _build_path() -> void:
 func _add_path_cell(cell: Vector2i) -> void:
 	if _path_cells.has(cell):
 		return
-	_path_cells[cell] = true
+	# The value is the cell's position along the road, not a bare `true`.
+	# `is_path` only ever asks `has`, so the slot was free, and storing the index
+	# in it is what makes `path_index` a dictionary lookup rather than a linear
+	# scan of _path_order once per cell per depth reading.
+	_path_cells[cell] = _path_order.size()
 	_path_order.append(cell)
 
 
@@ -237,6 +247,10 @@ func record_lane_pressure_wave(losses: Dictionary) -> void:
 		# still visible — "one got through here" is exactly the thing worth
 		# seeing, and it is the reading a pure proportion would erase.
 		out[cell] = maxf(LANE_PRESSURE_MIN_ALPHA, float(fresh[cell]) / worst)
+	# Kept raw rather than derived back out of `out`: `out` is normalised against
+	# this wave's own worst cell, so every wave's peak is 1.0 there and a depth
+	# read off it would weight a five-pest wave the same as an eighty-pest one.
+	_last_wave_losses = fresh.duplicate()
 	_pressure_overlay.pressure = out
 	_pressure_overlay.queue_redraw()
 
@@ -278,6 +292,71 @@ func worst_run_cell() -> Vector2i:
 			most = count
 			best = cell
 	return best
+
+
+## Where `cell` sits along the road: 0 at the entry, path_cell_count() - 1 at
+## the exit, and -1 for anything that is not road.
+func path_index(cell: Vector2i) -> int:
+	_build_path()
+	return int(_path_cells.get(cell, -1))
+
+
+## How far down the road a batch of losses landed — 0.0 stopped on the entry
+## cell, 1.0 stopped on the exit cell — weighted by how many stopped at each.
+##
+## This board has ONE road. PATH_CORNERS traces a single snake from (0, 1) to
+## (13, 7), so "which lane is leaking" is not a question the geometry can pose;
+## the only spatial variable a loss carries is how far along that snake it
+## happened. Depth is therefore the whole of what a pressure map says, reduced
+## to the one number that can be compared between two waves.
+##
+## A mean, not a high-water mark. record_lane_pressure_wave was rewritten off a
+## high-water mark for exactly this reason — a wave stopped cleanly at three
+## separate points and a wave stopped once at its furthest read identically —
+## and a mean moves only when the *bulk* of a wave gets deeper, so one lucky
+## straggler cannot fake it.
+##
+## Note what is being counted. Game._note_lane_loss fires on a kill as well as
+## on an escape, so `losses` is every pest that STOPPED there, not every pest
+## that hurt you. That makes this "how far are they getting", which is the
+## honest reading and the useful one: it rises while your front line is being
+## outrun, waves before anything actually escapes.
+##
+## Returns -1.0 for "nothing recorded", which is not 0.0. A wave killed dead on
+## the entry cell genuinely reads 0%, and that is the best reading in the game;
+## a caller that cannot tell it from an empty run would either hide it or boast
+## about a wave that never fought.
+func depth_of(losses: Dictionary) -> float:
+	_build_path()
+	var last: int = _path_order.size() - 1
+	if last <= 0:
+		return -1.0
+	var weighted: float = 0.0
+	var total: float = 0.0
+	for cell: Vector2i in losses:
+		var index: int = path_index(cell)
+		if index < 0:
+			continue
+		var count: float = float(losses[cell])
+		if count <= 0.0:
+			continue
+		weighted += float(index) * count
+		total += count
+	if total <= 0.0:
+		return -1.0
+	return weighted / (float(last) * total)
+
+
+## Mean stopping depth over the whole run, unfaded. The "which ground has been
+## giving way all game" half of the readout.
+func run_depth() -> float:
+	return depth_of(_run_losses)
+
+
+## Mean stopping depth of the last wave that drew blood. The "what just went
+## wrong" half — the same wave the road is currently tinted for.
+func last_wave_depth() -> float:
+	return depth_of(_last_wave_losses)
 
 
 ## Swaps the overlay from the decaying per-wave map to the run total. One-way

@@ -124,6 +124,28 @@ const THREAT_TINT_MAX: int = 12
 ## the same colour language answers "how bad" and "how long" at once.
 const PREP_BAR_HEIGHT: float = 4.0
 
+## How far this wave's stopping depth has to move off the run's average before
+## the prep line calls it a change rather than noise.
+##
+## Five points of a ~40-cell road is two cells. Below that the number wobbles on
+## a single pest dying one tile later, and a line that says "deeper" every wave
+## says nothing at all. Inside the band the line reports "the run's usual depth",
+## which is a genuine reading — "you held where you always hold" is the answer
+## that means don't spend — and not a shrug.
+const PREP_DEPTH_BAND: float = 0.05
+
+## The longest line `wave_cleared_line(prep_depth_note(...))` can build.
+##
+## Same contract as WORST_CASE_TEXT above and for the same reason: MessageLabel
+## sets clip_text with OVERRUN_TRIM_ELLIPSIS, so a line that outgrows the row
+## renders trimmed and nothing complains. "shallower" is the long branch, and it
+## cannot co-occur with a 100% reading of its own — being shallower than the run
+## requires being under it by the band — so 95 against 100 is the real ceiling
+## rather than the 100 against 100 that eyeballing the format string produces.
+## `test_the_wave_cleared_line_fits_the_status_row` pins this to the formatters
+## themselves rather than trusting the literal.
+const PREP_NOTE_WORST_CASE: String = "Wave 9999 cleared. Pests got 95% down the road — shallower than the run's 100%."
+
 ## The plant bar's box. It runs from PLANT_BAR_Y down to PLANT_BAR_BOTTOM, which
 ## is 8px clear of the packet button below it — hard numbers rather than a size
 ## picked to suit exactly four plants, because the catalogue grows and the bar
@@ -976,6 +998,45 @@ static func wave_note(pests: int, note: String) -> String:
 	if note == "":
 		return "%d pests" % pests
 	return "%d pests — %s than the last" % [pests, note]
+
+
+## What the prep window says about the run, in the one place the board cannot.
+##
+## The tint on the road is a recency map: the last wave that drew blood at full
+## strength over the faded remains of the ones before it. That answers "where did
+## it break", and during prep it is the right thing to be staring at. What it
+## structurally cannot answer is whether this wave was *worse than usual* —
+## because it is one alpha channel, on one road, at 64px a cell, and a second
+## ramp of the same DANGER red over the same cells is a blend no eye can
+## decompose back into two readings. That comparison is one number against one
+## number, so it belongs in text rather than in paint.
+##
+## Depth rather than a cell name: this board has a single road (see
+## Board.depth_of), so "which lane" is not a question it can pose, and "column
+## 10, row 2" names a spot the player has no reason to think of as a place.
+##
+## Empty when either reading is absent — Board.depth_of returns -1.0 for
+## "nothing recorded", which is not the same as a wave killed dead on the entry
+## cell at 0%.
+static func prep_depth_note(last_wave: float, run: float) -> String:
+	if last_wave < 0.0 or run < 0.0:
+		return ""
+	var now: int = int(round(clampf(last_wave, 0.0, 1.0) * 100.0))
+	var usual: int = int(round(clampf(run, 0.0, 1.0) * 100.0))
+	if last_wave > run + PREP_DEPTH_BAND:
+		return "Pests got %d%% down the road — deeper than the run's %d%%." % [now, usual]
+	if last_wave < run - PREP_DEPTH_BAND:
+		return "Pests got %d%% down the road — shallower than the run's %d%%." % [now, usual]
+	return "Pests got %d%% down the road, the run's usual depth." % now
+
+
+## The line the prep window opens with. `note` is prep_depth_note()'s output or
+## Game's countdown fallback; an empty one leaves the sentence alone rather than
+## trailing a space nobody can see and every width measurement counts.
+static func wave_cleared_line(number: int, note: String) -> String:
+	if note == "":
+		return "Wave %d cleared." % number
+	return "Wave %d cleared. %s" % [number, note]
 
 
 ## The one thing this surface announces. Named for its event on purpose: see the

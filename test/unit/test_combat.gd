@@ -1839,3 +1839,203 @@ func test_a_card_with_no_denominator_falls_back_to_the_bare_tally() -> String:
 	partial.free()
 	empty.free()
 	return err
+
+
+# -- Lane pressure during prep (issue 842) ----------------------------------
+
+
+## The reading the prep window is built on. Depth is a mean weighted by how many
+## pests stopped at each cell, not an average over the cells that happen to be
+## lit, and the difference is the whole point: four pests killed at the gate and
+## sixteen killed at the exit is a run in trouble, while "one lit cell at each
+## end" reads as a tidy 50% either way.
+func test_the_run_depth_is_weighted_by_losses_not_by_lit_cells() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+	var err: String = _T.assert_true(board != null, "the board stood up")
+	if err != "":
+		return err
+	err = _T.assert_gt(board.path_cell_count(), 0, "the road has cells to measure along")
+	if err != "":
+		_T.free_ui(board)
+		return err
+
+	var entry: Vector2i = Board.PATH_CORNERS[0]
+	var last_cell: Vector2i = board.exit_cell()
+	err = _T.assert_eq(board.path_index(entry), 0, "the first corner is the head of the road")
+	if err == "":
+		err = _T.assert_eq(board.path_index(last_cell), board.path_cell_count() - 1,
+			"and exit_cell() is its tail")
+	if err == "":
+		err = _T.assert_float_eq(board.run_depth(), -1.0, 0.001,
+			"a board that has recorded nothing reports -1, not a 0% it did not earn")
+	if err == "":
+		board.record_lane_pressure_wave({entry: 4})
+		err = _T.assert_float_eq(board.last_wave_depth(), 0.0, 0.001,
+			"a wave killed dead on the entry cell really is 0% down the road")
+	if err == "":
+		board.record_lane_pressure_wave({last_cell: 4})
+		err = _T.assert_float_eq(board.last_wave_depth(), 1.0, 0.001,
+			"and the next wave, stopped at the exit, is 100%")
+	if err == "":
+		err = _T.assert_float_eq(board.run_depth(), 0.5, 0.001,
+			"four at each end averages to the middle of the road")
+	if err == "":
+		# The assertion an unweighted mean fails: still two lit cells, still one
+		# at each end, but four times as many pests reached the far one.
+		board.record_lane_pressure_wave({last_cell: 12})
+		err = _T.assert_float_eq(board.run_depth(), 0.8, 0.001,
+			"4 at the gate against 16 at the exit is 80% down, not 50%")
+	_T.free_ui(board)
+	return err
+
+
+## A wave that lost nothing never reaches record_lane_pressure_wave's body, so
+## it neither fades the road nor replaces the last-wave reading. The prep line
+## and the tint therefore always describe the SAME wave -- the last one that drew
+## blood -- which is the property that stops the sentence contradicting the paint.
+func test_a_clean_wave_leaves_both_the_tint_and_the_prep_reading_alone() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+	var err: String = _T.assert_true(board != null, "the board stood up")
+	if err != "":
+		return err
+	var last_cell: Vector2i = board.exit_cell()
+	board.record_lane_pressure_wave({last_cell: 3})
+	var before: float = board.last_wave_depth()
+	err = _T.assert_float_eq(before, 1.0, 0.001, "the wave that broke through reads 100%")
+	if err == "":
+		# A wave nobody lost a pest to, and one whose losses are all off-road.
+		var nothing: Dictionary = {}
+		var off_road: Dictionary = {Vector2i(0, 0): 9}
+		board.record_lane_pressure_wave(nothing)
+		board.record_lane_pressure_wave(off_road)
+		err = _T.assert_float_eq(board.last_wave_depth(), before, 0.001,
+			"a wave that stopped nothing on the road cannot rewrite the reading")
+	if err == "":
+		err = _T.assert_float_eq(board.lane_pressure_alpha(last_cell), 1.0, 0.001,
+			"and the tint it left is not faded by a wave that recorded nothing")
+	_T.free_ui(board)
+	return err
+
+
+## The three branches of the sentence, plus the band edge. Pure and static, so
+## every branch is assertable without standing up a HUD.
+func test_the_prep_line_names_which_way_the_front_moved() -> String:
+	var err: String = _T.assert_eq(Hud.prep_depth_note(0.80, 0.60),
+		"Pests got 80% down the road — deeper than the run's 60%.",
+		"a wave that got further than usual says so")
+	if err == "":
+		err = _T.assert_eq(Hud.prep_depth_note(0.40, 0.60),
+			"Pests got 40% down the road — shallower than the run's 60%.",
+			"and a wave held short of usual says that instead")
+	if err == "":
+		err = _T.assert_eq(Hud.prep_depth_note(0.62, 0.60),
+			"Pests got 62% down the road, the run's usual depth.",
+			"two points of drift is noise, and the line refuses to dress it as news")
+	if err == "":
+		# The edge, spelled out: the band is inclusive, so a move of exactly
+		# PREP_DEPTH_BAND is still "usual". Left unpinned, a later tweak to the
+		# comparison flips this without failing anything.
+		err = _T.assert_eq(Hud.prep_depth_note(0.60 + Hud.PREP_DEPTH_BAND, 0.60),
+			"Pests got 65% down the road, the run's usual depth.",
+			"a move of exactly the band is still inside it")
+	if err == "":
+		err = _T.assert_eq(Hud.prep_depth_note(0.0, 0.0),
+			"Pests got 0% down the road, the run's usual depth.",
+			"0% is a real reading -- the best one in the game -- and must not be silence")
+	if err == "":
+		err = _T.assert_eq(Hud.prep_depth_note(-1.0, -1.0), "",
+			"but 'nothing recorded' is silence, and that is a different thing")
+	if err == "":
+		err = _T.assert_eq(Hud.wave_cleared_line(7, ""), "Wave 7 cleared.",
+			"an empty note leaves no trailing space behind the full stop")
+	return err
+
+
+## MessageLabel clips with an ellipsis, so a prep line that outgrows the status
+## row renders trimmed and nothing complains. Measured off the resolved theme
+## font, NOT get_minimum_size(): the label sets clip_text, and a clipping Label
+## reports a 1px minimum by design, which would make this assertion pass for any
+## string anyone ever wrote.
+func test_the_wave_cleared_line_fits_the_status_row() -> String:
+	var game := await _T.instantiate_ui("res://game/game.tscn", Vector2i(1152, 648)) as Game
+	var err: String = _T.assert_true(game != null, "the game scene loaded")
+	if err != "":
+		return err
+	err = _T.assert_true(game.hud != null, "the run has a HUD")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+	err = _T.assert_true(label != null, "the status row exists")
+	if err == "":
+		# Pinned to the formatters rather than to the literal. A reworded note
+		# that nobody copies into the constant is exactly how a silent clip ships.
+		# 0.948 against 1.0 is the widest branch that is actually reachable:
+		# "shallower" needs to be under the run by more than the band, so a 100%
+		# wave can never take it, and 0.948 rounds up to the 95 declared.
+		err = _T.assert_eq(Hud.PREP_NOTE_WORST_CASE,
+			Hud.wave_cleared_line(9999, Hud.prep_depth_note(0.948, 1.0)),
+			"the declared worst case is the line the formatters actually build")
+	if err == "":
+		var font: Font = label.get_theme_font("font")
+		err = _T.assert_true(font != null, "the row has a font to measure with")
+		if err == "":
+			var size_px: int = label.get_theme_font_size("font_size")
+			if size_px <= 0:
+				size_px = label.get_theme_default_font_size()
+			var drawn: float = font.get_string_size(
+				Hud.PREP_NOTE_WORST_CASE, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x
+			err = _T.assert_gt(drawn, 1.0,
+				"the font really measured the line -- a 1px answer is the clip_text stub, not a width")
+			if err == "":
+				err = _T.assert_gt(label.size.x, 1.0,
+					"and the row has a real width to measure against")
+			if err == "":
+				err = _T.assert_true(drawn <= label.size.x,
+					"the worst-case prep line fits the status row without ellipsis (%.0f of %.0f px)"
+						% [drawn, label.size.x])
+	_T.free_ui(game)
+	return err
+
+
+## End to end through the real run: the reading has to leave the Board, survive
+## Game's fallback and come back as the sentence the player reads. Asserting the
+## depth arithmetic alone would pass just as happily with the wiring cut.
+func test_the_prep_window_reports_the_run_and_not_only_the_countdown() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var err: String = _T.assert_true(game != null, "the game scene loaded")
+	if err != "":
+		return err
+	err = _T.assert_true(game.board != null, "the run has a board")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	err = _T.assert_gt(game.board.path_cell_count(), 0, "with a road to measure along")
+	if err == "":
+		# Nothing stopped anywhere yet, so there is no depth and the window falls
+		# back to the countdown -- the only case where restating the prep strip is
+		# worth a whole line.
+		err = _T.assert_eq(game.prep_note(),
+			"Next one grows in %d seconds." % int(Game.PREP_SECONDS),
+			"a run that has stopped nothing has nothing to report")
+	var entry: Vector2i = Board.PATH_CORNERS[0]
+	var last_cell: Vector2i = game.board.exit_cell()
+	if err == "":
+		err = _T.assert_gt(game.board.path_index(last_cell), game.board.path_index(entry),
+			"the exit really is further down the road than the entry")
+	if err == "":
+		var first: Dictionary = {entry: 5}
+		var second: Dictionary = {last_cell: 5}
+		game.board.record_lane_pressure_wave(first)
+		game.board.record_lane_pressure_wave(second)
+		err = _T.assert_eq(game.prep_note(),
+			"Pests got 100% down the road — deeper than the run's 50%.",
+			"and once two waves are on record the window says which way the front moved")
+	if err == "":
+		err = _T.assert_eq(Hud.wave_cleared_line(2, game.prep_note()),
+			"Wave 2 cleared. Pests got 100% down the road — deeper than the run's 50%.",
+			"which is what the status row actually receives")
+	_T.free_ui(game)
+	return err

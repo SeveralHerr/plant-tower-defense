@@ -262,11 +262,37 @@ func _check_wave_cleared() -> void:
 	_prep_left = PREP_SECONDS
 	_commit_lane_pressure()
 	if director.has_more_waves():
-		hud.show_message("Wave %d cleared. Next one grows in %d seconds." % [director.current_wave, int(PREP_SECONDS)], 6.0)
+		# After _commit_lane_pressure above, not before: prep_note() reads the
+		# batch that call just posted, and running it first would describe the
+		# wave before last for the whole of the window the player buys in.
+		hud.show_message(Hud.wave_cleared_line(director.current_wave, prep_note()), 6.0)
 	else:
 		victory = true
 		_end_run("The garden holds!")
 	_refresh()
+
+
+## The sentence the prep window opens with, past "Wave N cleared."
+##
+## The run-total damage reading has existed all along and was revealed exactly
+## once — by Board.show_run_pressure(), from _end_run — which is to say the
+## number that would inform a purchase was held back until purchasing had
+## stopped. This is where it comes forward.
+##
+## It does NOT come forward as paint. The road already wears the per-wave map,
+## and a second tint over the same cells is a blend rather than two readings
+## (see Hud.prep_depth_note). It comes forward as the comparison the map cannot
+## make: how deep this wave got against how deep the run has been getting.
+##
+## The countdown is the fallback rather than the headline. It restates the prep
+## strip, which already draws the same countdown in the coming wave's threat
+## colour — worth a whole line only when there is genuinely nothing else to say,
+## which is a run that has not yet stopped a single pest anywhere.
+func prep_note() -> String:
+	var note: String = Hud.prep_depth_note(board.last_wave_depth(), board.run_depth())
+	if note != "":
+		return note
+	return "Next one grows in %d seconds." % int(PREP_SECONDS)
 
 
 ## Puts one pest on the road immediately. The wave director drives this; the
