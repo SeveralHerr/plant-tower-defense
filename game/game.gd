@@ -803,7 +803,14 @@ func _end_run(_banner: String) -> void:
 	# Not a scene change, so play_for_scene has nothing to key off -- the run
 	# ending is the direct-override case SCENE_TRACKS' own doc comment names.
 	Music.play_title()
-	_summary = RunSummary.build(summary_stats(new_record))
+	var stats: Dictionary = summary_stats(new_record)
+	# Behind the same guard as the card, and evaluated against `stats` rather than
+	# against Game, so the flags a run files and the numbers its post-mortem prints
+	# are read from one snapshot and cannot disagree. `record_milestones` returns
+	# only what is new, which is the one thing that stops being knowable the instant
+	# it is written down.
+	stats["new_milestones"] = RunConfig.record_milestones(Milestones.earned_by(stats))
+	_summary = RunSummary.build(stats)
 	_summary_layer = CanvasLayer.new()
 	_summary_layer.name = "SummaryLayer"
 	# Above the HUD's layer 10, or the side panel draws over the card.
@@ -1306,6 +1313,23 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(KeyBindings.ACTION_MUTE_MUSIC):
 		hud.show_message(mute_message("Music", Music.toggle_muted(),
 			KeyBindings.ACTION_MUTE_MUSIC), 2.5)
+		return
+	# Swaps the health fill and the threat readout onto GardenTheme's blue/orange
+	# ramp. This arrived as a raw scancode check from the branch that added the
+	# ramp, at the same time as the branch that moved every other verb onto the
+	# InputMap; it is an action here so the Keys screen can rebind it like the
+	# rest, and so the pause card lists it without a second hand-written row.
+	# (Naming the constant even in a comment fails the scan above, by design.)
+	#
+	# _refresh() rather than waiting for the next state change: both bars are
+	# repainted from state, and the threat tint EASES toward its target, so a player
+	# who presses this between waves with nothing selected would otherwise see
+	# nothing happen and conclude the key does not work.
+	if event.is_action_pressed(KeyBindings.ACTION_COLORBLIND):
+		var safe: bool = RunConfig.toggle_colorblind_safe()
+		hud.show_message(
+			"Colourblind-safe bars on." if safe else "Colourblind-safe bars off.", 2.5)
+		_refresh()
 
 
 func _update_cursor(screen_pos: Vector2) -> void:

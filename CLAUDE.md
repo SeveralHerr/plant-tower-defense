@@ -16,6 +16,8 @@ Do these steps in order, over and over:
 5. **Go straight back to step 1 and start the next cycle. Do not stop. Do not ask
    whether to continue. Do not say "next session" — you are the next session.**
 
+  At the end of each of loop,reflect on it's output and usage and suggest concrete improvements to that skill. If godot-selftest-harness improvement is concrete enough to name what should change — simplification, pain points, or if it added unnecessary overhead — use the skill-feedback-issue skill, which has the procedure and files a report rather than a patch. Put a diff in the issue body if you have one. Anything below that bar goes only in the log, and is allowed to rot there.
+
 The only reasons to stop are: the user tells you to, or you are genuinely blocked and
 need an answer only they can give.
 

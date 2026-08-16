@@ -1350,7 +1350,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 		err = _T.assert_eq(String(Game.key_help()[0]["keys"]), "F1", "the pause card's legend moved")
 	if err == "":
 		err = _T.assert_eq(FileAccess.get_file_as_string(path),
-			"v%d\n0\n0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
+			"v%d\n0\n0\nm0\ncb0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
 			"and it was written down beside the scores")
 	if err == "":
 		# A key another verb already answers to is refused, and said so.
@@ -1378,7 +1378,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 			"Put them all back restores the shipped keys")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(path),
-				"v%d\n0\n0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n0\nm0\ncb0\n0\n" % RunConfig.SAVE_VERSION,
 				"and clears the overrides out of the save rather than pinning the defaults into it")
 
 	_T.free_ui(screen)
@@ -2886,25 +2886,36 @@ func test_project_identity_is_registered_with_a_literal_name() -> String:
 ## The threat ramp, asserted as data. threat_color is static and pure precisely so
 ## the whole curve can be checked without a HUD -- a tint judged off a screenshot
 ## is judged by eye, and "is wave 9 redder than wave 6" is not an eye question.
+##
+## Driven through `threat_color_on(level, false)` rather than `threat_color(level)`
+## since the colourblind option landed: `threat_color` reads
+## `RunConfig.colorblind_safe`, which is process-global, so this test would
+## otherwise pass or fail on whatever an earlier test in the run happened to leave
+## set. The claims below -- cream, then red, then redder -- are claims about the
+## DEFAULT ramp specifically, so naming it is also more honest than it was.
 func test_the_threat_tint_climbs_from_cream_to_red() -> String:
-	var err: String = _T.assert_true(Hud.threat_color(1).is_equal_approx(Hud.PAPER),
+	var err: String = _T.assert_true(Hud.threat_color_on(1, false).is_equal_approx(Hud.PAPER),
 		"below the show-from level the readout is the bar's own cream")
 	if err == "":
-		err = _T.assert_true(Hud.threat_color(Hud.THREAT_SHOW_FROM).is_equal_approx(Hud.PAPER),
+		err = _T.assert_true(
+			Hud.threat_color_on(Hud.THREAT_SHOW_FROM, false).is_equal_approx(Hud.PAPER),
 			"and still cream at the level the number first appears")
 	if err == "":
-		err = _T.assert_true(Hud.threat_color(Hud.THREAT_TINT_MAX).is_equal_approx(Hud.THREAT_HOT),
+		err = _T.assert_true(
+			Hud.threat_color_on(Hud.THREAT_TINT_MAX, false).is_equal_approx(Hud.THREAT_HOT),
 			"fully red at the ceiling")
 	if err == "":
 		# Endless runs past the ceiling for hundreds of waves; the tint must pin
 		# rather than wrap, overshoot or start cooling off again.
-		err = _T.assert_true(Hud.threat_color(Hud.THREAT_TINT_MAX * 4).is_equal_approx(Hud.THREAT_HOT),
+		err = _T.assert_true(
+			Hud.threat_color_on(Hud.THREAT_TINT_MAX * 4, false).is_equal_approx(Hud.THREAT_HOT),
 			"and stays red far past it")
 	if err == "":
 		# Monotonic in the direction that matters: never gets less red as it climbs.
 		var previous: float = -1.0
 		for level: int in range(1, Hud.THREAT_TINT_MAX + 2):
-			var heat: float = Hud.threat_color(level).r - Hud.threat_color(level).g
+			var tint: Color = Hud.threat_color_on(level, false)
+			var heat: float = tint.r - tint.g
 			err = _T.assert_gte(heat, previous,
 				"threat %d is at least as hot as the level below it" % level)
 			if err != "":
@@ -4388,11 +4399,14 @@ func test_the_binding_table_answers_about_itself() -> String:
 	if err == "":
 		# The writer's shape, asserted where a reader can see it. `_save` goes
 		# through this, so a field appended in the wrong place fails here.
-		err = _T.assert_eq(RunConfig.compose_save(3, 4, {"garden_pause": [KEY_F1, KEY_F2]}),
-			"v%d\n3\n4\n1\ngarden_pause %d %d\n" % [RunConfig.SAVE_VERSION, KEY_F1, KEY_F2],
-			"compose_save writes the header, both scores, the count, then the rows")
+		err = _T.assert_eq(
+			RunConfig.compose_save(3, 4, "m0", "cb0", {"garden_pause": [KEY_F1, KEY_F2]}),
+			"v%d\n3\n4\nm0\ncb0\n1\ngarden_pause %d %d\n" % [RunConfig.SAVE_VERSION, KEY_F1, KEY_F2],
+			"compose_save writes the header, both scores, the milestones, the options, "
+				+ "the count, then the rows")
 	if err == "":
-		err = _T.assert_eq(RunConfig.compose_save(0, 0, {}), "v%d\n0\n0\n0\n" % RunConfig.SAVE_VERSION,
+		err = _T.assert_eq(RunConfig.compose_save(0, 0, "m0", "cb0", {}),
+			"v%d\n0\n0\nm0\ncb0\n0\n" % RunConfig.SAVE_VERSION,
 			"and an untouched keyboard is a count of zero, not an absent line")
 	KeyBindings.reset_all()
 	return err
@@ -4426,7 +4440,7 @@ func test_rebound_keys_survive_a_save_and_load() -> String:
 	if err == "":
 		RunConfig.store_key_bindings(KeyBindings.overrides())
 		err = _T.assert_eq(FileAccess.get_file_as_string(path),
-			"v%d\n11\n22\n1\ngarden_mute_music %d\n" % [RunConfig.SAVE_VERSION, KEY_F7],
+			"v%d\n11\n22\nm0\ncb0\n1\ngarden_mute_music %d\n" % [RunConfig.SAVE_VERSION, KEY_F7],
 			"the save carries the count and one action row")
 	if err == "":
 		# Wipe every trace from memory, then read it all back off disk.
@@ -6045,5 +6059,457 @@ func test_the_wave_button_reaches_the_cue_handler_and_still_starts_the_wave() ->
 		game.hud._next_wave_button.pressed.emit()
 		err = _T.assert_eq(game.director.current_wave, before + 1,
 			"and a real press still starts the wave through it")
+	_T.free_ui(game)
+	return err
+
+
+# -- milestones (plant-tower-defense-4qi) ------------------------------------
+#
+# The evaluation half. RunConfig's own tests (test_economy.gd) cover the save
+# file; these cover the table and the rule behind each id, which is pure static
+# code over a Dictionary and needs no Game, no file and no Control.
+
+
+## The stats Dictionary a run hands `Milestones.earned_by`, with nothing in it
+## that earns anything. Every test below starts here and moves ONE field, so a
+## milestone that fires is unambiguously firing on the thing that changed.
+func _milestone_stats(overrides: Dictionary = {}) -> Dictionary:
+	var stats: Dictionary = {
+		"victory": false,
+		"endless": false,
+		"wave": 1,
+		"lives_lost": 3,
+		"pests_defeated": 0,
+		"threat_level": 1,
+		"compost_total": 0,
+		"compost_resolved": 0,
+	}
+	for key: Variant in overrides:
+		stats[key] = overrides[key]
+	return stats
+
+
+func test_a_dull_run_earns_no_milestone_at_all() -> String:
+	## The floor, and the one that makes every test under it mean something: if the
+	## baseline stats earned three milestones, "adding victory earns the clear"
+	## would pass without victory having done anything.
+	var earned: Array[String] = Milestones.earned_by(_milestone_stats())
+	return _T.assert_eq(earned.size(), 0,
+		"a lost run at wave 1 with nothing killed earns nothing, got %s" % str(earned))
+
+
+func test_each_milestone_fires_on_the_number_it_names_and_not_before() -> String:
+	## Every id, driven at its threshold and one step under it. The under-threshold
+	## half is what catches a `>=` that should be a `>` and, more usefully, a rule
+	## reading the wrong key -- a condition keyed on a field nothing sets is false
+	## everywhere, which the on-threshold half alone reports as a clean fail.
+	var cases: Array[Dictionary] = [
+		{"id": "campaign_cleared", "on": {"victory": true}, "off": {"victory": false}},
+		{
+			"id": "unbroken_garden",
+			"on": {"victory": true, "lives_lost": 0},
+			"off": {"victory": true, "lives_lost": 1},
+		},
+		{
+			"id": "hundred_pests",
+			"on": {"pests_defeated": Milestones.HUNDRED},
+			"off": {"pests_defeated": Milestones.HUNDRED - 1},
+		},
+		{
+			"id": "five_hundred_pests",
+			"on": {"pests_defeated": Milestones.FIVE_HUNDRED},
+			"off": {"pests_defeated": Milestones.FIVE_HUNDRED - 1},
+		},
+		{
+			"id": "endless_deep",
+			"on": {"endless": true, "wave": Milestones.ENDLESS_DEEP_WAVE},
+			"off": {"endless": true, "wave": Milestones.ENDLESS_DEEP_WAVE - 1},
+		},
+		{
+			"id": "threat_peak",
+			"on": {"threat_level": Milestones.THREAT_PEAK},
+			"off": {"threat_level": Milestones.THREAT_PEAK - 1},
+		},
+		{
+			"id": "clean_sweep",
+			"on": {
+				"compost_total": Milestones.SWEEP_FLOOR,
+				"compost_resolved": Milestones.SWEEP_FLOOR,
+			},
+			"off": {
+				"compost_total": Milestones.SWEEP_FLOOR - 1,
+				"compost_resolved": Milestones.SWEEP_FLOOR,
+			},
+		},
+	]
+	var err: String = _T.assert_eq(cases.size(), Milestones.TABLE.size(),
+		"every milestone in the table is driven here, %d rule(s) against %d entries"
+			% [cases.size(), Milestones.TABLE.size()])
+	if err != "":
+		return err
+	for case: Dictionary in cases:
+		var id: String = String(case["id"])
+		err = _T.assert_true(Milestones.is_met(id, _milestone_stats(case["on"] as Dictionary)),
+			"%s fires on %s" % [id, str(case["on"])])
+		if err != "":
+			return err
+		err = _T.assert_false(Milestones.is_met(id, _milestone_stats(case["off"] as Dictionary)),
+			"%s does not fire on %s" % [id, str(case["off"])])
+		if err != "":
+			return err
+	return ""
+
+
+func test_an_endless_run_that_never_ends_cannot_earn_the_campaign_clear() -> String:
+	## `victory` is unreachable in endless (WaveDirector.has_more_waves is
+	## unconditionally true there), so this is a statement about the pair rather
+	## than about one flag: an endless run deep enough to earn the wave-40
+	## milestone must not also collect the two that mean "you finished".
+	var earned: Array[String] = Milestones.earned_by(_milestone_stats({
+		"endless": true,
+		"wave": 120,
+		"threat_level": 3,
+		"pests_defeated": 40,
+	}))
+	var err: String = _T.assert_true(earned.has("endless_deep"), "the deep-endless flag is earned")
+	if err == "":
+		err = _T.assert_false(earned.has("campaign_cleared"),
+			"and a run with no end does not report clearing one, got %s" % str(earned))
+	if err == "":
+		err = _T.assert_false(earned.has("unbroken_garden"), "nor holding every bed through one")
+	return err
+
+
+func test_a_run_that_swept_nothing_because_nothing_dropped_is_not_a_clean_sweep() -> String:
+	## The branch SWEEP_FLOOR exists for. 0 of 0 is arithmetically a perfect sweep,
+	## and it is what a run that never let a pest die produces -- the worst run in
+	## the game earning the tidiest milestone.
+	var err: String = _T.assert_false(
+		Milestones.is_met("clean_sweep",
+			_milestone_stats({"compost_total": 0, "compost_resolved": 0})),
+		"0 of 0 is not a sweep")
+	if err == "":
+		err = _T.assert_false(
+			Milestones.is_met("clean_sweep", _milestone_stats({
+				"compost_total": Milestones.SWEEP_FLOOR - 1,
+				"compost_resolved": Milestones.SWEEP_FLOOR,
+			})),
+			"and leaving one husk on the ground is not one either")
+	return err
+
+
+func test_every_milestone_id_has_a_rule_and_a_title() -> String:
+	## The seam the table has: TABLE lists the ids and `is_met` answers them, and
+	## nothing but this test stops an entry being added to one and not the other.
+	## An id with no rule is a milestone that can never be earned, and it shows up
+	## at runtime as nothing at all.
+	var err: String = _T.assert_gt(Milestones.TABLE.size(), 0, "there are milestones to check")
+	if err != "":
+		return err
+	# A stats Dictionary that satisfies everything at once, so a rule that never
+	# returns true for ANY input is caught here rather than silently passing.
+	var everything: Dictionary = _milestone_stats({
+		"victory": true,
+		"endless": true,
+		"wave": 9999,
+		"lives_lost": 0,
+		"pests_defeated": 99999,
+		"threat_level": 99,
+		"compost_total": 999,
+		"compost_resolved": 999,
+	})
+	var seen: Dictionary = {}
+	for entry: Dictionary in Milestones.TABLE:
+		var id: String = String(entry.get("id", ""))
+		err = _T.assert_false(id.is_empty(), "every table entry names an id")
+		if err != "":
+			return err
+		err = _T.assert_false(seen.has(id), "%s appears once in the table" % id)
+		if err != "":
+			return err
+		seen[id] = true
+		err = _T.assert_true(Milestones.is_met(id, everything),
+			"%s has a rule that some run can actually satisfy" % id)
+		if err != "":
+			return err
+		err = _T.assert_eq(Milestones.title_of(id), String(entry["title"]),
+			"%s has the title the card prints" % id)
+		if err != "":
+			return err
+		err = _T.assert_false(Milestones.note_of(id).is_empty(), "%s has a note under it" % id)
+		if err != "":
+			return err
+		# Ids are the on-disk representation: RunConfig._parse_milestones refuses a
+		# save carrying anything outside this set, so an id with a capital letter or
+		# a space in it would be written and then refused on the next launch.
+		for i: int in range(id.length()):
+			err = _T.assert_true(RunConfig.MILESTONE_ID_CHARS.contains(id[i]),
+				"%s is spelled in characters the save file accepts, '%s' is not" % [id, id[i]])
+			if err != "":
+				return err
+	return ""
+
+
+## The card's side of it. The ribbon is variable-height and lives beside the card
+## rather than on it, so what can break is geometry: at its tallest it must still
+## start clear of the card, end inside the viewport, and stay off the map legend's
+## strip -- which is the one thing on this screen it could reach.
+func test_the_milestone_ribbon_clears_the_card_and_the_map_legend() -> String:
+	var worst: float = RunSummary.ribbon_height(Milestones.TABLE.size())
+	var foot: float = RunSummary.RIBBON_TOP + worst
+	var err: String = _T.assert_gt(worst, 0.0, "a full ribbon has height")
+	if err == "":
+		err = _T.assert_float_eq(RunSummary.ribbon_height(0), 0.0, 0.001,
+			"and a run that earned nothing new draws no panel at all")
+	if err == "":
+		var card_right: float = RunSummary.CARD.position.x + RunSummary.CARD.size.x
+		err = _T.assert_true(RunSummary.RIBBON_X >= card_right,
+			"the ribbon starts to the right of the card, %.0f against %.0f"
+				% [RunSummary.RIBBON_X, card_right])
+	if err == "":
+		var right: float = RunSummary.RIBBON_X + RunSummary.RIBBON_WIDTH
+		err = _T.assert_true(right <= 1152.0,
+			"and ends inside the viewport, right edge %.0f" % right)
+	if err == "":
+		err = _T.assert_true(foot <= RunSummary.MAP_LEGEND_Y,
+			"a full ribbon foots at %.0f, above the map legend strip at %.0f"
+				% [foot, RunSummary.MAP_LEGEND_Y])
+	return err
+
+
+func test_the_post_mortem_lists_the_milestones_the_run_just_earned() -> String:
+	## Built off a stats Dictionary rather than a played run, for the reason
+	## summary_rows() is: the card takes a plain Dictionary precisely so the whole
+	## of its rendering is reachable without staging the run that produces it.
+	var card := RunSummary.build({
+		"victory": true,
+		"new_milestones": ["campaign_cleared", "hundred_pests"],
+	})
+	var host: Node = await _T.instantiate_ui(card, Vector2i(1152, 648))
+	var err: String = _T.assert_true(host != null, "the card stood up")
+	if err == "":
+		err = _T.assert_eq(card.new_milestones().size(), 2, "it read both ids out of the stats")
+	if err == "":
+		var ribbon: Panel = card.get_node_or_null("MilestoneRibbon") as Panel
+		err = _T.assert_true(ribbon != null, "and drew the ribbon")
+		if err == "":
+			var row: Label = ribbon.get_node_or_null("Milestone_campaign_cleared") as Label
+			err = _T.assert_true(row != null, "with a row for the campaign clear")
+			if err == "":
+				err = _T.assert_eq(row.text, Milestones.title_of("campaign_cleared"),
+					"printing the table's own title rather than the raw id")
+		if err == "":
+			err = _T.assert_true(ribbon.get_node_or_null("Milestone_hundred_pests") != null,
+				"and a row for the hundred")
+		if err == "":
+			err = _T.assert_float_eq(ribbon.size.y, RunSummary.ribbon_height(2), 0.5,
+				"sized for exactly the two it is showing")
+	_T.free_ui(host)
+	return err
+
+
+func test_a_run_with_no_new_milestones_draws_no_ribbon() -> String:
+	## The common case -- most runs repeat what an earlier run already did -- and
+	## the one that has to leave no node behind. An empty Panel here is exactly what
+	## `validate-ui` reports as a zero-content Control finding.
+	var card := RunSummary.build({"victory": false})
+	var host: Node = await _T.instantiate_ui(card, Vector2i(1152, 648))
+	var err: String = _T.assert_true(host != null, "the card stood up")
+	if err == "":
+		err = _T.assert_eq(card.new_milestones().size(), 0, "no ids in the stats")
+	if err == "":
+		err = _T.assert_true(card.get_node_or_null("MilestoneRibbon") == null,
+			"and no ribbon node was created for them")
+	_T.free_ui(host)
+	return err
+
+
+# -- colourblind-safe bars (plant-tower-defense-xu0) -------------------------
+#
+# Both combat bars ease through one hue family, which is the one thing a
+# red-green colour deficiency flattens. The ramp SELECTION is what these test:
+# `threat_color_on` / `health_color_on` are pure and take the flag, so the choice
+# can be asserted for both settings in one run without a HUD and without leaving
+# a process-global option set behind for the next test.
+
+
+## How far apart two colours are in the red-green channel alone -- the axis a
+## deuteranope or protanope cannot read. Small means "these two look alike to the
+## player this option exists for", whatever they look like here.
+func _red_green_gap(a: Color, b: Color) -> float:
+	return absf((a.r - a.g) - (b.r - b.g))
+
+
+func test_the_flag_actually_picks_a_different_ramp_for_both_bars() -> String:
+	## The selection itself, at both ends of both bars. A wiring mistake here is
+	## invisible on screen -- a bar drawn on the wrong ramp is still a plausible
+	## looking bar -- and it is the whole feature.
+	var err: String = _T.assert_true(
+		Hud.health_color_on(0.0, false).is_equal_approx(Hud.HEALTH_LOW),
+		"off, an empty health bar is the default red")
+	if err == "":
+		err = _T.assert_true(Hud.health_color_on(1.0, false).is_equal_approx(Hud.HEALTH_FULL),
+			"and a full one is the leaf green")
+	if err == "":
+		err = _T.assert_true(Hud.health_color_on(0.0, true).is_equal_approx(Hud.HEALTH_LOW_SAFE),
+			"on, an empty bar is the safe ramp's low stop")
+	if err == "":
+		err = _T.assert_true(Hud.health_color_on(1.0, true).is_equal_approx(Hud.HEALTH_FULL_SAFE),
+			"and a full one is its high stop")
+	if err == "":
+		err = _T.assert_true(
+			Hud.threat_color_on(Hud.THREAT_TINT_MAX, true).is_equal_approx(Hud.THREAT_HOT_SAFE),
+			"on, a runaway threat is the safe ramp's hot stop")
+	if err == "":
+		err = _T.assert_true(Hud.threat_color_on(1, true).is_equal_approx(Hud.PAPER),
+			"while a calm one is still the bar's own cream on either ramp -- an early "
+				+ "run must not look like something is wrong just because the option is on")
+	if err == "":
+		# The clamp, which the health bar needs and the old inline lerp never had:
+		# _refresh_health clamps before calling, so this is belt and braces, but a
+		# fraction out of range must not extrapolate past either stop.
+		err = _T.assert_true(Hud.health_color_on(-3.0, true).is_equal_approx(Hud.HEALTH_LOW_SAFE),
+			"a fraction below zero pins at the low stop rather than overshooting it")
+	if err == "":
+		err = _T.assert_true(Hud.health_color_on(9.0, false).is_equal_approx(Hud.HEALTH_FULL),
+			"and one above one pins at the high stop")
+	return err
+
+
+func test_the_safe_ramp_separates_its_ends_in_more_than_the_red_green_channel() -> String:
+	## The point of the option, stated as the measurement it is about. The default
+	## health ramp puts "fine" and "nearly gone" at opposite ends of exactly the
+	## axis this player cannot see, so it must be the safe ramp that separates them
+	## by MORE than that axis -- lightness -- and by less along it.
+	var default_full: Color = Hud.health_color_on(1.0, false)
+	var default_low: Color = Hud.health_color_on(0.0, false)
+	var safe_full: Color = Hud.health_color_on(1.0, true)
+	var safe_low: Color = Hud.health_color_on(0.0, true)
+
+	var default_luma: float = absf(default_full.get_luminance() - default_low.get_luminance())
+	var safe_luma: float = absf(safe_full.get_luminance() - safe_low.get_luminance())
+	var err: String = _T.assert_gt(safe_luma, default_luma,
+		"the safe ends differ in lightness by %.3f against the default's %.3f, so the ramp "
+			% [safe_luma, default_luma] + "still reads as a ramp with the colour taken away")
+	if err == "":
+		err = _T.assert_gt(_red_green_gap(default_full, default_low),
+			_red_green_gap(safe_full, safe_low),
+			"and it leans less on the red-green axis than the ramp it replaces")
+	if err == "":
+		# The threat bar's ends, same question. Its calm end is PAPER on both ramps,
+		# so what has to change is the hot end.
+		var hot_gap: float = _red_green_gap(Hud.PAPER, Hud.THREAT_HOT)
+		var safe_hot_gap: float = _red_green_gap(Hud.PAPER, Hud.THREAT_HOT_SAFE)
+		err = _T.assert_gt(hot_gap, safe_hot_gap,
+			"the threat bar's hot end is %.3f off cream in red-green terms by default and "
+				% hot_gap + "%.3f on the safe ramp" % safe_hot_gap)
+	return err
+
+
+func test_the_two_bars_agree_about_which_ramp_is_on() -> String:
+	## One switch, not two. A build where the threat readout went blue-orange and
+	## the health fill stayed green-red would be worse than either alone: the
+	## player would be reading two different languages on one screen.
+	var err: String = _T.assert_true(
+		Hud.health_color_on(0.0, true).is_equal_approx(Hud.threat_color_on(Hud.THREAT_TINT_MAX, true)),
+		"on the safe ramp, an empty health bar and a runaway threat are one colour")
+	if err == "":
+		err = _T.assert_true(
+			Hud.health_color_on(0.0, false).is_equal_approx(
+				Hud.threat_color_on(Hud.THREAT_TINT_MAX, false)),
+			"exactly as they are on the default one -- a red still means one thing")
+	return err
+
+
+func test_the_threat_ramp_still_climbs_without_going_backwards_on_the_safe_palette() -> String:
+	## The monotonicity claim the default ramp already carries, re-asked on the
+	## other palette in the terms that survive a colour deficiency: each level must
+	## be at least as dark as the one below it. A ramp that brightens in the middle
+	## is one a player reads as calming down.
+	var previous: float = 2.0
+	var err: String = ""
+	for level: int in range(Hud.THREAT_SHOW_FROM, Hud.THREAT_TINT_MAX + 2):
+		var luma: float = Hud.threat_color_on(level, true).get_luminance()
+		err = _T.assert_gte(previous, luma,
+			"threat %d is no lighter than the level below it (%.3f against %.3f)"
+				% [level, luma, previous])
+		if err != "":
+			break
+		previous = luma
+	return err
+
+
+func test_toggling_the_option_is_persisted_and_reversible() -> String:
+	## The flag's own round trip through the live autoload, restored either way --
+	## it is process-global, and a test that leaves it on changes what every later
+	## test's `threat_color()` returns. The save file's side of it is in
+	## test_economy.gd, over a scratch path.
+	var was: bool = RunConfig.colorblind_safe
+	RunConfig.colorblind_safe = false
+	var err: String = _T.assert_true(RunConfig.toggle_colorblind_safe(), "one toggle turns it on")
+	if err == "":
+		err = _T.assert_true(
+			Hud.threat_color(Hud.THREAT_TINT_MAX).is_equal_approx(Hud.THREAT_HOT_SAFE),
+			"and threat_color, which reads the flag, follows it without an argument")
+	if err == "":
+		err = _T.assert_true(Hud.health_color(0.0).is_equal_approx(Hud.HEALTH_LOW_SAFE),
+			"as does health_color, which is the other half of the same switch")
+	if err == "":
+		err = _T.assert_false(RunConfig.toggle_colorblind_safe(), "a second toggle turns it off")
+	if err == "":
+		err = _T.assert_true(Hud.threat_color(Hud.THREAT_TINT_MAX).is_equal_approx(Hud.THREAT_HOT),
+			"and the default red comes back")
+	if err == "":
+		err = _T.assert_true(Hud.health_color(0.0).is_equal_approx(Hud.HEALTH_LOW),
+			"on both bars at once")
+	RunConfig.set_colorblind_safe(was)
+	return err
+
+
+## Distance between two colours in RGB. Used instead of `is_equal_approx` for the
+## live-HUD check below: a plant regrows between the frame the fill was painted and
+## the frame the assertion reads it, so the exact fraction is a moving target -- but
+## "which of the two ramps is this closer to" is not.
+func _colour_distance(a: Color, b: Color) -> float:
+	return absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b)
+
+
+func test_the_health_bar_the_hud_draws_goes_through_the_switch() -> String:
+	## The wiring, not the arithmetic. `_refresh_health` used to lerp the two
+	## constants inline, which is exactly the shape that survives a palette option
+	## being added and silently ignores it.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var was: bool = RunConfig.colorblind_safe
+	RunConfig.colorblind_safe = true
+	game.bank.add_seeds(100)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "", "planted")
+	var fill: ColorRect = game.hud.get_node_or_null(
+		"Root/SidePanel/SelectionBox/HealthRow/HealthFill") as ColorRect
+	if err == "":
+		err = _T.assert_true(fill != null, "the health fill is where the panel puts it")
+	if err == "":
+		# Real damage through the path a pest takes, and the panel follows health
+		# from Game._process rather than from a signal -- same as
+		# test_the_selection_panel_reports_a_chewed_plants_health.
+		game.selected_placed.take_damage(Plant.MAX_HEALTH * 0.5)
+		game._process(0.016)
+		await _pump(game)
+		var fraction: float = clampf(game.selected_placed.health / Plant.MAX_HEALTH, 0.0, 1.0)
+		var to_safe: float = _colour_distance(fill.color, Hud.health_color_on(fraction, true))
+		var to_default: float = _colour_distance(fill.color, Hud.health_color_on(fraction, false))
+		err = _T.assert_true(to_safe < to_default,
+			"with the option on the fill %s is the safe ramp's colour (%.3f away) and not the "
+				% [fill.color, to_safe] + "default's (%.3f away)" % to_default)
+	if err == "":
+		RunConfig.colorblind_safe = false
+		game.selected_placed.take_damage(1.0)
+		game._process(0.016)
+		await _pump(game)
+		var fraction2: float = clampf(game.selected_placed.health / Plant.MAX_HEALTH, 0.0, 1.0)
+		var back_to_default: float = _colour_distance(fill.color, Hud.health_color_on(fraction2, false))
+		var still_safe: float = _colour_distance(fill.color, Hud.health_color_on(fraction2, true))
+		err = _T.assert_true(back_to_default < still_safe,
+			"and it goes back to the default ramp the moment the option does, got %s" % fill.color)
+	RunConfig.colorblind_safe = was
 	_T.free_ui(game)
 	return err

@@ -50,6 +50,7 @@ const ACTION_PAUSE := &"garden_pause"
 const ACTION_MUTE_SFX := &"garden_mute_sfx"
 const ACTION_MUTE_MUSIC := &"garden_mute_music"
 const ACTION_RESTART := &"garden_restart"
+const ACTION_COLORBLIND := &"garden_colorblind"
 const ACTION_PAGE_PREV := &"garden_page_prev"
 const ACTION_PAGE_NEXT := &"garden_page_next"
 const ACTION_BACK := &"garden_back"
@@ -80,6 +81,12 @@ const ACTIONS: Array[Dictionary] = [
 		"action": ACTION_RESTART,
 		"does": "start over, once the run is done",
 		"defaults": [KEY_R],
+		"scope": SCOPE_RUN,
+	},
+	{
+		"action": ACTION_COLORBLIND,
+		"does": "colourblind-safe health and threat bars",
+		"defaults": [KEY_C],
 		"scope": SCOPE_RUN,
 	},
 	{

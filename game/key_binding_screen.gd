@@ -26,21 +26,32 @@ signal back_requested
 
 ## Panel rect, in viewport coordinates. Everything else is placed against it.
 ##
-## 568 tall, not the 536 this started at. At 536 the footer's own y worked out to
-## exactly where the last row's button ended, and every check passed: each Control
-## sat inside the paper, and Rect2.intersects is false for two boxes sharing an
-## edge. It only reads as wrong in a screenshot, which is the one place the row
-## list and the footer looked like one crowded block.
-const PANEL := Rect2(226.0, 40.0, 700.0, 568.0)
+## 600 tall at y=24, and the row pitch is 48 rather than 52, because the verb list
+## grew an eighth row: the colourblind-bars toggle, which arrived as a raw scancode
+## check on one branch while another was moving every verb onto the InputMap, and
+## became an action when the two merged. At the previous 568-tall/52-pitch geometry
+## eight rows footed at exactly 568 against a footer starting at 544 — a real
+## overlap, caught by the assertion below rather than by eye.
+##
+## The older note this replaces is still the reason that assertion exists: at 536
+## tall the footer's y worked out to exactly where the last row's button ended and
+## every check passed, because each Control sat inside the paper and
+## `Rect2.intersects` is false for two boxes sharing an edge. It only read as wrong
+## in a screenshot. So the rule here is a minimum GAP, not merely "no intersection",
+## and the panel is sized from the row count rather than the row count being
+## trusted to fit the panel.
+const PANEL := Rect2(226.0, 24.0, 700.0, 600.0)
 
-const HEADING_Y: float = 60.0
-const NOTE_Y: float = 106.0
-const ROWS_TOP: float = 152.0
-## 52, not 44. The button in a row is 40 tall (`findings` gates an interactive
+const HEADING_Y: float = 44.0
+const NOTE_Y: float = 90.0
+const ROWS_TOP: float = 136.0
+## 48, not 44. The button in a row is 40 tall (`findings` gates an interactive
 ## Control at 40x40 and is right to), and a row pitch matching its own contents
 ## leaves two Labels touching the row above -- the same one-pixel overlap
-## PauseScreen.KEY_ROW_HEIGHT's comment is about.
-const ROW_HEIGHT: float = 52.0
+## PauseScreen.KEY_ROW_HEIGHT's comment is about. It was 52 while the table had
+## seven verbs; the eighth bought its four pixels back out of the pitch rather
+## than out of the 8px clearance above each button, which is the part doing work.
+const ROW_HEIGHT: float = 48.0
 const ROW_BUTTON_SIZE := Vector2(150.0, 40.0)
 const FOOTER_HEIGHT: float = 40.0
 
