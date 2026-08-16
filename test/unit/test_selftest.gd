@@ -3757,3 +3757,253 @@ func _code_only(src: String) -> String:
 		var hash_at: int = line.find("#")
 		out.append(line if hash_at < 0 else line.substr(0, hash_at))
 	return "\n".join(out)
+
+
+# -- the notebook, reachable mid-run (plant-tower-defense-899) ---------------
+#
+# NotebookScreen was constructed in exactly one place -- TitleScreen._open_notebook
+# -- and nothing in game.gd, hud.gd or pause_screen.gd could reach it, so the only
+# account the game gives of itself was shut from the first frame of a run onwards.
+# The pause card is now its second door, which puts it behind `get_tree().paused`
+# and into a collision with the card's own Escape handler. These four checks are
+# about that, not about the button.
+
+
+## Opens the notebook the way a player does -- through the button's own signal.
+## Calling PauseScreen._open_notebook() directly would pass just as happily with
+## nothing wired to the button at all, which is the failure this whole issue is.
+func _open_pause_notebook(screen: PauseScreen) -> String:
+	var button: Button = screen.get_node_or_null("NotebookButton") as Button
+	var err: String = _T.assert_true(button != null,
+		"the pause card offers a way into the notebook")
+	if err == "":
+		err = _T.assert_false(button.disabled, "and the way in is not disabled")
+	if err == "":
+		button.pressed.emit()
+	return err
+
+
+func test_the_notebook_opens_from_the_pause_card_and_the_run_stays_held() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	# Guard against a vacuous pass twice over: the table below drives both the card's
+	# layout and the loops in the two tests after this one, and the notebook has to
+	# have pages for "opened it" to mean anything.
+	var err: String = _T.assert_gt(PauseScreen.BUTTONS.size(), 0, "the card has buttons to press")
+	if err == "":
+		err = _T.assert_gt(NotebookScreen.PAGES.size(), 0, "and the notebook has pages to read")
+	if err == "":
+		game.pause_run()
+		await _pump(game)
+		err = _T.assert_true(game.is_paused(), "the run is held before the notebook is asked for")
+	var screen := game.get_node_or_null("PauseLayer/PauseScreen") as PauseScreen
+	if err == "":
+		err = _T.assert_true(screen != null, "and the pause card is up")
+	if err == "":
+		err = _open_pause_notebook(screen)
+	if err == "":
+		await _pump(game)
+		err = _T.assert_true(screen.notebook_open(), "pressing the button opens the notebook")
+	if err == "":
+		err = _T.assert_true(screen.get_node_or_null("Notebook") is NotebookScreen,
+			"and it is really on the card, not merely flagged open")
+	if err == "":
+		# The whole point of opening it from here: the run must not have restarted
+		# behind the paper.
+		err = _T.assert_true(game.is_paused(), "and the run is STILL held with it open")
+	if err == "":
+		# One notebook at a time, the same claim
+		# test_opening_the_notebook_takes_focus_away_from_the_menu_behind_it makes of
+		# the title screen's copy.
+		err = _open_pause_notebook(screen)
+		if err == "":
+			await _pump(game)
+			err = _T.assert_eq(screen.get_children().filter(
+				func(child: Node) -> bool: return child is NotebookScreen).size(), 1,
+				"pressing it twice does not stack two notebooks")
+	game.resume_run()
+	await _pump(game)
+	_T.free_ui(game)
+	return err
+
+
+## Closing it must hand the card back, not the board -- and hand it back working.
+## A card left inert behind a freed overlay is a pause menu with no way out of it,
+## which is the same class of bug PROCESS_MODE_ALWAYS exists to prevent.
+func test_closing_the_notebook_gives_the_pause_card_back_still_paused() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.pause_run()
+	await _pump(game)
+	var screen := game.get_node_or_null("PauseLayer/PauseScreen") as PauseScreen
+	var err: String = _T.assert_true(screen != null, "the pause card is up")
+	if err == "":
+		err = _open_pause_notebook(screen)
+	if err == "":
+		await _pump(game)
+		err = _T.assert_true(screen.notebook_open(), "the notebook is open to close")
+	if err == "":
+		# While it is up, nothing underneath may still take focus or hover: the
+		# backdrop swallows clicks, but Tab would otherwise walk onto "Start over"
+		# behind the paper.
+		for spec: Dictionary in PauseScreen.BUTTONS:
+			var b: Button = screen.get_node_or_null(String(spec["name"])) as Button
+			# Null-checked before it is read: a nil dereference aborts the method and
+			# returns "" for a -> String test, which is indistinguishable from a pass.
+			err = _T.assert_true(b != null, "%s is on the card" % String(spec["name"]))
+			if err == "":
+				err = _T.assert_eq(b.focus_mode, Control.FOCUS_NONE,
+					"%s cannot be tabbed to under the notebook" % String(spec["name"]))
+			if err == "":
+				err = _T.assert_eq(b.mouse_filter, Control.MOUSE_FILTER_IGNORE,
+					"%s cannot light up under the notebook either" % String(spec["name"]))
+			if err != "":
+				break
+	if err == "":
+		var back: Button = screen.get_node("Notebook/BackButton") as Button
+		back.pressed.emit()
+		await _pump(game)
+		err = _T.assert_false(screen.notebook_open(), "Back closes the notebook")
+	if err == "":
+		err = _T.assert_true(game.is_paused(), "and leaves the run held")
+	if err == "":
+		err = _T.assert_true(game.get_node_or_null("PauseLayer/PauseScreen") != null,
+			"with the pause card still the thing on screen")
+	if err == "":
+		for spec: Dictionary in PauseScreen.BUTTONS:
+			var b: Button = screen.get_node_or_null(String(spec["name"])) as Button
+			err = _T.assert_true(b != null, "%s survived the notebook" % String(spec["name"]))
+			if err == "":
+				err = _T.assert_eq(b.focus_mode, Control.FOCUS_ALL,
+					"%s takes focus again" % String(spec["name"]))
+			if err == "":
+				err = _T.assert_eq(b.mouse_filter, Control.MOUSE_FILTER_STOP,
+					"%s takes the mouse again" % String(spec["name"]))
+			if err != "":
+				break
+	if err == "":
+		# The restored properties are only a description of a working button. This is
+		# the button working: Resume still resumes after a notebook has been over it.
+		(screen.get_node("ResumeButton") as Button).pressed.emit()
+		await _pump(game)
+		err = _T.assert_false(game.is_paused(), "and Resume still resumes the run")
+	game.resume_run()
+	await _pump(game)
+	_T.free_ui(game)
+	return err
+
+
+## Escape is handled by BOTH screens: NotebookScreen._input emits back_requested,
+## PauseScreen._input emits resume_requested. Unresolved, one keystroke closes the
+## notebook and drops the player onto a live board in the same frame.
+##
+## Driven by calling the two _input handlers directly, in the order the engine
+## would, rather than trusting the engine to stop after the first. That ordering is
+## the thing under test: relying on it silently is how this breaks, so the check has
+## to be able to see the second handler decline on its own.
+func test_escape_in_the_notebook_closes_it_without_unpausing_the_run() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.pause_run()
+	await _pump(game)
+	var screen := game.get_node_or_null("PauseLayer/PauseScreen") as PauseScreen
+	var err: String = _T.assert_true(screen != null, "the pause card is up")
+	if err == "":
+		err = _open_pause_notebook(screen)
+	if err == "":
+		await _pump(game)
+		err = _T.assert_true(screen.notebook_open(), "the notebook is open")
+	if err == "":
+		var notebook := screen.get_node("Notebook") as NotebookScreen
+		# Both handlers, back to back with nothing pumped in between: this is the one
+		# frame the collision lives in, and the card has to decline inside it.
+		notebook._input(_key_press(KEY_ESCAPE))
+		screen._input(_key_press(KEY_ESCAPE))
+		err = _T.assert_true(game.is_paused(),
+			"the card declines the Escape the notebook just answered, rather than "
+				+ "resuming the run behind it in the same keystroke")
+	if err == "":
+		await _pump(game)
+		err = _T.assert_false(screen.notebook_open(), "and the Escape did close the notebook")
+	if err == "":
+		err = _T.assert_true(game.is_paused(), "with the run still held once it is gone")
+	if err == "":
+		err = _T.assert_true(game.get_node_or_null("PauseLayer/PauseScreen") != null,
+			"the pause card is what Escape returns to")
+	if err == "":
+		# The other half of the collision, and the half tree order would not have
+		# covered: P is a resume key the notebook does not handle at all, so with the
+		# notebook up it would reach the card unopposed.
+		err = _open_pause_notebook(screen)
+		if err == "":
+			await _pump(game)
+			screen._input(_key_press(KEY_P))
+			err = _T.assert_true(game.is_paused(), "P over an open notebook does not unpause either")
+		if err == "":
+			err = _T.assert_true(screen.notebook_open(), "and leaves the notebook where it was")
+	if err == "":
+		# And with nothing over it, the card's own Escape still works -- or the guard
+		# above would pass by breaking the pause menu instead of fixing it, and every
+		# assertion here would still be green with Escape doing nothing at all.
+		(screen.get_node("Notebook") as NotebookScreen)._input(_key_press(KEY_ESCAPE))
+		await _pump(game)
+		err = _T.assert_false(screen.notebook_open(), "the notebook is out of the way again")
+		if err == "":
+			screen._input(_key_press(KEY_ESCAPE))
+			await _pump(game)
+			err = _T.assert_false(game.is_paused(), "Escape on the bare pause card still resumes")
+	game.resume_run()
+	await _pump(game)
+	_T.free_ui(game)
+	return err
+
+
+## A notebook opened from a pause inherits that pause's problem: everything the
+## player can see is on a frozen tree. Without PROCESS_MODE_ALWAYS its Back, Prev
+## and Next buttons are dead and its page-turn tween never advances -- a reader the
+## player cannot page or close, over a game they cannot get back to.
+func test_the_notebook_over_a_pause_is_not_frozen_by_the_pause_that_owns_it() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.pause_run()
+	await _pump(game)
+	var screen := game.get_node_or_null("PauseLayer/PauseScreen") as PauseScreen
+	var err: String = _T.assert_true(screen != null, "the pause card is up")
+	if err == "":
+		err = _open_pause_notebook(screen)
+	var notebook: NotebookScreen = null
+	if err == "":
+		await _pump(game)
+		notebook = screen.get_node_or_null("Notebook") as NotebookScreen
+		err = _T.assert_true(notebook != null, "the notebook is up")
+	if err == "":
+		# Asserted the same way test_the_pause_card_keeps_processing_... asserts it of
+		# the card: the declared mode, not an inherited one. PROCESS_MODE_INHERIT
+		# would resolve to ALWAYS today and to FROZEN the day this is reparented.
+		err = _T.assert_eq(notebook.process_mode, Node.PROCESS_MODE_ALWAYS,
+			"the notebook runs while the tree it was opened from is paused")
+	if err == "":
+		# The property is the declaration; this is the engine's own answer to it,
+		# read while the tree really is paused.
+		err = _T.assert_true(game.is_paused(), "the tree is genuinely paused for this to mean anything")
+		if err == "":
+			err = _T.assert_true(notebook.can_process(),
+				"and the engine agrees the notebook still processes")
+	if err == "":
+		for node_name: String in ["BackButton", "PrevButton", "NextButton"]:
+			var b: Button = notebook.get_node_or_null(node_name) as Button
+			err = _T.assert_true(b != null and not b.disabled,
+				"%s is present and clickable while paused" % node_name)
+			if err == "":
+				err = _T.assert_true(b.can_process(), "%s is not frozen by the pause" % node_name)
+			if err != "":
+				break
+	if err == "":
+		# And it actually turns: a page-turn driven through the live button, on a
+		# paused tree, has to land on the next page rather than stall on the tween.
+		var page_label: Label = notebook.get_node("PageLabel") as Label
+		var before: String = page_label.text
+		(notebook.get_node("NextButton") as Button).pressed.emit()
+		await _pump(game)
+		err = _T.assert_false(page_label.text == before,
+			"Next turns the page while the run is paused (still on %s)" % before)
+	game.resume_run()
+	await _pump(game)
+	_T.free_ui(game)
+	return err

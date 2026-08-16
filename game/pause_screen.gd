@@ -12,6 +12,13 @@ extends Control
 ## Built in code and shaped after RunSummary rather than the Notebook, because it
 ## is the same kind of object: a card over a live board that must not hide the
 ## board entirely.
+##
+## It also carries the Designer's Notebook now. That screen was constructed in
+## exactly one place -- TitleScreen._open_notebook -- so the game's only account of
+## itself was closed to the player from the first frame of a run onwards. This card
+## is the obvious home: it is already full-screen, already lists the keyboard verbs,
+## and is already the only way out of a run. See _open_notebook for the two things
+## that makes tricky (process mode, and two screens answering Escape).
 
 ## What the card says under its heading. Set by Game before the screen enters the
 ## tree, because "The wave is waiting." was a constant and pause fires at any
@@ -24,6 +31,16 @@ var _keys: Array[Dictionary] = []
 signal resume_requested
 signal restart_requested
 signal gate_requested
+## Emitted by the fourth button and answered by this screen itself, so the table
+## below stays uniform (every row is a name, a label and a signal) and Game does
+## not have to know the notebook exists to let a player read it.
+signal notebook_requested
+
+## The Designer's Notebook, while it covers this card. Null the rest of the time.
+var _notebook: NotebookScreen = null
+## Every button on the card, so the whole row block can be made inert under an
+## overlay without naming them one at a time. Filled by _build_buttons().
+var _buttons: Array[Button] = []
 
 ## Same card geometry as the post-mortem, centred on the board rather than the
 ## window, so the two screens read as the same family and neither sits off to the
@@ -90,8 +107,15 @@ const FIRST_BUTTON_OFFSET: float = 116.0
 const BUTTON_GAP: float = 12.0
 
 ## Node names are a contract: the devtools bridge presses these by path.
+##
+## NotebookButton sits second because it is the one row here that does not end or
+## interrupt anything -- it belongs beside Resume, above the two doors that throw
+## the run away. Its label is the notebook's own heading rather than a promise the
+## content does not keep: the five pages are about the drawings the game came from,
+## so "Help" or "How to play" would be a lie told by a button.
 const BUTTONS: Array[Dictionary] = [
 	{"name": "ResumeButton", "text": "Back to the garden", "signal": "resume_requested"},
+	{"name": "NotebookButton", "text": "Designer's Notebook", "signal": "notebook_requested"},
 	{"name": "RestartButton", "text": "Start over", "signal": "restart_requested"},
 	{"name": "GateButton", "text": "Back to the gate", "signal": "gate_requested"},
 ]
@@ -160,6 +184,10 @@ func _ready() -> void:
 
 	_build_buttons()
 	_build_key_list()
+	# Answered here rather than by Game: the notebook is a reader over this card,
+	# not a change to the run, and nothing in Game would do anything with it except
+	# hand it straight back.
+	notebook_requested.connect(_open_notebook)
 
 
 func _build_buttons() -> void:
@@ -174,6 +202,7 @@ func _build_buttons() -> void:
 		var which: String = String(spec["signal"])
 		button.pressed.connect(func() -> void: emit_signal(which))
 		add_child(button)
+		_buttons.append(button)
 		if first == null:
 			first = button
 		y += BUTTON_SIZE.y + BUTTON_GAP
@@ -208,12 +237,97 @@ func _build_key_list() -> void:
 ## run — which is exactly the bug a pause menu ships with when the close key is
 ## left on the paused node.
 func _input(event: InputEvent) -> void:
+	# Two `_input` handlers answering the same Escape. Left to resolve itself, one
+	# keystroke closes the notebook AND resumes the run behind it, and the player
+	# who put a page down is dropped onto a live board in the same frame.
+	#
+	# The engine does in fact resolve it in our favour: the notebook is a child of
+	# this node, `_input` walks children before their parent, and NotebookScreen
+	# ends its handler with set_input_as_handled(), which stops the propagation
+	# before this method is ever called. This line makes that the stated rule rather
+	# than a consequence of where the node happens to sit -- and it covers a key
+	# tree order does not, because the notebook does not handle P at all and would
+	# let it through to unpause the run it is sitting on top of.
+	#
+	# The guard only works because _close_notebook is deferred; see _open_notebook.
+	if notebook_open():
+		return
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
 		return
 	if key.keycode == KEY_ESCAPE or key.keycode == KEY_P:
 		resume_requested.emit()
 		get_viewport().set_input_as_handled()
+
+
+## True while the notebook covers this card.
+func notebook_open() -> bool:
+	return _notebook != null and is_instance_valid(_notebook)
+
+
+## The Designer's Notebook, over the pause card.
+##
+## Built here rather than in Game because pause is the only surface a player can
+## reach mid-run, and until now the notebook was constructed in exactly one place
+## -- TitleScreen -- so the game's only explanation of itself was shut the moment
+## a run started.
+##
+## PROCESS_MODE_ALWAYS is set outright rather than left to inherit. Inheriting
+## would work today: this card is ALWAYS (see _ready) and a child inherits it. But
+## that is a fact about who the parent happens to be, and the failure mode if it
+## ever stops being true is silent -- a notebook frozen by the pause that owns it,
+## with dead buttons and a page-turn tween that never advances. Stated here, it is
+## also a property a test can read instead of a fact it has to infer.
+##
+## CONNECT_DEFERRED is what makes _input's `notebook_open()` guard mean anything.
+## back_requested is emitted from inside NotebookScreen._input, so a direct
+## connection would run _close_notebook and null `_notebook` *during* the very
+## keystroke the guard has to refuse -- this screen would look at an already-closed
+## notebook, see nothing in the way, and resume the run. Deferring it means the
+## notebook is still open for the whole of that event's propagation and shuts at the
+## end of the frame instead.
+func _open_notebook() -> void:
+	if notebook_open():
+		return
+	_notebook = NotebookScreen.new()
+	_notebook.name = "Notebook"
+	_notebook.process_mode = Node.PROCESS_MODE_ALWAYS
+	_notebook.back_requested.connect(_close_notebook, CONNECT_DEFERRED)
+	add_child(_notebook)
+	_set_card_active(false)
+
+
+## Back to the card, with the run still held. Nothing here touches
+## `get_tree().paused`: closing a reader is not resuming a run, and the only two
+## places that flag is written stay Game.pause_run and Game.resume_run.
+##
+## Deferred by its connection, so it can land after the notebook has already been
+## freed by a resume that happened first -- hence the is_instance_valid guard
+## rather than a bare queue_free.
+func _close_notebook() -> void:
+	if notebook_open():
+		_notebook.queue_free()
+	_notebook = null
+	_set_card_active(true)
+	var button: Button = get_node_or_null("NotebookButton") as Button
+	if button != null:
+		button.grab_focus()
+
+
+## Nothing under the notebook may still be live.
+##
+## The overlay's Backdrop is a MOUSE_FILTER_STOP ColorRect, so these buttons
+## cannot be *pressed* through it -- but focus is a separate channel, and Tab or
+## an arrow key would walk straight onto "Start over" behind the paper. The mouse
+## filter goes too: at 0.88 alpha a button still tracking the cursor underneath
+## lights up in its hover colour and that glow shows through. Same treatment, for
+## the same two reasons, that TitleScreen._set_menu_active gives its own menu.
+func _set_card_active(active: bool) -> void:
+	var mode: Control.FocusMode = Control.FOCUS_ALL if active else Control.FOCUS_NONE
+	var filter: Control.MouseFilter = Control.MOUSE_FILTER_STOP if active else Control.MOUSE_FILTER_IGNORE
+	for button: Button in _buttons:
+		button.focus_mode = mode
+		button.mouse_filter = filter
 
 
 func _viewport_width() -> int:
