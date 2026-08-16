@@ -111,6 +111,35 @@ const WASH_SEGMENTS: int = 48
 ## patch whose rank changed under it would hand the lens back and forth.
 static var _next_wash_order: int = 0
 
+## Every patch currently in the tree, oldest `_wash_order` first.
+##
+## Kept as a class-level list rather than found by scanning, and that is a cost
+## fix rather than a tidy-up (plant-tower-defense-fp5). The scan it replaces was a
+## walk over this node's siblings — and a Sundew's siblings under `Entities` are
+## every pest on the board as well as every other plant (see Game.spawn_pest), so
+## the price of drawing ONE patch scaled with the number of BUGS. Worse, the
+## redraws are densest exactly when that number is highest: `_refresh_droplets`
+## queues one every time the bead size moves, and the bead size is read off how
+## many pests are stuck in the patch.
+##
+## Membership changes at exactly two moments, and both of them already had a hook
+## in this file: a patch entering the tree, and a patch leaving it. Nothing else
+## has to be believed for the list to be right — in particular no other file has
+## to remember to tell this one anything.
+##
+## Freed patches cannot linger. `_exit_tree` fires on `free()`, on an uproot, on a
+## plant being eaten and on `reload_current_scene()` (which unparents the whole
+## scene before dropping it), so a restart hands the next run an empty list rather
+## than a list of dead patches. `live_patches()` prunes invalid entries as it
+## reads anyway, so even a patch destroyed by some path that skipped the
+## notification cannot come back as a ghost neighbour.
+##
+## Sorted on insert. Which patch owns a shared lens is decided by `_wash_order`
+## and by nothing else, so iteration order cannot change that — but it does decide
+## the order `wash_polygons` applies its clips in, and a union assembled in a
+## different order from one frame to the next is a union that can flicker.
+static var _live: Array[StickySundew] = []
+
 ## The pests this particular Sundew currently holds a source on. Not a set of
 ## every slowed pest on the board — each patch tracks only its own claim, and the
 ## metadata above is what reconciles overlapping claims.
@@ -144,13 +173,46 @@ func _on_destroyed(_plant: Plant) -> void:
 	rewash_neighbourhood()
 
 
+## Half of the membership bookkeeping for `_live`. Deliberately here rather than
+## in `_on_setup`: `setup()` runs once, but the tree can be entered and left more
+## than once, and a list maintained on the asymmetric pair would lose a patch for
+## good the first time one was re-parented. Plant does not define `_enter_tree`
+## today; if it ever does, this override will eat it and will need a
+## `super._enter_tree()` — the same trap `_exit_tree` below describes.
+##
+## Note this lands BEFORE `setup()` has put the node on its cell, so a patch is on
+## the list for a moment while still sitting at the origin. Harmless, and the same
+## window the sibling scan had: every call site adds the child and calls `setup()`
+## in one unbroken call, so no frame — and therefore no `_draw` — can happen in
+## between.
+func _enter_tree() -> void:
+	_register(self)
+
+
 ## Uprooting frees the node, which is the other way a patch can vanish. Plant does
 ## not define `_exit_tree` today; if it ever does, this override will eat it and
 ## will need a `super._exit_tree()` — the same trap SelectionMarker's header
 ## describes for `_draw`.
+##
+## Deregisters FIRST, so the rewash below tells the patches that are staying to
+## repaint without this one counting itself among them.
 func _exit_tree() -> void:
+	_live.erase(self)
 	release_all()
 	rewash_neighbourhood()
+
+
+## Puts `patch` on `_live` in `_wash_order` order. The order is monotonic in
+## construction, so this walks nothing at all in the normal case — the insert is
+## at the end — and the loop only earns its keep for a patch that left the tree
+## and came back.
+static func _register(patch: StickySundew) -> void:
+	if _live.has(patch):
+		return
+	var at: int = _live.size()
+	while at > 0 and _live[at - 1]._wash_order > patch._wash_order:
+		at -= 1
+	_live.insert(at, patch)
 
 
 func _act(_delta: float, pests: Array[Pest]) -> void:
@@ -368,7 +430,7 @@ func _draw_wash() -> void:
 ## exactly once.
 func shared_ground_offsets() -> PackedVector2Array:
 	var out := PackedVector2Array()
-	for other: StickySundew in _sibling_patches():
+	for other: StickySundew in sibling_patches():
 		if other._wash_order >= _wash_order:
 			continue
 		var offset: Vector2 = other.position - position
@@ -384,19 +446,45 @@ func shared_ground_offsets() -> PackedVector2Array:
 ## longer there.
 func rewash_neighbourhood() -> void:
 	queue_redraw()
-	for other: StickySundew in _sibling_patches():
+	for other: StickySundew in sibling_patches():
 		if other.position.distance_to(position) < SAP_RADIUS * 2.0:
 			other.queue_redraw()
 
 
-func _sibling_patches() -> Array[StickySundew]:
+## Every patch on the board right now, oldest first — see `_live` for why this is
+## a list rather than a search. Static because the answer is: a caller does not
+## need a patch in hand to ask what is planted.
+##
+## Prunes as it reads. An entry can only be invalid if a patch was destroyed
+## without its exit notification running, which nothing does today; the sweep is
+## here because the alternative failure — handing a caller a freed node to read
+## `position` off — is a crash rather than a wrong picture.
+static func live_patches() -> Array[StickySundew]:
+	var out: Array[StickySundew] = []
+	var stale: bool = false
+	for patch: StickySundew in _live:
+		if is_instance_valid(patch):
+			out.append(patch)
+		else:
+			stale = true
+	if stale:
+		_live.assign(out)
+	return out
+
+
+## The other patches this one shares a parent with, oldest first.
+##
+## Still filtered by parent, which is what the sibling scan gave for free. It
+## matters for the test runner more than for the game: a run holds exactly one
+## Entities layer, but two hosted scenes alive at once would otherwise let one
+## board's patches carve lenses out of the other's.
+func sibling_patches() -> Array[StickySundew]:
 	var out: Array[StickySundew] = []
 	var parent: Node = get_parent()
 	if parent == null:
 		return out
-	for sibling: Node in parent.get_children():
-		var other := sibling as StickySundew
-		if other != null and other != self and is_instance_valid(other):
+	for other: StickySundew in live_patches():
+		if other != self and other.get_parent() == parent:
 			out.append(other)
 	return out
 

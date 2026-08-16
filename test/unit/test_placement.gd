@@ -1129,3 +1129,325 @@ func test_the_redundancy_mark_never_lands_on_top_of_another_cue() -> String:
 			"with no second mark added on top of it")
 	_T.free_ui(game)
 	return err
+
+
+# -- What a Sundew redraw walks (plant-tower-defense-fp5) ---------------------
+#
+# Every patch used to find its neighbours by walking its own siblings — and a
+# Sundew's siblings under Entities are every PEST on the board (Game.spawn_pest
+# parents them there) as well as every other plant. So the cost of drawing one
+# patch scaled with the number of bugs, and `_refresh_droplets` queues a redraw
+# every time the bead size moves, which is driven by how many bugs are stuck in
+# the patch. The scan is now a class-level list maintained on enter/exit.
+#
+# None of what follows may change what is drawn: the tests above pin the wash
+# geometry, the refcounted slow and the paint order, and they are untouched.
+
+
+## The patches the class-level list holds for ONE board. `live_patches()` is
+## static, and the runner keeps every test's scene in the same process, so a
+## global count would be a claim about the whole suite rather than about this
+## test's board.
+func _patches_on(game: Game) -> Array[StickySundew]:
+	var out: Array[StickySundew] = []
+	var entities: Node = game.get_node("Entities")
+	for patch: StickySundew in StickySundew.live_patches():
+		if patch.get_parent() == entities:
+			out.append(patch)
+	return out
+
+
+## Sundews that are actually children of the entities layer, found the slow way —
+## the denominator the list is checked against.
+func _sundew_children(game: Game) -> int:
+	var n: int = 0
+	for child: Node in game.get_node("Entities").get_children():
+		if child is StickySundew:
+			n += 1
+	return n
+
+
+## The cost claim, structurally rather than by timing: what a patch walks to work
+## out its share of the wash is bounded by the number of PATCHES, and a board
+## filling up with pests does not move that number by one.
+##
+## Asserted as a count and as an unchanged answer, because the failure it guards
+## is invisible either way — the old scan drew exactly the same picture, it just
+## paid one pass over every bug on the board to do it, sixty times a second, in
+## the frames where there are the most bugs to pass over.
+func test_a_patch_walks_only_patches_however_many_pests_are_on_the_board() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var entities: Node = game.get_node("Entities")
+	var cell: Vector2i = _grass(game)
+	var here: Vector2 = game.board.cell_to_world(cell)
+	var first: StickySundew = _sundew_at(game, cell)
+	var second: StickySundew = _sundew_at(game, cell)
+	second.position += Vector2(Board.CELL, 0.0)
+	var quiet_offsets: PackedVector2Array = second.shared_ground_offsets()
+	var quiet_children: int = entities.get_child_count()
+	var err: String = _T.assert_eq(_patches_on(game).size(), 2,
+		"an empty board's list holds the two patches")
+	if err == "":
+		err = _T.assert_eq(quiet_offsets.size(), 1,
+			"and the later patch is dividing its ground with the earlier one")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var swarm: int = 20
+	for i: int in range(swarm):
+		_pest_at(game, here + Vector2(float(i) * 3.0, 0.0))
+	# The premise of the whole issue, stated rather than assumed: if pests ever
+	# stopped being siblings of the plants, every assertion below would still pass
+	# while testing nothing at all.
+	var pest_siblings: int = 0
+	for child: Node in entities.get_children():
+		if child is Pest:
+			pest_siblings += 1
+	err = _T.assert_gte(pest_siblings, swarm,
+		"the pests really are siblings of the patches — the sibling scan walked every one")
+	if err == "":
+		err = _T.assert_gte(entities.get_child_count(), quiet_children + swarm,
+			"so the thing the old scan measured itself against grew by the whole swarm")
+	if err == "":
+		err = _T.assert_eq(_patches_on(game).size(), 2,
+			"while the list a redraw walks still holds exactly the two patches")
+	if err == "":
+		err = _T.assert_eq(_patches_on(game).size(), _sundew_children(game),
+			"which is one entry per Sundew on the board and nothing else")
+	if err == "":
+		err = _T.assert_gt(entities.get_child_count(), _patches_on(game).size() * 5,
+			"and is now a small fraction of what walking the siblings would cost")
+	if err == "":
+		err = _T.assert_eq(second.sibling_patches().size(), 1,
+			"the patch beside it is still the only neighbour it can see")
+	if err == "":
+		err = _T.assert_eq(first.sibling_patches().size(), 1,
+			"and the same both ways round")
+	if err == "":
+		# Same answer, not just a cheaper one.
+		var busy_offsets: PackedVector2Array = second.shared_ground_offsets()
+		err = _T.assert_eq(busy_offsets.size(), quiet_offsets.size(),
+			"a board full of bugs divides the ground exactly as an empty one did")
+		if err == "":
+			for i: int in range(busy_offsets.size()):
+				err = _T.assert_float_eq(busy_offsets[i].distance_to(quiet_offsets[i]), 0.0, 0.001,
+					"offset %d is the one the empty board produced" % i)
+				if err != "":
+					break
+	_T.free_ui(game)
+	return err
+
+
+## The sibling set itself, at nought, one and two other patches. A cache that is
+## merely cheap and slightly wrong would repaint a lens twice or leave a crescent
+## unwashed, which is the bug the union was built to kill.
+func test_a_patch_sees_every_other_patch_and_only_the_other_patches() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var cell: Vector2i = _grass(game)
+	var first: StickySundew = _sundew_at(game, cell)
+	var err: String = _T.assert_eq(first.sibling_patches().size(), 0,
+		"the only patch on the board has no neighbours")
+	if err == "":
+		err = _T.assert_eq(_patches_on(game).size(), 1, "and the list agrees there is one patch")
+	if err == "":
+		err = _T.assert_eq(first.shared_ground_offsets().size(), 0,
+			"so it washes its whole disc")
+	var second: StickySundew = null
+	if err == "":
+		second = _sundew_at(game, cell)
+		second.position += Vector2(Board.CELL, 0.0)
+		err = _T.assert_eq(first.sibling_patches().size(), 1, "a second patch is one neighbour")
+	if err == "":
+		err = _T.assert_true(first.sibling_patches()[0] == second, "and it is the one just planted")
+	if err == "":
+		err = _T.assert_true(second.sibling_patches()[0] == first, "seen from the other side too")
+	var third: StickySundew = null
+	if err == "":
+		third = _sundew_at(game, cell)
+		third.position += Vector2(0.0, Board.CELL)
+		err = _T.assert_eq(first.sibling_patches().size(), 2, "a third patch is two neighbours")
+	if err == "":
+		var seen: Array[StickySundew] = first.sibling_patches()
+		err = _T.assert_true(seen.has(second) and seen.has(third),
+			"and they are the other two patches, not this one twice")
+	if err == "":
+		err = _T.assert_false(first.sibling_patches().has(first),
+			"no patch is ever its own neighbour — it would clip its own disc away")
+	if err == "":
+		err = _T.assert_eq(_patches_on(game).size(), 3, "the list holds all three")
+	if err == "":
+		err = _T.assert_eq(_patches_on(game).size(), _sundew_children(game),
+			"which is exactly the Sundews standing on the board")
+	_T.free_ui(game)
+	return err
+
+
+## The way a cache like this goes wrong: a patch is eaten or uprooted, the node is
+## freed, and the list keeps handing it out. Reading `position` off it is a crash
+## rather than a wrong picture, and the survivor would go on painting around a
+## disc that is not there — the unwashed crescent `rewash_neighbourhood` exists to
+## prevent, made permanent.
+func test_a_freed_patch_leaves_no_ghost_in_the_patch_list() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var cell: Vector2i = _grass(game)
+	var first: StickySundew = _sundew_at(game, cell)
+	var second: StickySundew = _sundew_at(game, cell)
+	second.position += Vector2(Board.CELL * 0.5, 0.0)
+	# Before, so this cannot pass on a list that was empty the whole time.
+	var err: String = _T.assert_eq(second.sibling_patches().size(), 1,
+		"the survivor can see the patch that is about to go")
+	if err == "":
+		err = _T.assert_eq(second.shared_ground_offsets().size(), 1,
+			"and is handing it the ground they share")
+	if err == "":
+		err = _T.assert_eq(_patches_on(game).size(), 2, "two patches are on the list")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	first.free()
+	err = _T.assert_eq(_patches_on(game).size(), 1, "freeing one leaves one on the list")
+	if err == "":
+		err = _T.assert_true(_patches_on(game)[0] == second, "and it is the survivor")
+	if err == "":
+		err = _T.assert_eq(second.sibling_patches().size(), 0,
+			"which now sees no neighbour at all, ghost or otherwise")
+	if err == "":
+		err = _T.assert_eq(second.shared_ground_offsets().size(), 0,
+			"so it takes its whole disc back")
+	if err == "":
+		var alone: Array[PackedVector2Array] = StickySundew.wash_polygons(
+			second.shared_ground_offsets())
+		err = _T.assert_eq(alone.size(), 1, "and washes one shape")
+		if err == "":
+			err = _T.assert_eq(alone[0].size(), StickySundew.WASH_SEGMENTS,
+				"that shape being the whole disc again")
+	if err == "":
+		err = _T.assert_eq(_sundew_children(game), 1,
+			"the board really did lose a Sundew — the list is not just agreeing with itself")
+	_T.free_ui(game)
+	return err
+
+
+## The picture is unchanged. The offsets a live patch hands `wash_polygons` are
+## still its neighbours' real positions, and what comes back is still exactly what
+## the pure function above produces for that arrangement — the function itself,
+## and the test that pins its geometry, are untouched by this change.
+func test_the_patch_list_draws_the_same_wash_the_sibling_scan_drew() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var cell: Vector2i = _grass(game)
+	var first: StickySundew = _sundew_at(game, cell)
+	var second: StickySundew = _sundew_at(game, cell)
+	second.position += Vector2(Board.CELL, 0.0)
+	# A crowd standing in both, because "unchanged" has to hold on the board state
+	# the old scan was slowest on.
+	for i: int in range(12):
+		_pest_at(game, game.board.cell_to_world(cell) + Vector2(float(i) * 4.0, 0.0))
+	var expected := PackedVector2Array([Vector2(-Board.CELL, 0.0)])
+	var err: String = _T.assert_eq(first.shared_ground_offsets().size(), 0,
+		"the earlier patch gives away no ground — it got there first")
+	if err == "":
+		var got: PackedVector2Array = second.shared_ground_offsets()
+		err = _T.assert_eq(got.size(), 1, "the later one divides with exactly one neighbour")
+		if err == "":
+			err = _T.assert_float_eq(got[0].distance_to(expected[0]), 0.0, 0.001,
+				"at the offset the two patches actually stand at")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var drawn: Array[PackedVector2Array] = StickySundew.wash_polygons(
+		second.shared_ground_offsets())
+	var reference: Array[PackedVector2Array] = StickySundew.wash_polygons(expected)
+	err = _T.assert_eq(drawn.size(), reference.size(),
+		"the live patch fills the same number of shapes as the pure model")
+	if err == "":
+		err = _T.assert_gt(drawn.size(), 0, "and there is a shape there to compare")
+	for p: int in range(drawn.size()):
+		if err != "":
+			break
+		err = _T.assert_eq(drawn[p].size(), reference[p].size(),
+			"shape %d has the model's vertex count" % p)
+		if err != "":
+			break
+		for v: int in range(drawn[p].size()):
+			err = _T.assert_float_eq(drawn[p][v].distance_to(reference[p][v]), 0.0, 0.001,
+				"shape %d vertex %d is where the model puts it" % [p, v])
+			if err != "":
+				break
+	if err == "":
+		# Vacuity guard: a wash that gave nothing away would also match a model
+		# fed the same nothing, so pin that the disc really was carved.
+		var painted: float = 0.0
+		for part: PackedVector2Array in drawn:
+			painted += _poly_area(part)
+		var whole: float = _poly_area(StickySundew.patch_outline())
+		err = _T.assert_gt(whole, painted + 1000.0,
+			"and a real share of the disc was handed to the earlier patch")
+		if err == "":
+			err = _T.assert_gt(painted, 0.0, "while the later patch still washes ground of its own")
+	_T.free_ui(game)
+	return err
+
+
+## Paint order. Which patch owns a lens is decided by `_wash_order` and by nothing
+## else, so a cached list must not be able to change it — and the offsets have to
+## come back in one settled order, because they are applied as a sequence of clips
+## and a union assembled differently each frame is a union that flickers.
+func test_the_patch_list_hands_the_wash_its_neighbours_in_paint_order() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var cell: Vector2i = _grass(game)
+	var here: Vector2 = game.board.cell_to_world(cell)
+	var a: StickySundew = _sundew_at(game, cell)
+	var b: StickySundew = _sundew_at(game, cell)
+	b.position = here + Vector2(Board.CELL, 0.0)
+	# Planted third, and far enough away to share no ground with anything. On the
+	# list, absent from the offsets: it is the distance test that excludes it, not
+	# the list forgetting it exists.
+	var far: StickySundew = _sundew_at(game, cell)
+	far.position = here + Vector2(0.0, StickySundew.SAP_RADIUS * 4.0)
+	var c: StickySundew = _sundew_at(game, cell)
+	c.position = here + Vector2(0.0, Board.CELL)
+	var err: String = _T.assert_eq(c.sibling_patches().size(), 3,
+		"the newest patch can see all three of the others")
+	if err == "":
+		err = _T.assert_eq(far.sibling_patches().size(), 3,
+			"and the distant one is on the list like everybody else")
+	if err == "":
+		err = _T.assert_gt(far.position.distance_to(c.position), StickySundew.SAP_RADIUS * 2.0,
+			"but shares no ground with it")
+	var offsets := PackedVector2Array()
+	if err == "":
+		offsets = c.shared_ground_offsets()
+		err = _T.assert_eq(offsets.size(), 2,
+			"so only the two overlapping patches claim ground from it")
+	if err == "":
+		err = _T.assert_float_eq(offsets[0].distance_to(a.position - c.position), 0.0, 0.001,
+			"the oldest patch is clipped first")
+	if err == "":
+		err = _T.assert_float_eq(offsets[1].distance_to(b.position - c.position), 0.0, 0.001,
+			"and the next oldest second")
+	if err == "":
+		# The order the offsets arrive in is the order of the ranks, not of
+		# anything that can shift under the node — which is the property the
+		# comment on `_wash_order` is about.
+		var ranks: Array[StickySundew] = c.sibling_patches()
+		for i: int in range(ranks.size() - 1):
+			err = _T.assert_gt(ranks[i + 1]._wash_order, ranks[i]._wash_order,
+				"neighbour %d is strictly older than neighbour %d" % [i, i + 1])
+			if err != "":
+				break
+	if err == "":
+		err = _T.assert_gt(c._wash_order, a._wash_order,
+			"and every one of them is older than the patch reading them")
+	if err == "":
+		# The total order is a fact about the pair, so both sides have to agree on
+		# it: whatever ground c gives to a, a must never give back to c.
+		err = _T.assert_eq(a.shared_ground_offsets().size(), 0,
+			"the first patch planted owes nobody any ground")
+	if err == "":
+		err = _T.assert_eq(b.shared_ground_offsets().size(), 1,
+			"the second owes the first, and only the first")
+	if err == "":
+		err = _T.assert_eq(far.shared_ground_offsets().size(), 0,
+			"and the distant patch washes its whole disc, sharing with nothing")
+	_T.free_ui(game)
+	return err
