@@ -3027,3 +3027,58 @@ func _collect_scenes(dir_path: String, out: Array[String]) -> void:
 			out.append(full)
 		name = dir.get_next()
 	dir.list_dir_end()
+
+
+## Every signal a game script declares must have a listener by the time the run is
+## up. A signal nobody connected is a button that does nothing, and it is silent in
+## every other gate: it compiles, it lints, and emitting it succeeds.
+##
+## This project has already shipped that exact bug once -- Plant.set_selected() had
+## no caller, so the range ring could never draw -- which is why the check is worth
+## having as a standing question rather than a thing a session once noticed.
+##
+## Uses get_script_signal_list() rather than get_signal_list(), so only signals THIS
+## project declares are asserted and none of Godot's inherited ones.
+func test_every_signal_a_game_script_declares_has_a_listener() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	# Plants and pests are not in the tree at load, so a bare walk would never see
+	# Plant.destroyed, Pest.died or Sunflower.grew_seeds -- exactly the signals
+	# most likely to be left dangling, since they are wired at spawn time rather
+	# than in _ready(). Put one of each on the board first.
+	game.bank.add_seeds(300)
+	game.place_plant(PlantCatalog.CORN, _grass(game))
+	game.place_plant(PlantCatalog.SUNFLOWER, _grass(game))
+	game.spawn_pest(Pest.APHID)
+	await _pump(game)
+	var checked: int = 0
+	var err: String = ""
+	for node: Node in _scripted_nodes(game):
+		var script: Script = node.get_script() as Script
+		if script == null:
+			continue
+		for sig: Dictionary in script.get_script_signal_list():
+			var sig_name: String = String(sig["name"])
+			checked += 1
+			if node.get_signal_connection_list(sig_name).is_empty():
+				err = "%s declares signal '%s' and nothing is connected to it" % [
+					script.resource_path.get_file(), sig_name]
+				break
+		if err != "":
+			break
+	if err == "":
+		# Guard against a vacuous pass: an empty walk satisfies every loop in it.
+		err = _T.assert_gt(checked, 0, "found signals to check")
+	else:
+		err = _T.assert_true(false, err)
+	_T.free_ui(game)
+	return err
+
+
+## Every node at or under `root` that carries a script.
+func _scripted_nodes(root: Node) -> Array[Node]:
+	var out: Array[Node] = []
+	if root.get_script() != null:
+		out.append(root)
+	for child: Node in root.get_children():
+		out.append_array(_scripted_nodes(child))
+	return out
