@@ -25,39 +25,153 @@ const GAME_SCENE := "res://game/game.tscn"
 const TITLE_Y: float = 88.0
 const SUBTITLE_Y: float = 154.0
 const SCORE_Y: float = 182.0
-## The button column had three rows and room for exactly three. A fourth (Keys)
-## did not fit at the shipped pitch, and a fifth (Options) does not fit at the
-## fourth's: everything on this screen has to end above TitleBackdrop.HORIZON,
-## which is 0.74 of the viewport — 479 at 648 — and the four-row block already
-## ran to 432 with the hint at 442..464.
+## ## Why the menu is a grid and not a column
 ##
-## So the column paid for the fifth row out of three places at once rather than
-## growing downward into the lawn: the header came up 10 (subtitle 158 -> 154,
-## score 190 -> 182, top 218 -> 208), the two heights each lost 4, and the gap
-## lost 2. Five rows now foot at 448 with the hint at 454..476, still clear of
-## 479. Every one of those numbers is at its floor: the secondary height is 40
-## because `findings` gates an interactive Control at 40x40, and the header
-## cannot come up further without the subtitle running into the wordmark's box.
-## A SIXTH row does not fit at any pitch — it needs a different screen, which is
-## why Options is a sibling overlay rather than a second column somewhere.
-## test_title_controls_all_clear_the_scenery is the check that says so.
+## It was one column of full-width rows, and it had run out of screen. Everything
+## here has to end above TitleBackdrop.HORIZON (0.74 of the viewport — 479 at
+## 648); three rows fitted at the shipped pitch, a fourth (Keys) did not, and a
+## fifth (Options) was paid for out of three constants at once because no single
+## one had slack: the header came up 10 (subtitle 158 -> 154, score 190 -> 182,
+## top 218 -> 208), the two heights each lost 4, and the gap lost 2. That left
+## five rows footing at 448 with the hint at 454..476 and every number at its
+## floor — the secondary height is 40 because `findings` gates an interactive
+## Control at 40x40, and the header cannot come up further without the subtitle
+## running into the wordmark's box.
+##
+## So a sixth destination — credits, a difficulty picker, the trophy shelf if it
+## ever leaves the notebook — had nowhere to go AT ANY PITCH, and the old comment
+## here said exactly that and left it there.
+##
+## The fix is a shape, not another pixel: the two rows that start a run stay
+## full-width, and the secondary destinations pair up TWO TO A ROW inside the same
+## 300px band. Halving the row count of the half of the menu that grows buys the
+## sixth, seventh and eighth destinations without moving BUTTON_TOP, without
+## shrinking a button below the 40px gate, and without pushing anything past the
+## horizon. `menu_capacity()` computes that ceiling rather than asserting it, and
+## test_the_title_menu_has_room_for_the_next_destination is the check that says so.
+##
+## The two shapes not taken. A scrolling list puts destinations below a fold on
+## the one screen whose whole problem was that the keyboard verbs were
+## undiscoverable. A single "More" door scales forever but moves the game's own
+## account of itself — the Designer's Notebook — a click further away, and this
+## screen is a player's first thirty seconds.
+##
+## The cost is one label: "Designer's Notebook" draws ~183px at the theme's
+## button size and a half-band cell is 146, so the title's button says "Notebook".
+## The notebook's own heading, and the pause card's button, still say the whole
+## thing.
 const BUTTON_TOP: float = 208.0
+## The band the whole menu lives in — the FULL width of a primary row and of a
+## secondary PAIR together. Deliberately unchanged at 300 by the grid: it is what
+## `button_column()` reports and what PLANT_X's "x 426-726" note is about, so a
+## wider band would silently invalidate the two clear lawn bands documented there.
 const BUTTON_WIDTH: float = 300.0
 const BUTTON_HEIGHT: float = 44.0
-## The three rows that are not "start a run": shorter, because they are not the
-## thing the screen is for.
+## The rows that are not "start a run": shorter, because they are not the thing
+## the screen is for. 40 is a floor, not a preference — `findings` gates an
+## interactive Control at 40x40.
 const SECONDARY_BUTTON_HEIGHT: float = 40.0
 const BUTTON_GAP: float = 8.0
-const HINT_Y: float = 454.0
+## How many entries at the top of MENU_BUTTON_NAMES are full-width primaries.
+## Everything after them is a secondary destination and pairs up two to a row.
+## One number rather than a parallel table of spans, so a destination added to
+## MENU_BUTTON_NAMES cannot end up with a layout row nobody wrote.
+const PRIMARY_COUNT: int = 2
+## The hint line, sized and placed relative to whatever the menu turned out to be.
+## It was a hand-picked HINT_Y: 454, which is how a sixth button would have landed
+## on top of it rather than being refused. Derived, the hint moves when the menu
+## does and `menu_capacity()` can account for it.
+const HINT_GAP: float = 6.0
+const HINT_HEIGHT: float = 22.0
 
-## Every button in the column, top to bottom. A list rather than four names spelled
-## out at each call site: `_link_focus`, `_set_menu_active`, `_play_entrance` and
-## two layout tests all need the same set, and the tests were carrying their own
-## copy of it — which is how adding this fourth button broke them rather than being
-## checked by them.
+## Every button in the menu, in reading order. A list rather than five names
+## spelled out at each call site: `_link_focus`, `_set_menu_active`,
+## `_play_entrance` and three layout tests all need the same set, and the tests
+## were carrying their own copy of it — which is how adding the fourth button
+## broke them rather than being checked by them.
+##
+## Order is the contract: the first PRIMARY_COUNT are the full-width rows, the
+## rest fill the grid left-to-right then top-to-bottom, and both the focus ring
+## and the entrance stagger read it.
 const MENU_BUTTON_NAMES: Array[String] = [
 	"StartButton", "EndlessButton", "NotebookButton", "KeysButton", "OptionsButton",
 ]
+
+
+## The menu laid out as rows of indices into MENU_BUTTON_NAMES.
+##
+## The first PRIMARY_COUNT entries take a row each. The rest pair up — except a
+## lone trailing secondary, which spans the whole band rather than leaving a hole
+## beside it, so an odd count reads as a decision instead of an accident.
+static func menu_rows(count: int) -> Array[PackedInt32Array]:
+	var rows: Array[PackedInt32Array] = []
+	var i: int = 0
+	while i < count:
+		if i < PRIMARY_COUNT or i + 1 >= count:
+			rows.append(PackedInt32Array([i]))
+			i += 1
+		else:
+			rows.append(PackedInt32Array([i, i + 1]))
+			i += 2
+	return rows
+
+
+## How tall row `row_index` is. The primaries come first and one to a row, so the
+## row index and the button index agree for exactly that many rows.
+static func row_height(row_index: int) -> float:
+	return BUTTON_HEIGHT if row_index < PRIMARY_COUNT else SECONDARY_BUTTON_HEIGHT
+
+
+## Where menu button `index` goes, in a menu of `count` buttons. The one place
+## that answers "where does the Nth destination sit" — which is the question the
+## old five hand-written positions had no answer to for N=6.
+static func button_rect(index: int, count: int) -> Rect2:
+	var left: float = float(viewport_width()) / 2.0 - BUTTON_WIDTH / 2.0
+	var y: float = BUTTON_TOP
+	var rows: Array[PackedInt32Array] = menu_rows(count)
+	for r: int in rows.size():
+		var row: PackedInt32Array = rows[r]
+		var height: float = row_height(r)
+		for c: int in row.size():
+			if row[c] != index:
+				continue
+			if row.size() == 1:
+				return Rect2(left, y, BUTTON_WIDTH, height)
+			var cell: float = (BUTTON_WIDTH - BUTTON_GAP) / 2.0
+			return Rect2(left + float(c) * (cell + BUTTON_GAP), y, cell, height)
+		y += height + BUTTON_GAP
+	return Rect2()
+
+
+## The y at which the last button of a `count`-button menu ends.
+static func menu_bottom(count: int) -> float:
+	var rows: Array[PackedInt32Array] = menu_rows(count)
+	if rows.is_empty():
+		return BUTTON_TOP
+	var y: float = BUTTON_TOP
+	for r: int in rows.size():
+		y += row_height(r) + BUTTON_GAP
+	return y - BUTTON_GAP
+
+
+## Where the hint line sits under a `count`-button menu.
+static func hint_y(count: int) -> float:
+	return menu_bottom(count) + HINT_GAP
+
+
+## The largest menu this screen can hold with the hint still clear of
+## TitleBackdrop.HORIZON.
+##
+## Computed, not written down. The number the single column could not raise was
+## 5, and it was 5 at every pitch anyone tried; this says what the grid actually
+## buys instead of a comment claiming it. Terminates because hint_y() grows with
+## every row.
+static func menu_capacity() -> int:
+	var horizon: float = float(viewport_height()) * TitleBackdrop.HORIZON
+	var n: int = 0
+	while hint_y(n + 1) + HINT_HEIGHT <= horizon:
+		n += 1
+	return n
 
 ## Where a decorative plant's stem meets the ground, and how much bigger than
 ## its board size it is drawn here.
@@ -202,9 +316,12 @@ func _build_text() -> void:
 
 	var hint := Label.new()
 	hint.name = "HintLabel"
-	hint.text = "Up / Down to choose  ·  Enter to grow"
-	hint.position = Vector2(0, HINT_Y)
-	hint.size = Vector2(width, 22)
+	# "Arrows", not "Up / Down": the secondary destinations sit two to a row now,
+	# so Left and Right are real moves and a hint naming only two of the four
+	# would be describing the menu this screen used to be.
+	hint.text = "Arrows to choose  ·  Enter to grow"
+	hint.position = Vector2(0, hint_y(MENU_BUTTON_NAMES.size()))
+	hint.size = Vector2(width, HINT_HEIGHT)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", 14)
 	hint.add_theme_color_override("font_color", Color(GardenTheme.PAPER, 0.55))
@@ -243,8 +360,11 @@ static func high_score_text() -> String:
 
 
 func _build_buttons() -> void:
-	var left: float = float(get_viewport_width()) / 2.0 - BUTTON_WIDTH / 2.0
-	var y: float = BUTTON_TOP
+	# Every position comes from button_rect(), which is the only thing that knows
+	# the shape of the menu. Nothing here counts pixels down the screen any more,
+	# so a destination appended to MENU_BUTTON_NAMES lands somewhere real rather
+	# than on top of the hint.
+	var count: int = MENU_BUTTON_NAMES.size()
 
 	# What each mode is goes in the label, not in a tooltip.
 	#
@@ -255,31 +375,30 @@ func _build_buttons() -> void:
 	# Notebook while its own tooltip is up leaves that tooltip floating over the
 	# notebook, because the popup belongs to the Viewport rather than to the
 	# button the overlay covered.
-	_start_button = _make_button("StartButton", "Start  ·  8 waves", left, y, BUTTON_HEIGHT)
+	_start_button = _make_button(0, count, "Start  ·  8 waves")
 	_start_button.pressed.connect(_start_campaign)
-	y += BUTTON_HEIGHT + BUTTON_GAP
 
-	_endless_button = _make_button("EndlessButton", "Endless  ·  no finish line", left, y, BUTTON_HEIGHT)
+	_endless_button = _make_button(1, count, "Endless  ·  no finish line")
 	_endless_button.pressed.connect(_start_endless)
-	y += BUTTON_HEIGHT + BUTTON_GAP
 
-	_notebook_button = _make_button("NotebookButton", "Designer's Notebook", left, y,
-		SECONDARY_BUTTON_HEIGHT)
+	# "Notebook", not "Designer's Notebook", and only because of the cell width —
+	# see the grid note above BUTTON_TOP. The screen it opens still heads itself
+	# with the whole name, and so does the pause card's button, which sits in a
+	# full-width row and can afford it.
+	_notebook_button = _make_button(2, count, "Notebook")
 	_notebook_button.pressed.connect(_open_notebook)
-	y += SECONDARY_BUTTON_HEIGHT + BUTTON_GAP
 
 	# The keyboard verbs were undiscoverable and unchangeable: the only screen that
 	# named them was the pause card, which needs a run in progress to reach.
-	_keys_button = _make_button("KeysButton", "Keys", left, y, SECONDARY_BUTTON_HEIGHT)
+	_keys_button = _make_button(3, count, "Keys")
 	_keys_button.pressed.connect(_open_keys)
-	y += SECONDARY_BUTTON_HEIGHT + BUTTON_GAP
 
 	# The three persisted switches had exactly one surface between them: a
 	# keystroke during a run, answered by a HUD sentence that faded. The Keys
 	# screen could move those keys but not read what they were set to, so the one
 	# screen this game had for configuration was the one place a player could not
 	# see whether the colourblind bars were on.
-	_options_button = _make_button("OptionsButton", "Options", left, y, SECONDARY_BUTTON_HEIGHT)
+	_options_button = _make_button(4, count, "Options")
 	_options_button.pressed.connect(_open_options)
 
 	# Explicit wrap-around, so Down off the last button returns to the first
@@ -298,24 +417,54 @@ func menu_buttons() -> Array[Button]:
 	return out
 
 
-func _make_button(node_name: String, label: String, x: float, y: float, height: float) -> Button:
+## Named and placed from MENU_BUTTON_NAMES + button_rect, so a call site cannot
+## hand a button a name the layout does not know about.
+func _make_button(index: int, count: int, label: String) -> Button:
 	var button := Button.new()
-	button.name = node_name
+	button.name = MENU_BUTTON_NAMES[index]
 	button.text = label
-	button.position = Vector2(x, y)
-	button.size = Vector2(BUTTON_WIDTH, height)
+	var rect: Rect2 = button_rect(index, count)
+	button.position = rect.position
+	button.size = rect.size
 	add_child(button)
 	return button
 
 
+## Two different walks over the same menu, because the menu is a grid now.
+##
+## Tab (focus_previous/next) keeps the flat ring in reading order: every
+## destination once, in MENU_BUTTON_NAMES order, wrapping at both ends.
+##
+## The arrow keys (focus_neighbor_*) follow the GRID. That distinction is the
+## whole point: with a single ring on the neighbours, Down from "Notebook" would
+## reach "Keys" — the button to its RIGHT — which is the failure mode that makes a
+## two-column menu feel broken even though every button is reachable. Down goes to
+## the row below, staying in the same column where that row has one; Left and
+## Right move within a row and are left unset on a full-width row, which has no
+## sideways to go.
+##
+## Both wrap. The hint on screen says the arrows choose, and a ring is what a
+## player who holds Down expects; Godot's geometric default walks the list and
+## stops dead at each end.
 func _link_focus(buttons: Array[Button]) -> void:
 	for i: int in buttons.size():
-		var above: Button = buttons[(i - 1 + buttons.size()) % buttons.size()]
-		var below: Button = buttons[(i + 1) % buttons.size()]
-		buttons[i].focus_neighbor_top = above.get_path()
-		buttons[i].focus_neighbor_bottom = below.get_path()
-		buttons[i].focus_previous = above.get_path()
-		buttons[i].focus_next = below.get_path()
+		buttons[i].focus_previous = buttons[(i - 1 + buttons.size()) % buttons.size()].get_path()
+		buttons[i].focus_next = buttons[(i + 1) % buttons.size()].get_path()
+
+	var rows: Array[PackedInt32Array] = menu_rows(buttons.size())
+	for r: int in rows.size():
+		var row: PackedInt32Array = rows[r]
+		var above: PackedInt32Array = rows[(r - 1 + rows.size()) % rows.size()]
+		var below: PackedInt32Array = rows[(r + 1) % rows.size()]
+		for c: int in row.size():
+			var button: Button = buttons[row[c]]
+			# A narrower neighbouring row has no cell in this column; land on its
+			# last one rather than nowhere.
+			button.focus_neighbor_top = buttons[above[mini(c, above.size() - 1)]].get_path()
+			button.focus_neighbor_bottom = buttons[below[mini(c, below.size() - 1)]].get_path()
+			if row.size() > 1:
+				button.focus_neighbor_left = buttons[row[(c - 1 + row.size()) % row.size()]].get_path()
+				button.focus_neighbor_right = buttons[row[(c + 1) % row.size()]].get_path()
 
 
 ## Which plants the lawn shows, in catalogue order.
@@ -552,10 +701,21 @@ func _set_menu_active(active: bool) -> void:
 
 
 func get_viewport_width() -> int:
-	return ProjectSettings.get_setting("display/window/size/viewport_width", 1152)
+	return viewport_width()
 
 
 func get_viewport_height() -> int:
+	return viewport_height()
+
+
+## Static, because button_rect() and menu_capacity() are: the menu's shape has to
+## be answerable before any instance exists, which is what lets a test ask "would
+## a seventh destination fit" without building the screen to find out.
+static func viewport_width() -> int:
+	return ProjectSettings.get_setting("display/window/size/viewport_width", 1152)
+
+
+static func viewport_height() -> int:
 	return ProjectSettings.get_setting("display/window/size/viewport_height", 648)
 
 

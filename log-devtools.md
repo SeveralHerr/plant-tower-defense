@@ -3224,3 +3224,80 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     take the whole client down over a character in game text. Failing that,
     `_printable()` should strip unencodable characters, since it is already the
     function every text field is routed through.
+## 2026-08-16 — Pause-card legend overflow (neg) and the title menu's sixth slot (w5k)
+
+- Value: **warranted** — the running game produced the number the diff could not,
+  twice, and in opposite directions: it confirmed the reported overflow was a
+  `set_size` ordering bug rather than a too-long string, and it caught that fixing
+  the ordering still left the text 1px over budget.
+  - Expected: that `KeyRow4` was simply too long for its box, and that shortening
+    the `does` phrase in `KeyBindings.ACTIONS` was the whole fix.
+  - Got: `node-bounds` before — `Rect: 316, 553, 326x26`; after the ordering fix —
+    `Rect: 296, 553, 304x26`, i.e. the Label finally honoured its assigned width.
+    Then the new headless check, measuring through `_T.text_width`: `KeyRow4 draws
+    265px, budget is 264`. Two different defects stacked, and only the first was
+    the one reported.
+  - Found: the ordering trap itself. `_build_key_list` set `size` BEFORE
+    `clip_text` / `text_overrun_behavior` / `font_size`, so `Control.set_size`
+    clamped to a minimum computed on unclipped text at the theme default font size
+    (16, not the 13 the row actually renders at). Reading the diff for the reported
+    symptom would have produced a shorter string and left the trap in place — the
+    next long row would have overflowed again for a reason nobody had written
+    down. Also caught, on w5k: capacity is 8, not the 6 or 7 the issue asked for,
+    which only the computed `menu_capacity()` could say.
+  - Cheaper: for the *box* half, nothing — `get_minimum_size()` reports the clip
+    stub and no static read of `pause_screen.gd` says what `set_size` clamped to.
+    For the *text* half, the new `_T.text_width` assertion alone (54ms headless)
+    would have done it; the live `node-bounds` was confirmation, not discovery.
+    The w5k capture was warranted: the grid's odd-trailing-secondary rule is a
+    visual judgement (does a spanning "Options" read as deliberate?) that no
+    assertion answers.
+
+- Gap: **[G-033] seen: 3 — now FIXED, and the fix worked exactly as advertised.**
+  `_T.text_width(label)` (0.33.0) is the helper this log asked for twice, and it is
+  what made the second half of `neg` assertable at all:
+  `_T.assert_true(_T.text_width(row) <= PauseScreen.KEY_ROW_MAX_WIDTH, ...)` failed
+  at `265 / 264` and passed after the fix. Recorded as fixed rather than bumped
+  silently, because a gap that got closed upstream and never says so reads like a
+  gap nobody acted on.
+  - [G-033] status: fixed | seen: 3 | harness: 0.33.0
+  - Improvement: none outstanding. The CLAUDE.md note that ships with it ("Testing
+    'does this text fit its box'?") is what pointed at the helper before any time
+    was spent on `get_minimum_size()`.
+
+- Gap: **nothing measures a Control's BOX against the panel it is drawn on when
+  the two are siblings.** This is the half of `neg` that no gate could see, and it
+  is distinct from the text-fitting gap above.
+  `python tools/devtools.py findings` reported `0 finding(s) across 5 of 5 checks`
+  against a live game whose pause card had 34px of legend hanging off the paper.
+  Every check was right to: `ui_layout` measures a Control against its own box and
+  its own parent, and `KeyRow4`'s parent is `PauseScreen` (full-viewport), not
+  `Card` — the paper it visibly belongs to is a SIBLING, so "inside its parent" is
+  trivially true. `validate-ui`'s `ui_text_trimmed` measures text against
+  `control.size` and passed too, because after the clamp `size` had *become* 326.
+  The project's own pause-card test checked vertical fit and pairwise overlap, and
+  a Label sticking out sideways over a backdrop overlaps nothing.
+  Workaround: hand-written, per-screen — `right = row.global_position.x +
+  row.size.x` asserted against `card.global_position.x + card.size.x`, with the
+  card found by node name. That is the third screen in this project to grow its
+  own bespoke version of "stays on the paper", after
+  `NotebookScreen.SUBHEAD_MAX_WIDTH` and now `PauseScreen.KEY_ROW_MAX_WIDTH`.
+  - [G-048] status: open | seen: 1 | harness: 0.33.0
+  - Improvement: a `contained-in --node PATH --within PATH` verb, and a
+    corresponding `ui_escapes_panel` check driven by an opt-in map in
+    `devtools_config.json` (`{"PauseScreen/KeyRow*": "PauseScreen/Card"}`). The
+    generic version is guessable without config too: for each visible Panel, flag
+    any SIBLING Control that overlaps it and is not fully inside it. A Control half
+    on and half off a piece of paper is a defect in every UI, and it is currently
+    invisible to every check this harness ships.
+
+- Gap: **`--import` failed again, and this time loudly.**
+  `godot --headless --path . --import` exited 139 (`Segmentation fault`) with the
+  log ending mid-`loading_editor_layout`; an identical second invocation exited 0
+  with zero errors, no code change between them.
+  - [G-044] status: open | seen: 6 | harness: 0.33.0
+  - Improvement: unchanged — `Imported: N of M` as a printed denominator. This
+    sighting adds that the failure mode is not always silent-partial: a hard
+    segfault with a clean-looking log tail is the same bug wearing a louder hat,
+    and the retry that fixes it is indistinguishable from the retry that papers
+    over a real problem unless something states the denominator.

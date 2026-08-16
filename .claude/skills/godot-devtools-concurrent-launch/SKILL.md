@@ -48,6 +48,29 @@ Copy that printed `--session`/`--userdata` pair verbatim into every subsequent c
 hand-pick a session name and reuse it across calls without `--isolated` — that is the
 bare-`--devtools-session` shape that hangs.
 
+**Through Git Bash, convert the printed `--userdata` path to forward slashes and quote
+it.** The launcher prints a Windows path; pasted into a Bash tool call the backslashes
+are consumed as escapes and the path silently becomes `C:UsersyouAppData...`:
+
+```bash
+# printed:  --userdata C:\Users\you\AppData\Local\Temp\devtools_bus_ab12cd34
+# use:      --userdata "C:/Users/you/AppData/Local/Temp/devtools_bus_ab12cd34"
+```
+
+The error this produces is the misleading part, and it is why this belongs next to the
+two hangs below rather than in a footnote:
+
+```
+game not running: 'input_tap' was never picked up (2.0s grace, ...)
+  polling: C:UsersyouAppDataLocalTempdevtools_bus_ab12cd34
+```
+
+That is verbatim the message a crashed game gives, on a game that is alive and answering
+— the client cannot tell "wrong directory" from "dead process", and says so. **Read the
+`polling:` line before believing a `game not running` on a launch that just succeeded**:
+if it has no separators in it, the path was eaten, the game is fine, and nothing needs
+relaunching.
+
 Note what `--isolated` does **not** do: `user://` (saves, screenshots, UI baselines,
 `.godot/`) stays shared across concurrent worktrees, and there is no supported way to
 isolate it — Godot has no `--user-data-dir`/`--userdata` engine flag at all. Despite what
