@@ -196,6 +196,8 @@ func setup(which: StringName, route: PackedVector2Array) -> void:
 	if dead_path != "":
 		_dead_texture = load(dead_path) as Texture2D
 	_make_world_controls_click_through()
+	if _route.size() > 1:
+		_update_facing(_route[1] - _route[0])
 
 
 ## Endless mode's per-wave difficulty multipliers, from
@@ -441,6 +443,7 @@ func _advance(distance: float) -> void:
 			return
 		var target: Vector2 = _route[_leg]
 		var to_target: Vector2 = target - position
+		_update_facing(to_target)
 		var gap: float = to_target.length()
 		if gap <= distance:
 			position = target
@@ -449,6 +452,32 @@ func _advance(distance: float) -> void:
 		else:
 			position += to_target / gap * distance
 			distance = 0.0
+
+
+## Turns the sprite to face the leg it is currently walking. `PATH_CORNERS`
+## (Board.gd) is expanded to one waypoint per grid cell, so every leg of the
+## route is axis-aligned — never a diagonal — which is what makes a snap to
+## one of the four cardinal rotations exactly right rather than an approximation.
+##
+## Only `_sprite` rotates, not this Node2D: the health bar and the mutation
+## markers (`_draw()`, drawn on the Pest's own canvas item) are deliberately
+## screen-locked — PLATE_FROM/PLATE_TO already carve out the top of the ring
+## because "the health bar lives up there", and a marker that spun with travel
+## direction would fight that same fixed layout.
+##
+## STYLE.md's convention is up-screen (-Y) at rest, i.e. rotation 0 here; the
+## other three are 90-degree turns off that art, which Godot's rotation turns
+## clockwise: +90 deg (PI/2) faces +X (right), 180 deg faces +Y (down), -90 deg
+## faces -X (left).
+func _update_facing(direction: Vector2) -> void:
+	if _sprite == null:
+		return
+	if absf(direction.x) < 0.01 and absf(direction.y) < 0.01:
+		return
+	if absf(direction.x) > absf(direction.y):
+		_sprite.rotation = PI / 2.0 if direction.x > 0.0 else -PI / 2.0
+	else:
+		_sprite.rotation = PI if direction.y > 0.0 else 0.0
 
 
 func take_damage(amount: float) -> void:
