@@ -120,14 +120,23 @@ var _wave_escapes: Dictionary = {}
 ## position is off the board by the time `escaped` fires. So two runs that lost
 ## the same beds left byte-identical evidence however differently they lost them.
 ##
-## This is the one thing an escaping pest knows that the player can act on. Corn
-## is the game's only damage source and it shoots the pest furthest along the
-## road (Plant._furthest_along_in_range), so a pest that reaches the exit having
-## never been touched was never in range of anything the whole way down — a hole
-## in the coverage, answered by planting more. One that arrives having been
-## fought was in range and the damage merely ran out, answered by upgrading what
-## is already there or buying it time with a Sundew. Those are opposite purchases
-## and nothing else on the card separates them.
+## This is the one thing an escaping pest knows that the player can act on. A pest
+## that reaches the exit having never been touched walked road nothing was aimed at
+## — a hole in the coverage, answered by planting more. One that arrives having
+## been fought was in range and the damage merely ran out, answered by upgrading
+## what is already there or buying it time with a Sundew. Those are opposite
+## purchases and nothing else on the card separates them.
+##
+## The reason, corrected against a measurement (see the coverage block below).
+## This used to read "was never in range of anything the whole way down", and that
+## is false: Corn shoots only the pest furthest along, so a pest can stand well
+## inside a cob's ring for its whole stay on a cell and be passed over for a pest
+## further down the road. Every one of the 68 untouched escapes in that sweep had
+## walked covered ground at some point. What holds — and what the branch above is
+## entitled to — is the weaker claim: every one of them had ALSO walked at least
+## one cell nothing could aim at, and no pest that stayed inside covered ground for
+## its whole walk ever came out untouched. Untouched still means a hole; it does
+## not mean the pest was out of reach the whole way.
 ##
 ## `_escapes_recorded` is the denominator and is deliberately NOT `LIVES - lives`:
 ## an escape whose pest could not be read counts toward neither of these, so the
@@ -406,6 +415,41 @@ func prep_note() -> String:
 # nothing built on it may be phrased as "nothing could touch them here", and
 # LanePressureOverlay's mark is named `unaimed` rather than `unreachable` for that
 # reason. See test_a_kernel_can_kill_on_ground_the_coverage_map_calls_unaimed.
+#
+# The over-promising half has now been MEASURED, and the size of it is the reason
+# nothing was built on it. Fourteen driven waves over three gardens (a six-cob
+# campaign garden, seven cobs covering all 32 road cells, and nine mouths), 439
+# pests, sampled every physics frame:
+#
+#   * At the CELL, the over-promise is enormous and useless. 3,909 of 4,664 stays
+#     on covered ground — 84% — passed with nothing touching the pest. But it
+#     reads 66% in a wave that killed 14 of 14 and lost no bed at all, and 88% in
+#     one that lost 34 of 40, so it is loud everywhere and quiet nowhere. 82% of
+#     it (3,216) is a cob that fired at a DIFFERENT pest during the stay and 14%
+#     (555) is one that had this pest picked and had not landed a shot yet: it
+#     measures the fire rate and the targeting rule, not ground the garden cannot
+#     reach. Three stays in 3,909 were the map's own geometry.
+#   * At the PEST — the unit a player acts on — it is zero. 116 pests spent their
+#     whole road walk inside covered ground and every one of them was touched,
+#     including in runs losing half the wave. All 68 pests that got out untouched
+#     had walked at least one cell this map already marks `unaimed`.
+#   * The geometry is honest: all 755 answered stays had the pest genuinely inside
+#     a covering plant's radius, so the centre-to-centre coverage test never once
+#     claimed ground the plant could not actually hold.
+#
+# The one case that IS a real over-promise is a road cell covered by Chomps alone,
+# because a mouth cannot close on a winged pest — and that case needs a garden
+# with no Corn in it, since a 176 px ring covers everything a 73.6 px mouth does.
+# ONE blind stay in the 3,747 unanswered stays across the eleven runs with Corn in
+# the garden; 134 of 162 (83%) in the three chomp-only ones. Corn is the free
+# starter and the only damage in the game, so the garden that case needs is a
+# garden nobody has.
+#
+# See test_the_coverage_map_keeps_its_promise_to_a_pest_that_never_leaves_covered_ground,
+# test_the_in_reach_and_idle_reading_is_just_as_loud_in_a_wave_the_garden_sweeps and
+# test_a_winged_pest_only_outruns_the_map_in_a_garden_with_no_corn_in_it, which
+# carries a 31-mouth positive control so the zeros above are a reading and not a
+# counter that never fires.
 
 
 ## The plants that can lay a finger on a pest, and the whole list.

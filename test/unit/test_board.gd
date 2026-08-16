@@ -727,10 +727,25 @@ func test_hosting_a_loaded_cob_puts_kernels_in_the_group_before_the_test_acts() 
 		_T.free_ui(host)
 		return err
 
+	# Wait for the volley rather than assuming instantiate_scene pumped enough
+	# frames for it. The claim under test is "hosting alone fires it, with the
+	# test calling nothing" - NOT "it fires within however many settle frames the
+	# harness happens to run". Asserting the latter made this test itself
+	# order-dependent: it passed alone and in the suite for two cycles, then went
+	# red when unrelated tests were appended and the timing shifted, which is the
+	# same accident it was written to document.
+	#
+	# Nothing here calls _act. The frames are pumped and the cob does the rest.
 	var settled: Array[Node] = tree.get_nodes_in_group("kernels")
+	var waited: int = 0
+	while settled.is_empty() and waited < 30:
+		await tree.physics_frame
+		settled = tree.get_nodes_in_group("kernels")
+		waited += 1
 	err = _T.assert_gt(settled.size(), 0,
-		"hosting alone already fired a volley - this is the contamination, and it "
-		+ "comes from this test's own setup, not from a previous test")
+		"hosting alone fired a volley within %d physics frames and the test called "
+		% waited + "nothing - this is the contamination, and it comes from this "
+		+ "test's own setup, not from a previous test")
 	if err != "":
 		_T.free_ui(host)
 		return err

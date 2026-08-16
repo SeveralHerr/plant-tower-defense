@@ -42,8 +42,6 @@
     "game/plant_catalog.gd::func::unlocked_at_start",
     "game/run_summary.gd::signal::gate_requested",
     "game/run_summary.gd::signal::replay_requested",
-    "game/seed_bank.gd::signal::plant_unlocked",
-    "game/seed_bank.gd::signal::seeds_changed",
     "game/seed_bank.gd::var::free_starter_available",
     "game/selection_marker.gd::var::arm",
     "game/selection_marker.gd::var::line_width",

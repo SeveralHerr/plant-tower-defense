@@ -3884,3 +3884,516 @@ func test_a_kernel_can_kill_on_ground_the_coverage_map_calls_unaimed() -> String
 					% [beyond, steps, pest.health, before])
 	_T.free_ui(host)
 	return err
+
+
+# -- how far the coverage map over-promises ----------------------------------
+
+
+## One driven wave over the real Board, the real plants, the real Kernel and the
+## real WaveDirector schedule, sampled every physics frame.
+##
+## Nothing here awaits after the host is up, so the engine runs no physics frame
+## this loop did not drive: every node is stepped by hand, in tree order, at a
+## fixed dt. `queue_free()` therefore never lands, which is why kernels are
+## dropped on `is_queued_for_deletion()` and pests on `is_alive()` rather than on
+## `is_instance_valid()`.
+func _over_promise_run(wave: int, corn_cells: Array, chomp_cells: Array,
+		corn_level: int, roll_seed: int, max_frames: int) -> Dictionary:
+	var dt: float = 1.0 / 60.0
+	var board := Board.new()
+	var route: PackedVector2Array = board.route()
+
+	var host := Node2D.new()
+	host.name = "OverPromiseHost"
+	await _T.instantiate_scene(host)
+	# The ONE await in this function, and the one place another test can get in:
+	# the runner keeps stepping while a test yields, so a sibling test's pests can
+	# be standing in the tree by the time this returns — and `pests` is a
+	# tree-global group that Plant._live_pests() and Kernel._physics_process both
+	# read. A cob shooting somebody else's aphid would answer stays this run never
+	# staged. Counted rather than assumed clean; the tests assert it is zero.
+	var foreign: int = host.get_tree().get_nodes_in_group("pests").size()
+
+	var plants: Array[Plant] = []
+	var covers: Array[Dictionary] = []
+	var is_corn: Array[bool] = []
+	for cell: Vector2i in corn_cells:
+		var cob := CornCobbler.new()
+		host.add_child(cob)
+		cob.set_physics_process(false)
+		cob.setup(PlantCatalog.CORN, cell, board)
+		cob.level = corn_level
+		plants.append(cob)
+		is_corn.append(true)
+	for cell: Vector2i in chomp_cells:
+		var jaw := ChompFlower.new()
+		host.add_child(jaw)
+		jaw.set_physics_process(false)
+		jaw.setup(PlantCatalog.CHOMP, cell, board)
+		plants.append(jaw)
+		is_corn.append(false)
+	for i: int in range(plants.size()):
+		var reach: float = Game.engagement_reach(plants[i].kind)
+		var one: Dictionary = {}
+		for road: Vector2i in PlacementPreview.covered_road_cell_list(board, plants[i].cell, reach):
+			one[road] = true
+		covers.append(one)
+
+	# The derived map, exactly as Game.covered_road_cells() builds it.
+	var covered: Dictionary = {}
+	var corn_covered: Dictionary = {}
+	# A Dictionary, not an int: a GDScript lambda captures a local by VALUE, so a
+	# counter reassigned inside `remap` would never be seen out here — and the two
+	# maps below are only kept in step because .clear() mutates the shared object
+	# rather than rebinding the name.
+	var standing: Dictionary = {"alive": -1}
+	var remap := func() -> void:
+		# Exactly Game.covered_road_cells(): a destroyed plant takes its coverage off
+		# the board with it, which matters here because a hungry pest eats cobs.
+		var alive: int = 0
+		for plant: Plant in plants:
+			if not plant.is_destroyed():
+				alive += 1
+		if alive == int(standing["alive"]):
+			return
+		standing["alive"] = alive
+		covered.clear()
+		corn_covered.clear()
+		for i: int in range(plants.size()):
+			if plants[i].is_destroyed():
+				continue
+			for road: Vector2i in covers[i]:
+				covered[road] = true
+				if is_corn[i]:
+					corn_covered[road] = true
+	remap.call()
+	var covered_at_start: int = covered.size()
+
+	var director := WaveDirector.new()
+	director.set_seed(roll_seed)
+	director.endless = wave > WaveDirector.WAVES.size()
+	director.current_wave = wave - 1
+	var pending: Array[Dictionary] = []
+	director.spawn_requested.connect(func(species: StringName, mutation: StringName) -> void:
+		pending.append({"species": species, "mutation": mutation}))
+	director.start_next_wave()
+
+	var pests: Array[Pest] = []
+	var kernels: Array[Kernel] = []
+	var episodes: Dictionary = {}
+	var walked_covered: Dictionary = {}
+	var walked_bare: Dictionary = {}
+	var touched_ever: Dictionary = {}
+	var escaped_ids: Dictionary = {}
+
+	var tally: Dictionary = {
+		"covered_cells": covered_at_start, "road_cells": board.road_cells().size(),
+		"foreign_pests": foreign,
+		"spawned": 0, "winged": 0, "killed": 0, "escaped": 0, "escaped_engaged": 0,
+		"frames": 0, "plants_eaten": 0,
+		"stays": 0, "unanswered": 0,
+		"answered": 0, "answered_in_reach": 0, "answered_aimed": 0,
+		"blind_winged": 0, "out_of_reach": 0, "busy": 0, "slow": 0,
+		"pests_on_covered": 0, "pests_untouched": 0, "pests_untouched_escaped": 0,
+		"pests_all_covered": 0, "pests_all_covered_untouched": 0,
+		"uncovered_stays": 0, "uncovered_touched": 0,
+	}
+
+	var close_episode := func(ep: Dictionary, pest: Pest) -> void:
+		if not bool(ep["covered"]):
+			tally["uncovered_stays"] = int(tally["uncovered_stays"]) + 1
+			if bool(ep["touched"]):
+				tally["uncovered_touched"] = int(tally["uncovered_touched"]) + 1
+			return
+		tally["stays"] = int(tally["stays"]) + 1
+		if bool(ep["touched"]):
+			tally["answered"] = int(tally["answered"]) + 1
+			if bool(ep["in_reach"]):
+				tally["answered_in_reach"] = int(tally["answered_in_reach"]) + 1
+			if bool(ep["aimed"]):
+				tally["answered_aimed"] = int(tally["answered_aimed"]) + 1
+			return
+		tally["unanswered"] = int(tally["unanswered"]) + 1
+		if pest.is_winged and not bool(ep["corn_here"]):
+			tally["blind_winged"] = int(tally["blind_winged"]) + 1
+		elif not bool(ep["in_reach"]):
+			tally["out_of_reach"] = int(tally["out_of_reach"]) + 1
+		elif not bool(ep["aimed"]):
+			tally["busy"] = int(tally["busy"]) + 1
+		else:
+			tally["slow"] = int(tally["slow"]) + 1
+
+	var frame: int = 0
+	while frame < max_frames:
+		frame += 1
+		# 1. the schedule
+		director._process(dt)
+		for entry: Dictionary in pending:
+			var pest := Pest.new()
+			host.add_child(pest)
+			pest.set_physics_process(false)
+			pest.setup(StringName(entry["species"]), route)
+			pest.apply_wave_scaling(
+				WaveDirector.health_scale_for(wave), WaveDirector.speed_scale_for(wave))
+			if StringName(entry["mutation"]) != &"":
+				pest.apply_mutation(StringName(entry["mutation"]))
+			pests.append(pest)
+			tally["spawned"] = int(tally["spawned"]) + 1
+			if pest.is_winged:
+				tally["winged"] = int(tally["winged"]) + 1
+		pending.clear()
+
+		var live: Array[Pest] = []
+		var health_before: Dictionary = {}
+		for pest: Pest in pests:
+			if pest.is_alive():
+				live.append(pest)
+				health_before[pest.get_instance_id()] = pest.health
+
+		# 2. plants, then any kernel they just launched â€” held back a frame, the
+		#    way a node added mid-physics is in a real tree.
+		var known: int = kernels.size()
+		for plant: Plant in plants:
+			if plant.is_destroyed():
+				continue
+			plant._physics_process(dt)
+		remap.call()
+		for node: Node in host.get_children():
+			var fresh := node as Kernel
+			if fresh != null and not kernels.has(fresh):
+				fresh.set_physics_process(false)
+				kernels.append(fresh)
+		# 3. the kernels that were already flying
+		var still: Array[Kernel] = []
+		for i: int in range(known):
+			var shot: Kernel = kernels[i]
+			if not is_instance_valid(shot) or shot.is_queued_for_deletion():
+				continue
+			shot._physics_process(dt)
+			if not shot.is_queued_for_deletion():
+				still.append(shot)
+		for i: int in range(known, kernels.size()):
+			still.append(kernels[i])
+		kernels = still
+		# 4. the pests
+		for pest: Pest in live:
+			if pest.is_alive():
+				pest._physics_process(dt)
+
+		# 5. the reading
+		for pest: Pest in live:
+			var id: int = pest.get_instance_id()
+			var touched: bool = pest.health < float(health_before[id]) or pest.held_by != null
+			if touched:
+				touched_ever[id] = true
+			if not pest.is_alive():
+				if episodes.has(id):
+					close_episode.call(episodes[id], pest)
+					episodes.erase(id)
+				if pest.is_queued_for_deletion():
+					tally["escaped"] = int(tally["escaped"]) + 1
+					escaped_ids[id] = true
+					if pest.was_engaged():
+						tally["escaped_engaged"] = int(tally["escaped_engaged"]) + 1
+				else:
+					tally["killed"] = int(tally["killed"]) + 1
+				continue
+			var cell: Vector2i = board.world_to_cell(pest.global_position)
+			if episodes.has(id) and Vector2i(episodes[id]["cell"]) != cell:
+				close_episode.call(episodes[id], pest)
+				episodes.erase(id)
+			if not episodes.has(id):
+				episodes[id] = {
+					"cell": cell, "covered": covered.has(cell), "corn_here": corn_covered.has(cell),
+					"touched": false, "aimed": false, "in_reach": false,
+				}
+			var ep: Dictionary = episodes[id]
+			ep["touched"] = bool(ep["touched"]) or touched
+			if not bool(ep["covered"]):
+				# Road only. The route is bracketed by an off-board entry and exit
+				# tail, and a cell nothing could ever be planted beside is not the
+				# map promising anything.
+				if board.is_path(cell):
+					walked_bare[id] = true
+				continue
+			walked_covered[id] = true
+			for i: int in range(plants.size()):
+				if not covers[i].has(cell) or plants[i].is_destroyed():
+					continue
+				var gap: float = pest.global_position.distance_to(plants[i].global_position)
+				if is_corn[i]:
+					if gap > CornCobbler.RANGE:
+						continue
+					ep["in_reach"] = true
+					if pest == _furthest_along_within(live, plants[i], CornCobbler.RANGE):
+						ep["aimed"] = true
+				else:
+					if gap > ChompFlower.GRAB_RADIUS:
+						continue
+					ep["in_reach"] = true
+					var jaw := plants[i] as ChompFlower
+					if not pest.is_winged and not jaw.is_busy():
+						ep["aimed"] = true
+		tally["frames"] = frame
+		if int(tally["spawned"]) >= director.current_wave_pest_count() and live.is_empty():
+			break
+
+	for id: Variant in episodes:
+		var leftover: Pest = instance_from_id(int(id)) as Pest
+		if leftover != null:
+			close_episode.call(episodes[id], leftover)
+
+	for id: Variant in walked_covered:
+		tally["pests_on_covered"] = int(tally["pests_on_covered"]) + 1
+		var whole_walk: bool = not walked_bare.has(id)
+		if whole_walk:
+			tally["pests_all_covered"] = int(tally["pests_all_covered"]) + 1
+		if touched_ever.has(id):
+			continue
+		tally["pests_untouched"] = int(tally["pests_untouched"]) + 1
+		if whole_walk:
+			tally["pests_all_covered_untouched"] = int(tally["pests_all_covered_untouched"]) + 1
+		if escaped_ids.has(id):
+			tally["pests_untouched_escaped"] = int(tally["pests_untouched_escaped"]) + 1
+
+	for plant: Plant in plants:
+		if plant.is_destroyed():
+			tally["plants_eaten"] = int(tally["plants_eaten"]) + 1
+	_T.free_ui(host)
+	board.free()
+	director.free()
+	return tally
+
+
+## Whichever live pest inside `radius` of `plant` is furthest along â€” the exact
+## rule Plant._furthest_along_in_range picks a Corn's target by, re-derived here
+## so the reading does not depend on reaching into the plant's private state.
+func _furthest_along_within(live: Array[Pest], plant: Plant, radius: float) -> Pest:
+	var best: Pest = null
+	var best_progress: float = -1.0
+	for pest: Pest in live:
+		if pest.global_position.distance_to(plant.global_position) > radius:
+			continue
+		var p: float = pest.progress()
+		if p > best_progress:
+			best_progress = p
+			best = pest
+	return best
+
+
+## Seven cobs that cover every one of the 32 road cells. coverage_frontier() is
+## 1.0 over this garden and coverage_note() is therefore silent — the board has
+## nothing at all to warn about, which is the only garden the over-promise
+## question can be asked of honestly.
+func _whole_road_garden() -> Array:
+	return [Vector2i(2, 0), Vector2i(7, 0), Vector2i(10, 3), Vector2i(5, 3),
+		Vector2i(2, 6), Vector2i(7, 6), Vector2i(12, 6)]
+
+
+## A garden a player actually has by the last campaign wave: six cobs and two
+## mouths, covering 29 of the 32 road cells.
+func _mixed_garden() -> Array:
+	return [Vector2i(2, 0), Vector2i(6, 0), Vector2i(10, 3), Vector2i(6, 5),
+		Vector2i(8, 8), Vector2i(11, 6)]
+
+
+## THE measurement plant-tower-defense-4no was filed for, and it comes back zero.
+##
+## The map over-promises in the obvious way: a Corn shoots only the pest furthest
+## along, so a cob covering eight cells is busy with one of them and the other
+## seven get nothing. That is real and it is measured below — 79% of the stays on
+## covered ground in this run see nothing touch the pest at all. What it is not is
+## a promise the map broke, and this is the run that says so.
+##
+## Endless wave 14 over the seven-cob garden loses half the wave: 17 of 34 walk
+## out. If "covered" over-promised, this is the run where a player would be misled
+## — the board says every cell is answered and the beds go anyway. It does not.
+## Every pest that reached the exit had been fought, and every pest that spent its
+## WHOLE walk inside covered ground was touched. The pests that got out untouched
+## in the wider sweep (68 of them, over 14 driven runs and four gardens) had every
+## one walked at least one cell the map already marks `unaimed` — so the mark was
+## right about them, and it was right about them before they died.
+##
+## Read together with the sibling test below, which runs a wave the garden wins
+## outright and gets the same 66% off the same predicate: the "in reach and did
+## not act" reading is loud everywhere and quiet nowhere, so nothing can be built
+## on it. That is why this issue closes with a number rather than a readout.
+func test_the_coverage_map_keeps_its_promise_to_a_pest_that_never_leaves_covered_ground() -> String:
+	var run: Dictionary = await _over_promise_run(14, _whole_road_garden(), [], 1, 12345, 40000)
+	var err: String = _T.assert_eq(int(run["foreign_pests"]), 0,
+		"no other test's pests were standing in the tree, so every stay below is one this run staged")
+	if err != "":
+		return err
+	err = _T.assert_eq(int(run["covered_cells"]), int(run["road_cells"]),
+		"the garden covers every one of the %d road cells, so the board warns about nothing"
+			% int(run["road_cells"]))
+	if err == "":
+		# Conservation, and the whole run's vacuity guard in one line: a wave that
+		# lost pests down a crack would make every ratio below unreadable.
+		err = _T.assert_eq(int(run["killed"]) + int(run["escaped"]), int(run["spawned"]),
+			"every one of the %d pests was accounted for as killed or escaped" % int(run["spawned"]))
+	if err == "":
+		err = _T.assert_gt(int(run["frames"]), 600,
+			"and the wave was really driven, not stopped on frame one")
+	if err == "":
+		err = _T.assert_gt(int(run["escaped"]), int(run["spawned"]) / 3,
+			("and the garden is LOSING it — %d of %d walked out, which is the only state "
+				+ "an over-promise could cost anything in")
+				% [int(run["escaped"]), int(run["spawned"])])
+	if err == "":
+		err = _T.assert_gt(int(run["stays"]), 100,
+			"there are %d stays on covered ground to read" % int(run["stays"]))
+	if err == "":
+		# The loud half. Stated first so the quiet half below cannot be read as the
+		# predicate having found nothing.
+		err = _T.assert_gt(int(run["unanswered"]) * 2, int(run["stays"]),
+			("%d of %d stays on covered ground (%.0f%%) saw nothing touch the pest — the "
+				+ "over-promise IS there at the cell")
+				% [int(run["unanswered"]), int(run["stays"]),
+					100.0 * float(run["unanswered"]) / float(run["stays"])])
+	if err == "":
+		err = _T.assert_gt(int(run["pests_all_covered"]), 9,
+			("and %d pests spent their whole road walk inside it, which is what the claim "
+				+ "below is a claim about") % int(run["pests_all_covered"]))
+	if err == "":
+		err = _T.assert_eq(int(run["pests_all_covered_untouched"]), 0,
+			("yet not one of those %d went untouched. 'Covered' is not a promise that a pest "
+				+ "is shot on every cell — it is a promise that something reaches it, and over "
+				+ "this run it was kept every time")
+				% int(run["pests_all_covered"]))
+	if err == "":
+		err = _T.assert_eq(int(run["escaped_engaged"]), int(run["escaped"]),
+			("and all %d escapes had been fought on the way down, so the beds were lost to "
+				+ "throughput and not to a hole the map was hiding") % int(run["escaped"]))
+	return err
+
+
+## The control, and the reason nothing is built on the predicate.
+##
+## Wave 4 over the mixed garden is a clean sweep — 14 spawned, 14 killed, nothing
+## escapes, no plant is even bitten. The board is as right as a board can be. Ask
+## "was a plant in reach of this cell and idle" anyway and two thirds of the
+## covered ground answers yes, which is the same reading the losing run above
+## gives. A cue that says the same thing in a flawless wave and a catastrophic one
+## is not a cue.
+##
+## The split is what the reading is actually made of: `busy` is a cob that fired
+## at a different pest during the stay, `slow` is one that had THIS pest picked and
+## had not landed a shot yet. Both are the fire rate and the targeting rule, which
+## the player already buys against (upgrade the cob, plant another). Neither is
+## ground nothing can reach, which is the only thing `unaimed` claims.
+func test_the_in_reach_and_idle_reading_is_just_as_loud_in_a_wave_the_garden_sweeps() -> String:
+	var run: Dictionary = await _over_promise_run(4, _mixed_garden(),
+		[Vector2i(4, 2), Vector2i(4, 6)], 1, 12345, 40000)
+	var err: String = _T.assert_eq(int(run["foreign_pests"]), 0,
+		"no other test's pests were standing in the tree while this wave ran")
+	if err != "":
+		return err
+	err = _T.assert_eq(int(run["killed"]), int(run["spawned"]),
+		"every one of the %d pests died on the board" % int(run["spawned"]))
+	if err == "":
+		err = _T.assert_eq(int(run["escaped"]), 0, "and nothing reached the exit")
+	if err == "":
+		err = _T.assert_eq(int(run["plants_eaten"]), 0, "and no bed was even lost")
+	if err == "":
+		err = _T.assert_gt(int(run["stays"]), 20,
+			"with %d stays on covered ground to read" % int(run["stays"]))
+	if err == "":
+		err = _T.assert_gt(int(run["unanswered"]) * 2, int(run["stays"]),
+			("and the predicate still flags %d of %d (%.0f%%) — in a wave that lost nothing")
+				% [int(run["unanswered"]), int(run["stays"]),
+					100.0 * float(run["unanswered"]) / float(run["stays"])])
+	if err == "":
+		err = _T.assert_eq(int(run["pests_untouched"]), 0,
+			"while the reading that means something — a pest nothing ever touched — is 0")
+	if err == "":
+		err = _T.assert_gt(int(run["busy"]), int(run["slow"]) * 3,
+			("and %d of the %d flags are a cob aimed at a different pest against %d that are "
+				+ "the fire rate: this is throughput, not reach")
+				% [int(run["busy"]), int(run["unanswered"]), int(run["slow"])])
+	if err == "":
+		err = _T.assert_eq(int(run["out_of_reach"]), 0,
+			("and none of it is the map's own geometry — every stay it calls covered really "
+				+ "did put the pest inside a covering plant's radius"))
+	return err
+
+
+## The third mechanism the issue named, and the one that IS a structural
+## over-promise: a Chomp cannot close on a winged pest at all, so a road cell
+## covered by mouths alone is covered by nothing the moment wings arrive.
+##
+## It is also the one that never happens. Corn is the free starter and the only
+## damage in the game, its ring is 176 px against the mouth's 73.6, and every road
+## cell a Chomp can reach is a cell a cob two lanes away also reaches — so a
+## chomp-only cell takes a garden with no Corn in it, which is the garden below
+## and is not a garden anybody has. Measured across the six Corn gardens in this
+## sweep: ONE blind stay in 1,177. Machinery for it would be machinery for nobody.
+func test_a_winged_pest_only_outruns_the_map_in_a_garden_with_no_corn_in_it() -> String:
+	var mouths: Array = [Vector2i(2, 0), Vector2i(5, 0), Vector2i(8, 0), Vector2i(8, 3),
+		Vector2i(5, 5), Vector2i(2, 6), Vector2i(5, 6), Vector2i(9, 6), Vector2i(12, 6)]
+	var jaws_only: Dictionary = await _over_promise_run(8, [], mouths, 1, 12345, 40000)
+	var err: String = _T.assert_eq(int(jaws_only["foreign_pests"]), 0,
+		"no other test's pests were standing in the tree while the mouths ran")
+	if err != "":
+		return err
+	err = _T.assert_gt(int(jaws_only["winged"]), 0,
+		"wave 8 really sent winged pests (%d of %d), or nothing below is a measurement"
+			% [int(jaws_only["winged"]), int(jaws_only["spawned"])])
+	if err == "":
+		err = _T.assert_gt(int(jaws_only["stays"]), 20,
+			"and they walked %d stays on ground the mouths call covered" % int(jaws_only["stays"]))
+	if err == "":
+		err = _T.assert_gt(int(jaws_only["blind_winged"]) * 2, int(jaws_only["unanswered"]),
+			("in a garden of mouths the blind-to-wings case is the over-promise: %d of the %d "
+				+ "unanswered stays") % [int(jaws_only["blind_winged"]), int(jaws_only["unanswered"])])
+
+	var with_corn: Dictionary = await _over_promise_run(8, _mixed_garden(),
+		[Vector2i(4, 2), Vector2i(4, 6)], 1, 12345, 40000)
+	if err == "":
+		err = _T.assert_eq(int(with_corn["foreign_pests"]), 0,
+			"nor while the mixed garden ran")
+	if err == "":
+		err = _T.assert_gt(int(with_corn["winged"]), 0,
+			"the same wave sends wings at the mixed garden too (%d of %d)"
+				% [int(with_corn["winged"]), int(with_corn["spawned"])])
+	if err == "":
+		err = _T.assert_gt(int(with_corn["unanswered"]), 20,
+			"and it flags %d unanswered stays to look through" % int(with_corn["unanswered"]))
+	if err == "":
+		err = _T.assert_true(int(with_corn["blind_winged"]) <= 2,
+			("but put two cobs anywhere near those mouths and the case all but vanishes: %d "
+				+ "blind stays of %d unanswered. A 176 px ring covers everything a 73.6 px "
+				+ "mouth does, so a chomp-only cell needs a garden with no Corn in it")
+				% [int(with_corn["blind_winged"]), int(with_corn["unanswered"])])
+	if err != "":
+		return err
+
+	# The positive control, and the reason the zero in the sibling test is a
+	# reading rather than a broken detector. Thirty-one mouths, one beside every
+	# road cell: the map calls the entire road covered, and a winged pest crosses
+	# the whole of it with nothing able to close on it. Same harness, same
+	# predicate, non-zero — so `pests_all_covered_untouched` is not stuck at 0.
+	var walled: Array = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0),
+		Vector2i(4, 0), Vector2i(5, 0), Vector2i(6, 0), Vector2i(7, 0), Vector2i(8, 0),
+		Vector2i(9, 0), Vector2i(8, 2), Vector2i(8, 3), Vector2i(10, 4), Vector2i(7, 3),
+		Vector2i(6, 3), Vector2i(5, 3), Vector2i(4, 3), Vector2i(3, 3), Vector2i(2, 5),
+		Vector2i(2, 6), Vector2i(2, 7), Vector2i(4, 6), Vector2i(5, 6), Vector2i(6, 6),
+		Vector2i(7, 6), Vector2i(8, 6), Vector2i(9, 6), Vector2i(10, 6), Vector2i(11, 6),
+		Vector2i(12, 6), Vector2i(13, 6)]
+	var walled_run: Dictionary = await _over_promise_run(8, [], walled, 1, 12345, 40000)
+	err = _T.assert_eq(int(walled_run["foreign_pests"]), 0,
+		"nor while the walled road ran")
+	if err == "":
+		err = _T.assert_eq(int(walled_run["covered_cells"]), int(walled_run["road_cells"]),
+			"a mouth beside every road cell covers all %d of them" % int(walled_run["road_cells"]))
+	if err == "":
+		err = _T.assert_gt(int(walled_run["pests_all_covered"]), 0,
+			"and pests really walked the whole road inside it (%d of %d)"
+				% [int(walled_run["pests_all_covered"]), int(walled_run["spawned"])])
+	if err == "":
+		err = _T.assert_gt(int(walled_run["pests_all_covered_untouched"]), 0,
+			("and %d of them came out untouched — the coverage map CAN over-promise, and this "
+				+ "is what it looks like when it does. Every zero this file reports elsewhere "
+				+ "is measured by the same counter that fires here")
+				% int(walled_run["pests_all_covered_untouched"]))
+	return err

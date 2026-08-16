@@ -211,10 +211,16 @@ func summary_rows() -> Array:
 ## filed against exit_cell(), because the pest is off the board by then), so the
 ## spatial half of an escape is a constant and there is nothing there to read.
 ## What is not constant is whether anything ever reached the pest on its way
-## down. Corn is the only damage in the game and it shoots whatever is furthest
-## along the road, so an untouched arrival means the road it walked had no
-## coverage over it, and a fought one means the coverage was there and short.
-## More plants versus a bigger plant — the two things a player can buy.
+## down. Corn is the only damage in the game, so an untouched arrival means more
+## plants and a fought one means a bigger plant — the two things a player buys.
+##
+## The stronger version of that claim was measured and is FALSE. This used to say
+## an untouched arrival "means the road it walked had no coverage over it". It
+## does not: across 14 driven waves and 439 pests, all 68 untouched escapes had
+## walked at least one covered cell. What holds is the weaker direction — every
+## one of them had ALSO walked ground the map marks `unaimed`, so the hole is
+## real and the map named it in advance; the pest simply did not spend its whole
+## walk outside coverage. See the same correction on Game._escapes_untouched.
 ##
 ## Folded into this row rather than given an eighth, for the reason _compost_text
 ## spells out at length: rows step by ROW_HEIGHT + ROW_GAP = 38 from FIRST_ROW_Y,
