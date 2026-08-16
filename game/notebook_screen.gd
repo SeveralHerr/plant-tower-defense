@@ -1,5 +1,5 @@
 class_name NotebookScreen
-extends Control
+extends OverlayScreen
 
 ## "A screen showing the original hand-drawn image1.jpg-image6.jpg beside the
 ## finished sprite for each plant." The drawings are the source material the
@@ -13,13 +13,19 @@ extends Control
 ## is now the point and the layout serves it: a paper spread (NotebookPage), a
 ## labelled pane on each side, and a real note per page.
 ##
+## The Backdrop, the Back button and `back_requested` are OverlayScreen's — the
+## chrome this screen shares with the Keys and Options screens. Two things here
+## are NOT shared and are the reason this screen overrides rather than inherits
+## them: the paper is a ruled two-page spread (NotebookPage) and not a Panel, and
+## the screen opens with its pager focused rather than its Back button, because
+## the first thing a reader wants is the next page. There are no rows, so the
+## footer-gap rule OverlayScreen states for the other two does not apply here.
+##
 ## Node paths are a contract. `Backdrop`, `Drawing`, `Sprite` and `PageLabel`
 ## are asserted by test_selftest.gd and reachable from the devtools bridge, so
 ## they stay direct children of this node even though the paper panel is drawn
 ## behind them. Nothing here is in a Container; see TitleScreen for why that is
 ## deliberate on a fixed-size fullscreen menu.
-
-signal back_requested
 
 ## Panel rect, in viewport coordinates. Everything else is placed against it.
 const PANEL := Rect2(76.0, 32.0, 1000.0, 584.0)
@@ -70,8 +76,17 @@ const SUBHEAD_MAX_WIDTH: float = 358.0
 ## for the character budget this height buys.
 const NOTE_RECT := Rect2(RIGHT_CENTRE - 200.0, 372.0, 400.0, 142.0)
 const FOOTER_Y: float = 544.0
-const FOOTER_HEIGHT: float = 40.0
 const PAGER_WIDTH: float = 110.0
+
+## Where the Back button sits on this screen, which is beside the heading rather
+## than in a footer — there is no footer here but the pager, and a Back button in
+## the middle of it would sit between Prev and Next.
+const BACK_AT := Vector2(100.0, 52.0)
+## Narrower than OverlayScreen.BACK_BUTTON_SIZE, because it is up in the header
+## beside a 30pt heading rather than in a row of 150px footer buttons. Still 40
+## tall: `findings` gates an interactive Control at 40x40 and is right to — a 38px
+## button is a 38px touch target.
+const BACK_SIZE := Vector2(108.0, 40.0)
 
 ## Largest whole-number enlargement a sprite is drawn at inside SPRITE_BOX.
 ##
@@ -241,64 +256,50 @@ var _spec: Label
 var _shelf: Control
 var _sprite_rect: TextureRect
 var _caption: Label
-var _note: Label
+## The page's own note, which is `NoteLabel` and NOT OverlayScreen's `Note` — the
+## other two overlays have one line that changes and this one has a paragraph per
+## page. Named apart because the node names are apart, and a field called `_note`
+## here would shadow the base's.
+var _page_note: Label
 var _source: Label
 var _page_label: Label
 var _next_button: Button
 
 
-func _ready() -> void:
-	# Explicit position+size, not an anchor preset — see TitleScreen._ready()
-	# for why: this Control was added straight to another Control with
-	# add_child() outside any layout pass, and PRESET_FULL_RECT resolved to
-	# 0x0, leaving the title screen's own buttons visible right through it.
-	position = Vector2.ZERO
-	size = Vector2(get_viewport_width(), get_viewport_height())
-	# The title screen already puts this theme on its own root, and a child
-	# inherits it — but a test builds this screen standalone, and so would any
-	# future caller. Setting it outright costs one Theme and removes the
-	# question of who the parent is.
-	theme = GardenTheme.build()
+func panel_rect() -> Rect2:
+	return PANEL
 
-	var backdrop := ColorRect.new()
-	backdrop.name = "Backdrop"
-	# Not fully opaque any more: the title screen's garden shows through
-	# faintly, so the notebook reads as something held up in front of the game
-	# rather than a different program. Still dark enough that nothing behind it
-	# competes for attention, and still a MOUSE_FILTER_STOP ColorRect, so the
-	# buttons underneath stay unclickable.
-	backdrop.color = Color(GardenTheme.INK, 0.88)
-	backdrop.position = Vector2.ZERO
-	backdrop.size = size
-	add_child(backdrop)
 
+## The one overlay whose paper is not a Panel: a ruled two-page spread that draws
+## its own margins and the pager dots, which is why this overrides rather than
+## takes OverlayScreen's.
+func _add_paper() -> void:
 	_paper = NotebookPage.new()
-	_paper.name = "Paper"
+	_paper.name = PAPER_NAME
 	_paper.position = PANEL.position
 	_paper.size = PANEL.size
 	_paper.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_paper)
 	_paper.page_count = PAGES.size()
 
+
+func _build_contents() -> void:
 	_build_header()
 	_build_left_page()
 	_build_right_page()
 	_build_footer()
-
 	go_to(0)
+
+
+## Next, not Back. This screen is opened to be read, and the first thing a reader
+## reaches for is the next page — the other overlays open on their way out because
+## the thing they are for is the row you came to change.
+func _focus_default() -> void:
 	_next_button.grab_focus()
 
 
 func _build_header() -> void:
-	var heading := Label.new()
-	heading.name = "Heading"
-	heading.text = "Designer's Notebook"
-	heading.position = Vector2(PANEL.position.x, 52.0)
-	heading.size = Vector2(PANEL.size.x, 40.0)
-	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	heading.add_theme_font_size_override("font_size", 30)
-	heading.add_theme_color_override("font_color", GardenTheme.INK)
-	add_child(heading)
+	add_heading("Designer's Notebook", 52.0)
 
 	var subhead := Label.new()
 	subhead.name = "Subheading"
@@ -323,15 +324,7 @@ func _build_header() -> void:
 	subhead.add_theme_color_override("font_color", Color(GardenTheme.INK, 0.6))
 	add_child(subhead)
 
-	var back_button := Button.new()
-	back_button.name = "BackButton"
-	back_button.text = "← Back"
-	back_button.position = Vector2(100.0, 52.0)
-	# 40 tall, not 38: `findings` gates interactive Controls at 40x40 and is
-	# right to — a 38px button is a 38px touch target.
-	back_button.size = Vector2(108.0, 40.0)
-	back_button.pressed.connect(func() -> void: back_requested.emit())
-	add_child(back_button)
+	add_back_button(BACK_AT, BACK_SIZE)
 
 
 func _build_left_page() -> void:
@@ -531,19 +524,19 @@ func _build_right_page() -> void:
 	_caption.add_theme_color_override("font_color", GardenTheme.LEAF_DARK)
 	add_child(_caption)
 
-	_note = Label.new()
-	_note.name = "NoteLabel"
-	_note.position = NOTE_RECT.position
-	_note.size = NOTE_RECT.size
-	_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_note.add_theme_font_size_override("font_size", 14)
-	_note.add_theme_color_override("font_color", Color(GardenTheme.INK, 0.8))
+	_page_note = Label.new()
+	_page_note.name = "NoteLabel"
+	_page_note.position = NOTE_RECT.position
+	_page_note.size = NOTE_RECT.size
+	_page_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_page_note.add_theme_font_size_override("font_size", 14)
+	_page_note.add_theme_color_override("font_color", Color(GardenTheme.INK, 0.8))
 	# The notes vary in length by ~80 characters. Without this the longest one
 	# runs past the bottom of the page and over the pager; the box is the
 	# budget, and text that will not fit gets an ellipsis rather than the paper.
-	_note.clip_text = true
-	_note.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	add_child(_note)
+	_page_note.clip_text = true
+	_page_note.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	add_child(_page_note)
 
 
 func _pane_label(node_name: String, text: String, centre_x: float) -> Label:
@@ -610,14 +603,6 @@ func _input(event: InputEvent) -> void:
 	else:
 		return
 	get_viewport().set_input_as_handled()
-
-
-func get_viewport_width() -> int:
-	return ProjectSettings.get_setting("display/window/size/viewport_width", 1152)
-
-
-func get_viewport_height() -> int:
-	return ProjectSettings.get_setting("display/window/size/viewport_height", 648)
 
 
 ## The pages that show a photograph of paper. Counted rather than assumed, so the
@@ -713,7 +698,7 @@ func go_to(page: int) -> void:
 	_sprite_rect.texture = load(GardenTheme.retina_path(String(entry["sprite"]))) as Texture2D
 	_fit_sprite()
 	_caption.text = String(entry["caption"])
-	_note.text = String(entry["note"])
+	_page_note.text = String(entry["note"])
 	_page_label.text = "%d / %d" % [_page + 1, PAGES.size()]
 	_paper.current_page = _page
 	if previous != _page:
@@ -750,7 +735,7 @@ func _play_turn(direction: float) -> void:
 		return
 	var tween := create_tween()
 	tween.set_parallel(true)
-	for node: Control in [_drawing_rect, _spec, _shelf, _sprite_rect, _caption, _note, _source]:
+	for node: Control in [_drawing_rect, _spec, _shelf, _sprite_rect, _caption, _page_note, _source]:
 		tween.tween_property(node, "modulate:a", 1.0, TURN_SECONDS).from(TURN_START_ALPHA)
 		tween.tween_property(node, "position:x", node.position.x, TURN_SECONDS) \
 			.from(node.position.x + TURN_NUDGE * direction) \

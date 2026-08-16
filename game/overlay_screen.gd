@@ -1,0 +1,330 @@
+class_name OverlayScreen
+extends Control
+
+## The chrome every full-screen overlay in this game wears, owned once.
+##
+## Three screens open over the title menu or the pause card — the Designer's
+## Notebook, the Keys screen and the Options screen — and until this class existed
+## each of them hand-rolled the same four things: a nearly-opaque `Backdrop`
+## ColorRect sized to the viewport, a paper panel behind the content, a
+## `BackButton` wired to a `back_requested` signal, and the pair of getters that
+## read the viewport size out of ProjectSettings. Options was written by copying
+## Keys, so the two matched to the letter — which is exactly the state in which a
+## fix lands on one copy and not the other.
+##
+## ## Node paths are a contract
+##
+## `Backdrop`, `Paper`, `BackButton`, `Note` and `Row%d` / `RowKey%d` /
+## `RowButton%d` are asserted by test_selftest.gd and pressed BY NAME from the
+## devtools bridge. This class builds them under exactly those names for every
+## screen; a subclass that wants a different name wants a different contract, and
+## that is a conversation and not an edit.
+##
+## ## What a subclass supplies
+##
+## `panel_rect()` — where the paper sits, sized from the screen's own row count
+## rather than picked and then trusted to fit (see FOOTER_GAP).
+## `_build_contents()` — the rows, the headings, the footer. Everything above is
+## already on screen by the time it runs.
+##
+## `_ready()` is deliberately NOT one of them: a subclass that defined its own
+## would silently replace this one and lose the backdrop, which is the failure
+## the class exists to prevent. Two hooks are provided for the one screen that
+## genuinely differs — `_add_paper()` (NotebookScreen draws a two-page spread, not
+## a Panel) and `_focus_default()` (the notebook opens with its pager focused).
+##
+## ## Process mode is NOT set here
+##
+## An overlay opened from the pause card must not freeze with the tree it is
+## sitting on: a frozen overlay has dead buttons, a Back that does nothing and no
+## way out of it. That is PROCESS_MODE_ALWAYS, and it is set at each construction
+## site outright — KeyBindingScreen.build(), PauseScreen._open_notebook() — rather
+## than inherited from whichever parent the overlay happens to be added to.
+## Setting it here for every overlay would make it an inherited fact again, one
+## layer further away, and the point is that it is a stated property a test can
+## read.
+
+signal back_requested
+
+## The contract names, spelled once. Written out at each call site would be four
+## more places for a typo to become a bridge recipe that presses nothing.
+const BACKDROP_NAME := "Backdrop"
+const PAPER_NAME := "Paper"
+const BACK_BUTTON_NAME := "BackButton"
+const NOTE_NAME := "Note"
+
+## Not fully opaque: the garden behind shows through faintly, so an overlay reads
+## as something held up in front of the game rather than a different program.
+## Still dark enough that nothing behind it competes, and still a
+## MOUSE_FILTER_STOP ColorRect, so the buttons underneath stay unclickable.
+const BACKDROP_ALPHA: float = 0.88
+
+const BACK_TEXT := "← Back"
+## 40 tall, and every interactive Control on an overlay is: `findings` gates an
+## interactive Control at 40x40 and is right to — a 38px button is a 38px touch
+## target.
+const BACK_BUTTON_SIZE := Vector2(150.0, 40.0)
+const ROW_BUTTON_SIZE := Vector2(150.0, 40.0)
+
+## 48, not 44. The button in a row is 40 tall and a row pitch matching its own
+## contents leaves two Labels touching the row above — the same one-pixel overlap
+## PauseScreen.KEY_ROW_HEIGHT's comment is about. It was 52 on the Keys screen
+## while the table had seven verbs; the eighth bought its four pixels back out of
+## the pitch rather than out of the 8px clearance above each button, which is the
+## part doing work.
+const ROW_HEIGHT: float = 48.0
+
+const FOOTER_HEIGHT: float = 40.0
+## How far up from the paper's foot the footer sits.
+const FOOTER_INSET: float = 24.0
+
+## The minimum clear space between the foot of the last row and the top of the
+## footer. THE RULE, in one place, for every overlay that has rows.
+##
+## It is a minimum GAP and deliberately not mere non-intersection. Both the Keys
+## and the Options screen size their panel from their row count, and the Keys
+## screen once had a footer laid flush against the last row: every Control sat
+## inside the paper, nothing intersected anything — `Rect2.intersects` is false
+## for two boxes sharing an edge — and every check written at the time passed. It
+## was wrong only in a screenshot. `footer_clearance()` below measures it,
+## `_ready()` complains at build time if a screen breaks it, and the suite asserts
+## it once for every screen with rows rather than once per screen.
+const FOOTER_GAP: float = 24.0
+
+## The overlay's own Back button, set by add_back_button(). Kept because
+## `_focus_default()` opens on it and `footer_clearance()` measures against it.
+var _back_button: Button
+## The line that changes: an instruction, a prompt, a refusal. One Label named
+## `Note`, on whichever screen has something to say.
+var _note: Label
+## Every row button the screen built, in row order. Registered by
+## add_row_button() rather than by each screen keeping its own list, because the
+## footer-gap rule measures the LAST one and a row this base never saw is a row
+## the rule silently skips.
+var _row_buttons: Array[Button] = []
+
+
+## Backdrop, paper, contents, then focus — in that order, once, for every overlay.
+##
+## Explicit position+size rather than PRESET_FULL_RECT: an overlay is added with
+## add_child() outside a layout pass, where the preset resolves to 0x0 and leaves
+## the menu behind it visible and clickable straight through. Same reason as
+## TitleScreen and PauseScreen.
+func _ready() -> void:
+	position = Vector2.ZERO
+	size = Vector2(get_viewport_width(), get_viewport_height())
+	# The opener usually has this theme on its own root and a child inherits it —
+	# but a test builds these screens standalone, and so would any future caller.
+	# Setting it outright costs one Theme and removes the question of who the
+	# parent is.
+	theme = GardenTheme.build()
+
+	var backdrop := ColorRect.new()
+	backdrop.name = BACKDROP_NAME
+	backdrop.color = Color(GardenTheme.INK, BACKDROP_ALPHA)
+	backdrop.position = Vector2.ZERO
+	backdrop.size = size
+	add_child(backdrop)
+
+	_add_paper()
+	_build_contents()
+	_warn_if_footer_is_flush()
+	_focus_default()
+
+
+## Where the paper sits, in viewport coordinates. Everything a screen draws is
+## placed against it, and the suite asserts every visible Control is inside it.
+func panel_rect() -> Rect2:
+	return Rect2()
+
+
+## The screen's own content. Called with the backdrop and the paper already up.
+func _build_contents() -> void:
+	pass
+
+
+## The sheet the content is drawn on. Overridable for the one screen whose paper
+## is not a Panel — NotebookScreen draws a ruled two-page spread.
+##
+## MOUSE_FILTER_IGNORE: the paper is decoration, and a Panel that stopped the
+## mouse would eat clicks aimed at whatever is drawn over it.
+func _add_paper() -> void:
+	var panel: Rect2 = panel_rect()
+	if panel.size.x <= 0.0 or panel.size.y <= 0.0:
+		return
+	var paper := Panel.new()
+	paper.name = PAPER_NAME
+	paper.position = panel.position
+	paper.size = panel.size
+	paper.add_theme_stylebox_override("panel", GardenTheme.paper_panel())
+	paper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(paper)
+
+
+## Where keyboard focus lands when the overlay opens. The Back button by default,
+## because it is the way out and every overlay has one.
+func _focus_default() -> void:
+	if _back_button != null and is_instance_valid(_back_button):
+		_back_button.grab_focus()
+
+
+# -- the pieces a screen assembles itself out of ------------------------------
+
+
+## The screen's title, centred across the paper.
+func add_heading(text: String, y: float) -> Label:
+	var panel: Rect2 = panel_rect()
+	var heading := Label.new()
+	heading.name = "Heading"
+	heading.text = text
+	heading.position = Vector2(panel.position.x, y)
+	heading.size = Vector2(panel.size.x, 40.0)
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	heading.add_theme_font_size_override("font_size", 30)
+	heading.add_theme_color_override("font_color", GardenTheme.INK)
+	add_child(heading)
+	return heading
+
+
+## The `Note` line under the heading, and the field behind it. One Label for the
+## instruction, the prompt and the refusal, so a rejected keystroke cannot be
+## silent — see KeyBindingScreen.capture().
+func add_note_label(text: String, y: float) -> Label:
+	var panel: Rect2 = panel_rect()
+	_note = Label.new()
+	_note.name = NOTE_NAME
+	_note.text = text
+	_note.position = Vector2(panel.position.x, y)
+	_note.size = Vector2(panel.size.x, 24.0)
+	_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_note.add_theme_font_size_override("font_size", 15)
+	_note.add_theme_color_override("font_color", Color(GardenTheme.INK, 0.65))
+	# The box is the budget: a longer sentence is trimmed rather than allowed to
+	# run off the paper.
+	_note.clip_text = true
+	_note.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	add_child(_note)
+	return _note
+
+
+## One text cell of a row — the left column that says what it is, or the middle
+## one that says which key it is on. The two are the same Label in two dresses:
+## same font size, same clip-and-ellipsis budget, different colour and alignment.
+##
+## The screens keep their own column x offsets, because the two column layouts
+## differ by a few pixels and each of those numbers is documented where it is
+## used. What is shared is the styling, which is what drifted.
+func add_row_label(node_name: String, text: String, at: Vector2, box: Vector2,
+		color: Color, align: int = HORIZONTAL_ALIGNMENT_LEFT) -> Label:
+	var label := Label.new()
+	label.name = node_name
+	label.text = text
+	label.position = at
+	label.size = box
+	label.horizontal_alignment = align
+	label.add_theme_font_size_override("font_size", 16)
+	label.add_theme_color_override("font_color", color)
+	label.clip_text = true
+	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	add_child(label)
+	return label
+
+
+## The row's button, named `RowButton%d` and registered for the footer-gap rule.
+## The caller sets the text and connects it: what a row's button does is the one
+## thing the two screens do not share.
+func add_row_button(index: int, at: Vector2) -> Button:
+	var button := Button.new()
+	button.name = "RowButton%d" % index
+	button.position = at
+	button.size = ROW_BUTTON_SIZE
+	add_child(button)
+	_row_buttons.append(button)
+	return button
+
+
+## The way out, wired to `back_requested` — the screen never learns who opened it.
+func add_back_button(at: Vector2, box: Vector2 = BACK_BUTTON_SIZE) -> Button:
+	_back_button = Button.new()
+	_back_button.name = BACK_BUTTON_NAME
+	_back_button.text = BACK_TEXT
+	_back_button.position = at
+	_back_button.size = box
+	_back_button.pressed.connect(func() -> void: back_requested.emit())
+	add_child(_back_button)
+	return _back_button
+
+
+# -- the layout rule ----------------------------------------------------------
+
+
+## The y a footer row sits at, derived from the paper rather than written down
+## per screen.
+func footer_y() -> float:
+	var panel: Rect2 = panel_rect()
+	return panel.position.y + panel.size.y - FOOTER_HEIGHT - FOOTER_INSET
+
+
+## The Back button, or null on a screen that somehow built none.
+func back_button() -> Button:
+	return _back_button
+
+
+## Whether the footer-gap rule applies at all. A screen with no rows — the
+## notebook — has nothing for the footer to stand clear of.
+func has_rows() -> bool:
+	return not _row_buttons.is_empty()
+
+
+## Clear space between the foot of the last row and the top of the footer, or
+## -1.0 when the rule does not apply. See FOOTER_GAP for why this is a distance
+## and not a boolean "do they overlap".
+func footer_clearance() -> float:
+	if not has_rows() or _back_button == null:
+		return -1.0
+	var last: Button = _row_buttons[_row_buttons.size() - 1]
+	return _back_button.position.y - (last.position.y + last.size.y)
+
+
+## Says so at build time, in the one place that sees every overlay. The suite
+## asserts the same rule; this is the half that fires in a live game the moment a
+## constant is nudged, rather than at the next headless run.
+func _warn_if_footer_is_flush() -> void:
+	if not has_rows() or _back_button == null:
+		return
+	var gap: float = footer_clearance()
+	if gap < FOOTER_GAP:
+		push_error(("%s: the footer stands %.1fpx below the last row, under the %.1fpx "
+			+ "FOOTER_GAP. Grow the panel or drop the row pitch — a flush footer "
+			+ "intersects nothing and is still wrong.") % [get_script().resource_path, gap, FOOTER_GAP])
+
+
+# -- the viewport ------------------------------------------------------------
+#
+# Read out of ProjectSettings rather than off get_viewport(), because _ready()
+# sizes the overlay before it is necessarily inside a sized viewport.
+
+
+func get_viewport_width() -> int:
+	return ProjectSettings.get_setting("display/window/size/viewport_width", 1152)
+
+
+func get_viewport_height() -> int:
+	return ProjectSettings.get_setting("display/window/size/viewport_height", 648)
+
+
+## Escape closes. Handled in `_input` rather than `_unhandled_input`: a focused
+## Button consumes keys for focus navigation before an unhandled handler ever sees
+## them, and the arrow keys are verbs on two of these screens.
+##
+## A subclass that needs the keystroke first overrides this and calls
+## `super._input(event)` for everything it did not answer — see
+## KeyBindingScreen._input, which swallows every key while a row is listening.
+func _input(event: InputEvent) -> void:
+	# Both shapes a verb can arrive in — see Game._unhandled_input for why an
+	# InputEventKey-only narrowing makes these unreachable from the devtools bridge.
+	if not (event is InputEventKey or event is InputEventAction):
+		return
+	if event.is_action_pressed(KeyBindings.ACTION_BACK):
+		back_requested.emit()
+		get_viewport().set_input_as_handled()

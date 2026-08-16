@@ -1268,30 +1268,39 @@ func test_the_keys_screen_lists_every_verb_and_reads_the_live_bindings() -> Stri
 		if err == "":
 			screen.capture(KEY_ESCAPE)
 	if err == "":
-		# Nothing on the paper may run off it or sit on top of anything else -- the
-		# per-Control gates check each box against itself and would pass a row list
-		# drawn straight through the footer.
-		err = _screen_rows_fit_and_do_not_overlap(screen, KeyBindingScreen.PANEL)
-	if err == "":
-		# "Does not overlap" is not "has a gap": Rect2.intersects is false for two
-		# boxes sharing an edge, so the footer sat flush against the last row and
-		# every check passed. Caught in a screenshot, asserted here.
-		var last: Button = screen.get_node("RowButton%d" % (actions.size() - 1)) as Button
-		var back: Button = screen.get_node("BackButton") as Button
-		err = _T.assert_gte(back.position.y - (last.position.y + last.size.y), 16.0,
-			"the footer stands clear of the last row rather than merely not overlapping it")
+		# Nothing on the paper may run off it or sit on top of anything else, and the
+		# footer must stand CLEAR of the last row -- see the helper, which is where
+		# that rule lives now, once, for every overlay that has rows.
+		err = _overlay_content_fits_and_stands_clear(screen)
 	_T.free_ui(screen)
 	return err
 
 
-## Every visible Control on `screen` sits inside `panel` and touches no sibling.
-## Split out because it is the check the pause card wanted too and the one no
-## harness gate performs: `findings` measures a Control against its own box.
-func _screen_rows_fit_and_do_not_overlap(screen: Control, panel: Rect2) -> String:
+## Every visible Control on `screen` sits on its own paper, touches no sibling,
+## and -- on a screen with rows -- leaves at least OverlayScreen.FOOTER_GAP between
+## the foot of the last row and the top of the footer.
+##
+## One helper for every overlay, because it is one rule. It was written twice at
+## two different numbers (16.0 on the Keys screen, OptionsScreen.FOOTER_GAP on the
+## other), which is the state a rule is in just before one copy is fixed and the
+## other is not.
+##
+## The gap half is a DISTANCE and deliberately not "do they overlap":
+## `Rect2.intersects` is false for two boxes sharing an edge, so the Keys screen's
+## footer once sat flush against the last row and every check written at the time
+## passed. It read as wrong only in a screenshot.
+##
+## The enclosure half is the check no harness gate performs -- `findings` measures
+## a Control against its own box, so a row list drawn straight through the footer
+## is invisible to it.
+func _overlay_content_fits_and_stands_clear(screen: OverlayScreen) -> String:
+	var panel: Rect2 = screen.panel_rect()
 	var rects: Dictionary = {}
 	for child: Node in screen.get_children():
 		var control := child as Control
-		if control == null or not control.visible or control.name in ["Backdrop", "Paper"]:
+		if control == null or not control.visible:
+			continue
+		if control.name in [OverlayScreen.BACKDROP_NAME, OverlayScreen.PAPER_NAME]:
 			continue
 		if control.size.x <= 0.0 or control.size.y <= 0.0:
 			continue
@@ -1309,7 +1318,104 @@ func _screen_rows_fit_and_do_not_overlap(screen: Control, panel: Rect2) -> Strin
 				"%s overlaps %s" % [names[i], names[j]])
 			if out != "":
 				return out
-	return _T.assert_gt(names.size(), 0, "there were Controls to check -- an empty sweep proves nothing")
+	out = _T.assert_gt(names.size(), 0, "there were Controls to check -- an empty sweep proves nothing")
+	if out == "" and screen.has_rows():
+		out = _T.assert_gte(screen.footer_clearance(), OverlayScreen.FOOTER_GAP,
+			"the footer stands clear of the last row by at least FOOTER_GAP (%s), rather than merely not overlapping it"
+				% screen.footer_clearance())
+	return out
+
+
+## The chrome itself, asserted once for every screen that wears it.
+##
+## Three overlays used to build this by hand -- the same Backdrop, the same paper,
+## the same Back button, the same signal, transcribed three times because Options
+## was written by copying Keys. OverlayScreen owns it now, and this is the test
+## that says every overlay still HAS it: a subclass that declared its own `_ready`
+## would silently replace the base's and come up with no backdrop at all, which is
+## a defect a screenshot catches and no per-screen assertion in this file would.
+func test_every_overlay_wears_the_same_chrome() -> String:
+	var want := Vector2(1152, 648)
+	# Built one at a time rather than three up front: a screen this test never
+	# reaches would otherwise sit unparented and be counted as an orphan.
+	var who_list: Array[String] = ["the Keys screen", "the Options screen", "the notebook"]
+	var makers: Array[Callable] = [
+		func() -> OverlayScreen: return KeyBindingScreen.build(),
+		func() -> OverlayScreen: return OptionsScreen.new(),
+		func() -> OverlayScreen: return NotebookScreen.new(),
+	]
+	var err := ""
+	for i: int in makers.size():
+		var who: String = who_list[i]
+		var built := await _T.instantiate_ui(makers[i].call() as OverlayScreen, Vector2i(1152, 648)) as OverlayScreen
+		err = _T.assert_eq(built.size, want, "%s fills the viewport it read out of ProjectSettings" % who)
+		if err == "":
+			var backdrop: ColorRect = built.get_node_or_null(OverlayScreen.BACKDROP_NAME) as ColorRect
+			err = _T.assert_true(backdrop != null, "%s has a Backdrop, and it is a ColorRect" % who)
+			if err == "":
+				err = _T.assert_eq(backdrop.size, want, "%s's backdrop covers the menu behind it" % who)
+			if err == "":
+				# Neither opaque nor transparent: the game shows through faintly, so an
+				# overlay reads as something held up in front of it.
+				err = _T.assert_float_eq(backdrop.color.a, OverlayScreen.BACKDROP_ALPHA, 0.001,
+					"%s's backdrop is the shared alpha rather than a local one" % who)
+		if err == "":
+			var paper: Control = built.get_node_or_null(OverlayScreen.PAPER_NAME) as Control
+			err = _T.assert_true(paper != null, "%s draws its content on a Paper" % who)
+			if err == "":
+				# Decoration: a paper that stopped the mouse would eat every click
+				# aimed at what is drawn over it.
+				err = _T.assert_eq(paper.mouse_filter, Control.MOUSE_FILTER_IGNORE,
+					"%s's paper does not eat the mouse" % who)
+			if err == "":
+				err = _T.assert_eq(Rect2(paper.position, paper.size), built.panel_rect(),
+					"%s's paper is exactly the rect it places everything else against" % who)
+		if err == "":
+			var back: Button = built.get_node_or_null(OverlayScreen.BACK_BUTTON_NAME) as Button
+			err = _T.assert_true(back != null, "%s has a BackButton the bridge can press by name" % who)
+			if err == "":
+				err = _T.assert_true(back.size.x >= 40.0 and back.size.y >= 40.0,
+					"%s's Back is a real touch target, got %s" % [who, back.size])
+			if err == "":
+				err = _T.assert_true(built.back_button() == back,
+					"and the base holds the same button the tree does on %s" % who)
+			if err == "":
+				# The signal, not a call back into whoever opened it: no overlay in
+				# this game knows who its opener is.
+				var asked: Array[bool] = [false]
+				built.back_requested.connect(func() -> void: asked[0] = true)
+				back.pressed.emit()
+				err = _T.assert_true(asked[0],
+					"%s's Back asks to be closed rather than closing itself" % who)
+		_T.free_ui(built)
+		if err != "":
+			return err
+	return err
+
+
+## PROCESS_MODE_ALWAYS on the overlay the pause card opens -- stated where it is
+## built, rather than inherited from a parent node or handed out by OverlayScreen.
+##
+## The pause card holds the tree still. An overlay frozen by the pause that owns it
+## has dead buttons, a Back that does nothing and no way out of it. Inheriting from
+## the parent would resolve to ALWAYS today only because the card happens to be
+## ALWAYS, and would invert silently the day it is reparented.
+func test_the_overlay_opened_over_a_paused_tree_states_its_process_mode() -> String:
+	var keys := KeyBindingScreen.build()
+	var err: String = _T.assert_eq(keys.process_mode, Node.PROCESS_MODE_ALWAYS,
+		"KeyBindingScreen.build() states its process mode rather than inheriting one")
+	if err == "":
+		err = _T.assert_eq(String(keys.name), KeyBindingScreen.NODE_NAME,
+			"and gives it the name both doors and the devtools bridge press by")
+	keys.free()
+	if err == "":
+		# And the base does NOT hand it out: an overlay that got ALWAYS from its base
+		# class would have an inherited fact again, one layer further away.
+		var plain := OptionsScreen.new()
+		err = _T.assert_eq(plain.process_mode, Node.PROCESS_MODE_INHERIT,
+			"OverlayScreen does not give every overlay PROCESS_MODE_ALWAYS behind its back")
+		plain.free()
+	return err
 
 
 ## The rebinding itself, end to end: arm a row, press a key, and find the InputMap,
@@ -1585,16 +1691,11 @@ func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
 				"v%d\n0\n0\nm0\ncb1\n0\n" % RunConfig.SAVE_VERSION,
 				"and it is written down beside the scores, not held for the session")
 	if err == "":
-		# Nothing on the paper may run off it or sit on top of anything else, and
-		# the footer must stand CLEAR of the last row rather than merely not
-		# intersecting it -- Rect2.intersects is false for boxes sharing an edge,
-		# which is how the sibling screen's footer once sat flush and passed.
-		err = _screen_rows_fit_and_do_not_overlap(screen, OptionsScreen.PANEL)
-	if err == "":
-		var last: Button = screen.get_node("RowButton%d" % (screen.rows().size() - 1)) as Button
-		var back: Button = screen.get_node("BackButton") as Button
-		err = _T.assert_gte(back.position.y - (last.position.y + last.size.y), OptionsScreen.FOOTER_GAP,
-			"the footer stands clear of the last row by at least FOOTER_GAP")
+		# Nothing on the paper may run off it or sit on top of anything else, and the
+		# footer must stand CLEAR of the last row rather than merely not intersecting
+		# it. Both halves are the shared helper's now: this screen and the Keys screen
+		# were asserting the same rule at two different numbers.
+		err = _overlay_content_fits_and_stands_clear(screen)
 
 	_T.free_ui(screen)
 	RunConfig.save_path = stashed_path
