@@ -66,3 +66,35 @@ still collide; only the command bus itself is isolated by `--isolated`.
 
 That combination means: wrong flag, not a resource fight. Switch to `--isolated
 --kill-survivors` before spending more time on any other theory.
+
+## A second hang that looks identical and has nothing to do with this bug
+
+`--isolated --kill-survivors` used correctly (verified `--session`/`--userdata` pair,
+printed and copied) can *still* time out at "the bus never answered a ping within 20s"
+— alive process, near-zero CPU, one thread. Before concluding it's the bug above again,
+check the window title:
+
+```bash
+powershell -Command "Get-Process -Id <pid> | Select-Object MainWindowTitle"
+```
+
+If it reads `ALERT!`, the process is not idle on a malformed command line — it is
+blocked on a genuine, modal `OS.alert()` box, almost always "Main scene's path could not
+be resolved from UID. Make sure the project is imported first." That box draws no child
+controls (`EnumChildWindows` returns nothing), so reading the message text means
+screen-scraping the window with `PrintWindow` into a bitmap rather than pulling text out
+of a control.
+
+The cause: `godot --headless --path . --import` can print a clean-looking run all the
+way through `[ DONE ] reimport` and still not have written `.godot/uid_cache.bin` —
+observed once in a fresh worktree with a sibling agent's own `--import` running
+concurrently in a different worktree at the same time. `ls .godot/uid_cache.bin` after
+an import that looked clean is the fast check; a second, identical `--import` call wrote
+it and the next `launch` came up clean. This is a different failure of the same
+underlying tool as the segfault-then-clean-retry gap already logged against the harness
+(G-044) — here the first run didn't error at all, it just silently didn't finish the one
+file the next launch depends on.
+
+`--isolated` does nothing to fix this — it isolates the command bus, not the import
+cache, and killing and relaunching just reproduces the same alert with a new pid. Rerun
+`--import` (and confirm `uid_cache.bin` exists) before touching `launch` again.
