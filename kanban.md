@@ -1731,3 +1731,35 @@ of what the design doc already says, rather than being bolted on.
   the colourblind bars are currently on. An Options screen beside it — or a second
   column on the one that is already there — is a small change now that all three
   flags already round-trip through `RunConfig`.
+
+### New this cycle (27 of 30) — grown from the features above
+
+- **Three overlays now build the same chrome three times.** `key_binding_screen.gd`
+  (347 lines), `options_screen.gd` (350) and `notebook_screen.gd` (758) each hand-roll
+  a `Backdrop` ColorRect at `Color(GardenTheme.INK, 0.88)`, a `Paper` Panel with
+  `paper_panel()`, a `BackButton` top-left and a `back_requested` signal — and the
+  Options screen was written by copying the Keys screen deliberately, which is why its
+  node names match to the letter. That copy was the right call under time pressure and
+  it is now three places to fix a chrome bug in. The hard-won layout rule those two
+  share — that the panel is sized from its row count and the footer clearance is a
+  minimum GAP, because `Rect2.intersects` is false for boxes sharing an edge — is
+  stated twice and enforced by two separate tests. An `OverlayScreen` base that owns
+  the backdrop, the paper, the Back button and that one assertion would leave each
+  screen holding only its own rows.
+
+- **The title screen is now five buttons at every floor at once.** `BUTTON_TOP` came
+  up to 208, the heights are 44/40 against a `findings` touch-target gate of 40, and
+  `BUTTON_GAP` is down to 8 — the Options work paid for its row out of three places
+  because no single one had slack. There is no sixth row available at any price, and
+  the next screen anyone adds (a credits page, a difficulty picker, the trophy shelf
+  if it ever leaves the notebook) hits a wall rather than a squeeze. Worth deciding
+  now whether the title column becomes a scrolling list, a two-column grid, or whether
+  secondary destinations move behind a single "More" door.
+
+- **`Sfx` and `Music` mute live only as long as the process, and the Options screen
+  now shows that asymmetry to the player.** `RunConfig.colorblind_safe` round-trips
+  through the save; the two mute flags never have — they were keystroke-only and their
+  volatility was invisible. Putting all three in one list, each with an On/Off state
+  button, makes "these two forget and that one does not" a thing a player can notice
+  and be annoyed by. `v6c` is filed to persist them; the point here is that surfacing
+  a set of options is what turned an unremarkable gap into a visible inconsistency.
