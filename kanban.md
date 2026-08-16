@@ -175,6 +175,111 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
 
 ## Cool new features (idea backlog)
 
+### New this cycle (4 of 30) — grown from the five features above
+
+- **The post-mortem can only count what the run lost, because those are the only
+  numbers anything ever kept.** `RunSummary.summary_rows()` (run_summary.gd:133) lists
+  five rows and four of them are damage: waves survived, threat reached, garden lost,
+  compost swept, weakest ground. There is no pests-killed counter anywhere in the
+  project — `Game._on_pest_died` (game.gd:255) is the single funnel every kill in the
+  game passes through, and it adds seeds and drops a husk without incrementing anything.
+  Same for plants: `_on_plant_destroyed` (game.gd:405) shows a 4-second message and
+  frees the node, so "a hungry pest ate three of your beds" is not a fact the run
+  retains. Same for time: nothing in `game/` calls `Time.` at all, so a 40-minute
+  endless run and a 90-second faceplant report the same shape of card. And "Compost
+  swept 14" has no denominator, because `CompostMeter._process` (compost_meter.gd:105)
+  erases an expired husk from `_husks` with no signal and no tally while
+  `total_collected` only ever counts the ones you caught. Four integers at four call
+  sites that already exist, and `Game.state()` (game.gd:617) is already the dictionary
+  they'd travel in.
+- **One high score serves two different games, and the title screen calls it by the
+  wrong name.** `Game._end_run` files `RunConfig.record_score(bank.seeds_earned_total)`
+  (game.gd:286) with no mode check at all, so a campaign run writes the same single line
+  of `user://highscore.save` (run_config.gd:11) that an endless run does — and
+  `TitleScreen.high_score_text()` (title_screen.gd:160) renders it as "Best endless run:
+  %d seeds grown", or "No endless run on record yet." when it is zero. Finish the
+  eight-wave campaign and the gate now reports an endless record you never set. It also
+  makes the campaign's own score dead on arrival: one endless run past wave 40 pins the
+  number somewhere eight waves of aphids can never reach, so `RunSummary._score_line()`
+  (run_summary.gd:123) tells every campaign player forever that their best is a number
+  from a different mode. Two keys in the save file, or a furthest-wave record kept
+  beside the seed one, and each mode gets a score it can actually beat.
+- **The placement ring is drawn with exactly as much confidence over a cell that
+  covers nothing.** `Game._update_preview` (game.gd:559) sets `reach`, `placeable` and
+  `at_risk`, and `PlacementPreview._draw` (placement_preview.gd:76) paints the coverage
+  arc at that radius whenever the cell is legal and affordable — legality being road,
+  occupancy and money, never usefulness. The board is 14x9 with a 32-cell road cut
+  through it, which leaves 94 buildable cells; at `CornCobbler.RANGE` 176.0 (2.75 cells)
+  **15 of those 94 reach no road cell whatsoever**, and at `ChompFlower.GRAB_RADIUS`
+  73.6 px it is **34 of 94**. The best cob cell on this map covers 10 road cells and the
+  worst covers 0, and the preview shows both the same green circle before charging the
+  same 10 seeds. The preview already holds a `Board` reference for the `is_road_adjacent`
+  check that drives `at_risk` (game.gd:576) — counting road cells inside `reach` is one
+  loop over the same path list, and "covers 7 lane tiles" versus "covers none" is the
+  single most decision-shaped number the hover cue could carry.
+- **A plant's health only ever goes down, and the cheapest repair in the game is to
+  destroy it.** `Plant.health` (plant.gd:20) starts at `MAX_HEALTH` 40.0 and
+  `take_damage()` is its only writer — there is no heal, no regen, no repair action, so
+  a Corn Cobbler that survived a hungry pest at 6/40 stays at 6/40 for the rest of the
+  run and dies to 0.43 seconds of the next one (`Pest.EAT_DPS` 14.0). Meanwhile
+  `uproot_refund()` (plant.gd:114) is `floor(PlantCatalog.cost(kind) * 0.6)` read
+  straight off the catalogue and never off `health`: uprooting a nearly-dead Corn pays
+  the same 6 seeds as uprooting a pristine one, and replanting costs 10. So the correct
+  play on any damaged plant is uproot-and-replant for a net 4 seeds, a two-click ritual
+  the game never mentions, and the selection panel's new health bar exists to tell you
+  to perform it. Either price the refund against remaining health — which makes a
+  wrecked plant genuinely a loss — or sell an actual repair, and let the bar be a
+  decision instead of a chore.
+- **The rare packet is a button that works once per run, because the catalogue has
+  three plants in it.** `PlantCatalog.PLANTS` (plant_catalog.gd:14) holds Corn (tier 1),
+  Chomp (tier 1) and Sunflower (tier 2), and `SeedBank.PACKET_TIERS[&"rare"]`
+  (seed_bank.gd:32) has `max_tier` 99 — a ceiling with exactly one plant under it. Pull
+  the Sunflower and the 45-seed button greys out for good. The shape of the missing
+  fourth plant is already dictated by what the board can't answer: nothing slows,
+  nothing hits an area, and nothing at all counters `winged`, which
+  `ChompFlower._nearest_free_pest` (chomp_flower.gd:68) skips with a bare `continue` so
+  that only Corn can ever touch it. A tier-2 plant that reaches the air, or one that
+  slows a lane so an armoured beetle's doubled 5.2s chew (pest.gd:212) stops taking a
+  Chomp off the board, would give the rare tier a second thing to hold and give the
+  mutation system its first piece of counter-play rather than only a tax.
+- **The economy plant is the one plant with nothing on the board to read.** The cob
+  just earned a permanent muzzle fan — pips on the exact angles it fires at
+  (corn_cobbler.gd:39-47), visible without clicking anything — while `Sunflower`
+  (sunflower.gd:11-12) runs a 6.0s `INTERVAL` paying `YIELD` 3 and shows it nowhere. The
+  only readout is `hud.gd:562`'s "Next %d seeds in %.0fs", which costs a click on that
+  specific flower, and `_bloom()` (sunflower.gd:30) is a 0.28s scale pulse that fires
+  *at* the payout — the one moment the information is worthless, because the seeds have
+  already landed. Five sunflowers in a corner are five identical yellow dots on
+  independent clocks the player cannot see, when the interesting reading is "three of
+  these pay out in the next second". A filling ring, running the opposite way to
+  ChompFlower's shrinking `CHEW_RING_RADIUS` 16.0 one so the two never read as the same
+  state, is the same idiom the board already speaks.
+- **The escalation note is a three-second line about a permanent change, and it goes
+  quiet exactly when the ramp stops.** `WaveDirector.escalation_note()`
+  (wave_director.gd:215) is right to return "" inside the fixed table, but past it
+  `Game._on_wave_started` (game.gd:186) folds it into a `show_message` that defaults to
+  3.0 seconds (hud.gd:614) and then the state it described is simply how the game is
+  now, unwritten anywhere. Worse at the caps: `health_scale_for` climbs 0.06/wave to
+  `ENDLESS_HEALTH_MAX` 3.0 and `speed_scale_for` 0.015/wave to 1.6, so around wave 41
+  and wave 48 those adjectives stop appearing — and the absence reads exactly like
+  "nothing got worse" rather than "this is as bad as pests get", while `threat_level`
+  keeps climbing past 20 on its log scale. The selection panel is empty whenever nothing
+  is selected; five one-line scale readouts (`x2.4 tough · x1.5 fast · 62% strange`)
+  would fill it with standing state instead of an adjective the player had to be
+  looking at the status row to catch.
+- **The HUD builds a full-width announcement surface every launch and nothing has
+  called it since the post-mortem shipped.** `Hud._build_banner` (hud.gd:349) creates a
+  48px `Label` 896px wide at y=240 with a drop shadow, and it is still in the live tree —
+  `/root/Game/HUD/Root/Banner` appears in every `scene-tree` snapshot in `.devtools/`.
+  But `show_banner` and `hide_banner` (hud.gd:671, 677) have zero callers anywhere in
+  the repo, tests included: `_end_run` used to banner the result and now builds a
+  `RunSummary` instead. So the game owns the one piece of screen real estate big enough
+  to say something without competing with a clipped 15px status row, and says nothing on
+  it. The moments that currently have to squeeze through the message queue and deserve
+  better are all end-of-something: the last wave of a campaign starting, a new seed
+  record being set mid-run rather than reported on the card afterwards, and the first
+  mutated pest a player ever sees at wave 8.
+
 ### New this cycle (3 of 30) — grown from the four features above
 
 - **The message label has one slot and no queue, and the uproot gate is what proved it
