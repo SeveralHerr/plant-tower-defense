@@ -4908,3 +4908,124 @@ func test_the_suite_reach_checker_still_declares_its_house_contract() -> String:
 		if err != "":
 			return err
 	return ""
+
+
+## Music's mute gate, same shape as Sfx.should_play and asserted the same way:
+## headless has no audio device at all, so this is what stands in for "did it
+## make a sound" -- see Music.should_play's own doc comment.
+func test_music_should_play_respects_mute_and_headless() -> String:
+	# is_headless() is a thin proxy onto Sfx.is_headless() -- Music keeps no
+	# headless flag of its own, same reasoning as Sfx.audio_enabled() reusing
+	# DisplayServer directly. The unit suite always runs headless, so this is
+	# the one branch that is always true in-process.
+	var err: String = _T.assert_true(Music.is_headless(), "the test runner itself is headless")
+	if err == "":
+		err = _T.assert_true(Music.should_play(Music.TITLE, false, false),
+			"unmuted and not headless: the title bed is playable")
+	if err == "":
+		err = _T.assert_false(Music.should_play(Music.TITLE, true, false),
+			"muted silences it even with a real audio device")
+	if err == "":
+		err = _T.assert_false(Music.should_play(Music.RUN, false, true),
+			"headless silences it even unmuted -- there is no device to hear it")
+	if err == "":
+		err = _T.assert_false(Music.should_play(&"nonexistent_track", false, false),
+			"an unknown track id goes quiet rather than erroring, same contract as Sfx")
+	return err
+
+
+## track_for_scene is what play_for_scene actually calls -- TitleScreen and
+## Game both hand it their own scene_file_path rather than naming a track, so
+## this map is the whole answer to "which bed does this scene play".
+func test_music_track_for_scene_maps_title_and_game() -> String:
+	var err: String = _T.assert_eq(Music.track_for_scene("res://game/title.tscn"), Music.TITLE,
+		"the title screen plays the title bed")
+	if err == "":
+		err = _T.assert_eq(Music.track_for_scene("res://game/game.tscn"), Music.RUN,
+			"the run plays the in-run bed")
+	if err == "":
+		# Not every scene has an opinion -- the post-mortem card is an overlay
+		# inside game.tscn, not a scene change, and Game._end_run calls
+		# play_title() directly for that transition instead of going through
+		# this map. See SCENE_TRACKS' own doc comment.
+		err = _T.assert_eq(Music.track_for_scene("res://game/does_not_exist.tscn"), &"",
+			"an unmapped scene path is silently no opinion, not an error")
+	return err
+
+
+## Every id TRACKS promises actually resolves to a loadable, loop-enabled
+## stream -- the music equivalent of the sfx table test one screen up. A typo'd
+## path here fails in exactly the way sound always fails: by being silent.
+func test_every_music_track_actually_loads_and_loops() -> String:
+	for track: StringName in Music.TRACKS.keys():
+		var path: String = String(Music.TRACKS[track])
+		var err: String = _T.assert_true(ResourceLoader.exists(path),
+			"Music.TRACKS['%s'] names a file that exists: %s" % [track, path])
+		if err != "":
+			return err
+		var stream: AudioStream = load(path) as AudioStream
+		err = _T.assert_true(stream != null, "and it loads as an AudioStream: %s" % path)
+		if err != "":
+			return err
+		var ogg := stream as AudioStreamOggVorbis
+		err = _T.assert_true(ogg != null, "it is an .ogg, the format _stream_for sets .loop on: %s" % path)
+		if err != "":
+			return err
+	return ""
+
+
+## play_for_scene / play_title cannot be heard headless (should_play gates
+## every actual player on is_headless()), but the track *decision* is made
+## before that gate -- see Music._play, which sets _current_track first and
+## only then checks whether anything can play it. current_track() is what
+## exposes that decision, so this exercises all three public entry points
+## without a live game: the selection is real even where the sound is not.
+func test_music_play_for_scene_updates_current_track_headlessly() -> String:
+	Music.play_for_scene("res://game/title.tscn")
+	var err: String = _T.assert_eq(Music.current_track(), Music.TITLE,
+		"landing on the title scene selects the title bed")
+	if err == "":
+		Music.play_for_scene("res://game/game.tscn")
+		err = _T.assert_eq(Music.current_track(), Music.RUN,
+			"landing on the game scene selects the in-run bed")
+	if err == "":
+		# Unmapped path: SCENE_TRACKS has no opinion, so the current selection
+		# must not change underneath whatever was already chosen.
+		Music.play_for_scene("res://game/does_not_exist.tscn")
+		err = _T.assert_eq(Music.current_track(), Music.RUN,
+			"an unmapped scene leaves the current bed alone rather than silencing it")
+	if err == "":
+		# The direct-override entry point Game._end_run calls -- not reachable
+		# through SCENE_TRACKS at all, see that map's own doc comment.
+		Music.play_title()
+		err = _T.assert_eq(Music.current_track(), Music.TITLE,
+			"play_title() overrides the scene mapping for the post-mortem transition")
+	return err
+
+
+## refresh_mute() and stop_all() touch only AudioStreamPlayer state, which
+## headless never builds (Music._ensure_host is never reached — should_play
+## is false before it), so the one thing left to assert headlessly is that
+## neither call disturbs the track *selection*, and that toggling Sfx's mute
+## and calling refresh_mute() around it is safe to do in either order. Mute
+## is restored to false at the end regardless of outcome, since it is process-
+## global state every later test shares.
+func test_music_refresh_mute_and_stop_all_do_not_touch_track_selection() -> String:
+	Music.play_title()
+	var err: String = _T.assert_eq(Music.current_track(), Music.TITLE, "starting selection is the title bed")
+	if err == "":
+		Sfx.set_muted(true)
+		Music.refresh_mute()
+		err = _T.assert_eq(Music.current_track(), Music.TITLE,
+			"muting through refresh_mute() silences playback, not the selection")
+	if err == "":
+		Music.stop_all()
+		err = _T.assert_eq(Music.current_track(), Music.TITLE,
+			"stop_all() is a playback command too -- same non-effect on the selection")
+	if err == "":
+		Sfx.set_muted(false)
+		Music.refresh_mute()
+		err = _T.assert_eq(Music.current_track(), Music.TITLE,
+			"unmuting resumes the same bed rather than picking a new one")
+	Sfx.set_muted(false)
+	return err

@@ -117,6 +117,8 @@ func _ready() -> void:
 	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(backdrop)
 
+	Music.play_for_scene(scene_file_path)
+
 	_build_scenery()
 	_build_text()
 	_build_buttons()
