@@ -1239,3 +1239,328 @@ func _corn_volley_damage(level: int, distance: float) -> float:
 	var dealt: float = beetle.max_health - beetle.health
 	_T.free_ui(host)
 	return dealt
+
+
+# -- Endless is a composition ramp, not a headcount (plant-tower-defense-efv) --
+#
+# The filed defect, re-derived off the constants: the aphid gap floors at wave 22,
+# the beetle gap at 28, mutation chance at 31, health at 42 and speed at 48. From
+# wave 49 the only endless scale still moving was `count`, and nothing capped it —
+# 166 pests at wave 48, 376 at 108, 1748 at 500. Against the real 2112 px road and
+# the capped speeds an aphid crosses in 16.9 s, so a 0.16 s gap alone puts 106 of
+# them on the board; sweeping the whole schedule the peak was 115 alive at once by
+# wave 40, on a 32-cell road. Difficulty had become quantity, which is the exact
+# thing the ENDLESS_HEALTH_STEP header says those scales exist to prevent.
+#
+# The fix is a road budget plus a mix that keeps rotating: the swarm is pinned at
+# its share and every later wave buys one more beetle instead. These assert the
+# ceiling, the axis that replaced count, and — the load-bearing one — that the
+# threat readout still prices the new ramp, since a difficulty that comes out of
+# composition is invisible to any formula that only reads per-pest multipliers.
+
+
+func test_an_endless_wave_never_fills_the_road_past_the_stated_ceiling() -> String:
+	## The acceptance criterion. Swept rather than sampled, because the worst wave
+	## is not the deepest one: the peak lands at wave 20, where the swarm and the
+	## column are both still small enough to sit on the road together at their
+	## natural spacing, and a test that only looked at wave 100 would miss it.
+	var ceiling: int = WaveDirector.SIMULTANEOUS_PEST_CEILING
+	var err: String = _T.assert_gt(ceiling, 0, "there is a ceiling to check against")
+	if err != "":
+		return err
+	var checked: int = 0
+	var worst: int = 0
+	var worst_wave: int = 0
+	for wave: int in range(1, 301):
+		var peak: int = WaveDirector.peak_simultaneous_pests(wave)
+		err = _T.assert_gte(ceiling, peak,
+			"wave %d puts at most %d pests on the road at once, inside the %d ceiling"
+				% [wave, peak, ceiling])
+		if err != "":
+			return err
+		if peak > worst:
+			worst = peak
+			worst_wave = wave
+		checked += 1
+	# And it holds arbitrarily far out, which is the half a 300-wave sweep cannot
+	# claim — the pacing is derived from the crossing time, so it has no horizon.
+	for wave: int in [500, 1000, 5000]:
+		var deep_peak: int = WaveDirector.peak_simultaneous_pests(wave)
+		err = _T.assert_gte(ceiling, deep_peak,
+			"wave %d is still inside the ceiling (%d of %d)" % [wave, deep_peak, ceiling])
+		if err != "":
+			return err
+		checked += 1
+	err = _T.assert_gt(checked, 100, "the sweep really walked the curve (%d waves)" % checked)
+	if err == "":
+		# The named number stated in wave_director.gd, asserted rather than trusted.
+		err = _T.assert_gte(ceiling, WaveDirector.peak_simultaneous_pests(100),
+			"wave 100 — the wave the issue was filed about — peaks at %d"
+				% WaveDirector.peak_simultaneous_pests(100))
+	if err == "":
+		# A ceiling nothing ever approaches is not a constraint, it is decoration.
+		# Before this change the same sweep peaked at 115.
+		err = _T.assert_gt(worst, ceiling / 2,
+			"and the ceiling is a real constraint — the worst wave (%d) reaches %d of %d"
+				% [worst_wave, worst, ceiling])
+	return err
+
+
+func test_the_spawn_pacing_measures_the_road_the_pests_actually_walk() -> String:
+	## The pacing is `crossing time / share`, so every number above rests on the
+	## director's idea of the road being the road. It derives that from
+	## Board.PATH_CORNERS rather than from a real Board, which is fast and pure and
+	## would go silently wrong the day the path shape changed — so this walks the
+	## polyline Board really hands the pests and compares.
+	var board := Board.new()
+	var route: PackedVector2Array = board.route()
+	var walked: float = 0.0
+	for i: int in range(route.size() - 1):
+		walked += route[i].distance_to(route[i + 1])
+	board.free()
+
+	var slow: float = WaveDirector.crossing_seconds(Pest.BEETLE, 1)
+	var quick: float = WaveDirector.crossing_seconds(Pest.APHID, 1)
+	var err: String = _T.assert_gt(route.size(), 2, "the board handed back a real route")
+	if err == "":
+		err = _T.assert_float_eq(WaveDirector.route_length(), walked, 0.001,
+			"the director prices a %.0f px walk, which is the %.0f px Board actually lays out"
+				% [WaveDirector.route_length(), walked])
+	if err == "":
+		err = _T.assert_gt(slow, quick,
+			"a beetle is longer on the road than an aphid (%.1fs vs %.1fs), which is why it costs more of the budget"
+				% [slow, quick])
+	if err == "":
+		err = _T.assert_float_eq(quick, walked / float(Pest.SPECIES[Pest.APHID]["speed"]), 0.001,
+			"and an unscaled aphid's crossing is just the walk over its own speed")
+	if err == "":
+		# Endless speeds the pests up, which shortens the crossing, which lets the
+		# same share of road take them closer together. The pacing has to move with
+		# it or it prices wave 100 at wave 9's speeds.
+		err = _T.assert_gt(WaveDirector.crossing_seconds(Pest.APHID, 1),
+			WaveDirector.crossing_seconds(Pest.APHID, 100),
+			"a wave-100 aphid crosses faster (%.1fs) than a wave-1 one (%.1fs)"
+				% [WaveDirector.crossing_seconds(Pest.APHID, 100),
+					WaveDirector.crossing_seconds(Pest.APHID, 1)])
+	return err
+
+
+func test_endless_still_gets_harder_after_every_per_pest_scale_has_capped() -> String:
+	## The other half of the acceptance criterion, and the reason the fix could not
+	## just be "cap the count": with a ceiling on the road AND a ceiling on every
+	## per-pest multiplier, a wave with nothing left to grow is a wave the player's
+	## board beats forever. The first block pins that all four of the old scales
+	## really are dead past wave 48, so the climb below cannot be coming from them.
+	var late: int = 49
+	var far: int = 500
+	var err: String = _T.assert_float_eq(WaveDirector.health_scale_for(far),
+		WaveDirector.health_scale_for(late), 0.0001, "health has stopped by wave %d" % late)
+	if err == "":
+		err = _T.assert_float_eq(WaveDirector.speed_scale_for(far),
+			WaveDirector.speed_scale_for(late), 0.0001, "so has speed")
+	if err == "":
+		err = _T.assert_float_eq(WaveDirector.mutation_chance_for(far),
+			WaveDirector.mutation_chance_for(late), 0.0001, "so has the mutation rate")
+	if err != "":
+		return err
+
+	var steps: int = 0
+	var previous: float = WaveDirector.threat_for(late - 1)
+	for wave: int in range(late, 301):
+		var threat: float = WaveDirector.threat_for(wave)
+		err = _T.assert_gt(threat, previous,
+			"wave %d (x%.1f) is harder than wave %d (x%.1f) with every multiplier already capped"
+				% [wave, threat, wave - 1, previous])
+		if err != "":
+			return err
+		previous = threat
+		steps += 1
+	err = _T.assert_gt(steps, 100, "the climb was actually walked (%d waves)" % steps)
+	if err == "":
+		# The design constraint, stated as the number it is: wave 500 must not merely
+		# tie wave 100 to four decimal places.
+		err = _T.assert_gt(WaveDirector.threat_for(500), WaveDirector.threat_for(100) * 4.0,
+			"wave 500 (x%.0f) is several times wave 100 (x%.0f), not a rounding error above it"
+				% [WaveDirector.threat_for(500), WaveDirector.threat_for(100)])
+	if err == "":
+		err = _T.assert_gte(WaveDirector.threat_level(500), WaveDirector.threat_level(100) + 3,
+			"and the player-facing level moved with it (%d -> %d)"
+				% [WaveDirector.threat_level(100), WaveDirector.threat_level(500)])
+	return err
+
+
+func test_the_beetle_column_is_the_axis_that_replaced_the_headcount() -> String:
+	## Which axis is doing the work, asserted directly. The swarm holds its size
+	## forever and the column grows every single wave — so a later wave is not more
+	## pests, it is the same road spent on heavier ones.
+	var table: int = WaveDirector.WAVES.size()
+	var first: Array = WaveDirector.groups_for(table + 1)
+	var err: String = _T.assert_eq(first.size(), 2, "an endless wave is still a swarm and a column")
+	if err != "":
+		return err
+	var checked: int = 0
+	var previous_beetles: int = 0
+	for wave: int in range(table + 1, 301):
+		var groups: Array = WaveDirector.groups_for(wave)
+		var aphids: int = int(groups[0]["count"])
+		var beetles: int = int(groups[1]["count"])
+		err = _T.assert_eq(aphids, WaveDirector.ENDLESS_APHID_SHARE,
+			"wave %d's swarm is still exactly its road share (%d)" % [wave, aphids])
+		if err == "":
+			err = _T.assert_gt(beetles, previous_beetles,
+				"and its column is one beetle deeper than wave %d's (%d vs %d)"
+					% [wave - 1, beetles, previous_beetles])
+		if err != "":
+			return err
+		previous_beetles = beetles
+		checked += 1
+	err = _T.assert_gt(checked, 100, "the sweep compared something (%d waves)" % checked)
+	if err != "":
+		return err
+
+	# The rotation, as the player would describe it: the wave stops being mostly
+	# aphids and becomes mostly beetles.
+	var early: float = _beetle_fraction(table + 1)
+	var deep: float = _beetle_fraction(500)
+	err = _T.assert_true(early < 0.5,
+		"the first endless wave is still mostly swarm (%.0f%% beetle)" % [early * 100.0])
+	if err == "":
+		err = _T.assert_gt(deep, 0.9,
+			"and wave 500 is almost all column (%.0f%% beetle)" % [deep * 100.0])
+	if err == "":
+		# The player-facing half. This line used to go silent at exactly the wave
+		# the ramp stopped, which reads as "nothing got worse".
+		err = _T.assert_true(WaveDirector.escalation_note(500).contains("heavier"),
+			"and the wave-start note still names what changed at wave 500 (got '%s')"
+				% WaveDirector.escalation_note(500))
+	if err == "":
+		err = _T.assert_eq(WaveDirector.escalation_note(WaveDirector.WAVES.size()), "",
+			"while the campaign says nothing, the way it always did")
+	return err
+
+
+func test_the_threat_readout_prices_the_composition_ramp_exactly() -> String:
+	## The subtle one. Difficulty now comes out of what a wave is made of, and
+	## _raw_threat weighs a wave by species health — so the two either agree or the
+	## number on the bar is a lie. Past wave 48 every multiplier is pinned, so the
+	## whole of a wave-to-wave threat rise must be the one beetle that got added,
+	## and that is checkable to the decimal rather than as "it went up".
+	var reference: float = float(WaveDirector.pests_in_wave(1)) * float(Pest.SPECIES[Pest.APHID]["health"])
+	var err: String = _T.assert_gt(reference, 0.0, "wave 1 is a real reference to measure against")
+	if err != "":
+		return err
+	var compared: int = 0
+	for wave: int in [60, 100, 137, 250, 499]:
+		var mutations: float = 1.0 + WaveDirector.mutation_chance_for(wave) * WaveDirector.MUTATION_THREAT_WEIGHT
+		var scales: float = WaveDirector.health_scale_for(wave) * WaveDirector.speed_scale_for(wave) * mutations
+		var added: float = float(Pest.SPECIES[Pest.BEETLE]["health"]) * float(WaveDirector.ENDLESS_BEETLE_STEP)
+		var one_beetle: float = added * scales / reference
+		var measured: float = WaveDirector.threat_for(wave + 1) - WaveDirector.threat_for(wave)
+		err = _T.assert_float_eq(measured, one_beetle, 0.001,
+			"wave %d -> %d moves the threat by x%.3f, which is exactly the beetle it added (x%.3f)"
+				% [wave, wave + 1, measured, one_beetle])
+		if err != "":
+			return err
+		compared += 1
+	err = _T.assert_gt(compared, 3, "several waves were priced (%d)" % compared)
+	if err != "":
+		return err
+
+	# And the ranking holds the other way round: a heavier mix always prices above
+	# a lighter one, so the tint and the readout cannot invert against the board.
+	var previous: float = 0.0
+	var ranked: int = 0
+	for wave: int in range(1, 301):
+		var threat: float = WaveDirector.threat_for(wave)
+		err = _T.assert_gt(threat, previous,
+			"wave %d (x%.2f) never prices below wave %d (x%.2f)" % [wave, threat, wave - 1, previous])
+		if err != "":
+			return err
+		previous = threat
+		ranked += 1
+	if err == "":
+		err = _T.assert_gt(ranked, 100, "the ranking sweep ran (%d waves)" % ranked)
+	if err == "":
+		err = _T.assert_float_eq(WaveDirector.threat_for(1), 1.0, 0.0001,
+			"and wave 1 is still the unit the whole scale is quoted in")
+	if err == "":
+		# The pacing must stay invisible to the price. It only ever loosens a wave,
+		# so a threat that noticed it would report the road budget as a nerf.
+		var groups: Array = WaveDirector.groups_for(100)
+		err = _T.assert_gt(float(groups[1]["gap"]), 0.5,
+			"wave 100's column really is paced out (%.2fs between beetles, past the 0.5s the curve asks for)"
+				% float(groups[1]["gap"]))
+	return err
+
+
+func test_the_fixed_eight_wave_campaign_is_untouched_by_the_road_budget() -> String:
+	## Endless and campaign share this file, and the road budget is written in terms
+	## of `wave - WAVES.size()`, so campaign is untouched by construction rather than
+	## by a mode flag. Asserted anyway, against the literal table, because "by
+	## construction" is a claim about code that someone edits next week.
+	var expected: Array[int] = [5, 9, 9, 14, 13, 19, 19, 29]
+	var err: String = _T.assert_eq(WaveDirector.WAVES.size(), expected.size(),
+		"the campaign is still eight waves long")
+	if err != "":
+		return err
+	for wave: int in range(1, expected.size() + 1):
+		err = _T.assert_eq(WaveDirector.pests_in_wave(wave), expected[wave - 1],
+			"wave %d still sends %d pests" % [wave, expected[wave - 1]])
+		if err == "":
+			err = _T.assert_float_eq(WaveDirector.health_scale_for(wave), 1.0, 0.0001,
+				"and an unscaled pest")
+		if err == "":
+			err = _T.assert_float_eq(WaveDirector.speed_scale_for(wave), 1.0, 0.0001,
+				"at an unscaled speed")
+		if err == "":
+			err = _T.assert_float_eq(WaveDirector.mutation_chance_for(wave),
+				WaveDirector.MUTATION_CHANCE, 0.0001, "at the flat campaign mutation rate")
+		if err != "":
+			return err
+
+	# The groups themselves, not just the headcount: the pacing rewrote how gaps are
+	# chosen, and a campaign wave whose spacing had drifted would still send the
+	# right number of pests.
+	var groups: Array = WaveDirector.groups_for(WaveDirector.WAVES.size())
+	var table: Array = WaveDirector.WAVES[WaveDirector.WAVES.size() - 1]
+	err = _T.assert_eq(groups.size(), table.size(), "wave 8 is still two groups")
+	if err != "":
+		return err
+	var compared: int = 0
+	for i: int in range(table.size()):
+		var built: Dictionary = groups[i]
+		var written: Dictionary = table[i]
+		err = _T.assert_eq(String(built["species"]), String(written["species"]),
+			"group %d is still %s" % [i, written["species"]])
+		if err == "":
+			err = _T.assert_eq(int(built["count"]), int(written["count"]), "of the same size")
+		if err == "":
+			err = _T.assert_float_eq(float(built["gap"]), float(written["gap"]), 0.0001,
+				"at the gap the table writes down (%.2fs)" % float(written["gap"]))
+		if err == "":
+			err = _T.assert_float_eq(float(built["lead"]), float(written["lead"]), 0.0001,
+				"after the lead the table writes down")
+		if err != "":
+			return err
+		compared += 1
+	err = _T.assert_gt(compared, 0, "there were groups to compare, not an empty table passing quietly")
+	if err == "":
+		err = _T.assert_gte(WaveDirector.SIMULTANEOUS_PEST_CEILING,
+			WaveDirector.peak_simultaneous_pests(WaveDirector.WAVES.size()),
+			"and the hardest campaign wave was always inside the ceiling anyway (%d)"
+				% WaveDirector.peak_simultaneous_pests(WaveDirector.WAVES.size()))
+	return err
+
+
+## What fraction of `wave`'s bodies are beetles. The composition ramp, as one
+## number — a wave that is 24% beetle and one that is 96% beetle are the same
+## shape and completely different fights.
+func _beetle_fraction(wave: int) -> float:
+	var beetles: int = 0
+	var total: int = 0
+	for group: Dictionary in WaveDirector.groups_for(wave):
+		var count: int = int(group["count"])
+		total += count
+		if StringName(group["species"]) == Pest.BEETLE:
+			beetles += count
+	return 0.0 if total == 0 else float(beetles) / float(total)

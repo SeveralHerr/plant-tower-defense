@@ -34,10 +34,57 @@ const MUTATION_CHANCE_MAX: float = 0.85
 ## fast. Hence a 3x health ceiling against a 1.6x speed one — at the cap an
 ## aphid crosses a 64px cell in half a second, which a placed Corn Cobbler can
 ## still act inside.
+##
+## Both of these stop, and so does everything else that scales a pest — which is
+## what SIMULTANEOUS_PEST_CEILING below is about.
 const ENDLESS_HEALTH_STEP: float = 0.06
 const ENDLESS_HEALTH_MAX: float = 3.0
 const ENDLESS_SPEED_STEP: float = 0.015
 const ENDLESS_SPEED_MAX: float = 1.6
+
+## --- The road is a fixed-size pipe -----------------------------------------
+##
+## Every endless scale stops except one. Measured off the constants above: the
+## aphid spawn gap floors at wave 22, the beetle gap at 28, mutation chance at
+## 31, health at 42 and speed at 48. From wave 49 the only thing still moving
+## was the headcount — and nothing capped it. 166 pests at wave 48, 376 at
+## wave 108, 1748 at wave 500.
+##
+## Against the real road (Board.PATH_CORNERS is 31 cells plus the off-board
+## entry and exit, so 2112 px) and the capped speeds, an aphid crosses in
+## 16.9 s and a beetle in 34.7 s. A group spaced `gap` apart therefore has
+## `crossing / gap` of itself walking at once, and at the 0.16 s floor that is
+## 106 aphids. Sweeping the real schedule, the peak is 115 pests alive at once
+## by wave 40 and it never comes down again — on a 14x9 board with a 32-cell
+## road, i.e. three and a half pests per cell of road. That is the quantity
+## problem the ENDLESS_HEALTH_STEP block above says these scales exist to
+## avoid, arrived at from the other direction.
+##
+## So the road gets a budget. No wave paces more than this many pests onto it,
+## at any wave number, forever. What grows instead is the mix — see
+## _endless_groups.
+const SIMULTANEOUS_PEST_CEILING: int = 40
+
+## How that ceiling is split between the wave's two groups. They sum to it
+## exactly, which is what makes the bound hold by construction rather than by
+## tuning: each group is paced so that it alone never has more than its share
+## walking, so the wave can never have more than their sum.
+##
+## The swarm keeps the size the last wave of the fixed table gave it, so
+## nothing visibly shrinks at the seam. The column takes the rest, and by work
+## it is already the heavier half of the road: 18 beetles is 288 points of
+## health against the swarm's 66.
+const ENDLESS_APHID_SHARE: int = 22
+const ENDLESS_BEETLE_SHARE: int = 18
+
+## The beetle column, which is the one endless number left uncapped — and the
+## only one that can be. With the per-pest multipliers capped (deliberately,
+## above) and the road capped too, the only way a later wave can ask more of
+## the player is to spend the same road space on the heavier species. One more
+## beetle every wave, forever: 16 more points of work, and about two more
+## seconds of siege.
+const ENDLESS_BEETLE_BASE: int = 6
+const ENDLESS_BEETLE_STEP: int = 1
 
 ## How much of a wave's threat a mutation roll is worth. Well under 1.0 because
 ## a mutation makes a pest harder to remove, not a second pest.
@@ -139,16 +186,117 @@ func start_next_wave() -> int:
 
 
 ## Past the fixed table, endless keeps the same two-group shape (aphid swarm,
-## beetle knot) and just turns every knob up, so the curve does not visibly
-## reset the moment the table runs out.
+## beetle column), so the curve does not visibly reset the moment the table
+## runs out — but only one of the two still grows.
+##
+## The swarm is pinned at its road share. It arrives exactly as tight as it
+## always did (the 0.30 - over * 0.01 curve, down to its 0.16 s floor) and it is
+## over in about three and a half seconds. Everything a later wave gains goes
+## into the column instead, which is what turns a long run from a quantity
+## problem into a composition one: beetles are 24% of wave 9's bodies, 45% of
+## wave 20's, 69% of wave 50's, 82% of wave 100's and 96% of wave 500's. Same
+## shape on the road, steadily worse contents.
+##
 ## Static so threat_for() can price a wave that is not running — it reads only
 ## `number` and the table size, never instance state.
 static func _endless_groups(number: int) -> Array:
 	var over: int = number - WAVES.size()
+	var beetles: int = endless_beetle_count(over)
 	return [
-		{"species": &"aphid", "count": 20 + over * 3, "gap": maxf(0.16, 0.30 - over * 0.01), "lead": 0.5},
-		{"species": &"beetle", "count": 6 + int(over / 2.0), "gap": maxf(0.5, 0.9 - over * 0.02), "lead": 1.5},
+		{
+			"species": Pest.APHID,
+			"count": ENDLESS_APHID_SHARE,
+			"gap": _paced_gap(maxf(0.16, 0.30 - over * 0.01), Pest.APHID, number,
+				ENDLESS_APHID_SHARE, ENDLESS_APHID_SHARE),
+			"lead": 0.5,
+		},
+		{
+			"species": Pest.BEETLE,
+			"count": beetles,
+			"gap": _paced_gap(maxf(0.5, 0.9 - over * 0.02), Pest.BEETLE, number,
+				beetles, ENDLESS_BEETLE_SHARE),
+			"lead": 1.5,
+		},
 	]
+
+
+## Beetles in the endless wave `WAVES.size() + over`. Clamped at `over <= 0` so
+## escalation_note() can ask what the wave before the first endless one sent
+## without reading off the front of the curve.
+static func endless_beetle_count(over: int) -> int:
+	return ENDLESS_BEETLE_BASE + maxi(0, over) * ENDLESS_BEETLE_STEP
+
+
+## The length of the walk in pixels, entrance to exit. Read off Board's own
+## corner list rather than typed in, so a change to the path shape cannot leave
+## the pacing below quietly pricing the old road. The corners are axis-aligned
+## by construction — Board._build_path steps between them with signi() — so the
+## Manhattan distance IS the walk, and the two extra cells are the off-board
+## entry and exit that Board._build_route brackets the route with.
+static func route_length() -> float:
+	var cells: int = 0
+	for i: int in range(Board.PATH_CORNERS.size() - 1):
+		var delta: Vector2i = Board.PATH_CORNERS[i + 1] - Board.PATH_CORNERS[i]
+		cells += absi(delta.x) + absi(delta.y)
+	return float(cells + 2) * float(Board.CELL)
+
+
+## How long one pest of `species` takes to walk the whole road on `wave`. The
+## other half of the pacing arithmetic: how many of a group are walking at once
+## is its spawn rate times this, and nothing else.
+static func crossing_seconds(species: StringName, wave: int) -> float:
+	var speed: float = float(Pest.SPECIES[species]["speed"]) * speed_scale_for(wave)
+	return route_length() / speed
+
+
+## `natural` is the spacing the escalation curve wants; the return is the
+## spacing the road can take. A group of more than `share` pests has to be
+## spread to `crossing / share` or it stacks up — that, rather than a
+## hard-coded floor, is what a spawn gap's minimum is actually for.
+##
+## A group no bigger than its share needs no floor at all, since it cannot
+## exceed the share however tightly it is packed. That is deliberate and it is
+## why the early endless waves are spaced exactly as they always were: the
+## pacing only starts biting at the wave the road actually fills up.
+static func _paced_gap(natural: float, species: StringName, wave: int, count: int, share: int) -> float:
+	if count <= share:
+		return natural
+	return maxf(natural, crossing_seconds(species, wave) / float(share))
+
+
+## The most pests that can be walking at once during `wave` — the number
+## SIMULTANEOUS_PEST_CEILING is a ceiling on.
+##
+## Every pest is counted from the instant it spawns to the instant it would
+## reach the exit, and nothing is ever killed. That is the pessimistic reading
+## and the honest one: a board that kills nothing is exactly the board the
+## player is about to lose on, and it is the case where the frame rate has to
+## hold up.
+static func peak_simultaneous_pests(wave: int) -> int:
+	var spawns := PackedFloat64Array()
+	var exits := PackedFloat64Array()
+	var cursor: float = 0.0
+	for group: Dictionary in groups_for(wave):
+		cursor += float(group["lead"])
+		var gap: float = float(group["gap"])
+		var crossing: float = crossing_seconds(StringName(group["species"]), wave)
+		for _i: int in range(int(group["count"])):
+			spawns.append(cursor)
+			exits.append(cursor + crossing)
+			cursor += gap
+	spawns.sort()
+	exits.sort()
+	# The count only ever goes up at a spawn, so the peak is always at one — no
+	# need to look anywhere else. A pest whose exit lands exactly on a spawn is
+	# counted as still walking, which is the pessimistic reading and the right
+	# one for a ceiling.
+	var peak: int = 0
+	var gone: int = 0
+	for i: int in range(spawns.size()):
+		while gone < exits.size() and exits[gone] < spawns[i]:
+			gone += 1
+		peak = maxi(peak, i + 1 - gone)
+	return peak
 
 
 ## The groups any wave will send, table or endless. One place that answers
@@ -164,6 +312,20 @@ static func groups_for(wave: int) -> Array:
 ## per-pest multipliers and the mutation rate. Health is the weighting because
 ## it is what a lane has to chew through — 22 aphids and 7 beetles are not
 ## 29 interchangeable units, they are 66 and 112 points of work.
+##
+## That weighting is what keeps the readout honest now that the endless ramp is
+## a composition ramp. Past wave 48 every multiplier below is pinned at its cap,
+## so this reduces to `constant * base health of the mix` and the number on the
+## bar tracks the beetle column one for one — a wave with one more beetle in it
+## prices exactly 16 points higher, and there is no way to make an endless wave
+## harder that this function cannot see. The levers _endless_groups moves are
+## counts and species, which are the two things it reads first.
+##
+## The one thing it deliberately does not read is spacing. It never did, and it
+## must not start: pacing only ever *loosens* a wave (see _paced_gap), so a
+## formula blind to it can only over-state a wave, never under-state one, and a
+## threat number that fell because a wave was spread out would be reporting the
+## fix as a difficulty cut.
 static func _raw_threat(wave: int) -> float:
 	var total: float = 0.0
 	for group: Dictionary in groups_for(wave):
@@ -212,6 +374,12 @@ static func threat_level(wave: int) -> int:
 ## What actually got harder going into `wave`, for the wave-start message. Empty
 ## inside the fixed table, where the table itself is the escalation and naming
 ## "more pests" every wave would be noise.
+##
+## "heavier" is the one that still fires after the other three have hit their
+## caps. Before the beetle column existed this line went silent at exactly the
+## wave the ramp stopped, which read as "nothing got worse" — the note has to
+## keep pace with the axis that is actually still moving or it is worse than
+## nothing.
 static func escalation_note(wave: int) -> String:
 	if wave <= WAVES.size():
 		return ""
@@ -222,9 +390,21 @@ static func escalation_note(wave: int) -> String:
 		parts.append("faster")
 	if mutation_chance_for(wave) > mutation_chance_for(wave - 1):
 		parts.append("stranger")
+	if endless_beetle_count(wave - WAVES.size()) > endless_beetle_count(wave - 1 - WAVES.size()):
+		parts.append("heavier")
+	return _join_words(parts)
+
+
+## "a", "a and b", "a, b and c", "a, b, c and d". Written out because the note
+## now has a fourth thing it can say, and the three-way special case it used to
+## carry could not reach it.
+static func _join_words(parts: PackedStringArray) -> String:
 	if parts.is_empty():
 		return ""
-	return " and ".join(parts) if parts.size() < 3 else "%s, %s and %s" % [parts[0], parts[1], parts[2]]
+	if parts.size() == 1:
+		return parts[0]
+	var head: String = ", ".join(parts.slice(0, parts.size() - 1))
+	return "%s and %s" % [head, parts[parts.size() - 1]]
 
 
 ## Flat MUTATION_CHANCE through the fixed table; climbs by
