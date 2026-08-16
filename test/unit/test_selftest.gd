@@ -753,3 +753,63 @@ func test_lane_pressure_is_committed_even_when_the_last_life_is_lost_mid_wave() 
 			"the wave's lane pressure was committed on the losing escape, not lost to the _process(game_over) guard")
 	_T.free_ui(game)
 	return err
+
+
+# -- Husk size/glow scales with value (plant-tower-defense-afd) --------------
+
+
+## The point of the feature: two husks of different worth must not draw the
+## same. Asserted on the pure sizing function rather than on pixels, so the
+## relationship survives any later restyle of the actual _draw().
+func test_a_richer_husk_draws_bigger_than_a_poorer_one() -> String:
+	var poor: float = HuskLayer.radius_for(2)
+	var rich: float = HuskLayer.radius_for(9)
+	var err: String = _T.assert_true(rich > poor,
+		"a 9-seed husk (radius %.1f) draws larger than a 2-seed one (radius %.1f)" % [rich, poor])
+	if err == "":
+		err = _T.assert_true(HuskLayer.glow_for(9) > HuskLayer.glow_for(2),
+			"and glows harder as well as being bigger")
+	return err
+
+
+## Both ends are clamped, so a value outside the range the game actually drops
+## (a devtools-staged husk, a future pest with different seeds) still draws a
+## husk rather than a dot or a dinner plate.
+func test_husk_radius_is_clamped_at_both_ends() -> String:
+	var err: String = _T.assert_eq(HuskLayer.radius_for(0), HuskLayer.BASE_RADIUS,
+		"below the cheapest husk still draws at the base size")
+	if err == "":
+		err = _T.assert_eq(HuskLayer.radius_for(999), HuskLayer.MAX_RADIUS,
+			"an absurd value is capped, not scaled forever")
+	if err == "":
+		err = _T.assert_eq(HuskLayer.glow_for(0), 0.0, "glow floors at 0")
+	if err == "":
+		err = _T.assert_eq(HuskLayer.glow_for(999), 1.0, "glow ceilings at 1")
+	return err
+
+
+## A husk drawn wider than CompostMeter.COLLECT_RADIUS would show the player
+## pixels that a click landing on them does not sweep. The ring is the outer
+## edge of the drawing, so that — not the body — is what has to fit.
+func test_the_biggest_husk_still_fits_inside_its_own_click_radius() -> String:
+	var outer: float = HuskLayer.MAX_RADIUS + HuskLayer.RING_GAP + HuskLayer.RING_WIDTH_MAX
+	return _T.assert_true(outer <= CompostMeter.COLLECT_RADIUS,
+		"the largest husk's outer edge (%.1f) is inside COLLECT_RADIUS (%.1f), so every drawn pixel is clickable"
+			% [outer, CompostMeter.COLLECT_RADIUS])
+
+
+## The sizing constants are pinned to real drops, so this checks the two ends
+## the game can actually produce still land at distinguishable sizes: a plain
+## aphid husk and a hungry beetle's.
+func test_the_husks_the_game_really_drops_span_the_size_range() -> String:
+	var aphid: int = maxi(1, int(ceil(int(Pest.SPECIES[Pest.APHID]["seeds"]) / 2.0)))
+	var beetle_value: float = int(Pest.SPECIES[Pest.BEETLE]["seeds"]) / 2.0
+	var beetle: int = maxi(1, int(ceil(beetle_value * float(Pest.MUTATION_HUSK_MULTIPLIER[Pest.MUTATION_HUNGRY]))))
+	var err: String = _T.assert_eq(HuskLayer.radius_for(aphid), HuskLayer.BASE_RADIUS,
+		"a plain aphid husk (%d seeds) is the baseline size" % aphid)
+	if err == "":
+		err = _T.assert_eq(HuskLayer.radius_for(beetle), HuskLayer.MAX_RADIUS,
+			"a hungry beetle husk (%d seeds) is the largest size" % beetle)
+	if err == "":
+		err = _T.assert_eq(HuskLayer.glow_for(beetle), 1.0, "and glows at full brightness")
+	return err

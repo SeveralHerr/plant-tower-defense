@@ -660,3 +660,48 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     `taskkill`-vs-`Stop-Process` command form and this is about which pid to target at
     all — the two compound (a session hitting G-009 five times in a row is exactly the
     session at risk of also hitting this).
+
+## 2026-08-15 — Husk size/glow scales with value for plant-tower-defense-afd
+
+- Value: **warranted** — the run caught two things the diff could not: a `project.godot`
+  the engine had silently truncated, and a HUD collision that only appears once the
+  compost count reaches two digits.
+  - Expected: runtime should show a live mutated-beetle kill actually dropping a
+    max-value husk and `HuskLayer._draw` rendering it without error — the static tests
+    assert the sizing function, not that `_draw` survives the lerped arc width on a real
+    husk.
+  - Got: killing every pest on the board returned
+    `values: [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 9]` from `cmd compost_state` — the game's
+    real drops land on exactly the two ends the constants are pinned to
+    (`value 2 -> radius 8.0`, `value 9 -> radius 15.0`), and the screenshot shows the
+    9-seed husk as a visibly larger disc with a brighter, heavier rot ring than the ten
+    aphid husks strung along the bottom road. Eleven husks drawn simultaneously, stderr
+    empty.
+  - Found: (1) the working tree was carrying an earlier `godot --import` rewrite that had
+    deleted `window/size/viewport_width=1152` and `viewport_height=648` from
+    `project.godot` — the guard step in Phase 1 is what surfaced it; restored. (2) With
+    eleven husks down, the HUD reads `Compost 0 (11 ready)` and the `(11 ready)` suffix
+    runs underneath the "Grow the next wave" button. `findings` reported
+    `0 finding(s) across 5 of 5 checks` over that frame, because the label's own rect is
+    fine — it is the *button* that overlaps it, and no check compares two sibling
+    Controls' rects for occlusion of text. Filed to kanban.
+  - Cheaper: nothing for either. The HUD overlap needs eleven simultaneous husks on a
+    live board; the sizing arithmetic was already settled by the four new unit tests in
+    `test_selftest.gd`, which is where it belongs.
+
+- Gap: **`find-nodes --class X` does not match a script `class_name`, only engine
+  classes, and reports the miss as an empty result rather than as an unknown type.**
+  `python tools/devtools.py find-nodes --class Pest` returned `0 node(s) matched:` with
+  six live `Pest` nodes in the tree — they report `type: Node2D`, since that is their
+  engine class. Worse, combining it with a predicate produces a *misleading* diagnosis:
+  `find-nodes --class Pest --where mutation=hungry` printed
+  `no candidate exposes 'mutation'`, which reads as "the property is wrong" when the
+  truth is "the population was empty". Workaround was `--group pests`, which only works
+  because this project happens to add its pests to a group.
+  - [G-013] status: open | seen: 1 | harness: 0.19.0
+  - Improvement: resolve `--class` against the global class cache
+    (`ProjectSettings.get_global_class_list()` / the script's `get_global_name()`) before
+    falling back to `is_class()`, and when a `--class` value matches neither an engine
+    class nor a registered `class_name`, exit 1 naming it as an unknown type instead of
+    returning a clean zero-match. A predicate message must not be emitted for an empty
+    candidate set.
