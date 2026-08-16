@@ -156,10 +156,39 @@ func summary_rows() -> Array:
 		["Time in the garden", _duration_text()],
 		["Threat reached", "level %d" % int(_stats.get("threat_level", 1))],
 		["Garden lost", "%d of %d beds" % [int(_stats.get("lives_lost", 0)), Game.LIVES]],
-		["Compost swept", "%d" % int(_stats.get("compost_total", 0))],
+		["Compost swept", _compost_text()],
 		["Weakest ground", _worst_cell_text()],
 	]
 	return rows
+
+
+## Compost as a fraction, not a bare tally: "12 of 19", the seeds swept against
+## the seeds that were there to sweep. Every other row on this card is a total or
+## a bound; "Compost swept 12" was the one number with no scale behind it, and a
+## player cannot tell a clean run from an ignored lane by reading it.
+##
+## Folded into the existing row rather than given an eighth one. Height is the
+## binding constraint: rows step by ROW_HEIGHT + ROW_GAP = 38, the seventh ends
+## at 186 + 6*38 + 34 = 448 against buttons at 476, so there are 28px of slack
+## and BUTTON_CLEARANCE wants 16 of them. An eighth row would foot at 486 — ten
+## pixels *below* the top of the buttons, not merely inside the clearance — and
+## ROW_GAP has already been cut once (8 to 4) to fit the seventh. Width is not
+## the constraint: the value column is CARD.size.x * 0.58 - ROW_INSET = 335px,
+## and "127 of 214" is shorter than the "3 of 5 beds" the Garden lost row above
+## already renders, never mind the weakest-ground row that sets the real width
+## high-water mark. So the fraction is free and this row costs what it always did.
+##
+## `total_resolved()` is the denominator, so a husk still on the ground when the
+## run ended is in neither half — see CompostMeter.total_resolved for why.
+func _compost_text() -> String:
+	var swept: int = int(_stats.get("compost_total", 0))
+	# -1, not `swept`: an absent denominator and a perfect sweep must not read the
+	# same. A stats dictionary that predates the denominator degrades to the bare
+	# numerator it always showed, rather than claiming a "12 of 12" it cannot know.
+	var resolved: int = int(_stats.get("compost_resolved", -1))
+	if resolved < swept or resolved <= 0:
+		return "%d" % swept
+	return "%d of %d" % [swept, resolved]
 
 
 ## Minutes and seconds. A bare float of seconds is a number the player has to

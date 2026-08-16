@@ -1564,3 +1564,278 @@ func _beetle_fraction(wave: int) -> float:
 		if StringName(group["species"]) == Pest.BEETLE:
 			beetles += count
 	return 0.0 if total == 0 else float(beetles) / float(total)
+
+
+# -- Compost has a denominator now (plant-tower-defense-g3l) -------------------
+#
+# "Compost swept 12" was the one row on the post-mortem that was neither a total
+# nor a bound: 12 out of 13 is a clean run and 12 out of 60 is a lane the player
+# never looked at, and the card said "12" to both. CompostMeter.husk_rotted was
+# already being emitted (the sound pass added it) and Game._on_husk_rotted played
+# a cue and incremented nothing, so the missed half was thrown away every frame.
+#
+# What counts as MISSED: a husk that rotted, counted in seeds, at the instant it
+# rots. What is EXCLUDED, deliberately: a husk still lying on the ground. It has
+# not been missed — the player may be one click from it — and the run can end
+# with husks dropped moments earlier that were never collectable, because
+# Game._on_pest_escaped takes the last bed and builds the card in the same frame.
+# So the denominator is total_resolved() = swept + rotted, every husk in it one
+# whose story is over, which makes the fraction honest mid-run too.
+#
+# Seeds and not husk counts, because the numerator has always been seeds and a
+# husk is worth BASE_VALUE..FULL_VALUE — the rich husk is also the fastest to rot
+# (lifetime_for), so counting heads would score "swept the cheap one, let the
+# richest rot" as a 50% run when most of the board's value was thrown away.
+
+
+func test_a_husk_that_rots_on_the_real_timer_counts_as_compost_the_player_missed() -> String:
+	## Driven through the meter's own countdown while it sits in a live tree —
+	## never by calling a handler or emitting husk_rotted by hand. A counter wired
+	## to the signal instead of to the expiry would pass a hand-fired test and
+	## still lose every husk in a run where nothing happened to be listening.
+	var meter := CompostMeter.new()
+	meter.name = "CompostMeter"
+	await _T.instantiate_scene(meter)
+	var value: int = CompostMeter.FULL_VALUE
+	meter.drop_husk(Vector2.ZERO, value)
+
+	var err: String = _T.assert_true(meter.is_processing(),
+		"the meter is hosted and processing, so the countdown below is the engine's own")
+	if err == "":
+		err = _T.assert_eq(meter.total_rotted, 0, "nothing has rotted yet")
+	if err == "":
+		err = _T.assert_eq(meter.total_resolved(), 0, "so nothing has resolved yet either")
+
+	# Real frames first: this is what proves the engine drives the countdown at
+	# all, rather than the test being the only thing that ever moves it.
+	if err == "":
+		var before_life: float = float((meter.husks()[0] as Dictionary)["life"])
+		await meter.get_tree().process_frame
+		await meter.get_tree().process_frame
+		err = _T.assert_true(float((meter.husks()[0] as Dictionary)["life"]) < before_life,
+			"the husk's life ran down on its own across two real frames (from %.4f)" % before_life)
+
+	# Then the rest of the span in steps, none of which could jump it alone: the
+	# countdown has to accumulate or nothing rots.
+	var steps: int = 0
+	if err == "":
+		var step: float = CompostMeter.MIN_HUSK_LIFETIME / 10.0
+		for i: int in 12:
+			meter._process(step)
+			steps += 1
+			if i == 4:
+				err = _T.assert_eq(meter.total_rotted, 0,
+					"half a lifetime in, a husk still on the ground is not yet missed")
+				if err != "":
+					break
+	if err == "":
+		err = _T.assert_gt(steps, 0, "the countdown really was stepped, not an empty loop passing quietly")
+	if err == "":
+		err = _T.assert_eq(meter.husk_count(), 0, "the husk rotted off the board")
+	if err == "":
+		err = _T.assert_eq(meter.total_rotted, value, "and its seeds landed on the missed pile")
+	if err == "":
+		err = _T.assert_eq(meter.total_collected, 0, "with nothing credited as swept")
+	if err == "":
+		err = _T.assert_eq(meter.total_resolved(), value,
+			"so the card can say 0 of %d instead of a bare 0" % value)
+	_T.free_ui(meter)
+	return err
+
+
+func test_a_husk_swept_before_it_rots_never_lands_on_the_missed_pile() -> String:
+	## The confusable case: a husk swept at the last possible moment must be
+	## counted once, as swept, and must not also show up in the missed half — a
+	## denominator built by adding a drop counter to a rot counter would
+	## double-count it and report "9 of 18" for one husk.
+	var meter := CompostMeter.new()
+	var value: int = CompostMeter.BASE_VALUE
+	meter.drop_husk(Vector2.ZERO, value)
+	# One step short of rotting: as close to lost as a sweep can get.
+	meter._process(CompostMeter.lifetime_for(value) - 0.05)
+
+	var err: String = _T.assert_eq(meter.husk_count(), 1, "the husk is still there to sweep")
+	if err == "":
+		err = _T.assert_eq(meter.collect_at(Vector2.ZERO), value, "and the sweep paid out")
+	if err == "":
+		meter._process(CompostMeter.HUSK_LIFETIME + 1.0)
+		err = _T.assert_eq(meter.total_rotted, 0,
+			"a swept husk never rots, however long the meter runs afterwards")
+	if err == "":
+		err = _T.assert_eq(meter.total_collected, value, "it sits on the swept pile")
+	if err == "":
+		err = _T.assert_eq(meter.total_resolved(), value,
+			"counted exactly once in the denominator — a clean %d of %d"
+				% [meter.total_collected, meter.total_resolved()])
+	meter.free()
+	return err
+
+
+func test_the_missed_compost_survives_the_run_and_reaches_the_card() -> String:
+	## End to end through the real game: two husks, one swept and one rotted, then
+	## the losing path a player actually reaches. A counter that is right inside
+	## the meter and never reaches summary_stats() fixes nothing the issue is about.
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var err: String = _T.assert_true(game != null, "the game scene loaded")
+	if err != "":
+		return err
+
+	var swept_value: int = CompostMeter.BASE_VALUE
+	var rotted_value: int = CompostMeter.FULL_VALUE
+	var spot := Vector2(100.0, 100.0)
+	game.compost.drop_husk(spot, swept_value)
+	err = _T.assert_eq(game.compost.collect_at(spot), swept_value, "the first husk is swept")
+	if err == "":
+		game.compost.drop_husk(Vector2(400.0, 300.0), rotted_value)
+		game.compost._process(CompostMeter.lifetime_for(rotted_value) + 0.1)
+		err = _T.assert_eq(game.compost.husk_count(), 0, "and the second one is left to rot")
+	if err == "":
+		# The real losing path, same as the post-mortem tests in test_selftest.
+		game.lives = 1
+		game._on_pest_escaped(null)
+		await game.get_tree().process_frame
+		await game.get_tree().process_frame
+		err = _T.assert_true(game.game_over, "the run is over")
+
+	var expected: String = "%d of %d" % [swept_value, swept_value + rotted_value]
+	if err == "":
+		var stats: Dictionary = game.summary_stats(false)
+		err = _T.assert_true(stats.has("compost_resolved"),
+			"summary_stats carries the denominator (Game needs `\"compost_resolved\": compost.total_resolved(),` beside compost_total)")
+		if err == "":
+			err = _T.assert_eq(int(stats["compost_total"]), swept_value,
+				"the numerator is still what was swept")
+		if err == "":
+			err = _T.assert_eq(int(stats["compost_resolved"]), swept_value + rotted_value,
+				"and the denominator is everything that resolved, swept and rotted alike")
+	if err == "":
+		var panel: RunSummary = game.get_node_or_null("SummaryLayer/RunSummary") as RunSummary
+		err = _T.assert_true(panel != null, "the post-mortem card is up")
+		if err == "":
+			var label: Label = panel.get_node_or_null("Value_Compostswept") as Label
+			err = _T.assert_true(label != null, "and still carries a compost row")
+			if err == "":
+				err = _T.assert_eq(label.text, expected,
+					"which now reads as a fraction the player can grade themselves against")
+	_T.free_ui(game)
+	return err
+
+
+func test_the_compost_fraction_costs_the_post_mortem_card_no_height() -> String:
+	## Why this is a fold and not an eighth row. Rows step by ROW_HEIGHT + ROW_GAP
+	## = 38 from FIRST_ROW_Y = 186, so the seventh row foots at 448 against buttons
+	## at 476 — 28px of slack, of which BUTTON_CLEARANCE claims 16. An eighth row
+	## would foot at 486, ten pixels *below* the top of the buttons, and ROW_GAP has
+	## already been cut once (8 to 4) to fit the seventh. The clearance gate lives
+	## in test_selftest; this asserts the same geometry against the widest compost
+	## fraction a long endless run can actually produce, plus the row count that
+	## makes the fold a fold.
+	var stats: Dictionary = {
+		"victory": false,
+		"endless": true,
+		"wave": 46,
+		"wave_count": 8,
+		"threat_level": 9,
+		"lives_lost": 5,
+		"seeds_earned_total": 8421,
+		"high_score": 8421,
+		"new_record": true,
+		"compost_total": 1994,
+		"compost_resolved": 2887,
+		"pests_defeated": 1372,
+		"run_seconds": 2754.0,
+		"worst_cell": Vector2i(7, 4),
+		"worst_cell_losses": 3,
+	}
+	var panel := RunSummary.build(stats)
+	await _T.instantiate_scene(panel)
+	var rows: Array = panel.summary_rows()
+
+	var err: String = _T.assert_eq(rows.size(), 7,
+		"the card is still seven rows — the denominator was folded into one, not given its own")
+	var compost: Label = panel.get_node_or_null("Value_Compostswept") as Label
+	if err == "":
+		err = _T.assert_true(compost != null, "the compost row is on the card")
+	if err == "":
+		err = _T.assert_eq(compost.text, "1994 of 2887",
+			"showing the fraction, four digits and all")
+
+	# Height: the same measurement the selftest clearance gate makes.
+	if err == "":
+		var lowest: float = 0.0
+		var measured: int = 0
+		for row: Array in rows:
+			var label: Label = panel.get_node_or_null(
+				"Value_%s" % String(row[0]).replace(" ", "")) as Label
+			if label != null:
+				lowest = maxf(lowest, label.position.y + label.size.y)
+				measured += 1
+		err = _T.assert_eq(measured, rows.size(),
+			"every row was really measured — a missing label would make the clearance below meaningless")
+		if err == "":
+			var button: Button = panel.get_node_or_null("ReplayButton") as Button
+			err = _T.assert_true(button != null, "the replay button exists to measure against")
+			if err == "":
+				err = _T.assert_true(lowest <= button.position.y - RunSummary.BUTTON_CLEARANCE,
+					"the last row foot %.0f keeps %dpx clear of the buttons at %.0f"
+						% [lowest, int(RunSummary.BUTTON_CLEARANCE), button.position.y])
+
+	# Width: the reason the fold was affordable in the first place. The value
+	# column is 335px and this row is nowhere near the one that sets the card's
+	# width, so the fraction never reaches clip_text / OVERRUN_TRIM_ELLIPSIS.
+	var column: float = RunSummary.CARD.size.x * 0.58 - RunSummary.ROW_INSET
+	if err == "":
+		# Measured off the font, NOT off get_minimum_size(): every value label sets
+		# clip_text, and a clipping Label reports a minimum width of 1px by design,
+		# so all three comparisons below would have passed for free.
+		var font: Font = compost.get_theme_font("font")
+		var font_size: int = compost.get_theme_font_size("font_size")
+		err = _T.assert_true(font != null, "the row has a font to measure with")
+		if err == "":
+			var wanted: float = font.get_string_size(
+				compost.text, HORIZONTAL_ALIGNMENT_RIGHT, -1, font_size).x
+			err = _T.assert_gt(wanted, 1.0,
+				"the font really measured the fraction — a 1px answer is the clip_text stub, not a width")
+			if err == "":
+				err = _T.assert_true(wanted <= column,
+					"the fraction fits its column without ellipsis (%.0f of %.0f px)" % [wanted, column])
+			if err == "":
+				var worst: Label = panel.get_node_or_null("Value_Weakestground") as Label
+				err = _T.assert_true(worst != null, "the weakest-ground row exists")
+				if err == "":
+					var widest: float = font.get_string_size(
+						worst.text, HORIZONTAL_ALIGNMENT_RIGHT, -1, font_size).x
+					err = _T.assert_gt(widest, wanted,
+						"and weakest ground, not compost, still sets the card's width (%.0f vs %.0f px)"
+							% [widest, wanted])
+	_T.free_ui(panel)
+	return err
+
+
+func test_a_card_with_no_denominator_falls_back_to_the_bare_tally() -> String:
+	## The absent-key branch. `compost_resolved` defaults to -1 rather than to the
+	## numerator on purpose: a stats dictionary that predates the denominator must
+	## degrade to the number it always showed, not invent a perfect "12 of 12" it
+	## has no evidence for — while a run that really did sweep everything still
+	## gets to say so.
+	var missing := RunSummary.build({"compost_total": 12})
+	var perfect := RunSummary.build({"compost_total": 12, "compost_resolved": 12})
+	var partial := RunSummary.build({"compost_total": 12, "compost_resolved": 31})
+	var empty := RunSummary.build({"compost_total": 0, "compost_resolved": 0})
+
+	var err: String = _T.assert_eq(missing._compost_text(), "12",
+		"no denominator, no fraction — the row reads as it always did")
+	if err == "":
+		err = _T.assert_eq(perfect._compost_text(), "12 of 12",
+			"a genuine clean sweep is allowed to say so")
+	if err == "":
+		err = _T.assert_eq(partial._compost_text(), "12 of 31",
+			"and a run that let two thirds rot cannot hide behind the numerator")
+	if err == "":
+		err = _T.assert_eq(empty._compost_text(), "0",
+			"a run where no husk ever resolved reads 0, not a nonsense 0 of 0")
+	missing.free()
+	perfect.free()
+	partial.free()
+	empty.free()
+	return err

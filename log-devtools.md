@@ -1902,3 +1902,29 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   - Improvement: one line —
     `out.append(" \n" if text[i + 1] == "\n" else "  ")` — keeping the blank
     length-preserving while restoring the newline the line index depends on.
+
+## 2026-08-16 — A width assertion that passes unconditionally (cycle 13)
+
+- Value: **inconclusive** so far — this entry records a gap found while reviewing
+  an agent's work rather than a run of my own; the cycle's runtime pass is still
+  pending on two agents.
+
+- Gap: **`Control.get_minimum_size()` returns ~1px on any Label with
+  `clip_text`, so the natural way to ask "does this text fit its column" passes
+  unconditionally.** It is the obvious call to reach for — it is what a Container
+  uses to size a child — and on a clipping Label it reports the clip stub rather
+  than the text. Every value label on the post-mortem card sets `clip_text`, and
+  so do three of the four HUD stats readouts, so a width check written the obvious
+  way over either of those surfaces is decoration. The project's own
+  `test_no_readout_clips_its_own_worst_case` gets this right by measuring through
+  `Font.get_string_size` with the label's real theme font — but that is a thing
+  someone had to already know, and it is nowhere in the harness docs. This is the
+  same family as the vacuous-pass problem the runner already detects: an assertion
+  that cannot fail.
+  - [G-033] status: open | seen: 1 | harness: 0.23.0
+  - Improvement: a `_T.text_width(label) -> float` helper that resolves the
+    label's own theme font and measures the string, plus one line in the harness
+    CLAUDE.md's gotchas naming `get_minimum_size()` on a clipping Label as a
+    false-pass. The helper is four lines and removes the need to know the trap.
+    `findings`' `ui_text_trimmed` check already does this measurement internally,
+    so the code exists — it is just not reachable from a test.

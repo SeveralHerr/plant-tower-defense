@@ -463,6 +463,9 @@ func summary_stats(new_record: bool) -> Dictionary:
 		"high_score": RunConfig.best_for(director.endless),
 		"new_record": new_record,
 		"compost_total": compost.total_collected,
+		# The denominator. state() carries the total but not the meter, so the
+		# card cannot ask how many husks were resolved without this.
+		"compost_resolved": compost.total_resolved(),
 		"pests_defeated": pests_defeated,
 		"run_seconds": run_seconds,
 		"worst_cell": worst,

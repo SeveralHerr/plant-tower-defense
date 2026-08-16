@@ -13,7 +13,9 @@ signal husk_collected(value: int)
 ## husk simply stopped being drawn — which made "you were too slow" and "there
 ## was never a husk there" the same event from the player's chair. Game listens
 ## for this and plays Sfx.HUSK_ROTTED, so the loss is announced rather than
-## merely rendered.
+## merely rendered. The meter also *counts* it into `total_rotted` — the signal
+## is the cue, not the record, so a run's missed compost survives whether or not
+## anything is listening.
 signal husk_rotted(value: int)
 
 ## How long the *cheapest* husk sits on the ground before it rots away, and the
@@ -49,7 +51,35 @@ static func value_fraction(value: int) -> float:
 static func lifetime_for(value: int) -> float:
 	return lerpf(HUSK_LIFETIME, MIN_HUSK_LIFETIME, value_fraction(value))
 
+## Seeds swept off the board. The post-mortem's "Compost swept" numerator.
 var total_collected: int = 0
+## Seeds that rotted where they fell — the numerator's missing denominator half.
+##
+## "Compost swept 12" is a number no player can grade themselves against: 12 out
+## of 13 is a clean run and 12 out of 60 is a lane they never looked at, and the
+## card reported both as "12". This is the other half, in the same units as
+## `total_collected`, so the two can be added.
+##
+## Seeds, not husks, deliberately. The numerator has always been seeds, a husk's
+## value spans BASE_VALUE..FULL_VALUE, and the rich husk is also the one that
+## rots fastest (lifetime_for) — so a husk count would call sweeping one cheap
+## husk and letting the richest rot a 50% run, when the player threw away most of
+## what was on the board.
+var total_rotted: int = 0
+
+
+## Seeds the compost system actually resolved, one way or the other: swept plus
+## rotted. The denominator for `total_collected`.
+##
+## Deliberately NOT "every seed ever dropped as a husk". A husk still lying on
+## the ground has not been missed — the player may be one click away from it —
+## and the run can end (Game._on_pest_escaped kills the last bed and builds the
+## card in the same frame) with husks that were dropped a moment earlier and were
+## never collectable at all. Counting those would charge the player for husks the
+## game never gave them time to reach. Every husk in this total is one whose
+## story is over, so the fraction is honest at any instant, mid-run included.
+func total_resolved() -> int:
+	return total_collected + total_rotted
 
 ## id -> {"position": Vector2, "value": int, "life": float, "max_life": float}
 var _husks: Dictionary = {}
@@ -115,9 +145,12 @@ func _process(delta: float) -> void:
 		h["life"] = float(h["life"]) - delta
 		if h["life"] <= 0.0:
 			expired.append(id)
-	# Erase first, THEN announce: a listener that reads husk_count() from inside
-	# the signal must not see the husk it is being told about still on the board.
+	# Erase and COUNT first, THEN announce: a listener that reads husk_count() or
+	# total_resolved() from inside the signal must not see the husk it is being
+	# told about still on the board, nor a total that has not yet counted it. Same
+	# ordering collect_at() follows for total_collected.
 	for id: Variant in expired:
 		var value: int = int((_husks[id] as Dictionary)["value"])
 		_husks.erase(id)
+		total_rotted += value
 		husk_rotted.emit(value)
