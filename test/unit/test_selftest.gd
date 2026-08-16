@@ -796,6 +796,38 @@ func test_notebook_content_stays_on_the_paper() -> String:
 	return err
 
 
+func test_notebook_page_dot_marker_lerps_between_dots() -> String:
+	## NotebookPage.current_page's setter eases _display_page toward the
+	## target instead of snapping — see the setter's own comment — and
+	## _draw_dots() reads that fractional value through dot_marker_x() rather
+	## than an integer index. This is the interpolation itself, tested
+	## without a live tree or a tween to wait on.
+	var at_zero: float = NotebookPage.dot_marker_x(0.0, 3, 300.0)
+	var at_one: float = NotebookPage.dot_marker_x(1.0, 3, 300.0)
+	var midpoint: float = NotebookPage.dot_marker_x(0.5, 3, 300.0)
+	var err: String = _T.assert_float_eq(midpoint, (at_zero + at_one) / 2.0, 0.001,
+		"halfway through a turn the marker sits halfway between the two dots")
+	if err == "":
+		err = _T.assert_float_eq(at_one - at_zero, NotebookPage.DOT_SPACING, 0.001,
+			"a full page advances the marker by exactly one dot's spacing")
+	return err
+
+
+func test_notebook_page_current_page_moves_the_dot_without_waiting_on_a_tween() -> String:
+	## Headless never pumps the frame a tween needs
+	## (GardenTheme.animations_enabled() is false there), so current_page's
+	## setter falls back to setting _display_page directly — the same
+	## fallback Plant.play_exit_and_free() and TitleScreen._play_entrance()
+	## use — or every headless read of the dot would see it stuck on page 0.
+	var paper := await _T.instantiate_ui(NotebookPage.new(), Vector2i(600, 500)) as NotebookPage
+	paper.page_count = 3
+	paper.current_page = 2
+	var err: String = _T.assert_float_eq(paper._display_page, 2.0, 0.001,
+		"the marker lands on the target page immediately when animations are off")
+	_T.free_ui(paper)
+	return err
+
+
 ## Pairs that are supposed to share pixels: a matte and the photo mounted on it.
 const NOTEBOOK_NESTED_PAIRS: Array[Array] = [["DrawingFrame", "Drawing"]]
 
