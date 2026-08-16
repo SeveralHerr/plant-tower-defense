@@ -106,6 +106,11 @@ var _pause_layer: CanvasLayer = null
 ## Committed to the board as one batch when the wave ends; see
 ## Board.record_lane_pressure_wave.
 var _wave_losses: Dictionary = {}
+## The escaped half of _wave_losses — same cells, a subset of the counts. Kept
+## as a second tally rather than as a flag on the first because the pressure map
+## wants the sum and the post-mortem wants the difference, and there is no single
+## number that is both. Committed in the same batch; see _commit_lane_pressure.
+var _wave_escapes: Dictionary = {}
 
 
 func _ready() -> void:
@@ -216,6 +221,7 @@ func start_next_wave() -> bool:
 func _on_wave_started(number: int) -> void:
 	_wave_live = true
 	_wave_losses = {}
+	_wave_escapes = {}
 	Sfx.play(Sfx.WAVE_STARTED)
 	# Past the fixed table, say what actually got worse. The threat level on
 	# the bar answers "how much"; this answers "in what way", which is the half
@@ -232,11 +238,19 @@ func _on_wave_started(number: int) -> void:
 ## stopped at its furthest. Every pest leaves the board through exactly one of
 ## the two callers below, so the events say the same thing the scan did and
 ## more, without looping over the group sixty times a second.
-func _note_lane_loss(at: Vector2) -> void:
+##
+## `escaped` splits the tally without splitting either call site, and both halves
+## still count toward the pressure map. What the flag buys is the post-mortem's
+## ability to ask "how many of these did this cell actually stop", which the sum
+## cannot answer: a cell that let twelve pests walk out reads identically to a
+## cell that killed twelve, and the second one is the player's best turret.
+func _note_lane_loss(at: Vector2, escaped: bool = false) -> void:
 	if not _wave_live:
 		return
 	var cell: Vector2i = board.world_to_cell(at)
 	_wave_losses[cell] = int(_wave_losses.get(cell, 0)) + 1
+	if escaped:
+		_wave_escapes[cell] = int(_wave_escapes.get(cell, 0)) + 1
 
 
 ## Commits this wave's whole loss tally to the board. Split out of
@@ -250,7 +264,12 @@ func _commit_lane_pressure() -> void:
 	if _wave_losses.is_empty():
 		return
 	board.record_lane_pressure_wave(_wave_losses)
+	# After the losses, always with them, never without: Board.stops_at subtracts
+	# one from the other, so an escape batch that landed on a board which never
+	# saw the matching loss batch would report negative defending.
+	board.record_escapes(_wave_escapes)
 	_wave_losses = {}
+	_wave_escapes = {}
 
 
 func _check_wave_cleared() -> void:
@@ -350,7 +369,7 @@ func _on_pest_escaped(_pest: Pest) -> void:
 	# the road instead — which is also the honest reading: that is where the
 	# lane finally failed. Deliberately not conditional on `_pest`; the tests
 	# and the losing-escape path both call this with null.
-	_note_lane_loss(board.cell_to_world(board.exit_cell()))
+	_note_lane_loss(board.cell_to_world(board.exit_cell()), true)
 	Sfx.play(Sfx.PEST_ESCAPED)
 	lives -= 1
 	if lives <= 0:
@@ -478,6 +497,7 @@ func is_paused() -> bool:
 ## Dictionary rather than reaching into Game for each field.
 func summary_stats(new_record: bool) -> Dictionary:
 	var worst: Vector2i = board.worst_run_cell()
+	var stopped: Vector2i = board.worst_stop_cell()
 	return {
 		"victory": victory,
 		"endless": director.endless,
@@ -494,8 +514,17 @@ func summary_stats(new_record: bool) -> Dictionary:
 		"compost_resolved": compost.total_resolved(),
 		"pests_defeated": pests_defeated,
 		"run_seconds": run_seconds,
+		# The peak of the painted map, kept because the map is painted from it and
+		# the two must agree about which cell is reddest. Not what the card's row
+		# names — see below, and Board.worst_stop_cell.
 		"worst_cell": worst,
 		"worst_cell_losses": int(board.run_losses().get(worst, 0)),
+		# The cell that stopped the most pests for good, and how many. Escapes are
+		# already reported, as beds lost, one row above; counting them a second
+		# time here is what let the exit cell win a row headed "weakest ground"
+		# and point the player at ground that was never defended in the first place.
+		"stop_cell": stopped,
+		"stop_cell_stops": board.stops_at(stopped),
 	}
 
 

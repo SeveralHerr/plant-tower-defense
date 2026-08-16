@@ -68,6 +68,19 @@ var _run_losses: Dictionary = {}
 ## which is the same thing the decaying overlay shows, and deliberately so: the
 ## prep line and the road must not describe two different waves.
 var _last_wave_losses: Dictionary = {}
+## Road cell -> how many of the losses recorded there were pests that walked out
+## alive, run-total and never faded. A strict subset of _run_losses: every escape
+## is recorded in both, because an escape IS a loss for the pressure map's
+## purposes ("a pest stopped being your problem here") and is emphatically not a
+## kill for the post-mortem's ("you held them here").
+##
+## In practice this map has exactly one key — Game._on_pest_escaped attributes
+## every escape to exit_cell(), because an escaped pest's own position is off the
+## board. That is not a defect and it is why there is no second *map* on the
+## post-mortem card: the spatial content of an escape is a constant. What this is
+## for is subtracting, so the exit cell cannot claim to be a chokepoint on the
+## strength of pests that were never stopped there at all.
+var _run_escapes: Dictionary = {}
 
 
 func _ready() -> void:
@@ -292,13 +305,78 @@ func run_pressure_alpha(cell: Vector2i) -> float:
 	return maxf(LANE_PRESSURE_MIN_ALPHA, float(_run_losses.get(cell, 0)) / float(worst))
 
 
-## The single cell that cost the most over the whole run, or (-1, -1) if
-## nothing was ever lost. What the post-mortem points at.
+## The single cell that saw the most pests leave the road over the whole run,
+## killed or escaped, or (-1, -1) if nothing was ever lost. What the *painted*
+## map peaks at — run_pressure_alpha normalises against exactly this cell.
+##
+## Deliberately NOT what the post-mortem's row points at any more; see
+## worst_stop_cell(). A kill and an escape are the same event to the tint, which
+## is honest for "where did they stop being on the road", and they are opposite
+## events to a sentence that recommends an action.
 func worst_run_cell() -> Vector2i:
 	var best: Vector2i = Vector2i(-1, -1)
 	var most: int = 0
 	for cell: Vector2i in _run_losses:
 		var count: int = int(_run_losses[cell])
+		if count > most:
+			most = count
+			best = cell
+	return best
+
+
+## Commits a wave's escapes. Called beside record_lane_pressure_wave, with the
+## same cells and a subset of its counts — never instead of it, or a cell would
+## report more escapes than losses and stops_at() would floor to zero for a cell
+## that really did kill things.
+func record_escapes(escapes: Dictionary) -> void:
+	for cell: Vector2i in escapes:
+		# Same road-only filter record_lane_pressure_wave applies, and for the
+		# same reason: a count against a cell the pressure map refused would be
+		# subtracted from a loss total that never included it.
+		if not is_path(cell):
+			continue
+		var count: int = int(escapes[cell])
+		if count <= 0:
+			continue
+		_run_escapes[cell] = int(_run_escapes.get(cell, 0)) + count
+
+
+## Every escape of the whole run, by cell. See _run_escapes for why this is
+## almost always a single entry at the exit.
+func run_escapes() -> Dictionary:
+	return _run_escapes.duplicate()
+
+
+## Pests this cell stopped **for good** — losses minus escapes. This is the
+## number a player can act on: it is how much work the ground at `cell` actually
+## did, with the pests that merely passed their last road cell taken back out.
+##
+## Floored at 0 rather than allowed to go negative. record_escapes is documented
+## as a companion to record_lane_pressure_wave and not a replacement, but a
+## caller that ignores that must not be able to make a cell report a negative
+## amount of defending.
+func stops_at(cell: Vector2i) -> int:
+	return maxi(0, int(_run_losses.get(cell, 0)) - int(_run_escapes.get(cell, 0)))
+
+
+## The cell that stopped the most pests for good over the whole run, or (-1, -1)
+## if nothing was ever stopped anywhere.
+##
+## This is the post-mortem's cell. It differs from worst_run_cell() in exactly
+## one situation and it is the situation that mattered: a run bleeding out at the
+## exit piles every escape onto the exit cell, which then wins worst_run_cell()
+## on the strength of pests it never touched. Naming that cell to the player, on
+## a row that then invites them to reinforce or abandon it, is advice drawn from
+## the one cell in the run that did the least.
+##
+## (-1, -1) is not the same claim as "a clean run". A run that stopped nothing
+## anywhere is the worst run there is, and the card must not read it as the best;
+## the clean-run reading lives on the beds-lost row, which measures it directly.
+func worst_stop_cell() -> Vector2i:
+	var best: Vector2i = Vector2i(-1, -1)
+	var most: int = 0
+	for cell: Vector2i in _run_losses:
+		var count: int = stops_at(cell)
 		if count > most:
 			most = count
 			best = cell
@@ -332,6 +410,11 @@ func path_index(cell: Vector2i) -> int:
 ## that hurt you. That makes this "how far are they getting", which is the
 ## honest reading and the useful one: it rises while your front line is being
 ## outrun, waves before anything actually escapes.
+##
+## That mixing is correct here and correct for the tint, and it is wrong for any
+## reading phrased as *which ground failed you* — the two are near-opposites at
+## the cell level. stops_at() / worst_stop_cell() are that other question; a
+## depth or a tint must keep using the mixed totals.
 ##
 ## Returns -1.0 for "nothing recorded", which is not 0.0. A wave killed dead on
 ## the entry cell genuinely reads 0%, and that is the best reading in the game;

@@ -1746,6 +1746,11 @@ func test_the_compost_fraction_costs_the_post_mortem_card_no_height() -> String:
 		"run_seconds": 2754.0,
 		"worst_cell": Vector2i(7, 4),
 		"worst_cell_losses": 3,
+		# The stopping-point row reads these two now, not the pair above; a card
+		# built without them renders the "nothing was stopped" branch and stops
+		# being the widest row, which is what the last assertion here is about.
+		"stop_cell": Vector2i(13, 7),
+		"stop_cell_stops": 137,
 	}
 	var panel := RunSummary.build(stats)
 	await _T.instantiate_scene(panel)
@@ -1800,14 +1805,22 @@ func test_the_compost_fraction_costs_the_post_mortem_card_no_height() -> String:
 				err = _T.assert_true(wanted <= column,
 					"the fraction fits its column without ellipsis (%.0f of %.0f px)" % [wanted, column])
 			if err == "":
-				var worst: Label = panel.get_node_or_null("Value_Weakestground") as Label
-				err = _T.assert_true(worst != null, "the weakest-ground row exists")
+				var worst: Label = panel.get_node_or_null("Value_Wheretheystopped") as Label
+				err = _T.assert_true(worst != null, "the stopping-point row exists")
 				if err == "":
 					var widest: float = font.get_string_size(
 						worst.text, HORIZONTAL_ALIGNMENT_RIGHT, -1, font_size).x
 					err = _T.assert_gt(widest, wanted,
-						"and weakest ground, not compost, still sets the card's width (%.0f vs %.0f px)"
+						"and the stopping point, not compost, still sets the card's width (%.0f vs %.0f px)"
 							% [widest, wanted])
+					if err == "":
+						# Which the old version of this test never asked: it proved
+						# the compost fraction fitted and that a different row was
+						# wider, leaving the row that actually sets the high-water
+						# mark unmeasured against the column it has to fit inside.
+						err = _T.assert_true(widest <= column,
+							"and the widest row itself fits the column (%.0f of %.0f px)"
+								% [widest, column])
 	_T.free_ui(panel)
 	return err
 
@@ -2038,4 +2051,333 @@ func test_the_prep_window_reports_the_run_and_not_only_the_countdown() -> String
 			"Wave 2 cleared. Pests got 100% down the road — deeper than the run's 50%.",
 			"which is what the status row actually receives")
 	_T.free_ui(game)
+	return err
+
+
+# -- The post-mortem's chokepoint row (issue dwv) ----------------------------
+
+
+## The inversion, staged end to end through a real run.
+##
+## Twelve pests killed on one cell and three walked out at the exit. The killing
+## cell wins the loss map, which is correct and unchanged — and the card used to
+## head that number "Weakest ground", naming the player's best turret as the one
+## thing in the garden to tear out. Nothing about the data was wrong; the sentence
+## over it was the inverse of the data.
+func test_a_defended_chokepoint_is_not_reported_as_weak_ground() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var err: String = _T.assert_true(game != null, "the game scene loaded")
+	if err != "":
+		return err
+	err = _T.assert_true(game.board != null, "the run has a board to record against")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var choke: Vector2i = Board.PATH_CORNERS[1]
+	var way_out: Vector2i = game.board.exit_cell()
+	err = _T.assert_true(game.board.is_path(choke) and game.board.is_path(way_out),
+		"both cells under test are road — an off-road cell is dropped and every count below would be 0")
+	if err == "":
+		err = _T.assert_true(choke != way_out,
+			"and the chokepoint is not itself the exit, or the two readings cannot disagree")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	game._on_wave_started(1)
+	var kills: int = 12
+	for i: int in range(kills):
+		game._note_lane_loss(game.board.cell_to_world(choke))
+	# The real losing path: the third escape takes the last bed, and that is what
+	# commits both tallies to the board.
+	game.lives = 3
+	for i: int in range(3):
+		game._on_pest_escaped(null)
+	await game.get_tree().process_frame
+	await game.get_tree().process_frame
+	err = _T.assert_true(game.game_over, "the run ended, so the wave's tallies were committed")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# The map is untouched. Depth and the painted road want kills and escapes
+	# summed, and these are the assertions that say the fix did not quietly
+	# change what the overlay is showing.
+	err = _T.assert_eq(int(game.board.run_losses().get(choke, 0)), kills,
+		"the loss map still counts all %d kills at the chokepoint" % kills)
+	if err == "":
+		err = _T.assert_eq(game.board.worst_run_cell(), choke,
+			"and the painted map still peaks there")
+	if err == "":
+		err = _T.assert_eq(game.board.stops_at(choke), kills,
+			"every one of those was a pest stopped for good")
+	if err == "":
+		err = _T.assert_eq(game.board.stops_at(way_out), 0,
+			"while the exit stopped nothing at all — its three losses all walked out")
+	if err == "":
+		err = _T.assert_eq(game.board.worst_stop_cell(), choke,
+			"so the cell that did the defending is the one the card gets")
+
+	var stats: Dictionary = game.summary_stats(false)
+	if err == "":
+		err = _T.assert_true(stats.has("stop_cell") and stats.has("stop_cell_stops"),
+			"summary_stats carries the stopping-point reading")
+	if err == "":
+		err = _T.assert_eq(stats["stop_cell"], choke, "and it is the chokepoint")
+	if err == "":
+		err = _T.assert_eq(int(stats["stop_cell_stops"]), kills, "with the kills it really made")
+
+	var panel: RunSummary = game.get_node_or_null("SummaryLayer/RunSummary") as RunSummary
+	if err == "":
+		err = _T.assert_true(panel != null, "the post-mortem card is up")
+	if err == "":
+		var rows: Array = panel.summary_rows()
+		err = _T.assert_gt(rows.size(), 0, "the card has rows to read")
+		if err == "":
+			# The label itself, not only the number under it. "Weakest ground" over
+			# a chokepoint is the whole defect; a card that names the right cell
+			# under the wrong heading still tells the player to dig it up.
+			for row: Array in rows:
+				var key: String = String(row[0])
+				err = _T.assert_false(key.to_lower().contains("weak"),
+					"no row calls a cell weak (found '%s')" % key)
+				if err != "":
+					break
+	if err == "":
+		var value: Label = panel.get_node_or_null("Value_Wheretheystopped") as Label
+		err = _T.assert_true(value != null, "the stopping-point row is on the card")
+		if err == "":
+			err = _T.assert_eq(value.text, "column %d, row %d — %d stopped"
+				% [choke.x + 1, choke.y + 1, kills],
+				"and it reads as work the ground did, not as ground that failed")
+		if err == "":
+			err = _T.assert_false(value.text.contains("lost"),
+				"nothing on this row describes the chokepoint as a loss")
+	_T.free_ui(game)
+	return err
+
+
+## The other half, and the reason a relabel alone would not have been enough.
+##
+## Escapes all land on one cell — Game._on_pest_escaped attributes every one of
+## them to exit_cell(), because an escaped pest's own position is off the board —
+## so a run that bleeds out hands the exit a loss count it earned by not
+## fighting. Under the old heading that cell was "weakest ground": true, but the
+## same cell every run, which is no reading at all. Under a bare relabel it would
+## have become "where they stopped", which is false. It stopped nothing.
+func test_escapes_cannot_buy_the_exit_a_chokepoint_it_never_earned() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var err: String = _T.assert_true(game != null, "the game scene loaded")
+	if err != "":
+		return err
+	err = _T.assert_true(game.board != null, "the run has a board")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var choke: Vector2i = Board.PATH_CORNERS[1]
+	var way_out: Vector2i = game.board.exit_cell()
+	err = _T.assert_true(game.board.is_path(choke) and choke != way_out,
+		"the chokepoint is real road and is not the exit")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	game._on_wave_started(1)
+	var kills: int = 4
+	# Every life, so the run ends on the escapes themselves rather than on a
+	# shortened `lives`. Forcing lives down to make game over arrive sooner also
+	# desynchronises the beds row, which counts LIVES - lives and therefore
+	# reports the whole garden lost however few pests actually walked out.
+	var escapes: int = Game.LIVES
+	for i: int in range(kills):
+		game._note_lane_loss(game.board.cell_to_world(choke))
+	for i: int in range(escapes):
+		game._on_pest_escaped(null)
+	await game.get_tree().process_frame
+	await game.get_tree().process_frame
+	err = _T.assert_true(game.game_over, "the run ended and committed its tallies")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	err = _T.assert_eq(int(game.board.run_escapes().get(way_out, 0)), escapes,
+		"all %d escapes were recorded against the exit" % escapes)
+	if err == "":
+		err = _T.assert_eq(game.board.worst_run_cell(), way_out,
+			"which is enough to make the exit the reddest cell on the map (%d beats %d)"
+				% [escapes, kills])
+	if err == "":
+		err = _T.assert_eq(game.board.stops_at(way_out), 0,
+			"and yet it stopped nothing — every loss there walked out of it")
+	if err == "":
+		err = _T.assert_eq(game.board.worst_stop_cell(), choke,
+			"so the row names the cell that actually fought, not the one that leaked")
+	if err == "":
+		var stats: Dictionary = game.summary_stats(false)
+		err = _T.assert_eq(stats["worst_cell"], way_out,
+			"the map's peak is still reported, because the road under the card is painted from it")
+		if err == "":
+			err = _T.assert_eq(stats["stop_cell"], choke,
+				"while the row's cell is the one that stopped the most")
+	if err == "":
+		var value: Label = game.get_node_or_null(
+			"SummaryLayer/RunSummary/Value_Wheretheystopped") as Label
+		err = _T.assert_true(value != null, "the stopping-point row is on the card")
+		if err == "":
+			err = _T.assert_eq(value.text, "column %d, row %d — %d stopped"
+				% [choke.x + 1, choke.y + 1, kills],
+				"naming the chokepoint and its real work, not the exit and its leak")
+	if err == "":
+		# The escapes are not missing from the card, they are on the row that
+		# measures them directly. This is why the fix costs no eighth row.
+		var beds: Label = game.get_node_or_null("SummaryLayer/RunSummary/Value_Gardenlost") as Label
+		err = _T.assert_true(beds != null, "the beds-lost row exists")
+		if err == "":
+			err = _T.assert_eq(beds.text, "%d of %d beds" % [escapes, Game.LIVES],
+				"and it is where the escapes are reported, once")
+	_T.free_ui(game)
+	return err
+
+
+## Board-level, no Game: what stops_at subtracts, and what it refuses to.
+func test_a_cells_stops_are_its_losses_minus_the_pests_that_walked_out() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+	var err: String = _T.assert_true(board != null, "the board stood up")
+	if err != "":
+		return err
+	err = _T.assert_gt(board.path_cell_count(), 0, "with a road to record against")
+	if err != "":
+		_T.free_ui(board)
+		return err
+
+	var held: Vector2i = Board.PATH_CORNERS[0]
+	var leaked: Vector2i = board.exit_cell()
+	var grass := Vector2i(0, 0)
+	err = _T.assert_false(board.is_path(grass), "(0,0) is grass, as the pressure tests rely on")
+	if err == "":
+		err = _T.assert_eq(board.worst_stop_cell(), Vector2i(-1, -1),
+			"an empty board points nowhere — not at column 0")
+	if err == "":
+		board.record_lane_pressure_wave({held: 5, leaked: 4})
+		board.record_escapes({leaked: 3})
+		err = _T.assert_eq(board.stops_at(held), 5, "a cell with no escapes keeps all its losses")
+	if err == "":
+		err = _T.assert_eq(board.stops_at(leaked), 1,
+			"and a cell that let 3 of 4 walk out is credited with the one it kept")
+	if err == "":
+		err = _T.assert_eq(board.worst_stop_cell(), held, "5 stops beats 1")
+	if err == "":
+		err = _T.assert_eq(board.worst_run_cell(), held,
+			"and the loss map, which sums the two, is untouched by any of this")
+	if err == "":
+		# The floor. record_escapes is documented as a companion to
+		# record_lane_pressure_wave rather than a replacement, and a caller that
+		# ignores that must not make a cell report a negative amount of defending.
+		board.record_escapes({leaked: 99})
+		err = _T.assert_eq(board.stops_at(leaked), 0,
+			"more escapes than losses floors at zero rather than going negative")
+	if err == "":
+		board.record_escapes({grass: 7})
+		err = _T.assert_eq(int(board.run_escapes().get(grass, 0)), 0,
+			"an escape off the road is dropped, the same filter the pressure map applies")
+	if err == "":
+		err = _T.assert_eq(board.stops_at(grass), 0, "so grass still stopped nothing")
+	_T.free_ui(board)
+	return err
+
+
+## The empty branch, which is the one that used to lie hardest. "nothing got past
+## you" is a claim about escapes read off an empty measurement of kills: the run
+## that reaches it most often is the one that never stopped a single pest, and
+## the card congratulated it.
+func test_a_run_that_stopped_nothing_is_not_congratulated() -> String:
+	var barren := RunSummary.build({"lives_lost": 10})
+	var err: String = _T.assert_true(barren != null, "the card built without a stopping point")
+	if err != "":
+		return err
+	var text: String = barren._stop_cell_text()
+	err = _T.assert_eq(text, "nowhere — nothing was stopped",
+		"an absent measurement says so")
+	if err == "":
+		err = _T.assert_false(text.contains("past you"),
+			"and never claims a clean run it has no evidence for")
+	barren.free()
+
+	if err == "":
+		var real := RunSummary.build({"stop_cell": Vector2i(6, 3), "stop_cell_stops": 41})
+		err = _T.assert_true(real != null, "the card built with one")
+		if err == "":
+			err = _T.assert_eq(real._stop_cell_text(), "column 7, row 4 — 41 stopped",
+				"and a chokepoint gets named one-based, like every coordinate the player sees")
+		real.free()
+	return err
+
+
+## The row's key grew from "Weakest ground" to "Where they stopped", and the key
+## and value boxes overlap by 36px by construction: the key spans ROW_INSET to
+## 0.42w + ROW_INSET while the value starts at 0.42w. Left-aligned key against
+## right-aligned value, so that overlap is only a collision if the key's own text
+## runs into it — which is a thing a longer key can newly do.
+func test_no_post_mortem_key_runs_into_its_own_value_column() -> String:
+	var stats: Dictionary = {
+		"victory": false,
+		"endless": false,
+		"wave": 8,
+		"wave_count": 8,
+		"threat_level": 5,
+		"lives_lost": 6,
+		"seeds_earned_total": 940,
+		"high_score": 1200,
+		"compost_total": 17,
+		"compost_resolved": 31,
+		"pests_defeated": 214,
+		"run_seconds": 640.0,
+		"worst_cell": Vector2i(13, 7),
+		"worst_cell_losses": 9,
+		"stop_cell": Vector2i(13, 7),
+		"stop_cell_stops": 137,
+	}
+	var panel := RunSummary.build(stats)
+	await _T.instantiate_scene(panel)
+	var rows: Array = panel.summary_rows()
+	var err: String = _T.assert_eq(rows.size(), 7,
+		"still seven rows — this fix bought no eighth, which would foot at 486 against buttons at 476")
+	if err != "":
+		_T.free_ui(panel)
+		return err
+
+	var checked: int = 0
+	for row: Array in rows:
+		var flat: String = String(row[0]).replace(" ", "")
+		var key: Label = panel.get_node_or_null("Row_%s" % flat) as Label
+		var value: Label = panel.get_node_or_null("Value_%s" % flat) as Label
+		if key == null or value == null:
+			err = "row '%s' is missing a label" % String(row[0])
+			break
+		# Measured off the resolved theme font, NOT get_minimum_size(): the value
+		# labels set clip_text and report a 1px minimum, and a width gate built
+		# that way passes unconditionally.
+		var font: Font = key.get_theme_font("font")
+		var font_size: int = key.get_theme_font_size("font_size")
+		if font == null:
+			err = "row '%s' has no font to measure with" % String(row[0])
+			break
+		var drawn: float = font.get_string_size(
+			key.text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		err = _T.assert_gt(drawn, 1.0,
+			"the font really measured '%s' — a 1px answer is a stub, not a width" % key.text)
+		if err != "":
+			break
+		var budget: float = value.position.x - key.position.x
+		err = _T.assert_true(drawn <= budget,
+			"key '%s' is %.0fpx and has %.0fpx before the value column starts"
+				% [key.text, drawn, budget])
+		if err != "":
+			break
+		checked += 1
+	if err == "":
+		err = _T.assert_eq(checked, rows.size(),
+			"every row was really measured — a short loop is what makes a width gate vacuous")
+	_T.free_ui(panel)
 	return err

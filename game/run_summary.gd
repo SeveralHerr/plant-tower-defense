@@ -6,15 +6,21 @@ extends Control
 ##
 ## This replaces a banner plus a 30-second message. Every number below was
 ## already computed and had nowhere to live: the seed total went into a two-line
-## banner, and the weakest-cell reading — the single most useful thing the run
+## banner, and the per-cell reading — the single most useful thing the run
 ## produced — went into `Hud.show_message(..., 30.0)`, a one-line clipped Label
 ## that erases itself while the player is still reading the banner above it.
 ##
 ## The backdrop is deliberately not opaque. `Board.show_run_pressure()` paints
 ## the run's whole damage map onto the road at the same moment this appears, and
 ## that map is the visual half of the same post-mortem — so the card floats over
-## it rather than replacing it, and the row naming the worst cell has the actual
-## cell tinted red behind it.
+## it rather than replacing it, and the row naming a cell has that actual cell
+## tinted behind it.
+##
+## The map and that row are deliberately not the same reading. The map is every
+## pest that left the road, escapes included, so its reddest cell is the exit on
+## a run that bled out; the row counts only the pests a cell stopped for good.
+## See _stop_cell_text — they agreed until the exit started winning a row headed
+## "weakest ground" with pests it had never touched.
 ##
 ## Node names are a contract, same as the HUD's: the devtools bridge presses
 ## these buttons by path and test_selftest.gd reads these labels.
@@ -157,7 +163,7 @@ func summary_rows() -> Array:
 		["Threat reached", "level %d" % int(_stats.get("threat_level", 1))],
 		["Garden lost", "%d of %d beds" % [int(_stats.get("lives_lost", 0)), Game.LIVES]],
 		["Compost swept", _compost_text()],
-		["Weakest ground", _worst_cell_text()],
+		["Where they stopped", _stop_cell_text()],
 	]
 	return rows
 
@@ -175,7 +181,7 @@ func summary_rows() -> Array:
 ## ROW_GAP has already been cut once (8 to 4) to fit the seventh. Width is not
 ## the constraint: the value column is CARD.size.x * 0.58 - ROW_INSET = 335px,
 ## and "127 of 214" is shorter than the "3 of 5 beds" the Garden lost row above
-## already renders, never mind the weakest-ground row that sets the real width
+## already renders, never mind the stopping-point row that sets the real width
 ## high-water mark. So the fraction is free and this row costs what it always did.
 ##
 ## `total_resolved()` is the denominator, so a husk still on the ground when the
@@ -198,12 +204,38 @@ func _duration_text() -> String:
 	return "%d:%02d" % [total / 60, total % 60]
 
 
-func _worst_cell_text() -> String:
-	var cell: Vector2i = _stats.get("worst_cell", Vector2i(-1, -1))
+## The chokepoint, named as a chokepoint.
+##
+## This row used to be headed "Weakest ground" over `worst_cell` — the cell where
+## the most pests left the road, killed or escaped alike. In almost every run
+## that is the cell holding the player's best turret, so the post-mortem's one
+## piece of spatial advice named the strongest ground in the garden and told the
+## player it was the weakest. A player acting on it dismantles the thing that was
+## working. The row is not merely useless when it is wrong; it is inverted.
+##
+## Two things changed. The number is now `stop_cell_stops` — losses with the
+## escapes taken back out, so the exit cell cannot bid for the row with pests it
+## never touched (Board.worst_stop_cell). And the heading states what is measured
+## instead of interpreting it: "where they stopped" is true of a chokepoint and
+## true of a last-ditch stand at the exit, and neither reading recommends tearing
+## anything down.
+##
+## The weakness half of the post-mortem is not missing, it is on the two rows
+## that measure it directly — "Garden lost N of 10 beds" is the escape count, and
+## the road underneath this card is still painted with the full mixed map, whose
+## reddest cell IS the exit on a run that bled out. So the card carries both
+## readings, in the two media each is honest in: a number for what stopped them,
+## a picture for where they got to.
+func _stop_cell_text() -> String:
+	var cell: Vector2i = _stats.get("stop_cell", Vector2i(-1, -1))
 	if cell.x < 0:
-		return "nothing got past you"
-	return "column %d, row %d — %d lost there" % [
-		cell.x + 1, cell.y + 1, int(_stats.get("worst_cell_losses", 0)),
+		# Not "nothing got past you", which is what this said before. That is a
+		# claim about escapes, made from an empty measurement of kills: the run
+		# that reaches this branch hardest is the one that stopped nothing at all
+		# anywhere, and it read as the compliment for a flawless run.
+		return "nowhere — nothing was stopped"
+	return "column %d, row %d — %d stopped" % [
+		cell.x + 1, cell.y + 1, int(_stats.get("stop_cell_stops", 0)),
 	]
 
 
@@ -227,7 +259,7 @@ func _build_rows() -> void:
 		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		value.add_theme_font_size_override("font_size", 17)
 		value.add_theme_color_override("font_color", GardenTheme.INK)
-		# The weakest-ground row is the longest and the one that used to get
+		# The stopping-point row is the longest and the one that used to get
 		# ellipsised out of existence in the HUD message line. Clip rather than
 		# overflow, so a regression shows as a trimmed row and not as text
 		# running off the paper.
