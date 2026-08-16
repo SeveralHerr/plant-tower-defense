@@ -1426,9 +1426,13 @@ func _corn_volley_damage(level: int, distance: float) -> float:
 
 # -- Endless is a composition ramp, not a headcount (plant-tower-defense-efv) --
 #
-# The filed defect, re-derived off the constants: the aphid gap floors at wave 22,
-# the beetle gap at 28, mutation chance at 31, health at 42 and speed at 48. From
-# wave 49 the only endless scale still moving was `count`, and nothing capped it —
+# The filed defect, re-derived off the constants AS THEY WERE when the fixed table
+# was eight waves long: the aphid gap floored at wave 22, the beetle gap at 28,
+# mutation chance at 31, health at 42 and speed at 48. Every one of those is
+# `WAVES.size() + n`, so all five moved eight waves later when the campaign grew to
+# sixteen (plant-tower-defense-74a) — which is exactly why the test below derives
+# the wave it measures instead of writing 49 down. From the first wave past them
+# the only endless scale still moving was `count`, and nothing capped it —
 # 166 pests at wave 48, 376 at 108, 1748 at 500. Against the real 2112 px road and
 # the capped speeds an aphid crosses in 16.9 s, so a 0.16 s gap alone puts 106 of
 # them on the board; sweeping the whole schedule the peak was 115 alive at once by
@@ -1444,9 +1448,11 @@ func _corn_volley_damage(level: int, distance: float) -> float:
 
 func test_an_endless_wave_never_fills_the_road_past_the_stated_ceiling() -> String:
 	## The acceptance criterion. Swept rather than sampled, because the worst wave
-	## is not the deepest one: the peak lands at wave 20, where the swarm and the
-	## column are both still small enough to sit on the road together at their
-	## natural spacing, and a test that only looked at wave 100 would miss it.
+	## is not the deepest one: it is the campaign finale (wave 16), where two
+	## queens, the brood they can burst into, a full swarm and a beetle column are
+	## all on the road together, and every endless wave after it is paced further
+	## apart. A test that only looked at wave 100 would find the road at 29 of 40
+	## and miss the one wave that spends the whole budget.
 	var ceiling: int = WaveDirector.SIMULTANEOUS_PEST_CEILING
 	var err: String = _T.assert_gt(ceiling, 0, "there is a ceiling to check against")
 	if err != "":
@@ -1532,10 +1538,20 @@ func test_endless_still_gets_harder_after_every_per_pest_scale_has_capped() -> S
 	## The other half of the acceptance criterion, and the reason the fix could not
 	## just be "cap the count": with a ceiling on the road AND a ceiling on every
 	## per-pest multiplier, a wave with nothing left to grow is a wave the player's
-	## board beats forever. The first block pins that all four of the old scales
-	## really are dead past wave 48, so the climb below cannot be coming from them.
-	var late: int = 49
+	## board beats forever. The first block pins that all of the old scales really
+	## are dead by then, so the climb below cannot be coming from them.
+	##
+	## `late` is DERIVED rather than the literal 49 it used to be. Every cap lands
+	## at `WAVES.size() + n` — health at +34, speed at +40, mutation at +23 — so
+	## growing the fixed table from eight waves to sixteen moved all three eight
+	## waves later, and a hard-coded 49 would have gone on measuring a wave where
+	## health was still visibly climbing while reporting that it had stopped.
+	var late: int = _first_wave_with_every_scale_capped()
 	var far: int = 500
+	var err0: String = _T.assert_gt(late, WaveDirector.WAVES.size(),
+		"there is a wave past the table where every per-pest scale has saturated")
+	if err0 != "":
+		return err0
 	var err: String = _T.assert_float_eq(WaveDirector.health_scale_for(far),
 		WaveDirector.health_scale_for(late), 0.0001, "health has stopped by wave %d" % late)
 	if err == "":
@@ -1676,14 +1692,20 @@ func test_the_threat_readout_prices_the_composition_ramp_exactly() -> String:
 	return err
 
 
-func test_the_fixed_eight_wave_campaign_is_untouched_by_the_road_budget() -> String:
+func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 	## Endless and campaign share this file, and the road budget is written in terms
 	## of `wave - WAVES.size()`, so campaign is untouched by construction rather than
 	## by a mode flag. Asserted anyway, against the literal table, because "by
 	## construction" is a claim about code that someone edits next week.
-	var expected: Array[int] = [5, 9, 9, 14, 13, 19, 19, 29]
+	##
+	## The list is the campaign's headcount wave by wave, and it is the reason this
+	## test earns its keep: waves 12, 14 and 16 send a queen, and a queen is ONE
+	## pest in the schedule that becomes four bodies on the road. A table read that
+	## quietly stopped counting her — or started counting her brood — shows up here
+	## as a number, before it shows up as a wave that overruns the road budget.
+	var expected: Array[int] = [5, 9, 9, 14, 13, 19, 19, 29, 26, 32, 30, 23, 35, 29, 35, 36]
 	var err: String = _T.assert_eq(WaveDirector.WAVES.size(), expected.size(),
-		"the campaign is still eight waves long")
+		"the campaign is still sixteen waves long")
 	if err != "":
 		return err
 	for wave: int in range(1, expected.size() + 1):
@@ -1706,7 +1728,8 @@ func test_the_fixed_eight_wave_campaign_is_untouched_by_the_road_budget() -> Str
 	# right number of pests.
 	var groups: Array = WaveDirector.groups_for(WaveDirector.WAVES.size())
 	var table: Array = WaveDirector.WAVES[WaveDirector.WAVES.size() - 1]
-	err = _T.assert_eq(groups.size(), table.size(), "wave 8 is still two groups")
+	err = _T.assert_eq(groups.size(), table.size(),
+		"the last campaign wave is still the %d groups the table writes down" % table.size())
 	if err != "":
 		return err
 	var compared: int = 0
@@ -1728,11 +1751,33 @@ func test_the_fixed_eight_wave_campaign_is_untouched_by_the_road_budget() -> Str
 		compared += 1
 	err = _T.assert_gt(compared, 0, "there were groups to compare, not an empty table passing quietly")
 	if err == "":
-		err = _T.assert_gte(WaveDirector.SIMULTANEOUS_PEST_CEILING,
-			WaveDirector.peak_simultaneous_pests(WaveDirector.WAVES.size()),
-			"and the hardest campaign wave was always inside the ceiling anyway (%d)"
-				% WaveDirector.peak_simultaneous_pests(WaveDirector.WAVES.size()))
+		err = _T.assert_eq(WaveDirector.peak_simultaneous_pests(WaveDirector.WAVES.size()),
+			WaveDirector.SIMULTANEOUS_PEST_CEILING,
+			("and the campaign finale is sized to land ON the ceiling rather than under it —"
+				+ " it is the wave that spends the road budget now (see"
+				+ " SIMULTANEOUS_PEST_CEILING), so a row edited without re-checking the peak"
+				+ " shows up here first"))
 	return err
+
+
+## The first wave at which health, speed and the mutation rate have all reached
+## their caps — i.e. the first wave past which nothing per-pest is still moving.
+##
+## Searched rather than written down, because the answer is a function of the
+## table's length and three step/max pairs, and all four of those are things a
+## balance pass edits. Returns 0 when no such wave exists inside the search,
+## which the caller asserts on rather than quietly treating as wave 0.
+func _first_wave_with_every_scale_capped() -> int:
+	var table: int = WaveDirector.WAVES.size()
+	for wave: int in range(table + 1, table + 400):
+		if not is_equal_approx(WaveDirector.health_scale_for(wave), WaveDirector.ENDLESS_HEALTH_MAX):
+			continue
+		if not is_equal_approx(WaveDirector.speed_scale_for(wave), WaveDirector.ENDLESS_SPEED_MAX):
+			continue
+		if not is_equal_approx(WaveDirector.mutation_chance_for(wave), WaveDirector.MUTATION_CHANCE_MAX):
+			continue
+		return wave
+	return 0
 
 
 ## What fraction of `wave`'s bodies are beetles. The composition ramp, as one
@@ -4412,12 +4457,14 @@ func _mixed_garden() -> Array:
 ##
 ## The map over-promises in the obvious way: a Corn shoots only the pest furthest
 ## along, so a cob covering eight cells is busy with one of them and the other
-## seven get nothing. That is real and it is measured below — 79% of the stays on
-## covered ground in this run see nothing touch the pest at all. What it is not is
-## a promise the map broke, and this is the run that says so.
+## seven get nothing. That is real and it is measured below — 65% of the stays on
+## covered ground in this run (739 of 1129) see nothing touch the pest at all.
+## What it is not is a promise the map broke, and this is the run that says so.
 ##
-## Endless wave 14 over the seven-cob garden loses half the wave: 17 of 34 walk
-## out. If "covered" over-promised, this is the run where a player would be misled
+## Six waves into endless over the seven-cob garden loses half the wave: 24 of 48
+## walk out (re-measured after the fixed table grew to sixteen waves — it was 17
+## of 34 when the same offset was wave 14). If "covered" over-promised, this is
+## the run where a player would be misled
 ## — the board says every cell is answered and the beds go anyway. It does not.
 ## Every pest that reached the exit had been fought, and every pest that spent its
 ## WHOLE walk inside covered ground was touched. The pests that got out untouched
@@ -4430,7 +4477,14 @@ func _mixed_garden() -> Array:
 ## not act" reading is loud everywhere and quiet nowhere, so nothing can be built
 ## on it. That is why this issue closes with a number rather than a readout.
 func test_the_coverage_map_keeps_its_promise_to_a_pest_that_never_leaves_covered_ground() -> String:
-	var run: Dictionary = await _over_promise_run(14, _whole_road_garden(), [], 1, 12345, 40000)
+	# Six waves past the fixed table, written as an offset rather than as the
+	# literal 14 it used to be. The table grew from eight waves to sixteen
+	# (plant-tower-defense-74a), and wave 14 stopped being an endless wave at all
+	# — the run turned into a campaign wave the garden mostly wins, which silently
+	# takes away the "the garden is LOSING it" premise every assertion below
+	# depends on. The offset is what this measurement was always about.
+	var run: Dictionary = await _over_promise_run(WaveDirector.WAVES.size() + 6,
+		_whole_road_garden(), [], 1, 12345, 40000)
 	var err: String = _T.assert_eq(int(run["foreign_pests"]), 0,
 		"no other test's pests were standing in the tree, so every stay below is one this run staged")
 	if err != "":

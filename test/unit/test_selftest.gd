@@ -8063,3 +8063,389 @@ func test_no_test_persists_through_the_players_own_save() -> String:
 		err = _T.assert_eq(", ".join(offenders), "",
 			"every test that persists redirects RunConfig.save_path first; these do not")
 	return err
+
+
+# -- The Aphid Queen, and eight more waves to meet her in (plant-tower-defense-74a) --
+#
+# The boss is deliberately NOT a fourth mutation and deliberately not "a beetle
+# with more health". What makes her a different fight is that she bursts into
+# three aphids AT THE SPOT SHE FALLS, so killing her is a decision about WHERE
+# rather than about whether — the only thing on this board that makes the player
+# care where a kill lands. Everything below is that claim, and the arithmetic
+# under it, made checkable without a running game.
+
+
+func test_only_a_boss_answers_the_split_question_at_all() -> String:
+	## The accessors, and the reason they are accessors: SPECIES rows for the two
+	## ordinary pests carry no split keys at all, so anything reading the raw
+	## Dictionary would have to guard at every call site or error on a beetle.
+	var err: String = _T.assert_eq(String(Pest.split_species(Pest.APHID)), "",
+		"an aphid bursts into nothing")
+	if err == "":
+		err = _T.assert_eq(Pest.split_count(Pest.APHID), 0, "and so counts zero of it")
+	if err == "":
+		err = _T.assert_eq(String(Pest.split_species(Pest.BEETLE)), "", "nor does a beetle")
+	if err == "":
+		err = _T.assert_eq(Pest.split_count(Pest.BEETLE), 0, "nor count any")
+	if err == "":
+		err = _T.assert_eq(String(Pest.split_species(&"no_such_pest")), "",
+			"and a species that does not exist answers the same way rather than erroring")
+	if err == "":
+		err = _T.assert_eq(String(Pest.split_species(Pest.QUEEN)), String(Pest.APHID),
+			"the queen bursts into aphids")
+	if err == "":
+		err = _T.assert_gt(Pest.split_count(Pest.QUEEN), 1,
+			"into more than one of them, or it is a death animation rather than a mechanic")
+	return err
+
+
+func test_the_queens_sprite_counts_out_the_brood_it_bursts_into() -> String:
+	## The picture and the number are the same claim. pest_queen.svg draws the eggs
+	## on her back so a player can read "three" off the board before finding out the
+	## hard way; if split_count moves and the art does not, the sprite starts lying
+	## and nothing else in the project would notice.
+	var path: String = ProjectSettings.globalize_path("res://").path_join("art_src/pest_queen.svg")
+	var svg: String = FileAccess.get_file_as_string(path)
+	var err: String = _T.assert_gt(svg.length(), 0, "art_src/pest_queen.svg is readable")
+	if err != "":
+		return err
+	var marker: String = "<!-- the three eggs she bursts into -->"
+	var at: int = svg.find(marker)
+	err = _T.assert_true(at >= 0,
+		"the egg group is still marked in the source (a renamed comment makes this test vacuous)")
+	if err != "":
+		return err
+	var group_end: int = svg.find("</g>", at)
+	err = _T.assert_true(group_end > at, "the egg group closes")
+	if err != "":
+		return err
+	var group: String = svg.substr(at, group_end - at)
+	return _T.assert_eq(group.count("<ellipse"), Pest.split_count(Pest.QUEEN),
+		"the sprite draws exactly the %d eggs Pest.SPECIES says she bursts into"
+			% Pest.split_count(Pest.QUEEN))
+
+
+func test_the_boss_is_a_species_and_not_a_fourth_mutation() -> String:
+	## The issue says this in as many words. A queen must not be reachable through
+	## apply_mutation, must not appear in the wave director's mutation pool, and must
+	## wear none of the three mutation marks — those mean "this ordinary pest is
+	## harder to remove", and a boss is not an ordinary pest wearing a badge.
+	var queen: Pest = _pest(Pest.QUEEN, Vector2.ZERO)
+	var err: String = _T.assert_eq(queen.markers().size(), 0,
+		"an unmutated queen wears no mutation mark")
+	if err == "":
+		err = _T.assert_false(queen.is_armoured or queen.is_winged or queen.is_hungry,
+			"and carries none of the three traits")
+	if err == "":
+		err = _T.assert_eq(String(queen.mutation), "", "and has no mutation at all")
+	queen.free()
+	if err != "":
+		return err
+	for which: StringName in WaveDirector.MUTATIONS:
+		err = _T.assert_false(Pest.SPECIES.has(which),
+			"no mutation shares a name with a species (%s)" % which)
+		if err != "":
+			return err
+	return _T.assert_false(WaveDirector.MUTATIONS.has(Pest.QUEEN),
+		"and the queen is not in the pool a wave rolls traits out of")
+
+
+func test_a_queen_is_a_boss_sized_pest_on_every_axis_that_matters() -> String:
+	## The stat block, asserted as relationships rather than as literals: a boss that
+	## is merely a big number is one balance pass away from being a beetle again.
+	var queen: Dictionary = Pest.SPECIES[Pest.QUEEN]
+	var beetle: Dictionary = Pest.SPECIES[Pest.BEETLE]
+	var err: String = _T.assert_gt(float(queen["health"]), float(beetle["health"]) * 4.0,
+		"she carries several beetles' worth of health (%.0f vs %.0f)"
+			% [float(queen["health"]), float(beetle["health"])])
+	if err == "":
+		err = _T.assert_true(float(queen["speed"]) < float(beetle["speed"]),
+			"walks slower than the slowest ordinary pest, so the wave arrives around her")
+	if err == "":
+		err = _T.assert_gt(float(queen["chew_seconds"]), float(beetle["chew_seconds"]) * 3.0,
+			"and a Chomp that closes on her is shut for the rest of the wave (%.1fs vs %.1fs)"
+				% [float(queen["chew_seconds"]), float(beetle["chew_seconds"])])
+	if err == "":
+		err = _T.assert_gt(float(queen["scale"]), float(beetle["scale"]),
+			"she is drawn bigger than anything else on the board")
+	if err == "":
+		err = _T.assert_gt(int(queen["seeds"]), int(beetle["seeds"]) * 3,
+			"and pays out like the wave she is")
+	if err == "":
+		# The sprite is still on STYLE.md's canvas — the size comes from `scale`,
+		# not from a second canvas nobody would notice drifting.
+		err = _T.assert_eq(String(queen["texture"]), "res://assets/sprites/pest_queen.png",
+			"and she has her own sprite rather than a tinted aphid")
+	return err
+
+
+func test_a_queen_survives_one_maxed_corn_cobbler_and_falls_to_four() -> String:
+	## The balance band the issue names, as arithmetic off the real constants.
+	##
+	## Measured conservatively: only the ON-AXIS kernel is counted (at long range the
+	## off-axis pairs miss — see CornCobbler.single_target_dps), and the exposure is
+	## the chord a cob's ring cuts across the lane one cell away, divided by her own
+	## walking speed. So this is close to the LEAST damage four maxed cobs can do to
+	## her while she crosses their reach, and the most one cob can.
+	var reach: float = CornCobbler.RANGE
+	var chord: float = 2.0 * sqrt(reach * reach - float(Board.CELL * Board.CELL))
+	var speed: float = float(Pest.SPECIES[Pest.QUEEN]["speed"])
+	var health: float = float(Pest.SPECIES[Pest.QUEEN]["health"])
+	var seconds_in_reach: float = chord / speed
+	var per_cob: float = CornCobbler.single_target_dps(CornCobbler.LEVELS.size(), reach) * seconds_in_reach
+	var err: String = _T.assert_gt(per_cob, 0.0,
+		"sanity: a maxed cob does damage at the edge of its own ring")
+	if err == "":
+		err = _T.assert_gt(health, per_cob * 2.0,
+			("two maxed Corn Cobblers do not take a queen (%.0f damage against %.0f health) —"
+				+ " a boss one plant answers is not a boss") % [per_cob * 2.0, health])
+	if err == "":
+		err = _T.assert_gt(per_cob * 4.0, health,
+			("four do (%.0f against %.0f) — a boss the whole garden cannot answer is not"
+				+ " shipped either") % [per_cob * 4.0, health])
+	return err
+
+
+func test_a_queen_bursts_into_her_brood_where_she_fell() -> String:
+	## The mechanic. Killed mid-road, she leaves exactly split_count() aphids, and
+	## they are standing where she was rather than at the entrance — which is the
+	## whole of why killing her late costs the player something.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var queen: Pest = _spawn_and_take(game, Pest.QUEEN)
+	err = _T.assert_true(queen != null, "a queen was staged")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# Walk her a third of the way down the road, so "where she fell" is somewhere
+	# an entrance spawn could not be mistaken for.
+	var route: PackedVector2Array = game.board.route()
+	var leg: int = int(route.size() / 3)
+	queen.enter_road_at(route[leg], leg)
+	var fell_at: Vector2 = queen.position
+	var before: Dictionary = {}
+	for node: Node in game.get_tree().get_nodes_in_group("pests"):
+		before[node.get_instance_id()] = true
+
+	queen.kill()
+
+	var brood: Array[Pest] = []
+	for node: Node in game.get_tree().get_nodes_in_group("pests"):
+		var pest := node as Pest
+		if pest != null and not before.has(pest.get_instance_id()):
+			brood.append(pest)
+	err = _T.assert_eq(brood.size(), Pest.split_count(Pest.QUEEN),
+		"she left exactly the brood her species declares")
+	if err == "":
+		for child: Pest in brood:
+			err = _T.assert_eq(String(child.species), String(Pest.split_species(Pest.QUEEN)),
+				"and every one of them is the species she bursts into")
+			if err == "":
+				err = _T.assert_true(child.position.distance_to(fell_at) <= float(Board.CELL) * 0.5,
+					("standing inside the cell she died on (%.0f px from %s), not back at"
+						+ " the entrance") % [child.position.distance_to(fell_at), fell_at])
+			if err == "":
+				err = _T.assert_eq(child.route_leg(), queen.route_leg(),
+					"walking the leg she was walking, so it inherits her place on the road")
+			if err == "":
+				err = _T.assert_gt(child.progress(), 0.0,
+					"and it is genuinely part-way down the road, not at progress zero")
+			if err != "":
+				break
+	_T.free_ui(game)
+	return err
+
+
+func test_a_queen_that_reaches_the_exit_leaves_no_brood_at_all() -> String:
+	## The asymmetry that turns the mechanic into a decision. An escape already
+	## costs a bed; three more aphids materialising past the exit would be a
+	## punishment with nowhere left to walk, and — worse — it would mean letting her
+	## through was cheaper than killing her badly, which inverts the whole thing.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var queen: Pest = _spawn_and_take(game, Pest.QUEEN)
+	err = _T.assert_true(queen != null, "a queen was staged")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var lives_before: int = game.lives
+	var before: Dictionary = {}
+	for node: Node in game.get_tree().get_nodes_in_group("pests"):
+		before[node.get_instance_id()] = true
+
+	queen._escape()
+
+	var appeared: int = 0
+	for node: Node in game.get_tree().get_nodes_in_group("pests"):
+		if not before.has(node.get_instance_id()):
+			appeared += 1
+	err = _T.assert_eq(appeared, 0, "an escaped queen leaves nothing behind her")
+	if err == "":
+		err = _T.assert_eq(game.lives, lives_before - 1, "she still took the bed she reached")
+	_T.free_ui(game)
+	return err
+
+
+func test_enter_road_at_drops_a_pest_onto_the_leg_it_is_told_and_clamps_the_rest() -> String:
+	## The primitive the brood rides on, checked on its own: it is the only way any
+	## pest in this game starts anywhere but the entrance, so a leg it silently got
+	## wrong would be an escape or a stall with no error anywhere.
+	var route := PackedVector2Array([
+		Vector2(0, 0), Vector2(64, 0), Vector2(128, 0), Vector2(128, 64), Vector2(128, 128),
+	])
+	var pest := Pest.new()
+	pest.setup(Pest.APHID, route)
+	pest.set_physics_process(false)
+	pest.enter_road_at(Vector2(100, 0), 2)
+	var err: String = _T.assert_eq(pest.route_leg(), 2, "it is walking toward the leg it was given")
+	if err == "":
+		err = _T.assert_true(pest.position.is_equal_approx(Vector2(100, 0)),
+			"and standing where it was put, got %s" % pest.position)
+	if err == "":
+		err = _T.assert_gt(pest.progress(), 0.0, "so it reports real progress down the road")
+	if err == "":
+		# Past the end would make the very next step an escape by a pest that never
+		# walked; before the start would send it back to a waypoint it is past.
+		pest.enter_road_at(Vector2(128, 128), 99)
+		err = _T.assert_eq(pest.route_leg(), route.size() - 1,
+			"a leg past the end is clamped to the last one rather than escaping on the spot")
+	if err == "":
+		pest.enter_road_at(Vector2.ZERO, -5)
+		err = _T.assert_eq(pest.route_leg(), 1, "and a leg before the start is clamped forward")
+	pest.free()
+	return err
+
+
+func test_the_road_budget_counts_the_bodies_a_boss_becomes() -> String:
+	## peak_simultaneous_pests() sweeps the schedule and never kills anything, which
+	## used to be the pessimistic reading. A boss inverts it: the ONLY way to put her
+	## brood on the road is to kill her, so "nothing dies" stopped being the worst
+	## case for headcount the moment a queen entered the table.
+	var err: String = _T.assert_eq(WaveDirector.brood_headroom_for(1), 0,
+		"a wave with no boss in it needs no headroom")
+	if err != "":
+		return err
+	var boss_waves: int = 0
+	for wave: int in range(1, WaveDirector.WAVES.size() + 1):
+		var queens: int = 0
+		for group: Dictionary in WaveDirector.groups_for(wave):
+			if StringName(group["species"]) == Pest.QUEEN:
+				queens += int(group["count"])
+		if queens <= 0:
+			err = _T.assert_eq(WaveDirector.brood_headroom_for(wave), 0,
+				"wave %d has no queen and so no extra bodies" % wave)
+			if err != "":
+				return err
+			continue
+		boss_waves += 1
+		err = _T.assert_eq(WaveDirector.brood_headroom_for(wave),
+			queens * (Pest.split_count(Pest.QUEEN) - 1),
+			("wave %d books room for what its %d queen(s) become — count - 1 each, since"
+				+ " the queen herself is gone by then") % [wave, queens])
+		if err != "":
+			return err
+	err = _T.assert_gt(boss_waves, 0,
+		"the campaign actually has boss waves to check (a zero here is a vacuous pass)")
+	if err == "":
+		# And the headroom is really folded into the number the budget is graded on,
+		# not merely available beside it.
+		var finale: int = WaveDirector.WAVES.size()
+		err = _T.assert_gte(WaveDirector.peak_simultaneous_pests(finale),
+			WaveDirector.brood_headroom_for(finale),
+			"the finale's peak includes its own brood headroom")
+	return err
+
+
+func test_every_campaign_wave_stays_inside_the_road_budget_brood_included() -> String:
+	## The campaign is now the half of the game that spends the road budget — the
+	## endless column is paced apart from its first wave, so it peaks at 29 of 40
+	## while wave 16 lands on 40 exactly. Sweeping the fixed table is therefore no
+	## longer a formality; it is where the ceiling is actually tested.
+	var ceiling: int = WaveDirector.SIMULTANEOUS_PEST_CEILING
+	var worst: int = 0
+	var worst_wave: int = 0
+	var checked: int = 0
+	for wave: int in range(1, WaveDirector.WAVES.size() + 1):
+		var peak: int = WaveDirector.peak_simultaneous_pests(wave)
+		var err: String = _T.assert_gte(ceiling, peak,
+			"campaign wave %d paces %d pests onto the road, inside the %d ceiling"
+				% [wave, peak, ceiling])
+		if err != "":
+			return err
+		if peak > worst:
+			worst = peak
+			worst_wave = wave
+		checked += 1
+	var err2: String = _T.assert_gt(checked, 8,
+		"the sweep walked a campaign worth having (%d waves)" % checked)
+	if err2 == "":
+		err2 = _T.assert_eq(worst, ceiling,
+			("and one of them reaches it — wave %d at %d of %d. A ceiling nothing in the"
+				+ " shipped game ever touches is decoration, and `cmd budgets` grades this"
+				+ " one on the measured peak") % [worst_wave, worst, ceiling])
+	return err2
+
+
+func test_the_campaign_builds_to_its_boss_rather_than_opening_with_one() -> String:
+	## Where the queens sit in the table, as a shape rather than as three wave
+	## numbers: nothing before the halfway mark, and the last wave is a boss wave.
+	## A queen dropped into wave 3 would pass every arithmetic check in this file
+	## and ruin the campaign.
+	var table: int = WaveDirector.WAVES.size()
+	var boss_waves: Array[int] = []
+	for wave: int in range(1, table + 1):
+		for group: Dictionary in WaveDirector.groups_for(wave):
+			if StringName(group["species"]) == Pest.QUEEN:
+				boss_waves.append(wave)
+				break
+	var err: String = _T.assert_gt(boss_waves.size(), 1,
+		"the campaign has more than one boss wave (got %s)" % [boss_waves])
+	if err == "":
+		err = _T.assert_gt(boss_waves[0], table / 2,
+			"the first queen arrives in the second half of the campaign, at wave %d of %d"
+				% [boss_waves[0], table])
+	if err == "":
+		err = _T.assert_eq(boss_waves[boss_waves.size() - 1], table,
+			"and the finale is a boss wave")
+	if err == "":
+		err = _T.assert_gt(WaveDirector.threat_for(table), WaveDirector.threat_for(boss_waves[0]),
+			"which prices above the first one rather than merely repeating it")
+	if err != "":
+		return err
+	# Campaign only, on purpose — see _endless_groups for why a periodic boss would
+	# break the two invariants endless is built on.
+	for wave: int in [table + 1, table + 7, 100, 500]:
+		for group: Dictionary in WaveDirector.groups_for(wave):
+			err = _T.assert_false(StringName(group["species"]) == Pest.QUEEN,
+				"endless wave %d sends no queen" % wave)
+			if err != "":
+				return err
+	return err
+
+
+func test_a_queen_floats_her_health_bar_clear_of_her_own_sprite() -> String:
+	## She is drawn at 1.45x, so the bar every other pest wears 30 px up would be
+	## painted across her back — the one readout a boss fight is about, hidden
+	## inside the boss. And the fix must move exactly one sprite: an aphid at 0.72x
+	## must not have its bar slide down into its body.
+	var queen_scale: float = float(Pest.SPECIES[Pest.QUEEN]["scale"])
+	var aphid_scale: float = float(Pest.SPECIES[Pest.APHID]["scale"])
+	var err: String = _T.assert_true(Pest.health_bar_top_for(queen_scale) < Pest.HEALTH_BAR_TOP,
+		"the queen's bar floats higher than the default (%.1f vs %.1f)"
+			% [Pest.health_bar_top_for(queen_scale), Pest.HEALTH_BAR_TOP])
+	if err == "":
+		err = _T.assert_true(absf(Pest.health_bar_top_for(queen_scale))
+				> Pest.SPRITE_HALF * queen_scale * 0.9,
+			"and clears most of her own 1.45x silhouette rather than sitting inside it")
+	if err == "":
+		err = _T.assert_float_eq(Pest.health_bar_top_for(aphid_scale), Pest.HEALTH_BAR_TOP, 0.0001,
+			"while a small pest keeps the bar exactly where it has always been")
+	if err == "":
+		err = _T.assert_float_eq(Pest.health_bar_top_for(1.0), Pest.HEALTH_BAR_TOP, 0.0001,
+			"and so does a beetle")
+	return err

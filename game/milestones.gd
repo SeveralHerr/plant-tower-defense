@@ -27,10 +27,14 @@ extends RefCounted
 ## ids — so the whole table is assertable as data with no Game, no save file and no
 ## Control, the same way `Hud.threat_color` is.
 
-## A pest count one determined campaign can reach; the campaign's eight waves put
-## roughly this many on the board.
+## A pest count one determined campaign can reach. It used to be roughly what the
+## campaign's eight waves put on the board at all, i.e. earned only by a run that
+## lost almost nothing; the table is sixteen waves now (363 scheduled pests plus
+## whatever the queens burst into), so this is comfortably inside a campaign and
+## is a "you finished" marker rather than a "you finished perfectly" one.
 const HUNDRED: int = 100
-## And one a campaign cannot: this is an endless-run number.
+## And one a campaign cannot: 363 scheduled pests is the whole fixed table, so
+## this is still an endless-run number with 137 to spare.
 const FIVE_HUNDRED: int = 500
 ## Deep endless. WaveDirector.threat_level is a logarithm, so wave 40 is a long way
 ## past where the fixed campaign stops rather than five more waves of the same.

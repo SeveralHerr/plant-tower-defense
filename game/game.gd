@@ -684,6 +684,18 @@ static func coverage_note_for(frontier: float) -> String:
 ## devtools `spawn_pest` verb uses it to stage a single bug without a whole
 ## wave. `mutation` is &"" outside wave 8+ or for a manually staged pest.
 func spawn_pest(species: StringName, mutation: StringName = &"") -> void:
+	var pest: Pest = _new_pest(species)
+	if mutation != &"":
+		pest.apply_mutation(mutation)
+
+
+## One pest on the road at the entrance, wired up and scaled for the wave in
+## progress. The single constructor both spawn_pest() and _spawn_brood() go
+## through, so a pest that arrives because a boss burst is the same object, on
+## the same route, with the same signals, as one the wave director asked for —
+## the alternative is two spawn paths and a brood that quietly stops paying
+## seeds or stops costing a bed.
+func _new_pest(species: StringName) -> Pest:
 	var pest := Pest.new()
 	_entities.add_child(pest)
 	pest.setup(species, board.route())
@@ -694,10 +706,47 @@ func spawn_pest(species: StringName, mutation: StringName = &"") -> void:
 		WaveDirector.health_scale_for(director.current_wave),
 		WaveDirector.speed_scale_for(director.current_wave)
 	)
-	if mutation != &"":
-		pest.apply_mutation(mutation)
 	pest.died.connect(_on_pest_died)
 	pest.escaped.connect(_on_pest_escaped)
+	return pest
+
+
+## How far from the death point the brood is scattered before it re-forms on the
+## road. Purely legibility: three pests stacked on one pixel read as one pest,
+## and the whole point of the mechanic is that the player SEES the boss become
+## three things. Well inside half a cell (32 px), so every one of them is still
+## on the road cell its parent died on and the lane-pressure tally, the husk
+## drop and the coverage map all still file them where they actually are.
+const BROOD_SPREAD: float = 14.0
+
+
+## The boss mechanic: a pest whose species names a split bursts into that many
+## smaller ones AT THE SPOT IT FELL rather than simply leaving the board.
+##
+## Hung off `died` and nothing else, which is the whole design. An escaped queen
+## does NOT burst — she is already off the board and has taken her bed; three
+## more aphids materialising past the exit would be a punishment with nowhere to
+## walk. So the only way to see the brood is to kill her, and the only question
+## the player controls is where. Kill her at the gate and the three aphids have
+## the entire road left to be shot on; kill her at the last corner and they have
+## seconds. That is a decision about placement that nothing else on this board
+## asks for, and it is deliberately not "armoured, but more".
+##
+## Not spawned once the run is over: _on_pest_escaped clears the pest group the
+## instant the last bed goes, and a brood arriving after that would repopulate a
+## board the player has already lost and keep the wave alive behind the card.
+func _spawn_brood(parent: Pest) -> void:
+	if game_over or victory:
+		return
+	var species: StringName = Pest.split_species(parent.species)
+	var count: int = Pest.split_count(parent.species)
+	if species == &"" or count <= 0:
+		return
+	var at: Vector2 = parent.position
+	var leg: int = parent.route_leg()
+	for i: int in range(count):
+		var child: Pest = _new_pest(species)
+		child.enter_road_at(at + Vector2(BROOD_SPREAD, 0.0).rotated(TAU * float(i) / float(count)), leg)
 
 
 func _on_husk_collected(value: int, at: Vector2) -> void:
@@ -733,6 +782,11 @@ func _on_pest_died(pest: Pest) -> void:
 	# mutation and compost systems together instead of leaving them side by side.
 	var husk_value: int = maxi(1, int(ceil(pest.seed_value / 2.0 * pest.husk_multiplier())))
 	compost.drop_husk(pest.position, husk_value)
+	# Last, after the seeds and the husk this kill earned: the brood is the
+	# consequence of the kill, not part of paying for it, and a player who kills
+	# a queen at the exit should still be holding her 40 seeds while the three
+	# aphids she left walk out.
+	_spawn_brood(pest)
 
 
 ## Files what the escaping pest knew about its own walk — if there is a pest to
@@ -1582,6 +1636,13 @@ const BUDGET_DESCRIBED: String = "described"
 ## other way needs a different word, or every future glance at the report
 ## mistakes the one alarm this table can still raise for the one row that was
 ## never going to ring it.
+##
+## The wave that spends it is now the campaign finale rather than an endless one
+## (plant-tower-defense-74a): the endless column is paced apart from its first
+## wave, so endless peaks at 29, and wave 16 is sized to land on 40 exactly.
+## Both halves of the claim still hold — the shares bound it by construction,
+## and a real wave reaches it — but they are now made by two different waves.
+## See WaveDirector.SIMULTANEOUS_PEST_CEILING.
 const BUDGET_SPENT_BY_DESIGN: String = "spent_by_design"
 
 ## What each budget had left the last time one was read and accepted. The only
@@ -1944,9 +2005,11 @@ func _stats_row() -> HBoxContainer:
 ## WaveDirector.SIMULTANEOUS_PEST_CEILING against the worst wave in a sweep.
 ##
 ## The one dependent of Board.PATH_CORNERS that has a real ceiling, so it is the
-## one that gets a number. Swept rather than sampled: the peak lands early, where
-## the swarm and the column both still sit on the road at their natural spacing,
-## and a probe at wave 100 would report the road half empty.
+## one that gets a number. Swept rather than sampled: the peak lands at the
+## campaign finale (wave 16), where two queens, their brood headroom, a full
+## swarm and a beetle column are all priced onto the road at once, and every
+## endless wave after it is paced apart — so a probe at wave 100 would report
+## the road at 29 of 40 and be wrong in the reassuring direction.
 func _budget_pest_road_ceiling(sweep: int) -> Dictionary:
 	var worst: int = 0
 	var worst_wave: int = 0

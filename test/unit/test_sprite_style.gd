@@ -42,6 +42,11 @@ const EXPECTED_SIZE := {
 	"pest_aphid_dead": 64,
 	"pest_beetle": 64,
 	"pest_beetle_dead": 64,
+	# The boss reads bigger than a beetle on the board, but it does it on the
+	# kit's own 64 px canvas — Pest.SPECIES[QUEEN].scale does the enlarging, so
+	# nothing here needs a second canvas size to justify.
+	"pest_queen": 64,
+	"pest_queen_dead": 64,
 	"seed_packet": 64,
 	"sticky_sundew": 64,
 	"sunflower": 64,
