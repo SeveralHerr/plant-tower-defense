@@ -165,7 +165,8 @@ func _init() -> void:
 ## so a refusal is never annotated with a critique.
 ##
 ## There is deliberately no fifth state for "a husk will take this click". It
-## cannot happen — see husk_click_margin() for the 4 px that says so — and it is
+## cannot happen — see husk_click_budget() for the 32 - 28 = 4 px that says so,
+## and for how much of that allowance a road or a sweep radius costs — and it is
 ## the one thing here that would be *transient*: the three states above are facts
 ## about the board and the plant, stable until something is planted, while a husk
 ## rots on a 4.5-10 s timer and this node is only redrawn on mouse motion, on a
@@ -383,14 +384,38 @@ static func covered_road_cell_list(on_board: Board, cell: Vector2i,
 ## the lane, or a road drawn along the board edge all eat into it. At <= 0.0 the
 ## conflict becomes real and this class needs a husk state after all.
 ##
+## A subtraction, and only the difference comes back here. The two terms it is a
+## difference OF are in husk_click_budget() — read that one when the question is
+## "how much of this budget am I about to spend", which is the question a designer
+## moving PATH_CORNERS or COLLECT_RADIUS is actually asking.
+##
+## 0.0 is also what an unmeasurable board answers, which is deliberately the value
+## that fails the gate rather than a value that passes it. husk_click_budget()
+## tells the two apart with a `measured` flag; this signature cannot.
+static func husk_click_margin(on_board: Board) -> float:
+	var clearance: float = lane_to_buildable_distance(on_board)
+	if clearance < 0.0:
+		return 0.0
+	return clearance - CompostMeter.COLLECT_RADIUS
+
+
+## The first term of that subtraction: how close the pests' lane — and so the
+## husk of anything that dies on it — ever gets to a cell a plant may stand on.
+## 32.0 today, which is CELL / 2, because route() is one point per road cell
+## centre and a road cell centre is half a cell from the road cell's edge.
+##
+## -1.0, never 0.0, when the board cannot be walked at all: a real distance of
+## zero would mean the lane touches buildable ground, which is the exact defect
+## this measures, so an unmeasurable board must not be able to impersonate one.
+##
 ## Exact, not sampled: every route segment is axis-aligned, so a segment's own
 ## bounding box is the segment, and box-to-box distance is the true distance.
-static func husk_click_margin(on_board: Board) -> float:
+static func lane_to_buildable_distance(on_board: Board) -> float:
 	if on_board == null or on_board.path_cell_count() <= 0:
-		return 0.0
+		return -1.0
 	var route: PackedVector2Array = on_board.route()
 	if route.size() < 2:
-		return 0.0
+		return -1.0
 	var closest: float = INF
 	for i: int in range(route.size() - 1):
 		var a: Vector2 = route[i]
@@ -408,8 +433,54 @@ static func husk_click_margin(on_board: Board) -> float:
 				var dy: float = maxf(maxf(lo.y - far.y, corner.y - hi.y), 0.0)
 				closest = minf(closest, Vector2(dx, dy).length())
 	if is_inf(closest):
-		return 0.0
-	return closest - CompostMeter.COLLECT_RADIUS
+		return -1.0
+	return closest
+
+
+## The same 4 px, shown as the subtraction it is rather than as its answer.
+##
+## The whole point of this function is that a bare "4.0" teaches nobody anything.
+## A designer dragging PATH_CORNERS one cell nearer the board edge, or nudging
+## CompostMeter.COLLECT_RADIUS up because husks feel fiddly to click, is spending
+## a budget that no number anywhere told them existed — they find out when
+## test_no_husk_the_game_can_drop_lands_within_a_click_of_buildable_ground goes
+## red, with nothing saying that four pixels was the entire allowance. So this
+## reports both terms and their difference together: 32 - 28 = 4, and the reader
+## can see which of the two they just moved.
+##
+## `margin` is not recomputed here — it is husk_click_margin() called, so the
+## readout cannot drift away from the value the gate actually asserts on. That
+## costs a second walk of the lane, which is free at the once-per-devtools-call
+## rate this is used at and is the cheapest possible guarantee that the number a
+## designer reads and the number a test fails on are the same number.
+##
+## Keys: measured (bool), lane_to_buildable (float, -1.0 when unmeasured),
+## collect_radius (float), margin (float), summary (String). All JSON-safe
+## scalars, because this crosses the devtools bus in `board_info`.
+static func husk_click_budget(on_board: Board) -> Dictionary:
+	var clearance: float = lane_to_buildable_distance(on_board)
+	var radius: float = CompostMeter.COLLECT_RADIUS
+	var margin: float = husk_click_margin(on_board)
+	if clearance < 0.0:
+		return {
+			"measured": false,
+			"lane_to_buildable": -1.0,
+			"collect_radius": radius,
+			"margin": margin,
+			"summary": ("husk click budget: UNMEASURED — no board, or a board with no route. "
+				+ "margin reads %.1f because that is what an unmeasurable board is worth, "
+				+ "not because anything was measured.") % margin,
+		}
+	return {
+		"measured": true,
+		"lane_to_buildable": clearance,
+		"collect_radius": radius,
+		"margin": margin,
+		"summary": ("husk click budget: lane comes within %.1f px of buildable ground, "
+			+ "husk sweeps at %.1f px, %.1f px clear. At 0.0 a click could sweep a husk "
+			+ "while standing on plantable ground and the preview would need a husk state.")
+			% [clearance, radius, margin],
+	}
 
 
 ## The board to measure against: the one handed in, else the sibling Game put

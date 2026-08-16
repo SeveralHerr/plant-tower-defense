@@ -2102,3 +2102,182 @@ func test_the_notebook_plant_pages_fit_their_card() -> String:
 				break
 	_T.free_ui(notebook)
 	return err
+
+
+# --- The husk click budget, as a number a designer can read before it breaks ---
+#
+# test_no_husk_the_game_can_drop_lands_within_a_click_of_buildable_ground above
+# proves the 4 px clearance exists. These prove it is VISIBLE: that the
+# board_info devtools verb prints both terms of the subtraction it comes from,
+# and that what it prints is the same value the gate asserts on rather than a
+# second copy of it that can quietly disagree.
+
+
+const DEVTOOLS_EXT := "res://devtools_ext/commands.gd"
+
+
+## board_info as the bus would hand it back. The extension is instantiated
+## directly and pointed at the hosted Game -- the bus needs a running game, and
+## nothing in this reply needs one, so it stays a pure-logic check.
+func _board_info(game: Game) -> Dictionary:
+	var ext = preload(DEVTOOLS_EXT).new()
+	ext._dev = game
+	return ext._cmd_board_info({})
+
+
+## The readout cannot drift from the thing it reports, and it shows its working.
+##
+## A verb that printed "husk_click_margin: 4.0" and nothing else would be a fact
+## with no scale attached: 4 out of what? So both terms are asserted present AND
+## asserted to actually subtract to the reported result. The failure this catches
+## is the one that leaves no trace on screen -- a board_info that goes on printing
+## a hand-copied 32 and 28 after the geometry moved underneath it.
+func test_board_info_prints_the_husk_click_budget_as_a_subtraction() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	err = _T.assert_true(game.board != null, "and brought its board with it")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var reply: Dictionary = _board_info(game)
+	err = _T.assert_true(reply.has("success") and reply.has("message") and reply.has("data"),
+		"board_info keeps the three-key envelope -- got %s" % [reply.keys()])
+	if err == "":
+		err = _T.assert_eq(reply.size(), 3, "and carries nothing else")
+	if err == "":
+		err = _T.assert_true(reply["data"] is Dictionary, "data is a Dictionary")
+	if err == "":
+		err = _T.assert_true(bool(reply["success"]),
+			"and it succeeds against a real Game: %s" % reply["message"])
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var data: Dictionary = reply["data"]
+	var wanted: Array[String] = [
+		"husk_lane_to_buildable",
+		"husk_collect_radius",
+		"husk_click_margin",
+		"husk_click_margin_measured",
+		"husk_click_budget",
+	]
+	err = _T.assert_eq(wanted.size(), 5, "there are five budget fields to look for")
+	for key: String in wanted:
+		if err != "":
+			break
+		err = _T.assert_true(data.has(key),
+			"board_info reports %s -- got %s" % [key, data.keys()])
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var lane: float = float(data["husk_lane_to_buildable"])
+	var sweep: float = float(data["husk_collect_radius"])
+	var shown: float = float(data["husk_click_margin"])
+	var margin: float = PlacementPreview.husk_click_margin(game.board)
+	err = _T.assert_float_eq(shown, margin, 0.001,
+		"the margin printed (%.3f) is the margin the gate asserts on (%.3f)" % [shown, margin])
+	if err == "":
+		err = _T.assert_float_eq(lane - sweep, margin, 0.001,
+			"lane %.3f - sweep %.3f = %.3f, so the subtraction on screen is the real one"
+				% [lane, sweep, margin])
+	if err == "":
+		err = _T.assert_float_eq(sweep, CompostMeter.COLLECT_RADIUS, 0.001,
+			"the sweep term is CompostMeter.COLLECT_RADIUS itself, not a literal beside it")
+	if err == "":
+		err = _T.assert_float_eq(lane, PlacementPreview.lane_to_buildable_distance(game.board),
+			0.001, "and the lane term is lane_to_buildable_distance() itself")
+	if err == "":
+		err = _T.assert_true(bool(data["husk_click_margin_measured"]),
+			"a real board reports a MEASURED margin, so an unmeasurable 0.0 cannot pass for clearance")
+	if err == "":
+		err = _T.assert_gt(margin, 0.0,
+			"and the budget still has something left in it -- %.1f px" % margin)
+	if err == "":
+		err = _T.assert_true(str(reply["message"]).contains("%.1f" % margin),
+			"the one-line message carries the margin too, for a reader who never opens data: %s"
+				% reply["message"])
+	if err == "":
+		# It crosses the bus as JSON; a Dictionary or Object in here would not survive.
+		for key: String in data:
+			var value: Variant = data[key]
+			err = _T.assert_true(value is String or value is int or value is float or value is bool,
+				"data.%s is a JSON-safe scalar, got %s" % [key, type_string(typeof(value))])
+			if err != "":
+				break
+	_T.free_ui(game)
+	return err
+
+
+## The prose quotes the geometry, rather than remembering it.
+##
+## The summary is the half a designer actually reads, and a sentence is exactly
+## the kind of thing that goes on saying "4 px clear" for a year after the road
+## moved. Every number in it is formatted from the same dictionary it ships with,
+## so this asserts the digits are present rather than trusting the wording.
+func test_the_husk_budget_summary_quotes_the_numbers_it_was_computed_from() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	err = _T.assert_true(game.board != null, "and brought its board with it")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var budget: Dictionary = PlacementPreview.husk_click_budget(game.board)
+	err = _T.assert_true(budget.has("summary") and budget.has("margin")
+		and budget.has("lane_to_buildable") and budget.has("collect_radius"),
+		"the budget carries both terms, the result and the prose -- got %s" % [budget.keys()])
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var summary: String = str(budget["summary"])
+	err = _T.assert_gt(summary.length(), 0, "the summary is a real sentence")
+	var terms: Array[String] = [
+		"%.1f" % float(budget["lane_to_buildable"]),
+		"%.1f" % float(budget["collect_radius"]),
+		"%.1f" % float(budget["margin"]),
+	]
+	if err == "":
+		err = _T.assert_eq(terms.size(), 3, "there are three numbers to find in it")
+	for term: String in terms:
+		if err != "":
+			break
+		err = _T.assert_true(summary.contains(term),
+			"the summary prints %s px -- got: %s" % [term, summary])
+	if err == "":
+		err = _T.assert_float_eq(float(budget["margin"]),
+			PlacementPreview.husk_click_margin(game.board), 0.001,
+			"and the budget's own margin is husk_click_margin(), not a recomputation of it")
+	_T.free_ui(game)
+	return err
+
+
+## An unmeasurable board must not be able to impersonate a measured one.
+##
+## husk_click_margin() answers 0.0 for a board it could not walk, which is the
+## value that FAILS its gate -- fine for a gate, useless for a readout, because a
+## reader seeing "lane 0.0" would conclude the lane runs straight over plantable
+## ground. So the budget reports -1.0 and says UNMEASURED in words.
+func test_the_husk_budget_never_reports_an_unmeasurable_board_as_clearance() -> String:
+	var blind: Dictionary = PlacementPreview.husk_click_budget(null)
+	var err: String = _T.assert_true(blind.has("measured") and blind.has("lane_to_buildable")
+		and blind.has("margin") and blind.has("summary"),
+		"even the blind answer carries every field -- got %s" % [blind.keys()])
+	if err != "":
+		return err
+	err = _T.assert_false(bool(blind["measured"]), "a null board measured nothing")
+	if err == "":
+		err = _T.assert_float_eq(float(blind["lane_to_buildable"]), -1.0, 0.001,
+			"and reports -1.0, never 0.0 -- 0.0 is a real distance, and it is the defect")
+	if err == "":
+		err = _T.assert_float_eq(PlacementPreview.lane_to_buildable_distance(null), -1.0, 0.001,
+			"the lane term says the same on its own")
+	if err == "":
+		err = _T.assert_float_eq(float(blind["margin"]),
+			PlacementPreview.husk_click_margin(null), 0.001,
+			"the margin is still exactly what the gate would see, which is the failing 0.0")
+	if err == "":
+		err = _T.assert_true(str(blind["summary"]).contains("UNMEASURED"),
+			"and the prose refuses to read as a measurement -- got: %s" % blind["summary"])
+	return err

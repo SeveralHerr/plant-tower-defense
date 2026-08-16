@@ -191,19 +191,39 @@ func _cmd_upgrade_plant(args: Dictionary) -> Dictionary:
 	}
 
 
+## The board's shape, plus the one budget on it that is nearly spent.
+##
+## husk_click_margin is 4.0 px: the distance between a husk's 28 px sweep and the
+## nearest ground a plant may stand on. It is reported here with BOTH terms of the
+## subtraction it comes from (husk_lane_to_buildable minus husk_collect_radius),
+## because the result alone says nothing about how much room is left. Whoever
+## moves Board.PATH_CORNERS or CompostMeter.COLLECT_RADIUS is spending that
+## budget, and until this verb printed it the only place the number appeared was
+## in the failure text of the test that guards it -- which is an alarm, not a
+## budget. See PlacementPreview.husk_click_budget().
+##
+## The numbers are not computed here: margin is PlacementPreview.husk_click_margin()
+## itself, the same call the gate asserts on, so this readout cannot drift away
+## from the thing it reports.
 func _cmd_board_info(_args: Dictionary) -> Dictionary:
 	var game: Game = _game()
 	if game == null:
 		return _fail("no Game in the tree")
+	var budget: Dictionary = PlacementPreview.husk_click_budget(game.board)
 	return {
 		"success": true,
-		"message": "board",
+		"message": "board %dx%d -- %s" % [Board.COLS, Board.ROWS, budget["summary"]],
 		"data": {
 			"cols": Board.COLS,
 			"rows": Board.ROWS,
 			"cell": Board.CELL,
 			"path_cells": game.board.path_cell_count(),
 			"route_points": game.board.route().size(),
+			"husk_lane_to_buildable": budget["lane_to_buildable"],
+			"husk_collect_radius": budget["collect_radius"],
+			"husk_click_margin": budget["margin"],
+			"husk_click_margin_measured": budget["measured"],
+			"husk_click_budget": budget["summary"],
 		},
 	}
 
