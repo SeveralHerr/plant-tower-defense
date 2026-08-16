@@ -199,3 +199,123 @@ func test_a_wave_puts_pests_on_the_board() -> String:
 			"every pest the table promised is on the road")
 	_T.free_ui(game)
 	return err
+
+
+## The Corn Cobbler's muzzle fan — the per-level drawing on the board.
+##
+## Upgrading already moved `level` and already relabelled the selection panel, so
+## asserting either of those passes on the version of the code where paying 45
+## seeds changed nothing you could see. These assert the geometry that gets
+## drawn instead, and that it is derived from LEVELS rather than eyeballed.
+func test_each_corn_cobbler_level_draws_a_visibly_different_muzzle_fan() -> String:
+	var widths: Array[float] = []
+	var err: String = ""
+	for lvl: int in range(1, CornCobbler.LEVELS.size() + 1):
+		var pips: PackedVector2Array = CornCobbler.muzzle_pips(lvl)
+		err = _T.assert_eq(pips.size(), int(CornCobbler.LEVELS[lvl - 1]["kernels"]),
+			"level %d draws one pip per kernel it fires" % lvl)
+		if err != "":
+			return err
+		# Pips packed tighter than their own width merge into a single blob, which
+		# is the "level 2 looks exactly like level 1" complaint all over again.
+		for i: int in range(pips.size() - 1):
+			err = _T.assert_gte(pips[i].distance_to(pips[i + 1]),
+				CornCobbler.pip_outer_radius() * 2.0,
+				"level %d holds pips %d and %d far enough apart to count" % [lvl, i, i + 1])
+			if err != "":
+				return err
+		widths.append(pips[0].distance_to(pips[pips.size() - 1]))
+	for i: int in range(widths.size()):
+		for j: int in range(i + 1, widths.size()):
+			err = _T.assert_gt(absf(widths[j] - widths[i]), 4.0,
+				"level %d and level %d are not the same picture" % [i + 1, j + 1])
+			if err != "":
+				return err
+	return ""
+
+
+## The fidelity claim: the fan is not a decoration that happens to grow, it is
+## the firing table. Every pip sits on the angle its own kernel launches on.
+func test_the_muzzle_fan_is_drawn_on_the_angles_the_kernels_are_fired_on() -> String:
+	var err: String = ""
+	# Deliberately off-axis: a fan that only lines up while aiming right would
+	# pass at an aim of 0 and be wrong on every real shot.
+	var aim: float = deg_to_rad(35.0)
+	for lvl: int in range(1, CornCobbler.LEVELS.size() + 1):
+		var entry: Dictionary = CornCobbler.LEVELS[lvl - 1]
+		var offsets: PackedFloat32Array = CornCobbler.kernel_angle_offsets(lvl)
+		err = _T.assert_eq(offsets.size(), int(entry["kernels"]),
+			"level %d fires the kernel count in the table" % lvl)
+		if err != "":
+			return err
+		var span: float = rad_to_deg(offsets[offsets.size() - 1] - offsets[0])
+		err = _T.assert_float_eq(span, float(entry["spread_degrees"]), 0.01,
+			"level %d spans exactly the table's spread_degrees" % lvl)
+		if err == "":
+			err = _T.assert_float_eq(offsets[0] + offsets[offsets.size() - 1], 0.0, 0.0001,
+				"level %d fans symmetrically about where it aims" % lvl)
+		if err != "":
+			return err
+		var pivot: Vector2 = CornCobbler.muzzle_pivot(aim)
+		var pips: PackedVector2Array = CornCobbler.muzzle_pips(lvl, aim)
+		for i: int in range(pips.size()):
+			var ray: Vector2 = pips[i] - pivot
+			err = _T.assert_float_eq(ray.length(), CornCobbler.FAN_LENGTH, 0.01,
+				"level %d pip %d sits on the fan" % [lvl, i])
+			if err == "":
+				err = _T.assert_float_eq(wrapf(ray.angle() - (aim + offsets[i]), -PI, PI), 0.0,
+					0.0005, "level %d pip %d is on kernel %d's own firing angle" % [lvl, i, i])
+			if err != "":
+				return err
+	return ""
+
+
+## The fan turns to follow whatever the cob last shot at, so "it fits" has to
+## hold at every aim, not just the one the screenshot was taken at. A pip that
+## wanders off its own cell is drawing on the neighbouring plant's.
+func test_the_muzzle_fan_stays_inside_its_cell_at_every_aim() -> String:
+	var limit: float = Board.CELL * 0.5 - CornCobbler.pip_outer_radius()
+	var err: String = ""
+	for step: int in range(24):
+		var aim: float = TAU * float(step) / 24.0
+		for lvl: int in range(1, CornCobbler.LEVELS.size() + 1):
+			for pip: Vector2 in CornCobbler.muzzle_pips(lvl, aim):
+				err = _T.assert_gte(limit, pip.length(),
+					"level %d aiming %d deg keeps its pips on its own cell" % [lvl, int(rad_to_deg(aim))])
+				if err != "":
+					return err
+	return ""
+
+
+## And the same thing on a real plant on a real board, walked through the upgrade
+## path the player actually pays for.
+func test_upgrading_a_planted_cobbler_changes_what_it_draws() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(500)
+	var cell: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "planted")
+	var corn: CornCobbler = null
+	if err == "":
+		corn = game.plant_at(cell) as CornCobbler
+		err = _T.assert_true(corn != null, "and it is a Corn Cobbler")
+	var upgrades: int = 0
+	while err == "" and not corn.is_max_level():
+		var before: PackedVector2Array = corn.muzzle_pip_positions()
+		err = _T.assert_true(corn.upgrade(), "level %d buys the next level" % corn.level)
+		if err != "":
+			break
+		upgrades += 1
+		var after: PackedVector2Array = corn.muzzle_pip_positions()
+		err = _T.assert_eq(after.size(), corn.kernels_per_shot(),
+			"level %d draws its new kernel count" % corn.level)
+		if err == "":
+			err = _T.assert_gt(after.size(), before.size(), "which is more pips than before")
+		if err == "":
+			err = _T.assert_gt(after[after.size() - 1].distance_to(after[0]),
+				before[before.size() - 1].distance_to(before[0]),
+				"and the fan is wider, so the board shows what the seeds bought")
+	if err == "":
+		err = _T.assert_eq(upgrades, CornCobbler.LEVELS.size() - 1,
+			"every level above the first was actually walked through")
+	_T.free_ui(game)
+	return err
