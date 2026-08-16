@@ -2809,3 +2809,34 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     path.
 
 - Harness: **0.25.0**.
+
+## 2026-08-16 — A Sunflower payout gets a cue and a flying glyph (plant-tower-defense-14w)
+
+- Value: **warranted** — the one thing this change is about, where the glyph
+  starts, is invisible to every headless gate: `Hud.fly_seed_glyph` returns
+  early behind `GardenTheme.animations_enabled()`, so the suite can only assert
+  the connection's shape, never the point it flies from.
+  - Expected: a real payout should show a glyph leaving the flower's own cell
+    rather than the board origin, and should load a voice with the coins stream
+    at the new trim — neither of which the diff can show, since fly_seed_glyph
+    is gated off headless and volume_db is only read inside `Sfx.play`.
+  - Got: with the tree paused and `_act(6.5, [])` driven over the bus,
+    `/root/Game/HUD/Root/FxLayer` held one `Control` at `(44.23, 90.69)` — on
+    the line from the flower's global `(32, 104)` (cell (0,0), `Entities` at
+    y=72) to the Seeds label's centre `(105.5, 24)`. `/root/SfxPool/Voice0`
+    read `stream: res://assets/audio/handleCoins.ogg` with `volume_db: -7.0`,
+    which is `SEEDS_GROWN`'s trim and not `HUSK_COLLECTED`'s 0.0 — so the cue
+    that fired was the new one, not the sweep's.
+  - Found: the live start point of the glyph. The headless test can only assert
+    that the connection binds the plant; that the bound position actually
+    resolves onto the board through `_entities.to_global()` was only observable
+    windowed.
+  - Cheaper: nothing for the glyph's start point. The bank-credit half was
+    settled by `test_a_sunflower_payout_carries_the_flower_it_grew_on` in 31ms.
+
+- Gap: no gaps this turn — `pause` plus `run-method _act --args '[6.5, []]'`
+  turned a 0.5s animation into something inspectable at leisure, and the typed
+  `Array[Pest]` parameter accepted a JSON `[]` without complaint, which was the
+  one thing I expected to have to work around.
+
+- Harness: **0.25.0**.

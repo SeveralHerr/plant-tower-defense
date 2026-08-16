@@ -415,6 +415,45 @@ func test_a_placed_sunflower_is_wired_to_the_bank() -> String:
 	return err
 
 
+## The payout has to fly from the flower that grew it, and the only thing
+## carrying that position is the plant bound into the connection — `grew_seeds`
+## itself still emits nothing but an amount (see Game.place_plant).
+##
+## Asserted on the connection rather than on a glyph because the glyph is gated
+## off headless; what is checkable here is that the handler is handed a subject
+## with a real board position, and that the payout still lands. A bind whose
+## arity stopped matching the handler would leave add_seeds unreached, so the
+## bank assertion below is what catches a mis-shaped connection.
+func test_a_sunflower_payout_carries_the_flower_it_grew_on() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.unlocked.append(PlantCatalog.SUNFLOWER)
+	game.bank.add_seeds(500)
+	var cell: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.SUNFLOWER, cell), "", "planted")
+	var sunflower: Sunflower = game.plant_at(cell) as Sunflower
+	if err == "":
+		err = _T.assert_true(sunflower != null, "and the flower is on the board")
+	if err == "":
+		var bound: Array = []
+		for entry: Dictionary in sunflower.get_signal_connection_list("grew_seeds"):
+			bound.append_array((entry["callable"] as Callable).get_bound_arguments())
+		err = _T.assert_true(bound.has(sunflower),
+			"the payout connection binds the flower itself, so the handler has somewhere to fly from")
+	if err == "":
+		err = _T.assert_eq(sunflower.position, game.board.cell_to_world(cell),
+			"and that flower stands on its own cell, not at the board origin")
+	if err == "":
+		var before: int = game.bank.seeds
+		sunflower._act(Sunflower.INTERVAL + 0.1, [])
+		err = _T.assert_eq(game.bank.seeds, before + Sunflower.YIELD,
+			"a payout through the bound connection still credits the bank")
+	if err == "":
+		err = _T.assert_eq(game.hud._fx_layer.get_child_count(), 0,
+			"and headlessly the glyph the animation gate skipped leaves nothing behind")
+	_T.free_ui(game)
+	return err
+
+
 # -- Plant health / hungry-pest wiring through Game --------------------------
 
 

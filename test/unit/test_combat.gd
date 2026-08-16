@@ -516,6 +516,7 @@ func test_every_event_id_the_call_sites_use_is_in_the_table() -> String:
 		Sfx.RUN_WON, Sfx.RUN_LOST, Sfx.PURCHASE_DENIED,
 		Sfx.PLANT_UPGRADED, Sfx.PLANT_UPROOTED,
 		Sfx.CORN_FIRED, Sfx.CHOMP_BITE, Sfx.SUNDEW_CLAIM,
+		Sfx.SEEDS_GROWN,
 	]
 	for event: StringName in used:
 		var err: String = _T.assert_true(Sfx.SOUNDS.has(event),
@@ -627,6 +628,26 @@ func test_a_swept_husk_never_reports_itself_as_rotted() -> String:
 		err = _T.assert_eq(rotted.size(), 0,
 			"and never rings the rot cue, however long the meter runs afterwards")
 	meter.free()
+	return err
+
+
+func test_a_grown_payout_shares_the_swept_ones_coins_but_not_its_level() -> String:
+	## The two seed cues are deliberately the same sample: seeds arriving are
+	## seeds arriving. What separates them is the trim — a sweep answers a click
+	## the player made, a Sunflower pays out on its own clock every six seconds
+	## per flower — so a table that ever levelled them would put ambience at the
+	## volume of an answer. Asserted here because the difference lives entirely
+	## in VOLUME_DB and nothing else would ever read it.
+	var err: String = _T.assert_eq(Sfx.SOUNDS.get(Sfx.SEEDS_GROWN),
+		Sfx.SOUNDS.get(Sfx.HUSK_COLLECTED), "both payouts wear the same coins")
+	if err == "":
+		err = _T.assert_gt(float(Sfx.VOLUME_DB.get(Sfx.HUSK_COLLECTED, 0.0)),
+			float(Sfx.VOLUME_DB.get(Sfx.SEEDS_GROWN, 0.0)),
+			"and the grown one sits under the swept one rather than level with it")
+	if err == "":
+		err = _T.assert_gt(int(Sfx.REPEAT_MS.get(Sfx.SEEDS_GROWN, Sfx.DEFAULT_REPEAT_MS)),
+			Sfx.DEFAULT_REPEAT_MS,
+			"with a wider repeat gap, so a row of flowers coming due together rings once")
 	return err
 
 

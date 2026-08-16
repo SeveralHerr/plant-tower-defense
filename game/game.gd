@@ -980,7 +980,14 @@ func place_plant(id: StringName, cell: Vector2i) -> String:
 	Sfx.play(Sfx.PLANT_PLACED)
 	plant.destroyed.connect(_on_plant_destroyed)
 	if plant.has_signal("grew_seeds"):
-		plant.connect("grew_seeds", _on_plant_grew_seeds)
+		# Bound here rather than added to Sunflower's own signal. What a plant
+		# knows about its payout is the amount; where on the board that happened
+		# is the plant itself, which Game already has in hand — the same split as
+		# `destroyed(plant)`, where the handler reads `plant.cell` off the subject
+		# instead of the signal carrying a copy of it. It also keeps the
+		# duck-typed contract above at one argument, so a future economy plant
+		# only has to emit a number to be wired up.
+		plant.connect("grew_seeds", _on_plant_grew_seeds.bind(plant))
 	_select(plant)
 	_refresh()
 	return ""
@@ -1012,8 +1019,21 @@ func _on_plant_destroyed(plant: Plant) -> void:
 	_refresh()
 
 
-func _on_plant_grew_seeds(amount: int) -> void:
+## A Sunflower's payout, given the same two channels a swept husk already had
+## (see _on_husk_collected): a cue, and a glyph that carries the number from the
+## thing that produced it to the readout it lands in. Without them the only sign
+## a Sunflower had ever earned its cell was the Seeds counter quietly ticking up
+## at the top of the screen, six seconds' walk away from the flower.
+##
+## `plant` is bound at connect time, not emitted — see place_plant. Its
+## `position` is board-local (Entities' own space, same as a husk's), so the one
+## to_global() crossing into the HUD's canvas is the same line, for the same
+## reason, as the husk's.
+func _on_plant_grew_seeds(amount: int, plant: Plant) -> void:
+	Sfx.play(Sfx.SEEDS_GROWN)
 	bank.add_seeds(amount)
+	if hud != null and is_instance_valid(hud) and is_instance_valid(plant):
+		hud.fly_seed_glyph(_entities.to_global(plant.position), amount)
 
 
 func upgrade_selected() -> String:
