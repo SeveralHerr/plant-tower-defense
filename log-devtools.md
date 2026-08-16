@@ -2135,3 +2135,39 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     asserts the absence of four phrases and reads as a compile verdict.
 
 - Harness: checked upstream — still **0.23.0** (`65103b7`). No refresh.
+
+## 2026-08-16 — Closing cycle 15: two P1 bugs, and behaviour tests that drive real input
+
+- Value: **warranted** — one agent's test caught its own bad setup, and the other's
+  tests assert what the board DID rather than what a field says.
+  - Expected: `ygh` looked like a one-line `MOUSE_FILTER_IGNORE` fix; `dwv` looked like
+    a choice between two options I had already framed.
+  - Got: `and it is where the escapes are reported, once: Expected 6 of 10 beds but got
+    10 of 10 beds` — the dwv agent's own new test, failing because its setup forced
+    `game.lives = 6` to end the run early while the beds row computes `LIVES - lives`.
+    Driving all ten escapes makes the numbers agree with no forcing.
+  - Found: that setup bug; plus the ygh agent proving the input mechanism rather than
+    assuming it (a Control under a Node2D is a GUI root, picked in world space, and the
+    GUI pass precedes `_unhandled_input` — so the click is deleted, not misrouted), and
+    finding the defect was already *documented* in last cycle's notch comment ("the two
+    bars beside them predate it and are left as they are") without being fixed.
+  - Cheaper: nothing. Both P1s were invisible to every static gate — one is a sentence
+    that is false only in certain run shapes, the other is an input path that no test
+    exercised until these three did.
+
+- Note: the two behaviour tests drive a real `InputEventMouseButton` through the hosted
+  viewport via `_T.dispatch_events` and each opens with a CONTROL click that must
+  succeed first, so a dead event pipeline fails loudly instead of passing. That pattern
+  is worth copying — it is the difference between asserting a property and asserting the
+  behaviour the property is supposed to cause.
+
+- Note on a near-miss of my own: the full suite read `Total: 339 | Assertions: 8211`
+  both before and after the ygh work landed, and I briefly took that as "its tests are
+  not running". They were — my earlier run had already picked up the agent's file
+  mid-flight, and 331 + 5 + 3 = 339 reconciles exactly. **The denominator is only
+  evidence if you know when it was taken.**
+
+- Gap: **no gaps this turn.** G-034 was filed upstream earlier in this cycle as
+  godot-selftest-harness#23.
+
+- Harness: still **0.23.0**. No refresh.
