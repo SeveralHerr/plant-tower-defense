@@ -19,4 +19,4 @@ func _draw() -> void:
 		if alpha <= 0.0:
 			continue
 		var rect := Rect2(Vector2(cell.x, cell.y) * Board.CELL, Vector2(Board.CELL, Board.CELL))
-		draw_rect(rect, Color(0.85, 0.20, 0.16, alpha * 0.5))
+		draw_rect(rect, Color(GardenTheme.DANGER, alpha * 0.5))

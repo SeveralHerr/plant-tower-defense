@@ -111,7 +111,12 @@ func _build_heading() -> void:
 	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	heading.add_theme_font_size_override("font_size", 34)
 	heading.add_theme_color_override("font_color",
-		GardenTheme.LEAF_DARK if won else GardenTheme.PAPER_MARGIN)
+		# DANGER, not PAPER_MARGIN. That one is the notebook page's printed
+		# margin rule -- paper stock chosen for a different screen's look -- and
+		# it is the softer of the two reds. "The garden is eaten" is the loudest
+		# "this cost you something" line in the game and should wear the colour
+		# that means exactly that everywhere else.
+		GardenTheme.LEAF_DARK if won else GardenTheme.DANGER)
 	add_child(heading)
 
 	var sub := Label.new()

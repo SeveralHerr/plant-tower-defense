@@ -70,20 +70,40 @@ const STATS_ROW_HEIGHT: float = 40.0
 const MESSAGE_ROW_Y: float = 47.0
 const MESSAGE_ROW_HEIGHT: float = 20.0
 
-const INK := Color(0.12, 0.15, 0.13)
-const PAPER := Color(0.925, 0.863, 0.722)
-const PAPER_DARK := Color(0.851, 0.788, 0.659)
-const LEAF := Color(0.180, 0.800, 0.443)
-## The one warning red in the HUD: an armed Uproot, and nothing else. Same hue
-## the in-world health bar and the lane-pressure overlay already use, so a red on
-## this screen always means "this costs you something".
-const UPROOT_ARMED := Color(0.85, 0.25, 0.22)
+## The palette: aliases, not copies. Every value below is declared once, in
+## GardenTheme, so the title screen, the Designer's Notebook and the post-mortem
+## card can reach the same shades — most of all the red, which is the one colour
+## in this game that carries a meaning rather than a mood.
+##
+## Aliasing the colours is NOT the same as wearing `GardenTheme.build()`, and the
+## HUD still refuses that Theme on purpose: it builds and sizes every Control it
+## owns in code against the board's own constants, and a Theme applied at the root
+## would restyle its Buttons out from under that layout. Sharing a jar of paint,
+## not a uniform.
+##
+## The local names stay because each one says what the colour is *for* here, and
+## that is information GardenTheme cannot carry.
+const INK := GardenTheme.INK
+const PAPER := GardenTheme.PAPER
+const PAPER_DARK := GardenTheme.PAPER_DARK
+const LEAF := GardenTheme.LEAF
+## The compost readout, the one stat that is not a resource you spend. It was the
+## last inline literal in this file — a hand-typed copy of GardenTheme.GOLD that
+## no grep for `const` would ever have found.
+const COMPOST := GardenTheme.GOLD
+## The one warning red in the HUD: an armed Uproot, and nothing else. The same
+## value the in-world health bar draws — `Plant.HEALTH_BAR_HURT` is still a
+## hand-typed copy of it and wants folding into GardenTheme.DANGER too — so a red
+## on this screen always means "this costs you something".
+const UPROOT_ARMED := GardenTheme.DANGER
 
 ## The threat ramp on the wave readout. Starts at the bar's own cream so an early
 ## run looks like nothing is wrong, warms through amber, and ends on the same red
-## as UPROOT_ARMED and HEALTH_LOW — every red in this HUD means the same thing.
-const THREAT_WARM := Color(0.93, 0.72, 0.30)
-const THREAT_HOT := Color(0.85, 0.25, 0.22)
+## as UPROOT_ARMED and HEALTH_LOW — every red in this HUD means the same thing,
+## and now that is enforced by all three naming one constant rather than by three
+## identical literals and a comment asking you to keep them that way.
+const THREAT_WARM := GardenTheme.AMBER
+const THREAT_HOT := GardenTheme.DANGER
 ## Threat level at which the tint is fully red.
 ##
 ## 12, not the ~25 a long endless run reaches: threat_level is a logarithm, so the
@@ -232,9 +252,12 @@ const PANEL_RISE: float = 10.0
 const PANEL_RISE_SECONDS: float = 0.16
 
 const HEALTH_ROW_HEIGHT: float = 14.0
-const HEALTH_BACK := Color(0.12, 0.15, 0.13, 0.35)
-const HEALTH_FULL := Color(0.180, 0.800, 0.443)
-const HEALTH_LOW := Color(0.85, 0.25, 0.22)
+## A wash of the bar's own INK rather than a fifth grey: the alpha is the whole
+## difference, so it is derived from the shared value instead of retyping the
+## three channels with a 0.35 on the end.
+const HEALTH_BACK := Color(GardenTheme.INK, 0.35)
+const HEALTH_FULL := GardenTheme.LEAF
+const HEALTH_LOW := GardenTheme.DANGER
 
 var _seeds_label: Label
 var _wave_label: Label
@@ -316,7 +339,7 @@ func _build_top_bar(root: Control) -> void:
 	_seeds_label = _add_stat(stats, "SeedsLabel", 26, PAPER, SEEDS_LABEL_WIDTH)
 	_wave_label = _add_stat(stats, "WaveLabel", 26, PAPER, WAVE_LABEL_WIDTH)
 	_lives_label = _add_stat(stats, "LivesLabel", 26, PAPER, LIVES_LABEL_WIDTH)
-	_compost_label = _add_stat(stats, "CompostLabel", 20, Color(0.78, 0.62, 0.38), COMPOST_LABEL_WIDTH)
+	_compost_label = _add_stat(stats, "CompostLabel", 20, COMPOST, COMPOST_LABEL_WIDTH)
 
 	# The one element that absorbs slack. Without it the readouts spread across
 	# the whole bar; with it they stay left-grouped and the button stays right.

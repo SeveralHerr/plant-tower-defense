@@ -267,7 +267,7 @@ func _build_visuals(texture_path: String, sprite_scale: float) -> void:
 	add_child(_health_back)
 
 	_health_bar = ColorRect.new()
-	_health_bar.color = Color(0.18, 0.80, 0.44)
+	_health_bar.color = GardenTheme.LEAF
 	_health_bar.position = Vector2(-16, -30)
 	_health_bar.size = Vector2(32, 5)
 	add_child(_health_bar)

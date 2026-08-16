@@ -53,7 +53,7 @@ const REGROWTH_RATE: float = 1.5
 ## The in-world bar's two colours. Red is the bar that was always there; green is
 ## the only cue the player gets that regrowth is a thing the game does, so it is
 ## on the readout they are already looking at rather than on a new one.
-const HEALTH_BAR_HURT := Color(0.85, 0.25, 0.22)
+const HEALTH_BAR_HURT := GardenTheme.DANGER
 const HEALTH_BAR_REGROWING := Color(0.36, 0.70, 0.34)
 
 signal destroyed(plant: Plant)

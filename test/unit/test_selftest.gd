@@ -3548,3 +3548,212 @@ func test_a_record_set_by_quitting_is_announced_on_the_title_screen() -> String:
 	RunConfig.fresh_record = saved_f
 	RunConfig.endless = saved_mode
 	return err
+
+
+## Where the two palettes live, read as text rather than through their symbols:
+## the point of the checks below is what the *source* declares, and a value
+## reached through its name has already lost that distinction.
+const HUD_SOURCE := "res://game/hud.gd"
+const GARDEN_THEME_SOURCE := "res://game/garden_theme.gd"
+
+
+## Every Color constant a script declares, by name. Loaded from the path rather
+## than off `Hud` / `GardenTheme` so the map is the file's, not the symbol's.
+func _colour_constants(script_path: String) -> Dictionary:
+	var colours: Dictionary = {}
+	var script: GDScript = load(script_path) as GDScript
+	if script == null:
+		return colours
+	var declared: Dictionary = script.get_script_constant_map()
+	for const_name: String in declared:
+		var value: Variant = declared[const_name]
+		if typeof(value) == TYPE_COLOR:
+			colours[const_name] = value as Color
+	return colours
+
+
+## The line a constant is declared on, so a check can tell an alias
+## (`const X := GardenTheme.Y`) from a second copy (`const X := Color(...)`).
+func _declaration_line(source: String, const_name: String) -> String:
+	for line: String in source.split("\n"):
+		if line.strip_edges().begins_with("const %s " % const_name):
+			return line.strip_edges()
+	return ""
+
+
+## Two palettes, one game -- and after this, no colour value written down twice.
+##
+## Structural on purpose, because names are exactly what cannot be trusted here:
+## UPROOT_ARMED, THREAT_HOT and HEALTH_LOW are three names for one red and always
+## were, so a check comparing names would have called that healthy while the value
+## sat in the tree four times over. This compares the actual Color values in both
+## constant maps and then asks the source whether each collision is an alias (a
+## Hud const naming GardenTheme) or a copy (a hand-typed literal). Only the first
+## is allowed -- which is what makes it survive someone pasting a shade back into
+## hud.gd next cycle, the exact way the duplication arrived the first time.
+func test_no_colour_value_is_declared_twice_across_the_palettes() -> String:
+	var hud_src: String = FileAccess.get_file_as_string(HUD_SOURCE)
+	var hud_colours: Dictionary = _colour_constants(HUD_SOURCE)
+	var theme_colours: Dictionary = _colour_constants(GARDEN_THEME_SOURCE)
+	var err: String = _T.assert_false(hud_src.is_empty(), "hud.gd reads back as text")
+	if err == "":
+		err = _T.assert_gt(theme_colours.size(), 0, "GardenTheme declares colours to share")
+	if err == "":
+		err = _T.assert_gt(hud_colours.size(), 0, "and the HUD names some of its own")
+	if err != "":
+		return err
+
+	# Across the two classes.
+	var aliases: int = 0
+	for hud_name: String in hud_colours:
+		var line: String = _declaration_line(hud_src, hud_name)
+		for theme_name: String in theme_colours:
+			if not (hud_colours[hud_name] as Color).is_equal_approx(theme_colours[theme_name] as Color):
+				continue
+			aliases += 1
+			err = _T.assert_true(line.contains("GardenTheme"),
+				"Hud.%s IS GardenTheme.%s by value, so it must say so rather than re-declare it; got `%s`"
+					% [hud_name, theme_name, line])
+			if err != "":
+				return err
+
+	# And within the HUD's own block, which is where the three reds sat. This half
+	# still fails if GardenTheme.DANGER is deleted and hud.gd goes back to three
+	# identical literals, so the check does not lean on the shared file existing.
+	var names: Array = hud_colours.keys()
+	var internal: int = 0
+	for i: int in range(names.size()):
+		for j: int in range(i + 1, names.size()):
+			var a: String = String(names[i])
+			var b: String = String(names[j])
+			if not (hud_colours[a] as Color).is_equal_approx(hud_colours[b] as Color):
+				continue
+			internal += 1
+			err = _T.assert_true(
+				_declaration_line(hud_src, a).contains("GardenTheme")
+					and _declaration_line(hud_src, b).contains("GardenTheme"),
+				"Hud.%s and Hud.%s are one colour, so both must alias the single place it is declared" % [a, b])
+			if err != "":
+				return err
+
+	if err == "":
+		# Vacuity guard, and the reason it is a floor rather than a comment: the
+		# loops above pass trivially the moment the two files share nothing at all,
+		# and an empty intersection is not a merged palette -- it is a broken alias.
+		# INK, PAPER, PAPER_DARK, LEAF, COMPOST, UPROOT_ARMED, THREAT_WARM,
+		# THREAT_HOT, HEALTH_FULL and HEALTH_LOW are ten shared values.
+		err = _T.assert_gte(aliases, 10,
+			"the HUD actually reaches the shared palette, %d value(s) matched" % aliases)
+	if err == "":
+		err = _T.assert_gte(internal, 3,
+			"and the three reds still collide inside the HUD, %d pair(s) found" % internal)
+	return err
+
+
+## The names are the design intent, and the merge must not cost them.
+##
+## `UPROOT_ARMED`, `THREAT_HOT` and `HEALTH_LOW` are one red under three names on
+## purpose: each says which decision the colour is reporting, which is knowledge a
+## bare `DANGER` at the call site would throw away. So the requirement is not "one
+## constant" but "one value, three names", and that is what this asserts.
+func test_the_huds_semantic_colour_names_survive_the_merge() -> String:
+	var hud_colours: Dictionary = _colour_constants(HUD_SOURCE)
+	var wanted: Array[String] = [
+		"INK", "PAPER", "PAPER_DARK", "LEAF", "COMPOST",
+		"UPROOT_ARMED", "THREAT_WARM", "THREAT_HOT",
+		"HEALTH_BACK", "HEALTH_FULL", "HEALTH_LOW",
+	]
+	var err: String = ""
+	for const_name: String in wanted:
+		err = _T.assert_true(hud_colours.has(const_name), "Hud still names %s" % const_name)
+		if err != "":
+			return err
+
+	if err == "":
+		err = _T.assert_true(Hud.UPROOT_ARMED.is_equal_approx(Hud.THREAT_HOT),
+			"an armed Uproot and a runaway threat are the same red")
+	if err == "":
+		err = _T.assert_true(Hud.THREAT_HOT.is_equal_approx(Hud.HEALTH_LOW),
+			"and so is a plant nearly chewed through")
+	if err == "":
+		err = _T.assert_true(Hud.HEALTH_LOW.is_equal_approx(GardenTheme.DANGER),
+			"all three being the one red the rest of the game can now reach")
+	if err == "":
+		err = _T.assert_true(Hud.HEALTH_FULL.is_equal_approx(GardenTheme.LEAF),
+			"a healthy plant is the palette's leaf green")
+	if err == "":
+		err = _T.assert_true(Hud.THREAT_WARM.is_equal_approx(GardenTheme.AMBER),
+			"and the ramp's midpoint is the shared amber")
+	if err == "":
+		# The one derived value: same ink, different alpha. Comparing the channels
+		# rather than the Color is what makes it a derivation instead of a copy --
+		# a retyped literal would satisfy `is_equal_approx` just as happily.
+		var back: Color = Hud.HEALTH_BACK
+		err = _T.assert_true(Color(back.r, back.g, back.b).is_equal_approx(GardenTheme.INK),
+			"the health bar's backing is INK, got %s" % back)
+	if err == "":
+		err = _T.assert_float_eq(Hud.HEALTH_BACK.a, 0.35, 0.001,
+			"washed back by alpha alone")
+	return err
+
+
+## The half of the old split that was right, pinned so the merge cannot creep.
+##
+## Sharing colour constants is not the same as wearing `GardenTheme.build()`, and
+## the HUD's refusal of that Theme is deliberate: it builds and sizes every Control
+## it owns in code, and a Theme at the root would restyle its Buttons out from
+## under that layout. Nothing about a Theme quietly appearing throws an error, so
+## the only thing keeping this true is a check that reads it off the live tree.
+func test_the_hud_still_refuses_the_shared_theme() -> String:
+	# Comments stripped first. The scan matched the very comment explaining why the
+	# HUD refuses that Theme -- a mention counted as a use, which is the same trap
+	# tools/name_check.py and tools/meta_key_check.py both blank comments to avoid.
+	# A source scan that reads prose is a scan that punishes documentation.
+	var hud_src: String = _code_only(FileAccess.get_file_as_string(HUD_SOURCE))
+	var err: String = _T.assert_false(hud_src.contains("GardenTheme.build"),
+		"hud.gd never asks for the shared Theme")
+	if err != "":
+		return err
+	# The Theme it declines is real and would have restyled the Buttons. Without
+	# this, every assertion below would pass just as well against an empty Theme.
+	var built: Theme = GardenTheme.build()
+	err = _T.assert_true(built.has_stylebox("normal", "Button"),
+		"and the Theme it declines is one that would repaint every Button")
+	if err != "":
+		return err
+
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var root: Control = game.hud.get_node_or_null("Root") as Control
+	err = _T.assert_true(root != null, "the HUD root is where the bar puts it")
+	if err == "":
+		err = _T.assert_true(root.theme == null, "and wears no Theme of its own")
+	if err == "":
+		var controls: Array[Node] = root.find_children("*", "Control", true, false)
+		err = _T.assert_gt(controls.size(), 0, "the HUD built Controls to check")
+		if err == "":
+			for node: Node in controls:
+				var control := node as Control
+				err = _T.assert_true(control.theme == null,
+					"%s carries no Theme either" % control.name)
+				if err != "":
+					break
+	if err == "":
+		# The positive half: the palette IS shared, so a merge that quietly stopped
+		# aliasing could not pass this simply by sharing nothing at all.
+		err = _T.assert_true(Hud.INK.is_equal_approx(GardenTheme.INK),
+			"while still painting out of the same jar")
+	_T.free_ui(game)
+	return err
+
+
+## Strips comments from GDScript source so a source scan cannot be tripped by
+## prose. Naive on purpose -- it does not understand a `#` inside a string
+## literal -- but every caller here searches for an identifier, and an identifier
+## quoted inside a string is a mention too. `tools/name_check.py` does the
+## length-preserving version of this for the same reason.
+func _code_only(src: String) -> String:
+	var out: PackedStringArray = []
+	for line: String in src.split("\n"):
+		var hash_at: int = line.find("#")
+		out.append(line if hash_at < 0 else line.substr(0, hash_at))
+	return "\n".join(out)
