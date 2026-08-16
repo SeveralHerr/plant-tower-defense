@@ -206,14 +206,21 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   `show_run_pressure()` at the moment the run is already over. The number that
   would inform a purchase is the one held back until purchasing has stopped.
 
-- **Every red on the board is now the same red, including the two that mean
-  opposite things.** The palette merge pointed `LanePressureOverlay` at
-  `GardenTheme.DANGER`, which is correct — but the lane tint means "pests got
-  this far", the plant health bar means "this plant is dying", and an armed Uproot
-  means "you are about to destroy this". Three different sentences in one hue at
-  three different alphas. The merge was right to unify the *value*; the open
-  question is whether the board needs a second warning channel — a shape, a
-  hatch — now that colour alone has to carry three meanings.
+- ~~Every red on the board is now the same red, including the two that mean
+  opposite things.~~ **Done** (commit `066cfe3`, "A solid red warns, a broken red
+  records"). Lane pressure and the plant health bar were never actually
+  confusable — plants only stand on buildable cells and roads never are, so the
+  two are spatially disjoint. The armed Uproot cue lives on a HUD Button's
+  `font_color`, not the board, and already carries two non-colour channels (the
+  relabelled text and `Sfx.UPROOT_ARMED`). The pair that actually collided was
+  unnamed in the original idea: `Game._update_cursor`'s blocked-cell hover wash
+  and the lane pressure tint, both a flat `GardenTheme.DANGER` square stacked on
+  the same road cells during prep. Lane pressure is now a 45-degree hatch
+  (`LanePressureOverlay.HATCH_SPACING`/`is_hatched()`); the plant health bar
+  also picked up a colour-blind-safe fix in the same commit — solid while
+  bleeding, notched into `HEALTH_BAR_SEGMENTS` blocks while regrowing.
+  (Re-filed and re-closed as `plant-tower-defense-4lv` after this entry was
+  left unmarked — see that issue's close reason before refiling a third time.)
 
 - **`husk_click_margin()` is a gate with no alarm.** Cycle 12 added it precisely
   because the husk-versus-placement conflict is four pixels away from being real,
