@@ -1699,3 +1699,35 @@ of what the design doc already says, rather than being bolted on.
   wave clearing gets its own banner+cue. The one button a player presses to
   actually begin the danger is the one press in this whole chain with no
   feedback of its own.
+
+### New this cycle (26 of 30) — grown from the features above
+
+- **The Keys screen exists on the title and is unreachable from a run.** `KeysButton`
+  is built in `TitleScreen` (title_screen.gd:262, opening `KeyBindingScreen` at
+  :469) and `pause_screen.gd` mentions `KeyBindingScreen` exactly zero times. So the
+  player who most wants to move a key — the one who just pressed the wrong one
+  mid-run and paused — is the one who cannot get there without abandoning the run.
+  This is the same shape as the notebook gap from cycle 11, which was fixed by
+  putting a fourth button on the pause card; the card has since grown a fifth, and
+  `PauseScreen.card_rect()` derives its height from its contents, so the honest
+  version of this is "does the card still fit, and if not, what gives" rather than
+  "add another button".
+
+- **A milestone is announced once and then has nowhere to live.**
+  `RunSummary.new_milestones()` (run_summary.gd:424) reads only the ids the run
+  *just* earned, and `MilestoneRibbon` draws only those — so a player who earned
+  `campaign_cleared` three runs ago has it saved in `RunConfig.earned_milestones`
+  and can never see it again. The set is persisted, `has_milestone()` is public and
+  nothing outside the save's own tests calls it. A trophy shelf on the title screen,
+  or a page in the notebook, would turn a one-frame ribbon into the record the flag
+  already is.
+
+- **Every persisted option is now reachable by exactly one key and no menu.**
+  `garden_colorblind` toggles the accessibility ramp, `garden_mute_sfx` and
+  `garden_mute_music` toggle audio, all three persist, and the only surface any of
+  them has is a keystroke plus a HUD sentence. The Keys screen can *rebind* those
+  keys but cannot *set* the options they toggle, which is a strange split: the
+  screen that exists for configuration is the one place a player cannot see whether
+  the colourblind bars are currently on. An Options screen beside it — or a second
+  column on the one that is already there — is a small change now that all three
+  flags already round-trip through `RunConfig`.
