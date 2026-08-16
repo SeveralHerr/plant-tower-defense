@@ -107,15 +107,46 @@ const PLANT_BAR_SEPARATION: int = 8
 ## Controls at 40x40 and was right to when an earlier pass trimmed one to 34.
 const PLANT_BUTTON_MIN_HEIGHT: float = 40.0
 
-## The resting tooltip per packet tier. Held here rather than inline because
-## _refresh_packet_button swaps in a reason when a packet cannot be bought and
-## has to be able to put the original back. The common one's "tier 1 only" is
-## now literally true — it used to be false the moment the Chomp unlocked, since
-## the roll fell back to the whole locked pool.
-const PACKET_TOOLTIP: Dictionary = {
-	&"common": "A packet holds one plant you do not have yet, tier 1 only. Which one is up to the packet.",
-	&"rare": "Costlier, but the odds reach past tier 1 — the only reliable way to a Seed Sunflower.",
-}
+## The resting tooltip per packet tier, counted from the catalogue rather than
+## written out.
+##
+## It used to be two hard-coded sentences, and the rare one read "the only
+## reliable way to a Seed Sunflower" — true when the Sunflower was the only tier-2
+## plant, false the moment a fourth plant shipped, and false silently: nothing
+## fails when a tooltip stops describing the thing it points at. Naming a specific
+## plant is what made it perishable, so this names none.
+##
+## Derived rather than constant so that adding a plant cannot make it wrong again.
+static func packet_tooltip(tier: StringName) -> String:
+	var spec: Dictionary = SeedBank.PACKET_TIERS.get(tier, {}) as Dictionary
+	if spec.is_empty():
+		return ""
+	var cap: int = int(spec["max_tier"])
+	var within: int = 0
+	var beyond: int = 0
+	for id: StringName in PlantCatalog.ids():
+		if PlantCatalog.tier(id) <= cap:
+			within += 1
+		else:
+			beyond += 1
+	if beyond > 0:
+		var rarer: String = ("1 rarer seed is out of its reach." if beyond == 1
+			else "%d rarer seeds are out of its reach." % beyond)
+		return "Holds one seed you do not have yet, from the %d that grow at tier %d or below. %s" % [
+			within, cap, rarer,
+		]
+	return ("Costlier, and the only packet that reaches every seed in the garden — "
+		+ "all %d of them, including the %d a cheaper packet can never hold.") % [
+			within, _plants_above_tier(int((SeedBank.PACKET_TIERS[&"common"] as Dictionary)["max_tier"])),
+		]
+
+
+static func _plants_above_tier(cap: int) -> int:
+	var count: int = 0
+	for id: StringName in PlantCatalog.ids():
+		if PlantCatalog.tier(id) > cap:
+			count += 1
+	return count
 
 ## Message priorities. NORMAL is ambient colour — a husk collected, a wave
 ## cleared. IMPORTANT is anything the player must act on or has just been asked
@@ -362,7 +393,7 @@ func _build_side_panel(root: Control) -> void:
 	_packet_button.expand_icon = true
 	_packet_button.position = Vector2(12, 300)
 	_packet_button.size = Vector2(PANEL_WIDTH - 24, 40)
-	_packet_button.tooltip_text = PACKET_TOOLTIP[&"common"]
+	_packet_button.tooltip_text = packet_tooltip(&"common")
 	_packet_button.pressed.connect(func() -> void: packet_requested.emit(&"common"))
 	panel.add_child(_packet_button)
 
@@ -373,7 +404,7 @@ func _build_side_panel(root: Control) -> void:
 	_rare_packet_button.expand_icon = true
 	_rare_packet_button.position = Vector2(12, 344)
 	_rare_packet_button.size = Vector2(PANEL_WIDTH - 24, 40)
-	_rare_packet_button.tooltip_text = PACKET_TOOLTIP[&"rare"]
+	_rare_packet_button.tooltip_text = packet_tooltip(&"rare")
 	_rare_packet_button.pressed.connect(func() -> void: packet_requested.emit(&"rare"))
 	panel.add_child(_rare_packet_button)
 
@@ -525,7 +556,7 @@ func _refresh_packet_button(button: Button, bank: SeedBank, tier: StringName) ->
 	elif bank.seeds < cost:
 		button.tooltip_text = "A %s costs %d seeds. You have %d." % [String(spec["display"]), cost, bank.seeds]
 	else:
-		button.tooltip_text = PACKET_TOOLTIP[tier]
+		button.tooltip_text = packet_tooltip(tier)
 
 
 ## The prep strip: how long until the next wave arrives on its own, and — in its

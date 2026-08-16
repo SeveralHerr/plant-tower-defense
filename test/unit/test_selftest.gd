@@ -3231,3 +3231,54 @@ func test_the_pause_card_keeps_processing_while_the_game_it_paused_does_not() ->
 	game.resume_run()
 	_T.free_ui(game)
 	return err
+
+
+## A tooltip that names a specific plant is perishable, and it perishes silently:
+## nothing fails when a sentence stops describing the thing it points at. The rare
+## packet's read "the only reliable way to a Seed Sunflower" for a whole cycle
+## after a fourth plant made it false.
+func test_no_packet_tooltip_names_a_plant_it_might_stop_being_about() -> String:
+	var err: String = ""
+	for tier: StringName in SeedBank.PACKET_TIERS:
+		var text: String = Hud.packet_tooltip(tier)
+		err = _T.assert_false(text.is_empty(), "%s has a tooltip" % tier)
+		if err != "":
+			return err
+		for id: StringName in PlantCatalog.ids():
+			var display: String = PlantCatalog.display_name(id)
+			err = _T.assert_false(text.contains(display),
+				"the %s tooltip names '%s', so it goes stale the moment the catalogue moves: %s"
+					% [tier, display, text])
+			if err != "":
+				return err
+	return err
+
+
+func test_a_packet_tooltip_counts_what_its_tier_can_actually_reach() -> String:
+	var common: String = Hud.packet_tooltip(&"common")
+	var rare: String = Hud.packet_tooltip(&"rare")
+	var cap: int = int((SeedBank.PACKET_TIERS[&"common"] as Dictionary)["max_tier"])
+	var within: int = 0
+	var beyond: int = 0
+	for id: StringName in PlantCatalog.ids():
+		if PlantCatalog.tier(id) <= cap:
+			within += 1
+		else:
+			beyond += 1
+	var err: String = _T.assert_gt(within, 0, "there is something at or below the common cap")
+	if err == "":
+		err = _T.assert_gt(beyond, 0, "and something above it, or the tiers mean nothing")
+	if err == "":
+		err = _T.assert_true(common.contains(str(within)),
+			"the common tooltip counts what it can reach (%d), got: %s" % [within, common])
+	if err == "":
+		err = _T.assert_true(common.contains(str(beyond)),
+			"and says how many it cannot (%d), got: %s" % [beyond, common])
+	if err == "":
+		err = _T.assert_true(rare.contains(str(PlantCatalog.ids().size())),
+			"the rare tooltip counts the whole catalogue (%d), got: %s"
+				% [PlantCatalog.ids().size(), rare])
+	if err == "":
+		err = _T.assert_true(Hud.packet_tooltip(&"nosuchtier").is_empty(),
+			"an unknown tier returns nothing rather than a half-built sentence")
+	return err
