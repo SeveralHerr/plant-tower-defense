@@ -2435,7 +2435,6 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
 
 - Harness: **0.24.0**.
 
-
 ## 2026-08-16 — Three HUD/results-screen feature beads: 9ti (win/loss entrance), d2a (wave-cleared cue), 7mi (prep bar pulse)
 
 - Value: **warranted** — the live game was the only way to see the two new
@@ -2509,3 +2508,80 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     `--user-data-dir` flag), so saves/screenshots/baselines from parallel
     `--isolated` instances can still collide" -- so a multi-agent
     orchestrator stops handing out an instruction that cannot work.
+
+## 2026-08-16 — Wired Plant idle sway, per-attack Sfx cues, and a packet reveal beat
+
+- Value: **warranted** — runtime caught a real defect in the packet-reveal code
+  that the diff and headless tests alone would not have: the live pass is what
+  made `test_a_headless_reveal_names_the_plant_it_actually_unlocked` and its
+  two siblings *fail first*, before I understood why.
+  - Expected: three straightforward additions (a sin() sway, three Sfx.play()
+    call sites, a short flourish before a banner) would verify clean on the
+    first pass of each.
+  - Got: the packet-flourish tests failed with
+    `Expected The packet held a Chomp Flower! but got Plant your free Corn
+    Cobbler on the grass, then grow the first wave.` — `_reveal_plant_unlock`'s
+    `show_message()` call used the default priority, and `show_message`'s own
+    queueing rule (`_message_left > MESSAGE_MIN_READABLE` blocks a same/lower
+    priority overwrite) meant the reveal silently queued behind whatever
+    ambient message was already on screen instead of showing. Bumped it to
+    `Hud.MESSAGE_IMPORTANT`, matching the flourish steps ahead of it.
+  - Found: the priority bug above — invisible to code review, since
+    `show_message()`'s queueing behaviour is only checkable by actually
+    driving two competing messages through it. Also confirmed live (screen
+    text over the bus) that a real packet purchase resolves to the correct
+    plant name after the flourish, not just headlessly.
+  - Cheaper: nothing — the headless test alone is what surfaced the bug; nothing
+    short of driving `show_message()` twice with real timing would have.
+
+- Gap: **`launch -- --devtools-session X` silently fails to wire the session** —
+  five consecutive launches this way (`python tools/devtools.py launch --
+  --devtools-session plantwork`) all reported `launched, but the bus never
+  answered a ping within 20s`, with the spawned process stuck at ~6MB RSS and
+  ~0.015s total CPU time indefinitely (confirmed via `Get-Process ... | Select
+  CPU,WorkingSet`) — a genuine hang, not slow startup, and it reproduced
+  identically under both `--rendering-driver opengl3` and the default D3D12,
+  ruling out a GPU-contention theory. A sibling agent in a concurrent worktree
+  had already diagnosed the same failure and reported that `launch --isolated`
+  (which sets `--devtools-session` AND `--devtools-busdir` together) works
+  where the bare `-- --devtools-session X` form does not; switching to
+  `launch --isolated --kill-survivors` fixed it on the very next attempt, and
+  every subsequent launch that session answered a ping within 1-2s. Lost
+  roughly 15 minutes and 5 launch/kill cycles chasing GPU-contention and
+  windowing-hang theories before the correct fix (a different flag) came from
+  outside this session.
+  - [G-037] status: open | seen: 1 | harness: 0.25.0
+  - Improvement: either make bare `--devtools-session NAME` (without
+    `--isolated`) actually wire a working bus the same way `--isolated` does,
+    or have `launch` refuse/warn on that combination instead of reporting a
+    generic 20s ping timeout that reads identically to a crashed engine — the
+    symptom gives no hint that the fix is a different flag.
+  - Root cause, found afterward by reading the installed `cmd_launch()`
+    (`tools/devtools.py`): `-- --devtools-session X` with no top-level
+    `--session` flag leaves `user_args` empty, so the `cmd += ["--"] + user_args`
+    line that would add Godot's OWN `--` separator never runs — `cmd +=
+    passthrough` alone appends `--devtools-session plantwork` straight onto the
+    engine's command line as two unrecognized top-level tokens, which never
+    reach `OS.get_cmdline_user_args()` at all. Confirmed against my own printed
+    launch line, which shows no `--` before `--devtools-session`. A sibling
+    agent had already filed this precisely
+    (SeveralHerr/godot-selftest-harness#28, same root cause plus a related
+    `GODOT_USERDATA` claim bug) before I got to filing; added a confirming
+    comment with the CPU/memory signature above rather than duplicating it.
+
+- Also worth noting: re-running `--import` after an earlier crashed `--import`
+  (exit 139, mid-scan) left `.godot/imported/` with 4 files instead of ~690,
+  which then surfaced as `Failed loading resource:
+  res://assets/kenney/png/towerDefense_tile050.png` and `Unable to open file:
+  ...ctex` inside `run_tests.gd` for every scene-instantiating test that
+  touched `Board` — looked exactly like a real regression in `board.gd` until
+  `ls .godot/imported/ | wc -l` and a from-scratch `--import` (this time
+  running to completion, `[ DONE ] reimport`) cleared it. Not filing a
+  separate gap for this since it is not a harness defect — a caller's own
+  `--import` timing out mid-run under concurrent-agent load and leaving a
+  half-built cache is a real failure mode of `--import` itself, worth knowing
+  about but not something `/verify`'s own gates could have caught (lint and
+  run_tests both ran clean against the broken cache; only the runtime `ERROR:`
+  lines gave it away).
+
+- Harness: **0.25.0**.

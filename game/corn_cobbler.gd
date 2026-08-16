@@ -129,6 +129,7 @@ func _fire_at(direction: Vector2) -> void:
 		# seeding a sibling from a global coordinate launches every kernel 72 px
 		# below the cob — which misses every pest and looks like "the corn is broken".
 		kernel.setup(position, Vector2.RIGHT.rotated(base_angle + offset), float(stats["damage"]), bounds)
+	Sfx.play(Sfx.CORN_FIRED)
 	_recoil()
 
 

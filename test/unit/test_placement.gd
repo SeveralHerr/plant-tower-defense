@@ -89,6 +89,80 @@ func test_a_packet_makes_its_plant_placeable() -> String:
 	return err
 
 
+func test_a_headless_reveal_names_the_plant_it_actually_unlocked() -> String:
+	## GardenTheme.animations_enabled() reads false for this whole suite, so
+	## Game._on_plant_unlocked takes its instant branch and never touches the
+	## flourish below — this pins that the instant path still lands on the
+	## right banner, the same text the animated path ends on too.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_false(GardenTheme.animations_enabled(),
+		"this test is only meaningful headless, where the flourish never runs")
+	if err == "":
+		game.bank.set_seed(99)
+		game.bank.add_seeds(500)
+		var got: StringName = game.bank.buy_packet()
+		err = _T.assert_true(got != &"", "the packet held a plant")
+	if err == "":
+		var got: StringName = game.bank.unlocked[game.bank.unlocked.size() - 1]
+		err = _T.assert_eq(game.hud._message_label.text,
+			"The packet held a %s!" % PlantCatalog.display_name(got),
+			"the banner named the plant the packet actually held, with no beat in between")
+	_T.free_ui(game)
+	return err
+
+
+## Game._open_packet is the flourish itself, called directly (bypassing the
+## animations_enabled() gate _on_plant_unlocked puts in front of it) since
+## nothing headless ever takes that branch through the signal. What is
+## assertable without a screen: it lands on the real pick, and it does so
+## after actually waiting — not by short-circuiting the steps it claims to run.
+func test_the_packet_flourish_lands_on_the_real_pick_after_flashing_candidates() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var locked: Array[StringName] = game.bank.locked_plants()
+	var err: String = _T.assert_gt(locked.size(), 1,
+		"more than one candidate is locked, so there is something else to flash")
+	if err == "":
+		var id: StringName = locked[0]
+		# Mirrors what buy_packet() itself already did by the time it emits
+		# plant_unlocked: the pick is unlocked before anyone is told about it.
+		game.bank.unlocked.append(id)
+		game._opening_tier = &"rare"
+		var started: int = Time.get_ticks_msec()
+		await game._open_packet(id)
+		var elapsed_ms: int = Time.get_ticks_msec() - started
+		err = _T.assert_gte(elapsed_ms,
+			int(Game.PACKET_OPEN_STEP_SECONDS * Game.PACKET_OPEN_STEPS * 1000) - 20,
+			"the flourish actually waited through its own steps (%dms), not just its final one" % elapsed_ms)
+		if err == "":
+			err = _T.assert_eq(game.hud._message_label.text,
+				"The packet held a %s!" % PlantCatalog.display_name(id),
+				"and landed on the real pick, not whatever it was flashing")
+	_T.free_ui(game)
+	return err
+
+
+## The fallback the header promises: a packet with nothing else left in its
+## pool still has PACKET_OPEN_STEPS to fill, and every one of them has to show
+## something rather than an empty line.
+func test_the_packet_flourish_falls_back_to_the_real_pick_with_an_empty_pool() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	# Unlock everything else so packet_pool(_opening_tier) comes back empty.
+	for id: StringName in PlantCatalog.ids():
+		if not game.bank.unlocked.has(id):
+			game.bank.unlocked.append(id)
+	var pool: Array[StringName] = game.bank.packet_pool(&"rare")
+	var err: String = _T.assert_eq(pool.size(), 0, "nothing else is left to flash")
+	if err == "":
+		var id: StringName = PlantCatalog.CORN
+		game._opening_tier = &"rare"
+		await game._open_packet(id)
+		err = _T.assert_eq(game.hud._message_label.text,
+			"The packet held a %s!" % PlantCatalog.display_name(id),
+			"an empty pool still lands on the real pick instead of erroring or going blank")
+	_T.free_ui(game)
+	return err
+
+
 func test_uprooting_frees_the_cell_and_returns_some_seeds() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	game.bank.add_seeds(100)

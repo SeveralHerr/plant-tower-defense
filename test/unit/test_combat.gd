@@ -515,6 +515,7 @@ func test_every_event_id_the_call_sites_use_is_in_the_table() -> String:
 		Sfx.WAVE_STARTED, Sfx.WAVE_CLEARED, Sfx.UPROOT_ARMED,
 		Sfx.RUN_WON, Sfx.RUN_LOST, Sfx.PURCHASE_DENIED,
 		Sfx.PLANT_UPGRADED, Sfx.PLANT_UPROOTED,
+		Sfx.CORN_FIRED, Sfx.CHOMP_BITE, Sfx.SUNDEW_CLAIM,
 	]
 	for event: StringName in used:
 		var err: String = _T.assert_true(Sfx.SOUNDS.has(event),
@@ -790,6 +791,62 @@ func test_the_sunflower_gauge_clears_the_health_bar_the_brackets_and_the_chew_ri
 	if err == "":
 		err = _T.assert_float_eq(Sunflower.gauge_fill_rect(0.0).position.y, Sunflower.GAUGE_BOTTOM, 0.0001,
 			"and an empty one is a zero-height line at the bottom, so the column grows upward")
+	return err
+
+
+# -- Idle sway (plant-tower-defense-04x) -------------------------------------
+#
+# _wobble_time used to be declared and never read or written anywhere in the
+# file. Headless never runs the gated half (GardenTheme.animations_enabled()
+# reads DisplayServer.get_name(), which is "headless" for this whole suite),
+# so what is testable here is the clock itself and the per-cell phase it is
+# read against — not the rotation a player would actually see.
+
+
+func test_the_idle_sway_clock_advances_every_physics_frame_even_headless() -> String:
+	## The clock keeps ticking whether or not anything is gated on it, so it
+	## stays meaningful rather than frozen at 0 for a plant's whole life.
+	var plant := Plant.new()
+	plant.setup(PlantCatalog.CORN, Vector2i(0, 0), null)
+	var err: String = _T.assert_float_eq(plant._wobble_time, 0.0, 0.0001,
+		"a freshly planted bed hasn't swayed yet")
+	if err == "":
+		plant._wobble(0.5)
+		plant._wobble(0.25)
+		err = _T.assert_float_eq(plant._wobble_time, 0.75, 0.0001,
+			"and the clock is the plain sum of every step handed to it")
+	plant.free()
+	return err
+
+
+func test_the_idle_sway_stays_off_the_sprite_headless() -> String:
+	## The gate itself: headless is exactly where GardenTheme.animations_enabled()
+	## reads false, so no amount of elapsed time should move the sprite here —
+	## the one place this suite can watch the gate without a live display.
+	var plant := Plant.new()
+	plant.setup(PlantCatalog.CORN, Vector2i(0, 0), null)
+	for _i: int in range(120):
+		plant._wobble(1.0 / 60.0)
+	var err: String = _T.assert_float_eq(plant._sprite.rotation, 0.0, 0.0001,
+		"two seconds of headless ticks moved the sprite by %.4f rad, not 0" % plant._sprite.rotation)
+	plant.free()
+	return err
+
+
+func test_the_idle_sway_phase_differs_between_neighbouring_cells() -> String:
+	## Pure, so it is assertable without a tree at all. A bed of identical
+	## plants swaying in lockstep would read as one rigid slab rather than a
+	## garden — TitleScreen's own decorative lawn avoids exactly this by
+	## phasing its sprites off their array index; a planted Plant has no
+	## index, so `cell` stands in for one.
+	var a: float = Plant._wobble_phase(Vector2i(0, 0))
+	var b: float = Plant._wobble_phase(Vector2i(1, 0))
+	var c: float = Plant._wobble_phase(Vector2i(0, 1))
+	var err: String = _T.assert_false(is_equal_approx(a, b),
+		"neighbouring columns land on different phases (%.3f vs %.3f)" % [a, b])
+	if err == "":
+		err = _T.assert_false(is_equal_approx(a, c),
+			"neighbouring rows land on different phases too (%.3f vs %.3f)" % [a, c])
 	return err
 
 
