@@ -502,3 +502,166 @@ func test_the_uproot_button_reprices_itself_as_the_plant_is_chewed() -> String:
 				"and prints exactly what uproot_selected would pay, got %s" % button.text)
 	_T.free_ui(game)
 	return err
+
+
+# -- Refunds are change, not income (plant-tower-defense-v3b) ----------------
+#
+# `seeds_earned_total` is the number RunConfig.record_score() files as the high
+# score for BOTH modes (Game._end_run), and SeedBank.refund() used to route
+# through add_seeds(), which credits it. So a Corn Cobbler — 10 to plant, 6 back
+# at full health — cost 4 of purse and paid 6 of score per plant-and-uproot
+# cycle, repeatably: a 100-seed float buys 23 round trips and ~138 points of
+# recorded score with no pest ever reaching the board. The purse arithmetic was
+# never wrong; only the scoreboard was.
+
+
+## First buildable, empty cell. Re-read rather than cached, because the loop
+## below replants on the same cell and has to see it come free again.
+func _empty_grass(game: Game) -> Vector2i:
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if game.board.is_buildable(cell) and game.plant_at(cell) == null:
+				return cell
+	return Vector2i(-1, -1)
+
+
+func test_planting_and_uprooting_in_a_loop_does_not_move_the_score() -> String:
+	## The exploit itself, through a real Game rather than a bare bank, because
+	## what makes it an exploit is that a player can click it.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(200)
+	var cell: Vector2i = _empty_grass(game)
+	var err: String = _T.assert_gte(cell.x, 0, "there is a grass cell to plant on")
+	# Burn the one free planting first, or the first cycle costs nothing and the
+	# arithmetic below reads as a discount instead of as the churn.
+	if err == "":
+		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "the free starter is spent")
+	if err == "":
+		err = _T.assert_eq(game.uproot_selected(), "", "and pulled straight back up")
+	var cost: int = game.bank.placement_cost(PlantCatalog.CORN)
+	var earned_before: int = game.bank.seeds_earned_total
+	var seeds_before: int = game.bank.seeds
+	var refund: int = 0
+	var cycles: int = 10
+	for i: int in range(cycles):
+		if err != "":
+			break
+		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "cycle %d plants" % i)
+		if err == "":
+			# Read before the uproot, off the same method the button prints.
+			refund = game.selected_placed.uproot_refund()
+			err = _T.assert_eq(game.uproot_selected(), "", "cycle %d uproots" % i)
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds_earned_total, earned_before,
+			"%d plant/uproot cycles earned nothing — the score is for playing, not for churning"
+				% cycles)
+	if err == "":
+		# The other half of the claim: the purse still moves, and downward. This is
+		# a fix to the scoreboard, not a nerf to uprooting.
+		err = _T.assert_gt(cost, refund,
+			"one round trip is a real loss (%d out, %d back)" % [cost, refund])
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, seeds_before - cycles * (cost - refund),
+			"and the player paid %d for the churn" % (cycles * (cost - refund)))
+	_T.free_ui(game)
+	return err
+
+
+func test_ordinary_income_still_raises_the_recorded_score() -> String:
+	## The fix must not make the scoreboard stop counting. A pest kill is the
+	## income path with the most wiring under it — Game._on_pest_died — so it is
+	## the one worth driving; the bare add_seeds call covers Sunflower yields and
+	## swept husks, which reach the bank the same way.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var earned_before: int = game.bank.seeds_earned_total
+	game.spawn_pest(Pest.APHID)
+	var pests: Array = game.get_tree().get_nodes_in_group("pests")
+	var err: String = _T.assert_gt(pests.size(), 0, "a pest is on the board to kill")
+	var value: int = 0
+	if err == "":
+		value = (pests[0] as Pest).seed_value
+		err = _T.assert_gt(value, 0, "and it is worth something to kill")
+	if err == "":
+		(pests[0] as Pest).take_damage(9999.0)
+		err = _T.assert_eq(game.bank.seeds_earned_total, earned_before + value,
+			"a kill is income, and income is the score")
+	if err == "":
+		var mid: int = game.bank.seeds_earned_total
+		game.bank.add_seeds(17)
+		err = _T.assert_eq(game.bank.seeds_earned_total, mid + 17,
+			"and add_seeds still credits the score by default")
+	_T.free_ui(game)
+	return err
+
+
+func test_an_upgrade_charge_never_raises_the_score() -> String:
+	## A charge is a negative add_seeds, and the sign guard already kept it off the
+	## score — pinned here because the refund fix sits in the same `if`, and a
+	## flag added carelessly could let -12 seeds count as 12 earned.
+	var bank := SeedBank.new()
+	bank.add_seeds(100)
+	var earned: int = bank.seeds_earned_total
+	var purse: int = bank.seeds
+	bank.add_seeds(-12)
+	var err: String = _T.assert_eq(bank.seeds_earned_total, earned,
+		"paying 12 out is not earning 12")
+	if err == "":
+		err = _T.assert_eq(bank.seeds, purse - 12, "but it is still charged for")
+	if err != "":
+		return err
+	# And through the caller that actually passes a negative amount.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(500)
+	var cell: Vector2i = _empty_grass(game)
+	err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "planted something upgradeable")
+	if err == "":
+		var corn := game.selected_placed as CornCobbler
+		err = _T.assert_true(corn != null, "a Corn Cobbler is selected")
+		if err == "":
+			var price: int = corn.upgrade_cost()
+			var earned_before: int = game.bank.seeds_earned_total
+			var seeds_before: int = game.bank.seeds
+			err = _T.assert_eq(game.upgrade_selected(), "", "the upgrade goes through")
+			if err == "":
+				err = _T.assert_eq(game.bank.seeds, seeds_before - price,
+					"and costs %d seeds" % price)
+			if err == "":
+				err = _T.assert_eq(game.bank.seeds_earned_total, earned_before,
+					"while the score sits still — spending is not earning")
+	_T.free_ui(game)
+	return err
+
+
+func test_a_refund_still_pays_the_player_exactly_what_it_promised() -> String:
+	## The fix moves the score and nothing else. Both routes: refund() on its own,
+	## and a real uproot taken at a health where the slope has actually bitten, so
+	## this would catch a "fix" that quietly changed what comes back.
+	var bank := SeedBank.new()
+	var purse: int = bank.seeds
+	bank.refund(7)
+	var err: String = _T.assert_eq(bank.seeds, purse + 7, "refund() still pays out in full")
+	if err == "":
+		err = _T.assert_eq(bank.seeds_earned_total, 0, "without ever crediting the score")
+	if err != "":
+		return err
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(200)
+	var cell: Vector2i = _empty_grass(game)
+	err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "planted")
+	if err == "":
+		game.selected_placed.take_damage(Plant.MAX_HEALTH * 0.5)
+		var promised: int = game.selected_placed.uproot_refund()
+		var seeds_before: int = game.bank.seeds
+		var earned_before: int = game.bank.seeds_earned_total
+		err = _T.assert_gt(promised, 0, "a half-eaten plant is still worth scrapping")
+		if err == "":
+			err = _T.assert_eq(game.uproot_selected(), "", "uprooted")
+		if err == "":
+			err = _T.assert_eq(game.bank.seeds, seeds_before + promised,
+				"the purse gained exactly the %d the uproot button printed" % promised)
+		if err == "":
+			err = _T.assert_eq(game.bank.seeds_earned_total, earned_before,
+				"and the score did not follow the money")
+	_T.free_ui(game)
+	return err

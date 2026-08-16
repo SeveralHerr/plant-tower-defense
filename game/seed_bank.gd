@@ -33,8 +33,20 @@ const PACKET_TIERS: Dictionary = {
 }
 
 var seeds: int = STARTING_SEEDS
-## Every seed ever gained (not net of spending) — the run's score for the
-## endless-mode high score. Refunds count too; they are still seeds earned.
+## Seeds *earned* this run (not net of spending) — the number both modes' high
+## scores are kept on, via RunConfig.record_score() from Game._end_run.
+##
+## It used to be a run statistic, and back then refunds counted toward it on the
+## grounds that they were "still seeds earned". Once it became the scoreboard
+## that stopped being harmless: uprooting hands back seeds the player already
+## paid for, so a plant-and-uproot loop credits the score every cycle for no
+## gameplay at all. A Corn Cobbler costs 10 and refunds 6 at full health, so each
+## round trip costs 4 of wallet and pays 6 of score — a 100-seed float converts
+## into ~138 points of "score" without a single pest killed.
+##
+## So: this counts income only. Money that comes back out of a plant the player
+## already bought is not income, it is change. See refund(), and add_seeds()'
+## `counts_as_income` flag.
 var seeds_earned_total: int = 0
 var unlocked: Array[StringName] = []
 ## Cleared the first time the free starter is planted. See placement_cost().
@@ -53,9 +65,18 @@ func set_seed(value: int) -> void:
 	_rng.seed = value
 
 
-func add_seeds(amount: int) -> void:
+## Moves seeds into (or, with a negative `amount`, out of) the purse.
+##
+## Three shapes of caller, and they mean different things to the score:
+##   - income — a pest killed, a Sunflower's yield, a swept husk. Counts.
+##   - a charge — Game.upgrade_selected() passes a negative amount. The sign
+##     alone already keeps it off the score; you cannot earn -12 seeds.
+##   - a refund — seeds handed back out of something already bought. Positive,
+##     so the sign guard does not see it, which is exactly the exploit this flag
+##     closes. Callers go through refund() and never pass this by hand.
+func add_seeds(amount: int, counts_as_income: bool = true) -> void:
 	seeds = maxi(0, seeds + amount)
-	if amount > 0:
+	if amount > 0 and counts_as_income:
 		seeds_earned_total += amount
 	seeds_changed.emit(seeds)
 
@@ -100,8 +121,14 @@ func pay_for_plant(id: StringName) -> bool:
 	return true
 
 
+## Pays back part of a purchase — currently only Game.uproot_selected(), which
+## hands over Plant.uproot_refund().
+##
+## The purse moves exactly as it always did; the run's score does not. See
+## seeds_earned_total: a refund is change from a purchase, not income, and
+## crediting it made uproot a repeatable score button.
 func refund(amount: int) -> void:
-	add_seeds(amount)
+	add_seeds(amount, false)
 
 
 ## Everything `tier`'s packet could still roll: locked plants at or below its
