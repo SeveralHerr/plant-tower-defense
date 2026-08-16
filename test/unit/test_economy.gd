@@ -665,3 +665,308 @@ func test_a_refund_still_pays_the_player_exactly_what_it_promised() -> String:
 				"and the score did not follow the money")
 	_T.free_ui(game)
 	return err
+
+
+# -- A save that cannot be read must not zero a record (plant-tower-defense-5el) --
+#
+# The high score is the only quantity in this game a player cannot re-earn on
+# demand, and `RunConfig.record_score` only ever raises a record. So a `_load`
+# that wrote a 0 into a slot did not merely lose one launch's reading: the next
+# mediocre run refilled the slot and the real number was gone permanently. Two
+# routes there, both now closed. `int("")` is 0 in GDScript and `get_line()`
+# returns `""` past the end of a truncated file, so a half-written save loaded as
+# a pair of zeros that looked exactly like a player who had never played. And the
+# `SAVE_VERSION` stamp was written on every save and compared on no load, so a
+# file from a later build was parsed as if it were this one's.
+#
+# These drive the real `_load`/`_save` over a scratch path rather than over
+# `user://highscore.save`, because pointing a test suite at the developer's own
+# save is the same bug wearing a different hat.
+
+const HIGHSCORE_TEST_PATH := "user://test_economy_highscore.save"
+
+
+## Every file the scratch save path can produce — the save, the temp file `_save`
+## assembles in, and the quarantine `_save` moves a refused file to.
+func _scratch_save_files() -> Array[String]:
+	return [
+		HIGHSCORE_TEST_PATH,
+		HIGHSCORE_TEST_PATH + ".tmp",
+		HIGHSCORE_TEST_PATH + ".bak",
+	]
+
+
+func _clear_scratch_save() -> void:
+	for path: String in _scratch_save_files():
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(path)
+
+
+## Points RunConfig at the scratch save with `contents` on disk (`null` writes no
+## file at all) and the given in-memory records, runs `body`, and then puts every
+## piece of RunConfig back and deletes every scratch file — on the failing return
+## as well as the passing one, since `body` reports a failure by returning a
+## string rather than by throwing, and a leftover save file would be read by the
+## next run of this suite.
+##
+## RunConfig is an autoload shared by the whole test run. `save_path`, both
+## scores, `endless`, `fresh_record` and `load_status` all have to come back, or
+## every later test inherits whatever this one was proving.
+func _with_scratch_save(campaign: int, endless_best: int, contents: Variant, body: Callable) -> String:
+	_clear_scratch_save()
+	if contents != null:
+		var f := FileAccess.open(HIGHSCORE_TEST_PATH, FileAccess.WRITE)
+		if f == null:
+			# Nothing has been redirected yet, so there is nothing to restore.
+			return "could not create the scratch save at %s" % HIGHSCORE_TEST_PATH
+		f.store_string(str(contents))
+		f.close()
+
+	_stash_run_config()
+	RunConfig.save_path = HIGHSCORE_TEST_PATH
+	RunConfig.campaign_high_score = campaign
+	RunConfig.endless_high_score = endless_best
+	var err: String = str(body.call())
+	_restore_run_config()
+	return err
+
+
+## Everything of RunConfig's these tests move, remembered where `teardown` can
+## also reach it. The wrapper above restores on both of its own return paths, but
+## a runtime error inside `body` aborts the test method outright and neither of
+## them runs — and an aborted test that leaves the autoload pointing at a deleted
+## scratch file is how one failure becomes a whole suite of them.
+var _stashed_run_config: Dictionary = {}
+
+
+func _stash_run_config() -> void:
+	_stashed_run_config = {
+		"save_path": RunConfig.save_path,
+		"campaign_high_score": RunConfig.campaign_high_score,
+		"endless_high_score": RunConfig.endless_high_score,
+		"endless": RunConfig.endless,
+		"fresh_record": RunConfig.fresh_record,
+		"load_status": RunConfig.load_status,
+		# Private, and stashed anyway: a refusal leaves a quarantine pending, and
+		# leaking that into a later test means an unrelated `_save` tries to move a
+		# file this one deleted.
+		"_refused_path": RunConfig._refused_path,
+	}
+
+
+func _restore_run_config() -> void:
+	if _stashed_run_config.is_empty():
+		return
+	RunConfig.save_path = str(_stashed_run_config["save_path"])
+	RunConfig.campaign_high_score = int(_stashed_run_config["campaign_high_score"])
+	RunConfig.endless_high_score = int(_stashed_run_config["endless_high_score"])
+	RunConfig.endless = bool(_stashed_run_config["endless"])
+	RunConfig.fresh_record = bool(_stashed_run_config["fresh_record"])
+	RunConfig.load_status = str(_stashed_run_config["load_status"])
+	RunConfig._refused_path = str(_stashed_run_config["_refused_path"])
+	_stashed_run_config = {}
+	_clear_scratch_save()
+
+
+## Called by the runner after every test in this file, including one that aborted
+## on a runtime error. A no-op unless a scratch-save test left something behind.
+func teardown() -> void:
+	_restore_run_config()
+
+
+## `_load` ran, refused what it found, and left both records exactly where they
+## were. The assertion that matters is the pair of numbers, not the status: a
+## status of "refused" sitting beside a zeroed score would be a more articulate
+## version of the same bug.
+func _assert_refused(campaign: int, endless_best: int, what: String) -> String:
+	RunConfig._load()
+	var err: String = _T.assert_eq(RunConfig.campaign_high_score, campaign,
+		"%s left the campaign record alone" % what)
+	if err == "":
+		err = _T.assert_eq(RunConfig.endless_high_score, endless_best,
+			"%s left the endless record alone" % what)
+	if err == "":
+		err = _T.assert_eq(RunConfig.load_status, "refused",
+			"%s was refused rather than quietly half-read" % what)
+	return err
+
+
+func test_a_truncated_save_leaves_the_records_alone() -> String:
+	## The original defect. A save is three `store_line` calls, so an interrupted
+	## write leaves the header alone, or the header and one score, or a score cut
+	## mid-digit. Every one of them used to reach `int(f.get_line())` on an empty
+	## string and file a 0 that `record_score` could then never raise back.
+	var cases: Dictionary = {
+		"a header-only save": "v2\n",
+		"a save cut after the campaign line": "v2\n4321\n",
+		"a save cut mid-number with no newline": "v2\n43",
+		"a save with a blank score line": "v2\n4321\n\n",
+	}
+	for what: String in cases:
+		var err: String = _with_scratch_save(4321, 8765, cases[what],
+			func() -> String: return _assert_refused(4321, 8765, what))
+		if err != "":
+			return err
+	return ""
+
+
+func test_a_garbage_save_leaves_the_records_alone() -> String:
+	## Anything that is not the format: a hand-edit, a crossed file, a zero-length
+	## file left behind by a disk that filled up. None of it may be interpreted.
+	var cases: Dictionary = {
+		"an empty file": "",
+		"prose": "hello there\nfriend\n",
+		"a version header that is not a number": "vX\n10\n20\n",
+		"non-numeric scores": "v2\nlots\nmore\n",
+		"a fractional score": "v2\n12.5\n20\n",
+		"a negative score": "v2\n-40\n20\n",
+	}
+	for what: String in cases:
+		var err: String = _with_scratch_save(4321, 8765, cases[what],
+			func() -> String: return _assert_refused(4321, 8765, what))
+		if err != "":
+			return err
+	return ""
+
+
+func test_a_save_from_a_newer_build_is_refused_not_reinterpreted() -> String:
+	## What `SAVE_VERSION` is now for. A v3 file's three lines might be endless
+	## first, or campaign plus some third record — reading them positionally as v2
+	## is how a later build's numbers land in the wrong slots with no error at all.
+	## The scores in the fixture are deliberately valid-looking integers, so the
+	## version number is the only thing that can be rejecting them.
+	for ahead: int in [1, 7]:
+		var future: int = RunConfig.SAVE_VERSION + ahead
+		var contents: String = "v%d\n11\n22\n" % future
+		var what: String = "a version %d save" % future
+		var err: String = _with_scratch_save(4321, 8765, contents,
+			func() -> String: return _assert_refused(4321, 8765, what))
+		if err != "":
+			return err
+	return ""
+
+
+func test_no_save_at_all_still_means_a_fresh_pair_of_zeros() -> String:
+	## The first-launch case has to keep working: refusing to trust a bad file
+	## must not turn into refusing to start. Absence is a legitimate reading and a
+	## different one from refusal — which is the whole reason `load_status`
+	## distinguishes them rather than both just being "the scores did not move".
+	return _with_scratch_save(0, 0, null, func() -> String:
+		RunConfig._load()
+		var err: String = _T.assert_eq(RunConfig.load_status, "absent",
+			"no file at all is 'absent', not 'refused'")
+		if err == "":
+			err = _T.assert_eq(RunConfig.campaign_high_score, 0, "a first launch has no campaign record")
+		if err == "":
+			err = _T.assert_eq(RunConfig.endless_high_score, 0, "and no endless record")
+		if err == "":
+			err = _T.assert_false(FileAccess.file_exists(HIGHSCORE_TEST_PATH),
+				"and reading nothing did not write anything either")
+		return err)
+
+
+func test_a_well_formed_save_round_trips_exactly() -> String:
+	## The happy path, end to end through the real writer and the real reader, and
+	## byte-exact on the file itself — a reader that refused everything would pass
+	## every test above this one.
+	return _with_scratch_save(1234, 5678, null, func() -> String:
+		RunConfig._save()
+		var err: String = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+			"v%d\n1234\n5678\n" % RunConfig.SAVE_VERSION,
+			"the save is a version stamp, then campaign, then endless")
+		if err == "":
+			err = _T.assert_false(FileAccess.file_exists(HIGHSCORE_TEST_PATH + ".tmp"),
+				"and the temp file it was assembled in was renamed away, not left behind")
+		if err == "":
+			# Deliberately not zeros: a `_load` that assigned nothing at all would
+			# otherwise pass this by doing nothing at all.
+			RunConfig.campaign_high_score = 7
+			RunConfig.endless_high_score = 9
+			RunConfig._load()
+			err = _T.assert_eq(RunConfig.load_status, "loaded", "a current-version file loads")
+		if err == "":
+			err = _T.assert_eq(RunConfig.campaign_high_score, 1234, "campaign came back exactly")
+		if err == "":
+			err = _T.assert_eq(RunConfig.endless_high_score, 5678, "endless came back exactly")
+		return err)
+
+
+func test_a_refused_save_is_not_immediately_overwritten() -> String:
+	## The other half of "leave the scores alone": leave the file alone too. This
+	## build failing to read a file is not evidence that nothing can read it, and
+	## stamping the fallback over it on launch is what turns a bad read into a
+	## permanent loss. When a later `_save` finally does need the path, the refused
+	## bytes are moved aside rather than destroyed.
+	var original: String = "v2\nnot-a-number\n8765\n"
+	return _with_scratch_save(4321, 8765, original, func() -> String:
+		var err: String = _assert_refused(4321, 8765, "a corrupt save")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH), original,
+				"the file it could not read is still on disk, byte for byte")
+		if err == "":
+			err = _T.assert_false(FileAccess.file_exists(HIGHSCORE_TEST_PATH + ".bak"),
+				"and nothing was quarantined yet — reading is not the moment to move files")
+		if err == "":
+			# Now make the game genuinely need the path, and check the old bytes
+			# survive the takeover.
+			RunConfig.endless = false
+			err = _T.assert_true(RunConfig.record_score(9999),
+				"9999 beats the campaign record that survived the refusal")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH + ".bak"), original,
+				"the unreadable file was moved aside, not written over")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+				"v%d\n9999\n8765\n" % RunConfig.SAVE_VERSION,
+				"and the new save kept the endless record the refusal had preserved")
+		return err)
+
+
+func test_a_version_one_save_still_migrates_into_the_endless_slot() -> String:
+	## Reading the version must not cost the one migration that already exists.
+	## Version 1 was a bare integer with no header at all, and it lands in the
+	## endless slot on purpose — the title screen has always called it "Best
+	## endless run", so that is the record the player believes they hold.
+	return _with_scratch_save(4321, 8765, "31337\n", func() -> String:
+		RunConfig._load()
+		var err: String = _T.assert_eq(RunConfig.load_status, "migrated",
+			"a headerless file is version 1")
+		if err == "":
+			err = _T.assert_eq(RunConfig.endless_high_score, 31337,
+				"the legacy number is the endless record")
+		if err == "":
+			err = _T.assert_eq(RunConfig.campaign_high_score, 0, "and campaign starts empty")
+		if err == "":
+			# A parse that fully succeeded is the one case that may rewrite the file.
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+				"v%d\n0\n31337\n" % RunConfig.SAVE_VERSION,
+				"and the ambiguity is resolved on disk once, not re-guessed every launch")
+		return err)
+
+
+func test_an_interrupted_save_is_recovered_rather_than_read_as_zero() -> String:
+	## The write side of the same principle. `FileAccess.WRITE` truncates its
+	## target as it opens, so writing in place destroyed the previous save before
+	## producing a byte of the new one — on a full or read-only user:// that left a
+	## stub where a record used to be. `_save` now assembles beside the file and
+	## renames, which is only worth doing if `_load` picks the temp up when the
+	## rename is the step that got interrupted.
+	return _with_scratch_save(1234, 5678, null, func() -> String:
+		RunConfig._save()
+		var written: String = FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH)
+		# Stage exactly the state a crash between "the temp file is complete" and
+		# "the temp file has replaced the save" leaves behind.
+		DirAccess.rename_absolute(HIGHSCORE_TEST_PATH, HIGHSCORE_TEST_PATH + ".tmp")
+		RunConfig.campaign_high_score = 0
+		RunConfig.endless_high_score = 0
+		RunConfig._load()
+		var err: String = _T.assert_eq(RunConfig.load_status, "recovered",
+			"a complete temp file with no save beside it is adopted, not read as a first launch")
+		if err == "":
+			err = _T.assert_eq(RunConfig.campaign_high_score, 1234, "campaign survived the interruption")
+		if err == "":
+			err = _T.assert_eq(RunConfig.endless_high_score, 5678, "endless survived it too")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH), written,
+				"and the save is back where it belongs")
+		return err)
