@@ -106,9 +106,10 @@ const LEAF := GardenTheme.LEAF
 ## no grep for `const` would ever have found.
 const COMPOST := GardenTheme.GOLD
 ## The one warning red in the HUD: an armed Uproot, and nothing else. The same
-## value the in-world health bar draws — `Plant.HEALTH_BAR_HURT` is still a
-## hand-typed copy of it and wants folding into GardenTheme.DANGER too — so a red
-## on this screen always means "this costs you something".
+## value the in-world health bar draws — `Plant.health_bar_color_on` reads its
+## bleeding end straight out of `health_color_on` below rather than keeping a
+## third copy — so a red on this screen always means "this costs you something",
+## and a player on the safe ramp gets the safe red on all three bars at once.
 const UPROOT_ARMED := GardenTheme.DANGER
 
 ## The threat ramp on the wave readout. Starts at the bar's own cream so an early

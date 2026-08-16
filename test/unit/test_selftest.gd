@@ -6718,3 +6718,108 @@ func test_the_milestone_shelf_fits_the_page() -> String:
 	_T.free_ui(notebook)
 	RunConfig.earned_milestones = stashed
 	return err
+
+
+# -- The third bar (plant-tower-defense-b6v) ---------------------------------
+
+
+func test_the_in_world_plant_bar_reads_the_same_ramp_the_hud_does() -> String:
+	## plant-tower-defense-xu0 routed `Hud.health_color` and `Hud.threat_color`
+	## through RunConfig.colorblind_safe and stopped there. The bar a player
+	## actually watches during a chew is neither of those — the HUD's health row
+	## only appears for the SELECTED plant, while every bed being eaten draws its
+	## own ColorRect on the board — and it was a third green-to-red lerp the
+	## option never reached. Pure, on both ramps, so the claim is about the ramp
+	## and not about whatever palette this process was started with.
+	var err := ""
+	for safe: bool in [false, true]:
+		err = _T.assert_eq(Plant.health_bar_color_on(false, safe), Hud.health_color_on(0.0, safe),
+			"a bleeding bed is the HUD's own empty-health colour on the %s ramp"
+				% ("safe" if safe else "default"))
+		if err != "":
+			return err
+	# The regression itself: before this, both of the above were DANGER.
+	err = _T.assert_true(
+		Plant.health_bar_color_on(false, true) != Plant.health_bar_color_on(false, false),
+		"and the switch actually moves it — a bleeding bar that is the same colour either way "
+			+ "is the bug this issue is about")
+	if err == "":
+		err = _T.assert_true(
+			Plant.health_bar_color_on(true, true) != Plant.health_bar_color_on(true, false),
+			"the healing end moves too, or the safe ramp would still be half green-and-red")
+	if err == "":
+		# The shape channel is not superseded by the switch. A palette the player
+		# has to find in a menu cannot be the only cue, and the notches are what
+		# survives a screenshot, a greyscale print and a player who never presses
+		# the key. See Plant.HEALTH_BAR_SEGMENTS.
+		err = _T.assert_gt(Plant.health_bar_segments(true), Plant.health_bar_segments(false),
+			"and the notches are still there — the ramp is a second channel, not a replacement")
+	# And the reading half is wired to the pure one. `colorblind_safe` is
+	# process-global and seeded from the real save, so it is pinned both ways here
+	# and put back — this is the only test that may touch `health_bar_color` at all.
+	var was: bool = RunConfig.colorblind_safe
+	for safe: bool in [false, true]:
+		if err != "":
+			break
+		RunConfig.colorblind_safe = safe
+		for regrowing: bool in [false, true]:
+			err = _T.assert_eq(Plant.health_bar_color(regrowing),
+				Plant.health_bar_color_on(regrowing, safe),
+				"health_bar_color(%s) reads the option rather than one fixed ramp" % regrowing)
+			if err != "":
+				break
+	RunConfig.colorblind_safe = was
+	return err
+
+
+func test_toggling_the_option_repaints_the_bars_already_on_the_board() -> String:
+	## The in-world bar is drawn from take_damage() and _regrow(), i.e. only when
+	## the number moves. A chewed bed sitting quietly while the player presses the
+	## colourblind key is the case where that is wrong: nothing bites it, so
+	## nothing repaints it, and the one readout the option is most for keeps the
+	## ramp the player just turned off. Driven through Game's own handler rather
+	## than by calling repaint_health_bar() directly — a fix that lives in a method
+	## nobody calls is not a fix.
+	KeyBindings.reset_all()
+	var was: bool = RunConfig.colorblind_safe
+	RunConfig.colorblind_safe = false
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "", "planted")
+	var plant: Plant = game.selected_placed
+	if err == "":
+		err = _T.assert_true(plant != null, "and the placed bed is the one we hold")
+	if err == "":
+		# Bitten once and then left alone, which is the whole point: no further
+		# damage and no regrowth tick may happen between here and the assertion.
+		plant.take_damage(Plant.MAX_HEALTH * 0.5)
+		err = _T.assert_true(plant._health_bar.visible, "a bitten bed shows its bar")
+	if err == "":
+		var default_red: Color = plant._health_bar.color
+		err = _T.assert_float_eq(_colour_distance(default_red, Hud.health_color_on(0.0, false)),
+			0.0, 0.001, "which starts on the default ramp, got %s" % default_red)
+		if err == "":
+			game._unhandled_input(_action_press(KeyBindings.ACTION_COLORBLIND))
+			await _pump(game)
+			var now: Color = plant._health_bar.color
+			var to_safe: float = _colour_distance(now, Hud.health_color_on(0.0, true))
+			var to_default: float = _colour_distance(now, Hud.health_color_on(0.0, false))
+			err = _T.assert_true(to_safe < to_default,
+				"and the key repaints it to the safe ramp without anything biting it again: "
+					+ "%s is %.3f from safe and %.3f from default" % [now, to_safe, to_default])
+		if err == "":
+			game._unhandled_input(_action_press(KeyBindings.ACTION_COLORBLIND))
+			await _pump(game)
+			err = _T.assert_float_eq(_colour_distance(plant._health_bar.color, default_red), 0.0,
+				0.001, "and back again, got %s" % plant._health_bar.color)
+		if err == "":
+			# The method the handler reaches for, called directly, so a rename that
+			# left the loop above calling something else would fail here too.
+			RunConfig.colorblind_safe = true
+			plant.repaint_health_bar()
+			err = _T.assert_float_eq(
+				_colour_distance(plant._health_bar.color, Hud.health_color_on(0.0, true)), 0.0,
+				0.001, "repaint_health_bar() is what does it, got %s" % plant._health_bar.color)
+	RunConfig.colorblind_safe = was
+	_T.free_ui(game)
+	return err

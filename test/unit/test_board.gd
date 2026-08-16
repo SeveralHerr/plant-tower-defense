@@ -241,8 +241,16 @@ func test_a_bleeding_plant_and_a_regrowing_one_differ_in_more_than_their_colour(
 	if err == "":
 		# The colour channel is still asserted, so a later merge cannot collapse the
 		# two hues and leave this green on the shape alone. Two channels, not a swap.
-		err = _T.assert_true(Plant.health_bar_color(true) != Plant.health_bar_color(false),
-			"the two colours still differ as well — the shape is a second channel, not a replacement")
+		# Through `health_bar_color_on`, on BOTH ramps: `health_bar_color` reads
+		# RunConfig.colorblind_safe, which is process-global and seeded from
+		# whatever save the machine running this happens to have.
+		for safe: bool in [false, true]:
+			err = _T.assert_true(
+				Plant.health_bar_color_on(true, safe) != Plant.health_bar_color_on(false, safe),
+				"the two colours still differ as well on the %s ramp — the shape is a second channel, not a replacement"
+					% ("colourblind-safe" if safe else "default"))
+			if err != "":
+				break
 	if err == "":
 		var notches: Array[Rect2] = Plant.health_bar_notch_rects()
 		err = _T.assert_eq(notches.size(), healing - 1,

@@ -54,6 +54,12 @@ const SOIL := Color(0.361, 0.243, 0.157)
 ## which point "the same red everywhere" was a comment rather than a fact.
 ## Semantic names still belong at each site; they alias this.
 ##
+## The fourth is gone: a *constant* alias is only half the job once a colourblind
+## ramp exists, because the alias pins the red and says nothing about which ramp
+## is on. The in-world bar now calls `Hud.health_color_on(0.0, safe)` rather than
+## naming a colour at all, which is the shape anything reaching for this constant
+## as a "bad" cue should copy — name the ramp end, not the paint.
+##
 ## What one value cannot do is say *which* sentence a given red is saying, and on
 ## the board there are two: a live warning ("this costs you something right now" —
 ## the hover cursor over a cell you may not build on, a plant being chewed) and a
