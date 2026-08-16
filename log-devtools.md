@@ -2382,3 +2382,55 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
 
 - Harness: still **0.24.0** at this run's `harness-version` read (installed
   0.24.0, client 0.24.0; game not launched this run so its side is unknown).
+
+## 2026-08-16 — Corn Cobbler readiness readout (plant-tower-defense-88o)
+
+- Value: **warranted** — the live game was the only way to confirm the fade
+  actually paints under real firing traffic with no runtime error, which the
+  unit tests (correctly) cannot see.
+  - Expected: `readiness()` would drop right after a shot and climb back to 1.0
+    over the reload, matching `elapsed/interval`, and `_draw_muzzle_fan`'s new
+    per-pip `Color(PIP_COLOR, PIP_COLOR.a * fade)` calls would not throw under
+    real placement/upgrade/firing traffic across several plants at once.
+  - Got: launched the game, placed 7 CornCobblers, forced fires with `cmd
+    spawn_pest`, and polled `run-method ... readiness` — read 0.104, 0.083,
+    0.021 immediately after firing (matches the unit test's exact 0.0 at
+    `_cooldown == interval`, allowing for the poll round-trip eating into the
+    0.8s window before the value could be read) and 1.0 once recovered.
+    `.devtools/launch_stderr.log` stayed at 0 lines through the whole session —
+    no `SCRIPT ERROR` from any of the ~7 cobblers drawing every frame.
+  - Found: the live run didn't surface a code defect, but writing the *test*
+    did — `fire_interval()` was sitting in `tools/suite_reach_baseline.json` as
+    a pre-existing "no test names this" finding, and the new test now names it.
+    `test_the_suite_reach_baseline_lists_only_symbols_no_test_names` caught the
+    drift correctly; regenerated the baseline with `--baseline-write` per its
+    own error message.
+  - Cheaper: the pure-math + real-`_act()`-driven unit test (already written)
+    proves the numbers exactly; the live pass only added "and it doesn't throw
+    when actually drawn under a real target." Could have skipped it and still
+    shipped correctly, but would not have known that for certain.
+
+- Gap: **could not pixel-sample the low-alpha instant** — tried `sample-pixels`
+  on the pip's computed screen position immediately after a forced fire, but
+  every attempt raced the bus round-trip against the 0.8s reload interval and
+  landed after most of the recovery had already happened (readiness read back
+  at 0.95-1.0 by the time the sample command reached the game), even after
+  slowing `set-game-speed` — because `Engine.time_scale` scales tick *rate*,
+  not per-tick delta, so a slow scale does not lengthen the real-time window a
+  low value is held at any better than 1.0x does once a command is already
+  in flight. `set-game-speed 0` is refused ("use the tree's pause for that");
+  there is no bus verb for a real `SceneTree.paused = true` freeze.
+  - [G-036] status: open | seen: 1 | harness: 0.24.0
+  - Improvement: a `pause`/`unpause` verb (or a `--freeze-on` flag on
+    `set-game-speed`) that flips the actual tree pause rather than time_scale,
+    so a caller can catch a fast, sub-second state transition and hold it
+    indefinitely for a leisurely `sample-pixels`/`screenshot`, independent of
+    bus latency.
+
+- Also filed/commented upstream this session: issue #25 (scaffold refresh can
+  silently downgrade + branch safety net never fires in a fan-out session) and
+  a comment on the open #24 (pid-reuse reproduction: a dead pid was reported
+  "STILL ALIVE" because Windows had already reassigned it to an unrelated
+  `WmiPrvSE` process).
+
+- Harness: **0.24.0**.

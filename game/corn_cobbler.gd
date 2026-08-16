@@ -83,23 +83,34 @@ const PIP_COLOR := Color(1.0, 0.78, 0.20, 0.95)
 const PIP_RIM_COLOR := Color(0.24, 0.16, 0.04, 0.9)
 const SPREAD_ARC_COLOR := Color(1.0, 0.78, 0.20, 0.45)
 
+## The muzzle's floor brightness the instant a volley fires. Never 0 — the fan
+## is the picture of what an upgrade bought, and a fired cob should still show
+## it, just dimmed, not disappear until the reload completes.
+const READY_ALPHA_FLOOR: float = 0.35
+## Repaint granularity for the readiness fade — discipline borrowed from
+## Sunflower's `_drawn_fill_height`: a 0.6-0.8s reload does not need a fresh
+## frame for every sub-percent of progress, only for the visible steps a fade
+## across READY_ALPHA_FLOOR..1.0 actually paints.
+const READINESS_STEPS: int = 24
+
 var level: int = 1
 
 var _cooldown: float = 0.0
 ## Where the fan points. Updated on every shot, so an upgraded cob visibly
 ## sweeps its wider spray across whatever it last shot at.
 var _aim_angle: float = 0.0
+## Last readiness step actually painted; -1 means "nothing painted yet".
+var _drawn_readiness_step: int = -1
 
 
 func _act(delta: float, pests: Array[Pest]) -> void:
 	_cooldown = maxf(0.0, _cooldown - delta)
-	if _cooldown > 0.0:
-		return
-	var target: Pest = _furthest_along_in_range(pests, RANGE)
-	if target == null:
-		return
-	_fire_at(target.global_position - global_position)
-	_cooldown = float(_stats()["interval"])
+	if _cooldown <= 0.0:
+		var target: Pest = _furthest_along_in_range(pests, RANGE)
+		if target != null:
+			_fire_at(target.global_position - global_position)
+			_cooldown = float(_stats()["interval"])
+	_refresh_readiness()
 
 
 func _fire_at(direction: Vector2) -> void:
@@ -138,18 +149,26 @@ func _draw() -> void:
 	_draw_muzzle_fan()
 
 
+## Fades the whole fan toward READY_ALPHA_FLOOR right after a shot and back to
+## full brightness as the next one arms, driven off the same _cooldown _act
+## already reads — so the readout can't drift from what the cob is actually
+## doing the way a second, hand-tuned clock could. A cob mid-reload and a cob
+## about to fire were pixel-identical before this; now the fan itself answers
+## "is this one loaded".
 func _draw_muzzle_fan() -> void:
 	var offsets: PackedFloat32Array = kernel_angle_offsets(level)
 	if offsets.is_empty():
 		return
+	var fade: float = lerpf(READY_ALPHA_FLOOR, 1.0, readiness())
 	# Level 1 fires one kernel through a 0° spread, so there is no arc to draw —
 	# a lone pip is the honest picture of a single shot.
 	if offsets.size() > 1:
 		draw_arc(muzzle_pivot(_aim_angle), FAN_LENGTH, _aim_angle + offsets[0],
-			_aim_angle + offsets[offsets.size() - 1], 24, SPREAD_ARC_COLOR, 2.0, true)
+			_aim_angle + offsets[offsets.size() - 1], 24,
+			Color(SPREAD_ARC_COLOR, SPREAD_ARC_COLOR.a * fade), 2.0, true)
 	for pip: Vector2 in muzzle_pips(level, _aim_angle):
-		draw_circle(pip, PIP_SIZE + PIP_RIM_WIDTH, PIP_RIM_COLOR)
-		draw_circle(pip, PIP_SIZE, PIP_COLOR)
+		draw_circle(pip, PIP_SIZE + PIP_RIM_WIDTH, Color(PIP_RIM_COLOR, PIP_RIM_COLOR.a * fade))
+		draw_circle(pip, PIP_SIZE, Color(PIP_COLOR, PIP_COLOR.a * fade))
 
 
 func _recoil() -> void:
@@ -297,3 +316,26 @@ func kernel_damage() -> float:
 ## Seconds between volleys at this level.
 func fire_interval() -> float:
 	return float(_stats()["interval"])
+
+
+## Fraction of the reload elapsed: 0.0 the instant a volley fires, 1.0 once the
+## next one is armed. Pure and driven off the same `interval` LEVELS already
+## quotes, so retuning a level's fire rate retunes the readout with it.
+static func readiness_at(cooldown: float, interval: float) -> float:
+	if interval <= 0.0:
+		return 1.0
+	return clampf(1.0 - cooldown / interval, 0.0, 1.0)
+
+
+## This cob's readiness right now.
+func readiness() -> float:
+	return readiness_at(_cooldown, float(_stats()["interval"]))
+
+
+## Repaint only when the fade would actually move by a visible step.
+func _refresh_readiness() -> void:
+	var step: int = roundi(readiness() * READINESS_STEPS)
+	if step == _drawn_readiness_step:
+		return
+	_drawn_readiness_step = step
+	queue_redraw()

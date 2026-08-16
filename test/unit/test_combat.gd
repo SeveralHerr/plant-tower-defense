@@ -246,6 +246,46 @@ func test_corn_shoots_the_pest_closest_to_escaping() -> String:
 	return err
 
 
+func test_corn_readiness_fades_out_on_fire_and_recovers_over_the_reload() -> String:
+	## Pure math first: readiness_at() is exactly what _draw_muzzle_fan's fade reads.
+	var err: String = _T.assert_float_eq(CornCobbler.readiness_at(0.0, 0.8), 1.0, 0.0001,
+		"no cooldown left reads as fully armed")
+	if err == "":
+		err = _T.assert_float_eq(CornCobbler.readiness_at(0.8, 0.8), 0.0, 0.0001,
+			"a freshly fired cob reads as just-fired")
+	if err == "":
+		err = _T.assert_float_eq(CornCobbler.readiness_at(0.4, 0.8), 0.5, 0.0001,
+			"halfway through the reload reads as half-armed")
+	if err != "":
+		return err
+
+	## Then driven through the real _act(), the way Sunflower's yield_progress()
+	## test proves its gauge against the wiring rather than the algebra alone —
+	## this is the clock _draw_muzzle_fan's fade actually reads.
+	var corn := CornCobbler.new()
+	var aphid: Pest = _pest(Pest.APHID, Vector2(80, 0))
+	var host: Node2D = _host([corn, aphid])
+	await _T.instantiate_scene(host)
+	corn.set_physics_process(false)
+	corn._cooldown = 0.0
+
+	var pests: Array[Pest] = [aphid]
+	corn._act(1.0, pests)
+	var interval: float = corn.fire_interval()
+	err = _T.assert_float_eq(corn.readiness(), 0.0, 0.0001, "firing resets readiness to 0")
+	var no_pests: Array[Pest] = []
+	if err == "":
+		for i: int in range(6):
+			corn._act(interval / 6.0, no_pests)
+			var expected: float = clampf(float(i + 1) / 6.0, 0.0, 1.0)
+			err = _T.assert_float_eq(corn.readiness(), expected, 0.0001,
+				"step %d of the reload reads %.4f, matching elapsed/interval" % [i, corn.readiness()])
+			if err != "":
+				break
+	_T.free_ui(host)
+	return err
+
+
 # -- Waves ------------------------------------------------------------------
 
 
