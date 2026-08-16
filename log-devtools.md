@@ -2171,3 +2171,41 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   godot-selftest-harness#23.
 
 - Harness: still **0.23.0**. No refresh.
+
+## 2026-08-16 — Closing cycle 16: a budgets verb, and a test that passed for the wrong reason
+
+- Value: **warranted** — the live run of the new verb surfaced three unknowns, and a
+  bisect proved a "regression" was a pre-existing flake.
+  - Expected: `cmd budgets` would restate four numbers I already knew, and `2z8` would
+    be a small recording change.
+  - Got: `6 budget(s): 5 computed, 1 without a number -- 1 spent, 3 tight; tightest
+    pest_road_ceiling: peak pests on the road 40 of 40 pests max -- 0 pests left`.
+    Three budgets tight and one fully spent, none of which anything had said before.
+    The `SubViewport` path measures the notebook subheading at **268 of 358 px** —
+    independently reproducing, by a different route, the 268 px my own
+    `SUBHEAD_MAX_WIDTH` test arrived at two cycles ago. That cross-check is the reason
+    to believe the verb measures rather than transcribes.
+  - Found: `test_kernels_launch_from_the_cob_on_an_offset_layer` failing — and it is
+    NOT a regression. Reverting each of the three changed game files individually left
+    it failing, which ruled out the change; the control I had skipped showed it fails
+    **at HEAD when run alone** and passes at HEAD only in a full suite. It read
+    `kernels[0]` from a tree-global group that can hold kernels another test fired and
+    never freed. It had been passing for its own reasons, not the code's, and only four
+    unrelated new tests shifted the order enough to expose it.
+  - Cheaper: for `2z8`, the headless suite alone. For `cl6`, nothing — a verb that
+    builds a `SubViewport` and loads assets on the frame the bus answers from can only
+    be trusted after it has answered the bus once.
+
+- Note, and the lesson I want to keep: **"reverting the change did not fix it" is the
+  cheapest possible test for "this is not my change"**, and I ran three file-level
+  reverts before running the one control that settled it — the old code, alone, under
+  the new conditions. Establish the control before bisecting, not after.
+
+- Note: a test that only passes in company is worse than no test, because it reports
+  green from the wrong cause. This one measured a leaked object every time it ran.
+
+- Gap: **no gaps this turn.** The four parallel-safe checkers all ran clean;
+  `world_control_check.py` (added this cycle) was exercised by the agent, which reported
+  `exit 0, 0 findings` alongside `name_check` — its first use by someone other than me.
+
+- Harness: still **0.23.0**. No refresh.
