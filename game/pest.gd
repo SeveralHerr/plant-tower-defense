@@ -60,6 +60,71 @@ const MUTATION_HUSK_MULTIPLIER: Dictionary = {
 	MUTATION_HUNGRY: 2.0,
 }
 
+## Each mutation's hue. Still applied as a sprite tint — but hue is the one
+## channel that survives neither colour blindness nor a greyscale screenshot,
+## and two of these three change what the player must do (winged is unreachable
+## by a Chomp at all; hungry destroys a bed in MAX_HEALTH / EAT_DPS seconds).
+## So every entry here is paired with a drawn silhouette marker below, and the
+## marker — not the colour — is what carries the meaning.
+const MUTATION_TINT: Dictionary = {
+	MUTATION_ARMOURED: Color(0.58, 0.66, 0.78),
+	MUTATION_WINGED: Color(0.82, 0.94, 1.0, 0.88),
+	MUTATION_HUNGRY: Color(1.0, 0.52, 0.5),
+}
+
+## The non-colour half of a mutation's read: a shape at the silhouette edge.
+## Named ids rather than raw draw calls so markers_for() is a pure, assertable
+## function and the geometry below is only ever the rendering of its answer.
+const MARKER_PLATES := &"plates"
+const MARKER_WINGS := &"wings"
+const MARKER_JAWS := &"jaws"
+
+## Which mutation's hue each marker borrows. Markers never invent a colour —
+## they take STYLE.md's three-value rule (dark rim / base / light facet) and
+## apply it to the tint that is already in MUTATION_TINT.
+const MARKER_SOURCE: Dictionary = {
+	MARKER_PLATES: MUTATION_ARMOURED,
+	MARKER_WINGS: MUTATION_WINGED,
+	MARKER_JAWS: MUTATION_HUNGRY,
+}
+
+const MARKER_LIGHTEN: float = 0.42
+const MARKER_DARKEN: float = 0.52
+const MARKER_ALPHA: float = 0.95
+const MARKER_LINE: float = 2.0
+
+## Half of the 64 px sprite canvas STYLE.md mandates. Every marker below is
+## placed in fractions of this times the species' own sprite scale, so an
+## aphid's marks hug its silhouette exactly as tightly as a beetle's hug its.
+const SPRITE_HALF: float = 32.0
+
+## Armour: two concentric arcs hugging the sides and underside — an outline
+## thickening, per the doc's "plate". The arc deliberately stops short of the
+## top (-15 deg round to 195 deg) because the health bar lives up there.
+const PLATE_OUTER: float = 1.06
+const PLATE_INNER: float = 0.92
+const PLATE_FROM: float = -PI / 12.0
+const PLATE_TO: float = PI * 13.0 / 12.0
+const PLATE_SEGMENTS: int = 22
+const PLATE_WIDTH: float = 3.0
+const PLATE_SEAM_WIDTH: float = 2.0
+
+## Winged: a swept wing either side, rooted at the body and reaching past the
+## silhouette. Drawn on the parent's canvas item, i.e. BEHIND the sprite child,
+## which is why every point sits outside the sprite's own art rather than on it.
+const WING_ROOT_IN := Vector2(0.40, -0.22)
+const WING_TIP := Vector2(1.10, -0.92)
+const WING_TIP_OUT := Vector2(1.06, -0.34)
+const WING_ROOT_OUT := Vector2(0.52, 0.02)
+
+## Hungry: a row of teeth along the lower edge, the same tooth language the
+## Chomp Flower's maw uses — on the bug this time, which is the point.
+const JAW_TEETH: int = 3
+const JAW_TOP: float = 0.78
+const JAW_TIP: float = 1.14
+const JAW_HALF_WIDTH: float = 0.19
+const JAW_SPACING: float = 0.40
+
 ## How close a hungry pest has to be to a plant to start eating it. Same
 ## reasoning as ChompFlower.GRAB_RADIUS: a pest walks the road, a plant stands
 ## one cell off it, so anything under one cell can never reach either.
@@ -93,6 +158,7 @@ var _health_bar: ColorRect
 var _health_back: ColorRect
 var _alive: bool = true
 var _dead_texture: Texture2D = null
+var _sprite_scale: float = 1.0
 
 
 func setup(which: StringName, route: PackedVector2Array) -> void:
@@ -132,6 +198,12 @@ func apply_wave_scaling(health_multiplier: float, speed_multiplier: float) -> vo
 
 ## Applies one wave-8+ trait. Called by whoever spawns this pest, after setup()
 ## so the sprite already exists to tint. A no-op for &"" (the common case).
+##
+## Setting the flag is what matters: markers() reads the flags, not `mutation`,
+## so calling this twice leaves a pest wearing both marks rather than only the
+## last one's. Nothing in the game does that today, but a Chomp already reads
+## `is_winged` directly, and a cue that disagreed with the rule it advertises
+## would be worse than no cue at all.
 func apply_mutation(which: StringName) -> void:
 	mutation = which
 	match which:
@@ -139,13 +211,20 @@ func apply_mutation(which: StringName) -> void:
 			is_armoured = true
 			# The doc's "armoured" — a Chomp's mouth is tied up twice as long.
 			chew_seconds *= 2.0
-			_tint(Color(0.58, 0.66, 0.78))
 		MUTATION_WINGED:
 			is_winged = true
-			_tint(Color(0.82, 0.94, 1.0, 0.88))
 		MUTATION_HUNGRY:
 			is_hungry = true
-			_tint(Color(1.0, 0.52, 0.5))
+	_tint(tint_for(which))
+	queue_redraw()
+
+
+## The hue for a mutation; white (i.e. untinted) for &"" and anything unknown.
+static func tint_for(which: StringName) -> Color:
+	if not MUTATION_TINT.has(which):
+		return Color.WHITE
+	var colour: Color = MUTATION_TINT[which]
+	return colour
 
 
 func _tint(colour: Color) -> void:
@@ -153,7 +232,29 @@ func _tint(colour: Color) -> void:
 		_sprite.modulate = colour
 
 
+## Which silhouette marks this pest wears. Pure and flag-driven, so a pest
+## carrying two traits reports both, a plain pest reports none, and a test can
+## ask the question without a viewport, a frame, or a pixel.
+func markers() -> Array[StringName]:
+	return markers_for(is_armoured, is_winged, is_hungry)
+
+
+## Draw order: plates first so they sit under wings and jaws — a plated bug
+## that also flies should read as "plated, and also winged", not as a shell
+## with something scribbled over it.
+static func markers_for(armoured: bool, winged: bool, hungry: bool) -> Array[StringName]:
+	var out: Array[StringName] = []
+	if armoured:
+		out.append(MARKER_PLATES)
+	if winged:
+		out.append(MARKER_WINGS)
+	if hungry:
+		out.append(MARKER_JAWS)
+	return out
+
+
 func _build_visuals(texture_path: String, sprite_scale: float) -> void:
+	_sprite_scale = sprite_scale
 	_sprite = Sprite2D.new()
 	_sprite.texture = load(texture_path) as Texture2D
 	_sprite.scale = Vector2(sprite_scale, sprite_scale)
@@ -170,6 +271,87 @@ func _build_visuals(texture_path: String, sprite_scale: float) -> void:
 	_health_bar.position = Vector2(-16, -30)
 	_health_bar.size = Vector2(32, 5)
 	add_child(_health_bar)
+
+
+## The mutation cues. Drawn here rather than in a child node because Pest has no
+## subclasses — the trap SelectionMarker exists to dodge (CornCobbler and
+## ChompFlower each fully override Plant._draw() and never chain to super) has no
+## instance on this side of the board. If a Pest subclass ever appears, the fix
+## is `super._draw()` in it, and the per-marker methods below are already split
+## out so it can reuse them piecemeal.
+##
+## Note that a Node2D paints its own canvas item BEFORE its children, so every
+## shape here lands *behind* the sprite. That is why the geometry sits at and
+## past the silhouette edge: a marker drawn over the body would simply not exist.
+func _draw() -> void:
+	if not _alive:
+		return
+	var r: float = SPRITE_HALF * _sprite_scale
+	for marker: StringName in markers():
+		match marker:
+			MARKER_PLATES:
+				_draw_plates(r)
+			MARKER_WINGS:
+				_draw_wings(r)
+			MARKER_JAWS:
+				_draw_jaws(r)
+
+
+func _draw_plates(r: float) -> void:
+	draw_arc(Vector2.ZERO, r * PLATE_OUTER, PLATE_FROM, PLATE_TO, PLATE_SEGMENTS,
+		marker_ink(MARKER_PLATES), PLATE_WIDTH, true)
+	draw_arc(Vector2.ZERO, r * PLATE_INNER, PLATE_FROM, PLATE_TO, PLATE_SEGMENTS,
+		marker_fill(MARKER_PLATES), PLATE_SEAM_WIDTH, true)
+
+
+func _draw_wings(r: float) -> void:
+	for sx: float in [-1.0, 1.0]:
+		var mirror := Vector2(sx, 1.0)
+		_draw_marker_shape(PackedVector2Array([
+			WING_ROOT_IN * mirror * r,
+			WING_TIP * mirror * r,
+			WING_TIP_OUT * mirror * r,
+			WING_ROOT_OUT * mirror * r,
+		]), MARKER_WINGS)
+
+
+func _draw_jaws(r: float) -> void:
+	var middle: float = float(JAW_TEETH - 1) * 0.5
+	for i: int in range(JAW_TEETH):
+		var cx: float = (float(i) - middle) * JAW_SPACING * r
+		_draw_marker_shape(PackedVector2Array([
+			Vector2(cx - JAW_HALF_WIDTH * r, JAW_TOP * r),
+			Vector2(cx + JAW_HALF_WIDTH * r, JAW_TOP * r),
+			Vector2(cx, JAW_TIP * r),
+		]), MARKER_JAWS)
+
+
+## Filled light shape with a darker rim of its own hue — STYLE.md's rule, so a
+## drawn marker sits in the same visual language as the authored sprites.
+func _draw_marker_shape(points: PackedVector2Array, marker: StringName) -> void:
+	draw_colored_polygon(points, marker_fill(marker))
+	var rim: PackedVector2Array = points.duplicate()
+	rim.append(points[0])
+	draw_polyline(rim, marker_ink(marker), MARKER_LINE, true)
+
+
+static func marker_fill(marker: StringName) -> Color:
+	var colour: Color = tint_for(_marker_source(marker)).lightened(MARKER_LIGHTEN)
+	colour.a = MARKER_ALPHA
+	return colour
+
+
+static func marker_ink(marker: StringName) -> Color:
+	var colour: Color = tint_for(_marker_source(marker)).darkened(MARKER_DARKEN)
+	colour.a = MARKER_ALPHA
+	return colour
+
+
+static func _marker_source(marker: StringName) -> StringName:
+	if not MARKER_SOURCE.has(marker):
+		return &""
+	var source: StringName = MARKER_SOURCE[marker]
+	return source
 
 
 func _physics_process(delta: float) -> void:
@@ -253,6 +435,9 @@ func _play_death() -> void:
 	if _dead_texture != null and _sprite != null:
 		_sprite.texture = _dead_texture
 		_sprite.modulate = Color.WHITE
+	# The corpse drops the tint, so it drops the markers with it — a dead pest
+	# still wearing wings would read as a threat the player still has to answer.
+	queue_redraw()
 	if not is_inside_tree():
 		queue_free()
 		return

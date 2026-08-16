@@ -280,3 +280,118 @@ func test_a_started_wave_schedules_exactly_the_pests_the_table_promises() -> Str
 		"wave 1 spawned what the table advertises")
 	_T.free_ui(host)
 	return err
+
+
+# -- Mutation cues ----------------------------------------------------------
+#
+# A mutation used to be a tint and nothing else, and two of the three change
+# what the player has to do about the bug. These assert the marker SET rather
+# than pixels: Pest.markers_for() is the whole input to Pest._draw(), so a cue
+# that disappeared from the screen would have to disappear from here first.
+
+
+func test_a_plain_pest_wears_no_mutation_marker() -> String:
+	## The baseline every other marker is read against. If an unmutated pest wore
+	## anything, the marks below would be decoration instead of a warning.
+	var aphid: Pest = _pest(Pest.APHID, Vector2.ZERO)
+	var err: String = _T.assert_eq(aphid.markers().size(), 0,
+		"an ordinary bug is unmarked, which is what makes a marked one mean something")
+	aphid.free()
+	return err
+
+
+func test_each_mutation_wears_a_mark_no_other_mutation_wears() -> String:
+	## Shape, not hue — so the distinction survives a colour-blind player and a
+	## greyscale screenshot, neither of which a tint comparison would.
+	var by_mutation: Dictionary = {
+		Pest.MUTATION_ARMOURED: Pest.markers_for(true, false, false),
+		Pest.MUTATION_WINGED: Pest.markers_for(false, true, false),
+		Pest.MUTATION_HUNGRY: Pest.markers_for(false, false, true),
+	}
+	var already_used: Array[StringName] = []
+	for which: StringName in by_mutation:
+		var marks: Array[StringName] = by_mutation[which]
+		var err: String = _T.assert_eq(marks.size(), 1,
+			"'%s' draws exactly one mark" % which)
+		if err != "":
+			return err
+		err = _T.assert_false(already_used.has(marks[0]),
+			"'%s' wears '%s', which no other mutation already wears" % [which, marks[0]])
+		if err != "":
+			return err
+		already_used.append(marks[0])
+	return ""
+
+
+func test_a_pest_carrying_two_mutations_wears_both_marks() -> String:
+	## `mutation` only remembers the last trait applied, so a marker set derived
+	## from it would silently drop one. The flags are the truth; markers() reads
+	## those, the same place ChompFlower reads `is_winged` from.
+	var beetle: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	beetle.apply_mutation(Pest.MUTATION_WINGED)
+	beetle.apply_mutation(Pest.MUTATION_HUNGRY)
+	var marks: Array[StringName] = beetle.markers()
+	var err: String = _T.assert_eq(marks.size(), 2,
+		"two traits on the bug means two marks on the bug")
+	if err == "":
+		err = _T.assert_true(marks.has(Pest.MARKER_WINGS),
+			"the wings survive a second mutation being applied over them")
+	if err == "":
+		err = _T.assert_true(marks.has(Pest.MARKER_JAWS), "and the jaws are there too")
+	beetle.free()
+	return err
+
+
+func test_the_winged_pest_a_chomp_cannot_grab_says_so_with_a_shape() -> String:
+	## The rule and its cue asserted in one place. A Chomp declines a winged pest
+	## in silence, which from the player's chair is indistinguishable from a
+	## broken plant unless the bug itself is wearing something that explains it.
+	var chomp := ChompFlower.new()
+	var pest: Pest = _pest(Pest.APHID, Vector2(0, -Board.CELL))
+	pest.apply_mutation(Pest.MUTATION_WINGED)
+	var host: Node2D = _host([chomp, pest])
+	await _T.instantiate_scene(host)
+
+	var pests: Array[Pest] = [pest]
+	chomp._act(0.016, pests)
+	var err: String = _T.assert_false(chomp.is_busy(),
+		"a Chomp that would have grabbed a plain pest at this range cannot close on a winged one")
+	if err == "":
+		err = _T.assert_true(pest.markers().has(Pest.MARKER_WINGS),
+			"so the pest carries wings — the only warning the player gets before building a Chomp wall")
+	_T.free_ui(host)
+	return err
+
+
+func test_a_hungry_pest_wears_jaws_because_a_bed_dies_in_seconds() -> String:
+	## The number is why the cue exists: EAT_DPS against a full-health plant is
+	## a bed gone before the player can finish reacting to the colour.
+	var beetle: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	beetle.apply_mutation(Pest.MUTATION_HUNGRY)
+	var seconds_to_eat_a_bed: float = Plant.MAX_HEALTH / Pest.EAT_DPS
+	var err: String = _T.assert_true(seconds_to_eat_a_bed < 3.0,
+		"a hungry pest destroys a full-health plant in %.2fs" % seconds_to_eat_a_bed)
+	if err == "":
+		err = _T.assert_true(beetle.markers().has(Pest.MARKER_JAWS),
+			"which is why it wears a jaw mark and not just a red tint")
+	beetle.free()
+	return err
+
+
+func test_every_mutation_the_game_can_roll_has_a_non_colour_cue() -> String:
+	## The guard for the fourth mutation. MUTATION_HUSK_MULTIPLIER is the
+	## canonical list of traits a wave can roll, so a new one added there without
+	## a marker would ship as a hue and nothing else — the exact state this fixed.
+	var err: String = _T.assert_gt(Pest.MUTATION_HUSK_MULTIPLIER.size(), 0,
+		"there are mutations to check at all")
+	if err != "":
+		return err
+	for which: StringName in Pest.MUTATION_HUSK_MULTIPLIER:
+		var pest: Pest = _pest(Pest.APHID, Vector2.ZERO)
+		pest.apply_mutation(which)
+		err = _T.assert_eq(pest.markers().size(), 1,
+			"'%s' is drawn as a shape, not only tinted" % which)
+		pest.free()
+		if err != "":
+			return err
+	return ""
