@@ -20,9 +20,13 @@ const STARTING_SEEDS: int = 25
 const PACKET_COST: int = 20
 
 ## Packet tiers: cheap and common-only, or pricier with a shot at anything
-## unlocked so far including higher tiers. `max_tier` filters the pool; when
-## nothing in range is left to unlock, buy_packet() falls back to any locked
-## plant rather than refusing a packet the player can afford.
+## including higher tiers. `max_tier` filters the pool, and it is the ONLY thing
+## the two tiers differ by — so the cap has to bind. When nothing at or below
+## `max_tier` is still locked, buy_packet() refuses and charges nothing; it must
+## never quietly reach past the cap, or a 20-seed common packet becomes a cheaper
+## rare packet and both HUD tooltips start lying. The player is not stranded by
+## the refusal: seeds come from pests, sunflowers and compost, so a pricier packet
+## is always still reachable.
 const PACKET_TIERS: Dictionary = {
 	&"common": {"display": "Common Packet", "cost": PACKET_COST, "max_tier": 1},
 	&"rare": {"display": "Rare Packet", "cost": 45, "max_tier": 99},
@@ -100,25 +104,64 @@ func refund(amount: int) -> void:
 	add_seeds(amount)
 
 
+## Everything `tier`'s packet could still roll: locked plants at or below its
+## `max_tier`. An empty pool means that packet has nothing left to give — the HUD
+## can disable the button on it, and buy_packet() refuses rather than reaching
+## past the cap. Unknown tiers have an empty pool.
+func packet_pool(tier: StringName = &"common") -> Array[StringName]:
+	var out: Array[StringName] = []
+	var spec: Dictionary = PACKET_TIERS.get(tier, {}) as Dictionary
+	if spec.is_empty():
+		return out
+	var max_tier: int = int(spec["max_tier"])
+	for id: StringName in locked_plants():
+		if PlantCatalog.tier(id) <= max_tier:
+			out.append(id)
+	return out
+
+
+## The cheapest packet tier that still has something locked in range, or &"" if
+## none has. Used to point the player somewhere when their packet is spent.
+func _cheapest_tier_with_stock() -> StringName:
+	var best: StringName = &""
+	var best_cost: int = 0
+	for key: StringName in PACKET_TIERS:
+		if packet_pool(key).is_empty():
+			continue
+		var cost: int = int((PACKET_TIERS[key] as Dictionary)["cost"])
+		if best == &"" or cost < best_cost:
+			best = key
+			best_cost = cost
+	return best
+
+
+func _packet_spent_message(spec: Dictionary) -> String:
+	var line: String = "A %s only holds tier-%d seeds, and you have them all." % [spec["display"], int(spec["max_tier"])]
+	var better: StringName = _cheapest_tier_with_stock()
+	if better == &"":
+		return line
+	var better_spec: Dictionary = PACKET_TIERS[better] as Dictionary
+	return "%s Try a %s (%d)." % [line, better_spec["display"], int(better_spec["cost"])]
+
+
 ## Buys one seed packet of `tier` ("common" by default, or "rare"). Returns the
-## plant it rolled, or &"" if it could not buy.
+## plant it rolled, or &"" if it could not buy — in which case nothing is charged.
 func buy_packet(tier: StringName = &"common") -> StringName:
 	var spec: Dictionary = PACKET_TIERS.get(tier, {}) as Dictionary
 	if spec.is_empty():
 		purchase_failed.emit("no such packet: %s" % tier)
 		return &""
-	var locked: Array[StringName] = locked_plants()
-	if locked.is_empty():
+	if locked_plants().is_empty():
 		purchase_failed.emit("Every plant is already growing in your garden.")
+		return &""
+	var pool: Array[StringName] = packet_pool(tier)
+	if pool.is_empty():
+		purchase_failed.emit(_packet_spent_message(spec))
 		return &""
 	var cost: int = int(spec["cost"])
 	if seeds < cost:
 		purchase_failed.emit("A %s costs %d seeds." % [spec["display"], cost])
 		return &""
-	var max_tier: int = int(spec["max_tier"])
-	var pool: Array[StringName] = locked.filter(func(id: StringName) -> bool: return PlantCatalog.tier(id) <= max_tier)
-	if pool.is_empty():
-		pool = locked
 	seeds -= cost
 	seeds_changed.emit(seeds)
 	var picked: StringName = pool[_rng.randi_range(0, pool.size() - 1)]

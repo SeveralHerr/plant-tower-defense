@@ -85,7 +85,13 @@ func test_a_packet_never_hands_back_something_you_already_own() -> String:
 	bank.add_seeds(SeedBank.PACKET_COST * 20)
 	var seen: Array[StringName] = []
 	while not bank.locked_plants().is_empty():
-		var got: StringName = bank.buy_packet()
+		# Rare, not common. This loop used to drain on the common tier and was
+		# green only because of the bug it was standing next to: common fell back
+		# to the whole locked pool when its tier filter emptied, so it could hand
+		# out the tier-2 Sunflower and the loop terminated. With the fallback gone,
+		# common correctly refuses once tier 1 is spent and this would spin on ""
+		# forever. Rare is the tier that can actually reach the whole catalogue.
+		var got: StringName = bank.buy_packet(&"rare")
 		var err: String = _T.assert_false(seen.has(got), "packet rolled %s twice" % got)
 		if err != "":
 			return err
@@ -108,3 +114,137 @@ func test_uprooting_refunds_less_than_it_cost() -> String:
 		if err != "":
 			return err
 	return ""
+
+
+func test_a_common_packet_never_rolls_above_its_tier_cap() -> String:
+	## The two packet tiers differ by exactly one thing — max_tier — so a common
+	## packet handing back a tier-2 plant makes the cheap one strictly better and
+	## both HUD tooltips false. Driven over the real unlock sequence rather than a
+	## hand-built pool: the bug was in what the pool degrades to AFTER the first
+	## unlock, so a single roll from a fresh bank cannot see it.
+	var cap: int = int(SeedBank.PACKET_TIERS[&"common"]["max_tier"])
+	for seed_value: int in [1, 7, 99, 1234, 20250815]:
+		var bank := SeedBank.new()
+		bank.set_seed(seed_value)
+		bank.add_seeds(SeedBank.PACKET_COST * 20)
+		var rolls: int = 0
+		var guard: int = 0
+		while guard < 20:
+			guard += 1
+			var got: StringName = bank.buy_packet(&"common")
+			if got == &"":
+				break
+			rolls += 1
+			var err: String = _T.assert_true(PlantCatalog.tier(got) <= cap,
+				"a common packet (max_tier %d) rolled %s, tier %d" % [cap, got, PlantCatalog.tier(got)])
+			if err != "":
+				return err
+		var err2: String = _T.assert_gt(rolls, 0, "seed %d opened no packet at all" % seed_value)
+		if err2 != "":
+			return err2
+	return ""
+
+
+func test_a_common_packet_with_nothing_left_in_range_charges_nothing() -> String:
+	## The exhausted-pool case on its own. Unlock every tier-1 plant through the
+	## real packet path, then buy one more: it must be refused, say why, and leave
+	## the purse exactly as it was. Being charged for nothing is the worse half of
+	## this bug — worse than the over-tier roll, because the seeds just vanish.
+	var bank := SeedBank.new()
+	bank.set_seed(11)
+	bank.add_seeds(500)
+	var cap: int = int(SeedBank.PACKET_TIERS[&"common"]["max_tier"])
+	var guard: int = 0
+	while not bank.packet_pool(&"common").is_empty() and guard < 20:
+		guard += 1
+		bank.buy_packet(&"common")
+	var err: String = _T.assert_true(bank.packet_pool(&"common").is_empty(),
+		"every tier-%d plant is unlocked after %d packet(s)" % [cap, guard])
+	if err != "":
+		return err
+	err = _T.assert_gt(bank.locked_plants().size(), 0, "and something above the cap is still locked")
+	if err != "":
+		return err
+	var seeds_before: int = bank.seeds
+	var earned_before: int = bank.seeds_earned_total
+	var locked_before: int = bank.locked_plants().size()
+	var reasons: Array[String] = []
+	bank.purchase_failed.connect(func(reason: String) -> void: reasons.append(reason))
+	var got: StringName = bank.buy_packet(&"common")
+	err = _T.assert_eq(got, &"", "the packet is refused rather than reaching past tier %d" % cap)
+	if err != "":
+		return err
+	err = _T.assert_eq(bank.seeds, seeds_before, "and the player was not charged for nothing")
+	if err != "":
+		return err
+	err = _T.assert_eq(bank.seeds_earned_total, earned_before, "and the run's score did not move either")
+	if err != "":
+		return err
+	err = _T.assert_eq(bank.locked_plants().size(), locked_before, "and nothing was unlocked")
+	if err != "":
+		return err
+	return _T.assert_eq(reasons.size(), 1, "purchase_failed said why exactly once, got %s" % [reasons])
+
+
+func test_the_rare_packet_is_the_route_past_the_common_cap() -> String:
+	## The other half of the refusal: capping the common packet must not strand a
+	## player short of the higher tier, so the pricier packet has to still deliver
+	## it — and charge for it.
+	var bank := SeedBank.new()
+	bank.set_seed(5)
+	bank.add_seeds(1000)
+	var cap: int = int(SeedBank.PACKET_TIERS[&"common"]["max_tier"])
+	var guard: int = 0
+	while not bank.packet_pool(&"common").is_empty() and guard < 20:
+		guard += 1
+		bank.buy_packet(&"common")
+	var err: String = _T.assert_eq(bank.buy_packet(&"common"), &"", "the common packet is spent")
+	if err != "":
+		return err
+	err = _T.assert_gt(bank.packet_pool(&"rare").size(), 0, "but the rare packet still has stock")
+	if err != "":
+		return err
+	var before: int = bank.seeds
+	var cost: int = int(SeedBank.PACKET_TIERS[&"rare"]["cost"])
+	var got: StringName = bank.buy_packet(&"rare")
+	err = _T.assert_gt(PlantCatalog.tier(got), cap,
+		"the rare packet reached past tier %d, got %s" % [cap, got])
+	if err != "":
+		return err
+	err = _T.assert_true(bank.is_unlocked(got), "%s is now plantable" % got)
+	if err != "":
+		return err
+	return _T.assert_eq(bank.seeds, before - cost, "and the rare packet was paid for")
+
+
+func test_draining_the_catalogue_never_repeats_a_plant() -> String:
+	## Same claim as the single-tier drain above, but across both tiers now that a
+	## capped packet can refuse: escalate to the pricier packet when the cheap one
+	## is spent. Every plant stays reachable, none arrives twice, and once the
+	## garden is complete both tiers refuse.
+	var bank := SeedBank.new()
+	bank.set_seed(21)
+	bank.add_seeds(int(SeedBank.PACKET_TIERS[&"rare"]["cost"]) * 40)
+	var seen: Array[StringName] = []
+	var guard: int = 0
+	while not bank.locked_plants().is_empty() and guard < 40:
+		guard += 1
+		var got: StringName = bank.buy_packet(&"common")
+		if got == &"":
+			got = bank.buy_packet(&"rare")
+		var err: String = _T.assert_true(got != &"",
+			"no packet could deliver with %d plant(s) still locked" % bank.locked_plants().size())
+		if err != "":
+			return err
+		err = _T.assert_false(seen.has(got), "a packet rolled %s twice" % got)
+		if err != "":
+			return err
+		seen.append(got)
+	var err2: String = _T.assert_true(bank.locked_plants().is_empty(),
+		"every plant was reachable through packets, %s left" % [bank.locked_plants()])
+	if err2 != "":
+		return err2
+	err2 = _T.assert_eq(bank.buy_packet(&"rare"), &"", "packets are refused once the garden is complete")
+	if err2 != "":
+		return err2
+	return _T.assert_eq(bank.buy_packet(&"common"), &"", "including the cheap one")
