@@ -175,6 +175,146 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
 
 ## Cool new features (idea backlog)
 
+### New this cycle (9 of 30) — grown from the features above
+
+- **The run tells you it beat your record only if it kills you.** `Game._end_run` opens
+  with `var new_record: bool = bank_score()` (game.gd:341-342) and carries that bool all
+  the way to `RunSummary._score_line()`, which turns it into "%d seeds grown — a new best"
+  (run_summary.gd:131-138). Cycle 9's whole point was that a voluntary exit files a score
+  too — and both new exits call `bank_score()` as a bare statement and drop the answer:
+  the restart handler at game.gd:424 and the gate handler at game.gd:428, each followed
+  immediately by `reload_current_scene()` / `change_scene_to_file(TITLE_SCENE)`. So the
+  identical run, worth the identical seeds, is congratulated when a beetle reaches the
+  house and silent when the player clicks "Back to the gate". Worse, the gate is where the
+  new number is *displayed*: `TitleScreen.high_score_text()` (title_screen.gd:167-174)
+  renders "Campaign %d · Endless %d" the same whether it changed one second ago or three
+  sessions ago, so the one screen that shows the record cannot show that this run set it.
+  The bool already exists, is already correct at both call sites, and is already worded
+  for the player one file over — it is thrown away twice and never asked for a third time.
+
+- **The pause card now derives every offset it has except the one that can overflow.**
+  `key_list_offset()` (pause_screen.gd:49-53) is computed — `FIRST_BUTTON_OFFSET` 116 +
+  3 buttons × 44 + 2 gaps × 12 + `KEY_LIST_GAP` 20 = 292 — and its own header says why:
+  a hand-picked 268.0 once put the first key row under a button, "the same absolute-offset
+  mistake that once hid the note under ResumeButton" (pause_screen.gd:34-38). Good. But
+  the three `KEY_HELP` rows then run 292 → 370 at `KEY_ROW_HEIGHT` 26, against a
+  `CARD.size.y` of 380 written out by hand (pause_screen.gd:33). **Ten pixels.** A fourth
+  button costs 56 and a fourth key row costs 26, and either one puts text off the paper
+  and onto the darkened backdrop over the live board — where it is still perfectly
+  readable, still lands nothing on top of it, and so trips no gate at all. The overflow
+  the derivation was built to prevent moved down one level rather than going away: the
+  card height is now the only hand-written number left in the file, which makes it the
+  only one that can be wrong. `card_content_height()` — `key_list_offset()` plus
+  `_keys.size() * KEY_ROW_HEIGHT` plus a margin — with a test asserting `CARD.size.y` is
+  at least that is the same trick applied one level up. (While in there: the header still
+  opens "Same card geometry as the post-mortem" (pause_screen.gd:28-30), and
+  `RunSummary.CARD` is `Rect2(128, 96, 640, 456)` against this file's
+  `Rect2(288, 140, 320, 380)` — not the same size, position or aspect.)
+
+- **The redundancy bars are silenced by one cell of new road out of three, which is what
+  one step sideways buys.** `SAP_RADIUS` is `Board.CELL * 1.85` = 118.4 px
+  (sticky_sundew.gd:34), so a patch covers exactly the 3×3 block of cells around it — at
+  64 px pitch, (1,1) is 90.5 px and inside, (2,0) is 128 px and outside. A Sundew on grass
+  beside a straight road therefore touches **three road cells**, and shifting the hover one
+  cell along the lane keeps two of them and gains one. `covering_patch_count()` returns 0
+  the moment a single covered road cell is new (placement_preview.gd:269-274), so that
+  placement draws the ordinary green ring: thirty seeds, one cell of new slow, no cue. The
+  cue is binary because the model behind it is — `added_crossing_time_multiplier()`
+  answers 1.82 for `existing_sources == 0` and 1.0 for anything else (sticky_sundew.gd:
+  251-254) — and `shows_redundant_coverage()` deliberately reads the answer off that
+  function rather than restating the rule (placement_preview.gd:233-237), which is the
+  right architecture pointed at a value model that has no fractional case. So the only
+  placement the equals-sign ever fires on is a near-exact re-cover, and every 67%-wasted
+  one looks like a good buy. A fraction — `float(new_cells) / float(mine.size())`, which
+  `covering_patch_count()` already has both halves of — is the number, and the bars could
+  simply mean "most of this is already sticky".
+
+- **Every patch redraw walks every pest on the board.** `_draw_wash` calls
+  `shared_ground_offsets()` (sticky_sundew.gd:352-369), which calls `_sibling_patches()`
+  (392-401), which walks `get_parent().get_children()` — and the parent is `_entities`,
+  the node that holds the board, the husk layer, the cursor, the preview, every plant
+  **and every pest** (`_entities.add_child(pest)`, game.gd:277). `rewash_neighbourhood()`
+  (385-389) walks it a second time. Those redraws are not rare: `_refresh_droplets()`
+  (404-409) fires a `queue_redraw` whenever `droplet_radius(stuck_count())` moves, and that
+  lerps continuously between 0 and `DROPLET_SWELL_AT` 3 (283-285), so a patch straddling a
+  busy lane rescans the entire entity list several times a second, per patch, to answer a
+  question whose answer changes only when a plant is added or destroyed. And the list it is
+  scanning grows without bound in endless (see the spawn-floor entry below: wave 48
+  schedules 166 pests, wave 108 schedules 376). The set of Sundews changes at exactly two
+  points in the codebase — `_entities.add_child(plant)` (game.gd:522) and
+  `_on_plant_destroyed` (game.gd:549) — so a cached list invalidated there costs two lines
+  and removes an O(pests) scan from the draw path entirely.
+
+- **`SAVE_VERSION` is written on every save and read on no load.** `_save` stamps
+  `"v%d" % SAVE_VERSION` (run_config.gd:20, 55) and `_load` tests only
+  `first.begins_with("v")` (run_config.gd:74-83) — the number after the v is never parsed
+  and never compared, so a constant whose entire docstring is "Bumped when the on-disk
+  shape changes" cannot change anything. A v3 file written by a later build is read as v2
+  and its lines land in whichever slots v2 expects, silently. This is not hypothetical: the
+  file has already migrated once (v1 → v2, run_config.gd:76-80) and that migration is the
+  proof it will happen again. The same function has a second silent failure — the fields
+  are read as `int(f.get_line())`, and `int("")` is 0, so a truncated or hand-edited save
+  zeroes a record rather than being detected, and `record_score` "only ever raises the
+  record" (run_config.gd:37-48) means the next mediocre run refills the slot and the real
+  number is gone for good. Parsing the int after the `v` and refusing an unknown version
+  is two lines in the one file in the project whose whole job is to outlive the process.
+
+- **The aphid spawn interval hits its floor at wave 22 and nothing on the board fires that
+  fast.** `_endless_groups` gives aphids `maxf(0.16, 0.30 - over * 0.01)`
+  (wave_director.gd:149) where `over = wave - 8`, so the gap bottoms out at 0.16 s at
+  wave 22 — well before health caps around wave 41 (`ENDLESS_HEALTH_MAX` 3.0 at 0.06/wave)
+  and speed around 48 (`ENDLESS_SPEED_MAX` 1.6 at 0.015/wave, wave_director.gd:37-40). Past
+  that point the only lever still moving is `count`, which has no cap at all: `20 + over*3`
+  aphids and `6 + over/2` beetles, so wave 48 schedules 166 pests and wave 108 schedules
+  376, each one built and sorted into a single `_schedule` array (wave_director.gd:260-275)
+  and each one added as a child of `_entities`. Multiply the floor by the crossing: the
+  road is 32 cells ≈ 2000 px, an aphid at `speed` 78 × 1.6 covers it in ~16 s, and one
+  arriving every 0.16 s means **~100 aphids alive at once on an 896 px board** — one every
+  9 px, a solid line rather than a lane of pests. The header on `ENDLESS_HEALTH_STEP` says
+  the per-pest scales exist because "the entire late game was a quantity problem"
+  (wave_director.gd:25-29); both of them stop by wave 48 and hand the late game straight
+  back to quantity. Either the count ramp needs the cap the other four levers have, or the
+  scales need to keep climbing past theirs — right now the game's stated fix for its own
+  failure mode has an expiry date the player will reach.
+
+- **The game has a difficulty *metric* and no difficulty *control*.** `threat_for()` prices
+  any wave against wave 1 and `threat_level()` puts it on the bar (wave_director.gd:182-209)
+  — the game can already say precisely how hard it is being. It cannot be told. `WAVES` is
+  a literal eight-row table (wave_director.gd:48-75), `health_scale_for` and
+  `speed_scale_for` return exactly 1.0 for every campaign wave by construction
+  (wave_director.gd:244-257), `LIVES` is 10, `PREP_SECONDS` 18.0 (game.gd:11, 14) and
+  `STARTING_SEEDS` 25 (seed_bank.gd:16) are compile-time constants, and `set_seed()` is
+  called by nothing but the tests (wave_director.gd:93). So every campaign run in this
+  game's life is the same eight waves in the same order at the same speed, differing only
+  in mutation rolls from wave 8 — a player who finds it trivial and a player who cannot get
+  past wave 5 are handed the identical board and `RunConfig` persists one bool for both.
+  The title screen already offers a two-way choice and already renders two records
+  (title_screen.gd:167-174), so the surface exists; the honest version is a scalar fed into
+  the three `*_scale_for` functions and `LIVES`, filed alongside the score so an easy best
+  cannot retire a hard one — which is exactly the two-scores lesson cycle 9 already learned
+  once, for exactly the same reason.
+
+- **Two scripts write fields onto nodes they do not own, and none of the six checkers in
+  `tools/` can see the contract.** `sticky_sundew.gd` keeps a slow's entire correctness in
+  node metadata on the `Pest`: `set_meta(META_BASE_SPEED, ...)` and `set_meta(META_SOURCES,
+  sources + 1)` in `_claim` (182-188), read back in `_release_at` (191-205) and in the
+  static `slow_sources()` (260-263). `title_screen.gd:252-253, 281-282` does the same with
+  bare `"speed"` and `"offset"` string literals and no constant at all. A metadata key is a
+  *string*, so `name_check.py` — which resolves names and says so — cannot see it;
+  `lint_project.gd` and `import_check.py` type-check declarations and a `set_meta` key
+  declares nothing; `coverage_check.py`'s eight defect classes are all about Controls,
+  signals, orphans, input, scenes, shaders and names. A one-character typo on the read side
+  makes `get_meta(META_SOURCES, 0)` answer 0, which reads as "not slowed", which means the
+  base speed is never handed back — and this file's own header already names that outcome:
+  "every bug in that lane would walk at 55% for the rest of the run with nothing on screen
+  to explain it — the worst kind of bug, because it looks like balance"
+  (sticky_sundew.gd:131-134). The checker is small and has `name_check.py`'s exact shape:
+  collect every `set_meta`/`get_meta`/`has_meta`/`remove_meta` key in `game/`, assert every
+  key read is written somewhere and every key written is read somewhere, and flag any key
+  that is a bare literal instead of a declared constant. No engine, no `.godot/`,
+  parallel-safe — which matters, because metadata is the one cross-script contract in this
+  project that currently has no gate of any kind.
+
 ### New this cycle (8 of 30) — grown from the features above
 
 - **In endless, the only way to bank a score is to die — and the game just shipped two
