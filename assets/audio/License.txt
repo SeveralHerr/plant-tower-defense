@@ -19,7 +19,8 @@
 	event -> file table that is the sole consumer of all of them.
 
 	From "Impact Sounds" (1.0):
-	  footstep_grass_000.ogg      a plant going into the soil
+	  footstep_grass_000.ogg      a plant going into the soil — and, reused,
+	                              a plant deliberately dug back out of it
 	  impactSoft_medium_002.ogg   a hungry pest taking a bite out of a plant
 	  impactSoft_heavy_000.ogg    a pest squashed
 	  impactBell_heavy_002.ogg    a wave starting — and, reused, a Corn

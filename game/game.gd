@@ -991,7 +991,7 @@ func _on_plant_destroyed(plant: Plant) -> void:
 		_select(null)
 	Sfx.play(Sfx.PLANT_DESTROYED)
 	hud.show_message("A hungry pest ate your %s!" % PlantCatalog.display_name(plant.kind), 4.0)
-	plant.queue_free()
+	plant.play_exit_and_free()
 	_refresh()
 
 
@@ -1087,7 +1087,8 @@ func uproot_selected() -> String:
 	var plant: Plant = selected_placed
 	_plants.erase(plant.cell)
 	bank.refund(plant.uproot_refund())
-	plant.queue_free()
+	Sfx.play(Sfx.PLANT_UPROOTED)
+	plant.play_exit_and_free()
 	_select(null)
 	_refresh()
 	return ""

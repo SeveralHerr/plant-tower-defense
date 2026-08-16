@@ -230,6 +230,25 @@ func _on_setup() -> void:
 	pass
 
 
+## Shrinks the sprite to nothing and frees this Node — the mirror of
+## _build_visuals()'s pop-in, played on the way off the board instead of onto
+## it. Callers (Game._on_plant_destroyed, Game.uproot_selected) have already
+## dropped this plant from `_plants` and any selection before reaching here, so
+## the Node lingering in the tree for the tween's duration touches nothing
+## else: Game drives `_act()` off that dict, not off the "plants" group, so an
+## entry no longer in it has already stopped acting.
+##
+## Headless pumps no frames, so a Tween queued here never runs — this frees on
+## the spot instead, same as every call site did before this existed.
+func play_exit_and_free() -> void:
+	if _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
+		queue_free()
+		return
+	var tween := create_tween()
+	tween.tween_property(_sprite, "scale", Vector2.ZERO, 0.18)
+	tween.tween_callback(queue_free)
+
+
 ## Regrowth runs here rather than in `_act()` on purpose: `_act` is the hook every
 ## subclass overrides, and not one of them chains to super, so a heal written
 ## there would exist on the base class and on nothing the player can actually

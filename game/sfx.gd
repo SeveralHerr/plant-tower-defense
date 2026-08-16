@@ -46,6 +46,9 @@ const PURCHASE_DENIED := &"purchase_denied"
 ## for the transaction itself, not just next volley's wider fan. See
 ## corn_cobbler.gd's _upgrade_flourish() for the sprite half of this.
 const PLANT_UPGRADED := &"plant_upgraded"
+## A plant deliberately dug up (Game.uproot_selected), as opposed to
+## PLANT_DESTROYED's "a hungry pest ate it" — the player chose this one.
+const PLANT_UPROOTED := &"plant_uprooted"
 
 ## event -> the stream it plays. This dictionary is the whole contract: an event
 ## not in here is inaudible, and test_combat asserts every path in it actually
@@ -71,6 +74,9 @@ const SOUNDS: Dictionary = {
 	# "something changed for the better" beats, and they never sound in the
 	# same breath — a wave starts in the calm between purchases.
 	PLANT_UPGRADED: "res://assets/audio/impactBell_heavy_002.ogg",
+	# Reuses PLANT_PLACED's stream for the reverse of the same act — a plant
+	# leaving the soil rather than going into it.
+	PLANT_UPROOTED: "res://assets/audio/footstep_grass_000.ogg",
 }
 
 ## Per-event trim, in dB, for the handful that are not level with the rest.

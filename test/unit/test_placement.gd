@@ -105,6 +105,51 @@ func test_uprooting_frees_the_cell_and_returns_some_seeds() -> String:
 	return err
 
 
+func test_a_plant_eaten_down_to_nothing_still_frees_the_node_headless() -> String:
+	## _on_plant_destroyed used to end in a bare queue_free() too. It now goes
+	## through the same Plant.play_exit_and_free() uproot does, so this pins the
+	## other of the two silent-vanish call sites: destroyed.emit() still lands
+	## while the plant is fully alive (take_damage checks is_destroyed() first,
+	## not after), and the cell is freed and the node queued the same frame.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	var cell: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "planted")
+	if err == "":
+		var plant: Plant = game.plant_at(cell)
+		plant.take_damage(Plant.MAX_HEALTH)
+		err = _T.assert_true(game.plant_at(cell) == null, "the cell is free again")
+		if err == "":
+			err = _T.assert_true(is_instance_valid(plant) and plant.is_queued_for_deletion(),
+				"queue_free() still ran immediately -- headless never queues the exit tween")
+	_T.free_ui(game)
+	return err
+
+
+func test_uprooting_plays_its_own_cue_and_still_frees_the_node_headless() -> String:
+	## uproot_selected() used to end in a bare queue_free() with no Sfx.play()
+	## call anywhere in the function. It now routes through
+	## Plant.play_exit_and_free(), which is gated on
+	## GardenTheme.animations_enabled() the same way _build_visuals()'s pop-in
+	## is -- always false headless, so this must still queue_free() on the
+	## spot rather than waiting on a Tween nobody headless will ever pump.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	var cell: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "planted")
+	if err == "":
+		var plant: Plant = game.plant_at(cell)
+		err = _T.assert_true(Sfx.should_play(Sfx.PLANT_UPROOTED, false, false),
+			"a cue is registered for a deliberate uproot")
+		if err == "":
+			err = _T.assert_eq(game.uproot_selected(), "", "uprooted")
+		if err == "":
+			err = _T.assert_true(is_instance_valid(plant) and plant.is_queued_for_deletion(),
+				"queue_free() still ran immediately -- headless never queues the exit tween")
+	_T.free_ui(game)
+	return err
+
+
 ## The button path, not the mutator underneath it. `uproot_selected` above stays
 ## deliberately unguarded; everything a player can click goes through this.
 func test_one_uproot_click_only_arms_and_a_second_commits() -> String:
