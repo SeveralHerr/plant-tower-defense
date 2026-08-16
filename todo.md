@@ -21,15 +21,18 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
 
 ## Items
 
-- [ ] Husk size/glow should scale with value — a mutated pest's bigger husk
-      payout is currently invisible until clicked (`plant-tower-defense-afd`)
-- [ ] Endless mode should scale pest health/speed too, not just count/gap/
-      mutation chance, so late-game pressure isn't pure quantity
-      (`plant-tower-defense-nps`)
-- [ ] Lane pressure should record every cell pests were lost at, not just the
-      single worst one (`plant-tower-defense-j1h`)
-- [ ] Reuse SelectionMarker's sibling-node pattern for a placement preview cue
-      (`plant-tower-defense-rfh`)
+- [ ] HUD compost counter collides with the "Grow the next wave" button — the
+      `(N ready)` suffix runs under it, and no check catches sibling-Control
+      occlusion (`plant-tower-defense-kcj`)
+- [ ] A richer husk should rot faster, so sweep order becomes a decision
+      instead of every husk sharing one 10s timer (`plant-tower-defense-kh9`)
+- [ ] Show a readable threat level for endless mode — five scales now climb
+      independently and the player can see none of them
+      (`plant-tower-defense-o1p`)
+- [ ] Per-run lane pressure for the end-of-run post-mortem, alongside the
+      per-wave map that fades (`plant-tower-defense-dbg`)
+- [ ] Placement preview should warn when a non-combat plant is road-adjacent —
+      the preview already knows reach and legality (`plant-tower-defense-8bb`)
 - [ ] Add cool new features or concrete improvements (either gameplay or UX)
       to `kanban.md` — mine what this session's own work revealed, not just
       abstract ideas

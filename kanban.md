@@ -104,16 +104,83 @@ idea backlog that isn't filed yet.
     newly-spawned pest nodes reporting "Node not found" seconds after `scene-tree`
     had just listed them. See `log-devtools.md` 2026-08-15 (G-012).
 
+- **Four more shipped and /verify'd, one commit each** — husk size/glow by value,
+  endless scaling the pests themselves, lane pressure as a distribution, and a
+  placement preview. `plant-tower-defense-afd`, `-nps`, `-j1h`, `-rfh`
+  - **Husk size/glow scales with value** — `HuskLayer.radius_for()`/`glow_for()` are
+    static and pure so the size↔value relationship is assertable without a viewport,
+    and the constants are pinned to the drops the game can actually produce (2 for a
+    plain aphid, 9 for a hungry beetle). A live board with eleven husks down returned
+    exactly those two values, and the largest husk's outer edge is checked to sit
+    inside `CompostMeter.COLLECT_RADIUS`, so no drawn pixel is unclickable.
+  - **Endless scales the pests, not just the count** — `health_scale_for()` /
+    `speed_scale_for()` take the same `over <= 0` shape as `mutation_chance_for()`, so
+    campaign is untouched by construction rather than by a mode flag. Health is the
+    bigger lever (3.0x cap), speed the smaller (1.6x). Verified live at wave 38:
+    8.4 hp / 113.1 px/s aphids, and all 18 sampled pests still on road cells.
+  - **Lane pressure is a distribution, not one pixel** — every cell a wave lost a pest
+    at is tallied and committed as one batch, normalised against the wave's own worst
+    cell so five pests and eighty read the same, with a `MIN_ALPHA` floor so "one got
+    through here" stays visible. Batching is load-bearing: N single-cell calls would
+    fade each cell by its own wave-mates. Also deleted the per-frame scan over every
+    live pest — the `died`/`escaped` signals say everything the high-water mark did
+    and more. Live wave 1 painted four cells at two strengths.
+  - **Placement preview** — `PlacementPreview extends SelectionMarker`, so the hover
+    brackets are literally the shape the plant will wear once placed, one size out and
+    dimmer. Adds the coverage ring, which was previously invisible until *after* the
+    seeds were spent. `PlantCatalog.reach()` reads each plant's own constant rather
+    than re-listing numbers. Verified through the 72px HUD offset: mouse (200,300)
+    puts the preview at screen (224,296).
+  - Two harness gaps surfaced: `find-nodes --class X` does not match a script
+    `class_name` and reports the miss as an empty result (G-013), and `validate-ui`
+    measures a multiline Label as one joined line, gating on a banner that renders
+    correctly (G-014). Plus G-015, reach treating a base class as unreached.
+
 ## Next up
 
-Nothing filed right now — `bd ready` is empty. See the idea backlog below for what's
-worth turning into the next beads.
+See the fresh checklist in `todo.md` — the five items filed out of the backlog below
+at the end of the 2026-08-15 session.
 
 ---
 
 ## Cool new features (idea backlog)
 
-### New this session — grown from what the running game actually feels like
+### New this session — grown from watching the four features run
+
+- **The compost readout collides with the wave button.** Caught in a screenshot while
+  verifying husk scaling: with eleven husks on the ground the HUD reads
+  `Compost 0 (11 ready)` and the `(11 ready)` suffix runs underneath the "Grow the
+  next wave" button. `findings` reported `0 finding(s) across 5 of 5 checks` over that
+  exact frame, because the label's own rect is fine — it is the *button* that overlaps
+  it, and nothing compares two sibling Controls for occlusion. Two seeds here: give the
+  HUD bar a real layout (an HBoxContainer with the button in its own slot) so the
+  counter cannot be run over, and file the overlap check itself upstream.
+- **A husk should be worth hurrying for, visibly.** Size and glow now scale with value,
+  but the *timer* does not: a 9-seed husk and a 2-seed one both rot in exactly
+  `HUSK_LIFETIME` 10s. A richer husk decaying faster would make the board ask "which
+  one first?", which is a real decision, where today sweeping in any order is optimal.
+- **Endless has no readable difficulty number.** Health, speed, count, gap and mutation
+  chance now all climb independently past wave 8, and the player can see none of them —
+  the HUD says `Wave 39 / 8`. One derived "threat level" on the bar (or a wave-start
+  banner naming what went up) would turn an invisible ramp into something a player can
+  brace for. All five scales are already pure static functions on `WaveDirector`, so
+  this is a readout, not a system.
+- **The lane pressure map is per-wave; the interesting question is per-run.** The
+  overlay now shows a whole wave's loss distribution, faded by one decay step per wave.
+  What it still cannot answer is "which cell has bled me all game" — a second, slower
+  accumulator (never faded, shown only on the end-of-run screen) would make the
+  post-mortem tell you where your garden was actually weak.
+- **The placement preview knows enough to warn about a hungry pest.** `PlacementPreview`
+  already computes reach and legality per cell. The long-standing "a Sunflower next to
+  the road should look risky" idea below is now nearly free: the preview is the node
+  that would draw it, and road-adjacency is one `is_path` check on the four neighbours.
+- **A base class is invisible to `verify_ledger reach`.** `game/selection_marker.gd`
+  scored unreached all session despite `_draw_brackets()` running every frame, because
+  the only live node running it was a `PlacementPreview` and a node reports only its own
+  script. Worked around with a `reach_aliases` entry, which is a declaration standing in
+  for something the tool could observe by walking `extends`. Filed as G-015.
+
+### Grown from the previous session — grown from what the running game actually feels like
 
 - **The chew ring needs its own colour, not orange.** Verifying it just now
   (`/verify`, 2026-08-15) found the ring hard to isolate from the Chomp Flower's own
@@ -128,16 +195,19 @@ worth turning into the next beads.
   fast aphid crossing the volley diagonally survives. That is a *good* accident —
   lean into it and let the "bunch" upgrade be about covering the miss, not damage.
 
-#### Grown from *this session's* five features, after watching them run
+#### Grown from an earlier session's five features — all four shipped 2026-08-15
 
-- **A husk's size/glow should say how much it's worth.** `HuskLayer._draw()` draws
+~~All four items in this block are done; see **Done** above. Kept for the trail from
+"noticed while watching it run" to "shipped".~~
+
+- ~~**A husk's size/glow should say how much it's worth.**~~ `HuskLayer._draw()` draws
   every husk at the same fixed 9px radius regardless of `value` — now that a
   mutated pest's husk is worth 1.5-2x a plain one (`husk_multiplier()`), the bigger
   payout is invisible until you actually click it. Scaling the circle radius (or
   the ring's brightness) by value would let "that one's worth more" read from
   across the board, the same way the mutation tint already does for the pest
   itself.
-- **Endless mode's escalation is still only count/gap/mutation-chance.** Pest
+- ~~**Endless mode's escalation is still only count/gap/mutation-chance.**~~ Pest
   `health`/`speed` stay exactly what `Pest.SPECIES` says forever, even as
   `WaveDirector._endless_groups`/`mutation_chance_for` turn everything else up.
   A long endless run gets *more* pests that mutate *more often*, but each
@@ -145,13 +215,13 @@ worth turning into the next beads.
   speed slightly past some endless threshold (mirroring the mutation-chance climb
   this session just added) would keep late-game pressure from being pure
   quantity.
-- **The lane pressure overlay only ever lights up one cell.** `record_lane_pressure`
+- ~~**The lane pressure overlay only ever lights up one cell.**~~ `record_lane_pressure`
   takes the single furthest-reached cell, so a wave where pests died at scattered
   points along the lane (some to a Corn Cobbler near the start, one that broke
   through near the exit) only ever shows the worst one. Recording every cell a
   pest died/escaped at (not just the maximum) would draw the whole "where the
   damage actually happened" picture instead of one hot pixel.
-- **The SelectionMarker pattern could cover a placement preview too.** Now that
+- ~~**The SelectionMarker pattern could cover a placement preview too.**~~ Now that
   a plant's selected-state cue lives in a sibling node instead of each
   subclass's own `_draw()`, the same trick (a corner-bracket node, dimmer/dashed)
   could show "this is where the cursor would place a plant" before the click

@@ -821,3 +821,41 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     distinguishable from a directly-observed hit. That is a static read of files the tool
     is already opening, and it would have credited `selection_marker.gd` with no config
     at all.
+
+## 2026-08-15 — Kanban refill, todo refill, and a new local skill for the HUD gap
+
+- Value: **warranted** — building the checker against the live HUD found two staging
+  traps that would have made it silently useless, and one measurement it was getting
+  wrong.
+  - Expected: the new skill's checker should reproduce the HUD overlap that
+    `validate-ui` reported 0 findings over, on the real running game.
+  - Got: on a fresh board, `0 finding(s) across 14 visible Control(s) under 'HUD'`.
+    With eleven husks on the ground, `Label 'Compost  0 (11 ready)' overlaps Button
+    'Grow the next wave' by 1484 px (25% of the smaller)`, exit 1 — the exact pair
+    `findings` had passed clean over earlier in the session. Reproduced on a second
+    independent staging with identical numbers.
+  - Found: (1) `set-state` on the Label's `text` is reverted by the next
+    `Hud._refresh()`, which every seed/husk/wave signal fires. The write succeeds, the
+    read-back confirms it, and the checker then measures the original string and prints
+    a clean `0` — the most plausible way to stage this check is also the way to make it
+    lie. Documented; the recipe stages game state instead. (2) The finding is transient:
+    husks rot at `HUSK_LIFETIME`, the counter shrinks, and a run made ten seconds late
+    reports clean over a still-broken HUD. Caught it live — a `--json` re-run right after
+    the passing one returned `"findings": []` with `measured: 18`. (3) Rect-only
+    comparison is not sufficient in general: a Label whose text exceeds its box paints
+    past it rather than growing, so the checker now takes `get_minimum_size().x` as the
+    painted extent and flags such a pair as `via_overflow`, with a different fix
+    recommendation. (4) `UpgradeButton` and `UprootButton` report *identical* rects while
+    hidden and separate ones once visible — the `visible` filter was load-bearing, not
+    incidental.
+  - Cheaper: nothing. The checker exists precisely because no static read and no
+    existing gate asks this question, and all three defects in it only appear against a
+    live HUD.
+
+- Gap: **no gaps this turn beyond the three already filed.** [G-013] (`find-nodes
+  --class` and script class names), [G-014] (`validate-ui` and multiline Labels) and
+  [G-015] (reach vs. base classes) all stand as written; none was re-hit here. The
+  sibling-occlusion blind spot that motivated the new skill is [G-014]'s neighbour but a
+  distinct thing, and is worth upstreaming as a `validate-ui` sub-check rather than a
+  fourth gap entry: `.claude/skills/godot-hud-occlusion-audit/` is a working
+  implementation to lift.
