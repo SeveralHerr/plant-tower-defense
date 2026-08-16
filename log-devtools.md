@@ -1511,7 +1511,17 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   `game/plant.gd`), which the harness correctly buckets as a declaration rather
   than an observation. This is the same shape as G-015 (a base class invisible
   because only a subclass owned the live node).
-  - [G-028] status: open | seen: 1 | harness: 0.23.0
+  - [G-028] status: open | seen: 2 | harness: 0.23.0
+  - Second sighting, with a number this time. After a full session — launch, entry
+    hook, an endless wave 100 driven to completion with pests spawning and dying —
+    `scripts-seen` reported **15 scripts** and `game/` holds 27. Thirteen were
+    absent, and three of them provably ran: `sfx.gd` played the sounds,
+    `plant_catalog.gd` served every placement, `garden_theme.gd` styled the pause
+    card that was open. All three are static-only classes that own no node. The
+    other ten are node-owning scripts whose instances simply did not exist in that
+    session, which is a fair miss — but it means a project cannot tell the two
+    apart from the output, and "13 of 27 unreached" reads as a coverage problem
+    when a fifth of it is a measurement problem.
   - Improvement: `scripts-seen` already records every script the engine *loaded*,
     which for a static-only class is exactly the right signal and is an
     observation rather than a declaration. Reach consults it today only as a

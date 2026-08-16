@@ -175,6 +175,44 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
 
 ## Cool new features (idea backlog)
 
+### New this cycle (12 of 30) — grown from the features above
+
+- **The lane pressure overlay answers a question the player has already stopped
+  asking.** `LanePressureOverlay` paints "how far did pests get" onto the road,
+  faded by `LANE_PRESSURE_DECAY` 0.55 once per wave — so it is a readout of the
+  wave that just ended, shown during the eighteen seconds you spend deciding what
+  to build for the wave that has not started. The run total exists
+  (`Board.run_pressure_alpha`) and is shown exactly once, by
+  `show_run_pressure()` at the moment the run is already over. The number that
+  would inform a purchase is the one held back until purchasing has stopped.
+
+- **Every red on the board is now the same red, including the two that mean
+  opposite things.** The palette merge pointed `LanePressureOverlay` at
+  `GardenTheme.DANGER`, which is correct — but the lane tint means "pests got
+  this far", the plant health bar means "this plant is dying", and an armed Uproot
+  means "you are about to destroy this". Three different sentences in one hue at
+  three different alphas. The merge was right to unify the *value*; the open
+  question is whether the board needs a second warning channel — a shape, a
+  hatch — now that colour alone has to carry three meanings.
+
+- **`husk_click_margin()` is a gate with no alarm.** Cycle 12 added it precisely
+  because the husk-versus-placement conflict is four pixels away from being real,
+  and a test asserts the clearance stays positive. But nothing tells a *designer*
+  moving `PATH_CORNERS` or `COLLECT_RADIUS` that they are spending it — they find
+  out when a test fails, with no indication that four pixels was the budget. The
+  number wants to be in the devtools output, or in `board_info`, where someone
+  tuning the road can see it before the build tells them.
+
+- **The board has one route and every derived reading assumes it will stay that
+  shape.** `PATH_CORNERS` produces 32 road cells and 2112px of walking, and at
+  least four things are now calibrated against that specific route: the endless
+  road budget's pests-per-cell, the Sundew's coverage arithmetic, the dead-ground
+  count of 15 of 94 cells, and the husk clearance. Each is individually tested,
+  which is good — but a second route would move all four at once, and nothing
+  currently says which of them are properties of *a* road and which are properties
+  of *this* road.
+
+
 ### New this cycle (11 of 30) — grown from the features above
 
 - **The game's only explanation of anything is unreachable the moment a run
