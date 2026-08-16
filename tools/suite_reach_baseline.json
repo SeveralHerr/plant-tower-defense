@@ -33,8 +33,6 @@
     "game/pest.gd::func::marker_fill",
     "game/pest.gd::func::marker_ink",
     "game/pest.gd::func::tint_for",
-    "game/pest.gd::signal::died",
-    "game/pest.gd::signal::escaped",
     "game/pest.gd::var::is_armoured",
     "game/pest.gd::var::is_big",
     "game/pest.gd::var::is_hungry",

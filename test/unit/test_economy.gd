@@ -1500,3 +1500,386 @@ func test_the_packet_announces_only_the_plant_it_really_unlocked() -> String:
 
 	bank.free()
 	return err
+
+
+# -- Pest.died and Pest.escaped as contracts (plant-tower-defense-1av) -------
+#
+# The same argument as the purse block above, on the pair that carries the most
+# wiring. `Game._on_pest_died` is the funnel every kill routes through: it banks
+# the seeds, drops the husk and files the lane loss. `_on_pest_escaped` is its
+# counterpart and takes the bed.
+#
+# Two failure modes neither lint, `name_check` nor `import_check` can see:
+#
+#   1. The `connect` calls in `Game.spawn_pest` quietly stopping. Every existing
+#      test of the escape ledger calls `game._on_pest_escaped(...)` directly (see
+#      test_combat._staged_escape_run), so deleting `pest.escaped.connect(...)`
+#      leaves the whole suite green and the game unlosable. The tests below drive
+#      the signal, never the handler.
+#   2. A pest announcing twice, or announcing both. `died` and `escaped` are
+#      mutually exclusive per pest and both are followed by `queue_free`, so a
+#      second emit is a second payout or a second bed off one bug.
+#
+# Both signals are also read at the ONE instant they are readable — `_escape()`
+# emits and queue_frees on the next line, `kill()` emits and then `_play_death()`
+# swaps the sprite — so the payload is asserted from inside the handler.
+
+
+## Walks `pest` off the end of its own route the way the game does: repeated
+## `_physics_process` ticks through `_advance`, not a direct `_escape()` call, so
+## the leg-walking and the emit both really run.
+##
+## Bounded, and it reports the bound rather than hanging or passing quietly. It
+## also refuses a pest that was already off the board when it was handed over —
+## that would run zero ticks and every assertion after it would be about nothing.
+func _walk_until_gone(pest: Pest) -> String:
+	if pest == null or not is_instance_valid(pest):
+		return "no pest to walk off the road"
+	if not pest.is_alive():
+		return "the pest was already off the board before the walk began"
+	var ticks: int = 0
+	while pest.is_alive() and ticks < 400:
+		pest._physics_process(1.0)
+		ticks += 1
+	if pest.is_alive():
+		return "still on the road after %d ticks — it never reached the exit" % ticks
+	return ""
+
+
+## A kill announces the pest itself, exactly once, and never announces an escape.
+##
+## The payload is read from inside the handler because that is where Game reads
+## it: `_on_pest_died` takes `position`, `seed_value` and `husk_multiplier()` off
+## this argument, and `_play_death()` runs the moment the emit returns.
+##
+## The negative half is the valuable one. `escaped` firing here would take a bed
+## for a pest the player just killed — the run would end while the garden was
+## winning, and nothing in the code would look wrong.
+func test_a_kill_announces_the_pest_itself_and_never_an_escape() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	# A beetle: 9 seeds and a husk worth 5, both distinct from the aphid's, so a
+	# payout credited from the wrong pest does not happen to match.
+	var victim: Pest = _spawn_and_take(game, Pest.BEETLE)
+	var err: String = _T.assert_true(victim != null, "a pest is on the board to kill")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var victim_id: int = victim.get_instance_id()
+	var died_ids: Array[int] = []
+	var escaped_ids: Array[int] = []
+	var seed_value_at_emit: Array[int] = []
+	var alive_at_emit: Array[bool] = []
+	# Three separate listeners, all single-expression, all null-tolerant: a
+	# dereference of a null payload would raise, and a raise inside a test method
+	# aborts it and returns "", which the runner cannot tell from a pass. The
+	# sentinels (-1, 0) fail an assertion instead.
+	victim.died.connect(func(p: Pest) -> void:
+		died_ids.append(0 if p == null else p.get_instance_id()))
+	victim.died.connect(func(p: Pest) -> void:
+		seed_value_at_emit.append(-1 if p == null else p.seed_value))
+	victim.died.connect(func(p: Pest) -> void:
+		alive_at_emit.append(p != null and p.is_alive()))
+	victim.escaped.connect(func(p: Pest) -> void:
+		escaped_ids.append(0 if p == null else p.get_instance_id()))
+
+	var lives_before: int = game.lives
+	var seeds_before: int = game.bank.seeds
+	var husks_before: int = game.compost.husk_count()
+	var defeated_before: int = game.pests_defeated
+	var expected_seeds: int = victim.seed_value
+
+	victim.take_damage(victim.max_health + 1.0)
+
+	err = _T.assert_eq(died_ids.size(), 1, "a lethal hit announces the death exactly once")
+	if err == "":
+		err = _T.assert_eq(died_ids[0], victim_id,
+			"and hands over the pest that died itself — Game._on_pest_died reads"
+				+ " position, seed_value and husk_multiplier() off this argument,"
+				+ " so the wrong instance pays the wrong seeds at the wrong cell")
+	if err == "":
+		err = _T.assert_eq(seed_value_at_emit.size(), 1,
+			"the payload was dereferenceable inside the handler")
+	if err == "":
+		err = _T.assert_eq(seed_value_at_emit[0], expected_seeds,
+			"and still carried its species' seed value at the instant of the emit,"
+				+ " which is the only instant Game gets to read it")
+	if err == "":
+		err = _T.assert_eq(alive_at_emit.size(), 1, "and its liveness was readable too")
+	if err == "":
+		err = _T.assert_false(alive_at_emit[0],
+			"reading FALSE: kill() drops `_alive` before it emits, which is what makes"
+				+ " a re-entrant kill() from inside a listener a no-op rather than a loop")
+	if err == "":
+		err = _T.assert_eq(escaped_ids.size(), 0,
+			"and nothing announced an escape: died and escaped are mutually exclusive,"
+				+ " and a pest firing both would pay its seeds AND cost a bed")
+
+	# Game's half of the same wire. If `pest.died.connect(_on_pest_died)` were
+	# deleted from spawn_pest, every assertion above still holds and every one
+	# below fails — which is the point of asserting both.
+	if err == "":
+		err = _T.assert_eq(game.pests_defeated, defeated_before + 1,
+			"the kill reached Game's funnel, so spawn_pest's connection is live")
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, seeds_before + expected_seeds,
+			"and banked exactly this pest's seed value, once")
+	if err == "":
+		err = _T.assert_eq(game.compost.husk_count(), husks_before + 1,
+			"and dropped exactly one husk")
+	if err == "":
+		err = _T.assert_eq(game.lives, lives_before,
+			"while costing no bed — a kill that also took a life would end a run"
+				+ " the player was winning")
+
+	# A corpse cannot die again, by either route into kill().
+	if err == "":
+		victim.take_damage(victim.max_health + 1.0)
+		victim.kill()
+		err = _T.assert_eq(died_ids.size(), 1,
+			"a second lethal hit and an explicit second kill() are both silent")
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, seeds_before + expected_seeds,
+			"so the seeds were banked once, not three times")
+	if err == "":
+		err = _T.assert_eq(game.compost.husk_count(), husks_before + 1,
+			"and one husk landed, not three")
+	if err == "":
+		err = _T.assert_eq(escaped_ids.size(), 0, "and it still never escaped")
+
+	_T.free_ui(game)
+	return err
+
+
+## An escape announces the pest itself, exactly once, and never a death.
+##
+## Driven by walking the road, not by calling `_escape()` or `_on_pest_escaped`:
+## the connection made in `Game.spawn_pest` is half of what is under test, and a
+## handler called directly proves nothing about it.
+##
+## The negatives here are the whole economy. An escape that also paid seeds or
+## dropped a husk would make ignoring a lane profitable; an escape that also
+## counted as a kill would make the post-mortem's "defeated" a lie.
+func test_a_pest_that_walks_the_whole_road_announces_an_escape_and_never_a_death() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game._on_wave_started(1)
+	var runner: Pest = _spawn_and_take(game, Pest.APHID)
+	var err: String = _T.assert_true(runner != null, "a pest is on the road to lose")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var runner_id: int = runner.get_instance_id()
+	var escaped_ids: Array[int] = []
+	var died_ids: Array[int] = []
+	var engaged_at_emit: Array[bool] = []
+	# `was_engaged()` is read inside the handler because that is the last moment
+	# it can be read at all: _escape() emits and queue_frees on the next line, so
+	# Game._note_escape's read is not merely early, it is the only read there is.
+	runner.escaped.connect(func(p: Pest) -> void:
+		escaped_ids.append(0 if p == null else p.get_instance_id()))
+	runner.escaped.connect(func(p: Pest) -> void:
+		engaged_at_emit.append(p != null and p.was_engaged()))
+	runner.died.connect(func(p: Pest) -> void:
+		died_ids.append(0 if p == null else p.get_instance_id()))
+
+	var lives_before: int = game.lives
+	var seeds_before: int = game.bank.seeds
+	var earned_before: int = game.bank.seeds_earned_total
+	var husks_before: int = game.compost.husk_count()
+	var defeated_before: int = game.pests_defeated
+
+	err = _walk_until_gone(runner)
+	if err == "":
+		err = _T.assert_eq(escaped_ids.size(), 1,
+			"reaching the end of the route announces the escape exactly once")
+	if err == "":
+		err = _T.assert_eq(escaped_ids[0], runner_id,
+			"and hands over the pest that escaped itself")
+	if err == "":
+		err = _T.assert_eq(died_ids.size(), 0,
+			"and never announces a death for the same bug")
+	if err == "":
+		err = _T.assert_eq(engaged_at_emit.size(), 1,
+			"the payload answered was_engaged() inside the handler")
+	if err == "":
+		err = _T.assert_false(engaged_at_emit[0],
+			"reporting an unopposed walk as untouched — nothing in this empty"
+				+ " garden ever laid a finger on it")
+
+	# Game's half.
+	if err == "":
+		err = _T.assert_eq(game.lives, lives_before - 1,
+			"the escape cost exactly one bed, so spawn_pest's connection is live")
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, seeds_before,
+			"while paying no seeds — an escape that paid would make leaking a lane"
+				+ " a way to earn")
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds_earned_total, earned_before,
+			"and scoring none either")
+	if err == "":
+		err = _T.assert_eq(game.compost.husk_count(), husks_before,
+			"and dropping no husk: there is no corpse past the exit to sweep")
+	if err == "":
+		err = _T.assert_eq(game.pests_defeated, defeated_before,
+			"and counting nothing as defeated")
+
+	# Walking on past the exit is silent...
+	if err == "":
+		runner._physics_process(10.0)
+		err = _T.assert_eq(escaped_ids.size(), 1,
+			"a pest already past the exit cannot escape twice — a second emit is a"
+				+ " second bed off one bug")
+	# ...and so is a kernel that lands in the frame it walked out in, which is the
+	# one way `died` could still fire for a pest that has already escaped.
+	if err == "":
+		runner.take_damage(9999.0)
+		err = _T.assert_eq(died_ids.size(), 0,
+			"and a hit landing after the escape kills nothing: `_alive` is already down")
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, seeds_before,
+			"so the pest that cost a bed never also paid out")
+	if err == "":
+		err = _T.assert_eq(game.lives, lives_before - 1,
+			"and the bed count moved exactly once")
+
+	_T.free_ui(game)
+	return err
+
+
+## The re-entrancy guarantee under "exactly once".
+##
+## `kill()` sets `_alive = false` BEFORE it emits, so a listener that reaches back
+## for the pest it was just handed gets a no-op instead of a recursion. Worth
+## pinning separately from the two calls in the test above, because that pair
+## tests the guard across calls and this tests it inside one emit — and it is the
+## inner one that would double-bank without ever looking like a second kill.
+func test_a_listener_killing_the_pest_again_does_not_bank_it_twice() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var victim: Pest = _spawn_and_take(game, Pest.BEETLE)
+	var err: String = _T.assert_true(victim != null, "a pest is on the board to kill")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var announcements: Array[int] = []
+	victim.died.connect(func(_p: Pest) -> void: announcements.append(1))
+	# The accident a listener is most likely to have: acting on the pest it was
+	# handed. Connected after the counter so the count is taken before the
+	# re-entry, and after Game's own handler so Game has already paid out once.
+	victim.died.connect(func(p: Pest) -> void:
+		if p != null and is_instance_valid(p):
+			p.kill())
+
+	var seeds_before: int = game.bank.seeds
+	var husks_before: int = game.compost.husk_count()
+	var defeated_before: int = game.pests_defeated
+	var expected_seeds: int = victim.seed_value
+
+	victim.take_damage(victim.max_health + 1.0)
+
+	err = _T.assert_eq(announcements.size(), 1,
+		"a listener calling kill() re-entrantly gets no second announcement")
+	if err == "":
+		err = _T.assert_eq(game.pests_defeated, defeated_before + 1,
+			"so the kill is counted once")
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, seeds_before + expected_seeds,
+			"the seeds are banked once")
+	if err == "":
+		err = _T.assert_eq(game.compost.husk_count(), husks_before + 1,
+			"and one husk lands, not one per listener")
+
+	_T.free_ui(game)
+	return err
+
+
+## The ORDER of `escaped`'s handler against Game's own bookkeeping.
+##
+## `_on_pest_escaped` files `_note_escape(pest)` before it touches `lives`, and
+## the comment there says why: losing the last bed calls `_end_run` on the next
+## few lines, and `_end_run` builds the card out of `summary_stats()`. A read
+## filed after the arithmetic would be missing from the run that ended on it —
+## the tenth escape would be the one escape the post-mortem never heard about.
+##
+## The assertion is deliberately against `_summary._stats`, the dictionary the
+## card was BUILT with, not against `summary_stats()` called again afterwards.
+## Re-asking would pass either way, because by then the counter has caught up.
+##
+## Every bed goes through a real pest walking a real road: the beds row computes
+## `LIVES - lives`, so forcing `lives` would desynchronise it from the escape
+## tally that is the actual subject here.
+func test_the_last_escape_is_in_the_card_that_same_escape_builds() -> String:
+	# _end_run banks the run against RunConfig's persisted record. Point that at
+	# the scratch save; teardown() restores it even if this method aborts.
+	_stash_run_config()
+	RunConfig.save_path = HIGHSCORE_TEST_PATH
+	RunConfig.endless = false
+
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_eq(game.lives, Game.LIVES,
+		"the run starts with a whole garden, so LIVES escapes is exactly what ends it")
+	if err != "":
+		_T.free_ui(game)
+		_restore_run_config()
+		return err
+	game._on_wave_started(1)
+
+	var walked: int = 0
+	var fought_one: bool = false
+	for i: int in range(Game.LIVES):
+		var bug: Pest = _spawn_and_take(game, Pest.APHID)
+		if bug == null:
+			err = "only %d of %d pests made it onto the road" % [walked, Game.LIVES]
+			break
+		if i == 0:
+			# Half a kernel: the garden reached this one, and an aphid walks on.
+			# Scaled off its own max_health so endless health scaling cannot make
+			# a fixed number lethal and turn this escape into a kill.
+			bug.take_damage(bug.max_health * 0.1)
+			if not bug.is_alive():
+				err = "the token hit killed the pest — it can no longer escape"
+				break
+			fought_one = true
+		err = _walk_until_gone(bug)
+		if err != "":
+			break
+		walked += 1
+
+	if err == "":
+		err = _T.assert_eq(walked, Game.LIVES,
+			"every bed was lost to a pest that really walked out")
+	if err == "":
+		err = _T.assert_true(fought_one, "and exactly one of them had been shot at")
+	if err == "":
+		err = _T.assert_eq(game.lives, 0, "the garden is gone")
+	if err == "":
+		err = _T.assert_true(game.game_over, "and the run ended on that last escape")
+	if err == "":
+		err = _T.assert_true(game._summary != null and is_instance_valid(game._summary),
+			"which built the post-mortem card in the same call")
+
+	if err == "":
+		var built: Dictionary = game._summary._stats
+		err = _T.assert_eq(int(built.get("escapes_recorded", -1)), Game.LIVES,
+			"all %d escapes are in the card the %dth escape itself built — _note_escape"
+				% [Game.LIVES, Game.LIVES]
+				+ " runs before the lives arithmetic precisely so the last one makes it")
+	if err == "":
+		err = _T.assert_eq(int(game._summary._stats.get("escapes_untouched", -1)),
+			Game.LIVES - 1,
+			"and the one that was shot at is not among the untouched, so the split is"
+				+ " read off each emitted pest's own was_engaged()")
+	if err == "":
+		err = _T.assert_eq(int(game._summary._stats.get("lives_lost", -1)), Game.LIVES,
+			"beds lost agrees with escapes recorded — that is the pair that would"
+				+ " disagree by one if the read were filed after the arithmetic")
+	if err == "":
+		err = _T.assert_eq(game._summary.beds_text(),
+			"%d of %d beds — %d walked in untouched" % [Game.LIVES, Game.LIVES, Game.LIVES - 1],
+			"and the row the player reads says so")
+
+	_T.free_ui(game)
+	_restore_run_config()
+	return err
