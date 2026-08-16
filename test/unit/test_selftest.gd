@@ -1003,7 +1003,9 @@ func test_title_controls_all_clear_the_scenery() -> String:
 	var title := await _T.instantiate_ui("res://game/title.tscn", Vector2i(1152, 648)) as Control
 	var horizon: float = title.size.y * TitleBackdrop.HORIZON
 	var err := ""
-	for node_name: String in ["StartButton", "EndlessButton", "NotebookButton", "HintLabel"]:
+	# Read off TitleScreen.MENU_BUTTON_NAMES, not spelled out here: this list
+	# carried its own copy of the column and a fourth button was added without it.
+	for node_name: String in TitleScreen.MENU_BUTTON_NAMES + ["HintLabel"]:
 		var node: Control = title.get_node(node_name) as Control
 		var bottom: float = node.position.y + node.size.y
 		err = _T.assert_true(bottom <= horizon,
@@ -1081,12 +1083,15 @@ func test_title_focus_ring_wraps_in_both_directions() -> String:
 	## Godot's geometric focus default walks the list and stops at each end. The
 	## hint on screen says "Up / Down to choose", so it has to be a ring.
 	var title := await _T.instantiate_ui("res://game/title.tscn", Vector2i(1152, 648)) as Control
-	var start: Button = title.get_node("StartButton") as Button
-	var last: Button = title.get_node("NotebookButton") as Button
-	var err: String = _T.assert_eq(String(start.get_node(start.focus_neighbor_top).name), "NotebookButton",
-		"Up from the first button reaches the last")
+	var names: Array[String] = TitleScreen.MENU_BUTTON_NAMES
+	var start: Button = title.get_node(names[0]) as Button
+	var last: Button = title.get_node(names[names.size() - 1]) as Button
+	var err: String = _T.assert_gt(names.size(), 1, "there is a column to walk")
 	if err == "":
-		err = _T.assert_eq(String(last.get_node(last.focus_neighbor_bottom).name), "StartButton",
+		err = _T.assert_eq(String(start.get_node(start.focus_neighbor_top).name), names[names.size() - 1],
+			"Up from the first button reaches the last")
+	if err == "":
+		err = _T.assert_eq(String(last.get_node(last.focus_neighbor_bottom).name), names[0],
 			"and Down from the last returns to the first")
 	_T.free_ui(title)
 	return err
@@ -1113,6 +1118,240 @@ func test_opening_the_notebook_takes_focus_away_from_the_menu_behind_it() -> Str
 		title._close_notebook()
 		err = _T.assert_eq(start.focus_mode, Control.FOCUS_ALL, "and closing it hands focus back")
 	_T.free_ui(title)
+	return err
+
+
+## Same overlay contract for the keys screen, plus the half only a second overlay
+## can be wrong about: the two must not stack. `overlay_open()` is one shared
+## guard because two independent "is mine open" checks would happily let the keys
+## screen open on top of the notebook, with the notebook still eating Escape.
+func test_the_keys_screen_is_reachable_from_the_title_and_does_not_stack() -> String:
+	var title := await _T.instantiate_ui("res://game/title.tscn", Vector2i(1152, 648)) as TitleScreen
+	var button: Button = title.get_node_or_null("KeysButton") as Button
+	var err: String = _T.assert_true(button != null, "the title screen has a Keys button")
+	if err == "":
+		err = _T.assert_true(button.size.x >= 40.0 and button.size.y >= 40.0,
+			"and it is a real touch target, got %s" % button.size)
+	if err == "":
+		button.pressed.emit()
+		err = _T.assert_true(title.get_node_or_null("KeysScreen") is KeyBindingScreen,
+			"pressing it opens the keys screen")
+	if err == "":
+		err = _T.assert_eq((title.get_node("StartButton") as Button).focus_mode, Control.FOCUS_NONE,
+			"and the menu behind it stops taking focus")
+	if err == "":
+		title._open_keys()
+		err = _T.assert_eq(title.get_children().filter(
+			func(child: Node) -> bool: return child is KeyBindingScreen).size(), 1,
+			"pressing the button twice does not stack two of them")
+	if err == "":
+		title._open_notebook()
+		err = _T.assert_true(title.get_node_or_null("Notebook") == null,
+			"and the notebook cannot open on top of it either")
+	if err == "":
+		title._close_keys()
+		err = _T.assert_eq((title.get_node("StartButton") as Button).focus_mode, Control.FOCUS_ALL,
+			"closing it hands focus back")
+	if err == "":
+		err = _T.assert_false(title.overlay_open(), "and nothing is left covering the menu")
+	if err == "":
+		var column: Array[Button] = title.menu_buttons()
+		err = _T.assert_eq(column.size(), TitleScreen.MENU_BUTTON_NAMES.size(),
+			"menu_buttons() finds every button the column declares")
+		if err == "":
+			for i: int in column.size():
+				err = _T.assert_eq(String(column[i].name), TitleScreen.MENU_BUTTON_NAMES[i],
+					"and hands them back top to bottom")
+				if err != "":
+					break
+		if err == "":
+			# Not just the right names -- the right order down the screen, which is
+			# what the focus ring and the entrance stagger both read it for.
+			for i: int in range(1, column.size()):
+				err = _T.assert_gt(column[i].position.y, column[i - 1].position.y,
+					"%s sits below %s" % [column[i].name, column[i - 1].name])
+				if err != "":
+					break
+	_T.free_ui(title)
+	return err
+
+
+## The screen against the table. One row per declared verb, showing what the
+## InputMap currently says — not a hand-written list that a new verb would be
+## missing from, which is the whole reason KeyBindings.ACTIONS exists.
+func test_the_keys_screen_lists_every_verb_and_reads_the_live_bindings() -> String:
+	KeyBindings.reset_all()
+	var screen := await _T.instantiate_ui(KeyBindingScreen.new(), Vector2i(1152, 648)) as KeyBindingScreen
+	var actions: Array[StringName] = KeyBindings.actions()
+	var err: String = _T.assert_gt(actions.size(), 0, "there are verbs to list")
+	for i: int in actions.size():
+		if err != "":
+			break
+		var does: Label = screen.get_node_or_null("Row%d" % i) as Label
+		var key: Label = screen.get_node_or_null("RowKey%d" % i) as Label
+		var button: Button = screen.get_node_or_null("RowButton%d" % i) as Button
+		err = _T.assert_true(does != null and key != null and button != null,
+			"row %d (%s) has a description, a key and a button" % [i, actions[i]])
+		if err == "":
+			err = _T.assert_eq(does.text, KeyBindings.describe(actions[i]), "row %d says what it does" % i)
+		if err == "":
+			err = _T.assert_eq(key.text, KeyBindings.label_for(actions[i]),
+				"row %d shows the key the InputMap actually holds" % i)
+		if err == "":
+			err = _T.assert_true(button.size.x >= 40.0 and button.size.y >= 40.0,
+				"row %d's button is a real touch target" % i)
+	if err == "":
+		err = _T.assert_true(screen.get_node_or_null("RowButton%d" % actions.size()) == null,
+			"and there is no row for a verb that does not exist")
+	if err == "":
+		# `refresh` redraws the key column out of the InputMap rather than each
+		# caller patching the one row it believes it changed -- so a binding moved
+		# behind the screen's back still shows up.
+		var was: String = (screen.get_node("RowKey0") as Label).text
+		KeyBindings.set_keys(actions[0], [KEY_F6])
+		err = _T.assert_eq((screen.get_node("RowKey0") as Label).text, was,
+			"the row is stale until something redraws it")
+		if err == "":
+			screen.refresh()
+			err = _T.assert_eq((screen.get_node("RowKey0") as Label).text, "F6",
+				"and refresh() reads the InputMap back, not a copy the screen kept")
+		KeyBindings.reset_all()
+		screen.refresh()
+	if err == "":
+		# An action the table does not declare arms nothing -- otherwise a typo'd
+		# StringName leaves the screen waiting for a key it can never place.
+		screen.listen_for(&"garden_not_a_verb")
+		err = _T.assert_eq(String(screen.listening_for()), "", "an undeclared verb cannot be armed")
+		if err == "":
+			screen.listen_for(KeyBindings.ACTION_BACK)
+			err = _T.assert_eq(String(screen.listening_for()), String(KeyBindings.ACTION_BACK),
+				"a declared one can")
+		if err == "":
+			screen.capture(KEY_ESCAPE)
+	if err == "":
+		# Nothing on the paper may run off it or sit on top of anything else -- the
+		# per-Control gates check each box against itself and would pass a row list
+		# drawn straight through the footer.
+		err = _screen_rows_fit_and_do_not_overlap(screen, KeyBindingScreen.PANEL)
+	if err == "":
+		# "Does not overlap" is not "has a gap": Rect2.intersects is false for two
+		# boxes sharing an edge, so the footer sat flush against the last row and
+		# every check passed. Caught in a screenshot, asserted here.
+		var last: Button = screen.get_node("RowButton%d" % (actions.size() - 1)) as Button
+		var back: Button = screen.get_node("BackButton") as Button
+		err = _T.assert_gte(back.position.y - (last.position.y + last.size.y), 16.0,
+			"the footer stands clear of the last row rather than merely not overlapping it")
+	_T.free_ui(screen)
+	return err
+
+
+## Every visible Control on `screen` sits inside `panel` and touches no sibling.
+## Split out because it is the check the pause card wanted too and the one no
+## harness gate performs: `findings` measures a Control against its own box.
+func _screen_rows_fit_and_do_not_overlap(screen: Control, panel: Rect2) -> String:
+	var rects: Dictionary = {}
+	for child: Node in screen.get_children():
+		var control := child as Control
+		if control == null or not control.visible or control.name in ["Backdrop", "Paper"]:
+			continue
+		if control.size.x <= 0.0 or control.size.y <= 0.0:
+			continue
+		var rect := Rect2(control.position, control.size)
+		var err: String = _T.assert_true(panel.encloses(rect),
+			"%s at %s stays on the paper %s" % [control.name, rect, panel])
+		if err != "":
+			return err
+		rects[String(control.name)] = rect
+	var names: Array = rects.keys()
+	var out := ""
+	for i: int in range(names.size()):
+		for j: int in range(i + 1, names.size()):
+			out = _T.assert_false((rects[names[i]] as Rect2).intersects(rects[names[j]]),
+				"%s overlaps %s" % [names[i], names[j]])
+			if out != "":
+				return out
+	return _T.assert_gt(names.size(), 0, "there were Controls to check -- an empty sweep proves nothing")
+
+
+## The rebinding itself, end to end: arm a row, press a key, and find the InputMap,
+## the row, the pause card's legend and the save file all agreeing.
+func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
+	var path := "user://test_selftest_keys_screen.save"
+	var stashed_path: String = RunConfig.save_path
+	var stashed_bindings: Dictionary = RunConfig.key_bindings
+	var stashed_status: String = RunConfig.load_status
+	var stashed_campaign: int = RunConfig.campaign_high_score
+	var stashed_endless: int = RunConfig.endless_high_score
+	for suffix: String in ["", ".tmp", ".bak"]:
+		if FileAccess.file_exists(path + suffix):
+			DirAccess.remove_absolute(path + suffix)
+	RunConfig.save_path = path
+	RunConfig.key_bindings = {}
+	RunConfig.campaign_high_score = 0
+	RunConfig.endless_high_score = 0
+	KeyBindings.reset_all()
+
+	var screen := await _T.instantiate_ui(KeyBindingScreen.new(), Vector2i(1152, 648)) as KeyBindingScreen
+	var err: String = _T.assert_eq(String(screen.listening_for()), "", "no row is armed to begin with")
+	if err == "":
+		(screen.get_node("RowButton0") as Button).pressed.emit()
+		err = _T.assert_eq(String(screen.listening_for()), String(KeyBindings.actions()[0]),
+			"pressing Change arms that row")
+	if err == "":
+		err = _T.assert_eq((screen.get_node("RowKey0") as Label).text, KeyBindingScreen.PROMPT,
+			"and the row asks for a key instead of showing the old one")
+	if err == "":
+		err = _T.assert_true(screen.capture(KEY_F1), "F1 is free, so it lands")
+	if err == "":
+		err = _T.assert_eq(KeyBindings.keys_for(KeyBindings.ACTION_PAUSE), [KEY_F1],
+			"the InputMap moved")
+	if err == "":
+		err = _T.assert_eq((screen.get_node("RowKey0") as Label).text, "F1", "the row moved")
+	if err == "":
+		err = _T.assert_eq(String(Game.key_help()[0]["keys"]), "F1", "the pause card's legend moved")
+	if err == "":
+		err = _T.assert_eq(FileAccess.get_file_as_string(path),
+			"v%d\n0\n0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
+			"and it was written down beside the scores")
+	if err == "":
+		# A key another verb already answers to is refused, and said so.
+		(screen.get_node("RowButton1") as Button).pressed.emit()
+		err = _T.assert_false(screen.capture(KEY_F1), "a key already spoken for is refused")
+		if err == "":
+			err = _T.assert_eq(KeyBindings.keys_for(KeyBindings.ACTION_MUTE_SFX), [KEY_M],
+				"and the refused row kept its own key")
+		if err == "":
+			err = _T.assert_true((screen.get_node("Note") as Label).text.contains("F1"),
+				"the refusal is on screen, not silent: %s" % (screen.get_node("Note") as Label).text)
+	if err == "":
+		# Escape backs out of an armed row rather than binding itself -- it is the
+		# way out of this screen, so a player who bound it would lose the exit.
+		(screen.get_node("RowButton1") as Button).pressed.emit()
+		err = _T.assert_false(screen.capture(KEY_ESCAPE), "Escape leaves the row alone")
+		if err == "":
+			err = _T.assert_eq(String(screen.listening_for()), "", "and disarms it")
+		if err == "":
+			err = _T.assert_eq(KeyBindings.keys_for(KeyBindings.ACTION_MUTE_SFX), [KEY_M],
+				"having bound nothing")
+	if err == "":
+		(screen.get_node("ResetButton") as Button).pressed.emit()
+		err = _T.assert_eq(KeyBindings.keys_for(KeyBindings.ACTION_PAUSE), [KEY_ESCAPE, KEY_P],
+			"Put them all back restores the shipped keys")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(path),
+				"v%d\n0\n0\n0\n" % RunConfig.SAVE_VERSION,
+				"and clears the overrides out of the save rather than pinning the defaults into it")
+
+	_T.free_ui(screen)
+	KeyBindings.reset_all()
+	RunConfig.save_path = stashed_path
+	RunConfig.key_bindings = stashed_bindings
+	RunConfig.load_status = stashed_status
+	RunConfig.campaign_high_score = stashed_campaign
+	RunConfig.endless_high_score = stashed_endless
+	for suffix: String in ["", ".tmp", ".bak"]:
+		if FileAccess.file_exists(path + suffix):
+			DirAccess.remove_absolute(path + suffix)
 	return err
 
 

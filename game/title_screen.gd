@@ -25,11 +25,30 @@ const GAME_SCENE := "res://game/game.tscn"
 const TITLE_Y: float = 88.0
 const SUBTITLE_Y: float = 158.0
 const SCORE_Y: float = 190.0
-const BUTTON_TOP: float = 236.0
+## The button column had three rows and room for exactly three. A fourth (Keys)
+## does not fit at the old pitch: everything on this screen has to end above
+## TitleBackdrop.HORIZON, which is 0.74 of the viewport, and the old block ran to
+## 418 with the hint at 428..450 against a horizon at 479. So the pitch came in
+## rather than the column growing downward into the lawn — 48/44 tall on a 10px
+## gap puts the fourth row's foot at 432 and the hint at 442..464, still clear.
+## test_title_controls_all_clear_the_scenery is the check that says so.
+const BUTTON_TOP: float = 218.0
 const BUTTON_WIDTH: float = 300.0
-const BUTTON_HEIGHT: float = 56.0
-const BUTTON_GAP: float = 12.0
-const HINT_Y: float = 428.0
+const BUTTON_HEIGHT: float = 48.0
+## The two rows that are not "start a run": shorter, because they are not the
+## thing the screen is for.
+const SECONDARY_BUTTON_HEIGHT: float = 44.0
+const BUTTON_GAP: float = 10.0
+const HINT_Y: float = 442.0
+
+## Every button in the column, top to bottom. A list rather than four names spelled
+## out at each call site: `_link_focus`, `_set_menu_active`, `_play_entrance` and
+## two layout tests all need the same set, and the tests were carrying their own
+## copy of it — which is how adding this fourth button broke them rather than being
+## checked by them.
+const MENU_BUTTON_NAMES: Array[String] = [
+	"StartButton", "EndlessButton", "NotebookButton", "KeysButton",
+]
 
 ## Where a decorative plant's stem meets the ground, and how much bigger than
 ## its board size it is drawn here.
@@ -88,7 +107,9 @@ const ENTRANCE_STAGGER: float = 0.07
 var _start_button: Button
 var _endless_button: Button
 var _notebook_button: Button
+var _keys_button: Button
 var _notebook: NotebookScreen = null
+var _keys_screen: KeyBindingScreen = null
 
 var _plants: Array[Sprite2D] = []
 var _pests: Array[Sprite2D] = []
@@ -231,13 +252,30 @@ func _build_buttons() -> void:
 	_endless_button.pressed.connect(_start_endless)
 	y += BUTTON_HEIGHT + BUTTON_GAP
 
-	_notebook_button = _make_button("NotebookButton", "Designer's Notebook", left, y, 46.0)
+	_notebook_button = _make_button("NotebookButton", "Designer's Notebook", left, y,
+		SECONDARY_BUTTON_HEIGHT)
 	_notebook_button.pressed.connect(_open_notebook)
+	y += SECONDARY_BUTTON_HEIGHT + BUTTON_GAP
+
+	# The keyboard verbs were undiscoverable and unchangeable: the only screen that
+	# named them was the pause card, which needs a run in progress to reach.
+	_keys_button = _make_button("KeysButton", "Keys", left, y, SECONDARY_BUTTON_HEIGHT)
+	_keys_button.pressed.connect(_open_keys)
 
 	# Explicit wrap-around, so Down off the last button returns to the first
 	# instead of dead-ending — the geometric default only ever walks the list.
-	_link_focus([_start_button, _endless_button, _notebook_button])
+	_link_focus(menu_buttons())
 	_start_button.grab_focus()
+
+
+## The column, top to bottom, in MENU_BUTTON_NAMES order.
+func menu_buttons() -> Array[Button]:
+	var out: Array[Button] = []
+	for node_name: String in MENU_BUTTON_NAMES:
+		var button := get_node_or_null(node_name) as Button
+		if button != null:
+			out.append(button)
+	return out
 
 
 func _make_button(node_name: String, label: String, x: float, y: float, height: float) -> Button:
@@ -385,9 +423,10 @@ func _play_entrance() -> void:
 		get_node("TitleLabel") as Control,
 		get_node("SubtitleLabel") as Control,
 		get_node("HighScoreLabel") as Control,
-		_start_button, _endless_button, _notebook_button,
-		get_node("HintLabel") as Control,
 	]
+	for button: Button in menu_buttons():
+		rows.append(button)
+	rows.append(get_node("HintLabel") as Control)
 	for i: int in rows.size():
 		var row: Control = rows[i]
 		var delay: float = float(i) * ENTRANCE_STAGGER
@@ -404,7 +443,7 @@ func _play_entrance() -> void:
 ## focus is a separate channel: without this, Tab and the arrow keys walk
 ## straight through the notebook onto buttons the player cannot see.
 func _open_notebook() -> void:
-	if _notebook != null and is_instance_valid(_notebook):
+	if overlay_open():
 		return
 	_notebook = NotebookScreen.new()
 	_notebook.name = "Notebook"
@@ -421,6 +460,36 @@ func _close_notebook() -> void:
 	_notebook_button.grab_focus()
 
 
+## The keys screen, same overlay contract as the notebook: one at a time, the menu
+## behind it goes inert, and it is closed by its own signal rather than by knowing
+## who opened it.
+func _open_keys() -> void:
+	if overlay_open():
+		return
+	_keys_screen = KeyBindingScreen.new()
+	_keys_screen.name = "KeysScreen"
+	_keys_screen.back_requested.connect(_close_keys)
+	add_child(_keys_screen)
+	_set_menu_active(false)
+
+
+func _close_keys() -> void:
+	if _keys_screen != null and is_instance_valid(_keys_screen):
+		_keys_screen.queue_free()
+	_keys_screen = null
+	_set_menu_active(true)
+	_keys_button.grab_focus()
+
+
+## True while either overlay covers the menu. One shared guard rather than two:
+## the notebook and the keys screen both go inert-behind-me, and two independent
+## "is mine open" checks would happily stack one on the other.
+func overlay_open() -> bool:
+	if _notebook != null and is_instance_valid(_notebook):
+		return true
+	return _keys_screen != null and is_instance_valid(_keys_screen)
+
+
 func _set_menu_active(active: bool) -> void:
 	var mode: Control.FocusMode = Control.FOCUS_ALL if active else Control.FOCUS_NONE
 	# Mouse filter as well as focus. The notebook's Backdrop swallows clicks, so
@@ -429,7 +498,7 @@ func _set_menu_active(active: bool) -> void:
 	# hover colour and that glow shows through the paper. An ignored Control
 	# never receives the enter event at all.
 	var filter: Control.MouseFilter = Control.MOUSE_FILTER_STOP if active else Control.MOUSE_FILTER_IGNORE
-	for button: Button in [_start_button, _endless_button, _notebook_button]:
+	for button: Button in menu_buttons():
 		button.focus_mode = mode
 		button.mouse_filter = filter
 

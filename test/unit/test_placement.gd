@@ -2031,7 +2031,9 @@ func test_the_title_lawn_clears_the_button_column_and_the_horizon() -> String:
 		return err
 	var horizon: float = title.size.y * TitleBackdrop.HORIZON
 	err = _T.assert_gt(horizon, 0.0, "the backdrop has a horizon to clear")
-	for node_name: String in ["StartButton", "EndlessButton", "NotebookButton", "HintLabel"]:
+	# Read off TitleScreen.MENU_BUTTON_NAMES, not spelled out here: this list
+	# carried its own copy of the column and a fourth button was added without it.
+	for node_name: String in TitleScreen.MENU_BUTTON_NAMES + ["HintLabel"]:
 		if err != "":
 			break
 		var node: Control = title.get_node(node_name) as Control
