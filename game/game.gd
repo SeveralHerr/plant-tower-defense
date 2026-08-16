@@ -22,6 +22,10 @@ const PREP_SECONDS: float = 18.0
 ## enough to read the relabelled button and short enough that a wave arriving
 ## mid-decision does not leave a live trigger sitting under the cursor.
 const UPROOT_CONFIRM_SECONDS: float = 4.0
+## Where "Back to the gate" goes. The game could previously only be left by
+## quitting: the sole scene change in the project ran the other way, title into
+## game, and R reloaded the run without ever offering the menu.
+const TITLE_SCENE := "res://game/title.tscn"
 
 var board: Board
 var bank: SeedBank
@@ -62,6 +66,10 @@ var _uproot_left: float = 0.0
 ## second and rebuild every HUD string with it. Watching the value here refreshes
 ## on change only, and keeps the HUD stateless — it still holds no copy of this.
 var _selected_health: float = -1.0
+
+## The post-mortem card and the layer it sits on, built once when the run ends.
+var _summary: RunSummary = null
+var _summary_layer: CanvasLayer = null
 
 ## Road cell -> how many pests this wave were lost there (killed or escaped).
 ## Committed to the board as one batch when the wave ends; see
@@ -274,25 +282,51 @@ func _on_pest_escaped(_pest: Pest) -> void:
 
 ## Common tail of a run, win or lose: banners the result and files the seed
 ## total against RunConfig's persisted high score exactly once.
-func _end_run(banner: String) -> void:
+func _end_run(_banner: String) -> void:
 	var new_record: bool = not _score_recorded and RunConfig.record_score(bank.seeds_earned_total)
 	_score_recorded = true
-	var line: String = "%s\nSeeds grown: %d" % [banner, bank.seeds_earned_total]
-	if new_record:
-		line += "  — new high score!"
-	else:
-		line += "  (best %d)" % RunConfig.high_score
-	hud.show_banner(line)
-	# The post-mortem. While playing, the overlay shows the last wave and fades
-	# older ones, which is what makes it readable in the moment and useless
-	# afterwards — by the time a run ends, wave 3's disaster has decayed to
-	# nothing. Swap it for the run total, which was accumulated unfaded all
-	# along, so the board itself answers "where was my garden actually weak".
+	# While playing, the lane overlay shows the last wave and fades older ones,
+	# which is what makes it readable in the moment and useless afterwards — by
+	# the time a run ends, wave 3's disaster has decayed to nothing. Swap it for
+	# the run total, accumulated unfaded all along, so the board itself answers
+	# "where was my garden actually weak". The card's backdrop is translucent
+	# precisely so this stays visible underneath it.
 	board.show_run_pressure()
+	# Idempotent: _end_run's score filing is already guarded by _score_recorded,
+	# but nothing stopped it building UI twice, and both end paths can be reached
+	# more than once in a frame (a losing escape also clears the pest group).
+	if _summary != null and is_instance_valid(_summary):
+		return
+	_summary = RunSummary.build(summary_stats(new_record))
+	_summary_layer = CanvasLayer.new()
+	_summary_layer.name = "SummaryLayer"
+	# Above the HUD's layer 10, or the side panel draws over the card.
+	_summary_layer.layer = 20
+	add_child(_summary_layer)
+	_summary_layer.add_child(_summary)
+	_summary.replay_requested.connect(func() -> void: get_tree().reload_current_scene())
+	_summary.gate_requested.connect(func() -> void: get_tree().change_scene_to_file(TITLE_SCENE))
+
+
+## Everything the post-mortem card reports. Split out from _end_run so a test can
+## assert the numbers without building the Control, and so the panel takes a plain
+## Dictionary rather than reaching into Game for each field.
+func summary_stats(new_record: bool) -> Dictionary:
 	var worst: Vector2i = board.worst_run_cell()
-	if worst.x >= 0:
-		hud.show_message("Your weakest ground was the road at column %d, row %d — %d pests lost there."
-			% [worst.x + 1, worst.y + 1, int(board.run_losses().get(worst, 0))], 30.0)
+	return {
+		"victory": victory,
+		"endless": director.endless,
+		"wave": director.current_wave,
+		"wave_count": director.wave_count(),
+		"threat_level": WaveDirector.threat_level(maxi(1, director.current_wave)),
+		"lives_lost": LIVES - lives,
+		"seeds_earned_total": bank.seeds_earned_total,
+		"high_score": RunConfig.high_score,
+		"new_record": new_record,
+		"compost_total": compost.total_collected,
+		"worst_cell": worst,
+		"worst_cell_losses": int(board.run_losses().get(worst, 0)),
+	}
 
 
 # -- placement --------------------------------------------------------------

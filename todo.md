@@ -28,11 +28,11 @@ Path: `C:\Users\gotmi\Downloads\Kenney Game Assets All-in-1 3.6.0\2D assets\Towe
       in the game (`plant-tower-defense-zr4`)
 - [x] Show a selected plant's health in the side panel, so "uproot and replant?"
       is a decision the panel can actually support (`plant-tower-defense-5zc`)
-- [ ] A real end-of-run summary panel — every number is already computed and
+- [x] A real end-of-run summary panel — every number is already computed and
       currently lives in a message that expires (`plant-tower-defense-cw1`)
 - [x] Tint the threat level as it climbs, so escalation is seen not read
       (`plant-tower-defense-cuk`)
 - [x] Project-identity devtools verb, so a session can prove which build it is
       driving before trusting a runtime pass (`plant-tower-defense-gqs`)
-- [ ] Add cool new features or concrete improvements (UX, game juice,
+- [x] Add cool new features or concrete improvements (UX, game juice,
       animations, enhancements, or full features) to `kanban.md` 

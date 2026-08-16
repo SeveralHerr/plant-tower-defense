@@ -2414,3 +2414,84 @@ func test_the_wave_readout_actually_wears_the_threat_tint() -> String:
 			"and drops back to cream when the threat does")
 	_T.free_ui(game)
 	return err
+
+
+## The post-mortem's numbers, without building the Control. Every one of these was
+## already computed before this panel existed and had nowhere to go -- three of
+## them lived in a HUD message that erased itself after 30 seconds.
+func test_the_run_summary_reports_the_numbers_the_run_produced() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.director.current_wave = 5
+	game.bank.add_seeds(140)
+	game.lives = Game.LIVES - 3
+	var stats: Dictionary = game.summary_stats(false)
+	var err: String = _T.assert_eq(int(stats["wave"]), 5, "waves survived")
+	if err == "":
+		err = _T.assert_eq(int(stats["lives_lost"]), 3, "beds lost is derived, not stored")
+	if err == "":
+		err = _T.assert_gte(int(stats["seeds_earned_total"]), 140, "seeds earned carried through")
+	if err == "":
+		err = _T.assert_eq(int(stats["threat_level"]),
+			WaveDirector.threat_level(5), "threat level agrees with the director")
+	if err == "":
+		err = _T.assert_true(stats.has("worst_cell") and stats.has("worst_cell_losses"),
+			"the weakest-ground reading is present")
+	_T.free_ui(game)
+	return err
+
+
+func test_the_run_summary_panel_persists_and_names_every_row() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	# The real losing path, not a hand-set flag: this is what a player reaches.
+	game.lives = 1
+	game._on_pest_escaped(null)
+	await _pump(game)
+	var err: String = _T.assert_true(game.game_over, "the run is over")
+	var panel: RunSummary = game.get_node_or_null("SummaryLayer/RunSummary") as RunSummary
+	if err == "":
+		err = _T.assert_true(panel != null, "the post-mortem card exists")
+	if err == "":
+		err = _T.assert_true(panel.visible, "and is on screen")
+	if err == "":
+		# It must not expire. The thing it replaces did, which is the whole issue.
+		game._process(60.0)
+		await _pump(game)
+		err = _T.assert_true(is_instance_valid(panel) and panel.visible,
+			"and is still there a minute later")
+	if err == "":
+		for row: Array in panel.summary_rows():
+			var name: String = "Value_%s" % String(row[0]).replace(" ", "")
+			var label: Label = panel.get_node_or_null(name) as Label
+			err = _T.assert_true(label != null and not label.text.is_empty(),
+				"row %s carries a value" % String(row[0]))
+			if err != "":
+				break
+	if err == "":
+		err = _T.assert_true(panel.get_node_or_null("ReplayButton") != null
+			and panel.get_node_or_null("GateButton") != null,
+			"both ways out of the run are on the card")
+	_T.free_ui(game)
+	return err
+
+
+## _end_run was reachable more than once -- the losing branch calls it and then
+## clears the pest group, and a win can land in the same frame as a clear. The
+## score filing was already guarded; building the UI was not.
+func test_ending_a_run_twice_leaves_exactly_one_summary() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.lives = 1
+	game._on_pest_escaped(null)
+	await _pump(game)
+	game._end_run("again")
+	game._end_run("and again")
+	await _pump(game)
+	var layer: Node = game.get_node_or_null("SummaryLayer")
+	var err: String = _T.assert_true(layer != null, "the summary layer is there")
+	if err == "":
+		var found: int = 0
+		for child: Node in layer.get_children():
+			if child is RunSummary:
+				found += 1
+		err = _T.assert_eq(found, 1, "exactly one card, however many times the run ended")
+	_T.free_ui(game)
+	return err

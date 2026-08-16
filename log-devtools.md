@@ -1319,3 +1319,41 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     and run tests concurrently. Failing that, `name_check --require-compile` that
     shells one `godot --check-only` per changed file — slower than a full lint but
     parallel-safe, and it would turn "names resolve" into "this file builds".
+
+## 2026-08-15 — End-of-run summary panel (plant-tower-defense-cw1)
+
+- Value: **overkill** — the three new headless tests had already pinned the rows,
+  the persistence and the idempotency; runtime confirmed the layering and found
+  nothing wrong with it.
+  - Expected: headless proves the numbers, the node names and idempotency, but it
+    renders nothing. Runtime should reveal whether the card actually sits above the
+    HUD's layer 10 (or the side panel draws over it), whether the translucent
+    backdrop really lets the board's damage map read through, and whether the
+    entrance tween leaves everything at its final position.
+  - Got: `sample-pixels --rect 900,100,240,200` over the side panel read
+    `mean #5e5d4d` against the panel's own `PAPER_DARK #d9c9a8` — dimmed from ~0.85
+    to ~0.37, so the CanvasLayer at 20 does draw over the HUD at 10. The board under
+    the card-free strip read `mean #267045`, still legibly grass, so the run's damage
+    map survives the backdrop. `Back to the gate` landed on `root scene now:
+    TitleScreen`; `Plant another garden` came back with `lives = 10 game_over =
+    False` and no `SummaryLayer`.
+  - Found: nothing. Both button paths and the layering worked first time.
+  - Cheaper: the headless suite plus one screenshot. Layering was the only claim
+    that needed a live renderer, and `sample-pixels` answered it in one call.
+
+- Gap: **the bus cannot pass `null` to a typed Object parameter, so a losing path a
+  unit test drives directly is unreachable from the bridge** —
+  `run-method --node /root/Game --method _on_pest_escaped --args "[null]"` answered
+  `Failed: Argument 0 of /root/Game._on_pest_escaped(): cannot convert Nil (null) to
+  Object`. That signature takes `_pest: Pest` and is deliberately called with null by
+  both `test_lane_pressure_is_committed_even_when_the_last_life_is_lost_mid_wave` and
+  the game's own losing branch, so GDScript accepts it and only the bus does not.
+  Workaround: `set-state game_over true` then `run-method _end_run '["..."]'`, which
+  reaches the same UI but skips the life-loss bookkeeping the real path performs —
+  i.e. the workaround verifies less than the call it replaces, quietly.
+  - [G-026] status: open | seen: 1 | harness: 0.21.0
+  - Improvement: marshal a JSON `null` to the parameter's own nil-able default rather
+    than to a bare `Nil` Variant — GDScript permits `null` for any Object-typed
+    parameter, so the bridge is stricter than the language it drives. Failing that,
+    say so in the error: "the bus cannot type a null Object argument; call a wrapper
+    or set the state directly" would have saved the guessing.

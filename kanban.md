@@ -175,6 +175,89 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
 
 ## Cool new features (idea backlog)
 
+### New this cycle (3 of 30) — grown from the four features above
+
+- **The message label has one slot and no queue, and the uproot gate is what proved it
+  costs something.** `Hud.show_message` (hud.gd:529) assigns `_message_label.text` and
+  resets `_message_left` — a second call overwrites the first outright, and `_process`
+  only ever counts one timer down. `request_uproot()` puts the whole instruction
+  ("Click Uproot again to dig up your X") in that slot for exactly the 4s the arming
+  lasts, so any of the four things that can speak during those seconds erases the only
+  explanation of what the red button now does: a husk sweep (`"Composted a husk for %d
+  seeds."`, 2s), a wave start, a Sunflower packet unlock, or a `purchase_failed` from a
+  misclick on the plant bar. The armed button stays armed and red with nothing on screen
+  saying why. Worse at the other end of a run: `_end_run` asks for the post-mortem line
+  at 30s and `_tick_uproot_confirm` can wipe it 4s later with "Uproot cancelled." A
+  two-deep queue, or a priority argument that lets a long message refuse to be stomped
+  by a 2s one, is the whole fix.
+- **The wave readout now says how bad the next wave is and still never says when it
+  arrives.** `Game.PREP_SECONDS` is 18.0 and `_process` counts it down silently;
+  `_check_wave_cleared` announces "Next one grows in 18 seconds" for 6.0s and then the
+  label blanks, leaving 12 of the 18 seconds with nothing on screen ticking. The threat
+  tint made "wave 14 is much worse than wave 9" preattentive, which sharpens the missing
+  half rather than filling it — a player who has just read a red `threat 11` has no way
+  to know whether they have twelve seconds to buy a Chomp or two. The `NextWaveButton`
+  is the natural home: it already knows it is enabled, and a filling bar behind its
+  label (or "Grow the next wave (12)") costs one `_process` line and no new node.
+- **A mutation is a sprite tint and nothing else, and the two that change the rules are
+  the two nothing names.** `Pest.apply_mutation` tints armoured `(0.58, 0.66, 0.78)`,
+  winged `(0.82, 0.94, 1.0, 0.88)` and hungry `(1.0, 0.52, 0.5)` — that is the entire
+  player-facing signal, over a 64px sprite that is already coloured. Winged is the one
+  `ChompFlower._nearest_free_pest` skips outright (`if pest.held_by != null or
+  pest.is_winged: continue`), so the player learns about it as "my Chomp is broken";
+  hungry is the one that runs `EAT_DPS` 14.0/s into a plant with 40 `MAX_HEALTH`, i.e.
+  destroys a Sunflower in under three seconds. The selection panel just learned to show
+  a plant's health while it is being chewed — the obvious companion is naming what is
+  chewing it. A one-word tag over a mutated pest, or the hungry pest's target getting the
+  same dashed amber ring `PlacementPreview.at_risk` already draws at placement time, would
+  make the trait readable before the bar starts moving instead of after.
+- **The common packet silently becomes a cheaper rare packet, and both tooltips then
+  lie.** `SeedBank.buy_packet` filters `locked` by `PlantCatalog.tier(id) <= max_tier`
+  and, when that pool comes back empty, falls back to `pool = locked`. Only the Chomp
+  Flower is tier 1 and locked at start, so the moment a player unlocks it the only thing
+  left is the tier-2 Sunflower — and a 20-seed common packet rolls it with certainty,
+  while `RarePacketButton` still sits underneath asking 45 for the same guaranteed pull.
+  The tooltips are the part that hurts: `PacketButton` says "tier 1 only" and
+  `RarePacketButton` says "the only reliable way to a Seed Sunflower", both false at
+  exactly the point in the run where a player is deciding between them. The two packet
+  buttons are the last static things in a panel whose bottom half now reports live state
+  — they could say "1 plant still in packets" and disable the rare tier when its extra
+  reach buys nothing.
+- **Four new cues shipped this cycle and the game made no sound for any of them.** There
+  is no `AudioStreamPlayer` anywhere in `game/` (the only match in the repo is the
+  harness's own `scene_validator.gd:131`, checking for a missing stream on a node type
+  this project never instantiates), and `assets/` holds `kenney/` and `sprites/` and
+  nothing else. So a wave starting, a husk rotting, an armed Uproot, a plant being eaten
+  and a threat level climbing all read through the same silent 15px label. The two
+  highest-value sounds are the ones with no visual at all right now: a husk expiring in
+  `CompostMeter._process`, which currently just erases the id and takes the seeds with
+  it, and the uproot commit. Note that `devtools_config.json` already sets `"mute": true`,
+  so adding audio does not put a noise into every headless run — the harness is set up
+  for this already.
+- **The HUD is now the only part of the game that never moves.** `game/hud.gd` contains
+  zero `create_tween` calls; every tween in the project is in-world (`plant.gd:72` plant
+  pop, `corn_cobbler.gd:70` recoil, `chomp_flower.gd:142` bite, `sunflower.gd:33` bloom,
+  `pest.gd:262` death linger) or on the two `GardenTheme`-styled screens
+  (`title_screen.gd:287`, `notebook_screen.gd:415`). So `_selection_box.visible = true`
+  snaps a 152px panel into existence, `show_banner` pops 48px of text at full opacity,
+  the Uproot relabel changes colour between one frame and the next, and `threat_color`
+  jumps a whole segment of its ramp the instant a wave starts rather than easing there —
+  which throws away most of what a colour ramp is for. `GardenTheme.animations_enabled()`
+  (`DisplayServer.get_name() != "headless"`) is the gate that already exists and already
+  keeps this out of the test runs; hud.gd's own header says it deliberately styles itself
+  and that is fine, but it can still borrow the one function.
+- **A Corn Cobbler at "bunch" looks exactly like one at "single".** `LEVELS` moves
+  `kernels` 1 → 2 → 5 and `spread_degrees` 0 → 14 → 52, and `upgrade()` does nothing but
+  `level += 1` — `Plant._build_visuals` loaded one texture off `PlantCatalog.texture_path`
+  and never touches it again, and `RANGE` is a flat 176.0 at every level. The only place
+  in the entire game that admits a cob is fully grown is the selection panel string
+  "%s — %s\n%d kernel(s) per shot", which requires clicking that specific plant. On a
+  board with six cobs at three different levels, a player deciding where to spend 45 seeds
+  has to click every one. The design doc draws the upgrade as a visibly wider spray, so
+  the cue is already specified: a second sprite at bunch level, or three kernel pips drawn
+  under the cob by the existing `SelectionMarker`-style sibling node, which is the pattern
+  that already solved "a subclass overrides `_draw()` and swallows the overlay".
+
 ### New this cycle (2 of 30) — grown from watching the five features run
 
 - **Uproot has no undo and no confirmation.** Verifying the placement preview meant
