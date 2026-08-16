@@ -970,3 +970,394 @@ func test_an_interrupted_save_is_recovered_rather_than_read_as_zero() -> String:
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH), written,
 				"and the save is back where it belongs")
 		return err)
+
+
+# -- budget floors ----------------------------------------------------------
+#
+# Game.BUDGET_FLOOR and the startup warning that reads it. In the economy file
+# because that is what a budget is here: a number one part of the game may spend
+# out of another part's ceiling, priced once and checked on the way past.
+#
+# The question these tests settle is not "does a warning appear" but "does it
+# appear ONLY when it should". Three of the four declared budgets are already
+# `tight` and one is already `spent` on an unmodified build, so a rule that fired
+# on either would print four lines on every launch of a project that is behaving
+# as designed -- and four warnings that are always there are zero warnings. So the
+# first test asserts a real launch of the real scene warns about nothing WHILE at
+# least one budget is tight or spent, and the rest stage one budget through its
+# floor and assert the other three stay silent.
+#
+# push_warning() cannot be intercepted from a test, so what is asserted is the
+# list Game.check_budgets() warns from. The push is one line over that list; what
+# goes in it is the whole feature.
+
+
+const DEVTOOLS_EXT := "res://devtools_ext/commands.gd"
+
+
+## A copy of `entry` with its headroom moved to `headroom`, built through the
+## same constructor every real measurement goes through.
+##
+## Deliberately not a hand-written Dictionary literal: a forged entry that had
+## drifted from the real shape would let every test below pass against a fiction.
+func _budget_with_headroom(entry: Dictionary, headroom: float) -> Dictionary:
+	var observations: Array[String] = ["staged by the test"]
+	return Game.computed_budget(str(entry["id"]), str(entry["constant"]),
+		str(entry["declared_in"]), str(entry["spends"]),
+		float(entry["ceiling"]) - headroom, float(entry["ceiling"]), str(entry["units"]),
+		str(entry["measured_by"]), str(entry["when_it_runs_out"]), observations)
+
+
+## The live entries with one id swapped for `replacement`, or dropped entirely
+## when `replacement` is empty. Returns [] when the id was not in the list, so
+## the caller's vacuity guard is a size check rather than a null check.
+func _entries_swapping(entries: Array[Dictionary], id: String,
+		replacement: Dictionary) -> Array[Dictionary]:
+	var staged: Array[Dictionary] = []
+	var found: bool = false
+	for entry: Dictionary in entries:
+		if str(entry["id"]) != id:
+			staged.append(entry)
+			continue
+		found = true
+		if not replacement.is_empty():
+			staged.append(replacement)
+	if not found:
+		return []
+	return staged
+
+
+## One entry out of a list by id, or {} when it is not there.
+func _entry_by_id(entries: Array[Dictionary], id: String) -> Dictionary:
+	for entry: Dictionary in entries:
+		if str(entry["id"]) == id:
+			return entry
+	return {}
+
+
+## The noise question, settled by the startup path itself rather than by argument.
+##
+## The scene is instantiated and nothing else: Game._ready() runs check_budgets()
+## on its own, so this is the reading a player's launch produces. Two halves, and
+## the second is the one that matters -- zero warnings would prove nothing if
+## every budget had room to spare, so the tight-or-spent count is asserted to be
+## non-zero in the same run.
+func test_a_clean_launch_warns_about_no_budget_at_all() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var report: Dictionary = game.budget_report
+	err = _T.assert_gt(report.size(), 0,
+		"Game._ready() ran the startup budget check at all -- an empty report is the check "
+			+ "never running, which reads exactly like a clean one")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	err = _T.assert_gt(int(report["declared"]), 0, "there are declared floors to grade")
+	if err == "":
+		err = _T.assert_eq(int(report["declared"]), Game.BUDGET_FLOOR.size(),
+			"and the report graded every one of them")
+	if err == "":
+		# The denominator. "0 warnings" over two of four budgets is the failure
+		# this whole check exists against, so a floor whose budget could not be
+		# measured must not be able to hide inside a clean verdict.
+		err = _T.assert_eq(int(report["measured"]), int(report["declared"]),
+			"every declared budget was actually measured: %s" % report["summary"])
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var entries: Array[Dictionary] = game.budget_entries(30)
+	var near_the_end: int = 0
+	for entry: Dictionary in entries:
+		if not Game.BUDGET_FLOOR.has(str(entry["id"])):
+			continue
+		if str(entry["state"]) == "tight" or str(entry["state"]) == "spent":
+			near_the_end += 1
+	err = _T.assert_gt(near_the_end, 0,
+		"at least one declared budget really is tight or spent on this build -- without that, "
+			+ "warning about nothing proves nothing")
+	if err == "":
+		var warnings: Array = report["warnings"]
+		# This assertion is also the carrier: push_warning goes to a log nobody
+		# opens, and this line fails a /verify the moment a budget is spent past
+		# what BUDGET_FLOOR declares, quoting the warning that says how to accept
+		# it. %d budgets being tight or spent alongside it is the point -- those
+		# are by design and are deliberately not warnings.
+		err = _T.assert_eq(warnings.size(), 0,
+			("no declared budget has fallen through its floor (%d of them are tight or spent, "
+				+ "which is the designed state and not a warning) -- %s")
+					% [near_the_end, warnings])
+	_T.free_ui(game)
+	return err
+
+
+## The other half: the rule does fire, and it names one budget.
+##
+## The husk sweep is staged a whole slip past its floor and the other three are
+## left exactly as the running game measured them. One line, about the husk, and
+## no mention of the three that were already tight before the test touched
+## anything.
+func test_a_budget_pushed_through_its_floor_is_the_only_one_warned_about() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null and game.board != null,
+		"the main scene loads and brought its board")
+	if err != "":
+		return err
+	var entries: Array[Dictionary] = game.budget_entries(30)
+	err = _T.assert_gt(entries.size(), 0, "the run priced its budgets")
+	if err == "":
+		err = _T.assert_true(Game.BUDGET_FLOOR.has("husk_click"),
+			"husk_click has a declared floor to fall through")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var floor_left: float = float(Game.BUDGET_FLOOR["husk_click"])
+	var live: Dictionary = _entry_by_id(entries, "husk_click")
+	err = _T.assert_gt(live.size(), 0, "and the run reports husk_click")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var spent_further: Dictionary = _budget_with_headroom(live,
+		floor_left - Game.BUDGET_SLIP - 1.0)
+	var staged: Array[Dictionary] = _entries_swapping(entries, "husk_click", spent_further)
+	err = _T.assert_eq(staged.size(), entries.size(),
+		"the staged list is the live one with husk_click swapped, nothing else")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var lines: Array[String] = Game.budget_regressions(staged)
+	err = _T.assert_eq(lines.size(), 1,
+		"spending one budget past its floor warns once, not once per tight budget: %s" % [lines])
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var line: String = lines[0]
+	err = _T.assert_true(line.contains("husk_click"), "and the line names the budget: %s" % line)
+	if err == "":
+		err = _T.assert_true(line.contains("CompostMeter.COLLECT_RADIUS"),
+			"and the constant whose move spent it: %s" % line)
+	if err == "":
+		# Without this the reader is told a number is wrong and not how to accept
+		# it, which is how a warning becomes permanent furniture.
+		err = _T.assert_true(line.contains("BUDGET_FLOOR"),
+			"and how to accept the spend if it was intended: %s" % line)
+	if err == "":
+		for other: String in Game.BUDGET_FLOOR:
+			if other == "husk_click":
+				continue
+			err = _T.assert_false(line.contains(other),
+				"and says nothing about %s, which is exactly as tight as it was before" % other)
+			if err != "":
+				break
+	_T.free_ui(game)
+	return err
+
+
+## The direction of the comparison, which is the one bug a staged regression test
+## cannot catch on its own: a budget with room left is silence, however tight its
+## own `state` label calls it.
+func test_a_budget_above_its_floor_stays_silent_however_tight_it_is_called() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var entries: Array[Dictionary] = game.budget_entries(30)
+	err = _T.assert_gt(entries.size(), 0, "the run priced its budgets")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var live: Dictionary = _entry_by_id(entries, "hud_readouts")
+	err = _T.assert_gt(live.size(), 0, "the run reports hud_readouts")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# Given back exactly its floor, and given back a hundred pixels more. Neither
+	# is a spend, and the first is the boundary the second would never test.
+	var floor_left: float = float(Game.BUDGET_FLOOR["hud_readouts"])
+	var just_over: Array[Dictionary] = _entries_swapping(entries, "hud_readouts",
+		_budget_with_headroom(live, floor_left))
+	var far_over: Array[Dictionary] = _entries_swapping(entries, "hud_readouts",
+		_budget_with_headroom(live, floor_left + 100.0))
+	err = _T.assert_gt(just_over.size(), 0, "hud_readouts was staged at its floor")
+	if err == "":
+		err = _T.assert_eq(Game.budget_regressions(just_over).size(), 0,
+			"a budget sitting exactly on its floor has spent nothing: %s"
+				% [Game.budget_regressions(just_over)])
+	if err == "":
+		err = _T.assert_eq(Game.budget_regressions(far_over).size(), 0,
+			"and one with a hundred pixels more is not a regression either: %s"
+				% [Game.budget_regressions(far_over)])
+	if err == "":
+		var staged_state: String = str(_entry_by_id(just_over, "hud_readouts")["state"])
+		err = _T.assert_eq(staged_state, "tight",
+			"and it is still labelled tight while it goes unwarned -- the two verdicts answer "
+				+ "different questions, which is the whole argument for the floor")
+	_T.free_ui(game)
+	return err
+
+
+## A declared budget that could not be measured is a hole in the check, and a
+## hole reported as a pass is how a check stops working without anyone noticing.
+func test_a_declared_budget_that_cannot_be_measured_warns_rather_than_passes() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var entries: Array[Dictionary] = game.budget_entries(30)
+	err = _T.assert_gt(entries.size(), 0, "the run priced its budgets")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var blind: Dictionary = Game.uncomputed_budget(Game.BUDGET_UNMEASURED, "hud_stats_row",
+		"Hud.stats_row_budget()", "res://game/hud.gd", "the stats row's contents",
+		"staged by the test: no StatsRow to measure",
+		"the readouts push the wave button off the right edge of the bar",
+		Game.no_budget_observations())
+	var staged: Array[Dictionary] = _entries_swapping(entries, "hud_stats_row", blind)
+	err = _T.assert_eq(staged.size(), entries.size(), "hud_stats_row was swapped for a blind one")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var lines: Array[String] = Game.budget_regressions(staged)
+	err = _T.assert_eq(lines.size(), 1,
+		"an unmeasured budget with a floor is worth exactly one line: %s" % [lines])
+	if err == "":
+		err = _T.assert_true(lines[0].contains("hud_stats_row"),
+			"which names it: %s" % lines[0])
+	if err == "":
+		err = _T.assert_true(lines[0].contains("hole"),
+			"and says a budget that cannot be read is not a budget that is fine: %s" % lines[0])
+	_T.free_ui(game)
+	return err
+
+
+## A floor guarding a budget that no longer exists is a check that has quietly
+## stopped running -- the failure mode of every table of expectations kept beside
+## the thing it describes.
+func test_a_floor_whose_budget_has_vanished_is_warned_about() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var entries: Array[Dictionary] = game.budget_entries(30)
+	err = _T.assert_gt(entries.size(), 0, "the run priced its budgets")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var without: Array[Dictionary] = _entries_swapping(entries, "pest_road_ceiling", {})
+	err = _T.assert_eq(without.size(), entries.size() - 1,
+		"pest_road_ceiling was dropped, as a rename or a deletion would drop it")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var lines: Array[String] = Game.budget_regressions(without)
+	err = _T.assert_eq(lines.size(), 1, "the orphaned floor is reported once: %s" % [lines])
+	if err == "":
+		err = _T.assert_true(lines[0].contains("pest_road_ceiling"),
+			"and names the floor with nothing behind it: %s" % lines[0])
+	_T.free_ui(game)
+	return err
+
+
+## Every floor names a budget the run actually reports, on the real build. The
+## test above proves the rule catches an orphaned floor; this one proves there is
+## not one sitting in the table right now.
+func test_every_declared_floor_names_a_budget_this_run_measures() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	err = _T.assert_gt(Game.BUDGET_FLOOR.size(), 0, "there are floors declared to check")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var entries: Array[Dictionary] = game.budget_entries(30)
+	var checked: int = 0
+	for id: String in Game.BUDGET_FLOOR:
+		var entry: Dictionary = _entry_by_id(entries, id)
+		err = _T.assert_gt(entry.size(), 0,
+			"the floor declared for '%s' names a budget the run prices" % id)
+		if err == "":
+			err = _T.assert_true(bool(entry["computed"]),
+				"and %s comes back with a number: %s" % [id, entry["summary"]])
+		if err == "":
+			err = _T.assert_gt(str(entry["units"]).length(), 0,
+				"and the units its floor is written in: %s" % [entry])
+		if err != "":
+			break
+		checked += 1
+	if err == "":
+		err = _T.assert_eq(checked, Game.BUDGET_FLOOR.size(),
+			"every declared floor was checked, not an empty table passing quietly")
+	_T.free_ui(game)
+	return err
+
+
+## The startup warning and `cmd budgets` are one arithmetic, not two.
+##
+## The reason the ledger moved onto Game at all. If the verb kept its own copy the
+## two would agree on the day they were written and disagree on the day someone
+## edited one of them -- and the day that matters is the second one. So the verb's
+## reply is compared entry for entry against the run's own pricing, and the husk
+## entry against husk_click_margin(), the number its gate fails on.
+func test_the_budgets_verb_and_the_startup_check_price_the_same_budgets() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null and game.board != null,
+		"the main scene loads and brought its board")
+	if err != "":
+		return err
+	var ext = preload(DEVTOOLS_EXT).new()
+	ext._dev = game
+	var reply: Dictionary = ext._cmd_budgets({"waves": 30})
+	err = _T.assert_true(bool(reply["success"]), "the verb answers: %s" % reply["message"])
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var from_verb: Array = reply["data"]["budgets"]
+	var from_run: Array[Dictionary] = game.budget_entries(30)
+	err = _T.assert_gt(from_run.size(), 0, "the run prices budgets of its own")
+	if err == "":
+		err = _T.assert_gt(from_verb.size(), from_run.size(),
+			"and the verb reports those plus the two it needs a bridge for")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var compared: int = 0
+	for entry: Dictionary in from_run:
+		var id: String = str(entry["id"])
+		var mirror: Dictionary = {}
+		for candidate: Dictionary in from_verb:
+			if str(candidate["id"]) == id:
+				mirror = candidate
+				break
+		err = _T.assert_gt(mirror.size(), 0, "the verb reports %s too" % id)
+		if err == "":
+			err = _T.assert_float_eq(float(mirror["headroom"]), float(entry["headroom"]), 0.001,
+				"and prices %s identically (%s vs %s)"
+					% [id, mirror["headroom"], entry["headroom"]])
+		if err == "":
+			err = _T.assert_eq(str(mirror["state"]), str(entry["state"]),
+				"and grades %s the same way" % id)
+		if err != "":
+			break
+		compared += 1
+	if err == "":
+		err = _T.assert_eq(compared, from_run.size(),
+			"every budget the run prices was compared, not an empty loop passing quietly")
+	if err == "":
+		var husk: Dictionary = _entry_by_id(from_run, "husk_click")
+		err = _T.assert_gt(husk.size(), 0, "the run prices the husk sweep")
+		if err == "":
+			err = _T.assert_float_eq(float(husk["headroom"]),
+				PlacementPreview.husk_click_margin(game.board), 0.001,
+				"and it is husk_click_margin() itself, the number the gate fails on")
+	if err == "":
+		err = _T.assert_eq(int(reply["data"]["under_floor"]), 0,
+			"and the verb grades this build against the floors as clean too: %s"
+				% [reply["data"]["warnings"]])
+	_T.free_ui(game)
+	return err
