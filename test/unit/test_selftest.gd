@@ -8623,3 +8623,387 @@ func test_a_queen_floats_her_health_bar_clear_of_her_own_sprite() -> String:
 		err = _T.assert_float_eq(Pest.health_bar_top_for(1.0), Pest.HEALTH_BAR_TOP, 0.0001,
 			"and so does a beetle")
 	return err
+
+
+## A bare overlay, built for the base class's own builder surface.
+##
+## The three shipped overlays each answer a second question at the same time —
+## Keys is about the InputMap, Options about three persisted flags, the notebook
+## about its pages — and asserting `add_row_button` through any of them is
+## asserting that screen's row table as much as the builder. This one supplies a
+## paper and nothing else, so what it builds is exactly what OverlayScreen builds.
+##
+## Its node names are deliberately the contract names (`Heading`, `Note`, `Row0`,
+## `RowButton0`, `BackButton`) rather than probe-specific ones: the point of the
+## checks below is that the base hands those names out, so a probe that asked for
+## its own would be testing the wrong thing.
+class _OverlayProbe extends OverlayScreen:
+	## Deliberately not any shipped screen's PANEL. A probe that borrowed
+	## OptionsScreen.PANEL would pass just as well against a builder that ignored
+	## `panel_rect()` and hardcoded those numbers.
+	const PANEL := Rect2(200.0, 120.0, 720.0, 400.0)
+	const HEADING_Y: float = 140.0
+	const NOTE_Y: float = 186.0
+	const ROW_Y: float = 240.0
+	const ROW_INSET: float = 32.0
+	const LABEL_BOX := Vector2(300.0, 40.0)
+	## Column offset from the paper's left edge, chosen so the row button's right
+	## edge (700 + 150 = 850) still clears the paper's (920).
+	const BUTTON_X: float = 500.0
+
+	var heading: Label
+	var note: Label
+	var row_label: Label
+	var row_button: Button
+	var back: Button
+
+	func panel_rect() -> Rect2:
+		return PANEL
+
+	func _build_contents() -> void:
+		heading = add_heading("Probe Screen", HEADING_Y)
+		note = add_note_label("One line the screen has to say something in.", NOTE_Y)
+		row_label = add_row_label("Row0", "Sound effects",
+			Vector2(PANEL.position.x + ROW_INSET, ROW_Y), LABEL_BOX, GardenTheme.INK)
+		row_button = add_row_button(0, Vector2(PANEL.position.x + BUTTON_X, ROW_Y))
+		row_button.text = "On"
+		back = add_back_button(Vector2(PANEL.position.x + ROW_INSET, footer_y()))
+
+
+func test_the_overlay_base_builds_each_piece_of_its_chrome_where_it_is_told() -> String:
+	## add_heading / add_note_label / add_row_label / add_row_button /
+	## add_back_button are the surface three screens were each hand-rolling before
+	## OverlayScreen owned it, and the failure that extraction can still have is
+	## silent: a builder that places against numbers of its own rather than
+	## against `panel_rect()` looks right on the one screen it was lifted out of
+	## and wrong on the other two. So every assertion here is against the probe's
+	## own paper, which is a rect no shipped screen uses.
+	var probe := await _T.instantiate_ui(_OverlayProbe.new(), Vector2i(1152, 648)) as _OverlayProbe
+	var panel: Rect2 = probe.panel_rect()
+
+	var err: String = _T.assert_eq(String(probe.heading.name), "Heading",
+		"add_heading gives the heading the name the screens look it up by")
+	if err == "":
+		err = _T.assert_eq(probe.heading.text, "Probe Screen",
+			"and the text it was handed")
+	if err == "":
+		err = _T.assert_eq(probe.heading.position,
+			Vector2(panel.position.x, _OverlayProbe.HEADING_Y),
+			"placed at this paper's left edge and the y it was given, not at a rect of its own")
+	if err == "":
+		err = _T.assert_float_eq(probe.heading.size.x, panel.size.x, 0.001,
+			"spanning this paper's whole width, which is what makes the centring mean anything")
+	if err == "":
+		# Not an equality: a Control's size is clamped UP to its combined minimum,
+		# and a 30px heading font measures 42 against the 40 add_heading asks for.
+		# The claim worth making is that the box is at least the one requested.
+		err = _T.assert_gte(probe.heading.size.y, 40.0,
+			"and at least the 40px tall it was built at (%.1f)" % probe.heading.size.y)
+	if err == "":
+		err = _T.assert_eq(probe.heading.horizontal_alignment, HORIZONTAL_ALIGNMENT_CENTER,
+			"centred across the paper, which is what makes it read as the title")
+
+	if err == "":
+		err = _T.assert_eq(String(probe.note.name), OverlayScreen.NOTE_NAME,
+			"add_note_label builds the `Note` node the bridge and the suite read by name")
+	if err == "":
+		err = _T.assert_true(probe.get_node_or_null(OverlayScreen.NOTE_NAME) == probe.note,
+			"and it is that node, not a second Label sharing the name")
+	if err == "":
+		err = _T.assert_eq(probe.note.position,
+			Vector2(panel.position.x, _OverlayProbe.NOTE_Y),
+			"sized to the paper at the y it was given")
+	if err == "":
+		err = _T.assert_float_eq(probe.note.size.x, panel.size.x, 0.001,
+			"as wide as the paper, which is the budget the clip below is measured against")
+	if err == "":
+		err = _T.assert_gte(probe.note.size.y, 24.0,
+			"and at least the 24px line it was built at (%.1f)" % probe.note.size.y)
+	if err == "":
+		err = _T.assert_true(probe.note.clip_text,
+			"the note's box is its budget: a longer sentence is trimmed rather than run off the paper")
+	if err == "":
+		err = _T.assert_eq(probe.note.text_overrun_behavior, TextServer.OVERRUN_TRIM_ELLIPSIS,
+			"and trimmed with an ellipsis, so a cut sentence says it was cut")
+	if err == "":
+		# get_minimum_size() reports the clip stub on a clipped Label, so the
+		# obvious width assertion would pass unconditionally here. text_width
+		# measures through the label's own resolved font.
+		err = _T.assert_true(_T.text_width(probe.note) <= probe.note.size.x,
+			"this note actually fits its box (%.1f of %.1f px)"
+				% [_T.text_width(probe.note), probe.note.size.x])
+
+	if err == "":
+		err = _T.assert_eq(String(probe.row_label.name), "Row0",
+			"add_row_label takes the node name from its caller — the two column layouts differ")
+	if err == "":
+		err = _T.assert_eq(probe.row_label.text, "Sound effects",
+			"and says what the row is")
+	if err == "":
+		err = _T.assert_eq(probe.row_label.position,
+			Vector2(panel.position.x + _OverlayProbe.ROW_INSET, _OverlayProbe.ROW_Y),
+			"at the cell it was handed")
+	if err == "":
+		err = _T.assert_eq(probe.row_label.size, _OverlayProbe.LABEL_BOX,
+			"in the box it was handed — the column widths are the screens', not the base's")
+	if err == "":
+		err = _T.assert_eq(probe.row_label.get_theme_color("font_color"), GardenTheme.INK,
+			"in the colour it was handed — the colour is the caller's, the styling is the base's")
+	if err == "":
+		err = _T.assert_eq(probe.row_label.horizontal_alignment, HORIZONTAL_ALIGNMENT_LEFT,
+			"left-aligned unless a caller asks otherwise")
+	if err == "":
+		err = _T.assert_true(probe.row_label.clip_text,
+			"and clipped, the same budget the note gets")
+
+	if err == "":
+		err = _T.assert_eq(String(probe.row_button.name), "RowButton0",
+			"add_row_button names the button RowButton%d — the name the bridge presses")
+	if err == "":
+		err = _T.assert_eq(probe.row_button.size, OverlayScreen.ROW_BUTTON_SIZE,
+			"at the shared row-button size, which is 40 tall because `findings` gates an interactive Control at 40x40")
+	if err == "":
+		err = _T.assert_eq(probe.row_button.position,
+			Vector2(panel.position.x + _OverlayProbe.BUTTON_X, _OverlayProbe.ROW_Y),
+			"where it was put")
+	if err == "":
+		err = _T.assert_true(probe.get_node_or_null("RowButton0") == probe.row_button,
+			"and reachable at that path, which is what a bridge recipe presses")
+
+	if err == "":
+		err = _T.assert_eq(String(probe.back.name), OverlayScreen.BACK_BUTTON_NAME,
+			"add_back_button builds the `BackButton` every overlay is left by")
+	if err == "":
+		err = _T.assert_eq(probe.back.text, OverlayScreen.BACK_TEXT,
+			"wearing the one Back caption")
+	if err == "":
+		err = _T.assert_eq(probe.back.size, OverlayScreen.BACK_BUTTON_SIZE,
+			"at the default box, since this screen asked for no other")
+	if err == "":
+		err = _T.assert_true(probe.back_button() == probe.back,
+			"and the screen keeps it: back_button() reports the one add_back_button returned")
+
+	# Nothing built above may run off the paper or sit on top of anything else.
+	# The builders are the only thing that placed any of it, so this is a
+	# statement about them rather than about a screen's own row table.
+	if err == "":
+		err = _overlay_content_fits_and_stands_clear(probe)
+
+	# The y and the alignment are the caller's, and these are asserted on the
+	# return value of the call itself rather than on a variable that came out of
+	# one -- the same distinction suite_reach_check's assert-argument note is
+	# about. They go AFTER the enclosure sweep on purpose: they add a second
+	# heading and a second note to the same paper, which is a deliberate overlap.
+	if err == "":
+		err = _T.assert_float_eq(probe.add_heading("Second", 300.0).position.y, 300.0, 0.001,
+			"add_heading puts a heading at the y it is handed, every time it is called")
+	if err == "":
+		err = _T.assert_float_eq(probe.add_note_label("Second note", 320.0).position.y, 320.0,
+			0.001,
+			"and add_note_label the same -- neither carries a y of its own")
+	if err == "":
+		err = _T.assert_eq(probe.add_row_label("RowKey9", "F",
+				Vector2(240.0, 340.0), Vector2(120.0, 40.0), GardenTheme.INK_SOFT,
+				HORIZONTAL_ALIGNMENT_RIGHT).horizontal_alignment,
+			HORIZONTAL_ALIGNMENT_RIGHT,
+			"add_row_label honours an alignment a caller asks for, rather than always left")
+	_T.free_ui(probe)
+	return err
+
+
+func test_the_overlay_footer_is_derived_from_the_paper_and_measured_against_the_rows() -> String:
+	## footer_y() is the y a footer sits at, derived rather than written down per
+	## screen, and add_row_button is what registers a row with the rule that
+	## measures against it. The pair is asserted together because the failure is
+	## the pair: a row the base never saw is a row the FOOTER_GAP rule silently
+	## skips, and a skipped row leaves a footer flush against content while every
+	## intersection check ever written still passes.
+	var probe := await _T.instantiate_ui(_OverlayProbe.new(), Vector2i(1152, 648)) as _OverlayProbe
+	var panel: Rect2 = probe.panel_rect()
+
+	var err: String = _T.assert_float_eq(probe.footer_y(),
+		panel.position.y + panel.size.y - OverlayScreen.FOOTER_HEIGHT - OverlayScreen.FOOTER_INSET,
+		0.001,
+		"footer_y() is read up from the foot of THIS paper (%.1f), not from a constant"
+			% probe.footer_y())
+	if err == "":
+		err = _T.assert_true(panel.encloses(Rect2(probe.back.position,
+				Vector2(probe.back.size.x, OverlayScreen.FOOTER_HEIGHT))),
+			"so a FOOTER_HEIGHT-tall footer placed at it still lands on the paper")
+	if err == "":
+		err = _T.assert_true(probe.has_rows(),
+			"the probe's single row registered itself, so the gap rule applies to it")
+	if err == "":
+		err = _T.assert_gte(probe.footer_clearance(), OverlayScreen.FOOTER_GAP,
+			"and the footer stands clear of it by at least FOOTER_GAP (%.1f)"
+				% probe.footer_clearance())
+
+	# A second row, added through the builder, has to move the measured clearance
+	# by exactly its own pitch. A builder that returned a Button without
+	# registering it would leave this number unchanged — and unchanged is exactly
+	# what a silently skipped row looks like.
+	var before: float = probe.footer_clearance()
+	if err == "":
+		err = _T.assert_eq(String(probe.add_row_button(1,
+				Vector2(panel.position.x + _OverlayProbe.BUTTON_X,
+					_OverlayProbe.ROW_Y + OverlayScreen.ROW_HEIGHT)).name),
+			"RowButton1",
+			"a second row is numbered by the index it was given, not by its arrival order in the tree")
+	if err == "":
+		err = _T.assert_float_eq(probe.footer_clearance(), before - OverlayScreen.ROW_HEIGHT,
+			0.001,
+			"and it is measured by the rule: clearance fell one ROW_HEIGHT, %.1f to %.1f"
+				% [before, probe.footer_clearance()])
+	_T.free_ui(probe)
+	return err
+
+
+func test_the_back_button_the_overlay_base_builds_answers_through_back_requested() -> String:
+	## The whole point of add_back_button is that the screen never learns who
+	## opened it: it wires `pressed` to `back_requested` and the opener listens.
+	## A Back that is built but unwired is a dead end with no way out of the
+	## overlay, and it looks identical in every layout assertion above.
+	var probe := await _T.instantiate_ui(_OverlayProbe.new(), Vector2i(1152, 648)) as _OverlayProbe
+	var fired: Array[int] = [0]
+	probe.back_requested.connect(func() -> void: fired[0] += 1)
+
+	var err: String = _T.assert_eq(fired[0], 0,
+		"nothing has asked to go back yet")
+	if err == "":
+		err = _T.assert_true(probe.get_node(OverlayScreen.BACK_BUTTON_NAME) == probe.back_button(),
+			"the button at the contract path is the one the screen kept")
+	if err == "":
+		probe.back.pressed.emit()
+		err = _T.assert_eq(fired[0], 1,
+			"pressing it emits back_requested exactly once — add_back_button did the wiring, not the screen")
+
+	# The box is a parameter with a default, and the default is the half that
+	# gets exercised by every shipped screen. This is the other half.
+	var wide: Button = null
+	if err == "":
+		err = _T.assert_eq(probe.add_back_button(Vector2(panel_gap_x(probe), probe.footer_y()),
+				Vector2(220.0, 44.0)).size,
+			Vector2(220.0, 44.0),
+			"a caller that hands add_back_button a box gets that box, not BACK_BUTTON_SIZE")
+		wide = probe.back_button()
+	if err == "":
+		err = _T.assert_true(wide != probe.back,
+			"and the screen now tracks that one instead of the first — back_button() reports the last Back built")
+	if err == "":
+		err = _T.assert_eq(wide.size, Vector2(220.0, 44.0),
+			"which is the wide one, so back_button() did not merely keep reporting the original")
+	if err == "":
+		wide.pressed.emit()
+		err = _T.assert_eq(fired[0], 2,
+			"which is wired to the same signal rather than to nothing")
+	_T.free_ui(probe)
+	return err
+
+
+## Where a second footer button can sit on `screen` without landing on the first.
+## A helper only so the test above reads as one thought; the number is the paper's
+## right half.
+func panel_gap_x(screen: OverlayScreen) -> float:
+	var panel: Rect2 = screen.panel_rect()
+	return panel.position.x + panel.size.x / 2.0
+
+
+func test_the_title_menu_pairs_its_secondary_destinations_two_to_a_row() -> String:
+	## menu_rows IS the shape of the title menu: button_rect, menu_bottom,
+	## menu_capacity and _link_focus every one of them read it, so a wrong row
+	## shape is a menu drawn wrong, a hint placed wrong, and arrow keys that walk
+	## a grid that is not on screen. The property that has to hold for any count
+	## is that every destination appears exactly once, in reading order.
+	var err: String = _T.assert_eq(TitleScreen.menu_rows(0).size(), 0,
+		"an empty menu has no rows — the loop terminates rather than emitting one")
+	if err == "":
+		err = _T.assert_eq(_menu_row_shape(TitleScreen.MENU_BUTTON_NAMES.size()),
+			[[0], [1], [2, 3], [4]],
+			"the shipped menu is two full-width primaries, one pair, and a lone trailing secondary")
+	if err == "":
+		err = _T.assert_eq(_menu_row_shape(6), [[0], [1], [2, 3], [4, 5]],
+			"a sixth destination fills the hole beside the fifth rather than opening a new row")
+	if err == "":
+		err = _T.assert_eq(_menu_row_shape(TitleScreen.PRIMARY_COUNT),
+			[[0], [1]],
+			"a menu of nothing but primaries is one row each")
+	if err == "":
+		err = _T.assert_eq(_menu_row_shape(TitleScreen.PRIMARY_COUNT + 1),
+			[[0], [1], [2]],
+			"and a single trailing secondary spans the band rather than leaving a hole beside it")
+
+	for count: int in range(0, 9):
+		if err != "":
+			return err
+		var seen: Array[int] = []
+		var widest: int = 0
+		for row: PackedInt32Array in TitleScreen.menu_rows(count):
+			widest = maxi(widest, row.size())
+			for index: int in row:
+				seen.append(index)
+		var expected: Array[int] = []
+		for i: int in count:
+			expected.append(i)
+		err = _T.assert_eq(seen, expected,
+			"every destination in a %d-button menu is placed once, in reading order" % count)
+		if err == "":
+			err = _T.assert_true(widest <= 2,
+				"and no row of a %d-button menu holds more than the two cells the band is split into" % count)
+	return err
+
+
+## TitleScreen.menu_rows as plain nested Arrays, which compare and print.
+func _menu_row_shape(count: int) -> Array:
+	var out: Array = []
+	for row: PackedInt32Array in TitleScreen.menu_rows(count):
+		out.append(Array(row))
+	return out
+
+
+func test_the_title_menu_row_heights_follow_the_primary_count() -> String:
+	## row_height is the other half of the grid: menu_rows says which buttons
+	## share a row, this says how tall that row is. They are asserted against each
+	## other and against button_rect, because the number that matters is the one a
+	## button is actually drawn at — a row_height nothing reads would be a
+	## constant with a function around it.
+	var err: String = _T.assert_float_eq(TitleScreen.row_height(0),
+		TitleScreen.BUTTON_HEIGHT, 0.001,
+		"the first row is a full-height primary — it starts a run")
+	if err == "":
+		err = _T.assert_float_eq(TitleScreen.row_height(TitleScreen.PRIMARY_COUNT - 1),
+			TitleScreen.BUTTON_HEIGHT, 0.001,
+			"and so is the last of the PRIMARY_COUNT rows")
+	if err == "":
+		err = _T.assert_float_eq(TitleScreen.row_height(TitleScreen.PRIMARY_COUNT),
+			TitleScreen.SECONDARY_BUTTON_HEIGHT, 0.001,
+			"the first secondary row is the shorter one — it is not the thing the screen is for")
+	if err == "":
+		err = _T.assert_true(TitleScreen.row_height(TitleScreen.PRIMARY_COUNT)
+				< TitleScreen.row_height(0),
+			"the two heights are actually different, so this is a rule and not one number twice")
+	if err == "":
+		err = _T.assert_gte(TitleScreen.row_height(TitleScreen.PRIMARY_COUNT), 40.0,
+			"and the short one is still 40 — `findings` gates an interactive Control at 40x40")
+
+	var count: int = TitleScreen.MENU_BUTTON_NAMES.size()
+	var rows: Array[PackedInt32Array] = TitleScreen.menu_rows(count)
+	var total: float = 0.0
+	for r: int in rows.size():
+		if err != "":
+			return err
+		total += TitleScreen.row_height(r)
+		for c: int in rows[r].size():
+			err = _T.assert_float_eq(TitleScreen.button_rect(rows[r][c], count).size.y,
+				TitleScreen.row_height(r), 0.001,
+				"button %d is drawn at the height of the row menu_rows put it in" % rows[r][c])
+			if err != "":
+				return err
+	if err == "":
+		# menu_bottom is BUTTON_TOP plus every row height plus the gaps between
+		# them. Stated here so a row_height that stopped being read by the layout
+		# would show up as a menu that no longer ends where it says it does.
+		err = _T.assert_float_eq(TitleScreen.menu_bottom(count),
+			TitleScreen.BUTTON_TOP + total + TitleScreen.BUTTON_GAP * float(rows.size() - 1),
+			0.001,
+			"and the menu ends exactly one stack of row_heights and gaps below BUTTON_TOP")
+	return err

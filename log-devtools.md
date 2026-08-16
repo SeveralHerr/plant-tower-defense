@@ -3458,3 +3458,46 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     `launch` should print the "this session shares your real `user://`" line it
     already prints *with* the names of the files that exist there and would be
     overwritten, so the decision is offered at the moment it can still be made.
+
+
+## 2026-08-16 - tests for the OverlayScreen builder surface and the title menu grid (plant-tower-defense-fvv)
+
+- Value: **warranted** - the headless suite produced a number the diff could not: an
+  assigned `size` that the engine clamped up underneath the builder.
+  - Expected: five appended tests would go green first try; `suite_reach_check`'s 8 NEW
+    findings would fall to 0 because the six `add_*`/`footer_y` and the two static
+    title-grid functions are now called and asserted on.
+  - Got: `Total: 524 | Passed: 523 | Failed: 1` on the first run -
+    `and spans this paper at the y it was given: Expected [P: (200.0, 140.0), S: (720.0, 40.0)]
+    but got [P: (200.0, 140.0), S: (720.0, 42.0)]`. `add_heading` sets a 40px box and a
+    30px font's combined minimum size is 42, so the box the builder asks for is not the
+    box that lands. Second run: `Total: 524 | Passed: 524 | Failed: 0`,
+    `Assertions: 11406 executed`, `Suite: 7 test script(s)`.
+  - Found: that clamp. The assertion was rewritten as exact position + exact width +
+    `assert_gte` on the height, which is the claim that is actually true of every
+    text-bearing Control the base builds - and is the assertion that will not go red the
+    next time the theme's heading font moves.
+  - Cheaper: nothing cheaper reaches it. `name_check` (0 errors), `import_check` (OK) and
+    lint (`Scripts: 48 compiled OK`) all passed on the version that failed - a clamped
+    `size` is neither a name nor a compile error. No game was launched: everything here is
+    layout `instantiate_ui` resolves, plus two static functions, so a live pass would have
+    cost a windowed Godot and told me nothing the suite did not.
+
+- Gap: **`instantiate_ui`'s contract says a Control's `size` stays `(0, 0)` without it, and
+  stops there - it never says the size that lands can be LARGER than the one the code
+  assigned.** Every doc line about this helper is about the value being too small
+  (`headless pumps no frames, so without it size stays (0,0)`), so the trap it actually
+  set was the opposite one. `probe.heading.size` came back `(720.0, 42.0)` against an
+  `add_heading` that had just executed `heading.size = Vector2(panel.size.x, 40.0)`,
+  because `Control.size` is clamped up to `get_combined_minimum_size()` and a Label's
+  minimum is its font. Workaround: assert position exactly, width exactly, and height
+  with `assert_gte`. This repo's own history has hit the same clamp before from the
+  other side (a Label whose "assigned 264 width loses to its own minimum size" draws
+  past its paper) without it ever being filed.
+  - [G-051] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: one sentence beside the existing `(0, 0)` warning - "and after the
+    settle frames a Control's `size` is clamped UP to `get_combined_minimum_size()`, so
+    an exact-equality assertion on a text-bearing Control's size is asserting the theme's
+    font metrics as much as the code's layout; assert position exactly and size with
+    `assert_gte`." Better still, a `_T.assert_box(control, rect)` helper that does exactly
+    that split, so the right assertion is the shortest one to write.
