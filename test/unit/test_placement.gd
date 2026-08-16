@@ -3035,11 +3035,30 @@ func test_the_budgets_verb_filters_by_id_and_refuses_an_unknown_one() -> String:
 func test_the_budgets_verb_degrades_per_entry_with_no_game_in_the_tree() -> String:
 	var host := Node2D.new()
 	await _T.instantiate_scene(host)
-	# Precondition: nothing else left a Game in the "game" group for this test
-	# to accidentally find and answer against instead of the empty host below
-	# -- see the godot-test-isolation gotcha this guards against.
-	var err: String = _T.assert_true(host.get_tree().get_first_node_in_group("game") == null,
-		"nothing already in the 'game' group before this test starts")
+	# Precondition, and the only reason anything below this line means anything.
+	#
+	# The verb reaches its Game through `_dev.get_tree().get_first_node_in_group(
+	# "game")`, which is TREE-GLOBAL: it does not care that `host` is the node
+	# handed to the extension. One Game anywhere in the tree -- left by another
+	# test, or made by this one's own settle frames -- sends `_cmd_budgets` down
+	# the *measured* path, and every assertion below would then pass while
+	# proving nothing whatever about degrading.
+	#
+	# Read as a SET and pin the count at exactly zero. `get_first_node_in_group`
+	# is "whichever one the engine lists first" and cannot tell one stranger from
+	# five, so it can never state the property this test depends on; and a
+	# `> 0`-shaped test of the same idea is precisely the reasoning that leaves
+	# this class of test green for the wrong reason (see the godot-test-isolation
+	# skill, and tools/group_leak_check.py, which enforces this rule).
+	var in_group: Array[Node] = host.get_tree().get_nodes_in_group("game")
+	var found: PackedStringArray = PackedStringArray()
+	for n: Node in in_group:
+		found.append("%s (%s)" % [n.get_path(), n.get_class()])
+	var err: String = _T.assert_eq(in_group.size(), 0,
+		"nothing is in the 'game' group before this test starts. A Game left in"
+		+ " the tree makes the verb answer from the measured path and every"
+		+ " assertion below passes for the wrong reason. Found: [%s]"
+			% ", ".join(found))
 	if err != "":
 		_T.free_ui(host)
 		return err

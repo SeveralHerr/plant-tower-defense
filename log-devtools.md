@@ -3563,3 +3563,57 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     font metrics as much as the code's layout; assert position exactly and size with
     `assert_gte`." Better still, a `_T.assert_box(control, rect)` helper that does exactly
     that split, so the right assertion is the shortest one to write.
+
+## 2026-08-16 — Pin the 'game' group at zero instead of asking which node is first (plant-tower-defense-uay)
+
+- Value: **warranted** — a temporarily inverted precondition made the full suite state a
+  fact about tree state that no amount of reading the diff could have established.
+  - Expected: that `test_the_budgets_verb_degrades_per_entry_with_no_game_in_the_tree`
+    was green for the wrong reason — the `godot-test-isolation` skill's whole thesis is
+    that a tree-global group read gets a node the test never made, and
+    `group_leak_check.py` had flagged this line on three prior agent runs.
+  - Got: the opposite, and stated numerically. With the guard flipped to
+    `assert_eq(in_group.size(), 99)`, the 519-test suite printed
+    `Expected 99 but got 0 ... Found: []`. The `"game"` group is genuinely empty at that
+    point in suite order, so the verb really was being driven down its no-Game path. The
+    old `get_first_node_in_group(...) == null` guard was correct; what it could not do is
+    *say* so, because "whichever the engine lists first" carries no cardinality.
+  - Found: nothing broken in the game. The finding was about what the test could
+    *express*, not what it measured — worth separating, because "the checker fired" and
+    "the code is wrong" got conflated three times before this.
+  - Cheaper: nothing cheaper would have done. `group_leak_check.py` (0.2s) names the
+    line but is a source scanner and cannot say whether the group is populated at
+    runtime; only running the suite with the count inverted answers that. Reading
+    `commands.gd:41-42` established that `_game()` is tree-global, which is why the
+    guard matters — but not whether it was currently being satisfied by luck.
+
+- Gap: **a stopped background test run keeps writing to the results file, and a results
+  file containing two runs looks like one run with a contradiction in it.** A suite run
+  was moved to the background on timeout and stopped via `TaskStop`; the shell died, the
+  `godot` child did not, and it kept appending to the same redirect target a later
+  foreground run had truncated. The result was one file with two `Total:` lines —
+  `519/519 | 11310 assertions` and `516/519 | Failed: 3` — with per-test times inflated
+  from 154ms to 5610ms by the CPU contention. The house doctrine is "read the
+  denominators, not the exit code", and here there were two sets of denominators
+  disagreeing with each other in one file. Diagnosing it needed
+  `Get-CimInstance Win32_Process` to prove the surviving pids were a *sibling agent's*
+  bridge session on another checkout and not mine.
+  - [G-051] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: have `run_tests.gd` stamp a per-run nonce on both its opening and its
+    `Total:` line (`run 7f3a1c pid 12345`), and have `run_tests.py` exit `2` when its
+    captured output contains more than one distinct run nonce — "this file is two runs,
+    you are reading a mixture" rather than leaving a human to notice the duplicate
+    `Total:`. Cheap, and it turns an invisible misread into a refusal.
+
+- Gap: **`godot --headless --path . --import` segfaulted mid-import again** (exit 139,
+  died on `question_002.ogg`), leaving a half-populated `.godot/` whose next test run
+  emitted 400,548 lines of `Failed loading resource:` and never finished. Known shape.
+  `python tools/import_check.py` afterwards rebuilt it and reported
+  `Import OK: the class cache regenerated ... 1134 line(s)`, so the recovery path works —
+  the cost is that the bare `--import` gives no signal that its own crash invalidated the
+  run that follows, and it leaves `.import*.tmp` debris behind (two files here).
+  - [G-044] status: open | seen: 7 | harness: 0.38.0
+  - Improvement: as previously filed — `--import` should be wrapped so a non-zero exit is
+    surfaced and retried rather than silently handing on a truncated cache. Additionally:
+    sweep the `assets/**/*.import*.tmp` / `.TMP` leftovers on the retry, since they
+    otherwise show up as untracked files in `git status` and invite being committed.
