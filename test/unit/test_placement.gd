@@ -2880,3 +2880,63 @@ func test_the_budgets_verb_filters_by_id_and_refuses_an_unknown_one() -> String:
 				"and the refusal names the ids that do exist: %s" % missing["message"])
 	_T.free_ui(game)
 	return err
+
+
+## Every plant must SAY whether it can touch a pest.
+##
+## `PlantCatalog.engages()` defaults a missing key to false, which is the safe
+## direction — over-reporting a coverage hole nags, where promising cover that
+## does not exist costs beds. But defaulting is not deciding, and the whole point
+## of moving this out of `Game.ENGAGING_PLANTS` was to put the answer beside the
+## plant so it cannot be forgotten. A fifth plant that omits the key would
+## silently inherit "false" and read as a hole forever.
+##
+## Checks the raw entry, not `engages()`, because `engages()` is exactly the
+## function that hides the difference between "declared false" and "never said".
+func test_every_plant_declares_whether_it_engages() -> String:
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_gt(ids.size(), 0, "the catalogue has plants to check")
+	if err != "":
+		return err
+
+	var checked: int = 0
+	for id: StringName in ids:
+		var e: Dictionary = PlantCatalog.entry(id)
+		err = _T.assert_true(e.has("engages"),
+			"%s declares an \"engages\" key. Add one: true if it can damage or hold"
+				% id + " a pest, false if it cannot. Do not let it default")
+		if err != "":
+			return err
+		err = _T.assert_true(typeof(e["engages"]) == TYPE_BOOL,
+			"%s's \"engages\" is a bool, not %s" % [id, type_string(typeof(e["engages"]))])
+		if err != "":
+			return err
+		checked += 1
+	return _T.assert_eq(checked, ids.size(), "every plant was asked")
+
+
+## The distinction that makes `engages` a separate key from `reach`.
+##
+## A Sundew has a real SAP_RADIUS — a patch touching no road is as useless as a
+## cob that can shoot none, so the dead-ground cue needs it — and it damages
+## nothing. Anything deriving coverage from `reach()` calls a lane walled in dew
+## defended. This pins that the two disagree on at least one plant, so a later
+## simplification that collapses them fails here rather than in a coverage map.
+func test_reach_and_engages_are_not_the_same_question() -> String:
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_gt(ids.size(), 0, "the catalogue has plants to check")
+	if err != "":
+		return err
+
+	var disagreeing: Array[StringName] = []
+	for id: StringName in ids:
+		if PlantCatalog.reach(id) > 0.0 and not PlantCatalog.engages(id):
+			disagreeing.append(id)
+	err = _T.assert_gt(disagreeing.size(), 0,
+		"at least one plant reaches without engaging, which is why these are two"
+			+ " keys. If this ever becomes empty, check it is because the plant"
+			+ " changed and not because the keys were collapsed")
+	if err == "":
+		err = _T.assert_true(disagreeing.has(PlantCatalog.SUNDEW),
+			"and the Sundew is one of them (found %s)" % [disagreeing])
+	return err

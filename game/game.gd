@@ -429,7 +429,13 @@ func prep_note() -> String:
 ## costs beds. test_every_plant_that_can_touch_a_pest_is_named_as_one fails when
 ## the catalogue grows, which is what forces the decision to be made rather than
 ## defaulted into.
-const ENGAGING_PLANTS: Array[StringName] = [PlantCatalog.CORN, PlantCatalog.CHOMP]
+## Kept as the name the coverage code and its tests read, but it is no longer
+## the declaration — PlantCatalog.engages() is, one key beside each plant. A
+## const cannot call a function, so this is a static rather than a const, and
+## every caller goes through it instead of through a list two files from the
+## plants it describes.
+static func engaging_plants() -> Array[StringName]:
+	return PlantCatalog.engaging_ids()
 
 ## The longest line the coverage branch can hand the status row, through
 ## Hud.wave_cleared_line. Same contract as Hud.PREP_NOTE_WORST_CASE and for the
@@ -454,7 +460,7 @@ const COVERAGE_NOTE_WORST_CASE: String = "Wave 9999 cleared. Nothing covers the 
 ## the number, so a balance change to CornCobbler.RANGE moves this with it instead
 ## of leaving a coverage map quoting a radius the cob no longer has.
 static func engagement_reach(id: StringName) -> float:
-	if not ENGAGING_PLANTS.has(id):
+	if not PlantCatalog.engages(id):
 		return 0.0
 	return PlantCatalog.reach(id)
 

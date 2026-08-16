@@ -3090,7 +3090,7 @@ func test_every_plant_that_can_touch_a_pest_is_named_as_one() -> String:
 	var ids: Array[StringName] = PlantCatalog.ids()
 	var err: String = _T.assert_gt(ids.size(), 0, "there is a catalogue to grade")
 	if err == "":
-		err = _T.assert_gt(Game.ENGAGING_PLANTS.size(), 0,
+		err = _T.assert_gt(Game.engaging_plants().size(), 0,
 			"and something in it can fight — an empty list would make every map below all holes")
 	if err != "":
 		return err
@@ -3098,13 +3098,13 @@ func test_every_plant_that_can_touch_a_pest_is_named_as_one() -> String:
 	# Named positively, and named exactly. A new plant landing in the catalogue
 	# has to be decided about here; it must not inherit an answer.
 	if err == "":
-		err = _T.assert_eq(Game.ENGAGING_PLANTS.size(), 2,
+		err = _T.assert_eq(Game.engaging_plants().size(), 2,
 			"two plants in this catalogue can touch a pest, and the list says which")
 	if err == "":
-		err = _T.assert_true(Game.ENGAGING_PLANTS.has(PlantCatalog.CORN),
+		err = _T.assert_true(Game.engaging_plants().has(PlantCatalog.CORN),
 			"a kernel that lands is one of the two things that set Pest._ever_engaged")
 	if err == "":
-		err = _T.assert_true(Game.ENGAGING_PLANTS.has(PlantCatalog.CHOMP),
+		err = _T.assert_true(Game.engaging_plants().has(PlantCatalog.CHOMP),
 			"and a Chomp holding a pest still is the other")
 	if err != "":
 		return err
@@ -3121,7 +3121,7 @@ func test_every_plant_that_can_touch_a_pest_is_named_as_one() -> String:
 	var graded: int = 0
 	for id: StringName in ids:
 		var engages: float = Game.engagement_reach(id)
-		if Game.ENGAGING_PLANTS.has(id):
+		if Game.engaging_plants().has(id):
 			err = _T.assert_float_eq(engages, PlantCatalog.reach(id), 0.0001,
 				"%s engages at the catalogue's own radius rather than at a second copy of it" % id)
 		else:
@@ -3304,7 +3304,7 @@ func test_the_garden_can_say_which_road_it_cannot_reach() -> String:
 		_T.free_ui(game)
 		return err
 
-	# The claim ENGAGING_PLANTS exists for, in the live map rather than in the
+	# The claim engaging_plants() exists for, in the live map rather than in the
 	# constant: a Sundew laid over road the cob cannot reach buys no coverage,
 	# because dew never touches a pest. Built directly rather than bought — the
 	# purchase path needs an unlock and thirty seeds, and neither is under test.

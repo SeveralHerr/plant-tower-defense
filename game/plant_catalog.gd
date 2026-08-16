@@ -21,6 +21,8 @@ const PLANTS: Dictionary = {
 		"unlocked_at_start": true,
 		"free_starter": true,
 		"blurb": "Fires kernels down the lane. Upgrades to a bunch of corn.",
+		# Kernels do damage. The only plant in the game that does.
+		"engages": true,
 	},
 	CHOMP: {
 		"display": "Chomp Flower",
@@ -30,6 +32,9 @@ const PLANTS: Dictionary = {
 		"unlocked_at_start": false,
 		"free_starter": false,
 		"blurb": "Eats small pests instantly. Big ones take a while — and it is busy the whole time.",
+		# Holds rather than hurts, but a held pest has been reached: a Chomp
+		# eaten mid-chew releases a live one, and that pest was fought.
+		"engages": true,
 	},
 	SUNFLOWER: {
 		"display": "Seed Sunflower",
@@ -39,6 +44,8 @@ const PLANTS: Dictionary = {
 		"unlocked_at_start": false,
 		"free_starter": false,
 		"blurb": "Fights nothing. Grows seeds on a clock — plant it somewhere the lane doesn't need.",
+		# Never touches a pest at all. Its own blurb says so.
+		"engages": false,
 	},
 	SUNDEW: {
 		"display": "Sticky Sundew",
@@ -48,6 +55,10 @@ const PLANTS: Dictionary = {
 		"unlocked_at_start": false,
 		"free_starter": false,
 		"blurb": "Hurts nothing. Everything in its dew crawls at half speed — wings included, which no Chomp can say.",
+		# Slows, never damages. This is the entry that makes reach() the wrong
+		# question: SAP_RADIUS is a real reach and a lane walled in dew is
+		# undefended, so coverage must ask this key and not that one.
+		"engages": false,
 	},
 }
 
@@ -103,6 +114,31 @@ static func reach(id: StringName) -> float:
 		_:
 			return 0.0
 
+
+
+## Can a plant of `id` actually touch a pest?
+##
+## Deliberately NOT derivable from reach(): a Sundew has a real SAP_RADIUS and
+## engages nothing, so a coverage map built on reach() calls a lane walled in dew
+## defended. This lives beside each plant in PLANTS so the answer is written where
+## the plant is, rather than in a positive list two files away that has to be
+## remembered.
+##
+## A missing key reads as false, which is the safe direction — it over-reports a
+## coverage hole, and a readout that nags is recoverable where one promising cover
+## it does not have costs beds. But defaulting is not the same as deciding, so
+## test_every_plant_declares_whether_it_engages fails on an entry that omits it.
+static func engages(id: StringName) -> bool:
+	return bool(entry(id).get("engages", false))
+
+
+## Every plant that can touch a pest, in catalogue order.
+static func engaging_ids() -> Array[StringName]:
+	var out: Array[StringName] = []
+	for id: StringName in ORDER:
+		if engages(id):
+			out.append(id)
+	return out
 
 static func texture_path(id: StringName) -> String:
 	return String(entry(id).get("texture", ""))
