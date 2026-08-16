@@ -70,9 +70,6 @@ const LEAF := Color(0.180, 0.800, 0.443)
 ## this screen always means "this costs you something".
 const UPROOT_ARMED := Color(0.85, 0.25, 0.22)
 
-## The selection panel's health bar. Green at full, through amber, to the same
-## warning red as UPROOT_ARMED at nearly-dead — so the two reds in the panel mean
-## the same thing, and a plant worth replanting says so without being read.
 ## The threat ramp on the wave readout. Starts at the bar's own cream so an early
 ## run looks like nothing is wrong, warms through amber, and ends on the same red
 ## as UPROOT_ARMED and HEALTH_LOW — every red in this HUD means the same thing.
@@ -98,6 +95,16 @@ const THREAT_TINT_MAX: int = 12
 ## the same colour language answers "how bad" and "how long" at once.
 const PREP_BAR_HEIGHT: float = 4.0
 
+## The resting tooltip per packet tier. Held here rather than inline because
+## _refresh_packet_button swaps in a reason when a packet cannot be bought and
+## has to be able to put the original back. The common one's "tier 1 only" is
+## now literally true — it used to be false the moment the Chomp unlocked, since
+## the roll fell back to the whole locked pool.
+const PACKET_TOOLTIP: Dictionary = {
+	&"common": "A packet holds one plant you do not have yet, tier 1 only. Which one is up to the packet.",
+	&"rare": "Costlier, but the odds reach past tier 1 — the only reliable way to a Seed Sunflower.",
+}
+
 ## Message priorities. NORMAL is ambient colour — a husk collected, a wave
 ## cleared. IMPORTANT is anything the player must act on or has just been asked
 ## to confirm, and it may cut a NORMAL line short.
@@ -107,6 +114,17 @@ const MESSAGE_IMPORTANT: int = 1
 ## replace it. Roughly the time to read a short sentence.
 const MESSAGE_MIN_READABLE: float = 1.2
 const MESSAGE_QUEUE_MAX: int = 3
+
+## The selection panel's health bar. Green at full, through amber, to the same
+## warning red as UPROOT_ARMED at nearly-dead — so the two reds in the panel mean
+## the same thing, and a plant worth replanting says so without being read.
+## Motion. Every one of these layers on top of an already-correct final state and
+## is gated on GardenTheme.animations_enabled(), because headless pumps no frames:
+## a tween that starts a node at alpha 0 and relies on a frame to finish the job
+## leaves it invisible, in a way no assertion about size or node paths would catch.
+const THREAT_FADE_SECONDS: float = 0.45
+const PANEL_RISE: float = 10.0
+const PANEL_RISE_SECONDS: float = 0.16
 
 const HEALTH_ROW_HEIGHT: float = 14.0
 const HEALTH_BACK := Color(0.12, 0.15, 0.13, 0.35)
@@ -136,6 +154,8 @@ var _message_left: float = 0.0
 var _message_priority: int = MESSAGE_NORMAL
 var _message_queue: Array[Dictionary] = []
 var _prep_bar: ColorRect
+var _threat_tween: Tween = null
+var _threat_tint_target: Color = PAPER
 
 
 func _ready() -> void:
@@ -264,7 +284,7 @@ func _build_side_panel(root: Control) -> void:
 	_packet_button.expand_icon = true
 	_packet_button.position = Vector2(12, 300)
 	_packet_button.size = Vector2(PANEL_WIDTH - 24, 40)
-	_packet_button.tooltip_text = "A packet holds one plant you do not have yet, tier 1 only. Which one is up to the packet."
+	_packet_button.tooltip_text = PACKET_TOOLTIP[&"common"]
 	_packet_button.pressed.connect(func() -> void: packet_requested.emit(&"common"))
 	panel.add_child(_packet_button)
 
@@ -275,7 +295,7 @@ func _build_side_panel(root: Control) -> void:
 	_rare_packet_button.expand_icon = true
 	_rare_packet_button.position = Vector2(12, 344)
 	_rare_packet_button.size = Vector2(PANEL_WIDTH - 24, 40)
-	_rare_packet_button.tooltip_text = "Costlier, but the odds reach past tier 1 — the only reliable way to a Seed Sunflower."
+	_rare_packet_button.tooltip_text = PACKET_TOOLTIP[&"rare"]
 	_rare_packet_button.pressed.connect(func() -> void: packet_requested.emit(&"rare"))
 	panel.add_child(_rare_packet_button)
 
@@ -383,6 +403,25 @@ func _add_stat(row: HBoxContainer, node_name: String, font_size: int, colour: Co
 ## The widths above are only safe as a sum. Anything that adds a readout, widens
 ## one, or grows the button has to keep this true, and the unit test calls it
 ## rather than re-deriving the arithmetic.
+## A packet button, disabled for the reason that actually applies, and saying so.
+##
+## The tooltip is rewritten rather than left static because the two reasons a
+## packet is unbuyable are not interchangeable: "come back with more seeds" is a
+## wait, and "this tier has nothing left for you" is a redirect to the other
+## packet. A single greyed button that means either one teaches neither.
+func _refresh_packet_button(button: Button, bank: SeedBank, tier: StringName) -> void:
+	var spec: Dictionary = SeedBank.PACKET_TIERS[tier] as Dictionary
+	var cost: int = int(spec["cost"])
+	var spent: bool = bank.packet_pool(tier).is_empty()
+	button.disabled = spent or bank.seeds < cost
+	if spent:
+		button.tooltip_text = "Nothing left in a %s — every plant it can hold is already in your garden." % String(spec["display"])
+	elif bank.seeds < cost:
+		button.tooltip_text = "A %s costs %d seeds. You have %d." % [String(spec["display"]), cost, bank.seeds]
+	else:
+		button.tooltip_text = PACKET_TOOLTIP[tier]
+
+
 ## The prep strip: how long until the next wave arrives on its own, and — in its
 ## colour — how bad that wave will be.
 ##
@@ -486,7 +525,7 @@ func refresh(state: Dictionary) -> void:
 	# that has already had one occlusion bug, and a RichTextLabel breaks every
 	# `as Label` cast the existing tests make. Tinting all of it is also honest —
 	# the wave and its threat are one fact, so "wave 14" going red is the message.
-	_wave_label.add_theme_color_override("font_color", threat_color(level))
+	_ease_threat_tint(threat_color(level))
 	_lives_label.text = "Garden  %d" % state["lives"]
 	var husks: int = int(state.get("husks_on_ground", 0))
 	_compost_label.text = "Compost  %d" % int(state.get("compost_total", 0))
@@ -508,9 +547,13 @@ func refresh(state: Dictionary) -> void:
 		button.modulate = Color.WHITE if (unlocked and bank.can_afford(id)) else Color(1, 1, 1, 0.55)
 		button.button_pressed = unlocked and id == selected
 
-	var locked_empty: bool = bank.locked_plants().is_empty()
-	_packet_button.disabled = locked_empty or bank.seeds < int(SeedBank.PACKET_TIERS[&"common"]["cost"])
-	_rare_packet_button.disabled = locked_empty or bank.seeds < int(SeedBank.PACKET_TIERS[&"rare"]["cost"])
+	# Per tier, not just "is anything locked". A common packet caps at tier 1, so
+	# once the Chomp is out of its packet there is nothing left it may hand over
+	# even though the tier-2 Sunflower is still locked. Before this the button
+	# stayed lit and every click bought a refusal message — which is what a lit
+	# button that does nothing always is.
+	_refresh_packet_button(_packet_button, bank, &"common")
+	_refresh_packet_button(_rare_packet_button, bank, &"rare")
 	_next_wave_button.disabled = not bool(state["can_start_wave"])
 	_refresh_prep_bar(state)
 	_refresh_selection(state)
@@ -521,7 +564,10 @@ func _refresh_selection(state: Dictionary) -> void:
 	if plant == null or not is_instance_valid(plant):
 		_selection_box.visible = false
 		return
+	var was_hidden: bool = not _selection_box.visible
 	_selection_box.visible = true
+	if was_hidden:
+		_play_panel_entrance()
 	var corn := plant as CornCobbler
 	var sunflower := plant as Sunflower
 	if corn != null:
@@ -588,6 +634,46 @@ func _refresh_health(plant: Plant) -> void:
 ## replaced it with a 2-second husk line, leaving the player with an armed button
 ## and no explanation of why. A message the player cannot finish reading is the
 ## same as no message.
+## Eases the wave readout toward its threat colour instead of snapping.
+##
+## The tint is reapplied on every refresh — which is many times a second while a
+## wave is running — so a fresh Tween per call would stack dozens of them onto one
+## property. The live tween is kept and killed, and a target already reached is a
+## no-op, which is the common case.
+func _ease_threat_tint(target: Color) -> void:
+	if not GardenTheme.animations_enabled():
+		_wave_label.add_theme_color_override("font_color", target)
+		return
+	if target.is_equal_approx(_threat_tint_target):
+		return
+	_threat_tint_target = target
+	if _threat_tween != null and _threat_tween.is_valid():
+		_threat_tween.kill()
+	var from: Color = _wave_label.get_theme_color("font_color")
+	_threat_tween = create_tween()
+	_threat_tween.tween_method(
+		func(c: Color) -> void: _wave_label.add_theme_color_override("font_color", c),
+		from, target, THREAT_FADE_SECONDS)
+
+
+## A short rise as the selection panel opens.
+##
+## Scale is deliberately not touched: SelectionBox is a VBoxContainer child of a
+## ColorRect, and Godot re-applies a container's layout every frame, which silently
+## resets a scaled child — the documented trap in this project's own notes. Position
+## on a non-container child is safe, and modulate is safe anywhere.
+func _play_panel_entrance() -> void:
+	if not GardenTheme.animations_enabled():
+		return
+	var rest: Vector2 = _selection_box.position
+	_selection_box.position = rest + Vector2(0, PANEL_RISE)
+	_selection_box.modulate = Color(1, 1, 1, 0)
+	var tween := create_tween().set_parallel(true)
+	tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(_selection_box, "position", rest, PANEL_RISE_SECONDS)
+	tween.tween_property(_selection_box, "modulate", Color.WHITE, PANEL_RISE_SECONDS)
+
+
 func show_message(text: String, seconds: float = 3.0, priority: int = MESSAGE_NORMAL) -> void:
 	if _message_left > 0.0:
 		if priority > _message_priority:

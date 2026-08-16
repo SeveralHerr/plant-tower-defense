@@ -1431,3 +1431,40 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   ago (G-024, confirmed fixed). `list-commands` printing arg keys
   (`spawn_pest  args: species, mutation, count`) removed the guesswork that
   previously cost a round trip per verb.
+
+## 2026-08-15 — Packet button state and HUD motion (vo9, 9xm)
+
+- Value: **warranted** — every new test asserts the headless branch, so the tweens
+  in this change had never executed once before the live run.
+  - Expected: every new test asserts the headless branch, where
+    animations_enabled() is false — so no tween in this change has ever run.
+    Runtime should reveal whether the threat tween actually eases (and whether
+    reapplying the tint many times a second stacks tweens or thrashes), and
+    whether the panel entrance lands back at its resting position rather than
+    drifting.
+  - Got: the wave readout was caught mid-transition at
+    `r 0.872 g 0.432 b 0.369` — genuinely between PAPER and THREAT_HOT, which is
+    the one reading that proves a tween ran rather than a value being assigned.
+    A second later it read exactly `r 0.850 g 0.25 b 0.220`, and five consecutive
+    `_refresh()` calls left it there rather than restarting the fade. The selection
+    box settled back on `Rect: 908, 464, 232x152` with `modulate.a = 1.0`. Live
+    packet drain: one `buy_packet` returned `packet held chomp_flower`, the next
+    three were refused, and the button then read `disabled: true` with
+    `Nothing left in a Common Packet` while the rare button stayed lit.
+  - Found: two, neither in the feature itself. (1) A doc-comment defect I
+    introduced two iterations earlier — inserting the THREAT_* block directly
+    above `const HEALTH_ROW_HEIGHT` orphaned the health block's `##` comment 45
+    lines from the constants it describes, leaving the threat constants wearing
+    the health comment. Repaired. (2) `--filter "packet_button|hud_motion|threat_tint_still"`
+    selected `0 of 192` and exited 2 — regex alternation is not supported. The
+    harness refusing to call that a pass is the SELECTED NOTHING guard working;
+    before it existed this printed `Total: 0 | ALL TESTS PASSED` at exit 0.
+  - Cheaper: nothing. The tweens are off headless by construction, so no headless
+    gate could have executed them, and a stacking tween looks correct in every
+    still frame.
+
+- Gap: **no gaps this turn.** 0.23.0's `--filter` refusal and the orphan scan both
+  did exactly what they claim. Recording the ledger *before* committing — the fix
+  for G-027's attribution problem — produced `reached 1/1 changed file(s)` and a
+  `warranted` that stuck, versus the `insufficient` the same shape of run earned
+  two iterations ago.

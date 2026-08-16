@@ -2622,3 +2622,88 @@ func test_the_prep_strip_wears_the_next_waves_threat_not_the_last_ones() -> Stri
 			"and is not simply the calm default")
 	_T.free_ui(game)
 	return err
+
+
+## A packet button that is lit but refuses every click is the same defect as a
+## wrong number: it tells the player something untrue about what they can do.
+func test_a_packet_button_goes_dark_when_its_tier_has_nothing_left() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var common: Button = game.hud.get_node_or_null("Root/SidePanel/PacketButton") as Button
+	var rare: Button = game.hud.get_node_or_null("Root/SidePanel/RarePacketButton") as Button
+	var err: String = _T.assert_true(common != null and rare != null, "both packet buttons exist")
+	if err == "":
+		game.bank.set_seed(11)
+		game.bank.add_seeds(600)
+		game._refresh()
+		await _pump(game)
+		err = _T.assert_false(common.disabled, "with seeds and stock, the common packet is buyable")
+	if err == "":
+		# Drain tier 1 through the real purchase path.
+		var guard: int = 0
+		while not game.bank.packet_pool(&"common").is_empty() and guard < 40:
+			game.bank.buy_packet(&"common")
+			guard += 1
+		err = _T.assert_true(game.bank.packet_pool(&"common").is_empty(), "tier 1 is spent")
+	if err == "":
+		err = _T.assert_gt(game.bank.seeds, int(SeedBank.PACKET_TIERS[&"common"]["cost"]),
+			"and it is affordability that is NOT the reason it should go dark")
+	if err == "":
+		game._refresh()
+		await _pump(game)
+		err = _T.assert_true(common.disabled, "the common packet goes dark once its tier is spent")
+	if err == "":
+		err = _T.assert_false(rare.disabled,
+			"while the rare packet, which can still reach tier 2, stays lit")
+	if err == "":
+		err = _T.assert_true(common.tooltip_text.contains("Nothing left"),
+			"and the tooltip says which of the two reasons applies, got %s" % common.tooltip_text)
+	_T.free_ui(game)
+	return err
+
+
+## Every HUD animation must layer on an already-correct final state. Headless
+## pumps no frames, so a tween that starts a node at alpha 0 and relies on a frame
+## to finish leaves it invisible -- and invisible in a way that no assertion about
+## size or node paths would ever catch. This is that assertion.
+func test_hud_motion_never_leaves_the_panel_invisible_headlessly() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	var box: Control = game.hud.get_node_or_null("Root/SidePanel/SelectionBox") as Control
+	var err: String = _T.assert_true(box != null, "the selection box exists")
+	if err == "":
+		err = _T.assert_false(GardenTheme.animations_enabled(),
+			"this test is only meaningful headless, where animations are off")
+	if err == "":
+		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "", "planted, which selects")
+	if err == "":
+		await _pump(game)
+		err = _T.assert_true(box.visible, "the panel is visible")
+	if err == "":
+		err = _T.assert_float_eq(box.modulate.a, 1.0, 0.001,
+			"and fully opaque -- not left mid-entrance at alpha %.2f" % box.modulate.a)
+	if err == "":
+		err = _T.assert_float_eq(box.scale.x, 1.0, 0.001, "and unscaled")
+	_T.free_ui(game)
+	return err
+
+
+func test_the_threat_tint_still_lands_exactly_when_animation_is_off() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/StatsRow/WaveLabel") as Label
+	game.director.endless = true
+	game.director.current_wave = 200
+	game._refresh()
+	await _pump(game)
+	# Headless takes the direct-assignment branch, so the colour must be the exact
+	# target rather than wherever a never-pumped tween would have stalled.
+	var err: String = _T.assert_true(label.get_theme_color("font_color").is_equal_approx(Hud.THREAT_HOT),
+		"the tint is the final colour, not a tween's start value")
+	if err == "":
+		game.director.current_wave = 1
+		game.director.endless = false
+		game._refresh()
+		await _pump(game)
+		err = _T.assert_true(label.get_theme_color("font_color").is_equal_approx(Hud.PAPER),
+			"and comes back down exactly")
+	_T.free_ui(game)
+	return err
