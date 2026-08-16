@@ -2253,3 +2253,102 @@ func test_the_selection_box_stays_inside_the_side_panel_when_damaged() -> String
 					% [String(id), box_foot, int(SELECTION_FOOT_MARGIN), panel_foot])
 	_T.free_ui(game)
 	return err
+
+
+# --- The project_identity devtools verb ---
+#
+# These are the FIRST tests of any devtools verb in this repo -- every check before
+# this line is of game code, and the extension in res://devtools_ext/ had none at
+# all. The extension is instantiated directly rather than driven over the bus: the
+# bus needs a running game, and the thing being asserted (which checkout is this?)
+# is exactly what you cannot trust a running game to tell you when the wrong one
+# might be answering. That makes it a pure-logic check, so it belongs here.
+
+
+const DEVTOOLS_EXT := "res://devtools_ext/commands.gd"
+
+
+func _identity() -> Dictionary:
+	var ext = preload(DEVTOOLS_EXT).new()
+	return ext._cmd_project_identity({})
+
+
+## A sha is 40 hex chars; a short one is the same alphabet, fewer of them.
+func _looks_like_sha(text: String) -> bool:
+	return text.length() >= 7 and text.length() <= 40 and text.is_valid_hex_number(false)
+
+
+func test_project_identity_returns_the_three_key_envelope() -> String:
+	var reply: Dictionary = _identity()
+	var err: String = _T.assert_true(reply.has("success") and reply.has("message") and reply.has("data"),
+		"the reply carries success, message and data -- got keys %s" % [reply.keys()])
+	if err == "":
+		err = _T.assert_eq(reply.size(), 3, "and carries nothing else, the way every other handler here does")
+	if err == "":
+		err = _T.assert_true(reply["success"] is bool, "success is a bool")
+	if err == "":
+		err = _T.assert_true(reply["message"] is String, "message is a String")
+	if err == "":
+		err = _T.assert_true(reply["data"] is Dictionary, "data is a Dictionary")
+	if err == "":
+		err = _T.assert_true(bool(reply["success"]), "and it succeeds in a real checkout: %s" % reply["message"])
+	return err
+
+
+## project_root is the whole point of the verb: it is the one field that separates
+## this checkout from a sibling worktree answering on the same user:// bus. A root
+## that does not contain project.godot is a root pointing somewhere that is not a
+## Godot project, which would make every other field a confident lie.
+func test_project_identity_root_points_at_a_real_godot_project() -> String:
+	var data: Dictionary = _identity()["data"]
+	var root: String = str(data.get("project_root", ""))
+	var err: String = _T.assert_false(root.is_empty(), "project_root is not empty")
+	if err == "":
+		err = _T.assert_true(root.is_absolute_path(), "project_root is absolute, not res://-relative: %s" % root)
+	if err == "":
+		err = _T.assert_true(FileAccess.file_exists(root.path_join("project.godot")),
+			"project_root %s holds a project.godot" % root)
+	if err == "":
+		err = _T.assert_true(str(data.get("project_name", "")) != "", "project_name is reported")
+	if err == "":
+		err = _T.assert_true(data.get("pid", 0) is int and int(data["pid"]) > 0,
+			"pid is a positive int -- %s" % [data.get("pid")])
+	if err == "":
+		err = _T.assert_true(str(data.get("engine_version", "")) != "", "engine_version reduces to a string")
+	return err
+
+
+## Either a sha was read off disk or it was not -- "" is the one answer that is not
+## allowed, because an empty string reads as a value rather than as an absence.
+func test_project_identity_reports_a_sha_or_says_it_is_unavailable() -> String:
+	var data: Dictionary = _identity()["data"]
+	var sha: String = str(data.get("git_sha", ""))
+	var branch: String = str(data.get("git_branch", ""))
+	var err: String = _T.assert_true(sha == "unavailable" or _looks_like_sha(sha),
+		"git_sha is 40 hex chars, a short sha, or exactly 'unavailable' -- got '%s'" % sha)
+	if err == "":
+		err = _T.assert_true(branch != "", "git_branch is never blank -- '%s'" % branch)
+	if err == "":
+		err = _T.assert_true(data.get("is_worktree", null) is bool, "is_worktree is a bool")
+	if err == "":
+		# The bus is JSON; a Dictionary or Object in here would not survive the trip.
+		for key: String in data:
+			var value: Variant = data[key]
+			err = _T.assert_true(value is String or value is int or value is float or value is bool,
+				"data.%s is a JSON-safe scalar, got %s" % [key, type_string(typeof(value))])
+			if err != "":
+				break
+	return err
+
+
+## The verb is only discoverable by `list-commands --offline` if it is registered
+## with a literal double-quoted name -- that client parses the script statically and
+## cannot evaluate a constant or a variable. Nothing at runtime would notice the
+## difference, so the check has to be on the source text.
+func test_project_identity_is_registered_with_a_literal_name() -> String:
+	var source: String = FileAccess.get_file_as_string(DEVTOOLS_EXT)
+	var err: String = _T.assert_false(source.is_empty(), "the extension source reads back")
+	if err == "":
+		err = _T.assert_true(source.contains('register_command("project_identity"'),
+			"registered with a literal string so --offline discovery can see it")
+	return err
