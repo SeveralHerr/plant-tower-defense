@@ -84,16 +84,20 @@ func test_a_packet_never_hands_back_something_you_already_own() -> String:
 	## and re-granting one. Drain the packets and check every roll was new.
 	var bank := SeedBank.new()
 	bank.set_seed(7)
-	bank.add_seeds(SeedBank.PACKET_COST * 20)
+	bank.add_seeds(SeedBank.PACKET_COST * 40)
 	var seen: Array[StringName] = []
+	# The LAST tier in PACKET_ORDER, read rather than named. This loop used to
+	# drain on the common tier and was green only because of the bug it was
+	# standing next to: common fell back to the whole locked pool when its tier
+	# filter emptied, so it could hand out the tier-2 Sunflower and the loop
+	# terminated. With the fallback gone, common correctly refuses once tier 1 is
+	# spent and this would spin on "" forever. It was then pinned to `rare`, which
+	# was the tier that could reach the whole catalogue — until `epic` arrived
+	# above it and rare's cap dropped to 2, at which point the same spin came back.
+	# Twice is enough: the tier that reaches everything is now derived.
+	var top: StringName = SeedBank.PACKET_ORDER[SeedBank.PACKET_ORDER.size() - 1]
 	while not bank.locked_plants().is_empty():
-		# Rare, not common. This loop used to drain on the common tier and was
-		# green only because of the bug it was standing next to: common fell back
-		# to the whole locked pool when its tier filter emptied, so it could hand
-		# out the tier-2 Sunflower and the loop terminated. With the fallback gone,
-		# common correctly refuses once tier 1 is spent and this would spin on ""
-		# forever. Rare is the tier that can actually reach the whole catalogue.
-		var got: StringName = bank.buy_packet(&"rare")
+		var got: StringName = bank.buy_packet(top)
 		var err: String = _T.assert_false(seen.has(got), "packet rolled %s twice" % got)
 		if err != "":
 			return err
@@ -220,20 +224,27 @@ func test_the_rare_packet_is_the_route_past_the_common_cap() -> String:
 
 
 func test_draining_the_catalogue_never_repeats_a_plant() -> String:
-	## Same claim as the single-tier drain above, but across both tiers now that a
-	## capped packet can refuse: escalate to the pricier packet when the cheap one
-	## is spent. Every plant stays reachable, none arrives twice, and once the
-	## garden is complete both tiers refuse.
+	## Same claim as the single-tier drain above, but across EVERY tier now that a
+	## capped packet can refuse: escalate to the next pricier packet when the cheap
+	## one is spent. Every plant stays reachable, none arrives twice, and once the
+	## garden is complete every tier refuses.
+	##
+	## Walks SeedBank.PACKET_ORDER rather than naming common and rare, which is the
+	## thing this test is really for: a third tier that no ladder ever climbs to is
+	## a plant the player can never be handed, and a hard-coded two-step escalation
+	## would have passed while `epic` sat unreachable behind it.
 	var bank := SeedBank.new()
 	bank.set_seed(21)
-	bank.add_seeds(int(SeedBank.PACKET_TIERS[&"rare"]["cost"]) * 40)
+	bank.add_seeds(int(SeedBank.PACKET_TIERS[&"epic"]["cost"]) * 40)
 	var seen: Array[StringName] = []
 	var guard: int = 0
 	while not bank.locked_plants().is_empty() and guard < 40:
 		guard += 1
-		var got: StringName = bank.buy_packet(&"common")
-		if got == &"":
-			got = bank.buy_packet(&"rare")
+		var got: StringName = &""
+		for tier: StringName in SeedBank.PACKET_ORDER:
+			got = bank.buy_packet(tier)
+			if got != &"":
+				break
 		var err: String = _T.assert_true(got != &"",
 			"no packet could deliver with %d plant(s) still locked" % bank.locked_plants().size())
 		if err != "":
@@ -246,10 +257,12 @@ func test_draining_the_catalogue_never_repeats_a_plant() -> String:
 		"every plant was reachable through packets, %s left" % [bank.locked_plants()])
 	if err2 != "":
 		return err2
-	err2 = _T.assert_eq(bank.buy_packet(&"rare"), &"", "packets are refused once the garden is complete")
-	if err2 != "":
-		return err2
-	return _T.assert_eq(bank.buy_packet(&"common"), &"", "including the cheap one")
+	for tier: StringName in SeedBank.PACKET_ORDER:
+		err2 = _T.assert_eq(bank.buy_packet(tier), &"",
+			"a %s packet is refused once the garden is complete" % tier)
+		if err2 != "":
+			return err2
+	return err2
 
 
 ## Two modes, two records. One number shared between an eight-wave campaign and an
@@ -465,7 +478,12 @@ func test_uprooting_and_replanting_a_wreck_costs_more_than_it_returns() -> Strin
 	var guard: int = 0
 	while not bank.locked_plants().is_empty() and guard < 40:
 		guard += 1
-		bank.buy_packet(&"rare")
+		# Every tier, cheapest first: no single tier reaches the whole catalogue
+		# any more (SeedBank.PACKET_TIERS), so a loop that named one would leave
+		# the top plant locked and this test would report it as unaffordable.
+		for tier: StringName in SeedBank.PACKET_ORDER:
+			if bank.buy_packet(tier) != &"":
+				break
 	# Burn the one free planting, or the Corn Cobbler's replant price is 0 and the
 	# exploit reads as free rather than as arithmetic.
 	bank.pay_for_plant(PlantCatalog.starting_unlocks()[0])

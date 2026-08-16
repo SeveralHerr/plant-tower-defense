@@ -184,11 +184,72 @@ const PREP_NOTE_WORST_CASE: String = "Wave 9999 cleared. Pests got 95% down the 
 ## used to be a 240px VBox of 56px buttons that fit four with 8px to spare and
 ## overlapped the packet button at five.
 const PLANT_BAR_Y: float = 44.0
-const PLANT_BAR_BOTTOM: float = 292.0
-const PLANT_BAR_SEPARATION: int = 8
+## 260, down from 292, with the separation cut from 8 to 4. A third packet tier
+## arrived (SeedBank.PACKET_ORDER) and the 92px between the old bar foot and
+## SelectionBox could not hold three 40px buttons — 40 is the touch minimum
+## `findings` gates at, so neither the plant buttons nor the packet buttons could
+## give up height. The panel is now genuinely full, and the arithmetic is worth
+## writing down because the next plant runs into it:
+##
+##   44 (bar top) + 5*40 (plants) + 3*40 (packets) = 364, against SelectionBox at
+##   392. That leaves 28px for seven gaps — four inside the bar, two inside the
+##   packet rack, one between them — and this file spends 4/2/4 of it.
+##
+## THE FIRST THING TRIED WAS TWO COLUMNS, AND IT DOES NOT WORK. `findings` caught
+## it live: a plant button's own minimum width is 158px (icon plus the longest
+## label), so two of them plus a separation need 324px in a 232px bar. The
+## GridContainer does not shrink to fit — it grows, and the whole side panel ran
+## 42px past the right edge of the viewport. What paid for the fifth plant instead
+## was the button TEXT, which used to be two lines ("Chomp Flower\n15 seeds", 54px
+## of intrinsic height) and is now one (31px). See _refresh.
+const PLANT_BAR_BOTTOM: float = 260.0
+const PLANT_BAR_SEPARATION: int = 4
 ## Below this a button stops being a touch target; `findings` gates interactive
 ## Controls at 40x40 and was right to when an earlier pass trimmed one to 34.
 const PLANT_BUTTON_MIN_HEIGHT: float = 40.0
+
+## The packet rack: one full-width button per SeedBank.PACKET_ORDER entry, stacked
+## between the plant bar and the selection box.
+##
+## Positions are derived rather than typed out, which they were not before —
+## `Vector2(12, 300)` and `Vector2(12, 344)` were two hand-picked numbers, and a
+## third tier meant either a third magic number or the discovery that there was no
+## room for one. There was no room for one: see PLANT_BAR_BOTTOM for where the
+## 128px came from. The rack now foots at 388, four pixels clear of SelectionBox
+## at 392, and test_the_packet_rack_fits_between_the_plant_bar_and_the_selection_box
+## fails on a fourth tier rather than quietly drawing it under the panel.
+const PACKET_ROW_Y: float = 264.0
+const PACKET_ROW_HEIGHT: float = 40.0
+const PACKET_ROW_PITCH: float = 42.0
+## Where the selection panel starts, and therefore the floor the rack must clear.
+## Named because two things now depend on it rather than one.
+const SELECTION_BOX_Y: float = 392.0
+
+
+## Where the packet button for the `index`th tier sits, in the side panel's own
+## space. Pure, so the rack's fit is arithmetic rather than a rendering check.
+static func packet_row_rect(index: int) -> Rect2:
+	return Rect2(
+		Vector2(12.0, PACKET_ROW_Y + PACKET_ROW_PITCH * float(index)),
+		Vector2(float(PANEL_WIDTH - 24), PACKET_ROW_HEIGHT))
+
+
+## The node name a tier's button carries.
+##
+## The common tier keeps the bare "PacketButton" it has always had, and every
+## other tier is "<Tier>PacketButton". That asymmetry is deliberate and is not
+## worth tidying: `test_selftest.gd` and the devtools bridge both press these by
+## path, so renaming the oldest one to match a scheme would break the callers to
+## make a string prettier.
+static func packet_button_name(tier: StringName) -> String:
+	if tier == &"common":
+		return "PacketButton"
+	# `.capitalize()` puts a space in front of every word, which is fine for a
+	# label and wrong for a node name — a `super_rare` tier would become
+	# "Super Rare" and its NodePath would need quoting. Stripped here rather than
+	# relied upon not to happen.
+	return "%sPacketButton" % String(tier).capitalize().replace(" ", "")
+
 
 ## The resting tooltip per packet tier, counted from the catalogue rather than
 ## written out.
@@ -219,8 +280,8 @@ static func packet_tooltip(tier: StringName) -> String:
 			within, cap, rarer,
 		]
 	return ("Costlier, and the only packet that reaches every seed in the garden — "
-		+ "all %d of them, including the %d a cheaper packet can never hold.") % [
-			within, _plants_above_tier(int((SeedBank.PACKET_TIERS[&"common"] as Dictionary)["max_tier"])),
+		+ "all %d of them, including the %d no cheaper packet can hold.") % [
+			within, _plants_above_tier(_best_cap_under(tier)),
 		]
 
 
@@ -230,6 +291,28 @@ static func _plants_above_tier(cap: int) -> int:
 		if PlantCatalog.tier(id) > cap:
 			count += 1
 	return count
+
+
+## The furthest up the catalogue any packet CHEAPER than `tier` can reach.
+##
+## This used to be the common packet's cap, spelled out, which was the same
+## number while common and rare were the only two tiers and stopped being it the
+## moment `epic` was added: the sentence would then have counted the three seeds
+## a *common* packet cannot hold while claiming they were the ones no cheaper
+## packet can, and a Rare Packet holds two of them. Derived from `cost` so a
+## re-priced or re-capped tier moves this with it.
+##
+## 0 when nothing is cheaper — every plant is then above the cap, which is the
+## right answer for a configuration with exactly one packet in it.
+static func _best_cap_under(tier: StringName) -> int:
+	var mine: int = int((SeedBank.PACKET_TIERS[tier] as Dictionary)["cost"])
+	var best: int = 0
+	for other: StringName in SeedBank.PACKET_ORDER:
+		var spec: Dictionary = SeedBank.PACKET_TIERS[other] as Dictionary
+		if int(spec["cost"]) >= mine:
+			continue
+		best = maxi(best, int(spec["max_tier"]))
+	return best
 
 ## Message priorities. NORMAL is ambient colour — a husk collected, a wave
 ## cleared. IMPORTANT is anything the player must act on or has just been asked
@@ -361,8 +444,9 @@ var _message_label: Label
 ## A GridContainer, not a VBox: it runs one column until a fifth plant would
 ## push the buttons under the touch minimum, then two. See plant_bar_layout.
 var _plant_bar: GridContainer
-var _packet_button: Button
-var _rare_packet_button: Button
+## tier -> its Button. A Dictionary rather than one named field per tier, which is
+## what the pair of fields here became the moment there were three of them.
+var _packet_buttons: Dictionary = {}
 var _next_wave_button: Button
 var _selection_box: VBoxContainer
 var _selection_label: Label
@@ -558,31 +642,35 @@ func _build_side_panel(root: Control) -> void:
 	# Stacked full-width, not side-by-side: two 112px-wide buttons with an icon
 	# plus "Common (20)" had no room left for the text (findings caught this —
 	# button_text_overflow, 99px of text in less than that of actual space).
-	_packet_button = Button.new()
-	_packet_button.name = "PacketButton"
-	_packet_button.text = "Common Packet (%d)" % SeedBank.PACKET_TIERS[&"common"]["cost"]
-	_packet_button.icon = load("res://assets/sprites/seed_packet.png") as Texture2D
-	_packet_button.expand_icon = true
-	_packet_button.position = Vector2(12, 300)
-	_packet_button.size = Vector2(PANEL_WIDTH - 24, 40)
-	_packet_button.tooltip_text = packet_tooltip(&"common")
-	_packet_button.pressed.connect(func() -> void: packet_requested.emit(&"common"))
-	panel.add_child(_packet_button)
-
-	_rare_packet_button = Button.new()
-	_rare_packet_button.name = "RarePacketButton"
-	_rare_packet_button.text = "Rare Packet (%d)" % SeedBank.PACKET_TIERS[&"rare"]["cost"]
-	_rare_packet_button.icon = load("res://assets/sprites/seed_packet.png") as Texture2D
-	_rare_packet_button.expand_icon = true
-	_rare_packet_button.position = Vector2(12, 344)
-	_rare_packet_button.size = Vector2(PANEL_WIDTH - 24, 40)
-	_rare_packet_button.tooltip_text = packet_tooltip(&"rare")
-	_rare_packet_button.pressed.connect(func() -> void: packet_requested.emit(&"rare"))
-	panel.add_child(_rare_packet_button)
+	#
+	# Built from SeedBank.PACKET_ORDER rather than written out one tier at a time,
+	# which is what the third tier is paying for: two hand-placed buttons was a
+	# shape that worked exactly twice, and the epic packet would have been a third
+	# copy of twelve lines plus a third magic y. Now a tier is a row in one table
+	# and the rack lays itself out — see packet_row_rect().
+	var packet_icon := load("res://assets/sprites/seed_packet.png") as Texture2D
+	for index: int in SeedBank.PACKET_ORDER.size():
+		var tier: StringName = SeedBank.PACKET_ORDER[index]
+		var spec: Dictionary = SeedBank.PACKET_TIERS[tier] as Dictionary
+		var rect: Rect2 = packet_row_rect(index)
+		var packet := Button.new()
+		packet.name = packet_button_name(tier)
+		packet.text = "%s (%d)" % [spec["display"], int(spec["cost"])]
+		packet.icon = packet_icon
+		packet.expand_icon = true
+		packet.position = rect.position
+		packet.size = rect.size
+		packet.tooltip_text = packet_tooltip(tier)
+		# `tier` is bound, not captured: a bare closure over the loop variable is
+		# the one mistake this rewrite could make that two hand-written buttons
+		# could not, and it would wire every button to the last tier.
+		packet.pressed.connect(_on_packet_button.bind(tier))
+		panel.add_child(packet)
+		_packet_buttons[tier] = packet
 
 	_selection_box = VBoxContainer.new()
 	_selection_box.name = "SelectionBox"
-	_selection_box.position = Vector2(12, 392)
+	_selection_box.position = Vector2(12, SELECTION_BOX_Y)
 	_selection_box.size = Vector2(PANEL_WIDTH - 24, 152)
 	_selection_box.add_theme_constant_override("separation", 6)
 	_selection_box.visible = false
@@ -791,6 +879,14 @@ func _set_prep_bar_urgent(urgent: bool) -> void:
 ## a future catalogue size can be checked without adding the plant.
 static func plant_bar_layout(count: int) -> Dictionary:
 	var span: float = PLANT_BAR_BOTTOM - PLANT_BAR_Y
+	# This function only reasons about HEIGHT, and that is a real limit rather than
+	# an oversight: a plant button's minimum WIDTH is 158px (icon plus the longest
+	# label), so the two-column branch below already cannot be rendered at
+	# PANEL_WIDTH — the GridContainer grows instead of shrinking and pushes the
+	# side panel off the viewport. It stays because the vertical arithmetic is what
+	# this answers and what the sweep test checks; a catalogue that actually
+	# reaches for it needs shorter labels first. See PLANT_BAR_BOTTOM, where that
+	# was found live rather than reasoned about.
 	for columns: int in [1, 2]:
 		var rows: int = int(ceil(float(count) / float(columns)))
 		if rows <= 0:
@@ -889,6 +985,10 @@ func _on_plant_button(id: StringName) -> void:
 	plant_selected.emit(id)
 
 
+func _on_packet_button(tier: StringName) -> void:
+	packet_requested.emit(tier)
+
+
 func _process(delta: float) -> void:
 	if _message_left > 0.0:
 		_message_left -= delta
@@ -952,12 +1052,18 @@ func refresh(state: Dictionary) -> void:
 		var button: Button = _plant_buttons[id]
 		var unlocked: bool = bank.is_unlocked(id)
 		var price: int = bank.placement_cost(id)
+		# One line, not two, and that is a layout decision rather than a style one:
+		# a two-line button has 54px of intrinsic height and five of them plus
+		# three packet buttons do not fit the panel (see PLANT_BAR_BOTTOM). One
+		# line is 31px, which is what makes a fifth plant fit at all. The price
+		# loses the word "seeds" with it — the seed count at the top of the screen
+		# is the only currency there is, and the icon beside it says so.
 		if not unlocked:
-			button.text = "%s\nlocked" % PlantCatalog.display_name(id)
+			button.text = "%s — locked" % PlantCatalog.display_name(id)
 		elif price == 0:
-			button.text = "%s\nfree" % PlantCatalog.display_name(id)
+			button.text = "%s — free" % PlantCatalog.display_name(id)
 		else:
-			button.text = "%s\n%d seeds" % [PlantCatalog.display_name(id), price]
+			button.text = "%s — %d" % [PlantCatalog.display_name(id), price]
 		button.disabled = not unlocked
 		button.modulate = Color.WHITE if (unlocked and bank.can_afford(id)) else Color(1, 1, 1, 0.55)
 		button.button_pressed = unlocked and id == selected
@@ -967,8 +1073,10 @@ func refresh(state: Dictionary) -> void:
 	# even though the tier-2 Sunflower is still locked. Before this the button
 	# stayed lit and every click bought a refusal message — which is what a lit
 	# button that does nothing always is.
-	_refresh_packet_button(_packet_button, bank, &"common")
-	_refresh_packet_button(_rare_packet_button, bank, &"rare")
+	for tier: StringName in SeedBank.PACKET_ORDER:
+		var packet := _packet_buttons.get(tier) as Button
+		if packet != null:
+			_refresh_packet_button(packet, bank, tier)
 	_next_wave_button.disabled = not bool(state["can_start_wave"])
 	_refresh_prep_bar(state)
 	_refresh_selection(state)
@@ -1022,8 +1130,22 @@ func _refresh_selection(state: Dictionary) -> void:
 	else:
 		var chomp := plant as ChompFlower
 		var sundew := plant as StickySundew
+		var dandelion := plant as Dandelion
 		var busy: String = "Idle — waiting for a pest."
-		if chomp != null and chomp.is_busy():
+		if dandelion != null:
+			# The fluff count is already on the sprite — this is the half the
+			# drawing cannot carry: how long until the head is armed again. A
+			# player watching a bald Dandelion has no other way to tell a plant
+			# that is reloading from one that has nothing to shoot at.
+			if dandelion.is_volley_open() and dandelion.fluff() > 0:
+				busy = "%d seed(s) up, %.0f dmg a burst." % [
+					dandelion.fluff(), Dandelion.SEED_DAMAGE,
+				]
+			else:
+				busy = "Regrowing — %d/%d fluff, armed in %.1fs." % [
+					dandelion.fluff(), Dandelion.FLUFF_MAX, dandelion.seconds_until_armed(),
+				]
+		elif chomp != null and chomp.is_busy():
 			busy = "Chewing — %d%% through this one." % int(round(chomp.chew_progress() * 100.0))
 		elif sundew != null:
 			# A Sundew is never busy and never idle — it is always working, and the
@@ -1151,8 +1273,13 @@ func shake_plant_button(id: StringName) -> void:
 
 
 ## A refused packet buy, shaking the actual button the player clicked.
+##
+## Keyed rather than branched. The old form — `rare ? rare_button : common_button`
+## — had no way to be wrong with two tiers and exactly one way to be wrong with
+## three: an epic refusal would have shaken the common button, which is a cue
+## pointing at the wrong purchase.
 func shake_packet_button(tier: StringName) -> void:
-	_shake_control(_rare_packet_button if tier == &"rare" else _packet_button)
+	_shake_control(_packet_buttons.get(tier) as Control)
 
 
 ## A refused plant upgrade, shaking the Upgrade button itself — unlike a plant

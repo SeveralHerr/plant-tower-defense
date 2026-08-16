@@ -11,6 +11,7 @@ const CORN := &"corn_cobbler"
 const CHOMP := &"chomp_flower"
 const SUNFLOWER := &"sunflower"
 const SUNDEW := &"sticky_sundew"
+const DANDELION := &"dandelion"
 
 const PLANTS: Dictionary = {
 	CORN: {
@@ -60,11 +61,27 @@ const PLANTS: Dictionary = {
 		# undefended, so coverage must ask this key and not that one.
 		"engages": false,
 	},
+	DANDELION: {
+		"display": "Bomb Dandelion",
+		"texture": "res://assets/sprites/dandelion.png",
+		"cost": 45,
+		# The first tier-3 entry, and the reason SeedBank grew an `epic` packet:
+		# `rare` used to cap at 99 and therefore reached everything, so a third
+		# tier only means something once the tier below it stops being a superset.
+		"tier": 3,
+		"unlocked_at_start": false,
+		"free_starter": false,
+		"blurb": "Throws its seeds in an arc and they burst where they land. Hits everything standing together — and grows its fluff back between volleys.",
+		# The only entry in the catalogue that damages more than one pest with one
+		# action. See Dandelion's header for why that is worth 45 seeds when its
+		# single-target rate is a 10-seed cob's.
+		"engages": true,
+	},
 }
 
 ## Order the shop and the plant bar list plants in. Keeps the UI stable as more
 ## plants are added to PLANTS.
-const ORDER: Array[StringName] = [CORN, CHOMP, SUNFLOWER, SUNDEW]
+const ORDER: Array[StringName] = [CORN, CHOMP, SUNFLOWER, SUNDEW, DANDELION]
 
 
 static func ids() -> Array[StringName]:
@@ -111,6 +128,12 @@ static func reach(id: StringName) -> float:
 			# road is exactly as useless as a cob that can shoot none, and the
 			# dead-ground cue should say so before the 30 seeds are spent.
 			return StickySundew.SAP_RADIUS
+		DANDELION:
+			# The throw, not the blast. SeedBomb.BLAST_RADIUS is how wide the
+			# landing is, which is a different question from how far a seed can be
+			# thrown — and it is the throw that decides whether a cell is dead
+			# ground.
+			return Dandelion.RANGE
 		_:
 			return 0.0
 

@@ -60,6 +60,13 @@ const PLANT_UPROOTED := &"plant_uprooted"
 const CORN_FIRED := &"corn_fired"
 const CHOMP_BITE := &"chomp_bite"
 const SUNDEW_CLAIM := &"sundew_claim"
+## The Bomb Dandelion's two halves, and they are two cues rather than one
+## because they happen at two different places at two different times: a seed
+## leaves the head, and SeedBomb.FLIGHT_SECONDS later it bursts somewhere else. A
+## single "fired" cue would put the whole event at the plant, which is precisely
+## the half of it the player is NOT meant to be watching.
+const DANDELION_PUFF := &"dandelion_puff"
+const SEED_BOMB_BURST := &"seed_bomb_burst"
 ## A HUD button acknowledging the click itself, before whatever it went on to
 ## do. Only the two presses that answered with nothing of their own use it —
 ## "Grow the next wave" and the plant bar; see Game._on_next_wave_requested for
@@ -113,6 +120,17 @@ const SOUNDS: Dictionary = {
 	# Reuses UPROOT_ARMED's stream — a light chime for a catch that only slows,
 	# not the heavier PEST_KILLED impact a Sundew never earns since it never kills.
 	SUNDEW_CLAIM: "res://assets/audio/question_002.ogg",
+	# Reuses PLANT_PLACED's grass footstep, which is the only soft rustle this
+	# pack vendored — and a seed head letting go of its fluff is a rustle rather
+	# than an impact. Told apart from a planting by level (see VOLUME_DB) and by
+	# the fact that a planting happens once and this happens two or three times in
+	# a second, from a plant already on the board.
+	DANDELION_PUFF: "res://assets/audio/footstep_grass_000.ogg",
+	# Reuses PEST_KILLED's heavy soft impact, the only landing-sized sound in the
+	# table. A burst that kills therefore plays this AND that in the same frame,
+	# which is right: a blast that took something down should sound bigger than
+	# one that only clipped it.
+	SEED_BOMB_BURST: "res://assets/audio/impactSoft_heavy_000.ogg",
 	# Reuses HUSK_COLLECTED's coins for the same reason the flying glyph reuses
 	# the husk's gold: seeds arriving are seeds arriving, and a second currency
 	# sound for the same currency would say they were different things.
@@ -149,6 +167,14 @@ const VOLUME_DB: Dictionary = {
 	# WAVE_STARTED's bell sound in the SAME frame — this is meant to read as the
 	# click under that bell, not as a second event competing with it.
 	BUTTON_PRESSED: -10.0,
+	# Under PLANT_PLACED's 0.0, same stream: planting is a thing the player did
+	# and wants confirmed, a seed leaving a head is the plant working on its own
+	# clock two or three times a volley. Ambience, not an answer to an act — the
+	# same split SEEDS_GROWN makes against HUSK_COLLECTED.
+	DANDELION_PUFF: -9.0,
+	# Under PEST_KILLED's -3.0, same stream, so a burst that killed something is
+	# audibly bigger than the burst alone.
+	SEED_BOMB_BURST: -6.0,
 }
 
 ## Shortest gap between two plays of the SAME event, in milliseconds. Absent
@@ -170,6 +196,14 @@ const REPEAT_MS: Dictionary = {
 	# apart on their own. Without this, four flowers pay out as one sound four
 	# times as loud rather than as four payouts.
 	SEEDS_GROWN: 200,
+	# A row of Dandelions comes due together for the same reason a row of
+	# Sunflowers does — Dandelion.SHOT_INTERVAL and FLUFF_REGROW_SECONDS are
+	# constants, so heads planted in the same breath stay in phase forever. One
+	# plant's own volley is SHOT_INTERVAL (450ms) apart and never touches these
+	# gaps; three plants firing in one frame would otherwise be one sound three
+	# times as loud rather than three seeds.
+	DANDELION_PUFF: 120,
+	SEED_BOMB_BURST: 90,
 }
 
 ## How many sounds can overlap. A tower defense's loudest moment is a volley

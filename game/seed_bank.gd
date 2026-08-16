@@ -19,18 +19,37 @@ const STARTING_SEEDS: int = 25
 ## the common tier's cost, the default buy_packet() reaches for.
 const PACKET_COST: int = 20
 
-## Packet tiers: cheap and common-only, or pricier with a shot at anything
-## including higher tiers. `max_tier` filters the pool, and it is the ONLY thing
-## the two tiers differ by — so the cap has to bind. When nothing at or below
+## Packet tiers, cheapest first: each one costs more than the last and reaches one
+## tier further up the catalogue. `max_tier` filters the pool, and it is the ONLY
+## thing the tiers differ by — so the cap has to bind. When nothing at or below
 ## `max_tier` is still locked, buy_packet() refuses and charges nothing; it must
 ## never quietly reach past the cap, or a 20-seed common packet becomes a cheaper
-## rare packet and both HUD tooltips start lying. The player is not stranded by
+## rare packet and every HUD tooltip starts lying. The player is not stranded by
 ## the refusal: seeds come from pests, sunflowers and compost, so a pricier packet
 ## is always still reachable.
+##
+## `rare` used to cap at 99, i.e. at everything. That was correct while it was the
+## top tier and became wrong the instant `epic` was added above it: two tiers that
+## both reach the whole catalogue are not two tiers, they are one tier and a more
+## expensive way to buy it. So `rare` now caps at 2 — the Sunflower and the Sundew,
+## the plants it was already about — and `epic` is the only packet that can hand
+## over a tier-3 seed. The cap the top tier carries stays 99 rather than 3 so that
+## a tier-4 plant is reachable the day it exists rather than silently unrollable.
 const PACKET_TIERS: Dictionary = {
 	&"common": {"display": "Common Packet", "cost": PACKET_COST, "max_tier": 1},
-	&"rare": {"display": "Rare Packet", "cost": 45, "max_tier": 99},
+	&"rare": {"display": "Rare Packet", "cost": 45, "max_tier": 2},
+	&"epic": {"display": "Epic Packet", "cost": 90, "max_tier": 99},
 }
+
+## The tiers in the order a shop should list them: cheapest first.
+##
+## Dictionary insertion order would give the same answer today, and that is
+## precisely why this exists — a Dictionary's order is a fact about how the
+## literal above happens to be typed, not a promise, and the HUD builds one button
+## per entry at a fixed y offset apiece. A re-ordered literal would silently swap
+## two buttons under the player's cursor. test_the_packet_tiers_are_listed_cheapest_first
+## pins this against `cost`, so the list cannot disagree with the prices either.
+const PACKET_ORDER: Array[StringName] = [&"common", &"rare", &"epic"]
 
 var seeds: int = STARTING_SEEDS
 ## Seeds *earned* this run (not net of spending) — the number both modes' high
@@ -152,7 +171,7 @@ func packet_pool(tier: StringName = &"common") -> Array[StringName]:
 func _cheapest_tier_with_stock() -> StringName:
 	var best: StringName = &""
 	var best_cost: int = 0
-	for key: StringName in PACKET_TIERS:
+	for key: StringName in PACKET_ORDER:
 		if packet_pool(key).is_empty():
 			continue
 		var cost: int = int((PACKET_TIERS[key] as Dictionary)["cost"])

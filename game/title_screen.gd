@@ -203,7 +203,16 @@ const PLANT_ART_WIDTH: float = 64.0
 ## a new slot may only live in x 60-371 or x 781-1092; there is room for about one
 ## more in each band before they start to crowd. If the catalogue outgrows the
 ## slots, lawn_plants() drops the surplus and says so — see the note there.
-const PLANT_X: Array[float] = [132.0, 272.0, 884.0, 1020.0]
+##
+## The fifth slot (the Bomb Dandelion) went into the RIGHT band, and the two
+## slots already there moved left to make room, rather than into the left band
+## where there was also space. That keeps the reading the comment above describes:
+## catalogue order puts the two tier-1 plants — the ones you start with or open a
+## cheap packet for — left of the buttons, and everything a pricier packet has to
+## hand over right of them. Three in that band at 806/940/1074 leaves 25px between
+## sprites and 24px of margin at the screen edge; a fourth does not fit, and
+## test_the_title_lawn_shows_every_plant_in_the_catalogue says so.
+const PLANT_X: Array[float] = [132.0, 272.0, 806.0, 940.0, 1074.0]
 ## The bugs the plants are there to fight, marching across the soil.
 const PEST_BASE_Y: float = 606.0
 const PEST_SCALE: float = 1.15

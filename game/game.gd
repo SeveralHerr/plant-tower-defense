@@ -1116,6 +1116,8 @@ func _new_plant(id: StringName) -> Plant:
 			return Sunflower.new()
 		PlantCatalog.SUNDEW:
 			return StickySundew.new()
+		PlantCatalog.DANDELION:
+			return Dandelion.new()
 		_:
 			return CornCobbler.new()
 

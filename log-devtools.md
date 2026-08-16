@@ -3107,7 +3107,7 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   developer's own save altered by a verification run. (The 2026-08-16 entry above
   files the *merge* half of this as "not a harness gap"; this is the other half —
   not two checkouts disagreeing, one checkout mutating state it only meant to read.)
-  - [G-047] status: open | seen: 1 | harness: 0.32.0
+  - [G-047] status: open | seen: 2 | harness: 0.32.0
   - Improvement: a `--snapshot-userstate` flag on `launch` that copies `user://*.save`
     aside and restores it on `quit` (or on the next launch, if the game died) would
     make a live check that touches persisted settings safe by default rather than by
@@ -3458,3 +3458,65 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     `launch` should print the "this session shares your real `user://`" line it
     already prints *with* the names of the files that exist there and would be
     overwritten, so the decision is offered at the moment it can still be made.
+## 2026-08-16 — The Bomb Dandelion: a fifth plant, arcing seed bombs, and an epic packet tier
+
+- Value: **warranted** — `findings` refused a HUD layout that every headless gate,
+  including the bar's own arithmetic sweep test, had just called correct.
+  - Expected: the runtime pass would confirm what the unit tests already asserted —
+    that a fifth plant button and a third packet button both fit the side panel,
+    since `plant_bar_layout()` reported a legal column count and every button
+    cleared the 40px touch floor.
+  - Got: `7 finding(s) ... ui_overflow: GridContainer 'PlantBar' extends past
+    viewport (rect: 908,116 -> 1194,320, viewport: 1152x648)` plus four
+    `button_text_overflow`. The two-column bar the layout function had chosen is
+    not renderable at all: `get_combined_minimum_size()` on a plant button reads
+    `{"x": 158.0}`, so two of them need 324px in a 232px bar and the GridContainer
+    GROWS rather than shrinking, pushing the whole side panel 42px off screen.
+  - Found: that, and the fix it forced — the plant buttons' two-line text has 54px
+    of intrinsic height against one line's 31px, which is the only slack in the
+    panel and is what a fifth plant plus a third packet tier had to be paid for
+    with. Also that "Blowball Dandelion — locked" measured 225px against a 233px
+    button and had to become "Bomb Dandelion".
+  - Cheaper: nothing. The bar's vertical arithmetic is unit-tested and was right;
+    the failure is a Container's minimum-size behaviour against a label width, and
+    no static read of `hud.gd` produces the number 158.
+
+- Value (second half): **warranted** — the bridge is how "the seeds arc" stopped
+  being a claim about a tween and became a measurement.
+  - Expected: `find-nodes --class SeedBomb` mid-wave would show a projectile
+    somewhere between the plant and a pest.
+  - Got: two at once, `flight_fraction()=0.876 sprite_lift()=19.1` and
+    `flight_fraction()=0.027 sprite_lift()=4.67`, with `position` landing exactly on
+    `from.lerp(to, t)` and each `sprite_lift()` matching `SeedBomb.lift_at(t)` to
+    three decimals — i.e. the arc is the sprite lifting off an honest ground track,
+    which is the only shape that works on a top-down board.
+  - Found: nothing new here; it confirmed the unit tests against a live wave.
+  - Cheaper: the headless tests already pin the arithmetic. What runtime added was
+    `performance --by-type` reporting `Orphan growth: +0` after a wave of bombs,
+    which says the linger-then-free path actually frees.
+
+- **[G-047] again (seen bumped to 2, not re-filed).** A live pass ended a run and
+  `quit` reported `changed: highscore.save; created: highscore.save.damaged-36074` —
+  the campaign record went from 36074 with three milestones to 308 with none, on a
+  `launch --isolated` that isolates only the bus. Two things worth adding to that
+  entry's evidence: the loss happened without any test running, purely from playing
+  the game through the bridge, and the `.damaged-NNNNN` quarantine file is written by
+  nothing in this repository (`grep -rn 'damaged-' tools/ addons/ game/` is empty), so
+  a concurrent worktree's build produced it. The old content survives inside it and
+  was left untouched. `--snapshot-userstate` was not passed and should have been.
+
+- Gap: **`set_physics_process(false)` before `add_child()` does not stick, and the
+  harness's own test guidance does not say so.** A `Dandelion` built with physics
+  disabled and then hosted had already fired a seed by the first assertion
+  (`a fresh head is full: Expected 3 but got 2`), because Godot re-enables physics
+  processing at `NOTIFICATION_READY` for any script declaring `_physics_process`.
+  `test_combat.gd` already works around it by calling the setter AFTER
+  `instantiate_scene` and resetting `_cooldown` by hand, but nothing says why, so the
+  next test writer rediscovers it. Cost: one full suite round trip.
+  - [G-050] status: open | seen: 1 | harness: 0.36.0
+  - Improvement: one paragraph in the harness's "Where the checks you write live"
+    section, beside the existing `instantiate_ui` note — headless pumps no frames for
+    Controls, but it DOES pump the settle frames for a hosted Node2D, and a node
+    quiesced before hosting is not quiesced. Better still, a `_T.quiesce(node)`
+    helper that sets the flag after the host is live, so the ordering is not
+    something each test has to know.

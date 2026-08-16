@@ -30,14 +30,25 @@ const RETINA_DIR := "res://assets/sprites/retina"
 ## path rather than through res://, and why this file does the same.
 const SRC_SUBDIR := "art_src"
 
-## name -> expected edge length at 1x. Everything the kit ships is 64; our
-## projectile is deliberately smaller because it is not a tile-sized object.
+## name -> expected edge length at 1x. Everything the kit ships is 64; our two
+## projectiles are deliberately smaller because they are not tile-sized objects.
+## `dandelion_seed` is 24 rather than `corn_kernel`'s 16 because it is the one
+## projectile the player is meant to watch: it arcs for SeedBomb.FLIGHT_SECONDS
+## and is scaled up at the apex, where 16px of art is a smudge.
 const EXPECTED_SIZE := {
 	"chomp_flower": 64,
 	"chomp_flower_eating": 64,
 	"chomp_flower_eating_late": 64,
 	"corn_cobbler": 64,
 	"corn_kernel": 16,
+	# The Bomb Dandelion's four fluff frames. One drawing, four tuft counts --
+	# see art_src/dandelion.svg for why every set is symmetric about the vertical
+	# axis (this file's own bilateral-centring check is what makes it a rule).
+	"dandelion": 64,
+	"dandelion_thinning": 64,
+	"dandelion_sparse": 64,
+	"dandelion_bare": 64,
+	"dandelion_seed": 24,
 	"pest_aphid": 64,
 	"pest_aphid_dead": 64,
 	"pest_beetle": 64,

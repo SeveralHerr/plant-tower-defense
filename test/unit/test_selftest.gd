@@ -4459,30 +4459,44 @@ func test_no_packet_tooltip_names_a_plant_it_might_stop_being_about() -> String:
 	return err
 
 
+## Driven over PACKET_ORDER rather than over two named tiers.
+##
+## This asserted "the rare tooltip counts the whole catalogue", which was true while
+## rare capped at 99 and reached everything. The epic tier moved that job one rung
+## up and re-capped rare at 2, and the test failed -- correctly, and for a reason
+## that was a deliberate design change rather than a defect. Naming `rare` was the
+## bug: the claim worth holding is that EVERY tier's tooltip counts what THAT tier
+## reaches, which is true of a catalogue and a tier list of any size, and which
+## keeps meaning something the next time a tier is added.
 func test_a_packet_tooltip_counts_what_its_tier_can_actually_reach() -> String:
-	var common: String = Hud.packet_tooltip(&"common")
-	var rare: String = Hud.packet_tooltip(&"rare")
-	var cap: int = int((SeedBank.PACKET_TIERS[&"common"] as Dictionary)["max_tier"])
-	var within: int = 0
-	var beyond: int = 0
-	for id: StringName in PlantCatalog.ids():
-		if PlantCatalog.tier(id) <= cap:
-			within += 1
-		else:
-			beyond += 1
-	var err: String = _T.assert_gt(within, 0, "there is something at or below the common cap")
-	if err == "":
-		err = _T.assert_gt(beyond, 0, "and something above it, or the tiers mean nothing")
-	if err == "":
-		err = _T.assert_true(common.contains(str(within)),
-			"the common tooltip counts what it can reach (%d), got: %s" % [within, common])
-	if err == "":
-		err = _T.assert_true(common.contains(str(beyond)),
-			"and says how many it cannot (%d), got: %s" % [beyond, common])
-	if err == "":
-		err = _T.assert_true(rare.contains(str(PlantCatalog.ids().size())),
-			"the rare tooltip counts the whole catalogue (%d), got: %s"
-				% [PlantCatalog.ids().size(), rare])
+	var err: String = _T.assert_gt(SeedBank.PACKET_ORDER.size(), 1,
+		"there is more than one tier, or a per-tier reach count means nothing")
+	if err != "":
+		return err
+	var top_reaches_all: bool = false
+	for tier: StringName in SeedBank.PACKET_ORDER:
+		var text: String = Hud.packet_tooltip(tier)
+		var cap: int = int((SeedBank.PACKET_TIERS[tier] as Dictionary)["max_tier"])
+		var within: int = 0
+		var beyond: int = 0
+		for id: StringName in PlantCatalog.ids():
+			if PlantCatalog.tier(id) <= cap:
+				within += 1
+			else:
+				beyond += 1
+		if beyond == 0:
+			top_reaches_all = true
+		err = _T.assert_gt(within, 0, "%s reaches something at all" % tier)
+		if err == "":
+			err = _T.assert_true(text.contains(str(within)),
+				"the %s tooltip counts what it can reach (%d), got: %s" % [tier, within, text])
+		if err == "" and beyond > 0:
+			err = _T.assert_true(text.contains(str(beyond)),
+				"and says how many it cannot (%d), got: %s" % [beyond, text])
+		if err != "":
+			return err
+	err = _T.assert_true(top_reaches_all,
+		"some tier reaches the whole catalogue, or a plant exists that no packet can hand over")
 	if err == "":
 		err = _T.assert_true(Hud.packet_tooltip(&"nosuchtier").is_empty(),
 			"an unknown tier returns nothing rather than a half-built sentence")
@@ -8622,4 +8636,625 @@ func test_a_queen_floats_her_health_bar_clear_of_her_own_sprite() -> String:
 	if err == "":
 		err = _T.assert_float_eq(Pest.health_bar_top_for(1.0), Pest.HEALTH_BAR_TOP, 0.0001,
 			"and so does a beetle")
+	return err
+
+
+## Every live seed bomb on the board, minus the ones already there.
+##
+## The group is tree-global, so `get_nodes_in_group("seed_bombs")` can hand back a
+## bomb another test fired and never freed — the exact defect
+## tools/group_leak_check.py exists for, and the one
+## test_kernels_launch_from_the_cob_on_an_offset_layer was rewritten to dodge.
+## Every caller here diffs rather than counts.
+func _bomb_ids(node: Node) -> Dictionary:
+	var out: Dictionary = {}
+	for bomb: Node in node.get_tree().get_nodes_in_group("seed_bombs"):
+		out[bomb.get_instance_id()] = true
+	return out
+
+
+func _bombs_since(node: Node, before: Dictionary) -> Array[SeedBomb]:
+	var out: Array[SeedBomb] = []
+	for bomb: Node in node.get_tree().get_nodes_in_group("seed_bombs"):
+		if not before.has(bomb.get_instance_id()) and bomb is SeedBomb:
+			out.append(bomb as SeedBomb)
+	return out
+
+
+func _idle_dandelion(at: Vector2 = Vector2.ZERO) -> Dandelion:
+	var plant := Dandelion.new()
+	plant.position = at
+	return plant
+
+
+## Stops a hosted Dandelion acting on its own and puts its head back to full.
+##
+## MUST be called AFTER `instantiate_scene`, and calling `set_physics_process(false)`
+## before hosting is not a substitute — Godot re-enables physics processing at
+## NOTIFICATION_READY for any script that declares `_physics_process`, so the flag
+## set on an unparented node is overwritten the moment it enters the tree. A
+## loaded head beside a pest then fires during the harness's settle frames and
+## every reading afterwards is of a plant that had already emptied itself: the
+## green-for-the-wrong-reason shape tools/settle_read_check.py is about, and it
+## cost this test one round trip. test_combat's cob does the same thing one line
+## later with `corn._cooldown = 0.0`, for the same reason.
+func _quiesce_dandelion(plant: Dandelion) -> void:
+	plant.set_physics_process(false)
+	plant._fluff = Dandelion.FLUFF_MAX
+	plant._shot_cooldown = 0.0
+	plant._since_shot = Dandelion.REGROW_DELAY
+	plant._regrow_left = Dandelion.FLUFF_REGROW_SECONDS
+	plant._volley_open = true
+
+
+## The same fix on the other side of the board: a hosted pest walks its route
+## during the settle frames, so a blast measured against where it was PUT is off
+## by a fraction of a pixel and the falloff no longer reads as exactly 1.0.
+func _park(pest: Pest, at: Vector2) -> void:
+	pest.set_physics_process(false)
+	pest.position = at
+
+
+## A pest standing `leg` of `legs` down a straight road, so `progress()` is
+## something other than 1.0. `_pest()` builds a two-point route, which puts every
+## pest at the exit — fine for a range test and useless for a targeting one.
+func _pest_partway(species: StringName, at: Vector2, leg: int, legs: int) -> Pest:
+	var route := PackedVector2Array()
+	for i: int in range(legs + 1):
+		route.append(at + Vector2(float(i) * 32.0, 0.0))
+	var pest := Pest.new()
+	pest.setup(species, route)
+	pest.position = at
+	pest._leg = leg
+	pest.set_physics_process(false)
+	return pest
+
+
+func test_the_dandelion_has_one_drawn_frame_for_every_seed_it_can_hold() -> String:
+	## The animation is a lookup, not a mapping: FLUFF_TEXTURES is indexed by the
+	## fluff count directly, so a missing frame is an out-of-range read rather than
+	## a picture that quietly stops changing.
+	var err: String = _T.assert_eq(Dandelion.FLUFF_TEXTURES.size(), Dandelion.FLUFF_MAX + 1,
+		"one frame per fluff count from 0 to FLUFF_MAX, so texture_for_fluff() is a plain index")
+	if err != "":
+		return err
+	var seen: Dictionary = {}
+	for fluff: int in range(Dandelion.FLUFF_MAX + 1):
+		var path: String = Dandelion.texture_for_fluff(fluff)
+		err = _T.assert_true(ResourceLoader.exists(path),
+			"the frame for %d seed(s) (%s) is on disk — a missing one loads as null and the head goes invisible"
+				% [fluff, path])
+		if err == "":
+			err = _T.assert_false(seen.has(path),
+				"%d seed(s) gets a frame of its own (%s), not one already used" % [fluff, path])
+		if err != "":
+			return err
+		seen[path] = true
+	err = _T.assert_eq(Dandelion.texture_for_fluff(Dandelion.FLUFF_MAX),
+		PlantCatalog.texture_path(PlantCatalog.DANDELION),
+		"a full head wears the sprite the catalogue and the plant bar show")
+	if err == "":
+		# Out of range clamps in both directions rather than crashing: a caller
+		# reasoning about a hypothetical count still gets a picture back.
+		err = _T.assert_eq(Dandelion.texture_for_fluff(-3), Dandelion.texture_for_fluff(0),
+			"below zero clamps to the bald frame")
+	if err == "":
+		err = _T.assert_eq(Dandelion.texture_for_fluff(99),
+			Dandelion.texture_for_fluff(Dandelion.FLUFF_MAX),
+			"and above FLUFF_MAX clamps to the full one")
+	return err
+
+
+func test_a_volley_opens_at_two_seeds_and_stays_open_until_the_head_is_bald() -> String:
+	## The hysteresis, as arithmetic. A plain `fluff >= VOLLEY_MIN_FLUFF` test
+	## would stop the volley the moment it dropped to one seed, so the head would
+	## oscillate between two and one and never reach the bald frame — which is the
+	## entire animation.
+	var err: String = _T.assert_gt(Dandelion.VOLLEY_MIN_FLUFF, 1,
+		"a volley is more than one seed, or the rule is not a rule")
+	if err == "":
+		err = _T.assert_gte(Dandelion.FLUFF_MAX, Dandelion.VOLLEY_MIN_FLUFF,
+			"and the head can actually hold a whole volley")
+	if err == "":
+		err = _T.assert_true(Dandelion.volley_open(Dandelion.FLUFF_MAX, false),
+			"a full head opens fire without having been open")
+	if err == "":
+		err = _T.assert_true(Dandelion.volley_open(Dandelion.VOLLEY_MIN_FLUFF, false),
+			"and so does one holding exactly a volley")
+	if err == "":
+		err = _T.assert_false(Dandelion.volley_open(Dandelion.VOLLEY_MIN_FLUFF - 1, false),
+			"one seed short does NOT open — that is what banks the burst")
+	if err == "":
+		err = _T.assert_true(Dandelion.volley_open(1, true),
+			"but a volley already under way keeps going down to its last seed")
+	if err == "":
+		err = _T.assert_false(Dandelion.volley_open(0, true),
+			"and closes at bald, so every reload starts from empty")
+	return err
+
+
+func test_a_dandelion_empties_its_head_seed_by_seed_and_grows_it_back() -> String:
+	## The feature the issue is named for, on one plant: the count falls one seed
+	## at a time, the head stops firing when it is bald, and it fills back up on
+	## its own clock.
+	var plant: Dandelion = _idle_dandelion(Vector2(160, 160))
+	var aphid: Pest = _pest(Pest.APHID, Vector2(220, 160))
+	var host: Node2D = _host([plant, aphid])
+	await _T.instantiate_scene(host)
+	_quiesce_dandelion(plant)
+	_park(aphid, Vector2(220, 160))
+	var pests: Array[Pest] = [aphid]
+	var none: Array[Pest] = []
+
+	var err: String = _T.assert_eq(plant.fluff(), Dandelion.FLUFF_MAX, "a fresh head is full")
+	if err == "":
+		err = _T.assert_true(plant.is_volley_open(), "and is willing to fire")
+	var fired: int = 0
+	while err == "" and plant.fluff() > 0 and fired < Dandelion.FLUFF_MAX + 2:
+		var before: int = plant.fluff()
+		# One shot per call: SHOT_INTERVAL is the gap between seeds of the same
+		# volley, so a delta that size cannot deliver two.
+		plant._act(Dandelion.SHOT_INTERVAL, pests)
+		fired += 1
+		err = _T.assert_eq(plant.fluff(), before - 1,
+			"shot %d took exactly one seed off the head (%d -> %d)" % [fired, before, plant.fluff()])
+	if err == "":
+		err = _T.assert_eq(fired, Dandelion.FLUFF_MAX,
+			"a full head is emptied in FLUFF_MAX shots and no more")
+	if err == "":
+		err = _T.assert_false(plant.is_volley_open(), "a bald head has closed its volley")
+	if err == "":
+		# It must throw nothing while it is inside the regrow delay, however much
+		# it is asked to. Stepping by LESS than REGROW_DELAY proves the gate.
+		var bombs_before: Dictionary = _bomb_ids(host)
+		plant._act(Dandelion.REGROW_DELAY * 0.5, pests)
+		err = _T.assert_eq(_bombs_since(host, bombs_before).size(), 0,
+			"a bald head throws nothing while it is still growing")
+	if err == "":
+		err = _T.assert_eq(plant.fluff(), 0, "and has grown nothing inside the delay either")
+	if err == "":
+		plant._act(Dandelion.REGROW_DELAY * 0.5 + Dandelion.FLUFF_REGROW_SECONDS, none)
+		err = _T.assert_eq(plant.fluff(), 1, "past the delay it grows a seed back")
+	if err == "":
+		err = _T.assert_false(plant.is_volley_open(),
+			"one seed is under VOLLEY_MIN_FLUFF, so it is banked rather than spent")
+	if err == "":
+		# A single long step must grow everything it earned rather than capping at
+		# one — a devtools step-time, or a stalled frame, is exactly this shape.
+		plant._act(Dandelion.FLUFF_REGROW_SECONDS * float(Dandelion.FLUFF_MAX), none)
+		err = _T.assert_eq(plant.fluff(), Dandelion.FLUFF_MAX,
+			"a long step grows every seed it earned, not just the next one")
+	if err == "":
+		err = _T.assert_true(plant.is_volley_open(), "and the head is armed again")
+	if err == "":
+		err = _T.assert_float_eq(plant.seconds_until_armed(), 0.0, 0.001,
+			"a full head reports itself ready rather than counting down to nothing")
+	_T.free_ui(host)
+	return err
+
+
+func test_the_dandelions_drawn_head_follows_its_seed_count() -> String:
+	## The other half of the same claim, and the half `_fluff` cannot make: the
+	## PICTURE changes. Driven through a really placed plant, because the sprite
+	## only exists once Plant.setup() has built it.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.unlocked.append(PlantCatalog.DANDELION)
+	game.bank.add_seeds(500)
+	var cell: Vector2i = _grass(game)
+	var refusal: String = game.place_plant(PlantCatalog.DANDELION, cell)
+	var err: String = _T.assert_eq(refusal, "", "the dandelion can be planted on grass")
+	var plant: Dandelion = null
+	if err == "":
+		plant = game.plant_at(cell) as Dandelion
+		err = _T.assert_true(plant != null,
+			"and Game._new_plant built a Dandelion, not the Corn Cobbler its match falls through to")
+	if err == "":
+		plant.set_physics_process(false)
+		err = _T.assert_eq(plant.head_texture_path(),
+			Dandelion.texture_for_fluff(Dandelion.FLUFF_MAX),
+			"a freshly planted head wears the full frame")
+	var aphid: Pest = null
+	if err == "":
+		aphid = _spawn_and_take(game, Pest.APHID)
+		err = _T.assert_true(aphid != null, "there is a pest to throw at")
+	if err == "":
+		aphid.set_physics_process(false)
+		aphid.position = plant.position + Vector2(40, 0)
+		var pests: Array[Pest] = [aphid]
+		var seen: Array[String] = []
+		while err == "" and plant.fluff() > 0:
+			plant._act(Dandelion.SHOT_INTERVAL, pests)
+			var path: String = plant.head_texture_path()
+			err = _T.assert_eq(path, Dandelion.texture_for_fluff(plant.fluff()),
+				"at %d seed(s) the head wears the frame drawn for %d" % [plant.fluff(), plant.fluff()])
+			if err == "":
+				err = _T.assert_false(seen.has(path),
+					"and it is a frame it has not already worn this volley (%s)" % path)
+			seen.append(path)
+		if err == "":
+			err = _T.assert_eq(seen.size(), Dandelion.FLUFF_MAX,
+				"the head went through FLUFF_MAX distinct pictures emptying itself")
+		if err == "":
+			err = _T.assert_eq(plant.head_texture_path(), Dandelion.texture_for_fluff(0),
+				"and finished on the bald one")
+	_T.free_ui(game)
+	return err
+
+
+func test_a_seed_bomb_arcs_to_a_point_instead_of_travelling_a_direction() -> String:
+	## The difference from a Kernel, asserted rather than described: a kernel is a
+	## direction and a speed, this is a destination and a clock. And the seed has
+	## to leave the head in SIBLING space — the Entities layer is offset by the top
+	## bar, so a bomb seeded from `global_position` lands a bar-height low while
+	## every pest and plant on the board agrees with each other about it.
+	var plant: Dandelion = _idle_dandelion(Vector2(160, 160))
+	var aphid: Pest = _pest(Pest.APHID, Vector2(280, 160))
+	var host: Node2D = _host([plant, aphid])
+	host.position = Vector2(0, 72)
+	await _T.instantiate_scene(host)
+	_quiesce_dandelion(plant)
+	_park(aphid, Vector2(280, 160))
+	var pests: Array[Pest] = [aphid]
+
+	var before: Dictionary = _bomb_ids(host)
+	plant._act(Dandelion.SHOT_INTERVAL, pests)
+	var thrown: Array[SeedBomb] = _bombs_since(host, before)
+	var err: String = _T.assert_eq(thrown.size(), 1, "one seed left the head")
+	if err != "":
+		_T.free_ui(host)
+		return err
+	var bomb: SeedBomb = thrown[0]
+	bomb.set_physics_process(false)
+	err = _T.assert_true(bomb.position.distance_to(plant.position) < 1.0,
+		"the seed starts at the plant (%s), not %s — sibling space, not global"
+			% [plant.position, bomb.position])
+	if err == "":
+		err = _T.assert_true(bomb.target().distance_to(aphid.position) < 1.0,
+			"and is aimed at where the pest was (%s), got %s" % [aphid.position, bomb.target()])
+	if err == "":
+		err = _T.assert_float_eq(bomb.flight_fraction(), 0.0, 0.001,
+			"it has not started travelling yet")
+	if err == "":
+		err = _T.assert_false(bomb.has_detonated(), "and certainly has not gone off")
+	if err == "":
+		# Half the flight: half way along the ground track, and at the top of the
+		# arc. Both halves matter — the position decides what gets hit, the lift is
+		# the only reason it reads as an arc on a top-down board at all.
+		bomb._physics_process(SeedBomb.FLIGHT_SECONDS * 0.5)
+		var midpoint: Vector2 = plant.position.lerp(aphid.position, 0.5)
+		err = _T.assert_true(bomb.position.distance_to(midpoint) < 1.0,
+			"halfway through the flight it is halfway along the ground track (%s), got %s"
+				% [midpoint, bomb.position])
+	if err == "":
+		err = _T.assert_false(bomb.has_detonated(), "and has still not gone off mid-flight")
+	if err == "":
+		err = _T.assert_float_eq(SeedBomb.lift_at(0.5), SeedBomb.ARC_HEIGHT, 0.001,
+			"the arc peaks at ARC_HEIGHT in the middle")
+	if err == "":
+		err = _T.assert_float_eq(SeedBomb.lift_at(0.0), 0.0, 0.001, "starts on the ground")
+	if err == "":
+		err = _T.assert_float_eq(SeedBomb.lift_at(1.0), 0.0, 0.001,
+			"and lands on it, or the shadow and the seed would not meet where the blast is drawn")
+	if err == "":
+		err = _T.assert_float_eq(bomb.sprite_lift(), 0.0, 0.001,
+			"headless has animations off, so the lift degrades to nothing while the flight still lands")
+	if err == "":
+		bomb._physics_process(SeedBomb.FLIGHT_SECONDS * 0.5)
+		err = _T.assert_true(bomb.has_detonated(), "the flight is a fixed clock and it ran out")
+	if err == "":
+		err = _T.assert_true(bomb.position.distance_to(aphid.position) < 1.0,
+			"and it went off exactly where it was aimed")
+	_T.free_ui(host)
+	return err
+
+
+func test_a_seed_bomb_hits_everything_in_its_blast_and_nothing_outside_it() -> String:
+	## The area of effect, which is the whole reason this plant costs 45. Three
+	## pests at three distances, one detonation, and the damage each took measured
+	## against the declared falloff rather than against a hand-copied number.
+	var centre: Pest = _pest(Pest.BEETLE, Vector2(400, 200))
+	var rim: Pest = _pest(Pest.BEETLE, Vector2(400.0 + SeedBomb.BLAST_RADIUS * 0.9, 200))
+	var clear: Pest = _pest(Pest.BEETLE, Vector2(400.0 + SeedBomb.BLAST_RADIUS * 1.6, 200))
+	var bomb := SeedBomb.new()
+	var host: Node2D = _host([centre, rim, clear, bomb])
+	await _T.instantiate_scene(host)
+	_park(centre, Vector2(400, 200))
+	_park(rim, Vector2(400.0 + SeedBomb.BLAST_RADIUS * 0.9, 200))
+	_park(clear, Vector2(400.0 + SeedBomb.BLAST_RADIUS * 1.6, 200))
+	bomb.set_physics_process(false)
+	bomb.setup(Vector2(200, 200), Vector2(400, 200), Dandelion.SEED_DAMAGE,
+		Rect2(Vector2.ZERO, Vector2(896, 576)))
+	var was: Array[float] = [centre.health, rim.health, clear.health]
+	var err: String = _T.assert_float_eq(bomb.damage, Dandelion.SEED_DAMAGE, 0.001,
+		"setup() carried the plant's seed damage onto the bomb — a bomb that forgot it "
+			+ "would still fly, still burst, and take off Kernel's default 1.0")
+	if err != "":
+		_T.free_ui(host)
+		return err
+	bomb.detonate()
+
+	err = _T.assert_float_eq(was[0] - centre.health, Dandelion.SEED_DAMAGE, 0.01,
+		"a pest at the centre takes the whole seed")
+	if err == "":
+		var want: float = SeedBomb.damage_at(SeedBomb.BLAST_RADIUS * 0.9, Dandelion.SEED_DAMAGE)
+		err = _T.assert_float_eq(was[1] - rim.health, want, 0.01,
+			"a pest near the rim takes the falloff's own answer (%.2f)" % want)
+	if err == "":
+		err = _T.assert_gt(was[0] - centre.health, was[1] - rim.health,
+			"which is strictly less than the centre took, or the falloff is decoration")
+	if err == "":
+		err = _T.assert_float_eq(clear.health, was[2], 0.001,
+			"and a pest outside BLAST_RADIUS takes nothing at all")
+	if err == "":
+		err = _T.assert_float_eq(SeedBomb.damage_falloff(0.0), 1.0, 0.001,
+			"dead centre is a full hit")
+	if err == "":
+		err = _T.assert_float_eq(SeedBomb.damage_falloff(SeedBomb.BLAST_RADIUS),
+			SeedBomb.BLAST_EDGE_FRACTION, 0.001,
+			"the rim itself is BLAST_EDGE_FRACTION, deliberately not zero")
+	if err == "":
+		err = _T.assert_float_eq(SeedBomb.damage_falloff(SeedBomb.BLAST_RADIUS + 0.1), 0.0, 0.001,
+			"and a hair past it is nothing")
+	if err == "":
+		err = _T.assert_true(bomb.has_detonated(), "the bomb knows it has gone off")
+	if err == "":
+		# `detonate()` is public so a devtools verb can trigger it without waiting
+		# out the flight, which is exactly what invites a double call.
+		var again: float = centre.health
+		bomb.detonate()
+		err = _T.assert_float_eq(centre.health, again, 0.001,
+			"a second detonate() on the same bomb is a no-op, not a second blast")
+	if err == "":
+		# The burst's own picture grows out to exactly the radius that was
+		# damaged, so what the player is shown is what actually happened.
+		err = _T.assert_float_eq(SeedBomb.burst_radius(SeedBomb.burst_progress(0.0)),
+			SeedBomb.BLAST_RADIUS, 0.001, "the ring finishes at the radius the damage covered")
+	if err == "":
+		err = _T.assert_float_eq(
+			SeedBomb.burst_radius(SeedBomb.burst_progress(SeedBomb.BLAST_LINGER)), 0.0, 0.001,
+			"and starts from a point")
+	_T.free_ui(host)
+	return err
+
+
+func test_the_dandelion_aims_at_the_crowd_rather_than_the_leader() -> String:
+	## Every other engaging plant shoots whichever pest is furthest along, which is
+	## right for a single-target weapon and throws away the only thing this one can
+	## do. A lone leader against a knot of three: the knot has to win, and progress
+	## has to stay the tie-break when nothing is clumped.
+	var plant: Dandelion = _idle_dandelion(Vector2(300, 300))
+	var leader: Pest = _pest_partway(Pest.APHID, Vector2(300, 240), 8, 10)
+	var a: Pest = _pest_partway(Pest.APHID, Vector2(380, 300), 2, 10)
+	var b: Pest = _pest_partway(Pest.APHID, Vector2(392, 310), 2, 10)
+	var c: Pest = _pest_partway(Pest.APHID, Vector2(404, 300), 2, 10)
+	var host: Node2D = _host([plant, leader, a, b, c])
+	await _T.instantiate_scene(host)
+	_quiesce_dandelion(plant)
+	_park(leader, Vector2(300, 240))
+	_park(a, Vector2(380, 300))
+	_park(b, Vector2(392, 310))
+	_park(c, Vector2(404, 300))
+	var crowd := PackedVector2Array([leader.position, a.position, b.position, c.position])
+	var pests: Array[Pest] = [leader, a, b, c]
+
+	var err: String = _T.assert_gt(leader.progress(), a.progress(),
+		"the lone pest genuinely is further along, or this test proves nothing")
+	if err == "":
+		err = _T.assert_eq(SeedBomb.caught(leader.position, crowd), 1,
+			"a blast on the leader catches only the leader")
+	if err == "":
+		err = _T.assert_gt(SeedBomb.caught(b.position, crowd), 1,
+			"and one on the knot catches more than one")
+	if err == "":
+		var picked: Pest = plant.best_target(pests)
+		err = _T.assert_true(picked != null, "the plant found something to throw at")
+		if err == "":
+			err = _T.assert_false(picked == leader,
+				"and it is not the leader — three pests are worth more than one head start")
+	if err == "":
+		# With nothing clumped it must degrade to the rule every other plant uses.
+		var spread: Array[Pest] = [leader, a]
+		err = _T.assert_true(plant.best_target(spread) == leader,
+			"with nothing to catch together it shoots the pest furthest along, like everything else")
+	if err == "":
+		var far: Pest = _pest_partway(Pest.APHID,
+			Vector2(300.0 + Dandelion.RANGE + 40.0, 300), 5, 10)
+		host.add_child(far)
+		var out_of_reach: Array[Pest] = [far]
+		err = _T.assert_true(plant.best_target(out_of_reach) == null,
+			"and a pest past RANGE is not a target, however clumped it is with itself")
+	_T.free_ui(host)
+	return err
+
+
+func test_the_dandelion_is_priced_against_the_four_plants_it_stands_beside() -> String:
+	## The balance claims out of dandelion.gd's own header, made executable. A
+	## comment saying "1.48 dps" is a comment; this fails when a retune quietly
+	## turns the most expensive plant in the game into the best single-target one
+	## as well.
+	var mine: int = PlantCatalog.cost(PlantCatalog.DANDELION)
+	var err: String = ""
+	for id: StringName in PlantCatalog.ids():
+		if id == PlantCatalog.DANDELION:
+			continue
+		err = _T.assert_gt(mine, PlantCatalog.cost(id),
+			"the Dandelion costs more than the %s it stands beside" % id)
+		if err == "":
+			err = _T.assert_gt(PlantCatalog.tier(PlantCatalog.DANDELION), PlantCatalog.tier(id),
+				"and sits above %s in the tiers, or the epic packet has nothing of its own" % id)
+		if err != "":
+			return err
+	var corn_dps: float = CornCobbler.single_target_dps(1, 60.0)
+	err = _T.assert_gt(corn_dps, 0.0, "a level-1 cob does damage to compare against")
+	if err == "":
+		err = _T.assert_true(Dandelion.sustained_dps(1) < corn_dps * 1.5,
+			"against ONE pest the Dandelion (%.2f dps) stays in the cheapest plant's league (%.2f)"
+				% [Dandelion.sustained_dps(1), corn_dps])
+	if err == "":
+		# At 120px a bunch of corn lands only its middle kernel — CornCobbler's own
+		# header says so, and kernels_connecting_at() is where it says it. Stating
+		# the premise here means the comparison below cannot quietly start being
+		# about a different cob.
+		err = _T.assert_eq(CornCobbler.kernels_connecting_at(CornCobbler.LEVELS.size(), 120.0), 1,
+			"at 120px only a bunch's middle kernel connects")
+	if err == "":
+		err = _T.assert_gt(Dandelion.sustained_dps(3),
+			CornCobbler.single_target_dps(CornCobbler.LEVELS.size(), 120.0),
+			"and against three pests together the Dandelion out-damages a fully upgraded cob there")
+	if err == "":
+		err = _T.assert_float_eq(Dandelion.sustained_dps(0), 0.0, 0.001,
+			"while it is worth exactly nothing against an empty blast")
+	if err == "":
+		err = _T.assert_true(Dandelion.rearm_seconds() < Game.PREP_SECONDS,
+			"a spent head rearms (%.1fs) inside one prep gap (%.0fs), so the burst can be banked"
+				% [Dandelion.rearm_seconds(), Game.PREP_SECONDS])
+	if err == "":
+		err = _T.assert_gt(Dandelion.volley_cycle_seconds(), Dandelion.rearm_seconds(),
+			"and a whole cycle is the reload plus the volley, not just the reload")
+	var aphid_speed: float = float(Pest.SPECIES[Pest.APHID]["speed"])
+	var beetle_speed: float = float(Pest.SPECIES[Pest.BEETLE]["speed"])
+	if err == "":
+		err = _T.assert_gt(Dandelion.lead_error(aphid_speed), Dandelion.lead_error(beetle_speed),
+			"the fast pest walks further out of the blast during the flight")
+	if err == "":
+		err = _T.assert_gt(Dandelion.damage_fraction_against(beetle_speed),
+			Dandelion.damage_fraction_against(aphid_speed),
+			"so a beetle takes more of a seed than an aphid does")
+	if err == "":
+		err = _T.assert_gt(Dandelion.damage_fraction_against(StickySundew.slowed_speed(aphid_speed)),
+			Dandelion.damage_fraction_against(aphid_speed),
+			"and a Sundew's patch is the fix — the two priciest plants make each other work")
+	return err
+
+
+func test_only_an_epic_packet_can_hand_over_the_dandelion() -> String:
+	## The tier is the whole point of the tier. `rare` used to cap at 99, i.e. at
+	## everything, so a third packet above it would have been a more expensive way
+	## to buy exactly the same pool.
+	var bank := SeedBank.new()
+	var err: String = _T.assert_false(bank.is_unlocked(PlantCatalog.DANDELION),
+		"the Dandelion starts locked, like everything but the free starter")
+	if err == "":
+		err = _T.assert_false(bank.packet_pool(&"common").has(PlantCatalog.DANDELION),
+			"a common packet cannot hold it")
+	if err == "":
+		err = _T.assert_false(bank.packet_pool(&"rare").has(PlantCatalog.DANDELION),
+			"and neither can a rare one, now that rare caps below tier 3")
+	if err == "":
+		err = _T.assert_true(bank.packet_pool(&"epic").has(PlantCatalog.DANDELION),
+			"only the epic packet reaches it")
+	if err == "":
+		err = _T.assert_gt(int(SeedBank.PACKET_TIERS[&"epic"]["cost"]),
+			int(SeedBank.PACKET_TIERS[&"rare"]["cost"]),
+			"and it costs more than the tier it reaches past")
+	if err == "":
+		# And it is genuinely reachable rather than merely listed: drain the epic
+		# tier and check the Dandelion actually came out of one.
+		bank.set_seed(3)
+		bank.add_seeds(int(SeedBank.PACKET_TIERS[&"epic"]["cost"]) * 20)
+		var guard: int = 0
+		while not bank.locked_plants().is_empty() and guard < 20:
+			guard += 1
+			bank.buy_packet(&"epic")
+		err = _T.assert_true(bank.is_unlocked(PlantCatalog.DANDELION),
+			"an epic packet actually delivers it (%d buys)" % guard)
+	return err
+
+
+func test_the_packet_tiers_are_listed_cheapest_first_and_none_is_missing() -> String:
+	## PACKET_ORDER decides which button sits at which y (Hud.packet_row_rect), so
+	## a tier missing from it is a packet the player cannot buy, and a tier out of
+	## price order is two buttons that swapped places under the cursor.
+	var order: Array[StringName] = SeedBank.PACKET_ORDER
+	var err: String = _T.assert_eq(order.size(), SeedBank.PACKET_TIERS.size(),
+		"every tier is listed exactly once")
+	if err != "":
+		return err
+	var seen: Dictionary = {}
+	var last_cost: int = -1
+	var last_cap: int = -1
+	for tier: StringName in order:
+		err = _T.assert_true(SeedBank.PACKET_TIERS.has(tier), "'%s' is a real tier" % tier)
+		if err == "":
+			err = _T.assert_false(seen.has(tier), "'%s' is listed once, not twice" % tier)
+		if err != "":
+			return err
+		seen[tier] = true
+		var spec: Dictionary = SeedBank.PACKET_TIERS[tier] as Dictionary
+		err = _T.assert_gt(int(spec["cost"]), last_cost,
+			"'%s' costs more than the tier before it" % tier)
+		if err == "":
+			err = _T.assert_gte(int(spec["max_tier"]), last_cap,
+				"and reaches at least as far up the catalogue — a pricier packet reaching LESS is a trap")
+		if err != "":
+			return err
+		last_cost = int(spec["cost"])
+		last_cap = int(spec["max_tier"])
+	# The pools nest, which is what makes "one tier further up" mean anything.
+	var bank := SeedBank.new()
+	for index: int in range(1, order.size()):
+		var below: Array[StringName] = bank.packet_pool(order[index - 1])
+		var above: Array[StringName] = bank.packet_pool(order[index])
+		for id: StringName in below:
+			err = _T.assert_true(above.has(id),
+				"%s's pool contains everything %s's does (%s is missing)"
+					% [order[index], order[index - 1], id])
+			if err != "":
+				return err
+		err = _T.assert_gt(above.size(), below.size(),
+			"and %s reaches strictly further than %s, or the extra cost buys nothing"
+				% [order[index], order[index - 1]])
+		if err != "":
+			return err
+	return err
+
+
+func test_the_packet_rack_fits_between_the_plant_bar_and_the_selection_box() -> String:
+	## Arithmetic first, then the built panel. The rack used to be two hand-placed
+	## y values; a third tier had 92px of room for 120px of button, which is why
+	## the plant bar gave up 44px. A fourth tier fails here rather than drawing
+	## itself under SelectionBox, where every per-Control check would still pass.
+	var count: int = SeedBank.PACKET_ORDER.size()
+	var first: Rect2 = Hud.packet_row_rect(0)
+	var last: Rect2 = Hud.packet_row_rect(count - 1)
+	var err: String = _T.assert_gte(first.position.y, Hud.PLANT_BAR_BOTTOM,
+		"the first packet button starts below the plant bar's foot")
+	if err == "":
+		err = _T.assert_gte(Hud.PACKET_ROW_PITCH, Hud.PACKET_ROW_HEIGHT,
+			"the rows do not overlap each other")
+	if err == "":
+		err = _T.assert_gte(Hud.PACKET_ROW_HEIGHT, Hud.PLANT_BUTTON_MIN_HEIGHT,
+			"and each one is still a legal touch target")
+	if err == "":
+		err = _T.assert_gte(Hud.SELECTION_BOX_Y, last.end.y,
+			"the last button's foot (%.0f) clears SelectionBox at %.0f"
+				% [last.end.y, Hud.SELECTION_BOX_Y])
+	if err != "":
+		return err
+
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	await _pump(game)
+	for index: int in count:
+		var tier: StringName = SeedBank.PACKET_ORDER[index]
+		var path: String = "Root/SidePanel/%s" % Hud.packet_button_name(tier)
+		var button: Button = game.hud.get_node_or_null(path) as Button
+		err = _T.assert_true(button != null, "%s has a button at %s" % [tier, path])
+		if err == "":
+			err = _T.assert_float_eq(button.position.y, Hud.packet_row_rect(index).position.y,
+				0.001, "and it is on the row packet_row_rect(%d) claims" % index)
+		if err == "":
+			var cost: int = int((SeedBank.PACKET_TIERS[tier] as Dictionary)["cost"])
+			err = _T.assert_true(button.text.contains(str(cost)),
+				"and its label quotes the price it will charge: %s" % button.text)
+		if err != "":
+			break
+	if err == "":
+		# The oldest button keeps the node name the bridge and the rest of this
+		# suite press it by. That asymmetry is deliberate; see packet_button_name.
+		err = _T.assert_eq(Hud.packet_button_name(&"common"), "PacketButton",
+			"the common tier keeps the bare name its callers use")
+	if err == "":
+		err = _T.assert_eq(Hud.packet_button_name(&"epic"), "EpicPacketButton",
+			"and every other tier gets a name derived from its own id")
+	_T.free_ui(game)
 	return err

@@ -20,11 +20,13 @@
 
 	From "Impact Sounds" (1.0):
 	  footstep_grass_000.ogg      a plant going into the soil — and, reused,
-	                              a plant deliberately dug back out of it
+	                              a plant deliberately dug back out of it, and
+	                              a Bomb Dandelion letting a seed go
 	  impactSoft_medium_002.ogg   a hungry pest taking a bite out of a plant —
 	                              and, reused, a Corn Cobbler's kernel volley
 	                              leaving the cob
-	  impactSoft_heavy_000.ogg    a pest squashed
+	  impactSoft_heavy_000.ogg    a pest squashed — and, reused, a dandelion
+	                              seed bomb bursting where it landed
 	  impactBell_heavy_002.ogg    a wave starting — and, reused, a Corn
 	                              Cobbler upgrade landing
 
