@@ -339,11 +339,214 @@ func _check_wave_cleared() -> void:
 ## strip, which already draws the same countdown in the coming wave's threat
 ## colour — worth a whole line only when there is genuinely nothing else to say,
 ## which is a run that has not yet stopped a single pest anywhere.
+##
+## The coverage reading outranks the depth comparison in exactly one case, and it
+## is a comparison rather than a threshold: when the wave's pests were, on
+## average, stopped FURTHER down the road than the garden can reach. That is the
+## wave where the hole is the explanation, and it is the only wave where a
+## sentence about the hole is news rather than a standing fact restated.
+##
+## A mean, deliberately, because that is what last_wave_depth() is and Board.depth_of
+## argues the case at length: one lucky straggler must not be able to fake it. So a
+## wave killed cleanly inside the covered stretch with one escape at the exit still
+## reads as a wave that went mostly right, and the line stays on the depth note.
+## The coverage line arrives when leaks are the bulk of the losses, which is when
+## planting deeper is genuinely the purchase to make.
+##
+## coverage_note() returns "" for a garden with nothing planted at all, so this
+## branch cannot take the line away from the depth note on an empty board — see
+## coverage_note_for() for why that silence is correct and not an oversight.
 func prep_note() -> String:
-	var note: String = Hud.prep_depth_note(board.last_wave_depth(), board.run_depth())
+	var last_wave: float = board.last_wave_depth()
+	if last_wave > coverage_frontier():
+		var hole: String = coverage_note()
+		if hole != "":
+			return hole
+	var note: String = Hud.prep_depth_note(last_wave, board.run_depth())
 	if note != "":
 		return note
 	return "Next one grows in %d seconds." % int(PREP_SECONDS)
+
+
+# -- coverage ---------------------------------------------------------------
+#
+# Where the garden cannot reach, DERIVED from the board and the plants standing
+# on it rather than observed off the pests that walked through it.
+#
+# The observed version is the one that looks obvious, and it cannot work. A pest
+# carries Pest._ever_engaged, which is monotone: the first kernel that lands sets
+# it and nothing ever clears it. Sample that flag per road cell and every cell
+# after first contact reports "the garden reached here", whatever is or is not
+# standing beside it — so the observed map can only ever mark a PREFIX of the
+# road, and the two holes that actually cost beds (a gap in the middle, and an
+# uncovered run to the exit) are precisely the two it cannot see. It answers "how
+# far down the road before something touched them", which this board already has
+# a vocabulary for in Board.depth_of, and it answers it at the cost of a per-cell
+# recording pass. See test_the_engagement_flag_can_only_ever_mark_a_prefix_of_the_road.
+#
+# The derived map has none of that. Corn's reach is a known radius from a known
+# cell, so the set of road cells nothing can touch is a pure function of the board
+# and the placed plants — available DURING play, correct the frame a plant is
+# bought or uprooted, and free of any dependency on a pest having walked there.
+#
+# The two would still disagree, and the disagreement is not interesting: the
+# derived map says a cell is covered when a plant is in range of it, and a Corn
+# shoots only the pest furthest along, a Chomp with a full mouth grabs nothing and
+# a winged pest is unreachable by one at all. So it is an upper bound on what
+# actually happened. That is the right bound for the question being asked, which
+# is "could anything have touched a pest here", not "did it".
+
+
+## The plants that can lay a finger on a pest, and the whole list.
+##
+## Read off Pest._ever_engaged rather than off the catalogue, because those are
+## the same two things: a kernel that lands, and a Chomp that holds. A Sticky
+## Sundew "deals no damage whatsoever" by its own doc comment — it only slows —
+## and a Sunflower never touches a pest at all.
+##
+## PlantCatalog.reach() answers a DIFFERENT question and answers it with a
+## non-zero number for the Sundew, correctly: a patch that touches no road is as
+## useless as a cob that can shoot none, and the placement cue should say so
+## before the thirty seeds are spent. Usefulness is not coverage. Keeping the two
+## apart is the entire reason this list is written out rather than inferred from a
+## radius — a road walled in dew is road nothing can touch, and a coverage map
+## built on reach() would call it defended.
+##
+## Listed positively, so a fifth plant reads as non-engaging until somebody says
+## otherwise. That is the failure direction that over-reports a hole, and a
+## readout that nags is recoverable where one promising coverage it does not have
+## costs beds. test_every_plant_that_can_touch_a_pest_is_named_as_one fails when
+## the catalogue grows, which is what forces the decision to be made rather than
+## defaulted into.
+const ENGAGING_PLANTS: Array[StringName] = [PlantCatalog.CORN, PlantCatalog.CHOMP]
+
+## The longest line the coverage branch can hand the status row, through
+## Hud.wave_cleared_line. Same contract as Hud.PREP_NOTE_WORST_CASE and for the
+## same reason: MessageLabel clips with an ellipsis, so a line that outgrows the
+## row renders trimmed and nothing complains.
+##
+## The widest reachable frontier is 0.0 — a garden covering the entry cell and
+## nothing else, which is not a hypothetical: a lone Chomp Flower on (0, 0) has a
+## GRAB_RADIUS of 73.6 px, which reaches the road cell 64 px below it and misses
+## the next one at 90.5 px. That reads "the last 100% of the road", and 100 is
+## therefore the widest percentage this can print rather than the 97 that counting
+## cells suggests. test_the_coverage_note_fits_the_status_row pins this string to
+## the formatter and measures it against both the row and Hud's declared worst
+## case, so the arithmetic above is checked rather than trusted.
+const COVERAGE_NOTE_WORST_CASE: String = "Wave 9999 cleared. Nothing covers the last 100% of the road."
+
+
+## How far a plant of `id` can actually touch a pest, in pixels; 0.0 for one that
+## cannot touch one at all.
+##
+## The engaging kinds return PlantCatalog.reach(id) rather than a second copy of
+## the number, so a balance change to CornCobbler.RANGE moves this with it instead
+## of leaving a coverage map quoting a radius the cob no longer has.
+static func engagement_reach(id: StringName) -> float:
+	if not ENGAGING_PLANTS.has(id):
+		return 0.0
+	return PlantCatalog.reach(id)
+
+
+## Every road cell a pest could stand on right now with nothing in the garden able
+## to touch it — the coverage-hole map, in walk order.
+##
+## Empty is the honest answer for a board that cannot be read, and it is also the
+## answer for a perfectly covered road. The two are told apart by
+## coverage_frontier(), which returns -1.0 for the first and 1.0 for the second.
+func uncovered_road_cells() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if board == null or not is_instance_valid(board):
+		return out
+	var covered: Dictionary = covered_road_cells()
+	for cell: Vector2i in board.road_cells():
+		if not covered.has(cell):
+			out.append(cell)
+	return out
+
+
+## The other half: road cell -> true for every cell something can reach. A
+## Dictionary rather than an Array because every caller here is asking `has`, and
+## the union across four plants is what makes it a set in the first place.
+##
+## Goes through PlacementPreview.covered_road_cell_list rather than re-deriving
+## the distance test, so this map and the dead-ground cue on the hover preview
+## cannot disagree about which road a plant reaches. A destroyed plant is skipped:
+## a hungry pest that ate the cob took its coverage off the board with it.
+func covered_road_cells() -> Dictionary:
+	var covered: Dictionary = {}
+	if board == null or not is_instance_valid(board):
+		return covered
+	for key: Vector2i in _plants:
+		var plant := _plants[key] as Plant
+		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
+			continue
+		var reach: float = engagement_reach(plant.kind)
+		if reach <= 0.0:
+			continue
+		for road: Vector2i in PlacementPreview.covered_road_cell_list(board, plant.cell, reach):
+			covered[road] = true
+	return covered
+
+
+## How far down the road the garden can reach: 0.0 when only the entry cell is
+## covered, 1.0 when the exit cell is, and -1.0 when nothing standing can touch
+## any road at all.
+##
+## The road is one snake — Board.depth_of makes the argument, and PATH_CORNERS
+## traces a single path from (0, 1) to (13, 7) — so "where does the garden stop
+## reaching" has exactly one spatial degree of freedom and this is it. Everything
+## past this point is a free walk to the exit, which is the reading a player can
+## act on: plant deeper, rather than plant more.
+##
+## Deliberately the DEEPEST covered cell and not the covered count. A garden with
+## a hole in the middle and a plant at the exit has a frontier of 1.0 and nothing
+## to warn about on this reading — a pest crossing that hole is shot before it and
+## shot after it. The count is what uncovered_road_cells() is for.
+##
+## -1.0 rather than 0.0 for "nothing covered", for the same reason Board.depth_of
+## returns it: a garden that covers exactly the entry cell genuinely reads 0.0, and
+## a caller that could not tell it from an empty board would describe one as the
+## other.
+func coverage_frontier() -> float:
+	if board == null or not is_instance_valid(board):
+		return -1.0
+	var last: int = board.path_cell_count() - 1
+	if last <= 0:
+		return -1.0
+	var deepest: int = -1
+	for cell: Vector2i in covered_road_cells():
+		deepest = maxi(deepest, board.path_index(cell))
+	if deepest < 0:
+		return -1.0
+	return float(deepest) / float(last)
+
+
+## The sentence, for the garden standing right now.
+func coverage_note() -> String:
+	return coverage_note_for(coverage_frontier())
+
+
+## Pure: the sentence for a frontier. Split out so the worst case above can be
+## pinned to the formatter rather than to a literal somebody has to remember to
+## re-copy, and so every branch is assertable without a board.
+##
+## Silent for a frontier below 0.0, which is a garden with nothing planted that
+## can fight. That is not a hole in the coverage, it is the absence of a garden,
+## and the empty board says it louder than a percentage could — while a line
+## claiming "the last 100% of the road" on an empty field is a statistic standing
+## in for something the player can already see.
+##
+## Silent again at 1.0, where the garden reaches the exit cell and there is no
+## tail at all, and silent for anything that rounds to a 0% tail, because a
+## readout that says zero reads as a broken measurement rather than as good news.
+static func coverage_note_for(frontier: float) -> String:
+	if frontier < 0.0 or frontier >= 1.0:
+		return ""
+	var tail: int = int(round((1.0 - frontier) * 100.0))
+	if tail <= 0:
+		return ""
+	return "Nothing covers the last %d%% of the road." % tail
 
 
 ## Puts one pest on the road immediately. The wave director drives this; the

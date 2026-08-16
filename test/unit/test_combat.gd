@@ -3064,3 +3064,473 @@ func test_the_worst_case_beds_row_still_fits_its_column() -> String:
 			"every row was really measured — a short loop is what makes a width gate vacuous")
 	_T.free_ui(panel)
 	return err
+
+
+# -- Where the garden cannot reach (issue jrj) -------------------------------
+#
+# The map is DERIVED — board plus placed plants — and the observed version was
+# considered and rejected. The first two tests below are that rejection written
+# down as numbers rather than as a paragraph, because the observed version is the
+# one that looks obvious and somebody will propose it again.
+
+
+## The list of plants that can touch a pest, and the one place it is allowed to
+## disagree with PlantCatalog.reach().
+##
+## A Sticky Sundew has a reach and cannot engage anything — it "deals no damage
+## whatsoever" by its own doc comment, and Pest._ever_engaged is set by exactly
+## two things, neither of which is dew. So a coverage map built on reach() would
+## call a stretch of road walled in Sundews "defended", which is the opposite of
+## what a player would do with it. This is that divergence, pinned.
+##
+## The loop is the part that matters: it grades every id in the catalogue, so a
+## fifth plant fails here rather than silently defaulting into one answer or the
+## other.
+func test_every_plant_that_can_touch_a_pest_is_named_as_one() -> String:
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_gt(ids.size(), 0, "there is a catalogue to grade")
+	if err == "":
+		err = _T.assert_gt(Game.ENGAGING_PLANTS.size(), 0,
+			"and something in it can fight — an empty list would make every map below all holes")
+	if err != "":
+		return err
+
+	# Named positively, and named exactly. A new plant landing in the catalogue
+	# has to be decided about here; it must not inherit an answer.
+	if err == "":
+		err = _T.assert_eq(Game.ENGAGING_PLANTS.size(), 2,
+			"two plants in this catalogue can touch a pest, and the list says which")
+	if err == "":
+		err = _T.assert_true(Game.ENGAGING_PLANTS.has(PlantCatalog.CORN),
+			"a kernel that lands is one of the two things that set Pest._ever_engaged")
+	if err == "":
+		err = _T.assert_true(Game.ENGAGING_PLANTS.has(PlantCatalog.CHOMP),
+			"and a Chomp holding a pest still is the other")
+	if err != "":
+		return err
+
+	# The divergence itself, on the one plant it exists for.
+	err = _T.assert_gt(PlantCatalog.reach(PlantCatalog.SUNDEW), 0.0,
+		"the Sundew has a reach the placement cue rightly warns about")
+	if err == "":
+		err = _T.assert_float_eq(Game.engagement_reach(PlantCatalog.SUNDEW), 0.0, 0.0001,
+			"and none at all by the only measure a coverage map may use — dew never touches a pest")
+	if err != "":
+		return err
+
+	var graded: int = 0
+	for id: StringName in ids:
+		var engages: float = Game.engagement_reach(id)
+		if Game.ENGAGING_PLANTS.has(id):
+			err = _T.assert_float_eq(engages, PlantCatalog.reach(id), 0.0001,
+				"%s engages at the catalogue's own radius rather than at a second copy of it" % id)
+		else:
+			err = _T.assert_float_eq(engages, 0.0, 0.0001,
+				"%s cannot touch a pest, so it covers no road however far it reaches" % id)
+		if err != "":
+			break
+		graded += 1
+	if err == "":
+		err = _T.assert_eq(graded, ids.size(),
+			"every plant in the catalogue was graded — a short loop is what makes this vacuous")
+	if err == "":
+		# The two numbers are the subclasses' own, not re-listed here.
+		err = _T.assert_float_eq(Game.engagement_reach(PlantCatalog.CORN), CornCobbler.RANGE,
+			0.0001, "the cob engages at its firing range")
+	if err == "":
+		err = _T.assert_float_eq(Game.engagement_reach(PlantCatalog.CHOMP),
+			ChompFlower.GRAB_RADIUS, 0.0001, "and the flower at the reach of its mouth")
+	return err
+
+
+## Why there is no observed coverage map, as a contradiction rather than an
+## opinion.
+##
+## Pest._ever_engaged is monotone: a kernel that lands sets it and nothing clears
+## it. Sample that flag per road cell and it marks a PREFIX of the road — every
+## cell after first contact reports "the garden reached here", including cells
+## nothing in the garden can reach at all. The two holes that actually cost beds,
+## a gap in the middle and an uncovered run to the exit, are exactly the two it
+## cannot see, because both lie after first contact.
+##
+## Staged against the real road and a real reach so the blindness is a number: the
+## flag calls every road cell reached while the cob beside the entry can touch
+## four of them.
+func test_the_engagement_flag_can_only_ever_mark_a_prefix_of_the_road() -> String:
+	var probe := Board.new()
+	var road: Array[Vector2i] = probe.road_cells()
+	var route: PackedVector2Array = probe.route()
+	var err: String = _T.assert_gt(road.size(), 2, "the probe board has a road to walk")
+	if err == "":
+		err = _T.assert_eq(route.size(), road.size() + 2,
+			"whose route is one point per road cell plus the two off-board tails")
+	if err != "":
+		probe.free()
+		return err
+
+	# A Corn Cobbler on the grass beside the entry: real cell, real range.
+	var post := Vector2i(1, 0)
+	err = _T.assert_true(probe.is_buildable(post), "the cob's cell is plantable ground")
+	var reached: Array[Vector2i] = PlacementPreview.covered_road_cell_list(
+		probe, post, CornCobbler.RANGE)
+	if err == "":
+		err = _T.assert_gt(reached.size(), 0,
+			"and it really reaches road — a zero here would make every count below vacuous")
+	if err == "":
+		err = _T.assert_true(reached.size() < road.size(),
+			"but not all of it (%d of %d), or there is no hole to be blind to"
+				% [reached.size(), road.size()])
+	if err != "":
+		probe.free()
+		return err
+
+	var pest := Pest.new()
+	pest.setup(Pest.APHID, route)
+	pest.set_physics_process(false)
+	err = _T.assert_false(pest.was_engaged(), "a pest at the entry has been touched by nothing")
+	if err == "":
+		# One kernel, once, at the very start. Everything below is what the flag
+		# goes on to claim about the rest of the walk on the strength of that hit.
+		pest.take_damage(1.0)
+		err = _T.assert_true(pest.was_engaged(), "one kernel that lands is enough to set it")
+	if err == "":
+		err = _T.assert_true(pest.is_alive(),
+			"and the pest survived it, which is the only case this reading is taken in")
+	if err != "":
+		pest.free()
+		probe.free()
+		return err
+
+	# Walk it cell by cell, stopping one waypoint short of the off-board exit so
+	# _advance() never fires _escape() and frees the node mid-loop.
+	var claimed: int = 0
+	var visited: Dictionary = {}
+	for i: int in range(road.size()):
+		pest._advance(pest.position.distance_to(route[i + 1]))
+		visited[probe.world_to_cell(pest.position)] = true
+		if pest.was_engaged():
+			claimed += 1
+	err = _T.assert_eq(claimed, road.size(),
+		"the flag claims the garden reached every one of the %d road cells" % road.size())
+	if err == "":
+		# The guard that stops the loop above being N samples of one cell.
+		err = _T.assert_eq(visited.size(), road.size(),
+			"and it really walked %d distinct cells to be asked on" % road.size())
+	if err == "":
+		err = _T.assert_true(pest.is_alive(),
+			"and the walk stopped short of the exit rather than freeing the pest mid-count")
+	if err == "":
+		err = _T.assert_gt(claimed, reached.size(),
+			("so an observed map over-reports by %d cells: it calls %d of the road reached "
+				+ "where the garden can touch %d") % [
+					claimed - reached.size(), claimed, reached.size(),
+				])
+	if err == "":
+		# The exit is the cell that matters, and it is the cell the flag is most
+		# confidently wrong about: nothing can touch it, and every pest that ever
+		# took a hit walks over it reporting that something did.
+		err = _T.assert_false(reached.has(probe.exit_cell()),
+			"the cob cannot touch the exit cell, which is where the beds are lost")
+	pest.free()
+	probe.free()
+	return err
+
+
+## The derived map, through a real run: it answers while the game is being played,
+## it moves when a plant goes in, and it refuses to count a plant that cannot
+## fight.
+func test_the_garden_can_say_which_road_it_cannot_reach() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var err: String = _T.assert_true(game != null, "the game scene loaded")
+	if err != "":
+		return err
+	err = _T.assert_true(game.board != null, "the run has a board")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var road: Array[Vector2i] = game.board.road_cells()
+	err = _T.assert_gt(road.size(), 0, "with a road to have holes in")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# An empty garden: every cell is a hole, and the frontier says "nothing", which
+	# is a different claim from "the entry cell".
+	err = _T.assert_eq(game.uncovered_road_cells().size(), road.size(),
+		"an empty garden reaches none of the %d road cells" % road.size())
+	if err == "":
+		err = _T.assert_float_eq(game.coverage_frontier(), -1.0, 0.0001,
+			"and the frontier is 'nothing covered', not 'the entry cell covered'")
+	if err == "":
+		err = _T.assert_eq(game.coverage_note(), "",
+			"but the line stays silent: an empty field is not a hole in the coverage")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var post := Vector2i(1, 0)
+	err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, post), "",
+		"the free starter cob goes in beside the entry")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var reached: Array[Vector2i] = PlacementPreview.covered_road_cell_list(
+		game.board, post, CornCobbler.RANGE)
+	err = _T.assert_gt(reached.size(), 0, "and it covers road")
+	if err == "":
+		err = _T.assert_true(reached.size() < road.size(), "though not all of it")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var holes: Array[Vector2i] = game.uncovered_road_cells()
+	err = _T.assert_eq(holes.size(), road.size() - reached.size(),
+		"the hole map is the road minus what the cob reaches (%d of %d)"
+			% [road.size() - reached.size(), road.size()])
+	if err == "":
+		err = _T.assert_true(holes.has(game.board.exit_cell()),
+			"and the exit cell is in it, which is the hole that costs beds")
+	if err == "":
+		err = _T.assert_false(holes.has(Board.PATH_CORNERS[0]),
+			"while the entry cell is not — the cob is standing next to it")
+	if err == "":
+		err = _T.assert_float_eq(game.coverage_frontier(),
+			float(game.board.path_index(reached[reached.size() - 1])) / float(road.size() - 1),
+			0.0001, "and the frontier is the deepest cell the cob reaches")
+	if err == "":
+		err = _T.assert_gt(game.coverage_note().length(), 0,
+			"so now there is a sentence to say")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# The claim ENGAGING_PLANTS exists for, in the live map rather than in the
+	# constant: a Sundew laid over road the cob cannot reach buys no coverage,
+	# because dew never touches a pest. Built directly rather than bought — the
+	# purchase path needs an unlock and thirty seeds, and neither is under test.
+	var dew_cell := Vector2i(4, 0)
+	err = _T.assert_true(game.board.is_buildable(dew_cell), "there is grass for a patch")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var dew_road: Array[Vector2i] = PlacementPreview.covered_road_cell_list(
+		game.board, dew_cell, StickySundew.SAP_RADIUS)
+	var fresh: int = 0
+	for cell: Vector2i in dew_road:
+		if not reached.has(cell):
+			fresh += 1
+	err = _T.assert_gt(fresh, 0,
+		"the patch really lies over road the cob cannot reach (%d cells), or this proves nothing"
+			% fresh)
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var before: int = holes.size()
+	var dew := StickySundew.new()
+	game._entities.add_child(dew)
+	dew.setup(PlantCatalog.SUNDEW, dew_cell, game.board)
+	game._plants[dew_cell] = dew
+	err = _T.assert_eq(game.uncovered_road_cells().size(), before,
+		("a Sundew over %d cells of fresh road closes none of them — it slows, it never "
+			+ "touches, and a map that counted it would call that lane defended") % fresh)
+	if err == "":
+		# And the same kind of ground under a plant that CAN fight does close.
+		var chomp_cell := Vector2i(4, 2)
+		err = _T.assert_true(game.board.is_buildable(chomp_cell), "there is grass for a mouth")
+		if err == "":
+			var chomp_road: Array[Vector2i] = PlacementPreview.covered_road_cell_list(
+				game.board, chomp_cell, ChompFlower.GRAB_RADIUS)
+			var chomp_fresh: int = 0
+			for cell: Vector2i in chomp_road:
+				if not reached.has(cell):
+					chomp_fresh += 1
+			err = _T.assert_gt(chomp_fresh, 0, "the mouth reaches road the cob does not")
+			if err == "":
+				var mouth := ChompFlower.new()
+				game._entities.add_child(mouth)
+				mouth.setup(PlantCatalog.CHOMP, chomp_cell, game.board)
+				game._plants[chomp_cell] = mouth
+				err = _T.assert_eq(game.uncovered_road_cells().size(), before - chomp_fresh,
+					"which closes exactly the %d cells it can reach" % chomp_fresh)
+	_T.free_ui(game)
+	return err
+
+
+## The formatter on its own. Three silences and two sentences, and the silences
+## are the half worth pinning: each is a state a percentage would misdescribe.
+func test_the_coverage_line_is_silent_when_there_is_nothing_to_say() -> String:
+	var err: String = _T.assert_eq(Game.coverage_note_for(-1.0), "",
+		"nothing planted is the absence of a garden, not a hole in one — the board says it louder")
+	if err == "":
+		err = _T.assert_eq(Game.coverage_note_for(1.0), "",
+			"a garden reaching the exit cell has no tail to report")
+	if err == "":
+		err = _T.assert_eq(Game.coverage_note_for(0.999), "",
+			"and a tail that rounds to 0% is a broken-looking readout, not good news")
+	if err == "":
+		err = _T.assert_eq(Game.coverage_note_for(0.0),
+			"Nothing covers the last 100% of the road.",
+			"a garden covering only the entry cell leaves the whole road open")
+	if err == "":
+		err = _T.assert_eq(Game.coverage_note_for(0.5),
+			"Nothing covers the last 50% of the road.",
+			"and half a road covered says so as a depth, the one spatial variable this road has")
+	return err
+
+
+## End to end: the same wave, the same board, and the sentence changes because the
+## garden did.
+##
+## The precedence rule is a comparison and not a threshold — the coverage line
+## takes the row exactly when the wave's pests were stopped, on average, further
+## down the road than the garden can reach. That is the wave where the hole is the
+## explanation for what just happened.
+func test_the_prep_window_names_the_hole_when_the_wave_got_past_it() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var err: String = _T.assert_true(game != null, "the game scene loaded")
+	if err != "":
+		return err
+	err = _T.assert_true(game.board != null, "the run has a board")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var road: Array[Vector2i] = game.board.road_cells()
+	var entry: Vector2i = Board.PATH_CORNERS[0]
+	var way_out: Vector2i = game.board.exit_cell()
+	err = _T.assert_gt(road.size(), 1, "there is a road with two ends")
+	if err == "":
+		err = _T.assert_true(game.board.is_path(entry) and game.board.is_path(way_out),
+			"and both ends of it are road, or every depth below is dropped")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# A wave that walked the whole way out, with nothing planted.
+	game.board.record_lane_pressure_wave({way_out: 5})
+	err = _T.assert_float_eq(game.board.last_wave_depth(), 1.0, 0.0001,
+		"the wave was lost at the exit, which is 100% down the road")
+	if err == "":
+		err = _T.assert_eq(game.prep_note(),
+			"Pests got 100% down the road, the run's usual depth.",
+			"an empty garden still gets the depth note — the coverage line never claims a field nobody planted")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# The same recorded wave, now with a cob in the ground near the entry.
+	var post := Vector2i(1, 0)
+	err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, post), "", "the cob goes in")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var frontier: float = game.coverage_frontier()
+	err = _T.assert_true(frontier > 0.0 and frontier < 1.0,
+		"the cob reaches some of the road and not the end of it (frontier %.3f)" % frontier)
+	if err == "":
+		var tail: int = int(round((1.0 - frontier) * 100.0))
+		err = _T.assert_eq(game.prep_note(),
+			"Nothing covers the last %d%% of the road." % tail,
+			"and now the same wave is explained by the hole it walked out through")
+	if err == "":
+		err = _T.assert_eq(game.prep_note(), game.coverage_note(),
+			"which is the coverage line itself and not a second copy of the format")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# A wave stopped inside the covered stretch is not the hole's story, so the
+	# depth comparison takes the row back.
+	game.board.record_lane_pressure_wave({entry: 5})
+	err = _T.assert_float_eq(game.board.last_wave_depth(), 0.0, 0.0001,
+		"the second wave died on the entry cell")
+	if err == "":
+		err = _T.assert_true(game.board.last_wave_depth() <= frontier,
+			"which is inside the ground the cob covers, so the hole is not what happened")
+	if err == "":
+		err = _T.assert_eq(game.prep_note(),
+			"Pests got 0% down the road — shallower than the run's 50%.",
+			"and the window goes back to comparing this wave against the run")
+	if err == "":
+		# The line the status row actually receives, which is what a clip would
+		# eat: the assertion above is on a fragment nothing renders on its own.
+		err = _T.assert_eq(Hud.wave_cleared_line(3, game.prep_note()),
+			"Wave 3 cleared. Pests got 0% down the road — shallower than the run's 50%.",
+			"through the same formatter the prep window hands the HUD")
+	_T.free_ui(game)
+	return err
+
+
+## MessageLabel clips with an ellipsis, so a coverage line that outgrows the
+## status row renders trimmed and nothing complains. Measured off the resolved
+## theme font, NOT get_minimum_size(): the label sets clip_text and a clipping
+## Label reports a 1px minimum by design.
+##
+## Two gates, not one. The line has to fit the row, and it has to stay NARROWER
+## than Hud.PREP_NOTE_WORST_CASE — that constant is declared as the worst case the
+## status row can be handed, and a new branch quietly overtaking it would leave
+## the declaration guarding the wrong string.
+func test_the_coverage_note_fits_the_status_row() -> String:
+	# The widest reachable frontier is 0.0, and it is not hypothetical: a lone
+	# Chomp on (0, 0) reaches the road cell 64px below it and misses the next at
+	# 90.5px, which is one covered cell at path index 0.
+	var probe := Board.new()
+	var lone: Array[Vector2i] = PlacementPreview.covered_road_cell_list(
+		probe, Vector2i(0, 0), ChompFlower.GRAB_RADIUS)
+	var err: String = _T.assert_eq(lone.size(), 1,
+		"a Chomp on (0, 0) covers exactly one road cell")
+	if err == "":
+		err = _T.assert_eq(probe.path_index(lone[0]), 0,
+			"and it is the entry cell, so a frontier of 0.0 is a garden somebody can really build")
+	probe.free()
+	if err != "":
+		return err
+
+	var game := await _T.instantiate_ui("res://game/game.tscn", Vector2i(1152, 648)) as Game
+	err = _T.assert_true(game != null, "the game scene loaded")
+	if err != "":
+		return err
+	err = _T.assert_true(game.hud != null, "the run has a HUD")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+	err = _T.assert_true(label != null, "the status row exists")
+	if err == "":
+		# Pinned to the formatter, not to the literal. A reworded line nobody
+		# copies into the constant is exactly how a silent clip ships.
+		err = _T.assert_eq(Game.COVERAGE_NOTE_WORST_CASE,
+			Hud.wave_cleared_line(9999, Game.coverage_note_for(0.0)),
+			"the declared worst case is the line the formatter actually builds")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var font: Font = label.get_theme_font("font")
+	err = _T.assert_true(font != null, "the row has a font to measure with")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var size_px: int = label.get_theme_font_size("font_size")
+	if size_px <= 0:
+		size_px = label.get_theme_default_font_size()
+	var drawn: float = font.get_string_size(
+		Game.COVERAGE_NOTE_WORST_CASE, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x
+	err = _T.assert_gt(drawn, 1.0,
+		"the font really measured the line — a 1px answer is the clip_text stub, not a width")
+	if err == "":
+		err = _T.assert_gt(label.size.x, 1.0, "and the row has a real width to measure against")
+	if err == "":
+		err = _T.assert_true(drawn <= label.size.x,
+			"the worst-case coverage line fits the status row without ellipsis (%.0f of %.0f px)"
+				% [drawn, label.size.x])
+	if err == "":
+		var declared: float = font.get_string_size(
+			Hud.PREP_NOTE_WORST_CASE, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x
+		err = _T.assert_gt(declared, 1.0, "Hud's declared worst case measured too")
+		if err == "":
+			err = _T.assert_true(drawn <= declared,
+				("and stays under Hud.PREP_NOTE_WORST_CASE (%.0f of %.0f px), which is still the "
+					+ "widest thing the status row can be handed") % [drawn, declared])
+	_T.free_ui(game)
+	return err

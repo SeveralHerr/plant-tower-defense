@@ -226,6 +226,31 @@ func path_cell_count() -> int:
 	return _path_order.size()
 
 
+## Every road cell, in walk order — the same order path_index() numbers them in.
+##
+## The map half of the road, beside route()'s geometry half. Everything that asks
+## a spatial question about the road had to rebuild this list by scanning
+## ROWS x COLS and filtering on is_path(), which is 126 checks for a 32-cell
+## answer and puts the walk order back together by accident rather than by
+## reading the one place it is recorded.
+##
+## Builds first, for the reason is_path() spells out at length: a Board that has
+## not entered the tree would otherwise answer "there is no road" — a confident
+## empty list rather than an error — and a caller that then subtracts a coverage
+## set from it would report a garden with no holes in it because it could not see
+## any road to have holes in.
+##
+## A plain loop rather than `_path_order.duplicate()`: the copy is what stops a
+## caller mutating the road out from under path_index(), and a loop says so where
+## a duplicate() whose return type happens to survive does not.
+func road_cells() -> Array[Vector2i]:
+	_build_path()
+	var out: Array[Vector2i] = []
+	for cell: Vector2i in _path_order:
+		out.append(cell)
+	return out
+
+
 func route() -> PackedVector2Array:
 	_build_path()
 	return _route
