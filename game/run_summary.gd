@@ -89,8 +89,19 @@ const MAP_LEGEND_FONT_SIZE: int = 13
 ## Entrance rise, matching the title screen's idiom. Gated on
 ## GardenTheme.animations_enabled() — headless never pumps the tween, so the
 ## card must already be correct before it runs.
-const RISE_SECONDS: float = 0.28
-const RISE_OFFSET: float = 26.0
+##
+## Win and loss no longer share one motion. _build_heading already picks a
+## different heading text and colour for the two outcomes ("The garden
+## holds!" in LEAF_DARK against "The garden is eaten" in DANGER); a rise that
+## could not tell them apart was the one place left where the card's motion
+## disagreed with what it says. A win rises fast and a little further, with
+## TRANS_BACK's small overshoot, so it lands like a flourish; a loss rises
+## slower and shorter, with the same TRANS_CUBIC every other entrance in this
+## game uses, so it settles rather than snaps -- heavier, not more decorated.
+const RISE_SECONDS_WIN: float = 0.2
+const RISE_OFFSET_WIN: float = 32.0
+const RISE_SECONDS_LOSS: float = 0.42
+const RISE_OFFSET_LOSS: float = 18.0
 
 var _rows: Array[Label] = []
 
@@ -460,14 +471,18 @@ func _build_buttons() -> void:
 
 
 func _play_entrance() -> void:
+	var won: bool = bool(_stats.get("victory", false))
+	var offset: float = RISE_OFFSET_WIN if won else RISE_OFFSET_LOSS
+	var seconds: float = RISE_SECONDS_WIN if won else RISE_SECONDS_LOSS
+	var trans: Tween.TransitionType = Tween.TRANS_BACK if won else Tween.TRANS_CUBIC
 	for child: Node in get_children():
 		var control := child as Control
 		if control == null or control.name == "Backdrop":
 			continue
-		control.position.y += RISE_OFFSET
+		control.position.y += offset
 		var tween := create_tween()
-		tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-		tween.tween_property(control, "position:y", control.position.y - RISE_OFFSET, RISE_SECONDS)
+		tween.set_trans(trans).set_ease(Tween.EASE_OUT)
+		tween.tween_property(control, "position:y", control.position.y - offset, seconds)
 
 
 func _viewport_width() -> int:
