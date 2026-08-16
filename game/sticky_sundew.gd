@@ -273,6 +273,12 @@ func covers(pest: Pest) -> bool:
 func _claim(pest: Pest) -> void:
 	Sfx.play(Sfx.SUNDEW_CLAIM)
 	_stuck.append(pest)
+	# The catch, not a kill — a Sundew never kills a pest, so unlike Kernel's
+	# post-damage guard this is never racing a death this same frame. Same
+	# is_alive() guard anyway, kept for the pattern (and for defense against a
+	# pest that died the instant it entered the patch, before this ran).
+	if pest.is_alive():
+		pest.flash_hit()
 	var sources: int = slow_sources(pest)
 	if sources == 0:
 		pest.set_meta(META_BASE_SPEED, pest.speed)

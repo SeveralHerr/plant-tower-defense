@@ -2940,6 +2940,43 @@ func test_a_refused_packet_purchase_shakes_the_packet_button() -> String:
 	return err
 
 
+## Same cue, a third call site: an underfunded upgrade shakes the Upgrade
+## button itself -- unlike a plant/packet refusal, upgrade_selected() never
+## routes through bank.pay_for_plant() (it checks bank.seeds directly), so it
+## never reaches purchase_failed's shared Sfx.PURCHASE_DENIED and has to play
+## the cue itself too. See Game.upgrade_selected.
+func test_an_underfunded_upgrade_shakes_the_upgrade_button() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_false(GardenTheme.animations_enabled(),
+		"this test is only meaningful headless, where the shake tween never lands")
+	var cell: Vector2i = _grass(game)
+	if err == "":
+		err = game.place_plant(PlantCatalog.CORN, cell)
+	var corn: CornCobbler = null
+	if err == "":
+		corn = game.plant_at(cell) as CornCobbler
+		err = _T.assert_true(corn != null, "a Corn Cobbler landed on its cell")
+	if err == "":
+		game._select(corn)
+		game.bank.seeds = 0
+		var refusal: String = game.upgrade_selected()
+		err = _T.assert_eq(refusal, "not enough seeds", "the upgrade really was refused")
+	var button: Button = null
+	if err == "":
+		button = game.hud.get_node_or_null("Root/SidePanel/SelectionBox/UpgradeButton") as Button
+		err = _T.assert_true(button != null, "the Upgrade button exists")
+	if err == "":
+		# The real call site, direct: Game.upgrade_selected reaches exactly
+		# this, on exactly this button, for exactly this refusal.
+		game.hud.shake_upgrade_button()
+		# Headless never pumps the shake tween, so the button's rotation is right
+		# where it started -- the observable half of "ran, and did not error".
+		err = _T.assert_float_eq(button.rotation, 0.0, 0.001,
+			"shake did not error and left the button at its already-correct rest angle")
+	_T.free_ui(game)
+	return err
+
+
 ## Every HUD animation must layer on an already-correct final state. Headless
 ## pumps no frames, so a tween that starts a node at alpha 0 and relies on a frame
 ## to finish leaves it invisible -- and invisible in a way that no assertion about

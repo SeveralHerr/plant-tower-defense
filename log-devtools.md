@@ -2710,4 +2710,39 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   a bare `Node.new()`, not a scripted node — which is a structural limit of
   reach-by-script-path, not something this run could have done differently).
 
+## 2026-08-16 — Flash on Chomp/Sundew catches, and a shake+sfx for underfunded upgrades
+
+- Value: **warranted** — runtime caught two things a diff read alone would not have.
+  - Expected: ChompFlower._bite() and StickySundew._claim() would call flash_hit()
+    without erroring during real gameplay, and the underfunded-upgrade shake would
+    rotate the Upgrade button the same way shake_plant_button/shake_packet_button
+    already do for their sites.
+  - Got: across a real run through wave 5 with only a ChompFlower and a StickySundew
+    on the board (34+ pest kills, both call sites exercised repeatedly), stderr held
+    only the two pre-existing `press`-on-a-freed-node harness errors from an earlier
+    ReplayButton press, nothing from chomp_flower.gd or sticky_sundew.gd. For the
+    upgrade shake, `set-game-speed 0.02` then `get-state ... --property transform`
+    read `rotation_degrees: -1.037` immediately after calling `upgrade_selected()`
+    underfunded, and a second read moments later showed the sign had flipped
+    (`+0.798`) — the shake beats actually progressing, not a static value.
+  - Found: the live pass caught that `find-nodes --group pests` right after a
+    `wait-frames` call kept coming back empty because the wave director auto-starts
+    waves on its own prep timer — a pest I was tracking could die or a new wave could
+    spawn between two bus calls with no explicit control over it. Reading the diff
+    would not have surfaced that the wave clock keeps running independent of any
+    single spawn/place call.
+  - Cheaper: the unit-test half (flash_hit already had kernel-hit coverage; I added
+    an analogous test_an_underfunded_upgrade_shakes_the_upgrade_button) is what
+    actually gates regressions cheaply — the live pass mainly confirmed "no runtime
+    error under real load" and "the rotation genuinely moves," which headless
+    structurally cannot show since it never pumps the tween.
+
+- Gap: no gaps this turn. `--isolated --kill-survivors` launch worked first try per
+  the skill; `set-game-speed` needed a positional `scale` arg rather than `--scale`
+  (my own mistake reading the flag shape, not a harness gap — `-h` corrected it
+  immediately). `suite_reach_check.py` caught that my first draft of the new test
+  only named `shake_upgrade_button` inside an assert *message string*, which the tool
+  correctly does not count as reach — restructuring to call it directly, matching
+  the existing shake_plant_button/shake_packet_button test shape, fixed it.
+
 - Harness: **0.25.0**.

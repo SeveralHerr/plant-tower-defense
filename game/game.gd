@@ -1019,6 +1019,12 @@ func upgrade_selected() -> String:
 	var price: int = corn.upgrade_cost()
 	if bank.seeds < price:
 		hud.show_message("That upgrade costs %d seeds." % price)
+		# This refusal never touches bank.pay() (that's `bank.seeds < price`
+		# above, checked directly), so it never reaches purchase_failed and its
+		# shared Sfx.PURCHASE_DENIED — this is the one denial site that has to
+		# play the cue itself, same as it shakes the button itself.
+		hud.shake_upgrade_button()
+		Sfx.play(Sfx.PURCHASE_DENIED)
 		return "not enough seeds"
 	bank.add_seeds(-price)
 	corn.upgrade()
