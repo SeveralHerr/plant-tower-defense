@@ -1695,3 +1695,129 @@ func test_no_readout_clips_its_own_worst_case() -> String:
 		err = _T.assert_eq(short.size(), 0, "readouts that clip their worst case: %s" % ", ".join(short))
 	_T.free_ui(game)
 	return err
+
+
+# -- Road-adjacency warning (plant-tower-defense-8bb) ------------------------
+
+
+## Orthogonal only, and that is the definition rather than a simplification of
+## one: a hungry pest reaches Pest.EAT_RADIUS = CELL * 1.15, so it can lunge one
+## cell but not the 1.41 cells to a diagonal.
+func test_road_adjacency_is_orthogonal_and_matches_a_hungry_pests_reach() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+	var road: Vector2i = Board.PATH_CORNERS[0]
+	var err: String = ""
+	for step: Vector2i in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+		var neighbour: Vector2i = road + step
+		if not board.is_inside(neighbour) or board.is_path(neighbour):
+			continue
+		err = _T.assert_true(board.is_road_adjacent(neighbour),
+			"%s is one step off the road, so a hungry pest can reach it" % neighbour)
+		if err != "":
+			break
+	if err == "":
+		# The reach the definition is derived from, asserted rather than assumed.
+		err = _T.assert_true(Pest.EAT_RADIUS >= float(Board.CELL) and Pest.EAT_RADIUS < float(Board.CELL) * 1.41,
+			"EAT_RADIUS %.1f reaches one cell but not a diagonal" % Pest.EAT_RADIUS)
+	_T.free_ui(board)
+	return err
+
+
+func test_a_cell_far_from_the_road_is_not_road_adjacent() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+	var far: Vector2i = Vector2i(-1, -1)
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if board.is_buildable(cell) and not board.is_road_adjacent(cell):
+				far = cell
+				break
+		if far.x >= 0:
+			break
+	var err: String = _T.assert_true(far.x >= 0, "the board has at least one safe interior cell")
+	if err == "":
+		err = _T.assert_false(board.is_road_adjacent(far), "%s is out of a hungry pest's reach" % far)
+	_T.free_ui(board)
+	return err
+
+
+## The discrimination that matters: a Corn Cobbler beside the road is the whole
+## point of a Corn Cobbler. Warning about it would train the player to ignore
+## the cue in the one case it is for.
+func test_only_a_plant_that_cannot_fight_back_is_flagged_beside_the_road() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var risky: Vector2i = Vector2i(-1, -1)
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if game.board.is_buildable(cell) and game.board.is_road_adjacent(cell):
+				risky = cell
+				break
+		if risky.x >= 0:
+			break
+	var err: String = _T.assert_true(risky.x >= 0, "found a buildable cell beside the road")
+	if err == "":
+		game.bank.seeds = 999
+		game.selected_plant = PlantCatalog.SUNFLOWER
+		game.bank.unlocked.append(PlantCatalog.SUNFLOWER)
+		game._update_preview(risky, true)
+		err = _T.assert_true(game._preview.at_risk,
+			"a Sunflower at %s is flagged - it cannot fight back and a hungry pest can reach it" % risky)
+	if err == "":
+		game.selected_plant = PlantCatalog.CORN
+		game._update_preview(risky, true)
+		err = _T.assert_false(game._preview.at_risk,
+			"a Corn Cobbler at the same cell is not flagged; being beside the road is its job")
+	_T.free_ui(game)
+	return err
+
+
+## Away from the road, nothing is flagged whatever is selected.
+func test_a_sunflower_away_from_the_road_is_not_flagged() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var safe: Vector2i = Vector2i(-1, -1)
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if game.board.is_buildable(cell) and not game.board.is_road_adjacent(cell):
+				safe = cell
+				break
+		if safe.x >= 0:
+			break
+	game.bank.seeds = 999
+	game.bank.unlocked.append(PlantCatalog.SUNFLOWER)
+	game.selected_plant = PlantCatalog.SUNFLOWER
+	game._update_preview(safe, true)
+	var err: String = _T.assert_false(game._preview.at_risk,
+		"a Sunflower at %s is out of reach, so no warning" % safe)
+	_T.free_ui(game)
+	return err
+
+
+## A cell that already refuses the click does not also get warned about —
+## two cues saying different things about one cell is worse than one.
+func test_an_unusable_cell_is_not_also_warned_about() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var risky: Vector2i = Vector2i(-1, -1)
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if game.board.is_buildable(cell) and game.board.is_road_adjacent(cell):
+				risky = cell
+				break
+		if risky.x >= 0:
+			break
+	game.bank.seeds = 0
+	game.bank.unlocked.append(PlantCatalog.SUNFLOWER)
+	game.selected_plant = PlantCatalog.SUNFLOWER
+	game._update_preview(risky, true)
+	var err: String = _T.assert_false(game._preview.placeable, "no seeds, so the cell refuses")
+	if err == "":
+		# at_risk may be set, but _draw gates the ring on `placeable` — assert
+		# the drawn outcome, which is what the player sees.
+		err = _T.assert_false(game._preview.at_risk and game._preview.placeable,
+			"and no warning ring is drawn over a cell that already refuses")
+	_T.free_ui(game)
+	return err

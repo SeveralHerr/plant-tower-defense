@@ -1038,3 +1038,45 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   and `Responding` with neither matching the owner file's pid; only
   `Get-Process Godot* | Stop-Process -Force`, twice, cleared them.
   - [G-012] status: open | seen: 2 | harness: 0.19.0
+
+## 2026-08-15 — Road-adjacency warning for plant-tower-defense-8bb
+
+- Value: **warranted** — the visual judgement needed pixels, and the run caught two
+  staging mistakes that would have made a hand-rolled check pass while proving nothing.
+  - Expected: the dashed amber ring should be visibly distinguishable from both the
+    solid coverage ring and the red blocked state — a warning that reads as "another
+    range ring" would be worse than nothing, and that's a judgement only pixels can
+    settle.
+  - Got: the four-way table came out clean on the live preview —
+    `Sunflower BESIDE road -> at_risk True, placeable True -> DASHED WARNING`,
+    `Corn BESIDE road -> at_risk False (reach 176)`,
+    `Chomp BESIDE road -> at_risk False (reach 73.6)`,
+    `Sunflower AWAY -> at_risk False`. The screenshot shows a tight broken amber ring
+    just outside the green brackets, which next to a Corn's large faint solid 176px
+    circle is unmistakably a different kind of statement.
+  - Found: (1) My first probe used screen `(416, 360)` as the "away from the road" cell
+    and it was *on* the road — row 4 runs x=3..9. The check reported `at_risk=True` for
+    a cell I had labelled safe, which looks exactly like the feature being broken.
+    Staging a placement check by reading coordinates off a screenshot does not work;
+    asking the board for a cell matching the predicate does. (2) `set-state` on
+    `SeedBank.unlocked` — a typed `Array[StringName]` — silently does not take. The
+    write reports success and the read-back still shows the old array, with no error
+    anywhere. Unlocking had to go through the game's own `buy_packet` path, which is
+    the better test anyway.
+  - Cheaper: the truth table was already covered by the five new headless tests. The
+    live run bought the visual judgement and the two staging corrections.
+
+- Gap: **`set-state` on a typed Array property silently no-ops.**
+  `set-state --node /root/Game/SeedBank --property unlocked --value '["corn_cobbler","sunflower"]'`
+  reported success; the immediately following `get-state` returned
+  `['corn_cobbler']`. No error, no warning, and the printed read-back in the
+  `set-state` reply is the thing that is supposed to catch exactly this. A `Variant`
+  Array cannot be assigned to an `Array[StringName]` in GDScript, so the write is
+  dropped — but the verb reports as though it landed.
+  - [G-019] status: open | seen: 1 | harness: 0.19.0
+  - Improvement: `set-state` already reads the property back; compare it against what
+    was requested and exit 1 with both values when they differ. That is a general fix,
+    not an Array-specific one, and it would also catch setters that clamp or ignore.
+    Where the type is known (`Array[StringName]` via `get_property_list()`'s hint
+    string), converting the parsed JSON array to the typed array before assigning would
+    make the common case work rather than merely fail loudly.

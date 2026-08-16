@@ -151,6 +151,17 @@ func is_buildable(cell: Vector2i) -> bool:
 	return is_inside(cell) and not is_path(cell)
 
 
+## Is this cell within a hungry pest's reach of the road? Orthogonal only, and
+## that is the whole definition rather than an approximation of one: Pest.EAT_RADIUS
+## is CELL * 1.15, so a pest on the road can reach a plant one cell up, down,
+## left or right of it and nothing diagonal, which is 1.41 cells away.
+func is_road_adjacent(cell: Vector2i) -> bool:
+	for step: Vector2i in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+		if is_path(cell + step):
+			return true
+	return false
+
+
 func cell_to_world(cell: Vector2i) -> Vector2:
 	return Vector2(cell.x * CELL + CELL * 0.5, cell.y * CELL + CELL * 0.5)
 

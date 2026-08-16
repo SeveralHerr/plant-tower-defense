@@ -432,6 +432,10 @@ func _update_preview(cell: Vector2i, free: bool) -> void:
 	# (placement_cost returns 0 while it is available), so it is the whole
 	# money question in one call.
 	_preview.placeable = free and bank.can_afford(selected_plant)
+	# Only a plant that cannot defend itself is "at risk" beside the road. A
+	# Corn Cobbler there is the entire point of a Corn Cobbler; flagging it
+	# would teach the player to ignore the cue everywhere it matters.
+	_preview.at_risk = _preview.reach <= 0.0 and board.is_road_adjacent(cell)
 	_preview.queue_redraw()
 
 
