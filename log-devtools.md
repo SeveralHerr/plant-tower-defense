@@ -1351,7 +1351,7 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   Workaround: `set-state game_over true` then `run-method _end_run '["..."]'`, which
   reaches the same UI but skips the life-loss bookkeeping the real path performs —
   i.e. the workaround verifies less than the call it replaces, quietly.
-  - [G-026] status: open | seen: 1 | harness: 0.21.0
+  - [G-026] status: fixed | fixed-in: 0.23.0 | seen: 1 | harness: 0.21.0
   - Improvement: marshal a JSON `null` to the parameter's own nil-able default rather
     than to a bare `Nil` Variant — GDScript permits `null` for any Object-typed
     parameter, so the bridge is stricter than the language it drives. Failing that,
