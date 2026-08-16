@@ -1,8 +1,9 @@
 class_name Pest
 extends Node2D
 
-## A bug walking the road. Two species, per the drawings: a small fast one
-## (aphid) and a big slow one (beetle).
+## A bug walking the road. Three species, per the drawings: a small fast one
+## (aphid), a big slow one (beetle), and the boss the campaign builds toward (the
+## Aphid Queen).
 ##
 ## The interesting state here is `held_by`. A Chomp Flower that grabs a pest does
 ## not delete it — it holds it in place for `chew_seconds` while the pest stays on
@@ -14,9 +15,16 @@ signal escaped(pest: Pest)
 
 const APHID := &"aphid"
 const BEETLE := &"beetle"
+const QUEEN := &"queen"
 
 ## species -> stats. `chew_seconds` is the design doc's "eats small pests easily,
 ## takes a while eating bigger pests" expressed as a number.
+##
+## `split_species` / `split_count` are the boss mechanic and the only optional
+## pair here: a species that names them bursts into that many of that species
+## WHERE IT DIED rather than simply leaving the board. Read through
+## split_species() / split_count() below, never off the raw Dictionary, so an
+## ordinary pest answers "&"" / 0" instead of erroring on a missing key.
 const SPECIES: Dictionary = {
 	APHID: {
 		"display": "Aphid",
@@ -39,6 +47,44 @@ const SPECIES: Dictionary = {
 		"chew_seconds": 2.6,
 		"scale": 1.0,
 		"big": true,
+	},
+	## The boss (plant-tower-defense-74a). Deliberately NOT a fourth mutation and
+	## deliberately not "a beetle with more health": what makes a queen a
+	## different fight is that killing her is a decision about WHERE, not about
+	## whether. She bursts into three aphids at the spot she falls, so a garden
+	## that only reaches the last stretch of road converts one slow boss into
+	## three fast pests with almost no road left to shoot them on, while the same
+	## kill made at the entrance is simply free. Nothing else on the board makes
+	## the player care where a kill lands.
+	##
+	## The numbers, and what each is for:
+	##   * health 80 — measured against CornCobbler.single_target_dps. A level-3
+	##     cob does 2.26 dps and holds a pest crossing its ring for ~11 s at this
+	##     speed, so one cob is ~25 damage: a lone Corn Cobbler cannot take her,
+	##     four maxed ones can, which is exactly the band the issue asks for.
+	##   * speed 30 — slower than a beetle, so she is on the road a long time and
+	##     the swarm behind her arrives while she is still walking. Also what
+	##     makes the 11 s exposure above true.
+	##   * chew_seconds 11 — a Chomp CAN eat her, and pays for it with the whole
+	##     rest of the wave walking past a shut mouth. Note the mouth is beside
+	##     the road, so a Chomp kill bursts the brood right next to the plant
+	##     that is now busy for another eleven seconds. That is the trade, not a
+	##     loophole.
+	##   * seeds 40 — a beetle is 9. She is worth the wave.
+	##   * scale 1.45 — 64 px of authored art (STYLE.md's canvas) drawn at 93 px
+	##     on a 64 px cell. Nothing else on the board overflows its own cell.
+	QUEEN: {
+		"display": "Aphid Queen",
+		"texture": "res://assets/sprites/pest_queen.png",
+		"dead_texture": "res://assets/sprites/pest_queen_dead.png",
+		"health": 80.0,
+		"speed": 30.0,
+		"seeds": 40,
+		"chew_seconds": 11.0,
+		"scale": 1.45,
+		"big": true,
+		"split_species": APHID,
+		"split_count": 3,
 	},
 }
 
@@ -130,6 +176,24 @@ const JAW_SPACING: float = 0.40
 ## one cell off it, so anything under one cell can never reach either.
 const EAT_RADIUS: float = Board.CELL * 1.15
 const EAT_DPS: float = 14.0
+
+## The health bar's box, and how far above the pest's centre it floats.
+##
+## The offset scales with the sprite, and only ever upward. A queen is drawn at
+## scale 1.45, so her silhouette reaches 46 px from her centre and a bar pinned
+## at 30 would be painted across her own back — the one readout a boss fight is
+## actually about, hidden inside the boss. maxf(1.0, ...) is what keeps this
+## change to one sprite: an aphid at 0.72 keeps the bar exactly where every pest
+## in the game has always had it rather than sliding down into its body.
+const HEALTH_BAR_SIZE := Vector2(32, 5)
+const HEALTH_BAR_TOP: float = -30.0
+
+
+## Where a pest drawn at `sprite_scale` floats its bar. Pure, so the placement is
+## assertable without a viewport.
+static func health_bar_top_for(sprite_scale: float) -> float:
+	return HEALTH_BAR_TOP * maxf(1.0, sprite_scale)
+
 
 ## How long a killed pest's corpse (dead-eyes sprite) stays on screen before it
 ## is actually freed. Long enough to read as a beat, short enough not to pile up.
@@ -290,6 +354,52 @@ func setup(which: StringName, route: PackedVector2Array) -> void:
 		_update_facing(_route[1] - _route[0])
 
 
+## Drops a pest that has already been setup() into the middle of that walk.
+##
+## The brood a boss bursts into (see split_species) has to arrive where its
+## parent fell, not at the entrance — a queen killed at the exit whose aphids
+## restarted from the gate would turn the entire mechanic upside down and reward
+## exactly the play it is meant to punish. `leg` is the waypoint index the pest
+## is walking TOWARD, which is what the parent's route_leg() hands back, so the
+## child inherits the walk rather than re-deriving it from a position.
+##
+## Clamped to the route's own bounds: a leg past the end would make the very
+## next _advance() call _escape() on a pest that had not walked anywhere, and a
+## leg below 1 would send it back to a waypoint it is already past.
+func enter_road_at(at: Vector2, leg: int) -> void:
+	if _route.is_empty():
+		return
+	position = at
+	_leg = clampi(leg, 1, _route.size() - 1)
+	_update_facing(_route[_leg] - position)
+
+
+## The waypoint index this pest is walking toward. Public because a burst boss
+## has to hand its own place in the walk to the brood it leaves behind, and that
+## is the only honest way to say "here, on this road, facing this way".
+func route_leg() -> int:
+	return _leg
+
+
+## What `species` bursts into when it dies, or &"" for a pest that simply dies.
+static func split_species(which: StringName) -> StringName:
+	var stats: Dictionary = SPECIES.get(which, {}) as Dictionary
+	return StringName(stats.get("split_species", &""))
+
+
+## How many of split_species() it bursts into; 0 when it bursts into nothing.
+##
+## Reads the same entry the sprite counts out: pest_queen.svg draws exactly
+## three eggs on the brood sac, so the picture and the number are the same
+## claim. test_the_queens_sprite_counts_out_the_brood_it_bursts_into holds them
+## together.
+static func split_count(which: StringName) -> int:
+	if split_species(which) == &"":
+		return 0
+	var stats: Dictionary = SPECIES.get(which, {}) as Dictionary
+	return int(stats.get("split_count", 0))
+
+
 ## Endless mode's per-wave difficulty multipliers, from
 ## WaveDirector.health_scale_for / speed_scale_for. Called after setup(), which
 ## is what seeded the species defaults these scale.
@@ -369,17 +479,19 @@ func _build_visuals(texture_path: String, sprite_scale: float) -> void:
 	_sprite.scale = Vector2(sprite_scale, sprite_scale)
 	add_child(_sprite)
 
+	var bar_origin := Vector2(-HEALTH_BAR_SIZE.x * 0.5, health_bar_top_for(sprite_scale))
+
 	_health_back = ColorRect.new()
 	_health_back.color = Color(0.12, 0.12, 0.12, 0.65)
-	_health_back.position = Vector2(-16, -30)
-	_health_back.size = Vector2(32, 5)
+	_health_back.position = bar_origin
+	_health_back.size = HEALTH_BAR_SIZE
 	_health_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_health_back)
 
 	_health_bar = ColorRect.new()
 	_health_bar.color = GardenTheme.LEAF
-	_health_bar.position = Vector2(-16, -30)
-	_health_bar.size = Vector2(32, 5)
+	_health_bar.position = bar_origin
+	_health_bar.size = HEALTH_BAR_SIZE
 	_health_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_health_bar)
 
@@ -655,7 +767,7 @@ func take_damage(amount: float) -> void:
 		_ever_engaged = true
 	health = maxf(0.0, health - amount)
 	if is_instance_valid(_health_bar):
-		_health_bar.size = Vector2(32.0 * (health / max_health), 5)
+		_health_bar.size = Vector2(HEALTH_BAR_SIZE.x * (health / max_health), HEALTH_BAR_SIZE.y)
 	if health <= 0.0:
 		kill()
 

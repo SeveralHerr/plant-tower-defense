@@ -3397,3 +3397,64 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   reading a per-frame animation without a screenshot, and `quit` confirming
   `user://: no file changed during this run` closed out the save-file worry from
   [G-048] without a manual diff.
+## 2026-08-16 — More waves, and a boss pest (plant-tower-defense-74a)
+
+- Value: **warranted** — the live run produced the one claim no diff and no headless
+  test could: what a boss fight actually looks like over 40 seconds of real time
+  against a real garden, and it separated "killable" from "kills the run" in the
+  same session.
+  - Expected: an 80 HP queen at 30 px/s would be ground down somewhere in the
+    first half of the road against six-to-seven maxed Corn Cobblers, and would be
+    effectively unkillable against a thin level-1 garden. Both guessed off
+    `single_target_dps` arithmetic before running anything.
+  - Got: wave 16 driven end to end — each queen entered at 80 and was tracked
+    `79 -> 51 -> 27 -> 10 -> 0` while walking from 6% to ~36% of the road, roughly
+    30-40 s per queen, and the aphid count on the board jumped `0 -> 6 -> 15` in
+    the two samples after the first deaths. The run cleared wave 16 with 10/10
+    beds. The same wave 12 against four level-1 cobs held the queen at `72/80` for
+    25 consecutive seconds — three hits in half a minute — and the run lost all ten
+    beds at t=34.8s. That is the balance band as a measurement rather than as an
+    estimate.
+  - Found: two things reading the diff would not have. (1) The endless road stopped
+    filling. Raising `ENDLESS_BEETLE_BASE` to 20 puts the column past its road
+    share from the first endless wave, so `_paced_gap` spreads it and the swarm and
+    column no longer peak together — endless fell from 40 of 40 pests to 29, which
+    would have silently turned `pest_road_ceiling` from `spent_by_design` into
+    `tight` and deleted a documented invariant. Caught by
+    `test_the_pest_road_ceiling_reports_spent_by_design_not_a_plain_spent` failing
+    on `headroom == 0.0`, and fixed by sizing wave 16's swarm to 22 so the campaign
+    finale lands on the ceiling exactly. (2) `test_the_coverage_map_keeps_its_promise…`
+    drove "wave 14", which stopped being an endless wave when the table grew, so
+    its stated premise ("the garden is LOSING it") quietly evaporated — 7 of 29
+    escaped where it needs a third. Now written as `WAVES.size() + 6` and
+    re-measured at 24 of 48.
+  - Cheaper: nothing for the fight itself. The road-budget half was caught headless
+    by `run_tests.py` in 90 s and needed no game at all — the Python model in the
+    scratchpad (a 60-line re-implementation of `peak_simultaneous_pests` and
+    `threat_for`) was what made sixteen waves tunable in four iterations instead of
+    four Godot runs each, and that is the cheapest thing here by a wide margin.
+
+- Gap: **`launch --snapshot-userstate` is opt-in, and the warning that you needed it
+  arrives at `quit`, after the file is already unrecoverable.** The flag added for
+  G-047 works exactly as advertised — the second launch restored cleanly. The first
+  launch did not use it, and `quit` then printed:
+
+  ```
+  user://: this run wrote the developer's REAL user data in
+  C:\Users\gotmi\AppData\Roaming\Godot\app_userdata\plant-tower-defense
+  -- changed: highscore.save.
+  ```
+
+  By then the developer's campaign best had been overwritten with 36074 from a run
+  driven on 35,000 injected seeds, and the pre-existing value exists nowhere — no
+  snapshot, no history, nothing to restore from. The warning names the damage at the
+  one moment nothing can be done about it. Note the damage is not test pollution: it
+  is the *game* saving normally, which is why no test-side rule catches it.
+  - [G-050] status: open | seen: 1 | harness: 0.36.0
+  - Improvement: take the snapshot on **every** `launch` (it is a file copy of
+    `user://*.save`, cost is microseconds) and make `--snapshot-userstate` control
+    only whether `quit` restores it. Then a run that turns out to have written the
+    real save is recoverable after the fact instead of only before it. Failing that,
+    `launch` should print the "this session shares your real `user://`" line it
+    already prints *with* the names of the files that exist there and would be
+    overwritten, so the decision is offered at the moment it can still be made.

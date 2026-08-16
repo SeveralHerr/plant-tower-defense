@@ -2864,10 +2864,11 @@ func test_the_budgets_hud_entries_are_measured_off_the_live_stats_row() -> Strin
 
 ## The pest ceiling is swept, not sampled.
 ##
-## The peak lands early -- around wave 20, where the swarm and the column both
-## still sit on the road at their natural spacing -- so a verb that probed one
-## late wave would report the road half empty and be wrong in the reassuring
-## direction. The sweep is re-run here over the same range and compared.
+## The peak lands early -- at the campaign finale, wave 16, where two queens,
+## their brood headroom, a full swarm and a beetle column are all priced onto the
+## road at once -- so a verb that probed one late wave would report the road at
+## 29 of 40 and be wrong in the reassuring direction. The sweep is re-run here
+## over the same range and compared.
 func test_the_budgets_pest_ceiling_is_the_worst_wave_in_its_own_sweep() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var err: String = _T.assert_true(game != null, "the main scene loads")

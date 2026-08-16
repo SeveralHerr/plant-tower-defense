@@ -11,6 +11,13 @@ signal wave_spawning_finished(number: int)
 
 ## Wave 8 is where the fixed table gets its first beetle-heavy mix (see WAVES
 ## below) — the doc's mutations layer onto that rather than starting cold.
+##
+## It used to be the last wave of the table as well, which made "the campaign's
+## finale" and "the wave mutations start" the same wave and left the player one
+## wave to meet them in. The table now runs to 16, so wave 8 is the halfway mark
+## it was always described as: mutations are the second half's own escalation,
+## and the queens at 12, 14 and 16 arrive into a board that has already had to
+## answer armoured and winged bugs.
 const MUTATION_START_WAVE: int = 8
 const MUTATION_CHANCE: float = 0.4
 const MUTATIONS: Array[StringName] = [Pest.MUTATION_ARMOURED, Pest.MUTATION_WINGED, Pest.MUTATION_HUNGRY]
@@ -44,11 +51,15 @@ const ENDLESS_SPEED_MAX: float = 1.6
 
 ## --- The road is a fixed-size pipe -----------------------------------------
 ##
-## Every endless scale stops except one. Measured off the constants above: the
-## aphid spawn gap floors at wave 22, the beetle gap at 28, mutation chance at
-## 31, health at 42 and speed at 48. From wave 49 the only thing still moving
-## was the headcount — and nothing capped it. 166 pests at wave 48, 376 at
-## wave 108, 1748 at wave 500.
+## Every endless scale stops except one. Measured off the constants above and
+## the sixteen-wave table below: the beetle column is paced out from the very
+## first endless wave, the aphid spawn gap floors at wave 30, mutation chance
+## caps at 39, health at 50 and speed at 56. From wave 57 the only thing still
+## moving is the headcount — and nothing capped it. (Those five wave numbers all
+## moved eight later when the table grew from 8 waves to 16, because every one
+## of them is `WAVES.size() + n`. The measurements in the paragraph below were
+## taken on the old table and are kept as the history of why this constant
+## exists; they are not re-derivations of it.)
 ##
 ## Against the real road (Board.PATH_CORNERS is 31 cells plus the off-board
 ## entry and exit, so 2112 px) and the capped speeds, an aphid crosses in
@@ -63,6 +74,22 @@ const ENDLESS_SPEED_MAX: float = 1.6
 ## So the road gets a budget. No wave paces more than this many pests onto it,
 ## at any wave number, forever. What grows instead is the mix — see
 ## _endless_groups.
+##
+## WHICH WAVE ACTUALLY SPENDS IT moved when the table grew to sixteen waves, and
+## the move is worth naming because the budget readout is measured off it. It
+## used to be an endless wave: the column ramped 7 -> 18 beetles through waves
+## 9-20 at its natural spacing, so at wave 20 all 18 were walking while the
+## swarm was still on the road, and the two groups peaked together at exactly
+## 40. ENDLESS_BEETLE_BASE is now 20 — past ENDLESS_BEETLE_SHARE from the very
+## first endless wave — so _paced_gap spreads the column from the start and it
+## reaches its 18 long after the swarm has walked off. Endless now peaks at 29.
+##
+## The ceiling is unchanged and so is the construction that bounds it (the two
+## shares still sum to it exactly). What changed is where the sweep finds the
+## worst wave: the campaign's finale, at 40 of 40. That is deliberate rather
+## than incidental — see WAVES' wave 16 — because a budget nothing in the game
+## ever reaches is decoration, and `cmd budgets` grades this one on the measured
+## peak rather than on the shares.
 const SIMULTANEOUS_PEST_CEILING: int = 40
 
 ## How that ceiling is split between the wave's two groups. They sum to it
@@ -70,10 +97,10 @@ const SIMULTANEOUS_PEST_CEILING: int = 40
 ## tuning: each group is paced so that it alone never has more than its share
 ## walking, so the wave can never have more than their sum.
 ##
-## The swarm keeps the size the last wave of the fixed table gave it, so
-## nothing visibly shrinks at the seam. The column takes the rest, and by work
-## it is already the heavier half of the road: 18 beetles is 288 points of
-## health against the swarm's 66.
+## The swarm sits inside the range the campaign's own swarms cover (14 to 24
+## across waves 9-16), so nothing visibly changes size at the seam. The column
+## takes the rest, and by work it is already the heavier half of the road: 18
+## beetles is 288 points of health against the swarm's 66.
 const ENDLESS_APHID_SHARE: int = 22
 const ENDLESS_BEETLE_SHARE: int = 18
 
@@ -83,7 +110,23 @@ const ENDLESS_BEETLE_SHARE: int = 18
 ## the player is to spend the same road space on the heavier species. One more
 ## beetle every wave, forever: 16 more points of work, and about two more
 ## seconds of siege.
-const ENDLESS_BEETLE_BASE: int = 6
+##
+## The base is not a free number: it is pinned to the last wave of the fixed
+## table by the same "nothing shrinks at the seam" rule as the swarm above.
+## `_endless_groups` reads `endless_beetle_count(1)` for the first endless wave,
+## so BASE + STEP has to price at or above the campaign's finale or the wave
+## after the hardest wave in the game is visibly easier than it — and
+## threat_for() would report the drop, which is worse than the drop.
+##
+## Wave 16 is 2 queens + 22 aphids + 12 beetles = 418 points of health; the
+## first endless wave is 22 aphids + 21 beetles = 402, carried past it by the
+## endless scales (x1.252 mutation, x1.06 health, x1.015 speed) to 542 against
+## the campaign finale's 518. That is where 20 comes from, and it is why this
+## constant has to move whenever the last row of WAVES does. Kept under 21 so
+## the first endless wave is still mostly swarm — see
+## test_the_beetle_column_is_the_axis_that_replaced_the_headcount, which asserts
+## exactly that.
+const ENDLESS_BEETLE_BASE: int = 20
 const ENDLESS_BEETLE_STEP: int = 1
 
 ## How much of a wave's threat a mutation roll is worth. Well under 1.0 because
@@ -92,6 +135,32 @@ const MUTATION_THREAT_WEIGHT: float = 0.6
 
 ## Each group: species, how many, and the gap in seconds between each one.
 ## `lead` is the pause before the group starts.
+##
+## Sixteen waves, in three movements. Waves 1-7 teach the two ordinary pests;
+## wave 8 is where mutations start (MUTATION_START_WAVE) and the swarm reaches
+## full size; 9-16 are the campaign the game did not have — a board that could
+## clear wave 8 used to be handed straight to endless, so the fixed table ended
+## at the exact moment it had finished explaining itself.
+##
+## The second half escalates on ONE axis at a time so a loss is legible. 9-11
+## thicken the beetle column against a swarm that no longer grows. 12 is the
+## first Aphid Queen, and the wave is deliberately the LIGHTEST of the late
+## waves by headcount (23 pests) so the boss is the thing the player is looking
+## at rather than one more silhouette in a crowd. 13 and 15 are pure pressure
+## waves that give the garden a wave to buy in. 14 puts a queen behind a beetle
+## column, so she arrives while the cobs are already busy. 16 is two queens.
+##
+## Every row here is checked, not eyeballed:
+##   * peak_simultaneous_pests() stays inside SIMULTANEOUS_PEST_CEILING for all
+##     sixteen, and wave 16 is deliberately sized to land on it exactly — 40 of
+##     40, brood headroom included, which is why its swarm is 22 and not 23.
+##     The campaign finale is now the fullest the road ever gets in this game;
+##     see SIMULTANEOUS_PEST_CEILING for why endless no longer is;
+##   * threat_for() rises strictly wave over wave, across the seam into endless
+##     and out to wave 300;
+##   * health_scale_for/speed_scale_for/mutation_chance_for are untouched — they
+##     key off `wave - WAVES.size()`, so growing the table moved the whole
+##     endless ramp eight waves later by construction rather than by edit.
 const WAVES: Array[Array] = [
 	[{"species": &"aphid", "count": 5, "gap": 1.10, "lead": 0.5}],
 	[{"species": &"aphid", "count": 9, "gap": 0.85, "lead": 0.5}],
@@ -118,6 +187,53 @@ const WAVES: Array[Array] = [
 	[
 		{"species": &"aphid", "count": 22, "gap": 0.30, "lead": 0.5},
 		{"species": &"beetle", "count": 7, "gap": 0.90, "lead": 1.5},
+	],
+	# -- 9-16: the second half (plant-tower-defense-74a) ---------------------
+	[
+		{"species": &"aphid", "count": 18, "gap": 0.34, "lead": 0.5},
+		{"species": &"beetle", "count": 8, "gap": 0.95, "lead": 1.5},
+	],
+	[
+		{"species": &"aphid", "count": 24, "gap": 0.30, "lead": 0.5},
+		{"species": &"beetle", "count": 8, "gap": 1.10, "lead": 2.0},
+	],
+	[
+		{"species": &"beetle", "count": 10, "gap": 1.00, "lead": 0.5},
+		{"species": &"aphid", "count": 20, "gap": 0.32, "lead": 1.5},
+	],
+	# The first queen, and she walks in front. Corn shoots whichever pest is
+	# furthest along, so leading the wave is what makes her the fight rather
+	# than something that arrives after it — every cob she passes is aimed at
+	# her until she is dead or gone.
+	[
+		{"species": &"queen", "count": 1, "gap": 1.00, "lead": 0.5},
+		{"species": &"aphid", "count": 14, "gap": 0.36, "lead": 2.5},
+		{"species": &"beetle", "count": 8, "gap": 1.10, "lead": 2.0},
+	],
+	[
+		{"species": &"aphid", "count": 22, "gap": 0.28, "lead": 0.5},
+		{"species": &"beetle", "count": 13, "gap": 0.95, "lead": 1.5},
+	],
+	# The second queen walks BEHIND ten beetles, which is the same boss posing
+	# the opposite question: the cobs are already committed down the lane when
+	# she arrives, so she is deep in the garden before anything is free to aim
+	# at her — and a late kill is exactly the kill that hurts.
+	[
+		{"species": &"queen", "count": 1, "gap": 1.00, "lead": 0.5},
+		{"species": &"beetle", "count": 10, "gap": 1.00, "lead": 2.0},
+		{"species": &"aphid", "count": 18, "gap": 0.30, "lead": 1.5},
+	],
+	[
+		{"species": &"aphid", "count": 20, "gap": 0.26, "lead": 0.5},
+		{"species": &"beetle", "count": 15, "gap": 0.90, "lead": 1.5},
+	],
+	# The finale. Two queens six seconds apart: far enough that the garden
+	# cannot simply overlap its answer to both, close enough that the first
+	# one's brood is still on the road when the second arrives.
+	[
+		{"species": &"queen", "count": 2, "gap": 6.00, "lead": 0.5},
+		{"species": &"aphid", "count": 22, "gap": 0.28, "lead": 2.0},
+		{"species": &"beetle", "count": 12, "gap": 1.00, "lead": 1.5},
 	],
 ]
 
@@ -191,11 +307,20 @@ func start_next_wave() -> int:
 ##
 ## The swarm is pinned at its road share. It arrives exactly as tight as it
 ## always did (the 0.30 - over * 0.01 curve, down to its 0.16 s floor) and it is
-## over in about three and a half seconds. Everything a later wave gains goes
-## into the column instead, which is what turns a long run from a quantity
-## problem into a composition one: beetles are 24% of wave 9's bodies, 45% of
-## wave 20's, 69% of wave 50's, 82% of wave 100's and 96% of wave 500's. Same
+## over in about six seconds. Everything a later wave gains goes into the column
+## instead, which is what turns a long run from a quantity problem into a
+## composition one: beetles are 48% of the first endless wave's bodies, 51% of
+## wave 20's, 71% of wave 50's, 82% of wave 100's and 96% of wave 500's. Same
 ## shape on the road, steadily worse contents.
+##
+## What endless does NOT do is queens. The boss lives in the fixed table only,
+## and that is a decision rather than an omission: the two endless invariants
+## worth having are that threat rises every single wave and that the rise is
+## exactly one beetle's worth (see _raw_threat), and a boss that appears every
+## Nth wave breaks both — the wave after a boss wave prices lower than the boss
+## wave, which the readout would have to report as the difficulty going down.
+## Making bosses permanent instead would need a third road share, and the two
+## that exist already sum to SIMULTANEOUS_PEST_CEILING exactly.
 ##
 ## Static so threat_for() can price a wave that is not running — it reads only
 ## `number` and the table size, never instance state.
@@ -264,6 +389,29 @@ static func _paced_gap(natural: float, species: StringName, wave: int, count: in
 	return maxf(natural, crossing_seconds(species, wave) / float(share))
 
 
+## Bodies a wave can put on the road that its own schedule does not list.
+##
+## A boss bursts into `split_count` smaller pests when it is killed
+## (Game._spawn_brood), so a wave carrying one is a wave that can hold one more
+## body than it schedules — `count - 1` more, since the boss itself is gone by
+## then. That is invisible to the schedule sweep below, which never kills
+## anything, and it is the exact case the road budget exists to bound: a queen
+## dying is not a rare event, it is the intended outcome of every queen.
+##
+## Counted at its worst: every boss in the wave burst at the same instant, all
+## the brood still walking, and nothing else dead. That over-states a real wave
+## (a queen killed at the gate leaves aphids that are gone long before the
+## finale's second queen arrives) and over-stating is the only safe direction
+## for a ceiling.
+static func brood_headroom_for(wave: int) -> int:
+	var extra: int = 0
+	for group: Dictionary in groups_for(wave):
+		var split: int = Pest.split_count(StringName(group["species"]))
+		if split > 1:
+			extra += int(group["count"]) * (split - 1)
+	return extra
+
+
 ## The most pests that can be walking at once during `wave` — the number
 ## SIMULTANEOUS_PEST_CEILING is a ceiling on.
 ##
@@ -272,6 +420,11 @@ static func _paced_gap(natural: float, species: StringName, wave: int, count: in
 ## and the honest one: a board that kills nothing is exactly the board the
 ## player is about to lose on, and it is the case where the frame rate has to
 ## hold up.
+##
+## Nothing-is-ever-killed used to be the whole story, and a boss broke it in the
+## one direction the sweep cannot see: the ONLY way to put a queen's brood on
+## the road is to kill her, so "nothing dies" is no longer the worst case for
+## headcount. brood_headroom_for() adds that back on top — see its own comment.
 static func peak_simultaneous_pests(wave: int) -> int:
 	var spawns := PackedFloat64Array()
 	var exits := PackedFloat64Array()
@@ -296,7 +449,7 @@ static func peak_simultaneous_pests(wave: int) -> int:
 		while gone < exits.size() and exits[gone] < spawns[i]:
 			gone += 1
 		peak = maxi(peak, i + 1 - gone)
-	return peak
+	return peak + brood_headroom_for(wave)
 
 
 ## The groups any wave will send, table or endless. One place that answers

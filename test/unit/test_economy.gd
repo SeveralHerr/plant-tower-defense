@@ -1759,6 +1759,12 @@ func test_every_declared_floor_names_a_budget_this_run_measures() -> String:
 ## makes the bound hold without tuning (see wave_director.gd). A plain "spent"
 ## state would read as a regression on every single glance at the report; this
 ## pins the distinct one Game.BUDGET_SPENT_BY_DESIGN exists to give it.
+##
+## The wave that reaches the bound is now the campaign finale rather than an
+## endless one: the endless column is paced apart from wave 17 on, so endless
+## peaks at 29, and WAVES' last row is sized to land on 40 exactly. That is why
+## this still reads zero headroom, and it is a different sentence from the one
+## above -- one is the construction, the other is a measurement of a real wave.
 func test_the_pest_road_ceiling_reports_spent_by_design_not_a_plain_spent() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var err: String = _T.assert_true(game != null, "the main scene loads")
