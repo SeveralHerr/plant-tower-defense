@@ -21,20 +21,25 @@
 	From "Impact Sounds" (1.0):
 	  footstep_grass_000.ogg      a plant going into the soil — and, reused,
 	                              a plant deliberately dug back out of it
-	  impactSoft_medium_002.ogg   a hungry pest taking a bite out of a plant
+	  impactSoft_medium_002.ogg   a hungry pest taking a bite out of a plant —
+	                              and, reused, a Corn Cobbler's kernel volley
+	                              leaving the cob
 	  impactSoft_heavy_000.ogg    a pest squashed
 	  impactBell_heavy_002.ogg    a wave starting — and, reused, a Corn
 	                              Cobbler upgrade landing
 
 	From "RPG Audio" (1.0):
-	  chop.ogg                    a plant eaten down to nothing
+	  chop.ogg                    a plant eaten down to nothing — and, reused,
+	                              a Chomp Flower's own bite closing on a pest
 	  handleCoins.ogg             a compost husk swept for seeds
 
 	From "Interface Sounds" (1.0):
 	  minimize_006.ogg            a husk left to rot away uncollected
 	  error_002.ogg               a pest reaching the exit — a life lost —
 	                              and, reused, a purchase SeedBank refused
-	  question_002.ogg            Uproot armed, awaiting a confirming click
+	  question_002.ogg            Uproot armed, awaiting a confirming click —
+	                              and, reused, a Sticky Sundew's dew catching
+	                              a pest
 	  bong_001.ogg                the run lost
 
 	From "Music Jingles" (1.0), "Audio (Pizzicato)":

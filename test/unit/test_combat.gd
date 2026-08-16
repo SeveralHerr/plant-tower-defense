@@ -515,6 +515,7 @@ func test_every_event_id_the_call_sites_use_is_in_the_table() -> String:
 		Sfx.WAVE_STARTED, Sfx.UPROOT_ARMED,
 		Sfx.RUN_WON, Sfx.RUN_LOST, Sfx.PURCHASE_DENIED,
 		Sfx.PLANT_UPGRADED, Sfx.PLANT_UPROOTED,
+		Sfx.CORN_FIRED, Sfx.CHOMP_BITE, Sfx.SUNDEW_CLAIM,
 	]
 	for event: StringName in used:
 		var err: String = _T.assert_true(Sfx.SOUNDS.has(event),

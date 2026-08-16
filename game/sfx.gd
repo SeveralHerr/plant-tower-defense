@@ -49,6 +49,14 @@ const PLANT_UPGRADED := &"plant_upgraded"
 ## A plant deliberately dug up (Game.uproot_selected), as opposed to
 ## PLANT_DESTROYED's "a hungry pest ate it" — the player chose this one.
 const PLANT_UPROOTED := &"plant_uprooted"
+## The three attacking plants' own act, as opposed to the pest-side reaction
+## cues above (PEST_KILLED, PLANT_BITTEN) that already covered how a pest
+## answers being hit. Before these, a Corn Cobbler volleying five kernels, a
+## Chomp Flower snapping shut or a Sundew catching a pest made no sound at all
+## on the attacker's end — every existing combat cue centralised on the pest.
+const CORN_FIRED := &"corn_fired"
+const CHOMP_BITE := &"chomp_bite"
+const SUNDEW_CLAIM := &"sundew_claim"
 
 ## event -> the stream it plays. This dictionary is the whole contract: an event
 ## not in here is inaudible, and test_combat asserts every path in it actually
@@ -77,6 +85,15 @@ const SOUNDS: Dictionary = {
 	# Reuses PLANT_PLACED's stream for the reverse of the same act — a plant
 	# leaving the soil rather than going into it.
 	PLANT_UPROOTED: "res://assets/audio/footstep_grass_000.ogg",
+	# Reuses PLANT_BITTEN's stream — the same soft impact, on the other side of
+	# the exchange: a kernel leaving the cob instead of a pest's mouth closing.
+	CORN_FIRED: "res://assets/audio/impactSoft_medium_002.ogg",
+	# Reuses PLANT_DESTROYED's stream — both are a chomp, just aimed the other
+	# way: a Chomp Flower's own bite instead of a hungry pest's.
+	CHOMP_BITE: "res://assets/audio/chop.ogg",
+	# Reuses UPROOT_ARMED's stream — a light chime for a catch that only slows,
+	# not the heavier PEST_KILLED impact a Sundew never earns since it never kills.
+	SUNDEW_CLAIM: "res://assets/audio/question_002.ogg",
 }
 
 ## Per-event trim, in dB, for the handful that are not level with the rest.

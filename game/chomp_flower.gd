@@ -137,6 +137,11 @@ func _draw() -> void:
 
 
 func _bite() -> void:
+	# Ahead of the tree-guard below: the mouth closing is the game event, and
+	# it happens whether or not there is a tree to play the squash tween in —
+	# Sfx.play() gates its own headless silence, so there is nothing here for
+	# a unit test calling _grab() directly to trip over.
+	Sfx.play(Sfx.CHOMP_BITE)
 	if _sprite == null or not is_inside_tree():
 		return
 	var tween := create_tween()

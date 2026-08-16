@@ -242,6 +242,7 @@ func covers(pest: Pest) -> bool:
 
 
 func _claim(pest: Pest) -> void:
+	Sfx.play(Sfx.SUNDEW_CLAIM)
 	_stuck.append(pest)
 	var sources: int = slow_sources(pest)
 	if sources == 0:
