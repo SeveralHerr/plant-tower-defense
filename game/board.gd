@@ -169,24 +169,65 @@ func board_size() -> Vector2:
 	return Vector2(COLS * CELL, ROWS * CELL)
 
 
-## Called once per wave, with the path cell the furthest pest reached that
-## wave. Lights it up at full strength and fades whatever earlier waves left
-## behind, so the board reads as "which end is losing lately" rather than
-## accumulating a permanent red smear. Cells off the road are ignored — a
-## caller passing an escaped pest's off-board position should not paint one.
-func record_lane_pressure(cell: Vector2i) -> void:
-	if not is_path(cell) or _pressure_overlay == null:
+## The last path cell before the exit — where a pest that walked the whole road
+## was lost. An escaped pest's own position is off the board by then, and
+## record_lane_pressure_wave rightly refuses to paint a cell that is not road,
+## so the caller needs somewhere real to attribute the escape to.
+func exit_cell() -> Vector2i:
+	if _path_order.is_empty():
+		return Vector2i(-1, -1)
+	return _path_order[_path_order.size() - 1]
+
+
+## Called once per wave with every road cell that wave lost a pest at, mapped
+## to how many were lost there. The busiest cell paints at full strength and
+## the rest in proportion, so the readout is the *distribution* of a wave's
+## damage rather than one hot pixel at its high-water mark.
+##
+## Normalising against the wave's own worst cell rather than against an
+## absolute count is what keeps it readable at both ends of the game: wave 1
+## sends five pests and an endless wave 40 sends eighty, and an absolute scale
+## would paint the early game invisible and the late game uniformly saturated.
+##
+## Everything earlier fades by LANE_PRESSURE_DECAY exactly once for the whole
+## batch — not once per cell, which is what made the naive "just call the
+## single-cell version N times" version wrong: the first cell of a wave would
+## be faded N-1 times by its own wave-mates before the player ever saw it.
+func record_lane_pressure_wave(losses: Dictionary) -> void:
+	if _pressure_overlay == null:
 		return
-	var faded: Dictionary = {}
+	var fresh: Dictionary = {}
+	var worst: float = 0.0
+	for cell: Vector2i in losses:
+		if not is_path(cell):
+			continue
+		var count: float = float(losses[cell])
+		if count <= 0.0:
+			continue
+		fresh[cell] = count
+		worst = maxf(worst, count)
+	if fresh.is_empty():
+		return
+	var out: Dictionary = {}
 	for key: Vector2i in _pressure_overlay.pressure:
-		if key == cell:
+		if fresh.has(key):
 			continue
 		var next: float = float(_pressure_overlay.pressure[key]) * LANE_PRESSURE_DECAY
 		if next >= LANE_PRESSURE_MIN_ALPHA:
-			faded[key] = next
-	faded[cell] = 1.0
-	_pressure_overlay.pressure = faded
+			out[key] = next
+	for cell: Vector2i in fresh:
+		# Floored at MIN_ALPHA so a cell that lost one pest out of forty is
+		# still visible — "one got through here" is exactly the thing worth
+		# seeing, and it is the reading a pure proportion would erase.
+		out[cell] = maxf(LANE_PRESSURE_MIN_ALPHA, float(fresh[cell]) / worst)
+	_pressure_overlay.pressure = out
 	_pressure_overlay.queue_redraw()
+
+
+## Single-cell convenience over record_lane_pressure_wave — same fade
+## semantics, and the cell lands at full strength since it is its own worst.
+func record_lane_pressure(cell: Vector2i) -> void:
+	record_lane_pressure_wave({cell: 1})
 
 
 ## Current tint strength at `cell`, 0.0 if nothing has been recorded there

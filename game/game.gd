@@ -36,8 +36,10 @@ var _score_recorded: bool = false
 ## The furthest any pest got this wave, so the lane pressure readout can be
 ## committed to the board once the wave actually clears. -1.0 means nothing
 ## has walked yet this wave (progress() itself never goes negative).
-var _wave_worst_cell: Vector2i = Vector2i(-1, -1)
-var _wave_worst_progress: float = -1.0
+## Road cell -> how many pests this wave were lost there (killed or escaped).
+## Committed to the board as one batch when the wave ends; see
+## Board.record_lane_pressure_wave.
+var _wave_losses: Dictionary = {}
 
 
 func _ready() -> void:
@@ -106,7 +108,6 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if game_over or victory:
 		return
-	_track_lane_pressure()
 	_check_wave_cleared()
 	if not _wave_live and director.has_more_waves():
 		_prep_left -= delta
@@ -126,41 +127,37 @@ func start_next_wave() -> bool:
 
 func _on_wave_started(number: int) -> void:
 	_wave_live = true
-	_wave_worst_cell = Vector2i(-1, -1)
-	_wave_worst_progress = -1.0
+	_wave_losses = {}
 	hud.show_message("Wave %d — %d pests." % [number, director.current_wave_pest_count()])
 	_refresh()
 
 
-## Which lane cell is losing ground right now: the furthest along the road
-## any pest has been this wave, dead or alive — a beetle killed at 90% still
-## says the lane was under real pressure, so this is not just "who is
-## currently alive and furthest along" (Plant._furthest_along_in_range's
-## question), it is a running high-water mark for the whole wave.
-func _track_lane_pressure() -> void:
+## Notes one pest lost at `at` against the wave's tally. This used to be a
+## per-frame scan of every live pest keeping a single high-water mark, which
+## answered "how far did the worst one get" and threw away everything else —
+## a wave stopped cleanly at three separate points looked identical to one
+## stopped at its furthest. Every pest leaves the board through exactly one of
+## the two callers below, so the events say the same thing the scan did and
+## more, without looping over the group sixty times a second.
+func _note_lane_loss(at: Vector2) -> void:
 	if not _wave_live:
 		return
-	for node: Node in get_tree().get_nodes_in_group("pests"):
-		var pest := node as Pest
-		if pest == null:
-			continue
-		var p: float = pest.progress()
-		if p > _wave_worst_progress:
-			_wave_worst_progress = p
-			_wave_worst_cell = board.world_to_cell(pest.position)
+	var cell: Vector2i = board.world_to_cell(at)
+	_wave_losses[cell] = int(_wave_losses.get(cell, 0)) + 1
 
 
-## Commits whatever _track_lane_pressure saw this wave to the board. Split
-## out of _check_wave_cleared because a wave does not only end by clearing —
-## losing the last life mid-wave ends it too, and _process's own
-## `if game_over: return` guard means _check_wave_cleared never runs on that
-## path (caught live: a wave lost to zero lives left the board's readout
-## permanently one wave stale). _on_pest_escaped calls this directly the
-## moment lives hits 0, before that guard ever gets a chance to skip it.
+## Commits this wave's whole loss tally to the board. Split out of
+## _check_wave_cleared because a wave does not only end by clearing — losing
+## the last life mid-wave ends it too, and _process's own `if game_over:
+## return` guard means _check_wave_cleared never runs on that path (caught
+## live: a wave lost to zero lives left the board's readout permanently one
+## wave stale). _on_pest_escaped calls this directly the moment lives hits 0,
+## before that guard ever gets a chance to skip it.
 func _commit_lane_pressure() -> void:
-	if _wave_worst_progress >= 0.0:
-		board.record_lane_pressure(_wave_worst_cell)
-		_wave_worst_progress = -1.0
+	if _wave_losses.is_empty():
+		return
+	board.record_lane_pressure_wave(_wave_losses)
+	_wave_losses = {}
 
 
 func _check_wave_cleared() -> void:
@@ -200,6 +197,7 @@ func spawn_pest(species: StringName, mutation: StringName = &"") -> void:
 
 
 func _on_pest_died(pest: Pest) -> void:
+	_note_lane_loss(pest.position)
 	bank.add_seeds(pest.seed_value)
 	# Half again, as a husk — collectible for a bonus, or left to rot. See
 	# CompostMeter: this is what makes "sweep the field" worth doing. Scaled by
@@ -210,6 +208,12 @@ func _on_pest_died(pest: Pest) -> void:
 
 
 func _on_pest_escaped(_pest: Pest) -> void:
+	# An escaped pest is past the exit and off the board, so its own position
+	# is not a road cell and would be dropped. Attribute it to the last cell of
+	# the road instead — which is also the honest reading: that is where the
+	# lane finally failed. Deliberately not conditional on `_pest`; the tests
+	# and the losing-escape path both call this with null.
+	_note_lane_loss(board.cell_to_world(board.exit_cell()))
 	lives -= 1
 	if lives <= 0:
 		lives = 0

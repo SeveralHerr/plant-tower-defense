@@ -745,3 +745,31 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     widest line against the box; when `autowrap_mode != AUTOWRAP_OFF`, compare
     `get_line_count() * get_line_height()` against the box *height* instead and skip the
     width test entirely, since a wrapping Label is supposed to exceed its width.
+
+## 2026-08-15 — Lane pressure records every loss cell for plant-tower-defense-j1h
+
+- Value: **overkill** — the run produced a nice picture and confirmed exactly what the
+  eight new unit tests had already settled. Nothing was caught. The ledger downgraded my
+  self-reported `warranted` on the empty `found`, and it was right to.
+  - Expected: a real wave should now paint several road cells at different strengths —
+    the old high-water-mark version could only ever produce exactly one cell at 1.0 per
+    wave, so the multi-cell distribution is the thing runtime can show that the diff
+    cannot.
+  - Got: after wave 1 played out against two Corn Cobblers,
+    `Board.lane_pressure_alpha` across all 126 cells returned
+    `(3,1)=0.5  (4,1)=0.5  (6,1)=0.5  (9,7)=1.0` — four cells, two strengths, where the
+    old code could produce exactly one cell. After wave 2 the earlier ones read
+    `0.50 -> 0.275`, i.e. faded by `LANE_PRESSURE_DECAY` exactly once for the whole
+    batch rather than once per cell, which was the specific bug the batch API exists to
+    avoid. The screenshot shows the graded map.
+  - Found: nothing. Every claim above is one a unit test already makes. The one thing
+    only runtime could have caught — that deleting the per-frame `_track_lane_pressure`
+    scan silently blanked the overlay — did not happen.
+  - Cheaper: the eight new unit tests alone, ~9s headless. The honest read is that this
+    change was event-plumbing plus pure arithmetic, and both halves are exactly what
+    `test_dir` is for. A screenshot for the visual grading would have been the only
+    runtime call worth making.
+
+- Gap: no gaps this turn. `find-nodes`, `step-time`, `run-method` on `Board` methods with
+  `Vector2i` args passed as `{"x":…,"y":…}`, and region `screenshot` all did what they
+  say. [G-013] and [G-014] from earlier this session were not re-hit.

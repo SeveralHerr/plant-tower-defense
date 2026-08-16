@@ -741,8 +741,7 @@ func test_lane_pressure_is_committed_even_when_the_last_life_is_lost_mid_wave() 
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	game._on_wave_started(1)
 	var cell: Vector2i = Board.PATH_CORNERS[0]
-	game._wave_worst_cell = cell
-	game._wave_worst_progress = 0.5
+	game._wave_losses[cell] = 1
 	game.lives = 1
 	var err: String = _T.assert_eq(game.board.lane_pressure_alpha(cell), 0.0, "nothing committed yet")
 	if err == "":
@@ -928,5 +927,144 @@ func test_a_pest_spawned_deep_in_endless_is_tougher_than_a_wave_one_pest() -> St
 	if err == "":
 		err = _T.assert_true(late.speed > base_speed,
 			"and walks faster (%.1f vs %.1f)" % [late.speed, base_speed])
+	_T.free_ui(game)
+	return err
+
+
+# -- Lane pressure records every loss cell (plant-tower-defense-j1h) ---------
+
+
+## The defect this replaced: committing a wave one cell at a time meant each
+## cell faded its own wave-mates, so a wave that lost pests at three points
+## ended with two of them dimmed and only the last at full strength. One batch,
+## one fade.
+func test_every_cell_a_wave_lost_a_pest_at_lights_up_together() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+	var a: Vector2i = Board.PATH_CORNERS[0]
+	var b: Vector2i = Board.PATH_CORNERS[1]
+	board.record_lane_pressure_wave({a: 2, b: 2})
+	var err: String = _T.assert_eq(board.lane_pressure_alpha(a), 1.0, "both cells of one wave are at full strength")
+	if err == "":
+		err = _T.assert_eq(board.lane_pressure_alpha(b), 1.0, "the second one was not faded by the first")
+	_T.free_ui(board)
+	return err
+
+
+## The readout is a distribution, so a cell that ate half the wave must outrank
+## one that ate a single pest.
+func test_a_busier_cell_paints_stronger_than_a_quieter_one() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+	var busy: Vector2i = Board.PATH_CORNERS[0]
+	var quiet: Vector2i = Board.PATH_CORNERS[1]
+	board.record_lane_pressure_wave({busy: 8, quiet: 2})
+	var err: String = _T.assert_eq(board.lane_pressure_alpha(busy), 1.0, "the wave's worst cell is the full-strength one")
+	if err == "":
+		err = _T.assert_float_eq(board.lane_pressure_alpha(quiet), 0.25, 0.0001,
+			"and a cell that took a quarter of the losses paints at a quarter")
+	_T.free_ui(board)
+	return err
+
+
+## Normalising per wave is what keeps an 80-pest endless wave from saturating
+## everything: the same shape of losses reads the same whether the wave was
+## five pests or eighty.
+func test_the_picture_is_the_same_shape_regardless_of_wave_size() -> String:
+	var small := Board.new()
+	await _T.instantiate_scene(small)
+	var big := Board.new()
+	await _T.instantiate_scene(big)
+	var a: Vector2i = Board.PATH_CORNERS[0]
+	var b: Vector2i = Board.PATH_CORNERS[1]
+	small.record_lane_pressure_wave({a: 4, b: 1})
+	big.record_lane_pressure_wave({a: 64, b: 16})
+	var err: String = _T.assert_float_eq(small.lane_pressure_alpha(a), big.lane_pressure_alpha(a), 0.0001,
+		"a five-pest wave and an eighty-pest wave with the same ratio paint the same")
+	if err == "":
+		err = _T.assert_float_eq(small.lane_pressure_alpha(b), big.lane_pressure_alpha(b), 0.0001,
+			"at the quiet cell too")
+	_T.free_ui(small)
+	_T.free_ui(big)
+	return err
+
+
+## "One got through here" is the single most worth-seeing reading on the board,
+## and a pure proportion would erase it in a big wave.
+func test_a_single_loss_in_a_huge_wave_is_still_visible() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+	var busy: Vector2i = Board.PATH_CORNERS[0]
+	var lone: Vector2i = Board.PATH_CORNERS[1]
+	board.record_lane_pressure_wave({busy: 400, lone: 1})
+	var err: String = _T.assert_true(board.lane_pressure_alpha(lone) >= Board.LANE_PRESSURE_MIN_ALPHA,
+		"1 loss against 400 still paints at least MIN_ALPHA (got %.3f)" % board.lane_pressure_alpha(lone))
+	_T.free_ui(board)
+	return err
+
+
+## Off-road cells are dropped from a batch without dropping the batch — a
+## caller mixing one bad cell in must not lose the good ones with it.
+func test_an_off_road_cell_in_a_batch_does_not_discard_the_rest() -> String:
+	var board := Board.new()
+	await _T.instantiate_scene(board)
+	var good: Vector2i = Board.PATH_CORNERS[0]
+	board.record_lane_pressure_wave({good: 1, Vector2i(0, 0): 5})
+	var err: String = _T.assert_eq(board.lane_pressure_alpha(Vector2i(0, 0)), 0.0, "the grass cell was ignored")
+	if err == "":
+		err = _T.assert_eq(board.lane_pressure_alpha(good), 1.0,
+			"and the road cell still painted at full strength, normalised against the road cells only")
+	_T.free_ui(board)
+	return err
+
+
+## An escaped pest is off the board by the time the signal fires, so its own
+## position is not a road cell. It has to be attributed to the exit or the
+## worst outcome in the game leaves no mark at all.
+func test_an_escaped_pest_marks_the_exit_cell() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game._on_wave_started(1)
+	var exit: Vector2i = game.board.exit_cell()
+	var err: String = _T.assert_true(game.board.is_path(exit), "the exit cell is a road cell")
+	if err == "":
+		game._on_pest_escaped(null)
+		err = _T.assert_eq(int(game._wave_losses.get(exit, 0)), 1, "the escape was tallied against the exit")
+	if err == "":
+		game._commit_lane_pressure()
+		err = _T.assert_eq(game.board.lane_pressure_alpha(exit), 1.0, "and it paints once committed")
+	_T.free_ui(game)
+	return err
+
+
+## The whole path through Game: kill pests at two different points on the road
+## and both must show up, which is exactly what the old single-high-water-mark
+## version could not do.
+func test_two_pests_killed_at_different_points_both_show_up() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game._on_wave_started(1)
+	var near: Vector2i = Board.PATH_CORNERS[0]
+	var far: Vector2i = Board.PATH_CORNERS[1]
+	game._note_lane_loss(game.board.cell_to_world(near))
+	game._note_lane_loss(game.board.cell_to_world(far))
+	game._note_lane_loss(game.board.cell_to_world(far))
+	game._commit_lane_pressure()
+	var err: String = _T.assert_eq(game.board.lane_pressure_alpha(far), 1.0, "the cell that lost two pests is fully lit")
+	if err == "":
+		err = _T.assert_float_eq(game.board.lane_pressure_alpha(near), 0.5, 0.0001,
+			"and the cell that lost one is lit at half — the old version showed nothing here at all")
+	_T.free_ui(game)
+	return err
+
+
+## Losses are per-wave, not cumulative: starting a wave must clear the tally,
+## or wave 40 would still be painting wave 3's deaths.
+func test_a_new_wave_starts_the_loss_tally_over() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game._on_wave_started(1)
+	game._note_lane_loss(game.board.cell_to_world(Board.PATH_CORNERS[0]))
+	var err: String = _T.assert_eq(game._wave_losses.size(), 1, "the loss was tallied")
+	if err == "":
+		game._on_wave_started(2)
+		err = _T.assert_eq(game._wave_losses.size(), 0, "the next wave starts from nothing")
 	_T.free_ui(game)
 	return err
