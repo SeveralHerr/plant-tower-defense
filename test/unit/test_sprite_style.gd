@@ -7,10 +7,28 @@ extends RefCounted
 ## is fixed). A sprite that drifts off it still loads, still draws, and looks
 ## subtly foreign next to the kit — nothing else in the project would notice.
 ##
+## It also asserts that the PNGs it reads CAME FROM the SVGs in art_src/. For a long
+## time it did not: this file read only `assets/sprites/*.png` against the hand-written
+## EXPECTED_SIZE table below, and `tools/svg_style_check.py` read only `art_src/*.svg`,
+## so the two sprite gates shared no artefact and a stale render passed both — edit an
+## SVG, forget to run `tools/render_svg.gd`, and everything stayed green over a PNG that
+## no longer matched its source. mtime cannot answer that (a fresh clone or a branch
+## switch stamps every file with the checkout time in arbitrary order, which would
+## report a perfectly in-sync tree as entirely stale), so what is asserted instead is a
+## property that is DERIVED rather than recorded: render_svg.gd rasterises with
+## `load_svg_from_buffer(bytes, scale)`, so a PNG's pixel dimensions are its source's
+## declared canvas times the scale. A disagreement is proof, needs no manifest and no
+## build step, and cannot be forgotten. See test_rendered_png_matches_its_svg_source_size.
+##
 ## Run: godot --headless --path . --script res://tools/run_tests.gd -- --file test_sprite_style.gd
 
 const SPRITE_DIR := "res://assets/sprites"
 const RETINA_DIR := "res://assets/sprites/retina"
+
+## The authored SVG sources. art_src/ carries a .gdignore so nothing in it is imported
+## as a texture — which is why render_svg.gd reaches it through the globalised project
+## path rather than through res://, and why this file does the same.
+const SRC_SUBDIR := "art_src"
 
 ## name -> expected edge length at 1x. Everything the kit ships is 64; our
 ## projectile is deliberately smaller because it is not a tile-sized object.
@@ -139,6 +157,103 @@ func test_content_stays_inside_the_canvas() -> String:
 	return ""
 
 
+func test_rendered_png_matches_its_svg_source_size() -> String:
+	# THE staleness check, and the one that needs nothing to be remembered.
+	#
+	# render_svg.gd calls load_svg_from_buffer(bytes, scale) and saves the result, so a
+	# PNG's dimensions are not an independent fact about the PNG — they are a derived
+	# property of the SVG that produced it. Comparing them therefore answers "did this
+	# PNG come from this SVG", which neither gate could ask before, and it answers it
+	# from files that already exist.
+	#
+	# Its blind spot, stated plainly: an edit that leaves the canvas alone — a recoloured
+	# fill, a moved path, a new petal — re-renders at the same size and is invisible
+	# here. Catching that needs render_svg.gd to stamp what it rendered; the checking
+	# half of that stamp lives in tools/svg_style_check.py's `freshness` check.
+	var stems := _svg_stems()
+	var err: String = _T.assert_gt(stems.size(), 0,
+		"art_src/ has SVG sources to compare the renders against")
+	if err != "":
+		return err
+	for stem: String in stems:
+		var canvas := _svg_canvas(stem)
+		err = _T.assert_gt(canvas.x, 0, "art_src/%s.svg declares a canvas size" % stem)
+		if err != "":
+			return err
+		var img := _load(stem)
+		if img == null:
+			return "%s.png is missing — art_src/%s.svg was never rendered (run tools/render_svg.gd)" % [stem, stem]
+		err = _T.assert_eq(Vector2i(img.get_width(), img.get_height()), canvas,
+			"%s.png is the size art_src/%s.svg declares (a mismatch means the PNG was rendered from an older source)" % [stem, stem])
+		if err != "":
+			return err
+		var retina := _load_retina(stem)
+		if retina == null:
+			return "%s@2x.png is missing — render_svg.gd writes both outputs from one source" % stem
+		err = _T.assert_eq(Vector2i(retina.get_width(), retina.get_height()), canvas * 2,
+			"%s@2x.png is exactly double art_src/%s.svg's canvas" % [stem, stem])
+		if err != "":
+			return err
+	return ""
+
+
+func test_expected_size_agrees_with_the_authored_svg_canvas() -> String:
+	# EXPECTED_SIZE is hand-maintained and the SVG declares its own canvas, so the two
+	# can drift silently. When they do, every size assertion in this file is checking
+	# the PNG against a number nobody derived from anything.
+	var stems := _svg_stems()
+	var err: String = _T.assert_gt(stems.size(), 0, "art_src/ has SVG sources")
+	if err != "":
+		return err
+	for stem: String in stems:
+		if not EXPECTED_SIZE.has(stem):
+			continue  # named by test_every_svg_source_is_declared instead
+		var want: int = EXPECTED_SIZE[stem]
+		err = _T.assert_eq(_svg_canvas(stem), Vector2i(want, want),
+			"art_src/%s.svg declares the %dx%d canvas EXPECTED_SIZE claims for it" % [stem, want, want])
+		if err != "":
+			return err
+	return ""
+
+
+func test_every_svg_source_is_declared() -> String:
+	# Pairing, both directions. A 13th SVG with no EXPECTED_SIZE row renders, ships, and
+	# is ungated by every other test in this file — none of them iterate anything else.
+	# A row with no SVG points at a PNG nothing regenerates.
+	var stems := _svg_stems()
+	var err: String = _T.assert_gt(stems.size(), 0, "art_src/ has SVG sources")
+	if err != "":
+		return err
+	for stem: String in stems:
+		err = _T.assert_true(EXPECTED_SIZE.has(stem),
+			"art_src/%s.svg has an EXPECTED_SIZE row (an undeclared source renders, ships and is ungated)" % stem)
+		if err != "":
+			return err
+	for stem: String in EXPECTED_SIZE:
+		err = _T.assert_true(stems.has(stem),
+			"EXPECTED_SIZE row '%s' has an art_src/%s.svg to have come from" % [stem, stem])
+		if err != "":
+			return err
+	return ""
+
+
+func test_no_rendered_png_is_an_orphan() -> String:
+	# test_every_sprite_declared_by_the_contract_exists compares COUNTS, which an orphan
+	# and a missing file satisfy by cancelling out. This names the file: a source that
+	# was deleted or renamed leaves its render behind, and the leftover PNG ships.
+	var stems := _svg_stems()
+	var on_disk := _stems_on_disk()
+	var err: String = _T.assert_gt(on_disk.size(), 0, "assets/sprites has rendered PNGs")
+	if err != "":
+		return err
+	for stem: String in on_disk:
+		err = _T.assert_true(stems.has(stem),
+			"assets/sprites/%s.png has an art_src/%s.svg — an orphaned render ships and nothing regenerates it" % [stem, stem])
+		if err != "":
+			return err
+	return ""
+
+
 func test_every_colour_is_kit_palette_or_a_blend_of_two() -> String:
 	var pal := _palette_rgb()
 	for stem: String in EXPECTED_SIZE:
@@ -170,6 +285,59 @@ func test_every_colour_is_kit_palette_or_a_blend_of_two() -> String:
 
 
 # ---------------------------------------------------------------- helpers
+
+## art_src/ as an OS path, reached exactly the way render_svg.gd reaches it: the
+## .gdignore there keeps the SVGs out of the import pipeline, so res:// is not the
+## route. This script never ships in an export, so the project directory is always there.
+func _art_src_dir() -> String:
+	return ProjectSettings.globalize_path("res://").path_join(SRC_SUBDIR)
+
+
+func _svg_stems() -> PackedStringArray:
+	var out := PackedStringArray()
+	var dir := DirAccess.open(_art_src_dir())
+	if dir == null:
+		return out
+	for f in dir.get_files():
+		if f.get_extension().to_lower() == "svg":
+			out.append(f.get_basename())
+	return out
+
+
+## The width/height the SVG declares on its own root element, or (-1, -1).
+##
+## This is the size render_svg.gd will rasterise at, so it is the number the PNG on
+## disk has to match. Only the <svg> open tag is searched, so a stroke-width or a
+## <rect width=…> further down cannot be mistaken for the canvas.
+func _svg_canvas(stem: String) -> Vector2i:
+	var path := _art_src_dir().path_join("%s.svg" % stem)
+	if not FileAccess.file_exists(path):
+		return Vector2i(-1, -1)
+	var text := FileAccess.get_file_as_string(path)
+	var open_at := text.find("<svg")
+	if open_at < 0:
+		return Vector2i(-1, -1)
+	var close_at := text.find(">", open_at)
+	if close_at < 0:
+		return Vector2i(-1, -1)
+	var tag := text.substr(open_at, close_at - open_at)
+	return Vector2i(_tag_attr_int(tag, "width"), _tag_attr_int(tag, "height"))
+
+
+## `width="64"` out of an element's open tag, or -1. The leading space in the key is
+## what keeps `stroke-width="2"` from answering to `width`.
+func _tag_attr_int(tag: String, attr: String) -> int:
+	var key := " %s=\"" % attr
+	var at := tag.find(key)
+	if at < 0:
+		return -1
+	var from := at + key.length()
+	var end := tag.find("\"", from)
+	if end < 0:
+		return -1
+	var value := tag.substr(from, end - from)
+	return int(value) if value.is_valid_int() else -1
+
 
 func _load(stem: String) -> Image:
 	return _load_png("%s/%s.png" % [SPRITE_DIR, stem])

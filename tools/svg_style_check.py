@@ -82,12 +82,63 @@ WHAT IT CHECKS
                   approximated by the control hull; rotated-ellipse extents in closed
                   form) and expanded by half the stroke width.
   margin          content stays inside the canvas.
+  pairing         every `art_src/<stem>.svg` has BOTH outputs `render_svg.gd` writes --
+                  `assets/sprites/<stem>.png` and `assets/sprites/retina/<stem>@2x.png`
+                  -- and every PNG in those two directories has a source. Catches an
+                  unrendered addition, a deleted source, and an orphaned output.
+  raster_size     the PNG's actual pixel dimensions (read straight out of the IHDR
+                  chunk, no decoder) equal the SVG's declared canvas, and the retina
+                  PNG is exactly double. See STALENESS below.
+  freshness       the SVG's SHA-256 matches the stamp `render_svg.gd` recorded for it.
+                  NOT INSTALLED YET -- see STALENESS.
+
+STALENESS: DID THIS PNG COME FROM THIS SVG?
+-------------------------------------------
+For a long time there were two sprite gates that shared no artefact: this one read only
+`art_src/*.svg`, and `test_sprite_style.gd` read only `assets/sprites/*.png` against a
+hand-written table. A stale render passed both -- edit an SVG, forget to run
+`render_svg.gd`, and every gate stays green over a PNG that no longer matches its source.
+
+**mtime was considered and rejected.** A fresh `git clone`, a branch switch, or a `git
+checkout` of one file gives files the checkout time in arbitrary order, so "PNG older
+than SVG" reports the whole corpus stale on a tree that is perfectly in sync. That is
+not a hypothetical here: at the time this was written `art_src/sunflower.svg` was newer
+than `assets/sprites/sunflower.png` on a working tree `git status` called clean. An
+alarm that fires on a clean checkout is an alarm that gets switched off.
+
+What is checked instead, in order of how much it costs to keep working:
+
+  1. `pairing` and `raster_size` cost NOTHING and can never be forgotten. They read the
+     files that already exist. `render_svg.gd` rasterises with
+     `load_svg_from_buffer(bytes, scale)`, so the output size IS the SVG's declared
+     canvas times the scale -- that makes a PNG's dimensions a derived property of its
+     source, and a mismatch is proof of staleness with no manifest and no build step.
+     They catch: a resized canvas that was never re-rendered, a new SVG nobody rendered,
+     a deleted SVG whose PNG still ships, a missing or truncated retina copy.
+     They do NOT catch an edit that leaves the canvas size alone -- a recoloured fill, a
+     moved path, a new petal. That is the common case, and it needs (2).
+
+  2. `freshness` is a content stamp and DOES need one change to `render_svg.gd`, which
+     this file is not allowed to make. It reads `assets/sprites/.render_manifest.json`,
+     a flat `{"<stem>": "<sha256 of the .svg bytes>"}` written by the renderer at the
+     moment it rasterises. Any edit to any byte of the source moves the hash, so this
+     catches every stale render, including recolours.
+
+     UNTIL THAT CHANGE IS MADE THIS CHECK CANNOT PASS -- and it does not pretend to. A
+     missing manifest is reported as an ADVISORY that names the exact diff, never as a
+     clean result and never as an error, because the absence is the renderer's doing and
+     not the author's. Once the manifest exists, a mismatched or missing stamp is an
+     ERROR.
+
+     The three lines `render_svg.gd` needs, in `_init()`:
+         var stamps := {}                                            # before the loop
+         stamps[stem] = FileAccess.get_sha256(src.path_join(file_name))   # in the loop,
+                                                                     # next to `rendered += 1`
+         FileAccess.open(out.path_join(".render_manifest.json"), FileAccess.WRITE) \
+             .store_string(JSON.stringify(stamps, "\t"))             # after the loop
 
 WHAT IT DELIBERATELY DOES NOT CHECK  (LIMITS)
 ---------------------------------------------
-  * `retina copy` -- `test_sprite_style.gd` asserts a `@2x` PNG exists at exactly double.
-    Nothing in the SVG source declares that; `render_svg.gd` writes both from one source.
-    Unreproducible here, by construction.
   * `blank render` -- the gate asserts the *rasterised* image is not invisible and has
     real coverage. This can only assert that the source contains drawable, painted,
     parseable geometry. A renderer that produces nothing from valid source (or a shape
@@ -104,6 +155,11 @@ WHAT IT DELIBERATELY DOES NOT CHECK  (LIMITS)
     it would cry wolf, so it is not checked.
   * anything about how the sprite reads at 64px, which is the actual point of the
     contract and is not a property of any file.
+  * `rendered pixels` -- the staleness checks above read a PNG's IHDR header and, with
+    the manifest, its source's hash. Not one pixel is decoded. A PNG that is the right
+    size and whose source has not changed since it was written is accepted here even if
+    its body is corrupt, hand-edited, or came out of a different rasteriser. The raster
+    gate decodes every pixel; this does not.
 
 CONSERVATISM
 ------------
@@ -147,10 +203,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
 import re
+import struct
 import sys
 import xml.etree.ElementTree as ET
 
@@ -161,6 +219,31 @@ import xml.etree.ElementTree as ET
 SRC_DIR = os.path.join("art_src")
 STYLE_DOC = os.path.join("art_src", "STYLE.md")
 GATE_SCRIPT = os.path.join("test", "unit", "test_sprite_style.gd")
+
+# The two outputs render_svg.gd writes, and how it names them. These are not a guess:
+# render_svg.gd's OUT_DIR/RETINA_DIR and its `"%s.png" % stem` / `"%s@2x.png" % stem`
+# are the definition of "this PNG came from that SVG", so they are mirrored here and
+# nowhere else.
+OUT_DIR = os.path.join("assets", "sprites")
+RETINA_DIR = os.path.join("assets", "sprites", "retina")
+RETINA_SUFFIX = "@2x"
+RETINA_SCALE = 2
+
+# Content stamp written by render_svg.gd. See STALENESS in the module docstring: this
+# file does not create it, and its absence is an advisory, not a pass and not a failure.
+MANIFEST = os.path.join("assets", "sprites", ".render_manifest.json")
+
+# The one-line-per-line diff the renderer needs before `freshness` can ever pass.
+# Printed verbatim in the advisory so nobody has to come and read this file to find it.
+MANIFEST_DIFF = (
+    "in render_svg.gd _init(): `var stamps := {}` before the loop; "
+    "`stamps[stem] = FileAccess.get_sha256(src.path_join(file_name))` beside "
+    "`rendered += 1`; and after the loop "
+    "`FileAccess.open(out.path_join(\".render_manifest.json\"), FileAccess.WRITE)"
+    ".store_string(JSON.stringify(stamps, \"\\t\"))`"
+)
+
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 # Mirrors BLEND_TOLERANCE in test_sprite_style.gd: an anti-aliased edge between two flat
 # fills lands on the line between them in RGB, so "conformant" is "within this of some
@@ -242,6 +325,9 @@ CHECKS = [
     "content",
     "centred",
     "margin",
+    "pairing",
+    "raster_size",
+    "freshness",
 ]
 
 
@@ -539,6 +625,186 @@ def load_contract(root):
             c.notes.append("STYLE.md documents #%s but the gate's PALETTE does not "
                            "carry it -- a sprite using it would fail the gate" % h)
     return c
+
+
+# ---------------------------------------------------------------------------
+# Did this PNG come from this SVG?
+#
+# See STALENESS in the module docstring for why mtime is not used. Everything here
+# reads bytes that already exist on disk; nothing rasterises and nothing decodes.
+# ---------------------------------------------------------------------------
+
+class BadPNG(Exception):
+    """A file under assets/sprites that is not a readable PNG header."""
+
+
+def png_size(path):
+    """(width, height) from a PNG's IHDR chunk. Raises BadPNG.
+
+    A PNG is 8 signature bytes, then a 4-byte chunk length, then the 4-byte chunk type
+    `IHDR`, then width and height as big-endian uint32 -- so the first 24 bytes carry
+    the dimensions and nothing else is needed. No zlib, no decoder, no pixel is touched.
+    That is the whole reason this check can live in a stdlib-only, parallel-safe tool.
+    """
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(24)
+    except OSError as exc:
+        raise BadPNG("unreadable: %s" % exc)
+    if len(head) < 24:
+        raise BadPNG("truncated: %d bytes, a PNG header is 24" % len(head))
+    if head[:8] != PNG_MAGIC:
+        raise BadPNG("not a PNG (bad signature)")
+    if head[12:16] != b"IHDR":
+        raise BadPNG("first chunk is %r, not IHDR" % head[12:16])
+    return struct.unpack(">II", head[16:24])
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(65536), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def render_paths(root, stem):
+    """The two files render_svg.gd writes for `stem`, exactly as it names them."""
+    return (os.path.join(root, OUT_DIR, "%s.png" % stem),
+            os.path.join(root, RETINA_DIR, "%s%s.png" % (stem, RETINA_SUFFIX)))
+
+
+def check_render(root, stem, svg_w, svg_h, res, findings):
+    """`pairing` + `raster_size` for one sprite.
+
+    The size comparison is against the SVG's OWN declared canvas, not against
+    EXPECTED_SIZE: render_svg.gd calls `load_svg_from_buffer(bytes, scale)`, so the
+    output dimensions are a derived property of the source. A disagreement is proof the
+    PNG on disk was produced from a different version of this SVG.
+    """
+    one, two = render_paths(root, stem)
+    for path, scale, what in ((one, 1, "1x"), (two, RETINA_SCALE, "retina")):
+        rel = os.path.relpath(path, root).replace(os.sep, "/")
+        if not os.path.isfile(path):
+            res.renders[what] = "missing"
+            findings.append(Finding(
+                ERROR, "pairing", stem,
+                "no %s render at %s" % (what, rel),
+                "render_svg.gd writes both outputs from one source; a sprite with no "
+                "PNG is a sprite the raster gate cannot see. Run "
+                "`godot --headless --path . --script res://tools/render_svg.gd`"))
+            continue
+        try:
+            pw, ph = png_size(path)
+        except BadPNG as exc:
+            res.renders[what] = "unreadable"
+            findings.append(Finding(ERROR, "raster_size", stem,
+                                    "%s is not a readable PNG: %s" % (rel, exc)))
+            continue
+        if svg_w is None or svg_h is None:
+            res.renders[what] = "%dx%d (unchecked)" % (pw, ph)
+            res.skipped.append("raster_size for %s (the SVG declares no canvas size)"
+                               % what)
+            continue
+        want_w, want_h = int(round(svg_w * scale)), int(round(svg_h * scale))
+        res.renders[what] = "%dx%d" % (pw, ph)
+        if (pw, ph) != (want_w, want_h):
+            res.renders[what] = "%dx%d != %dx%d" % (pw, ph, want_w, want_h)
+            findings.append(Finding(
+                ERROR, "raster_size", stem,
+                "%s is %dx%d, but %s/%s.svg declares a %gx%g canvas (x%d = %dx%d)"
+                % (rel, pw, ph, SRC_DIR.replace(os.sep, "/"), stem, svg_w, svg_h,
+                   scale, want_w, want_h),
+                "the PNG on disk was rendered from a different version of this source. "
+                "Re-run render_svg.gd"))
+
+
+def check_orphans(root, stems, findings):
+    """Every PNG under the two output directories has a source SVG.
+
+    The mirror of `pairing`: a deleted or renamed SVG leaves its render behind, and a
+    leftover PNG ships, loads, and is counted by the raster gate's own
+    'every PNG is declared' assertion -- which is the check it then fails, for a reason
+    that names the wrong file. Meaningful only over the full set, so --only skips it.
+    """
+    for directory, suffix in ((OUT_DIR, ""), (RETINA_DIR, RETINA_SUFFIX)):
+        abs_dir = os.path.join(root, directory)
+        if not os.path.isdir(abs_dir):
+            findings.append(Finding(
+                ERROR, "pairing", "(outputs)",
+                "no %s/ directory" % directory.replace(os.sep, "/"),
+                "render_svg.gd has never run in this checkout"))
+            continue
+        for name in sorted(os.listdir(abs_dir)):
+            if not name.lower().endswith(".png"):
+                continue        # .import sidecars and the retina/ subdirectory
+            stem = name[:-4]
+            if suffix:
+                if not stem.endswith(suffix):
+                    findings.append(Finding(
+                        ERROR, "pairing", stem,
+                        "%s/%s is in the retina directory without a %s suffix"
+                        % (directory.replace(os.sep, "/"), name, RETINA_SUFFIX),
+                        "render_svg.gd names every retina output <stem>%s.png; nothing "
+                        "it writes could be called this" % RETINA_SUFFIX))
+                    continue
+                stem = stem[:-len(suffix)]
+            if stem not in stems:
+                findings.append(Finding(
+                    ERROR, "pairing", stem,
+                    "%s/%s has no %s/%s.svg"
+                    % (directory.replace(os.sep, "/"), name,
+                       SRC_DIR.replace(os.sep, "/"), stem),
+                    "an orphaned render: the source was deleted or renamed and this PNG "
+                    "was left behind. Nothing regenerates it and nothing else notices"))
+
+
+def check_freshness(root, stems, findings):
+    """`freshness` -- the content stamp half, which needs render_svg.gd to cooperate.
+
+    Absent manifest -> ADVISORY naming the diff. This is deliberate and is the whole
+    reason the mechanism is split in two: a check that silently reports clean because
+    its input does not exist is worse than no check, and a check that reports an ERROR
+    for a file the author was never asked to create cries wolf. An advisory is the only
+    honest severity for "not installed".
+    """
+    path = os.path.join(root, MANIFEST)
+    rel = MANIFEST.replace(os.sep, "/")
+    if not os.path.isfile(path):
+        findings.append(Finding(
+            ADVISORY, "freshness", "(renders)",
+            "no %s, so a source edit that keeps the canvas size is not detectable" % rel,
+            "pairing and raster_size catch a resized, missing, orphaned or truncated "
+            "render with no build step at all, but a recoloured fill or a moved path "
+            "renders at the same size and slips past them. Closing that needs the "
+            "renderer to stamp what it rendered: %s. Until then this check CANNOT PASS "
+            "and does not claim to." % MANIFEST_DIFF))
+        return
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            stamps = json.load(fh)
+        if not isinstance(stamps, dict):
+            raise ValueError("top level is %s, not an object" % type(stamps).__name__)
+    except (OSError, ValueError) as exc:
+        findings.append(Finding(ERROR, "freshness", "(renders)",
+                                "%s is unreadable: %s" % (rel, exc)))
+        return
+    for stem in sorted(stems):
+        recorded = stamps.get(stem)
+        actual = sha256_file(os.path.join(root, SRC_DIR, "%s.svg" % stem))
+        if recorded is None:
+            findings.append(Finding(
+                ERROR, "freshness", stem,
+                "no stamp in %s" % rel,
+                "render_svg.gd has not rendered this source since the manifest was "
+                "introduced, so whatever PNG is on disk came from something else"))
+        elif str(recorded).lower() != actual:
+            findings.append(Finding(
+                ERROR, "freshness", stem,
+                "the SVG has changed since it was last rendered",
+                "%s records %s, the source hashes to %s. The PNG on disk is stale: "
+                "re-run render_svg.gd"
+                % (rel, str(recorded)[:12], actual[:12])))
 
 
 # ---------------------------------------------------------------------------
@@ -1107,6 +1373,10 @@ class SpriteResult:
         self.geometry_ok = False
         self.skipped = []
         self.findings = []
+        # "1x"/"retina" -> "64x64" when the render is present and matches the source
+        # canvas, or a short reason it does not. A denominator, so a sprite whose
+        # outputs were never looked at cannot read as a sprite whose outputs were fine.
+        self.renders = {}
 
 
 def parse_length(text):
@@ -1430,6 +1700,13 @@ def check_outline(stem, fill, stroke, where, contract, findings):
 SEV_ORDER = {ERROR: 0, WARNING: 1, ADVISORY: 2}
 
 
+def render_ok(r):
+    """Both outputs present at exactly the size this sprite's own SVG declares."""
+    if set(r.renders) != {"1x", "retina"}:
+        return False
+    return all(re.match(r"^\d+x\d+$", v) for v in r.renders.values())
+
+
 def wrap_detail(text, indent):
     out = []
     line = ""
@@ -1491,10 +1768,19 @@ def main(argv=None):
         stem = os.path.splitext(name)[0]
         results.append(check_sprite(os.path.join(src, name), stem, contract, findings))
 
+    # Now the same corpus against what render_svg.gd actually left on disk. This is the
+    # half that makes the two sprite gates share an artefact: up to here the tool has
+    # only ever read `art_src/`, which is exactly how a stale PNG used to pass.
+    for r in results:
+        w, h = r.size if r.size else (None, None)
+        check_render(root, r.stem, w, h, r, findings)
+    check_freshness(root, [r.stem for r in results], findings)
+
     # A gate row with no source is the mirror of an undeclared sprite: the gate will look
     # for a PNG nothing renders. Only meaningful over the full set.
     if not args.only:
         stems = {r.stem for r in results}
+        check_orphans(root, stems, findings)
         for declared in sorted(contract.sizes):
             if declared not in stems:
                 findings.append(Finding(
@@ -1519,12 +1805,16 @@ def main(argv=None):
                 "size": r.size,
                 "box": None if not r.box else [r.box.x0, r.box.y0, r.box.x1, r.box.y1],
                 "geometry_measured": r.geometry_ok,
+                "renders": r.renders,
+                "renders_match_source": render_ok(r),
                 "skipped": r.skipped,
             } for r in results],
             "checked": len(results), "discovered": discovered,
+            "renders_ok": sum(1 for r in results if render_ok(r)),
+            "manifest": os.path.isfile(os.path.join(root, MANIFEST)),
         }, indent=2))
     else:
-        report(results, findings, contract, discovered, args)
+        report(root, results, findings, contract, discovered, args)
 
     if errors:
         return 1
@@ -1533,7 +1823,7 @@ def main(argv=None):
     return 0
 
 
-def report(results, findings, contract, discovered, args):
+def report(root, results, findings, contract, discovered, args):
     print("svg_style_check: %s against %s" % (SRC_DIR, STYLE_DOC))
     print()
     print("contract sources (nothing below is declared in this file):")
@@ -1545,6 +1835,8 @@ def report(results, findings, contract, discovered, args):
     print("  families       %-34s palette table, %d famil%s"
           % (STYLE_DOC, len(contract.families),
              "y" if len(contract.families) == 1 else "ies"))
+    print("  renders        %-34s <stem>.png + retina/<stem>%s.png"
+          % (OUT_DIR.replace(os.sep, "/") + "/", RETINA_SUFFIX))
     print()
 
     if not args.quiet:
@@ -1569,6 +1861,12 @@ def report(results, findings, contract, discovered, args):
             else:
                 geo = "geometry not measured"
             print("  %s %-26s %-7s %s" % (sev, r.stem, size, geo))
+            # Renders only earn a line of their own when they are not what the source
+            # says they should be -- the clean case is the "Renders:" denominator below.
+            if not render_ok(r):
+                print("       %-26s renders: png %s | retina %s"
+                      % ("", r.renders.get("1x", "not checked"),
+                         r.renders.get("retina", "not checked")))
         print()
 
     for sev in (ERROR, WARNING, ADVISORY):
@@ -1594,6 +1892,9 @@ def report(results, findings, contract, discovered, args):
             skipped.append("%s: %s" % (r.stem, s))
     print("Checked:   %d of %d sprite(s) discovered | %d check(s) run per sprite"
           % (len(results), discovered, len(CHECKS)))
+    fresh = sum(1 for r in results if render_ok(r))
+    print("Renders:   %d of %d sprite(s) have both outputs at the size their own SVG "
+          "declares" % (fresh, len(results)))
     errors = sum(1 for f in findings if f.severity == ERROR)
     warns = sum(1 for f in findings if f.severity == WARNING)
     advs = sum(1 for f in findings if f.severity == ADVISORY)
@@ -1602,15 +1903,27 @@ def report(results, findings, contract, discovered, args):
         print("Skipped:")
         for s in skipped:
             print("  " + s)
+    manifest_installed = os.path.isfile(os.path.join(root, MANIFEST))
     print("NOT COVERED by this tool, and only the raster gate can answer them:")
-    print("  retina copy    render_svg.gd writes the @2x pair; the source never declares it")
-    print("  blank render   source is checked for drawable painted geometry, not for what")
-    print("                 the rasteriser actually produced")
+    print("  blank render   source is checked for drawable painted geometry, and the PNG")
+    print("                 for its dimensions, but not one pixel is decoded here")
     print("  AA junctions   where three hues meet in one pixel the blend is on no")
     print("                 two-colour segment and fails the palette test even though")
     print("                 every declared colour here was clean. Requires rasterising.")
-    print("  A clean run here means the SOURCE conforms. Run test_sprite_style.gd for the")
-    print("  rendered truth.")
+    print("  rendered body  a PNG that is the right size and whose source has not moved")
+    print("                 is accepted even if its body is corrupt or came out of a")
+    print("                 different rasteriser. Header bytes only, by design.")
+    if not manifest_installed:
+        print("  same-size edit NO %s, so a recolour or a moved path"
+              % MANIFEST.replace(os.sep, "/"))
+        print("                 renders at the same size and is invisible here. The")
+        print("                 `freshness` check is NOT INSTALLED and cannot pass until")
+        print("                 render_svg.gd stamps what it renders -- see the advisory")
+        print("                 above for the exact change.")
+    print("  A clean run here means the SOURCE conforms, and that the PNGs on disk pair")
+    print("  with it at the size it declares%s. Run test_sprite_style.gd"
+          % (" and hash to what was rendered" if manifest_installed else ""))
+    print("  for the rendered truth.")
 
 
 if __name__ == "__main__":
