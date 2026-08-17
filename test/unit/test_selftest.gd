@@ -5333,30 +5333,35 @@ func test_no_pause_card_legend_row_draws_past_the_paper() -> String:
 
 	var rows: int = Game.key_help().size()
 	err = _T.assert_gt(rows, 0, "there are legend rows to measure")
+	# BOTH columns. A row is two Labels now -- the key and the phrase were one string
+	# sharing one budget, which is what let a long key push the phrase off the card,
+	# and measuring only the node still called KeyRow%d would now measure the key
+	# alone and stop watching the half that broke.
 	for i: int in range(rows):
 		if err != "":
 			break
-		var row: Label = screen.get_node_or_null("KeyRow%d" % i) as Label
-		err = _T.assert_true(row != null, "KeyRow%d is on the card" % i)
-		if err != "":
-			break
-		# (1) the box. A row whose Label won its own width back is already off the
-		# paper whatever the text says.
-		var right: float = row.global_position.x + row.size.x
-		err = _T.assert_true(right <= paper_right + 0.5,
-			"KeyRow%d's box ends at %.0f, the paper ends at %.0f -- the assigned width lost to the Label's minimum size (set clip_text and font_size BEFORE size)"
-				% [i, right, paper_right])
-		if err != "":
-			break
-		# (2) the text, measured through the font rather than through a
-		# get_minimum_size() that clip_text has already reduced to a stub.
-		var drawn: float = _T.text_width(row)
-		err = _T.assert_gt(drawn, 0.0, "KeyRow%d has text to measure" % i)
-		if err != "":
-			break
-		err = _T.assert_true(drawn <= PauseScreen.KEY_ROW_MAX_WIDTH,
-			"KeyRow%d draws %.0fpx, budget is %.0f -- shorten the 'does' phrase in KeyBindings.ACTIONS, or widen the card (%s)"
-				% [i, drawn, PauseScreen.KEY_ROW_MAX_WIDTH, row.text])
+		for node_name: String in ["KeyRow%d" % i, "KeyRowDoes%d" % i]:
+			var row: Label = screen.get_node_or_null(node_name) as Label
+			err = _T.assert_true(row != null, "%s is on the card" % node_name)
+			if err != "":
+				break
+			# (1) the box. A row whose Label won its own width back is already off the
+			# paper whatever the text says.
+			var right: float = row.global_position.x + row.size.x
+			err = _T.assert_true(right <= paper_right + 0.5,
+				"%s's box ends at %.0f, the paper ends at %.0f -- the assigned width lost to the Label's minimum size (set clip_text and font_size BEFORE size)"
+					% [node_name, right, paper_right])
+			if err != "":
+				break
+			# (2) the text, measured through the font rather than through a
+			# get_minimum_size() that clip_text has already reduced to a stub.
+			var drawn: float = _T.text_width(row)
+			err = _T.assert_gt(drawn, 0.0, "%s has text to measure" % node_name)
+			if err != "":
+				break
+			err = _T.assert_true(drawn <= row.size.x + 0.5,
+				"%s draws %.0fpx in its own %.0fpx column -- each column is sized from its own content now, so this means the derivation and the layout disagree (%s)"
+					% [node_name, drawn, row.size.x, row.text])
 
 	game.resume_run()
 	_T.free_ui(game)
@@ -5435,12 +5440,16 @@ func test_the_pause_legend_survives_the_longest_key_a_player_can_bind() -> Strin
 			for i: int in range(rows):
 				if err != "":
 					break
-				var row: Label = worst_screen.get_node_or_null("KeyRow%d" % i) as Label
-				err = _T.assert_true(row != null, "KeyRow%d is on the card" % i)
-				if err == "":
-					err = _T.assert_true(_T.text_width(row) <= PauseScreen.KEY_ROW_MAX_WIDTH,
-						"KeyRow%d draws %.0fpx against a %.0f budget once a player binds the longest key there is -- widen the card, or leave the 'does' phrases room for a key name we do not choose (%s)"
-							% [i, _T.text_width(row), PauseScreen.KEY_ROW_MAX_WIDTH, row.text])
+				for node_name: String in ["KeyRow%d" % i, "KeyRowDoes%d" % i]:
+					var row: Label = worst_screen.get_node_or_null(node_name) as Label
+					err = _T.assert_true(row != null, "%s is on the card" % node_name)
+					if err != "":
+						break
+					err = _T.assert_true(_T.text_width(row) <= row.size.x + 0.5,
+						"%s draws %.0fpx in its own %.0fpx column once a player binds the longest key there is -- the card is sized from these columns, so this is the derivation failing rather than a phrase being too long (%s)"
+							% [node_name, _T.text_width(row), row.size.x, row.text])
+					if err != "":
+						break
 		worst_game.resume_run()
 		_T.free_ui(worst_game)
 
@@ -9921,4 +9930,135 @@ func test_the_title_menu_row_heights_follow_the_primary_count() -> String:
 			TitleScreen.BUTTON_TOP + total + TitleScreen.BUTTON_GAP * float(rows.size() - 1),
 			0.001,
 			"and the menu ends exactly one stack of row_heights and gaps below BUTTON_TOP")
+	return err
+
+## The card measures text with a detached Label; the rows draw with an in-tree one.
+##
+## `PauseScreen._measure()` answers "how wide is this string" before any instance
+## exists, because `card_width()` has to. It does that by creating a Label, applying
+## the same font-size override the rows carry, and asking it for its theme font --
+## which resolves identically to an in-tree Label's *only because this project sets
+## no custom theme*. That is a fact about this project, not about Godot, and it is
+## exactly the kind of fact that stops being true without anything failing: add a
+## theme to the game and the card sizes itself with one font while drawing in
+## another, and the symptom is a legend that clips by a few pixels for no visible
+## reason.
+##
+## So the two are compared directly, against the real rows, rather than left as a
+## sentence in a docstring.
+func test_the_cards_own_measurement_agrees_with_the_labels_it_builds() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.pause_run()
+	await _pump(game)
+	var screen: Control = game.get_node_or_null("PauseLayer/PauseScreen") as Control
+	var err: String = _T.assert_true(screen != null, "the card is up")
+	var rows: int = Game.key_help().size()
+	if err == "":
+		err = _T.assert_gt(rows, 0, "there are rows to compare")
+	var checked: int = 0
+	for i: int in range(rows):
+		if err != "":
+			break
+		for node_name: String in ["KeyRow%d" % i, "KeyRowDoes%d" % i]:
+			var row: Label = screen.get_node_or_null(node_name) as Label
+			err = _T.assert_true(row != null, "%s is on the card" % node_name)
+			if err != "":
+				break
+			checked += 1
+			# One pixel of tolerance: the two paths agree on the font and the size,
+			# and asserting bit-equality on a float pair that came from two different
+			# TextServer calls is a test that fails on a rounding change rather than
+			# on the defect it is for.
+			err = _T.assert_float_eq(PauseScreen._measure(row.text), _T.text_width(row), 1.0,
+				"%s: the card measured %.1fpx for %r and the Label drew %.1fpx -- the "
+					% [node_name, PauseScreen._measure(row.text), row.text, _T.text_width(row)]
+					+ "static measurement and the real font have come apart, which is what "
+					+ "a custom theme added to this project would do")
+			if err != "":
+				break
+	if err == "":
+		err = _T.assert_gt(checked, 4,
+			"the comparison actually ran over the legend (an empty loop here would "
+				+ "make this test vacuous, not clean)")
+	game.resume_run()
+	_T.free_ui(game)
+	return err
+
+## Rebinding to a long key WHILE the card is open must not push the phrase off it.
+##
+## The card sizes itself to its widest bound key, so a rebinding changes what that
+## width should be — but the card is already on screen, with buttons placed against
+## its edges, and it is not resized under the player. `_refresh_key_list()` therefore
+## re-splits the two columns inside the width the card ACTUALLY has, clamping the key
+## column so the phrase column keeps what the widest phrase needs.
+##
+## Found in the running game, not here: the first version measured against
+## `key_row_max_width()`, which re-derives from the NEW bindings, so it laid a 247px
+## phrase out at x+143 on a 365px card — 52px onto the dimmed backdrop. The fix for a
+## legend running off the card had reintroduced a legend running off the card, one
+## code path over.
+func test_rebinding_while_the_card_is_open_keeps_the_legend_on_the_card() -> String:
+	var stashed_bindings: Dictionary = RunConfig.key_bindings
+	var stashed_path: String = RunConfig.save_path
+	RunConfig.save_path = "user://test_selftest_refresh_split.save"
+	RunConfig.key_bindings = {}
+	KeyBindings.reset_all()
+
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.pause_run()
+	await _pump(game)
+	var screen: Control = game.get_node_or_null("PauseLayer/PauseScreen") as Control
+	var err: String = _T.assert_true(screen != null, "the card is up")
+	var card: Control = null
+	if err == "":
+		card = screen.get_node_or_null("Card") as Control
+		err = _T.assert_true(card != null, "and it has paper to stay on")
+	var built_width: float = 0.0
+	if err == "":
+		built_width = card.size.x
+		# The longest name the engine has, bound while the card is already built.
+		var worst_code: int = 0
+		var worst_label: String = ""
+		for code: int in range(1 << 22, (1 << 22) + 512):
+			var name: String = OS.get_keycode_string(code)
+			if name.length() > worst_label.length():
+				worst_label = name
+				worst_code = code
+		err = _T.assert_true(KeyBindings.set_keys(KeyBindings.ACTION_PAUSE, [worst_code]),
+			"the longest key the engine names (%s) binds" % worst_label)
+	if err == "":
+		screen._refresh_key_list()
+		err = _T.assert_float_eq(card.size.x, built_width, 0.5,
+			"the card itself does not move under the player -- it is rebuilt at the "
+				+ "derived width on the NEXT pause, not resized mid-session")
+	if err == "":
+		var paper_right: float = card.global_position.x + card.size.x
+		for i: int in range(Game.key_help().size()):
+			for node_name: String in ["KeyRow%d" % i, "KeyRowDoes%d" % i]:
+				var row: Label = screen.get_node_or_null(node_name) as Label
+				err = _T.assert_true(row != null, "%s is on the card" % node_name)
+				if err != "":
+					break
+				err = _T.assert_true(row.global_position.x + row.size.x <= paper_right + 0.5,
+					"%s ends at %.0f against paper ending at %.0f -- the re-split "
+						% [node_name, row.global_position.x + row.size.x, paper_right]
+						+ "measured against the width the card WOULD be rather than the "
+						+ "width it has")
+				if err != "":
+					break
+			if err != "":
+				break
+	if err == "":
+		# And the half that must never be the one sacrificed.
+		var does_row: Label = screen.get_node_or_null("KeyRowDoes0") as Label
+		err = _T.assert_true(_T.text_width(does_row) <= does_row.size.x + 0.5,
+			"the PHRASE still fits: if something has to be truncated it is the key, "
+				+ "which the player just typed and can read in full one screen up")
+
+	game.resume_run()
+	_T.free_ui(game)
+	KeyBindings.reset_all()
+	RunConfig.key_bindings = stashed_bindings
+	RunConfig.save_path = stashed_path
+	DirAccess.remove_absolute("user://test_selftest_refresh_split.save")
 	return err

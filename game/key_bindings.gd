@@ -110,10 +110,16 @@ const ACTIONS: Array[Dictionary] = [
 ]
 
 ## `OS.get_keycode_string` is correct and long. The pause card's legend is the
-## narrowest place any of this is drawn -- PauseScreen.KEY_ROW_MAX_WIDTH px at
-## font 13 -- so the handful of keys whose engine name does not fit get a short
-## form here. Anything absent falls through to the engine's own name, which is
-## what keeps this from becoming a second key table.
+## narrowest place any of this is drawn -- `PauseScreen.key_row_max_width()` at
+## `PauseScreen.KEY_ROW_FONT_SIZE` -- so the handful of keys whose engine name does
+## not fit get a short form here. Anything absent falls through to the engine's own
+## name, which is what keeps this from becoming a second key table.
+##
+## That budget is a FUNCTION now, not the constant this line used to name: the card
+## sizes itself to its widest bound key, so a long name here no longer clips, it
+## widens the card. Which makes this table's job smaller than it was -- it is about
+## a name being unreadable ("On-screen keyboard" for a key nobody calls that), not
+## about a name being too wide to draw.
 ##
 ## The budget is named rather than repeated as a number: this comment said "the
 ## pause card is 320px wide" and stayed saying it after the card was widened to

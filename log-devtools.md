@@ -3736,7 +3736,7 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   surfaced twenty minutes later as five unrelated-looking test failures. The suite now
   has `tools/save_persist_check.py` and per-script `setup()` redirects; the bridge has
   neither and cannot have the second one.
-  - [G-054] status: open | seen: 1 | harness: 0.38.0 | filed upstream: gh#40
+  - [G-054] status: open | seen: 2 | harness: 0.38.0 | filed upstream: gh#40
   - Improvement: `launch --snapshot-userstate` already exists and makes `quit` restore
     what the run changed. Make it **the default for `launch`**, with
     `--no-snapshot-userstate` to opt out — a verification session that silently mutates
@@ -3777,3 +3777,49 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   unchanged. The flag works exactly as documented — which is the argument for gh#40
   (make it the default), not against it: it only helped here because the previous cycle
   had already paid for the knowledge that it exists.
+
+## 2026-08-16 — cycle 33: the pause card sizes itself to its own legend
+
+- Value: **warranted** — the runtime half found a defect the headless suite was green
+  over, and it was a defect introduced by the fix it was verifying.
+  - Expected: the column split is arithmetic until a real card is built from it.
+    `card_width()` derives from measurements taken by a DETACHED Label, and whether
+    that resolves the same font as the in-tree rows is a fact about this project's
+    theme rather than about Godot. Runtime is also the only place "the card got
+    narrower" is observable at all.
+  - Got: the card measured `266, 45, 365x558` against a hand-picked 440 the day
+    before, with `KeyRow0` a 46px right-aligned column and `KeyRowDoes0` a 247px
+    left-aligned one. Then, rebinding `garden_pause` to `On-screen keyboard` through
+    the bridge with the card already open: `KeyRow0 size 127`, `KeyRowDoes0` pushed to
+    x+143 — **52px off a 365px card**.
+  - Found: two.
+    1. `_refresh_key_list()` measured against `key_row_max_width()`, which re-derives
+       from the NEW bindings — so it laid the columns out for the card the rebinding
+       *would* produce, while the card on screen was still the one built for the old
+       keys. The fix for a legend running off the card had reintroduced a legend
+       running off the card, one code path over. Now measured off the `Card` node,
+       and gated by a test planted and watched fail at `684 against paper ending at
+       631`.
+    2. The live session wrote the real save **again**, despite
+       `launch --snapshot-userstate 'highscore.save'`.
+  - Cheaper: nothing. No test drove a rebinding against an already-built card until
+    this run made one, so the suite had nothing to say.
+
+- Gap: **`--snapshot-userstate` did not restore on the `quit` that ended the session.**
+  Second sighting of [G-054] and a sharper one than the first, because this time the
+  mitigation was in use. Sequence: `launch --snapshot-userstate 'highscore.save'`,
+  drive the game (which rebinds and therefore persists), `quit`. Afterwards
+  `user://highscore.save` still carried `garden_pause 4194417`, and five byte-exact
+  save tests failed against it. The snapshot itself was **correct** —
+  `.devtools/userstate_snapshot/highscore.save` held the right pre-run bytes — and a
+  second, bare `python tools/devtools.py quit` (no game running at all) printed
+  `userstate: restored 1 file(s) and removed 0 created during the run` and put them
+  back. So the machinery works and something about the ending quit skipped it; I did
+  not establish what, because that quit's output was redirected to /dev/null and the
+  session is gone. Worth saying plainly rather than guessing.
+  - [G-054] status: open | seen: 2 | harness: 0.38.0 | filed upstream: gh#40
+  - Improvement: unchanged (make it the default), plus one that this sighting argues
+    for on its own — **`quit` should say what it did with the snapshot every time,
+    including "no snapshot to restore"**, and a `quit` that was asked to restore and
+    could not should exit non-zero. A restore that silently does not happen is worse
+    than no restore, because the flag was the reason to stop checking the file by hand.

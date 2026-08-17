@@ -94,14 +94,28 @@ var _buttons: Array[Button] = []
 ## dimmed backdrop over the live board, which is the exact failure this header
 ## already describes happening once.
 ##
-## Widened again rather than truncating the key name, on the same reasoning and one
-## more: a legend that abbreviates the key is a legend that cannot tell the player
-## which key it means, which is its whole job. The cost is a card 38% of the
-## viewport's width instead of 31%. The gate is
-## test_the_pause_legend_survives_the_longest_key_a_player_can_bind, which derives
-## the worst key from the engine on every run rather than pinning today's answer --
-## so a Godot release that names something longer fails here with the number.
-const CARD_WIDTH: float = 440.0
+## **And 440 was the last hand-picked width.** It was the worst case charged to every
+## player: sized for a key almost nobody binds, on a card that is 31% of the viewport
+## for the shipped keys and 38% for everyone. Three widths picked by hand, each one
+## correct until the thing it measured changed, is the same story `card_height()`
+## stopped telling two constants above -- so `card_width()` now derives itself from
+## its widest row the way the height derives itself from its row count, and the
+## constant below is only a FLOOR (the button block is 248 wide and the card cannot
+## be narrower than what it holds).
+##
+## Measured, not estimated: `_measure()` builds a detached Label carrying the same
+## font-size override the rows carry, and this project sets no custom theme, so an
+## off-tree Label resolves the identical font. Asserted rather than assumed --
+## test_the_cards_own_measurement_agrees_with_the_labels_it_builds compares it
+## against `_T.text_width` on the real rows.
+const CARD_MIN_WIDTH: float = BUTTON_SIZE.x + KEY_ROW_INSET * 2.0
+
+## Between the key column and the phrase column. Named because the derived width is
+## a sum and an unnamed gap inside a sum is the term nobody can find later.
+const KEY_COL_GAP: float = 16.0
+## The rows' font size, hoisted out of _build_key_list so the static measurement and
+## the built Label cannot drift onto different fonts.
+const KEY_ROW_FONT_SIZE: int = 13
 ## Never higher than this, whatever the arithmetic says. A card taller than the
 ## viewport should hang off the bottom where the next thing added to it is visibly
 ## missing, rather than slide its heading off the top where the player cannot even
@@ -117,7 +131,11 @@ const CARD_MIN_TOP: float = 24.0
 ## widening the card by 40px would have slid it 40px right instead of 20px each
 ## way, and nothing would have said why.
 const CARD_CENTRE_X: float = 448.0
-const CARD_X: float = CARD_CENTRE_X - CARD_WIDTH / 2.0
+## Left edge, derived from the derived width so a card that grows stays centred on
+## CARD_CENTRE_X rather than growing to the right. A function now rather than a
+## const, because what it is derived FROM is measured at runtime.
+static func card_x() -> float:
+	return CARD_CENTRE_X - card_width() / 2.0
 const CARD_FOOT_PADDING: float = 24.0
 ## Gap between the last button and the key list. The list's own offset is derived
 ## from the button block rather than written down: a hand-picked 268.0 put the
@@ -150,7 +168,12 @@ const KEY_ROW_INSET: float = 28.0
 ## report the ~1px clip stub instead of the text -- so the obvious width assertion
 ## passes unconditionally on exactly the labels that need it. Measure with
 ## `_T.text_width`.
-const KEY_ROW_MAX_WIDTH: float = CARD_WIDTH - KEY_ROW_INSET * 2.0
+## What ONE legend row's two columns together have to fit inside. Derived from the
+## card, which is now derived from these columns -- the loop is deliberate and it
+## terminates: card_width() takes the max of the floor and what the columns need, so
+## this reads back the answer rather than participating in computing it.
+static func key_row_max_width() -> float:
+	return card_width() - KEY_ROW_INSET * 2.0
 
 ## Entrance rise, borrowed outright from RunSummary rather than picked fresh:
 ## same offset, same duration, same curve as RISE_SECONDS / RISE_OFFSET there.
@@ -167,9 +190,66 @@ const RISE_OFFSET: float = 26.0
 var _closing: bool = false
 
 
+## Text width through the same font a legend row draws in.
+##
+## A detached Label rather than a font loaded by path: the row's font is whatever
+## `get_theme_font("font")` resolves to for a Label carrying a font-size override,
+## and asking a Label is the only way to get the same answer the Label will get.
+## This project sets no custom theme, so an off-tree Label resolves identically to
+## an in-tree one -- which is a fact about this project and not about Godot, so
+## test_the_cards_own_measurement_agrees_with_the_labels_it_builds checks it against
+## `_T.text_width` on the real rows rather than leaving it as a comment.
+##
+## Static because everything that needs it is: the card's own width is answered
+## before any instance exists.
+static func _measure(text: String) -> float:
+	var probe := Label.new()
+	probe.add_theme_font_size_override("font_size", KEY_ROW_FONT_SIZE)
+	var font: Font = probe.get_theme_font("font")
+	var width: float = 0.0
+	if font != null:
+		width = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1,
+			probe.get_theme_font_size("font_size")).x
+	probe.free()
+	return width
+
+
+## The key column: as wide as the widest key CURRENTLY bound.
+##
+## Currently, not "as wide as any key could ever be" -- that is the whole point of
+## deriving it. A player on the shipped keys gets a 46px column (`Esc  ·  P`); one
+## who binds the longest name the engine has gets 127px and a card 81px wider, and
+## nobody pays for a binding they did not make.
+static func key_column_width() -> float:
+	var widest: float = 0.0
+	for row: Dictionary in Game.key_help():
+		widest = maxf(widest, _measure(String(row["keys"])))
+	return widest
+
+
+## The phrase column: as wide as the widest `does` phrase.
+##
+## Authored by KeyBindings.ACTIONS and shared with two other screens, so it changes
+## when a verb is renamed and nothing here has to be told.
+static func does_column_width() -> float:
+	var widest: float = 0.0
+	for row: Dictionary in Game.key_help():
+		widest = maxf(widest, _measure(String(row["does"])))
+	return widest
+
+
+## What the card has to be to hold its widest legend row, floored at what the button
+## block needs. The height's counterpart, and written after three hand-picked widths
+## in a row each went stale the moment the thing they measured changed.
+static func card_width() -> float:
+	var legend: float = (key_column_width() + KEY_COL_GAP + does_column_width()
+		+ KEY_ROW_INSET * 2.0)
+	return ceilf(maxf(CARD_MIN_WIDTH, legend))
+
+
 ## The card, sized to whatever it actually contains and placed from that size.
 static func card_rect() -> Rect2:
-	return Rect2(CARD_X, card_top(), CARD_WIDTH, card_height())
+	return Rect2(card_x(), card_top(), card_width(), card_height())
 
 
 ## Card-local y at which the last thing on the card ends.
@@ -398,10 +478,23 @@ func _build_key_list() -> void:
 	var y: float = card_rect().position.y + key_list_offset()
 	for i: int in range(_keys.size()):
 		var row: Dictionary = _keys[i]
+		# TWO Labels, not one string. As `"%s   %s"` the key and the phrase shared a
+		# width budget, so the long one ate the short one -- which is what turned a
+		# player binding a long key name into a phrase running off the card, and what
+		# made the card's width a function of the worst case of both halves at once.
+		# Split, each column is bounded by its own content, and the keys line up
+		# vertically the way they already do on the Keys screen.
+		var key_label := Label.new()
+		key_label.name = "KeyRow%d" % i
+		key_label.text = String(row["keys"])
+		# Right-aligned against the gutter: the two columns read as one pair, and a
+		# ragged right edge on the key column would put a variable gap in the middle
+		# of every row.
+		key_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		var label := Label.new()
-		label.name = "KeyRow%d" % i
-		label.text = _key_row_text(row)
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.name = "KeyRowDoes%d" % i
+		label.text = String(row["does"])
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		# ORDER MATTERS, and this is the bug that put a legend row on the backdrop.
 		#
 		# `Control.set_size` clamps to `get_combined_minimum_size()`, and a Label's
@@ -413,13 +506,18 @@ func _build_key_list() -> void:
 		# later font_size/clip_text overrides lowered the minimum without ever
 		# shrinking the box back. Set the three things that decide the minimum
 		# first, and the assigned width is the one that survives.
-		label.add_theme_font_size_override("font_size", 13)
-		label.clip_text = true
-		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		label.position = Vector2(card_rect().position.x + KEY_ROW_INSET, y)
-		label.size = Vector2(KEY_ROW_MAX_WIDTH, KEY_ROW_HEIGHT)
-		label.add_theme_color_override("font_color", Color(GardenTheme.INK, 0.55))
-		add_child(label)
+		var left: float = card_rect().position.x + KEY_ROW_INSET
+		var key_col: float = key_column_width()
+		for pair: Array in [[key_label, left, key_col],
+				[label, left + key_col + KEY_COL_GAP, key_row_max_width() - key_col - KEY_COL_GAP]]:
+			var text_label: Label = pair[0]
+			text_label.add_theme_font_size_override("font_size", KEY_ROW_FONT_SIZE)
+			text_label.clip_text = true
+			text_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			text_label.position = Vector2(float(pair[1]), y)
+			text_label.size = Vector2(float(pair[2]), KEY_ROW_HEIGHT)
+			text_label.add_theme_color_override("font_color", Color(GardenTheme.INK, 0.55))
+			add_child(text_label)
 		y += KEY_ROW_HEIGHT
 
 
@@ -659,18 +757,49 @@ func _close_options() -> void:
 ## card whose height is already derived from that same count.
 func _refresh_key_list() -> void:
 	_keys = Game.key_help()
+	# The COLUMN WIDTH can move here, which the text-only refresh this replaced could
+	# not account for. The Keys screen opens over this card, so a player can rebind
+	# `P` to something far wider and close it, and the column built for `Esc  ·  P`
+	# would clip the new name.
+	#
+	# The card itself is NOT resized: it is already on screen with buttons placed
+	# against its edges, and sliding all of that sideways under the player to answer a
+	# rebinding is a worse answer than the one below. So the columns are re-split
+	# inside the width the card already has, and the key column is clamped so that the
+	# PHRASE column never drops below what the widest phrase needs.
+	#
+	# That ordering is the decision: if something has to be truncated it is the key,
+	# not the phrase. The phrase is ours, is the same on every screen, and is the half
+	# that says what the row is FOR; the key is the player's, they just typed it, and
+	# the Keys screen one layer up is showing it in full. The truncation is also
+	# transient -- the next pause rebuilds the card at a width that fits.
+	# Measured off the Card NODE, not off key_row_max_width().
+	#
+	# That distinction is the whole of this function and it cost a live check to
+	# find. `key_row_max_width()` derives from `card_width()`, which re-measures the
+	# CURRENT bindings -- so the moment the player rebinds, it answers with the width
+	# the card WOULD be if it were rebuilt, while the card on screen is still the one
+	# built for the old bindings. Laying the columns out against that number put a
+	# 247px phrase at x+143 on a 365px card: 52px onto the backdrop, which is the
+	# exact failure the header's own three paragraphs are about, reintroduced by the
+	# fix for it.
+	#
+	# The card is the ground truth for as long as it exists. The next pause rebuilds
+	# it at the derived width.
+	var card: Control = get_node_or_null("Card") as Control
+	var room: float = (card.size.x if card != null else card_width()) - KEY_ROW_INSET * 2.0
+	var key_col: float = minf(key_column_width(), room - KEY_COL_GAP - does_column_width())
+	key_col = maxf(key_col, 0.0)
 	for i: int in range(_keys.size()):
-		var label: Label = get_node_or_null("KeyRow%d" % i) as Label
-		if label == null:
+		var key_label: Label = get_node_or_null("KeyRow%d" % i) as Label
+		var does_label: Label = get_node_or_null("KeyRowDoes%d" % i) as Label
+		if key_label == null or does_label == null:
 			continue
-		label.text = _key_row_text(_keys[i])
-
-
-## One legend row, written in exactly one place. Built and refreshed by two
-## different methods, and two copies of this format string is how the redraw ends
-## up subtly unlike the row it replaces.
-static func _key_row_text(row: Dictionary) -> String:
-	return "%s   %s" % [String(row["keys"]), String(row["does"])]
+		key_label.text = String(_keys[i]["keys"])
+		does_label.text = String(_keys[i]["does"])
+		key_label.size.x = key_col
+		does_label.position.x = key_label.position.x + key_col + KEY_COL_GAP
+		does_label.size.x = room - key_col - KEY_COL_GAP
 
 
 ## Nothing under an overlay may still be live.
