@@ -195,6 +195,31 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (23 of 30) — seven budgets now, and the shape they share
+
+- **Every budget in this project prices a WIDTH, and the road ceiling is the only one
+  that does not.** `husk_click`, `hud_readouts`, `hud_message_row`, `hud_stats_row`,
+  `notebook_subhead` and `road_shape` are all "does this fit"; `pest_road_ceiling` is
+  the only one pricing a game-design coupling (`game/game.gd`, `BUDGET_FLOOR`). The
+  machinery is general and is being used for one kind of question. **Rate of fire
+  against pest health, seed income against plant cost, and the compost payout against
+  the packet prices are all couplings nobody can currently see spending.**
+- **`GardenTheme.measure()` is now load-bearing for three budgets and four tests**,
+  and it is a detached Label resolving a theme that no test asserts is the same theme
+  the game uses. `test_the_cards_own_measurement_agrees_with_the_labels_it_builds`
+  checks it for the pause card's font only; the message row measures at
+  `MESSAGE_FONT_SIZE` and nothing compares that path against a real Label.
+- **A budget with a floor nobody has approached is a guess.** `hud_message_row` was
+  declared at 40px with 342px of headroom — the floor is a number I picked, not one
+  anything has tested. The budgets that have been *spent* (`hud_readouts` at 10,
+  `hud_stats_row` at 19) earned their floors by being pushed through them; the others
+  are placeholders wearing the same clothes, and `cmd budgets` reports them
+  identically.
+- **Nothing prices the side panel**, which is the widest column of text in the game
+  (`Hud._build_side_panel`) and carries the plant names, the blurbs and the prices —
+  all of them content-driven, all of them growing when a plant is added, and none of
+  them measured. It is the same defect class as the message row, one panel over.
+
 ### New this cycle (22 of 30) — the one-owner pattern, and where else it is missing
 
 - **The banner has the same two-writer shape the message row just lost.**
