@@ -1956,9 +1956,26 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 	# wave, for +80.9% where every wave from 9 to 22 steps +2.0% to +13.6%. The
 	# counts now hold wave 7's peak spawn rate exactly, so the mutation is the only
 	# new thing on that wave. Re-derived, not adjusted until green.
+	#
+	# Waves 15 (35 -> 37) and 21 (37 -> 38) moved when the Shield Bug entered the
+	# table (plant-tower-defense-pdri): 15 traded 2 beetles for 4 plated bugs and 21
+	# traded 2 for 3. Both re-derived against an offline replica of _raw_threat and
+	# peak_simultaneous_pests before the rows were written -- the replica was itself
+	# checked by reproducing THIS array, the finale's 40-of-40 peak and endless's 29
+	# first. The finale is deliberately unmoved: it is the only row with no road
+	# slack and only 18.7 points of health under the seam bound.
+	#
+	# THIS LIST STAYS RECORDED AND MUST NOT BE DERIVED. Its only possible source of
+	# truth is WAVES itself, so `expected[i] = pests_in_wave(i)` would assert a
+	# tautology and pass unconditionally -- the exact "recorded list that is RIGHT"
+	# case in .claude/skills/derive-the-list. It earns its keep by being a SECOND,
+	# independently typed statement of the campaign's shape, so an accidental edit
+	# to a row shows up here as a number a human has to agree with. The property
+	# assertions below (unscaled health, speed and mutation rate; the finale's group
+	# shape) are the other half the skill asks for.
 	var expected: Array[int] = [
-		5, 9, 9, 14, 13, 19, 19, 21, 26, 32, 30, 23, 35, 29, 35,
-		37, 35, 32, 33, 36, 37, 36,
+		5, 9, 9, 14, 13, 19, 19, 21, 26, 32, 30, 23, 35, 29, 37,
+		37, 35, 32, 33, 36, 38, 36,
 	]
 	var err: String = _T.assert_eq(WaveDirector.WAVES.size(), expected.size(),
 		"the campaign is still twenty-two waves long")
@@ -6298,3 +6315,169 @@ func test_a_headless_chomp_upgrade_does_not_queue_a_flourish_tween() -> String:
 			"no new Tween was queued -- animations_enabled() is false headless")
 	_T.free_ui(host)
 	return err
+
+
+# -- The Shield Bug reaches a player (plant-tower-defense-pdri) ----------------
+#
+# The species shipped in cycle 100 and sat in Pest.SPECIES for a cycle without
+# being in a single wave -- spawnable by name, meetable by nobody. The tests above
+# in "The Shield Bug's plate" pin what it DOES; these three pin that it is in the
+# game at all, that it is not in it too early, and that putting it there did not
+# quietly spend the campaign's last scarce budget.
+#
+# All three sweep the table rather than naming waves 15 and 21, so a future row
+# that moves the species takes these with it instead of failing on a literal.
+
+
+## Every campaign wave carrying a Shield Bug, and how many it sends. The one
+## helper the three tests below share; a wave number is never written down.
+func _shieldbug_waves() -> Dictionary:
+	var out: Dictionary = {}
+	for wave: int in range(1, WaveDirector.WAVES.size() + 1):
+		var count: int = 0
+		for group: Dictionary in WaveDirector.groups_for(wave):
+			if StringName(group["species"]) == Pest.SHIELDBUG:
+				count += int(group["count"])
+		if count > 0:
+			out[wave] = count
+	return out
+
+
+## The bead's entire point, as one assertion. A species that exists, is drawn, is
+## spawnable and is fully tested is still not IN the game until the wave table
+## sends one -- and nothing in the suite noticed that for a whole cycle, because
+## every test of it staged its own pest.
+func test_the_shield_bug_is_actually_in_a_wave_a_player_will_meet() -> String:
+	var waves: Dictionary = _shieldbug_waves()
+	var err: String = _T.assert_gt(waves.size(), 0,
+		("no campaign wave sends a Shield Bug, so no player will ever meet one."
+			+ " Pest.SPECIES holding the entry is not the same as the game containing"
+			+ " the species -- see WaveDirector.WAVES"))
+	if err != "":
+		return err
+	var total: int = 0
+	for wave: int in waves.keys():
+		total += int(waves[wave])
+	if err == "":
+		err = _T.assert_gt(total, 0, "and the rows send a positive number of them (%s)" % [waves])
+	if err == "":
+		# It has to be reachable by the mode most players finish in, not only by
+		# endless -- `_endless_groups` sends aphids and beetles and nothing else, so
+		# if the campaign ever stops carrying the species it leaves the game entirely.
+		var endless_has_one: bool = false
+		for group: Dictionary in WaveDirector.groups_for(WaveDirector.WAVES.size() + 1):
+			if StringName(group["species"]) == Pest.SHIELDBUG:
+				endless_has_one = true
+		err = _T.assert_false(endless_has_one,
+			("endless still sends only the swarm and the column, so the campaign is the"
+				+ " ONLY place this species lives -- which is why the check above matters"))
+	return err
+
+
+## Not too early, which is the half that makes it a decision rather than a wall.
+##
+## A Corn Cobbler is the free starter and cannot scratch a plated bug at any level
+## (asserted in test_the_shield_bugs_plate_is_priced_between_a_corn_kernel_and_a_dandelion_seed).
+## So a Shield Bug in the opening waves is not a difficulty spike, it is a lane the
+## player has no legal answer to. The rule is stated as a property of the table --
+## second half only -- so it follows a table that grows again.
+func test_the_shield_bug_never_lands_before_the_player_can_own_an_answer_to_it() -> String:
+	var waves: Dictionary = _shieldbug_waves()
+	var err: String = _T.assert_gt(waves.size(), 0,
+		"there are Shield Bug waves to place (a zero here is a vacuous pass)")
+	if err != "":
+		return err
+	var half: int = WaveDirector.WAVES.size() / 2
+	var earliest: int = WaveDirector.WAVES.size() + 1
+	for wave: int in waves.keys():
+		err = _T.assert_gt(int(wave), half,
+			("wave %d sends %d Shield Bug(s), but it is in the campaign's first half"
+				+ " (<= %d). The free starter cannot damage this species at any level, so"
+				+ " a plated bug before the Chomp and the Dandelion are realistically owned"
+				+ " is a wall, not a decision") % [wave, int(waves[wave]), half])
+		if err != "":
+			return err
+		earliest = mini(earliest, int(wave))
+	# And past the wave mutations start, so the player is not meeting their first
+	# armoured pest and their first plated one in the same breath.
+	err = _T.assert_gt(earliest, WaveDirector.MUTATION_START_WAVE,
+		("the debut (wave %d) is past MUTATION_START_WAVE (%d) -- two new things to read"
+			+ " on one wave is the mistake cycle 101 had to undo on wave 8 itself")
+			% [earliest, WaveDirector.MUTATION_START_WAVE])
+	if err == "":
+		# A debut of one reads as a stray, not as a species. Six blocked hits each is
+		# the mechanic, and it only becomes visible when a group of them arrives.
+		err = _T.assert_gt(int(waves[earliest]), 2,
+			("and the debut sends a legible GROUP of them (%d) rather than a stray the"
+				+ " player never identifies") % int(waves[earliest]))
+	return err
+
+
+## What it displaced, pinned as the decision it was.
+##
+## The finale is the only campaign row with no road slack (40 of 40) and it sits
+## just 18.7 points of base health under the seam bound derived at
+## WaveDirector.ENDLESS_BEETLE_BASE -- the campaign's scarcest resource, and the
+## reason plant-tower-defense-eeaq inserted six waves in front of it rather than
+## after it. Putting three plated bugs in the finale was legal and cost 8 of those
+## 18.7. This asserts the choice not to, so a future cycle that spends it does so
+## on purpose and reads why here.
+func test_the_shield_bug_was_paid_for_in_beetles_rather_than_out_of_the_finale() -> String:
+	var finale: int = WaveDirector.WAVES.size()
+	var waves: Dictionary = _shieldbug_waves()
+	var err: String = _T.assert_gt(waves.size(), 0,
+		"there are Shield Bug waves to check (a zero here is a vacuous pass)")
+	if err != "":
+		return err
+	err = _T.assert_false(waves.has(finale),
+		("the finale carries a Shield Bug. It is the one row with zero road slack and"
+			+ " the least health headroom in the campaign, so anything added there is"
+			+ " paid for out of the seam bound -- re-derive before allowing this"))
+	if err != "":
+		return err
+
+	# The headroom itself, computed the way test_economy.gd's seam test does, so the
+	# two cannot disagree about what the bound is.
+	var seam_health: float = 0.0
+	for group: Dictionary in WaveDirector.groups_for(finale + 1):
+		seam_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
+	var finale_health: float = 0.0
+	for group: Dictionary in WaveDirector.groups_for(finale):
+		finale_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
+	err = _T.assert_gt(seam_health, 0.0, "the first endless wave has contents")
+	if err == "":
+		err = _T.assert_gt(finale_health, 0.0, "and so does the finale")
+	if err != "":
+		return err
+	var campaign_mult: float = 1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT
+	var seam_mult: float = 1.0 + WaveDirector.mutation_chance_for(finale + 1) \
+		* WaveDirector.MUTATION_THREAT_WEIGHT
+	var seam_scales: float = WaveDirector.health_scale_for(finale + 1) \
+		* WaveDirector.speed_scale_for(finale + 1)
+	var bound: float = seam_health * seam_mult * seam_scales / campaign_mult
+	# Derived, not a literal 18.7: the claim is that the headroom is still worth more
+	# than the thing it was NOT spent on, so the choice above stays a choice rather
+	# than becoming an impossibility a later reader mistakes for one.
+	var one_bug: float = float(Pest.SPECIES[Pest.SHIELDBUG]["health"])
+	err = _T.assert_gt(bound - finale_health, one_bug,
+		("the finale's headroom under the seam bound is %.1f points (finale %.0f, bound"
+			+ " %.1f), which no longer covers even one %.0f-point Shield Bug. It measured"
+			+ " 18.7 when this species was landed, and it was landed without spending any"
+			+ " of it -- its waves paid for their plated bugs in beetles instead")
+			% [bound - finale_health, finale_health, bound, one_bug])
+	if err != "":
+		return err
+
+	# And every row that DID take one is still strictly inside the road budget, which
+	# is what "paid for in beetles" has to mean to be more than a sentence.
+	var checked: int = 0
+	for wave: int in waves.keys():
+		var peak: int = WaveDirector.peak_simultaneous_pests(int(wave))
+		err = _T.assert_gt(WaveDirector.SIMULTANEOUS_PEST_CEILING, peak,
+			("wave %d carries %d Shield Bug(s) and peaks at %d, strictly under the %d"
+				+ " ceiling -- only the finale is allowed to land on it")
+				% [wave, int(waves[wave]), peak, WaveDirector.SIMULTANEOUS_PEST_CEILING])
+		if err != "":
+			return err
+		checked += 1
+	return _T.assert_gt(checked, 0, "the per-wave sweep actually ran (%d waves)" % checked)
