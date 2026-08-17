@@ -4117,12 +4117,18 @@ func test_planting_a_cob_rotates_the_stripes_under_the_ground_it_now_covers() ->
 ## Found by driving a real run, not by reading: four cobs at the entry over four
 ## waves put 7 kills on cells the coverage map calls off aim — (6, 1) at 202 px
 ## and (3, 5) at 192 px from the nearest cob, against a 176 px ring. This is that
-## case reduced to one cob, one kernel and one aphid, on a line the road happens
-## to run straight down.
+## case reduced to one cob, one kernel and one aphid, on a straight stretch of
+## road the cob can fire along.
+##
+## The pair moved when the road grew its climb (plant-tower-defense-84x0): (2, 7)
+## is a corner of the new route and no longer grass at all. (0, 7) fires east
+## along row 7, which the new road runs from x=2 to x=9 — same shape of claim,
+## and the assertions below re-derive every number from the cells themselves
+## rather than restating one.
 func test_a_kernel_can_kill_on_ground_the_coverage_map_calls_unaimed() -> String:
 	var probe := Board.new()
-	var post := Vector2i(2, 7)
-	var beyond := Vector2i(6, 7)
+	var post := Vector2i(0, 7)
+	var beyond := Vector2i(4, 7)
 	var err: String = _T.assert_true(probe.is_buildable(post),
 		"%s is grass a cob can stand on" % post)
 	if err == "":
@@ -4499,15 +4505,33 @@ func _furthest_along_within(live: Array[Pest], plant: Plant, radius: float) -> P
 ## nothing at all to warn about, which is the only garden the over-promise
 ## question can be asked of honestly.
 func _whole_road_garden() -> Array:
-	return [Vector2i(2, 0), Vector2i(7, 0), Vector2i(10, 3), Vector2i(5, 3),
-		Vector2i(2, 6), Vector2i(7, 6), Vector2i(12, 6)]
+	# Six cobs reaching all 32 road cells. Re-derived for the road's climb
+	# (plant-tower-defense-84x0) by greedy set cover at CornCobbler.RANGE (176 px,
+	# 2.75 cells) over cell centres — the same model, checked first against the old
+	# seven-cob list, which it confirms covered 32 of 32 on the old route. The new
+	# shape needs one fewer because its corners fold back on themselves.
+	# Six reach all 32; the seventh is for OVERLAP, not coverage. A cob shoots only
+	# the furthest-along pest in range, so a cell covered exactly once is covered by
+	# a plant that may already be busy — and the six-cob version let one escape in
+	# thirty-four cross unfought. Seven also keeps this the "seven-cob garden" the
+	# docstrings below call it. (8, 6) is the pick because it reaches the most
+	# singly-covered cells.
+	return [Vector2i(0, 0), Vector2i(4, 2), Vector2i(11, 2),
+		Vector2i(5, 5), Vector2i(8, 5), Vector2i(3, 6), Vector2i(8, 6)]
 
 
-## A garden a player actually has by the last campaign wave: six cobs and two
-## mouths, covering 29 of the 32 road cells.
+## A garden a player actually has by the last campaign wave: six plants covering
+## 29 of the 32 road cells — deliberately short of the whole road, which is what
+## makes it a real garden rather than the positive control above.
+##
+## Re-derived for the road's climb (plant-tower-defense-84x0), and it HAD to be:
+## the old list's Vector2i(10, 3) sits on the new road, so that placement would
+## have failed and quietly made this a five-plant garden. The replacement is the
+## most spread-out six-plant set found that covers exactly 29, so it still reads
+## as a garden someone built rather than three cobs in a heap.
 func _mixed_garden() -> Array:
-	return [Vector2i(2, 0), Vector2i(6, 0), Vector2i(10, 3), Vector2i(6, 5),
-		Vector2i(8, 8), Vector2i(11, 6)]
+	return [Vector2i(12, 1), Vector2i(3, 2), Vector2i(8, 3),
+		Vector2i(5, 6), Vector2i(0, 7), Vector2i(9, 8)]
 
 
 ## THE measurement plant-tower-defense-4no was filed for, and it comes back zero.
@@ -4691,17 +4715,23 @@ func test_a_winged_pest_only_outruns_the_map_in_a_garden_with_no_corn_in_it() ->
 		return err
 
 	# The positive control, and the reason the zero in the sibling test is a
-	# reading rather than a broken detector. Thirty-one mouths, one beside every
-	# road cell: the map calls the entire road covered, and a winged pest crosses
-	# the whole of it with nothing able to close on it. Same harness, same
+	# reading rather than a broken detector. Twenty-six mouths, at least one beside
+	# every road cell: the map calls the entire road covered, and a winged pest
+	# crosses the whole of it with nothing able to close on it. Same harness, same
 	# predicate, non-zero — so `pests_all_covered_untouched` is not stuck at 0.
+	#
+	# Re-derived when the road grew its climb (plant-tower-defense-84x0). This list
+	# is a property of the road's SHAPE and nothing else, so it moved even though
+	# the cell count and route length did not: it was thirty-one mouths against the
+	# old route. Derived by greedy set cover over the orthogonal neighbours of every
+	# road cell, which is why it is smaller — the old list spent ten mouths on a
+	# single straight run along row 0.
 	var walled: Array = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0),
-		Vector2i(4, 0), Vector2i(5, 0), Vector2i(6, 0), Vector2i(7, 0), Vector2i(8, 0),
-		Vector2i(9, 0), Vector2i(8, 2), Vector2i(8, 3), Vector2i(10, 4), Vector2i(7, 3),
-		Vector2i(6, 3), Vector2i(5, 3), Vector2i(4, 3), Vector2i(3, 3), Vector2i(2, 5),
-		Vector2i(2, 6), Vector2i(2, 7), Vector2i(4, 6), Vector2i(5, 6), Vector2i(6, 6),
-		Vector2i(7, 6), Vector2i(8, 6), Vector2i(9, 6), Vector2i(10, 6), Vector2i(11, 6),
-		Vector2i(12, 6), Vector2i(13, 6)]
+		Vector2i(4, 0), Vector2i(6, 0), Vector2i(5, 2), Vector2i(9, 2), Vector2i(11, 2),
+		Vector2i(12, 2), Vector2i(13, 2), Vector2i(2, 3), Vector2i(4, 3), Vector2i(5, 3),
+		Vector2i(7, 4), Vector2i(10, 4), Vector2i(3, 5), Vector2i(8, 5), Vector2i(3, 6),
+		Vector2i(4, 6), Vector2i(5, 6), Vector2i(6, 6), Vector2i(7, 6), Vector2i(8, 6),
+		Vector2i(1, 7), Vector2i(10, 7)]
 	var walled_run: Dictionary = await _over_promise_run(8, [], walled, 1, 12345, 40000)
 	err = _T.assert_eq(int(walled_run["foreign_pests"]), 0,
 		"nor while the walled road ran")

@@ -33,13 +33,29 @@ const ROWS: int = 9
 ## CELL/2 for any road, so the 4 px clearance is two constants. See
 ## test_the_road_is_still_the_road_the_constants_were_measured_against, which
 ## measures the route and fails naming what has to be re-derived.
+## The road CLIMBS once, and that is deliberate (plant-tower-defense-84x0).
+##
+## The previous route ran right, down, left, down, right — never once travelling
+## -Y. Pest._update_facing() has a `_facing = 0.0` branch for up-screen travel,
+## every pest sprite rests head-up-screen to make it mean something, and neither
+## had run in a single frame of a real game. A quarter of the walk animation was
+## unreachable content.
+##
+## The reshape holds both invariants the constants above are reasoned from: 31
+## steps over 32 cells, 1984 px plus two 64 px brackets = 2112 px, identical to
+## the road they were measured against. That is not a coincidence — it is why
+## these corners and not a freer shape. Re-derive nothing that depends only on
+## length or cell count; DO re-check anything that depends on the road's SHAPE
+## (dead ground, Sundew coverage), which has genuinely changed.
 const PATH_CORNERS: Array[Vector2i] = [
 	Vector2i(0, 1),
-	Vector2i(9, 1),
-	Vector2i(9, 4),
-	Vector2i(3, 4),
-	Vector2i(3, 7),
-	Vector2i(13, 7),
+	Vector2i(6, 1),
+	Vector2i(6, 4),
+	Vector2i(2, 4),
+	Vector2i(2, 7),
+	Vector2i(9, 7),
+	Vector2i(9, 3),
+	Vector2i(13, 3),
 ]
 
 const PATH_TILE: int = 50

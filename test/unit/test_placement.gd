@@ -511,9 +511,21 @@ func test_the_real_route_strands_exactly_the_cells_it_was_measured_to_strand() -
 	if err == "":
 		err = _T.assert_gt(dead_corn, 0, "and some of them cover none at all")
 	if err == "":
-		err = _T.assert_eq(dead_corn, 15, "15 cells are dead ground for a Corn Cobbler")
+		# Both counts were re-derived when the road grew its climb
+		# (plant-tower-defense-84x0), and they moved in OPPOSITE directions, which
+		# is the interesting part rather than an inconvenience:
+		#
+		#   corn  15 -> 11   the new route folds back on itself, so a 176 px ring
+		#                    reaches road from more of the board
+		#   chomp 34 -> 36   the same folding opens two larger clearings the 74 px
+		#                    grab radius cannot reach out of
+		#
+		# So the reshape made the board friendlier to the long reach and harsher to
+		# the short one. The relation asserted below is unchanged and now holds by a
+		# wider margin, which is the claim that actually matters.
+		err = _T.assert_eq(dead_corn, 11, "11 cells are dead ground for a Corn Cobbler")
 	if err == "":
-		err = _T.assert_eq(dead_chomp, 34, "and 34 are dead ground for a Chomp Flower")
+		err = _T.assert_eq(dead_chomp, 36, "and 36 are dead ground for a Chomp Flower")
 	if err == "":
 		err = _T.assert_gt(dead_chomp, dead_corn,
 			"the shorter reach strands strictly more of the board")
@@ -522,16 +534,22 @@ func test_the_real_route_strands_exactly_the_cells_it_was_measured_to_strand() -
 
 
 ## Dead ground is a property of the plant, not of the cell — which is the whole
-## reason the cue cannot be baked into the board. (2, 3) is legal and empty, and
+## reason the cue cannot be baked into the board. (1, 3) is legal and empty, and
 ## six road cells sit inside a Corn Cobbler's reach of it; a Chomp Flower
 ## standing on the same square can touch none of them.
+##
+## The cell moved one column west when the road grew its climb
+## (plant-tower-defense-84x0): the new route runs up column 2, which puts road at
+## (2, 4) directly under the old (2, 3) — well inside a Chomp's grab radius, so
+## that square stopped splitting the two reaches at all. (1, 3) covers the same
+## six cells for a cob, so the sentence above is unchanged rather than re-fitted.
 func test_a_cell_can_be_dead_ground_for_a_chomp_and_good_ground_for_a_corn() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
-	var split := Vector2i(2, 3)
+	var split := Vector2i(1, 3)
 	var corn_reach: float = PlantCatalog.reach(PlantCatalog.CORN)
 	var chomp_reach: float = PlantCatalog.reach(PlantCatalog.CHOMP)
 	var err: String = _T.assert_true(game.board.is_buildable(split),
-		"(2, 3) is somewhere a plant may actually stand")
+		"(1, 3) is somewhere a plant may actually stand")
 	if err == "":
 		err = _T.assert_eq(PlacementPreview.covered_road_cells(game.board, split, corn_reach), 6,
 			"a Corn Cobbler there covers six road cells")
