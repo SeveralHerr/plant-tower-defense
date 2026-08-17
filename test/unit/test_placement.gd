@@ -1153,6 +1153,76 @@ func test_two_overlapping_patches_wash_the_ground_they_share_exactly_once() -> S
 ## stretch of sticky road, which is the purchase this cue exists to talk a player
 ## out of. (3, 2) is one cell along and picks up (4, 1) as well, so it is a second
 ## patch worth buying and must draw nothing.
+## "What does the garden lose if this one goes?" — the selected half of the same
+## question the hover dots answer for a purchase.
+##
+## Both directions matter and they fail differently. Claiming a cell that another
+## plant also holds overstates what an uproot would cost; dropping a cell nothing
+## else holds hides the only reason to keep the plant where it is.
+##
+## The rings are on a node of their own rather than on the SelectionMarker, and the
+## reason is checkable rather than stylistic: play_entrance() tweens the marker's
+## scale from 0.55, and these marks sit whole cells from the plant's origin, so
+## they would slide on every selection. See SoleCoverMarks' header.
+func test_a_selected_plant_marks_only_the_road_nothing_else_covers() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var here := Vector2i(1, 3)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, here), "",
+		"the first cob goes in at %s" % here)
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var alone: Plant = game.plant_at(here)
+	var reaches: Array[Vector2i] = PlacementPreview.covered_road_cell_list(
+		game.board, here, Game.engagement_reach(PlantCatalog.CORN))
+	if err == "":
+		err = _T.assert_gt(reaches.size(), 1,
+			"a cob on %s reaches more than one road cell, so there is something to mark" % here)
+	if err == "":
+		err = _T.assert_eq(game.sole_cover_cells(alone).size(), reaches.size(),
+			"the only plant in the garden solely holds everything it reaches")
+	# A second cob overlapping it takes cells out of the first one's answer without
+	# the first plant changing at all.
+	if err == "":
+		var beside := Vector2i(0, 5)
+		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, beside), "",
+			"a second cob goes in at %s" % beside)
+		if err == "":
+			var shared: int = 0
+			for cell: Vector2i in PlacementPreview.covered_road_cell_list(
+					game.board, beside, Game.engagement_reach(PlantCatalog.CORN)):
+				if reaches.has(cell):
+					shared += 1
+			err = _T.assert_gt(shared, 0,
+				"the two cobs overlap, or this test measures nothing")
+			if err == "":
+				err = _T.assert_eq(game.sole_cover_cells(alone).size(),
+					reaches.size() - shared,
+					"and the first cob now solely holds only what the second cannot reach")
+	# Selection drives visibility, and deselecting EMPTIES rather than merely hides:
+	# a plant reselected later must not flash the previous garden's rings.
+	if err == "":
+		var marks: SoleCoverMarks = alone.sole_cover_marks()
+		err = _T.assert_true(marks != null, "the plant built its marks node")
+		if err == "":
+			alone.set_selected(true)
+			err = _T.assert_true(marks.visible, "selecting shows them")
+		if err == "":
+			var some := PackedVector2Array([Vector2(10.0, 10.0)])
+			err = _T.assert_true(marks.set_points(some), "new points repaint")
+		if err == "":
+			err = _T.assert_false(marks.set_points(PackedVector2Array([Vector2(10.0, 10.0)])),
+				("the same points do NOT repaint -- this is driven from _refresh(), which "
+					+ "fires on every seed payout"))
+		if err == "":
+			alone.set_selected(false)
+			err = _T.assert_false(marks.visible, "deselecting hides them")
+		if err == "":
+			err = _T.assert_eq(marks.points.size(), 0, "and empties them")
+	_T.free_ui(game)
+	return err
+
+
 ## The dots say "this is the road this purchase newly defends", so the two ways of
 ## being wrong are opposite and both matter: marking ground that is already covered
 ## sells a plant that buys nothing, and failing to mark bare ground hides the only

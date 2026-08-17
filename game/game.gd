@@ -601,6 +601,47 @@ static func engagement_reach(id: StringName) -> float:
 	return PlantCatalog.reach(id)
 
 
+## The road cells this plant covers that NOTHING else standing covers — what the
+## garden would lose if it were uprooted (plant-tower-defense-nx9o).
+##
+## The mirror of PlacementPreview.new_cover_cells(), which answers the same
+## question about a plant not bought yet. Both exist because a range ring is
+## identical whether it is the only thing holding that road or one of three, and
+## cycle 54 measured that difference as decisive: five cobs covering all 32 road
+## cells lose a pest where seven covering the same 32 do not.
+##
+## Empty is a real answer and NOT a suggestion to uproot: it means everything this
+## plant reaches is backed up, which on a stretch that needs depth is exactly the
+## purchase that was wanted. It is the answer to "can I move this one?", not to
+## "should I?".
+func sole_cover_cells(plant: Plant) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if board == null or not is_instance_valid(board):
+		return out
+	if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
+		return out
+	var reach: float = engagement_reach(plant.kind)
+	if reach <= 0.0:
+		return out
+	var others: Dictionary = {}
+	for key: Vector2i in _plants:
+		var other := _plants[key] as Plant
+		if other == null or not is_instance_valid(other) or other == plant:
+			continue
+		if other.is_destroyed():
+			continue
+		var other_reach: float = engagement_reach(other.kind)
+		if other_reach <= 0.0:
+			continue
+		for cell: Vector2i in PlacementPreview.covered_road_cell_list(
+				board, other.cell, other_reach):
+			others[cell] = true
+	for cell: Vector2i in PlacementPreview.covered_road_cell_list(board, plant.cell, reach):
+		if not others.has(cell):
+			out.append(cell)
+	return out
+
+
 ## Every road cell a pest could stand on right now with nothing in the garden able
 ## to touch it — the coverage-hole map, in walk order.
 ##
@@ -1640,6 +1681,18 @@ func _refresh() -> void:
 		if _preview != null and is_instance_valid(_preview) and _preview.visible:
 			_preview.covered_now = covered_road_cells()
 			_preview.queue_redraw()
+		# The selected plant's own half of the same question. Pushed here rather
+		# than from set_selected() because the answer changes when the GARDEN
+		# changes, not only when the selection does: plant a second cob beside the
+		# selected one and the rings under it should thin out without the player
+		# clicking anything.
+		if selected_placed != null and is_instance_valid(selected_placed):
+			var marks: SoleCoverMarks = selected_placed.sole_cover_marks()
+			if marks != null:
+				var at: PackedVector2Array = PackedVector2Array()
+				for cell: Vector2i in sole_cover_cells(selected_placed):
+					at.append(board.cell_to_world(cell))
+				marks.set_points(at)
 	if hud == null:
 		return
 	hud.refresh(state())
