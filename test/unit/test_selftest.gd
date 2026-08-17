@@ -4618,23 +4618,47 @@ func _scripted_nodes(root: Node) -> Array[Node]:
 func test_the_plant_bar_fits_a_catalogue_larger_than_todays() -> String:
 	var span: float = Hud.PLANT_BAR_BOTTOM - Hud.PLANT_BAR_Y
 	var err: String = ""
+	# The sweep asserts TWO different things now, and the split is the point. Up to the
+	# catalogue the panel was sized for, the bar fits without scrolling. Past it, the
+	# layout must SAY it overflows rather than quietly returning something unrenderable --
+	# which is what it used to do: it fell back to two columns, whose own header called
+	# that answer impossible to render, and cycle 98's sixth plant reached it. `findings`
+	# then reported the side panel 167px off the right edge of the viewport.
+	#
+	# The height floor holds either way. A button below 40px is not a touch target, and
+	# that is the one thing this function must never return.
+	var fits_without_scrolling: int = 0
 	for count: int in range(1, 11):
 		var layout: Dictionary = Hud.plant_bar_layout(count)
 		var rows: int = int(layout["rows"])
 		var height: float = float(layout["height"])
 		var used: float = float(rows) * height + float(Hud.PLANT_BAR_SEPARATION * (rows - 1))
-		err = _T.assert_true(used <= span + 0.01,
-			"%d plant(s): %d row(s) at %.1fpx use %.1f of %.1f available"
-				% [count, rows, height, used, span])
+		err = _T.assert_eq(int(layout["columns"]), 1,
+			"%d plant(s): one column, always -- two was never renderable at PANEL_WIDTH"
+				% count)
 		if err == "":
 			err = _T.assert_true(height >= Hud.PLANT_BUTTON_MIN_HEIGHT,
 				"%d plant(s): a %.1fpx button is below the %dpx touch minimum"
 					% [count, height, int(Hud.PLANT_BUTTON_MIN_HEIGHT)])
 		if err == "":
-			err = _T.assert_false(bool(layout.get("overflows", false)),
-				"%d plant(s) still fits without the bar needing to scroll" % count)
+			# Fits and says it fits, or does not fit and says THAT. What is forbidden is
+			# a layout that overruns the span while reporting no overflow, because the
+			# caller reads that flag to decide whether to scroll.
+			var overflows: bool = bool(layout.get("overflows", false))
+			err = _T.assert_eq(overflows, used > span + 0.01,
+				"%d plant(s): %d row(s) at %.1fpx use %.1f of %.1f, and overflows says %s"
+					% [count, rows, height, used, span, str(overflows)])
+			if err == "" and not overflows:
+				fits_without_scrolling = count
 		if err != "":
 			return err
+	if err == "":
+		# The number today's panel actually holds. Pinned so that shrinking the bar, or
+		# raising the touch floor, is a visible change rather than a silent one -- and so
+		# that a future plant reads this line and knows the bar will scroll.
+		err = _T.assert_eq(fits_without_scrolling, 5,
+			"five plants fit the panel without scrolling; the sixth is why the bar is "
+				+ "inside a ScrollContainer (got %d)" % fits_without_scrolling)
 	return err
 
 

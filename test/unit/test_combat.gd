@@ -5544,3 +5544,87 @@ func test_every_mutation_makes_a_kill_count_as_hard() -> String:
 		err = _T.assert_eq(String(Sfx.kill_event_for(0.5)), String(Sfx.PEST_KILLED),
 			"nor does a hypothetical discount, which would otherwise read as harder")
 	return err
+
+
+# -- Garden Mint: the plant that acts on plants -------------------------------
+
+
+func test_mint_stacks_multiplicatively_and_floors_at_none() -> String:
+	## The buff rule, pure and without a board. `pow` rather than a table, so the answer for
+	## three is a real answer rather than an off-the-end guess -- and deliberately unclamped:
+	## four Mints around one Corn is a silly board that costs 100 seeds and gives up four
+	## shooting cells, and the game does not need a rule the player cannot see.
+	var err: String = _T.assert_float_eq(Mint.scale_for(0), 1.0, 0.0001,
+		"no Mint next door changes nothing")
+	if err == "":
+		err = _T.assert_float_eq(Mint.scale_for(1), Mint.NEIGHBOUR_SCALE, 0.0001,
+			"one Mint is one multiplication")
+	if err == "":
+		err = _T.assert_float_eq(Mint.scale_for(2),
+			Mint.NEIGHBOUR_SCALE * Mint.NEIGHBOUR_SCALE, 0.0001, "two stack")
+	if err == "":
+		err = _T.assert_float_eq(Mint.scale_for(-1), 1.0, 0.0001,
+			"and a negative count is floored rather than inverting the buff into a curse")
+	if err == "":
+		err = _T.assert_true(Mint.NEIGHBOUR_SCALE < 1.0,
+			"the scale is BELOW one -- an interval is the reciprocal of a rate, so a "
+				+ "number above one would slow the neighbours down")
+	return err
+
+
+func test_mint_reaches_four_orthogonal_cells_and_no_diagonal() -> String:
+	## The shape of the reach, asserted against the ring that draws it. A diagonal neighbour
+	## is 90px away against a 64px cell, so a ring at Mint.REACH would not contain it -- a cue
+	## that does not contain what it affects is the defect cycle 85 shipped.
+	var cells: Array[Vector2i] = Mint.neighbours_of(Vector2i(3, 4))
+	var err: String = _T.assert_eq(cells.size(), 4, "four neighbours, not eight")
+	for cell: Vector2i in cells:
+		if err != "":
+			break
+		var delta: Vector2i = cell - Vector2i(3, 4)
+		err = _T.assert_eq(absi(delta.x) + absi(delta.y), 1,
+			"%s is orthogonally adjacent" % [delta])
+		if err == "":
+			# The ring must actually contain the cell centre it claims.
+			err = _T.assert_true(Vector2(delta * int(Board.CELL)).length() <= Mint.REACH + 0.01,
+				"and the drawn ring reaches it (%.0fpx of %.0f)"
+					% [Vector2(delta * int(Board.CELL)).length(), Mint.REACH])
+	if err == "":
+		err = _T.assert_true(Vector2(Vector2i(1, 1) * int(Board.CELL)).length() > Mint.REACH,
+			"while a diagonal is outside the ring, which is why it is not a neighbour")
+	return err
+
+
+func test_the_weather_and_a_neighbour_compose_rather_than_overwrite() -> String:
+	## `Plant.composed_interval` exists because `Game._apply_weather` ASSIGNS
+	## `fire_interval_scale` for every plant on every weather change. A second source of
+	## the same multiplier folded into that field would be wiped the next time the weather
+	## turned, and nothing would say so -- the plants keep firing, at the wrong rate.
+	##
+	## So the two factors live in separate fields and meet here. Asserted as arithmetic
+	## because that is what it is: the bug this prevents is a SECOND event overwriting a
+	## first, and a function that multiplies its arguments cannot have that bug.
+	var base: float = 0.8
+	var drought: float = WaveDirector.fire_interval_scale_for(WaveDirector.WEATHER_DROUGHT)
+	var err: String = _T.assert_gt(drought, 1.0,
+		"a drought lengthens the interval, which is what makes it a penalty")
+	if err == "":
+		err = _T.assert_float_eq(Plant.composed_interval(base, 1.0, 1.0), base, 0.0001,
+			"neither factor engaged leaves the base alone")
+	if err == "":
+		err = _T.assert_float_eq(Plant.composed_interval(base, drought, 1.0),
+			base * drought, 0.0001, "weather alone is the weather's multiplier")
+	if err == "":
+		err = _T.assert_float_eq(Plant.composed_interval(base, 1.0, Mint.NEIGHBOUR_SCALE),
+			base * Mint.NEIGHBOUR_SCALE, 0.0001, "a neighbour alone is the neighbour's")
+	if err == "":
+		# The case that matters: both at once, neither winning.
+		err = _T.assert_float_eq(Plant.composed_interval(base, drought, Mint.NEIGHBOUR_SCALE),
+			base * drought * Mint.NEIGHBOUR_SCALE, 0.0001,
+			"and together they multiply -- a drought beside a Mint is slower than the Mint "
+				+ "alone and faster than the drought alone, rather than one replacing the other")
+	if err == "":
+		err = _T.assert_true(
+			Plant.composed_interval(base, drought, Mint.NEIGHBOUR_SCALE) < base * drought,
+			"which is to say the buff survives the weather")
+	return err

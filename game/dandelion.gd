@@ -239,7 +239,8 @@ func _launch_at(offset: Vector2) -> void:
 	# later would have is_volley_open() reporting "mid-volley" on a plant with
 	# nothing left to fire — which is what the selection panel reads.
 	_volley_open = volley_open(_fluff, _volley_open)
-	_shot_cooldown = SHOT_INTERVAL * fire_interval_scale
+	_shot_cooldown = composed_interval(SHOT_INTERVAL, fire_interval_scale,
+		neighbour_interval_scale)
 	_since_shot = 0.0
 	_refresh_fluff_sprite()
 	Sfx.play(Sfx.DANDELION_PUFF)

@@ -381,7 +381,8 @@ func kernel_damage() -> float:
 ## both.** The fix is not to patch the two readouts, it is to make this the only
 ## place any of them asks.
 func fire_interval() -> float:
-	return float(_stats()["interval"]) * fire_interval_scale
+	return composed_interval(float(_stats()["interval"]), fire_interval_scale,
+		neighbour_interval_scale)
 
 
 ## Fraction of the reload elapsed: 0.0 the instant a volley fires, 1.0 once the

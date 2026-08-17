@@ -126,6 +126,30 @@ var health: float = MAX_HEALTH
 ## owing time it earned under weather that has passed.
 var fire_interval_scale: float = 1.0
 
+## The same multiplier, contributed by NEIGHBOURS rather than by the sky — a Mint next door.
+##
+## A separate field and not a share of the one above, and the reason is mechanical rather
+## than tidiness: `Game._apply_weather` does `plant.fire_interval_scale = scale` for every
+## plant on every weather change (`game/game.gd:345`). It **assigns**. A buff folded into
+## that field would be wiped the next time the weather turned, and the failure would be
+## invisible — the plants keep firing, at the wrong rate, with nothing logged anywhere.
+##
+## So the two factors compose instead, through `composed_interval` below. Weather owns one,
+## the board owns the other, and neither can silently overwrite the other's work.
+var neighbour_interval_scale: float = 1.0
+
+
+## What a plant's firing interval actually is, once the sky and its neighbours have both had
+## their say. Multiplicative, so a drought (2.0) beside a Mint (0.8) is 1.6 rather than one
+## of them winning.
+##
+## Static and pure so the composition is assertable without a board, a wave or a weather
+## change — which matters more here than usual, because the bug this function exists to
+## prevent only appears on the SECOND event (place a Mint, then change the weather) and a
+## test that stages one event would pass against the broken version.
+static func composed_interval(base: float, weather_scale: float, neighbour_scale: float) -> float:
+	return base * weather_scale * neighbour_scale
+
 var _sprite: Sprite2D
 ## The node the idle motion lives on, sitting between the plant and its sprite.
 ##

@@ -40,6 +40,7 @@ const EXPECTED_SIZE := {
 	"chomp_flower_eating": 64,
 	"chomp_flower_eating_late": 64,
 	"corn_cobbler": 64,
+	"mint": 64,
 	"corn_kernel": 16,
 	# The Bomb Dandelion's four fluff frames. One drawing, four tuft counts --
 	# see art_src/dandelion.svg for why every set is symmetric about the vertical

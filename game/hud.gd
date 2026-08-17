@@ -681,10 +681,10 @@ func _build_side_panel(root: Control) -> void:
 	_plant_bar = GridContainer.new()
 	_plant_bar.name = "PlantBar"
 	_plant_bar.columns = int(layout["columns"])
-	_plant_bar.position = Vector2(12, PLANT_BAR_Y)
-	_plant_bar.size = Vector2(PANEL_WIDTH - 24, PLANT_BAR_BOTTOM - PLANT_BAR_Y)
 	_plant_bar.add_theme_constant_override("v_separation", PLANT_BAR_SEPARATION)
 	_plant_bar.add_theme_constant_override("h_separation", PLANT_BAR_SEPARATION)
+	_plant_bar.position = Vector2(12, PLANT_BAR_Y)
+	_plant_bar.size = Vector2(PANEL_WIDTH - 24, PLANT_BAR_BOTTOM - PLANT_BAR_Y)
 	panel.add_child(_plant_bar)
 
 	for id: StringName in PlantCatalog.ids():
@@ -952,21 +952,26 @@ static func plant_bar_layout(count: int) -> Dictionary:
 	# this answers and what the sweep test checks; a catalogue that actually
 	# reaches for it needs shorter labels first. See PLANT_BAR_BOTTOM, where that
 	# was found live rather than reasoned about.
-	for columns: int in [1, 2]:
-		var rows: int = int(ceil(float(count) / float(columns)))
-		if rows <= 0:
-			continue
-		var height: float = (span - float(PLANT_BAR_SEPARATION * (rows - 1))) / float(rows)
-		if height >= PLANT_BUTTON_MIN_HEIGHT:
-			return {"columns": columns, "height": height, "rows": rows}
-	# Past what two columns can hold at a legible size. Report the two-column
-	# floor rather than silently shrinking below the touch minimum: whoever adds
-	# that plant needs to make the bar scroll, and a test says so.
-	var rows_max: int = int(ceil(float(count) / 2.0))
+	# ONE COLUMN, ALWAYS. This used to try two before giving up, and the two-column
+	# answer was unrenderable -- the paragraph above says so in its own words, and it was
+	# still the value this function returned. Cycle 98 added the sixth plant, reached that
+	# branch for the first time, and `findings` reported the side panel running 167px past
+	# the right edge of the viewport: `ui_overflow` on the bar and on three buttons.
+	#
+	# A branch a file documents as broken is worse than no branch, because it reads as
+	# handled. The height floor and the `overflows` flag were always the honest answer;
+	# what was missing was a caller that did anything with the flag, which now exists.
+	var rows: int = maxi(1, count)
+	var fitted: float = (span - float(PLANT_BAR_SEPARATION * (rows - 1))) / float(rows)
+	if fitted >= PLANT_BUTTON_MIN_HEIGHT:
+		return {"columns": 1, "height": fitted, "rows": rows, "overflows": false}
+	# Below the touch floor. Report the floor and say the bar must scroll rather than
+	# silently returning a button too small to hit -- `findings` gates an interactive
+	# Control at 40x40 and is right to.
 	return {
-		"columns": 2,
+		"columns": 1,
 		"height": PLANT_BUTTON_MIN_HEIGHT,
-		"rows": rows_max,
+		"rows": rows,
 		"overflows": true,
 	}
 

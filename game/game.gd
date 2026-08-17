@@ -1759,7 +1759,42 @@ func _click_at(screen_pos: Vector2) -> void:
 # -- state ------------------------------------------------------------------
 
 
+## Recomputes every plant's neighbour buff from the board as it now stands.
+##
+## Driven from `_refresh()` rather than from Mint itself, and that is the whole design: a
+## buff applied by the buffer cannot be UNapplied when the buffer is uprooted, because by
+## then there is nothing left to run. Whoever owns the set owns the derived state, so this
+## recomputes from scratch every time rather than adding and subtracting deltas — an
+## incremental version has to get uproot, destruction, placement and replacement all right,
+## and gets no second chance when it does not.
+##
+## Assigns rather than multiplies into the field, for the same reason weather does: two
+## sources writing one number is how the number stops meaning anything. Weather owns
+## `fire_interval_scale`, this owns `neighbour_interval_scale`, and `Plant.composed_interval`
+## is where they meet.
+func _refresh_neighbour_buffs() -> void:
+	var mints: Dictionary = {}
+	for key: Vector2i in _plants:
+		var plant := _plants[key] as Plant
+		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
+			continue
+		if plant is Mint:
+			for cell: Vector2i in Mint.neighbours_of(key):
+				mints[cell] = int(mints.get(cell, 0)) + 1
+	for key: Vector2i in _plants:
+		var plant := _plants[key] as Plant
+		if plant == null or not is_instance_valid(plant):
+			continue
+		# A Mint beside a Mint buffs nothing: neither of them fires, so the number would
+		# be real and unobservable. Skipping it keeps `scale_for` honest as the answer to
+		# "what does this plant's interval get multiplied by" rather than to "how many
+		# Mints are adjacent", which are different questions the moment one is a Mint.
+		plant.neighbour_interval_scale = (1.0 if plant is Mint
+			else Mint.scale_for(int(mints.get(key, 0))))
+
+
 func _refresh() -> void:
+	_refresh_neighbour_buffs()
 	# Ahead of the hud guard, not after it. The road's off-aim marks are the one
 	# part of a refresh that is not the HUD's, and the headless suite drives a Game
 	# with no HUD at all — putting this below the return would make the board's
