@@ -195,6 +195,31 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (24 of 30) — glyphs are a vocabulary, and this game has two
+
+- **The game draws glyphs from two sets that can collide, and nothing knows it.**
+  `KeyBindings.SHORT_NAMES` (`game/key_bindings.gd:129`) owns ←, →, ↑, ↓ as KEY NAMES;
+  the UI owns ← for "back" (`OverlayScreen.BACK_TEXT`), · as a separator, — as a dash,
+  ∞ for endless, • as this cycle's revert mark. A glyph used for both is exactly the
+  bug caught by screenshot this cycle. **One table naming every glyph and what it
+  means** would make a collision a lint rather than a picture — and there is already a
+  `derive-the-list` shape here: the UI's marks must not intersect
+  `SHORT_NAMES.values()`.
+- **Nothing checks that a glyph the game draws actually exists in the font.** A missing
+  glyph renders as a `.notdef` box with a real width, so `GardenTheme.measure()`
+  returns a plausible number and every budget passes. The only way this project has
+  ever caught one is by looking at a screenshot. `Font.has_char()` exists.
+- **`_set_card_active` is a pattern with one implementation and three screens that
+  need it.** `PauseScreen` makes its own buttons inert under an overlay
+  (`game/pause_screen.gd`); `TitleScreen._set_menu_active` does the same for its menu;
+  the HUD does neither, which is `plant-tower-defense-csrc`. Three copies of an idea
+  is where it becomes a shared helper — on `OverlayScreen`, which is what opens over
+  all of them.
+- **The armed reset is the only place this game shows a pending destructive change.**
+  Uproot arms for 4 seconds and says so in a message; the plant it will remove is not
+  marked. Same two-channel treatment, same reasoning, and `Game._uproot_left` already
+  carries the armed state.
+
 ### New this cycle (23 of 30) — seven budgets now, and the shape they share
 
 - **Every budget in this project prices a WIDTH, and the road ceiling is the only one
