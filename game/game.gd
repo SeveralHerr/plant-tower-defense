@@ -2233,7 +2233,8 @@ func _budget_hud_readouts() -> Dictionary:
 			observations)
 	return computed_budget("hud_readouts", "Hud.WORST_CASE_TEXT", "res://game/hud.gd",
 		"%s worst case" % worst_name, worst_needed, worst_budget, "px",
-		"Font.get_string_size() over each live readout in Root/TopBar/StatsRow",
+		("Font.get_string_size() over Hud.WORST_CASE_TEXT's declared worst case for each "
+			+ "readout, measured against that readout's LIVE slot in Root/TopBar/StatsRow"),
 		("%s renders its longest value trimmed to an ellipsis and nothing errors -- widen "
 			+ "its slot, which spends the stats-row budget below") % worst_name,
 		observations)
