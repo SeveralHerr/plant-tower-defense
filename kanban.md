@@ -177,6 +177,16 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
 
 ### Requested directly by James — not grown, asked for
 
+**All four bullets audited as of cycle 76, and three of the four were substantially
+wrong.** One shipped entirely (facing), one shipped in every clause (the dandelion), one
+had two of three factual claims false (waves and bosses), and the fourth was corrected in
+cycle 71 (animation). **This is the least accurate section in the file**, and the reason is
+structural rather than careless: these are the only entries nobody re-reads while working,
+because they were written once, by hand, about a game that then changed underneath them —
+every other section is at least revisited when its neighbourhood is worked.
+*(The cycle-76 commit message says "four of five bullets"; there are four, and all four are
+done. Counted afterwards, which is the same mistake the audit was about.)*
+
 - **Animate all the plants and enemies.** The ask: idle motion — sway, breathe,
   twitch — on every plant and pest, not just reaction poses for the moments the game
   already hooks.
@@ -236,6 +246,35 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   dominant axis and maps all four cardinals onto the up-screen convention, and `_gait`
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
+
+### New this cycle (76) — six kinds of enemy, and one knob that raises how often
+
+- **The endless ramp turns four dials and the variety ceiling is not one of them.**
+  `Pest.mutation` is a single `StringName` (`game/pest.gd:284`), applied one at a time by
+  `apply_mutation` (`:455`), and there are three of them — armoured, winged, hungry
+  (`:94-96`). Two species (`:16-17`) times three mutations plus plain is **eight kinds of
+  enemy, and six of them are mutated ones**. Endless mode escalates health, speed, the
+  beetle column and `MUTATION_CHANCE` — the last from 0.4 toward a cap of 0.85
+  (`game/wave_director.gd:22`, `:29-30`) — so past the cap the player meets the same eight
+  things, more often, faster, with more health, forever. **Every dial raises intensity and
+  none raises variety.** Letting a pest carry two mutations is the cheapest new kind in the
+  game: `apply_mutation` already composes onto whatever the pest is, the husk multipliers
+  (`:103-107`) multiply naturally, and an armoured-winged beetle is a genuinely different
+  problem rather than a bigger one. It is also the sort of thing that needs a cap and a
+  wave floor decided up front, which is why this is an entry and not a bead yet.
+- **Every kill sounds the same, on a mixer that now knows how to say otherwise.**
+  `Sfx.PEST_KILLED` is one event for every death — an aphid you sneezed on and a hungry
+  armoured beetle that soaked four volleys arrive at the player as the same
+  `impactSoft_heavy_000.ogg` at −3.0 dB. The game already prices that difference twice:
+  `MUTATION_HUSK_MULTIPLIER` (`game/pest.gd:103-107`) pays 1.5× or 2× for the harder kill,
+  and cycle 74 gave the mixer a direction — losses go lower, gains go higher. A harder kill
+  is a bigger gain, so it wants to sit *above* the base kill.
+  **The obstacle is real and worth naming here**: `Sfx.play(event)` takes an id and nothing
+  else, and `PITCH` is keyed by id, so a per-kill pitch means either new event ids
+  (`pest_killed_hard`) or a per-call override on `play`. The second is a wider change than
+  it looks — every existing call site becomes a place where a caller could disagree with the
+  table, which is exactly what `tune_voice` was extracted to prevent. Pairs with `-rowt`,
+  which wants the corpse's linger scaled by the same multiplier.
 
 ### New this cycle (75) — four surfaces are capacity-bound and one of them computes it
 

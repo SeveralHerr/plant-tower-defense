@@ -76,6 +76,26 @@ the rewrite. Slice by index with an assert on each boundary line.
 5. **Report the table plus a one-line-per-entry rationale.** Do not edit `kanban.md` in
    the same pass — separate the finding from the rewrite, or a wrong verdict is applied
    before anyone reads it.
+
+   **The one sanctioned way to compress the two passes** is to make the second pass
+   mechanical instead of dropping it. Rewrite in place, then run a script that opens every
+   `file:line` the rewritten range cites and prints the line it lands on:
+
+   ```python
+   import re
+   sec = open('kanban.md', encoding='utf-8').read().split(START)[1].split(END)[0]
+   for f, a, b in sorted(set(re.findall(r'`([a-z_]+/[a-z_]+\.gd):(\d+)(?:-(\d+))?', sec))):
+       lines = open(f, encoding='utf-8').read().splitlines()
+       lo, hi = int(a), int(b or a)
+       print("%s:%s %s" % (f, lo, " | ".join(l.strip()[:60] for l in lines[lo-1:hi])))
+   ```
+
+   This is strictly better than a second reading by the same eyes, and it has caught two
+   bad citations that a re-read did not — both times because the *edit itself* moved the
+   lines it cited. What it does not check is whether the cited line SUPPORTS the claim, so
+   read the printed output rather than the exit code. Cycles 68 and 76 both wrote a
+   citation that resolved to a doc-comment line one above the constant it meant; only
+   printing the line showed it.
 6. **Then act**: `SHIPPED` entries move to the Done section with their file:line;
    `STALE` ones are deleted with the reason in the commit message; `DRIFTED` ones are
    rewritten to what is actually true; `STILL REAL` ones are the only ones eligible to

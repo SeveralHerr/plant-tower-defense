@@ -5243,3 +5243,34 @@ cited in code, and the citation is a mitigation this project has watched fail.
     Phase 4 bridge check does. Recorded here with `--no-reach` and five `checks` entries
     naming the fixture and the three mutations, which is what the table should have told me
     to do rather than to stop.
+
+## 2026-08-17 — Cycle 76: auditing the user's own request list
+
+- Value: **overkill** — avoided: triaged out at Phase 0.5, no `res://` change. The cycle was
+  four `grep`s and a rewrite, no game launched, no gate beyond the citation-verifier script,
+  and no ledger row. Writing this entry anyway is the point: a cycle that correctly did not
+  use the harness is data about when the harness is needed, and it is the entry that goes
+  unwritten.
+  - Expected: to check three unaudited bullets and find one or two drifted.
+  - Got: three of the four bullets in that section were substantially wrong, and the two
+    that were "unbuilt asks" are shipped in every clause — an epic packet tier, four
+    authored fluff frames indexed off the ammunition count, a real parabola, a blast radius,
+    and a facing function that maps all four cardinals.
+  - Found: something about my own workflow rather than the game. **Four candidate kanban
+    entries died this cycle because I opened the code before writing them** — "endless never
+    tells the player what got harder" (there is a `_what_got_harder` feeding the wave-start
+    message, `game/wave_director.gd:623`), "the boss has no mechanic" (it does), "the
+    dandelion is unbuilt" (it is not), "facing is broken" (it is not). The rule that says
+    open the code first has now saved four entries in one cycle, which is more than it has
+    caught in any previous one.
+  - Cheaper: nothing — `grep` *was* the method, and the whole finding is that reading is
+    cheaper than remembering.
+
+- Gap: **no gaps this turn.** One note on the audit skill instead. `kanban-staleness-audit`
+  says to separate the finding pass from the rewrite pass so a wrong verdict is not applied
+  before anyone reads it, and I did both in one pass. The mitigation was mechanical rather
+  than careful — a script that opens every `file:line` in the rewritten section and prints
+  the cited line, which has caught two bad citations in earlier cycles and is strictly
+  better than a second reading by the same eyes. Worth folding into the skill as the
+  sanctioned way to compress the two passes, rather than leaving the rule stated and
+  routinely broken.
