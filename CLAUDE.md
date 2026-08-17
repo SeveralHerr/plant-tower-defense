@@ -103,6 +103,16 @@ running a command. **Never write a work checklist into it.**
      **Name which source each came from, in the issue.** This step used to say "out of
      kanban.md's backlog", and that single filename is what made every other source
      invisible for 33 cycles. Never end a cycle with nothing ready.
+   - **At least one item must come from OUTSIDE the neighbourhood of this cycle's
+     work.** Cycles 30-34 shipped one player-facing change and eleven correctness or
+     tooling ones, and the cause is structural rather than a matter of taste: the
+     queue is refilled from what the last cycle's work exposed, and step 3's
+     cite-a-`file:line` rule — which is right, and has caught three bad entries —
+     makes citing *easiest for the file you already have open*. So the loop keeps
+     finding real work three feet from where it just stood. Take one item from an
+     older `kanban.md` section, or from the design brief, and run
+     `kanban-staleness-audit` over that section first, since those are the parts the
+     file itself calls half stale.
    - **Then rewrite `cycle-log.md`**: bump the cycle number, write what THIS cycle
      taught in a sentence or two, and refresh what is waiting on the user and why.
      Keep it short and keep it prose — the moment it grows a checklist it has started

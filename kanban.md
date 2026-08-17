@@ -1291,23 +1291,29 @@ a guess about the rest of the codebase. See `.claude/skills/kanban-staleness-aud
   the same threshold the shrinking ring already reads — would sell "big pests take a
   while" without a new mechanic, just a second sprite and one `if`.
 
-### Grown straight from the brief
+### Grown straight from the brief — ALL FOUR SHIPPED (audited cycle 34)
 
-Not filed as beads yet — these are the ones worth building *because* they fall out
-of what the design doc already says, rather than being bolted on.
+This section said "Not filed as beads yet — these are the ones worth building" and
+had said it for many cycles. Every one of them is built. Audited with
+`kanban-staleness-audit` because the workflow's step 6 now requires one item per
+cycle from outside the neighbourhood of that cycle's work, and this is what came
+back — a whole section reading as an open backlog that is a Done list.
 
-- **Chomp Flower is occupied while chewing.** The doc's own words — "takes a while
-  eating bigger pests" — make the Chomp a *body blocker*, not a DPS tower. A beetle
-  that walks into one buys the lane several seconds, and the player who over-invests
-  in Chomps has a lane full of busy mouths and nothing shooting. That single rule is
-  the whole plant/pest rock-paper-scissors, for free.
-- **Seed packets are a gamble, not a menu.** "You have to buy plant seeds" — a packet
-  costs seeds and gives a *random* plant of its tier. Cheap packets for commons,
-  expensive ones with a better roll. Buying is then a decision instead of a queue.
-- **Corn upgrade ladder, drawn by the designer.** The doc literally shows one corn
-  → a spread of kernels. Ship it as an in-run upgrade: `single → double → bunch`,
-  each level costing seeds and visibly widening the spread.
-- **Replanting is free, uprooting refunds.** Small mercy, big for a young player.
+- ~~**Chomp Flower is occupied while chewing.**~~ **SHIPPED** —
+  `ChompFlower.is_busy()` (`game/chomp_flower.gd:113`), and the file's own header
+  spends three paragraphs on the busy-mouth trade the entry describes.
+- ~~**Seed packets are a gamble, not a menu.**~~ **SHIPPED** — `SeedBank` rolls the
+  tier's pool (`game/seed_bank.gd:213`, `pool[_rng.randi_range(...)]`).
+- ~~**Corn upgrade ladder, drawn by the designer.**~~ **SHIPPED** — three levels with
+  a widening arc, `game/corn_cobbler.gd:45` maps level → firing pattern and its
+  header says a hand-typed spread that breaks the nesting fails rather than ships.
+- ~~**Replanting is free, uprooting refunds.**~~ **SHIPPED** — 60% refund behind a
+  4-second confirm (`game/game.gd:17`, `UPROOT_CONFIRM_SECONDS`).
+
+**What this section is worth keeping for:** it is the clearest evidence in the file
+that an unaudited backlog section decays into a list of things already done, while
+still reading exactly like work. Four entries, four shipped, and the heading still
+said "not filed yet".
 
 ### Systems that give a short game long legs
 
