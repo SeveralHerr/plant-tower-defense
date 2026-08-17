@@ -4389,3 +4389,39 @@ cited in code, and the citation is a mitigation this project has watched fail.
   would have been recorded as "the mutation survived" by a less suspicious sweep. A
   mutation harness needs to distinguish *did not apply* from *applied and survived*;
   mine printed them differently only because I happened to assert the needle was found.
+
+## 2026-08-17 — Cycle 50: checker audit, and proving the facing request already shipped
+
+- Value: **warranted** — the runtime pass produced a claim about the LEVEL that no
+  amount of reading `pest.gd` could have produced.
+  - Expected: to confirm or refute "enemy facing is broken" — a direct user request —
+    and I expected to find the code correct and the art wrong, since that is where a
+    facing bug usually lives when the rotation maths reads fine.
+  - Got: both correct. All four cardinals read back live off a running game (`+X` →
+    1.5707963267949, `+Y` → 3.14159265358979, `-X` → -1.5707963267949, `-Y` → 0.0), and
+    all three pest SVGs rest head-up-screen, matching `art_src/STYLE.md:14`.
+  - Found: **the road never travels -Y.** Reading a pest's `_route` off the live tree
+    gave thirty-four points running right, down, left, down, right — not one -Y step. So
+    `_update_facing`'s `_facing = 0.0` branch has never executed in a real game, and
+    `Vector2.UP` appeared in no test either. Three of the four cardinals were covered by
+    accident (`+X` in the gait test, `-X` via the corpse test, `+Y` used without its
+    value being asserted) and the fourth by nothing at all. That is a property of the
+    shipped level, not of the diff, and only the running game holds it.
+    Also found, and worse: **my first mutation sweep was vacuous.** `run_tests.py` takes
+    `--filter` only after `--`; without it argparse exits 2 and all three mutations read
+    as "RED" having never run a test. Caught only because the RESTORE run also came back
+    non-zero, which it had no business doing.
+  - Cheaper: nothing. `--offline` static reads answer "does this verb exist"; they cannot
+    answer "does any leg of this road point up".
+
+- Gap: **no gaps this turn** — and one note worth recording in the harness's favour,
+  because the thing that saved me was the harness's own contract. Exit codes here are
+  `0` pass / `1` findings / `2` the runner could not run, and my sweep's bug was
+  collapsing 1 and 2 into "non-zero, therefore killed". Redone as a three-way verdict —
+  `RED (killed)` on 1, `SURVIVED` on 0, `BROKEN RUN - proves nothing` on 2 — every
+  mutation came back exit 1 with a real `Failed: 2 / 1 / 2` and `Selected: 3 of 555`
+  beside it. **A mutation harness that reads only truthiness cannot tell a killed test
+  from a test that never ran**, which is the same shape as `[G-056]`: an unexpected
+  result that is ambiguous between two opposite meanings, where the result itself
+  carries no way to tell. The denominator (`Selected: 3 of 555`) is what settles it, and
+  it was printed all along.

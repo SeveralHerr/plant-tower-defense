@@ -187,6 +187,25 @@ endings first (a CRLF checkout is a second way a needle silently misses), and re
 outcomes rather than two — `RED`, `SURVIVED`, `NOT-APPLIED`. Prefer an editing tool over a
 shell heredoc for any needle containing a backslash.
 
+**And read the exit code specifically, never just its truthiness.** This applies to
+mutating production code against the test suite exactly as much as to mutating a checker,
+and it bit twice within one hour. A sweep that ran `python tools/run_tests.py --godot "$GB"
+--filter facing` recorded all three mutations as killed; `--filter` is only accepted after
+`--`, so argparse exited **2** every time and not one test ran. `if returncode:` is true
+for 2, and this repo's whole exit convention is that `2` means *nothing was verified*.
+
+Map all three explicitly, and **print the denominator beside each result**:
+
+```
+0 -> SURVIVED   (the guard is not load-bearing)
+1 -> RED        (killed, for the right reason — check WHICH assertion failed)
+2 -> BROKEN RUN (proves nothing; fix the invocation and rerun)
+```
+
+The tell that caught it was the **restore** run coming back non-zero when it had no
+business doing so. Always run the restore and assert it is clean — an unmutated failure
+means every verdict above it is void.
+
 ### Beware a positive control that cannot fail
 
 A vacuity guard like "the corpus still contains every known class" sounds like it proves

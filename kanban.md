@@ -195,6 +195,30 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (50) — the road never climbs, and a mutation sweep that proved nothing
+
+- **The road never travels up-screen, so a quarter of the pest art is unreachable.**
+  `Board._build_route()` (`game/board.gd:162`) walks `_path_order` and the shipped level
+  runs right, down, left, down, right — read live off a pest's `_route`, thirty-four
+  points, not one of them a -Y step. `Pest._update_facing()` (`game/pest.gd:679`) has a
+  `_facing = 0.0` branch for up-screen travel that no frame of a real game has ever run,
+  and until this cycle no test touched it either. A level whose road **climbs** would use
+  art that already exists and a code path that already works — the cheapest new-level
+  variety available, and it makes the vertical axis mean something in both directions.
+- **`assert_margin` is available and used almost nowhere.** `_T.assert_margin(values,
+  threshold, margin, recorded)` gates a tuned constant on the corpus items sitting near
+  it, which is exactly the shape of the pest gait constants (`game/pest.gd:235-245`) and
+  the weather multipliers (`WEATHER_DROUGHT_SEED_BONUS`, `WEATHER_RAIN_HEAL_FRACTION` in
+  `game/wave_director.gd`). Filed for the gait ones as `-frzz`; the weather ones have the
+  same shape and no bead. A tuned constant with a documented justification and no test is
+  a comment, not a contract.
+- **The pest corpse keeps its facing, and nothing else about death is visually directional.**
+  `test_a_pest_killed_mid_stride_leaves_a_straight_corpse` (`test/unit/test_selftest.gd`)
+  asserts a corpse lies on its facing with the gait lean undone — a genuinely nice touch
+  that already ships. The adjacent idea it suggests: pests killed by different means could
+  die differently (a Chomp bite versus a kernel versus a seed bomb), which currently all
+  produce the same straight corpse. Cheap juice on a system that already has the hook.
+
 ### New this cycle (49) — a user request that already ships, and a checker that was checking a stub
 
 - **"Fix enemy facing direction" (in *Requested directly by James*, above) appears to
