@@ -4801,3 +4801,28 @@ cited in code, and the citation is a mitigation this project has watched fail.
   by construction. Running all three every time is what caught it — running only the new
   one would have shipped a checker whose own test suite was two-thirds red. That is the
   denominator rule again, applied to fixtures rather than to findings.
+
+## 2026-08-17 — Cycle 64: auditing the oldest backlog sections
+
+- Value: **overkill — avoided.** Triaged out at Phase 0.5 tier (a): the entire cycle
+  touched `kanban.md` and nothing else. No game, no ledger row beyond this note, and the
+  verification was `grep` and `Read` against the code each entry claimed something about.
+  - Expected: some mix of shipped, stale and still-real across eight entries.
+  - Got: **six SHIPPED, two STALE, zero still wanted.** The three oldest sections were
+    entirely obsolete — every idea in them had either been built or overtaken.
+  - Found: two things about auditing, both of which the harness was irrelevant to.
+    The title-screen entry quoted four constants that **all still reproduce exactly**, and
+    its conclusion is false — the code that disproves it also records that both shapes the
+    entry proposed were considered and rejected. And an entry cited the *button* whose
+    click was silent, while the fix had landed in the *handler*: checking only the cited
+    line would have produced a confident, wrong "still real".
+  - Cheaper: nothing. Reading eight entries against the code is the work.
+
+- Gap: **no gaps this turn**, and one near-miss worth recording because it was mine and it
+  was caught by process rather than luck. My first cut used `s.index()` on a section
+  heading. `### New this cycle (25 of 30)` appears **twice** — two independent numbering
+  runs with different subtitles, so `uniq -d` on the headings reports nothing — and the
+  match landed on the earlier one, deleting 1937 lines instead of 85. `git diff --stat`
+  before committing is what showed it, which is exactly why
+  `kanban-staleness-audit` says to separate the finding pass from the rewrite pass. The
+  rewrite now cuts by line number with three asserts on the boundary lines.

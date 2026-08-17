@@ -44,11 +44,28 @@ accurate. The arithmetic was right and the noun was wrong — 138 was a cumulati
 across five files, not a count of files. **A figure that reproduces exactly is the most
 convincing kind of wrong.** Ask what one unit of the number is before you agree with it.
 
+## Two more traps, both paid for
+
+**An entry points at where the problem WAS, not where the fix landed.** "Starting a wave
+has no click of its own" cited the button that emits the signal. The button is unchanged
+to this day; the sound was added to the *handler* on the other side of the signal.
+Checking only the cited line produces a confident, wrong `STILL REAL` — and it feels
+especially rigorous, because you went exactly where the entry told you. **Resolve the
+behaviour, not the citation.** Follow the signal, the caller, the subclass.
+
+**Section headings are not unique, so cut by line number.** This file has two independent
+numbering runs: `### New this cycle (25 of 30)` appears twice, with different subtitles.
+`uniq -d` on the headings therefore reports nothing, and a `text.index("### …")` matched
+the earlier one and deleted 1937 lines instead of 85. It was caught by `git diff --stat`
+before the commit, which is the whole reason step 5 below separates the finding pass from
+the rewrite. Slice by index with an assert on each boundary line.
+
 ## Procedure
 
 1. **Take a range in, never "the file".** Line numbers or a named section, 20–40 entries.
    A whole-file sweep produces a verdict table nobody checks and the cost of a wrong
-   `STALE` is paid silently.
+   `STALE` is paid silently. If you name a section, **verify the name is unique first** —
+   see the trap above.
 2. **Read the range's own header first.** Sections here are dated and titled by cycle
    ("New this cycle (12 of 30)"); an entry's neighbours tell you what was true when it
    was written, which is what you are comparing against.

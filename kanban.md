@@ -195,6 +195,31 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (64) — three surfaces are each exactly one item from full
+
+- **The milestone shelf holds seven and has room for seven.** `SHELF_ROW_PITCH` is 42 and
+  `Milestones.TABLE` has 7 entries, so `7 * 42 + 3 = 297` against a 300 px drawing box
+  (`game/notebook_screen.gd:163-168`). An eighth milestone does not fit at these numbers,
+  and `test_the_milestone_shelf_fits_the_page` fails the moment `TABLE` grows — which is
+  the good kind of wall, but it means "add a milestone" is a layout decision rather than a
+  data change. The header names the two ways out (drop the pitch, or split the shelf across
+  both pages); picking one *before* someone has a milestone they want to add is cheaper
+  than picking it while holding one.
+- **The title screen buys its sixth destination with a shortened word.**
+  `game/title_screen.gd:59-60` records that "Designer's Notebook" draws ~183 px against a
+  146 px half-band cell, so the button says "Notebook". That is a sound trade and it is
+  also a rule nobody stated: **a title destination's name must fit 146 px**, and the next
+  one added will discover that by looking wrong rather than by failing. The notebook's own
+  heading and the pause card still say the whole phrase, so the game already speaks its
+  full name in two places and an abbreviation in the third.
+- **Every one of the last three audited ideas became real by someone noticing an
+  asymmetry, not by anyone planning it.** The Sunflower payout got a sound because the
+  *husk* had one; the wave-start click got a sound because everything downstream of it did;
+  the Options screen exists because the Keys screen did. That is a genuinely reliable
+  generator and it is not written down anywhere as a technique: walk the game asking "what
+  is the quiet half of a pair the player would expect to match?" The husk/Sunflower pair
+  took ~40 cycles to spot and is one line of code.
+
 ### New this cycle (63) — the message row is fully checked; nothing else is
 
 - **One HUD surface has three checkers and the rest have none.** The message row is now

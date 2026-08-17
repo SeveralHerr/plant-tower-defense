@@ -78,6 +78,14 @@ running a command. **Never write a work checklist into it.**
      finding has been gating as NEW for an unknown number of cycles. Read the NEW/PRE
      split and the `By check:` denominator, and remember a frozen tree makes tweens look
      like defects: this cycle's four findings were a panel caught mid-fade by `pause`.
+   - **Read `git diff --stat` before every commit and check the shape is the one you
+     meant.** Not the diff — the shape: how many files, how many lines each way. It costs
+     one command and it is the ONLY gate a docs-only change has, since `/verify` triages
+     those to "nothing to verify" and no checker reads prose. Cycle 64 cut three sections
+     out of `kanban.md` with a `text.index()` on a section heading that turns out to
+     appear twice; the intended cut was 85 lines and the diff said **1937**. Nothing else
+     in the loop would have caught it, and a markdown file is exactly where nobody looks
+     twice.
    - **The ledger row lands BEFORE the commit, never after.** `reach` is the diff
      intersected against what the running game loaded, and after a commit the diff is
      empty — so a row recorded afterwards reads `reached 0/0 changed file(s)`, which is
