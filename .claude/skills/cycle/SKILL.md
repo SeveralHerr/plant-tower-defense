@@ -410,6 +410,14 @@ python tools/run_json_check.py       # a key in .devtools/run.json that verify_l
                                      #   the row is append-only and a dropped key is
                                      #   indistinguishable from a run that never had one
 python tools/gap_ledger.py           # which [G-NNN] gaps are actually open (advisory)
+python tools/bead_prose_check.py     # prose the SHELL ate on its way into `bd` -- a word
+                                     #   inside backticks is command substitution, and one
+                                     #   that IS a command (`date`, `pwd`) lands its OUTPUT
+                                     #   in the field silently. Gates on open issues only;
+                                     #   closed ones are advisory. THE WAIVER IS THE
+                                     #   CORRECTION NOTE -- an issue that records what was
+                                     #   eaten stops firing, which is why the rule below is
+                                     #   "add a note", never "rewrite the field"
 ```
 
 Each prints its own `NOT COVERED:` line. None of them compiles — only `import_check.py`
