@@ -38,9 +38,10 @@ running a command. **Never write a work checklist into it.**
      empties, and nothing else in the loop ever opens `AGENTS.md`. It was a hand-run
      `diff` for one cycle and is a tool now — which immediately caught a one-sided edit
      nobody planted, the commit that registered the tool itself.
-     **When it fires, generate the other copy from `CLAUDE.md` rather than retyping it:
-     identical by construction beats identical by care, and care is what has failed
-     twice.**
+     **When it fires, run `python tools/mirror_check.py --fix`** — it generates
+     `AGENTS.md`'s copy from `CLAUDE.md`'s and re-checks from disk. Identical by
+     construction beats identical by care, and care is what has now failed three times;
+     the third was the cycle that hand-edited both copies of a rule about being careful.
 
    The harness is deliberately NOT checked here — it is checked in step 4, after it has
    actually been used. Pre-flight REPORTS AND FILES, it does not block.
@@ -167,6 +168,8 @@ python tools/suite_reach_check.py    # the public surface no test names
 python tools/settle_read_check.py    # a test reading a value the settle frames were still moving
 python tools/save_persist_check.py   # a test script that can reach RunConfig._save() unredirected
 python tools/mirror_check.py         # CLAUDE.md and AGENTS.md's Workflow blocks have drifted
+                                     #   (--fix generates the mirror; it WRITES AGENTS.md,
+                                     #    so it is the one entry here not safe to fan out)
 python tools/gap_ledger.py           # which [G-NNN] gaps are actually open (advisory)
 ```
 
