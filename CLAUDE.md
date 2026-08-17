@@ -155,6 +155,7 @@ python tools/suite_reach_check.py    # the public surface no test names
 python tools/settle_read_check.py    # a test reading a value the settle frames were still moving
 python tools/save_persist_check.py   # a test script that can reach RunConfig._save() unredirected
 python tools/mirror_check.py         # CLAUDE.md and AGENTS.md's Workflow blocks have drifted
+python tools/gap_ledger.py           # which [G-NNN] gaps are actually open (advisory)
 ```
 
 Each prints its own `NOT COVERED:` line. None of them compiles — only `import_check.py`

@@ -3928,3 +3928,57 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   settled headlessly, including the one about pixel widths, because this project
   measures text through the real theme font rather than by eye. Worth recording as
   the counter-example to the last two cycles, where runtime earned its place.
+
+## 2026-08-16 — cycle 37: reconciling the gap ledger (plant-tower-defense-ye1)
+
+- Value: **warranted** — the reconciliation the workflow has asked for since cycle 4,
+  and every number in the request turned out to be wrong.
+  - Expected: 61 open gaps to walk, most of them probably fixed by eight harness
+    releases, and a long boring pass.
+  - Got: the count was the first finding. `grep -c "status: open"` returns 65, which is
+    a count of LINES; the file holds **69 status lines over 49 distinct ids, 44 of them
+    currently open**. The bead said 61. Three ids (G-024, G-030, G-033) carry an
+    earlier `open` line *and* a later `fixed` one, so the file states both at once —
+    the format records status per ENTRY, which is right for the entry and leaves the
+    FILE unable to answer "what is open".
+  - Found: three things, none of which was on the list.
+    1. **`tools/gap_ledger.py`** now derives each gap's status from its LAST mention,
+       which turns an unanswerable question into a derived one. Old entries are left
+       alone deliberately: rewriting them would falsify what was true the day they
+       were written.
+    2. **A citation is not a fix, and the split matters.** 43 of this project's ids
+       appear somewhere in the installed 0.38.0 — but 29 of those are only in the
+       harness's own copy of this log, put there by `upstream_gaps.py`. Just **14 are
+       cited in harness CODE**, and those citations read in the past tense
+       ("used to cost", "used to pass for", "used to be"), which is what a fix looks
+       like. Counting the 43 would have closed 29 gaps nothing had acted on.
+    3. **G-044 is cited in code and is still open**, which is why the split above is
+       not sufficient either: `import_check.py` carries a
+       `plant-tower-defense:G-044` comment describing the `--import` segfault
+       mitigation, and this log records the gap at `seen: 7` against 0.38.0 because
+       the mitigation was not enough.
+  - Cheaper: nothing, and the cheap version is what produced the wrong numbers — the
+    grep that said 61 was the cheap version.
+
+**Reconciliation.** These ten are cited by name in `templates/` code in the installed
+0.38.0, each describing the old behaviour in the past tense. Marked fixed on that
+evidence; not re-run individually, and this line is the record of which claim is being
+made. G-019 was re-verified in full (`dev_tools.gd` rebuilds a JSON array as the
+property's typed Array, citing the id).
+
+  - [G-014] status: fixed | shipped in 0.38.0 | evidence: cited in templates/ code
+  - [G-016] status: fixed | shipped in 0.38.0 | evidence: cited in templates/ code
+  - [G-018] status: fixed | shipped in 0.38.0 | evidence: cited in templates/ code
+  - [G-019] status: fixed | shipped in 0.38.0 | evidence: dev_tools.gd rebuilds typed arrays, read in full
+  - [G-025] status: fixed | shipped in 0.38.0 | evidence: cited in templates/ code
+  - [G-026] status: fixed | shipped in 0.38.0 | evidence: cited in templates/ code
+  - [G-029] status: fixed | shipped in 0.38.0 | evidence: cited in templates/ code
+  - [G-046] status: fixed | shipped in 0.38.0 | evidence: cited in templates/ code
+  - [G-047] status: fixed | shipped in 0.38.0 | evidence: cited in templates/ code
+  - [G-048] status: fixed | shipped in 0.38.0 | evidence: cited in templates/ code
+  - [G-049] status: fixed | shipped in 0.38.0 | evidence: cited in templates/ code
+
+**Still open and re-confirmed:** [G-044] status: open | seen: 7 | harness: 0.38.0 —
+cited in code, and the citation is a mitigation this project has watched fail.
+
+- Gap: **no gaps this turn.** The harness was not the subject; its log was.
