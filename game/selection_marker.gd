@@ -1,5 +1,10 @@
 class_name SelectionMarker
 extends Node2D
+## The drawn-overlay grammar this cue belongs to is `game/OVERLAY_GRAMMAR.md`
+## — what a solid ring, a dashed ring, a filled dot and a doubled width each
+## mean, and the two places the grammar does not hold. Read it before adding a
+## cue; its mechanical half is pinned by
+## test_the_overlay_grammar_holds_where_it_is_mechanical.
 
 ## Corner brackets drawn around a selected plant, independent of whatever the
 ## plant's own _draw() does.

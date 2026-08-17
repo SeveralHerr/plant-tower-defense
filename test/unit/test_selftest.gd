@@ -8581,6 +8581,55 @@ func test_the_gait_rate_follows_speed_but_is_clamped_at_both_ends() -> String:
 ## A pest killed mid-stride leaves a corpse lying straight. Without this the
 ## husk keeps whatever quarter-stride lean it died on, which reads as a bug
 ## still leaning into a step it will never finish.
+## The parts of `game/OVERLAY_GRAMMAR.md` that are numbers rather than prose
+## (plant-tower-defense-cujn).
+##
+## That document exists because four drawn cues arrived one cycle at a time and
+## turned out mostly consistent by taste rather than by rule. Most of it has to be
+## prose — "a dashed ring is a remark" is not checkable — but the two-channel rule
+## bottoms out in arithmetic, and arithmetic can be pinned so the document cannot
+## quietly stop being true the way three sections of kanban.md did over sixty-four
+## cycles.
+##
+## What is asserted here is only the mechanical half. A cue that obeys every number
+## below and still reads wrongly is a cue this test will pass; that is what the
+## document is for and why it says to re-run the grep.
+func test_the_overlay_grammar_holds_where_it_is_mechanical() -> String:
+	# ARMED is a doubled line width, in both cues that have an armed state. Colour
+	# alone would fail the two-channel rule, so the width is the half that has to
+	# survive the hue being discarded.
+	var err: String = _T.assert_float_eq(SelectionMarker.WARNING_LINE_WIDTH,
+		SelectionMarker.LINE_WIDTH * 2.0, 0.0001,
+		"the selection brackets double their width when armed")
+	if err == "":
+		err = _T.assert_float_eq(SoleCoverMarks.WARNING_RING_WIDTH,
+			SoleCoverMarks.RING_WIDTH * 2.0, 0.0001,
+			"and the sole-cover rings double theirs by the same factor")
+	if err == "":
+		err = _T.assert_eq(SoleCoverMarks.WARNING_COLOR, SelectionMarker.WARNING_COLOR,
+			("in the same red -- two reds on one plant would read as two different "
+				+ "warnings"))
+	# A MARKED CELL is distinguished from a REACH by size, not by shape: both are
+	# solid rings, and the table in OVERLAY_GRAMMAR.md says so explicitly because a
+	# fifth cue copying "solid ring" from the wrong one inherits the wrong meaning.
+	if err == "":
+		err = _T.assert_gt(Game.engagement_reach(PlantCatalog.CORN),
+			SoleCoverMarks.RING_RADIUS * 4.0,
+			("a plant's reach ring is many times a marked cell's ring -- that size gap "
+				+ "IS the distinction, since both are solid rings"))
+	# The holds-nothing ring sits outside the brackets it shares a plant with, or
+	# the two read as one mark rather than as a remark about a subject.
+	if err == "":
+		err = _T.assert_gt(SoleCoverMarks.ALONE_RADIUS, SelectionMarker.HALF,
+			"the holds-nothing remark clears the subject brackets")
+	# A hover is a promise of selection: same bracket shape, one size larger.
+	if err == "":
+		err = _T.assert_gt(PlacementPreview.PREVIEW_HALF, SelectionMarker.HALF,
+			("the preview's brackets are larger than the selection's, so the two are "
+				+ "distinguishable when a hover crosses an already-selected plant"))
+	return err
+
+
 ## A corpse says what killed it (plant-tower-defense-f5z6).
 ##
 ## Three deaths that used to look identical: chewed by a Chomp, blown up by a seed

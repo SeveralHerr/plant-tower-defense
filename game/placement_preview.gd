@@ -1,5 +1,10 @@
 class_name PlacementPreview
 extends SelectionMarker
+## The drawn-overlay grammar this cue belongs to is `game/OVERLAY_GRAMMAR.md`
+## — what a solid ring, a dashed ring, a filled dot and a doubled width each
+## mean, and the two places the grammar does not hold. Read it before adding a
+## cue; its mechanical half is pinned by
+## test_the_overlay_grammar_holds_where_it_is_mechanical.
 
 ## "This is where the plant you picked would go, and this is what it would
 ## cover." A sibling Node2D under Entities, drawn on its own, positioned at the

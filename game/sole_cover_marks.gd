@@ -1,5 +1,10 @@
 class_name SoleCoverMarks
 extends Node2D
+## The drawn-overlay grammar this cue belongs to is `game/OVERLAY_GRAMMAR.md`
+## — what a solid ring, a dashed ring, a filled dot and a doubled width each
+## mean, and the two places the grammar does not hold. Read it before adding a
+## cue; its mechanical half is pinned by
+## test_the_overlay_grammar_holds_where_it_is_mechanical.
 
 ## Rings on the road cells a selected plant is the ONLY thing covering — "this is
 ## what the garden loses if you dig this up" (plant-tower-defense-nx9o).
