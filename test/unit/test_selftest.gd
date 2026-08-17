@@ -12195,3 +12195,134 @@ func test_the_sting_reaches_a_voice_carrying_its_own_numbers() -> String:
 				% [corn_db, corn_pitch, voice.volume_db, voice.pitch_scale])
 	voice.free()
 	return err
+
+
+# ---------------------------------------------------------------------------------------
+# Falling rain (plant-tower-defense-jwd6) — the weather overlay's motion
+# ---------------------------------------------------------------------------------------
+
+
+## The rain phase advances with delta, which is the whole of "rain falls".
+##
+## Asserted through `WeatherOverlay.advance_rain_phase` rather than by pumping `_process`,
+## because `_process` needs frames a headless runner does not pump AND the callback is armed
+## only when `GardenTheme.animations_enabled()` is true, which is false for every test in this
+## suite by construction. A test that instantiated the overlay and waited would be asserting
+## the early return — the exact shape cycles 71 and 74 got wrong.
+func test_the_rain_phase_advances_with_delta() -> String:
+	var frame: float = 1.0 / 60.0
+	var one: float = WeatherOverlay.advance_rain_phase(0.0, frame)
+	var err: String = _T.assert_gt(one, 0.0,
+		("a frame of rain moves the phase off zero, got %.4f -- a phase that never advances "
+			+ "is the still frame the designer called 'rain froze'") % one)
+	if err == "":
+		# Proportional, not merely nonzero: a phase that jumped a fixed step per frame would
+		# also pass the line above and would run at a different speed on a 144 Hz monitor.
+		err = _T.assert_float_eq(WeatherOverlay.advance_rain_phase(0.0, frame * 2.0),
+			one * 2.0, 0.0001,
+			"twice the delta moves twice as far, so the fall is in seconds and not in frames")
+	if err == "":
+		err = _T.assert_float_eq(
+			WeatherOverlay.advance_rain_phase(WeatherOverlay.advance_rain_phase(0.0, frame),
+				frame),
+			WeatherOverlay.advance_rain_phase(0.0, frame * 2.0), 0.0001,
+			"and it accumulates -- two frames land where one double-length frame lands")
+	if err == "":
+		err = _T.assert_float_eq(WeatherOverlay.advance_rain_phase(50.0, 0.0), 50.0, 0.0001,
+			"a zero delta is a held frame, not a nudge")
+	if err == "":
+		# A paused-then-resumed tree can hand `_process` a negative delta on some platforms;
+		# rain that ran backwards for a frame would read as a glitch rather than as weather.
+		err = _T.assert_float_eq(WeatherOverlay.advance_rain_phase(50.0, -1.0), 50.0, 0.0001,
+			"and rain never falls upwards")
+	if err == "":
+		err = _T.assert_gt(WeatherOverlay.RAIN_FALL_SPEED, 0.0,
+			"the speed is a real speed, %.1f px/s" % WeatherOverlay.RAIN_FALL_SPEED)
+	return err
+
+
+## Where a mark is once it has fallen: on the board, along the slant, and back at the start
+## when the phase is zero.
+##
+## The last of those is what keeps the animations-disabled path honest — with motion off the
+## phase is pinned at zero, so "the still picture" and "the first frame of the falling one"
+## have to be the same picture rather than two code paths that drift apart.
+func test_a_falling_rain_mark_scrolls_along_the_slant_and_stays_on_the_board() -> String:
+	var size := Vector2(896.0, 576.0)
+	var err: String = ""
+	for i: int in range(WeatherOverlay.MARK_COUNT):
+		err = _T.assert_eq(WeatherOverlay.rain_mark_position(i, size, 0.0),
+			WeatherOverlay.mark_position(i, size),
+			"mark %d at rest is exactly where the still overlay drew it" % i)
+		if err != "":
+			return err
+	# One second of fall, then a whole minute of it: a mark that walked off the board would
+	# leave the rain thinning out to nothing over a long wave.
+	var phases: Array[float] = [
+		WeatherOverlay.RAIN_FALL_SPEED * 1.0,
+		WeatherOverlay.RAIN_FALL_SPEED * 7.3,
+		WeatherOverlay.RAIN_FALL_SPEED * 60.0]
+	var moved: int = 0
+	var along: int = 0
+	var unit: Vector2 = WeatherOverlay.RAIN_SLANT.normalized()
+	for phase: float in phases:
+		for i: int in range(WeatherOverlay.MARK_COUNT):
+			var at: Vector2 = WeatherOverlay.rain_mark_position(i, size, phase)
+			err = _T.assert_true(
+				at.x >= 0.0 and at.x < size.x and at.y >= 0.0 and at.y < size.y,
+				"mark %d is still on the board %.0f px into the fall, at %s" % [i, phase, at])
+			if err != "":
+				return err
+			var was: Vector2 = WeatherOverlay.mark_position(i, size)
+			if not at.is_equal_approx(was):
+				moved += 1
+			# Marks that have not wrapped yet must have travelled DOWN THE SLANT, not in some
+			# other direction: the fall and the drawn streak have to agree or the streaks
+			# read as sliding sideways.
+			var step: Vector2 = at - was
+			if is_equal_approx(step.length(), phase) or absf(step.length() - phase) < 0.001:
+				if step.normalized().dot(unit) > 0.999:
+					along += 1
+	if err == "":
+		err = _T.assert_gte(moved, WeatherOverlay.MARK_COUNT * phases.size(),
+			"every mark moved at every sampled phase, %d of %d" % [moved,
+				WeatherOverlay.MARK_COUNT * phases.size()])
+	if err == "":
+		# Not vacuous: at least some marks are far enough from an edge that no wrap hides the
+		# direction, and those are the ones the dot product above was measured on.
+		err = _T.assert_gt(along, 0,
+			"and %d unwrapped mark(s) travelled along RAIN_SLANT itself" % along)
+	return err
+
+
+## Rain moves; nothing else does — and with motion off, nothing does at all.
+##
+## The weather list is derived from `WaveDirector.weather_for()` rather than typed here, so a
+## fourth weather added to the director arrives in this test on its own instead of being
+## quietly excluded from it.
+func test_only_rain_moves_and_only_when_motion_is_allowed() -> String:
+	var states: Dictionary = {}
+	for wave: int in range(1, 71):
+		states[WaveDirector.weather_for(wave)] = true
+	var err: String = _T.assert_gte(states.size(), 3,
+		"the director produces %d distinct weathers over 70 waves" % states.size())
+	if err == "":
+		err = _T.assert_true(states.has(WaveDirector.WEATHER_RAIN),
+			"and rain is one of them, or this test is about nothing")
+	if err != "":
+		return err
+	for weather: StringName in states.keys():
+		var wants: bool = weather == WaveDirector.WEATHER_RAIN
+		err = _T.assert_eq(WeatherOverlay.rain_should_fall(weather, true), wants,
+			("%s %s while motion is on -- 'rain falls, a drought is the weather in which "
+				+ "nothing moves' is the third channel, after hue and mark shape")
+				% [weather, "falls" if wants else "holds still"])
+		if err != "":
+			return err
+		# The capability gate: with animations off the overlay must paint the same still frame
+		# it painted before this change, for every weather without exception.
+		err = _T.assert_false(WeatherOverlay.rain_should_fall(weather, false),
+			"%s is still with animations disabled" % weather)
+		if err != "":
+			return err
+	return err
