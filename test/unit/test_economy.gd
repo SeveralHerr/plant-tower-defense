@@ -2011,10 +2011,14 @@ func test_every_declared_floor_names_a_budget_this_run_measures() -> String:
 ## pins the distinct one Game.BUDGET_SPENT_BY_DESIGN exists to give it.
 ##
 ## The wave that reaches the bound is now the campaign finale rather than an
-## endless one: the endless column is paced apart from wave 17 on, so endless
-## peaks at 29, and WAVES' last row is sized to land on 40 exactly. That is why
-## this still reads zero headroom, and it is a different sentence from the one
-## above -- one is the construction, the other is a measurement of a real wave.
+## endless one: the endless column is paced apart from the first endless wave on,
+## so endless peaks at 29, and WAVES' last row is sized to land on 40 exactly.
+## That is why this still reads zero headroom, and it is a different sentence from
+## the one above -- one is the construction, the other is a measurement of a real
+## wave. ("From wave 17 on" is what this used to say; the campaign grew to 22
+## waves in plant-tower-defense-eeaq and endless now starts at 23, which is the
+## kind of drift a wave NUMBER written into prose picks up and a phrase like "the
+## first endless wave" does not.)
 func test_the_pest_road_ceiling_reports_spent_by_design_not_a_plain_spent() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var err: String = _T.assert_true(game != null, "the main scene loads")
@@ -2794,4 +2798,222 @@ func test_the_move_tip_is_spent_only_when_it_is_actually_shown() -> String:
 			"and NOW the one-shot is spent")
 	RunConfig.earned_milestones.erase(RunConfig.HINT_MOVE_PREVIEW)
 	_T.free_ui(game)
+	return err
+
+
+# -- The campaign is 22 waves now (plant-tower-defense-eeaq) -------------------
+#
+# Six waves went in front of the finale rather than after it, and the four tests
+# below are the four things that made "in front of" the only option. They are
+# pure arithmetic over WaveDirector's statics -- no scene, no node, no settle --
+# so they belong in test_dir rather than behind the bridge.
+#
+# The suite already asserts, in test_combat.gd and test_selftest.gd, that
+# threat_for() rises strictly across the seam and that no wave overruns the road.
+# What it has never asserted is WHY those two hold together, which is the one
+# thing a future balance pass needs and the one thing that is not obvious from
+# either file: the first endless wave's health is capped by a rule about its
+# COMPOSITION, and that cap propagates backwards onto the campaign finale.
+
+
+## The seam bound, derived rather than restated.
+##
+## `threat_for` must rise strictly from the finale into the first endless wave.
+## The first endless wave's contents are not free to grow, because
+## test_the_beetle_column_is_the_axis_that_replaced_the_headcount requires it to
+## stay under half beetle -- so its health has a ceiling, and dividing that
+## ceiling by the campaign's own mutation multiplier gives a ceiling on the
+## FINALE. That number (436.7 points of base health against a finale already
+## worth 418) is why plant-tower-defense-eeaq could not append waves to the end
+## of the table and inserted them before the last row instead.
+##
+## Asserted here rather than left in wave_director.gd's prose because prose does
+## not fail. Anyone raising the finale gets the number and the reason in one
+## message, at the moment they raise it, instead of a strict-increase test
+## failing at wave 23 with nothing to say about the cause.
+func test_the_campaign_finale_fits_under_the_endless_seam() -> String:
+	var finale: int = WaveDirector.WAVES.size()
+	var first_endless: int = finale + 1
+
+	var seam_health: float = 0.0
+	for group: Dictionary in WaveDirector.groups_for(first_endless):
+		seam_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
+	var finale_health: float = 0.0
+	for group: Dictionary in WaveDirector.groups_for(finale):
+		finale_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
+
+	# Vacuity guard: both sides have to be real waves, or every comparison below
+	# is 0 against 0 and passes for the wrong reason.
+	var err: String = _T.assert_gt(seam_health, 0.0, "the first endless wave has contents")
+	if err == "":
+		err = _T.assert_gt(finale_health, 0.0, "and so does the campaign finale")
+	if err != "":
+		return err
+
+	# The two multipliers _raw_threat applies. The campaign's is flat; the first
+	# endless wave has one wave of every endless scale on it.
+	var campaign_mult: float = 1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT
+	var seam_mutations: float = 1.0 + WaveDirector.mutation_chance_for(first_endless) \
+		* WaveDirector.MUTATION_THREAT_WEIGHT
+	var seam_scales: float = WaveDirector.health_scale_for(first_endless) \
+		* WaveDirector.speed_scale_for(first_endless)
+	var bound: float = seam_health * seam_mutations * seam_scales / campaign_mult
+
+	err = _T.assert_gt(bound, finale_health,
+		("the finale is worth %.0f points of base health against a seam bound of %.1f"
+			+ " -- %.1f points of headroom, i.e. %.1f beetles. Raising the finale past the"
+			+ " bound inverts threat_for at the seam; raising the bound means raising"
+			+ " ENDLESS_APHID_SHARE, and the two road shares sum to"
+			+ " SIMULTANEOUS_PEST_CEILING exactly")
+			% [finale_health, bound, bound - finale_health,
+				(bound - finale_health) / float(Pest.SPECIES[Pest.BEETLE]["health"])])
+	if err == "":
+		# The bound is the real crossing point, not a conservative estimate: one
+		# aphid past it and the first endless wave prices BELOW the finale.
+		var just_over: float = bound + float(Pest.SPECIES[Pest.APHID]["health"])
+		err = _T.assert_gt(just_over * campaign_mult, WaveDirector._raw_threat(first_endless),
+			"and the bound is exactly where the seam inverts, not a margin under it")
+	if err == "":
+		# And the thing the bound exists to protect actually holds today.
+		err = _T.assert_gt(WaveDirector.threat_for(first_endless), WaveDirector.threat_for(finale),
+			"so the first endless wave still prices above the campaign finale")
+	return err
+
+
+## The finale is the ONLY wave that spends the whole road.
+##
+## test_every_campaign_wave_stays_inside_the_road_budget_brood_included asserts
+## that the worst campaign wave equals SIMULTANEOUS_PEST_CEILING, which a tie
+## satisfies -- so six new rows could each have been sized to 40 and that test
+## would still be green while "the finale is the fullest the road ever gets"
+## quietly stopped being true. This pins the uniqueness, which is the half the
+## prose in SIMULTANEOUS_PEST_CEILING actually claims.
+func test_only_the_campaign_finale_spends_the_whole_road_budget() -> String:
+	var finale: int = WaveDirector.WAVES.size()
+	var err: String = _T.assert_gt(finale, 1, "there is a campaign to sweep")
+	if err != "":
+		return err
+	var checked: int = 0
+	var runner_up: int = 0
+	var runner_up_wave: int = 0
+	for wave: int in range(1, finale):
+		var peak: int = WaveDirector.peak_simultaneous_pests(wave)
+		err = _T.assert_gt(WaveDirector.SIMULTANEOUS_PEST_CEILING, peak,
+			("wave %d peaks at %d, strictly under the %d ceiling -- only the finale is"
+				+ " allowed to land on it") % [wave, peak, WaveDirector.SIMULTANEOUS_PEST_CEILING])
+		if err != "":
+			return err
+		if peak > runner_up:
+			runner_up = peak
+			runner_up_wave = wave
+		checked += 1
+	err = _T.assert_gt(checked, 1, "the sweep walked a campaign (%d waves)" % checked)
+	if err == "":
+		err = _T.assert_eq(WaveDirector.peak_simultaneous_pests(finale),
+			WaveDirector.SIMULTANEOUS_PEST_CEILING,
+			"and the finale lands on it exactly")
+	if err == "":
+		# Not a bound nobody comes near either: the runner-up is reported so a
+		# future row that quietly drops the whole campaign to half the ceiling is
+		# visible as a number rather than as a still-passing test.
+		err = _T.assert_gt(float(runner_up),
+			float(WaveDirector.SIMULTANEOUS_PEST_CEILING) * 0.5,
+			"and the wave below it (wave %d, %d pests) is still a real second place"
+				% [runner_up_wave, runner_up])
+	return err
+
+
+## Every campaign wave asks a different question.
+##
+## The table's header claims this in prose for all twenty-two rows, and prose
+## cannot catch a row pasted twice and edited in one number. A wave IS its group
+## list -- species, order, counts, gaps and leads -- so the signature below is the
+## whole of what the player meets, and two identical signatures are two identical
+## waves however far apart they sit.
+##
+## The second half is the specific claim the run-up rests on: wave 12 and wave 14
+## both open with the queen, and the new wave 18 is the only row in the table that
+## buries her between two other groups. If a later edit moves her to the front of
+## that row it becomes wave 14 with different numbers, and nothing else in the
+## suite would notice.
+func test_no_two_campaign_waves_are_the_same_wave() -> String:
+	var seen: Dictionary = {}
+	var queen_not_first: Array[int] = []
+	var err: String = ""
+	for wave: int in range(1, WaveDirector.WAVES.size() + 1):
+		var parts: PackedStringArray = []
+		var index: int = 0
+		for group: Dictionary in WaveDirector.groups_for(wave):
+			parts.append("%s%d@%.2f/%.2f" % [group["species"], int(group["count"]),
+				float(group["gap"]), float(group["lead"])])
+			if StringName(group["species"]) == Pest.QUEEN and index > 0:
+				queen_not_first.append(wave)
+			index += 1
+		var signature: String = " ".join(parts)
+		err = _T.assert_false(seen.has(signature),
+			"wave %d is not a repeat of wave %s -- %s"
+				% [wave, seen.get(signature, "?"), signature])
+		if err != "":
+			return err
+		seen[signature] = wave
+	err = _T.assert_eq(seen.size(), WaveDirector.WAVES.size(),
+		"every wave in the table got a signature (a short count means an empty row)")
+	if err == "":
+		err = _T.assert_eq(queen_not_first.size(), 1,
+			("exactly one wave buries the queen behind another group -- that arrangement is"
+				+ " the whole of what wave 18 asks that 12 and 14 do not. Got %s")
+				% [queen_not_first])
+	return err
+
+
+## The campaign has a second drought, and it is boss-free on purpose.
+##
+## weather_for() drops drought on any wave carrying a boss, so a queen added to
+## the drought row deletes the weather silently -- no error, no finding, just a
+## wave that stops halving the garden's rate of fire. That is a one-word edit with
+## no local tell, which is exactly what an enumeration is for.
+##
+## Both lists are enumerated rather than sampled, because the claim being made is
+## about the whole campaign ("one drought before, two now"), and the exemption is
+## checked against a real witness -- wave 14 is a multiple of WEATHER_DROUGHT_EVERY
+## and carries a queen and is clear -- rather than asserted from the rule.
+func test_the_campaign_droughts_and_rains_are_where_the_table_says() -> String:
+	var droughts: Array[int] = []
+	var rains: Array[int] = []
+	for wave: int in range(1, WaveDirector.WAVES.size() + 1):
+		var weather: StringName = WaveDirector.weather_for(wave)
+		if weather == WaveDirector.WEATHER_DROUGHT:
+			droughts.append(wave)
+		elif weather == WaveDirector.WEATHER_RAIN:
+			rains.append(wave)
+
+	var err: String = _T.assert_eq(droughts.size(), 2,
+		"the campaign runs two droughts, at 7 and 21 -- got %s" % [droughts])
+	if err == "":
+		err = _T.assert_eq(droughts[0], 7, "the first is wave 7")
+	if err == "":
+		err = _T.assert_eq(droughts[1], 21, "and the second is wave 21")
+	if err == "":
+		err = _T.assert_false(WaveDirector.wave_carries_boss(droughts[1]),
+			("wave 21 carries no queen, which is the only reason its drought lands"
+				+ " -- see WAVES' row for it"))
+	if err == "":
+		err = _T.assert_eq(rains.size(), 4,
+			"and four rain waves, at 5, 10, 15 and 20 -- got %s" % [rains])
+	if err == "":
+		err = _T.assert_eq(rains[rains.size() - 1], 20,
+			"the last of them being the wave paired traits start on")
+	if err != "":
+		return err
+
+	# The exemption, against a wave that really exercises it rather than against
+	# the rule that produces it.
+	err = _T.assert_eq(14 % WaveDirector.WEATHER_DROUGHT_EVERY, 0,
+		"wave 14 is a drought wave by the arithmetic")
+	if err == "":
+		err = _T.assert_true(WaveDirector.wave_carries_boss(14), "and it carries a queen")
+	if err == "":
+		err = _T.assert_eq(String(WaveDirector.weather_for(14)),
+			String(WaveDirector.WEATHER_CLEAR),
+			"so it comes up clear -- the exemption is doing work, not decorating")
 	return err

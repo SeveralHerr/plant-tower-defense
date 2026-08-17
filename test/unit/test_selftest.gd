@@ -9213,7 +9213,7 @@ func test_the_road_budget_counts_the_bodies_a_boss_becomes() -> String:
 func test_every_campaign_wave_stays_inside_the_road_budget_brood_included() -> String:
 	## The campaign is now the half of the game that spends the road budget — the
 	## endless column is paced apart from its first wave, so it peaks at 29 of 40
-	## while wave 16 lands on 40 exactly. Sweeping the fixed table is therefore no
+	## while the finale lands on 40 exactly. Sweeping the fixed table is therefore no
 	## longer a formality; it is where the ceiling is actually tested.
 	var ceiling: int = WaveDirector.SIMULTANEOUS_PEST_CEILING
 	var worst: int = 0
