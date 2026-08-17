@@ -11073,7 +11073,11 @@ func test_the_message_corpus_covers_every_catalogue_producer() -> String:
 	# with the forfeit clause an upgraded plant carries. The tip and the forfeit never
 	# co-occur — the budget refused that build at 188 px over — so it is three forms
 	# and not four.
-	var catalogue_entries: int = PlantCatalog.PLANTS.size() * 5 + CornCobbler.LEVELS.size()
+	# Both ladders since cycle 101: the Chomp Flower grows too, and its rungs produce
+	# upgrade_message lines exactly as the cob's do. Summed from the tables rather
+	# than doubled, because the two ladders are not required to be the same length.
+	var catalogue_entries: int = (PlantCatalog.PLANTS.size() * 5
+		+ CornCobbler.LEVELS.size() + ChompFlower.LEVELS.size())
 	return _T.assert_eq(corpus.size() - catalogue_entries, 9,
 		("the corpus carries its 9 non-catalogue entries (prep note, wave-cleared "
 			+ "line, the flight tip, and six literals -- BOTH colourblind lines, since "
@@ -11107,13 +11111,22 @@ func test_no_message_clips_for_any_plant_in_the_catalogue() -> String:
 				if drawn > worst_px:
 					worst_px = drawn
 					worst = line
-		for level: Dictionary in CornCobbler.LEVELS:
-			var line: String = Hud.upgrade_message(String(level["name"]))
-			checked += 1
-			var drawn: float = GardenTheme.measure(line, Hud.MESSAGE_FONT_SIZE)
-			if drawn > worst_px:
-				worst_px = drawn
-				worst = line
+		# Every ladder in the game, keyed to the plant that owns it -- the message now
+		# carries the plant's name, so measuring the cob's rungs alone would price the
+		# wrong sentence for the Chomp's.
+		var ladders: Dictionary = {
+			PlantCatalog.CORN: CornCobbler.LEVELS,
+			PlantCatalog.CHOMP: ChompFlower.LEVELS,
+		}
+		for id: StringName in ladders:
+			for level: Dictionary in (ladders[id] as Array):
+				var line: String = Hud.upgrade_message(
+					PlantCatalog.display_name(id), String(level["name"]))
+				checked += 1
+				var drawn: float = GardenTheme.measure(line, Hud.MESSAGE_FONT_SIZE)
+				if drawn > worst_px:
+					worst_px = drawn
+					worst = line
 		err = _T.assert_gt(checked, 10,
 			"the sweep visited the catalogue and the level table -- a near-empty "
 				+ "sweep here would pass without measuring anything")
@@ -11958,4 +11971,210 @@ func test_a_plant_button_says_the_price_and_nothing_else() -> String:
 		err = _T.assert_true(longest <= 4,
 			"the longest label any catalogue plant produces is %d characters -- 'free' is "
 				+ "the ceiling, and a five-figure price would be a different bar" % longest)
+	return err
+
+
+# -- The Nettle's sting cue (plant-tower-defense-e5kh) -----------------------
+#
+# The sting was the only damaging act in the game that made no sound. What
+# follows pins the DECISION as much as the presence of a row: the sting is a
+# VARIANT of the soft impact `CORN_FIRED` and `PLANT_BITTEN` already share, so
+# the things worth asserting are that it is told apart from both of them, that
+# its pitch points the way `Sfx.PITCH`'s header says a gain points and by a
+# magnitude that keeps that column a scale, and that its repeat gate was derived
+# from the Nettle's own interval instead of copied off a row above it.
+#
+# **What is deliberately NOT asserted here: that `Nettle._sting` calls
+# `Sfx.play` at all.** `play()` is gated on `Sfx.is_headless()` and records
+# nothing when it refuses, so under the headless runner a mutation deleting that
+# one line survives every check below. That is the same limit test_combat.gd's
+# sound section states at its own top -- nothing headless can claim a sound was
+# audible -- and it is what the runtime pass is for.
+
+
+func test_the_nettle_sting_carries_a_row_in_all_four_sfx_tables() -> String:
+	## Four tables because `Sfx.play` reads four: `SOUNDS` decides whether anything
+	## sounds at all, `REPEAT_MS` gates how often, and `tune_voice` composes
+	## `VOLUME_DB` and `PITCH`.
+	##
+	## Three of the four are not required by the ENGINE, and it is worth being exact
+	## about why they are required here. Each of those three documents an absent key
+	## as a default and reads it as one (`VOLUME_DB.get(event, 0.0)`,
+	## `PITCH.get(event, 1.0)`, `REPEAT_MS.get(event, DEFAULT_REPEAT_MS)`), and
+	## `tune_voice` writes every property unconditionally precisely so a pooled voice
+	## cannot carry the last event's value forward -- so a missing row is silent-safe
+	## rather than a bug. What makes them mandatory for THIS event is that it shares
+	## its file with two others: with no volume and no pitch of its own the sting
+	## would reach the player as `CORN_FIRED` exactly, which is the confusion the cue
+	## was added to prevent.
+	var err: String = _T.assert_true(Sfx.SOUNDS.has(Sfx.NETTLE_STING),
+		"SOUNDS carries the sting -- without this row the cue is silent and `play` "
+			+ "returns false forever")
+	if err == "":
+		err = _T.assert_true(Sfx.VOLUME_DB.has(Sfx.NETTLE_STING),
+			"VOLUME_DB carries it, so the sting is not CORN_FIRED's 0.0 by omission")
+	if err == "":
+		err = _T.assert_true(Sfx.PITCH.has(Sfx.NETTLE_STING),
+			"PITCH carries it, so the sting is not the base 1.0 by omission")
+	if err == "":
+		err = _T.assert_true(Sfx.REPEAT_MS.has(Sfx.NETTLE_STING),
+			("REPEAT_MS carries it, so a bank of Nettles is not gated by "
+				+ "DEFAULT_REPEAT_MS's %dms") % Sfx.DEFAULT_REPEAT_MS)
+	if err == "":
+		# And the row points somewhere real. A path that does not resolve fails in
+		# exactly the way this whole item was filed about.
+		err = _T.assert_true(Sfx.stream_for(Sfx.NETTLE_STING) != null,
+			"and the file behind it loads as an AudioStream: %s"
+				% String(Sfx.SOUNDS.get(Sfx.NETTLE_STING, "")))
+	if err == "":
+		err = _T.assert_true(Sfx.should_play(Sfx.NETTLE_STING, false, false),
+			"an unmuted player with a display would hear it -- the gate says yes")
+	return err
+
+
+func test_the_sting_is_told_apart_from_everything_sharing_its_file() -> String:
+	## The variant decision, asserted rather than described.
+	##
+	## `test_no_two_events_are_the_same_sound` in test_combat.gd already forbids two
+	## events arriving identically, across the whole table. This asks the sharper
+	## question the sting actually raises: the events on ITS file are the ones a
+	## player could mistake it for, and the ORDER of their volumes is the statement
+	## being made -- a volley that will cross the board is louder than one plant's
+	## contact hit, which is louder than a pest chewing in the background.
+	##
+	## The sharers are derived from `SOUNDS` rather than named, so a fourth event
+	## put on this file is checked against the sting the day it is added.
+	var file: String = String(Sfx.SOUNDS.get(Sfx.NETTLE_STING, "")).get_file()
+	var sharers: Array[StringName] = []
+	for event: StringName in Sfx.SOUNDS:
+		if event == Sfx.NETTLE_STING:
+			continue
+		if String(Sfx.SOUNDS[event]).get_file() == file:
+			sharers.append(event)
+	# Denominator: if nothing shares the file, the sweep below proves nothing and
+	# the whole "variant" argument in Sfx.NETTLE_STING's comment has gone stale.
+	var err: String = _T.assert_gt(sharers.size(), 1,
+		("the sting really is sharing %s with others, which is what makes it a "
+			+ "variant rather than a voice of its own -- got %d sharer(s)")
+			% [file, sharers.size()])
+	var sting_db: float = float(Sfx.VOLUME_DB.get(Sfx.NETTLE_STING, 0.0))
+	var sting_pitch: float = float(Sfx.PITCH.get(Sfx.NETTLE_STING, 1.0))
+	for event: StringName in sharers:
+		if err != "":
+			break
+		var db: float = float(Sfx.VOLUME_DB.get(event, 0.0))
+		var pitch: float = float(Sfx.PITCH.get(event, 1.0))
+		err = _T.assert_true(not is_equal_approx(db, sting_db)
+				or not is_equal_approx(pitch, sting_pitch),
+			("the sting and '%s' are both %s at %.1f dB, pitch %.2f -- the player "
+				+ "cannot tell them apart") % [event, file, db, pitch])
+	if err == "":
+		err = _T.assert_gt(float(Sfx.VOLUME_DB.get(Sfx.CORN_FIRED, 0.0)), sting_db,
+			"a volley crossing the board is louder than one plant's contact hit")
+	if err == "":
+		err = _T.assert_gt(sting_db, float(Sfx.VOLUME_DB.get(Sfx.PLANT_BITTEN, 0.0)),
+			"and a contact hit is louder than a pest chewing in the background -- "
+				+ "the three rungs on this file are a scale, not three free numbers")
+	return err
+
+
+func test_the_gains_read_as_a_scale() -> String:
+	## `Sfx.PITCH`'s header says gains go above the base and are graded by how big
+	## the gain is. The losses half of that claim is already pinned (test_combat's
+	## `test_tuning_a_voice_applies_both_axes_the_table_declares` asserts a plant
+	## dying sits below a plant eating); the gains half was three numbers and a
+	## paragraph, and the sting is the fourth.
+	##
+	## The gains are DERIVED from the table -- every entry above 1.0 -- rather than
+	## listed, so a fifth gain added below the base, or a "gain" written as a cut,
+	## fails here instead of quietly breaking the direction the header claims.
+	var gains: Array[StringName] = []
+	for event: StringName in Sfx.PITCH:
+		if float(Sfx.PITCH[event]) > 1.0:
+			gains.append(event)
+	var err: String = _T.assert_gt(gains.size(), 2,
+		"there are several gains to order (an empty sweep is a vacuous pass), got %d"
+			% gains.size())
+	if err == "":
+		err = _T.assert_true(gains.has(Sfx.NETTLE_STING),
+			"the sting is one of them -- damage dealt is a gain, so it points up")
+	if err == "":
+		err = _T.assert_gt(float(Sfx.PITCH.get(Sfx.PEST_KILLED_HARD, 1.0)),
+			float(Sfx.PITCH.get(Sfx.NETTLE_STING, 1.0)),
+			"and it is the SHALLOWEST of them, because 3.0 damage off one pest is a "
+				+ "smaller gain than the kill it may or may not lead to")
+	if err == "":
+		err = _T.assert_gt(float(Sfx.PITCH.get(Sfx.PLANT_UPGRADED, 1.0)),
+			float(Sfx.PITCH.get(Sfx.PEST_KILLED_HARD, 1.0)),
+			"which leaves the whole column a scale: sting, hard kill, upgrade")
+	return err
+
+
+func test_a_bank_of_nettles_cannot_machine_gun_the_sting() -> String:
+	## The number the bead asked to be derived rather than copied, derived here too
+	## so the derivation is executable instead of a comment.
+	##
+	## `Nettle.sting_interval()` is `STING_INTERVAL` composed with the sky and the
+	## neighbours (`Plant.composed_interval`). Only one of those two can make it
+	## SHORTER, and that asymmetry is the load-bearing half -- so it is asserted
+	## rather than assumed, over all three weathers, before the floor is computed
+	## from the Mints alone.
+	var weathers: Array[StringName] = [
+		# The three ids in wave_director.gd; there is no enumerated list to derive
+		# from, and `weather_for` can return any of them.
+		WaveDirector.WEATHER_CLEAR, WaveDirector.WEATHER_RAIN,
+		WaveDirector.WEATHER_DROUGHT,
+	]
+	var err: String = ""
+	for weather: StringName in weathers:
+		var weather_scale: float = WaveDirector.fire_interval_scale_for(weather)
+		err = _T.assert_gte(weather_scale, 1.0,
+			("weather '%s' cannot speed a plant up (%.2f) -- if one ever does, the "
+				+ "floor below stops being the floor") % [weather, weather_scale])
+		if err != "":
+			return err
+	# The fastest a single Nettle can ever sting: every Mint cell around it filled.
+	var most_mints: int = Mint.NEIGHBOUR_OFFSETS.size()
+	var floor_ms: float = (Plant.composed_interval(Nettle.STING_INTERVAL, 1.0,
+		Mint.scale_for(most_mints)) * 1000.0)
+	var gate: int = int(Sfx.REPEAT_MS.get(Sfx.NETTLE_STING, Sfx.DEFAULT_REPEAT_MS))
+	err = _T.assert_gt(floor_ms, float(gate),
+		("the gate (%dms) sits under the fastest interval a lone Nettle can reach "
+			+ "(%.0fms, ringed by %d Mints), so no board a player can build loses "
+			+ "one of its own stings to the throttle") % [gate, floor_ms, most_mints])
+	if err == "":
+		# And the row is doing something the default was not. Nettles planted in the
+		# same breath stay phase-locked forever -- STING_INTERVAL is a constant --
+		# so the gate has to be wide enough to swallow a bank that has drifted a few
+		# frames apart, not just one that fires in the same frame.
+		err = _T.assert_gt(gate, Sfx.DEFAULT_REPEAT_MS,
+			("and it is wider than DEFAULT_REPEAT_MS's %dms, which is the only "
+				+ "reason the row exists at all") % Sfx.DEFAULT_REPEAT_MS)
+	return err
+
+
+func test_the_sting_reaches_a_voice_carrying_its_own_numbers() -> String:
+	## The table rows are read, not merely present. `Sfx.tune_voice` is the seam
+	## cycle 74 extracted for exactly this: `PITCH` stayed perfectly unique while
+	## nothing read it, and the player heard twins. A sting whose rows exist and
+	## whose voice comes out at CORN_FIRED's settings is that bug again.
+	var voice := AudioStreamPlayer.new()
+	Sfx.tune_voice(voice, Sfx.CORN_FIRED)
+	var corn_db: float = voice.volume_db
+	var corn_pitch: float = voice.pitch_scale
+	Sfx.tune_voice(voice, Sfx.NETTLE_STING)
+	var err: String = _T.assert_float_eq(voice.volume_db,
+		float(Sfx.VOLUME_DB.get(Sfx.NETTLE_STING, 0.0)), 0.0001,
+		"the voice took the sting's volume off the table")
+	if err == "":
+		err = _T.assert_float_eq(voice.pitch_scale,
+			float(Sfx.PITCH.get(Sfx.NETTLE_STING, 1.0)), 0.0001,
+			"and its pitch, rather than keeping the last event's")
+	if err == "":
+		err = _T.assert_true(not is_equal_approx(voice.volume_db, corn_db)
+				or not is_equal_approx(voice.pitch_scale, corn_pitch),
+			("so a voice that just played CORN_FIRED (%.1f dB, pitch %.2f) comes out "
+				+ "different for a sting (%.1f dB, pitch %.2f)")
+				% [corn_db, corn_pitch, voice.volume_db, voice.pitch_scale])
+	voice.free()
 	return err

@@ -1311,12 +1311,15 @@ func _on_plant_grew_seeds(amount: int, plant: Plant) -> void:
 
 
 func upgrade_selected() -> String:
-	var corn := selected_placed as CornCobbler
-	if corn == null:
+	# Asks the plant whether it grows, rather than asking whether it is a cob.
+	# `has_upgrades()` is a non-empty ladder; it is a separate question from
+	# `upgrade_cost() == 0`, which is also what the TOP of a real ladder costs.
+	var plant: Plant = selected_placed
+	if plant == null or not is_instance_valid(plant) or not plant.has_upgrades():
 		return "nothing upgradeable is selected"
-	if corn.is_max_level():
-		return "already a full bunch of corn"
-	var price: int = corn.upgrade_cost()
+	if plant.is_max_level():
+		return "already fully grown"
+	var price: int = plant.upgrade_cost()
 	if bank.seeds < price:
 		hud.show_message("That upgrade costs %d seeds." % price)
 		# This refusal never touches bank.pay() (that's `bank.seeds < price`
@@ -1327,8 +1330,8 @@ func upgrade_selected() -> String:
 		Sfx.play(Sfx.PURCHASE_DENIED)
 		return "not enough seeds"
 	bank.add_seeds(-price)
-	corn.upgrade()
-	hud.show_message(Hud.upgrade_message(corn.level_name()))
+	plant.upgrade()
+	hud.show_message(Hud.upgrade_message(PlantCatalog.display_name(plant.kind), plant.level_name()))
 	_refresh()
 	return ""
 
@@ -1374,12 +1377,11 @@ func arm_uproot() -> String:
 	# idempotent and only writes when something is new, so the order cannot
 	# double-write — and arming twice in a frame is a thing this method already
 	# guards against above.
-	# Only the Corn Cobbler has an upgrade ladder, so only it can forfeit anything;
-	# `as CornCobbler` is null for every other plant and the cast decides it rather
-	# than a `kind ==` comparison that would need updating when a second upgradable
-	# plant arrives.
-	var cob := selected_placed as CornCobbler
-	var forfeited: int = 0 if cob == null else CornCobbler.upgrade_spend(cob.level)
+	# Every plant answers what it has spent climbing its own ladder; a plant with no
+	# ladder answers 0. This used to be `as CornCobbler`, which was correct only
+	# while corn was the sole upgradable plant -- the Chomp Flower now forfeits too,
+	# and its full climb (70) is dearer than the cob's (65).
+	var forfeited: int = selected_placed.upgrade_spent()
 	var first_arm: bool = not RunConfig.has_milestone(RunConfig.HINT_MOVE_PREVIEW)
 	# Spend the one-shot only when the tip is going to be SHOWN. `Hud.uproot_shows_tip`
 	# owns that decision because the message composer needs it too, and a rule stated in

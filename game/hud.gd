@@ -1231,18 +1231,10 @@ func _refresh_selection(state: Dictionary) -> void:
 			corn.kernel_damage() * float(corn.kernels_per_shot()),
 			corn.fire_interval(), corn.kernels_per_shot(),
 		]
-		_upgrade_button.visible = true
-		if corn.is_max_level():
-			_upgrade_button.text = "Fully grown"
-			_upgrade_button.disabled = true
-		else:
-			_upgrade_button.text = "Upgrade (%d)" % corn.upgrade_cost()
-			_upgrade_button.disabled = (state["bank"] as SeedBank).seeds < corn.upgrade_cost()
 	elif sunflower != null:
 		_selection_label.text = "%s\nNext %d seeds in %.0fs" % [
 			PlantCatalog.display_name(plant.kind), Sunflower.YIELD, sunflower.seconds_until_next_yield(),
 		]
-		_upgrade_button.visible = false
 	else:
 		var chomp := plant as ChompFlower
 		var sundew := plant as StickySundew
@@ -1270,8 +1262,27 @@ func _refresh_selection(state: Dictionary) -> void:
 			busy = "Slowing %d pest(s) to %d%% speed." % [
 				sundew.stuck_count(), int(round(StickySundew.SLOW_FACTOR * 100.0)),
 			]
-		_selection_label.text = "%s\n%s" % [PlantCatalog.display_name(plant.kind), busy]
-		_upgrade_button.visible = false
+		# A plant that grows says which rung it is on, the way the cob's line does.
+		# Asked of the plant rather than of `chomp != null`, so the third plant with
+		# a ladder needs no branch here.
+		if plant.has_upgrades():
+			_selection_label.text = "%s — %s\n%s" % [
+				PlantCatalog.display_name(plant.kind), plant.level_name(), busy,
+			]
+		else:
+			_selection_label.text = "%s\n%s" % [PlantCatalog.display_name(plant.kind), busy]
+	# One decision for every plant, outside the per-class branches that describe
+	# them. The three `visible =` assignments this replaces were the reason a second
+	# upgradable plant could not be reached: two of them said `false` unconditionally
+	# and the third was gated on `as CornCobbler`.
+	_upgrade_button.visible = plant.has_upgrades()
+	if plant.has_upgrades():
+		if plant.is_max_level():
+			_upgrade_button.text = "Fully grown"
+			_upgrade_button.disabled = true
+		else:
+			_upgrade_button.text = "Upgrade (%d)" % plant.upgrade_cost()
+			_upgrade_button.disabled = (state["bank"] as SeedBank).seeds < plant.upgrade_cost()
 	_refresh_health(plant)
 	# Armed, the button says what the next click does rather than what the action
 	# is called. It stays the same node at the same size — the devtools bridge and
@@ -1846,11 +1857,18 @@ static func message_corpus() -> Array[String]:
 		# second source of truth `upgrade_spend` exists to avoid.
 		out.append(uproot_armed_message(display, false))
 		out.append(uproot_armed_message(display, true))
+		# The widest forfeit across every ladder in the game, not the cob's. The
+		# Chomp Flower's full climb is 70 against the cob's 65, so pricing corn alone
+		# would leave the row's budget five seeds' worth of glyphs short of the
+		# longest line it can actually be asked to show.
 		out.append(uproot_armed_message(display, false,
-			CornCobbler.upgrade_spend(CornCobbler.LEVELS.size())))
+			maxi(Plant.ladder_spend(CornCobbler.LEVELS, CornCobbler.LEVELS.size()),
+				Plant.ladder_spend(ChompFlower.LEVELS, ChompFlower.LEVELS.size()))))
 		out.append(packet_message(display))
 	for level: Dictionary in CornCobbler.LEVELS:
-		out.append(upgrade_message(String(level["name"])))
+		out.append(upgrade_message(PlantCatalog.display_name(PlantCatalog.CORN), String(level["name"])))
+	for level: Dictionary in ChompFlower.LEVELS:
+		out.append(upgrade_message(PlantCatalog.display_name(PlantCatalog.CHOMP), String(level["name"])))
 	# Every field at its maximum: a wave number nothing will reach and a pest
 	# count the table cannot produce. A budget is about the worst case the FORMAT
 	# allows, not the worst the game is expected to reach.
@@ -1961,8 +1979,11 @@ static func packet_message(plant_name: String) -> String:
 	return "The packet held a %s!" % plant_name
 
 
-static func upgrade_message(level_name: String) -> String:
-	return "Corn Cobbler is now firing a %s." % level_name
+## Takes the plant's name now that more than one plant grows. The Chomp Flower's
+## rungs are nouns ("bud", "toothy maw", "gaping maw") so this one sentence reads
+## for both ladders without a per-plant phrasing.
+static func upgrade_message(plant_name: String, level_name: String) -> String:
+	return "%s is now a %s." % [plant_name, level_name]
 
 
 ## The line the prep window opens with. `note` is prep_depth_note()'s output or

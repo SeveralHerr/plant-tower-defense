@@ -18,6 +18,55 @@ extends Plant
 ## cells so it still only covers the lane it is actually next to.
 const GRAB_RADIUS: float = Board.CELL * 1.15
 
+## The mouth's ladder — the second one in the game, and the first that is not the
+## cob's (see `Plant.upgrade_ladder` for the surface this fills in).
+##
+## Both stats are SCALES of this class's own constants rather than absolute numbers,
+## so level 1 is the flower that shipped, exactly, by construction rather than by a
+## pair of numbers someone has to keep in step with `GRAB_RADIUS` and the pest table.
+## `PlantCatalog.reach(CHOMP)` still answers `GRAB_RADIUS` and is still right: it is
+## asked before anything is planted, and every flower is planted at level 1.
+##
+## What a level buys, and why it is a behaviour rather than a bigger number:
+##
+##   * `reach_scale` — 1.15 -> 1.30 -> 1.45 cells (73.6 -> 83.2 -> 92.7 px). Still
+##     under two cells at the top, which is the rule GRAB_RADIUS's header states: a
+##     Chomp covers the lane it is beside and never the one after it. The player sees
+##     a mouth close on a bug it used to let past.
+##   * `chew_scale` — the meal itself, not the plant's own clock. A Chomp's real cost
+##     is the mouth being shut (see this class's header), so the only upgrade worth
+##     buying for a body blocker is one that gives the lane back sooner: a beetle goes
+##     2.6s -> 2.08s -> 1.69s, an aphid 0.45s -> 0.29s.
+##
+## Deliberately gentle at the top, and this is the one number in the table that is a
+## balance decision rather than an arithmetic one. `Pest.SPECIES[QUEEN]`'s 11-second
+## chew is documented at `game/pest.gd:145` as the trade for eating a queen at all —
+## "the whole rest of the wave walking past a shut mouth". At 0.65 that is 7.15s, which
+## is still most of a wave, so the trade survives the ladder rather than being bought
+## out of it. A `chew_scale` near 0.4 would have deleted it.
+##
+## Both columns move the same way at every rung and neither can reverse — reach only
+## grows, chew only shortens — so level N grabs everything level N-1 would have grabbed
+## and finishes sooner, at every distance, against any pest. That is the same "there is
+## no configuration in which upgrading can lose" property `CornCobbler.KERNEL_STEP_DEGREES`
+## spends thirty lines establishing, and here it is free because the table is monotone;
+## `test_combat` pins it anyway, because free is not the same as checked.
+##
+## Costs: 25 then 45, against corn's 20 then 45. A Chomp costs 15 to plant where a cob
+## costs 10, and a ladder on a dearer plant opening dearer is the same gradient
+## `PlantCatalog` already prices tiers on. 45 stays the dearest single upgrade in the
+## game rather than being beaten by a new one.
+##
+## The names are NOUNS, like the cob's "single / triple / bunch" and unlike the
+## adjectives that first went in here. `Hud.upgrade_message` puts the level name in a
+## sentence ("... is now a %s."), and a sentence is what makes "gaping" wrong and
+## "gaping maw" right — the selection panel would have taken either.
+const LEVELS: Array[Dictionary] = [
+	{"name": "bud", "chew_scale": 1.00, "reach_scale": 1.00, "upgrade_cost": 25},
+	{"name": "toothy maw", "chew_scale": 0.80, "reach_scale": 1.13, "upgrade_cost": 45},
+	{"name": "gaping maw", "chew_scale": 0.65, "reach_scale": 1.26, "upgrade_cost": 0},
+]
+
 ## Radius of the "mouth full" ring. **Fixed**, and the arc's swept ANGLE carries the
 ## progress — the idiom `HuskLayer` has used since the husks existed
 ## (`game/husk_layer.gd:69-77`: a fixed `radius + RING_GAP`, `TAU * frac` of it drawn).
@@ -40,6 +89,52 @@ const GRAB_RADIUS: float = Board.CELL * 1.15
 const CHEW_RING_RADIUS: float = 22.0
 const CHEW_RING_WIDTH: float = 3.0
 
+## The fang crown: what an upgraded mouth WEARS, always on, whether or not it is
+## chewing.
+##
+## This exists for the reason `CornCobbler`'s muzzle fan exists, and the reason is
+## worth restating because it is the whole standard for a ladder in this game: an
+## upgrade the board does not show is an upgrade that reads as nothing having
+## happened. The cob learned that at 45 seeds a level. A Chomp's two stats are a
+## reach and a chew time, and neither of them can be seen on an idle flower — the
+## chew ring only appears mid-meal, and a mouth that is not eating anything looks
+## identical at every level.
+##
+## COUNT, not hue, and not size: `level - 1` PAIRS of teeth, so the plain flower
+## wears none, and the vocabulary is the one the board already speaks — the health
+## bar's notches, `PlacementPreview`'s one-bar/two-bar ground cue.
+##
+## Geometry, all four of which are constraints rather than taste. A tooth is 5.4 px
+## across, rim included, and it has to fit in a band 8 px wide — every number below
+## is that band being divided up, which is why they are as specific as they are:
+##   * FANG_RADIUS 28 sits OUTSIDE the sprite. `Node2D` paints its own canvas below
+##     its children, so anything drawn under the flower is invisible rather than
+##     dimmed — the same trap `Sunflower`'s gauge header documents. chomp_flower.svg's
+##     nine petals are ellipses centred 17 px out with ry 6 and a 2 px stroke, so the
+##     ring of petals ends at r = 24; a tooth's inner edge is at 25.3 and its outer at
+##     30.7, inside the 32 px half-cell.
+##   * That inner edge also clears the chew ring's outer edge (22 + half of 3 = 23.5),
+##     so the two readouts on this one plant can never share a pixel — the same
+##     clearance rule `test_combat` already pins between that ring and a Sunflower's
+##     gauge.
+##   * The crown sits in the TOP half only (±39° from straight up at the top level).
+##     The two leaves in the sprite are drawn at 55° and 125° — down-right and
+##     down-left — and they reach r = 31, so the bottom half is the only part of this
+##     plant that would swallow a tooth at this radius.
+##   * FANG_STEP_DEGREES is fixed, and each level adds one PAIR outside the pair
+##     below, so level N's angles are a strict superset of level N-1's. Straight from
+##     `CornCobbler.KERNEL_STEP_DEGREES`: a readout whose marks MOVE when you pay for
+##     it reads as a different thing, not as more of the same thing.
+const FANG_RADIUS: float = 28.0
+const FANG_STEP_DEGREES: float = 26.0
+const FANG_SIZE: float = 1.8
+const FANG_RIM_WIDTH: float = 0.9
+## The sprite's own tooth white over the maw's own dark red, so the crown reads as
+## this flower's teeth rather than as a new object parked beside it — and as neither
+## the chew ring's orange nor the cob's gold.
+const FANG_COLOR := Color(1.0, 0.98, 0.94, 0.95)
+const FANG_RIM_COLOR := Color(0.34, 0.11, 0.08, 0.90)
+
 ## The design doc draws a Chomp mid-bite as its own picture, not a tinted idle
 ## sprite — swapped in for the whole chew and back on release.
 const EATING_TEXTURE_PATH := "res://assets/sprites/chomp_flower_eating.png"
@@ -59,6 +154,61 @@ var _chew_total: float = 0.0
 var _idle_texture: Texture2D = null
 var _eating_texture: Texture2D = null
 var _eating_late_texture: Texture2D = null
+
+
+## This flower's ladder. The one override the generic upgrade surface needs — see
+## `Plant.upgrade_ladder`.
+func upgrade_ladder() -> Array[Dictionary]:
+	return LEVELS
+
+
+## Pure: how far a flower at `for_level` can close its mouth, in pixels. Derived from
+## GRAB_RADIUS so level 1 IS GRAB_RADIUS rather than a number that happens to match it.
+static func grab_radius_for(for_level: int) -> float:
+	return GRAB_RADIUS * float(ladder_row(LEVELS, for_level).get("reach_scale", 1.0))
+
+
+## Pure: how long a flower at `for_level` takes over a meal whose own chew is
+## `base_seconds` (`Pest.chew_seconds`, mutations already applied).
+##
+## Takes the pest's number as an argument rather than reading a Pest, for the reason
+## `Plant.seconds_to_be_eaten` takes a dps: it keeps this file ignorant of the pest
+## table, and it makes the test that pins the queen's 11 seconds name the 11.
+static func chew_seconds_for(for_level: int, base_seconds: float) -> float:
+	return base_seconds * float(ladder_row(LEVELS, for_level).get("chew_scale", 1.0))
+
+
+## This flower's reach right now — what `_act` and `_nearest_free_pest` both close on,
+## so an upgrade cannot widen one without widening the other.
+func grab_radius() -> float:
+	return grab_radius_for(level)
+
+
+## Pure: where the crown's teeth sit, in the plant's own space, for a level — one per
+## tooth, left to right, empty at level 1.
+##
+## Pure and public for the reason `CornCobbler.muzzle_pips` is: what gets drawn is then
+## checkable without rendering a frame, and the "bare mouth versus a crown of teeth"
+## difference a player reads at a glance is one function rather than a condition at the
+## draw site.
+static func fang_points(for_level: int) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for offset: float in fang_offsets(for_level):
+		out.append(Vector2.UP.rotated(offset) * FANG_RADIUS)
+	return out
+
+
+## Pure: the angles, in radians off straight up and in left-to-right order, that a crown
+## at `for_level` puts its teeth on. `level - 1` pairs, each pair one FANG_STEP_DEGREES
+## outside the pair below, so every level's set contains every lower level's set.
+static func fang_offsets(for_level: int) -> PackedFloat32Array:
+	var pairs: int = maxi(0, for_level - 1)
+	var out := PackedFloat32Array()
+	for k: int in range(pairs, 0, -1):
+		out.append(deg_to_rad(-FANG_STEP_DEGREES * (float(k) - 0.5)))
+	for k: int in range(1, pairs + 1):
+		out.append(deg_to_rad(FANG_STEP_DEGREES * (float(k) - 0.5)))
+	return out
 
 
 ## A hungry pest that eats the flower out from under a meal must not leave the
@@ -99,7 +249,7 @@ func _act(delta: float, pests: Array[Pest]) -> void:
 	for pest: Pest in pests:
 		if pest.held_by != null:
 			continue
-		if pest.global_position.distance_to(global_position) > GRAB_RADIUS:
+		if pest.global_position.distance_to(global_position) > grab_radius():
 			continue
 		if pest.is_winged:
 			winged += 1
@@ -130,7 +280,7 @@ static func idle_only_because_of_flight(winged_in_reach: int, grabbable_in_reach
 
 func _nearest_free_pest(pests: Array[Pest]) -> Pest:
 	var best: Pest = null
-	var best_distance: float = GRAB_RADIUS
+	var best_distance: float = grab_radius()
 	for pest: Pest in pests:
 		# Winged (doc: "ignores ground plants") flies over a Chomp's reach — the
 		# mouth simply cannot close on it. It still walks into Corn's kernels.
@@ -146,7 +296,7 @@ func _nearest_free_pest(pests: Array[Pest]) -> Pest:
 func _grab(pest: Pest) -> void:
 	_held = pest
 	pest.held_by = self
-	_chew_total = pest.chew_seconds
+	_chew_total = chew_seconds_for(level, pest.chew_seconds)
 	_chew_left = _chew_total
 	_bite()
 	_show_eating_sprite()
@@ -211,10 +361,23 @@ static func chew_arc_end(progress: float) -> float:
 ## trade-off ("mouth busy, lane open") made visible. Fixed radius, swept angle; see
 ## CHEW_RING_RADIUS for why round that way.
 func _draw() -> void:
+	# Always, and before the ring: the crown is what this flower's LEVEL looks like and
+	# the ring is what its current MEAL looks like. A cue the player has to catch the
+	# plant mid-chew to see cannot be the readout for something they bought.
+	_draw_fang_crown()
 	if _held == null:
 		return
 	draw_arc(Vector2.ZERO, CHEW_RING_RADIUS, 0.0, chew_arc_end(chew_progress()), 24,
 		Color(1.0, 0.55, 0.15, 0.85), CHEW_RING_WIDTH, true)
+
+
+## Level 1 draws nothing here and that is decided in `fang_offsets`, not by an `if`
+## at this site — the same split `_draw_muzzle_fan` made after cycle 70 watched a
+## mutation to the rule survive a test that only asked the other function.
+func _draw_fang_crown() -> void:
+	for tooth: Vector2 in fang_points(level):
+		draw_circle(tooth, FANG_SIZE + FANG_RIM_WIDTH, FANG_RIM_COLOR)
+		draw_circle(tooth, FANG_SIZE, FANG_COLOR)
 
 
 func _bite() -> void:
@@ -233,6 +396,26 @@ func _bite() -> void:
 	var tween := create_tween()
 	tween.tween_property(_sprite, "scale", Vector2(1.18, 0.82), 0.06)
 	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.12)
+
+
+## The teeth coming in: a snap wider than `_bite`'s and held longer, the same
+## relationship `CornCobbler._upgrade_flourish` has to its own `_recoil` — one payment
+## for a whole level against one of hundreds of bites.
+##
+## Note what this deliberately does NOT do: re-time the meal already in the mouth.
+## `_chew_total` was set when the mouth closed, at the level it closed at, and a bug
+## already half-swallowed finishing early because the player bought something is a
+## refund the ladder is not offering. The next meal is where the upgrade lands.
+##
+## Gated exactly as every cosmetic Tween in this class and in `Plant` is: headless
+## pumps no frames, so a Tween queued here would never run. The level, the reach, the
+## chew scale and the crown are all already correct without it.
+func _on_upgraded() -> void:
+	if _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
+		return
+	var tween := create_tween()
+	tween.tween_property(_sprite, "scale", Vector2(1.30, 0.74), 0.10)
+	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.18)
 
 
 func _show_eating_sprite() -> void:

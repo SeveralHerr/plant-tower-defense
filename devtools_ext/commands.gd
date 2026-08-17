@@ -220,12 +220,17 @@ func _cmd_upgrade_plant(args: Dictionary) -> Dictionary:
 	var refusal: String = game.upgrade_selected()
 	if refusal != "":
 		return _fail(refusal)
+	# Reported off the generic Plant surface. This read `plant as CornCobbler` and
+	# then `corn.level` unconditionally, so upgrading any other plant nulled the cast
+	# and the handler died INSIDE the reply -- surfacing as `success: false` with an
+	# empty message, which reads exactly like a refusal from the game. The upgrade had
+	# actually landed. `kernels` is still corn's alone and is omitted rather than
+	# faked for a plant that has none.
+	var out: Dictionary = {"level": plant.level, "level_name": plant.level_name()}
 	var corn := plant as CornCobbler
-	return {
-		"success": true,
-		"message": "upgraded",
-		"data": {"level": corn.level, "level_name": corn.level_name(), "kernels": corn.kernels_per_shot()},
-	}
+	if corn != null:
+		out["kernels"] = corn.kernels_per_shot()
+	return {"success": true, "message": "upgraded", "data": out}
 
 
 ## The board's shape, plus the one budget on it that is nearly spent.

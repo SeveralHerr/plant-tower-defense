@@ -143,7 +143,9 @@ const SPECIES: Dictionary = {
 	##     the swarm behind her arrives while she is still walking. Also what
 	##     makes the 11 s exposure above true.
 	##   * chew_seconds 11 — a Chomp CAN eat her, and pays for it with the whole
-	##     rest of the wave walking past a shut mouth. Note the mouth is beside
+	##     rest of the wave walking past a shut mouth. A gaping maw (the top of the
+	##     Chomp's ladder, cycle 101) cuts that to 7.15 s, which is the point of the
+	##     upgrade and still most of a wave. Note the mouth is beside
 	##     the road, so a Chomp kill bursts the brood right next to the plant
 	##     that is now busy for another eleven seconds. That is the trade, not a
 	##     loophole.

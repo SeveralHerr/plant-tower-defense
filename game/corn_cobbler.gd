@@ -93,8 +93,11 @@ const READY_ALPHA_FLOOR: float = 0.35
 ## across READY_ALPHA_FLOOR..1.0 actually paints.
 const READINESS_STEPS: int = 24
 
-var level: int = 1
-
+## `level` is NOT declared here any more — it is `Plant.level`, along with
+## `upgrade()`, `upgrade_cost()`, `level_name()`, `max_level()`, `is_max_level()`
+## and the spend. This class kept all of it for ninety-nine cycles and the ladder
+## below is all that was ever cob-specific about it; see Plant's "Upgrades" block
+## for why the machinery moved and the numbers did not.
 var _cooldown: float = 0.0
 ## Where the fan points. Updated on every shot, so an upgraded cob visibly
 ## sweeps its wider spray across whatever it last shot at.
@@ -114,7 +117,7 @@ func _act(delta: float, pests: Array[Pest]) -> void:
 
 
 func _fire_at(direction: Vector2) -> void:
-	var stats: Dictionary = _stats()
+	var stats: Dictionary = level_row()
 	var base_angle: float = direction.angle()
 	_aim_angle = base_angle
 	queue_redraw()
@@ -184,12 +187,14 @@ func _recoil() -> void:
 	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.10)
 
 
+## This cob's ladder. The one override the generic upgrade surface needs — see
+## `Plant.upgrade_ladder`.
+func upgrade_ladder() -> Array[Dictionary]:
+	return LEVELS
+
+
 static func _level_stats(for_level: int) -> Dictionary:
-	return LEVELS[clampi(for_level - 1, 0, LEVELS.size() - 1)]
-
-
-func _stats() -> Dictionary:
-	return _level_stats(level)
+	return ladder_row(LEVELS, for_level)
 
 
 ## The angle offsets, in radians and in launch order, that a shot at `for_level`
@@ -288,18 +293,9 @@ func aim_angle() -> float:
 
 
 func spread_degrees() -> float:
-	return float(_stats()["spread_degrees"])
+	return float(level_row()["spread_degrees"])
 
 
-func max_level() -> int:
-	return LEVELS.size()
-
-
-func is_max_level() -> bool:
-	return level >= LEVELS.size()
-
-
-## Seeds to reach the next level, or 0 when there is no next level.
 ## What has already been spent upgrading a cob to `for_level`, in seeds.
 ##
 ## Derived by summing `LEVELS[..]["upgrade_cost"]` rather than written down: the ladder
@@ -310,28 +306,13 @@ func is_max_level() -> bool:
 ## (`game/plant.gd:541-544`), so upgrades are consumed rather than refunded. That is a
 ## defensible rule and it was an unstated one until cycle 79; this is what lets the armed
 ## prompt say it, and say it only when there is something to say.
+##
+## Kept as a static on the cob because two callers ask it of the CLASS rather than of a
+## plant — `Hud.message_corpus` prices the armed prompt at the ladder's maximum, which no
+## instance can answer — while the per-plant question is `Plant.upgrade_spend()` and every
+## instance caller should use that instead.
 static func upgrade_spend(for_level: int) -> int:
-	var spent: int = 0
-	for i: int in range(mini(for_level, LEVELS.size()) - 1):
-		spent += int(LEVELS[i]["upgrade_cost"])
-	return spent
-
-
-func upgrade_cost() -> int:
-	if is_max_level():
-		return 0
-	return int(LEVELS[level - 1]["upgrade_cost"])
-
-
-func upgrade() -> bool:
-	if is_max_level():
-		return false
-	level += 1
-	# Without this the fan keeps showing the level you paid to leave behind until
-	# something else happens to dirty the canvas.
-	queue_redraw()
-	_upgrade_flourish()
-	return true
+	return ladder_spend(LEVELS, for_level)
 
 
 ## The instant the seeds are spent, not just the fan's next repaint. Same
@@ -341,21 +322,25 @@ func upgrade() -> bool:
 ## spend. Gated the same way every cosmetic Tween in this class is: headless
 ## pumps no frames, so a Tween queued here never runs, and _sprite is only
 ## null before _build_visuals runs.
+##
+## The PLANT_UPGRADED cue used to be the last line of this function, i.e. behind
+## that gate — so a player who turned animations off bought upgrades in silence.
+## It is `Plant.upgrade()`'s now, where the purchase actually lands; this is the
+## sprite half only, which is what `game/sfx.gd:55` already says it is.
 func _upgrade_flourish() -> void:
 	if _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
 		return
 	var tween := create_tween()
 	tween.tween_property(_sprite, "scale", Vector2(0.72, 1.34), 0.10)
 	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.18)
-	Sfx.play(Sfx.PLANT_UPGRADED)
 
 
-func level_name() -> String:
-	return String(_stats()["name"])
+func _on_upgraded() -> void:
+	_upgrade_flourish()
 
 
 func kernels_per_shot() -> int:
-	return int(_stats()["kernels"])
+	return int(level_row()["kernels"])
 
 
 ## What one kernel takes off a pest at this level. Public because it is now half of
@@ -363,7 +348,7 @@ func kernels_per_shot() -> int:
 ## a selection panel quoting only `kernels_per_shot()` describes the level 3 cob as
 ## five kernels while the player watches four of them sail past.
 func kernel_damage() -> float:
-	return float(_stats()["damage"])
+	return float(level_row()["damage"])
 
 
 ## Seconds between volleys, **as this cob will actually fire right now** — the
@@ -381,7 +366,7 @@ func kernel_damage() -> float:
 ## both.** The fix is not to patch the two readouts, it is to make this the only
 ## place any of them asks.
 func fire_interval() -> float:
-	return composed_interval(float(_stats()["interval"]), fire_interval_scale,
+	return composed_interval(float(level_row()["interval"]), fire_interval_scale,
 		neighbour_interval_scale)
 
 

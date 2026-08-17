@@ -612,6 +612,189 @@ func uproot_refund() -> int:
 	return maxi(MIN_UPROOT_REFUND, int(floor(PlantCatalog.cost(kind) * rate)))
 
 
+# -- Upgrades ---------------------------------------------------------------
+#
+# The whole upgrade surface, for every plant, in one place. It was a CornCobbler
+# feature for ninety-nine cycles: `level`, `upgrade()`, `upgrade_cost()`,
+# `level_name()` and `is_max_level()` all lived on the cob, and both call sites
+# — `Game.upgrade_selected` and `Hud._refresh_selection` — reached them through
+# `selected_placed as CornCobbler`. A cast IS a decision, and the decision it was
+# making was "corn is the only plant that grows", which is a statement about the
+# 2026-06 catalogue rather than about the game.
+#
+# What moves here is only the ladder MACHINERY. Every number stays in the plant
+# that owns it: a subclass overrides `upgrade_ladder()` to return its own const
+# table and nothing else about it is special-cased anywhere. So the next plant to
+# grow a ladder is a const and a one-line override — not a fourth branch at two
+# call sites and a fifth in the message corpus.
+#
+# **A plant is upgradeable iff its ladder is non-empty**, and that is the only
+# test anything may make. `has_upgrades()` is the name of that decision; nothing
+# outside this block is allowed to ask it by naming a class.
+
+## The default ladder: a plant that does not grow. Named rather than written as a
+## bare `[]` at the one place it is returned, so the "no ladder" case reads as a
+## deliberate answer and not as a stub someone forgot to fill in.
+const NO_LADDER: Array[Dictionary] = []
+
+## Which rung of `upgrade_ladder()` this plant is on, 1-based. 1 for every plant
+## in the game the moment it is planted, including the ones with no ladder at all
+## — `max_level()` is 1 for those, so they are born fully grown and `can_upgrade()`
+## is false without anyone writing a guard.
+##
+## Written by `upgrade()` and by nothing else in the game (tests set it directly to
+## reach a rung without paying for it). Not persisted: uprooting a plant loses its
+## level, which is the rule `uproot_refund()`'s header already states.
+var level: int = 1
+
+
+## This plant's ladder: one Dictionary per level, lowest first. Empty means "this
+## plant does not grow", which is the default and is what six of the seven entries
+## in `PlantCatalog` still answer.
+##
+## Two keys are required of every row because this file reads them:
+##   * `"name"` — what the level is called, for the selection panel and the message
+##     row. Short: it is measured against `Hud`'s message-row budget.
+##   * `"upgrade_cost"` — seeds to reach the NEXT level, and 0 on the last row.
+## Everything else in a row belongs to the plant and is read by that plant alone
+## (`CornCobbler` keeps kernels, spread, interval and damage there; `ChompFlower`
+## keeps a chew scale and a reach scale).
+##
+## Overridden rather than configured through a registry keyed on `kind`, because a
+## registry is a second place the answer lives and this one cannot drift: the
+## ladder is a const in the class whose behaviour reads it.
+func upgrade_ladder() -> Array[Dictionary]:
+	return NO_LADDER
+
+
+## Pure: row `for_level` of `ladder`, clamped to its ends, and `{}` for a plant
+## with no ladder at all.
+##
+## The clamp matters more than it looks. Every stat lookup in every upgradeable
+## plant goes through here, so a level that has somehow run past the end of the
+## table returns the top row instead of indexing out of bounds and taking the
+## frame with it — and an EMPTY ladder returns an empty row rather than reading
+## `ladder[-1]`, which is the case a `clampi(...)` written without the guard gets
+## wrong for exactly the six plants that do not grow.
+static func ladder_row(ladder: Array[Dictionary], for_level: int) -> Dictionary:
+	if ladder.is_empty():
+		return {}
+	return ladder[clampi(for_level - 1, 0, ladder.size() - 1)]
+
+
+## Pure: what level `for_level` is called on `ladder`; "" when there is no ladder.
+static func ladder_level_name(ladder: Array[Dictionary], for_level: int) -> String:
+	return String(ladder_row(ladder, for_level).get("name", ""))
+
+
+## Pure: seeds to leave `for_level` for the next rung, and 0 when there is no next
+## rung — either because this is the top of the ladder or because there is no
+## ladder. Both zeroes mean the same thing to a caller ("nothing to buy here"), so
+## they are deliberately not distinguished; `has_upgrades()` is the question that
+## separates them and the HUD asks it first.
+static func ladder_upgrade_cost(ladder: Array[Dictionary], for_level: int) -> int:
+	if ladder.is_empty() or for_level >= ladder.size():
+		return 0
+	return int(ladder_row(ladder, for_level).get("upgrade_cost", 0))
+
+
+## Pure: what has ALREADY been spent getting a plant to `for_level`, in seeds.
+##
+## Summed from the ladder rather than written down, which is the whole reason
+## `CornCobbler.upgrade_spend` existed: the cob's ladder is 20 then 45 and a
+## hand-typed 65 is a second source of truth that a retune silently falsifies — on
+## a number the player is about to be told they are forfeiting
+## (`Hud.uproot_armed_message`). Generic now, so the second upgradeable plant gets
+## an honest forfeit line without anyone noticing it needed one.
+static func ladder_spend(ladder: Array[Dictionary], for_level: int) -> int:
+	var spent: int = 0
+	for i: int in range(mini(for_level, ladder.size()) - 1):
+		spent += int(ladder[i].get("upgrade_cost", 0))
+	return spent
+
+
+## Does this plant grow at all? THE question the Upgrade button is gated on, and
+## the replacement for `selected_placed as CornCobbler`.
+func has_upgrades() -> bool:
+	return not upgrade_ladder().is_empty()
+
+
+## The top rung. 1 for a plant with no ladder, so `is_max_level()` is true for it
+## and every "already at the top" path treats it as finished rather than broken.
+func max_level() -> int:
+	return maxi(1, upgrade_ladder().size())
+
+
+func is_max_level() -> bool:
+	return level >= max_level()
+
+
+## Is there a rung above this one to buy? `has_upgrades() and not is_max_level()`,
+## named because it is the condition `upgrade()` refuses on and the condition the
+## button is enabled by, and two call sites spelling out the same `and` is how the
+## two ended up disagreeing about the Sunflower.
+func can_upgrade() -> bool:
+	return has_upgrades() and not is_max_level()
+
+
+func upgrade_cost() -> int:
+	return ladder_upgrade_cost(upgrade_ladder(), level)
+
+
+func level_name() -> String:
+	return ladder_level_name(upgrade_ladder(), level)
+
+
+## This plant's own row of its own ladder — where a subclass reads its stats.
+func level_row() -> Dictionary:
+	return ladder_row(upgrade_ladder(), level)
+
+
+## Seeds already sunk into this plant's level, which an uproot forfeits.
+##
+## `upgrade_spent`, past tense, and NOT `upgrade_spend` — that name is taken by
+## `CornCobbler`'s static, which asks the same question of the CLASS (`Hud`'s message
+## corpus prices the armed prompt at the ladder's maximum, which no instance can
+## answer). GDScript refuses a static and an instance method of one name in one
+## hierarchy, and `name_check --require-compile` said so within a minute of the two
+## being written. Different question, different tense, different name.
+func upgrade_spent() -> int:
+	return ladder_spend(upgrade_ladder(), level)
+
+
+## Buy the next rung. Returns false — changing nothing — when there is no next
+## rung, which is both the top of a ladder and a plant that has none.
+##
+## The caller charges for it. This is deliberate and it is the same split
+## `Game.upgrade_selected` already used: the seeds are the bank's business, the
+## level is the plant's, and a plant that could spend the player's seeds would be
+## a plant a test cannot exercise without a Game.
+##
+## `queue_redraw()` is here rather than in each subclass's hook because a ladder
+## the player cannot see is the defect this whole surface exists to avoid — every
+## upgradeable plant wears its level (the cob's muzzle fan, the flower's fang
+## crown), and a plant that repaints only when something else dirties its canvas
+## shows the level the player paid to leave behind. The cue is played here for the
+## same reason: it is the sound of the purchase landing, and it used to sit inside
+## `CornCobbler._upgrade_flourish` BEHIND `GardenTheme.animations_enabled()` —
+## so a player with animations turned off bought upgrades in silence.
+func upgrade() -> bool:
+	if not can_upgrade():
+		return false
+	level += 1
+	queue_redraw()
+	Sfx.play(Sfx.PLANT_UPGRADED)
+	_on_upgraded()
+	return true
+
+
+## What this plant does when it grows — its sprite flourish, a re-tuned timer,
+## whatever. Runs after `level` has already moved, so it reads the NEW level.
+## Empty here: the base class owns the ladder, never the celebration.
+func _on_upgraded() -> void:
+	pass
+
+
 ## A hungry pest calls this instead of walking past. Game listens for
 ## `destroyed` and removes the plant from the board — no refund, it was eaten.
 func take_damage(amount: float) -> void:
