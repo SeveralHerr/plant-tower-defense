@@ -343,6 +343,14 @@ const PAGES: Array[Dictionary] = [
 		"note": "The third plant designed here rather than on paper, and the first that is about the BOARD instead of the lane. Every other plant answers what happens to the pest in front of it; Mint answers what the plants beside it are worth. It is the only reason a cell's neighbours have ever mattered.",
 	},
 	{
+		"kind": KIND_PLANT,
+		"plant": &"nettle",
+		"drawing": "res://assets/sprites/nettle.png",
+		"sprite": "res://assets/sprites/nettle.png",
+		"caption": "Prickly Nettle",
+		"note": "The fourth designed here, and the first plant that refuses a target. It stings only mutated pests — armoured, winged, hungry — and does nothing at all before wave 8, which its shop line says outright. A specialist you are told to buy late is a decision; one you are not is a trap.",
+	},
+	{
 		"kind": KIND_SHELF,
 		"plant": &"",
 		# Kept a real path even though the shelf page never shows it: Drawing is

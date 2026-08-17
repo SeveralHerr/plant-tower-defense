@@ -203,6 +203,10 @@ const PLANT_ART_WIDTH: float = 64.0
 ## a new slot may only live in x 60-371 or x 781-1092; there is room for about one
 ## more in each band before they start to crowd. If the catalogue outgrows the
 ## slots, lawn_plants() drops the surplus and says so — see the note there.
+## (Those two bands are the CANVAS bands and both are now overspilled a little at the
+## edges — see the seventh-slot paragraph below, which measures in ink instead and says
+## why. The 426-726 column is the one number here that is still absolute: it is what
+## test_the_title_lawn_clears_the_button_column_and_the_horizon checks, in canvases.)
 ##
 ## The fifth slot (the Bomb Dandelion) went into the RIGHT band, and the two
 ## slots already there moved left to make room, rather than into the left band
@@ -219,12 +223,52 @@ const PLANT_ART_WIDTH: float = 64.0
 ##
 ## Spacing is 115 against the right band's 134, so the gap between sprites is 6px rather than
 ## 25. That is the cost of a sixth plant: tighter, still positive, still clear of the button
-## column (330 + 54.5 = 384.5 against 426). A SEVENTH does not fit either band without
-## dropping PLANT_SCALE, and lawn_plants() degrades with a push_warning when that day comes.
+## column (330 + 54.5 = 384.5 against 426).
+##
+## THE SEVENTH SLOT (Prickly Nettle), and the paragraph above said it would not fit. It does
+## not fit *in canvases*, and that turned out to be the wrong unit to measure in.
+##
+## The arithmetic that says no is real: a band runs from the button column to the screen edge,
+## 426px either side, and four 109px canvases need 436. There is no arrangement of four that
+## does not overlap, in either band, at PLANT_SCALE. That is what "a SEVENTH does not fit"
+## meant and it is still true as stated.
+##
+## But 109px is the CANVAS, and art_src/STYLE.md:13 sizes the drawing INSIDE it: "loose
+## objects use ~40-56 px of the 64". Every sprite here therefore carries transparent margin,
+## and it is the INK that must not collide. Measured off the sources rather than assumed —
+## these are half-widths in screen px, i.e. the SVG's own content half-width times
+## PLANT_SCALE:
+##
+##   * sunflower  45.9   art_src/sunflower.svg:21-32, the petal ring: 12 petals centred 18
+##                       from the middle with an 8px semi-axis, so 27 of the 32 available
+##                       (this is the widest sprite in the catalogue and the one that binds)
+##   * dandelion  40.5   art_src/dandelion.svg:47-49, a pappus of r=3.2 plus a 0.6 rim on the
+##                       r=20 tuft ring
+##   * sundew     39.4   art_src/sticky_sundew.svg:20, whose header states its own content box
+##                       as x 8.8..55.2
+##   * nettle     31.8   art_src/nettle.svg, content box 13.28..50.72 as
+##                       tools/svg_style_check.py measures it
+##
+## So the right band is respaced from 806/940/1074 to 786/889/992 with the Nettle at 1095.
+## Canvases overlap by 6px at each join and NO INK DOES: 17.7px of clear space between the
+## sunflower and the sundew, 22.8 between the sundew and the dandelion, 30.4 between the
+## dandelion and the nettle. The two hard edges are checked in canvases, because that is what
+## the tests measure and what a redraw could fill: the sunflower's left edge is 731.5 against
+## the column at 726, and the nettle's right edge is 1149.5 against the viewport's 1152.
+##
+## The Nettle goes rightmost ON PURPOSE and that is not a free choice — it is the narrowest
+## sprite in the catalogue, and the rightmost slot is the one with 2.5px of canvas margin to
+## the screen edge. Putting any of the other three there would have been the same 2.5px of
+## canvas over 8px of ink instead of 25.
+##
+## An EIGHTH is a different problem and this trick does not stretch to it: the ink budget in
+## the left band is already spent, and a fifth sprite in either band overlaps in ink, not just
+## in canvas. That is the day to drop PLANT_SCALE or go to two rows, and lawn_plants()
+## degrades with a push_warning until someone does.
 ##
 ## In CATALOGUE order, not left-to-right order -- lawn_plants() maps by index -- so the
-## out-of-sequence 330.0 at the end is correct and not a typo.
-const PLANT_X: Array[float] = [100.0, 215.0, 806.0, 940.0, 1074.0, 330.0]
+## out-of-sequence 330.0 near the end is correct and not a typo.
+const PLANT_X: Array[float] = [100.0, 215.0, 786.0, 889.0, 992.0, 330.0, 1095.0]
 ## The bugs the plants are there to fight, marching across the soil.
 const PEST_BASE_Y: float = 606.0
 const PEST_SCALE: float = 1.15

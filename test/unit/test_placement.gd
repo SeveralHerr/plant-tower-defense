@@ -2471,7 +2471,7 @@ func test_the_title_lawn_shows_every_plant_in_the_catalogue() -> String:
 		err = _T.assert_gt(sprites.size(), 0, "and the lawn actually built decorations")
 	if err == "":
 		err = _T.assert_gte(TitleScreen.PLANT_X.size(), ids.size(),
-			"there is a hand-placed slot for every plant — add an x to TitleScreen.PLANT_X, in x 60-371 or x 781-1092")
+			"there is a hand-placed slot for every plant — add an x to TitleScreen.PLANT_X, clear of the button column and measured in INK, not canvases (see PLANT_X's seventh-slot note)")
 	if err == "":
 		err = _T.assert_eq(sprites.size(), ids.size(),
 			"the lawn stands one of each catalogue plant, counted from the catalogue rather than written out")
@@ -4106,4 +4106,349 @@ func test_page_for_kind_survives_the_pages_being_reordered() -> String:
 		err = _T.assert_eq(NotebookScreen.shelf_page(),
 			NotebookScreen.page_for_kind(NotebookScreen.KIND_SHELF),
 			"shelf_page() and page_for_kind(KIND_SHELF) are the same answer")
+	return err
+
+
+# -- The Prickly Nettle (plant-tower-defense-l4ke) ---------------------------
+#
+# The seventh plant, and the first that refuses a target. Everything below is
+# driven off `Nettle`'s own constants and off `Pest.mutations` rather than off
+# numbers copied out of them, because the whole plant is one rule — "only what
+# the mutations changed" — and a test that restates the rule in its own words is
+# a second copy of it.
+
+
+## A bare host for a plant and some pests, with no Game around them.
+##
+## Deliberately not `_grass(game)` + `place_plant`: everything in this block except
+## `test_planting_a_nettle_does_not_silently_plant_corn` is about the targeting rule, and a
+## real board would put a road, a wave, weather and whatever else is in the "pests" group
+## between the assertion and the thing it is about. `tools/group_leak_check.py` exists
+## because a test that reads a tree-global group measures nodes it did not create; every
+## pest below is built here and handed to `_act` as an array, so the group is never asked.
+func _nettle_host(nodes: Array[Node]) -> Node2D:
+	var container := Node2D.new()
+	container.name = "NettleHost"
+	for node: Node in nodes:
+		container.add_child(node)
+	return container
+
+
+## A pest of `species` sitting at `at`, with its own walking switched off.
+func _still_pest(species: StringName, at: Vector2, route: PackedVector2Array) -> Pest:
+	var pest := Pest.new()
+	pest.setup(species, route)
+	pest.position = at
+	pest.set_physics_process(false)
+	return pest
+
+
+## A Nettle that does not act on its own.
+##
+## `set_physics_process(false)` is load-bearing rather than tidy. `Plant._physics_process`
+## calls `_act` with `_live_pests()`, which reads the tree-wide "pests" group — so the settle
+## frames `_T.instantiate_scene` pumps would land stings before any assertion below ran, and
+## an exact-health assertion would then be measuring the settle rather than the call. That is
+## the failure `tools/settle_read_check.py` is named for.
+##
+## `setup()` is skipped for the same reason `test_corn_shoots_the_pest_closest_to_escaping`
+## skips it: it builds visuals, which loads the sprite, which makes a targeting test depend
+## on a PNG having been rendered. `kind` is set by hand because `uproot_refund` and the
+## catalogue lookups read it.
+func _idle_nettle() -> Nettle:
+	var nettle := Nettle.new()
+	nettle.kind = PlantCatalog.NETTLE
+	nettle.set_physics_process(false)
+	return nettle
+
+
+## THE acceptance criterion, both halves in one board: a mutated pest in reach loses health
+## and a plain one standing on the same spot provably does not.
+##
+## Both pests are at the same position and the same species, so the ONLY thing that differs
+## between them is the mutation — which means a Nettle that simply hit everything, or one
+## whose reach was wrong, or one that never fired at all, each fails this differently and
+## none of them passes it.
+func test_a_nettle_stings_a_mutated_pest_and_provably_not_a_plain_one() -> String:
+	var route := PackedVector2Array([Vector2(0, 0), Vector2(400, 0)])
+	var nettle: Nettle = _idle_nettle()
+	# Well inside RANGE, and the SAME cell for both, so "it stung the closer one" cannot be
+	# the explanation for either result.
+	var plain: Pest = _still_pest(Pest.APHID, Vector2(60, 0), route)
+	var mutated: Pest = _still_pest(Pest.APHID, Vector2(60, 0), route)
+	var host: Node2D = _nettle_host([nettle, plain, mutated])
+	await _T.instantiate_scene(host)
+
+	var err: String = _T.assert_true(mutated.apply_mutation(Pest.MUTATION_ARMOURED),
+		"the armoured mutation actually landed on the pest under test")
+	if err == "":
+		# Vacuity guard: two pests that both died in the settle frames, or a sting worth
+		# nothing, would satisfy a "did not lose health" assertion without asserting a thing.
+		err = _T.assert_gt(Nettle.STING_DAMAGE, 0.0, "a sting is worth something to begin with")
+	if err == "":
+		err = _T.assert_true(is_instance_valid(plain) and is_instance_valid(mutated)
+			and plain.is_alive() and mutated.is_alive(),
+			"both pests survived the settle frames -- if this fails the answers below are "
+				+ "about a set of one")
+	if err != "":
+		_T.free_ui(host)
+		return err
+
+	var plain_before: float = plain.health
+	var mutated_before: float = mutated.health
+	# One call, one sting: `_act` arms `_cooldown` to a full interval afterwards, so a
+	# single delta cannot produce two. The array is a typed local rather than a literal
+	# argument -- `_act` takes Array[Pest], and an untyped literal handed straight to a
+	# typed-array parameter is a conversion the runtime is entitled to refuse.
+	var board_of_two: Array[Pest] = [plain, mutated]
+	nettle._act(0.016, board_of_two)
+
+	err = _T.assert_float_eq(plain.health, plain_before, 0.0001,
+		"the plain aphid standing in the same cell took nothing at all (%.2f, was %.2f)"
+			% [plain.health, plain_before])
+	if err == "":
+		# Written as `before > after` because the harness ships no assert_lt --
+		# tools/run_tests.gd:749 has assert_gt and assert_gte and no counterpart.
+		err = _T.assert_gt(mutated_before, mutated.health,
+			"and the armoured one beside it did lose health (%.2f, was %.2f)"
+				% [mutated.health, mutated_before])
+	if err == "":
+		# The other direction, and the one that catches "it stung once and then gave up":
+		# keep pumping a whole board with nothing but plain pests on it and nothing may
+		# ever happen. Sixty intervals is far past any cooldown the plant can arm.
+		var only_plain: Pest = _still_pest(Pest.APHID, Vector2(60, 0), route)
+		host.add_child(only_plain)
+		var lone: Nettle = _idle_nettle()
+		host.add_child(lone)
+		var board_of_one: Array[Pest] = [only_plain]
+		for _i: int in 60:
+			lone._act(Nettle.STING_INTERVAL, board_of_one)
+		err = _T.assert_float_eq(only_plain.health, only_plain.max_health, 0.0001,
+			"and %d intervals of a plain pest sitting in reach still costs it nothing" % 60)
+	_T.free_ui(host)
+	return err
+
+
+## The refusal is asked as "does this pest carry ANY mutation", not as two named flags.
+##
+## The bead that asked for this plant named armoured and winged. A two-flag test is a
+## hand-list, and it goes stale in the one direction nothing would catch: the day a fourth
+## mutation is added, a plant whose blurb says it stings what the mutations changed silently
+## stops covering it. So the rule reads `Pest.mutations`, the set the roll
+## actually produced, and this test walks `WaveDirector.MUTATIONS` rather than naming any of
+## them — a mutation added to that list without a decision here fails right here.
+func test_the_nettle_stings_every_mutation_the_wave_table_can_roll() -> String:
+	var route := PackedVector2Array([Vector2(0, 0), Vector2(400, 0)])
+	var err: String = _T.assert_gt(WaveDirector.MUTATIONS.size(), 1,
+		"there is more than one mutation, or 'every mutation' means nothing")
+	if err != "":
+		return err
+	var pests: Array[Node] = []
+	var built: Array[Pest] = []
+	for which: StringName in WaveDirector.MUTATIONS:
+		var pest: Pest = _still_pest(Pest.APHID, Vector2(60, 0), route)
+		pests.append(pest)
+		built.append(pest)
+	var plain: Pest = _still_pest(Pest.APHID, Vector2(60, 0), route)
+	pests.append(plain)
+	var host: Node2D = _nettle_host(pests)
+	await _T.instantiate_scene(host)
+
+	for i: int in WaveDirector.MUTATIONS.size():
+		var which: StringName = WaveDirector.MUTATIONS[i]
+		err = _T.assert_true(built[i].apply_mutation(which),
+			"the %s mutation lands on its pest" % which)
+		if err == "":
+			err = _T.assert_true(Nettle.can_sting(built[i]),
+				"a %s pest is something the Nettle will fight" % which)
+		if err != "":
+			_T.free_ui(host)
+			return err
+	err = _T.assert_false(Nettle.can_sting(plain),
+		"and an unmutated pest is not, which is the whole plant")
+	if err == "":
+		# `stingable` is the filter as `_act` uses it, and it must agree with `can_sting`
+		# item by item rather than being a second implementation of the same rule.
+		var candidates: Array[Pest] = built.duplicate()
+		candidates.append(plain)
+		var kept: Array[Pest] = Nettle.stingable(candidates)
+		err = _T.assert_eq(kept.size(), built.size(),
+			"stingable() keeps exactly the mutated ones out of %d candidates" % candidates.size())
+		if err == "":
+			err = _T.assert_false(kept.has(plain), "and the plain pest is not among them")
+	if err == "":
+		# A freed or null entry is refused rather than crashing the game, the same guard
+		# Plant._furthest_along_in_range carries and for the reason its header gives.
+		err = _T.assert_false(Nettle.can_sting(null), "a null candidate is refused, not dereferenced")
+	_T.free_ui(host)
+	return err
+
+
+## The Nettle writes NO new selection rule, and this is what says so.
+##
+## The bead asked whether a target filter belongs on the plant or on a shared helper, because
+## CornCobbler picks through `Plant._furthest_along_in_range` and Dandelion through its own
+## `best_target` (game/dandelion.gd:205) — a third rule would be the point at which "how a
+## plant chooses" wants to be one named thing. The answer taken is that there are two
+## questions here, not one: WHICH pests may be hit (new, `stingable`) and WHICH of those is
+## hit first (unchanged, shared). This asserts the second half is literally the cob's own
+## function operating on the filtered set, so the composition cannot quietly become a copy.
+func test_the_nettle_targets_through_the_same_rule_the_cob_uses() -> String:
+	var route := PackedVector2Array([
+		Vector2(0, 0), Vector2(30, 0), Vector2(60, 0), Vector2(90, 0), Vector2(120, 0),
+	])
+	var nettle: Nettle = _idle_nettle()
+	var behind: Pest = _still_pest(Pest.APHID, Vector2(30, 0), route)
+	var ahead: Pest = _still_pest(Pest.APHID, Vector2(90, 0), route)
+	# The pest FURTHEST along and unmutated: the trap answer. A plant that used the shared
+	# rule and forgot the filter picks this one, and a plant that filtered but ranked by
+	# distance picks `behind`.
+	var decoy: Pest = _still_pest(Pest.APHID, Vector2(100, 0), route)
+	# Leg 3 rather than 4, for the reason test_combat's own targeting test writes out: at
+	# leg 4 a pest is on its final step and frees itself during the settle frames.
+	ahead._leg = 3
+	decoy._leg = 3
+	behind._leg = 1
+	var host: Node2D = _nettle_host([nettle, behind, ahead, decoy])
+	await _T.instantiate_scene(host)
+
+	var err: String = _T.assert_true(ahead.apply_mutation(Pest.MUTATION_WINGED), "the leader is winged")
+	if err == "":
+		err = _T.assert_true(behind.apply_mutation(Pest.MUTATION_WINGED), "and so is the straggler")
+	if err == "":
+		err = _T.assert_true(is_instance_valid(decoy) and decoy.is_alive(),
+			"the unmutated decoy is still on the board to be refused")
+	if err == "":
+		err = _T.assert_gt(ahead.progress(), behind.progress(),
+			"the leader really is further along (%.2f vs %.2f)" % [ahead.progress(), behind.progress()])
+	if err != "":
+		_T.free_ui(host)
+		return err
+
+	# The decoy comes FIRST and ties `ahead` on progress, which is what gives it teeth:
+	# `_furthest_along_in_range` replaces its best only on a strict `>`, so a Nettle that
+	# lost its filter keeps whichever tied pest it saw first. Ordered the other way round the
+	# decoy would be silently harmless and this test would pass on a plant that stings
+	# everything.
+	var candidates: Array[Pest] = [decoy, behind, ahead]
+	var chosen: Pest = nettle._furthest_along_in_range(Nettle.stingable(candidates), Nettle.RANGE)
+	err = _T.assert_true(chosen == ahead,
+		"the Nettle stings the mutated pest closest to escaping, not the nearer one and not "
+			+ "the unmutated leader")
+	if err == "":
+		# And it is the SAME function, not a lookalike: a cob handed the already-filtered
+		# set answers identically. If this ever diverges, a third selection rule has been
+		# written without anyone saying so.
+		var cob := CornCobbler.new()
+		host.add_child(cob)
+		var cob_pick: Pest = cob._furthest_along_in_range(Nettle.stingable(candidates), Nettle.RANGE)
+		err = _T.assert_true(cob_pick == chosen,
+			"a CornCobbler handed the same filtered set picks the same pest -- the filter "
+				+ "composes with the shared selector rather than replacing it")
+	_T.free_ui(host)
+	return err
+
+
+## The blurb has to say the plant is dead weight before the mutations start, and it has to say
+## it against the wave the game actually starts them on.
+##
+## The number cannot be interpolated — `PlantCatalog.PLANTS` is a const Dictionary, so the
+## blurb is a literal. This is what stops the literal and `WaveDirector.MUTATION_START_WAVE`
+## drifting apart: move the wave and the shop's promise fails here rather than quietly
+## becoming a lie about a plant that costs 40 seeds.
+func test_the_nettle_blurb_warns_it_is_dead_weight_before_mutations() -> String:
+	var blurb: String = PlantCatalog.blurb(PlantCatalog.NETTLE)
+	var err: String = _T.assert_gt(blurb.length(), 0, "the Nettle has a blurb at all")
+	if err == "":
+		err = _T.assert_true(blurb.contains("wave %d" % WaveDirector.MUTATION_START_WAVE),
+			"it names wave %d, the wave WaveDirector actually starts mutations on, rather than a number typed into this test: %s"
+				% [WaveDirector.MUTATION_START_WAVE, blurb])
+	if err == "":
+		# The warning itself, not merely the number. A blurb that mentions wave 8 while
+		# selling the plant as good from the first frame would pass the line above.
+		var warned: bool = false
+		for phrase: String in ["Dead weight", "dead weight", "useless", "does nothing"]:
+			if blurb.contains(phrase):
+				warned = true
+				break
+		err = _T.assert_true(warned,
+			"and says outright that it is worth nothing before then -- a plant that is inert "
+				+ "for seven waves and does not advertise it is a trap: %s" % blurb)
+	if err == "":
+		# The reach the placement preview draws, read off the plant's own constant. A copied
+		# number here is a ring that lies about coverage.
+		err = _T.assert_float_eq(PlantCatalog.reach(PlantCatalog.NETTLE), Nettle.RANGE, 0.0001,
+			"PlantCatalog.reach() answers with Nettle.RANGE and not a hand-copied number")
+	if err == "":
+		err = _T.assert_true(PlantCatalog.engages(PlantCatalog.NETTLE),
+			"the Nettle declares that it can touch a pest, or a lane it covers reads as bare")
+	return err
+
+
+## A specialist must never be a strict upgrade on the generalist it stands beside.
+##
+## `Nettle.sustained_dps()` is higher than a level-1 cob's — it has to be, or paying four
+## times the price for a plant that refuses most targets would be pointless. What must NOT
+## happen is that it also wins per seed, because then the right move against a plain wave
+## would be to buy Nettles and wait, and the refusal would stop being a cost.
+##
+## Both sides are computed from the classes rather than quoted: `CornCobbler.single_target_dps`
+## already exists for exactly this comparison, and it is measured at a distance a Nettle can
+## actually reach, since comparing a 112px plant to a cob's 176px ring at 170px would be
+## comparing it to a cob that is out of the argument.
+func test_the_nettle_never_out_earns_a_cob_per_seed() -> String:
+	var at: float = Nettle.RANGE * 0.5
+	var cob_dps: float = CornCobbler.single_target_dps(1, at)
+	var err: String = _T.assert_gt(cob_dps, 0.0,
+		"a level-1 cob lands something at %.0fpx, or there is nothing to compare against" % at)
+	if err == "":
+		err = _T.assert_gt(Nettle.sustained_dps(), cob_dps,
+			"the Nettle out-damages a cob against what it will actually fight (%.2f vs %.2f)"
+				% [Nettle.sustained_dps(), cob_dps])
+	if err == "":
+		var nettle_per_seed: float = Nettle.sustained_dps() / float(PlantCatalog.cost(PlantCatalog.NETTLE))
+		var cob_per_seed: float = cob_dps / float(PlantCatalog.cost(PlantCatalog.CORN))
+		err = _T.assert_gt(cob_per_seed, nettle_per_seed,
+			("and still loses per seed (%.3f against the cob's %.3f) -- a specialist that "
+				+ "wins on both counts makes the refusal free, and free is not a cost")
+				% [nettle_per_seed, cob_per_seed])
+	if err == "":
+		# The weather/neighbour seam, asserted through the plant rather than trusted: a
+		# Nettle that hand-multiplied its own interval would still pass every targeting test
+		# above and would be silently wiped by the next weather change (game/plant.gd:129).
+		var nettle: Nettle = _idle_nettle()
+		nettle.fire_interval_scale = 2.0
+		nettle.neighbour_interval_scale = 0.75
+		err = _T.assert_float_eq(nettle.sting_interval(),
+			Plant.composed_interval(Nettle.STING_INTERVAL, 2.0, 0.75), 0.0001,
+			"sting_interval() composes the sky and the neighbours through Plant.composed_interval")
+		nettle.free()
+	return err
+
+
+## The `_new_plant` arm, and the reason it is worth a test of its own: `Game._new_plant`'s
+## default arm returns a CornCobbler, so a catalogue entry with no arm is planted, paid for,
+## selected and drawn — as CORN. Nothing errors and nothing in the HUD disagrees.
+func test_planting_a_nettle_does_not_silently_plant_corn() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(500)
+	# Seeds are not enough: pay_for_plant also refuses a plant the run has not unlocked,
+	# and a tier-2 plant is not unlocked at start. Without this the test fails on "not
+	# paid for" and reads as a pricing bug rather than a setup one.
+	game.bank.unlocked = [PlantCatalog.CORN, PlantCatalog.NETTLE] as Array[StringName]
+	var cell: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.NETTLE, cell), "",
+		"a Nettle is buyable and placeable on grass")
+	if err == "":
+		var planted: Plant = game.plant_at(cell)
+		err = _T.assert_true(planted != null, "and something is standing in that cell")
+		if err == "":
+			err = _T.assert_true(planted is Nettle,
+				"and it is a Nettle -- _new_plant's default arm hands back a CornCobbler, so "
+					+ "a missing match arm plants corn and says nothing: got %s"
+					% planted.get_class())
+		if err == "":
+			err = _T.assert_eq(planted.kind, PlantCatalog.NETTLE,
+				"and it knows what it is, which is what the selection panel reads")
+	_T.free_ui(game)
 	return err

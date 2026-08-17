@@ -37,7 +37,6 @@
     "game/pest.gd::func::tint_for",
     "game/pest.gd::var::is_big",
     "game/plant.gd::func::play_exit_and_free",
-    "game/plant.gd::var::neighbour_interval_scale",
     "game/plant_catalog.gd::func::is_free_starter",
     "game/plant_catalog.gd::func::unlocked_at_start",
     "game/run_summary.gd::signal::gate_requested",

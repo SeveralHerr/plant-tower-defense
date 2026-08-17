@@ -13,6 +13,7 @@ const SUNFLOWER := &"sunflower"
 const SUNDEW := &"sticky_sundew"
 const DANDELION := &"dandelion"
 const MINT := &"mint"
+const NETTLE := &"nettle"
 
 const PLANTS: Dictionary = {
 	CORN: {
@@ -93,6 +94,40 @@ const PLANTS: Dictionary = {
 		# cobs that do.
 		"engages": false,
 	},
+	NETTLE: {
+		"display": "Prickly Nettle",
+		"texture": "res://assets/sprites/nettle.png",
+		"cost": 40,
+		# TIER 2, and the bead that asked for this plant said 3. It cannot be 3:
+		# test_the_dandelion_is_priced_against_the_four_plants_it_stands_beside asserts the
+		# Dandelion's tier is STRICTLY above every other entry's, so a second tier-3 plant
+		# fails the suite. Checked before writing the number rather than after.
+		#
+		# It is also the right answer on its own terms. A packet tier is how the plant is
+		# ACQUIRED, and this one has to be in the player's hands BEFORE
+		# WaveDirector.MUTATION_START_WAVE to be worth anything at all -- an epic packet at 90
+		# seeds (SeedBank.PACKET_TIERS) is not reliably affordable by wave 8. The rare packet
+		# caps at tier 2 and costs 45, which is where the answer to a wave-8 problem belongs.
+		#
+		# 40 seeds makes it the dearest tier-2 entry (Sundew 30, Sunflower and Mint 25) and
+		# still under the Dandelion's 45. That gradient is the statement: a specialist is
+		# priced like the top of its tier, never like the tier above it.
+		"tier": 2,
+		"unlocked_at_start": false,
+		"free_starter": false,
+		# Names the wave outright. A plant that does nothing for seven waves and does not say
+		# so is a trap rather than a decision -- see nettle.gd's header. The 8 here is pinned
+		# against WaveDirector.MUTATION_START_WAVE by
+		# test_the_nettle_blurb_warns_it_is_dead_weight_before_mutations, because a blurb is a
+		# const String and cannot interpolate one.
+		"blurb": "Stings only pests the mutations changed — armoured, winged, hungry — and lets the rest walk past. Dead weight until wave 8, when the first of them arrive.",
+		# Damages, and is the only entry whose `true` here is CONDITIONAL on the pest. That is
+		# not a reason to write false: everything that reads this key is asking "does this cell
+		# defend the lane", and a Nettle on the road's shoulder at wave 12 defends it. What the
+		# key cannot express is "against some pests only", and nothing in the game asks that
+		# yet -- see Nettle.can_sting, which is where the real answer lives.
+		"engages": true,
+	},
 }
 
 ## Order the shop and the plant bar list plants in. Keeps the UI stable as more
@@ -100,7 +135,10 @@ const PLANTS: Dictionary = {
 ## Mint sits last because it is the only entry whose value depends on what is already on
 ## the board -- a first-time reader meeting it before they own anything to speed up would
 ## read it as a plant that does nothing.
-const ORDER: Array[StringName] = [CORN, CHOMP, SUNFLOWER, SUNDEW, DANDELION, MINT]
+## Nettle sits after it for the same class of reason and a sharper one: it is the only entry
+## that does nothing AT ALL for the first seven waves, so the last thing a reader scrolling
+## the shop meets is the one whose blurb has to be read before it is bought.
+const ORDER: Array[StringName] = [CORN, CHOMP, SUNFLOWER, SUNDEW, DANDELION, MINT, NETTLE]
 
 
 static func ids() -> Array[StringName]:
@@ -158,6 +196,14 @@ static func reach(id: StringName) -> float:
 			# asks this question, and a Mint touching no plant is exactly as wasted as a
 			# cob covering no lane. Read from Mint's own constant, not a copied 64.
 			return Mint.REACH
+		NETTLE:
+			# The sting's reach, read from Nettle's own constant rather than a copied 112.
+			#
+			# Worth saying what this answers and what it cannot: the dead-ground cue asks
+			# this question, so a Nettle that touches no road cell is flagged as wasted, and
+			# that is correct at every wave. What no reach can express is "wasted UNTIL wave
+			# 8" -- the blurb is where that lives, and it is the only place it can.
+			return Nettle.RANGE
 		_:
 			return 0.0
 
