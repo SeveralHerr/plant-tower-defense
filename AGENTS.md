@@ -73,9 +73,21 @@ running a command. **Never write a work checklist into it.**
    compaction. The beads ARE the queue; there is nothing to transcribe. This step used
    to say "read `todo.md`, file every item as a bd issue", which wrote every item twice
    and ticked it twice. (Do NOT use TodoWrite for any of this.)
-2. **Do the items one at a time.** For each one: claim the bd issue, write the code,
-   run `/verify`, then commit. One commit per item. Never batch several items into one
-   commit at the end.
+2. **Do the items one at a time.** For each one: **confirm the bead's claims, then**
+   claim the bd issue, write the code, run `/verify`, then commit. One commit per item.
+   Never batch several items into one commit at the end.
+   - **`confirm` is a step and it comes before `claim`.** This step said "claim the bd
+     issue, write the code" for 88 cycles, which is the wrong order and contradicts
+     `.claude/skills/verify-bd-item/SKILL.md` — the skill written for exactly this
+     sequence, whose diagram reads `confirm → claim → implement` and whose first
+     instruction is to open the code the bead says is missing. Follow the skill; this
+     bullet exists so a reader working from the loop rather than from the skill does not
+     get the order backwards. Cycles 70, 84, 86 and 88 each claimed a bead whose factual
+     claim was wrong or already satisfied, and cycle 88's (`-beq1`, "nothing says a pest
+     carries two traits") was shipped **by the cycle that filed it** — `markers_for`
+     returns one mark per flag twenty lines below the `_tint` call the claim was read
+     from, and the test the acceptance asked for was written the same day.
+     A bead is a claim about the repo made at some past cycle, and the repo has moved.
    - **If the last two cycles worked the same file or subsystem, take something else.**
      Step 6 already forces one FILED item to come from outside the neighbourhood; nothing
      forced the WORK to vary, and it does not on its own. Cycles 60 and 61 both worked the

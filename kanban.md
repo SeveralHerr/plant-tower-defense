@@ -247,6 +247,47 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (88) — a cue that saturates, and the ten nobody teaches
+
+- **The husk's rot clock saturates exactly where its drawing did, and that half is a
+  mechanic.** This cycle fixed the visual saturation with pips and deliberately left
+  `CompostMeter.lifetime_for` (`game/compost_meter.gd:93`) alone, because it lerps
+  `HUSK_LIFETIME` 10.0 → `MIN_HUSK_LIFETIME` 4.5 by the same `value_fraction` that caps
+  at `FULL_VALUE = 9`. Derived from `Pest.SPECIES` × every composable mutation set: six
+  of the ten reachable husk values sit at or above 9, so a 60-seed queen husk and a
+  9-seed beetle husk give the player **the same 4.5 seconds**. The pips now say one is
+  worth six times the other while the clock says hurry equally for both.
+  **The design question comes first and is genuinely open**: is 4.5s a floor on human
+  reaction time that a rich husk must not go below, or should the richest drop be the one
+  you can least afford to miss? Widening `FULL_VALUE` answers it the second way for every
+  husk at once, which is why this cycle refused to do it as a side effect.
+- **Saturating a cue is sometimes right, and the distinguishing question is not
+  "how much range is left".** Two magnitudes in this game clamp while their input keeps
+  climbing — the enumeration is over `clampf`/`clampi`/`minf` across `game/*.gd`, 48
+  sites, of which all but these are normalisations of a fraction into 0..1 that cannot
+  overflow by construction. One was the husk bug fixed this cycle. The other is
+  `Hud.THREAT_TINT_MAX = 12` (`game/hud.gd:143`), pinned red for an endless run that
+  reaches ~25, and it is **correct** — the comment there argues it out: a ramp stretched
+  across a logarithm would read as cream for the whole fixed campaign.
+  What separates them is whether the player still has a DECISION past the saturation
+  point. Past full threat the answer is always "everything you have", so more resolution
+  buys nothing. Past a 9-seed husk the player is choosing which of several to sweep
+  before they rot, and the cue had stopped helping. Ask that before adding resolution,
+  not how much headroom the constant has.
+- **The drawn grammar has ten rows and the game teaches none of them.**
+  `game/OVERLAY_GRAMMAR.md` is now ten rows (12 table lines, 2 of them header) and is
+  referenced only from GDScript comments — `husk_layer.gd:75`, `placement_preview.gd:3`,
+  `selection_marker.gd:3` — no script loads it, so it is a developer document. Checked
+  both surfaces that look like they could host a legend, and **both are the wrong shape,
+  which is the actual finding**: `NotebookScreen.PAGES` (`game/notebook_screen.gd:198`)
+  is a design-history artefact, the original pencil drawings with notes about where the
+  sprites came from, and mentions husks or compost nowhere in the file; `PauseScreen`'s
+  two-column list (`game/pause_screen.gd:778`, a key column and a "does" column) is a
+  controls reference, and a dashed ring is not a key. So the gap is not "the notebook is
+  missing a page" — it is that the game has no read-the-board surface at all, and every
+  cue added since cycle 60 has quietly assumed one exists. A player meets a dashed ring
+  and a doubled line width with nothing to check them against.
+
 ### New this cycle (87) — the mixer has a scale now, and one thing left off it
 
 - **Every event in the game is priced except the two that arrive together.** `Sfx.PITCH`

@@ -5621,3 +5621,94 @@ cited in code, and the citation is a mitigation this project has watched fail.
   almost always made of readable values.** The same move applies to anything the harness
   cannot sense directly: don't ask whether you can perceive the effect, ask what the last
   readable value before it is. Here it was three hops from the top and one `find-nodes` away.
+
+## 2026-08-17 — Cycle 88: the husk cue that had run out of range (-532j), and -beq1 closed unbuilt-because-already-built
+
+- Value: **warranted** — the frame answered a question the numbers structurally cannot, and
+  then answered a second one I had not thought to ask.
+  - Expected: the unit tests already pinned the whole drop table, so I predicted runtime
+    would only confirm that three pips fit legibly on a 30px husk — a taste check.
+  - Got: that, plus the comparison itself made visible. The capture puts a 9-seed husk
+    beside a 14-seed one and they are the same circle, the same brightness and the same
+    ring weight, differing by exactly one pip. The derived table *said* six of ten values
+    collide; the screenshot is what makes that a thing you can see rather than a claim
+    about `clampf`.
+  - Found: two, both on the way to the picture. The five test husks **rotted before the
+    first screenshot** — `lifetime_for` at value ≥ 9 is `MIN_HUSK_LIFETIME` 4.5s, and I
+    spent longer than that reading `global_position` — so the check had to be re-run
+    paused with `queue_redraw` forced by hand. And the first two captures were empty
+    because `drop_husk` takes an **Entities-local** position while `screenshot --region`
+    takes screen space, and `Entities.global_position` is `(0, 72)`. That is cycle 85's
+    coordinate-space class, hit by me, while verifying a fix in the same subsystem, one
+    cycle after writing the bead that says board cues need a position probe.
+  - Cheaper: nothing. The numbers needed no game and did not get one; what needed the game
+    was whether a count of three is countable, and whether the collision the table derived
+    is the collision a player sees.
+
+- Gap: **`pause` freezes the mechanism that repaints, so a state change made while paused
+  is invisible until you know which node redraws from `_process`** — the workaround is
+  three commands and requires reading the node's source first.
+  `pause`, then `run-method drop_husk` ×5, then `screenshot`: an unchanged frame. Nothing
+  in the reply says why. `HuskLayer` repaints from `_process` (`game/husk_layer.gd:87`),
+  which a paused tree does not call, so the canvas still held the pre-drop frame — while
+  `ping` cheerfully answers, because the bridge is process-mode ALWAYS and the game under
+  it is not. The fix was
+  `run-method --node /root/Game/Entities/HuskLayer --method queue_redraw`, which only
+  works if you already know that node is the one drawing and that it draws from
+  `_process`.
+  This is not a niche shape: every `_draw`-based cue in a Godot game repaints from either
+  `_process` or an explicit `queue_redraw`, and pausing to inspect a transient is exactly
+  the case `pause` is documented for ("catch a sub-second effect, poll for the moment,
+  pause, then inspect at no rush"). The husks here were transient *because* they rot in
+  4.5s, so unpausing to get a repaint races the thing being inspected.
+  - [G-061] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: a `repaint [--node PATH]` verb that calls `queue_redraw()` on the node and
+    its `CanvasItem` descendants (whole tree by default) and returns how many it touched —
+    one command, no source-reading, and it composes with `pause`. Failing that, have
+    `pause`'s own reply carry a `canvas_repaint: frozen` note naming the consequence, so an
+    unchanged frame is diagnosable from the output instead of from a guess.
+
+- Gap: **the verify ledger detected that a `warranted` row carried no Phase 4 checks, said
+  so, and wrote the row anyway.** `verify_ledger.py record` printed
+  `warranted with no Phase 4 checks recorded - the claim that earned it is not in the row`
+  and then `recorded unknown run, value=warranted - reached 3/3 changed file(s)`. Both
+  lines are true and the warning is the useful one, but it is advisory text on stderr that
+  nothing reads back: `verify_ledger.py stats` does not count rows in that state, so the
+  ledger's own headline metric treats a row whose verdict has no recorded evidence
+  identically to one that does. My row is exactly such a row — the runtime work was real
+  and driven by hand, so the verdict is earned, but the row does not carry it.
+  - [G-061] see above for the pause gap; this one is its own:
+  - [G-062] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: `stats` should print the count of `warranted`/`insufficient` rows with an
+    empty or absent `checks` array as its own line — "N of M verdicts carry no check
+    evidence". The warning already knows how to detect the state; the gap is that nobody
+    ever sees it again after the run that produced it scrolls past.
+
+### Cycle 88 gap reconciliation — the first run of the new `gap-reconcile` skill
+
+Built `.claude/skills/gap-reconcile/SKILL.md` this cycle because `log.md` had named it twice
+and `.claude/skills/` did not have it — a step-0 obligation I had reported as satisfied
+without checking, which is its own finding. Applied immediately to the two open gaps carrying
+an `upstream:` field, both of whose issues are now CLOSED. Both are **fixed in the installed
+0.54.0 and unavailable here**, because this project is pinned at 0.38.0 on purpose (gh#43).
+
+- [G-059] status: fixed | seen: 1 | harness: 0.54.0 | upstream: gh#49 | note: shipped in full
+  and then some. `sample-pixels --expect RRGGBB[,RRGGBB...]` with `--tolerance` (default 8)
+  at `templates/tools/devtools.py:5191`, the assertion path at `:4716-4723` reporting per
+  colour count and fraction and `sys.exit(1)` on absent — and `--points X,Y` shipped too,
+  which was the smaller half of the ask. Read the code rather than the flag's presence, per
+  the skill's own step 3: it also exits **2**, not 0, when `--expect` is sent to a game whose
+  harness predates 0.49.0 (`:4711-4715`), so an unassertable run is not reported as a clean
+  one. That is better than what was asked for.
+- [G-060] status: fixed | seen: 2 | harness: 0.54.0 | upstream: gh#50 | note: `commands/verify.md:134`
+  is a sixth Phase 0.5 row, `(f) Only project-owned tooling outside res://` → **Tooling-only**,
+  and it cites `plant G-060, 2nd sighting` with the exact scenario logged here — a
+  `tools/run_json_check.py` plus two `.md`s fitting no row. Row `(e)` covers the adjacent
+  case (the diff IS the run's output) with a `"kind": "experiment"` that `stats` counts
+  separately.
+
+**What reconciliation changed in-project, which is the point of doing it:** `-6e2e` was filed
+as blocked on gh#49. It is not any more — the tool exists, one pin away. That moves the bead
+from "waiting on upstream" to "waiting on `-ny3h`", which is a different and much more
+tractable kind of blocked, and nothing in the gap ledger's count would ever have said so.
+Noted on the bead.
