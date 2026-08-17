@@ -1,4 +1,4 @@
-# Cycle 99
+# Cycle 100
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,24 +6,36 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 99 taught
+## What cycle 100 taught
 
-**When a container cannot hold its contents, the arithmetic has two sides and only one of
-them usually gets examined.** Three cycles tried to fit two columns of plant buttons into a
-232px bar by dividing the bar differently, and `hud.gd`'s header was right every time that it
-could not be rendered. Nobody measured the other side: `get_minimum_size()` on a plant button
-was **195x31** against the 114px two columns can give. Taking the NAME off took it to **8x8**.
+**The first parallel cycle. Three agents, three lanes, and every failure lived in a seam none
+of them could see.** A campaign (16 → **22 waves**), a pest species (the **Shield Bug**, whose
+plate bounces a Corn Cobbler's kernels and not a Dandelion's seed) and a plant (the **Prickly
+Nettle**, which stings only mutated pests) all shipped at once. Each agent ran all eleven
+parallel-safe checkers clean in its own lane. **The merge failed five times.**
 
-So six plants now sit in two columns of three, with room for four more, and `findings` is 0
-across 5 of 5 on the board that reported seven gating findings last cycle. **Garden Mint is
-buyable** — place a Corn, read `fire_interval()` 0.8, put a Mint beside it, read 0.6.
+A golden headcount array and a hardcoded endless wave pair, broken by another lane's growth. A
+deliberate "a new plant must be decided about here" gate asserting exactly three engaging
+plants. A placement test that funded a purchase but never unlocked the plant. A notebook note
+119 characters over budget. **None was a mistake by the agent that caused it** — each was a
+fact about a file it was correctly forbidden to open. The parent pass is where parallel work
+integrates, and its cost scales with the number of lanes rather than the size of any one.
 
-**The side effect was better than the fix.** Icons went from 32px to 69px and the bar reads as
-a seed-packet tray rather than a list of labelled rows, which is the design brief's own
-framing. The name lives in the tooltip and on the selection panel; a locked plant shows no
-price instead of the word "locked". **A constraint that forces content out of a cramped
-surface is not obviously a loss** — what went was the least useful of three things, a name
-beside a picture of the thing.
+**Two bead premises were wrong again, both mine, both found by the agent opening the code.**
+"Growing the campaign is an afternoon" — no: three assertions chain to cap any finale at 436.7
+base health and wave 16 was already 418, so seven appended waves had **one beetle** of headroom
+between them. The six went in *front* of the finale instead. And "nothing SPLITS" — the queen
+has split into aphids since the boss landed.
+
+**A magic number derived from a constant outlives the constant and reads as deliberate.** The
+endless ramp test priced waves `[60, 100, …]` and said "past wave 48"; both were correct at 16
+waves and silently wrong at 22. It now *finds* the first pinned wave instead.
+
+## Carried from cycle 99
+
+**When a container cannot hold its contents, the arithmetic has two sides and only one usually
+gets examined.** The plant bar took six plants — and now seven — because a button's minimum
+width fell from 195px to 8px, not because the bar changed.
 
 ## Carried from cycle 98
 
@@ -31,26 +43,22 @@ beside a picture of the thing.
 before anyone called `plant_bar_layout(6)` — one line, pure, and it knew. Also: a branch a
 file documents as broken is worse than no branch, because it reads as handled.
 
-## Carried from cycle 97
-
-**A checker's finding that contradicts what you can plainly see is the one most worth
-believing** — everything cheaper has already agreed with you, so the disagreement is the
-information. Bisect your own change before auditing the tool.
-
 ## Where things stand
 
-A hundred beads ready. Suite **617/617**, 13122 assertions; lint 0/0; eleven checkers clean;
-`findings` **0 across 5 of 5, exit 0**. Fifteen skills. Still on harness **0.38.0**
-deliberately (`-ny3h`, gh#43).
+A hundred beads ready. Suite **634/634**, 13437 assertions; lint 0/0; eleven checkers clean;
+`findings` **0 across 5 of 5, exit 0**. Fifteen skills. Upstream gh#44 and gh#51–57 open. Still
+on harness **0.38.0** deliberately (`-ny3h`, gh#43).
 
-**HIGH GEAR FROM CYCLE 100, asked for directly: more levels, more work in parallel.** Step 2
-now carries the fan-out rule and its safety gate — only `name_check.py` and the eleven project
-checkers are parallel-safe, so agents write code and run those; the engine gates and the
-runtime pass are the parent's, once, after they land, and each agent gets disjoint files.
-The level work is filed and deliberately disjoint: **`-l4ke`** (Nettle, now unblocked — the
-plant files), **the campaign bead** (`wave_director.gd` only) and **the new-species bead**
-(`pest.gd` and art). Those three can run at once. `-wtyj` (make the play screen read as the
-same notebook) is the other big P1 and touches the board, so it is a fourth lane.
+**The game has 22 waves, seven plants and four pest species now**, and three cycles added most
+of it. What none of it has is a **playthrough** — `-t52o` is the highest-value item on the
+board by some distance, and its own instruction matters more than when it was written: tune AT
+MOST THREE THINGS afterwards. Paired mutations are inside the campaign for the first time
+(waves 20-22) and nobody has met one.
+
+**Parallel is the default now.** Step 2 carries the rule, its gate list, the shared-registry
+case (the parent owns a file several lanes each need one line in) and the merge budget. The two
+deferred halves of cycle 100 are filed: `-pdri` puts the Shield Bug in a wave a player will
+actually meet, `-e5kh` gives the Nettle a sound.
 
 ## Waiting on the user
 

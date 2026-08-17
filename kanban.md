@@ -247,6 +247,31 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (100) — three lanes at once, and five failures in the seams
+
+- **Every failure the parallel run produced lived in a seam no agent could see.** Three
+  agents shipped a campaign, a pest and a plant; each ran all eleven parallel-safe checkers
+  clean in its own lane; and the merge failed **five** times. The campaign's growth broke a
+  golden headcount array and a hardcoded endless wave pair in another lane's file. The
+  Nettle's `engages: true` tripped a deliberate "a new plant must be decided about here" gate
+  asserting exactly three engaging plants. Its placement test funded a purchase but never
+  unlocked the plant. Its notebook note ran 419 characters against a 300-char budget.
+  **None of these is a mistake by the agent that caused it** — each is a fact about a file it
+  was correctly forbidden to touch. So the parent pass is not a formality or a review step;
+  it is where the parallel work actually integrates, and its cost scales with the number of
+  lanes rather than with the size of any one of them. Worth knowing before adding a fourth.
+- **A magic number derived from a constant outlives the constant, and reads as deliberate.**
+  The endless ramp test priced waves `[60, 100, 137, 250, 499]` and its docstring said "past
+  wave 48". Both were correct when `WAVES.size()` was 16 and both silently wrong at 22,
+  because every endless landmark keys off `wave - WAVES.size()` — wave 60 simply stopped
+  being past the speed cap. Nothing marked those numbers as derived; they looked like
+  chosen sample points.
+  The fix was to **find** the first wave where all three multipliers have pinned rather than
+  to move the numbers, and the general form is worth the entry: **a constant computed from
+  another constant should either be computed at read time or say in one clause what it was
+  computed from.** `kanban-idea-pass` already requires that of prose claims; this is the same
+  rule for a literal in a test.
+
 ### New this cycle (99) — three cycles divided the bar; none changed what was in it
 
 - **The plant bar was never a layout problem.** 232px divided by two is 114, and a button

@@ -6281,3 +6281,36 @@ Noted on the bead.
     valid PNG of the wrong place and no error. Filed together because they share a shape —
     a reply that is true, is the most general true statement available, and sends the reader
     to the outermost cause when the specific one was already computed.
+
+## 2026-08-17 — Cycle 100: three lanes in parallel (-eeaq, -4du6, -l4ke)
+
+- Value: **warranted**, and the runtime pass answered a question three agents each said
+  outright they could not: whether their sprites read on the surfaces they stand on.
+  - Expected: a merge, a suite run, and two screenshots.
+  - Got: **five integration failures**, none visible to the agent that caused it, each a fact
+    about a file that agent was correctly forbidden to touch. Then a single frame settling
+    three separate open questions at once — `wave_count 22`, the Nettle's orange unmistakable
+    on a green lawn, the Shield Bug's blue-grey plate unmistakable beside two plain red
+    aphids on a tan road, and the plant bar holding **seven** at two columns of four.
+  - Found: the two sprite-colour choices were both reasoned and unseen — one agent wrote "my
+    colour choice is reasoned, not seen" and the other said the same in different words. Both
+    were right, and that is the argument for the parent keeping the runtime pass rather than
+    delegating it: an agent that cannot launch the game cannot check the one thing about a
+    sprite that matters.
+  - Cheaper: nothing. All eleven parallel-safe checkers were clean in all three lanes; the
+    failures live exactly where those checkers cannot look.
+
+- Gap: **`screenshot --region` is not a uniform scale of the viewport, and gh#57 asked for
+  the wrong fix.** Cycle 99 filed [G-073] proposing that the verb print the scale it applied.
+  This window is 2880x1779 for a 1152x648 viewport: 2880/1152 is 2.5 but 1779/648 is 2.745,
+  so it is **letterboxed** and there is no single scale to print. Two region captures came
+  back showing road at coordinates `node-bounds` had just given me, and I fell back to a
+  full-frame capture — which is what actually worked, twice, in two different cycles now.
+  - [G-073] status: open | seen: 2 | harness: 0.38.0 | upstream: gh#57 | note: **the proposed
+    fix in gh#57 is insufficient and I should say so on the issue.** Printing "2.5x" would
+    have been wrong here. The honest fix is either to accept the region in VIEWPORT
+    coordinates (every other spatial verb does) or to print the full mapping including the
+    letterbox offset. Second sighting bumps the count rather than opening a new id.
+  - Improvement: comment on gh#57 with the non-uniform case before a maintainer implements
+    the simpler thing. Filed as a bead so it is not lost.
+  - Note: no other gaps this turn.

@@ -102,6 +102,20 @@ running a command. **Never write a work checklist into it.**
      **Give each agent disjoint files and say so in its prompt.** Two agents editing
      `hud.gd` is a merge conflict the loop has no step for; two agents editing `mint.gd` and
      `wave_director.gd` is free. If two items want the same file, they are one item.
+     **When several lanes each need one line in the SAME registry file, the PARENT owns that
+     file** and adds every line after they land. Cycle 100 held `test_sprite_style.gd` back
+     that way — two lanes each added a sprite and each needed an `EXPECTED_SIZE` row, which
+     is the one collision that was guaranteed rather than possible. Tell each agent the file
+     is held and to report what its row should say. This is not the same as "they are one
+     item": the items were genuinely independent and only their bookkeeping overlapped.
+     **Budget for the merge, because that is where the failures are.** Cycle 100's three
+     lanes each ran all eleven parallel-safe checkers clean, and the merge failed FIVE times
+     — a golden array and a hardcoded wave pair broken by another lane's growth, a
+     "decide about this here" gate tripped by a new plant, a test that funded a purchase but
+     never unlocked it, a doc string 119 characters over budget. **None was a mistake by the
+     agent that caused it**; each was a fact about a file it was correctly forbidden to open.
+     The parent pass is where parallel work integrates, its cost scales with the number of
+     lanes rather than the size of any one, and it is not optional.
    - **If the last two cycles worked the same file or subsystem, take something else.**
      Step 6 already forces one FILED item to come from outside the neighbourhood; nothing
      forced the WORK to vary, and it does not on its own. Cycles 60 and 61 both worked the
