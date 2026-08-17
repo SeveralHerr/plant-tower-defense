@@ -4358,3 +4358,34 @@ cited in code, and the citation is a mitigation this project has watched fail.
     and "mid-transition", and the read itself cannot tell you which.` It belongs beside
     the existing "A run that never changes is broken, not passing" entry, which is the
     same lesson pointing the other way.
+
+## 2026-08-16 — Cycle 49: verify-bd-item skill, and mirror_check --fix
+
+- Value: **overkill — avoided.** Triaged out at Phase 0.5 tier (a): the whole cycle
+  touched `.claude/skills/`, `tools/mirror_check.py`, `CLAUDE.md`, `AGENTS.md` and
+  `kanban.md`. Nothing Godot loads, so no game was launched and no ledger row was
+  written. Recording this because a cycle with no harness entry is indistinguishable
+  from a cycle where the entry was forgotten, and that ambiguity is the reason this
+  log requires an entry either way.
+  - Expected: nothing from runtime. A static checker is verified by its fixture and by
+    mutating the checker, not by a running game.
+  - Got: exactly that. The fixture went green, then six mutations of `mirror_check.py`
+    each went red for the right reason, and two of them only went red after two more
+    fixture cases were added — which is the finding, see below.
+  - Found: **a defect in `mirror_check.py` that predates this change and had nothing to
+    do with it.** `ENDS` carried `\n---\n`, and a horizontal rule is ordinary markdown,
+    so a `---` inside the Workflow block ended the block early in BOTH files: two
+    21-character stubs compared identical and the tool reported clean over a comparison
+    covering a fraction of the text. That is the empty-denominator failure the house
+    checker contract exists to prevent, sitting inside the checker that enforces it.
+    The fixture case that found it was written expecting to test something else.
+  - Cheaper: nothing cheaper would have found it. Reading the diff shows `--fix` working;
+    only feeding the tool a block containing `---` shows the tool measuring a stub.
+
+- Gap: **no gaps this turn** — the harness was not run, so it had no opportunity to have
+  one. One note that belongs in the project log rather than here: two of the four
+  mutations in the first sweep reported `MUTATION TEXT NOT FOUND` because a shell
+  heredoc ate a backslash level, which reads exactly like "this code is not present" and
+  would have been recorded as "the mutation survived" by a less suspicious sweep. A
+  mutation harness needs to distinguish *did not apply* from *applied and survived*;
+  mine printed them differently only because I happened to assert the needle was found.

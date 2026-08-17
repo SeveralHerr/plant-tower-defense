@@ -195,6 +195,40 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (49) — a user request that already ships, and a checker that was checking a stub
+
+- **"Fix enemy facing direction" (in *Requested directly by James*, above) appears to
+  already ship — do not start it without looking at the screen first.**
+  `Pest._update_facing()` (`game/pest.gd:679`) picks all four cardinal rotations from the
+  direction of travel, `_apply_facing()` (`game/pest.gd:696`) is the single writer of
+  `_sprite.rotation` and composes facing with the gait sway rather than either clobbering
+  the other, and `test/unit/test_selftest.gd:8378` asserts exactly that composition.
+  The header at `game/pest.gd:675` names STYLE.md's up-screen (-Y) convention as rotation
+  0 and the other three as 90-degree turns off it.
+  **This is not a "delete the entry" verdict.** The request was made about what the screen
+  looked like, and the code implementing a thing is not evidence the screen shows it. If
+  pests still read as facing wrong, the defect is downstream — the sprite art's rest
+  orientation not actually being up-screen, or a species whose art disagrees with the
+  convention — and that is a different and much smaller job than "implement facing".
+  Someone should look at a running game before this is either worked or closed.
+- **A horizontal rule in the Workflow block silently truncated the mirror comparison.**
+  Fixed this cycle (`tools/mirror_check.py`, `truncation_warning()`), but the shape is
+  worth keeping in mind for the other checkers: `ENDS` contained `
+---
+`, ordinary
+  markdown, so both files stopped at the rule and two 21-character stubs compared
+  identical. Every house checker that scopes by a text marker has this failure available
+  to it. The guard that catches it is cheap — assert the region you measured is as big as
+  you expect — and it is the same denominator rule the house-static-checker skill already
+  states for finding counts, applied to the input instead of the output.
+- **Pest gait constants are tuned but not gated.** `GAIT_SWING` 0.13, `GAIT_RATE` 8.5,
+  `GAIT_REFERENCE_SPEED` 60.0, `GAIT_RATE_MIN` 0.55, `GAIT_RATE_MAX` 1.9
+  (`game/pest.gd:235-245`). The header explains the reference speed with real reasoning —
+  between the aphid's 78 and the beetle's 38 — which is exactly the kind of constant
+  `_T.assert_margin(values, threshold, margin, recorded)` exists to gate: it checks the
+  corpus items sitting near a tuned value, so a new species added at speed 61 would show
+  up instead of silently landing on the boundary. Nothing currently asserts these.
+
 ### New this cycle (48) — weather has an upside now, and a budget was measuring half its row
 
 - **Rain should pay something too, or drought's bonus makes rain strictly worse.**

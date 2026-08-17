@@ -117,6 +117,27 @@ correct behaviour, because the file set the property per node.
 A checker that has never been observed to fail is not a checker. The same rule as a test:
 **green on first run means nothing until you have watched it go red for the right reason.**
 
+### The region you measure is itself a denominator
+
+The denominator rule above is stated for *findings*. Apply it to the **input** too, or a
+checker will quietly measure a stub and report clean.
+
+`mirror_check.py` compared the text between a `# workflow` heading and an end marker, and
+that marker list contained `\n---\n` — ordinary markdown. Put a horizontal rule inside the
+block and it ends the block early, **in both files equally**, so two 21-character stubs
+compared identical and the tool reported clean over a fraction of the text it was supposed
+to be checking. It had been like that since it was written.
+
+Every checker that scopes by a text marker — a heading, a delimiter, a `# BEGIN` comment,
+a function's closing brace — has this available to it. Ask directly: *can the region I
+measured be smaller than I intended, and would that read as clean?* If yes, assert the
+region's size, or detect the ambiguity. `mirror_check` now does the latter: its markers
+are listed most-specific first, so a generic marker winning while a specific one appears
+later in the same file means the generic one matched **inside** the block.
+
+This was found by a fixture case written to test something else entirely. That is the
+argument for writing more fixture cases than you think you need.
+
 ### Then mutate the checker, not just the input
 
 The fixture proves the checker fires on a bad file. It does **not** prove the checker is
@@ -150,6 +171,21 @@ Three lines that survive in the file are worth more than a perfect fixture that 
 live code because the blanker did not handle `\"` — which no amount of good-and-bad
 example files would have surfaced, because both files were being scanned wrongly in the
 same way.
+
+### "Did not apply" and "survived" are opposite results
+
+A mutation that never reached the file looks exactly like a mutation the fixture ignored,
+and only one of them means "this guard is not load-bearing".
+
+Two of four mutations here once printed `MUTATION TEXT NOT FOUND` because a shell heredoc
+ate a level of backslash escaping — the needle contained `"\n"` and what reached Python
+was a real newline. A sweep checking only exit codes would have recorded both as SURVIVED,
+i.e. as evidence that two working guards were dead code. The opposite of the truth.
+
+So: **assert every needle matches exactly once before running anything**, normalise line
+endings first (a CRLF checkout is a second way a needle silently misses), and report three
+outcomes rather than two — `RED`, `SURVIVED`, `NOT-APPLIED`. Prefer an editing tool over a
+shell heredoc for any needle containing a backslash.
 
 ### Beware a positive control that cannot fail
 
