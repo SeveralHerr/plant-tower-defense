@@ -11822,3 +11822,74 @@ func test_the_loss_notice_is_lost_only_in_a_state_real_play_does_not_reach() -> 
 				% [Hud.MESSAGE_QUEUE_MAX + 1])
 	_T.free_ui(game)
 	return err
+
+
+## The rule deciding whether a displaced line comes back, asserted on both sides of its
+## threshold before anything that reads it.
+##
+## `MESSAGE_MIN_READABLE` is reused rather than a new number invented, and the reuse is
+## load-bearing: `show_message`'s wait branch already treats that constant as "long enough to
+## have been read" when deciding whether an equal-rung arrival may stomp. Asking the same
+## question about the same row with a second threshold would be a second opinion.
+func test_a_line_the_player_has_had_time_to_read_is_not_brought_back() -> String:
+	var err: String = _T.assert_false(Hud.line_was_read(4.0, 3.5),
+		"half a second of a four-second line is not a read")
+	if err == "":
+		err = _T.assert_true(Hud.line_was_read(4.0, 0.5),
+			"three and a half seconds of it is")
+	if err == "":
+		# Exactly at the threshold, expressed so no arithmetic happens: `4.0 - (4.0 - 1.2)`
+		# is 1.2000000000000002, which is strictly greater than 1.2, so a boundary written
+		# that way passes under BOTH `>` and `>=` and tests nothing. A mutation flipping the
+		# comparison survived it. These two literals subtract exactly.
+		err = _T.assert_true(Hud.line_was_read(Hud.MESSAGE_MIN_READABLE, 0.0),
+			"the threshold itself counts as read -- the boundary is >=, matching the "
+				+ "wait branch that uses the same constant the other way round")
+	if err == "":
+		err = _T.assert_false(Hud.line_was_read(4.0, 4.0),
+			"a line that has not started is not read")
+	return err
+
+
+func test_a_read_line_is_retired_and_an_unread_one_resumes() -> String:
+	## The behaviour both ways, because the interesting half is the one that DOESN'T come
+	## back and a fix that simply stopped resuming everything would pass the retirement
+	## assertion alone. Cycle 94's test covers the resume case through the real uproot
+	## collision; this drives the same row past the threshold.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	hud._process(9.0)
+	hud._message_left = 0.0
+	hud._message_queue.clear()
+	hud._advance_message_queue()
+	hud.messages_preempted = 0
+	hud.messages_retired = 0
+
+	# Read for well over MESSAGE_MIN_READABLE, then displaced.
+	hud.show_message("a line the player has read", 4.0, Hud.MESSAGE_NORMAL)
+	hud._process(3.0)
+	hud.show_message("urgent", 4.0, Hud.MESSAGE_DEADLINE)
+	var err: String = _T.assert_eq(hud.messages_preempted, 1, "the line was displaced")
+	if err == "":
+		err = _T.assert_eq(hud.messages_retired, 1, "and retired rather than queued")
+	if err == "":
+		err = _T.assert_eq(hud.pending_messages(), 0,
+			"so nothing is waiting to reappear and confuse anyone")
+
+	# Now the other side: displaced before the player could read it.
+	if err == "":
+		hud._message_left = 0.0
+		hud._message_queue.clear()
+		hud._advance_message_queue()
+		hud.messages_preempted = 0
+		hud.messages_retired = 0
+		hud.show_message("a line the player has NOT read", 4.0, Hud.MESSAGE_NORMAL)
+		hud._process(0.4)
+		hud.show_message("urgent", 4.0, Hud.MESSAGE_DEADLINE)
+		err = _T.assert_eq(hud.messages_preempted, 1, "displaced again")
+	if err == "":
+		err = _T.assert_eq(hud.messages_retired, 0, "but NOT retired this time")
+	if err == "":
+		err = _T.assert_eq(hud.pending_messages(), 1, "it is waiting, and will come back")
+	_T.free_ui(game)
+	return err

@@ -352,6 +352,21 @@ const MESSAGE_DEADLINE: int = 2
 ## How long a line is guaranteed on screen before an equal-priority one may
 ## replace it. Roughly the time to read a short sentence.
 const MESSAGE_MIN_READABLE: float = 1.2
+
+
+## Whether a line that has been on the row for `total - left` seconds has had long enough to
+## have been read.
+##
+## Reuses `MESSAGE_MIN_READABLE` rather than inventing a threshold, and the reuse is the
+## point: `show_message`'s wait branch already treats that constant as "long enough to have
+## been read" when deciding whether an equal-rung arrival may stomp. This is the same
+## question asked about the same row, so a second number would be a second opinion.
+##
+## Static and pure so the rule can be asserted without a live row, and named because it is a
+## DECISION -- the pre-empt branch reads it to choose between bringing a displaced line back
+## and retiring it, and those are different things to do to a player.
+static func line_was_read(total_seconds: float, seconds_left: float) -> bool:
+	return (total_seconds - seconds_left) >= MESSAGE_MIN_READABLE
 const MESSAGE_QUEUE_MAX: int = 3
 
 ## The wave banner. Two events, two named callers, one surface.
@@ -1460,7 +1475,12 @@ func _paint_message_row() -> void:
 func show_message(text: String, seconds: float = 3.0, priority: int = MESSAGE_NORMAL) -> bool:
 	if _message_left > 0.0:
 		if priority > _message_priority:
-			_queue_message(_message_text, _message_left, _message_priority)
+			messages_preempted += 1
+			if line_was_read(_message_total, _message_left):
+				# Retired rather than queued. See line_was_read.
+				messages_retired += 1
+			else:
+				_queue_message(_message_text, _message_left, _message_priority)
 		elif _message_left > MESSAGE_MIN_READABLE or priority < _message_priority:
 			# The line on screen has not been up long enough to have been read, or
 			# outranks this one. Wait rather than stomp.
@@ -1468,6 +1488,7 @@ func show_message(text: String, seconds: float = 3.0, priority: int = MESSAGE_NO
 			return false
 	_message_text = text
 	_message_left = seconds
+	_message_total = seconds
 	_message_priority = priority
 	_paint_message_row()
 	return true
@@ -1516,6 +1537,31 @@ static func _lowest_of(queued: Array[int]) -> int:
 ## line was the one that mattered.
 var messages_refused: int = 0
 var messages_evicted: int = 0
+
+## Times a line already ON the row was displaced by something more urgent and pushed back
+## into the queue. The upper bound on how often a player can see the same sentence twice,
+## which is the question `-gtne` is about — a resumed line is restored by assigning
+## `_message_text` (`_advance_message_queue`) and marked in no way, so it is indistinguishable
+## from the same event happening again.
+##
+## Counted separately from `messages_refused` because a pre-emption is not a loss: the line
+## comes back, with the time it had left. It is only a *problem* when the player had already
+## read it, and this counter is what says whether that situation arises at all.
+var messages_preempted: int = 0
+
+## Displaced lines the row deliberately did NOT bring back, because the player had already
+## had `MESSAGE_MIN_READABLE` seconds with them. A subset of `messages_preempted`.
+##
+## This is a discard and it is counted like every other one this row makes -- but unlike
+## `messages_refused` it is not a loss, it is a decision. Bringing back the tail of a line
+## the player has read teaches nothing and makes the same sentence appear twice, which reads
+## as two events rather than one.
+var messages_retired: int = 0
+
+## How long the line currently on the row was given. Paired with `_message_left` so
+## `line_was_read` can be asked; there is no other way to know, since the row stores only a
+## countdown.
+var _message_total: float = 0.0
 
 
 func _queue_message(text: String, seconds: float, priority: int) -> void:
@@ -1626,6 +1672,10 @@ func _advance_message_queue() -> void:
 	_message_queue.remove_at(pick)
 	_message_text = String(next["text"])
 	_message_left = float(next["seconds"])
+	# The restored line keeps its REMAINING time as its whole allowance, so "how long
+	# has this been up" stays answerable for a line that has already been interrupted
+	# once. Without this a twice-interrupted line would look freshly posted.
+	_message_total = float(next["seconds"])
 	_message_priority = int(next["priority"])
 	_paint_message_row()
 
