@@ -4852,3 +4852,32 @@ cited in code, and the citation is a mitigation this project has watched fail.
   unpause — the second frozen-tree false alarm this session, the first being a tween
   mid-fade. The pattern is now firm enough to state plainly: **run `findings` unpaused**,
   because pause freezes containers mid-layout as readily as it freezes a tween mid-fade.
+
+## 2026-08-17 — Cycle 66: a bead built on my own false claim, and a budget audit
+
+- Value: **warranted**, and for the first item the harness's contribution was to prove the
+  work unnecessary before I wrote any of it.
+  - Expected: to add a cue marking an escaped pest, on the strength of a kanban entry
+    saying an escape has "no sound, no corpse, no linger".
+  - Got: every part of that false. An escape plays `Sfx.PEST_ESCAPED` (`game.gd:911`),
+    tints the exit cell (`:910`), and punches the Garden readout (`hud.gd:1072-1073`).
+    Reading three call sites cost less than the feature would have and produced a better
+    result: a correction plus a workflow rule.
+  - Found: **`cmd budgets` reports SEVEN budgets, not the five my own standing note
+    claimed**, and three of them sit exactly at their declared floor — `husk_click` 4 of 4,
+    `hud_readouts` 10 of 10, `hud_stats_row` 19 of 19. The floors are ratcheted down to the
+    measurement on purpose here, so that is the system working, but it means the HUD has no
+    room on three rows out of four and the only slack left is the row I spent 185 px of
+    last cycle.
+    Also found by applying `scope-vs-claim`: `hud_readouts`' evidence string said "over
+    each live readout", which reads as measuring the CURRENT text — a budget that passes
+    because the counter happens to say "Seeds 25". It sweeps `WORST_CASE_TEXT` against the
+    live slot. **I misread my own project's string before opening the line**, which is the
+    argument for fixing it rather than shrugging.
+  - Cheaper: for the escape, reading three call sites — which is what happened, just one
+    step later than it should have. For the budgets, nothing: seven live measurements
+    against a running HUD exist nowhere else.
+
+- Gap: **no gaps this turn.** Cycle 65's rule (run `findings` unpaused) held on its first
+  outing — 0 findings across 4 of 5, no frozen-tree false alarm, because the tree was
+  stepping.

@@ -1,4 +1,4 @@
-# Cycle 65
+# Cycle 66
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,36 +6,42 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 65 taught
+## What cycle 66 taught
 
-**A corpse can say what killed it.** Bitten is squashed *across* the body — a Chomp closes
-on the whole pest, so the corpse is narrower, not shorter. Blasted is tilted off its facing
-— a bomb throws the body off the line it was walking. Everything else keeps the straight
-corpse, deliberately: the plain one should be the common case, so the two that differ read
-as remarkable rather than as noise.
+**I claimed a bead built on a claim I had written, and the claim was false.** Cycle 65's
+kanban entry said "death has a sound, a corpse and a linger; escape has none of the three".
+Every part of the escape half is wrong: `Sfx.PEST_ESCAPED` plays (`game.gd:911`),
+`_note_lane_loss` tints the exit cell (`:910`), and `_punch_readout(_lives_label)` fires on
+the changed count (`hud.gd:1072-1073`).
 
-**`_T.assert_lt` does not exist, and my test called it.** The call aborted the method and
-`run_tests.gd` reported `[PASS]`, because an aborted coroutine returns `""` — identical to a
-genuine pass. `run_tests.py` caught the `SCRIPT ERROR` the return value cannot carry,
-exactly as its docs describe. **The tell in the numbers is the thing to remember: same test
-count, assertions 12279 → 12287 after the fix.** A cycle that adds a test and no assertions
-is the shape to look for.
+The entry followed the cycle-31 rule to the letter — it cited a `file:line`. For the half I
+checked. **One citation makes a whole entry read as sourced**, and the side asserted to be
+empty is precisely the one that needed opening. That is now a rule of its own: an entry
+that compares two things needs a citation for both halves.
 
-**And the ledger sent me back to do the verification properly.** The first run reached
-**1/3**: every kill went through `kill()` directly, so *neither edited call site was ever
-loaded*. Driving a real Chomp bite — plant one, spawn aphids, poll for `_death_cause=bitten`
-— took it to 2/3. `game/seed_bomb.gd` is still unreached at runtime and is named as such
-rather than glossed.
+The entry was corrected in place rather than deleted, because the mistake is the useful
+part.
+
+**And the budgets, unread since cycle 52, came back as seven rather than five** — the
+standing note in this file was stale again. Zero regressions, but **three sit exactly at
+their declared floor**: `husk_click` 4 of 32, `hud_readouts` 10 of 171, `hud_stats_row` 19
+of 1112. The floors ratchet down to the measurement on purpose, so that is the system
+working — and it means the HUD has no room on three rows out of four. The only slack is
+`hud_message_row`, 121 against a floor of 40, and cycle 61 spent 185 px of it.
+
+**One evidence string read two ways.** `hud_readouts` said "over each live readout", which
+parses as measuring the *current* text — a budget that passes because the counter happens
+to say "Seeds 25". It sweeps `WORST_CASE_TEXT` against the live slot. I misread my own
+project's string before opening the line.
 
 ## Where things stand
 
-Eighty-six beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
-gh#43). Suite **563/563**, 12287 assertions; lint 0/0; nine checkers clean; `findings` 0
-across 4 of 5. Eleven skills. Upstream gh#44 and gh#46 open.
+Eighty-seven beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
+gh#43). Suite **563/563**, 12287 assertions; lint 0/0; `findings` 0 across 4 of 5, run
+unpaused per cycle 65's rule. Eleven skills. Upstream gh#44 and gh#46 open.
 
-The `findings` rule from cycle 60 gained a clause: **run it unpaused.** Two false alarms
-now — a panel caught mid-entrance-fade in cycle 60, a label whose HBox had not finished
-laying out in this one. `pause` freezes containers as readily as tweens.
+**Seven budgets, not five.** `husk_click`, `hud_readouts`, `hud_message_row`,
+`hud_stats_row`, `pest_road_ceiling`, `notebook_subhead`, `road_shape`.
 
 ## Waiting on the user
 
@@ -47,17 +53,16 @@ repositioning would do, and the game then charges full price to act on it.
 ## Restarting
 
 `bd ready` for the work, this file for the context, `CLAUDE.md` (mirrored in `AGENTS.md`)
-for the loop itself. Step 2 now says take work away from the last two cycles' subsystem —
-this one was pest death, so pick something else.
+for the loop itself. Step 2 says take work away from the last two cycles' subsystem — those
+were pest death and pest escape, so pick something else.
 
 **Six standing notes.** The harness is pinned at 0.38.0 on purpose (gh#43). The UI findings
 baseline is **empty** (`-v9px`). Any harness operation should start by checking which
 version the skill's paths point at. **Never hand-edit `AGENTS.md`** — run
 `python tools/mirror_check.py --fix`. **`pause` right after `launch`**, but **unpause before
-`findings`**. And **cut `kanban.md` by line number, never by heading** — the section
-headings are not unique and `uniq -d` will not tell you.
+`findings`**. And **cut `kanban.md` by line number, never by heading**.
 
 `python tools/gap_ledger.py --open` answers "which harness gaps are open"; `python
-tools/devtools.py cmd budgets` prices the **five** couplings (`-a6bq` to re-read them all);
-`list-commands --offline` answers "does this verb exist" with no game running. Bump the
-number at the top of this file every time you refill.
+tools/devtools.py cmd budgets` prices the **seven** couplings and three of them are at
+their floor; `list-commands --offline` answers "does this verb exist" with no game running.
+Bump the number at the top of this file every time you refill.

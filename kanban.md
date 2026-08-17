@@ -195,6 +195,29 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (66) — the HUD is at its floor on three rows out of four
+
+- **Three budgets sit exactly at their declared floor, and nothing on screen says the HUD
+  is full.** `husk_click` has 4 px of 32, `hud_readouts` 10 of 171, `hud_stats_row` 19 of
+  1112 — each precisely its floor in `Game.BUDGET_FLOOR` (`game/game.gd:1887-1899`),
+  because this project ratchets floors down to the measurement on purpose. The consequence
+  is invisible until someone tries: the next label that grows by a pixel fires a
+  regression, and a designer nudging a font size has no way to know they are spending the
+  last of it. A single line on the `budgets` verb — "3 of 7 at floor" — would turn a
+  per-budget reading into a state of the HUD.
+- **Only one row has room, and it is the one being spent.** `hud_message_row` holds 121 px
+  against a floor of 40; cycle 61 spent 185 px of it on a one-shot tutorial tip. That is
+  not a mistake — the budget passed — but it means the message row is now doing duty as
+  the HUD's slack fund, and there is no other. Any future "just add a short line" lands
+  there because everywhere else is at zero.
+- **An evidence string can read two ways and only one of them is a working budget.**
+  `hud_readouts` said "Font.get_string_size() over each live readout", which parses as
+  measuring the CURRENT text — a budget that passes because the counter happens to read
+  "Seeds 25" today. It actually sweeps `Hud.WORST_CASE_TEXT` against each readout's live
+  slot, and I misread it before opening `game/game.gd:2203`. Corrected. The general shape
+  is worth watching: an evidence string naming the SURFACE is ambiguous about whether the
+  worst case or the current value was measured, and those differ by everything.
+
 ### New this cycle (65) — a corpse can carry information, and only one does
 
 - **The kernel kill is the common death and it is the one that says nothing.**
