@@ -6314,3 +6314,58 @@ Noted on the bead.
   - Improvement: comment on gh#57 with the non-uniform case before a maintainer implements
     the simpler thing. Filed as a bead so it is not lost.
   - Note: no other gaps this turn.
+
+## 2026-08-17 — Cycle 101: the campaign played end to end, three parallel lanes merged
+
+- Value: **warranted** — runtime produced two claims the diff could not, and one of them was a
+  defect that every headless gate passed.
+  - Expected: that driving a full campaign would tell me whether the 22 waves are balanced,
+    and that the merge of three lanes would need the usual integration repairs.
+  - Got: two complete playthroughs whose only policy difference was where surplus seeds went.
+    Breadth-first (eleven level-1 plants, never upgraded) died at wave 10. Depth-first
+    (upgrade what is already down) won all 22 waves and **never lost a life** — 591 pests,
+    ending on 1129 spare seeds. Same unlocks in both: all seven plants by wave 7.
+  - Found: **`devtools_ext/commands.gd`'s `_cmd_upgrade_plant` answered `success: false` with an
+    EMPTY message after successfully upgrading a Chomp Flower.** It cast the result to
+    `CornCobbler` and read `corn.level` off a null, so the handler died *inside the reply* —
+    which is indistinguishable from the game refusing the upgrade. `find-nodes --class
+    ChompFlower --property level` said `level=2`: the upgrade had landed. Nothing headless can
+    see this. The cast resolves, so `name_check` passes; it compiles, so lint passes; no test
+    drives a debug verb, so the suite passes. It was reachable only once a second plant became
+    upgradable, and only from a running game. Fixed in this run.
+    Also found: the wave-8 tuning below, confirmed against a live campaign rather than against
+    the table — the breadth policy that died at wave 10 reached wave 17 after the change.
+  - Cheaper: nothing. The verb defect is a null cast on a branch only a running game with a
+    non-corn upgradable plant reaches, and "is the campaign balanced" is a question about a
+    played campaign. Reading the diff would have shown the cast and read it as correct, because
+    it was correct for the whole time corn was the only plant with a ladder.
+
+- Gap: **`run_json_check.py` is only useful strictly BEFORE `verify_ledger record`, and running
+  both in one shell command is functionally "after".** I piped them together; the checker
+  correctly reported `FINDING: 'verdict' is absent -- record defaults it silently, so the row
+  will read as an unknown/blank run rather than as the clean one it was`, and the row had
+  already been appended by the time I read it. The ledger is append-only, so the row now says
+  `recorded unknown run, value=warranted` and re-recording would double-count a single run.
+  `verify_ledger` also warned `warranted with no Phase 4 checks recorded - the claim that
+  earned it is not in the row`, which is the same shape of loss: the defect above is in `found`
+  but the check that caught it is not a recorded phase-4 entry.
+  - [G-074] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: `verify_ledger record` should run the same key check itself and refuse to
+    write a row that fails it, rather than defaulting the field and reporting the loss after
+    the append. A checker whose whole value is "run me first" is one an operator can only
+    fail once per row, permanently. Failing that, `record` could accept `--dry-run` so the
+    validate-then-write pair is a single safe operation.
+
+- Gap: **a parallel-safe checker in a SHARED checkout reports the other lanes' in-flight edits
+  as its own findings.** The Nettle lane reported `suite_reach_check exit=1` with 12 NEW
+  findings in `game/board.gd`, `game/garden_theme.gd` and `game/plant.gd` — none of which it
+  had touched; all three were siblings' uncommitted work. It correctly diagnosed this itself
+  ("which `git status` shows are other lanes' in-flight edits in this shared checkout"), but
+  only because it thought to check. A lane that trusted the exit code would have reported a
+  false failure, and a lane that saw exit 0 by luck of timing would have reported a pass it
+  had not earned.
+  - [G-075] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: this is mine to fix in the workflow, not the harness's — either fan out into
+    git worktrees (`isolation: "worktree"`), or tell each lane that a finding in a file it does
+    not own is not its finding. The cheaper half is the instruction; the correct half is the
+    worktree. Filed as a bead.

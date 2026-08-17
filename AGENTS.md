@@ -116,6 +116,21 @@ running a command. **Never write a work checklist into it.**
      agent that caused it**; each was a fact about a file it was correctly forbidden to open.
      The parent pass is where parallel work integrates, its cost scales with the number of
      lanes rather than the size of any one, and it is not optional.
+     **A lane's checkers see the other lanes.** The eleven are parallel-SAFE, not
+     parallel-ISOLATED: they open no project and take no lock, but they read the working
+     tree, and in one shared checkout that tree contains every sibling's half-finished
+     edit. Cycle 101's Nettle lane got `suite_reach_check exit=1` with 12 NEW findings, all
+     in three files it had never opened and all belonging to lanes still running. It caught
+     that itself — but only because it thought to check, and the same timing accident in
+     reverse hands a lane a clean exit it did not earn. So: **a finding in a file the lane
+     does not own is not the lane's finding**, say so in every lane prompt, and treat a
+     lane's checker exit code as advisory about anything outside its own files. The real fix
+     is a worktree per lane (`isolation: "worktree"`); the instruction is what works today.
+     **And the parent owes each lane's wiring, not just its merge.** Cycle 101's upgrade
+     lane correctly refused to touch `hud.gd` and `game.gd` and listed seven exact edits it
+     needed there. Skipping them would have shipped a plant whose upgrade ladder no player
+     could reach — three files of dead code, all gates green. A lane that reports "needs
+     these lines in a parent-owned file" has not finished until the parent writes them.
    - **If the last two cycles worked the same file or subsystem, take something else.**
      Step 6 already forces one FILED item to come from outside the neighbourhood; nothing
      forced the WORK to vary, and it does not on its own. Cycles 60 and 61 both worked the

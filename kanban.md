@@ -247,6 +247,50 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (101) — the campaign was played, and it has exactly one difficulty event
+
+- **Nothing in the game teaches upgrading, and upgrading is the whole campaign.** Two full
+  playthroughs, same seed economy, same unlocks (all seven plants by wave 7 in both), differing
+  in one policy bit: spend surplus on NEW plants, or on the plants already down. Breadth-first
+  reached eleven level-1 plants and was dead at wave 10. Depth-first won all 22 waves **without
+  losing a single life** (591 pests, ending on 1129 spare seeds). The affordance is a button
+  that only exists while a placed plant is selected (`game/hud.gd:806-811`, made visible at
+  `:1234`), and nothing ever suggests selecting one. I searched for the BEHAVIOUR — "the game
+  tells the player upgrading exists" — across three mechanisms rather than one: `milestones.gd`
+  (no entry mentions upgrades or levels), all twenty `show_message` call sites in `game/game.gd`
+  (only `:1321` "That upgrade costs N seeds", a refusal after you already tried, and `:1331`, a
+  confirmation after you succeeded), and the notebook (`game/notebook_screen.gd:296-297`, one
+  caption, in a screen the player must go and open). The opening tutorial line
+  (`game/game.gd:273`) teaches placing and starting waves and stops there. So every mention of
+  the mechanic that decides the run is either a reply to a player who already found it, or
+  optional reading.
+
+- **The back half of the campaign does not escalate.** Derived from all 22 rows through
+  `WaveDirector._raw_threat` (`game/wave_director.gd:755`), not sampled: waves 9-22 step between
+  **+2.0% and +13.6%** in threat, averaging about +6%, while waves 2-7 step +15% to +80%. The
+  reason is structural rather than a matter of table-writing taste — `health_scale_for`
+  (`:850`) returns exactly 1.0 for every campaign wave and `mutation_chance_for` (`:840`)
+  returns a flat constant, both by an `over <= 0` early return, so the entire escalation
+  machinery is endless-only **by construction**. Inside the campaign, difficulty IS the table,
+  and the table plateaus at 26-37 pests from wave 8 to the finale.
+
+- **The seed economy runs away once the wave-8 wall is behind you.** Measured across the winning
+  run's own rows, banked seeds at each wave boundary: 51 (w12), 106 (w14), 139 (w16), 857 (w18),
+  1129 (w22). It ended holding more seeds than the 41 plants on its board had cost, with nothing
+  to spend them on. The first seven waves are the opposite — `low_seeds` bottomed at 0, 1, 1, 3
+  and 4 on five separate waves. So the game is broke exactly while decisions matter and rich
+  exactly when they do not.
+
+- **591 kills produced 591 husks and not one was banked.** Every kill drops one
+  (`game/game.gd:893`) and they live 4.5-10s on a value-scaled ramp (`HUSK_LIFETIME` and
+  `MIN_HUSK_LIFETIME`, `game/compost_meter.gd:28,34`), with no auto-collect anywhere.
+  **The honest caveat, and it is the whole entry:** my driver only swept between waves, so every
+  husk had rotted before it looked. This measures a driver, not a player — a human clicking
+  during combat would bank some unknown fraction. What it does establish is the shape: the
+  compost system pays out only to a player dividing attention between the lanes and the litter,
+  and nothing in the run reports what was left to rot. A human playtest is the only thing that
+  can price it.
+
 ### New this cycle (100) — three lanes at once, and five failures in the seams
 
 - **Every failure the parallel run produced lived in a seam no agent could see.** Three
