@@ -247,6 +247,29 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (99) — three cycles divided the bar; none changed what was in it
+
+- **The plant bar was never a layout problem.** 232px divided by two is 114, and a button
+  carrying an icon plus a name measured **195**. Three separate attempts across three cycles
+  tried to make two columns fit by dividing the bar differently — and `hud.gd`'s header was
+  right every time that it could not be rendered. What none of them did was change what had
+  to fit inside it. Taking the NAME off took the minimum from **195x31 to 8x8**, and six
+  plants now sit in two columns of three with room for four more.
+  The general shape is worth more than the fix: **when a container cannot hold its contents,
+  the arithmetic has two sides and only one of them is usually examined.** Every note in
+  `hud.gd` about this bar is about pixels available; none was about pixels required, and the
+  required side was the one that moved.
+- **The side effect was better than the fix.** Icons went from 32px to 69px, and the bar now
+  reads as a seed-packet tray rather than a list of labelled rows — which is the design
+  brief's own framing ("You have to buy plant seeds to get plants") and what this genre does
+  with a growing roster. The name lives in the tooltip and on the selection panel; a locked
+  plant shows **no price** rather than the word "locked", which is the same fact in one fewer
+  channel and costs no width.
+  Worth naming because it was not the goal: the change was made to fit a sixth plant and it
+  improved the five that were already there. **A constraint that forces content out of a
+  cramped surface is not obviously a loss** — the thing removed here was the least useful of
+  the three (a name, beside a picture of the thing, on a button you hover).
+
 ### New this cycle (98) — the roster has a ceiling and it is a UI one
 
 - **The catalogue is five plants because the side panel holds five buttons, and nothing said

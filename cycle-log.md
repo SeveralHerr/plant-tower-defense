@@ -1,4 +1,4 @@
-# Cycle 98
+# Cycle 99
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,34 +6,30 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 98 taught
+## What cycle 99 taught
 
-**The catalogue is five plants because the side panel holds five buttons.** Cycle 98 built a
-working sixth — Garden Mint, the plant that speeds up its neighbours — with its class, its art,
-its tests and a real board showing a Corn beside it at `fire_interval()` 0.6 against a base
-0.8. Then `findings` reported the panel **167px off the right edge of the viewport**, and
-Phase 1 had seen nothing: 617/617, lint 0/0, eleven checkers clean.
+**When a container cannot hold its contents, the arithmetic has two sides and only one of
+them usually gets examined.** Three cycles tried to fit two columns of plant buttons into a
+232px bar by dividing the bar differently, and `hud.gd`'s header was right every time that it
+could not be rendered. Nobody measured the other side: `get_minimum_size()` on a plant button
+was **195x31** against the 114px two columns can give. Taking the NAME off took it to **8x8**.
 
-`hud.gd` predicted it in its own words — `PLANT_BAR_BOTTOM`'s comment prices the panel exactly
-and ends "the next plant runs into it". Five plant buttons sit at **exactly** the 40px touch
-floor. The constraint was written down, priced, and still invisible everywhere a person would
-look: the catalogue reads like a list you can append to, the bead researched four hand-lists
-and missed this one, and the sweep test that "proves the bar fits ten plants" only ever
-reasoned about height, which its own comment says.
+So six plants now sit in two columns of three, with room for four more, and `findings` is 0
+across 5 of 5 on the board that reported seven gating findings last cycle. **Garden Mint is
+buyable** — place a Corn, read `fire_interval()` 0.8, put a Mint beside it, read 0.6.
 
-**`plant_bar_layout` fell back to a two-column branch its own header calls unrenderable.**
-Unreachable while the catalogue had five plants, so it sat there for cycles reading like a
-handled case. **A branch a file documents as broken is worse than no branch.** It is
-single-column now and reports `overflows` — which was always the honest answer; what was
-missing was a caller that did anything with the flag.
+**The side effect was better than the fix.** Icons went from 32px to 69px and the bar reads as
+a seed-packet tray rather than a list of labelled rows, which is the design brief's own
+framing. The name lives in the tooltip and on the selection panel; a locked plant shows no
+price instead of the word "locked". **A constraint that forces content out of a cramped
+surface is not obviously a loss** — what went was the least useful of three things, a name
+beside a picture of the thing.
 
-**And a measurement beat an opinion.** I assumed the `interactive_overlap` between a
-scrolled-out button and the packet button was an artefact of the harness comparing rects. So I
-clicked there: a real `touch_press` at (1020,356) was answered by **neither** button. The
-packet button was genuinely unclickable where the clipped one covered it. That turned "the
-scroll is probably fine" into a revert.
+## Carried from cycle 98
 
-Mint is committed and not sold. `-wb3r` is the panel; `-zhq9` and `-l4ke` block on it.
+**Ask the layout function at N+1 before building the thing.** A sixth plant was built whole
+before anyone called `plant_bar_layout(6)` — one line, pure, and it knew. Also: a branch a
+file documents as broken is worse than no branch, because it reads as handled.
 
 ## Carried from cycle 97
 
@@ -41,25 +37,20 @@ Mint is committed and not sold. `-wb3r` is the panel; `-zhq9` and `-l4ke` block 
 believing** — everything cheaper has already agreed with you, so the disagreement is the
 information. Bisect your own change before auditing the tool.
 
-## Carried from cycle 96
-
-**"Drive it in a real run" is not the same as "exercise it."** A zero inherits the blind spot
-of the scenario that produced it — ask what triggers the thing before deciding what to drive,
-because a wave-driving run never performs a player action.
-
 ## Where things stand
 
-A hundred and five beads ready. Suite **616/616**, 13046 assertions; lint 0/0; eleven checkers
-clean; `findings` **0 across 5 of 5, exit 0**. Fifteen skills. Upstream gh#44 and gh#51–gh#56
-open. Still on harness **0.38.0** deliberately (`-ny3h`, gh#43).
+A hundred beads ready. Suite **617/617**, 13122 assertions; lint 0/0; eleven checkers clean;
+`findings` **0 across 5 of 5, exit 0**. Fifteen skills. Still on harness **0.38.0**
+deliberately (`-ny3h`, gh#43).
 
-**The player-facing steer is standing and cycle 98 is the biggest swing at it yet — a whole
-new plant — which is committed and cannot be bought.** That is the honest state: the code, the
-art and the seam are in; the catalogue registration is reverted because shipping it puts three
-buttons off the screen and makes the packet button unclickable. **The roster is now blocked on
-a HUD problem** (`-wb3r`), which is the most valuable thing this cycle found: `-gsai` (more
-mobs) and `-v167` (upgrades) do not touch the plant bar, so they are the P1 features still
-open, and `-wtyj` (make the play screen read as the same notebook) is the other big one.
+**HIGH GEAR FROM CYCLE 100, asked for directly: more levels, more work in parallel.** Step 2
+now carries the fan-out rule and its safety gate — only `name_check.py` and the eleven project
+checkers are parallel-safe, so agents write code and run those; the engine gates and the
+runtime pass are the parent's, once, after they land, and each agent gets disjoint files.
+The level work is filed and deliberately disjoint: **`-l4ke`** (Nettle, now unblocked — the
+plant files), **the campaign bead** (`wave_director.gd` only) and **the new-species bead**
+(`pest.gd` and art). Those three can run at once. `-wtyj` (make the play screen read as the
+same notebook) is the other big P1 and touches the board, so it is a fourth lane.
 
 ## Waiting on the user
 

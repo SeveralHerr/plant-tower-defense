@@ -88,6 +88,20 @@ running a command. **Never write a work checklist into it.**
      returns one mark per flag twenty lines below the `_tint` call the claim was read
      from, and the test the acceptance asked for was written the same day.
      A bead is a claim about the repo made at some past cycle, and the repo has moved.
+   - **RUN INDEPENDENT ITEMS IN PARALLEL (asked for directly, cycle 99).** The loop has done
+     one item at a time for 99 cycles and the queue is 100 deep; most of it does not touch
+     what the rest of it touches. Spawn agents for items whose files do not overlap, and say
+     in the close which ran together and why they were safe.
+     **The safety rule is the gate list, not a guess.** Only `name_check.py` and the eleven
+     project checkers are parallel-safe — they open no project and write nothing to `.godot/`.
+     `lint_project.gd`, `import_check.py` and `run_tests.py` all open the project and write
+     `.godot/`, and **two of them at once corrupt each other's run**. So a fan-out agent
+     writes code and runs the parallel-safe checkers; the engine gates and the runtime pass
+     are the parent's, run once, after the agents land. Same for the game: one bus per
+     checkout (`launch --isolated` isolates the bus, never `user://`).
+     **Give each agent disjoint files and say so in its prompt.** Two agents editing
+     `hud.gd` is a merge conflict the loop has no step for; two agents editing `mint.gd` and
+     `wave_director.gd` is free. If two items want the same file, they are one item.
    - **If the last two cycles worked the same file or subsystem, take something else.**
      Step 6 already forces one FILED item to come from outside the neighbourhood; nothing
      forced the WORK to vary, and it does not on its own. Cycles 60 and 61 both worked the

@@ -6239,3 +6239,35 @@ Noted on the bead.
     finding from a symptom into a location. The current message is not wrong; it is just the
     least useful true thing available.
   - Note: no other gaps this turn.
+
+## 2026-08-17 — Cycle 99: the bar was a content problem (-wb3r, and -zhq9 released)
+
+- Value: **warranted**. Two numbers decided the cycle and both are properties of a live layout.
+  - Expected: a hard UI problem needing a redesign — the bead priced four options and refused
+    the cheap ones.
+  - Got: `get_minimum_size()` on a plant button, **195x31**, against the 114px a two-column
+    bar can give. That one read reframed the whole thing: the fix was in the button, not the
+    bar. After taking the name off, **8x8** — and `findings` 0 across 5 of 5, exit 0, on the
+    board that reported seven gating findings last cycle.
+  - Found: **`screenshot --region` takes OUTPUT pixels while `node-bounds` reports VIEWPORT
+    coordinates.** This window renders 2880x1779 for a 1152x648 viewport — a 2.5x scale — so
+    three captures came back showing grass at coordinates `node-bounds` had just handed me. I
+    only noticed by taking a full-frame shot and reading its size. Same coordinate-space class
+    as cycle 85's board bug and cycle 90's Entities offset, in a third place.
+  - Cheaper: nothing. Whether six icons read apart is a screenshot question by construction,
+    and the minimum-width number does not exist until the theme has resolved a font.
+
+- Gap: **`screenshot --region` and `node-bounds` speak different coordinate systems and
+  neither says so.** `node-bounds` prints "Size from: get_global_transform_with_canvas() x
+  Control.size (screen space)" — which reads as though it matches what a screenshot would
+  capture, and on a 1:1 window it does. Here it does not, and the failure is silent: you get a
+  valid image of the wrong place.
+  The harness knows the scale — `canvas-scale --node` exists and reports it — so the data is
+  in hand at the moment of the capture.
+  - [G-073] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: have `screenshot --region` report the scale it applied when the window is not
+    1:1 — `Cropped to: 2270,290 580x545 (viewport 908,116 232x216 at 2.5x)` — or accept the
+    region in viewport coordinates with a `--pixels` flag for the raw form. Either ends the
+    class. The one-line version is cheapest: print the scale whenever it is not 1.0, so the
+    mismatch is visible in the reply that produced the wrong image.
+  - Note: no other gaps this turn.
