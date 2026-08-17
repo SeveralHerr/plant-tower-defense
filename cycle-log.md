@@ -1,4 +1,4 @@
-# Cycle 35
+# Cycle 36
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,54 +6,44 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to pick the loop back up. **Never write a work checklist
 here.** `bd ready` is the checklist.
 
-## What cycle 35 taught
+## What cycle 36 taught
 
-**The game gained a rule.** Weather rounds: rain every 5th wave heals every bed 35%,
-drought every 7th doubles how long each plant waits between shots. It is the first thing
-in this game that changes how a wave *plays* rather than what is in it, and it came out of
-the step-6 rule added last cycle — the first item that rule produced.
+**A rule that modifies a value does not reach the surfaces that describe it.** Last
+cycle's weather multiplied the interval a cob arms its cooldown with, and two readouts
+went on quoting the level table: the selection panel said "0.80s" while the cob fired
+every 1.60s, and `readiness()` divided a cooldown armed at 1.60 by a base of 0.80 — so the
+arming glow sat empty for the whole first half of every reload under a drought. Two bugs,
+one cause, and the second was found while fixing the first. The fix is not two patches;
+`fire_interval()` is the effective interval now and is the only place either surface asks.
 
-Two things about it worth keeping. The weather is **derived from the wave number** rather
-than typed into `WAVES`, so it can be asserted against every wave out to 300 including the
-endless ones no table row reaches. And `Plant.fire_interval_scale` is an **instance**
-variable rather than a static, because a static would leak across the shared test process
-and surface later as an unrelated plant "not shooting" in a test that never mentions
-weather — the exact shape this project already paid for once with `RunConfig`.
+**And the project refused a feature on measurement, which is the part worth keeping.** The
+bead asked for a standing weather readout on the top bar. The wave slot's base string is
+302px in a 312px slot, so *every* candidate tag overflowed — `"  rain"` 366, `" ~"` 324, a
+bare `"*"` 317. Widening the slot made this project's own budget check report
+`hud_stats_row` at **-35px**: the row overflowing, shoving the wave button off the bar.
+Written and reverted inside one cycle, with the numbers left in `Hud.WORST_CASE_TEXT` so
+the next attempt reads them first.
 
-**What runtime caught was not what runtime was for.** The prediction was that the banner —
-words arriving on a screen — was the unassertable part. It was fine. The find was that the
-selection panel prints `1.0 dmg / 0.80s` straight from the level table, so under a drought
-it tells the player 0.80s while the cob fires every 1.60s. The rule reached the plants and
-not the surface that describes the plants. Filed rather than fixed.
-
-**And the honest note:** most of this cycle was cheaper headless, and the ledger row says
-so. The derivation, the multiplier and the heal are pure enough to assert without a game.
-The runtime half earned its place on exactly two things.
+That is a gate nobody ran on purpose doing better work than the runtime pass would have.
+**No bridge this cycle** — every claim, including the pixel widths, was settled headlessly,
+because this project measures text through the real theme font rather than by eye.
 
 ## Where things stand
 
-Fourteen beads ready, none blocked. Suite 542/542 with 12008 assertions; lint 0/0; mirror
-identical; `findings` clean; the real save's md5 unchanged, and `--snapshot-userstate` has
-now behaved twice running against one miss. Eight skills, backlog empty.
+Fifteen beads ready, none blocked. Suite 544/544 with 12020 assertions; lint 0/0; mirror
+identical; every declared budget back above its floor. Eight skills, backlog empty.
 
 ## Waiting on the user
 
-Nothing is blocking. One question is now concrete enough to be worth your word rather than
-a guess, and it is the interesting one about weather:
+Two things, and the first is unchanged and still the one that matters:
 
-**Weather currently has no counter-play.** Rain and drought arrive and are simply true —
-the player watches. The brief's own version had a counter ("unless a plant sits next to
-water"), and it was dropped because the board has no water: `Board` is grass and dirt road
-over exactly two materials. Adding a third is not cosmetic — `PATH_CORNERS`' own header
-warns that three numbers in other files were measured against this route and nothing
-recomputes them. So: **water tiles and a real counter, or a cheaper counter that needs no
-terrain (a plant or upgrade that ignores drought), or leave weather as a difficulty
-modifier?** `plant-tower-defense-oo7e` is filed and says the same thing; it will not get
-built until you pick, because building the wrong one of those three is expensive.
-
-The standing question from last cycle also still stands, and this cycle is the first
-evidence in the other direction: one player-facing feature shipped, and the loop found it
-by looking outside its own footprint.
+- **Weather has no counter-play** (`plant-tower-defense-oo7e`, blocked on your decision).
+  Water tiles and a real counter, a cheaper counter needing no terrain, or weather stays a
+  difficulty modifier. Three very different costs; building the wrong one is expensive.
+- **The top bar is full.** Measured this cycle: 10px of slack in the wave slot, 19px in the
+  row. The next feature wanting a permanent readout needs a second bar row
+  (`plant-tower-defense-bn2c`), which is real work and worth doing before it is urgent
+  rather than during. Not blocking anything today.
 
 ## Restarting
 

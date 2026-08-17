@@ -195,7 +195,31 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
-### New this cycle (17 of 30) — grown from weather, which is the first rule that changes how a wave plays
+### New this cycle (18 of 30) — the top bar is full, and that is now a measured fact
+
+- **The top bar has 10px left and four readouts.** `Hud.WORST_CASE_TEXT["WaveLabel"]`
+  measures 302px in a 312px slot, and the stats row as a whole is within 19px of its
+  own maximum (`Hud.stats_row_budget()`, floors in `Game.BUDGET_FLOOR`). Anything the
+  game gains that wants a permanent readout — weather, a combo, a modifier, a timer —
+  has nowhere to go. **The next feature that needs bar space pays for a second bar
+  row, not for a squeeze**, and that is a piece of work worth doing before it is
+  urgent rather than during.
+- **A second stats row is the obvious shape.** `TopBar` is already a container with
+  `StatsRow` inside it and the constants for a two-row bar are already named
+  (`BAR_ROWS` and the gap constants at the top of `game/hud.gd`). The work is the
+  layout, the budget declarations for the new row, and deciding what moves down.
+- **Nothing shows the player what a wave is worth before they fight it.** The bar
+  shows `threat 2`; the prep gap is where a player decides what to buy, and the
+  decision is "can I afford to be wrong". `WaveDirector.threat_for()` and
+  `pests_in_wave()` are both static and both already exist — a "next wave" line in
+  the prep gap would cost no bar space at all, because the banner slot is free
+  between waves.
+- **`Plant.fire_interval_scale` applies to two plants and there are five.** Chomp,
+  Sundew and Sunflower pace themselves by other means (`is_busy()`, droplets, a
+  growth gauge), so a drought slows the two shooters and leaves the other three
+  untouched. That is arguably correct — a drought should hurt shooting, not chewing —
+  but it is currently an accident of which plants read the multiplier, not a decision
+  anyone wrote down.
 
 - **Weather has no counter-play.** Rain and drought (`WaveDirector.weather_for`,
   `game/wave_director.gd`) arrive and are simply true — the player watches. The
