@@ -195,6 +195,33 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (48) — weather has an upside now, and a budget was measuring half its row
+
+- **Rain should pay something too, or drought's bonus makes rain strictly worse.**
+  `WaveDirector.seed_multiplier_for()` (`game/wave_director.gd`) returns
+  `WEATHER_DROUGHT_SEED_BONUS` (1.5) for drought and 1.0 for everything else, so rain is
+  now the only weather with a downside and no compensation — it heals pests
+  (`WEATHER_RAIN_HEAL_FRACTION`) and pays base rate. A player reading the forecast has one
+  weather they want and two they don't. Options: rain pays a smaller bonus, or rain gets a
+  non-seed upside (faster regrowth, a free replant), or drought's bonus shrinks and rain's
+  heal shrinks with it. This is the direct consequence of shipping 4c1l and it is worth
+  deciding on purpose rather than letting drought stay the good one by accident.
+- **The other five budgets have never been checked against the corpus they claim.**
+  `_budget_hud_message_row` (`game/game.gd:2037`) measured four plant-name messages and
+  not the prep note that shares the row, and was wrong by 36px for seven cycles while
+  reporting green. `Game.budget_entries()` (`game/game.gd:1852`) builds six others the same
+  way. Each one names its corpus in an `evidence` string; nothing checks that the string
+  describes what the code sweeps. A checker could compare the two — or, cheaper, one pass
+  reading all seven and asking "what else can reach this measurement?" The failure is
+  silent by construction: a budget over a subset always reports more headroom than exists.
+- **The prep note is measured at a wave number the game cannot reach.**
+  `_budget_hud_message_row` now measures `Hud.next_wave_note(999, 9999, ...)`
+  (`game/game.gd:2071`), deliberately — a budget is about what the format allows. But
+  `Hud.next_wave_note()` (`game/hud.gd`) formats the wave number with no width cap, so the
+  budget's worst case is set by a digit count nothing constrains. Either cap the formatted
+  number, or say in the note's own header that its width is bounded by the budget and not
+  by the format.
+
 ### New this cycle (29 of 30) — comments that make checkable claims, and one that was false
 
 - **Five comments in `game/` name a devtools verb and one of them named a verb that

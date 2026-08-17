@@ -53,6 +53,13 @@ running a command. **Never write a work checklist into it.**
 2. **Do the items one at a time.** For each one: claim the bd issue, write the code,
    run `/verify`, then commit. One commit per item. Never batch several items into one
    commit at the end.
+   - **The ledger row lands BEFORE the commit, never after.** `reach` is the diff
+     intersected against what the running game loaded, and after a commit the diff is
+     empty — so a row recorded afterwards reads `reached 0/0 changed file(s)`, which is
+     indistinguishable from a run that never started. Cycle 48 did exactly this and
+     produced a `warranted` row carrying no evidence for the verdict. If you ran the
+     gates by hand instead of through `/verify`, you owe the row by hand too, and it is
+     due while the work is still uncommitted.
 3. **Before reflecting, always add to `kanban.md`** — cool new features or concrete
    improvements (UX, game juice, animations, enhancements, or full features). This used
    to read "the last item is always...", which described a checklist that no longer
