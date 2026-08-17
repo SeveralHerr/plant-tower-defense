@@ -189,7 +189,7 @@ func test_uprooting_frees_the_cell_and_returns_some_seeds() -> String:
 	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "planted")
 	if err == "":
 		var seeds_before: int = game.bank.seeds
-		err = _T.assert_eq(game.uproot_selected(), "", "uprooting the selected plant succeeds")
+		err = _T.assert_eq(game.commit_uproot(), "", "uprooting the selected plant succeeds")
 		if err == "":
 			err = _T.assert_gt(game.bank.seeds, seeds_before, "some seeds came back")
 		if err == "":
@@ -220,7 +220,7 @@ func test_a_plant_eaten_down_to_nothing_still_frees_the_node_headless() -> Strin
 
 
 func test_uprooting_plays_its_own_cue_and_still_frees_the_node_headless() -> String:
-	## uproot_selected() used to end in a bare queue_free() with no Sfx.play()
+	## commit_uproot() used to end in a bare queue_free() with no Sfx.play()
 	## call anywhere in the function. It now routes through
 	## Plant.play_exit_and_free(), which is gated on
 	## GardenTheme.animations_enabled() the same way _build_visuals()'s pop-in
@@ -235,7 +235,7 @@ func test_uprooting_plays_its_own_cue_and_still_frees_the_node_headless() -> Str
 		err = _T.assert_true(Sfx.should_play(Sfx.PLANT_UPROOTED, false, false),
 			"a cue is registered for a deliberate uproot")
 		if err == "":
-			err = _T.assert_eq(game.uproot_selected(), "", "uprooted")
+			err = _T.assert_eq(game.commit_uproot(), "", "uprooted")
 		if err == "":
 			err = _T.assert_true(is_instance_valid(plant) and plant.is_queued_for_deletion(),
 				"queue_free() still ran immediately -- headless never queues the exit tween")
@@ -243,7 +243,7 @@ func test_uprooting_plays_its_own_cue_and_still_frees_the_node_headless() -> Str
 	return err
 
 
-## The button path, not the mutator underneath it. `uproot_selected` above stays
+## The button path, not the mutator underneath it. `commit_uproot` above stays
 ## deliberately unguarded; everything a player can click goes through this.
 func test_one_uproot_click_only_arms_and_a_second_commits() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
@@ -252,7 +252,7 @@ func test_one_uproot_click_only_arms_and_a_second_commits() -> String:
 	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "planted")
 	if err == "":
 		var seeds_before: int = game.bank.seeds
-		err = _T.assert_eq(game.request_uproot(), "confirm needed", "the first click refuses")
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "the first click refuses")
 		if err == "":
 			err = _T.assert_true(game.plant_at(cell) != null, "the plant is still in the ground")
 		if err == "":
@@ -260,7 +260,7 @@ func test_one_uproot_click_only_arms_and_a_second_commits() -> String:
 		if err == "":
 			err = _T.assert_true(game.uproot_armed(), "but the button is armed")
 		if err == "":
-			err = _T.assert_eq(game.request_uproot(), "", "the second click commits")
+			err = _T.assert_eq(game.arm_uproot(), "", "the second click commits")
 		if err == "":
 			err = _T.assert_true(game.plant_at(cell) == null, "the cell is free")
 		if err == "":
@@ -277,7 +277,7 @@ func test_an_armed_uproot_disarms_itself_and_leaves_the_plant() -> String:
 	var cell: Vector2i = _grass(game)
 	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "planted")
 	if err == "":
-		err = _T.assert_eq(game.request_uproot(), "confirm needed", "armed")
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "armed")
 	if err == "":
 		# Pumped by hand: the runner advances frames, not wall clock, so a window
 		# measured in seconds never expires on its own here.
@@ -288,7 +288,7 @@ func test_an_armed_uproot_disarms_itself_and_leaves_the_plant() -> String:
 	if err == "":
 		# The click after a timeout must arm again rather than fall through to a
 		# commit — that is the misclick the whole gate exists to stop.
-		err = _T.assert_eq(game.request_uproot(), "confirm needed", "the next click re-arms")
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "the next click re-arms")
 	if err == "":
 		err = _T.assert_true(game.plant_at(cell) != null, "still in the ground")
 	_T.free_ui(game)
@@ -301,7 +301,7 @@ func test_selecting_another_plant_cancels_a_pending_uproot() -> String:
 	var first: Vector2i = _grass(game)
 	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, first), "", "first planted")
 	if err == "":
-		err = _T.assert_eq(game.request_uproot(), "confirm needed", "armed on the first")
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "armed on the first")
 	if err == "":
 		var second: Vector2i = _grass(game)
 		err = _T.assert_true(second != first, "there is a second free cell")
@@ -311,7 +311,7 @@ func test_selecting_another_plant_cancels_a_pending_uproot() -> String:
 			# place_plant auto-selects, so this is the real "clicked elsewhere" path.
 			err = _T.assert_false(game.uproot_armed(), "the arming did not follow the selection")
 		if err == "":
-			err = _T.assert_eq(game.request_uproot(), "confirm needed",
+			err = _T.assert_eq(game.arm_uproot(), "confirm needed",
 				"and a click on the new plant arms rather than digging it up")
 		if err == "":
 			err = _T.assert_true(game.plant_at(second) != null, "the second plant is still there")

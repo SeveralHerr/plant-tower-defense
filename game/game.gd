@@ -248,15 +248,16 @@ func _ready() -> void:
 	hud.packet_requested.connect(_on_packet_requested)
 	# Through a handler rather than straight onto start_next_wave(), so the
 	# mutator underneath stays unguarded for the devtools verb, the prep-timer
-	# expiry and the tests — the same split request_uproot() / uproot_selected()
+	# expiry and the tests — the same split arm_uproot() / commit_uproot()
 	# already uses. A wave that arrives because the countdown ran out is not a
 	# press and must not click.
 	hud.next_wave_requested.connect(_on_next_wave_requested)
 	hud.upgrade_requested.connect(upgrade_selected)
-	# The button goes through the confirm gate; uproot_selected() stays the
-	# unguarded mutator underneath it, which is what the devtools verbs and the
-	# placement tests drive.
-	hud.uproot_requested.connect(request_uproot)
+	# The button goes through the confirm gate; commit_uproot() stays the unguarded
+	# mutator underneath it, which is what the placement tests drive directly (and
+	# what a bridge session reaches with `run-method`). No devtools VERB wraps it --
+	# see its own header.
+	hud.uproot_requested.connect(arm_uproot)
 
 	_prep_left = PREP_SECONDS
 	_refresh()
@@ -1173,7 +1174,7 @@ func _new_plant(id: StringName) -> Plant:
 
 
 ## A hungry pest (Pest.is_hungry) ate this plant down to 0 health instead of
-## walking past it. No refund — see uproot_selected() for the "sold on
+## walking past it. No refund — see commit_uproot() for the "sold on
 ## purpose" path, which is the only one that pays anything back.
 func _on_plant_destroyed(plant: Plant) -> void:
 	if _plants.get(plant.cell) == plant:
@@ -1232,12 +1233,24 @@ func upgrade_selected() -> String:
 ## Returns "" when the plant was actually uprooted, and otherwise the reason it
 ## was not — "confirm needed" for the arming click, which is a refusal the caller
 ## can distinguish from a real failure.
-func request_uproot() -> String:
+##
+## **`arm_` and `commit_`, and the names were `request_uproot` / `uproot_selected`
+## until a caller guessed wrong** (plant-tower-defense-mim5). Neither old name carried
+## the destructive word: "request" sounds like the safe one and is, "selected" names
+## the SUBJECT rather than the ACTION, and the pair reads as a verb and a noun rather
+## than as two steps. Writing a test for the arming half, I called `uproot_selected`,
+## it removed the bed with no confirmation, and it returned "" — which is this API's
+## success value. Nothing failed; a plant was simply gone.
+##
+## The rule the rename follows: **when two functions differ in destructiveness, the
+## names must differ in the destructive word.** `arm_` is a promise that nothing
+## happens yet; `commit_` is a promise that it does.
+func arm_uproot() -> String:
 	if selected_placed == null or not is_instance_valid(selected_placed):
 		return "nothing is selected"
 	if _uproot_armed == selected_placed and _uproot_left > 0.0:
 		_disarm_uproot()
-		return uproot_selected()
+		return commit_uproot()
 	_uproot_armed = selected_placed
 	_uproot_left = UPROOT_CONFIRM_SECONDS
 	# The bed itself says so, not only the message row (plant-tower-defense-rtgp).
@@ -1295,10 +1308,15 @@ func _tick_uproot_confirm(delta: float) -> void:
 		_refresh()
 
 
-## The unguarded mutator: removes the selected plant and pays the refund with no
-## confirmation. The button never reaches this directly — see request_uproot —
-## but the devtools verbs and the placement tests do, deliberately.
-func uproot_selected() -> String:
+## The unguarded mutator: removes the selected plant and pays the refund with **no
+## confirmation and no undo**. The button never reaches this directly — it is wired to
+## `arm_uproot`, which gates it behind the four-second confirm — but the devtools
+## verbs and the placement tests call it deliberately, because a test that has to
+## arm-and-wait to remove a plant is testing the timer rather than the removal.
+##
+## Named `commit_` for the reason `arm_uproot`'s header spells out: this is the one
+## that destroys, and its name has to say so to anyone reading a call site.
+func commit_uproot() -> String:
 	if selected_placed == null or not is_instance_valid(selected_placed):
 		return "nothing is selected"
 	var plant: Plant = selected_placed

@@ -3293,7 +3293,7 @@ func test_an_armed_uproot_button_relabels_and_reddens() -> String:
 		err = _T.assert_false(button.has_theme_color_override("font_color"),
 			"a resting Uproot button wears the panel's own colour")
 	if err == "":
-		err = _T.assert_eq(game.request_uproot(), "confirm needed", "armed")
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "armed")
 	if err == "":
 		await _pump(game)
 		err = _T.assert_true(button.text.begins_with("Really uproot?"),
@@ -10855,11 +10855,11 @@ func test_an_armed_uproot_marks_the_bed_it_will_remove() -> String:
 			"an unarmed bed wears the ordinary marker")
 
 	if err == "":
-		# `request_uproot` is the button's wiring and the thing that ARMS;
-		# `uproot_selected` is what actually removes the bed. Calling the second one
+		# `arm_uproot` is the button's wiring and the thing that ARMS;
+		# `commit_uproot` is what actually removes the bed. Calling the second one
 		# here uprooted the plant outright and returned "" -- worth the comment,
 		# because the names do not say which is which.
-		err = _T.assert_eq(game.request_uproot(), "confirm needed", "one click arms it")
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "one click arms it")
 	if err == "":
 		err = _T.assert_eq(marker.marker_color, SelectionMarker.WARNING_COLOR,
 			"and the bed turns to the warning colour")

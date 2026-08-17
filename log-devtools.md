@@ -4277,3 +4277,28 @@ cited in code, and the citation is a mitigation this project has watched fail.
     addressable path at all. It is `SelectionMarker.NODE_NAME` now, for the reason this
     project already states about `Backdrop`/`RowButton%d` — node paths are a contract,
     and `@SelectionMarker@31` is not one.
+
+## 2026-08-16 — cycle 47: arm_uproot and commit_uproot
+
+- Value: **overkill**, and that is the honest verdict after three `warranted` cycles.
+  - Expected: a pure rename, so the suite count on both sides is the real proof.
+    Runtime would only confirm that the two names do what they say.
+  - Got: exactly that. `553/553` before and `553/553` after, and live —
+    `arm_uproot` → `confirm needed` with `"plants": 1`, `commit_uproot` → `""` with
+    `"plants": 0`.
+  - Found: **a stale doc claim, twice, and I re-committed it before checking.** Both
+    headers said the unguarded mutator is called by "the devtools verbs and the
+    placement tests". There is no devtools verb — `list-commands` has nothing matching
+    `uproot`, and `devtools_ext/commands.gd` never mentions it. I rewrote one of those
+    headers during the rename and preserved the false half. Corrected in both places;
+    the file's other three "devtools verbs" claims were checked and are true
+    (`collect_husk`, `place_plant`, `start_wave` all exist).
+  - Cheaper: the suite alone. The launch confirmed two return values that the tests
+    already assert.
+
+- Gap: **no gaps this turn.** One note on `list-commands --offline`, which is what made
+  the stale claim cheap to disprove: it parses the registration sites statically with no
+  game running, so "does a verb by this name exist" costs nothing and needs no launch.
+  That is the right tool for auditing a comment that claims a verb, and it is not
+  obvious from the verb table in `CLAUDE.md`, which describes `list-commands` as a
+  discovery aid for a running session.

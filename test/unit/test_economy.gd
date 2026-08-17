@@ -544,7 +544,7 @@ func test_the_uproot_button_reprices_itself_as_the_plant_is_chewed() -> String:
 			"a chewed plant reprices its own uproot button, still says %s" % button.text)
 		if err == "":
 			err = _T.assert_eq(button.text, "Uproot (+%d)" % game.selected_placed.uproot_refund(),
-				"and prints exactly what uproot_selected would pay, got %s" % button.text)
+				"and prints exactly what commit_uproot would pay, got %s" % button.text)
 	_T.free_ui(game)
 	return err
 
@@ -583,7 +583,7 @@ func test_planting_and_uprooting_in_a_loop_does_not_move_the_score() -> String:
 	if err == "":
 		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "the free starter is spent")
 	if err == "":
-		err = _T.assert_eq(game.uproot_selected(), "", "and pulled straight back up")
+		err = _T.assert_eq(game.commit_uproot(), "", "and pulled straight back up")
 	var cost: int = game.bank.placement_cost(PlantCatalog.CORN)
 	var earned_before: int = game.bank.seeds_earned_total
 	var seeds_before: int = game.bank.seeds
@@ -596,7 +596,7 @@ func test_planting_and_uprooting_in_a_loop_does_not_move_the_score() -> String:
 		if err == "":
 			# Read before the uproot, off the same method the button prints.
 			refund = game.selected_placed.uproot_refund()
-			err = _T.assert_eq(game.uproot_selected(), "", "cycle %d uproots" % i)
+			err = _T.assert_eq(game.commit_uproot(), "", "cycle %d uproots" % i)
 	if err == "":
 		err = _T.assert_eq(game.bank.seeds_earned_total, earned_before,
 			"%d plant/uproot cycles earned nothing — the score is for playing, not for churning"
@@ -700,7 +700,7 @@ func test_a_refund_still_pays_the_player_exactly_what_it_promised() -> String:
 		var earned_before: int = game.bank.seeds_earned_total
 		err = _T.assert_gt(promised, 0, "a half-eaten plant is still worth scrapping")
 		if err == "":
-			err = _T.assert_eq(game.uproot_selected(), "", "uprooted")
+			err = _T.assert_eq(game.commit_uproot(), "", "uprooted")
 		if err == "":
 			err = _T.assert_eq(game.bank.seeds, seeds_before + promised,
 				"the purse gained exactly the %d the uproot button printed" % promised)

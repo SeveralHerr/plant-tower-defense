@@ -272,7 +272,7 @@ func _on_setup() -> void:
 
 ## Shrinks the sprite to nothing and frees this Node — the mirror of
 ## _build_visuals()'s pop-in, played on the way off the board instead of onto
-## it. Callers (Game._on_plant_destroyed, Game.uproot_selected) have already
+## it. Callers (Game._on_plant_destroyed, Game.commit_uproot) have already
 ## dropped this plant from `_plants` and any selection before reaching here, so
 ## the Node lingering in the tree for the tween's duration touches nothing
 ## else: Game drives `_act()` off that dict, not off the "plants" group, so an

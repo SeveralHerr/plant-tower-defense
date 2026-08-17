@@ -49,7 +49,7 @@ const PURCHASE_DENIED := &"purchase_denied"
 ## for the transaction itself, not just next volley's wider fan. See
 ## corn_cobbler.gd's _upgrade_flourish() for the sprite half of this.
 const PLANT_UPGRADED := &"plant_upgraded"
-## A plant deliberately dug up (Game.uproot_selected), as opposed to
+## A plant deliberately dug up (Game.commit_uproot), as opposed to
 ## PLANT_DESTROYED's "a hungry pest ate it" — the player chose this one.
 const PLANT_UPROOTED := &"plant_uprooted"
 ## The three attacking plants' own act, as opposed to the pest-side reaction

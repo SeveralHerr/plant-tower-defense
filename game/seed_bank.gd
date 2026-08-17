@@ -140,7 +140,7 @@ func pay_for_plant(id: StringName) -> bool:
 	return true
 
 
-## Pays back part of a purchase — currently only Game.uproot_selected(), which
+## Pays back part of a purchase — currently only Game.commit_uproot(), which
 ## hands over Plant.uproot_refund().
 ##
 ## The purse moves exactly as it always did; the run's score does not. See
