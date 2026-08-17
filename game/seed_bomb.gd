@@ -218,7 +218,9 @@ func detonate() -> void:
 			var dealt: float = damage_at(pest.global_position.distance_to(global_position), damage)
 			if dealt <= 0.0:
 				continue
-			pest.take_damage(dealt)
+			# Blasted: a corpse this kills lies tilted off its facing, because a bomb
+			# throws the body off the line it was walking (plant-tower-defense-f5z6).
+			pest.take_damage(dealt, Pest.DEATH_BLASTED)
 			# Same split Kernel documents: a kill already has the corpse swap and
 			# Sfx.PEST_KILLED, so the flash is only for the ones that survived —
 			# and on a blast that is most of them, which is exactly when "did that

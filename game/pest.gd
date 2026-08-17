@@ -295,6 +295,35 @@ var _alive: bool = true
 var _dead_texture: Texture2D = null
 var _sprite_scale: float = 1.0
 
+## How this pest died, so the corpse can say so (plant-tower-defense-f5z6).
+##
+## Every death used to leave the same straight corpse, which is a fair default and
+## makes three quite different events look identical: a Chomp chewing something to
+## pieces, a seed bomb going off underneath it, and a kernel arriving. The cue is
+## the corpse itself rather than a new effect, because a corpse is already drawn,
+## already lingers for DEATH_LINGER, and is already the thing a player looks at.
+##
+## `&""` — the default — is the straight corpse, and it is what a kernel kill and
+## any future unattributed kill both get. That is deliberate: the plain corpse
+## should be the common case, so the two that differ read as remarkable.
+const DEATH_BITTEN := &"bitten"
+const DEATH_BLASTED := &"blasted"
+
+## Squash along the body axis for a chewed corpse. A Chomp closes on the whole
+## pest, so the corpse is SHORTER rather than displaced — shape, not position,
+## which is also the channel a screenshot can be asserted against.
+const BITTEN_SQUASH: float = 0.62
+
+## Rotation off the facing for a blasted corpse, in radians. A bomb throws the
+## body off its line of travel; nothing else in the game rotates a corpse away
+## from `_facing`, so the tilt reads as "something moved this" without needing a
+## second colour. Deliberately not a multiple of PI/2 — the four cardinals are
+## spoken for by _update_facing and a corpse at one of them would read as a
+## living pest that stopped.
+const BLASTED_TILT: float = 0.55
+
+var _death_cause: StringName = &""
+
 ## The walk cycle's own state. `_facing` is the cardinal rotation
 ## _update_facing() decides; `_sway` is the gait's offset from it. They are kept
 ## apart precisely because two features write one property: whichever of them
@@ -757,7 +786,7 @@ static func gait_phase(index: int) -> float:
 	return fposmod(float(index) * GAIT_PHASE_STEP, TAU)
 
 
-func take_damage(amount: float) -> void:
+func take_damage(amount: float, cause: StringName = &"") -> void:
 	if not _alive:
 		return
 	# A zero-damage call is not an engagement. Nothing in the game makes one
@@ -769,7 +798,7 @@ func take_damage(amount: float) -> void:
 	if is_instance_valid(_health_bar):
 		_health_bar.size = Vector2(HEALTH_BAR_SIZE.x * (health / max_health), HEALTH_BAR_SIZE.y)
 	if health <= 0.0:
-		kill()
+		kill(cause)
 
 
 ## Pure: what `flash_hit` boosts a sprite's current tint towards for the flash's
@@ -797,10 +826,11 @@ func flash_hit() -> void:
 
 
 ## Death by any cause — kernels, or a Chomp finishing its meal.
-func kill() -> void:
+func kill(cause: StringName = &"") -> void:
 	if not _alive:
 		return
 	_alive = false
+	_death_cause = cause
 	if held_by != null and held_by.has_method("release"):
 		held_by.call("release")
 	died.emit(self)
@@ -824,8 +854,8 @@ func _play_death() -> void:
 	# not zeroed: a beetle killed walking left should lie facing left.
 	if _sprite != null:
 		_sway = 0.0
-		_sprite.rotation = _facing
-		_sprite.scale = Vector2(_sprite_scale, _sprite_scale)
+		_sprite.rotation = corpse_rotation()
+		_sprite.scale = corpse_scale()
 	if _dead_texture != null and _sprite != null:
 		_sprite.texture = _dead_texture
 		_sprite.modulate = Color.WHITE
@@ -849,6 +879,34 @@ func _play_death() -> void:
 	else:
 		tween.tween_interval(DEATH_LINGER)
 	tween.tween_callback(queue_free)
+
+
+## How the corpse lies, as a predicate rather than a branch inside `_play_death()`
+## — the same reason PlacementPreview.new_cover_cells() is one. A corpse is on
+## screen for DEATH_LINGER and then gone, so a rule readable only from a
+## screenshot is a rule that gets checked once.
+##
+## Straight on the pest's own facing for everything except a blast. `_facing` is
+## kept rather than zeroed for the reason the corpse code has always kept it: a
+## beetle killed walking left should lie facing left.
+func corpse_rotation() -> float:
+	if _death_cause == DEATH_BLASTED:
+		return _facing + BLASTED_TILT
+	return _facing
+
+
+## The corpse's own scale. Squashed along the body axis when something chewed it,
+## full size otherwise.
+##
+## Note this squashes X, not Y: the sprite rests head-up-screen (art_src/STYLE.md)
+## and `_sprite.rotation` carries the facing, so the body's long axis is always
+## local Y whichever way the pest was walking. Squashing Y would shorten the
+## corpse nose-to-tail, which is a pest that shrank; squashing X narrows it, which
+## is a pest that was closed on.
+func corpse_scale() -> Vector2:
+	if _death_cause == DEATH_BITTEN:
+		return Vector2(_sprite_scale * BITTEN_SQUASH, _sprite_scale)
+	return Vector2(_sprite_scale, _sprite_scale)
 
 
 func is_alive() -> bool:

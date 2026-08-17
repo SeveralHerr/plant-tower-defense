@@ -95,7 +95,9 @@ func _chew(delta: float) -> void:
 	if _chew_left <= 0.0:
 		var meal: Pest = _held
 		release()
-		meal.kill()
+		# Bitten, so the corpse is squashed rather than straight -- a Chomp closes
+		# on the whole pest (plant-tower-defense-f5z6).
+		meal.kill(Pest.DEATH_BITTEN)
 
 
 ## Drops whatever is in the mouth and frees the flower. Called by Pest.kill() too,

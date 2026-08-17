@@ -8581,6 +8581,81 @@ func test_the_gait_rate_follows_speed_but_is_clamped_at_both_ends() -> String:
 ## A pest killed mid-stride leaves a corpse lying straight. Without this the
 ## husk keeps whatever quarter-stride lean it died on, which reads as a bug
 ## still leaning into a step it will never finish.
+## A corpse says what killed it (plant-tower-defense-f5z6).
+##
+## Three deaths that used to look identical: chewed by a Chomp, blown up by a seed
+## bomb, and shot. The plain straight corpse stays the DEFAULT — a kernel kill and
+## any unattributed kill both get it — so the two that differ read as remarkable
+## rather than as noise, and the sibling test below still passes unchanged.
+##
+## Both differences are shape, not colour, which is this project's standing rule
+## and is also what makes them assertable at all: a rotation and a scale are
+## numbers, where "it looks chewed" is not.
+##
+## The squash is on X and that is not arbitrary — see corpse_scale()'s header. The
+## sprite rests head-up-screen and `rotation` carries the facing, so the body's
+## long axis is always local Y; squashing Y would be a pest that shrank, squashing
+## X is one that was closed on.
+func test_a_corpse_lies_differently_depending_on_what_killed_it() -> String:
+	var pest: Pest = _pest(Pest.APHID, Vector2.ZERO)
+	var host: Node2D = _host([pest])
+	await _T.instantiate_scene(host)
+	pest._update_facing(Vector2.LEFT)
+	var facing: float = pest._facing
+	var full: float = pest._sprite_scale
+
+	# Default: unchanged from what the sibling test pins, so a kernel kill and an
+	# unattributed one both still lie straight.
+	var err: String = _T.assert_float_eq(pest.corpse_rotation(), facing, 0.0001,
+		"an unattributed corpse lies on its facing")
+	if err == "":
+		err = _T.assert_float_eq(pest.corpse_scale().x, full, 0.0001,
+			"and at full width")
+	# Bitten: narrower, same angle.
+	if err == "":
+		pest._death_cause = Pest.DEATH_BITTEN
+		# assert_gt with the arguments the other way round: the helper set is
+		# assert_eq / false / float_eq / gt / gte / margin / true, and there is no
+		# assert_lt. Calling one that does not exist aborts the method, and an
+		# aborted test returns "" — which run_tests.gd reports as [PASS]. This exact
+		# line did that until run_tests.py caught the SCRIPT ERROR the return value
+		# cannot carry.
+		err = _T.assert_gt(full, pest.corpse_scale().x,
+			"a chewed corpse is narrower than a whole one")
+	if err == "":
+		err = _T.assert_float_eq(pest.corpse_scale().y, full, 0.0001,
+			("but the same LENGTH -- squashing the long axis would read as a pest that "
+				+ "shrank rather than one that was closed on"))
+	if err == "":
+		err = _T.assert_float_eq(pest.corpse_rotation(), facing, 0.0001,
+			"and still lies on its facing -- a bite does not move the body")
+	# Blasted: tilted off the facing, same size.
+	if err == "":
+		pest._death_cause = Pest.DEATH_BLASTED
+		err = _T.assert_true(not is_equal_approx(pest.corpse_rotation(), facing),
+			"a blasted corpse is thrown off the line it was walking")
+	if err == "":
+		err = _T.assert_float_eq(pest.corpse_scale().x, full, 0.0001,
+			"but is not squashed -- that is the bite's signature, not the bomb's")
+	# The tilt must not land on a cardinal: _update_facing owns those four, and a
+	# corpse sitting at one would read as a living pest that simply stopped.
+	if err == "":
+		var quarter: float = fmod(absf(Pest.BLASTED_TILT), PI / 2.0)
+		err = _T.assert_gt(minf(quarter, PI / 2.0 - quarter), 0.05,
+			("the tilt is clear of the four cardinals _update_facing uses (%.2f rad)")
+				% Pest.BLASTED_TILT)
+	# And the cause survives the damage path, not just a direct kill().
+	if err == "":
+		pest._death_cause = &""
+		pest.take_damage(pest.max_health * 2.0, Pest.DEATH_BLASTED)
+		err = _T.assert_eq(pest._death_cause, Pest.DEATH_BLASTED,
+			"take_damage carries the cause through to the corpse")
+	if err == "":
+		err = _T.assert_false(pest.is_alive(), "and that damage really killed it")
+	_T.free_ui(host)
+	return err
+
+
 func test_a_pest_killed_mid_stride_leaves_a_straight_corpse() -> String:
 	var pest: Pest = _pest(Pest.APHID, Vector2.ZERO)
 	var host: Node2D = _host([pest])
