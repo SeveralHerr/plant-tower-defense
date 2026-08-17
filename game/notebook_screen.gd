@@ -167,6 +167,20 @@ const KIND_SHELF := "shelf"
 ## the two ways out (drop the pitch, or split the shelf across both pages).
 const SHELF_ROW_PITCH: float = 42.0
 const SHELF_ROW_TOP: float = 3.0
+
+
+## How many shelf rows fit inside DRAWING_BOX.
+##
+## Computed rather than stated. The header above says "7 * 42 + 3 = 297 against 300" and
+## is correct; this is that sum as a number, so an eighth milestone moves it rather than
+## asking whoever adds one to redo the arithmetic from a comment.
+##
+## `item_height` is the pitch here, because a shelf row occupies its whole slot -- unlike
+## an options row, where a 40 px button sits in a 48 px pitch and the difference is what
+## keeps the last one clear of the footer.
+static func shelf_capacity() -> int:
+	return OverlayScreen.rows_that_fit(SHELF_ROW_TOP, SHELF_ROW_PITCH, SHELF_ROW_PITCH,
+		DRAWING_BOX.size.y)
 ## The earned/unearned mark, and it is a SIZE difference rather than only a colour
 ## one. Same rule Plant.HEALTH_BAR_SEGMENTS states for the board: a cue that is
 ## carried by hue alone is a cue the colourblind-safe option exists because of.

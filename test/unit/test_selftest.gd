@@ -11235,3 +11235,91 @@ func test_a_drought_pays_more_and_says_so() -> String:
 		err = _T.assert_true(Hud.weather_note(WaveDirector.WEATHER_DROUGHT).contains("150%"),
 			"and so does the banner that announces the wave")
 	return err
+
+
+## Every row-limited surface computes its own ceiling (plant-tower-defense-knpc).
+##
+## Cycle 75 enumerated four such surfaces and found one — `TitleScreen` — computing its
+## ceiling while the other three wrote the sums into a comment and pinned the result with
+## a test. All three were correct and all three had to be re-derived by hand by whoever
+## next wanted a row, which is how the milestone shelf's "no room for an eighth" and the
+## options panel's "a fourth trips FOOTER_GAP" were each discovered while holding a
+## feature rather than before starting one.
+##
+## Asserted as a TABLE, not three examples, and the table records the measured SLACK rather
+## than a rule. Three surfaces are exactly full; the title screen's menu has three spare
+## rows — and it is the one that already computed its ceiling, which is either a nice
+## coincidence or a hint that a surface whose limit is a number nobody re-derives is a
+## surface people stop crowding. One data point either way.
+##
+## (The title screen's tightness is real but it is a WIDTH constraint, not a row count:
+## cycle 64 recorded that its sixth destination needs a shortened word to fit a 146 px
+## cell. Two different ceilings on one surface, and only one of them is this test's.)
+func test_every_row_limited_surface_is_exactly_full() -> String:
+	var surfaces: Array[Dictionary] = [
+		{
+			"what": "the options panel",
+			"spare": 0,
+			"used": OptionsScreen.OPTIONS.size(),
+			"fits": OptionsScreen.rows_capacity(),
+		},
+		{
+			"what": "the milestone shelf",
+			"spare": 0,
+			"used": Milestones.TABLE.size(),
+			"fits": NotebookScreen.shelf_capacity(),
+		},
+		{
+			"what": "the run summary card",
+			"spare": 0,
+			"used": 7,   # summary_rows() needs a built card; the count is the subject here
+			"fits": RunSummary.rows_capacity(),
+		},
+		{
+			"what": "the title screen menu",
+			"spare": 3,
+			"used": TitleScreen.MENU_BUTTON_NAMES.size(),
+			"fits": TitleScreen.menu_capacity(),
+		},
+	]
+	var err: String = _T.assert_eq(surfaces.size(), 4,
+		"four row-limited surfaces -- add the fifth here or this sweep is a subset")
+	for surface: Dictionary in surfaces:
+		if err != "":
+			return err
+		var used: int = int(surface["used"])
+		var fits: int = int(surface["fits"])
+		var spare: int = int(surface["spare"])
+		err = _T.assert_gte(fits, used,
+			"%s holds its %d row(s) -- capacity says %d" % [surface["what"], used, fits])
+		if err == "":
+			# The recorded slack, asserted exactly. `fits >= used` alone would pass a
+			# capacity pointed at the wrong box, and a bare "must be full" would fail the
+			# moment a surface legitimately loses a row. This says what was MEASURED, so
+			# any movement in either direction is a thing someone chose.
+			err = _T.assert_eq(fits - used, spare,
+				("%s has %d spare row(s), measured as %d in cycle 82. Up means the ceiling "
+					+ "moved or a row went; down means the surface is fuller than the last "
+					+ "person to look thought.") % [surface["what"], fits - used, spare])
+	return err
+
+
+## The helper's own arithmetic, at the boundary where an off-by-one lives.
+func test_rows_that_fit_counts_the_last_row_that_actually_lands() -> String:
+	# Ten rows of 10 starting at 0, floor at 100: rows at 0..90, each 10 tall, so ten fit
+	# and the tenth ends exactly on the floor.
+	var err: String = _T.assert_eq(OverlayScreen.rows_that_fit(0.0, 10.0, 10.0, 100.0), 10,
+		"a row ending exactly on the floor counts")
+	if err == "":
+		err = _T.assert_eq(OverlayScreen.rows_that_fit(0.0, 10.0, 10.0, 99.0), 9,
+			"and one pixel short of it does not")
+	if err == "":
+		err = _T.assert_eq(OverlayScreen.rows_that_fit(0.0, 10.0, 12.0, 100.0), 9,
+			"an item taller than its pitch loses the last row, not the first")
+	if err == "":
+		err = _T.assert_eq(OverlayScreen.rows_that_fit(200.0, 10.0, 10.0, 100.0), 0,
+			"a floor above the top holds nothing rather than looping forever")
+	if err == "":
+		err = _T.assert_eq(OverlayScreen.rows_that_fit(0.0, 0.0, 10.0, 100.0), 0,
+			"and a zero pitch is refused rather than hanging")
+	return err

@@ -232,6 +232,21 @@ func _score_line() -> String:
 
 ## Every row is `label: value`, built from one table so the order is readable in
 ## one place and a new stat cannot be added without deciding where it sits.
+## How many stat rows fit above the buttons.
+##
+## Computed rather than stated. The comment on `beds_text()` does these sums in prose --
+## rows step ROW_HEIGHT + ROW_GAP = 38 from FIRST_ROW_Y, the seventh foots at 448 against
+## BUTTON_Y 476, an eighth would foot at 486 -- and is correct. This is the same sums as a
+## number, so the next row to be proposed is a lookup rather than a re-derivation.
+##
+## The floor keeps BUTTON_CLEARANCE, which is this card's equivalent of
+## OverlayScreen.FOOTER_GAP: a row flush against the buttons overlaps nothing and reads
+## wrong.
+static func rows_capacity() -> int:
+	return OverlayScreen.rows_that_fit(FIRST_ROW_Y, ROW_HEIGHT + ROW_GAP, ROW_HEIGHT,
+		BUTTON_Y - BUTTON_CLEARANCE)
+
+
 func summary_rows() -> Array:
 	var wave: int = int(_stats.get("wave", 0))
 	var endless: bool = bool(_stats.get("endless", false))

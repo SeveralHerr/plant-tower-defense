@@ -91,6 +91,35 @@ const FOOTER_INSET: float = 24.0
 ## it once for every screen with rows rather than once per screen.
 const FOOTER_GAP: float = 24.0
 
+
+## How many evenly pitched rows fit between `top` and `floor_y`.
+##
+## **The arithmetic three separate surfaces had each written out in prose.** Cycle 75
+## enumerated every row-limited surface in the game and found four: `TitleScreen` COMPUTES
+## its ceiling, and `OptionsScreen`, the notebook's milestone shelf and `RunSummary` each
+## wrote the sums into a comment and pinned the result with a test. All three were correct,
+## all three were derived by hand in three files by three cycles that could not see each
+## other, and each had to be re-derived by the next person wanting a row.
+##
+## Four arguments, and `-knpc` explicitly warned that a four-argument helper can be worse
+## than four computations. They are kept because they are not knobs — they are the four
+## facts a row layout has, and every caller passes its own named constants for all four, so
+## the call site still reads as that surface's geometry rather than as a configuration.
+## What is shared is only the `(n - 1) * pitch` off-by-one, which is the part that gets
+## re-derived wrongly.
+##
+## `TitleScreen.menu_capacity()` deliberately does NOT use this: its rows are a grid with
+## per-row heights (`menu_bottom` walks `menu_rows(count)`), so there is no single pitch to
+## pass. A helper that grew an argument to swallow that case would stop being four facts.
+static func rows_that_fit(top: float, pitch: float, item_height: float,
+		floor_y: float) -> int:
+	if pitch <= 0.0:
+		return 0
+	var n: int = 0
+	while top + float(n) * pitch + item_height <= floor_y:
+		n += 1
+	return n
+
 ## The overlay's own Back button, set by add_back_button(). Kept because
 ## `_focus_default()` opens on it and `footer_clearance()` measures against it.
 var _back_button: Button

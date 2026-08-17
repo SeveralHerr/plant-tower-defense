@@ -234,6 +234,20 @@ func _build_header() -> void:
 
 ## One row per entry in OPTIONS, in table order — not a hand-written list, for
 ## the same reason KeyBindingScreen builds its rows off KeyBindings.ACTIONS.
+## How many option rows this panel can hold with the footer's clearance intact.
+##
+## Computed rather than stated. The header above `PANEL` does the sums in prose and is
+## correct; this is the same sums as a number, so adding a fourth option moves it instead
+## of requiring someone to re-derive it while holding a feature.
+##
+## The floor is `footer_y() - OverlayScreen.FOOTER_GAP` and not `footer_y()`, because a
+## last row flush against the footer passes every overlap check ever written and is wrong
+## only in a screenshot — which is the whole reason `FOOTER_GAP` exists.
+static func rows_capacity() -> int:
+	return OverlayScreen.rows_that_fit(ROWS_TOP, ROW_HEIGHT, ROW_BUTTON_SIZE.y,
+		PANEL.position.y + PANEL.size.y - FOOTER_HEIGHT - FOOTER_INSET - FOOTER_GAP)
+
+
 func _build_rows() -> void:
 	var y: float = ROWS_TOP
 	for row: Dictionary in OPTIONS:
