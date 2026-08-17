@@ -123,6 +123,14 @@ running a command. **Never write a work checklist into it.**
      sources plus what steps 4 and 5 just produced**: open beads, skills to create,
      `kanban.md`, a broken mirror, harness gaps, and any workflow change worth its own
      item.
+     **If a source points at a bead that is already open, add a note to THAT bead — do
+     not file a duplicate in order to close it.** Cycles 53, 54, 55 and 56 each filed one
+     item whose own description said "duplicate of the open X, filed only to record the
+     second identification", then closed it in the same breath. The evidence is worth
+     recording and the bead is not: `bd update X --notes` puts it where the person
+     working X will read it, and leaves the ready count honest. A second identification
+     is also a reason to raise the priority, which a closed duplicate cannot do.
+
      **Name which source each came from, in the issue.** This step used to say "out of
      kanban.md's backlog", and that single filename is what made every other source
      invisible for 33 cycles. Never end a cycle with nothing ready.

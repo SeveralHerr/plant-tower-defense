@@ -195,6 +195,28 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (56) — the garden can now be read, and that suggests what to read next
+
+- **Zero rings on a selected plant is a "move me" signal and nothing says so.**
+  `SoleCoverMarks` (`game/sole_cover_marks.gd`) rings the road only the selected plant
+  holds, and an empty set now means something concrete: this plant can be uprooted and
+  replanted elsewhere at no cost in coverage. That is a genuinely useful state and it is
+  currently indistinguishable from "you have not selected anything". A single line in the
+  selection panel — "nothing depends on this one" — would turn a silent absence into the
+  advice it already is. The uproot flow (`Game.arm_uproot`) is right there.
+- **The two cues use different shapes for the same idea and were never seen together.**
+  The hover dots are filled 4 px discs in the preview's green; the selection rings are 9 px
+  yellow outlines. That was deliberate — they can be on screen at once — but nobody has
+  checked what hovering a new plant *while another is selected* actually looks like, and
+  the two sets can land on the same cell. A screenshot of that state is a five-minute job
+  and the kind of thing `godot-hud-occlusion-audit` exists for.
+- **Nothing in the game teaches that coverage is not engagement.** Three cycles have now
+  measured it — a cob fires at one pest, so five cobs covering all 32 road cells lose a
+  pest that seven covering the same cells stop. The player learns this, if at all, by
+  losing. The run summary (`game/run_summary.gd`) already reports beds lost and pests that
+  walked in untouched; a line comparing "road covered" against "pests nothing shot at"
+  would name the mechanic in the one place a player is reading carefully.
+
 ### New this cycle (55) — the hover now answers "what does this buy?"
 
 - **The dots answer reach; nothing yet answers depth, and that is now the honest gap.**

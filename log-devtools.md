@@ -4595,3 +4595,27 @@ cited in code, and the citation is a mitigation this project has watched fail.
   `pause` immediately after `launch` — which `read-a-moving-value` already says — is what
   fixed it, and it is worth remembering that the rule applies to *the session*, not just
   to individual reads. A game left running is a moving value the size of the whole board.
+
+## 2026-08-17 — Cycle 56: rings for what a selected plant alone holds
+
+- Value: **warranted** — the runtime run carried the claim the unit test structurally
+  cannot.
+  - Expected: the rings to appear on the cells `sole_cover_cells()` returns, and to thin
+    when a second plant overlaps.
+  - Got: both, and the second one sharply. A lone cob at `(8, 5)` rings eight cells;
+    planting a second at `(8, 6)` drops the first to **zero** with nothing clicked. The
+    unit test proves the set arithmetic; only the running game proves the push path in
+    `_refresh()` reaches the node, and "the rings thin without the player touching
+    anything" is the entire feature.
+  - Found: nothing broken — the suite caught the one thing that was missing before I
+    could, refusing the new `SoleCoverMarks` class until a test named it. That is
+    `test_every_game_class_is_at_least_named_somewhere_in_the_test_suite` doing precisely
+    its job, and it fired within seconds of the class existing.
+  - Cheaper: for the arithmetic, yes, and it is unit-tested. For the push path, nothing.
+
+- Gap: **no gaps this turn.** Worth recording what went right instead, because it is the
+  second cycle running that the same habit paid: `pause` immediately after `launch`, then
+  `place_plant`, then read — the cue was inspected on a board that was not moving, and the
+  8-to-0 result is trustworthy because nothing else could have changed between the two
+  reads. Cycle 55 lost a screenshot to a run that ended while I read code; this cycle cost
+  one extra command and lost nothing.
