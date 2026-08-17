@@ -75,6 +75,24 @@ That near-miss was worth having: it exposed a real inconsistency underneath, whe
 predicate answered for a cell the drawing skipped. The picture and the predicate disagreed,
 and only aiming at the excluded case showed it.
 
+### The design rule that falls out of it
+
+The two sections above are for *reading*. The same ambiguity has an authoring side, and it
+is cheaper to fix there:
+
+> **If a state has a meaningful empty answer, give that answer a mark.** "No result" and
+> "no feature" must never be the same pixels.
+
+A cue showing which map cells depend on a selected unit drew nothing when the answer was
+"none" — which was a genuinely useful fact (the unit can be moved for free) rendered
+identically to "nothing is selected" and to "this is broken". Fixing it cost one dashed
+ring in a different position. Leaving it would have cost every future reader the same ten
+minutes the debugging rule above was written about.
+
+The tell at design time: **you are about to write `if result.is_empty(): return`** in a
+draw path, a status line, or a report. Ask what the empty case means. If it means something,
+say it.
+
 ## What makes this different from "flaky, retry it"
 
 Retrying gets you a *second* undated sample. Sometimes it agrees and you conclude wrongly

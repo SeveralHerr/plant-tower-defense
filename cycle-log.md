@@ -1,4 +1,4 @@
-# Cycle 56
+# Cycle 57
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,34 +6,37 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 56 taught
+## What cycle 57 taught
 
-**The garden can be read now, from both sides.** Cycle 55's hover dots answer "what would
-this purchase add". This cycle's rings answer the mirror: **what would the garden lose if
-this plant went**. A lone cob at `(8, 5)` rings eight road cells; plant a second at
-`(8, 6)` and the first drops to **zero** with nothing clicked — everything it held is
-backed up, so it can be uprooted and moved for free. A range ring could never show that,
-because it is identical whether the plant is the only thing holding that road or one of
-three.
+**An empty answer has to look like an answer.** A selected plant with no sole-cover rings
+means something useful — everything it reaches is also held by something else, so it can be
+dug up and replanted and the road loses nothing. It rendered as *silence*, which is
+indistinguishable from "nothing is selected" and from "the cue is broken". That is not
+hypothetical: cycle 55 spent ten minutes hunting a bug in a hover cue that was correctly
+drawing nothing.
 
-**The interesting engineering was where NOT to put it, and the file answered twice.** Not
-in `Plant._draw()`, which `CornCobbler` and `ChompFlower` fully override without calling
-super — the trap `SelectionMarker`'s header documents, and the reason the Chomp once
-shipped with no selection cue at all. And not in `SelectionMarker` either, the obvious
-home: `play_entrance()` tweens that node's `scale` from 0.55, and these marks sit whole
-cells from the plant's origin, so every selection would slide them inward and out again.
-Brackets 22 px from centre do not care; a mark 320 px away does. A third sibling node it
-is — which is precisely the reasoning that created `SelectionMarker` in the first place.
+So the answer is always a ring now, and only its **position** changes. Out on the road,
+those cells depend on you. Around the plant, nothing does.
 
-**And the suite caught the one thing missing before I could.**
-`test_every_game_class_is_at_least_named_somewhere_in_the_test_suite` refused the new class
-within seconds of it existing.
+**And the bead's design was killed by reading the file it would have touched.** It asked
+for a line in the selection panel. `hud.gd` records that a third line once pushed
+SelectionBox's foot to exactly the panel's own 648 and was caught by the clearance gate,
+and its VBox comment says the stack already runs to within 16 px of the panel foot.
+Measured before writing anything: the cob's second line is ~190 px of a 232 px box, and the
+label autowraps. **The requested design would have reproduced a failure the file already
+documents.**
+
+That is two cycles running where the codebase's own prose — written by whoever hit the
+limit, at the line that constrains it — was the decisive input rather than any tool.
 
 ## Where things stand
 
-Sixty-three beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
-gh#43). Suite **559/559**, 12244 assertions; lint 0/0; eight house checkers and the mirror
-all exit 0. Eleven skills. Upstream gh#44 and gh#46 open.
+Sixty-seven beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
+gh#43). Suite **559/559**, 12246 assertions; lint 0/0; eight house checkers, the mirror and
+`suite_reach` all clean. Eleven skills. Upstream gh#44 and gh#46 open.
+
+Cycle 56's workflow change worked immediately: no self-declared duplicate bead was filed
+this cycle, for the first time in five.
 
 ## Waiting on the user
 
@@ -41,11 +44,11 @@ all exit 0. Eleven skills. Upstream gh#44 and gh#46 open.
 item, unchanged for many cycles. Water tiles plus a real counter, a cheaper counter needing
 no terrain, or weather stays a difficulty modifier.
 
-Three cycles of player-facing work have gone in and the queue has more: `-r7pz` (say
-"nothing depends on this one" when the rings are empty — an empty render is the hardest
-state to read, which cycle 55 proved the hard way), `-b7v5` (name the
-coverage-is-not-engagement mechanic on the run summary, since the player currently learns
-it only by losing), `-iqf2`, `-vxq6`, `-dgu5`, `-tzz7`, `-a6rf`, `-g8kc`, `-f5z6`.
+Four cycles of player-facing work have gone in. The strongest thing ready now is `-j46n`:
+arming an uproot is the exact moment the game knows a *move* is being considered, and it
+currently changes only a button's text — the rings could show which cells go bare if you
+confirm, using data that already exists. Then `-b7v5`, `-iqf2`, `-vxq6`, `-dgu5`, `-tzz7`,
+`-a6rf`, `-g8kc`, `-f5z6`.
 
 ## Restarting
 
@@ -56,11 +59,10 @@ for the loop itself.
 baseline carries twelve overlaps acceptable only while both controls are unreachable. Any
 harness operation should start by checking which version the skill's paths point at.
 **Never hand-edit `AGENTS.md`** — run `python tools/mirror_check.py --fix`. And **`pause`
-right after `launch`**: cycle 55 lost a screenshot to a run that ended mid-read, and this
-cycle's 8-to-0 result is trustworthy precisely because the board was frozen between the two
-reads.
+right after `launch`** — three cycles running, that is what has made every visual result
+trustworthy.
 
 `python tools/gap_ledger.py --open` answers "which harness gaps are open"; `python
-tools/devtools.py cmd budgets` prices the **five** couplings; `list-commands --offline`
-answers "does this verb exist" with no game running. Bump the number at the top of this
-file every time you refill.
+tools/devtools.py cmd budgets` prices the **five** couplings (and `-a6bq` is filed to
+re-read them, unread since cycle 52); `list-commands --offline` answers "does this verb
+exist" with no game running. Bump the number at the top of this file every time you refill.

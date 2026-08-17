@@ -195,6 +195,27 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (57) — the selection panel is full, and that is now a known quantity
+
+- **The selection panel has no room left and nothing prices it.** `_selection_label`
+  (`game/hud.gd:720`) autowraps with a 56 px minimum inside a 152 px `SelectionBox`, and the
+  VBox comment at `game/hud.gd:1203` says the stack already runs to within 16 px of the
+  panel foot. This cycle measured the cob's second line at roughly 190 px of a 232 px box.
+  Every one of those numbers is a comment or a measurement taken by hand — there is no
+  `hud_selection_panel` entry in `Game.budget_entries()` (`game/game.gd:1921`) beside the
+  five that exist. The next person who wants a line there will rediscover the constraint
+  the expensive way, exactly as the third-line failure recorded in that header did.
+- **Two plants can now be compared, but only one at a time.** Selecting a plant rings what
+  it alone holds; selecting a different one replaces the rings. The question a player
+  actually has — "which of these two should I move?" — needs both answers at once, and the
+  data is already computed per plant by `Game.sole_cover_cells()`. Holding a modifier to
+  keep the previous selection's rings on screen would answer it with no new computation.
+- **Nothing shows what a plant would hold if it were somewhere else.** The hover dots
+  answer that for an unbought plant and the rings answer it for a standing one, but
+  "uproot this cob and put it there" is two separate reads the player has to hold in their
+  head. Arming an uproot (`Game.arm_uproot`) is the exact moment the game knows a move is
+  being considered, and it currently changes only a button's text.
+
 ### New this cycle (56) — the garden can now be read, and that suggests what to read next
 
 - **Zero rings on a selected plant is a "move me" signal and nothing says so.**

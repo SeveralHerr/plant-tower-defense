@@ -4619,3 +4619,29 @@ cited in code, and the citation is a mitigation this project has watched fail.
   8-to-0 result is trustworthy because nothing else could have changed between the two
   reads. Cycle 55 lost a screenshot to a run that ended while I read code; this cycle cost
   one extra command and lost nothing.
+
+## 2026-08-17 — Cycle 57: an empty answer that looks like an answer
+
+- Value: **warranted**, and the run's most useful output was a measurement that killed the
+  planned design before it was written.
+  - Expected: to add a line to the selection panel saying "nothing depends on this one".
+  - Got: the panel cannot take one. `_selection_label` autowraps with a 56 px minimum
+    inside a 152 px box, `hud.gd` records that a third line once pushed SelectionBox's foot
+    to exactly the panel's own 648 and was caught by the clearance gate, and its VBox
+    comment says the stack already runs to within 16 px of the panel foot. The cob's second
+    line measures ~190 px of a 232 px box, so any suffix wraps. **The bead's design would
+    have reproduced a failure the file already documents.**
+  - Found: nothing broken; the finding was the constraint itself, and it was found by
+    reading the file the change would touch rather than by running into the clearance gate
+    afterwards. The cue moved into the world instead — a dashed ring on the plant — which
+    costs no layout at all.
+  - Cheaper: for the constraint, reading `hud.gd` was the cheap path and it worked. For
+    "does a dashed ring at 31 px read as a separate statement or as a fatter bracket",
+    nothing but a screenshot.
+
+- Gap: **no gaps this turn.** Worth noting what carried the cycle instead: two comments in
+  `hud.gd` — the third-line failure and the 16 px VBox remark — were written by whoever hit
+  those limits, at the line they constrain, and between them they settled the design in
+  about two minutes. That is the same property `scope-vs-claim` argues for from the other
+  direction, and it is the second cycle running that the codebase's own prose has been the
+  decisive input rather than any tool.
