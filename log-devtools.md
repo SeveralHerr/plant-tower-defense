@@ -4425,3 +4425,49 @@ cited in code, and the citation is a mitigation this project has watched fail.
   result that is ambiguous between two opposite meanings, where the result itself
   carries no way to tell. The denominator (`Selected: 3 of 555`) is what settles it, and
   it was printed all along.
+
+## 2026-08-17 — Cycle 51: scope-vs-claim, and the budget it immediately caught
+
+- Value: **warranted** — the runtime run produced the one claim the diff could not: that
+  the widened sweep actually reaches its new producers.
+  - Expected: `cmd budgets` to report a LARGER `hud_message_row` number once three more
+    `show_message()` producers were swept.
+  - Got: **the number did not move.** 570 of 876 px, unchanged, because the prep note is
+    still the widest thing on that row. Which means the diff alone could not distinguish
+    "the new producers are swept and are narrower" from "the new producers are silently
+    not swept at all" — the whole point of the change, invisible in its own result.
+    Settled by mutating `wave_cleared_note` to an enormous string and re-reading:
+    `spent 570 -> 1065`, `state ok -> spent`. Restored: 570, `ok`.
+  - Found: the budget was still missing **five of eight** `show_message()` producers a
+    full cycle after I "fixed" it — last cycle's fix added exactly the one I happened to
+    be looking at. Also that `WORST_CASE_TEXT` was asserted in one direction only, and
+    that `stats_row_budget()` holds a *second* hand-list of the same four readouts.
+  - Cheaper: nothing for the reach question. The enumeration of call sites was static and
+    cheap; proving the sweep reaches them needed the running game.
+
+- Gap: **`verify_ledger record` silently discards unrecognised keys in `run.json`, then
+  reports the discarded evidence as missing.** I passed Phase 4 evidence under `phase4`
+  (with `check`/`result` entries). `record` accepted it without a word, wrote the row with
+  `checks: []`, and printed:
+
+  ```
+  verify_ledger: warranted with no Phase 4 checks recorded - the claim that earned it is
+  not in the row
+  ```
+
+  Both halves of the information were present in the same invocation and never met. `tier`,
+  `phases` and `notes` were dropped the same way. The warning is good and it is what made
+  me look; what it cannot do is say *you supplied this under the wrong name*.
+  - [G-058] status: open | seen: 1 | harness: 0.38.0 | upstream: gh#46
+  - Process note, recorded because it nearly cost something: I wrote the issue's
+    Environment line claiming the code was unchanged at 0.42.0 BEFORE checking it,
+    then checked. It holds (`checks = run.get("checks") or []` at 0.42.0:1031, and
+    no unknown-key handling anywhere in that file). But the order was wrong, and
+    the whole reason skill-feedback-issue demands a re-check is that a stale claim
+    in a public issue is the most common way this loop wastes a maintainer's time.
+  - Improvement: on unknown top-level keys, name them and suggest the nearest known one —
+    `run.json: ignoring unknown key 'phase4' (did you mean 'checks'?)`. The known-key set
+    is already in the code that normalises the row; this is a set difference and a
+    `difflib.get_close_matches` call. Silent key-dropping in a file whose entire purpose
+    is to be a record is the same class as the `reach 0/0` gloss in gh#44: the tool has
+    the information needed to be unambiguous and states the convenient reading instead.

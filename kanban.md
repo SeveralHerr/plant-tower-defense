@@ -195,6 +195,32 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (51) — two hand-lists describe one row, and neither knew about the other
+
+- **The top bar's four readouts are described by three separate hand-lists.**
+  `Hud.WORST_CASE_TEXT` (`game/hud.gd:76`) declares each readout's worst-case string,
+  `Hud.stats_row_budget()` (`game/hud.gd:944`) sums four width constants, and
+  `_add_stat()` is called four times in `_build` (`game/hud.gd:598-601`) to create them.
+  Three lists, one row, and until this cycle nothing compared any pair. Both gaps are
+  closed by assertions now, but the *structure* is still three lists — the durable fix is
+  one table of `{name, worst_case_text, width}` that `_build`, the budget and the tests
+  all read. `derive-the-list` says the recorded-list-plus-equality-assertion form is
+  legitimate; it does not say three of them are.
+- **`show_message()` has eight call sites and no single place says so.**
+  `game/game.gd:231` (purchase refusal), `:1464` and `:1468` (mute), `:1605` (placement
+  refusal), plus the four `Hud.*_message` producers. The message-row budget had to
+  enumerate them by grepping call sites, got it wrong once, and got it wrong again a
+  cycle later. A `Hud` surface that names its own message producers — even just a comment
+  block listing them beside `_paint_message_row` — would make the budget's corpus
+  checkable instead of archaeological.
+- **The wave-cleared line and the prep note both compete for one row, and the player can
+  lose the second to the first.** `_paint_message_row` gives a transient message
+  precedence over the standing note (verified in cycle 48), and `wave_cleared_line`
+  (`game/hud.gd:1655`) fires exactly when the prep note becomes relevant — at the end of
+  a wave, when the player wants to read what is coming. Worth checking whether the
+  cleared line's duration overlaps the window in which someone is deciding what to plant.
+  This is a design question, not a defect: the precedence is deliberate and documented.
+
 ### New this cycle (50) — the road never climbs, and a mutation sweep that proved nothing
 
 - **The road never travels up-screen, so a quarter of the pest art is unreachable.**
