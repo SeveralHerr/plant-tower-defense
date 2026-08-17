@@ -228,7 +228,7 @@ func _ready() -> void:
 	# _click_at and _on_packet_requested — because only they know which control
 	# the player actually reached for.
 	bank.purchase_failed.connect(func(reason: String) -> void:
-		hud.show_message(reason)
+		hud.show_message(reason)  # message-corpus-check: ok - purchase refusals are assembled by SeedBank at runtime
 		Sfx.play(Sfx.PURCHASE_DENIED))
 	bank.plant_unlocked.connect(_on_plant_unlocked)
 
@@ -1394,7 +1394,7 @@ func _open_packet(id: StringName) -> void:
 		# or a higher priority. Equal priority and a step well under that falls
 		# through to the immediate-overwrite branch instead, so each flicker
 		# replaces the last rather than queuing up behind it.
-		hud.show_message("...%s?" % PlantCatalog.display_name(flash),
+		hud.show_message("...%s?" % PlantCatalog.display_name(flash),  # message-corpus-check: ok - a plant name already bounded by packet_message() plus three characters
 			PACKET_OPEN_STEP_SECONDS, Hud.MESSAGE_IMPORTANT)
 		await get_tree().create_timer(PACKET_OPEN_STEP_SECONDS).timeout
 	_reveal_plant_unlock(id)
@@ -1461,11 +1461,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		# The key named in the message is read back out of the InputMap, not typed
 		# here. "Press M to bring them back" printed at a player who had rebound
 		# the verb to F2 is worse than saying nothing at all.
-		hud.show_message(mute_message("Sound effects", RunConfig.toggle_mute_sfx(),
+		hud.show_message(mute_message("Sound effects", RunConfig.toggle_mute_sfx(),  # message-corpus-check: ok - keybind-dependent; the budget measures the CURRENT binding live
 			KeyBindings.ACTION_MUTE_SFX, "them"), 2.5)
 		return
 	if event.is_action_pressed(KeyBindings.ACTION_MUTE_MUSIC):
-		hud.show_message(mute_message("Music", RunConfig.toggle_mute_music(),
+		hud.show_message(mute_message("Music", RunConfig.toggle_mute_music(),  # message-corpus-check: ok - keybind-dependent; the budget measures the CURRENT binding live
 			KeyBindings.ACTION_MUTE_MUSIC), 2.5)
 		return
 	# Swaps the health fill and the threat readout onto GardenTheme's blue/orange
@@ -1602,7 +1602,7 @@ func _click_at(screen_pos: Vector2) -> void:
 		# actually names what they were trying to buy.
 		hud.shake_plant_button(selected_plant)
 	elif refusal != "":
-		hud.show_message(refusal.capitalize() + ".")
+		hud.show_message(refusal.capitalize() + ".")  # message-corpus-check: ok - placement refusals are assembled at runtime, not written here
 	# The cell under the cursor just changed state — either it now holds a
 	# plant, or the purchase drained the seeds that made it affordable. Either
 	# way the cue on screen is stale until the mouse moves, which it need not.
@@ -2047,51 +2047,22 @@ func _budget_hud_message_row() -> Dictionary:
 			no_budget_observations())
 	var worst: String = ""
 	var worst_px: float = 0.0
-	for id: StringName in PlantCatalog.PLANTS:
-		var display: String = PlantCatalog.display_name(id)
-		for line: String in [Hud.eaten_message(display),
-				Hud.uproot_armed_message(display), Hud.packet_message(display)]:
-			var drawn: float = GardenTheme.measure(line, Hud.MESSAGE_FONT_SIZE)
-			if drawn > worst_px:
-				worst_px = drawn
-				worst = line
-	for level: Dictionary in CornCobbler.LEVELS:
-		var line: String = Hud.upgrade_message(String(level["name"]))
+	# One corpus, declared beside the producers it names (Hud.message_corpus()).
+	# This loop used to BE the corpus, rebuilt from whatever the last person found
+	# by grepping show_message() -- which was wrong in two consecutive cycles and
+	# carried a comment claiming eight call sites when there are fourteen. The
+	# budget measures; it no longer decides what to measure.
+	#
+	# The mute lines stay here rather than in the corpus, because they are the one
+	# producer whose width is not a property of the game: KeyBindings.label_for()
+	# joins every key bound to the action, so a rebind moves the number. Measuring
+	# what is bound NOW is the honest reading, and it cannot be a static corpus.
+	for line: String in Hud.message_corpus() + [
+			mute_message("Sound effects", true, KeyBindings.ACTION_MUTE_SFX, "them"),
+			mute_message("Music", true, KeyBindings.ACTION_MUTE_MUSIC)]:
 		var drawn: float = GardenTheme.measure(line, Hud.MESSAGE_FONT_SIZE)
 		if drawn > worst_px:
 			worst_px = drawn
-			worst = line
-	# The standing prep note shares this row and is now the WIDEST thing on it -- 570px
-	# against the plant messages' 534 once the drought bonus was named in it. The
-	# budget measured only the four plant-name messages when it was written, which made
-	# it a budget for part of the row (plant-tower-defense-4c1l). Every field at its
-	# maximum, which is a wave number nothing will reach and a pest count the table
-	# cannot produce: a budget is about the worst case the FORMAT allows, not the worst
-	# case the game is expected to reach.
-	var worst_note: String = Hud.next_wave_note(999, 9999, true,
-		WaveDirector.WEATHER_DROUGHT, true)
-	var note_px: float = GardenTheme.measure(worst_note, Hud.MESSAGE_FONT_SIZE)
-	if note_px > worst_px:
-		worst_px = note_px
-		worst = worst_note
-	# The rest of what reaches this row. `show_message()` has eight call sites and
-	# last cycle's fix added exactly one of the five it was missing, because the
-	# prep note was the one I happened to be looking at -- the same mistake, one
-	# layer along (plant-tower-defense-mxlt). Enumerated from the call sites, not
-	# remembered.
-	#
-	# The mute lines take the CURRENT binding rather than a synthetic worst case:
-	# `KeyBindings.label_for()` joins every key bound to the action, so its width
-	# is set by the player's keymap and has no ceiling this function could invent.
-	# Measuring what is bound now is the honest number, and it moves when they
-	# rebind -- which is the property worth having.
-	for line: String in [
-			Hud.wave_cleared_line(999, Hud.wave_cleared_note(9999)),
-			mute_message("Sound effects", true, KeyBindings.ACTION_MUTE_SFX, "them"),
-			mute_message("Music", true, KeyBindings.ACTION_MUTE_MUSIC)]:
-		var other_px: float = GardenTheme.measure(line, Hud.MESSAGE_FONT_SIZE)
-		if other_px > worst_px:
-			worst_px = other_px
 			worst = line
 	if worst_px <= 0.0:
 		return uncomputed_budget(BUDGET_UNMEASURED, "hud_message_row",
@@ -2102,11 +2073,11 @@ func _budget_hud_message_row() -> Dictionary:
 			no_budget_observations())
 	return computed_budget("hud_message_row", "Hud.eaten_message() and siblings",
 		"res://game/hud.gd", "widest message-row string", worst_px, label.size.x, "px",
-		("GardenTheme.measure() over every show_message() producer that can be "
-			+ "enumerated: plant names x 3 messages, corn levels, the prep note, the "
-			+ "wave-cleared line, and both mute lines at their CURRENT keybinds. NOT "
-			+ "covered: purchase and placement refusals, whose text is built from data "
-			+ "this function cannot reach"),
+		("GardenTheme.measure() over Hud.message_corpus() -- which declares the set "
+			+ "beside the producers it names -- plus both mute lines at their CURRENT "
+			+ "keybinds, whose width follows the player's keymap and cannot be static. "
+			+ "NOT covered, and named as such in message_corpus(): purchase and "
+			+ "placement refusals, assembled from data no static caller can reach"),
 		("a message renders trimmed to an ellipsis and nothing errors -- shorten the "
 			+ "message, shorten the name, or widen the row (\"%s\")") % worst,
 		no_budget_observations())

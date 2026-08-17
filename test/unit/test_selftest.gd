@@ -10693,10 +10693,69 @@ func test_the_last_wave_says_that_it_is_the_last() -> String:
 ## ellipsis and nothing errors — the same silent failure the top bar's four readouts
 ## have budgets for. The row had none.
 ##
-## The four messages checked here are the ones whose length is DATA rather than prose:
+## The four messages checked here are the ones whose length follows the CATALOGUE:
 ## they interpolate a plant's display name or a corn level's name, so they grow when
-## the CONTENT grows. Every other line the row shows is a fixed literal, as long as it
-## will ever be and visible to anyone reading it.
+## a plant or level is added.
+##
+## This header used to end "every other line the row shows is a fixed literal, as long
+## as it will ever be". That was false — the prep note and the wave-cleared line both
+## interpolate a wave number and a pest count — and it is the exact reason the row's
+## budget was wrong for three cycles: a sentence saying the rest is fixed is a sentence
+## saying the rest needs no sweep. `Hud.message_corpus()` holds the whole set now, and
+## `test_the_message_corpus_covers_every_catalogue_producer` below guards it.
+
+
+## The corpus is the budget's denominator, so an incomplete one under-reports headroom
+## silently — which it did, three times. Two directions, both cheap:
+##
+##   * every plant and every corn level reaches it, so a name added to the catalogue
+##     joins the corpus without anyone remembering to;
+##   * the entries that are NOT catalogue-driven are present by count, so deleting one
+##     is a failure rather than a slightly smaller number.
+##
+## `tools/message_corpus_check.py` covers the direction neither of these can: a
+## `show_message()` CALL SITE whose text never joined the corpus at all.
+func test_the_message_corpus_covers_every_catalogue_producer() -> String:
+	var corpus: Array[String] = Hud.message_corpus()
+	var err: String = _T.assert_gt(corpus.size(), PlantCatalog.PLANTS.size() * 3,
+		"the corpus is at least three messages per plant (%d entries for %d plants)"
+			% [corpus.size(), PlantCatalog.PLANTS.size()])
+	if err != "":
+		return err
+	# Direction one: the catalogue is covered, name by name.
+	var missing: Array[String] = []
+	for id: StringName in PlantCatalog.PLANTS:
+		var display: String = PlantCatalog.display_name(id)
+		var seen: bool = false
+		for line: String in corpus:
+			if line.contains(display):
+				seen = true
+				break
+		if not seen:
+			missing.append(display)
+	err = _T.assert_true(missing.is_empty(),
+		"every plant name reaches the message corpus -- missing: %s" % [missing])
+	if err != "":
+		return err
+	for level: Dictionary in CornCobbler.LEVELS:
+		var name: String = String(level["name"])
+		var found: bool = false
+		for line: String in corpus:
+			if line.contains(name):
+				found = true
+				break
+		err = _T.assert_true(found, "corn level '%s' reaches the corpus" % name)
+		if err != "":
+			return err
+	# Direction two: the non-catalogue entries, by count. Deleting the prep note or a
+	# bare literal would otherwise just make the budget's answer quietly smaller.
+	var catalogue_entries: int = PlantCatalog.PLANTS.size() * 3 + CornCobbler.LEVELS.size()
+	return _T.assert_eq(corpus.size() - catalogue_entries, 8,
+		("the corpus carries its 8 non-catalogue entries (prep note, wave-cleared "
+			+ "line, and six literals -- BOTH colourblind lines, since the checker "
+			+ "reads the leading literal of that ternary). If this moved because you "
+			+ "ADDED one, raise the number; if it moved because one vanished, the "
+			+ "row's budget just got quietly optimistic"))
 ##
 ## The catalogue is SWEPT rather than sampled, and the level table with it — so this
 ## is checked against every name the game can actually produce, not against a worst

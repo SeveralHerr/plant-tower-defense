@@ -1633,6 +1633,56 @@ static func prep_depth_note(last_wave: float, run: float) -> String:
 ## `test_no_message_clips_for_any_plant_in_the_catalogue` does exactly that, so the
 ## budget is checked against every name the game can actually produce rather than
 ## against a worst case someone typed out and hoped was still the worst.
+## Every string this row can be asked to hold, at its widest, in ONE place.
+##
+## `_budget_hud_message_row` used to enumerate this by reading `show_message()`
+## call sites, and got it wrong in three consecutive cycles — each time adding
+## only the producer that happened to be in view, and each time leaving behind a
+## comment stating a call-site count that was already false. The count it last
+## claimed was eight; there are fourteen. A corpus recovered by grep is a corpus
+## that will be recovered again, differently, by whoever greps next.
+##
+## So it lives here, beside the producers it names, and the budget reads it. The
+## bare literals are copied rather than referenced because `show_message("...")`
+## takes a literal at the call site and there is nothing else to point at — which
+## is precisely why `tools/message_corpus_check.py` exists to compare the two.
+## Format strings go in filled to their widest ("%d" -> "99999"); that checker
+## compares shapes, not text.
+##
+## NOT in here, and deliberately:
+##   * purchase refusals (`SeedBank.purchase_failed`) and placement refusals —
+##     their text is assembled from data no static caller can reach;
+##   * the `"...%s?"` packet flash, whose width is a plant name already bounded
+##     by `packet_message()` and three characters.
+## Both are waived at their call sites with a reason, because a corpus that
+## quietly omits something is the defect this function exists to end.
+static func message_corpus() -> Array[String]:
+	var out: Array[String] = []
+	for id: StringName in PlantCatalog.PLANTS:
+		var display: String = PlantCatalog.display_name(id)
+		out.append(eaten_message(display))
+		out.append(uproot_armed_message(display))
+		out.append(packet_message(display))
+	for level: Dictionary in CornCobbler.LEVELS:
+		out.append(upgrade_message(String(level["name"])))
+	# Every field at its maximum: a wave number nothing will reach and a pest
+	# count the table cannot produce. A budget is about the worst case the FORMAT
+	# allows, not the worst the game is expected to reach.
+	out.append(next_wave_note(999, 9999, true, WaveDirector.WEATHER_DROUGHT, true))
+	out.append(wave_cleared_line(999, wave_cleared_note(9999)))
+	# The literals, from their call sites in game.gd.
+	out.append("Plant your free Corn Cobbler on the grass, then grow the first wave.")
+	out.append("That upgrade costs 99999 seeds.")
+	out.append("Uproot cancelled.")
+	out.append("Composted a husk for 99999 seeds.")
+	# Both halves of the ternary at game.gd:1484. "off." is the wider of the two,
+	# but the checker reads the LEADING literal of a ternary, so a corpus holding
+	# only the wider one reports the call site as uncovered. Carry both.
+	out.append("Colourblind-safe bars off.")
+	out.append("Colourblind-safe bars on.")
+	return out
+
+
 static func eaten_message(plant_name: String) -> String:
 	return "A hungry pest ate your %s!" % plant_name
 

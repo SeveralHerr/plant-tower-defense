@@ -179,6 +179,7 @@ python tools/group_leak_check.py     # a test that selects a node it did not cre
 python tools/suite_reach_check.py    # the public surface no test names
 python tools/settle_read_check.py    # a test reading a value the settle frames were still moving
 python tools/save_persist_check.py   # a test script that can reach RunConfig._save() unredirected
+python tools/message_corpus_check.py # a show_message() call site the row's budget never measures
 python tools/mirror_check.py         # CLAUDE.md and AGENTS.md's Workflow blocks have drifted
                                      #   (--fix generates the mirror; it WRITES AGENTS.md,
                                      #    so it is the one entry here not safe to fan out)
