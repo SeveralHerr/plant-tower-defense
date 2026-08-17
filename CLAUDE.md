@@ -93,6 +93,15 @@ running a command. **Never write a work checklist into it.**
      thing, because finishing a piece of work is what exposes the next piece of it — the
      same structural pull step 6 was written for, one step earlier. The queue is 80+ items
      deep and most of it is nowhere near whatever just shipped.
+     **The player-facing steer at the top of this file OUTRANKS this rule, and says so
+     here so the override is a decision rather than a lapse.** Cycles 91 and 92 both worked
+     the notebook: 91 built the cue legend, 92 made it reachable from a paused run, and the
+     second was the highest-value player-facing item on the board precisely *because* the
+     first had just shipped. Varying the subsystem exists to stop the queue being refilled
+     only from what the last cycle exposed; it does not exist to strand a feature one step
+     from being usable. When they conflict, take the player-facing item and **say in the
+     close which rule you overrode** — that sentence is what makes a third cycle in the same
+     subsystem visible as a pattern instead of arriving unnoticed.
    - **Write code with the Edit/Write tools, never through a shell heredoc.** A heredoc
      silently eats one level of backslash escaping and, worse, has now stripped the
      leading `#` from GDScript comment blocks four separate times. Cycle 54's instance

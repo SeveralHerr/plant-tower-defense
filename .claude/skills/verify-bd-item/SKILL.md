@@ -38,6 +38,20 @@ twelve cycles earlier — along with a test enumerating every level pair. The re
 was the bead's *evidence* half, which is a different job from the one the title describes.
 A bead that turns out to be done is a good outcome and a fast one; a bead re-implemented
 because nobody looked is the expensive failure, and it looks like progress the whole time.
+
+**And confirm the HELPER you are about to write, not only the bead's claim.** Three cycles
+running, the thing about to be built already partly existed. Cycle 90's `-beq1` was shipped
+by the cycle that filed it. Cycle 91's `-bxhg` said the notebook was the wrong shape for a
+legend; `KIND_SHELF` had made it the right shape cycles earlier. Cycle 92 wrote
+`page_for_kind` and then found `shelf_page()` — the same search over the same table, by a
+different name, written first and for the same stated reason.
+
+None of those is findable by the bead's own words, and no gate sees any of them: two
+functions with different names doing the same search resolve every name, compile clean and
+pass. What finds them is one grep for the *shape* of the thing you are about to add —
+`grep -n "^static func .*_page\|for i: int in PAGES.size()"` before writing another one —
+and it costs a single command against a rewrite you would otherwise ship and have to
+collapse later.
 This is `scope-vs-claim`'s bar applied one step earlier — to the issue rather than to the
 finding.
 

@@ -5912,3 +5912,46 @@ Noted on the bead.
     `scene_changed` — every field describes the CALL and none the resulting screen. The
     fix is a merge rather than new code: `first_frame` is registered at `:602` and already
     computes "what IS the screen showing".
+
+## 2026-08-17 — Cycle 92: the notebook opens where the door was (-czz4)
+
+- Value: **warranted** — the entire feature is which page each of two doors opens on, and
+  no headless test can drive `PauseScreen`'s real button through to a `NotebookScreen` it
+  constructs itself.
+  - Expected: two reads. Pause door → the legend, title door → the drawings.
+  - Got: exactly that. `fire-entry-point pause`, `press NotebookButton`, and
+    `PageLabel` reads `10 / 10` with `CueLegend visible=true` in the same query; a fresh
+    session's `fire-entry-point notebook` reads `1 / 10`. **Both doors driven on purpose** —
+    asserting only the legend case cannot distinguish "`open_at` works" from "`open_at` is
+    ignored and 0 happens to be right", and that is a real failure mode for a property whose
+    default equals one of its two expected values.
+  - Found: **cycle 91's gh#54 observation does not reproduce.** `fire-entry-point notebook`
+    lands on `1 / 10` today, matching `go_to(0)`. Last cycle it landed on `10 / 10` and I
+    could not say why; I still cannot, and I can no longer make it happen. The issue's claim
+    — that the reply never says what is on screen — is unaffected and if anything better
+    supported: a cycle went by unable to tell whether the entry point, the pager's wrap or a
+    stray input caused it, and the only reply that could have narrowed it names just the
+    method. A comment saying so is owed and GitHub returned **HTTP 503 twice**, so the text
+    is parked at `.devtools/pending-gh54-comment.md` to post next cycle.
+  - Cheaper: nothing for the two-door check. The rest of the cycle's findings came from
+    reading, not running.
+
+- Gap: **`press` reports the button it pressed and nothing about what the press did**, which
+  is the same shape as [G-066] one verb over. The sequence that verifies this feature is
+  `press NotebookButton` then a separate `find-nodes` to discover a notebook now exists and
+  a third call to read its page. The press is the interesting moment and its reply is
+  `Pressed /root/Game/PauseLayer/PauseScreen/NotebookButton` — true, and silent about the
+  overlay that appeared as a direct result.
+  Filing it separately from G-066 rather than bumping that one's `seen:`, because the fix is
+  different: `fire-entry-point` wants the screen summary because it is *supposed* to change
+  the screen, whereas most presses change nothing visible and a full `first_frame` on every
+  one would be noise. What `press` wants is narrower — **did the tree gain or lose any
+  node** as a result, reported as a count and the topmost added path.
+  - [G-067] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: snapshot `get_tree().get_node_count()` either side of the emit and report
+    the delta, plus the deepest new node's path when the delta is positive. That turns
+    "pressed a button" into "pressed a button and a `Notebook` appeared", which is the claim
+    a caller is actually making when they press a menu item. Cheap, and it degrades to
+    `+0 nodes` for the presses where nothing happens — which is itself worth seeing, because
+    a button wired to nothing currently reports success.
+  - Note: no other gaps this turn.

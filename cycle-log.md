@@ -1,4 +1,4 @@
-# Cycle 91
+# Cycle 92
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,59 +6,58 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 91 taught
+## What cycle 92 taught
 
-**Searching for the wrong noun answers a question you did not ask.** The board has spoken a
-documented ten-shape language since cycle 67 and taught it to nobody; `CueLegend` now teaches
-five of the ten, each swatch drawn with the real cue's own constants. The bead said this
-needed a screen of its own, because a cycle-88 entry — mine — had grepped
-`notebook_screen.gd` for "husk" and "compost", found nothing, and concluded the file was a
-design-history artefact. The grep was correct. The claim was about the file's **shape**, and
-the answer was thirteen lines from the top: `KIND_SHELF` is documented as "about the player
-rather than about the game". A fourth kind shipped in an afternoon.
+**Confirming a bead can find a better option than the three it lists.** `-czz4` said the cue
+legend was nine presses of Next from the front of the notebook and offered three fixes.
+Confirming it found that `PauseScreen` **already** had a Notebook button and its own
+`_open_notebook` — so "add a route" was not the work, and the nine presses were the whole of
+it. The two doors are asking different questions: somebody who stopped a wave is staring at a
+mark they do not recognise, somebody browsing from the title screen is not looking at a board
+at all. `NotebookScreen.open_at` lets the context pay the nine presses instead of the player.
 
-**Both mutations survived their first guard, and each survival was a finding about the
-test.** `source.contains(token)` passed while a `Color` literal was inlined into one of two
-`draw_line` calls — the other kept the token alive. Deleting a `PANE_LABELS` row passed
-because nothing asserted the resulting heading was non-empty. One shape both times:
-**a guard asserting the PRESENCE of a good thing where it needed the ABSENCE of the bad
-one.** `house-static-checker` already states this rule, for Python checkers; `-qewq` asks how
-widely it bites in the tests.
+**A default that equals one of the two expected answers cannot be distinguished from the
+property being ignored.** `open_at` defaults to 0 and the title screen wants 0, so a test
+asserting only the legend case would pass against a build that ignores `open_at` entirely.
+Both doors are driven, in the tests and at runtime, for that reason alone.
 
-**And the seam paid before the mutation did.** `NotebookScreen.pane_label_for` replaced an
-`if/elif/else` whose `else` MEANT one kind, so a fourth kind would have taken the third's
-heading and left the third correct. The identical defect was then found sitting in the *test*
-for the same code. That closed `-jmxb`: `extract-a-testable-seam` no longer says to wait for
-a survival.
+**And the helper I was about to write already existed.** `page_for_kind` turned out to be
+`shelf_page()` generalised — the same search over `PAGES`, written cycles earlier, for the
+same stated reason. Nothing catches that: two functions with different names doing one search
+resolve every name, compile and pass. A grep for the *shape* before writing the function is
+what found it, and that is now in `verify-bd-item`'s confirm step. Three cycles running, the
+thing about to be built already partly existed.
+
+## Carried from cycle 91
+
+**Searching for the wrong noun answers a question you did not ask.** A grep for "husk" in a
+file answered what it *contains*; the claim was about its **shape**, and `KIND_SHELF` was
+thirteen lines from the top. Also: both mutations survived their first guard, each because
+the guard asserted the PRESENCE of a good thing where it needed the ABSENCE of the bad one.
 
 ## Carried from cycle 90
 
 **A stable error shape reads as a stable result.** Fourteen identical `Node not found`
 replies were a typo in one path segment, not fourteen empty reads. Never type a node path.
 
-## Carried from cycle 89
-
-**A test can pass over nothing, and `[VACUOUS]` cannot see it.** `Milestones.TABLE.has(id)` on
-an `Array[Dictionary]` is false for every id in the game. A claim about membership needs the
-collection's SHAPE read, not just its name resolved.
-
 ## Where things stand
 
-A hundred beads ready. Suite **605/605**, 12945 assertions; lint 0/0; eleven checkers clean;
-`findings` **0 across 5 of 5** on the notebook screen; reach 2/2. Fifteen skills, two of them
-corrected this cycle by their own failures. Upstream gh#44, **gh#51–gh#54** open — four filed
-in four cycles, every one reconciled against the installed 0.54.0 first, which is what made
-three of them sharper than the observation that started them. gh#49 and gh#50 are fixed, which
-moved `-6e2e` off upstream and onto the pin. Still on harness **0.38.0** deliberately
-(`-ny3h`, gh#43).
+A hundred beads ready. Suite **607/607**, 12956 assertions; lint 0/0; eleven checkers clean;
+`findings` **0 across 5 of 5**; reach 2/2 across two sessions. Fifteen skills. Upstream gh#44
+and **gh#51–gh#54** open; gh#49 and gh#50 fixed, which moved `-6e2e` off upstream and onto the
+pin. Still on harness **0.38.0** deliberately (`-ny3h`, gh#43).
+**Two things are OWED upstream and blocked on nothing but a working GitHub** (HTTP 503, twice):
+the gh#54 comment parked at `.devtools/pending-gh54-comment.md`, and filing `[G-067]`. `-he1l`
+carries both.
 
-**The player-facing steer is standing and cycles 90-91 are squarely on it.** 84-88 each
-shipped something a player sees; 89 shipped a persistence guard and owed a sentence for it; 90
-spent that guard on a Chomp explaining itself; 91 gave the board's drawn language a page that
-teaches it. The three sharpest threads left are all player-facing: `-czz4` (the legend is nine
-Next presses from the front), `-1wx0` (the doubled-width ARMED cue — the one guarding the only
-irreversible act — is among the five the legend does NOT teach) and `-i366` (nineteen of
-twenty-two message-row calls share one rung, and a tie drops the newer line).
+**The player-facing steer is standing, and cycles 90-92 are all on it.** 90 made a Chomp
+explain itself; 91 gave the board's drawn language a page that teaches it; 92 put that page one
+press from a paused run. **91 and 92 both worked the notebook, which overrides step 2's
+vary-the-subsystem rule** — the steer outranks it and the file now says so, but a third
+consecutive notebook cycle would be a pattern rather than a call. `-1wx0` is the strongest
+remaining player-facing item and is *also* the notebook (the doubled-width ARMED cue, the one
+guarding the only irreversible act, is among the five the legend does NOT teach); `-i366` is
+the strongest one that is not.
 
 ## Waiting on the user
 
@@ -79,14 +78,18 @@ together they made a HUD with no slack that nobody chose.
 ## Restarting
 
 `bd ready` for the work, this file for the context, `CLAUDE.md` (mirrored in `AGENTS.md`) for
-the loop itself. **Confirm a bead's premise before claiming it** — it is step 2's first move
-now, and in cycle 90 it is where the design actually happened. `-g1o4` (P1) is that sweep over
-the whole open queue. `-knpc` blocks `-1490` and `-lp97`; `-ip4n` blocks `-l86t`; `-q1xs` blocks
-`-vvxn`. `-ei83` is unblocked and sharpened: a missed hint is now a real queryable state, but it
-cannot be solved by adding the id to `Milestones.TABLE` — the shelf counts earned off TABLE, so
-a foreign id breaks that guard. `-9afm` is the fragility cycle 81 worked around rather than
-fixed. `-bxhg` is the big untouched one: the drawn grammar has ten rows and the game teaches
-none of them, and both surfaces that look like they could host a legend are the wrong shape.
+the loop itself. **Confirm a bead's premise before claiming it** — step 2's first move, and for
+three cycles running it is where the design happened rather than a correctness check: it found
+a wrong absence claim (90), a wrong claim about a file's shape (91), and a whole option the
+bead had not listed (92). It now also says to grep for the HELPER you are about to write.
+`-g1o4` (P1) is that sweep over the whole open queue. `-knpc` blocks `-1490` and `-lp97`;
+`-ip4n` blocks `-l86t`; `-q1xs` blocks `-vvxn`. `-ei83` is unblocked and sharpened: a missed
+hint is a real queryable state, but it cannot be solved by adding the id to `Milestones.TABLE`
+— the shelf counts earned off TABLE, so a foreign id breaks that guard. `-9afm` is the
+fragility cycle 81 worked around rather than fixed. `-qewq` is the one I most want answered:
+two mutations survived their first guard in one cycle, both because the guard checked for the
+presence of a good thing rather than the absence of the bad one, and the sweep decides whether
+that is in the codebase or was just in me.
 
 **Eleven standing notes.** The harness is pinned at 0.38.0 on purpose (gh#43). The UI findings
 baseline is **empty** (`-v9px`). Any harness operation should start by checking which version

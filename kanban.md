@@ -247,6 +247,40 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (92) — a door that knows what you asked, and one that could know more
+
+- **The pause card could open the notebook on the PLANT you have selected, and the two
+  pieces are already built.** Cycle 92 gave `NotebookScreen` an `open_at` so the door
+  chooses the page: the title screen opens the drawings, a paused run opens the cue legend.
+  The next question the same mechanism answers costs almost nothing —
+  `NotebookScreen.page_for_plant(id)` has existed for cycles and returns the page about a
+  catalogue plant or -1, and `Game.selected_placed` is the plant the player last clicked.
+  `Game.pause_run` already hands `PauseScreen.build` two arguments about the run's state.
+  So a player who selects a Chomp, wonders what it does, and pauses could land on the Chomp
+  Flower's page rather than on the legend.
+  **The objection is real and should decide the design rather than be discovered after**: a
+  selection persists from an earlier click. Somebody who selected a plant two waves ago and
+  paused because a *pest* did something unexplained would be sent to the wrong page — and
+  worse, to a page that looks like an answer. Options: only prefer the plant page when the
+  selection is recent, or only when the plant was selected since the last wave started, or
+  accept the miss because Prev is one press from the plant page to the legend either way.
+  That last one is probably right and is worth checking rather than assuming: the legend
+  and the plant pages are not adjacent in `PAGES`.
+- **Two cycles running, an enumeration has said "do not build the checker" — and that is
+  the enumeration working, not a failure to act.** Cycle 89 found a silent-green
+  `.has()` type mismatch, grepped for more, found zero, and recorded the reasoning instead
+  of writing a tool. Cycle 92 found `shelf_page()` and a newly-written `page_for_kind()`
+  were the same search over `PAGES` by different names, fixed it by delegation, then
+  checked whether the pattern recurs: `NotebookScreen` has three finders over that table
+  (`page_for_kind` at `game/notebook_screen.gd:232`, `shelf_page` at `:620`,
+  `page_for_plant` at `:753`) and the other two search **different fields**, so they are the
+  same shape and not duplicates.
+  What caught the duplicate was grepping for existing accessors *before* writing a new one —
+  a habit, not a gate, and no checker in this repo could have seen it: two functions with
+  different names doing the same search resolve every name, compile, and pass. Worth
+  stating plainly because the reflex when a defect class has no gate is to build one, and
+  the honest denominator has now said no twice.
+
 ### New this cycle (91) — the legend exists and is nine clicks away
 
 - **The page that teaches the board is the last page of the notebook.** `CueLegend` ships
