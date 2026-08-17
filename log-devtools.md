@@ -5533,3 +5533,36 @@ cited in code, and the citation is a mitigation this project has watched fail.
   the code** — the code tells you the feature is absent, and the queue tells you whether
   that absence is an oversight or a decision. Here it was a decision, recorded, with the
   measurement attached, and the measurement is what made the right answer obvious.
+
+## 2026-08-17 — Cycle 85: a user's screenshot found what 587 tests could not
+
+- Value: **warranted**, and it is the clearest case in this log: the defect is invisible to
+  every headless test **by construction**.
+  - Expected: nothing. This began as the user asking what some circles on the ground were.
+  - Got: a real bug. Sole-cover rings drew 72 px (`Hud.BAR_HEIGHT`) high — more than a full
+    64 px row — because `Board.cell_to_world` is board-local despite the name and
+    `SoleCoverMarks._draw` hands it to `to_local()`, which measures from the viewport.
+  - Found: **a second instance in the same shape**, by enumerating `cell_to_world`'s callers
+    rather than fixing the reported one. `placement_preview.gd:268` draws the gained-cell
+    dots through `to_local()` too. One symptom, two members. The other nine callers are
+    correct and each was checked rather than assumed.
+  - Cheaper: nothing. The data is right and only the rendered position is wrong, so no
+    assertion over `points` can see it. It took a screenshot to notice and pixel samples to
+    confirm — before: the cell centre 100% road brown at every sample, the point 72 px above
+    64% green with 36% other; after: the centre 44-67% brown with a warm mean, the point
+    above 100% pure green.
+
+- Gap: **no gaps in the harness — the gap is in what this project tests.** Three cycles now
+  have hit the same seam from different sides: cycle 71 (an idle animation aimed at the
+  wrong property, caught by mutation), cycle 74 (a table asserted while nothing read it,
+  caught by mutation), and this one (points asserted while their rendered position was
+  wrong, caught by a **person looking at the screen**). The pattern is sharper than
+  `extract-a-testable-seam` currently states it: **asserting the input to a draw call is not
+  asserting the drawing**, and the distance between them is a coordinate space — the one
+  thing a pure test cannot hold, because it needs a parented node to exist.
+  - Improvement: `findings`' `ui_layout` check reads Control rects and would never have seen
+    this, since these are `Node2D` draw calls with no Control anywhere. The check that WOULD
+    have caught it is a pixel probe at an expected position, which `sample-pixels` can do and
+    nothing automates. gh#49 (assert a colour is present in a region) is the missing half —
+    filed for a different reason and this is the case that makes it a gate rather than a
+    convenience.

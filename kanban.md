@@ -247,6 +247,34 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (85) — nothing checks the board, and a player found out first
+
+- **Every cue on the playfield is outside every automated check this project has.** The
+  sole-cover rings drew 72 px high for an unknown number of cycles — more than a full row,
+  so they marked the wrong cells and floated on grass — and 587 tests did not notice, because
+  every one of them asserts the POINTS handed to a draw call and none asserts where the
+  drawing lands. `findings`' `ui_layout` check cannot help either: it reads Control rects,
+  and the range rings, muzzle fans, chew rings, husk arcs, lane-pressure hatch, previews and
+  now the weather overlay are all `Node2D` draw calls with no Control anywhere. **The board
+  is the surface with the most cues on it and the only one nothing measures** — which is the
+  same finding `-du7p` reached from the budget side one cycle earlier, arrived at from the
+  correctness side by a screenshot.
+- **`cell_to_world` returns board-local and says "world", and that is the whole bug.**
+  `game/board.gd:254` is correct for the nine callers that assign a sibling's `position`
+  and a trap for the two that pass it to `to_local()`. Cycle 85 added `cell_to_global`
+  rather than renaming, because renaming churns nine right call sites to fix two wrong ones
+  — but the trap is still there for the tenth caller. **A name that is wrong for a minority
+  of its callers is a name that will be wrong again**, and the honest options are a rename
+  (churn now, safe later) or a checker that flags `to_local(` applied to a `cell_to_world(`
+  result, which is a one-pattern grep and exactly what the eleven house checkers are for.
+- **Two cycles running, the interesting bug was in the gap between a value and its
+  rendering.** Cycle 71 aimed an idle animation at a property five tweens owned; cycle 74
+  asserted a table nothing read; cycle 85 asserted points whose rendered position was wrong.
+  All three passed every test at the time. The shared shape is worth stating where the next
+  cue is written: **asserting the input to a draw call is not asserting the drawing**, and
+  the distance between them is a coordinate space — the one thing a pure test cannot hold,
+  because it needs a parented node to exist.
+
 ### New this cycle (84) — the refusal held the answer
 
 - **A measured refusal is worth more than an unanswered question, and this project keeps
