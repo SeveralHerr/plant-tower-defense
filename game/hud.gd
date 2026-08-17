@@ -289,9 +289,38 @@ const PACKET_ROW_PITCH: float = 42.0
 ## Named because two things now depend on it rather than one.
 const SELECTION_BOX_Y: float = 392.0
 
+## What a plant button that cannot be bought right now is tinted — locked, or
+## unlocked and unaffordable. Extracted from the literal it was, because a second
+## reader (plant_button_tint) now has to return exactly the same value the rest
+## state has always used.
+const PLANT_BUTTON_DIM: Color = Color(1, 1, 1, 0.55)
+## And what one lifts to while the cursor is on a packet that could still hand it
+## over. Full alpha carries the cue on its own; the warm cast is the second
+## channel, matching the seed packet's own paper rather than any threat colour —
+## nothing here is a warning.
+const PACKET_HINT_TINT: Color = Color(1.0, 0.94, 0.62, 1.0)
+
 
 ## Where the packet button for the `index`th tier sits, in the side panel's own
 ## space. Pure, so the rack's fit is arithmetic rather than a rendering check.
+##
+## `index` is the tier's index in SeedBank.PACKET_ORDER and NOT its index among
+## the tiers that still have stock — a spent packet keeps its row rather than
+## collapsing out of the rack. That was considered and rejected twice over:
+##
+##   - A rack that reflows mid-run moves the OTHER buttons under a cursor that is
+##     already over one. A tier empties on a purchase, which is a click, which is
+##     the exact moment the player's pointer is resting on this rack — so the row
+##     that slides up under it is the one they are about to click again.
+##   - The rows are addressed by position by things that are not the player:
+##     test_selftest presses "Root/SidePanel/PacketButton" and the devtools bridge
+##     does the same. A rack whose row index depends on run state makes every one
+##     of those a different button depending on when it is called.
+##
+## The information a collapse would have carried is carried by the label instead —
+## see packet_button_text. A spent packet reading "Common — Empty" in its own row
+## says more than an absent one does, because an absent button cannot explain
+## itself.
 static func packet_row_rect(index: int) -> Rect2:
 	return Rect2(
 		Vector2(12.0, PACKET_ROW_Y + PACKET_ROW_PITCH * float(index)),
@@ -313,6 +342,43 @@ static func packet_button_name(tier: StringName) -> String:
 	# "Super Rare" and its NodePath would need quoting. Stripped here rather than
 	# relied upon not to happen.
 	return "%sPacketButton" % String(tier).capitalize().replace(" ", "")
+
+
+## What a packet button SAYS, given how many plants its tier can still hand over.
+##
+## Two states, and they are not the same disabled button. `_refresh_packet_button`
+## greys a packet for two unrelated reasons — "you cannot afford this yet" and
+## "this tier is spent for the rest of the run" — and until this existed the only
+## place they differed was `tooltip_text`, which is to say: nowhere a player who
+## does not hover ever sees. A wait and a dead end drawn identically teach neither.
+##
+## So the PRICE SLOT carries the state. A packet you could buy quotes what it will
+## charge; a packet with nothing left quotes no number at all, because there is no
+## longer a price — the same language the plant buttons already speak (see
+## plant_button_label: a number means you may buy it, no number means it is not for
+## sale). "Empty" is there because the absence of a number alone is the cue this
+## bead was filed against being too quiet.
+##
+## THE SPENT FORM DROPS THE WORD "Packet", and that is width rather than style.
+## The row is 232px (packet_row_rect) and the icon plus the button's margins eat
+## roughly 50 of them, leaving ~180px of text. The measured datum for this font is
+## `findings`' own button_text_overflow report: "Common (20)", 11 characters, drew
+## 99px — about 9px a character. "Common Packet — Empty" is 21 characters, ~189px,
+## and would have overflowed the row it was added to fix. "Common — Empty" is 14,
+## ~126px, and the packet icon beside it is what still says "packet".
+##
+## `stock` is packet_pool(tier).size() — derived, never a flag someone has to
+## remember to set, so a tier that empties mid-run cannot forget to say so.
+static func packet_button_text(tier: StringName, stock: int) -> String:
+	var spec: Dictionary = SeedBank.PACKET_TIERS.get(tier, {}) as Dictionary
+	if spec.is_empty():
+		return ""
+	if stock > 0:
+		return "%s (%d)" % [String(spec["display"]), int(spec["cost"])]
+	# trim_suffix, not a second table of short names: the short form is derived
+	# from the display name, so a tier renamed in PACKET_TIERS renames here too,
+	# and a display name that never said "Packet" is left exactly as it is.
+	return "%s — Empty" % String(spec["display"]).trim_suffix(" Packet")
 
 
 ## The resting tooltip per packet tier, counted from the catalogue rather than
@@ -556,6 +622,20 @@ var _banner_note: Label
 var _fx_layer: Container
 
 var _plant_buttons: Dictionary = {}
+## The packet tier the cursor is currently resting on, or &"" for none. Drives the
+## plant bar's hint tint — see plant_button_tint.
+var _packet_hint_tier: StringName = &""
+## tier -> the ids that tier could still hand over, snapshotted at the last
+## refresh(). A snapshot rather than a live SeedBank reference on purpose: the HUD
+## holds no copy of the truth (see refresh's header), and hover is the one event
+## that arrives without a state push behind it. Refreshed on every state change,
+## which includes every purchase and every unlock, so the snapshot cannot be older
+## than the last thing that could have changed it.
+var _packet_hint_pools: Dictionary = {}
+## id -> the tint that button wears when nothing is being hovered. Written by
+## refresh(), read by _apply_plant_hints(), so hover has one job (lift or restore)
+## and does not need to re-derive affordability without a bank in hand.
+var _plant_rest_tint: Dictionary = {}
 var _banner_left: float = 0.0
 var _message_left: float = 0.0
 ## The two claims on the message row, and `_paint_message_row()` is the only thing
@@ -776,7 +856,10 @@ func _build_side_panel(root: Control) -> void:
 		button.expand_icon = true
 		# Leads with the NAME because the button no longer shows it -- see the label
 		# comment in _refresh. The blurb follows, which is what this used to be alone.
-		button.tooltip_text = "%s — %s" % [PlantCatalog.display_name(id), PlantCatalog.blurb(id)]
+		# No packet line yet: which packet holds this plant is a question about the
+		# run's unlocks, and there is no bank here. refresh() adds it and takes it
+		# away again as the answer changes.
+		button.tooltip_text = plant_button_tooltip(id, &"")
 		button.pressed.connect(_on_plant_button.bind(id))
 		_plant_bar.add_child(button)
 		_plant_buttons[id] = button
@@ -793,11 +876,14 @@ func _build_side_panel(root: Control) -> void:
 	var packet_icon := load("res://assets/sprites/seed_packet.png") as Texture2D
 	for index: int in SeedBank.PACKET_ORDER.size():
 		var tier: StringName = SeedBank.PACKET_ORDER[index]
-		var spec: Dictionary = SeedBank.PACKET_TIERS[tier] as Dictionary
 		var rect: Rect2 = packet_row_rect(index)
 		var packet := Button.new()
 		packet.name = packet_button_name(tier)
-		packet.text = "%s (%d)" % [spec["display"], int(spec["cost"])]
+		# The buyable form, because no run starts with a spent tier and the panel
+		# is built before any bank is in hand. The first refresh() rewrites it from
+		# the real pool, so a hypothetical spent-at-birth tier is wrong for one
+		# frame rather than forever.
+		packet.text = packet_button_text(tier, 1)
 		packet.icon = packet_icon
 		packet.expand_icon = true
 		packet.position = rect.position
@@ -807,6 +893,12 @@ func _build_side_panel(root: Control) -> void:
 		# the one mistake this rewrite could make that two hand-written buttons
 		# could not, and it would wire every button to the last tier.
 		packet.pressed.connect(_on_packet_button.bind(tier))
+		# Hover, not press: the question "what is in this packet" is asked before
+		# buying, and a cue you only get by spending 90 seeds is not a cue. These
+		# fire on a DISABLED button too, which is the case that matters most — a
+		# packet you cannot afford yet is exactly the one you are pricing up.
+		packet.mouse_entered.connect(_on_packet_hover.bind(tier))
+		packet.mouse_exited.connect(_on_packet_hover.bind(&""))
 		panel.add_child(packet)
 		_packet_buttons[tier] = packet
 
@@ -985,11 +1077,19 @@ func _readout_rule(node_name: String) -> ColorRect:
 ## packet is unbuyable are not interchangeable: "come back with more seeds" is a
 ## wait, and "this tier has nothing left for you" is a redirect to the other
 ## packet. A single greyed button that means either one teaches neither.
+##
+## The LABEL now carries the same distinction, because the tooltip carried it
+## alone and a tooltip is only read by a player who already suspects there is
+## something to read. See packet_button_text: a spent tier stops quoting a price
+## and says "Empty" instead, so the two greys are told apart at a glance rather
+## than on hover.
 func _refresh_packet_button(button: Button, bank: SeedBank, tier: StringName) -> void:
 	var spec: Dictionary = SeedBank.PACKET_TIERS[tier] as Dictionary
 	var cost: int = int(spec["cost"])
-	var spent: bool = bank.packet_pool(tier).is_empty()
+	var stock: int = bank.packet_pool(tier).size()
+	var spent: bool = stock == 0
 	button.disabled = spent or bank.seeds < cost
+	button.text = packet_button_text(tier, stock)
 	if spent:
 		button.tooltip_text = "Nothing left in a %s — every plant it can hold is already in your garden." % String(spec["display"])
 	elif bank.seeds < cost:
@@ -1063,6 +1163,52 @@ static func plant_button_label(unlocked: bool, price: int) -> String:
 	if not unlocked:
 		return ""
 	return "free" if price == 0 else str(price)
+
+
+## What a plant button is tinted, in the three states it can be in.
+##
+## `hinted` is the packet rack talking to the plant bar: while the cursor rests on
+## a packet button, every locked plant that packet could still hand over lifts out
+## of the dim. The two surfaces sit 40px apart on the same panel and, before h6ek,
+## shared no cue at all — a locked plant showed an empty label and a grey icon, and
+## nothing anywhere said which of the three packets was the one to buy for it.
+##
+## A tint rather than a badge, and this is a layout decision. A badge on a plant
+## button costs width, and width is exactly what the two-column plant bar has none
+## of: the bar gets 114px a column, a button's minimum was 195px until the NAME was
+## taken off it, and `findings` last caught this as the side panel sitting 167px off
+## the right edge. `modulate` costs nothing and is already the channel these buttons
+## speak in.
+##
+## The lift is brightness first and hue second — a locked button sits at 55% alpha,
+## a hinted one at 100% — because a hue-only cue is the one a colourblind player
+## does not get. See GardenTheme's own note on the threat ramp for the same argument.
+static func plant_button_tint(unlocked: bool, affordable: bool, hinted: bool) -> Color:
+	if hinted:
+		return PACKET_HINT_TINT
+	return Color.WHITE if (unlocked and affordable) else PLANT_BUTTON_DIM
+
+
+## What a plant button says on hover: its name, its blurb, and — for a plant still
+## in a packet — WHICH packet, priced.
+##
+## `from_tier` is SeedBank.cheapest_packet_for(id) and is &"" for a plant already
+## unlocked. Passed in rather than looked up here so that this stays pure and the
+## derivation has exactly one home; a Hud that computed the mapping itself would be
+## a second answer to a question SeedBank already answers.
+##
+## The packet is named by reading PACKET_TIERS, never by spelling "Rare Packet" into
+## this string. That is the mistake the old tooltip made — see packet_tooltip's
+## header — and the reason the counting tooltip refuses to name plants at all. It is
+## safe in this direction because the name comes out of the table at draw time.
+static func plant_button_tooltip(id: StringName, from_tier: StringName) -> String:
+	var tip: String = "%s — %s" % [PlantCatalog.display_name(id), PlantCatalog.blurb(id)]
+	var spec: Dictionary = SeedBank.PACKET_TIERS.get(from_tier, {}) as Dictionary
+	if spec.is_empty():
+		return tip
+	return "%s\nStill in a packet: a %s (%d) can hand it over." % [
+		tip, String(spec["display"]), int(spec["cost"]),
+	]
 
 
 static func plant_bar_layout(count: int) -> Dictionary:
@@ -1184,6 +1330,37 @@ func _on_packet_button(tier: StringName) -> void:
 	packet_requested.emit(tier)
 
 
+## The cursor arrived on (or left, with &"") a packet button.
+##
+## Applied straight away rather than left for the next refresh(): refresh is driven
+## by Game._refresh(), which fires on state CHANGES — a purchase, a wave, a seed
+## earned — and a mouse crossing a button changes no state at all. Waiting for one
+## would mean the rack lights the plant bar only when something else happens to
+## happen, which is indistinguishable from a bug.
+func _on_packet_hover(tier: StringName) -> void:
+	if tier == _packet_hint_tier:
+		return
+	_packet_hint_tier = tier
+	_apply_plant_hints()
+
+
+## Paints every plant button: the hint tint for the ones the hovered packet can
+## still hand over, their resting tint for everyone else.
+##
+## The ONE writer of `modulate` on these buttons, which is why refresh() routes
+## through it rather than assigning directly. Two writers is how a hover cue gets
+## silently erased by the next unrelated state push, and that push happens on every
+## seed earned.
+func _apply_plant_hints() -> void:
+	var hinted: Array = _packet_hint_pools.get(_packet_hint_tier, [])
+	for id: StringName in _plant_buttons:
+		var button: Button = _plant_buttons[id]
+		if hinted.has(id):
+			button.modulate = PACKET_HINT_TINT
+		else:
+			button.modulate = _plant_rest_tint.get(id, Color.WHITE) as Color
+
+
 func _process(delta: float) -> void:
 	if _message_left > 0.0:
 		_message_left -= delta
@@ -1247,6 +1424,13 @@ func refresh(state: Dictionary) -> void:
 	_compost_label.text = compost_text
 	_readouts_seeded = true
 
+	# What each packet could still hand over, refreshed before the plant bar reads
+	# it. Snapshotted per state push rather than read live on hover, because hover
+	# arrives with no bank behind it — see _packet_hint_pools.
+	_packet_hint_pools.clear()
+	for tier: StringName in SeedBank.PACKET_ORDER:
+		_packet_hint_pools[tier] = bank.packet_pool(tier)
+
 	var selected: StringName = state["selected_plant"]
 	for id: StringName in _plant_buttons:
 		var button: Button = _plant_buttons[id]
@@ -1274,10 +1458,27 @@ func refresh(state: Dictionary) -> void:
 		# distinction in one fewer channel: a number means you may buy it, no number means
 		# it is not for sale yet, and the greyed modulate below carries "cannot afford"
 		# separately. The tooltip says which in words for anyone who wants certainty.
+		#
+		# WHICH PACKET UNLOCKS IT is the one thing the button could not say. The
+		# plant bar and the packet rack sit 40px apart on this panel and shared no
+		# cue at all: a locked plant was a grey icon with no label, and the rack
+		# below it counted its contents without naming them. Two answers now, both
+		# read out of SeedBank.cheapest_packet_for() rather than written down --
+		# this tooltip names the packet and its price, and hovering the packet
+		# lights the plants it can hand over (see _apply_plant_hints).
 		button.text = plant_button_label(unlocked, price)
 		button.disabled = not unlocked
-		button.modulate = Color.WHITE if (unlocked and bank.can_afford(id)) else Color(1, 1, 1, 0.55)
+		var tip: String = plant_button_tooltip(id, bank.cheapest_packet_for(id))
+		# Only on change: a tooltip already on screen is not re-read when its text
+		# is reassigned, and rewriting it on every seed earned is churn for nothing.
+		if button.tooltip_text != tip:
+			button.tooltip_text = tip
+		# Recorded, not applied -- _apply_plant_hints() below is the only writer of
+		# `modulate` here, so a live packet-hover cue survives this refresh instead
+		# of being erased by the next seed the player earns.
+		_plant_rest_tint[id] = plant_button_tint(unlocked, bank.can_afford(id), false)
 		button.button_pressed = unlocked and id == selected
+	_apply_plant_hints()
 
 	# Per tier, not just "is anything locked". A common packet caps at tier 1, so
 	# once the Chomp is out of its packet there is nothing left it may hand over

@@ -12407,6 +12407,196 @@ func test_the_top_bar_wears_the_notebooks_page_rules() -> String:
 	return err
 
 
+# -- The seed-packet rack: spent vs unaffordable, and which packet holds what --
+# -- (plant-tower-defense-m97n, plant-tower-defense-h6ek) ---------------------
+
+
+## The two reasons a packet button is grey are two different pieces of news, and
+## before m97n they were one picture. "Come back with 12 more seeds" is a WAIT;
+## "every plant this tier can hold is already yours" is a DEAD END and a redirect
+## to the pricier packet. They were told apart only in `tooltip_text`, which is
+## read by the player who already suspected there was something to read.
+##
+## So this asserts the distinction on the LABEL, deliberately not on the tooltip —
+## the tooltip has said the right thing all along and asserting it would re-pass
+## the test that was already passing while the defect was live.
+func test_a_spent_packet_button_says_so_on_its_face_not_only_in_its_tooltip() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var common: Button = game.hud.get_node_or_null("Root/SidePanel/PacketButton") as Button
+	var err: String = _T.assert_true(common != null, "the common packet button exists")
+	var cost: int = int((SeedBank.PACKET_TIERS[&"common"] as Dictionary)["cost"])
+	var broke_text: String = ""
+	var spent_text: String = ""
+	if err == "":
+		# State one: the tier still has stock, the purse does not have the price.
+		game.bank.set_seed(11)
+		game.bank.seeds = 0
+		game._refresh()
+		await _pump(game)
+		broke_text = common.text
+		err = _T.assert_true(common.disabled, "with an empty purse the packet is disabled")
+	if err == "":
+		err = _T.assert_true(broke_text.contains(str(cost)),
+			"and still quotes the price it is waiting for, got %s" % broke_text)
+	if err == "":
+		# State two: the purse is full and the tier is spent. Drained through the
+		# real purchase path, so the state is one the game can actually reach.
+		game.bank.add_seeds(600)
+		var guard: int = 0
+		while not game.bank.packet_pool(&"common").is_empty() and guard < 40:
+			game.bank.buy_packet(&"common")
+			guard += 1
+		err = _T.assert_true(game.bank.packet_pool(&"common").is_empty(), "tier 1 is spent")
+	if err == "":
+		err = _T.assert_gt(game.bank.seeds, cost,
+			"and affordability is NOT the reason this one is grey")
+	if err == "":
+		game._refresh()
+		await _pump(game)
+		spent_text = common.text
+		err = _T.assert_true(common.disabled, "the spent packet is disabled too")
+	if err == "":
+		err = _T.assert_true(spent_text != broke_text,
+			("the two greys read differently on the button itself: unaffordable said "
+				+ "%s, spent says %s") % [broke_text, spent_text])
+	if err == "":
+		err = _T.assert_false(spent_text.contains(str(cost)),
+			("and a spent packet quotes no price, because there is no longer one to "
+				+ "pay: %s") % spent_text)
+	if err == "":
+		# The row is 232px and already fits the buyable label. Measuring the spent
+		# one against its own buyable form is the whole width argument: nothing this
+		# function returns is wider than the string the rack has shipped for cycles.
+		# `findings`' own button_text_overflow datum for this font is 99px for the 11
+		# characters of "Common (20)", so a longer spent form would not have fitted.
+		var font_size: int = common.get_theme_font_size("font_size")
+		err = _T.assert_gt(font_size, 0, "the button resolves a font size to measure at")
+		if err == "":
+			var spent_px: float = GardenTheme.measure(spent_text, font_size)
+			var broke_px: float = GardenTheme.measure(broke_text, font_size)
+			err = _T.assert_gt(broke_px, 0.0, "the font resolved (a 0px measurement is vacuous)")
+			if err == "":
+				err = _T.assert_true(spent_px <= broke_px,
+					("and the spent label (%s, %.0fpx) is no wider than the buyable one "
+						+ "(%s, %.0fpx) the row already fits")
+						% [spent_text, spent_px, broke_text, broke_px])
+	_T.free_ui(game)
+	return err
+
+
+## The label's own contract, without a HUD: every tier tells its two states apart,
+## and the spent one is not merely the buyable one with the number changed.
+func test_every_packet_tier_has_a_spent_label_distinct_from_its_priced_one() -> String:
+	var err: String = ""
+	var checked: int = 0
+	for tier: StringName in SeedBank.PACKET_ORDER:
+		var cost: int = int((SeedBank.PACKET_TIERS[tier] as Dictionary)["cost"])
+		var priced: String = Hud.packet_button_text(tier, 3)
+		var spent: String = Hud.packet_button_text(tier, 0)
+		err = _T.assert_true(priced.contains(str(cost)),
+			"%s's buyable label quotes its price: %s" % [tier, priced])
+		if err == "":
+			err = _T.assert_false(spent.contains(str(cost)),
+				"and its spent label does not, or the two are one number apart: %s" % spent)
+		if err == "":
+			err = _T.assert_true(spent.contains("Empty"),
+				"and says so in a word rather than by omission: %s" % spent)
+		if err == "":
+			checked += 1
+		else:
+			break
+	if err == "":
+		err = _T.assert_eq(checked, SeedBank.PACKET_ORDER.size(),
+			"every tier in the rack was checked (an empty sweep is a vacuous pass)")
+	if err == "":
+		err = _T.assert_true(Hud.packet_button_text(&"nosuchtier", 1).is_empty(),
+			"and an unknown tier gets no label rather than a malformed one")
+	return err
+
+
+## h6ek's cue, and the ONE thing about it that has to hold: the set of plant
+## buttons a packet lights EQUALS that packet's pool. Both directions, because a
+## cue that lights everything and a cue that lights the right things are the same
+## picture on a garden where everything happens to be in range.
+##
+## Asserted against `packet_pool()` at test time rather than against a written-out
+## list of "the plants a rare packet holds" — that list is the exact artefact this
+## bead exists to avoid, and a test that carried one would go stale in the same
+## breath as the feature.
+func test_hovering_a_packet_lights_exactly_the_locked_plants_it_can_hand_over() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var rare: Button = game.hud.get_node_or_null("Root/SidePanel/RarePacketButton") as Button
+	var err: String = _T.assert_true(rare != null, "the rare packet button exists")
+	var pool: Array[StringName] = []
+	if err == "":
+		game._refresh()
+		await _pump(game)
+		pool = game.bank.packet_pool(&"rare")
+		err = _T.assert_gt(pool.size(), 1,
+			"a rare packet has more than one plant to point at (an empty pool is a vacuous pass)")
+	if err == "":
+		var outside: int = 0
+		for id: StringName in PlantCatalog.ids():
+			if not pool.has(id):
+				outside += 1
+		err = _T.assert_gt(outside, 0,
+			"and at least one plant is outside it, so the equality below has two sides")
+	if err == "":
+		rare.mouse_entered.emit()
+		await _pump(game)
+		for id: StringName in PlantCatalog.ids():
+			var button: Button = game.hud.get_node_or_null(
+				"Root/SidePanel/PlantBar/Button_%s" % String(id)) as Button
+			err = _T.assert_true(button != null, "%s has a button in the plant bar" % id)
+			if err == "":
+				var lit: bool = button.modulate.is_equal_approx(Hud.PACKET_HINT_TINT)
+				err = _T.assert_eq(lit, pool.has(id),
+					("%s reads lit=%s while the rare packet's pool says %s — the cue has "
+						+ "to BE the pool, not agree with it by luck") % [id, lit, pool.has(id)])
+			if err != "":
+				break
+	if err == "":
+		# A seed earned while the cursor rests on the packet must not put the bar
+		# back to grey. refresh() rewrites every plant button's modulate, so this is
+		# the failure this cue would have by default and _apply_plant_hints exists
+		# to prevent.
+		game.bank.add_seeds(3)
+		await _pump(game)
+		var lit_one: Button = game.hud.get_node_or_null(
+			"Root/SidePanel/PlantBar/Button_%s" % String(pool[0])) as Button
+		err = _T.assert_true(lit_one.modulate.is_equal_approx(Hud.PACKET_HINT_TINT),
+			"%s is still lit after a refresh landed under the hover" % pool[0])
+	if err == "":
+		rare.mouse_exited.emit()
+		await _pump(game)
+		var still_lit: int = 0
+		for id: StringName in PlantCatalog.ids():
+			var button: Button = game.hud.get_node_or_null(
+				"Root/SidePanel/PlantBar/Button_%s" % String(id)) as Button
+			if button != null and button.modulate.is_equal_approx(Hud.PACKET_HINT_TINT):
+				still_lit += 1
+		err = _T.assert_eq(still_lit, 0, "and the bar goes back to rest when the cursor leaves")
+	if err == "":
+		# The second surface: the locked plant's own tooltip names the packet, and
+		# names it by reading PACKET_TIERS at draw time.
+		var id: StringName = pool[0]
+		var tier: StringName = game.bank.cheapest_packet_for(id)
+		var display: String = String((SeedBank.PACKET_TIERS[tier] as Dictionary)["display"])
+		var button: Button = game.hud.get_node_or_null(
+			"Root/SidePanel/PlantBar/Button_%s" % String(id)) as Button
+		err = _T.assert_true(button.tooltip_text.contains(display),
+			("a locked plant's tooltip names the packet that can unlock it (%s), got: %s")
+				% [display, button.tooltip_text])
+		if err == "":
+			var free_id: StringName = game.bank.unlocked[0]
+			var free_button: Button = game.hud.get_node_or_null(
+				"Root/SidePanel/PlantBar/Button_%s" % String(free_id)) as Button
+			err = _T.assert_false(free_button.tooltip_text.contains("Still in a packet"),
+				"while a plant already in the garden is not still in a packet")
+	_T.free_ui(game)
+	return err
+
+
 ## The wave button wears the shared paper look, and still wears no Theme.
 ##
 ## Both halves together or neither is worth asserting. `test_the_hud_still_
@@ -12561,4 +12751,69 @@ func test_every_colour_the_top_bar_writes_in_reads_on_the_bar() -> String:
 		err = _T.assert_false(GardenTheme.reads_on(GardenTheme.INK_SOFT, Hud.INK),
 			"and the floor still rejects INK_SOFT (%.3f apart), so it is a floor rather than a formality"
 				% GardenTheme.separation(GardenTheme.INK_SOFT, Hud.INK))
+	return err
+
+
+## The mapping itself, with no HUD: which packet unlocks which plant is DERIVED
+## from packet_pool() in both directions, so a plant added to PlantCatalog joins
+## the cue without anyone editing it.
+##
+## Direction one: every packet the cue names really does hold the plant it was
+## named for, and it is the cheapest one that does. Direction two: the set of
+## plants the cue speaks for EQUALS the union of every pool — a plant reachable by
+## some packet and pointed at by none is the silent half this repo has paid for
+## before (see .claude/skills/derive-the-list/SKILL.md).
+func test_the_packet_a_locked_plant_points_at_is_derived_from_the_pools() -> String:
+	var bank := SeedBank.new()
+	var locked: Array[StringName] = bank.locked_plants()
+	var err: String = _T.assert_gt(locked.size(), 3,
+		"the catalogue has locked plants to point at (an empty sweep is a vacuous pass)")
+	var named: Array[StringName] = []
+	if err == "":
+		for id: StringName in locked:
+			var tier: StringName = bank.cheapest_packet_for(id)
+			err = _T.assert_true(tier != &"", "%s is locked, so some packet must hold it" % id)
+			if err == "":
+				err = _T.assert_true(bank.packet_pool(tier).has(id),
+					"and %s really is in a %s packet's pool" % [id, tier])
+			if err == "":
+				var mine: int = int((SeedBank.PACKET_TIERS[tier] as Dictionary)["cost"])
+				for other: StringName in SeedBank.PACKET_ORDER:
+					if not bank.packet_pool(other).has(id):
+						continue
+					err = _T.assert_gte(int((SeedBank.PACKET_TIERS[other] as Dictionary)["cost"]), mine,
+						("and it is the CHEAPEST packet that holds %s — %s also holds it and "
+							+ "costs less than the %s the cue names") % [id, other, tier])
+					if err != "":
+						break
+			if err != "":
+				break
+			named.append(id)
+	if err == "":
+		var reachable: Array[StringName] = []
+		for tier: StringName in SeedBank.PACKET_ORDER:
+			for id: StringName in bank.packet_pool(tier):
+				if not reachable.has(id):
+					reachable.append(id)
+		reachable.sort()
+		named.sort()
+		err = _T.assert_eq(named, reachable,
+			("every plant some packet can hand over is pointed at by the cue, and nothing "
+				+ "else is: cue %s vs pools %s") % [named, reachable])
+	if err == "":
+		for id: StringName in bank.unlocked:
+			err = _T.assert_eq(bank.cheapest_packet_for(id), &"",
+				"%s is already growing, so no packet is the one to buy for it" % id)
+			if err != "":
+				break
+	if err == "":
+		# And it moves. Unlocking the last tier-1 plant empties the common pool, so
+		# the cue for that plant stops naming any packet at all — the property that
+		# makes this derived rather than a table that happens to be right today.
+		var was: StringName = bank.cheapest_packet_for(PlantCatalog.CHOMP)
+		err = _T.assert_true(was != &"", "the Chomp starts locked and points somewhere")
+		if err == "":
+			bank.unlocked.append(PlantCatalog.CHOMP)
+			err = _T.assert_eq(bank.cheapest_packet_for(PlantCatalog.CHOMP), &"",
+				"and once it is unlocked the cue drops it without anyone editing a list")
 	return err
