@@ -623,19 +623,11 @@ func sole_cover_cells(plant: Plant) -> Array[Vector2i]:
 	var reach: float = engagement_reach(plant.kind)
 	if reach <= 0.0:
 		return out
-	var others: Dictionary = {}
-	for key: Vector2i in _plants:
-		var other := _plants[key] as Plant
-		if other == null or not is_instance_valid(other) or other == plant:
-			continue
-		if other.is_destroyed():
-			continue
-		var other_reach: float = engagement_reach(other.kind)
-		if other_reach <= 0.0:
-			continue
-		for cell: Vector2i in PlacementPreview.covered_road_cell_list(
-				board, other.cell, other_reach):
-			others[cell] = true
+	# "Everything except this plant" is covered_road_cells(except) exactly. This was
+	# a second copy of that loop, written before the parameter existed; the two
+	# agreed on every rule, which is precisely why the duplication was easy to keep
+	# and would have been easy to break. One of them is enough.
+	var others: Dictionary = covered_road_cells(plant)
 	for cell: Vector2i in PlacementPreview.covered_road_cell_list(board, plant.cell, reach):
 		if not others.has(cell):
 			out.append(cell)
@@ -667,13 +659,22 @@ func uncovered_road_cells() -> Array[Vector2i]:
 ## the distance test, so this map and the dead-ground cue on the hover preview
 ## cannot disagree about which road a plant reaches. A destroyed plant is skipped:
 ## a hungry pest that ate the cob took its coverage off the board with it.
-func covered_road_cells() -> Dictionary:
+## `except` leaves one plant out of the answer — "what would the garden cover
+## WITHOUT this one". Two callers want that and they want it for the same reason:
+## sole_cover_cells() asks what a plant uniquely holds, and the move preview asks
+## what a plant would newly defend somewhere else, which is a question about the
+## garden it is leaving behind.
+##
+## Default null keeps the plain reading, which is what every other caller wants.
+func covered_road_cells(except: Plant = null) -> Dictionary:
 	var covered: Dictionary = {}
 	if board == null or not is_instance_valid(board):
 		return covered
 	for key: Vector2i in _plants:
 		var plant := _plants[key] as Plant
 		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
+			continue
+		if except != null and is_instance_valid(except) and plant == except:
 			continue
 		var reach: float = engagement_reach(plant.kind)
 		if reach <= 0.0:
@@ -1574,17 +1575,37 @@ func _update_preview(cell: Vector2i, free: bool) -> void:
 		return
 	_preview.visible = true
 	_preview.position = board.cell_to_world(cell)
-	_preview.reach = PlantCatalog.reach(selected_plant)
+	# While an uproot is armed the player is weighing a MOVE, not a purchase, so the
+	# preview describes the plant being moved rather than whatever is selected in the
+	# shop (plant-tower-defense-qk5q). Nothing else about the hover changes: the same
+	# brackets, the same ring, the same dots — only the subject.
+	# `_uproot_armed` alone, with no `_uproot_left > 0.0` beside it. That guard was
+	# here first and a mutation could not kill it: _disarm_uproot() nulls this on
+	# every exit path there is — the player confirming, the window expiring, and the
+	# plant being eaten mid-decision — so a live `_uproot_armed` already means an
+	# open window. A second condition that can never disagree is the dead code this
+	# repo has been bitten by before, wearing a safety belt.
+	# test_the_uproot_window_leaves_nothing_armed_behind_it pins the invariant.
+	var moving: Plant = _uproot_armed
+	if moving != null and not is_instance_valid(moving):
+		moving = null
+	var previewing: StringName = moving.kind if moving != null else selected_plant
+	_preview.reach = PlantCatalog.reach(previewing)
 	# Explicit rather than inferred. PlacementPreview falls back to deducing the
 	# kind from `reach`, which works only while no two plants share a radius --
 	# a coincidence, not a rule, and the redundant-coverage cue depends on it.
-	_preview.plant_id = selected_plant
+	_preview.plant_id = previewing
 	# What the garden already reaches, so the preview can dot the road cells this
 	# purchase would newly defend. Recomputed per hover rather than cached: the
 	# set changes on every placement and every uproot, and a stale one would mark
 	# ground as bare that a plant now covers — the one error this cue must not
 	# make, since it is read as "spend seeds here".
-	_preview.covered_now = covered_road_cells()
+	# The plant being moved is left OUT of what counts as already covered, because it
+	# is about to stop covering it. Without that, every cell it currently holds reads
+	# as "already defended" and the move preview would report the destination as
+	# buying almost nothing — worst exactly where the move matters most, a short hop
+	# that keeps most of the old reach.
+	_preview.covered_now = covered_road_cells(moving)
 	# The same predicate _click_at obeys, so the brackets are a promise: green
 	# means this click plants. `free` is kept as the caller's override — the
 	# self-test suite drives this method with a forced value to pin the blocked

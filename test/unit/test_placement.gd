@@ -1153,6 +1153,125 @@ func test_two_overlapping_patches_wash_the_ground_they_share_exactly_once() -> S
 ## stretch of sticky road, which is the purchase this cue exists to talk a player
 ## out of. (3, 2) is one cell along and picks up (4, 1) as well, so it is a second
 ## patch worth buying and must draw nothing.
+## The invariant the move preview leans on: an open uproot window is exactly a
+## non-null `_uproot_armed`, on every exit path there is.
+##
+## _update_preview used to check `_uproot_armed if _uproot_left > 0.0` and no
+## mutation could kill the second half, because _disarm_uproot() nulls the first
+## whenever the window closes. Rather than keep a condition that cannot disagree —
+## the dead-code-with-a-confident-comment shape this repo has paid for before — the
+## guard was dropped and the invariant written down here instead.
+##
+## Timer expiry is driven directly rather than waited for: a test that sleeps four
+## seconds is testing the clock.
+func test_the_uproot_window_leaves_nothing_armed_behind_it() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var here := Vector2i(1, 3)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, here), "", "a cob goes in")
+	if err == "":
+		game.selected_placed = game.plant_at(here)
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "and the uproot arms")
+	if err == "":
+		err = _T.assert_true(game._uproot_armed != null, "so something is armed")
+	# Expiry: one tick longer than the whole window.
+	if err == "":
+		game._tick_uproot_confirm(Game.UPROOT_CONFIRM_SECONDS + 1.0)
+		err = _T.assert_true(game._uproot_armed == null,
+			"and letting the window expire leaves nothing armed")
+	if err == "":
+		# settle-read-check: ok - not an ambient read. arm_uproot() above sets this to
+		# UPROOT_CONFIRM_SECONDS and the tick driven directly overhead subtracts more
+		# than the whole window, so the value is one this test wrote and then spent.
+		# Asserted separately from `_uproot_armed` on purpose: _disarm_uproot clears
+		# the reference AND the clock, and a version that cleared only the reference
+		# would leave a dead timer counting down over the next selection.
+		err = _T.assert_true(game._uproot_left <= 0.0, "nor any time on the clock")
+	# The cob is still standing — an expired window CANCELS, it does not uproot —
+	# so the other exit path can be driven on the same plant.
+	if err == "":
+		err = _T.assert_true(game.plant_at(here) != null,
+			"the expired window cancelled rather than uprooting")
+	if err == "":
+		game.selected_placed = game.plant_at(here)
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "and it arms again")
+	if err == "":
+		err = _T.assert_eq(game.arm_uproot(), "", "the second press commits")
+	if err == "":
+		err = _T.assert_true(game._uproot_armed == null, "and leaves nothing armed either")
+	_T.free_ui(game)
+	return err
+
+
+## While an uproot is armed the player is weighing a MOVE, so the hover stops
+## describing the shop's selection and starts describing the plant being moved.
+##
+## Three states, because the middle one is useless if the window cannot close:
+## before arming the preview is the shop plant, during it is the moved plant, and
+## after it lapses it is the shop plant again. Cycle 46 nearly filed a defect
+## against a correctly-lapsed uproot window, which is why the third state is here
+## rather than assumed.
+##
+## The subtle half is `covered_now`. The plant being moved has to be left OUT of
+## what counts as already covered, because it is about to stop covering it —
+## otherwise every cell it currently holds reads as "already defended" and the
+## preview reports the destination as buying almost nothing, worst exactly where
+## the move matters most.
+func test_an_armed_uproot_turns_the_hover_into_a_move_preview() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var here := Vector2i(1, 3)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, here), "",
+		"a cob to move goes in at %s" % here)
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var cob: Plant = game.plant_at(here)
+	var preview: PlacementPreview = game.get_node_or_null("Entities/PlacementPreview")
+	if err == "":
+		err = _T.assert_true(preview != null, "the preview node is where the game put it")
+	# A shop selection whose reach differs from the cob's, or the assertions below
+	# cannot tell the two subjects apart.
+	if err == "":
+		game.selected_plant = PlantCatalog.CHOMP
+		err = _T.assert_true(not is_equal_approx(
+			PlantCatalog.reach(PlantCatalog.CHOMP), PlantCatalog.reach(PlantCatalog.CORN)),
+			"the two plants have different reaches, so the preview's subject is readable")
+	var elsewhere := Vector2i(11, 5)
+	if err == "":
+		game._update_preview(elsewhere, true)
+		err = _T.assert_true(is_equal_approx(preview.reach, PlantCatalog.reach(PlantCatalog.CHOMP)),
+			"unarmed, the hover describes the SHOP's selection")
+	if err == "":
+		game.selected_placed = cob
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "the uproot arms")
+	if err == "":
+		game._update_preview(elsewhere, true)
+		err = _T.assert_true(is_equal_approx(preview.reach, PlantCatalog.reach(PlantCatalog.CORN)),
+			"armed, it describes the plant being MOVED instead")
+	if err == "":
+		err = _T.assert_eq(preview.plant_id, PlantCatalog.CORN,
+			"and says so explicitly rather than leaving it to be inferred from the radius")
+	# The exclusion, which is the half that would fail silently.
+	if err == "":
+		var held: Array[Vector2i] = PlacementPreview.covered_road_cell_list(
+			game.board, here, Game.engagement_reach(PlantCatalog.CORN))
+		err = _T.assert_gt(held.size(), 0, "the cob holds road, or the check below is empty")
+		if err == "":
+			var still_claimed: Array[Vector2i] = []
+			for cell: Vector2i in held:
+				if preview.covered_now.has(cell):
+					still_claimed.append(cell)
+			err = _T.assert_true(still_claimed.is_empty(),
+				("the moved plant's own cells are NOT counted as already covered -- it is "
+					+ "about to stop covering them. Still claimed: %s") % [still_claimed])
+	if err == "":
+		game._disarm_uproot()
+		game._update_preview(elsewhere, true)
+		err = _T.assert_true(is_equal_approx(preview.reach, PlantCatalog.reach(PlantCatalog.CHOMP)),
+			"and once the window closes the hover goes back to the shop's selection")
+	_T.free_ui(game)
+	return err
+
+
 ## "What does the garden lose if this one goes?" — the selected half of the same
 ## question the hover dots answer for a purchase.
 ##
