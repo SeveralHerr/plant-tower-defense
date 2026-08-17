@@ -5085,3 +5085,61 @@ func test_tuning_a_voice_applies_both_axes_the_table_declares() -> String:
 				% voice.pitch_scale)
 	voice.free()
 	return err
+
+
+## The chew ring sweeps; it does not shrink (plant-tower-defense-xej7).
+##
+## It used to do the opposite, and the opposite is backwards: a shrinking ring is
+## smallest exactly when its news is most urgent, and `Node2D` paints below its
+## children so the last of it vanished behind the flower's own sprite. `HuskLayer`
+## has always done it the other way — fixed radius, swept angle — and this pins that
+## the Chomp now speaks the same vocabulary.
+##
+## Asserted through `chew_arc_end`, which is what `_draw` reads. The radius is a
+## constant now, so "it does not vary with progress" is a claim about the DRAW SITE
+## rather than about a function; what a headless test can hold is that the constant
+## exists and the sweep is the only thing moving.
+func test_the_chew_ring_sweeps_rather_than_shrinking() -> String:
+	var full: float = ChompFlower.chew_arc_end(0.0)
+	var err: String = _T.assert_float_eq(full, TAU, 0.0001,
+		"a mouth that just closed shows the whole ring, got %.4f" % full)
+	if err == "":
+		# Strictly monotone down across the whole chew, which is the half a single
+		# before/after pair cannot see.
+		var previous: float = full
+		for i: int in range(1, 21):
+			var here: float = ChompFlower.chew_arc_end(float(i) / 20.0)
+			err = _T.assert_true(here < previous,
+				"the sweep only ever closes; at %d%% it went %.4f -> %.4f"
+					% [i * 5, previous, here])
+			if err != "":
+				return err
+			previous = here
+	if err == "":
+		err = _T.assert_float_eq(ChompFlower.chew_arc_end(1.0), 0.0, 0.0001,
+			"and an emptied mouth draws nothing at all")
+	if err == "":
+		# Legible near the end, in PIXELS rather than in radians — an assertion
+		# written in the units of the thing under test passes when the thing is
+		# zeroed, which is how a mutation survived in cycle 71. At 90% chewed the
+		# remaining arc must still be a mark a player can see.
+		var tail_px: float = ChompFlower.chew_arc_end(0.9) * ChompFlower.CHEW_RING_RADIUS
+		err = _T.assert_gte(tail_px, 8.0,
+			"90%% through a chew leaves %.1f px of arc, which is the moment it matters most"
+				% tail_px)
+	if err == "":
+		# The radius is fixed, so it must sit in the band the two neighbours leave:
+		# outside the flower's head, inside the Sunflower gauge's nearest corner
+		# (26.0, asserted above), inside half a cell.
+		err = _T.assert_true(ChompFlower.CHEW_RING_RADIUS > 16.0
+				and ChompFlower.CHEW_RING_RADIUS < 26.0,
+			"the ring clears the head without reaching the gauge, got %.1f"
+				% ChompFlower.CHEW_RING_RADIUS)
+	if err == "":
+		err = _T.assert_true(
+			ChompFlower.CHEW_RING_RADIUS + ChompFlower.CHEW_RING_WIDTH * 0.5
+				<= float(Board.CELL) * 0.5,
+			"and stays inside its own cell, got %.1f against %d"
+				% [ChompFlower.CHEW_RING_RADIUS + ChompFlower.CHEW_RING_WIDTH * 0.5,
+					Board.CELL / 2])
+	return err

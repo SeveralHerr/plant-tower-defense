@@ -21,12 +21,17 @@ const YIELD: int = 3
 ## Sunflower's equivalent.
 ##
 ## Deliberately NOT a ring or an arc. ChompFlower already owns the radial idiom
-## (CHEW_RING_RADIUS, a 3 px stroked circle in orange, centred on the plant,
-## *shrinking* to nothing) and a second circle on the board would read as the
-## same language. This differs on every axis at once: straight instead of round,
-## in a corner instead of centred, growing instead of shrinking, and gold rather
-## than the chew ring's orange. It is also always on, where the chew ring only
-## appears mid-meal.
+## (CHEW_RING_RADIUS, a 3 px orange stroke at a fixed 22 px, centred on the plant,
+## *sweeping* closed as the meal finishes) and a second circle on the board would
+## read as the same language. This differs on three axes at once: straight instead
+## of round, in a corner instead of centred, and gold rather than the chew ring's
+## orange. It is also always on, where the chew ring only appears mid-meal.
+##
+## It used to differ on a fourth — "growing instead of shrinking", back when the
+## chew ring shrank its radius. Cycle 78 turned that into a swept angle at a fixed
+## radius (see ChompFlower.CHEW_RING_RADIUS for why), so both readouts now grow or
+## shrink along their own axis and the direction no longer separates them. Three
+## axes is still three, and the geometry below keeps them from ever sharing a pixel.
 ##
 ## Geometry — Rect2(-30, 10, 6, 20) — is pinned by three things it must clear:
 ##   * the sprite. Node2D paints its own canvas item *below* its children, so

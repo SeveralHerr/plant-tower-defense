@@ -18,10 +18,27 @@ extends Plant
 ## cells so it still only covers the lane it is actually next to.
 const GRAB_RADIUS: float = Board.CELL * 1.15
 
-## Radius of the "mouth full" ring at the start of a chew. It shrinks to 0 as
-## the meal finishes, so the busy-mouth trade the design doc describes — "takes
-## a while eating bigger pests" — is something the player can see, not infer.
-const CHEW_RING_RADIUS: float = 16.0
+## Radius of the "mouth full" ring. **Fixed**, and the arc's swept ANGLE carries the
+## progress — the idiom `HuskLayer` has used since the husks existed
+## (`game/husk_layer.gd:69-77`: a fixed `radius + RING_GAP`, `TAU * frac` of it drawn).
+##
+## It used to shrink from 16 to nothing instead, and that was backwards. A shrinking
+## ring is smallest exactly when its news is most urgent — "the mouth is nearly free"
+## is the moment a player decides whether to commit a lane — and `Node2D` paints its
+## own canvas below its children, so the last of it disappeared behind the flower's
+## own sprite. Two timers in one game had opposite answers and the husk's was the
+## better one.
+##
+## 22 px is pinned between three things, none of them taste:
+##   * **above** the old 16, so the arc clears the flower's head rather than being
+##     drawn under it (cycle 70 measured a Corn Cobbler pip at 20 px reading leaf
+##     green at one aim and its own gold at another);
+##   * **below 26.0**, which is where `Sunflower`'s gauge puts its nearest corner —
+##     `test_combat` asserts that corner is strictly outside this ring so the two
+##     radial-looking readouts never share a pixel;
+##   * **below 32**, half a `Board.CELL`, so it stays inside its own cell.
+const CHEW_RING_RADIUS: float = 22.0
+const CHEW_RING_WIDTH: float = 3.0
 
 ## The design doc draws a Chomp mid-bite as its own picture, not a tinted idle
 ## sprite — swapped in for the whole chew and back on release.
@@ -127,15 +144,25 @@ func chew_progress() -> float:
 	return clampf(1.0 - _chew_left / _chew_total, 0.0, 1.0)
 
 
-## Shrinking ring around the flower while the mouth is full — the whole
-## Chomp/beetle trade-off ("mouth busy, lane open") made visible.
+## How far round the chew ring is drawn: a full circle when the mouth has just
+## closed, sweeping down to nothing as the meal finishes.
+##
+## Pure, so the shape is assertable without a rendered frame — and so the draw site
+## below carries no branch of its own. At the end the two ends coincide and
+## `draw_arc` draws nothing, which is the same reason `CornCobbler._draw_muzzle_fan`
+## lost its `if`: one place decides, and a test can reach it.
+static func chew_arc_end(progress: float) -> float:
+	return TAU * clampf(1.0 - progress, 0.0, 1.0)
+
+
+## The ring around the flower while the mouth is full — the whole Chomp/beetle
+## trade-off ("mouth busy, lane open") made visible. Fixed radius, swept angle; see
+## CHEW_RING_RADIUS for why round that way.
 func _draw() -> void:
 	if _held == null:
 		return
-	var radius: float = CHEW_RING_RADIUS * (1.0 - chew_progress())
-	if radius <= 0.5:
-		return
-	draw_arc(Vector2.ZERO, radius, 0.0, TAU, 24, Color(1.0, 0.55, 0.15, 0.85), 3.0, true)
+	draw_arc(Vector2.ZERO, CHEW_RING_RADIUS, 0.0, chew_arc_end(chew_progress()), 24,
+		Color(1.0, 0.55, 0.15, 0.85), CHEW_RING_WIDTH, true)
 
 
 func _bite() -> void:

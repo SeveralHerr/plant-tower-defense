@@ -22,6 +22,7 @@ must survive its colour being thrown away.
 |---|---|---|
 | **Solid full ring**, plant-sized, centred on a plant | a REACH — "this is how far it acts" | `corn_cobbler.gd:149`, `dandelion.gd:377`, `dandelion.gd:381` (the bomb's blast radius), `placement_preview.gd:231` (the reach it *would* have) |
 | **Dashed ring** (an arc loop, not a full circle) | a REMARK about the thing inside it | `placement_preview.gd:314` (at risk), `sole_cover_marks.gd:150` (nothing depends on this plant) |
+| **Partial arc** at a fixed radius, sweeping closed | TIME REMAINING on a clock that is already running | `husk_layer.gd:69-77` (a husk's rot timer), `chomp_flower.gd:164-165` (a chew) |
 | **Small solid ring**, cell-sized, centred on a ROAD CELL | a MARKED CELL — "this one, specifically" | `sole_cover_marks.gd:154` |
 | **Filled dot**, cell-sized, on a road cell | a CELL YOU WOULD GAIN | `placement_preview.gd:268` |
 | **Straight line through a box** | a STATE, legible with colour discarded | `placement_preview.gd:322` (dead ground), `:331-332` (redundant patch) |
@@ -36,11 +37,18 @@ Two solid rings are not reaches, and a reader applying the table naively would m
   radius. What disambiguates it is **size and centre**, not shape: 9 px on a cell versus
   176 px on a plant. That is a real distinction on screen and a weak one in a table, so it
   gets its own row above rather than an exception note.
-- **`chomp_flower.gd:138`** draws a solid ring whose radius SHRINKS as a chew completes. It
-  is a progress bar in ring form, and it is the only animated-radius ring in the game.
+- ~~**`chomp_flower.gd`** draws a solid ring whose radius SHRINKS as a chew completes.~~
+  **RESOLVED in cycle 78**, and the resolution is the useful part. It is now a partial arc at
+  a fixed 22 px sweeping closed (`chomp_flower.gd:164`), which is not an exception at all —
+  it is the second instance of the *partial arc = time remaining* row above, the first being
+  a husk's rot timer. The exception existed because this table was derived one cycle after
+  `husk_layer.gd` had been filed under "sprites drawing themselves" and excluded from the
+  derivation; once the husk's arc was counted as a cue, the Chomp had somewhere to belong.
+  **An exception in a grammar is often a missing row**, and the way to tell is to ask what
+  else in the game already does the thing you are about to call unique.
 
-Neither is worth changing. They are listed because a fifth cue that copied "solid ring" from
-either of them would inherit the wrong meaning.
+So one exception remains rather than two. It is listed because a fifth cue that copied
+"solid ring" from it would inherit the wrong meaning.
 
 ## The one rule with teeth
 
@@ -52,10 +60,17 @@ the armed state doubles a width instead of only going red.
 ## How this was derived
 
 `grep -n "draw_arc(\|draw_circle(\|draw_line(\|draw_rect(" game/*.gd` returns 55 calls
-across 15 files. Most are sprites drawing themselves (`sunflower.gd`, `husk_layer.gd`,
-`seed_glyph.gd`, `title_backdrop.gd`, `notebook_page.gd`) and are not cues. The cue files
-are `placement_preview.gd`, `selection_marker.gd`, `sole_cover_marks.gd`,
-`lane_pressure_overlay.gd`, and the range rings inside the four plants.
+across 15 files. Most are sprites drawing themselves (`sunflower.gd`, `seed_glyph.gd`,
+`title_backdrop.gd`, `notebook_page.gd`) and are not cues. The cue files are
+`placement_preview.gd`, `selection_marker.gd`, `sole_cover_marks.gd`,
+`lane_pressure_overlay.gd`, `husk_layer.gd`, and the range rings inside the four plants.
+
+**`husk_layer.gd` was in the sprite list until cycle 78 and that was the derivation's one
+real mistake.** It draws an arc whose sweep is a husk's remaining life — a mark carrying
+state, which is this table's own definition of a cue — and excluding it is why the Chomp's
+ring looked like a lone exception rather than the second instance of a row. The filter was
+the one part of the derivation done by judgement rather than by grep, and it is the part
+that was wrong.
 
 Re-run that grep before trusting this table. It was written in cycle 68 against 55 calls, and its line numbers moved once
 before the ink dried when this file's own pointers were added to three cue headers,
