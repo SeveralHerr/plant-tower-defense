@@ -1,4 +1,4 @@
-# Cycle 37
+# Cycle 38
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,46 +6,45 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 37 taught
+## What cycle 38 taught
 
-**Every number in the request was wrong, and the cheap way of getting them is what made
-them wrong.** The bead said "reconcile the 61 open gaps". `grep -c "status: open"` returns
-65 — a count of *lines*. The file holds 69 status lines over **49 distinct ids, 44 of them
-actually open**, because the log records a status per entry and a gap fixed in cycle 12
-still carries its cycle-4 `open` line. Three ids stated both readings at once.
-`tools/gap_ledger.py` derives the status from the last mention; old entries are left alone,
-since rewriting one would falsify what was true the day it was written.
+**The game got its first tested animation.** A new high score now rolls up from the record
+it beat instead of appearing — verified in the running game at 5% speed, reading
+`Campaign 301` → `302` → `303` and settling exactly on 308. Three things make it a feature
+rather than an effect: it rolls from the record that actually fell (`RunConfig.previous_best`,
+session-only), the moving line and the settled line come from one pure renderer, and the
+label holds the final text *before* the tween exists — because headless pumps no frames, so
+an animation responsible for reaching the right state leaves the wrong state on screen in
+every test.
 
-**A citation is not a fix.** 43 of this project's ids appear somewhere in the installed
-0.38.0 — but 29 of those are only in the harness's own copy of this log, put there by
-`upstream_gaps.py`. Exactly **14 are cited in harness code**, in the past tense, which is
-what a fix reads like. Counting the 43 would have closed 29 gaps nothing had acted on.
+**And I muted the tool that was answering me.** Four sampling attempts showed a static
+label and I started doubting the feature. The cause was `press --node .../PlayButton` — the
+button is called `StartButton`, and the verb had been printing `Node not found` with exit 1
+the whole time. I had written `> /dev/null 2>&1` on it and never read the code. I was one
+step from filing "`press` reports success on a node that does not exist" as a harness gap;
+it does no such thing, and I checked before writing it down. **Check the tool is actually
+silent before filing a gap about its silence.**
 
-**And a code citation is not sufficient either.** `G-044` is named in `import_check.py`
-and is still open at `seen: 7` — the citation describes a mitigation this project has
-watched fail. Open gaps went 44 → 34, each with its evidence stated rather than implied.
-
-The thing worth keeping: I was one edit from writing a false claim into the new tool's own
-docstring — that seven ids sat on "no gaps this turn" notes. **Zero do.** That number came
-from a throwaway regex that walked forward into the next entry's id line. Writing the tool
-is what caught it, because a tool has to state its rule and a grep does not.
+The second half of the cycle went to the local `house-static-checker` skill: an
+advisory-vs-gate rule (if the reader cannot action it, it is a NOTE and the tool exits 0)
+and a "keep the mutations in the docstring" rule — suggested four times, and this cycle was
+the fourth re-derivation of the same patches. Last cycle I said I would file that upstream;
+it is a *local* skill, so the fix was an edit, which is better.
 
 ## Where things stand
 
-Sixteen beads ready, none blocked. Open gaps 34, derived rather than grepped. Suite
-544/544, lint 0/0, mirror identical. Eight skills, backlog empty. No game code changed this
-cycle — it was entirely the loop's own bookkeeping, and it was overdue by seven cycles.
+Eighteen beads ready, none blocked. Suite 545/545 with 12028 assertions; lint 0/0; mirror
+identical; gap ledger clean; the real save's md5 unchanged. Eight skills, backlog empty.
 
 ## Waiting on the user
 
-Unchanged and still the one that matters: **weather has no counter-play**
-(`plant-tower-defense-oo7e`). Water tiles and a real counter, a cheaper counter needing no
-terrain, or weather stays a difficulty modifier. Three very different costs; building the
-wrong one is expensive, so it is filed and not started.
+Unchanged: **weather has no counter-play** (`plant-tower-defense-oo7e`). Water tiles and a
+real counter, a cheaper counter needing no terrain, or weather stays a difficulty modifier.
+Filed, not started, because building the wrong one of the three is expensive.
 
 ## Restarting
 
 `bd ready` for the work, this file for the context, `CLAUDE.md` (mirrored in `AGENTS.md`,
 checked by `python tools/mirror_check.py`) for the loop itself. `python tools/gap_ledger.py
---open` is now the answer to "which harness gaps are open". Bump the number at the top of
-this file every time you refill.
+--open` answers "which harness gaps are open". Bump the number at the top of this file
+every time you refill.

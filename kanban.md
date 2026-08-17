@@ -195,6 +195,33 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (20 of 30) — grown from the first animation this game asserts
+
+- **The roll is the only animation in this game with a test, and there are eleven
+  others.** `_arm_record_ratchet` (`game/title_screen.gd`) is asserted three ways —
+  the renderer, the origin, and the final text before any tween. Every other tween
+  here (`Plant._pop`, `PauseScreen._play_entrance`, `TitleScreen._play_entrance`,
+  `Hud._punch_readout`, the husk fade, the banner fade) is verified by nobody, and
+  headless cannot see any of them: `GardenTheme.animations_enabled()` is false there
+  by design. **The pattern that made this one testable is worth generalising** — a
+  pure renderer for the moving value, a final state set before the tween exists, and
+  a callback that restores it if the tween is interrupted.
+- **`set_game_speed` is what makes an animation observable at all**, and nothing says
+  so. At 1.0 a 0.8s roll finishes inside a single bridge round-trip; at 0.05 it is
+  four polls wide. That is a fact about every tween in this project and it is
+  currently folklore — it belongs in the local skills, next to the harness notes on
+  reading a running game.
+- **Nothing rolls the seeds counter**, which moves far more often than the record
+  does. `Hud._punch_readout` scales it on change (`game/hud.gd`), so the machinery for
+  "this number moved" already exists and stops short of showing the movement. A
+  purchase that costs 45 seeds reads as a jump; the same roll would make the price
+  visible as it is paid.
+- **A first-ever record is silent by design and that may be the wrong call.** The
+  roll refuses when `previous_best` is 0, because counting up from a zero the player
+  never held is a lie. But a first record is the most significant one they will set,
+  and it currently gets less than a later, smaller one. A different treatment — not a
+  roll — is the honest answer.
+
 ### New this cycle (19 of 30) — grown from the gap ledger, which is the fourth derived-status file here
 
 - **Four files in this project record a status per entry and cannot answer "what is
