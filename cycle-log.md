@@ -1,4 +1,4 @@
-# Cycle 38
+# Cycle 39
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,35 +6,31 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 38 taught
+## What cycle 39 taught
 
-**The game got its first tested animation.** A new high score now rolls up from the record
-it beat instead of appearing — verified in the running game at 5% speed, reading
-`Campaign 301` → `302` → `303` and settling exactly on 308. Three things make it a feature
-rather than an effect: it rolls from the record that actually fell (`RunConfig.previous_best`,
-session-only), the moving line and the settled line come from one pure renderer, and the
-label holds the final text *before* the tween exists — because headless pumps no frames, so
-an animation responsible for reaching the right state leaves the wrong state on screen in
-every test.
+**The prep gap now says what is coming** — `Wave 14 next — 29 pests · a queen.` It names
+the three things that change the shape of a wave rather than its size, and it lives in the
+message row as that row's idle state, because the top bar is measurably full and "here is
+what is coming" is the same kind of thing as "composted a husk for 6 seeds".
 
-**And I muted the tool that was answering me.** Four sampling attempts showed a static
-label and I started doubting the feature. The cause was `press --node .../PlayButton` — the
-button is called `StartButton`, and the verb had been printing `Node not found` with exit 1
-the whole time. I had written `> /dev/null 2>&1` on it and never read the code. I was one
-step from filing "`press` reports success on a node that does not exist" as a harness gap;
-it does no such thing, and I checked before writing it down. **Check the tool is actually
-silent before filing a gap about its silence.**
+**Both defects in it were one omission, and only runtime could see either.** The note
+needed writing *and unwriting*, and only the writing was implemented: it never survived a
+message expiring (`refresh()` is driven by state changes, and a message expiring is not
+one), and it never came down when the wave started (nothing else rewrites that Label, so
+the note announcing a wave stayed up for the whole wave). A test that asserts a pure
+formatter can see neither. The suite now drives a message to expiry and a wave to starting,
+written from what the running game showed rather than from what I imagined would break.
 
-The second half of the cycle went to the local `house-static-checker` skill: an
-advisory-vs-gate rule (if the reader cannot action it, it is a NOTE and the tool exits 0)
-and a "keep the mutations in the docstring" rule — suggested four times, and this cycle was
-the fourth re-derivation of the same patches. Last cycle I said I would file that upstream;
-it is a *local* skill, so the fix was an edit, which is better.
+**A backtick in a `bd --description` was executed by the shell**, not stripped. The standing
+lesson in `log.md` says backticks "get stripped"; this one ran `last` as a command and
+truncated the field. Re-filed through Python's `subprocess` with no shell at all, which is
+the actual fix — the lesson was one severity level too mild.
 
 ## Where things stand
 
-Eighteen beads ready, none blocked. Suite 545/545 with 12028 assertions; lint 0/0; mirror
-identical; gap ledger clean; the real save's md5 unchanged. Eight skills, backlog empty.
+Nineteen beads ready, none blocked. Suite 547/547 with 12042 assertions; lint 0/0; mirror
+identical; gap ledger clean; `findings` clean; the real save's md5 unchanged. Eight skills,
+backlog empty.
 
 ## Waiting on the user
 

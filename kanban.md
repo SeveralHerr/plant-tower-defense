@@ -195,6 +195,30 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (21 of 30) — grown from a Label two systems both write to
+
+- **Three things now write `MessageLabel` and none of them knows about the others.**
+  `show_message` (the priority queue), `_advance_message_queue` (expiry) and
+  `_refresh_prep_note` (the standing note) all set `.text` on one Label
+  (`game/hud.gd`), and the two defects this cycle were both about the seams between
+  them. It works, and it works because each writer checks `_message_left` and the
+  current text by hand. **A row with one owner and a stack of claims** — highest
+  priority wins, the note is the floor — would make the arbitration a rule instead of
+  three conventions that happen to agree.
+- **`show_message` has a priority system the standing note does not participate in.**
+  `MESSAGE_NORMAL` and its siblings order transient messages against each other, and
+  the note sits outside that entirely as "whatever is left when nothing is speaking".
+  That is right today with one standing note and wrong the moment there are two.
+- **The prep note says what is coming and not what it costs.** It names the pest
+  count, a queen and the weather; the player is deciding what to BUY, and the seed
+  prices are on the side panel while the threat is on the strip. A note that said
+  "you have 45 seeds and the packet is 45" is the actual decision — and needs the
+  economy, which `SeedBank` has and the HUD state dict already carries.
+- **Nothing says a wave is the LAST one.** `has_more_waves()` goes false and the note
+  disappears (correctly — there is no next wave), so the run's final wave is the one
+  moment with the least information and the most at stake. "Wave 16 next — the last
+  one" is a one-branch change in `next_wave_note` and a real beat.
+
 ### New this cycle (20 of 30) — grown from the first animation this game asserts
 
 - **The roll is the only animation in this game with a test, and there are eleven
