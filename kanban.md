@@ -195,6 +195,31 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (29 of 30) — comments that make checkable claims, and one that was false
+
+- **Five comments in `game/` name a devtools verb and one of them named a verb that
+  does not exist.** Both `commit_uproot` headers said "the devtools verbs and the
+  placement tests" call it; `list-commands --offline` has nothing matching `uproot`.
+  The other four (`collect_husk`, `place_plant`, `start_wave`) check out. **A comment
+  naming a verb is an assertion**, and `list-commands --offline` can settle it with no
+  game running — so this class is checkable, cheaply.
+- **Nine comments name a `test_*` function**, eight of which exist; the ninth is
+  `test_selftest`, a FILE name rather than a function. This project leans hard on
+  "the alarm is test_X" as documentation, and a renamed test silently turns that into
+  a lie. High precision, low volume — a checker would be clean today and thin. Worth
+  building only alongside the verb check above, as one "comments that cite something"
+  pass.
+- **`list-commands --offline` is the cheapest audit tool here and is documented as a
+  discovery aid.** `CLAUDE.md` describes it for finding verbs in a running session;
+  its `--offline` mode parses the registration sites statically, which is what makes
+  "does this verb exist" a free question. Worth calling that out where the verb table
+  lives.
+- **A backtick in a shell pattern executed again this cycle** (`addons: command not
+  found` from a grep). Standing lesson 20 in the global log was corrected in cycle 39
+  from "stripped" to "executed"; this is the same trap in a *pattern* rather than a
+  `--description`. The fix is the same and wider than either: **prose and patterns go
+  to argv, never through a shell string.**
+
 ### New this cycle (28 of 30) — a node with no name is a node nothing can address
 
 - **123 `add_child` calls in `game/`, 93 `.name =` assignments.** The selection marker

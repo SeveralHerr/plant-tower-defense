@@ -1,4 +1,4 @@
-# Cycle 46
+# Cycle 47
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,37 +6,36 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 46 taught
+## What cycle 47 taught
 
-**The bed an armed uproot will remove now says so** — red brackets at double weight, for
-the four seconds the confirm window is open, restored in `_disarm_uproot` (the one place
-the arming is cleared, which is why the marker is put back there rather than at its four
-callers). Two channels, because `colorblind_safe` exists precisely to make a hue
-unreliable, and this project already hatches its lane overlay and notches its regrow bars
-for the same reason.
+**`arm_uproot` and `commit_uproot`.** The pair was `request_uproot` (arms a four-second
+confirm) and `uproot_selected` (destroys the bed and returns `""`, which is this API's
+success value). Neither name carried the destructive word — "request" sounds like the safe
+one and is; "selected" names the *subject* rather than the *action*. Last cycle I called
+the wrong one while testing the other, and a plant was simply gone with nothing failing.
 
-**The marker had no name**, so its path was `@SelectionMarker@31` — addressable from no
-test and no bridge command, in a project whose `OverlayScreen` header says outright that
-node paths are a contract. Named now. There are 123 `add_child` calls in `game/` against 93
-`.name =` assignments, and nothing distinguishes *deliberately anonymous* from *nobody
-thought about it*.
+The rule now lives in the header: **when two functions differ in destructiveness, the names
+must differ in the destructive word.** 30 references, `553/553` on both sides — a pure
+rename is proved by the count matching, not by the tests passing.
 
-**The runtime question the suite cannot ask** was the one worth launching for: a running
-tree holds **two** `SelectionMarker`s — the bed's and the placement preview's — and only
-the armed bed's may change. `find-nodes --class SelectionMarker --property marker_color
---property line_width` answered both in one call.
+**And a comment named a caller that does not exist.** Both headers claimed the unguarded
+mutator is reached by "the devtools verbs and the placement tests". There is no devtools
+verb. Worse: I rewrote one of those headers *during this rename* and preserved the false
+half before checking it. Corrected in both places; the file's other three verb claims were
+verified and are true.
 
-**And I nearly filed a defect against my own working code, again.** The first screenshot
-showed a yellow marker; `_uproot_left` was `0.0`, the four-second window had lapsed between
-the arm call and the capture, and the restore had correctly run. The picture was right and
-the capture was late — the same mistake as cycle 38's banner, with the same fix
-(`set_game_speed 0.05`).
+That is the cycle's real lesson — **a comment that cites something is an assertion**, and
+citing it while editing is not the same as checking it. `list-commands --offline` settled
+it in one command with no game running.
 
 ## Where things stand
 
-Thirty-two beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on gh#43).
-Suite 553/553 with 12183 assertions; lint 0/0; mirror identical; gap ledger clean;
+Thirty-three beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
+gh#43). Suite 553/553 with 12183 assertions; lint 0/0; mirror identical; gap ledger clean;
 `findings` clean; the real save's md5 unchanged. Eight skills, backlog empty.
+
+The ledger row for this cycle is **`overkill`**, honestly — the suite did the work and the
+launch confirmed two return values the tests already assert.
 
 ## Waiting on the user
 
@@ -53,9 +52,7 @@ checked by `python tools/mirror_check.py`) for the loop itself.
 baseline carries twelve overlaps acceptable only while both controls are unreachable. Any
 harness operation should start by checking which version the skill's paths point at.
 
-**And one new hazard, filed at P2:** `request_uproot` arms and `uproot_selected` removes.
-The names do not say which is which, and calling the wrong one destroys a bed silently.
-
 `python tools/gap_ledger.py --open` answers "which harness gaps are open"; `python
-tools/devtools.py cmd budgets` prices the seven couplings. Bump the number at the top of
-this file every time you refill.
+tools/devtools.py cmd budgets` prices the seven couplings; `python tools/devtools.py
+list-commands --offline` answers "does this verb exist" with no game running. Bump the
+number at the top of this file every time you refill.
