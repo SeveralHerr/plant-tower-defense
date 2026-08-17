@@ -4570,3 +4570,28 @@ cited in code, and the citation is a mitigation this project has watched fail.
   the surviving tests reporting green. The docs say both of these plainly ("Read the
   denominators, not just the exit code"; "a `2` means you verified nothing"). They were
   right and they were what caught it.
+
+## 2026-08-17 — Cycle 55: dots for the road a purchase newly defends
+
+- Value: **warranted**, and specifically for the screenshot rather than the numbers.
+  - Expected: the predicate to work (it is unit-tested and three mutations kill it) and
+    the dots to appear over the road inside the ring.
+  - Got: **an empty screenshot, for a correct reason.** My first live hover was `(6, 2)`,
+    which is road — `_draw()` returns before the dots on an unplaceable cell. Nothing was
+    wrong with the drawing; the check was aimed at a cell the cue deliberately says
+    nothing about.
+  - Found: that near-miss surfaced a real inconsistency worth fixing. `new_cover_cells()`
+    answered with cells for an unplaceable hover while `_draw()` skipped it, so the
+    predicate and the picture disagreed. It now checks `placeable` exactly as
+    `shows_dead_zone()` does, with a test. Also found the same file's header still
+    quoting the pre-reshape dead-ground figures (15 and 34, against 11 and 36 since
+    cycle 53).
+  - Cheaper: nothing. The unit test passes on a buildable cell and would never have
+    exercised the road-hover case, because the test picks the cell.
+
+- Gap: **no gaps this turn.** One workflow note that is mine rather than the harness's:
+  the game kept playing while I read code between commands, and by the time I took the
+  second screenshot the run had ended and the board was replaced by the summary screen.
+  `pause` immediately after `launch` — which `read-a-moving-value` already says — is what
+  fixed it, and it is worth remembering that the rule applies to *the session*, not just
+  to individual reads. A game left running is a moving value the size of the whole board.

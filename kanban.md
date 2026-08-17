@@ -195,6 +195,30 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (55) — the hover now answers "what does this buy?"
+
+- **The dots answer reach; nothing yet answers depth, and that is now the honest gap.**
+  `PlacementPreview.new_cover_cells()` (`game/placement_preview.gd`) marks the road a
+  purchase would newly defend, so "this cob adds three cells, that one adds eight" is
+  visible before the seeds go. What it deliberately does NOT say is how thin the road is
+  where it is already covered — a cell held by one cob and one held by three look the same
+  (they are both undotted). Cycle 54 measured that difference as decisive. The honest next
+  step is a depth read on the SELECTED plant rather than the hovered one: select a cob,
+  see which of its cells nothing else backs up.
+- **`shows_redundant_coverage()` is Sundew-only and its name does not say so.**
+  `game/placement_preview.gd:349` reads as a general redundancy cue and is specifically
+  about patch stacking — it calls `StickySundew.added_crossing_time_multiplier` and fires
+  only when a second patch multiplies crossing time by 1.0. For a Corn Cobbler the same
+  word means the opposite thing, since a second cob over identical cells is worth real
+  money. A reader reaching for "the redundancy cue" for cobs would find this and be wrong.
+  `shows_redundant_patch_coverage()` costs nothing and removes the trap.
+- **A plant's own ring never says what its neighbours already hold.** Selecting a planted
+  cob draws its range ring (`game/selection_marker.gd` via `Plant`), and the ring is
+  identical whether the cob is the only thing covering that road or one of three. The
+  hover cue now makes this asymmetry visible: you can see what a NEW plant would add, but
+  not what an EXISTING one uniquely contributes — which is the question behind "can I sell
+  this one and move it?"
+
 ### New this cycle (54) — coverage and firepower are two different pictures
 
 - **The board draws coverage and says nothing about firepower.** A cell covered by one

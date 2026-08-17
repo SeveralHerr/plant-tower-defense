@@ -1630,6 +1630,16 @@ func _refresh() -> void:
 	# the ones where a plant was bought, uprooted or eaten.
 	if board != null and is_instance_valid(board):
 		board.mark_unaimed_road(uncovered_road_cells())
+		# The preview's new-cover dots read the same set, and pushing it only from
+		# _update_preview would leave them stale whenever the garden changes while
+		# the cursor is STILL — a plant eaten mid-wave, an uproot committing, a
+		# purchase from the bar. That is the one error this cue must not make,
+		# because it is read as "spend seeds here": either marking ground as bare
+		# that a plant now covers, or failing to mark ground that just became bare.
+		# Only while it is on screen; a hidden preview has nothing to repaint.
+		if _preview != null and is_instance_valid(_preview) and _preview.visible:
+			_preview.covered_now = covered_road_cells()
+			_preview.queue_redraw()
 	if hud == null:
 		return
 	hud.refresh(state())
