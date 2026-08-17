@@ -65,6 +65,19 @@ const GRASS_EDGE_TILE: Dictionary = {
 	0b1001: 72,
 }
 
+## Masks kept in GRASS_EDGE_TILE that the current road does NOT produce.
+##
+## Empty, deliberately. `test_every_grass_cell_has_a_tile_the_kit_actually_ships`
+## asserts both directions: every mask the board produces has a tile (a hole in the
+## road's edging), AND every entry above is a mask the board can reach. The second
+## half had no assertion at all until it was added, so an entry left over from a
+## reshaped road would have sat here indefinitely pointing at a tile nobody looks at.
+##
+## This is where an intentional exception goes if PATH_CORNERS ever grows a shape that
+## needs a tile before the road that uses it — with the reason, since "it is unreachable
+## on purpose" and "it is unreachable because we forgot" are the same silence otherwise.
+const UNREACHABLE_EDGE_MASKS: Array[int] = []
+
 ## Lane pressure readout: how much a recorded cell fades on the *next* wave
 ## that records a different one, so the tint reads as "recent pressure", not
 ## a permanent stain from wave 1.

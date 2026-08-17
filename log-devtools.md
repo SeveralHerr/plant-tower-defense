@@ -3668,3 +3668,29 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     beside `assert_eq` in `run_tests.gd`, reporting `Expected anything but <value>` and
     printing the actual — six lines, and it removes the hand-formatted message that is
     the only reason the failure above is readable.
+
+## 2026-08-16 — cycle 31: the second direction on a derived lookup table
+
+- Value: **overkill** — triaged to tier (c) at Phase 0.5 and it was the right call; the
+  gates confirmed what two planted failures had already proved.
+  - Expected: tier (c) headless-only. `board.gd` gains one `const` with no runtime
+    behaviour, so a launch could load the file and have nothing observable to assert;
+    `test_every_grass_cell_has_a_tile_the_kit_actually_ships` stands in for runtime, and
+    both of its directions were planted and watched fail before being restored.
+  - Got: exactly that. `lint: 0 error(s), 0 warning(s)`, `Total: 535 | Passed: 535`,
+    `Assertions: 11707 executed`, `Suite: 7 test script(s)`, `user:// writes: 0 file(s)`.
+    The two plants are the real evidence: adding `0b0111: 999` to the table failed the
+    new direction with `Expected [] but got [7]`, and removing the produced mask `0b0011`
+    failed the old one with `cell (8, 2) needs edge mask 3`. Different messages, different
+    causes, which is what "both directions" has to mean.
+  - Found: nothing. The table had no dead entries — the assertion that would have caught
+    one simply did not exist until now, which is a gap in the *checks*, not a defect the
+    run surfaced. `found: []` is the honest answer and `overkill` follows from it.
+  - Cheaper: nothing cheaper than what ran. The full runtime pass was skipped on purpose;
+    the two filtered suite runs that planted the failures were the whole cost.
+
+- Gap: **no gaps this turn.** Phase 0.5's triage table answered the question directly —
+  tier (c), name the tests that stand in for runtime — and the ledger accepted the row
+  with `--no-reach` without pretending a number it did not have. The one thing worth
+  noting is not a gap: `record` downgraded nothing, because the run reported `overkill`
+  itself rather than claiming `warranted` over an empty `found`.

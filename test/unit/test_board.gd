@@ -64,6 +64,7 @@ func test_every_grass_cell_has_a_tile_the_kit_actually_ships() -> String:
 	## square hole in the road's edging — visible only in a screenshot.
 	var board: Board = _board()
 	var checked: int = 0
+	var produced: Dictionary = {}
 	for y: int in range(Board.ROWS):
 		for x: int in range(Board.COLS):
 			var cell := Vector2i(x, y)
@@ -79,11 +80,34 @@ func test_every_grass_cell_has_a_tile_the_kit_actually_ships() -> String:
 			if board.is_path(cell + Vector2i.LEFT):
 				mask |= 0b1000
 			checked += 1
+			produced[mask] = true
 			var err: String = _T.assert_true(Board.GRASS_EDGE_TILE.has(mask),
 				"cell %s needs edge mask %d, which the Kenney kit has no tile for" % [cell, mask])
 			if err != "":
 				return err
-	return _T.assert_gt(checked, 60, "the sweep actually visited the grass (empty sweep = vacuous pass)")
+	var err_sweep: String = _T.assert_gt(checked, 60,
+		"the sweep actually visited the grass (empty sweep = vacuous pass)")
+	if err_sweep != "":
+		return err_sweep
+	# The OTHER direction, and the reason it is here: the sweep above fails when the
+	# road grows a shape the table cannot draw -- the direction that produces a visible
+	# bug, which is why it felt like the whole check. It can never fail on an entry no
+	# level can produce: a mask left over from a road that was reshaped, pointing at a
+	# tile nobody has looked at since. Nothing said whether the table's nine entries
+	# were nine or seven. A derived table asserted in one direction is a second source
+	# of truth wearing a checked list's clothes.
+	#
+	# UNREACHABLE_EDGE_MASKS is where a deliberate exception gets written down instead
+	# of being invisible. It is empty, and that is a finding, not a default.
+	var extra: Array[int] = []
+	for mask: int in Board.GRASS_EDGE_TILE:
+		if not produced.has(mask) and not Board.UNREACHABLE_EDGE_MASKS.has(mask):
+			extra.append(mask)
+	extra.sort()
+	return _T.assert_eq(str(extra), "[]",
+		"every entry in GRASS_EDGE_TILE is a mask this board actually produces; these "
+			+ "are not, and are not declared in UNREACHABLE_EDGE_MASKS either -- either "
+			+ "delete them or say there why they are kept")
 
 
 func test_cell_and_world_round_trip() -> String:
