@@ -3836,10 +3836,22 @@ func test_the_legend_names_as_many_shapes_as_the_grammar_documents() -> String:
 		"the grammar document is readable at %s" % NotebookScreen.OVERLAY_GRAMMAR_PATH)
 	if err != "":
 		return err
-	# Rows only: the table's header and its `|---|---|` separator both start with a pipe,
-	# and so does nothing else in the file.
+	# Scoped to the "What each shape means" SECTION, not to the whole file. The first
+	# version counted every pipe-prefixed line in the document, which was right while the
+	# file held one table -- and cycle 97 added a second (the per-row channel enumeration,
+	# whose header also begins "| Shape"). It reported 20 shapes and would have printed
+	# that number to the player. Counting a SECTION rather than a file is the fix, and a
+	# test catching its own source document being edited is the whole reason it exists.
+	var start: int = text.find("## What each shape means")
+	if _T.assert_gt(start, 0, "the shapes section is findable -- a rename would leave this"
+			+ " counting something else entirely") != "":
+		return "the shapes section is findable"
+	var section: String = text.substr(start)
+	var stop: int = section.find("\n## ", 1)
+	if stop > 0:
+		section = section.substr(0, stop)
 	var rows: int = 0
-	for line: String in text.split("\n"):
+	for line: String in section.split("\n"):
 		var trimmed: String = line.strip_edges()
 		if not trimmed.begins_with("|"):
 			continue

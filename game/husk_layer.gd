@@ -10,6 +10,15 @@ extends Node2D
 ## plain aphid's 2-seed one and the player only learned the difference after
 ## spending the click. Mutations already tint the pest itself; this is the same
 ## idea carried through to what the pest leaves behind.
+##
+## **Two channels, and neither of them reads `RunConfig.colorblind_safe`** — deliberately,
+## like every other cue on the board. A husk's value is carried by RADIUS and, once radius
+## and brightness have both saturated at `CompostMeter.FULL_VALUE`, by the COUNT of pips.
+## Its rot clock is carried by the swept ANGLE of an arc, which also moves. Throw the colour
+## away and all three still read. The pips exist precisely because brightness ran out of
+## range (cycle 88), which is the two-channel rule arriving as a consequence rather than as
+## a requirement. See `game/OVERLAY_GRAMMAR.md`'s per-row channel table, which enumerates
+## this for all ten shapes rather than asserting it.
 
 const BASE_RADIUS: float = 8.0
 const MAX_RADIUS: float = 15.0

@@ -83,10 +83,36 @@ pins the size bound, which is the part that would rot first if someone enlarged 
 
 ## The one rule with teeth
 
-**A cue must be legible when its colour is discarded**, and every entry above obeys it by
-shape, position, or line weight. If a proposed cue can only be distinguished by hue, it is
-not finished — that is the check the two-channel rule exists to force, and it is the reason
-the armed state doubles a width instead of only going red.
+**A cue must be legible when its colour is discarded.** If a proposed cue can only be
+distinguished by hue, it is not finished — that is the check the two-channel rule exists to
+force, and it is the reason the armed state doubles a width instead of only going red.
+
+This section used to say "and every entry above obeys it by shape, position, or line weight"
+and stop there. That is a claim about **all ten rows** supported by no enumeration, in a
+document whose whole argument is that patterns get derived rather than remembered. Here is
+the derivation, one row at a time — **the channel named is the one that survives the colour
+being thrown away**:
+
+| Shape | The channel that is not colour |
+|---|---|
+| Solid full ring, plant-sized | SIZE and CENTRE. Nothing else in the game draws a 176 px ring centred on a plant. |
+| Dashed ring | The DASHES. A broken loop and a closed one differ in greyscale. |
+| Partial arc sweeping closed | The SWEEP ANGLE, and it MOVES — a clock is the one cue whose channel is time. |
+| Small solid ring, cell-sized, on a road cell | SIZE and CENTRE again, and this is the row the exceptions section already argues: 9 px on a cell versus 176 px on a plant. |
+| Filled dot | FILL. A disc and an outline ring are different marks before they are different colours. |
+| Straight line through a box | Its own Means column says so outright: "legible with colour discarded". |
+| Corner brackets | The SHAPE. Four detached corners look like nothing else here. |
+| Scattered short marks | SIZE and SCATTER, argued at length in the section below — a quarter of a cell, unaligned to the grid. |
+| Doubled line width | WIDTH, and it is the only row whose channel is asserted mechanically: `SelectionMarker.WARNING_LINE_WIDTH` and `SoleCoverMarks.WARNING_RING_WIDTH` are each pinned strictly above their base in `test_selftest.gd` and `test_placement.gd`. |
+| A row of small pips | COUNT. Cycle 88 added pips precisely BECAUSE radius and brightness had both saturated — a magnitude that colour could no longer carry. |
+
+**No two rows share a channel value**, which is the property that matters: the exceptions
+section below names the one place where two rows share a *shape* (solid ring), and resolves
+it by size and centre rather than by hue. So the rule holds for all ten, and it holds
+*without* any cue reading `RunConfig.colorblind_safe` — none of them does, deliberately.
+`SelectionMarker`'s own header spells that out: the flag "exists precisely because a hue is
+not a reliable carrier, so the brackets get heavier as well as redder". The flag changes the
+HUD's ramps; the board's cues never needed it because they were built to survive without it.
 
 ## How this was derived
 
