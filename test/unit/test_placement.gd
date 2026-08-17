@@ -8,6 +8,25 @@ const GAME_SCENE := "res://game/game.tscn"
 
 var _T
 
+## Where this script's RunConfig writes go instead of the player's own save.
+## The reasoning is written out once, in test_combat.gd's setup(); the short
+## version is that hosting `game.tscn` at all can reach `RunConfig._save()`
+## through the game's own code, on a condition no reader can evaluate.
+## `tools/save_persist_check.py` requires this of any test script that can.
+const SUITE_SAVE_PATH := "user://test_placement_suite.save"
+var _suite_stashed_save_path: String = ""
+
+
+func setup() -> void:
+	_suite_stashed_save_path = RunConfig.save_path
+	RunConfig.save_path = SUITE_SAVE_PATH
+
+
+func teardown() -> void:
+	if _suite_stashed_save_path != "":
+		RunConfig.save_path = _suite_stashed_save_path
+	DirAccess.remove_absolute(SUITE_SAVE_PATH)
+
 
 func _grass(game: Game) -> Vector2i:
 	for y: int in range(Board.ROWS):

@@ -851,10 +851,33 @@ func _restore_run_config() -> void:
 	_clear_scratch_save()
 
 
+## Where this script's RunConfig writes go instead of the player's own save.
+##
+## Distinct from HIGHSCORE_TEST_PATH, which `_with_scratch_save` points at for the
+## tests that are ABOUT the save format and that stage bytes for it to read. This one
+## is the floor under everything else in the file: the reasoning is written out once,
+## in test_combat.gd's setup(), and the short version is that hosting `game.tscn` can
+## reach `RunConfig._save()` through the game's own code on a condition no reader can
+## evaluate. `tools/save_persist_check.py` requires it of any test script that can.
+const SUITE_SAVE_PATH := "user://test_economy_suite.save"
+var _suite_stashed_save_path: String = ""
+
+
+func setup() -> void:
+	_suite_stashed_save_path = RunConfig.save_path
+	RunConfig.save_path = SUITE_SAVE_PATH
+
+
 ## Called by the runner after every test in this file, including one that aborted
 ## on a runtime error. A no-op unless a scratch-save test left something behind.
 func teardown() -> void:
 	_restore_run_config()
+	# After the restore, not before: `_restore_run_config` puts back whatever
+	# `_stash_run_config` took, which is this file's own SUITE_SAVE_PATH, so undoing
+	# the suite-level redirect has to be the last word.
+	if _suite_stashed_save_path != "":
+		RunConfig.save_path = _suite_stashed_save_path
+	DirAccess.remove_absolute(SUITE_SAVE_PATH)
 
 
 ## `_load` ran, refused what it found, and left both records exactly where they

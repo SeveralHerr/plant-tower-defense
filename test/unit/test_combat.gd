@@ -9,6 +9,37 @@ extends RefCounted
 
 var _T
 
+## Where this script's RunConfig writes go instead of the player's own save.
+## See setup() below.
+const SUITE_SAVE_PATH := "user://test_combat_suite.save"
+var _suite_stashed_save_path: String = ""
+
+
+## Point RunConfig away from `user://highscore.save` for every test in this file.
+##
+## Not a precaution: a run of this suite provably wrote the developer's real save,
+## found by instrumenting `RunConfig._save()` with `get_stack()`. Neither writer
+## named a RunConfig method — one went `Game.bank_score() -> record_score()`, the
+## other `Game._unhandled_input() -> toggle_colorblind_safe()` — so the source scan
+## that guards direct calls could not see either, and the second happened to write
+## the same bytes back, leaving only an mtime as evidence.
+##
+## The redirect lives here rather than in each test because every write along those
+## chains is CONDITIONAL (a score above the record, a fresh milestone, an actual
+## change), so which tests write is not knowable by reading them, and a test written
+## next month inherits this without knowing it exists. Enforced by
+## `tools/save_persist_check.py`, which derives the reaching set from `_save()`
+## backwards rather than from a list anyone has to maintain.
+func setup() -> void:
+	_suite_stashed_save_path = RunConfig.save_path
+	RunConfig.save_path = SUITE_SAVE_PATH
+
+
+func teardown() -> void:
+	if _suite_stashed_save_path != "":
+		RunConfig.save_path = _suite_stashed_save_path
+	DirAccess.remove_absolute(SUITE_SAVE_PATH)
+
 
 func _host(nodes: Array[Node]) -> Node2D:
 	var container := Node2D.new()

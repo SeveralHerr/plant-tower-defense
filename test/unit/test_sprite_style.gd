@@ -86,6 +86,13 @@ const BLEND_TOLERANCE := 12.0
 ## Alpha above which a pixel counts as opaque rather than an edge feather.
 const OPAQUE := 250
 
+# save-persist-check: ok - the only name this file shares with the persisting set is
+# `_load`, which here is the PNG loader defined at the bottom of this script, not
+# RunConfig._load(). That tool resolves no receiver types, so a bare method name is
+# one entry for every class that spells it the same way; it says so itself under NOT
+# COVERED. Nothing in this file reaches RunConfig at all — a redirect here would be a
+# line of ceremony pretending to be a guard, which is worse than a stated waiver.
+
 var _T
 
 func test_every_sprite_declared_by_the_contract_exists() -> String:

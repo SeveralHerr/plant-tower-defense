@@ -13,6 +13,25 @@ const SELECTION_FOOT_MARGIN: float = 8.0
 
 var _T
 
+## Where this script's RunConfig writes go instead of the player's own save.
+## The reasoning is written out once, in test_combat.gd's setup(); both of the
+## writers that started this were in THIS file, and neither of them named a
+## RunConfig method. `tools/save_persist_check.py` requires this of any test
+## script that can reach `RunConfig._save()`.
+const SUITE_SAVE_PATH := "user://test_selftest_suite.save"
+var _suite_stashed_save_path: String = ""
+
+
+func setup() -> void:
+	_suite_stashed_save_path = RunConfig.save_path
+	RunConfig.save_path = SUITE_SAVE_PATH
+
+
+func teardown() -> void:
+	if _suite_stashed_save_path != "":
+		RunConfig.save_path = _suite_stashed_save_path
+	DirAccess.remove_absolute(SUITE_SAVE_PATH)
+
 
 func _host(nodes: Array[Node]) -> Node2D:
 	var container := Node2D.new()
@@ -4561,6 +4580,14 @@ func test_no_two_pause_card_controls_share_pixels() -> String:
 ## one -- has_more_waves() is unconditionally true there, so victory is
 ## unreachable -- and pause then added two doors that walked out past _end_run.
 func test_quitting_a_run_through_pause_still_files_the_score() -> String:
+	# `game.bank_score()` reaches RunConfig.record_score() -> _save(), so this test
+	# persists even though its body never names a RunConfig mutator. Staging both
+	# records at 0 first means the write lands unconditionally: against the real
+	# save_path it filed 320 over this machine's actual campaign record, and the
+	# in-memory restore at the bottom hid it exactly as the direct callers' comments
+	# describe. Redirect FIRST, before anything reaches the game.
+	var stashed_path: String = RunConfig.save_path
+	RunConfig.save_path = "user://test_selftest_bank_score.save"
 	var saved_c: int = RunConfig.campaign_high_score
 	var saved_e: int = RunConfig.endless_high_score
 	RunConfig.campaign_high_score = 0
@@ -4586,6 +4613,8 @@ func test_quitting_a_run_through_pause_still_files_the_score() -> String:
 			"losing after quitting does not file a second time")
 	RunConfig.campaign_high_score = saved_c
 	RunConfig.endless_high_score = saved_e
+	RunConfig.save_path = stashed_path
+	DirAccess.remove_absolute("user://test_selftest_bank_score.save")
 	_T.free_ui(game)
 	return err
 
@@ -7967,6 +7996,13 @@ func test_toggling_the_option_repaints_the_bars_already_on_the_board() -> String
 	## than by calling repaint_health_bar() directly — a fix that lives in a method
 	## nobody calls is not a fix.
 	KeyBindings.reset_all()
+	# Driving Game's own handler is the point of this test, and that handler reaches
+	# toggle_colorblind_safe() -> _save(). Two presses restore the flag, so the file
+	# it wrote came out byte-identical to the developer's real save and only its
+	# mtime moved -- which is why this went unnoticed for so long. Redirect anyway:
+	# "wrote the same bytes back" is luck about ordering, not a property of the test.
+	var stashed_path: String = RunConfig.save_path
+	RunConfig.save_path = "user://test_selftest_colorblind_toggle.save"
 	var was: bool = RunConfig.colorblind_safe
 	RunConfig.colorblind_safe = false
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
@@ -8007,6 +8043,8 @@ func test_toggling_the_option_repaints_the_bars_already_on_the_board() -> String
 				_colour_distance(plant._health_bar.color, Hud.health_color_on(0.0, true)), 0.0,
 				0.001, "repaint_health_bar() is what does it, got %s" % plant._health_bar.color)
 	RunConfig.colorblind_safe = was
+	RunConfig.save_path = stashed_path
+	DirAccess.remove_absolute("user://test_selftest_colorblind_toggle.save")
 	_T.free_ui(game)
 	return err
 
@@ -8024,7 +8062,29 @@ func test_toggling_the_option_repaints_the_bars_already_on_the_board() -> String
 ## The rule: a test function that calls a persisting RunConfig mutator must assign
 ## `RunConfig.save_path` somewhere in the same function. Restoring the value is not
 ## enough and is exactly what hid this -- see the two comments at those call sites.
+##
+## Its LIMIT, found later and by other means: the needle list names RunConfig's own
+## methods, so it sees a direct call and is structurally blind to a test that reaches
+## `_save()` through the game -- `Game.bank_score() -> record_score()` and
+## `Game._unhandled_input() -> toggle_colorblind_safe()` both did, from this very
+## file, while this test reported clean. Those needles cannot be extended by hand
+## into "anything that can reach the writer"; `tools/save_persist_check.py` derives
+## that set backwards from `_save()` instead, and requires the redirect once per
+## script, in `setup()`. This test keeps the direct rule and adds the one thing a
+## source scan cannot assert: that the redirect is actually LIVE right now.
 func test_no_test_persists_through_the_players_own_save() -> String:
+	# The runtime half. `setup()` at the top of this file points RunConfig away from
+	# the player's save before every test method here, including this one -- so if it
+	# is ever deleted or renamed, this fails on the next run rather than waiting for
+	# someone to notice an mtime. Asserted against SAVE_PATH, the constant, rather
+	# than a literal: the redirect has to survive the default moving.
+	# (`_T` has no assert_ne, so the inequality is spelled out and the actual path is
+	# carried in the message -- an assert_false alone would report only `false`.)
+	var live: String = _T.assert_false(RunConfig.save_path == RunConfig.SAVE_PATH,
+		"setup() has pointed RunConfig away from the player's own save for this run; "
+			+ "it is at %s and SAVE_PATH is %s" % [RunConfig.save_path, RunConfig.SAVE_PATH])
+	if live != "":
+		return live
 	var persisting: PackedStringArray = [
 		"RunConfig.record_score", "RunConfig._save()", "RunConfig.record_milestones",
 		"RunConfig.set_colorblind_safe", "RunConfig.set_mute_sfx", "RunConfig.set_mute_music",
