@@ -4174,3 +4174,40 @@ cited in code, and the citation is a mitigation this project has watched fail.
     That turns "these overlap" into "these overlap and both can be used", which is
     the claim the check is actually making. Cheap: both properties are already read
     by `reachable-ui`.
+
+## 2026-08-16 — cycle 44: the 0.42.0 refresh, attempted and reverted
+
+- Value: **warranted**, and by the cheapest possible mechanism — a number taken before
+  the change and the same number taken after.
+  - Expected: a routine version bump. Four releases of fixes, three of them mine, and
+    the refresh is documented as idempotent.
+  - Got: the install was flawless — `[version] upgrade 0.38.0 -> 0.42.0`, no `.bak`
+    (nothing was locally edited), every `.uid` already present, every project-owned
+    config key kept, and all nine project-authored tools under `tools/` untouched.
+    Then the suite **segfaulted**: exit `3221225477` (`0xC0000005`), three runs out of
+    three, always at `test_corn_shoots_the_pest_closest_to_escaping`, preceded by
+    `Attempted to set an invalid (previously freed?) object instance into a
+    'TypedArray'`.
+  - Found: **a harness regression, proven rather than suspected.** `git stash` the
+    refresh → `552/552`; pop it → segfault; `git checkout -- .` → `552/552` again.
+    Identical project code on both sides. Filed as gh#43 with the bisect. Reverted to
+    0.38.0, because a harness that crashes the suite cannot be the thing gating the
+    work.
+  - Cheaper: nothing, and this is the strongest case for the before-measurement I
+    have hit. Without `552/552, 12142 assertions` written down *before* the install,
+    the crash reads as "the refresh broke my game" and the next hour goes into
+    `plant.gd`. It took two commands to prove it was the harness.
+
+- Gap: **no new gap in this project's usage**, and one filed upstream. Worth recording
+  what the refresh got RIGHT, because it is easy to remember only the crash: the
+  version guard, the pristine-file detection, the `.uid` handling and the config
+  ownership tracking all did exactly what their documentation says, on a real project
+  with four releases of drift and nine foreign files in `tools/`. The failure is in
+  the shipped runner, not in the installer.
+  - Also worth noting: **the skill loaded from a plugin cache pinned at 0.33.0** while
+    the project runs 0.38.0 and the newest cache is 0.42.0. Running `full` from the
+    skill's own interpolated paths would have DOWNGRADED five versions. The installer
+    refuses that (exit 2) and the skill documents `--plugin-root` for exactly this, so
+    the guard held — but the skill's every path still points at whatever version the
+    cache happens to be pinned to, which is the same trap logged long ago and is why
+    this ran `0.42.0/tools/scaffold_install.py` explicitly.
