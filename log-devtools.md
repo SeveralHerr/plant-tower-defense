@@ -4246,3 +4246,34 @@ cited in code, and the citation is a mitigation this project has watched fail.
   *not* to build a checker is a legitimate outcome of an audit and is worth writing
   down, because the alternative leaves the same audit to be re-run later by someone who
   assumes it was never done.
+
+## 2026-08-16 — cycle 46: the bed an armed uproot will remove says so
+
+- Value: **warranted**, on one question the suite structurally cannot ask.
+  - Expected: a two-channel visual cue is a claim about pixels — whether heavier
+    brackets read as heavier at 64px, and whether the RIGHT marker changed, since a
+    running tree holds two `SelectionMarker`s (the bed's and the placement preview's).
+  - Got: `find-nodes --class SelectionMarker --property marker_color --property
+    line_width` answered both at once — the bed's went
+    `(1.0, 0.95, 0.35) @ 2.0` → `(0.85, 0.25, 0.22) @ 4.0` and the preview's did not
+    move. The screenshot then showed heavy red brackets with `_uproot_left: 3.97`.
+  - Found: nothing in the code, and **the same procedural mistake as cycle 38**. The
+    first screenshot showed a yellow marker and I was a step from filing it: the
+    four-second confirm window had **lapsed** between the arm call and the capture
+    (`_uproot_left: 0.0`), and `_disarm_uproot` had correctly restored both channels.
+    The picture was right and the capture was late. `set_game_speed 0.05` and
+    re-capture showed it properly.
+  - Cheaper: the headless test carries both channels and the restore. The launch
+    earned its place on the two-markers question — an assertion in a hosted test sees
+    one marker and cannot tell you the other one stayed put.
+
+- Gap: **no gaps this turn.** Worth recording what `find-nodes` did well, because it is
+  the verb that made this cheap: `--class SelectionMarker --property marker_color
+  --property line_width` returned both instances with both values in one call, which
+  is exactly the "did the right one change" question. The obvious alternative — a
+  `get-state` on a path — would have required knowing the auto-generated node name
+  `@Node2D@129/SelectionMarker`, and would have answered about one marker only.
+  - Related, and fixed rather than filed: the marker was auto-named, so it had no
+    addressable path at all. It is `SelectionMarker.NODE_NAME` now, for the reason this
+    project already states about `Backdrop`/`RowButton%d` — node paths are a contract,
+    and `@SelectionMarker@31` is not one.

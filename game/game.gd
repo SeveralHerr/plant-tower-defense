@@ -1240,6 +1240,8 @@ func request_uproot() -> String:
 		return uproot_selected()
 	_uproot_armed = selected_placed
 	_uproot_left = UPROOT_CONFIRM_SECONDS
+	# The bed itself says so, not only the message row (plant-tower-defense-rtgp).
+	_uproot_armed.set_uproot_armed(true)
 	Sfx.play(Sfx.UPROOT_ARMED)
 	# IMPORTANT: this is an instruction with a live 4-second trigger behind it, and
 	# an ambient husk pickup used to wipe it mid-read.
@@ -1266,7 +1268,13 @@ func _watch_selected_health() -> void:
 	_refresh()
 
 
+## The ONE place the arming is cleared, which is why the marker is put back here
+## rather than at each caller. Every exit runs through it: confirming, the timer
+## expiring, selecting something else, and the armed plant being eaten mid-decision --
+## and that last one is why the validity check is not optional.
 func _disarm_uproot() -> void:
+	if _uproot_armed != null and is_instance_valid(_uproot_armed):
+		_uproot_armed.set_uproot_armed(false)
 	_uproot_armed = null
 	_uproot_left = 0.0
 

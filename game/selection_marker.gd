@@ -19,6 +19,11 @@ extends Node2D
 ## the hover cue reads as a promise of the selected state rather than as an
 ## unrelated second overlay.
 
+## The name Plant gives this node. A contract: test_selftest.gd looks it up by this
+## path and the devtools bridge can read it the same way, neither of which works
+## against Godot's auto-generated `@SelectionMarker@31`.
+const NODE_NAME := "SelectionMarker"
+
 const HALF: float = 22.0
 const ARM: float = 8.0
 const MARKER_COLOR := Color(1.0, 0.95, 0.35, 0.9)
@@ -42,12 +47,41 @@ const GROW_START_SCALE: float = 0.55
 
 ## Subclass knobs. Vars rather than consts precisely so a subclass reuses the
 ## geometry instead of copying the numbers — see PlacementPreview.
+## What the brackets look like while an uproot is armed on this plant
+## (plant-tower-defense-rtgp).
+##
+## **Two channels, because one of them is colour.** The armed state is a pending
+## destructive change, and this project answers that the same way everywhere it warns:
+## lane pressure is hatched because the cursor tint it shares a cell with is not, a
+## regrowing health bar is notched, and the Keys screen's armed reset marks its rows
+## as well as tinting them. `RunConfig.colorblind_safe` exists precisely because a hue
+## is not a reliable carrier, so the brackets get heavier as well as redder.
+##
+## Weight rather than a glyph: this is a shape drawn with `draw_line`, not a Label, so
+## thickness is the channel it already has. It also reads at a glance on a 64px cell,
+## which a mark would not.
+const WARNING_COLOR := Color(GardenTheme.DANGER, 0.95)
+const WARNING_LINE_WIDTH: float = LINE_WIDTH * 2.0
+
 var marker_color: Color = MARKER_COLOR
 var half: float = HALF
 var arm: float = ARM
 var line_width: float = LINE_WIDTH
 
 var _entrance_tween: Tween = null
+
+
+## Arms or disarms the warning look. Idempotent and repaint-only — the marker's
+## visibility is `set_selected`'s business and this never touches it, so a plant that
+## is armed and then deselected does not flicker.
+func set_warning(warning: bool) -> void:
+	var next_color: Color = WARNING_COLOR if warning else MARKER_COLOR
+	var next_width: float = WARNING_LINE_WIDTH if warning else LINE_WIDTH
+	if marker_color == next_color and is_equal_approx(line_width, next_width):
+		return
+	marker_color = next_color
+	line_width = next_width
+	queue_redraw()
 
 
 func _draw() -> void:

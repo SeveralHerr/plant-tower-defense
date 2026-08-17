@@ -212,6 +212,11 @@ func _build_visuals() -> void:
 	# SelectionMarker's own header for why subclasses can't be trusted to paint
 	# this themselves.
 	_selection_marker = SelectionMarker.new()
+	# Named, because an auto-named node is unaddressable. This project treats node
+	# paths as a contract -- OverlayScreen's header says so for its own rows, and the
+	# devtools bridge presses and reads BY NAME -- and `@SelectionMarker@31` is a path
+	# nothing can be written against, in a test or from the bridge.
+	_selection_marker.name = SelectionMarker.NODE_NAME
 	_selection_marker.visible = false
 	add_child(_selection_marker)
 
@@ -592,6 +597,22 @@ static func health_bar_notch_rects() -> Array[Rect2]:
 
 func is_destroyed() -> bool:
 	return health <= 0.0
+
+
+## Shows, on the plant itself, that an uproot is one click from removing it
+## (plant-tower-defense-rtgp).
+##
+## The message row already says so in a sentence with a four-second life. This is the
+## same fact on the thing it is about — the bed the player is deciding to destroy —
+## which is where the Keys screen's armed reset put it too.
+##
+## Routed through the marker rather than drawn here because the marker is already the
+## "this plant is the subject" overlay, and a second overlay saying nearly the same
+## thing is how two cues end up disagreeing. A plant with no marker (one built outside
+## a Game) is a silent no-op rather than an error.
+func set_uproot_armed(armed: bool) -> void:
+	if _selection_marker != null and is_instance_valid(_selection_marker):
+		_selection_marker.set_warning(armed)
 
 
 ## Game toggles this when the plant is clicked/deselected. Base class just

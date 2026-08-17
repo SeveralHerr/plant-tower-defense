@@ -10826,3 +10826,62 @@ func test_the_hud_is_inert_while_an_overlay_is_open() -> String:
 
 	_T.free_ui(game)
 	return err
+
+
+## The bed an armed uproot will remove says so (plant-tower-defense-rtgp).
+##
+## Uproot arms for four seconds and the message row says which plant — a sentence with
+## a life, on a row shared with everything else the game says. The plant it is about
+## said nothing. This is the same treatment the Keys screen's armed reset got: the
+## pending destructive change is shown on the thing that will be destroyed.
+##
+## Two channels, and the second is not decoration. `RunConfig.colorblind_safe` exists
+## because a hue is not a reliable carrier, so the brackets get heavier as well as
+## redder — the same reasoning that hatches the lane overlay and notches a regrowing
+## health bar.
+func test_an_armed_uproot_marks_the_bed_it_will_remove() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "", "planted")
+	var plant: Plant = game.selected_placed
+	var marker: SelectionMarker = null
+	if err == "":
+		err = _T.assert_true(plant != null, "and the bed is the one we hold")
+	if err == "":
+		marker = plant.get_node_or_null("SelectionMarker") as SelectionMarker
+		err = _T.assert_true(marker != null, "which carries a selection marker")
+	if err == "":
+		err = _T.assert_eq(marker.marker_color, SelectionMarker.MARKER_COLOR,
+			"an unarmed bed wears the ordinary marker")
+
+	if err == "":
+		# `request_uproot` is the button's wiring and the thing that ARMS;
+		# `uproot_selected` is what actually removes the bed. Calling the second one
+		# here uprooted the plant outright and returned "" -- worth the comment,
+		# because the names do not say which is which.
+		err = _T.assert_eq(game.request_uproot(), "confirm needed", "one click arms it")
+	if err == "":
+		err = _T.assert_eq(marker.marker_color, SelectionMarker.WARNING_COLOR,
+			"and the bed turns to the warning colour")
+	if err == "":
+		err = _T.assert_float_eq(marker.line_width, SelectionMarker.WARNING_LINE_WIDTH, 0.001,
+			"AND gets heavier, because a hue alone is what colorblind_safe exists "
+				+ "to make unreliable")
+
+	if err == "":
+		# Every exit from the armed state runs through _disarm_uproot, which is why
+		# the marker is restored there rather than at each caller. Letting the timer
+		# run out is the exit a player takes by doing nothing.
+		game._uproot_left = 0.01
+		game._tick_uproot_confirm(1.0)
+		err = _T.assert_eq(marker.marker_color, SelectionMarker.MARKER_COLOR,
+			"and letting it lapse puts the bed back")
+	if err == "":
+		err = _T.assert_float_eq(marker.line_width, SelectionMarker.LINE_WIDTH, 0.001,
+			"in both channels")
+	if err == "":
+		err = _T.assert_false(game.uproot_armed(),
+			"with the arming itself cleared, not just its look")
+
+	_T.free_ui(game)
+	return err
