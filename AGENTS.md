@@ -290,6 +290,12 @@ python tools/message_corpus_check.py # a show_message() call site, or a producer
 python tools/mirror_check.py         # CLAUDE.md and AGENTS.md's Workflow blocks have drifted
                                      #   (--fix generates the mirror; it WRITES AGENTS.md,
                                      #    so it is the one entry here not safe to fan out)
+python tools/citation_check.py       # a `file:line` citation in kanban.md (or any .md you
+                                     #   name) that no longer resolves. READ THE OUTPUT:
+                                     #   it proves a line EXISTS, never that it supports
+                                     #   the claim — and it prints how many entries carry
+                                     #   no citation at all, which is 249 of 323 in
+                                     #   kanban.md and the real limit on every check here
 python tools/run_json_check.py       # a key in .devtools/run.json that verify_ledger reads
                                      #   nowhere, so the ledger row silently loses it.
                                      #   RUN IT BEFORE `verify_ledger record`, not after —

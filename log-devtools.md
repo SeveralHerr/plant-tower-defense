@@ -4979,7 +4979,8 @@ cited in code, and the citation is a mitigation this project has watched fail.
     comment a third data point on gh#46 and found it closed and the fix shipped:
     `difflib.get_close_matches` against `RUN_JSON_KEYS`, printing
     `run.json: ignoring unknown key %r%s - it is NOT in the row`, at
-    `templates/tools/verify_ledger.py:1101-1107` in the marketplace clone (0.47.0). On
+    `<marketplace-clone>/templates/tools/verify_ledger.py`, lines 1101-1107 (0.47.0) — not
+    a path in this repo, and written as one until cycle 77's citation sweep said so. On
     0.47.0 this cycle's `lint_exit` would have been named at me instead of vanishing.
     **This project runs 0.38.0 on purpose** (gh#43's segfault, bead `-ny3h`), so the gap is
     real here and fixed there, and that pair is a status the ledger has no word for. Do not
