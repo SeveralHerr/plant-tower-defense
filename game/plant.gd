@@ -622,6 +622,11 @@ func is_destroyed() -> bool:
 func set_uproot_armed(armed: bool) -> void:
 	if _selection_marker != null and is_instance_valid(_selection_marker):
 		_selection_marker.set_warning(armed)
+	# The sole-cover rings escalate with the brackets, which turns them from "these
+	# cells depend on you" into "these go bare if you confirm" — the same data with
+	# the tense changed, and the one moment the player is deciding about it.
+	if _sole_cover_marks != null and is_instance_valid(_sole_cover_marks):
+		_sole_cover_marks.set_warning(armed)
 
 
 ## Game toggles this when the plant is clicked/deselected. Base class just

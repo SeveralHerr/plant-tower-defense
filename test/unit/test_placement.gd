@@ -1233,6 +1233,52 @@ func test_a_selected_plant_marks_only_the_road_nothing_else_covers() -> String:
 		err = _T.assert_gt(Game.engagement_reach(PlantCatalog.CORN),
 			SoleCoverMarks.ALONE_RADIUS,
 			"and far inside the plant's own range ring, so it is not a second reach")
+	# Arming an uproot escalates the rings with the brackets: the same cells, with
+	# the tense changed from "these depend on you" to "these go bare if you
+	# confirm". Both halves of the toggle, because a warning that cannot be undone
+	# is worse than one that never fired.
+	if err == "":
+		var marks: SoleCoverMarks = alone.sole_cover_marks()
+		alone.set_uproot_armed(true)
+		err = _T.assert_true(marks.warning, "arming an uproot warns the rings")
+		if err == "":
+			err = _T.assert_eq(SoleCoverMarks.WARNING_COLOR, SelectionMarker.WARNING_COLOR,
+				("and in the SAME red as the brackets -- two reds on one plant would read "
+					+ "as two different warnings"))
+		if err == "":
+			err = _T.assert_gt(SoleCoverMarks.WARNING_RING_WIDTH, SoleCoverMarks.RING_WIDTH,
+				("and thicker, so the escalation survives the colour being thrown away -- "
+					+ "the two-channel rule this project holds everywhere else"))
+		# The asymmetry, which is the part most likely to be "tidied" away later: a
+		# plant holding nothing alone costs the road nothing to uproot, so its ring
+		# must NOT redden. That is the one case where uprooting is free, and it is
+		# the case the ring was added to announce.
+		if err == "":
+			marks.set_points(PackedVector2Array([Vector2(64.0, 64.0)]))
+			err = _T.assert_eq(marks.ring_color(), SoleCoverMarks.WARNING_COLOR,
+				"armed with cells to lose, the rings are red")
+		if err == "":
+			marks.set_points(PackedVector2Array())
+			err = _T.assert_eq(marks.ring_color(), SoleCoverMarks.MARK_COLOR,
+				("armed with NOTHING to lose, they are not -- reddening the holds-nothing "
+					+ "ring would warn about the one uproot that costs the road nothing"))
+		if err == "":
+			err = _T.assert_true(is_equal_approx(marks.ring_width(), SoleCoverMarks.RING_WIDTH),
+				"and not thickened either, for the same reason")
+		if err == "":
+			alone.set_uproot_armed(false)
+			err = _T.assert_false(marks.warning, "and letting it lapse takes the warning off")
+		# Directly, because the header claims idempotence and that is a claim about
+		# calling it twice — which the route through set_uproot_armed never does.
+		if err == "":
+			marks.set_warning(true)
+			err = _T.assert_true(marks.warning, "set_warning arms it on its own")
+		if err == "":
+			marks.set_warning(true)
+			err = _T.assert_true(marks.warning, "and arming an armed one is a no-op, not a toggle")
+		if err == "":
+			marks.set_warning(false)
+			err = _T.assert_false(marks.warning, "and it disarms")
 	_T.free_ui(game)
 	return err
 

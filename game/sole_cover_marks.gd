@@ -43,6 +43,14 @@ const RING_WIDTH: float = 2.0
 ## marks belong to the selection, not to the purchase.
 const MARK_COLOR := Color(SelectionMarker.MARKER_COLOR, 0.75)
 
+## The armed palette, taken from SelectionMarker's rather than declared fresh, so
+## the brackets and the rings cannot drift to two different reds. Same doubling
+## rule as SelectionMarker.WARNING_LINE_WIDTH for the same reason: the escalation
+## has to survive the colour being thrown away, which is this project's standing
+## two-channel rule.
+const WARNING_COLOR := SelectionMarker.WARNING_COLOR
+const WARNING_RING_WIDTH: float = RING_WIDTH * 2.0
+
 ## The name Plant gives this node, so the suite and the devtools bridge can find
 ## it by path instead of against Godot's auto-generated `@SoleCoverMarks@42`.
 const NODE_NAME := "SoleCoverMarks"
@@ -51,6 +59,35 @@ const NODE_NAME := "SoleCoverMarks"
 ## cells so this node needs no Board reference and no coordinate maths of its own,
 ## which keeps it drawable in a test from a hand-built array.
 var points: PackedVector2Array = PackedVector2Array()
+
+
+## The armed look, mirroring SelectionMarker.set_warning() — same hue, same
+## doubling, so the brackets and the rings escalate together rather than reading
+## as two unrelated cues (plant-tower-defense-j46n).
+##
+## Arming an uproot is the one moment the game knows a MOVE is being weighed, and
+## these rings already hold the answer to "what does that cost": they are exactly
+## the cells nothing else covers. Turning them red changes the tense — from "these
+## depend on you" to "these go bare if you confirm" — with no new computation.
+##
+## NOT applied to the holds-nothing ring, and that is deliberate rather than an
+## oversight. The brackets warn because the ACTION is destructive, which is true
+## whatever the coverage looks like. These rings warn about what is LOST, and when
+## the set is empty nothing is: the plant can be dug up and replanted with the road
+## unchanged. Reddening that state would be a false alarm about the one case where
+## uprooting is free, which is the case the ring was added to announce.
+var warning: bool = false
+
+
+## Arms or disarms the warning look. Idempotent and repaint-only, and it never
+## touches `visible` — that is set_selected's business, exactly as
+## SelectionMarker.set_warning leaves it alone so an armed-then-deselected plant
+## does not flicker.
+func set_warning(next: bool) -> void:
+	if warning == next:
+		return
+	warning = next
+	queue_redraw()
 
 
 ## Replaces the marks and repaints only when they actually moved.
@@ -100,6 +137,8 @@ func _draw() -> void:
 	# stretch is often exactly what was bought, and the game has no business
 	# recommending otherwise — this reports a fact and leaves the decision alone.
 	if points.is_empty():
+		# Deliberately NOT reddened when armed — see `warning`'s header. Nothing is
+		# lost here, so there is nothing to warn about.
 		var step: float = TAU / float(ALONE_DASHES * 2)
 		for i: int in range(ALONE_DASHES):
 			var from: float = float(i) * step * 2.0
@@ -107,4 +146,19 @@ func _draw() -> void:
 				MARK_COLOR, RING_WIDTH, true)
 		return
 	for at: Vector2 in points:
-		draw_arc(to_local(at), RING_RADIUS, 0.0, TAU, 20, MARK_COLOR, RING_WIDTH, true)
+		draw_arc(to_local(at), RING_RADIUS, 0.0, TAU, 20, ring_color(), ring_width(), true)
+
+
+## The ink the road rings are drawn in, as a predicate rather than a branch inside
+## `_draw()` — the same reason PlacementPreview.shows_dead_zone() is one: a rule
+## that can only be checked by looking at pixels gets checked once.
+##
+## Warns only when there is something to warn ABOUT. An armed uproot on a plant
+## holding nothing alone costs the road nothing, and reddening that would be a
+## false alarm about the single case where uprooting is free.
+func ring_color() -> Color:
+	return WARNING_COLOR if warning and not points.is_empty() else MARK_COLOR
+
+
+func ring_width() -> float:
+	return WARNING_RING_WIDTH if warning and not points.is_empty() else RING_WIDTH
