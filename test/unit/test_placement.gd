@@ -2671,6 +2671,7 @@ func test_the_notebook_plant_pages_fit_their_card() -> String:
 	var drawn_pages: int = 0
 	var plant_pages: int = 0
 	var shelf_pages: int = 0
+	var legend_pages: int = 0
 	for page: int in NotebookScreen.PAGES.size():
 		if err != "":
 			break
@@ -2695,6 +2696,26 @@ func test_the_notebook_plant_pages_fit_their_card() -> String:
 			if err == "":
 				err = _T.assert_true((notebook.get_node("Shelf") as Control).visible,
 					"the shelf itself is what the left page shows")
+			continue
+		if kind == NotebookScreen.KIND_LEGEND:
+			# The fourth, and it arrived by tripping this chain's `else` -- which meant
+			# PLANT, so the legend page was asserted to name a real plant and reported as
+			# a broken plant page. That is the same latent defect the production
+			# `go_to` had (there the `else` meant SHELF), fixed there with
+			# NotebookScreen.PANE_LABELS. Kept as a branch here rather than a table
+			# because a test's business is the exclusivity, not the content: the left
+			# page holds exactly one of four things, and this asserts the other three
+			# are down.
+			legend_pages += 1
+			err = _T.assert_false(drawing.visible, "page %d is the legend, not a photograph" % [page + 1])
+			if err == "":
+				err = _T.assert_false(spec.visible, "and not a spec card")
+			if err == "":
+				err = _T.assert_false((notebook.get_node("Shelf") as Control).visible,
+					"and not the shelf")
+			if err == "":
+				err = _T.assert_true((notebook.get_node("CueLegend") as Control).visible,
+					"the legend itself is what the left page shows")
 			continue
 		plant_pages += 1
 		var id: StringName = StringName(entry.get("plant", &""))
@@ -2733,7 +2754,18 @@ func test_the_notebook_plant_pages_fit_their_card() -> String:
 		err = _T.assert_gt(drawn_pages, 0, "and at least one is still a photograph of paper")
 	if err == "":
 		err = _T.assert_eq(shelf_pages, 1,
-			"and exactly one is the shelf — three kinds of left page, every page exactly one of them")
+			"and exactly one is the shelf — four kinds of left page, every page exactly one of them")
+	if err == "":
+		err = _T.assert_eq(legend_pages, 1, "and exactly one is the cue legend")
+	if err == "":
+		# The denominator, which is what makes the four counts above mean anything: a
+		# fifth kind added without a branch here would fall through to the plant case and
+		# be counted as a plant page, so the sum is the only thing that notices.
+		err = _T.assert_eq(drawn_pages + plant_pages + shelf_pages + legend_pages,
+			NotebookScreen.PAGES.size(),
+			"every page was classified — %d + %d + %d + %d of %d" % [
+				drawn_pages, plant_pages, shelf_pages, legend_pages,
+				NotebookScreen.PAGES.size()])
 	if err == "":
 		err = _T.assert_eq(drawn_pages, NotebookScreen.drawing_pages().size(),
 			"drawing_pages() counts the same pages the screen treats as drawings")
@@ -3787,4 +3819,197 @@ func test_the_coverage_sentence_claims_aim_and_not_protection() -> String:
 			Game.COVERAGE_NOTE_WORST_CASE.contains(Game.coverage_note_for(0.001)),
 			"the worst case still contains what the formatter builds (%s vs %s)"
 				% [Game.COVERAGE_NOTE_WORST_CASE, Game.coverage_note_for(0.001)])
+	return err
+
+
+## The cue legend, which exists because `game/OVERLAY_GRAMMAR.md` documents ten drawn
+## shapes and is referenced only from GDScript comments — a language the game speaks and
+## teaches to nobody.
+func test_the_legend_names_as_many_shapes_as_the_grammar_documents() -> String:
+	## The claim on the page is "5 of the board's 10", and the 10 is a constant in a
+	## format string — exactly the kind of number nobody re-checks. This parses the
+	## document's own table so the constant fails when a grammar row is added, which
+	## matters because that row gets added by someone editing markdown who will never
+	## open `notebook_screen.gd`.
+	var text: String = FileAccess.get_file_as_string(NotebookScreen.OVERLAY_GRAMMAR_PATH)
+	var err: String = _T.assert_gt(text.length(), 0,
+		"the grammar document is readable at %s" % NotebookScreen.OVERLAY_GRAMMAR_PATH)
+	if err != "":
+		return err
+	# Rows only: the table's header and its `|---|---|` separator both start with a pipe,
+	# and so does nothing else in the file.
+	var rows: int = 0
+	for line: String in text.split("\n"):
+		var trimmed: String = line.strip_edges()
+		if not trimmed.begins_with("|"):
+			continue
+		if trimmed.begins_with("| Shape") or trimmed.begins_with("|---"):
+			continue
+		rows += 1
+	err = _T.assert_eq(rows, NotebookScreen.OVERLAY_GRAMMAR_SHAPES,
+		"OVERLAY_GRAMMAR.md documents %d shapes and OVERLAY_GRAMMAR_SHAPES says %d -- "
+			% [rows, NotebookScreen.OVERLAY_GRAMMAR_SHAPES]
+			+ "the legend page prints that number to the player")
+	if err == "":
+		err = _T.assert_true(CueLegend.row_count() <= rows,
+			"the legend teaches %d of them, which cannot exceed what exists"
+				% CueLegend.row_count())
+	return err
+
+
+func test_every_legend_row_has_a_shape_the_legend_can_draw() -> String:
+	## Derived over ROWS rather than checked on one, and it asserts the two halves that
+	## can drift apart independently: a row whose `shape` no branch of `_draw` handles
+	## draws nothing at all -- silently, because a `match` with no default is not an error
+	## -- and a row missing its text is a swatch with nothing beside it.
+	var drawable: Array[String] = [
+		CueLegend.SHAPE_SUBJECT, CueLegend.SHAPE_REACH, CueLegend.SHAPE_CLOCK,
+		CueLegend.SHAPE_REMARK, CueLegend.SHAPE_GAIN,
+	]
+	var err: String = _T.assert_gt(CueLegend.ROWS.size(), 0, "there are rows to check")
+	if err != "":
+		return err
+	var seen: Array[String] = []
+	for row: Dictionary in CueLegend.ROWS:
+		var shape: String = String(row["shape"])
+		err = _T.assert_true(drawable.has(shape),
+			"'%s' is a shape _draw() has a branch for" % shape)
+		if err == "":
+			err = _T.assert_false(seen.has(shape), "'%s' appears once, not twice" % shape)
+		if err == "":
+			err = _T.assert_gt(String(row["means"]).length(), 0,
+				"'%s' says what it means" % shape)
+		if err == "":
+			err = _T.assert_gt(String(row["where"]).length(), 0,
+				"'%s' says where it is seen" % shape)
+		if err != "":
+			return err
+		seen.append(shape)
+	return err
+
+
+func test_the_legend_swatches_borrow_the_real_cues_constants() -> String:
+	## A legend is a second drawing of something the board already draws, so it is a
+	## second source of truth by construction. The part that CAN be made structural is
+	## the constants, and this is what holds it: every value the swatches key off is read
+	## from the cue's own script, so a colour or width changed on the board moves the
+	## legend with it. If someone inlines a number here, this test is what notices.
+	var source: String = FileAccess.get_file_as_string("res://game/cue_legend.gd")
+	var err: String = _T.assert_gt(source.length(), 0, "the legend script is readable")
+	if err != "":
+		return err
+	# Each entry is a constant the swatches must be reading, paired with the cue it
+	# belongs to -- named in the message so a failure says which cue went unshared.
+	var borrowed: Dictionary = {
+		"SelectionMarker.MARKER_COLOR": "the selection brackets' colour",
+		"SelectionMarker.LINE_WIDTH": "their line weight",
+		"SelectionMarker.ARM": "their arm-to-half ratio",
+		"SoleCoverMarks.ALONE_DASHES": "the dashed ring's dash count",
+		"SoleCoverMarks.RING_WIDTH": "its width",
+		"HuskLayer.BRIGHT_RING": "the rot clock's colour",
+		"PlacementPreview.NEW_COVER_DOT": "the gained-cell dot's size",
+	}
+	for token: String in borrowed:
+		err = _T.assert_true(source.contains(token),
+			"the legend reads %s (%s) rather than a number that looked similar"
+				% [token, borrowed[token]])
+		if err != "":
+			return err
+
+	# `contains` is a floor and it is not enough on its own: it proves a token appears
+	# SOMEWHERE. The first version of this test passed a mutation that inlined
+	# `Color(1.0, 0.95, 0.35, 0.9)` into one of the two draw_line calls in _draw_subject,
+	# because the other call kept the token alive. So the real property is asserted
+	# directly -- no swatch painter names a colour literal at all. Every colour a swatch
+	# draws with has to arrive as `Something.CONSTANT`.
+	var swatches: int = source.find("func _draw_subject")
+	err = _T.assert_gt(swatches, 0, "the swatch painters are findable in the source")
+	if err != "":
+		return err
+	var painters: String = source.substr(swatches)
+	err = _T.assert_false(painters.contains("Color("),
+		"no swatch painter builds a Color literal -- a legend that hardcodes a hue stops "
+			+ "tracking the cue the moment the cue is retuned, and that is exactly the "
+			+ "drift this page cannot afford")
+	return err
+
+
+func test_the_legend_fits_the_page_it_is_drawn_on() -> String:
+	## The same budget the milestone shelf lives under, and the same failure mode: the
+	## pane is a fixed 300px matte and the rows are pitched, so a sixth row is a layout
+	## change rather than a content one. `content_bottom` is pure, so this needs no
+	## viewport -- but the pane is built for real below to prove the labels land inside
+	## it too, which the arithmetic alone cannot say.
+	# The pitch itself first, since content_bottom() is derived from it and would hide a
+	# broken one: rows march down the pane at a constant gap, in order, none overlapping.
+	# suite_reach_check named row_center_y as public-and-unasserted, which is how this got
+	# written -- content_bottom() calling it is not the same as a test naming it.
+	var err: String = ""
+	for i: int in range(CueLegend.ROWS.size() - 1):
+		var gap: float = CueLegend.row_center_y(i + 1) - CueLegend.row_center_y(i)
+		err = _T.assert_float_eq(gap, CueLegend.ROW_PITCH, 0.001,
+			"rows %d and %d are ROW_PITCH apart" % [i, i + 1])
+		if err != "":
+			return err
+	if err == "":
+		err = _T.assert_gte(CueLegend.row_center_y(0), CueLegend.SWATCH_RADIUS,
+			"the first swatch's top edge is on the pane, not above it")
+	if err != "":
+		return err
+	# assert_gte with the operands the other way up: the helper set has no assert_lte.
+	err = _T.assert_gte(NotebookScreen.DRAWING_BOX.size.y,
+		CueLegend.content_bottom(),
+		"the last legend row's text ends at %.0fpx inside a %.0fpx matte -- another row "
+			% [CueLegend.content_bottom(), NotebookScreen.DRAWING_BOX.size.y]
+			+ "needs ROW_PITCH cut or the page split")
+	if err != "":
+		return err
+	var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var legend: Control = notebook.get_node("CueLegend") as Control
+	var box := Rect2(Vector2.ZERO, legend.size)
+	for row: Dictionary in CueLegend.ROWS:
+		var means: Label = legend.get_node_or_null(
+			"LegendMeans_%s" % String(row["shape"])) as Label
+		err = _T.assert_true(means != null,
+			"'%s' has its meaning label" % String(row["shape"]))
+		if err == "":
+			err = _T.assert_true(box.encloses(Rect2(means.position, means.size)),
+				"'%s' meaning label sits inside the pane" % String(row["shape"]))
+		if err == "":
+			err = _T.assert_gt(_T.text_width(means), 0.0,
+				"'%s' meaning label has measurable text" % String(row["shape"]))
+		if err == "":
+			err = _T.assert_gte(means.size.x, _T.text_width(means),
+				"'%s' meaning fits its box without the ellipsis (%.0f of %.0f px)"
+					% [String(row["shape"]), _T.text_width(means), means.size.x])
+		if err != "":
+			break
+	_T.free_ui(notebook)
+	return err
+
+
+func test_every_kind_of_notebook_page_has_a_pane_heading() -> String:
+	## Derived over the kinds PAGES actually uses, not over PANE_LABELS' own keys -- a
+	## table checked against itself is a tautology, and the failure this guards is a kind
+	## that reaches `go_to` with no row.
+	##
+	## It exists because a mutation deleting KIND_LEGEND's row survived everything else:
+	## `pane_label_for` returns "" for an unknown kind, which is deliberate (better a
+	## blank heading than the neighbouring kind's, which is what the old if/elif/else
+	## chain gave), but blank is only better if something notices. This is that something.
+	var kinds: Array[String] = []
+	for entry: Dictionary in NotebookScreen.PAGES:
+		var kind: String = String(entry.get("kind", NotebookScreen.KIND_DRAWING))
+		if not kinds.has(kind):
+			kinds.append(kind)
+	var err: String = _T.assert_gt(kinds.size(), 1,
+		"the notebook has more than one kind of page (%d)" % kinds.size())
+	if err != "":
+		return err
+	for kind: String in kinds:
+		err = _T.assert_gt(NotebookScreen.pane_label_for(kind).length(), 0,
+			"'%s' pages have a heading for the left pane -- a kind with no PANE_LABELS "
+				% kind + "row draws a blank heading, which is safe and silent")
+		if err != "":
+			return err
 	return err

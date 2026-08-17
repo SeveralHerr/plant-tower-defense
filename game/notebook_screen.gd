@@ -156,6 +156,50 @@ const KIND_DRAWING := "drawing"
 const KIND_PLANT := "plant"
 const KIND_SHELF := "shelf"
 
+## KIND_LEGEND is the fourth, and it exists because `game/OVERLAY_GRAMMAR.md` documented
+## ten drawn shapes and what each MEANS, is referenced only from GDScript comments, and is
+## therefore a language the game speaks and teaches to nobody. See `CueLegend`.
+##
+## It goes here rather than on a screen of its own for the reason KIND_SHELF already
+## established at line 142: this notebook stopped being purely a design-history artefact
+## when the shelf arrived, because the shelf is "about the player rather than about the
+## game". A cycle-88 note in `kanban.md` claimed the opposite and called this surface the
+## wrong shape for a legend; confirming that claim before building is what found the
+## precedent one screen away, and the note was corrected rather than worked around.
+const KIND_LEGEND := "legend"
+
+
+## What the left pane's own label says on each kind of page.
+##
+## A table rather than the `if drawn / elif spec / else` chain `go_to` used to carry, and
+## the reason is mechanical: with three kinds that `else` MEANT the shelf, so adding a
+## fourth kind would have silently given the legend the shelf's heading and the shelf
+## nothing wrong at all — the failure would have shown up on a page nobody was editing.
+## Adding a kind now means adding a row, and a kind with no row is a visible empty string
+## rather than a wrong one borrowed from its neighbour.
+const PANE_LABELS: Dictionary = {
+	KIND_DRAWING: "The drawing",
+	KIND_PLANT: "No drawing — the spec",
+	KIND_SHELF: "Every first the garden records",
+	KIND_LEGEND: "What the marks on the board mean",
+}
+
+
+## The left pane's heading for `kind`, or "" for a kind nobody has given one.
+static func pane_label_for(kind: String) -> String:
+	return String(PANE_LABELS.get(kind, ""))
+
+
+## How many shapes `game/OVERLAY_GRAMMAR.md` documents. Named here because the legend
+## page's provenance line says "5 of the board's 10", and a hard-typed 10 in a format
+## string is a number nobody would ever re-check.
+##
+## `test_the_legend_names_as_many_shapes_as_the_grammar_documents` parses the document's
+## table and fails when it grows — which is the only way this stays true, since a new
+## grammar row is added by someone editing markdown who will never open this file.
+const OVERLAY_GRAMMAR_SHAPES: int = 10
+const OVERLAY_GRAMMAR_PATH := "res://game/OVERLAY_GRAMMAR.md"
+
 ## The shelf's rows, laid out inside DRAWING_BOX — the same matte a photograph is
 ## mounted on, for the reason SPEC_BOX gives: the frame stays on every page and
 ## only its contents change.
@@ -268,6 +312,18 @@ const PAGES: Array[Dictionary] = [
 		"caption": "The shelf",
 		"note": "Every first the garden can record, earned or not. A run announces one once on the post-mortem and then it lives here — and the greyed rows say outright what they want, so this is a list of things left to try rather than a list of things missed.",
 	},
+	{
+		"kind": KIND_LEGEND,
+		"plant": &"",
+		# Distinct from every other page's, because the byte-uniqueness check across
+		# PAGES requires it (see the shelf entry above). An aphid rather than a plant:
+		# the marks on the board are drawn about the bugs as often as about the beds,
+		# and this is the thing the player is reading the board FOR.
+		"drawing": "res://assets/sprites/pest_aphid.png",
+		"sprite": "res://assets/sprites/pest_aphid.png",
+		"caption": "Reading the board",
+		"note": "The garden draws on itself. A shape means the same thing wherever it appears — a full ring is always a reach, a closing arc is always a clock running down — so the five here are worth more than five facts. The rest of the marks follow the same grammar once these are familiar.",
+	},
 ]
 
 var _page: int = 0
@@ -276,6 +332,7 @@ var _drawing_rect: TextureRect
 var _drawing_pane_label: Label
 var _spec: Label
 var _shelf: Control
+var _legend: CueLegend
 var _sprite_rect: TextureRect
 var _caption: Label
 ## The page's own note, which is `NoteLabel` and NOT OverlayScreen's `Note` — the
@@ -411,6 +468,7 @@ func _build_left_page() -> void:
 	add_child(_spec)
 
 	_build_shelf()
+	_build_legend()
 
 	_source = Label.new()
 	_source.name = "SourceLabel"
@@ -482,6 +540,20 @@ func _build_shelf() -> void:
 		note.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		note.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_shelf.add_child(note)
+
+
+
+## The legend pane, on the same matte as a photograph and the shelf. Mirrors
+## `_build_shelf` exactly — one Control the size of DRAWING_BOX, hidden until its page
+## comes up — so the four kinds share a geometry and only one of them is ever visible.
+func _build_legend() -> void:
+	_legend = CueLegend.new()
+	_legend.name = "CueLegend"
+	_legend.position = DRAWING_BOX.position
+	_legend.size = DRAWING_BOX.size
+	_legend.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_legend.visible = false
+	add_child(_legend)
 
 
 ## What a shelf row's second line says. The prefix is the channel that survives
@@ -700,13 +772,9 @@ func go_to(page: int) -> void:
 	_drawing_rect.visible = drawn
 	_spec.visible = spec
 	_shelf.visible = kind == KIND_SHELF
+	_legend.visible = kind == KIND_LEGEND
 	_spec.text = plant_spec(StringName(entry.get("plant", &""))) if spec else ""
-	if drawn:
-		_drawing_pane_label.text = "The drawing"
-	elif spec:
-		_drawing_pane_label.text = "No drawing — the spec"
-	else:
-		_drawing_pane_label.text = "Every first the garden records"
+	_drawing_pane_label.text = pane_label_for(kind)
 	# The provenance line, which is the whole difference between the kinds of
 	# page: a drawing page names the photograph it is showing, a plant page says
 	# outright that there is no photograph and names the file that exists
@@ -715,6 +783,13 @@ func go_to(page: int) -> void:
 		_source.text = file
 	elif spec:
 		_source.text = "%s — never on paper" % file
+	elif kind == KIND_LEGEND:
+		# The provenance line's job on every other kind is to name the artefact. A legend
+		# has no artefact; what it has is a scope, and saying five-of-ten out loud is the
+		# honest version — a player who counts more shapes on the board than the page
+		# lists should be told that is expected rather than left to doubt the page.
+		_source.text = "%d of the board's %d marks — the ones you meet first" % [
+			CueLegend.row_count(), OVERLAY_GRAMMAR_SHAPES]
 	else:
 		_source.text = shelf_progress_text()
 	_sprite_rect.texture = load(GardenTheme.retina_path(String(entry["sprite"]))) as Texture2D
