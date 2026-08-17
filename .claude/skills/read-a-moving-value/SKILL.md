@@ -41,6 +41,40 @@ genuinely blank or something else is holding it for another 400 milliseconds.
    the queue (`_advance_message_queue`), zero the timer, call the setter. A state you
    arrived at deliberately is reproducible; a state you caught is not.
 
+## The rule applies to the SESSION, not just to the read
+
+Freezing before a read is not enough if the game keeps running between reads. Launch it,
+spend four minutes reading source or deciding what to check, and the thing you come back to
+is not the thing you left: a wave finishes, the garden is eaten, and the board you meant to
+photograph has been replaced by a summary screen. **A game left running is a moving value
+the size of the whole board.**
+
+So `pause` immediately after `launch` whenever the next thing you do is anything other than
+driving the game, and `unpause` deliberately when you want time to pass. The cost is one
+command; the failure mode is a screenshot of something else entirely, which is easy to
+misread as the feature being broken.
+
+## An empty result can be the CORRECT rendering of a cue that says nothing
+
+The table above is all one shape: *the value looked wrong and was mid-transition*. There is
+a second shape with an identical debugging instinct and a different cause — **the value
+looked absent and was correctly absent, because the check was aimed at the one case the
+feature deliberately excludes.**
+
+A new hover cue drew nothing in its first screenshot. The cue was fine. The cell being
+hovered was one the click refuses, and the draw path returns before that cue on exactly
+those cells — by design, because a second mark on ground already carrying a refusal is
+noise. Ten minutes went into "why is my drawing not appearing".
+
+> **Before concluding a feature does not render: name the cases where it renders NOTHING,
+> and check you are not standing in one.** Every cue with a precedence rule, a guard, or an
+> "only when placeable" condition has such a case, and it is usually written down one
+> function above the drawing.
+
+That near-miss was worth having: it exposed a real inconsistency underneath, where the
+predicate answered for a cell the drawing skipped. The picture and the predicate disagreed,
+and only aiming at the excluded case showed it.
+
 ## What makes this different from "flaky, retry it"
 
 Retrying gets you a *second* undated sample. Sometimes it agrees and you conclude wrongly
