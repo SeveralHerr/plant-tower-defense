@@ -84,6 +84,29 @@ directly above it, since a reason worth reading is usually several lines long.
                code must NOT drift down onto a later call
     mutations: 5, all red - count bools as zero, want 1 instead of 2**N, ignore the
                waiver, let the waiver drift across code, drop variants from the exit code
+
+THE THIRD RULE: a corpus producer nothing calls.
+
+The first rule catches a message the budget never measures. The second catches a string
+a producer can emit that nobody priced. This catches the sign flipped: text that IS
+priced and can no longer be produced, because its last caller was deleted. The row's
+budget reports the widest string in the corpus, so a dead producer sets a ceiling the
+game cannot reach - a permanent tax on every future message for a sentence no player
+will ever see. `derive-the-list` names the shape: a recorded list with a one-directional
+test, where an entry left over from something reshaped sits pointing at nothing.
+
+Clean on this repo the day it was written, which is the honest state to record. Its
+value is preventing drift, and the fixture is therefore the whole of its evidence.
+
+    fixture:   4 more cases - every producer has a caller / one nothing calls / one only
+               the HUD ITSELF calls (reachable text, not dead) / waived
+    mutations: 4, all red - count the corpus body as a caller, count the declaration
+               line as a caller, ignore the waiver, drop dead producers from the exit code
+
+Writing it also caught a real defect in this file: the dead-producer rule printed a
+`waive:` hint and ignored waivers entirely, because the lookup lived inside the variant
+rule's loop. Both rules share `waived_in_corpus()` now - a second copy would have been
+the thing that drifted next.
 """
 
 from __future__ import annotations
@@ -206,6 +229,28 @@ def corpus_from(blanked: str, raw: str) -> tuple[set[str], set[str], str]:
     return producers, literals, ""
 
 
+def waived_in_corpus(name: str, blank_lines: list[str], raw_lines: list[str]) -> bool:
+    """Is this producer's corpus line waived, inline or in the block directly above it?
+
+    Shared by the variant rule and the dead-producer rule, which is not tidiness: the
+    first draft of the dead-producer rule printed a `waive:` hint and then ignored
+    waivers entirely, because the lookup lived inside the other rule's loop. The fixture
+    caught it, and a second copy would have been the thing that drifted next.
+
+    Contiguous comment lines only, so a waiver cannot drift down from an unrelated block
+    further up the function.
+    """
+    for i, line_blank in enumerate(blank_lines):
+        if not re.search(r"\b%s\s*\(" % re.escape(name), line_blank):
+            continue
+        for j in range(i, -1, -1):
+            if WAIVER.search(raw_lines[j]):
+                return True
+            if j < i and not raw_lines[j].lstrip().startswith("#"):
+                break
+    return False
+
+
 def bool_variant_findings(blanked: str, raw: str) -> list[tuple[str, int, int, int]]:
     """[(producer, bool params, appearances, wanted)] for producers priced too few times.
 
@@ -240,28 +285,72 @@ def bool_variant_findings(blanked: str, raw: str) -> list[tuple[str, int, int, i
         if bools == 0:
             continue
         wanted = 2 ** bools
-        seen, waived = 0, False
         blank_lines, raw_lines = body_blank.split("\n"), body_raw.split("\n")
-        for i, line_blank in enumerate(blank_lines):
-            if not re.search(r"\b%s\s*\(" % re.escape(name), line_blank):
-                continue
-            seen += 1
-            # The waiver may sit on the call's own line OR in the comment block
-            # immediately above it. A reason worth reading is usually several lines
-            # long -- the one this rule was written for cites the two `parts.append`
-            # calls that make one combination dominate -- and forcing it onto the end
-            # of a call line would either truncate it or wrap it illegibly. Walk back
-            # over contiguous comment lines only, so a waiver cannot drift down from
-            # an unrelated block further up.
-            for j in range(i, -1, -1):
-                if WAIVER.search(raw_lines[j]):
-                    waived = True
-                    break
-                if j < i and not raw_lines[j].lstrip().startswith("#"):
-                    break
+        waived = waived_in_corpus(name, blank_lines, raw_lines)
+        seen = 0
+        for line_blank in blank_lines:
+            if re.search(r"\b%s\s*\(" % re.escape(name), line_blank):
+                seen += 1
         if not waived and seen < wanted:
             out.append((name, bools, seen, wanted))
     return out
+
+
+def dead_producer_findings(hud_path: str, files: list[str], producers: set[str]) -> list[str]:
+    """Corpus producers that nothing outside the corpus ever calls.
+
+    THE THIRD DIRECTION, and the one with the sign flipped. The call-site rule catches a
+    message the budget never measures. The variant rule catches a string a producer can
+    emit that nobody priced. This catches the opposite: text that is priced and can no
+    longer be produced, because its last caller was deleted.
+
+    That is not harmless. The row's budget reports the widest string in the corpus, so a
+    dead producer can set a ceiling the game cannot reach — a permanent tax on every
+    future message for a sentence no player will ever see. `derive-the-list` names this
+    exact shape: a recorded list with a one-directional test, where an entry left over
+    from something reshaped sits pointing at nothing.
+
+    A call inside `message_corpus()` itself does not count, or every producer would look
+    alive by virtue of being priced. Nor does the `static func` line that declares it.
+    Everything else counts, including a call from elsewhere in the HUD — a producer used
+    only by `_paint_message_row` is reachable text, not dead.
+    """
+    dead: list[str] = []
+    try:
+        hud_raw = read(hud_path)
+        hud_blank = strip_comments(hud_raw)
+    except (OSError, UnicodeDecodeError):
+        return dead
+    span = (0, 0)
+    at = hud_blank.find("func %s(" % CORPUS_FUNC)
+    if at >= 0:
+        end = hud_blank.find("\nfunc ", at + 1)
+        span = (at, end if end > 0 else len(hud_blank))
+    corpus_blank = hud_blank[span[0]:span[1]].split("\n")
+    corpus_raw = hud_raw[span[0]:span[1]].split("\n")
+    for name in sorted(producers):
+        # The same waiver the variant rule honours, through the same helper — the
+        # first draft of this rule printed a `waive:` hint and ignored waivers
+        # entirely, because the lookup lived inside the other rule's loop.
+        if waived_in_corpus(name, corpus_blank, corpus_raw):
+            continue
+        calls = 0
+        for path in files:
+            try:
+                code = strip_comments(read(path))
+            except (OSError, UnicodeDecodeError):
+                continue
+            for m in re.finditer(r"\b%s\s*\(" % re.escape(name), code):
+                if os.path.abspath(path) == os.path.abspath(hud_path):
+                    if span[0] <= m.start() < span[1]:
+                        continue
+                    line_start = code.rfind("\n", 0, m.start()) + 1
+                    if re.match(r"\s*(static\s+)?func\b", code[line_start:m.start()]):
+                        continue
+                calls += 1
+        if calls == 0:
+            dead.append(name)
+    return dead
 
 
 def main() -> int:
@@ -341,11 +430,12 @@ def main() -> int:
                              arg.strip().replace("\n", " ")[:60]))
 
     variants = bool_variant_findings(strip_comments(hud_raw), hud_raw)
+    dead = dead_producer_findings(hud_path, files, producers)
     print("message_corpus_check: %d .gd file(s) under %s, %d %s() call site(s), "
           "%d waived; corpus declares %d producer(s) and %d literal(s); "
-          "%d finding(s) + %d unpriced variant(s)"
+          "%d finding(s) + %d unpriced variant(s) + %d dead producer(s)"
           % (len(files), args.sources, sites, CALL[:-1], waived,
-             len(producers), len(literals), len(findings), len(variants)))
+             len(producers), len(literals), len(findings), len(variants), len(dead)))
     if sites == 0:
         print("  NOTE: nothing to check -- no %s() call site was found at all. That is "
               "a clean result only if this project genuinely has none; if it has some, "
@@ -370,13 +460,22 @@ def main() -> int:
               "writing down rather than padding the corpus to satisfy a counter. "
               "It may sit on the call's own line or in the comment block directly "
               "above it, because a reason worth reading is usually several lines.")
+    for name in dead:
+        print("FINDING: %s() is priced by %s() and called by nothing else."
+              % (name, CORPUS_FUNC))
+        print("  fix: delete it, or find the caller that was removed. A producer the game "
+              "can no longer emit still sets the row's ceiling, which is a permanent tax "
+              "on every future message for a sentence no player will ever see.")
+        print("  waive: add `# message-corpus-check: ok - <reason>` on its corpus line or "
+              "in the comment block above it -- for text reached only through a path this "
+              "reads as a waived call site.")
     print("  NOT COVERED: this reads source, not a running tree. It cannot see a "
           "message built at runtime from data (a refusal string, a name from a save), "
           "it does not know the row's WIDTH -- that is the budget's job, and a corpus "
           "can be complete and still too wide -- and it cannot tell whether a corpus "
           "literal is still reachable from anywhere. Nor does it compile: only "
           "import_check.py and lint_project.gd do, and neither is parallel-safe.")
-    return 1 if findings or variants else 0
+    return 1 if findings or variants or dead else 0
 
 
 if __name__ == "__main__":
