@@ -4211,3 +4211,38 @@ cited in code, and the citation is a mitigation this project has watched fail.
     the guard held — but the skill's every path still points at whatever version the
     cache happens to be pinned to, which is the same trap logged long ago and is why
     this ran `0.42.0/tools/scaffold_install.py` explicitly.
+
+## 2026-08-16 — cycle 45: a test that had never checked its own rule
+
+- Value: **warranted**, and by a headless assertion rather than by the bridge — the
+  finding came from adding one liveness check to a test that had been green for many
+  cycles.
+  - Expected: guard `_furthest_along_in_range` against a stale pest (the reference the
+    0.42.0 crash dereferenced), and audit the tests that name nodes after an `await`.
+    A tidy-up.
+  - Got: the guard is right and small. The audit found the real thing, and it was not
+    about 0.42.0 at all: the same test **fails its new liveness assertion on 0.38.0**,
+    where the whole suite is green. `far._leg = 4` on a five-point route is the last
+    leg, so the pest escaped and freed itself during the settle frames
+    `instantiate_scene` pumps. `assert_true(target == far)` then compared two
+    references to the same freed object and passed.
+  - Found: **a test that had never once checked the rule it is named for.**
+    `test_corn_shoots_the_pest_closest_to_escaping` measured a candidate set with one
+    live member in it. Fixed by putting the pest on the last leg it can survive on
+    (`_leg = 3`), and proven by planting a nearest-target implementation and watching
+    it fail with real numbers — `targets the pest at progress 0.75, not the closer one
+    at 0.25`. That failure was unreachable before.
+  - Cheaper: nothing cheaper, and nothing else would have found it. `settle_read_check.py`
+    reports 0 findings here — its vocabulary is settle-volatile *values*, and this is a
+    settle-volatile *reference*, which is a different class.
+
+- Gap: **no gaps this turn.** One decision recorded instead. Nine tests in this project
+  create a self-freeing mover and name it after an `await`; exactly one put its mover
+  near the end of its life, and the other eight start at leg 0 where two settle frames
+  cannot reach the end. **A checker for this would fire nine times for one real
+  defect**, which is the ratio that teaches people to waive a gate — so the rule went
+  into `.claude/skills/godot-test-isolation` as a question to ask ("does this test put
+  its mover near the end of its life?") rather than into `tools/` as a check. Deciding
+  *not* to build a checker is a legitimate outcome of an audit and is worth writing
+  down, because the alternative leaves the same audit to be re-run later by someone who
+  assumes it was never done.

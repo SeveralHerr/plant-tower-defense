@@ -288,10 +288,29 @@ func test_corn_shoots_the_pest_closest_to_escaping() -> String:
 	far.setup(Pest.APHID, route)
 	far.position = Vector2(150, 0)
 	far.set_physics_process(false)
-	far._leg = 4
+	# 3, not 4. The route has five points, so `_leg >= _route.size()` at 5 -- but
+	# `_advance` reaches that check during the settle frames `instantiate_scene`
+	# pumps, and at leg 4 the pest is on its final step: it escaped and freed itself
+	# before this test ever looked at it. `target == far` then compared two freed
+	# references and passed, so the rule this test is named for has never actually
+	# been checked. Leg 3 is the last leg a pest can sit on and still be here.
+	far._leg = 3
 
 	var host: Node2D = _host([corn, near, far])
 	await _T.instantiate_scene(host)
+	# Asserted, not assumed, and this is the assertion that would have caught a
+	# harness regression as a FAILURE rather than as an access violation: under
+	# harness 0.42.0 one of these is already freed by this line. Plant's own guard
+	# now skips a stale entry, which is right for a shipped game and would leave this
+	# test quietly targeting whichever pest survived -- so the test says out loud
+	# that both are still here before it asks which one is chosen.
+	var err_alive: String = _T.assert_true(
+		is_instance_valid(near) and is_instance_valid(far),
+		"both pests survived the settle frames -- if this fails, the hosting freed "
+			+ "one of them and the targeting answer below is about a set of one")
+	if err_alive != "":
+		_T.free_ui(host)
+		return err_alive
 	var candidates: Array[Pest] = [near, far]
 	var target: Pest = corn._furthest_along_in_range(candidates, CornCobbler.RANGE)
 	var err: String = _T.assert_true(target == far,

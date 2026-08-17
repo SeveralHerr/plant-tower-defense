@@ -11,6 +11,53 @@ months, while an assertion measures an object the test never meant to select.
 It also comes with a strong, wrong, ready-made explanation. Read the mechanism section
 before adopting one.
 
+## A node that frees itself between your setup and your assertion
+
+The group case below is about selecting the *wrong* node. This one is about selecting a
+node that is no longer there — and it reads identically in the test source.
+
+`instantiate_scene()` pumps settle frames. Anything that can end during those frames
+does: a `Pest` that reaches the end of its route escapes and `queue_free`s itself, a
+`Kernel` that leaves the board frees itself, a `SeedBomb` detonates. So a test that
+**creates a mover, hosts it, awaits, and then names it again** may be naming a freed
+object.
+
+What makes this worth its own section is how it passes:
+
+```gdscript
+far._leg = 4                      # the last leg of a 5-point route
+var host := _host([corn, near, far])
+await _T.instantiate_scene(host)  # far escapes here and frees itself
+var candidates: Array[Pest] = [near, far]
+var target: Pest = corn._furthest_along_in_range(candidates, CornCobbler.RANGE)
+_T.assert_true(target == far, "targets the furthest-along pest")
+```
+
+`target == far` compares two references to the same freed object and is **true**. The
+test was green for many cycles and had never once checked the rule it is named for —
+the candidate set it measured had one live member in it.
+
+**The guard is one assertion, placed after the await and before the array:**
+
+```gdscript
+_T.assert_true(is_instance_valid(near) and is_instance_valid(far),
+    "both pests survived the settle frames")
+```
+
+Two notes from fixing it:
+
+- **Making the production code defensive HIDES this.** `_furthest_along_in_range` now
+  skips invalid entries, which is right for a shipped game — a targeting routine should
+  not crash on a stale reference. It also means a test with a freed pest quietly
+  measures a smaller set instead of failing. Guard the game, assert in the test; the
+  two changes pull in opposite directions and both are correct.
+- **This was NOT worth a static checker, and the measurement is why.** Nine tests in
+  this project create a self-freeing mover and name it after an await; exactly one set
+  it near its end, and the other eight start at leg 0 where two settle frames cannot
+  reach the end. A check firing nine times for one real defect is the shape people
+  learn to waive. Ask instead: *does this test put its mover near the end of its life?*
+  If yes, assert it survived.
+
 ## The mechanism
 
 **Measure before you believe a story about this.** The obvious story — that `queue_free()`

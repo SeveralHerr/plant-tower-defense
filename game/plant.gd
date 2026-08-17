@@ -410,10 +410,27 @@ func _live_pests() -> Array[Pest]:
 
 ## Whichever live pest inside `radius` is furthest along the road. Leaking a pest
 ## costs a life, so the one closest to the exit is always the right target.
+##
+## **"live" is checked, not assumed.** The array comes from the caller, and Game
+## rebuilds it from the `pests` group every frame — so in a real run every entry is
+## valid by construction. That is a property of one caller, not of this function, and
+## a targeting routine that dereferences a freed node crashes the game rather than
+## failing an assertion. Reached for real: a harness regression froze a pest between
+## a test hosting it and this loop running, and the result was an access violation
+## (see plant-tower-defense-or67 and gh#43).
+##
+## Note what the guard costs, because it is not free: a caller passing a stale array
+## now gets a quietly smaller candidate set instead of a crash. That is the right
+## trade for a shipped game and the wrong one for a test, which is why
+## test_corn_shoots_the_pest_closest_to_escaping asserts its pests are still valid
+## before it calls this — the guard protects the player, the assertion keeps the
+## signal.
 func _furthest_along_in_range(pests: Array[Pest], radius: float) -> Pest:
 	var best: Pest = null
 	var best_progress: float = -1.0
 	for pest: Pest in pests:
+		if pest == null or not is_instance_valid(pest):
+			continue
 		if pest.global_position.distance_to(global_position) > radius:
 			continue
 		var p: float = pest.progress()
