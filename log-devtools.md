@@ -6064,3 +6064,50 @@ Noted on the bead.
     wanted. Three verbs, one guard each, and it converts a silent no-op into a message. A
     positional verb with no position is never a call anyone meant.
   - Note: no other gaps this turn.
+
+## 2026-08-17 — Cycle 95: the sixth legend row (-1wx0)
+
+- Value: **warranted** — one question, and it is the entire design of the row.
+  - Expected: whether a heavier bracket reads as *the same mark with a warning on it* rather
+    than as a different symbol. No assertion answers that.
+  - Got: it does. Through the pause door, the armed row's red brackets are visibly heavier
+    than row one's yellow ones and the two read as a pair. All six rows sit inside the 300 px
+    matte with room below. And the provenance line updated itself to "6 of the board's 10
+    marks" with no second edit, because cycle 91 wrote it against `CueLegend.row_count()` —
+    a seam taken up front, paying four cycles later.
+  - Found: **the bead's constraint was wrong in the direction that makes work cheaper.** It
+    said the five rows sit at the edge of the matte, so a sixth needs `ROW_PITCH` cut or a
+    second page. Derived from `CueLegend`'s own constants rather than eyeballed: five end at
+    248 of 300, six at 294, seven at 340. It fit at the existing pitch. "At the edge" was an
+    impression written into a bead, and acting on it would have bought a second page nobody
+    needed — the mirror image of the last three cycles, where a wrong premise made work look
+    *necessary*. Also: cycle 91 closed `-bxhg` without meeting one clause of its own
+    acceptance, which nothing noticed until I went looking for a place to record what is
+    taught.
+  - Cheaper: nothing for the drawing. Everything else this cycle came from arithmetic over
+    constants, which is the cheap half and was the half the bead skipped.
+
+- Gap: **`verify_ledger record` has no way to say a check was about a PICTURE.** Four cycles
+  running the decisive runtime evidence has been a screenshot judged by eye — the husk pips
+  (88), the flight tip's width (90), the legend's five swatches (91), the armed bracket's
+  weight (95). Each is recorded as a `checks` entry with `"result": "pass"` and a prose note,
+  which is indistinguishable in the row from an assertion that ran.
+  That matters for the ledger's own purpose. `stats` counts passes; it cannot separate "a
+  gate returned 0" from "a person looked at a PNG and was satisfied", and the second is the
+  one that does not survive being wrong. It is also the only kind of check this project
+  cannot re-run — the artefact is in `user://screenshots/` and the row does not name it.
+  - [G-070] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: an optional `"evidence"` field on a `checks` entry carrying the artefact
+    path, plus a `"judged": "eye"` marker distinguishing a human verdict from a mechanical
+    one. Then `stats` can report "N of M runs rest on a judged check", which is a number
+    worth watching in a project whose most player-facing work is exactly the work no
+    assertion covers. The screenshots already have stable paths; nothing is being asked to
+    exist that does not.
+  - Note: no other gaps this turn.
+
+  - [G-070] status: open | seen: 1 | harness: 0.54.0 | upstream: gh#56 | note: reconciled
+    against the installed 0.54.0 before filing. `evidence` exists at
+    `templates/tools/verify_ledger.py:170` but only as an ALIAS for the whole `checks`
+    array (`RUN_JSON_ALIASES`), not as a per-check artefact path, and there is no `judged`
+    concept anywhere in the file. Filed with the four-cycle table (88, 90, 91, 95) as the
+    evidence, since one screenshot-judged check is a habit and four in a row is a ratio.

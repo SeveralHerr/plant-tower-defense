@@ -212,6 +212,26 @@ bd close <id> --reason="<what shipped, and the commit sha>"
 The reason is read later by someone deciding whether a related bead is still real. "Done"
 is not a reason.
 
+**Re-read the ACCEPTANCE and answer it clause by clause.** An acceptance criterion is
+usually a sentence with two or three "and"s in it, and the last clause is the one that gets
+dropped — it is furthest from the code and reads as bookkeeping. Cycle 91 closed `-bxhg`
+having built the thing, tested it and driven it at runtime, while quietly skipping "and
+`OVERLAY_GRAMMAR.md` gains a line saying which rows are taught". Nothing noticed for four
+cycles; it surfaced only because cycle 95 happened to go looking for somewhere to record
+exactly that.
+
+No mechanism catches this. `bd close` does not read the acceptance, the commit does not
+either, and a close reason describing what shipped is *indistinguishable* from one
+describing what was asked for — which is precisely why the habit has to be quoting the
+criterion rather than summarising the work.
+
+If a clause genuinely should not be met, say so in the reason and why. "Refused the third
+clause because X" is a fine close and a useful one; silently satisfying two of three is not.
+
+**Never pass the reason as a shell literal** — `--reason "$(cat FILE)"`, per `CLAUDE.md`.
+Backticks in a close reason are command substitution and the word vanishes leaving a
+still-grammatical sentence, which has now happened four times in this project.
+
 ## What this skill does not cover
 
 It does not decide **whether** the runtime pass was worth running — that is Phase 0.5

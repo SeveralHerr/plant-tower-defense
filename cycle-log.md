@@ -1,4 +1,4 @@
-# Cycle 94
+# Cycle 95
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,28 +6,35 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 94 taught
+## What cycle 95 taught
 
-**A correct citation under a wrong sentence is more expensive than no citation.** Cycle 93
-wrote that arming an uproot destroys the line the player is reading, and cited
-`game/hud.gd:1462` — the right line, the pre-empt branch, genuinely the one that fires. The
-two lines under it *queue* the displaced message rather than dropping it. I had reasoned from
-the other branch, eight lines away, and the citation made the claim read as checked. It cost
-this whole cycle to disprove, and `citation_check` says in its own output that it cannot see
-this: it proves a line exists, never that the line supports the claim.
+**A wrong premise can make work look more expensive than it is, and that is the version
+nobody catches.** `-1wx0` said the legend's five rows sat at the edge of the 300 px matte, so
+a sixth needed `ROW_PITCH` cut or a second page. Derived from `CueLegend`'s own constants
+instead of eyeballed: five end at **248**, six at **294**, seven at **340**. It fit at the
+existing pitch and cost nothing but the row. The last three cycles found premises that made
+work look *necessary*; this one nearly bought a second page nobody needed.
 
-So the answer to `-trn1` is **already fine**. The pre-empted line comes back with the time it
-had left — 3.5 s of its 4.0 after a half-second interruption, well over `MESSAGE_MIN_READABLE`
-— so total reading time is preserved rather than lost. Verified against the real paths: a real
-plant killed, a real `arm_uproot`, then `step-time --seconds 4.05 --then-pause` and the row
-reads "A hungry pest ate your Corn Cobbler!" again. It is destroyed only when the queue is
-full of equals, which needs four simultaneous ordinary lines and which cycle 93's six-wave run
-never reached. Both cases are tested now, so the good news is bounded rather than optimistic.
+So the legend teaches six of ten now, and the sixth is the ARMED cue — the only one guarding
+an action that cannot be undone. Its swatch is deliberately row one's brackets at
+`WARNING_LINE_WIDTH` in danger red, because that IS the grammar: doubled width means the mark
+you already know, thicker. The screenshot is the check that matters and the two rows read as
+a pair.
 
-**And the fix creates the next question.** A resumed line is marked in no way — same text,
-same styling — so a player who loses a bed and arms an uproot sees that sentence twice, four
-seconds apart, with nothing saying one plant died rather than two. `-gtne`, and its most
-interesting option *shortens* the row's work: do not resume a line that already had its 1.2 s.
+**And a test kept its own copy of what the code supports.** The drawable-shapes check held a
+hand-written array, so adding the sixth row broke the test that same edit was meant to
+satisfy — **a test maintained by whoever breaks it is not an assertion.** Now derived from the
+source, checking two things that fail apart: the `match` arm, and a painter for it to call.
+
+**Cycle 91 also closed `-bxhg` with one acceptance clause unmet** and nothing noticed for four
+cycles. `verify-bd-item` now says to answer the acceptance clause by clause when closing;
+`-pc3m` is the audit that says how big the hole is.
+
+## Carried from cycle 94
+
+**A correct citation under a wrong sentence is more expensive than no citation** — it is what
+stops the next reader checking. Read what the cited line DOES, not just that it is the line
+you meant.
 
 ## Carried from cycle 93
 
@@ -35,28 +42,19 @@ interesting option *shortens* the row's work: do not resume a line that already 
 read.** Pair an expected zero with a witness that must move — `run_seconds`, a monotonic tally
 — or read the whole `state()`, which carries one for free.
 
-## Carried from cycle 92
-
-**Confirming a bead can find a better option than the three it lists**, and three cycles
-running the thing about to be built already partly existed. Grep for the HELPER, not only the
-bead's claim.
-
 ## Where things stand
 
-A hundred beads ready. Suite **611/611**, 12981 assertions; lint 0/0; eleven checkers clean;
-`findings` **0 across 5 of 5**. Fifteen skills. Upstream gh#44 and **gh#51–gh#55** open;
-gh#49/gh#50 fixed. Still on harness **0.38.0** deliberately (`-ny3h`, gh#43).
+A hundred beads ready. Suite **611/611**, 12997 assertions; lint 0/0; eleven checkers clean;
+`findings` **0 across 5 of 5**; reach 1/1. Fifteen skills. Upstream gh#44 and **gh#51–gh#56**
+open; gh#49/gh#50 fixed. Still on harness **0.38.0** deliberately (`-ny3h`, gh#43).
 
-**The player-facing steer is standing, and cycles 93-94 both spent it on measurements that
-closed worries instead of shipping changes.** 90 made a Chomp explain itself; 91 gave the
-board's drawn language a page; 92 put that page one press from a paused run; 93 found the
-message row drops nothing; 94 found that arming an uproot defers rather than erases. The
-sentence step 2 owes for 94: **the worry it closed was one I had written into `kanban.md` the
-cycle before, and it would otherwise have become a change to the most carefully worded message
-in the game.** Two measurement cycles in a row is enough, though — 95 takes something that
-ships. `-gtne` is the sharpest player-facing thread (a resumed line looks like a second event)
-and `-1wx0` remains the strongest untouched one (the doubled-width ARMED cue, the one guarding
-the only irreversible act, is among the five the legend does not teach).
+**The player-facing steer is standing and cycle 95 kept the promise cycle 94 made.** 90 made a
+Chomp explain itself; 91 gave the board's drawn language a page; 92 put that page one press
+from a paused run; 93 and 94 closed two worries with measurements and shipped nothing visible;
+95 taught the ARMED cue — the one guarding the only irreversible act. **The legend is now
+finished-shaped rather than unfinished**: six rows end at 294 of a 300 px matte, so a seventh
+is a layout decision, and `-wenx` asks whether any of the four remaining cues deserves that
+cost (one of them, the weather, provably does not — the game says it in words three times).
 
 ## Waiting on the user
 

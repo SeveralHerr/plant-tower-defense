@@ -247,6 +247,39 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (95) — a test edited by whoever breaks it, and one cue that needs no row
+
+- **Three tests kept a hand-written copy of a list the game already declares; one of them
+  fired this cycle for exactly that reason.** `test_every_legend_row_has_a_shape_the_legend
+  _can_draw` held its own array of drawable shapes, so adding a sixth row broke a test that
+  the same edit was supposed to satisfy — **a test maintained by the person who breaks it is
+  not an assertion**. Replaced with a derivation from the source that checks two things which
+  fail apart: the `match` arm exists, and a painter exists for it to call.
+  Enumerated what remains, because two more is a pattern and zero more would have been an
+  anecdote. `test/unit/test_combat.gd:637` lists the `Sfx` event ids the call sites use;
+  `:5255` lists the three mutations. **They are not the same problem.** The mutations one is
+  trivially derivable — `Pest.MUTATION_HUSK_MULTIPLIER` is already described elsewhere in the
+  suite as "the canonical list of traits a wave can roll", so the hand-list is a second copy
+  of a thing one expression away. The Sfx one is not: it lists what the *call sites* use,
+  which cannot come from `Sfx.SOUNDS` because `SOUNDS` is what it is checked against. Getting
+  it honestly means scanning game source for `Sfx.play(` — **which this project already does
+  for messages**, in `tools/message_corpus_check.py`, and that tool exists precisely because
+  the same list was being rebuilt by hand for three cycles.
+  So the cheap half is a one-line change and the expensive half has a working precedent to
+  copy. Worth doing in that order.
+- **One of the four cues the legend still does not teach needs no row, because the game says
+  it in words.** The weather's scattered marks are the row a seventh legend entry would most
+  obviously want — a player sees the whole board change texture. But `Hud.show_weather`
+  (`game/hud.gd:1899`) puts a banner up naming it, `Hud.weather_headline` (`:1907`) is what
+  writes that sentence, and `Hud.next_wave_note` (`:1582`) names the coming weather in the
+  prep note as well. Three places tell the player the word.
+  So the marks are a second channel on a named state rather than the only carrier, which is
+  the two-channel rule working and the opposite of the ARMED cue's situation — that one had
+  *no* words anywhere, which is why it was worth the row. **A seventh row now costs a layout
+  decision** (six end at 294 of the 300px matte; seven would end at 340), so the next
+  candidate has to earn it, and the weather does not. That leaves the straight-line state,
+  the husk pips and the marked-cell ring, and none of those has a banner.
+
 ### New this cycle (94) — a line that comes back looks like a line that happened twice
 
 - **A resumed message is indistinguishable from a repeated event, and cycle 94 made that
@@ -398,6 +431,15 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   `test_the_legend_fits_the_page_it_is_drawn_on` puts the current five at the edge of the
   300px matte — so this is `ROW_PITCH` coming down, or a second legend page, and the test
   will say which.
+  **SHIPPED in cycle 95, and the constraint above was wrong in the direction that makes work
+  cheaper.** "At the edge of the matte" was an impression, not a measurement: derived from
+  `CueLegend`'s own constants, five rows end at **248 of 300** and a sixth at **294**. It fit
+  at the existing pitch with six pixels to spare and cost nothing but the row. **A seventh
+  does not fit** (340), so the constraint is real — it was just one row further out than the
+  entry claimed, and claiming it early nearly bought a page nobody needed.
+  The four still untaught are the straight-line state, the weather marks, the husk pips and
+  the small-solid-ring marked cell. Teaching a fifth is now genuinely a layout decision
+  rather than an append, which is what this entry thought it already was.
 
 ### New this cycle (90) — 19 messages on one rung, and a class with one member
 
