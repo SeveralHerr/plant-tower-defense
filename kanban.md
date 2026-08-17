@@ -195,6 +195,38 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (69) — the game draws two countdowns and refuses to draw the third
+
+- **The only line with a clock behind it is the only clock the game never draws.**
+  `_uproot_left` ticks down at `game/game.gd:1375` and lives entirely inside `game.gd` —
+  outside it the identifier appears only in tests, never in `hud.gd`, so the HUD learns
+  *armed or not* through `uproot_armed()` (`game/game.gd:1340`) and never *how much is
+  left*. Meanwhile the game draws this exact thing twice already: `husk_layer.gd:69-77`
+  sweeps `TAU * frac` around a husk as its rot timer runs, and `hud.gd:643-647` drains
+  `PrepBar` across the whole top bar over the prep gap. A four-second irreversible
+  decision is the one countdown with nothing on screen. Now that cycle 69 guarantees the
+  prompt the row the instant it is armed, drawing the remaining fraction under it is the
+  natural other half — and it is a shape the player has already been taught by husks.
+- **"Only one line may carry a deadline" is a paragraph, and paragraphs do not fail.**
+  `game/hud.gd:347` warns that two `MESSAGE_DEADLINE` lines cannot defer each other —
+  whichever waits is wrong by construction — and `game/game.gd:1333` is, today, the only
+  producer (`grep -rn MESSAGE_DEADLINE game/` returns the constant at `hud.gd:351`, one
+  comment and that one call). The person who adds the second will be reading their own
+  feature, not this constant. A test asserting the call-site count is exactly one, failing
+  with the paragraph as its message, puts the warning in front of them at the moment it
+  applies. Cheap, and the same move `message_corpus_check` already makes for the row's
+  strings.
+- **`OVERLAY_GRAMMAR.md` filed a real cue under "sprites drawing themselves".**
+  Its derivation (`game/OVERLAY_GRAMMAR.md:55-56`) lists `husk_layer.gd` among the files
+  that are art rather than cues. But `husk_layer.gd:69-77` draws `draw_arc(..., TAU * frac,
+  ...)` whose sweep *is* the husk's remaining life — a mark that carries state, which is
+  the table's own definition of a cue. Including it supplies the row the table is missing,
+  **partial arc = time remaining**, and that in turn demotes `chomp_flower.gd:138`'s
+  shrinking ring from a lone exception to one instance of a vocabulary the game already
+  has. One cycle after the document was derived, its exclusion list is where the next
+  correction was hiding — which is the same lesson as the numbers it cites moving before
+  the ink dried.
+
 ### New this cycle (68) — the grammar is written; the plants do not follow it
 
 - **Every plant draws its own range ring and none of them share the code.**

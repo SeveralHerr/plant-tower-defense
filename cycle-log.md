@@ -1,4 +1,4 @@
-# Cycle 68
+# Cycle 69
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,34 +6,40 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 68 taught
+## What cycle 69 taught
 
-**Deriving a grammar disagreed with the grammar I had written from memory.** Cycle 67's
-kanban entry said four drawn cues shared a vocabulary: dashed = a remark, solid = a range,
-filled = a gain, doubled width = armed. Three of those hold. **"Solid ring = a range" is
-violated twice** — `SoleCoverMarks` draws small *solid* rings on road cells (a mark, not a
-radius) and `ChompFlower` draws a solid ring whose radius *shrinks* as a chew completes. I
-wrote the first of those two cycles ago.
+**A question with two halves can have two different answers, and stopping at the first one
+would have closed the bead wrongly.** `-z6l7` asked whether the message queue may defer an
+important message at all. It may never defer one behind an *ambient* line — `show_message`
+pre-empts outright on higher priority, and two tests already pinned that, so "never, by
+construction" is the honest answer to the question as asked. It may defer one behind
+another *important* line, for up to `5.0 - MESSAGE_MIN_READABLE` = 3.8 seconds. The
+armed-uproot prompt's whole window is 4.0. So the sentence telling the player they have
+four seconds could arrive with 0.2 of them left, behind a packet reveal.
 
-`game/OVERLAY_GRAMMAR.md` states the grammar with both exceptions named rather than
-smoothed over, because a fifth cue copying "solid ring" from the wrong one inherits the
-wrong meaning. Its mechanical half is a test — six mutations, all red — and its prose half
-says plainly that it will rot, with the `grep` that would falsify it written into the file.
+`MESSAGE_DEADLINE` is a third rung and its comment is careful about what it means: not
+*more important*, but *expires*. Deferring a line whose subject is already counting down
+elsewhere does not postpone the message, it shortens it.
 
-**And the document's own pointers broke it before it was committed.** Adding a five-line
-header to three cue files shifted eight of the line numbers the document cites. Re-derived,
-then verified *programmatically* that all twelve citations land on a `draw_` call rather
-than trusting the fix by eye.
+**The runtime pass earned its launch on something the headless test could not touch.**
+`arm_uproot` returned `nothing is selected` live, because the test sets `selected_placed`
+by planting and a player sets it by clicking. Driving the real click through touch
+emulation is what proved the path reachable.
+
+**And the second test is a table, not a third example** — all nine ordered pairs of rungs,
+driven off the constants. The pair that mattered was a combination no existing test named.
+That is cycle 68's rule applied to tests instead of prose.
 
 ## Where things stand
 
-Ninety-one beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
-gh#43). Suite **565/565**, 12305 assertions; lint 0/0; nine checkers clean. Eleven skills.
-Upstream gh#44 and gh#46 open.
+Ninety-four beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
+gh#43). Suite **567/567**, 12330 assertions; lint 0/0; nine checkers clean; findings 0/4.
+Eleven skills. Upstream gh#44 open; **gh#46 is CLOSED and fixed at 0.47.0** — we still hit
+it because of the pin, which is why `-knzv` is now P1.
 
-The workflow gained a rule this cycle and it is the second of its family: **an entry
-claiming a pattern needs the enumeration, not an example.** Cycle 66 added the same thing
-for comparisons. Both came from my own entries being wrong about code I had written.
+The workflow gained one rule: **the reach snapshot is due before `quit`, not before the
+commit.** This cycle quit the game and then had to relaunch and re-drive the whole scenario
+to record a ledger row it had already earned.
 
 ## Waiting on the user
 
@@ -49,7 +55,7 @@ together they made a HUD with no slack that nobody chose.
 
 `bd ready` for the work, this file for the context, `CLAUDE.md` (mirrored in `AGENTS.md`)
 for the loop itself. Step 2 says take work away from the last two cycles' subsystem — those
-were budgets and drawn overlays.
+were drawn overlays and the message row.
 
 **Six standing notes.** The harness is pinned at 0.38.0 on purpose (gh#43). The UI findings
 baseline is **empty** (`-v9px`). Any harness operation should start by checking which
@@ -59,5 +65,6 @@ version the skill's paths point at. **Never hand-edit `AGENTS.md`** — run
 
 `python tools/gap_ledger.py --open` answers "which harness gaps are open"; `python
 tools/devtools.py cmd budgets` prices the **seven** couplings and says how many are at
-floor; `list-commands --offline` answers "does this verb exist" with no game running. Bump
-the number at the top of this file every time you refill.
+floor; `list-commands --offline` answers "does this verb exist" with no game running. The
+live game's plant ids are catalogue ids — `corn_cobbler`, not `corn`. Bump the number at
+the top of this file every time you refill.

@@ -98,6 +98,14 @@ running a command. **Never write a work checklist into it.**
      produced a `warranted` row carrying no evidence for the verdict. If you ran the
      gates by hand instead of through `/verify`, you owe the row by hand too, and it is
      due while the work is still uncommitted.
+     **And the reach snapshot is due before `quit`, not before the commit.** `reach` is
+     computed from a `scene-tree` capture of a game that is still running, so the row's
+     evidence has an earlier deadline than the row — and `quit` is the natural last verb of
+     a runtime pass, which destroys the only thing that can prove the run loaded the diff.
+     Cycle 69 quit, then had to relaunch and re-drive the entire scenario to record a row it
+     had already earned. Make `python tools/devtools.py scene-tree > .devtools/tree.json`
+     the last thing you do before `quit`, every time, even when you do not yet know the
+     verdict.
 3. **Before reflecting, always add to `kanban.md`** — cool new features or concrete
    improvements (UX, game juice, animations, enhancements, or full features). This used
    to read "the last item is always...", which described a checklist that no longer

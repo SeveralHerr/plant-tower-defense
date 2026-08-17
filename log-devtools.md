@@ -4936,3 +4936,61 @@ cited in code, and the citation is a mitigation this project has watched fail.
   that would falsify it is the closest a prose artefact gets to being checked** — which is
   the same argument `house-static-checker` makes for a printed denominator, applied to
   writing instead of to output.
+
+## 2026-08-17 — Cycle 69: a message with a clock behind it, driven from a real click
+
+- Value: **warranted** — the running game answered a question the headless test could not:
+  whether the path that arms an uproot is reachable the way a player reaches it.
+  - Expected: to confirm what the headless test had already proved — that the armed-uproot
+    prompt now pre-empts a five-second packet reveal instead of waiting behind it.
+  - Got: that, and the thing worth the launch. `arm_uproot` returned **`nothing is
+    selected`** on the first live attempt: the test sets `selected_placed` by planting,
+    and a player sets it by clicking the plant. Driving the real path — `touch_press` /
+    `touch_release` at the plant's `global_position`, which Godot's touch-to-mouse
+    emulation turns into the click the game actually handles — put a real `Plant` in
+    `selected_placed`, and only then did `arm_uproot` return `confirm needed` with
+    `MessageLabel` reading `Click Uproot again to dig up your Corn Cobbler — it will not
+    grow back.` and `pending_messages()` reading 1.
+  - Found: the defect itself, before the fix — the test was written first and failed
+    reading `The packet held a Chomp Flower!`, which is what turned the bead's design
+    question into a defect. Also that the test's first draft asserted
+    `pending_messages() == 1` and got 2, because planting posts its own line: the setup
+    was inside the number.
+  - Cheaper: the headless test alone would have proved the FIX. It would not have proved
+    the selection path, and `--filter` on one test is 50 ms against a ~40 s launch, so the
+    honest split is: fix verified cheap, reachability verified expensive and worth it once.
+
+- Gap: **`[G-058]` a third time, and this time it cost a wrong row rather than a warning.**
+  I passed `lint_exit`, `tests_exit`, `tests_total`, `tests_failed` and `assertions` as
+  top-level keys. `record` accepted all five silently and wrote:
+
+  ```
+  'verdict': 'unknown', 'lint': None, 'tests': None, 'runtime': None
+  ```
+
+  The real key names are nested objects (`lint: {new: ...}`, `tests: {failed: ...}`) plus a
+  top-level `verdict`. The previous two sightings produced a *warning* that made me look;
+  this one produced a **well-formed row that under-reports a clean run as
+  `verdict: unknown`** — the exact failure mode `.devtools/verify-runs.jsonl` exists to
+  prevent, in the file that exists to prevent it. I corrected the row in place and said so
+  in the commit.
+  - **[G-058] status: fixed upstream, still open here | seen: 3 | harness: 0.38.0 |
+    upstream: gh#46 (CLOSED)** — and the reconciliation is the interesting half. I went to
+    comment a third data point on gh#46 and found it closed and the fix shipped:
+    `difflib.get_close_matches` against `RUN_JSON_KEYS`, printing
+    `run.json: ignoring unknown key %r%s - it is NOT in the row`, at
+    `templates/tools/verify_ledger.py:1101-1107` in the marketplace clone (0.47.0). On
+    0.47.0 this cycle's `lint_exit` would have been named at me instead of vanishing.
+    **This project runs 0.38.0 on purpose** (gh#43's segfault, bead `-ny3h`), so the gap is
+    real here and fixed there, and that pair is a status the ledger has no word for. Do not
+    file it again; do not mark it plainly `fixed` either, because the next cycle on 0.38.0
+    will hit it.
+  - Improvement, and it is additive to the shipped fix rather than a substitute:
+    **`record` should print the schema it accepted on every run**, one line, the way every
+    gate in this project prints a denominator — `run.json: read 8 of 8 keys (checks, found,
+    value, cheaper_alternative, harness, duration_s, tier, expected); verdict defaulted to
+    unknown`. `difflib` catches a key that is *near* a real one; a denominator catches the
+    rest, including the silent `verdict` default that is what actually made this row wrong.
+    Not filed: the defect gh#46 describes is closed, and a second issue asking for a
+    stylistic denominator on top of a landed fix is the kind of noise that skill-feedback's
+    own guardrails exist to stop. It lives in `log.md`.
