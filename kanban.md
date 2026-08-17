@@ -2533,88 +2533,27 @@ said "not filed yet".
   land just as real a hit, never call it. A ranged kernel now visibly marks the
   pest it connects with; a melee plant's damage is exactly as invisible as it was
   before this session started.
+### Audited and removed: the "grown from the features above" sections 25-27 (cycle 64)
 
-### New this cycle (25 of 30) — grown from the features above
+Eight entries, resolved one at a time against the code with `kanban-staleness-audit`.
+**Six SHIPPED, two STALE, none still wanted** — so the sections went rather than being
+pruned. The verdict table and its evidence are in this commit's message, which is
+searchable and does not add eight entries to a Done section nobody reads (`-tkdz` is open
+to prune that one).
 
-- **A swept husk now flies a glyph to the Seeds label; the plant whose entire job
-  is paying seeds still doesn't.** `Game._on_husk_collected` (game.gd) plays
-  `Sfx.HUSK_COLLECTED` and calls `hud.fly_seed_glyph()` toward the HUD — but
-  `Game._on_plant_grew_seeds` (game.gd:1013-1014), the handler for every Sunflower
-  payout in the game, is one bare line: `bank.add_seeds(amount)`. No sound, no
-  glyph, nothing. The husk is an occasional bonus; the Sunflower's payout is its
-  entire reason to exist on the board, and it is now the quieter of the two events
-  by a wide margin.
+Three findings kept out here rather than buried in a log:
 
-- **Every attack now has a sound and a hit has a flash; starting a wave still has
-  no click of its own.** `_next_wave_button.pressed` (hud.gd:486) just emits
-  `next_wave_requested` — the ensuing `Sfx.WAVE_STARTED` banner plays only once
-  `_on_wave_started` actually fires moments later, so the deliberate click that
-  starts the countdown is silent while everything downstream of it now has a
-  voice: the plants attack with sound, a kernel connecting flashes its target, a
-  wave clearing gets its own banner+cue. The one button a player presses to
-  actually begin the danger is the one press in this whole chain with no
-  feedback of its own.
-
-### New this cycle (26 of 30) — grown from the features above
-
-- **The Keys screen exists on the title and is unreachable from a run.** `KeysButton`
-  is built in `TitleScreen` (title_screen.gd:262, opening `KeyBindingScreen` at
-  :469) and `pause_screen.gd` mentions `KeyBindingScreen` exactly zero times. So the
-  player who most wants to move a key — the one who just pressed the wrong one
-  mid-run and paused — is the one who cannot get there without abandoning the run.
-  This is the same shape as the notebook gap from cycle 11, which was fixed by
-  putting a fourth button on the pause card; the card has since grown a fifth, and
-  `PauseScreen.card_rect()` derives its height from its contents, so the honest
-  version of this is "does the card still fit, and if not, what gives" rather than
-  "add another button".
-
-- **A milestone is announced once and then has nowhere to live.**
-  `RunSummary.new_milestones()` (run_summary.gd:424) reads only the ids the run
-  *just* earned, and `MilestoneRibbon` draws only those — so a player who earned
-  `campaign_cleared` three runs ago has it saved in `RunConfig.earned_milestones`
-  and can never see it again. The set is persisted, `has_milestone()` is public and
-  nothing outside the save's own tests calls it. A trophy shelf on the title screen,
-  or a page in the notebook, would turn a one-frame ribbon into the record the flag
-  already is.
-
-- **Every persisted option is now reachable by exactly one key and no menu.**
-  `garden_colorblind` toggles the accessibility ramp, `garden_mute_sfx` and
-  `garden_mute_music` toggle audio, all three persist, and the only surface any of
-  them has is a keystroke plus a HUD sentence. The Keys screen can *rebind* those
-  keys but cannot *set* the options they toggle, which is a strange split: the
-  screen that exists for configuration is the one place a player cannot see whether
-  the colourblind bars are currently on. An Options screen beside it — or a second
-  column on the one that is already there — is a small change now that all three
-  flags already round-trip through `RunConfig`.
-
-### New this cycle (27 of 30) — grown from the features above
-
-- **Three overlays now build the same chrome three times.** `key_binding_screen.gd`
-  (347 lines), `options_screen.gd` (350) and `notebook_screen.gd` (758) each hand-roll
-  a `Backdrop` ColorRect at `Color(GardenTheme.INK, 0.88)`, a `Paper` Panel with
-  `paper_panel()`, a `BackButton` top-left and a `back_requested` signal — and the
-  Options screen was written by copying the Keys screen deliberately, which is why its
-  node names match to the letter. That copy was the right call under time pressure and
-  it is now three places to fix a chrome bug in. The hard-won layout rule those two
-  share — that the panel is sized from its row count and the footer clearance is a
-  minimum GAP, because `Rect2.intersects` is false for boxes sharing an edge — is
-  stated twice and enforced by two separate tests. An `OverlayScreen` base that owns
-  the backdrop, the paper, the Back button and that one assertion would leave each
-  screen holding only its own rows.
-
-- **The title screen is now five buttons at every floor at once.** `BUTTON_TOP` came
-  up to 208, the heights are 44/40 against a `findings` touch-target gate of 40, and
-  `BUTTON_GAP` is down to 8 — the Options work paid for its row out of three places
-  because no single one had slack. There is no sixth row available at any price, and
-  the next screen anyone adds (a credits page, a difficulty picker, the trophy shelf
-  if it ever leaves the notebook) hits a wall rather than a squeeze. Worth deciding
-  now whether the title column becomes a scrolling list, a two-column grid, or whether
-  secondary destinations move behind a single "More" door.
-
-- **`Sfx` and `Music` mute live only as long as the process, and the Options screen
-  now shows that asymmetry to the player.** `RunConfig.colorblind_safe` round-trips
-  through the save; the two mute flags never have — they were keystroke-only and their
-  volatility was invisible. Putting all three in one list, each with an On/Off state
-  button, makes "these two forget and that one does not" a thing a player can notice
-  and be annoyed by. `v6c` is filed to persist them; the point here is that surfacing
-  a set of options is what turned an unremarkable gap into a visible inconsistency.
+- **A number that reproduces exactly is the most convincing kind of wrong.** The title
+  screen entry quoted `BUTTON_TOP` 208, heights 44/40 and `BUTTON_GAP` 8. All four still
+  reproduce today. Its conclusion — "there is no sixth row available at any price" — is
+  false: `game/title_screen.gd:45-62` pairs secondary destinations two to a row,
+  `menu_capacity()` computes the ceiling and a test gates it. Both shapes the entry asked
+  someone to choose between are considered and rejected there, with reasons.
+- **An entry points at where the problem was, not where the fix landed.** "Starting a wave
+  has no click of its own" cited the button in `hud.gd`. The button is unchanged; the sound
+  went into the handler (`game/game.gd:308-309`). Checking only the cited line would have
+  produced a confident, wrong "still real".
+- **These headings are not unique.** `### New this cycle (25 of 30)` appears twice, in two
+  independent numbering runs with different subtitles — so `uniq -d` on the headings finds
+  nothing and a naive `index()` on one deletes from the wrong place. Cut this file by line
+  number, never by heading.
