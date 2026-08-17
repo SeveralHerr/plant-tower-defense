@@ -121,6 +121,20 @@ Per entry, before writing:
    FINAL, not while they are still moving.** One command each, and it catches the single
    most likely error: landing on the doc comment above the thing you meant.
 
+   **And read what the cited line DOES, not just that it is the line you meant.** The
+   sharper failure is a citation that resolves, lands exactly right, and supports the
+   opposite of the sentence around it. Cycle 93 wrote "arming an uproot destroys the line
+   the player is reading" and cited `game/hud.gd:1462` — which is `if priority >
+   _message_priority:`, the correct line, the pre-empt branch, genuinely the one that fires.
+   The two lines under it queue the displaced message rather than dropping it. I had
+   reasoned from the *other* branch, eight lines away, and the citation made the claim read
+   as checked. It cost cycle 94 to disprove.
+   `citation_check` says in its own `NOT COVERED` output that it cannot see this — it proves
+   a line exists, never that the line supports the claim. So the `sed` is a floor: read the
+   three or four lines around what comes back and ask whether they say what your sentence
+   says. **A correct citation under a wrong sentence is more expensive than no citation**,
+   because it is the thing that stops the next reader checking.
+
    Do it last because your own edits shift the targets. Cycle 90 rebound the same two
    citations **three times**: written against the file, then invalidated by adding a doc
    comment above them, then invalidated again by a one-line fix to that comment. Each

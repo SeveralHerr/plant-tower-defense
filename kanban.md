@@ -247,6 +247,40 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (94) — a line that comes back looks like a line that happened twice
+
+- **A resumed message is indistinguishable from a repeated event, and cycle 94 made that
+  reachable on purpose.** The row now provably defers a pre-empted line and brings it back
+  with the time it had left — verified live: kill a bed, arm an uproot, and 4 s later "A
+  hungry pest ate your Corn Cobbler!" is on the row again. `_advance_message_queue` restores
+  it by assigning `_message_text` (`game/hud.gd:1627`) and marks it in **no** way: same
+  text, same styling, no "still" or "—" or fade distinguishing a resumption from a fresh
+  event.
+  So the player who loses a bed and immediately arms an uproot sees that exact sentence
+  twice, four seconds apart, and nothing tells them one plant died rather than two. The
+  saving grace is that the sentence names the plant, so "two Corn Cobblers died" is at least
+  self-consistent — which makes it *plausible* rather than obviously a glitch, and that is
+  the worse of the two failures.
+  Cheap fixes exist and none is obviously right: prefix a resumed line, fade it in
+  differently, or simply not resume a line that has already had `MESSAGE_MIN_READABLE`
+  seconds on screen (the player read it; bringing back the tail teaches nothing). That last
+  one is the most interesting because it *shortens* the row's work rather than adding to it.
+- **"A hungry pest ate your X!" is honest today, and that is a constraint on every future
+  way of losing a plant.** Enumerated rather than assumed: `Plant.destroyed` is emitted from
+  exactly one place (`game/plant.gd:614`, health reaching zero inside `take_damage`), and
+  `Plant.take_damage` has exactly one caller in the whole game — `game/pest.gd:714`,
+  `meal.take_damage(EAT_DPS * delta)`, the eating path. Uprooting does not go near it:
+  `commit_uproot` frees the plant with `play_exit_and_free()` (`game/game.gd:1459`), so
+  digging up your own Corn Cobbler does not accuse a pest of eating it.
+  The message is therefore accurate by a coincidence of there being one cause, and
+  `Game._on_plant_destroyed` names that cause unconditionally. **Anything that ever kills a
+  plant another way — a Dandelion bomb catching your own bed, a weather effect, a pest that
+  crushes rather than eats — makes the sentence a lie the moment it lands**, and it will do
+  so silently, because a message that reads perfectly is not something a test looks at
+  twice. Worth stating now: the fix when that day comes is a cause on the signal, not a
+  second `show_message` call site, and it is much cheaper to decide that before there are
+  two callers than after.
+
 ### New this cycle (93) — the row loses nothing, and the one message that takes something
 
 - **Arming an uproot destroys the line the player is reading, and that is the real cost of
@@ -268,6 +302,22 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   a bed dies never learns which plant they lost. **Not a bug to fix blindly**: making the
   loss notice un-stompable would let it eat the uproot window instead, which is the trade
   cycle 79 already made once in the other direction.
+  **MEASURED in cycle 94, and the headline sentence above is FALSE — corrected here rather
+  than deleted, because how it was got wrong is the useful half.** The pre-empt branch does
+  not erase the displaced line; it pushes it into the queue **with the time it had left**
+  (`game/hud.gd:1462-1463`), and `_advance_message_queue` restores exactly that. So total
+  reading time is preserved across the interruption: a notice pre-empted after 0.5 s of its
+  4.0 comes back with 3.5, well over `MESSAGE_MIN_READABLE`. Driven against the real paths —
+  a real plant killed, a real `arm_uproot`, then `step-time --seconds 4.05 --then-pause` —
+  the row shows the loss notice again. It is destroyed only when the queue is full of equals,
+  which needs four simultaneous ordinary lines and which the same cycle's six-wave run never
+  reached.
+  **The error was reasoning from the queue's drop rule instead of from the branch that
+  actually runs.** Both are in `show_message` and only one of them fires for a higher-rung
+  arrival. The entry cited `game/hud.gd:1462` for the pre-empt and then described the
+  behaviour of the *other* branch — a citation that resolves, on the right line, supporting
+  the opposite of the sentence around it. That is the exact failure `citation_check`'s own
+  `NOT COVERED` line names and cannot detect.
 - **The game counts every husk it lets rot and, until this cycle, nothing it never said.**
   `CompostMeter.total_rotted` (`game/compost_meter.gd:109`) exists specifically as the
   denominator for `total_collected` — the class header argues that a husk count alone would

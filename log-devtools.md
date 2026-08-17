@@ -6014,3 +6014,53 @@ Noted on the bead.
     GraphQL and were still 503-ing while REST was healthy — `gh api -X POST
     repos/OWNER/REPO/issues[/N/comments] --input FILE.json` worked first try, which is worth
     trying before parking anything.
+
+## 2026-08-17 — Cycle 94: the collision that turned out not to be one (-trn1)
+
+- Value: **warranted** — but narrowly, and the honest version is that the headless test
+  answered the mechanism and runtime answered a different question.
+  - Expected: the headless test had already shown the pre-empted line is deferred rather
+    than erased. I predicted runtime would confirm it against the real paths and nothing
+    more.
+  - Got: that, and it was worth having. `take_damage(999)` on a real plant, `arm_uproot` on
+    a real selection, both inside one frozen instant — `pending_messages()` 1,
+    `messages_refused` 0 — then `step-time --seconds 4.05 --then-pause` and the row reads
+    "A hungry pest ate your Corn Cobbler!" again. The test stages that collision by hand;
+    only the run shows the two real producers doing it.
+  - Found: three, all mine, and the first is the reason the cycle existed.
+    **Cycle 93's kanban claim was false and I wrote it.** "Arming an uproot destroys the line
+    the player is reading" was reasoned from the queue's drop rule instead of from the branch
+    that actually runs — and both branches are in `show_message`, eight lines apart. The
+    entry even cited `game/hud.gd:1462` for the pre-empt and then described the behaviour of
+    the *other* one: **a citation that resolves, on the right line, supporting the opposite
+    of the sentence around it.** That is exactly what `citation_check`'s own `NOT COVERED`
+    line says it cannot detect, and this is the first time I have watched it happen to me.
+    **The first live attempt read an empty row and proved nothing.** 17 seconds of game time
+    passed inside `wait-frames 120`, so both messages had expired before I looked. The
+    standing note for this exists ("to walk a sub-second tween: pause, then `step-time
+    --seconds 0.03 --then-pause`") and I did not reach for it, because four seconds does not
+    feel sub-second — but the row's contents are a sub-second-resolution question whatever
+    the durations are.
+  - Cheaper: for the mechanism, yes — the headless test, which I had already written. For
+    "do the two real producers actually collide this way", nothing.
+
+- Gap: **`cmd touch_press` silently accepts an argument shape it ignores.** The verb takes
+  `{index, position:[x,y]}`; I sent `{x, y}`, and it reported success and did nothing:
+  ```
+  cmd touch_press --args '{"x":288,"y":296}'   -> success
+  run-method --method arm_uproot                -> "nothing is selected"
+  ```
+  So a malformed click reads as a broken uproot, one verb downstream. The harness's own
+  reference warns about this class in general — `list-commands` prints each verb's arg keys
+  and says "a key not listed is silently ignored" — which makes it a documented property
+  rather than a surprise, and it is still the wrong default for a verb whose entire effect
+  is positional.
+  Filing it against the project's own extension rather than upstream: `touch_press` is
+  registered in `devtools_ext/commands.gd`, so the fix is ours. The generic case (unknown
+  keys ignored) is the harness's and is deliberate.
+  - [G-069] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: have the project's `touch_press` / `touch_release` / `touch_drag` **refuse**
+    a call with no `position` (or `to`) rather than defaulting to zero, and name the key they
+    wanted. Three verbs, one guard each, and it converts a silent no-op into a message. A
+    positional verb with no position is never a call anyone meant.
+  - Note: no other gaps this turn.
