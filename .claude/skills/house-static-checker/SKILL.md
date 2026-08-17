@@ -214,6 +214,28 @@ live code because the blanker did not handle `\"` — which no amount of good-an
 example files would have surfaced, because both files were being scanned wrongly in the
 same way.
 
+### A survivor is sometimes a finding about the CODE, not about the test
+
+The default reading of a surviving mutation is "the test is too weak, strengthen it". There
+is a second reading that is easy to miss and worth checking first: **the mutated code may
+not matter.**
+
+`_update_preview` guarded on `_uproot_armed if _uproot_left > 0.0`. Deleting the second half
+killed nothing, and the test was not at fault — `_disarm_uproot()` nulls `_uproot_armed` on
+*every* exit path there is, so the two conditions can never disagree. The guard was dead
+code wearing a safety belt. Strengthening the test to kill that mutation would have locked
+in a redundancy and called it coverage.
+
+> **When a mutation survives, ask which is true before writing another assertion: is the
+> test blind to a real behaviour, or is the mutated code unable to change any behaviour?**
+> The second means delete it — and put the invariant that made it redundant into a test,
+> because *that* is the thing actually holding the property up.
+
+This repo has now hit it twice: here, and `mirror_check`'s CRLF normalisation, which was
+also found by mutating and watching nothing go red. Do not delete on suspicion, though — a
+guard that cannot disagree today may be what stops two things diverging tomorrow. The test
+is whether an invariant elsewhere *guarantees* it.
+
 ### "Did not apply" and "survived" are opposite results
 
 A mutation that never reached the file looks exactly like a mutation the fixture ignored,

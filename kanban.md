@@ -195,6 +195,28 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (59) — the move tool exists; nothing tells the player it does
+
+- **The move preview is complete and undiscoverable.** Arming an uproot and then hovering
+  a destination now shows cost and gain together, which is a real tool — and the only thing
+  that hints at it is a button reading `Really uproot? (+N)` (`game/hud.gd:1206`). A player
+  who arms an uproot is being asked to confirm a deletion, not invited to go looking at
+  other cells. One word in that button ("Really uproot? (+12) — or hover to move") or a
+  one-shot message the first time a window opens would turn a feature nobody finds into the
+  main way plants get repositioned.
+- **Nothing commits the move.** The window arms, previews, and then either destroys the
+  plant or cancels — the player still has to uproot, re-select from the shop, and pay full
+  price. Every piece needed for "click the destination to move it there" now exists:
+  `arm_uproot` knows the plant, the preview knows the destination, and `uproot_refund()`
+  knows the rebate. Whether a move should be free, cost the difference, or cost full price
+  is a balance question worth deciding on purpose rather than by default.
+- **`_update_preview` now decides two things and is named for one.** It resolves the hover
+  cell AND, since this cycle, which plant the hover is about (`game/game.gd:1569`). That
+  second decision is three lines of subject-selection at the top of a function whose name
+  promises only "update the preview". It is fine now and it is exactly where a third mode
+  would go in badly — the move preview should probably be a named predicate the way
+  `new_cover_cells()` and `ring_color()` are.
+
 ### New this cycle (58) — the uproot flow is nearly a move tool
 
 - **Arming an uproot shows what is lost but not what is gained.** The rings go red on the

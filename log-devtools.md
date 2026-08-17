@@ -4671,3 +4671,34 @@ cited in code, and the citation is a mitigation this project has watched fail.
   been actively harmful here. That is the same shape as the denominator rule this project
   keeps relearning: **an improvement and a regression reported in the same breath are
   legible; either one alone is not.**
+
+## 2026-08-17 — Cycle 59: the armed window becomes a move preview
+
+- Value: **warranted** — and the finding came from the mutation sweep rather than from
+  either the suite or the bridge.
+  - Expected: hovering during an armed uproot to preview the moved plant, and the
+    screenshot to show cost and gain together.
+  - Got: both. `reach: 176.0`, `plant_id: corn_cobbler` while armed, and one screenshot
+    carrying red rings on what the move costs and green dots on what it buys.
+  - Found: **a mutation SURVIVED, and that was the result.** The arming guard read
+    `_uproot_armed if _uproot_left > 0.0`, and nothing could kill the second half —
+    `_disarm_uproot()` nulls the first on every exit path there is. A condition that can
+    never disagree is dead code wearing a safety belt, which this repo has paid for before
+    in `mirror_check`'s CRLF normalisation. Removed; the invariant it stood in for is a
+    test now, driving expiry directly rather than sleeping four seconds. Re-run: five
+    mutations, no survivors.
+    Also found by writing that test: **an expired uproot window CANCELS rather than
+    uprooting**, which I had assumed the other way and which failed loudly on
+    "something is already growing there".
+  - Cheaper: for the values, the suite. For "can the player see the cost and the gain at
+    once", nothing but the screenshot — that is one claim about one screen.
+
+- Gap: **no gaps this turn**, and `settle_read_check` earned a specific mention. It caught
+  the new test reading `_uproot_left` as an accumulator after `instantiate_scene`. The read
+  is genuinely deterministic — the test writes the value via `arm_uproot()` and spends it
+  via a tick it drives itself — so the right answer was a waiver with that reason rather
+  than a restructure. Writing the waiver was worth more than the check: it made me state
+  *why* the assertion is separate from the `_uproot_armed` one, which is that
+  `_disarm_uproot` clears the reference AND the clock, and a version clearing only the
+  reference would leave a dead timer running under the next selection. **A waiver that has
+  to explain itself is a second chance to notice what the assertion is for.**
