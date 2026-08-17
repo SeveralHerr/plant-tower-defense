@@ -213,6 +213,39 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (75) — four surfaces are capacity-bound and one of them computes it
+
+- **The title screen solved "how many rows fit" properly and the other three surfaces each
+  solved it again by hand.** Enumerated over every surface in the game with a row limit:
+  - `TitleScreen.menu_capacity()` (`game/title_screen.gd:169-174`) **computes** the ceiling
+    — it walks `hint_y(n + 1) + HINT_HEIGHT` against the backdrop's horizon and returns the
+    count. Add a destination and the number moves on its own.
+  - `OptionsScreen` writes the arithmetic in a comment (`game/options_screen.gd:100-108`):
+    three rows from 256 at 48 foot at 392, footer at 440, gap 48 against
+    `OverlayScreen.FOOTER_GAP` of 24.
+  - The milestone shelf writes it in a comment (`game/notebook_screen.gd:166-168`):
+    `SHELF_ROW_PITCH` 42 × 7 entries + 3 = 297 against a 300 px box.
+  - `RunSummary` writes it in a comment (`game/run_summary.gd:77`): rows step
+    `ROW_HEIGHT + ROW_GAP` = 38, the seventh foots at 448, `BUTTON_Y` is 476, an eighth
+    would foot at 486.
+  Three of the four are careful, correct, tested — and re-derived by hand, in prose, in
+  three different files, by three different cycles that could not see each other. **The
+  fourth shows the shape that does not rot**, and it is the oldest of them. A shared
+  `rows_that_fit(top, pitch, floor)` on `OverlayScreen`, or even just each surface computing
+  its own ceiling the way the title screen does, turns "read the comment and redo the sums"
+  into a number that is already right.
+- **The card says what the run did and never what it cost.** `RunSummary.summary_rows()`
+  (`game/run_summary.gd:235-249`) reports waves, pests defeated, time, threat level, beds
+  lost, compost swept and where you held them. **Not one row is about seeds** — and
+  `SeedBank.seeds_earned_total` (`game/seed_bank.gd:69`) has been tracked all along. A run
+  where you scraped by on 40 seeds and one where you finished sitting on 300 unspent read
+  identically on the card, and "did I over-build or under-build" is the single question a
+  post-mortem is for. There is no `seeds_spent_total` yet, but it is `seeds_earned_total`
+  minus what is left, which the card already has.
+  This lands straight into the entry above: the card is **full**, so "add a seeds row" is a
+  layout decision first. That is exactly the collision the first entry predicts, arriving
+  one bullet later.
+
 ### New this cycle (74) — sound is a switch, and the switch panel is full
 
 - **Every audio control in the game is binary, and the seam that would make a dial cheap

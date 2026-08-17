@@ -5207,3 +5207,39 @@ cited in code, and the citation is a mitigation this project has watched fail.
   where it belongs, and the composition becomes assertable without a display or an audio
   server. Both `Plant.breathe_scale` and `Sfx.tune_voice` exist for exactly this and neither
   was designed that way first — each was retrofitted after watching a mutation survive.
+
+## 2026-08-17 — Cycle 75: a checker for the file that records the checkers
+
+- Value: **overkill** — and deliberately written that way, because the cycle was useful and
+  the *harness* was not the reason. No game launched, and the harness gates
+  (`name_check`, the suite) confirmed exactly what was already known: a new Python file that
+  no GDScript imports cannot break GDScript. The finding came from a project-owned tool
+  built this cycle.
+  - Expected: that a checker deriving `verify_ledger`'s accepted key set from its own source
+    would confirm the two key names I already knew were wrong, and otherwise sit quiet.
+  - Got: `tier`. I have written that key into **every** `run.json` this session and
+    `verify_ledger` reads it nowhere, so every one of those rows lost it silently. Also
+    measured: **26 of 86 historical rows carry `verdict: "unknown"`** — 30% of the evidence
+    file — and since only one has a null `lint` and none a null `tests`, most of those are an
+    omitted `verdict` the tool defaults quietly rather than a misnamed key.
+  - Found: the above, plus the confirmation that the bead's own remedy would not have worked.
+    It asked for the schema "written down where /verify can see it"; **reading
+    `verify_ledger.py` is what I did, and it is exactly how `tier` survived** — scanning 1400
+    lines for lookups that are ABSENT is the task a regex is better at than a person.
+  - Cheaper: nothing cheaper produced the finding. The harness half of the run was ~40 s and
+    told me nothing, which is what `overkill` is for.
+
+- Gap: **the Phase 0.5 triage table has no row for project-owned tooling that is not
+  `res://` code**, which is a second instance of the shape gh#50 already describes.
+  This cycle's diff was `tools/run_json_check.py` plus two Markdown files. Tier (a) covers
+  "only docs/`.md` outside code, `.beads/`, `log-devtools.md`, CI/git files" — a `.py` gate
+  the project ships and runs is none of those, and it is not `.gd`, so tiers (b) and (c) do
+  not reach it either. The table's implicit assumption is that everything worth verifying is
+  loaded by Godot, and a project with ten stdlib checkers is a standing counterexample.
+  - [G-060] status: open | seen: 2 | harness: 0.38.0 | upstream: gh#50
+  - Improvement: the same fifth row gh#50 proposes, widened — classify by **what verifies
+    this change**, not by what loads it. A Python checker's verification is its own fixture
+    and its mutation pass, and those belong in the ledger row's `checks` exactly like a
+    Phase 4 bridge check does. Recorded here with `--no-reach` and five `checks` entries
+    naming the fixture and the three mutations, which is what the table should have told me
+    to do rather than to stop.

@@ -11,7 +11,13 @@ what `bd` structurally cannot: the cycle counter, the pattern the last cycle tau
 what is waiting on the user, and how to restart. It is what a human reads without
 running a command. **Never write a work checklist into it.**
 
-0. **Pre-flight. Read these four things and report them in one line.** This
+0. **Pre-flight. Read these four things and report them in one line, as four named
+   values.** Four values, four names — `beads=N ready`, `skills=N (none named twice)`,
+   `kanban=<the section you looked at>`, `mirror=0`. Named, because cycles 72-75 each
+   reported a mirror exit code, a ready count and a skills listing and **silently dropped
+   the `kanban.md` one**, which is the item with no exit code and therefore the only one a
+   habit of running commands cannot cover. A line with three values in it looks exactly
+   like a line with four. This
    step exists because they were write-only: the reflection steps below are
    end-of-cycle WRITES and nothing was ever a start-of-cycle READ, so they filled up
    and never came back. Measured at the end of the first 33 cycles: `.claude/skills/`
