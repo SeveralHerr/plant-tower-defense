@@ -5474,3 +5474,32 @@ cited in code, and the citation is a mitigation this project has watched fail.
   about the game, not about the change.** Worth recording because the pattern is easy to
   repeat: any diff confined to screens the entry hook does not open will reach nothing
   unless the session navigates there, and nothing in `/verify` navigates.
+
+## 2026-08-17 — Cycle 83: four screens checked at runtime for the first time in 83 cycles
+
+- Value: **warranted**, and unusually clearly: the whole cycle existed to reach code that no
+  headless test and no previous runtime pass could touch.
+  - Expected: that naming the overlay screens as `entry_points` would make them drivable,
+    and that a first-ever UI pass over three never-checked surfaces would find something.
+  - Got: drivable, yes — `fire-entry-point notebook|keys|options|pause` each lands where it
+    should, with `first-frame` confirming the topmost Control is inside the opened screen.
+    **And nothing was wrong.** 0 findings each across `ui_layout`, `ui_reachable`,
+    `signal_unconnected` and `performance`. A clean first sweep of three surfaces that had
+    never been checked is a result, not a non-event — it is the answer to a question this
+    project could not previously ask.
+  - Found: **entry points do not compose.** Firing `keys` while the notebook is still open
+    silently does nothing, because `_open_keys` returns early on `overlay_open()`. Caught by
+    `first-frame` reporting the same topmost Control three times in a row rather than by any
+    error — the verb reported success each time, because the method *was* called and *did*
+    return. The fix is the real user path (press the current overlay's `BackButton` first),
+    not a new "open, replacing" method that would have been a seam with no other caller.
+  - Cheaper: nothing. These four screens were unreachable until this cycle's config existed.
+
+- Gap: **no gaps this turn.** One note on the shape of the fix, because it is the second
+  time a config edit has bought more than a code change would have. `entry_points` needed
+  the `scene` field on every entry — the automatic `entry_hook` fires `skip_to_game`, so by
+  the time anything wants the title screen's overlays the tree is already on the game scene.
+  That is documented (`fire-entry-point` "switches scene first if one is configured") and it
+  is the kind of detail that reads as boilerplate until the entry silently resolves no node.
+  Worth stating plainly for the next project: **if your entry hook navigates, every entry
+  point that wants the pre-hook scene must say so.**

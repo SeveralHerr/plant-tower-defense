@@ -247,6 +247,34 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (83) — four screens were checked for the first time and all were clean
+
+- **Three overlay screens had never been looked at by a runtime check, and nothing was
+  wrong with any of them.** The notebook, the key-binding screen and the options panel are
+  now reachable by `fire-entry-point` and all three report 0 findings across `ui_layout`,
+  `ui_reachable`, `signal_unconnected` and `performance`. That is a real result and it also
+  bounds what the sweep is worth: **these screens are static**. They build once, from
+  constants, and nothing animates or reflows on them — which is exactly the case a layout
+  checker finds least. The surfaces where a `ui_layout` finding would actually be *likely*
+  are the ones that change during play, and there is one: the HUD, which is checked every
+  cycle already. **A clean sweep of the static screens is evidence the checks work, not
+  evidence the game is checked.**
+- **The pause card is the only screen whose findings must be taken frozen**, and that makes
+  it the interesting one. `fire-entry-point pause` leaves `SceneTree.paused` true — correct,
+  since the card IS a paused state and the bridge answers while paused. But every standing
+  note in this project says to unpause before `findings`, because a frozen tree catches
+  containers mid-layout (cycles 60 and 65 both lost time to it). The pause card is the
+  documented exception and nothing says so. One sentence in the restart notes, or a `paused`
+  flag on the entry point if the harness grows one.
+- **`overlay_open()` makes the screens mutually exclusive, and that is a UX decision nobody
+  wrote down.** Firing one entry point while another overlay is open silently does nothing:
+  `_open_notebook`, `_open_keys` and `_open_options` all return early on `overlay_open()`.
+  For a player that is right — a second click on a menu button while a screen is up should
+  not stack screens. But it means there is no way to go from the notebook to the options
+  without passing through the title menu, on a screen whose whole job is to be read
+  alongside something. Worth asking whether the overlays should switch rather than refuse,
+  now that all three are one call apart.
+
 ### New this cycle (82) — the surface that computes its limit is the one with room
 
 - **Three of four row-limited surfaces are exactly full and the fourth is the one nobody
