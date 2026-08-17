@@ -31,6 +31,26 @@ must survive its colour being thrown away.
 | **Doubled line width** | ARMED — a destructive action is one click away | `SelectionMarker.WARNING_LINE_WIDTH`, `SoleCoverMarks.WARNING_RING_WIDTH` |
 | **A row of small pips** inside a drawn shape | HOW MANY TIMES OVER — a magnitude the shape's own size and brightness have already saturated on | `husk_layer.gd:117-124` (a husk worth more than `CompostMeter.FULL_VALUE`) |
 
+## Which of these the game actually TEACHES
+
+Six of the ten, on the notebook's cue-legend page (`CueLegend.ROWS`, reachable from the
+title screen and opened directly by the pause card). This section exists because for ten
+cycles the table above was a document for developers only, and a player met a dashed ring
+with nothing to check it against.
+
+**The list is not repeated here on purpose** — a second copy would be the thing that
+diverges. `CueLegend.ROWS` is the authority, and two tests hold the pair together:
+`test_the_legend_names_as_many_shapes_as_the_grammar_documents` parses this very table and
+fails when it grows without `NotebookScreen.OVERLAY_GRAMMAR_SHAPES` following, and
+`test_every_legend_row_has_a_shape_the_legend_can_draw` derives the drawable set from the
+source rather than a hand-list.
+
+So: **adding a row to the table above will fail the suite until someone decides whether it
+is taught.** That is the intended cost. The four currently untaught are untaught because a
+player meets them late or rarely, not because they are less real — and the ARMED row was in
+that group until cycle 95, which is the wrong place for the only cue guarding an action that
+cannot be undone.
+
 ## Where the grammar does NOT hold, and why that is tolerable
 
 Two solid rings are not reaches, and a reader applying the table naively would misread them:

@@ -3862,18 +3862,28 @@ func test_every_legend_row_has_a_shape_the_legend_can_draw() -> String:
 	## can drift apart independently: a row whose `shape` no branch of `_draw` handles
 	## draws nothing at all -- silently, because a `match` with no default is not an error
 	## -- and a row missing its text is a swatch with nothing beside it.
-	var drawable: Array[String] = [
-		CueLegend.SHAPE_SUBJECT, CueLegend.SHAPE_REACH, CueLegend.SHAPE_CLOCK,
-		CueLegend.SHAPE_REMARK, CueLegend.SHAPE_GAIN,
-	]
-	var err: String = _T.assert_gt(CueLegend.ROWS.size(), 0, "there are rows to check")
+	# DERIVED from the source, not a hand-list. The first version of this test kept its own
+	# copy of the drawable shapes and had to be edited by the same person adding a row --
+	# which is no assertion at all, and it fired on the sixth row for exactly that reason.
+	# Two things are checked because they fail apart: a `match` arm can dispatch to nothing
+	# and a painter can exist with nothing calling it. A `match` with no default is silent
+	# about both.
+	var source: String = FileAccess.get_file_as_string("res://game/cue_legend.gd")
+	var err: String = _T.assert_gt(source.length(), 0, "the legend script is readable")
+	if err == "":
+		err = _T.assert_gt(CueLegend.ROWS.size(), 0, "there are rows to check")
+	if err != "":
+		return err
 	if err != "":
 		return err
 	var seen: Array[String] = []
 	for row: Dictionary in CueLegend.ROWS:
 		var shape: String = String(row["shape"])
-		err = _T.assert_true(drawable.has(shape),
-			"'%s' is a shape _draw() has a branch for" % shape)
+		err = _T.assert_true(source.contains("SHAPE_%s:" % shape.to_upper()),
+			"'%s' has a `match` arm in _draw()" % shape)
+		if err == "":
+			err = _T.assert_true(source.contains("func _draw_%s(" % shape),
+				"'%s' has a painter for that arm to call" % shape)
 		if err == "":
 			err = _T.assert_false(seen.has(shape), "'%s' appears once, not twice" % shape)
 		if err == "":

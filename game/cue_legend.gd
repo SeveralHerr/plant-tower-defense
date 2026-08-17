@@ -43,6 +43,9 @@ const SHAPE_REACH := "reach"
 const SHAPE_CLOCK := "clock"
 const SHAPE_REMARK := "remark"
 const SHAPE_GAIN := "gain"
+## The sixth, and the one with the highest cost of being misread: it is the only cue in the
+## game guarding an action that cannot be undone.
+const SHAPE_ARMED := "armed"
 
 ## Id, the line that names the meaning, and the line that says where it is seen.
 ##
@@ -74,6 +77,11 @@ const ROWS: Array[Dictionary] = [
 		"shape": SHAPE_GAIN,
 		"means": "A cell you would gain",
 		"where": "A filled dot, while you hover a new plant",
+	},
+	{
+		"shape": SHAPE_ARMED,
+		"means": "Armed — one more click does it",
+		"where": "The same mark, drawn twice as thick",
 	},
 ]
 
@@ -146,6 +154,8 @@ func _draw() -> void:
 				_draw_remark(at)
 			SHAPE_GAIN:
 				_draw_gain(at)
+			SHAPE_ARMED:
+				_draw_armed(at)
 
 
 ## Corner brackets, at `SelectionMarker`'s own proportions: ARM is 8 of HALF's 22, so the
@@ -192,3 +202,27 @@ func _draw_remark(at: Vector2) -> void:
 func _draw_gain(at: Vector2) -> void:
 	var radius: float = SWATCH_RADIUS * (PlacementPreview.NEW_COVER_DOT / SelectionMarker.HALF) * 2.0
 	draw_circle(at, maxf(3.0, radius), SelectionMarker.MARKER_COLOR)
+
+
+## The armed state: the SUBJECT's own brackets at `SelectionMarker.WARNING_LINE_WIDTH` in
+## `WARNING_COLOR`. Deliberately the same shape as the first row rather than a new one,
+## because that IS the grammar — "doubled line width" means the mark you already know,
+## thicker, and a legend that invented a separate symbol for it would teach the wrong thing.
+##
+## Reading the two rows together is the lesson, which is also why this row sits last: a
+## player who has just been shown corner brackets meaning "this is the thing being talked
+## about" is in the right frame to see the heavy version and read it as the same statement
+## with a warning on it.
+##
+## This is the cue with the highest cost of being misread in the whole game. It guards the
+## uproot, which is the one action that cannot be undone, and cycle 79 spent an entire cycle
+## on the sentence beside it — while the visual half went untaught until now.
+func _draw_armed(at: Vector2) -> void:
+	var arm: float = SWATCH_RADIUS * (SelectionMarker.ARM / SelectionMarker.HALF)
+	for sx: float in [-1.0, 1.0]:
+		for sy: float in [-1.0, 1.0]:
+			var corner := at + Vector2(sx, sy) * SWATCH_RADIUS
+			draw_line(corner, corner - Vector2(sx * arm, 0.0),
+				SelectionMarker.WARNING_COLOR, SelectionMarker.WARNING_LINE_WIDTH, true)
+			draw_line(corner, corner - Vector2(0.0, sy * arm),
+				SelectionMarker.WARNING_COLOR, SelectionMarker.WARNING_LINE_WIDTH, true)
