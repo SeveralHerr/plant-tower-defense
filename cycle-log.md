@@ -1,4 +1,4 @@
-# Cycle 78
+# Cycle 79
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,47 +6,47 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 78 taught
+## What cycle 79 taught
 
-**An exception in a grammar is often a missing row.** `OVERLAY_GRAMMAR.md` called the
-Chomp's shrinking chew ring one of two exceptions to "solid ring = a reach". Making it
-sweep at a fixed radius did not add a special case — it made the Chomp the **second
-instance of a row**, the first being a husk's rot timer. The exception only ever existed
-because the derivation had filed `husk_layer.gd` under "sprites drawing themselves", the
-one part of that census done by judgement rather than by grep. Twice now, "this thing is
-unique" has meant "the census excluded its twin".
+**A budget refusal changed the feature instead of the number, and that is the system
+working rather than failing.** Adding a "your upgrades are not refunded" clause to the
+armed-uproot prompt looked free — `hud_message_row` was the one HUD budget with real slack.
+`check_budgets` refused the build at **1064 px against an 876 px row**, 188 px over, and
+named the exact worst-case string: the move tip and the forfeit clause together on the
+longest plant name. So the two extras are mutually exclusive and the one about money wins.
+`Game.BUDGET_FLOOR` was not touched — which is the whole point of `-ogxu`'s open question,
+answered once in practice.
 
-**And a change that fixes one document can break two others.** The Sunflower's header
-listed "growing instead of shrinking" as one of four axes separating its gauge from the
-chew ring; three axes remain, and the header now says which. Both fixes shipped in the same
-commit as the code, because a doc made wrong by your own change is not someone else's job.
+**Writing the kanban entry found a bug the tests did not.** The move tip fires on the first
+arm ever and records its milestone in the same breath; the forfeit clause now displaces it.
+A player whose first uproot is on an upgraded cob never sees the tip and the milestone is
+spent anyway — and that is the *likely* case, since uprooting something cheap is not a
+decision worth a prompt. Filed as `-np1d`. The entry was written to describe a design
+constraint and turned into a defect report halfway through.
 
-**The runtime check I could not run is recorded as `blocked`, not skipped.** Photographing
-a partial arc mid-chew failed four different ways, and the reason is a genuine three-way
-squeeze: an aphid chew is 0.45 s against a ~200 ms round trip, so polling gets one sample
-by luck; `pause` makes stepping deterministic and stops the wave delivering a pest;
-`set-game-speed 0.08` keeps the window open and stops the pest arriving at all. Each tool
-solves the problem and breaks a precondition of the others. **`verify_ledger` downgraded
-the row `pass → partial` on its own** for that one check, which is a more honest headline
-than a pass with a footnote.
+**And a `ui_layout` finding appeared that the workflow's existing warning did not cover.**
+It fires on a *paused* tree, per cycles 60 and 65; this one was unpaused, immediately after
+a row text change. Relaunch, settle 90 frames, re-run — zero; re-trigger, settle, re-run —
+zero. Step 2 now says to do that rather than to guess, because the UI baseline is empty and
+**the re-run is the baseline**.
 
-**Second item this cycle, because the first made a document unverifiable.**
-`game/OVERLAY_GRAMMAR.md` cites its neighbours as bare filenames and `citation_check` could
-see none of its fifteen citations. Relaxing that surfaced a third convention — bare names in
-root-level docs meaning "the obvious file", 42 of them, all correct as a reader reads them.
-The resolver now does what a reader does: beside the citing file, then the repo root, then a
-unique basename. 190 visible citations became 272.
+## Carried from cycle 78
+
+An exception in a grammar is often a missing row: the Chomp's chew ring stopped being an
+exception by becoming the second instance of *partial arc = time remaining*, the first
+being a husk's rot timer that the original census had excluded. And a check that could not
+run is recorded `blocked` — `verify_ledger` downgrades the row `pass → partial` on its own,
+which is a better headline than a pass with a footnote.
 
 ## Where things stand
 
-A hundred and seven beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked
-on gh#43). Suite **574/574**, 12576 assertions; lint 0/0; eleven checkers clean; findings
-0/4. Thirteen skills. Upstream gh#44, gh#49, gh#50 open.
+A hundred and eleven beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked
+on gh#43). Suite **575/575**, 12583 assertions; lint 0/0; eleven checkers clean; findings
+0/4 after settling. Thirteen skills. Upstream gh#44, gh#49, gh#50 open.
 
-`house-static-checker` gained a rule earned by getting it wrong: **a mutation that changes
-nothing is not a survivor.** `matches = [] or [...]` evaluates the right side, so the code
-differed and the behaviour did not — and the tell was the finding count not moving *at all*
-rather than moving by one.
+Step 5's one change is in step 2: when a `ui_layout` finding appears, settle and re-run
+before believing it *and* before dismissing it — zero twice is a transient, the same finding
+twice is real.
 
 ## Waiting on the user
 

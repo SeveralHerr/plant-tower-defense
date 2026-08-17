@@ -5349,3 +5349,33 @@ cited in code, and the citation is a mitigation this project has watched fail.
     `matches = [] or [...]` left the right-hand side evaluated, and the finding count did
     not move at all — which is the tell. A real survivor changes the code and not the
     result; a no-op changes neither, and the two look identical if you only read the verdict.
+
+## 2026-08-17 — Cycle 79: the budget made the design decision
+
+- Value: **warranted**, and the decisive work was headless. The launch confirmed one thing
+  the suite structurally cannot, which is the honest shape of this run rather than a
+  complaint about it.
+  - Expected: that a forfeit clause would fit on the armed-uproot prompt, since
+    `hud_message_row` was the one HUD budget with real slack (121 px against a floor of 40,
+    measured in cycle 66).
+  - Got: **it did not fit, by 188 px.** `check_budgets` refused the build — 1064 px against
+    an 876 px row — and named the exact worst-case string: the move tip and the forfeit
+    clause together on the longest plant name. So the design answer came from a
+    measurement. The two extras are mutually exclusive and the one about money wins.
+  - Found: also a `container_layout_drift` on the first `findings` run, immediately after a
+    message-row text change. Relaunched, settled 90 frames, re-ran — zero; changed the row
+    text again, settled 30 frames, re-ran — zero. The known mid-sort transient, **checked
+    rather than assumed**, because the UI baseline is empty (`-v9px`) so every `ui_layout`
+    finding gates as NEW and there is nothing to compare against.
+  - Cheaper: the budget check is headless and did the deciding in ~40 s. What the launch
+    added was the live string quoting **20** seeds after one upgrade — the corpus test
+    cannot say that, because it prices the ladder's *maximum* rather than a real plant's
+    level, which is correct for a budget and useless as a behavioural check.
+
+- Gap: **no gaps this turn.** One note about a good outcome, since those go unwritten as
+  often as `overkill` does: this is the first cycle where a **budget refusal changed the
+  feature rather than the number.** The system's own documentation warns that ratcheting a
+  floor down in the commit that spends it is how a HUD ends up with no slack nobody chose
+  (`-ogxu`, still open on the user). Here the refusal was taken as information — the row
+  cannot hold both clauses, so it holds one — and `Game.BUDGET_FLOOR` was not touched at
+  all. Worth recording as the shape of a budget working, not just failing.

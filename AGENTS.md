@@ -89,6 +89,14 @@ running a command. **Never write a work checklist into it.**
      `ui_transparent` findings from a panel caught mid-entrance, cycle 65 got a
      `container_layout_drift` on a label whose HBox had not finished laying out, and both
      went to zero the moment the tree stepped again.
+     **When a `ui_layout` finding does appear, settle and re-run BEFORE believing it — and
+     before dismissing it.** Cycle 79 got one `container_layout_drift` immediately after a
+     message-row text change on an unpaused tree, which is a state the warning above does
+     not cover. Relaunch, `wait-frames 90`, re-run; then re-trigger the state, settle
+     again, re-run. Zero twice is a transient; the same finding twice is real and the
+     record is at `user://findings_last.json`. This matters more here than in most
+     projects because the UI baseline is **empty** (`-v9px`), so every `ui_layout` finding
+     gates as NEW and there is nothing to compare it against — the re-run IS the baseline.
    - **Read `git diff --stat` before every commit and check the shape is the one you
      meant.** Not the diff — the shape: how many files, how many lines each way. It costs
      one command and it is the ONLY gate a docs-only change has, since `/verify` triages

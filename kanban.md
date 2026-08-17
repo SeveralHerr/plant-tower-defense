@@ -247,6 +247,35 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (79) — the row holds one extra clause and there are three candidates
+
+- **Three separate features now want to be the message row's one extra sentence, and only
+  one can be.** Cycle 79 measured the ceiling exactly: the armed prompt plus the move tip
+  plus the forfeit clause is 1064 px against an 876 px row, so `Hud.uproot_armed_message`
+  (`game/hud.gd:1731-1745`) carries at most one extra and the forfeit displaces the tip.
+  But `-fjqp` wants to draw the uproot countdown, `-c3h3` wants a flinch, and the
+  one-shot-hint idea (`-qoil`) wants a second tip — **all of them are competing for the
+  same 190 px** and none of the beads says so. The honest response is probably not to keep
+  ranking clauses: it is to notice that the row is a queue with a width limit and that
+  three features arriving at it means the ROW is the wrong surface for at least one of
+  them. The selection panel is the obvious second home and `-r722` already wants it budgeted.
+- **The move tip is now a courtesy that an upgraded plant never sees.** It fires on the
+  first arm ever (`game/game.gd:1325-1327` records `HINT_MOVE_PREVIEW`), and from cycle 79
+  the forfeit clause displaces it. A player whose first-ever uproot happens to be on an
+  upgraded cob — which is *likely*, since uprooting something cheap is not a decision worth
+  a prompt — gets the money sentence and never sees the tip at all, and the milestone is
+  recorded either way so it never comes back. Two fixes and they differ in cost: record the
+  milestone only when the tip is actually shown (one line, `game/game.gd:1326`), or accept
+  it and drop the tip entirely, since a hint nobody reliably sees is a hint that is not
+  doing its job.
+- **`upgrade_spend` is the second derived-from-`LEVELS` helper and the pattern is now worth
+  naming.** `CornCobbler.kernel_angle_offsets`, `spread_arc_span` and now `upgrade_spend`
+  all read the same `LEVELS` table so the drawing, the firing and the economy cannot drift
+  from it. That is three call sites of one idea and no name for it: `LEVELS` is the cob's
+  single source of truth and every question about a cob should be a pure static over it.
+  The fourth question — "what does level N cost to reach" — is one line and would let the
+  shop, the panel and the prompt stop each computing their own.
+
 ### New this cycle (78) — an exception in a grammar is often a missing row
 
 - **The Chomp's ring stopped being an exception by being renamed, not by being special.**
