@@ -11393,3 +11393,102 @@ func _script_declares(script: Script, method: String) -> bool:
 		if str(entry.get("name", "")) == method:
 			return true
 	return false
+
+
+## Weather is drawn on the ground it applies to (plant-tower-defense-saaw).
+##
+## The bead asked for a standing readout on the TOP BAR and that was measured and refused:
+## the wave slot's base string is 302 px in a 312 px box, so every candidate tag overflowed
+## and widening the slot put `hud_stats_row` 35 px over its own budget. The note ends
+## "reopen only with a decision about WHERE". This is that decision — weather is a property
+## of the garden rather than of the run's bookkeeping, and the board has the room the bar
+## does not.
+##
+## Asserted through `mark_position`, which is pure, because the properties that matter —
+## the marks are on the board, and they do not collapse onto a handful of points — need no
+## renderer. What a headless test cannot see is the colour, which is why the two-channel
+## rule is carried by the mark SHAPE (flat dashes against slanted streaks) and not by hue.
+func test_the_weather_overlay_scatters_marks_across_the_whole_board() -> String:
+	var size := Vector2(896.0, 576.0)
+	var seen: Dictionary = {}
+	var min_at := Vector2(size.x, size.y)
+	var max_at := Vector2.ZERO
+	for i: int in range(WeatherOverlay.MARK_COUNT):
+		var at: Vector2 = WeatherOverlay.mark_position(i, size)
+		var err: String = _T.assert_true(
+			at.x >= 0.0 and at.x < size.x and at.y >= 0.0 and at.y < size.y,
+			"mark %d at %s is on the board" % [i, at])
+		if err != "":
+			return err
+		seen["%d,%d" % [int(at.x), int(at.y)]] = true
+		min_at = Vector2(minf(min_at.x, at.x), minf(min_at.y, at.y))
+		max_at = Vector2(maxf(max_at.x, at.x), maxf(max_at.y, at.y))
+	# Distinct, or the "scatter" is a few points drawn ninety times. A hash can collide;
+	# what it may not do is collapse.
+	var err: String = _T.assert_gte(seen.size(), WeatherOverlay.MARK_COUNT - 4,
+		"the marks are distinct positions, got %d of %d" % [seen.size(),
+			WeatherOverlay.MARK_COUNT])
+	if err == "":
+		# And SPREAD, which distinctness alone does not give: ninety points inside one
+		# corner are ninety distinct points and not a texture over a board.
+		err = _T.assert_true(min_at.x < size.x * 0.2 and max_at.x > size.x * 0.8,
+			"they reach both sides horizontally (%.0f..%.0f of %.0f)"
+				% [min_at.x, max_at.x, size.x])
+	if err == "":
+		err = _T.assert_true(min_at.y < size.y * 0.2 and max_at.y > size.y * 0.8,
+			"and both ends vertically (%.0f..%.0f of %.0f)" % [min_at.y, max_at.y, size.y])
+	if err == "":
+		# Deterministic: the same wave paints the same marks, so nothing shimmers on a
+		# repaint and a screenshot of a drought is reproducible.
+		err = _T.assert_eq(WeatherOverlay.mark_position(7, size),
+			WeatherOverlay.mark_position(7, size), "the scatter is a function, not a draw")
+	if err == "":
+		err = _T.assert_eq(WeatherOverlay.mark_position(0, Vector2.ZERO), Vector2.ZERO,
+			"a board with no size is refused rather than dividing by it")
+	return err
+
+
+## Clear weather draws nothing, and the overlay only repaints when it changes.
+func test_the_weather_overlay_is_silent_when_the_weather_is_clear() -> String:
+	var overlay := WeatherOverlay.new()
+	overlay.setup(Vector2(896.0, 576.0))
+	var err: String = _T.assert_eq(String(overlay.weather()),
+		String(WaveDirector.WEATHER_CLEAR),
+		"it opens clear -- eleven waves in twelve, and a readout that is present and empty "
+			+ "most of the time is a readout people stop reading")
+	if err == "":
+		overlay.set_weather(WaveDirector.WEATHER_DROUGHT)
+		err = _T.assert_eq(String(overlay.weather()), String(WaveDirector.WEATHER_DROUGHT),
+			"a drought is held")
+	if err == "":
+		overlay.set_weather(WaveDirector.WEATHER_CLEAR)
+		err = _T.assert_eq(String(overlay.weather()), String(WaveDirector.WEATHER_CLEAR),
+			"and cleared again when the next wave is fine")
+	overlay.free()
+	return err
+
+
+## The two weathers differ by SHAPE, not only by hue.
+##
+## The project rule is that colour is never the only signal, and a tint is the obvious way
+## to draw weather and the wrong one on its own. Drought's dashes lie flat; rain's streaks
+## lean. Asserted on the constants because that is where the difference lives — a test that
+## rendered both and compared pixels would be asserting the renderer.
+func test_drought_and_rain_are_different_textures_before_they_are_different_colours()	-> String:
+	var flat := Vector2(WeatherOverlay.DROUGHT_MARK_LENGTH, 0.0).normalized()
+	var slanted: Vector2 = WeatherOverlay.RAIN_SLANT.normalized()
+	var err: String = _T.assert_true(absf(flat.dot(slanted)) < 0.99,
+		"the two mark angles are distinguishable, dot %.3f" % flat.dot(slanted))
+	if err == "":
+		err = _T.assert_true(WeatherOverlay.RAIN_SLANT.y > 0.0
+				and absf(WeatherOverlay.RAIN_SLANT.x) < WeatherOverlay.RAIN_SLANT.y,
+			"rain leans rather than lying over -- it has to read as falling")
+	if err == "":
+		# And the marks are small enough not to be mistaken for the cell-sized vocabulary
+		# in OVERLAY_GRAMMAR.md, where a filled dot on a road cell means something else
+		# entirely.
+		err = _T.assert_true(WeatherOverlay.DROUGHT_MARK_LENGTH < float(Board.CELL) * 0.25
+				and WeatherOverlay.RAIN_MARK_LENGTH < float(Board.CELL) * 0.25,
+			"a weather mark is a quarter of a cell at most, or it joins a vocabulary that "
+				+ "is about single cells")
+	return err

@@ -95,6 +95,7 @@ var _wave_live: bool = false
 ## next one starts -- a plant placed in the prep gap after a drought wave must not
 ## inherit the drought, and one placed during it must.
 var weather: StringName = WaveDirector.WEATHER_CLEAR
+var _weather_overlay: WeatherOverlay = null
 var _score_recorded: bool = false
 
 ## The plant an Uproot click has armed, and how long it stays armed. Held here
@@ -199,6 +200,14 @@ func _ready() -> void:
 	board = Board.new()
 	board.name = "Board"
 	_entities.add_child(board)
+
+	# Above the ground and below everything that stands on it. Added to Entities right
+	# after the board rather than as a Board child, so husks, plants and pests all draw
+	# over it in their existing order and nothing had to learn about weather.
+	_weather_overlay = WeatherOverlay.new()
+	_weather_overlay.name = "WeatherOverlay"
+	_weather_overlay.setup(board.board_size())
+	_entities.add_child(_weather_overlay)
 
 	_husk_layer = HuskLayer.new()
 	_husk_layer.name = "HuskLayer"
@@ -336,6 +345,12 @@ func _apply_weather(next: StringName) -> void:
 		plant.fire_interval_scale = scale
 		if heal > 0.0:
 			plant.heal(heal)
+	# The banner is the beat and it fades; the overlay is the state and it stays for the
+	# whole wave. Both from one place, so a weather that reaches the plants always reaches
+	# the ground they stand on -- the failure 99ddc1e named, where the surfaces that
+	# DESCRIBE a value are a separate population from the code that uses it.
+	if _weather_overlay != null:
+		_weather_overlay.set_weather(next)
 	hud.show_weather(next)
 
 
