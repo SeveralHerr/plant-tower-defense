@@ -889,7 +889,7 @@ func _on_pest_died(pest: Pest) -> void:
 	# CompostMeter: this is what makes "sweep the field" worth doing. Scaled by
 	# husk_multiplier() so a harder kill (a mutation) pays out more, tying the
 	# mutation and compost systems together instead of leaving them side by side.
-	var husk_value: int = maxi(1, int(ceil(pest.seed_value / 2.0 * pest.husk_multiplier())))
+	var husk_value: int = CompostMeter.husk_value_for(pest.seed_value, pest.husk_multiplier())
 	compost.drop_husk(pest.position, husk_value)
 	# Last, after the seeds and the husk this kill earned: the brood is the
 	# consequence of the kill, not part of paying for it, and a player who kills

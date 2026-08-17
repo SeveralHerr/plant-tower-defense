@@ -47,13 +47,37 @@ const MIN_HUSK_LIFETIME: float = 4.5
 ## terms; PlacementPreview.husk_click_margin() is the gate.
 const COLLECT_RADIUS: float = 28.0
 
-## The husk value range the game can actually produce: ceil(aphid 3 / 2) with no
-## mutation at the bottom, ceil(beetle 9 / 2 * hungry 2.0) at the top. Lives
-## here rather than in HuskLayer because it is a fact about what the game drops,
-## not about how a husk is drawn — and size, glow and lifetime all key off it,
-## so they cannot disagree about which husk is the rich one.
+## The husk value range the SMOOTH cues span — not the range the game drops.
+## That distinction is new, and it is a correction: this block used to read "the
+## husk value range the game can actually produce ... ceil(beetle 9 / 2 * hungry
+## 2.0) at the top", which was already false for a plain queen (20) when it was
+## written, and became far more false when cycle 81 made `husk_multiplier` a
+## product and pushed the ceiling to 60.
+##
+## Derived, not remembered — `Pest.SPECIES` x every composable mutation set gives
+## ten reachable values, {2, 3, 5, 7, 9, 14, 20, 30, 40, 60}, and six of them sit
+## at or above FULL_VALUE. So everything from 9 up saturates radius, ring
+## brightness and rot speed alike, and a paired-mutation beetle husk (14) is
+## pixel-for-pixel a single-mutation one (9).
+##
+## FULL_VALUE stays at 9 deliberately. It is the knob `lifetime_for` was tuned
+## against, so widening it to 60 would silently slow the rot of every husk in the
+## game — a balance change wearing a legibility fix's clothes. The visual half of
+## the problem is answered above the saturation point instead, by
+## `HuskLayer.overflow_pips`, which counts rather than lerps.
 const BASE_VALUE: int = 2
 const FULL_VALUE: int = 9
+
+
+## What a kill worth `seed_value` seeds drops after `multiplier` mutations.
+##
+## Lived inline at its one call site in `Game._on_pest_died` until the drop table
+## needed deriving — and a formula at a call site is a decision no test can name,
+## so a test wanting the ten values the game can actually produce had to
+## reimplement the ceil-and-halve itself and then be wrong in private. Same
+## reason `Sfx.kill_event_for` and `Pest.markers_for` are up here.
+static func husk_value_for(seed_value: int, multiplier: float) -> int:
+	return maxi(1, int(ceil(float(seed_value) / 2.0 * multiplier)))
 
 
 ## Where `value` sits in the drop range: 0.0 for the cheapest husk, 1.0 for the

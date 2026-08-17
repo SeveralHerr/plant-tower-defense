@@ -2183,20 +2183,105 @@ func test_the_biggest_husk_still_fits_inside_its_own_click_radius() -> String:
 			% [outer, CompostMeter.COLLECT_RADIUS])
 
 
-## The sizing constants are pinned to real drops, so this checks the two ends
-## the game can actually produce still land at distinguishable sizes: a plain
-## aphid husk and a hungry beetle's.
-func test_the_husks_the_game_really_drops_span_the_size_range() -> String:
-	var aphid: int = maxi(1, int(ceil(int(Pest.SPECIES[Pest.APHID]["seeds"]) / 2.0)))
-	var beetle_value: float = int(Pest.SPECIES[Pest.BEETLE]["seeds"]) / 2.0
-	var beetle: int = maxi(1, int(ceil(beetle_value * float(Pest.MUTATION_HUSK_MULTIPLIER[Pest.MUTATION_HUNGRY]))))
-	var err: String = _T.assert_eq(HuskLayer.radius_for(aphid), HuskLayer.BASE_RADIUS,
-		"a plain aphid husk (%d seeds) is the baseline size" % aphid)
+## Every husk value the game can actually drop, derived rather than listed: each
+## species' seed count crossed with every mutation set `Pest.mutations_compose`
+## permits, through the one formula `Game._on_pest_died` uses.
+##
+## Derived because the hand-written version of this was wrong. It read the two
+## ends off memory — plain aphid at the bottom, hungry beetle at the top — and
+## asserted the beetle "is the largest size". That was true until cycle 81 made
+## `husk_multiplier` a product; a hungry beetle is now sixth of ten, and a queen
+## drops nearly seven times it.
+static func _reachable_husk_values() -> Array[int]:
+	var multipliers: Dictionary = {1.0: true}
+	for a: StringName in Pest.MUTATION_HUSK_MULTIPLIER:
+		var ma: float = float(Pest.MUTATION_HUSK_MULTIPLIER[a])
+		multipliers[ma] = true
+		for b: StringName in Pest.MUTATION_HUSK_MULTIPLIER:
+			if Pest.mutations_compose(a, b):
+				multipliers[ma * float(Pest.MUTATION_HUSK_MULTIPLIER[b])] = true
+	var seen: Dictionary = {}
+	for species: StringName in Pest.SPECIES:
+		var seeds: int = int(Pest.SPECIES[species]["seeds"])
+		for m: float in multipliers:
+			seen[CompostMeter.husk_value_for(seeds, m)] = true
+	var out: Array[int] = []
+	for v: int in seen:
+		out.append(v)
+	out.sort()
+	return out
+
+
+## A richer husk must never draw as a poorer one. Radius, glow and pip count all
+## rise together or hold, across the whole derived drop table — the property that
+## matters, and the one a saturating cue keeps while losing everything else.
+func test_no_husk_the_game_drops_ever_looks_poorer_than_a_cheaper_one() -> String:
+	var values: Array[int] = _reachable_husk_values()
+	var err: String = _T.assert_gt(values.size(), 4,
+		"the drop table has enough distinct values to be worth ordering (%d)" % values.size())
+	if err != "":
+		return err
+	for i: int in range(values.size() - 1):
+		var lo: int = values[i]
+		var hi: int = values[i + 1]
+		err = _T.assert_true(
+			HuskLayer.radius_for(hi) >= HuskLayer.radius_for(lo)
+				and HuskLayer.glow_for(hi) >= HuskLayer.glow_for(lo)
+				and HuskLayer.overflow_pips(hi) >= HuskLayer.overflow_pips(lo),
+			"a %d-seed husk never draws smaller, dimmer or fewer-pipped than a %d-seed one"
+				% [hi, lo])
+		if err != "":
+			return err
+	return err
+
+
+## The measurement `-532j` asked for, kept as an assertion so the answer cannot
+## quietly change: which husks the player genuinely cannot tell apart.
+##
+## Radius and glow both saturate at CompostMeter.FULL_VALUE, so before pips SIX
+## of the ten reachable values drew as one husk — including the two this test
+## names, which are the single-mutation and paired-mutation kills of the same
+## species. That is the second-mutation feature's payout being invisible at the
+## exact comparison a player makes.
+##
+## What is left is the cap's own promise: past PIP_MAX pips the cue says "very
+## rich" rather than a number. Every remaining collision must be up there, and
+## the assertion is phrased against PIP_MAX so changing the cap moves the
+## expected answer with it instead of failing.
+func test_the_only_husks_that_look_alike_are_the_ones_the_pip_cap_lumps_together() -> String:
+	var beetle: int = int(Pest.SPECIES[Pest.BEETLE]["seeds"])
+	var single: int = CompostMeter.husk_value_for(beetle,
+		float(Pest.MUTATION_HUSK_MULTIPLIER[Pest.MUTATION_HUNGRY]))
+	var paired: int = CompostMeter.husk_value_for(beetle,
+		float(Pest.MUTATION_HUSK_MULTIPLIER[Pest.MUTATION_HUNGRY])
+			* float(Pest.MUTATION_HUSK_MULTIPLIER[Pest.MUTATION_ARMOURED]))
+	var err: String = _T.assert_true(
+		HuskLayer.radius_for(single) == HuskLayer.radius_for(paired)
+			and HuskLayer.glow_for(single) == HuskLayer.glow_for(paired),
+		"the smooth cues genuinely cannot separate a %d-seed husk from a %d-seed one -- that is why pips exist"
+			% [single, paired])
 	if err == "":
-		err = _T.assert_eq(HuskLayer.radius_for(beetle), HuskLayer.MAX_RADIUS,
-			"a hungry beetle husk (%d seeds) is the largest size" % beetle)
-	if err == "":
-		err = _T.assert_eq(HuskLayer.glow_for(beetle), 1.0, "and glows at full brightness")
+		err = _T.assert_gt(HuskLayer.overflow_pips(paired), HuskLayer.overflow_pips(single),
+			"and the pips do: %d pip(s) against %d"
+				% [HuskLayer.overflow_pips(paired), HuskLayer.overflow_pips(single)])
+	if err != "":
+		return err
+
+	var lumped: int = HuskLayer.PIP_MAX * CompostMeter.FULL_VALUE
+	for value: int in _reachable_husk_values():
+		for other: int in _reachable_husk_values():
+			if other == value:
+				continue
+			var same: bool = HuskLayer.radius_for(value) == HuskLayer.radius_for(other) \
+				and HuskLayer.glow_for(value) == HuskLayer.glow_for(other) \
+				and HuskLayer.overflow_pips(value) == HuskLayer.overflow_pips(other)
+			if not same:
+				continue
+			err = _T.assert_true(value >= lumped and other >= lumped,
+				"husks worth %d and %d draw identically, and both are at or over the %d seeds where PIP_MAX stops counting"
+					% [value, other, lumped])
+			if err != "":
+				return err
 	return err
 
 

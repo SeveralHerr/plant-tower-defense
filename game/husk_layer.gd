@@ -22,6 +22,15 @@ const BRIGHT_RING := Color(1.0, 0.97, 0.62, 1.0)
 const RING_WIDTH_MIN: float = 2.0
 const RING_WIDTH_MAX: float = 3.5
 
+## Pips: what a husk wears once radius and glow have both run out of range.
+##
+## Three at most, and that ceiling is a promise about what the cue means rather
+## than a layout convenience — past 27 seeds the mark says "very rich", not a
+## number, and pretending otherwise would need six pips on a 30px husk.
+const PIP_MAX: int = 3
+const PIP_RADIUS: float = 1.7
+const PIP_SPACING: float = 4.6
+
 
 var compost: CompostMeter = null
 
@@ -43,6 +52,32 @@ static func radius_for(value: int) -> float:
 ## that rots fast or the two cues fight each other.
 static func glow_for(value: int) -> float:
 	return CompostMeter.value_fraction(value)
+
+
+## How many pips a husk worth `value` wears. Zero for everything the smooth cues
+## can still tell apart, then one per whole FULL_VALUE the husk is over.
+##
+## This exists because the smooth cues stop working, and the measurement is worth
+## keeping next to the fix: `Pest.SPECIES` crossed with every composable mutation
+## set drops ten distinct values, {2, 3, 5, 7, 9, 14, 20, 30, 40, 60}, and
+## `radius_for` and `glow_for` BOTH saturate at 9. So six of the ten render as
+## one husk — including the pair the whole second-mutation feature exists to
+## produce: a beetle's hungry kill (9) and its armoured-and-hungry kill (14) are
+## the same circle, the same brightness and the same ring weight.
+##
+## A count rather than another lerp, for two reasons. The range above the
+## saturation point is 9..60, and no brightness ramp survives being asked to
+## resolve 6.6x. And `CompostMeter.FULL_VALUE` cannot simply be widened to 60 to
+## fix the ramp, because `lifetime_for` reads the same fraction — the rot clock
+## would slow for every husk in the game.
+##
+## The grammar row this claims is COUNT, which nothing else on the board used;
+## see game/OVERLAY_GRAMMAR.md. Deliberately silent at 9 so the husk the player
+## already knows is unchanged.
+static func overflow_pips(value: int) -> int:
+	if value <= CompostMeter.FULL_VALUE:
+		return 0
+	return clampi(value / CompostMeter.FULL_VALUE, 1, PIP_MAX)
 
 
 func _process(_delta: float) -> void:
@@ -76,3 +111,14 @@ func _draw() -> void:
 			lerpf(RING_WIDTH_MIN, RING_WIDTH_MAX, glow),
 			true
 		)
+		# After the body, so they sit on top of it rather than under; and inside
+		# the rot ring, so a sweeping arc never crosses them and turns a count of
+		# three into a count of two mid-rot.
+		var pips: int = overflow_pips(value)
+		var middle: float = float(pips - 1) * 0.5
+		for i: int in range(pips):
+			draw_circle(
+				pos + Vector2((float(i) - middle) * PIP_SPACING, 0.0),
+				PIP_RADIUS,
+				BRIGHT_RING
+			)

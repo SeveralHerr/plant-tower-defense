@@ -29,6 +29,7 @@ must survive its colour being thrown away.
 | **Corner brackets** | the SUBJECT — "this is the thing being talked about" | `selection_marker.gd:100-101`, and `PlacementPreview` inherits them one size larger and dimmer, so a hover reads as a promise of selection |
 | **Scattered short marks**, much smaller than a cell, not aligned to the grid | the WEATHER, a property of the whole garden | `weather_overlay.gd:97-98` (drought, flat dashes), `weather_overlay.gd:103-104` (rain, slanted streaks) |
 | **Doubled line width** | ARMED — a destructive action is one click away | `SelectionMarker.WARNING_LINE_WIDTH`, `SoleCoverMarks.WARNING_RING_WIDTH` |
+| **A row of small pips** inside a drawn shape | HOW MANY TIMES OVER — a magnitude the shape's own size and brightness have already saturated on | `husk_layer.gd:117-124` (a husk worth more than `CompostMeter.FULL_VALUE`) |
 
 ## Where the grammar does NOT hold, and why that is tolerable
 
