@@ -138,8 +138,8 @@ together they made a HUD with no slack that nobody chose.
 
 ## Restarting
 
-`bd ready` for the work, this file for the context, `CLAUDE.md` (mirrored in `AGENTS.md`) for
-the loop itself. **Confirm a bead's premise before claiming it** — step 2's first move, and for
+`bd ready` for the work, this file for the context, `/cycle` (`.claude/skills/cycle/SKILL.md`)
+for the loop itself — `CLAUDE.md` and `AGENTS.md` now carry only a pointer to it. **Confirm a bead's premise before claiming it** — step 2's first move, and for
 three cycles running it is where the design happened rather than a correctness check: it found
 a wrong absence claim (90), a wrong claim about a file's shape (91), and a whole option the
 bead had not listed (92). It now also says to grep for the HELPER you are about to write.

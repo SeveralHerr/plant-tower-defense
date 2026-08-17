@@ -344,9 +344,9 @@ known-out beats any statistic over the real corpus.
 
 ## Registering it
 
-Add it to the parallel-safe list in **both** `CLAUDE.md` and `AGENTS.md` — they are
-independent files and a sync that knows only one has already silently deleted a section
-here. Do not edit the harness's managed block; `/scaffold-godot-harness` regenerates it.
+Add it to the parallel-safe list in `.claude/skills/cycle/SKILL.md` — the loop lives
+there now, in one copy; `CLAUDE.md` and `AGENTS.md` carry only a pointer to it. Do not
+edit the harness's managed block in `CLAUDE.md`; `/scaffold-godot-harness` regenerates it.
 
 Do not mint a `.uid` sidecar for a `.py` file. Those are for `.gd` scripts, and lint
 reports `UIDs: OK` either way, so a stray one is invisible until someone wonders what it
