@@ -195,6 +195,31 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (27 of 30) — a green test proved nothing, and the suite cannot tell
+
+- **The suite reports assertions executed and cannot report assertions that MEANT
+  something.** `test_corn_shoots_the_pest_closest_to_escaping` ran its assertion every
+  time and compared two freed references; `Assertions: 12143 executed` counted it.
+  `[VACUOUS]` catches a test that ran *zero* assertions and nothing catches one whose
+  operands were both nothing. A cheap approximation exists: **an equality assertion
+  where both sides are the same object reference is almost always a mistake** — worth a
+  `_T.assert_eq` guard that refuses `a == a` on identical instance ids.
+- **Nothing in the suite asserts that a hosted node is still alive when the test ends.**
+  `_T.free_ui(host)` is called on every test that hosts, and a node that freed itself
+  in between is indistinguishable from one that did not. A single line in `free_ui`'s
+  neighbourhood — count what was hosted, count what survives — would have surfaced this
+  defect as a warning on the very first run.
+- **Three test files build pests with hand-set `_leg` values against hand-written
+  routes** (`test_combat.gd`, `test_selftest.gd`, `test_board.gd`), and the relationship
+  between "route of N points" and "the last leg you can sit on" is re-derived by eye
+  each time. It is `_route.size() - 2`, it is written down nowhere, and getting it wrong
+  by one is exactly this cycle's bug. A `Pest.last_survivable_leg()` — or a test helper
+  that places a pest *at a fraction of its route* — removes the arithmetic.
+- **`Plant._furthest_along_in_range` is the only targeting function in the game**, and
+  three plants pick targets by other means (`ChompFlower` grabs, `StickySundew`
+  slows in radius, `Dandelion` arcs). None of them guards against a stale reference
+  either, and they were not part of this fix because nothing crashed in them.
+
 ### New this cycle (26 of 30) — what a reverted upgrade exposed about our own tests
 
 - **One test holds node references across an `await` and it is the one that crashed.**
