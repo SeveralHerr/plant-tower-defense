@@ -125,6 +125,15 @@ running a command. **Never write a work checklist into it.**
      neighbourhood of the file you happen to be in is a guess about the rest of the
      codebase.** Use `kanban-staleness-audit`'s bar: before writing that something is
      missing, open the code that would contain it.
+     **A follow-on `:NN` binds to the last full path before it, left to right, and never
+     across an entry boundary.** Entries here write `` (`game/sfx.gd:86`, `:91`, `:106`) ``
+     — 44 such references in `kanban.md`, a shorthand the file invented and nothing knew
+     about until `tools/citation_check.py` learned it in cycle 77. Binding them found a
+     reference written as a bare `:331` in a sentence whose nearest preceding citation was
+     `game/chomp_flower.gd`, a file with 183 lines; the intended target was named earlier in
+     the same sentence, which is why no reader caught it. If the path you mean is not the
+     last one you wrote, **write it out in full** — the shorthand is for a run of lines in
+     one file and nothing else.
    - **Search for the BEHAVIOUR, not for one implementation of it.** This is the absence
      half of the rule above and it fails differently: cycle 70 wrote "no plant has idle
      motion, verified unbuilt" after enumerating every `create_tween()` call on every

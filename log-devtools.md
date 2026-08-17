@@ -5275,3 +5275,41 @@ cited in code, and the citation is a mitigation this project has watched fail.
   better than a second reading by the same eyes. Worth folding into the skill as the
   sanctioned way to compress the two passes, rather than leaving the rule stated and
   routinely broken.
+
+## 2026-08-17 — Cycle 77: a checker whose denominator was the finding
+
+- Value: **overkill** for the harness proper — no game, and `name_check` plus the suite
+  confirmed what a new stdlib file that no GDScript imports could not have broken. The
+  cycle's findings all came from a tool built and then USED in the same cycle, which is
+  the project's own rule and the reason it exists.
+  - Expected: to stop retyping a six-line script, and for the first full run to surface a
+    handful of stale citations in a file that says at its own top that half of it is stale.
+  - Got: **130 citations in `kanban.md` and all 130 resolving**, which reads as a clean bill
+    and is not one. Only **74 of the file's 323 entries carry a citation at all**; 249 make
+    claims about the code with no coordinates whatsoever. So the number that mattered was
+    the denominator, and the tool was one line away from shipping without it — a checker
+    reporting "0 findings" over a quarter of its subject is exactly the clean-result-over-an-
+    empty-input-set failure the house contract exists to name.
+  - Found: four things, and only the first came from the exit code.
+    1. One bad citation across all 23 markdown files — a `log-devtools` entry citing
+       `templates/tools/verify_ledger.py` as though it were a path in this repo.
+    2. Reading the *landed lines* rather than the exit code: `kanban.md` cited
+       `game/plant.gd:172` as `add_child(_sprite)`, and cycle 71's Sway pivot pushed that 34
+       lines down, so `:172` now lands on a health-bar comment. **A citation that resolves
+       and no longer supports its claim** — the precise case the tool's own `NOT COVERED`
+       line says it cannot see, demonstrated on the first pass.
+    3. The continuation form (`` `game/sfx.gd:86`, `:91` ``) was invisible: 44 of them in
+       `kanban.md`, a third again on top of the 130. Binding them found a reference written
+       as a bare `:331` in a sentence whose preceding citation was a 183-line file.
+    4. Two bugs in the tool, both from using it rather than reading it — mutating the
+       missing-file branch made the next line traceback instead of exiting 2, and running it
+       WITHOUT `--quiet` (the mode that prints source, and therefore the mode the first three
+       runs never used) died with a `UnicodeEncodeError` on an em-dash.
+  - Cheaper: nothing. Every one of those needed the tool to exist and then to be pointed at
+    the whole file rather than the paragraph being edited.
+
+- Gap: **no gaps this turn.** One observation worth keeping: findings 2 and 4 both came from
+  running the tool in its *verbose* mode, which nothing in the workflow asks for. A checker's
+  quiet mode is the one that gets wired into a loop and therefore the one that gets exercised;
+  its verbose mode is where the output nobody reads lives, and both a crash and a real
+  finding were sitting there. **Run a new checker once in the mode you do not intend to use.**

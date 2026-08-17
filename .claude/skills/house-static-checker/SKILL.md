@@ -118,6 +118,21 @@ FINDING: <file>:<line> <function> <what is wrong and why it matters>
   waive: add `# <tool>: ok - <reason>` in the body.
 ```
 
+## Run it once in the mode you do not intend to use
+
+Before the fixture, and it costs one command. A checker has a quiet mode that gets wired
+into the loop and a verbose mode that prints what it looked at — and the verbose one is
+where the output nobody reads lives, which makes it where the bugs live too.
+
+`citation_check.py` was run three times in `--quiet` and shipped. Its first plain run died
+with a `UnicodeEncodeError` on an em-dash in a source line it was printing: **a checker
+taken out by its own output**, on a cp1252 console, in the mode a human would actually use
+when investigating something. The same plain run is what surfaced a citation that resolved
+cleanly and no longer supported its claim — the one class the tool's own `NOT COVERED` line
+says it cannot detect, sitting visible in output nobody had looked at.
+
+So: run it verbose, on the real corpus, once. Read some of what it prints.
+
 ## The fixture is not optional
 
 **Write a synthetic file containing both the bad patterns and the good ones, run the

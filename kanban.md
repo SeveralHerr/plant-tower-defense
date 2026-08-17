@@ -247,6 +247,36 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (77) — three quarters of this file cites nothing
+
+- **249 of this file's 323 entries made a claim about the code and cited no line for it**
+  — measured by `tools/citation_check.py` in cycle 77, against 175 citations that all
+  resolved. (Adding this section moved it to 250 of 326, which is the joke and also the
+  point: the ratio is a live number, so read the tool rather than this sentence.) The cite-a-`file:line` rule arrived in
+  cycle 30 and the file is 77 cycles old, so the uncited three quarters is simply everything
+  written before it — and that half is invisible to this checker, to `kanban-staleness-audit`
+  short of a full manual pass, and to anything that could ever be automated. **The right
+  move is almost certainly not to backfill 249 citations.** It is to accept that the old
+  sections can only be audited by hand, and to spend the audits on the ones that would
+  become work: an uncited entry nobody will ever promote costs nothing being wrong.
+  The concrete improvement is to make the *promotion* path check: an entry cannot become a
+  bead without a citation, which is a rule about `bd` rather than about this file.
+- **The continuation shorthand this file invented was invisible to its own audit for a day.**
+  Entries here write `` (`game/sfx.gd:86`, `:91`, `:106`) `` — 44 bare `:NN` references in
+  `kanban.md`, a third again on top of the full ones. The first version of the checker saw
+  none of them, and teaching it the form immediately found a reference written as a bare
+  `:331` in a sentence whose nearest preceding citation was `game/chomp_flower.gd`, a file
+  with 183 lines. Nobody would have caught that by reading: the prose names the right file
+  twice in the same sentence. **A shorthand a document invents for itself is a shorthand no
+  tool knows**, and the cost is not the shorthand, it is that its errors look like prose.
+- **A citation can resolve and be wrong, and only reading the landed line finds it.**
+  `game/plant.gd:206` is where a plant's sprite is parented today; cycle 70's entry cited
+  `:172`, correctly, and cycle 71's `Sway` pivot pushed the line 34 down. `:172` still
+  resolves — onto a health-bar comment. The checker prints every landed line for exactly
+  this reason and says in its own `NOT COVERED` that it cannot judge them. Worth stating as
+  a rule for any citation-checking anywhere: **resolution is mechanical and support is not**,
+  so a green exit means the coordinates exist, never that they point at what you meant.
+
 ### New this cycle (76) — six kinds of enemy, and one knob that raises how often
 
 - **The endless ramp turns four dials and the variety ceiling is not one of them.**
