@@ -1,4 +1,4 @@
-# Cycle 80
+# Cycle 81
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,48 +6,48 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 80 taught
+## What cycle 81 taught
 
-**A live check against persisted state can return a real answer to the wrong question.**
-Verifying that a first-ever uproot no longer burns the move-tip one-shot, I armed one and
-read the milestone: `true` before, `true` after. Not a fix and not a bug — the developer's
-own save had earned that flag in some earlier cycle, so the check could not distinguish
-anything and read exactly like a pass. **Assert the precondition before driving a
-one-shot**; that is now step 3b of `read-a-moving-value`.
+**The check the bead demanded turned the design around.** `-1d07` said to find out whether
+an armoured *and* winged pest is unkillable **before** building pairs. It is the opposite:
+`MUTATION_ARMOURED`'s only effect on play is doubling a Chomp's chew time, and a winged
+pest cannot be grabbed by a Chomp at all — so the pair is **redundant, not lethal**, and
+would have paid 1.5 × 1.5 for a trait it cannot use. A payout bug wearing a difficulty
+costume. `MUTATION_EXCLUSIONS` states that as data so a fourth mutation forces its author
+to classify its pairs.
 
-The fix was `--snapshot-userstate`, used for the first time in eighty cycles: relaunch,
-clear `earned_milestones` in the running game, drive both paths, and `quit` reports
-`userstate: restored 1 file(s)`. Without it the run would have left the developer's save
-cleared, which the harness warns shows up later as unrelated headless failures.
+**And an assertion that had read as an invariant for many cycles was a coincidence of one
+RNG draw.** Adding a single `randf()` per mutated pest moved the over-promise simulation's
+`escaped_engaged` from 34-of-34 to 20-of-34. Isolated rather than guessed: with the draws
+still consumed and the second mutation *never applied*, the failure is byte-identical — so
+the stream moved and the behaviour did not. **When a seeded simulation changes, consume the
+draws without applying the effect**; that separates "my change broke a test" from "my
+change reshuffled a draw the test was asserting", which are different problems.
 
-**And `suite_reach_check` paid for itself on a two-line function.** The new
-`Hud.uproot_shows_tip` was exercised through `arm_uproot` and named by no test, which the
-checker flagged as NEW. Naming it directly turned one behavioural example into all four
-combinations of a two-input predicate — and three of the four say no, so the example had
-been proving almost nothing.
+The derivable claim beside it — `pests_all_covered_untouched == 0` — was untouched and
+still passes, which is the evidence for which kind of assertion survives.
+
+## Carried from cycle 80
+
+A live check against persisted state can return a real answer to the wrong question: the
+developer's own save had the milestone earned, so it read `true` before and after. Assert
+the precondition before driving a one-shot, and clear it only under
+`launch --snapshot-userstate`.
 
 ## Carried from cycle 79
 
 A budget refusal changed the FEATURE rather than the number: the armed-uproot prompt's tip
-and its new forfeit clause measured 1064 px against an 876 px row, so they are mutually
+and its forfeit clause measured 1064 px against an 876 px row, so they are mutually
 exclusive and the one about money wins. `Game.BUDGET_FLOOR` was not touched.
-
-## Carried from cycle 78
-
-An exception in a grammar is often a missing row: the Chomp's chew ring stopped being an
-exception by becoming the second instance of *partial arc = time remaining*, the first
-being a husk's rot timer that the original census had excluded. And a check that could not
-run is recorded `blocked` — `verify_ledger` downgrades the row `pass → partial` on its own,
-which is a better headline than a pass with a footnote.
 
 ## Where things stand
 
-A hundred and fourteen beads ready. Still on harness **0.38.0** deliberately (`-ny3h`
-blocked on gh#43). Suite **576/576**, 12596 assertions; lint 0/0; eleven checkers clean;
-findings 0/4; reach 2/2. Thirteen skills. Upstream gh#44, gh#49, gh#50 open.
+A hundred and seventeen beads ready. Still on harness **0.38.0** deliberately (`-ny3h`
+blocked on gh#43). Suite **580/580**, 12624 assertions; lint 0/0; eleven checkers clean;
+findings 0/4. Thirteen skills. Upstream gh#44, gh#49, gh#50 open.
 
-No workflow change this cycle — the steps held. The lesson was a technique and went into
-`read-a-moving-value` as step 3b.
+No workflow change — the steps held. The technique went into `log-devtools.md` rather than
+a skill because it is one paragraph and belongs beside the run that produced it.
 
 ## Waiting on the user
 
@@ -64,8 +64,8 @@ together they made a HUD with no slack that nobody chose.
 
 `bd ready` for the work, this file for the context, `CLAUDE.md` (mirrored in `AGENTS.md`)
 for the loop itself. `-orcl` is the half of the citation audit no tool can do — read the
-landed lines once and record the rot rate. `-knpc` blocks `-1490` and `-lp97`; `-ip4n` blocks `-l86t`; `-0q3q`
-blocks `-ei83`. The cheapest real win on the board is `-0q3q`: hints and achievements share
+landed lines once and record the rot rate. `-knpc` blocks `-1490` and `-lp97`; `-ip4n` blocks `-l86t`; `-0q3q` blocks `-ei83`;
+`-9afm` is the fragility cycle 81 worked around rather than fixed. The cheapest real win on the board is `-0q3q`: hints and achievements share
 one dictionary and have opposite triggers, which is what let cycle 79 burn a hint unseen.
 
 **Nine standing notes.** The harness is pinned at 0.38.0 on purpose (gh#43). The UI findings

@@ -247,6 +247,33 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (81) — a pest can carry two traits and nothing on screen says which
+
+- **A doubly-mutated pest wears one colour and nothing counts.** `Pest.apply_mutation`
+  keeps the tint of the PRIMARY trait, deliberately — a blend of two hues is a third colour
+  nobody has been taught. The non-colour channel composes for free (`gait_swing` reads
+  `is_armoured` and `is_winged`, `gait_stretch` reads `is_hungry`, so a paired pest *moves*
+  like both), which is the two-channel rule paying off in a case nobody designed it for.
+  **But the player has no way to know a pair is what they are looking at**, and the pair is
+  the rarest thing in the game — under 3% of pests at wave 20 (`game/wave_director.gd:51-52`
+  against `mutation_chance_for`). A cue that says "two" rather than "which two" would be
+  enough: the mutation marks drawn at the silhouette edge are already the non-colour half,
+  and a second mark is a count rather than a new vocabulary.
+- **The husk pays 3× for a hungry winged pest and the compost readout says nothing about
+  it.** `husk_multiplier()` is now a product across traits, so a paired kill drops a husk
+  worth 1.5 × 2.0. That is the correct economy and it is invisible: the husk's radius and
+  ring brightness read `value` (`game/husk_layer.gd:31`, `:44`), so a 3× husk is simply a
+  big one, indistinguishable from a big one for any other reason. The game already has a
+  vocabulary for "this came from something remarkable" — `-rowt` wants the corpse's linger
+  scaled by the same multiplier — and doing both would make a rare kill legible twice.
+- **`SECOND_MUTATION_START_WAVE` is 20 and the campaign ends at 16, so pairs are an
+  endless-only feature nobody will see in a normal run.** That is defensible — endless is
+  where variety runs out — but it means the whole feature is invisible to a player who
+  finishes the campaign and stops, which is most of them. Worth deciding explicitly rather
+  than by arithmetic: either the campaign's last waves get a pair (wave 16 is already
+  "deliberately sized to land on the pest ceiling exactly"), or the endless-only framing is
+  stated somewhere the player can read it.
+
 ### New this cycle (80) — one-shots are a system and nothing treats them as one
 
 - **Three one-shot hints exist, they are spent by three different mechanisms, and only one

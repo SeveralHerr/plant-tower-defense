@@ -5412,3 +5412,38 @@ cited in code, and the citation is a mitigation this project has watched fail.
     driving a one-shot, read it and assert it is in the state the check requires. That is
     `read-a-moving-value`'s "read the clock alongside the value" applied to a flag rather
     than a timer.
+
+## 2026-08-17 — Cycle 81: the check the bead demanded turned the design around
+
+- Value: **warranted**, though the split is unusual: the headless suite did nearly all of
+  it, and the one thing the launch added was worth the launch.
+  - Expected: to find out whether an armoured **and** winged pest is unkillable, which is
+    what `-1d07` said to check before building rather than after.
+  - Got: the opposite. `MUTATION_ARMOURED`'s only effect on play is doubling a Chomp's chew
+    time (`apply_mutation`; every other reader of `is_armoured` is cosmetic gait), and a
+    winged pest cannot be grabbed by a Chomp at all (`game/chomp_flower.gd:85`). **The pair
+    is redundant, not lethal** — it would have paid 1.5 × 1.5 for a trait it cannot use,
+    which is a payout bug wearing a difficulty costume.
+  - Found: two things beyond the feature.
+    1. **A seeded assertion that was a coincidence.** Adding one `randf()` per mutated pest
+       past wave 20 moved the over-promise run's `escaped_engaged` from 34-of-34 to
+       20-of-34. Isolated properly rather than guessed: with the draws still consumed and
+       the second mutation *never applied*, the failure is byte-identical — so it is the
+       stream, not the feature. The equality had never been derivable; the claim beside it
+       (`pests_all_covered_untouched == 0`) is, and still passes.
+    2. Three test call sites set `pest.mutation` directly to stage a payout check. Making
+       the payout a product over `mutations` broke them **loudly** rather than quietly
+       paying for one trait — the good failure mode, and only because the field's meaning
+       narrowed rather than widening.
+  - Cheaper: the suite, for everything except the live check that the excluded pair is
+    refused at the **pest** and not only at the roll — two enforcement points, and only a
+    running game exercises the devtools verb that reaches the second one.
+
+- Gap: **no gaps this turn.** One technique worth keeping, since it is the reason finding 1
+  is a finding rather than a shrug: **when a seeded simulation changes, separate the stream
+  from the behaviour by consuming the draws without applying the effect.** One mutation of
+  the form `if false and <condition>:` — carefully, since `[] or [...]` taught me last cycle
+  that a no-op mutation proves nothing — and if the failure is identical, the RNG moved and
+  nothing else did. That converts "my change broke a test" into "my change reshuffled a
+  draw and the test was asserting the draw", which are different problems with different
+  fixes, and the second one is invisible without the experiment.
