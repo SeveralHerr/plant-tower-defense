@@ -46,7 +46,15 @@ Nothing else in the toolchain can see this:
     The contradiction only exists between entries, hundreds of lines apart.
 
 Parallel-safe by construction: reads one markdown file, opens no project, writes
-nothing. Exit codes follow the house contract: 0 clean, 1 findings, 2 could not run.
+nothing. **Advisory**: exit 0 unless it could not run at all (2). What it reports --
+superseded `open` lines -- is history that must not be rewritten, so there is nothing
+for a reader to action and a gate would only teach them to skip it.
+
+    fixture:   template above the first entry / one id fixed in a later entry than it
+               was opened in / one id opened and never closed
+    mutations: drop the `i < first_entry` skip -> the template's id is counted, ids +1
+               `current.setdefault(...)` instead of `current[...] = row` (first write
+               wins) -> the fixed id reads `open` again and superseded drops to 0
 """
 
 from __future__ import annotations

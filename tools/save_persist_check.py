@@ -67,6 +67,15 @@ Nothing else in the toolchain can see this:
 
 Parallel-safe by construction: opens no project, writes nothing to `.godot/`, takes
 no lock. Exit codes follow the house contract: 0 clean, 1 findings, 2 could not run.
+
+    fixture:   a test reaching the writer three hops deep / one with a setup() redirect /
+               one waived / one naming the writer only in prose and in a string literal,
+               including an escaped \" inside it
+    mutations: `return text` from strip_comments -> the prose-only file fires
+               keep string bodies instead of blanking them -> the same file fires
+               (this is what proves the escape handling, which no example file can)
+               remove the closure, seeding only `_save` -> exit 2, "the derivation
+               broke", rather than a clean pass over a one-element set
 """
 
 from __future__ import annotations

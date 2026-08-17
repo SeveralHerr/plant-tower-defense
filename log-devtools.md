@@ -3982,3 +3982,32 @@ property's typed Array, citing the id).
 cited in code, and the citation is a mitigation this project has watched fail.
 
 - Gap: **no gaps this turn.** The harness was not the subject; its log was.
+
+## 2026-08-16 — cycle 38: the record rolls up from the one it beat
+
+- Value: **warranted** — an animation is the one class the suite structurally cannot
+  reach, and the run also caught me muting the tool that was answering me.
+  - Expected: `GardenTheme.animations_enabled()` is false headless, so the suite can
+    assert the renderer, the origin and the final text, and cannot assert that
+    anything MOVES. That is the whole reason to launch.
+  - Got: exactly that, once I stopped breaking my own procedure. At
+    `set_game_speed 0.05` the label read
+    `Campaign 301` → `302` → `303` on successive polls, climbing from the 300 it beat
+    toward 308, and settled on `Campaign 308`. At 1.0 the roll finishes inside a
+    single bridge round-trip, which is why the first four attempts saw only the
+    final value.
+  - Found: **nothing in the code, and something about how I drive it.** Four attempts
+    showed a static label and I began doubting the feature. The cause was
+    `press --node /root/TitleScreen/PlayButton` — the button is named `StartButton`,
+    and the verb had been answering `Node not found: ...` with **exit 1** the entire
+    time. I had written `> /dev/null 2>&1` on it and never read the code. The harness
+    was correct and immediate; I had muted the one thing that would have told me.
+  - Cheaper: nothing cheaper can run a Tween. But the run cost four round-trips to a
+    mistake already printed on the first.
+
+- Gap: **no gaps this turn**, and one non-gap worth writing down because it looked
+  like one. I was about to file "`press` reports success on a node that does not
+  exist" — it does not: `Node not found: /root/TitleScreen/PlayButton`, exit 1,
+  verified explicitly before writing this. The bug was mine. **Check that the tool is
+  actually silent before filing a gap about its silence**, especially after
+  redirecting its output.

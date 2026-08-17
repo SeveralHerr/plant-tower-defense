@@ -34,6 +34,18 @@ That is the entire reason these are Python and not another `.gd` under `tools/`.
 verified — never let a missing input, an unreadable file or a missing `project.godot`
 fall through as a pass.
 
+**Or advisory: exit `0` always, and report.** Choose this when what you are reporting
+**cannot be actioned by the reader**. `gap_ledger.py` is the worked example: it reports
+superseded `open` lines in `log-devtools.md`, there are thirteen, and the correct
+response to every one is to leave it alone — rewriting an old entry would falsify what
+was true the day it was written. Its first draft called those findings and exited 1,
+which is a permanently-red gate, and a permanently-red gate is worse than no gate: it
+teaches people to skip the check, and then it is not there for the finding that *does*
+matter. The harness's own `validate-ui` grew a baseline for exactly this reason, and
+`coverage_check.py` is advisory by design. The test is not "is this important?" — it is
+**"if I show this to someone, is there something they can do?"** If not, it is a `NOTE:`
+and the tool exits 0.
+
 **Print a denominator, always.** The single most dangerous output a checker can produce is
 a clean result over an empty input set:
 
@@ -117,7 +129,24 @@ fixture goes red:
 
 Restore, and the fixture must return to zero. This is a distinct discipline from writing
 the fixture and it is the one that catches a checker which is quietly matching the wrong
-thing. It found an escape-blind source blanker here — `"...entry[\"key\"]"` was read as
+thing.
+
+**Keep the mutations. Write them into the checker's own docstring.** This has now cost
+four separate sessions the same twenty minutes, which is the whole argument: the fixture
+is written once and deleted, but the mutations are what you re-run *after every edit to
+the checker* — and a mutation that found a bug in the tool (see `mirror_check.py`, where
+removing the CRLF normalisation changed nothing because `open()` was silently doing it)
+proves the mutations are a standing test, not a one-time ritual. Re-deriving them from
+scratch is most of the cost of writing them the first time. One block, at the bottom of
+the module docstring:
+
+```python
+# fixture:   identical / block deleted from one side / one-line drift / CRLF one side
+# mutations: drop the `text.replace("\r\n", "\n")`  -> the CRLF fixture must go red
+#            count the template block as an entry    -> id count rises by one
+```
+
+Three lines that survive in the file are worth more than a perfect fixture that does not. It found an escape-blind source blanker here — `"...entry[\"key\"]"` was read as
 live code because the blanker did not handle `\"` — which no amount of good-and-bad
 example files would have surfaced, because both files were being scanned wrongly in the
 same way.

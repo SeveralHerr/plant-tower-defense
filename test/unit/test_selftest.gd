@@ -10348,3 +10348,69 @@ func test_a_cob_quotes_the_rate_it_will_actually_fire_at() -> String:
 
 	_T.free_ui(game)
 	return err
+
+
+## The record rolls up from the one it beat (plant-tower-defense-9z1).
+##
+## Three things, and the last two are the ones that make it a feature rather than an
+## effect: the roll renders through the SAME function as the settled line, so the two
+## cannot disagree about spacing or which modes are named; it counts from the record
+## that actually fell rather than from zero; and it does not run at all when there is
+## nothing to count from.
+func test_the_record_rolls_up_from_the_one_it_beat() -> String:
+	var stashed_c: int = RunConfig.campaign_high_score
+	var stashed_e: int = RunConfig.endless_high_score
+	var stashed_fresh: bool = RunConfig.fresh_record
+	var stashed_prev: int = RunConfig.previous_best
+	var stashed_mode: bool = RunConfig.fresh_record_endless
+	var stashed_endless: bool = RunConfig.endless
+	var stashed_path: String = RunConfig.save_path
+	RunConfig.save_path = "user://test_selftest_ratchet_roll.save"
+
+	# record_score has to remember what it replaced, or the roll has no origin.
+	RunConfig.endless = false
+	RunConfig.campaign_high_score = 300
+	RunConfig.endless_high_score = 5000
+	var err: String = _T.assert_true(RunConfig.record_score(308), "308 beats 300")
+	if err == "":
+		err = _T.assert_eq(RunConfig.previous_best, 300,
+			"and the record it beat is kept, session-only, for the roll to start at")
+	if err == "":
+		err = _T.assert_false(RunConfig.fresh_record_endless,
+			"and the mode that moved is the one that was played -- not `endless`, "
+				+ "which the title screen rewrites the moment the player moves the "
+				+ "selection")
+
+	# The moving line and the settled line come from one renderer.
+	if err == "":
+		var mid: String = TitleScreen.high_score_text_at(304, 5000, true)
+		err = _T.assert_true(mid.contains("Campaign 304"),
+			"a mid-roll value renders through the same function, got: %s" % mid)
+	if err == "":
+		err = _T.assert_true(TitleScreen.high_score_text_at(304, 5000, true).ends_with("← just now"),
+			"and carries the same marker the settled line does")
+	if err == "":
+		err = _T.assert_false(TitleScreen.high_score_text_at(304, 5000, false).contains("just now"),
+			"which is off when the record is not fresh")
+
+	# The settled line is what the label holds, whatever the animation does.
+	if err == "":
+		var title := await _T.instantiate_ui("res://game/title.tscn", Vector2i(1152, 648)) as TitleScreen
+		var label: Label = title.get_node_or_null("HighScoreLabel") as Label
+		err = _T.assert_true(label != null, "the title screen has its score line")
+		if err == "":
+			err = _T.assert_true(label.text.contains("Campaign 308"),
+				"and it holds the FINAL text on arrival -- headless pumps no frames, so "
+					+ "a roll responsible for reaching the right number would leave the "
+					+ "wrong one on screen forever; got: %s" % label.text)
+		_T.free_ui(title)
+
+	RunConfig.campaign_high_score = stashed_c
+	RunConfig.endless_high_score = stashed_e
+	RunConfig.fresh_record = stashed_fresh
+	RunConfig.previous_best = stashed_prev
+	RunConfig.fresh_record_endless = stashed_mode
+	RunConfig.endless = stashed_endless
+	RunConfig.save_path = stashed_path
+	DirAccess.remove_absolute("user://test_selftest_ratchet_roll.save")
+	return err

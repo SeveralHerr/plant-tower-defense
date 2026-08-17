@@ -318,6 +318,10 @@ func _build_text() -> void:
 	score.add_theme_font_size_override("font_size", 15)
 	score.add_theme_color_override("font_color", GardenTheme.GOLD)
 	add_child(score)
+	# The roll is armed BEFORE the flag is cleared, and reads the values it needs off
+	# RunConfig while they are still true. Order matters here and nowhere else in this
+	# builder.
+	_arm_record_ratchet(score)
 	# Announced once, on the first title screen after the record. Cleared here
 	# rather than inside high_score_text() so that builder stays pure and a test
 	# can call it twice without the second call disagreeing with the first.
@@ -353,8 +357,16 @@ func _build_text() -> void:
 ## The flag is cleared by the screen that shows it, not here — a static builder
 ## that mutates state cannot be called twice by a test.
 static func high_score_text() -> String:
-	var campaign: int = RunConfig.best_for(false)
-	var endless: int = RunConfig.best_for(true)
+	return high_score_text_at(RunConfig.best_for(false), RunConfig.best_for(true),
+		RunConfig.fresh_record)
+
+
+## The same line for a GIVEN pair of numbers, which is what makes the roll possible:
+## the ratchet renders this once per frame with an interpolated value, so the moving
+## line and the settled one are produced by the same function and cannot disagree
+## about spacing, separators or which modes are named
+## (plant-tower-defense-9z1).
+static func high_score_text_at(campaign: int, endless: int, fresh: bool) -> String:
 	if campaign <= 0 and endless <= 0:
 		return "No garden on record yet."
 	var parts: PackedStringArray = []
@@ -363,9 +375,59 @@ static func high_score_text() -> String:
 	if endless > 0:
 		parts.append("Endless %d" % endless)
 	var line: String = "Best seeds grown  —  %s" % " · ".join(parts)
-	if RunConfig.fresh_record:
+	if fresh:
 		return "%s   ← just now" % line
 	return line
+
+
+## How long the digits take to arrive, and how many steps they arrive in.
+##
+## Stepped rather than continuous: a counter that lands on 4,997 for one frame on
+## its way to 5,008 reads as a glitch, and a player cannot follow more than a few
+## values anyway. RATCHET_STEPS is what the roll actually shows.
+const RATCHET_SECONDS: float = 0.8
+const RATCHET_STEPS: int = 24
+
+
+## Rolls the new record's digits up from the one it beat.
+##
+## **The label already holds the final text before this runs**, and that is the rule
+## every animation on these screens follows: headless pumps no frames, so a tween that
+## is responsible for arriving at the correct state leaves the correct state
+## unreachable in every test and on any machine where animation is off. This only ever
+## overwrites a correct line with an intermediate one and then puts it back.
+##
+## Silent unless there is something to show: no fresh record, no roll. And no roll when
+## the previous best was 0 either -- a first-ever record has nothing to count up FROM,
+## and rolling 0 -> 308 would tell a player who has just set their first score that
+## they climbed from a zero they never held.
+func _arm_record_ratchet(score: Label) -> void:
+	if not GardenTheme.animations_enabled() or not RunConfig.fresh_record:
+		return
+	var from: int = RunConfig.previous_best
+	if from <= 0:
+		return
+	var endless: bool = RunConfig.fresh_record_endless
+	var to: int = RunConfig.best_for(endless)
+	if to <= from:
+		return
+	# The mode that did NOT move is held at its real value for the whole roll.
+	var other: int = RunConfig.best_for(not endless)
+	var tween := create_tween()
+	tween.tween_method(
+		func(value: float) -> void:
+			var shown: int = int(round(lerpf(float(from), float(to), value)))
+			score.text = (high_score_text_at(other, shown, true) if endless
+				else high_score_text_at(shown, other, true)),
+		0.0, 1.0, RATCHET_SECONDS).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	# Put the real line back at the end rather than trusting the last interpolation
+	# step to land exactly on `to` -- lerpf at t=1.0 does, but a tween that is
+	# interrupted (the player presses a key and the screen changes) does not run its
+	# last step at all, and the label would keep whatever number it was mid-count.
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(score):
+			score.text = high_score_text_at(RunConfig.best_for(false),
+				RunConfig.best_for(true), true))
 
 
 func _build_buttons() -> void:

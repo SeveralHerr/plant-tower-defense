@@ -37,6 +37,14 @@ identical files - the same trap /verify's own drift check documents).
 
 Parallel-safe by construction: opens no project, writes nothing to `.godot/`, takes
 no lock. Exit codes follow the house contract: 0 clean, 1 findings, 2 could not run.
+
+    fixture:   identical / block deleted from AGENTS.md (the historical failure) /
+               one-line drift / CRLF on one side only / block gutted on BOTH sides
+    mutations: drop the CRLF normalisation -> the CRLF fixture must go red.
+               It did NOT the first time this was tried, because `open()` in text mode
+               was silently doing the same job and the normalisation was dead code
+               carrying a comment that claimed it mattered. That is what the mutation
+               found, and it is why these two lines are kept rather than re-derived.
 """
 
 from __future__ import annotations

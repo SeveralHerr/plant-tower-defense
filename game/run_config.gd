@@ -145,6 +145,22 @@ var endless: bool = false
 ## personal best said nothing at all, and the title screen renders the same
 ## sentence whether the number moved a second ago or three sessions back.
 var fresh_record: bool = false
+## What `fresh_record` replaced, and which mode it was in. Session-only, like the
+## flag itself -- deliberately NOT written to the save, because "the number you just
+## beat" is a fact about this sitting and not about the garden
+## (plant-tower-defense-9z1).
+##
+## Kept because a record that simply appears says less than one you watch arrive: the
+## title screen rolls the digits from here up to the new best. Without it the screen
+## has the destination and no idea where the count started, and "roll up from zero"
+## would tell a player who improved 5008 -> 5010 that they had just earned 5010 seeds
+## from nothing.
+var previous_best: int = 0
+## Which of the two records moved. Stored rather than read off `endless`, because
+## `endless` is the mode the player is ABOUT to play -- the title screen writes it
+## the moment they move the selection -- and the record that just fell belongs to the
+## mode they have finished.
+var fresh_record_endless: bool = false
 
 var campaign_high_score: int = 0
 var endless_high_score: int = 0
@@ -273,6 +289,8 @@ func best_for(for_endless: bool) -> int:
 func record_score(seeds_earned: int) -> bool:
 	if seeds_earned <= best_for(endless):
 		return false
+	previous_best = best_for(endless)
+	fresh_record_endless = endless
 	if endless:
 		endless_high_score = seeds_earned
 	else:
