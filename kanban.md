@@ -195,6 +195,29 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (63) — the message row is fully checked; nothing else is
+
+- **One HUD surface has three checkers and the rest have none.** The message row is now
+  verified three ways — every call site resolves to the corpus, every bool variant is
+  priced, and no priced producer is dead (`tools/message_corpus_check.py`). The stats row
+  next to it has `WORST_CASE_TEXT` and a pair of assertions (`-rq94`, still open); the
+  selection panel has comments and one hand measurement (`-r722`); the run summary has a
+  clearance gate and nothing about content. The message row got this attention because it
+  broke three times, which is a fine reason — but the other three surfaces have not broken
+  *yet*, which is a different thing from being safe.
+- **`Hud.message_corpus()` is now the only place in the game that enumerates its own
+  output, and it is worth copying.** The pattern is small: one function listing every
+  string a surface can show, beside the code that produces them, read by both the budget
+  and a checker. `run_summary.gd` builds seven rows of text with no equivalent, and
+  `notebook_screen.gd` draws a shelf whose row text comes from `Milestones.TABLE`. Either
+  could carry the same declaration for the same cost.
+- **Nothing prices what a surface shows over TIME.** Every check on the message row is
+  about one string at one instant. `_message_queue` (`game/hud.gd`) can hold several, each
+  with its own lifetime, and the player's experience is the sequence — a four-second
+  irreversible prompt landing behind two ambient husk messages is a real failure that no
+  width check can see. `-xvub` proposes styling importance; the sharper question is whether
+  a queue that can defer an important message is right at all.
+
 ### New this cycle (62) — the corpus is checked two ways and neither is about time
 
 - **A producer's variants are priced; a producer's *absence* still is not.**

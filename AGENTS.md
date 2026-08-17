@@ -56,6 +56,13 @@ running a command. **Never write a work checklist into it.**
 2. **Do the items one at a time.** For each one: claim the bd issue, write the code,
    run `/verify`, then commit. One commit per item. Never batch several items into one
    commit at the end.
+   - **If the last two cycles worked the same file or subsystem, take something else.**
+     Step 6 already forces one FILED item to come from outside the neighbourhood; nothing
+     forced the WORK to vary, and it does not on its own. Cycles 60 and 61 both worked the
+     HUD message row; 62 and 63 both worked one Python checker. Each was the honest next
+     thing, because finishing a piece of work is what exposes the next piece of it — the
+     same structural pull step 6 was written for, one step earlier. The queue is 80+ items
+     deep and most of it is nowhere near whatever just shipped.
    - **Write code with the Edit/Write tools, never through a shell heredoc.** A heredoc
      silently eats one level of backslash escaping and, worse, has now stripped the
      leading `#` from GDScript comment blocks four separate times. Cycle 54's instance

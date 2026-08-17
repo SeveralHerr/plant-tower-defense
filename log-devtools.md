@@ -4776,3 +4776,28 @@ cited in code, and the citation is a mitigation this project has watched fail.
   nothing is not evidence, and the ledger is more useful for containing the honest zero.
   Sixty-two cycles in, the `value` field's four options have all been used and the one that
   keeps the record trustworthy is this one.
+
+## 2026-08-17 — Cycle 63: the third direction on the corpus
+
+- Value: **overkill**, deliberately and for the second cycle running. No game was launched
+  and none was needed; a static checker's verification is its fixture and its mutation
+  sweep.
+  - Expected: the new rule to be clean on this repo, because a quick `grep -c` comparison
+    of corpus producers against their callers said all seven were live before I wrote a
+    line.
+  - Got: exactly that — `0 dead producer(s)`. A rule that finds nothing on the day it is
+    written is the normal case for a drift guard, and saying so is more useful than
+    hunting for an instance to justify it.
+  - Found: **two defects, both in my own work, both from the fixture.** The rule printed a
+    `waive:` hint and ignored waivers entirely, because the lookup lived inside the other
+    rule's loop — caught by fixture case 4. And adding the rule broke the two OLDER
+    fixtures, correctly: their stub HUDs declare producers with no callers, so the new rule
+    fired on them. Isolated by giving each stub an internal caller.
+  - Cheaper: nothing. The fixture was the method and it earned its cost twice over.
+
+- Gap: **no gaps this turn.** A note on fixture hygiene that this cycle paid for: **adding
+  a rule to an existing checker can break that checker's older fixtures without either
+  being wrong.** The old fixtures were minimal stubs, and minimal stubs violate new rules
+  by construction. Running all three every time is what caught it — running only the new
+  one would have shipped a checker whose own test suite was two-thirds red. That is the
+  denominator rule again, applied to fixtures rather than to findings.
