@@ -5712,3 +5712,77 @@ as blocked on gh#49. It is not any more — the tool exists, one pin away. That 
 from "waiting on upstream" to "waiting on `-ny3h`", which is a different and much more
 tractable kind of blocked, and nothing in the gap ledger's count would ever have said so.
 Noted on the bead.
+
+## 2026-08-17 — Cycle 89: two doors for two contracts (-0q3q), no launch and saying so
+
+- Value: **warranted** — and every claim it produced came from the headless half, which is
+  worth naming because the runtime half was skipped on purpose.
+  - Expected: `spend_hint` is twenty lines of guard on an autoload, covered by three new unit
+    tests plus an existing one that hosts `game.tscn`. I predicted the gates would confirm
+    and nothing more.
+  - Got: three separate findings, none of which reading the diff would have produced.
+    `suite_reach_check` fired on `is_hint` as **public with no test naming it** — my three
+    tests drove it through both guards and never asserted the deciding function, which is
+    precisely the seam the whole change exists to create. And `run_tests.py` caught two
+    failures that `run_tests.gd` reported as clean runs.
+  - Found: the worst was a test of mine that **passed over nothing**. A derived disjointness
+    check asserted `Milestones.TABLE.has(id)` for each hint id; `TABLE` is an
+    `Array[Dictionary]` keyed by `"id"` (`game/milestones.gd:54`), so a String compared
+    against Dictionaries is false for every id in the game. Green, vacuous, and `[VACUOUS]`
+    could not catch it because the method executed real assertions. It surfaced only because
+    `String(dict)` crashed two lines later — i.e. **by luck**. The correct idiom was already
+    in the codebase at `notebook_screen.gd:505`.
+  - Cheaper: for the runtime half, yes, and it was taken — see the gap below. For what was
+    actually caught, nothing: the vacuous assertion needed the engine's own type error, and
+    `suite_reach_check`'s finding needed the tool.
+
+- Gap: **`run_tests.gd` reported `Total: 531 | Passed: 531 | Failed: 0 | Skipped: 0` on a run
+  that had silently lost 64 tests to a parse error.** This is a second sighting of the class
+  the `run_tests.py` wrapper exists for, in a new shape worth recording: not a test that
+  aborted mid-method, but a whole SCRIPT that failed to load.
+  ```
+  SCRIPT ERROR: Parse Error: There is already a variable named "err" declared in this scope.
+  ERROR: Failed to load script "res://test/unit/test_economy.gd" with error "Parse error".
+    Total: 531  |  Passed: 531  |  Failed: 0  |  Skipped: 0
+  ```
+  The wrapper exited 2 and quoted it, so the safety net held — and that is the point: the
+  denominator moved 596 → 531 and **`Passed == Total` the whole way**, so the headline line
+  is indistinguishable from a clean run of a smaller suite. `Suite: 7 test script(s)` was
+  still 7, because discovery counts files and this file was discovered and then failed to
+  load. Nothing in the summary block says a script is missing from the run.
+  - [G-063] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: `run_tests.gd` should carry its own load-failure count into the summary —
+    `Scripts: 6 of 7 loaded` beside the existing `Suite:` line, and a non-zero shortfall as
+    exit 1 in its own right. It already knows: it iterates the discovered files and the load
+    returns null. The wrapper catching this is the correct backstop, but a runner whose
+    headline says `ALL TESTS PASSED` over a suite missing 11% of itself is a runner that
+    cannot be run directly, and `run_tests.gd` is what a fresh session reaches for first.
+
+- Gap: **the triage table has no row for "the changed call site is already driven by a hosted
+  scene in the headless suite", so a correctly-skipped runtime pass has nowhere honest to
+  live.** This cycle's diff is an autoload guard plus one call site in `Game.arm_uproot`. That
+  site is already exercised by `test_the_move_tip_is_spent_only_when_it_is_actually_shown`
+  (`test/unit/test_economy.gd:2571`), which instantiates `game.tscn`, places two cobs,
+  upgrades one and drives the real arm path. Launching would have re-driven the same code with
+  a renderer attached. Tier (c) is `static func`s and `const` tables only; this is instance
+  methods, so the table says full run.
+  I recorded the row with `"runtime": "skipped"` and a `skipped:` string arguing the case,
+  which the ledger accepted — but that is prose in a field, not a tier, so `stats` counts this
+  as a run that simply had no runtime rather than one that reasoned about not needing it.
+  - [G-064] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: a tier for **"headless integration covers the changed path"** — the test that
+    stands in must be NAMED (tier (c) already sets that precedent) and must be one that hosts
+    a scene, which is a mechanical property a reader can check. Without it the honest choice
+    is between an overkill launch and a row that looks like a gap.
+  - Note: no gaps beyond these two this turn.
+
+  - [G-063] status: open | seen: 1 | harness: 0.54.0 | upstream: gh#52 | note: reconciled
+    against the INSTALLED 0.54.0 the same cycle it was filed, per `gap-reconcile`, and it
+    survives — in a sharper form worth the re-check. 0.54.0 already collects the list
+    (`_selected_load_failures`, declared `templates/tools/run_tests.gd:127`, appended
+    unconditionally at `:552`) and already exports it in `--json` at `:715`. It is printed at
+    exactly one place, `:799`, guarded by `_selection_error != ""` — the selector-matched-
+    nothing case gh#10 added it for. On a full run `_selection_error` is empty, so the branch
+    is skipped and a populated list never reaches the summary. **The data is one `elif` away
+    from being visible**, which is a much better issue than the one I would have filed from
+    the 0.38.0 observation alone.

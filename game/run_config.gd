@@ -113,6 +113,35 @@ const MILESTONE_ID_CHARS := "abcdefghijklmnopqrstuvwxyz0123456789_"
 ## is discoverable from the persistence layer instead of only from the HUD.
 const HINT_MOVE_PREVIEW := "seen_move_tip"
 
+## Every id in `earned_milestones` that is a HINT rather than an ACHIEVEMENT. One
+## dictionary, two opposite contracts, and until this list existed nothing in the
+## code said which an id was:
+##
+##   an ACHIEVEMENT is EARNED — the player did the thing, and recording it is a
+##   consequence of the doing. `Milestones.TABLE` holds these and the notebook
+##   shelf renders them.
+##   a HINT is SPENT — it is a one-shot the player is owed a sight of, and
+##   recording it is a claim that they got it.
+##
+## Cycle 79 paid for the distinction: the move tip was recorded whenever the game
+## DECIDED to show it, a later change displaced the sentence that would have shown
+## it, and the hint burned unseen for a cycle. Cycle 80 fixed that one call site by
+## putting the decision in `Hud.uproot_shows_tip` and having `Game` ask it — right,
+## and a fix to one site rather than to the class.
+##
+## The list is what makes the guard possible in both directions: `spend_hint`
+## refuses an id that is not here, and `record_milestones` refuses one that is. So a
+## hint cannot be recorded by a path that never rendered it, and an achievement
+## cannot be routed through a door that asks whether it was seen — a question that
+## means nothing about a thing the player did.
+const HINTS: Array[String] = [HINT_MOVE_PREVIEW]
+
+
+## Whether `id` is a hint rather than an achievement. Static and pure so both
+## guards below read the same answer, and so a test can ask without a save file.
+static func is_hint(id: String) -> bool:
+	return HINTS.has(id)
+
 ## The options line. Marked for the same reason the milestone line is: a save
 ## truncated after the milestones hands the parser "", and `bool("")` would happily
 ## read as "the option is off" — a setting silently reverting on a player who needs
@@ -369,6 +398,15 @@ func record_milestones(ids: Array) -> Array[String]:
 	var fresh: Array[String] = []
 	for id: Variant in ids:
 		var text: String = String(id)
+		if is_hint(text):
+			# Loud rather than silent: a hint arriving here is a caller that has not
+			# been told the two contracts differ, and the whole point is that it
+			# cannot record one by accident. Warning rather than error because the
+			# run must not stop — the player loses a tip, not their game.
+			push_warning(("RunConfig: '%s' is a HINT, not an achievement — refusing to "
+				+ "record it here. Use spend_hint(id, shown) so the record cannot "
+				+ "outrun the sight of it.") % [text])
+			continue
 		if text.is_empty() or has_milestone(text):
 			continue
 		earned_milestones[text] = true
@@ -376,6 +414,35 @@ func record_milestones(ids: Array) -> Array[String]:
 	if not fresh.is_empty():
 		_save()
 	return fresh
+
+
+## Records a one-shot hint as spent — and only if `shown` says the player actually
+## saw it. Returns true when this call is what recorded it.
+##
+## `shown` is a required argument and that is the entire design. The old shape was
+## `record_milestones([HINT_MOVE_PREVIEW])`, which a caller reaches at the moment it
+## DECIDES to show a hint, and the decision and the showing are different events
+## separated by however much rendering sits between them. Cycle 79's bug lived in
+## that gap for a cycle. A caller cannot get here without answering the question,
+## and a caller that answers `false` cannot spend anything.
+##
+## Refuses an achievement id too. Passing one would mean asking whether the player
+## was shown a thing they did, which is not a question about it — and the refusal is
+## what keeps `HINTS` honest, since an id nobody added to the list cannot be spent
+## through this door either.
+func spend_hint(id: String, shown: bool) -> bool:
+	if not is_hint(id):
+		push_warning(("RunConfig: '%s' is not in HINTS — refusing to spend it as a hint. "
+			+ "An achievement is earned by doing, so use record_milestones; a new hint "
+			+ "needs adding to HINTS first.") % [id])
+		return false
+	if not shown:
+		return false
+	if has_milestone(id):
+		return false
+	earned_milestones[id] = true
+	_save()
+	return true
 
 
 ## Flips the colourblind-safe ramp and writes it down. Returns the new state, so a

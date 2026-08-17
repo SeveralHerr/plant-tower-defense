@@ -148,6 +148,22 @@ correct behaviour, because the file set the property per node.
 A checker that has never been observed to fail is not a checker. The same rule as a test:
 **green on first run means nothing until you have watched it go red for the right reason.**
 
+### The procedure legitimately ends in NOT building one, and that is a success
+
+Read the denominator before you write the scan. Cycle 89 hit a textbook candidate: `.has()`
+called on a const `Array[Dictionary]` with a String argument — false for every id in the game, so
+the assertion **passes over nothing**, and it is invisible to `name_check` (every name resolves)
+and to lint (it is type-valid for a `Variant`). Exactly the shape this skill exists for.
+
+Then the grep found **zero** other instances in `game/` or `test/unit/`, and the correct idiom was
+already the codebase's majority. So the rules above are what said don't build it: a zero
+denominator has to announce its own emptiness, and a checker nobody has watched fire is prose.
+
+**The deliverable in that case is the written reasoning, not the tool.** Put the enumeration and
+the count in `kanban.md` so the idea is not re-proposed from scratch, and say that the entry is
+the *first sighting* — a second instance meets the bar, and the record is what lets someone
+recognise it as a second.
+
 ### If acting on one number could bury another, print both at the point of invitation
 
 The denominator rule keeps a clean result from hiding an empty input. There is a second

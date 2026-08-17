@@ -155,57 +155,19 @@ running a command. **Never write a work checklist into it.**
      the last thing you do before `quit`, every time, even when you do not yet know the
      verdict.
 3. **Before reflecting, always add to `kanban.md`** — cool new features or concrete
-   improvements (UX, game juice, animations, enhancements, or full features). This used
-   to read "the last item is always...", which described a checklist that no longer
-   exists now that `bd` is the queue; it is a step of its own, not an item in a list.
-   - **Every entry must name a `file:line` for the claim it makes about the code as it
-     is now.** An entry says two things — "here is an idea" and "the game does not do
-     this yet" — and only the first is free. Cycle 30 wrote five entries from inside
-     `run_config.gd` without opening a screen: one proposed a feature that already
-     ships in full (the milestone shelf, with a documented reason for the exact
-     placement it suggested), one rested on a claim about `fresh_record` that is false,
-     one over-claimed its scope. That is three of five, and the shelf one became a bead
-     that was claimed and worked before the code got read. **An entry written from the
-     neighbourhood of the file you happen to be in is a guess about the rest of the
-     codebase.** Use `kanban-staleness-audit`'s bar: before writing that something is
-     missing, open the code that would contain it.
-     **A follow-on `:NN` binds to the last full path before it, left to right, and never
-     across an entry boundary.** Entries here write `` (`game/sfx.gd:86`, `:91`, `:106`) ``
-     — 44 such references in `kanban.md`, a shorthand the file invented and nothing knew
-     about until `tools/citation_check.py` learned it in cycle 77. Binding them found a
-     reference written as a bare `:331` in a sentence whose nearest preceding citation was
-     `game/chomp_flower.gd`, a file with 183 lines; the intended target was named earlier in
-     the same sentence, which is why no reader caught it. If the path you mean is not the
-     last one you wrote, **write it out in full** — the shorthand is for a run of lines in
-     one file and nothing else.
-   - **Search for the BEHAVIOUR, not for one implementation of it.** This is the absence
-     half of the rule above and it fails differently: cycle 70 wrote "no plant has idle
-     motion, verified unbuilt" after enumerating every `create_tween()` call on every
-     plant and finding all eight event-driven. The enumeration was complete, correct, and
-     about the wrong set — `Plant._wobble` has swayed every plant since the first playable
-     build and `Pest._gait` animates every pest, and both are `_process`-driven sinusoids
-     that no census of tweens can see. **An enumeration over the wrong set is worse than
-     an example, because it looks exhaustive**, and this one survived a cycle, became a
-     bead, and was claimed before anyone opened the file. So grep for the PROPERTY the
-     feature would move (`rotation`, `scale`, `sin(`) rather than for the one API you
-     imagine it using, and when you write the claim down, say which mechanism you searched
-     for — that sentence is what lets the next reader notice the set was wrong.
-   - **An entry claiming a PATTERN needs the enumeration, not an example.** "All the X do
-     Y", "these are consistent", "nothing does Z" — one citation cannot support any of
-     them, and a citation that happens to be true makes the whole claim read as checked.
-     Cycle 67 wrote that four drawn cues shared a grammar (dashed = a remark, solid = a
-     range, filled = a gain, doubled = armed). Cycle 68 derived it from all 55 `draw_`
-     calls and found "solid = a range" violated twice, once by a cue written two cycles
-     earlier. `derive-the-list` says this about lists in code; it is the same rule for a
-     claim in prose, and the grep that would settle it belongs in the entry.
-   - **An entry that COMPARES two things needs a citation for both halves.** One
-     `file:line` makes the whole entry read as sourced, including the half taken from
-     memory. Cycle 65 wrote "death has a sound, a corpse and a linger; escape has none of
-     the three", citing `DEATH_LINGER` for the death half. The escape half was false in
-     every particular — `Sfx.PEST_ESCAPED` plays, `_note_lane_loss` tints the exit cell,
-     and `_punch_readout(_lives_label)` fires on the changed count — and cycle 66 claimed
-     the bead before finding out. **The asymmetry you are pointing at is the claim; the
-     side you say is empty is the half that needs opening.**
+   improvements (UX, game juice, animations, enhancements, or full features).
+   - **Follow `.claude/skills/kanban-idea-pass/SKILL.md`, which is not optional reading.**
+     It holds the five citation rules this step used to state inline — cite a `file:line` for
+     every claim about code as it is now, search for the BEHAVIOUR not one implementation of
+     it, enumerate a pattern rather than exampling it, cite BOTH halves of a comparison, and
+     read a collection's SHAPE before claiming membership in it — each with the cycle that
+     paid for it. They moved out because this file is 826 lines and the rules were 50 of
+     them, and because **step 6 needs the same rules for a bead description** and was
+     pointing back up here to get them. A skill can be cited from both places; a numbered
+     step cannot.
+     The one thing the skill cannot say for you: it is about the sentence claiming the game
+     does not do this yet. **Taste needs no citation** — assert a preference plainly and let
+     it be argued with.
 4. **Reflect on the HARNESS, now that you have used it.** This comes after the work
    and not before, because "did the harness earn its keep" is a question about a run
    that has happened. Judge it on THIS cycle's usage:
@@ -265,17 +227,17 @@ running a command. **Never write a work checklist into it.**
      **Name which source each came from, in the issue.** This step used to say "out of
      kanban.md's backlog", and that single filename is what made every other source
      invisible for 33 cycles. Never end a cycle with nothing ready.
-   - **Step 3's citation rules apply to a bead description too.** They were written for
-     `kanban.md` and a bead is where the claims actually get acted on: a factual sentence
-     in a description is read by whoever claims it, usually cycles later, and is trusted
-     because it looks like a finding rather than a memory. Three cycles running, an
-     absence claim written into a bead was wrong — "no plant has idle motion" (cycle 70,
-     the wrong enumeration), "`step-time --then-pause` has never been used in 71 cycles"
-     (cycle 71, contradicted by `log-devtools.md:3378`), and both were written in the same
-     breath as filing the item. So: cite the `file:line`, enumerate the pattern, and
-     search for the behaviour rather than for one implementation of it — in the issue, not
-     only in the backlog. A description that says "verified unbuilt" and does not say
-     **how** is a memory wearing a finding's clothes.
+   - **`kanban-idea-pass` applies to a bead description too — same skill, and a bead is
+     where the claims actually get acted on.** A factual sentence in a description is read
+     by whoever claims it, usually cycles later, and is trusted because it looks like a
+     finding rather than a memory. Three cycles running, an absence claim written into a
+     bead was wrong — "no plant has idle motion" (cycle 70, the wrong enumeration),
+     "`step-time --then-pause` has never been used in 71 cycles" (cycle 71, contradicted by
+     `log-devtools.md:3378`) — and both were written in the same breath as filing the item.
+     Cycle 88's `-beq1` was worse: the claim was satisfied twenty lines below the line it
+     was read from, and the bead was filed by the cycle that shipped the feature. A
+     description that says "verified unbuilt" and does not say **how** is a memory wearing
+     a finding's clothes.
    - **An acceptance criterion must be something the closing commit can produce, or you
      have written two beads and filed one.** `-6cqi` asked that two plants at different
      levels be distinguishable on the board "and a screenshot proves it". The code half

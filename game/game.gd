@@ -1356,8 +1356,12 @@ func arm_uproot() -> String:
 	# Spend the one-shot only when the tip is going to be SHOWN. `Hud.uproot_shows_tip`
 	# owns that decision because the message composer needs it too, and a rule stated in
 	# two files is a rule that drifts — which it did for one cycle, in exactly this spot.
-	if Hud.uproot_shows_tip(first_arm, forfeited):
-		RunConfig.record_milestones([RunConfig.HINT_MOVE_PREVIEW])
+	#
+	# The answer now goes THROUGH `spend_hint` rather than gating a call beside it: the
+	# old shape was an `if` around `record_milestones`, and an `if` is something the next
+	# hint's author can simply not write. `shown` is an argument, so they cannot.
+	RunConfig.spend_hint(RunConfig.HINT_MOVE_PREVIEW,
+		Hud.uproot_shows_tip(first_arm, forfeited))
 	# DEADLINE, not IMPORTANT: `_uproot_left` is already counting down by the time
 	# this line is posted, so a deferral here does not postpone the message, it
 	# eats the window it describes. See Hud.MESSAGE_DEADLINE.

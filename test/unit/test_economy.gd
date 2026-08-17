@@ -1116,6 +1116,127 @@ func test_a_run_with_milestones_round_trips_through_the_save() -> String:
 		return err)
 
 
+## The two contracts, and the door each one is refused at.
+##
+## `earned_milestones` stores both hints and achievements, and until `RunConfig.HINTS`
+## existed nothing in the code said which an id was. The two are opposite: an
+## achievement is EARNED, so recording it is a consequence of the player doing a
+## thing; a hint is SPENT, so recording it is a claim that the player was shown a
+## thing. Cycle 79's bug was that claim being made by a code path that decided to
+## show a tip and then didn't.
+##
+## Asserted through the doors rather than through the flag, because the flag cannot
+## tell them apart — that is the whole problem — and because a guard that refuses is
+## only a guard if the refusal is observable.
+func test_a_hint_cannot_be_recorded_through_the_achievement_door() -> String:
+	# The predicate itself before the behaviour that reads it, which is this file's
+	# habit for a reason: both guards below resolve through `is_hint`, so a test that
+	# only drove them would leave the deciding function unnamed. `suite_reach_check`
+	# said so out loud when this landed without it.
+	var err: String = _T.assert_true(RunConfig.is_hint(RunConfig.HINT_MOVE_PREVIEW),
+		"the move tip is a hint")
+	if err == "":
+		err = _T.assert_false(RunConfig.is_hint("threat_peak"),
+			"an achievement is not, and neither guard would fire on it")
+	if err != "":
+		return err
+	return _with_scratch_save(1, 2, null, func() -> String:
+		var fresh: Array[String] = RunConfig.record_milestones([RunConfig.HINT_MOVE_PREVIEW])
+		var bad: String = _T.assert_eq(str(fresh), "[]",
+			"record_milestones reports nothing new, because it recorded nothing")
+		if bad == "":
+			bad = _T.assert_false(RunConfig.has_milestone(RunConfig.HINT_MOVE_PREVIEW),
+				"and the hint is genuinely unspent afterwards -- not merely unreported")
+		if bad == "":
+			# The same call with a real achievement, so the refusal above is shown to be
+			# about the KIND of id and not about the method being broken.
+			bad = _T.assert_eq(RunConfig.record_milestones(["threat_peak"]).size(), 1,
+				"while an achievement through the same call records normally")
+		return bad)
+
+
+func test_an_achievement_cannot_be_spent_as_a_hint() -> String:
+	## The other direction, and it matters for a reason that is not symmetry: passing
+	## an achievement here would mean answering "was the player shown it", which is not
+	## a question about a thing they did. A `shown: true` would look correct and record
+	## it anyway, so the refusal has to be on the id, not on the flag.
+	return _with_scratch_save(1, 2, null, func() -> String:
+		var err: String = _T.assert_false(RunConfig.spend_hint("threat_peak", true),
+			"an achievement is refused at the hint door even with shown = true")
+		if err == "":
+			err = _T.assert_false(RunConfig.has_milestone("threat_peak"),
+				"and nothing was written")
+		if err == "":
+			err = _T.assert_false(RunConfig.spend_hint("not_an_id_at_all", true),
+				"and so is an id in neither set, rather than being invented as a hint")
+		return err)
+
+
+func test_no_id_is_both_a_hint_and_an_achievement() -> String:
+	## Derived over both lists rather than checked on the one hint that exists, because
+	## the guard this protects is for the SECOND hint's author. An id in both sets would
+	## be refused at both doors and therefore recordable by nothing at all — the two
+	## guards are complementary, so an overlap is not a conflict the code would resolve,
+	## it is a flag that can never be set.
+	##
+	## `Milestones.TABLE` is the achievement list because it is the one the notebook
+	## shelf renders (`notebook_screen.gd:487` counts earned off TABLE), so an id absent
+	## from it is invisible there — which is exactly why a hint is deliberately kept out.
+	## `TABLE` is an Array[Dictionary] keyed by "id", not a set of ids — which the first
+	## draft of this test got wrong, and got wrong in the way that passes: `TABLE.has(id)`
+	## compares a String against Dictionaries and is false for every id in the game, so
+	## the assertion was green and vacuous. The ids are pulled out here, once, and the
+	## count is asserted against TABLE's own size so a shape change fails loudly instead
+	## of emptying the corpus.
+	var achievement_ids: Array[String] = []
+	for row: Dictionary in Milestones.TABLE:
+		achievement_ids.append(String(row["id"]))
+	var err: String = _T.assert_gt(RunConfig.HINTS.size(), 0, "there are hints to check")
+	if err == "":
+		err = _T.assert_eq(achievement_ids.size(), Milestones.TABLE.size(),
+			"every row in TABLE yielded an id -- %d of %d"
+				% [achievement_ids.size(), Milestones.TABLE.size()])
+	if err != "":
+		return err
+	for id: String in RunConfig.HINTS:
+		err = _T.assert_false(achievement_ids.has(id),
+			"'%s' is a hint, so it is not also an achievement id" % id)
+		if err != "":
+			return err
+	for id: String in achievement_ids:
+		err = _T.assert_false(RunConfig.is_hint(id),
+			"'%s' is an achievement, so it is not also in RunConfig.HINTS" % id)
+		if err != "":
+			return err
+	return err
+
+
+func test_spending_a_hint_requires_saying_it_was_shown() -> String:
+	## `shown` being a required argument is the design: the old shape was an `if` around
+	## `record_milestones`, and an `if` is something the next hint's author can simply
+	## not write. All three outcomes, because a fix that never records anything would
+	## pass the first assertion on its own.
+	return _with_scratch_save(1, 2, null, func() -> String:
+		var err: String = _T.assert_false(
+			RunConfig.spend_hint(RunConfig.HINT_MOVE_PREVIEW, false),
+			"a hint the player was not shown is not spent")
+		if err == "":
+			err = _T.assert_false(RunConfig.has_milestone(RunConfig.HINT_MOVE_PREVIEW),
+				"so it is still owed to them")
+		if err == "":
+			err = _T.assert_true(
+				RunConfig.spend_hint(RunConfig.HINT_MOVE_PREVIEW, true),
+				"and shown = true is what spends it")
+		if err == "":
+			err = _T.assert_true(RunConfig.has_milestone(RunConfig.HINT_MOVE_PREVIEW),
+				"recorded")
+		if err == "":
+			err = _T.assert_false(
+				RunConfig.spend_hint(RunConfig.HINT_MOVE_PREVIEW, true),
+				"a second spend is not a second first sight")
+		return err)
+
+
 func test_filing_a_milestone_twice_is_not_a_second_first_time() -> String:
 	## `record_milestones` returns the NEW ids, and that return value is the only
 	## moment newness exists — by the time the card asks, the flag is set. Both end

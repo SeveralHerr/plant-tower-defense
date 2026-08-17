@@ -1,4 +1,4 @@
-# Cycle 88
+# Cycle 89
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,30 +6,37 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 88 taught
+## What cycle 89 taught
 
-**A cue can be present, correct, and out of range.** `-532j` asked for a measurement before
-a build, and the measurement was the whole finding. `Pest.SPECIES` crossed with every
-composable mutation set drops ten husk values — {2, 3, 5, 7, 9, 14, 20, 30, 40, 60} — and
-`radius_for` and `glow_for` **both saturate at `FULL_VALUE = 9`**. Six of the ten rendered as
-one husk, including the comparison the second-mutation feature exists to produce: a beetle's
-hungry kill (9) against its armoured-and-hungry kill (14), the same circle at the same
-brightness. Nobody had broken anything; cycle 81 made `husk_multiplier` a product and pushed
-the ceiling to 60 without re-reading a curve tuned when 9 was the top.
+**A test can pass over nothing, and `[VACUOUS]` cannot see it.** `-0q3q` gave `RunConfig` two
+doors — `spend_hint(id, shown)` and `record_milestones` — which refuse each other's ids, so a
+hint can no longer be recorded by a code path that never rendered it. `shown` is a *required
+argument*, which is the whole design: the old shape was an `if` around `record_milestones`, and
+an `if` is something the next hint's author can simply not write.
 
-The fix counts instead of lerping — `overflow_pips`, one pip per whole `FULL_VALUE` over,
-capped at three, silent at 9. A count because no brightness ramp resolves 6.6×, and because
-`FULL_VALUE` could not simply be widened: `lifetime_for` reads the same fraction, so that
-would have slowed every husk's rot as a side effect. **A legibility fix that quietly changes
-a balance number is two changes.**
+The finding was in my own test. A derived disjointness check asserted `Milestones.TABLE.has(id)`
+over the hint ids — and `TABLE` is an `Array[Dictionary]` keyed by `"id"`, so comparing a String
+against Dictionaries is false for every id in the game. **Green, and about nothing.**
+`[VACUOUS]` could not catch it because real assertions ran; it surfaced only because
+`String(dict)` crashed two lines later, i.e. by luck. **A claim about membership needs the
+collection's SHAPE read, not just its name resolved** — that is now
+`kanban-idea-pass`'s fifth rule, and the correct idiom was already at
+`notebook_screen.gd:505`.
 
-**And the ordering bug was in the loop itself.** `-beq1` claimed nothing says a pest carries
-two traits. It was shipped **by the cycle that filed it** — `markers_for` returns one mark
-per flag twenty lines below the `_tint` call the claim was read from, and the test the
-acceptance asked for was written the same day. That is the fourth bead claimed on a false
-premise, and step 2 had said "claim the bd issue, write the code" for 88 cycles while
-`verify-bd-item`, the skill written for exactly this sequence, says `confirm → claim →
-implement`. Step 5 spent its one change fixing that contradiction.
+**Two tools earned their keep and one denominator lied.** `suite_reach_check` fired on `is_hint`
+as public-and-unnamed — my three tests drove it through both guards and never asserted the
+deciding function, which is exactly the seam the change exists to create. And `run_tests.gd`
+reported `Total: 531 | Passed: 531 | Failed: 0` on a run that had lost 64 tests to a parse
+error, with `Suite: 7 test script(s)` still reading 7. `run_tests.py` caught it. Filed as gh#52,
+which reconciliation made much sharper: 0.54.0 already collects the load-failure list and prints
+it in one branch that a full run never reaches.
+
+## Carried from cycle 88
+
+**A cue can be present, correct, and out of range.** Ten reachable husk values, and `radius_for`
+and `glow_for` both saturate at 9 — six of the ten drew as one husk. `overflow_pips` counts where
+the lerp ran out. And **a legibility fix that quietly changes a balance number is two changes**:
+`FULL_VALUE` was left alone because `lifetime_for` reads the same fraction.
 
 ## Carried from cycle 87
 
@@ -38,25 +45,22 @@ is.** A muted session verified a new kill sound end to end, because the voice po
 nodes — and caught `Voice0` being retuned across two kills, the pooled-voice staleness cycle
 74 argued for and never watched.
 
-## Carried from cycle 85
-
-A user's screenshot found what 587 tests could not: cues drawing **72 px high** because
-`cell_to_world` is board-local. **Nothing checks the board** — and cycle 88 hit the same
-coordinate class again, its own first two screenshots empty because `drop_husk` takes an
-Entities-local position while `screenshot --region` takes screen space.
-
 ## Where things stand
 
-A hundred beads ready. Suite **592/592**, 12824 assertions; lint 0/0; eleven checkers clean;
-findings **0 across 5 of 5**; reach 3/3. **Fourteen skills** — `gap-reconcile` built this
-cycle, after `log.md` turned out to have named it twice while pre-flight reported otherwise.
-Upstream gh#44 open; **gh#49 and gh#50 are now closed and fixed**, which unblocked `-6e2e`
-from upstream onto the pin. Still on harness **0.38.0** deliberately (`-ny3h`, gh#43).
+A hundred and one beads ready. Suite **596/596**, 12847 assertions; lint 0/0; eleven checkers
+clean. No launch this cycle, on purpose and argued in the ledger's `skipped` field — the changed
+call site is already driven by a hosted `game.tscn` in the headless suite. **Fifteen skills** —
+`kanban-idea-pass` built this cycle and used the same hour, which caught a citation of mine
+landing on a doc comment. Upstream gh#44, **gh#51 and gh#52** open; gh#49 and gh#50 closed and
+fixed, which moved `-6e2e` off upstream and onto the pin. Still on harness **0.38.0**
+deliberately (`-ny3h`, gh#43).
 
-**The player-facing steer is standing.** Cycles 84-88 each shipped something a player sees:
-weather on the ground, a reported coordinate bug, a flinch, a harder kill sound, a husk that
-says how rich it is. `-a155` is still the cheap half of the board-check problem — transform
-properties, no pixels — and the one to do first.
+**The player-facing steer is standing, and this cycle bent it.** Cycles 84-88 each shipped
+something a player sees; 89 shipped a persistence guard, which a player will never notice. The
+sentence step 2 owes: **the hint it protects is one a player was already losing** — cycle 79
+burned the move tip unseen, and the fix then was to one call site rather than to the class, so
+the next hint was set up to go the same way. `-2ker` is the player-facing half and is filed.
+`-a155` is still the cheap half of the board-check problem — transform properties, no pixels.
 
 ## Waiting on the user
 
@@ -79,12 +83,15 @@ together they made a HUD with no slack that nobody chose.
 `bd ready` for the work, this file for the context, `CLAUDE.md` (mirrored in `AGENTS.md`) for
 the loop itself. **Confirm a bead's premise before claiming it** — `-g1o4` is the sweep that
 does this for the whole open queue, filed this cycle at P1 because four beads have now been
-claimed on a claim that was wrong. `-knpc` blocks `-1490` and `-lp97`; `-ip4n` blocks `-l86t`;
-`-0q3q` blocks `-ei83` and is the cheapest real win on the board — hints and achievements
-share one dictionary and have opposite triggers, which is what let cycle 79 burn a hint
-unseen. `-9afm` is the fragility cycle 81 worked around rather than fixed. `-bxhg` is new and
-big: the drawn grammar has ten rows and the game teaches none of them, and both surfaces that
-look like they could host a legend are the wrong shape.
+claimed on a claim that was wrong. `-knpc` blocks `-1490` and `-lp97`; `-ip4n` blocks `-l86t`.
+`-ei83` is now unblocked and sharpened: a missed hint is a real queryable state, but it cannot be
+solved by adding the id to `Milestones.TABLE` — the shelf counts earned off TABLE, so a foreign
+id breaks that guard. `-9afm` is the fragility cycle 81 worked around rather than fixed. Two big
+ones filed recently and both still untouched: `-bxhg` (the drawn grammar has ten rows and the
+game teaches none of them, and both surfaces that look like they could host a legend are the
+wrong shape) and `-2ker` (the second one-shot hint, with the three candidate moments already
+enumerated and the constraint that rules out the vague ones). `-u4tr` is ready to close — its
+work was done in the cycle that filed it.
 
 **Ten standing notes.** The harness is pinned at 0.38.0 on purpose (gh#43). The UI findings
 baseline is **empty** (`-v9px`). Any harness operation should start by checking which version

@@ -247,6 +247,40 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (89) — one hint, a contract for more, and a checker not worth building
+
+- **The game has exactly ONE one-shot hint, and now has the machinery for a second.**
+  Cycle 89 gave `RunConfig` two doors — `spend_hint(id, shown)` and `record_milestones` —
+  which refuse each other's ids, so a hint can no longer be recorded by a path that never
+  rendered it. `HINTS` (`game/run_config.gd:137`) has one member.
+  **Enumerated rather than assumed**: `has_milestone` used as a SHOW gate appears once in the
+  whole game, at `game/game.gd:1355`. Its other two call sites (`notebook_screen.gd:445`,
+  `:505`) read earned state to draw the shelf, which is rendering, not gating a sight. So one
+  member is the whole set, not an oversight.
+  The idea is which teaching moments would want the second. The constraint the new contract
+  imposes, and it is a real design filter rather than a formality: **a hint is spent on being
+  SEEN, so a new one needs a `shown` answer at its call site — which means the decision must
+  be NAMEABLE**, the way `Hud.uproot_shows_tip` is. A tip that appears "somewhere in the
+  message row, usually" cannot answer the question and so cannot be a hint under this scheme.
+  That rules out the vague ones and points at the few moments the game genuinely decides
+  something: the first time a Chomp declines a winged pest in silence, the first husk left to
+  rot, the first plant lost to a hungry beetle.
+- **A checker for the vacuous-membership bug is NOT worth building, and here is the
+  enumeration that says so.** Cycle 89 wrote a derived test asserting
+  `Milestones.TABLE.has(id)` over the hint ids. `TABLE` is an `Array[Dictionary]` keyed by
+  `"id"` (`game/milestones.gd:54`), so a String compared against Dictionaries is false for
+  every id in the game — **the assertion passed, over nothing**, and was caught only by an
+  unrelated `String(dict)` crash two lines later. That is exactly the shape
+  `house-static-checker` exists for: invisible to `name_check` (every name resolves), invisible
+  to lint (it is type-valid for a `Variant`), and a silent green.
+  Grepped for it across `game/` and `test/unit/`: `.has(` against a const `Array[Dictionary]`
+  occurs **zero** times outside the comment recording the mistake. The correct idiom is
+  already in the codebase and was already the majority — `notebook_screen.gd:505` reads
+  `String(row["id"])`. A checker with a zero denominator is one the house rules say must
+  announce its own emptiness, and one that has never been observed to fire is not a checker.
+  **Recorded so nobody proposes it a second time**; if a second instance ever appears, this
+  entry is the first sighting and the bar is met.
+
 ### New this cycle (88) — a cue that saturates, and the ten nobody teaches
 
 - **The husk's rot clock saturates exactly where its drawing did, and that half is a
