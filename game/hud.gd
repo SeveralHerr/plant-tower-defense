@@ -1477,15 +1477,58 @@ func show_message(text: String, seconds: float = 3.0, priority: int = MESSAGE_NO
 ## backlog long enough to outlive its own subject is worse than a dropped line —
 ## it puts stale narration over a board that has moved on. When it is full the
 ## lowest-priority entry is dropped, so an important line still gets in.
+## What a full queue does with an arriving message. Three outcomes and two of them lose a
+## line, which is the whole reason this is named rather than left inline.
+const QUEUE_ACCEPTED := "accepted"
+const QUEUE_EVICTED := "evicted"
+const QUEUE_REFUSED := "refused"
+
+
+## Which of the three happens when a message of `arriving` priority reaches a queue already
+## holding `queued`.
+##
+## Pure and static so the rule can be asserted without staging four messages through a live
+## HUD — and because the interesting cases are the ones a live HUD makes hardest to reach.
+## Note the `>=`: on a TIE the arriving message is refused, which matters more here than
+## anywhere else because 19 of the game's 22 `show_message` call sites pass no priority at
+## all and therefore all tie.
+static func queue_outcome(queued: Array[int], arriving: int) -> String:
+	if queued.size() < MESSAGE_QUEUE_MAX:
+		return QUEUE_ACCEPTED
+	return QUEUE_REFUSED if _lowest_of(queued) >= arriving else QUEUE_EVICTED
+
+
+static func _lowest_of(queued: Array[int]) -> int:
+	var lowest: int = queued[0]
+	for p: int in queued:
+		if p < lowest:
+			lowest = p
+	return lowest
+
+
+## Lines the row never showed, split by which way they were lost. Read with `get-state`;
+## `cmd budgets` prices what the row can HOLD and these count what it actually dropped.
+##
+## Two counters and not one, because they are different failures with different fixes. A
+## REFUSED message is one the caller just posted and the player will never see — the caller
+## thinks it said something. An EVICTED one was already waiting and got pushed out by
+## something more urgent, which is the queue working as designed right up until the evicted
+## line was the one that mattered.
+var messages_refused: int = 0
+var messages_evicted: int = 0
+
+
 func _queue_message(text: String, seconds: float, priority: int) -> void:
-	if _message_queue.size() >= MESSAGE_QUEUE_MAX:
-		var lowest: int = 0
-		for i: int in range(_message_queue.size()):
-			if int(_message_queue[i]["priority"]) < int(_message_queue[lowest]["priority"]):
-				lowest = i
-		if int(_message_queue[lowest]["priority"]) >= priority:
+	var queued: Array[int] = []
+	for entry: Dictionary in _message_queue:
+		queued.append(int(entry["priority"]))
+	match queue_outcome(queued, priority):
+		QUEUE_REFUSED:
+			messages_refused += 1
 			return
-		_message_queue.remove_at(lowest)
+		QUEUE_EVICTED:
+			messages_evicted += 1
+			_message_queue.remove_at(queued.find(_lowest_of(queued)))
 	_message_queue.append({"text": text, "seconds": seconds, "priority": priority})
 
 

@@ -11612,3 +11612,107 @@ func test_drought_and_rain_are_different_textures_before_they_are_different_colo
 			"a weather mark is a quarter of a cell at most, or it joins a vocabulary that "
 				+ "is about single cells")
 	return err
+
+
+## The message queue's three outcomes, two of which lose a line.
+##
+## Asserted through the pure `queue_outcome` rather than by staging four messages through a
+## live HUD, because the interesting cases are exactly the ones a live HUD makes hardest to
+## reach — and because the rule is what matters, not one worked example of it.
+##
+## The tie case is the one worth the most: `_queue_message` compares with `>=`, so an
+## arriving message at the same rung as the lowest queued one is REFUSED. That is not a
+## corner case in this game — 19 of the 22 `show_message` call sites under `game/` pass no
+## priority argument at all, so in a busy moment they all tie.
+func test_a_full_message_queue_refuses_a_tie_and_evicts_a_loser() -> String:
+	var full: Array[int] = []
+	for i: int in Hud.MESSAGE_QUEUE_MAX:
+		full.append(Hud.MESSAGE_NORMAL)
+	var err: String = _T.assert_eq(full.size(), Hud.MESSAGE_QUEUE_MAX,
+		"the queue under test is actually full (%d)" % full.size())
+	if err == "":
+		err = _T.assert_eq(Hud.queue_outcome([], Hud.MESSAGE_NORMAL), Hud.QUEUE_ACCEPTED,
+			"an empty queue takes anything")
+	if err == "":
+		err = _T.assert_eq(Hud.queue_outcome(full.slice(1), Hud.MESSAGE_NORMAL),
+			Hud.QUEUE_ACCEPTED, "and so does one with room left")
+	if err == "":
+		err = _T.assert_eq(Hud.queue_outcome(full, Hud.MESSAGE_NORMAL), Hud.QUEUE_REFUSED,
+			"a full queue of equals REFUSES the arrival -- the comparison is >=, and this "
+				+ "is the case 19 of 22 call sites land in")
+	if err == "":
+		err = _T.assert_eq(Hud.queue_outcome(full, Hud.MESSAGE_DEADLINE), Hud.QUEUE_EVICTED,
+			"something more urgent evicts a waiting line instead")
+	if err == "":
+		var urgent: Array[int] = []
+		for i: int in Hud.MESSAGE_QUEUE_MAX:
+			urgent.append(Hud.MESSAGE_DEADLINE)
+		err = _T.assert_eq(Hud.queue_outcome(urgent, Hud.MESSAGE_NORMAL), Hud.QUEUE_REFUSED,
+			"and a full queue of urgent lines refuses an ordinary one")
+	return err
+
+
+func test_the_hud_counts_the_lines_it_never_showed() -> String:
+	## The measurement `-i366` asked for, made possible: before cycle 93 a dropped line left
+	## no trace anywhere, so "does the row actually lose messages in a real run" could not be
+	## answered even in principle. Two counters and not one, because a REFUSED line is one
+	## the caller just posted and the player will never see, while an EVICTED one was already
+	## waiting -- different failures with different fixes.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	hud._process(9.0)
+	hud._message_left = 0.0
+	hud._message_queue.clear()
+	hud._advance_message_queue()
+	hud.messages_refused = 0
+	hud.messages_evicted = 0
+
+	# One on the row, then MESSAGE_QUEUE_MAX behind it, then one more that cannot fit.
+	hud.show_message("on the row", 6.0, Hud.MESSAGE_NORMAL)
+	for i: int in Hud.MESSAGE_QUEUE_MAX:
+		hud.show_message("waiting %d" % i, 6.0, Hud.MESSAGE_NORMAL)
+	var err: String = _T.assert_eq(hud.pending_messages(), Hud.MESSAGE_QUEUE_MAX,
+		"the queue is full before the interesting call")
+	if err == "":
+		err = _T.assert_eq(hud.messages_refused, 0, "and nothing has been lost yet")
+	if err == "":
+		err = _T.assert_false(hud.show_message("one too many", 6.0, Hud.MESSAGE_NORMAL),
+			"the extra line does not reach the row")
+	if err == "":
+		err = _T.assert_eq(hud.messages_refused, 1,
+			"and it is COUNTED as refused rather than vanishing")
+	if err == "":
+		err = _T.assert_eq(hud.messages_evicted, 0, "with nothing evicted, since it tied")
+	if err == "":
+		# The half I got wrong first, and it is the more interesting behaviour by some way.
+		# A higher-rung arrival does NOT evict a waiting line -- it PRE-EMPTS, which pushes
+		# the line it interrupted into the queue (see show_message's first branch). Against
+		# a full queue of equals that displaced line is refused. So the cost of an urgent
+		# message is not a queued line, it is THE LINE IT INTERRUPTED, and the player loses
+		# the one they were mid-way through reading rather than one they had not reached.
+		hud.show_message("urgent", 6.0, Hud.MESSAGE_DEADLINE)
+		err = _T.assert_eq(hud.messages_refused, 2,
+			"pre-empting costs the interrupted line, refused into a full queue")
+	if err == "":
+		err = _T.assert_eq(hud.messages_evicted, 0,
+			"and nothing was evicted -- eviction needs a queue holding something LOWER "
+				+ "than the arrival, which 19-of-22-on-one-rung makes rare")
+	if err == "":
+		# Eviction driven for real, since the counter is worth nothing unproven: put a
+		# DEADLINE on the row so the next arrival waits rather than pre-empting, fill the
+		# queue with NORMALs, then send an IMPORTANT that outranks them.
+		hud._message_left = 0.0
+		hud._message_queue.clear()
+		hud._advance_message_queue()
+		hud.messages_refused = 0
+		hud.messages_evicted = 0
+		hud.show_message("deadline holds the row", 6.0, Hud.MESSAGE_DEADLINE)
+		for i: int in Hud.MESSAGE_QUEUE_MAX:
+			hud.show_message("ordinary %d" % i, 6.0, Hud.MESSAGE_NORMAL)
+		hud.show_message("outranks them", 6.0, Hud.MESSAGE_IMPORTANT)
+		err = _T.assert_eq(hud.messages_evicted, 1,
+			"an arrival outranking the queue's lowest evicts it")
+		if err == "":
+			err = _T.assert_eq(hud.messages_refused, 0, "and is not itself refused")
+	_T.free_ui(game)
+	return err
