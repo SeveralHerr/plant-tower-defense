@@ -8371,6 +8371,59 @@ func test_no_test_persists_through_the_players_own_save() -> String:
 # -- Pests walk rather than slide (plant-tower-defense-iue) -----------------
 
 
+## All four cardinals in one place, because three of them were covered by
+## accident and the fourth by nothing at all.
+##
+## `_update_facing()` is a four-case mapping and the suite asserted +X (in the
+## gait test) and -X (via the corpse test), used +Y without checking its value,
+## and never mentioned Vector2.UP anywhere. The road makes that worse rather
+## than better: the shipped route runs right, down, left, down, right and never
+## once travels -Y, so the `_facing = 0.0` branch has neither an assertion nor a
+## single frame of exercise in a real game (plant-tower-defense-ymth).
+##
+## The reference frame is the art's, not the engine's: every pest SVG rests with
+## its head up-screen -- beetle mandibles at y=4-14 over a carapace at cy=37,
+## aphid head cy=21 over abdomen cy=36, queen antennae at y=10-16 -- which is
+## what art_src/STYLE.md calls the convention and what makes rotation 0 mean
+## "facing up". Assert the whole mapping so a future level with an upward run
+## does not discover the untested corner the hard way.
+func test_update_facing_maps_every_cardinal_to_the_art_up_screen_convention() -> String:
+	var pest: Pest = _pest(Pest.APHID, Vector2.ZERO)
+	var host: Node2D = _host([pest])
+	await _T.instantiate_scene(host)
+
+	# Godot 2D rotates clockwise with +Y down, so up-screen art turned +PI/2
+	# points +X. Written out per case rather than computed, so the expectation is
+	# a claim about the screen and not a restatement of the code under test.
+	var expected: Array[Array] = [
+		[Vector2.UP, 0.0, "up-screen: the art's own rest pose, unrotated"],
+		[Vector2.RIGHT, PI / 2.0, "walking +X: a quarter turn clockwise"],
+		[Vector2.DOWN, PI, "walking +Y: head-down, a half turn"],
+		[Vector2.LEFT, -PI / 2.0, "walking -X: a quarter turn anticlockwise"],
+	]
+	var err: String = ""
+	for row: Array in expected:
+		pest._update_facing(row[0] as Vector2)
+		err = _T.assert_float_eq(pest._facing, float(row[1]), 0.0001, String(row[2]))
+		if err != "":
+			return err
+
+	# A diagonal resolves to its dominant axis rather than to an in-between
+	# angle: the art has four poses and there is no fifth to rotate to.
+	pest._update_facing(Vector2(1.0, 0.3))
+	err = _T.assert_float_eq(pest._facing, PI / 2.0, 0.0001,
+		"a mostly-rightward diagonal still picks the +X cardinal")
+	if err != "":
+		return err
+
+	# Standing still must not spin the sprite back to a default. _advance() calls
+	# this every frame, so a zero-length direction has to be a no-op or a stopped
+	# pest would snap to up-screen the instant it stopped.
+	pest._update_facing(Vector2.ZERO)
+	return _T.assert_float_eq(pest._facing, PI / 2.0, 0.0001,
+		"a zero-length direction leaves the last facing alone")
+
+
 ## The composition rule the whole feature rests on. Two features write
 ## `_sprite.rotation`, and _advance() calls _update_facing() every frame, so a
 ## gait that assigned rotation instead of adding to it would be erased sixty
