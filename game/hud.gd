@@ -479,12 +479,25 @@ var _fx_layer: Container
 var _plant_buttons: Dictionary = {}
 var _banner_left: float = 0.0
 var _message_left: float = 0.0
-## What the row says when nothing else is speaking. The ONE piece of state this class
-## keeps about the game, and it is kept deliberately narrowly: a string that was
-## computed from `state` on the last refresh, not a copy of `state` itself. The
-## header's rule -- "there is no second copy of the truth here that can go stale" --
-## is about the game's numbers; this is the rendered sentence, and it goes stale
-## exactly as fast as the row it is written into.
+## The two claims on the message row, and `_paint_message_row()` is the only thing
+## that resolves them onto the Label.
+##
+## **This is one owner and two claims, and it replaced three writers.** `show_message`,
+## `_advance_message_queue` and `_refresh_prep_note` each used to set
+## `_message_label.text` directly and each had to answer "is the line currently on the
+## row MINE?" -- which they did by comparing the Label's text against what they
+## expected to find there. Both of the defects in the standing note were seams between
+## those three conventions, and the comparison is wrong on its own terms: a message
+## whose text happens to equal the note is indistinguishable from the note.
+##
+## Now each writer sets its own claim and asks for a repaint. Nothing reads the Label
+## to decide what the Label should say.
+var _message_text: String = ""
+## What the row says when nothing else is speaking. The ONE piece of game state this
+## class keeps, and narrowly: a rendered sentence computed from `state` on the last
+## refresh, not a copy of `state`. The header's "no second copy of the truth here"
+## rule is about the game's numbers, and a rendered line goes stale exactly as fast as
+## the row it is written into.
 var _idle_message: String = ""
 var _message_priority: int = MESSAGE_NORMAL
 var _message_queue: Array[Dictionary] = []
@@ -1358,18 +1371,25 @@ func _play_panel_entrance() -> void:
 	tween.tween_property(_selection_box, "modulate", Color.WHITE, PANEL_RISE_SECONDS)
 
 
+## The ONE place `_message_label.text` is assigned. A transient message wins while it
+## has time left; the standing note is the floor.
+func _paint_message_row() -> void:
+	_message_label.text = _message_text if _message_left > 0.0 else _idle_message
+
+
 func show_message(text: String, seconds: float = 3.0, priority: int = MESSAGE_NORMAL) -> void:
 	if _message_left > 0.0:
 		if priority > _message_priority:
-			_queue_message(_message_label.text, _message_left, _message_priority)
+			_queue_message(_message_text, _message_left, _message_priority)
 		elif _message_left > MESSAGE_MIN_READABLE or priority < _message_priority:
 			# The line on screen has not been up long enough to have been read, or
 			# outranks this one. Wait rather than stomp.
 			_queue_message(text, seconds, priority)
 			return
-	_message_label.text = text
+	_message_text = text
 	_message_left = seconds
 	_message_priority = priority
+	_paint_message_row()
 
 
 ## The queue is deliberately short. Messages describe things happening now, and a
@@ -1404,26 +1424,25 @@ func _queue_message(text: String, seconds: float, priority: int) -> void:
 ## when the queue drains.
 func _refresh_prep_note(state: Dictionary) -> void:
 	if bool(state.get("wave_live", false)) or not bool(state.get("more_waves", false)):
-		# Take the row back down. Clearing `_idle_message` alone is not enough and
-		# that was the second half of the same bug: nothing else rewrites this Label,
-		# so the note stayed on screen through the whole wave it was announcing.
-		# Only if the row is still showing OUR text -- a real message that happens to
-		# be up is not ours to erase.
-		if _message_left <= 0.0 and _message_label.text == _idle_message:
-			_message_label.text = ""
+		# Drop the claim and repaint. This used to have to ask whether the line on the
+		# row was OURS -- by comparing the Label's text against `_idle_message` -- and
+		# that question is gone: a claim nobody holds cannot be painted, and a message
+		# that happens to read the same as the note is no longer indistinguishable
+		# from it.
 		_idle_message = ""
+		_paint_message_row()
 		return
 	_idle_message = next_wave_note(
 		int(state.get("wave", 0)) + 1,
 		int(state.get("next_wave_pests", 0)),
 		bool(state.get("next_wave_boss", false)),
-		StringName(state.get("next_weather", WaveDirector.WEATHER_CLEAR)))
-	# Only when nothing is speaking. A real message outranks the standing note for
-	# as long as it lasts, and `_advance_message_queue` puts the note back when the
-	# queue drains -- which is the path this function cannot cover, because
-	# `refresh()` is called on state CHANGES and a message expiring is not one.
-	if _message_left <= 0.0:
-		_message_label.text = _idle_message
+		StringName(state.get("next_weather", WaveDirector.WEATHER_CLEAR)),
+		bool(state.get("next_wave_is_last", false)))
+	# The painter decides whether this reaches the row: a real message outranks the
+	# standing note for as long as it lasts. `_advance_message_queue` repaints when
+	# the queue drains, which is the path this function cannot cover -- `refresh()` is
+	# called on state CHANGES and a message expiring is not one.
+	_paint_message_row()
 
 
 ## Pure, so the wording is assertable without building a HUD.
@@ -1436,8 +1455,13 @@ func _refresh_prep_note(state: Dictionary) -> void:
 ## the threat number already on the prep strip answers how much, and a player deciding
 ## between damage and coverage needs to know a queen is coming, not that the number
 ## went up.
-static func next_wave_note(number: int, pests: int, boss: bool, weather: StringName) -> String:
+static func next_wave_note(number: int, pests: int, boss: bool, weather: StringName,
+		last: bool = false) -> String:
 	var parts: PackedStringArray = []
+	# Finality first. It is the one fact here that changes what the whole run is
+	# about, and a player skimming a line reads its front.
+	if last:
+		parts.append("the last one")
 	if pests > 0:
 		parts.append("%d pests" % pests)
 	if boss:
@@ -1453,13 +1477,13 @@ static func next_wave_note(number: int, pests: int, boss: bool, weather: StringN
 
 func _advance_message_queue() -> void:
 	if _message_queue.is_empty():
-		# Back to the standing note rather than to blank. Found in the running game:
-		# the note was correct on every `refresh()` and the row went empty seconds
-		# later, because `refresh()` is driven by state CHANGES and a message
-		# expiring is not one. The headless test asserted the wording and never
-		# drove this path.
-		_message_label.text = _idle_message
+		# Drop the transient claim and repaint, which falls through to the standing
+		# note. Found in the running game: the note was correct on every `refresh()`
+		# and the row went empty seconds later, because `refresh()` is driven by state
+		# CHANGES and a message expiring is not one.
+		_message_text = ""
 		_message_priority = MESSAGE_NORMAL
+		_paint_message_row()
 		return
 	# Highest priority first, earliest among equals — not simply the front. A
 	# strict FIFO left an urgent line waiting behind whatever ambient chatter
@@ -1471,9 +1495,10 @@ func _advance_message_queue() -> void:
 			pick = i
 	var next: Dictionary = _message_queue[pick]
 	_message_queue.remove_at(pick)
-	_message_label.text = String(next["text"])
+	_message_text = String(next["text"])
 	_message_left = float(next["seconds"])
 	_message_priority = int(next["priority"])
+	_paint_message_row()
 
 
 ## What is on the status row and what is waiting behind it. Read by the tests —

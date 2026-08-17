@@ -10530,3 +10530,102 @@ func test_the_prep_note_yields_to_a_message_and_comes_back() -> String:
 
 	_T.free_ui(game)
 	return err
+
+
+## A message that reads exactly like the standing note is still a message
+## (plant-tower-defense-4akt).
+##
+## Three functions used to write `MessageLabel.text` directly, and each answered "is
+## the line on the row mine?" by comparing the Label's text against what it expected
+## to find. That comparison is wrong on its own terms: a message whose text happens to
+## equal the note is indistinguishable from the note, and the wave starting would have
+## wiped it.
+##
+## It is now one painter and two claims, so the question is not asked. This test is the
+## reason the refactor is not merely tidier — it asserts something the previous design
+## could not make true.
+func test_a_message_that_reads_like_the_note_is_not_mistaken_for_it() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	var label: Label = hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+	var err: String = _T.assert_true(label != null, "the message row exists")
+
+	var prep: Dictionary = {
+		"wave_live": false, "more_waves": true, "wave": 4,
+		"next_wave_pests": 16, "next_wave_boss": false,
+		"next_weather": WaveDirector.WEATHER_CLEAR,
+	}
+	var note: String = Hud.next_wave_note(5, 16, false, WaveDirector.WEATHER_CLEAR)
+	if err == "":
+		hud._message_left = 0.0
+		hud._advance_message_queue()
+		hud._refresh_prep_note(prep)
+		err = _T.assert_eq(label.text, note, "the note is up")
+	if err == "":
+		# The collision: a real message with the note's exact text.
+		hud.show_message(note, 3.0)
+		err = _T.assert_gt(hud._message_left, 0.0, "and a message claims the row")
+	if err == "":
+		var live: Dictionary = prep.duplicate()
+		live["wave_live"] = true
+		hud._refresh_prep_note(live)
+		err = _T.assert_eq(label.text, note,
+			"the wave starting drops the NOTE's claim and leaves the message alone, "
+				+ "even though the two read identically -- the old design compared "
+				+ "the Label's text and would have cleared it")
+	if err == "":
+		err = _T.assert_gt(hud._message_left, 0.0,
+			"and the message still has its time")
+	if err == "":
+		# And once it expires there is no note to fall back to, because the wave is
+		# live -- the row goes quiet rather than re-showing a stale announcement.
+		hud._message_left = 0.0
+		hud._advance_message_queue()
+		err = _T.assert_eq(label.text, "",
+			"when it drains mid-wave the row is empty, not the note it happened to "
+				+ "look like")
+
+	_T.free_ui(game)
+	return err
+
+
+## The last wave says so (plant-tower-defense-45wa).
+##
+## `has_more_waves()` goes false only AFTER the final wave is cleared, so the note
+## disappears once there is nothing next — correctly. That left the run's final wave
+## as the moment with the least information and the most at stake: it read exactly
+## like wave 7.
+##
+## The flag is derived from the table and the mode, so endless — which has no last
+## wave — is false by construction rather than by a comparison that happens never to
+## be true.
+func test_the_last_wave_says_that_it_is_the_last() -> String:
+	var last: int = WaveDirector.WAVES.size()
+	var err: String = _T.assert_eq(
+		Hud.next_wave_note(last, 40, true, WaveDirector.WEATHER_CLEAR, true),
+		"Wave %d next — the last one · 40 pests · a queen." % last,
+		"finality leads the line, because it changes what the run is about")
+	if err == "":
+		err = _T.assert_eq(
+			Hud.next_wave_note(7, 14, false, WaveDirector.WEATHER_CLEAR, false),
+			"Wave 7 next — 14 pests.", "and an ordinary wave is unchanged")
+	if err == "":
+		# The flag as Game derives it, against the real table.
+		var game := await _T.instantiate_scene(GAME_SCENE) as Game
+		game.director.endless = false
+		game.director.current_wave = last - 1
+		var state: Dictionary = game.state()
+		err = _T.assert_true(bool(state["next_wave_is_last"]),
+			"the wave before the table's end is followed by the last one")
+		if err == "":
+			game.director.current_wave = last - 2
+			err = _T.assert_false(bool(game.state()["next_wave_is_last"]),
+				"the one before that is not")
+		if err == "":
+			# Endless has no last wave at all.
+			game.director.endless = true
+			game.director.current_wave = last - 1
+			err = _T.assert_false(bool(game.state()["next_wave_is_last"]),
+				"and endless never announces a last wave, because it does not have one")
+		_T.free_ui(game)
+	return err

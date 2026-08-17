@@ -1596,6 +1596,10 @@ func state() -> Dictionary:
 		"next_wave_pests": WaveDirector.pests_in_wave(director.current_wave + 1),
 		"next_wave_boss": WaveDirector.wave_carries_boss(director.current_wave + 1),
 		"next_weather": WaveDirector.weather_for(director.current_wave + 1),
+		# Endless has no last wave, so the flag is false there by construction rather
+		# than by a comparison that happens to never be true.
+		"next_wave_is_last": (not director.endless
+			and director.current_wave + 1 == WaveDirector.WAVES.size()),
 		"lives": lives,
 		"selected_plant": selected_plant,
 		"selected_placed": selected_placed,

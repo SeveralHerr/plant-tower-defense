@@ -4043,3 +4043,27 @@ cited in code, and the citation is a mitigation this project has watched fail.
   `SCRIPT ERROR: Parse Error: Identifier "live" not declared` quoted and located. That
   is the failure mode `--filter` used to blame on the selector; the fix for [G-003] is
   visibly working, and this is the first time this project has hit it since.
+
+## 2026-08-16 — cycle 40: one owner for the message row, and a last wave that says so
+
+- Value: **overkill**, and worth writing down as such because the last three entries
+  were `warranted` and a run of them is what makes this verdict go unwritten.
+  - Expected: a refactor with no behaviour change, so the suite is the real check and
+    runtime is confirmation. The new last-wave branch is the only thing with a claim
+    runtime could settle, and only because the flag is derived from the table.
+  - Got: exactly that. `547/547` before the refactor and `547/547` after was the whole
+    proof that three writers collapsed into one painter without moving anything, and
+    the launch confirmed one string:
+    `Wave 16 next — the last one · 36 pests · a queen.`
+  - Found: nothing. The suite caught nothing because there was nothing to catch, and
+    the launch caught nothing because the headless assertions had already covered the
+    branch against the real table.
+  - Cheaper: the headless suite alone. It held the refactor to no behaviour change and
+    asserted the new branch; the launch verified one sentence I could have read out of
+    the test's own expectation.
+
+- Gap: **no gaps this turn.** Two notes on things that worked rather than things that
+  did not. `--snapshot-userstate` restored cleanly for the fourth consecutive session
+  (md5 unchanged), and the suite's own before/after count is what made a pure refactor
+  safe to do at all — `Total: 547` on both sides is a stronger statement than any
+  assertion I could have written about the refactor specifically.
