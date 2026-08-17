@@ -4013,3 +4013,75 @@ func test_every_kind_of_notebook_page_has_a_pane_heading() -> String:
 		if err != "":
 			return err
 	return err
+
+
+func test_the_notebook_opens_where_its_caller_asked() -> String:
+	## `open_at` is read once during the build, so it has to be set before `add_child` --
+	## a test that set it afterwards would pass on the default and prove nothing. Both
+	## values are driven: 0 is the title screen's and is also the default, so asserting
+	## only the legend case would not distinguish "the property works" from "the property
+	## is ignored and page 0 happens to be right".
+	var legend_page: int = NotebookScreen.page_for_kind(NotebookScreen.KIND_LEGEND)
+	var err: String = _T.assert_gt(legend_page, 0,
+		"the legend is not page 0, so opening there is a real difference (page %d)"
+			% legend_page)
+	if err != "":
+		return err
+
+	# Read through PageLabel, which is the idiom three existing notebook tests use and
+	# keeps `_page` private -- a public accessor added for one test is public surface the
+	# orphan pass would then list.
+	var total: int = NotebookScreen.PAGES.size()
+	var front := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	err = _T.assert_eq((front.get_node("PageLabel") as Label).text, "1 / %d" % total,
+		"with nothing asked for, the notebook opens on the drawings")
+	_T.free_ui(front)
+	if err != "":
+		return err
+
+	var asked := NotebookScreen.new()
+	asked.open_at = legend_page
+	var deep := await _T.instantiate_ui(asked, Vector2i(1152, 648)) as NotebookScreen
+	err = _T.assert_eq((deep.get_node("PageLabel") as Label).text,
+		"%d / %d" % [legend_page + 1, total],
+		"asked for the legend, it opens on the legend")
+	if err == "":
+		err = _T.assert_true((deep.get_node("CueLegend") as Control).visible,
+			"and the legend pane is the thing showing, not merely the page number")
+	_T.free_ui(deep)
+	return err
+
+
+func test_page_for_kind_survives_the_pages_being_reordered() -> String:
+	## The reason `page_for_kind` exists rather than a literal 9 in `PauseScreen`. It is
+	## asserted against every kind PAGES actually uses, and against the ordering rather
+	## than against an index -- an index assertion would have to be edited by the same
+	## person who breaks it, which is no assertion at all.
+	var kinds: Array[String] = []
+	for entry: Dictionary in NotebookScreen.PAGES:
+		var kind: String = String(entry.get("kind", NotebookScreen.KIND_DRAWING))
+		if not kinds.has(kind):
+			kinds.append(kind)
+	var err: String = _T.assert_gt(kinds.size(), 1, "there is more than one kind to find")
+	if err != "":
+		return err
+	for kind: String in kinds:
+		var at: int = NotebookScreen.page_for_kind(kind)
+		err = _T.assert_eq(
+			String(NotebookScreen.PAGES[at].get("kind", NotebookScreen.KIND_DRAWING)), kind,
+			"page_for_kind('%s') lands on a '%s' page, wherever PAGES has moved it" % [kind, kind])
+		if err != "":
+			return err
+	# The fallback, which the pause screen depends on being harmless: an unknown kind opens
+	# the front of the book rather than erroring or landing past the end.
+	err = _T.assert_eq(NotebookScreen.page_for_kind("no_such_kind"), -1,
+		"an absent kind answers -1 rather than pointing at page 0, so a caller that needs "
+			+ "to fail can, and the one that would rather open the front clamps it itself")
+	if err == "":
+		# shelf_page() is page_for_kind(KIND_SHELF) since cycle 92 -- it was the same
+		# search written first, for one kind. Asserted so the delegation cannot be quietly
+		# unwound back into a second copy.
+		err = _T.assert_eq(NotebookScreen.shelf_page(),
+			NotebookScreen.page_for_kind(NotebookScreen.KIND_SHELF),
+			"shelf_page() and page_for_kind(KIND_SHELF) are the same answer")
+	return err

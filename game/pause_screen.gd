@@ -633,6 +633,18 @@ func _open_notebook() -> void:
 		return
 	_notebook = NotebookScreen.new()
 	_notebook.name = "Notebook"
+	# Opened FROM A PAUSED RUN, so it opens on the page about the board rather than on the
+	# pencil drawings. Somebody who stopped a wave to look something up is looking at a
+	# mark they do not recognise; somebody browsing from the title screen is not looking at
+	# a board at all. The legend was page 10 of 10 and the title screen's own header calls
+	# this notebook "a click further away" on purpose — that reasoning was about a
+	# scrapbook, and it should not also gate the page explaining what the marks mean.
+	#
+	# Asked by kind, never by index: PAGES gets reordered by whoever adds a page, and a
+	# literal 9 here would silently open on whatever moved into that slot.
+	# maxi because page_for_kind answers -1 for a kind with no page, and this door would
+	# rather open the front of the book than refuse to open.
+	_notebook.open_at = maxi(0, NotebookScreen.page_for_kind(NotebookScreen.KIND_LEGEND))
 	_notebook.process_mode = Node.PROCESS_MODE_ALWAYS
 	_notebook.back_requested.connect(_close_notebook, CONNECT_DEFERRED)
 	add_child(_notebook)

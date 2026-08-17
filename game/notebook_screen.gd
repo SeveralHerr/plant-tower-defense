@@ -200,6 +200,41 @@ static func pane_label_for(kind: String) -> String:
 const OVERLAY_GRAMMAR_SHAPES: int = 10
 const OVERLAY_GRAMMAR_PATH := "res://game/OVERLAY_GRAMMAR.md"
 
+
+## Which page this notebook opens on. Set before `add_child`, since the build reads it.
+##
+## Default 0, which is what the title screen wants: someone browsing the designer's
+## notebook came for the pencil drawings, and `PAGES[0]` is the portrait the whole game
+## started from. The PAUSE screen sets it to the legend instead, and that difference is
+## the whole feature — the two doors are asked different questions.
+##
+## A player who has stopped a run in progress and opened the notebook is looking at a board
+## and wondering what something on it means. A player on the title screen is not looking at
+## a board at all. Nine presses of Next is a fine price for browsing and a bad one for
+## being confused, so the context pays it rather than the player.
+var open_at: int = 0
+
+
+## The index of the first page of `kind`, or **-1** when there is none.
+##
+## A named lookup so no caller hardcodes 9. `PAGES` is reordered by whoever adds a page and
+## a pause screen holding a literal would silently open on whatever moved into that slot.
+##
+## Generalised out of `shelf_page()`, which was this function for one kind — written first
+## and for the same reason, "so appending a page above it cannot silently point a test at a
+## drawing". Adding a second copy for KIND_LEGEND was the obvious move and the wrong one;
+## `shelf_page()` now delegates.
+##
+## Returns -1 rather than 0 because that is the honest answer and the two callers want
+## opposite things from it: a test asserting the shelf exists needs to be able to fail,
+## while the pause screen would rather open the front of the book than nothing. The clamp
+## belongs at the caller that wants it, not in a finder that would then be unable to say no.
+static func page_for_kind(kind: String) -> int:
+	for i: int in PAGES.size():
+		if String(PAGES[i].get("kind", KIND_DRAWING)) == kind:
+			return i
+	return -1
+
 ## The shelf's rows, laid out inside DRAWING_BOX — the same matte a photograph is
 ## mounted on, for the reason SPEC_BOX gives: the frame stays on every page and
 ## only its contents change.
@@ -367,7 +402,7 @@ func _build_contents() -> void:
 	_build_left_page()
 	_build_right_page()
 	_build_footer()
-	go_to(0)
+	go_to(open_at)
 
 
 ## Next, not Back. This screen is opened to be read, and the first thing a reader
@@ -583,10 +618,7 @@ static func shelf_progress_text() -> String:
 ## derived from the table rather than written down, so appending a page above it
 ## cannot silently point a test at a drawing.
 static func shelf_page() -> int:
-	for i: int in PAGES.size():
-		if String(PAGES[i].get("kind", KIND_DRAWING)) == KIND_SHELF:
-			return i
-	return -1
+	return page_for_kind(KIND_SHELF)
 
 
 func _build_right_page() -> void:
