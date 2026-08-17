@@ -162,11 +162,15 @@ func _draw_muzzle_fan() -> void:
 		return
 	var fade: float = lerpf(READY_ALPHA_FLOOR, 1.0, readiness())
 	# Level 1 fires one kernel through a 0° spread, so there is no arc to draw —
-	# a lone pip is the honest picture of a single shot.
-	if offsets.size() > 1:
-		draw_arc(muzzle_pivot(_aim_angle), FAN_LENGTH, _aim_angle + offsets[0],
-			_aim_angle + offsets[offsets.size() - 1], 24,
-			Color(SPREAD_ARC_COLOR, SPREAD_ARC_COLOR.a * fade), 2.0, true)
+	# a lone pip is the honest picture of a single shot. That decision lives in
+	# `spread_arc_span` and NOT in an `if` here, on purpose: at level 1 the two ends
+	# coincide and `draw_arc` draws nothing, so "which levels get an arc" is decided
+	# in one pure function a test can assert without rendering a frame. A branch
+	# here would be a second copy of the rule, and cycle 70 watched a mutation to it
+	# survive a test that only ever asked `kernel_angle_offsets`.
+	draw_arc(muzzle_pivot(_aim_angle), FAN_LENGTH, _aim_angle + offsets[0],
+		_aim_angle + offsets[offsets.size() - 1], 24,
+		Color(SPREAD_ARC_COLOR, SPREAD_ARC_COLOR.a * fade), 2.0, true)
 	for pip: Vector2 in muzzle_pips(level, _aim_angle):
 		draw_circle(pip, PIP_SIZE + PIP_RIM_WIDTH, Color(PIP_RIM_COLOR, PIP_RIM_COLOR.a * fade))
 		draw_circle(pip, PIP_SIZE, Color(PIP_COLOR, PIP_COLOR.a * fade))
@@ -252,6 +256,20 @@ static func muzzle_pips(for_level: int, aim: float = 0.0) -> PackedVector2Array:
 	for offset: float in kernel_angle_offsets(for_level):
 		out.append(pivot + Vector2.RIGHT.rotated(aim + offset) * FAN_LENGTH)
 	return out
+
+
+## The angular width of the drawn spread arc for a level — 0.0 when no arc appears,
+## which is the single-kernel level and only that one.
+##
+## Pure, for the same reason `muzzle_pips` is: `_draw_muzzle_fan` reads this rather
+## than deciding for itself, so what gets drawn is checkable without rendering a
+## frame, and the "lone pip versus a bow of pips" difference a player reads at a
+## glance is one function rather than a condition at the draw site.
+static func spread_arc_span(for_level: int) -> float:
+	var offsets: PackedFloat32Array = kernel_angle_offsets(for_level)
+	if offsets.size() < 2:
+		return 0.0
+	return absf(offsets[offsets.size() - 1] - offsets[0])
 
 
 ## The radius a pip covers on screen, rim included — what "does the fan fit in the

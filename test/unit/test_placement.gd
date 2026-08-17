@@ -420,6 +420,45 @@ func test_each_corn_cobbler_level_draws_a_visibly_different_muzzle_fan() -> Stri
 	return ""
 
 
+## The fan's SECOND channel, which the width test above does not touch.
+##
+## `_draw_muzzle_fan` draws the spread arc only when there is more than one kernel
+## (`game/corn_cobbler.gd:165-169`), so level 1 is a lone pip and every level above
+## it is pips-plus-arc. That is a difference of kind rather than of size, and it is
+## what makes two cobs tell apart at a glance rather than by comparing widths —
+## measured in cycle 70 on the live board, where a level 1 and a level 3 sitting
+## two cells apart read as "one dot" and "a bow of dots".
+##
+## Asserted across every level rather than at the boundary: the rule is `iff`, and
+## a rule stated at one end is half a rule. If LEVELS grows a fourth entry with one
+## kernel, this fails and should.
+##
+## It asserts `spread_arc_span`, which is the function `_draw_muzzle_fan` actually
+## reads. The first draft asserted `kernel_angle_offsets` instead and a mutation to
+## the draw site's own `if` SURVIVED it — the test was a restatement of a function
+## nothing about the arc depended on. That survivor is why `spread_arc_span` exists
+## and why the draw site now has no branch of its own.
+func test_only_a_single_kernel_level_draws_no_spread_arc() -> String:
+	var err: String = _T.assert_gt(CornCobbler.LEVELS.size(), 1,
+		"there is a ladder to have a shape at all")
+	for lvl: int in range(1, CornCobbler.LEVELS.size() + 1):
+		if err != "":
+			return err
+		var kernels: int = int(CornCobbler.LEVELS[lvl - 1]["kernels"])
+		var span: float = CornCobbler.spread_arc_span(lvl)
+		err = _T.assert_eq(span > 0.0, kernels > 1,
+			"level %d draws an arc exactly when it fires more than one kernel" % lvl)
+		if err != "" or kernels < 2:
+			continue
+		# And the arc spans the shot, not a decorative constant: its two ends are
+		# the outermost kernels, so the drawn width IS the spread the cob fires
+		# through. A fan that grew on its own schedule would be a badge.
+		err = _T.assert_float_eq(span,
+			deg_to_rad(float(CornCobbler.LEVELS[lvl - 1]["spread_degrees"])), 0.001,
+			"level %d's arc spans its own spread" % lvl)
+	return err
+
+
 ## The fidelity claim: the fan is not a decoration that happens to grow, it is
 ## the firing table. Every pip sits on the angle its own kernel launches on.
 func test_the_muzzle_fan_is_drawn_on_the_angles_the_kernels_are_fired_on() -> String:
