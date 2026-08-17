@@ -46,6 +46,21 @@ legend; `KIND_SHELF` had made it the right shape cycles earlier. Cycle 92 wrote
 `page_for_kind` and then found `shelf_page()` — the same search over the same table, by a
 different name, written first and for the same stated reason.
 
+**And if the change grows a list something RENDERS, evaluate the layout functions at the
+new size before writing a line.** Cycle 98 added a sixth plant to a five-plant catalogue: it
+built the class, the art, the tests and the wiring, placed it on a real board and watched it
+work — and then `findings` reported the side panel 167px off the right edge, because five
+plant buttons already sat at exactly the 40px touch floor and there was no room for a sixth.
+
+`Hud.plant_bar_layout(6)` is a pure function. Calling it costs one line and would have found
+the wall before any of that existed. The file even predicted it — `PLANT_BAR_BOTTOM`'s comment
+ends "the next plant runs into it" — so this was not hidden, it was just never asked.
+
+The pattern generalises past that one function: a catalogue, a menu, a legend, a key list and
+a shop rack are all lists something lays out, and all of them have a pure sizing function in
+this codebase precisely so the question can be asked cheaply. **Ask it at N+1 first.** The
+answer is arithmetic, it is free, and it decides whether the cycle is a feature or a blocker.
+
 None of those is findable by the bead's own words, and no gate sees any of them: two
 functions with different names doing the same search resolve every name, compile clean and
 pass. What finds them is one grep for the *shape* of the thing you are about to add —

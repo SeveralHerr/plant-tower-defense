@@ -247,6 +247,33 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (98) — the roster has a ceiling and it is a UI one
+
+- **The catalogue is five plants because the side panel holds five buttons, and nothing said
+  so until a sixth existed.** Cycle 98 built a working Mint — class, art, tests, a real board
+  showing a neighbouring Corn at `fire_interval()` 0.6 against a base 0.8 — and could not
+  sell it. The panel is priced exactly: `44 + 5*40 (plants) + 3*40 (packets) = 364` against
+  `SelectionBox` at 392, leaving 28px for seven gaps, and five plant buttons sit at
+  **exactly** `PLANT_BUTTON_MIN_HEIGHT` (40.0). Not near the floor. On it.
+  `hud.gd`'s own `PLANT_BAR_BOTTOM` comment predicted this in the words "the next plant runs
+  into it", and it was right. **That is the interesting part**: the constraint was written
+  down, priced, and still invisible in every place a person would look for it — the catalogue
+  reads like a list you can append to, `-ibvb` researched four hand-lists and missed this one,
+  and the sweep test that "proves the bar fits ten plants" only ever reasoned about height,
+  which its own comment says.
+  So the roster's ceiling is a HUD fact, not a design one, and it belongs where roster work
+  starts. `-wb3r` is the panel; `-zhq9` and `-l4ke` now block on it.
+- **A branch a file documents as broken is worse than no branch, because it reads as
+  handled.** `Hud.plant_bar_layout` fell back to two columns when one would not fit, and the
+  function's own header says two columns "does not work" and "cannot be rendered at
+  PANEL_WIDTH — the GridContainer grows instead of shrinking and pushes the side panel off the
+  viewport". It returned that answer anyway. The branch was unreachable while the catalogue
+  had five plants, so it sat there for cycles reading like a handled case.
+  It is single-column now and reports `overflows` instead, which was always the honest answer
+  — the flag existed, and what was missing was a caller that did anything with it. **The
+  general shape is worth watching for: a fallback nobody can reach is a fallback nobody has
+  run**, and the comment saying it is broken does not stop it being returned.
+
 ### New this cycle (97) — a checker that was right while looking wrong
 
 - **The board's cues are palette-blind on purpose, and that is now enumerated rather than

@@ -1,4 +1,4 @@
-# Cycle 97
+# Cycle 98
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,32 +6,40 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 97 taught
+## What cycle 98 taught
+
+**The catalogue is five plants because the side panel holds five buttons.** Cycle 98 built a
+working sixth — Garden Mint, the plant that speeds up its neighbours — with its class, its art,
+its tests and a real board showing a Corn beside it at `fire_interval()` 0.6 against a base
+0.8. Then `findings` reported the panel **167px off the right edge of the viewport**, and
+Phase 1 had seen nothing: 617/617, lint 0/0, eleven checkers clean.
+
+`hud.gd` predicted it in its own words — `PLANT_BAR_BOTTOM`'s comment prices the panel exactly
+and ends "the next plant runs into it". Five plant buttons sit at **exactly** the 40px touch
+floor. The constraint was written down, priced, and still invisible everywhere a person would
+look: the catalogue reads like a list you can append to, the bead researched four hand-lists
+and missed this one, and the sweep test that "proves the bar fits ten plants" only ever
+reasoned about height, which its own comment says.
+
+**`plant_bar_layout` fell back to a two-column branch its own header calls unrenderable.**
+Unreachable while the catalogue had five plants, so it sat there for cycles reading like a
+handled case. **A branch a file documents as broken is worse than no branch.** It is
+single-column now and reports `overflows` — which was always the honest answer; what was
+missing was a caller that did anything with the flag.
+
+**And a measurement beat an opinion.** I assumed the `interactive_overlap` between a
+scrolled-out button and the packet button was an artefact of the harness comparing rects. So I
+clicked there: a real `touch_press` at (1020,356) was answered by **neither** button. The
+packet button was genuinely unclickable where the clipped one covered it. That turned "the
+scroll is probably fine" into a revert.
+
+Mint is committed and not sold. `-wb3r` is the panel; `-zhq9` and `-l4ke` block on it.
+
+## Carried from cycle 97
 
 **A checker's finding that contradicts what you can plainly see is the one most worth
-believing.** `suite_reach_check` reported four symbols as "public and no test names it" while
-all four were named in real code at lines I could point at. I spent several minutes auditing
-the checker — probing `strip_comments`, checking line endings, reading `STRING_RE` — before
-`git stash push <one file>` showed the cause was mine in ten seconds.
-
-I had written GDScript through a **shell heredoc**, which `CLAUDE.md` step 2 forbids in those
-words and for exactly this reason. It ate a backslash, so `section.find("
-## ", 1)` landed
-in the file as a **literal newline inside the string literal**. Godot accepts that: 613/613
-passed, lint 0/0, behaviour identical. `blank_strings` correctly read the remaining 1018
-characters as one string body, so everything after the splice was invisible.
-
-**Five gates agreed with me and one disagreed, and the one that disagreed was right.** Step 5
-spent its change naming the shape I broke the rule in — a Python script inside a heredoc is
-the same shell plus a second escaping layer, and it is what you reach for when `Edit`'s exact
-match fails — and naming the sanctioned fallback.
-
-**And the grammar was asserting its own headline rule without enumerating it.** "Every entry
-above obeys the two-channel rule" covered ten rows and derived none, in the document whose
-argument is that patterns get derived rather than remembered. The per-row table is written
-now: nine channels are shape, size, fill, count or sweep, the tenth is width, and **no cue
-reads `RunConfig.colorblind_safe` on purpose** — the flag changes the HUD's ramps, and the
-board's cues were built to survive without it.
+believing** — everything cheaper has already agreed with you, so the disagreement is the
+information. Bisect your own change before auditing the tool.
 
 ## Carried from cycle 96
 
@@ -39,27 +47,19 @@ board's cues were built to survive without it.
 of the scenario that produced it — ask what triggers the thing before deciding what to drive,
 because a wave-driving run never performs a player action.
 
-## Carried from cycle 95
-
-**A premise can be wrong in the direction that makes work look EXPENSIVE**, and that failure
-has no natural discoverer — the response to "too costly" is to not do it, which produces no
-evidence. Price it with arithmetic before believing it.
-
 ## Where things stand
 
-A hundred and one beads ready. Suite **613/613**, 13008 assertions; lint 0/0; eleven checkers
-clean. No runtime this cycle and correctly so — Phase 0.5 tier (b), the diff being one `.md`,
-one comment and a test. Fifteen skills. Upstream gh#44 and **gh#51–gh#56** open. Still on
-harness **0.38.0** deliberately (`-ny3h`, gh#43).
+A hundred and five beads ready. Suite **616/616**, 13046 assertions; lint 0/0; eleven checkers
+clean; `findings` **0 across 5 of 5, exit 0**. Fifteen skills. Upstream gh#44 and gh#51–gh#56
+open. Still on harness **0.38.0** deliberately (`-ny3h`, gh#43).
 
-**The player-facing steer is standing; this cycle owes its sentence.** 97 shipped a
-documentation enumeration and a comment — nothing a player sees. The sentence: **`-vxq6` asked
-a question about accessibility and the answer needed deriving before anything could be built
-on it**, and the derivation found the grammar asserting a ten-row claim it had never checked.
-Building a colourblind fix first would have wired ten cues into a flag they were designed not
-to read. The strongest player-facing threads remain `-5s99` (the pause door could open the
-SELECTED plant's page) and the P1 features nobody has touched — `-wtyj` (make the play screen
-read as the same notebook), `-gsai` (more mobs and a second boss), `-ibvb` (two new plants).
+**The player-facing steer is standing and cycle 98 is the biggest swing at it yet — a whole
+new plant — which is committed and cannot be bought.** That is the honest state: the code, the
+art and the seam are in; the catalogue registration is reverted because shipping it puts three
+buttons off the screen and makes the packet button unclickable. **The roster is now blocked on
+a HUD problem** (`-wb3r`), which is the most valuable thing this cycle found: `-gsai` (more
+mobs) and `-v167` (upgrades) do not touch the plant bar, so they are the P1 features still
+open, and `-wtyj` (make the play screen read as the same notebook) is the other big one.
 
 ## Waiting on the user
 

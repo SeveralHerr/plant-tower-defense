@@ -6195,3 +6195,47 @@ Noted on the bead.
   - Improvement: as above — compare against `raw` when reporting, and add one clause when the
     token is present there but absent from `blanked`. It is the difference between a finding
     that accuses the test suite and one that accuses the file's syntax.
+
+## 2026-08-17 — Cycle 98: a sixth plant, and the panel that cannot sell it (-zhq9)
+
+- Value: **warranted**, and this is the clearest case in twenty cycles — three of the run's
+  findings could only come from a running game, and two of them decided the cycle.
+  - Expected: build a plant, place it, watch a neighbouring Corn fire faster. A feature cycle.
+  - Got: that, and then `findings` reporting **7 gating findings** — `ui_overflow` on the
+    plant bar and three of its buttons, the side panel 167px past the right edge of the
+    viewport. Nothing in Phase 1 saw it: 617/617 passed, lint 0/0, eleven checkers clean.
+  - Found: three, and I would not have believed any of them from reading.
+    **The sprite was drawn in the lawn's own colour.** First cut used `#2ECC71` for the
+    leaves; `GardenTheme.LEAF` is `Color(0.180, 0.800, 0.443)` — the same hex. The plant
+    vanished into the grass. A screenshot caught it, and **no gate compares a sprite against
+    the ground it stands on** — `svg_style_check` passed it, because the palette is legal.
+    **The panel is full and said so in advance.** `hud.gd`'s `PLANT_BAR_BOTTOM` comment
+    prices it exactly and ends "the next plant runs into it". Five plant buttons sit at
+    exactly the 40px touch floor.
+    **The ScrollContainer rescue does not work, and the measurement is the point.** I assumed
+    `interactive_overlap` between a scrolled-out button and the packet button was an artefact
+    — the harness compares rects and cannot model scrolling. So I tested it: a real
+    `cmd touch_press` at (1020,356), inside both rects, was answered by **neither** button.
+    Seeds unchanged, selection unchanged. The packet button was genuinely unclickable where
+    the clipped button covered it. That turned an opinion into a revert.
+  - Cheaper: nothing. The colour needed a frame, the overflow needed a live layout, and the
+    click needed a click.
+
+- Gap: **`findings` reports `ui_overflow` against the VIEWPORT, and the thing that actually
+  overflowed was a panel.** The message reads
+  `GridContainer 'PlantBar' extends past viewport (rect: 908,116 -> 1319,332, viewport:
+  1152x648)`. True, and it names the outermost boundary rather than the nearest one. The bar
+  is a child of a 256px-wide `SidePanel`; it broke that first, by 167px, and the viewport
+  only afterwards. A reader chasing "past the viewport" looks at screen size and anchors; the
+  actual fix was in a container three levels in.
+  The harness already ships the verb that answers this — `contained-in --node PATH --within
+  PATH` reports per-side overhang, and `findings` surfaces the same idea as
+  `ui_escapes_panel` for a **sibling** panel. What it does not do is check a Control against
+  its own ANCESTOR, which is the containment a layout bug most often breaks.
+  - [G-072] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: when a Control overflows the viewport, walk up its ancestors and report the
+    NEAREST Control it also escapes — `extends past its parent 'SidePanel' by 167px (and the
+    viewport)`. The walk is a few lines, the rects are already in hand, and it changes the
+    finding from a symptom into a location. The current message is not wrong; it is just the
+    least useful true thing available.
+  - Note: no other gaps this turn.
