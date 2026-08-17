@@ -332,8 +332,23 @@ static func _best_cap_under(tier: StringName) -> int:
 ## Message priorities. NORMAL is ambient colour — a husk collected, a wave
 ## cleared. IMPORTANT is anything the player must act on or has just been asked
 ## to confirm, and it may cut a NORMAL line short.
+##
+## DEADLINE is not "more important than IMPORTANT" — it is **expires**. A line at
+## this rung is describing a window that is already counting down somewhere else
+## in the game, so deferring it does not delay the message, it shortens it. There
+## is exactly one such line today (the armed-uproot prompt, `game/game.gd:1330`)
+## and it is the reason the rung exists: two IMPORTANT lines defer each other for
+## up to `5.0 - MESSAGE_MIN_READABLE` seconds, and the prompt's whole window is
+## `Game.UPROOT_CONFIRM_SECONDS` = 4.0. Measured in cycle 69 by
+## `test_an_armed_prompt_outranks_a_line_that_is_merely_important`, which failed
+## against the old priority reading the packet reveal's text.
+##
+## **Before adding a second DEADLINE producer, note that they cannot defer each
+## other either** — two of these on screen at once is a design problem the queue
+## cannot solve, because whichever waits is wrong by construction.
 const MESSAGE_NORMAL: int = 0
 const MESSAGE_IMPORTANT: int = 1
+const MESSAGE_DEADLINE: int = 2
 ## How long a line is guaranteed on screen before an equal-priority one may
 ## replace it. Roughly the time to read a short sentence.
 const MESSAGE_MIN_READABLE: float = 1.2

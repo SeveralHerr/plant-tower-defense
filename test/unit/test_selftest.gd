@@ -3696,6 +3696,48 @@ func test_an_important_message_can_cut_an_ambient_one_short() -> String:
 	return err
 
 
+## The two tests above are examples from one pair of rungs. This is the table:
+## every ordered pair, asserted from the constants rather than from three
+## remembered cases, so a fourth rung cannot be added without either passing here
+## or being noticed.
+##
+## Cycle 69 added MESSAGE_DEADLINE and the pair that mattered — DEADLINE arriving
+## on IMPORTANT — was a combination no existing test named, which is exactly the
+## hole an enumeration closes and an example does not.
+func test_a_higher_rung_pre_empts_and_every_other_pair_waits() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	var label: Label = hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+	var rungs: Array[int] = [Hud.MESSAGE_NORMAL, Hud.MESSAGE_IMPORTANT, Hud.MESSAGE_DEADLINE]
+	# Game._ready posts a starter tip; drain it once or the first pair is about it.
+	hud._process(9.0)
+	var err: String = _T.assert_eq(rungs.size(), 3,
+		"three rungs -- add the new one to this list or the table is a subset")
+	for sitting: int in rungs:
+		for arriving: int in rungs:
+			if err != "":
+				break
+			hud._message_left = 0.0
+			hud._message_queue.clear()
+			hud._advance_message_queue()
+			# Six seconds each, well over MESSAGE_MIN_READABLE, so the wait branch
+			# is reached on its own terms rather than through the too-short-to-have-
+			# been-read shortcut.
+			hud.show_message("sitting %d" % sitting, 6.0, sitting)
+			hud.show_message("arriving %d" % arriving, 6.0, arriving)
+			var winner: String = ("arriving %d" % arriving) if arriving > sitting \
+				else ("sitting %d" % sitting)
+			err = _T.assert_eq(label.text, winner,
+				"rung %d arriving onto rung %d" % [arriving, sitting])
+			if err == "":
+				# The other half, and the one a screenshot cannot tell from the
+				# first: the loser is deferred, never dropped, at every pair.
+				err = _T.assert_eq(hud.pending_messages(), 1,
+					"the loser waits (%d onto %d)" % [arriving, sitting])
+	_T.free_ui(game)
+	return err
+
+
 func test_the_message_queue_cannot_grow_without_bound() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var hud: Hud = game.hud

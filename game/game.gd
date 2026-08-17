@@ -1325,9 +1325,12 @@ func arm_uproot() -> String:
 	var first_arm: bool = not RunConfig.has_milestone(RunConfig.HINT_MOVE_PREVIEW)
 	if first_arm:
 		RunConfig.record_milestones([RunConfig.HINT_MOVE_PREVIEW])
+	# DEADLINE, not IMPORTANT: `_uproot_left` is already counting down by the time
+	# this line is posted, so a deferral here does not postpone the message, it
+	# eats the window it describes. See Hud.MESSAGE_DEADLINE.
 	hud.show_message(
 		Hud.uproot_armed_message(PlantCatalog.display_name(selected_placed.kind), first_arm),
-		UPROOT_CONFIRM_SECONDS, Hud.MESSAGE_IMPORTANT)
+		UPROOT_CONFIRM_SECONDS, Hud.MESSAGE_DEADLINE)
 	_refresh()
 	return "confirm needed"
 

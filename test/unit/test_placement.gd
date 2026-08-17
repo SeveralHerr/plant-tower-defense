@@ -295,6 +295,54 @@ func test_an_armed_uproot_disarms_itself_and_leaves_the_plant() -> String:
 	return err
 
 
+## The armed prompt is the only line in the game with a clock running behind it,
+## and until cycle 69 it could be made to arrive after its own window shut.
+##
+## `show_message` defers an incoming line behind one of EQUAL priority that has
+## more than `MESSAGE_MIN_READABLE` left (game/hud.gd:1431). Three call sites emit
+## `MESSAGE_IMPORTANT`, and the longest-lived of them is the packet reveal at five
+## seconds (game/game.gd:1464) — so a reveal landing first held the prompt for up
+## to 5.0 - 1.2 = 3.8s of a 4.0s window. The ring lit on the plant the whole time;
+## the sentence saying what to do with it did not.
+##
+## Measured that way rather than argued: this test was written against the old
+## priority and failed reading the reveal's text, which is what turned a design
+## question into a defect.
+func test_an_armed_prompt_outranks_a_line_that_is_merely_important() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	var cell: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "planted")
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+	if err == "":
+		err = _T.assert_true(label != null, "the message row is where the HUD put it")
+	if err == "":
+		# Drain first. Planting posts its own line, so without this the queue count
+		# below reads 2 and the test fails describing the setup rather than the
+		# collision -- which is what the first run of it did.
+		game.hud._message_left = 0.0
+		game.hud._message_queue.clear()
+		game.hud._advance_message_queue()
+		# A real reveal, at the real duration, straight from _reveal_plant_unlock.
+		game.hud.show_message(Hud.packet_message("Chomp Flower"), 5.0, Hud.MESSAGE_IMPORTANT)
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "the uproot arms")
+	if err == "":
+		err = _T.assert_true(label.text.contains("it will not grow back"),
+			("the prompt goes up the instant the window opens, not when the row "
+				+ "happens to be free -- got %s") % label.text)
+	if err == "":
+		# Displaced, not discarded: the reveal is a real beat and still owes the
+		# player its remaining time once the decision is over.
+		err = _T.assert_eq(game.hud.pending_messages(), 1,
+			"and the reveal it cut short is waiting, not dropped")
+	if err == "":
+		game.hud._process(Game.UPROOT_CONFIRM_SECONDS + 0.1)
+		err = _T.assert_true(label.text.contains("Chomp Flower"),
+			"which it gets back when the window shuts -- got %s" % label.text)
+	_T.free_ui(game)
+	return err
+
+
 func test_selecting_another_plant_cancels_a_pending_uproot() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	game.bank.add_seeds(200)
