@@ -1,4 +1,4 @@
-# Cycle 95
+# Cycle 96
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,29 +6,37 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 95 taught
+## What cycle 96 taught
 
-**A wrong premise can make work look more expensive than it is, and that is the version
-nobody catches.** `-1wx0` said the legend's five rows sat at the edge of the 300 px matte, so
-a sixth needed `ROW_PITCH` cut or a second page. Derived from `CueLegend`'s own constants
-instead of eyeballed: five end at **248**, six at **294**, seven at **340**. It fit at the
-existing pitch and cost nothing but the row. The last three cycles found premises that made
-work look *necessary*; this one nearly bought a second page nobody needed.
+**"Drive it in a real run" is not the same as "exercise it".** `-gtne` asked how often the
+message row displaces a line the player is reading. Six waves, 54 kills, eight lives lost, 257
+seconds, `run_seconds` moving as a witness: **zero**. That number is accurate and worthless —
+all three call sites that can displace a line are **player actions** (arming an uproot, the two
+steps of opening a seed packet), and a run driven by starting waves contains none of them. One
+`arm_uproot` produced the count on the first try.
 
-So the legend teaches six of ten now, and the sixth is the ARMED cue — the only one guarding
-an action that cannot be undone. Its swatch is deliberately row one's brackets at
-`WARNING_LINE_WIDTH` in danger red, because that IS the grammar: doubled width means the mark
-you already know, thicker. The screenshot is the check that matters and the two rows read as
-a pair.
+**A zero inherits the blind spot of the scenario that produced it**, which means cycle 93's
+answer to `-i366` is now weaker than it read: same shape of run, same absence of player
+actions, and a full queue needs exactly the producers that were missing. `-gd27` re-measures
+it, cheaply, because the counters are still there.
 
-**And a test kept its own copy of what the code supports.** The drawable-shapes check held a
-hand-written array, so adding the sixth row broke the test that same edit was meant to
-satisfy — **a test maintained by whoever breaks it is not an assertion.** Now derived from the
-source, checking two things that fail apart: the `match` arm, and a painter for it to call.
+So the fix shipped: a line that has had `MESSAGE_MIN_READABLE` seconds is **retired** when
+displaced rather than queued. The player read it; bringing back the tail teaches nothing and is
+what made the same sentence appear twice. A line displaced before that still comes back
+unchanged. `MESSAGE_MIN_READABLE` is reused rather than a second threshold invented — the wait
+branch already treats it as "long enough to have been read", and a second number would be a
+second opinion.
 
-**Cycle 91 also closed `-bxhg` with one acceptance clause unmet** and nothing noticed for four
-cycles. `verify-bd-item` now says to answer the acceptance clause by clause when closing;
-`-pc3m` is the audit that says how big the hole is.
+**And a green test that asserted nothing.** `line_was_read(4.0, 4.0 - MESSAGE_MIN_READABLE)`
+computes `1.2000000000000002`, so the "exactly at the threshold" case passed under both `>=`
+and `>`. Only a mutation found it. **An at-the-boundary case must be constructed, not
+computed.**
+
+## Carried from cycle 95
+
+**A premise can be wrong in the direction that makes work look EXPENSIVE**, and that failure
+has no natural discoverer — the response to "too costly" is to not do it, which produces no
+evidence. Price it with arithmetic before believing it.
 
 ## Carried from cycle 94
 
@@ -36,25 +44,20 @@ cycles. `verify-bd-item` now says to answer the acceptance clause by clause when
 stops the next reader checking. Read what the cited line DOES, not just that it is the line
 you meant.
 
-## Carried from cycle 93
-
-**"Zero because nothing happened" and "zero because nothing is happening at all" are the same
-read.** Pair an expected zero with a witness that must move — `run_seconds`, a monotonic tally
-— or read the whole `state()`, which carries one for free.
-
 ## Where things stand
 
-A hundred beads ready. Suite **611/611**, 12997 assertions; lint 0/0; eleven checkers clean;
-`findings` **0 across 5 of 5**; reach 1/1. Fifteen skills. Upstream gh#44 and **gh#51–gh#56**
-open; gh#49/gh#50 fixed. Still on harness **0.38.0** deliberately (`-ny3h`, gh#43).
+A hundred beads ready. Suite **613/613**, 13007 assertions; lint 0/0; eleven checkers clean;
+`findings` **0 across 5 of 5**. The latest ledger row is **`partial`, not `pass`** — the first
+in nine cycles — because one live check lost its precondition and was recorded `blocked` rather
+than green. Fifteen skills. Upstream gh#44 and **gh#51–gh#56** open. Still on harness **0.38.0**
+deliberately (`-ny3h`, gh#43).
 
-**The player-facing steer is standing and cycle 95 kept the promise cycle 94 made.** 90 made a
-Chomp explain itself; 91 gave the board's drawn language a page; 92 put that page one press
-from a paused run; 93 and 94 closed two worries with measurements and shipped nothing visible;
-95 taught the ARMED cue — the one guarding the only irreversible act. **The legend is now
-finished-shaped rather than unfinished**: six rows end at 294 of a 300 px matte, so a seventh
-is a layout decision, and `-wenx` asks whether any of the four remaining cues deserves that
-cost (one of them, the weather, provably does not — the game says it in words three times).
+**The player-facing steer is standing.** 90 made a Chomp explain itself; 91 gave the board's
+drawn language a page; 92 put it one press from a paused run; 93-94 closed two worries with
+measurements; 95 taught the ARMED cue; 96 stopped the row showing the same sentence twice. The
+sharpest remaining player-facing threads are `-5s99` (the pause door could open the SELECTED
+plant's page — both pieces already exist) and `-wenx` (whether any untaught cue earns the
+legend's layout cost, one grep each).
 
 ## Waiting on the user
 

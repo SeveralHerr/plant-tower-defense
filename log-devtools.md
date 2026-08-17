@@ -6111,3 +6111,46 @@ Noted on the bead.
     array (`RUN_JSON_ALIASES`), not as a per-check artefact path, and there is no `judged`
     concept anywhere in the file. Filed with the four-cycle table (88, 90, 91, 95) as the
     evidence, since one screenshot-judged check is a habit and four in a row is a ratio.
+
+## 2026-08-17 — Cycle 96: retiring a line the player has read (-gtne)
+
+- Value: **warranted**, and the run's most useful output was a number that would have closed
+  the bead wrongly if I had stopped reading it.
+  - Expected: the bead said measure first, and I expected a small non-zero — some rate of
+    resumption per wave.
+  - Got: **zero**, across six waves, 54 kills, eight lives lost, 257 seconds, with
+    `run_seconds` moving as a witness (cycle 93's rule, applied deliberately). And that zero
+    is honest and useless: every pre-empting call site is a **player action** — arming an
+    uproot, opening a seed packet — and six waves of driving the wave director contain
+    neither. One `arm_uproot` over a live message gave `messages_preempted` 1 first try.
+  - Found: two, and the second is about a test of mine that was green while asserting
+    nothing.
+    **"Measured in a real run" measures the game, not the player.** A run driven by starting
+    waves exercises what the game does to itself. If the behaviour under test is triggered by
+    something the player does, that run measures zero and the zero looks like an answer. This
+    also retroactively weakens cycle 93's `-i366` result, which was the same shape of run with
+    the same absence of player actions — noted in `kanban.md` and filed, because the counters
+    still exist and the re-measurement is cheap.
+    **A boundary assertion computed by subtraction does not test the boundary.**
+    `line_was_read(4.0, 4.0 - MESSAGE_MIN_READABLE)` computes `4.0 - 2.8 = 1.2000000000000002`,
+    strictly greater than `1.2`, so it passed under both `>=` and `>`. A mutation flipping the
+    comparison survived, which is the only reason I know. Rewritten as
+    `line_was_read(MESSAGE_MIN_READABLE, 0.0)`, which subtracts exactly.
+  - Cheaper: nothing. The counter had to exist before the question could be asked — the same
+    shape as `-i366` three cycles ago, and this time the instrument outlived the question.
+
+- Gap: **the ledger's `blocked` result works exactly as designed and I had never seen it, which
+  is worth logging as a success rather than a defect.** The unread-then-displaced scenario lost
+  its selection live and was never driven, so I recorded that check as `"result": "blocked"`:
+  ```
+  verify_ledger: verdict downgraded pass -> partial: blocked check(s) unread-then-displaced,
+  live - a check that could not run is not a check that passed
+  ```
+  Nine cycles of recording rows and this is the first `partial` I have produced. The downgrade
+  is right, the message says why in one line, and the row now carries a verdict I cannot read
+  later as a clean pass. **No gap here** — recorded because the harness's own logging rule asks
+  for what was missing, and "nothing was missing, and here is the mechanism that caught me
+  being sloppy" is the more useful entry when it is true.
+  - Note: no gaps this turn. The one thing I would change is mine, not the harness's: I drove
+    the scenario without re-checking the selection had survived the previous step, which is
+    the same class as cycle 94's "I killed the plant I was clicking".

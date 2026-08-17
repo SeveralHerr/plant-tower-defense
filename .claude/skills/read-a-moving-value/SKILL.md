@@ -226,3 +226,35 @@ The cheap structural version: end the scenario by reading the game's whole `stat
 than the one property you came for. It costs one call, it carries the witness for free, and
 it is where `game_over: true` was sitting the entire time I was driving waves into a run that
 had already ended.
+
+## And the third: a value that is correctly zero, in a game nobody is playing
+
+The section above is about a stopped tree. This one is about a tree that is running perfectly
+and simply never doing the thing you are counting.
+
+Cycle 96 asked how often the message row displaces a line the player is reading. It drove six
+waves — 54 kills, eight lives lost, 257 seconds, `run_seconds` moving the whole time, so the
+witness rule above was satisfied — and read **zero**. That number is accurate. It is also
+worthless, because all three call sites that can displace a line are **player actions**:
+arming an uproot, and the two steps of opening a seed packet. A run driven by starting waves
+contains none of them. One `arm_uproot` produced the count on the first try.
+
+> **"Drive it in a real run" is not the same as "exercise it".** A zero is only as good as
+> the actions the run contained.
+
+So before driving anything, ask **what triggers the thing you are counting**, and check that
+your scenario contains it. Two shapes to look for, and they need different scenarios:
+
+| The behaviour is triggered by… | A wave-driving run will… | You need to… |
+|---|---|---|
+| the game itself (spawns, timers, deaths, weather) | exercise it | drive waves, read the counter |
+| the player (a click, a purchase, a confirm) | **never touch it** | perform the action, then read |
+
+The tell is in the call sites, not in the counter: `grep` for what calls the thing and ask
+whether a wave causes any of them.
+
+This also applies backwards. Cycle 93 measured the same row's *drop* rate over the same shape
+of run and concluded it drops nothing in ordinary play — an answer now known to rest on a run
+that contained no player actions either. **A published zero inherits the blind spot of the
+scenario that produced it**, so when you find this trap, check what else you measured the same
+way.

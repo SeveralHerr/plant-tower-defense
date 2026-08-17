@@ -247,6 +247,39 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (96) — "measured in a real run" measures the game, not the player
+
+- **A measurement driven by playing waves measures AMBIENT behaviour, and cycle 96's answer
+  was zero until a player did something.** `-gtne` asked how often the row resumes a
+  displaced line. Six waves, 54 kills, eight lives lost, 257 seconds with `run_seconds`
+  moving as a witness: `messages_preempted` **0**. That reads as "never happens" and would
+  have closed the bead — except every pre-empting call site is a **player action**. Arming an
+  uproot (`game/game.gd:1392`) and opening a seed packet (`:1518`, `:1528`) are the only
+  three, and six waves of driving the wave director contain neither. One `arm_uproot` over a
+  live message: `messages_preempted` 1, first try.
+  **This retroactively weakens cycle 93's answer to `-i366`.** That cycle measured
+  `messages_refused` = 0 over the same shape of run — waves driven, no player actions — and
+  concluded the row does not drop lines in ordinary play. A refusal needs a full queue, and
+  the two producers most likely to fill one are exactly the two actions that run was missing.
+  The counters still exist and the re-measurement is cheap; until it happens, "the row drops
+  nothing" is a claim about a game nobody was playing.
+  The general form is worth more than either instance: **"drive it in a real run" is not the
+  same as "exercise it", and a zero is only as good as the actions the run contained.** Ask
+  what triggers the thing before deciding what to drive.
+- **A boundary assertion computed by subtraction does not test the boundary.** Cycle 96 wrote
+  `line_was_read(4.0, 4.0 - MESSAGE_MIN_READABLE)` to assert the comparison is `>=` rather
+  than `>`. `4.0 - 1.2` is `2.8`, and `4.0 - 2.8` is `1.2000000000000002` — strictly greater
+  than `1.2`, so the assertion passed under **both** comparisons and said nothing about the
+  boundary it named. Only a mutation flipping `>=` to `>` found it; the test was green the
+  whole time.
+  The fix is to write operands that subtract exactly — `line_was_read(MESSAGE_MIN_READABLE,
+  0.0)` — and the rule is that **an "exactly at the threshold" case must be constructed, not
+  computed.** Enumerated before generalising: the other subtraction-bearing assertions in the
+  suite (`test_economy.gd:59`, `test_placement.gd:56`, `:2176`) are integer seed arithmetic,
+  and `test_combat.gd:2227` / `test_selftest.gd:3481` subtract a margin as the quantity under
+  test rather than to hit a boundary. So this is **one instance**, recorded rather than made
+  into a checker, on the same ground cycles 89, 92 and 95 declined to build one.
+
 ### New this cycle (95) — a test edited by whoever breaks it, and one cue that needs no row
 
 - **Three tests kept a hand-written copy of a list the game already declares; one of them
