@@ -195,6 +195,26 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (58) — the uproot flow is nearly a move tool
+
+- **Arming an uproot shows what is lost but not what is gained.** The rings go red on the
+  cells that go bare (`game/sole_cover_marks.gd`), and the hover dots already say what a
+  new plant would newly defend — but they are two separate reads. While an uproot is armed
+  the game knows both the refund and the plant's kind, so hovering a destination during
+  that window could show the dots for *this* plant at *that* cell. That turns two cues into
+  a move preview, which is what the player is actually doing.
+- **The refund is shown as a number and never as a comparison.** `Uproot (+%d)`
+  (`game/hud.gd:1209`) tells the player what they get back; nothing tells them what a
+  replacement costs. For a Corn Cobbler the refund and the price are both known constants,
+  so "uproot for +12, replant for 20" is a subtraction the game could do and currently
+  leaves to the player mid-decision, on a four-second timer.
+- **Every cue so far is about coverage; none is about time.** The rings, the dots and the
+  dead-ground bar all answer spatial questions. A plant's *rate* is invisible until it is
+  selected and read as text (`game/hud.gd:1154` prints damage and interval for a cob). Two
+  cobs covering identical cells at different upgrade levels look identical on the board,
+  which is exactly the shape of gap that made the coverage-versus-engagement work
+  necessary — and the same fix applies: draw the thing that differs.
+
 ### New this cycle (57) — the selection panel is full, and that is now a known quantity
 
 - **The selection panel has no room left and nothing prices it.** `_selection_label`

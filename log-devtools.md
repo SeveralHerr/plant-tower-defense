@@ -4645,3 +4645,29 @@ cited in code, and the citation is a mitigation this project has watched fail.
   about two minutes. That is the same property `scope-vs-claim` argues for from the other
   direction, and it is the second cycle running that the codebase's own prose has been the
   decisive input rather than any tool.
+
+## 2026-08-17 — Cycle 58: the rings change tense when an uproot is armed
+
+- Value: **warranted** — though the sharpest thing this run produced came from the suite,
+  not the bridge.
+  - Expected: `arm_uproot` to flip the rings red, and the screenshot to show the cells that
+    go bare.
+  - Got: both. `arm_uproot` returns `confirm needed`, `SoleCoverMarks.warning` reads true,
+    and eight thick red rings sit on the road the cob alone holds.
+  - Found: **the suite refused to pass and was right twice over.** The new test covers two
+    symbols that were sitting on the reach debt baseline, so `suite_reach` demanded a
+    re-bank — and in the same breath reported **1 NEW** uncovered symbol. Re-banking
+    blindly, which is the obvious response to "PROGRESS: re-run --baseline-write", would
+    have buried a regression under an improvement. The NEW one was
+    `SoleCoverMarks.set_warning`, reached only indirectly through `set_uproot_armed`; it
+    now has a direct test, which also covers the idempotence its header claims and the
+    indirect route never exercises.
+  - Cheaper: for the predicates, yes — they are unit-tested and five mutations kill them.
+    For "do eight thick red rings read as the consequence of a pending action", nothing.
+
+- Gap: **no gaps this turn**, and a note about a good tool behaviour worth not losing.
+  `suite_reach_check`'s PROGRESS line and its NEW count are printed *together*, which is
+  what made the trap visible. A tool that had only said "you improved, re-bank" would have
+  been actively harmful here. That is the same shape as the denominator rule this project
+  keeps relearning: **an improvement and a regression reported in the same breath are
+  legible; either one alone is not.**

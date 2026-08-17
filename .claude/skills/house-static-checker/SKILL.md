@@ -133,6 +133,32 @@ correct behaviour, because the file set the property per node.
 A checker that has never been observed to fail is not a checker. The same rule as a test:
 **green on first run means nothing until you have watched it go red for the right reason.**
 
+### If acting on one number could bury another, print both at the point of invitation
+
+The denominator rule keeps a clean result from hiding an empty input. There is a second
+version of it for any checker that invites an **action**, and it is easier to get wrong
+because the tool is being helpful.
+
+`suite_reach_check` printed this:
+
+```
+Baseline: 51 pre-existing, 1 NEW, 1 since fixed.
+PROGRESS: 1 baselined symbol(s) are now named by a test (set_uproot_armed).
+          Re-run --baseline-write to lock the improvement in.
+```
+
+`--baseline-write` rewrites the **whole** file. So acting on the PROGRESS line alone —
+which is exactly what it invites — banks the `1 NEW` regression as accepted debt in the
+same stroke, silently and permanently. It was safe only because both numbers appear
+together and the reader can see the trap.
+
+> **A tool that says "you improved, re-bank" and nothing else is worse than one that says
+> nothing.** Whenever an invitation to act rewrites more than the thing it names, print
+> everything that rewrite would absorb, next to the invitation and not three lines above it.
+
+Same shape as the denominator rule: a number is only safe to act on when what it omits is
+visible beside it.
+
 ### The region you measure is itself a denominator
 
 The denominator rule above is stated for *findings*. Apply it to the **input** too, or a
