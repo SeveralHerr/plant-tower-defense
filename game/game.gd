@@ -799,6 +799,14 @@ func _on_husk_rotted(_value: int) -> void:
 	Sfx.play(Sfx.HUSK_ROTTED)
 
 
+## A pest's seed value under the current weather, rounded and never below 1.
+##
+## Public and pure so the economy is assertable without killing anything, and so the
+## HUD could quote it later without duplicating the arithmetic.
+func weather_seed_value(base: int) -> int:
+	return maxi(1, int(round(float(base) * WaveDirector.seed_multiplier_for(weather))))
+
+
 func _on_pest_died(pest: Pest) -> void:
 	# Played here, not in Pest, on purpose: Pest._play_death() queue_frees the
 	# node DEATH_LINGER seconds later, and a freed node cannot finish a sound.
@@ -806,7 +814,11 @@ func _on_pest_died(pest: Pest) -> void:
 	Sfx.play(Sfx.PEST_KILLED)
 	pests_defeated += 1
 	_note_lane_loss(pest.position)
-	bank.add_seeds(pest.seed_value)
+	# Scaled by the weather this wave arrived under: a drought pays more, because it
+	# cost more to get here (plant-tower-defense-4c1l). Applied to the direct seeds
+	# only -- the husk below already carries husk_multiplier(), and scaling both would
+	# pay the weather bonus twice for one kill.
+	bank.add_seeds(weather_seed_value(pest.seed_value))
 	# Half again, as a husk — collectible for a bonus, or left to rot. See
 	# CompostMeter: this is what makes "sweep the field" worth doing. Scaled by
 	# husk_multiplier() so a harder kill (a mutation) pays out more, tying the
@@ -2029,7 +2041,7 @@ func _budget_hud_message_row() -> Dictionary:
 	if label == null:
 		return uncomputed_budget(BUDGET_UNMEASURED, "hud_message_row",
 			"Hud.eaten_message() and siblings", "res://game/hud.gd",
-			"the widest message the catalogue can produce",
+			"the widest string this row can ever hold",
 			"no Root/TopBar/MessageLabel in the running HUD",
 			"a message renders trimmed to an ellipsis and nothing errors",
 			no_budget_observations())
@@ -2049,16 +2061,29 @@ func _budget_hud_message_row() -> Dictionary:
 		if drawn > worst_px:
 			worst_px = drawn
 			worst = line
+	# The standing prep note shares this row and is now the WIDEST thing on it -- 570px
+	# against the plant messages' 534 once the drought bonus was named in it. The
+	# budget measured only the four plant-name messages when it was written, which made
+	# it a budget for part of the row (plant-tower-defense-4c1l). Every field at its
+	# maximum, which is a wave number nothing will reach and a pest count the table
+	# cannot produce: a budget is about the worst case the FORMAT allows, not the worst
+	# case the game is expected to reach.
+	var worst_note: String = Hud.next_wave_note(999, 9999, true,
+		WaveDirector.WEATHER_DROUGHT, true)
+	var note_px: float = GardenTheme.measure(worst_note, Hud.MESSAGE_FONT_SIZE)
+	if note_px > worst_px:
+		worst_px = note_px
+		worst = worst_note
 	if worst_px <= 0.0:
 		return uncomputed_budget(BUDGET_UNMEASURED, "hud_message_row",
 			"Hud.eaten_message() and siblings", "res://game/hud.gd",
-			"the widest message the catalogue can produce",
-			"the catalogue sweep measured nothing",
+			"the widest string this row can ever hold",
+			"the message-row sweep measured nothing",
 			"a message renders trimmed to an ellipsis and nothing errors",
 			no_budget_observations())
 	return computed_budget("hud_message_row", "Hud.eaten_message() and siblings",
-		"res://game/hud.gd", "widest catalogue message", worst_px, label.size.x, "px",
-		"GardenTheme.measure() over every plant name and corn level",
+		"res://game/hud.gd", "widest message-row string", worst_px, label.size.x, "px",
+		"GardenTheme.measure() over every plant name, corn level, and the prep note",
 		("a message renders trimmed to an ellipsis and nothing errors -- shorten the "
 			+ "message, shorten the name, or widen the row (\"%s\")") % worst,
 		no_budget_observations())

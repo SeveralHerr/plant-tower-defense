@@ -334,6 +334,27 @@ static func fire_interval_scale_for(weather: StringName) -> float:
 	return WEATHER_DROUGHT_INTERVAL_SCALE if weather == WEATHER_DROUGHT else 1.0
 
 
+## What a pest killed under this weather is worth, as a multiple of its seed value
+## (plant-tower-defense-4c1l).
+##
+## **Only drought pays.** A drought doubles every plant's firing interval, so the same
+## wave costs the player more plants, more lives and more attention — and until now it
+## paid exactly what the easy version of that wave paid. This is the same idea as
+## `Pest.husk_multiplier()`, which already pays more for a harder kill; weather is that
+## idea one level up, applied to the whole wave rather than to one mutation.
+##
+## Rain stays at 1.0 rather than paying LESS, which would be the symmetrical choice and
+## the wrong one. Rain is the mercy wave; making it also the poor wave turns the good
+## weather into something a player dreads, and the healing is already its whole effect.
+##
+## 1.5 rather than 2.0: a drought should be worth surviving, not worth WANTING. At 2.0
+## the arithmetic starts to favour praying for bad weather, which inverts the mechanic.
+const WEATHER_DROUGHT_SEED_BONUS: float = 1.5
+
+static func seed_multiplier_for(weather: StringName) -> float:
+	return WEATHER_DROUGHT_SEED_BONUS if weather == WEATHER_DROUGHT else 1.0
+
+
 ## How much of a plant's maximum health a rain wave gives back, applied once as
 ## the wave opens rather than trickled -- a heal the player can SEE happen is
 ## worth more than a slightly larger one they cannot.

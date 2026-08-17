@@ -4302,3 +4302,43 @@ cited in code, and the citation is a mitigation this project has watched fail.
   That is the right tool for auditing a comment that claims a verb, and it is not
   obvious from the verb table in `CLAUDE.md`, which describes `list-commands` as a
   discovery aid for a running session.
+
+## 2026-08-16 — Drought pays 150% on seeds, and the prep note says so
+
+- Value: **warranted** — runtime produced two claims the diff could not, and one of them
+  corrected a budget I wrote myself seven cycles ago.
+  - Expected: `weather_seed_value(4)` returns 6 under drought and 4 under clear, and the
+    prep note carries the new clause. I expected the suite to cover both.
+  - Got: both, live — and `cmd budgets` reported `widest catalogue message 570 of 876 px
+    max -- 306 px left`. That 570 is the **prep note**, not a plant name. My cycle-41
+    budget `_budget_hud_message_row` measured only the four plant-name messages (534px)
+    and never the note, which is now the widest thing that row ever holds. A budget with
+    the wrong corpus is a budget that reports green while the real widest string grows
+    unwatched.
+  - Found: **that gap in my own budget, and very nearly a defect filed against working
+    code.** Reading `MessageLabel.text` returned empty three times running while
+    `_idle_message` held the correct note. That is not a bug: `_paint_message_row` gives
+    a transient message precedence over the standing note, and `_message_left` was
+    `0.43`. `pause` first, then `_advance_message_queue`, and the row reads
+    `Wave 7 next — 19 pests · drought · pests pay 150%.` deterministically. Third time
+    this session a state variable told the truth a screen read did not.
+  - Cheaper: nothing. The suite asserts the multiplier and the note's text, but the
+    budget corpus error only surfaces from `cmd budgets` against a running HUD, and the
+    precedence question needed the live message queue.
+
+- Gap: **nothing documents `pause` as the tool for a deterministic property read.** The
+  verb table sells it as "sets `SceneTree.paused` directly, bus keeps answering — catch a
+  sub-second effect", and `ping`'s note frames the answering-while-paused property as
+  *pause menus are verifiable*. Both are true and neither says the thing that cost me
+  three reads: **a property a `_process` timer mutates cannot be read reliably without
+  freezing the tree first.** I read an empty Label three times and had no way to tell "the
+  row is blank" from "something else is holding the row right now", because a single read
+  of a moving value carries no evidence that it was moving.
+  - [G-056] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: one line in the Gotchas list — `**A single read of a timer-driven
+    property is not a measurement.** Anything a `_process`/`_physics_process` timer
+    mutates should be read after `pause` (the bus answers while paused), or with
+    `step-time --then-pause`. An unexpected value read live is ambiguous between "wrong"
+    and "mid-transition", and the read itself cannot tell you which.` It belongs beside
+    the existing "A run that never changes is broken, not passing" entry, which is the
+    same lesson pointing the other way.

@@ -1516,7 +1516,12 @@ static func next_wave_note(number: int, pests: int, boss: bool, weather: StringN
 	if weather == WaveDirector.WEATHER_RAIN:
 		parts.append("rain")
 	elif weather == WaveDirector.WEATHER_DROUGHT:
-		parts.append("drought")
+		# The bonus is named here because a payout the player cannot see is not a
+		# rule, it is a coincidence they might notice (plant-tower-defense-4c1l).
+		# The banner says what a drought COSTS; the prep note is where they decide
+		# what to buy, so it is where the compensation belongs.
+		parts.append("drought · pests pay %d%%"
+			% int(round(WaveDirector.WEATHER_DROUGHT_SEED_BONUS * 100.0)))
 	if parts.is_empty():
 		return "Wave %d next." % number
 	return "Wave %d next — %s." % [number, " · ".join(parts)]
@@ -1693,7 +1698,8 @@ static func weather_note(weather: StringName) -> String:
 		WaveDirector.WEATHER_RAIN:
 			return "The garden drinks. Every bed grows back a little."
 		WaveDirector.WEATHER_DROUGHT:
-			return "Dry ground. Everything you planted shoots half as often."
+			return "Dry ground. Everything shoots half as often — and every pest pays %d%%." % int(
+				round(WaveDirector.WEATHER_DROUGHT_SEED_BONUS * 100.0))
 		_:
 			return ""
 

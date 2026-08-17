@@ -10449,7 +10449,10 @@ func test_the_prep_note_says_what_the_next_wave_is_worth() -> String:
 	# It fits the row it shares. The message label clips, so a note too long for it
 	# would be trimmed silently -- the same failure the top bar's budgets exist for.
 	if err == "":
-		var widest: String = Hud.next_wave_note(999, 9999, true, WaveDirector.WEATHER_DROUGHT)
+		# Every field at its maximum, including `last` -- the widest string the FORMAT
+		# allows, not the widest the game is expected to produce.
+		var widest: String = Hud.next_wave_note(999, 9999, true,
+			WaveDirector.WEATHER_DROUGHT, true)
 		var game := await _T.instantiate_scene(GAME_SCENE) as Game
 		var label: Label = game.hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
 		err = _T.assert_true(label != null, "the message row exists to share")
@@ -10884,4 +10887,65 @@ func test_an_armed_uproot_marks_the_bed_it_will_remove() -> String:
 			"with the arming itself cleared, not just its look")
 
 	_T.free_ui(game)
+	return err
+
+
+## A drought pays for itself, and the player is told so
+## (plant-tower-defense-4c1l).
+##
+## The game has no wave-clear payout at all — seeds come from killed pests and swept
+## husks — so a drought used to cost the player half their rate of fire and pay exactly
+## what the easy version of the same wave paid. This is the same idea as
+## `Pest.husk_multiplier()`, which already pays more for a harder kill, applied to a
+## whole wave.
+##
+## Rain deliberately stays at 1.0. Paying less for the mercy wave is the symmetrical
+## choice and the wrong one: it turns the good weather into something to dread.
+func test_a_drought_pays_more_and_says_so() -> String:
+	var err: String = _T.assert_float_eq(
+		WaveDirector.seed_multiplier_for(WaveDirector.WEATHER_CLEAR), 1.0, 0.001,
+		"clear weather pays the plain rate")
+	if err == "":
+		err = _T.assert_float_eq(
+			WaveDirector.seed_multiplier_for(WaveDirector.WEATHER_RAIN), 1.0, 0.001,
+			"and so does rain -- the mercy wave is not also the poor one")
+	if err == "":
+		err = _T.assert_float_eq(
+			WaveDirector.seed_multiplier_for(WaveDirector.WEATHER_DROUGHT),
+			WaveDirector.WEATHER_DROUGHT_SEED_BONUS, 0.001, "a drought pays more")
+	if err == "":
+		# Worth surviving, not worth WANTING. At 2.0 the arithmetic starts to favour
+		# praying for bad weather, which inverts the mechanic.
+		err = _T.assert_true(WaveDirector.WEATHER_DROUGHT_SEED_BONUS < 2.0,
+			"but not so much more that a player would choose it, got %.2f"
+				% WaveDirector.WEATHER_DROUGHT_SEED_BONUS)
+
+	# Through the game, on the number a kill actually banks.
+	if err == "":
+		var game := await _T.instantiate_scene(GAME_SCENE) as Game
+		game._apply_weather(WaveDirector.WEATHER_CLEAR)
+		var plain: int = game.weather_seed_value(4)
+		err = _T.assert_eq(plain, 4, "a clear-weather kill banks its own value")
+		if err == "":
+			game._apply_weather(WaveDirector.WEATHER_DROUGHT)
+			err = _T.assert_eq(game.weather_seed_value(4), 6,
+				"and the same kill under a drought banks 6")
+		if err == "":
+			# Never rounds a kill down to nothing.
+			err = _T.assert_gte(game.weather_seed_value(1), 1,
+				"the cheapest pest is still worth at least one seed")
+		if err == "":
+			game._apply_weather(WaveDirector.WEATHER_RAIN)
+			err = _T.assert_eq(game.weather_seed_value(4), 4, "rain banks the plain value")
+		_T.free_ui(game)
+
+	# And the player is told, where they are deciding what to buy.
+	if err == "":
+		var note: String = Hud.next_wave_note(9, 20, false, WaveDirector.WEATHER_DROUGHT)
+		err = _T.assert_true(note.contains("pests pay 150%"),
+			"the prep note names the bonus -- a payout nobody can see is a "
+				+ "coincidence, not a rule; got: %s" % note)
+	if err == "":
+		err = _T.assert_true(Hud.weather_note(WaveDirector.WEATHER_DROUGHT).contains("150%"),
+			"and so does the banner that announces the wave")
 	return err
