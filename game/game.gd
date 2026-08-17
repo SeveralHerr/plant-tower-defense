@@ -1322,18 +1322,21 @@ func arm_uproot() -> String:
 	# idempotent and only writes when something is new, so the order cannot
 	# double-write — and arming twice in a frame is a thing this method already
 	# guards against above.
-	var first_arm: bool = not RunConfig.has_milestone(RunConfig.HINT_MOVE_PREVIEW)
-	if first_arm:
-		RunConfig.record_milestones([RunConfig.HINT_MOVE_PREVIEW])
-	# DEADLINE, not IMPORTANT: `_uproot_left` is already counting down by the time
-	# this line is posted, so a deferral here does not postpone the message, it
-	# eats the window it describes. See Hud.MESSAGE_DEADLINE.
 	# Only the Corn Cobbler has an upgrade ladder, so only it can forfeit anything;
 	# `as CornCobbler` is null for every other plant and the cast decides it rather
 	# than a `kind ==` comparison that would need updating when a second upgradable
 	# plant arrives.
 	var cob := selected_placed as CornCobbler
 	var forfeited: int = 0 if cob == null else CornCobbler.upgrade_spend(cob.level)
+	var first_arm: bool = not RunConfig.has_milestone(RunConfig.HINT_MOVE_PREVIEW)
+	# Spend the one-shot only when the tip is going to be SHOWN. `Hud.uproot_shows_tip`
+	# owns that decision because the message composer needs it too, and a rule stated in
+	# two files is a rule that drifts — which it did for one cycle, in exactly this spot.
+	if Hud.uproot_shows_tip(first_arm, forfeited):
+		RunConfig.record_milestones([RunConfig.HINT_MOVE_PREVIEW])
+	# DEADLINE, not IMPORTANT: `_uproot_left` is already counting down by the time
+	# this line is posted, so a deferral here does not postpone the message, it
+	# eats the window it describes. See Hud.MESSAGE_DEADLINE.
 	hud.show_message(
 		Hud.uproot_armed_message(PlantCatalog.display_name(selected_placed.kind), first_arm,
 			forfeited),

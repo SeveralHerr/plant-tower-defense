@@ -1754,9 +1754,26 @@ static func uproot_armed_message(plant_name: String, with_tip: bool = false,
 		% plant_name)
 	if forfeited > 0:
 		return warning + " Its %d upgrade seeds are not refunded." % forfeited
-	if not with_tip:
-		return warning
-	return warning + " Hover to compare a new spot."
+	if uproot_shows_tip(with_tip, forfeited):
+		return warning + " Hover to compare a new spot."
+	return warning
+
+
+## Whether the armed prompt will actually carry the move tip.
+##
+## The precedence lives in one function because **two callers need it**: this file to
+## compose the sentence, and `Game.arm_uproot` to decide whether to spend the one-shot
+## milestone that gates it. Cycle 79 had `Game` re-derive it — it recorded
+## `HINT_MOVE_PREVIEW` whenever the player had not seen the tip, and cycle 79's own forfeit
+## clause then displaced the tip, so a first-ever uproot on an upgraded plant burned the
+## hint without ever showing it. Permanently, and on the *likely* path: uprooting something
+## cheap is not a decision worth a four-second prompt, so a player's first real uproot is
+## disproportionately an expensive one.
+##
+## A predicate rather than a comment, because the two call sites are in different files and
+## a rule stated twice is a rule that drifts.
+static func uproot_shows_tip(with_tip: bool, forfeited: int) -> bool:
+	return with_tip and forfeited <= 0
 
 
 static func packet_message(plant_name: String) -> String:

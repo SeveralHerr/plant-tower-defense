@@ -2556,3 +2556,78 @@ func test_an_upgrade_is_not_refunded_and_the_prompt_says_the_number() -> String:
 		err = _T.assert_false(both.contains("Hover to compare"),
 			"the forfeit clause displaces the move tip rather than joining it -- got %s" % both)
 	return err
+
+
+## The one-shot hint must not be spent by a prompt that never shows it
+## (plant-tower-defense-np1d).
+##
+## Cycle 79 introduced this by adding the forfeit clause: `Game` recorded
+## HINT_MOVE_PREVIEW whenever the player had not yet seen the tip, and the forfeit clause
+## then displaced the tip. A first-ever uproot on an upgraded plant burned the hint
+## permanently without showing it — and that is the LIKELY path, since uprooting something
+## cheap is not a decision worth a four-second prompt.
+##
+## Both directions, because a fix that simply never records it would pass the first half.
+func test_the_move_tip_is_spent_only_when_it_is_actually_shown() -> String:
+	# The predicate itself, all four combinations, before the behaviour that reads it.
+	# Two inputs is four cases and three of them say no, so a single worked example
+	# would have proved almost nothing — and `suite_reach_check` is what pointed out
+	# that driving it only through `arm_uproot` left the seam itself unnamed.
+	var err: String = _T.assert_true(Hud.uproot_shows_tip(true, 0),
+		"a first arm on a plant with nothing to forfeit shows the tip")
+	if err == "":
+		err = _T.assert_false(Hud.uproot_shows_tip(true, 65),
+			"the forfeit clause displaces it")
+	if err == "":
+		err = _T.assert_false(Hud.uproot_shows_tip(false, 0),
+			"a player who has seen it does not see it again")
+	if err == "":
+		err = _T.assert_false(Hud.uproot_shows_tip(false, 65),
+			"and neither at once")
+	if err != "":
+		return err
+	RunConfig.earned_milestones.erase(RunConfig.HINT_MOVE_PREVIEW)
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(300)
+	var planted: Array[Vector2i] = []
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			if planted.size() >= 2:
+				break
+			if game.place_plant(PlantCatalog.CORN, Vector2i(x, y)) == "":
+				planted.append(Vector2i(x, y))
+	err = _T.assert_eq(planted.size(), 2, "two cobs went in")
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+	if err == "":
+		# First arm ever, on an UPGRADED plant: the forfeit clause wins the row.
+		var cob := game.plant_at(planted[1]) as CornCobbler
+		err = _T.assert_true(cob != null and cob.upgrade(), "the second cob upgraded")
+		if err == "":
+			game.selected_placed = cob
+			err = _T.assert_eq(game.arm_uproot(), "confirm needed", "and armed")
+	if err == "":
+		err = _T.assert_true(label.text.contains("upgrade seeds are not refunded"),
+			"the money clause is what the player got -- %s" % label.text)
+	if err == "":
+		err = _T.assert_false(label.text.contains("Hover to compare"),
+			"and the tip was displaced, not shown")
+	if err == "":
+		err = _T.assert_false(RunConfig.has_milestone(RunConfig.HINT_MOVE_PREVIEW),
+			"so the one-shot is NOT spent -- a hint nobody saw is a hint still owed")
+	if err == "":
+		# Now a fresh plant: the tip appears and only now is the one-shot spent.
+		game.hud._message_left = 0.0
+		game.hud._message_queue.clear()
+		game.hud._advance_message_queue()
+		game._disarm_uproot()
+		game.selected_placed = game.plant_at(planted[0])
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "arming on the fresh one")
+	if err == "":
+		err = _T.assert_true(label.text.contains("Hover to compare"),
+			"the tip finally shows -- %s" % label.text)
+	if err == "":
+		err = _T.assert_true(RunConfig.has_milestone(RunConfig.HINT_MOVE_PREVIEW),
+			"and NOW the one-shot is spent")
+	RunConfig.earned_milestones.erase(RunConfig.HINT_MOVE_PREVIEW)
+	_T.free_ui(game)
+	return err
