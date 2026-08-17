@@ -10765,3 +10765,64 @@ func test_the_armed_reset_marks_the_rows_it_will_take_back() -> String:
 	RunConfig.save_path = stashed_path
 	DirAccess.remove_absolute("user://test_selftest_armed_marks.save")
 	return err
+
+
+## Nothing on the HUD is reachable while something is open over it
+## (plant-tower-defense-csrc).
+##
+## The pause card and the post-mortem both carry a full-viewport MOUSE_FILTER_STOP
+## backdrop, so a player cannot CLICK a plant button through them — and focus is a
+## separate channel that does not care what is drawn on top. `OverlayScreen`'s class
+## header documents exactly this hazard, and both `PauseScreen._set_card_active` and
+## `TitleScreen._set_menu_active` already answer it for their own buttons. The HUD is
+## on its own CanvasLayer and is nobody's child, so nothing answered it here.
+##
+## The set is COLLECTED from the catalogue-built bars rather than listed, so a plant
+## added to `PlantCatalog.PLANTS` is covered without anyone remembering to add its
+## button to a list.
+func test_the_hud_is_inert_while_an_overlay_is_open() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var controls: Array[Button] = game.hud.interactive_controls()
+	var err: String = _T.assert_gt(controls.size(), 4,
+		"the HUD has controls to make inert -- an empty list here would pass this "
+			+ "whole test without checking anything")
+	if err == "":
+		err = _T.assert_gt(game.hud._plant_buttons.size(), 0,
+			"and the plant bar is among them, which is the half built from the "
+				+ "catalogue rather than written down")
+
+	if err == "":
+		for button: Button in controls:
+			err = _T.assert_eq(button.focus_mode, Control.FOCUS_ALL,
+				"%s is reachable during play" % button.name)
+			if err != "":
+				break
+
+	if err == "":
+		game.pause_run()
+		await _pump(game)
+		for button: Button in controls:
+			err = _T.assert_eq(button.focus_mode, Control.FOCUS_NONE,
+				"%s cannot be focused behind the pause card -- Tab does not care "
+					% button.name + "what is drawn on top")
+			if err != "":
+				break
+	if err == "":
+		for button: Button in controls:
+			err = _T.assert_eq(button.mouse_filter, Control.MOUSE_FILTER_IGNORE,
+				"%s does not track the cursor either: the backdrop is 0.88 alpha, "
+					% button.name + "so a hover glow underneath shows through it")
+			if err != "":
+				break
+
+	if err == "":
+		game.resume_run()
+		await _pump(game)
+		for button: Button in controls:
+			err = _T.assert_eq(button.focus_mode, Control.FOCUS_ALL,
+				"%s is live again once the card is gone" % button.name)
+			if err != "":
+				break
+
+	_T.free_ui(game)
+	return err

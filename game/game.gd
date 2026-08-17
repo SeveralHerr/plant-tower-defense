@@ -900,6 +900,12 @@ func _end_run(_banner: String) -> void:
 	# Above the HUD's layer 10, or the side panel draws over the card.
 	_summary_layer.layer = 20
 	add_child(_summary_layer)
+	# Same reason as the pause card, and the run is over so there is no re-enabling:
+	# the post-mortem's backdrop stops the mouse and does not touch focus, and the HUD
+	# is on its own CanvasLayer where nothing else can reach it
+	# (plant-tower-defense-csrc).
+	if hud != null and is_instance_valid(hud):
+		hud.set_active(false)
 	_summary_layer.add_child(_summary)
 	_summary.replay_requested.connect(func() -> void: get_tree().reload_current_scene())
 	_summary.gate_requested.connect(func() -> void: get_tree().change_scene_to_file(TITLE_SCENE))
@@ -957,6 +963,12 @@ func pause_run() -> void:
 	_pause_layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(_pause_layer)
 	_pause_layer.add_child(_pause_screen)
+	# The HUD is on its own CanvasLayer and is therefore nobody's child -- the pause
+	# card can make its OWN buttons inert and cannot reach these. Focus does not care
+	# what is drawn on top, so without this a Tab from the pause card walks onto a
+	# plant button behind it (plant-tower-defense-csrc).
+	if hud != null and is_instance_valid(hud):
+		hud.set_active(false)
 	_pause_screen.resume_requested.connect(resume_run)
 	_pause_screen.restart_requested.connect(func() -> void:
 		bank_score()
@@ -990,6 +1002,10 @@ func resume_run() -> void:
 		_pause_layer.queue_free()
 	_pause_layer = null
 	_pause_screen = null
+	# Live again. After the layer is gone rather than before, so there is no frame
+	# where both the card and a focusable HUD are on screen.
+	if hud != null and is_instance_valid(hud):
+		hud.set_active(true)
 
 
 ## True while the run is held. Read by the tests; the tree's own `paused` is the

@@ -1373,6 +1373,53 @@ func _play_panel_entrance() -> void:
 
 ## The ONE place `_message_label.text` is assigned. A transient message wins while it
 ## has time left; the standing note is the floor.
+## Every Control on this HUD a player can reach, in one place
+## (plant-tower-defense-csrc).
+##
+## Collected rather than listed: the plant bar and the packet bar are built from
+## catalogue tables, so a plant added to `PlantCatalog.PLANTS` arrives here without
+## anyone remembering to add it to a list of buttons to disable.
+func interactive_controls() -> Array[Button]:
+	var out: Array[Button] = []
+	for button: Variant in _plant_buttons.values():
+		if button is Button:
+			out.append(button)
+	for button: Variant in _packet_buttons.values():
+		if button is Button:
+			out.append(button)
+	for button: Button in [_next_wave_button, _upgrade_button, _uproot_button]:
+		if button != null and is_instance_valid(button):
+			out.append(button)
+	return out
+
+
+## Makes the whole HUD inert while something is open over it, and live again after.
+##
+## **Focus and the mouse are two channels and both have to go.** The overlays that
+## open over this HUD all carry a full-viewport MOUSE_FILTER_STOP backdrop, so a
+## player cannot CLICK a plant button through the pause card -- and Tab or an arrow
+## key walks straight onto one, because focus does not care what is drawn on top.
+## That is the same hazard `OverlayScreen`'s class header documents, and the same fix
+## `PauseScreen._set_card_active` and `TitleScreen._set_menu_active` already apply to
+## their own buttons. Nothing applied it to the HUD, which is a different CanvasLayer
+## and therefore nobody's child.
+##
+## The mouse filter goes too, for the reason TitleScreen gives: the backdrops are 0.88
+## alpha, so a button still tracking the cursor underneath lights up in its hover
+## colour and the glow shows through the paper.
+##
+## Found by `findings` reporting `interactive_overlap` between this HUD's buttons and
+## an overlay's, after an unrelated change widened that overlay by 14px. The overlap
+## was the symptom; this was the defect, and it was several cycles old.
+func set_active(active: bool) -> void:
+	var mode: Control.FocusMode = Control.FOCUS_ALL if active else Control.FOCUS_NONE
+	var filter: Control.MouseFilter = (Control.MOUSE_FILTER_STOP if active
+		else Control.MOUSE_FILTER_IGNORE)
+	for button: Button in interactive_controls():
+		button.focus_mode = mode
+		button.mouse_filter = filter
+
+
 func _paint_message_row() -> void:
 	_message_label.text = _message_text if _message_left > 0.0 else _idle_message
 

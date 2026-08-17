@@ -4135,3 +4135,42 @@ cited in code, and the citation is a mitigation this project has watched fail.
   HUD. It reported a geometric fact I had made slightly worse, and the geometric fact
   turned out to be a symptom of something else entirely. That is the argument for a
   zero-config sweep that asserts things the project never asked it to.
+
+## 2026-08-16 — cycle 43: the HUD goes inert behind an overlay
+
+- Value: **warranted** — the fix is two properties on a live tree behind a live
+  overlay, and the question that mattered could only be asked of the tool that
+  raised it.
+  - Expected: `findings` surfaced this defect, so the run's real question is whether
+    `findings` goes clean once it is fixed.
+  - Got: **it did not.** `Button_corn_cobbler` reads `focus_mode: 0`,
+    `mouse_filter: 2` — genuinely unreachable — and all twelve `interactive_overlap`
+    pairs still reported. The check treats a `Button` as interactive by CLASS; a
+    control that cannot be focused and cannot be clicked is still counted.
+  - Found: two.
+    1. **The gap above.** The defect is fixed and proven; what remains is geometry
+       that cannot matter. Baselined after reading all twelve — they are one class,
+       every pair a now-inert HUD side-panel button against a Keys screen row button —
+       and filed as [G-055] rather than left to gate forever on something correct.
+    2. **This machine's plugin cache is 0.42.0 and this project runs 0.38.0.** It
+       updated partway through the session. Four releases unused — and cycle 37's
+       entire gap reconciliation was judged against 0.38.0, so every still-open
+       `[G-NNN]` was assessed against a harness that is now stale. Filed as
+       `plant-tower-defense-ny3h`, to be done as its own cycle.
+  - Cheaper: nothing. Headless cannot produce a live overlay over a live HUD, and
+    "does the sweep go clean" is not a question anything else can answer.
+
+- Gap: **`interactive_overlap` counts controls that cannot be interacted with.** Two
+  Buttons overlapping is only a defect if a player can reach both; one at
+  `FOCUS_NONE` with `MOUSE_FILTER_IGNORE` can be reached by neither channel, and
+  making a covered layer inert is the standard fix for exactly the hazard this check
+  exists to find. So the check currently fires hardest at projects that have already
+  fixed the problem, and the only way to quiet it is a baseline — which then also
+  hides a REAL overlap arriving later at the same node pair.
+  - [G-055] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: skip a Control whose `focus_mode == FOCUS_NONE` **and** whose
+    `mouse_filter == MOUSE_FILTER_IGNORE` when pairing for `interactive_overlap`, and
+    say so in the finding's own text for the ones it does report ("both reachable").
+    That turns "these overlap" into "these overlap and both can be used", which is
+    the claim the check is actually making. Cheap: both properties are already read
+    by `reachable-ui`.
