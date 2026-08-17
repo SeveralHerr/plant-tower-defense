@@ -117,24 +117,32 @@ opposite code, so this is not a thing to pick by whichever is easier.
 
 **`-h5w6` — what should moving a plant cost?**
 
-**`-iqp8` — should the campaign's back half escalate at all?** New this cycle, and the biggest
-open design question. Derived from all 22 rows: after wave 9 the campaign averages **+6% threat
-a wave for thirteen waves**, and pest counts sit between 26 and 37 the whole way. That is
-structural rather than sloppy table-writing — `health_scale_for` returns exactly 1.0 for every
-campaign wave and `mutation_chance_for` returns a flat constant, both by the same `over <= 0`
-early return, so every escalation axis the game owns is endless-only *by construction*. Either
-the campaign is a 22-wave tutorial that hands you to endless (in which case a flawless run is
-the correct ending) or it wants a real second act. Both are defensible; the wrong one is
-expensive to reverse, so nothing was changed.
-
-**`-uqeo` — the seed surplus has no sink.** The winning run finished holding 1129 seeds with
-nothing to buy, while the first seven waves bottomed the bank at 0, 1, 1, 3 and 4. Broke while
-the decisions are live, rich once they are settled. **Re-measure before designing anything** —
-that run predates the Chomp's ladder, so the surplus had exactly one plant to sink into.
-
 **`-ogxu` — should a budget floor keep a reserve?** Three HUD rows are at floor because each
 was ratcheted down in the commit that spent it; every one was the right local move, and
 together they made a HUD with no slack that nobody chose.
+
+## Answered by the user, and now ordinary work
+
+Both of cycle 101's questions were put to James and answered on 2026-08-17. The answers are
+recorded in the beads themselves, which is where the next cycle will read them — logged only,
+nothing started.
+
+**`-iqp8` — the campaign gets a real second act.** Retitled from "Decide: should it escalate
+at all", because it is no longer a question. Waves 9-22 should climb so the plants unlocked at
+wave 7 have something to be needed for. The reading this rules out is "a flawless 22/22 is the
+correct ending for a tutorial campaign", which was live until now. The bead carries the
+starting point: `health_scale_for` is the one-function lever, rewriting fourteen wave rows is
+the expensive path, `mutation_chance_for` is the other flat axis and a different feel, and
+whatever lands has to keep `threat_for` rising strictly — priced offline against `_raw_threat`
+before editing, the way cycle 101's wave-8 tuning was.
+
+**`-uqeo` — re-measure the seed surplus before designing any sink.** Not blocked on James any
+more; blocked on a number. The 1129-seed figure came from a run predating the Chomp Flower's
+ladder, so it had one plant to sink into and now has two — the sink roughly doubled between
+the measurement and today. The bead says exactly what the re-run must produce so the two are
+comparable: the per-wave banked series, the per-wave low-water mark (the early game bottomed
+at 0, 1, 1, 3 and 4, which a boundary reading hides), and a depth-first policy, since that is
+where the recorded series came from.
 
 ## Restarting
 
