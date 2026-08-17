@@ -1758,7 +1758,9 @@ func _refresh() -> void:
 			if marks != null:
 				var at: PackedVector2Array = PackedVector2Array()
 				for cell: Vector2i in sole_cover_cells(selected_placed):
-					at.append(board.cell_to_world(cell))
+					# GLOBAL, because SoleCoverMarks._draw hands these to to_local().
+					# cell_to_world is board-local and the marks drew 72 px high for it.
+					at.append(board.cell_to_global(cell))
 				marks.set_points(at)
 	if hud == null:
 		return

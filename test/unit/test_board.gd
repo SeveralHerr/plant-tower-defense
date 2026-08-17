@@ -954,3 +954,46 @@ func test_a_hosted_controls_size_settles_and_then_stops_changing() -> String:
 			+ "the harness's contract rather than a defect") % [pumped, settled])
 	_T.free_ui(panel)
 	return err
+
+
+## A cell position handed to `to_local()` must be GLOBAL, and `cell_to_world` is not.
+##
+## Reported from a screenshot: the yellow sole-cover rings were floating on the grass
+## instead of sitting on the road cells they mark. `Entities` sits at `y = Hud.BAR_HEIGHT`
+## and `Board` sits at (0, 0) inside it, so `cell_to_world` — which is board-local despite
+## the name — is correct for every caller that assigns a sibling's `position`, and **72 px
+## wrong for the two that passed it to `Node2D.to_local()`**. That is more than a full 64 px
+## row, so every mark landed on the wrong cell.
+##
+## Nothing caught it because every existing test asserts the POINTS and none asserts where
+## they land. This pins the distinction itself: if `cell_to_global` ever becomes an alias
+## for `cell_to_world`, the offset assertion below fails.
+func test_a_cell_position_for_to_local_is_global_and_board_local_is_not() -> String:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	# Mounted the way Game mounts it: a Board at (0, 0) inside a parent pushed down by the
+	# HUD bar. The bug only exists because that offset exists.
+	var entities := Node2D.new()
+	entities.position = Vector2(0.0, Hud.BAR_HEIGHT)
+	tree.root.add_child(entities)
+	var board := Board.new()
+	entities.add_child(board)
+
+	var cell := Vector2i(2, 4)
+	var local: Vector2 = board.cell_to_world(cell)
+	var global: Vector2 = board.cell_to_global(cell)
+	var err: String = _T.assert_eq(local, Vector2(160.0, 288.0),
+		"board-local is the plain cell centre")
+	if err == "":
+		err = _T.assert_eq(global - local, Vector2(0.0, Hud.BAR_HEIGHT),
+			("global is that plus the bar the board sits under -- if these are equal, the "
+				+ "two functions have collapsed into one and the cues go back on the grass"))
+	if err == "":
+		# The round trip a `_draw` actually performs. A node parented into the same space
+		# must recover the board-local point from the global one.
+		err = _T.assert_eq(board.to_local(global), local,
+			"and to_local() on the global form lands back on the cell centre")
+	if err == "":
+		err = _T.assert_eq(board.world_to_cell(board.to_local(global)), cell,
+			"which is still the cell we asked about")
+	entities.free()
+	return err

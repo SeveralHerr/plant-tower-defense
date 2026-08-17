@@ -265,7 +265,11 @@ func _draw_new_cover_dots() -> void:
 	if on_board == null:
 		return
 	for cell: Vector2i in new_cover_cells():
-		draw_circle(to_local(on_board.cell_to_world(cell)), NEW_COVER_DOT, marker_color)
+		# cell_to_GLOBAL: to_local() measures from the viewport, and cell_to_world is
+		# board-local, so this drew every gained-cell dot 72 px high -- the same defect
+		# as SoleCoverMarks, in the same shape, found by enumerating cell_to_world's
+		# callers after a screenshot caught the other one.
+		draw_circle(to_local(on_board.cell_to_global(cell)), NEW_COVER_DOT, marker_color)
 
 
 ## The road cells this purchase would newly defend: inside the reach, and not

@@ -255,6 +255,22 @@ func cell_to_world(cell: Vector2i) -> Vector2:
 	return Vector2(cell.x * CELL + CELL * 0.5, cell.y * CELL + CELL * 0.5)
 
 
+## The same centre in GLOBAL space, which is what `Node2D.to_local()` expects.
+##
+## `cell_to_world` is named "world" and returns BOARD-LOCAL — fine for every caller that
+## sets a `position` on a sibling of the Board (they share a parent, so board-local *is*
+## parent-relative) and a trap for the two that pass it to `to_local()`. `Entities` sits at
+## `y = Hud.BAR_HEIGHT`, so those two drew every mark **72 px high — more than a full 64 px
+## row**, putting road cues on the grass above them. Reported from a screenshot, not caught
+## by any test, because every test asserted the POINTS and none asserted where they land.
+##
+## Use this at any site that hands a cell position to `to_local`, `global_position`, or
+## anything else measuring from the viewport. `cell_to_world` stays for the sibling case,
+## which is most of them.
+func cell_to_global(cell: Vector2i) -> Vector2:
+	return to_global(cell_to_world(cell))
+
+
 func world_to_cell(pos: Vector2) -> Vector2i:
 	return Vector2i(floori(pos.x / float(CELL)), floori(pos.y / float(CELL)))
 
