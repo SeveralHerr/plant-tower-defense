@@ -54,6 +54,17 @@ running a command. **Never write a work checklist into it.**
    improvements (UX, game juice, animations, enhancements, or full features). This used
    to read "the last item is always...", which described a checklist that no longer
    exists now that `bd` is the queue; it is a step of its own, not an item in a list.
+   - **Every entry must name a `file:line` for the claim it makes about the code as it
+     is now.** An entry says two things — "here is an idea" and "the game does not do
+     this yet" — and only the first is free. Cycle 30 wrote five entries from inside
+     `run_config.gd` without opening a screen: one proposed a feature that already
+     ships in full (the milestone shelf, with a documented reason for the exact
+     placement it suggested), one rested on a claim about `fresh_record` that is false,
+     one over-claimed its scope. That is three of five, and the shelf one became a bead
+     that was claimed and worked before the code got read. **An entry written from the
+     neighbourhood of the file you happen to be in is a guess about the rest of the
+     codebase.** Use `kanban-staleness-audit`'s bar: before writing that something is
+     missing, open the code that would contain it.
 4. **Reflect on the HARNESS, now that you have used it.** This comes after the work
    and not before, because "did the harness earn its keep" is a question about a run
    that has happened. Judge it on THIS cycle's usage:

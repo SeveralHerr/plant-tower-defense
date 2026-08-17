@@ -3736,7 +3736,7 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   surfaced twenty minutes later as five unrelated-looking test failures. The suite now
   has `tools/save_persist_check.py` and per-script `setup()` redirects; the bridge has
   neither and cannot have the second one.
-  - [G-054] status: open | seen: 1 | harness: 0.38.0
+  - [G-054] status: open | seen: 1 | harness: 0.38.0 | filed upstream: gh#40
   - Improvement: `launch --snapshot-userstate` already exists and makes `quit` restore
     what the run changed. Make it **the default for `launch`**, with
     `--no-snapshot-userstate` to opt out — a verification session that silently mutates

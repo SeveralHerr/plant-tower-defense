@@ -195,6 +195,40 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (14 of 30) — grown from the keys screen, each with the line that proves it is not already built
+
+**Every entry here names a file:line.** Last cycle's batch did not, and three of its
+five entries were wrong — one proposed a feature that already ships (the milestone
+shelf), one was built on a claim about `fresh_record` that is false, one over-claimed
+its scope. An entry written from the neighbourhood of the file you happen to be in is
+a guess about the rest of the codebase. See `.claude/skills/kanban-staleness-audit`.
+
+- **The rows should mark themselves while the reset is armed.** The new confirmation
+  names the keys it will take (`game/key_binding_screen.gd:reset_all`), but the note is
+  one 700px `clip_text` line and that is already the binding constraint — it had to drop
+  the verb phrases to fit. The rows directly above have all the room in the world and
+  currently do not change at all when the reset is armed (`refresh()` only ever reads
+  `_listening`). Tint the moved rows, or mark their key cell, so "what am I about to
+  lose" is answered where there is space to answer it.
+- **`KeyBindings.SHORT_NAMES` covers 8 of the ~100 keys a player can bind**
+  (`game/key_bindings.gd:121` — Esc, the four arrows, Space, and two Enters). Everything
+  else falls through to the engine's own name, which is fine for `F1` and poor for the
+  punctuation keys (`KEY_BRACKETLEFT` renders as something no player calls it). Worth a
+  pass over what the engine actually returns for the printable range, driven by
+  `derive-the-list`: derive the set the engine names badly rather than adding entries
+  one complaint at a time.
+- **Nothing on the keys screen says a binding is saved.** `_persist()` writes on every
+  capture (`game/key_binding_screen.gd`), and the only feedback is the row's key text
+  changing — which would also change if the write had failed. `RunConfig._save()` has
+  three separate push_warning paths for a write that did not land, and none of them
+  reaches a screen. Same shape as the save-confirmation idea below, and a strictly
+  better place to start, because here the write is synchronous with a button.
+- **The pause card's legend and the keys screen can now disagree about width.**
+  `PauseScreen` draws the legend from `Game.key_help()` at a width measured against the
+  shipped keys; a player who binds several verbs to long key names has never been
+  tested against it. `_T.text_width` exists and is now used in exactly one place — this
+  is the second.
+
 ### New this cycle (13 of 30) — grown from the save file, after spending a cycle inside it
 
 - **The save remembers the run, not just the number.** `compose_save` writes two
