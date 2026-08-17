@@ -166,6 +166,35 @@ func packet_pool(tier: StringName = &"common") -> Array[StringName]:
 	return out
 
 
+## Which packet can hand over `id`, cheapest first — or &"" if none can, which
+## is the answer for every plant already growing in the garden.
+##
+## The inverse of packet_pool(), and derived FROM it rather than from a table of
+## "the Sunflower comes from a rare packet". That direction matters: the HUD uses
+## this to tell a player which packet to buy for a plant they cannot plant yet,
+## and the last time this game named a plant-to-packet mapping in a written-out
+## string (the old rare-packet tooltip, "the only reliable way to a Seed
+## Sunflower") it was wrong within one release and nothing failed. A plant added
+## to PlantCatalog, a tier re-capped, or a tier re-priced all move this answer
+## with them, because the only thing it reads is the pool.
+##
+## Cheapest by `cost` rather than by PACKET_ORDER's position: the order is
+## asserted to run cheapest-first, but this is the function whose whole output is
+## "the cheapest one", and it should not be the place that discovers the order
+## drifted.
+func cheapest_packet_for(id: StringName) -> StringName:
+	var best: StringName = &""
+	var best_cost: int = 0
+	for tier: StringName in PACKET_ORDER:
+		if not packet_pool(tier).has(id):
+			continue
+		var cost: int = int((PACKET_TIERS[tier] as Dictionary)["cost"])
+		if best == &"" or cost < best_cost:
+			best = tier
+			best_cost = cost
+	return best
+
+
 ## The cheapest packet tier that still has something locked in range, or &"" if
 ## none has. Used to point the player somewhere when their packet is spent.
 func _cheapest_tier_with_stock() -> StringName:
