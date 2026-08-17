@@ -86,6 +86,34 @@ const WORST_CASE_TEXT: Dictionary = {
 	"CompostLabel": "Compost  9999  +99",
 }
 
+## The top bar's page rules: the notebook's own ruled lines, drawn on the ink band.
+##
+## The bar was a flat slab of INK with four default-font Labels on it — the one
+## surface in the game carrying none of the paper the playfield, the packets, the
+## pause card and the notebook are all drawn on. These marks are the cheapest way
+## back into that language, and they are cheap in the sense that matters here:
+## **they cost the stats row no width at all.** The row has ~19px of slack in a
+## budget (`stats_row_budget`) that has already had one occlusion bug, so anything
+## that took a slot in it would be spending the last of that.
+##
+## Both are drawn as `ColorRect`s, and that is a test fact as much as a drawing
+## one: the suite's `_hud_rects` skips Containers and ColorRects, so decoration
+## added this way cannot make the top bar's pair-overlap checks report a collision
+## between two things that were never laid out against each other.
+##
+## PAPER_RULE, not a new shade — it is literally the blue of the ruled lines on the
+## notebook stock in image1-image6, already declared in GardenTheme and already
+## drawn on the notebook page. `separation(PAPER_RULE, INK)` is 0.56, four and a
+## half times the palette's own legibility floor.
+const MARGIN_RULE_X: float = 12.0
+const MARGIN_RULE_WIDTH: float = 2.0
+## The rule under each readout, anchored to that readout's own bottom edge. Washed
+## back because it is the paper the number is written on, not a second reading:
+## at full strength four of them across the bar compete with the readouts they are
+## supposed to be under.
+const READOUT_RULE_HEIGHT: float = 2.0
+const READOUT_RULE_ALPHA: float = 0.45
+
 ## The bar is two rows. Keeping them as named constants is what makes the gap
 ## between them checkable instead of implied by four scattered literals.
 const STATS_ROW_Y: float = 4.0
@@ -110,6 +138,15 @@ const INK := GardenTheme.INK
 const PAPER := GardenTheme.PAPER
 const PAPER_DARK := GardenTheme.PAPER_DARK
 const LEAF := GardenTheme.LEAF
+## The top bar's page rules. The notebook stock's own blue ruled line, aliased for
+## the same reason every shade above is: one place the value is written down.
+##
+## Deliberately NOT the notebook's red margin line, which is the other half of that
+## stock. GardenTheme's DANGER header says the HUD's one red is UPROOT_ARMED — a
+## font colour on a Button, backed by a rewritten label and a sound — and that "a
+## red on this screen means this costs you something". A decorative red hairline
+## across the top of the HUD would be a second sentence in the same word.
+const PAGE_RULE := GardenTheme.PAPER_RULE
 ## The compost readout, the one stat that is not a resource you spend. It was the
 ## last inline literal in this file — a hand-typed copy of GardenTheme.GOLD that
 ## no grep for `const` would ever have found.
@@ -629,6 +666,25 @@ func _build_top_bar(root: Control) -> void:
 	bar.size = Vector2(get_viewport_width(), BAR_HEIGHT)
 	root.add_child(bar)
 
+	# The page's gutter. It lives in the 20px the StatsRow already leaves empty on
+	# the left, so it is drawn in space nothing was using rather than bought out of
+	# a budget -- see MARGIN_RULE_X for why that distinction is the whole design of
+	# this pass.
+	var margin_rule := ColorRect.new()
+	margin_rule.name = "MarginRule"
+	margin_rule.color = PAGE_RULE
+	margin_rule.position = Vector2(MARGIN_RULE_X, 0.0)
+	# Stops short of the prep strip rather than running to the bar's foot. Both
+	# halves of that are deliberate. Visually the gutter is the page's, not the
+	# countdown's. Structurally it is what the occlusion audit asked for: PrepBar
+	# is a full-width opaque strip drawn after this one, so a rule running the whole
+	# height would share 2x4px with it -- 5.6% of this rule's own area, past the
+	# audit's 4% floor -- and be reported as one opaque control covering another.
+	# The suite's own `_hud_rects` skips ColorRects and would never have said so.
+	margin_rule.size = Vector2(MARGIN_RULE_WIDTH, float(BAR_HEIGHT) - PREP_BAR_HEIGHT)
+	margin_rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(margin_rule)
+
 	var stats := HBoxContainer.new()
 	stats.name = "StatsRow"
 	stats.position = Vector2(20, STATS_ROW_Y)
@@ -655,6 +711,13 @@ func _build_top_bar(root: Control) -> void:
 	_next_wave_button.text = "Grow the next wave"
 	_next_wave_button.custom_minimum_size = NEXT_WAVE_BUTTON_SIZE
 	_next_wave_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	# The notebook's own button rather than Godot's grey slab, applied as per-node
+	# overrides so the HUD keeps refusing the shared Theme (which would repaint the
+	# plant and packet buttons it sizes in code). The order matters: the budgeted
+	# 216x40 slot is set FIRST and the styling sets no size, so a stylebox's content
+	# margins can never widen this out of the row's sum. That is checked, not
+	# assumed -- test_the_wave_buttons_text_fits_its_budgeted_slot.
+	GardenTheme.style_paper_button(_next_wave_button)
 	_next_wave_button.pressed.connect(func() -> void: next_wave_requested.emit())
 	stats.add_child(_next_wave_button)
 
@@ -876,8 +939,41 @@ func _add_stat(row: HBoxContainer, node_name: String, font_size: int, colour: Co
 	label.clip_text = true
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	label.custom_minimum_size = Vector2(width, 0)
+	label.add_child(_readout_rule(node_name))
 	row.add_child(label)
 	return label
+
+
+## The ruled line a readout is written on.
+##
+## A child of the Label, not a fifth thing in the row, and that is the whole reason
+## this shape was chosen: the row's widths are a budgeted sum with ~19px of slack
+## left in it, so a decoration holding a slot would be spending the last of the
+## budget on ornament. As a child it costs zero width, and `_hud_rects` skips
+## ColorRects, so it also cannot be mistaken for a Control overlapping its
+## neighbour by the pair checks that guard this bar.
+##
+## Anchored rather than sized. A readout's box is not known until the HBoxContainer
+## has sorted its children, so a width written here would be a second copy of the
+## budget constant that could silently disagree with the first -- and a hand-picked
+## number in the top bar is exactly what `_make_label`'s header says produced the
+## original overlap bug. `show_behind_parent` so the rule is paper under the text
+## rather than a line struck through it.
+func _readout_rule(node_name: String) -> ColorRect:
+	var rule := ColorRect.new()
+	rule.name = "%sRule" % node_name
+	rule.color = Color(PAGE_RULE, READOUT_RULE_ALPHA)
+	rule.anchor_left = 0.0
+	rule.anchor_right = 1.0
+	rule.anchor_top = 1.0
+	rule.anchor_bottom = 1.0
+	rule.offset_left = 0.0
+	rule.offset_right = 0.0
+	rule.offset_top = -READOUT_RULE_HEIGHT
+	rule.offset_bottom = 0.0
+	rule.show_behind_parent = true
+	rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return rule
 
 
 ## The widths above are only safe as a sum. Anything that adds a readout, widens

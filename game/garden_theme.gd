@@ -125,6 +125,11 @@ const SAFE_BAD := Color(0.976, 0.647, 0.196)
 ## the look.
 const CORNER: int = 6
 const BORDER: int = 2
+## The Button font size the shared look uses. Hoisted out of `build()` because
+## `style_paper_button()` below has to agree with it — a screen wearing the Theme
+## and a single Button wearing the same look by overrides must not end up two
+## different sizes, which is exactly what two hardcoded 18s would eventually give.
+const BUTTON_FONT_SIZE: int = 18
 
 ## The two grounds the board is actually tiled with — the colours anything drawn
 ## ON the playfield will be seen against.
@@ -181,8 +186,22 @@ static func separation(a: Color, b: Color) -> float:
 ## hue, or near enough to it" — which is the question that has actually gone wrong
 ## here, and it answers it in greyscale so it holds for a colourblind player too.
 static func reads_on_ground(mark: Color) -> bool:
-	return separation(mark, GROUND_GRASS) >= GROUND_SEPARATION_MIN \
-		and separation(mark, GROUND_DIRT) >= GROUND_SEPARATION_MIN
+	return reads_on(mark, GROUND_GRASS) and reads_on(mark, GROUND_DIRT)
+
+
+## The same question against any ground, not just the playfield's two.
+##
+## `reads_on_ground` is the playfield's case and it is the case marks have
+## actually disappeared in, so it keeps its name. But the board is not the only
+## surface this game writes on: the HUD's top bar is a solid INK band carrying
+## every readout, the message line and both ends of both threat ramps, and until
+## this existed there was no way to ask the same question about it without
+## copying the comparison and, with it, a second copy of the floor.
+##
+## Same caveats, unchanged: greyscale only, base colour only, and it says nothing
+## about alpha. What it adds is that the floor is written down once.
+static func reads_on(mark: Color, ground: Color) -> bool:
+	return separation(mark, ground) >= GROUND_SEPARATION_MIN
 
 
 ## A Theme applied to a screen's root Control, inherited by every descendant —
@@ -194,23 +213,55 @@ static func build() -> Theme:
 	theme.set_stylebox("hover", "Button", _button_box(PAPER.lightened(0.12), LEAF))
 	theme.set_stylebox("pressed", "Button", _button_box(PAPER_DARK, LEAF_DARK))
 	theme.set_stylebox("disabled", "Button", _button_box(Color(PAPER, 0.35), Color(INK, 0.35)))
-	# Focus is drawn *over* the state box, so it has to be transparent inside or
-	# it repaints the fill and cancels the hover colour out.
-	var focus := StyleBoxFlat.new()
-	focus.bg_color = Color(0, 0, 0, 0)
-	focus.set_corner_radius_all(CORNER)
-	focus.set_border_width_all(3)
-	focus.border_color = GOLD
-	focus.set_expand_margin_all(2)
-	theme.set_stylebox("focus", "Button", focus)
+	theme.set_stylebox("focus", "Button", _focus_box())
 
 	theme.set_color("font_color", "Button", INK)
 	theme.set_color("font_hover_color", "Button", INK)
 	theme.set_color("font_pressed_color", "Button", INK)
 	theme.set_color("font_focus_color", "Button", INK)
 	theme.set_color("font_disabled_color", "Button", Color(INK, 0.45))
-	theme.set_font_size("font_size", "Button", 18)
+	theme.set_font_size("font_size", "Button", BUTTON_FONT_SIZE)
 	return theme
+
+
+## The same look, applied to exactly ONE Button, with no Theme anywhere.
+##
+## The HUD refuses `build()` on purpose — it sizes every Control it owns in code
+## against the board's own constants, and a Theme at its root would repaint them
+## out from under that layout; `test_the_hud_still_refuses_the_shared_theme` pins
+## the refusal. What the refusal was never a reason for is the top bar's "Grow the
+## next wave" being the one grey Godot slab left in a cream-and-ink game. Per-node
+## overrides are the way out: they do not set `Control.theme`, so a screen can wear
+## the look on the one Control it wants it on and keep its own layout everywhere.
+##
+## **It sets no size of any kind, and that is load-bearing rather than tidy.** The
+## caller's `custom_minimum_size` is budgeted arithmetic (`Hud.stats_row_budget`),
+## and a stylebox that widened its Button would spend a budget from inside a
+## styling helper, where nobody would look for the pixels.
+static func style_paper_button(button: Button) -> void:
+	button.add_theme_stylebox_override("normal", _button_box(PAPER, INK))
+	button.add_theme_stylebox_override("hover", _button_box(PAPER.lightened(0.12), LEAF))
+	button.add_theme_stylebox_override("pressed", _button_box(PAPER_DARK, LEAF_DARK))
+	button.add_theme_stylebox_override("disabled", _button_box(Color(PAPER, 0.35), Color(INK, 0.35)))
+	button.add_theme_stylebox_override("focus", _focus_box())
+	button.add_theme_color_override("font_color", INK)
+	button.add_theme_color_override("font_hover_color", INK)
+	button.add_theme_color_override("font_pressed_color", INK)
+	button.add_theme_color_override("font_focus_color", INK)
+	button.add_theme_color_override("font_disabled_color", Color(INK, 0.45))
+	button.add_theme_font_size_override("font_size", BUTTON_FONT_SIZE)
+
+
+## Focus is drawn *over* the state box, so it has to be transparent inside or it
+## repaints the fill and cancels the hover colour out.
+static func _focus_box() -> StyleBoxFlat:
+	var focus := StyleBoxFlat.new()
+	focus.bg_color = Color(0, 0, 0, 0)
+	focus.set_corner_radius_all(CORNER)
+	focus.set_border_width_all(3)
+	focus.border_color = GOLD
+	focus.set_expand_margin_all(2)
+	return focus
 
 
 static func _button_box(fill: Color, border: Color) -> StyleBoxFlat:
