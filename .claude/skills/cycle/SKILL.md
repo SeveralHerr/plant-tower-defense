@@ -379,10 +379,23 @@ it belongs with, and it is the same trap as editing anything under `tools/` or
 `addons/` — check `.harness_manifest.json` first. This skill file has no managed
 region; all of it is the project's own and may be edited by step 5.
 
-**Parallel-safe gates.** The harness section below says `name_check.py` is the only gate
-safe to run in parallel. That is true of the *harness's* gates; this project ships three
-more stdlib-only checkers that open no project and write nothing to `.godot/`, so a
-fan-out agent can run them all:
+**Parallel-safe gates. Run them with one command:**
+
+```bash
+python tools/check_all.py --quiet     # every parallel-safe checker, list DERIVED
+```
+
+It discovers its own set — any `tools/*.py` declaring the house contract's `NOT COVERED:`
+line — runs them concurrently, and prints `ran N of M discovered` plus a classification of
+every `tools/*.py` into checker / not-parallel-safe / known-non-checker / **unclassified**.
+That last category is the point: a new tool that is neither derived nor listed fails the
+run, so a checker can no longer be written and silently never run. `import_check.py` is
+excluded by name with a reason (it opens the project); a checker that could not run is
+named, never dropped from the denominator.
+
+**The list below is now a DESCRIPTION of what that command finds, not the source of truth.**
+Adding a checker here does not make it run; giving it a `NOT COVERED:` line does. It is kept
+because the per-tool commentary is what tells you how to read each one's output:
 
 ```bash
 python tools/name_check.py           # names (harness)

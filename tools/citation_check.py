@@ -171,8 +171,18 @@ def _resolve(citing: Path, cited: str) -> tuple[Path | None, list[Path]]:
         return at_root, []
     if "/" in cited:
         return None, []
+    # `.claude/worktrees/` holds one full checkout per fan-out lane, INSIDE the
+    # repo (it is gitignored, but rglob does not read .gitignore). Without this
+    # exclusion every bare citation in kanban.md resolves to N+1 copies of the
+    # same file and is reported ambiguous -- so running a parallel cycle makes
+    # this checker report findings that vanish when the lanes are cleaned up,
+    # and a lane running it inside its own worktree sees none of them. Measured
+    # while adopting worktree isolation (plant-tower-defense-l638): five lanes
+    # turned one clean run into six ambiguous matches per citation.
     matches = [m for m in ROOT.rglob(cited)
-               if ".godot" not in m.parts and ".git" not in m.parts]
+               if ".godot" not in m.parts
+               and ".git" not in m.parts
+               and "worktrees" not in m.parts]
     if len(matches) == 1:
         return matches[0], []
     if len(matches) > 1:
