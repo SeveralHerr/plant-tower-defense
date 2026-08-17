@@ -3823,3 +3823,42 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     including "no snapshot to restore"**, and a `quit` that was asked to restore and
     could not should exit non-zero. A restore that silently does not happen is worse
     than no restore, because the flag was the reason to stop checking the file by hand.
+
+## 2026-08-16 — cycle 34: the Keys screen shows the key in full
+
+- Value: **warranted** — two defects, one live and one latent, in a class the suite had
+  no test for at all.
+  - Expected: the derived column and the widened panel are arithmetic until a real
+    screen is built from them; and this screen's rows are built through a SHARED
+    helper whose ordering bug was fixed at one call site and left in place here, so
+    whether the box holds is a fact about the helper rather than about the column.
+  - Got: the live half was the *headless* half this time — a test driving `refresh()`
+    with the longest engine key bound failed at `the key is shown IN FULL: 157px of
+    name in a 140px column`. Runtime then confirmed the fix as a picture rather than a
+    number: `On-screen keyboard` rendered whole at `590,144 157x24` inside a
+    `218,24 717x600` paper, clear of the Change button, `findings` clean.
+  - Found: two.
+    1. **The Keys screen truncated the key the player had just chosen.** The one
+       surface whose entire job is saying which key a verb is on showed
+       "On-screen keybo...". It also invalidated the argument used to accept the same
+       truncation on the pause card one cycle earlier — "if something must be cut it
+       is the key, which the player can read in full one screen up". They could not.
+    2. **`OverlayScreen.add_row_label` set `size` before `clip_text`** — the exact
+       ordering bug `PauseScreen._build_key_list` documents at length having been
+       bitten by, fixed there at the call site and left in the shared helper that two
+       screens build every row through. Latent today, and measured rather than
+       assumed: size-first gives a **373px box for an assigned 140**, clip-first holds.
+  - Cheaper: nothing. There was no test anywhere that drove a rebinding through
+    `refresh()` on this screen — the whole "state changed while the screen was open"
+    class was untested, which is what the bead was about.
+
+- Gap: **no new gap, and [G-054] behaved this time.** `launch --snapshot-userstate` was
+  passed, `quit` printed `userstate: restored 1 file(s)` and the save's md5 came back
+  identical. Reading that line rather than redirecting it is the whole of the lesson
+  from last cycle.
+  - One wording note, not worth its own id: `quit` prints the "this run wrote the
+    developer's REAL user data … `launch --snapshot-userstate` restores such files on
+    quit" warning **even when that flag was used and the restore is about to happen on
+    the very next line.** It reads as "you should have done X" at the moment X is
+    working. Added as a comment on gh#40 rather than filed separately, since it is the
+    same function and the same conversation.

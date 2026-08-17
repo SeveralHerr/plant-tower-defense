@@ -204,3 +204,39 @@ static func retina_path(sprite_path: String) -> String:
 	var base: String = sprite_path.get_file().get_basename()
 	var retina: String = "res://assets/sprites/retina/%s@2x.png" % base
 	return retina if ResourceLoader.exists(retina) else sprite_path
+
+
+## How wide `text` will draw in a Label carrying `font_size`.
+##
+## The one primitive every "does this text fit its box" question in this project
+## needs, and it lives here because the answer depends on the theme — which is what
+## this class is. Three screens now size themselves from it and four tests assert
+## against it.
+##
+## **Why a detached Label rather than a Font loaded by path.** The width that matters
+## is the one the real Label will draw at, and a Label resolves its font through the
+## theme chain, not through any path this file could name. Asking a Label is the only
+## way to get the same answer the Label will get. It is detached because the callers
+## are static — `PauseScreen.card_width()` answers before any instance exists — and
+## that is sound *in this project* because no custom theme is set in project.godot,
+## so an off-tree Label resolves the same font as an in-tree one.
+##
+## That last clause is a fact about this project rather than about Godot, so it is
+## asserted rather than trusted: see
+## test_the_cards_own_measurement_agrees_with_the_labels_it_builds, which compares
+## this against `_T.text_width` on real, in-tree, rendered rows. If a custom theme is
+## ever added, that test fails and this function is where the fix goes.
+##
+## Returns 0.0 rather than erroring when no font resolves — a measurement of "I do not
+## know" that reads as "fits anything" would be the wrong failure, so callers that
+## floor a width against a minimum (all of them) get the minimum.
+static func measure(text: String, font_size: int) -> float:
+	var probe := Label.new()
+	probe.add_theme_font_size_override("font_size", font_size)
+	var font: Font = probe.get_theme_font("font")
+	var width: float = 0.0
+	if font != null:
+		width = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1,
+			probe.get_theme_font_size("font_size")).x
+	probe.free()
+	return width

@@ -73,18 +73,89 @@ static func build() -> KeyBindingScreen:
 ## the panel is sized from the row count rather than the row count being trusted to
 ## fit the panel. That rule now lives in one place for every overlay that has rows:
 ## OverlayScreen.FOOTER_GAP.
-const PANEL := Rect2(226.0, 24.0, 700.0, 600.0)
+## Height and top only. The WIDTH is derived from the columns above and the panel is
+## re-centred on it, so a wider key column grows the paper evenly on both sides
+## rather than pushing it right -- the same reason PauseScreen derives CARD_X.
+const PANEL_TOP: float = 24.0
+const PANEL_HEIGHT: float = 600.0
+
+
+static func panel_width() -> float:
+	return (DOES_X * 2.0 + DOES_WIDTH + DOES_KEY_GAP + key_column_width()
+		+ KEY_BUTTON_GAP + ROW_BUTTON_SIZE.x)
 
 const HEADING_Y: float = 44.0
 const NOTE_Y: float = 90.0
 const ROWS_TOP: float = 136.0
 
 ## Column x offsets from the panel's left edge.
+##
+## The KEY column is DERIVED, and it is the only one that has to be: its text is the
+## player's, not ours. `capture()` binds whatever keycode arrives, and the engine
+## names some of them at length -- "On-screen keyboard" measures 157px at this
+## screen's font 16 against the 140px column this used to be, so the one screen whose
+## entire job is telling the player which key a verb sits on was showing them
+## "On-screen keybo...". That is worse than the same truncation on the pause card,
+## because the pause card's justification for allowing it was "the Keys screen shows
+## it in full" -- which was not true.
+##
+## Same treatment PauseScreen.card_width() got: measure, derive, floor. 140 stays as
+## the FLOOR, so nothing moves for a player on the shipped keys and the panel widens
+## only for the one who binds a long name.
 const DOES_X: float = 32.0
 const DOES_WIDTH: float = 320.0
-const KEY_X: float = 372.0
-const KEY_WIDTH: float = 140.0
-const BUTTON_X: float = 518.0
+## Between the phrase column and the key column, and between the key column and the
+## row's button. Named because the panel width is a sum of them and an unnamed term
+## inside a sum is the one nobody can find later.
+const DOES_KEY_GAP: float = 20.0
+const KEY_BUTTON_GAP: float = 6.0
+## The column the key has always had, kept as the minimum so the shipped layout is
+## pixel-identical and only a long binding moves anything.
+const KEY_MIN_WIDTH: float = 140.0
+## What add_row_label draws at. Hoisted so the derivation and the Label cannot end up
+## measuring different fonts -- the same reason PauseScreen.KEY_ROW_FONT_SIZE exists.
+const ROW_FONT_SIZE: int = 16
+
+
+## As wide as the widest key the engine can ever name here, floored at the shipped
+## column. **Not** the widest key currently bound, and the difference is the point.
+##
+## PauseScreen.key_column_width() derives from the CURRENT bindings, because that card
+## is rebuilt every time it opens and a player never watches it resize. This screen is
+## the one they are editing ON: the column would have to grow under their hands, mid-
+## keystroke, in response to the key they just pressed -- and the row's button would
+## slide sideways as it did. A layout that reflows while you are using it is a worse
+## answer than a column that was always wide enough.
+##
+## So the set is "every key that could appear here" rather than "every key here now",
+## which for this screen is the honest reading of the same rule. It costs ~17px of a
+## 700px panel, once, for everyone -- against 80px of a 360px card, which is what made
+## the same choice wrong on the pause card.
+##
+## Cached because it sweeps the engine's whole special-key block and the answer cannot
+## change within a process.
+static var _key_column_cache: float = 0.0
+
+static func key_column_width() -> float:
+	if _key_column_cache > 0.0:
+		return _key_column_cache
+	var widest: float = KEY_MIN_WIDTH
+	# The printable range, then the special block (KEY_SPECIAL is 1 << 22). Codes the
+	# engine does not name come back "" and measure 0.
+	for code: int in range(32, 127):
+		widest = maxf(widest, GardenTheme.measure(OS.get_keycode_string(code), ROW_FONT_SIZE))
+	for code: int in range(1 << 22, (1 << 22) + 512):
+		widest = maxf(widest, GardenTheme.measure(OS.get_keycode_string(code), ROW_FONT_SIZE))
+	_key_column_cache = ceilf(widest)
+	return _key_column_cache
+
+
+static func key_x() -> float:
+	return DOES_X + DOES_WIDTH + DOES_KEY_GAP
+
+
+static func button_x() -> float:
+	return key_x() + key_column_width() + KEY_BUTTON_GAP
 
 ## The action waiting for a keystroke, or `&""`. Exactly one row can be listening:
 ## a screen with two rows both claiming the next key has no answer for which one
@@ -111,7 +182,9 @@ const RESET_MOVED_COUNT := "%d key%s moved."
 
 
 func panel_rect() -> Rect2:
-	return PANEL
+	var width: float = panel_width()
+	var viewport: float = float(ProjectSettings.get_setting("display/window/size/viewport_width", 1152))
+	return Rect2((viewport - width) / 2.0, PANEL_TOP, width, PANEL_HEIGHT)
 
 
 func _build_contents() -> void:
@@ -139,14 +212,14 @@ func _build_rows() -> void:
 		_rows.append(action)
 
 		add_row_label("Row%d" % index, KeyBindings.describe(action),
-			Vector2(PANEL.position.x + DOES_X, y + 8.0), Vector2(DOES_WIDTH, 24.0),
+			Vector2(panel_rect().position.x + DOES_X, y + 8.0), Vector2(DOES_WIDTH, 24.0),
 			GardenTheme.INK)
 
 		_key_labels.append(add_row_label("RowKey%d" % index, "",
-			Vector2(PANEL.position.x + KEY_X, y + 8.0), Vector2(KEY_WIDTH, 24.0),
+			Vector2(panel_rect().position.x + key_x(), y + 8.0), Vector2(key_column_width(), 24.0),
 			GardenTheme.LEAF_DARK, HORIZONTAL_ALIGNMENT_CENTER))
 
-		var button: Button = add_row_button(index, Vector2(PANEL.position.x + BUTTON_X, y))
+		var button: Button = add_row_button(index, Vector2(panel_rect().position.x + button_x(), y))
 		button.text = "Change"
 		# Bound, not read off the loop variable: a lambda closing over `action`
 		# directly is the classic way seven buttons all end up rebinding the last
@@ -158,12 +231,12 @@ func _build_rows() -> void:
 
 func _build_footer() -> void:
 	var y: float = footer_y()
-	add_back_button(Vector2(PANEL.position.x + DOES_X, y))
+	add_back_button(Vector2(panel_rect().position.x + DOES_X, y))
 
 	_reset_button = Button.new()
 	_reset_button.name = "ResetButton"
 	_reset_button.text = "Put them all back"
-	_reset_button.position = Vector2(PANEL.position.x + BUTTON_X, y)
+	_reset_button.position = Vector2(panel_rect().position.x + button_x(), y)
 	_reset_button.size = Vector2(ROW_BUTTON_SIZE.x, FOOTER_HEIGHT)
 	_reset_button.pressed.connect(reset_all)
 	add_child(_reset_button)

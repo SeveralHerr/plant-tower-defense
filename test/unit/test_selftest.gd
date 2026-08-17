@@ -10062,3 +10062,94 @@ func test_rebinding_while_the_card_is_open_keeps_the_legend_on_the_card() -> Str
 	RunConfig.save_path = stashed_path
 	DirAccess.remove_absolute("user://test_selftest_refresh_split.save")
 	return err
+
+## The Keys screen's own key column, against a key the player chose
+## (plant-tower-defense-2tpm, plant-tower-defense-pb4).
+##
+## The pause card learned twice that a legend row's key half is authored by the
+## player. This is the screen where that matters most and it was the last to be
+## checked: `RowKey%d` sat in a hand-picked 140px column, and "On-screen keyboard"
+## — the longest name `OS.get_keycode_string()` produces — measures 157px at this
+## screen's font 16. So the one surface whose entire job is telling a player which
+## key a verb is on was showing them a truncated one.
+##
+## Worse than the same truncation on the pause card, and it invalidated the argument
+## used to accept it there: "if something must be cut it is the key, which the player
+## can read in full one screen up". They could not.
+##
+## Both halves are asserted, because they fail differently: the BOX (a Label that won
+## its width back overlaps the button beside it) and the TEXT (a box that held but
+## clipped its contents). Driven through `refresh()` rather than a rebuild — the
+## defect this test generalises lived in a refresh path, and a rebuild proves the
+## builder while saying nothing about the updater.
+func test_the_keys_screen_shows_a_long_key_in_full() -> String:
+	var stashed_bindings: Dictionary = RunConfig.key_bindings
+	var stashed_path: String = RunConfig.save_path
+	RunConfig.save_path = "user://test_selftest_long_key.save"
+	RunConfig.key_bindings = {}
+	KeyBindings.reset_all()
+
+	var screen := await _T.instantiate_ui(KeyBindingScreen.new(), Vector2i(1152, 648)) as KeyBindingScreen
+	var shipped_width: float = KeyBindingScreen.key_column_width()
+	var err: String = _T.assert_gte(shipped_width, KeyBindingScreen.KEY_MIN_WIDTH,
+		"the column is at least the width it has always had")
+
+	# The longest name the engine has, derived rather than picked.
+	var worst_code: int = 0
+	var worst_label: String = ""
+	if err == "":
+		for code: int in range(1 << 22, (1 << 22) + 512):
+			var name: String = OS.get_keycode_string(code)
+			if name.length() > worst_label.length():
+				worst_label = name
+				worst_code = code
+		err = _T.assert_gt(GardenTheme.measure(worst_label, KeyBindingScreen.ROW_FONT_SIZE),
+			KeyBindingScreen.KEY_MIN_WIDTH,
+			"the worst engine key name (%s) is genuinely wider than the shipped column "
+				% worst_label
+				+ "-- if it were not, this test would pass without exercising anything")
+
+	if err == "":
+		err = _T.assert_true(KeyBindings.set_keys(KeyBindings.ACTION_PAUSE, [worst_code]),
+			"%s binds to the first verb" % worst_label)
+	if err == "":
+		# The property that makes this screen's derivation different from the pause
+		# card's: the column is sized for every key that COULD appear, so binding one
+		# does not move it. A column that reflowed under the player's hands mid-
+		# keystroke -- sliding the row's button sideways as they pressed -- would be a
+		# worse answer than one that was always wide enough.
+		err = _T.assert_float_eq(KeyBindingScreen.key_column_width(), shipped_width, 0.5,
+			"and binding it does not move the column, on the one screen the player is "
+				+ "editing ON")
+
+	# Through the refresh path, on the screen that is already built.
+	if err == "":
+		screen.refresh()
+		var key_label: Label = screen.get_node_or_null("RowKey0") as Label
+		err = _T.assert_true(key_label != null, "RowKey0 is on the screen")
+		if err == "":
+			err = _T.assert_eq(key_label.text, worst_label, "and it carries the new key")
+		if err == "":
+			# (1) the TEXT. This is the half that was broken: the box held at 140 and
+			# clipped a 157px name into it.
+			err = _T.assert_true(_T.text_width(key_label) <= key_label.size.x + 0.5,
+				"the key is shown IN FULL: %.0fpx of name in a %.0fpx column"
+					% [_T.text_width(key_label), key_label.size.x])
+		if err == "":
+			# (2) the BOX, which fails the other way -- a Label whose assigned size lost
+			# to its own minimum overlaps whatever sits beside it. add_row_label sets
+			# clip_text before size for exactly this reason.
+			var button: Button = screen.get_node_or_null("RowButton0") as Button
+			err = _T.assert_true(button != null, "RowButton0 is beside it")
+			if err == "":
+				err = _T.assert_true(
+					key_label.position.x + key_label.size.x <= button.position.x + 0.5,
+					"and its box ends at %.0f, clear of the button at %.0f"
+						% [key_label.position.x + key_label.size.x, button.position.x])
+
+	_T.free_ui(screen)
+	KeyBindings.reset_all()
+	RunConfig.key_bindings = stashed_bindings
+	RunConfig.save_path = stashed_path
+	DirAccess.remove_absolute("user://test_selftest_long_key.save")
+	return err

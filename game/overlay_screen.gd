@@ -219,13 +219,26 @@ func add_row_label(node_name: String, text: String, at: Vector2, box: Vector2,
 	var label := Label.new()
 	label.name = node_name
 	label.text = text
-	label.position = at
-	label.size = box
+	# ORDER MATTERS, and this helper had it backwards. `Control.set_size` clamps to
+	# `get_combined_minimum_size()`, and a Label's minimum width is its WHOLE TEXT
+	# until clip_text or a trimming overrun behaviour is set -- measured at whatever
+	# font size is in effect at that moment. Assigning `size` first, then the font
+	# size and clip_text, means the assigned box loses to a minimum measured at the
+	# theme default (16 here by luck, not by construction), and the later overrides
+	# lower the minimum without ever shrinking the box back.
+	#
+	# PauseScreen._build_key_list carries the same comment because the same bug put a
+	# legend row on the backdrop over a live board and was fixed THERE -- at one call
+	# site, while this shared helper, which two screens build every row through, kept
+	# it. A fix applied where it was found rather than where it lives is a fix that
+	# leaves the defect in the shared thing.
 	label.horizontal_alignment = align
 	label.add_theme_font_size_override("font_size", 16)
-	label.add_theme_color_override("font_color", color)
 	label.clip_text = true
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	label.position = at
+	label.size = box
+	label.add_theme_color_override("font_color", color)
 	add_child(label)
 	return label
 

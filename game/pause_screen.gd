@@ -192,26 +192,13 @@ var _closing: bool = false
 
 ## Text width through the same font a legend row draws in.
 ##
-## A detached Label rather than a font loaded by path: the row's font is whatever
-## `get_theme_font("font")` resolves to for a Label carrying a font-size override,
-## and asking a Label is the only way to get the same answer the Label will get.
-## This project sets no custom theme, so an off-tree Label resolves identically to
-## an in-tree one -- which is a fact about this project and not about Godot, so
-## test_the_cards_own_measurement_agrees_with_the_labels_it_builds checks it against
-## `_T.text_width` on the real rows rather than leaving it as a comment.
-##
-## Static because everything that needs it is: the card's own width is answered
-## before any instance exists.
+## Shared now: `GardenTheme.measure()` carries the reasoning and the caveat, and
+## three screens plus four tests depend on the same answer. Kept as a one-line
+## forwarder rather than inlined at the call sites because the font size is this
+## screen's property, not the caller's, and because
+## test_the_cards_own_measurement_agrees_with_the_labels_it_builds names it.
 static func _measure(text: String) -> float:
-	var probe := Label.new()
-	probe.add_theme_font_size_override("font_size", KEY_ROW_FONT_SIZE)
-	var font: Font = probe.get_theme_font("font")
-	var width: float = 0.0
-	if font != null:
-		width = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1,
-			probe.get_theme_font_size("font_size")).x
-	probe.free()
-	return width
+	return GardenTheme.measure(text, KEY_ROW_FONT_SIZE)
 
 
 ## The key column: as wide as the widest key CURRENTLY bound.
