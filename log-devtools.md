@@ -4728,3 +4728,29 @@ cited in code, and the citation is a mitigation this project has watched fail.
   check confirming it rather than recognising it. That is the correct order and I would do
   it again; the note is that **`pause` is a tool and a hazard in the same command**, and a
   gating check run against a frozen tree needs the same suspicion as any other single read.
+
+## 2026-08-17 — Cycle 61: the move tip, shown once
+
+- Value: **warranted** — the runtime reading corrected a criterion I had written myself.
+  - Expected: `cmd budgets` to fall from 755 px back to roughly 570 once the tip stopped
+    appearing on every uproot. That was the bead's acceptance, in my own words.
+  - Got: **755, state `tight`, unchanged — and correctly so.** The corpus now prices BOTH
+    forms of the prompt, and the tip form is still the widest thing the row can ever hold.
+    A budget measures the worst case the FORMAT allows, not the common case. The one-shot
+    changes frequency, not the ceiling.
+  - Found: that, which is the whole entry. The change is still right, for a better-stated
+    reason — a hint shown once is more likely to be read than one that has become
+    wallpaper — but "we get 185 px back" was never true, and shipping that claim would have
+    made the next budget reading confusing for whoever took it.
+    Also found: a **surviving mutation where the test was at fault**. Replacing the warning
+    with the tip rather than joining them went unnoticed, because I asserted the warning
+    only on the second arm — where `with_tip` is false and it is present however the tip is
+    composed. It proved nothing about the case my own docstring claimed to guard.
+  - Cheaper: for the one-shot logic, the suite. For the budget correction, nothing — that
+    number exists only against a running HUD.
+
+- Gap: **no gaps this turn**, and cycle 60's new workflow rule paid immediately: `findings`
+  ran before quitting, came back **0 across 4 of 5 checks with 0 NEW**, and confirmed the
+  UI baseline is genuinely empty rather than merely absent this run. One cycle after adding
+  "run the broad check", it is already the thing that turns "I did not see a problem" into
+  "the checklist found none".

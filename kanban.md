@@ -195,6 +195,31 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (61) — one-shot hints are a mechanism now, and there is only one
+
+- **The one-shot hint pattern exists and teaches exactly one thing.**
+  `RunConfig.HINT_MOVE_PREVIEW` (`game/run_config.gd`) rides in the milestone set as a
+  "shown once, ever" flag, and it cost nothing to build because `record_milestones` already
+  had the semantics. The move preview is not the only feature nobody is told about: the
+  husk sweep, the uproot refund, the packet tiers and the colourblind toggle are all
+  discovered by accident or not at all. A second hint costs one constant and one bool now.
+  The restraint worth keeping is that a hint should point at a thing the player can act on
+  *in that moment*, which is why this one lives on the armed prompt rather than in a
+  tutorial.
+- **A budget prices the ceiling, and nothing says which strings are RARE.**
+  `cmd budgets` reports the message row at 755 of 876 px because the widest thing it can
+  hold is a first-arm prompt seen once per save. That is the right number and a misleading
+  one to plan with: the row is at 86% of capacity for a string almost no session displays.
+  A budget that reported both the worst case and the worst *recurring* case would let
+  someone judge whether 121 px of headroom is comfortable or not. `Game.budget_entries()`
+  already returns dictionaries, so a second measurement is a field rather than a rework.
+- **`Hud.uproot_armed_message` now takes a bool and two of the corpus's entries differ only
+  by it.** That is fine at two forms and it is the shape that goes wrong at three —
+  `message_corpus()` has to remember to append every combination, by hand, forever. The
+  corpus checker verifies that call sites are covered, not that every *variant* of a
+  producer is. A producer with N boolean modes has 2^N strings and only the ones someone
+  typed get priced.
+
 ### New this cycle (60) — the message row is nearly full and teaching costs permanent space
 
 - **Teaching a one-time lesson in a recurring message is a permanent tax.** The armed

@@ -214,6 +214,24 @@ live code because the blanker did not handle `\"` — which no amount of good-an
 example files would have surfaced, because both files were being scanned wrongly in the
 same way.
 
+### Assert a property where it can FAIL, not where it holds regardless
+
+The commonest way a test survives a mutation while looking thorough: it checks the right
+property, in a case where that property is true no matter what the code does.
+
+A message producer took a `with_tip` flag and composed a warning plus a tip. The test
+asserted the warning was present — on the call where `with_tip` was **false**. There the
+warning is present however the tip is composed, so the assertion could not fail. The
+mutation that made the tip *replace* the warning survived untouched, and the test's own
+docstring claimed to guard exactly that.
+
+> **For each assertion, name the mutation it is supposed to kill, then check the case
+> you asserted in is one where that mutation would show.** An assertion in the safe case
+> is documentation wearing a test's clothes.
+
+The tell: an assertion whose subject is not the thing the surrounding case is varying. If
+the case under test toggles X, the assertions that matter are the ones X can break.
+
 ### A survivor is sometimes a finding about the CODE, not about the test
 
 The default reading of a surviving mutation is "the test is too weak, strengthen it". There
