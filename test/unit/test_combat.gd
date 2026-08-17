@@ -4500,38 +4500,171 @@ func _furthest_along_within(live: Array[Pest], plant: Plant, radius: float) -> P
 	return best
 
 
-## Seven cobs that cover every one of the 32 road cells. coverage_frontier() is
-## 1.0 over this garden and coverage_note() is therefore silent — the board has
-## nothing at all to warn about, which is the only garden the over-promise
-## question can be asked of honestly.
+## DERIVED FROM THE ROAD, not typed against one (plant-tower-defense-m9u2).
+##
+## Reshaping the road in cycle 53 cost three hand-typed coordinate lists, and one
+## of them failed in the way that is worst: `Vector2i(10, 3)` had become ROAD, so
+## that placement would have been refused and quietly turned a six-plant garden
+## into a five-plant one, with every downstream ratio still reporting a number.
+##
+## These are the derivations that were run by hand that day, promoted into the
+## suite. `derive-the-list` calls this the "derive at check time" case exactly:
+## the rule is total, cheap, and needs no human judgement — "the cells that cover
+## the road" is a fact about the board, not a taste call. The next road costs
+## nothing here.
+##
+## Deterministic on purpose: ties break on the lowest (y, x), so one board always
+## yields one garden and a seeded run stays reproducible.
+static func _cover_greedily(probe: Board, reach: float, target: int) -> Array:
+	var road: Array[Vector2i] = probe.road_cells()
+	var want: int = road.size() if target < 0 else target
+	var uncovered: Dictionary = {}
+	for cell: Vector2i in road:
+		uncovered[cell] = true
+	var reaches: Dictionary = {}
+	for x: int in range(Board.COLS):
+		for y: int in range(Board.ROWS):
+			var at := Vector2i(x, y)
+			if not probe.is_buildable(at):
+				continue
+			var hit: Array[Vector2i] = PlacementPreview.covered_road_cell_list(probe, at, reach)
+			if not hit.is_empty():
+				reaches[at] = hit
+	var garden: Array = []
+	while road.size() - uncovered.size() < want and not reaches.is_empty():
+		var best: Vector2i = Vector2i(-1, -1)
+		var best_gain: int = 0
+		for at: Vector2i in reaches:
+			var gain: int = 0
+			for cell: Vector2i in reaches[at]:
+				if uncovered.has(cell):
+					gain += 1
+			# Strictly-greater keeps the FIRST cell at a given gain, and `reaches`
+			# is filled in (x, y) order, so the tie-break is stable without a sort.
+			if gain > best_gain:
+				best_gain = gain
+				best = at
+		if best_gain == 0:
+			break
+		garden.append(best)
+		for cell: Vector2i in reaches[best]:
+			uncovered.erase(cell)
+		reaches.erase(best)
+	return garden
+
+
+## The cell that reaches the most road currently covered by exactly one plant.
+## Coverage is not engagement — a cob shoots only the furthest-along pest in
+## range, so a cell covered once is covered by a plant that may already be busy.
+## The six-cob cover let one escape in thirty-four cross unfought; this is the
+## seventh cob, derived rather than picked.
+static func _reinforce_thinnest(probe: Board, garden: Array, reach: float) -> Vector2i:
+	var depth: Dictionary = {}
+	for cell: Vector2i in probe.road_cells():
+		depth[cell] = 0
+	for at: Vector2i in garden:
+		for cell: Vector2i in PlacementPreview.covered_road_cell_list(probe, at, reach):
+			depth[cell] = int(depth[cell]) + 1
+	var thin: Array[Vector2i] = []
+	for cell: Vector2i in depth:
+		if int(depth[cell]) == 1:
+			thin.append(cell)
+	var best: Vector2i = Vector2i(-1, -1)
+	var best_gain: int = 0
+	for x: int in range(Board.COLS):
+		for y: int in range(Board.ROWS):
+			var at := Vector2i(x, y)
+			if not probe.is_buildable(at) or garden.has(at):
+				continue
+			var gain: int = 0
+			for cell: Vector2i in PlacementPreview.covered_road_cell_list(probe, at, reach):
+				if thin.has(cell):
+					gain += 1
+			if gain > best_gain:
+				best_gain = gain
+				best = at
+	return best
+
+
+## RECORDED, not derived — and the reason is the interesting half.
+##
+## The first attempt at plant-tower-defense-m9u2 derived this by greedy set cover
+## and got a BETTER cover: five cobs reach all 32 road cells where the recorded
+## seven do. It also broke two tests, because what these gardens are for is not
+## coverage — it is a calibrated amount of FIREPOWER. A cob shoots only the
+## furthest-along pest in range, so a minimal cover is a weaker garden than a
+## redundant one covering the same cells, and every ratio downstream moves.
+##
+## `derive-the-list` names this exactly: "if the membership is a taste call, it is
+## not derivable and this recipe does not apply. Stop here rather than inventing a
+## rule that fits today's list." Seven cobs is a taste call. So these stay written
+## down, and `test_the_recorded_gardens_still_have_the_property_they_claim` is what
+## keeps them honest — the recorded list is a CACHE, and that test is what makes it
+## a cache rather than a second source of truth about the road.
+##
+## The walled list below IS derived, because "one mouth beside every road cell" is
+## a rule with no judgement in it.
 func _whole_road_garden() -> Array:
-	# Six cobs reaching all 32 road cells. Re-derived for the road's climb
-	# (plant-tower-defense-84x0) by greedy set cover at CornCobbler.RANGE (176 px,
-	# 2.75 cells) over cell centres — the same model, checked first against the old
-	# seven-cob list, which it confirms covered 32 of 32 on the old route. The new
-	# shape needs one fewer because its corners fold back on themselves.
-	# Six reach all 32; the seventh is for OVERLAP, not coverage. A cob shoots only
-	# the furthest-along pest in range, so a cell covered exactly once is covered by
-	# a plant that may already be busy — and the six-cob version let one escape in
-	# thirty-four cross unfought. Seven also keeps this the "seven-cob garden" the
-	# docstrings below call it. (8, 6) is the pick because it reaches the most
-	# singly-covered cells.
 	return [Vector2i(0, 0), Vector2i(4, 2), Vector2i(11, 2),
 		Vector2i(5, 5), Vector2i(8, 5), Vector2i(3, 6), Vector2i(8, 6)]
 
 
 ## A garden a player actually has by the last campaign wave: six plants covering
-## 29 of the 32 road cells — deliberately short of the whole road, which is what
-## makes it a real garden rather than the positive control above.
-##
-## Re-derived for the road's climb (plant-tower-defense-84x0), and it HAD to be:
-## the old list's Vector2i(10, 3) sits on the new road, so that placement would
-## have failed and quietly made this a five-plant garden. The replacement is the
-## most spread-out six-plant set found that covers exactly 29, so it still reads
-## as a garden someone built rather than three cobs in a heap.
+## most of the road but not all of it — deliberately short, which is what makes it
+## a real garden rather than the positive control above. Recorded for the same
+## reason as the garden above; see that comment.
 func _mixed_garden() -> Array:
 	return [Vector2i(12, 1), Vector2i(3, 2), Vector2i(8, 3),
 		Vector2i(5, 6), Vector2i(0, 7), Vector2i(9, 8)]
+
+
+## What the two recorded gardens above CLAIM, checked against the road as it is.
+##
+## Cycle 53 reshaped the road and both lists went stale silently — one of them had
+## a cell that had become road, so its placement would have been refused and the
+## garden would have been one plant smaller with every ratio still reporting a
+## number. This is the assertion that turns that into a failure with a name.
+##
+## It deliberately does NOT assert the lists themselves. It asserts the properties
+## the tests below rely on: every plant can actually stand where it is put, the
+## whole-road garden reaches all of the road, and the mixed garden reaches most but
+## not all of it.
+func test_the_recorded_gardens_still_have_the_property_they_claim() -> String:
+	var probe := Board.new()
+	var road: int = probe.road_cells().size()
+	var err: String = _T.assert_gt(road, 2, "the probe board built a road to measure against")
+	for pair: Array in [["whole-road", _whole_road_garden()], ["mixed", _mixed_garden()]]:
+		if err != "":
+			break
+		for at: Vector2i in pair[1]:
+			err = _T.assert_true(probe.is_buildable(at),
+				("the %s garden's %s is somewhere a plant may actually stand — a cell that "
+					+ "has become road is refused at placement, and the garden is quietly "
+					+ "one plant smaller") % [pair[0], at])
+			if err != "":
+				break
+	if err == "":
+		var whole: Dictionary = {}
+		for at: Vector2i in _whole_road_garden():
+			for cell: Vector2i in PlacementPreview.covered_road_cell_list(
+					probe, at, CornCobbler.RANGE):
+				whole[cell] = true
+		err = _T.assert_eq(whole.size(), road,
+			("the whole-road garden reaches every one of the %d road cells — that is what "
+				+ "makes coverage_note() silent over it, which every over-promise reading "
+				+ "below depends on") % road)
+	if err == "":
+		var mixed: Dictionary = {}
+		for at: Vector2i in _mixed_garden():
+			for cell: Vector2i in PlacementPreview.covered_road_cell_list(
+					probe, at, CornCobbler.RANGE):
+				mixed[cell] = true
+		err = _T.assert_true(mixed.size() < road and mixed.size() > road / 2,
+			("the mixed garden reaches most of the road but NOT all of it (%d of %d) — a "
+				+ "garden that covered everything would make it a second copy of the "
+				+ "positive control") % [mixed.size(), road])
+	probe.free()
+	return err
 
 
 ## THE measurement plant-tower-defense-4no was filed for, and it comes back zero.
@@ -4715,23 +4848,22 @@ func test_a_winged_pest_only_outruns_the_map_in_a_garden_with_no_corn_in_it() ->
 		return err
 
 	# The positive control, and the reason the zero in the sibling test is a
-	# reading rather than a broken detector. Twenty-six mouths, at least one beside
-	# every road cell: the map calls the entire road covered, and a winged pest
-	# crosses the whole of it with nothing able to close on it. Same harness, same
-	# predicate, non-zero — so `pests_all_covered_untouched` is not stuck at 0.
+	# reading rather than a broken detector. A mouth beside every road cell: the
+	# map calls the entire road covered, and a winged pest crosses the whole of it
+	# with nothing able to close on it. Same harness, same predicate, non-zero — so
+	# `pests_all_covered_untouched` is not stuck at 0.
 	#
-	# Re-derived when the road grew its climb (plant-tower-defense-84x0). This list
-	# is a property of the road's SHAPE and nothing else, so it moved even though
-	# the cell count and route length did not: it was thirty-one mouths against the
-	# old route. Derived by greedy set cover over the orthogonal neighbours of every
-	# road cell, which is why it is smaller — the old list spent ten mouths on a
-	# single straight run along row 0.
-	var walled: Array = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0),
-		Vector2i(4, 0), Vector2i(6, 0), Vector2i(5, 2), Vector2i(9, 2), Vector2i(11, 2),
-		Vector2i(12, 2), Vector2i(13, 2), Vector2i(2, 3), Vector2i(4, 3), Vector2i(5, 3),
-		Vector2i(7, 4), Vector2i(10, 4), Vector2i(3, 5), Vector2i(8, 5), Vector2i(3, 6),
-		Vector2i(4, 6), Vector2i(5, 6), Vector2i(6, 6), Vector2i(7, 6), Vector2i(8, 6),
-		Vector2i(1, 7), Vector2i(10, 7)]
+	# Derived, not typed (plant-tower-defense-m9u2). This was thirty-one hardcoded
+	# cells against the pre-climb road and twenty-six against the current one; it is
+	# now whatever the road needs, and the assertion below reads `road_cells` rather
+	# than a literal so it cannot disagree with the garden it was built from.
+	var walled_probe := Board.new()
+	var walled: Array = _cover_greedily(walled_probe, ChompFlower.GRAB_RADIUS, -1)
+	walled_probe.free()
+	var err_walled: String = _T.assert_gt(walled.size(), 0,
+		"the derivation found somewhere to put a mouth at all")
+	if err_walled != "":
+		return err_walled
 	var walled_run: Dictionary = await _over_promise_run(8, [], walled, 1, 12345, 40000)
 	err = _T.assert_eq(int(walled_run["foreign_pests"]), 0,
 		"nor while the walled road ran")

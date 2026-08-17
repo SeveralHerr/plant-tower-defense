@@ -502,7 +502,15 @@ func test_the_real_route_strands_exactly_the_cells_it_was_measured_to_strand() -
 				dead_corn += 1
 			if PlacementPreview.covered_road_cells(game.board, cell, chomp_reach) == 0:
 				dead_chomp += 1
-	err = _T.assert_eq(buildable, 94, "the route leaves 94 buildable cells")
+	# Derived, not recorded (plant-tower-defense-m9u2): every in-bounds cell is
+	# either road or buildable, so this is arithmetic and holds for ANY road. It was
+	# the literal 94 until the road was reshaped, at which point it happened to stay
+	# 94 — the new route has the same cell count — and would have gone on reading as
+	# a verified number while verifying nothing about the new shape.
+	var road_cells: int = game.board.road_cells().size()
+	err = _T.assert_eq(buildable, Board.COLS * Board.ROWS - road_cells,
+		("every in-bounds cell is road or buildable: %d + %d should be %d")
+			% [buildable, road_cells, Board.COLS * Board.ROWS])
 	if err == "":
 		# Vacuity guards, ahead of the exact counts: a walk that found no ground
 		# at all, or a coverage function answering zero everywhere, would
