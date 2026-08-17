@@ -12326,3 +12326,239 @@ func test_only_rain_moves_and_only_when_motion_is_allowed() -> String:
 		if err != "":
 			return err
 	return err
+
+
+# -- Top-bar styling (plant-tower-defense-7mj3) ------------------------------
+#
+# James: "the text at the top could use some styling." The bar was a flat INK
+# ColorRect carrying four default-font Labels and one grey Godot Button -- the
+# only surface in the game wearing none of the notebook everything below it is
+# drawn on.
+#
+# The checks below pin the two things that pass could get wrong. FIRST, that the
+# styling is free: the stats row is a budgeted sum with ~19px of slack
+# (`stats_row_budget`), and decoration that quietly took a slot in it would show
+# up as an occlusion bug waves later rather than as a failing test now. SECOND,
+# that it is legible: every colour the bar writes in has to clear the palette's
+# own separation floor against the bar's ink -- on BOTH threat ramps, because the
+# colourblind ramp is a second set of paints that no eye on a screenshot checks.
+
+
+## The page rules are on the bar, and they are ColorRects sitting outside the
+## row's layout rather than inside it.
+##
+## The second half is the load-bearing one. A rule added as a fifth child of the
+## StatsRow would look identical in a screenshot and would be spending width out
+## of a budget that has already produced one collision bug in this bar.
+func test_the_top_bar_wears_the_notebooks_page_rules() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	await _pump(game)
+	var stats: HBoxContainer = game.hud.get_node_or_null("Root/TopBar/StatsRow") as HBoxContainer
+	var margin: ColorRect = game.hud.get_node_or_null("Root/TopBar/MarginRule") as ColorRect
+	var err: String = _T.assert_true(margin != null and stats != null,
+		"the top bar has a margin rule and a stats row")
+	if err == "":
+		err = _T.assert_true(margin.color.is_equal_approx(GardenTheme.PAPER_RULE),
+			"the rule is the notebook stock's own blue, got %s" % margin.color)
+	if err == "":
+		# In the gutter the row already left empty -- the reason it costs nothing.
+		err = _T.assert_true(margin.position.x + margin.size.x <= stats.position.x,
+			"the margin rule ends at %.0f, left of the first readout at %.0f"
+				% [margin.position.x + margin.size.x, stats.position.x])
+	if err == "":
+		# And clear of the prep strip's band. `_hud_rects` below skips ColorRects,
+		# so nothing else in this suite compares these two -- the occlusion audit
+		# does, and an opaque strip drawn over an opaque rule is a finding there.
+		err = _T.assert_true(
+			margin.position.y + margin.size.y <= float(Hud.BAR_HEIGHT) - Hud.PREP_BAR_HEIGHT,
+			"the margin rule stops at %.0f, above the prep strip's band at %.0f"
+				% [margin.position.y + margin.size.y, float(Hud.BAR_HEIGHT) - Hud.PREP_BAR_HEIGHT])
+	if err == "":
+		# Not a child count -- a later feature is expected to add a control to this
+		# row, and a pinned count would fail for that rather than for decoration.
+		# What must stay true is that no *decoration* holds a slot in the sum.
+		var slots: PackedStringArray = []
+		for child: Node in stats.get_children():
+			if child is ColorRect:
+				slots.append(String(child.name))
+		err = _T.assert_eq(slots.size(), 0,
+			"no page rule takes a width slot in the budgeted row: %s" % ", ".join(slots))
+	if err == "":
+		var missing: PackedStringArray = []
+		for readout: String in Hud.WORST_CASE_TEXT:
+			var label: Label = stats.get_node_or_null(readout) as Label
+			if label == null:
+				missing.append("%s: no such readout" % readout)
+				continue
+			var rule: ColorRect = label.get_node_or_null("%sRule" % readout) as ColorRect
+			if rule == null:
+				missing.append("%s: no ruled line under it" % readout)
+				continue
+			if not is_equal_approx(rule.size.x, label.size.x):
+				missing.append("%s: rule is %.0fpx under a %.0fpx readout"
+					% [readout, rule.size.x, label.size.x])
+			elif not is_equal_approx(rule.size.y, Hud.READOUT_RULE_HEIGHT):
+				missing.append("%s: rule is %.1fpx tall" % [readout, rule.size.y])
+			elif not rule.show_behind_parent:
+				missing.append("%s: rule draws over its own text" % readout)
+		err = _T.assert_eq(missing.size(), 0,
+			"every readout is written on a ruled line: %s" % ", ".join(missing))
+	_T.free_ui(game)
+	return err
+
+
+## The wave button wears the shared paper look, and still wears no Theme.
+##
+## Both halves together or neither is worth asserting. `test_the_hud_still_
+## refuses_the_shared_theme` says the HUD takes no Theme, and the easiest way to
+## satisfy that forever is for the top bar's one Button to stay a grey slab; the
+## easiest way to style it is to hand the HUD the Theme and break the layout it
+## sizes in code. This pins the third answer: per-node overrides, no Theme.
+func test_the_wave_button_wears_the_paper_look_without_a_theme() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	await _pump(game)
+	var button: Button = game.hud.get_node_or_null("Root/TopBar/StatsRow/NextWaveButton") as Button
+	var err: String = _T.assert_true(button != null, "the wave button is in the row")
+	if err == "":
+		err = _T.assert_true(button.theme == null,
+			"and carries no Theme -- the look arrives as overrides")
+	if err == "":
+		var box := button.get_theme_stylebox("normal") as StyleBoxFlat
+		err = _T.assert_true(box != null, "its normal state is a flat box, not Godot's default")
+		if err == "":
+			err = _T.assert_true(box.bg_color.is_equal_approx(GardenTheme.PAPER),
+				"filled with the notebook's paper, got %s" % box.bg_color)
+		if err == "":
+			err = _T.assert_true(box.border_color.is_equal_approx(GardenTheme.INK),
+				"and outlined in its ink, got %s" % box.border_color)
+	if err == "":
+		err = _T.assert_true(button.get_theme_color("font_color").is_equal_approx(GardenTheme.INK),
+			"ink text on paper, got %s" % button.get_theme_color("font_color"))
+	if err == "":
+		# The look is shared rather than a second copy of it: the Theme the HUD
+		# declines paints its Buttons the same way this one Button is painted.
+		var shared := GardenTheme.build().get_stylebox("normal", "Button") as StyleBoxFlat
+		err = _T.assert_true(shared.bg_color.is_equal_approx(
+				(button.get_theme_stylebox("normal") as StyleBoxFlat).bg_color),
+			"and it is the SAME look the shared Theme would have applied, not a lookalike")
+	_T.free_ui(game)
+	if err != "":
+		return err
+	# The helper itself, off any tree: its documented contract is that it sets no
+	# size, which is what lets a budgeted layout wear the look safely. A stylebox
+	# added here that carried a min_size would be invisible in the HUD assertions
+	# above, because the button's custom_minimum_size is larger than it today.
+	var bare := Button.new()
+	bare.text = "Grow the next wave"
+	GardenTheme.style_paper_button(bare)
+	err = _T.assert_true(bare.custom_minimum_size.is_equal_approx(Vector2.ZERO),
+		"styling a Button sets no size of its own, got %s" % bare.custom_minimum_size)
+	if err == "":
+		# has_theme_stylebox_override is the half that says "override, not Theme" --
+		# get_theme_stylebox alone would answer just as happily off the default theme.
+		err = _T.assert_true(bare.has_theme_stylebox_override("normal"),
+			"and it applies the box as a per-node override rather than a Theme")
+		if err == "":
+			var applied := bare.get_theme_stylebox("normal") as StyleBoxFlat
+			err = _T.assert_true(applied != null and applied.bg_color.is_equal_approx(GardenTheme.PAPER),
+				"which is the notebook's paper")
+	if err == "":
+		err = _T.assert_eq(bare.get_theme_font_size("font_size"), GardenTheme.BUTTON_FONT_SIZE,
+			"at the one Button font size the shared look declares")
+	bare.free()
+	return err
+
+
+## The styling did not spend the row's width budget.
+##
+## A stylebox carries content margins, and a Button's minimum size is its text
+## plus those margins. If that sum ever passes NEXT_WAVE_BUTTON_SIZE.x the button
+## stops being the budgeted 216px the stats-row arithmetic assumes and starts
+## growing, which the HBoxContainer pays for by pushing -- the exact failure
+## `test_an_absurdly_long_readout_pushes_rather_than_underlaps` exists for, and
+## one that no screenshot of today's text would show.
+func test_the_wave_buttons_text_fits_its_budgeted_slot() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	await _pump(game)
+	var button: Button = game.hud.get_node_or_null("Root/TopBar/StatsRow/NextWaveButton") as Button
+	var err: String = _T.assert_true(button != null, "the wave button is in the row")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var font: Font = button.get_theme_font("font")
+	var size_px: int = button.get_theme_font_size("font_size")
+	if size_px <= 0:
+		size_px = button.get_theme_default_font_size()
+	err = _T.assert_true(font != null and size_px > 0,
+		"the button resolves a font to be measured in (%d px)" % size_px)
+	if err == "":
+		var box := button.get_theme_stylebox("normal") as StyleBoxFlat
+		var text_px: float = font.get_string_size(
+			button.text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x
+		var needed: float = text_px + box.content_margin_left + box.content_margin_right
+		err = _T.assert_true(needed <= Hud.NEXT_WAVE_BUTTON_SIZE.x,
+			"\"%s\" plus the paper box's margins needs %.0fpx of its %.0fpx slot"
+				% [button.text, needed, Hud.NEXT_WAVE_BUTTON_SIZE.x])
+	if err == "":
+		err = _T.assert_float_eq(button.size.x, Hud.NEXT_WAVE_BUTTON_SIZE.x, 0.5,
+			"and the live button is still exactly its budgeted width (%.0f)" % button.size.x)
+	if err == "":
+		# Read off the live row rather than a literal, so this keeps measuring the
+		# real sum when a later feature adds a control to the bar.
+		var stats: HBoxContainer = game.hud.get_node_or_null("Root/TopBar/StatsRow") as HBoxContainer
+		var needed: float = Hud.stats_row_budget(stats.get_child_count() - 1)
+		err = _T.assert_true(needed <= stats.size.x,
+			"so the row's sum still fits the bar: %.0f of %.0fpx, %.0fpx spare"
+				% [needed, stats.size.x, stats.size.x - needed])
+	_T.free_ui(game)
+	return err
+
+
+## Every colour the top bar writes in clears the palette's own legibility floor
+## against the bar's ink -- on BOTH threat ramps.
+##
+## The colourblind ramp is the half that needs a check rather than an eye: it is
+## a second set of paints nobody looks at unless they have the setting on, and
+## `threat_color_on(level, true)` lands SAFE_MID and SAFE_BAD on the readout that
+## a player watches hardest. Reusing `GardenTheme.reads_on` rather than comparing
+## luminances here is deliberate -- one floor, written down once, so the bar and
+## the playfield cannot end up disagreeing about what "readable" means.
+##
+## The negative control at the end is what makes the rest of it worth anything:
+## INK_SOFT is a real colour from this same palette that the floor rejects, so a
+## floor accidentally lowered to zero fails here instead of passing everything.
+func test_every_colour_the_top_bar_writes_in_reads_on_the_bar() -> String:
+	var writes: Dictionary = {
+		"the readouts": Hud.PAPER,
+		"the compost readout": Hud.COMPOST,
+		"the message line": Hud.LEAF,
+		"the page rules": Hud.PAGE_RULE,
+		"the wave button's text on its paper": Hud.INK,
+	}
+	var faint: PackedStringArray = []
+	for what: String in writes:
+		var mark: Color = writes[what]
+		# The button's ink is the one mark NOT on the ink band -- it is on the
+		# paper box, so it is measured against the ground it is actually drawn on.
+		var ground: Color = GardenTheme.PAPER if mark.is_equal_approx(Hud.INK) else Hud.INK
+		if not GardenTheme.reads_on(mark, ground):
+			faint.append("%s: %.3f apart" % [what, GardenTheme.separation(mark, ground)])
+	# Both ramps, over the whole range the readout can reach, including past the
+	# saturation point where an endless run parks.
+	for safe: bool in [false, true]:
+		for level: int in range(1, Hud.THREAT_TINT_MAX * 2):
+			var tint: Color = Hud.threat_color_on(level, safe)
+			if not GardenTheme.reads_on(tint, Hud.INK):
+				faint.append("threat level %d on the %s ramp: %.3f apart"
+					% [level, "safe" if safe else "default",
+						GardenTheme.separation(tint, Hud.INK)])
+	var err: String = _T.assert_eq(faint.size(), 0,
+		"marks on the top bar that do not clear %.2f against its ink: %s"
+			% [GardenTheme.GROUND_SEPARATION_MIN, ", ".join(faint)])
+	if err == "":
+		# The floor can say no. Without this the sweep above would read exactly
+		# the same with GROUND_SEPARATION_MIN set to 0.
+		err = _T.assert_false(GardenTheme.reads_on(GardenTheme.INK_SOFT, Hud.INK),
+			"and the floor still rejects INK_SOFT (%.3f apart), so it is a floor rather than a formality"
+				% GardenTheme.separation(GardenTheme.INK_SOFT, Hud.INK))
+	return err
