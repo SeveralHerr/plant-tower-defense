@@ -4334,7 +4334,23 @@ cited in code, and the citation is a mitigation this project has watched fail.
   freezing the tree first.** I read an empty Label three times and had no way to tell "the
   row is blank" from "something else is holding the row right now", because a single read
   of a moving value carries no evidence that it was moving.
-  - [G-056] status: open | seen: 1 | harness: 0.38.0
+  - [G-056] status: open | seen: 1 | harness: 0.38.0 | upstream: gh#44 (finding 2)
+  - Note: re-checked against 0.42.0 before filing and NARROWED. 0.42.0 does state
+    the idea for `step-time --then-pause` ("so the read that follows carries no
+    ambient drift") -- attached to stepping, not stated as a general rule about
+    reading. Filing the un-narrowed version would have been a false alarm.
+
+- Gap: **`verify_ledger.py record` reports a post-commit row as "a real zero".**
+  Recorded this cycle's row after committing and got `reached 0/0 changed file(s) -
+  a real zero: every changed file is excused from the denominator`. reach is the
+  diff intersected against what the game loaded, so after a commit it is empty by
+  construction -- and the tool asserts the benign reading of an ambiguity it cannot
+  resolve. "Nothing was in scope" and "the evidence was committed away" are opposite
+  claims and the row cannot be told apart afterwards.
+  - [G-057] status: open | seen: 1 | harness: 0.38.0 | upstream: gh#44 (finding 1)
+  - Improvement: when the reach denominator is 0, check whether the working tree is
+    clean while HEAD just touched the run's files, and say so instead of glossing it.
+    Failing that, write `reach: null` with a reason -- honest beats reassuring.
   - Improvement: one line in the Gotchas list — `**A single read of a timer-driven
     property is not a measurement.** Anything a `_process`/`_physics_process` timer
     mutates should be read after `pause` (the bus answers while paused), or with
