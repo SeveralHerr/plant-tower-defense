@@ -195,6 +195,29 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (54) — coverage and firepower are two different pictures
+
+- **The board draws coverage and says nothing about firepower.** A cell covered by one
+  cob and a cell covered by three look identical to the player, and `_furthest_along_in_range`
+  (`game/corn_cobbler.gd:109`) means the difference is everything: one cob covering eight
+  cells is busy with one of them. This cycle proved the gap numerically — five cobs cover
+  the whole road and let a pest through, seven cover the same road and do not. A depth cue
+  (a second, denser tint where two or more plants reach) would show the player the thing
+  the coverage map structurally cannot, and the data is one line: count the plants whose
+  reach contains the cell instead of asking whether any does.
+- **A minimal garden is a real difficulty setting nobody can select.** The greedy cover
+  derived in `test_combat.gd` finds the *smallest* garden that reaches every road cell —
+  five cobs on the current road. That is a genuinely interesting constraint to play under
+  and it already computes: "the fewest plants that reach every cell" is a puzzle-mode seed,
+  or a par score shown on the run summary (`game/run_summary.gd`). The player currently
+  gets no signal at all about whether their garden was efficient or merely large.
+- **Dead ground moved in opposite directions for the two reaches and nothing said so.**
+  Cycle 53's reshape took Corn dead ground from 15 to 11 and Chomp from 34 to 36
+  (`test/unit/test_placement.gd`). A player who has learned "the top-right corner is
+  useless" from one board has learned something false about the next. If a second road
+  ever ships, the per-plant dead-ground cue is the only thing that will tell them — and it
+  only appears once they are already holding a plant, at placement time.
+
 ### New this cycle (53) — the road can change now, and that is newly interesting
 
 - **A second road is now a much smaller job than it looked.** `PATH_CORNERS`

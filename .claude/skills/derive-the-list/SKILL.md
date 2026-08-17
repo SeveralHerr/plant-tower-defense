@@ -18,6 +18,30 @@ cannot see past its end. Applied five times in these projects now: `SURFACES_ABO
    `_save()`", "every four-neighbour mask a level can produce". If the membership is a
    taste call ("the five plants that feel good early"), it is not derivable and this
    recipe does not apply. Stop here rather than inventing a rule that fits today's list.
+
+   **But "stop" is not the whole answer**, because the original problem is still there —
+   a hand-written list that goes stale silently. A taste-call list gets step 3 without
+   step 2: **keep it recorded, and assert the PROPERTY it claims** rather than its
+   membership. That is what makes it a cache instead of a second source of truth.
+
+   Worked example, and why this paragraph exists. `test_combat.gd`'s seven-cob garden
+   looked derivable — "cobs covering every road cell" is a rule, and greedy set cover
+   computes it. Deriving it produced a *better* cover (five cobs reach all 32 road cells)
+   and broke two tests, because the list's real content is calibrated **firepower**: a cob
+   shoots only the furthest-along pest in range, so a minimal cover is strictly weaker than
+   a redundant one over identical cells. Seven is a judgement about how much is enough.
+
+   So it stayed recorded and gained
+   `test_the_recorded_gardens_still_have_the_property_they_claim` — every plant can stand
+   where it is put, the whole-road garden reaches all of the road, the mixed one reaches
+   most but not all. Three mutations kill it, including a garden cell that has silently
+   become impassable terrain: the exact defect a road reshape caused one cycle earlier,
+   which turned a six-plant garden into five while every downstream ratio kept reporting a
+   number.
+
+   **The tell that you are looking at a taste call**: the derivation succeeds, produces
+   something objectively better by its stated rule, and the tests get *worse*. The stated
+   rule was never the whole requirement.
 2. **Derive the set from the source of truth**, in code, at check time.
 3. **Assert the recorded list EQUALS the derived set** — not `has`, not `is_subset_of`.
 4. **Plant both directions** and watch each fail. Add a member to the source that the

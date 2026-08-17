@@ -4541,3 +4541,32 @@ cited in code, and the citation is a mitigation this project has watched fail.
   appeared is what caught a pest mid-climb — a sub-second state on a four-cell leg. The
   verb table advertises exactly this ("catch a sub-second effect, poll for the moment,
   pause, then inspect at no rush") and it worked first try, three polls in.
+
+## 2026-08-17 — Cycle 54: derive the rules, record the taste calls
+
+- Value: **warranted**, on the strength of one finding that reversed the design.
+  - Expected: to derive all three garden lists and both counts, making a road change a
+    pure data change. That was the plan written into the bead.
+  - Got: the derivation works and is *better* — greedy set cover finds five cobs reaching
+    all 32 road cells where seven are recorded — and it **broke two tests**. Those gardens
+    encode calibrated FIREPOWER, not coverage: a cob shoots only the furthest-along pest
+    in range, so a minimal cover is a weaker garden than a redundant one over the same
+    cells. `derive-the-list` says stop when membership is a taste call, and seven cobs is
+    one.
+  - Found: **a heredoc ate the leading `#` from four comment lines**, `test_placement.gd`
+    failed to compile, and the suite printed
+    `Total: 490 | Passed: 490 | Failed: 0 | ALL TESTS PASSED`. Sixty-seven tests silently
+    absent, reported as a clean run. Caught by the two things the harness prints for
+    exactly this: the denominator (490 against 557) and exit `2`.
+  - Cheaper: reading the diff would have shown the derivation. It would not have shown
+    that the derived garden is a better cover and a weaker garden, which is the whole
+    finding — that needed the suite.
+
+- Gap: **no gaps this turn**, and a note in the harness's favour that is worth writing
+  down properly, because it is the second time this session the same pair has saved a
+  run. `Total: N | Passed: N | Failed: 0` is not a pass on its own. The `Total:` is a
+  **denominator** and exit `2` means *the runner could not run*, not *the code is clean* —
+  and a script that fails to compile takes its whole file out of the count while leaving
+  the surviving tests reporting green. The docs say both of these plainly ("Read the
+  denominators, not just the exit code"; "a `2` means you verified nothing"). They were
+  right and they were what caught it.

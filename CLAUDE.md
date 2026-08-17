@@ -54,6 +54,14 @@ running a command. **Never write a work checklist into it.**
 2. **Do the items one at a time.** For each one: claim the bd issue, write the code,
    run `/verify`, then commit. One commit per item. Never batch several items into one
    commit at the end.
+   - **Write code with the Edit/Write tools, never through a shell heredoc.** A heredoc
+     silently eats one level of backslash escaping and, worse, has now stripped the
+     leading `#` from GDScript comment blocks four separate times. Cycle 54's instance
+     produced a `test_placement.gd` that would not compile, and the suite reported
+     `Total: 490 | Passed: 490 | Failed: 0 | ALL TESTS PASSED` — sixty-seven tests
+     silently absent, reported as a clean run. Only the denominator (490 against 557)
+     and exit `2` caught it. Four occurrences and an "environment note" in the log each
+     time is not a countermeasure; using the right tool is.
    - **The ledger row lands BEFORE the commit, never after.** `reach` is the diff
      intersected against what the running game loaded, and after a commit the diff is
      empty — so a row recorded afterwards reads `reached 0/0 changed file(s)`, which is
