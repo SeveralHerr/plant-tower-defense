@@ -4826,3 +4826,29 @@ cited in code, and the citation is a mitigation this project has watched fail.
   before committing is what showed it, which is exactly why
   `kanban-staleness-audit` says to separate the finding pass from the rewrite pass. The
   rewrite now cuts by line number with three asserts on the boundary lines.
+
+## 2026-08-17 — Cycle 65: corpses that say what killed them
+
+- Value: **warranted**, twice over, and the second run is the interesting one.
+  - Expected: the predicates to work (unit-tested, five mutations red) and the corpses to
+    read back distinct.
+  - Got: distinct — default `rot 1.5708 / x 0.72`, bitten `rot 1.5708 / x 0.4464`, blasted
+    `rot 2.1208 / x 0.72`. And **reach 1/3**: every kill in that run went through `kill()`
+    directly, so *neither edited call site was ever loaded*. The ledger naming them is what
+    sent me back to drive a real Chomp bite, which took reach to 2/3.
+  - Found: **`_T.assert_lt` does not exist, and my test called it.** The call aborted the
+    method and `run_tests.gd` reported `[PASS]` — an aborted coroutine returns `""`, which
+    is identical to a genuine pass. `run_tests.py` caught the `SCRIPT ERROR` the return
+    value cannot carry, exactly as its docs describe. **The tell in the numbers is worth
+    keeping: same test count, assertions 12279 → 12287 after the fix.** A test that adds
+    zero assertions while adding a test is the shape to watch for.
+  - Cheaper: nothing. The corpses land off-board at the route's entry bracket, so a
+    screenshot would have shown an empty road — checked before shooting, not after.
+
+- Gap: **no gaps this turn**, and two notes in the harness's favour, both about it being
+  right when I was not. `run_tests.py` versus `run_tests.gd` is documented precisely for
+  the abort-reads-as-pass case and it earned that paragraph today. And `findings` reported
+  a `container_layout_drift` on `SeedsLabel` against a **paused** tree that vanished on
+  unpause — the second frozen-tree false alarm this session, the first being a tween
+  mid-fade. The pattern is now firm enough to state plainly: **run `findings` unpaused**,
+  because pause freezes containers mid-layout as readily as it freezes a tween mid-fade.

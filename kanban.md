@@ -195,6 +195,31 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (65) — a corpse can carry information, and only one does
+
+- **The kernel kill is the common death and it is the one that says nothing.**
+  `Pest.corpse_rotation()` and `corpse_scale()` now differ for a Chomp bite and a seed
+  bomb; a kernel kill takes the default straight corpse, deliberately, so the two that
+  differ read as remarkable. But a Corn Cobbler is the plant most players own most of the
+  time, so the *majority* of corpses carry no information at all. A kernel arrives with a
+  direction — `Kernel._physics_process` flies until it leaves the board — so a small
+  knockback ALONG that travel is available and would cost one argument, unlike the two
+  shipped cues which needed none. Worth doing only if the default staying plain is judged
+  less valuable than every death saying something.
+- **`_ever_engaged` knows whether the garden ever touched a pest, and nothing draws it.**
+  `game/pest.gd:796` sets it on any damage above zero (and `:646` when a mouth holds one),
+  and the run summary counts pests
+  that "walked in untouched". A pest that reaches the house having been shot at and missed
+  is a different story from one that strolled past an empty road, and the flag separating
+  them already exists on every pest — it just never reaches the player except as an
+  aggregate at the end of the run.
+- **Death has a sound, a corpse and a linger; escape has none of the three.**
+  `DEATH_LINGER` gives a killed pest a beat on screen. A pest that reaches the house and
+  costs a garden bed exits instantly — the single most consequential event in the game is
+  its least marked. That asymmetry is exactly the generator that produced the last three
+  shipped ideas (the husk had a sound and the Sunflower did not), and this is the loudest
+  remaining instance of it.
+
 ### New this cycle (64) — three surfaces are each exactly one item from full
 
 - **The milestone shelf holds seven and has room for seven.** `SHELF_ROW_PITCH` is 42 and

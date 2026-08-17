@@ -78,8 +78,11 @@ running a command. **Never write a work checklist into it.**
      which is exactly the coverage a checklist of known failure modes exists to replace.
      Cycle 60 ran it and learned the UI baseline no longer exists, so every `ui_layout`
      finding has been gating as NEW for an unknown number of cycles. Read the NEW/PRE
-     split and the `By check:` denominator, and remember a frozen tree makes tweens look
-     like defects: this cycle's four findings were a panel caught mid-fade by `pause`.
+     split and the `By check:` denominator — and **run it UNPAUSED**. `pause` freezes
+     containers mid-layout as readily as it freezes a tween mid-fade: cycle 60 got four
+     `ui_transparent` findings from a panel caught mid-entrance, cycle 65 got a
+     `container_layout_drift` on a label whose HBox had not finished laying out, and both
+     went to zero the moment the tree stepped again.
    - **Read `git diff --stat` before every commit and check the shape is the one you
      meant.** Not the diff — the shape: how many files, how many lines each way. It costs
      one command and it is the ONLY gate a docs-only change has, since `/verify` triages
