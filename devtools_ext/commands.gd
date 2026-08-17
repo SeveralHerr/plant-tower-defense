@@ -124,10 +124,20 @@ func _cmd_spawn_pest(args: Dictionary) -> Dictionary:
 	var species := StringName(str(args.get("species", "aphid")))
 	if not Pest.SPECIES.has(species):
 		return _fail("unknown species '%s'" % species)
-	var mutation := StringName(str(args.get("mutation", "")))
+	# Accepts either `mutation: "winged"` or `mutations: ["winged", "hungry"]`. The
+	# singular form is kept because every existing script and every log entry uses it,
+	# and it is exactly the shorthand a person types at a prompt.
+	var wanted: Array[StringName] = []
+	var single := StringName(str(args.get("mutation", "")))
+	if single != &"":
+		wanted.append(single)
+	for each: Variant in (args.get("mutations", []) as Array):
+		var name := StringName(str(each))
+		if name != &"" and not wanted.has(name):
+			wanted.append(name)
 	var count: int = maxi(1, int(args.get("count", 1)))
 	for i: int in range(count):
-		game.spawn_pest(species, mutation)
+		game.spawn_pest(species, wanted)
 	return {
 		"success": true,
 		"message": "spawned %d %s" % [count, species],

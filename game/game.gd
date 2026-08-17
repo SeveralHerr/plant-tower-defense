@@ -756,10 +756,14 @@ static func coverage_note_for(frontier: float) -> String:
 ## Puts one pest on the road immediately. The wave director drives this; the
 ## devtools `spawn_pest` verb uses it to stage a single bug without a whole
 ## wave. `mutation` is &"" outside wave 8+ or for a manually staged pest.
-func spawn_pest(species: StringName, mutation: StringName = &"") -> void:
+func spawn_pest(species: StringName, mutations: Array = []) -> void:
 	var pest: Pest = _new_pest(species)
-	if mutation != &"":
-		pest.apply_mutation(mutation)
+	for which: StringName in mutations:
+		# Return value deliberately ignored: `apply_mutation` refuses a pair that does not
+		# compose, and WaveDirector already asked `Pest.mutations_compose` before rolling
+		# one. A refusal here means those two disagree, which is a bug in the rule rather
+		# than a case to handle at the spawn site -- and the pest is still a valid pest.
+		pest.apply_mutation(which)
 
 
 ## One pest on the road at the entrance, wired up and scaled for the wave in

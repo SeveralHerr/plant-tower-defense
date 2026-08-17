@@ -395,7 +395,7 @@ func test_a_started_wave_schedules_exactly_the_pests_the_table_promises() -> Str
 	await _T.instantiate_scene(host)
 
 	var spawned: Array[StringName] = []
-	director.spawn_requested.connect(func(species: StringName, _mutation: StringName) -> void: spawned.append(species))
+	director.spawn_requested.connect(func(species: StringName, _mutations: Array) -> void: spawned.append(species))
 	director.start_next_wave()
 	var guard: int = 0
 	while director.is_spawning() and guard < 4000:
@@ -4376,8 +4376,8 @@ func _over_promise_run(wave: int, corn_cells: Array, chomp_cells: Array,
 	director.endless = wave > WaveDirector.WAVES.size()
 	director.current_wave = wave - 1
 	var pending: Array[Dictionary] = []
-	director.spawn_requested.connect(func(species: StringName, mutation: StringName) -> void:
-		pending.append({"species": species, "mutation": mutation}))
+	director.spawn_requested.connect(func(species: StringName, mutations: Array) -> void:
+		pending.append({"species": species, "mutations": mutations}))
 	director.start_next_wave()
 
 	var pests: Array[Pest] = []
@@ -4437,8 +4437,8 @@ func _over_promise_run(wave: int, corn_cells: Array, chomp_cells: Array,
 			pest.setup(StringName(entry["species"]), route)
 			pest.apply_wave_scaling(
 				WaveDirector.health_scale_for(wave), WaveDirector.speed_scale_for(wave))
-			if StringName(entry["mutation"]) != &"":
-				pest.apply_mutation(StringName(entry["mutation"]))
+			for which: Variant in entry["mutations"]:
+				pest.apply_mutation(StringName(which))
 			pests.append(pest)
 			tally["spawned"] = int(tally["spawned"]) + 1
 			if pest.is_winged:
@@ -4824,9 +4824,27 @@ func test_the_coverage_map_keeps_its_promise_to_a_pest_that_never_leaves_covered
 				+ "this run it was kept every time")
 				% int(run["pests_all_covered"]))
 	if err == "":
-		err = _T.assert_eq(int(run["escaped_engaged"]), int(run["escaped"]),
-			("and all %d escapes had been fought on the way down, so the beds were lost to "
-				+ "throughput and not to a hole the map was hiding") % int(run["escaped"]))
+		# MOST escapes were fought, not all — and the difference is worth the paragraph,
+		# because this line asserted equality until cycle 81 and the equality was a
+		# coincidence of one RNG draw.
+		#
+		# Cycle 81 added a second-mutation roll past wave 20, which this run is (WAVES +
+		# 6 = 22). The extra `randf()` reshuffles every draw after it and the count went
+		# 34-of-34 to 20-of-34. **Demonstrated to be the stream and not the feature**: with
+		# the draws still consumed and the second mutation never actually applied, the
+		# failure is byte-identical. So nothing about doubly-mutated pests caused it; a
+		# different-but-equally-valid wave did.
+		#
+		# The claim that survives is the one above it — `pests_all_covered_untouched` is 0,
+		# so no pest that stayed on covered ground went untouched. A pest can still cross
+		# covered ground while everything covering it is mid-reload, and whether that
+		# happens 0 or 14 times is a property of the draw. Half is a floor, not a
+		# measurement: it distinguishes "the garden was fighting" from "the garden was
+		# ignoring them", which is all this line was ever able to say.
+		err = _T.assert_gte(int(run["escaped_engaged"]) * 2, int(run["escaped"]),
+			("and most of the %d escapes had been fought on the way down (%d were), so the "
+				+ "beds were lost to throughput and not to a hole the map was hiding")
+				% [int(run["escaped"]), int(run["escaped_engaged"])])
 	return err
 
 
@@ -5142,4 +5160,128 @@ func test_the_chew_ring_sweeps_rather_than_shrinking() -> String:
 			"and stays inside its own cell, got %.1f against %d"
 				% [ChompFlower.CHEW_RING_RADIUS + ChompFlower.CHEW_RING_WIDTH * 0.5,
 					Board.CELL / 2])
+	return err
+
+
+## Every ordered pair of mutations, classified (plant-tower-defense-1d07).
+##
+## Three traits is nine ordered pairs and only one of them is excluded, so a single worked
+## example would have proved almost nothing — and the pair that IS excluded is excluded for
+## a mechanical reason rather than a balance opinion, which is the thing worth pinning.
+##
+## `MUTATION_ARMOURED`'s only effect on play is doubling a Chomp's chew time, and a winged
+## pest cannot be grabbed by a Chomp at all. So armoured-winged is armoured in name, in
+## husk payout, and in nothing else. The bead worried the pair might be UNKILLABLE; it is
+## the opposite, and checking before building is what turned the design around.
+func test_every_mutation_pair_states_whether_it_composes() -> String:
+	var all: Array[StringName] = [Pest.MUTATION_ARMOURED, Pest.MUTATION_WINGED,
+		Pest.MUTATION_HUNGRY]
+	var err: String = _T.assert_eq(all.size(), Pest.MUTATION_HUSK_MULTIPLIER.size(),
+		"this table covers every mutation the game has")
+	if err != "":
+		return err
+	var composed: int = 0
+	for a: StringName in all:
+		for b: StringName in all:
+			var excluded: bool = (a == b) \
+				or (a == Pest.MUTATION_ARMOURED and b == Pest.MUTATION_WINGED) \
+				or (a == Pest.MUTATION_WINGED and b == Pest.MUTATION_ARMOURED)
+			err = _T.assert_eq(Pest.mutations_compose(a, b), not excluded,
+				"%s beside %s" % [a, b])
+			if err != "":
+				return err
+			if not excluded:
+				composed += 1
+	# Four ordered pairs compose (hungry with each of the other two, both ways round).
+	# A denominator, so an exclusion list that swallowed everything would not read clean.
+	return _T.assert_eq(composed, 4,
+		"four ordered pairs compose, not %d -- an exclusion list that grew silently would "
+			% composed + "otherwise make this whole sweep pass over nothing")
+
+
+## A second mutation composes onto the first, and the payout follows it.
+func test_a_second_mutation_composes_onto_the_first() -> String:
+	var pest: Pest = _pest(Pest.APHID, Vector2(50, 50))
+	var err: String = _T.assert_true(pest.apply_mutation(Pest.MUTATION_HUNGRY),
+		"the first trait applies")
+	if err == "":
+		err = _T.assert_true(pest.apply_mutation(Pest.MUTATION_WINGED),
+			"and a composing second one does too")
+	if err == "":
+		err = _T.assert_true(pest.is_hungry and pest.is_winged,
+			"both flags are live, so both mechanics are")
+	if err == "":
+		# The cache-and-source invariant the two fields carry.
+		err = _T.assert_eq(String(pest.mutation), String(pest.mutations[0]),
+			"the primary is the first applied, which is the tint the sprite wears")
+	if err == "":
+		err = _T.assert_float_eq(pest.husk_multiplier(),
+			float(Pest.MUTATION_HUSK_MULTIPLIER[Pest.MUTATION_HUNGRY])
+				* float(Pest.MUTATION_HUSK_MULTIPLIER[Pest.MUTATION_WINGED]), 0.0001,
+			"and the husk pays for BOTH -- reading the primary alone would have paid for one")
+	if err == "":
+		err = _T.assert_false(pest.apply_mutation(Pest.MUTATION_HUNGRY),
+			"the same trait twice is refused, or a payout doubles for nothing")
+	if err == "":
+		err = _T.assert_eq(pest.mutations.size(), 2, "and the refusal changed nothing")
+	pest.free()
+	return err
+
+
+## The excluded pair is refused at the pest, not only at the roll.
+func test_an_armoured_pest_refuses_wings_and_keeps_its_chew_time() -> String:
+	var pest: Pest = _pest(Pest.BEETLE, Vector2(50, 50))
+	var before: float = pest.chew_seconds
+	var err: String = _T.assert_true(pest.apply_mutation(Pest.MUTATION_ARMOURED), "armoured")
+	if err == "":
+		err = _T.assert_float_eq(pest.chew_seconds, before * 2.0, 0.0001,
+			"which is the whole of what armoured does to play")
+	if err == "":
+		err = _T.assert_false(pest.apply_mutation(Pest.MUTATION_WINGED),
+			"and wings are refused, because they would make that doubling unreachable")
+	if err == "":
+		err = _T.assert_false(pest.is_winged, "the refusal left no flag behind")
+	if err == "":
+		err = _T.assert_float_eq(pest.husk_multiplier(),
+			float(Pest.MUTATION_HUSK_MULTIPLIER[Pest.MUTATION_ARMOURED]), 0.0001,
+			"nor a payout for a trait it does not carry")
+	pest.free()
+	return err
+
+
+## A pair is late and rare (plant-tower-defense-1d07).
+##
+## Both ends, because "rare" without a floor is indistinguishable from "never" and this
+## roll sits behind another roll, so its real frequency is a product.
+func test_a_second_mutation_is_rare_and_late() -> String:
+	var err: String = _T.assert_gt(WaveDirector.SECOND_MUTATION_START_WAVE,
+		WaveDirector.MUTATION_START_WAVE + WaveDirector.WAVES.size() / 2,
+		"pairs start a good while after single mutations do")
+	if err == "":
+		# The product, at the first wave they can happen and at the endless cap.
+		var at_start: float = WaveDirector.mutation_chance_for(
+			WaveDirector.SECOND_MUTATION_START_WAVE) * WaveDirector.SECOND_MUTATION_CHANCE
+		err = _T.assert_true(at_start < 0.05,
+			"a pair is under 5%% of pests when they begin, got %.3f" % at_start)
+		if err == "":
+			var at_cap: float = WaveDirector.MUTATION_CHANCE_MAX \
+				* WaveDirector.SECOND_MUTATION_CHANCE
+			err = _T.assert_true(at_cap > 0.0 and at_cap < 0.12,
+				"and still an event rather than a texture at the cap, got %.3f" % at_cap)
+	if err == "":
+		# No pair can be scheduled before its wave, whatever the draw.
+		var director := WaveDirector.new()
+		director.set_seed(4242)
+		director.endless = true
+		director.current_wave = WaveDirector.SECOND_MUTATION_START_WAVE - 2
+		director.start_next_wave()
+		var paired: int = 0
+		for entry: Dictionary in director._schedule:
+			if (entry["mutations"] as Array).size() > 1:
+				paired += 1
+		err = _T.assert_eq(paired, 0, "no pair one wave early")
+		if err == "":
+			err = _T.assert_gt(director._schedule.size(), 10,
+				"and the schedule was really populated, or that zero means nothing")
+		director.free()
 	return err

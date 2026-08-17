@@ -152,7 +152,10 @@ func test_each_mutation_has_a_husk_multiplier_above_one() -> String:
 	var pest := Pest.new()
 	var err: String = ""
 	for mutation: StringName in [Pest.MUTATION_ARMOURED, Pest.MUTATION_WINGED, Pest.MUTATION_HUNGRY]:
-		pest.mutation = mutation
+		# Through `mutations`, not by assigning `mutation`: since cycle 81 the multiplier
+		# is a product over every trait a pest carries, and the primary field is the tint's
+		# cache rather than the payout's source.
+		pest.mutations = [mutation]
 		err = _T.assert_true(pest.husk_multiplier() > 1.0, "%s costs more to deal with, so its husk pays more" % mutation)
 		if err != "":
 			break
@@ -164,9 +167,9 @@ func test_each_mutation_has_a_husk_multiplier_above_one() -> String:
 ## winged just cost extra effort) — its husk should be worth the most.
 func test_a_hungry_mutations_husk_is_worth_more_than_armoured_or_winged() -> String:
 	var pest := Pest.new()
-	pest.mutation = Pest.MUTATION_HUNGRY
+	pest.mutations = [Pest.MUTATION_HUNGRY]
 	var hungry: float = pest.husk_multiplier()
-	pest.mutation = Pest.MUTATION_ARMOURED
+	pest.mutations = [Pest.MUTATION_ARMOURED]
 	var armoured: float = pest.husk_multiplier()
 	var err: String = _T.assert_true(hungry > armoured, "hungry's husk bonus is the biggest of the three")
 	pest.free()
@@ -187,7 +190,7 @@ func test_a_mutated_pests_husk_is_worth_more_than_a_plain_ones() -> String:
 	for h: Dictionary in game.compost.husks():
 		plain_husk = int(h["value"])
 
-	game.spawn_pest(Pest.APHID, Pest.MUTATION_HUNGRY)
+	game.spawn_pest(Pest.APHID, [Pest.MUTATION_HUNGRY])
 	var mutated: Pest = null
 	for node: Node in game.get_tree().get_nodes_in_group("pests"):
 		if node != plain:

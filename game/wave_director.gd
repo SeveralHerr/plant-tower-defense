@@ -5,7 +5,11 @@ extends Node
 ## wave is a list of groups rather than a flat count — a run of eight aphids
 ## followed by a beetle reads very differently from the two interleaved.
 
-signal spawn_requested(species: StringName, mutation: StringName)
+## `mutations` is the whole set the roll produced — empty, one, or (since cycle 81, past
+## SECOND_MUTATION_START_WAVE) two. It replaced a single `mutation: StringName` argument
+## rather than joining it, because two arguments meaning the same thing is how a listener
+## ends up reading the one that is easier and paying a doubly-mutated pest for one trait.
+signal spawn_requested(species: StringName, mutations: Array)
 signal wave_started(number: int)
 signal wave_spawning_finished(number: int)
 
@@ -28,6 +32,24 @@ const MUTATIONS: Array[StringName] = [Pest.MUTATION_ARMOURED, Pest.MUTATION_WING
 ## Climbing this too keeps a long endless run from going numb.
 const MUTATION_CHANCE_ENDLESS_STEP: float = 0.02
 const MUTATION_CHANCE_MAX: float = 0.85
+
+## A second trait on the same pest, and the first thing this game's endless ramp does that
+## raises VARIETY rather than intensity.
+##
+## Everything else that escalates — health, speed, the beetle column, the mutation chance
+## itself — makes the same eight kinds of enemy (two species x three mutations plus plain)
+## arrive harder and more often. Past the cap at wave ~30 the player has met all eight for
+## hours and meets nothing new again, ever. A pair is a genuinely different problem rather
+## than a bigger one: a hungry winged aphid ignores the Chomp AND eats what it reaches, and
+## the answer to it is a different arrangement of plants, not more of them.
+##
+## Kept deliberately late and rare. It starts a full campaign's worth of waves after single
+## mutations do, and it is a roll ON TOP of a pest that already mutated, so its real
+## frequency is `mutation_chance_for(wave) * SECOND_MUTATION_CHANCE` — under 3% at the
+## first wave it can happen and ~7% at the endless cap. Rare enough that meeting one is an
+## event; `test_a_second_mutation_is_rare_and_late` pins both ends.
+const SECOND_MUTATION_START_WAVE: int = 20
+const SECOND_MUTATION_CHANCE: float = 0.08
 
 ## Count, gap and mutation chance all climb past the fixed table, but the pest
 ## itself did not: a wave-60 aphid had the same 3 HP and 78 px/s as a wave-9
@@ -695,10 +717,25 @@ func _build_schedule(groups: Array) -> Array[Dictionary]:
 		cursor += float(group["lead"])
 		var gap: float = float(group["gap"])
 		for i: int in range(int(group["count"])):
-			var mutation: StringName = &""
+			var rolled: Array[StringName] = []
 			if mutating and _rng.randf() < chance:
-				mutation = MUTATIONS[_rng.randi_range(0, MUTATIONS.size() - 1)]
-			out.append({"species": group["species"], "at": cursor, "mutation": mutation})
+				rolled.append(MUTATIONS[_rng.randi_range(0, MUTATIONS.size() - 1)])
+				# A second trait is a roll ON TOP of a pest that already mutated, so
+				# its real frequency is the product of the two chances. Rolled from the
+				# whole list and rejected once if it does not compose, rather than from
+				# a filtered list: `Pest.mutations_compose` owns that rule and a second
+				# copy of it here is how the two drift.
+				if current_wave >= SECOND_MUTATION_START_WAVE \
+						and _rng.randf() < SECOND_MUTATION_CHANCE:
+					var second: StringName = MUTATIONS[_rng.randi_range(0, MUTATIONS.size() - 1)]
+					if Pest.mutations_compose(rolled[0], second):
+						rolled.append(second)
+			out.append({
+				"species": group["species"],
+				"at": cursor,
+				"mutation": rolled[0] if not rolled.is_empty() else &"",
+				"mutations": rolled,
+			})
 			cursor += gap
 	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["at"]) < float(b["at"]))
 	return out
@@ -710,7 +747,7 @@ func _process(delta: float) -> void:
 	_elapsed += delta
 	while _next < _schedule.size() and float(_schedule[_next]["at"]) <= _elapsed:
 		var entry: Dictionary = _schedule[_next]
-		spawn_requested.emit(entry["species"], entry["mutation"])
+		spawn_requested.emit(entry["species"], entry["mutations"])
 		_next += 1
 	if _next >= _schedule.size():
 		_running = false

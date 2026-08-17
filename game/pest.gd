@@ -106,6 +106,39 @@ const MUTATION_HUSK_MULTIPLIER: Dictionary = {
 	MUTATION_HUNGRY: 2.0,
 }
 
+## The one pair that must never be rolled together, and the reason is mechanical
+## rather than a balance opinion.
+##
+## `MUTATION_ARMOURED`'s **only** effect on play is `chew_seconds *= 2.0` — a Chomp's
+## mouth tied up twice as long (`apply_mutation` below; the rest of `is_armoured`'s
+## readers are `gait_swing`/`gait_rate`, which are cosmetic). And a winged pest cannot be
+## grabbed by a Chomp at all (`game/chomp_flower.gd:85`). So an armoured winged pest is
+## armoured in name and in husk payout and in nothing else: **the mutation's mechanic is
+## dead the moment it lands.**
+##
+## The bead that asked for pairs (`-1d07`) worried the combination might be UNKILLABLE.
+## Checked before building rather than after, and it is the opposite — the pair is
+## redundant, not lethal. A pest that pays 1.5 x 1.5 for a trait it cannot use is a
+## payout bug wearing a difficulty costume, which is worse than an easy pest.
+##
+## Stated as data rather than an `if` so a fourth mutation forces its author to say which
+## pairs it can appear beside, and `test_every_mutation_pair_states_whether_it_composes`
+## fails on a pair nobody has classified.
+const MUTATION_EXCLUSIONS: Array[Array] = [
+	[MUTATION_ARMOURED, MUTATION_WINGED],
+]
+
+
+## Whether two mutations may sit on the same pest. Symmetric, and false for a mutation
+## against itself — applying the same trait twice would double a payout for nothing.
+static func mutations_compose(a: StringName, b: StringName) -> bool:
+	if a == b:
+		return false
+	for pair: Array in MUTATION_EXCLUSIONS:
+		if (a == pair[0] and b == pair[1]) or (a == pair[1] and b == pair[0]):
+			return false
+	return true
+
 ## Each mutation's hue. Still applied as a sprite tint — but hue is the one
 ## channel that survives neither colour blindness nor a greyscale screenshot,
 ## and two of these three change what the player must do (winged is unreachable
@@ -281,7 +314,19 @@ var is_big: bool = false
 ## Set by a Chomp Flower while it is eating this pest. A held pest does not move.
 var held_by: Node = null
 
+## The PRIMARY mutation — the first one applied, and the one whose hue the sprite wears.
+## Kept as its own field rather than derived on read because it is what every existing
+## reader means by "which mutation is this", and because a pest with two of them still has
+## only one tint to wear.
+##
+## `mutations` is the whole set. The two are a cache and its source: the invariant is
+## `mutation == mutations[0]` when there is one and `&""` when there is not, asserted by
+## `test_a_second_mutation_composes_onto_the_first` rather than trusted.
 var mutation: StringName = &""
+## Every mutation on this pest, in the order applied. Empty for a plain one, one entry
+## for the common case, at most two by `WaveDirector`'s roll — but nothing here caps it,
+## because the cap is a balance decision and this is the mechanism.
+var mutations: Array[StringName] = []
 var is_armoured: bool = false
 var is_winged: bool = false
 var is_hungry: bool = false
@@ -452,8 +497,25 @@ func apply_wave_scaling(health_multiplier: float, speed_multiplier: float) -> vo
 ## last one's. Nothing in the game does that today, but a Chomp already reads
 ## `is_winged` directly, and a cue that disagreed with the rule it advertises
 ## would be worse than no cue at all.
-func apply_mutation(which: StringName) -> void:
-	mutation = which
+## Applies a mutation, composing onto whatever this pest already carries. Returns false
+## and changes nothing when the trait is already present or cannot sit beside one that is
+## — see `MUTATION_EXCLUSIONS` for the one pair that cannot, and why.
+##
+## The tint stays the PRIMARY's, deliberately. A blend of two hues is a third colour the
+## player has never been taught, and the non-colour half of a mutation's read composes for
+## free without it: `gait_swing` and `gait_rate` already take `is_armoured` and
+## `is_winged`, and `gait_stretch` takes `is_hungry`, so a doubly-mutated pest MOVES like
+## both while wearing one colour. That is the two-channel rule paying off in a case
+## nobody designed it for.
+func apply_mutation(which: StringName) -> bool:
+	if not MUTATION_HUSK_MULTIPLIER.has(which):
+		return false
+	for existing: StringName in mutations:
+		if not mutations_compose(existing, which):
+			return false
+	mutations.append(which)
+	if mutation == &"":
+		mutation = which
 	match which:
 		MUTATION_ARMOURED:
 			is_armoured = true
@@ -463,8 +525,9 @@ func apply_mutation(which: StringName) -> void:
 			is_winged = true
 		MUTATION_HUNGRY:
 			is_hungry = true
-	_tint(tint_for(which))
+	_tint(tint_for(mutation))
 	queue_redraw()
+	return true
 
 
 ## The hue for a mutation; white (i.e. untinted) for &"" and anything unknown.
@@ -925,8 +988,15 @@ func was_engaged() -> bool:
 
 ## 1.0 for a plain pest; higher for a mutation, so a harder kill leaves a
 ## better husk. Game._on_pest_died reads this when it drops one.
+## What this pest's husk is worth, as a multiple. Multiplies across every mutation it
+## carries rather than reading the primary — a pest that is twice as hard to answer should
+## pay twice, and reading `mutation` alone would have silently paid a doubly-mutated pest
+## the price of one trait from the moment pairs became possible.
 func husk_multiplier() -> float:
-	return float(MUTATION_HUSK_MULTIPLIER.get(mutation, 1.0))
+	var total: float = 1.0
+	for each: StringName in mutations:
+		total *= float(MUTATION_HUSK_MULTIPLIER.get(each, 1.0))
+	return total
 
 
 func _escape() -> void:
