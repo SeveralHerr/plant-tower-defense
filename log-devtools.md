@@ -6398,3 +6398,14 @@ Noted on the bead.
   - Cheaper: `run_tests.py --filter pest_control` alone plus the capture, ~50s vs the full ~4 min gate set.
 
 - Gap: no gaps this turn.
+
+## 2026-08-17 — Extracted Gather's itch.io deploy workflow into the `itch-ci-deploy` skill; installed it here
+
+- Value: **overkill** — no runtime, no bridge; nothing here touches the game tree.
+  - Expected: nothing from the harness — this is a CI/workflow + skill-authoring change.
+  - Got: `scaffold_itch_deploy.py . --target severalherr/plant-tower-defense:html5` wrote `export_presets.cfg` (preset.0 Web, thread_support=false) and `.github/workflows/deploy-to-itchio.yml`; diff against Gather's proven file shows only the parameterisation.
+  - Found: nothing (no local 4.7 web templates, so the export itself is unproven until CI runs).
+  - Cheaper: this was already the cheapest path.
+
+- Gap: no gaps this turn — the harness has no CI/export role and was not asked to have one.
+  - [G-000] status: n/a | seen: 0 | harness: (not consulted)
