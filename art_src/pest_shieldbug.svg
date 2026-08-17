@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Shield Bug: the plated pest. Top-down, walks up-screen (−Y).
+
+       The plate is the whole species (see Pest.SPECIES[SHIELDBUG]), so it is the
+       biggest shape on the canvas and it is the only thing on the board drawn in
+       STYLE.md's Blue-grey family. Not green — that is GardenTheme.LEAF exactly,
+       the lawn it stands on. Not the Sand family either: the road is Kenney's
+       tile050, which is tan, and every pest in this game spends its whole life on
+       the road. Red head and legs so it still reads as one of the aphid's
+       relatives rather than as a piece of scenery that wandered off. -->
+
+  <!-- legs (behind the plate) -->
+  <g stroke="#AF392D" stroke-width="2.5" stroke-linecap="round" fill="none">
+    <path d="M20 28 L9 23"/>
+    <path d="M19 36 L7 36"/>
+    <path d="M21 44 L10 50"/>
+    <path d="M44 28 L55 23"/>
+    <path d="M45 36 L57 36"/>
+    <path d="M43 44 L54 50"/>
+  </g>
+
+  <!-- antennae -->
+  <g stroke="#AF392D" stroke-width="2" stroke-linecap="round" fill="none">
+    <path d="M28 13 Q 23 8 19 7"/>
+    <path d="M36 13 Q 41 8 45 7"/>
+  </g>
+  <circle cx="19" cy="7" r="1.8" fill="#AF392D"/>
+  <circle cx="45" cy="7" r="1.8" fill="#AF392D"/>
+
+  <!-- head, drawn before the plate so the pronotum overlaps its back edge -->
+  <circle cx="32" cy="18" r="7.5" fill="#E74C3C" stroke="#AF392D" stroke-width="2"/>
+  <circle cx="28.8" cy="16.5" r="2.2" fill="#FFFFFF"/>
+  <circle cx="35.2" cy="16.5" r="2.2" fill="#FFFFFF"/>
+  <circle cx="28.8" cy="16.5" r="1.1" fill="#7A2820"/>
+  <circle cx="35.2" cy="16.5" r="1.1" fill="#7A2820"/>
+
+  <!-- the plate: a heraldic shield, widest at the shoulders and tapering to a
+       point at the tail. Symmetric about x=32 by construction, which is what the
+       gate's bilateral-centring check measures. -->
+  <path d="M32 20 L46 25 L47 34 Q 44 46 32 53 Q 20 46 17 34 L18 25 Z"
+        fill="#89A4A6" stroke="#758C8E" stroke-width="2" stroke-linejoin="round"/>
+
+  <!-- flat facets, never a gradient -->
+  <ellipse cx="25" cy="31" rx="3.5" ry="5" fill="#A3C3C6"/>
+  <ellipse cx="39" cy="31" rx="3.5" ry="5" fill="#A3C3C6"/>
+
+  <!-- seams: the centreline and the scutellum chevron -->
+  <g stroke="#758C8E" stroke-width="1.5" stroke-linecap="round" fill="none">
+    <path d="M32 22 L32 50"/>
+    <path d="M23 26 L32 30.5 L41 26"/>
+  </g>
+</svg>

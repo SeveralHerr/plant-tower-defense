@@ -1,9 +1,13 @@
 class_name Pest
 extends Node2D
 
-## A bug walking the road. Three species, per the drawings: a small fast one
-## (aphid), a big slow one (beetle), and the boss the campaign builds toward (the
-## Aphid Queen).
+## A bug walking the road. Four species: a small fast one (aphid), a big slow one
+## (beetle), a plated one that shrugs off small hits (the Shield Bug), and the
+## boss the campaign builds toward (the Aphid Queen).
+##
+## Three of the four are answered by damage and differ only in how much of it
+## they need. The Shield Bug is the one that is answered by a different KIND of
+## damage — see its SPECIES entry.
 ##
 ## The interesting state here is `held_by`. A Chomp Flower that grabs a pest does
 ## not delete it — it holds it in place for `chew_seconds` while the pest stays on
@@ -15,16 +19,22 @@ signal escaped(pest: Pest)
 
 const APHID := &"aphid"
 const BEETLE := &"beetle"
+const SHIELDBUG := &"shieldbug"
 const QUEEN := &"queen"
 
 ## species -> stats. `chew_seconds` is the design doc's "eats small pests easily,
 ## takes a while eating bigger pests" expressed as a number.
 ##
-## `split_species` / `split_count` are the boss mechanic and the only optional
-## pair here: a species that names them bursts into that many of that species
-## WHERE IT DIED rather than simply leaving the board. Read through
-## split_species() / split_count() below, never off the raw Dictionary, so an
-## ordinary pest answers "&"" / 0" instead of erroring on a missing key.
+## `split_species` / `split_count` are the boss mechanic and one of the two
+## optional pairs here: a species that names them bursts into that many of that
+## species WHERE IT DIED rather than simply leaving the board.
+##
+## `shell_absorb` / `shell_hits` are the other, and belong to the Shield Bug.
+##
+## Both pairs are read through the accessors below — split_species() /
+## split_count() / shell_absorb() / shell_hits() — and never off the raw
+## Dictionary, so an ordinary pest answers "&"" / 0" instead of erroring on a
+## missing key.
 const SPECIES: Dictionary = {
 	APHID: {
 		"display": "Aphid",
@@ -47,6 +57,73 @@ const SPECIES: Dictionary = {
 		"chew_seconds": 2.6,
 		"scale": 1.0,
 		"big": true,
+	},
+	## The Shield Bug (plant-tower-defense-4du6). The one pest on the board that is
+	## answered by a different KIND of damage rather than by more of it.
+	##
+	## ONE SENTENCE: its plate eats up to `shell_absorb` off every hit for its first
+	## `shell_hits` hits, so a Corn Cobbler's stream of small kernels bounces off it
+	## entirely while a Dandelion's bigger seed and a Chomp's mouth do not care —
+	## which asks the player to change WHICH plant answers the lane, not where they
+	## aim it.
+	##
+	## The numbers, and what each is for:
+	##   * shell_absorb 1.5 — chosen against the two damage sources the game actually
+	##     has, not picked. `CornCobbler.LEVELS` tops out at 1.4 damage per kernel
+	##     (corn_cobbler.gd:51) and `Dandelion.SEED_DAMAGE` is 3.0 at the centre of a
+	##     blast (dandelion.gd:105), so 1.5 is the only band where EVERY corn kernel
+	##     at EVERY level is stopped dead and a centred seed still puts half its
+	##     damage through. Both halves are asserted in test_combat rather than
+	##     written down here, so a balance pass on either plant fails loudly instead
+	##     of quietly turning this species into a beetle.
+	##   * shell_hits 6 — the shell counts HITS, not damage, and that is the whole
+	##     mechanic. If it counted damage it would cost every weapon exactly the same
+	##     6 x 1.5 and the small-versus-big axis would not exist; counting hits makes
+	##     a level-1 cob waste six entire shots (4.8 s of firing) while six Dandelion
+	##     seeds still land 9 damage on the way through. Six is also what stops the
+	##     species being unkillable by the free starter plant: the plate always comes
+	##     off, so the worst a stream of 1.0 kernels can do is arrive late.
+	##   * health 10 — between an aphid's 3 and a beetle's 16. Once the plate is off
+	##     it is an ordinary bug; the difficulty is meant to be the plate, not a
+	##     second health pool wearing its name.
+	##   * speed 54 — between the aphid's 78 and the beetle's 38, and deliberately NOT
+	##     slow. "Slow and tough" is already the beetle, and a second slow tough pest
+	##     is a beetle with a new number. A brisk walk is what stops the player simply
+	##     out-firing the plate with the cobs they already own.
+	##   * seeds 6 — between the aphid's 3 and the beetle's 9. Also chosen against
+	##     `CompostMeter.husk_value_for`: 6 seeds drops husks worth {3, 5, 6, 9}
+	##     across the four composable mutation multipliers, of which only 6 is new to
+	##     the reachable set and all four sit at or below `CompostMeter.FULL_VALUE`.
+	##     So the husk cues keep telling every drop apart and `HuskLayer.overflow_pips`
+	##     is untouched — a new species must not silently collapse two husks into one
+	##     picture (test_selftest.gd:2251 is the gate that would catch it).
+	##   * chew_seconds 3.0 — longer than a beetle's 2.6 on less than two thirds the
+	##     health, because the mouth has to work through the plate. That is the third
+	##     answer to this pest and the reason it is a plan change rather than a wall:
+	##     a Chomp ignores the shell completely and pays in time instead.
+	##
+	## The shell is deliberately NOT scaled by `apply_wave_scaling`. Health and speed
+	## ride the endless ramp; a fixed six-hit tax is a wall at wave 10 and a formality
+	## by wave 30, which is the right shape for a variety mechanic — the alternative
+	## is a pest whose defining trait grows without bound.
+	##
+	## Not to be confused with MUTATION_ARMOURED, which shares none of this: that
+	## trait only doubles `chew_seconds` and never touches damage, and it announces
+	## itself with the drawn PLATE arcs in _draw(). This species carries its plate in
+	## its own sprite and wears no marker at all — species are read from the drawing,
+	## mutations from the marks, which is how the aphid, beetle and queen already work.
+	SHIELDBUG: {
+		"display": "Shield Bug",
+		"texture": "res://assets/sprites/pest_shieldbug.png",
+		"dead_texture": "res://assets/sprites/pest_shieldbug_dead.png",
+		"health": 10.0,
+		"speed": 54.0,
+		"seeds": 6,
+		"chew_seconds": 3.0,
+		"scale": 0.88,
+		"big": true,
+		"shell_absorb": 1.5,
+		"shell_hits": 6,
 	},
 	## The boss (plant-tower-defense-74a). Deliberately NOT a fourth mutation and
 	## deliberately not "a beetle with more health": what makes a queen a
@@ -311,6 +388,18 @@ var seed_value: int = 1
 var chew_seconds: float = 0.5
 var is_big: bool = false
 
+## The live half of the Shield Bug's plate. Both are 0 for every other species,
+## which is what makes `take_damage` a single branch rather than a species check —
+## an unshelled pest has nothing left to block with from the frame it spawns.
+##
+## `shell_blocks` counts HITS remaining, not damage remaining; see the SHIELDBUG
+## entry for why that distinction IS the mechanic. It is public because it is state
+## a player is being asked to track, so a devtools read and a test should be able to
+## ask the same question the sprite is trying to answer.
+var shell_blocks: int = 0
+## How much of ONE hit a block eats. Seeded from the species and never scaled.
+var shell_strength: float = 0.0
+
 ## Set by a Chomp Flower while it is eating this pest. A held pest does not move.
 var held_by: Node = null
 
@@ -402,6 +491,18 @@ static var _next_gait_index: int = 0
 ## The reading this exists for is at the moment of escape; see Game._note_escape.
 var _ever_engaged: bool = false
 
+## Did the most recent damaging hit fail to get through the plate?
+##
+## Recorded rather than passed as an argument because the two halves of one hit are
+## made by two different objects a frame apart: `Kernel._physics_process` calls
+## `take_damage()` and then `flash_hit()` (game/kernel.gd:70, :76), and a third
+## caller (SeedBomb) does the same. Widening `flash_hit()` to take the answer would
+## mean editing every call site to pass back something the pest already knows.
+##
+## Only ever read by `flash_hit()`, and reset at the top of every `take_damage()`
+## so a blocked hit cannot colour the flash of the landed hit after it.
+var _last_hit_blocked: bool = false
+
 
 func setup(which: StringName, route: PackedVector2Array) -> void:
 	species = which
@@ -412,6 +513,8 @@ func setup(which: StringName, route: PackedVector2Array) -> void:
 	seed_value = int(stats["seeds"])
 	chew_seconds = float(stats["chew_seconds"])
 	is_big = bool(stats["big"])
+	shell_strength = shell_absorb(which)
+	shell_blocks = shell_hits(which)
 	_route = route
 	_leg = 1
 	if not _route.is_empty():
@@ -472,6 +575,46 @@ static func split_count(which: StringName) -> int:
 		return 0
 	var stats: Dictionary = SPECIES.get(which, {}) as Dictionary
 	return int(stats.get("split_count", 0))
+
+
+## How much of a single hit `which`'s plate eats, or 0.0 for a species with no
+## plate. Same shape as split_species() above and for the same reason: `SPECIES`
+## rows are optional-key dictionaries, and every reader going through an accessor
+## is what keeps a missing key from being an error at three separate call sites.
+static func shell_absorb(which: StringName) -> float:
+	var stats: Dictionary = SPECIES.get(which, {}) as Dictionary
+	return float(stats.get("shell_absorb", 0.0))
+
+
+## How many hits that plate stops before it comes off; 0 for a species with none.
+##
+## Reads `shell_absorb` first rather than its own key, so a row that names a hit
+## count and forgets the amount is unshelled instead of being a plate that eats
+## nothing while still swallowing six shots' worth of the player's time.
+static func shell_hits(which: StringName) -> int:
+	if shell_absorb(which) <= 0.0:
+		return 0
+	var stats: Dictionary = SPECIES.get(which, {}) as Dictionary
+	return int(stats.get("shell_hits", 0))
+
+
+## Pure: how much of an `amount`-sized hit reaches the flesh under a plate with
+## `blocks_left` blocks still on it.
+##
+## The whole species in one expression, and split out here precisely so it is
+## assertable without a tree, a plant, or a projectile. Note what it does NOT do:
+## it never consumes the block, because a pure function that mutated its own
+## argument's meaning would make the interesting case — "what would a 1.0 kernel
+## do right now" — impossible to ask without spending it.
+##
+## A hit at or under `strength` is stopped completely. It still costs the shell a
+## block; the caller in take_damage() is where that happens, and the SHIELDBUG
+## entry argues at length why counting hits rather than damage is the mechanic
+## rather than an implementation detail.
+static func damage_through_shell(amount: float, strength: float, blocks_left: int) -> float:
+	if amount <= 0.0 or strength <= 0.0 or blocks_left <= 0:
+		return amount
+	return maxf(0.0, amount - strength)
 
 
 ## Endless mode's per-wave difficulty multipliers, from
@@ -857,7 +1000,17 @@ func take_damage(amount: float, cause: StringName = &"") -> void:
 	# "something shot at it" must mean something landed.
 	if amount > 0.0:
 		_ever_engaged = true
-	health = maxf(0.0, health - amount)
+	# The plate. `landed` is what actually reaches the bug; a block is spent on any
+	# damaging hit at all, whether it got through or not, which is the Shield Bug's
+	# whole small-versus-big axis (see its SPECIES entry). A zero-damage call spends
+	# nothing — nothing was fired.
+	var landed: float = amount
+	_last_hit_blocked = false
+	if amount > 0.0 and shell_blocks > 0:
+		landed = damage_through_shell(amount, shell_strength, shell_blocks)
+		_last_hit_blocked = landed <= 0.0
+		shell_blocks -= 1
+	health = maxf(0.0, health - landed)
 	if is_instance_valid(_health_bar):
 		_health_bar.size = Vector2(HEALTH_BAR_SIZE.x * (health / max_health), HEALTH_BAR_SIZE.y)
 	if health <= 0.0:
@@ -872,19 +1025,56 @@ static func hit_flash_color(base: Color) -> Color:
 	return Color(base.r * HIT_FLASH_BOOST, base.g * HIT_FLASH_BOOST, base.b * HIT_FLASH_BOOST, base.a)
 
 
+## Pure: what a hit the PLATE ATE flashes towards instead.
+##
+## A Shield Bug's whole difficulty is hits that do nothing, and until this existed a
+## blocked hit and a landed one were pixel-for-pixel the same event — `flash_hit()`
+## fires on both, because from the caller's side both are "a hit the pest survived".
+## A player watching six kernels bounce would have seen six ordinary hits and
+## concluded the health bar was broken.
+##
+## Down rather than up, which is the point: `HIT_FLASH_BOOST` multiplies the
+## channels above 1.0 and this multiplies them below it, so the two read as a bright
+## flash against a dull thud **on the same channel, in the same direction the
+## player already understands** — brighter means it hurt. That survives the colour
+## being thrown away (a greyscale screenshot separates them just as well), which is
+## `game/OVERLAY_GRAMMAR.md`'s one rule with teeth.
+##
+## Deliberately not a new drawn cue. The grammar file's table is the vocabulary for
+## marks drawn in code, and adding a row to it fails the suite until the notebook's
+## cue legend teaches the new shape — the right cost for a shape, and the wrong one
+## for what is really just the existing hit flash saying "no". Alpha is left alone
+## for the same reason `hit_flash_color` leaves it alone.
+const SHELL_FLASH_DIM: float = 0.45
+
+
+static func shell_flash_color(base: Color) -> Color:
+	return Color(base.r * SHELL_FLASH_DIM, base.g * SHELL_FLASH_DIM, base.b * SHELL_FLASH_DIM, base.a)
+
+
 ## The visual tell for a hit this pest survived. Called by Kernel right after a
 ## connecting take_damage() that did NOT kill — see HIT_FLASH_DURATION's comment
 ## for why a lethal hit does not also call this (it has its own, bigger cue).
 ##
+## Two peaks now, not one: bright for a hit that landed, dull for one a Shield Bug's
+## plate ate. `_last_hit_blocked` is CONSUMED here rather than merely read, because
+## the third caller is `StickySundew` (game/sticky_sundew.gd:281), which flashes a
+## pest it never damaged — without the reset, a sundew's flash would inherit the
+## verdict of whatever kernel happened to hit that pest last.
+##
 ## Gated the same way every cosmetic Tween in this game is: headless pumps no
 ## frames, so a Tween queued there never runs and this is a silent no-op rather
-## than a wasted node.
+## than a wasted node. The reset is therefore deliberately BEFORE the gate — a flag
+## that outlived an animations-off session would come back stale.
 func flash_hit() -> void:
+	var blocked: bool = _last_hit_blocked
+	_last_hit_blocked = false
 	if not _alive or _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
 		return
 	var base: Color = _sprite.modulate
+	var peak: Color = shell_flash_color(base) if blocked else hit_flash_color(base)
 	var tween := create_tween()
-	tween.tween_property(_sprite, "modulate", hit_flash_color(base), HIT_FLASH_DURATION * 0.35)
+	tween.tween_property(_sprite, "modulate", peak, HIT_FLASH_DURATION * 0.35)
 	tween.tween_property(_sprite, "modulate", base, HIT_FLASH_DURATION * 0.65)
 
 

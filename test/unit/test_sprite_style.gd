@@ -41,6 +41,12 @@ const EXPECTED_SIZE := {
 	"chomp_flower_eating_late": 64,
 	"corn_cobbler": 64,
 	"mint": 64,
+	# The Shield Bug and its corpse. Added by the parent rather than by the agent that
+	# drew them: two lanes each needed a row in this table and it is the one file they
+	# would have collided in.
+	"pest_shieldbug": 64,
+	"pest_shieldbug_dead": 64,
+	"nettle": 64,
 	"corn_kernel": 16,
 	# The Bomb Dandelion's four fluff frames. One drawing, four tuft counts --
 	# see art_src/dandelion.svg for why every set is symmetric about the vertical

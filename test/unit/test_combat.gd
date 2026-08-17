@@ -1663,7 +1663,7 @@ func _corn_volley_damage(level: int, distance: float) -> float:
 
 func test_an_endless_wave_never_fills_the_road_past_the_stated_ceiling() -> String:
 	## The acceptance criterion. Swept rather than sampled, because the worst wave
-	## is not the deepest one: it is the campaign finale (wave 16), where two
+	## is not the deepest one: it is the campaign finale (wave 22 since cycle 100), where two
 	## queens, the brood they can burst into, a full swarm and a beetle column are
 	## all on the road together, and every endless wave after it is paced further
 	## apart. A test that only looked at wave 100 would find the road at 29 of 40
@@ -1863,8 +1863,33 @@ func test_the_threat_readout_prices_the_composition_ramp_exactly() -> String:
 	var err: String = _T.assert_gt(reference, 0.0, "wave 1 is a real reference to measure against")
 	if err != "":
 		return err
+	# DERIVED, not a magic list. The waves below used to be [60, 100, 137, 250, 499] and
+	# the docstring said "past wave 48" -- both true when the fixed table was 16 waves and
+	# both wrong the moment it grew to 22, because every endless landmark keys off
+	# `wave - WAVES.size()`. Wave 60 stopped being past the speed cap and the rise stopped
+	# being one beetle, which is how this failed.
+	#
+	# So the first pinned wave is found rather than written: scan upward until all three
+	# multipliers have stopped moving, then price from there. The table can grow again and
+	# this follows it.
+	var pinned: int = WaveDirector.WAVES.size() + 1
+	while pinned < 4000:
+		var a_m: float = WaveDirector.mutation_chance_for(pinned)
+		var a_h: float = WaveDirector.health_scale_for(pinned)
+		var a_s: float = WaveDirector.speed_scale_for(pinned)
+		if (is_equal_approx(a_m, WaveDirector.mutation_chance_for(pinned + 1))
+				and is_equal_approx(a_h, WaveDirector.health_scale_for(pinned + 1))
+				and is_equal_approx(a_s, WaveDirector.speed_scale_for(pinned + 1))):
+			break
+		pinned += 1
+	# assert_gt with the operands the other way up: the helper set has no assert_lt.
+	err = _T.assert_gt(4000, pinned,
+		"the endless multipliers pin somewhere -- if they never do, this test cannot price "
+			+ "a single beetle and the ramp is unbounded")
+	if err != "":
+		return err
 	var compared: int = 0
-	for wave: int in [60, 100, 137, 250, 499]:
+	for wave: int in [pinned, pinned + 40, pinned + 77, pinned + 190, pinned + 439]:
 		var mutations: float = 1.0 + WaveDirector.mutation_chance_for(wave) * WaveDirector.MUTATION_THREAT_WEIGHT
 		var scales: float = WaveDirector.health_scale_for(wave) * WaveDirector.speed_scale_for(wave) * mutations
 		var added: float = float(Pest.SPECIES[Pest.BEETLE]["health"]) * float(WaveDirector.ENDLESS_BEETLE_STEP)
@@ -1918,9 +1943,17 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 	## pest in the schedule that becomes four bodies on the road. A table read that
 	## quietly stopped counting her — or started counting her brood — shows up here
 	## as a number, before it shows up as a wave that overruns the road budget.
-	var expected: Array[int] = [5, 9, 9, 14, 13, 19, 19, 29, 26, 32, 30, 23, 35, 29, 35, 36]
+	# Twenty-two since cycle 100. The six new waves went in FRONT of the finale, not after
+	# it, which is why the last entry is 36 and not something larger: three assertions in
+	# this suite chain to cap any campaign finale at 436.7 base health, and wave 16 was
+	# already at 418. Seven appended waves would have had 18.7 points to share -- one
+	# beetle. See WaveDirector.WAVES for the arithmetic.
+	var expected: Array[int] = [
+		5, 9, 9, 14, 13, 19, 19, 29, 26, 32, 30, 23, 35, 29, 35,
+		37, 35, 32, 33, 36, 37, 36,
+	]
 	var err: String = _T.assert_eq(WaveDirector.WAVES.size(), expected.size(),
-		"the campaign is still sixteen waves long")
+		"the campaign is still twenty-two waves long")
 	if err != "":
 		return err
 	for wave: int in range(1, expected.size() + 1):
@@ -3567,11 +3600,18 @@ func test_every_plant_that_can_touch_a_pest_is_named_as_one() -> String:
 	# Named positively, and named exactly. A new plant landing in the catalogue
 	# has to be decided about here; it must not inherit an answer.
 	if err == "":
-		err = _T.assert_eq(Game.engaging_plants().size(), 3,
-			"three plants in this catalogue can touch a pest, and the list says which")
+		err = _T.assert_eq(Game.engaging_plants().size(), 4,
+			"four plants in this catalogue can touch a pest, and the list says which")
 	if err == "":
 		err = _T.assert_true(Game.engaging_plants().has(PlantCatalog.CORN),
 			"a kernel that lands is one of the things that set Pest._ever_engaged")
+	if err == "":
+		# Nettle, added cycle 100. Decided about here rather than inherited: it damages,
+		# so it engages -- even though it damages only mutated pests and is dead weight
+		# before wave 8. "Can touch a pest" is a question about capability, not about how
+		# often the capability is useful, and the coverage maps below read it that way.
+		err = _T.assert_true(Game.engaging_plants().has(PlantCatalog.NETTLE),
+			"the Nettle stings, so it counts even though it stings only mutations")
 	if err == "":
 		err = _T.assert_true(Game.engaging_plants().has(PlantCatalog.CHOMP),
 			"and a Chomp holding a pest still is another")
@@ -4837,7 +4877,8 @@ func test_the_recorded_gardens_still_have_the_property_they_claim() -> String:
 ## What it is not is a promise the map broke, and this is the run that says so.
 ##
 ## Six waves into endless over the seven-cob garden loses half the wave: 24 of 48
-## walk out (re-measured after the fixed table grew to sixteen waves — it was 17
+## walk out (re-measured after the fixed table grew to sixteen waves, and again at
+## twenty-two in cycle 100 — it was 17
 ## of 34 when the same offset was wave 14). If "covered" over-promised, this is
 ## the run where a player would be misled
 ## — the board says every cell is answered and the beds go anyway. It does not.
@@ -5627,4 +5668,220 @@ func test_the_weather_and_a_neighbour_compose_rather_than_overwrite() -> String:
 		err = _T.assert_true(
 			Plant.composed_interval(base, drought, Mint.NEIGHBOUR_SCALE) < base * drought,
 			"which is to say the buff survives the weather")
+	return err
+
+
+# -- The Shield Bug's plate (plant-tower-defense-4du6) -----------------------
+#
+# ONE SENTENCE, and it is what every assertion below is trying to pin: a Shield
+# Bug's plate eats up to `shell_absorb` off each of its first `shell_hits` hits,
+# so a Corn Cobbler's stream of small kernels bounces off it entirely while a
+# Dandelion's bigger seed and a Chomp's mouth do not care -- which asks the player
+# to change WHICH plant answers the lane rather than where they aim it.
+#
+# Every pest before this one differed from the others only in how much damage it
+# needed, so "is my garden strong enough" was the only question the roster ever
+# asked. These tests exist because that claim is a relationship between three
+# files -- `Pest.SPECIES`, `CornCobbler.LEVELS` and `Dandelion.SEED_DAMAGE` -- and
+# a balance pass on any one of them can quietly turn this species back into a
+# beetle with nothing failing.
+
+
+## The most damage a single Corn Cobbler kernel ever does, DERIVED from the level
+## table rather than written down.
+##
+## The claim the tests below make is about every level of the cob, so a hardcoded
+## 1.4 would keep passing on the day someone adds a fourth level that outguns the
+## plate -- which is exactly the failure the species is designed not to have.
+func _top_kernel_damage() -> float:
+	var top: float = 0.0
+	for level: Dictionary in CornCobbler.LEVELS:
+		top = maxf(top, float(level["damage"]))
+	return top
+
+
+## The band `shell_absorb` was chosen to sit in, asserted against the two plants
+## that define it rather than against the number in the species row.
+func test_the_shield_bugs_plate_is_priced_between_a_corn_kernel_and_a_dandelion_seed() -> String:
+	var absorb: float = Pest.shell_absorb(Pest.SHIELDBUG)
+	var top_kernel: float = _top_kernel_damage()
+	var err: String = _T.assert_gt(absorb, top_kernel,
+		"the plate out-eats the BEST corn kernel in the table (%.2f vs %.2f), so no level of cob gets through it"
+			% [absorb, top_kernel])
+	if err == "":
+		err = _T.assert_gt(Dandelion.SEED_DAMAGE, absorb,
+			"and a centred dandelion seed out-hits the plate (%.2f vs %.2f), so the big shot always spills through"
+				% [Dandelion.SEED_DAMAGE, absorb])
+	if err == "":
+		err = _T.assert_float_eq(Pest.damage_through_shell(top_kernel, absorb, 1), 0.0, 0.0001,
+			"a kernel against a plate with a block left reaches nothing at all")
+	if err == "":
+		err = _T.assert_gt(Pest.damage_through_shell(Dandelion.SEED_DAMAGE, absorb, 1), 0.0,
+			"a seed against the same plate still reaches the bug")
+	if err == "":
+		# The other end: with the blocks spent the function must be the identity,
+		# or the plate would go on taxing a bug it has already come off.
+		err = _T.assert_float_eq(Pest.damage_through_shell(top_kernel, absorb, 0), top_kernel, 0.0001,
+			"and once the blocks are gone a kernel lands in full")
+	return err
+
+
+## The test that fails if the plate does nothing. Six kernels in a row must move
+## the health bar by exactly zero, and the seventh must move it by a whole kernel.
+func test_a_shield_bug_ignores_a_whole_stream_of_kernels_and_then_stops_ignoring_them() -> String:
+	var bug: Pest = _pest(Pest.SHIELDBUG, Vector2.ZERO)
+	var kernel: float = _top_kernel_damage()
+	var blocks: int = Pest.shell_hits(Pest.SHIELDBUG)
+	var err: String = _T.assert_gt(blocks, 0, "sanity: a Shield Bug spawns with a plate on")
+	if err == "":
+		err = _T.assert_eq(bug.shell_blocks, blocks,
+			"and setup() seeded the live count straight off the species row")
+	for i: int in range(blocks):
+		if err != "":
+			break
+		bug.take_damage(kernel)
+		err = _T.assert_float_eq(bug.health, bug.max_health, 0.0001,
+			"kernel %d of %d bounced off entirely (health %.2f of %.2f)"
+				% [i + 1, blocks, bug.health, bug.max_health])
+	if err == "":
+		err = _T.assert_eq(bug.shell_blocks, 0,
+			"and every one of them still cost a block -- the plate counts HITS, not damage")
+	if err == "":
+		bug.take_damage(kernel)
+		err = _T.assert_float_eq(bug.health, bug.max_health - kernel, 0.0001,
+			"the next kernel lands in full, so the plate delays a cob rather than immunising against it")
+	if err == "":
+		err = _T.assert_true(bug.was_engaged(),
+			"and a shot that achieved nothing still counts as the garden engaging this pest")
+	bug.free()
+	return err
+
+
+## The axis the species exists for, asserted as the comparison a player actually
+## makes: the same number of hits from the two plants, side by side.
+func test_the_plate_costs_a_stream_of_small_shots_everything_and_a_big_shot_only_part() -> String:
+	var blocks: int = Pest.shell_hits(Pest.SHIELDBUG)
+	var absorb: float = Pest.shell_absorb(Pest.SHIELDBUG)
+	var kernel: float = _top_kernel_damage()
+	var shot: Pest = _pest(Pest.SHIELDBUG, Vector2.ZERO)
+	var bombed: Pest = _pest(Pest.SHIELDBUG, Vector2(200, 0))
+	for _i: int in range(blocks):
+		shot.take_damage(kernel)
+		bombed.take_damage(Dandelion.SEED_DAMAGE)
+	var err: String = _T.assert_true(shot.is_alive() and bombed.is_alive(),
+		"sanity: neither of them dies inside the plate's own lifetime, or the comparison below is measuring a corpse")
+	if err == "":
+		err = _T.assert_float_eq(shot.max_health - shot.health, 0.0, 0.0001,
+			"%d corn kernels against the plate did nothing whatsoever" % blocks)
+	if err == "":
+		err = _T.assert_float_eq(bombed.max_health - bombed.health,
+			float(blocks) * (Dandelion.SEED_DAMAGE - absorb), 0.0001,
+			"while %d dandelion seeds each put %.2f through it" % [blocks, Dandelion.SEED_DAMAGE - absorb])
+	if err == "":
+		err = _T.assert_eq(shot.shell_blocks, bombed.shell_blocks,
+			"and both plates are equally worn, because a block is spent per HIT -- "
+				+ "that asymmetry IS the species, and a plate counting damage would not have it")
+	shot.free()
+	bombed.free()
+	return err
+
+
+## The branch must not leak. Every other species takes its damage in full, and
+## exactly one row in SPECIES carries a plate at all.
+func test_the_plate_belongs_to_exactly_one_species_and_leaves_the_others_alone() -> String:
+	var plated: Array[StringName] = []
+	for which: StringName in Pest.SPECIES:
+		if Pest.shell_absorb(which) > 0.0:
+			plated.append(which)
+	var err: String = _T.assert_eq(plated.size(), 1,
+		"exactly one species carries a plate (found %s)" % [plated])
+	if err == "":
+		err = _T.assert_eq(String(plated[0]), String(Pest.SHIELDBUG), "and it is the Shield Bug")
+	if err == "":
+		# shell_hits() reads shell_absorb() first on purpose: a row naming a hit
+		# count and no amount must be unplated, not a plate that eats nothing while
+		# still swallowing six of the player's shots.
+		err = _T.assert_eq(Pest.shell_hits(Pest.APHID), 0,
+			"an unplated species reports no blocks either, rather than a count with nothing behind it")
+	for which: StringName in Pest.SPECIES:
+		if err != "" or which == Pest.SHIELDBUG:
+			continue
+		var pest: Pest = _pest(which, Vector2.ZERO)
+		pest.take_damage(1.0)
+		err = _T.assert_float_eq(pest.max_health - pest.health, 1.0, 0.0001,
+			"%s takes a 1.0 hit in full -- the plate branch never fires for a species without one" % which)
+		pest.free()
+	return err
+
+
+## The legibility half. A blocked hit and a landed hit both call flash_hit(), so
+## without two peaks the player watching six kernels bounce sees six ordinary hits
+## and concludes the health bar is broken.
+func test_a_blocked_hit_flashes_dark_where_a_landed_hit_flashes_bright() -> String:
+	var base := Color(0.58, 0.66, 0.78, 0.6)  # an armoured tint, mid-fade alpha
+	var blocked: Color = Pest.shell_flash_color(base)
+	var landed: Color = Pest.hit_flash_color(base)
+	var err: String = _T.assert_float_eq(blocked.a, base.a, 0.0001,
+		"alpha is untouched, exactly as hit_flash_color leaves it")
+	if err == "":
+		err = _T.assert_gt(base.r, blocked.r, "a hit the plate ate dims the sprite")
+	if err == "":
+		err = _T.assert_gt(landed.r, base.r, "a hit that landed brightens it")
+	if err == "":
+		# OVERLAY_GRAMMAR.md's rule with teeth: the cue must survive its colour
+		# being thrown away. These two peaks sit on opposite sides of the pest's own
+		# tint in LUMINANCE, so a greyscale screenshot separates them too.
+		err = _T.assert_gt(landed.get_luminance(), blocked.get_luminance(),
+			"and the two peaks are still different with the colour discarded (%.3f vs %.3f)"
+				% [landed.get_luminance(), blocked.get_luminance()])
+	return err
+
+
+## The plate must never make the free starter plant useless, only slow. Driven with
+## the WEAKEST kernel in the table -- level 1, the cob every run begins with.
+func test_a_single_starter_cob_can_still_kill_a_shield_bug_it_just_pays_the_plate_first() -> String:
+	var kernel: float = float(CornCobbler.LEVELS[0]["damage"])
+	var bug: Pest = _pest(Pest.SHIELDBUG, Vector2.ZERO)
+	# Hosted rather than bare: a lethal take_damage() runs _play_death(), which
+	# queue_free()s a pest that is not inside a tree -- and this test still has to
+	# read is_alive() off it afterwards. Inside a tree it takes the tween path
+	# instead, which headless never pumps. Same reason as
+	# test_a_kernel_that_kills_its_pest_leaves_it_dead in test_selftest.gd.
+	var host: Node2D = _host([bug])
+	await _T.instantiate_scene(host)
+
+	var expected: int = Pest.shell_hits(Pest.SHIELDBUG) + int(ceil(bug.max_health / kernel))
+	var fired: int = 0
+	while bug.is_alive() and fired < expected * 4:
+		bug.take_damage(kernel)
+		fired += 1
+	var err: String = _T.assert_false(bug.is_alive(),
+		"the starter cob's weakest kernel does eventually kill it -- the plate is a delay, never an immunity")
+	if err == "":
+		err = _T.assert_eq(fired, expected,
+			"and the delay is exactly the plate: %d shots to strip it plus %d to kill what is under it"
+				% [Pest.shell_hits(Pest.SHIELDBUG), expected - Pest.shell_hits(Pest.SHIELDBUG)])
+	_T.free_ui(host)
+	return err
+
+
+## The endless ramp grows the bug and not the plate, which is the deliberate half
+## of the design: a six-hit tax is a wall at wave 10 and a formality by wave 30,
+## where a scaling one would be a trait that grows without bound.
+func test_endless_wave_scaling_grows_a_shield_bug_but_never_its_plate() -> String:
+	var bug: Pest = _pest(Pest.SHIELDBUG, Vector2.ZERO)
+	var strength: float = bug.shell_strength
+	var blocks: int = bug.shell_blocks
+	var health: float = bug.max_health
+	bug.apply_wave_scaling(3.0, 2.0)
+	var err: String = _T.assert_float_eq(bug.max_health, health * 3.0, 0.0001,
+		"health rides the endless ramp like every other species")
+	if err == "":
+		err = _T.assert_float_eq(bug.shell_strength, strength, 0.0001, "the plate's bite does not")
+	if err == "":
+		err = _T.assert_eq(bug.shell_blocks, blocks, "and neither does its hit count")
+	if err == "":
+		err = _T.assert_float_eq(bug.shell_strength, Pest.shell_absorb(Pest.SHIELDBUG), 0.0001,
+			"which is still the value setup() read off the species row")
+	bug.free()
 	return err

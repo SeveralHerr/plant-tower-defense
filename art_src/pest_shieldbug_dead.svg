@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Shield Bug, dead: same drawing, X eyes and a split plate. Swapped in by
+       Pest._play_death(), the same way pest_beetle_dead.svg is.
+
+       The crack is the corpse's own idea and not just an X-eyes copy: this is the
+       one pest whose difficulty IS its plate, so the husk should say the plate
+       finally came off. Drawn as a pair of seams mirrored about x=32, so the
+       bilateral-centring check still measures the same content box as the live
+       sprite and the corpse cannot drift sideways under the health bar. -->
+
+  <!-- legs (behind the plate), splayed flatter than idle -->
+  <g stroke="#AF392D" stroke-width="2.5" stroke-linecap="round" fill="none">
+    <path d="M20 32 L9 29"/>
+    <path d="M19 36 L7 36"/>
+    <path d="M21 40 L10 43"/>
+    <path d="M44 32 L55 29"/>
+    <path d="M45 36 L57 36"/>
+    <path d="M43 40 L54 43"/>
+  </g>
+
+  <!-- antennae, gone limp -->
+  <g stroke="#AF392D" stroke-width="2" stroke-linecap="round" fill="none">
+    <path d="M28 13 Q 23 10 19 7"/>
+    <path d="M36 13 Q 41 10 45 7"/>
+  </g>
+  <circle cx="19" cy="7" r="1.8" fill="#AF392D"/>
+  <circle cx="45" cy="7" r="1.8" fill="#AF392D"/>
+
+  <!-- head -->
+  <circle cx="32" cy="18" r="7.5" fill="#E74C3C" stroke="#AF392D" stroke-width="2"/>
+
+  <!-- X eyes, in the head's own rim ink rather than a new hue -->
+  <g stroke="#AF392D" stroke-width="1.6" stroke-linecap="round" fill="none">
+    <path d="M26.8 14.3 L30.8 18.3"/>
+    <path d="M30.8 14.3 L26.8 18.3"/>
+    <path d="M33.2 14.3 L37.2 18.3"/>
+    <path d="M37.2 14.3 L33.2 18.3"/>
+  </g>
+
+  <!-- the plate -->
+  <path d="M32 20 L46 25 L47 34 Q 44 46 32 53 Q 20 46 17 34 L18 25 Z"
+        fill="#89A4A6" stroke="#758C8E" stroke-width="2" stroke-linejoin="round"/>
+
+  <!-- facets -->
+  <ellipse cx="25" cy="31" rx="3.5" ry="5" fill="#A3C3C6"/>
+  <ellipse cx="39" cy="31" rx="3.5" ry="5" fill="#A3C3C6"/>
+
+  <!-- the split: the centre seam opened up, each half forked away from the axis -->
+  <g stroke="#758C8E" stroke-width="1.5" stroke-linecap="round" fill="none">
+    <path d="M32 22 L28 33 L30 50"/>
+    <path d="M32 22 L36 33 L34 50"/>
+    <path d="M23 26 L32 30.5 L41 26"/>
+  </g>
+</svg>
