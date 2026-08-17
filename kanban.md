@@ -195,6 +195,27 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (19 of 30) — grown from the gap ledger, which is the fourth derived-status file here
+
+- **Four files in this project record a status per entry and cannot answer "what is
+  open".** `log-devtools.md` had 69 status lines over 49 ids (fixed this cycle by
+  `tools/gap_ledger.py`); `kanban.md` has the same shape — an idea's real status is
+  whichever of its mentions is newest, and cycles 34 and 36 each found a section
+  where the newest mention was "shipped" and the heading still said "not filed yet".
+  A `kanban_ledger` is the obvious sibling, and the reason it has not been built is
+  that kanban entries have no ids to key on. **Giving them ids is the enabling
+  change**, and it is small: a `[K-NNN]` on each entry under the idea backlog.
+- **`.devtools/verify-runs.jsonl` is the one that got this right**, and is worth
+  copying rather than admiring: one row per run, append-only, with
+  `verify_ledger.py stats` deriving the summary. Nothing in it is ever rewritten.
+  That is the same rule `gap_ledger.py` now applies to prose, and the difference is
+  only that the ledger was designed for it and the log was not.
+- **The `seen:` count is the most useful field in the gap log and nothing derives
+  it.** G-044 reads `seen: 7`, which is the single strongest signal in the file —
+  seven independent sightings of one defect. It is incremented by hand, and this
+  cycle found ids where a later entry re-described the same gap without bumping it.
+  `gap_ledger.py` already parses every mention; counting them IS the seen count.
+
 ### New this cycle (18 of 30) — the top bar is full, and that is now a measured fact
 
 - **The top bar has 10px left and four readouts.** `Hud.WORST_CASE_TEXT["WaveLabel"]`

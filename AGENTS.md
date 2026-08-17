@@ -81,10 +81,15 @@ running a command. **Never write a work checklist into it.**
      it ships from a repo I own, **also file it upstream** with the
      `skill-feedback-issue` skill, which files a report rather than a patch. Anything
      below that bar goes only in the log and is allowed to rot there.
-   - **Reconcile the old gaps.** Flip any `[G-NNN]` the harness has since fixed to
-     `status: fixed | shipped in X.Y.Z` before filing a new one. 33 cycles left 56 of
-     60 saying `open`, three of which had already shipped — at which point the field
-     means nothing. Anything now actionable in-project goes into step 6's refill.
+   - **Reconcile the old gaps.** `python tools/gap_ledger.py --open` says which are
+     actually open; it derives each status from its LAST mention, because the format
+     records status per entry and a gap fixed in cycle 12 still carries its cycle-4
+     `open` line. Do NOT rewrite old entries — append the new status and let the tool
+     resolve it. Two traps, both paid for: `grep -c "status: open"` counts LINES and
+     said 61 when the answer was 44; and an id **cited** in the installed harness is
+     not thereby fixed — 43 of this project's ids appear in 0.38.0 but 29 of those are
+     only in the harness's copy of this log, and G-044 is cited in code while still
+     failing. Anything now actionable in-project goes into step 6's refill.
 5. **Reflect on THIS WORKFLOW and tweak it for the next run.** The steps above are not
    fixed; they are the thing most likely to be quietly wrong, because nothing else
    reviews them. Ask what actually happened this cycle: did a step get skipped, did one
