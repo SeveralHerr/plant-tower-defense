@@ -3,6 +3,22 @@
 # workflow
 **This is a loop. It does not end. Keep going until the user stops you.**
 
+Workflow intent: Keep the workflow simple and meaningful. Reflect on the game, tools, workflow, skills, and find meaningful ways to evolve them all.
+
+**Within that, bias step 2 toward what a PLAYER would notice** (asked for directly, cycle
+84). The tooling, the audits and the eleven checkers are how this project stays honest and
+they have taken most of the last ten cycles: 72, 75, 77, 82 and 83 shipped nothing a player
+could see, and 76 shipped no code at all. A checker or an audit is still the right call when
+it is the right call — this is a bias, not a ban. But **a cycle that ships nothing
+player-facing owes one sentence in its close saying why**, the same way step 5 owes one when
+the workflow does not change, and two such cycles in a row means step 2 takes a
+player-facing item next whatever else is ready.
+
+**"Simple" is a constraint on this file too.** It is 354 lines and has grown almost every
+cycle. Step 5 may now spend its one change on DELETING a rule that has stopped earning its
+place, and should prefer that to adding a twelfth.
+
+
 Do these steps in order, over and over:
 
 **`bd` IS THE WORK QUEUE. `cycle-log.md` IS THE NARRATIVE.** They are not two lists of
