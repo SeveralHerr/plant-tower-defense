@@ -200,18 +200,42 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   startled, surprised, or briefly out of rhythm. A Chomp with a full mouth
   (`game/chomp_flower.gd:83`) and a plant being eaten (`game/plant.gd`'s `_quiet_time`
   regrowth clock) both know something a sway does not.
-- **More waves, and bosses.** The wave table (`WaveDirector`) currently ends at 8
-  fixed waves before endless mode takes over with escalating mutation chance on
-  the same two pests. Add real additional waves to the table, and at least one
-  boss pest — bigger health pool, a distinct sprite, a mechanic that isn't just
-  "armoured but more."
-- **An animated dandelion plant that blows its seeds as bombs**, shipped in an
-  "epic" seed packet tier above the current common/rare split. Seed-puff attack
-  animation (the dandelion visibly loses fluff as it fires), seeds arc and detonate
-  rather than travel like a Corn Cobbler's kernels or a Chomp's bite.
-- **Fix enemy facing direction.** Pests should visually face the direction they're
-  walking (the art style doc calls out up-screen facing as the convention;
-  pests moving down/left/right the road should not still render facing up-screen).
+- **More waves, and bosses.** The ask: real additional waves in the table, and at least
+  one boss pest — bigger health pool, a distinct sprite, a mechanic that isn't just
+  "armoured but more".
+  **AUDITED (cycle 76): DRIFTED — two of the three factual claims are false.** The
+  description used to open "the wave table currently ends at 8 fixed waves before endless
+  mode takes over with escalating mutation chance on the same two pests, and there is no
+  boss". `WaveDirector.WAVES` (`game/wave_director.gd:164`) holds **16** entries, not 8 —
+  the file's own prose treats wave 16 as a deliberately sized landing point. And a boss
+  mechanic ships: `WaveDirector.wave_carries_boss()` (`:319`) feeds the HUD's prep note,
+  and the mechanic itself is documented at `game/game.gd:796` — a pest whose species names
+  a split bursts into that many.
+  **What holds** is the two-species part: `Pest` still declares only `APHID` and `BEETLE`
+  (`game/pest.gd:16-17`).
+  **What is genuinely unbuilt** is narrower than the bullet reads, and it is the half the
+  ask cared about visually: the boss is the **same `Pest` object**, said outright at
+  `game/game.gd:767`. So "a mechanic that isn't just armoured but more" shipped, and
+  "bigger health pool, a distinct sprite" did not. That is one bead, not three.
+- **An animated dandelion plant that blows its seeds as bombs**, in an "epic" seed packet
+  tier above the common/rare split — the head visibly losing fluff as it fires, seeds
+  arcing and detonating rather than travelling like a kernel or a bite.
+  **AUDITED (cycle 76): SHIPPED, every clause.** The epic tier exists at cost 90
+  (`game/seed_bank.gd:41`) and is third in `PACKET_ORDER` (`:52`). The head wears one of
+  four authored frames indexed straight off `_fluff` (`game/dandelion.gd:107`, with
+  `FLUFF_MAX` 3 at `:65`), so the picture cannot disagree with the ammunition. The seed
+  arcs on a real parabola — `SeedBomb.ARC_HEIGHT` 44 through zero at both ends
+  (`game/seed_bomb.gd:46`, `:160-162`) — and detonates in a radius rather than colliding
+  (`BLAST_RADIUS` 46 at `:51`, `has_detonated()` at `:141`). Kept here rather than moved
+  to Done because this section is a record of what was **asked for**, and an ask whose
+  outcome is written beside it is more useful to a reader than an ask that vanished.
+  No test coverage claim is made here; that was not checked.
+- **Fix enemy facing direction.** Pests should visually face the way they walk; the art
+  style doc calls out up-screen facing as the convention.
+  **AUDITED (cycle 76): SHIPPED.** `Pest._update_facing` (`game/pest.gd:708-717`) picks the
+  dominant axis and maps all four cardinals onto the up-screen convention, and `_gait`
+  composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
+  leaning into a step still faces where it is going.
 
 ### New this cycle (75) — four surfaces are capacity-bound and one of them computes it
 
