@@ -406,7 +406,10 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 - **The flourishes are asserted to start and end at `Vector2.ONE` and never to reach their
   peak.** The cob's recoil is written to hit `(0.88, 1.14)` (`game/corn_cobbler.gd:183`), the
   Chomp's bite `(1.18, 0.82)` (`game/chomp_flower.gd:155`), the upgrade `(0.72, 1.34)`
-  (`:331`), the planting pop `(1.12, 1.12)` (`game/plant.gd:272`) — four distinct shapes, and
+  (`game/corn_cobbler.gd:331` — written as a bare `:331` in cycle 72, which the
+  continuation rule binds to the *preceding* citation and therefore to `chomp_flower.gd`,
+  a file with 183 lines; the first continuation-aware run of `citation_check` in cycle 77
+  found it), the planting pop `(1.12, 1.12)` (`game/plant.gd:272`) — four distinct shapes, and
   the extreme is the entire content of each. Until cycle 72 that was unobservable: a 0.15 s
   tween is shorter than a bus round-trip and four consecutive polls all return the landed
   value. It is observable now (`.claude/skills/read-a-moving-value/SKILL.md`, the walk
@@ -450,9 +453,16 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 ### New this cycle (70) — every plant draws underneath its own art
 
 - **`_draw()` on a plant renders BEHIND the plant's sprite, and nobody has checked what
-  that costs.** `game/plant.gd:172` adds `_sprite` as a child, and a `Node2D` draws its own
-  `_draw()` before its children — so every cue a plant paints is under its own art wherever
-  they overlap. Enumerated by cue radius against the 64x64 sprite box (`art_src/*.svg` are
+  that costs.** `game/plant.gd:206` parents `_sprite` under the `Sway` pivot, itself a child
+  of the plant (`:202`), and a `Node2D` draws its own `_draw()` before its children — so
+  every cue a plant paints is under its own art wherever they overlap, and since cycle 71 it
+  is under a *moving* copy of it.
+  *(Cited `:172` when written in cycle 70, which was `add_child(_sprite)` then. Cycle 71's
+  pivot pushed it 34 lines down and `:172` now lands on a health-bar comment — a citation
+  that still RESOLVES and no longer supports its claim, which is precisely the case
+  `citation_check` says in its own NOT COVERED line it cannot see. Caught in cycle 77 by
+  reading the tool's output instead of its exit code, on the first pass, which is the
+  argument for printing the landed lines at all.)* Enumerated by cue radius against the 64x64 sprite box (`art_src/*.svg` are
   all `width="64" height="64"`, centred): the cob's pips sit 20-22 px out
   (`game/corn_cobbler.gd:175-176`), the Chomp's chew ring runs 16 px down to nothing
   (`game/chomp_flower.gd:24`), the Sunflower's gauge occupies x −30..−24, y 10..30

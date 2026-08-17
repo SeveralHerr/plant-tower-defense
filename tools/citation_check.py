@@ -51,14 +51,39 @@ CITATION = re.compile(
 )
 
 
+# The continuation form this project's entries actually use:
+# "(`game/sfx.gd:86`, `:91`, `:106`)". A bare `:NN` inherits the last full path cited
+# earlier in the same top-level entry. 44 of these live in kanban.md and the first version
+# of this checker could not see any of them -- a third again on top of the 130 it did see,
+# in a convention the project invented for itself.
+BARE = re.compile(r"`:(\d+)(?:-(\d+))?`")
+
+
 def citations(text: str) -> list[tuple[int, str, int, int]]:
-    """(markdown_line, path, start, end) for every citation, in file order."""
+    """(markdown_line, path, start, end) for every citation, in file order.
+
+    Bare `:NN` continuations resolve against the last full citation in the same entry, and
+    are DROPPED when there is none — an orphan continuation is a formatting mistake rather
+    than a claim about a file, and inventing a path for it would report a finding against
+    whatever happened to be cited last.
+    """
     out: list[tuple[int, str, int, int]] = []
+    context: str | None = None
     for lineno, line in enumerate(text.splitlines(), start=1):
-        for m in CITATION.finditer(line):
-            start = int(m.group(2))
-            end = int(m.group(3)) if m.group(3) else start
-            out.append((lineno, m.group(1), start, end))
+        if line.startswith("- ") or line.startswith("#"):
+            context = None          # new entry: a continuation may not reach across it
+        # Interleave both forms in source order so `foo.gd:1`, `:2` binds left to right.
+        for m in sorted(list(CITATION.finditer(line)) + list(BARE.finditer(line)),
+                        key=lambda mm: mm.start()):
+            if m.re is CITATION:
+                context = m.group(1)
+                start = int(m.group(2))
+                end = int(m.group(3)) if m.group(3) else start
+                out.append((lineno, context, start, end))
+            elif context is not None:
+                start = int(m.group(1))
+                end = int(m.group(2)) if m.group(2) else start
+                out.append((lineno, context, start, end))
     return out
 
 
