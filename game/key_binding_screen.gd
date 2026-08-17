@@ -93,9 +93,21 @@ var _listening: StringName = &""
 var _rows: Array[StringName] = []
 var _key_labels: Array[Label] = []
 var _reset_button: Button
+## Whether the reset button is one press from firing. See `reset_all()`.
+var _reset_armed: bool = false
 
 const PROMPT := "Press a key…"
 const IDLE_NOTE := "Choose a row, then press the key you want it on."
+const RESET_IDLE := "Put them all back"
+## What the button says once armed. Carries the count, because "are you sure" with
+## no number is a question the player cannot answer — one moved key and six are
+## the same dialog otherwise.
+const RESET_ARMED := "Yes — undo %d"
+const RESET_NOTHING_TO_DO := "Every key is already where it started."
+## The armed note's opening clause. Separate so the test can assert the sentence's
+## SHAPE — count first, verb names last after a colon — rather than only that the
+## names appear somewhere in it, which is what let a garbled first draft through.
+const RESET_MOVED_COUNT := "%d key%s moved."
 
 
 func panel_rect() -> Rect2:
@@ -161,18 +173,99 @@ func _build_footer() -> void:
 func listen_for(action: StringName) -> void:
 	if not KeyBindings.is_known(action):
 		return
+	# Picking a row is the "no" answer to an armed reset. An arm that survived the
+	# player going off to do something else would fire on their next glance at the
+	# button, which is the confirmation being worse than none.
+	_disarm_reset()
 	_listening = action
 	_note.text = "%s — press the key you want, or Esc to leave it alone." % KeyBindings.describe(action)
 	refresh()
 
 
-## Puts every verb back on its shipped key and forgets the save's overrides.
+## The reset button's handler, in two presses rather than one.
+##
+## It used to be wired straight through: one press ran `KeyBindings.reset_all()`,
+## `_persist()`, and therefore `RunConfig._save()`, so every key a player had moved
+## was gone from disk before their finger left the mouse — no confirm, no undo, and
+## the only feedback a past-tense sentence. Of everything a settings screen owns
+## this is the one control that can destroy work, and it looked exactly as safe as
+## "Change".
+##
+## Two presses, not a modal: this screen is already an overlay over a card that may
+## itself be over a paused run, and a third layer to answer a yes/no is more
+## machinery than the question is worth. The button becomes the question.
+##
+## What is about to be lost is DERIVED, never counted by hand —
+## `KeyBindings.overrides()` is "every action whose keys differ from the table's",
+## the same set the save file is written from. So the number in the prompt and the
+## number that actually gets undone cannot disagree.
 func reset_all() -> void:
 	_listening = &""
+	var moved: Dictionary = KeyBindings.overrides()
+	if moved.is_empty():
+		# The old version wrote a save here — reset the InputMap to what it already
+		# was and persisted it. Nothing to undo is not a thing to confirm OR to
+		# write; it is a thing to say.
+		_disarm_reset()
+		_note.text = RESET_NOTHING_TO_DO
+		return
+	if not _reset_armed:
+		_reset_armed = true
+		_reset_button.text = RESET_ARMED % moved.size()
+		# It names the KEYS, not the verbs, and both halves of that were forced by
+		# reading this line in the running game rather than by design:
+		#
+		#   1. `KeyBindings.describe()` returns a legend cell ("hold the garden
+		#      still"), not a noun phrase -- the same trap written up thirty lines
+		#      down at the refusal message. The first draft read "hold the garden
+		#      still will go back to its shipped key".
+		#   2. Even composed correctly, those phrases are whole sentences, and this
+		#      Label is 700px with `clip_text`. Two of them measured 962px and the
+		#      harness reported `ui_text_trimmed`: the player saw a cut string, so a
+		#      confirmation naming what it will destroy named it off the edge.
+		#
+		# The key labels are what the player actually chose and actually loses, and
+		# eight of them still fit where two `does` phrases did not. The rows directly
+		# above say which verb each key belongs to, which is the half this line does
+		# not have room to repeat.
+		_note.text = "%s Press again to put %s back — or pick a row to leave it alone." % [
+			RESET_MOVED_COUNT % [moved.size(), "" if moved.size() == 1 else "s"],
+			_moved_keys(moved),
+		]
+		refresh()
+		return
 	KeyBindings.reset_all()
 	_persist()
+	_disarm_reset()
 	_note.text = "Every key is back where it started."
 	refresh()
+
+
+## The keys currently sitting on the moved verbs, in table order rather than
+## Dictionary order. Table order because `actions()` is what every other list on
+## this screen is drawn in, and a confirmation that names them in a different order
+## than the rows above it reads as being about something else.
+func _moved_keys(moved: Dictionary) -> String:
+	var names: PackedStringArray = []
+	for action: StringName in KeyBindings.actions():
+		if moved.has(String(action)):
+			names.append(KeyBindings.label_for(action))
+	return " · ".join(names)
+
+
+## Back to "Put them all back". Called from everywhere that means "not that":
+## picking a row, capturing a key, and the reset completing.
+func _disarm_reset() -> void:
+	_reset_armed = false
+	if _reset_button != null:
+		_reset_button.text = RESET_IDLE
+
+
+## Is the reset one press from firing? For tests and the bridge — the button's text
+## says the same thing, and asserting on rendered text is asserting on the wrong
+## layer (same reason `listening_for()` exists).
+func reset_armed() -> bool:
+	return _reset_armed
 
 
 ## Redraws the key column and the row buttons from the InputMap. Called after

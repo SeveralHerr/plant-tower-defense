@@ -207,12 +207,20 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   shows how a field is added without refusing older files) and let the title
   screen say "wave 14, three Chomp Flowers, 6 got past you". A record you can
   picture is a record you want to beat; a bigger integer is a bigger integer.
-- **The milestone shelf.** `earned_milestones` is persisted, validated,
-  quarantined on corruption, and given its own line in the format — and the
-  player is never shown the set. Put it on the title screen as a shelf of seed
-  packets: earned ones in full colour, unearned ones as an outline with the name
-  hidden. The data has been paying rent since v5 without a single pixel of
-  return, and a locked slot the player can SEE is the cheapest goal a game has.
+- ~~**The milestone shelf.**~~ **SHIPPED, and this entry was wrong when it was
+  written.** The shelf exists in full — `NotebookScreen.KIND_SHELF`, built by
+  `_build_shelf()` (`game/notebook_screen.gd:415`), all seven `Milestones.TABLE`
+  rows drawn with earned/unearned pips, a `shelf_progress_text()` reading
+  "N of 7 earned", and tests in both `test_placement.gd:2185` and
+  `test_selftest.gd:7760`. It is in the notebook rather than on the title screen
+  **on purpose and with a measured reason**: the title's button column is full to
+  the inch, and a fifth row at `TitleScreen.BUTTON_TOP` foots below
+  `TitleBackdrop.HORIZON`. So the suggestion this entry made is the one thing that
+  was already considered and rejected. Kept, struck through, as the worked example
+  for `kanban-staleness-audit`: it was filed by an agent who had spent the cycle in
+  `run_config.gd` and reasoned from "the data is persisted" to "nothing shows it",
+  without opening a single screen. **A backlog entry written from one file's
+  neighbourhood is a guess about the rest of the codebase.**
 - **Saving is invisible, and this cycle proved even we could not see it.** The
   game writes a file at moments the player cannot predict (a record, a fresh
   milestone, a flipped option) and never says so. A one-second seed-packet glyph
@@ -220,16 +228,23 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   most important guarantee in the project — "your number is on disk" — a thing
   the player observes rather than assumes. It would also have made the bug this
   cycle fixed visible from the couch instead of from a stack trace.
-- **The record ratchets instead of appearing.** A new high score is currently a
-  label whose text changes. Roll it digit by digit from the old record to the new
-  one over ~0.8s, with the seed-packet sound on the last digit — `fresh_record`
-  already exists on RunConfig purely so a screen can know this happened, and
-  nothing does anything with the knowledge.
-- **"Reset to defaults" that says what it will undo.** The options screen owns
-  three switches and a whole rebindable InputMap, and `reset_all()` silently
-  throws away every key the player has moved. Show the list first — "3 rebound
-  keys, colourblind ramp ON, music muted" — and let them confirm. The one place a
-  settings screen can lose a player's work is the one button that looks safest.
+- **The record ratchets instead of appearing.** A new high score is a label whose
+  text changes. Roll it digit by digit from the old record to the new one over
+  ~0.8s, with the seed-packet cue on the last digit. **Corrected:** the original
+  entry said `fresh_record` was read by nothing. It is —
+  `TitleScreen._best_line()` (`game/title_screen.gd:366`) appends "← just now" to
+  the best-seeds line when it is set, and clears it at line 324. So the flag is
+  live and the hook is already there; what is missing is only the motion, which
+  makes this smaller than it was filed as, not larger.
+- **"Reset to defaults" that says what it will undo.** `KeyBindingScreen.reset_all()`
+  (`game/key_binding_screen.gd:170`) is wired straight to the button —
+  `_reset_button.pressed.connect(reset_all)` — and goes `KeyBindings.reset_all()`
+  → `_persist()` → `RunConfig.store_key_bindings()` → `_save()` with no confirm
+  step anywhere in the chain. It is on disk before the player's finger leaves the
+  mouse. Show what is about to go ("3 rebound keys") and make them say yes.
+  **Narrowed:** the original entry claimed it also discards the three display and
+  audio switches. It does not — those live on `OptionsScreen` and have no reset
+  button at all. The scope is the InputMap only.
 
 ### New this cycle (12 of 30) — grown from the features above
 

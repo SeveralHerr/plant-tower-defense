@@ -3694,3 +3694,53 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   with `--no-reach` without pretending a number it did not have. The one thing worth
   noting is not a gap: `record` downgraded nothing, because the run reported `overkill`
   itself rather than claiming `warranted` over an empty `found`.
+
+## 2026-08-16 — cycle 31: the reset button asks before it undoes anything
+
+- Value: **warranted** — three defects, none of which the diff or the headless test
+  could show, and one of them was the harness catching me doing the thing I spent the
+  previous cycle fixing.
+  - Expected: the button wiring and the two-press state machine need the live game — a
+    headless test can call `reset_all()` directly, but only a real press proves
+    `_reset_button.pressed` is connected to the handler that now asks rather than the
+    one that undid.
+  - Got: more than that. `get-state --node .../Note --property text` came back
+    `hold the garden still will go back to its shipped key.` — `KeyBindings.describe()`
+    returns a legend cell, not a noun phrase, which is the trap this very file already
+    documents thirty lines further down at the refusal message. My headless assertion
+    was `note.text.contains(describe(...))`, which is true of a garbled sentence.
+  - Found: three.
+    1. The garbled sentence above.
+    2. The reworded version measured **962px of text in a 700px `clip_text` Label** —
+       `findings` reported `ui_text_trimmed: the player sees a cut string`. A
+       confirmation that names what it is about to destroy was naming it off the
+       visible edge. Fixed by naming the KEYS (`F1 · F2`) rather than the verb
+       phrases, and promoted into `test_dir` as a `_T.text_width(note) <= note.size.x`
+       assertion — planted and watched fail at `1006px of text in a 700px label`.
+    3. **The live session wrote the developer's real save.** `capture()` persists, so
+       driving the screen through the bridge put `garden_pause 4194332` /
+       `garden_restart 4194333` into `user://highscore.save`; the next full suite run
+       loaded them at startup and five byte-exact save assertions failed against a
+       binding block no test wrote. Restored byte-identical (md5 `75aab726…`, the
+       value recorded in cycle 30). This is exactly the hazard the harness's own
+       token-aware section states — `--isolated` does not isolate `user://` — arriving
+       from the bridge rather than from the suite, one cycle after the suite half was
+       fixed and gated.
+  - Cheaper: nothing. The headless test passed on the garbled sentence and is
+    structurally unable to see a trimmed label; the save pollution was only visible in
+    a full-suite run.
+
+- Gap: **nothing stops a live bridge session persisting into the developer's `user://`,
+  and nothing tells you afterwards that it did.** `quit` names what the run changed —
+  and I did not read it, because the write happened many verbs earlier and the failure
+  surfaced twenty minutes later as five unrelated-looking test failures. The suite now
+  has `tools/save_persist_check.py` and per-script `setup()` redirects; the bridge has
+  neither and cannot have the second one.
+  - [G-054] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: `launch --snapshot-userstate` already exists and makes `quit` restore
+    what the run changed. Make it **the default for `launch`**, with
+    `--no-snapshot-userstate` to opt out — a verification session that silently mutates
+    the developer's save is never what was wanted, and the flag only helps the people
+    who already know to look for it. Failing that, have `launch` print one line naming
+    the `user://` files it is prepared to see change, so the hazard is stated at the
+    moment the risk is taken rather than at `quit`, after the damage.

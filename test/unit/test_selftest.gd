@@ -1634,9 +1634,18 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 			err = _T.assert_eq(KeyBindings.keys_for(KeyBindings.ACTION_MUTE_SFX), [KEY_M],
 				"having bound nothing")
 	if err == "":
-		(screen.get_node("ResetButton") as Button).pressed.emit()
-		err = _T.assert_eq(KeyBindings.keys_for(KeyBindings.ACTION_PAUSE), [KEY_ESCAPE, KEY_P],
-			"Put them all back restores the shipped keys")
+		# TWO presses now: the first arms, the second undoes. The arming half is
+		# asserted on its own in test_the_reset_asks_before_it_undoes_anything; what
+		# this line still owns is the other end -- that the undo, once confirmed,
+		# reaches the InputMap AND the save file.
+		var reset_button := screen.get_node("ResetButton") as Button
+		reset_button.pressed.emit()
+		err = _T.assert_eq(KeyBindings.keys_for(KeyBindings.ACTION_PAUSE), [KEY_F1],
+			"one press asks rather than undoing -- F1 is still bound")
+		if err == "":
+			reset_button.pressed.emit()
+			err = _T.assert_eq(KeyBindings.keys_for(KeyBindings.ACTION_PAUSE), [KEY_ESCAPE, KEY_P],
+				"Put them all back restores the shipped keys once confirmed")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(path),
 				"v%d\n0\n0\nm0\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
@@ -1653,6 +1662,131 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 	RunConfig.earned_milestones = stashed_milestones
 	RunConfig.mute_sfx = stashed_mute_sfx
 	RunConfig.mute_music = stashed_mute_music
+	for suffix: String in ["", ".tmp", ".bak"]:
+		if FileAccess.file_exists(path + suffix):
+			DirAccess.remove_absolute(path + suffix)
+	return err
+
+
+## The reset button asks before it destroys anything (plant-tower-defense-y7r).
+##
+## It used to be wired straight through — one press ran KeyBindings.reset_all(),
+## _persist() and therefore RunConfig._save(), so every key a player had moved was
+## off the disk before their finger left the mouse. This is the only control on the
+## screen that can destroy work and it looked exactly as safe as "Change".
+##
+## Four things are asserted, and the last two are the ones that make a confirmation
+## worth having rather than merely present: the count in the prompt is DERIVED from
+## KeyBindings.overrides() (so the number offered and the number undone cannot
+## disagree), and picking a row answers "no" — an arm that outlived the player going
+## off to do something else would fire on their next glance at the button, which is
+## worse than no confirmation at all.
+func test_the_reset_asks_before_it_undoes_anything() -> String:
+	var stashed_path: String = RunConfig.save_path
+	# RunConfig.key_bindings has to be stashed too, and leaving it out is not a
+	# hypothetical: capture() persists through RunConfig.store_key_bindings(), so
+	# without this the autoload carries {garden_pause: [F1], garden_restart: [F2]}
+	# out of this test and into every byte-exact save assertion after it. Five of
+	# them failed that way, and ONLY in the full suite -- filtered to this test
+	# alone it passed, which is the whole shape of suite-order pollution.
+	var stashed_bindings: Dictionary = RunConfig.key_bindings
+	var path := "user://test_selftest_reset_confirm.save"
+	RunConfig.save_path = path
+	RunConfig.key_bindings = {}
+	KeyBindings.reset_all()
+
+	var screen := await _T.instantiate_ui(KeyBindingScreen.new(), Vector2i(1152, 648)) as KeyBindingScreen
+	var reset_button := screen.get_node("ResetButton") as Button
+	var note := screen.get_node("Note") as Label
+
+	# Nothing moved yet: the button has nothing to confirm and must not arm, and
+	# must not write. The old code reset the InputMap to what it already was and
+	# persisted that.
+	reset_button.pressed.emit()
+	var err: String = _T.assert_false(screen.reset_armed(),
+		"with no key moved there is nothing to confirm, so it does not arm")
+	if err == "":
+		err = _T.assert_eq(note.text, KeyBindingScreen.RESET_NOTHING_TO_DO,
+			"and it says so instead of reporting a reset that undid nothing")
+	if err == "":
+		err = _T.assert_false(FileAccess.file_exists(path),
+			"and nothing was written -- 'nothing to undo' is not a thing to save")
+
+	# Move two keys, so the count in the prompt has something to be wrong about.
+	if err == "":
+		screen.listen_for(KeyBindings.ACTION_PAUSE)
+		err = _T.assert_true(screen.capture(KEY_F1), "F1 is free, so the first move lands")
+	if err == "":
+		screen.listen_for(KeyBindings.ACTION_RESTART)
+		err = _T.assert_true(screen.capture(KEY_F2), "F2 is free, so the second lands")
+	if err == "":
+		err = _T.assert_eq(KeyBindings.overrides().size(), 2,
+			"two verbs are off their shipped keys, which is what the prompt has to say")
+
+	if err == "":
+		reset_button.pressed.emit()
+		err = _T.assert_true(screen.reset_armed(), "the first press arms rather than undoing")
+	if err == "":
+		err = _T.assert_eq(KeyBindings.keys_for(KeyBindings.ACTION_PAUSE), [KEY_F1],
+			"and the InputMap has not moved yet")
+	if err == "":
+		# The number is derived, not typed: this is the assertion that fails if the
+		# prompt ever counts something other than what reset_all() will undo.
+		err = _T.assert_eq(reset_button.text, KeyBindingScreen.RESET_ARMED % 2,
+			"the button carries the count, got: %s" % reset_button.text)
+	if err == "":
+		err = _T.assert_true(note.text.begins_with(KeyBindingScreen.RESET_MOVED_COUNT % [2, "s"]),
+			"the note leads with the count, got: %s" % note.text)
+	if err == "":
+		# The KEYS, in table order. Two earlier drafts of this line named the verbs
+		# instead, and both were caught in the running game rather than here: the
+		# first composed `describe()` into the middle of a sentence and read "hold
+		# the garden still will go back to its shipped key", and the second, composed
+		# correctly, measured 962px in a 700px clip_text Label -- `findings` reported
+		# `ui_text_trimmed` and the player saw the names cut off.
+		err = _T.assert_true(note.text.contains("put F1 · F2 back"),
+			"and names the keys that go, in table order; got: %s" % note.text)
+	if err == "":
+		# The half a string assertion structurally cannot see. This Label has
+		# clip_text set, so get_minimum_size() reports the clip stub (~1px) and any
+		# width assertion built on it passes unconditionally on exactly the labels
+		# that need checking -- _T.text_width measures through the label's own
+		# resolved theme font instead.
+		# The numbers are formatted into ONE literal rather than appended to a
+		# concatenation: `"a" + "b %.0f" % [x]` binds the `%` to the last fragment
+		# only, and the first draft of this line printed its own placeholders back
+		# when it failed. A failure message that cannot state the measurement is
+		# most of the value of taking one.
+		err = _T.assert_true(_T.text_width(note) <= note.size.x,
+			"the confirmation FITS: it is the one string that must not be trimmed, since it names what is about to be destroyed (%.0fpx of text in a %.0fpx label)" % [_T.text_width(note), note.size.x])
+
+	# Picking a row is the "no" answer.
+	if err == "":
+		screen.listen_for(KeyBindings.ACTION_MUTE_SFX)
+		err = _T.assert_false(screen.reset_armed(),
+			"choosing a row disarms it -- an arm that survives the player doing "
+				+ "something else fires on their next glance at the button")
+	if err == "":
+		err = _T.assert_eq(reset_button.text, KeyBindingScreen.RESET_IDLE,
+			"and the button stops asking, got: %s" % reset_button.text)
+	if err == "":
+		screen.capture(KEY_ESCAPE)
+		reset_button.pressed.emit()
+		err = _T.assert_eq(KeyBindings.keys_for(KeyBindings.ACTION_PAUSE), [KEY_F1],
+			"so the next press is a fresh question, not the second half of the old one")
+	if err == "":
+		err = _T.assert_true(screen.reset_armed(), "which is to say it armed again")
+	if err == "":
+		reset_button.pressed.emit()
+		err = _T.assert_eq(KeyBindings.keys_for(KeyBindings.ACTION_PAUSE), [KEY_ESCAPE, KEY_P],
+			"and confirming it does undo the move")
+	if err == "":
+		err = _T.assert_false(screen.reset_armed(), "the button disarms once it has fired")
+
+	_T.free_ui(screen)
+	KeyBindings.reset_all()
+	RunConfig.save_path = stashed_path
+	RunConfig.key_bindings = stashed_bindings
 	for suffix: String in ["", ".tmp", ".bak"]:
 		if FileAccess.file_exists(path + suffix):
 			DirAccess.remove_absolute(path + suffix)
