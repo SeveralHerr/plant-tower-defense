@@ -4964,3 +4964,45 @@ func test_a_winged_pest_only_outruns_the_map_in_a_garden_with_no_corn_in_it() ->
 				+ "is measured by the same counter that fires here")
 				% int(walled_run["pests_all_covered_untouched"]))
 	return err
+
+
+## Does a pest killed headless ever free itself? (plant-tower-defense-j8ey)
+##
+## `Plant.play_exit_and_free` frees on the spot when animations are gated off, and
+## two tests in `test_placement.gd` exist because that bug shipped twice.
+## `Pest._play_death` takes the other route: it guards `is_inside_tree()`, then in
+## BOTH branches queues `tween_interval(DEATH_LINGER)` and a
+## `tween_callback(queue_free)` — so headless it depends on a Tween's interval
+## elapsing rather than on an early return, and a Tween needs process frames.
+##
+## This is the object the game creates most, so "does the corpse ever leave" is
+## worth knowing rather than assuming in either direction. The assertion is the
+## honest one: a pest killed IN the tree is eventually freed. What the measurement
+## is really pinning is the number of frames that takes.
+func test_a_pest_killed_headless_is_eventually_freed() -> String:
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	var host := Node2D.new()
+	tree.root.add_child(host)
+	var pest: Pest = _pest(Pest.APHID, Vector2(100, 100))
+	host.add_child(pest)
+	var err: String = _T.assert_true(is_instance_valid(pest), "the pest is in the tree")
+	if err == "":
+		pest.kill()
+		# Generous: DEATH_LINGER is 0.35s and a headless process frame is short,
+		# so this is an upper bound on frames rather than a prediction.
+		# Two frames is what `_pump` gives and roughly what `instantiate_scene`
+		# settles with, so this is the window a test author actually operates in.
+		# DEATH_LINGER is 0.35s; a frame would have to be 175ms for two to cover it.
+		await tree.process_frame
+		await tree.process_frame
+		err = _T.assert_true(is_instance_valid(pest) and not pest.is_queued_for_deletion(),
+			"a corpse is still on the board two frames after the kill, unlike a plant")
+		if err == "":
+			var frames: int = 2
+			while is_instance_valid(pest) and not pest.is_queued_for_deletion() and frames < 600:
+				await tree.process_frame
+				frames += 1
+			err = _T.assert_true(frames < 600,
+				"but it does leave -- 600 frames was not enough, which means it never does")
+	host.free()
+	return err
