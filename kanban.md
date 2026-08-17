@@ -247,6 +247,43 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (90) — 19 messages on one rung, and a class with one member
+
+- **Nineteen of the game's twenty-two message-row calls sit on the SAME rung, and a tie
+  drops the NEWER line.** Enumerated by balancing parentheses across every
+  `show_message(` in `game/*.gd`, not by grepping one line each — these calls wrap, and a
+  single-line grep reports all 22 as defaulted, which is how this nearly went in wrong.
+  The real split is 19 at the default `MESSAGE_NORMAL`, two `MESSAGE_IMPORTANT`
+  (`game/game.gd:1518`, `:1528`) and one `MESSAGE_DEADLINE` (`game/game.gd:1392`).
+  `MESSAGE_QUEUE_MAX` is 3 (`game/hud.gd:355`), and `_queue_message` returns without
+  appending when the queue is full and the lowest entry's priority is `>=` the arrival's
+  (`game/hud.gd:1486`) — **`>=`, so a tie discards the new one**. With 19 producers
+  tied, a busy moment silently drops the fourth onward.
+  What makes that a player-facing problem rather than a curiosity is WHICH lines are
+  tied. "A hungry pest ate your Corn Cobbler!" is one of the nineteen
+  (`game/game.gd:1287`, no priority argument) and so is "Composted a husk for N seeds."
+  (`game/game.gd:1735`). A bed being destroyed and a click paying out compete as equals,
+  and in the wave where several things happen at once the loss notice is exactly as
+  droppable as the receipt. Cycle 90 made this **detectable** for the first time —
+  `show_message` now returns whether the line landed — so the fix is no longer a guess:
+  read the return at the sites that matter and decide which of the nineteen are actually
+  peers. Note before starting: raising a line's rung is not free, because the rung also
+  decides what it is allowed to STOMP mid-read (`game/hud.gd:1462-1464`).
+- **"A rule the game enforces in silence" turns out to have had exactly one member, and
+  it is now spoken.** Cycle 90 gave the Chomp/winged refusal a sentence. Before filing
+  more of them, the enumeration: grepped every `continue` and every `is_winged` across the
+  plant scripts, and the only other skip in a targeting loop is
+  `Dandelion.best_target`'s range check (`game/dandelion.gd:213-214`) — which is **not the
+  same class**, because an out-of-range pest is the ordinary case and the plant already
+  draws its range as a solid ring (the `OVERLAY_GRAMMAR.md` reach row). A silent refusal is
+  one where the plant CAN see the pest and declines on a rule; a range miss is one where it
+  cannot.
+  So the third hint will not come from this well, and `-2ker`'s remaining two candidates
+  (the first husk left to rot, the first bed eaten in under three seconds) are both about
+  a CONSEQUENCE the player may not have connected, which is a different thing from a rule
+  they were never told. Worth knowing before someone goes looking for a fourth silent
+  refusal that is not there.
+
 ### New this cycle (89) — one hint, a contract for more, and a checker not worth building
 
 - **The game has exactly ONE one-shot hint, and now has the machinery for a second.**

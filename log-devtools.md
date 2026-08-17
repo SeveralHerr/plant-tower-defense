@@ -5786,3 +5786,70 @@ Noted on the bead.
     is skipped and a populated list never reaches the summary. **The data is one `elif` away
     from being visible**, which is a much better issue than the one I would have filed from
     the 0.38.0 observation alone.
+
+## 2026-08-17 — Cycle 90: the flight hint (-2ker), and two observation errors that looked like a defect
+
+- Value: **warranted**, and the clearest case in several cycles — three of the run's four
+  claims are ones no headless gate can make.
+  - Expected: the unit suite covers the predicate, the edge and the spend contract. I
+    predicted runtime would add only the row's WIDTH, which `message_corpus_check` says
+    outright it cannot know.
+  - Got: that, plus two things I had not predicted. `cmd budgets` priced the row at
+    **818 of 876 px, 58 left** with the new tip in the corpus. A screenshot showed the
+    sentence unclipped using under half the row — worth a picture rather than an assertion
+    because the label has `clip_text = true`, which is precisely the case where
+    `get_minimum_size()` returns ~1 px and the width test the unit suite *could* have
+    written passes unconditionally. And a real winged aphid walked past a real Chomp and
+    the tip appeared, reproduced twice.
+  - Found: three, none of them a defect in the shipped feature.
+    **`message_corpus_check` refused a `const`.** I wrote `const FLIGHT_TIP` and appended
+    it to the corpus; the checker reported the call site as calling none of the corpus's
+    producers. The corpus mechanism resolves producer CALLS and literals, so a const
+    reference is invisible to the row's budget — the thing four cycles went into
+    measuring. Six producers already sat beside it; the const was the outlier, and the
+    checker knew.
+    **The end-to-end unit test's first draft saw zero emissions and looked like a broken
+    signal.** `Plant._physics_process` calls `_act(delta, _live_pests())` every frame
+    (`game/plant.gd:368`), so whether a headless settle spends the rising edge before the
+    listener exists is a question about the settle, not the feature. Rewritten to clear
+    both sides explicitly rather than encode a frame count.
+    **And the live run appeared to show the hint never firing, through two compounding
+    observation errors and no defect at all.** I polled
+    `/root/Game/Hud/Root/TopBar/MessageLabel`; the node is `/root/Game/HUD/...`. Every
+    read returned `Failed: Node not found` and I read fourteen of those as an empty row.
+    By the time `find-nodes --class Label --where name=MessageLabel` gave me the real
+    path, the hint had already been spent on the first attempt and was correctly doing
+    nothing — `earned_milestones` read `{"seen_flight_tip": true}`. That is cycle 80's
+    trap exactly, and `launch --snapshot-userstate` had been passed at launch for it and
+    restored the save on quit.
+  - Cheaper: nothing. The budget is a running-game number by construction, and `clip_text`
+    makes the cheap assertion a false one.
+
+- Gap: **`get-state` reports a missing node identically whether the path is wrong or the
+  game is broken, and nothing suggests the verb that would resolve it.**
+  ```
+  Failed: Node not found: /root/Game/Hud/Root/TopBar/MessageLabel
+  ```
+  That is the entire reply, fourteen times, for a path whose only error is the case of one
+  segment. The tree contains `/root/Game/HUD/Root/TopBar/MessageLabel`; the reply knows the
+  path it was given and has the tree in hand, and says neither "the deepest segment that
+  DID resolve was `/root/Game`" nor "a node named `MessageLabel` exists at
+  `/root/Game/HUD/...`". The fix I eventually used —
+  `find-nodes --class Label --where name=MessageLabel` — is in `REFERENCE.md` and is the
+  right verb; nothing in the failure points at it.
+  This is worse in a polling loop than in a single call, which is how it cost fourteen
+  batches: each read "failed" identically to the previous one, so the shape of the output
+  was stable and looked like a stable *result*.
+  - [G-065] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: on a node-path miss, report the longest prefix that resolved and the
+    children available at that point — `resolved as far as /root/Game, which has children
+    [HUD, Entities, CompostMeter, ...]`. That alone names a case error instantly. Better
+    still, when the leaf name exists elsewhere in the tree, say where: the walk is already
+    happening and a single `find_children(leaf, "", true, false)` is one call.
+  - Note: no other gaps this turn.
+
+  - [G-065] status: open | seen: 1 | harness: 0.54.0 | upstream: gh#53 | note: reconciled
+    against the installed 0.54.0 before filing, per `gap-reconcile`. All four
+    `"Node not found: %s"` sites are unchanged (`dev_tools.gd:1254`, `:1741`, `:1872`,
+    `:3843`); `:1872` alone adds "(also tried under /root)", which shows the intent already
+    exists at one site and nowhere else.

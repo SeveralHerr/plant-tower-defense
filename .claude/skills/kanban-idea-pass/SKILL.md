@@ -103,8 +103,19 @@ Per entry, before writing:
    proves a line exists, never that the line supports the claim, and it prints how many
    entries carry no citation at all (260 of 360 in `kanban.md`, which is the real limit on
    every check here).
-7. **Then `sed -n 'NNNp' <file>` every citation you just wrote.** One command each, and it
-   catches the single most likely error: landing on the doc comment above the thing you meant.
+7. **Then `sed -n 'NNNp' <file>` every citation you just wrote — after the code edits are
+   FINAL, not while they are still moving.** One command each, and it catches the single
+   most likely error: landing on the doc comment above the thing you meant.
+
+   Do it last because your own edits shift the targets. Cycle 90 rebound the same two
+   citations **three times**: written against the file, then invalidated by adding a doc
+   comment above them, then invalidated again by a one-line fix to that comment. Each
+   round the `sed` was run and each round it was run too early. Derive the numbers with a
+   `grep -n` for the code you mean rather than typing them, and do it once, at the end:
+
+   ```bash
+   grep -n 'the exact line of code you are citing' path/to/file.gd
+   ```
    The checker cannot see it — a comment line is a line — and it says so in its own
    `NOT COVERED` text, naming two cycles that did exactly this. Cycle 89 wrote
    `game/run_config.gd:135` for a constant that is at `:137`, in the same hour it wrote this

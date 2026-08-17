@@ -1443,7 +1443,8 @@ func _paint_message_row() -> void:
 ## queued behind something, and false when the queue was full and dropped it.
 ##
 ## The return value exists because a caller could not previously tell those apart. All
-## 36 call sites ignore it and are right to; the one that must not is a one-shot HINT,
+## 22 call sites under `game/` ignore it and are right to; the one that must not is a
+## one-shot HINT,
 ## which is spent on the player having SEEN something. `_queue_message` drops the
 ## lowest-priority entry when the queue is full and drops the NEW one if it is the
 ## lowest — silently, and this method returned void. So "I called show_message" and
