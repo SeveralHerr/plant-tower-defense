@@ -32,12 +32,17 @@ running a command. **Never write a work checklist into it.**
      out of them — a wrong `STALE` deletes an idea nobody will have again. (This bullet
      used to name a `STILL REAL` section; the file has no such heading and never did,
      so the instruction pointed at nothing for 33 cycles.)
-   - **The mirror.** `diff` the Workflow block of `CLAUDE.md` against `AGENTS.md`'s and
-     report whether they are identical. This is here because the block has now been
-     silently deleted from `AGENTS.md` **twice** — most recently by the very commit that
-     wrote the note warning about it, which left the note dangling above nothing. Every
-     other pre-flight item is a list that fills up unread; this one is a file that
-     quietly empties. Nothing else in the loop ever opens `AGENTS.md`.
+   - **The mirror.** `python tools/mirror_check.py` — exit 0 identical, 1 drifted,
+     `--show-diff` for what moved. This is here because the block has now been silently
+     deleted from `AGENTS.md` **twice**, most recently by the very commit that wrote the
+     note warning about it, which left the note dangling above nothing. Every other
+     pre-flight item is a list that fills up unread; this one is a file that quietly
+     empties, and nothing else in the loop ever opens `AGENTS.md`. It was a hand-run
+     `diff` for one cycle and is a tool now — which immediately caught a one-sided edit
+     nobody planted, the commit that registered the tool itself.
+     **When it fires, generate the other copy from `CLAUDE.md` rather than retyping it:
+     identical by construction beats identical by care, and care is what has failed
+     twice.**
 
    The harness is deliberately NOT checked here — it is checked in step 4, after it has
    actually been used. Pre-flight REPORTS AND FILES, it does not block.
@@ -141,6 +146,7 @@ python tools/group_leak_check.py     # a test that selects a node it did not cre
 python tools/suite_reach_check.py    # the public surface no test names
 python tools/settle_read_check.py    # a test reading a value the settle frames were still moving
 python tools/save_persist_check.py   # a test script that can reach RunConfig._save() unredirected
+python tools/mirror_check.py         # CLAUDE.md and AGENTS.md's Workflow blocks have drifted
 ```
 
 Each prints its own `NOT COVERED:` line. None of them compiles — only `import_check.py`
