@@ -195,6 +195,29 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (68) — the grammar is written; the plants do not follow it
+
+- **Every plant draws its own range ring and none of them share the code.**
+  `corn_cobbler.gd:148-149`, `dandelion.gd:376-377` and `sticky_sundew.gd:456` each build a
+  fill-plus-edge ring at their own reach, with their own colours and their own alpha, and
+  `chomp_flower.gd:138` draws a ring that is not a reach at all. `game/OVERLAY_GRAMMAR.md`
+  now says a solid plant-sized ring means REACH — four independent implementations of one
+  sentence is how a fifth plant ends up meaning something slightly different by accident.
+  A `Plant.draw_reach_ring()` on the base class would make the grammar structural rather
+  than advisory.
+- **The Chomp's chew ring is the only animated radius in the game and reads as a range.**
+  `chomp_flower.gd:138` shrinks a solid ring as a chew completes — a progress bar in ring
+  form, sharing a shape with the four rings that mean "this is how far I act". It is
+  documented as an exception now, which is honest and is not the same as being legible. A
+  player who has learned "solid ring = reach" from three plants meets a fourth where it
+  means time.
+- **The lane-pressure hatch is the one cue with no entry in the grammar table.**
+  `lane_pressure_overlay.gd:96` draws hatched lines whose ANGLE carries aimed-versus-unaimed
+  and whose ALPHA carries how much pressure a cell took — two channels on one mark, and the
+  most sophisticated cue in the game. It is absent from `OVERLAY_GRAMMAR.md`'s table because
+  it is the only one drawn on the board rather than on a node, and that asymmetry is
+  probably worth a row of its own rather than an omission.
+
 ### New this cycle (67) — the HUD reports how full it is; the game does not
 
 - **`cmd budgets` now says "3 of 7 at floor" and the game itself still says nothing.**

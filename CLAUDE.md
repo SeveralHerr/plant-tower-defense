@@ -111,6 +111,14 @@ running a command. **Never write a work checklist into it.**
      neighbourhood of the file you happen to be in is a guess about the rest of the
      codebase.** Use `kanban-staleness-audit`'s bar: before writing that something is
      missing, open the code that would contain it.
+   - **An entry claiming a PATTERN needs the enumeration, not an example.** "All the X do
+     Y", "these are consistent", "nothing does Z" — one citation cannot support any of
+     them, and a citation that happens to be true makes the whole claim read as checked.
+     Cycle 67 wrote that four drawn cues shared a grammar (dashed = a remark, solid = a
+     range, filled = a gain, doubled = armed). Cycle 68 derived it from all 55 `draw_`
+     calls and found "solid = a range" violated twice, once by a cue written two cycles
+     earlier. `derive-the-list` says this about lists in code; it is the same rule for a
+     claim in prose, and the grep that would settle it belongs in the entry.
    - **An entry that COMPARES two things needs a citation for both halves.** One
      `file:line` makes the whole entry read as sourced, including the half taken from
      memory. Cycle 65 wrote "death has a sound, a corpse and a linger; escape has none of

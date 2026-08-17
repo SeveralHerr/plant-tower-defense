@@ -4910,3 +4910,29 @@ cited in code, and the citation is a mitigation this project has watched fail.
   without thinking about it, and it was right for free. **A previous cycle's reasoning,
   written at the line it constrains, made a later addition correct by default** — the
   fourth cycle running that this codebase's own prose has done the deciding.
+
+## 2026-08-17 — Cycle 68: writing down a grammar, and finding it had exceptions
+
+- Value: **overkill**, deliberately — no game launched and none needed for a document plus
+  a constants test. The verification was `grep` and the suite, which is what a grammar
+  derived from source deserves.
+  - Expected: to write down the four-cue vocabulary I had described in last cycle's kanban
+    entry: dashed = a remark, solid = a range, filled = a gain, doubled width = armed.
+  - Got: **three of four hold and "solid ring = a range" is violated twice**, once by a cue
+    I wrote myself two cycles ago. `SoleCoverMarks` draws small SOLID rings on road cells —
+    a mark, not a radius — and `ChompFlower` draws a solid ring whose radius *shrinks* as a
+    chew completes. Deriving from the 55 draw calls rather than from memory is the whole
+    reason the document is worth anything.
+  - Found: also that **the document's own pointers shifted eight of the line numbers it
+    cites**, before it was committed — adding a five-line header to three cue files moved
+    every `draw_` call below it. Re-derived, then verified programmatically that all twelve
+    citations land on a `draw_` call rather than trusting the fix.
+  - Cheaper: nothing cheaper than the grep, and the grep *was* the method.
+
+- Gap: **no gaps this turn.** One note on the shape of the deliverable, since this project
+  has sixty-eight cycles of evidence that prose rots: the document's mechanical half is a
+  test (six mutations, all red) and its prose half says explicitly that it will rot unless
+  re-derived, with the derivation command in the file. **A document that names the command
+  that would falsify it is the closest a prose artefact gets to being checked** — which is
+  the same argument `house-static-checker` makes for a printed denominator, applied to
+  writing instead of to output.
