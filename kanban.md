@@ -195,6 +195,31 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (26 of 30) — what a reverted upgrade exposed about our own tests
+
+- **One test holds node references across an `await` and it is the one that crashed.**
+  `test_corn_shoots_the_pest_closest_to_escaping` (`test/unit/test_combat.gd:288`)
+  builds `near` and `far`, hosts them, awaits `instantiate_scene`, and only then puts
+  them in a typed array. Under 0.42.0 one is already freed by then. Whether or not the
+  harness caused it, **the test is written the way the project's own
+  `settle_read_check.py` exists to catch** — a value read after settle frames that
+  were still moving. Worth auditing every test that hosts nodes and then names them.
+- **`_furthest_along_in_range` dereferences without checking the reference**
+  (`game/plant.gd:412`). It takes `Array[Pest]` and reads `pest.global_position` with
+  no `is_instance_valid`. Game builds that array fresh from the group each frame, so
+  it is safe today by construction rather than by contract — and a targeting function
+  that crashes on a stale entry is a crash in a shipped game, not a failed assertion.
+- **Nothing in this project records what the suite counted before a dependency
+  changed.** The bisect that proved gh#43 rested on a number I happened to take by
+  hand. `.devtools/verify-runs.jsonl` records `tests.total` per run, so the history is
+  already there — a `verify_ledger.py stats` line reading "552 for the last 12 runs"
+  would have made the regression obvious without the manual before-measurement.
+- **The scaffold skill's paths are pinned to whatever plugin version the cache holds**
+  (0.33.0 here, against a project on 0.38.0 and a newest cache of 0.42.0). The
+  installer's downgrade guard catches the dangerous case, but nothing warns when the
+  skill is simply *stale* — worth a note in the local skills that the first thing to
+  check on any harness operation is which version the paths point at.
+
 ### New this cycle (25 of 30) — three screens learned the same lesson separately
 
 - **`set_active(bool)` now exists three times under three names.**
