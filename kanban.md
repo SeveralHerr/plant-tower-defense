@@ -177,11 +177,29 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
 
 ### Requested directly by James — not grown, asked for
 
-- **Animate all the plants and enemies.** Every plant and pest currently reads as
-  mostly static art with a handful of one-off tweens bolted on for specific events
-  (Chomp's bite squash, the cob's recoil). The ask is broader: idle motion — sway,
-  breathe, twitch — on every plant and pest, not just reaction poses for the
-  moments the game already hooks.
+- **Animate all the plants and enemies.** The ask: idle motion — sway, breathe,
+  twitch — on every plant and pest, not just reaction poses for the moments the game
+  already hooks.
+  **CORRECTED (cycle 71). The description below this line used to say "every plant
+  and pest currently reads as mostly static art with a handful of one-off tweens
+  bolted on for specific events", and that has been false since the first playable
+  build.** `Plant._wobble` (`game/plant.gd:351`) rocks every planted bed off a
+  per-cell phase, and `Pest._gait` (`game/pest.gd:733`) gives every pest a walk cycle
+  with a side-to-side swing, a body stretch at twice the rate, and a per-instance
+  phase. Both are `_process`-driven sinusoids, which is why a census of
+  `create_tween()` calls — the check that produced the wrong "verified unbuilt" —
+  could not see either of them. **An enumeration over the wrong set is worse than an
+  example, because it looks exhaustive.**
+  What was genuinely missing was one channel: a plant rotated and nothing else, while
+  a pest rotated *and* stretched, and it is the stretch that stops a walking bug
+  reading as a rigid sprite being turned. Shipped in cycle 71 as
+  `Plant.breathe_scale` on a `Sway` pivot — a separate node because `_sprite.scale`
+  already has five event owners that all tween back to `Vector2.ONE`.
+  **What is still open under this heading** is the third word of the ask, *twitch*:
+  every idle motion in the game is a continuous sinusoid, so nothing is ever
+  startled, surprised, or briefly out of rhythm. A Chomp with a full mouth
+  (`game/chomp_flower.gd:83`) and a plant being eaten (`game/plant.gd`'s `_quiet_time`
+  regrowth clock) both know something a sway does not.
 - **More waves, and bosses.** The wave table (`WaveDirector`) currently ends at 8
   fixed waves before endless mode takes over with escalating mutation chance on
   the same two pests. Add real additional waves to the table, and at least one
@@ -194,6 +212,39 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
 - **Fix enemy facing direction.** Pests should visually face the direction they're
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
+
+### New this cycle (71) — every idle motion in the game is the same sine wave
+
+- **Nothing in the garden is ever startled.** The game now has three continuous idle
+  animations and they are the same shape: `Plant._wobble` (`game/plant.gd:351`) sways and
+  breathes off `sin(_wobble_time * RATE + phase)`, `Pest._gait` (`game/pest.gd:733`) swings
+  and stretches off `sin(_gait_time * rate + phase)`, and `TitleScreen`'s decorative lawn
+  phases the same way. A sinusoid cannot be interrupted, so nothing on the board ever
+  flinches — not a plant taking a bite, not a pest walking into sap. **The state to hang a
+  flinch on already exists on both sides**: `Plant._quiet_time` (`game/plant.gd:180`) is
+  reset by damage and is what gates regrowth, and `Pest` already changes `gait_stretch`
+  when it is hungry (`game/pest.gd:780`). A one-off amplitude spike decaying back into the
+  sine — the same `_wobble_time` clock, one extra term — would make being eaten legible
+  from across the board, where today a bed under attack looks exactly like one that is not.
+- **The Sway pivot exists on every plant and only one thing uses it.**
+  `game/plant.gd`'s `_sway_pivot` was added in cycle 71 to keep idle motion off
+  `_sprite.scale`, which five event flourishes own. It is a general answer to a general
+  problem and it currently carries two channels of one sine. **The other thing that wants
+  it is a base pivot**: the sway rotates about the sprite's centre, so a plant wobbles
+  around its middle like a tethered balloon rather than bending at the stem. Moving
+  `_sprite.offset` down and the pivot up by the same 32 px would rotate about the base at
+  no runtime cost — and now that the event tweens live on the sprite and the sway on the
+  pivot, that change touches only the pivot and cannot disturb the planting pop, which is
+  the reason it was not worth attempting before.
+- **The idle motion and the drawn cues are now on opposite sides of the sprite.**
+  Cycle 70 established that a plant's `_draw()` renders *behind* `_sprite` (because the
+  sprite is a child) — and cycle 71's pivot puts the sprite one level deeper still, so the
+  gap widened. The consequence is visible on the cob: `_draw_muzzle_fan`
+  (`game/corn_cobbler.gd:159`) paints pips in the PLANT's space while the sprite they sit
+  beside is now rotating and breathing on the pivot. A pip at 20 px does not follow the
+  head it is meant to be a muzzle for. Nobody has looked at whether that reads as wrong or
+  as a still gun on a swaying stalk; it is one screenshot, and it is the same screenshot
+  `-gfpj` already asks for.
 
 ### New this cycle (70) — every plant draws underneath its own art
 

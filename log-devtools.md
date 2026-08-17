@@ -5046,3 +5046,41 @@ cited in code, and the citation is a mitigation this project has watched fail.
     and an eyeball. `--points X,Y[;X,Y...]` as an alternative to `--rect` would close the
     smaller half — a cue is a point, and expressing a point as a 1x1 rect works but reads
     like a workaround because it is one.
+
+## 2026-08-17 — Cycle 71: a second animation channel, and two mutations that survived
+
+- Value: **warranted** — the claim the whole change rests on ("these two animations no
+  longer fight over one property") exists only while both are running, and only the live
+  game has both running.
+  - Expected: that the new `Sway` pivot would carry the idle motion while the five event
+    flourishes kept their own hold on `_sprite.scale`, and that nine plants breathing every
+    frame would not show in the frame budget.
+  - Got: both, and the first one needed three polls to catch. A recoil is a 0.15 s tween and
+    the bus round-trip outruns it — the first two reads returned `_sprite.scale = (1.0, 1.0)`
+    with the tween already landed, which is indistinguishable from a tween that never ran.
+    The third caught it: `_sprite.scale (0.980, 1.023)` and `_sway_pivot.scale (1.022, 0.978)`
+    **in the same frame**, neither touching the other. Frame budget: FPS mean 124, min 98.8
+    over 60 frames with nine plants, orphan growth +0.
+  - Found: four things, and only the first is about the game. **The bead was already
+    shipped** — `Plant._wobble` has swayed every plant since the first playable build and
+    `Pest._gait` animates every pest. Cycle 70 filed it "verified unbuilt" after enumerating
+    `create_tween()` call sites, which is the wrong set: both animations are `_process`-driven
+    sinusoids and a tween census cannot see them. Then **two mutations survived**: pointing
+    the breathe straight at `_sprite.scale` passed (past its `animations_enabled()` gate
+    `_wobble` does nothing headless, so pumping it and reading what moved is a test of an
+    unreached branch), and setting `BREATHE_AMOUNT = 0.0` passed (every assertion was
+    expressed *relative to* `BREATHE_AMOUNT`, so zeroing it left them all true). And I
+    asserted "the breathe never gets wider than its own sprite", which is false of the shape
+    I had just written — it alternates.
+  - Cheaper: nothing for the collision claim. The two survivors came out of the headless
+    suite at ~40 s each, which is the cheapest finding of the cycle by a wide margin.
+
+- Gap: **no gaps this turn** — but one correction to a note in this file's own history, and
+  one small flag error worth writing down so the next cycle does not repeat it.
+  `set-game-speed` takes the scale as a **positional** argument, not `--scale`; passing
+  `--scale 0.05` exits 2 with the argparse usage block. The verb is the right tool for
+  exactly this problem (catching a sub-second tween mid-flight) and I reached for it and
+  then fell back to polling, which worked by luck on the third try. `pause` cannot substitute
+  here: pausing is a second command and the tween lands during the round-trip, which is the
+  same race. The one that would actually be deterministic is `step-time --then-pause`, and
+  it is the verb this project has never once used in seventy-one cycles.

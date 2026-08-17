@@ -1,4 +1,4 @@
-# Cycle 70
+# Cycle 71
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,36 +6,35 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 70 taught
+## What cycle 71 taught
 
-**A bead whose acceptance names evidence a commit cannot produce will outlive its own
-implementation.** `-6cqi` asked that two cobs at different upgrade levels be
-distinguishable on the board "and a screenshot proves it". The code half shipped in the
-cycle that filed it, twelve cycles ago, complete with a test enumerating every level pair.
-The evidence half needed a running game and a rendered frame, so the bead sat in `bd ready`
-looking exactly like work nobody had started. That rule is now in step 6.
+**An enumeration over the wrong set is worse than an example, because it looks
+exhaustive.** Cycle 70 filed `-e1u3` — "give one plant idle motion" — and justified it by
+enumerating every `create_tween()` call on every plant, finding all eight event-driven.
+The enumeration was complete and correct and about the wrong set: `Plant._wobble` has
+swayed every plant since the first playable build, and `Pest._gait` gives every pest a walk
+cycle. Both are `_process`-driven sinusoids, invisible to a census of tweens. **Search for
+the property the feature would move, not for the API you imagine it using** — that rule is
+now step 3's, and it is the third member of a family (cite a `file:line`; a pattern needs
+the enumeration; an absence needs the right set).
 
-**And the run that closed it was worth having.** The mutation I ran on the test I had just
-written **survived**: it asserted `kernel_angle_offsets`, and breaking the `if` at the draw
-site left it green — the test restated a function the arc did not depend on, and would have
-passed on a build where every level drew an arc. `CornCobbler.spread_arc_span` exists
-because of that survivor, and `_draw_muzzle_fan` now has no branch of its own: at level 1
-the arc's two ends coincide and `draw_arc` draws nothing. That claim about an engine API was
-verified on the running game, not assumed — three points on the circle a degenerate arc
-would have traced read pure grass.
+What was genuinely missing was narrow: a plant had one animation channel and a pest had
+two. `Plant.breathe_scale` is that second channel, and it lives on a new `Sway` pivot
+because `_sprite.scale` already has five event owners that all tween back to `Vector2.ONE`.
+Idle motion on the parent, flourishes on the sprite: they multiply instead of fighting.
 
-The measurement also found something not worth fixing blind: **a plant's `_draw()` renders
-behind its own sprite**, because `_sprite` is a child. The same cob pip reads `#ffc500` at
-one aim and leaf green at another. Enumerated for all five plants in `kanban.md`; three
-draw a cue wholly inside the sprite's box and only one has been checked.
+**Two mutations survived and both were about the test, not the code.** Pointing the breathe
+straight at `_sprite.scale` passed, because past its `animations_enabled()` gate `_wobble`
+does nothing headless — a test that pumps it and reads what moved is testing an unreached
+branch. And `BREATHE_AMOUNT = 0.0` passed every assertion, because every assertion was
+written *relative to* `BREATHE_AMOUNT`: **a subtle animation and no animation are the same
+picture to a test that only checks proportions.** The fix was an absolute floor in pixels.
 
 ## Where things stand
 
-Ninety-seven beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
-gh#43). Suite **568/568**, 12336 assertions; lint 0/0; nine checkers clean; findings 0/4.
-Twelve skills. Upstream gh#44 open, **gh#49 newly filed** (`sample-pixels` can describe a
-region but cannot assert a colour is in it — the only visual question the harness cannot
-reach); gh#46 is closed and fixed at 0.47.0, which we do not run.
+Ninety-nine beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
+gh#43). Suite **570/570**, 12543 assertions; lint 0/0; nine checkers clean; findings 0/4.
+Twelve skills. Upstream gh#44 and gh#49 open.
 
 ## Waiting on the user
 
@@ -50,18 +49,20 @@ together they made a HUD with no slack that nobody chose.
 ## Restarting
 
 `bd ready` for the work, this file for the context, `CLAUDE.md` (mirrored in `AGENTS.md`)
-for the loop itself. The last two cycles were the message row and the plants' own drawing,
-so step 2 says look elsewhere — `-e1u3` (idle motion, the user's own standing ask) is filed
-and is deliberately outside.
+for the loop itself. The last three cycles were the message row, the plants' drawing and
+the plants' animation — step 2 says look elsewhere. `-hnhn` (audit the rest of the
+user's own requested-features list, two of which have now been checked and both were wrong)
+and `-4lnu` (a harness verb this project has never used in 71 cycles) are both filed and
+both outside.
 
-**Seven standing notes.** The harness is pinned at 0.38.0 on purpose (gh#43). The UI
+**Eight standing notes.** The harness is pinned at 0.38.0 on purpose (gh#43). The UI
 findings baseline is **empty** (`-v9px`). Any harness operation should start by checking
 which version the skill's paths point at. **Never hand-edit `AGENTS.md`** — run
 `python tools/mirror_check.py --fix`. **`pause` right after `launch`**, but **unpause before
 `findings`**, and **capture `scene-tree` before `quit`** or the ledger row loses its reach.
-**Cut `kanban.md` by line number, never by heading.** And **never put backticks in a `bd`
-description passed through bash** — they are command substitution and the word vanishes
-silently, which is how `-e1u3` lost one.
+**Cut `kanban.md` by line number, never by heading.** **Never put backticks in a `bd`
+description passed through bash** — command substitution eats the word silently. And
+**`set-game-speed` takes its scale positionally**, not as `--scale`.
 
 `python tools/gap_ledger.py --open` answers "which harness gaps are open"; `python
 tools/devtools.py cmd budgets` prices the **seven** couplings; `list-commands --offline`

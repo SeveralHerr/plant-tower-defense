@@ -119,6 +119,18 @@ running a command. **Never write a work checklist into it.**
      neighbourhood of the file you happen to be in is a guess about the rest of the
      codebase.** Use `kanban-staleness-audit`'s bar: before writing that something is
      missing, open the code that would contain it.
+   - **Search for the BEHAVIOUR, not for one implementation of it.** This is the absence
+     half of the rule above and it fails differently: cycle 70 wrote "no plant has idle
+     motion, verified unbuilt" after enumerating every `create_tween()` call on every
+     plant and finding all eight event-driven. The enumeration was complete, correct, and
+     about the wrong set — `Plant._wobble` has swayed every plant since the first playable
+     build and `Pest._gait` animates every pest, and both are `_process`-driven sinusoids
+     that no census of tweens can see. **An enumeration over the wrong set is worse than
+     an example, because it looks exhaustive**, and this one survived a cycle, became a
+     bead, and was claimed before anyone opened the file. So grep for the PROPERTY the
+     feature would move (`rotation`, `scale`, `sin(`) rather than for the one API you
+     imagine it using, and when you write the claim down, say which mechanism you searched
+     for — that sentence is what lets the next reader notice the set was wrong.
    - **An entry claiming a PATTERN needs the enumeration, not an example.** "All the X do
      Y", "these are consistent", "nothing does Z" — one citation cannot support any of
      them, and a citation that happens to be true makes the whole claim read as checked.
