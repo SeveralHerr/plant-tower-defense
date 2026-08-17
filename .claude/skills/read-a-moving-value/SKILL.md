@@ -190,3 +190,39 @@ Before writing "this does not work", answer one question in one sentence:
 
 If you cannot name what was moving *or* say confidently that nothing was, you have not
 finished reading. That sentence would have saved all three incidents in the table.
+
+## The inverse: a value that is correctly zero, in a game that has stopped
+
+Everything above is about a read caught mid-transition looking like a **defect**. The same
+mistake runs the other way and is harder to see, because the answer arrives in the shape you
+were hoping for.
+
+Cycle 93 measured how often the message row silently drops a line. The instrument was two
+counters; the expected answer was a small number or zero. It read `messages_refused: 0` after
+six waves — a real result — and then read `0` twice more from a run that had hit `game_over`
+several minutes earlier. `set-state --property lives --value 99` had not revived it. Both
+later reads were of a **frozen tree**, and both were indistinguishable from the honest one.
+
+> **"Zero because nothing happened" and "zero because nothing is happening at all" are the
+> same read.**
+
+The harness states the general rule — *a run that never changes is broken, not passing* — and
+it did not fire for me, because I was not watching a value that had stopped moving. I was
+watching a counter that was legitimately still.
+
+**So when the answer you expect is zero, absent, empty or unchanged, pair it with a witness
+that MUST move.** Not the thing you are measuring — something the game advances regardless:
+
+```
+run_seconds     # identical across two reads = the tree is not stepping
+pests_defeated  # or any monotonic tally the scenario should be driving
+```
+
+Read the witness in the same call, and record it beside the result. `run_seconds` being
+`296.993015000033` in two consecutive polls is instantly legible as a stopped game; two
+zeroes are not.
+
+The cheap structural version: end the scenario by reading the game's whole `state()` rather
+than the one property you came for. It costs one call, it carries the witness for free, and
+it is where `game_over: true` was sitting the entire time I was driving waves into a run that
+had already ended.

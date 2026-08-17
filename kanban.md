@@ -247,6 +247,43 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (93) — the row loses nothing, and the one message that takes something
+
+- **Arming an uproot destroys the line the player is reading, and that is the real cost of
+  the rung system — not the queue overflow cycle 90 predicted.** Measured this cycle: the
+  message row drops **zero** lines in a real run (waves 1-6 to a full loss, 54 kills, ten
+  lives lost, every wave transition), and the threshold is five messages inside one 2-4 s
+  window against a row that holds four. Ordinary play never gets close.
+  What the rungs actually buy is pre-emption. Enumerated: exactly three of the twenty-two
+  `show_message` call sites pass a priority — `game/game.gd:1392` (`MESSAGE_DEADLINE`, the
+  uproot prompt) and `:1518`, `:1528` (`MESSAGE_IMPORTANT`). When one of those arrives, the
+  line already on the row is pushed into the queue (`game/hud.gd:1462`), and against a full
+  queue of equals it is **refused** — so an urgent message costs the sentence the player was
+  mid-way through, not one they had not reached.
+  The uproot case is the one worth looking at, and its `DEADLINE` is argued for in place
+  (`game/game.gd:1389-1391`: the countdown is already running, so deferring eats the window
+  the message describes). That reasoning is right. What nobody decided is what it should be
+  allowed to erase — and "A hungry pest ate your Corn Cobbler!" is one of the nineteen at
+  `MESSAGE_NORMAL` (`game/game.gd:1287`), so a player who arms an uproot in the same second
+  a bed dies never learns which plant they lost. **Not a bug to fix blindly**: making the
+  loss notice un-stompable would let it eat the uproot window instead, which is the trade
+  cycle 79 already made once in the other direction.
+- **The game counts every husk it lets rot and, until this cycle, nothing it never said.**
+  `CompostMeter.total_rotted` (`game/compost_meter.gd:109`) exists specifically as the
+  denominator for `total_collected` — the class header argues that a husk count alone would
+  call sweeping one cheap husk and letting the richest rot a 50% run — and the post-mortem
+  prints "Compost swept" off it (`game/run_summary.gd:260`). So this game already had the
+  instinct to count what the player *lost*, in exactly one system.
+  The message row now has the same (`Hud.messages_refused` / `messages_evicted`), and the
+  general shape is worth stating because the next silent discard will not announce itself:
+  **anything that can drop something on the player's behalf should count what it dropped**,
+  or the question "does this ever actually happen" cannot be answered later without first
+  building the instrument. That is the whole reason `-i366` sat unanswerable for three
+  cycles. Where else? The honest answer is that I have not enumerated it — the candidates
+  are the queue here, the compost meter (done), and whatever caps a spawn or a particle,
+  and finding the rest is a grep for `return` inside a full-capacity branch that nobody has
+  run yet.
+
 ### New this cycle (92) — a door that knows what you asked, and one that could know more
 
 - **The pause card could open the notebook on the PLANT you have selected, and the two
@@ -334,6 +371,20 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   read the return at the sites that matter and decide which of the nineteen are actually
   peers. Note before starting: raising a line's rung is not free, because the rung also
   decides what it is allowed to STOMP mid-read (`game/hud.gd:1462-1464`).
+  **MEASURED in cycle 93, and the worry does not survive contact — but the mechanism was
+  described wrongly here and that half does.** A real run to a full loss (waves 1-6, 54
+  pests defeated, ten lives lost, a weather change, every wave transition) dropped **zero**
+  lines, and the threshold is five messages inside one 2-4 s window: the row holds four and
+  ordinary play does not produce four events that close together. So nothing was
+  re-prioritised.
+  What this entry got wrong is the failure it predicted. `_queue_message` has **two** drop
+  sites and this described only the first, and the second is the one the rung actually
+  buys: a higher-rung message does not evict a queued line, it **pre-empts**, which pushes
+  the line it interrupted into the queue — and against a full queue of equals that
+  displaced line is refused. **The cost of an urgent message is the line the player was
+  mid-way through reading**, not one they had not reached. Promoting the eaten-plant notice
+  would not protect it from being dropped (it never was); it would let it destroy whatever
+  the player was reading when the bed died.
 - **"A rule the game enforces in silence" turns out to have had exactly one member, and
   it is now spoken.** Cycle 90 gave the Chomp/winged refusal a sentence. Before filing
   more of them, the enumeration: grepped every `continue` and every `is_winged` across the

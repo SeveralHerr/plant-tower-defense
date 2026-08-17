@@ -1,4 +1,4 @@
-# Cycle 92
+# Cycle 93
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,27 +6,33 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 92 taught
+## What cycle 93 taught
 
-**Confirming a bead can find a better option than the three it lists.** `-czz4` said the cue
-legend was nine presses of Next from the front of the notebook and offered three fixes.
-Confirming it found that `PauseScreen` **already** had a Notebook button and its own
-`_open_notebook` — so "add a route" was not the work, and the nine presses were the whole of
-it. The two doors are asking different questions: somebody who stopped a wave is staring at a
-mark they do not recognise, somebody browsing from the title screen is not looking at a board
-at all. `NotebookScreen.open_at` lets the context pay the nine presses instead of the player.
+**"Zero because nothing happened" and "zero because nothing is happening at all" are the same
+read.** `-i366` asked how often the message row silently drops a line, and the answer needed an
+instrument: before this cycle a dropped line left no trace anywhere. Two counters and a pure
+`Hud.queue_outcome` later, the measurement is **zero** across waves 1-6 to a full loss — 54
+kills, ten lives lost, a weather change, every wave transition — and the threshold is five
+messages inside one 2-4 s window against a row that holds four. Ordinary play never gets close,
+so nothing was re-prioritised and a three-cycle-old worry closed on a number.
 
-**A default that equals one of the two expected answers cannot be distinguished from the
-property being ignored.** `open_at` defaults to 0 and the title screen wants 0, so a test
-asserting only the legend case would pass against a build that ignores `open_at` entirely.
-Both doors are driven, in the tests and at runtime, for that reason alone.
+But the run hit `game_over` at wave 6 while I was still driving waves, `set-state lives 99` did
+not revive it, and two later polls returned the same `0` from a frozen tree. I nearly recorded
+them as a deeper measurement. **When the answer you expect is zero, pair it with a witness that
+must move** — `run_seconds` identical across two reads is instantly legible; two zeroes are
+not. Now in `read-a-moving-value`, which had the inverse case and not this one.
 
-**And the helper I was about to write already existed.** `page_for_kind` turned out to be
-`shelf_page()` generalised — the same search over `PAGES`, written cycles earlier, for the
-same stated reason. Nothing catches that: two functions with different names doing one search
-resolve every name, compile and pass. A grep for the *shape* before writing the function is
-what found it, and that is now in `verify-bd-item`'s confirm step. Three cycles running, the
-thing about to be built already partly existed.
+**And the thing I measured was not the thing the entry predicted.** `_queue_message` has two
+drop sites, not one, and a higher-rung message does not evict a queued line — it **pre-empts**,
+pushing the line it interrupted into the queue, where a full queue of equals refuses it. So the
+cost of an urgent message is the sentence the player was mid-way through reading. `-trn1` asks
+whether arming an uproot should be allowed to erase the notice that a bed just died.
+
+## Carried from cycle 92
+
+**Confirming a bead can find a better option than the three it lists**, and three cycles
+running the thing about to be built already partly existed. Grep for the HELPER, not only the
+bead's claim.
 
 ## Carried from cycle 91
 
@@ -35,29 +41,22 @@ file answered what it *contains*; the claim was about its **shape**, and `KIND_S
 thirteen lines from the top. Also: both mutations survived their first guard, each because
 the guard asserted the PRESENCE of a good thing where it needed the ABSENCE of the bad one.
 
-## Carried from cycle 90
-
-**A stable error shape reads as a stable result.** Fourteen identical `Node not found`
-replies were a typo in one path segment, not fourteen empty reads. Never type a node path.
-
 ## Where things stand
 
-A hundred beads ready. Suite **607/607**, 12956 assertions; lint 0/0; eleven checkers clean;
-`findings` **0 across 5 of 5**; reach 2/2 across two sessions. Fifteen skills. Upstream gh#44
-and **gh#51–gh#54** open; gh#49 and gh#50 fixed, which moved `-6e2e` off upstream and onto the
-pin. Still on harness **0.38.0** deliberately (`-ny3h`, gh#43).
-**Two things are OWED upstream and blocked on nothing but a working GitHub** (HTTP 503, twice):
-the gh#54 comment parked at `.devtools/pending-gh54-comment.md`, and filing `[G-067]`. `-he1l`
-carries both.
+A hundred beads ready. Suite **609/609**, 12971 assertions; lint 0/0; eleven checkers clean;
+`findings` **0 across 5 of 5**; reach 1/1. Fifteen skills. Upstream gh#44 and **gh#51–gh#55**
+open; gh#49 and gh#50 fixed, which moved `-6e2e` off upstream and onto the pin. The two items
+owed from cycle 92 are **paid**: the gh#54 correction is posted and `[G-067]` is filed as
+gh#55. Still on harness **0.38.0** deliberately (`-ny3h`, gh#43).
 
-**The player-facing steer is standing, and cycles 90-92 are all on it.** 90 made a Chomp
-explain itself; 91 gave the board's drawn language a page that teaches it; 92 put that page one
-press from a paused run. **91 and 92 both worked the notebook, which overrides step 2's
-vary-the-subsystem rule** — the steer outranks it and the file now says so, but a third
-consecutive notebook cycle would be a pattern rather than a call. `-1wx0` is the strongest
-remaining player-facing item and is *also* the notebook (the doubled-width ARMED cue, the one
-guarding the only irreversible act, is among the five the legend does NOT teach); `-i366` is
-the strongest one that is not.
+**The player-facing steer is standing, and cycle 93 spent it on a measurement that closed a
+worry instead of shipping a change.** 90 made a Chomp explain itself; 91 gave the board's drawn
+language a page; 92 put that page one press from a paused run; 93 asked whether the message row
+loses lines and found it does not. The sentence step 2 owes: **`-i366` could only be answered by
+building the instrument, and answering it stopped a re-prioritisation of nineteen call sites
+that would have been done on a guess.** It also left the counters behind, so the next suspicion
+reads a number. `-trn1` is the player-facing thread it opened and the strongest one now: arming
+an uproot pre-empts, and the line it erases may be "a hungry pest ate your Corn Cobbler".
 
 ## Waiting on the user
 
@@ -91,7 +90,7 @@ two mutations survived their first guard in one cycle, both because the guard ch
 presence of a good thing rather than the absence of the bad one, and the sweep decides whether
 that is in the codebase or was just in me.
 
-**Eleven standing notes.** The harness is pinned at 0.38.0 on purpose (gh#43). The UI findings
+**Twelve standing notes.** The harness is pinned at 0.38.0 on purpose (gh#43). The UI findings
 baseline is **empty** (`-v9px`). Any harness operation should start by checking which version
 the skill's paths point at — and **reconcile a gap against the INSTALLED version, not the
 pinned one** (`gap-reconcile`); two were already fixed. **Never hand-edit `AGENTS.md`** — run
@@ -109,8 +108,11 @@ cycle 90 rebound the same two three times because its own comments kept moving t
 **No prose in ANY `bd` field as a shell argument** — not `create -d`, not `close --reason`,
 not `update --notes`. Backticks are command substitution: the word vanishes and leaves a
 still-grammatical sentence, which is why four cycles have now done it (76, 78, 83, 91).
-Write the file, then `--body-file` or `"$(cat PATH)"`. And **`set-game-speed` takes its
-scale positionally**, not as `--scale`.
+Write the file, then `--body-file` or `"$(cat PATH)"`. **Durable means TRACKED** —
+`.devtools/*` is gitignored (`.gitignore:8`, one exception for `verify-runs.jsonl`), so
+anything owed to a future cycle goes in a bead body or a committed file; `git check-ignore -v
+PATH` answers it in one command. And **`set-game-speed` takes its scale positionally**, not as
+`--scale`.
 
 `python tools/gap_ledger.py --open` answers "which harness gaps are open" as a fact about the
 log, not about the harness; `python tools/citation_check.py` answers "do this file's citations

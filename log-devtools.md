@@ -5964,3 +5964,53 @@ Noted on the bead.
     the same time. **Both needed `gh api -X POST repos/...` rather than `gh issue`**, which
     goes through GraphQL and was still 503-ing while REST was fine — worth knowing as a
     fallback rather than as a reason to give up on filing.
+
+## 2026-08-17 — Cycle 93: measuring a drop rate that turned out to be zero (-i366, -he1l)
+
+- Value: **warranted** — the question was about a real run by construction, and before this
+  cycle it could not be answered even in principle.
+  - Expected: I thought the row probably did drop lines in a busy wave, and that the
+    measurement would tell me which ones.
+  - Got: **zero**, across waves 1-6 to a full loss — 54 pests defeated, ten lives lost, a
+    weather change to rain and back, every wave transition. And the threshold, driven live:
+    six `show_message` calls in one frame gives one on the row, `pending_messages()` 3, and
+    `messages_refused` 2. The row holds four; the fifth inside a 2-4 s window is the first
+    line lost, and ordinary play never produces four events that close together. A worry
+    three cycles old, closed with a number.
+  - Found: three, and the third is the one that nearly cost the measurement.
+    `_queue_message` has **two** drop sites, not the one the bead and cycle 90's kanban
+    entry both described — `return` loses the arriving line, `remove_at` loses a waiting
+    one. And a higher-rung message does **not** evict a queued line: it pre-empts, pushing
+    the line it interrupted into the queue, where a full queue of equals refuses it. I had
+    asserted the opposite and the test caught me.
+    Then: **the run hit `game_over` at wave 6 while I was still driving waves**, and
+    `set-state --property lives --value 99` did not revive it. Two subsequent polling loops
+    returned `messages_refused: 0` — and identical `run_seconds` — which I nearly recorded
+    as a deeper measurement than the one I actually had. A frozen tree answers with
+    well-formed numbers, which is the harness's own standing warning ("a run that never
+    changes is broken, not passing") arriving in a shape I did not recognise: I was watching
+    a counter that was legitimately 0, not a value that had stopped moving.
+  - Cheaper: nothing. The instrument had to be built before the question could be asked.
+
+- Gap: **a `.devtools/` path is not a durable place to park anything, and cycle 92 recorded
+  that it was.** `.gitignore:8` is `.devtools/*` with a single exception for
+  `verify-runs.jsonl` at `:9`, so the gh#54 comment text cycle 92 wrote to
+  `.devtools/pending-gh54-comment.md` was **never committed**. It survived only because this
+  session kept the same working tree; a fresh clone, a worktree, or another machine would
+  have lost it, and that cycle's commit message says it was "parked at" a repo path as
+  though it were.
+  Not a harness defect — it is mine — but it is logged here because the harness's own
+  conventions point at `.devtools/` for scratch state (`.devtools/tree.json`,
+  `.devtools/import.log`, `.devtools/lint.log` are all in the loop's instructions), so
+  "write it under `.devtools/`" is the reflex the surrounding tooling teaches, and exactly
+  the wrong one for anything that must outlive the session.
+  - [G-068] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: nothing upstream to change. The in-project fix is a habit —
+    **durable means tracked**, so anything owed to a future cycle goes in a bead's body or a
+    committed file, and `git check-ignore -v PATH` answers it in one command. Recorded as a
+    gap rather than a note because the reflex it corrects comes from the harness's own
+    layout, so the next person will make the same move for the same reason.
+  - Note: no other gaps this turn. `gh issue comment` / `gh issue create` go through
+    GraphQL and were still 503-ing while REST was healthy — `gh api -X POST
+    repos/OWNER/REPO/issues[/N/comments] --input FILE.json` worked first try, which is worth
+    trying before parking anything.
