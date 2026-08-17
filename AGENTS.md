@@ -113,6 +113,14 @@ running a command. **Never write a work checklist into it.**
      neighbourhood of the file you happen to be in is a guess about the rest of the
      codebase.** Use `kanban-staleness-audit`'s bar: before writing that something is
      missing, open the code that would contain it.
+   - **An entry that COMPARES two things needs a citation for both halves.** One
+     `file:line` makes the whole entry read as sourced, including the half taken from
+     memory. Cycle 65 wrote "death has a sound, a corpse and a linger; escape has none of
+     the three", citing `DEATH_LINGER` for the death half. The escape half was false in
+     every particular — `Sfx.PEST_ESCAPED` plays, `_note_lane_loss` tints the exit cell,
+     and `_punch_readout(_lives_label)` fires on the changed count — and cycle 66 claimed
+     the bead before finding out. **The asymmetry you are pointing at is the claim; the
+     side you say is empty is the half that needs opening.**
 4. **Reflect on the HARNESS, now that you have used it.** This comes after the work
    and not before, because "did the harness earn its keep" is a question about a run
    that has happened. Judge it on THIS cycle's usage:

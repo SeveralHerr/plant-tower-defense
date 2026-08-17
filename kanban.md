@@ -213,12 +213,22 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   is a different story from one that strolled past an empty road, and the flag separating
   them already exists on every pest — it just never reaches the player except as an
   aggregate at the end of the run.
-- **Death has a sound, a corpse and a linger; escape has none of the three.**
-  `DEATH_LINGER` gives a killed pest a beat on screen. A pest that reaches the house and
-  costs a garden bed exits instantly — the single most consequential event in the game is
-  its least marked. That asymmetry is exactly the generator that produced the last three
-  shipped ideas (the husk had a sound and the Sunflower did not), and this is the loudest
-  remaining instance of it.
+- **CORRECTED (cycle 66): an escape is not unmarked, and this entry said it was.**
+  The original claim — "death has a sound, a corpse and a linger; escape has none of the
+  three" — is false. An escape plays `Sfx.PEST_ESCAPED` (`game/game.gd:911`), tints the
+  exit cell on the lane-pressure map via `_note_lane_loss(..., true)` (`:910`), and punches
+  the Garden readout, because `_punch_readout(_lives_label)` fires whenever the lives text
+  changes (`game/hud.gd:1072-1073`).
+  What is actually missing is narrower and may not be worth fixing: an escape has no beat
+  *on the pest itself*. `Pest` emits `escaped` and calls `queue_free()` in the next line
+  (`game/pest.gd:936-937`), where a death gets a corpse sprite and `DEATH_LINGER`. Even
+  that is arguable — the exit bracket sits at x≈928, under the side panel, so a lingering
+  escapee would fade where nobody can see it, exactly as cycle 65's corpses turned out to
+  land off-board.
+  **The entry is kept rather than deleted because the mistake is the useful part.** It
+  cited a `file:line` for the half it checked (`DEATH_LINGER`) and asserted the other half
+  from memory, which made the whole thing read as sourced. See the workflow note added in
+  cycle 66.
 
 ### New this cycle (64) — three surfaces are each exactly one item from full
 
