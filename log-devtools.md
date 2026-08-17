@@ -4167,7 +4167,7 @@ cited in code, and the citation is a mitigation this project has watched fail.
   exists to find. So the check currently fires hardest at projects that have already
   fixed the problem, and the only way to quiet it is a baseline — which then also
   hides a REAL overlap arriving later at the same node pair.
-  - [G-055] status: open | seen: 1 | harness: 0.38.0
+  - [G-055] status: open | seen: 1 | harness: 0.38.0 | filed upstream: gh#42
   - Improvement: skip a Control whose `focus_mode == FOCUS_NONE` **and** whose
     `mouse_filter == MOUSE_FILTER_IGNORE` when pairing for `interactive_overlap`, and
     say so in the finding's own text for the ones it does report ("both reachable").

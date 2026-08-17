@@ -195,6 +195,31 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (25 of 30) — three screens learned the same lesson separately
+
+- **`set_active(bool)` now exists three times under three names.**
+  `TitleScreen._set_menu_active`, `PauseScreen._set_card_active` and `Hud.set_active`
+  are the same eight lines — focus mode and mouse filter over a list of buttons — and
+  each was written when its own screen got caught. Three copies is where an idea
+  becomes a helper, and the natural home is `OverlayScreen`, which is what opens over
+  all three. **It should also be the thing that CALLS them**: an overlay knows when it
+  opens and closes; today each opener remembers to, and the HUD's opener forgot for
+  many cycles.
+- **Nothing asserts the invariant, only the instances.** The new test checks the HUD
+  goes inert behind the pause card; the equivalent for the title menu and the pause
+  card are separate tests written at separate times. The invariant is one sentence —
+  *nothing behind a full-screen backdrop is focusable* — and it is checkable in one
+  sweep: walk every `Control` under a lower `CanvasLayer` while an overlay is up.
+- **The `ui_findings_baseline.json` now hides twelve real overlaps.** They are
+  accepted because both controls are unreachable, but the baseline is keyed on
+  (rule, node path), so a genuine overlap arriving later at the same pair is silent.
+  Filed upstream as gh#42 to make the check reachability-aware; until that lands the
+  baseline is load-bearing and should be re-read, not carried forward blindly.
+- **The plant bar is built from the catalogue and the packet bar from a tier list**,
+  and `interactive_controls()` had to know both. A HUD that could name its own
+  interactive set — one list, built where the buttons are built — would have made
+  this a one-liner instead of a collector with two loops and a null guard.
+
 ### New this cycle (24 of 30) — glyphs are a vocabulary, and this game has two
 
 - **The game draws glyphs from two sets that can collide, and nothing knows it.**
