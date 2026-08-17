@@ -28,6 +28,53 @@ genuinely blank or something else is holding it for another 400 milliseconds.
    paused, which is documented as a pause-menu feature and is far more useful as a
    read-determinism tool. For a step-and-read pair use `step-time --then-pause`, which
    freezes the tree the moment the step lands so the pair carries no ambient drift.
+
+   ### Walking a sub-second Tween, which polling cannot do at all
+
+   A Tween shorter than a bus round-trip is not "hard to catch" — it is **uncatchable by
+   polling**, and the failure is silent. `CornCobbler._recoil` is 0.05 s out and 0.10 s
+   back. Four consecutive `get-state` reads immediately after firing it:
+
+   ```
+   _sprite.scale: {"x": 1.0, "y": 1.0}      <- landed
+   _sprite.scale: {"x": 1.0, "y": 1.0}      <- landed
+   _sprite.scale: {"x": 1.0, "y": 1.0}      <- landed
+   _sprite.scale: {"x": 1.0, "y": 1.0}      <- landed
+   ```
+
+   Four well-formed reads, all of them `Vector2.ONE`, which is **exactly what a tween that
+   never ran looks like**. (One cycle earlier the same approach happened to catch the tween
+   on its third poll, which is worse: a technique that works one time in four teaches you it
+   works.)
+
+   The recipe, and the non-obvious part is the *first* line:
+
+   ```bash
+   python tools/devtools.py pause                     # BEFORE starting it
+   python tools/devtools.py run-method --node "$N" --method _recoil
+   for i in 1 2 3 4; do
+     python tools/devtools.py step-time --seconds 0.03 --then-pause
+     python tools/devtools.py get-state --node "$N" --property "_sprite.scale"
+   done
+   ```
+
+   ```
+   {"x": 0.920, "y": 1.093}    {"x": 0.9167, "y": 1.0972}   <- two independent runs,
+   {"x": 0.900, "y": 1.117}    {"x": 0.900,  "y": 1.117}       side by side; samples 2-4
+   {"x": 0.940, "y": 1.070}    {"x": 0.940,  "y": 1.070}       agree to six decimals
+   {"x": 0.980, "y": 1.023}    {"x": 0.980,  "y": 1.023}
+   ```
+
+   **Pause first, then create the tween.** `--then-pause` lifts a pre-existing pause for the
+   duration of its own step and re-freezes after, so a tween created while the tree is frozen
+   is walked only by the steps you ask for. Skip the initial `pause` and the tween advances in
+   wall-clock time between every command, which is the polling case above.
+
+   It works on Tweens specifically because `step_time` waits on **both** clocks — the physics
+   one for physics-driven state and the process one so idle tweens advance too
+   (`addons/godot_selftest/dev_tools.gd`, the `while true` loop in `_cmd_step_time`). That is
+   worth knowing because the obvious alternative, `set-game-speed`, does not have the same
+   guarantee — and takes its scale **positionally**, not as `--scale`.
 2. **Read the variable that holds the truth, not the one that shows it.** The rendered
    value is downstream of a decision; the decision is in a variable. `text` is painted
    from `_idle_message` *and* `_message_text` *and* a precedence rule between them. Read
