@@ -247,6 +247,34 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (80) — one-shots are a system and nothing treats them as one
+
+- **Three one-shot hints exist, they are spent by three different mechanisms, and only one
+  of them now checks whether the player saw anything.** `RunConfig.HINT_MOVE_PREVIEW`
+  (`game/run_config.gd:114`) is the move tip, spent through `Hud.uproot_shows_tip` since
+  cycle 80 — that is, only when the sentence is actually rendered. The other milestones in
+  `Milestones.TABLE` are achievements rather than hints and are earned by *doing* the
+  thing, which is a different contract wearing the same storage. **Nothing distinguishes
+  the two kinds**, so the next hint added will be recorded the way its author happens to
+  think of it, and cycle 79 is the proof: the author was me, one cycle earlier, and the
+  hint got burned unseen for a whole cycle. A `RunConfig.spend_hint(id, shown: bool)` that
+  refuses to record an unshown hint would make the contract impossible to get wrong.
+- **A one-shot has no way to be re-offered and the notebook is the obvious place.**
+  The move tip fires once per save and then never again — correct, since a hint that
+  becomes wallpaper is worse than none. But a player who missed it has no route back: the
+  notebook (`game/notebook_screen.gd`) documents plants and milestones and says nothing
+  about the interactions the hints teach. That is a second home for exactly the content
+  that currently has one showing and then vanishes, and it costs no HUD width — which
+  matters because `-f9zc` is about three features competing for one row's worth of it.
+- **`--snapshot-userstate` existed for eighty cycles before anything used it.** Cycle 80
+  needed to clear a persisted flag in a running game to verify a fix, and clearing it
+  without the flag would have written the developer's real save — the harness warns that
+  this surfaces later as unrelated headless test failures. It worked first time and `quit`
+  reported `restored 1 file(s)`. Worth a line in the restart notes rather than a bead, but
+  worth noticing as a pattern: **the harness's rarely-used verbs are rarely used because
+  nothing names the situation they are for**, and the situation here — "verify a fix to a
+  once-per-save behaviour" — is one this game will keep producing.
+
 ### New this cycle (79) — the row holds one extra clause and there are three candidates
 
 - **Three separate features now want to be the message row's one extra sentence, and only

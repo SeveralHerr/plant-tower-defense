@@ -5379,3 +5379,36 @@ cited in code, and the citation is a mitigation this project has watched fail.
   (`-ogxu`, still open on the user). Here the refusal was taken as information — the row
   cannot hold both clauses, so it holds one — and `Game.BUDGET_FLOOR` was not touched at
   all. Worth recording as the shape of a budget working, not just failing.
+
+## 2026-08-17 — Cycle 80: the developer's own save made the live check meaningless
+
+- Value: **warranted**, narrowly and for a reason worth naming: the headless test is
+  decisive and runs in 50 ms, and what the live pass added is that the milestone
+  `RunConfig` actually *persists* behaves like the one a test erases in memory.
+  - Expected: to confirm end to end that a first-ever uproot on an upgraded plant no longer
+    burns the move-tip one-shot.
+  - Got: on the first attempt, **nothing at all** — the developer's real save already had
+    `seen_move_tip` earned, so the milestone read `true` before the arm and `true` after,
+    and the check could not distinguish the fix from the bug. That is the well-formed-zeros
+    failure with a different face: a real answer to the wrong question.
+  - Found: the fix. Relaunched with **`--snapshot-userstate`** — the first use of that flag
+    in eighty cycles — cleared `earned_milestones` in the running game, drove an upgraded
+    first arm (money clause, hint NOT spent) and then a fresh arm (tip shown, hint spent).
+    `quit` reported `userstate: restored 1 file(s)`. Without the flag this run would have
+    left the developer's save cleared, which the harness warns shows up later as unrelated
+    headless test failures.
+  - Cheaper: the headless test, for the logic. Nothing cheaper for the persistence question,
+    and the persistence question is the only reason to launch at all here.
+
+- Gap: **no gaps this turn.** Two notes:
+  - **`suite_reach_check` caught the seam the test did not name.** The new predicate was
+    driven only through `arm_uproot`, so it was exercised and unnamed — the checker flagged
+    it as NEW against its baseline, and naming it directly turned one behavioural example
+    into all four combinations of a two-input predicate. Three of the four say no, so the
+    example had been proving almost nothing. A reach checker paying for itself on a
+    two-line function is a better argument for it than any of its own denominators.
+  - **A live check against persisted state needs its precondition asserted, not assumed.**
+    The failure above was silent and would have read as a pass. The habit to keep: before
+    driving a one-shot, read it and assert it is in the state the check requires. That is
+    `read-a-moving-value`'s "read the clock alongside the value" applied to a flag rather
+    than a timer.

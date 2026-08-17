@@ -1,4 +1,4 @@
-# Cycle 79
+# Cycle 80
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,29 +6,31 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 79 taught
+## What cycle 80 taught
 
-**A budget refusal changed the feature instead of the number, and that is the system
-working rather than failing.** Adding a "your upgrades are not refunded" clause to the
-armed-uproot prompt looked free — `hud_message_row` was the one HUD budget with real slack.
-`check_budgets` refused the build at **1064 px against an 876 px row**, 188 px over, and
-named the exact worst-case string: the move tip and the forfeit clause together on the
-longest plant name. So the two extras are mutually exclusive and the one about money wins.
-`Game.BUDGET_FLOOR` was not touched — which is the whole point of `-ogxu`'s open question,
-answered once in practice.
+**A live check against persisted state can return a real answer to the wrong question.**
+Verifying that a first-ever uproot no longer burns the move-tip one-shot, I armed one and
+read the milestone: `true` before, `true` after. Not a fix and not a bug — the developer's
+own save had earned that flag in some earlier cycle, so the check could not distinguish
+anything and read exactly like a pass. **Assert the precondition before driving a
+one-shot**; that is now step 3b of `read-a-moving-value`.
 
-**Writing the kanban entry found a bug the tests did not.** The move tip fires on the first
-arm ever and records its milestone in the same breath; the forfeit clause now displaces it.
-A player whose first uproot is on an upgraded cob never sees the tip and the milestone is
-spent anyway — and that is the *likely* case, since uprooting something cheap is not a
-decision worth a prompt. Filed as `-np1d`. The entry was written to describe a design
-constraint and turned into a defect report halfway through.
+The fix was `--snapshot-userstate`, used for the first time in eighty cycles: relaunch,
+clear `earned_milestones` in the running game, drive both paths, and `quit` reports
+`userstate: restored 1 file(s)`. Without it the run would have left the developer's save
+cleared, which the harness warns shows up later as unrelated headless failures.
 
-**And a `ui_layout` finding appeared that the workflow's existing warning did not cover.**
-It fires on a *paused* tree, per cycles 60 and 65; this one was unpaused, immediately after
-a row text change. Relaunch, settle 90 frames, re-run — zero; re-trigger, settle, re-run —
-zero. Step 2 now says to do that rather than to guess, because the UI baseline is empty and
-**the re-run is the baseline**.
+**And `suite_reach_check` paid for itself on a two-line function.** The new
+`Hud.uproot_shows_tip` was exercised through `arm_uproot` and named by no test, which the
+checker flagged as NEW. Naming it directly turned one behavioural example into all four
+combinations of a two-input predicate — and three of the four say no, so the example had
+been proving almost nothing.
+
+## Carried from cycle 79
+
+A budget refusal changed the FEATURE rather than the number: the armed-uproot prompt's tip
+and its new forfeit clause measured 1064 px against an 876 px row, so they are mutually
+exclusive and the one about money wins. `Game.BUDGET_FLOOR` was not touched.
 
 ## Carried from cycle 78
 
@@ -40,13 +42,12 @@ which is a better headline than a pass with a footnote.
 
 ## Where things stand
 
-A hundred and eleven beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked
-on gh#43). Suite **575/575**, 12583 assertions; lint 0/0; eleven checkers clean; findings
-0/4 after settling. Thirteen skills. Upstream gh#44, gh#49, gh#50 open.
+A hundred and fourteen beads ready. Still on harness **0.38.0** deliberately (`-ny3h`
+blocked on gh#43). Suite **576/576**, 12596 assertions; lint 0/0; eleven checkers clean;
+findings 0/4; reach 2/2. Thirteen skills. Upstream gh#44, gh#49, gh#50 open.
 
-Step 5's one change is in step 2: when a `ui_layout` finding appears, settle and re-run
-before believing it *and* before dismissing it — zero twice is a transient, the same finding
-twice is real.
+No workflow change this cycle — the steps held. The lesson was a technique and went into
+`read-a-moving-value` as step 3b.
 
 ## Waiting on the user
 
@@ -63,9 +64,9 @@ together they made a HUD with no slack that nobody chose.
 
 `bd ready` for the work, this file for the context, `CLAUDE.md` (mirrored in `AGENTS.md`)
 for the loop itself. `-orcl` is the half of the citation audit no tool can do — read the
-landed lines once and record the rot rate. `-knpc` blocks `-1490` and `-lp97`. `-ip4n`
-blocks `-l86t`: photograph a chew mid-sweep, then ask whether 0.45 s is long enough for a
-readout to say anything at all.
+landed lines once and record the rot rate. `-knpc` blocks `-1490` and `-lp97`; `-ip4n` blocks `-l86t`; `-0q3q`
+blocks `-ei83`. The cheapest real win on the board is `-0q3q`: hints and achievements share
+one dictionary and have opposite triggers, which is what let cycle 79 burn a hint unseen.
 
 **Nine standing notes.** The harness is pinned at 0.38.0 on purpose (gh#43). The UI findings
 baseline is **empty** (`-v9px`). Any harness operation should start by checking which version
@@ -84,5 +85,7 @@ ids are catalogue ids — `corn_cobbler`, not `corn`; **a Chomp must be unlocked
 can be planted** (`set-state /root/Game/SeedBank unlocked` to a JSON array does it); and a
 plant is selected by a real click, which `cmd touch_press`/`touch_release` at its
 `global_position` will deliver. To walk a sub-second tween: `pause` **before** creating it,
-then `step-time --seconds 0.03 --then-pause`. Bump the number at the top of this file every
+then `step-time --seconds 0.03 --then-pause`; to verify a fix to a once-per-save behaviour,
+`launch --snapshot-userstate` **before** clearing the flag, or the run writes the
+developer's real save. Bump the number at the top of this file every
 time you refill.

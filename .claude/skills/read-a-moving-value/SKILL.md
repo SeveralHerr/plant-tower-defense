@@ -84,6 +84,15 @@ genuinely blank or something else is holding it for another 400 milliseconds.
    tween's remaining time. A timer at `0.43` explains an unexpected read completely and
    costs one extra `--property`. This is the single highest-value habit here: the timer
    is usually *already* a property on the node you are reading.
+3b. **Assert the PRECONDITION before driving a one-shot.** A flag that has already fired
+   makes a before/after check meaningless in a way that reads as a pass. Cycle 80 verified
+   a fix to a once-per-save hint by arming an uproot and reading the milestone: it was
+   `true` before and `true` after, because the developer's own save had earned it in some
+   earlier cycle. A real answer to the wrong question, and silent. Read the flag first and
+   say out loud what it must be; if it is wrong, clear it — and relaunch with
+   **`--snapshot-userstate`** first, because clearing it otherwise writes the developer's
+   real save and surfaces later as unrelated headless failures. `quit` then reports
+   `userstate: restored N file(s)`.
 4. **Then drive it to the state you meant to test**, rather than waiting for it. Drain
    the queue (`_advance_message_queue`), zero the timer, call the setter. A state you
    arrived at deliberately is reproducible; a state you caught is not.
