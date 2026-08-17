@@ -11716,3 +11716,109 @@ func test_the_hud_counts_the_lines_it_never_showed() -> String:
 			err = _T.assert_eq(hud.messages_refused, 0, "and is not itself refused")
 	_T.free_ui(game)
 	return err
+
+
+## What arming an uproot actually costs the line already on the row.
+##
+## Cycle 93 claimed the pre-empted line is erased. That was reasoned from the queue's drop
+## rule and is WRONG for the case that matters: `show_message`'s pre-empt branch pushes the
+## displaced line into the queue **with the time it had left**, and cycle 93's own
+## measurement says the queue is essentially never full. So the line comes back, and the
+## player's total reading time for it is preserved across the interruption rather than lost.
+##
+## Driven with the real numbers from the real call sites — `eaten_message` at 4.0 s and
+## `MESSAGE_NORMAL` (`game/game.gd:1287`), the uproot prompt at `UPROOT_CONFIRM_SECONDS` and
+## `MESSAGE_DEADLINE` (`game/game.gd:1392-1395`) — because the whole question is whether
+## these two specific messages collide badly, not whether the queue works in the abstract.
+func test_arming_an_uproot_defers_the_loss_notice_rather_than_erasing_it() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	hud._process(9.0)
+	hud._message_left = 0.0
+	hud._message_queue.clear()
+	hud._advance_message_queue()
+	hud.messages_refused = 0
+	hud.messages_evicted = 0
+
+	var lost: String = Hud.eaten_message(PlantCatalog.display_name(PlantCatalog.CORN))
+	hud.show_message(lost, 4.0, Hud.MESSAGE_NORMAL)
+	# Half a second later the player arms an uproot. This is the collision the bead is about.
+	hud._process(0.5)
+	var armed: bool = hud.show_message("uproot armed", Game.UPROOT_CONFIRM_SECONDS,
+		Hud.MESSAGE_DEADLINE)
+
+	var err: String = _T.assert_true(armed, "the uproot prompt takes the row, as a deadline must")
+	if err == "":
+		err = _T.assert_eq(hud.messages_refused, 0,
+			"and the bed's loss notice is NOT refused -- it was deferred, not erased")
+	if err == "":
+		err = _T.assert_eq(hud.pending_messages(), 1, "it is waiting")
+	if err == "":
+		# The half that decides whether "deferred" is good enough: it comes back with the
+		# time it had LEFT, so the player's total reading time is preserved across the
+		# interruption. 3.5 of its 4.0 s here, which is well over MESSAGE_MIN_READABLE.
+		var waiting: float = float(hud._message_queue[0]["seconds"])
+		err = _T.assert_float_eq(waiting, 3.5, 0.05,
+			"with 3.5s of its 4.0s left, not a stub (%.2fs)" % waiting)
+	if err == "":
+		err = _T.assert_gte(waiting_seconds(hud), Hud.MESSAGE_MIN_READABLE,
+			"and more than the row's own definition of long enough to have been read")
+	if err == "":
+		# Let the deadline run out; the loss notice must actually return to the row.
+		hud._process(Game.UPROOT_CONFIRM_SECONDS + 0.1)
+		var label: Label = hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+		err = _T.assert_eq(label.text, lost,
+			"and when the prompt expires the player is told which plant they lost")
+	_T.free_ui(game)
+	return err
+
+
+## The seconds the first queued message will get when it returns. A helper so the assertion
+## above reads as a claim about readability rather than as dictionary indexing.
+func waiting_seconds(hud: Hud) -> float:
+	if hud._message_queue.is_empty():
+		return 0.0
+	return float(hud._message_queue[0]["seconds"])
+
+
+func test_the_loss_notice_is_lost_only_in_a_state_real_play_does_not_reach() -> String:
+	## The other half of the answer, and the honest one: the notice IS destroyed if the
+	## queue is full of equals when the uproot arms, because the pre-empt branch pushes it
+	## into a queue that refuses it. That is the failure `-trn1` was filed about.
+	##
+	## Asserted here so the good news above is bounded rather than optimistic -- and paired
+	## with what it takes to get there, which is the actual finding: FOUR ordinary messages
+	## still live at the instant a bed dies. Cycle 93 measured a real run to a full loss and
+	## saw the row drop nothing at all, so this state is reachable in principle and was not
+	## reached in six waves of play.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	hud._process(9.0)
+	hud._message_left = 0.0
+	hud._message_queue.clear()
+	hud._advance_message_queue()
+	hud.messages_refused = 0
+
+	# The row plus a full queue, all ordinary -- then the bed dies, then the uproot arms.
+	hud.show_message("ambient", 6.0, Hud.MESSAGE_NORMAL)
+	for i: int in Hud.MESSAGE_QUEUE_MAX:
+		hud.show_message("ambient %d" % i, 6.0, Hud.MESSAGE_NORMAL)
+	var err: String = _T.assert_eq(hud.pending_messages(), Hud.MESSAGE_QUEUE_MAX,
+		"the queue is full before the collision")
+	if err == "":
+		# The loss notice cannot even reach the row -- it is refused on arrival, before the
+		# uproot is involved at all. So the uproot is not the villain here; a saturated row
+		# is, and it saturates from four ordinary lines.
+		err = _T.assert_false(hud.show_message(
+			Hud.eaten_message(PlantCatalog.display_name(PlantCatalog.CORN)), 4.0,
+			Hud.MESSAGE_NORMAL),
+			"a bed dying into a saturated row does not reach it")
+	if err == "":
+		err = _T.assert_eq(hud.messages_refused, 1,
+			"and the loss is counted, which is how anyone would ever find out")
+	if err == "":
+		err = _T.assert_gte(float(Hud.MESSAGE_QUEUE_MAX + 1), 4.0,
+			"it takes %d simultaneous ordinary lines to reach this state"
+				% [Hud.MESSAGE_QUEUE_MAX + 1])
+	_T.free_ui(game)
+	return err
