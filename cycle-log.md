@@ -1,4 +1,4 @@
-# Cycle 96
+# Cycle 97
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,31 +6,38 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 96 taught
+## What cycle 97 taught
 
-**"Drive it in a real run" is not the same as "exercise it".** `-gtne` asked how often the
-message row displaces a line the player is reading. Six waves, 54 kills, eight lives lost, 257
-seconds, `run_seconds` moving as a witness: **zero**. That number is accurate and worthless —
-all three call sites that can displace a line are **player actions** (arming an uproot, the two
-steps of opening a seed packet), and a run driven by starting waves contains none of them. One
-`arm_uproot` produced the count on the first try.
+**A checker's finding that contradicts what you can plainly see is the one most worth
+believing.** `suite_reach_check` reported four symbols as "public and no test names it" while
+all four were named in real code at lines I could point at. I spent several minutes auditing
+the checker — probing `strip_comments`, checking line endings, reading `STRING_RE` — before
+`git stash push <one file>` showed the cause was mine in ten seconds.
 
-**A zero inherits the blind spot of the scenario that produced it**, which means cycle 93's
-answer to `-i366` is now weaker than it read: same shape of run, same absence of player
-actions, and a full queue needs exactly the producers that were missing. `-gd27` re-measures
-it, cheaply, because the counters are still there.
+I had written GDScript through a **shell heredoc**, which `CLAUDE.md` step 2 forbids in those
+words and for exactly this reason. It ate a backslash, so `section.find("
+## ", 1)` landed
+in the file as a **literal newline inside the string literal**. Godot accepts that: 613/613
+passed, lint 0/0, behaviour identical. `blank_strings` correctly read the remaining 1018
+characters as one string body, so everything after the splice was invisible.
 
-So the fix shipped: a line that has had `MESSAGE_MIN_READABLE` seconds is **retired** when
-displaced rather than queued. The player read it; bringing back the tail teaches nothing and is
-what made the same sentence appear twice. A line displaced before that still comes back
-unchanged. `MESSAGE_MIN_READABLE` is reused rather than a second threshold invented — the wait
-branch already treats it as "long enough to have been read", and a second number would be a
-second opinion.
+**Five gates agreed with me and one disagreed, and the one that disagreed was right.** Step 5
+spent its change naming the shape I broke the rule in — a Python script inside a heredoc is
+the same shell plus a second escaping layer, and it is what you reach for when `Edit`'s exact
+match fails — and naming the sanctioned fallback.
 
-**And a green test that asserted nothing.** `line_was_read(4.0, 4.0 - MESSAGE_MIN_READABLE)`
-computes `1.2000000000000002`, so the "exactly at the threshold" case passed under both `>=`
-and `>`. Only a mutation found it. **An at-the-boundary case must be constructed, not
-computed.**
+**And the grammar was asserting its own headline rule without enumerating it.** "Every entry
+above obeys the two-channel rule" covered ten rows and derived none, in the document whose
+argument is that patterns get derived rather than remembered. The per-row table is written
+now: nine channels are shape, size, fill, count or sweep, the tenth is width, and **no cue
+reads `RunConfig.colorblind_safe` on purpose** — the flag changes the HUD's ramps, and the
+board's cues were built to survive without it.
+
+## Carried from cycle 96
+
+**"Drive it in a real run" is not the same as "exercise it."** A zero inherits the blind spot
+of the scenario that produced it — ask what triggers the thing before deciding what to drive,
+because a wave-driving run never performs a player action.
 
 ## Carried from cycle 95
 
@@ -38,26 +45,21 @@ computed.**
 has no natural discoverer — the response to "too costly" is to not do it, which produces no
 evidence. Price it with arithmetic before believing it.
 
-## Carried from cycle 94
-
-**A correct citation under a wrong sentence is more expensive than no citation** — it is what
-stops the next reader checking. Read what the cited line DOES, not just that it is the line
-you meant.
-
 ## Where things stand
 
-A hundred beads ready. Suite **613/613**, 13007 assertions; lint 0/0; eleven checkers clean;
-`findings` **0 across 5 of 5**. The latest ledger row is **`partial`, not `pass`** — the first
-in nine cycles — because one live check lost its precondition and was recorded `blocked` rather
-than green. Fifteen skills. Upstream gh#44 and **gh#51–gh#56** open. Still on harness **0.38.0**
-deliberately (`-ny3h`, gh#43).
+A hundred and one beads ready. Suite **613/613**, 13008 assertions; lint 0/0; eleven checkers
+clean. No runtime this cycle and correctly so — Phase 0.5 tier (b), the diff being one `.md`,
+one comment and a test. Fifteen skills. Upstream gh#44 and **gh#51–gh#56** open. Still on
+harness **0.38.0** deliberately (`-ny3h`, gh#43).
 
-**The player-facing steer is standing.** 90 made a Chomp explain itself; 91 gave the board's
-drawn language a page; 92 put it one press from a paused run; 93-94 closed two worries with
-measurements; 95 taught the ARMED cue; 96 stopped the row showing the same sentence twice. The
-sharpest remaining player-facing threads are `-5s99` (the pause door could open the SELECTED
-plant's page — both pieces already exist) and `-wenx` (whether any untaught cue earns the
-legend's layout cost, one grep each).
+**The player-facing steer is standing; this cycle owes its sentence.** 97 shipped a
+documentation enumeration and a comment — nothing a player sees. The sentence: **`-vxq6` asked
+a question about accessibility and the answer needed deriving before anything could be built
+on it**, and the derivation found the grammar asserting a ten-row claim it had never checked.
+Building a colourblind fix first would have wired ten cues into a flag they were designed not
+to read. The strongest player-facing threads remain `-5s99` (the pause door could open the
+SELECTED plant's page) and the P1 features nobody has touched — `-wtyj` (make the play screen
+read as the same notebook), `-gsai` (more mobs and a second boss), `-ibvb` (two new plants).
 
 ## Waiting on the user
 

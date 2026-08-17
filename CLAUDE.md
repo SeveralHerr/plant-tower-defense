@@ -110,6 +110,18 @@ running a command. **Never write a work checklist into it.**
      silently absent, reported as a clean run. Only the denominator (490 against 557)
      and exit `2` caught it. Four occurrences and an "environment note" in the log each
      time is not a countermeasure; using the right tool is.
+     **This includes a Python script in a heredoc that writes the file** — that is the same
+     shell, plus a second escaping layer, and it is the shape the rule keeps getting broken
+     in because it is what you reach for **when `Edit`'s exact match fails**. Cycle 97 hit a
+     tab-versus-space mismatch, fell back to a line-range splice in Python, and
+     `section.find("\n## ", 1)` landed in the file as a **literal newline inside the string
+     literal**. Godot accepts that: 613/613 passed, lint reported 0/0, the behaviour was
+     identical. The only gate that could see it was `suite_reach_check`, which reported four
+     symbols as unnamed while they were plainly there — because everything after the splice
+     was inside a string as far as any parser was concerned.
+     **When `Edit` will not match, the fallback is `Read` the exact bytes and `Edit` again,
+     or `Write` the whole file — never a script that writes code.** And note what this cost:
+     five gates agreed with me and one disagreed, and the one that disagreed was right.
    - **If the cycle launched the game at all, run `findings` before quitting it.** It is
      the harness's headline check — every zero-config check at once against the live tree
      — and it was last run in cycle 48. Twelve cycles of runtime work went past on

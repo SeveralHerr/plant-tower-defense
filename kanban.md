@@ -247,6 +247,36 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (97) — a checker that was right while looking wrong
+
+- **The board's cues are palette-blind on purpose, and that is now enumerated rather than
+  asserted.** `-vxq6` asked whether two cues had been checked against the colourblind ramp.
+  The answer is that **no cue on the board reads `RunConfig.colorblind_safe` and none should**
+  — `SelectionMarker`'s header (`game/selection_marker.gd:62`) already argued it: the flag
+  "exists precisely because a hue is not a reliable carrier, so the brackets get heavier as
+  well as redder". The flag changes the HUD's ramps; the board's cues were built to survive
+  without it, so wiring them in would answer a question they were designed not to ask.
+  What was actually wrong was the grammar document. Its "one rule with teeth" section claimed
+  **all ten rows** obey the two-channel rule "by shape, position, or line weight" and
+  enumerated none of them — `kanban-idea-pass` rule 3 violated by the file whose own argument
+  is that patterns get derived rather than remembered. The per-row table is written now, and
+  the derivation held: nine channels are shape, size, fill, count or sweep, and the tenth is
+  width, which is the only one already pinned by a test.
+- **A checker reported four symbols as unreached while all four were plainly named in real
+  code, and the checker was right.** This looked like a `suite_reach_check` bug for several
+  minutes. It was not: I had written GDScript through a shell heredoc — which `CLAUDE.md`
+  step 2 forbids **in those words, for exactly this reason** — and it ate a backslash, so
+  `section.find("\n## ", 1)` landed in the file as a **literal newline inside the string
+  literal**. Godot accepts that, the behaviour is identical, and **613/613 passed with lint
+  at 0/0**. `blank_strings` correctly treated the remaining 1018 characters of the file as
+  one string body, so every symbol after the splice was genuinely invisible to it.
+  Two things worth keeping. The rule I broke has a fourth instance now and the log says
+  heredocs have stripped GDScript comment markers four separate times — this is the same
+  mechanism reaching a different target, so the count is higher than the log records. And
+  **a checker's finding that contradicts what you can plainly see is the one most worth
+  believing**, because everything cheaper has already agreed with you: the suite passed, lint
+  passed, the code ran. The disagreement is the information.
+
 ### New this cycle (96) — "measured in a real run" measures the game, not the player
 
 - **A measurement driven by playing waves measures AMBIENT behaviour, and cycle 96's answer

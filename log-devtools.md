@@ -6154,3 +6154,44 @@ Noted on the bead.
   - Note: no gaps this turn. The one thing I would change is mine, not the harness's: I drove
     the scenario without re-checking the selection had survived the previous step, which is
     the same class as cycle 94's "I killed the plant I was clicking".
+
+## 2026-08-17 — Cycle 97: the two-channel enumeration (-vxq6), and a heredoc that ate a backslash
+
+- Value: **warranted**, and entirely from Phase 1 — no runtime, correctly (Phase 0.5 tier (b):
+  one `.md`, one GDScript comment, one test change).
+  - Expected: a docs cycle. Write a verdict per cue, add a comment, done.
+  - Got: `suite_reach_check` reporting four symbols as unnamed by any test while all four
+    were plainly named in real code at lines I could point at. I spent several minutes
+    treating that as a checker bug — probing `strip_comments`, checking line endings, reading
+    `STRING_RE` — before bisecting with `git stash push <one file>` and finding it was mine.
+  - Found: **I wrote GDScript through a shell heredoc and it ate a backslash.**
+    `section.find("\n## ", 1)` landed in the file as a literal newline inside the string:
+    ```
+    	var stop: int = section.find("
+    ## ", 1)
+    ```
+    Godot accepts it, the behaviour is identical, **613/613 passed and lint reported 0/0**.
+    `blank_strings` correctly treated the remaining 1018 characters as one string body, so
+    every symbol after that point was genuinely invisible to the scan. The checker was right
+    and looked wrong, which is the hardest shape for a finding to arrive in.
+    `CLAUDE.md` step 2 forbids exactly this, in those words, and names four prior occurrences
+    where a heredoc stripped leading `#` from comment blocks. This is the same mechanism
+    reaching a different target, so the standing count understates it.
+  - Cheaper: nothing. Every cheaper gate agreed with me — that is the point. The suite passed,
+    lint passed, the code ran and produced the right answer.
+
+- Gap: **nothing missing from the harness this turn, and one thing worth recording as working.**
+  The bisect that found this was `git stash push -q <one file>` then re-run, then `stash pop`
+  — ten seconds, and it converted "the checker is broken" into "my edit did this" with no
+  reasoning at all. That is not a harness feature and needs no harness feature; it is worth
+  writing down because I reached for source-reading first and the bisect second, in that
+  order, and the order was wrong.
+  The one thing I would ask of `suite_reach_check` is smaller than a gap: when a symbol is
+  reported unreached **and the raw text of a test file contains its token**, say so —
+  "`row_count` appears in `test_placement.gd` but only inside a blanked region" would have
+  named the cause in the first line of output instead of the twentieth minute. The data is
+  already in hand; both the raw and the blanked source are held at that point.
+  - [G-071] status: open | seen: 1 | harness: n/a (project checker, tools/suite_reach_check.py)
+  - Improvement: as above — compare against `raw` when reporting, and add one clause when the
+    token is present there but absent from `blanked`. It is the difference between a finding
+    that accuses the test suite and one that accuses the file's syntax.
