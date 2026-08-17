@@ -394,6 +394,13 @@ func _cmd_budgets(args: Dictionary) -> Dictionary:
 	# Over `all` and not `entries`: --id is a display filter, and grading only the
 	# shown entry would report every floor whose budget was filtered out as a
 	# floor guarding nothing. The count is the whole ledger's, and says so.
+	# Over `all` for the same reason regressions are: this is a state of the whole
+	# ledger, not of whatever --id happened to ask for. Reported even when it is
+	# zero, because "nothing is at floor" is the answer that says there is room.
+	var at_floor: Array[String] = Game.budgets_at_floor(all)
+	headline += "; %d of %d at floor" % [at_floor.size(), all.size()]
+	if at_floor.size() > 0:
+		headline += " (%s)" % ", ".join(at_floor)
 	var regressions: Array[String] = Game.budget_regressions(all)
 	if regressions.size() > 0:
 		headline += "; %d of the %d budget(s) under the floor Game.BUDGET_FLOOR declares" % [
@@ -412,6 +419,12 @@ func _cmd_budgets(args: Dictionary) -> Dictionary:
 			"tight": tight,
 			"tightest": tightest,
 			"under_floor": regressions.size(),
+			# Resting ON a floor, as distinct from `tight` (a fraction of a budget's
+			# own ceiling) and from `under_floor` (through it, which is news). The
+			# ids as well as the count, because "which rows are full" is the
+			# actionable half and a bare number sends the reader back to the table.
+			"at_floor": at_floor.size(),
+			"at_floor_ids": at_floor,
 			"warnings": regressions,
 			"startup_check": (str(game.budget_report.get("summary", "not read")) if game != null
 				else "no Game in the tree -- the startup check has not run yet"),

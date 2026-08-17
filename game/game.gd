@@ -1971,6 +1971,51 @@ func budget_entries(sweep: int = BUDGET_WAVE_SWEEP) -> Array[Dictionary]:
 ## so a test can hand it a budget worsened on purpose and watch the warning
 ## appear, which is the only way to prove the rule fires at all rather than
 ## proving the current numbers happen to be fine.
+## The budgets sitting exactly ON their declared floor — the ratchet pulled all
+## the way, with nothing left to spend (plant-tower-defense-k7v4).
+##
+## Distinct from `tight` and from `budget_regressions()`, and the distinction is
+## the whole point. `tight` is a fraction of a budget's own CEILING, so
+## hud_message_row reports tight at 121 px while still holding 81 px above its
+## floor. `budget_regressions()` reports what has fallen THROUGH a floor, which is
+## news. This reports what is resting on one: not a regression, and not news, but
+## the state that decides whether the next pixel spent anywhere is affordable.
+##
+## Cycle 66 answered that question by comparing seven headrooms against seven
+## floors by hand, which is why fourteen cycles passed without anyone noticing
+## that three rows of the HUD had run out. A count is not a new measurement — it
+## is the one arithmetic step between the numbers already printed and the question
+## anyone actually has.
+##
+## `BUDGET_SLIP` on both sides: a budget one pixel over its floor is resting on it
+## for every practical purpose, and the same tolerance keeps this from disagreeing
+## with `budget_regressions()` about a borderline case.
+static func budgets_at_floor(entries: Array[Dictionary]) -> Array[String]:
+	var at_floor: Array[String] = []
+	for entry: Dictionary in entries:
+		var id: String = str(entry["id"])
+		if not BUDGET_FLOOR.has(id) or not bool(entry["computed"]):
+			continue
+		# `spent_by_design` is excluded, and reading the live verb is what showed
+		# why. pest_road_ceiling declares a floor of 0.0 and sits on it by
+		# construction, so it qualified on the arithmetic and made every reading
+		# report "4 of 7" with one entry that can never be anything else. The
+		# headline already counts that state separately, so including it here
+		# reports one budget twice and buries the three that are at floor because
+		# somebody SPENT them -- which is the only actionable half.
+		if str(entry.get("state", "")) == BUDGET_SPENT_BY_DESIGN:
+			continue
+		var floor_left: float = float(BUDGET_FLOOR[id])
+		var headroom: float = float(entry["headroom"])
+		# At or below, but `budget_regressions()` owns "below" -- so anything it
+		# would report is excluded here rather than counted twice.
+		if headroom < floor_left - BUDGET_SLIP:
+			continue
+		if headroom <= floor_left + BUDGET_SLIP:
+			at_floor.append(id)
+	return at_floor
+
+
 static func budget_regressions(entries: Array[Dictionary]) -> Array[String]:
 	var lines: Array[String] = []
 	var seen: Dictionary = {}

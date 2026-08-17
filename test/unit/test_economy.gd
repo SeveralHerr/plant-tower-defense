@@ -1598,6 +1598,94 @@ func test_a_clean_launch_warns_about_no_budget_at_all() -> String:
 ## left exactly as the running game measured them. One line, about the husk, and
 ## no mention of the three that were already tight before the test touched
 ## anything.
+## The three-way split `budgets_at_floor()` exists to make, staged one budget at a
+## time so each verdict is about a known position rather than about the live board.
+##
+## Resting ON a floor is not a regression and is not news — it is the state that
+## decides whether the next pixel spent anywhere is affordable, and cycle 66 had to
+## work it out by comparing seven headrooms to seven floors by hand. The distinction
+## that makes it worth its own function: `tight` is a fraction of a budget's own
+## CEILING, so hud_message_row reports tight while holding 81 px above its floor.
+##
+## `budget_regressions()` owns "below". Anything it would warn about is excluded
+## here rather than counted twice, so the two can be read side by side without
+## double-counting one budget.
+func test_a_budget_resting_on_its_floor_is_reported_without_being_a_regression() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var entries: Array[Dictionary] = game.budget_entries(30)
+	var err: String = _T.assert_gt(entries.size(), 0, "the run priced its budgets")
+	if err == "":
+		err = _T.assert_true(Game.BUDGET_FLOOR.has("husk_click"),
+			"husk_click has a declared floor to rest on")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var floor_left: float = float(Game.BUDGET_FLOOR["husk_click"])
+	var live: Dictionary = _entry_by_id(entries, "husk_click")
+
+	# Exactly on the floor: at_floor reports it, regressions does not.
+	var resting: Array[Dictionary] = _entries_swapping(entries, "husk_click",
+		_budget_with_headroom(live, floor_left))
+	if err == "":
+		err = _T.assert_true(Game.budgets_at_floor(resting).has("husk_click"),
+			"a budget exactly on its floor is reported as at-floor")
+	if err == "":
+		err = _T.assert_eq(Game.budget_regressions(resting).size(), 0,
+			("and is NOT a regression -- resting on a floor is the declared state, not a "
+				+ "fall through it: %s") % [Game.budget_regressions(resting)])
+
+	# Below it: regressions owns that, so at_floor must NOT also claim it.
+	var through: Array[Dictionary] = _entries_swapping(entries, "husk_click",
+		_budget_with_headroom(live, floor_left - Game.BUDGET_SLIP - 1.0))
+	if err == "":
+		err = _T.assert_false(Game.budgets_at_floor(through).has("husk_click"),
+			("a budget BELOW its floor is not counted as at-floor -- budget_regressions "
+				+ "owns that case and counting it twice would overstate both"))
+	if err == "":
+		err = _T.assert_eq(Game.budget_regressions(through).size(), 1,
+			"and is a regression, exactly once")
+
+	# Well clear of it: neither.
+	var roomy: Array[Dictionary] = _entries_swapping(entries, "husk_click",
+		_budget_with_headroom(live, floor_left + 100.0))
+	if err == "":
+		err = _T.assert_false(Game.budgets_at_floor(roomy).has("husk_click"),
+			"a budget with room is not at-floor")
+	if err == "":
+		err = _T.assert_eq(Game.budget_regressions(roomy).size(), 0,
+			"nor a regression")
+
+	# A budget that is at its floor BY CONSTRUCTION is excluded, because the
+	# headline counts that state separately and pest_road_ceiling would otherwise
+	# make every reading say "4 of 7" with one entry that can never be anything
+	# else. Reading the live verb is what surfaced this; the arithmetic alone was
+	# happy to include it.
+	if err == "":
+		var by_design: Dictionary = _budget_with_headroom(live, floor_left)
+		by_design["state"] = Game.BUDGET_SPENT_BY_DESIGN
+		var designed: Array[Dictionary] = _entries_swapping(entries, "husk_click", by_design)
+		err = _T.assert_false(Game.budgets_at_floor(designed).has("husk_click"),
+			("a budget spent by design is not counted as at-floor -- the headline reports "
+				+ "that state on its own, and counting it twice buries the ones somebody "
+				+ "actually spent"))
+
+	# An UNCOMPUTED budget is never at-floor, whatever its headroom field says.
+	# A budget that could not be measured has no headroom to rest on, and
+	# budget_regressions calls that "a hole in the check, not a pass" — so
+	# counting it here would report the HUD as fuller than anyone has established.
+	# Added because a mutation removing the `computed` guard survived without it.
+	if err == "":
+		var blind: Dictionary = _budget_with_headroom(live, floor_left)
+		blind["computed"] = false
+		var unmeasured: Array[Dictionary] = _entries_swapping(entries, "husk_click", blind)
+		err = _T.assert_false(Game.budgets_at_floor(unmeasured).has("husk_click"),
+			("a budget that could not be measured is not resting on its floor -- it is a "
+				+ "hole in the check, and reporting it as at-floor would overstate how "
+				+ "full the HUD is"))
+	_T.free_ui(game)
+	return err
+
+
 func test_a_budget_pushed_through_its_floor_is_the_only_one_warned_about() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var err: String = _T.assert_true(game != null and game.board != null,
