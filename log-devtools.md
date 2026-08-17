@@ -6369,3 +6369,22 @@ Noted on the bead.
     git worktrees (`isolation: "worktree"`), or tell each lane that a finding in a file it does
     not own is not its finding. The cheaper half is the instruction; the correct half is the
     worktree. Filed as a bead.
+
+## 2026-08-17 — Moved the loop out of CLAUDE.md into /cycle (docs-only, no game launched)
+
+- Value: **inconclusive** — the harness was not used; the change moved 411 lines of prose
+  from `CLAUDE.md` (and its `AGENTS.md` mirror) into `.claude/skills/cycle/SKILL.md`. No
+  script, scene or gameplay changed, so nothing was there for a runtime pass to reach.
+  - Expected: nothing to verify at runtime; the only gates with a category for this are
+    `mirror_check.py` (the pointer block in both files) and `citation_check.py` (the one
+    `file:line` inside the moved text).
+  - Got: `mirror_check: CLAUDE.md 9 line(s)/639 chars, AGENTS.md 9 line(s)/639 chars,
+    identical` after `--fix` regenerated AGENTS.md's copy; `citation_check: 1 citation(s)
+    ... 1 resolved, 0 finding(s)`. `git diff --numstat` read `7 409` for each of the two
+    instruction files and `425 0` for the skill — the shape of a move, not a rewrite.
+  - Found: nothing.
+  - Cheaper: this was already the cheapest path — two stdlib checkers and a diff-stat read.
+
+- Gap: no gaps this turn. (`mirror_check`'s "block is only N characters" stub note is
+  sized at 200 and the pointer is 639, so the smaller mirrored block does not trip it;
+  worth knowing if the pointer is ever trimmed.)
