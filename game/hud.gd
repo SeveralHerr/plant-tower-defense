@@ -1462,6 +1462,45 @@ func announce_wave(number: int, pests: int, note: String) -> void:
 	_show_banner(wave_headline(number), wave_note(pests, note))
 
 
+## What the weather did, said once as the wave opens
+## (plant-tower-defense-q3lx).
+##
+## Through the same banner as the wave announcement rather than a new readout, and
+## AFTER it, so the two do not race for the same two lines -- the wave banner fires
+## from Game._on_wave_started immediately after _apply_weather, so this one is the
+## overwritten half. That is deliberate and it is why weather has a status line too
+## (`weather_note()`): the banner is the beat, the status row is the state.
+##
+## Clear weather says nothing at all. A banner that reads "Clear" on eleven waves
+## out of twelve teaches the player to stop reading banners.
+func show_weather(weather: StringName) -> void:
+	if weather == WaveDirector.WEATHER_CLEAR:
+		return
+	_show_banner(weather_headline(weather), weather_note(weather))
+
+
+## Pure, and static, so the suite asserts the words without building a HUD -- the
+## same split every other headline/note pair on this class already uses.
+static func weather_headline(weather: StringName) -> String:
+	match weather:
+		WaveDirector.WEATHER_RAIN:
+			return "Rain"
+		WaveDirector.WEATHER_DROUGHT:
+			return "Drought"
+		_:
+			return ""
+
+
+static func weather_note(weather: StringName) -> String:
+	match weather:
+		WaveDirector.WEATHER_RAIN:
+			return "The garden drinks. Every bed grows back a little."
+		WaveDirector.WEATHER_DROUGHT:
+			return "Dry ground. Everything you planted shoots half as often."
+		_:
+			return ""
+
+
 ## The wave-clearing half, added by plant-tower-defense-d2a so surviving a wave
 ## gets a beat comparable to the one that opens it rather than a single line on
 ## the status row. Same mechanism, same weight, its own event and its own text.

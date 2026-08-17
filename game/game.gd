@@ -88,6 +88,13 @@ var _husk_layer: HuskLayer
 var _plants: Dictionary = {}
 var _prep_left: float = 0.0
 var _wave_live: bool = false
+## The weather the current wave arrived under, or CLEAR between waves.
+##
+## Held by Game rather than read from the director on demand, because the wave
+## number moves the instant a wave ends and the weather has to survive until the
+## next one starts -- a plant placed in the prep gap after a drought wave must not
+## inherit the drought, and one placed during it must.
+var weather: StringName = WaveDirector.WEATHER_CLEAR
 var _score_recorded: bool = false
 
 ## The plant an Uproot click has armed, and how long it stays armed. Held here
@@ -309,10 +316,33 @@ func start_next_wave() -> bool:
 	return true
 
 
+## Puts a wave's weather onto the garden: the fire-rate multiplier onto every plant
+## that exists, and rain's heal once, now.
+##
+## Every plant Game owns, not `get_tree().get_nodes_in_group("plants")` -- a
+## tree-global group read would also collect plants belonging to a second Game in
+## the same tree, which is exactly what the suite does when two scenes are hosted at
+## once. See .claude/skills/godot-test-isolation.
+func _apply_weather(next: StringName) -> void:
+	weather = next
+	var scale: float = WaveDirector.fire_interval_scale_for(next)
+	var heal: float = (Plant.MAX_HEALTH * WaveDirector.WEATHER_RAIN_HEAL_FRACTION
+		if next == WaveDirector.WEATHER_RAIN else 0.0)
+	for key: Vector2i in _plants:
+		var plant := _plants[key] as Plant
+		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
+			continue
+		plant.fire_interval_scale = scale
+		if heal > 0.0:
+			plant.heal(heal)
+	hud.show_weather(next)
+
+
 func _on_wave_started(number: int) -> void:
 	_wave_live = true
 	_wave_losses = {}
 	_wave_escapes = {}
+	_apply_weather(WaveDirector.weather_for(number))
 	Sfx.play(Sfx.WAVE_STARTED)
 	# Past the fixed table, say what actually got worse. The threat level on
 	# the bar answers "how much"; this answers "in what way", which is the half
@@ -1103,6 +1133,10 @@ func place_plant(id: StringName, cell: Vector2i) -> String:
 		# duck-typed contract above at one argument, so a future economy plant
 		# only has to emit a number to be wired up.
 		plant.connect("grew_seeds", _on_plant_grew_seeds.bind(plant))
+	# A plant bought DURING a drought wave inherits it. Without this the way to beat
+	# a drought would be to plant into it, which is the opposite of what the weather
+	# is for -- and it would only ever be discovered by a player who tried it.
+	plant.fire_interval_scale = WaveDirector.fire_interval_scale_for(weather)
 	_select(plant)
 	_refresh()
 	return ""

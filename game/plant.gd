@@ -110,6 +110,21 @@ var kind: StringName = &""
 var cell: Vector2i = Vector2i.ZERO
 var board: Board = null
 var health: float = MAX_HEALTH
+## What this plant's firing interval is multiplied by right now. 1.0 is clear
+## weather; a drought wave sets 2.0 (plant-tower-defense-q3lx).
+##
+## An instance variable, set by Game on every plant it owns, rather than a static
+## on this class. A static would be simpler and would leak: the suite shares one
+## process, so a drought staged by one test would still be in force for every test
+## after it, and the failure would surface as an unrelated plant "not shooting" in
+## a test that never mentions weather. This project has already paid for that shape
+## once with RunConfig -- see test_no_test_persists_through_the_players_own_save.
+##
+## Read where the cooldown is ARMED rather than where it is decremented, so the
+## multiplier applies to the next shot rather than retroactively stretching one
+## already in flight -- and so a wave ending mid-cooldown does not leave a plant
+## owing time it earned under weather that has passed.
+var fire_interval_scale: float = 1.0
 
 var _sprite: Sprite2D
 var _wobble_time: float = 0.0
@@ -301,6 +316,26 @@ static func _wobble_phase(at: Vector2i) -> float:
 ## One step of recovery. A destroyed plant never comes back — Game frees the node
 ## on `destroyed`, but the guard is here anyway so a plant that hits 0 in the same
 ## frame something else is iterating cannot be resurrected by the next tick.
+## Gives health back at once, capped at full and refused on a destroyed bed.
+##
+## Distinct from `_regrow()`, which is the slow per-frame recovery gated behind
+## REGROWTH_DELAY. This is the one-shot kind: a rain wave opening
+## (plant-tower-defense-q3lx). It deliberately does NOT touch `_quiet_time`, so
+## rain landing on a bed that is being eaten right now heals it without also
+## restarting the regrowth clock the biting is supposed to hold at zero.
+##
+## Returns how much was actually given, which is not always what was asked for --
+## a plant at 90% takes 10%, and the caller that wants to say "healed" needs to
+## know the difference between a heal and a no-op.
+func heal(amount: float) -> float:
+	if amount <= 0.0 or is_destroyed() or health >= MAX_HEALTH:
+		return 0.0
+	var before: float = health
+	health = minf(MAX_HEALTH, health + amount)
+	_refresh_health_bar()
+	return health - before
+
+
 func _regrow(delta: float) -> void:
 	if delta <= 0.0:
 		return

@@ -265,6 +265,81 @@ func is_spawning() -> bool:
 	return _running
 
 
+## -- Weather (plant-tower-defense-q3lx) ------------------------------------
+##
+## A wave can arrive under weather, which is the first thing in this game that
+## changes how a wave PLAYS rather than what is in it. Rain heals the garden;
+## drought halves how fast it shoots.
+##
+## **Derived from the wave number, not a column in WAVES.** A column would be
+## sixteen more hand-typed cells beside sixteen that already exist, and the table's
+## own header spends four bullets on how every row in it is checked rather than
+## eyeballed. A rule can be stated in one sentence and asserted against every wave
+## out to 300, including the endless ones the table does not reach.
+const WEATHER_CLEAR := &"clear"
+const WEATHER_RAIN := &"rain"
+const WEATHER_DROUGHT := &"drought"
+
+## Nothing before this: the opening waves are where a player is learning what a
+## plant even does, and a mechanic that changes the rules lands better once the
+## rules are known. 4 is the wave the second plant is normally affordable by.
+const WEATHER_FIRST_WAVE: int = 4
+## Rain every 5th wave, drought every 7th. Coprime on purpose -- equal periods
+## would make one of them permanently shadow the other, and the two only collide
+## every 35 waves, which endless reaches and the campaign does not.
+const WEATHER_RAIN_EVERY: int = 5
+const WEATHER_DROUGHT_EVERY: int = 7
+
+## Which weather a wave arrives under.
+##
+## Two rules that are not arbitrary and are asserted in the suite:
+##
+##   * **Rain wins a collision.** Wave 35 is a multiple of both. The mercy beats
+##     the cruelty, because a wave that is simultaneously "heal everything" and
+##     "shoot half as fast" is not a readable event, and if one of them has to be
+##     silently dropped it should be the one that costs the player.
+##   * **Drought never lands on a wave carrying a boss.** Derived by asking the
+##     table whether the wave contains a queen, not by excluding 12/14/16 by hand
+##     -- so a queen moved or added takes its drought exemption with it. Halving
+##     the garden's rate of fire on the wave that is already the hardest is not
+##     difficulty, it is a spike, and the table's threat curve does not know
+##     weather exists.
+static func weather_for(wave: int) -> StringName:
+	if wave < WEATHER_FIRST_WAVE:
+		return WEATHER_CLEAR
+	if wave % WEATHER_RAIN_EVERY == 0:
+		return WEATHER_RAIN
+	if wave % WEATHER_DROUGHT_EVERY == 0 and not wave_carries_boss(wave):
+		return WEATHER_DROUGHT
+	return WEATHER_CLEAR
+
+
+## Does this wave's table row contain a boss? False past the end of the table --
+## endless spawns no queens, so there is nothing there to protect.
+static func wave_carries_boss(wave: int) -> bool:
+	if wave < 1 or wave > WAVES.size():
+		return false
+	for group: Dictionary in WAVES[wave - 1]:
+		if StringName(group["species"]) == Pest.QUEEN:
+			return true
+	return false
+
+
+## What a plant's firing interval is multiplied by under this weather. Drought is
+## the only one that touches it; the number is 2.0 because "halves fire rate" is
+## the design brief's own wording and an interval is the reciprocal of a rate.
+const WEATHER_DROUGHT_INTERVAL_SCALE: float = 2.0
+
+static func fire_interval_scale_for(weather: StringName) -> float:
+	return WEATHER_DROUGHT_INTERVAL_SCALE if weather == WEATHER_DROUGHT else 1.0
+
+
+## How much of a plant's maximum health a rain wave gives back, applied once as
+## the wave opens rather than trickled -- a heal the player can SEE happen is
+## worth more than a slightly larger one they cannot.
+const WEATHER_RAIN_HEAL_FRACTION: float = 0.35
+
+
 func has_more_waves() -> bool:
 	if endless:
 		return true

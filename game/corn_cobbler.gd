@@ -109,7 +109,7 @@ func _act(delta: float, pests: Array[Pest]) -> void:
 		var target: Pest = _furthest_along_in_range(pests, RANGE)
 		if target != null:
 			_fire_at(target.global_position - global_position)
-			_cooldown = float(_stats()["interval"])
+			_cooldown = float(_stats()["interval"]) * fire_interval_scale
 	_refresh_readiness()
 
 

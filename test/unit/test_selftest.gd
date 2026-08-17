@@ -10153,3 +10153,116 @@ func test_the_keys_screen_shows_a_long_key_in_full() -> String:
 	RunConfig.save_path = stashed_path
 	DirAccess.remove_absolute("user://test_selftest_long_key.save")
 	return err
+
+
+# -- Weather rounds (plant-tower-defense-q3lx) -------------------------------
+
+
+## The weather rule, asserted as a rule rather than as a list of waves.
+##
+## `weather_for()` is derived from the wave number so it can be checked against
+## every wave out to endless, including the ones no table row exists for. Both of
+## its non-obvious clauses are here, because both are the kind of thing that reads
+## as an accident later: rain beats drought on a collision, and drought never lands
+## on a boss wave.
+func test_weather_follows_a_rule_and_not_a_hand_typed_column() -> String:
+	var err: String = _T.assert_eq(String(WaveDirector.weather_for(1)),
+		String(WaveDirector.WEATHER_CLEAR), "the opening waves are clear")
+	if err == "":
+		err = _T.assert_eq(String(WaveDirector.weather_for(WaveDirector.WEATHER_FIRST_WAVE - 1)),
+			String(WaveDirector.WEATHER_CLEAR), "and nothing arrives before WEATHER_FIRST_WAVE")
+	if err == "":
+		err = _T.assert_eq(String(WaveDirector.weather_for(5)),
+			String(WaveDirector.WEATHER_RAIN), "wave 5 rains")
+	if err == "":
+		# Wave 35 is a multiple of 5 AND of 7. Rain wins; the mercy beats the
+		# cruelty, and a wave that both heals everything and halves the garden's
+		# rate of fire is not a readable event.
+		err = _T.assert_eq(String(WaveDirector.weather_for(35)),
+			String(WaveDirector.WEATHER_RAIN),
+			"a wave that is both takes the rain -- 35 is the first collision and "
+				+ "endless is the only mode that reaches it")
+
+	# Drought never on a boss wave, checked against the TABLE rather than against
+	# the wave numbers that happen to carry queens today.
+	var boss_waves: int = 0
+	var droughts: int = 0
+	if err == "":
+		for wave: int in range(1, WaveDirector.WAVES.size() + 1):
+			var weather: StringName = WaveDirector.weather_for(wave)
+			if WaveDirector.wave_carries_boss(wave):
+				boss_waves += 1
+				err = _T.assert_false(weather == WaveDirector.WEATHER_DROUGHT,
+					"wave %d carries a boss, so it is not also a drought" % wave)
+				if err != "":
+					break
+			if weather == WaveDirector.WEATHER_DROUGHT:
+				droughts += 1
+	if err == "":
+		err = _T.assert_gt(boss_waves, 0,
+			"the table actually has boss waves -- a zero here would make the "
+				+ "exemption above vacuous rather than satisfied")
+	if err == "":
+		err = _T.assert_gt(droughts, 0,
+			"and the campaign actually sees a drought, so the rule is not simply "
+				+ "switched off inside the table's range")
+	return err
+
+
+## Drought slows the garden and rain heals it — asserted through the plants, not
+## through the constants that describe them.
+func test_weather_reaches_the_plants() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "", "planted")
+	var plant: Plant = game.selected_placed
+	if err == "":
+		err = _T.assert_true(plant != null, "and the bed is the one we hold")
+	if err == "":
+		err = _T.assert_float_eq(plant.fire_interval_scale, 1.0, 0.001,
+			"a bed planted in clear weather shoots at its own rate")
+
+	if err == "":
+		game._apply_weather(WaveDirector.WEATHER_DROUGHT)
+		err = _T.assert_float_eq(plant.fire_interval_scale,
+			WaveDirector.WEATHER_DROUGHT_INTERVAL_SCALE, 0.001,
+			"a drought stretches the interval of a bed already on the board")
+	if err == "":
+		# The half a player would find by trying it: planting INTO a drought must
+		# not be the way to beat it.
+		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "", "planted again")
+		if err == "":
+			err = _T.assert_float_eq(game.selected_placed.fire_interval_scale,
+				WaveDirector.WEATHER_DROUGHT_INTERVAL_SCALE, 0.001,
+				"and a bed bought DURING the drought inherits it")
+
+	if err == "":
+		# Rain: a real heal, on a bed that has something to heal.
+		plant.take_damage(Plant.MAX_HEALTH * 0.5)
+		var hurt: float = plant.health
+		game._apply_weather(WaveDirector.WEATHER_RAIN)
+		err = _T.assert_gt(plant.health, hurt, "rain gives health back")
+		if err == "":
+			err = _T.assert_float_eq(plant.health,
+				hurt + Plant.MAX_HEALTH * WaveDirector.WEATHER_RAIN_HEAL_FRACTION, 0.01,
+				"by exactly the fraction the rule names")
+		if err == "":
+			err = _T.assert_float_eq(plant.fire_interval_scale, 1.0, 0.001,
+				"and rain also lifts the drought rather than stacking with it")
+	if err == "":
+		# A partly-healed bed takes only the gap, not the amount asked for -- the
+		# first draft of this assertion expected 0 here and got 6, because 50% + 35%
+		# is 85% and not full. The number is the point: heal() reports what it GAVE.
+		# The gap is read BEFORE the call. Arguments evaluate left to right, so
+		# passing `Plant.MAX_HEALTH - plant.health` as the expected value reads it
+		# after heal() has already filled it -- which is how the first draft of this
+		# line asserted 0 against 6 and blamed the code.
+		var gap: float = Plant.MAX_HEALTH - plant.health
+		err = _T.assert_float_eq(plant.heal(Plant.MAX_HEALTH), gap, 0.001,
+			"a partly-grown bed takes exactly the gap it had left")
+	if err == "":
+		err = _T.assert_float_eq(plant.heal(Plant.MAX_HEALTH), 0.0, 0.001,
+			"and a bed at full health takes nothing, and reports that it took nothing")
+
+	_T.free_ui(game)
+	return err

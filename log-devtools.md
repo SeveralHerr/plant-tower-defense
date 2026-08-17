@@ -3862,3 +3862,37 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     the very next line.** It reads as "you should have done X" at the moment X is
     working. Added as a comment on gh#40 rather than filed separately, since it is the
     same function and the same conversation.
+
+## 2026-08-16 — cycle 35: weather rounds
+
+- Value: **warranted**, but narrowly, and the honest split is worth recording.
+  - Expected: the derivation and the multiplier are arithmetic until a real cob reads
+    them; and the banner is the only thing that makes weather a rule the PLAYER knows
+    about rather than a number the code applies, so "the words reached the screen" is
+    not assertable headlessly through anything but the pure headline/note functions.
+  - Got: the plant side confirmed exactly as predicted —
+    `fire_interval_scale=1.0` on a cob planted clear, `2.0` after
+    `_apply_weather("drought")`, and the banner reading `Drought` /
+    `Dry ground. Everything you planted shoots half as often.` with rain correctly
+    replacing it.
+  - Found: one, and not the one I was looking for. **The selection panel's readout
+    ignores the weather.** It prints `1.0 dmg / 0.80s, 1 kernel(s)` straight from
+    `CornCobbler.LEVELS`, so under a drought it tells the player 0.80s while the cob
+    fires every 1.60s. Seen in a screenshot, caught by no assertion — the rule reached
+    the plants and not the surface that describes the plants. Filed rather than fixed.
+  - Cheaper: **most of this was cheaper headless and I should say so.** The
+    derivation, the multiplier and the heal are pure enough to assert without a game,
+    and the two new tests carry them. The runtime half earned its place on exactly two
+    things: words arriving on a screen, and the readout defect above.
+
+- Gap: **no gaps this turn.** `launch --snapshot-userstate` behaved again —
+  `user://: no file changed during this run`, `restored 1 file(s)`, md5 unchanged.
+  Two clean sessions in a row now against one miss, which is the ratio worth having
+  on the record at gh#40.
+
+- Note, not a gap: a screenshot taken 0.3s after a banner fires can miss it — the
+  banner fades on a timer, and the capture caught the game after it had gone. Reading
+  the two Label texts directly was both more reliable and cheaper, and is what the
+  harness's own token-aware section already recommends over a screenshot. Recording it
+  because the instinct to "take a picture to check the words" is exactly the instinct
+  that guidance is arguing against, and I had it anyway.
