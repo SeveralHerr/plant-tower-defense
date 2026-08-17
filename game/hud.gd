@@ -1687,8 +1687,22 @@ static func eaten_message(plant_name: String) -> String:
 	return "A hungry pest ate your %s!" % plant_name
 
 
+## The armed prompt, and the only thing that tells a player the move preview
+## exists (plant-tower-defense-j80m).
+##
+## "Hover elsewhere to compare" and NOT "hover to move it": while the window is
+## open the hover shows what this plant would reach at another cell, which is a
+## comparison. Confirming still only uproots — whether a move should be a single
+## action, and what it should cost, is an open decision
+## (plant-tower-defense-h5w6). A prompt promising a move the game cannot perform
+## would be worse than the silence it replaces.
+##
+## The warning survives the addition, and has to: this is the sentence standing
+## between a player and an irreversible act. It leads with the destructive verb
+## and keeps "it will not grow back" rather than trading that away for the tip.
 static func uproot_armed_message(plant_name: String) -> String:
-	return "Click Uproot again to dig up your %s — it will not grow back." % plant_name
+	return ("Click Uproot again to dig up your %s — it will not grow back. "
+		+ "Hover to compare a new spot.") % plant_name
 
 
 static func packet_message(plant_name: String) -> String:
