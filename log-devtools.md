@@ -5566,3 +5566,32 @@ cited in code, and the citation is a mitigation this project has watched fail.
     nothing automates. gh#49 (assert a colour is present in a region) is the missing half —
     filed for a different reason and this is the case that makes it a gate rather than a
     convenience.
+
+## 2026-08-17 — Cycle 86: the same seam, twice in a row, closed by hand again
+
+- Value: **warranted** — and for the second consecutive cycle the reason is the same seam.
+  - Expected: that the flinch would reach the sway pivot, which no headless test can assert.
+  - Got: numbers. Sway alone holds the pivot within ±0.014 rad across four stepped samples;
+    a bite swings it to **+0.130 and −0.024** — more than twice the entire idle amplitude —
+    and `_flinch_left` reads 0.12 of 0.32 as it decays. A screenshot mid-flinch shows the
+    plant leaning at −0.074 rad. FPS mean 122.3 against 122–124 in cycles 71 and 84.
+  - Found: **the third mutation survived, and it is the same class as cycle 85's bug.**
+    Replacing the flinch term at the draw site with `0.0` passes every headless test,
+    because they assert `flinch_amount` — the pure function — and not the rotation it feeds.
+    `extract-a-testable-seam` predicts exactly this and says a live session is the answer, so
+    it got one.
+  - Cheaper: the suite pins the decay curve and the arming rule in 40 s and cannot see
+    whether any of it reaches the screen.
+
+- Gap: **no gaps in the harness. The gap is `-6e2e`, and this is the second cycle running to
+  pay its cost by hand.** Cycle 85: a coordinate-space bug shipped because tests assert the
+  points and not where they land. Cycle 86: a surviving mutation on the same seam, closed with
+  four `step-time --then-pause` samples and a `get-state` read. Both took ten minutes of
+  driving that a probe would do in one call.
+  - The pattern is now specific enough to state as a rule for whoever builds `-6e2e`: the
+    check is **not** "does the cue appear" but "does the value the game computed reach the
+    property that draws it". Cycle 86's version is three lines — pause, step, read
+    `_sway_pivot.rotation`, assert it exceeds `WOBBLE_RADIANS` — and it needs no pixels at
+    all. **A property read beats a pixel probe wherever the drawn thing is a transform**, and
+    only the cues drawn with `draw_*` into a canvas need sampling. That halves the surface
+    `-6e2e` has to cover and makes the easy half genuinely easy.

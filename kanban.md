@@ -247,6 +247,33 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (86) — the garden has three idle motions and one interruption
+
+- **The flinch completes the animation ask and exposes what it does not cover.** Sway,
+  breathe and now a flinch: `Plant._wobble` (`game/plant.gd:377`) carries all three on one
+  pivot. But **only the plant flinches.** `Pest._gait` (`game/pest.gd:796`) has the same
+  continuous-sinusoid shape and the same available state — `gait_stretch` already varies when
+  a pest is hungry — so a pest taking a kernel to the face reads exactly like one that did
+  not. It has a hit flash (`game/pest.gd:247`, `HIT_FLASH_DURATION` 0.10) which is a *colour* channel and the
+  only one it has; a flinch would be its second, and the plant's implementation is now the
+  reference. That asymmetry is the "quiet half of a pair" generator cycle 64 named, pointing
+  at the object the game creates most.
+- **Re-arming beat decaying, and the reason generalises.** The flinch is re-armed every
+  physics frame while a plant is being eaten rather than accumulated or state-machined, so a
+  sustained shudder and a single twitch are the same three lines. `take_damage` is called
+  every frame by a hungry pest, and that fact — already load-bearing for `_quiet_time` and
+  for `Sfx.REPEAT_MS[PLANT_BITTEN]`'s throttle — did a third job for free. **A per-frame
+  trigger you already have is worth more than a duration you have to model**, and this
+  codebase now has three features leaning on the same one.
+- **Transform cues can be checked without pixels, and that halves the board's untested
+  surface.** Cycle 86's surviving mutation was closed by pausing, stepping, and reading
+  `_sway_pivot.rotation` — three commands, no screenshot. That works for everything whose
+  motion IS a node property: the sway, breathe and flinch, every event flourish on
+  `_sprite.scale`, a pest's facing and gait. It does **not** work for anything drawn with
+  `draw_arc`/`draw_circle` into a canvas — the rings, fans, arcs, marks, previews and the
+  weather overlay — which is where cycle 85's shipped bug actually lived. `-a155` splits the
+  cheap half out of `-6e2e` so the expensive half stays visible instead of looking done.
+
 ### New this cycle (85) — nothing checks the board, and a player found out first
 
 - **Every cue on the playfield is outside every automated check this project has.** The

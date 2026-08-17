@@ -1,4 +1,4 @@
-# Cycle 85
+# Cycle 86
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,47 +6,48 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 85 taught
+## What cycle 86 taught
 
-**A screenshot found what 587 tests could not, and the bug had two members.** The yellow
-sole-cover rings were drawing **72 px high** — `Hud.BAR_HEIGHT`, more than a full 64 px row —
-so cues meant for road cells landed on the grass above them. `Board.cell_to_world` is
-board-local despite the name; `SoleCoverMarks._draw` hands it to `to_local()`, which measures
-from the viewport. Enumerating that function's callers rather than fixing the reported one
-found the identical shape in `placement_preview.gd`'s gained-cell dots.
+**A bitten plant flinches now** — the third word of the standing animation ask, after sway
+and breathe. Every idle motion in the game was a continuous sinusoid, so nothing on the board
+was ever startled: a bed being eaten looked exactly like one that was not, and the only tell
+was a health bar the player has to already be looking at.
 
-**Nothing could have caught it.** Every test asserts the POINTS and none asserts where they
-land, and `findings`' `ui_layout` check reads Control rects while every board cue is a
-`Node2D` draw call. The board is the surface with the most cues and the only one nothing
-measures — which `-du7p` reached from the budget side one cycle earlier. `-6e2e` is filed at
-P1: probe a cue's rendered position with `sample-pixels`, which is how this was confirmed by
-hand.
+**Re-arming beat modelling a duration.** A hungry pest calls `take_damage` every physics
+frame, so the flinch is re-armed rather than accumulated — a sustained shudder while eaten and
+a decay afterwards, out of three lines and no state machine. That per-frame call was already
+load-bearing for `_quiet_time` and for the bite sound's throttle; it did a third job for free.
+**A per-frame trigger you already have beats a duration you have to model.**
 
-**Three cycles running, the interesting bug lived between a value and its rendering** — an
-animation aimed at a property five tweens owned (71), a table nothing read (74), points whose
-rendered position was wrong (85). **Asserting the input to a draw call is not asserting the
-drawing**, and the distance between them is a coordinate space, which a pure test cannot hold
-because it needs a parented node to exist.
+**And the same seam bit for the second cycle running.** A mutation replacing the flinch term
+at the draw site with `0.0` passes every headless test, because they assert the pure function
+and not the rotation it feeds — precisely how cycle 85's coordinate bug shipped. Closed by
+hand with numbers: sway alone holds the pivot within ±0.014 rad, a bite swings it to **+0.130**
+and decays. `-a155` splits the cheap half out of `-6e2e`: **a property read beats a pixel probe
+wherever the drawn thing is a transform**, and only `draw_*` canvas cues need sampling.
+
+## Carried from cycle 85
+
+A user's screenshot found what 587 tests could not: sole-cover rings drawing **72 px high**
+because `cell_to_world` is board-local and `to_local` measures from the viewport. Enumerating
+its callers found a second instance in the placement preview. **Nothing checks the board** —
+`ui_layout` reads Control rects and every board cue is a `Node2D` draw call.
 
 ## Carried from cycle 84
 
 Weather is drawn on the ground it applies to, after the top bar was found to have refused it
-in cycle 17 **with the measurement attached** — every candidate tag overflowing by 5-54 px.
-A refusal with numbers is a design document. `verify-bd-item`'s `confirm` now searches the
-queue as well as the code.
-
-## Carried from cycle 83
-
-Every screen is reachable now — five named `entry_points` — and all four overlay screens were
-clean on their first-ever runtime pass. They are also **static**, which is the case a layout
-checker finds least.
+in cycle 17 **with the measurement attached**. A refusal with numbers is a design document,
+and `verify-bd-item`'s `confirm` now searches the queue as well as the code.
 
 ## Where things stand
 
-A hundred and twenty-six beads ready. Still on harness **0.38.0** deliberately (`-ny3h`
-blocked on gh#43). Suite **587/587**, 12762 assertions; lint 0/0; eleven checkers clean;
-findings 0/4. Thirteen skills. Upstream gh#44, gh#49 (**the case that makes it a gate**),
-gh#50 open.
+A hundred and twenty-seven beads ready. Still on harness **0.38.0** deliberately (`-ny3h`
+blocked on gh#43). Suite **589/589**, 12790 assertions; lint 0/0; eleven checkers clean;
+findings 0/4; FPS 122.3. Thirteen skills. Upstream gh#44, gh#49, gh#50 open.
+
+**The user asked twice for player-facing work**, so `-6e2e` was claimed and released rather
+than done — still the right P1, still earned, but it is tooling. Cycles 84, 85 and 86 all
+shipped something a player sees.
 
 **The workflow gained an intent line this cycle, written by the user**: keep it simple and
 meaningful, reflect on game/tools/workflow/skills, and — asked for directly — **bias step 2
@@ -70,8 +71,9 @@ together they made a HUD with no slack that nobody chose.
 `bd ready` for the work, this file for the context, `CLAUDE.md` (mirrored in `AGENTS.md`)
 for the loop itself. `-orcl` is the half of the citation audit no tool can do — read the
 landed lines once and record the rot rate. `-knpc` blocks `-1490` and `-lp97`; `-ip4n` blocks `-l86t`; `-0q3q` blocks `-ei83`;
-`-9afm` is the fragility cycle 81 worked around rather than fixed; `-6e2e` is the P1: nothing checks a board cue's rendered position, which is how the
-sole-cover rings drew a bar-height high without a single test noticing. `-ki5h` follows
+`-9afm` is the fragility cycle 81 worked around rather than fixed; `-a155` is the cheap half of the board-check problem and the one to do first: read the
+transform properties, no pixels. `-6e2e` keeps the expensive half, which is where cycle 85's
+shipped bug actually lived. `-ki5h` follows
 cycle 84: a drought is
 distinguishable side by side, which is not the same as being noticed mid-wave. `-d3el`
 still wants the reachable screens driven into the states that actually reflow. The cheapest real win on the board is `-0q3q`: hints and achievements share
