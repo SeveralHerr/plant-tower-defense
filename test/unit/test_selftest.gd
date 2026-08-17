@@ -5363,6 +5363,92 @@ func test_no_pause_card_legend_row_draws_past_the_paper() -> String:
 	return err
 
 
+## The same budget, against a key the PLAYER chose rather than the one we shipped
+## (plant-tower-defense-50s).
+##
+## The test above measures the legend as built, and every row it measures carries a
+## shipped key — `Esc`, `M`, `P`. But a legend row is `"%s   %s" % [keys, does]`, and
+## since the Keys screen landed the first half is a player's choice: `capture()` binds
+## whatever keycode arrives, so "Print Screen" and the media keys are as bindable as
+## `P`. The card's width was measured against the `does` phrases and nothing has ever
+## varied the other half. That is the same shape as the defect the header above
+## describes — a phrase authored somewhere else quietly stops fitting here — with the
+## author being the player rather than KeyBindings.ACTIONS.
+##
+## The worst key is DERIVED from the engine's own naming, not picked. A hand-chosen
+## "long key" is a guess that ages the moment Godot renames anything, and the point of
+## the sweep is that it re-answers "what is the longest label there is" every run.
+func test_the_pause_legend_survives_the_longest_key_a_player_can_bind() -> String:
+	var stashed_bindings: Dictionary = RunConfig.key_bindings
+	RunConfig.key_bindings = {}
+	KeyBindings.reset_all()
+
+	# Every code the engine is willing to name: the printable range, then the special
+	# block (KEY_SPECIAL is 1 << 22). Ones it does not name come back "".
+	var worst_code: int = 0
+	var worst_label: String = ""
+	var named: int = 0
+	for code: int in range(32, 127):
+		var label: String = OS.get_keycode_string(code)
+		if label.is_empty():
+			continue
+		named += 1
+		if label.length() > worst_label.length():
+			worst_label = label
+			worst_code = code
+	for code: int in range(1 << 22, (1 << 22) + 512):
+		var label: String = OS.get_keycode_string(code)
+		if label.is_empty():
+			continue
+		named += 1
+		if label.length() > worst_label.length():
+			worst_label = label
+			worst_code = code
+
+	var err: String = _T.assert_gt(named, 100,
+		"the sweep found keys to measure -- a near-empty sweep makes every assertion "
+			+ "below vacuous, and get_keycode_string() returning \"\" for everything is "
+			+ "exactly what a renamed enum looks like")
+	if err == "":
+		err = _T.assert_gt(worst_label.length(), 4,
+			"and the longest of them is actually long, got: %s" % worst_label)
+	if err == "":
+		# Bind it to the verb whose phrase is already the widest, so the row under test
+		# is the worst case in both halves at once rather than in one.
+		var widest: StringName = KeyBindings.actions()[0]
+		for action: StringName in KeyBindings.actions():
+			if KeyBindings.describe(action).length() > KeyBindings.describe(widest).length():
+				widest = action
+		err = _T.assert_true(KeyBindings.set_keys(widest, [worst_code]),
+			"the longest key name (%s) binds to the widest verb (%s)"
+				% [worst_label, KeyBindings.describe(widest)])
+
+	if err == "":
+		var worst_game := await _T.instantiate_scene(GAME_SCENE) as Game
+		worst_game.pause_run()
+		await _pump(worst_game)
+		var worst_screen: Control = worst_game.get_node_or_null("PauseLayer/PauseScreen") as Control
+		err = _T.assert_true(worst_screen != null, "the card is up")
+		if err == "":
+			var rows: int = Game.key_help().size()
+			err = _T.assert_gt(rows, 0, "there are legend rows to measure")
+			for i: int in range(rows):
+				if err != "":
+					break
+				var row: Label = worst_screen.get_node_or_null("KeyRow%d" % i) as Label
+				err = _T.assert_true(row != null, "KeyRow%d is on the card" % i)
+				if err == "":
+					err = _T.assert_true(_T.text_width(row) <= PauseScreen.KEY_ROW_MAX_WIDTH,
+						"KeyRow%d draws %.0fpx against a %.0f budget once a player binds the longest key there is -- widen the card, or leave the 'does' phrases room for a key name we do not choose (%s)"
+							% [i, _T.text_width(row), PauseScreen.KEY_ROW_MAX_WIDTH, row.text])
+		worst_game.resume_run()
+		_T.free_ui(worst_game)
+
+	KeyBindings.reset_all()
+	RunConfig.key_bindings = stashed_bindings
+	return err
+
+
 ## The pause card sizes itself to what it holds. It used to derive where its
 ## content starts and hard-code where it must stop: content ended at 370 against a
 ## written 380, and a fourth button or key row spent that silently, putting text

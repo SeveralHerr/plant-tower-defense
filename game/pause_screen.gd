@@ -83,7 +83,25 @@ var _buttons: Array[Button] = []
 ## than shortening the phrase, because the phrase is the only thing on any of the
 ## three screens that says WHICH bars the C key changes, and a 40px card is a
 ## cheaper thing to spend than that sentence. See KEY_ROW_MAX_WIDTH.
-const CARD_WIDTH: float = 360.0
+##
+## 440, not 360, for the SECOND half of the same row -- and this half is not ours
+## to author at all. A legend row is `"%s   %s" % [keys, does]`, and since the Keys
+## screen landed the player picks the first `%s`: `capture()` binds whatever keycode
+## arrives. The paragraph above measured the `does` phrases and left the key column
+## at whatever `Esc` and `P` happen to cost. Sweeping every code
+## `OS.get_keycode_string()` will name gives "On-screen keyboard", and that beside
+## the colourblind phrase drew **384px into a 304px box** -- 80px of legend onto the
+## dimmed backdrop over the live board, which is the exact failure this header
+## already describes happening once.
+##
+## Widened again rather than truncating the key name, on the same reasoning and one
+## more: a legend that abbreviates the key is a legend that cannot tell the player
+## which key it means, which is its whole job. The cost is a card 38% of the
+## viewport's width instead of 31%. The gate is
+## test_the_pause_legend_survives_the_longest_key_a_player_can_bind, which derives
+## the worst key from the engine on every run rather than pinning today's answer --
+## so a Godot release that names something longer fails here with the number.
+const CARD_WIDTH: float = 440.0
 ## Never higher than this, whatever the arithmetic says. A card taller than the
 ## viewport should hang off the bottom where the next thing added to it is visibly
 ## missing, rather than slide its heading off the top where the player cannot even

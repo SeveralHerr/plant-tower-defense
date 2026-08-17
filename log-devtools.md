@@ -3744,3 +3744,36 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     who already know to look for it. Failing that, have `launch` print one line naming
     the `user://` files it is prepared to see change, so the hazard is stated at the
     moment the risk is taken rather than at `quit`, after the damage.
+
+## 2026-08-16 — cycle 32: the pause legend against a key the player picked
+
+- Value: **warranted** — a real spill, found by the new test on its first run, in a
+  place a pre-existing test had been measuring for cycles.
+  - Expected: the derived worst-case key is only a claim about text width until a real
+    card is built with it; and `CARD_WIDTH` feeds `CARD_X` and `card_rect()`, so
+    widening it moves the card's placement and every layout test that derives from it.
+    Runtime is where "still looks like a card" gets decided.
+  - Got: the headless half fired first and harder —
+    `KeyRow4 draws 384px against a 304 budget ... (On-screen keyboard   colourblind-safe
+    health and threat bars)`. 80px of legend onto the dimmed backdrop over the live
+    board. Runtime then confirmed the fix as geometry rather than as an impression:
+    `KeyRow4 ... control: 256,553 384x26 within: 228,45 440x558`, `findings` clean, and
+    a screenshot showing the card still proportioned.
+  - Found: the spill. The existing `test_no_pause_card_legend_row_draws_past_the_paper`
+    has measured this exact budget for cycles and could not see it, because it measures
+    the legend **as built** and every row it has ever measured carried a shipped key.
+    A legend row is `"%s   %s" % [keys, does]`; the card was sized against the `does`
+    phrases, and the moment the Keys screen landed the other half became the player's
+    choice. The old test was not wrong, it was *complete for a game that no longer
+    exists* — which is a failure mode worth naming, since nothing about it looks stale.
+  - Cheaper: the headless test alone would have done it, and did. The runtime half was
+    confirmation — but `CARD_WIDTH` feeds `CARD_X`, and "a 440px card still looks right
+    over the board" is not a thing any assertion in this project states.
+
+- Gap: **no gaps this turn**, and one closed by using it. Last cycle's [G-054] was that
+  a live session silently writes the developer's `user://`; this run used
+  `launch --snapshot-userstate 'highscore.save'` and `quit` reported
+  `userstate: restored 1 file(s) and removed 0 created during the run` with the md5
+  unchanged. The flag works exactly as documented — which is the argument for gh#40
+  (make it the default), not against it: it only helped here because the previous cycle
+  had already paid for the knowledge that it exists.
