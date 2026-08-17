@@ -4513,3 +4513,31 @@ cited in code, and the citation is a mitigation this project has watched fail.
   - Improvement: unchanged, and now cheaper to argue for — reuse the `found[].phase`
     warning's own shape for unknown top-level keys. The `checks` key worked this cycle
     and the row carries its four Phase 4 entries, so the fix is narrow.
+
+## 2026-08-17 — Cycle 53: the road climbs
+
+- Value: **warranted** — and unusually, the static work and the runtime work each caught
+  something the other could not.
+  - Expected: the reshape to hold its two invariants (32 cells, 2112 px) and break only
+    shape-dependent tests. Predicted before touching the file, by scripting the route.
+  - Got: exactly that. `test_the_road_is_still_the_road_the_constants_were_measured_against`
+    passed untouched — the guard that exists to fire on a road change did not fire, because
+    the change was designed around it. Five shape-dependent tests failed, which is the set
+    the same file's header predicts by name.
+  - Found: three things the diff could not have shown.
+    * `_mixed_garden`'s `Vector2i(10, 3)` sits on the NEW road, so that placement would
+      have failed and quietly made a six-plant garden into five.
+    * Six cobs cover all 32 road cells and still let one escape in thirty-four cross
+      unfought — **coverage is not engagement**, because a cob shoots only the
+      furthest-along pest in range. The seventh cob is for overlap, not reach.
+    * `(2, 3)` stopped being a cell that is dead for a Chomp and good for a Corn: the new
+      route runs up column 2, putting road at `(2, 4)` directly under it.
+  - Cheaper: for the invariants, a 20-line script, and that is what was used — the numbers
+    were checked before the file was edited rather than after the suite complained. For
+    "does a pest render upright while climbing", nothing. That is the whole change.
+
+- Gap: **no gaps this turn.** One note in the harness's favour: polling `find-nodes
+  --class Pest --property _facing` for a `0.0` and then calling `pause` the moment it
+  appeared is what caught a pest mid-climb — a sub-second state on a four-cell leg. The
+  verb table advertises exactly this ("catch a sub-second effect, poll for the moment,
+  pause, then inspect at no rush") and it worked first try, three polls in.

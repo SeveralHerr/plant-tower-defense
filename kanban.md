@@ -195,6 +195,29 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (53) — the road can change now, and that is newly interesting
+
+- **A second road is now a much smaller job than it looked.** `PATH_CORNERS`
+  (`game/board.gd:50`) was reshaped this cycle and the five shape-dependent tests were
+  re-derived rather than re-fitted — which means the cost of a road change is now *known*
+  and written down, not feared. The invariant trick is the reusable part: hold 32 cells and
+  2112 px and nothing reasoned from length or cell count moves at all. A `PATH_CORNERS`
+  that varied per level, with the dead-ground and garden figures derived at test time
+  instead of recorded, would turn "another road" into a data change. That is the real
+  unlock behind `-84x0`, and it is worth more than the climb was.
+- **Coverage is not engagement, and only one test knows it.** Six cobs reach all 32 road
+  cells and still let a pest cross unfought, because `_furthest_along_in_range`
+  (`game/corn_cobbler.gd:109`) picks exactly one target. The board's coverage cue tells a
+  player a cell is covered; it cannot tell them the plant covering it is permanently busy.
+  A second cue — "covered, but by a plant already committed" — is a real UX idea and the
+  data is already computed for the over-promise tests.
+- **The board has two big empty clearings now and nothing draws the eye to them.**
+  The reshape opened enough space that the short-reach Chomp strands 36 of 94 cells
+  (`test/unit/test_placement.gd`), up from 34. The dead-ground cue exists per-plant at
+  placement time, but a player scanning the board before picking a plant sees uniform
+  grass. A faint, permanent tint on ground *no plant in the catalogue* can use would say
+  "this is scenery" without teaching anything false.
+
 ### New this cycle (52) — the row is solved; the same shape is everywhere else
 
 - **`WORST_CASE_TEXT` is the message row's problem, one row up, and still unsolved.**

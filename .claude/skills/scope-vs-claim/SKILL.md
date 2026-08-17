@@ -66,6 +66,26 @@ loudly when that count is zero.
 > **Test:** for every zero the check can produce, name **all** the states that produce it.
 > If there is more than one and they mean different things, the zero is not a result.
 
+### 5. A test's NAME, which is the claim most people read and least people check
+
+`test_the_road_is_still_the_road_the_constants_were_measured_against` exists to fire when
+the game's road changes. Cycle 53 changed the road completely — every corner, a whole new
+leg — and it passed, correctly. What it actually asserts is the road's **length and cell
+count**, which were deliberately preserved; it says nothing about shape.
+
+Both halves are right. The test is right to pass and the road is right to have changed.
+The defect is that a reader trusting the name would conclude the road was untouched, and
+a name is the cheapest thing to read and the most expensive thing to verify.
+
+> **Test:** read the name alone, say what would have to be true for it to fail, then read
+> the assertions. A name that describes a stronger claim than the body checks is the
+> commonest form of this whole defect, because a test that passes is never re-read.
+
+Rename to the property actually guarded, and say in the header which sibling tests guard
+the rest. `..._the_constants_were_measured_against` should be
+`..._is_still_the_length_and_cell_count_the_constants_were_measured_against`, pointing at
+the shape-dependent tests by name.
+
 ## Doing the audit
 
 Read the sentence first, then the code, in that order — the reverse re-derives the
