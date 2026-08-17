@@ -6298,3 +6298,241 @@ func test_a_headless_chomp_upgrade_does_not_queue_a_flourish_tween() -> String:
 			"no new Tween was queued -- animations_enabled() is false headless")
 	_T.free_ui(host)
 	return err
+
+
+# -- Directional attack animations (plant-tower-defense-v104) ----------------
+#
+# The designer's note asked for "better attack animations for chomp flower and prickly
+# nettle". Both were ~0.15s of uniform whole-sprite scale, which is symmetric: a Chomp
+# biting a beetle on its left and one on its right drew the same picture, and so did a
+# Nettle stinging nothing at all while a cob three cells away landed a kernel. What both
+# gained is a DIRECTION -- a lunge, a lean, a fan of spokes -- and a direction is the one
+# thing about an animation that can be flatly wrong while still rendering as a perfectly
+# plausible frame. That is this project's documented 2D-placement failure mode, so every
+# check below asserts the VECTOR, never that something merely moved.
+#
+# All of it lives past `GardenTheme.animations_enabled()`, which is false for every test
+# in this suite by construction, so the composition was pulled out into pure statics
+# (`ChompFlower.lunge_offset`, `Nettle.sting_lean_skew`, `Nettle.spark_spoke_ends`) and
+# recorded into fields written ABOVE the gate (`_bite_lunge`, `_sting_lean`,
+# `_spark_ends`). The seam tests below assert the arithmetic; the reach tests drive the
+# real attack path (`_grab`, `_sting`) and assert the recorded field, so deleting the
+# composition from the attack goes red instead of silently aiming at the origin.
+
+
+## Every side, not just one: a sign error that happens to be right for a pest on the
+## right is wrong for the other three, and one sample cannot tell them apart.
+func test_a_chomps_lunge_points_at_the_meal_from_every_side() -> String:
+	var flower := Vector2(300.0, 200.0)
+	var meals: Dictionary = {
+		"right": flower + Vector2(64.0, 0.0),
+		"left": flower + Vector2(-64.0, 0.0),
+		"below": flower + Vector2(0.0, 71.0),
+		"above": flower + Vector2(0.0, -71.0),
+		"down-left": flower + Vector2(-40.0, 55.0),
+	}
+	var err: String = ""
+	for side: String in meals:
+		var meal: Vector2 = meals[side]
+		var lunge: Vector2 = ChompFlower.lunge_offset(flower, meal)
+		var toward: Vector2 = (meal - flower).normalized()
+		err = _T.assert_float_eq(lunge.length(), ChompFlower.LUNGE_DISTANCE, 0.001,
+			"a %s meal is lunged at by exactly LUNGE_DISTANCE, got %.3f"
+				% [side, lunge.length()])
+		if err != "":
+			break
+		# The direction assertion proper: a unit-length dot of 1.0 is "the same way", and
+		# nothing else scores 1.0 -- a lunge pointing away scores -1, a perpendicular one 0.
+		err = _T.assert_float_eq(lunge.normalized().dot(toward), 1.0, 0.0001,
+			"and points AT it, not away or across (%s: lunge %s, toward %s)"
+				% [side, lunge, toward])
+		if err != "":
+			break
+	if err == "":
+		# Under half a cell, so a lunging flower never draws itself into its neighbour's
+		# square -- LUNGE_DISTANCE's own header states this and nothing executed it.
+		err = _T.assert_true(ChompFlower.LUNGE_DISTANCE < Board.CELL * 0.5,
+			"and the lunge stays inside the flower's own cell (%.1f vs %.1f)"
+				% [ChompFlower.LUNGE_DISTANCE, Board.CELL * 0.5])
+	if err == "":
+		# `_nearest_free_pest` accepts a pest at distance 0, so this input is reachable
+		# and a normalize() on it would be a NaN riding into a Tween.
+		err = _T.assert_eq(ChompFlower.lunge_offset(flower, flower), Vector2.ZERO,
+			"a meal already on top of the flower is lunged at nowhere, not at NaN")
+	return err
+
+
+## The reach half: the real grab path composes the lunge, whatever the animation gate says.
+func test_a_chomps_bite_records_a_lunge_toward_the_meal() -> String:
+	var chomp := ChompFlower.new()
+	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
+	chomp.position = Vector2.ZERO
+	# Left and slightly up, so a sign error on either axis is a different answer.
+	var aphid: Pest = _pest(Pest.APHID, Vector2(-52.0, -18.0))
+	var host: Node2D = _host([chomp, aphid])
+	await _T.instantiate_scene(host)
+	var err: String = _T.assert_eq(chomp._bite_lunge, Vector2.ZERO,
+		"a flower that has not bitten anything is not mid-lunge")
+	if err == "":
+		# The real path: _grab() is what _act() calls, and _bite() is inside it.
+		chomp._grab(aphid)
+		err = _T.assert_true(chomp.is_busy(), "the grab landed")
+	if err == "":
+		var toward: Vector2 = (aphid.global_position - chomp.global_position).normalized()
+		err = _T.assert_float_eq(chomp._bite_lunge.normalized().dot(toward), 1.0, 0.0001,
+			"and the bite recorded a lunge at the aphid (%s, toward %s)"
+				% [chomp._bite_lunge, toward])
+	if err == "":
+		err = _T.assert_float_eq(chomp._bite_lunge.length(), ChompFlower.LUNGE_DISTANCE,
+			0.001, "at full LUNGE_DISTANCE, got %.3f" % chomp._bite_lunge.length())
+	_T.free_ui(host)
+	return err
+
+
+## The gate, on the tween this bead added `animations_enabled()` to.
+##
+## `_bite` used to guard on sprite-and-tree only while `_on_upgraded` beside it guarded on
+## all three, and `_on_upgraded`'s header claimed to be gated "exactly as every cosmetic
+## Tween in this class" -- a sentence one function in the same file falsified. The lunge is
+## the reason to settle it rather than leave it: the tween now owns `_sprite.position`, and
+## a queued-but-never-stepped position Tween on a headless run is a sprite that is not
+## where the rest of the suite reads it.
+func test_a_headless_chomp_bite_queues_no_lunge_tween() -> String:
+	var chomp := ChompFlower.new()
+	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
+	var beetle: Pest = _pest(Pest.BEETLE, Vector2(48.0, 0.0))
+	var host: Node2D = _host([chomp, beetle])
+	await _T.instantiate_scene(host)
+	var was_at: Vector2 = chomp._sprite.position
+	var was_scaled: Vector2 = chomp._sprite.scale
+	chomp._grab(beetle)
+	var err: String = _T.assert_eq(chomp._sprite.position, was_at,
+		"the sprite is still home -- animations_enabled() is false headless")
+	if err == "":
+		err = _T.assert_eq(chomp._sprite.scale, was_scaled,
+			"and unsquashed, the same gate the upgrade flourish has always had")
+	if err == "":
+		# And the half that is NOT cosmetic still happened, which is the whole point of
+		# composing above the gate rather than inside the tween.
+		err = _T.assert_true(chomp._bite_lunge != Vector2.ZERO,
+			"while the lunge VECTOR was still composed, gate or no gate")
+	_T.free_ui(host)
+	return err
+
+
+## Which side, and how much: a sign flip here aims the plant at nobody and still renders.
+func test_a_nettle_leans_at_the_side_its_victim_is_on() -> String:
+	var plant := Vector2(120.0, 400.0)
+	# Godot skews about the local Y axis, so a point at (0, -h) moves to (+h*sin, ...):
+	# positive skew leans the sprite's TOP to the right. This asserts the screen, not a
+	# convention -- see Nettle.sting_lean_skew's header for the derivation.
+	var right: float = Nettle.sting_lean_skew(plant, plant + Vector2(64.0, 0.0))
+	var err: String = _T.assert_float_eq(right, Nettle.STING_LEAN_SKEW, 0.0001,
+		"a victim dead right leans the top fully right, got %.4f" % right)
+	if err == "":
+		var left: float = Nettle.sting_lean_skew(plant, plant + Vector2(-64.0, 0.0))
+		err = _T.assert_float_eq(left, -Nettle.STING_LEAN_SKEW, 0.0001,
+			"a victim dead left leans it fully left, got %.4f" % left)
+	if err == "":
+		# The reason this is a projection and not a sign(): a pest passing straight in
+		# front has no side to lean toward, and a sign() would have snapped to a full
+		# lean one pixel either way.
+		var above: float = Nettle.sting_lean_skew(plant, plant + Vector2(0.0, -80.0))
+		err = _T.assert_float_eq(above, 0.0, 0.0001,
+			"a victim straight up gets no sideways lean at all, got %.4f" % above)
+	if err == "":
+		var near_right: float = Nettle.sting_lean_skew(plant, plant + Vector2(8.0, -80.0))
+		err = _T.assert_true(near_right > 0.0 and near_right < Nettle.STING_LEAN_SKEW * 0.5,
+			"and one barely to the right leans barely right, got %.4f" % near_right)
+	if err == "":
+		var degenerate: float = Nettle.sting_lean_skew(plant, plant)
+		err = _T.assert_float_eq(degenerate, 0.0, 0.0001,
+			"a victim on top of the plant is a lean of nothing, not a NaN")
+	return err
+
+
+## The spark's fan opens AWAY from the Nettle, so the burst points back at what caused it.
+func test_a_nettle_spark_fans_away_from_the_plant_that_caused_it() -> String:
+	var plant := Vector2(0.0, 0.0)
+	var victim := Vector2(0.0, 96.0)  # straight below, so the fan must open downward
+	var ends: PackedVector2Array = Nettle.spark_spoke_ends(plant, victim)
+	var err: String = _T.assert_eq(ends.size(), Nettle.SPARK_SPOKES,
+		"one spoke per SPARK_SPOKES")
+	var mean := Vector2.ZERO
+	if err == "":
+		for end_point: Vector2 in ends:
+			mean += end_point
+			err = _T.assert_float_eq(end_point.length(), Nettle.SPARK_LENGTH, 0.001,
+				"every spoke is SPARK_LENGTH long, got %.3f" % end_point.length())
+			if err != "":
+				break
+	if err == "":
+		mean /= float(ends.size())
+		var toward: Vector2 = (victim - plant).normalized()
+		# The direction assertion: the fan's own bisector, not "some spoke happens to".
+		err = _T.assert_float_eq(mean.normalized().dot(toward), 1.0, 0.0001,
+			"and the fan's bisector runs the way the sting went (%s, toward %s)"
+				% [mean, toward])
+	if err == "":
+		var span: float = absf(ends[ends.size() - 1].angle_to(ends[0]))
+		err = _T.assert_float_eq(span, Nettle.SPARK_FAN_RADIANS, 0.0001,
+			"spanning exactly SPARK_FAN_RADIANS, got %.4f" % span)
+	if err == "":
+		# Rotating the victim rotates the whole fan -- the geometry is not baked to one axis.
+		var sideways: PackedVector2Array = Nettle.spark_spoke_ends(plant, Vector2(96.0, 0.0))
+		var side_mean := Vector2.ZERO
+		for end_point: Vector2 in sideways:
+			side_mean += end_point
+		err = _T.assert_float_eq(side_mean.normalized().dot(Vector2.RIGHT), 1.0, 0.0001,
+			"and a victim to the right gets a fan opening right, got %s" % side_mean)
+	return err
+
+
+## The reach half for the Nettle: the real sting path composes both directions and, gate
+## shut, spawns no spark and leaves the sprite unsheared.
+func test_a_nettle_sting_records_the_direction_it_went() -> String:
+	var nettle := Nettle.new()
+	nettle.setup(PlantCatalog.NETTLE, Vector2i(0, 0), null)
+	nettle.position = Vector2.ZERO
+	var victim: Pest = _pest(Pest.BEETLE, Vector2(70.0, 24.0))
+	victim.apply_mutation(Pest.MUTATION_ARMOURED)
+	var host: Node2D = _host([nettle, victim])
+	await _T.instantiate_scene(host)
+	var err: String = _T.assert_true(Nettle.can_sting(victim),
+		"the victim is one this plant will actually fight")
+	if err == "":
+		err = _T.assert_float_eq(nettle._sting_lean, 0.0, 0.0001,
+			"a Nettle that has not stung is not leaning")
+	if err == "":
+		# The real path -- _act() calls exactly this once a target clears the filter.
+		nettle._sting(victim)
+		# Right and below, so the lean is positive and strictly under the full amount.
+		err = _T.assert_true(nettle._sting_lean > 0.0,
+			"the sting leaned toward a victim on the right, got %.4f" % nettle._sting_lean)
+	if err == "":
+		err = _T.assert_true(nettle._sting_lean < Nettle.STING_LEAN_SKEW,
+			"and only partly, since the victim is off-axis, got %.4f" % nettle._sting_lean)
+	if err == "":
+		err = _T.assert_eq(nettle._spark_ends.size(), Nettle.SPARK_SPOKES,
+			"and the spark geometry was composed too")
+	if err == "":
+		var mean := Vector2.ZERO
+		for end_point: Vector2 in nettle._spark_ends:
+			mean += end_point
+		var toward: Vector2 = (victim.global_position - nettle.global_position).normalized()
+		err = _T.assert_float_eq(mean.normalized().dot(toward), 1.0, 0.0001,
+			"pointing the way the sting actually went (%s, toward %s)" % [mean, toward])
+	if err == "":
+		# The gate: nothing was drawn and nothing was added to the tree headless, which is
+		# also the check that a spark cannot accumulate on a plant that stings all game.
+		err = _T.assert_eq(nettle.get_node_or_null("PrickleSpark"), null,
+			"no spark node headless -- animations_enabled() is false")
+	if err == "":
+		err = _T.assert_float_eq(nettle._sprite.skew, 0.0, 0.0001,
+			"and no skew was applied, the same gate _sting_twitch has always had")
+	if err == "":
+		# The damage is the game event and is ahead of both gates, unchanged by any of this.
+		err = _T.assert_true(victim.health < victim.max_health,
+			"while the sting itself still landed")
+	_T.free_ui(host)
+	return err
