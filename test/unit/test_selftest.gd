@@ -4633,9 +4633,14 @@ func test_the_plant_bar_fits_a_catalogue_larger_than_todays() -> String:
 		var rows: int = int(layout["rows"])
 		var height: float = float(layout["height"])
 		var used: float = float(rows) * height + float(Hud.PLANT_BAR_SEPARATION * (rows - 1))
-		err = _T.assert_eq(int(layout["columns"]), 1,
-			"%d plant(s): one column, always -- two was never renderable at PANEL_WIDTH"
-				% count)
+		# Two columns past the single-column limit, and one below it. Cycle 99 made two
+		# renderable by taking the NAME off the button -- the minimum width went from
+		# 195px to under the 114px a two-column bar can give -- so this asserts the rule
+		# rather than a fixed number, and the constants are the thing that moved.
+		var want_columns: int = (Hud.PLANT_BAR_COLUMNS
+			if count > Hud.PLANT_BAR_SINGLE_COLUMN_MAX else 1)
+		err = _T.assert_eq(int(layout["columns"]), want_columns,
+			"%d plant(s): %d column(s)" % [count, want_columns])
 		if err == "":
 			err = _T.assert_true(height >= Hud.PLANT_BUTTON_MIN_HEIGHT,
 				"%d plant(s): a %.1fpx button is below the %dpx touch minimum"
@@ -4656,9 +4661,10 @@ func test_the_plant_bar_fits_a_catalogue_larger_than_todays() -> String:
 		# The number today's panel actually holds. Pinned so that shrinking the bar, or
 		# raising the touch floor, is a visible change rather than a silent one -- and so
 		# that a future plant reads this line and knows the bar will scroll.
-		err = _T.assert_eq(fits_without_scrolling, 5,
-			"five plants fit the panel without scrolling; the sixth is why the bar is "
-				+ "inside a ScrollContainer (got %d)" % fits_without_scrolling)
+		err = _T.assert_gte(fits_without_scrolling, 10,
+			"the whole sweep fits without scrolling now that the bar is two columns of "
+				+ "icon-and-price buttons -- it held five before cycle 99 (got %d)"
+				% fits_without_scrolling)
 	return err
 
 
@@ -11916,4 +11922,40 @@ func test_a_read_line_is_retired_and_an_unread_one_resumes() -> String:
 	if err == "":
 		err = _T.assert_eq(hud.pending_messages(), 1, "it is waiting, and will come back")
 	_T.free_ui(game)
+	return err
+
+
+func test_a_plant_button_says_the_price_and_nothing_else() -> String:
+	## Three states in two symbols, and the empty one is the load-bearing choice.
+	##
+	## Taking the NAME off the button is what bought the second column: the minimum width
+	## went from 195px, against the 114px a two-column bar can give, to 8px. Every earlier
+	## attempt to fit six plants tried to divide 232 by two without changing what had to fit
+	## inside it, which is why two columns was "unrenderable" for cycles rather than merely
+	## unbuilt.
+	##
+	## A locked plant shows NOTHING rather than the word "locked". That is the same fact in
+	## one fewer channel -- a number means you may buy it, no number means it is not for sale
+	## yet -- and it costs the button no width at all, which is the point.
+	var err: String = _T.assert_eq(Hud.plant_button_label(false, 25), "",
+		"a locked plant shows no price, because there is no price to show yet")
+	if err == "":
+		err = _T.assert_eq(Hud.plant_button_label(false, 0), "",
+			"and a locked plant that would be free is still locked")
+	if err == "":
+		err = _T.assert_eq(Hud.plant_button_label(true, 0), "free",
+			"the starter says so in a word rather than a zero")
+	if err == "":
+		err = _T.assert_eq(Hud.plant_button_label(true, 25), "25",
+			"and a purchasable plant is its number, with no unit -- the seed count at the "
+				+ "top of the screen is the only currency there is")
+	if err == "":
+		# The width claim, asserted rather than described: every label the catalogue can
+		# produce has to fit a two-column button, and the longest is the one to check.
+		var longest: int = 0
+		for id: StringName in PlantCatalog.ids():
+			longest = maxi(longest, Hud.plant_button_label(true, PlantCatalog.cost(id)).length())
+		err = _T.assert_true(longest <= 4,
+			"the longest label any catalogue plant produces is %d characters -- 'free' is "
+				+ "the ceiling, and a five-figure price would be a different bar" % longest)
 	return err

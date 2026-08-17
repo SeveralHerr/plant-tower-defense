@@ -212,7 +212,19 @@ const PLANT_ART_WIDTH: float = 64.0
 ## hand over right of them. Three in that band at 806/940/1074 leaves 25px between
 ## sprites and 24px of margin at the screen edge; a fourth does not fit, and
 ## test_the_title_lawn_shows_every_plant_in_the_catalogue says so.
-const PLANT_X: Array[float] = [132.0, 272.0, 806.0, 940.0, 1074.0]
+## The SIXTH slot (Garden Mint) went into the LEFT band and the two already there respaced
+## from 132/272 to 100/215 to make room at 330. Not the right band, despite Mint being tier 2
+## like the two plants that live there: three 109px sprites already overhang that band's
+## 311px by 29px a side, and a fourth would have to overlap rather than merely overhang.
+##
+## Spacing is 115 against the right band's 134, so the gap between sprites is 6px rather than
+## 25. That is the cost of a sixth plant: tighter, still positive, still clear of the button
+## column (330 + 54.5 = 384.5 against 426). A SEVENTH does not fit either band without
+## dropping PLANT_SCALE, and lawn_plants() degrades with a push_warning when that day comes.
+##
+## In CATALOGUE order, not left-to-right order -- lawn_plants() maps by index -- so the
+## out-of-sequence 330.0 at the end is correct and not a typo.
+const PLANT_X: Array[float] = [100.0, 215.0, 806.0, 940.0, 1074.0, 330.0]
 ## The bugs the plants are there to fight, marching across the soil.
 const PEST_BASE_Y: float = 606.0
 const PEST_SCALE: float = 1.15

@@ -335,6 +335,14 @@ const PAGES: Array[Dictionary] = [
 		"note": "The only plant that hits more than one bug at once. Its seeds arc and burst where they land, so pests walking together take the whole blast — but a seed is aimed where they were half a second ago, and wants something slowing them first. Three seeds a head, and it goes visibly bald throwing them.",
 	},
 	{
+		"kind": KIND_PLANT,
+		"plant": &"mint",
+		"drawing": "res://assets/sprites/mint.png",
+		"sprite": "res://assets/sprites/mint.png",
+		"caption": "Garden Mint",
+		"note": "The third plant designed here rather than on paper, and the first that is about the BOARD instead of the lane. Every other plant answers what happens to the pest in front of it; Mint answers what the plants beside it are worth. It is the only reason a cell's neighbours have ever mattered.",
+	},
+	{
 		"kind": KIND_SHELF,
 		"plant": &"",
 		# Kept a real path even though the shelf page never shows it: Drawing is

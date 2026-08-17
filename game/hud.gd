@@ -223,6 +223,18 @@ const PLANT_BAR_SEPARATION: int = 4
 ## Controls at 40x40 and was right to when an earlier pass trimmed one to 34.
 const PLANT_BUTTON_MIN_HEIGHT: float = 40.0
 
+## How many plant buttons sit side by side once the catalogue outgrows one column.
+##
+## Two, and it is bounded by WIDTH rather than by taste: the bar is PANEL_WIDTH - 24 = 232px,
+## so two buttons plus a separation give each 114px. A button is an icon at its own height
+## plus a price, which measures under that; three columns would give 74px and put the price
+## against the icon.
+const PLANT_BAR_COLUMNS: int = 2
+## Below this many plants the bar stays a single column, because a two-column grid of two or
+## three plants reads as a half-empty shelf rather than as a rack. The number is the count
+## that filled the old single column exactly.
+const PLANT_BAR_SINGLE_COLUMN_MAX: int = 5
+
 ## The packet rack: one full-width button per SeedBank.PACKET_ORDER entry, stacked
 ## between the plant bar and the selection box.
 ##
@@ -699,7 +711,9 @@ func _build_side_panel(root: Control) -> void:
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.icon = load(PlantCatalog.texture_path(id)) as Texture2D
 		button.expand_icon = true
-		button.tooltip_text = PlantCatalog.blurb(id)
+		# Leads with the NAME because the button no longer shows it -- see the label
+		# comment in _refresh. The blurb follows, which is what this used to be alone.
+		button.tooltip_text = "%s — %s" % [PlantCatalog.display_name(id), PlantCatalog.blurb(id)]
 		button.pressed.connect(_on_plant_button.bind(id))
 		_plant_bar.add_child(button)
 		_plant_buttons[id] = button
@@ -942,6 +956,19 @@ func _set_prep_bar_urgent(urgent: bool) -> void:
 ##
 ## Pure and static so the arithmetic is assertable without building a HUD, and so
 ## a future catalogue size can be checked without adding the plant.
+## What a plant button says. Pure, because it is the whole reason two columns fit and a
+## test should be able to ask it without a HUD.
+##
+## Three states in two symbols: a price you can read, "free" for the starter, and NOTHING
+## for a plant that is not for sale yet. The empty string is deliberate rather than lazy --
+## it is the state with no number, which is exactly what "you cannot buy this yet" means,
+## and it costs the button no width at all.
+static func plant_button_label(unlocked: bool, price: int) -> String:
+	if not unlocked:
+		return ""
+	return "free" if price == 0 else str(price)
+
+
 static func plant_bar_layout(count: int) -> Dictionary:
 	var span: float = PLANT_BAR_BOTTOM - PLANT_BAR_Y
 	# This function only reasons about HEIGHT, and that is a real limit rather than
@@ -952,24 +979,26 @@ static func plant_bar_layout(count: int) -> Dictionary:
 	# this answers and what the sweep test checks; a catalogue that actually
 	# reaches for it needs shorter labels first. See PLANT_BAR_BOTTOM, where that
 	# was found live rather than reasoned about.
-	# ONE COLUMN, ALWAYS. This used to try two before giving up, and the two-column
-	# answer was unrenderable -- the paragraph above says so in its own words, and it was
-	# still the value this function returned. Cycle 98 added the sixth plant, reached that
-	# branch for the first time, and `findings` reported the side panel running 167px past
-	# the right edge of the viewport: `ui_overflow` on the bar and on three buttons.
+	# TWO COLUMNS, and this is the third answer this function has given. It was one
+	# column, then a one-column-or-two that returned a two-column layout its own header
+	# called unrenderable, then one column only (cycle 98, after `findings` reported the
+	# panel 167px off the right edge). It is two now because the BUTTONS changed, not
+	# because the arithmetic did: they carry an icon and a price and no longer a name, so
+	# a button's minimum width fell from 195px to something that fits 114.
 	#
-	# A branch a file documents as broken is worse than no branch, because it reads as
-	# handled. The height floor and the `overflows` flag were always the honest answer;
-	# what was missing was a caller that did anything with the flag, which now exists.
-	var rows: int = maxi(1, count)
+	# That is the order the fix had to happen in. Two columns was never a layout problem
+	# to be solved by layout -- it was a content problem, and every previous attempt tried
+	# to divide 232px by two without changing what had to fit inside it.
+	var columns: int = PLANT_BAR_COLUMNS if count > PLANT_BAR_SINGLE_COLUMN_MAX else 1
+	var rows: int = maxi(1, int(ceil(float(count) / float(columns))))
 	var fitted: float = (span - float(PLANT_BAR_SEPARATION * (rows - 1))) / float(rows)
 	if fitted >= PLANT_BUTTON_MIN_HEIGHT:
-		return {"columns": 1, "height": fitted, "rows": rows, "overflows": false}
+		return {"columns": columns, "height": fitted, "rows": rows, "overflows": false}
 	# Below the touch floor. Report the floor and say the bar must scroll rather than
 	# silently returning a button too small to hit -- `findings` gates an interactive
 	# Control at 40x40 and is right to.
 	return {
-		"columns": 1,
+		"columns": columns,
 		"height": PLANT_BUTTON_MIN_HEIGHT,
 		"rows": rows,
 		"overflows": true,
@@ -1133,12 +1162,23 @@ func refresh(state: Dictionary) -> void:
 		# line is 31px, which is what makes a fifth plant fit at all. The price
 		# loses the word "seeds" with it — the seed count at the top of the screen
 		# is the only currency there is, and the icon beside it says so.
-		if not unlocked:
-			button.text = "%s — locked" % PlantCatalog.display_name(id)
-		elif price == 0:
-			button.text = "%s — free" % PlantCatalog.display_name(id)
-		else:
-			button.text = "%s — %d" % [PlantCatalog.display_name(id), price]
+		# THE NAME IS GONE FROM THE BUTTON, and that is what buys the second column.
+		# A button's minimum width was 195px with the name on it, against the 114px a
+		# two-column bar can give -- so every attempt to fit six plants by dividing the
+		# bar failed on content rather than on arithmetic. See PLANT_BAR_COLUMNS.
+		#
+		# What is left is the icon and the price, which are the two things a player reads
+		# when deciding whether to plant something. The NAME moves to the tooltip (set in
+		# the builder, and now leading with it) and is on the selection panel the moment
+		# the plant is chosen. The icon is what this game's art contract exists to make
+		# distinguishable -- art_src/STYLE.md sizes and colours every plant for exactly
+		# this reading.
+		#
+		# A LOCKED plant shows NO price rather than the word "locked". That is the same
+		# distinction in one fewer channel: a number means you may buy it, no number means
+		# it is not for sale yet, and the greyed modulate below carries "cannot afford"
+		# separately. The tooltip says which in words for anyone who wants certainty.
+		button.text = plant_button_label(unlocked, price)
 		button.disabled = not unlocked
 		button.modulate = Color.WHITE if (unlocked and bank.can_afford(id)) else Color(1, 1, 1, 0.55)
 		button.button_pressed = unlocked and id == selected

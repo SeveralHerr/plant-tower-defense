@@ -12,6 +12,7 @@ const CHOMP := &"chomp_flower"
 const SUNFLOWER := &"sunflower"
 const SUNDEW := &"sticky_sundew"
 const DANDELION := &"dandelion"
+const MINT := &"mint"
 
 const PLANTS: Dictionary = {
 	CORN: {
@@ -77,11 +78,29 @@ const PLANTS: Dictionary = {
 		# single-target rate is a 10-seed cob's.
 		"engages": true,
 	},
+	MINT: {
+		"display": "Garden Mint",
+		"texture": "res://assets/sprites/mint.png",
+		"cost": 25,
+		"tier": 2,
+		"unlocked_at_start": false,
+		"free_starter": false,
+		"blurb": "Touches nothing. The plants beside it shoot a third again as fast — so where you put it is the whole point.",
+		# Engages nothing, like Sunflower and Sundew -- but for a third reason again.
+		# Sunflower ignores the lane, Sundew touches pests without hurting them, and Mint
+		# never sees a pest at all: its reach is over PLANTS. Anything asking "does this
+		# cell defend the lane" must answer no for a Mint even when it is surrounded by
+		# cobs that do.
+		"engages": false,
+	},
 }
 
 ## Order the shop and the plant bar list plants in. Keeps the UI stable as more
 ## plants are added to PLANTS.
-const ORDER: Array[StringName] = [CORN, CHOMP, SUNFLOWER, SUNDEW, DANDELION]
+## Mint sits last because it is the only entry whose value depends on what is already on
+## the board -- a first-time reader meeting it before they own anything to speed up would
+## read it as a plant that does nothing.
+const ORDER: Array[StringName] = [CORN, CHOMP, SUNFLOWER, SUNDEW, DANDELION, MINT]
 
 
 static func ids() -> Array[StringName]:
@@ -134,6 +153,11 @@ static func reach(id: StringName) -> float:
 			# thrown — and it is the throw that decides whether a cell is dead
 			# ground.
 			return Dandelion.RANGE
+		MINT:
+			# A real reach, over PLANTS rather than over the road -- the dead-ground cue
+			# asks this question, and a Mint touching no plant is exactly as wasted as a
+			# cob covering no lane. Read from Mint's own constant, not a copied 64.
+			return Mint.REACH
 		_:
 			return 0.0
 
