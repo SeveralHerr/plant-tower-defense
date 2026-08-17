@@ -2887,6 +2887,25 @@ func test_the_budgets_hud_entries_are_measured_off_the_live_stats_row() -> Strin
 			("every Label in the row is declared in WORST_CASE_TEXT -- undeclared: %s. "
 				+ "Add its worst case there, or the budget measures a row it cannot see "
 				+ "all of.") % [undeclared])
+	# The row is described by TWO independent hand-lists of the same four
+	# readouts: WORST_CASE_TEXT above, and the constants Hud.stats_row_budget()
+	# sums (SEEDS + WAVE + LIVES + COMPOST_LABEL_WIDTH). The check above closes
+	# the first; a fifth readout would still slip past the second, and
+	# hud_stats_row would go on reporting a row narrower than the one on screen.
+	# Derive the sum from the Labels themselves so the constants have to agree.
+	if err == "":
+		var laid_out: float = 0.0
+		for child in stats.get_children():
+			var stat := child as Label
+			if stat != null:
+				laid_out += stat.custom_minimum_size.x
+		var declared_widths: float = (Hud.SEEDS_LABEL_WIDTH + Hud.WAVE_LABEL_WIDTH
+			+ Hud.LIVES_LABEL_WIDTH + Hud.COMPOST_LABEL_WIDTH)
+		err = _T.assert_float_eq(laid_out, declared_widths, 0.5,
+			("stats_row_budget()'s four width constants add up to the row that is "
+				+ "actually laid out (%.0f declared vs %.0f on screen) -- a readout "
+				+ "added to the row without a constant makes the budget measure a "
+				+ "narrower row than exists") % [declared_widths, laid_out])
 	if err == "":
 		err = _T.assert_gt(worst_needed, 0.0, "and the worst of them measures something")
 	if err == "":
