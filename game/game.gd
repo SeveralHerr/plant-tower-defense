@@ -872,7 +872,12 @@ func _on_pest_died(pest: Pest) -> void:
 	# Played here, not in Pest, on purpose: Pest._play_death() queue_frees the
 	# node DEATH_LINGER seconds later, and a freed node cannot finish a sound.
 	# Sfx's pool sits under the scene tree root, so nothing on the board owns it.
-	Sfx.play(Sfx.PEST_KILLED)
+	# A harder kill sounds like one. The threshold is the pest's OWN price rather than a
+	# list of which mutations count: husk_multiplier() is already the game's answer to "how
+	# much did this cost to deal with", it multiplies across a doubly-mutated pest, and
+	# reading it here means a fourth mutation is audible the day it is added without anyone
+	# editing this line (plant-tower-defense-tgoc).
+	Sfx.play(Sfx.kill_event_for(pest.husk_multiplier()))
 	pests_defeated += 1
 	_note_lane_loss(pest.position)
 	# Scaled by the weather this wave arrived under: a drought pays more, because it

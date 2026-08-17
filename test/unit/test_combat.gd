@@ -560,7 +560,9 @@ func test_every_event_id_the_call_sites_use_is_in_the_table() -> String:
 	## that compiles, runs, returns false and makes no sound forever.
 	var used: Array[StringName] = [
 		Sfx.PLANT_PLACED, Sfx.PLANT_BITTEN, Sfx.PLANT_DESTROYED,
-		Sfx.PEST_KILLED, Sfx.PEST_ESCAPED,
+		# Both kill ids: game.gd picks between them on husk_multiplier(), so a table row
+		# missing for either is a kill that makes no sound for a whole class of pest.
+		Sfx.PEST_KILLED, Sfx.PEST_KILLED_HARD, Sfx.PEST_ESCAPED,
 		Sfx.HUSK_COLLECTED, Sfx.HUSK_ROTTED,
 		Sfx.WAVE_STARTED, Sfx.WAVE_CLEARED, Sfx.UPROOT_ARMED,
 		Sfx.RUN_WON, Sfx.RUN_LOST, Sfx.PURCHASE_DENIED,
@@ -5376,4 +5378,93 @@ func test_only_a_real_bite_arms_the_flinch() -> String:
 		err = _T.assert_true(plant._flinch_left > Plant.FLINCH_SECONDS * 0.9,
 			"a plant being eaten stays flinching, got %.3f" % plant._flinch_left)
 	plant.free()
+	return err
+
+
+## A hard-won kill sounds like one (plant-tower-defense-tgoc).
+##
+## `Sfx.PEST_KILLED` was one event for every death: an aphid you sneezed on and a hungry
+## armoured beetle that soaked four volleys arrived at the player as the same impact at the
+## same volume. The game already prices that difference twice — `husk_multiplier()` pays a
+## premium per trait, and cycle 74 gave the mixer a direction — so the fix is a second id
+## sitting ABOVE the plain kill, not a new sound.
+##
+## The threshold is the pest's own price rather than a list of which mutations count, which
+## is what makes a fourth mutation audible the day it is added.
+func test_a_harder_kill_is_pitched_above_a_plain_one() -> String:
+	var plain: float = float(Sfx.PITCH.get(Sfx.PEST_KILLED, 1.0))
+	var hard: float = float(Sfx.PITCH.get(Sfx.PEST_KILLED_HARD, 1.0))
+	var err: String = _T.assert_true(hard > plain,
+		"a harder kill sits above the plain one (%.2f vs %.2f) -- it is a bigger gain, and "
+			% [hard, plain] + "the PITCH table's rule is that gains go up")
+	if err == "":
+		# Modest, because a kill is the most frequent sound in the game. An absolute
+		# ceiling, not a multiple of the constant: a wide interval turns a wave into a
+		# melody, and "1.5x the base" would still pass at any base.
+		err = _T.assert_true(hard - plain < 0.25,
+			"but not by an interval you could hum, got %.2f" % (hard - plain))
+	if err == "":
+		# The same impact, deliberately: a hard kill is the same EVENT landing harder.
+		err = _T.assert_eq(String(Sfx.SOUNDS[Sfx.PEST_KILLED_HARD]),
+			String(Sfx.SOUNDS[Sfx.PEST_KILLED]),
+			"and it is the same stream -- a different file would say a different thing "
+				+ "happened, and what happened is a kill")
+	if err == "":
+		# Which means the twin check is the only thing keeping them apart. If this ever
+		# fails, the two kills have collapsed into one sound.
+		var voice := AudioStreamPlayer.new()
+		Sfx.tune_voice(voice, Sfx.PEST_KILLED)
+		var plain_db: float = voice.volume_db
+		var plain_pitch: float = voice.pitch_scale
+		Sfx.tune_voice(voice, Sfx.PEST_KILLED_HARD)
+		err = _T.assert_true(voice.pitch_scale != plain_pitch or voice.volume_db != plain_db,
+			"the composed voices differ, or the player hears one sound for both")
+		voice.free()
+	return err
+
+
+## The threshold is the price, not a list of mutations.
+##
+## Reading `husk_multiplier()` rather than checking `mutations.is_empty()` is what makes a
+## fourth trait audible without anyone editing `_on_pest_died`. Asserted over every trait
+## the game has plus a pair, because a single example would not show that the rule scales.
+func test_every_mutation_makes_a_kill_count_as_hard() -> String:
+	var plain: Pest = _pest(Pest.APHID, Vector2(50, 50))
+	var err: String = _T.assert_float_eq(plain.husk_multiplier(), 1.0, 0.0001,
+		"a plain pest prices at 1.0, which is what keeps it on the plain sound")
+	plain.free()
+	if err != "":
+		return err
+	for mutation: StringName in [Pest.MUTATION_ARMOURED, Pest.MUTATION_WINGED,
+			Pest.MUTATION_HUNGRY]:
+		var pest: Pest = _pest(Pest.BEETLE, Vector2(50, 50))
+		pest.apply_mutation(mutation)
+		err = _T.assert_true(pest.husk_multiplier() > 1.0,
+			"%s prices above 1.0, so it reaches the harder sound" % mutation)
+		pest.free()
+		if err != "":
+			return err
+	# And a pair, which prices higher again -- the same read covers it with no extra branch.
+	var paired: Pest = _pest(Pest.APHID, Vector2(50, 50))
+	paired.apply_mutation(Pest.MUTATION_HUNGRY)
+	paired.apply_mutation(Pest.MUTATION_WINGED)
+	err = _T.assert_true(paired.husk_multiplier() > 1.5,
+		"a doubly-mutated pest prices higher still, got %.2f" % paired.husk_multiplier())
+	if err == "":
+		err = _T.assert_eq(String(Sfx.kill_event_for(paired.husk_multiplier())),
+			String(Sfx.PEST_KILLED_HARD), "and it earns the harder sound")
+	paired.free()
+	if err != "":
+		return err
+	# The DECISION, not just its input. A ternary at the call site survived a mutation that
+	# routed every kill to the hard sound; this is the seam that closes it, and the boundary
+	# is where the routing lives.
+	err = _T.assert_eq(String(Sfx.kill_event_for(1.0)), String(Sfx.PEST_KILLED),
+		"a plain pest at exactly 1.0 stays on the plain sound")
+	if err == "":
+		err = _T.assert_eq(String(Sfx.kill_event_for(1.0001)),
+			String(Sfx.PEST_KILLED_HARD), "and anything priced above it does not")
+	if err == "":
+		err = _T.assert_eq(String(Sfx.kill_event_for(0.5)), String(Sfx.PEST_KILLED),
+			"nor does a hypothetical discount, which would otherwise read as harder")
 	return err

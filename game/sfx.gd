@@ -29,6 +29,11 @@ const PLANT_PLACED := &"plant_placed"
 const PLANT_BITTEN := &"plant_bitten"
 const PLANT_DESTROYED := &"plant_destroyed"
 const PEST_KILLED := &"pest_killed"
+## The same kill, when it was a hard one. A SECOND ID rather than a pitch argument on
+## `play()`: the pitch table is keyed by event, and an override at the call site would make
+## every existing caller a place where a caller could disagree with the table — which is
+## exactly what `tune_voice` was extracted to prevent (cycle 74).
+const PEST_KILLED_HARD := &"pest_killed_hard"
 const PEST_ESCAPED := &"pest_escaped"
 const HUSK_COLLECTED := &"husk_collected"
 const HUSK_ROTTED := &"husk_rotted"
@@ -88,6 +93,11 @@ const SOUNDS: Dictionary = {
 	PLANT_BITTEN: "res://assets/audio/impactSoft_medium_002.ogg",
 	PLANT_DESTROYED: "res://assets/audio/chop.ogg",
 	PEST_KILLED: "res://assets/audio/impactSoft_heavy_000.ogg",
+	# The SAME impact, deliberately: a hard kill is the same event, landing harder. A
+	# different file would say "a different thing happened", and what happened is a kill.
+	# The pitch below is what carries "harder", and `test_no_two_events_are_the_same_sound`
+	# is what stops the two collapsing into one sound.
+	PEST_KILLED_HARD: "res://assets/audio/impactSoft_heavy_000.ogg",
 	PEST_ESCAPED: "res://assets/audio/error_002.ogg",
 	HUSK_COLLECTED: "res://assets/audio/handleCoins.ogg",
 	HUSK_ROTTED: "res://assets/audio/minimize_006.ogg",
@@ -151,6 +161,7 @@ const VOLUME_DB: Dictionary = {
 	PLANT_BITTEN: -8.0,
 	HUSK_ROTTED: -6.0,
 	PEST_KILLED: -3.0,
+	PEST_KILLED_HARD: -1.5,
 	RUN_WON: -4.0,
 	RUN_LOST: -4.0,
 	# Under RUN_WON's own -4.0, not level with it: this is the same jingle, so
@@ -223,14 +234,19 @@ const PITCH: Dictionary = {
 	# A warning rather than a loss: the shallowest step down, because nothing has
 	# happened yet and the player can still walk away.
 	UPROOT_ARMED: 0.88,
-	# The only gain in the table, and the only one above the base.
+	# Gains, and the only entries above the base.
 	PLANT_UPGRADED: 1.18,
+	# A harder kill is a bigger gain, so it sits above the plain kill rather than below it.
+	# Modest on purpose: a kill is the most frequent sound in the game and a wide interval
+	# would turn a wave into a melody.
+	PEST_KILLED_HARD: 1.12,
 }
 
 const DEFAULT_REPEAT_MS: int = 45
 const REPEAT_MS: Dictionary = {
 	PLANT_BITTEN: 420,
 	PEST_KILLED: 70,
+	PEST_KILLED_HARD: 70,
 	HUSK_ROTTED: 200,
 	# A row of Sunflowers planted in the same breath comes due in the same
 	# frame forever after — INTERVAL is a constant, so their clocks never drift
@@ -346,6 +362,20 @@ static func play(event: StringName) -> bool:
 	tune_voice(voice, event)
 	voice.play()
 	return true
+
+
+## Which kill sound a pest has earned, from what it cost to deal with.
+##
+## A pure static rather than a ternary at the call site, and this is the **fourth** time this
+## project has needed that move: `spread_arc_span`, `Hud.uproot_shows_tip`, `tune_voice` and
+## now this one all exist because a mutation survived a test that asserted the inputs to a
+## decision rather than the decision. Reaching for the seam first is cheaper than earning it.
+##
+## Takes the multiplier rather than the pest, so it needs no scene, no tree and no Pest at
+## all — and so the threshold is the game's own price for a kill rather than a second list of
+## which mutations count. A fourth mutation is audible the day it is added.
+static func kill_event_for(husk_multiplier: float) -> StringName:
+	return PEST_KILLED_HARD if husk_multiplier > 1.0 else PEST_KILLED
 
 
 ## Puts everything except the stream onto a voice — every property that decides
