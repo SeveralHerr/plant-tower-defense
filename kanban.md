@@ -195,6 +195,28 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (60) — the message row is nearly full and teaching costs permanent space
+
+- **Teaching a one-time lesson in a recurring message is a permanent tax.** The armed
+  prompt now points at the move preview, and it cost 185 px of the message row's 306 px of
+  headroom — every uproot, forever, to teach something once. `Game.BUDGET_FLOOR`
+  (`game/game.gd:1883`) declares 40 px for that row and 121 remain, so it passes and the
+  state is `tight`. `RunConfig`'s milestone set (`MILESTONE_PREFIX`, `game/run_config.gd:91`)
+  is already a persisted seen-once mechanism, so a first-time-only hint needs no
+  save-version bump. That is the shape every future hint should take.
+- **The row has one worst case and it is now a tutorial string, not a game event.** Before
+  this cycle the widest thing the message row held was the wave prep note; it is now the
+  armed-uproot prompt for a Bomb Dandelion. Every plant added from here is measured against
+  a sentence that exists to teach rather than to report — so a plant with a long name will
+  be refused by a tutorial tip, which is a strange constraint to discover later. Worth
+  either capping display names or moving the tip.
+- **Nothing distinguishes a message that must be READ from one that merely informs.**
+  `MESSAGE_IMPORTANT` (`game/hud.gd:336`) controls queue priority, not appearance. The
+  armed prompt carries a four-second irreversible decision and looks exactly like
+  "Composted a husk for 3 seeds." A weight, a colour, or a small icon on important
+  messages would let a player skip the ambient ones without missing the one that matters —
+  and the two-channel rule means it cannot be colour alone.
+
 ### New this cycle (59) — the move tool exists; nothing tells the player it does
 
 - **The move preview is complete and undiscoverable.** Arming an uproot and then hovering

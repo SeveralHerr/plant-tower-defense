@@ -4702,3 +4702,29 @@ cited in code, and the citation is a mitigation this project has watched fail.
   `_disarm_uproot` clears the reference AND the clock, and a version clearing only the
   reference would leave a dead timer running under the next selection. **A waiver that has
   to explain itself is a second chance to notice what the assertion is for.**
+
+## 2026-08-17 — Cycle 60: pointing the armed prompt at the move preview
+
+- Value: **warranted**, and specifically for the budget verb — the code change was one
+  line and the interesting output was a number.
+  - Expected: to append a tip to the armed message and confirm it does not clip.
+  - Got: it does not clip, and `cmd budgets` said what the suite could not — the message
+    row went **570 → 784 px of 876** and flipped to state `tight`. The first wording spent
+    214 of the 306 px available. Shortening the tip brought it to 755, leaving 121 against
+    a declared floor of 40.
+  - Found: that measurement, which changed the shape of the work. It passes, so shipping it
+    was right — but 185 px of permanent headroom spent on a lesson taught once is a poor
+    trade, and it is now the argument for a one-shot hint rather than a vague "would be
+    nicer". `RunConfig`'s milestone set is already a persisted seen-once mechanism, so that
+    follow-up needs no save-version bump.
+  - Cheaper: for "does it clip", the suite already answers. For "what did it cost",
+    nothing — that number exists only against a running HUD.
+
+- Gap: **no gaps this turn**, and one self-inflicted false alarm worth writing down because
+  the skill had already called it. `findings` reported **4 NEW `ui_transparent`** findings
+  at alpha 0.00 on the selection panel and exited 1. Cause: my own `pause`, freezing the
+  panel's entrance tween mid-fade. `read-a-moving-value` says exactly this — *"a paused
+  tree … here the freeze is the CAUSE of the bad read, not the fix"* — and I still spent a
+  check confirming it rather than recognising it. That is the correct order and I would do
+  it again; the note is that **`pause` is a tool and a hazard in the same command**, and a
+  gating check run against a frozen tree needs the same suspicion as any other single read.

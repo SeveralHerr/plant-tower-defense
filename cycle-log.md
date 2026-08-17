@@ -1,4 +1,4 @@
-# Cycle 59
+# Cycle 60
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,48 +6,51 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 59 taught
+## What cycle 60 taught
 
-**A surviving mutation was the finding, and it was a finding about the code.** The arming
-guard read `_uproot_armed if _uproot_left > 0.0`, and nothing could kill the second half —
-`_disarm_uproot()` nulls the first on every exit path there is. The default reading of a
-survivor is "the test is too weak"; here the test was fine and the *code* could not change
-any behaviour. Strengthening the test would have locked in a redundancy and called it
-coverage. Removed, and the invariant it stood in for is a test now. That is the second time
-this repo has found dead code by mutating and watching nothing go red — `mirror_check`'s
-CRLF normalisation was the first — so it is in `house-static-checker`.
+**Teaching a one-time lesson in a recurring message is a permanent tax, and the budget put
+a number on it.** The armed uproot prompt now points at the move preview — "Hover to
+compare a new spot" — which is what the feature needed, since the only previous hint said
+"Really uproot?", the opposite of what it does.
 
-**The move preview is finished.** Arming an uproot reddens the rings on what a move costs;
-hovering a destination during that window now shows what it buys, with the moved plant
-excluded from "already covered" — because it is about to stop covering it. Without that
-exclusion the destination reports as buying almost nothing, worst exactly where the move
-matters most. Cost and gain on one screen.
+It cost **185 px of the message row's 306 px of headroom**, every uproot, forever, to teach
+something once. `cmd budgets` went 570 → 784 of 876 and flipped to state `tight`;
+shortening the tip brought it to 755, leaving 121 against a declared floor of 40. It
+passes, so shipping it was right — but the measurement is what turns "a one-shot hint would
+be nicer" into a costed argument, and `RunConfig`'s milestone set is already a persisted
+seen-once mechanism, so the fix needs no save-version bump.
 
-**And writing the invariant test corrected an assumption:** an expired uproot window
-**cancels** rather than uprooting. The first draft planted a second cob and failed on
-"something is already growing there".
+**The wording is a comparison, not a promise.** Confirming still only uproots; whether a
+move should be one action, and what it should cost, is undecided (`-h5w6`). A prompt
+offering something the game cannot do would be worse than the silence it replaced.
+
+**And running `findings` for the first time in twelve cycles found that the UI baseline is
+gone**, so every `ui_layout` finding has been gating as NEW for an unknown stretch. That is
+this cycle's workflow change: if the game was launched at all, run `findings` before
+quitting it. Twelve cycles of runtime work went past on hand-picked reads, each answering
+the question I already had — which is exactly the coverage a checklist of known failure
+modes exists to replace.
 
 ## Where things stand
 
-Seventy-two beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
-gh#43). Suite **561/561**, 12269 assertions; lint 0/0; nine checkers clean including
-`settle_read`. Eleven skills. Upstream gh#44 and gh#46 open.
+Seventy-five beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
+gh#43). Suite **561/561**, 12268 assertions; lint 0/0; nine checkers clean; save md5
+unchanged. Eleven skills. Upstream gh#44 and gh#46 open.
 
 ## Waiting on the user
 
-**Weather has no counter-play** (`plant-tower-defense-oo7e`) — unchanged, and still the
-only genuinely blocked item.
+Two, and the second is new:
 
-A second one has appeared that is a real decision rather than a bug: **`-h5w6`, what a move
-should cost.** The preview now shows a player exactly what repositioning a plant would do,
-and the game then charges them full price to act on it — they must uproot, re-select and
-re-buy. Free moves make placement mistakes costless; full price makes the preview cruel;
-the refund-minus-cost difference is the middle and is already computed. Worth deciding on
-purpose.
+**`-oo7e` — weather has no counter-play.** Unchanged for many cycles.
 
-The most valuable buildable item is **`-j80m`**: the move tool works and nothing tells the
-player it exists. The only hint is a button reading "Really uproot?", which says the
-opposite of what the feature does.
+**`-h5w6` — what should moving a plant cost?** The preview now shows a player exactly what
+repositioning would do, and the game then charges full price to act on it. Free moves make
+placement mistakes costless; full price makes the preview cruel; refund-minus-cost is the
+middle and is already computed.
+
+Best buildable item is **`-23fa`**: show the move tip once instead of on every uproot, which
+returns 185 px to the row and makes the hint more likely to be read, since a message that
+appears once is not wallpaper.
 
 ## Restarting
 
@@ -55,13 +58,14 @@ opposite of what the feature does.
 for the loop itself.
 
 **Five standing notes.** The harness is pinned at 0.38.0 on purpose (gh#43). The UI
-baseline carries twelve overlaps acceptable only while both controls are unreachable. Any
-harness operation should start by checking which version the skill's paths point at.
-**Never hand-edit `AGENTS.md`** — run `python tools/mirror_check.py --fix`. And **`pause`
-right after `launch`** — five cycles running, that is what has made every visual result
-trustworthy.
+findings baseline **no longer exists** (`-v9px`) — until it is re-captured, every
+`ui_layout` finding gates as NEW. Any harness operation should start by checking which
+version the skill's paths point at. **Never hand-edit `AGENTS.md`** — run
+`python tools/mirror_check.py --fix`. And **`pause` right after `launch`**, remembering it
+is a tool and a hazard in one command: this cycle it froze a panel mid-fade and produced
+four findings that vanished on unpause.
 
 `python tools/gap_ledger.py --open` answers "which harness gaps are open"; `python
 tools/devtools.py cmd budgets` prices the **five** couplings (`-a6bq` is filed to re-read
-them, unread since cycle 52); `list-commands --offline` answers "does this verb exist" with
-no game running. Bump the number at the top of this file every time you refill.
+them all); `list-commands --offline` answers "does this verb exist" with no game running.
+Bump the number at the top of this file every time you refill.

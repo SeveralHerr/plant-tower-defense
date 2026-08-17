@@ -62,6 +62,15 @@ running a command. **Never write a work checklist into it.**
      silently absent, reported as a clean run. Only the denominator (490 against 557)
      and exit `2` caught it. Four occurrences and an "environment note" in the log each
      time is not a countermeasure; using the right tool is.
+   - **If the cycle launched the game at all, run `findings` before quitting it.** It is
+     the harness's headline check — every zero-config check at once against the live tree
+     — and it was last run in cycle 48. Twelve cycles of runtime work went past on
+     hand-picked `get-state` reads, each answering the question I already had in mind,
+     which is exactly the coverage a checklist of known failure modes exists to replace.
+     Cycle 60 ran it and learned the UI baseline no longer exists, so every `ui_layout`
+     finding has been gating as NEW for an unknown number of cycles. Read the NEW/PRE
+     split and the `By check:` denominator, and remember a frozen tree makes tweens look
+     like defects: this cycle's four findings were a panel caught mid-fade by `pause`.
    - **The ledger row lands BEFORE the commit, never after.** `reach` is the diff
      intersected against what the running game loaded, and after a commit the diff is
      empty — so a row recorded afterwards reads `reached 0/0 changed file(s)`, which is
