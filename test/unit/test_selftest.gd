@@ -12323,9 +12323,14 @@ func test_the_wave_button_wears_the_paper_look_without_a_theme() -> String:
 	err = _T.assert_true(bare.custom_minimum_size.is_equal_approx(Vector2.ZERO),
 		"styling a Button sets no size of its own, got %s" % bare.custom_minimum_size)
 	if err == "":
-		var applied := bare.get_theme_stylebox_override("normal") as StyleBoxFlat
-		err = _T.assert_true(applied != null and applied.bg_color.is_equal_approx(GardenTheme.PAPER),
-			"and it does apply the paper box as an override rather than a Theme")
+		# has_theme_stylebox_override is the half that says "override, not Theme" --
+		# get_theme_stylebox alone would answer just as happily off the default theme.
+		err = _T.assert_true(bare.has_theme_stylebox_override("normal"),
+			"and it applies the box as a per-node override rather than a Theme")
+		if err == "":
+			var applied := bare.get_theme_stylebox("normal") as StyleBoxFlat
+			err = _T.assert_true(applied != null and applied.bg_color.is_equal_approx(GardenTheme.PAPER),
+				"which is the notebook's paper")
 	if err == "":
 		err = _T.assert_eq(bare.get_theme_font_size("font_size"), GardenTheme.BUTTON_FONT_SIZE,
 			"at the one Button font size the shared look declares")
