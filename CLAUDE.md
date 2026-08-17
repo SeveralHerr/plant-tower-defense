@@ -49,9 +49,7 @@ running a command. **Never write a work checklist into it.**
    - **`kanban.md`.** The recent cycle sections, and the idea backlog you are about to
      mine. The historical sections are unpruned and roughly half stale; the file says so
      at its own top. Use the `kanban-staleness-audit` skill before promoting anything
-     out of them — a wrong `STALE` deletes an idea nobody will have again. (This bullet
-     used to name a `STILL REAL` section; the file has no such heading and never did,
-     so the instruction pointed at nothing for 33 cycles.)
+     out of them — a wrong `STALE` deletes an idea nobody will have again.
    - **The mirror.** `python tools/mirror_check.py` — exit 0 identical, 1 drifted,
      `--show-diff` for what moved. This is here because the block has now been silently
      deleted from `AGENTS.md` **twice**, most recently by the very commit that wrote the

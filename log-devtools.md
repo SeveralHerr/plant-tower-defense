@@ -5503,3 +5503,33 @@ cited in code, and the citation is a mitigation this project has watched fail.
   is the kind of detail that reads as boilerplate until the entry silently resolves no node.
   Worth stating plainly for the next project: **if your entry hook navigates, every entry
   point that wants the pre-hook scene must say so.**
+
+## 2026-08-17 — Cycle 84: the readout had already been measured and refused
+
+- Value: **warranted**, and the decisive part was a screenshot rather than an assertion.
+  - Expected: to add a standing weather readout to the top bar, on the strength of a bead I
+    filed in cycle 77 saying no readout carries it.
+  - Got: **it had been asked for in cycle 17 and refused on a measurement.** `-saaw`'s notes
+    record every candidate tag overflowing the 312 px wave slot — `"  rain"` 366, `"  dry"`
+    357, `" ~"` 324, a bare `"*"` 317 — and widening the slot putting `hud_stats_row` 35 px
+    over budget. My `-t0vy` was a duplicate: I had verified only that `fire_interval_scale`
+    reaches no HUD file, never that the question was already open **and already answered**.
+  - Found: the refusal contained the answer. The top bar was never weather's home — weather
+    is a property of the garden, not of the run's bookkeeping — so it went on the board,
+    which has the room the bar does not. Photographed all three states in one region: clear
+    saturated green, drought duller with flat dashes, rain cooler with slanted streaks. And
+    the frame cost, which the suite cannot speak to: FPS mean 123.6, min 113.4, because it
+    is one `_draw` on a weather CHANGE rather than per frame.
+  - Cheaper: the suite proves the scatter and the angle difference in 40 s. It cannot say
+    whether a 20%-alpha tint and a 7 px dash are **visible**, which is the entire question
+    for a cue whose job is to be noticed peripherally.
+
+- Gap: **no gaps this turn.** One process note, and it is the more useful half of the cycle.
+  Cycle 77 filed a duplicate because it checked whether the CODE lacked the feature and not
+  whether the QUEUE already held the question. Step 6 already says to note an open bead
+  rather than file a second one; what it does not say is how to find the open bead, and
+  `bd search` over a phrase from the entry ("weather readout", "top bar") would have found
+  `-saaw` in seconds. **`verify-bd-item`'s `confirm` step should search the queue, not only
+  the code** — the code tells you the feature is absent, and the queue tells you whether
+  that absence is an oversight or a decision. Here it was a decision, recorded, with the
+  measurement attached, and the measurement is what made the right answer obvious.

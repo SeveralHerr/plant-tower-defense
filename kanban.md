@@ -247,6 +247,37 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (84) — the refusal held the answer
+
+- **A measured refusal is worth more than an unanswered question, and this project keeps
+  filing the question again instead of reading the refusal.** `-saaw` asked for a weather
+  readout on the top bar in cycle 17. Its notes record the whole measurement — `"  rain"`
+  366 px, `"  dry"` 357, `" ~"` 324, a bare `"*"` 317, all against a 312 px slot whose base
+  string already takes 302 — and the consequence of widening it, `hud_stats_row` 35 px over
+  budget. Cycle 77 filed `-t0vy` asking the same thing, having checked only that the code
+  lacked it. **The refusal is what pointed at the right surface**: every candidate failing
+  by 5-54 px is not a tuning problem, it is the bar saying weather does not belong to it.
+  The general form is worth a habit — when a bead says "measured and refused", the
+  measurement is a finding about WHERE the feature goes, not a wall.
+- **The board is now a surface with cues on it and no budget.** `weather_overlay.gd` is the
+  first thing to draw across the whole playfield rather than on one cell or one plant, and
+  it went in without measuring anything, because nothing measures the board. Every HUD
+  surface has a width budget (`Game.BUDGET_FLOOR` prices seven couplings) and every screen
+  now computes its row ceiling — the board has neither, and it is the surface with the most
+  room and the most competition for attention: the lane-pressure hatch, sole-cover marks,
+  placement previews, range rings and now weather all draw there. **Worth asking what the
+  board's budget IS** before the next full-playfield cue, since the answer is currently
+  "whatever fits", which is how the top bar got into the state `-saaw` measured.
+- **Drought is legible now and rain still is not, for a reason worth naming.** Both weathers
+  draw, and only one of them changes what the player must DO. A drought doubles every
+  plant's firing interval (`game/wave_director.gd:353`), which is a demand for more plants
+  or better ones; rain heals beds by a fraction, which is a gift that requires nothing. So
+  the overlay gives them equal visual weight for unequal stakes. That may be right — a
+  weather system where you cannot tell which weather you are in is worse — but the drought
+  case is the one a player needs to act on, and it currently reads as *slightly duller
+  grass*. Worth measuring whether it is noticed at all, which is a question about the alpha
+  rather than about the design.
+
 ### New this cycle (83) — four screens were checked for the first time and all were clean
 
 - **Three overlay screens had never been looked at by a runtime check, and nothing was

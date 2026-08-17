@@ -27,6 +27,7 @@ must survive its colour being thrown away.
 | **Filled dot**, cell-sized, on a road cell | a CELL YOU WOULD GAIN | `placement_preview.gd:268` |
 | **Straight line through a box** | a STATE, legible with colour discarded | `placement_preview.gd:322` (dead ground), `:331-332` (redundant patch) |
 | **Corner brackets** | the SUBJECT — "this is the thing being talked about" | `selection_marker.gd:100-101`, and `PlacementPreview` inherits them one size larger and dimmer, so a hover reads as a promise of selection |
+| **Scattered short marks**, much smaller than a cell, not aligned to the grid | the WEATHER, a property of the whole garden | `weather_overlay.gd:97-98` (drought, flat dashes), `weather_overlay.gd:103-104` (rain, slanted streaks) |
 | **Doubled line width** | ARMED — a destructive action is one click away | `SelectionMarker.WARNING_LINE_WIDTH`, `SoleCoverMarks.WARNING_RING_WIDTH` |
 
 ## Where the grammar does NOT hold, and why that is tolerable
@@ -49,6 +50,15 @@ Two solid rings are not reaches, and a reader applying the table naively would m
 
 So one exception remains rather than two. It is listed because a fifth cue that copied
 "solid ring" from it would inherit the wrong meaning.
+
+## What is deliberately NOT in this vocabulary
+
+**Weather marks are sized out of it rather than shaped out of it.** Every row above is
+cell-sized or plant-sized and means something about ONE thing — this cell, this plant, this
+mouth. Weather is about all of them at once, so its marks are a quarter of a cell at most,
+scattered, and deliberately unaligned to the grid: nothing about them invites a reader to
+ask which cell they belong to. `test_drought_and_rain_are_different_textures_before_they_are_different_colours`
+pins the size bound, which is the part that would rot first if someone enlarged them.
 
 ## The one rule with teeth
 

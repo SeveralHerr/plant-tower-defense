@@ -24,7 +24,14 @@ confirm  →  claim  →  implement  →  headless gates  →  runtime  →  LED
 ```
 
 **`confirm` comes before `claim` and is the cheapest step here.** Open the code the bead
-says is missing, before writing a line. A bead is a claim about the repo made at some past
+says is missing, before writing a line — **and search the queue for the same question**
+(`bd search "<a phrase from the description>"`). The code tells you whether the feature is
+absent; only the queue tells you whether that absence is an oversight or a **decision**.
+Cycle 84 claimed a bead asking for a weather readout on the top bar, having checked the
+code and found none, and discovered mid-cycle that the same request had been filed in
+cycle 17, measured, and refused — every candidate string overflowed the slot by 5-54 px and
+the numbers were in the older bead's notes. Two minutes of `bd search` would have found it,
+and the refusal is what pointed at the right surface. A bead is a claim about the repo made at some past
 cycle, and the repo has moved: cycle 70 claimed `-6cqi` ("two cobs at different levels are
 indistinguishable on the board"), read `corn_cobbler.gd`, and found the feature had shipped
 twelve cycles earlier — along with a test enumerating every level pair. The remaining work
