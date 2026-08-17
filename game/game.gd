@@ -1312,7 +1312,21 @@ func arm_uproot() -> String:
 	Sfx.play(Sfx.UPROOT_ARMED)
 	# IMPORTANT: this is an instruction with a live 4-second trigger behind it, and
 	# an ambient husk pickup used to wipe it mid-read.
-	hud.show_message(Hud.uproot_armed_message(PlantCatalog.display_name(selected_placed.kind)),
+	# The move-preview tip rides along the FIRST time an uproot is ever armed, and
+	# never again (plant-tower-defense-23fa). It costs 185 px of this row's headroom
+	# and teaches something once; paying that on every uproot forever was the wrong
+	# trade, and a hint that appears once is more likely to be read than one that
+	# has become wallpaper.
+	#
+	# Recorded before the message rather than after: record_milestones() is
+	# idempotent and only writes when something is new, so the order cannot
+	# double-write — and arming twice in a frame is a thing this method already
+	# guards against above.
+	var first_arm: bool = not RunConfig.has_milestone(RunConfig.HINT_MOVE_PREVIEW)
+	if first_arm:
+		RunConfig.record_milestones([RunConfig.HINT_MOVE_PREVIEW])
+	hud.show_message(
+		Hud.uproot_armed_message(PlantCatalog.display_name(selected_placed.kind), first_arm),
 		UPROOT_CONFIRM_SECONDS, Hud.MESSAGE_IMPORTANT)
 	_refresh()
 	return "confirm needed"

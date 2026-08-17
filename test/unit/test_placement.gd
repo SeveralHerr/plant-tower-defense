@@ -1153,6 +1153,69 @@ func test_two_overlapping_patches_wash_the_ground_they_share_exactly_once() -> S
 ## stretch of sticky road, which is the purchase this cue exists to talk a player
 ## out of. (3, 2) is one cell along and picks up (4, 1) as well, so it is a second
 ## patch worth buying and must draw nothing.
+## The move tip is shown once, ever, and the bare warning every time after.
+##
+## It costs 185 px of the message row's headroom, so paying it on every uproot
+## forever was the wrong trade — and a hint that appears once is more likely to be
+## read than one that has become wallpaper. Both halves matter and fail
+## differently: never showing it makes a finished feature undiscoverable, and
+## showing it twice means the flag is not being written.
+##
+## The warning itself is in BOTH forms, which is the part a refactor would break
+## quietly — the sentence standing between a player and an irreversible act must
+## not be the thing that gets shortened to make room for the tip.
+func test_the_move_tip_is_shown_once_and_the_warning_every_time() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	# The suite's save is redirected in setup(), so this writes nothing real; clear
+	# the flag so the test does not depend on whether an earlier test armed one.
+	RunConfig.earned_milestones.erase(RunConfig.HINT_MOVE_PREVIEW)
+	var here := Vector2i(1, 3)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, here), "", "a cob goes in")
+	if err == "":
+		game.selected_placed = game.plant_at(here)
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "and the uproot arms")
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+	if err == "":
+		err = _T.assert_true(label != null, "the message row is where the HUD put it")
+	if err == "":
+		err = _T.assert_true(label.text.contains("Hover to compare"),
+			"the first arm ever carries the move tip -- got %s" % label.text)
+	if err == "":
+		# ON THE FIRST ARM TOO, which is the case a mutation caught this test missing.
+		# Asserting the warning only on the second arm proves nothing: with_tip is
+		# false there, so the warning is present however the tip is composed. The
+		# failure this guards is the tip REPLACING the warning rather than joining
+		# it, and that only ever happens on the arm where the tip appears.
+		err = _T.assert_true(label.text.contains("it will not grow back"),
+			("and the warning ALONGSIDE it, not instead of it -- got %s") % label.text)
+	if err == "":
+		err = _T.assert_true(RunConfig.has_milestone(RunConfig.HINT_MOVE_PREVIEW),
+			"and writes the flag down, or it is not a one-shot at all")
+	# Second arm, same session: warning only.
+	#
+	# The row has to be DRAINED first. show_message queues, and the armed prompt is
+	# MESSAGE_IMPORTANT with a four-second life — so without this the second read
+	# returns the FIRST message still on screen and the test fails describing a
+	# stale row rather than a wrong one. That is the whole of cycle 48's precedence
+	# rule, met again from the test side.
+	if err == "":
+		game.hud._message_left = 0.0
+		game.hud._advance_message_queue()
+		game._disarm_uproot()
+		game.selected_placed = game.plant_at(here)
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "arming a second time")
+	if err == "":
+		err = _T.assert_false(label.text.contains("Hover to compare"),
+			"drops the tip -- got %s" % label.text)
+	if err == "":
+		err = _T.assert_true(label.text.contains("it will not grow back"),
+			("but NEVER the warning. That sentence stands between the player and an "
+				+ "irreversible act -- got %s") % label.text)
+	RunConfig.earned_milestones.erase(RunConfig.HINT_MOVE_PREVIEW)
+	_T.free_ui(game)
+	return err
+
+
 ## The invariant the move preview leans on: an open uproot window is exactly a
 ## non-null `_uproot_armed`, on every exit path there is.
 ##

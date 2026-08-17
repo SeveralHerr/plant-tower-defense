@@ -93,6 +93,26 @@ const MILESTONE_PREFIX := "m"
 ## so the set is deliberately narrow: anything outside it is corruption, not taste.
 const MILESTONE_ID_CHARS := "abcdefghijklmnopqrstuvwxyz0123456789_"
 
+## A one-shot UI hint, riding in the milestone set — NOT an achievement
+## (plant-tower-defense-23fa).
+##
+## The set already has exactly the semantics a "shown once, ever" flag needs:
+## `record_milestones` is idempotent, writes the file only when something is
+## genuinely new, and `has_milestone` reads it back across sessions. Adding a
+## separate persisted field for the same behaviour would mean a SAVE_VERSION bump
+## and a migration, for a boolean.
+##
+## Safe from the player's view, and checked rather than assumed: the notebook's
+## shelf draws its rows from `Milestones.TABLE` and counts earned off TABLE too
+## (`notebook_screen.gd:487`, whose own header says this is so "an id from a newer
+## build sitting in the save cannot push the total past the shelf's rows"). An id
+## that is not in TABLE is invisible there. The design already anticipated
+## foreign ids; this is one, deliberately.
+##
+## Named here rather than written as a bare string at the call site, so the reuse
+## is discoverable from the persistence layer instead of only from the HUD.
+const HINT_MOVE_PREVIEW := "seen_move_tip"
+
 ## The options line. Marked for the same reason the milestone line is: a save
 ## truncated after the milestones hands the parser "", and `bool("")` would happily
 ## read as "the option is off" — a setting silently reverting on a player who needs

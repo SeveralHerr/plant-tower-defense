@@ -1661,7 +1661,13 @@ static func message_corpus() -> Array[String]:
 	for id: StringName in PlantCatalog.PLANTS:
 		var display: String = PlantCatalog.display_name(id)
 		out.append(eaten_message(display))
-		out.append(uproot_armed_message(display))
+		# BOTH forms of the armed prompt. The tip is shown once per save and the
+		# bare warning every time after, so both reach this row and both have to be
+		# priced — a corpus holding only the short one would report the row as
+		# roomier than it is on the single most important message in the game, and
+		# only for the first player who ever arms an uproot.
+		out.append(uproot_armed_message(display, false))
+		out.append(uproot_armed_message(display, true))
 		out.append(packet_message(display))
 	for level: Dictionary in CornCobbler.LEVELS:
 		out.append(upgrade_message(String(level["name"])))
@@ -1700,9 +1706,12 @@ static func eaten_message(plant_name: String) -> String:
 ## The warning survives the addition, and has to: this is the sentence standing
 ## between a player and an irreversible act. It leads with the destructive verb
 ## and keeps "it will not grow back" rather than trading that away for the tip.
-static func uproot_armed_message(plant_name: String) -> String:
-	return ("Click Uproot again to dig up your %s — it will not grow back. "
-		+ "Hover to compare a new spot.") % plant_name
+static func uproot_armed_message(plant_name: String, with_tip: bool = false) -> String:
+	var warning: String = ("Click Uproot again to dig up your %s — it will not grow back."
+		% plant_name)
+	if not with_tip:
+		return warning
+	return warning + " Hover to compare a new spot."
 
 
 static func packet_message(plant_name: String) -> String:

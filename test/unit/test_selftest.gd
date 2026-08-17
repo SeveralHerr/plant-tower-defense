@@ -10718,7 +10718,7 @@ func test_the_last_wave_says_that_it_is_the_last() -> String:
 func test_the_message_corpus_covers_every_catalogue_producer() -> String:
 	var corpus: Array[String] = Hud.message_corpus()
 	var err: String = _T.assert_gt(corpus.size(), PlantCatalog.PLANTS.size() * 3,
-		"the corpus is at least three messages per plant (%d entries for %d plants)"
+		"the corpus is at least four messages per plant (%d entries for %d plants)"
 			% [corpus.size(), PlantCatalog.PLANTS.size()])
 	if err != "":
 		return err
@@ -10749,7 +10749,10 @@ func test_the_message_corpus_covers_every_catalogue_producer() -> String:
 			return err
 	# Direction two: the non-catalogue entries, by count. Deleting the prep note or a
 	# bare literal would otherwise just make the budget's answer quietly smaller.
-	var catalogue_entries: int = PlantCatalog.PLANTS.size() * 3 + CornCobbler.LEVELS.size()
+	# FOUR per plant, not three: the armed-uproot prompt appears twice, once with the
+	# move tip and once without, because the tip is shown a single time per save and
+	# the bare warning every time after. Both reach the row, so both are priced.
+	var catalogue_entries: int = PlantCatalog.PLANTS.size() * 4 + CornCobbler.LEVELS.size()
 	return _T.assert_eq(corpus.size() - catalogue_entries, 8,
 		("the corpus carries its 8 non-catalogue entries (prep note, wave-cleared "
 			+ "line, and six literals -- BOTH colourblind lines, since the checker "
