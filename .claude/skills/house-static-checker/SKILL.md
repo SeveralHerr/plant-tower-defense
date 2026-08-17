@@ -82,6 +82,22 @@ NOT COVERED: this reads source, not a running tree. It cannot see <the specific
 rule. This repo has already been bitten the other way round: a test scanned source for a
 token and matched the comment explaining why the token was absent.
 
+**When you need both the code AND the string contents, blank for the code and slice the
+RAW text at the same offsets.** Blanking preserves offsets precisely so this is possible,
+and the moment a checker cares about what a literal *says* — not just that one is there —
+it needs both views of the same span. `message_corpus_check` got this wrong in both
+directions on its first run, and neither was visible from reading it:
+
+- it read the corpus's own literals from the blanked source, and reported `1 literal(s)`
+  for a corpus holding five — every one hollowed to `""` and collapsed by the set — then
+  flagged all five as missing from themselves;
+- it computed a call's argument span from raw text, where a comma inside a string is still
+  a comma. `"...on the grass, then grow the first wave."` was cut at `grass,` into an
+  unterminated literal that matched nothing.
+
+The rule that avoids both: **spans come from the blanked text, contents come from the raw
+text, and nothing ever scans raw source for structure.**
+
 **Scope by function, not by file.** A correct pattern in one function must not excuse a
 wrong one in another. `group_leak_check` gets this right; a file-wide match would have
 made one good test silence a whole suite.

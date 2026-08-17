@@ -118,6 +118,32 @@ Two things it will tell you, both worth acting on rather than ignoring:
 fixed mid-run — every other field describes how the run *ended*, so a defect surfaced at
 minute four and repaired by minute six vanishes otherwise.
 
+Two schema traps, both paid for: entries go under **`checks`** with `name`/`result` (not
+`phase4`, not `check` — an unknown top-level key is dropped in silence, and the tool then
+reports the evidence as missing), and `found[].phase` must be one of `import`, `lint`,
+`tests`, `runtime`, `other` — anything else is recorded as null, though at least that one
+says so.
+
+### If the number does not move, you have not verified anything
+
+The trap that got two consecutive cycles here. You widen a measurement's corpus, re-run,
+and it reports the same value — because the previously-widest item is still the widest.
+**That output is identical to the one a completely broken change produces.** "The new
+inputs are included and are narrower" and "the new inputs are silently not included" are
+the same number.
+
+So when a change should affect a measurement and demonstrably doesn't, do not record a
+pass. Mutate one of the new inputs to something absurd and confirm the measurement moves:
+
+```
+570 of 876 px, state ok      # before, and after — proves nothing on its own
+1068 of 876 px, state spent  # with one corpus entry mutated huge — now it is proved
+570 of 876 px, state ok      # restored
+```
+
+Then restore and re-read. The restore is not a formality: it is what separates "the
+mutation moved it" from "something else moved it".
+
 ### 6. Commit — one item, one commit
 
 Never batch. The commit message should say what the runtime run established that the diff

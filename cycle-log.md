@@ -1,4 +1,4 @@
-# Cycle 51
+# Cycle 52
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,52 +6,50 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 51 taught
+## What cycle 52 taught
 
-**A skill is an essay until you point it at code you did not write it about.**
-`scope-vs-claim` was built this cycle — the idea that a check *covers* a scope in code and
-*states* one in prose, and that nothing compares the two, so the code can fail and the
-sentence cannot. Turned on the budget system immediately, it found four things in about
-twenty minutes:
+**If the number does not move, you have not verified anything.** Widening the message
+row's corpus by five previously-unswept strings left the budget reporting 570 of 876 px —
+identical to what a completely broken sweep produces. "The new inputs are included and are
+narrower" and "the new inputs are silently not included" are the same number. Proved by
+mutating a corpus entry to an absurd string (`570 → 1068`, `ok → spent`) and restoring.
+That is the second cycle running where a budget fix was unfalsifiable from its own output,
+so it is now written into `verify-bd-item`.
 
-- `_budget_hud_message_row` was still missing **five of eight** `show_message()` producers,
-  a full cycle after I "fixed" it. Last cycle's fix added exactly the one I happened to be
-  looking at — the same mistake, one layer along.
-- `WORST_CASE_TEXT` was asserted in one direction only: a readout added to the row with no
-  declaration was invisible to the test *and* to the budget that sweeps the same table.
-- `stats_row_budget()` holds a **second** hand-list of the same four readouts, and nothing
-  knew it was a second list. There are in fact three.
-- And a stale sentence in **this file**: the standing note said `cmd budgets` "prices the
-  seven couplings". `BUDGET_FLOOR` has five keys and `budget_entries` builds five.
+**The root cause of three cycles of budget defects was that nobody had written the set
+down.** `_budget_hud_message_row` was wrong in cycles 41, 48 and 51, and each fix was
+correct about the producer in front of it and silent about the rest. My own cycle-51
+comment claimed eight `show_message()` call sites; there are fourteen.
+`Hud.message_corpus()` is the set now, and `tools/message_corpus_check.py` ties every call
+site to it — five are waived, each with a reason.
 
-That last one is the argument in miniature. The sentence had been read every cycle for
-weeks and was never once wrong enough to notice.
+**The fixture found two bugs in the new checker within minutes**, both invisible from
+reading it: corpus literals read from the blanked source (`1 literal(s)` for a corpus of
+five), and an argument span taken from raw text, so a comma *inside* the opening hint cut
+it in half and reported it missing from a corpus it was sitting in. Both are kept as
+permanent mutations.
 
-**The other lesson: a fix whose number does not move proves nothing on its own.** Widening
-the message-row sweep left it at 570 of 876 px, because the prep note still wins. That
-result is identical to the one a completely broken sweep would produce. Settled by
-mutating a producer to an enormous string — `spent 570 → 1065`, `state ok → spent` — and
-restoring.
+Three of this cycle's four findings were in my own work from the last two cycles. That is
+not a bad sign — it is what an audit looks like when the audit tool is new.
 
 ## Where things stand
 
-Forty-eight beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
-gh#43). Suite **555/555**, 12201 assertions; lint 0/0; mirror identical. **Eleven** skills.
-Two upstream issues open from this project: gh#44 and gh#46.
-
-The workflow gained one rule: **build a skill and use it the same cycle**, on real code,
-before the cycle ends. A skill built and never applied fails the same way one identified
-and never built does.
+Fifty-two beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
+gh#43). Suite **556/556**, 12207 assertions; lint 0/0; **eight** house checkers all exit 0;
+mirror identical. Eleven skills. Upstream: gh#44 and gh#46 open, both commented with
+sharper fixes than they were filed with.
 
 ## Waiting on the user
 
-**Weather has no counter-play** (`plant-tower-defense-oo7e`) — still the only thing
-genuinely blocked, and unchanged. Water tiles and a real counter, a cheaper counter needing
-no terrain, or weather stays a difficulty modifier. `-kmjp` (what rain pays) sits
-downstream of whichever you pick.
+**Weather has no counter-play** (`plant-tower-defense-oo7e`) — still the only genuinely
+blocked item, and unchanged for many cycles. Water tiles plus a real counter, a cheaper
+counter needing no terrain, or weather stays a difficulty modifier. `-kmjp` (what rain
+pays) is downstream of whichever you pick.
 
-Nothing else needs you. "Fix enemy facing direction" was closed last cycle as already
-shipped, verified on screen.
+Worth knowing: the last four cycles have been almost entirely correctness and tooling.
+That is where the work led, and it found real defects every time — but `-uhno` (message
+durations), `-f5z6` (deaths that differ by what killed them) and `-84x0` (a road that
+climbs) are the player-facing ones sitting ready if you would rather see the game move.
 
 ## Restarting
 

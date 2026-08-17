@@ -4471,3 +4471,45 @@ cited in code, and the citation is a mitigation this project has watched fail.
     `difflib.get_close_matches` call. Silent key-dropping in a file whose entire purpose
     is to be a record is the same class as the `reach 0/0` gloss in gh#44: the tool has
     the information needed to be unambiguous and states the convenient reading instead.
+
+## 2026-08-17 — Cycle 52: one corpus for the message row, and a checker to keep it
+
+- Value: **warranted** — and the reason is worth stating precisely, because the headline
+  number did not move.
+  - Expected: `cmd budgets` to report a larger `hud_message_row` once five previously
+    unswept literals joined the corpus.
+  - Got: **570 of 876 px, unchanged.** The prep note still wins at 79 characters against
+    the opening hint's 68. That result is *identical* to what a completely broken sweep
+    produces, which is the second cycle running that a budget fix has been unfalsifiable
+    from its own output. Settled by mutating a corpus literal to an enormous string:
+    `spent 570 -> 1068`, `state ok -> spent`, restored to 570/`ok`.
+  - Found: four things, three of them in my own work.
+    * There are **fourteen** `show_message()` call sites; my cycle-51 comment said eight.
+    * `message_corpus_check.py` shipped two bugs the fixture caught in minutes — corpus
+      literals read from the blanked source (`1 literal(s)` for a corpus of five), and an
+      argument span taken from raw text so a comma *inside* a literal split it.
+    * The new corpus test caught my own miscount on its first run: 8 non-catalogue
+      entries, not 7.
+    * `test_no_message_clips_for_any_plant_in_the_catalogue`'s header claimed "every other
+      line the row shows is a fixed literal". False, and precisely the sentence that made
+      three cycles of budget work look finished.
+  - Cheaper: for the enumeration, yes — and that is now the checker's job rather than a
+    person's. For "is the corpus actually swept", nothing cheaper than the mutated build.
+
+- Gap: **`[G-058]` again, from the other side — `verify_ledger record` DOES validate some
+  fields and not others, and the inconsistency is the surprise.** Passing
+  `found[].phase: "static"` produced:
+
+  ```
+  verify_ledger: `found` phase 'static' is not one of import, lint, tests, runtime,
+  other - recorded as null
+  ```
+
+  which is exactly the right behaviour: it names the field, lists the legal values, and
+  says what it did. Last cycle the same tool dropped four unknown *top-level* keys in
+  silence. So the machinery for saying "I did not understand this" already exists in the
+  file — it is applied to enum values and not to key names.
+  - [G-058] status: open | seen: 2 | harness: 0.38.0 | upstream: gh#46
+  - Improvement: unchanged, and now cheaper to argue for — reuse the `found[].phase`
+    warning's own shape for unknown top-level keys. The `checks` key worked this cycle
+    and the row carries its four Phase 4 entries, so the fix is narrow.

@@ -195,6 +195,33 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (52) — the row is solved; the same shape is everywhere else
+
+- **`WORST_CASE_TEXT` is the message row's problem, one row up, and still unsolved.**
+  The message row now has `Hud.message_corpus()` (`game/hud.gd:1659`) plus a checker that
+  ties every `show_message()` call site to it. The STATS row has `WORST_CASE_TEXT`
+  (`game/hud.gd:76`), which is still a hand-typed table of worst-case strings with no
+  equivalent tie to the code that renders them — cycle 51 added assertions that the *set
+  of readouts* matches, but nothing checks that `"Seeds  99999"` is actually the widest
+  thing `_seeds_label.text` is ever assigned. `_wave_label.text` is built at
+  `game/hud.gd:1049-1058` from three separate branches; the declared worst case is one
+  string someone wrote. Same defect class, one row higher, and now much cheaper to fix
+  because the pattern exists.
+- **Six `show_message()` durations are hand-picked and nothing relates them.**
+  4.0s (eaten), 5.0s (packet), 6.0s (wave cleared), 8.0s (opening hint), 2.0s (uproot
+  cancelled, husk swept), 2.5s (mute, colourblind) — at `game/game.gd:264`, `:415`,
+  `:1197`, `:1319`, `:1407`, `:1464`, `:1484`, `:1588`. A message the player must read to
+  act on (the opening hint) and one that is pure confirmation (uproot cancelled) are four
+  seconds apart, which is probably right, but nothing says the rule. Reading time scales
+  with length, and the corpus now knows every length — a duration derived from character
+  count with a floor would make the 8.0 and the 2.0 consequences of one decision.
+- **The waiver reasons are the best documentation of the message system and live in five
+  scattered comments.** `game/game.gd:231`, `:1397`, `:1464`, `:1468`, `:1605` each carry
+  a `# message-corpus-check: ok - <reason>` that says something true and non-obvious about
+  why that text cannot be measured statically. That is a good use of waivers, but it means
+  the answer to "what can the row show that we cannot price?" is assembled by grep — which
+  is the exact failure the corpus just fixed one level down.
+
 ### New this cycle (51) — two hand-lists describe one row, and neither knew about the other
 
 - **The top bar's four readouts are described by three separate hand-lists.**
