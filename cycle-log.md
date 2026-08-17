@@ -1,4 +1,4 @@
-# Cycle 66
+# Cycle 67
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,42 +6,38 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 66 taught
+## What cycle 67 taught
 
-**I claimed a bead built on a claim I had written, and the claim was false.** Cycle 65's
-kanban entry said "death has a sound, a corpse and a linger; escape has none of the three".
-Every part of the escape half is wrong: `Sfx.PEST_ESCAPED` plays (`game.gd:911`),
-`_note_lane_loss` tints the exit cell (`:910`), and `_punch_readout(_lives_label)` fires on
-the changed count (`hud.gd:1072-1073`).
+**`cmd budgets` now ends "3 of 7 at floor (husk_click, hud_readouts, hud_stats_row)".**
+Cycle 66 worked that out by comparing seven headrooms against seven floors by hand, which
+is why fourteen cycles passed without anyone noticing three rows of the HUD had run out.
+The verb printed every number and not the one arithmetic step between them and the question
+anyone actually has.
 
-The entry followed the cycle-31 rule to the letter — it cited a `file:line`. For the half I
-checked. **One citation makes a whole entry read as sourced**, and the side asserted to be
-empty is precisely the one that needed opening. That is now a rule of its own: an entry
-that compares two things needs a citation for both halves.
+The distinction is why it needed its own function: **`tight` is a fraction of a budget's
+own ceiling** — `hud_message_row` reports tight at 121 px while holding 81 px above its
+floor — **`at floor` is resting on the declared floor**, and **`under floor` is through
+it**, which `budget_regressions()` already owns and which is excluded here rather than
+counted twice.
 
-The entry was corrected in place rather than deleted, because the mistake is the useful
-part.
+**Reading the live verb caught what the arithmetic was happy with.** The first version said
+*4* of 7, including `pest_road_ceiling` — floor `0.0`, headroom 0, resting there by
+construction. It qualified honestly and could never be anything else, so every future
+reading would carry one permanent entry while burying the three that are at floor because
+somebody *spent* them. The headline already counts `spent_by_design` separately, so it was
+reporting one budget twice. No staged test fixture would have shown that: the offending
+floor is a real declared `0.0`.
 
-**And the budgets, unread since cycle 52, came back as seven rather than five** — the
-standing note in this file was stale again. Zero regressions, but **three sit exactly at
-their declared floor**: `husk_click` 4 of 32, `hud_readouts` 10 of 171, `hud_stats_row` 19
-of 1112. The floors ratchet down to the measurement on purpose, so that is the system
-working — and it means the HUD has no room on three rows out of four. The only slack is
-`hud_message_row`, 121 against a floor of 40, and cycle 61 spent 185 px of it.
-
-**One evidence string read two ways.** `hud_readouts` said "over each live readout", which
-parses as measuring the *current* text — a budget that passes because the counter happens
-to say "Seeds 25". It sweeps `WORST_CASE_TEXT` against the live slot. I misread my own
-project's string before opening the line.
+**And a surviving mutation was a real gap, not dead code.** Removing the `computed` guard
+changed nothing, because the test never staged an unmeasured budget —
+`budget_regressions()` calls that "a hole in the check, not a pass", so counting it
+at-floor would report the HUD as fuller than anyone has established.
 
 ## Where things stand
 
-Eighty-seven beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
-gh#43). Suite **563/563**, 12287 assertions; lint 0/0; `findings` 0 across 4 of 5, run
-unpaused per cycle 65's rule. Eleven skills. Upstream gh#44 and gh#46 open.
-
-**Seven budgets, not five.** `husk_click`, `hud_readouts`, `hud_message_row`,
-`hud_stats_row`, `pest_road_ceiling`, `notebook_subhead`, `road_shape`.
+Eighty-nine beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
+gh#43). Suite **564/564**, 12299 assertions; lint 0/0; nine checkers clean; `findings` 0
+across 4 of 5 unpaused. Eleven skills. Upstream gh#44 and gh#46 open.
 
 ## Waiting on the user
 
@@ -50,11 +46,16 @@ unpaused per cycle 65's rule. Eleven skills. Upstream gh#44 and gh#46 open.
 **`-h5w6` — what should moving a plant cost?** The preview shows a player exactly what
 repositioning would do, and the game then charges full price to act on it.
 
+A third is now worth your eye, though it is not blocking: **`-ogxu` — should a budget floor
+keep a reserve?** Three HUD rows are at floor because each was ratcheted down in the commit
+that spent it. Every one of those was the correct local move, and they add up to a HUD with
+no slack that nobody chose.
+
 ## Restarting
 
 `bd ready` for the work, this file for the context, `CLAUDE.md` (mirrored in `AGENTS.md`)
 for the loop itself. Step 2 says take work away from the last two cycles' subsystem — those
-were pest death and pest escape, so pick something else.
+were budgets and pest escape.
 
 **Six standing notes.** The harness is pinned at 0.38.0 on purpose (gh#43). The UI findings
 baseline is **empty** (`-v9px`). Any harness operation should start by checking which
@@ -63,6 +64,6 @@ version the skill's paths point at. **Never hand-edit `AGENTS.md`** — run
 `findings`**. And **cut `kanban.md` by line number, never by heading**.
 
 `python tools/gap_ledger.py --open` answers "which harness gaps are open"; `python
-tools/devtools.py cmd budgets` prices the **seven** couplings and three of them are at
-their floor; `list-commands --offline` answers "does this verb exist" with no game running.
-Bump the number at the top of this file every time you refill.
+tools/devtools.py cmd budgets` prices the **seven** couplings and now says how many are at
+floor; `list-commands --offline` answers "does this verb exist" with no game running. Bump
+the number at the top of this file every time you refill.

@@ -195,6 +195,30 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (67) — the HUD reports how full it is; the game does not
+
+- **`cmd budgets` now says "3 of 7 at floor" and the game itself still says nothing.**
+  The count exists for whoever runs the verb, which is a developer. A designer nudging a
+  font size or lengthening a plant name gets no signal until a test fails, and the failure
+  names a budget rather than the change that spent it. The information is now one field
+  (`at_floor_ids`) and the startup check already runs `check_budgets()` — a one-line
+  warning in the editor output when a build starts with rows at floor would put it where
+  the person spending it is looking.
+- **Four cues now share one visual grammar and nothing writes it down.**
+  Dashed rings mean a remark (`PlacementPreview._draw_risk_ring`, `SoleCoverMarks`'s
+  holds-nothing ring); solid rings mean a range; filled dots mean "you would gain this";
+  a doubled line width means an armed warning. Every one of those was decided in its own
+  cycle with its own reasoning, and they are consistent — but the consistency is an
+  accident of taste rather than a rule anyone could apply to a fifth cue. `art_src/STYLE.md`
+  states the art conventions; there is no equivalent for the drawn overlays.
+- **A budget resting on its floor is a design decision nobody made.** Three rows are at
+  floor because each was ratcheted down in the commit that spent it — which is the correct
+  local move every time, and adds up to a HUD with no slack that nobody chose. The
+  `hud_message_row` slack (121 px against a floor of 40) is the only room left and exists
+  only because nobody has ratcheted it. Worth asking once whether the ratchet should have
+  a reserve: a floor set at *measurement plus N* rather than at the measurement, so
+  spending the last of a row requires moving a number that says "reserve".
+
 ### New this cycle (66) — the HUD is at its floor on three rows out of four
 
 - **Three budgets sit exactly at their declared floor, and nothing on screen says the HUD

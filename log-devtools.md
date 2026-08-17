@@ -4881,3 +4881,32 @@ cited in code, and the citation is a mitigation this project has watched fail.
 - Gap: **no gaps this turn.** Cycle 65's rule (run `findings` unpaused) held on its first
   outing — 0 findings across 4 of 5, no frozen-tree false alarm, because the tree was
   stepping.
+
+## 2026-08-17 — Cycle 67: reporting which budgets are resting on their floor
+
+- Value: **warranted**, and the runtime pass earned it by disagreeing with arithmetic that
+  was perfectly correct.
+  - Expected: the verb to report the three budgets cycle 66 found at their floor by hand.
+  - Got: **"4 of 7"** on the first live read. `pest_road_ceiling` declares a floor of `0.0`
+    and sits on it by construction, so it qualified honestly — and could never be anything
+    else, making every future reading carry one permanent entry while burying the three
+    that are at floor because somebody *spent* them. The headline already counts
+    `spent_by_design` separately, so it was reporting one budget twice. Excluded, with a
+    test.
+  - Found: also **a surviving mutation that was a real gap** — removing the `computed`
+    guard changed nothing, because the test never staged an unmeasured budget.
+    `budget_regressions` calls that case "a hole in the check, not a pass", so counting it
+    at-floor would report the HUD as fuller than anyone has established. Five mutations red
+    now.
+  - Cheaper: the unit test pins the three-way split against staged entries and would have
+    shipped happily. Only the live verb showed the count was wrong in a way no staged
+    entry would have revealed, because the offending budget's floor is a real declared
+    `0.0` rather than a test fixture.
+
+- Gap: **no gaps this turn.** Worth noting what the harness's own design did here: the
+  reply is built from `all` rather than the `--id`-filtered `entries`, and the existing
+  comment says why — "grading only the shown entry would report every floor whose budget
+  was filtered out as a floor guarding nothing". I added the new count to the same list
+  without thinking about it, and it was right for free. **A previous cycle's reasoning,
+  written at the line it constrains, made a later addition correct by default** — the
+  fourth cycle running that this codebase's own prose has done the deciding.
