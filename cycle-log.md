@@ -1,4 +1,4 @@
-# Cycle 34
+# Cycle 35
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,60 +6,54 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to pick the loop back up. **Never write a work checklist
 here.** `bd ready` is the checklist.
 
-## What cycle 34 taught
+## What cycle 35 taught
 
-**A fix applied where it was found, rather than where it lives, leaves the defect in the
-shared thing.** `OverlayScreen.add_row_label` — the helper two screens build every row
-through — set `size` before `clip_text`, which is the exact ordering trap
-`PauseScreen._build_key_list` documents at length having been bitten by. It was fixed at
-that one call site. Measured, not assumed: size-first gives a **373px box for an assigned
-140**; clip-first holds.
+**The game gained a rule.** Weather rounds: rain every 5th wave heals every bed 35%,
+drought every 7th doubles how long each plant waits between shots. It is the first thing
+in this game that changes how a wave *plays* rather than what is in it, and it came out of
+the step-6 rule added last cycle — the first item that rule produced.
 
-**And the pause card's reasoning was resting on a screen that was wrong.** Last cycle
-allowed truncating a key name on the card because "the player can read it in full one
-screen up". They could not: the Keys screen's `RowKey%d` sat in a hand-picked 140px column
-and the longest name the engine produces measures 157px, so the one surface whose entire
-job is saying which key a verb is on showed "On-screen keybo...". Both screens derive their
-key column now — from **different sets, on purpose**: the card from the current bindings,
-because it is rebuilt each time it opens; the Keys screen from every key the engine can
-name, because it is the screen the player is editing on and a column that reflowed under
-their hands mid-keystroke would be worse than one always wide enough.
+Two things about it worth keeping. The weather is **derived from the wave number** rather
+than typed into `WAVES`, so it can be asserted against every wave out to 300 including the
+endless ones no table row reaches. And `Plant.fire_interval_scale` is an **instance**
+variable rather than a static, because a static would leak across the shared test process
+and surface later as an unrelated plant "not shooting" in a test that never mentions
+weather — the exact shape this project already paid for once with `RunConfig`.
 
-**The structural one, and the reason step 6 changed.** Cycles 30–34 shipped one
-player-facing change and eleven correctness or tooling ones. The cause is not taste: the
-queue is refilled from what the last cycle's work exposed, and step 3's cite-a-`file:line`
-rule — which is right, and has now caught four bad entries — makes citing easiest for the
-file already open. So the loop keeps finding real work three feet from where it just stood.
-Step 6 now requires one item per cycle from outside that neighbourhood.
+**What runtime caught was not what runtime was for.** The prediction was that the banner —
+words arriving on a screen — was the unassertable part. It was fine. The find was that the
+selection panel prints `1.0 dmg / 0.80s` straight from the level table, so under a drought
+it tells the player 0.80s while the cob fires every 1.60s. The rule reached the plants and
+not the surface that describes the plants. Filed rather than fixed.
 
-Running that rule immediately paid: `kanban.md`'s "Grown straight from the brief" section
-said "Not filed as beads yet — these are the ones worth building", and **all four entries
-were already built**. A whole section reading as an open backlog that was a Done list.
+**And the honest note:** most of this cycle was cheaper headless, and the ledger row says
+so. The derivation, the multiplier and the heal are pure enough to assert without a game.
+The runtime half earned its place on exactly two things.
 
 ## Where things stand
 
-Eleven beads ready, none blocked. Suite 540/540 with 11988 assertions; lint 0/0; mirror
-identical; `findings` clean; the real save's md5 unchanged. Eight skills, backlog empty.
-Three harness gaps upstream ([gh#39](https://github.com/SeveralHerr/godot-selftest-harness/issues/39),
-[gh#40](https://github.com/SeveralHerr/godot-selftest-harness/issues/40)) — G-054 behaved
-this cycle: `--snapshot-userstate` restored on quit and the md5 came back identical, so the
-earlier miss looks like a one-off rather than something systematic.
+Fourteen beads ready, none blocked. Suite 542/542 with 12008 assertions; lint 0/0; mirror
+identical; `findings` clean; the real save's md5 unchanged, and `--snapshot-userstate` has
+now behaved twice running against one miss. Eight skills, backlog empty.
 
 ## Waiting on the user
 
-Nothing is blocking, and one thing is worth your word now that it is measured rather than
-suspected: **the loop has been improving its own correctness far faster than it has been
-adding to the game.** Five cycles, one player-facing change. Everything shipped was real —
-the suite was overwriting your save, two screens were truncating text, a backlog section
-was fiction — but none of it is something you would notice while playing.
+Nothing is blocking. One question is now concrete enough to be worth your word rather than
+a guess, and it is the interesting one about weather:
 
-Step 6's new rule pushes against that from inside, and the first item it produced is
-`plant-tower-defense-q3lx` (weather rounds: a rain wave that heals, a drought wave that
-halves fire rate near water). If you would rather the loop spent its cycles on features and
-let the correctness work queue up, say so and it will.
+**Weather currently has no counter-play.** Rain and drought arrive and are simply true —
+the player watches. The brief's own version had a counter ("unless a plant sits next to
+water"), and it was dropped because the board has no water: `Board` is grass and dirt road
+over exactly two materials. Adding a third is not cosmetic — `PATH_CORNERS`' own header
+warns that three numbers in other files were measured against this route and nothing
+recomputes them. So: **water tiles and a real counter, or a cheaper counter that needs no
+terrain (a plant or upgrade that ignores drought), or leave weather as a difficulty
+modifier?** `plant-tower-defense-oo7e` is filed and says the same thing; it will not get
+built until you pick, because building the wrong one of those three is expensive.
 
-`kanban.md` is ~1930 lines and still says at its own top that roughly half is stale. One
-section is now audited end to end; it was 100% stale.
+The standing question from last cycle also still stands, and this cycle is the first
+evidence in the other direction: one player-facing feature shipped, and the loop found it
+by looking outside its own footprint.
 
 ## Restarting
 

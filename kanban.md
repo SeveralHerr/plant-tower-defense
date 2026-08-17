@@ -195,6 +195,29 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (17 of 30) — grown from weather, which is the first rule that changes how a wave plays
+
+- **Weather has no counter-play.** Rain and drought (`WaveDirector.weather_for`,
+  `game/wave_director.gd`) arrive and are simply true — the player watches. The
+  design brief's own version had one ("unless a plant sits next to water"), and it
+  was dropped because the board has no water: `Board` is grass and dirt road only
+  (`game/board.gd:56`, `GRASS_EDGE_TILE` maps four-neighbour masks over exactly two
+  materials). A drought you can plan around is a mechanic; one you can only endure
+  is a difficulty modifier wearing a mechanic's clothes.
+- **Water tiles are the missing terrain, and they cost more than they look.**
+  `Board.PATH_CORNERS`' header already warns that three numbers in other files were
+  measured against the road this route produces and nothing recomputes them. A third
+  material means placement rules, the edge-tile mask table, and that budget. Worth
+  doing deliberately or not at all.
+- **Weather is invisible between waves.** `Hud.show_weather` fires a banner as the
+  wave opens and the banner fades; there is no standing readout, so a player who
+  looks away has no way to ask "why is my corn slow". The top bar has `threat` and
+  `Wave 2 / 16` and room beside them.
+- **A drought wave is worth more compost, and nothing says so.** The run economy
+  (`SeedBank`) does not know weather exists, so surviving the hardest version of a
+  wave pays exactly what the easy version pays. The wave table's own threat curve is
+  the natural place to hang it — `threat_for()` already exists and already rises.
+
 ### New this cycle (16 of 30) — the pause card learned to measure itself; four screens have not
 
 - **Four more panels are hand-picked rectangles**, and the pause card just spent two
