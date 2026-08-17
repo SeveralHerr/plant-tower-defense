@@ -1,10 +1,49 @@
-# Cycle 102
+# Cycle 103
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
 what `bd` structurally cannot: which cycle we are on, what the last one taught, what is
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
+
+## What cycle 103 taught
+
+**The game finally says that upgrading exists.** Cycle 101 measured that upgrading decides
+the run — same economy, no cheats, one policy bit; breadth-first died at wave 10, depth-first
+won 22 waves losing no lives — and nothing in the game mentioned it except a refusal and a
+confirmation, both reached only by someone who had already found the button. There is now a
+third one-shot hint, fired the first time the player can afford the cheapest upgrade **on
+their own board**: verified live at the boundary, false at 19 seeds and true at 20, which was
+that cob's exact `upgrade_cost()`. And the Shield Bug, spawnable by name since cycle 100 and
+met by nobody, now debuts in wave 15 — 4 of them, confirmed on a live census.
+
+**A hint on a funnel is not a hint on an event, and the difference is invisible until you
+read the return contract.** `show_message` returns false on a busy row but **queues** the
+text rather than dropping it. That is right for `_on_flight_ignored`, which fires once per
+winged pest. It is wrong for anything offered from `_refresh`, where the condition stays
+true — every later refresh stacks another copy, so a one-shot would have shown up to
+`MESSAGE_QUEUE_MAX` times. `Hud.row_is_quiet()` exists now, and the tip asks before
+offering.
+
+**A file became a writer of the developer's real save without one line of it changing.**
+`save_persist_check` printed
+`place_plant() -> _refresh() -> _maybe_teach_upgrading() -> spend_hint() -> _save()` and
+named the two tests in `test_board.gd` that walk it — before a single test had been run.
+That is the argument for a project growing its own checkers in one line.
+
+**And the harness's own safety net did not catch.** `launch --snapshot-userstate` did not
+restore, so the run left `m1:seen_upgrade_tip` in James's real save — meaning he would never
+have seen the hint this cycle exists to add. Put back by hand (`m0`, scores 3454/5008
+intact) and filed as `-zzx3`: the flag's failure mode is currently indistinguishable from
+its success.
+
+**Two things to know about the fan-out.** The lane's worktree branched from an *older*
+commit than `main`, so it worked without cycle 102 in its tree and correctly reported that a
+command its brief named did not exist — it said so rather than assuming, which is the only
+reason that was caught. **Check a lane's base.** And a concurrent session is working in this
+same checkout; its in-flight edits to `dev_tools.gd` and the itch workflow were swept into
+this cycle's merge commit. Both are correct and wanted, but `dev_tools.gd` is
+harness-managed and one `/scaffold-godot-harness` from vanishing silently — `-kdnl`.
 
 ## What cycle 102 taught
 

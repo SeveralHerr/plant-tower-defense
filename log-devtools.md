@@ -6429,3 +6429,42 @@ Noted on the bead.
 - Gap: **a tree-walking checker sees N+1 copies of the repo during a worktree fan-out, and only the PARENT sees them.** `citation_check.py` resolves a bare filename by unique basename anywhere under the root; `rglob` does not read `.gitignore`; `.claude/worktrees/` is gitignored but very much on disk. Result: `FINDING: kanban.md:3713 cites plant.gd:187-190 -- that bare name matches .claude\worktrees\agent-a287093c5954505ba\game\plant.gd and ... and game\plant.gd.` for every bare citation in the file. A lane running the same checker inside its own worktree sees nothing wrong. Fixed in-project by excluding `worktrees` from the walk: `296 citation(s) across 1 file(s), 296 resolved, 0 finding(s)`.
   - [G-078] status: open | seen: 1 | harness: 0.38.0
   - Improvement: this is a project-owned checker so the fix landed here, but the shape is the harness's problem too — anything that walks the repo root during a fan-out inherits it. The harness should either ship a shared "repo files, excluding nested worktrees and `.godot/` and `.git/`" walker for its checkers to use, or `scaffold-godot-harness` should warn when it detects `.claude/worktrees/` inside `scan_root`. A findings count that changes depending on whether sibling agents happen to be running is worse than no count.
+
+## 2026-08-17 — Deployed Pest Control to itch.io (severalherr/pest-control), built the store page, caught the entry_hook firing for players
+
+- Value: **warranted** — the bridge set up a 20-plant, 15-pest board for store screenshots in a clean worktree (`launch --isolated`, `place_plant`/`spawn_pest`/`add_seeds`, `screenshot --hide /root/Game/HUD`) while the main checkout was mid-merge and unrunnable; and running the *exported* build on itch.io produced a claim no diff or gate could — `entry_hook` (`skip_to_game`) fires in template builds, so players never saw the title screen.
+  - Expected: screenshots; the export to "just work" once butler had a key.
+  - Got: `entry_hook: fired` on ping (correct, editor launch); on itch the embed opened straight on the board with `Seeds 25 Wave 0/22`; after gating `_passive` on `OS.has_feature("template")` the embed opens on the title screen (`Pest Control · Start · 8 waves`). Patched autoload: `--check-only` clean, `run_tests.py` 658/658, `Assertions: 13945`, ping still `entry_hook: fired` on an editor launch.
+  - Found: the shipped-build defect above (fixed in 91b24eb; upstream godot-selftest-harness#58).
+  - Cheaper: nothing — only running the exported build shows what a template build does with the autoload.
+
+- Gap: **the harness has no notion of "exported build"** — `dev_tools.gd` gates only on `--script`; an itch/web export polls the bus and fires `entry_hook` for players. Workaround: local patch gating `_passive` on `OS.has_feature("template")` with `-- --devtools-force` opt-in.
+  - [G-120] status: open (upstream #58) | seen: 1 | harness: 0.60.0
+  - Improvement: the diff in #58; plus a lint line "entry_hook configured AND an export preset exists — confirm the template build stays passive".
+- Gap: **`launch --isolated` prints no client-side follow-up that works** — subsequent verbs needed `--session <id> --userdata <bus_dir>` read out of `.devtools/launch.json`; `GODOT_DEVTOOLS_BUSDIR` is honoured by the game, not by the client, and `--session` alone still polls the default `user://`.
+  - [G-121] status: open | seen: 1 | harness: 0.60.0
+  - Improvement: `launch --isolated` should print the exact `python tools/devtools.py --session X --userdata <bus_dir> ping` line, and the client should read `GODOT_DEVTOOLS_BUSDIR` (or `.devtools/launch.json`) as its bus dir when `--session` is given.
+
+## 2026-08-17 — Replaced the itch banner and cover with the game's own title screen
+
+- Value: **warranted** — the bridge turned the live title scene into store art: hid the five menu Controls and two labels via `set-state visible`, moved `TitleLabel`/`SubtitleLabel` down and re-spaced the seven `Plant_N` sprites with `set-state position` (whole Vector2), `screenshot`, then cropped 960x400 / 630x500 with Pillow. No composited text, no pixel font — the page now reads as the game.
+  - Expected: a usable frame in one or two captures.
+  - Got: `banner_src2.png 1152x648`; new banner id 29345385, cover id 29345415 (og:image confirms).
+  - Found: nothing.
+  - Cheaper: nothing — the art had to come from the running scene.
+
+- Gap: no gaps this turn. (`set-state --property position.x` correctly refuses on a Vector2 and names the fix; that message is what made it one retry, not three.)
+
+## 2026-08-17 — Cycle 103: the game finally says that upgrading exists (-gz53)
+
+- Value: **warranted** — two defects, neither visible in the diff, and one of them found by a static gate before a single test ran.
+  - Expected: that the tests would pin the milestone and say nothing about whether a player ever sees the sentence, and that the interesting failure would be in WHEN the hint fires rather than whether.
+  - Got: `687/687, Assertions: 14393, Suite: 7`; `lint: 0 error(s), 0 warning(s)`; `findings: 0 finding(s) across 5 of 5 checks` unpaused after `wait-frames 60`; and at runtime `has_milestone("seen_upgrade_tip")` **false at 19 seeds, true at 20** — that cob's exact `upgrade_cost()` — with the row reading `Your Corn Cobbler can be upgraded. Click it on the board — 20 seeds.`
+  - Found: **three.** (1) `save_persist_check` printed `chain: place_plant() -> _refresh() -> _maybe_teach_upgrading() -> spend_hint() -> _save()` and named two tests in `test_board.gd` that walk it — a file that had never written to `RunConfig`, had not changed by one line, and had just become a writer of the developer's real `user://highscore.save`. (2) The hint would have been shown up to `MESSAGE_QUEUE_MAX` times rather than once: `show_message` returns `false` on a busy row but **queues** the arriving text instead of dropping it, which is right for the edge-triggered `_on_flight_ignored` and wrong for a level-triggered caller on the `_refresh` funnel, where affordability stays true and every later refresh stacks another copy. Fixed with `Hud.row_is_quiet()`. (3) The corpus tripwire caught the per-plant entry count moving 5 → 6.
+  - Cheaper: for the save chain, nothing beats the one second `save_persist_check` took. The double-post needed reading `show_message`'s return contract against a level-triggered caller — no gate has that — and only the live row proved the sentence renders at all.
+
+- Gap: **`launch --snapshot-userstate` did not restore the file it snapshotted.** Launched with it precisely because this cycle's feature writes `user://` (a one-shot hint calls `RunConfig._save()`), drove the hint, and after `quit` the developer's real `highscore.save` still read `m1:seen_upgrade_tip` where it had been `m0`. `quit` reported the pids and printed no restore line at all. I put it back by hand — the milestone line is length-prefixed (`m0` is the documented empty form, `run_config.gd:84-90`) and the scores either side of it, `3454` and `5008`, are the player's real ones, so a wrong restore here would have been silent data loss rather than a broken save.
+  - [G-122] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: `quit` already prints `user://: no file changed during this run` when nothing moved — that line is the natural place for the other outcome, and it printed the *clean* wording on a run that had in fact changed a file, which is worse than silence. So: when `--snapshot-userstate` is in force, `quit` must say per file whether it was unchanged, restored, or **failed to restore**, and exit non-zero on the third. As it stands the flag's failure mode is indistinguishable from its success, and the whole reason to reach for it is that you already know the run will write.
+
+- Gap: **no gap for the double-post, and that is worth saying rather than leaving blank.** The defect was in this project's own code, not the harness, and no zero-config check could have had an opinion — it is a contract between two of our functions. `save_persist_check`, a project checker written to `house-static-checker`, is what caught the other one. That is the harness's own argument working: the generic checks cover the generic failures, and the project grows its own for the rest.

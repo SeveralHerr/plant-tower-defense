@@ -166,14 +166,48 @@ idea backlog that isn't filed yet.
 
 ## Next up
 
-See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
-`plant-tower-defense-zr4` (uproot confirm), `-5zc` (plant health in the panel),
-`-cw1` (end-of-run summary panel), `-cuk` (tint the threat level), `-gqs`
-(project-identity devtools verb).
+**`bd ready`.** That is the whole answer, and it is the only one that cannot go stale.
+
+This section used to name five specific beads and said "**Cycle 3 of 30** is filed and
+ready". Audited at cycle 103: all five (`-zr4`, `-5zc`, `-cw1`, `-cuk`, `-gqs`) are
+CLOSED, the counter was a hundred cycles out, and it pointed at `todo.md` — a file the
+loop stopped reading long ago, because keeping it wrote every item twice and ticked it
+twice. It was the first thing anyone opening this file read, and every claim in it was
+dead. Deleted rather than refreshed: a hand-copied queue at the top of a document is the
+exact drift `bd` exists to end, so replacing the five names with five newer names would
+have rebuilt the same trap.
 
 ---
 
 ## Cool new features (idea backlog)
+
+### Added cycle 103 — out of the upgrade hint
+
+- **The hint teaches that upgrading EXISTS. It does not teach that upgrading BEATS
+  breadth, which is what the A/B actually measured.** `RunConfig.HINTS`
+  (`game/run_config.gd:162`) now has three entries and the third fires the first time the
+  player can afford the cheapest upgrade on their own board — so they are told the button
+  is there. Cycle 101's two campaigns differed on where surplus seeds WENT, not on whether
+  the player knew where they could go: breadth-first died at wave 10 having never upgraded,
+  depth-first won 22 waves losing no lives. A player told "you can upgrade this" may still
+  spend the seeds on an eighth plant, which is exactly what the losing run did. Honest
+  taste call: one sentence cannot carry a strategy, and a second hint that tries to would
+  be the tutorial `-qoil` refused. The place to say it is the run summary, below.
+- **The run summary never mentions upgrading, and it is the one screen that could teach the
+  lesson without spending the message row.** `game/run_summary.gd` contains no reference to
+  plant upgrades at all — its only two `level` matches are `threat_level` (`:258`) and a
+  layout comment (`:84`). The card is already the moment a player asks "why did that go
+  wrong", it has room a live HUD does not, and the run's own numbers are right there. A row
+  reading how many upgrades were bought against how many plants were placed would let a
+  breadth-first player see their own policy stated back to them. This is where the A/B
+  belongs.
+- **`Hud.row_is_quiet()` (`game/hud.gd:1881`) is now a general capability and only one
+  caller uses it.** It exists because `show_message` returns false on a busy row but QUEUES
+  the text, so a LEVEL-triggered caller stacks copies — true of any cue driven off
+  `_refresh` rather than off an event. Worth a sweep: which other advisory lines are posted
+  from a funnel rather than an edge, and are any of them quietly queueing duplicates today?
+  The two counters `messages_refused` and `messages_evicted` already exist to be read with
+  `get-state`, so the question is answerable without guessing.
 
 ### Added cycle 102 — out of the five-lane fan-out
 

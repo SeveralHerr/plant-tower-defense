@@ -9,7 +9,7 @@ description: Run one cycle of this project's development loop — pre-flight (be
 Workflow intent: Keep the workflow simple and meaningful. Reflect on the game, tools, workflow, skills, and find meaningful ways to evolve them all.
 
 **Within that, bias step 2 toward what a PLAYER would notice** (asked for directly, cycle
-84). The tooling, the audits and the eleven checkers are how this project stays honest and
+84). The tooling, the audits and the checkers are how this project stays honest and
 they have taken most of the last ten cycles: 72, 75, 77, 82 and 83 shipped nothing a player
 could see, and 76 shipped no code at all. A checker or an audit is still the right call when
 it is the right call — this is a bias, not a ban. But **a cycle that ships nothing
@@ -99,13 +99,19 @@ running a command. **Never write a work checklist into it.**
      one item at a time for 99 cycles and the queue is 100 deep; most of it does not touch
      what the rest of it touches. Spawn agents for items whose files do not overlap, and say
      in the close which ran together and why they were safe.
-     **The safety rule is the gate list, not a guess.** Only `name_check.py` and the eleven
-     project checkers are parallel-safe — they open no project and write nothing to `.godot/`.
+     **The safety rule is one command, not a count.** A lane runs
+     `python tools/check_all.py --quiet` and nothing else; it derives the parallel-safe set
+     for itself. This used to name "`name_check.py` and the eleven project checkers", which
+     was a hand-maintained number in a file about not hand-maintaining numbers — it was
+     already fifteen when `check_all.py` replaced it, and it would have gone on drifting.
      `lint_project.gd`, `import_check.py` and `run_tests.py` all open the project and write
      `.godot/`, and **two of them at once corrupt each other's run**. So a fan-out agent
-     writes code and runs the parallel-safe checkers; the engine gates and the runtime pass
-     are the parent's, run once, after the agents land. Same for the game: one bus per
-     checkout (`launch --isolated` isolates the bus, never `user://`).
+     writes code and runs that one command; the engine gates and the runtime pass are the
+     parent's, run once, after the agents land. Same for the game: one bus per checkout
+     (`launch --isolated` isolates the bus, never `user://`).
+     **Write the lane prompts with `.claude/skills/fan-out-a-cycle/SKILL.md`** — it holds
+     the ownership block, the traps every lane needs told, and the report format the merge
+     needs, all of which were re-derived from scratch in cycles 100, 101 and 102.
      **Give each agent disjoint files and say so in its prompt.** Two agents editing
      `hud.gd` is a merge conflict the loop has no step for; two agents editing `mint.gd` and
      `wave_director.gd` is free. If two items want the same file, they are one item.
