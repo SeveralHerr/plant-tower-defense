@@ -186,6 +186,47 @@ const VOLUME_DB: Dictionary = {
 ## does the throttling for `Plant.take_damage`, which a hungry pest calls every
 ## physics frame — the chew is one repeating nibble here rather than sixty a
 ## second, and the call site stays a single unguarded `Sfx.play()`.
+## The palette's third axis, and the one that separates a loss from a no-op.
+##
+## 22 named beats share 11 audio files, which is a palette rather than a problem —
+## eleven voices used deliberately. What was a problem is two events arriving at
+## the player *identically*: `play()` composes exactly the stream, the volume and
+## (now) the pitch, so before this table `PEST_ESCAPED` and `PURCHASE_DENIED` were
+## the same `error_002.ogg` at the same 0.0 dB, and `PLANT_DESTROYED` and
+## `CHOMP_BITE` were the same `chop.ogg` at the same 0.0. **A pest reaching the
+## house costs a life; a refused purchase costs nothing**, and a plant dying was
+## indistinguishable from a plant eating.
+##
+## Volume alone would have satisfied the rule and answered the wrong question: a
+## quieter version of a sound is the same event, smaller — which is exactly what
+## `WAVE_CLEARED` means by wearing `RUN_WON`'s jingle at −9.0, and exactly not what
+## an escape means next to a refusal. Pitch says *a different thing happened*.
+##
+## **Losses go lower, gains go higher, and the routine event of a pair keeps the
+## base.** Every entry here is one half of a pair that already shared a file and a
+## volume, moved off it in the direction of what it means. The magnitudes are
+## graded by how grave the event is — losing a life is the furthest down, a warning
+## the least — so the table reads as a scale rather than five arbitrary numbers.
+##
+## `test_no_two_events_are_the_same_sound` gates the uniqueness and cannot see the
+## direction; this comment is why the numbers point the way they do, and it is the
+## thing to read before adding a sixth.
+##
+## Found by deriving the (file, volume, pitch) triples rather than by listening:
+## three of the five collisions were invisible to a hand-read of the table, and the
+## test named the third one after the first two had already been fixed.
+const PITCH: Dictionary = {
+	# Losses, gravest first.
+	PEST_ESCAPED: 0.72,
+	PLANT_DESTROYED: 0.78,
+	PLANT_UPROOTED: 0.82,
+	# A warning rather than a loss: the shallowest step down, because nothing has
+	# happened yet and the player can still walk away.
+	UPROOT_ARMED: 0.88,
+	# The only gain in the table, and the only one above the base.
+	PLANT_UPGRADED: 1.18,
+}
+
 const DEFAULT_REPEAT_MS: int = 45
 const REPEAT_MS: Dictionary = {
 	PLANT_BITTEN: 420,
@@ -302,9 +343,27 @@ static func play(event: StringName) -> bool:
 		return false
 	_last_played[event] = now
 	voice.stream = stream
-	voice.volume_db = float(VOLUME_DB.get(event, 0.0))
+	tune_voice(voice, event)
 	voice.play()
 	return true
+
+
+## Puts everything except the stream onto a voice — every property that decides
+## what an event SOUNDS like, in one place.
+##
+## Split out of `play()` so a test can watch it work. `play()` itself is gated off
+## headless (`should_play` → false), so a headless suite cannot observe it at all,
+## and cycle 74 watched a mutation deleting the pitch line survive a test that
+## asserted only the tables: `PITCH` stayed unique while nothing read it, and the
+## player heard twins again. This is the seam that makes the table's uniqueness
+## mean something.
+##
+## Every property is written unconditionally, including the defaults: voices are
+## pooled and reused, so a value left behind by the last event to borrow this voice
+## would follow the next one around.
+static func tune_voice(voice: AudioStreamPlayer, event: StringName) -> void:
+	voice.volume_db = float(VOLUME_DB.get(event, 0.0))
+	voice.pitch_scale = float(PITCH.get(event, 1.0))
 
 
 ## The stream behind an event, or null if there isn't one.

@@ -5006,3 +5006,82 @@ func test_a_pest_killed_headless_is_eventually_freed() -> String:
 				"but it does leave -- 600 frames was not enough, which means it never does")
 	host.free()
 	return err
+
+
+## No two events may be the same sound (plant-tower-defense-1fzh).
+##
+## 22 named beats share 11 audio files, which is deliberate and fine — a palette
+## with eleven voices is a palette. What is not fine is two events arriving at the
+## player identically, and `Sfx.play` composes exactly three things: the stream
+## from `SOUNDS`, `VOLUME_DB.get(event, 0.0)` and `PITCH.get(event, 1.0)`. So the
+## triple (file, volume, pitch) IS what the player hears, and this asserts it is
+## unique. Add a fourth thing to `play()` and this key must grow with it — which is
+## the one way this check can go quietly wrong.
+##
+## **There is no waiver list, on purpose.** The one sharing anybody reasoned about —
+## `WAVE_CLEARED` reusing `RUN_WON`'s jingle — passes because it was already trimmed
+## to −9.0 against −4.0, and the comment at `game/sfx.gd:95` says that trim is the
+## point. A deliberate reuse that differentiates itself needs no exception; one that
+## does not is the bug. Encoding the rule that way keeps the justification beside the
+## entry it justifies rather than in a list here that drifts from it.
+##
+## Derived from the two const Dictionaries, so adding an event cannot forget to
+## update a list somewhere.
+func test_no_two_events_are_the_same_sound() -> String:
+	# Denominator first: a sweep over an empty table would pass beautifully.
+	var err: String = _T.assert_gt(Sfx.SOUNDS.size(), 20,
+		"the table is populated (an empty sweep is a vacuous pass), got %d" % Sfx.SOUNDS.size())
+	if err != "":
+		return err
+	var seen: Dictionary = {}
+	for event: StringName in Sfx.SOUNDS:
+		var key: String = "%s @ %.1f dB, pitch %.2f" % [
+			str(Sfx.SOUNDS[event]).get_file(),
+			float(Sfx.VOLUME_DB.get(event, 0.0)),
+			float(Sfx.PITCH.get(event, 1.0)),
+		]
+		if seen.has(key):
+			return _T.assert_eq(str(event), str(seen[key]),
+				("'%s' and '%s' are both %s -- the player cannot tell them apart. "
+					+ "Share the file if you like, but differentiate the volume the way "
+					+ "WAVE_CLEARED differentiates itself from RUN_WON.") % [
+					event, seen[key], key])
+		seen[key] = event
+	# And the pairs really were distinct rather than the loop having collapsed them:
+	# one key per event, or the sweep proved nothing about the table it walked.
+	return _T.assert_eq(seen.size(), Sfx.SOUNDS.size(),
+		"every event contributed its own (file, volume, pitch) key")
+
+
+## The other half, and the one the table check cannot see.
+##
+## `test_no_two_events_are_the_same_sound` asserts the TABLES are unique. It says
+## nothing about whether anything reads them — a mutation deleting the pitch line
+## from `play()` survived it, leaving `PITCH` perfectly unique and the player
+## hearing twins. `play()` is gated off headless, so the assertable seam is
+## `Sfx.tune_voice`, which is the one place every voice property is written.
+func test_tuning_a_voice_applies_both_axes_the_table_declares() -> String:
+	var voice := AudioStreamPlayer.new()
+	# A pair that shares a file, so pitch is the only thing separating them, and
+	# the direction is the one the PITCH table's comment claims: losses go lower.
+	Sfx.tune_voice(voice, Sfx.PLANT_DESTROYED)
+	var loss_pitch: float = voice.pitch_scale
+	var loss_db: float = voice.volume_db
+	Sfx.tune_voice(voice, Sfx.CHOMP_BITE)
+	var err: String = _T.assert_true(loss_pitch < voice.pitch_scale,
+		"a plant dying is pitched below a plant eating, got %.2f vs %.2f"
+			% [loss_pitch, voice.pitch_scale])
+	if err == "":
+		err = _T.assert_float_eq(loss_db, float(Sfx.VOLUME_DB.get(Sfx.PLANT_DESTROYED, 0.0)),
+			0.0001, "and the volume came off the table too, not a constant")
+	if err == "":
+		# The reuse hazard the pooled voices create: an event with no entry must
+		# RESET the property, not inherit the last event's. This is why every
+		# property is written unconditionally.
+		Sfx.tune_voice(voice, Sfx.PEST_ESCAPED)
+		Sfx.tune_voice(voice, Sfx.CHOMP_BITE)
+		err = _T.assert_float_eq(voice.pitch_scale, 1.0, 0.0001,
+			"a voice borrowed by an untuned event goes back to 1.0, got %.2f"
+				% voice.pitch_scale)
+	voice.free()
+	return err
