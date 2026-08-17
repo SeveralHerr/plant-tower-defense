@@ -2492,3 +2492,67 @@ func test_the_last_escape_is_in_the_card_that_same_escape_builds() -> String:
 	_T.free_ui(game)
 	_restore_run_config()
 	return err
+
+
+## An upgrade is money the player does not get back, and now the prompt says so
+## (plant-tower-defense-s40d).
+##
+## Two claims, and the second is the one that rots. The message quotes a number, so
+## `upgrade_spend` has to be right; but the message also ASSERTS an economic rule —
+## that the refund ignores upgrades — and if `uproot_refund()` ever starts paying them
+## the sentence becomes a lie that no test about strings would catch. So the rule is
+## pinned here, next to the sentence that depends on it.
+func test_an_upgrade_is_not_refunded_and_the_prompt_says_the_number() -> String:
+	# Derived, not typed: the ladder is 20 then 45 today and this reads it.
+	var expected_at_top: int = 0
+	for i: int in range(CornCobbler.LEVELS.size() - 1):
+		expected_at_top += int(CornCobbler.LEVELS[i]["upgrade_cost"])
+	var err: String = _T.assert_eq(CornCobbler.upgrade_spend(CornCobbler.LEVELS.size()),
+		expected_at_top, "the top of the ladder has the whole ladder's cost behind it")
+	if err == "":
+		err = _T.assert_eq(CornCobbler.upgrade_spend(1), 0,
+			"and a fresh plant has forfeited nothing")
+	if err == "":
+		err = _T.assert_gt(expected_at_top, 0,
+			"the ladder costs something, or this whole message is about zero seeds")
+	if err == "":
+		# The economic claim the sentence makes. Same kind, same health, different
+		# level: the refund must not move, or the prompt is telling the player
+		# something false.
+		var game := await _T.instantiate_scene(GAME_SCENE) as Game
+		game.bank.add_seeds(300)
+		# Found rather than assumed: the road's shape has been reshaped twice and a
+		# hard-coded pair of cells is a test that fails for the wrong reason.
+		var planted: Array[Vector2i] = []
+		for y: int in range(Board.ROWS):
+			for x: int in range(Board.COLS):
+				if planted.size() >= 2:
+					break
+				if game.place_plant(PlantCatalog.CORN, Vector2i(x, y)) == "":
+					planted.append(Vector2i(x, y))
+		if planted.size() == 2:
+			var fresh: Plant = game.plant_at(planted[0])
+			var cob := game.plant_at(planted[1]) as CornCobbler
+			if cob != null and cob.upgrade():
+				err = _T.assert_eq(cob.level, 2, "the second cob really did upgrade")
+				if err == "":
+					err = _T.assert_eq(cob.uproot_refund(), fresh.uproot_refund(),
+						("an upgraded cob refunds exactly what a fresh one does -- if this "
+							+ "ever stops being true, uproot_armed_message is lying"))
+				if err == "":
+					var line: String = Hud.uproot_armed_message("Corn Cobbler", false,
+						CornCobbler.upgrade_spend(cob.level))
+					err = _T.assert_true(line.contains("%d upgrade seeds" % int(CornCobbler.LEVELS[0]["upgrade_cost"])),
+						"and the prompt quotes what was actually spent -- got %s" % line)
+			else:
+				err = "could not upgrade the second cob"
+		else:
+			err = "could not plant two cobs"
+		_T.free_ui(game)
+	if err == "":
+		# The two extras never share the row. The budget refused that build at 188 px
+		# over, so this is a constraint rather than a preference.
+		var both: String = Hud.uproot_armed_message("Bomb Dandelion", true, 65)
+		err = _T.assert_false(both.contains("Hover to compare"),
+			"the forfeit clause displaces the move tip rather than joining it -- got %s" % both)
+	return err

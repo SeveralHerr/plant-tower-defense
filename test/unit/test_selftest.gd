@@ -10915,10 +10915,12 @@ func test_the_message_corpus_covers_every_catalogue_producer() -> String:
 			return err
 	# Direction two: the non-catalogue entries, by count. Deleting the prep note or a
 	# bare literal would otherwise just make the budget's answer quietly smaller.
-	# FOUR per plant, not three: the armed-uproot prompt appears twice, once with the
-	# move tip and once without, because the tip is shown a single time per save and
-	# the bare warning every time after. Both reach the row, so both are priced.
-	var catalogue_entries: int = PlantCatalog.PLANTS.size() * 4 + CornCobbler.LEVELS.size()
+	# FIVE per plant since cycle 79. The armed-uproot prompt is three of them: bare,
+	# with the move tip (shown once per save, the bare warning every time after), and
+	# with the forfeit clause an upgraded plant carries. The tip and the forfeit never
+	# co-occur — the budget refused that build at 188 px over — so it is three forms
+	# and not four.
+	var catalogue_entries: int = PlantCatalog.PLANTS.size() * 5 + CornCobbler.LEVELS.size()
 	return _T.assert_eq(corpus.size() - catalogue_entries, 8,
 		("the corpus carries its 8 non-catalogue entries (prep note, wave-cleared "
 			+ "line, and six literals -- BOTH colourblind lines, since the checker "

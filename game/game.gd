@@ -1328,8 +1328,15 @@ func arm_uproot() -> String:
 	# DEADLINE, not IMPORTANT: `_uproot_left` is already counting down by the time
 	# this line is posted, so a deferral here does not postpone the message, it
 	# eats the window it describes. See Hud.MESSAGE_DEADLINE.
+	# Only the Corn Cobbler has an upgrade ladder, so only it can forfeit anything;
+	# `as CornCobbler` is null for every other plant and the cast decides it rather
+	# than a `kind ==` comparison that would need updating when a second upgradable
+	# plant arrives.
+	var cob := selected_placed as CornCobbler
+	var forfeited: int = 0 if cob == null else CornCobbler.upgrade_spend(cob.level)
 	hud.show_message(
-		Hud.uproot_armed_message(PlantCatalog.display_name(selected_placed.kind), first_arm),
+		Hud.uproot_armed_message(PlantCatalog.display_name(selected_placed.kind), first_arm,
+			forfeited),
 		UPROOT_CONFIRM_SECONDS, Hud.MESSAGE_DEADLINE)
 	_refresh()
 	return "confirm needed"

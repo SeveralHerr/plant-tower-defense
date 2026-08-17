@@ -300,6 +300,23 @@ func is_max_level() -> bool:
 
 
 ## Seeds to reach the next level, or 0 when there is no next level.
+## What has already been spent upgrading a cob to `for_level`, in seeds.
+##
+## Derived by summing `LEVELS[..]["upgrade_cost"]` rather than written down: the ladder
+## is 20 then 45, and a hand-typed 65 would be a second source of truth that a retune
+## silently falsifies — on a number the player is about to be told they are forfeiting.
+##
+## Exists because `Plant.uproot_refund()` scales the plant's BASE cost
+## (`game/plant.gd:541-544`), so upgrades are consumed rather than refunded. That is a
+## defensible rule and it was an unstated one until cycle 79; this is what lets the armed
+## prompt say it, and say it only when there is something to say.
+static func upgrade_spend(for_level: int) -> int:
+	var spent: int = 0
+	for i: int in range(mini(for_level, LEVELS.size()) - 1):
+		spent += int(LEVELS[i]["upgrade_cost"])
+	return spent
+
+
 func upgrade_cost() -> int:
 	if is_max_level():
 		return 0

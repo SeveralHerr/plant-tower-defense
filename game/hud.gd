@@ -1681,8 +1681,16 @@ static func message_corpus() -> Array[String]:
 		# priced — a corpus holding only the short one would report the row as
 		# roomier than it is on the single most important message in the game, and
 		# only for the first player who ever arms an uproot.
+		# THREE forms since cycle 79, not four: bare, with the tip, and with the
+		# forfeit clause — the last two cannot co-occur (see uproot_armed_message,
+		# where the budget is what decided that). Priced at the LADDER'S maximum via
+		# `CornCobbler.upgrade_spend(LEVELS.size())`, because a budget is about the
+		# worst case the format allows, and because a hand-typed 65 here would be the
+		# second source of truth `upgrade_spend` exists to avoid.
 		out.append(uproot_armed_message(display, false))
 		out.append(uproot_armed_message(display, true))
+		out.append(uproot_armed_message(display, false,
+			CornCobbler.upgrade_spend(CornCobbler.LEVELS.size())))
 		out.append(packet_message(display))
 	for level: Dictionary in CornCobbler.LEVELS:
 		out.append(upgrade_message(String(level["name"])))
@@ -1728,9 +1736,24 @@ static func eaten_message(plant_name: String) -> String:
 ## The warning survives the addition, and has to: this is the sentence standing
 ## between a player and an irreversible act. It leads with the destructive verb
 ## and keeps "it will not grow back" rather than trading that away for the tip.
-static func uproot_armed_message(plant_name: String, with_tip: bool = false) -> String:
+## `forfeited` is seeds already spent upgrading this plant, which `uproot_refund()` does
+## not pay back — it scales the plant's BASE cost (`game/plant.gd:541-544`). Said only
+## when there is something to forfeit: on a fresh plant the clause would be noise on the
+## row this project has spent four cycles measuring, and on an upgraded one it is the
+## difference between a plausible number and an informed decision.
+##
+## **The forfeit and the tip are mutually exclusive, and the budget decided that, not
+## taste.** Both together on the longest plant name measured 1064 px against the row's
+## 876 — `check_budgets` refused the build with 188 px of overrun and named the exact
+## string. So the row carries at most one extra clause, and the one about money wins: the
+## tip is a courtesy shown once per save, the forfeit is a fact about the irreversible
+## click the player is being asked to make right now.
+static func uproot_armed_message(plant_name: String, with_tip: bool = false,
+		forfeited: int = 0) -> String:
 	var warning: String = ("Click Uproot again to dig up your %s — it will not grow back."
 		% plant_name)
+	if forfeited > 0:
+		return warning + " Its %d upgrade seeds are not refunded." % forfeited
 	if not with_tip:
 		return warning
 	return warning + " Hover to compare a new spot."
