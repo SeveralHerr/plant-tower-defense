@@ -195,6 +195,33 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (16 of 30) — the pause card learned to measure itself; four screens have not
+
+- **Four more panels are hand-picked rectangles**, and the pause card just spent two
+  cycles demonstrating what that costs: `KeyBindingScreen.PANEL`
+  (`game/key_binding_screen.gd:76`, 700x600), `NotebookScreen.PANEL`
+  (`game/notebook_screen.gd:31`, 1000x584), `OptionsScreen.PANEL`
+  (`game/options_screen.gd:109`, 700x360), `RunSummary.CARD`
+  (`game/run_summary.gd:51`, 640x456). Each is correct against today's contents and
+  says nothing when the contents grow. The pause card's own header narrates three
+  such numbers going stale in a row. `PauseScreen.card_width()` /
+  `card_height()` are now the worked pattern, and `_measure()` is a nine-line static
+  helper the others could share — the Keys screen is the sharpest case, because its
+  rows carry the same player-chosen key names that broke the legend.
+- **The keys column exists on two screens now and is aligned on one.** After this
+  cycle the pause card right-aligns its keys against a gutter
+  (`game/pause_screen.gd:_build_key_list`); `KeyBindingScreen` centres its `RowKey%d`
+  labels in a fixed 140px column (`KEY_X`/`KEY_WIDTH`, `game/key_binding_screen.gd:85`)
+  which is neither derived nor aligned with the pause card's. Two screens showing the
+  same eight keys in two different alignments is the kind of thing nobody reports and
+  everybody notices.
+- **`_measure()` is private to PauseScreen and wants to be shared.** It resolves the
+  font a Label will actually draw in, off-tree, which is the one primitive every
+  "does this text fit" question in this project needs — and there are now three such
+  questions in the suite (`_T.text_width` in the legend tests, the reset
+  confirmation's fit assertion, this cycle's agreement test). A `GardenTheme.measure()`
+  would put it where `GardenTheme.INK` already lives.
+
 ### New this cycle (15 of 30) — grown from the pause card, after widening it
 
 - **The pause card is 440px wide and its two widest rows are 384px.** `CARD_WIDTH`
