@@ -11323,3 +11323,73 @@ func test_rows_that_fit_counts_the_last_row_that_actually_lands() -> String:
 		err = _T.assert_eq(OverlayScreen.rows_that_fit(0.0, 0.0, 10.0, 100.0), 0,
 			"and a zero pitch is refused rather than hanging")
 	return err
+
+
+## Every named entry point still resolves (plant-tower-defense-jq4l).
+##
+## `devtools_config.json`'s `entry_points` are the only way a runtime check can reach a
+## screen the automatic hook does not open — and they are a JSON file naming a method by
+## string, so a rename breaks them silently and only shows up as a `fire-entry-point` that
+## does nothing. Cycle 82 measured what that costs: four files changed across three screens,
+## a clean `findings` across all five checks, and `reached 0/4 changed file(s)`.
+##
+## Checks the METHOD, not the node path: resolving `/root/TitleScreen` needs the scene
+## instantiated and made current, which is a different and much heavier test. A method that
+## exists on the right script is the half a rename actually breaks.
+func test_every_devtools_entry_point_names_a_method_that_exists() -> String:
+	var file := FileAccess.open("res://addons/godot_selftest/devtools_config.json",
+		FileAccess.READ)
+	var err: String = _T.assert_true(file != null, "the devtools config is readable")
+	if err != "":
+		return err
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
+	err = _T.assert_true(parsed is Dictionary, "and is a JSON object")
+	if err != "":
+		return err
+	var points: Dictionary = (parsed as Dictionary).get("entry_points", {})
+	# A denominator: an empty or renamed `entry_points` would otherwise sweep over nothing
+	# and report clean, which is exactly the state cycle 82 was in.
+	err = _T.assert_gte(points.size(), 5,
+		"five entry points -- the board plus every overlay screen, got %d" % points.size())
+	if err != "":
+		return err
+	# node_path -> the script that node runs. Written out because the path is a runtime
+	# fact and this test is static; a path added to the config without a line here fails
+	# below rather than being skipped.
+	var scripts: Dictionary = {
+		"/root/TitleScreen": TitleScreen,
+		"/root/Game": Game,
+	}
+	for name: String in points:
+		var point: Dictionary = points[name]
+		var path: String = str(point.get("node_path", ""))
+		var method: String = str(point.get("method", ""))
+		err = _T.assert_true(scripts.has(path),
+			("entry_points.%s points at %s, which this test does not know the script for -- "
+				+ "add it to the map above rather than letting the entry go unchecked")
+				% [name, path])
+		if err != "":
+			return err
+		var script: Script = scripts[path]
+		err = _T.assert_true(script.has_method(method) or _script_declares(script, method),
+			"entry_points.%s calls %s.%s(), which does not exist" % [name, path, method])
+		if err != "":
+			return err
+		# The scene it switches to has to exist too, or the switch fails before the call.
+		var scene: String = str(point.get("scene", ""))
+		if scene != "":
+			err = _T.assert_true(ResourceLoader.exists(scene),
+				"entry_points.%s switches to %s, which is not a resource" % [name, scene])
+			if err != "":
+				return err
+	return err
+
+
+## `Script.has_method` only sees methods on the script itself in some builds; this reads
+## the declaration list, which covers a private method the config names deliberately.
+func _script_declares(script: Script, method: String) -> bool:
+	for entry: Dictionary in script.get_script_method_list():
+		if str(entry.get("name", "")) == method:
+			return true
+	return false

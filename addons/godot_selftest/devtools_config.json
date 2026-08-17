@@ -48,7 +48,28 @@
   "entry_points": {
     "campaign": {
       "node_path": "/root/TitleScreen",
-      "method": "skip_to_game"
+      "method": "skip_to_game",
+      "scene": "res://game/title.tscn"
+    },
+    "notebook": {
+      "node_path": "/root/TitleScreen",
+      "method": "_open_notebook",
+      "scene": "res://game/title.tscn"
+    },
+    "keys": {
+      "node_path": "/root/TitleScreen",
+      "method": "_open_keys",
+      "scene": "res://game/title.tscn"
+    },
+    "options": {
+      "node_path": "/root/TitleScreen",
+      "method": "_open_options",
+      "scene": "res://game/title.tscn"
+    },
+    "pause": {
+      "node_path": "/root/Game",
+      "method": "pause_run",
+      "scene": "res://game/game.tscn"
     }
   },
   "log_files": [
