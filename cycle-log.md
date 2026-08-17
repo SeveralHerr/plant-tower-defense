@@ -1,10 +1,53 @@
-# Cycle 101
+# Cycle 102
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
 what `bd` structurally cannot: which cycle we are on, what the last one taught, what is
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
+
+## What cycle 102 taught
+
+**Five lanes, in worktrees this time, and the isolation worked exactly as advertised — while
+introducing a trap nobody predicted.** Rain that falls, directional bite and sting, a styled
+top bar, spent packets that read spent, packets that point at their plants, and a player-facing
+speed toggle, all at once. Not one lane reported a sibling's file, which is the whole reason
+`-l638` existed. But agent worktrees live *inside* the repo and `rglob` does not read
+`.gitignore`, so `citation_check` turned every bare citation in `kanban.md` into a six-way
+ambiguity — **visible only to the parent**, because a lane inside its own worktree has no
+nested copies. A finding count that depends on which process is asking is worse than no count.
+
+**The honest price of a worktree is that a lane compiles NOTHING.** `--require-compile` is the
+documented escape and it does not work there — two lanes hit it independently and got
+`Identifier "WaveDirector" not declared` and `Could not find base class "Plant"` on lines
+unchanged from main, because a fresh checkout has no class cache. So five lanes reported green
+having never parsed a line, and the parent found: two tests that were green by construction,
+a top bar with no room for the button it was handed, three public surfaces no test named, and
+a checker reporting nonsense. **None was a lane's mistake.** `merge-the-fanout` is now a skill,
+because that procedure had been re-derived from scratch twice in three cycles.
+
+**A merge can delete a test with no compile error.** Git hoists a shared suffix below the
+`>>>>>>>` marker when both lanes' last function ends the same way — twice here it was
+`_T.free_ui(game)` / `return err` — so removing the three marker lines silently truncates one
+side's final test. GDScript accepts a function whose last statement is an assignment. The only
+thing that catches it is arithmetic: 329 base + 3 + 4 + 4 = 340, and the merged file had 340.
+
+**"The plant was right and the assertion was wrong."** Two lane tests asserted "this plant has
+not attacked yet" with the prey already in range. `_act()` runs on every settle frame, so the
+Chomp had eaten and the Nettle had stung before the precondition was read — the failure
+message even carried that exact aphid's lunge vector at full `LUNGE_DISTANCE`. There is no
+"has not bitten anything" state for a flower sitting on top of its lunch.
+
+**Let the thing that measures do the measuring.** The speed button needed 67px the top bar did
+not have. Instead of arithmetic: set the constant absurdly low, run the one test that checks
+it, read the number out of the failure. "Grow the next wave" needs 202px of its 216px slot;
+"Next wave" needs 120. The row ended with *more* headroom than it started with — 19px to 38 —
+while gaining a control.
+
+**And `reach` disagreed with a button I had watched work.** `game_speed.gd` is a static utility
+no node carries, so it is invisible to `scripts-seen` however much of it ran. Filed as
+`-v3ji`: a file that CANNOT be seen and a file that WAS NOT loaded are opposite results, and
+today they print identically.
 
 ## What cycle 101 taught
 

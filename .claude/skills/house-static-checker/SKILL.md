@@ -65,8 +65,18 @@ NOTE: nothing to check -- no world-space script builds a Control. That is a clea
 
 **A `NOT COVERED:` line on every run**, clean or not. Say what the tool structurally
 cannot see. This is copied from `name_check.py`, and it is the single thing that makes a
-weaker tool trustworthy — the harness's own `import_check.py` lacks it, reports
-`Import OK` over a hard parse error, and cost a real debugging detour as a result.
+weaker tool trustworthy — the harness's own `import_check.py` once lacked it, reported
+`Import OK` over a hard parse error, and cost a real debugging detour as a result. **It
+has one now** (it says `--import` registers global class names and does not compile
+function bodies), which matters beyond the correction:
+
+> **The contract marker identifies a HOUSE TOOL, not a PARALLEL-SAFE one.** `check_all.py`
+> derives its run-set from "every `tools/*.py` whose source declares a `NOT COVERED:`
+> line", and that rule pulls in `import_check.py`, which opens the project and writes
+> `.godot/`. Parallel-safety is a separate property and needs its own explicit list — which
+> is why `check_all.py` carries `NOT_PARALLEL_SAFE` as a named tripwire rather than
+> inferring it. If you write a checker that is not parallel-safe, giving it a contract line
+> is not enough; add it there too.
 
 State plainly that it does not compile:
 
@@ -117,6 +127,14 @@ FINDING: <file>:<line> <function> <what is wrong and why it matters>
   fix: <the concrete change, naming a working example in this repo>
   waive: add `# <tool>: ok - <reason>` in the body.
 ```
+
+**Make the module docstring a raw string (`r"""`) if it contains regex.** `\S`, `\d` and
+friends are invalid escape sequences in a normal string, so Python emits a `SyntaxWarning`
+— and that warning prints **the offending source line to stderr**, ahead of the tool's own
+output. Any caller reading a fixed line of the result (`sed -n '2p'`, a `head -1`, a test
+asserting on the first line) then reads a fragment of your docstring instead of a
+denominator, and the tool looks broken in a way that has nothing to do with what it does.
+Cost one confused debugging loop here.
 
 ## Run it once in the mode you do not intend to use
 
