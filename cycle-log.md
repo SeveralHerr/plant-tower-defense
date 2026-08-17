@@ -1,4 +1,4 @@
-# Cycle 73
+# Cycle 74
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,38 +6,37 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 73 taught
+## What cycle 74 taught
 
-**Eighteen frames.** A pest killed headless does free — the bead's worry was unfounded —
-but it takes 18 process frames against the **2** that `UI_SETTLE_FRAMES` pumps. So any test
-that kills a pest and reads the tree a frame or two later sees a corpse still there and
-would reasonably call it a leak. Ten `.kill()` call sites sit in that window. The number,
-not the verdict, is what got pinned.
+**Writing the derived check before the fix found five collisions where a hand-read had
+found two.** The two beads were filed split and ordered on purpose last cycle — gate first,
+fix second, because a failing test naming the collisions is a better specification than a
+description is. It named `PLANT_UPGRADED`/`WAVE_STARTED` after the first two were fixed, and
+re-deriving every `(file, volume, pitch)` triple at once turned up two more. My hand-read
+had enumerated all ten shared files correctly and then compared volumes for only a *sample*
+of them — the third distinct way a census of mine has come up short in five cycles.
 
-Reading `Pest._play_death` produced the *wrong* expectation, which is the honest argument
-for running it: whether a Tween interval elapses in a suite that "pumps no frames" is
-exactly the kind of thing source is ambiguous about and a runner is not.
+**Volume alone would have answered the wrong question.** A quieter version of a sound is the
+same event, smaller — which is exactly what `WAVE_CLEARED` means by wearing `RUN_WON`'s
+jingle at −9.0, and exactly not what an escape means beside a refused purchase. So `PITCH`
+is a third axis with a direction: **losses go lower, gains go higher, the routine half of a
+pair keeps the base.**
 
-**And an enumeration was silently short again — a new way this time.** I counted sound call
-sites with a `sed` substitution, which captures one match per line, and concluded `RUN_LOST`
-was declared and never played. It is played, inside a ternary that also names `RUN_WON`.
-Cycle 71's failure was the wrong *mechanism*; this was the right mechanism with a matcher
-that steps over a second token on the same line. Both are now in `derive-the-list`: **before
-trusting a census, ask what a member would look like that your matcher would step over.**
-
-Re-run properly, the census produced the cycle's best finding anyway: **22 named sounds over
-11 files**, and two pairs identical in file *and* volume — `PEST_ESCAPED` with
-`PURCHASE_DENIED`, `PLANT_DESTROYED` with `CHOMP_BITE`. A lost life sounds exactly like a
-refused purchase.
+**And the mutation that mattered survived the first version.** Deleting the pitch line from
+`play()` left `PITCH` perfectly unique and the player hearing twins — the table check
+asserts the tables, not that anything reads them. `play()` is gated off headless, so nothing
+in the suite could see it. That is the second time in three cycles the fix was to move the
+assertion to a **seam** rather than strengthen it in place, so
+`.claude/skills/extract-a-testable-seam/` is now built rather than noticed a third time.
 
 ## Where things stand
 
-A hundred and four beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
-gh#43). Suite **571/571**, 12546 assertions; lint 0/0; nine checkers clean. Twelve skills.
-Upstream gh#44, gh#49, gh#50 open.
+A hundred and two beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
+gh#43). Suite **573/573**, 12551 assertions; lint 0/0; nine checkers clean; findings 0/4.
+**Thirteen skills.** Upstream gh#44, gh#49, gh#50 open.
 
-The workflow steps held this cycle — no change to `CLAUDE.md`. The lesson was a technique,
-so it went into `derive-the-list` where techniques live.
+The workflow steps held — no `CLAUDE.md` change. The lesson was a technique and became a
+skill, which is what the workflow already says to do with those.
 
 ## Waiting on the user
 
@@ -52,9 +51,11 @@ together they made a HUD with no slack that nobody chose.
 ## Restarting
 
 `bd ready` for the work, this file for the context, `CLAUDE.md` (mirrored in `AGENTS.md`)
-for the loop itself. `-1fzh` (assert the sound table has no accidental twins) is deliberately
-filed to be done *before* `-2r8g` (fix them), because the failing test is a better
-specification of that work than its own description.
+for the loop itself. `-1490` blocks `-u9uh` deliberately: the options panel is exactly full
+(three rows, 48 px of gap, and a fourth row leaves 0 against a `FOOTER_GAP` of 24), so
+"add a volume control" is a panel-geometry decision before it is an audio one — and the
+milestone shelf taught this project that choosing the way out while holding a feature is the
+expensive order.
 
 **Eight standing notes.** The harness is pinned at 0.38.0 on purpose (gh#43). The UI
 findings baseline is **empty** (`-v9px`). Any harness operation should start by checking

@@ -5172,3 +5172,38 @@ cited in code, and the citation is a mitigation this project has watched fail.
   **`grep -o` per token, never `sed` per line, when the thing you are counting can appear
   twice in one statement** — and re-running it properly is what turned up the finding that
   actually shipped: 22 named sounds over 11 files, two pairs identical in file *and* volume.
+
+## 2026-08-17 — Cycle 74: a derived check found five collisions where I had found two
+
+- Value: **warranted**, though almost all of it came from the headless suite — the launch
+  was insurance rather than evidence, and saying so is the point of this field.
+  - Expected: that the new derived check would name the two colliding sound pairs I had
+    already found by hand last cycle, and that fixing those two would make it green.
+  - Got: **five.** The check named `PLANT_UPGRADED` / `WAVE_STARTED` after the first two
+    were fixed, and re-deriving every `(file, volume, pitch)` triple at once turned up
+    `PLANT_PLACED` / `PLANT_UPROOTED` and `UPROOT_ARMED` / `SUNDEW_CLAIM` as well. My
+    hand-read had enumerated all ten shared files correctly and then compared volumes for
+    only a *sample* of them — the third distinct way a census of mine has come up short in
+    five cycles (wrong mechanism, wrong match granularity, and now a complete enumeration
+    followed by an incomplete second pass over it).
+  - Found: a mutation that survived and changed the design. Deleting the pitch line from
+    `play()` left `PITCH` perfectly unique and the player hearing twins again — **the table
+    check asserts the tables, not that anything reads them.** And `play()` is gated off
+    headless (`should_play` → false), so a headless suite cannot observe it at all. So
+    `Sfx.tune_voice` was split out as the one place every voice property is written, and it
+    is callable on a bare `AudioStreamPlayer` with no audio server, no pool and no gate. The
+    mutation is red now.
+  - Cheaper: the headless suite did the real work at ~40 s a run. The launch checked one
+    thing it alone could: that writing a new property on a pooled `AudioStreamPlayer` does
+    not error in a real audio server, which a muted headless suite cannot speak to.
+
+- Gap: **no gaps this turn.** One observation about the harness's own shape, recorded
+  because it recurs: this is the second cycle in three where the useful assertion had to be
+  moved to a **seam** rather than strengthened in place, and both times for the same reason
+  — the behaviour lives past a `*_enabled()` gate that is false for the entire headless
+  suite (`GardenTheme.animations_enabled()` in cycle 71, `Sfx.should_play` here). The
+  pattern is now explicit enough to state: **when a property is set past a headless gate,
+  extract the setting into a function that takes its target as an argument.** The gate stays
+  where it belongs, and the composition becomes assertable without a display or an audio
+  server. Both `Plant.breathe_scale` and `Sfx.tune_voice` exist for exactly this and neither
+  was designed that way first — each was retrofitted after watching a mutation survive.

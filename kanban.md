@@ -213,6 +213,37 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (74) — sound is a switch, and the switch panel is full
+
+- **Every audio control in the game is binary, and the seam that would make a dial cheap
+  now exists.** `OptionsScreen.OPTIONS` (`game/options_screen.gd:83-99`) is three rows —
+  colourblind bars, sound effects, music — and each is an On/Off flip
+  (`:265`, `ON_TEXT`/`OFF_TEXT` at `:123-124`). **`AudioServer` appears nowhere in
+  `game/`**, so there are no buses and never have been; `Music` sits at a fixed
+  `BASE_VOLUME_DB` of −14.0 (`game/music.gd:53`) and effects default to 0.0. A player who
+  finds the music loud has one option, and it is silence. Cycle 74 made this cheap by
+  accident: `Sfx.tune_voice` is now the single place every voice property is written, and
+  `Music._start` (`game/music.gd:214`) is its counterpart, so a stored trim per category is
+  one line in each — no bus, no routing, no new node. The hard part was never the mixing.
+- **The `PITCH` table states a scale and one test asserts one pair of it.** Its comment
+  claims a rule — losses go lower, gains go higher, the routine half of a pair keeps the
+  base, magnitudes graded by how grave the event is — and
+  `test_tuning_a_voice_applies_both_axes_the_table_declares` checks exactly one of the five
+  entries against exactly one neighbour. The rest is prose, and prose is what this project
+  has sixty pages of evidence about. The direction is derivable: every id in `PITCH` is one
+  half of a pair that shares a `SOUNDS` file, so the check writes itself — find the partner,
+  assert the sign, and assert the gravest loss is the furthest from 1.0. That is
+  `enumerate-the-pairs` on a table that is literally pairs.
+- **The options panel is exactly full, and the next audio idea needs a row.**
+  `OptionsScreen.PANEL` (`game/options_screen.gd:109`) is sized from the row count on
+  purpose, and its own header does the arithmetic: three rows from `ROWS_TOP` 256 at
+  `ROW_HEIGHT` 48 put the last button's foot at 392 against a footer starting at 440, so the
+  gap is 48. `OverlayScreen.FOOTER_GAP` is 24 (`game/overlay_screen.gd:92`). **A fourth row
+  puts the foot at exactly 440 — gap 0 — and trips the rule.** That is the good kind of
+  wall, and it means "add a volume slider" is a panel-geometry decision before it is an
+  audio one. Worth choosing the way out now (grow the panel, or split audio onto its own
+  screen the way Keys already is) rather than while holding a feature.
+
 ### New this cycle (73) — twenty-two named beats, eleven sounds
 
 - **Two pairs of sounds are literally indistinguishable, and in both a bad thing sounds
