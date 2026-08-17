@@ -50,6 +50,17 @@ const MUTATION_CHANCE_MAX: float = 0.85
 ## than a bigger one: a hungry winged aphid ignores the Chomp AND eats what it reaches, and
 ## the answer to it is a different arrangement of plants, not more of them.
 ##
+## **That "eight kinds" is now a fact about ENDLESS only, and the asymmetry is the point.**
+## The campaign gained a third ordinary species when the Shield Bug entered the table at
+## waves 15 and 21 (plant-tower-defense-pdri), so a campaign player meets three species x
+## three mutations plus plain — twelve kinds, not eight. `_endless_groups` still sends
+## aphids and beetles and nothing else, so the paragraph above is unchanged where it is
+## actually about: past the table, the mix rotates between two species forever and the
+## twelfth kind is one more thing an endless run stops showing you. Deliberately not
+## "fixed" by adding the Shield Bug to the endless mix — the swarm and the column sum to
+## SIMULTANEOUS_PEST_CEILING exactly (see ENDLESS_APHID_SHARE), so a third endless group
+## needs a third road share and all four constants re-derived together.
+##
 ## Kept deliberately late and rare. It starts a full campaign's worth of waves after single
 ## mutations do, and it is a roll ON TOP of a pest that already mutated, so its real
 ## frequency is `mutation_chance_for(wave) * SECOND_MUTATION_CHANCE` — under 3% at the
@@ -136,9 +147,17 @@ const ENDLESS_SPEED_MAX: float = 1.6
 ## reason those six waves were inserted in front of the finale rather than added
 ## after it. The finale is the same row it always was; it still peaks at 40, and
 ## the sweep still finds the worst wave there. The six new rows peak at 37, 35,
-## 34, 33, 38 and 37 — the closest, wave 20, sits two under the bound with a
-## queen's brood already counted in. See WAVES' header for why "in front of"
+## 34, 33, 38 and 38 — the closest, waves 20 and 21, sit two under the bound with
+## a queen's brood already counted in. See WAVES' header for why "in front of"
 ## rather than "after" was forced rather than chosen.
+##
+## It did not move for the Shield Bug either (plant-tower-defense-pdri), and that
+## is the same story a third time. Waves 15 and 21 gained a plated group and each
+## PAID for it in beetles rather than being allowed to grow: 15 went 35 -> 37
+## pests and 21 went 37 -> 38, both still under the bound, and the finale was left
+## untouched at 40 of 40 and 418 points of base health. Putting the species in the
+## finale instead would have been the obvious place for it and was rejected on
+## arithmetic — see WAVES' header for the 8-of-18.7 that would have cost.
 const SIMULTANEOUS_PEST_CEILING: int = 40
 
 ## How that ceiling is split between the wave's two groups. They sum to it
@@ -214,9 +233,10 @@ const MUTATION_THREAT_WEIGHT: float = 0.6
 ## thicken the beetle column against a swarm that no longer grows. 12 is the
 ## first Aphid Queen, and the wave is deliberately the LIGHTEST of the late
 ## waves by headcount (23 pests) so the boss is the thing the player is looking
-## at rather than one more silhouette in a crowd. 13 and 15 are pure pressure
-## waves that give the garden a wave to buy in. 14 puts a queen behind a beetle
-## column, so she arrives while the cobs are already busy.
+## at rather than one more silhouette in a crowd. 13 is a pure pressure wave that
+## gives the garden a wave to buy in. 14 puts a queen behind a beetle column, so
+## she arrives while the cobs are already busy. 15 is the Shield Bug's debut —
+## see its own note on the row.
 ##
 ## -- The third movement: 16-21, the run-up (plant-tower-defense-eeaq) ---------
 ##
@@ -265,7 +285,63 @@ const MUTATION_THREAT_WEIGHT: float = 0.6
 ##       queen precisely so the weather lands. The campaign used to contain
 ##       exactly one drought (wave 7, against 19 pests); this is its second, and
 ##       it falls on the second-heaviest wave in the game. A garden built exactly
-##       to spec does not clear it; one built over spec does.
+##       to spec does not clear it; one built over spec does. It is also the
+##       Shield Bug's second and last campaign appearance, and the pairing is the
+##       reason it is here rather than anywhere else in the run-up: drought
+##       doubles a plant's firing INTERVAL (WEATHER_DROUGHT_INTERVAL_SCALE) while
+##       a plate eats whole kernels, so the two failures stack on exactly one
+##       plant — the Corn Cobbler — and on none of the three answers to it. A
+##       Chomp's `chew_seconds` and a Dandelion's blast radius are not rates and
+##       the weather does not touch them. This is the one wave in the campaign
+##       where "which plant answers this lane" is asked with both hands.
+##
+## -- The Shield Bug enters at 15 and 21 (plant-tower-defense-pdri) -------------
+##
+## The species shipped a cycle before it was in any wave, deliberately, so that it
+## could land and be tested before it moved the difficulty curve. This is that
+## second half, and both halves of it are arithmetic.
+##
+## WHICH WAVE. Its whole point is that a Corn Cobbler cannot hurt it — a level-1
+## cob's 1.0 kernel is under `shell_absorb` 1.5 and so are all three of its
+## upgrades, so a corn-only lane does literally nothing to one for six hits. That
+## makes it a decision only for a player who owns something else, and a wall for
+## one who does not, so it belongs after the Chomp Flower and the Bomb Dandelion
+## are realistically OWNED rather than merely purchasable. Chomp is tier 1 at 15
+## seeds and is the only tier-1 plant a 20-seed common packet can roll, so it is
+## effectively guaranteed early; the Dandelion is tier 3 at 45 seeds and reachable
+## only through a 90-seed epic packet, which is the late one. Cycle 101 played the
+## campaign end to end on two opposed seed policies and BOTH had all seven plants
+## unlocked by wave 7 (log-devtools.md, cycle 101). Wave 15 leaves eight waves of
+## income on top of that before the plate is ever seen, which is the margin that
+## makes it a decision.
+##
+## Wave 15 also cost the least written design of any row in that band: it and 13
+## were the campaign's two "pure pressure" rows, the only ones in the second
+## movement with no idea of their own. One of them was free to become one.
+##
+## WHAT IT DISPLACES, and why NOT the finale. The obvious home for a new species
+## is wave 22, and it is the one place it cannot go cheaply. The finale is at 40
+## of 40 on the road, so anything added there displaces a body; and it sits 18.7
+## points of base health under the 436.7 seam bound (ENDLESS_BEETLE_BASE has the
+## derivation), which is the campaign's scarcest resource and the entire reason
+## plant-tower-defense-eeaq inserted six waves in FRONT of the finale instead of
+## after it. The cheapest legal finale carrying three plated bugs was -1 beetle
+## -2 aphids +3 shieldbugs = 426 points, which spends 8 of those 18.7 — 43% of the
+## headroom the next balance pass has to work in — and it would also have made
+## wave 20 four groups' worth of rehearsal for a four-group finale. Rejected on
+## price. The finale is byte-for-byte the row it always was.
+##
+## So both appearances pay in beetles, on rows that had slack:
+##   15  -2 beetles, +4 shieldbugs. 300 -> 308 points of base health (+2.7%),
+##       35 -> 37 pests, peak 35 -> 37 of 40. The step in from 14 goes +2.0% ->
+##       +4.8%, which moves the campaign's flattest join off its floor.
+##   21  -2 beetles, +3 shieldbugs. 397 -> 395 points (-0.5%), 37 -> 38 pests,
+##       peak 37 -> 38 of 40. This row gets LIGHTER in health and heavier in play,
+##       which is not a contradiction — see _raw_threat, which prices a Shield Bug
+##       at its 10 points of health and cannot see the plate at all.
+## Both are placed LAST in their wave on purpose. The swarm and the column have
+## already pulled every cob down-lane by then, so the plated group arrives at the
+## one moment the answer to it is a plant the player either has or does not.
 ##
 ## Every row here is checked, not eyeballed:
 ##   * peak_simultaneous_pests() stays inside SIMULTANEOUS_PEST_CEILING for all
@@ -275,9 +351,13 @@ const MUTATION_THREAT_WEIGHT: float = 0.6
 ##     see SIMULTANEOUS_PEST_CEILING for why endless no longer is, and for the
 ##     six new rows' own peaks;
 ##   * threat_for() rises strictly wave over wave, across the seam into endless
-##     and out to wave 300. The six new rows are +19, +20, +16, +17, +8 and +17
+##     and out to wave 300. The six run-up rows are +11, +20, +16, +17, +8 and +15
 ##     points of base health apart, i.e. about one beetle each, which is the same
-##     step endless itself takes forever;
+##     step endless itself takes forever. (The first and last of those six moved
+##     when the Shield Bug landed: wave 15 rose 300 -> 308 so 16's step shrank,
+##     and wave 21 fell 397 -> 395 so its own step shrank and the finale's grew.
+##     Both are still inside the +2.0% to +13.6% band every row from 9 to 22 sits
+##     in — see the note on wave 8.);
 ##   * health_scale_for/speed_scale_for/mutation_chance_for are untouched — they
 ##     key off `wave - WAVES.size()`, so growing the table moved the whole
 ##     endless ramp six waves later by construction rather than by edit.
@@ -361,9 +441,20 @@ const WAVES: Array[Array] = [
 		{"species": &"beetle", "count": 10, "gap": 1.00, "lead": 2.0},
 		{"species": &"aphid", "count": 18, "gap": 0.30, "lead": 1.5},
 	],
+	# The Shield Bug's debut (plant-tower-defense-pdri). Four of them, arriving
+	# after the swarm and the column rather than mixed into either, because a new
+	# species the player cannot pick out of a crowd teaches nothing — the same
+	# reason wave 12 is the lightest of the late waves.
+	#
+	# Four is what makes the lesson land instead of merely occur: `shell_hits` is
+	# 6, so four plated bugs eat 24 consecutive kernels, which is 19.2 s of a
+	# level-1 cob's whole output for zero damage. One or two would read as bad
+	# luck. The two beetles they cost keep the row inside its window (base health
+	# must stay above wave 14's 294 and below wave 16's 319; it lands at 308).
 	[
 		{"species": &"aphid", "count": 20, "gap": 0.26, "lead": 0.5},
-		{"species": &"beetle", "count": 15, "gap": 0.90, "lead": 1.5},
+		{"species": &"beetle", "count": 13, "gap": 0.90, "lead": 1.5},
+		{"species": &"shieldbug", "count": 4, "gap": 1.20, "lead": 2.0},
 	],
 	# -- 16-21: the run-up (plant-tower-defense-eeaq) ------------------------
 	# Two columns with the swarm between them. The beetle groups are identical
@@ -409,9 +500,18 @@ const WAVES: Array[Array] = [
 	# than a choice about pacing: weather_for skips drought on any wave
 	# wave_carries_boss() answers true for, so a queen added to this row would
 	# silently delete the campaign's second drought and nothing would report it.
+	# The Shield Bugs below do NOT threaten that — `wave_carries_boss` asks for
+	# Pest.QUEEN specifically, and a plated bug is an ordinary pest.
+	#
+	# Three rather than the debut's four, and two beetles paid for them: the row
+	# drops from 397 to 395 points of base health and still clears wave 20's 380.
+	# It is genuinely harder than that number for the reason this wave exists —
+	# under drought a cob's kernels arrive half as often AND bounce, so the
+	# stacked failure is on one plant and the answers to it are untouched.
 	[
-		{"species": &"beetle", "count": 22, "gap": 0.85, "lead": 0.5},
+		{"species": &"beetle", "count": 20, "gap": 0.85, "lead": 0.5},
 		{"species": &"aphid", "count": 15, "gap": 0.28, "lead": 1.5},
+		{"species": &"shieldbug", "count": 3, "gap": 1.30, "lead": 1.5},
 	],
 	# The finale. Two queens six seconds apart: far enough that the garden
 	# cannot simply overlap its answer to both, close enough that the first
@@ -770,6 +870,20 @@ static func groups_for(wave: int) -> Array:
 ## formula blind to it can only over-state a wave, never under-state one, and a
 ## threat number that fell because a wave was spread out would be reporting the
 ## fix as a difficulty cut.
+##
+## **The second thing it cannot read is the Shield Bug's plate, and that one IS an
+## under-statement.** A plated bug is priced at its 10 points of health like any
+## other pest, while `shell_hits` 6 blocked hits are work a lane has to do and get
+## nothing for. So waves 15 and 21 are harder than the number on the bar, by an
+## amount that depends on which plants the player owns — which is exactly why it
+## is not fixable here. A fudge factor would have to guess the garden, and the
+## paragraph above is the standard this function is held to: it may over-state a
+## wave, never under-state one. This is the one place it does, it is bounded (two
+## rows, seven pests), and it is written down rather than corrected.
+##
+## Note the claim in the paragraph above — "there is no way to make an endless
+## wave harder that this function cannot see" — is untouched by that, and stays
+## exactly true, because `_endless_groups` sends aphids and beetles only.
 static func _raw_threat(wave: int) -> float:
 	var total: float = 0.0
 	for group: Dictionary in groups_for(wave):

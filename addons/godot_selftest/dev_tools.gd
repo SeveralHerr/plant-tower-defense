@@ -287,7 +287,11 @@ func _ready() -> void:
 	_register_generic_handlers()
 	_load_extension()
 
-	_passive = _is_script_run()
+	# An exported build (any template: web, desktop, mobile) is a player's copy. The
+	# bus must not poll and the entry_hook must not fire there - the hook that skips
+	# the title screen for /verify skipped it for every itch.io player (upstream #58).
+	# `-- --devtools-force` on a template opts back in for driving a real export.
+	_passive = _is_script_run() or (OS.has_feature("template") and not _has_cmdline_flag("--devtools-force"))
 	if not _passive:
 		_clear_stale_files()
 		_write_owner_file()
@@ -318,6 +322,13 @@ func _ready() -> void:
 ## `godot --script X` / `-s X` brings the autoloads up with no main scene; that is
 ## every shipped runner. Read from the ENGINE args (not user args after `--`), which
 ## is where the flag lives.
+func _has_cmdline_flag(flag: String) -> bool:
+	for a: String in OS.get_cmdline_user_args():
+		if a == flag:
+			return true
+	return false
+
+
 func _is_script_run() -> bool:
 	var args: PackedStringArray = OS.get_cmdline_args()
 	for i: int in args.size():
