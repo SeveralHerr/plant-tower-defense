@@ -51,6 +51,7 @@ const ACTION_MUTE_SFX := &"garden_mute_sfx"
 const ACTION_MUTE_MUSIC := &"garden_mute_music"
 const ACTION_RESTART := &"garden_restart"
 const ACTION_COLORBLIND := &"garden_colorblind"
+const ACTION_SPEED := &"garden_speed"
 const ACTION_PAGE_PREV := &"garden_page_prev"
 const ACTION_PAGE_NEXT := &"garden_page_next"
 const ACTION_BACK := &"garden_back"
@@ -87,6 +88,21 @@ const ACTIONS: Array[Dictionary] = [
 		"action": ACTION_COLORBLIND,
 		"does": "colourblind-safe health and threat bars",
 		"defaults": [KEY_C],
+		"scope": SCOPE_RUN,
+	},
+	{
+		# Last of the run-scope rows, so the block stays contiguous: `actions_in`
+		# preserves table order and both the pause card's legend and the Keys
+		# screen's rows are drawn from it.
+		#
+		# F rather than Space: Space is `ui_accept`, so it fires whichever HUD button
+		# currently holds focus, and a verb that sometimes grows a wave instead of
+		# speeding one up is worse than no shortcut. F is unbound here and is what a
+		# fast-forward is called everywhere else.
+		"action": ACTION_SPEED,
+		# Names both directions, because it is one control: see GameSpeed.STEPS.
+		"does": "run the garden faster, or slower",
+		"defaults": [KEY_F],
 		"scope": SCOPE_RUN,
 	},
 	{

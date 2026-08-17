@@ -26,6 +26,12 @@ const UPROOT_CONFIRM_SECONDS: float = 4.0
 ## quitting: the sole scene change in the project ran the other way, title into
 ## game, and R reloaded the run without ever offering the menu.
 const TITLE_SCENE := "res://game/title.tscn"
+## The HUD signal the top bar's speed button rings. Named because it is reached by
+## STRING rather than by member access — see the connect in `_ready` for why — and
+## a signal name typed twice in two files is a signal name that will be typed
+## differently once. `test_the_hud_carries_the_speed_button` asserts this exact
+## StringName is on Hud.
+const SPEED_SIGNAL := &"speed_requested"
 
 ## Every key the run answers to, and what it does — read out of the InputMap, not
 ## written down here.
@@ -267,6 +273,26 @@ func _ready() -> void:
 	# what a bridge session reaches with `run-method`). No devtools VERB wraps it --
 	# see its own header.
 	hud.uproot_requested.connect(arm_uproot)
+	# The one connection in this list written through `connect(name, ...)` rather
+	# than `signal.connect(...)`, and the reason is a merge, not a style: the speed
+	# BUTTON lives in hud.gd, which the change that added the speed verb does not
+	# own. A direct `hud.speed_requested.connect(...)` is a parse error until that
+	# button lands, and a parse error in game.gd takes every other test in the
+	# project down with it.
+	#
+	# What it must NOT become is silence. A guarded connect that quietly skips is
+	# exactly the dead-code shape this whole feature could ship as: keyboard verb
+	# working, every gate green, no button anywhere. So the miss is an error on
+	# stderr — which the suite reads as `[ERR]` — and
+	# `test_the_hud_carries_the_speed_button` is a named red row until it is fixed.
+	#
+	# DELETE THIS BRANCH once hud.gd declares `signal speed_requested`; the guard
+	# has no job after that.
+	if hud.has_signal(SPEED_SIGNAL):
+		hud.connect(SPEED_SIGNAL, _on_speed_requested)
+	else:
+		push_error(("Hud declares no `%s` signal, so the garden speed control has no "
+			+ "button — the keyboard verb still works. See game_speed.gd.") % SPEED_SIGNAL)
 
 	_prep_left = PREP_SECONDS
 	_refresh()
@@ -294,9 +320,25 @@ func _process(delta: float) -> void:
 	run_seconds += delta
 	_check_wave_cleared()
 	if not _wave_live and director.has_more_waves():
+		# `delta` is already scaled by Engine.time_scale, so the prep countdown runs
+		# at whatever GameSpeed is set to and the HUD's prep strip — which renders
+		# `prep_left`/`prep_total` straight out of state() — cannot disagree with it.
+		# That is the constraint the speed control had to satisfy and it is satisfied
+		# by the strip never having had a clock of its own.
 		_prep_left -= delta
 		if _prep_left <= 0.0:
 			start_next_wave()
+
+
+## `Engine.time_scale` is engine state and outlives every scene. A run left at 2x
+## by a reload, a return to the title, or the window closing would hand its speed
+## to whatever came next, with nothing in that scene's code to explain it.
+##
+## One caller covering every exit, rather than a `reset()` remembered at the three
+## sites that leave a run — the fourth site is the one that forgets, and this is a
+## defect nobody would look for in the scene they end up in.
+func _exit_tree() -> void:
+	GameSpeed.reset()
 
 
 # -- waves ------------------------------------------------------------------
@@ -959,6 +1001,11 @@ func _end_run(_banner: String) -> void:
 	# more than once in a frame (a losing escape also clears the pest group).
 	if _summary != null and is_instance_valid(_summary):
 		return
+	# The run is over, so the speed the player picked for it is over too — and the
+	# post-mortem card built ten lines down animates, on the same doubled clock the
+	# pause card is protected from. `reset()` rather than `hold()`: there is nothing
+	# left to come back to, and a restart from this screen must start at 1x.
+	GameSpeed.reset()
 	# Behind the idempotency guard rather than at the top of _end_run: both end
 	# paths can be reached twice in a frame, and the run-ender is the one cue in
 	# the game long enough for a doubled play to be audible as a doubled play.
@@ -1024,6 +1071,36 @@ func bank_score() -> bool:
 	return RunConfig.record_score(bank.seeds_earned_total)
 
 
+## The top bar's speed button, as opposed to the speed itself.
+##
+## Same split as `_on_next_wave_requested` / `start_next_wave`: the press pays for
+## the click cue, the mutator underneath stays unguarded for the keyboard verb, the
+## tests and the bridge. A speed change that happened because somebody pressed F
+## must not sound like a button.
+func _on_speed_requested() -> void:
+	Sfx.play(Sfx.BUTTON_PRESSED)
+	cycle_speed()
+
+
+## Advances the garden's playback speed one step and redraws the button that says
+## so. Returns the speed now running, so a caller does not have to ask twice.
+##
+## Deliberately does NOT reset between waves. A player who asked for a faster
+## garden asked about the run, not about this wave, and a control that quietly puts
+## itself back every 20 seconds is one the player has to keep re-pressing — the prep
+## gap, an 18-second countdown with nothing to do in it, is where fast-forward is
+## wanted most. It resets on the run ENDING (`_end_run`) and on leaving the scene
+## (`_exit_tree`), and parks at 1x for the pause card (`pause_run`); those are the
+## three places the speed stops being about a run in progress.
+func cycle_speed() -> float:
+	var now: float = GameSpeed.cycle()
+	# Immediately rather than at the next state change: nothing else on the top bar
+	# has to move for the button's own face to be wrong, and a speed toggle whose
+	# readout lags a press is a toggle the player presses twice.
+	_refresh()
+	return now
+
+
 ## Holds the run still. The prep countdown, the wave spawner, every plant timer
 ## and every pest all live on the paused tree, so one flag stops all of them --
 ## which is the point: a hand-rolled "paused" bool would have to be checked in
@@ -1059,6 +1136,15 @@ func pause_run() -> void:
 		# scene, so it would survive the change and freeze the title screen.
 		get_tree().paused = false
 		get_tree().change_scene_to_file(TITLE_SCENE))
+	# THE PAUSE CARD READS AT 1x. Its fades run on the paused tree — that is the
+	# whole point of the PROCESS_MODE_ALWAYS four lines up — and `Engine.time_scale`
+	# scales a Tween whether or not the tree is paused, so a run held at 2x would
+	# dissolve its own card in half the time it was tuned for. `hold()` parks the
+	# player's choice rather than discarding it; `resume_run` puts it back.
+	#
+	# After the connects, before `paused = true`, so the card is built and wired at
+	# the speed it will be drawn at.
+	GameSpeed.hold()
 	get_tree().paused = true
 
 
@@ -1076,6 +1162,11 @@ func resume_run() -> void:
 	repaint_for_palette()
 	if _pause_screen != null and is_instance_valid(_pause_screen):
 		await _pause_screen.play_exit()
+	# AFTER the fade, not before: play_exit() is the card's own tween and it is the
+	# last thing that has to run at 1x. Restoring the player's speed here means the
+	# frame the board comes back to life on is the first one that is sped up, which
+	# is the frame they asked for it on.
+	GameSpeed.release()
 	get_tree().paused = false
 	if _pause_layer != null and is_instance_valid(_pause_layer):
 		_pause_layer.queue_free()
@@ -1611,6 +1702,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		hud.show_message(
 			"Colourblind-safe bars on." if safe else "Colourblind-safe bars off.", 2.5)
 		repaint_for_palette()
+		return
+	# The designer's "faster button", and the backlog's slow mode, as one verb —
+	# see GameSpeed.STEPS.
+	#
+	# NO show_message here, and the omission is a decision rather than an oversight:
+	# the top bar's speed button is the readout, and it changes on the same
+	# _refresh() this triggers. A message would be a second copy of the same fact,
+	# and — the half that actually settled it — every string that reaches that row
+	# has to be priced in `Hud.message_corpus()` or `message_corpus_check` is right
+	# to call it an unpriced producer. A readout the player is already looking at
+	# beats a line that has to be budgeted to say the same thing.
+	if event.is_action_pressed(KeyBindings.ACTION_SPEED):
+		cycle_speed()
 
 
 ## Every bar the colourblind ramp reaches, repainted now rather than at whatever
@@ -1888,6 +1992,16 @@ func state() -> Dictionary:
 		# deriving it here would show the next wave's weather during the prep gap --
 		# announcing a drought before it applies to anything.
 		"weather": weather,
+		# The speed the PLAYER chose, and its two rendered forms. The HUD keeps no
+		# second copy of any truth (see hud.gd), so the button's face and its tooltip
+		# are handed to it the same way every other readout is.
+		#
+		# `GameSpeed.scale()` and not `Engine.time_scale`: while the pause card is up
+		# they differ on purpose, and the button must keep saying what the player
+		# picked rather than flicking to "1x" behind a card that is covering it.
+		"game_speed": GameSpeed.scale(),
+		"game_speed_label": GameSpeed.label(),
+		"game_speed_tooltip": GameSpeed.button_tooltip(),
 	}
 
 
