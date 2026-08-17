@@ -1,4 +1,4 @@
-# Cycle 86
+# Cycle 87
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,48 +6,48 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 86 taught
+## What cycle 87 taught
 
-**A bitten plant flinches now** — the third word of the standing animation ask, after sway
-and breathe. Every idle motion in the game was a continuous sinusoid, so nothing on the board
-was ever startled: a bed being eaten looked exactly like one that was not, and the only tell
-was a health bar the player has to already be looking at.
+**"Unobservable" was a claim about the medium, not about the pipeline.** A hard-won kill now
+sounds like one — `PEST_KILLED_HARD`, the same impact pitched 1.12 at −1.5 dB, routed by the
+pest's own `husk_multiplier()` so a fourth mutation is audible the day it is added. I nearly
+skipped the runtime pass on the reasoning that a muted session cannot verify a sound.
 
-**Re-arming beat modelling a duration.** A hungry pest calls `take_damage` every physics
-frame, so the flinch is re-armed rather than accumulated — a sustained shudder while eaten and
-a decay afterwards, out of three lines and no state machine. That per-frame call was already
-load-bearing for `_quiet_time` and for the bite sound's throttle; it did a third job for free.
-**A per-frame trigger you already have beats a duration you have to model.**
+It can. The voice pool is **real nodes** under `/root/SfxPool`, so the whole path reads back:
+a 3.0× pest tuned `Voice0` to `pitch_scale 1.12` at `-1.5 dB`, exactly the table row. And the
+plain kill afterwards **reused `Voice0`** and retuned it to 1.0 at −3.0 — the pooled-voice
+staleness hazard `tune_voice` writes unconditionally to prevent, argued in cycle 74 and never
+once watched until now. **Don't ask whether you can perceive the effect; ask what the last
+readable value before it is.**
 
-**And the same seam bit for the second cycle running.** A mutation replacing the flinch term
-at the draw site with `0.0` passes every headless test, because they assert the pure function
-and not the rotation it feeds — precisely how cycle 85's coordinate bug shipped. Closed by
-hand with numbers: sway alone holds the pivot within ±0.014 rad, a bite swings it to **+0.130**
-and decays. `-a155` splits the cheap half out of `-6e2e`: **a property read beats a pixel probe
-wherever the drawn thing is a transform**, and only `draw_*` canvas cues need sampling.
+**And the seam pattern has four instances, so it stopped being a lesson.** `spread_arc_span`,
+`uproot_shows_tip`, `tune_voice` and now `kill_event_for` all exist because a mutation
+survived a test that asserted the *inputs* to a decision rather than the decision. Three were
+earned the expensive way; this one was taken after a single survival. `-jmxb` rewrites the
+skill to lead with the pre-emptive question — **before writing a ternary at a call site, ask
+whether a test could name the thing that decides.**
+
+## Carried from cycle 86
+
+A bitten plant flinches — the third word of the animation ask. **A per-frame trigger you
+already have beats a duration you have to model**: `take_damage` is called every physics
+frame by an eating pest, so re-arming gives a sustained shudder and a decay in three lines.
 
 ## Carried from cycle 85
 
-A user's screenshot found what 587 tests could not: sole-cover rings drawing **72 px high**
-because `cell_to_world` is board-local and `to_local` measures from the viewport. Enumerating
-its callers found a second instance in the placement preview. **Nothing checks the board** —
-`ui_layout` reads Control rects and every board cue is a `Node2D` draw call.
-
-## Carried from cycle 84
-
-Weather is drawn on the ground it applies to, after the top bar was found to have refused it
-in cycle 17 **with the measurement attached**. A refusal with numbers is a design document,
-and `verify-bd-item`'s `confirm` now searches the queue as well as the code.
+A user's screenshot found what 587 tests could not: cues drawing **72 px high** because
+`cell_to_world` is board-local and `to_local` measures from the viewport. **Nothing checks
+the board** — `ui_layout` reads Control rects and every board cue is a `Node2D` draw call.
 
 ## Where things stand
 
-A hundred and twenty-seven beads ready. Still on harness **0.38.0** deliberately (`-ny3h`
-blocked on gh#43). Suite **589/589**, 12790 assertions; lint 0/0; eleven checkers clean;
-findings 0/4; FPS 122.3. Thirteen skills. Upstream gh#44, gh#49, gh#50 open.
+A hundred and twenty-nine beads ready. Still on harness **0.38.0** deliberately (`-ny3h`
+blocked on gh#43). Suite **591/591**, 12809 assertions; lint 0/0; eleven checkers clean;
+findings 0/4. Thirteen skills. Upstream gh#44, gh#49, gh#50 open.
 
-**The user asked twice for player-facing work**, so `-6e2e` was claimed and released rather
-than done — still the right P1, still earned, but it is tooling. Cycles 84, 85 and 86 all
-shipped something a player sees.
+**The player-facing steer is standing.** Cycles 84-87 all shipped something a player sees:
+weather on the ground, a coordinate fix a player reported, a flinch, a harder kill sound.
+`-6e2e` and `-a155` are the board-check P1s, both released rather than done.
 
 **The workflow gained an intent line this cycle, written by the user**: keep it simple and
 meaningful, reflect on game/tools/workflow/skills, and — asked for directly — **bias step 2

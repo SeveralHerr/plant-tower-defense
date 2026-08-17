@@ -247,6 +247,37 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (87) — the mixer has a scale now, and one thing left off it
+
+- **Every event in the game is priced except the two that arrive together.** `Sfx.PITCH`
+  (`game/sfx.gd:229`) now carries six entries on a stated scale — losses below the base,
+  gains above, magnitude by how grave the event is — and `PEST_KILLED_HARD` is the first
+  entry added by reading a value the game already computes rather than by someone deciding a
+  number. What is still flat: **a kill and the husk it drops are two sounds for one event**,
+  `PEST_KILLED` then `HUSK_COLLECTED` a moment later when the player sweeps it, and the husk
+  pays 1.5× or 3× while sounding identical every time. `HuskLayer` already knows the value —
+  `radius_for` and `glow_for` both read it (`game/husk_layer.gd:31`, `:44`) — so the seam is
+  there. The question worth asking first is whether the player can even tell two pitches
+  apart *across* the gap between a kill and a sweep, which is seconds, not milliseconds.
+- **Voices are pooled and now demonstrably re-tuned, which makes a per-play axis safe.**
+  Cycle 74 wrote every voice property unconditionally on the argument that a pooled voice
+  carries the last event's values forward; cycle 87 watched `Voice0` go 1.12 → 1.0 across two
+  kills and confirm it. That removes the objection to a **per-play** variation the tables
+  cannot express: a tiny random pitch jitter on the most repeated sounds (`CORN_FIRED` fires
+  every 0.62 s at level 3, `PEST_KILLED` up to forty times a wave) is the standard fix for
+  machine-gun sameness, and it is now provably safe to apply at `tune_voice` because nothing
+  downstream inherits it. Note the tension to resolve before building: a jitter would make
+  `test_no_two_events_are_the_same_sound` a statement about the TABLE rather than about what
+  the player hears, and that test is currently the only thing keeping two events apart.
+- **Four seams have now been extracted for the same reason and the fifth was taken up front.**
+  `CornCobbler.spread_arc_span`, `Hud.uproot_shows_tip`, `Sfx.tune_voice` and
+  `Sfx.kill_event_for` all exist because a mutation survived a test that asserted the INPUTS
+  to a decision rather than the decision. The fourth was earned the same way; the fifth
+  (`kill_event_for`) was reached for after one survival rather than after a cycle of
+  argument. **A pattern with four instances is not a lesson any more, it is a default** — the
+  cheapest version of `extract-a-testable-seam` is to ask, before writing a ternary at a call
+  site, whether a test could name the thing that decides.
+
 ### New this cycle (86) — the garden has three idle motions and one interruption
 
 - **The flinch completes the animation ask and exposes what it does not cover.** Sway,

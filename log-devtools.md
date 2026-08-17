@@ -5595,3 +5595,29 @@ cited in code, and the citation is a mitigation this project has watched fail.
     all. **A property read beats a pixel probe wherever the drawn thing is a transform**, and
     only the cues drawn with `draw_*` into a canvas need sampling. That halves the surface
     `-6e2e` has to cover and makes the easy half genuinely easy.
+
+## 2026-08-17 — Cycle 87: the audible path turned out to be readable after all
+
+- Value: **warranted**, and it overturned the prediction that produced the runtime pass.
+  - Expected: that the audible half would be **unverifiable**. `Sfx.play` is gated, the
+    harness launches with `mute: true`, and there is no audio capture — so I expected to
+    record the runtime portion as thin and say so.
+  - Got: the whole path reads back. The voice pool is **real nodes** under `/root/SfxPool`,
+    so a kill can be inspected: a 3.0× pest tuned `Voice0` to `pitch_scale 1.12` at
+    `-1.5 dB`, exactly `PEST_KILLED_HARD`'s row. Pest → `husk_multiplier` →
+    `kill_event_for` → `play` → `tune_voice` → an `AudioStreamPlayer`, every hop observed.
+  - Found: a bonus the suite could not reach. A plain kill afterwards **reused `Voice0`** and
+    retuned it to 1.0 at −3.0 dB. That is the pooled-voice staleness hazard `tune_voice`
+    writes every property unconditionally to prevent — cycle 74 argued it from the code and
+    nothing had ever watched it happen.
+  - Cheaper: nothing for that half. The suite asserts `tune_voice` composes correctly and
+    structurally cannot say that `play()` reaches it.
+
+- Gap: **no gaps this turn**, and one correction to my own instinct worth recording. I nearly
+  skipped the runtime pass on the reasoning that a muted session cannot verify a sound. That
+  reasoning was about the OUTPUT — nobody can hear it — and the thing worth checking was the
+  **state that produces the output**, which is a node property like any other. **"This is
+  unobservable" is usually a claim about the final medium, and the pipeline feeding it is
+  almost always made of readable values.** The same move applies to anything the harness
+  cannot sense directly: don't ask whether you can perceive the effect, ask what the last
+  readable value before it is. Here it was three hops from the top and one `find-nodes` away.
