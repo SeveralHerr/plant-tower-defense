@@ -59,6 +59,31 @@ minutes of the first run, and they are kept as mutations so they cannot come bac
 
 Both produced FINDINGS rather than silence, which is the good direction to fail in -
 but neither was visible from reading the code, and the fixture is what asked.
+
+THE SECOND RULE (added later): a producer's bool VARIANTS, not just its call sites.
+
+The rule above answers "does every show_message() call site resolve to the corpus". It
+does not answer "is every string a producer can EMIT in the corpus". A producer with N
+bool parameters emits 2**N strings and the budget prices only the ones somebody typed -
+which is the same subset-pricing defect this file exists to end, one level down.
+
+`uproot_armed_message` grew a `with_tip` flag and the omission was caught by an
+ARITHMETIC accident: a sibling test counts corpus entries per plant and the number moved
+from 3 to 4. Nothing checked the thing itself. Running the new rule for the first time
+immediately found `next_wave_note(number, pests, boss, weather, last)` - two bools,
+priced once of four.
+
+Waivable, because "one combination dominates" is often true and worth recording rather
+than padding the corpus to satisfy a counter. next_wave_note IS waived: both flags only
+ever `parts.append()`, never substitute, so (true, true) strictly dominates - checked in
+the body, not assumed. The waiver may sit on the call's own line or in the comment block
+directly above it, since a reason worth reading is usually several lines long.
+
+    fixture:   7 more cases, 13 assertions - no bools / 2 of 2 priced / 1 of 2 / 1 of 4 /
+               waived inline / waived in the block above / a waiver separated by real
+               code must NOT drift down onto a later call
+    mutations: 5, all red - count bools as zero, want 1 instead of 2**N, ignore the
+               waiver, let the waiver drift across code, drop variants from the exit code
 """
 
 from __future__ import annotations
@@ -181,6 +206,64 @@ def corpus_from(blanked: str, raw: str) -> tuple[set[str], set[str], str]:
     return producers, literals, ""
 
 
+def bool_variant_findings(blanked: str, raw: str) -> list[tuple[str, int, int, int]]:
+    """[(producer, bool params, appearances, wanted)] for producers priced too few times.
+
+    A producer with N bool parameters can emit 2**N different strings, and the row's
+    budget prices only the ones somebody typed into the corpus. `uproot_armed_message`
+    grew a `with_tip` flag in cycle 61 and the omission was caught by an ARITHMETIC
+    accident -- a sibling test counts entries per plant and the number moved from 3 to
+    4. Nothing was checking the thing itself, which is the same subset-pricing defect
+    the corpus was built in cycle 52 to end, one level down.
+
+    Live example at the time of writing: `next_wave_note(number, pests, boss, weather,
+    last)` has TWO bools and appears once. Whether `(true, true)` dominates the other
+    three is a real argument -- both flags only ADD clauses -- but it was an argument
+    nobody had written down, which is exactly the state this tool exists to convert
+    into either a fix or a stated reason.
+
+    Waivable per corpus line, because "one combination dominates" is often true and is
+    worth recording rather than padding the corpus to satisfy a counter.
+    """
+    at = blanked.find("func %s(" % CORPUS_FUNC)
+    if at < 0:
+        return []
+    end = blanked.find("\nfunc ", at + 1)
+    end = end if end > 0 else len(blanked)
+    body_blank, body_raw = blanked[at:end], raw[at:end]
+    out: list[tuple[str, int, int, int]] = []
+    for name in sorted(set(CORPUS_CALL.findall(body_blank))):
+        sig = re.search(r"func\s+%s\s*\(((?:[^)]|\n)*)\)" % re.escape(name), blanked)
+        if sig is None:
+            continue
+        bools = len(re.findall(r":\s*bool\b", sig.group(1)))
+        if bools == 0:
+            continue
+        wanted = 2 ** bools
+        seen, waived = 0, False
+        blank_lines, raw_lines = body_blank.split("\n"), body_raw.split("\n")
+        for i, line_blank in enumerate(blank_lines):
+            if not re.search(r"\b%s\s*\(" % re.escape(name), line_blank):
+                continue
+            seen += 1
+            # The waiver may sit on the call's own line OR in the comment block
+            # immediately above it. A reason worth reading is usually several lines
+            # long -- the one this rule was written for cites the two `parts.append`
+            # calls that make one combination dominate -- and forcing it onto the end
+            # of a call line would either truncate it or wrap it illegibly. Walk back
+            # over contiguous comment lines only, so a waiver cannot drift down from
+            # an unrelated block further up.
+            for j in range(i, -1, -1):
+                if WAIVER.search(raw_lines[j]):
+                    waived = True
+                    break
+                if j < i and not raw_lines[j].lstrip().startswith("#"):
+                    break
+        if not waived and seen < wanted:
+            out.append((name, bools, seen, wanted))
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", default=".")
@@ -257,10 +340,12 @@ def main() -> int:
             findings.append((path, line_no, "calls none of the corpus's producers",
                              arg.strip().replace("\n", " ")[:60]))
 
+    variants = bool_variant_findings(strip_comments(hud_raw), hud_raw)
     print("message_corpus_check: %d .gd file(s) under %s, %d %s() call site(s), "
-          "%d waived; corpus declares %d producer(s) and %d literal(s); %d finding(s)"
+          "%d waived; corpus declares %d producer(s) and %d literal(s); "
+          "%d finding(s) + %d unpriced variant(s)"
           % (len(files), args.sources, sites, CALL[:-1], waived,
-             len(producers), len(literals), len(findings)))
+             len(producers), len(literals), len(findings), len(variants)))
     if sites == 0:
         print("  NOTE: nothing to check -- no %s() call site was found at all. That is "
               "a clean result only if this project genuinely has none; if it has some, "
@@ -273,13 +358,25 @@ def main() -> int:
               "checker compares shapes, not text." % CORPUS_FUNC)
         print("  waive: add `# %s: ok - <reason>` on the call's own line -- for text "
               "assembled from data no static caller can reach." % "message-corpus-check")
+    for name, bools, seen, wanted in variants:
+        print("FINDING: %s() takes %d bool parameter(s), so it can emit %d different "
+              "strings, and %s() prices %d of them."
+              % (name, bools, wanted, CORPUS_FUNC, seen))
+        print("  fix: append the missing combination(s) beside the one already there. "
+              "The row's budget measures what the FORMAT allows, so a variant nobody "
+              "typed is a variant nobody priced.")
+        print("  waive: add `# message-corpus-check: ok - <reason>` on that corpus "
+              "line -- \"one combination dominates\" is often true and is worth "
+              "writing down rather than padding the corpus to satisfy a counter. "
+              "It may sit on the call's own line or in the comment block directly "
+              "above it, because a reason worth reading is usually several lines.")
     print("  NOT COVERED: this reads source, not a running tree. It cannot see a "
           "message built at runtime from data (a refusal string, a name from a save), "
           "it does not know the row's WIDTH -- that is the budget's job, and a corpus "
           "can be complete and still too wide -- and it cannot tell whether a corpus "
           "literal is still reachable from anywhere. Nor does it compile: only "
           "import_check.py and lint_project.gd do, and neither is parallel-safe.")
-    return 1 if findings else 0
+    return 1 if findings or variants else 0
 
 
 if __name__ == "__main__":

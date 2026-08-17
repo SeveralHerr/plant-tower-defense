@@ -1674,6 +1674,13 @@ static func message_corpus() -> Array[String]:
 	# Every field at its maximum: a wave number nothing will reach and a pest
 	# count the table cannot produce. A budget is about the worst case the FORMAT
 	# allows, not the worst the game is expected to reach.
+	# message-corpus-check: ok - both bools only ever parts.append(), never substitute
+	# or shorten, so (boss, last) = (true, true) strictly dominates the other three
+	# combinations and pricing them would add three shorter strings for nothing.
+	# Checked in the body above rather than assumed: `if last: parts.append("the last
+	# one")` and `if boss: parts.append("a queen")`. If either flag ever CHANGES a
+	# clause instead of adding one, delete this waiver — the checker will then be
+	# right and this comment will be the reason it was ever wrong.
 	out.append(next_wave_note(999, 9999, true, WaveDirector.WEATHER_DROUGHT, true))
 	out.append(wave_cleared_line(999, wave_cleared_note(9999)))
 	# The literals, from their call sites in game.gd.
