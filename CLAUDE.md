@@ -195,6 +195,17 @@ running a command. **Never write a work checklist into it.**
      **Name which source each came from, in the issue.** This step used to say "out of
      kanban.md's backlog", and that single filename is what made every other source
      invisible for 33 cycles. Never end a cycle with nothing ready.
+   - **Step 3's citation rules apply to a bead description too.** They were written for
+     `kanban.md` and a bead is where the claims actually get acted on: a factual sentence
+     in a description is read by whoever claims it, usually cycles later, and is trusted
+     because it looks like a finding rather than a memory. Three cycles running, an
+     absence claim written into a bead was wrong — "no plant has idle motion" (cycle 70,
+     the wrong enumeration), "`step-time --then-pause` has never been used in 71 cycles"
+     (cycle 71, contradicted by `log-devtools.md:3378`), and both were written in the same
+     breath as filing the item. So: cite the `file:line`, enumerate the pattern, and
+     search for the behaviour rather than for one implementation of it — in the issue, not
+     only in the backlog. A description that says "verified unbuilt" and does not say
+     **how** is a memory wearing a finding's clothes.
    - **An acceptance criterion must be something the closing commit can produce, or you
      have written two beads and filed one.** `-6cqi` asked that two plants at different
      levels be distinguishable on the board "and a screenshot proves it". The code half

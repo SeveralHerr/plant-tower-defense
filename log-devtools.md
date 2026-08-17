@@ -5084,3 +5084,54 @@ cited in code, and the citation is a mitigation this project has watched fail.
   here: pausing is a second command and the tween lands during the round-trip, which is the
   same race. The one that would actually be deterministic is `step-time --then-pause`, and
   it is the verb this project has never once used in seventy-one cycles.
+
+## 2026-08-17 — Cycle 72: walking a tween that polling cannot see
+
+- Value: **warranted**, and the run WAS the deliverable rather than a check on one — see the
+  gap below, because the triage table has no name for that.
+  - Expected: that `step-time --then-pause` would work on a Tween, since every prior use in
+    this log was on `_process`-driven state and the docs promise only "the step lands".
+  - Got: it does, and the contrast is sharper than the question. `CornCobbler._recoil` is
+    0.05 s out and 0.10 s back. Four consecutive `get-state` reads straight after firing it:
+
+    ```
+    _sprite.scale: {"x": 1.0, "y": 1.0}   x4
+    ```
+
+    Four well-formed reads, every one the landed value, **which is exactly what a tween that
+    never ran looks like**. Paused first and stepped 0.03 s at a time it walks cleanly —
+    0.920 → 0.900 → 0.940 → 0.980 — and two independent runs agree to six decimals on
+    samples two through four.
+  - Found: the reason, which is not in any flag description. `_cmd_step_time` waits on
+    **both** clocks — the physics one and the process one, "so idle tweens do too" — which
+    is why it works here and why `set-game-speed` carries no equivalent promise. And the
+    non-obvious operational half: **pause BEFORE creating the tween.** `--then-pause` lifts a
+    pre-existing pause for its own step and re-freezes after, so a tween born frozen is
+    advanced only by the steps you ask for; skip that first `pause` and it runs in wall clock
+    between every command, which is the polling case above.
+  - Cheaper: nothing. The previous cycle tried polling, got lucky on the third attempt, and
+    that luck is worse than a clean failure — a technique that works one time in four teaches
+    you it works.
+
+- Gap: **Phase 0.5's triage table classifies a run by its diff, and an experiment inverts
+  that — the diff is the run's OUTPUT.** This cycle's diff was one Markdown file, which is
+  tier (a): "print 'nothing to verify', write **no** ledger row, log `Value: overkill —
+  avoided: triaged out', and STOP the run here." Every clause is wrong for what happened. The
+  run was not overkill; it was not avoidable; and the ledger — whose stated job is to be the
+  denominator of runs — would carry no record that a full session happened.
+
+  ```
+  commands/verify.md:127
+  | (a) Nothing Godot loads: only docs/`.md` outside code ... | **Nothing** | ... STOP the run here. |
+  ```
+
+  Following it literally would have discarded the finding that polling a short tween fails
+  *silently*. And the case is one the harness's own workflow encourages: `log-devtools.md`
+  asks every turn what was missing from the harness, and finding out usually means driving it.
+  - [G-060] status: open | seen: 1 | harness: 0.38.0 | upstream: gh#50
+  - Improvement: a fifth row — tier (e) **Experiment**, reach not expected, ledger row written
+    with `--no-reach` and `skipped: "experiment; the session produced the diff"`, verdict
+    judged on what the session ESTABLISHED. Plus one line above the table: *classify by what
+    the run is for, not only by what changed.* The distinguishing test is mechanical:
+    **tier (a) if the diff existed before the run was considered; tier (e) if the run came
+    first.**

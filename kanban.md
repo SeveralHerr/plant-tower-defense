@@ -213,6 +213,42 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (72) — eleven animation steps nobody has ever seen run
+
+- **The plants are the only subsystem whose animation timings are magic numbers.**
+  Enumerated over every `tween_property` / `tween_method` / `tween_interval` in `game/`
+  (20 steps, 14 files). Every one outside the plant family names its duration:
+  `PREP_BAR_PULSE_SECONDS` 0.24, `PANEL_RISE_SECONDS` 0.16, `READOUT_PUNCH_SECONDS` 0.16
+  (`game/hud.gd:171`, `:431`, `:445`), `CROSSFADE_SECONDS`, `TURN_SECONDS`, `RISE_SECONDS`,
+  `FLIGHT_SECONDS`, and `Pest`'s `HIT_FLASH_DURATION` 0.10 and `DEATH_LINGER` 0.35 /
+  `DEATH_FADE` 0.15 (`game/pest.gd:214`, `:200`, `:204`) — `Pest` even splits its flash
+  0.35/0.65 *of* the named constant rather than writing two numbers. The five plant
+  flourishes name nothing: `game/plant.gd:272-273` and `:331`, `game/corn_cobbler.gd:183-184`
+  and `:331-332`, `game/chomp_flower.gd:155-156`, `game/dandelion.gd:390-391` are eleven bare
+  literals between 0.05 and 0.18. They are also the ones a designer would most want to tune
+  together, since they are all the same gesture — a squash and a return.
+- **A plant's exit has two headless-free tests; a pest's has none, and the pest's is the
+  one with a bare `tween_interval` in it.** `Plant.play_exit_and_free`
+  (`game/plant.gd:329-332`) frees on the spot when animations are gated off, and
+  `test_a_plant_eaten_down_to_nothing_still_frees_the_node_headless` plus
+  `test_uprooting_plays_its_own_cue_and_still_frees_the_node_headless` (both in
+  `test/unit/test_placement.gd`) exist because that bug shipped twice. `Pest._play_death`
+  (`game/pest.gd:866-882`) takes the other route: it guards `is_inside_tree()`, then queues
+  `tween_interval(DEATH_LINGER)` and a `tween_callback(queue_free)` in **both** branches, so
+  headless it depends on a Tween's interval elapsing rather than on an early return. Nothing
+  asserts it does. Whether that leaks is a measurement nobody has taken — and this is the
+  exact failure class the plant tests were written for, on the object the game creates most.
+- **The flourishes are asserted to start and end at `Vector2.ONE` and never to reach their
+  peak.** The cob's recoil is written to hit `(0.88, 1.14)` (`game/corn_cobbler.gd:183`), the
+  Chomp's bite `(1.18, 0.82)` (`game/chomp_flower.gd:155`), the upgrade `(0.72, 1.34)`
+  (`:331`), the planting pop `(1.12, 1.12)` (`game/plant.gd:272`) — four distinct shapes, and
+  the extreme is the entire content of each. Until cycle 72 that was unobservable: a 0.15 s
+  tween is shorter than a bus round-trip and four consecutive polls all return the landed
+  value. It is observable now (`.claude/skills/read-a-moving-value/SKILL.md`, the walk
+  recipe), so "does the bite actually squash" is a check that can exist. A stepped walk of
+  the recoil reached 0.900 against a written 0.88, which is the sampling grid rather than a
+  discrepancy — but nobody has ever confirmed which.
+
 ### New this cycle (71) — every idle motion in the game is the same sine wave
 
 - **Nothing in the garden is ever startled.** The game now has three continuous idle

@@ -1,4 +1,4 @@
-# Cycle 71
+# Cycle 72
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,35 +6,36 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 71 taught
+## What cycle 72 taught
 
-**An enumeration over the wrong set is worse than an example, because it looks
-exhaustive.** Cycle 70 filed `-e1u3` — "give one plant idle motion" — and justified it by
-enumerating every `create_tween()` call on every plant, finding all eight event-driven.
-The enumeration was complete and correct and about the wrong set: `Plant._wobble` has
-swayed every plant since the first playable build, and `Pest._gait` gives every pest a walk
-cycle. Both are `_process`-driven sinusoids, invisible to a census of tweens. **Search for
-the property the feature would move, not for the API you imagine it using** — that rule is
-now step 3's, and it is the third member of a family (cite a `file:line`; a pattern needs
-the enumeration; an absence needs the right set).
+**A technique that works one time in four teaches you it works.** Cycle 71 caught a 0.15 s
+tween on its third poll and concluded polling was viable-ish. Run cleanly this cycle, four
+consecutive reads straight after firing `CornCobbler._recoil` all return `Vector2.ONE` —
+four well-formed answers, every one the landed value, **which is exactly what a tween that
+never ran looks like**. Polling a sub-second tween does not fail loudly; it returns a
+plausible number.
 
-What was genuinely missing was narrow: a plant had one animation channel and a pest had
-two. `Plant.breathe_scale` is that second channel, and it lives on a new `Sway` pivot
-because `_sprite.scale` already has five event owners that all tween back to `Vector2.ONE`.
-Idle motion on the parent, flourishes on the sprite: they multiply instead of fighting.
+`step-time --then-pause` walks it deterministically: 0.920 → 0.900 → 0.940 → 0.980, two
+independent runs agreeing to six decimals. The non-obvious part is the first line — **pause
+before creating the tween**, because `--then-pause` lifts a pre-existing pause for its own
+step and re-freezes after, so a tween born frozen advances only by the steps you ask for.
+It works on tweens at all because `_cmd_step_time` waits on the process clock as well as the
+physics one. All of that is now in `read-a-moving-value` with both output blocks.
 
-**Two mutations survived and both were about the test, not the code.** Pointing the breathe
-straight at `_sprite.scale` passed, because past its `animations_enabled()` gate `_wobble`
-does nothing headless — a test that pumps it and reads what moved is testing an unreached
-branch. And `BREATHE_AMOUNT = 0.0` passed every assertion, because every assertion was
-written *relative to* `BREATHE_AMOUNT`: **a subtle animation and no animation are the same
-picture to a test that only checks proportions.** The fix was an absolute floor in pixels.
+**And the bead's premise was wrong**, in the way that has now happened three cycles running:
+I filed it claiming the verb had never been used, and `log-devtools.md:3378` records it. So
+step 6 gained the rule that step 3's citation discipline applies to bead descriptions too —
+that is where a claim gets acted on, cycles later, by someone who trusts it because it looks
+like a finding.
 
 ## Where things stand
 
-Ninety-nine beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
-gh#43). Suite **570/570**, 12543 assertions; lint 0/0; nine checkers clean; findings 0/4.
-Twelve skills. Upstream gh#44 and gh#49 open.
+A hundred and two beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
+gh#43). Suite 570/570, 12543 assertions as of cycle 71; this cycle changed no game code.
+Twelve skills. Upstream gh#44, gh#49 and **gh#50** open — the last is new: Phase 0.5's
+triage table classifies a run by its diff, and an experiment inverts that, because the diff
+is the run's *output*. Following it literally this cycle would have logged a session that
+answered a real question as `overkill — avoided`.
 
 ## Waiting on the user
 
@@ -49,11 +50,10 @@ together they made a HUD with no slack that nobody chose.
 ## Restarting
 
 `bd ready` for the work, this file for the context, `CLAUDE.md` (mirrored in `AGENTS.md`)
-for the loop itself. The last three cycles were the message row, the plants' drawing and
-the plants' animation — step 2 says look elsewhere. `-hnhn` (audit the rest of the
-user's own requested-features list, two of which have now been checked and both were wrong)
-and `-4lnu` (a harness verb this project has never used in 71 cycles) are both filed and
-both outside.
+for the loop itself. The last four cycles were the message row, plant drawing, plant
+animation and tooling — `-hnhn` (audit the rest of the user's own requested-features list)
+and `-35mu` (the waves-and-bosses entry, drifted on both halves) are the two filed items
+furthest from all of it.
 
 **Eight standing notes.** The harness is pinned at 0.38.0 on purpose (gh#43). The UI
 findings baseline is **empty** (`-v9px`). Any harness operation should start by checking
