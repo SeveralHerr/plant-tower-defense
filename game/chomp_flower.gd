@@ -148,12 +148,51 @@ const EATING_TEXTURE_PATH := "res://assets/sprites/chomp_flower_eating.png"
 const LATE_BITE_THRESHOLD: float = 0.6
 const EATING_LATE_TEXTURE_PATH := "res://assets/sprites/chomp_flower_eating_late.png"
 
+## How far the mouth throws itself at what it just caught, in px.
+##
+## The designer's note asked for an attack that READS as an attack, and the answer is a
+## direction rather than more scale. A squash is symmetric: (1.18, 0.82) looks identical
+## whether the meal is to the left, the right or straight up, so the only board-level
+## evidence a Chomp did anything was a pest that stopped moving. Corn has a kernel that
+## visibly leaves the plant and travels at somebody; this is the melee version of that
+## sentence — the plant, not a projectile, is what moves at the target.
+##
+## 7 px is bounded on both sides rather than picked. **Above ~4**, or it disappears into
+## `Plant.WOBBLE_RADIANS`' idle sway, which already swings the corner of a 64 px sprite
+## about 1.8 px and would make the lunge read as one more breath. **Small enough that the
+## sprite stays in its own cell**: `chomp_flower.svg`'s painted content runs 8.2..55.8 in
+## x, so the body reaches 23.8 px from centre and 7 more puts its leading edge at 30.8,
+## inside the 32 px half-`Board.CELL`. A lunging flower therefore never draws itself into
+## the neighbouring square, where it would read as a plant standing there.
+##
+## Note what does NOT travel with it: the chew ring and the fang crown are drawn in this
+## node's own `_draw()`, not on `_sprite`, so both stay put while the head moves. That is
+## the right split rather than an oversight — they are READOUTS (mouth busy, level bought)
+## and a readout that lurches every time the plant acts is harder to read, not livelier.
+const LUNGE_DISTANCE: float = 7.0
+
 var _held: Pest = null
 var _chew_left: float = 0.0
 var _chew_total: float = 0.0
 var _idle_texture: Texture2D = null
 var _eating_texture: Texture2D = null
 var _eating_late_texture: Texture2D = null
+## Where the last bite threw the mouth, in the sprite's own space.
+##
+## Composed on EVERY bite and ABOVE the animation gate — `_bite` writes it before it
+## returns headless — which is the whole reason it is a field instead of a local. The
+## direction is the part of this animation that can be WRONG (a lunge that points away
+## from the meal is a perfectly plausible picture, which is this project's documented
+## 2D-placement failure mode), and it is unreachable behind `animations_enabled()`,
+## false for every test in the suite by construction. Recording it splits "which way
+## does the mouth go" from "does a Tween get to play it", and only the second needs a
+## frame. `test_a_chomps_bite_records_a_lunge_toward_the_meal` asserts it off `_grab`,
+## so deleting the composition from `_bite` goes red rather than silently aiming the
+## flower at the origin.
+##
+## This is the ONLY source the tween below reads, so the field and the picture cannot
+## disagree.
+var _bite_lunge: Vector2 = Vector2.ZERO
 
 
 ## This flower's ladder. The one override the generic upgrade surface needs — see
@@ -380,6 +419,22 @@ func _draw_fang_crown() -> void:
 		draw_circle(tooth, FANG_SIZE, FANG_COLOR)
 
 
+## Which way this bite throws the head, and how far — pure, so the direction is
+## assertable with no board, no frame and no open animation gate.
+##
+## Returns a vector FROM the flower TOWARD the meal, `LUNGE_DISTANCE` long: the sign
+## and the axis are the entire content of the animation, and a squash tween cannot
+## carry either. Degenerate input (a pest exactly on top of the flower, which
+## `_nearest_free_pest` genuinely permits at distance 0) returns `Vector2.ZERO` rather
+## than a normalised NaN — a lunge nowhere is the correct picture for a meal that is
+## already here.
+static func lunge_offset(from: Vector2, to: Vector2) -> Vector2:
+	var delta: Vector2 = to - from
+	if delta.length_squared() <= 0.0001:
+		return Vector2.ZERO
+	return delta.normalized() * LUNGE_DISTANCE
+
+
 func _bite() -> void:
 	# Ahead of the tree-guard below: the mouth closing is the game event, and
 	# it happens whether or not there is a tree to play the squash tween in —
@@ -391,10 +446,35 @@ func _bite() -> void:
 	# this same frame. Same is_alive() guard anyway, kept for the pattern.
 	if is_instance_valid(_held) and _held.is_alive():
 		_held.flash_hit()
-	if _sprite == null or not is_inside_tree():
+	# Also ahead of the guard, and for a different reason than the two above: this is
+	# not a game event, it is the one part of the ANIMATION that has a right and a
+	# wrong answer. See `_bite_lunge`.
+	_bite_lunge = Vector2.ZERO
+	if is_instance_valid(_held):
+		_bite_lunge = lunge_offset(global_position, _held.global_position)
+	# `animations_enabled()` joins this guard as of the lunge, which it should have
+	# been on all along: `_on_upgraded` below claims to be gated "exactly as every
+	# cosmetic Tween in this class and in `Plant` is" and this one was the exception
+	# that made the sentence false. Everything a headless run needs from a bite — the
+	# sound, the flash, the hold, and now the lunge VECTOR — is already settled above.
+	if _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
 		return
-	var tween := create_tween()
+	# Position and scale in parallel, then both back: the squash is what a bite feels
+	# like and the lunge is who it is aimed at, and playing them in sequence would read
+	# as two separate twitches. `_sprite.position` is otherwise unwritten on a plant —
+	# idle sway and flinch live on `_sway_pivot` and every event tween owns
+	# `_sprite.scale` (see `Plant._sway_pivot`), so this adds a third channel rather
+	# than joining the queue for the second.
+	#
+	# The offset is applied in the sway pivot's frame, so a lunge is rotated by whatever
+	# the idle sway is doing at that instant — at most FLINCH_RADIANS (0.16 rad, 9°),
+	# which leans the lunge without ever pointing it at the wrong neighbour. Deliberate:
+	# the body leaning at its meal is the picture, and un-rotating it would decouple the
+	# head from the stem it is attached to.
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(_sprite, "position", _bite_lunge, 0.05)
 	tween.tween_property(_sprite, "scale", Vector2(1.18, 0.82), 0.06)
+	tween.chain().tween_property(_sprite, "position", Vector2.ZERO, 0.13)
 	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.12)
 
 

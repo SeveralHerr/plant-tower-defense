@@ -64,7 +64,68 @@ const RING_WIDTH: float = 2.0
 ## identical to a kernel landing from a cob three cells away.
 const STING_SQUASH := Vector2(1.16, 0.86)
 
+## How far the sprite shears toward its victim at the top of a sting, in radians of skew.
+##
+## STING_SQUASH's header already argues that a sting with nothing in flight needs
+## evidence of its own. What it does not give is evidence of WHO — a squash is symmetric,
+## so a Nettle stinging a beetle on its left and one on its right looked identical, and
+## looked identical to a Nettle stinging nothing while a cob three cells away landed a
+## kernel. A shear has a sign, and the sign is the target.
+##
+## Skew rather than rotation because `_sprite.rotation` is not this class's to write:
+## `Plant._sway_pivot` exists precisely so idle motion and event flourishes stop fighting
+## over one property, and the sway owns the pivot's angle. Skew is a fourth free channel
+## (scale is the event tweens', rotation is the sway's, position is now Chomp's lunge),
+## and it is also the better picture: a skewed sprite leans its HEAD at the pest while the
+## base stays planted, which is what a stem does and what a rotation about the origin does
+## not.
+##
+## 0.18 rad moves the top of a 64 px sprite about 5.8 px sideways. Bounded on both sides:
+## comfortably clear of the idle sway's ~1.8 px, so it does not read as one more breath,
+## and comfortably inside the cell — `nettle.svg`'s painted content runs 13.3..50.7 in x,
+## so the body reaches 18.7 px from centre and 5.8 more leaves the leading edge at 24.5,
+## well under the 32 px half-`Board.CELL`. It lands in the same size class as
+## `Plant.FLINCH_RADIANS` (0.16 rad, ~5.1 px at the same height) on purpose: an attack and
+## a plant being eaten are both single events worth noticing, and neither should shout
+## over the other.
+const STING_LEAN_SKEW: float = 0.18
+
+## The prickle spark: the short-lived burst drawn AT the victim, which is the other half
+## of "point at it" — the lean says the plant acted, the spark says where it landed.
+##
+## A fan rather than a ring, and that is the whole directional claim: the spokes are
+## centred on the direction the sting travelled, so the burst visibly points back at the
+## Nettle that caused it. A symmetric starburst would have been decoration; this is a
+## sentence about which plant is responsible, which is the complaint the designer's note
+## is actually about.
+##
+## Built from `Line2D` children rather than a new scene or a new script: a spark is one
+## frame of geometry, and a `class_name` file for it would cost an import pass and a
+## `test_sprite_style.gd` row for no picture that these spokes cannot draw.
+##
+## SPARK_LENGTH 11 keeps the whole burst inside the victim's own 64 px cell at the fan's
+## extremes; SPARK_SECONDS 0.18 is a hair longer than the 0.15s lean so the spark is still
+## on screen as the plant settles back.
+const SPARK_SPOKES: int = 5
+const SPARK_LENGTH: float = 11.0
+const SPARK_FAN_RADIANS: float = 1.05
+const SPARK_WIDTH: float = 2.0
+## The plant's own orange, the hue RING_COLOR already speaks for this plant.
+const SPARK_COLOR := Color(1.0, 0.55, 0.10, 0.95)
+const SPARK_SECONDS: float = 0.18
+
 var _cooldown: float = 0.0
+## The last sting's direction, in the two forms the two halves of the animation need.
+##
+## Composed on EVERY sting and ABOVE the animation gate — see `_sting` — for the reason
+## `ChompFlower._bite_lunge` spells out: the direction is the part of this that can be
+## WRONG, a sign flip renders as a perfectly plausible picture, and everything past
+## `GardenTheme.animations_enabled()` is unreachable for every test in the suite by
+## construction. These fields are the ONLY source `_sting_twitch` and
+## `_spawn_prickle_spark` read, so the recorded direction and the drawn one cannot
+## disagree.
+var _sting_lean: float = 0.0
+var _spark_ends: PackedVector2Array = PackedVector2Array()
 
 
 ## Whether this Nettle may sting `pest` at all.
@@ -184,17 +245,106 @@ func _sting(target: Pest) -> void:
 		target.flash_hit()
 	Sfx.play(Sfx.NETTLE_STING)
 	_cooldown = sting_interval()
+	# Composed here, above both gates, and not inside the two functions that play it:
+	# see `_sting_lean`. A sting always knows which way it went, whether or not anything
+	# is going to draw it.
+	_sting_lean = sting_lean_skew(global_position, target.global_position)
+	_spark_ends = spark_spoke_ends(global_position, target.global_position)
 	_sting_twitch()
+	_spawn_prickle_spark(target)
+
+
+## How far, and which way, the sprite shears at a victim in that direction — pure, so the
+## SIGN is assertable with no board, no frame and no open animation gate.
+##
+## Scaled by the horizontal component of the direction rather than by its sign alone,
+## which is the difference between a lean and a flinch: a pest directly to the right gets
+## the full `STING_LEAN_SKEW`, one on the left gets the negative of it, and one straight
+## above or below gets nothing, because there is no sideways to lean in. A `sign()` here
+## would have made a pest one pixel to the right of dead-ahead produce a full-strength
+## lean, and the plant would snap between extremes as a bug walked past its front.
+##
+## Positive skew leans the sprite's TOP toward +x: Godot's skew rotates the local Y axis,
+## so a point at local (0, -h) lands at (h·sin(skew), -h·cos(skew)). Right is positive,
+## which is what makes the assertion in `test_a_nettle_leans_at_the_side_its_victim_is_on`
+## a statement about the screen rather than about a convention.
+static func sting_lean_skew(from: Vector2, to: Vector2) -> float:
+	var delta: Vector2 = to - from
+	if delta.length_squared() <= 0.0001:
+		return 0.0
+	return STING_LEAN_SKEW * delta.normalized().x
+
+
+## The prickle spark's spokes, as end points in the spark's own local space — the spark
+## itself is placed ON the victim, so these radiate out from it.
+##
+## `SPARK_SPOKES` of them, all `SPARK_LENGTH` long, evenly spanning `SPARK_FAN_RADIANS`
+## and BISECTED by the direction the sting travelled, so the fan opens away from the
+## Nettle and the burst points back at the plant that caused it. Pure and returning
+## geometry rather than adding nodes, so "does this point at anything" is one assertion
+## on a mean vector instead of a screenshot somebody has to squint at — which is the
+## house rule for 2D placement here, where the wrong direction still renders.
+##
+## Local space and global space share an orientation for this node: a planted bed is
+## positioned by `Board` and never rotated or scaled (the sway lives on a child pivot),
+## so the spark being parented to the Nettle costs no basis change.
+static func spark_spoke_ends(from: Vector2, to: Vector2) -> PackedVector2Array:
+	var delta: Vector2 = to - from
+	var aim: float = 0.0 if delta.length_squared() <= 0.0001 else delta.angle()
+	var ends := PackedVector2Array()
+	for i: int in range(SPARK_SPOKES):
+		var across: float = 0.0
+		if SPARK_SPOKES > 1:
+			across = float(i) / float(SPARK_SPOKES - 1) - 0.5
+		ends.append(Vector2(SPARK_LENGTH, 0.0).rotated(aim + across * SPARK_FAN_RADIANS))
+	return ends
 
 
 ## Gated the way every cosmetic Tween in this project is: headless pumps no frames, so a Tween
 ## queued here would never run, and `_sprite` is null only before `_build_visuals`.
+##
+## Scale and skew in parallel and both back together — a lean that arrived after the squash
+## had already recovered would read as two separate twitches rather than as one sting.
 func _sting_twitch() -> void:
 	if _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
 		return
-	var tween := create_tween()
+	var tween := create_tween().set_parallel(true)
 	tween.tween_property(_sprite, "scale", STING_SQUASH, 0.05)
-	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.10)
+	tween.tween_property(_sprite, "skew", _sting_lean, 0.05)
+	tween.chain().tween_property(_sprite, "scale", Vector2.ONE, 0.10)
+	tween.tween_property(_sprite, "skew", 0.0, 0.10)
+
+
+## The burst at the victim, which frees ITSELF off the end of its own tween rather than
+## leaving anything for a caller to remember — the node exists for `SPARK_SECONDS` and
+## there is no other code path that can reach it.
+##
+## Parented to the Nettle rather than to the board so a plant uprooted mid-sting takes its
+## spark with it; a spark orphaned onto the playfield outlives the plant that owns it and
+## shows up as exactly the in-tree node growth `performance`'s `Total nodes … growth`
+## watches for.
+func _spawn_prickle_spark(target: Pest) -> void:
+	if not is_inside_tree() or not is_instance_valid(target):
+		return
+	if not GardenTheme.animations_enabled():
+		return
+	var spark := Node2D.new()
+	spark.name = "PrickleSpark"
+	spark.position = to_local(target.global_position)
+	spark.scale = Vector2(0.55, 0.55)
+	for end_point: Vector2 in _spark_ends:
+		var spoke := Line2D.new()
+		# Starting a quarter of the way out leaves the victim itself uncovered — a burst
+		# drawn over the pest hides the hit flash that is the other evidence of a sting.
+		spoke.points = PackedVector2Array([end_point * 0.25, end_point])
+		spoke.width = SPARK_WIDTH
+		spoke.default_color = SPARK_COLOR
+		spark.add_child(spoke)
+	add_child(spark)
+	var tween := spark.create_tween().set_parallel(true)
+	tween.tween_property(spark, "scale", Vector2(1.15, 1.15), SPARK_SECONDS)
+	tween.tween_property(spark, "modulate:a", 0.0, SPARK_SECONDS)
+	tween.chain().tween_callback(spark.queue_free)
 
 
 ## Drawn only while selected, like every other reach in the game. No super._draw() call, and
