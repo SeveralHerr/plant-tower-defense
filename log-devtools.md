@@ -3896,3 +3896,35 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
   harness's own token-aware section already recommends over a screenshot. Recording it
   because the instinct to "take a picture to check the words" is exactly the instinct
   that guidance is arguing against, and I had it anyway.
+
+## 2026-08-16 — cycle 36: the cob quotes the rate it will actually fire at
+
+- Value: **warranted**, and the interesting part is that a *headless* gate I did not
+  write did the work.
+  - Expected: a readout fix and a bar addition, both small; the risk was the bar's
+    width, which the project already gates twice.
+  - Got: the width gates did far more than confirm a number. Adding a weather tag to
+    the wave slot failed `test_no_readout_clips_its_own_worst_case` at
+    `WaveLabel needs 424px, has 312`, then again at 366 after I shortened the tag,
+    and when I widened the slot to fit, `test_a_clean_launch_warns_about_no_budget_at_all`
+    reported `hud_stats_row ... down to -35 px` — the whole stats row overflowing,
+    which "shoves the wave button off the bar rather than overlapping it, which is
+    not a fix". Measured, the base string is 302px in a 312px slot: **every**
+    candidate tag overflowed, including a bare `*` at 317.
+  - Found: two, and neither was the one I set out to fix.
+    1. **A second instance of the drought bug.** `readiness()` divided a cooldown
+       armed at `interval x scale` by the *base* interval, so the cob's arming glow
+       sat empty for the whole first half of every reload under a drought. Same
+       cause as the selection panel: the surfaces that DESCRIBE a value are a
+       separate population from the code that USES it. Both read `fire_interval()`
+       now, and the planted version fails at `got 0.00` where it should read 0.50.
+    2. **The top bar cannot afford weather at all**, which is a design answer rather
+       than a bug. Reverted in the same cycle, with the measurement written into
+       `Hud.WORST_CASE_TEXT` so the next attempt reads it before spending an hour.
+  - Cheaper: nothing, and this is the cycle where that is least arguable — the whole
+    finding came from gates that ran in seconds and refused to let a guess through.
+
+- Gap: **no gaps this turn.** The run never needed the bridge: every claim here was
+  settled headlessly, including the one about pixel widths, because this project
+  measures text through the real theme font rather than by eye. Worth recording as
+  the counter-example to the last two cycles, where runtime earned its place.

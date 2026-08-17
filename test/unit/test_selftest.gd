@@ -10266,3 +10266,85 @@ func test_weather_reaches_the_plants() -> String:
 
 	_T.free_ui(game)
 	return err
+
+
+## Every weather state has both of the words that describe it
+## (plant-tower-defense-saaw).
+##
+## The banner headline and the banner note are two separate `match` statements over
+## the same set, so a state added to WaveDirector with only one of them reaches a
+## player as a headline over an empty line.
+##
+## There is deliberately no third, compact form for the top bar. That was written
+## and reverted in the same cycle: the wave slot's base string measures 302px in a
+## 312px slot, so even a bare "*" needs 317, and the project's own budget check
+## reported `hud_stats_row` at -35px when the slot was widened to fit "rain". The
+## bar is not weather's home, and the measurement is recorded in WORST_CASE_TEXT
+## where the next person to try it will read it first.
+func test_every_weather_has_a_headline_and_a_note() -> String:
+	var states: Array[StringName] = [WaveDirector.WEATHER_RAIN, WaveDirector.WEATHER_DROUGHT]
+	var err: String = ""
+	for weather: StringName in states:
+		err = _T.assert_false(Hud.weather_headline(weather).is_empty(),
+			"%s has a banner headline" % weather)
+		if err == "":
+			err = _T.assert_false(Hud.weather_note(weather).is_empty(),
+				"%s has a banner note" % weather)
+		if err != "":
+			return err
+	# Clear says nothing at all: a banner reading "Clear" on eleven waves out of
+	# twelve teaches the player to stop reading banners.
+	if err == "":
+		err = _T.assert_eq(Hud.weather_headline(WaveDirector.WEATHER_CLEAR), "",
+			"clear weather is silent in the banner")
+	if err == "":
+		err = _T.assert_eq(Hud.weather_note(WaveDirector.WEATHER_CLEAR), "",
+			"and has no note either")
+	return err
+
+
+## The cob quotes the rate it will actually fire at, not the one in its level table
+## (plant-tower-defense-cxru).
+##
+## Weather multiplies the number the cob ARMS its cooldown with, and two surfaces
+## went on quoting the table: the selection panel told the player "0.80s" while the
+## cob fired every 1.60s, and `readiness()` divided a cooldown armed at 1.60 by a
+## base of 0.80 — clamping to 0, so the arming glow sat empty for the whole first
+## half of every reload.
+##
+## Two bugs, one cause, and the general shape is worth the test: **the surfaces that
+## DESCRIBE a value are a separate population from the code that USES it, and one
+## edit does not reach both.** Both now read `fire_interval()`.
+func test_a_cob_quotes_the_rate_it_will_actually_fire_at() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "", "planted")
+	var corn: CornCobbler = game.selected_placed as CornCobbler
+	if err == "":
+		err = _T.assert_true(corn != null, "and it is a cob")
+	var clear_interval: float = 0.0
+	if err == "":
+		clear_interval = corn.fire_interval()
+		err = _T.assert_gt(clear_interval, 0.0, "which quotes an interval in clear weather")
+
+	if err == "":
+		game._apply_weather(WaveDirector.WEATHER_DROUGHT)
+		err = _T.assert_float_eq(corn.fire_interval(),
+			clear_interval * WaveDirector.WEATHER_DROUGHT_INTERVAL_SCALE, 0.001,
+			"and under a drought it quotes the stretched one, because that is the "
+				+ "rate the player is actually getting")
+	if err == "":
+		# The readiness half. Armed under the drought, the glow must run 0 -> 1 across
+		# the WHOLE reload rather than sitting at 0 until the base interval is up.
+		corn._cooldown = 0.0
+		corn._act(0.0, [] as Array[Pest])
+		corn._cooldown = corn.fire_interval() * 0.5
+		err = _T.assert_float_eq(corn.readiness(), 0.5, 0.01,
+			"half a drought reload reads half-armed, got %.2f" % corn.readiness())
+	if err == "":
+		game._apply_weather(WaveDirector.WEATHER_CLEAR)
+		err = _T.assert_float_eq(corn.fire_interval(), clear_interval, 0.001,
+			"and clearing the weather puts the quoted rate back")
+
+	_T.free_ui(game)
+	return err

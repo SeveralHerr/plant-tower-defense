@@ -1607,6 +1607,11 @@ func state() -> Dictionary:
 		"husks_on_ground": compost.husk_count(),
 		"threat": WaveDirector.threat_for(maxi(1, director.current_wave)),
 		"threat_level": WaveDirector.threat_level(maxi(1, director.current_wave)),
+		# The weather Game is HOLDING, not weather_for(current_wave). Between waves
+		# the wave number has already moved to the one that has not started, so
+		# deriving it here would show the next wave's weather during the prep gap --
+		# announcing a drought before it applies to anything.
+		"weather": weather,
 	}
 
 

@@ -57,6 +57,11 @@ const NEXT_WAVE_BUTTON_SIZE := Vector2(216, 40)
 ## by shrinking another would not be a fix, just a different tight spot). The
 ## row's own headroom nearly triples, 8px to 19, and Seeds — the readout that
 ## started this — gains 3px it did not have before.
+## The stats row's font size, hoisted out of the four _add_stat calls so a budget
+## measured against it cannot be measured at a different one. The compost readout
+## is deliberately smaller and says so at its own call site.
+const STAT_FONT_SIZE: int = 26
+
 const SEEDS_LABEL_WIDTH: float = 171.0
 const WAVE_LABEL_WIDTH: float = 312.0
 const LIVES_LABEL_WIDTH: float = 146.0
@@ -70,6 +75,10 @@ const COMPOST_LABEL_WIDTH: float = 198.0
 ## against its budget in the real theme font.
 const WORST_CASE_TEXT: Dictionary = {
 	"SeedsLabel": "Seeds  99999",
+	# Weather is deliberately NOT here, and the number is why: the base string
+	# measures 302px in a 312px slot, so the tightest tag that could carry a weather
+	# state -- a bare "*" -- needs 317. Every option overflowed, which is the budget
+	# system saying the top bar is not weather's home. See plant-tower-defense-saaw.
 	"WaveLabel": "Wave  9999 ∞   threat 99",
 	"LivesLabel": "Garden  10",
 	# Includes the husk suffix. Leaving it out is what let a clipped readout ship:
@@ -560,9 +569,9 @@ func _build_top_bar(root: Control) -> void:
 	stats.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.add_child(stats)
 
-	_seeds_label = _add_stat(stats, "SeedsLabel", 26, PAPER, SEEDS_LABEL_WIDTH)
-	_wave_label = _add_stat(stats, "WaveLabel", 26, PAPER, WAVE_LABEL_WIDTH)
-	_lives_label = _add_stat(stats, "LivesLabel", 26, PAPER, LIVES_LABEL_WIDTH)
+	_seeds_label = _add_stat(stats, "SeedsLabel", STAT_FONT_SIZE, PAPER, SEEDS_LABEL_WIDTH)
+	_wave_label = _add_stat(stats, "WaveLabel", STAT_FONT_SIZE, PAPER, WAVE_LABEL_WIDTH)
+	_lives_label = _add_stat(stats, "LivesLabel", STAT_FONT_SIZE, PAPER, LIVES_LABEL_WIDTH)
 	_compost_label = _add_stat(stats, "CompostLabel", 20, COMPOST, COMPOST_LABEL_WIDTH)
 
 	# The one element that absorbs slack. Without it the readouts spread across
@@ -1021,6 +1030,11 @@ func refresh(state: Dictionary) -> void:
 	var level: int = int(state.get("threat_level", 1))
 	if level >= THREAT_SHOW_FROM:
 		_wave_label.text += "   threat %d" % level
+	# Weather rides here too, and for the same reason threat does: it is a property
+	# of the wave, and the bar has no room for a fifth stat. The banner is the beat
+	# and it fades; this is the state, and it is what answers "why is my corn slow"
+	# for the player who looked away. Clear says nothing -- a readout that is present
+	# and empty eleven waves out of twelve is a readout people stop reading.
 	# The whole readout takes the tint, not just the number after it. A Label
 	# cannot colour part of its own text, and the two alternatives both cost more
 	# than they are worth: a fifth StatsRow child has to be bought out of a bar

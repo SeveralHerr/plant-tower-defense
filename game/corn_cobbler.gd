@@ -109,7 +109,7 @@ func _act(delta: float, pests: Array[Pest]) -> void:
 		var target: Pest = _furthest_along_in_range(pests, RANGE)
 		if target != null:
 			_fire_at(target.global_position - global_position)
-			_cooldown = float(_stats()["interval"]) * fire_interval_scale
+			_cooldown = fire_interval()
 	_refresh_readiness()
 
 
@@ -331,9 +331,22 @@ func kernel_damage() -> float:
 	return float(_stats()["damage"])
 
 
-## Seconds between volleys at this level.
+## Seconds between volleys, **as this cob will actually fire right now** — the
+## level's interval scaled by whatever weather is over the garden
+## (`Plant.fire_interval_scale`, plant-tower-defense-q3lx).
+##
+## Effective rather than nominal, and that is the whole fix here. Weather multiplied
+## the number the cob ARMS its cooldown with, and left two surfaces quoting the
+## number from the table: the selection panel told the player "0.80s" while the cob
+## fired every 1.60s, and `readiness()` divided a cooldown armed at 1.60 by a base of
+## 0.80, so the arming glow sat at 0 for the whole first half of every reload.
+##
+## Two bugs, one cause, and it is worth naming: **the surfaces that DESCRIBE a value
+## are a separate population from the code that USES it, and one edit does not reach
+## both.** The fix is not to patch the two readouts, it is to make this the only
+## place any of them asks.
 func fire_interval() -> float:
-	return float(_stats()["interval"])
+	return float(_stats()["interval"]) * fire_interval_scale
 
 
 ## Fraction of the reload elapsed: 0.0 the instant a volley fires, 1.0 once the
@@ -347,7 +360,7 @@ static func readiness_at(cooldown: float, interval: float) -> float:
 
 ## This cob's readiness right now.
 func readiness() -> float:
-	return readiness_at(_cooldown, float(_stats()["interval"]))
+	return readiness_at(_cooldown, fire_interval())
 
 
 ## Repaint only when the fade would actually move by a visible step.
