@@ -6388,3 +6388,13 @@ Noted on the bead.
 - Gap: no gaps this turn. (`mirror_check`'s "block is only N characters" stub note is
   sized at 200 and the pointer is 639, so the smaller mirrored block does not trip it;
   worth knowing if the pointer is ever trimmed.)
+
+## 2026-08-17 — Renamed the title screen to "Pest Control" (headless-only tier)
+
+- Value: **overkill** — a one-word Label text change; the headless suite already hosts `title.tscn` six times, so a seventh test pinning the name and `_T.text_width` < band width answered the only real question without a launch.
+  - Expected: nothing runtime-only: a one-word Label text change; the only question is whether it fits, which text_width answers headlessly
+  - Got: `[PASS] test_title_screen_is_named_pest_control` — text reads "Pest Control", width < 1152; capture.gd (windowed, 4 frames) shows it centred at 54px. 655/655, 13569 assertions, Suite: 7.
+  - Found: nothing (the `:=` on `_T.text_width(...)` parse error was my own new test, caught by lint as name_check's NOT COVERED line predicted)
+  - Cheaper: `run_tests.py --filter pest_control` alone plus the capture, ~50s vs the full ~4 min gate set.
+
+- Gap: no gaps this turn.

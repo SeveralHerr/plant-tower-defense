@@ -341,7 +341,7 @@ func _build_text() -> void:
 
 	var title := Label.new()
 	title.name = "TitleLabel"
-	title.text = "Plant Tower Defense"
+	title.text = "Pest Control"
 	title.position = Vector2(0, TITLE_Y)
 	title.size = Vector2(width, 64)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

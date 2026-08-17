@@ -632,6 +632,23 @@ func test_title_screen_builds_its_buttons_headlessly() -> String:
 	return err
 
 
+## The game is called Pest Control (2026-08-17). The name lives in one Label the
+## title screen builds itself, so pin it here and check the text fits the band
+## the Label is given -- a longer name silently clips at 54px, and
+## get_minimum_size() would not say so.
+func test_title_screen_is_named_pest_control() -> String:
+	var title := await _T.instantiate_ui("res://game/title.tscn", Vector2i(1152, 648)) as Control
+	var label := title.get_node_or_null("TitleLabel") as Label
+	var err: String = _T.assert_true(label != null, "title screen has a TitleLabel")
+	if err == "":
+		err = _T.assert_eq(label.text, "Pest Control", "the title reads Pest Control")
+	if err == "":
+		var w: float = _T.text_width(label)
+		err = _T.assert_true(w > 0.0 and w < label.size.x, "title text (%.0fpx) fits its %.0fpx band" % [w, label.size.x])
+	_T.free_ui(title)
+	return err
+
+
 func test_title_screen_backdrop_actually_covers_the_viewport() -> String:
 	## Regression: PRESET_FULL_RECT resolved to a 0x0 rect for this Control (it
 	## is the scene root, added straight under the Viewport with no sized
