@@ -5955,3 +5955,12 @@ Noted on the bead.
     `+0 nodes` for the presses where nothing happens — which is itself worth seeing, because
     a button wired to nothing currently reports success.
   - Note: no other gaps this turn.
+
+  - [G-067] status: open | seen: 1 | harness: 0.54.0 | upstream: gh#55 | note: reconciled
+    against the installed 0.54.0 before filing. `_cmd_press`'s success return
+    (`dev_tools.gd:5444`) carries `node_path`, `type`, `disabled` and `button_pressed` —
+    every field about the button, none about the world after the press. Filed cycle 93
+    after GitHub's GraphQL API recovered; the gh#54 comment owed from cycle 92 went up at
+    the same time. **Both needed `gh api -X POST repos/...` rather than `gh issue`**, which
+    goes through GraphQL and was still 503-ing while REST was fine — worth knowing as a
+    fallback rather than as a reason to give up on filing.
