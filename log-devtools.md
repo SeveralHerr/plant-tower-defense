@@ -5313,3 +5313,39 @@ cited in code, and the citation is a mitigation this project has watched fail.
   quiet mode is the one that gets wired into a loop and therefore the one that gets exercised;
   its verbose mode is where the output nobody reads lives, and both a crash and a real
   finding were sitting there. **Run a new checker once in the mode you do not intend to use.**
+
+## 2026-08-17 — Cycle 78: a swept chew ring, and a check I could not catch
+
+- Value: **warranted**, and the ledger said so more precisely than I would have. One live
+  frame carried the half of the change that cannot be argued from constants; a second
+  check could not be run at all, and `verify_ledger` downgraded the row `pass -> partial`
+  on its own for exactly that reason.
+  - Expected: that a fixed-radius swept arc would sit outside the flower's own sprite,
+    where the old shrinking ring vanished behind it, and that a mid-chew frame would show
+    the sweep.
+  - Got: the first, clearly — a full ring at 22 px reads outside the head in a rendered
+    frame. Not the second.
+  - Found: **I could not photograph a partial arc, after four different attempts, and the
+    reason is a genuine three-way squeeze.** An aphid chew is 0.45 s against a bus
+    round-trip of roughly 200 ms, so plain polling gets one or two samples by luck (it got
+    zero). `pause` makes each step deterministic and stops the wave that has to deliver a
+    pest. `set-game-speed 0.08` keeps the chew open long enough and stops the pest arriving
+    at all. Fine `step-time --then-pause` slices work but only advance game time inside the
+    slice, so 14 × 0.3 s bought 4.2 s of world and no pest walked that far. Each tool
+    individually solves the problem and each one breaks a precondition of the others.
+  - Cheaper: the headless suite proves the sweep's shape in 25 assertions at ~40 s,
+    including monotonicity across 20 samples. It cannot speak to occlusion, which is the
+    entire reason the radius moved from 16 to 22.
+
+- Gap: **no gaps this turn** — the squeeze above is a fact about the game's timings, not a
+  missing verb, and the combination that should work (clear the board of Corn Cobblers so
+  a pest survives to reach the Chomp, then step in slices) is filed as `-ip4n` rather than
+  logged as a harness complaint. Two notes worth keeping instead:
+  - **`blocked` is the right result and I nearly wrote `fail`.** A check that could not run
+    is not a check that failed, and the ledger's own downgrade rule turns one `blocked`
+    into `partial` for the whole run, which is a more honest headline than a `pass` with a
+    footnote nobody reads.
+  - **A mutation that does not change behaviour is not a survivor.** Mutating a resolver to
+    `matches = [] or [...]` left the right-hand side evaluated, and the finding count did
+    not move at all — which is the tell. A real survivor changes the code and not the
+    result; a no-op changes neither, and the two look identical if you only read the verdict.

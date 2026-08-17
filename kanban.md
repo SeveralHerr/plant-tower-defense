@@ -247,6 +247,46 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (78) — an exception in a grammar is often a missing row
+
+- **The Chomp's ring stopped being an exception by being renamed, not by being special.**
+  `game/OVERLAY_GRAMMAR.md` listed two solid rings that are not reaches; one of them was
+  the chew ring, "the only animated-radius ring in the game". Making it sweep at a fixed
+  radius (`game/chomp_flower.gd:164-165`) did not add a special case — it made the Chomp
+  the **second instance of a row**, the first being a husk's rot timer
+  (`game/husk_layer.gd:69-77`). The exception only existed because the derivation had filed
+  `husk_layer.gd` under "sprites drawing themselves", the one part of it done by judgement
+  rather than by grep. **When something in a system looks unique, ask what else already
+  does it** — twice now, the answer has been "a thing the census excluded".
+- **Three plants own a radial readout and nothing stops a fourth from colliding.**
+  `ChompFlower.CHEW_RING_RADIUS` is 22, `CornCobbler`'s muzzle fan is stated to sit inside
+  ~26 (`game/corn_cobbler.gd:71-75`), `Sunflower`'s gauge puts its nearest corner at exactly
+  26.0 and `test_combat` asserts that corner is outside the chew ring. So the band between
+  the sprite and the cell edge is *fully spoken for* and the constraints live in three
+  files plus one test. The next plant with a per-instance readout will discover this by
+  overlapping something. A shared `Plant.readout_band()` naming the inner and outer radius —
+  or even one comment listing who occupies what — turns a discovery into a lookup.
+- **A player has never seen the mid-chew arc and nor has anyone else.**
+  A chew is 0.45 s for an aphid (`game/chomp_flower.gd:154-156` computes the sweep from it),
+  which is shorter than a bus round-trip, so cycle 78 shipped the change with the *full*
+  ring photographed and the partial arc unphotographed after four attempts. That is fine
+  for a tool and it is a real question for a player: **is 0.45 s long enough for a readout
+  to say anything at all?** The design doc's claim is "takes a while eating bigger pests" —
+  a beetle's chew is the case the ring is for, and an aphid's may be a flash nobody parses.
+  Worth measuring against a beetle before adding any more to that ring.
+
+- **An upgrade is unrefundable and nothing says so.** `Plant.uproot_refund()`
+  (`game/plant.gd:541-544`) scales `PlantCatalog.cost(kind)` — the **base** cost — by a rate
+  that slides with remaining health, and no plant overrides it (grepped: `uproot_refund` is
+  declared once, in `plant.gd`, and nowhere else). So a Corn Cobbler with 65 seeds of
+  upgrades in it refunds exactly what a fresh one does. The HUD shows the number
+  (`game/hud.gd:1224`, "Uproot (+%d)") and cannot show what it is a fraction *of*, so the
+  player sees a plausible figure and no hint that two thirds of their investment is not in
+  it. This may well be the right rule — "upgrades are consumed" is a defensible economy —
+  but it is currently a rule nobody stated, discovered by uprooting an expensive plant once.
+  Either scale the refund by what was actually spent, or say it in the confirm prompt, which
+  cycle 69 already made the one line guaranteed a place on the row.
+
 ### New this cycle (77) — three quarters of this file cites nothing
 
 - **249 of this file's 323 entries made a claim about the code and cited no line for it**

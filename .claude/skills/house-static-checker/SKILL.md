@@ -195,6 +195,18 @@ later in the same file means the generic one matched **inside** the block.
 This was found by a fixture case written to test something else entirely. That is the
 argument for writing more fixture cases than you think you need.
 
+### A mutation that changes nothing is not a survivor
+
+Read the NUMBER, not the verdict. Cycle 78 mutated a resolver to
+`matches = [] or [m for m in ROOT.rglob(cited)]` — which evaluates the right-hand side,
+so the code was different and the behaviour was not. The finding count did not move by
+one; it did not move at all, and that is the tell. **A real survivor changes the code and
+leaves the result identical; a no-op changes neither**, and the two are indistinguishable
+if you only look at pass/fail.
+
+Before believing a survivor, ask what the mutated line now computes. If you cannot say
+what changed, nothing did.
+
 ### Then mutate the checker, not just the input
 
 The fixture proves the checker fires on a bad file. It does **not** prove the checker is
