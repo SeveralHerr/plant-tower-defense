@@ -19,9 +19,11 @@ extends SelectionMarker
 ## should go was the one piece you could not see while deciding.
 ##
 ## Drawing that ring with equal confidence everywhere was itself a lie, though:
-## 15 of the board's 94 buildable cells cover no road at a Corn Cobbler's reach
-## and 34 cover none at a Chomp Flower's, and the ring looked identical on all
-## of them. Seeds could be spent on a plant that would never fire once, with
+## 11 of the board's 94 buildable cells cover no road at a Corn Cobbler's reach
+## and 36 cover none at a Chomp Flower's, and the ring looked identical on all
+## of them. (Those were 15 and 34 until the road grew its climb in cycle 53 —
+## the counts are re-derived in test_the_real_route_strands_exactly_the_cells_it
+## _was_measured_to_strand, and they moved in opposite directions.) Seeds could be spent on a plant that would never fire once, with
 ## nothing saying so before the click or after it. See covers_road().
 
 ## A size larger than the selection brackets so the two are distinguishable
@@ -152,6 +154,18 @@ var at_risk: bool = false
 ## explicitly if you would rather not rely on that.
 var board: Board = null
 
+## The road cells some standing plant already has in range, as a set. Pushed by
+## Game._update_preview from covered_road_cells(); empty means "nothing is
+## covered yet" AND, honestly, "nobody has told me". Both read the same here and
+## that is fine — with an empty set every road cell in reach is marked new, which
+## is exactly right on an empty garden and harmless before the first push.
+var covered_now: Dictionary = {}
+
+## Radius of the dot marking a road cell this purchase would newly defend. Small
+## on purpose: the marks sit INSIDE the range ring and must not compete with it,
+## and there can be nine of them at a Corn Cobbler's reach.
+const NEW_COVER_DOT: float = 4.0
+
 var _resolved_board: Board = null
 
 
@@ -214,6 +228,74 @@ func _draw() -> void:
 		_draw_dead_bar()
 	if redundant:
 		_draw_redundant_bars()
+	# Last, so the dots sit over the ring rather than under it. Skipped on dead
+	# ground for the same reason the risk ring is: there is nothing new to cover
+	# there and a second mark on a cell already carrying a warning is noise.
+	if not dead:
+		_draw_new_cover_dots()
+
+
+## A dot on every road cell inside the ring that NOTHING standing already covers
+## — "this is the road this purchase newly defends" (plant-tower-defense-ivoq).
+##
+## WHY NOT ON THE ROAD ITSELF, which is where the bead asked for it. The road's
+## permanent paint is out of channels and says so: `lane_pressure_overlay.gd`
+## spends hue on DANGER, alpha on how much pressure a cell took, and orientation
+## on aimed-versus-unaimed, and argues explicitly that a density or a second hue
+## would cost the property the hatch was built for — that the cursor's flat wash
+## still reads over an off-aim cell. This is a hover-time mark on a transient
+## node, so it spends none of that.
+##
+## AND WHY IT IS NOT A REDUNDANCY WARNING. `shows_redundant_coverage()` above
+## warns that a second Sundew patch on the same road buys nothing, which is true
+## of a field effect. It is FALSE of a Corn Cobbler: a cob engages one pest at a
+## time, so a second cob over identical cells is worth real money — measured, in
+## test_combat, as the difference between a five-cob garden that lets a pest
+## through and a seven-cob garden that does not. So no dots is not a warning
+## here. It means "you are buying depth rather than reach", which on a thin
+## stretch is the right purchase and on a thick one is not, and the player can
+## see which because the dots show where the road is bare.
+func _draw_new_cover_dots() -> void:
+	var on_board: Board = _board()
+	if on_board == null:
+		return
+	for cell: Vector2i in new_cover_cells():
+		draw_circle(to_local(on_board.cell_to_world(cell)), NEW_COVER_DOT, marker_color)
+
+
+## The road cells this purchase would newly defend: inside the reach, and not
+## already covered by anything standing.
+##
+## A predicate rather than logic inside `_draw()`, for the reason the rest of this
+## file already follows — `shows_dead_zone()` and `covering_patch_count()` are
+## both readable without a canvas. A cue that can only be checked by looking at
+## pixels is a cue that gets checked once.
+##
+## Empty means one of two very different things and the caller must not conflate
+## them: the plant covers no road at all (`shows_dead_zone()` is the predicate for
+## that, and `_draw()` skips these dots entirely when it is true), or every cell it
+## reaches is already covered — the "buying depth, not reach" case, which is a
+## legitimate purchase and is why no mark is drawn for it.
+func new_cover_cells() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var on_board: Board = _board()
+	# `placeable` for the same reason shows_dead_zone() checks it: an illegal cell
+	# answers false however much road it would reach. Without this the predicate
+	# happily reports newly-defended cells for a cell the click already refuses --
+	# `_draw()` never gets that far, so the only thing such an answer could do is
+	# mislead a reader or a test into thinking the cue fires there.
+	if on_board == null or reach <= 0.0 or not placeable:
+		return out
+	for cell: Vector2i in covered_road_cell_list(on_board, _hovered_cell(on_board), reach):
+		if not covered_now.has(cell):
+			out.append(cell)
+	return out
+
+
+## The cell this preview is sitting on, back out of its own world position —
+## Game sets `position`, not a cell, and the coverage helpers take a cell.
+func _hovered_cell(on_board: Board) -> Vector2i:
+	return on_board.world_to_cell(position)
 
 
 ## Dashes rather than a solid ring, drawn as evenly spaced arc segments — a

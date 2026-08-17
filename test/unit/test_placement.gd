@@ -1153,6 +1153,69 @@ func test_two_overlapping_patches_wash_the_ground_they_share_exactly_once() -> S
 ## stretch of sticky road, which is the purchase this cue exists to talk a player
 ## out of. (3, 2) is one cell along and picks up (4, 1) as well, so it is a second
 ## patch worth buying and must draw nothing.
+## The dots say "this is the road this purchase newly defends", so the two ways of
+## being wrong are opposite and both matter: marking ground that is already covered
+## sells a plant that buys nothing, and failing to mark bare ground hides the only
+## thing the purchase is actually for.
+##
+## The empty answer is deliberately NOT a warning. A cob engages one pest at a time,
+## so a second cob over cells another already reaches is worth real money — measured
+## in test_combat as the difference between a five-cob garden that lets a pest
+## through and a seven-cob garden that does not. "No dots" means "you are buying
+## depth rather than reach", which is a purchase, not a mistake.
+func test_the_preview_dots_only_the_road_a_purchase_would_newly_defend() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var preview := PlacementPreview.new()
+	preview.board = game.board
+	preview.reach = PlantCatalog.reach(PlantCatalog.CORN)
+	var here := Vector2i(1, 3)
+	preview.position = game.board.cell_to_world(here)
+	# Stated rather than assumed, the same way the sibling test below does it: a
+	# PATH_CORNERS change that moved this cell should fail here loudly instead of
+	# turning every assertion into a test of an empty list.
+	var reaches: Array[Vector2i] = PlacementPreview.covered_road_cell_list(
+		game.board, here, preview.reach)
+	var err: String = _T.assert_gt(reaches.size(), 1,
+		"a cob on %s reaches more than one road cell, so there is something to dot" % here)
+
+	if err == "":
+		preview.covered_now = {}
+		err = _T.assert_eq(preview.new_cover_cells().size(), reaches.size(),
+			"over an empty garden every cell it reaches is newly defended")
+	if err == "":
+		# The "buying depth, not reach" case: everything it reaches is already held.
+		var all_held: Dictionary = {}
+		for cell: Vector2i in reaches:
+			all_held[cell] = true
+		preview.covered_now = all_held
+		err = _T.assert_eq(preview.new_cover_cells().size(), 0,
+			("with every cell already covered there is nothing NEW to mark -- and that "
+				+ "is not a warning, it is a cob bought for depth"))
+	if err == "":
+		# And the partial case, which is the one a player actually hovers into.
+		var some_held: Dictionary = {}
+		some_held[reaches[0]] = true
+		preview.covered_now = some_held
+		var left: Array[Vector2i] = preview.new_cover_cells()
+		err = _T.assert_eq(left.size(), reaches.size() - 1,
+			"holding one of the %d cells leaves the rest marked" % reaches.size())
+		if err == "":
+			err = _T.assert_false(left.has(reaches[0]),
+				"and the held cell %s is not among them" % reaches[0])
+	if err == "":
+		# An illegal cell answers empty however much road it would reach, the same
+		# rule shows_dead_zone() obeys. _draw() returns before the dots on a blocked
+		# cell, so a predicate that still listed cells there could only mislead.
+		preview.covered_now = {}
+		preview.placeable = false
+		err = _T.assert_eq(preview.new_cover_cells().size(), 0,
+			"a cell the click already refuses marks nothing, however much it reaches")
+		preview.placeable = true
+	preview.free()
+	_T.free_ui(game)
+	return err
+
+
 func test_the_preview_warns_about_ground_an_existing_patch_already_covers() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var reach: float = PlantCatalog.reach(PlantCatalog.SUNDEW)

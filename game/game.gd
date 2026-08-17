@@ -1538,6 +1538,12 @@ func _update_preview(cell: Vector2i, free: bool) -> void:
 	# kind from `reach`, which works only while no two plants share a radius --
 	# a coincidence, not a rule, and the redundant-coverage cue depends on it.
 	_preview.plant_id = selected_plant
+	# What the garden already reaches, so the preview can dot the road cells this
+	# purchase would newly defend. Recomputed per hover rather than cached: the
+	# set changes on every placement and every uproot, and a stale one would mark
+	# ground as bare that a plant now covers — the one error this cue must not
+	# make, since it is read as "spend seeds here".
+	_preview.covered_now = covered_road_cells()
 	# The same predicate _click_at obeys, so the brackets are a promise: green
 	# means this click plants. `free` is kept as the caller's override — the
 	# self-test suite drives this method with a forced value to pin the blocked
