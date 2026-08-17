@@ -914,17 +914,100 @@ func test_the_idle_sway_clock_advances_every_physics_frame_even_headless() -> St
 	return err
 
 
-func test_the_idle_sway_stays_off_the_sprite_headless() -> String:
+func test_the_idle_sway_stays_off_the_pivot_headless() -> String:
 	## The gate itself: headless is exactly where GardenTheme.animations_enabled()
-	## reads false, so no amount of elapsed time should move the sprite here —
-	## the one place this suite can watch the gate without a live display.
+	## reads false, so no amount of elapsed time should move anything here — the
+	## one place this suite can watch the gate without a live display.
+	##
+	## Both channels, because there are two now: the sway rotates and the breathe
+	## scales, and a gate that stopped only one would leave every plant on a
+	## headless run quietly pulsing.
 	var plant := Plant.new()
 	plant.setup(PlantCatalog.CORN, Vector2i(0, 0), null)
 	for _i: int in range(120):
 		plant._wobble(1.0 / 60.0)
-	var err: String = _T.assert_float_eq(plant._sprite.rotation, 0.0, 0.0001,
-		"two seconds of headless ticks moved the sprite by %.4f rad, not 0" % plant._sprite.rotation)
+	var err: String = _T.assert_float_eq(plant._sway_pivot.rotation, 0.0, 0.0001,
+		"two seconds of headless ticks turned the pivot by %.4f rad, not 0"
+			% plant._sway_pivot.rotation)
+	if err == "":
+		err = _T.assert_eq(plant._sway_pivot.scale, Vector2.ONE,
+			"and left its scale alone, got %s" % plant._sway_pivot.scale)
 	plant.free()
+	return err
+
+
+## The reason the pivot exists, asserted rather than left to the header.
+##
+## Five event flourishes tween `_sprite.scale` back to Vector2.ONE — the planting
+## pop, the exit shrink, the Sunflower's payout, the cob's recoil and upgrade, the
+## Chomp's bite. If the idle breathe wrote that same property they would overwrite
+## each other every frame in whichever order happened to run.
+##
+## **Only the structure is assertable here**, and knowing why is the point: past
+## its gate `_wobble` does nothing headless, so pumping it and then reading
+## `_sprite.scale` is a test of an unreached branch. The first draft of this did
+## exactly that and a mutation aiming the breathe straight at `_sprite.scale`
+## survived it. What a headless suite CAN see is that the sprite hangs off the
+## pivot — the one relationship that makes the two transforms multiply rather than
+## collide, and the one an `add_child` typo undoes. The behaviour itself is a
+## runtime check.
+func test_the_sprite_hangs_off_the_sway_pivot_not_the_plant() -> String:
+	var plant := Plant.new()
+	plant.setup(PlantCatalog.CORN, Vector2i(3, 5), null)
+	var err: String = _T.assert_eq(plant._sprite.get_parent(), plant._sway_pivot,
+		"the sprite hangs off the pivot, or the sway moves nothing a player sees")
+	if err == "":
+		err = _T.assert_eq(plant._sway_pivot.get_parent(), plant,
+			"and the pivot off the plant, so the sway does not move the health bar with it")
+	plant.free()
+	return err
+
+
+## The breathe's shape, through the pure function `_wobble` reads — the half of the
+## gated body a headless suite can actually reach.
+func test_the_breathe_narrows_and_lengthens_around_a_plant_that_stays_its_own_size() -> String:
+	var widest: float = 0.0
+	var tallest: float = 0.0
+	var err: String = ""
+	# A whole breathe period and a bit, sampled finely enough to catch both extremes.
+	for i: int in range(200):
+		var at: Vector2 = Plant.breathe_scale(float(i) * 0.05)
+		widest = maxf(widest, at.x)
+		tallest = maxf(tallest, at.y)
+		# The two axes are mirrored about 1.0 at every instant, which is what makes
+		# it a breathe rather than a pulse: area is held, the plant does not inflate.
+		err = _T.assert_float_eq(at.x + at.y, 2.0, 0.0001,
+			"the two axes stay mirrored about 1.0, got %s" % at)
+		if err != "":
+			return err
+	if err == "":
+		err = _T.assert_float_eq(tallest, 1.0 + Plant.BREATHE_AMOUNT, 0.0005,
+			"it reaches its full lengthening somewhere in a period, got %.4f" % tallest)
+	if err == "":
+		# Both extremes, because a breathe alternates: half the cycle is tall and
+		# narrow, the other half is short and wide. The first draft of this asserted
+		# the plant "never gets wider than its own sprite" and was simply wrong about
+		# the shape it had just been written to describe.
+		err = _T.assert_float_eq(widest, 1.0 + Plant.BREATHE_AMOUNT, 0.0005,
+			"and its full widening at the other end of the cycle, got %.4f" % widest)
+	if err == "":
+		# Subtle on purpose: this runs on every placed plant every frame for a
+		# whole run, and it is half Pest.GAIT_STRETCH because a plant is standing
+		# still. A breathe you can measure by eye at one plant is a twitchy garden
+		# at fifteen.
+		err = _T.assert_true(Plant.BREATHE_AMOUNT < Pest.GAIT_STRETCH,
+			"a standing plant breathes less than a walking bug stretches (%.3f vs %.3f)"
+				% [Plant.BREATHE_AMOUNT, Pest.GAIT_STRETCH])
+	if err == "":
+		# And a floor in PIXELS rather than in BREATHE_AMOUNT. Every assertion
+		# above is expressed relative to the constant, so setting it to 0.0 left
+		# them all true and that mutation SURVIVED — a subtle animation and no
+		# animation are the same picture to a test that only checks proportions.
+		# A plant sprite is 64x64, so this says the edge must move half a pixel,
+		# which is the least that can be called motion.
+		err = _T.assert_gte(Plant.BREATHE_AMOUNT * 32.0, 0.5,
+			"the breathe moves the sprite's edge at all, got %.2f px"
+				% (Plant.BREATHE_AMOUNT * 32.0))
 	return err
 
 

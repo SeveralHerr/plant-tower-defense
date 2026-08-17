@@ -127,6 +127,22 @@ var health: float = MAX_HEALTH
 var fire_interval_scale: float = 1.0
 
 var _sprite: Sprite2D
+## The node the idle motion lives on, sitting between the plant and its sprite.
+##
+## `_wobble` used to write `_sprite.rotation` directly, which was fine while the
+## sway had one channel. A breathe is a SCALE, and `_sprite.scale` already has
+## five owners that all tween back to `Vector2.ONE`: the planting pop below, the
+## exit shrink in `play_exit_and_free`, `Sunflower._bloom`'s payout pop,
+## `CornCobbler._recoil` and its upgrade flourish, and `ChompFlower`'s bite squash.
+## An idle scale on that property would be overwritten by whichever of them ran
+## last, and would stomp their landing on the next physics frame.
+##
+## So idle motion goes on the parent and event flourishes stay on the sprite —
+## the transforms multiply instead of fighting over one property. `Pest` needs no
+## equivalent because `_gait` is the only writer of a pest's sprite scale
+## (`game/pest.gd:743`); a plant is the case where two animations want the same
+## number.
+var _sway_pivot: Node2D
 var _wobble_time: float = 0.0
 ## Idle sway, the same shape TitleScreen's decorative lawn already uses
 ## (TitleScreen.SWAY_RADIANS / SWAY_RATE): a small continuous rock rather than
@@ -134,6 +150,19 @@ var _wobble_time: float = 0.0
 ## purpose — this runs on every placed plant, every frame, for the whole run.
 const WOBBLE_RADIANS: float = 0.055
 const WOBBLE_RATE: float = 1.15
+## The breathe: the sway's second channel, added in cycle 71 because a plant had
+## one and a pest had two. `Pest._gait` narrows and lengthens the body alongside
+## its side-to-side swing (`game/pest.gd:743`), which is what stops a walking bug
+## reading as a rigid sprite being rotated; a plant was being rotated and nothing
+## else. Same axes as the pest's — -X narrows while +Y lengthens, so a plant
+## breathes upward rather than inflating.
+##
+## Half the pest's `GAIT_STRETCH` of 0.06, because a bug is mid-stride and a plant
+## is standing still, and this runs on every placed plant every frame for a whole
+## run. `BREATHE_RATE` is 2.0 for the same reason `Pest.GAIT_STRETCH_RATE` is: a
+## body pulses twice per side-to-side swing, once at each extreme.
+const BREATHE_AMOUNT: float = 0.022
+const BREATHE_RATE: float = 2.0
 var _selected: bool = false
 var _health_back: ColorRect = null
 var _health_bar: ColorRect = null
@@ -167,9 +196,14 @@ func setup(id: StringName, at: Vector2i, on_board: Board) -> void:
 
 
 func _build_visuals() -> void:
+	# The sprite hangs off the sway pivot, not off the plant — see `_sway_pivot`.
+	_sway_pivot = Node2D.new()
+	_sway_pivot.name = "Sway"
+	add_child(_sway_pivot)
+
 	_sprite = Sprite2D.new()
 	_sprite.texture = load(PlantCatalog.texture_path(kind)) as Texture2D
-	add_child(_sprite)
+	_sway_pivot.add_child(_sprite)
 
 	_health_back = ColorRect.new()
 	_health_back.color = Color(0.12, 0.12, 0.12, 0.65)
@@ -316,9 +350,22 @@ func _physics_process(delta: float) -> void:
 ## which a planted Plant has none of.
 func _wobble(delta: float) -> void:
 	_wobble_time += delta
-	if _sprite == null or not GardenTheme.animations_enabled():
+	if _sway_pivot == null or not GardenTheme.animations_enabled():
 		return
-	_sprite.rotation = sin(_wobble_time * WOBBLE_RATE + _wobble_phase(cell)) * WOBBLE_RADIANS
+	var clock: float = _wobble_time * WOBBLE_RATE + _wobble_phase(cell)
+	_sway_pivot.rotation = sin(clock) * WOBBLE_RADIANS
+	_sway_pivot.scale = breathe_scale(clock)
+
+
+## Pure: the breathe's scale at a point on the sway clock. Split out for the same
+## reason `_wobble_phase` is — everything inside `_wobble` past the gate is
+## unreachable headless, so a test that pumps `_wobble` and then asserts what
+## moved passes whatever the body does. Cycle 71 wrote exactly that test, watched
+## a mutation pointing the breathe at `_sprite.scale` survive it, and split this
+## out in response.
+static func breathe_scale(clock: float) -> Vector2:
+	var breathe: float = sin(clock * BREATHE_RATE) * BREATHE_AMOUNT
+	return Vector2(1.0 - breathe, 1.0 + breathe)
 
 
 ## Pure: per-cell phase offset for the sway above. Split out so a test can
