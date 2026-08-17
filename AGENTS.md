@@ -284,6 +284,11 @@ python tools/message_corpus_check.py # a show_message() call site, or a producer
 python tools/mirror_check.py         # CLAUDE.md and AGENTS.md's Workflow blocks have drifted
                                      #   (--fix generates the mirror; it WRITES AGENTS.md,
                                      #    so it is the one entry here not safe to fan out)
+python tools/run_json_check.py       # a key in .devtools/run.json that verify_ledger reads
+                                     #   nowhere, so the ledger row silently loses it.
+                                     #   RUN IT BEFORE `verify_ledger record`, not after —
+                                     #   the row is append-only and a dropped key is
+                                     #   indistinguishable from a run that never had one
 python tools/gap_ledger.py           # which [G-NNN] gaps are actually open (advisory)
 ```
 
