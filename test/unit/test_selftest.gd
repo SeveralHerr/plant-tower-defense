@@ -12817,3 +12817,500 @@ func test_the_packet_a_locked_plant_points_at_is_derived_from_the_pools() -> Str
 			err = _T.assert_eq(bank.cheapest_packet_for(PlantCatalog.CHOMP), &"",
 				"and once it is unlocked the cue drops it without anyone editing a list")
 	return err
+
+
+# -- the garden speed toggle (plant-tower-defense-03t6) -----------------------
+#
+# `Engine.time_scale` is PROCESS-GLOBAL and outlives every node in this file, so
+# each of these puts it back with `GameSpeed.reset()` on the way out, on the
+# passing path and the failing one. A test that leaves the clock moved does not
+# fail — it hands every test after it a different game, and the one that breaks is
+# whichever happens to run next.
+
+
+## The whole cycle, asserted against the ENGINE at every step rather than against
+## GameSpeed's own idea of where it is.
+##
+## The defect this rules out is the one a speed toggle actually ships with: an
+## index that advances, a label that changes, and nothing written to
+## `Engine.time_scale` — a button that looks like it works from every angle except
+## the garden's.
+func test_the_speed_toggle_walks_its_table_and_lands_on_the_engine() -> String:
+	GameSpeed.reset()
+	var err: String = _T.assert_gt(GameSpeed.STEPS.size(), 1,
+		"there is more than one speed to cycle between — a one-entry table is a toggle that does nothing")
+	if err == "":
+		err = _T.assert_eq(GameSpeed.LABELS.size(), GameSpeed.STEPS.size(),
+			"every step has a label, so no press can leave the button blank")
+	if err == "":
+		err = _T.assert_float_eq(GameSpeed.STEPS[0], GameSpeed.NORMAL, 0.0001,
+			"step 0 is NORMAL, which is what reset() relies on")
+	if err == "":
+		err = _T.assert_float_eq(Engine.time_scale, GameSpeed.NORMAL, 0.0001,
+			"and a reset run is running at it")
+	if err == "":
+		for press: int in range(1, GameSpeed.STEPS.size() + 1):
+			var expected: float = GameSpeed.STEPS[press % GameSpeed.STEPS.size()]
+			var reported: float = GameSpeed.cycle()
+			err = _T.assert_float_eq(reported, expected, 0.0001,
+				"press %d reports %.2fx" % [press, expected])
+			if err == "":
+				err = _T.assert_float_eq(Engine.time_scale, expected, 0.0001,
+					"and the engine is actually running at %.2fx after press %d" % [expected, press])
+			if err != "":
+				break
+	if err == "":
+		err = _T.assert_eq(GameSpeed.step(), 0,
+			"and %d presses close the cycle back on 1x" % GameSpeed.STEPS.size())
+	GameSpeed.reset()
+	return err
+
+
+## The bead is two asks in one control — the designer's handwritten "faster
+## button" and the backlog's slow mode — and a table holding only one of them
+## would pass every other test in this section.
+func test_the_speed_table_goes_both_faster_and_slower_than_normal() -> String:
+	GameSpeed.reset()
+	var fastest: float = GameSpeed.NORMAL
+	var slowest: float = GameSpeed.NORMAL
+	var err: String = ""
+	# Every step is APPLIED, not merely read off the table, so a value the engine
+	# would refuse (or a `set_step` that lost the index) fails here rather than in
+	# whichever direction the player happens to press first.
+	for index: int in GameSpeed.STEPS.size():
+		var landed: float = GameSpeed.set_step(index)
+		fastest = maxf(fastest, landed)
+		slowest = minf(slowest, landed)
+		err = _T.assert_float_eq(GameSpeed.engine_scale(), landed, 0.0001,
+			"step %d puts the engine on %.2fx" % [index, landed])
+		if err != "":
+			break
+	if err == "":
+		err = _T.assert_gt(fastest, GameSpeed.NORMAL,
+			"a step runs the garden FASTER than normal — the note said 'faster button'")
+	if err == "":
+		err = _T.assert_gt(GameSpeed.NORMAL, slowest,
+			"and a step runs it slower — kanban.md's slow mode is the same control's other end")
+	if err == "":
+		# Below this the bridge's own `set-game-speed` refuses the value as a freeze
+		# rather than a speed, and a freeze is what pause is for.
+		err = _T.assert_gt(slowest, 0.01,
+			"and the slow end is still a speed (%.2fx), not a freeze" % slowest)
+	GameSpeed.reset()
+	return err
+
+
+## THE acceptance check the bead names: resuming from pause is at 1x — read from
+## both ends, because "the card is at 1x" and "the player's choice survived" are
+## two different failures and fixing either one alone is easy.
+##
+## Why it matters: `PauseScreen` is PROCESS_MODE_ALWAYS so its fades run while the
+## tree is held, and `Engine.time_scale` scales a Tween whether or not the tree is
+## paused. A run held at 2x therefore dissolves its own pause card in half the time
+## the card was tuned for, and nothing anywhere reports it.
+func test_a_paused_run_reads_at_1x_and_comes_back_at_the_speed_it_was_held_at() -> String:
+	GameSpeed.reset()
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var chosen: float = game.cycle_speed()
+	var err: String = _T.assert_true(not is_equal_approx(chosen, GameSpeed.NORMAL),
+		"one press leaves 1x, so this test is about something (it landed on %.2fx)" % chosen)
+	if err == "":
+		err = _T.assert_float_eq(Engine.time_scale, chosen, 0.0001,
+			"and the live run is running at it")
+	game.pause_run()
+	await _pump(game)
+	if err == "":
+		err = _T.assert_true(game.is_paused(), "the run is held")
+	if err == "":
+		# `engine_scale()` and not `scale()`: the two disagree on purpose exactly
+		# here, and asking the wrong one is how this assertion passes green over a
+		# card being dissolved at double speed.
+		err = _T.assert_float_eq(GameSpeed.engine_scale(), GameSpeed.NORMAL, 0.0001,
+			"THE PAUSE CARD READS AT 1x while it is up")
+	if err == "":
+		err = _T.assert_true(GameSpeed.is_held(),
+			"and the player's choice is parked rather than thrown away")
+	if err == "":
+		# The HUD is stateless and renders what state() hands it, so this is the
+		# button's face: it must keep saying what the player picked rather than
+		# flicking to 1x behind a card that is covering it.
+		err = _T.assert_float_eq(float(game.state()["game_speed"]), chosen, 0.0001,
+			"so the speed readout still reports the player's choice, not the engine's hold")
+	await game.resume_run()
+	if err == "":
+		err = _T.assert_false(game.is_paused(), "resuming lets the garden go")
+	if err == "":
+		err = _T.assert_float_eq(Engine.time_scale, chosen, 0.0001,
+			"at the speed it was held at (%.2fx), not back at 1x" % chosen)
+	if err == "":
+		err = _T.assert_false(GameSpeed.is_held(), "and nothing is left parked")
+	# Both of these are process-global. Unconditional, and before the return.
+	if game.is_paused():
+		game.get_tree().paused = false
+	_T.free_ui(game)
+	GameSpeed.reset()
+	return err
+
+
+## Leaving a run puts the clock back — the half of the lifetime that has no screen
+## to show it.
+##
+## `Engine.time_scale` is not part of the scene: a reload, a return to the title or
+## the window closing all leave it exactly where the run left it. A title screen
+## running at 2x is a defect nobody would look for in the title screen's code, and
+## `Game._exit_tree` is the single caller that covers every one of those exits.
+func test_leaving_a_run_puts_the_engine_clock_back() -> String:
+	GameSpeed.reset()
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var chosen: float = game.cycle_speed()
+	var err: String = _T.assert_true(not is_equal_approx(Engine.time_scale, GameSpeed.NORMAL),
+		"the run really is off 1x before it is torn down (%.2fx)" % chosen)
+	# Not `GameSpeed.reset()` and then a check -- the point is that FREEING THE GAME
+	# does it, which is the path a scene change actually takes.
+	_T.free_ui(game)
+	if err == "":
+		err = _T.assert_float_eq(Engine.time_scale, GameSpeed.NORMAL, 0.0001,
+			"freeing the run put the engine clock back to 1x on its own")
+	if err == "":
+		err = _T.assert_eq(GameSpeed.step(), 0, "and the next run starts at step 0")
+	GameSpeed.reset()
+	return err
+
+
+## A run that ends stops being fast. The post-mortem card animates on the same
+## clock the pause card is protected from, and a restart from that screen must
+## begin at 1x rather than inheriting the last run's tempo.
+func test_a_run_that_ends_drops_back_to_1x() -> String:
+	GameSpeed.reset()
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var chosen: float = game.cycle_speed()
+	var err: String = _T.assert_true(not is_equal_approx(chosen, GameSpeed.NORMAL),
+		"the run is off 1x before it ends (%.2fx)" % chosen)
+	game._end_run("test")
+	await _pump(game)
+	if err == "":
+		err = _T.assert_float_eq(Engine.time_scale, GameSpeed.NORMAL, 0.0001,
+			"the post-mortem card is drawn at 1x")
+	if err == "":
+		err = _T.assert_false(GameSpeed.is_held(),
+			"and it is a reset, not a hold — there is no run left to come back to")
+	_T.free_ui(game)
+	GameSpeed.reset()
+	return err
+
+
+## Cycling while held moves the parked choice and leaves the engine alone.
+##
+## In the running game this branch is unreachable: `Game` is PROCESS_MODE_INHERIT,
+## a paused node receives no input, and `_unhandled_input` therefore cannot fire
+## behind the card. That is precisely why it is pinned — it is a fact about where
+## the node sits today, and reparenting the HUD button onto an ALWAYS layer, or
+## giving the pause card its own speed control, makes it reachable with nothing
+## anywhere reporting the change.
+func test_cycling_behind_the_pause_card_cannot_speed_the_card_up() -> String:
+	GameSpeed.reset()
+	GameSpeed.hold()
+	var err: String = _T.assert_true(GameSpeed.is_held(), "the run is held")
+	var moved: float = GameSpeed.cycle()
+	if err == "":
+		err = _T.assert_true(not is_equal_approx(moved, GameSpeed.NORMAL),
+			"the parked choice moved (%.2fx)" % moved)
+	if err == "":
+		err = _T.assert_float_eq(Engine.time_scale, GameSpeed.NORMAL, 0.0001,
+			"and the engine stayed at 1x while the card is up")
+	GameSpeed.release()
+	if err == "":
+		err = _T.assert_float_eq(Engine.time_scale, moved, 0.0001,
+			"releasing hands the engine the choice made behind the card")
+	# hold() is idempotent, because the Options and Keys screens open OVER the pause
+	# card and a second hold must not park NORMAL as if it were the player's pick.
+	if err == "":
+		GameSpeed.hold()
+		GameSpeed.hold()
+		GameSpeed.release()
+		err = _T.assert_float_eq(Engine.time_scale, moved, 0.0001,
+			"and holding twice still releases to %.2fx, not to 1x" % moved)
+	GameSpeed.reset()
+	return err
+
+
+## The verb is reachable and is written down in both places a player looks. The
+## Keys screen builds one row per declared action, so the row exists by
+## construction — what is not free is that it is DRAWN, with the key it is really
+## bound to.
+func test_the_speed_verb_is_bound_and_listed_where_a_player_can_find_it() -> String:
+	var err: String = _T.assert_true(KeyBindings.is_known(KeyBindings.ACTION_SPEED),
+		"the speed verb is a declared action rather than a loose keycode")
+	if err == "":
+		err = _T.assert_true(
+			KeyBindings.actions_in(KeyBindings.SCOPE_RUN).has(KeyBindings.ACTION_SPEED),
+			"in the run scope, which is the list the pause card draws")
+	if err == "":
+		err = _T.assert_false(KeyBindings.keys_for(KeyBindings.ACTION_SPEED).is_empty(),
+			"and it answers to a key out of the box")
+	if err == "":
+		var named: bool = false
+		for row: Dictionary in Game.key_help():
+			if StringName(row["action"]) == KeyBindings.ACTION_SPEED:
+				named = true
+				err = _T.assert_false(String(row["does"]).strip_edges().is_empty(),
+					"the pause card's row says what it does")
+				break
+		if err == "":
+			err = _T.assert_true(named, "the pause card's legend carries a row for it")
+	var index: int = KeyBindings.actions().find(KeyBindings.ACTION_SPEED)
+	if err == "":
+		err = _T.assert_gte(index, 0, "the action is in the binding table")
+	var screen := await _T.instantiate_ui(KeyBindingScreen.new(), Vector2i(1152, 648)) as KeyBindingScreen
+	if err == "":
+		var key_cell := screen.get_node_or_null("RowKey%d" % index) as Label
+		err = _T.assert_true(key_cell != null,
+			"the Keys screen drew a key cell for row %d" % index)
+		if err == "":
+			err = _T.assert_eq(key_cell.text, KeyBindings.label_for(KeyBindings.ACTION_SPEED),
+				"showing the key it is actually bound to")
+	if err == "":
+		var does_cell := screen.get_node_or_null("Row%d" % index) as Label
+		err = _T.assert_true(does_cell != null and not does_cell.text.is_empty(),
+			"beside a phrase saying what the row does")
+	_T.free_ui(screen)
+	return err
+
+
+## The Keys panel grew for the ninth verb, and it grew DERIVED — so this asks the
+## one question the derivation cannot answer for itself: does the paper still fit
+## on the screen?
+##
+## `KeyBindingScreen.panel_height()` returns exactly the viewport height minus its
+## top inset at nine rows. A tenth verb pushes the foot of the paper off the bottom
+## of the window, and nothing clamps it on purpose — this assertion is the thing
+## that says so, on the day it happens, instead of a screenshot nobody takes.
+func test_the_keys_panel_holds_every_verb_and_stays_on_the_screen() -> String:
+	var screen := await _T.instantiate_ui(KeyBindingScreen.new(), Vector2i(1152, 648)) as KeyBindingScreen
+	var viewport_height: float = float(
+		ProjectSettings.get_setting("display/window/size/viewport_height", 648))
+	var panel: Rect2 = screen.panel_rect()
+	var err: String = _T.assert_gt(KeyBindings.actions().size(), 0,
+		"there are rows to fit — an empty table would pass everything below it")
+	if err == "":
+		err = _T.assert_gte(viewport_height, panel.end.y,
+			("the %d-row paper foots at %.0f inside a %.0f-tall viewport — grow the row "
+				+ "pitch or the header block, not panel_height()")
+				% [KeyBindings.actions().size(), panel.end.y, viewport_height])
+	if err == "":
+		err = _T.assert_gte(screen.footer_clearance(), OverlayScreen.FOOTER_GAP,
+			"and the footer stands %.0fpx clear of the last row" % screen.footer_clearance())
+	if err == "":
+		err = _T.assert_gte(panel.size.y, KeyBindingScreen.PANEL_MIN_HEIGHT,
+			"the shipped height is a floor, so nothing shrank under it")
+	if err == "":
+		# The instance's paper and the static derivation are the same number. They
+		# have to be asked separately: `panel_rect()` is what gets drawn and
+		# `panel_height()` is what every other overlay measurement is derived from,
+		# and a screen whose paper stopped reading its own derivation would look
+		# right in exactly one of them.
+		err = _T.assert_float_eq(panel.size.y, KeyBindingScreen.panel_height(), 0.0001,
+			"and the drawn paper is the derived height, not a second copy of it")
+	_T.free_ui(screen)
+	return err
+
+
+## The square button the top bar has to fund is wide enough for every face it can
+## show — measured in the real theme font, not guessed at.
+##
+## A Button clips its label silently, and the failure is invisible in a screenshot
+## at the one size that matters: "½x" clipped to "½" still reads as a speed.
+func test_the_speed_button_is_wide_enough_for_every_label_it_can_show() -> String:
+	var width: float = GameSpeed.button_min_width()
+	var err: String = _T.assert_gt(GameSpeed.LABELS.size(), 0, "there are labels to measure")
+	if err == "":
+		err = _T.assert_gte(width, GameSpeed.BUTTON_MIN_SIDE,
+			("it clears the %.0fpx interactive floor `findings` gates on")
+				% GameSpeed.BUTTON_MIN_SIDE)
+	if err == "":
+		for text: String in GameSpeed.LABELS:
+			var drawn: float = GardenTheme.measure(text, GameSpeed.BUTTON_FONT_SIZE)
+			err = _T.assert_gte(width, drawn + GameSpeed.BUTTON_PADDING * 2.0,
+				"\"%s\" draws at %.0fpx and fits the %.0fpx button with its padding"
+					% [text, drawn, width])
+			if err != "":
+				break
+	if err == "":
+		err = _T.assert_float_eq(GameSpeed.button_size().y, GameSpeed.BUTTON_MIN_SIDE, 0.0001,
+			"and the button is at least as tall as it is required to be")
+	return err
+
+
+## The button exists, is wired, and says what the state says.
+##
+## THIS IS THE ROW THAT STAYS RED UNTIL hud.gd GROWS THE BUTTON. The speed model,
+## the keyboard verb and the Keys screen row all live in files the speed change
+## owned; the top bar does not, so `Game._ready` connects `speed_requested` by name
+## behind a `has_signal` guard rather than taking the whole project down with a
+## parse error. A guard is only honest if something fails when it skips — this is
+## that something, and `Game._ready` also push_error()s on the same branch.
+##
+## Delete nothing here when the button lands; it becomes the check that it stays.
+func test_the_hud_carries_the_speed_button() -> String:
+	GameSpeed.reset()
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game.hud.has_signal(Game.SPEED_SIGNAL),
+		("Hud declares `signal %s` — without it the speed control is a keyboard verb "
+			+ "with no visible door, which is what this row exists to refuse")
+			% Game.SPEED_SIGNAL)
+	if err == "":
+		# Wired, not merely declared. A signal nobody connected is the same button
+		# as no button, and `findings` cannot tell them apart either.
+		err = _T.assert_gt(game.hud.get_signal_connection_list(Game.SPEED_SIGNAL).size(), 0,
+			"and Game connected to it")
+	if err == "":
+		var button := game.hud.get_node_or_null("Root/TopBar/StatsRow/SpeedButton") as Button
+		err = _T.assert_true(button != null,
+			"the button is in the top bar's StatsRow at the contracted path")
+		if err == "":
+			err = _T.assert_eq(button.text, GameSpeed.label(),
+				"showing the speed the run is actually on")
+		if err == "":
+			# The floor `findings` gates interactive Controls on, and the width
+			# GameSpeed derives from its own longest label.
+			err = _T.assert_gte(button.size.x, GameSpeed.button_min_width(),
+				"wide enough for every face it can show (%.0f of %.0f)"
+					% [button.size.x, GameSpeed.button_min_width()])
+		if err == "":
+			err = _T.assert_gte(button.size.y, GameSpeed.BUTTON_MIN_SIDE,
+				"and tall enough to hit (%.0f)" % button.size.y)
+		if err == "":
+			# Pressing the real button, not calling the handler: a disconnected
+			# button passes the second half of this test and fails the player.
+			var before: float = GameSpeed.scale()
+			button.pressed.emit()
+			await _pump(game)
+			err = _T.assert_true(not is_equal_approx(GameSpeed.scale(), before),
+				"and pressing it actually moves the garden's speed (%.2fx -> %.2fx)"
+					% [before, GameSpeed.scale()])
+			if err == "":
+				err = _T.assert_eq(button.text, GameSpeed.label(),
+					"and the face follows the press without waiting for another refresh")
+	_T.free_ui(game)
+	GameSpeed.reset()
+	return err
+
+
+## The state dictionary carries the PLAYER's speed, its rendered face and its
+## tooltip — the HUD keeps no second copy of any truth, so a button that has to
+## derive its own label from `Engine.time_scale` would read 1x behind a pause card.
+func test_the_run_state_carries_the_speed_the_hud_has_to_draw() -> String:
+	GameSpeed.reset()
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var chosen: float = game.cycle_speed()
+	var state: Dictionary = game.state()
+	var err: String = _T.assert_true(state.has("game_speed"),
+		"state() reports the speed")
+	if err == "":
+		err = _T.assert_float_eq(float(state["game_speed"]), chosen, 0.0001,
+			"and it is the one the press landed on")
+	if err == "":
+		err = _T.assert_eq(String(state["game_speed_label"]), GameSpeed.label(),
+			"beside the face the button draws")
+	if err == "":
+		err = _T.assert_eq(String(state["game_speed_tooltip"]), GameSpeed.button_tooltip(),
+			"and the tooltip GameSpeed composes, not a second copy of it")
+	if err == "":
+		err = _T.assert_true(String(state["game_speed_tooltip"]).contains(GameSpeed.label()),
+			"and a tooltip that names the speed it is on")
+	if err == "":
+		# The tooltip's job is to say what the NEXT press does; one that only named
+		# the current speed would repeat the button's own face and teach nothing.
+		err = _T.assert_true(
+			String(state["game_speed_tooltip"]).contains(GameSpeed.label_for(GameSpeed.step() + 1)),
+			"and what the next press will do (%s)" % GameSpeed.label_for(GameSpeed.step() + 1))
+	_T.free_ui(game)
+	GameSpeed.reset()
+	return err
+
+
+# -- The parent's merge: the three surfaces no lane could reach ---------------
+#
+# Each of these was NEW in `suite_reach_check` after the fan-out merged, and each
+# is a public surface a lane introduced in a file it owned while the thing that
+# exercises it lived in a file it did not. That is the shape the workflow warns
+# about — "a lane that reports 'needs these lines in a parent-owned file' has not
+# finished until the parent writes them" — and an unreached public surface is
+# what it looks like when the parent writes the lines and stops there.
+#
+# Banking them into the reach baseline instead would have recorded three working
+# features as accepted debt, in the same stroke that banked an unrelated fix.
+
+
+## The HUD reports the speed press; it does not own the clock.
+##
+## `speed_requested` is the whole seam between the button and `GameSpeed`, and
+## until this test it was declared, connected, and named by nothing — the exact
+## dead-code shape the guard deleted from `game.gd` was written to shout about.
+func test_the_speed_button_reports_the_press_and_owns_no_clock() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var button: Button = game.hud.get_node_or_null(
+		"Root/TopBar/StatsRow/SpeedButton") as Button
+	var err: String = _T.assert_true(button != null,
+		"the top bar carries a speed button a player can press")
+	var heard: Array[int] = []
+	if err == "":
+		game.hud.speed_requested.connect(func() -> void: heard.append(1))
+		err = _T.assert_eq(GameSpeed.step(), 0, "a fresh garden runs at 1x")
+	if err == "":
+		button.pressed.emit()
+		err = _T.assert_eq(heard.size(), 1,
+			"pressing it emits speed_requested exactly once")
+	if err == "":
+		err = _T.assert_gt(GameSpeed.scale(), 1.0,
+			"and Game answered by speeding the garden up, got %.2fx" % GameSpeed.scale())
+	if err == "":
+		# The button is a readout, not a second copy of the speed.
+		game.hud.refresh(game.state())
+		err = _T.assert_eq(button.text, GameSpeed.label(),
+			"the button reads back what the engine actually holds")
+	_T.free_ui(game)
+	GameSpeed.reset()
+	return err
+
+
+## The locked-plant cue, asserted where it is decided rather than where it shows.
+##
+## `plant_button_tint` and `plant_button_tooltip` are pure and static, so this
+## needs no tree — and the tint assertion is made in the case that can FAIL: a
+## locked, unaffordable plant that is nonetheless hinted must come back lit,
+## because `hinted` is the branch the hover added and the other two arguments are
+## exactly the ones that would drown it out if the precedence were wrong.
+func test_a_hinted_plant_lights_up_and_names_the_packet_that_holds_it() -> String:
+	var err: String = _T.assert_eq(
+		Hud.plant_button_tint(false, false, true), Hud.PACKET_HINT_TINT,
+		"a hinted plant is lit even though it is locked AND unaffordable")
+	if err == "":
+		err = _T.assert_eq(Hud.plant_button_tint(false, false, false), Hud.PLANT_BUTTON_DIM,
+			"the same plant unhinted is dim, so the hint is what moved it")
+	if err == "":
+		err = _T.assert_eq(Hud.plant_button_tint(true, true, false), Color.WHITE,
+			"and an owned, affordable plant is at full strength")
+
+	# The tooltip half. The Chomp starts locked, so a fresh bank answers with a
+	# real tier rather than the empty one.
+	var bank := SeedBank.new()
+	var tier: StringName = bank.cheapest_packet_for(PlantCatalog.CHOMP)
+	if err == "":
+		err = _T.assert_true(tier != &"",
+			"the Chomp starts locked, so some packet can hand it over")
+	if err == "":
+		var spec: Dictionary = SeedBank.PACKET_TIERS[tier] as Dictionary
+		var tip: String = Hud.plant_button_tooltip(PlantCatalog.CHOMP, tier)
+		err = _T.assert_true(tip.contains(String(spec["display"])),
+			"the tooltip names that packet (%s), got: %s" % [spec["display"], tip])
+		if err == "":
+			err = _T.assert_true(tip.contains(str(int(spec["cost"]))),
+				"and prices it, got: %s" % tip)
+		if err == "":
+			# The other side of the branch: an unlocked plant is told nothing about
+			# packets, which is what makes the clause above carry information.
+			var plain: String = Hud.plant_button_tooltip(PlantCatalog.CHOMP, &"")
+			err = _T.assert_false(plain.contains("Still in a packet"),
+				"while a plant already in the garden gets no packet clause, got: %s" % plain)
+	return err

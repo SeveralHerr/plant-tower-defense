@@ -15,6 +15,10 @@ signal next_wave_requested
 signal upgrade_requested
 signal uproot_requested
 
+## The player asked the garden to run at a different speed. `Game` owns the
+## clock; the HUD only reports the press, exactly as it does for the wave.
+signal speed_requested
+
 const BAR_HEIGHT: int = 72
 const PANEL_WIDTH: int = 256
 
@@ -35,7 +39,16 @@ const THREAT_SHOW_FROM: int = 2
 ## `Interactive control ... below minimum 40x40` under it, and it was right to
 ## when a first pass at this layout trimmed the button to 34 to make the rows
 ## fit. The rows had to give instead.
-const NEXT_WAVE_BUTTON_SIZE := Vector2(216, 40)
+##
+## The width is 120 measured + the same flat +10px margin every readout above
+## carries. It was 216 for "Grow the next wave", which measured 202 and left the
+## button 14px of its own slot -- the row's tightest element by far, and the only
+## discretionary number in `stats_row_budget`. The speed toggle
+## (plant-tower-defense-03t6) needed 67px the row did not have, so the label
+## shortened to "Next wave" rather than the readouts giving up the +10 margin
+## they were re-proportioned to carry (plant-tower-defense-73y). Net effect: the
+## row's headroom went UP, 19px to 38, while gaining a control.
+const NEXT_WAVE_BUTTON_SIZE := Vector2(130, 40)
 
 ## Every readout gets a clipped width budget, so the row can never overflow
 ## however long a counter grows. They are listed together because what matters
@@ -608,6 +621,7 @@ var _plant_bar: GridContainer
 ## what the pair of fields here became the moment there were three of them.
 var _packet_buttons: Dictionary = {}
 var _next_wave_button: Button
+var _speed_button: Button
 var _selection_box: VBoxContainer
 var _selection_label: Label
 var _upgrade_button: Button
@@ -786,9 +800,23 @@ func _build_top_bar(root: Control) -> void:
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stats.add_child(spacer)
 
+	# The garden's playback speed. LEFT of the wave button, not right: the wave
+	# button is the row's right anchor and the Spacer above exists to keep it
+	# there. Its size comes from GameSpeed rather than a constant here, so the
+	# labels it has to hold and the box that holds them cannot be edited apart.
+	_speed_button = Button.new()
+	_speed_button.name = "SpeedButton"
+	_speed_button.text = GameSpeed.label()
+	_speed_button.tooltip_text = GameSpeed.button_tooltip()
+	_speed_button.custom_minimum_size = GameSpeed.button_size()
+	_speed_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	GardenTheme.style_paper_button(_speed_button)
+	_speed_button.pressed.connect(func() -> void: speed_requested.emit())
+	stats.add_child(_speed_button)
+
 	_next_wave_button = Button.new()
 	_next_wave_button.name = "NextWaveButton"
-	_next_wave_button.text = "Grow the next wave"
+	_next_wave_button.text = "Next wave"
 	_next_wave_button.custom_minimum_size = NEXT_WAVE_BUTTON_SIZE
 	_next_wave_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	# The notebook's own button rather than Godot's grey slab, applied as per-node
@@ -1249,7 +1277,8 @@ static func plant_bar_layout(count: int) -> Dictionary:
 
 static func stats_row_budget(readouts: int) -> float:
 	var widths: float = SEEDS_LABEL_WIDTH + WAVE_LABEL_WIDTH + LIVES_LABEL_WIDTH + COMPOST_LABEL_WIDTH
-	return widths + float(STATS_SEPARATION * readouts) + NEXT_WAVE_BUTTON_SIZE.x
+	return (widths + float(STATS_SEPARATION * readouts) + NEXT_WAVE_BUTTON_SIZE.x
+		+ GameSpeed.button_size().x)
 
 
 ## No position argument: every caller either puts the label in a container that
@@ -1490,6 +1519,11 @@ func refresh(state: Dictionary) -> void:
 		if packet != null:
 			_refresh_packet_button(packet, bank, tier)
 	_next_wave_button.disabled = not bool(state["can_start_wave"])
+	# Rendered from state like every other readout — the HUD keeps no second copy
+	# of the speed, so the button cannot disagree with the engine or read 1x
+	# behind a pause card that is holding the clock.
+	_speed_button.text = String(state.get("game_speed_label", "1x"))
+	_speed_button.tooltip_text = String(state.get("game_speed_tooltip", ""))
 	_refresh_prep_bar(state)
 	_refresh_prep_note(state)
 	_refresh_selection(state)
@@ -1770,7 +1804,7 @@ func interactive_controls() -> Array[Button]:
 	for button: Variant in _packet_buttons.values():
 		if button is Button:
 			out.append(button)
-	for button: Button in [_next_wave_button, _upgrade_button, _uproot_button]:
+	for button: Button in [_next_wave_button, _speed_button, _upgrade_button, _uproot_button]:
 		if button != null and is_instance_valid(button):
 			out.append(button)
 	return out

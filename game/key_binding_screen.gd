@@ -77,7 +77,40 @@ static func build() -> KeyBindingScreen:
 ## re-centred on it, so a wider key column grows the paper evenly on both sides
 ## rather than pushing it right -- the same reason PauseScreen derives CARD_X.
 const PANEL_TOP: float = 24.0
-const PANEL_HEIGHT: float = 600.0
+## The shipped panel, kept as the FLOOR so nothing moves at eight rows and the
+## paper only grows for a table that has outgrown it. Same treatment
+## `key_column_width()` gives KEY_MIN_WIDTH, and for the same reason: a derived
+## number that silently redraws the screen everyone already knows is a worse answer
+## than one that only moves when it has to.
+const PANEL_MIN_HEIGHT: float = 600.0
+
+
+## Tall enough to hold every row in `KeyBindings.ACTIONS` and still stand
+## `FOOTER_GAP` clear of the footer — DERIVED, which is what the header two
+## paragraphs up has been asking for since the eighth row arrived and overlapped
+## the footer at the then-hardcoded 568.
+##
+## The ninth row is the speed toggle (`GameSpeed`), and it is what turned this
+## constant into a function: at the shipped 600 the last row footed at exactly the
+## footer's y, a clearance of 0 against a FOOTER_GAP of 24, which
+## `OverlayScreen._warn_if_footer_is_flush` would have pushed an error about at
+## build time and `_overlay_content_fits_and_stands_clear` fails on.
+##
+## NINE ROWS IS THE LAST COUNT THAT FITS. The arithmetic below returns 624 for
+## nine, and 24 + 624 is exactly the 648-tall viewport — a tenth verb returns 672
+## and puts the paper's foot off the bottom of the screen. Nothing here clamps it,
+## deliberately: silently squashing the rows would hide the problem, and
+## `test_the_keys_panel_stays_inside_the_viewport` is the assertion that says so
+## out loud on the day it happens. The fix then is the row PITCH or the header
+## block, not this function.
+static func panel_height() -> float:
+	var rows: float = float(KeyBindings.actions().size())
+	# The last row's BUTTON is what the footer has to clear, and it is
+	# ROW_BUTTON_SIZE.y tall rather than a whole ROW_HEIGHT — the pitch includes the
+	# gap between rows, and counting it on the last one would over-reserve.
+	var last_row_foot: float = ROWS_TOP + maxf(rows - 1.0, 0.0) * ROW_HEIGHT + ROW_BUTTON_SIZE.y
+	var needed: float = (last_row_foot + FOOTER_GAP + FOOTER_HEIGHT + FOOTER_INSET) - PANEL_TOP
+	return maxf(PANEL_MIN_HEIGHT, needed)
 
 
 static func panel_width() -> float:
@@ -212,7 +245,7 @@ const RESET_MOVED_COUNT := "%d key%s moved."
 func panel_rect() -> Rect2:
 	var width: float = panel_width()
 	var viewport: float = float(ProjectSettings.get_setting("display/window/size/viewport_width", 1152))
-	return Rect2((viewport - width) / 2.0, PANEL_TOP, width, PANEL_HEIGHT)
+	return Rect2((viewport - width) / 2.0, PANEL_TOP, width, panel_height())
 
 
 func _build_contents() -> void:

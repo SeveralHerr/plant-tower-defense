@@ -48,7 +48,6 @@
     "game/title_screen.gd::func::lawn_plants",
     "game/title_screen.gd::func::skip_to_game",
     "game/wave_director.gd::func::endless_beetle_count",
-    "game/wave_director.gd::func::reset",
     "game/wave_director.gd::signal::wave_spawning_finished",
     "game/wave_director.gd::signal::wave_started"
   ]

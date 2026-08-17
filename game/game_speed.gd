@@ -1,0 +1,206 @@
+class_name GameSpeed
+extends RefCounted
+
+## The one place `Engine.time_scale` is written.
+##
+## The designer's note asks for "a faster button"; `kanban.md` has carried
+## "Slow-mode toggle (global time_scale)" for many cycles. They are the same
+## control pointed in two directions, so they are one control here: `STEPS`
+## cycles 1x -> 2x -> half -> 1x, which puts the thing that was actually asked for
+## one press away and the thing the backlog wanted two.
+##
+## ## Why a class and not four lines in Game
+##
+## Because `Engine.time_scale` is *engine* state, not scene state. It survives
+## `reload_current_scene()`, `change_scene_to_file()`, and the run ending — a run
+## abandoned at 2x hands the title screen a doubled clock and nothing in the title
+## screen's code says why. That is a lifetime problem, and a lifetime problem wants
+## an owner with a `reset()` rather than a property somebody remembers to put back
+## at three call sites. `Game._exit_tree` calls it once and every exit is covered.
+##
+## Static for the same reasons `KeyBindings` is: the thing being wrapped is already
+## a global singleton, so there is no per-instance state that could disagree with
+## it, and a static call is reachable from a `const` context and from a headless
+## test that never builds a Game.
+##
+## ## Hold, and why the pause card must read 1x
+##
+## `PauseScreen` sets itself `PROCESS_MODE_ALWAYS` so its entry and exit fades run
+## while the tree is paused (`Game.resume_run`'s comment). `Engine.time_scale`
+## scales tweens whether or not the tree is paused, so a run held at 2x fades its
+## own pause card in half the time it was designed for, and a run held at half
+## speed drags it out to twice. Neither is a bug the player can name; both make the
+## card feel wrong.
+##
+## So `hold()` parks the chosen step and puts the engine back to `NORMAL` for the
+## whole time the card is up, and `release()` restores it. The player's choice is
+## remembered across the pause rather than thrown away — losing it would mean the
+## key has to be pressed again after every pause, which is the control fighting the
+## person using it.
+##
+## ## What is deliberately NOT scaled
+##
+## Audio pitch. `Engine.time_scale` does not touch it and this does not either.
+## The one-shot cues are short enough that no player can hear a cue arriving on a
+## doubled clock at its own pitch, and the looping music bed is the one sound where
+## a pitch shift WOULD be obvious — a chipmunk soundtrack is a much louder defect
+## than a bell that lands a few milliseconds off. Unpitched is the answer, not the
+## compromise.
+
+## The speed a run starts at, ends at, and is held at while paused.
+const NORMAL: float = 1.0
+
+## The cycle, in press order. Index 0 is always `NORMAL`; `reset()` relies on it.
+##
+## Three steps rather than 1x/2x/3x: 3x is past the point where a player can still
+## read the board, and the half step is a request in its own right (the slow mode
+## the backlog asks for is for the person who drew this game and wants to watch it).
+const STEPS: Array[float] = [1.0, 2.0, 0.5]
+
+## What the button says at each step, index-aligned with `STEPS`.
+##
+## Two characters each, because the control this feeds is a square button in a top
+## bar with single-digit pixels of slack — "0.5x" is four glyphs and would need a
+## wider button than the row can fund. "½" is U+00BD, Latin-1 Supplement: better
+## covered by any font than the "∞" this project already renders in the wave
+## readout, so this is not a new risk.
+const LABELS: Array[String] = ["1x", "2x", "½x"]
+
+## The font the button draws at (GardenTheme sets `Button`'s `font_size` to 18).
+## Named here so `button_min_width()` and the button measure the same thing.
+const BUTTON_FONT_SIZE: int = 18
+
+## The floor a button carrying these labels may not go under. 40 is not taste:
+## `findings` raises `Interactive control ... below minimum 40x40` beneath it, the
+## same floor `Hud.NEXT_WAVE_BUTTON_SIZE` documents.
+const BUTTON_MIN_SIDE: float = 40.0
+
+## Padding the button's StyleBox eats on each side of the label. Deliberately
+## generous — this is a floor being derived, and a floor that is a few pixels too
+## kind costs nothing while one that is too mean clips the label.
+const BUTTON_PADDING: float = 16.0
+
+## Which step of `STEPS` the player has cycled to.
+static var _step: int = 0
+## The step parked by `hold()`, or -1 when nothing is held. Held separately from
+## `_step` so `is_held()` is a readable fact rather than something inferred from
+## comparing the engine against the table.
+static var _held_step: int = -1
+
+
+## The step index the player has chosen. Survives a hold.
+static func step() -> int:
+	return _step
+
+
+## The speed the player has chosen — which is NOT necessarily the engine's, because
+## a hold parks it. Use `engine_scale()` for the other question.
+static func scale() -> float:
+	return STEPS[_step]
+
+
+## What the engine is actually running at. The two disagree exactly while held, and
+## a test that wants to pin "the pause card reads at 1x" has to ask this one.
+static func engine_scale() -> float:
+	return Engine.time_scale
+
+
+static func label() -> String:
+	return LABELS[_step]
+
+
+static func label_for(index: int) -> String:
+	return LABELS[posmod(index, LABELS.size())]
+
+
+## Is the run parked at `NORMAL` for a screen that must not be sped up?
+static func is_held() -> bool:
+	return _held_step >= 0
+
+
+## Advances one step and applies it. Returns the speed now chosen.
+##
+## While held this moves the parked choice and leaves the engine alone — the pause
+## card stays at 1x. In the running game that branch is unreachable (a paused node
+## receives no input, so `Game._unhandled_input` cannot fire), which is exactly why
+## it is written down: it is the branch a reparent or a `PROCESS_MODE_ALWAYS` would
+## make reachable without anyone noticing.
+static func cycle() -> float:
+	_step = posmod(_step + 1, STEPS.size())
+	if is_held():
+		_held_step = _step
+		return scale()
+	_apply()
+	return scale()
+
+
+## Jumps straight to a step. For the settings paths, the tests and the bridge —
+## `cycle()` is the player's door and this is everybody else's.
+static func set_step(index: int) -> float:
+	_step = posmod(index, STEPS.size())
+	if is_held():
+		_held_step = _step
+		return scale()
+	_apply()
+	return scale()
+
+
+## Parks the chosen speed and puts the engine back to `NORMAL`.
+##
+## Idempotent, and that is load-bearing: `Game.pause_run()` returns early when a
+## card is already up, but the Options screen and the Keys screen open over that
+## card and a future one of them calling this again must not park `NORMAL` as if it
+## were the player's choice.
+static func hold() -> void:
+	if is_held():
+		return
+	_held_step = _step
+	Engine.time_scale = NORMAL
+
+
+## Puts the parked speed back. Safe to call when nothing is held.
+static func release() -> void:
+	if not is_held():
+		return
+	_step = _held_step
+	_held_step = -1
+	_apply()
+
+
+## Back to 1x, unheld, engine included.
+##
+## The call that has to happen on every way out of a run — reload, scene change,
+## the post-mortem — because `Engine.time_scale` is not part of the scene and
+## nothing frees it. `Game._exit_tree` is the one caller that covers all of them.
+static func reset() -> void:
+	_step = 0
+	_held_step = -1
+	Engine.time_scale = NORMAL
+
+
+## How wide a button carrying the widest of `LABELS` has to be. Derived, so a
+## fourth step with a longer label widens the button instead of clipping in it.
+static func button_min_width() -> float:
+	var widest: float = 0.0
+	for text: String in LABELS:
+		widest = maxf(widest, GardenTheme.measure(text, BUTTON_FONT_SIZE))
+	return maxf(BUTTON_MIN_SIDE, ceilf(widest + BUTTON_PADDING * 2.0))
+
+
+## The square-ish button this control wants, for whoever draws it. One function
+## rather than a constant in the HUD, so the size and the labels it has to hold
+## cannot be edited apart.
+static func button_size() -> Vector2:
+	return Vector2(button_min_width(), BUTTON_MIN_SIDE)
+
+
+## The tooltip. Names the next step rather than the current one, because the
+## current one is already printed on the button's face.
+static func button_tooltip() -> String:
+	return "Garden speed: %s. Click for %s." % [
+		label(), label_for(_step + 1),
+	]
+
+
+static func _apply() -> void:
+	Engine.time_scale = scale()
