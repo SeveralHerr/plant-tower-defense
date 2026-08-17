@@ -6271,3 +6271,13 @@ Noted on the bead.
     class. The one-line version is cheapest: print the scale whenever it is not 1.0, so the
     mismatch is visible in the reply that produced the wrong image.
   - Note: no other gaps this turn.
+
+  - [G-072] status: open | seen: 1 | harness: 0.54.0 | upstream: gh#57 | note: reconciled
+    against the installed 0.54.0 before filing — `dev_tools.gd:3915` still formats
+    `"%s '%s' extends past viewport"` with no ancestor walk.
+  - [G-073] status: open | seen: 1 | harness: 0.54.0 | upstream: gh#57 | note: same issue,
+    filed first because it is the worse of the two: `devtools.py:1144` prints
+    `Cropped to: x,y wxh` with no scale, so a region taken from `node-bounds` produces a
+    valid PNG of the wrong place and no error. Filed together because they share a shape —
+    a reply that is true, is the most general true statement available, and sends the reader
+    to the outermost cause when the specific one was already computed.
