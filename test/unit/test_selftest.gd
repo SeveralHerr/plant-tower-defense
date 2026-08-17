@@ -10414,3 +10414,119 @@ func test_the_record_rolls_up_from_the_one_it_beat() -> String:
 	RunConfig.save_path = stashed_path
 	DirAccess.remove_absolute("user://test_selftest_ratchet_roll.save")
 	return err
+
+
+## The prep gap says what is coming (plant-tower-defense-arkk).
+##
+## The wording is pure so it can be asserted without a HUD, and the three things it
+## names are the three that change the SHAPE of a wave rather than its size — the
+## threat number on the prep strip already answers "how much".
+func test_the_prep_note_says_what_the_next_wave_is_worth() -> String:
+	var err: String = _T.assert_eq(
+		Hud.next_wave_note(5, 22, false, WaveDirector.WEATHER_CLEAR),
+		"Wave 5 next — 22 pests.", "a plain wave is its number and its count")
+	if err == "":
+		err = _T.assert_eq(
+			Hud.next_wave_note(14, 30, true, WaveDirector.WEATHER_CLEAR),
+			"Wave 14 next — 30 pests · a queen.", "a boss wave says so")
+	if err == "":
+		err = _T.assert_eq(
+			Hud.next_wave_note(10, 24, false, WaveDirector.WEATHER_RAIN),
+			"Wave 10 next — 24 pests · rain.", "and the weather rides with it")
+	if err == "":
+		# Past the fixed table pests_in_wave() returns 0 because the schedule does
+		# not exist yet. "0 pests" would be a confident lie about the hardest waves
+		# in the game, so the count is omitted rather than printed as a zero.
+		err = _T.assert_eq(
+			Hud.next_wave_note(40, 0, false, WaveDirector.WEATHER_CLEAR),
+			"Wave 40 next.", "an unknown count is absent, not zero")
+	if err == "":
+		err = _T.assert_true(
+			WaveDirector.pests_in_wave(WaveDirector.WAVES.size() + 1) == 0,
+			"which is the case that actually happens: the wave after the table has "
+				+ "no schedule yet, so this is not a hypothetical branch")
+
+	# It fits the row it shares. The message label clips, so a note too long for it
+	# would be trimmed silently -- the same failure the top bar's budgets exist for.
+	if err == "":
+		var widest: String = Hud.next_wave_note(999, 9999, true, WaveDirector.WEATHER_DROUGHT)
+		var game := await _T.instantiate_scene(GAME_SCENE) as Game
+		var label: Label = game.hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+		err = _T.assert_true(label != null, "the message row exists to share")
+		if err == "":
+			err = _T.assert_true(GardenTheme.measure(widest, Hud.MESSAGE_FONT_SIZE) <= label.size.x,
+				"and the widest note this can produce (%s) fits its %.0fpx row at %.0fpx"
+					% [widest, label.size.x, GardenTheme.measure(widest, Hud.MESSAGE_FONT_SIZE)])
+		_T.free_ui(game)
+	return err
+
+
+## The prep note yields to a message and comes back, and goes away when the wave
+## starts (plant-tower-defense-arkk).
+##
+## Both halves were found in the running game, and both are invisible to a test that
+## only asserts the wording:
+##
+##   * `refresh()` is driven by state CHANGES, and a message expiring is not one — so
+##     the row went blank seconds after the note was written and stayed blank;
+##   * nothing else rewrites this Label, so when the wave started the note announcing
+##     it stayed on screen for the whole wave.
+##
+## The label is driven directly here rather than through a live Game, because what is
+## under test is the HUD's own arbitration between a standing note and a transient
+## message, and a Game would only be a way of producing the two states.
+func test_the_prep_note_yields_to_a_message_and_comes_back() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	var label: Label = hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+	var err: String = _T.assert_true(label != null, "the message row exists")
+
+	var prep: Dictionary = {
+		"wave_live": false, "more_waves": true, "wave": 4,
+		"next_wave_pests": 16, "next_wave_boss": false,
+		"next_weather": WaveDirector.WEATHER_RAIN,
+	}
+	# Declared at function scope, not inside the `if` that first uses it: GDScript
+	# scopes `var` to its enclosing block, and the later block that reads it again
+	# fails to PARSE rather than to run.
+	var live: Dictionary = prep.duplicate()
+	live["wave_live"] = true
+	if err == "":
+		# The Game opens with its own hint on this row, and the note correctly
+		# declines to overwrite it -- which is what the first draft of this test
+		# tripped over. Drain it, so what follows is about arbitration and not about
+		# whatever the run happened to be saying.
+		hud._message_left = 0.0
+		hud._advance_message_queue()
+		hud._refresh_prep_note(prep)
+		err = _T.assert_eq(label.text, "Wave 5 next — 16 pests · rain.",
+			"the note is on the row during the prep gap")
+	if err == "":
+		hud.show_message("Composted a husk for 6 seeds.", 3.0)
+		err = _T.assert_eq(label.text, "Composted a husk for 6 seeds.",
+			"a real message outranks it")
+	if err == "":
+		hud._refresh_prep_note(prep)
+		err = _T.assert_eq(label.text, "Composted a husk for 6 seeds.",
+			"and a refresh while that message is up does not stomp it")
+	if err == "":
+		# The path refresh() cannot cover: the message expiring on its own.
+		hud._message_left = 0.0
+		hud._advance_message_queue()
+		err = _T.assert_eq(label.text, "Wave 5 next — 16 pests · rain.",
+			"when the message drains, the note comes back rather than the row "
+				+ "going blank")
+	if err == "":
+		hud._refresh_prep_note(live)
+		err = _T.assert_eq(label.text, "",
+			"and the wave starting takes the note down -- it announces what is "
+				+ "coming, not what is here")
+	if err == "":
+		# A real message during a wave is not ours to erase.
+		hud.show_message("A pest got past you.", 3.0)
+		hud._refresh_prep_note(live)
+		err = _T.assert_eq(label.text, "A pest got past you.",
+			"and taking it down never clears someone else's line")
+
+	_T.free_ui(game)
+	return err

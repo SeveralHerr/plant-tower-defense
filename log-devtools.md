@@ -4011,3 +4011,35 @@ cited in code, and the citation is a mitigation this project has watched fail.
   verified explicitly before writing this. The bug was mine. **Check that the tool is
   actually silent before filing a gap about its silence**, especially after
   redirecting its output.
+
+## 2026-08-16 — cycle 39: the prep gap says what is coming
+
+- Value: **warranted** — two defects, both about a Label's lifetime across two
+  systems' timing, and the headless suite was green over both.
+  - Expected: the wording is pure and already asserted headlessly; what runtime adds
+    is whether the note ever actually reaches the row, since it shares that row with
+    a message queue whose timing no test drives.
+  - Got: it did not reach the row, and then it would not leave it.
+    `get-state --node .../MessageLabel --property text` read empty in the prep gap;
+    after the fix it read `Wave 1 next — 5 pests.`, and after the second fix it
+    correctly went blank when the wave started and came back as
+    `Wave 14 next — 29 pests · a queen.` ahead of a boss wave.
+  - Found: two halves of one omission.
+    1. **The note never survived.** `refresh()` is driven by state CHANGES and a
+       message expiring is not one, so `_advance_message_queue` blanked the row
+       seconds after the note was written and nothing put it back.
+    2. **And it never came down.** Clearing the cached string when the wave starts is
+       not enough, because nothing else rewrites that Label — so the note announcing
+       a wave stayed on screen for the whole wave it was announcing.
+    Together: the note needed writing AND unwriting, and only the writing existed.
+    A test that asserts a pure formatter cannot see either.
+  - Cheaper: nothing. The suite had no test that drove a message to expiry. It does
+    now, written from what the running game showed rather than from what I imagined
+    the failure would be.
+
+- Gap: **no gaps this turn.** Worth recording what the runner did right: a parse error
+  in the test file (a `var` declared inside one `if` block and read in the next, which
+  GDScript scopes per-block) came back as `run_tests.gd itself reported exit 2` with
+  `SCRIPT ERROR: Parse Error: Identifier "live" not declared` quoted and located. That
+  is the failure mode `--filter` used to blame on the selector; the fix for [G-003] is
+  visibly working, and this is the first time this project has hit it since.

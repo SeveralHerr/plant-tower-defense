@@ -153,6 +153,12 @@ const THREAT_TINT_MAX: int = 12
 ## the same colour language answers "how bad" and "how long" at once.
 const PREP_BAR_HEIGHT: float = 4.0
 
+## The message row's font size, hoisted out of its one call site so a width measured
+## against it cannot be measured at a different one -- the same reason
+## STAT_FONT_SIZE exists. test_the_prep_note_says_what_the_next_wave_is_worth
+## measures against this, and hardcoding 18 there (a guess) is what prompted it.
+const MESSAGE_FONT_SIZE: int = 15
+
 ## Below this many seconds left, the strip stops only shrinking and starts
 ## pulsing too (plant-tower-defense-7mi). PREP_SECONDS is roughly 18-20s of
 ## calm shrink; the last two are the one stretch of the window where a player
@@ -473,6 +479,13 @@ var _fx_layer: Container
 var _plant_buttons: Dictionary = {}
 var _banner_left: float = 0.0
 var _message_left: float = 0.0
+## What the row says when nothing else is speaking. The ONE piece of state this class
+## keeps about the game, and it is kept deliberately narrowly: a string that was
+## computed from `state` on the last refresh, not a copy of `state` itself. The
+## header's rule -- "there is no second copy of the truth here that can go stale" --
+## is about the game's numbers; this is the rendered sentence, and it goes stale
+## exactly as fast as the row it is written into.
+var _idle_message: String = ""
 var _message_priority: int = MESSAGE_NORMAL
 var _message_queue: Array[Dictionary] = []
 var _prep_bar: ColorRect
@@ -592,7 +605,7 @@ func _build_top_bar(root: Control) -> void:
 
 	# Second row, outside the container: it is a full-width status line, not a
 	# stat competing for space with the others.
-	_message_label = _make_label("MessageLabel", 15, LEAF)
+	_message_label = _make_label("MessageLabel", MESSAGE_FONT_SIZE, LEAF)
 	_message_label.position = Vector2(20, MESSAGE_ROW_Y)
 	_message_label.size = Vector2(get_viewport_width() - 276, MESSAGE_ROW_HEIGHT)
 	_message_label.clip_text = true
@@ -1093,6 +1106,7 @@ func refresh(state: Dictionary) -> void:
 			_refresh_packet_button(packet, bank, tier)
 	_next_wave_button.disabled = not bool(state["can_start_wave"])
 	_refresh_prep_bar(state)
+	_refresh_prep_note(state)
 	_refresh_selection(state)
 	# A run can end mid-hold — the last life goes while the wave banner is still
 	# up. RunSummary's backdrop is deliberately translucent so the board's damage
@@ -1374,9 +1388,77 @@ func _queue_message(text: String, seconds: float, priority: int) -> void:
 	_message_queue.append({"text": text, "seconds": seconds, "priority": priority})
 
 
+## What the next wave is worth, shown in the message row for the whole prep gap
+## (plant-tower-defense-arkk).
+##
+## The prep gap is where the player decides what to buy, and the decision is "can I
+## afford to be wrong". Until now the only thing describing the coming wave was the
+## prep strip's colour, which answers "how much" and not "in what way" -- and the
+## wave-cleared banner, which fades.
+##
+## **It goes in the message row rather than on a new readout**, for two reasons. The
+## top bar is measurably full (10px in the wave slot, 19 in the row -- see
+## `WORST_CASE_TEXT`), and this line is a message: "here is what is coming" is the
+## same kind of thing as "composted a husk for 6 seeds". It is the row's IDLE state,
+## so any real message still wins for as long as it lasts and the note comes back
+## when the queue drains.
+func _refresh_prep_note(state: Dictionary) -> void:
+	if bool(state.get("wave_live", false)) or not bool(state.get("more_waves", false)):
+		# Take the row back down. Clearing `_idle_message` alone is not enough and
+		# that was the second half of the same bug: nothing else rewrites this Label,
+		# so the note stayed on screen through the whole wave it was announcing.
+		# Only if the row is still showing OUR text -- a real message that happens to
+		# be up is not ours to erase.
+		if _message_left <= 0.0 and _message_label.text == _idle_message:
+			_message_label.text = ""
+		_idle_message = ""
+		return
+	_idle_message = next_wave_note(
+		int(state.get("wave", 0)) + 1,
+		int(state.get("next_wave_pests", 0)),
+		bool(state.get("next_wave_boss", false)),
+		StringName(state.get("next_weather", WaveDirector.WEATHER_CLEAR)))
+	# Only when nothing is speaking. A real message outranks the standing note for
+	# as long as it lasts, and `_advance_message_queue` puts the note back when the
+	# queue drains -- which is the path this function cannot cover, because
+	# `refresh()` is called on state CHANGES and a message expiring is not one.
+	if _message_left <= 0.0:
+		_message_label.text = _idle_message
+
+
+## Pure, so the wording is assertable without building a HUD.
+##
+## Says the pest count only when it is known: past the fixed table the next wave's
+## schedule does not exist yet (`pests_in_wave` returns 0 there), and "0 pests" would
+## be a confident lie about the hardest waves in the game rather than an absence.
+##
+## Names the boss and the weather because those are what change the SHAPE of a wave --
+## the threat number already on the prep strip answers how much, and a player deciding
+## between damage and coverage needs to know a queen is coming, not that the number
+## went up.
+static func next_wave_note(number: int, pests: int, boss: bool, weather: StringName) -> String:
+	var parts: PackedStringArray = []
+	if pests > 0:
+		parts.append("%d pests" % pests)
+	if boss:
+		parts.append("a queen")
+	if weather == WaveDirector.WEATHER_RAIN:
+		parts.append("rain")
+	elif weather == WaveDirector.WEATHER_DROUGHT:
+		parts.append("drought")
+	if parts.is_empty():
+		return "Wave %d next." % number
+	return "Wave %d next — %s." % [number, " · ".join(parts)]
+
+
 func _advance_message_queue() -> void:
 	if _message_queue.is_empty():
-		_message_label.text = ""
+		# Back to the standing note rather than to blank. Found in the running game:
+		# the note was correct on every `refresh()` and the row went empty seconds
+		# later, because `refresh()` is driven by state CHANGES and a message
+		# expiring is not one. The headless test asserted the wording and never
+		# drove this path.
+		_message_label.text = _idle_message
 		_message_priority = MESSAGE_NORMAL
 		return
 	# Highest priority first, earliest among equals — not simply the front. A

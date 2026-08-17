@@ -1589,6 +1589,13 @@ func state() -> Dictionary:
 		"prep_total": PREP_SECONDS,
 		"more_waves": director.has_more_waves(),
 		"next_threat_level": WaveDirector.threat_level(maxi(1, director.current_wave + 1)),
+		# The wave AFTER the one just cleared, described for the prep gap. Unlike
+		# `weather`, which is the weather Game is holding, these are deliberately
+		# derived for `current_wave + 1` -- the whole point is to say what has not
+		# happened yet.
+		"next_wave_pests": WaveDirector.pests_in_wave(director.current_wave + 1),
+		"next_wave_boss": WaveDirector.wave_carries_boss(director.current_wave + 1),
+		"next_weather": WaveDirector.weather_for(director.current_wave + 1),
 		"lives": lives,
 		"selected_plant": selected_plant,
 		"selected_placed": selected_placed,
