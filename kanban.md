@@ -195,6 +195,39 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (15 of 30) — grown from the pause card, after widening it
+
+- **The pause card is 440px wide and its two widest rows are 384px.** `CARD_WIDTH`
+  (`game/pause_screen.gd:86`) is now sized for the worst key name a player can bind,
+  which means it is oversized for the ~100% of sessions where nobody has rebound
+  anything. A card that measured its own contents — the same rule `card_height()`
+  already follows two constants above it — would be 360 for most players and 440 for
+  the one who bound "On-screen keyboard". The blocker is that `card_rect()` is
+  `static` and answers before any instance exists, so it has no font to measure
+  through; solvable by measuring once at build time and re-centring, and worth doing
+  because the height already proved the pattern.
+- **A legend row could put the key in its own column.** `_key_row_text()`
+  (`game/pause_screen.gd:654`) is `"%s   %s"` — one string, one Label, so the key and
+  the phrase share a width budget and the long one eats the short one. Two Labels at a
+  fixed column split would let the key be as long as it likes without touching the
+  phrase, and would line the keys up vertically, which the pause card is the only
+  screen that does not do (the Keys screen already has a `KEY_X` column at
+  `game/key_binding_screen.gd:85`).
+- **Nothing shows a player their own rebinding outside the two screens that own it.**
+  The HUD's "Grow the next wave" button (visible in every pause screenshot) has a
+  keyboard verb behind it and never says so. A key hint on the HUD's own buttons,
+  drawn from `KeyBindings.label_for()`, would make a rebinding visible where the
+  player actually is — and it is the third surface that would need the width
+  discipline the card just learned, which argues for the column split above first.
+- ~~**`Game.key_help()` returns every action, including the notebook's pager.**~~
+  **Wrong — checked while writing the citation, which is the point of the rule that
+  requires one.** `key_help()` iterates `KeyBindings.actions_in(SCOPE_RUN)`
+  (`game/game.gd:50`), so the scope filter this entry proposed has been there all
+  along; the pause screenshot shows five rows and no pager verbs. Left in, struck
+  through, as the second worked example beside the milestone shelf above: the
+  difference is that this one cost thirty seconds instead of a claimed bead, because
+  the rule added last cycle made me open the function before describing it.
+
 ### New this cycle (14 of 30) — grown from the keys screen, each with the line that proves it is not already built
 
 **Every entry here names a file:line.** Last cycle's batch did not, and three of its
