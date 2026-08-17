@@ -2870,6 +2870,23 @@ func test_the_budgets_hud_entries_are_measured_off_the_live_stats_row() -> Strin
 	err = _T.assert_eq(measured, Hud.WORST_CASE_TEXT.size(),
 		"every declared readout is a Label in the row (%d of %d)"
 			% [measured, Hud.WORST_CASE_TEXT.size()])
+	# ...and the other direction, which is the one that can go quietly wrong.
+	# The loop above walks WORST_CASE_TEXT, so it can only ever fail when a
+	# DECLARED readout is missing from the row. A readout added to the row with no
+	# declaration is invisible to it, to the hud_readouts budget that sweeps the
+	# same table, and to every structural check -- the budget would keep reporting
+	# the widest of the four it knows about while a fifth clipped on screen.
+	# Same defect the message row shipped twice (plant-tower-defense-mxlt).
+	if err == "":
+		var undeclared: Array[String] = []
+		for child in stats.get_children():
+			var stat := child as Label
+			if stat != null and not Hud.WORST_CASE_TEXT.has(stat.name):
+				undeclared.append(String(stat.name))
+		err = _T.assert_true(undeclared.is_empty(),
+			("every Label in the row is declared in WORST_CASE_TEXT -- undeclared: %s. "
+				+ "Add its worst case there, or the budget measures a row it cannot see "
+				+ "all of.") % [undeclared])
 	if err == "":
 		err = _T.assert_gt(worst_needed, 0.0, "and the worst of them measures something")
 	if err == "":

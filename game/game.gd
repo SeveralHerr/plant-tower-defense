@@ -2074,6 +2074,25 @@ func _budget_hud_message_row() -> Dictionary:
 	if note_px > worst_px:
 		worst_px = note_px
 		worst = worst_note
+	# The rest of what reaches this row. `show_message()` has eight call sites and
+	# last cycle's fix added exactly one of the five it was missing, because the
+	# prep note was the one I happened to be looking at -- the same mistake, one
+	# layer along (plant-tower-defense-mxlt). Enumerated from the call sites, not
+	# remembered.
+	#
+	# The mute lines take the CURRENT binding rather than a synthetic worst case:
+	# `KeyBindings.label_for()` joins every key bound to the action, so its width
+	# is set by the player's keymap and has no ceiling this function could invent.
+	# Measuring what is bound now is the honest number, and it moves when they
+	# rebind -- which is the property worth having.
+	for line: String in [
+			Hud.wave_cleared_line(999, Hud.wave_cleared_note(9999)),
+			mute_message("Sound effects", true, KeyBindings.ACTION_MUTE_SFX, "them"),
+			mute_message("Music", true, KeyBindings.ACTION_MUTE_MUSIC)]:
+		var other_px: float = GardenTheme.measure(line, Hud.MESSAGE_FONT_SIZE)
+		if other_px > worst_px:
+			worst_px = other_px
+			worst = line
 	if worst_px <= 0.0:
 		return uncomputed_budget(BUDGET_UNMEASURED, "hud_message_row",
 			"Hud.eaten_message() and siblings", "res://game/hud.gd",
@@ -2083,7 +2102,11 @@ func _budget_hud_message_row() -> Dictionary:
 			no_budget_observations())
 	return computed_budget("hud_message_row", "Hud.eaten_message() and siblings",
 		"res://game/hud.gd", "widest message-row string", worst_px, label.size.x, "px",
-		"GardenTheme.measure() over every plant name, corn level, and the prep note",
+		("GardenTheme.measure() over every show_message() producer that can be "
+			+ "enumerated: plant names x 3 messages, corn levels, the prep note, the "
+			+ "wave-cleared line, and both mute lines at their CURRENT keybinds. NOT "
+			+ "covered: purchase and placement refusals, whose text is built from data "
+			+ "this function cannot reach"),
 		("a message renders trimmed to an ellipsis and nothing errors -- shorten the "
 			+ "message, shorten the name, or widen the row (\"%s\")") % worst,
 		no_budget_observations())
