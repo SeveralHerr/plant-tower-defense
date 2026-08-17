@@ -1,30 +1,5 @@
 # Agent Instructions
 
-# Workflow
-
-**This is a loop. It does not end. Keep going until the user stops you.**
-
-Do these steps in order, over and over:
-
-1. **Read `todo.md`.** File every item on it as a bd issue (see Beads Issue Tracker
-   below — do NOT use TodoWrite for this).
-2. **Do the items one at a time.** For each one: claim the bd issue, write the code,
-   run `/verify`, then commit. One commit per item. Never batch several items into one
-   commit at the end.
-3. **The last item is always "add cool new features or concrete improvements (UX, game
-   juice, animations, enhancements, or full features) to `kanban.md`".** 
-4. **Refill `todo.md`.** Pick 3-5 concrete, not-yet-filed items out of kanban.md's
-   backlog, file them as bd issues, and write them into `todo.md` as a fresh unchecked
-   checklist. Never leave `todo.md` with everything ticked off.
-5. **Go straight back to step 1 and start the next cycle. Do not stop. Do not ask
-   whether to continue. Do not say "next session" — you are the next session.**
-
-The only reasons to stop are: the user tells you to, or you are genuinely blocked and
-need an answer only they can give.
-
-Keep a line at the top of `todo.md` saying which cycle you are on (`Cycle 7 of 30`) and
-bump it each time you refill, so the count survives a context compaction.
-
 **Parallel-safe gates.** The harness section below says `name_check.py` is the only gate
 safe to run in parallel. That is true of the *harness's* gates; this project ships three
 more stdlib-only checkers that open no project and write nothing to `.godot/`, so a
