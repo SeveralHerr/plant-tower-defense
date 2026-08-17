@@ -112,6 +112,31 @@ const KEY_BUTTON_GAP: float = 6.0
 ## The column the key has always had, kept as the minimum so the shipped layout is
 ## pixel-identical and only a long binding moves anything.
 const KEY_MIN_WIDTH: float = 140.0
+
+## Appended to a key that the armed reset is about to take back
+## (plant-tower-defense-saq).
+##
+## **A second channel, not a decoration.** The row is also tinted DANGER while armed,
+## and a tint alone is exactly what `RunConfig.colorblind_safe` exists to make
+## unreliable -- this project already answers that everywhere it warns: lane pressure
+## is hatched because the cursor tint it shares a cell with is not, and a regrowing
+## health bar is notched because a bleeding one is not. This is the same rule on a
+## Label, where the only channel available besides colour is the text itself.
+##
+## **Not an arrow**, and that is the whole of the choice. "←" was the first version,
+## picked because it is proven in this font (`OverlayScreen.BACK_TEXT` is "← Back")
+## and because it reads as "going back" -- and a screenshot of the armed screen shows
+## why it is wrong: `KeyBindings.SHORT_NAMES` renders KEY_LEFT as "←", so the pager's
+## own row is a key literally named "←" and a moved one would read "← ←".
+##
+## The mark has to come from outside the key vocabulary, which rules out all four
+## arrows, "Esc", "Space" and "Enter". A bullet is not a keycode string in any build,
+## and it is a mark rather than a word, which is what a second channel wants -- the
+## note above the rows is already carrying the sentence.
+##
+## The key column's width includes it (see `key_column_width`), so arming the reset
+## never widens the panel or clips a name.
+const KEY_REVERT_MARK := "  •"
 ## What add_row_label draws at. Hoisted so the derivation and the Label cannot end up
 ## measuring different fonts -- the same reason PauseScreen.KEY_ROW_FONT_SIZE exists.
 const ROW_FONT_SIZE: int = 16
@@ -146,7 +171,10 @@ static func key_column_width() -> float:
 		widest = maxf(widest, GardenTheme.measure(OS.get_keycode_string(code), ROW_FONT_SIZE))
 	for code: int in range(1 << 22, (1 << 22) + 512):
 		widest = maxf(widest, GardenTheme.measure(OS.get_keycode_string(code), ROW_FONT_SIZE))
-	_key_column_cache = ceilf(widest)
+	# Room for the revert mark on the widest of them. Arming the reset appends it to
+	# every moved row, and a column sized without it would clip the longest key name
+	# exactly when the player is being asked to decide about that key.
+	_key_column_cache = ceilf(widest + GardenTheme.measure(KEY_REVERT_MARK, ROW_FONT_SIZE))
 	return _key_column_cache
 
 
@@ -345,9 +373,21 @@ func reset_armed() -> bool:
 ## anything that could have moved a binding, rather than each caller patching the
 ## one row it thinks it changed.
 func refresh() -> void:
+	# Which rows the armed reset would take back. Read once rather than per row, and
+	# only while armed -- `overrides()` walks every action and compares against the
+	# table, which is cheap but not free, and every other refresh is a keystroke.
+	var reverting: Dictionary = KeyBindings.overrides() if _reset_armed else {}
 	for i: int in _rows.size():
-		_key_labels[i].text = PROMPT if _rows[i] == _listening else KeyBindings.label_for(_rows[i])
-		_row_buttons[i].text = "Listening…" if _rows[i] == _listening else "Change"
+		var listening: bool = _rows[i] == _listening
+		var doomed: bool = reverting.has(String(_rows[i]))
+		var key_text: String = PROMPT if listening else KeyBindings.label_for(_rows[i])
+		if doomed and not listening:
+			key_text += KEY_REVERT_MARK
+		_key_labels[i].text = key_text
+		# Two channels, and the colour is the second one. See KEY_REVERT_MARK.
+		_key_labels[i].add_theme_color_override("font_color",
+			GardenTheme.DANGER if doomed else GardenTheme.LEAF_DARK)
+		_row_buttons[i].text = "Listening…" if listening else "Change"
 
 
 ## Which verb is waiting for a key, or `&""`. For tests and the bridge — the

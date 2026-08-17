@@ -86,6 +86,32 @@ writes nothing, because every write along those chains was conditional. Asking i
 conditionality moot rather than trying to evaluate it. A rule that fires on everything gets
 waived on everything, and a waiver list is the hand-maintained list you were removing.
 
+## When NOT to derive: a list that exists to disagree
+
+This skill argues for deriving, and read alone it says "always derive". That is wrong for
+one specific and common case, and getting it wrong quietly destroys a working test.
+
+`test_the_budgets_verb_reports_every_declared_coupling` holds a hand-written list of the
+seven budget names the `budgets` verb should report, and asserts the verb reports exactly
+those. Adding an eighth budget breaks it. That looks exactly like the smell this whole
+skill is about — a hand-maintained list, drifting from the code — and it is the opposite.
+
+**The test:** if you derive the list from the same source the code reads, does the
+assertion still have two independent sides?
+
+- **Yes → derive it.** `save_persist_check.py` derives the persisting set from `_save()`
+  because the *checker* is the second side: the code says what persists, the rule says
+  what tests must therefore redirect.
+- **No → the hand-typing IS the check.** Deriving the budget names from `BUDGET_FLOOR`
+  would leave the verb reporting what the verb reports. The list is a tripwire pointing the
+  other way: a budget declared and never wired into `budget_entries` is invisible
+  everywhere else, and one wired in that nobody meant to add shows up here as a number that
+  moved.
+
+The cost of updating such a list by hand is not a defect to be engineered away — **it is
+the feature**, because paying it is what makes someone notice the set changed. Say so in a
+comment beside the list, or the next person to read this skill will "fix" it.
+
 ## What derivation cannot do
 
 It cannot tell you the list is the RIGHT list — only that it matches its rule. A derivation

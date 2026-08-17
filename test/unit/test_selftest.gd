@@ -10687,3 +10687,81 @@ func test_no_message_clips_for_any_plant_in_the_catalogue() -> String:
 
 	_T.free_ui(game)
 	return err
+
+
+## The armed reset marks the rows it will take back (plant-tower-defense-saq).
+##
+## The confirmation says "2 keys moved. Press again to put F1 · F2 back" — a count and
+## two key names, in a 700px note. WHICH rows those are is a question the rows
+## themselves can answer, and they have all the room.
+##
+## Two channels on purpose. A tint alone is exactly what `RunConfig.colorblind_safe`
+## exists to make unreliable, and this project already answers that everywhere it
+## warns — lane pressure is hatched, a regrowing bar is notched. On a Label the only
+## channel besides colour is the text, so a moved key gains a mark as well as a
+## colour, and the key column is sized to include it so arming never clips a name.
+func test_the_armed_reset_marks_the_rows_it_will_take_back() -> String:
+	var stashed_bindings: Dictionary = RunConfig.key_bindings
+	var stashed_path: String = RunConfig.save_path
+	RunConfig.save_path = "user://test_selftest_armed_marks.save"
+	RunConfig.key_bindings = {}
+	KeyBindings.reset_all()
+
+	var screen := await _T.instantiate_ui(KeyBindingScreen.new(), Vector2i(1152, 648)) as KeyBindingScreen
+	var key0: Label = screen.get_node_or_null("RowKey0") as Label
+	var key1: Label = screen.get_node_or_null("RowKey1") as Label
+	var err: String = _T.assert_true(key0 != null and key1 != null, "two rows to compare")
+
+	if err == "":
+		screen.listen_for(KeyBindings.actions()[0])
+		err = _T.assert_true(screen.capture(KEY_F1), "the first verb moves to F1")
+	if err == "":
+		err = _T.assert_false(key0.text.ends_with(KeyBindingScreen.KEY_REVERT_MARK),
+			"nothing is marked while the reset is idle -- the mark means 'about to "
+				+ "go', not 'has moved'")
+	if err == "":
+		(screen.get_node("ResetButton") as Button).pressed.emit()
+		err = _T.assert_true(screen.reset_armed(), "arming for the question")
+	if err == "":
+		err = _T.assert_true(key0.text.ends_with(KeyBindingScreen.KEY_REVERT_MARK),
+			"the moved row is marked, got: %s" % key0.text)
+	if err == "":
+		err = _T.assert_false(key1.text.ends_with(KeyBindingScreen.KEY_REVERT_MARK),
+			"and a row nobody touched is not, got: %s" % key1.text)
+	if err == "":
+		# The second channel. Same information, not carried by the mark.
+		err = _T.assert_eq(key0.get_theme_color("font_color"), GardenTheme.DANGER,
+			"the moved row is also tinted, because a mark alone is a second channel "
+				+ "for people who read marks")
+	if err == "":
+		err = _T.assert_eq(key1.get_theme_color("font_color"), GardenTheme.LEAF_DARK,
+			"and the untouched row keeps its own colour")
+	if err == "":
+		# It fits. The column is sized for the widest key the engine names PLUS the
+		# mark, so the row being asked about is never the row that clips.
+		var widest: String = ""
+		for code: int in range(1 << 22, (1 << 22) + 512):
+			var name: String = OS.get_keycode_string(code)
+			if name.length() > widest.length():
+				widest = name
+		var worst: float = GardenTheme.measure(widest + KeyBindingScreen.KEY_REVERT_MARK,
+			KeyBindingScreen.ROW_FONT_SIZE)
+		err = _T.assert_true(worst <= KeyBindingScreen.key_column_width(),
+			"the widest key plus its mark fits the column: %.0fpx of %.0f"
+				% [worst, KeyBindingScreen.key_column_width()])
+	if err == "":
+		# Disarming takes both channels away.
+		screen.listen_for(KeyBindings.actions()[1])
+		screen.capture(KEY_ESCAPE)
+		err = _T.assert_false(key0.text.ends_with(KeyBindingScreen.KEY_REVERT_MARK),
+			"disarming unmarks it, got: %s" % key0.text)
+	if err == "":
+		err = _T.assert_eq(key0.get_theme_color("font_color"), GardenTheme.LEAF_DARK,
+			"and untints it")
+
+	_T.free_ui(screen)
+	KeyBindings.reset_all()
+	RunConfig.key_bindings = stashed_bindings
+	RunConfig.save_path = stashed_path
+	DirAccess.remove_absolute("user://test_selftest_armed_marks.save")
+	return err

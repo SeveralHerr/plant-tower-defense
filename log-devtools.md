@@ -4097,3 +4097,41 @@ cited in code, and the citation is a mitigation this project has watched fail.
   reports. It is a tripwire in the other direction: a budget declared and never wired
   in is invisible, and one wired in that nobody meant to add shows up here as a number
   that moved.
+
+## 2026-08-16 — cycle 42: the armed reset marks the rows it will take back
+
+- Value: **warranted** — two findings, both invisible to a green suite, and the second
+  one is a defect that predates this change by many cycles.
+  - Expected: a colour-plus-mark cue is a visual claim. Whether the glyph renders at
+    all, and whether it reads as distinct from the key names beside it, are both
+    things only a picture settles.
+  - Got: a picture settled both, and the first one against me.
+  - Found: two.
+    1. **The revert mark collided with a key NAME.** I chose "←" because it is proven
+       in this font (`OverlayScreen.BACK_TEXT` is "← Back") and reads as "going back".
+       `KeyBindings.SHORT_NAMES` renders `KEY_LEFT` as the same glyph — so the pager's
+       own row is a key literally named "←", and a moved one would have read "← ←".
+       Visible in the screenshot and in nothing else: the headless test asserts
+       `KEY_REVERT_MARK` generically and passes whatever it is. Changed to a bullet,
+       which is not a keycode string in any build, and confirmed by a second
+       screenshot that it renders as a glyph rather than a `.notdef` box.
+    2. **`findings` reported 12 `interactive_overlap` pairs**, and the overlap is a
+       symptom rather than the defect. Measured with the Keys screen open:
+       `Button_corn_cobbler` reads `focus_mode: 2`, `mouse_filter: 0`,
+       `disabled: false`. The overlay's backdrop is a full-viewport
+       MOUSE_FILTER_STOP ColorRect, so the mouse is blocked — and focus is a separate
+       channel, which is exactly what `OverlayScreen`'s own header says
+       `PauseScreen._set_card_active` exists for. That covers the pause card's own
+       buttons; nothing covers the HUD, which is on a different CanvasLayer. **The
+       defect did not change this cycle — only its visibility did.** At the previous
+       panel width the overlap was ~6px and went unreported; widening it by 14px
+       pushed it over. Filed as `plant-tower-defense-csrc` and deliberately NOT
+       baselined, so it keeps gating until it is fixed.
+  - Cheaper: nothing. The suite asserted the mark's presence and its width budget and
+    was green through a glyph collision and a focus hole.
+
+- Gap: **no gaps this turn.** Worth recording that `findings` earned its keep in the
+  way it is designed to: I did not ask it about focus, or about overlays, or about the
+  HUD. It reported a geometric fact I had made slightly worse, and the geometric fact
+  turned out to be a symptom of something else entirely. That is the argument for a
+  zero-config sweep that asserts things the project never asked it to.
