@@ -195,6 +195,31 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (22 of 30) — the one-owner pattern, and where else it is missing
+
+- **The banner has the same two-writer shape the message row just lost.**
+  `_show_banner` is private with two public callers (`announce_wave`,
+  `announce_wave_cleared`) and `show_weather` added a third
+  (`game/hud.gd`), and `_fade_banner` runs on a timer. That is exactly the
+  arrangement that produced two defects on the message row — several writers, one
+  Control, timing between them — and the banner has no painter. It has not bitten
+  yet because every claim on it is transient; the first standing one will.
+- **`_idle_message` is the only claim with no priority.** `show_message` has
+  `MESSAGE_NORMAL` / `MESSAGE_IMPORTANT` ordering transient lines against each other,
+  and the standing note sits outside that as "the floor". Right with one note, wrong
+  the moment there are two — and there is already an obvious second (an economy line
+  saying what the player can afford, filed separately).
+- **The last-wave note is the only place the game says a run is nearly over.** The
+  prep strip, the wave counter and the threat number all describe the next wave
+  without ever saying how much game is left. `WaveDirector.WAVES.size()` is static and
+  `current_wave` is on every state dict, so "3 waves to go" is available everywhere
+  and used nowhere.
+- **Nothing tests that the message row is readable at its worst.** The note's width
+  is asserted (`test_the_prep_note_says_what_the_next_wave_is_worth`), but
+  `show_message` takes arbitrary text from a dozen call sites and the Label clips.
+  The same `WORST_CASE_TEXT` treatment the top bar's four readouts get would catch a
+  refusal string nobody measured.
+
 ### New this cycle (21 of 30) — grown from a Label two systems both write to
 
 - **Three things now write `MessageLabel` and none of them knows about the others.**
