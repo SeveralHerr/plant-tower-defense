@@ -4452,3 +4452,156 @@ func test_planting_a_nettle_does_not_silently_plant_corn() -> String:
 				"and it knows what it is, which is what the selection panel reads")
 	_T.free_ui(game)
 	return err
+
+
+## The page frame's claim is that the playfield is printed on the same stock as the
+## notebook — not that it is a similar cream. That is only true for as long as the
+## two colours and the hairline weight are READ OFF `GardenTheme.paper_panel()`
+## rather than copied beside it, so this asserts the identity rather than a
+## resemblance: a second hand-typed cream would pass any "is it cream" assertion
+## and would be exactly the drift the frame exists to close.
+func test_the_boards_page_frame_is_cut_from_the_notebooks_own_paper() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var stock: StyleBoxFlat = GardenTheme.paper_panel()
+	var edge := game.board.get_node_or_null("PageEdge") as Line2D
+	var rule := game.board.get_node_or_null("PageRule") as Line2D
+	err = _T.assert_true(edge != null and rule != null,
+		"the board built both halves of its page frame")
+	if err == "":
+		err = _T.assert_true(edge.default_color.is_equal_approx(stock.bg_color),
+			"the cream band is the notebook's own page fill, not a second cream: got %s "
+				% edge.default_color + "against %s" % stock.bg_color)
+	if err == "":
+		err = _T.assert_true(rule.default_color.is_equal_approx(stock.border_color),
+			"the ruled line is the notebook's own hairline colour: got %s " % rule.default_color
+				+ "against %s" % stock.border_color)
+	if err == "":
+		err = _T.assert_float_eq(rule.width, float(stock.border_width_left), 0.001,
+			"and is ruled at the notebook's own hairline weight")
+	if err == "":
+		err = _T.assert_float_eq(edge.width, Board.PAGE_EDGE_WIDTH, 0.001,
+			"the cream band is as wide as the constant that documents what it costs")
+	# The order argument in _build_page_frame's header, asserted rather than
+	# commented: the frame is over the ground and under the readout painted on it.
+	# Swap the two and the pressure hatch on an edge road cell disappears under
+	# chrome, which no colour or geometry assertion here would notice.
+	if err == "":
+		var overlay_index: int = -1
+		var frame_index: int = -1
+		for child: Node in game.board.get_children():
+			if child is LanePressureOverlay:
+				overlay_index = child.get_index()
+			elif child.name == "PageRule":
+				frame_index = child.get_index()
+		err = _T.assert_true(frame_index >= 0 and overlay_index > frame_index,
+			"the pressure hatch is painted after the frame, so the frame can only dim "
+				+ "ground: frame at %d, overlay at %d" % [frame_index, overlay_index])
+	_T.free_ui(game)
+	return err
+
+
+## The two questions a decorative border has to answer before it is allowed near a
+## playfield: does it close, and does it stay out of the way.
+##
+## Both are asked of the pure function rather than of a rendered frame, which is
+## the only way "the loop has no notch at its seam" is assertable at all — a 1px
+## gap where a `Line2D` meets itself is invisible in a screenshot and permanent.
+func test_the_page_frames_edge_closes_and_keeps_off_the_playable_interior() -> String:
+	var board_px := Vector2(float(Board.COLS * Board.CELL), float(Board.ROWS * Board.CELL))
+	var inset: float = Board.PAGE_EDGE_WIDTH * 0.5
+	var points: PackedVector2Array = Board.page_edge_points(board_px, inset)
+	var err: String = _T.assert_gt(points.size(), 4, "the edge is sampled, not a bare rectangle")
+	if err == "":
+		err = _T.assert_true(points[0].is_equal_approx(points[points.size() - 1]),
+			"the loop closes on itself -- Line2D has no closed flag, so the last point has "
+				+ "to repeat the first or the seam leaves a notch: got %s and %s"
+				% [points[0], points[points.size() - 1]])
+	if err != "":
+		return err
+
+	# Every point must sit within (inset + wobble) of one of the four edges. That is
+	# the claim that bounds what the frame costs the player: PAGE_EDGE_WIDTH + BORDER
+	# = 9px of a 64px cell, on the outermost row and column only.
+	var reach: float = inset + Board.PAGE_WOBBLE_PX + 0.001
+	var worst: float = 0.0
+	var worst_at := Vector2.ZERO
+	for point: Vector2 in points:
+		var to_edge: float = minf(
+			minf(point.x, board_px.x - point.x), minf(point.y, board_px.y - point.y))
+		if to_edge > worst:
+			worst = to_edge
+			worst_at = point
+	err = _T.assert_true(worst <= reach,
+		"no sampled point wanders further than %.2fpx into the field; the worst is %s at %.2fpx"
+			% [reach, worst_at, worst])
+	if err == "":
+		# And the other direction: a wobble that swung further out than the board is
+		# wide would be clipped on the left and bottom and hidden under the HUD on
+		# the top and right, which is a frame that is silently only half drawn.
+		var outside: int = 0
+		for point: Vector2 in points:
+			var depth: float = minf(
+				minf(point.x, board_px.x - point.x), minf(point.y, board_px.y - point.y))
+			if depth < -Board.PAGE_WOBBLE_PX - 0.001:
+				outside += 1
+		err = _T.assert_eq(outside, 0,
+			"and none of it wanders off the board by more than the wobble it is allowed")
+	if err == "":
+		# The seam is continuous because the cycle count is a whole number, not
+		# because the perimeter happened to divide. Assert the property, so a future
+		# fractional cycle count fails here rather than at a screenshot.
+		err = _T.assert_float_eq(Board.page_wobble(0.0), Board.page_wobble(1.0), 0.0001,
+			"the wobble is periodic over exactly one circuit")
+	if err == "":
+		var over: int = 0
+		for i: int in 41:
+			if absf(Board.page_wobble(float(i) / 40.0)) > Board.PAGE_WOBBLE_PX + 0.0001:
+				over += 1
+		err = _T.assert_eq(over, 0,
+			"and never wanders further than PAGE_WOBBLE_PX in either direction")
+	return err
+
+
+## A mark drawn in the lawn's own hue is invisible, no gate in this project compares
+## a mark against the ground under it, and it has already happened once. This is that
+## comparison, and the half that matters is the last assertion: a check nobody has
+## watched fail is a check nobody knows the shape of.
+func test_nothing_the_board_paints_over_it_is_the_lawns_own_hue() -> String:
+	var stock: StyleBoxFlat = GardenTheme.paper_panel()
+	# Measured in greyscale on purpose -- OVERLAY_GRAMMAR.md's one rule with teeth
+	# is that a cue must survive its colour being discarded, and a mark that only
+	# separates from the grass by hue does not.
+	var err: String = _T.assert_true(GardenTheme.reads_on_ground(stock.bg_color),
+		"the page frame's cream separates from both grounds: %.3f from grass, %.3f from dirt"
+			% [GardenTheme.separation(stock.bg_color, GardenTheme.GROUND_GRASS),
+				GardenTheme.separation(stock.bg_color, GardenTheme.GROUND_DIRT)])
+	if err == "":
+		err = _T.assert_true(GardenTheme.reads_on_ground(stock.border_color),
+			"and so does its ruled ink line: %.3f from grass, %.3f from dirt"
+				% [GardenTheme.separation(stock.border_color, GardenTheme.GROUND_GRASS),
+					GardenTheme.separation(stock.border_color, GardenTheme.GROUND_DIRT)])
+	if err == "":
+		# The cue this project already paints on the road, so the gate is measured
+		# against something that shipped rather than only against what this cycle
+		# added. Opaque only: reads_on_ground says nothing about alpha and says so.
+		err = _T.assert_true(GardenTheme.reads_on_ground(GardenTheme.DANGER),
+			"and so does the one warning red the road is hatched in: %.3f from grass"
+				% GardenTheme.separation(GardenTheme.DANGER, GardenTheme.GROUND_GRASS))
+	if err == "":
+		# The proof the gate can fail. GROUND_GRASS aliases LEAF because the kit's
+		# grass IS #2ECC71, so a plant drawn in LEAF -- which is exactly what shipped
+		# once -- separates from the lawn by nothing at all.
+		err = _T.assert_float_eq(
+			GardenTheme.separation(GardenTheme.LEAF, GardenTheme.GROUND_GRASS), 0.0, 0.001,
+			"LEAF is the lawn's own hue, to the last decimal the kit was sampled at")
+	if err == "":
+		err = _T.assert_false(GardenTheme.reads_on_ground(GardenTheme.LEAF),
+			"so the gate rejects a mark drawn in LEAF -- the defect it exists for, and the "
+				+ "one it would be worthless without rejecting")
+	if err == "":
+		err = _T.assert_gt(GardenTheme.GROUND_SEPARATION_MIN, 0.0,
+			"and the floor it rejects against is a real number, not a disabled check")
+	return err

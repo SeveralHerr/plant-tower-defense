@@ -126,6 +126,64 @@ const SAFE_BAD := Color(0.976, 0.647, 0.196)
 const CORNER: int = 6
 const BORDER: int = 2
 
+## The two grounds the board is actually tiled with — the colours anything drawn
+## ON the playfield will be seen against.
+##
+## Not new paint. `Board`'s header derives the whole tile set by sampling the
+## midpoint of every edge of all 299 kit PNGs and grouping them by whether that
+## edge is dirt `#BB8044` or grass `#2ECC71`, and `#2ECC71` is `LEAF` to three
+## decimal places — the lawn's hue was already in this file, with nothing
+## anywhere saying so. That silence is how a plant once shipped drawn in LEAF and
+## vanished into the grass it was standing on: no gate in this project compares a
+## mark against the ground under it, and none can while the ground's colour is
+## only written down inside a PNG.
+##
+## GROUND_GRASS aliases LEAF rather than restating it, so a change to the palette
+## cannot leave the two disagreeing about what the lawn is. GROUND_DIRT is
+## `#BB8044` rounded to the three decimals the rest of this file is written at.
+const GROUND_GRASS := LEAF
+const GROUND_DIRT := Color(0.733, 0.502, 0.267)
+
+## The floor a mark drawn on the board must clear against both grounds.
+##
+## 0.12 is a sixth of the game's full luminance span — INK measures 0.142 and
+## PAPER 0.866, so the whole palette spans 0.724 — and it is a floor, not a
+## target. Measured against what is on the board today: the page frame's cream
+## clears it by 0.224 against grass and 0.332 against dirt, its ink hairline by
+## 0.393 and 0.285, and DANGER — the hatch on the road, the tightest real pair in
+## the game — by 0.267 against grass and **0.159 against dirt**, which is only a
+## third clear of this floor. That last number is the one to know: the gate has
+## one mark sitting close to it rather than a comfortable margin everywhere, so a
+## new red-brown mark is where it will bite first.
+const GROUND_SEPARATION_MIN: float = 0.12
+
+
+## How far apart two colours are in the one channel that survives colour being
+## thrown away.
+##
+## Luminance, because that is what "survives" means: `OVERLAY_GRAMMAR.md`'s two-
+## channel rule is stated as a greyscale test, and the existing
+## `test_the_safe_ramp_separates_its_ends_in_more_than_the_red_green_channel`
+## already measures exactly this by hand. This is that measurement given a name so
+## the next site does not roll a third copy of it.
+static func separation(a: Color, b: Color) -> float:
+	return absf(a.get_luminance() - b.get_luminance())
+
+
+## Would `mark` still be visible if it were painted straight onto the playfield?
+##
+## WHAT THIS DOES NOT CHECK, because a helper that answers a narrower question
+## than its name suggests is worse than no helper. It measures `mark` against the
+## two BASE tile hues and nothing else: not the kit tiles' own speckle and shading,
+## not the lane-pressure hatch, not the blocked-cell wash, not a sprite the mark
+## happens to land on, and not opacity — a colour that clears this at alpha 1.0
+## can still disappear at 0.05. It answers one question — "is this the lawn's own
+## hue, or near enough to it" — which is the question that has actually gone wrong
+## here, and it answers it in greyscale so it holds for a colourblind player too.
+static func reads_on_ground(mark: Color) -> bool:
+	return separation(mark, GROUND_GRASS) >= GROUND_SEPARATION_MIN \
+		and separation(mark, GROUND_DIRT) >= GROUND_SEPARATION_MIN
+
 
 ## A Theme applied to a screen's root Control, inherited by every descendant —
 ## which is why the Notebook, added as a child of the title screen at runtime,

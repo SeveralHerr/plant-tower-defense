@@ -100,6 +100,40 @@ const UNREACHABLE_EDGE_MASKS: Array[int] = []
 const LANE_PRESSURE_DECAY: float = 0.55
 const LANE_PRESSURE_MIN_ALPHA: float = 0.03
 
+## The page the garden is pasted onto.
+##
+## The title screen, the Designer's Notebook, the pause card and the run summary
+## are all the same object: cream stock, an ink hairline, edges drawn with a fat
+## pencil rather than ruled with a straight-edge. The playfield was the one screen
+## that stopped at a rectangle of grass, so the game a player spends every minute
+## of a run looking at was the one screen that did not look like the game.
+##
+## The frame is made OUT of `GardenTheme.paper_panel()` rather than beside it —
+## `_build_page_frame()` reads its fill, its border colour and its border width
+## off that StyleBox — so "the same stock as the notebook" is a fact about the
+## code and not a claim in a comment. What is written down here is only the part
+## the StyleBox has no opinion about: how wide the band is and how much the edge
+## wanders.
+##
+## WHAT IT DELIBERATELY IS NOT. The notebook's page also carries blue rules and a
+## red margin (`GardenTheme.PAPER_RULE`, `PAPER_MARGIN`), and neither belongs on
+## the board. Ruled lines would lay a second grid over the 64px one the player
+## actually reads; and a red line down the field would be a FIFTH red on a surface
+## where `GardenTheme.DANGER`'s header states in as many words that a red means
+## "this costs you something" and that adding another one is not an answer to
+## anything. Cream and ink carry no meaning on the board, which is exactly why
+## they are the two that can be spent on chrome.
+const PAGE_EDGE_WIDTH: float = 7.0
+## How far the drawn edge wanders in and out, in px, and how many times it does so
+## on a full circuit. An integer number of cycles is what makes the loop close
+## smoothly where it meets itself; see `page_wobble`.
+const PAGE_WOBBLE_PX: float = 2.0
+const PAGE_WOBBLE_CYCLES: int = 72
+## Spacing of the sampled points along the edge. Small enough that a 2px wobble at
+## a ~40px period reads as a curve rather than as a zigzag, large enough that the
+## whole frame is a couple of hundred points rather than a couple of thousand.
+const PAGE_SAMPLE_STEP: float = 8.0
+
 var _path_cells: Dictionary = {}
 var _path_order: Array[Vector2i] = []
 var _route: PackedVector2Array = PackedVector2Array()
@@ -141,6 +175,10 @@ var _unaimed: Dictionary = {}
 func _ready() -> void:
 	_build_path()
 	_build_tiles()
+	# Between the tiles and the pressure overlay, on purpose — see
+	# _build_page_frame() for why the frame has to be under everything that
+	# carries information and can only be over the ground.
+	_build_page_frame()
 	# Last child added = drawn last = on top of the tile sprites above.
 	_pressure_overlay = LanePressureOverlay.new()
 	add_child(_pressure_overlay)
@@ -214,6 +252,106 @@ func _texture_for(cell: Vector2i) -> Texture2D:
 
 func _kit_tile(number: int) -> Texture2D:
 	return load("res://assets/kenney/png/towerDefense_tile%03d.png" % number) as Texture2D
+
+
+## The cream page showing around the field, with a ruled ink line just inside it.
+##
+## Two `Line2D`s and no new script. The geometry is `page_edge_points()` above, so
+## the only job left for a node is to carry the points, and `Line2D` is the one
+## built-in that strokes an arbitrary path with round joints — which is the whole
+## difference between a line somebody drew and a border somebody set.
+##
+## ORDER IS THE LEGIBILITY ARGUMENT, so it is worth stating plainly. Board's own
+## `_draw()` could not have painted this at all: a parent's draw commands land on
+## its own canvas item, recorded before its children's, so anything Board drew
+## itself would sit under the tile sprites (`LanePressureOverlay`'s header makes
+## the same argument for the same reason). Added here, the frame is over the tiles
+## and under everything that means something — the pressure hatch is added after
+## it, and every plant, pest, husk, cursor and cue lives in `Entities`, a later
+## sibling of the whole Board. So the frame can only ever dim
+## `PAGE_EDGE_WIDTH + GardenTheme.BORDER` = 9px of ground along each side, and can
+## never cover a thing the player has to read. That is the reason it is 9px of
+## chrome rather than a wider, prettier margin: the outer cells are playable.
+func _build_page_frame() -> void:
+	# Read off the StyleBox rather than restated, so this frame cannot drift out
+	# of the stock the notebook and the pause card are printed on.
+	var stock: StyleBoxFlat = GardenTheme.paper_panel()
+	var rule_width: float = float(stock.border_width_left)
+	var edge := _page_line("PageEdge", PAGE_EDGE_WIDTH * 0.5, PAGE_EDGE_WIDTH, stock.bg_color)
+	add_child(edge)
+	var rule := _page_line(
+		"PageRule", PAGE_EDGE_WIDTH + rule_width * 0.5, rule_width, stock.border_color)
+	add_child(rule)
+
+
+func _page_line(node_name: String, inset: float, width: float, colour: Color) -> Line2D:
+	var line := Line2D.new()
+	line.name = node_name
+	line.points = page_edge_points(board_size(), inset)
+	line.width = width
+	line.default_color = colour
+	line.joint_mode = Line2D.LINE_JOINT_ROUND
+	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	line.antialiased = true
+	return line
+
+
+## The closed path of the page's edge in board-local space, `inset` px in from the
+## board's boundary on every side, wandering in and out by `page_wobble()`.
+##
+## Pure and static, taking the board's size rather than reading it, so the shape
+## is assertable without a Board, a viewport or a rendered frame — and so a test
+## can ask the questions that actually matter about a frame: does it close, does
+## it stay inside the board, and does it stay out of the playable interior.
+##
+## The last point repeats the first. `Line2D` has no closed flag, and a loop whose
+## ends merely land near each other leaves a notch at the seam that no assertion
+## about point positions would ever mention.
+static func page_edge_points(board_px: Vector2, inset: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var box := Rect2(Vector2(inset, inset), board_px - Vector2(inset, inset) * 2.0)
+	if box.size.x <= 0.0 or box.size.y <= 0.0:
+		return out
+	var corners: Array[Vector2] = [
+		box.position,
+		Vector2(box.end.x, box.position.y),
+		box.end,
+		Vector2(box.position.x, box.end.y),
+	]
+	# Each side's inward normal, so a positive wobble always wanders toward the
+	# field and a negative one toward the board's edge, on all four sides.
+	var inward: Array[Vector2] = [Vector2.DOWN, Vector2.LEFT, Vector2.UP, Vector2.RIGHT]
+	var perimeter: float = 2.0 * (box.size.x + box.size.y)
+	var walked: float = 0.0
+	for side: int in 4:
+		var from: Vector2 = corners[side]
+		var to: Vector2 = corners[(side + 1) % 4]
+		var length: float = from.distance_to(to)
+		var steps: int = maxi(1, int(round(length / PAGE_SAMPLE_STEP)))
+		for s: int in steps:
+			var along: float = float(s) / float(steps)
+			out.append(from.lerp(to, along)
+				+ inward[side] * page_wobble((walked + length * along) / perimeter))
+		walked += length
+	out.append(out[0])
+	return out
+
+
+## Pure: how far the page's edge wanders inward at `t`, a fraction of the way
+## round the loop. Split out of the frame's construction so a test can assert the
+## amplitude is bounded and that the loop closes on itself without building a node.
+##
+## A sine of the FRACTION with an integer cycle count, rather than of the distance
+## with a fixed period: the seam where the loop meets itself is then continuous by
+## construction instead of by a perimeter that happens to divide evenly, and it
+## stays continuous if the board is ever resized.
+##
+## Fixed rather than random, for the reason `TitleBackdrop._draw_tufts` gives for
+## its own sine: the board has to draw the same picture every run or a screenshot
+## diff means nothing.
+static func page_wobble(t: float) -> float:
+	return sin(t * TAU * float(PAGE_WOBBLE_CYCLES)) * PAGE_WOBBLE_PX
 
 
 func is_inside(cell: Vector2i) -> bool:
