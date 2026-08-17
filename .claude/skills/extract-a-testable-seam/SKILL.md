@@ -89,10 +89,28 @@ you usually need both**: one says the values are right, the other says they arri
 
 An extracted seam is a public function that exists partly for tests. That is a real cost —
 `lint_project.gd`'s orphan pass will list it if the only other caller is a test, and it
-widens the class's surface. Pay it when a mutation has actually survived, not pre-emptively.
-Both seams in this repo were retrofitted after watching one survive, and that order is
-correct: **the mutation is the evidence that the extraction is load-bearing rather than
-decorative.**
+widens the class's surface.
+
+**This section used to say: pay it only when a mutation has actually survived, never
+pre-emptively. That is no longer the default and the correction is the important part.**
+It was written when this repo had two seams, both retrofitted. There are now seven —
+`CornCobbler.spread_arc_span`, `Hud.uproot_shows_tip`, `Sfx.tune_voice`,
+`Sfx.kill_event_for`, `ChompFlower.idle_only_because_of_flight`,
+`NotebookScreen.pane_label_for`, `CueLegend.row_center_y` — and the last three were taken
+**up front**, in the cycle that wrote the code, without waiting for a survival. Two of them
+paid inside the hour: `pane_label_for` replaced an `if/elif/else` whose `else` MEANT one
+particular kind, so adding a fourth kind would have silently given it the third's heading
+and left the third correct — a failure surfacing on a page nobody was editing. The identical
+defect was then found sitting in the *test* for the same code, which is the strongest
+evidence available that waiting for the mutation is waiting too long.
+
+**So the default is now the question, asked before the code is written: does the decision
+have a NAME?** If you can say what it decides in a short phrase — "whether the tip is
+shown", "which kill sound", "what this page's heading is" — extract it. If you cannot, do
+not: the cost above is real and an unnamed seam is a decorative one.
+
+A survival is still perfectly good evidence, and three of the seven were earned that way.
+It is just no longer the only admissible kind.
 
 Related: [[house-static-checker]] for the mutation discipline that surfaces this, and
 [[derive-the-list]] for the data-check half.

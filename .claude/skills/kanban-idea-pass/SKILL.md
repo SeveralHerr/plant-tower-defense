@@ -53,6 +53,20 @@ So grep for the **property the feature would move** (`rotation`, `scale`, `sin(`
 for the one API you imagine it using — and **say in the entry which mechanism you searched
 for.** That sentence is what lets the next reader notice the set was wrong.
 
+**And check that your search term is about the same thing your claim is about.** This is the
+half that slipped past the rule as written. Cycle 88 claimed `NotebookScreen` was "a
+design-history artefact" and therefore the wrong shape to host a rules page, on the strength
+of grepping the file for `husk` and `compost` and finding nothing. The grep was correct and
+the conclusion was not: it answered a question about the file's **contents**, and the claim
+was about its **shape**. Thirteen lines from the top, `KIND_SHELF` is documented as "about
+the player rather than about the game" — the file had stopped being a scrapbook several
+cycles earlier, and the one word that would have shown it was `KIND_`.
+
+Cycle 91 built the legend as a fourth kind in an afternoon, against a bead that said it
+needed a new screen. So before you grep, say out loud what KIND of claim you are making —
+*this file does not mention X* is a different search from *this file is not the sort of
+thing that could hold X*, and only the first one is answered by searching for X.
+
 ### 3. A claim about a PATTERN needs the enumeration, not an example
 
 "All the X do Y", "these are consistent", "nothing does Z" — one citation cannot support any

@@ -213,17 +213,25 @@ running a command. **Never write a work checklist into it.**
      working X will read it, and leaves the ready count honest. A second identification
      is also a reason to raise the priority, which a closed duplicate cannot do.
 
-     **Write the description to a file and pass `bd create --body-file PATH`. Never
-     `-d "..."`.** A description passed as a shell argument goes through the shell, where
-     backticks are command substitution: the word vanishes and the only tell is an
-     unrelated `command not found` on stderr, easy to miss beside beads' own export
-     chatter. It has happened in cycles 76, 78 and 83 — each time *after* a standing note
-     told me not to use backticks, which is what makes this a tooling rule rather than
-     another note. **A word that is also a valid command (`date`, `test`, `find`) is
-     substituted silently, with its output landing in the description.** A file written
-     with an editor tool never touches a shell, so quoting, escaping and `file:line`
-     citations all survive — which matters because the rule below requires those citations.
-     `--stdin` and `--design-file` are the same mechanism for the other fields.
+     **Never put prose in ANY `bd` field as a shell argument — not `create -d`, not
+     `close --reason`, not `update --notes`. Write it to a file first.** Prose passed as a
+     shell argument goes through the shell, where backticks are command substitution: the
+     word vanishes and the only tell is an unrelated `command not found` on stderr, easy to
+     miss beside beads' own export chatter. **A word that is also a valid command (`date`,
+     `test`, `find`) is substituted silently, with its output landing in the field.**
+     It has happened in cycles 76, 78, 83 and 91 — each time *after* a standing note told
+     me not to use backticks, which is what makes this a tooling rule rather than another
+     note. Cycle 91 is why this rule now says ANY field: it named only `create -d`, so
+     `bd close --reason "...an if/elif/else whose \`else\` MEANT one kind..."` read as
+     covered, and the close reason landed reading "whose  MEANT one kind" — a sentence that
+     is still grammatical, which is the whole problem. The mechanism was never about
+     `create`.
+     `--body-file` takes the description; `--stdin` and `--design-file` are the same
+     mechanism for the other fields; for anything with no file flag, write the file and
+     pass `"$(cat PATH)"` — the substitution happens once, on content the shell has already
+     finished with. A file written with an editor tool never touches a shell, so quoting,
+     escaping and `file:line` citations all survive — which matters because the rule below
+     requires those citations.
      **Name which source each came from, in the issue.** This step used to say "out of
      kanban.md's backlog", and that single filename is what made every other source
      invisible for 33 cycles. Never end a cycle with nothing ready.

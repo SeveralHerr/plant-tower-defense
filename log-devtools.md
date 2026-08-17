@@ -5853,3 +5853,62 @@ Noted on the bead.
     `"Node not found: %s"` sites are unchanged (`dev_tools.gd:1254`, `:1741`, `:1872`,
     `:3843`); `:1872` alone adds "(also tried under /root)", which shows the intent already
     exists at one site and nowhere else.
+
+## 2026-08-17 — Cycle 91: the cue legend (-bxhg), and two mutations that survived their guards
+
+- Value: **warranted** — the one claim that mattered is one no assertion this project can
+  write.
+  - Expected: five drawn swatches at 15 px either read as five distinct shapes or they do
+    not. I predicted runtime would answer exactly that and nothing else.
+  - Got: that — the screenshot shows brackets, a full ring, a three-quarter arc, a dashed
+    ring and a filled dot, all distinguishable, with the provenance line reading "5 of the
+    board's 10 marks". Plus the four-kind exclusivity holding in a live tree rather than in
+    a unit assertion: `fire-entry-point notebook`, page 10/10, `CueLegend visible=true` and
+    `Shelf visible=false` in the same query.
+  - Found: **both mutations survived their first guard, and each survival was a finding
+    about the test rather than the code.**
+    Inlining `Color(1.0, 0.95, 0.35, 0.9)` into ONE of `_draw_subject`'s two `draw_line`
+    calls passed, because the guard was `source.contains("SelectionMarker.MARKER_COLOR")`
+    and the *other* call kept the token alive. `contains` proves a token appears somewhere;
+    it says nothing about every use. Replaced with the property actually wanted — **no
+    swatch painter builds a `Color` literal at all** — which goes red.
+    Deleting `KIND_LEGEND`'s `PANE_LABELS` row passed too. `pane_label_for` returns `""`
+    for an unknown kind *by design* (better a blank heading than the neighbouring kind's,
+    which is what the `if/elif/else` chain it replaced would have given), but blank is only
+    better than wrong if something notices, and nothing did.
+    And the existing `test_the_notebook_plant_pages_fit_their_card` carried the **same
+    latent defect as the production code I had just fixed** — its dispatch is
+    `if DRAWING / if SHELF / else PLANT`, so the new kind fell through and was asserted to
+    name a real plant.
+  - Cheaper: for the drawing, nothing. For the two mutation findings, also nothing — a
+    guard that has not been watched failing is the thing this project keeps re-learning.
+
+- Gap: **`fire-entry-point` puts you on a screen but says nothing about what state it is
+  in, and the state it landed in was not the documented one.**
+  ```
+  python tools/devtools.py fire-entry-point notebook
+  entry_points.notebook fired /root/TitleScreen._open_notebook()
+    scene changed to reach /root/TitleScreen
+  ```
+  The notebook's build ends with `go_to(0)` (`game/notebook_screen.gd:370`), so page 1 of
+  10 is what a reader of the source expects. The live screen was on **page 10 of 10**. That
+  was convenient — it is the page I wanted — and I nearly recorded "the legend renders"
+  without noticing I had not navigated to it. Whether the entry point, the pager's wrap
+  (`go_to` normalises `-1` to the last page) or a stray input put it there, the reply is the
+  only thing that could have said so and it reports only that the method was called.
+  The reason this matters beyond one screen: an entry point exists to reach a state, and a
+  run that verifies the WRONG state passes exactly like one that verifies the right one.
+  `reach` catches an unloaded file; nothing catches an unexpected page.
+  - [G-066] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: have `fire-entry-point` return the same summary `first-frame` already
+    computes — topmost on-screen Control, visible CanvasLayers, paused state — so the reply
+    says what is on screen rather than only what was called. The verb exists and the data is
+    one call away; the entry point is precisely the moment a caller has no idea yet.
+  - Note: no other gaps this turn.
+
+  - [G-066] status: open | seen: 1 | harness: 0.54.0 | upstream: gh#54 | note: reconciled
+    against the installed 0.54.0 before filing. `_cmd_fire_entry_point`'s success return
+    (`dev_tools.gd:5181`) carries `name`, `node_path`, `method`, `result` and
+    `scene_changed` — every field describes the CALL and none the resulting screen. The
+    fix is a merge rather than new code: `first_frame` is registered at `:602` and already
+    computes "what IS the screen showing".

@@ -1,4 +1,4 @@
-# Cycle 90
+# Cycle 91
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,31 +6,35 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 90 taught
+## What cycle 91 taught
 
-**Confirming a bead's premise is where the design happens.** `-2ker` asked for the second
-one-shot hint: a Chomp declines a winged pest with a bare `continue`, so a mouth sitting still
-next to a bug is indistinguishable from a broken plant. Confirming that also turned up the
-thing that reshaped the whole change — **`show_message` returned `void` while being perfectly
-capable of dropping a line**, since `_queue_message` discards the new entry on a priority tie
-with a full queue. So "I called `show_message`" and "the player read it" were one expression.
-That is cycle 79's bug one level further down.
+**Searching for the wrong noun answers a question you did not ask.** The board has spoken a
+documented ten-shape language since cycle 67 and taught it to nobody; `CueLegend` now teaches
+five of the ten, each swatch drawn with the real cue's own constants. The bead said this
+needed a screen of its own, because a cycle-88 entry — mine — had grepped
+`notebook_screen.gd` for "husk" and "compost", found nothing, and concluded the file was a
+design-history artefact. The grep was correct. The claim was about the file's **shape**, and
+the answer was thirteen lines from the top: `KIND_SHELF` is documented as "about the player
+rather than about the game". A fourth kind shipped in an afternoon.
 
-It returns a bool now, deliberately `false` for a *queued* line rather than optimistic about
-it, because a queued line can still be dropped later. A `false` leaves the hint owed and the
-next flier offers it again — a retry path a hint spent on the call could never have.
+**Both mutations survived their first guard, and each survival was a finding about the
+test.** `source.contains(token)` passed while a `Color` literal was inlined into one of two
+`draw_line` calls — the other kept the token alive. Deleting a `PANE_LABELS` row passed
+because nothing asserted the resulting heading was non-empty. One shape both times:
+**a guard asserting the PRESENCE of a good thing where it needed the ABSENCE of the bad
+one.** `house-static-checker` already states this rule, for Python checkers; `-qewq` asks how
+widely it bites in the tests.
 
-**And the mutation pass demanded the test that mattered.** Replacing `posted` with a literal
-`true` at the call site survives every other test in the change: the predicate fires, the
-signal emits, the message appears in the ordinary case. The only observable difference is a
-busy row. `test_the_flight_hint_is_not_spent_when_the_row_was_too_busy` exists because that
-mutation would otherwise have lived.
+**And the seam paid before the mutation did.** `NotebookScreen.pane_label_for` replaced an
+`if/elif/else` whose `else` MEANT one kind, so a fourth kind would have taken the third's
+heading and left the third correct. The identical defect was then found sitting in the *test*
+for the same code. That closed `-jmxb`: `extract-a-testable-seam` no longer says to wait for
+a survival.
 
-**Two observation errors read as one defect.** The live run appeared to show the hint never
-firing. I had polled `/root/Game/Hud/...` when the node is `/root/Game/HUD/...`, so fourteen
-`Node not found` replies read as fourteen empty rows — and by the time the path was right, the
-hint had already been spent on the first attempt and was correctly doing nothing. **A stable
-error shape reads as a stable result.** Filed upstream as gh#53.
+## Carried from cycle 90
+
+**A stable error shape reads as a stable result.** Fourteen identical `Node not found`
+replies were a typo in one path segment, not fourteen empty reads. Never type a node path.
 
 ## Carried from cycle 89
 
@@ -38,28 +42,23 @@ error shape reads as a stable result.** Filed upstream as gh#53.
 an `Array[Dictionary]` is false for every id in the game. A claim about membership needs the
 collection's SHAPE read, not just its name resolved.
 
-## Carried from cycle 88
-
-**A cue can be present, correct, and out of range.** Ten reachable husk values, and `radius_for`
-and `glow_for` both saturate at 9 — six of the ten drew as one husk. `overflow_pips` counts where
-the lerp ran out. And **a legibility fix that quietly changes a balance number is two changes**:
-`FULL_VALUE` was left alone because `lifetime_for` reads the same fraction.
-
 ## Where things stand
 
-A hundred and three beads ready. Suite **600/600**, 12863 assertions; lint 0/0; eleven checkers
-clean; `findings` **0 across 5 of 5**; reach 3/4 +1 implicit, nothing unreached. Fifteen skills.
-Upstream gh#44, **gh#51, gh#52 and gh#53** open — three filed in three cycles, each reconciled
-against the installed 0.54.0 first, which is what made two of them sharper than the observation
-that started them. gh#49 and gh#50 are closed and fixed, which moved `-6e2e` off upstream and
-onto the pin. Still on harness **0.38.0** deliberately (`-ny3h`, gh#43).
+A hundred beads ready. Suite **605/605**, 12945 assertions; lint 0/0; eleven checkers clean;
+`findings` **0 across 5 of 5** on the notebook screen; reach 2/2. Fifteen skills, two of them
+corrected this cycle by their own failures. Upstream gh#44, **gh#51–gh#54** open — four filed
+in four cycles, every one reconciled against the installed 0.54.0 first, which is what made
+three of them sharper than the observation that started them. gh#49 and gh#50 are fixed, which
+moved `-6e2e` off upstream and onto the pin. Still on harness **0.38.0** deliberately
+(`-ny3h`, gh#43).
 
-**The player-facing steer is standing and cycle 90 is squarely on it.** 84-88 each shipped
-something a player sees; 89 shipped a persistence guard and owed a sentence for it; 90 spends
-that guard on the thing it was built for — a Chomp now says why it is ignoring a bug, in one
-sentence, once ever. `-a155` is still the cheap half of the board-check problem (transform
-properties, no pixels) and `-i366` is the sharpest new player-facing thread: nineteen of
-twenty-two message-row calls share one rung, and a tie drops the newer line.
+**The player-facing steer is standing and cycles 90-91 are squarely on it.** 84-88 each
+shipped something a player sees; 89 shipped a persistence guard and owed a sentence for it; 90
+spent that guard on a Chomp explaining itself; 91 gave the board's drawn language a page that
+teaches it. The three sharpest threads left are all player-facing: `-czz4` (the legend is nine
+Next presses from the front), `-1wx0` (the doubled-width ARMED cue — the one guarding the only
+irreversible act — is among the five the legend does NOT teach) and `-i366` (nineteen of
+twenty-two message-row calls share one rung, and a tie drops the newer line).
 
 ## Waiting on the user
 
@@ -104,9 +103,11 @@ while paused needs `run-method --method queue_redraw` on the drawing node (`-rvv
 **Run `run_json_check.py` BEFORE `verify_ledger record`.** **Cut `kanban.md` by line number,
 never by heading**, and **take a citation's line number only after the code edits are final** —
 cycle 90 rebound the same two three times because its own comments kept moving them.
-**Write a `bd` description to a file and pass `--body-file`** — `-d "..."` goes through the
-shell and backticks are command substitution. And **`set-game-speed` takes its scale
-positionally**, not as `--scale`.
+**No prose in ANY `bd` field as a shell argument** — not `create -d`, not `close --reason`,
+not `update --notes`. Backticks are command substitution: the word vanishes and leaves a
+still-grammatical sentence, which is why four cycles have now done it (76, 78, 83, 91).
+Write the file, then `--body-file` or `"$(cat PATH)"`. And **`set-game-speed` takes its
+scale positionally**, not as `--scale`.
 
 `python tools/gap_ledger.py --open` answers "which harness gaps are open" as a fact about the
 log, not about the harness; `python tools/citation_check.py` answers "do this file's citations

@@ -247,6 +247,37 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (91) — the legend exists and is nine clicks away
+
+- **The page that teaches the board is the last page of the notebook.** `CueLegend` ships
+  as `KIND_LEGEND`, the tenth of ten `NotebookScreen.PAGES` entries, and the screen opens
+  on page 0 (`game/notebook_screen.gd:370`, `go_to(0)` at the end of the build). So the
+  route is: title screen → Notebook → **nine presses of Next**. The title's own header
+  calls the notebook "a click further away" deliberately
+  (`game/title_screen.gd:56-60`) — that reasoning was about a designer's scrapbook, and it
+  now also gates the one page that explains what the marks on the board mean.
+  Three shapes the fix could take, and they are not equivalent: reorder `PAGES` so the
+  legend is first (cheapest, but it makes the scrapbook open on a rules page and the five
+  pencil drawings are the notebook's reason for existing); add a direct route from the
+  pause screen, which is where a confused player already is; or have the notebook open on
+  the legend the FIRST time and on page 0 thereafter — which is a hint-shaped behaviour and
+  `RunConfig.spend_hint` now exists for exactly that kind of one-shot.
+  Measure before choosing: nobody has watched a player try to find this.
+- **The five shapes the legend does NOT teach include the one guarding the only
+  irreversible action.** The grammar has ten rows and the page shows five; the five left
+  out are the straight-line state (`OVERLAY_GRAMMAR.md:28`), the weather's scattered marks
+  (`:30`), the doubled line width (`:31`) and the husk's pip count (`:32`).
+  **Doubled line width means ARMED — "a destructive action is one click away"** — and it
+  is drawn by `SelectionMarker.WARNING_LINE_WIDTH` and `SoleCoverMarks.WARNING_RING_WIDTH`
+  on the uproot, which is the one act in the game that cannot be undone and which cycle 79
+  spent a whole cycle wording the warning for. That omission was a deliberate scoping call
+  (the five taught are the first two waves, and a player cannot uproot before they have
+  planted) but it is the wrong one to leave standing: the cue with the highest cost of
+  being misread is the one not explained. A sixth row is not free —
+  `test_the_legend_fits_the_page_it_is_drawn_on` puts the current five at the edge of the
+  300px matte — so this is `ROW_PITCH` coming down, or a second legend page, and the test
+  will say which.
+
 ### New this cycle (90) — 19 messages on one rung, and a class with one member
 
 - **Nineteen of the game's twenty-two message-row calls sit on the SAME rung, and a tie
@@ -348,16 +379,23 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 - **The drawn grammar has ten rows and the game teaches none of them.**
   `game/OVERLAY_GRAMMAR.md` is now ten rows (12 table lines, 2 of them header) and is
   referenced only from GDScript comments — `husk_layer.gd:75`, `placement_preview.gd:3`,
-  `selection_marker.gd:3` — no script loads it, so it is a developer document. Checked
-  both surfaces that look like they could host a legend, and **both are the wrong shape,
-  which is the actual finding**: `NotebookScreen.PAGES` (`game/notebook_screen.gd:198`)
-  is a design-history artefact, the original pencil drawings with notes about where the
-  sprites came from, and mentions husks or compost nowhere in the file; `PauseScreen`'s
-  two-column list (`game/pause_screen.gd:778`, a key column and a "does" column) is a
-  controls reference, and a dashed ring is not a key. So the gap is not "the notebook is
-  missing a page" — it is that the game has no read-the-board surface at all, and every
-  cue added since cycle 60 has quietly assumed one exists. A player meets a dashed ring
-  and a doubled line width with nothing to check them against.
+  `selection_marker.gd:3` — no script loads it, so it is a developer document.
+  **SHIPPED in cycle 91, and half this entry was WRONG — corrected here rather than
+  deleted, because the mistake is the useful part.** The claim was that both candidate
+  surfaces are the wrong shape and the game therefore needs a read-the-board surface it
+  does not have. The notebook half of that is false: `NotebookScreen` was already a
+  three-kind pager, and its own header at `game/notebook_screen.gd:142` says `KIND_SHELF`
+  is "about the player rather than about the game" — the milestone shelf had stopped this
+  being a pure design-history artefact several cycles earlier. A fourth kind was the
+  precedent one screen away, and the legend shipped as `KIND_LEGEND` + `CueLegend`.
+  **How the error was made is the lesson**: the entry was written from a `grep` for "husk"
+  and "compost" across `notebook_screen.gd`, which returned nothing and read as "this file
+  is about pencil drawings". Grepping for the SUBJECT answered a question about the file's
+  contents; the claim was about its SHAPE, and `KIND_SHELF` is thirteen lines from the top.
+  That is `kanban-idea-pass` rule 2 — search for the behaviour, not one implementation of
+  it — failing in a form the rule does not yet name: **searching for the wrong NOUN.**
+  The `PauseScreen` half stands. Its two-column list (`game/pause_screen.gd:778`) is a
+  controls reference and a dashed ring has no keystroke to sit beside.
 
 ### New this cycle (87) — the mixer has a scale now, and one thing left off it
 
