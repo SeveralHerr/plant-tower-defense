@@ -644,6 +644,9 @@ func test_every_event_id_the_call_sites_use_is_in_the_table() -> String:
 		Sfx.RUN_WON, Sfx.RUN_LOST, Sfx.PURCHASE_DENIED,
 		Sfx.PLANT_UPGRADED, Sfx.PLANT_UPROOTED,
 		Sfx.CORN_FIRED, Sfx.CHOMP_BITE, Sfx.SUNDEW_CLAIM,
+		# The Nettle's sting -- a fourth attacking plant's own act, and a variant of
+		# CORN_FIRED's soft impact rather than a voice of its own (see Sfx.NETTLE_STING).
+		Sfx.NETTLE_STING,
 		# The Bomb Dandelion's pair. Two ids and not one because the seed
 		# leaving the head and the bomb bursting happen SeedBomb.FLIGHT_SECONDS
 		# and up to Dandelion.RANGE apart — see Sfx.DANDELION_PUFF.
@@ -1948,8 +1951,13 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 	# this suite chain to cap any campaign finale at 436.7 base health, and wave 16 was
 	# already at 418. Seven appended waves would have had 18.7 points to share -- one
 	# beetle. See WaveDirector.WAVES for the arithmetic.
+	# Wave 8 fell 29 -> 21 in cycle 101. It is MUTATION_START_WAVE, and it was
+	# carrying a +45.9% count step AND the mutation multiplier's +24.0% in the same
+	# wave, for +80.9% where every wave from 9 to 22 steps +2.0% to +13.6%. The
+	# counts now hold wave 7's peak spawn rate exactly, so the mutation is the only
+	# new thing on that wave. Re-derived, not adjusted until green.
 	var expected: Array[int] = [
-		5, 9, 9, 14, 13, 19, 19, 29, 26, 32, 30, 23, 35, 29, 35,
+		5, 9, 9, 14, 13, 19, 19, 21, 26, 32, 30, 23, 35, 29, 35,
 		37, 35, 32, 33, 36, 37, 36,
 	]
 	var err: String = _T.assert_eq(WaveDirector.WAVES.size(), expected.size(),
@@ -5884,4 +5892,409 @@ func test_endless_wave_scaling_grows_a_shield_bug_but_never_its_plate() -> Strin
 		err = _T.assert_float_eq(bug.shell_strength, Pest.shell_absorb(Pest.SHIELDBUG), 0.0001,
 			"which is still the value setup() read off the species row")
 	bug.free()
+	return err
+
+
+# -- The upgrade ladder, for any plant --------------------------------------
+#
+# `Plant.upgrade_ladder()` and the pure statics around it, which replaced
+# `selected_placed as CornCobbler` at both call sites. The tests below are in three
+# groups on purpose:
+#
+#   * the LADDER ARITHMETIC, asserted on the statics, including the case the old
+#     cob-only code never had — a plant with no ladder at all;
+#   * WHO HAS ONE, enumerated over the whole catalogue, so a plant added with a
+#     ladder (or without one) is decided about here rather than inheriting an answer;
+#   * the CHOMP's ladder, which is the second one in the game and therefore the only
+#     evidence that the surface is not shaped around the first.
+
+
+## The empty ladder is the case worth having a test for: six of the seven plants in
+## the catalogue answer it, and every one of the accessors has to survive it without
+## a caller writing a guard. `ladder_row` indexing `ladder[-1]` is the specific bug —
+## a `clampi(for_level - 1, 0, size - 1)` written straight from the cob's version does
+## exactly that, and it takes the frame with it.
+func test_a_plant_with_no_ladder_answers_every_upgrade_question_without_a_guard() -> String:
+	var flower := Sunflower.new()
+	var err: String = _T.assert_false(flower.has_upgrades(),
+		"a Sunflower does not grow — this is what the Upgrade button is gated on")
+	if err == "":
+		err = _T.assert_eq(flower.max_level(), 1, "so its ladder is one rung long")
+	if err == "":
+		err = _T.assert_true(flower.is_max_level(), "and it is born at the top of it")
+	if err == "":
+		err = _T.assert_false(flower.can_upgrade(), "there is nothing above it to buy")
+	if err == "":
+		err = _T.assert_eq(flower.upgrade_cost(), 0, "so there is no price to quote")
+	if err == "":
+		err = _T.assert_eq(flower.level_name(), "", "and no level name to print")
+	if err == "":
+		err = _T.assert_eq(flower.upgrade_spent(), 0, "an uproot forfeits nothing")
+	if err == "":
+		err = _T.assert_true(flower.level_row().is_empty(),
+			"and the stat lookup hands back an empty row rather than indexing off the end")
+	if err == "":
+		err = _T.assert_false(flower.upgrade(), "upgrading it is refused")
+	if err == "":
+		err = _T.assert_eq(flower.level, 1, "and changed nothing when it was")
+	flower.free()
+	return err
+
+
+## The arithmetic, on the statics, at both ends and past both ends. `ladder_row` is
+## reached by every stat lookup in every upgradeable plant, so a level that has run
+## off either end of the table has to land on a row rather than on a crash.
+func test_the_ladder_statics_clamp_at_both_ends_and_price_the_top_at_nothing() -> String:
+	var ladder: Array[Dictionary] = CornCobbler.LEVELS
+	var none: Array[Dictionary] = []
+	var err: String = _T.assert_eq(Plant.ladder_level_name(ladder, 0),
+		String(ladder[0]["name"]), "level 0 reads the bottom row rather than the last one")
+	if err == "":
+		err = _T.assert_eq(Plant.ladder_level_name(ladder, 99),
+			String(ladder[ladder.size() - 1]["name"]), "and a level past the top reads the top row")
+	if err == "":
+		err = _T.assert_true(Plant.ladder_row(none, 1).is_empty(),
+			"an empty ladder has no rows to read")
+	if err == "":
+		err = _T.assert_eq(Plant.ladder_level_name(none, 1), "", "and no names")
+	if err == "":
+		err = _T.assert_eq(Plant.ladder_upgrade_cost(none, 1), 0, "and nothing to sell")
+	if err == "":
+		err = _T.assert_eq(Plant.ladder_spend(none, 3), 0, "and nothing sunk into it")
+	if err == "":
+		err = _T.assert_eq(Plant.ladder_upgrade_cost(ladder, ladder.size()), 0,
+			"the top of a real ladder is priced at nothing too — there is no rung above it")
+	if err == "":
+		err = _T.assert_eq(Plant.ladder_spend(ladder, 1), 0, "nothing is sunk into a level-1 plant")
+	if err == "":
+		err = _T.assert_eq(Plant.ladder_spend(ladder, 2), int(ladder[0]["upgrade_cost"]),
+			"one rung up is one payment")
+	return err
+
+
+## The shim and the general case cannot drift.
+##
+## `CornCobbler.upgrade_spend(for_level)` survives as a static because `Hud.message_corpus`
+## asks the CLASS for the ladder's maximum, which no instance can answer. That leaves two
+## functions computing one number, which is the shape this project has been bitten by
+## before (`spread_for` versus the `spread_degrees` column), so it is pinned rather than
+## trusted — swept over every level plus one past the top.
+func test_the_cobs_own_spend_static_is_the_generic_one() -> String:
+	var err: String = ""
+	for level: int in range(1, CornCobbler.LEVELS.size() + 2):
+		err = _T.assert_eq(CornCobbler.upgrade_spend(level),
+			Plant.ladder_spend(CornCobbler.LEVELS, level),
+			"level %d: the cob's static and Plant.ladder_spend agree" % level)
+		if err != "":
+			return err
+	return _T.assert_eq(CornCobbler.upgrade_spend(CornCobbler.LEVELS.size()), 65,
+		"and the cob's ladder still totals the 20 + 45 the uproot prompt quotes")
+
+
+## Which plants grow, named exactly, over the catalogue the game can actually build.
+##
+## Built through `Game._new_plant` rather than through a list of classes written here,
+## because the question is about what a PLACED plant does and `_new_plant`'s match is
+## what decides that (test_placement has three tests about that match alone). A plant
+## added to `PlantCatalog` therefore reaches this test whether or not anyone remembers
+## it exists — and has to be decided about here, positively, like
+## `test_every_plant_that_can_touch_a_pest_is_named_as_one` a few hundred lines up.
+##
+## Deliberately NOT derived from a key in `PlantCatalog`: the ladder is a const in the
+## class whose behaviour reads it, so "does this plant grow" has exactly one answer and
+## a catalogue key would be a second one that a table edit could falsify.
+func test_exactly_two_plants_in_the_catalogue_grow_and_the_rest_are_born_finished() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var upgradeable: Array[StringName] = []
+	var err: String = ""
+	for id: StringName in PlantCatalog.ids():
+		var plant: Plant = game._new_plant(id)
+		if plant == null:
+			err = "Game._new_plant built nothing for %s" % id
+			break
+		if plant.has_upgrades():
+			upgradeable.append(id)
+			# Every row of every ladder in the game, checked where the ladders are
+			# enumerated rather than in each plant's own test: a row missing "name"
+			# prints an empty level in the selection panel, and a row missing
+			# "upgrade_cost" is a free upgrade.
+			for row: Dictionary in plant.upgrade_ladder():
+				if not row.has("name") or String(row["name"]) == "":
+					err = "%s has a ladder row with no name" % id
+				elif not row.has("upgrade_cost"):
+					err = "%s has a ladder row that does not say what the next one costs" % id
+			var top: int = plant.upgrade_ladder().size()
+			if err == "" and Plant.ladder_upgrade_cost(plant.upgrade_ladder(), top) != 0:
+				err = "%s prices a rung above its own top level" % id
+		plant.free()
+		if err != "":
+			break
+	if err == "":
+		err = _T.assert_eq(upgradeable.size(), 2,
+			("two plants in this catalogue grow, and the list below says which — got %s. "
+			+ "A new id missing from Game._new_plant's match falls through to a CornCobbler "
+			+ "and arrives here wearing the cob's ladder, so check that arm before the ladder")
+				% str(upgradeable))
+	if err == "":
+		err = _T.assert_true(upgradeable.has(PlantCatalog.CORN),
+			"the Corn Cobbler, whose ladder the design doc draws")
+	if err == "":
+		err = _T.assert_true(upgradeable.has(PlantCatalog.CHOMP),
+			"and the Chomp Flower, which is the second one and the proof the surface is generic")
+	_T.free_ui(game)
+	return err
+
+
+# -- The Chomp Flower's ladder ----------------------------------------------
+
+
+## Monotone in both columns, which is what makes "an upgrade can never lose" true for
+## this plant the way `KERNEL_STEP_DEGREES` makes it true for the cob. Also pins level
+## 1 to the flower that shipped: the table holds SCALES, so this is arithmetic rather
+## than a promise, and a hand-typed absolute would be exactly the drift it prevents.
+func test_the_chomp_ladder_only_ever_reaches_further_and_chews_faster() -> String:
+	var err: String = _T.assert_float_eq(ChompFlower.grab_radius_for(1), ChompFlower.GRAB_RADIUS,
+		0.0001, "level 1 is the flower that shipped, exactly")
+	if err == "":
+		err = _T.assert_float_eq(ChompFlower.chew_seconds_for(1, 2.6), 2.6, 0.0001,
+			"and takes exactly as long over a beetle as it always did")
+	if err != "":
+		return err
+	for level: int in range(2, ChompFlower.LEVELS.size() + 1):
+		err = _T.assert_gt(ChompFlower.grab_radius_for(level),
+			ChompFlower.grab_radius_for(level - 1),
+			"level %d closes on something level %d let past" % [level, level - 1])
+		if err == "":
+			err = _T.assert_gt(ChompFlower.chew_seconds_for(level - 1, 2.6),
+				ChompFlower.chew_seconds_for(level, 2.6),
+				"and gives the lane back sooner than level %d does" % [level - 1])
+		if err != "":
+			return err
+	return _T.assert_true(
+		ChompFlower.grab_radius_for(ChompFlower.LEVELS.size()) < Board.CELL * 2.0,
+		"and the top of the ladder still only covers the lane it is beside (%.1f px)"
+			% ChompFlower.grab_radius_for(ChompFlower.LEVELS.size()))
+
+
+## The reach half, through `_act` rather than through the number — the seam is only
+## worth anything if the grab actually reads it. One pest each, at the same distance,
+## which is a distance the bud cannot reach and the gaping mouth can.
+func test_a_gaping_chomp_grabs_a_pest_the_bud_lets_walk_past() -> String:
+	var gap: float = 80.0
+	var bud := ChompFlower.new()
+	var gaping := ChompFlower.new()
+	gaping.level = ChompFlower.LEVELS.size()
+	var near: Pest = _pest(Pest.APHID, Vector2(0, -gap))
+	var far: Pest = _pest(Pest.APHID, Vector2(0, gap))
+	var host: Node2D = _host([bud, gaping, near, far])
+	await _T.instantiate_scene(host)
+	# Two flowers rather than one upgraded between the two reads: a mouth that has
+	# already closed on something stays closed, so a single flower would answer the
+	# second question with the first question's meal.
+	gaping.position = Vector2(0, 2.0 * gap)
+	# `Plant._physics_process` feeds `_act` the whole "pests" GROUP, which is
+	# tree-global — so an ambient frame would let either flower grab either pest and
+	# the reads below would be about whatever the settle happened to do. Every `_act`
+	# in this test is called by hand, with the one pest it is a question about.
+	bud.set_physics_process(false)
+	gaping.set_physics_process(false)
+
+	var err: String = _T.assert_true(gap > ChompFlower.grab_radius_for(1)
+			and gap < ChompFlower.grab_radius_for(ChompFlower.LEVELS.size()),
+		"%.0f px is between the two reaches, which is the only distance this test says anything at"
+			% gap)
+	if err == "":
+		var for_bud: Array[Pest] = [near]
+		bud._act(0.016, for_bud)
+		err = _T.assert_false(bud.is_busy(), "the bud cannot reach it")
+	if err == "":
+		var for_gaping: Array[Pest] = [far]
+		gaping._act(0.016, for_gaping)
+		err = _T.assert_true(gaping.is_busy(),
+			"and the gaping mouth closes on a pest at the same distance")
+	if err == "":
+		# The instance accessor by name, not only through `_act`. Both flowers, so a
+		# `grab_radius()` that ignored `level` and returned the constant would fail
+		# here even though the grab above happened to succeed.
+		err = _T.assert_float_eq(bud.grab_radius(), ChompFlower.GRAB_RADIUS, 0.0001,
+			"a bud answers the catalogue's reach")
+	if err == "":
+		err = _T.assert_gt(gaping.grab_radius(), bud.grab_radius(),
+			"and an upgraded flower answers a longer one")
+	_T.free_ui(host)
+	return err
+
+
+## The chew half, through `_grab` and `_chew` rather than through the number.
+func test_a_gaping_chomp_gives_the_lane_back_before_a_bud_would() -> String:
+	var beetle_chew: float = float(Pest.SPECIES[Pest.BEETLE]["chew_seconds"])
+	var bud := ChompFlower.new()
+	var gaping := ChompFlower.new()
+	gaping.level = ChompFlower.LEVELS.size()
+	var one: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	var two: Pest = _pest(Pest.BEETLE, Vector2(0, 400))
+	var host: Node2D = _host([bud, gaping, one, two])
+	await _T.instantiate_scene(host)
+	gaping.position = Vector2(0, 400)
+	# Same reason as the reach test above: the group `_physics_process` reads is
+	# tree-global, and both beetles are in it.
+	bud.set_physics_process(false)
+	gaping.set_physics_process(false)
+
+	var step: float = ChompFlower.chew_seconds_for(ChompFlower.LEVELS.size(), beetle_chew) + 0.01
+	var for_bud: Array[Pest] = [one]
+	var for_gaping: Array[Pest] = [two]
+	bud._act(0.016, for_bud)
+	gaping._act(0.016, for_gaping)
+	var err: String = _T.assert_true(bud.is_busy() and gaping.is_busy(),
+		"both mouths closed on a beetle")
+	if err == "":
+		bud._act(step, for_bud)
+		gaping._act(step, for_gaping)
+		err = _T.assert_false(gaping.is_busy(), "the gaping mouth has swallowed it and is free")
+	if err == "":
+		err = _T.assert_true(bud.is_busy(),
+			"while the bud is still chewing the same beetle %.2fs in" % step)
+	if err == "":
+		err = _T.assert_true(one.is_alive() and not two.is_alive(),
+			"and the difference is a pest that is dead rather than a number that is smaller")
+	_T.free_ui(host)
+	return err
+
+
+## The one balance claim in the ladder, named with the number it is measured against.
+##
+## `Pest.SPECIES[QUEEN]`'s 11-second chew is documented at `game/pest.gd:145` as the
+## whole trade for eating a queen: the mouth is shut for the rest of the wave. A chew
+## scale that bought that out would be an upgrade deleting a mechanic rather than
+## improving a plant, so the floor is asserted here where the ladder can be retuned.
+func test_a_queen_still_shuts_even_a_gaping_mouth_for_most_of_a_wave() -> String:
+	var queen: float = float(Pest.SPECIES[Pest.QUEEN]["chew_seconds"])
+	var err: String = _T.assert_float_eq(queen, 11.0, 0.0001,
+		"the queen's chew is the 11s game/pest.gd:145 does its arithmetic on")
+	if err == "":
+		var top: float = ChompFlower.chew_seconds_for(ChompFlower.LEVELS.size(), queen)
+		err = _T.assert_gt(top, 7.0,
+			"a fully grown Chomp is still shut for %.1fs after eating her — the trade survives the ladder"
+				% top)
+	return err
+
+
+## The crown's count and its nesting. Level 1 wears none, and every level's teeth are
+## every lower level's teeth plus one pair further out — the readout may grow, it may
+## never rearrange, which is the rule `CornCobbler.KERNEL_STEP_DEGREES` exists for.
+func test_the_fang_crown_adds_a_pair_per_level_and_never_moves_the_teeth_below() -> String:
+	var err: String = _T.assert_eq(ChompFlower.fang_points(1).size(), 0,
+		"a plain flower wears no crown at all — an unupgraded plant is not decorated")
+	if err != "":
+		return err
+	for level: int in range(2, ChompFlower.LEVELS.size() + 1):
+		var here: PackedFloat32Array = ChompFlower.fang_offsets(level)
+		var below: PackedFloat32Array = ChompFlower.fang_offsets(level - 1)
+		err = _T.assert_eq(here.size(), 2 * (level - 1),
+			"level %d wears %d teeth" % [level, 2 * (level - 1)])
+		if err == "":
+			err = _T.assert_eq(ChompFlower.fang_points(level).size(), here.size(),
+				"and draws one per angle")
+		if err != "":
+			return err
+		for was: float in below:
+			var kept: bool = false
+			for now: float in here:
+				if absf(now - was) < 0.0001:
+					kept = true
+			err = _T.assert_true(kept,
+				"level %d still wears the tooth level %d had at %.1f deg"
+					% [level, level - 1, rad_to_deg(was)])
+			if err != "":
+				return err
+	return err
+
+
+## The crown's geometry, against the three things it has to clear. Every one of these
+## is a way for the cue to be invisible rather than wrong, which is the failure mode a
+## screenshot catches and a passing test does not.
+func test_the_fang_crown_clears_the_sprite_the_chew_ring_and_its_own_cell() -> String:
+	var inner: float = ChompFlower.FANG_RADIUS - ChompFlower.FANG_SIZE - ChompFlower.FANG_RIM_WIDTH
+	var outer: float = ChompFlower.FANG_RADIUS + ChompFlower.FANG_SIZE + ChompFlower.FANG_RIM_WIDTH
+	# The petal ring: ellipses centred 17 px out with ry 6 and a 2 px stroke. Node2D
+	# paints _draw() BELOW its children, so a tooth inside this is not dim, it is gone.
+	var petals: float = 24.0
+	var err: String = _T.assert_gt(inner, petals,
+		"a tooth's inner edge (%.1f) is outside the petal ring (%.1f) — Node2D paints _draw() under the sprite"
+			% [inner, petals])
+	if err == "":
+		err = _T.assert_gt(inner, ChompFlower.CHEW_RING_RADIUS + ChompFlower.CHEW_RING_WIDTH * 0.5,
+			"and outside the chew ring, so the level readout and the meal readout never share a pixel")
+	if err == "":
+		err = _T.assert_gt(float(Board.CELL) * 0.5, outer,
+			"and inside its own cell (%.1f px against %d)" % [outer, Board.CELL / 2])
+	if err != "":
+		return err
+	for level: int in range(1, ChompFlower.LEVELS.size() + 1):
+		for tooth: Vector2 in ChompFlower.fang_points(level):
+			err = _T.assert_float_eq(tooth.length(), ChompFlower.FANG_RADIUS, 0.001,
+				"every tooth sits on the crown's own radius")
+			if err == "":
+				# The two leaves are drawn at 55 and 125 degrees, i.e. below the middle,
+				# and reach r = 31 — the only part of this sprite that would swallow a
+				# tooth this far out.
+				err = _T.assert_true(tooth.y < 0.0,
+					"and in the top half, clear of the leaves (level %d, tooth at %.1f, %.1f)"
+						% [level, tooth.x, tooth.y])
+			if err != "":
+				return err
+	return err
+
+
+## The instance surface on the second plant that has one — the same walk the cob's
+## `test_upgrading_stops_at_the_top_and_costs_nothing_there` takes, on a Chomp, because
+## a generic ladder that only works for the class it was extracted from is not generic.
+func test_a_chomp_climbs_its_ladder_and_stops_at_the_top() -> String:
+	var chomp := ChompFlower.new()
+	var err: String = _T.assert_true(chomp.has_upgrades(), "a Chomp grows")
+	if err == "":
+		err = _T.assert_eq(chomp.level_name(), "bud", "and starts as a bud")
+	if err == "":
+		err = _T.assert_eq(chomp.upgrade_spent(), 0, "with nothing sunk into it yet")
+	if err == "":
+		err = _T.assert_gt(chomp.upgrade_cost(), 0, "and a price on the next rung")
+	var climbed: int = 0
+	var paid: int = 0
+	while err == "" and chomp.can_upgrade():
+		paid += chomp.upgrade_cost()
+		if not chomp.upgrade():
+			err = "upgrade() refused a rung can_upgrade() had just offered"
+		climbed += 1
+	if err == "":
+		err = _T.assert_eq(climbed, ChompFlower.LEVELS.size() - 1, "the ladder terminates")
+	if err == "":
+		err = _T.assert_eq(chomp.level_name(), "gaping maw", "at a gaping maw")
+	if err == "":
+		err = _T.assert_eq(chomp.upgrade_cost(), 0, "which has no price to quote")
+	if err == "":
+		err = _T.assert_eq(chomp.upgrade_spent(), paid,
+			"and forfeits, on an uproot, exactly what was paid into it")
+	if err == "":
+		err = _T.assert_false(chomp.upgrade(), "and refuses to grow further")
+	chomp.free()
+	return err
+
+
+## The same guard the cob has, on the flourish this plant added. Headless is always
+## animations-off, so a Tween queued here would never run — and the level, the reach,
+## the chew scale and the crown all have to be right without it.
+func test_a_headless_chomp_upgrade_does_not_queue_a_flourish_tween() -> String:
+	var chomp := ChompFlower.new()
+	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
+	var host: Node2D = _host([chomp])
+	await _T.instantiate_scene(host)
+	var before: Vector2 = chomp._sprite.scale
+	var err: String = _T.assert_true(chomp.upgrade(), "the upgrade itself still lands")
+	if err == "":
+		err = _T.assert_eq(chomp.level, 2, "and the level moved")
+	if err == "":
+		err = _T.assert_eq(chomp._sprite.scale, before,
+			"no new Tween was queued -- animations_enabled() is false headless")
+	_T.free_ui(host)
 	return err

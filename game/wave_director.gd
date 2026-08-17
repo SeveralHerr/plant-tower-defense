@@ -304,9 +304,27 @@ const WAVES: Array[Array] = [
 		{"species": &"beetle", "count": 5, "gap": 1.20, "lead": 0.5},
 		{"species": &"aphid", "count": 14, "gap": 0.40, "lead": 1.0},
 	],
+	# Wave 8 is MUTATION_START_WAVE, and it used to be a double step: 22 aphids at
+	# 0.30 plus 7 beetles priced +45.9% on count alone, and the mutation multiplier
+	# then compounded another +24.0% on top of it, for +80.9% in one wave. Every
+	# other wave from 9 to 22 steps between +2.0% and +13.6%. Two independent
+	# difficulty increases landed on the same wave, so there was no wave anywhere in
+	# the campaign where a player met an armoured or winged pest at a density they
+	# could read.
+	#
+	# The counts below hold wave 7's peak spawn rate exactly (0.40 gap = 2.50/s), so
+	# the new thing on screen at wave 8 is the mutation and nothing else. The
+	# mutation weight alone then carries the wave: +43.3%, in line with wave 6's
+	# +23.1% and wave 7's +27.1%, and the count ramp resumes at wave 9 (+29.1%
+	# instead of +2.2%). Waves 10-22 are untouched, and threat_for still rises
+	# strictly -- both re-derived offline against _raw_threat before the edit.
+	#
+	# Measured, not guessed: a playthrough on a breadth-first policy (eleven level-1
+	# plants, no upgrades) lost 7 of 11 plants on this wave and was dead by wave 10.
+	# See plant-tower-defense-t52o.
 	[
-		{"species": &"aphid", "count": 22, "gap": 0.30, "lead": 0.5},
-		{"species": &"beetle", "count": 7, "gap": 0.90, "lead": 1.5},
+		{"species": &"aphid", "count": 15, "gap": 0.40, "lead": 0.5},
+		{"species": &"beetle", "count": 6, "gap": 1.00, "lead": 1.5},
 	],
 	# -- 9-16: the second half (plant-tower-defense-74a) ---------------------
 	[
