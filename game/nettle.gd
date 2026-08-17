@@ -165,15 +165,24 @@ func _act(delta: float, pests: Array[Pest]) -> void:
 ## kill already has the corpse swap, the fade and `Sfx.PEST_KILLED`, and without the flash a
 ## sting that connected and did not kill would look like nothing having happened at all.
 ##
-## **No sound, and that is a gap rather than a decision.** `game/sfx.gd` has a cue for every
-## other engagement in the game (`CORN_FIRED`, `CHOMP_BITE`, `SUNDEW_CLAIM`, `DANDELION_PUFF`,
-## `SEED_BOMB_BURST`) and nothing that fits a sting; borrowing one of those would teach the
-## player that a different plant had acted, which is worse than silence. Adding a cue means a
-## new entry in `Sfx.SOUNDS`, `VOLUME_DB`, `PITCH` and `REPEAT_MS`, and that is its own item.
+## `Sfx.NETTLE_STING` is the audible half of the argument `STING_SQUASH` makes visually — a
+## sting with no projectile needs evidence of its own, or the only sign a Nettle acted is a
+## hit flash indistinguishable from a kernel landing from three cells away. And it
+## is a VARIANT rather than a voice of its own: the same soft impact `CORN_FIRED` and
+## `PLANT_BITTEN` already wear, pitched up to 1.08 and trimmed to −5.0 so it sits between
+## them. Borrowing `CORN_FIRED` itself would have taught the player that a different plant
+## acted — that objection is about wearing another cue UNCHANGED, and it does not survive
+## the pitch and the volume. See `Sfx.NETTLE_STING`'s comment for the twelfth vendored file
+## that was refused, and `Sfx.REPEAT_MS` for why the gate is 200ms and where the number
+## came from.
+##
+## Unguarded, like every other `Sfx.play()` call site: `play()` owns the headless gate and
+## the repeat gap, so a guard here would be a second opinion about both.
 func _sting(target: Pest) -> void:
 	target.take_damage(STING_DAMAGE)
 	if target.is_alive():
 		target.flash_hit()
+	Sfx.play(Sfx.NETTLE_STING)
 	_cooldown = sting_interval()
 	_sting_twitch()
 

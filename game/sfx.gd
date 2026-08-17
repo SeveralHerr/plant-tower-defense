@@ -50,9 +50,14 @@ const RUN_LOST := &"run_lost"
 ## bank.purchase_failed is the single place this plays from, so every refusal
 ## gets the same cue regardless of which of the four call sites emitted it.
 const PURCHASE_DENIED := &"purchase_denied"
-## The instant a Corn Cobbler's upgrade lands (CornCobbler.upgrade()) — a cue
-## for the transaction itself, not just next volley's wider fan. See
-## corn_cobbler.gd's _upgrade_flourish() for the sprite half of this.
+## The instant any plant's upgrade lands (Plant.upgrade()) — a cue for the
+## transaction itself, not just next volley's wider fan. See corn_cobbler.gd's
+## _upgrade_flourish() for the sprite half of this.
+##
+## It plays from Plant.upgrade() rather than from the flourish since cycle 101,
+## which is a fix and not a move: the flourish is behind
+## GardenTheme.animations_enabled(), so an upgrade was SILENT for any player who
+## had animations turned off, and nothing pinned that silence.
 const PLANT_UPGRADED := &"plant_upgraded"
 ## A plant deliberately dug up (Game.commit_uproot), as opposed to
 ## PLANT_DESTROYED's "a hungry pest ate it" — the player chose this one.
@@ -72,6 +77,24 @@ const SUNDEW_CLAIM := &"sundew_claim"
 ## the half of it the player is NOT meant to be watching.
 const DANDELION_PUFF := &"dandelion_puff"
 const SEED_BOMB_BURST := &"seed_bomb_burst"
+## A Nettle stinging a mutated pest (`Nettle._sting`) — the only damaging act in
+## the game with nothing in flight, so without a cue the sole evidence a Nettle
+## did anything is the victim's own hit flash, which looks identical to a kernel
+## landing from a cob three cells away.
+##
+## **A VARIANT, not a new voice, and the reason is what the file already means.**
+## `impactSoft_medium_002.ogg` is not Corn's sound: it is this pack's generic soft
+## impact, and two events already sit on it from opposite sides of the exchange —
+## PLANT_BITTEN at −8.0 (a pest's mouth closing) and CORN_FIRED at 0.0 (a kernel
+## leaving the cob). A third position on that same scale extends a statement the
+## table is already making; it does not borrow an identity. The refused
+## alternative was a twelfth vendored file: the palette is eleven voices on
+## purpose (see PITCH's header), and a timbre nobody else in the game shares would
+## make the loudest new thing in the mix a plant that deals 3.0 damage every 0.7s
+## and is dead weight until `WaveDirector.MUTATION_START_WAVE`. A specialist's
+## tick should sound like a smaller version of a hit, which is exactly what a
+## variant is for.
+const NETTLE_STING := &"nettle_sting"
 ## A HUD button acknowledging the click itself, before whatever it went on to
 ## do. Only the two presses that answered with nothing of their own use it —
 ## "Grow the next wave" and the plant bar; see Game._on_next_wave_requested for
@@ -141,6 +164,11 @@ const SOUNDS: Dictionary = {
 	# which is right: a blast that took something down should sound bigger than
 	# one that only clipped it.
 	SEED_BOMB_BURST: "res://assets/audio/impactSoft_heavy_000.ogg",
+	# Reuses PLANT_BITTEN's and CORN_FIRED's soft impact — the third position on
+	# that file, and the one that actually lands on a pest. See NETTLE_STING's own
+	# comment for why this is a variant rather than a twelfth vendored voice; the
+	# pitch and the volume below are what make it one.
+	NETTLE_STING: "res://assets/audio/impactSoft_medium_002.ogg",
 	# Reuses HUSK_COLLECTED's coins for the same reason the flying glyph reuses
 	# the husk's gold: seeds arriving are seeds arriving, and a second currency
 	# sound for the same currency would say they were different things.
@@ -186,6 +214,13 @@ const VOLUME_DB: Dictionary = {
 	# Under PEST_KILLED's -3.0, same stream, so a burst that killed something is
 	# audibly bigger than the burst alone.
 	SEED_BOMB_BURST: -6.0,
+	# The middle rung of the three events sharing impactSoft_medium_002.ogg, and
+	# the position is the whole point: CORN_FIRED at 0.0 announces a volley that
+	# will travel across the board, this is one plant's contact hit on the cell
+	# beside it, and PLANT_BITTEN at -8.0 is a pest chewing in the background. A
+	# sting is smaller than the volley and larger than the chew, so it sounds that
+	# way rather than being trimmed to whatever was free.
+	NETTLE_STING: -5.0,
 }
 
 ## Shortest gap between two plays of the SAME event, in milliseconds. Absent
@@ -240,6 +275,13 @@ const PITCH: Dictionary = {
 	# Modest on purpose: a kill is the most frequent sound in the game and a wide interval
 	# would turn a wave into a melody.
 	PEST_KILLED_HARD: 1.12,
+	# The shallowest step up in the table, because it is the smallest gain in the game:
+	# 3.0 damage off one pest, not a kill and not a permanent upgrade. So the gains column
+	# reads as a scale — a sting under a hard kill under an upgrade — the same way the
+	# losses above it do. Up rather than down because damage dealt is a gain; thin rather
+	# than blunt because a sting is a needle and a kernel is not, which is the half of this
+	# number `test_the_gains_read_as_a_scale` cannot see.
+	NETTLE_STING: 1.08,
 }
 
 const DEFAULT_REPEAT_MS: int = 45
@@ -261,6 +303,21 @@ const REPEAT_MS: Dictionary = {
 	# times as loud rather than three seeds.
 	DANDELION_PUFF: 120,
 	SEED_BOMB_BURST: 90,
+	# Derived from the Nettle's own numbers rather than copied off a row above.
+	# `Nettle.sting_interval()` is `STING_INTERVAL` (0.7s) composed with the sky and
+	# the neighbours, and only ONE of those two can make it shorter: drought is 2.0
+	# (`WaveDirector.WEATHER_DROUGHT_INTERVAL_SCALE`, slower) and a Mint is 0.75 per
+	# adjacent cell with at most four of them (`Mint.NEIGHBOUR_OFFSETS`). So the
+	# floor for a single Nettle is 700 * 0.75^4 = 221ms, and 200 sits under it: no
+	# board a player can build loses one of a lone Nettle's own stings to this gate.
+	# What it does collapse is a BANK of them — STING_INTERVAL is a constant, so
+	# Nettles planted in the same breath come due in the same frame forever after,
+	# the same phase-lock DANDELION_PUFF and SEEDS_GROWN are gated for, and a wave-8
+	# swarm walking past four of them would otherwise machine-gun one sample into a
+	# single much louder noise. `test_a_bank_of_nettles_cannot_machine_gun_the_sting`
+	# pins the 200 against those constants, so retuning either one fails the suite
+	# instead of quietly re-arming the problem.
+	NETTLE_STING: 200,
 }
 
 ## How many sounds can overlap. A tower defense's loudest moment is a volley
