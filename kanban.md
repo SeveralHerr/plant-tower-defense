@@ -195,6 +195,30 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (28 of 30) — a node with no name is a node nothing can address
+
+- **123 `add_child` calls in `game/`, 93 `.name =` assignments.** The selection marker
+  was one of the gap: it drew on every selected plant and its path was
+  `@SelectionMarker@31`, addressable from no test and no bridge command, in a project
+  whose `OverlayScreen` header says outright that node paths are a contract. The
+  difference between the two numbers is not all defects — a throwaway ColorRect needs
+  no name — but **nothing distinguishes "deliberately anonymous" from "nobody thought
+  about it"**, and the marker sat in the second group for many cycles.
+- **A checker could ask this and would need a rule for "worth naming".** The honest
+  candidate: a node that is `add_child`ed AND stored in a member variable is something
+  the code will refer to again, so a test or the bridge probably wants to as well. That
+  is derivable; "a bare `add_child(ColorRect.new())`" is derivably not.
+- **`request_uproot` arms and `uproot_selected` removes**, and the names do not say
+  which is which (`game/game.gd:1235`, `:1200`). I called the wrong one while writing
+  this cycle's test and it silently uprooted the plant instead of arming. A caller that
+  guesses wrong destroys a bed; the pair wants renaming to `arm_uproot` /
+  `commit_uproot`, or one entry point with a flag.
+- **The armed-uproot cue and the armed-reset cue now use different second channels** —
+  a bullet mark on the Keys screen, line weight on the board — because a Label and a
+  `draw_line` shape have different vocabularies. That is correct per surface and means
+  **the project has no single answer to "what does armed look like"**, which is the
+  kind of thing that drifts. Worth writing the pair down next to `GardenTheme.DANGER`.
+
 ### New this cycle (27 of 30) — a green test proved nothing, and the suite cannot tell
 
 - **The suite reports assertions executed and cannot report assertions that MEANT

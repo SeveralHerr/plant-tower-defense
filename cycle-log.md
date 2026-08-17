@@ -1,4 +1,4 @@
-# Cycle 45
+# Cycle 46
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,40 +6,37 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 45 taught
+## What cycle 46 taught
 
-**A test can run its assertion every time and check nothing.**
-`test_corn_shoots_the_pest_closest_to_escaping` sets `far._leg = 4` on a five-point route
-— the last leg — so the pest reaches the end and frees *itself* during the settle frames
-`instantiate_scene` pumps. `assert_true(target == far)` then compares two references to the
-same freed object, which is true. Green for many cycles, counted in
-`Assertions: 12143 executed`, and it had never once checked the furthest-along rule it is
-named for.
+**The bed an armed uproot will remove now says so** — red brackets at double weight, for
+the four seconds the confirm window is open, restored in `_disarm_uproot` (the one place
+the arming is cleared, which is why the marker is put back there rather than at its four
+callers). Two channels, because `colorblind_safe` exists precisely to make a hue
+unreliable, and this project already hatches its lane overlay and notches its regrow bars
+for the same reason.
 
-It was found by adding **one liveness assertion** while tidying up after last cycle's crash
-— and it fails on 0.38.0, where the whole suite is green. This was never about the harness.
-Fixed, then proven by planting a nearest-target implementation and watching it fail with
-real numbers: `targets the pest at progress 0.75, not the closer one at 0.25`. That failure
-was unreachable before, because both operands were nothing.
+**The marker had no name**, so its path was `@SelectionMarker@31` — addressable from no
+test and no bridge command, in a project whose `OverlayScreen` header says outright that
+node paths are a contract. Named now. There are 123 `add_child` calls in `game/` against 93
+`.name =` assignments, and nothing distinguishes *deliberately anonymous* from *nobody
+thought about it*.
 
-**Two things pulled in opposite directions and both are right.** `_furthest_along_in_range`
-now skips invalid entries — a targeting routine should not crash a shipped game on a stale
-reference — and that would have turned this defect into a *quiet* wrong answer. So the game
-guards and the test asserts. The doc comment says so, because a later reader would
-reasonably delete one of them.
+**The runtime question the suite cannot ask** was the one worth launching for: a running
+tree holds **two** `SelectionMarker`s — the bed's and the placement preview's — and only
+the armed bed's may change. `find-nodes --class SelectionMarker --property marker_color
+--property line_width` answered both in one call.
 
-**And the audit's conclusion was not to build a checker.** Nine tests create a self-freeing
-mover and name it after an `await`; exactly one put its mover near the end of its life. A
-gate firing nine times for one real defect is the ratio people learn to waive, so the rule
-went into `godot-test-isolation` as a question to ask. Deciding *not* to automate is a
-legitimate audit outcome and is written down so the same audit is not re-run by someone who
-assumes it never happened.
+**And I nearly filed a defect against my own working code, again.** The first screenshot
+showed a yellow marker; `_uproot_left` was `0.0`, the four-second window had lapsed between
+the arm call and the capture, and the restore had correctly run. The picture was right and
+the capture was late — the same mistake as cycle 38's banner, with the same fix
+(`set_game_speed 0.05`).
 
 ## Where things stand
 
-Thirty beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on gh#43).
-Suite 552/552 with 12143 assertions; lint 0/0; mirror identical; gap ledger clean;
-`findings` clean. Eight skills, backlog empty.
+Thirty-two beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on gh#43).
+Suite 553/553 with 12183 assertions; lint 0/0; mirror identical; gap ledger clean;
+`findings` clean; the real save's md5 unchanged. Eight skills, backlog empty.
 
 ## Waiting on the user
 
@@ -55,6 +52,9 @@ checked by `python tools/mirror_check.py`) for the loop itself.
 **Three standing notes.** The harness is pinned at 0.38.0 on purpose (gh#43). The UI
 baseline carries twelve overlaps acceptable only while both controls are unreachable. Any
 harness operation should start by checking which version the skill's paths point at.
+
+**And one new hazard, filed at P2:** `request_uproot` arms and `uproot_selected` removes.
+The names do not say which is which, and calling the wrong one destroys a bed silently.
 
 `python tools/gap_ledger.py --open` answers "which harness gaps are open"; `python
 tools/devtools.py cmd budgets` prices the seven couplings. Bump the number at the top of
