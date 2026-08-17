@@ -574,6 +574,15 @@ def main() -> int:
           "%d of %d game script(s) named by a test."
           % (len(files), args.source, len(test_paths), args.tests,
              named_files, len(files)))
+    # The autoload map is a silent-empty risk: autoload_names() returns {} both when
+    # the project genuinely declares none AND when [autoload] is absent, renamed, or
+    # unparseable -- and an empty map just resolves fewer names, with nothing saying
+    # so. Reporting the count makes those two states distinguishable, which is the
+    # same rule this file already applies to its script and surface counts.
+    print("  Autoloads resolved from project.godot: %d%s"
+          % (len(autoloads),
+             "  <- NONE. If this project declares any, the [autoload] section did not "
+             "parse and names it provides are going unresolved." if not autoloads else ""))
     print("  Public surface at indent 0: %d func, %d signal, %d var, %d const."
           % (declared["func"], declared["signal"], declared["var"], declared["const"]))
     print("  Never named by any test: %d func, %d signal, %d var (gating), "
