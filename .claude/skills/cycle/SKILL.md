@@ -123,16 +123,35 @@ running a command. **Never write a work checklist into it.**
      agent that caused it**; each was a fact about a file it was correctly forbidden to open.
      The parent pass is where parallel work integrates, its cost scales with the number of
      lanes rather than the size of any one, and it is not optional.
-     **A lane's checkers see the other lanes.** The eleven are parallel-SAFE, not
-     parallel-ISOLATED: they open no project and take no lock, but they read the working
-     tree, and in one shared checkout that tree contains every sibling's half-finished
-     edit. Cycle 101's Nettle lane got `suite_reach_check exit=1` with 12 NEW findings, all
-     in three files it had never opened and all belonging to lanes still running. It caught
-     that itself — but only because it thought to check, and the same timing accident in
-     reverse hands a lane a clean exit it did not earn. So: **a finding in a file the lane
-     does not own is not the lane's finding**, say so in every lane prompt, and treat a
-     lane's checker exit code as advisory about anything outside its own files. The real fix
-     is a worktree per lane (`isolation: "worktree"`); the instruction is what works today.
+     **A worktree per lane is the default now — `isolation: "worktree"` on the Agent call.**
+     The checkers are parallel-SAFE, not parallel-ISOLATED: they open no project and take no
+     lock, but they READ THE WORKING TREE, and in one shared checkout that tree contains
+     every sibling's half-finished edit. Cycle 101's Nettle lane got `suite_reach_check
+     exit=1` with 12 NEW findings, all in three files it had never opened. It caught that
+     itself — but only because it thought to check, and the same accident in reverse hands a
+     lane a clean exit it did not earn. A worktree removes the class: five lanes ran with it
+     and not one reported a sibling's file. Keep saying "a finding in a file you do not own
+     is not your finding" in the prompt anyway; it costs a line and it is still true of
+     anything shared.
+     **What it costs, measured rather than assumed (`-l638`).** A fresh worktree has never
+     been imported, so it has no `.godot/`, and **`name_check.py --require-compile` does not
+     work there** — two lanes ran it independently and both got exit 1 with fabricated
+     `Identifier "WaveDirector" not declared` / `Could not find base class "Plant"` errors on
+     lines they had not touched. So a lane gets NO compile at all, and that is the real cost
+     of the fan-out: **five lanes each reported green having never parsed a line.** Budget
+     the parent pass accordingly — this cycle's merge found two tests that were green by
+     construction, a top bar with no room for the button it was given, three public surfaces
+     no test named, and a checker reporting nonsense (see below). None was a lane's mistake.
+     **The worktrees live INSIDE the repo (`.claude/worktrees/`), which is its own trap.**
+     `citation_check.py` resolves a bare filename by unique basename anywhere under the
+     root, and `rglob` does not read `.gitignore` — so five lanes turned every citation in
+     `kanban.md` into a six-way ambiguity. It is fixed there, but the shape generalises:
+     **any checker that walks the repo tree sees N+1 copies of everything during a fan-out,
+     and only the PARENT sees them.** A lane inside its own worktree reports clean. If a
+     tree-walking checker starts reporting mass findings mid-cycle, look at
+     `.claude/worktrees/` before believing any of it.
+     **Clean the worktrees up when the lanes land** (`git worktree remove`), or the next
+     cycle's tree-walkers inherit the same six-way ambiguity.
      **And the parent owes each lane's wiring, not just its merge.** Cycle 101's upgrade
      lane correctly refused to touch `hud.gd` and `game.gd` and listed seven exact edits it
      needed there. Skipping them would have shipped a plant whose upgrade ladder no player

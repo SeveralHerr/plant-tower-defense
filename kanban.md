@@ -175,6 +175,45 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
 
 ## Cool new features (idea backlog)
 
+### Added cycle 102 — out of the five-lane fan-out
+
+- **A second Chomp jaw frame, so the bite has a shape and not just a direction.**
+  `_bite()` now lunges the whole sprite 7px at the pest (`ChompFlower.LUNGE_DISTANCE`,
+  `game/chomp_flower.gd`) on top of the existing squash, and it reads as an attack — but
+  the *sprite* is one picture throughout. The eating textures already exist and already
+  swap (`_show_eating_sprite`, and `art_src/chomp_flower_eating.svg` /
+  `chomp_flower_eating_late.svg` are two of the three chomp SVGs), so the machinery for a
+  frame swap is built; what is missing is an open-jaw frame at the moment of the bite
+  rather than during the chew. Cost is one SVG plus one `EXPECTED_SIZE` row in
+  `test/unit/test_sprite_style.gd`. Deferred out of the v104 lane deliberately: a lane in
+  a worktree cannot run the import pass a new asset needs.
+- **An "N left" count on a seed packet, once the rack has width for it.** A spent tier now
+  reads `Common — Empty` (`Hud.packet_button_text`), which answers "can I buy this again"
+  — but not "is this the last one". `SeedBank.packet_pool(tier).size()` is the number and
+  it is already computed at refresh time, so this is purely a layout problem: the packet
+  row is 232px, the icon and margins take ~50, and `Common Packet (20)` alone measures
+  99px for eleven characters. It needs either a second line, a floating pip over the rack,
+  or the shorter name the spent state already uses (`display.trim_suffix(" Packet")`).
+- **The top bar's caption/value split, which is blocked rather than expensive.** 7mj3
+  shipped ruled lines and paper buttons but not the smaller-muted-caption /
+  larger-bright-value hierarchy, because a caption Label nested inside its value Label
+  overlaps it and fails `test_no_two_top_bar_controls_share_pixels` (`_hud_rects` recurses
+  through `find_children`), and it cannot be nested in a per-stat HBox either because four
+  test files address `Root/TopBar/StatsRow/<Name>` directly. Interleaving captions as row
+  siblings costs about 240px and the row has 38. So this is a layout change with a
+  test-fixture change under it, not a styling pass — worth doing, worth filing honestly.
+- **Weather that is not only rain.** Rain now falls (`_rain_phase` advances in
+  `WeatherOverlay._process`, gated on `GardenTheme.animations_enabled()`); drought
+  deliberately stays a still frame, and the file argues that "rain moves, drought does not"
+  is itself a channel alongside hue and mark shape. That argument is sound for two
+  weathers and gets thinner with a third — if a fourth weather ever lands, the motion
+  channel needs a real grammar rather than one exception.
+- **A speed control that survives the run.** `GameSpeed` cycles 1x/2x/½x and parks at 1x
+  for the pause card (`hold()`/`release()`), and resets on `_end_run` and `_exit_tree`.
+  What it does not do is remember the player's choice between runs — `RunConfig` persists
+  audio mutes and key bindings already, so the mechanism is there. Taste call: someone who
+  plays at 2x almost certainly wants 2x next time.
+
 ### Requested directly by James — not grown, asked for
 
 **All four bullets audited as of cycle 76, and three of the four were substantially
