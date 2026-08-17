@@ -5285,3 +5285,95 @@ func test_a_second_mutation_is_rare_and_late() -> String:
 				"and the schedule was really populated, or that zero means nothing")
 		director.free()
 	return err
+
+
+## A bitten plant flinches, and further than it sways (plant-tower-defense-c3h3).
+##
+## The third word of the standing animation ask, after sway and breathe. Every idle motion
+## in this game was a continuous sinusoid, so nothing on the board was ever startled — a bed
+## being eaten looked exactly like one that was not, and the only tell was a health bar the
+## player has to be looking at.
+##
+## Asserted through `flinch_amount`, which is pure, because everything in `_wobble` past the
+## `animations_enabled()` gate is unreachable headless. And the size assertion is in PIXELS:
+## an assertion written as a multiple of `FLINCH_RADIANS` passes when `FLINCH_RADIANS` is
+## zero, which is exactly the mutation that survived in cycle 71.
+func test_a_bitten_plant_flinches_further_than_it_sways() -> String:
+	var err: String = _T.assert_float_eq(Plant.flinch_amount(Plant.FLINCH_SECONDS), 1.0,
+		0.0001, "the instant of a bite is full flinch")
+	if err == "":
+		err = _T.assert_float_eq(Plant.flinch_amount(0.0), 0.0, 0.0001,
+			"and it is gone once the window closes")
+	if err == "":
+		# Monotone down across the whole window, which a before/after pair cannot see.
+		var previous: float = 1.0
+		for i: int in range(1, 17):
+			var left: float = Plant.FLINCH_SECONDS * (1.0 - float(i) / 16.0)
+			var here: float = Plant.flinch_amount(left)
+			err = _T.assert_true(here < previous,
+				"the flinch only decays; at %.3fs left it went %.3f -> %.3f"
+					% [left, previous, here])
+			if err != "":
+				return err
+			previous = here
+	if err == "":
+		err = _T.assert_float_eq(Plant.flinch_amount(Plant.FLINCH_SECONDS * 4.0), 1.0,
+			0.0001, "and a re-arm mid-flinch is clamped rather than stacking")
+	if err == "":
+		# It has to out-read the idle sway or it is not a flinch, it is a mood.
+		err = _T.assert_true(Plant.FLINCH_RADIANS > Plant.WOBBLE_RADIANS * 2.0,
+			"a flinch is clearly bigger than the sway (%.3f vs %.3f rad)"
+				% [Plant.FLINCH_RADIANS, Plant.WOBBLE_RADIANS])
+	if err == "":
+		# The absolute floor, in pixels, on the corner of a 64x64 sprite. Every assertion
+		# above is relative to FLINCH_RADIANS and would pass with it set to 0.0.
+		var swing_px: float = sin(Plant.FLINCH_RADIANS) * (float(Board.CELL) * 0.5)
+		err = _T.assert_gte(swing_px, 2.0,
+			"the sprite's corner actually moves, got %.2f px" % swing_px)
+	if err == "":
+		# And the flinch is faster than the sway, or the two read as one larger sway.
+		err = _T.assert_true(Plant.FLINCH_RATE > Plant.WOBBLE_RATE * 8.0,
+			"a flinch is a shake, not a lean (%.1f vs %.2f)"
+				% [Plant.FLINCH_RATE, Plant.WOBBLE_RATE])
+	return err
+
+
+## Damage arms it; a zero-damage call does not.
+##
+## Same shape as the `_quiet_time` rule beside it: a 0-damage call is not a bite. Driven
+## through `take_damage` and read off the field, which is the half that does not need the
+## animation gate open.
+func test_only_a_real_bite_arms_the_flinch() -> String:
+	var plant := Plant.new()
+	plant.setup(PlantCatalog.CORN, Vector2i(1, 1), null)
+	var err: String = _T.assert_float_eq(plant._flinch_left, 0.0, 0.0001,
+		"a freshly planted bed is not flinching")
+	if err == "":
+		plant.take_damage(0.0)
+		err = _T.assert_float_eq(plant._flinch_left, 0.0, 0.0001,
+			"a zero-damage call is not a bite -- the same rule _quiet_time follows")
+	if err == "":
+		plant.take_damage(3.0)
+		err = _T.assert_float_eq(plant._flinch_left, Plant.FLINCH_SECONDS, 0.0001,
+			"a real bite arms the whole window")
+	if err == "":
+		# Decays on the clock, and OUTSIDE the animations gate -- headless is exactly
+		# where that gate is shut, so this pumping at all is the assertion.
+		plant._wobble(Plant.FLINCH_SECONDS * 0.5)
+		err = _T.assert_true(plant._flinch_left > 0.0
+				and plant._flinch_left < Plant.FLINCH_SECONDS,
+			"and half a window later it is half spent, got %.3f" % plant._flinch_left)
+	if err == "":
+		plant._wobble(Plant.FLINCH_SECONDS)
+		err = _T.assert_float_eq(plant._flinch_left, 0.0, 0.0001,
+			"then bottoms out at zero rather than going negative")
+	if err == "":
+		# A pest mid-meal calls take_damage every physics frame, so the shudder is
+		# sustained rather than one twitch. This is that, expressed as a loop.
+		for _i: int in range(5):
+			plant.take_damage(1.0)
+			plant._wobble(1.0 / 60.0)
+		err = _T.assert_true(plant._flinch_left > Plant.FLINCH_SECONDS * 0.9,
+			"a plant being eaten stays flinching, got %.3f" % plant._flinch_left)
+	plant.free()
+	return err

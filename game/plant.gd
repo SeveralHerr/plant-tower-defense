@@ -144,12 +144,38 @@ var _sprite: Sprite2D
 ## number.
 var _sway_pivot: Node2D
 var _wobble_time: float = 0.0
+## Seconds of flinch left. Re-armed by `take_damage`, decayed in `_wobble`.
+var _flinch_left: float = 0.0
 ## Idle sway, the same shape TitleScreen's decorative lawn already uses
 ## (TitleScreen.SWAY_RADIANS / SWAY_RATE): a small continuous rock rather than
 ## a one-shot event tween like play_exit_and_free()'s pop. Kept subtle on
 ## purpose — this runs on every placed plant, every frame, for the whole run.
 const WOBBLE_RADIANS: float = 0.055
 const WOBBLE_RATE: float = 1.15
+
+## The flinch: the third word of the standing animation ask, after sway and breathe.
+##
+## Every idle motion in this game is a continuous sinusoid, so **nothing on the board was
+## ever startled** — a bed being eaten looked exactly like one that was not, and the only
+## tell was a health bar the player has to be looking at. This is a fast shake added on top
+## of the slow sway, decaying back into it, on the same `_wobble_time` clock and the same
+## `_sway_pivot` — not a Tween, which would fight the pivot the way an idle scale would have
+## fought `_sprite.scale`.
+##
+## A hungry pest calls `take_damage` every physics frame, so the flinch is re-armed every
+## frame while a plant is actually being eaten: it reads as a sustained shudder for as long
+## as the biting lasts and decays out over `FLINCH_SECONDS` once it stops. That is the
+## behaviour wanted and it falls out of the trigger rather than needing a state machine.
+##
+## `FLINCH_RADIANS` is deliberately three times `WOBBLE_RADIANS`: a flinch that does not
+## clearly out-read the idle sway is not a flinch. At 0.16 rad the corner of a 64 px sprite
+## moves about 5 px, which `test_a_bitten_plant_flinches_further_than_it_sways` pins as an
+## absolute pixel floor rather than as a multiple of the constant — an assertion written in
+## the units of the thing under test passes when that thing is zeroed, which is how a
+## mutation survived in cycle 71.
+const FLINCH_RADIANS: float = 0.16
+const FLINCH_RATE: float = 26.0
+const FLINCH_SECONDS: float = 0.32
 ## The breathe: the sway's second channel, added in cycle 71 because a plant had
 ## one and a pest had two. `Pest._gait` narrows and lengthens the body alongside
 ## its side-to-side swing (`game/pest.gd:743`), which is what stops a walking bug
@@ -350,10 +376,19 @@ func _physics_process(delta: float) -> void:
 ## which a planted Plant has none of.
 func _wobble(delta: float) -> void:
 	_wobble_time += delta
+	# Decayed OUTSIDE the gate, for the same reason the clock above advances outside it:
+	# a mid-run animations toggle should find a meaningful value, not one frozen at
+	# whatever it held when the toggle went off.
+	_flinch_left = maxf(0.0, _flinch_left - delta)
 	if _sway_pivot == null or not GardenTheme.animations_enabled():
 		return
 	var clock: float = _wobble_time * WOBBLE_RATE + _wobble_phase(cell)
-	_sway_pivot.rotation = sin(clock) * WOBBLE_RADIANS
+	# The flinch rides its own fast clock rather than a multiple of the sway's, so the two
+	# never phase-lock into one larger sway -- which is what a shared clock at a harmonic
+	# ratio would look like, and it would read as "sways more when bitten" instead of
+	# "flinched".
+	_sway_pivot.rotation = (sin(clock) * WOBBLE_RADIANS
+		+ sin(_wobble_time * FLINCH_RATE) * FLINCH_RADIANS * flinch_amount(_flinch_left))
 	_sway_pivot.scale = breathe_scale(clock)
 
 
@@ -363,6 +398,15 @@ func _wobble(delta: float) -> void:
 ## moved passes whatever the body does. Cycle 71 wrote exactly that test, watched
 ## a mutation pointing the breathe at `_sprite.scale` survive it, and split this
 ## out in response.
+## Pure: how much of the flinch is left, 1.0 the instant of a bite down to 0.0.
+##
+## Split out for the reason `breathe_scale` was: everything in `_wobble` past the
+## `animations_enabled()` gate is unreachable headless, so a test that pumps `_wobble` and
+## reads what moved is testing an early return. This is the half a headless suite can hold.
+static func flinch_amount(left: float) -> float:
+	return clampf(left / FLINCH_SECONDS, 0.0, 1.0)
+
+
 static func breathe_scale(clock: float) -> Vector2:
 	var breathe: float = sin(clock * BREATHE_RATE) * BREATHE_AMOUNT
 	return Vector2(1.0 - breathe, 1.0 + breathe)
@@ -562,6 +606,9 @@ func take_damage(amount: float) -> void:
 		# regrowth_in_step() therefore returns zero for every one of those frames.
 		# A 0-damage call is not a bite and does not reset it.
 		_quiet_time = 0.0
+		# Re-armed rather than accumulated: a hungry pest calls this every physics frame,
+		# so a plant mid-meal shudders continuously and decays out once the biting stops.
+		_flinch_left = FLINCH_SECONDS
 	_refresh_health_bar()
 	if health <= 0.0:
 		destroyed.emit(self)
