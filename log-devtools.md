@@ -5447,3 +5447,30 @@ cited in code, and the citation is a mitigation this project has watched fail.
   nothing else did. That converts "my change broke a test" into "my change reshuffled a
   draw and the test was asserting the draw", which are different problems with different
   fixes, and the second one is invisible without the experiment.
+
+## 2026-08-17 — Cycle 82: reach said the launch verified nothing, and it was right
+
+- Value: **overkill**, and the ledger's own `reach` field is what makes that verdict
+  evidence rather than an impression.
+  - Expected: to confirm three hand-derived row ceilings by computing them, and to check
+    the three screens still build.
+  - Got: the ceilings confirmed exactly — options 3 of 3, shelf 7 of 7, summary 7 of 7 —
+    and **`reached 0/4 changed file(s)`**. The session sat on the board and never opened
+    the options screen, the notebook or the summary card, so the launch touched none of the
+    code in the diff. `findings` returned 0 across all five checks, which is true and says
+    nothing about this change.
+  - Found: the title screen — the one surface that already **computed** its ceiling — has
+    three spare rows, while all three that wrote the sums into a comment are exactly full.
+    One data point, and a suggestive one: a limit nobody has to re-derive may be a limit
+    people stop crowding.
+  - Cheaper: the suite alone, at ~40 s. These are pure static computations over constants
+    and nothing in the diff could plausibly break a scene.
+
+- Gap: **no gaps this turn**, and one note in the harness's favour. This is the first row in
+  the ledger where I would have written `warranted` from impression — the run was clean, the
+  screens built, `findings` was 0 across five checks — and `reach 0/4` refused it. The field
+  is documented as answering "did this run load the code it claims to verify", and this is
+  the case it was built for: **a clean runtime pass on an unreached diff is a statement
+  about the game, not about the change.** Worth recording because the pattern is easy to
+  repeat: any diff confined to screens the entry hook does not open will reach nothing
+  unless the session navigates there, and nothing in `/verify` navigates.

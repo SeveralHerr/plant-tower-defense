@@ -1,4 +1,4 @@
-# Cycle 81
+# Cycle 82
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,48 +6,51 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 81 taught
+## What cycle 82 taught
 
-**The check the bead demanded turned the design around.** `-1d07` said to find out whether
-an armoured *and* winged pest is unkillable **before** building pairs. It is the opposite:
-`MUTATION_ARMOURED`'s only effect on play is doubling a Chomp's chew time, and a winged
-pest cannot be grabbed by a Chomp at all — so the pair is **redundant, not lethal**, and
-would have paid 1.5 × 1.5 for a trait it cannot use. A payout bug wearing a difficulty
-costume. `MUTATION_EXCLUSIONS` states that as data so a fourth mutation forces its author
-to classify its pairs.
+**`reach` refused a verdict I would have written from impression.** Four files changed
+across the options screen, the notebook and the summary card; the launch reported
+`0 finding(s) across 5 of 5 checks` and every screen built. Clean by every visible measure —
+and `reached 0/4 changed file(s)`, because the session sat on the board and **nothing
+navigates**. `entry_points` has exactly one entry. So a clean runtime pass on an unreached
+diff is a statement about the game, not about the change, and it looks identical to a real
+one until you read the row. Step 2 now says to decide how you will reach a screen *before*
+launching.
 
-**And an assertion that had read as an invariant for many cycles was a coincidence of one
-RNG draw.** Adding a single `randf()` per mutated pest moved the over-promise simulation's
-`escaped_engaged` from 34-of-34 to 20-of-34. Isolated rather than guessed: with the draws
-still consumed and the second mutation *never applied*, the failure is byte-identical — so
-the stream moved and the behaviour did not. **When a seeded simulation changes, consume the
-draws without applying the effect**; that separates "my change broke a test" from "my
-change reshuffled a draw the test was asserting", which are different problems.
+**And the measurement had a finding in it.** Three of the four row-limited surfaces are
+exactly full — options 3 of 3, shelf 7 of 7, summary 7 of 7, every hand-written comment
+confirmed to the row. The fourth, `TitleScreen`, reports **8 against 5 used** — and it is
+the one that already *computed* its ceiling rather than writing the sums in prose. One data
+point, filed as `-1y2w` with its confound named, but the mechanism is plausible: a ceiling
+you must re-derive is one you meet while already holding a feature.
 
-The derivable claim beside it — `pests_all_covered_untouched == 0` — was untouched and
-still passes, which is the evidence for which kind of assertion survives.
+The test records **measured slack per surface** rather than asserting fullness. A bare
+`fits >= used` passes a capacity pointed at the wrong box — proved by mutation: dropping
+`FOOTER_GAP` from the options floor satisfies it and fails the slack assertion.
+
+## Carried from cycle 81
+
+The check a bead demanded before building turned the design around: armoured+winged is
+**redundant, not lethal**, since armoured's only effect is a Chomp chew time a winged pest
+never incurs. And when a seeded simulation changes, consume the draws without applying the
+effect — that separates a moved stream from a moved behaviour.
 
 ## Carried from cycle 80
 
-A live check against persisted state can return a real answer to the wrong question: the
+A live check against persisted state can return a real answer to the wrong question — the
 developer's own save had the milestone earned, so it read `true` before and after. Assert
 the precondition before driving a one-shot, and clear it only under
 `launch --snapshot-userstate`.
 
-## Carried from cycle 79
-
-A budget refusal changed the FEATURE rather than the number: the armed-uproot prompt's tip
-and its forfeit clause measured 1064 px against an 876 px row, so they are mutually
-exclusive and the one about money wins. `Game.BUDGET_FLOOR` was not touched.
-
 ## Where things stand
 
-A hundred and seventeen beads ready. Still on harness **0.38.0** deliberately (`-ny3h`
-blocked on gh#43). Suite **580/580**, 12624 assertions; lint 0/0; eleven checkers clean;
-findings 0/4. Thirteen skills. Upstream gh#44, gh#49, gh#50 open.
+A hundred and nineteen beads ready. Still on harness **0.38.0** deliberately (`-ny3h`
+blocked on gh#43). Suite **582/582**, 12638 assertions; lint 0/0; eleven checkers clean;
+findings **0/5 with scene validation included**. Thirteen skills. Upstream gh#44, gh#49,
+gh#50 open.
 
-No workflow change — the steps held. The technique went into `log-devtools.md` rather than
-a skill because it is one paragraph and belongs beside the run that produced it.
+Step 5's one change is in step 2: a diff confined to a screen the entry hook does not open
+reaches nothing, and the run looks clean while doing it.
 
 ## Waiting on the user
 
@@ -65,7 +68,9 @@ together they made a HUD with no slack that nobody chose.
 `bd ready` for the work, this file for the context, `CLAUDE.md` (mirrored in `AGENTS.md`)
 for the loop itself. `-orcl` is the half of the citation audit no tool can do — read the
 landed lines once and record the rot rate. `-knpc` blocks `-1490` and `-lp97`; `-ip4n` blocks `-l86t`; `-0q3q` blocks `-ei83`;
-`-9afm` is the fragility cycle 81 worked around rather than fixed. The cheapest real win on the board is `-0q3q`: hints and achievements share
+`-9afm` is the fragility cycle 81 worked around rather than fixed; `-jq4l` (named
+entry points for every screen) is a config edit that unblocks `-iiyg` and would have made
+this cycle's runtime pass mean something. The cheapest real win on the board is `-0q3q`: hints and achievements share
 one dictionary and have opposite triggers, which is what let cycle 79 burn a hint unseen.
 
 **Nine standing notes.** The harness is pinned at 0.38.0 on purpose (gh#43). The UI findings

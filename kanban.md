@@ -247,6 +247,35 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
 
+### New this cycle (82) — the surface that computes its limit is the one with room
+
+- **Three of four row-limited surfaces are exactly full and the fourth is the one nobody
+  had to re-derive.** Measured this cycle: `OptionsScreen` 3 of 3, the milestone shelf 7 of
+  7, `RunSummary` 7 of 7 — every hand-written comment confirmed to the row — and
+  `TitleScreen.menu_capacity()` (`game/title_screen.gd:169-174`), the only one that already
+  computed, reports **8 against 5 used**. One data point and not a law, but the mechanism is
+  plausible enough to act on: a ceiling stated in prose is a ceiling you discover by
+  arithmetic while holding a feature, and by then the feature is what you are defending. A
+  ceiling that is a function is one you can consult before starting. If that is right, the
+  cheapest way to give a full surface slack is not to enlarge it — it is to make its limit
+  legible and let the next three cycles not crowd it.
+- **Every screen except the board is unreachable to a runtime check.**
+  `devtools_config.json`'s `entry_points` has exactly one entry, `campaign`, which is also
+  the `entry_hook`. So a session lands on the board and nothing navigates: cycle 82 changed
+  four files across the options screen, the notebook and the summary card, got a clean
+  `findings` across all five checks, and `reached 0/4 changed file(s)`. **Adding
+  `entry_points` for the notebook, the options screen and the pause card is a config edit**
+  and it converts three surfaces from "verified by unit tests only" to "drivable", which is
+  what `-iiyg` needs before a UI baseline can cover named states at all.
+- **`rows_that_fit` is the first shared geometry helper and there is a second one waiting.**
+  Four surfaces now compute row ceilings through one function. The same shape exists one
+  level down and is still hand-written everywhere: the *width* budget. `Hud.WORST_CASE_TEXT`
+  measures the longest string a readout can hold, `TitleScreen` needs a destination name to
+  fit 146 px, and `Game.BUDGET_FLOOR` prices seven couplings — three different mechanisms
+  for "does this text fit its box", none of them shared, and the budget system already
+  proved in cycle 79 that it can make a design decision when it refuses. Worth asking
+  whether the width side wants its own `rows_that_fit`.
+
 ### New this cycle (81) — a pest can carry two traits and nothing on screen says which
 
 - **A doubly-mutated pest wears one colour and nothing counts.** `Pest.apply_mutation`

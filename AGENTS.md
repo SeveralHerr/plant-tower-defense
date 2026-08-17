@@ -112,6 +112,16 @@ running a command. **Never write a work checklist into it.**
      produced a `warranted` row carrying no evidence for the verdict. If you ran the
      gates by hand instead of through `/verify`, you owe the row by hand too, and it is
      due while the work is still uncommitted.
+     **A diff confined to a screen the entry hook does not open reaches NOTHING, and the
+     run will look clean while doing it.** Cycle 82 changed four files across the options
+     screen, the notebook and the run-summary card, launched, got `0 finding(s) across 5 of
+     5 checks`, and recorded `reached 0/4 changed file(s)` — the session sat on the board
+     and never navigated. Nothing in `/verify` navigates. `entry_points` has exactly one
+     entry (`campaign`), so every other screen is reached only by driving to it: press the
+     button, or add the screen as a named entry point and `fire-entry-point` it. **Decide
+     which before launching**, because a clean pass on an unreached diff is a statement
+     about the game rather than about the change, and it is indistinguishable from a real
+     one until you read the ledger row.
      **And the reach snapshot is due before `quit`, not before the commit.** `reach` is
      computed from a `scene-tree` capture of a game that is still running, so the row's
      evidence has an earlier deadline than the row — and `quit` is the natural last verb of
