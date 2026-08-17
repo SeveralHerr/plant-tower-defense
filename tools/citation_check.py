@@ -46,9 +46,17 @@ DEFAULT_FILES = ["kanban.md"]
 # optionally a `-` and an end line. The directory part is what keeps `Vector2(1.0, 1.0)`
 # and prose like `9:00` out of the match.
 CITATION = re.compile(
-    r"`([A-Za-z0-9_./-]+/[A-Za-z0-9_.-]+\.(?:gd|py|md|json|tscn|tres|gdshader))"
+    r"`([A-Za-z0-9_./-]*[A-Za-z0-9_.-]+\.(?:gd|py|md|json|tscn|tres|gdshader))"
     r":(\d+)(?:-(\d+))?`"
 )
+
+# A citation with no directory part resolves against the CITING FILE's own directory
+# first, then the repo root. `game/OVERLAY_GRAMMAR.md` lives in `game/` and cites its
+# neighbours as `chomp_flower.gd:164` — twelve citations in the one file whose entire
+# content is citations, and the first version of this checker (which demanded a `/`)
+# could see none of them. That is the cycle-77 lesson arriving again on a different
+# file: a convention a document grows is invisible to a tool written from the outside.
+
 
 
 # The continuation form this project's entries actually use:
@@ -144,6 +152,34 @@ def uncited_entries(text: str) -> tuple[int, int]:
     return entries, uncited
 
 
+def _resolve(citing: Path, cited: str) -> tuple[Path | None, list[Path]]:
+    """(the file, ambiguous candidates) — beside the citing file, then the repo root,
+    then a unique basename anywhere under it.
+
+    Three conventions live in this repo's markdown and a human reader follows all three
+    without noticing: a full repo path (`game/plant.gd:1`), a neighbour of the citing file
+    (`chomp_flower.gd:164` inside `game/OVERLAY_GRAMMAR.md`), and a bare name in a
+    root-level document meaning "the obvious file" (`husk_layer.gd:69` in `kanban.md`).
+    Searching for the third is what a reader does; refusing to would have meant rewriting
+    42 correct references to suit the tool, which is the tail wagging the dog.
+    """
+    beside = citing.parent / cited
+    if beside.is_file():
+        return beside, []
+    at_root = ROOT / cited
+    if at_root.is_file():
+        return at_root, []
+    if "/" in cited:
+        return None, []
+    matches = [m for m in ROOT.rglob(cited)
+               if ".godot" not in m.parts and ".git" not in m.parts]
+    if len(matches) == 1:
+        return matches[0], []
+    if len(matches) > 1:
+        return None, sorted(matches)
+    return None, []
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("files", nargs="*", default=None)
@@ -182,6 +218,7 @@ def main(argv: list[str]) -> int:
     entries_total = 0
     entries_uncited = 0
     findings: list[tuple[str, str]] = []   # (key, message)
+    advisories: list[str] = []
     resolved = 0
 
     for target in targets:
@@ -194,14 +231,31 @@ def main(argv: list[str]) -> int:
         entries_total += e
         entries_uncited += u
         for md_line, cited, start, end in found:
-            src = ROOT / cited
+            src, ambiguous = _resolve(path, cited)
             k = key(cited, start, end)
-            if not src.is_file():
-                findings.append((k, "FINDING: %s:%d cites %s -- no such file.\n"
-                                    "  fix: the file was renamed or removed; find where "
-                                    "the claim lives now, or delete the entry.\n"
+            if ambiguous:
+                findings.append((k, "FINDING: %s:%d cites %s -- that bare name matches %s.\n"
+                                    "  fix: write the path out so it names one of them.\n"
                                     "  waive: none."
-                                 % (path.name, md_line, k)))
+                                 % (path.name, md_line, k,
+                                    " and ".join(str(a.relative_to(ROOT)) for a in ambiguous))))
+                continue
+            if src is None:
+                if "/" in cited:
+                    findings.append((k, "FINDING: %s:%d cites %s -- no such file.\n"
+                                        "  fix: the file was renamed or removed; find where "
+                                        "the claim lives now, or delete the entry.\n"
+                                        "  waive: none."
+                                     % (path.name, md_line, k)))
+                else:
+                    # A BARE name resolving nowhere is as likely to be prose as a broken
+                    # citation: CLAUDE.md's harness section writes "reading `player.gd:40-60`"
+                    # as an EXAMPLE of a cheaper alternative, and there is no player.gd here.
+                    # Advisory, so the gate does not cry wolf about a sentence.
+                    advisories.append("ADVISORY: %s:%d has `%s`, which matches no file. "
+                                      "Either a broken citation or prose shaped like one; "
+                                      "writing the path out would settle it."
+                                      % (path.name, md_line, k))
                 continue
             try:
                 lines = src.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -249,14 +303,21 @@ def main(argv: list[str]) -> int:
               "directory part, so `plant.gd:12` alone does not match by design.")
     for _, message in (new if baseline else findings):
         print(message)
+    for message in advisories:
+        print(message)
     if baseline and pre:
         print("PRE-EXISTING (in the baseline, not gating): %d" % len(pre))
     print("NOT COVERED: this resolves citations; it cannot tell you whether the landed "
           "line SUPPORTS the claim around it -- cycles 68 and 76 each wrote a citation "
           "that resolved cleanly to a doc comment one line above the constant it meant. "
-          "Read the printed lines, not the exit code. It also cannot see a citation "
-          "written without a directory part, or one that has drifted onto a DIFFERENT but "
-          "still-valid line, which is the common case and the one nothing can automate.")
+          "Read the printed lines, not the exit code. Nor can it see a citation that has "
+          "drifted onto a DIFFERENT but still-valid line, which is the common case and the "
+          "one nothing can automate. A bare filename resolves beside the citing file, "
+          "then at the repo root, then by unique basename anywhere under it -- so it "
+          "follows the reader rather than the letter, and a name matching two files is "
+          "reported as ambiguous rather than guessed at. A bare name matching NOTHING is "
+          "an ADVISORY and does not gate: prose in these files legitimately says things "
+          "like `player.gd:40-60` as an example.")
     return 1 if new else 0
 
 
