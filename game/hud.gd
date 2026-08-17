@@ -255,6 +255,24 @@ const SELECTION_BOX_Y: float = 392.0
 
 ## Where the packet button for the `index`th tier sits, in the side panel's own
 ## space. Pure, so the rack's fit is arithmetic rather than a rendering check.
+##
+## `index` is the tier's index in SeedBank.PACKET_ORDER and NOT its index among
+## the tiers that still have stock — a spent packet keeps its row rather than
+## collapsing out of the rack. That was considered and rejected twice over:
+##
+##   - A rack that reflows mid-run moves the OTHER buttons under a cursor that is
+##     already over one. A tier empties on a purchase, which is a click, which is
+##     the exact moment the player's pointer is resting on this rack — so the row
+##     that slides up under it is the one they are about to click again.
+##   - The rows are addressed by position by things that are not the player:
+##     test_selftest presses "Root/SidePanel/PacketButton" and the devtools bridge
+##     does the same. A rack whose row index depends on run state makes every one
+##     of those a different button depending on when it is called.
+##
+## The information a collapse would have carried is carried by the label instead —
+## see packet_button_text. A spent packet reading "Common — Empty" in its own row
+## says more than an absent one does, because an absent button cannot explain
+## itself.
 static func packet_row_rect(index: int) -> Rect2:
 	return Rect2(
 		Vector2(12.0, PACKET_ROW_Y + PACKET_ROW_PITCH * float(index)),
@@ -276,6 +294,43 @@ static func packet_button_name(tier: StringName) -> String:
 	# "Super Rare" and its NodePath would need quoting. Stripped here rather than
 	# relied upon not to happen.
 	return "%sPacketButton" % String(tier).capitalize().replace(" ", "")
+
+
+## What a packet button SAYS, given how many plants its tier can still hand over.
+##
+## Two states, and they are not the same disabled button. `_refresh_packet_button`
+## greys a packet for two unrelated reasons — "you cannot afford this yet" and
+## "this tier is spent for the rest of the run" — and until this existed the only
+## place they differed was `tooltip_text`, which is to say: nowhere a player who
+## does not hover ever sees. A wait and a dead end drawn identically teach neither.
+##
+## So the PRICE SLOT carries the state. A packet you could buy quotes what it will
+## charge; a packet with nothing left quotes no number at all, because there is no
+## longer a price — the same language the plant buttons already speak (see
+## plant_button_label: a number means you may buy it, no number means it is not for
+## sale). "Empty" is there because the absence of a number alone is the cue this
+## bead was filed against being too quiet.
+##
+## THE SPENT FORM DROPS THE WORD "Packet", and that is width rather than style.
+## The row is 232px (packet_row_rect) and the icon plus the button's margins eat
+## roughly 50 of them, leaving ~180px of text. The measured datum for this font is
+## `findings`' own button_text_overflow report: "Common (20)", 11 characters, drew
+## 99px — about 9px a character. "Common Packet — Empty" is 21 characters, ~189px,
+## and would have overflowed the row it was added to fix. "Common — Empty" is 14,
+## ~126px, and the packet icon beside it is what still says "packet".
+##
+## `stock` is packet_pool(tier).size() — derived, never a flag someone has to
+## remember to set, so a tier that empties mid-run cannot forget to say so.
+static func packet_button_text(tier: StringName, stock: int) -> String:
+	var spec: Dictionary = SeedBank.PACKET_TIERS.get(tier, {}) as Dictionary
+	if spec.is_empty():
+		return ""
+	if stock > 0:
+		return "%s (%d)" % [String(spec["display"]), int(spec["cost"])]
+	# trim_suffix, not a second table of short names: the short form is derived
+	# from the display name, so a tier renamed in PACKET_TIERS renames here too,
+	# and a display name that never said "Packet" is left exactly as it is.
+	return "%s — Empty" % String(spec["display"]).trim_suffix(" Packet")
 
 
 ## The resting tooltip per packet tier, counted from the catalogue rather than
@@ -730,11 +785,14 @@ func _build_side_panel(root: Control) -> void:
 	var packet_icon := load("res://assets/sprites/seed_packet.png") as Texture2D
 	for index: int in SeedBank.PACKET_ORDER.size():
 		var tier: StringName = SeedBank.PACKET_ORDER[index]
-		var spec: Dictionary = SeedBank.PACKET_TIERS[tier] as Dictionary
 		var rect: Rect2 = packet_row_rect(index)
 		var packet := Button.new()
 		packet.name = packet_button_name(tier)
-		packet.text = "%s (%d)" % [spec["display"], int(spec["cost"])]
+		# The buyable form, because no run starts with a spent tier and the panel
+		# is built before any bank is in hand. The first refresh() rewrites it from
+		# the real pool, so a hypothetical spent-at-birth tier is wrong for one
+		# frame rather than forever.
+		packet.text = packet_button_text(tier, 1)
 		packet.icon = packet_icon
 		packet.expand_icon = true
 		packet.position = rect.position
@@ -889,11 +947,19 @@ func _add_stat(row: HBoxContainer, node_name: String, font_size: int, colour: Co
 ## packet is unbuyable are not interchangeable: "come back with more seeds" is a
 ## wait, and "this tier has nothing left for you" is a redirect to the other
 ## packet. A single greyed button that means either one teaches neither.
+##
+## The LABEL now carries the same distinction, because the tooltip carried it
+## alone and a tooltip is only read by a player who already suspects there is
+## something to read. See packet_button_text: a spent tier stops quoting a price
+## and says "Empty" instead, so the two greys are told apart at a glance rather
+## than on hover.
 func _refresh_packet_button(button: Button, bank: SeedBank, tier: StringName) -> void:
 	var spec: Dictionary = SeedBank.PACKET_TIERS[tier] as Dictionary
 	var cost: int = int(spec["cost"])
-	var spent: bool = bank.packet_pool(tier).is_empty()
+	var stock: int = bank.packet_pool(tier).size()
+	var spent: bool = stock == 0
 	button.disabled = spent or bank.seeds < cost
+	button.text = packet_button_text(tier, stock)
 	if spent:
 		button.tooltip_text = "Nothing left in a %s — every plant it can hold is already in your garden." % String(spec["display"])
 	elif bank.seeds < cost:

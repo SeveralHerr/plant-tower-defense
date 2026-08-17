@@ -12195,3 +12195,110 @@ func test_the_sting_reaches_a_voice_carrying_its_own_numbers() -> String:
 				% [corn_db, corn_pitch, voice.volume_db, voice.pitch_scale])
 	voice.free()
 	return err
+
+
+# -- The seed-packet rack: spent vs unaffordable, and which packet holds what --
+# -- (plant-tower-defense-m97n, plant-tower-defense-h6ek) ---------------------
+
+
+## The two reasons a packet button is grey are two different pieces of news, and
+## before m97n they were one picture. "Come back with 12 more seeds" is a WAIT;
+## "every plant this tier can hold is already yours" is a DEAD END and a redirect
+## to the pricier packet. They were told apart only in `tooltip_text`, which is
+## read by the player who already suspected there was something to read.
+##
+## So this asserts the distinction on the LABEL, deliberately not on the tooltip —
+## the tooltip has said the right thing all along and asserting it would re-pass
+## the test that was already passing while the defect was live.
+func test_a_spent_packet_button_says_so_on_its_face_not_only_in_its_tooltip() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var common: Button = game.hud.get_node_or_null("Root/SidePanel/PacketButton") as Button
+	var err: String = _T.assert_true(common != null, "the common packet button exists")
+	var cost: int = int((SeedBank.PACKET_TIERS[&"common"] as Dictionary)["cost"])
+	var broke_text: String = ""
+	var spent_text: String = ""
+	if err == "":
+		# State one: the tier still has stock, the purse does not have the price.
+		game.bank.set_seed(11)
+		game.bank.seeds = 0
+		game._refresh()
+		await _pump(game)
+		broke_text = common.text
+		err = _T.assert_true(common.disabled, "with an empty purse the packet is disabled")
+	if err == "":
+		err = _T.assert_true(broke_text.contains(str(cost)),
+			"and still quotes the price it is waiting for, got %s" % broke_text)
+	if err == "":
+		# State two: the purse is full and the tier is spent. Drained through the
+		# real purchase path, so the state is one the game can actually reach.
+		game.bank.add_seeds(600)
+		var guard: int = 0
+		while not game.bank.packet_pool(&"common").is_empty() and guard < 40:
+			game.bank.buy_packet(&"common")
+			guard += 1
+		err = _T.assert_true(game.bank.packet_pool(&"common").is_empty(), "tier 1 is spent")
+	if err == "":
+		err = _T.assert_gt(game.bank.seeds, cost,
+			"and affordability is NOT the reason this one is grey")
+	if err == "":
+		game._refresh()
+		await _pump(game)
+		spent_text = common.text
+		err = _T.assert_true(common.disabled, "the spent packet is disabled too")
+	if err == "":
+		err = _T.assert_true(spent_text != broke_text,
+			("the two greys read differently on the button itself: unaffordable said "
+				+ "%s, spent says %s") % [broke_text, spent_text])
+	if err == "":
+		err = _T.assert_false(spent_text.contains(str(cost)),
+			("and a spent packet quotes no price, because there is no longer one to "
+				+ "pay: %s") % spent_text)
+	if err == "":
+		# The row is 232px and already fits the buyable label. Measuring the spent
+		# one against its own buyable form is the whole width argument: nothing this
+		# function returns is wider than the string the rack has shipped for cycles.
+		# `findings`' own button_text_overflow datum for this font is 99px for the 11
+		# characters of "Common (20)", so a longer spent form would not have fitted.
+		var font_size: int = common.get_theme_font_size("font_size")
+		err = _T.assert_gt(font_size, 0, "the button resolves a font size to measure at")
+		if err == "":
+			var spent_px: float = GardenTheme.measure(spent_text, font_size)
+			var broke_px: float = GardenTheme.measure(broke_text, font_size)
+			err = _T.assert_gt(broke_px, 0.0, "the font resolved (a 0px measurement is vacuous)")
+			if err == "":
+				err = _T.assert_true(spent_px <= broke_px,
+					("and the spent label (%s, %.0fpx) is no wider than the buyable one "
+						+ "(%s, %.0fpx) the row already fits")
+						% [spent_text, spent_px, broke_text, broke_px])
+	_T.free_ui(game)
+	return err
+
+
+## The label's own contract, without a HUD: every tier tells its two states apart,
+## and the spent one is not merely the buyable one with the number changed.
+func test_every_packet_tier_has_a_spent_label_distinct_from_its_priced_one() -> String:
+	var err: String = ""
+	var checked: int = 0
+	for tier: StringName in SeedBank.PACKET_ORDER:
+		var cost: int = int((SeedBank.PACKET_TIERS[tier] as Dictionary)["cost"])
+		var priced: String = Hud.packet_button_text(tier, 3)
+		var spent: String = Hud.packet_button_text(tier, 0)
+		err = _T.assert_true(priced.contains(str(cost)),
+			"%s's buyable label quotes its price: %s" % [tier, priced])
+		if err == "":
+			err = _T.assert_false(spent.contains(str(cost)),
+				"and its spent label does not, or the two are one number apart: %s" % spent)
+		if err == "":
+			err = _T.assert_true(spent.contains("Empty"),
+				"and says so in a word rather than by omission: %s" % spent)
+		if err == "":
+			checked += 1
+		else:
+			break
+	if err == "":
+		err = _T.assert_eq(checked, SeedBank.PACKET_ORDER.size(),
+			"every tier in the rack was checked (an empty sweep is a vacuous pass)")
+	if err == "":
+		err = _T.assert_true(Hud.packet_button_text(&"nosuchtier", 1).is_empty(),
+			"and an unknown tier gets no label rather than a malformed one")
+	return err
