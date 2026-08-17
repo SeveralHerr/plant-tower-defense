@@ -213,6 +213,44 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (73) — twenty-two named beats, eleven sounds
+
+- **Two pairs of sounds are literally indistinguishable, and in both a bad thing sounds
+  like a routine one.** `Sfx.SOUNDS` (`game/sfx.gd:86`) maps 22 named beats onto **11
+  distinct `.ogg` files**, so ten of them are shared — and only one sharing is documented
+  as deliberate (`game/sfx.gd:95`: `WAVE_CLEARED` reuses `RUN_WON`'s jingle, at −9.0 dB
+  against −4.0, so the same phrase reads as the smaller version of the same event, which is
+  exactly right). The other nine were not reasoned about, and two of them share a file
+  **and** a volume, which makes them the same sound to a player:
+  - `PEST_ESCAPED` and `PURCHASE_DENIED` are both `error_002.ogg` at the default volume
+    (`game/sfx.gd:91`, `:106`). **A pest reaching the house costs a life; a refused purchase
+    costs nothing at all**, and they are the same noise.
+  - `PLANT_DESTROYED` and `CHOMP_BITE` are both `chop.ogg` at the default (`:89`, `:119`).
+    Your plant dying sounds like your plant eating.
+  Two more share a file and differ only in volume: `PLANT_BITTEN` / `CORN_FIRED`
+  (`impactSoft_medium_002.ogg`, −8.0 vs default) — taking damage sounds like your own gun —
+  and `HUSK_ROTTED` / `BUTTON_PRESSED` (`minimize_006.ogg`, −6.0 vs −10.0). This is the
+  two-channel rule the drawn cues already obey, applied to audio: **a loss and a no-op
+  should not be separable only by context.** Four new files, or four pitch shifts, and the
+  worst of it goes away.
+- **A corpse says how a pest died and never what died.** `DEATH_LINGER` is a flat 0.35 s for
+  every pest (`game/pest.gd:200`), and `corpse_rotation()` / `corpse_scale()` vary by CAUSE
+  — a Chomp bite squashes, a seed bomb tilts. So an armoured beetle that took four volleys
+  leaves the board on exactly the same beat as an aphid that took one. The game already
+  believes harder kills are worth more: `husk_multiplier()` (`game/pest.gd:928`) pays a
+  premium per mutation, and `WaveDirector`'s weather payout is the same idea one level up.
+  The corpse is the one place that idea is missing, and it is the only place the player
+  actually looks. Scaling `DEATH_LINGER` by the same multiplier would cost one line and make
+  a hard-won kill *read* as one.
+- **Ten tests kill a pest and none of them may assume the node is gone.** Cycle 73 measured
+  it: a corpse survives its own kill by **18 process frames**, against the 2 that
+  `run_tests.gd`'s `UI_SETTLE_FRAMES` (`tools/run_tests.gd:849`) pumps. Ten call sites of
+  `.kill()` across `test/unit/` sit in that window. Nothing enforces the discipline — and
+  the project already owns the checker that would: `tools/settle_read_check.py` exists
+  precisely to catch a test reading a value the settle frames were still moving, and a
+  corpse is that, with a name. Extending it to flag a tree read within N frames of a
+  `.kill()` is the same rule on a second subject.
+
 ### New this cycle (72) — eleven animation steps nobody has ever seen run
 
 - **The plants are the only subsystem whose animation timings are magic numbers.**

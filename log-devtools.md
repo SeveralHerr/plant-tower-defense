@@ -5135,3 +5135,40 @@ cited in code, and the citation is a mitigation this project has watched fail.
     the run is for, not only by what changed.* The distinguishing test is mechanical:
     **tier (a) if the diff existed before the run was considered; tier (e) if the run came
     first.**
+
+## 2026-08-17 — Cycle 73: eighteen frames, and a census that lied by one line
+
+- Value: **warranted** — the runner answered a question the source is genuinely ambiguous
+  about, and no game was launched to do it.
+  - Expected: that a pest killed headless might never free. `Plant.play_exit_and_free` takes
+    an early return when animations are gated off, and two tests exist because that bug
+    shipped twice; `Pest._play_death` instead routes **both** branches through
+    `tween_interval(DEATH_LINGER)` + `tween_callback(queue_free)`, and the suite's own
+    comments say headless "pumps no frames".
+  - Got: it frees, in **18 process frames**. The worry was unfounded and the number is the
+    finding — 18 against the **2** that `UI_SETTLE_FRAMES` pumps, so any test that kills a
+    pest and reads the tree a frame or two later sees a corpse still present, and would
+    reasonably read that as a leak or as the kill not landing. Ten `.kill()` call sites
+    across `test/unit/` sit inside that window.
+  - Found: the harness caught my own aborted test. The first draft called
+    `is_queued_for_deletion()` on an instance that had already been freed;
+    `run_tests.gd` reported `[PASS]` with 2 assertions, and `run_tests.py` failed the run
+    with `SCRIPT ERROR: Cannot call method ... on a previously freed instance` and the
+    standing note that an aborted coroutine returns `""` identically to a pass. **That
+    wrapper is documented as existing for gh#27 and this is the first time in this log it
+    has actually fired on my own code.**
+  - Cheaper: reading `Pest._play_death` — which is what produced the wrong expectation.
+    Runtime was correctly skipped; the question is entirely headless.
+
+- Gap: **no gaps this turn.** One methodological note instead, because it is the second
+  cycle running that an enumeration of mine was quietly incomplete, and this time in a new
+  way. I enumerated sound call sites with
+  `grep -o 'Sfx.play(Sfx\.' | sed 's/.*Sfx\.\([A-Z_]*\).*/\1/'`, concluded `RUN_LOST` was
+  declared and never played, and was about to write it down. It **is** played —
+  `game/game.gd:941` is `Sfx.play(Sfx.RUN_WON if victory else Sfx.RUN_LOST)`, and a
+  line-oriented extraction that captures one match per line cannot see the second constant.
+  Cycle 71's failure was enumerating the wrong *mechanism*; this one was enumerating the
+  right mechanism with a tool that silently returns at most one hit per line.
+  **`grep -o` per token, never `sed` per line, when the thing you are counting can appear
+  twice in one statement** — and re-running it properly is what turned up the finding that
+  actually shipped: 22 named sounds over 11 files, two pairs identical in file *and* volume.

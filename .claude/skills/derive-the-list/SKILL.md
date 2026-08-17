@@ -100,6 +100,37 @@ return _T.assert_gt(checked, 60, "the sweep actually visited the grass (empty sw
 Pick the threshold from what the input actually contains, not `> 0`. "More than nothing"
 is true in exactly the situation you are guarding against.
 
+## Two ways an enumeration is silently short, both paid for here
+
+Neither shows up as an error. Both produce a list that is complete-looking and wrong, and
+a wrong list is worse than no list because it gets cited.
+
+**1. The wrong mechanism.** Cycle 70 asked "does any plant animate while idle?", enumerated
+every `create_tween()` call across every plant file, found all eight event-driven, and
+wrote down "verified unbuilt". Both idle animations in this game are `_process`-driven
+sinusoids — a census of tweens cannot see them at any level of thoroughness. **Search for
+the PROPERTY the behaviour would move (`rotation`, `scale`, `sin(`), not for the one API
+you imagine it using.** If you can only name one implementation of the thing, you are
+enumerating your own assumption.
+
+**2. The wrong granularity of match.** Cycle 73 enumerated sound call sites with a
+line-oriented extraction:
+
+```bash
+grep -rn "Sfx.play(Sfx\." game/*.gd | sed 's/.*Sfx\.\([A-Z_]*\).*/\1/' | sort | uniq -c
+```
+
+It reported `RUN_LOST` as declared and never played. It is played —
+`Sfx.play(Sfx.RUN_WON if victory else Sfx.RUN_LOST)` — and a `sed` substitution captures
+**one match per line**, so the second constant in a ternary vanished. The corrected sweep
+(`grep -o`, or a Python `re.findall` per file) found every id used, and turned up the
+finding that actually shipped. **When the token you are counting can appear twice in one
+statement, count tokens, not lines.**
+
+The general form of both: an enumeration has an input set and a matcher, and only the
+matcher's failures announce themselves. Before trusting a census, ask what a member would
+look like that your matcher would step over.
+
 ## When the derived rule over-fires
 
 If the derived set is much larger than the recorded one and the difference is all
