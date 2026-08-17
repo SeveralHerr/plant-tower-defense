@@ -6368,11 +6368,19 @@ func test_a_chomps_bite_records_a_lunge_toward_the_meal() -> String:
 	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
 	chomp.position = Vector2.ZERO
 	# Left and slightly up, so a sign error on either axis is a different answer.
-	var aphid: Pest = _pest(Pest.APHID, Vector2(-52.0, -18.0))
+	#
+	# Spawned OUT of reach and walked in afterwards. `instantiate_scene` pumps
+	# settle frames, `_act()` runs on every one of them, and a Chomp with a meal
+	# already in range eats it during the settle -- so the precondition below read
+	# a lunge of (-6.615, -2.290), which is this exact aphid at full
+	# LUNGE_DISTANCE. The plant was right and the assertion was wrong: there is no
+	# "has not bitten anything" state for a flower sitting on top of its lunch.
+	var aphid: Pest = _pest(Pest.APHID, Vector2(-2000.0, -18.0))
 	var host: Node2D = _host([chomp, aphid])
 	await _T.instantiate_scene(host)
 	var err: String = _T.assert_eq(chomp._bite_lunge, Vector2.ZERO,
 		"a flower that has not bitten anything is not mid-lunge")
+	aphid.position = Vector2(-52.0, -18.0)
 	if err == "":
 		# The real path: _grab() is what _act() calls, and _bite() is inside it.
 		chomp._grab(aphid)
@@ -6494,7 +6502,11 @@ func test_a_nettle_sting_records_the_direction_it_went() -> String:
 	var nettle := Nettle.new()
 	nettle.setup(PlantCatalog.NETTLE, Vector2i(0, 0), null)
 	nettle.position = Vector2.ZERO
-	var victim: Pest = _pest(Pest.BEETLE, Vector2(70.0, 24.0))
+	# Out of reach for the settle frames, then walked in -- same reason as the
+	# Chomp lunge test above: `_act()` runs on every settle frame, so a Nettle
+	# with an armoured beetle already in range stings it before the precondition
+	# is read, and the "has not stung" assertion saw a lean of 0.1703.
+	var victim: Pest = _pest(Pest.BEETLE, Vector2(2000.0, 24.0))
 	victim.apply_mutation(Pest.MUTATION_ARMOURED)
 	var host: Node2D = _host([nettle, victim])
 	await _T.instantiate_scene(host)
@@ -6503,6 +6515,7 @@ func test_a_nettle_sting_records_the_direction_it_went() -> String:
 	if err == "":
 		err = _T.assert_float_eq(nettle._sting_lean, 0.0, 0.0001,
 			"a Nettle that has not stung is not leaning")
+	victim.position = Vector2(70.0, 24.0)
 	if err == "":
 		# The real path -- _act() calls exactly this once a target clears the filter.
 		nettle._sting(victim)
