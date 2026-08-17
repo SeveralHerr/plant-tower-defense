@@ -195,6 +195,29 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (62) — the corpus is checked two ways and neither is about time
+
+- **A producer's variants are priced; a producer's *absence* still is not.**
+  `message_corpus_check` now verifies that every `show_message()` call site resolves to the
+  corpus AND that a producer with N bool modes appears 2^N times. What no rule covers: a
+  producer that exists in `hud.gd`, is in the corpus, and is called by nothing — dead
+  message text still being priced. The row's budget would then be set by a string the game
+  can no longer produce, which is the same lie as an unpriced string with the sign flipped.
+  `suite_reach_check` already finds functions no test names; this is functions no CALLER
+  names, and the corpus makes the set enumerable.
+- **Every message is priced by width and none by duration.** `show_message(text, seconds)`
+  takes a lifetime at each of its fifteen call sites (`game/game.gd`), ranging 2.0 to 8.0,
+  and `Hud.MESSAGE_FONT_SIZE` is fixed — so a 755 px message and a 100 px one get whatever
+  seconds someone typed. Reading time scales with length and the corpus now knows every
+  length. `-uhno` proposes deriving duration from it; worth noting here that the corpus
+  makes it a two-line change rather than a survey.
+- **The waiver reasons are now the best documentation of the message system, in two
+  scattered sets.** Five call-site waivers in `game/game.gd` and one variant waiver in
+  `game/hud.gd`, each explaining something true and non-obvious about what can and cannot
+  be measured. `-vjr1` already proposes printing the call-site ones on a clean run; the
+  variant waiver should join that output, or the answer to "what does this checker
+  deliberately not price?" stays a grep across two files.
+
 ### New this cycle (61) — one-shot hints are a mechanism now, and there is only one
 
 - **The one-shot hint pattern exists and teaches exactly one thing.**

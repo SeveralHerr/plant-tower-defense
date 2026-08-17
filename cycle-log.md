@@ -1,4 +1,4 @@
-# Cycle 61
+# Cycle 62
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -6,38 +6,35 @@ what `bd` structurally cannot: which cycle we are on, what the last one taught, 
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
 
-## What cycle 61 taught
+## What cycle 62 taught
 
-**The move tip is shown once, and the acceptance criterion I wrote for it was wrong.**
-The tip rides the first uproot ever armed and never again; `RunConfig`'s milestone set is
-the flag, which needed no `SAVE_VERSION` bump because `record_milestones` already had
-exactly the right semantics. Verified rather than assumed that a non-achievement id is
-invisible to the player: the notebook's shelf and its "N of M earned" count both iterate
-`Milestones.TABLE`, and that function's own header says so deliberately.
+**A checker can answer the right question about the wrong set.** `message_corpus_check`
+verified that every `show_message()` call site resolves to the corpus. It never asked
+whether every string a producer can *emit* is in the corpus — and a producer with N bool
+parameters emits 2^N strings, of which the budget prices only the ones somebody typed. That
+is the same subset-pricing defect the corpus was built in cycle 52 to end, one level down.
 
-The bead said `cmd budgets` should fall back to ~570 px. It reports **755, `tight`,
-unchanged — and correctly.** The corpus now prices *both* forms of the prompt, and the tip
-form is still the widest thing the row can ever hold. **A budget measures the worst case
-the format allows, not the common case.** The one-shot changes frequency, not the ceiling.
-The change is still right, for a better reason: a hint shown once is more likely to be read
-than one that has become wallpaper. But "we get 185 px back" was never true, and shipping
-that claim would have confused whoever took the next budget reading.
+**It found a live instance on its first run.** `next_wave_note` takes two bools and the
+corpus priced one of four. Waived rather than padded — but only after *reading the body*:
+both flags only ever `parts.append()` and neither substitutes, so `(true, true)` strictly
+dominates. The waiver names the two lines that make that true and says what would
+invalidate it.
 
-**A mutation survived and this time the test was at fault.** Replacing the warning with the
-tip went unnoticed, because I asserted the warning only on the *second* arm — where the tip
-is absent and the warning is present however it is composed. The assertion could not fail
-in the case I put it in, while the docstring claimed it guarded exactly that. That is now a
-rule in `house-static-checker`: **assert a property where it can fail, not where it holds
-regardless.**
+**And my own waiver was not detected**, because I wrote the reason in the comment block
+above the call while the checker read only the call's own line. A reason worth reading is
+usually several lines long, so it accepts both now — and refuses to let a waiver drift down
+across intervening code, which is its own fixture case and its own mutation.
+
+**The ledger row is `overkill`, deliberately.** No game was launched and none was needed;
+the fixture and the mutation sweep are a static checker's whole verification. Sixty-two
+cycles in, all four `value` verdicts have been used, and this is the one that keeps the
+record trustworthy — a run that adds nothing is not evidence.
 
 ## Where things stand
 
-Seventy-eight beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
-gh#43). Suite **562/562**, 12276 assertions; lint 0/0; nine checkers clean; `findings` 0
-across 4 of 5 checks. Eleven skills. Upstream gh#44 and gh#46 open.
-
-Cycle 60's new rule — run `findings` before quitting a launched game — paid on its first
-outing, confirming the UI baseline is genuinely empty rather than merely absent.
+Seventy-nine beads ready. Still on harness **0.38.0** deliberately (`-ny3h` blocked on
+gh#43). Suite **562/562**, 12277 assertions; lint 0/0; nine checkers clean. Eleven skills.
+Upstream gh#44 and gh#46 open.
 
 ## Waiting on the user
 

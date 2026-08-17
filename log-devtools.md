@@ -4754,3 +4754,25 @@ cited in code, and the citation is a mitigation this project has watched fail.
   UI baseline is genuinely empty rather than merely absent this run. One cycle after adding
   "run the broad check", it is already the thing that turns "I did not see a problem" into
   "the checklist found none".
+
+## 2026-08-17 — Cycle 62: pricing a producer's variants
+
+- Value: **overkill**, by the ledger's own definition, and recorded as such because that is
+  the entry that goes unwritten.
+  - Expected: nothing from runtime. This was a static checker; no game was launched.
+  - Got: nothing from runtime, correctly. The whole verification was a 7-case fixture and
+    a 5-mutation sweep, which is what `house-static-checker` says a checker's verification
+    IS.
+  - Found: the new rule found a live instance on its first run — `next_wave_note` takes two
+    bools and the corpus priced one of four combinations. Waived after **reading the body**
+    rather than assuming: both flags only ever `parts.append()`, so `(true, true)` strictly
+    dominates. Also found that my own waiver was not detected, because I wrote the reason in
+    the comment block above the call and the checker only read the call's own line.
+  - Cheaper: nothing cheaper than the fixture, and the fixture was the method.
+
+- Gap: **no gaps this turn.** One observation about the harness's *contract* rather than a
+  hole in it: the `overkill` verdict exists precisely for a cycle like this, and it took a
+  deliberate decision not to launch the game "just to have a runtime row". A run that adds
+  nothing is not evidence, and the ledger is more useful for containing the honest zero.
+  Sixty-two cycles in, the `value` field's four options have all been used and the one that
+  keeps the record trustworthy is this one.
