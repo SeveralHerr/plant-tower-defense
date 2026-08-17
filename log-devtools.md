@@ -4994,3 +4994,55 @@ cited in code, and the citation is a mitigation this project has watched fail.
     Not filed: the defect gh#46 describes is closed, and a second issue asking for a
     stylistic denominator on top of a landed fix is the kind of noise that skill-feedback's
     own guardrails exist to stop. It lives in `log.md`.
+
+## 2026-08-17 — Cycle 70: honouring a twelve-cycle-old "a screenshot proves it"
+
+- Value: **warranted** — and for the claim I made in a comment rather than for the one in
+  the bead.
+  - Expected: to satisfy `-6cqi`'s acceptance ("two cobs at different levels are
+    distinguishable without selecting either; a screenshot proves it") and close it. The
+    geometry shipped in cycle 58; only the evidence was outstanding.
+  - Got: the evidence — a level 1 cob reading as one pip and a level 3 as five pips plus an
+    arc, confirmed by sampling rather than by squinting (`#ffc500` against `#2ecc71` grass)
+    — **and a verification of the change I made mid-run.** Having removed the `if
+    offsets.size() > 1` branch on the argument that a degenerate `draw_arc` draws nothing, I
+    sampled three points on the circle that arc would have traced around the level 1 cob:
+    `mean #2ecc71, dominant #29c56b (100%)` at two of them, road at the third. That claim
+    was an assumption about an engine API until the game answered it, and it is exactly the
+    kind that ships as a visible regression.
+  - Found: two things the diff could not show. **A mutation that survived** — my first test
+    asserted `kernel_angle_offsets` and breaking the draw site's own `if` left it green,
+    because the test restated a function the arc did not depend on. That survivor is the
+    whole reason `spread_arc_span` exists. And **a pip landing over the cob's own leaves is
+    drawn behind them**: `Node2D._draw()` renders before its children and `_sprite` is a
+    child (`game/plant.gd:172`), so the same pip reads `#ffc500` at one aim and leaf green
+    at another. Recorded in `kanban.md` with the radii of every plant's cues enumerated
+    against the 64x64 sprite box, not fixed — four of five pips visible is legible, and a
+    fix made blind is how the next entry gets written wrongly.
+  - Cheaper: nothing. The acceptance criterion is literally a rendered frame, and the
+    degenerate-arc question needs the renderer too. The mutation finding came from the
+    headless suite at ~40 s.
+
+- Gap: **`sample-pixels` can describe a region but cannot answer "is this colour present in
+  it", which is the only question a drawn-cue check ever has.** The verb takes `--rect
+  X,Y,W,H` and nothing else (`--points` is not a flag; it exits with the argparse usage
+  block), and it reports `mean`, `dominant` with a percentage, `brightest` and `darkest`.
+  Real output from this run, on a 5x5 box centred where a pip should be:
+
+  ```
+  25 px in (178, 230, 5, 5): mean #24894a, dominant #19844a (36%)
+  ```
+
+  That is enough to conclude "not obviously the pip" and not enough to assert anything. The
+  workaround was to shrink the rect until `dominant` became the cue's own colour and read
+  the percentage — which works, is a squint with extra steps, and cannot be written into a
+  test. A cue drawn at 5% coverage of a 5x5 box is drawn; `dominant` will never say so.
+  - [G-059] status: open | seen: 1 | harness: 0.38.0 | upstream: gh#49
+  - Improvement: `sample-pixels --expect RRGGBB[,RRGGBB...] [--tolerance N]`, reporting the
+    matched pixel COUNT and fraction per expected colour, and exiting 1 when a named colour
+    appears zero times. That turns "did this cue get drawn" from a description into an
+    assertion, and it is the one visual question the rest of the harness cannot reach:
+    `node-bounds` is for Controls, `findings` is for layout, and a PNG costs a token budget
+    and an eyeball. `--points X,Y[;X,Y...]` as an alternative to `--rect` would close the
+    smaller half — a cue is a point, and expressing a point as a 1x1 rect works but reads
+    like a workaround because it is one.

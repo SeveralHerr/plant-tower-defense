@@ -195,6 +195,43 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (70) — every plant draws underneath its own art
+
+- **`_draw()` on a plant renders BEHIND the plant's sprite, and nobody has checked what
+  that costs.** `game/plant.gd:172` adds `_sprite` as a child, and a `Node2D` draws its own
+  `_draw()` before its children — so every cue a plant paints is under its own art wherever
+  they overlap. Enumerated by cue radius against the 64x64 sprite box (`art_src/*.svg` are
+  all `width="64" height="64"`, centred): the cob's pips sit 20-22 px out
+  (`game/corn_cobbler.gd:175-176`), the Chomp's chew ring runs 16 px down to nothing
+  (`game/chomp_flower.gd:24`), the Sunflower's gauge occupies x −30..−24, y 10..30
+  (`game/sunflower.gd:46-49`) — three cues wholly inside the box — while the Sundew's sap
+  patch is 118 px (`game/sticky_sundew.gd:34`) and the Dandelion's range ring is 176
+  (`game/dandelion.gd:376`), both mostly clear of it. **Only the cob's case has been
+  measured**: cycle 70 sampled the same pip reading `#ffc500` over grass at one aim and leaf
+  green at another. Whether the other two are hidden depends on the art's alpha where they
+  land, which is a thing a screenshot answers in one minute and nobody has spent it. If it
+  is a real problem the fix is one line per plant — a cue child drawn above the sprite —
+  and if it is not, that is worth writing next to `_build_visuals`.
+- **The Chomp's progress ring shrinks toward nothing exactly as its news becomes urgent, and
+  the husk beside it does the opposite.** `game/chomp_flower.gd:135` computes
+  `CHEW_RING_RADIUS * (1.0 - chew_progress())` and returns early below 0.5 px, so "the mouth
+  is nearly free" — the moment a player is deciding whether to commit a lane — is drawn
+  smallest and deepest inside the flower's own sprite. `game/husk_layer.gd:69-77` faces the
+  same problem and solves it the other way: the arc stays at a fixed `radius + RING_GAP`
+  around the husk and sweeps its *angle* down, so a husk about to rot is as visible as a
+  fresh one. Two timers, one game, opposite answers. The husk's is the better one and it
+  costs nothing to copy.
+- **Two plants draw where they will act next, and both only after they have already acted.**
+  The cob's fan points along `_aim_angle`, set inside `_fire_at` (`game/corn_cobbler.gd:119`),
+  and the Dandelion's blast circle sits on `_last_landing`, set inside its own fire path
+  (`game/dandelion.gd:234`) behind a `_has_fired` gate (`:378`). Both are *post*-views wearing
+  the shape of a preview: a freshly planted cob points wherever it happened to be initialised
+  until its first shot, and a Dandelion shows nothing at all. The information a player wants
+  before committing seeds — *which way will this thing shoot* — exists in both plants a frame
+  after it stops being useful. The cob already targets `_furthest_along_in_range` every tick;
+  aiming the idle fan at the current best target rather than at the last one is the same call
+  it already makes.
+
 ### New this cycle (69) — the game draws two countdowns and refuses to draw the third
 
 - **The only line with a clock behind it is the only clock the game never draws.**

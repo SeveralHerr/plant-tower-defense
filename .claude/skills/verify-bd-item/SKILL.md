@@ -18,10 +18,21 @@ don't.
 ## The order, and why it is an order
 
 ```
-claim  →  implement  →  headless gates  →  runtime  →  LEDGER ROW  →  commit  →  log  →  close
-                                                        ▲
-                                    everything left of the commit must happen left of it
+confirm  →  claim  →  implement  →  headless gates  →  runtime  →  LEDGER ROW  →  commit  →  log  →  close
+                                                                     ▲
+                                                 everything left of the commit must happen left of it
 ```
+
+**`confirm` comes before `claim` and is the cheapest step here.** Open the code the bead
+says is missing, before writing a line. A bead is a claim about the repo made at some past
+cycle, and the repo has moved: cycle 70 claimed `-6cqi` ("two cobs at different levels are
+indistinguishable on the board"), read `corn_cobbler.gd`, and found the feature had shipped
+twelve cycles earlier — along with a test enumerating every level pair. The remaining work
+was the bead's *evidence* half, which is a different job from the one the title describes.
+A bead that turns out to be done is a good outcome and a fast one; a bead re-implemented
+because nobody looked is the expensive failure, and it looks like progress the whole time.
+This is `scope-vs-claim`'s bar applied one step earlier — to the issue rather than to the
+finding.
 
 **Three things are order-dependent and only one of them announces itself:**
 

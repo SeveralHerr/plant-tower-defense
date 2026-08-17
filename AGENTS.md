@@ -185,6 +185,16 @@ running a command. **Never write a work checklist into it.**
      **Name which source each came from, in the issue.** This step used to say "out of
      kanban.md's backlog", and that single filename is what made every other source
      invisible for 33 cycles. Never end a cycle with nothing ready.
+   - **An acceptance criterion must be something the closing commit can produce, or you
+     have written two beads and filed one.** `-6cqi` asked that two plants at different
+     levels be distinguishable on the board "and a screenshot proves it". The code half
+     shipped in the cycle that filed it. The evidence half needed a running game and a
+     rendered frame, which no commit produces, so the bead sat ready for **twelve cycles**
+     looking like unbuilt work while the feature was already in the game. When the
+     criterion names evidence — a screenshot, a measurement, a session driven by hand —
+     either split it out as its own item or say in the bead that the code is expected to
+     land first and this is the audit. Both are honest; a single bead that is silently
+     half-done is not, and it is indistinguishable in `bd ready` from work nobody started.
    - **At least one item must come from OUTSIDE the neighbourhood of this cycle's
      work.** Cycles 30-34 shipped one player-facing change and eleven correctness or
      tooling ones, and the cause is structural rather than a matter of taste: the
