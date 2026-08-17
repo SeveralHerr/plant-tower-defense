@@ -3617,3 +3617,54 @@ It appends every `status: open` gap, deduped by id (re-running is a no-op), and 
     surfaced and retried rather than silently handing on a truncated cache. Additionally:
     sweep the `assets/**/*.import*.tmp` / `.TMP` leftovers on the retry, since they
     otherwise show up as untracked files in `git status` and invite being committed.
+
+## 2026-08-16 — cycle 30: found and fixed the suite writing the player's real save
+
+- Value: **warranted** — the writers were two chains through the game's own code, and
+  no amount of reading the tests would have named them; the run is what named them.
+  - Expected: that `RunConfig._load()`'s migration branch was rewriting the file on
+    startup, since the bytes came back identical and a v5→v6 migration would explain a
+    same-content write.
+  - Got: the opposite. A `get_stack()` on `_save()` printed three real-path writes and
+    none of them was `_load`: `test_quitting_a_run_through_pause_still_files_the_score
+    -> Game.bank_score() -> record_score() -> _save()`, and two from
+    `test_toggling_the_option_repaints_the_bars_already_on_the_board ->
+    Game._unhandled_input() -> toggle_colorblind_safe() -> _save()`.
+  - Found: a live data-loss bug, not the mtime nuisance the issue described. The first
+    test stages both records at 0, so its write is unconditional — it filed 320 over
+    this machine's real campaign record (308). The developer's numbers came back only
+    because the colourblind test ran LATER and saved the restored in-memory values on
+    top. The save survived by suite order. Also found, in passing, that the existing
+    guard test had been reporting clean over both of them since it was written.
+  - Cheaper: nothing. `run_tests.py`'s reporter said WHICH file changed and that is
+    where its knowledge ends; the diff shows two tests that look exactly like the
+    forty others that host `game.tscn`. Six lines of `get_stack()` in `_save()`, one
+    suite run, and the answer was unambiguous.
+
+- Gap: **the user:// reporter names the file the suite wrote and cannot name the test
+  that wrote it.** `user:// writes: 1 file(s) changed by the suite ... changed:
+  highscore.save` is exactly one bit more than "something happened", and recovering the
+  rest cost a hand-instrumented `_save()` and a full 535-test run. The machinery to do
+  better is already in `devtools.py` and already called by the wrapper —
+  `userstate_stat_take` / `userstate_stat_diff` are a snapshot and a diff, and
+  `run_tests.gd` already brackets every test method with setup/teardown.
+  - [G-052] status: open | seen: 1 | harness: 0.38.0 | filed upstream: gh#39
+  - Improvement: take the snapshot per test method rather than per run (it is a `stat`
+    of one directory, cheap next to a scene instantiation), and print
+    `user:// writes: highscore.save <- test_quitting_a_run_through_pause_still_files_the_score
+    (test_selftest.gd)`. Same check, same cost class, and it turns a cycle of
+    instrumentation into a line of output. Gate it behind a flag if the per-test stat is
+    unwelcome by default — the information is worth a `--trace-user-writes`.
+
+- Gap: **`_T` has no `assert_ne`.** Asserting "this path is NOT the player's save" — the
+  runtime half of this cycle's fix — has to be written
+  `_T.assert_false(a == b, "...%s...%s" % [a, b])`, and the message has to carry both
+  values by hand, because `assert_false` reports only `Expected false but got true`.
+  The helper set has `assert_eq`, `assert_true`, `assert_false`, `assert_float_eq`,
+  `assert_gt`, `assert_gte` and `assert_margin`; inequality is the obvious missing one,
+  and it is the shape every "did the guard actually move this" check wants.
+  - [G-053] status: open | seen: 1 | harness: 0.38.0 | filed upstream: gh#39
+  - Improvement: add `static func assert_ne(actual, unexpected, context := "") -> String`
+    beside `assert_eq` in `run_tests.gd`, reporting `Expected anything but <value>` and
+    printing the actual — six lines, and it removes the hand-formatted message that is
+    the only reason the failure above is readable.

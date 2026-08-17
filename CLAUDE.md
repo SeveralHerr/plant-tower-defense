@@ -11,7 +11,7 @@ what `bd` structurally cannot: the cycle counter, the pattern the last cycle tau
 what is waiting on the user, and how to restart. It is what a human reads without
 running a command. **Never write a work checklist into it.**
 
-0. **Pre-flight. Read these three backlogs and report the counts in one line.** This
+0. **Pre-flight. Read these four things and report them in one line.** This
    step exists because they were write-only: the reflection steps below are
    end-of-cycle WRITES and nothing was ever a start-of-cycle READ, so they filled up
    and never came back. Measured at the end of the first 33 cycles: `.claude/skills/`
@@ -24,9 +24,18 @@ running a command. **Never write a work checklist into it.**
    - **Skills to create.** The skill ideas in `C:\Users\gotmi\documents\github\log.md`
      against what exists in `.claude/skills/`. **Two independent identifications of the
      same missing skill means build it** — do not identify it a third time.
-   - **`kanban.md`.** The `STILL REAL` section and the recent cycle sections. The
-     historical sections are unpruned and roughly half stale; the file says so at its
-     own top.
+   - **`kanban.md`.** The recent cycle sections, and the idea backlog you are about to
+     mine. The historical sections are unpruned and roughly half stale; the file says so
+     at its own top. Use the `kanban-staleness-audit` skill before promoting anything
+     out of them — a wrong `STALE` deletes an idea nobody will have again. (This bullet
+     used to name a `STILL REAL` section; the file has no such heading and never did,
+     so the instruction pointed at nothing for 33 cycles.)
+   - **The mirror.** `diff` the Workflow block of `CLAUDE.md` against `AGENTS.md`'s and
+     report whether they are identical. This is here because the block has now been
+     silently deleted from `AGENTS.md` **twice** — most recently by the very commit that
+     wrote the note warning about it, which left the note dangling above nothing. Every
+     other pre-flight item is a list that fills up unread; this one is a file that
+     quietly empties. Nothing else in the loop ever opens `AGENTS.md`.
 
    The harness is deliberately NOT checked here — it is checked in step 4, after it has
    actually been used. Pre-flight REPORTS AND FILES, it does not block.
@@ -72,8 +81,9 @@ running a command. **Never write a work checklist into it.**
      a real answer; silence is indistinguishable from not having looked.
 6. **Refill the queue, then update the log.**
    - **File 3-8 concrete, not-yet-filed items as bd issues** — drawn **from step 0's
-     three sources plus what steps 4 and 5 just produced**: open beads, skills to
-     create, `kanban.md`, harness gaps, and any workflow change worth its own item.
+     sources plus what steps 4 and 5 just produced**: open beads, skills to create,
+     `kanban.md`, a broken mirror, harness gaps, and any workflow change worth its own
+     item.
      **Name which source each came from, in the issue.** This step used to say "out of
      kanban.md's backlog", and that single filename is what made every other source
      invisible for 33 cycles. Never end a cycle with nothing ready.

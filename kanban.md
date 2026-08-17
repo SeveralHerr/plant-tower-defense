@@ -195,6 +195,42 @@ See the fresh checklist in `todo.md`. **Cycle 3 of 30** is filed and ready:
   walking (the art style doc calls out up-screen facing as the convention;
   pests moving down/left/right the road should not still render facing up-screen).
 
+### New this cycle (13 of 30) — grown from the save file, after spending a cycle inside it
+
+- **The save remembers the run, not just the number.** `compose_save` writes two
+  bare integers and the title screen shows two bare integers, so "best endless
+  run: 5008" is the whole of what a player is told about the best thing they have
+  done in this game. The run that set it knew far more — wave reached, which
+  plants were on the board, how many pests escaped, how long it took — and all of
+  it is discarded at `record_score`. Widen the record to a small struct (the v6
+  format is deliberately shaped for one more block, and `VERSION_WITH_EXTRAS`
+  shows how a field is added without refusing older files) and let the title
+  screen say "wave 14, three Chomp Flowers, 6 got past you". A record you can
+  picture is a record you want to beat; a bigger integer is a bigger integer.
+- **The milestone shelf.** `earned_milestones` is persisted, validated,
+  quarantined on corruption, and given its own line in the format — and the
+  player is never shown the set. Put it on the title screen as a shelf of seed
+  packets: earned ones in full colour, unearned ones as an outline with the name
+  hidden. The data has been paying rent since v5 without a single pixel of
+  return, and a locked slot the player can SEE is the cheapest goal a game has.
+- **Saving is invisible, and this cycle proved even we could not see it.** The
+  game writes a file at moments the player cannot predict (a record, a fresh
+  milestone, a flipped option) and never says so. A one-second seed-packet glyph
+  in the corner on every successful `_save()` costs nothing, and it makes the
+  most important guarantee in the project — "your number is on disk" — a thing
+  the player observes rather than assumes. It would also have made the bug this
+  cycle fixed visible from the couch instead of from a stack trace.
+- **The record ratchets instead of appearing.** A new high score is currently a
+  label whose text changes. Roll it digit by digit from the old record to the new
+  one over ~0.8s, with the seed-packet sound on the last digit — `fresh_record`
+  already exists on RunConfig purely so a screen can know this happened, and
+  nothing does anything with the knowledge.
+- **"Reset to defaults" that says what it will undo.** The options screen owns
+  three switches and a whole rebindable InputMap, and `reset_all()` silently
+  throws away every key the player has moved. Show the list first — "3 rebound
+  keys, colourblind ramp ON, music muted" — and let them confirm. The one place a
+  settings screen can lose a player's work is the one button that looks safest.
+
 ### New this cycle (12 of 30) — grown from the features above
 
 - **The lane pressure overlay answers a question the player has already stopped
