@@ -134,7 +134,15 @@ const HINT_MOVE_PREVIEW := "seen_move_tip"
 ## hint cannot be recorded by a path that never rendered it, and an achievement
 ## cannot be routed through a door that asks whether it was seen — a question that
 ## means nothing about a thing the player did.
-const HINTS: Array[String] = [HINT_MOVE_PREVIEW]
+## The second hint, and the first one filed under the contract rather than before it.
+##
+## A Chomp declines a winged pest with a bare `continue` (`game/chomp_flower.gd:85`) —
+## no sound, no message, no visual. From the player's chair a mouth that sits still
+## next to a bug is indistinguishable from a broken plant, and the rule it is obeying
+## ("ignores ground plants") is in the design brief and nowhere in the game.
+const HINT_CHOMP_IGNORES_FLIGHT := "seen_flight_tip"
+
+const HINTS: Array[String] = [HINT_MOVE_PREVIEW, HINT_CHOMP_IGNORES_FLIGHT]
 
 
 ## Whether `id` is a hint rather than an achievement. Static and pure so both

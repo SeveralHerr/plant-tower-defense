@@ -2689,6 +2689,49 @@ func test_an_upgrade_is_not_refunded_and_the_prompt_says_the_number() -> String:
 ## cheap is not a decision worth a four-second prompt.
 ##
 ## Both directions, because a fix that simply never records it would pass the first half.
+## The flight hint is spent on `show_message`'s RETURN VALUE, not on the handler running.
+##
+## This is the assertion the whole two-door contract is for, and without it a mutation
+## replacing `posted` with a literal `true` at the call site survives every other test in
+## this change: the predicate still fires, the signal still emits, the message still
+## appears in the ordinary case. The only observable difference is the case below — a row
+## too busy to take the line — and there the hint must stay OWED.
+##
+## Both halves, because a handler that never spends anything would pass the first.
+func test_the_flight_hint_is_not_spent_when_the_row_was_too_busy() -> String:
+	RunConfig.earned_milestones.erase(RunConfig.HINT_CHOMP_IGNORES_FLIGHT)
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	# Drain Game._ready's starter tip, then park a DEADLINE line on the row for six
+	# seconds. A MESSAGE_NORMAL arrival cannot pre-empt that, so it queues -- which is
+	# exactly the state where "I called show_message" and "the player read it" diverge.
+	hud._process(9.0)
+	hud._message_left = 0.0
+	hud._message_queue.clear()
+	hud._advance_message_queue()
+	hud.show_message("sitting on the row", 6.0, Hud.MESSAGE_DEADLINE)
+
+	game._on_flight_ignored()
+	var err: String = _T.assert_false(
+		RunConfig.has_milestone(RunConfig.HINT_CHOMP_IGNORES_FLIGHT),
+		"the row was busy, so the tip was queued rather than seen -- the hint stays owed")
+	if err == "":
+		err = _T.assert_gt(hud.pending_messages(), 0,
+			"and the line is genuinely waiting, so this is the queued case and not a drop")
+	if err == "":
+		# Clear the row and offer it again. This is the retry path: a hint the player was
+		# not shown comes back round, which a hint spent on the call could never do.
+		hud._message_left = 0.0
+		hud._message_queue.clear()
+		hud._advance_message_queue()
+		game._on_flight_ignored()
+		err = _T.assert_true(RunConfig.has_milestone(RunConfig.HINT_CHOMP_IGNORES_FLIGHT),
+			"offered onto a clear row it posts, and NOW it is spent")
+	_T.free_ui(game)
+	RunConfig.earned_milestones.erase(RunConfig.HINT_CHOMP_IGNORES_FLIGHT)
+	return err
+
+
 func test_the_move_tip_is_spent_only_when_it_is_actually_shown() -> String:
 	# The predicate itself, all four combinations, before the behaviour that reads it.
 	# Two inputs is four cases and three of them say no, so a single worked example

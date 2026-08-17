@@ -488,6 +488,82 @@ func test_the_winged_pest_a_chomp_cannot_grab_says_so_with_a_shape() -> String:
 	return err
 
 
+## The flight hint's own condition, all four combinations, before anything that reads it.
+##
+## Two inputs is four cases and only one says yes, so a single worked example would prove
+## almost nothing — and the interesting case is the one that says NO with a winged pest
+## present: a Chomp with something it CAN eat in reach is not confusing, because the
+## player watches the mouth close on that one. The hint is for the mouth that sits still.
+func test_a_chomp_is_only_puzzling_when_everything_in_reach_flies() -> String:
+	var err: String = _T.assert_true(ChompFlower.idle_only_because_of_flight(1, 0),
+		"one winged pest and nothing else in reach: the mouth sits still for a reason "
+			+ "nothing on screen explains")
+	if err == "":
+		err = _T.assert_false(ChompFlower.idle_only_because_of_flight(1, 1),
+			"a grabbable pest alongside it means the plant visibly works -- no hint needed")
+	if err == "":
+		err = _T.assert_false(ChompFlower.idle_only_because_of_flight(0, 1),
+			"a grabbable pest alone is the ordinary case")
+	if err == "":
+		err = _T.assert_false(ChompFlower.idle_only_because_of_flight(0, 0),
+			"an empty reach is not puzzling, it is quiet")
+	return err
+
+
+func test_a_chomp_walked_over_by_a_flier_says_so_exactly_once() -> String:
+	## End to end through the game's OWN path, which is why the connection is made before
+	## the tree comes up. `Plant._physics_process` calls `_act(delta, _live_pests())` every
+	## frame (`game/plant.gd:368`), so the settle frames are what fire this — and the first
+	## draft of this test connected afterwards, watched zero emissions, and looked like a
+	## broken signal. It was the opposite: the edge had already been spent, unheard, before
+	## the listener existed.
+	##
+	## Asserting across those frames is the stronger claim in both directions. It proves
+	## the wiring rather than a hand-call, and **`== 1` over an unknown number of physics
+	## frames IS the rising-edge assertion** — a level-triggered signal would report one
+	## per frame, which is what would put this sentence on the message row sixty times a
+	## second.
+	RunConfig.earned_milestones.erase(RunConfig.HINT_CHOMP_IGNORES_FLIGHT)
+	var chomp := ChompFlower.new()
+	var pest: Pest = _pest(Pest.APHID, Vector2(0, -Board.CELL))
+	pest.apply_mutation(Pest.MUTATION_WINGED)
+	var posted: Array[String] = []
+	chomp.flight_ignored.connect(func() -> void: posted.append("said"))
+	var host: Node2D = _host([chomp, pest])
+	await _T.instantiate_scene(host)
+
+	# Reset explicitly, and the reason is worth more than the line: `Plant._physics_process`
+	# calls `_act(delta, _live_pests())` every frame, so the settle frames MAY already have
+	# spent the edge — and how many physics frames a headless settle actually ticks is not
+	# something a unit test should encode. Clearing both sides makes the two calls below
+	# the only ones that can count, whatever the helper did.
+	chomp._flight_noted = false
+	posted.clear()
+	var pests: Array[Pest] = [pest]
+	chomp._act(0.016, pests)
+	var err: String = _T.assert_eq(posted.size(), 1,
+		"a Chomp walked over by a flier emits flight_ignored (d=%.1f, reach %.1f)"
+			% [pest.global_position.distance_to(chomp.global_position),
+				ChompFlower.GRAB_RADIUS])
+	if err == "":
+		err = _T.assert_false(chomp.is_busy(),
+			"and it is genuinely idle -- the signal is not firing beside a working mouth")
+	if err == "":
+		# The pest has not moved, so the condition is still true. This is the rising-edge
+		# assertion: level-triggered, it would emit again, and the same sentence would
+		# reach the message row on every physics frame the pest spends in reach.
+		chomp._act(0.016, pests)
+		err = _T.assert_eq(posted.size(), 1,
+			"and not again while the same pest is still standing over it")
+	if err == "":
+		err = _T.assert_true(Hud.flight_tip().contains("Corn"),
+			"the sentence names the plant that CAN hit it -- a rule with no counter-play "
+				+ "is a complaint")
+	_T.free_ui(host)
+	RunConfig.earned_milestones.erase(RunConfig.HINT_CHOMP_IGNORES_FLIGHT)
+	return err
+
+
 func test_a_hungry_pest_wears_jaws_because_a_bed_dies_in_seconds() -> String:
 	## The number is why the cue exists: EAT_DPS against a full-health plant is
 	## a bed gone before the player can finish reacting to the colour.

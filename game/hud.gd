@@ -1439,7 +1439,24 @@ func _paint_message_row() -> void:
 	_message_label.text = _message_text if _message_left > 0.0 else _idle_message
 
 
-func show_message(text: String, seconds: float = 3.0, priority: int = MESSAGE_NORMAL) -> void:
+## Returns whether `text` is ON THE ROW when this call returns — false when it was
+## queued behind something, and false when the queue was full and dropped it.
+##
+## The return value exists because a caller could not previously tell those apart. All
+## 36 call sites ignore it and are right to; the one that must not is a one-shot HINT,
+## which is spent on the player having SEEN something. `_queue_message` drops the
+## lowest-priority entry when the queue is full and drops the NEW one if it is the
+## lowest — silently, and this method returned void. So "I called show_message" and
+## "the player read it" were the same expression, which is cycle 79's bug one level
+## further down: that one spent a hint on the game deciding to show a tip, and a later
+## change displaced the sentence.
+##
+## Deliberately false for a queued message rather than optimistic about it. A queued
+## line can still be dropped later by a fuller queue, so a hint spent on "it will
+## appear" is a hint that can still be lost. False means the caller keeps the hint owed
+## and offers it again next time the moment comes round, which is the behaviour a
+## one-shot the player is owed should have.
+func show_message(text: String, seconds: float = 3.0, priority: int = MESSAGE_NORMAL) -> bool:
 	if _message_left > 0.0:
 		if priority > _message_priority:
 			_queue_message(_message_text, _message_left, _message_priority)
@@ -1447,11 +1464,12 @@ func show_message(text: String, seconds: float = 3.0, priority: int = MESSAGE_NO
 			# The line on screen has not been up long enough to have been read, or
 			# outranks this one. Wait rather than stomp.
 			_queue_message(text, seconds, priority)
-			return
+			return false
 	_message_text = text
 	_message_left = seconds
 	_message_priority = priority
 	_paint_message_row()
+	return true
 
 
 ## The queue is deliberately short. Messages describe things happening now, and a
@@ -1716,7 +1734,31 @@ static func message_corpus() -> Array[String]:
 	# only the wider one reports the call site as uncovered. Carry both.
 	out.append("Colourblind-safe bars off.")
 	out.append("Colourblind-safe bars on.")
+	out.append(flight_tip())
 	return out
+
+
+## Said once ever, the first time a Chomp is walked over by something it cannot catch.
+##
+## A zero-argument PRODUCER rather than a `const`, which is not a style choice: the
+## corpus mechanism resolves producer calls and literals, and `message_corpus_check`
+## reported a bare `out.append(FLIGHT_TIP)` as a call site calling none of the corpus's
+## producers. A const reference is invisible to the row's budget — the thing four cycles
+## went into measuring — and the alternative was pasting the sentence into the corpus as
+## a second copy. Six producers already sit beside this one; the outlier was the const.
+##
+## The plant is deliberately unnamed:
+## the player is looking at the plant, and "your Chomp Flower" would spend width on the
+## half they can already see to say less about the half they cannot.
+##
+## "flies over" and not "cannot be caught": the first says what the bug is doing, which
+## is the observable the player has in front of them and the thing the wing markers on
+## its silhouette (`Pest.MARKER_WINGS`) already point at. Corn is named because the
+## sentence is useless without the answer — a rule with no counter-play is a
+## complaint — and Corn genuinely takes winged pests (`chomp_flower.gd:83-85` names
+## exactly that).
+static func flight_tip() -> String:
+	return "That pest flies over Chomp Flowers. Corn Cobblers can still hit it."
 
 
 static func eaten_message(plant_name: String) -> String:

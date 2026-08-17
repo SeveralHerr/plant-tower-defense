@@ -1228,6 +1228,11 @@ func place_plant(id: StringName, cell: Vector2i) -> String:
 		# duck-typed contract above at one argument, so a future economy plant
 		# only has to emit a number to be wired up.
 		plant.connect("grew_seeds", _on_plant_grew_seeds.bind(plant))
+	# Duck-typed for the same reason as `grew_seeds` above: only ChompFlower declines a
+	# pest for flying, and a second plant that ever does gets wired by declaring the
+	# signal rather than by editing this list.
+	if plant.has_signal("flight_ignored"):
+		plant.connect("flight_ignored", _on_flight_ignored)
 	# A plant bought DURING a drought wave inherits it. Without this the way to beat
 	# a drought would be to plant into it, which is the opposite of what the weather
 	# is for -- and it would only ever be discovered by a player who tried it.
@@ -1235,6 +1240,25 @@ func place_plant(id: StringName, cell: Vector2i) -> String:
 	_select(plant)
 	_refresh()
 	return ""
+
+
+## A Chomp is being walked past by something it cannot catch, and until now said so with
+## nothing at all. One sentence, once ever.
+##
+## The hint is spent on `show_message`'s RETURN VALUE, not on this handler running. That
+## is the whole point of the two-door contract: the row drops a line when its queue is
+## full and the new entry is the lowest priority, so "I called show_message" and "the
+## player read it" are different facts. A dropped line leaves the hint owed, and the next
+## winged pest to cross a Chomp's reach is a fresh edge that offers it again.
+##
+## MESSAGE_NORMAL, not a deadline: nothing is counting down. The player has as long as
+## the wave to act on it, and a higher priority would let a one-shot tutorial line stomp
+## a lives-lost readout.
+func _on_flight_ignored() -> void:
+	if RunConfig.has_milestone(RunConfig.HINT_CHOMP_IGNORES_FLIGHT):
+		return
+	var posted: bool = hud.show_message(Hud.flight_tip())
+	RunConfig.spend_hint(RunConfig.HINT_CHOMP_IGNORES_FLIGHT, posted)
 
 
 func _new_plant(id: StringName) -> Plant:

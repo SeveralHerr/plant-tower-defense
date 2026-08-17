@@ -67,6 +67,22 @@ func _on_setup() -> void:
 	destroyed.connect(func(_p: Plant) -> void: release())
 
 
+## Emitted when this Chomp is sitting still and the reason is flight — see
+## `idle_only_because_of_flight`. Rising edge only: the condition is true for every
+## frame a winged pest spends crossing the reach, and a per-frame signal would put the
+## same sentence on the message row sixty times a second.
+##
+## Carries nothing. `Game` has the plant in hand from the connection, which is the same
+## split `destroyed(plant)` and `grew_seeds` already use here.
+signal flight_ignored
+
+## True while `flight_ignored` has already fired for the current stretch of being
+## walked past. Cleared when the condition goes false, so the next winged pest to
+## arrive is a fresh edge — which is also the retry path when the message row was too
+## busy to show the hint the first time.
+var _flight_noted: bool = false
+
+
 func _act(delta: float, pests: Array[Pest]) -> void:
 	if _held != null:
 		_chew(delta)
@@ -74,6 +90,42 @@ func _act(delta: float, pests: Array[Pest]) -> void:
 	var prey: Pest = _nearest_free_pest(pests)
 	if prey != null:
 		_grab(prey)
+		_flight_noted = false
+		return
+	# After the grab attempt, not before: a mouth that just closed on something is not
+	# idle, whatever else is in reach.
+	var winged: int = 0
+	var grabbable: int = 0
+	for pest: Pest in pests:
+		if pest.held_by != null:
+			continue
+		if pest.global_position.distance_to(global_position) > GRAB_RADIUS:
+			continue
+		if pest.is_winged:
+			winged += 1
+		else:
+			grabbable += 1
+	if not idle_only_because_of_flight(winged, grabbable):
+		_flight_noted = false
+		return
+	if _flight_noted:
+		return
+	_flight_noted = true
+	flight_ignored.emit()
+
+
+## The state the flight hint explains, as a pure function of what is within reach.
+##
+## Both halves matter and only together. A winged pest in reach is not confusing if a
+## grabbable one is there too — the mouth closes on that one, the player sees the plant
+## working, and nothing needs saying. It is confusing when EVERYTHING in reach flies,
+## because then a bug walks over a mouth that does not move.
+##
+## Static and pure so the condition has a name a test can assert directly, rather than
+## being an `and` buried in `_act` that can only be reached by staging two pests in a
+## live tree. `Hud.uproot_shows_tip` is the same move for the same reason.
+static func idle_only_because_of_flight(winged_in_reach: int, grabbable_in_reach: int) -> bool:
+	return winged_in_reach > 0 and grabbable_in_reach == 0
 
 
 func _nearest_free_pest(pests: Array[Pest]) -> Pest:

@@ -3826,6 +3826,41 @@ func test_a_higher_rung_pre_empts_and_every_other_pair_waits() -> String:
 	return err
 
 
+## `show_message` reports whether the text is on the row NOW, and this is the assertion a
+## one-shot hint rests on.
+##
+## Before cycle 90 it returned void, so a caller could not tell "posted" from "queued
+## behind something" from "dropped because the queue was full and this was the lowest
+## rung". A hint is spent on the player having SEEN a thing, so all three had to become
+## distinguishable — otherwise `spend_hint(id, true)` after calling this is a claim the
+## code cannot support, which is exactly the shape of the bug cycle 79 paid for.
+##
+## Driven across the same three rungs as the table above, because the queued case is only
+## reachable when something is already sitting on the row.
+func test_show_message_says_whether_the_line_reached_the_row() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	hud._process(9.0)
+	hud._message_left = 0.0
+	hud._message_queue.clear()
+	hud._advance_message_queue()
+
+	var err: String = _T.assert_true(hud.show_message("first", 6.0, Hud.MESSAGE_NORMAL),
+		"onto an empty row, the line posts and says so")
+	if err == "":
+		# Same rung, and the sitting line is far from expiring, so this one waits.
+		err = _T.assert_false(hud.show_message("second", 6.0, Hud.MESSAGE_NORMAL),
+			"queued behind a line still being read is NOT shown, and reports false")
+	if err == "":
+		err = _T.assert_eq(hud.pending_messages(), 1, "and it is genuinely waiting, not lost")
+	if err == "":
+		# A higher rung pre-empts, so it IS on the row.
+		err = _T.assert_true(hud.show_message("urgent", 6.0, Hud.MESSAGE_DEADLINE),
+			"a line that pre-empts what was sitting there posts, and reports true")
+	_T.free_ui(game)
+	return err
+
+
 func test_the_message_queue_cannot_grow_without_bound() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var hud: Hud = game.hud
@@ -11009,12 +11044,12 @@ func test_the_message_corpus_covers_every_catalogue_producer() -> String:
 	# co-occur — the budget refused that build at 188 px over — so it is three forms
 	# and not four.
 	var catalogue_entries: int = PlantCatalog.PLANTS.size() * 5 + CornCobbler.LEVELS.size()
-	return _T.assert_eq(corpus.size() - catalogue_entries, 8,
-		("the corpus carries its 8 non-catalogue entries (prep note, wave-cleared "
-			+ "line, and six literals -- BOTH colourblind lines, since the checker "
-			+ "reads the leading literal of that ternary). If this moved because you "
-			+ "ADDED one, raise the number; if it moved because one vanished, the "
-			+ "row's budget just got quietly optimistic"))
+	return _T.assert_eq(corpus.size() - catalogue_entries, 9,
+		("the corpus carries its 9 non-catalogue entries (prep note, wave-cleared "
+			+ "line, the flight tip, and six literals -- BOTH colourblind lines, since "
+			+ "the checker reads the leading literal of that ternary). If this moved "
+			+ "because you ADDED one, raise the number; if it moved because one "
+			+ "vanished, the row's budget just got quietly optimistic"))
 ##
 ## The catalogue is SWEPT rather than sampled, and the level table with it — so this
 ## is checked against every name the game can actually produce, not against a worst
