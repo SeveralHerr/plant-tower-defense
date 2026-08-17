@@ -1333,6 +1333,70 @@ func _on_flight_ignored() -> void:
 	RunConfig.spend_hint(RunConfig.HINT_CHOMP_IGNORES_FLIGHT, posted)
 
 
+## The cheapest plant on the board the player could upgrade right now, or null when
+## nothing there has a rung left to climb.
+##
+## Static and taking the collection, rather than reading `_plants` itself, because
+## everything interesting about it is decidable with no tree, no HUD and no bank —
+## see `.claude/skills/extract-a-testable-seam`. `_maybe_teach_upgrading` below is
+## the one line that supplies the argument.
+##
+## `can_upgrade()` and not `has_upgrades()`: the second is true of a Corn Cobbler
+## sitting at the top of its ladder, which is a plant the player cannot spend a seed
+## on. Asking the wrong one of those two would fire this hint at somebody whose only
+## upgradable plant is already finished, which is the one case where the advice is
+## actively wrong.
+static func cheapest_upgrade(plants: Array) -> Plant:
+	var best: Plant = null
+	for entry: Variant in plants:
+		var plant := entry as Plant
+		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
+			continue
+		if not plant.can_upgrade():
+			continue
+		if best == null or plant.upgrade_cost() < best.upgrade_cost():
+			best = plant
+	return best
+
+
+## Teaches, once ever, that a plant already in the ground can be upgraded.
+##
+## WHY THIS FIRES ON A BANK BALANCE AND NOT ON A TIMER OR AT STARTUP: cycle 101's A/B
+## showed upgrading decides the run, and the bead that filed it (-gz53) asked for the
+## prompt to be tied to a state where the advice is ACTIONABLE. That state is exactly
+## "the player is holding at least what the cheapest upgrade on their own board
+## costs" — before it, the tip is a rule they cannot use; at it, it is a decision
+## they can make this second. A hint fired at a moment the player cannot act on it is
+## worse than none, because it spends the message row AND the attention (-qoil).
+##
+## Called from `_refresh`, which is the funnel every purchase, uproot, plant death
+## and wave change already runs through — so the moment the balance crosses is
+## caught wherever it happens, rather than in the four call sites that can move it.
+## The `has_milestone` guard is first and returns before the sweep, so the cost after
+## the hint has been seen once, forever, is one dictionary lookup.
+##
+## Spent on `show_message`'s RETURN, like the flight tip: the row drops a line when
+## its queue is full, and "I called show_message" is not "the player read it". A
+## dropped line leaves the hint owed and the next refresh offers it again.
+func _maybe_teach_upgrading() -> void:
+	if hud == null or not is_instance_valid(hud):
+		return
+	if RunConfig.has_milestone(RunConfig.HINT_UPGRADE_EXISTS):
+		return
+	# Ask before offering. This caller is LEVEL-triggered — affordability stays true
+	# once it becomes true — so a refused post is not a one-off here the way it is for
+	# the flight tip: the next refresh would offer it again and stack a second copy
+	# into the row's queue. See Hud.row_is_quiet, which exists for this.
+	if not hud.row_is_quiet():
+		return
+	var cheapest: Plant = cheapest_upgrade(_plants.values())
+	if cheapest == null or bank.seeds < cheapest.upgrade_cost():
+		return
+	var posted: bool = hud.show_message(
+		Hud.upgrade_tip(PlantCatalog.display_name(cheapest.kind), cheapest.upgrade_cost()))
+	RunConfig.spend_hint(RunConfig.HINT_UPGRADE_EXISTS, posted)
+
+
 func _new_plant(id: StringName) -> Plant:
 	match id:
 		PlantCatalog.CHOMP:
@@ -1924,6 +1988,11 @@ func _refresh() -> void:
 	if hud == null:
 		return
 	hud.refresh(state())
+	# AFTER hud.refresh, not before. The tip names a price the player is about to go
+	# looking for, so the readouts it will be compared against — the seed count above
+	# all — must already show this refresh's numbers. Posting first would put the
+	# message on screen a frame ahead of the balance that justifies it.
+	_maybe_teach_upgrading()
 
 
 ## One dictionary describing the whole run. The HUD renders it, the devtools

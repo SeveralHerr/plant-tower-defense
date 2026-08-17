@@ -11093,7 +11093,13 @@ func test_the_message_corpus_covers_every_catalogue_producer() -> String:
 	# Both ladders since cycle 101: the Chomp Flower grows too, and its rungs produce
 	# upgrade_message lines exactly as the cob's do. Summed from the tables rather
 	# than doubled, because the two ladders are not required to be the same length.
-	var catalogue_entries: int = (PlantCatalog.PLANTS.size() * 5
+	# SIX per plant since cycle 103, not five: the upgrade tip
+	# (plant-tower-defense-gz53) names whichever plant on the board is cheapest to
+	# upgrade, which is a fact about the player's garden rather than about the
+	# catalogue — so any name in PLANTS can appear in it and every name has to be
+	# priced. Pricing only the cob's would leave the row short by the difference
+	# between the shortest plant name and the longest.
+	var catalogue_entries: int = (PlantCatalog.PLANTS.size() * 6
 		+ CornCobbler.LEVELS.size() + ChompFlower.LEVELS.size())
 	return _T.assert_eq(corpus.size() - catalogue_entries, 9,
 		("the corpus carries its 9 non-catalogue entries (prep note, wave-cleared "
@@ -13313,4 +13319,144 @@ func test_a_hinted_plant_lights_up_and_names_the_packet_that_holds_it() -> Strin
 			var plain: String = Hud.plant_button_tooltip(PlantCatalog.CHOMP, &"")
 			err = _T.assert_false(plain.contains("Still in a packet"),
 				"while a plant already in the garden gets no packet clause, got: %s" % plain)
+	return err
+
+
+# -- Teaching that upgrading exists (plant-tower-defense-gz53) ----------------
+#
+# Cycle 101's A/B: same economy, no cheats, one policy bit. Breadth-first got
+# eleven level-1 plants and died at wave 10; depth-first won 22 waves losing no
+# lives. Upgrading decides the run and nothing said it existed.
+
+
+## The pure half: which plant on the board is the cheapest to upgrade.
+##
+## `can_upgrade()` and not `has_upgrades()` is the assertion that matters, and the
+## case is built so it can FAIL — the cheap plant is walked to the TOP of its ladder,
+## so a `has_upgrades()` implementation still returns it (it has a ladder) while a
+## `can_upgrade()` one steps over it. Asserting with every plant mid-ladder would
+## pass either way, which is documentation wearing a test's clothes.
+func test_the_cheapest_upgrade_skips_a_plant_with_no_rung_left() -> String:
+	var cheap := CornCobbler.new()
+	cheap.setup(PlantCatalog.CORN, Vector2i(0, 0), null)
+	var dear := ChompFlower.new()
+	dear.setup(PlantCatalog.CHOMP, Vector2i(1, 0), null)
+
+	var err: String = _T.assert_true(cheap.can_upgrade() and dear.can_upgrade(),
+		"both plants start with a rung left, or this case proves nothing")
+	if err == "":
+		var pick: Plant = Game.cheapest_upgrade([cheap, dear])
+		var by_cost: Plant = cheap if cheap.upgrade_cost() <= dear.upgrade_cost() else dear
+		err = _T.assert_eq(pick, by_cost,
+			"the cheaper of the two is picked (corn %d, chomp %d)"
+				% [cheap.upgrade_cost(), dear.upgrade_cost()])
+	if err == "":
+		# Walk the cheap one to the top. It still HAS a ladder; it can no longer
+		# climb one, and that is exactly the difference under test.
+		while cheap.can_upgrade():
+			cheap.level += 1
+		err = _T.assert_true(cheap.has_upgrades(),
+			"a maxed plant still has a ladder, so has_upgrades() cannot tell them apart")
+	if err == "":
+		err = _T.assert_eq(Game.cheapest_upgrade([cheap, dear]), dear,
+			"so the maxed plant is stepped over and the dearer one is named")
+	if err == "":
+		while dear.can_upgrade():
+			dear.level += 1
+		err = _T.assert_eq(Game.cheapest_upgrade([cheap, dear]), null,
+			"and a board with nothing left to climb answers null, not a maxed plant")
+	if err == "":
+		err = _T.assert_eq(Game.cheapest_upgrade([]), null, "an empty board too")
+	cheap.free()
+	dear.free()
+	return err
+
+
+## The live half: the tip is spent on affordability, once, and never again.
+##
+## Every assertion below is made in a case where the mutation it guards would show.
+## The first is at ONE SEED SHORT rather than at zero, because a `>` / `>=` slip and
+## a missing check are different bugs and only the boundary separates them.
+func test_the_upgrade_tip_waits_until_the_player_can_afford_it_and_fires_once() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_false(
+		RunConfig.has_milestone(RunConfig.HINT_UPGRADE_EXISTS),
+		"the suite's scratch save starts without this hint spent")
+
+	if err == "":
+		game.bank.seeds = 500
+		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, Vector2i(3, 2)), "",
+			"a cob goes down, so the board has something upgradable on it")
+
+	var cob: Plant = null
+	if err == "":
+		cob = Game.cheapest_upgrade(game._plants.values())
+		err = _T.assert_true(cob != null, "and cheapest_upgrade finds it")
+
+	if err == "":
+		# A BUSY ROW MEANS "NOT THIS REFRESH", and that is asserted before
+		# affordability because placing the cob just posted a line — so this is the
+		# state the game is really in at the moment the balance first crosses, not a
+		# contrived one. Without Hud.row_is_quiet this refresh queues a copy of the
+		# tip, the next one queues another, and the hint is never spent.
+		RunConfig.earned_milestones.erase(RunConfig.HINT_UPGRADE_EXISTS)
+		game.bank.seeds = 500
+		err = _T.assert_false(game.hud.row_is_quiet(),
+			"placing a plant leaves the row busy, which is the case that stacked copies")
+	if err == "":
+		game._refresh()
+		game._refresh()
+		game._refresh()
+		err = _T.assert_false(
+			RunConfig.has_milestone(RunConfig.HINT_UPGRADE_EXISTS),
+			"three refreshes over a busy row spend nothing")
+	if err == "":
+		err = _T.assert_eq(game.hud._message_queue.size(), 0,
+			"and queue NOTHING — the defect this guard exists for was three stacked copies")
+
+	if err == "":
+		# Now a quiet moment. ONE SEED SHORT: a check written `>` instead of `>=`, or
+		# omitted entirely, differs from a correct one only at the boundary.
+		game.hud._message_left = 0.0
+		game.hud._message_queue.clear()
+		game.bank.seeds = cob.upgrade_cost() - 1
+		game._refresh()
+		err = _T.assert_false(
+			RunConfig.has_milestone(RunConfig.HINT_UPGRADE_EXISTS),
+			"one seed short of the cheapest upgrade, the tip still has not fired")
+
+	if err == "":
+		game.hud._message_left = 0.0
+		game.hud._message_queue.clear()
+		game.bank.seeds = cob.upgrade_cost()
+		game._refresh()
+		err = _T.assert_true(
+			RunConfig.has_milestone(RunConfig.HINT_UPGRADE_EXISTS),
+			"exactly affording it, on a quiet row, is enough — actionable at the boundary")
+
+	if err == "":
+		# One-shot: still affordable, still upgradable, row made quiet again. Every
+		# condition that fired it is true, so only the milestone guard is stopping a
+		# second post — which is the mutation this kills.
+		game.hud._message_left = 0.0
+		game.hud._message_queue.clear()
+		game._refresh()
+		game._refresh()
+		err = _T.assert_eq(game.hud._message_queue.size(), 0,
+			"a spent hint posts nothing on a quiet row")
+		err = _T.assert_true(
+			RunConfig.has_milestone(RunConfig.HINT_UPGRADE_EXISTS),
+			"and it stays spent across later refreshes")
+
+	if err == "":
+		var tip: String = Hud.upgrade_tip("Corn Cobbler", 25)
+		err = _T.assert_true(tip.contains("Corn Cobbler") and tip.contains("25"),
+			"the tip names the plant and prices it, got: %s" % tip)
+	if err == "":
+		err = _T.assert_true(Hud.message_corpus().any(
+			func(line: String) -> bool: return line.contains("can be upgraded")),
+			"and the row's width budget prices it, so it cannot overflow unmeasured")
+
+	_T.free_ui(game)
+	RunConfig.earned_milestones.erase(RunConfig.HINT_UPGRADE_EXISTS)
 	return err

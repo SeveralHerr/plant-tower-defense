@@ -1859,6 +1859,29 @@ func _paint_message_row() -> void:
 ## appear" is a hint that can still be lost. False means the caller keeps the hint owed
 ## and offers it again next time the moment comes round, which is the behaviour a
 ## one-shot the player is owed should have.
+## Whether the row would SHOW a line posted right now, rather than queueing it behind
+## something the player is still reading.
+##
+## Exists because of a defect this nearly shipped (plant-tower-defense-gz53), and the
+## distinction it draws is between two kinds of caller rather than two kinds of message.
+## `show_message` returns false while the current line is still readable — but it QUEUES
+## the arriving text rather than dropping it. An EDGE-triggered caller is fine with that:
+## `_on_flight_ignored` fires once per winged pest and a queued copy is the line it meant.
+##
+## A LEVEL-triggered caller is not. The upgrade tip is offered from `Game._refresh`, which
+## runs on every purchase, uproot, plant death and wave change, so a `false` return
+## followed by another refresh stacks a SECOND copy into the queue, then a third, until
+## `MESSAGE_QUEUE_MAX` refuses the rest — a one-shot hint shown four times, which is the
+## wallpaper the whole one-shot mechanism exists to prevent.
+##
+## So a level-triggered hint asks this first, and a busy row means "not this refresh"
+## rather than "spend the hint". The queue is checked as well as the row: a line waiting
+## behind the current one will take the row next, and posting into that is the same
+## stacking one step later.
+func row_is_quiet() -> bool:
+	return _message_left <= 0.0 and _message_queue.is_empty()
+
+
 func show_message(text: String, seconds: float = 3.0, priority: int = MESSAGE_NORMAL) -> bool:
 	if _message_left > 0.0:
 		if priority > _message_priority:
@@ -2196,6 +2219,11 @@ static func message_corpus() -> Array[String]:
 			maxi(Plant.ladder_spend(CornCobbler.LEVELS, CornCobbler.LEVELS.size()),
 				Plant.ladder_spend(ChompFlower.LEVELS, ChompFlower.LEVELS.size()))))
 		out.append(packet_message(display))
+		# The upgrade hint, priced per plant name and at a cost the ladders cannot
+		# reach. Every plant gets a row because the tip names whichever plant on the
+		# board is cheapest to upgrade, and that is a fact about the player's garden
+		# rather than about the catalogue — any name in PLANTS can appear here.
+		out.append(upgrade_tip(display, 99999))
 	for level: Dictionary in CornCobbler.LEVELS:
 		out.append(upgrade_message(PlantCatalog.display_name(PlantCatalog.CORN), String(level["name"])))
 	for level: Dictionary in ChompFlower.LEVELS:
@@ -2247,6 +2275,27 @@ static func message_corpus() -> Array[String]:
 ## exactly that).
 static func flight_tip() -> String:
 	return "That pest flies over Chomp Flowers. Corn Cobblers can still hit it."
+
+
+## Said once ever, the first time the player can actually afford an upgrade on their
+## own board (plant-tower-defense-gz53).
+##
+## The plant IS named here, where `flight_tip` above deliberately does not name one,
+## and the difference is what the player is looking at. The flight tip fires while
+## they watch a specific bug walk over a specific mouth; this one fires on a bank
+## balance, with nothing highlighted and seven plants possibly down. "Your plant can
+## be upgraded" would leave them hunting.
+##
+## "Click it on the board" and not "select it": the button appears only while a
+## PLACED plant is selected, and the thing a player does not know is that a plant
+## already in the ground is clickable at all. The plant bar on the side panel is the
+## only clicking the opening tutorial teaches, so the sentence has to say where.
+##
+## The price is here because it is the half that makes it a decision rather than an
+## instruction — a player holding 40 seeds reads "25" and knows they can do this AND
+## still buy something.
+static func upgrade_tip(plant_name: String, cost: int) -> String:
+	return "Your %s can be upgraded. Click it on the board — %d seeds." % [plant_name, cost]
 
 
 static func eaten_message(plant_name: String) -> String:

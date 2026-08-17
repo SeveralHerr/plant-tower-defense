@@ -17,6 +17,31 @@ extends RefCounted
 
 var _T
 
+## Where this script's RunConfig writes go instead of the player's own save.
+## The reasoning is written out once, in test_combat.gd's setup().
+##
+## This file wrote nothing to RunConfig for a hundred cycles and then did, without
+## gaining a line that mentions it: plant-tower-defense-gz53 put a one-shot hint on
+## the `_refresh()` funnel, which put `_save()` on the end of a chain any test that
+## places a plant already walks —
+## `place_plant() -> _refresh() -> _maybe_teach_upgrading() -> spend_hint() -> _save()`.
+## `tools/save_persist_check.py` printed that chain and named the two tests here that
+## reach it, before a single test had been run. That is the whole argument for the
+## checker: nothing in this file changed, and this file became a writer.
+const SUITE_SAVE_PATH := "user://test_board_suite.save"
+var _suite_stashed_save_path: String = ""
+
+
+func setup() -> void:
+	_suite_stashed_save_path = RunConfig.save_path
+	RunConfig.save_path = SUITE_SAVE_PATH
+
+
+func teardown() -> void:
+	if _suite_stashed_save_path != "":
+		RunConfig.save_path = _suite_stashed_save_path
+	DirAccess.remove_absolute(SUITE_SAVE_PATH)
+
 
 func _board() -> Board:
 	var board := Board.new()

@@ -142,7 +142,26 @@ const HINT_MOVE_PREVIEW := "seen_move_tip"
 ## ("ignores ground plants") is in the design brief and nowhere in the game.
 const HINT_CHOMP_IGNORES_FLIGHT := "seen_flight_tip"
 
-const HINTS: Array[String] = [HINT_MOVE_PREVIEW, HINT_CHOMP_IGNORES_FLIGHT]
+## The third hint, and the one with the most evidence behind it of anything in this
+## file (plant-tower-defense-gz53).
+##
+## Cycle 101 played the campaign twice on the same economy with no cheats, differing
+## in exactly one policy bit — spend surplus seeds on NEW plants, or on the plants
+## already down. Breadth-first reached eleven level-1 plants and died at wave 10.
+## Depth-first won all 22 waves without losing a life. Both had all seven plants by
+## wave 7, so the catalogue is not the difference: UPGRADING IS.
+##
+## And nothing said so. The Upgrade button exists only while a placed plant is
+## selected, `Milestones` never mentions plant levels, and of twenty-one
+## `show_message` call sites exactly two concerned upgrades — a refusal reached only
+## by a player who had already found the button, and the confirmation after a
+## successful one. Every mention of the mechanic that decides the run was a reply to
+## somebody who already knew, or a caption in a screen they had to go and open.
+const HINT_UPGRADE_EXISTS := "seen_upgrade_tip"
+
+const HINTS: Array[String] = [
+	HINT_MOVE_PREVIEW, HINT_CHOMP_IGNORES_FLIGHT, HINT_UPGRADE_EXISTS,
+]
 
 
 ## Whether `id` is a hint rather than an achievement. Static and pure so both
