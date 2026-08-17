@@ -74,6 +74,37 @@ func set_points(next: PackedVector2Array) -> bool:
 	return true
 
 
+## Radius of the "holds nothing alone" ring drawn on the plant itself. Outside
+## SelectionMarker.HALF (22) so it reads as a separate statement rather than as a
+## thicker bracket, and far inside any plant's range ring.
+const ALONE_RADIUS: float = 31.0
+## Dashes, not a solid circle — the convention PlacementPreview._draw_risk_ring
+## already set here: a solid ring is a RANGE, a broken one is a remark about the
+## thing inside it. A solid ring at 31 px would read as a second, tiny reach.
+const ALONE_DASHES: int = 8
+
+
 func _draw() -> void:
+	# Empty is a real answer and it has to LOOK like one. An empty set means every
+	# cell this plant reaches is also held by something else — so it can be dug up
+	# and replanted elsewhere without the road losing anything, which is worth
+	# knowing and is the opposite of "the cue is broken".
+	#
+	# Drawing nothing would make those two states identical, and cycle 55 already
+	# paid for that confusion: a hover cue that correctly drew nothing cost ten
+	# minutes of hunting a bug that was not there. So the answer is always a ring;
+	# only its POSITION changes. Out on the road: these cells depend on you. Around
+	# the plant: nothing does.
+	#
+	# It says nothing about whether uprooting is a good idea. Depth on a thin
+	# stretch is often exactly what was bought, and the game has no business
+	# recommending otherwise — this reports a fact and leaves the decision alone.
+	if points.is_empty():
+		var step: float = TAU / float(ALONE_DASHES * 2)
+		for i: int in range(ALONE_DASHES):
+			var from: float = float(i) * step * 2.0
+			draw_arc(Vector2.ZERO, ALONE_RADIUS, from, from + step, 4,
+				MARK_COLOR, RING_WIDTH, true)
+		return
 	for at: Vector2 in points:
 		draw_arc(to_local(at), RING_RADIUS, 0.0, TAU, 20, MARK_COLOR, RING_WIDTH, true)

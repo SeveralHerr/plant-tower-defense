@@ -1219,6 +1219,20 @@ func test_a_selected_plant_marks_only_the_road_nothing_else_covers() -> String:
 			err = _T.assert_false(marks.visible, "deselecting hides them")
 		if err == "":
 			err = _T.assert_eq(marks.points.size(), 0, "and empties them")
+	# The empty state draws a ring on the plant instead of drawing nothing, so
+	# "no cells depend on this" never looks like "the cue is broken" — the
+	# confusion cycle 55 spent ten minutes on with the hover dots. That only works
+	# if the ring is legible as a separate statement rather than as a fatter
+	# bracket, which is a geometric claim and therefore checkable.
+	if err == "":
+		err = _T.assert_gt(SoleCoverMarks.ALONE_RADIUS, SelectionMarker.HALF,
+			("the holds-nothing ring (%.0f) sits outside the selection brackets (%.0f), "
+				+ "or the two read as one mark")
+				% [SoleCoverMarks.ALONE_RADIUS, SelectionMarker.HALF])
+	if err == "":
+		err = _T.assert_gt(Game.engagement_reach(PlantCatalog.CORN),
+			SoleCoverMarks.ALONE_RADIUS,
+			"and far inside the plant's own range ring, so it is not a second reach")
 	_T.free_ui(game)
 	return err
 
