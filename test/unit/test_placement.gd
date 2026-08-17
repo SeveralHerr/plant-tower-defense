@@ -2520,16 +2520,26 @@ func test_the_budgets_verb_reports_every_declared_coupling() -> String:
 
 	# Each of the four commented constants, plus the split of WORST_CASE_TEXT
 	# into "does a readout fit its slot" and "do the slots fit the row" -- those
-	# are two different budgets and widening one spends the other.
+	# are two different budgets and widening one spends the other -- plus the
+	# message row, which is measured against the catalogue rather than a written
+	# worst case (plant-tower-defense-m1el).
+	#
+	# **This list is hand-written on purpose and adding a budget is SUPPOSED to break
+	# it.** Deriving it from the same table the verb reads would make the assertion
+	# tautological: the verb would be reporting what the verb reports. What it is for
+	# is the other direction -- a budget declared and never wired into `budget_entries`
+	# is invisible everywhere else, and a budget wired in that nobody meant to add
+	# shows up here as a number that moved.
 	var wanted: Array[String] = [
 		"husk_click",
 		"notebook_subhead",
 		"hud_readouts",
+		"hud_message_row",
 		"hud_stats_row",
 		"pest_road_ceiling",
 		"road_shape",
 	]
-	err = _T.assert_eq(wanted.size(), 6, "there are six budgets to look for")
+	err = _T.assert_eq(wanted.size(), 7, "there are seven budgets to look for")
 	if err == "":
 		err = _T.assert_eq(int(data["count"]), wanted.size(),
 			"the verb reports exactly that many -- got %d" % int(data["count"]))

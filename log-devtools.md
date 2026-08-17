@@ -4067,3 +4067,33 @@ cited in code, and the citation is a mitigation this project has watched fail.
   (md5 unchanged), and the suite's own before/after count is what made a pure refactor
   safe to do at all — `Total: 547` on both sides is a stronger statement than any
   assertion I could have written about the refactor specifically.
+
+## 2026-08-16 — cycle 41: the message row joins the budget system
+
+- Value: **warranted**, narrowly and for a reason worth naming — the finding is a
+  measurement rather than a defect.
+  - Expected: the budget is a claim about a running HUD (`Label.size.x` only exists
+    once the bar has been laid out), so `cmd budgets` reporting it at all is the thing
+    headless cannot settle.
+  - Got: `hud_message_row: widest catalogue message 534 of 876 px max -- 342 px left`,
+    `state: ok`, naming the exact string that would clip first — the Bomb Dandelion
+    uproot line. And `"count": 7`, which the hand-written tripwire in
+    `test_the_budgets_verb_reports_every_declared_coupling` had already caught at
+    `Expected 6 but got 7`.
+  - Found: **342px of slack, where I had assumed it was tight.** Two cycles of the top
+    bar being full had me expecting the same here; a 55-character plant name did not
+    clip, and it took roughly 85. The number is the finding — "roomy" is exactly what
+    everyone assumed about the wave slot until it had 10px left, and the difference
+    between the two is now written down rather than re-guessed.
+  - Cheaper: the headless test carries the assertion and was planted and watched fail
+    at `998px of 876`. The launch proves the budget is WIRED, which is a different
+    claim: a budget declared and never reported is invisible everywhere, and that is
+    precisely what the count tripwire exists to catch.
+
+- Gap: **no gaps this turn.** One note on a test that behaved well: the budgets-count
+  assertion is a hand-written list of seven names and adding a budget is SUPPOSED to
+  break it. I nearly "fixed" that by deriving the list from the same table the verb
+  reads — which would have made it tautological, the verb reporting what the verb
+  reports. It is a tripwire in the other direction: a budget declared and never wired
+  in is invisible, and one wired in that nobody meant to add shows up here as a number
+  that moved.

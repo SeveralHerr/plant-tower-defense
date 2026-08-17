@@ -10629,3 +10629,61 @@ func test_the_last_wave_says_that_it_is_the_last() -> String:
 				"and endless never announces a last wave, because it does not have one")
 		_T.free_ui(game)
 	return err
+
+
+## No message clips, for any plant in the catalogue (plant-tower-defense-m1el).
+##
+## `MessageLabel` has `clip_text` set, so a line too long for it is trimmed to an
+## ellipsis and nothing errors — the same silent failure the top bar's four readouts
+## have budgets for. The row had none.
+##
+## The four messages checked here are the ones whose length is DATA rather than prose:
+## they interpolate a plant's display name or a corn level's name, so they grow when
+## the CONTENT grows. Every other line the row shows is a fixed literal, as long as it
+## will ever be and visible to anyone reading it.
+##
+## The catalogue is SWEPT rather than sampled, and the level table with it — so this
+## is checked against every name the game can actually produce, not against a worst
+## case someone typed out and hoped was still the worst. A plant added with a long
+## name fails here rather than shipping a trimmed sentence.
+func test_no_message_clips_for_any_plant_in_the_catalogue() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+	var err: String = _T.assert_true(label != null, "the message row exists to measure")
+	var budget: float = 0.0
+	if err == "":
+		budget = label.size.x
+		err = _T.assert_gt(budget, 0.0, "and it has a width")
+
+	var checked: int = 0
+	var worst: String = ""
+	var worst_px: float = 0.0
+	if err == "":
+		for id: StringName in PlantCatalog.PLANTS:
+			var display: String = PlantCatalog.display_name(id)
+			for line: String in [Hud.eaten_message(display),
+					Hud.uproot_armed_message(display), Hud.packet_message(display)]:
+				checked += 1
+				var drawn: float = GardenTheme.measure(line, Hud.MESSAGE_FONT_SIZE)
+				if drawn > worst_px:
+					worst_px = drawn
+					worst = line
+		for level: Dictionary in CornCobbler.LEVELS:
+			var line: String = Hud.upgrade_message(String(level["name"]))
+			checked += 1
+			var drawn: float = GardenTheme.measure(line, Hud.MESSAGE_FONT_SIZE)
+			if drawn > worst_px:
+				worst_px = drawn
+				worst = line
+		err = _T.assert_gt(checked, 10,
+			"the sweep visited the catalogue and the level table -- a near-empty "
+				+ "sweep here would pass without measuring anything")
+	if err == "":
+		err = _T.assert_true(worst_px <= budget,
+			"the widest message any plant can produce fits the row: %.0fpx of %.0f -- "
+				% [worst_px, budget]
+				+ "\"%s\". Shorten the message, shorten the name, or widen the row."
+					% worst)
+
+	_T.free_ui(game)
+	return err

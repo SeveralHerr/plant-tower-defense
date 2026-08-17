@@ -1568,6 +1568,35 @@ static func prep_depth_note(last_wave: float, run: float) -> String:
 	return "Pests got %d%% down the road, the run's usual depth." % now
 
 
+## The four messages whose length is DATA rather than prose
+## (plant-tower-defense-m1el).
+##
+## Every other line this row shows is a fixed literal: it is as long as it will ever
+## be, and anyone can see it. These four interpolate a plant's display name or a corn
+## level's name, so they grow when the CONTENT grows -- a plant added with a long name
+## silently clips a message nobody re-measured, in a Label with `clip_text` set.
+##
+## They live here rather than at their call sites in `game.gd` for one reason: a test
+## can then sweep the whole catalogue through them and measure the result.
+## `test_no_message_clips_for_any_plant_in_the_catalogue` does exactly that, so the
+## budget is checked against every name the game can actually produce rather than
+## against a worst case someone typed out and hoped was still the worst.
+static func eaten_message(plant_name: String) -> String:
+	return "A hungry pest ate your %s!" % plant_name
+
+
+static func uproot_armed_message(plant_name: String) -> String:
+	return "Click Uproot again to dig up your %s — it will not grow back." % plant_name
+
+
+static func packet_message(plant_name: String) -> String:
+	return "The packet held a %s!" % plant_name
+
+
+static func upgrade_message(level_name: String) -> String:
+	return "Corn Cobbler is now firing a %s." % level_name
+
+
 ## The line the prep window opens with. `note` is prep_depth_note()'s output or
 ## Game's countdown fallback; an empty one leaves the sentence alone rather than
 ## trailing a space nobody can see and every width measurement counts.

@@ -1165,7 +1165,7 @@ func _on_plant_destroyed(plant: Plant) -> void:
 	if selected_placed == plant:
 		_select(null)
 	Sfx.play(Sfx.PLANT_DESTROYED)
-	hud.show_message("A hungry pest ate your %s!" % PlantCatalog.display_name(plant.kind), 4.0)
+	hud.show_message(Hud.eaten_message(PlantCatalog.display_name(plant.kind)), 4.0)
 	plant.play_exit_and_free()
 	_refresh()
 
@@ -1205,7 +1205,7 @@ func upgrade_selected() -> String:
 		return "not enough seeds"
 	bank.add_seeds(-price)
 	corn.upgrade()
-	hud.show_message("Corn Cobbler is now firing a %s." % corn.level_name())
+	hud.show_message(Hud.upgrade_message(corn.level_name()))
 	_refresh()
 	return ""
 
@@ -1227,9 +1227,8 @@ func request_uproot() -> String:
 	Sfx.play(Sfx.UPROOT_ARMED)
 	# IMPORTANT: this is an instruction with a live 4-second trigger behind it, and
 	# an ambient husk pickup used to wipe it mid-read.
-	hud.show_message("Click Uproot again to dig up your %s — it will not grow back."
-		% PlantCatalog.display_name(selected_placed.kind), UPROOT_CONFIRM_SECONDS,
-		Hud.MESSAGE_IMPORTANT)
+	hud.show_message(Hud.uproot_armed_message(PlantCatalog.display_name(selected_placed.kind)),
+		UPROOT_CONFIRM_SECONDS, Hud.MESSAGE_IMPORTANT)
 	_refresh()
 	return "confirm needed"
 
@@ -1351,7 +1350,7 @@ func _reveal_plant_unlock(id: StringName) -> void:
 	# IMPORTANT, matching every step of the flourish above it: an ambient
 	# message re-surfacing between those steps (see _open_packet) would
 	# otherwise queue the reveal itself behind it instead of showing it.
-	hud.show_message("The packet held a %s!" % PlantCatalog.display_name(id), 5.0,
+	hud.show_message(Hud.packet_message(PlantCatalog.display_name(id)), 5.0,
 		Hud.MESSAGE_IMPORTANT)
 	_refresh()
 
@@ -1733,6 +1732,11 @@ const BUDGET_FLOOR: Dictionary = {
 	# the pattern budget_regressions()'s own warning names: accept a spend (or
 	# here, a gain) by moving the floor to what the build now actually has.
 	"hud_readouts": 10.0,
+	# The message row, measured against every plant name the catalogue can produce
+	# (plant-tower-defense-m1el). 342px of slack at the time it was declared, which is
+	# roomy -- and that is the number worth having written down, because "roomy" is
+	# what everyone assumed about the wave slot until it had 10px left.
+	"hud_message_row": 40.0,
 	"hud_stats_row": 19.0,
 	"pest_road_ceiling": 0.0,
 }
@@ -1795,6 +1799,7 @@ func budget_entries(sweep: int = BUDGET_WAVE_SWEEP) -> Array[Dictionary]:
 	var entries: Array[Dictionary] = [
 		_budget_husk_click(),
 		_budget_hud_readouts(),
+		_budget_hud_message_row(),
 		_budget_hud_stats_row(),
 		_budget_pest_road_ceiling(maxi(1, sweep)),
 	]
@@ -1967,6 +1972,56 @@ func _budget_husk_click() -> Dictionary:
 ## Measured in the real theme font off the live Labels, which is what makes this
 ## a readout rather than a copy of the comment in hud.gd -- a clipped Label
 ## renders "Seeds  4..." and nothing errors.
+## The status row against the widest message the CONTENT can produce.
+##
+## Unlike `hud_readouts`, whose worst cases are written down in
+## `Hud.WORST_CASE_TEXT`, this one is derived: it sweeps `PlantCatalog.PLANTS` and
+## `CornCobbler.LEVELS` through the four message builders whose length is data rather
+## than prose. A plant added with a long name moves this number without anyone
+## re-typing a worst case, which is the whole reason those builders are static
+## functions on Hud rather than format strings at their call sites.
+func _budget_hud_message_row() -> Dictionary:
+	var label: Label = null
+	if hud != null and is_instance_valid(hud):
+		label = hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+	if label == null:
+		return uncomputed_budget(BUDGET_UNMEASURED, "hud_message_row",
+			"Hud.eaten_message() and siblings", "res://game/hud.gd",
+			"the widest message the catalogue can produce",
+			"no Root/TopBar/MessageLabel in the running HUD",
+			"a message renders trimmed to an ellipsis and nothing errors",
+			no_budget_observations())
+	var worst: String = ""
+	var worst_px: float = 0.0
+	for id: StringName in PlantCatalog.PLANTS:
+		var display: String = PlantCatalog.display_name(id)
+		for line: String in [Hud.eaten_message(display),
+				Hud.uproot_armed_message(display), Hud.packet_message(display)]:
+			var drawn: float = GardenTheme.measure(line, Hud.MESSAGE_FONT_SIZE)
+			if drawn > worst_px:
+				worst_px = drawn
+				worst = line
+	for level: Dictionary in CornCobbler.LEVELS:
+		var line: String = Hud.upgrade_message(String(level["name"]))
+		var drawn: float = GardenTheme.measure(line, Hud.MESSAGE_FONT_SIZE)
+		if drawn > worst_px:
+			worst_px = drawn
+			worst = line
+	if worst_px <= 0.0:
+		return uncomputed_budget(BUDGET_UNMEASURED, "hud_message_row",
+			"Hud.eaten_message() and siblings", "res://game/hud.gd",
+			"the widest message the catalogue can produce",
+			"the catalogue sweep measured nothing",
+			"a message renders trimmed to an ellipsis and nothing errors",
+			no_budget_observations())
+	return computed_budget("hud_message_row", "Hud.eaten_message() and siblings",
+		"res://game/hud.gd", "widest catalogue message", worst_px, label.size.x, "px",
+		"GardenTheme.measure() over every plant name and corn level",
+		("a message renders trimmed to an ellipsis and nothing errors -- shorten the "
+			+ "message, shorten the name, or widen the row (\"%s\")") % worst,
+		no_budget_observations())
+
+
 func _budget_hud_readouts() -> Dictionary:
 	var stats: HBoxContainer = _stats_row()
 	if stats == null:
