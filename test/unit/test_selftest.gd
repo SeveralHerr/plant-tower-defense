@@ -2411,16 +2411,33 @@ func test_collecting_a_real_husk_through_game_reaches_fly_seed_glyph_without_err
 ## Campaign must be bit-for-bit unaffected. Both scales key off `wave - WAVES.size()`
 ## with no endless flag involved, so this is the check that the shared shape
 ## really does leave the fixed table alone.
+##
+## HALF OF THAT IS HISTORY (plant-tower-defense-iqp8). The campaign has a second act
+## now and health is what carries it, so the claim this test can still make about
+## health is the narrower and more interesting one: the FIRST act is untouched. That
+## is what stops the ramp landing on wave 9 next to a +29.1% count step, which is the
+## two-increases-on-one-wave problem cycle 101 spent its budget removing.
+##
+## Speed IS still flat across the whole table, and that asymmetry is the design: speed
+## feeds `crossing_seconds`, hence `_paced_gap` and `peak_simultaneous_pests`, so a
+## campaign speed ramp would silently re-price every road budget in wave_director.gd.
+## Health feeds damage and nothing else. That is why health was the lever.
 func test_pest_scaling_is_exactly_neutral_through_the_fixed_table() -> String:
+	var swept: int = 0
 	for w: int in range(1, WaveDirector.WAVES.size() + 1):
-		var err: String = _T.assert_float_eq(WaveDirector.health_scale_for(w), 1.0, 0.0001,
-			"wave %d health is unscaled" % w)
-		if err == "":
-			err = _T.assert_float_eq(WaveDirector.speed_scale_for(w), 1.0, 0.0001,
-				"wave %d speed is unscaled" % w)
+		var err: String = _T.assert_float_eq(WaveDirector.speed_scale_for(w), 1.0, 0.0001,
+			"wave %d speed is unscaled" % w)
+		if err == "" and w <= WaveDirector.SECOND_ACT_START_WAVE:
+			err = _T.assert_float_eq(WaveDirector.health_scale_for(w), 1.0, 0.0001,
+				("wave %d is in the first act and its health is unscaled -- the second"
+					+ " act anchors at wave %d and climbs from wave %d")
+					% [w, WaveDirector.SECOND_ACT_START_WAVE,
+						WaveDirector.SECOND_ACT_START_WAVE + 1])
 		if err != "":
 			return err
-	return ""
+		swept += 1
+	# The old `return ""` let a zero-wave table pass in silence.
+	return _T.assert_gt(swept, 20, "the whole fixed table was swept (%d waves)" % swept)
 
 
 func test_pest_scaling_climbs_the_further_endless_mode_runs() -> String:
@@ -3115,8 +3132,13 @@ func test_the_threat_level_stays_a_small_readable_number() -> String:
 	var table: int = WaveDirector.WAVES.size()
 	var err: String = _T.assert_eq(WaveDirector.threat_level(1), 1, "wave 1 is level 1")
 	if err == "":
-		err = _T.assert_true(WaveDirector.threat_level(table) <= 10,
-			"the whole campaign fits in single digits (wave %d is level %d)"
+		err = _T.assert_true(WaveDirector.threat_level(table) <= 12,
+			("the whole campaign stays a number a player can hold (wave %d is level %d)."
+				+ " It read exactly 10 before plant-tower-defense-iqp8 gave the back half"
+				+ " a second act, and 11 after -- so the old bound of 10 was sitting"
+				+ " precisely on the finale and ANY campaign escalation failed it. 11 is"
+				+ " one below Hud.THREAT_TINT_MAX, so the finale tints at 0.9 of the way"
+				+ " to THREAT_HOT rather than 0.8")
 				% [table, WaveDirector.threat_level(table)])
 	if err == "":
 		err = _T.assert_true(WaveDirector.threat_level(table + 100) <= 30,

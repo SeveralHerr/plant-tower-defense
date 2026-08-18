@@ -7697,9 +7697,17 @@ func test_the_back_half_no_longer_plateaus() -> String:
 				+ " thing holding the floor up")
 				% [flat_without_the_ramp, counted, floor_step * 100.0])
 	if err == "":
-		# The one step still sitting near the line, recorded by name. A future row
-		# edit that pushes a second wave down here has to say so out loud.
-		err = _T.assert_margin(steps, floor_step, 0.02, {"wave 20": 0.062366},
+		# The steps still sitting near the line, recorded by name. A future row edit
+		# that pushes a third wave down here has to say so out loud.
+		#
+		# TWO of them, and both numbers are from a RUN. The lane that wrote this
+		# priced the ramp offline at CAMPAIGN_HEALTH_STEP = 0.04 and recorded
+		# {"wave 20": 0.062366} from its own Python model. The step landed at 0.03
+		# instead -- 0.04 compounds into endless and took a real garden six waves past
+		# the seam from fighting half its escapees to fighting 11 of 38 -- so wave 20
+		# is 0.0522 now, and wave 16 came down to the line with it.
+		err = _T.assert_margin(steps, floor_step, 0.02,
+			{"wave 16": 0.066822, "wave 20": 0.052237},
 			("wave 20 is the second act's flattest join and the only step within 2 points"
 				+ " of the floor -- it is the +2.2%% join the bead singled out, lifted"
 				+ " to +6.2%% by the ramp and no further"))

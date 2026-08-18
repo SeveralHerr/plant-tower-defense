@@ -150,7 +150,7 @@ const ENDLESS_SPEED_MAX: float = 1.6
 ## Whether wave 18 is now hard rather than merely long is unknown until someone
 ## plays it — see the bead.
 const SECOND_ACT_START_WAVE: int = 9
-const CAMPAIGN_HEALTH_STEP: float = 0.04
+const CAMPAIGN_HEALTH_STEP: float = 0.03
 
 ## --- The road is a fixed-size pipe -----------------------------------------
 ##

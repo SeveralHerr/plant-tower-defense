@@ -2909,9 +2909,18 @@ func test_the_campaign_finale_fits_under_the_endless_seam() -> String:
 	if err != "":
 		return err
 
-	# The two multipliers _raw_threat applies. The campaign's is flat; the first
-	# endless wave has one wave of every endless scale on it.
-	var campaign_mult: float = 1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT
+	# The two multipliers _raw_threat applies. The first endless wave has one wave of
+	# every endless scale on it.
+	#
+	# The finale's own HEALTH scale belongs in the campaign side since
+	# plant-tower-defense-iqp8 -- the campaign no longer sits at 1.0 on that axis.
+	# Leaving it out does not fail this test, it inflates `bound` from 436.7 to 725
+	# and the assertion below goes on passing while measuring nothing, which is the
+	# worse outcome. See health_scale_for's header: the endless ramp is a MULTIPLE of
+	# the campaign's last value precisely so the two cancel here and the seam bound
+	# stays put at any step size.
+	var campaign_mult: float = (1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT) \
+		* WaveDirector.health_scale_for(finale)
 	var seam_mutations: float = 1.0 + WaveDirector.mutation_chance_for(first_endless) \
 		* WaveDirector.MUTATION_THREAT_WEIGHT
 	var seam_scales: float = WaveDirector.health_scale_for(first_endless) \
