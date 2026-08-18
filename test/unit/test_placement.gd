@@ -5668,3 +5668,243 @@ func test_the_message_mark_is_drawn_outside_the_row_it_marks() -> String:
 
 # END an important message looks important
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-fjqp: the uproot window, drawn
+#
+# Appended as a delimited block on purpose: sibling lanes append here too, and a
+# named section is what makes a conflict resolvable by keeping both rather than by
+# picking one. Nothing above this line was touched.
+#
+# The cue is a partial arc at a fixed radius sweeping closed — OVERLAY_GRAMMAR.md's
+# existing row for TIME REMAINING, third instance after a husk's rot timer and a
+# Chomp's chew. It is drawn by SelectionMarker._draw_uproot_window() and fed by
+# Game._push_uproot_clock(). Headless never runs a _draw() at all, so the sweep lives
+# in the pure static SelectionMarker.uproot_arc_end() and everything below asserts
+# either that static or the two numbers pushed into the marker that feed it.
+
+
+func test_the_uproot_arc_closes_as_the_confirm_window_runs_out() -> String:
+	## ACCEPTANCE, second half: the drawn fraction tracks `_uproot_left` rather than
+	## merely existing. Both halves are here — the pure sweep arithmetic with no board
+	## at all, then a real Game driven through a real arming so the numbers the arc is
+	## drawn FROM are the numbers the timer that fires counts DOWN.
+	##
+	## The runtime half is what a "draw a constant full circle whenever armed" would
+	## survive, and the pure half is what "return the right angle from a function
+	## nothing pushes into" would survive. Neither alone is the acceptance.
+	var full: float = SelectionMarker.uproot_arc_end(
+		Game.UPROOT_CONFIRM_SECONDS, Game.UPROOT_CONFIRM_SECONDS)
+	var err: String = _T.assert_float_eq(full, SelectionMarker.UPROOT_RING_START + TAU,
+		0.0001, "a window with all four seconds left is a whole circle")
+	if err == "":
+		err = _T.assert_float_eq(
+			SelectionMarker.uproot_arc_end(
+				Game.UPROOT_CONFIRM_SECONDS * 0.5, Game.UPROOT_CONFIRM_SECONDS),
+			SelectionMarker.UPROOT_RING_START + TAU * 0.5, 0.0001,
+			"half the window left is half a circle, which is the whole claim")
+	if err == "":
+		err = _T.assert_float_eq(
+			SelectionMarker.uproot_arc_end(0.0, Game.UPROOT_CONFIRM_SECONDS),
+			SelectionMarker.UPROOT_RING_START, 0.0001,
+			"an expired window is an arc of no length, not a ring")
+	if err == "":
+		# The last tick of a real window overshoots zero by whatever `delta` was, and a
+		# window of zero is what an unarmed marker holds — a division rather than a
+		# clamp turns the first into a backwards sweep and the second into INF.
+		err = _T.assert_float_eq(SelectionMarker.uproot_arc_end(-0.3, 4.0),
+			SelectionMarker.UPROOT_RING_START, 0.0001, "and so is an overshot one")
+	if err == "":
+		err = _T.assert_float_eq(SelectionMarker.uproot_arc_end(1.0, 0.0),
+			SelectionMarker.UPROOT_RING_START, 0.0001,
+			"and so is a window that was never opened, rather than a division by zero")
+	if err == "":
+		err = _T.assert_float_eq(SelectionMarker.uproot_arc_end(99.0, 4.0),
+			SelectionMarker.UPROOT_RING_START + TAU, 0.0001,
+			"and a clock somehow over its own window is one circle, not several")
+	if err != "":
+		return err
+
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "", "planted")
+	var marker: SelectionMarker = null
+	if err == "":
+		var plant: Plant = game.selected_placed
+		err = _T.assert_true(plant != null, "and the bed is selected")
+		if err == "":
+			marker = plant.get_node_or_null("SelectionMarker") as SelectionMarker
+			err = _T.assert_true(marker != null, "and carries a selection marker")
+	if err == "":
+		# Nothing armed draws no clock, which is the state every plant on the board is
+		# in on every frame but four seconds of the whole run.
+		err = _T.assert_float_eq(marker.uproot_window, 0.0, 0.0001,
+			"an unarmed bed holds no window")
+	if err == "":
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "one click arms it")
+	if err == "":
+		# On the ARMING frame, not on the first tick after it: a clock whose first
+		# drawn frame is already short reads as time the player has somehow spent.
+		err = _T.assert_float_eq(marker.uproot_left, Game.UPROOT_CONFIRM_SECONDS,
+			0.0001, "and the arc opens full on the arming frame itself")
+	if err == "":
+		err = _T.assert_float_eq(marker.uproot_window, Game.UPROOT_CONFIRM_SECONDS,
+			0.0001, "against the window the timer that fires actually uses")
+	# The tracking claim: drive the same tick the real _process drives and require the
+	# marker to have MOVED to the game's own remaining time. A cue pushed once at
+	# arming and never again passes every assertion above and fails this one.
+	var early: float = 0.0
+	if err == "":
+		early = SelectionMarker.uproot_arc_end(marker.uproot_left, marker.uproot_window)
+		game._tick_uproot_confirm(1.0)
+		err = _T.assert_float_eq(marker.uproot_left, Game.UPROOT_CONFIRM_SECONDS - 1.0,
+			0.0001, "a second of the window spent leaves a second less on the arc")
+	if err == "":
+		err = _T.assert_float_eq(marker.uproot_left, game._uproot_left, 0.0001,
+			("and it is the SAME number the timer counts, not a second clock: "
+				+ "marker %.3f vs game %.3f") % [marker.uproot_left, game._uproot_left])
+	if err == "":
+		var late: float = SelectionMarker.uproot_arc_end(
+			marker.uproot_left, marker.uproot_window)
+		err = _T.assert_gt(early, late,
+			("so the arc closes rather than merely existing: %.3f rad of sweep became "
+				+ "%.3f") % [early - SelectionMarker.UPROOT_RING_START,
+					late - SelectionMarker.UPROOT_RING_START])
+	# Letting it lapse is the exit a player takes by doing nothing, and it is the one
+	# that must not leave a red arc promising a click that would now do something else.
+	if err == "":
+		game._tick_uproot_confirm(Game.UPROOT_CONFIRM_SECONDS)
+		err = _T.assert_false(game.uproot_armed(), "the window closes")
+	if err == "":
+		err = _T.assert_float_eq(marker.uproot_window, 0.0, 0.0001,
+			"and takes the arc with it")
+	if err == "":
+		err = _T.assert_float_eq(marker.uproot_left, 0.0, 0.0001, "in both numbers")
+	_T.free_ui(game)
+	return err
+
+
+func test_the_uproot_arc_is_a_third_channel_and_not_a_second_red_mark() -> String:
+	## Arming this bed ALREADY changed two things before this cue existed: the brackets
+	## go WARNING_COLOR at WARNING_LINE_WIDTH, and SoleCoverMarks escalates with them.
+	## Both are binary. The defect the bead names is not "nothing marks an armed plant"
+	## — it is that nothing anywhere counts the four seconds down. So the test that
+	## matters is that the new mark carries TIME while the old ones stay exactly as
+	## binary as they were: three cues saying the same one thing would be the failure.
+	##
+	## The geometry bounds are here too, because both of them are what stops this arc
+	## being read as one of the cues it sits on top of, and neither survives being left
+	## as a sentence in a header.
+	var err: String = _T.assert_gt(SelectionMarker.HALF,
+		SelectionMarker.UPROOT_RING_RADIUS,
+		("the clock (%.0f) draws strictly inside the brackets (%.0f) -- the arms lie on "
+			+ "|x| = HALF and |y| = HALF, so a smaller circle crosses none of them")
+			% [SelectionMarker.UPROOT_RING_RADIUS, SelectionMarker.HALF])
+	if err == "":
+		# The load-bearing one. A Chomp Flower can be armed for uproot while its mouth
+		# is full, and its chew ring is the OTHER instance of this same grammar row at
+		# this same scale. Same radius would leave hue as the only thing telling two
+		# closing arcs apart, which is the one rule OVERLAY_GRAMMAR.md gives teeth.
+		err = _T.assert_gt(ChompFlower.CHEW_RING_RADIUS,
+			SelectionMarker.UPROOT_RING_RADIUS,
+			("and strictly inside the Chomp's chew ring (%.0f vs %.0f), so a Chomp armed "
+				+ "mid-meal shows two concentric clocks rather than two reds")
+				% [SelectionMarker.UPROOT_RING_RADIUS, ChompFlower.CHEW_RING_RADIUS])
+	if err == "":
+		# And clear of the plant's own cell, so a clock never draws into the square
+		# next door where it would read as a mark on somebody else's bed.
+		err = _T.assert_gt(float(Board.CELL) * 0.5,
+			SelectionMarker.UPROOT_RING_RADIUS + SelectionMarker.UPROOT_RING_WIDTH * 0.5,
+			"and inside the plant's own cell")
+	if err != "":
+		return err
+
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "", "planted")
+	var marker: SelectionMarker = null
+	if err == "":
+		marker = game.selected_placed.get_node_or_null("SelectionMarker") as SelectionMarker
+		err = _T.assert_true(marker != null, "the bed carries a marker")
+	if err == "":
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "the uproot arms")
+	# Halfway through the window: the two binary channels are still saying exactly what
+	# they said at zero seconds, which is the point — they cannot say this.
+	if err == "":
+		game._tick_uproot_confirm(Game.UPROOT_CONFIRM_SECONDS * 0.5)
+		err = _T.assert_eq(marker.marker_color, SelectionMarker.WARNING_COLOR,
+			"half a window in, the brackets are still just red")
+	if err == "":
+		err = _T.assert_float_eq(marker.line_width, SelectionMarker.WARNING_LINE_WIDTH,
+			0.001, "and still just heavy -- neither channel has moved, and neither can")
+	if err == "":
+		var sweep: float = SelectionMarker.uproot_arc_end(
+			marker.uproot_left, marker.uproot_window) - SelectionMarker.UPROOT_RING_START
+		err = _T.assert_float_eq(sweep, TAU * 0.5, 0.02,
+			("while the arc has: %.2f rad of sweep left, which is the half-window the "
+				+ "colour and the weight structurally cannot carry") % sweep)
+	# Directly from here on, the way SoleCoverMarks' idempotence is pinned above: the
+	# route through Game only ever calls these in one order, and the promises the
+	# marker's own headers make are about being called any way at all.
+	if err == "":
+		marker.set_uproot_window(-0.4, Game.UPROOT_CONFIRM_SECONDS)
+		err = _T.assert_float_eq(marker.uproot_left, 0.0, 0.0001,
+			("a window overshot past zero floors there rather than sweeping backwards "
+				+ "-- the last tick of a real window overshoots by whatever delta was"))
+	if err == "":
+		marker.set_uproot_window(Game.UPROOT_CONFIRM_SECONDS, Game.UPROOT_CONFIRM_SECONDS)
+		marker.set_warning(false)
+		err = _T.assert_float_eq(marker.uproot_window, 0.0, 0.0001,
+			("and disarming closes the arc from inside set_warning, which is the ONE "
+				+ "call every exit from the armed state already runs through"))
+	if err == "":
+		err = _T.assert_eq(marker.marker_color, SelectionMarker.MARKER_COLOR,
+			"alongside the two channels it was already putting back")
+	_T.free_ui(game)
+	return err
+
+
+func test_the_uproot_arc_is_actually_painted_and_the_marker_is_its_only_clock() -> String:
+	## The hole a pure static leaves. `uproot_arc_end` can be exactly right and called
+	## by nothing, and every assertion above still passes: headless has no renderer, so
+	## no test in this suite can watch a `_draw()` run. This is the source check that
+	## says the paint call is wired to the arithmetic the rest of the section pins.
+	##
+	## Structural, so it survives the numbers being retuned: it does not care what the
+	## radius is, only that the sweep the arc is drawn with is the function and not a
+	## literal, and that `_draw` reaches the painter at all.
+	var src: String = FileAccess.get_file_as_string("res://game/selection_marker.gd")
+	var err: String = _T.assert_gt(src.length(), 0,
+		"selection_marker.gd is readable -- every check below is vacuous otherwise")
+	if err != "":
+		return err
+	var painter: int = src.find("func _draw_uproot_window(")
+	err = _T.assert_gt(painter, 0, "there is a painter for the confirm arc")
+	if err == "":
+		err = _T.assert_true(src.contains("_draw_uproot_window()"),
+			"and `_draw()` calls it, rather than it being a function nothing paints")
+	if err == "":
+		var body: String = src.substr(painter)
+		err = _T.assert_true(body.contains("uproot_arc_end("),
+			("the painter's sweep comes from uproot_arc_end() -- a literal angle here "
+				+ "would leave the tested static describing an arc nobody draws"))
+		if err == "":
+			err = _T.assert_true(body.contains("draw_arc("),
+				"through a draw_arc, which is the grammar row this cue claims")
+	if err == "":
+		# The other half of "one clock": SelectionMarker must not count. A `_process`
+		# on this node subtracting its own delta would drift against Game's timer, and
+		# the drift would be invisible until the arc and the button disagreed.
+		err = _T.assert_false(src.contains("func _process("),
+			("SelectionMarker runs no clock of its own -- Game._push_uproot_clock feeds "
+				+ "it, and a second countdown here is one that can disagree with the "
+				+ "timer that actually decides whether the next click destroys a bed"))
+	if err == "":
+		var game_src: String = FileAccess.get_file_as_string("res://game/game.gd")
+		err = _T.assert_true(game_src.contains("func _push_uproot_clock("),
+			"and Game is the thing that feeds it")
+	return err
+
+# END plant-tower-defense-fjqp: the uproot window, drawn
+# =============================================================================
