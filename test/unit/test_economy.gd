@@ -3826,3 +3826,313 @@ func test_pressing_a_dial_row_turns_the_volume_down_and_writes_it_down() -> Stri
 	_T.free_ui(screen)
 	_restore_run_config()
 	return err
+
+
+# -- BEGIN plant-tower-defense-b7v5 / plant-tower-defense-lp97 ----------------
+#
+# plant-tower-defense-lp97 ("Tell the player what the run cost") ships NO CODE and
+# NO TEST, because its premise is false and the check is worth more than the row
+# would have been. The bead says "Not one row is about seeds" and
+# "SeedBank.seeds_earned_total ... reaches no screen". Both were true when it was
+# filed and neither is true now: commit 738f787 gave the card a fourth row,
+# `["Seeds spent", spend_text()]`, and `_score_line()` has printed
+# "%d seeds grown — your best %s is %d" straight off `seeds_earned_total` since the
+# card existed. The bead's own ACCEPTANCE — "the card says something about the run's
+# economy" — is met twice over, so the row it asks for would be a third statement of
+# a fact the screen already makes. See the lane report; the bead wants closing, not
+# implementing.
+#
+# plant-tower-defense-b7v5 is the rest of this block. The mechanic — a cob fires at
+# the pest furthest along, so covered ground fights one pest at a time — has been
+# measured three times (game.gd's coverage block, test_combat's
+# test_the_coverage_map_keeps_its_promise_to_a_pest_that_never_leaves_covered_ground)
+# and never once stated to the player. RunSummary.reach_note_text() states it. The
+# card had no room for a row and no room in a fold, so it is a sentence on the strip
+# under the card, one line below the map legend; the doc comment on the method
+# carries that argument in full.
+#
+# The last test here is the WIRING gate and it is expected to fail until
+# `Game.summary_stats` exports `road_aimed` and `road_cells`. That edit is in the
+# lane report; this lane does not own game.gd. A note the game never populates is a
+# note that never appears, so the gate is deliberately a failing test rather than a
+# paragraph nobody reads.
+
+
+func test_the_reach_note_says_covered_is_not_fought_and_is_silent_when_it_is_not_true() -> String:
+	## Every branch of reach_note_text() off a plain Dictionary, no Control built —
+	## the same shape summary_rows() and map_legend_text() are asserted in, and the
+	## reason the method is public rather than inlined into _build_reach_note().
+	##
+	## The three silences matter more than the sentence: each one is a real run, and
+	## each would otherwise print a true-looking line teaching the wrong lesson.
+	var unwired := RunSummary.build({
+		"escapes_recorded": 4, "escapes_untouched": 4,
+	})
+	var err: String = _T.assert_eq(unwired.reach_note_text(), "",
+		"a card that was never handed the coverage says nothing, rather than inventing a 0 of 0")
+	unwired.free()
+
+	if err == "":
+		var barren := RunSummary.build({
+			"road_cells": 32, "road_aimed": 0,
+			"escapes_recorded": 4, "escapes_untouched": 4,
+		})
+		err = _T.assert_eq(barren.reach_note_text(), "",
+			("a garden that could touch no road at all has no covered ground for"
+				+ " 'covered' to contrast with, so the targeting rule is not its lesson"))
+		barren.free()
+
+	if err == "":
+		var unwatched := RunSummary.build({
+			"road_cells": 32, "road_aimed": 30,
+			"escapes_recorded": 0, "escapes_untouched": 0,
+		})
+		err = _T.assert_eq(unwatched.reach_note_text(), "",
+			"a run that could read none of its escapes claims nothing about them")
+		unwatched.free()
+
+	if err == "":
+		var fought := RunSummary.build({
+			"road_cells": 32, "road_aimed": 30,
+			"escapes_recorded": 4, "escapes_untouched": 0,
+		})
+		err = _T.assert_eq(fought.reach_note_text(), "",
+			"and a run where every escape was fought did not meet this mechanic")
+		fought.free()
+
+	if err == "":
+		var bitten := RunSummary.build({
+			"road_cells": 32, "road_aimed": 30,
+			"escapes_recorded": 4, "escapes_untouched": 4,
+		})
+		err = _T.assert_eq(bitten.reach_note_text(),
+			("30 of 32 road cells were aimed at, and 4 still walked in untouched"
+				+ " — a cob fires at the furthest pest only."),
+			"the run it exists for names both halves and then names the rule")
+		if err == "":
+			# The distinction has to survive the player reading only the words, so it
+			# is checked as words and not as a colour or a position.
+			err = _T.assert_true(bitten.reach_note_text().contains("aimed at")
+					and bitten.reach_note_text().contains("untouched"),
+				"and states both sides in the sentence itself, not by sitting near another row")
+		bitten.free()
+
+	if err == "":
+		# A count of aimed cells larger than the road is a wiring mistake, not a
+		# reading, and the sentence must not print "40 of 32" while it is being made.
+		var overclaimed := RunSummary.build({
+			"road_cells": 32, "road_aimed": 40,
+			"escapes_recorded": 1, "escapes_untouched": 1,
+		})
+		err = _T.assert_true(overclaimed.reach_note_text().begins_with("32 of 32"),
+			"an over-large aimed count is clamped to the road, got '%s'"
+				% overclaimed.reach_note_text())
+		overclaimed.free()
+	return err
+
+
+func test_the_reach_note_fits_its_box_and_survives_the_cards_own_entrance() -> String:
+	## The layout budget, measured rather than asserted in prose.
+	##
+	## The card had none left: RunSummary.rows_capacity() returns 7 against the 7 rows
+	## summary_rows() builds, and that is asserted here rather than trusted, because
+	## it is the whole reason this sentence is not simply an eighth row.
+	##
+	## The rejected position is measured too. A second 20px strip under the map legend
+	## looks free against a 648-tall viewport and is not: _play_entrance drops every
+	## child by RISE_OFFSET_WIN before tweening it back, so the real floor is
+	## 648 - 32. The negative control below is what makes that a measurement instead
+	## of a paragraph — it fails if somebody raises the viewport or drops the rise and
+	## the strip becomes available after all.
+	var err: String = _T.assert_eq(RunSummary.rows_capacity(), 7,
+		"the card holds seven rows")
+	if err == "":
+		var card := RunSummary.build({})
+		err = _T.assert_eq(card.summary_rows().size(), RunSummary.rows_capacity(),
+			"and is already full, so a new subject on it is a swap and never an addition")
+		card.free()
+
+	var screen: float = float(ProjectSettings.get_setting(
+		"display/window/size/viewport_height", 648))
+	if err == "":
+		var rejected: float = RunSummary.MAP_LEGEND_Y + RunSummary.MAP_LEGEND_HEIGHT + 20.0
+		err = _T.assert_true(rejected + RunSummary.RISE_OFFSET_WIN > screen,
+			("a second 20px line under the legend would foot at %.0f and hang off a"
+				+ " %.0f-tall screen through the rise — this is why the note is not there")
+					% [rejected + RunSummary.RISE_OFFSET_WIN, screen])
+	if err != "":
+		return err
+
+	var panel := RunSummary.build({
+		"victory": true,
+		"lives_lost": Game.LIVES,
+		"escapes_recorded": Game.LIVES,
+		"escapes_untouched": 4,
+		"road_cells": 32,
+		"road_aimed": 30,
+	})
+	await _T.instantiate_ui(panel, Vector2i(1152, 648))
+	var box: Panel = panel.get_node_or_null("ReachNote") as Panel
+	err = _T.assert_true(box != null, "the reach note is on the screen")
+	if err != "":
+		_T.free_ui(panel)
+		return err
+	var note: Label = box.get_node_or_null("ReachNoteText") as Label
+	err = _T.assert_true(note != null, "with the sentence inside it")
+	if err != "":
+		_T.free_ui(panel)
+		return err
+	err = _T.assert_eq(note.text, panel.reach_note_text(),
+		"and the label carries the string the formatter builds, not a second copy of the format")
+
+	# 1. Beside the card, not over it — the column the ribbon opened.
+	if err == "":
+		err = _T.assert_false(Rect2(box.position, box.size).intersects(RunSummary.CARD),
+			"the note at (%.0f, %.0f) %.0fx%.0f does not sit on the card"
+				% [box.position.x, box.position.y, box.size.x, box.size.y])
+	if err == "":
+		err = _T.assert_true(box.position.x + box.size.x <= 1152.0,
+			"and its right edge %.0f is on the screen" % [box.position.x + box.size.x])
+
+	# 2. The rise budget, at the worst ribbon this game can produce.
+	if err == "":
+		var worst_top: float = RunSummary.reach_note_top(Milestones.TABLE.size())
+		var worst_foot: float = worst_top + RunSummary.REACH_NOTE_HEIGHT
+		err = _T.assert_true(worst_top >= RunSummary.RIBBON_TOP
+				+ RunSummary.ribbon_height(Milestones.TABLE.size()),
+			"a full ribbon does not push the note into itself (%.0f against %.0f)"
+				% [worst_top, RunSummary.RIBBON_TOP
+					+ RunSummary.ribbon_height(Milestones.TABLE.size())])
+		if err == "":
+			err = _T.assert_true(worst_foot + RunSummary.RISE_OFFSET_WIN <= screen,
+				("and even under a full ribbon it foots at %.0f, %.0f through the rise,"
+					+ " inside a %.0f-tall screen")
+						% [worst_foot, worst_foot + RunSummary.RISE_OFFSET_WIN, screen])
+		if err == "":
+			# The empty ribbon is the common case and must not leave a hole above it.
+			err = _T.assert_float_eq(RunSummary.reach_note_top(0), RunSummary.RIBBON_TOP,
+				0.001, "and with no milestones it takes the top of the column")
+
+	# 3. The sentence fits its box. NOT _T.text_width, which measures the unwrapped
+	#    string and cannot see a wrap; and NOT get_minimum_size(), which is the wrong
+	#    answer on every Label this screen draws. An overflowing wrapped Label loses
+	#    lines off the bottom, and that is what is counted.
+	if err == "":
+		err = _T.assert_gt(note.get_line_count(), 0, "the sentence laid out at all")
+	if err == "":
+		err = _T.assert_eq(note.get_visible_line_count(), note.get_line_count(),
+			"every one of its %d wrapped lines is inside the box" % note.get_line_count())
+	var short_text: String = note.text
+	_T.free_ui(panel)
+	if err != "":
+		return err
+
+	# The WORST case, built by the formatter rather than typed out: a road that grew
+	# to four digits, every cell of it aimed at, and every bed lost to a pest nothing
+	# ever touched. Hosted as its own card rather than assigned onto the label above,
+	# because a wrapped line count read in the same frame the text changed is a read
+	# of the previous layout.
+	var wide := RunSummary.build({
+		"road_cells": 999, "road_aimed": 999,
+		"escapes_recorded": Game.LIVES, "escapes_untouched": Game.LIVES,
+	})
+	await _T.instantiate_ui(wide, Vector2i(1152, 648))
+	var wide_note: Label = wide.get_node_or_null("ReachNote/ReachNoteText") as Label
+	err = _T.assert_true(wide_note != null, "the worst-case card drew a note too")
+	if err == "":
+		err = _T.assert_gt(wide_note.text.length(), short_text.length(),
+			"and the worst case really is the longer string")
+	if err == "":
+		err = _T.assert_gt(wide_note.get_line_count(), 0, "which laid out")
+	if err == "":
+		err = _T.assert_eq(wide_note.get_visible_line_count(), wide_note.get_line_count(),
+			"and still fits its box, at %d wrapped lines" % wide_note.get_line_count())
+	_T.free_ui(wide)
+	return err
+
+
+func test_the_run_summary_is_handed_the_coverage_it_needs_to_name_the_mechanic() -> String:
+	## The wiring gate, and the bead's ACCEPTANCE: "a test asserts the line against a
+	## run with known coverage and known untouched pests".
+	##
+	## FAILS UNTIL `Game.summary_stats` exports `road_aimed` and `road_cells`. That
+	## edit belongs to a file this lane does not own; the exact two lines are in the
+	## lane report. Written as a failing test rather than as a comment because a
+	## sentence the game never populates is a sentence that never appears, and the
+	## silent branch in reach_note_text() makes that failure invisible on screen.
+	##
+	## Both numbers are read back off the game's OWN functions rather than against
+	## literals, so the assertion is "the card is handed what the board knows" and
+	## not "the road is 32 cells long" — which is a fact about this map and would
+	## have to be re-typed the day the map changes.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the run stood up")
+	if err != "":
+		return err
+	game.bank.add_seeds(400)
+
+	# The buildable cell that covers the most road, derived from the same
+	# covered_road_cell_list() the coverage map itself is built from rather than
+	# hand-picked — a hand-picked cell is one map edit away from covering nothing
+	# and turning every assertion below into a check of the aimed <= 0 silence.
+	var reach: float = Game.engagement_reach(PlantCatalog.CORN)
+	var best := Vector2i(-1, -1)
+	var best_cover: int = 0
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if not game.board.is_buildable(cell) or game.plant_at(cell) != null:
+				continue
+			var covers: int = PlacementPreview.covered_road_cell_list(
+				game.board, cell, reach).size()
+			if covers > best_cover:
+				best_cover = covers
+				best = cell
+	err = _T.assert_gt(best_cover, 0, "some buildable cell on this map can reach the road")
+	if err == "":
+		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, best), "",
+			"and a cob goes into it")
+	if err == "":
+		err = _T.assert_eq(game.covered_road_cells().size(), best_cover,
+			"the garden's coverage is exactly what that one cob reaches")
+
+	# A known untouched pest: spawned, never shot at, walked out.
+	if err == "":
+		var pest: Pest = _spawn_and_take(game, Pest.APHID)
+		err = _T.assert_true(pest != null, "a pest is on the road")
+		if err == "":
+			err = _T.assert_false(pest.was_engaged(),
+				"and nothing has touched it — the flag the untouched count reads")
+		if err == "":
+			game._on_pest_escaped(pest)
+			err = _T.assert_eq(game._escapes_untouched, 1, "so it escapes untouched")
+
+	var stats: Dictionary = {}
+	if err == "":
+		stats = game.summary_stats(false)
+		err = _T.assert_true(stats.has("road_cells") and stats.has("road_aimed"),
+			("summary_stats exports the coverage the post-mortem needs"
+				+ " — add \"road_aimed\" and \"road_cells\", see plant-tower-defense-b7v5"))
+	if err == "":
+		err = _T.assert_eq(int(stats["road_cells"]), game.board.road_cells().size(),
+			"the denominator is the board's own road, not a copy of it")
+	if err == "":
+		err = _T.assert_eq(int(stats["road_aimed"]), game.covered_road_cells().size(),
+			"and the numerator is the same derived map the board and the hover cue read")
+	if err == "":
+		err = _T.assert_gt(int(stats["road_cells"]), int(stats["road_aimed"]),
+			"one cob does not cover the whole road, so this run really is the contrast case")
+
+	if err == "":
+		var panel := RunSummary.build(stats)
+		var text: String = panel.reach_note_text()
+		err = _T.assert_eq(text, ("%d of %d road cells were aimed at, and 1 still walked in"
+			+ " untouched — a cob fires at the furthest pest only.")
+				% [int(stats["road_aimed"]), int(stats["road_cells"])],
+			"and the card says so, in the numbers the run actually produced")
+		panel.free()
+	_T.free_ui(game)
+	return err
+
+
+# -- END plant-tower-defense-b7v5 / plant-tower-defense-lp97 ------------------
