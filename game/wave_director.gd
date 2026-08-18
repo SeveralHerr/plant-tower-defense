@@ -100,6 +100,58 @@ const ENDLESS_HEALTH_MAX: float = 3.0
 const ENDLESS_SPEED_STEP: float = 0.015
 const ENDLESS_SPEED_MAX: float = 1.6
 
+## --- The second act (plant-tower-defense-iqp8) ------------------------------
+##
+## The campaign's back half did not escalate. Derived from the table rather than
+## sampled: waves 2-7 step +80.0%, +48.1%, +70.0%, +14.7%, +23.1% and +27.1% of
+## threat_for, wave 8 steps +43.3% after cycle 101's tuning — and then waves 10
+## through 22 average +6.7% a wave for thirteen waves, four of them under +4%.
+## Cycle 101 played the campaign end to end and a depth-first garden won all
+## twenty-two waves without losing a single life, finishing on 1129 spare seeds.
+## Both of that cycle's opposed seed policies had all seven plants unlocked by
+## wave 7, and neither was ever asked to use them. The design question ("is a
+## flawless 22/22 the right ending for a tutorial campaign?") was put to James
+## and answered: the plateau should climb.
+##
+## THIS IS THE LEVER, and it is one function rather than fourteen wave rows. The
+## rows cannot grow. ENDLESS_BEETLE_BASE's derivation caps any campaign finale at
+## 436.7 points of base health against a finale already worth 418, so the entire
+## table has about one beetle of headroom in it. `health_scale_for` had no such
+## bound — it simply returned 1.0 for every campaign wave, which meant the one
+## axis the campaign could escalate on for free was switched off by construction.
+##
+## Compounding rather than linear, and anchored at wave 9 rather than wave 1:
+##   * ANCHORED AT 9 because wave 8 is MUTATION_START_WAVE and wave 9 already
+##     steps +29.1% on count alone. Cycle 101's whole argument was that two
+##     difficulty increases landing on one wave is a step nobody can read; a ramp
+##     whose first step fell on 9 would repeat the mistake it fixed. So
+##     health_scale_for(9) is exactly 1.0 and wave 10 is the first tougher wave.
+##   * COMPOUNDING because a linear ramp front-loads. +0.04 against a 1.0 base is
+##     a bigger relative step than +0.04 against a 1.5 one, so a linear ramp
+##     climbs hardest at waves 10-12 and least at 20-22, which is the opposite
+##     shape a second act wants. Compounding puts the same +4% on every wave.
+##
+## WHAT 0.04 BUYS, priced offline against _raw_threat before this was edited and
+## not adjusted until green: the finale's pests are x1.665, the back half's
+## smallest step goes +2.2% -> +6.2% and its average +6.7% -> +10.9%, and no step
+## anywhere in the campaign exceeds +18.2% (wave 12, the first queen) — so this
+## introduces no new cliff, and wave 8's +43.3% is still comfortably the largest
+## step in the game. Against a level-1 Corn Cobbler (1.0 damage a kernel) an aphid
+## costs 3 kernels through wave 9, 4 from wave 10 and 5 from wave 17, which is the
+## bead in one sentence: the swarm outgrows the plant the player starts with.
+##
+## WHAT IT COSTS. ENDLESS_HEALTH_MAX is an absolute ceiling on how tough a pest
+## may ever get, not a budget belonging to endless, and the campaign now spends
+## part of it: endless health reaches the cap at wave 36 instead of wave 56.
+## Speed still pins last, at wave 62, so anything that searches for "the first
+## wave past which nothing per-pest is moving" finds the same wave it did.
+##
+## NOT playtested. Every number above is an offline model of pure functions.
+## Whether wave 18 is now hard rather than merely long is unknown until someone
+## plays it — see the bead.
+const SECOND_ACT_START_WAVE: int = 9
+const CAMPAIGN_HEALTH_STEP: float = 0.04
+
 ## --- The road is a fixed-size pipe -----------------------------------------
 ##
 ## Every endless scale stops except one. Measured off the constants above and
@@ -222,6 +274,16 @@ const ENDLESS_BEETLE_SHARE: int = 18
 ## ENDLESS_APHID_SHARE first, and the shares sum to SIMULTANEOUS_PEST_CEILING
 ## exactly, which is a literal that test_selftest.gd reads out of this file's
 ## source text.
+##
+## **436.7 survived the second act unchanged, and that was designed for rather
+## than lucky.** plant-tower-defense-iqp8 ramps `health_scale_for` across waves
+## 10-22, which multiplies the finale's threat — so a naive campaign ramp eats
+## this headroom, and at CAMPAIGN_HEALTH_STEP 0.04 an additive endless ramp cuts
+## 18.7 points to 8.5, under one Shield Bug. The endless ramp is expressed as a
+## multiple of the campaign's last health scale instead, so the campaign factor
+## appears on both sides of the division above and cancels out of it exactly. The
+## 1.3469 is unchanged; its 1.06 is now the RATIO h(23)/h(22). health_scale_for
+## has the full derivation.
 const ENDLESS_BEETLE_BASE: int = 20
 const ENDLESS_BEETLE_STEP: int = 1
 
@@ -237,6 +299,17 @@ const MUTATION_THREAT_WEIGHT: float = 0.6
 ## full size; 9-15 are the campaign the game did not have — a board that could
 ## clear wave 8 used to be handed straight to endless, so the fixed table ended
 ## at the exact moment it had finished explaining itself.
+##
+## **The rows below are no longer the campaign's whole difficulty curve.** Since
+## plant-tower-defense-iqp8 a compounding health ramp runs underneath waves 10-22
+## (SECOND_ACT_START_WAVE), so a row's "points of base health" — the unit every
+## note in this file quotes, and the one all the seam arithmetic is done in — is
+## what the row is worth BEFORE that multiplier. Every such figure here is still
+## correct as written and still the right thing to reason about when editing a
+## row, because the ramp multiplies rows rather than reordering them. What it
+## means is that the finale actually puts 418 * 1.665 = 696 points of health on
+## the road, and that a reader comparing a wave's number here against a pest's
+## health bar in the running game will find the bar bigger.
 ##
 ## The second movement escalates on ONE axis at a time so a loss is legible. 9-11
 ## thicken the beetle column against a swarm that no longer grows. 12 is the
@@ -417,6 +490,13 @@ const MUTATION_THREAT_WEIGHT: float = 0.6
 ##   * health_scale_for/speed_scale_for/mutation_chance_for are untouched — they
 ##     key off `wave - WAVES.size()`, so growing the table moved the whole
 ##     endless ramp six waves later by construction rather than by edit.
+##     (That third bullet is history now, and only for health.
+##     plant-tower-defense-iqp8 gave the campaign a second act by ramping
+##     `health_scale_for` from wave 10 to wave 22 — see SECOND_ACT_START_WAVE.
+##     Nothing in the two bullets above moved with it: the ramp touches no count
+##     and no gap, so every peak, every road-budget number and every "points of
+##     base health" figure quoted anywhere in this file is still the number it
+##     was. Speed and the mutation rate really are still endless-only.)
 const WAVES: Array[Array] = [
 	[{"species": &"aphid", "count": 5, "gap": 1.10, "lead": 0.5}],
 	[{"species": &"aphid", "count": 9, "gap": 0.85, "lead": 0.5}],
@@ -1056,6 +1136,18 @@ static func threat_level(wave: int) -> int:
 ## inside the fixed table, where the table itself is the escalation and naming
 ## "more pests" every wave would be noise.
 ##
+## **That reason is now half true, and the half that is not is deliberately left
+## alone.** Since plant-tower-defense-iqp8 the campaign escalates on health as
+## well as on the table, so waves 10-22 would all answer "tougher" if this
+## function were allowed past the `wave <= WAVES.size()` guard — thirteen
+## consecutive waves saying the same word, which is the noise the guard exists to
+## prevent. The campaign's readout for the second act is the threat level instead,
+## and it moves: across waves 9-22 it used to tick three times and now ticks four
+## (levels 8, 9, 10, 11 arriving at waves 9, 11, 14 and 18 rather than 8, 9, 10 at
+## waves 9, 12 and 18), and the finale reads level 11 rather than level 10.
+## A wave-start line that names the ramp ONCE, at the wave it starts, is a better
+## answer than either and is filed rather than guessed at here.
+##
 ## "heavier" is the one that still fires after the other three have hit their
 ## caps. Before the beetle column existed this line went silent at exactly the
 ## wave the ramp stopped, which read as "nothing got worse" — the note has to
@@ -1099,14 +1191,50 @@ static func mutation_chance_for(wave: int) -> float:
 	return minf(MUTATION_CHANCE_MAX, MUTATION_CHANCE + float(over) * MUTATION_CHANCE_ENDLESS_STEP)
 
 
-## Multiplier on a spawned pest's health for `wave`. Exactly 1.0 through the
-## fixed table — same `over <= 0` shape as mutation_chance_for, so campaign mode
-## is untouched by construction rather than by a mode flag someone can forget.
+## Multiplier on a spawned pest's health for `wave`. TWO ramps, multiplied: the
+## campaign's second act (SECOND_ACT_START_WAVE / CAMPAIGN_HEALTH_STEP carry the
+## whole argument for it) and endless's, which now rides ON TOP of wherever the
+## campaign finished instead of restarting from 1.0.
+##
+## It returned a flat 1.0 through the fixed table until plant-tower-defense-iqp8,
+## and this is the only function that changed to give the campaign a second act.
+## The `over <= 0` early return is gone rather than edited around: there is no
+## longer a wave at which nothing is climbing, so a shape whose whole point was
+## "campaign is untouched by construction" would now be a lie told by a control
+## flow. Note that speed_scale_for keeps it, deliberately — speed feeds
+## crossing_seconds, which feeds _paced_gap and peak_simultaneous_pests, so
+## scaling campaign speed would move every road-budget number in the file.
+## Health feeds nothing but damage, which is exactly why it is the safe lever.
+##
+## MULTIPLICATIVE COMPOSITION IS LOAD-BEARING, not tidiness. The seam bound
+## derived at ENDLESS_BEETLE_BASE divides the first endless wave's threat by the
+## finale's, so every factor common to both cancels — and with the endless ramp
+## expressed as a multiple of the campaign's last value, the campaign ramp is one
+## of them. The bound stays exactly 402 * 1.3469 / 1.24 = 436.7 points of base
+## health and the finale keeps exactly 18.7 points of headroom under it, however
+## steep the second act gets. (The 1.3469 in that product is
+## `1.252 * 1.06 * 1.015`, and its 1.06 is now the seam RATIO h(23)/h(22) rather
+## than h(23) itself — same number, different reading.) An ADDITIVE endless ramp
+## — `campaign_top + over * ENDLESS_HEALTH_STEP` — does not cancel: at
+## CAMPAIGN_HEALTH_STEP 0.04 it shrinks that headroom from 18.7 points to 8.5,
+## which is under one Shield Bug, and the seam test fails with a number no reader
+## could trace back to a campaign health ramp.
+##
+## It also closes a discontinuity that was always there. The pest met on the first
+## endless wave used to be x1.06 of a WAVE 1 pest, i.e. barely tougher than the
+## one the finale sent; it is now x1.06 of the finale's, which is what "endless
+## continues the run" was supposed to mean.
+##
+## Still capped at ENDLESS_HEALTH_MAX. That cap is an absolute ceiling on a pest,
+## not an allowance belonging to endless, so the campaign spending part of it is
+## the intent rather than a leak — see SECOND_ACT_START_WAVE for the price.
 static func health_scale_for(wave: int) -> float:
+	var climbed: int = clampi(wave, SECOND_ACT_START_WAVE, WAVES.size()) - SECOND_ACT_START_WAVE
+	var campaign: float = pow(1.0 + CAMPAIGN_HEALTH_STEP, float(climbed))
 	var over: int = wave - WAVES.size()
 	if over <= 0:
-		return 1.0
-	return minf(ENDLESS_HEALTH_MAX, 1.0 + float(over) * ENDLESS_HEALTH_STEP)
+		return campaign
+	return minf(ENDLESS_HEALTH_MAX, campaign * (1.0 + float(over) * ENDLESS_HEALTH_STEP))
 
 
 ## Multiplier on a spawned pest's walking speed for `wave`. See the constants:
