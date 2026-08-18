@@ -53,7 +53,24 @@ const SAVE_PATH := "user://highscore.save"
 ## place, and leaves the variable-length binding block last. A v5 file is read
 ## forward rather than refused, because a v5 file is unambiguous — one branch
 ## wrote it, and its options line has exactly one token where v6's has three.
-const SAVE_VERSION: int = 6
+##
+## Version 7 widens the same line again, to four fields — `cb0 sfx0 mus0 spd0` —
+## adding the garden speed the player last chose (`game_speed_step`). It follows
+## v6's shape exactly: one line widened, every other field in the same place, the
+## binding block still last, and a `VERSION_WITH_SPEED` constant so the parser asks
+## which shape a line has by the version that defined it rather than by comparison
+## against whatever `SAVE_VERSION` happens to be.
+##
+## Honest note on where it was put. The options line's own comment argues it is
+## "the screen that shows these", and the speed is NOT an Options-screen switch —
+## it is a top-bar button and a key. It rides here anyway because the alternative,
+## a line of its own, moves every field under it and changes `compose_save`'s
+## signature, and line geometry is what every reader and every test of this file
+## depends on. The fourth field is also the first that is not a bool, so it is
+## parsed by `_parse_step` rather than by the loop over `OPTIONS_PREFIXES` — which
+## is the seam to watch. If a fifth non-switch preference ever lands, this line has
+## stopped being "the options" and should be renamed rather than grown again.
+const SAVE_VERSION: int = 7
 
 ## The version that introduced the milestone line, the options line and the
 ## binding block — all three landed together, so one number covers them.
@@ -72,6 +89,11 @@ const VERSION_WITH_EXTRAS: int = 5
 ## defined it, never by comparison against whatever the current version happens
 ## to be.
 const VERSION_WITH_MUTES: int = 6
+
+## The version that put the garden speed on the options line. Same role again: a
+## v6 line has three fields, a v7 line has four, and the parser is told which it is
+## looking at instead of guessing from the field count.
+const VERSION_WITH_SPEED: int = 7
 
 ## The first version this build refuses on sight, and the last. See SAVE_VERSION.
 const AMBIGUOUS_VERSIONS: Array[int] = [3, 4]
@@ -202,6 +224,28 @@ const OPTIONS_PREFIXES: Array[String] = [
 	OPTIONS_MUTE_MUSIC_PREFIX,
 ]
 
+## The v7 field: which step of `GameSpeed.STEPS` the player last chose, written
+## `spd0`/`spd1`/`spd2`. Carries a prefix for the same reason its three neighbours
+## do, and it needs one more than they do: a bare digit in the fourth column is
+## indistinguishable from the key-binding COUNT line one row down, so a save
+## truncated mid-options-line would parse as a shorter file that happened to line
+## up. `spd` cannot be mistaken for a count.
+const OPTIONS_SPEED_PREFIX := "spd"
+
+## The largest step index this parser will read out of a save.
+##
+## NOT `GameSpeed.STEPS.size()`, and the difference is the whole point. A save
+## written by a later build with a fourth step must not condemn the file — the two
+## high scores in it cannot be re-earned and a speed can, which is the same
+## asymmetry `_parse_milestones` cites for not checking ids against
+## `Milestones.TABLE`. So an index this build has no step for is READ and KEPT
+## here, and refused at the point of use: `apply_game_speed` falls back to 1x for
+## anything outside `GameSpeed.STEPS`, and a downgrade that never touches the
+## control writes the original index back out untouched.
+##
+## Bounded all the same, so a corrupt digit cannot claim step 900000000.
+const MAX_SPEED_STEP: int = 15
+
 ## The file this autoload persists to. A variable rather than a constant for
 ## exactly one reason: the unit tests need to drive this code over a scratch file
 ## instead of over the player's real save, which is the single thing in this
@@ -304,6 +348,38 @@ var colorblind_safe: bool = false
 ## the player hears without changing what the next save records.
 var mute_sfx: bool = false
 var mute_music: bool = false
+
+## Which step of `GameSpeed.STEPS` the player last chose, as the save records it.
+##
+## Plain data, exactly like `key_bindings` and the two mutes above it, and for the
+## third time for the same reason: a `_load` that reached into `GameSpeed` would
+## make every test that drives this parser over a scratch file a test that silently
+## retimes the whole suite's engine clock. `Engine.time_scale` is process-global,
+## so that failure would not even stay inside the test that caused it.
+## `apply_game_speed()` is the one place that moves this into the engine.
+##
+## ALL THREE STEPS ARE STICKY, ½x INCLUDED, and that was the open question.
+## Clamping the persisted value to {1x, 2x} was the alternative: a forgotten half
+## speed makes a first run feel sluggish, and slow is harder for a player to
+## diagnose than fast. It was rejected because the state is not hidden. The button
+## sits on the top bar of every frame with `½x` on its face and the next step in
+## its tooltip, one press from normal — which is exactly the affordance that makes
+## a sticky setting safe, and exactly what a persisted invisible flag would lack.
+## Against that, clamping buys a defect with no signal at all: two of the control's
+## three steps would be remembered and the third silently would not, with nothing
+## anywhere saying so. `kanban.md` also has the slow mode down as being for the
+## person who drew this game and wants to watch it — a deliberate audience, who
+## would have to re-choose it every launch.
+##
+## What would change this: the speed readout leaving the top bar (behind a menu,
+## or a button that stops printing the current step), which turns it into invisible
+## state and makes the clamp right; or an actual playtest report of a slow first
+## run confusing someone, which is the measurement this taste call stands in for.
+##
+## Defaults to 0 — 1x — which is both the first-launch value and what every save
+## older than v7 reads as, because a player who never had the control had a garden
+## running at normal speed.
+var game_speed_step: int = 0
 
 ## What `_load` made of the save file. Exists so that "there was no save" and
 ## "there was a save and it was refused" are distinguishable from the outside —
@@ -538,6 +614,65 @@ func toggle_mute_music() -> bool:
 	return set_mute_music(not Music.is_muted())
 
 
+## Records the garden speed the player has cycled to and writes it down. Returns
+## the stored index, so a caller does not have to read it back.
+##
+## Same shape and same contract as `set_colorblind_safe`: writes only on an actual
+## change, because the save file is not a place to record that someone pressed a
+## key twice — and this key is pressed three times per full cycle back to 1x, so
+## the guard is doing more work here than anywhere else in this file.
+##
+## Takes the index rather than the float, because the index is what `GameSpeed`
+## considers the choice (`step()` survives a hold; `scale()` does not) and because
+## a float on disk is a rounding argument waiting to happen.
+##
+## Refuses an index outside this build's own table. `GameSpeed.set_step` wraps with
+## `posmod`, which is right for a player pressing a button and wrong for a persisted
+## value: it would turn a caller's off-by-one into a silently different setting that
+## then survives forever. An out-of-range index arriving from a SAVE is a different
+## case and is kept — see MAX_SPEED_STEP.
+func store_game_speed(index: int) -> int:
+	if index < 0 or index >= GameSpeed.STEPS.size():
+		push_warning(("RunConfig: refusing to persist garden speed step %d — this build has %d steps. "
+			+ "Keeping %d.") % [index, GameSpeed.STEPS.size(), game_speed_step])
+		return game_speed_step
+	if game_speed_step == index:
+		return game_speed_step
+	game_speed_step = index
+	_save()
+	return game_speed_step
+
+
+## Pushes the saved garden speed into the engine. The speed twin of
+## `apply_key_bindings` / `apply_audio_mutes`, separate from `_load` for the reason
+## `game_speed_step` spells out.
+##
+## NOT called from `_ready()`, unlike its two siblings, and that is the one thing
+## about it worth knowing. This autoload readies at process start, while the TITLE
+## screen is coming up, and a saved ½x applied there would run the title's own
+## animations at half speed for no reason a reader of that scene could find — then
+## `Game._exit_tree`'s `GameSpeed.reset()` would throw it away again on the first
+## exit. The speed is a fact about a RUN, so the run applies it: `Game._ready()` is
+## the single caller.
+##
+## Safe against all four writers of `Engine.time_scale`. It goes through
+## `GameSpeed.set_step`, so a hold is respected (the parked choice moves and the
+## engine stays at 1x, which is what a pause card must read at); `reset()` on
+## `_end_run` and `_exit_tree` still puts the engine back to 1x on every way out of
+## a run, and this call is what puts the choice back on the way in.
+##
+## An index this build has no step for falls back to 1x rather than wrapping — see
+## MAX_SPEED_STEP for why such an index is on disk at all, and why it is left there.
+func apply_game_speed() -> void:
+	if game_speed_step < 0 or game_speed_step >= GameSpeed.STEPS.size():
+		push_warning(("RunConfig: saved garden speed step %d is not one of this build's %d steps "
+			+ "— starting at 1x. The saved value is kept for a build that has it.")
+			% [game_speed_step, GameSpeed.STEPS.size()])
+		GameSpeed.set_step(0)
+		return
+	GameSpeed.set_step(game_speed_step)
+
+
 ## Where `_save` assembles the next file before it replaces `save_path`.
 func _tmp_path() -> String:
 	return save_path + ".tmp"
@@ -633,16 +768,37 @@ static func _parse_flag(text: String, prefix: String) -> Variant:
 	return null
 
 
+## One `<prefix><digits>` step index, or `null` if it is not one. The non-bool
+## sibling of `_parse_flag`, and the only field on the options line that is not a
+## flag — see OPTIONS_SPEED_PREFIX for why it is here at all.
+##
+## `is_valid_int()` before `int()`, for the reason `_is_score` spells out: `int("")`
+## and `int("x")` are both 0 in GDScript, and 0 is a legal-looking step.
+static func _parse_step(text: String, prefix: String) -> Variant:
+	if not text.begins_with(prefix):
+		return null
+	var body: String = text.substr(prefix.length())
+	if not body.is_valid_int():
+		return null
+	var step: int = int(body)
+	if step < 0 or step > MAX_SPEED_STEP:
+		return null
+	return step
+
+
 ## The options line, read in the shape the file's own version defines.
 ##
 ## v5 is the lone colourblind flag; v6 is OPTIONS_PREFIXES in order, space
-## separated, all three required. Split with empties KEPT, so `cb0  sfx0 mus0` is
-## four fields and is refused: two spaces is not a shape this writer produces, and
-## a parser that shrugs at it is a parser that would shrug at a half-written line.
+## separated, all three required; v7 is those three followed by the speed field.
+## Split with empties KEPT, so `cb0  sfx0 mus0` is four fields and is refused: two
+## spaces is not a shape this writer produces, and a parser that shrugs at it is a
+## parser that would shrug at a half-written line.
 ##
-## Returns {colorblind_safe, mute_sfx, mute_music}, or `null` on anything else.
-## A v5 line's two absent mutes read as false — a player who never had the setting
-## had a game that made noise, which is exactly what unmuted means.
+## Returns {colorblind_safe, mute_sfx, mute_music, game_speed_step}, or `null` on
+## anything else. A v5 line's two absent mutes read as false — a player who never
+## had the setting had a game that made noise, which is exactly what unmuted means.
+## A v5 or v6 line's absent speed reads as step 0, by the same argument: a player
+## who never had the control had a garden running at 1x.
 static func _parse_options(text: String, version: int) -> Variant:
 	if version < VERSION_WITH_MUTES:
 		# Compared against the two v5 spellings outright rather than run through
@@ -651,12 +807,19 @@ static func _parse_options(text: String, version: int) -> Variant:
 		# a shape nobody ever wrote (`cb0 ` with a trailing space, say) becomes
 		# readable years after the writer that would have produced it is gone.
 		if text == OPTIONS_COLORBLIND_ON:
-			return {"colorblind_safe": true, "mute_sfx": false, "mute_music": false}
+			return {"colorblind_safe": true, "mute_sfx": false, "mute_music": false,
+				"game_speed_step": 0}
 		if text == OPTIONS_COLORBLIND_OFF:
-			return {"colorblind_safe": false, "mute_sfx": false, "mute_music": false}
+			return {"colorblind_safe": false, "mute_sfx": false, "mute_music": false,
+				"game_speed_step": 0}
 		return null
+	# Exactly three fields at v6, exactly four at v7 — never "at least three". A
+	# tolerant count is how a v6 line read by this build would silently keep its
+	# speed at 1x while the version header claimed the field was there.
+	var has_speed: bool = version >= VERSION_WITH_SPEED
+	var expected: int = OPTIONS_PREFIXES.size() + (1 if has_speed else 0)
 	var fields: PackedStringArray = text.split(" ")
-	if fields.size() != OPTIONS_PREFIXES.size():
+	if fields.size() != expected:
 		return null
 	var values: Array[bool] = []
 	for i: int in range(OPTIONS_PREFIXES.size()):
@@ -664,7 +827,14 @@ static func _parse_options(text: String, version: int) -> Variant:
 		if flag == null:
 			return null
 		values.append(bool(flag))
-	return {"colorblind_safe": values[0], "mute_sfx": values[1], "mute_music": values[2]}
+	var step: int = 0
+	if has_speed:
+		var parsed_step: Variant = _parse_step(fields[OPTIONS_PREFIXES.size()], OPTIONS_SPEED_PREFIX)
+		if parsed_step == null:
+			return null
+		step = int(parsed_step)
+	return {"colorblind_safe": values[0], "mute_sfx": values[1], "mute_music": values[2],
+		"game_speed_step": step}
 
 
 static func _flag_text(prefix: String, on: bool) -> String:
@@ -676,13 +846,14 @@ func _options_line() -> String:
 		_flag_text(OPTIONS_COLORBLIND_PREFIX, colorblind_safe),
 		_flag_text(OPTIONS_MUTE_SFX_PREFIX, mute_sfx),
 		_flag_text(OPTIONS_MUTE_MUSIC_PREFIX, mute_music),
+		"%s%d" % [OPTIONS_SPEED_PREFIX, game_speed_step],
 	]))
 
 
 func _parse_failed(reason: String) -> Dictionary:
 	return {"ok": false, "campaign": 0, "endless": 0, "milestones": [],
 		"colorblind_safe": false, "mute_sfx": false, "mute_music": false,
-		"bindings": {}, "version": 0, "reason": reason}
+		"game_speed_step": 0, "bindings": {}, "version": 0, "reason": reason}
 
 
 ## Validates an entire save file and only then hands back its contents.
@@ -722,7 +893,7 @@ func _parse_save(path: String) -> Dictionary:
 		# reading rather than a fallback.
 		return {"ok": true, "campaign": 0, "endless": int(header), "milestones": [],
 			"colorblind_safe": false, "mute_sfx": false, "mute_music": false,
-			"bindings": {}, "version": 1, "reason": "v1"}
+			"game_speed_step": 0, "bindings": {}, "version": 1, "reason": "v1"}
 
 	var version_text: String = header.substr(1)
 	if not version_text.is_valid_int():
@@ -775,10 +946,12 @@ func _parse_save(path: String) -> Dictionary:
 	var colorblind: bool = false
 	var muted_sfx: bool = false
 	var muted_music: bool = false
+	var speed_step: int = 0
 	if version >= VERSION_WITH_EXTRAS:
-		# The one line whose SHAPE differs between two readable versions, so the
+		# The one line whose SHAPE differs between three readable versions, so the
 		# version goes in rather than being compared against here — a v5 line has one
-		# field, a v6 line has three, and the parser is told which it is looking at.
+		# field, a v6 line has three, a v7 line has four, and the parser is told which
+		# it is looking at.
 		var parsed_options: Variant = _parse_options(f.get_line().strip_edges(), version)
 		if parsed_options == null:
 			return _parse_failed("its options line is not an options line")
@@ -786,6 +959,7 @@ func _parse_save(path: String) -> Dictionary:
 		colorblind = bool(options["colorblind_safe"])
 		muted_sfx = bool(options["mute_sfx"])
 		muted_music = bool(options["mute_music"])
+		speed_step = int(options["game_speed_step"])
 
 	# The count is what makes a truncation here detectable at all — without it, a
 	# file cut after the options line is indistinguishable from a player who never
@@ -827,6 +1001,7 @@ func _parse_save(path: String) -> Dictionary:
 		"colorblind_safe": colorblind,
 		"mute_sfx": muted_sfx,
 		"mute_music": muted_music,
+		"game_speed_step": speed_step,
 		"version": version,
 		"bindings": bindings,
 		"reason": "v%d" % version,
@@ -878,6 +1053,11 @@ func _load() -> void:
 	# `apply_audio_mutes()` is the one place that does, and `_ready` calls it.
 	mute_sfx = bool(parsed["mute_sfx"])
 	mute_music = bool(parsed["mute_music"])
+	# Data only again, and this one MUST be: `Engine.time_scale` is process-global,
+	# so a `_load` that applied it would retime every test in the suite that ever
+	# stages a save file. `apply_game_speed()` is the one door, and `Game._ready` is
+	# the one caller — see `game_speed_step`.
+	game_speed_step = int(parsed["game_speed_step"])
 	if recovered:
 		load_status = "recovered"
 		_save()

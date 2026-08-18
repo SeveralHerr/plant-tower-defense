@@ -784,6 +784,11 @@ func _with_scratch_save(campaign: int, endless_best: int, contents: Variant, bod
 	# byte-exact assertion below.
 	RunConfig.mute_sfx = false
 	RunConfig.mute_music = false
+	# The seventh, added to the options line at v7, and it leaks the same way the two
+	# mutes do and then some: RunConfig loads it from the developer's own save at
+	# startup, so a maintainer who plays at 2x would read `spd1` in every byte-exact
+	# assertion below without ever having mentioned speed.
+	RunConfig.game_speed_step = 0
 	var err: String = str(body.call())
 	_restore_run_config()
 	return err
@@ -823,6 +828,14 @@ func _stash_run_config() -> void:
 		"mute_music": RunConfig.mute_music,
 		"sfx_is_muted": Sfx.is_muted(),
 		"music_is_muted": Music.is_muted(),
+		# The garden speed, both halves, exactly like the mutes above -- RunConfig's
+		# persisted index and the engine clock `apply_game_speed` pushes it into. The
+		# engine half is the one that matters most in this whole dictionary:
+		# `Engine.time_scale` is PROCESS-GLOBAL, so a test that leaked ½x would not
+		# fail here, it would slow every timing-sensitive test in every LATER script.
+		"game_speed_step": RunConfig.game_speed_step,
+		"engine_time_scale": Engine.time_scale,
+		"game_speed_chosen_step": GameSpeed.step(),
 		# Private, and stashed anyway: a refusal leaves a quarantine pending, and
 		# leaking that into a later test means an unrelated `_save` tries to move a
 		# file this one deleted.
@@ -846,6 +859,16 @@ func _restore_run_config() -> void:
 	RunConfig.mute_music = bool(_stashed_run_config["mute_music"])
 	Sfx.set_muted(bool(_stashed_run_config["sfx_is_muted"]))
 	Music.set_muted(bool(_stashed_run_config["music_is_muted"]))
+	RunConfig.game_speed_step = int(_stashed_run_config["game_speed_step"])
+	# `reset()` FIRST, and it is doing real work: it is the only thing that clears
+	# `GameSpeed._held_step`, so a body that returned early while held would otherwise
+	# leave the whole rest of the run parked -- and `set_step` on a held table moves
+	# the parked choice instead of the engine, so the restore would silently no-op.
+	# Then the engine is put back outright, because the two readings were taken
+	# separately and only the recorded one is the truth.
+	GameSpeed.reset()
+	GameSpeed.set_step(int(_stashed_run_config["game_speed_chosen_step"]))
+	Engine.time_scale = float(_stashed_run_config["engine_time_scale"])
 	RunConfig._refused_path = str(_stashed_run_config["_refused_path"])
 	_stashed_run_config = {}
 	_clear_scratch_save()
@@ -979,7 +1002,7 @@ func test_a_well_formed_save_round_trips_exactly() -> String:
 	return _with_scratch_save(1234, 5678, null, func() -> String:
 		RunConfig._save()
 		var err: String = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-			"v%d\n1234\n5678\nm0\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
+			"v%d\n1234\n5678\nm0\ncb0 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
 			"the save is a version stamp, campaign, endless, the milestone set, the options, then a count of rebound keys")
 		if err == "":
 			err = _T.assert_false(FileAccess.file_exists(HIGHSCORE_TEST_PATH + ".tmp"),
@@ -1024,7 +1047,7 @@ func test_a_refused_save_is_not_immediately_overwritten() -> String:
 				"the unreadable file was moved aside, not written over")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n9999\n8765\nm0\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n9999\n8765\nm0\ncb0 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
 				"and the new save kept the endless record the refusal had preserved")
 		return err)
 
@@ -1046,7 +1069,7 @@ func test_a_version_one_save_still_migrates_into_the_endless_slot() -> String:
 		if err == "":
 			# A parse that fully succeeded is the one case that may rewrite the file.
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n0\n31337\nm0\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n31337\nm0\ncb0 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
 				"and the ambiguity is resolved on disk once, not re-guessed every launch")
 		return err)
 
@@ -1098,7 +1121,7 @@ func test_a_run_with_milestones_round_trips_through_the_save() -> String:
 			# Sorted on the way out, so the bytes are a function of the SET rather
 			# than of the order the run happened to earn things in.
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n1234\n5678\nm2:campaign_cleared,hundred_pests\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n1234\n5678\nm2:campaign_cleared,hundred_pests\ncb0 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
 				"filing a milestone wrote the file, ids sorted")
 		if err == "":
 			# Deliberately not empty: a `_load` that assigned nothing would pass an
@@ -1273,7 +1296,7 @@ func test_a_version_two_save_migrates_forward_with_an_empty_milestone_set() -> S
 				"a player who predates milestones has earned none of them")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
 				"and the file is now the current shape, resolved once")
 		return err)
 
@@ -1314,7 +1337,7 @@ func test_a_milestone_id_this_build_has_never_heard_of_survives_a_round_trip() -
 	# carrying the unknown id through a version bump is no longer a thing this test
 	# can express. What it is about — the parser keeping an id it has no rule for —
 	# is unchanged and is what stays asserted here.
-	return _with_scratch_save(0, 0, "v%d\n10\n20\nm2:from_the_future,hundred_pests\ncb0 sfx0 mus0\n0\n"
+	return _with_scratch_save(0, 0, "v%d\n10\n20\nm2:from_the_future,hundred_pests\ncb0 sfx0 mus0 spd0\n0\n"
 			% RunConfig.SAVE_VERSION,
 		func() -> String:
 			RunConfig._load()
@@ -1328,7 +1351,7 @@ func test_a_milestone_id_this_build_has_never_heard_of_survives_a_round_trip() -
 			if err == "":
 				RunConfig.record_milestones(["threat_peak"])
 				err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-					"v%d\n10\n20\nm3:from_the_future,hundred_pests,threat_peak\ncb0 sfx0 mus0\n0\n"
+					"v%d\n10\n20\nm3:from_the_future,hundred_pests,threat_peak\ncb0 sfx0 mus0 spd0\n0\n"
 						% RunConfig.SAVE_VERSION,
 					"and the next save writes it back out rather than eating it")
 			return err)
@@ -1348,7 +1371,7 @@ func test_the_colourblind_option_round_trips_through_the_save() -> String:
 			"one toggle turns the safe ramp on")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb1 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb1 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
 				"and wrote it down rather than holding it for the session")
 		if err == "":
 			# Deliberately the wrong value, so a `_load` that assigned nothing at
@@ -1360,7 +1383,7 @@ func test_the_colourblind_option_round_trips_through_the_save() -> String:
 			err = _T.assert_false(RunConfig.toggle_colorblind_safe(), "a second toggle turns it off")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb0 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
 				"and that is written down too -- off is a choice, not an absence")
 		return err)
 
@@ -1372,7 +1395,7 @@ func test_setting_the_option_to_what_it_already_is_does_not_rewrite_the_save() -
 	return _with_scratch_save(5, 6, null, func() -> String:
 		RunConfig.set_colorblind_safe(true)
 		var written: String = FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH)
-		var err: String = _T.assert_true(written.contains("\ncb1 sfx0 mus0\n"), "the first set wrote the file")
+		var err: String = _T.assert_true(written.contains("\ncb1 sfx0 mus0 spd0\n"), "the first set wrote the file")
 		if err == "":
 			# Move the scores under it. A second set that rewrites would pick these
 			# up; one that no-ops leaves the file as it was.
@@ -1399,22 +1422,31 @@ func test_a_save_with_a_broken_options_line_is_refused_whole() -> String:
 		"a bare 0 with no marker": "v%d\n4321\n8765\nm0\n0\n" % RunConfig.SAVE_VERSION,
 		"a spelled-out boolean": "v%d\n4321\n8765\nm0\nfalse\n" % RunConfig.SAVE_VERSION,
 		"an option value that is not one of the two":
-			"v%d\n4321\n8765\nm0\ncb2 sfx0 mus0\n" % RunConfig.SAVE_VERSION,
-		# v6's own shapes. The line grew from one field to three, and every way a
-		# three-field line can be wrong is a way this parser must not shrug.
-		"a v5-shaped options line in a v6 file":
+			"v%d\n4321\n8765\nm0\ncb2 sfx0 mus0 spd0\n" % RunConfig.SAVE_VERSION,
+		# v6's and v7's own shapes. The line grew from one field to three and then to
+		# four, and every way a four-field line can be wrong is a way this parser must
+		# not shrug. Each case below is one field short, one field long, or right-sized
+		# and wrong — never merely "not three", which is what these fixtures decayed
+		# into the moment the current version gained its fourth field.
+		"a v5-shaped options line in a current file":
 			"v%d\n4321\n8765\nm0\ncb0\n" % RunConfig.SAVE_VERSION,
+		"a v6-shaped options line in a current file":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0\n" % RunConfig.SAVE_VERSION,
 		"an options line one field short":
-			"v%d\n4321\n8765\nm0\ncb0 sfx0\n" % RunConfig.SAVE_VERSION,
-		"an options line with a fourth field":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 spd0\n" % RunConfig.SAVE_VERSION,
+		"an options line with a fifth field":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 xyz1\n" % RunConfig.SAVE_VERSION,
+		# The speed field is the one that is not a flag, so it is the one whose own
+		# marker has to be checked rather than inferred from its position.
+		"a fourth field that is not the speed field":
 			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 xyz1\n" % RunConfig.SAVE_VERSION,
 		# The whole reason each flag carries its own prefix. A bare `0 1 0` reads
 		# perfectly when two fields swap places, and the player's music mute quietly
 		# becomes their colourblind setting.
 		"an options line with its fields transposed":
-			"v%d\n4321\n8765\nm0\nsfx0 cb0 mus0\n" % RunConfig.SAVE_VERSION,
+			"v%d\n4321\n8765\nm0\nsfx0 cb0 mus0 spd0\n" % RunConfig.SAVE_VERSION,
 		"an options line padded with a second space":
-			"v%d\n4321\n8765\nm0\ncb0  sfx0 mus0\n" % RunConfig.SAVE_VERSION,
+			"v%d\n4321\n8765\nm0\ncb0  sfx0 mus0 spd0\n" % RunConfig.SAVE_VERSION,
 	}
 	for what: String in cases:
 		var err: String = _with_scratch_save(4321, 8765, cases[what],
@@ -1429,6 +1461,9 @@ func test_a_save_with_a_broken_options_line_is_refused_whole() -> String:
 # v6 widened the options line from `cb0` to `cb0 sfx0 mus0`. The Options screen
 # shows all three switches in one list, and before this two of them reset on every
 # launch while the third did not -- with nothing on screen saying which was which.
+# (v7 widened the same line again with `spd0`, the garden speed. That field is not
+# an Options-screen switch and is covered by its own section at the end of this
+# file; the fixtures below carry it only because a current-version save has to.)
 
 
 func test_the_two_mutes_round_trip_through_the_save() -> String:
@@ -1442,13 +1477,13 @@ func test_the_two_mutes_round_trip_through_the_save() -> String:
 			err = _T.assert_true(Sfx.is_muted(), "and the flag the player hears moved too")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb0 sfx1 mus0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb0 sfx1 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
 				"the options line carries all three switches, colourblind first")
 		if err == "":
 			err = _T.assert_true(RunConfig.set_mute_music(true), "and the bed mutes independently")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb0 sfx1 mus1\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb0 sfx1 mus1 spd0\n0\n" % RunConfig.SAVE_VERSION,
 				"which is a third field, not the same field written twice")
 		if err == "":
 			# Deliberately wrong in memory, and deliberately asymmetric: a `_load`
@@ -1486,7 +1521,7 @@ func test_the_two_mutes_round_trip_through_the_save() -> String:
 			err = _T.assert_true(RunConfig.toggle_mute_music(), "and one silences the bed")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb0 sfx0 mus1\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb0 sfx0 mus1 spd0\n0\n" % RunConfig.SAVE_VERSION,
 				"and both presses were written down, which is the whole point of the issue")
 		if err == "":
 			# Drift, staged deliberately: the live flag says muted, the save says not.
@@ -1503,7 +1538,7 @@ func test_setting_a_mute_to_what_it_already_is_does_not_rewrite_the_save() -> St
 	return _with_scratch_save(5, 6, null, func() -> String:
 		RunConfig.set_mute_sfx(true)
 		var written: String = FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH)
-		var err: String = _T.assert_true(written.contains("\ncb0 sfx1 mus0\n"), "the first set wrote the file")
+		var err: String = _T.assert_true(written.contains("\ncb0 sfx1 mus0 spd0\n"), "the first set wrote the file")
 		if err == "":
 			# Move a score under it. A second set that rewrites picks this up; one
 			# that no-ops leaves the file exactly as it was.
@@ -1523,7 +1558,10 @@ func test_setting_a_mute_to_what_it_already_is_does_not_rewrite_the_save() -> St
 		return err)
 
 
-func test_a_version_five_save_reads_forward_into_version_six() -> String:
+## Named for "the current version" rather than for v6, which is what it said until
+## SAVE_VERSION became 7 and the name started describing a bump two versions back.
+## The body already interpolated `RunConfig.SAVE_VERSION`; only the name drifted.
+func test_a_version_five_save_reads_forward_into_the_current_version() -> String:
 	## The migration, and the trap under it. Every v5 field was read behind
 	## `version >= SAVE_VERSION`, which meant "only a CURRENT file has milestones" --
 	## true while 5 was current, and silent data loss the moment SAVE_VERSION became
@@ -1554,7 +1592,7 @@ func test_a_version_five_save_reads_forward_into_version_six() -> String:
 			err = _T.assert_false(RunConfig.mute_music, "both of them")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n70\n80\nm1:threat_peak\ncb1 sfx0 mus0\n1\ngarden_pause 4194332\n" % RunConfig.SAVE_VERSION,
+				"v%d\n70\n80\nm1:threat_peak\ncb1 sfx0 mus0 spd0\n1\ngarden_pause 4194332\n" % RunConfig.SAVE_VERSION,
 				"and the file is rewritten in the new shape once, keeping everything it carried")
 		if err == "":
 			# The rewritten file has to be one this build reads back as current,
@@ -3017,3 +3055,276 @@ func test_the_campaign_droughts_and_rains_are_where_the_table_says() -> String:
 			String(WaveDirector.WEATHER_CLEAR),
 			"so it comes up clear -- the exemption is doing work, not decorating")
 	return err
+
+
+# -- the remembered garden speed (plant-tower-defense-zgzc) ------------------
+#
+# v7 put the garden speed on the options line. Before it, GameSpeed cycled
+# 1x/2x/half and `Game._end_run` and `Game._exit_tree` both called `reset()`, so the
+# choice did not survive a run, a restart or a quit -- someone who plays at 2x had
+# to press the button again every single run.
+#
+# The reset itself is correct and stays: `Engine.time_scale` is process-global and
+# outlives every node, so a run abandoned at 2x would hand the title screen a
+# doubled clock. What changed is that the choice is written down somewhere the
+# reset cannot reach (`RunConfig.game_speed_step`) and put back on the way IN
+# (`Game._ready` -> `RunConfig.apply_game_speed`) rather than being kept across the
+# way out.
+#
+# ALL THREE STEPS ARE STICKY, half speed included. The argument is written out in
+# full over `RunConfig.game_speed_step`; the short version is that the button
+# carries its own label on the top bar of every frame, so a remembered half speed
+# announces itself and is one press from normal, whereas a setting that is
+# remembered for two of its three values and silently not for the third is a defect
+# with no signal anywhere. `test_the_half_speed_step_is_sticky_too` is what pins
+# that decision, so a future clamp has to argue with a failing test rather than
+# quietly land.
+#
+# Every test here goes through `_with_scratch_save`, which now stashes and restores
+# `Engine.time_scale` as well as the persisted index -- see `_stash_run_config`.
+# That is not politeness: a leaked half speed would not fail anything in this file,
+# it would slow every timing-sensitive test in every later script.
+
+
+## The acceptance criterion, at the persistence layer: a speed chosen in one run is
+## the speed the next launch reads back.
+func test_the_chosen_garden_speed_round_trips_through_the_save() -> String:
+	return _with_scratch_save(0, 0, null, func() -> String:
+		# Through the setter, not by assigning the field: the setter is what a run
+		# actually reaches, and it is the half that writes the file.
+		var stored: int = RunConfig.store_game_speed(1)
+		var err: String = _T.assert_eq(stored, 1, "store_game_speed hands back what it stored")
+		if err == "":
+			err = _T.assert_true(FileAccess.file_exists(HIGHSCORE_TEST_PATH),
+				"and it wrote the save, rather than only moving the field")
+		if err == "":
+			err = _T.assert_true(
+				FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH).contains("\ncb0 sfx0 mus0 spd1\n"),
+				"the speed rides on the options line as the fourth field -- got %s"
+					% [FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH)])
+		if err == "":
+			# The round trip proper. Wipe the in-memory field first, or a `_load` that
+			# never touched it would pass this by leaving 1 where it found it.
+			RunConfig.game_speed_step = 0
+			RunConfig._load()
+			err = _T.assert_eq(RunConfig.load_status, "loaded",
+				"a file this build just wrote reads back as current, not as migrated")
+		if err == "":
+			err = _T.assert_eq(RunConfig.game_speed_step, 1,
+				"and the next launch starts at the speed the last run chose")
+		return err)
+
+
+## The open question this bead left, answered and pinned. See the section header.
+func test_the_half_speed_step_is_sticky_too() -> String:
+	return _with_scratch_save(0, 0, null, func() -> String:
+		var half: int = GameSpeed.STEPS.find(0.5)
+		var err: String = _T.assert_true(half > 0,
+			"half speed is a step of GameSpeed.STEPS -- got %s" % [GameSpeed.STEPS])
+		if err != "":
+			return err
+		if err == "":
+			err = _T.assert_eq(RunConfig.store_game_speed(half), half,
+				"half speed is persisted like any other step, NOT clamped away to 1x")
+		if err == "":
+			RunConfig.game_speed_step = 0
+			RunConfig._load()
+			err = _T.assert_eq(RunConfig.game_speed_step, half,
+				("and it comes back on the next launch. If this fails because someone "
+					+ "clamped the persisted value to {1x, 2x}, read the argument over "
+					+ "RunConfig.game_speed_step first -- it names what would change it."))
+		return err)
+
+
+## What an OLD save does when the field is absent. The migration case, and the one
+## the version history in run_config.gd exists to keep honest.
+func test_a_save_written_before_the_speed_field_reads_as_one_x_and_is_rewritten() -> String:
+	# A v6 file: three fields on the options line, no speed. Deliberately carrying a
+	# milestone and a rebound key, because the thing that goes wrong in a bump is not
+	# the new field -- it is an OLD field defaulted and written back out empty by the
+	# migration rewrite, which is exactly what VERSION_WITH_EXTRAS exists to prevent.
+	var original: String = "v6\n70\n80\nm1:threat_peak\ncb1 sfx0 mus0\n1\ngarden_pause 4194332\n"
+	return _with_scratch_save(0, 0, original, func() -> String:
+		RunConfig._load()
+		var err: String = _T.assert_eq(RunConfig.load_status, "migrated",
+			"a v6 file is read forward, not refused")
+		if err == "":
+			err = _T.assert_eq(RunConfig.game_speed_step, 0,
+				("a save with no speed field reads as 1x -- a player who never had the "
+					+ "control had a garden running at normal speed"))
+		if err == "":
+			err = _T.assert_eq(RunConfig.campaign_high_score, 70, "and its scores survive")
+		if err == "":
+			err = _T.assert_true(RunConfig.has_milestone("threat_peak"),
+				"and its milestone survives the bump")
+		if err == "":
+			err = _T.assert_eq(RunConfig.key_bindings.size(), 1,
+				"and so does its rebound key -- the field under the one that moved")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+				"v%d\n70\n80\nm1:threat_peak\ncb1 sfx0 mus0 spd0\n1\ngarden_pause 4194332\n"
+					% RunConfig.SAVE_VERSION,
+				"and it is rewritten once in the new shape, with the speed defaulted in place")
+		if err == "":
+			RunConfig._load()
+			err = _T.assert_eq(RunConfig.load_status, "loaded",
+				"the migrated file loads as current next time, rather than migrating forever")
+		return err)
+
+
+## The speed field is the first on that line that is not a flag, so it is the first
+## whose own malformed shapes nothing else in this file covers.
+func test_a_save_with_a_broken_speed_field_is_refused_whole() -> String:
+	var cases: Dictionary = {
+		"a speed field with no digits":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd\n" % RunConfig.SAVE_VERSION,
+		"a speed field that is not a number":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spdx\n" % RunConfig.SAVE_VERSION,
+		# `int("")` is 0 and `int("-1")` is -1: both would read as a legal-looking
+		# index if the parser reached for `int()` before `is_valid_int()`.
+		"a negative speed step":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd-1\n" % RunConfig.SAVE_VERSION,
+		"a speed step past the bound":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd%d\n"
+				% [RunConfig.SAVE_VERSION, RunConfig.MAX_SPEED_STEP + 1],
+		"a speed field wearing another field's marker":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 cb0\n" % RunConfig.SAVE_VERSION,
+	}
+	for what: String in cases:
+		var err: String = _with_scratch_save(4321, 8765, cases[what],
+			func() -> String: return _assert_refused(4321, 8765, what))
+		if err != "":
+			return err
+	return ""
+
+
+## A step index this build has no step for is KEPT rather than condemning the file,
+## and refused at the point of use. Same asymmetry `_parse_milestones` cites for not
+## checking ids against `Milestones.TABLE`: the scores in the file cannot be
+## re-earned and a speed can, so a downgrade must not cost the player both.
+func test_a_saved_speed_step_this_build_has_no_step_for_starts_at_one_x() -> String:
+	var future_step: int = GameSpeed.STEPS.size() + 1
+	var original: String = "v%d\n70\n80\nm0\ncb0 sfx0 mus0 spd%d\n0\n" % [
+		RunConfig.SAVE_VERSION, future_step]
+	return _with_scratch_save(0, 0, original, func() -> String:
+		RunConfig._load()
+		var err: String = _T.assert_eq(RunConfig.load_status, "loaded",
+			"a step from a build with more steps does not condemn the two scores in the file")
+		if err == "":
+			err = _T.assert_eq(RunConfig.campaign_high_score, 70, "which is the point of keeping it")
+		if err == "":
+			err = _T.assert_eq(RunConfig.game_speed_step, future_step,
+				"the index is kept verbatim, for a build that has that step")
+		if err == "":
+			# It emits a push_warning, which is the intended loudness -- the run must
+			# not stop over a speed.
+			RunConfig.apply_game_speed()
+			err = _T.assert_float_eq(Engine.time_scale, GameSpeed.NORMAL, 0.0001,
+				("but the engine starts at 1x rather than wrapping with posmod, which "
+					+ "would silently pick some OTHER step of this build's table"))
+		if err == "":
+			err = _T.assert_eq(RunConfig.game_speed_step, future_step,
+				"and applying it did not overwrite the index it could not use")
+		GameSpeed.reset()
+		return err)
+
+
+## `GameSpeed.set_step` wraps with posmod, which is right for a button and wrong for
+## a value that will be written to disk and read back forever.
+func test_store_game_speed_refuses_an_index_this_build_has_no_step_for() -> String:
+	return _with_scratch_save(0, 0, null, func() -> String:
+		var err: String = _T.assert_eq(RunConfig.store_game_speed(GameSpeed.STEPS.size()), 0,
+			"an index one past the table is refused, and the stored value stands")
+		if err == "":
+			err = _T.assert_eq(RunConfig.store_game_speed(-1), 0, "so is a negative one")
+		if err == "":
+			err = _T.assert_false(FileAccess.file_exists(HIGHSCORE_TEST_PATH),
+				"and neither refusal wrote a save")
+		return err)
+
+
+## The `set_colorblind_safe` contract, checked rather than assumed. It matters more
+## here than anywhere else in the file: a full cycle back to 1x is three presses, so
+## an unguarded setter would write user:// three times per lap of the button.
+func test_store_game_speed_writes_only_when_the_choice_actually_changes() -> String:
+	return _with_scratch_save(0, 0, null, func() -> String:
+		var err: String = _T.assert_eq(RunConfig.store_game_speed(0), 0,
+			"storing the speed that is already stored is a no-op")
+		if err == "":
+			err = _T.assert_false(FileAccess.file_exists(HIGHSCORE_TEST_PATH),
+				"so nothing was written -- the save file is not a press counter")
+		if err == "":
+			err = _T.assert_eq(RunConfig.store_game_speed(1), 1, "a real change is stored")
+		if err == "":
+			err = _T.assert_true(FileAccess.file_exists(HIGHSCORE_TEST_PATH), "and written")
+		return err)
+
+
+## The restore must not fight the pause parking. `-03t6` pinned "the pause card
+## reads at 1x" and test_selftest.gd holds that assertion for `GameSpeed` alone;
+## this is the same question asked of the path that now also restores a speed.
+func test_restoring_a_saved_speed_still_leaves_the_pause_card_at_one_x() -> String:
+	return _with_scratch_save(0, 0, null, func() -> String:
+		# Explicitly unheld to start. `is_held()` is static process state, so this test
+		# would pass for the wrong reason -- every reading 1x -- if an earlier one left
+		# a hold standing.
+		GameSpeed.reset()
+		RunConfig.game_speed_step = 1
+		RunConfig.apply_game_speed()
+		var chosen: float = GameSpeed.STEPS[1]
+		var err: String = _T.assert_float_eq(Engine.time_scale, chosen, 0.0001,
+			"applying the saved speed moves the engine, which is the whole feature")
+		if err == "":
+			GameSpeed.hold()
+			err = _T.assert_float_eq(Engine.time_scale, GameSpeed.NORMAL, 0.0001,
+				("and a pause still parks it at 1x -- the card's fades run on the paused "
+					+ "tree and Engine.time_scale scales a Tween whether or not it is paused"))
+		if err == "":
+			err = _T.assert_eq(GameSpeed.step(), 1,
+				"the choice is parked, not discarded")
+		if err == "":
+			# The branch that would be reachable if `Game._ready` ever ran behind a
+			# card, or if a future entry point applied the saved speed while held.
+			RunConfig.game_speed_step = 2
+			RunConfig.apply_game_speed()
+			err = _T.assert_float_eq(Engine.time_scale, GameSpeed.NORMAL, 0.0001,
+				"restoring a speed WHILE held moves the parked choice and leaves the engine at 1x")
+		if err == "":
+			GameSpeed.release()
+			err = _T.assert_float_eq(Engine.time_scale, GameSpeed.STEPS[2], 0.0001,
+				"and the release hands back the speed that was chosen last")
+		# Unconditionally, on the failing path too: `Engine.time_scale` and
+		# `GameSpeed._held_step` are both static, so a body that returned early while
+		# held would leave the whole rest of the suite parked.
+		GameSpeed.reset()
+		return err)
+
+
+## What `reset()` does and does not reach, stated once. This is the seam the whole
+## item turns on: the engine goes back to 1x on every way out of a run, and the
+## player's choice is somewhere reset cannot see.
+func test_ending_a_run_resets_the_engine_but_not_the_remembered_choice() -> String:
+	return _with_scratch_save(0, 0, null, func() -> String:
+		var err: String = _T.assert_eq(RunConfig.store_game_speed(1), 1, "the player picks 2x")
+		if err == "":
+			RunConfig.apply_game_speed()
+			err = _T.assert_float_eq(Engine.time_scale, GameSpeed.STEPS[1], 0.0001,
+				"and the run runs at it")
+		if err == "":
+			# Both `Game._end_run` and `Game._exit_tree` call exactly this.
+			GameSpeed.reset()
+			err = _T.assert_float_eq(Engine.time_scale, GameSpeed.NORMAL, 0.0001,
+				("leaving the run puts the ENGINE back to 1x, which is not negotiable -- "
+					+ "Engine.time_scale outlives the scene and the title screen gets it"))
+		if err == "":
+			err = _T.assert_eq(GameSpeed.step(), 0, "and forgets the step it was holding")
+		if err == "":
+			err = _T.assert_eq(RunConfig.game_speed_step, 1,
+				"but the player's choice is on disk, where reset() cannot reach it")
+		if err == "":
+			# Which is what makes the next run start at 2x: Game._ready calls this.
+			RunConfig.apply_game_speed()
+			err = _T.assert_float_eq(Engine.time_scale, GameSpeed.STEPS[1], 0.0001,
+				"so the next run starts at the speed the last one chose")
+		GameSpeed.reset()
+		return err)
