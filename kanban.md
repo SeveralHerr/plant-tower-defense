@@ -181,6 +181,34 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### Added cycle 106 — out of a screenshot James sent
+
+- **The playfield is CENTRED in a wide window, not SCALED to fill it, and that is a
+  decision worth revisiting rather than a finished answer.** The board is a fixed 14×9 grid
+  of 64px cells — 896×576 — so on a 1387-wide canvas it now sits centred with 117px of
+  grass-coloured nothing either side (`Game._apply_board_layout`). Centring was the safe
+  fix and it looks deliberate. Scaling would fill the window properly, and it is the
+  bigger, riskier change: every reach is in pixels (`CornCobbler.RANGE`, `Mint.REACH`,
+  `Aloe.REACH`, `StickySundew.SAP_RADIUS`), `Board.CELL` is an `int` that a dozen things
+  divide by, and `world_to_cell` floors a pixel position. A scale factor touches all of it.
+  Taste call: on a very wide monitor the centred board reads as a window rather than as a
+  game, and that is worth paying for eventually.
+- **More board is the other answer to the same problem, and it is more interesting.** A
+  wider window could show MORE GARDEN rather than a bigger one — `Board.COLS`/`ROWS` are
+  constants and the road is generated, so a wider board is a level-design question rather
+  than a rendering one. It would also change the game, which is the point: the fixed 14×9
+  is the reason a plant's reach means the same thing in every run.
+- **Two bugs were stacked and fixing the first exposed the second.** Before cycle 105 the
+  side panel sat at a hardcoded `1152 - PANEL_WIDTH` and the board at `x = 0`; both were
+  wrong and they hid each other, because the panel's error happened to sit exactly where
+  the board's gutter would have been. Worth remembering when a layout looks right at one
+  size: agreeing at the design size is not evidence of anything.
+- **A guard that mixes coordinate spaces is invisible until something moves.** `_click_at`
+  compared an absolute `screen_pos.x` against a board-LOCAL width and was correct for
+  exactly as long as the board started at x=0. Nothing in the suite could have caught it,
+  because every test hosted the board at the origin — which is
+  `godot-2d-placement-audit`'s central claim, arriving on this project for the second time.
+
 ### Added cycle 105 — out of the eighth plant and the live viewport
 
 - **The roster has ONE genuinely uncovered role left that needs no pathing work: husks.**
