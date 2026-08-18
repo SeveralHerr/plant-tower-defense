@@ -181,6 +181,17 @@ static func bites_taken_for(progress: float) -> int:
 	return mini(int(floorf(p * float(BITES_PER_MEAL))), BITES_PER_MEAL)
 const EATING_LATE_TEXTURE_PATH := "res://assets/sprites/chomp_flower_eating_late.png"
 
+## The jaw at full gape, worn for the instant of the bite and no longer.
+##
+## plant-tower-defense-81g9, the flower's half of a player report -- "the attack
+## animation for the chomp flower doesn't really look like it's taking bites out of
+## the bugs". The pest's half (-h4v1: three visible bites, the bug shrinking as it is
+## eaten) shipped first. This is the other one: the mouth already had three textures
+## and NONE of them was open. It lunged and squashed while wearing the same closed
+## head it wears through the whole chew, so the bite had no instant -- the frame a
+## player's eye lands on was a flower that had already finished.
+const GAPE_TEXTURE_PATH := "res://assets/sprites/chomp_flower_gape.png"
+
 ## How far the mouth throws itself at what it just caught, in px.
 ##
 ## The designer's note asked for an attack that READS as an attack, and the answer is a
@@ -236,6 +247,7 @@ var _bites_taken: int = 0
 var _chew_total: float = 0.0
 var _idle_texture: Texture2D = null
 var _eating_texture: Texture2D = null
+var _gape_texture: Texture2D = null
 var _eating_late_texture: Texture2D = null
 ## Where the last bite threw the mouth, in the sprite's own space.
 ##
@@ -398,7 +410,18 @@ func _grab(pest: Pest) -> void:
 	_chew_total = chew_seconds_for(level, pest.chew_seconds)
 	_chew_left = _chew_total
 	_bite()
-	_show_eating_sprite()
+	# ONLY if the gape did not take. `_bite()` wears the open jaw for
+	# BITE_SQUASH_OUT_SECONDS and its own timer hands over to the eating sprite, so
+	# calling _show_eating_sprite() unconditionally here overwrote the gape on the
+	# very same frame and it never reached a screen. Every gate stayed green --
+	# name_check, lint and 769 tests all pass either way, because no test can watch a
+	# texture that is correct for 60ms. It was found by stepping a live bite frame by
+	# frame (plant-tower-defense-81g9).
+	#
+	# The fallback still matters: with animations off `_bite()` returns before the
+	# gape, and the mouth must still show that it is full.
+	if _sprite == null or _gape_texture == null or _sprite.texture != _gape_texture:
+		_show_eating_sprite()
 	queue_redraw()
 
 
@@ -548,6 +571,10 @@ func _bite() -> void:
 	# which leans the lunge without ever pointing it at the wrong neighbour. Deliberate:
 	# the body leaning at its meal is the picture, and un-rotating it would decouple the
 	# head from the stem it is attached to.
+	# The open jaw, on the same frame the lunge starts (plant-tower-defense-81g9).
+	# Inside the animations gate with the rest of the bite: a texture swap the player
+	# has turned animation off for is a flicker, not information.
+	_show_gape_sprite()
 	var tween := create_tween().set_parallel(true)
 	tween.tween_property(_sprite, "position", _bite_lunge, BITE_LUNGE_OUT_SECONDS)
 	tween.tween_property(_sprite, "scale", Vector2(1.18, 0.82), BITE_SQUASH_OUT_SECONDS)
@@ -573,6 +600,36 @@ func _on_upgraded() -> void:
 	var tween := create_tween()
 	tween.tween_property(_sprite, "scale", Vector2(1.30, 0.74), FLOURISH_OUT_SECONDS)
 	tween.tween_property(_sprite, "scale", Vector2.ONE, FLOURISH_BACK_SECONDS)
+
+
+## The gape, and the timer that takes it off again.
+##
+## BITE_SQUASH_OUT_SECONDS and not one of the other three bite constants: it is the
+## LONGER of the two outward channels (0.06 against the lunge's 0.05) and the one the
+## tween's chain() waits on, so it is literally the window the mouth is travelling
+## open for. Ending the gape earlier would close the jaw while the head is still
+## moving out; later would hold it open into the recovery.
+##
+## Guarded on still holding the SAME meal: a 0.06s timer outlives a release, and a
+## flower that let go mid-bite must not have a gaping mouth painted back onto it.
+func _show_gape_sprite() -> void:
+	if _sprite == null:
+		return
+	if _idle_texture == null:
+		_idle_texture = _sprite.texture
+	if _gape_texture == null:
+		_gape_texture = load(GAPE_TEXTURE_PATH) as Texture2D
+	if _gape_texture == null:
+		return
+	_sprite.texture = _gape_texture
+	var meal: Pest = _held
+	var timer: SceneTreeTimer = get_tree().create_timer(BITE_SQUASH_OUT_SECONDS)
+	timer.timeout.connect(func() -> void:
+		if not is_instance_valid(self) or _sprite == null:
+			return
+		if _held == null or _held != meal:
+			return
+		_show_eating_sprite())
 
 
 func _show_eating_sprite() -> void:

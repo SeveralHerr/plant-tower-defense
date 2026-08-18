@@ -40,6 +40,9 @@ const EXPECTED_SIZE := {
 	"chomp_flower": 64,
 	"chomp_flower_eating": 64,
 	"chomp_flower_eating_late": 64,
+	# The frame AT the bite, held for BITE_SQUASH_OUT_SECONDS before the eating
+	# sprite takes over (plant-tower-defense-81g9).
+	"chomp_flower_gape": 64,
 	"corn_cobbler": 64,
 	"mint": 64,
 	# The Shield Bug and its corpse. Added by the parent rather than by the agent that
