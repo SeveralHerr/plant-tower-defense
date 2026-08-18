@@ -11302,7 +11302,14 @@ func test_the_message_corpus_covers_every_catalogue_producer() -> String:
 	# catalogue — so any name in PLANTS can appear in it and every name has to be
 	# priced. Pricing only the cob's would leave the row short by the difference
 	# between the shortest plant name and the longest.
-	var catalogue_entries: int = (PlantCatalog.PLANTS.size() * 6
+	# SEVEN per plant since cycle 112, not six: a plant now has two death lines, not one.
+	# "A hungry pest ate your X!" was true of every plant death until the Barrier Bramble
+	# arrived, since Pest only reaches _adjacent_plant() inside its is_hungry branch; a
+	# road plant is chewed by _blocking_plant(), which every pest runs. BOTH are priced
+	# for EVERY plant rather than the one each plant can reach, because a corpus that
+	# reasons about which plant can show which line is wrong the first time a plant
+	# changes where it stands -- and the wall line is 6 characters longer.
+	var catalogue_entries: int = (PlantCatalog.PLANTS.size() * 7
 		+ CornCobbler.LEVELS.size() + ChompFlower.LEVELS.size())
 	return _T.assert_eq(corpus.size() - catalogue_entries, 9,
 		("the corpus carries its 9 non-catalogue entries (prep note, wave-cleared "
@@ -17515,3 +17522,51 @@ func test_every_overlay_makes_everything_under_it_unfocusable() -> String:
 
 # END plant-tower-defense-cs2k
 # =============================================================================
+
+
+## The death line names something that actually happened.
+##
+## "A hungry pest ate your X!" was true of every plant death in the game until the
+## Barrier Bramble existed, because `Pest._physics_process` only reaches
+## `_adjacent_plant()` inside its `is_hungry` branch. A Bramble is chewed by
+## `_blocking_plant()`, which every pest runs -- so the commonest plant death in the game
+## was being announced by a sentence naming a mutation that had nothing to do with it.
+func test_a_wall_is_chewed_through_and_a_bed_is_eaten_by_something_hungry() -> String:
+	var wall: String = Hud.destroyed_message(PlantCatalog.BRAMBLE)
+	var bed: String = Hud.destroyed_message(PlantCatalog.CORN)
+	var err: String = _T.assert_false(wall.contains("hungry"),
+		"a Bramble's death does not blame the hungry mutation, got: %s" % wall)
+	if err == "":
+		err = _T.assert_true(wall.contains(PlantCatalog.display_name(PlantCatalog.BRAMBLE)),
+			"and it still names the plant, got: %s" % wall)
+	if err == "":
+		# The other direction, or this passes on a game that stopped mentioning the
+		# mutation anywhere -- which would lose the one cue teaching what `hungry` means.
+		err = _T.assert_true(bed.contains("hungry"),
+			"a bed off the road is still eaten by something hungry, got: %s" % bed)
+	if err == "":
+		# Driven off `on_road` rather than off the id, so a second road plant inherits it.
+		var road_lines: int = 0
+		for id: StringName in PlantCatalog.ids():
+			if PlantCatalog.on_road(id):
+				road_lines += 1
+				err = _T.assert_eq(Hud.destroyed_message(id),
+					Hud.chewed_through_message(PlantCatalog.display_name(id)),
+					"%s gets the wall line because it stands on the road" % id)
+			else:
+				err = _T.assert_eq(Hud.destroyed_message(id),
+					Hud.eaten_message(PlantCatalog.display_name(id)),
+					"%s gets the hungry line because it stands off it" % id)
+			if err != "":
+				break
+		if err == "":
+			err = _T.assert_gt(road_lines, 0,
+				"at least one plant reaches the wall line -- zero would pass every "
+					+ "assertion above without checking the branch that matters")
+	if err == "":
+		# In the corpus, or the row is measured 6 characters narrower than it can be.
+		var corpus: Array[String] = Hud.message_corpus()
+		err = _T.assert_true(corpus.has(
+			Hud.chewed_through_message(PlantCatalog.display_name(PlantCatalog.BRAMBLE))),
+			"the wall line is priced by the message-row budget")
+	return err

@@ -7219,3 +7219,42 @@ status rather than rewriting the entries that recorded these as open.
   Escape handling, so launching would re-drive that code with a renderer attached and learn
   nothing. The row is `--no-reach` by triage rather than by omission. Second cycle running
   that the triage table has earned its keep by saying **do not launch**.
+
+## 2026-08-18 — cycle 112 item 2: a sentence that stopped being true, and no gate could tell
+
+- Value: **warranted** — the defect is a sentence being FALSE, which nothing in this
+  project can detect, and the two follow-on catches were both gates and both instant.
+  - Expected: `Hud.eaten_message` says "A hungry pest ate your X!" and that became false for
+    the Barrier Bramble in cycle 110, since a wall is chewed by every pest rather than by
+    the hungry mutation. Predicted: the message row's budget will object, because the
+    replacement is longer.
+  - Got: it did, and by exactly the amount predicted — "The wave chewed through your
+    Barrier Bramble!" is 45 characters against 39, so pricing only the line each plant can
+    actually reach would have under-measured the row by 6. Both lines are now priced for
+    every plant, the same over-pricing `selection_corpus()` already does.
+  - Found: three.
+    **(1)** the falsehood itself. `Pest._physics_process` only reaches `_adjacent_plant()`
+    inside its `is_hungry` branch — which is precisely what made that sentence true of all
+    eight plants and false of the ninth. The commonest plant death in the game was being
+    announced by a sentence naming a mutation with nothing to do with it. **Found by
+    reading the producer while looking for something else. No gate in this project knows
+    whether a sentence is true**, and that is worth stating plainly next to 19 clean
+    checkers and 898 passing tests.
+    **(2)** the hand-maintained per-plant multiplier in
+    `test_the_message_corpus_covers_every_catalogue_producer` caught the arithmetic moving
+    6 → 7, with a message that says which direction to read the change. That test is the
+    reason the widened row could not slip through quietly.
+    **(3)** `message_corpus_check.py` rejected the SHAPE of the fix rather than the fix.
+    Introducing a one-line dispatcher between the call site and the two producers broke its
+    model in both directions at once — the call site called no corpus producer, and both
+    producers became "priced and called by nothing else". Waived three times with the real
+    reason rather than reshaping the code to suit the checker, which is what its own
+    `waive:` line is for.
+  - Cheaper: nothing. The defect was invisible to every mechanical check by construction.
+
+- Gap: **no gap this turn.** Tier (c) headless-only again, and the reasoning is worth
+  recording because it is the third cycle running the triage table has said *do not launch*:
+  the branch is covered over the whole catalogue by a new test, and the only failure a
+  launch could add — the row clipping silently rather than erroring — is already swept for
+  every plant name by `test_no_message_clips_for_any_plant_in_the_catalogue` against the
+  real `MessageLabel` width.

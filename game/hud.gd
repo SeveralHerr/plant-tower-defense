@@ -3352,7 +3352,15 @@ static func message_corpus() -> Array[String]:
 	var out: Array[String] = []
 	for id: StringName in PlantCatalog.PLANTS:
 		var display: String = PlantCatalog.display_name(id)
-		out.append(eaten_message(display))
+		# BOTH death lines for EVERY plant, not the one that plant can actually show.
+		# Same over-pricing `selection_corpus()` does by crossing every plant with every
+		# detail, and for the same reason: a corpus that reasons about which plant can
+		# reach which line is a corpus that is wrong the first time a plant changes where
+		# it stands. "The wave chewed through your X!" is 6 characters longer than "A
+		# hungry pest ate your X!", so pricing only the reachable one would under-measure
+		# this row by exactly the amount the new line added.
+		out.append(eaten_message(display))  # message-corpus-check: ok - reached through Hud.destroyed_message(), which game.gd:1660 calls; the dispatcher is one level of indirection this checker does not trace
+		out.append(chewed_through_message(display))  # message-corpus-check: ok - same dispatcher as the line above; both forms are priced for every plant on purpose
 		# BOTH forms of the armed prompt. The tip is shown once per save and the
 		# bare warning every time after, so both reach this row and both have to be
 		# priced — a corpus holding only the short one would report the row as
@@ -3554,6 +3562,35 @@ static func hint_note_text(id: String, shown: bool) -> String:
 
 static func eaten_message(plant_name: String) -> String:
 	return "A hungry pest ate your %s!" % plant_name
+
+
+## The same event for a plant that stands IN the road, and it needed its own line
+## because the one above became FALSE the day such a plant existed.
+##
+## Before the Barrier Bramble (plant-tower-defense-3mhn) a plant could only ever be
+## destroyed one way: `Pest._physics_process` reaches `_adjacent_plant()` solely inside
+## its `is_hungry` branch, so "a hungry pest ate your X" was true of every plant death
+## in the game. A Bramble is chewed by `_blocking_plant()`, which is checked for EVERY
+## pest and is the whole point of the plant — so the commonest plant death in the game
+## is now announced by a sentence naming a mutation that had nothing to do with it.
+##
+## Branching on the PLANT rather than on the killer, and that is a deliberate trade with
+## a known edge. `Plant.take_damage` does not know what bit it and threading that through
+## would touch every damage path in the project. The dichotomy is very nearly exact
+## instead: a hungry pest is the only thing that can reach a plant off the road, and a
+## road plant is chewed by the wave. The gap is one case — `Bramble.STOP_RADIUS` is 0.6
+## of a cell and `Pest.EAT_RADIUS` is 1.15, so a hungry pest one cell short of a Bramble
+## can eat it without being held by it, and will get this line rather than the other. It
+## is still true: the wave did chew through it.
+static func chewed_through_message(plant_name: String) -> String:
+	return "The wave chewed through your %s!" % plant_name
+
+
+## Which of the two the player should be shown for a plant of `id`. One decision, in one
+## place, so the call site does not carry a second copy of the rule.
+static func destroyed_message(id: StringName) -> String:
+	var display: String = PlantCatalog.display_name(id)
+	return chewed_through_message(display) if PlantCatalog.on_road(id) else eaten_message(display)
 
 
 ## The armed prompt, and the only thing that tells a player the move preview

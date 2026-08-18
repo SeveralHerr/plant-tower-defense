@@ -1657,7 +1657,7 @@ func _on_plant_destroyed(plant: Plant) -> void:
 	if selected_placed == plant:
 		_select(null)
 	Sfx.play(Sfx.PLANT_DESTROYED)
-	hud.show_message(Hud.eaten_message(PlantCatalog.display_name(plant.kind)), 4.0)
+	hud.show_message(Hud.destroyed_message(plant.kind), 4.0)  # message-corpus-check: ok - destroyed_message is a one-line dispatcher over eaten_message/chewed_through_message; BOTH are priced for every plant in message_corpus(), which is wider than this call site can reach
 	plant.play_exit_and_free()
 	_refresh()
 
