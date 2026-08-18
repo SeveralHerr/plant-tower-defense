@@ -14729,4 +14729,61 @@ func test_every_positional_devtools_verb_refuses_a_call_with_no_position() -> St
 			"", "a call carrying every required key is not refused")
 	return err
 
+
+## A handler must not die inside its own reply.
+##
+## plant-tower-defense-wy2v. `mutations` used to be `args.get("mutations", []) as
+## Array`, and the arguments arrive as parsed JSON -- so `mutations: "winged"`, one
+## letter from the singular key beside it, cast to null and the `for` over it was a
+## runtime error INSIDE the handler. The bus renders that as `success: false` with an
+## empty message, which reads exactly like the game refusing the spawn; that
+## mis-reading is what cycle 101 lost its time to on `upgrade_plant`.
+##
+## What this asserts is the narrow, checkable half: the handler ANSWERS. A reply that
+## comes back at all, saying which key was wrong, is the whole difference between the
+## two outcomes. Reached with no Game because spawn_pest validates its arguments
+## before it looks for one.
+func test_spawn_pest_answers_a_bad_mutations_argument_instead_of_dying_in_its_reply() -> String:
+	var ext: RefCounted = load(DEVTOOLS_EXT).new()
+	# A String, a Dictionary and a number: three JSON shapes that `as Array` turns
+	# into null, and the first of them ("winged") is the plausible typo -- the
+	# singular key beside it takes exactly that value.
+	var wrong_shapes: Array = ["winged", {"winged": true}, 3]
+	var err: String = _T.assert_gt(wrong_shapes.size(), 0,
+		"there are wrong shapes to try -- an empty list passes this test for free")
+	for shape: Variant in wrong_shapes:
+		if err != "":
+			break
+		var asked: Variant = ext._wanted_mutations("", shape)
+		err = _T.assert_true(asked is Dictionary,
+			("_wanted_mutations answered for mutations=%s rather than dying. A null here is "
+				+ "the handler dying while building its reply, which the bus renders as "
+				+ "success:false with an empty message") % [shape])
+		if err != "":
+			break
+		var body: Dictionary = asked as Dictionary
+		var refusal: String = str(body.get("refusal", ""))
+		err = _T.assert_gt(refusal.length(), 0,
+			"mutations=%s is refused rather than quietly treated as no mutations at all"
+				% [shape])
+		if err == "":
+			err = _T.assert_true(refusal.contains("mutations"),
+				"and the refusal names the key it objected to; it said: %s" % refusal)
+	if err == "":
+		# The other direction, without which the above passes by refusing everything.
+		var good: Dictionary = ext._wanted_mutations("", ["winged", "hungry"])
+		err = _T.assert_eq(str(good["refusal"]), "", "a well-formed array is not refused")
+		if err == "":
+			err = _T.assert_eq((good["mutations"] as Array).size(), 2,
+				"and both names survive the parse")
+	if err == "":
+		# The singular shorthand, which is what every existing script sends.
+		var single: Dictionary = ext._wanted_mutations("winged", [])
+		err = _T.assert_eq(str(single["refusal"]), "",
+			"`mutation` with no `mutations` at all is still a well-formed call")
+		if err == "":
+			err = _T.assert_eq((single["mutations"] as Array).size(), 1,
+				"and it yields the one mutation asked for")
+	return err
+
 # --- END plant-tower-defense-nj7w / -wy2v ---
