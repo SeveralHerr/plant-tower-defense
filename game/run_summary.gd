@@ -141,6 +141,14 @@ const MAP_LEGEND_FONT_SIZE: int = 13
 ## at 552 and 66px inside the rise budget. With no milestones — the common case — it
 ## takes the top of the column instead of leaving a hole above itself.
 ##
+## RE-MEASURED for plant-tower-defense-q8db, which added an eighth possible row (the
+## first record, see `ribbon_entries`). At `worst_ribbon_rows()` = 8 the ribbon foots at
+## 478, the note starts at 494 and foots at 590 — still inside the 616 rise budget, by
+## 26px rather than 66. That is the whole of the slack this change spent, and it is
+## spent in the side column, not on the stats row. A NINTH row would foot at 630 and
+## hang off the bottom during the rise, so this column is now full:
+## `test_the_widest_ribbon_this_game_can_draw_still_clears_the_rise` is what says so.
+##
 ## A Panel and not a bare Label, unlike the legend. The legend sits over dark road
 ## for its whole width; this column straddles the seam at x = 896 where the board
 ## ends and the side panel begins, so a bare label would be legible over one half
@@ -250,17 +258,54 @@ func _build_heading() -> void:
 	add_child(sub)
 
 
+## Whether this run set the garden's FIRST record, rather than beat an earlier one
+## (plant-tower-defense-q8db).
+##
+## `previous_best` is the number the record just beat, and 0 means there was nothing
+## there — the mode had never been scored. `TitleScreen._arm_record_ratchet` reads the
+## same 0 and refuses to roll, correctly: counting up from a zero the player never held
+## would tell someone who has just set their first score that they climbed out of it.
+## But refusing the roll was the whole treatment, so the most significant record a
+## player will ever set ended up with strictly LESS than a later, smaller one. This is
+## the flag the card uses to give it something else instead.
+##
+## DEFAULTS TO -1, NOT 0, and the difference is the whole safety of it. `previous_best`
+## is a key `Game.summary_stats` does not write yet; absent must mean "unknown", which
+## reads as "not a first" and leaves the card saying exactly what it says today. A 0
+## default would call every record on every card a first — including on the pause exits,
+## which build a card from a stats dict assembled elsewhere.
+func first_record() -> bool:
+	if not bool(_stats.get("new_record", false)):
+		return false
+	return int(_stats.get("previous_best", -1)) == 0
+
+
 ## The seed total against the persisted best. Pulled out as its own builder so a
 ## test can assert every branch of it without standing up a Control — the same
 ## shape TitleScreen.high_score_text() uses for the same reason.
 func _score_line() -> String:
-	var earned: int = int(_stats.get("seeds_earned_total", 0))
-	if bool(_stats.get("new_record", false)):
+	return score_line_at(int(_stats.get("seeds_earned_total", 0)),
+		bool(_stats.get("new_record", false)), first_record(),
+		int(_stats.get("high_score", 0)), bool(_stats.get("endless", false)))
+
+
+## The same line for GIVEN numbers, static and pure, which is what lets the suite assert
+## all three branches without a save file or a played run — the shape
+## `TitleScreen.high_score_text_at` already uses next door for the same reason.
+##
+## "this garden's first record" and not "a new best". A first record is not a better
+## number than the one before it; there was no number before it, and "a new best" quietly
+## claims a comparison that did not happen. Naming it as a first is also the channel that
+## survives colour being discarded — it is the WORDS that differ, not a tint.
+static func score_line_at(earned: int, new_record: bool, first: bool, best: int,
+		endless: bool) -> String:
+	if first:
+		return "%d seeds grown — this garden's first record" % earned
+	if new_record:
 		return "%d seeds grown — a new best" % earned
-	var best: int = int(_stats.get("high_score", 0))
 	# "your best" is now the record for the mode just played, not a single number
 	# shared between the eight-wave campaign and an unbounded endless run.
-	var mode: String = "endless" if bool(_stats.get("endless", false)) else "campaign"
+	var mode: String = "endless" if endless else "campaign"
 	return "%d seeds grown — your best %s is %d" % [earned, mode, best]
 
 
@@ -629,10 +674,68 @@ func new_milestones() -> Array[String]:
 	return out
 
 
+## The node-name suffix and id for the first-record row. Not a milestone id and
+## deliberately not in `Milestones.TABLE` — it is not a thing the shelf can display,
+## because the shelf's rows are the fixed achievement list and this is a fact about a
+## number. See `ribbon_entries`.
+const FIRST_RECORD_ID := "first_record"
+
+
+## EVERY row the ribbon draws — milestones, plus the first record when there is one
+## (plant-tower-defense-q8db).
+##
+## The bead asked what a FIRST record should get instead of the roll a later one gets,
+## and the answer was already on this card: the ribbon's heading is literally "First
+## time", it is drawn in GOLD because gold is the colour this game spends on "something
+## you got", and it is the one surface here that exists to say *this run did a thing for
+## the first time ever*. A garden's first recorded score is exactly that and was the only
+## such event not listed on it.
+##
+## So a first record is not celebrated with a bigger number or a louder colour — it is
+## admitted to the list of firsts, which is the treatment the card already reserves for
+## them. That also fixes the ordering complaint directly: a later record gets a roll on
+## the title screen and one subheading, a first record gets a subheading that names it
+## as a first AND a gold ribbon row. More, not less.
+##
+## FIRST IN THE LIST, above the milestones. When a run earns both, the record is the
+## rarer event — a garden opens its record book once, and can clear the campaign in any
+## run that reaches the end.
+##
+## The row is synthesised rather than looked up because there is no table to look it up
+## in, and adding one to `Milestones.TABLE` would put a score on the achievement shelf
+## and break the shelf's earned count, which is deliberately taken off TABLE
+## (`notebook_screen.gd:650`) so a foreign id cannot push the total past its rows.
+func ribbon_entries() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if first_record():
+		out.append({
+			"id": FIRST_RECORD_ID,
+			"title": "The record book opens",
+			# The number is in the row because the row is the only place it is a
+			# FIRST. The subheading says the same seeds as a total; here it is the
+			# score the garden will be measured against from now on.
+			"note": ("%d seeds — the first score this garden has kept"
+				% int(_stats.get("seeds_earned_total", 0))),
+		})
+	for id: String in new_milestones():
+		out.append({
+			"id": id,
+			"title": Milestones.title_of(id),
+			"note": Milestones.note_of(id),
+		})
+	return out
+
+
 ## How tall the ribbon is for `count` entries. A function rather than a literal
 ## because the count is a runtime number and the clearance test has to be able to
-## ask about the worst case (every milestone in Milestones.TABLE at once) without
-## staging a run that earns them.
+## ask about the worst case without staging a run that earns it.
+##
+## THE WORST CASE IS `Milestones.TABLE.size() + 1`, not TABLE.size(), since
+## plant-tower-defense-q8db: `ribbon_entries()` prepends a first-record row, so the
+## tallest ribbon is every milestone at once on the run that also opened the record
+## book. `RunSummary.worst_ribbon_rows()` is that number — use it rather than
+## `Milestones.TABLE.size()`, which now understates the ribbon by one row and will
+## therefore measure a case that is not the worst one.
 static func ribbon_height(count: int) -> float:
 	if count <= 0:
 		return 0.0
@@ -640,8 +743,21 @@ static func ribbon_height(count: int) -> float:
 		+ float(count) * RIBBON_ROW_HEIGHT + RIBBON_PAD)
 
 
+## The most rows the ribbon can ever hold: every achievement in `Milestones.TABLE`, plus
+## the one synthesised row `ribbon_entries()` puts above them on a first record.
+##
+## Derived rather than written as 8, for the reason `shelf_capacity()` is derived rather
+## than written as 7: the number moves when the table does, and the person who appends a
+## milestone is not going to come back here and redo the arithmetic. Anything asking
+## "does the tallest ribbon still clear the map legend" must ask THIS, because the
+## honest worst case grew by a row and a test still measuring `Milestones.TABLE.size()`
+## now passes on a ribbon 40px shorter than the one the game can draw.
+static func worst_ribbon_rows() -> int:
+	return Milestones.TABLE.size() + 1
+
+
 func _build_milestone_ribbon() -> void:
-	var earned: Array[String] = new_milestones()
+	var earned: Array[Dictionary] = ribbon_entries()
 	if earned.is_empty():
 		return
 
@@ -669,10 +785,11 @@ func _build_milestone_ribbon() -> void:
 	panel.add_child(heading)
 
 	var y: float = RIBBON_PAD + RIBBON_HEADING_HEIGHT + RIBBON_HEADING_GAP
-	for id: String in earned:
+	for row: Dictionary in earned:
+		var id: String = String(row["id"])
 		var title := Label.new()
 		title.name = "Milestone_%s" % id
-		title.text = Milestones.title_of(id)
+		title.text = String(row["title"])
 		title.position = Vector2(RIBBON_PAD, y)
 		title.size = Vector2(RIBBON_WIDTH - RIBBON_PAD * 2.0, 22.0)
 		title.add_theme_font_size_override("font_size", RIBBON_TITLE_FONT_SIZE)
@@ -685,7 +802,7 @@ func _build_milestone_ribbon() -> void:
 
 		var note := Label.new()
 		note.name = "MilestoneNote_%s" % id
-		note.text = Milestones.note_of(id)
+		note.text = String(row["note"])
 		note.position = Vector2(RIBBON_PAD, y + 20.0)
 		note.size = Vector2(RIBBON_WIDTH - RIBBON_PAD * 2.0, 18.0)
 		note.add_theme_font_size_override("font_size", RIBBON_NOTE_FONT_SIZE)
@@ -769,7 +886,10 @@ func _build_reach_note() -> void:
 
 	var panel := Panel.new()
 	panel.name = "ReachNote"
-	panel.position = Vector2(RIBBON_X, reach_note_top(new_milestones().size()))
+	# ribbon_entries(), not new_milestones(): the first-record row is a row the note
+	# has to clear like any other, and reading the shorter list here would slide the
+	# note up under the ribbon on exactly the run this cycle added a row for.
+	panel.position = Vector2(RIBBON_X, reach_note_top(ribbon_entries().size()))
 	panel.size = Vector2(RIBBON_WIDTH, REACH_NOTE_HEIGHT)
 	panel.add_theme_stylebox_override("panel", _note_box())
 	# The backdrop is what stops clicks reaching the live side panel underneath;

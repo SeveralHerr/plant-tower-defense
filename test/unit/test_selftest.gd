@@ -15687,4 +15687,165 @@ func test_the_hint_cards_agree_with_the_tips_the_message_row_posts() -> String:
 	return err
 
 
+## THE THREE BRANCHES OF THE CARD'S SUBHEADING, asserted off a pure static so all of
+## them are reachable without a save file, a played run, or a Control.
+##
+## The bead's complaint in one assertion: a FIRST record and a later one must not print
+## the same sentence. Before this, both said "a new best" -- which is a claim about
+## beating a number, and on a first record there is no number to have beaten.
+func test_a_first_record_does_not_read_as_a_new_best() -> String:
+	var first: String = RunSummary.score_line_at(308, true, true, 308, false)
+	var later: String = RunSummary.score_line_at(308, true, false, 308, false)
+	var none: String = RunSummary.score_line_at(120, false, false, 308, false)
+	var err: String = _T.assert_true(first != later,
+		"a first record and a later one do not print the same line -- both said '%s'"
+			% first)
+	if err == "":
+		err = _T.assert_true(first.contains("first"),
+			"the first-record line names itself as a first -- got '%s'" % first)
+	if err == "":
+		err = _T.assert_true(later.contains("a new best"),
+			"a later record still reads as a new best -- got '%s'" % later)
+	if err == "":
+		err = _T.assert_true(not first.contains("a new best"),
+			("and the first-record line does NOT claim a comparison that never"
+				+ " happened -- got '%s'") % first)
+	if err == "":
+		err = _T.assert_true(none.contains("your best campaign is 308"),
+			"a run that set no record still names the mode's standing best -- '%s'" % none)
+	if err == "":
+		# Every branch prints the seeds the run actually earned, which is the one
+		# number all three share and the easiest to lose in a rewrite.
+		err = _T.assert_true(first.begins_with("308 ") and later.begins_with("308 ")
+			and none.begins_with("120 "),
+			"all three branches lead with the run's own seed total")
+	return err
+
+
+## `first_record()` is the gate everything else keys off, and its DEFAULT is the half
+## worth pinning: `previous_best` is a key `Game.summary_stats` does not write yet, so
+## an absent one must read as "not a first" and leave the card saying what it says
+## today. A 0 default would relabel every record on every card.
+func test_an_absent_previous_best_is_not_read_as_a_first_record() -> String:
+	var unknown := RunSummary.build({"new_record": true, "seeds_earned_total": 308})
+	var err: String = _T.assert_false(unknown.first_record(),
+		"a record with no previous_best in the stats is not assumed to be a first")
+	if err == "":
+		err = _T.assert_true(unknown.ribbon_entries().is_empty(),
+			"so it grows no ribbon row either")
+	unknown.free()
+
+	var first := RunSummary.build({
+		"new_record": true, "seeds_earned_total": 308, "previous_best": 0,
+	})
+	if err == "":
+		err = _T.assert_true(first.first_record(),
+			"previous_best of 0 IS the first record -- there was nothing to beat")
+	first.free()
+
+	var later := RunSummary.build({
+		"new_record": true, "seeds_earned_total": 308, "previous_best": 240,
+	})
+	if err == "":
+		err = _T.assert_false(later.first_record(),
+			"and beating a real 240 is a later record, not a first")
+	if err == "":
+		err = _T.assert_true(later.ribbon_entries().is_empty(),
+			"which earns no ribbon row -- the row is for firsts only")
+	later.free()
+
+	var lost := RunSummary.build({"new_record": false, "previous_best": 0})
+	if err == "":
+		err = _T.assert_false(lost.first_record(),
+			("a run that set NO record is not a first record even on a garden with no"
+				+ " score yet -- previous_best is 0 for both"))
+	lost.free()
+	return err
+
+
+## The treatment itself: a first record is admitted to the ribbon, which is the surface
+## this card already reserves for "what this run did for the first time ever". That is
+## what makes it MORE than a later record rather than less.
+func test_a_first_record_earns_a_row_on_the_ribbon_of_firsts() -> String:
+	var card := RunSummary.build({
+		"victory": true,
+		"seeds_earned_total": 308,
+		"new_record": true,
+		"previous_best": 0,
+		"new_milestones": ["campaign_cleared"],
+	})
+	var host: Node = await _T.instantiate_ui(card, Vector2i(1152, 648))
+	var err: String = _T.assert_true(host != null, "the card stood up")
+	if err == "":
+		err = _T.assert_eq(card.ribbon_entries().size(), 2,
+			"the record row and the milestone are both on the ribbon")
+	if err == "":
+		err = _T.assert_eq(String(card.ribbon_entries()[0]["id"]), RunSummary.FIRST_RECORD_ID,
+			"with the record FIRST -- a garden opens its record book once")
+	if err == "":
+		var ribbon: Panel = card.get_node_or_null("MilestoneRibbon") as Panel
+		err = _T.assert_true(ribbon != null, "and the ribbon was drawn")
+		if err == "":
+			var row: Label = ribbon.get_node_or_null(
+				"Milestone_%s" % RunSummary.FIRST_RECORD_ID) as Label
+			err = _T.assert_true(row != null, "carrying a titled row for the record")
+			if err == "":
+				err = _T.assert_gt(row.text.length(), 0,
+					"whose title is real text and not an empty label")
+			if err == "":
+				var note: Label = ribbon.get_node_or_null(
+					"MilestoneNote_%s" % RunSummary.FIRST_RECORD_ID) as Label
+				err = _T.assert_true(note != null and note.text.contains("308"),
+					("and a note naming the score the garden will be measured against,"
+						+ " got '%s'") % ("<missing>" if note == null else note.text))
+		if err == "":
+			err = _T.assert_true(ribbon.get_node_or_null("Milestone_campaign_cleared") != null,
+				"the milestone row is still there beside it")
+		if err == "":
+			err = _T.assert_float_eq(ribbon.size.y, RunSummary.ribbon_height(2), 0.5,
+				"and the panel is sized for BOTH rows, not just the milestone")
+	_T.free_ui(host)
+	return err
+
+
+## The row costs vertical budget in the side column, and this is the measurement that
+## says how much is left. `_play_entrance` drops every child by RISE_OFFSET_WIN = 32, so
+## the real floor on this screen is 648 - 32 = 616 rather than the viewport.
+##
+## Asserted against `worst_ribbon_rows()` rather than `Milestones.TABLE.size()`, which is
+## the specific thing this change made wrong elsewhere: the two older clearance tests
+## still measure a 7-row ribbon, and the game can now draw an 8-row one.
+func test_the_widest_ribbon_this_game_can_draw_still_clears_the_rise() -> String:
+	var rows: int = RunSummary.worst_ribbon_rows()
+	var err: String = _T.assert_eq(rows, Milestones.TABLE.size() + 1,
+		"the worst case is every milestone plus the one synthesised record row")
+	if err == "":
+		err = _T.assert_gt(RunSummary.ribbon_height(rows),
+			RunSummary.ribbon_height(Milestones.TABLE.size()),
+			"which is genuinely taller than the case the older tests measure")
+	if err == "":
+		var foot: float = RunSummary.RIBBON_TOP + RunSummary.ribbon_height(rows)
+		err = _T.assert_true(foot <= RunSummary.MAP_LEGEND_Y,
+			"the tallest ribbon foots at %.0f, above the map legend strip at %.0f"
+				% [foot, RunSummary.MAP_LEGEND_Y])
+	if err == "":
+		# The note is pushed down by the ribbon, so it is the thing that actually
+		# runs out of room first.
+		var note_foot: float = RunSummary.reach_note_top(rows) + RunSummary.REACH_NOTE_HEIGHT
+		var floor_y: float = 648.0 - RunSummary.RISE_OFFSET_WIN
+		err = _T.assert_true(note_foot <= floor_y,
+			("under the tallest ribbon the reach note foots at %.0f, inside the %.0f"
+				+ " rise budget") % [note_foot, floor_y])
+		if err == "":
+			# The column is now FULL, and this is the assertion that says a ninth row
+			# is not free -- so the next person to add one is told by a red test
+			# rather than by a screenshot of a note hanging off the screen.
+			var ninth: float = (RunSummary.reach_note_top(rows + 1)
+				+ RunSummary.REACH_NOTE_HEIGHT)
+			err = _T.assert_true(ninth > floor_y,
+				("and a NINTH row would foot at %.0f, past %.0f -- this column has room"
+					+ " for no more") % [ninth, floor_y])
+	return err
+
+
 # -- END one-shots: plant-tower-defense-ei83, plant-tower-defense-q8db ----------
