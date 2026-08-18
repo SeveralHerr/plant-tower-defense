@@ -1,4 +1,4 @@
-# Cycle 122
+# Cycle 123
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,33 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 123 taught
+
+**The shop and the panel disagreed about the same plant, one click apart.** The Sundew's
+blurb said *"crawls at half speed"*; `SLOW_FACTOR` is **0.55**, and the selection panel
+prints the real number — *"Slowing N pest(s) to 55% speed."* Both on screen. Both
+individually defensible. Together a contradiction a player can see without leaving the
+screen.
+
+**Check prose against the READOUT, not only against the constant.** "Half" is a fair
+description of 0.55 and "55%" is exact; each is true of the constant and the pair is wrong.
+That is the general finding, and it applies to three more pairs nobody has compared.
+
+**The sentence moved, not the constant.** 0.55 is tuned and carries its own
+overlapping-patch reasoning. Changing a balance number to make a blurb true is the tail
+wagging the dog — and the assertion is a RELATIONSHIP, so a future retune to an actual half
+makes "half speed" permissible again rather than leaving a test that pins today's wording.
+
+**Six of the seven unpinned blurbs were true**, which is the honest shape of the result. The
+writing here is careful and the numbers behind it are right; what was missing was anything
+that would notice when the code moved underneath the prose.
+
+**One clause is true and not mechanically checkable, and saying so is better than a gap in a
+table.** The Bramble's "Hurts nothing" is an absence of damage code, not a value — and
+`engages` is the obvious key and the wrong one, because the Bramble engages by HOLDING.
+Three separate readouts have now wanted "damages" specifically and each uses a proxy that
+works today for unrelated reasons. Filed as `-i8k9`.
 
 ## What cycle 122 taught
 

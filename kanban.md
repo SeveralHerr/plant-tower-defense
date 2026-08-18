@@ -4367,3 +4367,31 @@ Three findings kept out here rather than buried in a log:
   work inherits it**, and a change that switches emulation off to clean something up will
   break every screen at once and pass every headless test, because a headless test presses
   buttons through `pressed.emit()` rather than through the pointer.
+
+### New in cycle 123 — grown from the shop and the panel disagreeing
+
+- **The same fact is rendered in two places with different rounding, and one of them was
+  wrong.** The Sundew's shop line said "half speed" while the panel printed "55% speed",
+  because `SLOW_FACTOR` is 0.55 — both on screen, one click apart. Fixed, but the SHAPE is
+  the entry: **wherever a number is described in prose in one place and printed in another,
+  the two can drift and nothing connects them.** The panel interpolates and cannot rot; the
+  blurb narrates and can. Other pairs worth checking against each other rather than against
+  the code: the Aloe's "slowly" against its panel line, the Mint's "a third again" against
+  what the buffed cob's own detail shows, and the Dandelion's "grows its fluff back" against
+  `dandelion_regrowing_detail`'s countdown.
+  The general rule this suggests, and it is cheap: **when prose and a readout describe the
+  same number, the prose should be checked against the READOUT, not only against the
+  constant.** Both being individually true of the constant is not enough — "half" and "55%"
+  are each defensible and together they are a contradiction.
+
+- **One blurb clause is true and not mechanically checkable, and that is worth writing down
+  rather than leaving as a gap in a table.** The Barrier Bramble's "Hurts nothing" is an
+  absence of damage code, not a value. `engages` is the obvious key and is the wrong one —
+  the Bramble engages, because it HOLDS, which is precisely the divergence
+  `PlantCatalog.engages`'s header calls the mirror of the Sundew's. There is no `damages()`
+  anywhere and adding one to satisfy a test would be a field invented for a gate.
+  Taste: leave it. The interesting question this raises is whether the catalogue wants a
+  `damages` key at all — `engages` currently answers "damage OR hold", and three separate
+  readouts have wanted "damage" specifically (the coverage note, this blurb, and the
+  post-mortem's "held" row from `-fohy`). Three is usually the number at which a distinction
+  is real; it is filed nowhere yet.
