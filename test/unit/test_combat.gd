@@ -8131,3 +8131,196 @@ func test_two_pests_killed_in_one_frame_leave_at_different_times() -> String:
 
 
 # -- END what a death feels like -----------------------------------------------
+
+
+# -- BEGIN what the board says is happening to this pest right now --------------
+# plant-tower-defense-ayri (the cob points at its CURRENT target).
+
+
+## Kernels living under `host` — the cob spawns them as its own SIBLINGS, so this is
+## how "did it fire" is asked without a stopwatch.
+func _kernels_under(host: Node) -> int:
+	var found: int = 0
+	for child: Node in host.get_children():
+		if child is Kernel:
+			found += 1
+	return found
+
+
+## The bead's first acceptance: a cob with a pest in range points at it BEFORE firing.
+##
+## Held deliberately off the trigger the whole way through — `_cooldown` is set well
+## above zero and the kernel count is asserted at zero — because the old behaviour
+## would pass any test that let a shot go off. `_aim_angle` was written in `_fire_at`
+## and nowhere else, so "points at its target" and "just shot at its target" were the
+## same observation, and only a cob that has NOT fired can tell them apart.
+func test_a_cob_points_at_the_pest_it_will_shoot_before_it_shoots_it() -> String:
+	var corn := CornCobbler.new()
+	var aphid: Pest = _pest(Pest.APHID, Vector2(0.0, -100.0))
+	var host: Node2D = _host([corn, aphid])
+	await _T.instantiate_scene(host)
+	corn.set_physics_process(false)
+	# Mid-reload. Nothing in this test is allowed to fire.
+	corn._cooldown = 0.5
+
+	var err: String = _T.assert_float_eq(corn.aim_angle(), 0.0, 0.0001,
+		"a cob that has never seen a pest sits on its initial angle")
+	var pests: Array[Pest] = [aphid]
+	corn._act(0.016, pests)
+	if err == "":
+		err = _T.assert_eq(_kernels_under(host), 0,
+			"no volley went off -- the cob is still most of a reload away")
+	if err == "":
+		# Due north of the cob: -Y is up, so the angle is -PI/2.
+		err = _T.assert_float_eq(corn.aim_angle(), -PI * 0.5, 0.0005,
+			"and it is ALREADY pointing at the pest standing north of it (%.1f deg)"
+				% rad_to_deg(corn.aim_angle()))
+	if err == "":
+		# And it tracks, rather than latching the first thing it ever saw.
+		aphid.position = Vector2(120.0, 120.0)
+		corn._act(0.016, pests)
+		err = _T.assert_float_eq(corn.aim_angle(), PI * 0.25, 0.0005,
+			"the fan follows the pest round the cob with no shot in between (%.1f deg)"
+				% rad_to_deg(corn.aim_angle()))
+	if err == "":
+		err = _T.assert_eq(_kernels_under(host), 0, "still without firing a kernel")
+	if err == "":
+		# The picture, not just the number: the drawn pip has to be on the pest's side
+		# of the cob, which is the whole of what a player reads off this.
+		var pips: PackedVector2Array = corn.muzzle_pip_positions()
+		err = _T.assert_gt(pips.size(), 0, "the cob draws at least one pip")
+		if err == "":
+			err = _T.assert_gt(pips[0].x, 0.0,
+				"and it sits on the same side of the cob as the pest (x = %.1f)" % pips[0].x)
+		if err == "":
+			err = _T.assert_gt(pips[0].y, 0.0, "on both axes")
+	_T.free_ui(host)
+	return err
+
+
+## The fan and the volley are aimed at the SAME pest, driven through the real _act()
+## with a decoy standing somewhere else entirely.
+##
+## This is the regression the fix could most easily have introduced: aiming and firing
+## used to be one statement, and splitting them into "aim every tick, fire when armed"
+## is exactly how a cob ends up drawing at one bug and shooting another.
+func test_the_fan_and_the_volley_are_pointed_at_the_same_pest() -> String:
+	var corn := CornCobbler.new()
+	# `_furthest_along_in_range` keeps the first pest of equal progress, and `_pest`
+	# gives every pest a two-point route, so both of these read progress 1.0 and the
+	# chosen one is the one listed first. Deliberate: the point is that the DECOY is
+	# somewhere the fan must not be.
+	var chosen: Pest = _pest(Pest.APHID, Vector2(-120.0, 0.0))
+	var decoy: Pest = _pest(Pest.APHID, Vector2(0.0, 120.0))
+	var host: Node2D = _host([corn, chosen, decoy])
+	await _T.instantiate_scene(host)
+	corn.set_physics_process(false)
+	corn._cooldown = 0.0
+
+	var pests: Array[Pest] = [chosen, decoy]
+	corn._act(0.016, pests)
+	var err: String = _T.assert_eq(_kernels_under(host), corn.kernels_per_shot(),
+		"the cob fired its whole volley")
+	if err == "":
+		err = _T.assert_float_eq(absf(corn.aim_angle()), PI, 0.0005,
+			"and the fan is pointed due west at the pest it chose, not south at the decoy")
+	var fired: Kernel = null
+	for child: Node in host.get_children():
+		if child is Kernel:
+			fired = child as Kernel
+			break
+	if err == "":
+		err = _T.assert_true(fired != null, "a kernel is on the board to read back")
+	if err == "":
+		err = _T.assert_float_eq(wrapf(fired._velocity.angle() - corn.aim_angle(), -PI, PI),
+			0.0, 0.0005,
+			("the kernel really flies down the line the fan is drawn on (%.2f deg apart)"
+				% rad_to_deg(wrapf(fired._velocity.angle() - corn.aim_angle(), -PI, PI))))
+	_T.free_ui(host)
+	return err
+
+
+## The bead's third acceptance, verbatim: "the redraw rate is measured, not assumed".
+##
+## A fan that follows its target is a repaint every physics tick unless something
+## bounds it, on every cob on the board at once. AIM_STEPS is that bound and
+## `aim_repaints()` is the count, so this walks a pest right across a cob's face and
+## reads the actual number rather than trusting the constant's doc comment.
+##
+## The pest is MOVED BY HAND with physics off. A live pest walks itself, and a count
+## taken while the suite's own frame pump moves it would be measuring the gait.
+func test_the_fan_follows_a_walking_pest_without_repainting_every_frame() -> String:
+	var corn := CornCobbler.new()
+	var aphid: Pest = _pest(Pest.APHID, Vector2(-150.0, -60.0))
+	var host: Node2D = _host([corn, aphid])
+	await _T.instantiate_scene(host)
+	corn.set_physics_process(false)
+	# Never arms. Every repaint counted below belongs to the aim and nothing else.
+	corn._cooldown = 1000.0
+
+	# The bucketing itself first, as arithmetic: two angles inside one bucket are one
+	# repaint, a full turn wraps back onto bucket zero rather than opening a 49th
+	# nothing else can reach, and the count below is only worth reading if this holds.
+	var bucket_width: float = TAU / float(CornCobbler.AIM_STEPS)
+	var err: String = _T.assert_eq(CornCobbler.aim_step_for(0.0), 0,
+		"due east is bucket zero")
+	if err == "":
+		err = _T.assert_eq(CornCobbler.aim_step_for(TAU), CornCobbler.aim_step_for(0.0),
+			"a full turn wraps onto the same bucket rather than off the end")
+	if err == "":
+		err = _T.assert_eq(CornCobbler.aim_step_for(bucket_width * 0.2),
+			CornCobbler.aim_step_for(0.0),
+			"a fifth of a bucket is not a repaint")
+	if err == "":
+		err = _T.assert_eq(CornCobbler.aim_step_for(bucket_width * 4.0), 4,
+			"and four buckets along is bucket four")
+	if err != "":
+		_T.free_ui(host)
+		return err
+
+	var pests: Array[Pest] = [aphid]
+	var ticks: int = 240
+	var first: float = 0.0
+	var last: float = 0.0
+	for i: int in range(ticks + 1):
+		aphid.position = Vector2(lerpf(-150.0, 150.0, float(i) / float(ticks)), -60.0)
+		corn._act(0.0, pests)
+		if i == 0:
+			first = corn.aim_angle()
+		last = corn.aim_angle()
+
+	var sweep: float = absf(wrapf(last - first, -PI, PI))
+	var bucket: float = bucket_width
+	var repaints: float = float(corn.aim_repaints())
+	err = _T.assert_gt(sweep, 2.0,
+		"the pest really crossed the cob's face (%.0f deg of sweep)" % rad_to_deg(sweep))
+	if err == "":
+		err = _T.assert_gt(corn.aim_repaints(), 1,
+			"the fan really followed it -- a fan that never repainted is a fan nobody sees move")
+	if err == "":
+		# The bound, derived from the sweep rather than written down: one repaint per
+		# bucket crossed, plus the two partial buckets at the ends.
+		err = _T.assert_gte(sweep / bucket + 2.0, repaints,
+			"%.0f repaints for %.1f buckets of sweep -- the aim is bucketed, not per-frame"
+				% [repaints, sweep / bucket])
+	if err == "":
+		err = _T.assert_gt(repaints, sweep / bucket - 2.0,
+			"and it did not skip buckets either (%.0f against %.1f)" % [repaints, sweep / bucket])
+	if err == "":
+		err = _T.assert_gt(float(ticks) * 0.25, repaints,
+			"%.0f repaints across %d ticks is a fraction of a per-frame redraw"
+				% [repaints, ticks])
+	if err == "":
+		# The other half of the tradeoff: a bucket has to be small enough that the fan
+		# reads as turning rather than snapping. Measured at the pip, where it is seen.
+		err = _T.assert_gt(6.0, CornCobbler.aim_step_pip_travel(CornCobbler.LEVELS.size()),
+			"one bucket moves the widest pip %.1f px, which is a turn and not a jump"
+				% CornCobbler.aim_step_pip_travel(CornCobbler.LEVELS.size()))
+		if err == "":
+			err = _T.assert_gt(CornCobbler.aim_step_pip_travel(CornCobbler.LEVELS.size()), 0.0,
+				"and it does move -- a 0 px step is a frozen fan")
+	_T.free_ui(host)
+	return err
+
+
+# -- END what the board says is happening to this pest right now ----------------
