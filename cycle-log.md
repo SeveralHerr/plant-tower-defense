@@ -1,4 +1,4 @@
-# Cycle 112
+# Cycle 113
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,38 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 113 taught
+
+**A cue can promise one plant while describing another, and nothing notices until two
+plants stop being interchangeable.** The move preview draws the ring, reach and coverage
+dots of the plant being UPROOTED, while its green brackets are a promise about what a click
+does — and a click plants the SHOP pick. Those are different plants whenever an uproot is
+armed, and before the Barrier Bramble they could not visibly disagree, because every plant
+was placeable in exactly the same cells. Hover a road cell with a cob armed and a Bramble
+picked: a cob's range ring inside green brackets, over ground no cob can occupy.
+
+**The bead refused to claim it was reachable, and that was the right call.** `-l7ak` said
+"NOT YET REPRODUCED ON A RUNNING GAME. That is the first job." It is reachable —
+`_select()` writes `selected_placed` and never touches the shop's `selected_plant` — and
+saying so *after* checking is worth more than the bead having asserted it.
+
+**Red-then-green, for the first time in four cycles.** Cycles 110–112 each wrote a test,
+watched it pass, then broke the game code to prove the test could fail. Here the
+reproduction was written first, failed for the stated reason, and passed after — same
+evidence, no ceremony, and the failure is recorded in the ledger row rather than
+reconstructed in prose. Whether that should become the default is `-str8`; it has a real
+cost, which is that cycle 113's first draft failed on its own **precondition** and a test
+failing for the wrong reason looks exactly like one failing for the right one.
+
+**The fix had to refuse rather than resolve.** Requiring BOTH — the click will plant, AND
+the described plant could stand there — is the only version that does not decide `-h5w6`
+("what should moving a plant cost?") by accident, in a hover handler. Same reasoning kept
+the ring itself untouched: `-3jjc` is filed and explicitly blocked behind `-h5w6` rather
+than tidied.
+
+**The steps held again.** No workflow change; the one candidate became a bead instead,
+because "prefer red-first" is a claim that needs deciding rather than an obvious repair.
 
 ## What cycle 112 taught
 

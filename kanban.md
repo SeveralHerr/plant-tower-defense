@@ -4069,3 +4069,35 @@ Three findings kept out here rather than buried in a log:
   `PauseScreen` one accessor that returns whichever overlay is up, would make that sweep
   genuinely automatic. Small, and it is the difference between a test that fails when a
   fourth screen arrives and one that covers it.
+
+### New in cycle 113 — grown from the move-preview mis-promise
+
+- **One function returns both success sentinels, and a test comment already misreads it.**
+  Every `-> String` method on `Game` follows one convention: `""` means it worked, a
+  non-empty string is the reason it refused, and the callers print it
+  (`game/game.gd:1489` `place_plant`, `:1682` `upgrade_selected`, `:1882` `commit_uproot`).
+  `arm_uproot` (`game/game.gd:1733`) breaks it in the most confusing available way: the
+  first press returns `"confirm needed"` (`:1793`) and the second returns `""` — via
+  `commit_uproot()` at `:1749` — so the SAME function uses the refusal sentinel for one
+  success and the success sentinel for another.
+  The cost is already visible in the suite rather than hypothetical. Five call sites assert
+  the literal, and `test/unit/test_placement.gd:255` labels it *"the first click refuses"* —
+  which is what the convention says that value means and is not what happens; the first
+  click arms a live four-second window and posts a message. A cycle-113 test asserted `""`
+  there and failed on its own precondition, which looks identical to failing on the bug.
+  Taste: an enum or a bool-plus-reason pair, not a third magic string. The interesting part
+  is that this is a *convention* violation nothing can check — `Game` has seven such methods
+  and their contract lives only in the reader's head.
+
+- **An armed move still draws its ring over ground the plant could never occupy.**
+  Cycle 113 stopped the preview PROMISING those cells (`_preview.placeable` now requires the
+  moved plant could stand there too), but the ring, the reach and the coverage dots still
+  paint from a road cell when a cob is armed — `_update_preview` sets `_preview.reach` and
+  `_preview.plant_id` from `previewing` unconditionally (`game/game.gd:2114-2119`). So the
+  cue now says "not here" and "here is what your cob would reach from here" in the same
+  frame, which is honest and slightly odd.
+  Deliberately left, because the alternative decides an open question by accident: whether a
+  move should be a single action at all is `-h5w6`. If the answer there is "yes, clicking
+  moves it", the ring over illegal ground becomes plainly wrong and this entry becomes a
+  bug; if the answer is "no, the preview is only ever a comparison", it is arguably correct
+  as-is. **Do not tidy this before `-h5w6` is answered** — that is the whole entry.
