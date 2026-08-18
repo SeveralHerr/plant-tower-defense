@@ -22,15 +22,37 @@ const SUITE_SAVE_PATH := "user://test_selftest_suite.save"
 var _suite_stashed_save_path: String = ""
 
 
+## The garden speed the player last chose, pinned per test.
+##
+## `GameSpeed._step` is a STATIC var and `RunConfig.game_speed_step` is autoload state
+## loaded from the real save before any `setup()` runs — so between them the chosen
+## speed is process-global twice over, and neither the tree nor `free_ui` resets it.
+##
+## This became load-bearing the moment `Game._ready()` started restoring the remembered
+## speed (plant-tower-defense-zgzc): before it, `GameSpeed.reset()` at the top of a test
+## was enough; after it, `_ready()` puts the PERSISTED step straight back, so a test that
+## reset the static still got whatever speed an earlier test had banked. Two tests failed
+## exactly that way on the merge, and both were correct — the game had genuinely stopped
+## starting at 1x, which is the feature.
+var _suite_stashed_speed_step: int = 0
+
+
 func setup() -> void:
 	_suite_stashed_save_path = RunConfig.save_path
 	RunConfig.save_path = SUITE_SAVE_PATH
+	_suite_stashed_speed_step = RunConfig.game_speed_step
+	RunConfig.game_speed_step = 0
+	GameSpeed.reset()
 
 
 func teardown() -> void:
 	if _suite_stashed_save_path != "":
 		RunConfig.save_path = _suite_stashed_save_path
 	DirAccess.remove_absolute(SUITE_SAVE_PATH)
+	RunConfig.game_speed_step = _suite_stashed_speed_step
+	# `Engine.time_scale` is process-global: a suite left at 2x retimes every later
+	# script's tweens and awaits, which is a failure that shows up nowhere near here.
+	GameSpeed.reset()
 
 
 func _host(nodes: Array[Node]) -> Node2D:
@@ -1631,7 +1653,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 		err = _T.assert_eq(String(Game.key_help()[0]["keys"]), "F1", "the pause card's legend moved")
 	if err == "":
 		err = _T.assert_eq(FileAccess.get_file_as_string(path),
-			"v%d\n0\n0\nm0\ncb0 sfx0 mus0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
+			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
 			"and it was written down beside the scores")
 	if err == "":
 		# A key another verb already answers to is refused, and said so.
@@ -1668,7 +1690,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 				"Put them all back restores the shipped keys once confirmed")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(path),
-				"v%d\n0\n0\nm0\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
 				"and clears the overrides out of the save rather than pinning the defaults into it")
 
 	_T.free_ui(screen)
@@ -1999,7 +2021,7 @@ func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
 		err = _T.assert_true(RunConfig.colorblind_safe, "the colourblind row sets the flag")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(path),
-				"v%d\n0\n0\nm0\ncb1 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n0\nm0\ncb1 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
 				"and it is written down beside the scores, not held for the session")
 	if err == "":
 		# Nothing on the paper may run off it or sit on top of anything else, and the
@@ -5256,13 +5278,13 @@ func test_the_binding_table_answers_about_itself() -> String:
 		# The writer's shape, asserted where a reader can see it. `_save` goes
 		# through this, so a field appended in the wrong place fails here.
 		err = _T.assert_eq(
-			RunConfig.compose_save(3, 4, "m0", "cb0 sfx0 mus0", {"garden_pause": [KEY_F1, KEY_F2]}),
-			"v%d\n3\n4\nm0\ncb0 sfx0 mus0\n1\ngarden_pause %d %d\n" % [RunConfig.SAVE_VERSION, KEY_F1, KEY_F2],
+			RunConfig.compose_save(3, 4, "m0", "cb0 sfx0 mus0 spd0", {"garden_pause": [KEY_F1, KEY_F2]}),
+			"v%d\n3\n4\nm0\ncb0 sfx0 mus0 spd0\n1\ngarden_pause %d %d\n" % [RunConfig.SAVE_VERSION, KEY_F1, KEY_F2],
 			"compose_save writes the header, both scores, the milestones, the options, "
 				+ "the count, then the rows")
 	if err == "":
-		err = _T.assert_eq(RunConfig.compose_save(0, 0, "m0", "cb0 sfx0 mus0", {}),
-			"v%d\n0\n0\nm0\ncb0 sfx0 mus0\n0\n" % RunConfig.SAVE_VERSION,
+		err = _T.assert_eq(RunConfig.compose_save(0, 0, "m0", "cb0 sfx0 mus0 spd0", {}),
+			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
 			"and an untouched keyboard is a count of zero, not an absent line")
 	KeyBindings.reset_all()
 	return err
@@ -5312,7 +5334,7 @@ func test_rebound_keys_survive_a_save_and_load() -> String:
 	if err == "":
 		RunConfig.store_key_bindings(KeyBindings.overrides())
 		err = _T.assert_eq(FileAccess.get_file_as_string(path),
-			"v%d\n11\n22\nm0\ncb0 sfx0 mus0\n1\ngarden_mute_music %d\n" % [RunConfig.SAVE_VERSION, KEY_F7],
+			"v%d\n11\n22\nm0\ncb0 sfx0 mus0 spd0\n1\ngarden_mute_music %d\n" % [RunConfig.SAVE_VERSION, KEY_F7],
 			"the save carries the count and one action row")
 	if err == "":
 		# Wipe every trace from memory, then read it all back off disk.

@@ -214,6 +214,14 @@ func _ready() -> void:
 	add_to_group("game")
 	Music.play_for_scene(scene_file_path)
 
+	# The speed the player chose in their last run (plant-tower-defense-zgzc).
+	# Here rather than in RunConfig._ready(), which fires at process start while the
+	# TITLE screen is coming up — a saved half speed applied there would slow that
+	# scene's own animations for no reason a reader of it could find, and _exit_tree
+	# would throw it away on the first exit anyway. The speed is a fact about a RUN.
+	# Ahead of the HUD, so the button's face is right on the frame it is built.
+	RunConfig.apply_game_speed()
+
 	bank = SeedBank.new()
 	bank.name = "SeedBank"
 	add_child(bank)
@@ -1014,7 +1022,13 @@ func _end_run(_banner: String) -> void:
 	# The run is over, so the speed the player picked for it is over too — and the
 	# post-mortem card built ten lines down animates, on the same doubled clock the
 	# pause card is protected from. `reset()` rather than `hold()`: there is nothing
-	# left to come back to, and a restart from this screen must start at 1x.
+	# left in THIS run to come back to.
+	#
+	# It no longer follows that a restart starts at 1x, and that clause used to be
+	# here: since plant-tower-defense-zgzc the choice lives on disk, so a restart goes
+	# _exit_tree -> _ready -> RunConfig.apply_game_speed() and comes back at the
+	# remembered speed. The reset is still right — what it protects is the card's own
+	# animation, not the next run.
 	GameSpeed.reset()
 	# Behind the idempotency guard rather than at the top of _end_run: both end
 	# paths can be reached twice in a frame, and the run-ender is the one cue in
@@ -1104,6 +1118,10 @@ func _on_speed_requested() -> void:
 ## three places the speed stops being about a run in progress.
 func cycle_speed() -> float:
 	var now: float = GameSpeed.cycle()
+	# The step, not the scale: `step()` is what survives a hold and what the save
+	# records. Writes only on an actual change, so a full lap of the button is one
+	# write and not three — see RunConfig.store_game_speed.
+	RunConfig.store_game_speed(GameSpeed.step())
 	# Immediately rather than at the next state change: nothing else on the top bar
 	# has to move for the button's own face to be wrong, and a speed toggle whose
 	# readout lags a press is a toggle the player presses twice.
