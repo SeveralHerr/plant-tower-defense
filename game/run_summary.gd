@@ -708,9 +708,21 @@ func _play_entrance() -> void:
 		tween.tween_property(control, "position:y", control.position.y - offset, seconds)
 
 
+## The DESIGN size, deliberately, and this card is the one place that reading it is still
+## the right answer rather than a leftover.
+##
+## `plant-tower-defense-nrup` collapsed eight copies of this pair into `ScreenMetrics`.
+## Seven of them wanted the LIVE canvas and were silently reading the setting; this one is
+## a fixed-size composition drawn over a held board, so its own geometry is a statement
+## about the canvas it was composed on. Named through `ScreenMetrics.design_*` now, so the
+## question it is asking is legible instead of inferable from a settings key.
+##
+## What is NOT done here, and is filed rather than hidden: the card does not yet re-centre
+## on a wider window, the way `PauseScreen` now does. That is the same rigid translation,
+## not a live number per constant — see the follow-up bead.
 func _viewport_width() -> int:
-	return ProjectSettings.get_setting("display/window/size/viewport_width", 1152)
+	return ScreenMetrics.design_width()
 
 
 func _viewport_height() -> int:
-	return ProjectSettings.get_setting("display/window/size/viewport_height", 648)
+	return ScreenMetrics.design_height()

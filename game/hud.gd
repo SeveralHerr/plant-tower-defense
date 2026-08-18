@@ -1536,11 +1536,11 @@ func _live_viewport_size() -> Vector2:
 ## against (`min_viewport_width`), and because `stretch/aspect="expand"` never
 ## produces a canvas smaller than it, which is what makes the budget safe.
 static func design_width() -> int:
-	return int(ProjectSettings.get_setting("display/window/size/viewport_width", 1152))
+	return ScreenMetrics.design_width()
 
 
 static func design_height() -> int:
-	return int(ProjectSettings.get_setting("display/window/size/viewport_height", 648))
+	return ScreenMetrics.design_height()
 
 
 func _on_plant_button(id: StringName) -> void:
