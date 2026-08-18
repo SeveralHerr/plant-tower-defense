@@ -13,6 +13,72 @@ extends RefCounted
 ## happened to be blank, which is the failure this verb exists to prevent.
 const UNAVAILABLE: String = "unavailable"
 
+# --- Narrowing a game object to build a reply (plant-tower-defense-wy2v) ----
+#
+# The defect this file has actually shipped is not a wrong answer, it is a
+# handler that DIES while building its reply. `_cmd_upgrade_plant` cast the
+# upgraded plant to CornCobbler and read `corn.level` off the null that came back
+# for a Chomp Flower; the upgrade had landed, and the bus reported `success:
+# false` with an EMPTY message, which reads exactly like the game refusing. It
+# was correct for every cycle in which corn was the only plant with a ladder, and
+# became wrong without any edit to this file.
+#
+# No headless gate can see that. The cast resolves, so name_check passes; it
+# compiles, so lint passes; nothing in the suite drives a debug verb, so the tests
+# pass. The rule below is the substitute, and it is a rule about writing rather
+# than a check that can be run:
+#
+#   NEVER dereference a narrowing cast in the same expression that makes it.
+#   Bind it, test it, and report the failure as a VALUE in the reply.
+#
+# Every narrowing site in this file, with its verdict:
+#
+#   _game()                     Node -> Game. Game is the only add_to_group("game")
+#                               in the project (game.gd:214), so the cast cannot meet
+#                               a stranger; and of its twelve callers, eleven refuse
+#                               on null immediately and the twelfth (_cmd_budgets)
+#                               answers without a Game on purpose and branches on it
+#                               everywhere it reads one. Nothing dereferences the
+#                               cast unchecked. SAFE.
+#   _cmd_game_state             selected_placed -> Plant. Statically typed Plant on
+#                               Game, so it cannot be a stranger -- but it CAN be a
+#                               freed node (Game guards it with is_instance_valid()
+#                               in five places) and a freed Object is not == null.
+#                               FIXED below.
+#   _cmd_spawn_pest             args["mutations"] -> Array. Caller-supplied JSON, so
+#                               a String nulls the cast and the `for` over it dies.
+#                               FIXED below (type-checked, not cast).
+#   _cmd_upgrade_plant          Plant -> CornCobbler. The original defect, fixed in
+#                               cycle 101: bound, null-checked, and `kernels` omitted
+#                               for a plant that has none. SAFE, and it is the
+#                               worked example of the rule.
+#   _budget_notebook_subhead    get_node_or_null("Subheading") -> Label, and
+#                               get_theme_font() -> Font. Both bound and null-checked
+#                               before use, with an "unmeasured" entry as the answer.
+#                               SAFE.
+#   _budget_status              budget_report["warnings"] -> Array. Written only by
+#                               Game.check_budgets() as an Array[String], and the
+#                               .get() default is []. SAFE -- and the one to keep
+#                               safest: _status is merged into EVERY reply, so a
+#                               narrowing failure here takes down the whole bus
+#                               rather than one verb.
+#
+# The other half of wy2v: should a handler that dies mid-reply surface as
+# something other than `success: false` with an empty message? It should, and it
+# cannot be done from here. A handler that dies never returns, so no code in this
+# file runs to say so -- not even the status provider, which is merged at
+# _write_result() time and is therefore skipped along with everything else. The
+# empty envelope is produced upstream (dev_tools.gd:710 assigns the handler's
+# return into a typed Dictionary, and tools/devtools.py renders a missing
+# "message" as ""), so the fix belongs to the harness and is filed as a report
+# rather than patched into addons/, which /scaffold-godot-harness would revert.
+# What is left to us is the rule above: do not die.
+#
+# Not narrowing, and deliberately not "fixed": Pest is read only through
+# game.state() and the group count, never cast to a species -- so the Shield Bug's
+# extra fields cannot repeat the CornCobbler story here. The screens are built by
+# their own constructors (NotebookScreen.new(), Board.new()), which are typed.
+
 var _dev: Node
 
 
@@ -86,6 +152,78 @@ func _fail(message: String) -> Dictionary:
 	return {"success": false, "message": message, "data": {}}
 
 
+# --- Required arguments, and the defaults that are deliberate ---------------
+#
+# The bus ignores a key a handler does not read. That is the harness's behaviour,
+# it is documented (`list-commands` prints each verb's arg keys and says outright
+# that a key not listed is silently ignored), and it is the right default for an
+# OPTIONAL key. It is the wrong one for a verb whose entire effect is the
+# argument: `place_plant` with no x/y is not a call anyone meant, and
+# `int(args.get("x", 0))` turns it into a perfectly successful plant at cell
+# (0, 0). Something happens, in the wrong place, and the mistake surfaces several
+# verbs later as a game that will not behave -- which is how [G-069] cost cycle 94
+# several minutes of suspecting the selection code.
+#
+# Guarded below, because the argument IS the effect:
+#   place_plant    x, y  -- would otherwise plant at cell (0, 0)
+#   upgrade_plant  x, y  -- would otherwise upgrade whatever grows at (0, 0),
+#                           which is a real plant and not the one you meant
+#   collect_husk   x, y  -- would otherwise sweep the board origin and report
+#                           "no husk", naming a radius rather than the mistake
+#
+# Deliberately defaulted, and why. Each of these is the value a person typing the
+# verb at a prompt means by leaving it out, and a WRONG value refuses itself by
+# name rather than doing something quiet:
+#   place_plant  plant = "corn_cobbler"  -- the starter; an unknown id is refused
+#                                           by Game.place_plant(), which names it
+#   spawn_pest   species = "aphid"       -- the commonest pest; an unknown species
+#                                           is refused against Pest.SPECIES by name
+#   spawn_pest   mutation/mutations = none, count = 1
+#                                        -- "one plain pest" is what `spawn_pest`
+#                                           with no arguments means
+#   add_seeds    amount = 100            -- "give me money to test with"
+#   buy_packet   tier = "common"         -- the cheapest tier; a wrong one is
+#                                           refused by Bank.buy_packet()
+#   budgets      id = "" (all), waves = Game.BUDGET_WAVE_SWEEP
+#                                        -- `id` is a display filter and an unknown
+#                                           one is refused naming every known id
+# Reads no arguments at all: game_state, start_wave, board_info, compost_state,
+# project_identity.
+#
+# NOT guarded here, and [G-069] is wrong about this: touch_press / touch_release /
+# touch_drag are the HARNESS's verbs, not this file's. `list-commands --offline`
+# prints them under "generic (57) from dev_tools.gd" while this file's twelve are
+# listed separately, and harness 0.38.0 already refuses a positionless press --
+# "touch_press on a new index requires 'position' as [x, y]" (dev_tools.gd:2644).
+# Nothing about them can be fixed from here.
+
+
+## Refuses a call that left out a key the verb's whole effect depends on.
+##
+## Returns "" when every required key is present. Otherwise a refusal naming three
+## things: the keys wanted; the keys the call ACTUALLY carried -- the omission is
+## almost always a key of the wrong NAME rather than no key at all, and that is the
+## half a bare "requires x, y" makes the reader guess at; and `instead`, what the
+## verb would silently have done with its defaults. The last one is the whole value:
+## it turns "this did nothing" into "this would have done a different thing".
+func _require(args: Dictionary, keys: PackedStringArray, verb: String, instead: String) -> String:
+	var absent: PackedStringArray = PackedStringArray()
+	for key: String in keys:
+		if not args.has(key):
+			absent.append(key)
+	if absent.is_empty():
+		return ""
+	var sent: PackedStringArray = PackedStringArray()
+	for key: Variant in args.keys():
+		sent.append(str(key))
+	sent.sort()
+	var carried: String = ("the call carried no arguments at all" if sent.is_empty()
+		else "the call carried %s" % ", ".join(sent))
+	return "%s needs %s -- %s. Without it this would have %s." % [
+		verb, ", ".join(absent), carried, instead,
+	]
+
+
 func _cmd_game_state(_args: Dictionary) -> Dictionary:
 	var game: Game = _game()
 	if game == null:
@@ -93,8 +231,36 @@ func _cmd_game_state(_args: Dictionary) -> Dictionary:
 	var state: Dictionary = game.state()
 	# The live objects in state() are for the HUD; the bus needs plain values.
 	state.erase("bank")
+	# Narrowing a live game object to build a reply is the plant-tower-defense-wy2v
+	# shape, so this reads all three ways it can go wrong rather than only the one
+	# that is possible today. `selected_placed` is a statically typed `Plant`
+	# (game.gd:83), so the cast cannot fail for a LIVE value -- but Game guards every
+	# other read of it with is_instance_valid() (game.gd:1299, 1577, 1633, 1678,
+	# 2169), which is a freed node written down as a real state of this field, and a
+	# freed Object is NOT `== null`. The old `"" if placed == null else
+	# (placed as Plant).cell` therefore walked straight past a freed selection into a
+	# read on a previously-freed instance and died INSIDE the reply, surfacing as
+	# `success: false` with an empty message -- indistinguishable from the game
+	# refusing, which is exactly what cost cycle 101 its time.
+	#
+	# "freed" is reported rather than "": Game is still holding a selection whose node
+	# is gone, and calling that "nothing selected" hides a real bug in a field a
+	# reader trusts.
 	var placed: Variant = state.get("selected_placed")
-	state["selected_placed"] = "" if placed == null else str((placed as Plant).cell)
+	var selected: String = ""
+	if placed != null:
+		if not is_instance_valid(placed):
+			selected = "freed"
+		else:
+			var chosen: Plant = placed as Plant
+			if chosen == null:
+				# Nothing can put a non-Plant here today. Written as a reported value
+				# rather than a dereference so that the day something can, this says so
+				# instead of taking the whole reply down with it.
+				selected = "not a Plant"
+			else:
+				selected = str(chosen.cell)
+	state["selected_placed"] = selected
 	state["selected_plant"] = String(state["selected_plant"])
 	state["unlocked"] = game.bank.unlocked.map(func(id: StringName) -> String: return String(id))
 	state["free_starter_available"] = game.bank.free_starter_available
@@ -102,6 +268,13 @@ func _cmd_game_state(_args: Dictionary) -> Dictionary:
 
 
 func _cmd_place_plant(args: Dictionary) -> Dictionary:
+	# The call is checked before the world is. Both refusals are true on a title
+	# screen, and the one about the caller's own arguments is the useful one to hear
+	# first -- "no Game in the tree" sends a reader looking at the game.
+	var refused: String = _require(args, PackedStringArray(["x", "y"]), "place_plant",
+		"planted at cell (0, 0)")
+	if refused != "":
+		return _fail(refused)
 	var game: Game = _game()
 	if game == null:
 		return _fail("no Game in the tree")
@@ -117,24 +290,66 @@ func _cmd_place_plant(args: Dictionary) -> Dictionary:
 	}
 
 
-func _cmd_spawn_pest(args: Dictionary) -> Dictionary:
-	var game: Game = _game()
-	if game == null:
-		return _fail("no Game in the tree")
-	var species := StringName(str(args.get("species", "aphid")))
-	if not Pest.SPECIES.has(species):
-		return _fail("unknown species '%s'" % species)
-	# Accepts either `mutation: "winged"` or `mutations: ["winged", "hungry"]`. The
-	# singular form is kept because every existing script and every log entry uses it,
-	# and it is exactly the shorthand a person types at a prompt.
+## The mutations a spawn_pest call is asking for: {refusal: String, mutations:
+## Array[StringName]}, with refusal "" when the call is well-formed.
+##
+## Accepts either `mutation: "winged"` or `mutations: ["winged", "hungry"]`. The
+## singular form is kept because every existing script and every log entry uses it,
+## and it is exactly the shorthand a person types at a prompt -- which is also why
+## the plural is the likely typo, one letter away.
+##
+## `mutations` is TYPE-CHECKED and not cast (plant-tower-defense-wy2v). The arguments
+## arrive as parsed JSON, so `mutations: "winged"` is a String, `"winged" as Array`
+## is null, and `for each in null` is a runtime error INSIDE the handler -- which the
+## bus renders as `success: false` with an empty message, indistinguishable from the
+## game refusing the spawn. That is the wy2v shape reached by a typo rather than by
+## the game growing.
+##
+## Split out of the handler rather than left inline so both directions are assertable
+## with no Game in the tree: everything past this point in the handler needs one, so
+## a test calling the handler could only ever reach the refusal.
+##
+## It takes the two VALUES rather than the args Dictionary on purpose. `list-commands`
+## discovers a verb's arg keys by scanning its handler for args.get/has/[], so a
+## helper that reads the Dictionary itself deletes `mutation` and `mutations` from
+## what the bus can tell you the verb accepts -- which is a strange thing to do in a
+## change about naming the key you wanted.
+func _wanted_mutations(single_name: Variant, listed: Variant) -> Dictionary:
 	var wanted: Array[StringName] = []
-	var single := StringName(str(args.get("mutation", "")))
+	if not (listed is Array):
+		return {
+			"refusal": ("spawn_pest wants `mutations` as an array of names and got a %s. "
+				+ "For a single one, `mutation` takes a bare name.") % type_string(typeof(listed)),
+			"mutations": wanted,
+		}
+	var single := StringName(str(single_name))
 	if single != &"":
 		wanted.append(single)
-	for each: Variant in (args.get("mutations", []) as Array):
+	for each: Variant in (listed as Array):
 		var name := StringName(str(each))
 		if name != &"" and not wanted.has(name):
 			wanted.append(name)
+	return {"refusal": "", "mutations": wanted}
+
+
+func _cmd_spawn_pest(args: Dictionary) -> Dictionary:
+	# The call before the world, same as place_plant. Neither of the two checks below
+	# needs a Game, and "unknown species 'apid'" is a more useful first sentence than
+	# "no Game in the tree" when both are true.
+	var species := StringName(str(args.get("species", "aphid")))
+	if not Pest.SPECIES.has(species):
+		var known: PackedStringArray = PackedStringArray()
+		for each: Variant in Pest.SPECIES.keys():
+			known.append(str(each))
+		known.sort()
+		return _fail("unknown species '%s' -- known: %s" % [species, ", ".join(known)])
+	var asked: Dictionary = _wanted_mutations(args.get("mutation", ""), args.get("mutations", []))
+	if str(asked["refusal"]) != "":
+		return _fail(str(asked["refusal"]))
+	var wanted: Array[StringName] = asked["mutations"]
+	var game: Game = _game()
+	if game == null:
+		return _fail("no Game in the tree")
 	var count: int = maxi(1, int(args.get("count", 1)))
 	for i: int in range(count):
 		game.spawn_pest(species, wanted)
@@ -197,6 +412,13 @@ func _cmd_compost_state(_args: Dictionary) -> Dictionary:
 
 
 func _cmd_collect_husk(args: Dictionary) -> Dictionary:
+	# Its own failure text is the trap here: with no x/y this swept the origin and
+	# answered "no husk within collect radius of (0, 0)", which is a sentence about
+	# husks and radii for what is actually a mistyped argument.
+	var refused: String = _require(args, PackedStringArray(["x", "y"]), "collect_husk",
+		"swept for a husk at the board origin and reported none there")
+	if refused != "":
+		return _fail(refused)
 	var game: Game = _game()
 	if game == null:
 		return _fail("no Game in the tree")
@@ -209,6 +431,14 @@ func _cmd_collect_husk(args: Dictionary) -> Dictionary:
 
 
 func _cmd_upgrade_plant(args: Dictionary) -> Dictionary:
+	# The worst of the three to leave defaulted: it does not fail, it SUCCEEDS on a
+	# different plant. It also mutates game.selected_placed on the way, so a
+	# positionless call would move the player's selection as a side effect of a
+	# typo.
+	var refused: String = _require(args, PackedStringArray(["x", "y"]), "upgrade_plant",
+		"upgraded whatever is growing at cell (0, 0) -- a real plant, and not yours")
+	if refused != "":
+		return _fail(refused)
 	var game: Game = _game()
 	if game == null:
 		return _fail("no Game in the tree")

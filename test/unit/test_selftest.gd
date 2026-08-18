@@ -14600,3 +14600,190 @@ func test_the_title_button_column_reports_the_column_that_is_drawn() -> String:
 						% [slot, span.x, span.y, column.x, column.y])
 	_T.free_ui(title)
 	return err
+
+
+# --- BEGIN plant-tower-defense-nj7w / -wy2v: the project's own devtools verbs ---
+#
+# These reach res://devtools_ext/commands.gd WITHOUT a running game, which is the
+# only reason they can live here at all. Every handler below refuses on the
+# caller's own arguments BEFORE it looks for a Game, so the refusal path runs with
+# `_dev` left null and never touches a tree. Anything past that point (the plant
+# actually landing, the pest actually spawning) is a live-bridge question and stays
+# one -- see the /verify Phase 4 list.
+
+const DEVTOOLS_EXT := "res://devtools_ext/commands.gd"
+
+## The project verbs whose entire effect IS an argument, and the keys they need.
+## Cross-checked below against the register_command() calls in the file itself, so a
+## verb added later fails this test until somebody has classified it as one of these
+## or as deliberately defaulted.
+const POSITIONAL_VERBS := {
+	"place_plant": ["x", "y"],
+	"upgrade_plant": ["x", "y"],
+	"collect_husk": ["x", "y"],
+}
+
+## The rest: verbs that read no arguments, or whose defaults are the value a person
+## means by leaving the key out. The reasoning for each is written next to _require()
+## in commands.gd; this list only has to stay complete.
+const DEFAULTED_VERBS := [
+	"game_state", "spawn_pest", "add_seeds", "start_wave", "buy_packet",
+	"board_info", "compost_state", "budgets", "project_identity",
+]
+
+
+## Every name passed to _dev.register_command() in commands.gd, read out of the
+## source. Derived rather than transcribed on purpose: a hand-typed verb list is a
+## list that silently stops being the set of verbs the moment one is added.
+func _registered_project_verbs() -> PackedStringArray:
+	var out: PackedStringArray = PackedStringArray()
+	var file: FileAccess = FileAccess.open(DEVTOOLS_EXT, FileAccess.READ)
+	if file == null:
+		return out
+	for line: String in file.get_as_text().split("\n"):
+		var trimmed: String = line.strip_edges()
+		if not trimmed.begins_with("_dev.register_command(\""):
+			continue
+		var rest: String = trimmed.substr(trimmed.find("\"") + 1)
+		var close: int = rest.find("\"")
+		if close > 0:
+			out.append(rest.substr(0, close))
+	file.close()
+	return out
+
+
+## A positional verb with no position is not a call anyone meant.
+##
+## plant-tower-defense-nj7w, from [G-069]. The bus ignores a key a handler does not
+## read -- correct for an optional key, wrong for `place_plant`, which would take
+## `int(args.get("x", 0))` and plant, successfully, at cell (0, 0). The mistake then
+## surfaces several verbs downstream as a game that will not behave.
+##
+## Asserted in both directions: every classified verb is one the file registers, and
+## every verb the file registers is classified -- so this fails on a NEW verb rather
+## than quietly covering the three that happened to be here when it was written.
+func test_every_positional_devtools_verb_refuses_a_call_with_no_position() -> String:
+	var registered: PackedStringArray = _registered_project_verbs()
+	var err: String = _T.assert_gt(registered.size(), 0,
+		"the register_command() calls in %s are readable -- an empty list passes everything below"
+			% DEVTOOLS_EXT)
+	if err != "":
+		return err
+	for verb: String in registered:
+		if err != "":
+			break
+		err = _T.assert_true(POSITIONAL_VERBS.has(verb) or DEFAULTED_VERBS.has(verb),
+			("commands.gd registers '%s' and this test does not classify it. Decide which it "
+				+ "is: a verb whose effect IS an argument goes in POSITIONAL_VERBS and gets a "
+				+ "_require() guard, one with a deliberate default goes in DEFAULTED_VERBS and "
+				+ "gets its reason written next to _require()") % verb)
+	if err == "":
+		err = _T.assert_eq(registered.size(), POSITIONAL_VERBS.size() + DEFAULTED_VERBS.size(),
+			("this test classifies %d verbs but commands.gd registers %d -- a classified verb "
+				+ "that no longer exists is a guard nobody is checking")
+				% [POSITIONAL_VERBS.size() + DEFAULTED_VERBS.size(), registered.size()])
+	if err != "":
+		return err
+
+	# No tree, no Game, `_dev` left null: the guard runs before any of that is
+	# touched, and the fact that this works at all is what makes it testable here.
+	var ext: RefCounted = load(DEVTOOLS_EXT).new()
+	for verb: String in POSITIONAL_VERBS.keys():
+		if err != "":
+			break
+		# Built into a variable rather than concatenated in the call: name_check reads
+		# a literal first argument to call() as a method name and reports the prefix
+		# as unresolved.
+		var handler: String = "_cmd_%s" % verb
+		var reply: Variant = ext.call(handler, {})
+		err = _T.assert_true(reply is Dictionary,
+			"_cmd_%s({}) answered a Dictionary rather than dying inside its own reply" % verb)
+		if err != "":
+			break
+		var body: Dictionary = reply as Dictionary
+		err = _T.assert_false(bool(body.get("success", true)),
+			"%s with no arguments is refused rather than acted on with defaults" % verb)
+		if err != "":
+			break
+		var message: String = str(body.get("message", ""))
+		# The empty-message case is the one that cost the time in cycle 101: a reply
+		# that says only `success: false` reads exactly like the game refusing.
+		err = _T.assert_gt(message.length(), 0,
+			"%s's refusal says something -- an empty message is indistinguishable from a "
+				% verb + "game-level refusal")
+		for key: String in POSITIONAL_VERBS[verb]:
+			if err != "":
+				break
+			err = _T.assert_true(message.contains(key),
+				("%s's refusal names the key it wanted ('%s'); it said: %s")
+					% [verb, key, message])
+		if err == "":
+			err = _T.assert_true(message.contains(verb),
+				"%s's refusal names the verb, so it is readable out of a log: %s" % [verb, message])
+	if err == "":
+		# The other direction, or the whole thing passes by refusing everything: a
+		# complete call is NOT refused. Asserted on the guard itself, because acting
+		# on a complete call needs a Game and this suite has none.
+		err = _T.assert_eq(
+			str(ext._require({"x": 2, "y": 3}, PackedStringArray(["x", "y"]), "place_plant", "z")),
+			"", "a call carrying every required key is not refused")
+	return err
+
+
+## A handler must not die inside its own reply.
+##
+## plant-tower-defense-wy2v. `mutations` used to be `args.get("mutations", []) as
+## Array`, and the arguments arrive as parsed JSON -- so `mutations: "winged"`, one
+## letter from the singular key beside it, cast to null and the `for` over it was a
+## runtime error INSIDE the handler. The bus renders that as `success: false` with an
+## empty message, which reads exactly like the game refusing the spawn; that
+## mis-reading is what cycle 101 lost its time to on `upgrade_plant`.
+##
+## What this asserts is the narrow, checkable half: the handler ANSWERS. A reply that
+## comes back at all, saying which key was wrong, is the whole difference between the
+## two outcomes. Reached with no Game because spawn_pest validates its arguments
+## before it looks for one.
+func test_spawn_pest_answers_a_bad_mutations_argument_instead_of_dying_in_its_reply() -> String:
+	var ext: RefCounted = load(DEVTOOLS_EXT).new()
+	# A String, a Dictionary and a number: three JSON shapes that `as Array` turns
+	# into null, and the first of them ("winged") is the plausible typo -- the
+	# singular key beside it takes exactly that value.
+	var wrong_shapes: Array = ["winged", {"winged": true}, 3]
+	var err: String = _T.assert_gt(wrong_shapes.size(), 0,
+		"there are wrong shapes to try -- an empty list passes this test for free")
+	for shape: Variant in wrong_shapes:
+		if err != "":
+			break
+		var asked: Variant = ext._wanted_mutations("", shape)
+		err = _T.assert_true(asked is Dictionary,
+			("_wanted_mutations answered for mutations=%s rather than dying. A null here is "
+				+ "the handler dying while building its reply, which the bus renders as "
+				+ "success:false with an empty message") % [shape])
+		if err != "":
+			break
+		var body: Dictionary = asked as Dictionary
+		var refusal: String = str(body.get("refusal", ""))
+		err = _T.assert_gt(refusal.length(), 0,
+			"mutations=%s is refused rather than quietly treated as no mutations at all"
+				% [shape])
+		if err == "":
+			err = _T.assert_true(refusal.contains("mutations"),
+				"and the refusal names the key it objected to; it said: %s" % refusal)
+	if err == "":
+		# The other direction, without which the above passes by refusing everything.
+		var good: Dictionary = ext._wanted_mutations("", ["winged", "hungry"])
+		err = _T.assert_eq(str(good["refusal"]), "", "a well-formed array is not refused")
+		if err == "":
+			err = _T.assert_eq((good["mutations"] as Array).size(), 2,
+				"and both names survive the parse")
+	if err == "":
+		# The singular shorthand, which is what every existing script sends.
+		var single: Dictionary = ext._wanted_mutations("winged", [])
+		err = _T.assert_eq(str(single["refusal"]), "",
+			"`mutation` with no `mutations` at all is still a well-formed call")
+		if err == "":
+			err = _T.assert_eq((single["mutations"] as Array).size(), 1,
+				"and it yields the one mutation asked for")
+	return err
+
+# --- END plant-tower-defense-nj7w / -wy2v ---
