@@ -6937,3 +6937,33 @@ status rather than rewriting the entries that recorded these as open.
   what it measured. The checker asks "is this read guarded"; the defect was "can this
   assertion fail". Those are different questions and the merge is where the second one
   gets asked.
+
+## 2026-08-18 — round 15: ejfa settled, kjcx filed upstream, G-124 hypothesis disproved
+
+- Value: **warranted** — the walk answered a question two cycles had left open, and then
+  produced a second finding that changed what the check should be.
+  - Expected: the recoil reaches its written `(0.88, 1.14)`, and cycle 72's `0.900` was a
+    sampling artefact.
+  - Got: `0.880000` and `1.140000` at `--seconds 0.01`, in four independent runs, to
+    within 3e-6. The artefact confirmed: `TWITCH_OUT_SECONDS` is 0.05 and a 0.03 request
+    advances about two frames, so the samples straddle the peak without landing on it.
+  - Found: **the peak's VALUE is reproducible but its STEP INDEX is not** — step 3 at
+    `--seconds 0.01`, step 5 at `--seconds 0.001`, because `step_time` advances the
+    process clock by an amount that is neither the seconds requested nor a whole physics
+    frame. Across three runs at one step size the peak stayed on step 3 and the *approach*
+    differed every time. So a check reading a fixed step index measures the harness, not
+    the tween. Walk past and take the extreme.
+  - Cheaper: nothing. Both halves needed the live game; headless runs no tween at all.
+
+- **`[G-124]` is NOT fixed, and my correlation was wrong.** Two rounds of correct worktree
+  bases made pushing look causal; this round LANE A reported `STALE: YES`, 9 commits
+  behind, and had to merge. So the base is sometimes right and sometimes not, which is
+  worse than always wrong — a lane that does not check cannot tell. **Every lane prompt
+  should keep the check.** Recording the disproof rather than quietly dropping the claim.
+  - [G-124] status: open | seen: 4 | harness: 0.38.0
+
+- Gap: **no gap this turn.** `.claude/surveys/flourish_peak.py` is a live check in the
+  house-checker shape (exit 0/1/2, printed denominator, NOT COVERED line) for something
+  the headless suite structurally cannot hold, because `animations_enabled()` is false
+  there. That split is worth more explicit support: the project now has two of these
+  (`heredoc_survey.py`, `flourish_peak.py`) and nothing runs them as a set.
