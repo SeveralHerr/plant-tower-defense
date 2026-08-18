@@ -130,3 +130,72 @@ func bite_resistance() -> float:
 ## Nothing. See the class header: the pest owns the halt, not the wall.
 func _act(_delta: float, _pests: Array[Pest]) -> void:
 	pass
+
+
+# ---------------------------------------------------------------------- visuals
+
+## The three frames, whole first. Indexed by `texture_for_health` directly, so the picture
+## cannot disagree with the count — the same arrangement `Dandelion.FLUFF_TEXTURES` uses,
+## and adding a fourth frame means adding a threshold below rather than editing a branch.
+##
+## WHY THIS PLANT AND NOT THE OTHER EIGHT. Nothing in this game changed a plant's picture as
+## it took damage before this: every `_sprite.texture` assignment under `game/` was a state
+## machine (`ChompFlower`'s idle → gape → eating → late-bite, driven by `chew_progress()`)
+## or an ammo count (`Dandelion`'s fluff frames). Neither reads `health`. On eight plants
+## that is right — they are damaged incidentally, and the 32x5 px health bar is a detail the
+## player consults. A Barrier Bramble is damaged AS ITS FUNCTION: the player is watching
+## this specific plant to judge whether it will hold, and the whole answer was a bar.
+const DAMAGE_TEXTURES: Array[String] = [
+	"res://assets/sprites/bramble.png",
+	"res://assets/sprites/bramble_chewed.png",
+	"res://assets/sprites/bramble_ragged.png",
+]
+
+## Where the picture changes, as fractions of full health.
+##
+## Thirds, and derived rather than picked: the panel already prints "Holds Ns"
+## (`Hud.resisting_detail`) and that number is linear in health, so a frame boundary at 2/3
+## and 1/3 of health is also 2/3 and 1/3 of the seconds it is advertising. The picture and
+## the readout therefore change together, which is the one thing that stops them being two
+## sources of truth about the same question.
+##
+## One fewer threshold than frames, and `texture_for_health` clamps, so the two arrays
+## cannot disagree about how many states there are.
+const DAMAGE_THRESHOLDS: Array[float] = [2.0 / 3.0, 1.0 / 3.0]
+
+## Pure: the frame a wall at `fraction` of full health wears.
+##
+## Takes the fraction rather than the plant so the balance is assertable with no node, no
+## board and no tree — same reason `Bramble.stops` takes a bool. Clamped at both ends: a
+## caller reasoning about a hypothetical still gets a picture, and a plant healed above full
+## by a rounding error still gets the whole one.
+static func texture_for_health(fraction: float) -> String:
+	var index: int = 0
+	for cut: float in DAMAGE_THRESHOLDS:
+		if fraction < cut:
+			index += 1
+	return DAMAGE_TEXTURES[clampi(index, 0, DAMAGE_TEXTURES.size() - 1)]
+
+
+var _frames: Dictionary = {}
+
+
+## Both directions, and that is why this hangs off `_refresh_health_bar` rather than off
+## `take_damage`. Health goes UP as well as down — `Plant.heal` (the Salve Aloe, the rain)
+## and `Plant._regrow` both call this — and a wall that showed damage it no longer had would
+## be exactly the readout this plant was given a picture to avoid. `_refresh_health_bar` is
+## the one function every path that moves `health` already goes through.
+func _refresh_health_bar() -> void:
+	super._refresh_health_bar()
+	_refresh_damage_sprite()
+
+
+func _refresh_damage_sprite() -> void:
+	if _sprite == null:
+		return
+	var path: String = texture_for_health(health / MAX_HEALTH)
+	if not _frames.has(path):
+		_frames[path] = load(path) as Texture2D
+	var texture: Texture2D = _frames[path] as Texture2D
+	if texture != null:
+		_sprite.texture = texture

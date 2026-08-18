@@ -17524,6 +17524,117 @@ func test_every_overlay_makes_everything_under_it_unfocusable() -> String:
 # =============================================================================
 
 
+# =============================================================================
+# plant-tower-defense-a180 — the wall shows what it has taken.
+# =============================================================================
+
+
+func test_a_bramble_wears_a_worse_frame_the_further_it_is_chewed() -> String:
+	# The pure rule first, at both ends and across both boundaries. Asserted as an
+	# ORDERING over the whole range rather than at three sampled points: sampling one
+	# fraction per frame passes on a table whose middle two entries are swapped.
+	var seen: Array[String] = []
+	var fraction: float = 1.0
+	while fraction >= -0.001:
+		var path: String = Bramble.texture_for_health(fraction)
+		if seen.is_empty() or seen[seen.size() - 1] != path:
+			seen.append(path)
+		fraction -= 0.01
+	var err: String = _T.assert_eq(seen, Bramble.DAMAGE_TEXTURES,
+		("sweeping health from full to empty walks the frames in declared order and "
+			+ "changes exactly %d time(s) -- a repeat or a skip here is a threshold "
+			+ "table that disagrees with its own picture list")
+			% (Bramble.DAMAGE_TEXTURES.size() - 1))
+	if err == "":
+		err = _T.assert_eq(Bramble.DAMAGE_THRESHOLDS.size(),
+			Bramble.DAMAGE_TEXTURES.size() - 1,
+			"there is one fewer threshold than frames, or one frame is unreachable")
+	if err == "":
+		# Clamped at both ends rather than bounds-checked, which the header claims.
+		err = _T.assert_eq(Bramble.texture_for_health(2.0), Bramble.DAMAGE_TEXTURES[0],
+			"a wall healed past full still wears the whole frame")
+	if err == "":
+		err = _T.assert_eq(Bramble.texture_for_health(-1.0),
+			Bramble.DAMAGE_TEXTURES[Bramble.DAMAGE_TEXTURES.size() - 1],
+			"and a negative fraction does not index off the end")
+	return err
+
+
+func test_the_wall_sprite_follows_the_damage_in_both_directions() -> String:
+	# The wiring, and specifically the HEALING direction -- which is why the swap hangs
+	# off _refresh_health_bar rather than off take_damage. A wall repaired by a Salve
+	# Aloe or by the rain that kept showing a chewed picture would be exactly the
+	# misleading readout this plant was given a picture to avoid.
+	var wall := Bramble.new()
+	wall.setup(PlantCatalog.BRAMBLE, Vector2i(0, 0), null)
+	var host: Node2D = _host([wall])
+	await _T.instantiate_scene(host)
+
+	var err: String = _T.assert_eq(wall._sprite.texture.resource_path,
+		Bramble.DAMAGE_TEXTURES[0], "a fresh wall is whole")
+	if err == "":
+		# Straight past the last threshold, through take_damage so the resistance applies.
+		wall.take_damage(Plant.MAX_HEALTH / wall.bite_resistance())
+		err = _T.assert_true(wall.is_destroyed(), "precondition: that bite finished it")
+	if err == "":
+		wall.health = Plant.MAX_HEALTH * 0.5
+		wall._refresh_health_bar()
+		err = _T.assert_eq(wall._sprite.texture.resource_path, Bramble.DAMAGE_TEXTURES[1],
+			"at half health it wears the middle frame")
+	if err == "":
+		wall.health = Plant.MAX_HEALTH * 0.2
+		wall._refresh_health_bar()
+		err = _T.assert_eq(wall._sprite.texture.resource_path, Bramble.DAMAGE_TEXTURES[2],
+			"and the ragged one once it is nearly through")
+	if err == "":
+		# BACK UP. This is the assertion the take_damage-only version would fail.
+		wall.heal(Plant.MAX_HEALTH)
+		err = _T.assert_eq(wall._sprite.texture.resource_path, Bramble.DAMAGE_TEXTURES[0],
+			"and a repaired wall looks whole again")
+	_T.free_ui(host)
+	return err
+
+
+func test_every_bramble_frame_is_the_same_plant_standing_in_the_same_place() -> String:
+	# The three frames are swapped into one Sprite2D with no reposition, so a frame whose
+	# painted base sits higher makes the plant JUMP when it is bitten -- a defect that is
+	# invisible in any single screenshot and obvious in play. The style suite pins each
+	# frame against the family's pivot independently; this pins them against EACH OTHER,
+	# which is the tighter claim and the one that matters for an animation.
+	var bases: Dictionary = {}
+	var mids: Dictionary = {}
+	for path: String in Bramble.DAMAGE_TEXTURES:
+		var image: Image = (load(path) as Texture2D).get_image()
+		var low: int = -1
+		var left: int = image.get_width()
+		var right: int = -1
+		for y: int in range(image.get_height()):
+			for x: int in range(image.get_width()):
+				if image.get_pixel(x, y).a > 0.06:
+					low = maxi(low, y)
+					left = mini(left, x)
+					right = maxi(right, x)
+		bases[path] = low
+		mids[path] = float(left + right) * 0.5
+	var err: String = _T.assert_eq(bases.size(), Bramble.DAMAGE_TEXTURES.size(),
+		"every frame loaded and was measured")
+	var first: String = Bramble.DAMAGE_TEXTURES[0]
+	for path: String in Bramble.DAMAGE_TEXTURES:
+		if err != "":
+			break
+		err = _T.assert_eq(int(bases[path]), int(bases[first]),
+			("%s stands on the same painted base as the whole frame (%d vs %d) -- a "
+				+ "different one makes the plant jump the moment it is bitten")
+				% [path.get_file(), int(bases[path]), int(bases[first])])
+		if err == "":
+			err = _T.assert_float_eq(float(mids[path]), float(mids[first]), 1.0,
+				"%s is centred where the whole frame is" % path.get_file())
+	return err
+
+# END plant-tower-defense-a180
+# =============================================================================
+
+
 ## The move preview cannot promise a cell the click will not plant (plant-tower-defense-l7ak).
 ##
 ## `_update_preview` describes the plant being MOVED while an uproot is armed

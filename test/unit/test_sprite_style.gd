@@ -42,6 +42,12 @@ const EXPECTED_SIZE := {
 	# (towerDefense_tile050.png is a flat #BB8044) and why that rules out the brown family
 	# every other bramble would be drawn in.
 	"bramble": 64,
+	# The Bramble's two damage frames (plant-tower-defense-a180). One drawing at three
+	# states; every step REMOVES rather than redraws, and all three share a painted base so
+	# the swap does not make the plant jump. Damage is taken symmetrically because this
+	# file's own bilateral-centring check would otherwise fail a perfectly good drawing.
+	"bramble_chewed": 64,
+	"bramble_ragged": 64,
 	"chomp_flower": 64,
 	"chomp_flower_eating": 64,
 	"chomp_flower_eating_late": 64,

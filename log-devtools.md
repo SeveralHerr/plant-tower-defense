@@ -7297,3 +7297,41 @@ status rather than rewriting the entries that recorded these as open.
   --property plant_id` gave both halves of the contradiction in one call, which is exactly
   the shape this cue needed: the defect IS the disagreement between two properties, and a
   screenshot alone can only show one of them.
+
+## 2026-08-18 — cycle 114: the wall shows what it has taken, and one mutant was right to survive
+
+- Value: **warranted** — measuring the rendered PNGs caught the only real defect, and the
+  launch earned the one claim nothing headless makes.
+  - Expected: three frames swapped by health, changing at the same fractions the panel's
+    "Holds Ns" number passes. What runtime can show that the suite cannot: whether the
+    frames swap under a REAL pest chewing rather than under a test writing `health`, and
+    whether the swap makes the plant visibly jump.
+  - Got: `health 40 -> bramble.png`, `25 -> bramble_chewed.png`, `10 -> bramble_ragged.png`,
+    read off the live `Sprite2D`'s `texture.resource_path`. And under a real aphid the frame
+    changed between health **32.53** (fraction 0.813) and **25.83** (0.646) — the 2/3
+    boundary, hit by damage rather than by a setter.
+  - Found: three.
+    **(1)** the two new frames rendered with painted bases at 53 and 52 against the whole
+    frame's 56. That is a 3–4 px **jump the instant the plant is bitten** — invisible in any
+    still, obvious in play — and it put two of the three outside the family's stem-pivot
+    spread. Caught by measuring the PNGs, not by looking at them. Now pinned by a test that
+    holds the three frames against EACH OTHER, which is tighter than the style suite's
+    per-frame check against the family.
+    **(2) the first mutation SURVIVED and was right to.** Swapping `DAMAGE_THRESHOLDS`
+    changes nothing, because `texture_for_health` COUNTS how many thresholds the fraction is
+    below rather than walking them in order. An equivalent mutant.
+    `house-static-checker` names this case ("a mutation that changes nothing is not a
+    survivor") and it is worth logging, because *"the mutant survived"* and *"the test is
+    weak"* read identically in a log and only one of them is a finding. The second mutation
+    — making the ragged frame unreachable — was caught, naming the frame that vanished.
+    **(3)** the wiring, which is the launch's whole contribution: a test that writes
+    `health` proves the function; only the running game proves the function is connected to
+    the thing that damages plants.
+  - Cheaper: the PNG measurement, by a wide margin — one snippet, and it found the only real
+    defect. The launch bought the wiring check and nothing else.
+
+- Gap: **no gap this turn**, but one workflow note worth keeping: `find-nodes` reports an
+  auto-named node's path, and `scene-tree --root <that path> --depth 2` is what turns it
+  into a child path. Three attempts were burnt guessing `Sway/Sprite2D` when the child is
+  `Sway/@Sprite2D@161`. The verbs are right; the habit of guessing a child name is not, and
+  `scene-tree --root` is one call.

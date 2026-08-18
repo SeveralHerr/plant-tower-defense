@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Barrier Bramble, third of three frames: bitten through and about to go. Read
+       art_src/bramble.svg for the palette and the road-background argument, and
+       art_src/bramble_chewed.svg for the three constraints every frame in this set obeys
+       (symmetric damage for the bilateral-centring gate, chewed from the top and middle so
+       the stem pivot does not move, no third colour family).
+
+       THE READ IS A GAP IN THE MIDDLE, and that is the whole design of this frame. The
+       previous two are an unbroken arch across the cell; this one is two stubs with clear
+       road between them, which is the one silhouette change that says "it is nearly
+       through" without any colour or size cue. It is also honest about the mechanic: the
+       pest is chewing a hole in the wall, and at this frame there is very nearly a hole.
+
+       SYMMETRIC BY CONSTRUCTION rather than by care. Each stub is the same path mirrored
+       about x = 0, so the content box is centred whatever the paths are — the same trick
+       art_src/nettle.svg uses for its leaf pairs, and for the same reason: an approximate
+       mirror is a failed render rather than a slightly wonky plant. -->
+
+  <g transform="translate(32,37)">
+
+    <!-- Two stubs, mirrored. The outer ends sit at the same x and y the whole frame's canes
+         reached, so the plant has been eaten from the middle outward rather than shrunk. -->
+    <g fill="none" stroke="#ECDCB8" stroke-width="4.2" stroke-linecap="round">
+      <path d="M-20 13 Q-14 5 -7 3"/>
+      <path d="M20 13 Q14 5 7 3"/>
+      <path d="M-18 18 Q-13 13 -8 12"/>
+      <path d="M18 18 Q13 13 8 12"/>
+    </g>
+
+    <!-- One thorn per side, on the broken inner ends, which is where a bitten cane would
+         splinter. -->
+    <g fill="none" stroke="#A69B81" stroke-width="1.6" stroke-linecap="round">
+      <path d="M-7.5 2 L-6 -2.5"/>
+      <path d="M7.5 2 L6 -2.5"/>
+    </g>
+
+    <!-- One leaf per side, kept out at the surviving ends. Two rather than one, because one
+         would sit off the centre line and the centring gate measures the whole content box,
+         leaves included. -->
+    <g fill="#2ECC71" stroke="#1F8A4C" stroke-width="1.2" stroke-linejoin="round">
+      <g transform="translate(-16,9) rotate(-140)">
+        <path d="M0 0 Q4 -3.4 8.5 0 Q4 3.4 0 0 Z"/>
+      </g>
+      <g transform="translate(16,9) rotate(-40)">
+        <path d="M0 0 Q4 -3.4 8.5 0 Q4 3.4 0 0 Z"/>
+      </g>
+    </g>
+  </g>
+</svg>
