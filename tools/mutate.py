@@ -24,6 +24,29 @@ So this tool refuses to say anything about a mutation it did not apply:
                  was run, and nothing is known. This is an exit-2 condition, not a
                  result, and it never counts toward "N mutations killed".
 
+AND THE SAME MISTAKE ON THE WAY OUT. Within an hour of the heredoc incident a second
+sweep here recorded all three of its mutations as killed. The command was
+`python tools/run_tests.py --godot "$GB" --filter facing`, `--filter` is only accepted
+after `--`, so argparse hit an unrecognised option and exited 2 every single time and
+not one test ran. `if returncode:` is true for 2. Needle-matched-exactly-once on the way
+in does not save you from that, so the exit code is read as three values, never as a
+truthiness:
+
+    0 -> SURVIVED     the guard is not load-bearing
+    1 -> RED          killed -- check WHICH case failed, using the denominator below
+    2 -> BROKEN RUN   proves nothing; fix the invocation and rerun
+
+BOTH ENDS NEED A DENOMINATOR. Every result prints the command's own count line beside
+it -- `mirror fixture: 7 case(s), 1 failure(s)` -- so a RED over a suite that selected
+nothing is visible as one. When the command prints no such line the tool says so, in
+words, rather than reporting a bare verdict over an unknown number of checks.
+
+AND THE BASELINE IS RUN FIRST, UNMUTATED, and the sweep refuses to start if it is not
+clean. A red baseline makes every verdict below it meaningless: each mutation "fails"
+whatever it does. The restore is re-run at the end for the same reason -- an unmutated
+failure after the sweep says the file did not go back, and the tell that caught the
+argparse bug above was exactly that restore run coming back non-zero.
+
 HOW IT MATCHES. The file is read with universal-newline translation OFF and normalised
 to LF before matching, so a needle written with `\n` matches a CRLF file. The mutated
 file is written back in the file's ORIGINAL line-ending convention, and the original
@@ -87,6 +110,15 @@ for _stream in (sys.stdout, sys.stderr):
 RED = "RED"
 SURVIVED = "SURVIVED"
 NOT_APPLIED = "NOT-APPLIED"
+BROKEN_RUN = "BROKEN RUN"
+
+# Substrings that mark a line as the command's own denominator. Deliberately a short
+# hand-kept list of this repo's house shapes rather than a regex over any number: a
+# clever matcher would find "1 failure(s)" inside a traceback and call it a count.
+DENOM_HINTS = (
+    "case(s)", "failure(s)", "finding(s)", "marker(s)", "line(s)", "checker(s)",
+    "Assertions:", "Selected:", "Suite:", "test script(s)", "of 2 file(s)",
+)
 
 # Assembled, never written whole: see the self-mutation note in the module docstring.
 _TAG = "self-mutation:"
@@ -124,12 +156,15 @@ class Mutation:
 
 
 class Result:
-    def __init__(self, mutation, outcome, returncode=None, matches=None, detail=""):
+    def __init__(self, mutation, outcome, returncode=None, matches=None, detail="",
+                 denominator="", output=""):
         self.mutation = mutation
         self.outcome = outcome
         self.returncode = returncode
         self.matches = matches
         self.detail = detail
+        self.denominator = denominator
+        self.output = output
 
     @property
     def as_expected(self) -> bool:
@@ -141,16 +176,24 @@ class Report:
         self.path = path
         self.command = command
         self.results = []
+        self.baseline_ok = True
+        self.baseline_code = None
+        self.baseline_denominator = ""
         self.restore_ok = True
         self.restore_detail = ""
+        self.restore_code = None
 
     def count(self, outcome) -> int:
         return sum(1 for r in self.results if r.outcome == outcome)
 
     def exit_code(self) -> int:
-        # 2 first: a NOT-APPLIED or a bad restore means the sweep did not measure what
-        # it claims to have measured, and that is never a "findings" result.
-        if self.count(NOT_APPLIED) or not self.restore_ok:
+        # 2 first, and for four separate reasons -- a dirty baseline, a needle that did
+        # not apply, a command that could not run, or a file that did not go back. All
+        # four mean the sweep did not measure what it claims to have measured, and none
+        # of them is a "findings" result.
+        if not self.baseline_ok or not self.restore_ok:
+            return 2
+        if self.count(NOT_APPLIED) or self.count(BROKEN_RUN):
             return 2
         if any(not r.as_expected for r in self.results):
             return 1
@@ -230,27 +273,80 @@ def _run(command, cwd) -> tuple[int, str]:
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
 
 
+def denominator(text: str) -> str:
+    """The command's own count line, or "" if it printed none.
+
+    Searched from the END, because a summary line is the last thing a run prints and an
+    earlier finding line can share its vocabulary.
+    """
+    for line in reversed((text or "").splitlines()):
+        stripped = line.strip()
+        if any(hint in stripped for hint in DENOM_HINTS):
+            return stripped
+    return ""
+
+
 def _verdict(returncode: int) -> str:
-    return SURVIVED if returncode == 0 else RED
+    """Three values, never a truthiness. `if returncode:` is true for 2, and 2 is this
+    repo's code for "nothing was verified" -- reading it as failure is how a sweep files
+    three un-run mutations as killed."""
+    if returncode == 0:
+        return SURVIVED
+    if returncode == 1:  # self-mutation:exit2
+        return RED
+    return BROKEN_RUN
 
 
 def _silent(*_args, **_kwargs) -> None:
     return None
 
 
-def run_sweep(path, mutations, command, cwd=None, out=print) -> Report:
+def _denominator_line(text: str) -> str:
+    found = denominator(text)
+    if found:
+        return "          denominator: %s" % found
+    return ("          denominator: NONE PRINTED -- the command reported no count, so "
+            "this verdict is over an unknown number of checks.")
+
+
+def run_sweep(path, mutations, command, cwd=None, out=print, show_output=False) -> Report:
     """Apply each mutation to `path` in turn, run `command`, restore, and report.
 
+    The UNMUTATED command runs first and the sweep refuses to start if it is not clean:
+    against a red baseline every mutation "fails" whatever it does, so every verdict
+    below would be a reading of the baseline, not of the mutation.
+
     Only ever one mutation is in the file at a time. The original bytes go back in a
-    `finally`, and the restore is verified -- a sweep that dies half way through would
-    otherwise leave a mutated checker in the tree for the next gate to trust.
+    `finally`, the restore is verified byte-for-byte, and the unmutated command is run
+    once more afterwards -- a sweep that dies half way through would otherwise leave a
+    mutated checker in the tree for the next gate to trust, and a non-zero restore run
+    is the tell that voids everything above it.
     """
     path = Path(path)
     report = Report(path, command)
     text, crlf, original = read_source(path)
+    wrote_any = False
 
     out("mutate: %s -- %d mutation(s), command: %s"
         % (path.as_posix(), len(mutations), " ".join(str(c) for c in command)))
+
+    base_code, base_out = _run(command, cwd)
+    report.baseline_code = base_code
+    report.baseline_denominator = denominator(base_out)
+    if base_code != 0:  # self-mutation:baseline
+        report.baseline_ok = False
+        out("  BASELINE NOT CLEAN: the UNMUTATED command exited %d. NO MUTATION WAS RUN."
+            % base_code)
+        out("          Against a red baseline every mutation 'fails' whatever it does, "
+            "so every verdict this sweep could print would be a reading of the baseline.")
+        out(_denominator_line(base_out))
+        if base_out.strip():
+            out("          --- command output ---")
+            for line in base_out.strip().splitlines()[-20:]:
+                out("          " + line)
+        return report
+    out("  baseline: clean (exit 0)")
+    out(_denominator_line(base_out))
 
     try:
         for index, mutation in enumerate(mutations, 1):
@@ -276,20 +372,46 @@ def run_sweep(path, mutations, command, cwd=None, out=print) -> Report:
                 continue
 
             _write_source(path, mutated, crlf)
-            code, _output = _run(command, cwd)
+            wrote_any = True
+            code, output = _run(command, cwd)
             outcome = _verdict(code)
-            report.results.append(Result(mutation, outcome, returncode=code, matches=1))
+            report.results.append(Result(mutation, outcome, returncode=code, matches=1,
+                                         denominator=denominator(output), output=output))
             note = "" if outcome == mutation.expect else "   <-- UNEXPECTED"
             out("  [%d/%d] %-44s %s (exit %d)%s"
                 % (index, len(mutations), mutation.label, outcome, code, note))
+            out(_denominator_line(output))
+            if outcome == BROKEN_RUN:
+                out("          exit %d is not a failure -- it is this repo's code for "
+                    "'nothing was verified'. Fix the invocation and rerun; do NOT count "
+                    "this as a killed mutation." % code)
             if mutation.expect != RED:
                 out("          expected to survive: %s" % mutation.reason)
+            if show_output and output.strip():
+                for line in output.strip().splitlines()[-20:]:
+                    out("          | " + line)
     finally:
         report.restore_ok, report.restore_detail = _restore(path, original)
 
     if not report.restore_ok:
         out("  RESTORE FAILED: %s -- every verdict above is void until %s is put back "
             "by hand." % (report.restore_detail, path.as_posix()))
+    elif wrote_any:
+        # The restore run. It caught the argparse bug in the docstring above: the
+        # unmutated command has no business being non-zero, so when it is, the file did
+        # not go back or the command was never running what you thought.
+        code, output = _run(command, cwd)
+        report.restore_code = code
+        if code == 0:
+            out("  restore: clean (exit 0), %d byte(s) put back" % len(original))
+            out(_denominator_line(output))
+        else:
+            report.restore_ok = False
+            report.restore_detail = ("the UNMUTATED command exited %d AFTER the restore"
+                                     % code)
+            out("  RESTORE RUN NOT CLEAN: the unmutated command exited %d after the "
+                "file was put back. Every verdict above is void." % code)
+            out(_denominator_line(output))
     return report
 
 
@@ -378,6 +500,18 @@ def _target_self():
             "drop the CRLF normalisation",
             _tag("crlf"),
             "    return text  # mutated: CRLF normalisation dropped",
+            scope="line",
+        ),
+        Mutation(
+            "collapse exit 2 into exit 1",
+            _tag("exit2"),
+            "    if returncode:  # mutated: 2 read as failure instead of as unverified",
+            scope="line",
+        ),
+        Mutation(
+            "drop the baseline-clean check",
+            _tag("baseline"),
+            "    if False:  # mutated: baseline-clean check dropped",
             scope="line",
         ),
     ]
@@ -656,6 +790,38 @@ def _fixture_self() -> int:
         report = _sweep(path, "EXIT=0", "EXIT=0")
         return expect(report, NOT_APPLIED, "a replacement identical to what it replaced")
 
+    def case_broken_run():
+        path = _subject(root, "broken")
+        report = _sweep(path, "EXIT=0", "EXIT=2")
+        ok, why = expect(report, BROKEN_RUN, "a command exiting 2")
+        if not ok:
+            return False, (why + " -- `if returncode:` is true for 2, and 2 means "
+                           "nothing was verified, not that the mutation was killed")
+        if report.exit_code() != 2:
+            return False, "a BROKEN RUN was reported but the sweep exited %d" % report.exit_code()
+        return True, ""
+
+    def case_baseline_dirty():
+        path = _subject(root, "dirtybase", "EXIT=1\nTAIL marker\n")
+        report = _sweep(path, "TAIL", "GONE")
+        if report.baseline_ok:
+            return False, "a command failing UNMUTATED was accepted as a baseline"
+        if report.results:
+            return False, ("%d mutation(s) were run against a red baseline, where every "
+                           "one of them 'fails' whatever it does" % len(report.results))
+        if report.exit_code() != 2:
+            return False, "a dirty baseline exited %d, not 2" % report.exit_code()
+        return True, ""
+
+    def case_denominator():
+        path = _subject(root, "denom")
+        report = _sweep(path, "EXIT=0", "EXIT=1")
+        got = report.results[0].denominator
+        if "marker(s)" not in got:
+            return False, ("the command's own count line was not carried onto the "
+                           "result; got %r" % got)
+        return True, ""
+
     try:
         cases.check("a needle matching twice is NOT-APPLIED, not SURVIVED", case_needle_twice)
         cases.check("a needle matching zero times is NOT-APPLIED", case_needle_absent)
@@ -664,6 +830,9 @@ def _fixture_self() -> int:
         cases.check("an LF needle matches a CRLF file", case_crlf_needle)
         cases.check("the subject's bytes are restored exactly", case_restore)
         cases.check("a no-op replacement is NOT-APPLIED", case_noop_replacement)
+        cases.check("exit 2 is BROKEN RUN, not RED", case_broken_run)
+        cases.check("a dirty baseline stops the sweep before it starts", case_baseline_dirty)
+        cases.check("each result carries the command's own denominator", case_denominator)
     finally:
         shutil.rmtree(root, ignore_errors=True)
     return cases.report()
@@ -687,6 +856,10 @@ def main(argv=None) -> int:
                          "sweeps invoke as their command; run it by hand to see what "
                          "a mutation has to break.")
     ap.add_argument("--list", action="store_true", help="list the registered targets")
+    ap.add_argument("--show-output", action="store_true",
+                    help="print the tail of the command's output under each mutation, "
+                         "so you can read WHICH case went red rather than trusting that "
+                         "one did")
     args = ap.parse_args(argv)
 
     if args.fixture:
@@ -703,11 +876,19 @@ def main(argv=None) -> int:
     for name in names:
         path, mutations, command = TARGETS[name]()
         print("=== target: %s" % name)
-        report = run_sweep(path, mutations, command, cwd=TOOLS.parent)
+        report = run_sweep(path, mutations, command, cwd=TOOLS.parent,
+                           show_output=args.show_output)
         expected_survivors = sum(1 for r in report.results if r.mutation.expect == SURVIVED)
-        print("  %d mutation(s): %d RED, %d SURVIVED (%d of them expected), %d NOT-APPLIED"
-              % (len(report.results), report.count(RED), report.count(SURVIVED),
-                 expected_survivors, report.count(NOT_APPLIED)))
+        # The denominator of the sweep itself: N declared, N run. They differ whenever a
+        # needle stopped matching, which is the failure this whole tool exists for.
+        print("  %d of %d declared mutation(s) ran: %d RED, %d SURVIVED (%d expected), "
+              "%d NOT-APPLIED, %d BROKEN RUN"
+              % (len(report.results), len(mutations), report.count(RED),
+                 report.count(SURVIVED), expected_survivors,
+                 report.count(NOT_APPLIED), report.count(BROKEN_RUN)))
+        if not report.baseline_ok:
+            print("  0 of %d declared mutation(s) ran: the baseline was not clean."
+                  % len(mutations))
         worst = max(worst, report.exit_code())
         print("")
 
