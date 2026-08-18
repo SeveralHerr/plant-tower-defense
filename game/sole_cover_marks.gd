@@ -241,8 +241,23 @@ func _draw() -> void:
 ## with itself. `SelectionMarker.held_ink` is a no-op when `held_over` is false, so the
 ## live values are still exactly `WARNING_COLOR` and `MARK_COLOR`.
 func ring_color() -> Color:
-	var base: Color = WARNING_COLOR if warning and not points.is_empty() else MARK_COLOR
-	return SelectionMarker.held_ink(base, held_over)
+	var armed: bool = warning and not points.is_empty()
+	# ARMED OUTRANKS HELD. A plant one click from being destroyed is the most urgent
+	# thing on the board, and half-fading that warning because the plant also happens
+	# to be the one being compared against is exactly backwards.
+	#
+	# The state is reachable: set_uproot_armed() is public and arming does not require
+	# the plant to be the live selection, so "held and armed" is not the impossible
+	# combination it looks like from _select's side. A pre-existing test drove exactly
+	# it and caught the demotion (plant-tower-defense-sleq).
+	if armed:
+		return WARNING_COLOR
+	# `warning`, not `armed`: a plant holding nothing alone keeps MARK_COLOR when armed
+	# (reddening it would warn about the one uproot that costs the road nothing), but
+	# it is still ARMED, so it must not be dimmed either.
+	if warning:
+		return MARK_COLOR
+	return SelectionMarker.held_ink(MARK_COLOR, held_over)
 
 
 func ring_width() -> float:

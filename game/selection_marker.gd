@@ -303,7 +303,15 @@ func _draw_uproot_window() -> void:
 ## brackets read as the same cue rather than as a second one: width belongs to the ARMED
 ## row and size belongs to the hover promise, and this cue may borrow neither.
 func _draw_brackets() -> void:
-	var ink: Color = held_ink(marker_color, held_over)
+	# ARMED OUTRANKS HELD, for the reason SoleCoverMarks.ring_color spells out:
+	# a plant one click from destruction must not be dimmed because it is also
+	# the plant being compared against.
+	# ARMED OUTRANKS HELD, for the reason SoleCoverMarks.ring_color spells out: a
+	# plant one click from destruction must not be dimmed because it is also the
+	# plant being compared against. There is no `warning` member here -- set_warning
+	# stores the state IN marker_color, so that is what the test has to be.
+	var armed: bool = marker_color == WARNING_COLOR
+	var ink: Color = marker_color if armed else held_ink(marker_color, held_over)
 	for corner_sign: Vector2 in bracket_corners(held_over):
 		var corner := Vector2(half * corner_sign.x, half * corner_sign.y)
 		draw_line(corner, corner + Vector2(-arm * corner_sign.x, 0.0), ink, line_width)

@@ -8734,7 +8734,10 @@ func test_two_plants_sole_cover_sets_never_share_a_cell() -> String:
 	# mutually exclusive because Game makes them so, not because either node checks.
 	if err == "":
 		game._select(b)
-		err = _T.assert_eq(game.arm_uproot(), "", "an uproot arms on the second cob")
+		# "confirm needed", not "": arming is the FIRST of two clicks and says so.
+		# An empty string is what a committed uproot returns.
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed",
+			"an uproot arms on the second cob and asks for confirmation")
 	if err == "":
 		err = _T.assert_eq(b_marker.marker_color, SelectionMarker.WARNING_COLOR,
 			"and its brackets go red while it is the selection")

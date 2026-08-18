@@ -81,6 +81,18 @@ var compost: CompostMeter
 var lives: int = LIVES
 var selected_plant: StringName = PlantCatalog.CORN
 var selected_placed: Plant = null
+## The plant the player is comparing FROM: the selection before this one, kept on
+## screen with its sole-cover rings demoted so two plants' answers to "what does this
+## one alone hold?" can be read side by side (plant-tower-defense-sleq).
+##
+## WHAT CLEARS IT: selecting a third plant, which drops the oldest. The window is
+## exactly two BY CONSTRUCTION rather than by a rule anybody has to learn, so the
+## board cannot accumulate rings however long a session runs. Every `_select(null)`
+## clears it too -- picking a packet out of the bar, a plant eaten under the cursor,
+## an uproot committing -- because all three are moments where the question changed.
+## No timer, no key, no modifier: a comparison is read at the player's pace, and a cue
+## that needs a keypress to dismiss is one most players will leave up.
+var _held_over: Plant = null
 var game_over: bool = false
 var victory: bool = false
 
@@ -1334,6 +1346,7 @@ func _on_plant_hovered(id: StringName) -> void:
 	_refresh_dead_ground()
 
 func _select(plant: Plant) -> void:
+	var previous: Plant = selected_placed
 	if selected_placed != null and is_instance_valid(selected_placed):
 		selected_placed.set_selected(false)
 	# Changing selection cancels a pending Uproot. Keying the arming to the plant
@@ -1345,6 +1358,68 @@ func _select(plant: Plant) -> void:
 	selected_placed = plant
 	if selected_placed != null:
 		selected_placed.set_selected(true)
+	# AFTER the assignment, because _apply_held_over asks whether a plant is the live
+	# selection before it hides anything. Exactly one previous selection is kept, and
+	# only when the selection actually moved to ANOTHER plant: re-clicking the plant
+	# already selected must not drop the one it is being compared against.
+	if plant == null:
+		_hold_over(null)
+	elif previous != null and previous != plant:
+		_hold_over(previous)
+
+
+
+## Moves the held-over slot, which holds exactly one plant. Idempotent.
+func _hold_over(plant: Plant) -> void:
+	if _held_over == plant:
+		return
+	_apply_held_over(_held_over, false)
+	_held_over = plant
+	_apply_held_over(_held_over, true)
+
+
+## Turns the demoted look on or off on one plant's two cue nodes.
+##
+## The marker is reached by node name for the reason `_push_uproot_clock` spells out:
+## `SelectionMarker.NODE_NAME` is documented as exactly this contract. A plant built
+## outside a Game has neither node, which is a silent no-op here as it is there.
+##
+## `live` guards the hiding half. A held plant RE-selected passes through here with
+## `held = false` on the same frame it becomes the selection, and emptying its marks
+## then would blank the rings the player just clicked for.
+func _apply_held_over(plant: Plant, held: bool) -> void:
+	if plant == null or not is_instance_valid(plant):
+		return
+	var live: bool = plant == selected_placed
+	var marker := plant.get_node_or_null(
+		NodePath(SelectionMarker.NODE_NAME)) as SelectionMarker
+	if marker != null:
+		marker.set_held_over(held)
+		marker.visible = held or live
+	var marks: SoleCoverMarks = plant.sole_cover_marks()
+	if marks != null:
+		marks.set_held_over(held)
+		marks.visible = held or live
+		if not held and not live:
+			marks.set_points(PackedVector2Array())
+
+
+## One plant's sole-cover rings, pushed from the garden as it now stands. Lifted out of
+## _refresh() because there are two of them now -- the selection and the plant held
+## over beside it -- and two copies of this loop is where the two would start
+## disagreeing.
+func _push_sole_cover(plant: Plant) -> void:
+	if plant == null or not is_instance_valid(plant):
+		return
+	var marks: SoleCoverMarks = plant.sole_cover_marks()
+	if marks == null:
+		return
+	var at: PackedVector2Array = PackedVector2Array()
+	for cell: Vector2i in sole_cover_cells(plant):
+		# GLOBAL, because SoleCoverMarks._draw hands these to to_local().
+		# cell_to_world is board-local and the marks drew 72 px high for it.
+		at.append(board.cell_to_global(cell))
+	marks.set_points(at)
 
 
 func plant_at(cell: Vector2i) -> Plant:
@@ -2251,20 +2326,19 @@ func _refresh() -> void:
 		if _preview != null and is_instance_valid(_preview) and _preview.visible:
 			_preview.covered_now = covered_road_cells()
 			_preview.queue_redraw()
-		# The selected plant's own half of the same question. Pushed here rather
-		# than from set_selected() because the answer changes when the GARDEN
-		# changes, not only when the selection does: plant a second cob beside the
-		# selected one and the rings under it should thin out without the player
-		# clicking anything.
-		if selected_placed != null and is_instance_valid(selected_placed):
-			var marks: SoleCoverMarks = selected_placed.sole_cover_marks()
-			if marks != null:
-				var at: PackedVector2Array = PackedVector2Array()
-				for cell: Vector2i in sole_cover_cells(selected_placed):
-					# GLOBAL, because SoleCoverMarks._draw hands these to to_local().
-					# cell_to_world is board-local and the marks drew 72 px high for it.
-					at.append(board.cell_to_global(cell))
-				marks.set_points(at)
+		# The selected plant's own half of the same question, and the plant held
+		# over beside it. Pushed here rather than from set_selected() because the
+		# answer changes when the GARDEN changes, not only when the selection does:
+		# plant a second cob beside the selected one and the rings under it should
+		# thin out without the player clicking anything.
+		#
+		# A held plant eaten or uprooted leaves a freed reference behind; cleared here
+		# rather than at each death path, because this is the one funnel every one of
+		# them already runs through.
+		if _held_over != null and not is_instance_valid(_held_over):
+			_held_over = null
+		_push_sole_cover(selected_placed)
+		_push_sole_cover(_held_over)
 	if hud == null:
 		return
 	hud.refresh(state())
