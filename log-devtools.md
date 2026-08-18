@@ -7609,3 +7609,46 @@ status rather than rewriting the entries that recorded these as open.
   all: this was PIL over rendered PNGs, and the one thing that would need the bridge
   (sampling the aphid's rim at its drawn 0.72 scale rather than in the source) is filed
   rather than done.
+
+## 2026-08-18 — cycle 122: the obvious implementation was wrong, and only a probe showed it
+
+- Value: **warranted** — the first implementation shipped the exact defect the bead exists
+  to remove, and nothing static could have told me.
+  - Expected: the bead proposes a real touch layer committing on RELEASE so a finger can
+    slide to the right cell with the preview following. Predicted: mouse emulation is on by
+    default and must STAY on (every Button is a Control answering mouse events), so the work
+    is telling the emulated press apart from the real one — and the obvious way is a flag
+    set by the touch handler.
+  - Got: **the flag cannot work.** Probed on the running game with
+    `set-feature --touchscreen true` and one `touch press`:
+
+        PROBE mouse press  device=-1  touch_index=-1
+        PROBE screen touch pressed index=0 device=0
+
+    The emulated `InputEventMouseButton` arrives **before** the `InputEventScreenTouch` that
+    produced it. A guard set by the touch handler is always too late, and my first
+    implementation planted at the PRESS cell — precisely the behaviour commit-on-release
+    exists to remove. No ordering of the branches fixes it.
+  - Found: three.
+    **(1)** the ordering above, and that the obvious design is wrong because of it.
+    **(2)** the discriminator is the **device id** — Godot marks the emulated event -1 and a
+    real one 0. Narrowed by `is_touchscreen_available()` on purpose: `device == -1` means
+    *synthesised*, not *from touch*, and the bridge's own `mouse-move` sends one, so on a
+    desktop with no touchscreen a -1 event is a test driving the game and must be honoured.
+    **(3)** the headless test **cannot** reach the emulated-mouse half, because
+    `is_touchscreen_available()` is a property of the machine. A rare case this session
+    where the bridge check and the suite genuinely cover different halves rather than the
+    launch re-confirming what a test already asserted.
+  - Cheaper: nothing. Reading Godot's source might have settled the ordering; a probe took
+    two minutes and is quotable in a comment.
+
+- **The bridge's touch verbs are the only reason this was verifiable at all.**
+  `set-feature --touchscreen`, `touch press/drag/release/list` drove the whole acceptance
+  gesture — press at one cell, drag to another, release — and showed 0 plants, 0 plants,
+  then one plant at the cell under the finger at RELEASE. Without them this would have been
+  "implemented, untested, needs a phone".
+
+- Gap: **no gap this turn.** Worth recording the shape that worked, since three cycles of
+  declining launches makes it easy to forget: a `print()` probe, launched, one bridge verb,
+  read `.devtools/launch_stdout.log`, probe removed. Two minutes, and it answered a question
+  about engine event ordering that no amount of reading the diff could.

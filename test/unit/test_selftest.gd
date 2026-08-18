@@ -17643,6 +17643,87 @@ func test_every_bramble_frame_is_the_same_plant_standing_in_the_same_place() -> 
 # =============================================================================
 
 
+## A touch commits where the finger LIFTS, not where it landed (plant-tower-defense-qdsi).
+##
+## The whole point of the touch layer: a tap placed on press gives a touch player no way to
+## see what they are about to do and no way to abort a mis-aim. Committing on release means
+## the finger can slide to the right cell with the preview following it.
+##
+## What this test canNOT cover, and why the bridge check exists alongside it: the emulated
+## mouse event. `DisplayServer.is_touchscreen_available()` is a property of the machine, not
+## something a test can set, so the `device == -1` guard is only exercisable on a running
+## game with `set-feature --touchscreen true`. That half is a /verify Phase 4 check and is
+## recorded in the ledger row, not here.
+func test_a_touch_plants_where_the_finger_lifts_not_where_it_landed() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(400)
+	game.bank.unlocked = PlantCatalog.ids()
+	game.selected_plant = PlantCatalog.CORN
+	var from_cell: Vector2i = _grass(game)
+	var to_cell: Vector2i = Vector2i(from_cell.x + 3, from_cell.y)
+	var err: String = _T.assert_true(game.board.is_buildable(to_cell),
+		"the cell three to the right is also plantable, so the two are interchangeable "
+			+ "except for which one the finger is over")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	var from_pos: Vector2 = game.board.cell_to_world(from_cell) + game._entities.position
+	var to_pos: Vector2 = game.board.cell_to_world(to_cell) + game._entities.position
+
+	var down := InputEventScreenTouch.new()
+	down.index = 0
+	down.pressed = true
+	down.position = from_pos
+	game._unhandled_input(down)
+	err = _T.assert_true(game.plant_at(from_cell) == null,
+		"the press plants nothing -- this is the assertion the whole bead is about")
+
+	if err == "":
+		var slide := InputEventScreenDrag.new()
+		slide.index = 0
+		slide.position = to_pos
+		game._unhandled_input(slide)
+		err = _T.assert_true(game.plant_at(to_cell) == null, "and neither does the drag")
+	if err == "":
+		var up := InputEventScreenTouch.new()
+		up.index = 0
+		up.pressed = false
+		up.position = to_pos
+		game._unhandled_input(up)
+		err = _T.assert_true(game.plant_at(to_cell) != null,
+			"the release plants, at the cell the finger LIFTED over (%s)" % to_cell)
+	if err == "":
+		err = _T.assert_true(game.plant_at(from_cell) == null,
+			"and nothing was left at the cell it started from (%s) -- a implementation "
+				% from_cell + "that remembered the press position would fail here and "
+				+ "nowhere else")
+	if err == "":
+		# A second finger while one is down is palm contact or a fumble far more often than
+		# it is intent, and this game has no two-finger gesture.
+		var other: Vector2i = Vector2i(from_cell.x, from_cell.y + 2)
+		if game.board.is_buildable(other) and game.plant_at(other) == null:
+			var down_a := InputEventScreenTouch.new()
+			down_a.index = 0
+			down_a.pressed = true
+			down_a.position = from_pos
+			game._unhandled_input(down_a)
+			var down_b := InputEventScreenTouch.new()
+			down_b.index = 1
+			down_b.pressed = true
+			down_b.position = game.board.cell_to_world(other) + game._entities.position
+			game._unhandled_input(down_b)
+			var up_b := InputEventScreenTouch.new()
+			up_b.index = 1
+			up_b.pressed = false
+			up_b.position = game.board.cell_to_world(other) + game._entities.position
+			game._unhandled_input(up_b)
+			err = _T.assert_true(game.plant_at(other) == null,
+				"a second finger lifting plants nothing while the first is still down")
+	_T.free_ui(game)
+	return err
+
+
 ## A binding that did not reach disk says so (plant-tower-defense-bia).
 ##
 ## `RunConfig._save()` has four paths where the record does not land and every one of them

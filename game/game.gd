@@ -1999,13 +1999,103 @@ func _reveal_plant_unlock(id: StringName) -> void:
 # -- input ------------------------------------------------------------------
 
 
+## Which finger is currently down, or -1. The whole of the touch/mouse-emulation guard
+## (plant-tower-defense-qdsi).
+##
+## ONE finger, by index, and not a count. A second finger landing while the first is placing
+## is palm contact or a fumble far more often than it is a second intent, and this game has
+## no two-finger gesture — so the first finger down owns the placement and everything else is
+## ignored until it lifts. `touch list` on the bridge is what shows a second index arriving.
+var _touch_index: int = -1
+
+
+## A finger going down or coming up.
+##
+## COMMITS ON RELEASE, which is the change the bead is really about. A tap placed on PRESS
+## gives a touch player no way to see what they are about to do and no way to abort a
+## mis-aim: the cell under the first contact is the cell they get. Committing on release
+## means the finger can slide to the right cell with the preview updating the whole way
+## (see the InputEventScreenDrag branch), and sliding off the board aborts.
+##
+## The release position is used, NOT the press position. That is the same sentence as the
+## line above and it is the one an implementation gets wrong by using the remembered start.
+func _on_screen_touch(touch: InputEventScreenTouch) -> void:
+	if touch.pressed:
+		if _touch_index != -1:
+			return   # a second finger while one is placing: see _touch_index
+		_touch_index = touch.index
+		# Show the cue immediately, so the first thing a finger does is reveal validity
+		# rather than change the board.
+		_update_cursor(touch.position)
+		return
+	if touch.index != _touch_index:
+		return
+	_click_at(touch.position)
+	# Cleared immediately. An earlier draft deferred this by a frame to keep the emulated
+	# mouse events out; that is no longer this flag's job — `device == -1` does it in
+	# `_unhandled_input`, and it does it for the PRESS, which arrives before any flag could
+	# be set. What is left here is only the one-finger rule.
+	_touch_index = -1
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	# TOUCH FIRST, and the order is the whole of the mouse-emulation problem below.
+	var touch := event as InputEventScreenTouch
+	if touch != null:
+		_on_screen_touch(touch)
+		return
+	var drag := event as InputEventScreenDrag
+	if drag != null:
+		# A finger already down, moving. This is the hover a mouse player has had all
+		# along and a touch player never did: the preview follows the finger, so validity
+		# is visible BEFORE the commit rather than being discovered by the result.
+		_touch_index = drag.index
+		_update_cursor(drag.position)
+		return
 	var motion := event as InputEventMouseMotion
 	if motion != null:
+		# Same discriminator as the press below, for the same measured reason: the emulated
+		# motion arrives before the drag that produced it, so a flag is too late here too.
+		if motion.device == -1 and DisplayServer.is_touchscreen_available():
+			return
 		_update_cursor(motion.position)
 		return
 	var click := event as InputEventMouseButton
 	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
+		# THE EMULATED PRESS IS THE ONE THAT MUST NOT PLANT.
+		#
+		# `input_devices/pointing/emulate_mouse_from_touch` is on by default and is left
+		# on deliberately: every Button in this game is a Control that answers mouse
+		# events, so turning it off to get clean touch handling would kill the shop, the
+		# pause card and every screen's Back button on exactly the devices this is for.
+		#
+		# So the engine sends BOTH for one finger — a real InputEventScreenTouch and an
+		# emulated InputEventMouseButton. Handling both plants twice, and worse, the
+		# emulated PRESS arrives with the finger going down, which would commit at the
+		# press position and undo the entire point of committing on release.
+		#
+		# THE DEVICE ID TELLS THEM APART, and a flag cannot — which was worth measuring
+		# rather than assuming, because the obvious implementation is a flag and it does
+		# not work. Probed on a running game with `set-feature --touchscreen true` and one
+		# `touch press`:
+		#
+		#     PROBE mouse press  device=-1  touch_index=-1
+		#     PROBE screen touch pressed index=0 device=0
+		#
+		# The emulated mouse press arrives BEFORE the InputEventScreenTouch. So a guard set
+		# by the touch handler is always too late — the first version of this planted at the
+		# press cell, which is the exact behaviour commit-on-release exists to remove — and
+		# no ordering of the branches above can fix it. Godot marks the emulated event
+		# `device == -1` and a real one 0, and that is the only thing available before the
+		# touch is seen.
+		#
+		# NARROWED BY `is_touchscreen_available()` deliberately. `device == -1` means
+		# "synthesised", not "from touch": the devtools bridge's own `mouse-move` sends one,
+		# and on a desktop with no touchscreen emulation never fires, so a -1 there is a
+		# test driving the game and must be honoured. This ignores it only where a real
+		# finger could have produced it.
+		if click.device == -1 and DisplayServer.is_touchscreen_available():
+			return
 		_click_at(click.position)
 		return
 	# A verb arrives as an InputEventKey off a keyboard and as an InputEventAction
