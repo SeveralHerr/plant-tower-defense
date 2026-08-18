@@ -16071,3 +16071,213 @@ func test_the_seed_sink_is_finite_while_the_seed_income_is_not() -> String:
 
 
 # -- END the seed economy has a finite floor and an uncapped ceiling --
+
+
+# -- BEGIN should the pause door open the SELECTED plant's page (plant-tower-defense-5s99) --
+#
+# The bead asked a question and the answer is NO: the pause door keeps opening the
+# legend, whatever is selected on the board. The five reasons live on
+# `PauseScreen.notebook_door_kind()`; these four tests pin the MEASUREMENTS those
+# reasons rest on, so a future session that wants to re-open the decision finds out
+# from a failing test that its premises have moved rather than re-deriving them.
+#
+# Two of them are deliberately tripwires that fire when the codebase IMPROVES —
+# test_two_of_the_catalogues_plants_have_no_spec_page_to_send_a_player_to and
+# test_the_legend_is_never_one_press_from_a_plants_page. If either fails, the
+# corresponding reason has expired. Re-open plant-tower-defense-5s99 and decide it
+# again; do not flip the assertion.
+
+
+## The door's whole behaviour, end to end, plus the half that was actually missing.
+##
+## `open_at` is read once during NotebookScreen's build, so this drives the real
+## button rather than setting the property: a test that reached in and set `open_at`
+## would prove the notebook works and say nothing about the door.
+func test_the_pause_door_opens_the_legend_and_says_so_before_you_press_it() -> String:
+	var total: int = NotebookScreen.PAGES.size()
+	var legend: int = NotebookScreen.page_for_kind(NotebookScreen.KIND_LEGEND)
+	var err: String = _T.assert_gt(legend, 0,
+		"the legend is not page 0, so where this door opens is a real choice (page %d of %d)"
+			% [legend + 1, total])
+	if err == "":
+		# The door names its destination in exactly ONE place, which is what stops the
+		# tooltip and the `open_at` two functions below from drifting into two answers.
+		# Asked by KIND rather than by index, so reordering PAGES moves both together.
+		err = _T.assert_eq(
+			NotebookScreen.page_for_kind(PauseScreen.notebook_door_kind()), legend,
+			"the pause door's one named destination is the legend")
+	if err == "":
+		err = _T.assert_true(
+			NotebookScreen.PANE_LABELS.has(PauseScreen.notebook_door_kind()),
+			("and it is a kind the notebook actually has a page heading for, so the "
+				+ "tooltip cannot promise a blank"))
+	if err != "":
+		return err
+
+	var screen := await _T.instantiate_ui(
+		PauseScreen.build("", Game.key_help()), Vector2i(1152, 648)) as PauseScreen
+	var door: Button = screen.get_node_or_null("NotebookButton") as Button
+	err = _T.assert_true(door != null, "the pause card has a Notebook door to press")
+	if err != "":
+		_T.free_ui(screen)
+		return err
+
+	# WRITTEN, per the condition this change was made under. A player pressing this
+	# button from a pause lands on 13 / 14 while the identically labelled button on the
+	# title screen lands on 1 / 14, and until now nothing said so — which is exactly
+	# what a book that lost its place looks like.
+	err = _T.assert_eq(door.tooltip_text, PauseScreen.notebook_door_tooltip(),
+		"the door carries the promise, rather than the promise living only in a static")
+	if err == "":
+		err = _T.assert_true(door.tooltip_text.contains("%d of %d" % [legend + 1, total]),
+			"and the promise names the page the door really opens at, got %s" % door.tooltip_text)
+	if err == "":
+		# Derived from PANE_LABELS, so the tooltip and the heading the page itself draws
+		# cannot drift into describing the legend two different ways.
+		err = _T.assert_true(door.tooltip_text.contains(
+				NotebookScreen.pane_label_for(NotebookScreen.KIND_LEGEND)),
+			"and it says what is on that page in the page's own words, got %s" % door.tooltip_text)
+	if err != "":
+		_T.free_ui(screen)
+		return err
+
+	door.pressed.emit()
+	var page_label: Label = screen.get_node_or_null("Notebook/PageLabel") as Label
+	err = _T.assert_true(page_label != null, "pressing the door actually opens a notebook")
+	if err == "":
+		err = _T.assert_eq(page_label.text, "%d / %d" % [legend + 1, total],
+			"and it opens on the legend — the page about the board being paused behind it")
+	if err == "":
+		# Read through a get_node_or_null rather than a cast on a get_node: a missing node
+		# would abort this method with a runtime error, and an aborted `-> String` test
+		# returns "" — identical to a pass.
+		var pane: Control = screen.get_node_or_null("Notebook/CueLegend") as Control
+		err = _T.assert_true(pane != null and pane.visible,
+			"with the legend pane showing, not merely the page number agreeing")
+	_T.free_ui(screen)
+	return err
+
+
+## The distinguishability half the bead asked for, in the only form this design allows.
+##
+## The bead wanted "a plant selected, and nothing selected" driven separately, because
+## a default that equals one of the two expected answers cannot be told apart from the
+## property being ignored. PauseScreen has no channel to `Game.selected_placed` at all —
+## `build()` takes a note and a key table — so there is no second branch to drive. What
+## CAN be established, and is the same guarantee, is that the page the door opens could
+## never have been produced by a selection: no plant in the catalogue owns it. The
+## observed "13 / 14" above therefore means "the legend door", not "some plant's page
+## that happens to be there".
+func test_no_plant_selection_could_have_produced_the_page_the_pause_door_opens() -> String:
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var legend: int = NotebookScreen.page_for_kind(NotebookScreen.KIND_LEGEND)
+	var err: String = _T.assert_gt(ids.size(), 0, "there are plants that could be selected")
+	if err != "":
+		return err
+	for id: StringName in ids:
+		var page: int = NotebookScreen.page_for_plant(id)
+		err = _T.assert_true(page != legend,
+			("selecting %s could not have put the notebook on page %d — so the page the "
+				+ "pause door opens distinguishes the legend from every possible selection")
+				% [id, legend + 1])
+		if err != "":
+			return err
+	# And the reverse reading of the same fact: the legend page is not ABOUT a plant, so
+	# a door aimed at it is answering a different question from one aimed at a selection.
+	return _T.assert_eq(StringName(NotebookScreen.PAGES[legend].get("plant", &"")), &"",
+		"the legend page names no plant, which is why it is the run-context answer")
+
+
+## REASON 1 on PauseScreen.notebook_door_kind(), pinned.
+##
+## `page_for_plant` finds a page for every plant — that is asserted elsewhere — but not
+## every one of those pages ANSWERS "what does this plant do". `go_to()` shows the spec
+## index card only on KIND_PLANT (`_spec.visible = kind == KIND_PLANT`); a KIND_DRAWING
+## page shows a photograph of a pencil sketch and a note about where the idea came from.
+## The two plants in that position are the free starter and the bead's own worked
+## example, which is the whole reason the proposal was declined.
+##
+## FAILS WHEN THE CODEBASE IMPROVES, on purpose: give those two a spec page and reason 1
+## has expired. Re-open the bead, do not edit this number.
+func test_two_of_the_catalogues_plants_have_no_spec_page_to_send_a_player_to() -> String:
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_gt(ids.size(), 0, "the catalogue has plants")
+	if err != "":
+		return err
+	var specless: Array[String] = []
+	for id: StringName in ids:
+		var page: int = NotebookScreen.page_for_plant(id)
+		if page < 0:
+			continue
+		var kind: String = String(NotebookScreen.PAGES[page].get(
+			"kind", NotebookScreen.KIND_DRAWING))
+		if kind != NotebookScreen.KIND_PLANT:
+			specless.append("%s (page %d, kind '%s')" % [id, page + 1, kind])
+	err = _T.assert_gt(specless.size(), 0,
+		("at least one plant's own page carries no spec card, which is why a door aimed "
+			+ "at 'the selected plant's page' is not a door aimed at 'what does this do'"))
+	if err == "":
+		# Named rather than merely counted: the identity is the argument. If a THIRD name
+		# appears here the reason is stronger, not weaker, so this is a floor and not an
+		# equality — but the two below are the ones that decided it.
+		err = _T.assert_true(str(specless).contains("corn_cobbler"),
+			("the free starter plant is one of them — the plant a confused player is most "
+				+ "likely to have selected. Specless set: %s") % str(specless))
+	if err == "":
+		err = _T.assert_true(str(specless).contains("chomp_flower"),
+			("and so is the Chomp, which is the bead's own worked example of a player "
+				+ "wondering what a plant does. Specless set: %s") % str(specless))
+	return err
+
+
+## REASON 4, measured rather than assumed — the bead said to check it before assuming
+## "a wrong-but-plausible page costs one press", and it does not.
+##
+## The pager is one page a press in each direction and there is no jump, so the price of
+## landing on the wrong page is the walk. Both halves are asserted: the walk lengths off
+## PAGES, and the one-page step off a real NextButton.
+func test_the_legend_is_never_one_press_from_a_plants_page() -> String:
+	var total: int = NotebookScreen.PAGES.size()
+	var legend: int = NotebookScreen.page_for_kind(NotebookScreen.KIND_LEGEND)
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_gt(ids.size(), 0, "there are plant pages to walk from")
+	if err != "":
+		return err
+	var worst: int = 0
+	for id: StringName in ids:
+		var page: int = NotebookScreen.page_for_plant(id)
+		if page < 0:
+			continue
+		# The pager wraps, so the real price is the shorter of the two directions.
+		var walk: int = mini(posmod(legend - page, total), posmod(page - legend, total))
+		worst = maxi(worst, walk)
+		err = _T.assert_gt(walk, 1,
+			("the legend is %d presses from %s's page, not one — so a door that guessed "
+				+ "wrong would charge the player a walk, not a tap") % [walk, id])
+		if err != "":
+			return err
+	err = _T.assert_gt(worst, 4,
+		("the worst plant page is %d presses from the legend (of a possible %d on a "
+			+ "%d-page wrap), which is the number that decided reason 4")
+			% [worst, total / 2, total])
+	if err != "":
+		return err
+
+	# The other half: one press really is one page. A jump control added later would make
+	# the walk above cheap and reason 4 would need re-reading — this is what would say so.
+	var book := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var pager: Label = book.get_node_or_null("PageLabel") as Label
+	var next_button: Button = book.get_node_or_null("NextButton") as Button
+	err = _T.assert_true(pager != null and next_button != null,
+		"the notebook has a pager and a Next button")
+	if err == "":
+		err = _T.assert_eq(pager.text, "1 / %d" % total, "it opened at the front")
+	if err == "":
+		next_button.pressed.emit()
+		err = _T.assert_eq(pager.text, "2 / %d" % total,
+			"and one press of Next moves exactly one page")
+	_T.free_ui(book)
+	return err
+
+
+# -- END should the pause door open the SELECTED plant's page (plant-tower-defense-5s99) --

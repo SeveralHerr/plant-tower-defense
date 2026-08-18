@@ -364,6 +364,81 @@ const BUTTONS: Array[Dictionary] = [
 ]
 
 
+## Which page kind the Notebook door from a PAUSE opens on, asked by kind rather than
+## by index because PAGES is reordered by whoever adds a page.
+##
+## THE ANSWER TO plant-tower-defense-5s99, WRITTEN DOWN SO NOBODY RE-ASKS IT. That bead
+## proposed the door open on the SELECTED plant's page instead — `NotebookScreen.
+## page_for_plant()` and `Game.selected_placed` both exist, and `Game.pause_run` already
+## hands `build()` two arguments, so a third was nearly free. It stays the legend, and
+## the reasons are in descending order of weight:
+##
+## 1. THE PLANT PAGE IS OFTEN NOT A GAMEPLAY PAGE. `page_for_plant(&"corn_cobbler")` is
+##    PAGES[0] and `page_for_plant(&"chomp_flower")` is PAGES[3] — both KIND_DRAWING,
+##    so `go_to()` shows a photograph of a pencil sketch and hides the spec card
+##    entirely (`_spec.visible = kind == KIND_PLANT`). The bead's own worked example is
+##    a player who "selects a Chomp, wonders what it does"; that door would answer with
+##    "Named in the corner, drawn with a jaw full of triangular teeth". Corn Cobbler is
+##    worse — it is the free starter plant, so it is the plant a confused player is most
+##    likely to have selected, and its page is the portrait the whole game began from.
+##    Six of the eight plants get a spec; the two that do not are the two everybody has.
+##
+## 2. THE QUESTION IS ALREADY ANSWERED, LIVE, WITHOUT PAUSING. `Hud._refresh_selection`
+##    fills SelectionBox the instant a plant is clicked, with that plant's CURRENT
+##    numbers — damage per volley, fire interval, chew progress, seconds to the next
+##    yield, pests being slowed. The notebook's spec card is a static catalogue entry.
+##    Routing the pause door at it trades a live answer for a worse historical one.
+##
+## 3. THE SELECTION IS SET BY PLACING, NOT ONLY BY ASKING. `Game.place_plant` ends in
+##    `_select(plant)`, so putting a Sunflower in a back corner and never clicking again
+##    leaves it selected for the rest of the run. The bead named the staleness objection
+##    and it is worse than it looks: the selection is not "the last thing you asked
+##    about", it is "the last thing you did".
+##
+## 4. BEING WRONG COSTS 2 TO 7 PRESSES, NOT ONE. The bead said to check this rather than
+##    assume it. The pager is one page per press in each direction (PrevButton/NextButton
+##    and ACTION_PAGE_PREV/NEXT — there is no jump), and it wraps, so the shortest walk
+##    from a plant page to the legend at index 12 of 14 is: Corn 2, Chomp 5, Sunflower 7,
+##    Sundew 6, Dandelion 5, Mint 4, Nettle 3, Aloe 2. Median 5.
+##
+## 5. THE STALENESS RULES ON OFFER CANNOT BE WRITTEN ON THE DOOR. Option (c) — "only when
+##    the plant was selected since this wave started" — is a new field in Game and a rule
+##    the player is never told, which makes two identical-looking presses of one button
+##    go to two different places for an invisible reason. That is the opposite of the
+##    condition this change was made under.
+##
+## What DID change is the half that was genuinely missing: the door's destination is now
+## written on the door. See notebook_door_tooltip().
+static func notebook_door_kind() -> String:
+	return NotebookScreen.KIND_LEGEND
+
+
+## What the Notebook door promises, DERIVED from the notebook rather than written here.
+##
+## The gap this closes is real and predates the bead above: pressing "Designer's
+## Notebook" from a pause opens the book at 13 / 14, and pressing the identically
+## labelled button on the title screen opens it at 1 / 14. Nothing said so. A player who
+## meets the second door first has every reason to read the first one as a book that
+## lost its place, and the pager label showing "13 / 14" is what that looks like.
+##
+## Every part of the sentence comes from NotebookScreen — the index from
+## `page_for_kind`, the total from `PAGES.size()`, the subject from the same
+## `PANE_LABELS` row the page itself draws as its left-pane heading. So the promise on
+## this button and the page the door actually opens cannot drift apart, and adding a
+## page above the legend re-words the tooltip without anybody editing it.
+##
+## A tooltip and not the label: BUTTON_SIZE.x is 248 and a Button's minimum width is its
+## text, so a longer label would silently widen the button past the rect `button_rects()`
+## placed it in — which is the exact failure three paragraphs of this file's header are
+## already about. `tooltip_text` takes no part in minimum size.
+static func notebook_door_tooltip() -> String:
+	var kind: String = notebook_door_kind()
+	var at: int = maxi(0, NotebookScreen.page_for_kind(kind))
+	return "Opens at page %d of %d — %s." % [
+		at + 1, NotebookScreen.PAGES.size(), NotebookScreen.pane_label_for(kind),
+	]
+
+
 ## Built by Game so the note can describe the moment the run was actually paused.
 static func build(note: String, keys: Array[Dictionary] = []) -> PauseScreen:
 	var screen := PauseScreen.new()
@@ -491,6 +566,13 @@ func _build_buttons() -> void:
 		button.size = rects[i].size
 		var which: String = String(spec["signal"])
 		button.pressed.connect(func() -> void: emit_signal(which))
+		# NOT a fourth cell in BUTTONS, and the reason is mechanical: this string is
+		# derived from NotebookScreen at runtime and BUTTONS is a const, which can hold
+		# only literals. Keyed off the SIGNAL rather than the node name so a renamed
+		# node cannot silently drop the one promise this card makes about where a door
+		# goes.
+		if which == "notebook_requested":
+			button.tooltip_text = notebook_door_tooltip()
 		add_child(button)
 		_buttons.append(button)
 		if first == null:
@@ -683,10 +765,15 @@ func _open_notebook() -> void:
 	# scrapbook, and it should not also gate the page explaining what the marks mean.
 	#
 	# Asked by kind, never by index: PAGES gets reordered by whoever adds a page, and a
-	# literal 9 here would silently open on whatever moved into that slot.
+	# literal 9 here would silently open on whatever moved into that slot. (It is 12 of
+	# 14 now, not 9 of 10 — which is the sentence above earning its keep twice over.)
 	# maxi because page_for_kind answers -1 for a kind with no page, and this door would
 	# rather open the front of the book than refuse to open.
-	_notebook.open_at = maxi(0, NotebookScreen.page_for_kind(NotebookScreen.KIND_LEGEND))
+	#
+	# And it stays the legend WHATEVER IS SELECTED ON THE BOARD — that was asked, weighed
+	# and declined; the five reasons are on notebook_door_kind(), which is also the only
+	# place this kind is named so the button's tooltip and this line cannot disagree.
+	_notebook.open_at = maxi(0, NotebookScreen.page_for_kind(notebook_door_kind()))
 	_notebook.process_mode = Node.PROCESS_MODE_ALWAYS
 	_notebook.back_requested.connect(_close_notebook, CONNECT_DEFERRED)
 	add_child(_notebook)

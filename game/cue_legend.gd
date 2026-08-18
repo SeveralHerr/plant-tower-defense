@@ -93,6 +93,9 @@ const SHAPE_ARMED := "armed"
 #   8  scattered short marks   untaught         drought dashes, rain streaks
 #   9  doubled line width      TAUGHT  armed    brackets and sole-cover rings, together
 #  10  a row of small pips     untaught         a husk worth more than CompostMeter.FULL_VALUE
+#  11  hatched road stripes    untaught         lane pressure, at two mirrored angles
+#      (added in cycle 110 -- it was drawn all along, and absent from the grammar,
+#       which is why this audit counted ten cues when the board drew eleven)
 #
 # WHAT A ROW COSTS, AND HOW MANY ARE LEFT: none. `rows_that_fit()` below answers
 # it mechanically and `test_the_legend_page_is_exactly_full` pins it -- the last
@@ -136,6 +139,27 @@ const SHAPE_ARMED := "armed"
 #     gains an instance that is not SoleCoverMarks.
 #   * WEATHER MARKS (row 8) -- no. Whole-screen, unmistakable, and announced.
 #   * HUSK PIPS (row 10) -- no. Late, rare, and a magnitude on a mark already taught.
+#   * LANE-PRESSURE HATCH (row 11) -- no, and it is the only entry here whose "no"
+#     was not a judgement. The audit above priced the page as FULL: 294 px used of
+#     300, a seventh row at 340, and no pitch that buys it back. So when cycle 110
+#     finally gave the hatch a grammar row, there was no width to teach it with --
+#     the decision had already been made by the layout, before anyone asked.
+#
+#     That would be a debt on any other cue. It is not on this one, because the
+#     hatch is the single cue in the game that TEACHES ITSELF. Its coverage half is
+#     derived from the plants standing right now and `Game._refresh()` repushes it
+#     on every placement, so a player who drops a Corn Cobbler across the leaking
+#     stretch watches the stripes underneath it rotate -- in the prep window, with
+#     the pressure map still on screen, as the direct result of the thing they just
+#     did. Placing the plant IS the lesson, and it arrives at the only moment the
+#     lesson is actionable. A legend row read minutes earlier on another screen
+#     would be the weaker teacher even if the page had room.
+#
+#     Two things would reopen this. If the hatch ever paints from something other
+#     than current coverage -- a history, a forecast -- the self-teaching property
+#     is gone and it needs the row. And if the page ever earns a second sheet, this
+#     is not the first cue that should fill it: row 6 above still has the stronger
+#     case, on persistence.
 #
 # END plant-tower-defense-wenx
 # =============================================================================
