@@ -17643,6 +17643,69 @@ func test_every_bramble_frame_is_the_same_plant_standing_in_the_same_place() -> 
 # =============================================================================
 
 
+## The Chomp's shop line is true of the chew table (plant-tower-defense-l86t).
+##
+## "Eats small pests instantly. Big ones take a while — and it is busy the whole time."
+## Three claims, all checkable against `Pest.SPECIES` rather than against anyone's memory of
+## it, and this is the test that decided the bead: a 0.45s chew reading as a flash is not a
+## broken cue, it is the cue agreeing with the sentence the player was sold before buying.
+##
+## Derived, never listed. A new species with a chew time lands in this test the moment it is
+## added to SPECIES, which is the whole reason the bead's "record both durations as numbers"
+## became a relationship instead of two constants.
+func test_the_chomps_shop_line_is_true_of_the_chew_table() -> String:
+	var chews: Dictionary = {}
+	for species: StringName in Pest.SPECIES:
+		chews[species] = float((Pest.SPECIES[species] as Dictionary)["chew_seconds"])
+	var err: String = _T.assert_gt(chews.size(), 2,
+		"there are several species to compare — two would make 'shortest' meaningless")
+	if err != "":
+		return err
+
+	var shortest: StringName = &""
+	for species: StringName in chews:
+		if shortest == &"" or chews[species] < chews[shortest]:
+			shortest = species
+	if err == "":
+		# CLAIM 1: "small pests". The quickest meal is the smallest pest, not merely some
+		# pest -- if the Queen were ever the fastest to eat, the sentence would be false
+		# while every duration in it stayed the same.
+		err = _T.assert_eq(shortest, Pest.APHID,
+			"the quickest thing to eat is the smallest pest, got %s" % shortest)
+	if err == "":
+		# CLAIM 2: "instantly ... big ones take a while". A RELATIVE gap, deliberately,
+		# because "instant" is a fact about perception and this file cannot measure one.
+		# What it can measure is that the short case is in a different league from every
+		# other, which is what makes the two halves of the sentence describe two things.
+		for species: StringName in chews:
+			if species == shortest:
+				continue
+			err = _T.assert_true(chews[species] >= chews[shortest] * 4.0,
+				("%s takes %.2fs against the %s's %.2fs — under 4x the sentence stops "
+					+ "describing two different experiences and the chew ring loses the "
+					+ "case it exists for") % [species, chews[species], shortest,
+						chews[shortest]])
+			if err != "":
+				break
+	if err == "":
+		# CLAIM 3: "it is busy the whole time" -- for EVERY duration, including the short
+		# one. This is why the ring is not suppressed below a threshold: a Chomp mid-chew
+		# cannot grab, and a cue that vanished would report a busy mouth as a free one.
+		var chomp := ChompFlower.new()
+		chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
+		var pest: Pest = _pest(Pest.APHID, Vector2(0, Board.CELL))
+		var host: Node2D = _host([chomp, pest])
+		await _T.instantiate_scene(host)
+		chomp._act(0.016, [pest])
+		err = _T.assert_true(chomp.is_busy(),
+			"a Chomp that has taken even the quickest meal reports itself busy")
+		if err == "":
+			err = _T.assert_true(chomp.chew_progress() < 1.0,
+				"and its chew has progress left to draw, so the ring has something to say")
+		_T.free_ui(host)
+	return err
+
+
 ## The rot floor is a floor, and the curve still sorts everything below it
 ## (plant-tower-defense-ix76).
 ##

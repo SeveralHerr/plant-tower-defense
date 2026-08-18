@@ -7503,3 +7503,40 @@ status rather than rewriting the entries that recorded these as open.
   scene and no clock, so a launch would re-evaluate the same functions with a renderer
   attached. Second cycle running that naming *the claim a launch would make* has correctly
   said there is none.
+
+## 2026-08-18 — cycle 119: the shop line already promised the thing the bead called a defect
+
+- Value: **warranted** — the confirm step found the answer in a sentence the player reads
+  before buying, and the measurement turned that sentence from written into true.
+  - Expected: the bead suspects 0.45s is too short for the chew ring to say anything and
+    proposes suppressing it below a threshold. Predicted: the numbers will show the aphid
+    is not merely shortest but in a different league, and the decision will turn on what the
+    ring MEANS rather than on how long it lasts.
+  - Got: both. `Pest.SPECIES` chew_seconds are 0.45 / 2.6 / 3.0 / 5.0 / 11.0 with armoured
+    doubling any of them — the aphid is **5.8x shorter than the next one up** — and
+    `PlantCatalog`'s Chomp entry already reads *"Eats small pests instantly. Big ones take a
+    while — and it is busy the whole time."*
+  - Found: four.
+    **(1)** the shop blurb promises the behaviour the bead calls a defect. A 0.45s sweep
+    reading as instantaneous is the cue agreeing with the sentence the player was sold.
+    **(2)** suppression would have been actively harmful for a reason the bead did not
+    raise: **the ring means BUSY.** A Chomp mid-chew cannot grab, so hiding the ring makes a
+    busy mouth read as a free one at the moment the player is looking for one — and the
+    aphid is the commonest pest, so any threshold above 0.45s removes the ring from most
+    chews in the game.
+    **(3)** the bead asked for "both durations recorded as numbers", and numbers go stale.
+    Deriving the relationship from `SPECIES` means a new species lands in the test the day
+    it is added; the mutation (aphid 0.45 → 1.2) proves the 4x gap is load-bearing.
+    **(4)** writing the test **paid down recorded debt and a gate noticed** —
+    `chew_progress` was in `suite_reach_baseline.json` as a symbol no test named, and the
+    suite failed telling me to re-bank it. A debt list that notices its own repayment is
+    rare; this one does.
+  - Cheaper: reading the shop blurb, which is where the answer was. The measurement was
+    still worth doing — the 5.8x gap is what makes the blurb TRUE rather than merely
+    written — but the decision did not need it.
+
+- Gap: **no gap this turn.** Third cycle running that naming *the claim a launch would make*
+  correctly declined one, and this time for a reason worth recording: the only runtime
+  question here — "is 0.45s long enough to READ" — is a fact about human perception that no
+  bridge verb can measure. The harness can photograph the sweep (cycle 14 did, `-ip4n`) and
+  cannot tell you whether anyone parsed it.

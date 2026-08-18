@@ -177,6 +177,34 @@ const EATING_TEXTURE_PATH := "res://assets/sprites/chomp_flower_eating.png"
 ## mouth just staying wide open the whole time.
 const LATE_BITE_THRESHOLD: float = 0.6
 
+## IS 0.45s LONG ENOUGH FOR THE CHEW RING TO SAY ANYTHING? Asked by
+## plant-tower-defense-l86t, which suspected the answer was no and proposed suppressing the
+## ring below some threshold, the way `LATE_BITE_THRESHOLD` above gates the sprite swap.
+##
+## MEASURED FIRST. `Pest.SPECIES` chew_seconds: aphid 0.45, beetle 2.6, Shield Bug 3.0,
+## Nurse Beetle 5.0, Queen 11.0 — and `MUTATION_ARMOURED` doubles any of them, so the real
+## range is 0.45s to 22s. The aphid is not merely the shortest, it is **5.8x shorter than
+## the next one up**, and it is also the commonest pest in the game.
+##
+## DECIDED: NO SUPPRESSION. Three reasons, and the third is the one that settles it:
+##
+##   * THE RING MEANS BUSY. A Chomp mid-chew cannot grab anything, and the ring is what
+##     says so. Suppress it under a threshold and a busy Chomp reads as a free one for
+##     exactly as long as the suppression lasts — at the moment a player is most likely to
+##     be looking for a mouth to throw the next pest at.
+##   * IT WOULD HIDE THE MAJORITY CASE. The aphid is the pest the player sees most, so a
+##     threshold anywhere above 0.45s removes the ring from most chews in the game and
+##     leaves a cue too rare to learn.
+##   * A FLASH IS THE PROMISE THE SHOP MAKES. `PlantCatalog`'s entry reads "Eats small pests
+##     instantly. Big ones take a while — and it is busy the whole time." A 0.45s sweep
+##     reading as instantaneous is not a failure of the cue; it is the cue agreeing with the
+##     sentence the player was sold. The ring exists for "big ones take a while", and there
+##     it has between 2.6 and 22 seconds to work in.
+##
+## `test_the_chomps_shop_line_is_true_of_the_chew_table` pins all three clauses of that
+## blurb against `Pest.SPECIES`, so a retune that makes an aphid slow to eat — or a beetle
+## quick — fails rather than quietly making the shop lie.
+
 ## How many discrete bites a meal is eaten in.
 ##
 ## SOURCE: a player, verbatim -- "the attack animation for the chomp flower doesn't

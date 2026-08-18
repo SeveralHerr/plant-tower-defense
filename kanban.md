@@ -3982,7 +3982,7 @@ Three findings kept out here rather than buried in a log:
 
 - **Nothing in the game changes a plant's picture as it is damaged, and a wall is where
   that first stops being acceptable.** Searched for the property rather than the API: every
-  assignment to `_sprite.texture` in `game/` is in `chomp_flower.gd:717-757` (idle → gape →
+  assignment to `_sprite.texture` in `game/` is in `chomp_flower.gd:745-785` (idle → gape →
   eating → late-bite, driven by `chew_progress()`) and `dandelion.gd:374` (fluff frames,
   driven by ammo). Both are STATE machines; neither reads `health`. Grepping `health`
   across `game/*.gd` for any texture, sprite or frame term returns nothing on any plant.
@@ -4022,7 +4022,7 @@ Three findings kept out here rather than buried in a log:
 - **The plant most obviously wanting an upgrade ladder is the one that cannot be upgraded,
   and only two of nine can.** Searched for the behaviour, not one class: `upgrade_ladder()`
   is a `Plant` virtual (`game/plant.gd:853`) and exactly two subclasses override it —
-  `game/corn_cobbler.gd:403` and `game/chomp_flower.gd:304`. That enumeration is already
+  `game/corn_cobbler.gd:403` and `game/chomp_flower.gd:332`. That enumeration is already
   gated: `test_the_seed_sink_is_finite_while_the_seed_income_is_not` asserts the override
   set is exactly `["chomp_flower", "corn_cobbler"]`, so this is checked rather than
   remembered.
