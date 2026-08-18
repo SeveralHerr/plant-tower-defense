@@ -9177,5 +9177,87 @@ func test_every_wobbled_cue_is_one_the_game_actually_repeats() -> String:
 			% [interval, plain, hard, interval - plain - hard, Sfx.MIN_TWIN_PITCH_GAP])
 
 
+## The husk sweep is deliberately NOT wobbled and deliberately NOT value-pitched
+## (plant-tower-defense-l69v, closed unimplemented).
+##
+## The bead asked whether a rich husk should sound rich. The answer recorded here is no,
+## and the reason is not that it is hard — `Sfx.kill_event_for` is the pattern and a
+## `husk_event_for(value)` beside it would have been six lines. It is that pitch cannot
+## carry this particular fact:
+##
+##   * A kill and its sweep are seconds apart. `CompostMeter.lifetime_for` runs from
+##     `HUSK_LIFETIME` down to `MIN_HUSK_LIFETIME`, so the richest husk — the one the cue
+##     would be about — must be swept within 4.5s of the kill or it rots. Every pitch pair
+##     already in `PITCH` works because both halves are common and heard against each
+##     other; a sweep's only reference is the previous sweep, seconds ago and under a wave.
+##   * Wide enough to survive that gap, a pitch shift on `handleCoins.ogg` stops reading as
+##     "a bigger payout" and starts reading as a different coin — which is what `PITCH`'s
+##     header says pitch MEANS in this table, and it would collide semantically with
+##     `SEEDS_GROWN`, the other consumer of that file.
+##   * It arrives after the decision it would inform. The husk's value cue exists so a
+##     player sweeps the rich one first; `HUSK_COLLECTED` plays once the click is spent.
+##
+## The visual channel already carries it in the window where it is actionable, and this
+## asserts that rather than asserting the absence of a feature: radius, glow and — above
+## the point where both of those saturate — pip count. If that ever stops being true, the
+## question this bead asked reopens, and it reopens here.
+func test_a_husks_value_is_carried_by_the_husk_and_not_by_its_sweep() -> String:
+	# No wobble and no second event id on the sweep. Both would be additions nobody
+	# argued for; a row appearing here should have to argue with this test.
+	var err: String = _T.assert_false(Sfx.JITTER.has(Sfx.HUSK_COLLECTED),
+		("the sweep is unwobbled -- it is player-paced, not a stream, and its pitch was "
+			+ "examined and declined in plant-tower-defense-l69v"))
+	if err == "":
+		var husk_ids: int = 0
+		for event: StringName in Sfx.SOUNDS:
+			if String(event).begins_with("husk_"):
+				husk_ids += 1
+		err = _T.assert_eq(husk_ids, 2,
+			("there are exactly two husk cues, collected and rotted -- a third id would "
+				+ "be the value-pitched sweep this bead closed against, got %d")
+				% husk_ids)
+	if err == "":
+		# The gap the decision turns on, asserted as the bound it actually is. No median
+		# was measured -- driving a wave needs a running game -- but the ceiling is what
+		# the argument uses, and the ceiling is in the code.
+		var cheap: float = CompostMeter.lifetime_for(CompostMeter.BASE_VALUE)
+		var rich: float = CompostMeter.lifetime_for(CompostMeter.FULL_VALUE)
+		err = _T.assert_gte(rich, 1.0,
+			("a rich husk gives the player whole seconds to sweep it (%.1fs) -- if this "
+				+ "ever became a fraction of a second the kill and the sweep would be one "
+				+ "moment and a pitch pair between them would start working") % rich)
+		if err == "":
+			err = _T.assert_true(rich < cheap,
+				("and the rich one is the SHORTER window (%.1fs against %.1fs), which is "
+					+ "why its cue has to be legible before the click rather than after "
+					+ "it") % [rich, cheap])
+	if err == "":
+		# The channel that does carry it, in the window where it is actionable. Three
+		# steps, because the first two saturate: this is the whole "size and glow already
+		# say it" alternative the bead named, checked rather than repeated.
+		var base_radius: float = HuskLayer.radius_for(CompostMeter.BASE_VALUE)
+		var full_radius: float = HuskLayer.radius_for(CompostMeter.FULL_VALUE)
+		err = _T.assert_gt(full_radius, base_radius,
+			"a rich husk is drawn bigger than a cheap one (%.1f vs %.1f)"
+				% [full_radius, base_radius])
+		if err == "":
+			err = _T.assert_gt(HuskLayer.glow_for(CompostMeter.FULL_VALUE),
+				HuskLayer.glow_for(CompostMeter.BASE_VALUE),
+				"and brighter")
+		if err == "":
+			# Above FULL_VALUE both of those are flat, so the visual answer is complete
+			# only because of the pips. If it were not, the audio question would be open.
+			var saturated: int = CompostMeter.FULL_VALUE * 3
+			err = _T.assert_float_eq(HuskLayer.radius_for(saturated), full_radius, 0.0001,
+				"radius really has saturated by %d seeds, which is what makes the pips "
+					% saturated + "load-bearing rather than a flourish")
+			if err == "":
+				err = _T.assert_gt(HuskLayer.overflow_pips(saturated),
+					HuskLayer.overflow_pips(CompostMeter.FULL_VALUE),
+					("and the pips carry the range above it -- with these flat too, "
+						+ "nothing would distinguish a 9-seed husk from a 60-seed one "
+						+ "and plant-tower-defense-l69v would deserve another look"))
+	return err
+
 # END plant-tower-defense-r8zc / plant-tower-defense-l69v
 # =============================================================================
