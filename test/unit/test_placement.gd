@@ -4947,3 +4947,251 @@ func test_row_is_quiet_is_what_stops_a_level_triggered_caller_stacking() -> Stri
 		RunConfig.earned_milestones.erase(RunConfig.HINT_UPGRADE_EXISTS)
 	_T.free_ui(game)
 	return err
+
+
+# =============================================================================
+# BEGIN plant flourish timings -- plant-tower-defense-w71c
+#
+# Two checks, and deliberately neither of them names a call site. The first says
+# every plant tween's duration is a NAME; the second says those names form
+# out-and-back pairs with the relationship two class headers already claim in
+# prose. Twenty-four per-call-site assertions would all go stale together the
+# first time a gesture is retimed, which is why the issue asked for the pair.
+#
+# Both derive their inputs. The family is `Plant` plus whatever extends it, read
+# off DirAccess; the pairs are whatever `*_OUT_SECONDS` / `*_BACK_SECONDS` the
+# family declares. A tenth plant, or a seventh pair, joins the sweep by existing
+# rather than by someone remembering to add it here -- see
+# `.claude/skills/derive-the-list/SKILL.md`, whose whole point is that the bug is
+# never a wrong entry, it is a missing one the test cannot see past the end of.
+#
+# Nothing here instantiates anything. These are pure reads of source text and of
+# constants, so there is no Control to pump frames for and no tree-global group
+# to be handed another test's node out of.
+# =============================================================================
+
+
+## Line-comment lines dropped, so a header that talks ABOUT a tween is never
+## scanned as one. Full-line comments only, which is all this corpus has -- a `#`
+## inside a string on a tween line would be a false negative and there are none.
+func _lines_without_comments(text: String) -> String:
+	var kept: PackedStringArray = []
+	for line: String in text.split("\n"):
+		if line.strip_edges().begins_with("#"):
+			continue
+		kept.append(line)
+	return "\n".join(kept)
+
+
+## {res:// path -> source text} for `Plant` and every game script that extends it.
+func _plant_family_sources() -> Dictionary:
+	var out: Dictionary = {}
+	var dir := DirAccess.open("res://game")
+	if dir == null:
+		return out
+	var subclass := RegEx.create_from_string("(?m)^extends\\s+Plant\\s*$")
+	dir.list_dir_begin()
+	var entry: String = dir.get_next()
+	while entry != "":
+		if entry.ends_with(".gd"):
+			var path: String = "res://game".path_join(entry)
+			var text: String = FileAccess.get_file_as_string(path)
+			if entry == "plant.gd" or subclass.search(text) != null:
+				out[path] = text
+		entry = dir.get_next()
+	dir.list_dir_end()
+	return out
+
+
+## The duration argument of every `tween_property` / `tween_method` /
+## `tween_interval` in one script, as the raw source token.
+##
+## Walks brackets from each call's opening paren and takes what follows the last
+## comma at depth 1, so `Vector2(1.12, 1.12), 0.12` yields `0.12` and not `1.12)`.
+## That is the granularity trap `derive-the-list` names: the thing being counted
+## can appear more than once in a statement, so this counts brackets rather than
+## commas on a line. Quoted regions are stepped over so a `"scale"` cannot
+## unbalance the walk, and the walk crosses newlines so a call split over several
+## lines is not silently missed -- `game/hud.gd:1867` is one of those, outside this
+## family today but exactly the member a line-oriented matcher would step over.
+##
+## All three verbs take their duration LAST (`tween_property(o, p, to, secs)`,
+## `tween_method(c, from, to, secs)`, `tween_interval(secs)`), and chained setters
+## like `.set_delay()` sit outside the matched paren, so the last top-level
+## argument is the duration in every case.
+func _tween_durations(text: String) -> Array[String]:
+	var out: Array[String] = []
+	var code: String = _lines_without_comments(text)
+	var finder := RegEx.create_from_string("tween_(?:property|method|interval)\\s*\\(")
+	for m: RegExMatch in finder.search_all(code):
+		var i: int = m.get_end() - 1
+		var depth: int = 0
+		var last_comma: int = -1
+		var quote: String = ""
+		while i < code.length():
+			var c: String = code[i]
+			if quote != "":
+				if c == "\\":
+					i += 2
+					continue
+				if c == quote:
+					quote = ""
+			elif c == "\"" or c == "'":
+				quote = c
+			elif c == "(" or c == "[" or c == "{":
+				depth += 1
+			elif c == ")" or c == "]" or c == "}":
+				depth -= 1
+				if depth == 0:
+					break
+			elif c == "," and depth == 1:
+				last_comma = i
+			i += 1
+		if i >= code.length():
+			continue
+		var arg_start: int = m.get_end() if last_comma < 0 else last_comma + 1
+		out.append(code.substr(arg_start, i - arg_start).strip_edges())
+	return out
+
+
+## Every plant tween's duration is a name, not a number.
+##
+## The other half of the acceptance for plant-tower-defense-w71c, and the half that
+## has to keep holding: naming eleven -- twenty-one, as it turned out -- literals
+## once is a commit, and this is what stops the twenty-second arriving. Two
+## denominators guard it, because a scan that found no files and a scan that found
+## no tweens both report exactly what a clean codebase reports.
+func test_no_plant_tween_carries_a_bare_duration_literal() -> String:
+	var sources: Dictionary = _plant_family_sources()
+	var err: String = _T.assert_gte(sources.size(), 9,
+		("the plant family scan found %d scripts -- Plant plus its eight subclasses "
+			+ "is the floor, and a scan that found fewer is measuring nothing")
+			% sources.size())
+	if err != "":
+		return err
+
+	var number := RegEx.create_from_string("^[+-]?(?:[0-9]+\\.?[0-9]*|\\.[0-9]+)$")
+	var checked: int = 0
+	var bare: PackedStringArray = []
+	for path: String in sources:
+		for token: String in _tween_durations(sources[path]):
+			checked += 1
+			if number.search(token) != null:
+				bare.append("%s -> %s" % [path, token])
+
+	err = _T.assert_gte(checked, 20,
+		("the sweep examined %d tween durations across the family; there were 24 when "
+			+ "this was written. A matcher that quietly stopped matching reports the "
+			+ "same clean result as a codebase with nothing left to find")
+			% checked)
+	if err != "":
+		return err
+	return _T.assert_eq(", ".join(bare), "",
+		("a plant tween is still carrying a bare duration literal, which is the one "
+			+ "kind of constant no gate in this project can check the VALUE of -- "
+			+ "nothing headless renders a frame, so a wrong duration is invisible "
+			+ "everywhere except a pair of eyes on the running game: %s")
+			% ", ".join(bare))
+
+
+## {prefix -> {"out": float, "back": float}} for one script's text.
+##
+## Pairing is per-file because a gesture's two halves are declared together in the
+## class that plays it. That is also what keeps the family's three colliding bare
+## const names (RANGE, REACH, RING_WIDTH -- none of them durations) from ever being
+## resolved against the wrong class here.
+func _out_and_back_pairs(text: String) -> Dictionary:
+	var out: Dictionary = {}
+	var finder := RegEx.create_from_string(
+		"(?m)^const\\s+([A-Z][A-Z0-9_]*)_(OUT|BACK)_SECONDS\\s*:\\s*float\\s*=\\s*([0-9.]+)\\s*$")
+	for m: RegExMatch in finder.search_all(_lines_without_comments(text)):
+		var prefix: String = m.get_string(1)
+		if not out.has(prefix):
+			out[prefix] = {}
+		out[prefix][m.get_string(2).to_lower()] = m.get_string(3).to_float()
+	return out
+
+
+## The out-and-back pairs, and the claim two class headers make about them.
+##
+## `CornCobbler._upgrade_flourish`'s header says its gesture is `_recoil`'s "pushed
+## further and held longer"; `ChompFlower._on_upgraded`'s says the same of its own
+## `_bite`. Both were prose, and prose does not fail. This is the assertion form:
+## the flourish tier out-lasts the twitch tier on BOTH halves.
+##
+## Around it, the sweep every declared pair has to survive -- both halves present,
+## both inside the family's band, and the return slower than the strike. The
+## planting pop is the single deliberate exception to that last rule and is
+## asserted AS an exception rather than excluded from the sweep, so bringing it
+## into line with the other five has to be a decision someone makes here.
+func test_the_flourish_tier_is_pushed_further_and_held_longer_than_the_twitch() -> String:
+	var sources: Dictionary = _plant_family_sources()
+	var pairs: Dictionary = {}
+	for path: String in sources:
+		var found: Dictionary = _out_and_back_pairs(sources[path])
+		for prefix: String in found:
+			pairs[prefix] = found[prefix]
+
+	var err: String = _T.assert_gte(pairs.size(), 6,
+		("the family declares %d out-and-back pairs; there were six when this was "
+			+ "written -- TWITCH and FLOURISH on Plant, PLANTING_POP on Plant, "
+			+ "BITE_LUNGE and BITE_SQUASH on ChompFlower, PUFF on Dandelion. A sweep "
+			+ "that found fewer is not reading the constants it claims to")
+			% pairs.size())
+	if err != "":
+		return err
+
+	for prefix: String in pairs:
+		var pair: Dictionary = pairs[prefix]
+		err = _T.assert_eq(pair.size(), 2,
+			("%s_* is half a pair -- it declares %s and nothing else. Both directions "
+				+ "or neither: a gesture with a named strike and a bare return is the "
+				+ "exact state this pass existed to remove")
+				% [prefix, str(pair.keys())])
+		if err == "":
+			for half: String in pair:
+				var value: float = pair[half]
+				err = _T.assert_true(value >= 0.04 and value <= 0.20,
+					("%s_%s_SECONDS is %.3f, outside the 0.04..0.20 band every plant "
+						+ "flourish sits in. A rename that pointed a bite at "
+						+ "Aloe.PULSE_SECONDS (3.4) passes every other check in this "
+						+ "file and freezes the flower for three and a half seconds")
+						% [prefix, half.to_upper(), value])
+				if err != "":
+					break
+		if err == "" and prefix == "PLANTING_POP":
+			err = _T.assert_true(pair["out"] > pair["back"],
+				("PLANTING_POP is the family's one arrival rather than a strike: the "
+					+ "sprite starts at 0.4 and has to be SEEN growing, so its out "
+					+ "(%.2f) is deliberately longer than its back (%.2f). Asserted on "
+					+ "purpose, so that bringing it into line with the other five is a "
+					+ "decision rather than a number that drifted")
+					% [pair["out"], pair["back"]])
+		elif err == "":
+			err = _T.assert_true(pair["back"] > pair["out"],
+				("%s snaps out in %.2f and eases home in %.2f -- a return no slower "
+					+ "than its strike reads as a rewind, not a recovery")
+					% [prefix, pair["out"], pair["back"]])
+		if err != "":
+			return err
+
+	# Read through the class rather than out of the scan for this last part: it is
+	# the pair the rest of the family BORROWS, so it has to still be there after the
+	# file is parsed and not merely present in its text. `Nettle._sting_twitch` and
+	# `CornCobbler._recoil` are both on TWITCH_*; `CornCobbler._upgrade_flourish`,
+	# `ChompFlower._on_upgraded` and the Sunflower's payout pop are all on FLOURISH_*.
+	err = _T.assert_gt(Plant.FLOURISH_OUT_SECONDS, Plant.TWITCH_OUT_SECONDS,
+		("an upgrade's snap (%.2f) is wider than a shot's (%.2f) -- 'pushed further "
+			+ "and held longer', which CornCobbler._upgrade_flourish's header has "
+			+ "claimed in prose for cycles with nothing able to fail on it")
+			% [Plant.FLOURISH_OUT_SECONDS, Plant.TWITCH_OUT_SECONDS])
+	if err == "":
+		err = _T.assert_gt(Plant.FLOURISH_BACK_SECONDS, Plant.TWITCH_BACK_SECONDS,
+			("and held longer coming home too -- %.2f against %.2f. Both halves, "
+				+ "because a tier that was wider but quicker would be a flinch "
+				+ "rather than a flourish")
+				% [Plant.FLOURISH_BACK_SECONDS, Plant.TWITCH_BACK_SECONDS])
+	return err
+
+# END plant flourish timings -- plant-tower-defense-w71c
+# =============================================================================
