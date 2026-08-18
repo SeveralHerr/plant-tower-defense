@@ -4260,3 +4260,32 @@ Three findings kept out here rather than buried in a log:
   a reader looking for the second will accept the first. `-zfmv`'s sweep of the 47
   `NOT COVERED` sentences is the same shape a level down; this is the version for balance
   constants, and nobody has swept those.
+
+### New in cycle 119 — grown from a cue that was already promised
+
+- **A cue's ABSENCE is a claim, and it is the half nobody designs.** `-l86t` asked whether
+  the chew ring's 0.45s flash is readable, and the more important question turned out to be
+  what the ring's absence says: a Chomp mid-chew cannot grab (`is_busy()` is
+  `_held != null`), so the ring means BUSY and no ring means FREE. Suppressing it under a
+  threshold — the bead's proposal — would have made a busy mouth read as a free one at the
+  moment a player is scanning for one to use.
+  Worth applying to the other drawn cues, and this is the entry: **for each, ask what it
+  means when it is NOT there.** `game/OVERLAY_GRAMMAR.md` documents what each shape means
+  when present and says nothing about absence, which is where the asymmetry lives. A range
+  ring absent means "not selected", harmless. A dead-ground bar absent means "this cell is
+  fine", which is a claim. A husk's glow absent means "cheap", also a claim. Nobody has
+  swept which of them are load-bearing when missing.
+
+- **The shop blurbs are design decisions the code can drift away from, and only two of nine
+  are checked.** The Chomp's line ("Eats small pests instantly. Big ones take a while — and
+  it is busy the whole time.") is now pinned against `Pest.SPECIES` — the quickest meal is
+  the smallest pest, every other species is 4x longer, and the plant is busy for even the
+  quickest. The Nettle's ("Dead weight until wave 8") was already pinned against
+  `WaveDirector.MUTATION_START_WAVE`.
+  That leaves seven blurbs making factual promises with nothing checking them: the Sundew
+  claims it slows "wings included, which no Chomp can say"; the Aloe claims it is "Too slow
+  to save one being eaten"; the Mint claims neighbours "shoot a third again as fast"; the
+  Bramble claims "Winged pests go straight over". **Every one of those is a number or a rule
+  living somewhere else in the code**, and every one is read by a player deciding how to
+  spend seeds. This is the same class as cycle 115's HUD-sentence sweep, on the sentences
+  that cost the player money.

@@ -1,4 +1,4 @@
-# Cycle 118
+# Cycle 119
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,36 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 119 taught
+
+**The shop line had already answered the question.** `-l86t` asked whether the chew ring's
+0.45s flash is readable and proposed suppressing it below a threshold. `PlantCatalog`'s
+Chomp entry reads *"Eats small pests instantly. Big ones take a while — and it is busy the
+whole time."* A 0.45s sweep reading as instantaneous is the cue agreeing with the sentence
+the player was sold. The bead called it "a design question nobody has asked"; it had been
+answered, in the shop, and nothing checked the answer was still true of the numbers.
+
+**A cue's ABSENCE is a claim, and it is the half nobody designs.** The ring means BUSY — a
+Chomp mid-chew cannot grab — so no ring means FREE. Suppressing it would have made a busy
+mouth read as a free one at the moment a player is scanning for one to use. The bead asked
+whether the flash is readable; the sharper question was what its absence says.
+
+**Two numbers would have gone stale, so it became a relationship.** The acceptance asked to
+"record both chew durations as numbers". Recorded numbers are the shape this file has spent
+cycles removing. The test derives them from `Pest.SPECIES` and pins all three clauses of the
+blurb, so a retune that makes an aphid slow to eat fails rather than quietly making the shop
+lie. Mutation-tested: aphid 0.45 → 1.2 fires the gap assertion.
+
+**Writing a test paid down recorded debt, and the gate noticed.** `chew_progress` sat in
+`suite_reach_baseline.json` as a symbol no test named; the suite failed telling me to
+re-bank it. 43 symbol findings down to 42. A debt list that notices its own repayment is
+rare.
+
+**Seven of nine shop blurbs promise things nothing checks** — the Sundew's "half speed,
+wings included", the Aloe's "too slow to save one being eaten", the Mint's "a third again as
+fast". Every one is a number living elsewhere, and every one is read by a player deciding
+how to spend. Filed as `-2878`.
 
 ## What cycle 118 taught
 
