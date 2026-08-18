@@ -7502,6 +7502,26 @@ func test_the_reach_corpus_blanker_drops_string_bodies_and_keeps_code() -> Strin
 ## rather than a feature. The three exit codes are pinned for the same reason --
 ## a checker that stopped returning 2 on a missing input would report "clean"
 ## over nothing at all, which is the failure this repo watches for above all.
+##
+## AND THE `contains` LOOP BELOW IS A FLOOR, NOT THE CHECK (plant-tower-defense-qewq).
+## Three of the four needles are satisfied by text that is not the thing they name:
+## `return 2` occurs NINE times in that file, and BOTH occurrences of
+## `suite-reach-check: ok` are help text -- the parser is
+## `WAIVER_RE = re.compile(r"suite-reach-check:\s*ok\b")`, which does not contain the
+## literal at all. Delete the waiver outright and this loop stays green. That is the
+## cycle-91 shape exactly: presence asserted where absence, or behaviour, was wanted.
+##
+## So the loop keeps its job -- a needle that vanishes ENTIRELY is still worth
+## catching cheaply -- and the assertions after it ask the questions it cannot:
+## the marker has to be PRINTED rather than merely written down, and the waiver has
+## to have a parser and a call site rather than only an advertisement.
+##
+## The behavioural half lives where it can actually run:
+## `python tools/mutate.py --target contract` drives the checker's own `main()` at a
+## rootless directory and asserts the documented waiver comment comes back waived.
+## Its fourth mutation deletes ONE of the two help-text mentions and is registered
+## `expect=SURVIVED` with the reason -- this loop's blind spot, executed rather than
+## described. If you change a needle here, run that sweep.
 func test_the_suite_reach_checker_still_declares_its_house_contract() -> String:
 	var src: String = FileAccess.get_file_as_string(SUITE_REACH_CHECKER)
 	var err: String = _T.assert_gt(src.length(), 0,
@@ -7509,6 +7529,7 @@ func test_the_suite_reach_checker_still_declares_its_house_contract() -> String:
 		+ " vacuous against an empty string")
 	if err != "":
 		return err
+	var checked: int = 0
 	for needle: Array in [
 		["NOT COVERED:", "the line that says what the tool structurally cannot see"],
 		["return 2", "the could-not-run exit code"],
@@ -7519,7 +7540,34 @@ func test_the_suite_reach_checker_still_declares_its_house_contract() -> String:
 			"the checker still carries %s (`%s`)" % [str(needle[1]), str(needle[0])])
 		if err != "":
 			return err
-	return ""
+		checked += 1
+	err = _T.assert_eq(checked, 4,
+		"all four contract needles were reached -- an empty needle table would make"
+			+ " the loop above a pass over nothing")
+	if err != "":
+		return err
+
+	# PRINTED, not merely present. `contains` cannot tell the marker from a line of
+	# prose ABOUT the marker, and prose is what a tidy-up leaves behind. The marker
+	# has to sit inside a print() call on its own line.
+	var at: int = src.find("NOT COVERED:")
+	var line_start: int = src.rfind("\n", at) + 1
+	err = _T.assert_true(src.substr(line_start, at - line_start).contains("print("),
+		"the NOT COVERED marker is inside a print() call and not sitting in a comment"
+			+ " or a docstring -- a contract line nobody prints is prose")
+	if err != "":
+		return err
+
+	# The waiver's PARSER and its CALL SITE, because the needle above finds neither.
+	# Both help lines could survive word for word with the waiver deleted.
+	err = _T.assert_true(src.contains("WAIVER_RE = re.compile("),
+		"the waiver has a parser and not only an advertisement -- the two help lines"
+			+ " the needle above matches are documentation, not the implementation")
+	if err == "":
+		err = _T.assert_true(src.contains("WAIVER_RE.search("),
+			"and the parser is consulted somewhere, so a waived declaration is"
+				+ " actually waived rather than merely documented as waivable")
+	return err
 
 
 # -- StickySundew's wash-order counter resets, not just climbs forever
@@ -13796,10 +13844,22 @@ func test_the_run_summary_says_where_the_seeds_went_without_grading_it() -> Stri
 ## project runs, so a refresh is an ordinary thing to do — and this file's recorded sha has
 ## already drifted from its manifest once. The failure mode is the bad one: everything
 ## keeps building and deploying, and the only symptom is players landing on the board.
+## READ FROM THE CODE, NOT FROM THE FILE (plant-tower-defense-qewq). `--devtools-force`
+## appears TWICE in dev_tools.gd and one of them is the comment on the line above the
+## gate. A version of this test that greps the raw file would pass with the flag deleted
+## from the condition and the comment left behind, which is the cycle-91 shape: a token
+## kept alive by an occurrence that does nothing. `_code_only` truncates `#` comments,
+## so both needles below are asserted against live code.
 func test_the_devtools_bridge_stays_out_of_a_players_build() -> String:
 	var path := "res://addons/godot_selftest/dev_tools.gd"
-	var src: String = FileAccess.get_file_as_string(path)
-	var err: String = _T.assert_gt(src.length(), 0, "dev_tools.gd is readable at %s" % path)
+	var raw: String = FileAccess.get_file_as_string(path)
+	var err: String = _T.assert_gt(raw.length(), 0, "dev_tools.gd is readable at %s" % path)
+	if err != "":
+		return err
+	var src: String = _code_only(raw)
+	err = _T.assert_gt(src.strip_edges().length(), 0,
+		"and it is not all comments -- an all-blank code half would make both needles"
+			+ " below fail for the wrong reason")
 	if err == "":
 		err = _T.assert_true(src.contains("OS.has_feature(\"template\")"),
 			("the passive gate still tests OS.has_feature(\"template\"). If this went red "
@@ -13810,8 +13870,9 @@ func test_the_devtools_bridge_stays_out_of_a_players_build() -> String:
 		# The opt-back-in half. Without it the patch is a wall rather than a gate, and
 		# driving a real export from the bridge becomes impossible instead of explicit.
 		err = _T.assert_true(src.contains("--devtools-force"),
-			"and the --devtools-force escape hatch survives, so a template build can still "
-				+ "be driven deliberately")
+			"and the --devtools-force escape hatch survives IN THE CONDITION and not only "
+				+ "in the comment beside it, so a template build can still be driven "
+				+ "deliberately")
 	return err
 
 
