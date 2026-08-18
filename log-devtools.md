@@ -6853,3 +6853,28 @@ status rather than rewriting the entries that recorded these as open.
   Expected expression`); `StringName("name")` works. Not filing it — the workaround is
   shorter than the report — but recording it so the next session does not spend the
   two minutes I did.
+
+## 2026-08-18 — round 13 close: the glyph merge, and the caveat firing for real
+
+- Value: **warranted** — lint caught a class of error that three static gates and a
+  careful lane all reported clean.
+  - Expected: the glyph table was additive and low-risk; both lanes' gates were green.
+  - Got: `lint exit=1`, eight times — `Parse Error: Cannot infer the type of "err"
+    variable because the value doesn't have a set type` at `test_placement.gd:8085`
+    and seven siblings. `var err := _T.assert_gt(...)`, where `_T` is untyped.
+  - Found: that, and nothing else. It is **verbatim the failure class the harness's own
+    not-a-compile caveat names**, produced by a lane that had quoted the caveat back in
+    its report. The first time this project has hit it from a fan-out.
+  - Cheaper: nothing. `name_check` reports it clean by construction — it resolves names
+    and does not type-check — and a worktree has no `.godot/`, so `--require-compile`
+    was unavailable to the lane too.
+
+- Gap: **no gap this turn.** The ordering the docs insist on (`--import` BEFORE lint,
+  when a `class_name` arrives) mattered here and worked: `Glyphs` is new, import
+  regenerated the cache, and the only errors left were real ones rather than a cascade
+  of "Could not find type Glyphs" in files nobody touched.
+
+- Worth recording for the ledger: **`suite_reach_check` caught a dead accessor inside
+  the lane**, before the merge — `Glyphs.meaning`, public and named by no test, written
+  in the same sitting as the table. That is the third real hole that checker has found
+  in three cycles, and none of them were formalities.
