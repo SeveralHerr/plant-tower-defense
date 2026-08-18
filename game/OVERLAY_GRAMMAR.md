@@ -21,11 +21,11 @@ must survive its colour being thrown away.
 | Shape | Means | Instances |
 |---|---|---|
 | **Solid full ring**, plant-sized, centred on a plant | a REACH — "this is how far it acts" | `corn_cobbler.gd:149`, `dandelion.gd:377`, `dandelion.gd:381` (the bomb's blast radius), `placement_preview.gd:231` (the reach it *would* have) |
-| **Dashed ring** (an arc loop, not a full circle) | a REMARK about the thing inside it | `placement_preview.gd:314` (at risk), `sole_cover_marks.gd:150` (nothing depends on this plant) |
+| **Dashed ring** (an arc loop, not a full circle) | a REMARK about the thing inside it | `placement_preview.gd:320` (at risk), `sole_cover_marks.gd:150` (nothing depends on this plant) |
 | **Partial arc** at a fixed radius, sweeping closed | TIME REMAINING on a clock that is already running | `husk_layer.gd:69-77` (a husk's rot timer), `chomp_flower.gd:164-165` (a chew) |
 | **Small solid ring**, cell-sized, centred on a ROAD CELL | a MARKED CELL — "this one, specifically" | `sole_cover_marks.gd:154` |
-| **Filled dot**, cell-sized, on a road cell | a CELL YOU WOULD GAIN | `placement_preview.gd:268` |
-| **Straight line through a box** | a STATE, legible with colour discarded | `placement_preview.gd:322` (dead ground), `:331-332` (redundant patch) |
+| **Filled dot**, cell-sized, on a road cell | a CELL YOU WOULD GAIN | `placement_preview.gd:274` |
+| **Straight line through a box** | a STATE, legible with colour discarded | `placement_preview.gd:328` (dead ground), `:337-338` (redundant patch) |
 | **Corner brackets** | the SUBJECT — "this is the thing being talked about" | `selection_marker.gd:100-101`, and `PlacementPreview` inherits them one size larger and dimmer, so a hover reads as a promise of selection |
 | **Scattered short marks**, much smaller than a cell, not aligned to the grid | the WEATHER, a property of the whole garden | `weather_overlay.gd:97-98` (drought, flat dashes), `weather_overlay.gd:103-104` (rain, slanted streaks) |
 | **Doubled line width** | ARMED — a destructive action is one click away | `SelectionMarker.WARNING_LINE_WIDTH`, `SoleCoverMarks.WARNING_RING_WIDTH` |

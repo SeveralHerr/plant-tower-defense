@@ -68,14 +68,20 @@ loudly when that count is zero.
 
 ### 5. A test's NAME, which is the claim most people read and least people check
 
-`test_the_road_is_still_the_road_the_constants_were_measured_against` exists to fire when
-the game's road changes. Cycle 53 changed the road completely — every corner, a whole new
+`test_the_road_is_still_the_road_the_constants_were_measured_against` existed to fire when
+the game's road changed. Cycle 53 changed the road completely — every corner, a whole new
 leg — and it passed, correctly. What it actually asserts is the road's **length and cell
 count**, which were deliberately preserved; it says nothing about shape.
 
 Both halves are right. The test is right to pass and the road is right to have changed.
 The defect is that a reader trusting the name would conclude the road was untouched, and
 a name is the cheapest thing to read and the most expensive thing to verify.
+
+This one has since been fixed (plant-tower-defense-kndl): it is now
+`test_the_road_still_has_the_length_and_cell_count_the_constants_were_measured_against`,
+and its header names the shape-dependent tests that guard what it does not. The rename is
+kept visible here rather than swapped in silently, because the old name is what the six
+places that still cite it can be grepped by.
 
 > **Test:** read the name alone, say what would have to be true for it to fail, then read
 > the assertions. A name that describes a stronger claim than the body checks is the

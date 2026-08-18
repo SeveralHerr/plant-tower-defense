@@ -24,15 +24,15 @@ const ROWS: int = 9
 ##   - WaveDirector.SIMULTANEOUS_PEST_CEILING (40) is reasoned from "32 road
 ##     cells, 2112 px, about 3.5 pests per cell". A shorter road makes 40 more
 ##     crowded than the reasoning intends; a longer one stops it biting.
-##   - the dead-ground count (15 of 94 cells).
+##   - the dead-ground counts (11 of 94 cells for a Corn Cobbler, 36 for a Chomp).
 ##   - the Sundew's coverage arithmetic, stated against how much road one
 ##     placement reaches on THIS route.
 ##
 ## `python tools/devtools.py cmd board_info` prints the husk click budget, which
 ## is the one that is NOT at risk here — it walks the route, but the walk yields
 ## CELL/2 for any road, so the 4 px clearance is two constants. See
-## test_the_road_is_still_the_road_the_constants_were_measured_against, which
-## measures the route and fails naming what has to be re-derived.
+## test_the_road_still_has_the_length_and_cell_count_the_constants_were_measured_against,
+## which measures the route and fails naming what has to be re-derived.
 ## The road CLIMBS once, and that is deliberate (plant-tower-defense-84x0).
 ##
 ## The previous route ran right, down, left, down, right — never once travelling

@@ -6918,7 +6918,7 @@ func test_the_notebook_subheading_stays_narrower_than_the_paper() -> String:
 #       40 more crowded than the reasoning intends; a longer one makes the cap
 #       bite when it was not meant to. The constant does not change. Its
 #       justification does — silently, because nothing re-runs the derivation.
-#     - the dead-ground count (15 of 94 cells).
+#     - the dead-ground counts (11 of 94 cells for a Corn Cobbler, 36 for a Chomp).
 #     - the Sundew's coverage arithmetic: stated against how much road a
 #       single placement reaches on this route.
 #

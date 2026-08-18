@@ -550,8 +550,8 @@ func _budget_notebook_subhead() -> Dictionary:
 ## What CAN be done is report what the road measures today, which is what the
 ## prose would have to be re-derived against. Deliberately without the values it
 ## was originally derived against: those already live in
-## test_the_road_is_still_the_road_the_constants_were_measured_against, which
-## fails naming them, and copying them here would make this the fifth place they
+## test_the_road_still_has_the_length_and_cell_count_the_constants_were_measured_against,
+## which fails naming them, and copying them here would make this the fifth place they
 ## can go stale.
 func _budget_road_shape(game: Game) -> Dictionary:
 	var board: Board = (game.board if game != null else null)
@@ -569,7 +569,7 @@ func _budget_road_shape(game: Game) -> Dictionary:
 	var spends: String = "the road three other files were measured against"
 	var when_out: String = ("nothing breaks loudly -- WaveDirector.SIMULTANEOUS_PEST_CEILING, "
 		+ "the dead-ground count and the Sundew's coverage arithmetic all go on quoting a road "
-		+ "that no longer exists. test_the_road_is_still_the_road_the_constants_were_measured_against "
+		+ "that no longer exists. test_the_road_still_has_the_length_and_cell_count_the_constants_were_measured_against "
 		+ "is the alarm, and it names what has to be re-derived.")
 	if board.path_cell_count() <= 0:
 		var unmeasured: Dictionary = Game.uncomputed_budget(Game.BUDGET_UNMEASURED, "road_shape",

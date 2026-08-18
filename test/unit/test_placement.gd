@@ -554,8 +554,8 @@ func _preview(game: Game) -> PlacementPreview:
 
 
 ## The measurement plant-tower-defense-61k is built on, pinned against the real
-## route rather than against a fixture: of 94 buildable cells, 15 cover no road
-## at a Corn Cobbler's reach and 34 cover none at a Chomp Flower's. If a future
+## route rather than against a fixture: of 94 buildable cells, 11 cover no road
+## at a Corn Cobbler's reach and 36 cover none at a Chomp Flower's. If a future
 ## PATH_CORNERS change strands more ground than that, this is the line that says
 ## so — the numbers are the point, not an implementation detail of the cue.
 func test_the_real_route_strands_exactly_the_cells_it_was_measured_to_strand() -> String:
