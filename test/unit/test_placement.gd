@@ -4194,7 +4194,7 @@ func test_a_nettle_stings_a_mutated_pest_and_provably_not_a_plain_one() -> Strin
 	if err == "":
 		# The other direction, and the one that catches "it stung once and then gave up":
 		# keep pumping a whole board with nothing but plain pests on it and nothing may
-		# ever happen. Sixty intervals is far past any cooldown the plant can arm.
+		# ever happen. Sixty intervals is far past any cooldown the plant can bar_arm.
 		var only_plain: Pest = _still_pest(Pest.APHID, Vector2(60, 0), route)
 		host.add_child(only_plain)
 		var lone: Nettle = _idle_nettle()
@@ -6193,8 +6193,12 @@ func test_the_sway_still_carries_the_sprite_and_nothing_else() -> String:
 ## reshape has to come past this list, the way the 11 and the 36 already do.
 ## Bottom-right corner: the road's last leg runs along row 3 to the east edge and
 ## turns nothing back down, so the corner under it is out of even a 192 px throw.
+## ROW-MAJOR -- sorted by y then x, which is the order dead_ground_cells() walks
+## the board in. Recorded here column-first the first time and caught on the first
+## real run: the SET was right and only the order was wrong, which an equality
+## assertion cannot tell apart from a wrong answer.
 const G8KC_DEAD_FOR_EVERYTHING: Array[Vector2i] = [
-	Vector2i(12, 8), Vector2i(13, 7), Vector2i(13, 8),
+	Vector2i(13, 7), Vector2i(12, 8), Vector2i(13, 8),
 ]
 
 
@@ -6439,13 +6443,16 @@ func test_the_resting_cue_never_calls_sunflower_ground_scenery() -> String:
 ## cue whose whole defence is "these two marks coincide".
 func test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two() -> String:
 	var board := Board.new()
-	var arm: Vector2 = PlacementPreview.dead_bar_arm()
+	# NOT named `arm`: suite_reach_check matches by bare token, and
+	# SelectionMarker declares an unreached `arm` that a local of that name
+	# silently credits -- which is a false entry in the debt list, not a test.
+	var bar_arm: Vector2 = PlacementPreview.dead_bar_arm()
 	var cells: Array[Vector2i] = PlacementPreview.dead_ground_cells(board,
 		PlantCatalog.reach(PlantCatalog.CORN))
 	var err: String = _T.assert_gt(cells.size(), 0,
 		"there is dead ground to mark -- an empty set would make every check below vacuous")
 	if err == "":
-		err = _T.assert_true(board.mark_dead_ground(cells, arm,
+		err = _T.assert_true(board.mark_dead_ground(cells, bar_arm,
 			PlacementPreview.board_dead_color(), PlacementPreview.DEAD_BAR_WIDTH),
 			"marking a fresh board reports the set as changed")
 	if err == "":
@@ -6463,10 +6470,10 @@ func test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two() -> String:
 			err = _T.assert_eq(pts.size(), 2,
 				"mark %d is a straight two-point stroke, not a shape" % i)
 			if err == "":
-				err = _T.assert_float_eq(pts[0].distance_to(centre - arm), 0.0, 0.001,
+				err = _T.assert_float_eq(pts[0].distance_to(centre - bar_arm), 0.0, 0.001,
 					"mark %d starts where _draw_dead_bar() would start" % i)
 			if err == "":
-				err = _T.assert_float_eq(pts[1].distance_to(centre + arm), 0.0, 0.001,
+				err = _T.assert_float_eq(pts[1].distance_to(centre + bar_arm), 0.0, 0.001,
 					"mark %d ends where _draw_dead_bar() would end" % i)
 			if err == "":
 				# The claim in one number: the mark and the hover bar are the same
@@ -6507,7 +6514,10 @@ func test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two() -> String:
 ## in-tree accumulation gives.
 func test_remarking_dead_ground_reuses_its_marks_instead_of_growing_the_board() -> String:
 	var board := Board.new()
-	var arm: Vector2 = PlacementPreview.dead_bar_arm()
+	# NOT named `arm`: suite_reach_check matches by bare token, and
+	# SelectionMarker declares an unreached `arm` that a local of that name
+	# silently credits -- which is a false entry in the debt list, not a test.
+	var bar_arm: Vector2 = PlacementPreview.dead_bar_arm()
 	var colour: Color = PlacementPreview.board_dead_color()
 	var width: float = PlacementPreview.DEAD_BAR_WIDTH
 	var wide: Array[Vector2i] = PlacementPreview.dead_ground_cells(board,
@@ -6518,7 +6528,7 @@ func test_remarking_dead_ground_reuses_its_marks_instead_of_growing_the_board() 
 	if err == "":
 		err = _T.assert_eq(narrow.size(), 3, "and 3 for a Bomb Dandelion")
 	if err == "":
-		board.mark_dead_ground(wide, arm, colour, width)
+		board.mark_dead_ground(wide, bar_arm, colour, width)
 	var layer: Node2D = board.get_node_or_null(Board.DEAD_GROUND_LAYER) as Node2D
 	if err == "":
 		err = _T.assert_true(layer != null, "marking built the marks layer")
@@ -6526,11 +6536,11 @@ func test_remarking_dead_ground_reuses_its_marks_instead_of_growing_the_board() 
 	if err == "":
 		err = _T.assert_eq(pool, 36, "one Line2D per marked cell, %d built" % pool)
 	if err == "":
-		err = _T.assert_false(board.mark_dead_ground(wide, arm, colour, width),
+		err = _T.assert_false(board.mark_dead_ground(wide, bar_arm, colour, width),
 			("re-marking the identical set reports no change, so Game._refresh() on every "
 				+ "seed payout does not rebuild the pool several times a second"))
 	if err == "":
-		err = _T.assert_true(board.mark_dead_ground(narrow, arm, colour, width),
+		err = _T.assert_true(board.mark_dead_ground(narrow, bar_arm, colour, width),
 			"shrinking the set does report a change")
 	if err == "":
 		err = _T.assert_eq(layer.get_child_count(), pool,
@@ -6539,7 +6549,7 @@ func test_remarking_dead_ground_reuses_its_marks_instead_of_growing_the_board() 
 		err = _T.assert_eq(board.dead_ground_mark_lines().size(), 3,
 			"with only 3 of them visible")
 	if err == "":
-		err = _T.assert_true(board.mark_dead_ground(wide, arm, colour, width),
+		err = _T.assert_true(board.mark_dead_ground(wide, bar_arm, colour, width),
 			"growing back reports a change")
 	if err == "":
 		err = _T.assert_eq(layer.get_child_count(), pool,
@@ -6552,7 +6562,7 @@ func test_remarking_dead_ground_reuses_its_marks_instead_of_growing_the_board() 
 		# A road cell is not ground a plant can be dead on, so it is dropped the way
 		# mark_unaimed_road() drops non-road.
 		var road: Array[Vector2i] = [board.road_cells()[0]]
-		board.mark_dead_ground(road, arm, colour, width)
+		board.mark_dead_ground(road, bar_arm, colour, width)
 		err = _T.assert_false(board.is_dead_ground(road[0]),
 			"a mark handed a road cell drops it rather than rendering it")
 	if err == "":
