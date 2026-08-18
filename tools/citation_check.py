@@ -39,6 +39,8 @@ import sys
 from pathlib import Path
 import re
 
+import repo_walk
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_FILES = ["kanban.md"]
 
@@ -179,10 +181,12 @@ def _resolve(citing: Path, cited: str) -> tuple[Path | None, list[Path]]:
     # and a lane running it inside its own worktree sees none of them. Measured
     # while adopting worktree isolation (plant-tower-defense-l638): five lanes
     # turned one clean run into six ambiguous matches per citation.
-    matches = [m for m in ROOT.rglob(cited)
-               if ".godot" not in m.parts
-               and ".git" not in m.parts
-               and "worktrees" not in m.parts]
+    #
+    # The rule now lives in repo_walk, shared with the other rooted walkers
+    # (plant-tower-defense-tfnv) -- this file is where it was first needed, not
+    # where it belongs. Note this stays a per-MATCH filter, not a prune: rglob
+    # offers no hook to stop descending, which is why repo_walk has both shapes.
+    matches = [m for m in ROOT.rglob(cited) if not repo_walk.excluded(m, ROOT)]
     if len(matches) == 1:
         return matches[0], []
     if len(matches) > 1:

@@ -85,6 +85,8 @@ import os
 import re
 import sys
 
+import repo_walk
+
 FUNC_RE = re.compile(r"^(?:static\s+)?func\s+([A-Za-z_][A-Za-z0-9_]*)", re.M)
 WAIVER_RE = re.compile(r"save-persist-check:\s*ok\b")
 # The one thing that makes a persisting call safe: pointing the autoload somewhere
@@ -173,7 +175,9 @@ def calls_in(body: str) -> set[str]:
 def gd_files(root: str) -> list[str]:
     found = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in (".godot", ".git", ".beads")]
+        # Called on test/ and each --sources dir, never the repo root, so no
+        # nested checkout is under it today. Shared rule anyway; see repo_walk.
+        repo_walk.prune(dirpath, dirnames, root)
         for fn in sorted(filenames):
             if fn.endswith(".gd"):
                 found.append(os.path.join(dirpath, fn))

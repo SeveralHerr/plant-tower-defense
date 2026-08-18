@@ -83,6 +83,9 @@ NOT_PARALLEL_SAFE = {
 SELF = "check_all.py"
 
 NOT_A_CHECKER = {
+    "repo_walk.py": "a library, not a tool: the shared directory-exclusion rule the "
+                    "rooted checkers import so a nested .claude/worktrees/ checkout "
+                    "cannot change their denominators. Has no main() and prints nothing",
     "check_devtools_log.py": "a Claude Code Stop hook, not a repo checker -- it advises "
                              "about log-devtools.md and never gates",
     "devtools.py": "the bridge client; needs a running game",

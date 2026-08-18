@@ -116,6 +116,8 @@ import os
 import re
 import sys
 
+import repo_walk
+
 CORPUS_FUNC = "message_corpus"
 CALL = "show_message("
 WAIVER = re.compile(r"#\s*message-corpus-check:\s*ok\b")
@@ -386,7 +388,9 @@ def main() -> int:
     src_root = os.path.join(root, args.sources)
     files = []
     for dirpath, dirnames, filenames in os.walk(src_root):
-        dirnames[:] = [d for d in dirnames if d not in (".godot", ".git", ".beads")]
+        # src_root is root/--sources (game/), never the repo root. Shared rule
+        # anyway; see repo_walk for why the immunity is not this file's to keep.
+        repo_walk.prune(dirpath, dirnames, src_root)
         files.extend(os.path.join(dirpath, f) for f in sorted(filenames) if f.endswith(".gd"))
 
     findings, sites, waived = [], 0, 0

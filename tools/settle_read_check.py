@@ -107,6 +107,8 @@ import os
 import re
 import sys
 
+import repo_walk
+
 FUNC_RE = re.compile(r"^(?:static\s+)?func\s+([A-Za-z_][A-Za-z0-9_]*)", re.M)
 CLASS_RE = re.compile(r"^class_name\s+([A-Za-z_][A-Za-z0-9_]*)", re.M)
 EXTENDS_RE = re.compile(r"^extends\s+([A-Za-z_][A-Za-z0-9_]*)", re.M)
@@ -225,7 +227,9 @@ def split_functions(code: str, raw: str) -> list[tuple[str, int, str, str]]:
 def gd_files(root: str) -> list[str]:
     found = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in (".godot", ".git", ".beads")]
+        # Called on test/ and game/, never the repo root. Shared rule anyway; the
+        # immunity belongs to the caller's argument, not to this function.
+        repo_walk.prune(dirpath, dirnames, root)
         for fn in sorted(filenames):
             if fn.endswith(".gd"):
                 found.append(os.path.join(dirpath, fn))

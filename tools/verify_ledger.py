@@ -535,6 +535,16 @@ def _script_class_index(root):
         rel = path.relative_to(root).as_posix()
         if rel.startswith(".godot/") or rel.startswith("addons/"):
             continue
+        # Skip any dot-directory. The case that forced this: Claude Code agent
+        # worktrees live at `.claude/worktrees/<lane>/`, INSIDE the repo. They
+        # are gitignored, and rglob does not read .gitignore, so during a
+        # fan-out every `class_name` in the project is declared N+1 times and
+        # this dict -- last writer wins, in rglob order -- can resolve `extends
+        # Foo` to a STALE COPY of foo.gd in some other lane's checkout. That
+        # silently changes `reached_base` credits. Same rule name_check.py's
+        # _walk_gd and coverage_check.py's _count_files already apply.
+        if any(part.startswith(".") for part in rel.split("/")[:-1]):
+            continue
         try:
             head = path.read_text(encoding="utf-8", errors="replace")[:2000]
         except OSError:
