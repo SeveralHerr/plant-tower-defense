@@ -356,6 +356,12 @@ func _ready() -> void:
 	_backdrop.name = "Backdrop"
 	_backdrop.position = Vector2.ZERO
 	_backdrop.size = size
+	# The ground lines belong to the COMPOSITION, not to the window. Everything
+	# standing on them — PLANT_BASE_Y, PEST_BASE_Y, menu_capacity()'s horizon —
+	# is in design coordinates, so a backdrop measuring HORIZON against its own
+	# stretched height puts the grass somewhere the lawn is not. See
+	# TitleBackdrop.ground_height.
+	_backdrop.ground_height = float(viewport_height())
 	# The scenery is scenery. Without this it is a full-screen Control sitting
 	# over every button, and `reachable-ui` is right to call them blocked.
 	_backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -389,6 +395,13 @@ func _ready() -> void:
 ## tests (`plant_span()` vs `button_column()`, `menu_capacity()` vs the horizon),
 ## and the right fix for a fixed composition on a bigger canvas is one translation
 ## of the whole thing — see `viewport_width()`.
+##
+## And the GROUND does not move either, which is the half this function used to
+## get wrong. Stretching the backdrop to the window while leaving the lawn in
+## design coordinates put the grass line at `live_height * 0.74` and the plants
+## at a flat 514: correct at 648, and 904px apart on a 1920-tall phone, with the
+## whole lawn hanging in the sky. `ground_height` below is what keeps the one
+## horizon that `menu_capacity()` already assumed it was sharing.
 func _apply_viewport_layout() -> void:
 	# `size_changed` outlives the build: a resize landing while the scene is being
 	# swapped out for game.tscn reaches a half-torn-down screen.
@@ -397,6 +410,29 @@ func _apply_viewport_layout() -> void:
 	size = Vector2(get_viewport_width(), get_viewport_height())
 	_backdrop.position = Vector2.ZERO
 	_backdrop.size = size
+	# Re-asserted on every resize for the same reason _ready sets it: this is the
+	# one number that keeps the ground under the lawn when the window is not 648
+	# tall. Setting size alone is what let them come apart.
+	_backdrop.ground_height = float(viewport_height())
+	# The lawn stands on the ground, so it takes the ground's shift. Plants are
+	# placed once and have to be moved; the pests re-read it every frame in
+	# _march_pests() and do not.
+	for i: int in _plants.size():
+		_plants[i].position.y = PLANT_BASE_Y + lawn_offset()
+
+
+## The ground's own translation, asked of the backdrop rather than recomputed.
+##
+## This is the number that keeps the lawn on the ground, and there is exactly one
+## of it precisely because the bug it fixes was two of it: `HORIZON` was read
+## against the live height here and against the design height in
+## `menu_capacity()`, and at any viewport but 648 tall the plants floated.
+## Anything else that has to stand on this ground asks this, and does not
+## multiply `TitleBackdrop.HORIZON` by a height of its own choosing.
+func lawn_offset() -> float:
+	if _backdrop == null or not is_instance_valid(_backdrop):
+		return 0.0
+	return _backdrop.ground_offset()
 
 
 func _build_text() -> void:
@@ -734,7 +770,7 @@ func _build_scenery() -> void:
 		# origin in the soil is what makes the sway below a lean rather than a
 		# slide — a Sprite2D rotates about its position, not about its picture.
 		sprite.offset = Vector2(0.0, -sprite.texture.get_height() / 2.0)
-		sprite.position = Vector2(PLANT_X[slot], PLANT_BASE_Y)
+		sprite.position = Vector2(PLANT_X[slot], PLANT_BASE_Y + lawn_offset())
 		add_child(sprite)
 		_plants.append(sprite)
 
@@ -776,7 +812,7 @@ func _march_pests() -> void:
 		pest.position.x = fmod(start + _elapsed * speed, span) - PEST_MARGIN
 		# A 2px bob at ~2Hz. Enough that the eye reads "walking" rather than
 		# "sliding", without turning into a hop.
-		pest.position.y = PEST_BASE_Y + sin(_elapsed * 6.0 + start) * 2.0
+		pest.position.y = PEST_BASE_Y + lawn_offset() + sin(_elapsed * 6.0 + start) * 2.0
 
 
 ## Fade the wordmark up and deal the buttons in from below.

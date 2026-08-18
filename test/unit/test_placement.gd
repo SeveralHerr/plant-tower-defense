@@ -5256,3 +5256,142 @@ func test_the_flourish_tier_is_pushed_further_and_held_longer_than_the_twitch() 
 
 # END plant flourish timings -- plant-tower-defense-w71c
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN the lawn stands on the ground at any viewport height
+#
+# WHY THIS TEST EXISTS, written out because the defect it guards is invisible to
+# every other check in this project.
+#
+# A player reported the title screen's bugs "no longer aligned" on a phone. They
+# were not misaligned with each other: the whole lawn had come unstuck from the
+# world. `TitleBackdrop` painted its grass at `live_height * HORIZON` while
+# `TitleScreen.PLANT_BASE_Y` (514) and `PEST_BASE_Y` (606) are absolute design
+# pixels, so the two agreed only at the design height of 648. On the reported
+# 1152x2048 viewport the grass line sat at 1515 and the plants at 514 — the lawn
+# a thousand pixels up in the sky.
+#
+# Nothing caught it, and the reasons are worth naming so this test is not the
+# only thing standing there:
+#
+#   * `findings` / `validate-ui` measure Controls. The lawn is Sprite2D, and
+#     _build_scenery's own header says that is deliberate — "a Node2D is simply
+#     not what those checks look at, which is the honest way to say this is not
+#     UI". Correct reasoning, and the hole this went through.
+#   * every test and capture in this project runs at one aspect ratio. A bug
+#     that needs a second one to appear had nowhere to appear.
+#
+# So this asks the backdrop where its own bands are rather than multiplying
+# HORIZON by a height of its choosing — that third multiplication is what the
+# bug WAS, and a test that did it again would agree with whichever copy it
+# happened to mirror.
+# =============================================================================
+
+
+## The lawn's footing is the same at every viewport height, not just at 648.
+func test_the_title_lawn_stands_on_the_ground_at_any_viewport_height() -> String:
+	var backdrop := TitleBackdrop.new()
+	backdrop.ground_height = float(TitleScreen.viewport_height())
+
+	# The design height first, then the reported phone, then two between. A
+	# single extra height would have caught this one; the spread is here so the
+	# next constant that is secretly absolute has somewhere to fail.
+	var heights: Array[int] = [648, 900, 1400, 2048]
+	var design_grass_gap: float = -1.0
+	var design_soil_gap: float = -1.0
+	var checked: int = 0
+	var err: String = ""
+
+	for h: int in heights:
+		backdrop.size = Vector2(1152.0, float(h))
+		var grass: float = backdrop.grass_line_y()
+		var soil: float = backdrop.soil_line_y()
+		var off: float = backdrop.ground_offset()
+		var plant_y: float = TitleScreen.PLANT_BASE_Y + off
+		var pest_y: float = TitleScreen.PEST_BASE_Y + off
+		checked += 1
+
+		if err == "":
+			err = _T.assert_gt(plant_y, grass,
+				("at %dpx tall the plants stand ON the grass, not above it " % h)
+					+ ("(plant %.1f, grass line %.1f). A plant above the grass line " % [plant_y, grass])
+					+ "is the lawn floating in the sky -- the constant is absolute "
+					+ "and the ground is not.")
+		if err == "":
+			err = _T.assert_gt(soil, plant_y,
+				("and at %dpx the plants are still on the grass band rather than " % h)
+					+ ("down on the soil (plant %.1f, soil line %.1f)" % [plant_y, soil]))
+		if err == "":
+			err = _T.assert_gt(pest_y, soil,
+				("and at %dpx the bugs march on the SOIL, which is the band in " % h)
+					+ ("front (bug %.1f, soil line %.1f)" % [pest_y, soil]))
+		if err == "":
+			err = _T.assert_gt(float(h), soil,
+				("and at %dpx the ground is on screen at all (soil line %.1f)" % [h, soil]))
+		if err != "":
+			return err
+
+		# The footing is not merely valid at each height, it is the SAME footing.
+		# Four independent "is it on the grass" checks would all pass on a lawn
+		# that drifted a little further onto the grass at every size.
+		if design_grass_gap < 0.0:
+			design_grass_gap = plant_y - grass
+			design_soil_gap = pest_y - soil
+			continue
+		err = _T.assert_float_eq(plant_y - grass, design_grass_gap, 0.001,
+			("the plants keep the design's own footing at %dpx: %.1f px onto the " % [h, plant_y - grass])
+				+ "grass, the same as at 648. A composition that survives one "
+				+ "height and slides at another has two anchors, not one.")
+		if err == "":
+			err = _T.assert_float_eq(pest_y - soil, design_soil_gap, 0.001,
+				("and the bugs keep theirs at %dpx: %.1f px onto the soil"
+					% [h, pest_y - soil]))
+		if err != "":
+			return err
+
+	if err == "":
+		err = _T.assert_eq(checked, heights.size(),
+			"every height in the list was actually measured")
+	if err == "":
+		# ground_anchor() is the composition height the bands are measured
+		# against. Named here because a backdrop that quietly fell back to its
+		# own size.y is precisely the bug, and it would look identical above.
+		backdrop.size = Vector2(1152.0, 2048.0)
+		err = _T.assert_float_eq(backdrop.ground_anchor(),
+			float(TitleScreen.viewport_height()), 0.001,
+			"the bands are measured against the composition, not the window")
+	backdrop.free()
+	return err
+
+
+## The screen actually hands the backdrop's shift to its lawn.
+##
+## Separate from the test above on purpose. That one proves the ARITHMETIC is
+## coherent; this proves the two halves are WIRED. Both were needed, because the
+## bug was not a wrong formula — it was two correct formulas that never met.
+func test_the_title_screen_gives_its_lawn_the_backdrops_own_shift() -> String:
+	var title := await _T.instantiate_ui("res://game/title.tscn", Vector2i(1152, 648)) as TitleScreen
+	var err: String = _T.assert_true(title != null, "the title scene resolves headlessly")
+	if err != "":
+		return err
+	var backdrop := title.get_node_or_null("Backdrop") as TitleBackdrop
+	if err == "":
+		err = _T.assert_true(backdrop != null, "and it built a backdrop to stand the lawn on")
+	if err == "":
+		err = _T.assert_float_eq(backdrop.ground_height,
+			float(TitleScreen.viewport_height()), 0.001,
+			("the screen told the backdrop which height the composition is. Left at"
+				+ " -1 the backdrop measures its own stretched size and the lawn"
+				+ " floats -- that is the whole defect, and this is the one line"
+				+ " that prevents it."))
+	if err == "":
+		err = _T.assert_float_eq(title.lawn_offset(), backdrop.ground_offset(), 0.001,
+			("and the lawn takes the ground's own shift rather than a second"
+				+ " one of its own. Two shifts is how they came apart."))
+	_T.free_ui(title)
+	return err
+
+
+# END the lawn stands on the ground at any viewport height
+# =============================================================================
