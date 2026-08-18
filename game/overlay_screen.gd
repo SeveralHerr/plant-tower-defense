@@ -120,6 +120,10 @@ static func rows_that_fit(top: float, pitch: float, item_height: float,
 		n += 1
 	return n
 
+## The covering layer, held rather than re-found by name: `_apply_viewport_layout()`
+## re-sizes it on every window change and a `get_node(BACKDROP_NAME)` per resize
+## would be a lookup that can silently miss.
+var _backdrop: ColorRect
 ## The overlay's own Back button, set by add_back_button(). Kept because
 ## `_focus_default()` opens on it and `footer_clearance()` measures against it.
 var _back_button: Button
@@ -148,17 +152,59 @@ func _ready() -> void:
 	# parent is.
 	theme = GardenTheme.build()
 
-	var backdrop := ColorRect.new()
-	backdrop.name = BACKDROP_NAME
-	backdrop.color = Color(GardenTheme.INK, BACKDROP_ALPHA)
-	backdrop.position = Vector2.ZERO
-	backdrop.size = size
-	add_child(backdrop)
+	_backdrop = ColorRect.new()
+	_backdrop.name = BACKDROP_NAME
+	_backdrop.color = Color(GardenTheme.INK, BACKDROP_ALPHA)
+	_backdrop.position = Vector2.ZERO
+	_backdrop.size = size
+	add_child(_backdrop)
 
 	_add_paper()
 	_build_contents()
 	_warn_if_footer_is_flush()
 	_focus_default()
+
+	# CHECKED, not assumed: every overlay is `new()`/`build()` + `add_child()` on
+	# open and `queue_free()` on close (TitleScreen._open_keys / _close_keys and
+	# PauseScreen's three pairs), so the CONTENT is rebuilt every time it is shown
+	# and a resize between two openings costs nothing. That is an argument about
+	# the NEXT open, not about this one. These screens are read screens -- the
+	# Options dials, the Keys table, the Notebook -- and stay up for as long as the
+	# player is reading them; the pause card holds one open over a paused run,
+	# which is the single most likely moment for someone to resize or maximise a
+	# window. So the covering layer does need the signal.
+	#
+	# It reaches the surface while the tree is PAUSED, which matters here: signal
+	# emission is not gated by `SceneTree.paused`, only `_process` and input are.
+	var vp: Viewport = get_viewport()
+	if vp != null and not vp.size_changed.is_connected(_apply_viewport_layout):
+		vp.size_changed.connect(_apply_viewport_layout)
+
+
+## The overlay's covering layer, re-derived. Deliberately NOT the content.
+##
+## What must track the window is the pair that has to reach its edges: this
+## Control's own rect and the Backdrop's. A Backdrop that stops short of a widened
+## window is not cosmetic -- `PauseScreen`'s is `MOUSE_FILTER_STOP` exactly so the
+## board underneath cannot be played through a pause, and the strip it stops short
+## of is live, clickable board.
+##
+## The content is a FIXED-SIZE COMPOSITION and stays one. Its paper is centred
+## through `paper_left()`, which is live, so re-centring on resize would mean
+## re-running each screen's builder -- and that would discard a Keys row mid-capture
+## and move focus out from under the player. The paper stays where it was opened,
+## off-centre until the screen is next opened, and that is a deliberately smaller
+## wrong than the alternative. See the report on plant-tower-defense-nrup for the
+## follow-up that would close it properly (translate the built composition by the
+## delta rather than rebuild it).
+func _apply_viewport_layout() -> void:
+	# `size_changed` outlives the build -- a viewport resized while this overlay is
+	# mid-teardown -- so the guard is real rather than defensive dressing.
+	if _backdrop == null or not is_instance_valid(_backdrop):
+		return
+	size = Vector2(get_viewport_width(), get_viewport_height())
+	_backdrop.position = Vector2.ZERO
+	_backdrop.size = size
 
 
 ## Where the paper sits, in viewport coordinates. Everything a screen draws is
@@ -343,16 +389,45 @@ func _warn_if_footer_is_flush() -> void:
 
 # -- the viewport ------------------------------------------------------------
 #
-# Read out of ProjectSettings rather than off get_viewport(), because _ready()
-# sizes the overlay before it is necessarily inside a sized viewport.
+# TWO questions, two names -- see ScreenMetrics for the whole argument. These two
+# used to read ProjectSettings, with a comment saying it was because `_ready()`
+# sizes the overlay before it is necessarily inside a sized viewport. That
+# condition is real and is now the FALLBACK inside `ScreenMetrics.live_size()`
+# rather than the answer for every window.
 
 
+## The canvas this overlay has to cover. Live: an overlay that stops short of the
+## window leaves a strip of whatever is behind it visible and, on the pause card,
+## clickable.
 func get_viewport_width() -> int:
-	return ProjectSettings.get_setting("display/window/size/viewport_width", 1152)
+	return ScreenMetrics.live_width(self)
 
 
 func get_viewport_height() -> int:
-	return ProjectSettings.get_setting("display/window/size/viewport_height", 648)
+	return ScreenMetrics.live_height(self)
+
+
+## The canvas the overlay's CONTENT was composed on. Every row budget on these
+## screens -- `OptionsScreen.rows_capacity()`, `KeyBindingScreen.panel_height()`'s
+## nine-verb ceiling -- is a statement about this number and must not follow the
+## window: `stretch/aspect="expand"` never produces a canvas smaller than it, so
+## it is the worst case a budget has to survive.
+static func design_width() -> int:
+	return ScreenMetrics.design_width()
+
+
+static func design_height() -> int:
+	return ScreenMetrics.design_height()
+
+
+## The left edge of a `width`-wide paper, centred on the live canvas. All three
+## overlays centre their paper; two of them had the sum baked into a constant at
+## the design width (`OptionsScreen.PANEL.x`, `NotebookScreen.PANEL.x`) and one
+## computed it (`KeyBindingScreen.panel_rect()`). Same number at 1152, and a rigid
+## translation of the whole composition anywhere else -- so every offset measured
+## from the paper's left edge is untouched by it.
+func paper_left(width: float) -> float:
+	return ScreenMetrics.centred_left(self, width)
 
 
 ## Escape closes. Handled in `_input` rather than `_unhandled_input`: a focused

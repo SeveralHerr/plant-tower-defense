@@ -52,6 +52,10 @@ var _options_screen: OptionsScreen = null
 ## Every button on the card, so the whole row block can be made inert under an
 ## overlay without naming them one at a time. Filled by _build_buttons().
 var _buttons: Array[Button] = []
+## The click-eating layer, held rather than re-found by name:
+## `_apply_viewport_layout()` re-sizes it on every window change, and a
+## `get_node("Backdrop")` per resize would be a lookup that can silently miss.
+var _backdrop: ColorRect = null
 
 ## Same card geometry as the post-mortem, centred on the board rather than the
 ## window, so the two screens read as the same family and neither sits off to the
@@ -379,18 +383,24 @@ func _ready() -> void:
 	# outside a layout pass, where the preset resolves to 0x0. Same reason as
 	# TitleScreen and RunSummary.
 	position = Vector2.ZERO
-	size = Vector2(_viewport_width(), _viewport_height())
+	# The LIVE canvas, not the design size this used to read out of ProjectSettings
+	# (plant-tower-defense-nrup). The line below is why it matters more here than
+	# anywhere else in the game.
+	size = _live_viewport_size()
 	theme = GardenTheme.build()
 
-	var backdrop := ColorRect.new()
-	backdrop.name = "Backdrop"
-	backdrop.color = Color(GardenTheme.INK, BACKDROP_ALPHA)
-	backdrop.position = Vector2.ZERO
-	backdrop.size = size
+	_backdrop = ColorRect.new()
+	_backdrop.name = "Backdrop"
+	_backdrop.color = Color(GardenTheme.INK, BACKDROP_ALPHA)
+	_backdrop.position = Vector2.ZERO
+	_backdrop.size = size
 	# Eats clicks, so the board and the side panel underneath cannot be played
-	# through a pause.
-	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(backdrop)
+	# through a pause. That makes its SIZE a correctness property and not a
+	# cosmetic one: sized from the design width on a 1536-unit-wide canvas it
+	# stopped 384px short of the right edge, and that strip was live, clickable
+	# board over a paused run — a plant could be placed through the pause menu.
+	_backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_backdrop)
 
 	var card := Panel.new()
 	card.name = "Card"
@@ -432,6 +442,38 @@ func _ready() -> void:
 
 	if GardenTheme.animations_enabled():
 		_play_entrance()
+
+	# CHECKED, not assumed: this card is `build()` + `add_child()` on pause and
+	# freed on resume (Game.pause_run / Game.resume_run), so it is rebuilt every
+	# time it is shown. That is still not enough. THIS IS THE SURFACE MOST LIKELY TO BE
+	# LIVE DURING A RESIZE in the whole game: it holds the run still, which is
+	# exactly what a player does before alt-tabbing, maximising or dragging the
+	# window. And unlike every other screen here its stale layer is not cosmetic —
+	# see the Backdrop's mouse_filter above.
+	#
+	# It works while paused because signal emission is not gated by
+	# `SceneTree.paused`; only _process and input are, and this node is
+	# PROCESS_MODE_ALWAYS in any case.
+	var vp: Viewport = get_viewport()
+	if vp != null and not vp.size_changed.is_connected(_apply_viewport_layout):
+		vp.size_changed.connect(_apply_viewport_layout)
+
+
+## The click-eating layer, re-derived. Deliberately NOT the card.
+##
+## The card is a fixed-size composition placed by the static `card_rect()`, and its
+## heading, note, buttons and key rows are all placed against that one rect — so
+## moving it means re-running the builder, which would take focus out from under
+## the player mid-pause. It stays where the pause opened it. The Backdrop does not
+## get that latitude: a strip of window it does not cover is a strip of live board.
+func _apply_viewport_layout() -> void:
+	# `size_changed` outlives the build — the card fades out over an unpause and a
+	# resize can land inside that fade.
+	if _backdrop == null or not is_instance_valid(_backdrop):
+		return
+	size = _live_viewport_size()
+	_backdrop.position = Vector2.ZERO
+	_backdrop.size = size
 
 
 func _build_buttons() -> void:
@@ -817,11 +859,29 @@ func _set_card_active(active: bool) -> void:
 		button.mouse_filter = filter
 
 
-## Static, because card_top() is: the card's own placement now depends on how tall
-## the window is, and card_rect() has to answer that before any instance exists.
+## The DESIGN canvas — the size this card was composed at, which is what these two
+## have always returned. The name said "the viewport" and this pair was the fourth
+## copy of `Hud.get_viewport_width()` in the game (plant-tower-defense-nrup); the
+## implementation now lives once, in `ScreenMetrics`, and the doc says which of the
+## two questions it answers.
+##
+## Static, because card_top() is: the card's placement depends on how tall the
+## canvas is, and card_rect() has to answer that before any instance exists — which
+## is also why it cannot be live. A static function has no `get_viewport()`.
+##
+## Design is the right answer here anyway: the card is a fixed-size composition
+## (`card_width()` is derived from its own legend columns, `card_height()` from its
+## own row count) and `CARD_MIN_TOP` is a floor authored against 648. What must
+## follow the window is the layer that COVERS it — see `_apply_viewport_layout()`.
 static func _viewport_width() -> int:
-	return ProjectSettings.get_setting("display/window/size/viewport_width", 1152)
+	return ScreenMetrics.design_width()
 
 
 static func _viewport_height() -> int:
-	return ProjectSettings.get_setting("display/window/size/viewport_height", 648)
+	return ScreenMetrics.design_height()
+
+
+## The live canvas this card has to cover. Separate from the pair above because
+## they are separate questions — see ScreenMetrics.
+func _live_viewport_size() -> Vector2:
+	return ScreenMetrics.live_size(self)
