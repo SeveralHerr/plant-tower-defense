@@ -119,6 +119,39 @@ const MAP_LEGEND_HEIGHT: float = 22.0
 const MAP_LEGEND_WIDTH: int = Board.COLS * Board.CELL
 const MAP_LEGEND_FONT_SIZE: int = 13
 
+## The reach note: the one sentence that says covered ground and fought ground are
+## not the same thing. See reach_note_text() for what it says and why the card
+## itself could not take it.
+##
+## WHERE, and the measurement that moved it. The obvious home was a second strip
+## under `map_legend_text`, and it does not survive the entrance. `_play_entrance`
+## drops every child by RISE_OFFSET_WIN = 32 and tweens it back up, so the real
+## bottom budget on this screen is not the 648-tall viewport — it is 648 - 32 = 616,
+## and the legend already foots at 610. There are six pixels down there, not the
+## thirty-eight the legend's own comment counts, because that comment measures the
+## resting position and the rise happens before it. A second 20px line would have
+## hung 14px off the bottom of the screen for the whole 0.2s of a winning card's
+## rise, on precisely the runs a player replays.
+##
+## So it goes in the column the ribbon opened — beside the card, where the same
+## comment already argues the post-mortem owns real estate it has never drawn in.
+## Vertically it follows the ribbon rather than sitting at a fixed y, which is what
+## `reach_note_top` is for: at the full seven milestones the ribbon foots at 438,
+## this clears it by REACH_NOTE_GAP and foots at 550, level with the card's own foot
+## at 552 and 66px inside the rise budget. With no milestones — the common case — it
+## takes the top of the column instead of leaving a hole above itself.
+##
+## A Panel and not a bare Label, unlike the legend. The legend sits over dark road
+## for its whole width; this column straddles the seam at x = 896 where the board
+## ends and the side panel begins, so a bare label would be legible over one half
+## and not the other. Its box is the ribbon's ink WITHOUT the gold: gold is what this
+## game spends on compost and on firsts, which is to say on something you got, and
+## this is a note about what went wrong.
+const REACH_NOTE_GAP: float = 16.0
+const REACH_NOTE_HEIGHT: float = 96.0
+const REACH_NOTE_PAD: float = 14.0
+const REACH_NOTE_FONT_SIZE: int = 13
+
 ## Entrance rise, matching the title screen's idiom. Gated on
 ## GardenTheme.animations_enabled() — headless never pumps the tween, so the
 ## card must already be correct before it runs.
@@ -180,6 +213,7 @@ func _ready() -> void:
 	_build_rows()
 	_build_milestone_ribbon()
 	_build_map_legend()
+	_build_reach_note()
 	_build_buttons()
 
 	if GardenTheme.animations_enabled():
@@ -509,6 +543,78 @@ func map_legend_text() -> String:
 		+ " — the card above counts only what held.") % [reddest.x + 1, reddest.y + 1]
 
 
+## "Covered" is not "fought", said once, in the player's own units.
+##
+## THE MECHANIC. A Corn Cobbler shoots only the pest furthest along, so a cob whose
+## ring sits over eight road cells is busy with one pest and the other seven get
+## nothing while it reloads. Measured three times and never once told to the
+## player: the coverage block in `game.gd` records 3,909 of 4,664 stays on covered
+## ground — 84% — passing with nothing touching the pest, and 82% of that is a cob
+## that fired at a DIFFERENT pest during the stay. The board paints those cells as
+## aimed at, correctly; the player loses beds on them anyway and is left to infer
+## why from having lost.
+##
+## The two numbers are the two halves of that sentence and BOTH are already the
+## game's own, neither recomputed here:
+##
+##   - `road_aimed` / `road_cells` is `Game.covered_road_cells()` against
+##     `Board.road_cells()` — the same derived map the placement cue and the lane
+##     overlay read, so the card cannot disagree with the board about which ground
+##     was aimed at.
+##   - `escapes_untouched` is `Pest._ever_engaged` counted at the exit, the flag
+##     that already separates "you had no answer" from "your answer was not enough"
+##     — see `Game._note_escape`, and `beds_text` above, which prints the same
+##     number as the second half of its own row.
+##
+## WHY A SENTENCE AND NOT A ROW. There is no room for a row and the arithmetic
+## saying so is `rows_capacity()`, which returns 7 against the 7 rows
+## `summary_rows()` builds: an eighth foots at 486 against buttons at 476. There is
+## no room in a fold either — `beds_text` already sets the card's value-column
+## high-water mark and the width gate in test_combat measures every other row
+## against it. And a fold would not do the job anyway: the ACCEPTANCE is that the
+## card names the distinction, and two numbers three rows apart are a juxtaposition,
+## not a statement. So it goes beside the card, in the column the milestone ribbon
+## opened; the constants block above carries that argument and the measurement that
+## ruled out the strip under the legend.
+##
+## LENGTH is the constraint out there, and it is a height rather than a width: the
+## box is 308px of text at font 13 in a 68px-tall well, the sentence wraps, and the
+## worst case — a road that grew to four digits, every cell of it aimed at, every
+## bed lost untouched — is 110 characters. How many lines that comes to is a
+## question about the resolved theme font and is therefore measured rather than
+## counted here: `get_visible_line_count() == get_line_count()`, which is a wrapped
+## Label's own report of whether it lost lines off the bottom. NOT `_T.text_width`,
+## which measures the unwrapped string and cannot see a wrap at all, and not
+## `get_minimum_size()`, which is the wrong answer on every Label this screen draws.
+##
+## THREE SILENCES, and each is a different run rather than a defensive default:
+##
+##   - `road_cells <= 0`: the stats Dictionary was not handed the coverage. That is
+##     a card built by a test, or by a `Game` that predates the wiring — and the
+##     honest output for "nobody told me" is nothing, never a fabricated 0 of 0.
+##   - `aimed <= 0`: nothing in the garden could touch any road. Real, and the
+##     opposite lesson: there is no covered ground for "covered" to contrast with,
+##     and a player with no garden is not being taught a targeting rule.
+##   - `untouched <= 0` (or no escape was readable at all): every pest that got out
+##     had been fought, so the mechanic did not bite this run. Same rule as
+##     `map_legend_text`'s empty branch — a caption for something that did not
+##     happen is worse than no caption.
+func reach_note_text() -> String:
+	var total: int = int(_stats.get("road_cells", 0))
+	if total <= 0:
+		return ""
+	var aimed: int = clampi(int(_stats.get("road_aimed", 0)), 0, total)
+	if aimed <= 0:
+		return ""
+	if int(_stats.get("escapes_recorded", 0)) <= 0:
+		return ""
+	var untouched: int = int(_stats.get("escapes_untouched", 0))
+	if untouched <= 0:
+		return ""
+	return ("%d of %d road cells were aimed at, and %d still walked in untouched"
+		+ " — a cob fires at the furthest pest only.") % [aimed, total, untouched]
+
+
 ## The ids this run earned for the first time, as `Game._end_run` filed them.
 ##
 ## Read through a method rather than inline so the whole ribbon — height, contents
@@ -627,6 +733,75 @@ func _build_map_legend() -> void:
 	# card's paper, and it is the only text on the screen that does.
 	legend.add_theme_color_override("font_color", Color(GardenTheme.PAPER, 0.82))
 	add_child(legend)
+
+
+## Where the note's box starts, for a ribbon carrying `milestone_count` entries.
+##
+## A function rather than a constant for the same reason `ribbon_height` is one: the
+## count is a runtime number, and the clearance test has to be able to ask about the
+## worst case — every milestone in `Milestones.TABLE` at once — without staging a run
+## that earns them.
+static func reach_note_top(milestone_count: int) -> float:
+	var above: float = ribbon_height(milestone_count)
+	if above <= 0.0:
+		return RIBBON_TOP
+	return RIBBON_TOP + above + REACH_NOTE_GAP
+
+
+## Same no-node-at-all rule as the legend: an empty Panel here is exactly what
+## validate-ui reports as a zero-content Control, and most runs have nothing to say
+## on this subject — see the three silences on reach_note_text().
+##
+## AUTOWRAP, which is the one thing on this screen that is not clipped. Every value
+## Label on the card sets `clip_text` so a width regression shows as a trimmed row;
+## this is prose in a fixed box, where the same policy would silently delete the end
+## of the sentence — and the end of this sentence is the half that names the rule.
+## Wrapped, an over-long string overflows the box downward where the test can see it
+## as `get_visible_line_count() < get_line_count()`.
+##
+## OVERLAY_GRAMMAR's two-channel rule is satisfied trivially and deliberately: this
+## is plain prose, nothing in it means one thing in one colour and another in
+## another, and it reads identically with every colour on the screen discarded.
+func _build_reach_note() -> void:
+	var text: String = reach_note_text()
+	if text.is_empty():
+		return
+
+	var panel := Panel.new()
+	panel.name = "ReachNote"
+	panel.position = Vector2(RIBBON_X, reach_note_top(new_milestones().size()))
+	panel.size = Vector2(RIBBON_WIDTH, REACH_NOTE_HEIGHT)
+	panel.add_theme_stylebox_override("panel", _note_box())
+	# The backdrop is what stops clicks reaching the live side panel underneath;
+	# nothing added out here may become the thing that eats one on the way there.
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(panel)
+
+	var note := Label.new()
+	note.name = "ReachNoteText"
+	note.text = text
+	note.position = Vector2(REACH_NOTE_PAD, REACH_NOTE_PAD)
+	note.size = Vector2(RIBBON_WIDTH - REACH_NOTE_PAD * 2.0,
+		REACH_NOTE_HEIGHT - REACH_NOTE_PAD * 2.0)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	note.add_theme_font_size_override("font_size", REACH_NOTE_FONT_SIZE)
+	# PAPER, like the legend and the ribbon: this sits on ink, not on the card's
+	# paper, and it is the only prose on the screen that is neither.
+	note.add_theme_color_override("font_color", Color(GardenTheme.PAPER, 0.86))
+	panel.add_child(note)
+
+
+## The ribbon's ink without the ribbon's gold. `_ribbon_box` spends GOLD because a
+## milestone is something the player earned; this box says the opposite kind of
+## thing, and wearing the same edge would file it under the same heading.
+func _note_box() -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(GardenTheme.INK, 0.9)
+	box.set_corner_radius_all(10)
+	box.set_border_width_all(GardenTheme.BORDER)
+	box.border_color = Color(GardenTheme.PAPER, 0.28)
+	return box
 
 
 func _build_rows() -> void:
