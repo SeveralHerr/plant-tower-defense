@@ -364,6 +364,24 @@ func _draw_muzzle_fan() -> void:
 		draw_circle(pip, PIP_SIZE, Color(PIP_COLOR, PIP_COLOR.a * fade))
 
 
+## The squash the cob makes when it fires. `(0.88, 1.14)` is the whole content of
+## the flourish — the start and the end are both `Vector2.ONE`, so a test asserting
+## either is asserting that nothing happened.
+##
+## THE EXTREME IS REACHED EXACTLY, and that was measured rather than assumed
+## (plant-tower-defense-ejfa). Cycle 72 walked this tween at `step-time --seconds
+## 0.03` and read **0.900** against the 0.88 written here, and could not tell a
+## sampling artefact from a real discrepancy. It was the artefact: `TWITCH_OUT_SECONDS`
+## is 0.05, a 0.03 request advances roughly two frames, and the samples straddle the
+## peak without ever landing on it. At `--seconds 0.01` the walk reads **0.880000** and
+## **1.140000**, in four independent runs, to within 3e-6.
+##
+## One thing worth knowing before re-measuring: the peak's VALUE is reproducible but
+## its STEP INDEX is not — it lands on step 3 at `--seconds 0.01` and step 5 at
+## `--seconds 0.001`, because `step_time` advances the process clock by an amount that
+## is neither the seconds requested nor a whole physics frame. So walk past the peak
+## and take the extreme; do not read a fixed step. `.claude/surveys/flourish_peak.py`
+## does that, and fails when the recoil is weakened.
 func _recoil() -> void:
 	if _sprite == null or not is_inside_tree():
 		return
