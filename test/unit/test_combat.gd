@@ -2013,8 +2013,16 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 		err = _T.assert_eq(WaveDirector.pests_in_wave(wave), expected[wave - 1],
 			"wave %d still sends %d pests" % [wave, expected[wave - 1]])
 		if err == "":
-			err = _T.assert_float_eq(WaveDirector.health_scale_for(wave), 1.0, 0.0001,
-				"and an unscaled pest")
+			# Was "an unscaled pest" for every campaign wave. plant-tower-defense-iqp8
+			# gave the campaign a second act on exactly this axis, so the property is
+			# now the ramp itself rather than its absence -- derived from the two
+			# constants that define it, so this row cannot drift from health_scale_for
+			# without one of them being edited on purpose.
+			var climbed: int = clampi(wave, WaveDirector.SECOND_ACT_START_WAVE,
+				WaveDirector.WAVES.size()) - WaveDirector.SECOND_ACT_START_WAVE
+			err = _T.assert_float_eq(WaveDirector.health_scale_for(wave),
+				pow(1.0 + WaveDirector.CAMPAIGN_HEALTH_STEP, float(climbed)), 0.0001,
+				"and a pest scaled by %d compounded second-act steps" % climbed)
 		if err == "":
 			err = _T.assert_float_eq(WaveDirector.speed_scale_for(wave), 1.0, 0.0001,
 				"at an unscaled speed")
@@ -6817,7 +6825,14 @@ func test_the_shield_bug_was_paid_for_in_beetles_rather_than_out_of_the_finale()
 		err = _T.assert_gt(finale_health, 0.0, "and so does the finale")
 	if err != "":
 		return err
-	var campaign_mult: float = 1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT
+	# The finale's own health scale belongs in the campaign multiplier since
+	# plant-tower-defense-iqp8: the campaign no longer sits at 1.0 on that axis, and
+	# omitting it inflates the bound to 725 and the headroom to 307, which would let
+	# this assertion pass while measuring nothing. See health_scale_for -- the
+	# endless ramp is a multiple of the campaign's last value precisely so the two
+	# scales cancel here and the bound stays 436.7.
+	var campaign_mult: float = (1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT) \
+		* WaveDirector.health_scale_for(finale)
 	var seam_mult: float = 1.0 + WaveDirector.mutation_chance_for(finale + 1) \
 		* WaveDirector.MUTATION_THREAT_WEIGHT
 	var seam_scales: float = WaveDirector.health_scale_for(finale + 1) \
@@ -7210,7 +7225,13 @@ func test_the_nurse_beetle_was_paid_for_in_beetles_rather_than_out_of_the_finale
 		err = _T.assert_gt(finale_health, 0.0, "and so does the finale")
 	if err != "":
 		return err
-	var campaign_mult: float = 1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT
+	# The finale's own health scale belongs in the campaign multiplier since
+	# plant-tower-defense-iqp8 -- see the Shield Bug's copy of this derivation above
+	# and health_scale_for. Without it the headroom below reads 307 points instead
+	# of 18.7, and this assertion (which says the headroom is SMALL) fails with a
+	# message pointing at the finale rather than at the missing multiplier.
+	var campaign_mult: float = (1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT) \
+		* WaveDirector.health_scale_for(finale)
 	var seam_mult: float = 1.0 + WaveDirector.mutation_chance_for(finale + 1) \
 		* WaveDirector.MUTATION_THREAT_WEIGHT
 	var seam_scales: float = WaveDirector.health_scale_for(finale + 1) \
@@ -7511,3 +7532,318 @@ func test_a_dandelion_skips_a_pest_freed_under_it() -> String:
 
 
 # -- END a dandelion survives a freed pest ------------------------------------
+
+
+# -- BEGIN the campaign's second act (plant-tower-defense-iqp8) ---------------
+#
+# The campaign's back half stopped escalating: waves 10-22 averaged +6.7% of
+# threat a wave for thirteen waves against +14.7% to +80.0% for waves 2-8, and a
+# depth-first garden won all twenty-two of them in cycle 101 without losing a
+# life. The fix is a compounding health ramp under waves 10-22 -- one function,
+# `WaveDirector.health_scale_for`, rather than fourteen rewritten wave rows,
+# because the rows are capped by the seam bound at ENDLESS_BEETLE_BASE and have
+# about one beetle of headroom between them.
+#
+# Balance is the one thing no static gate can judge, so these tests do NOT claim
+# the campaign is now fun. They pin the four things that ARE checkable and that a
+# later balance pass will break without noticing: the first act is untouched, the
+# second one really climbs, the curve never falls anywhere from wave 1 to wave
+# 300, and the seam bound is exactly the number three other tests derive.
+#
+# Every number quoted below was priced offline against _raw_threat before
+# wave_director.gd was edited -- an arithmetic model of the pure statics, not a
+# measurement of a running game.
+
+
+## The shape of the ramp, asserted at both ends.
+##
+## Two halves and both matter. The first act must be bit-for-bit what it was --
+## wave 8 is MUTATION_START_WAVE and wave 9 already steps +29.1% on count alone,
+## and cycle 101's whole tuning was about not landing two difficulty increases on
+## one wave -- so health_scale_for is exactly 1.0 out to SECOND_ACT_START_WAVE and
+## wave 10 is the first tougher wave. The second act must then step by exactly
+## CAMPAIGN_HEALTH_STEP every wave, compounding, which is the property that stops
+## it front-loading the way a linear ramp would.
+func test_the_second_act_starts_where_it_says_it_does() -> String:
+	var err: String = ""
+	var flat: int = 0
+	for wave: int in range(1, WaveDirector.SECOND_ACT_START_WAVE + 1):
+		err = _T.assert_float_eq(WaveDirector.health_scale_for(wave), 1.0, 0.000001,
+			("wave %d is in the first act and must be bit-for-bit unscaled -- the ramp"
+				+ " anchors AT wave %d, it does not start on it")
+				% [wave, WaveDirector.SECOND_ACT_START_WAVE])
+		if err != "":
+			return err
+		flat += 1
+	err = _T.assert_gt(flat, 5, "the first act was actually swept (%d waves)" % flat)
+	if err != "":
+		return err
+
+	var climbed: int = 0
+	for wave: int in range(WaveDirector.SECOND_ACT_START_WAVE + 1, WaveDirector.WAVES.size() + 1):
+		var ratio: float = WaveDirector.health_scale_for(wave) \
+			/ WaveDirector.health_scale_for(wave - 1)
+		err = _T.assert_float_eq(ratio, 1.0 + WaveDirector.CAMPAIGN_HEALTH_STEP, 0.000001,
+			("wave %d sends pests exactly %.0f%% tougher than wave %d (got %+.2f%%)."
+				+ " Compounding rather than linear: a linear ramp puts its biggest"
+				+ " relative step on wave %d and its smallest on the finale, which is"
+				+ " the wrong way round for a second act")
+				% [wave, WaveDirector.CAMPAIGN_HEALTH_STEP * 100.0, wave - 1,
+					(ratio - 1.0) * 100.0, WaveDirector.SECOND_ACT_START_WAVE + 1])
+		if err != "":
+			return err
+		climbed += 1
+	err = _T.assert_gt(climbed, 10,
+		"and the second act is a real stretch of waves, not one row (%d)" % climbed)
+	if err == "":
+		# The finale, as the one number a human can hold: x1.665 at 0.04 over
+		# thirteen waves. Derived rather than typed, so the constant stays the only
+		# place the steepness is chosen.
+		var top: float = pow(1.0 + WaveDirector.CAMPAIGN_HEALTH_STEP,
+			float(WaveDirector.WAVES.size() - WaveDirector.SECOND_ACT_START_WAVE))
+		err = _T.assert_float_eq(WaveDirector.health_scale_for(WaveDirector.WAVES.size()), top,
+			0.000001, "the finale's pests are x%.3f of the wave-1 pest" % top)
+	if err == "":
+		# THE THING THAT MUST NOT HAVE MOVED. Speed feeds crossing_seconds, which
+		# feeds _paced_gap and peak_simultaneous_pests -- so a campaign speed ramp
+		# would silently re-price every road-budget number in wave_director.gd. It
+		# was available as a lever and was deliberately not used.
+		var pinned: int = 0
+		for wave: int in range(1, WaveDirector.WAVES.size() + 1):
+			err = _T.assert_float_eq(WaveDirector.speed_scale_for(wave), 1.0, 0.000001,
+				("wave %d's pests still walk at the species speed. Health was the lever"
+					+ " because it feeds damage and nothing else; speed feeds the road"
+					+ " budget") % wave)
+			if err == "":
+				err = _T.assert_float_eq(WaveDirector.mutation_chance_for(wave),
+					WaveDirector.MUTATION_CHANCE, 0.000001,
+					"and wave %d still rolls the flat campaign mutation rate" % wave)
+			if err != "":
+				return err
+			pinned += 1
+		err = _T.assert_gt(pinned, 20, "the whole campaign was checked (%d waves)" % pinned)
+	return err
+
+
+## The stated invariant, swept rather than argued: threat_for rises strictly at
+## every adjacent pair from wave 1 to wave 300 -- through the campaign, across the
+## seam into endless, and past the wave every per-pest multiplier has capped.
+##
+## test_selftest.gd and test_combat.gd already sweep this. It is repeated here
+## deliberately: it is the one thing the bead named as non-negotiable, and a
+## reader of this section should not have to go and find out whether anybody
+## checks it. If this fails and the sweeps elsewhere pass, the campaign ramp is
+## the cause.
+func test_the_second_act_never_lets_the_threat_curve_fall() -> String:
+	var err: String = _T.assert_float_eq(WaveDirector.threat_for(1), 1.0, 0.0001,
+		"wave 1 is still the unit every other number is quoted in")
+	if err != "":
+		return err
+	var walked: int = 0
+	var previous: float = WaveDirector.threat_for(1)
+	for wave: int in range(2, 301):
+		var threat: float = WaveDirector.threat_for(wave)
+		err = _T.assert_gt(threat, previous,
+			("wave %d (x%.2f) must price above wave %d (x%.2f). The campaign health"
+				+ " ramp multiplies the finale, so the seam is the pair to look at"
+				+ " first -- see health_scale_for on why the endless ramp is a"
+				+ " multiple of the campaign's last value and not an addition to it")
+				% [wave, threat, wave - 1, previous])
+		if err != "":
+			return err
+		previous = threat
+		walked += 1
+	return _T.assert_gt(walked, 250, "the sweep actually walked the curve (%d pairs)" % walked)
+
+
+## The bead's actual complaint, as a gate: no wave in the second act steps by
+## less than a floor, and the table alone cannot clear that floor.
+##
+## The second assertion is the load-bearing one. A floor that the wave rows
+## already satisfied would pass with the ramp deleted, and this whole change would
+## be untested. So the table's own contribution is recovered by dividing the ramp
+## back out, and the test asserts that six of the thirteen steps fall BELOW the
+## floor without it -- which is the plateau the bead was filed about, measured.
+func test_the_back_half_no_longer_plateaus() -> String:
+	var floor_step: float = 0.05
+	var first: int = WaveDirector.SECOND_ACT_START_WAVE + 1
+	var steps: Dictionary = {}
+	var flat_without_the_ramp: int = 0
+	var counted: int = 0
+	var err: String = ""
+	for wave: int in range(first, WaveDirector.WAVES.size() + 1):
+		var ratio: float = WaveDirector.threat_for(wave) / WaveDirector.threat_for(wave - 1)
+		var ramp: float = WaveDirector.health_scale_for(wave) \
+			/ WaveDirector.health_scale_for(wave - 1)
+		steps["wave %d" % wave] = ratio - 1.0
+		if ratio / ramp - 1.0 < floor_step:
+			flat_without_the_ramp += 1
+		err = _T.assert_gt(ratio - 1.0, floor_step,
+			("wave %d steps %+.1f%%, under the %.0f%% floor the second act is supposed"
+				+ " to hold. The measured minimum when this landed was +6.2%% at wave"
+				+ " 20; if this fires, either a row was edited or CAMPAIGN_HEALTH_STEP"
+				+ " was cut") % [wave, (ratio - 1.0) * 100.0, floor_step * 100.0])
+		if err != "":
+			return err
+		counted += 1
+	err = _T.assert_gt(counted, 10,
+		"every wave of the second act was priced (%d)" % counted)
+	if err == "":
+		err = _T.assert_gt(flat_without_the_ramp, 5,
+			("the ramp is load-bearing: only %d of the %d steps would fall under the"
+				+ " %.0f%% floor on the wave rows alone. Six did when this landed"
+				+ " (waves 15, 16, 18, 19, 20 and 21). If this drops to zero the rows"
+				+ " have been rewritten and the ramp is now redundant rather than the"
+				+ " thing holding the floor up")
+				% [flat_without_the_ramp, counted, floor_step * 100.0])
+	if err == "":
+		# The one step still sitting near the line, recorded by name. A future row
+		# edit that pushes a second wave down here has to say so out loud.
+		err = _T.assert_margin(steps, floor_step, 0.02, {"wave 20": 0.062366},
+			("wave 20 is the second act's flattest join and the only step within 2 points"
+				+ " of the floor -- it is the +2.2%% join the bead singled out, lifted"
+				+ " to +6.2%% by the ramp and no further"))
+	return err
+
+
+## The seam bound did not move, and the reason it did not move is a design choice
+## that could easily have gone the other way.
+##
+## `threat_for` must rise across the seam, which caps the campaign finale at 436.7
+## points of base health -- test_economy.gd derives it, and two tests in this file
+## measure the finale's headroom under it. A campaign health ramp multiplies the
+## finale's threat, so it eats that headroom unless the endless ramp is expressed
+## as a MULTIPLE of where the campaign finished rather than as an addition to 1.0.
+## Written multiplicatively the campaign factor appears on both sides of the
+## division and cancels exactly; written additively it does not, and at
+## CAMPAIGN_HEALTH_STEP 0.04 the headroom drops from 18.7 points to 8.5 -- under
+## one Shield Bug, which is what the Shield Bug's own test in this file asserts it
+## is above. This pins the mechanism, not just the consequence.
+func test_the_second_act_costs_the_seam_bound_nothing() -> String:
+	var finale: int = WaveDirector.WAVES.size()
+	var first_endless: int = finale + 1
+
+	# The mechanism: one endless step of health past the finale is exactly
+	# ENDLESS_HEALTH_STEP *of the finale's scale*, not of 1.0.
+	var seam_ratio: float = WaveDirector.health_scale_for(first_endless) \
+		/ WaveDirector.health_scale_for(finale)
+	var err: String = _T.assert_float_eq(seam_ratio, 1.0 + WaveDirector.ENDLESS_HEALTH_STEP,
+		0.000001,
+		("the first endless wave's pests are one endless step tougher than the FINALE's"
+			+ " (x%.4f). If this becomes x%.4f the ramp has been made additive and the"
+			+ " seam bound has quietly shrunk")
+			% [seam_ratio, (1.0 + WaveDirector.ENDLESS_HEALTH_STEP)
+				/ WaveDirector.health_scale_for(finale)])
+	if err != "":
+		return err
+
+	# The consequence, computed the way test_economy.gd's seam test computes it --
+	# with the finale's own health scale now in the campaign multiplier, which is
+	# the correction the ramp forced on all three copies of this derivation.
+	var seam_health: float = 0.0
+	for group: Dictionary in WaveDirector.groups_for(first_endless):
+		seam_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
+	var finale_health: float = 0.0
+	for group: Dictionary in WaveDirector.groups_for(finale):
+		finale_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
+	err = _T.assert_gt(seam_health, 0.0, "the first endless wave has contents")
+	if err == "":
+		err = _T.assert_gt(finale_health, 0.0, "and so does the finale")
+	if err != "":
+		return err
+	var campaign_mult: float = (1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT) \
+		* WaveDirector.health_scale_for(finale)
+	var seam_mult: float = 1.0 + WaveDirector.mutation_chance_for(first_endless) \
+		* WaveDirector.MUTATION_THREAT_WEIGHT
+	var seam_scales: float = WaveDirector.health_scale_for(first_endless) \
+		* WaveDirector.speed_scale_for(first_endless)
+	var bound: float = seam_health * seam_mult * seam_scales / campaign_mult
+	err = _T.assert_float_eq(bound, 436.7, 0.5,
+		("the seam bound is still the 436.7 points of base health that"
+			+ " ENDLESS_BEETLE_BASE, test_economy.gd and two tests in this file all"
+			+ " quote (got %.2f). It is quoted in prose in three places, so a change"
+			+ " to it is a documentation change as much as a balance one")
+			% bound)
+	if err == "":
+		err = _T.assert_float_eq(bound - finale_health, 18.7, 0.5,
+			("and the finale keeps exactly the %.2f points of headroom it had before the"
+				+ " second act -- about one beetle, which is why plant-tower-defense-eeaq"
+				+ " could not append waves to the end of the table")
+				% (bound - finale_health))
+	return err
+
+
+## What the ramp actually is from the player's side, which none of the threat
+## arithmetic above says out loud: the swarm outgrows the plant they start with.
+##
+## A level-1 Corn Cobbler does 1.0 damage a kernel and an aphid has 3.0 health, so
+## a plain aphid has cost exactly three kernels in every wave of this game since
+## it shipped. Under the ramp it costs three through wave 9, four from wave 10 and
+## five from wave 17 -- the swarm's price against the default plant goes up by two
+## thirds across the second act, and the answer to that is a different plant
+## rather than more corn. That is the bead's "the plants unlocked at wave 7 have
+## something to be needed for", reduced to an integer.
+##
+## Asserted through the real Pest as well as the arithmetic, because
+## `apply_wave_scaling` is what the game actually calls and a ramp the spawner did
+## not apply would leave every number above true and the board unchanged.
+func test_the_swarm_outgrows_the_plant_the_player_starts_with() -> String:
+	var kernel: float = float(CornCobbler.LEVELS[0]["damage"])
+	var aphid: float = float(Pest.SPECIES[Pest.APHID]["health"])
+	var err: String = _T.assert_gt(kernel, 0.0, "a level-1 kernel does real damage")
+	if err == "":
+		err = _T.assert_gt(aphid, 0.0, "and an aphid has real health")
+	if err != "":
+		return err
+
+	var previous: int = 0
+	var rises: int = 0
+	var swept: int = 0
+	for wave: int in range(1, WaveDirector.WAVES.size() + 1):
+		var kernels: int = ceili(aphid * WaveDirector.health_scale_for(wave) / kernel)
+		err = _T.assert_gte(kernels, previous,
+			("the price of one aphid against a level-1 cob never goes DOWN"
+				+ " (wave %d wants %d kernels, wave %d wanted %d)")
+				% [wave, kernels, wave - 1, previous])
+		if err != "":
+			return err
+		if kernels > previous and previous > 0:
+			rises += 1
+		previous = kernels
+		swept += 1
+	err = _T.assert_gt(swept, 20, "the whole campaign was priced (%d waves)" % swept)
+	if err == "":
+		err = _T.assert_gte(rises, 2,
+			("the aphid gets more expensive at least twice across the campaign (got %d)."
+				+ " It rose at waves 10 and 17 when this landed, 3 kernels -> 4 -> 5")
+				% rises)
+	if err == "":
+		err = _T.assert_eq(ceili(aphid / kernel), 3,
+			"and it still starts at the three kernels it has always cost")
+	if err != "":
+		return err
+
+	# Through the code the spawner actually runs, not the multiplier alone.
+	var late: Pest = _pest(Pest.APHID, Vector2(100.0, 100.0))
+	var unscaled: float = late.max_health
+	late.apply_wave_scaling(WaveDirector.health_scale_for(WaveDirector.WAVES.size()),
+		WaveDirector.speed_scale_for(WaveDirector.WAVES.size()))
+	err = _T.assert_float_eq(late.max_health,
+		unscaled * WaveDirector.health_scale_for(WaveDirector.WAVES.size()), 0.0001,
+		("a finale aphid really carries %.2f health rather than the species' %.2f"
+			+ " -- Pest.apply_wave_scaling is the path Game takes, and its docstring"
+			+ " still calls this an endless-only multiplier")
+			% [late.max_health, unscaled])
+	if err == "":
+		err = _T.assert_float_eq(late.health, late.max_health, 0.0001,
+			"and spawns with a full bar rather than reading as pre-damaged")
+	if err == "":
+		err = _T.assert_float_eq(late.speed, float(Pest.SPECIES[Pest.APHID]["speed"]), 0.0001,
+			("at the unscaled species speed -- the finale's pests are tougher and not"
+				+ " one pixel faster, which is what keeps every pacing number in"
+				+ " wave_director.gd valid"))
+	late.free()
+	return err
+
+
+# -- END the campaign's second act --------------------------------------------
