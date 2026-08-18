@@ -21,19 +21,50 @@ must survive its colour being thrown away.
 | Shape | Means | Instances |
 |---|---|---|
 | **Solid full ring**, plant-sized, centred on a plant | a REACH — "this is how far it acts" | `corn_cobbler.gd:149`, `dandelion.gd:377`, `dandelion.gd:381` (the bomb's blast radius), `placement_preview.gd:231` (the reach it *would* have) |
-| **Dashed ring** (an arc loop, not a full circle) | a REMARK about the thing inside it | `placement_preview.gd:314` (at risk), `sole_cover_marks.gd:150` (nothing depends on this plant) |
-| **Partial arc** at a fixed radius, sweeping closed | TIME REMAINING on a clock that is already running | `husk_layer.gd:69-77` (a husk's rot timer), `chomp_flower.gd:164-165` (a chew) |
+| **Dashed ring** (an arc loop, not a full circle) | a REMARK about the thing inside it | `placement_preview.gd:320` (at risk), `sole_cover_marks.gd:150` (nothing depends on this plant) |
+| **Partial arc** at a fixed radius, sweeping closed | TIME REMAINING on a clock that is already running | `husk_layer.gd:113-122` (a husk's rot timer), `chomp_flower.gd:486-487` (a chew), `selection_marker.gd:206-208` (the uproot confirm window) |
 | **Small solid ring**, cell-sized, centred on a ROAD CELL | a MARKED CELL — "this one, specifically" | `sole_cover_marks.gd:154` |
-| **Filled dot**, cell-sized, on a road cell | a CELL YOU WOULD GAIN | `placement_preview.gd:268` |
-| **Straight line through a box** | a STATE, legible with colour discarded | `placement_preview.gd:322` (dead ground), `:331-332` (redundant patch) |
+| **Filled dot**, cell-sized, on a road cell | a CELL YOU WOULD GAIN | `placement_preview.gd:274` |
+| **Straight line through a box** | a STATE, legible with colour discarded | `placement_preview.gd:328` (dead ground), `:337-338` (redundant patch) |
 | **Corner brackets** | the SUBJECT — "this is the thing being talked about" | `selection_marker.gd:100-101`, and `PlacementPreview` inherits them one size larger and dimmer, so a hover reads as a promise of selection |
 | **Scattered short marks**, much smaller than a cell, not aligned to the grid | the WEATHER, a property of the whole garden | `weather_overlay.gd:97-98` (drought, flat dashes), `weather_overlay.gd:103-104` (rain, slanted streaks) |
 | **Doubled line width** | ARMED — a destructive action is one click away | `SelectionMarker.WARNING_LINE_WIDTH`, `SoleCoverMarks.WARNING_RING_WIDTH` |
 | **A row of small pips** inside a drawn shape | HOW MANY TIMES OVER — a magnitude the shape's own size and brightness have already saturated on | `husk_layer.gd:117-124` (a husk worth more than `CompostMeter.FULL_VALUE`) |
+| **Hatched stripes filling a road cell**, at one of two mirrored angles | TWO readings of the same cell at once — the ALPHA is how much pressure it took, the ANGLE is whether anything currently aims at it | `lane_pressure_overlay.gd:92-96` |
+
+### The last row is the board-drawn one, and that is the axis it turns on
+
+Every other row above is a mark **on a node** — centred on a plant, on a cell, on a
+mouth — and it means something about that node. The hatch is painted **on the board**,
+by a `Node2D` added as Board's last child, and it means something about a *place* that
+may hold nothing at all. That difference buys it a channel the node-drawn cues do not
+have: it fills an area rather than marking a point, so it can carry **texture and
+orientation** on top of the alpha it was already spending.
+
+It is the most sophisticated cue in the game — two independent readings on one mark —
+and it was the last one written down, because "it is drawn on the board rather than on
+a node" felt like a reason to leave it out of a table of node marks. That is a real
+difference and a bad reason. **A grammar that omits its best example teaches less than
+one that explains why that example is different.**
+
+Why an angle and not a second colour, in one line (`lane_pressure_overlay.gd`'s header
+argues it at length): `GardenTheme.DANGER` is already spent three times over and the
+alpha channel is already carrying magnitude, so texture and orientation were the only
+free channels left on a 64 px cell — and orientation is the one that costs no extra ink.
+`mirror_x()` is a reflection, not a redraw, so both angles ink exactly the same 57% and
+leave exactly the same 43% bare. The blocked-cell cursor wash still reads identically
+over an aimed cell and an off-aim one, which is the property a density or a second hue
+would have spent.
+
+**And it is the one cue that teaches itself without the legend** — coverage is derived
+from the plants standing now, so a player who drops a Corn Cobbler over the leaking
+stretch watches the stripes under it rotate, in the prep window, with the pressure map
+still on screen. Placing the plant IS the tutorial. That is why it can afford to be
+untaught (see below), and it is not a licence for the next board-drawn cue to be.
 
 ## Which of these the game actually TEACHES
 
-Six of the ten, on the notebook's cue-legend page (`CueLegend.ROWS`, reachable from the
+Six of the eleven, on the notebook's cue-legend page (`CueLegend.ROWS`, reachable from the
 title screen and opened directly by the pause card). This section exists because for ten
 cycles the table above was a document for developers only, and a player met a dashed ring
 with nothing to check it against.
@@ -46,10 +77,19 @@ fails when it grows without `NotebookScreen.OVERLAY_GRAMMAR_SHAPES` following, a
 source rather than a hand-list.
 
 So: **adding a row to the table above will fail the suite until someone decides whether it
-is taught.** That is the intended cost. The four currently untaught are untaught because a
+is taught.** That is the intended cost. The five currently untaught are untaught because a
 player meets them late or rarely, not because they are less real — and the ARMED row was in
 that group until cycle 95, which is the wrong place for the only cue guarding an action that
 cannot be undone.
+
+**The hatch is untaught for a different reason, and it is the only row that gets one.**
+Cycle 109 priced a seventh legend row and found the page exactly full: six rows occupy
+294 of the 300 px the legend has, and a seventh lands at 340 px — unbuyable by tightening
+the pitch, because one row's ink alone is 50 px against the 39.3 px pitch seven rows would
+need. So the page could not take the hatch even if it wanted to. What makes that tolerable
+rather than a debt is the paragraph above: the hatch is the one cue that demonstrates
+itself on placement. If a future cue needs a legend row, it is buying width from those
+six, and this is the note saying the width is not lying around.
 
 ## Where the grammar does NOT hold, and why that is tolerable
 
@@ -105,10 +145,11 @@ being thrown away**:
 | Scattered short marks | SIZE and SCATTER, argued at length in the section below — a quarter of a cell, unaligned to the grid. |
 | Doubled line width | WIDTH, and it is the only row whose channel is asserted mechanically: `SelectionMarker.WARNING_LINE_WIDTH` and `SoleCoverMarks.WARNING_RING_WIDTH` are each pinned strictly above their base in `test_selftest.gd` and `test_placement.gd`. |
 | A row of small pips | COUNT. Cycle 88 added pips precisely BECAUSE radius and brightness had both saturated — a magnitude that colour could no longer carry. |
+| Hatched stripes at one of two mirrored angles | ORIENTATION, and it is the only row carrying TWO readings on one mark. Alpha is spent on magnitude and `GardenTheme.DANGER` is spent three times over, so the second reading had to live somewhere that was not hue — and a mirror inks the identical 57%, so discarding colour costs the angle nothing. |
 
 **No two rows share a channel value**, which is the property that matters: the exceptions
 section below names the one place where two rows share a *shape* (solid ring), and resolves
-it by size and centre rather than by hue. So the rule holds for all ten, and it holds
+it by size and centre rather than by hue. So the rule holds for all eleven, and it holds
 *without* any cue reading `RunConfig.colorblind_safe` — none of them does, deliberately.
 `SelectionMarker`'s own header spells that out: the flag "exists precisely because a hue is
 not a reliable carrier, so the brackets get heavier as well as redder". The flag changes the
@@ -116,8 +157,26 @@ HUD's ramps; the board's cues never needed it because they were built to survive
 
 ## How this was derived
 
-`grep -n "draw_arc(\|draw_circle(\|draw_line(\|draw_rect(" game/*.gd` returns 55 calls
-across 15 files. Most are sprites drawing themselves (`sunflower.gd`, `seed_glyph.gd`,
+`grep -n "draw_arc(\|draw_circle(\|draw_line(\|draw_rect(" game/*.gd` returns **80 calls
+across 20 files** (it said 55 across 15 when this was written).
+
+**AND THAT GREP IS BLIND TO TWO OF THE CUES ON THIS PAGE.** `Board.mark_dead_ground` and
+`Board.mark_deferred_road` paint `Line2D` children rather than calling `draw_*`, which
+`board.gd`'s own header explains was deliberate: "a `_draw()` here would be a cue no gate
+could ever see" headlessly. So the recipe misses precisely the two marks that were built
+to be checkable, and a survey run from it would report the board as drawing fewer cues
+than it does. **Grep `Line2D.new()` as well.** Found by plant-tower-defense-wenx while
+pricing a seventh legend row; the full diff is in `game/cue_legend.gd`'s audit block.
+
+~~Also unrecorded here: `lane_pressure_overlay.gd`'s hatch matches none of the ten shapes
+above.~~ **Given its row in cycle 110**, along with the board-drawn-versus-node-drawn note
+that says why it was missing. It was the last cue outside the table, and the reason it sat
+outside was that the derivation's filter — the one part done by judgement rather than by
+grep — asked "is this a mark on a node" when the question was "does this mark carry state".
+That is the same mistake as `husk_layer.gd` below, made a second time, forty cycles later.
+**Both times the filter was the wrong shape and the grep was fine.**
+
+Most of what the grep turns up are sprites drawing themselves (`sunflower.gd`, `seed_glyph.gd`,
 `title_backdrop.gd`, `notebook_page.gd`) and are not cues. The cue files are
 `placement_preview.gd`, `selection_marker.gd`, `sole_cover_marks.gd`,
 `lane_pressure_overlay.gd`, `husk_layer.gd`, and the range rings inside the four plants.

@@ -93,33 +93,136 @@ const READY_ALPHA_FLOOR: float = 0.35
 ## across READY_ALPHA_FLOOR..1.0 actually paints.
 const READINESS_STEPS: int = 24
 
+## Repaint granularity for the AIM, and the same discipline READINESS_STEPS applies
+## to the fade — a bound on repaints, not on the picture.
+##
+## The fan now follows the cob's CURRENT target rather than its last shot, so
+## `_aim_angle` moves every physics tick a target walks. Repainting on every one of
+## those would put a queue_redraw() per plant per frame on a board that can hold a
+## dozen cobs, to move a pip by a fraction of a pixel. So the aim is STORED exactly
+## and PAINTED exactly — nothing is quantised into the shot — and only the decision
+## to repaint is bucketed: one repaint per AIM_STEPS of a full turn.
+##
+## 48 buckets is 7.5 degrees, which moves the outermost pip of a level-3 fan by about
+## 3 px (`aim_step_pip_travel`) — a step a player reads as the fan turning rather than
+## as it jumping. A pest crossing a cob's whole reach sweeps well under half a turn, so
+## this caps the aim at roughly twenty repaints for the entire pass, against the ~600
+## physics ticks that pass takes.
+const AIM_STEPS: int = 48
+
 ## `level` is NOT declared here any more — it is `Plant.level`, along with
 ## `upgrade()`, `upgrade_cost()`, `level_name()`, `max_level()`, `is_max_level()`
 ## and the spend. This class kept all of it for ninety-nine cycles and the ladder
 ## below is all that was ever cob-specific about it; see Plant's "Upgrades" block
 ## for why the machinery moved and the numbers did not.
 var _cooldown: float = 0.0
-## Where the fan points. Updated on every shot, so an upgraded cob visibly
-## sweeps its wider spray across whatever it last shot at.
+## Where the fan points: at the pest this cob would shoot RIGHT NOW, updated every
+## tick `_act` runs, whether or not the volley is armed.
+##
+## It used to be written only inside `_fire_at`, which made the fan a post-view
+## wearing the shape of a preview — a cob showed where it HAD shot, one frame after
+## that stopped being the useful question, and a freshly planted cob pointed due east
+## at nothing until its first volley. The player's question is "which way will this
+## thing shoot", and it is asked hardest in the seconds BEFORE it shoots.
+##
+## Still 0.0 at rest, and that is honest rather than lazy: with nothing in range there
+## is no target to point at, so the fan holds the last direction it was given (or east
+## on a cob that has never seen a pest). What it must never do again is hold a
+## direction while a different pest is standing in range.
 var _aim_angle: float = 0.0
 ## Last readiness step actually painted; -1 means "nothing painted yet".
 var _drawn_readiness_step: int = -1
+## Last aim bucket actually painted; -1 means "nothing painted yet". Same job as
+## `_drawn_readiness_step`, for the other thing that moves the fan.
+var _drawn_aim_step: int = -1
+## How many repaints the AIM has asked for over this cob's life.
+##
+## Counted rather than reasoned about because the bead this came from asks for the
+## redraw rate to be MEASURED: a follow-the-target fan is a cheap feature or a
+## per-frame repaint on every plant on the board depending entirely on whether
+## AIM_STEPS is doing its job, and "it should be fine" is not a number. Written here,
+## above the draw gate, so a headless test can walk a pest across a cob's reach and
+## read the actual count — `_draw()` never runs headless, so a budget whose only
+## record is inside one cannot be checked at all.
+var _aim_repaints: int = 0
 
 
+## One target lookup, used for both the picture and the shot.
+##
+## The lookup moved OUT of the `_cooldown <= 0.0` branch, which is the whole of this
+## change: it used to run only on the tick a volley went off, so the fan could only
+## ever be told about a pest at the moment it was already being shot at. Now the cob
+## picks its target every tick and points at it; firing is what the cooldown gates,
+## not aiming.
+##
+## `target` is deliberately one local read by both calls below. The fan pointing at a
+## different pest from the one the volley hits would be a worse bug than the one this
+## fixes, and two separate `_furthest_along_in_range` calls a line apart is exactly how
+## that arrives — a pest crossing the range edge between them is enough.
 func _act(delta: float, pests: Array[Pest]) -> void:
 	_cooldown = maxf(0.0, _cooldown - delta)
-	if _cooldown <= 0.0:
-		var target: Pest = _furthest_along_in_range(pests, RANGE)
-		if target != null:
-			_fire_at(target.global_position - global_position)
+	var target: Pest = _furthest_along_in_range(pests, RANGE)
+	if target != null:
+		var direction: Vector2 = target.global_position - global_position
+		_aim_at(direction)
+		if _cooldown <= 0.0:
+			_fire_at(direction)
 			_cooldown = fire_interval()
 	_refresh_readiness()
 
 
+## Point the fan at `direction`, and repaint only when the aim has crossed into a new
+## AIM_STEPS bucket — `_refresh_readiness()`'s discipline, applied to the other input
+## the fan is drawn from.
+##
+## A zero direction leaves the aim alone rather than snapping it east: `Vector2.ZERO
+## .angle()` is 0.0, so a pest standing exactly on the cob would otherwise yank the
+## whole fan to due east for as long as it stood there.
+func _aim_at(direction: Vector2) -> void:
+	if direction == Vector2.ZERO:
+		return
+	_aim_angle = direction.angle()
+	var step: int = aim_step_for(_aim_angle)
+	if step == _drawn_aim_step:
+		return
+	_drawn_aim_step = step
+	_aim_repaints += 1
+	queue_redraw()
+
+
+## Which of AIM_STEPS repaint buckets `angle` falls in. Pure, and wrapped, so the
+## bucket a cob aiming just under a full turn lands in is the one it shares with a cob
+## aiming at zero rather than a 49th bucket nothing else can reach.
+static func aim_step_for(angle: float) -> int:
+	return roundi(fposmod(angle, TAU) / TAU * float(AIM_STEPS)) % AIM_STEPS
+
+
+## The widest the fan's outermost pip moves between two neighbouring repaint buckets,
+## in pixels, for `for_level`. Pure: this is the number AIM_STEPS is chosen against,
+## so it is checkable without a frame and a retune of either constant is measured
+## rather than eyeballed.
+##
+## Measured at the pip, not at the pivot, because the pip is what the player watches:
+## the fan is projected from FAN_PIVOT behind the cob precisely so a small angle is a
+## visible distance, and that magnification applies to the stutter as much as to the
+## spread.
+static func aim_step_pip_travel(for_level: int) -> float:
+	var bucket: float = TAU / float(AIM_STEPS)
+	var widest: float = 0.0
+	for offset: float in kernel_angle_offsets(for_level):
+		var here: Vector2 = muzzle_pivot(0.0) + Vector2.RIGHT.rotated(offset) * FAN_LENGTH
+		var there: Vector2 = muzzle_pivot(bucket) + Vector2.RIGHT.rotated(bucket + offset) * FAN_LENGTH
+		widest = maxf(widest, here.distance_to(there))
+	return widest
+
+
 func _fire_at(direction: Vector2) -> void:
 	var stats: Dictionary = level_row()
-	var base_angle: float = direction.angle()
-	_aim_angle = base_angle
+	_aim_at(direction)
+	# The angle the FAN is on, not a second reading of `direction`. One variable for
+	# the picture and the shot is the same rule `kernel_angle_offsets` already enforces
+	# for the spread, one level up: the cob fires exactly where it is pointing.
+	var base_angle: float = _aim_angle
 	queue_redraw()
 	var bounds := Rect2(Vector2.ZERO, Vector2(896, 576))
 	if board != null:
@@ -183,8 +286,8 @@ func _recoil() -> void:
 	if _sprite == null or not is_inside_tree():
 		return
 	var tween := create_tween()
-	tween.tween_property(_sprite, "scale", Vector2(0.88, 1.14), 0.05)
-	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.10)
+	tween.tween_property(_sprite, "scale", Vector2(0.88, 1.14), TWITCH_OUT_SECONDS)
+	tween.tween_property(_sprite, "scale", Vector2.ONE, TWITCH_BACK_SECONDS)
 
 
 ## This cob's ladder. The one override the generic upgrade surface needs — see
@@ -292,6 +395,12 @@ func aim_angle() -> float:
 	return _aim_angle
 
 
+## How many repaints this cob's aim has asked for. The measured half of "the fan
+## follows the target without repainting every frame" — see `_aim_repaints`.
+func aim_repaints() -> int:
+	return _aim_repaints
+
+
 func spread_degrees() -> float:
 	return float(level_row()["spread_degrees"])
 
@@ -331,8 +440,8 @@ func _upgrade_flourish() -> void:
 	if _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
 		return
 	var tween := create_tween()
-	tween.tween_property(_sprite, "scale", Vector2(0.72, 1.34), 0.10)
-	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.18)
+	tween.tween_property(_sprite, "scale", Vector2(0.72, 1.34), FLOURISH_OUT_SECONDS)
+	tween.tween_property(_sprite, "scale", Vector2.ONE, FLOURISH_BACK_SECONDS)
 
 
 func _on_upgraded() -> void:

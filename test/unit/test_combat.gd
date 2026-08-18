@@ -634,6 +634,22 @@ func test_every_event_id_the_call_sites_use_is_in_the_table() -> String:
 	## The other half of the same guard. The constants are what game.gd and
 	## plant.gd actually pass, so a constant without a table row is a call site
 	## that compiles, runs, returns false and makes no sound forever.
+	##
+	## THIS LIST STAYS HAND-TYPED ON PURPOSE (plant-tower-defense-xc07). Deriving it
+	## from `Sfx.SOUNDS` is the obvious move and it is the wrong one: SOUNDS is what it
+	## is being compared against, so a derived list would assert that the table equals
+	## itself. `.claude/skills/derive-the-list/SKILL.md` has the case -- when deriving
+	## removes the second side, the hand-typing IS the check, and the cost of updating
+	## it is the feature, because paying it is what makes someone notice the set moved.
+	## Ten commits have paid it (34f436b, 2a162f3, 388db1a, 6117da4, 075fce9, a2f91d9,
+	## 6dbbe19, 5e6f766, 488b687, 5a7bfe8) and it has never once been stale, because
+	## the size assertion at the bottom will not let it be.
+	##
+	## What this test CANNOT see is the third side: whether any of these ids is still
+	## reached from a real `Sfx.play(` call site, and whether a cue played from one has
+	## a row at all when nobody thought to add it here. `Sfx.play()` is gated off
+	## headless, so no test can watch a call site; `python tools/sfx_call_check.py`
+	## scans game/ for that half and holds both directions.
 	var used: Array[StringName] = [
 		Sfx.PLANT_PLACED, Sfx.PLANT_BITTEN, Sfx.PLANT_DESTROYED,
 		# Both kill ids: game.gd picks between them on husk_multiplier(), so a table row
@@ -1997,8 +2013,16 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 		err = _T.assert_eq(WaveDirector.pests_in_wave(wave), expected[wave - 1],
 			"wave %d still sends %d pests" % [wave, expected[wave - 1]])
 		if err == "":
-			err = _T.assert_float_eq(WaveDirector.health_scale_for(wave), 1.0, 0.0001,
-				"and an unscaled pest")
+			# Was "an unscaled pest" for every campaign wave. plant-tower-defense-iqp8
+			# gave the campaign a second act on exactly this axis, so the property is
+			# now the ramp itself rather than its absence -- derived from the two
+			# constants that define it, so this row cannot drift from health_scale_for
+			# without one of them being edited on purpose.
+			var climbed: int = clampi(wave, WaveDirector.SECOND_ACT_START_WAVE,
+				WaveDirector.WAVES.size()) - WaveDirector.SECOND_ACT_START_WAVE
+			err = _T.assert_float_eq(WaveDirector.health_scale_for(wave),
+				pow(1.0 + WaveDirector.CAMPAIGN_HEALTH_STEP, float(climbed)), 0.0001,
+				"and a pest scaled by %d compounded second-act steps" % climbed)
 		if err == "":
 			err = _T.assert_float_eq(WaveDirector.speed_scale_for(wave), 1.0, 0.0001,
 				"at an unscaled speed")
@@ -5192,6 +5216,13 @@ func test_a_pest_killed_headless_is_eventually_freed() -> String:
 ## unique. Add a fourth thing to `play()` and this key must grow with it — which is
 ## the one way this check can go quietly wrong.
 ##
+## **A fourth thing HAS arrived and this key deliberately did not grow.** `Sfx.JITTER`
+## moves each play off its `PITCH` centre, so this triple is now a statement about the
+## CENTRES — still the right claim, and still the only thing forbidding a duplicate row.
+## The half it can no longer see is asserted next door, by
+## `test_two_events_on_one_file_never_overlap_once_they_wobble`, which keys on the
+## RANGES. Two checks, two claims; do not fold them (plant-tower-defense-r8zc).
+##
 ## **There is no waiver list, on purpose.** The one sharing anybody reasoned about —
 ## `WAVE_CLEARED` reusing `RUN_WON`'s jingle — passes because it was already trimmed
 ## to −9.0 against −4.0, and the comment at `game/sfx.gd:95` says that trim is the
@@ -5329,16 +5360,36 @@ func test_the_chew_ring_sweeps_rather_than_shrinking() -> String:
 ## pest cannot be grabbed by a Chomp at all. So armoured-winged is armoured in name, in
 ## husk payout, and in nothing else. The bead worried the pair might be UNKILLABLE; it is
 ## the opposite, and checking before building is what turned the design around.
+##
+## The traits are DERIVED from `Pest.MUTATION_HUSK_MULTIPLIER` rather than retyped
+## (plant-tower-defense-xc07). That dictionary is the set `apply_mutation` will accept —
+## it refuses anything without a row (`game/pest.gd:852`) — so it is the game's own answer
+## to "every mutation there is", and the copy that used to sit here was a second one. The
+## size assertion that used to follow the copy went with it: once the traits come out of
+## the table, "the copy is as long as the table" is `n == n`, so it is replaced below by a
+## floor on how much this test is allowed to shrink to.
+##
+## Order does not matter to anything below: the double loop visits every ordered pair
+## whichever way round the traits come out, `excluded` is decided by identity rather than
+## by index, and `composed` is a count. (Godot dictionaries iterate in insertion order
+## anyway, so this is stable — but the test does not lean on that.)
+##
+## What stays hand-written is the `excluded` expression, deliberately. Deriving it from
+## `Pest.MUTATION_EXCLUSIONS` would leave `mutations_compose` compared against the list
+## `mutations_compose` reads, and the assertion would have one side. Someone adding a pair
+## has to come here and say so, which is the point.
 func test_every_mutation_pair_states_whether_it_composes() -> String:
-	var all: Array[StringName] = [Pest.MUTATION_ARMOURED, Pest.MUTATION_WINGED,
-		Pest.MUTATION_HUNGRY]
-	var err: String = _T.assert_eq(all.size(), Pest.MUTATION_HUSK_MULTIPLIER.size(),
-		"this table covers every mutation the game has")
+	var traits: Dictionary = Pest.MUTATION_HUSK_MULTIPLIER
+	# The denominator. An empty derivation would run zero assertions below, and a sweep
+	# over nothing reads exactly like a sweep that passed.
+	var err: String = _T.assert_gte(traits.size(), 3,
+		"the game declares at least the three traits this test was written for, got %d"
+			% traits.size())
 	if err != "":
 		return err
 	var composed: int = 0
-	for a: StringName in all:
-		for b: StringName in all:
+	for a: StringName in traits:
+		for b: StringName in traits:
 			var excluded: bool = (a == b) \
 				or (a == Pest.MUTATION_ARMOURED and b == Pest.MUTATION_WINGED) \
 				or (a == Pest.MUTATION_WINGED and b == Pest.MUTATION_ARMOURED)
@@ -5582,6 +5633,12 @@ func test_a_harder_kill_is_pitched_above_a_plain_one() -> String:
 ## Reading `husk_multiplier()` rather than checking `mutations.is_empty()` is what makes a
 ## fourth trait audible without anyone editing `_on_pest_died`. Asserted over every trait
 ## the game has plus a pair, because a single example would not show that the rule scales.
+##
+## "Every trait the game has" is read off `Pest.MUTATION_HUSK_MULTIPLIER` rather than
+## retyped (plant-tower-defense-xc07) — a third trait named here was a third place a fourth
+## mutation would have to be added by hand, and the sentence above would have gone on
+## claiming "every" while the sweep covered three of four. Order is irrelevant: each
+## iteration builds and frees its own pest and asserts the same thing about it.
 func test_every_mutation_makes_a_kill_count_as_hard() -> String:
 	var plain: Pest = _pest(Pest.APHID, Vector2(50, 50))
 	var err: String = _T.assert_float_eq(plain.husk_multiplier(), 1.0, 0.0001,
@@ -5589,8 +5646,14 @@ func test_every_mutation_makes_a_kill_count_as_hard() -> String:
 	plain.free()
 	if err != "":
 		return err
-	for mutation: StringName in [Pest.MUTATION_ARMOURED, Pest.MUTATION_WINGED,
-			Pest.MUTATION_HUNGRY]:
+	# The denominator: a derivation that came back empty would skip the loop entirely and
+	# still return the pair's assertions below, which is a shrunk test that reads clean.
+	err = _T.assert_gte(Pest.MUTATION_HUSK_MULTIPLIER.size(), 3,
+		"there are at least the three traits this sweep was written for, got %d"
+			% Pest.MUTATION_HUSK_MULTIPLIER.size())
+	if err != "":
+		return err
+	for mutation: StringName in Pest.MUTATION_HUSK_MULTIPLIER:
 		var pest: Pest = _pest(Pest.BEETLE, Vector2(50, 50))
 		pest.apply_mutation(mutation)
 		err = _T.assert_true(pest.husk_multiplier() > 1.0,
@@ -6769,7 +6832,14 @@ func test_the_shield_bug_was_paid_for_in_beetles_rather_than_out_of_the_finale()
 		err = _T.assert_gt(finale_health, 0.0, "and so does the finale")
 	if err != "":
 		return err
-	var campaign_mult: float = 1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT
+	# The finale's own health scale belongs in the campaign multiplier since
+	# plant-tower-defense-iqp8: the campaign no longer sits at 1.0 on that axis, and
+	# omitting it inflates the bound to 725 and the headroom to 307, which would let
+	# this assertion pass while measuring nothing. See health_scale_for -- the
+	# endless ramp is a multiple of the campaign's last value precisely so the two
+	# scales cancel here and the bound stays 436.7.
+	var campaign_mult: float = (1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT) \
+		* WaveDirector.health_scale_for(finale)
 	var seam_mult: float = 1.0 + WaveDirector.mutation_chance_for(finale + 1) \
 		* WaveDirector.MUTATION_THREAT_WEIGHT
 	var seam_scales: float = WaveDirector.health_scale_for(finale + 1) \
@@ -7162,7 +7232,13 @@ func test_the_nurse_beetle_was_paid_for_in_beetles_rather_than_out_of_the_finale
 		err = _T.assert_gt(finale_health, 0.0, "and so does the finale")
 	if err != "":
 		return err
-	var campaign_mult: float = 1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT
+	# The finale's own health scale belongs in the campaign multiplier since
+	# plant-tower-defense-iqp8 -- see the Shield Bug's copy of this derivation above
+	# and health_scale_for. Without it the headroom below reads 307 points instead
+	# of 18.7, and this assertion (which says the headroom is SMALL) fails with a
+	# message pointing at the finale rather than at the missing multiplier.
+	var campaign_mult: float = (1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT) \
+		* WaveDirector.health_scale_for(finale)
 	var seam_mult: float = 1.0 + WaveDirector.mutation_chance_for(finale + 1) \
 		* WaveDirector.MUTATION_THREAT_WEIGHT
 	var seam_scales: float = WaveDirector.health_scale_for(finale + 1) \
@@ -7248,3 +7324,2219 @@ func test_wave_carries_boss_sees_every_boss_species_and_not_just_the_queen() -> 
 			"and no endless wave carries one, which is what the campaign-only rule means")
 	return err
 
+
+
+# -- BEGIN the sting's thrust is aimed (plant-tower-defense-n2wd) ---------------
+
+
+## The jab travels at the victim, in both axes and at a fixed distance.
+##
+## `sting_lean_skew` above is a projection onto x, because a shear has nowhere to go but
+## sideways. A THRUST does: the player report this pair of gestures answers ("the red
+## plant also needs a better animation, at the moment it just jiggles") was about a plant
+## that deformed in place, and a jab that only moved horizontally would still not travel
+## at a pest sitting directly above the plant. So this asserts the case the skew
+## deliberately cannot cover.
+func test_a_nettle_thrusts_at_its_victim_in_both_axes() -> String:
+	var plant := Vector2(120.0, 400.0)
+	var right: Vector2 = Nettle.sting_thrust_offset(plant, plant + Vector2(64.0, 0.0))
+	var err: String = _T.assert_float_eq(right.x, Nettle.STING_THRUST_PX, 0.0001,
+		"a victim dead right pulls the jab fully right, got %.3f" % right.x)
+	if err == "":
+		err = _T.assert_float_eq(right.y, 0.0, 0.0001,
+			"and not at all vertically, got %.3f" % right.y)
+	if err == "":
+		# The case sting_lean_skew answers with zero, and the reason this is a vector.
+		var above: Vector2 = Nettle.sting_thrust_offset(plant, plant + Vector2(0.0, -80.0))
+		err = _T.assert_float_eq(above.y, -Nettle.STING_THRUST_PX, 0.0001,
+			("a victim straight up is jabbed UP -- the skew has no answer for this one,"
+				+ " which is why the thrust is a vector and not a second projection."
+				+ " got %.3f") % above.y)
+	if err == "":
+		var diag: Vector2 = Nettle.sting_thrust_offset(plant, plant + Vector2(50.0, -50.0))
+		err = _T.assert_float_eq(diag.length(), Nettle.STING_THRUST_PX, 0.0001,
+			("the throw is the same distance whichever way it points (%.3f) -- a jab"
+				+ " that reached further diagonally would read as two different gestures")
+				% diag.length())
+	if err == "":
+		# Degenerate input must not produce a NaN direction, which would put the sprite
+		# somewhere Godot will not draw and leave no error behind.
+		var same: Vector2 = Nettle.sting_thrust_offset(plant, plant)
+		err = _T.assert_true(same == Vector2.ZERO,
+			"a victim on top of the plant produces no thrust rather than a NaN, got %s" % same)
+	return err
+
+
+# -- END the sting's thrust is aimed -------------------------------------------
+
+
+# -- BEGIN a meal is eaten in bites (plant-tower-defense-h4v1) ------------------
+
+
+## The chew lands three discrete bites, not one continuous drain.
+##
+## Pure statics, deliberately: `GardenTheme.animations_enabled()` is false for every
+## test in this suite by construction, so anything asserted through the drawing is
+## asserted through a closed gate. test_combat.gd's own rule (see the note above
+## `test_a_chomp_lunges_at_the_pest_it_grabbed`) is that the COMPOSITION comes out
+## into a static and the field is written above the gate, so deleting it goes red
+## rather than silently doing nothing.
+func test_a_chomp_eats_a_meal_in_discrete_bites() -> String:
+	var err: String = _T.assert_eq(ChompFlower.bites_taken_for(0.0), 0,
+		"nothing has been bitten off at the instant of the grab")
+	if err == "":
+		err = _T.assert_eq(ChompFlower.bites_taken_for(0.99), ChompFlower.BITES_PER_MEAL - 1,
+			("the last bite lands WITH the kill, not just before it -- a bite at 0.99"
+				+ " is one the player never sees separately from the pest dying"))
+	if err == "":
+		err = _T.assert_eq(ChompFlower.bites_taken_for(1.0), ChompFlower.BITES_PER_MEAL,
+			"and a finished chew has taken every bite")
+	if err == "":
+		# Monotone, and it actually advances: a function stuck at 0 satisfies the
+		# first assertion above and nothing else here.
+		var seen: int = 0
+		var last: int = -1
+		var steps: int = 0
+		for i: int in range(0, 21):
+			var taken: int = ChompFlower.bites_taken_for(float(i) / 20.0)
+			if taken < last:
+				return "bites_taken_for went BACKWARDS at progress %.2f (%d after %d)" % [
+					float(i) / 20.0, taken, last]
+			if taken > last:
+				steps += 1
+			last = taken
+			seen = maxi(seen, taken)
+		err = _T.assert_eq(seen, ChompFlower.BITES_PER_MEAL,
+			"the sweep reached every bite (%d of %d)" % [seen, ChompFlower.BITES_PER_MEAL])
+		if err == "":
+			err = _T.assert_gt(steps, 2,
+				("and it arrived in separate steps rather than in one jump -- %d"
+					+ " transitions over the sweep") % steps)
+	if err == "":
+		err = _T.assert_gt(ChompFlower.BITES_PER_MEAL, 2,
+			("two bites read as start-and-finish, which is what the meal already"
+				+ " looked like before plant-tower-defense-h4v1"))
+	return err
+
+
+## Each bite takes something off the bug, and the corpse keeps what was taken.
+func test_a_chewed_pest_shrinks_and_its_corpse_stays_shrunk() -> String:
+	# The suite's own idiom (see `_pest` above): a bare Pest with setup() called and
+	# physics off. Nothing here needs a tree -- every function under test is pure or a
+	# plain field write, which is the point of pulling them out of the drawing.
+	var pest: Pest = _pest(Pest.APHID, Vector2(200.0, 296.0))
+	var err: String = _T.assert_true(pest != null, "the suite can build a pest")
+	if err != "":
+		return err
+	if err == "":
+		err = _T.assert_float_eq(pest.chewed_scale(), 1.0, 0.0001,
+			"an untouched bug is drawn at full size")
+	if err == "":
+		pest.set_chewed(1.0)
+		err = _T.assert_float_eq(pest.chewed_scale(), Pest.CHEWED_MIN_SCALE, 0.0001,
+			"a fully eaten one is down to CHEWED_MIN_SCALE")
+	if err == "":
+		err = _T.assert_gt(Pest.CHEWED_MIN_SCALE, 0.0,
+			("and that floor is not zero -- a bug that vanishes to a point before the"
+				+ " flower finishes is a bug that died early"))
+	if err == "":
+		# Monotone down, with a real middle: a step function that only moved at 1.0
+		# would satisfy both endpoints above.
+		pest.set_chewed(0.5)
+		var half: float = pest.chewed_scale()
+		err = _T.assert_gt(1.0, half, "half-eaten is smaller than untouched (%.3f)" % half)
+		if err == "":
+			err = _T.assert_gt(half, Pest.CHEWED_MIN_SCALE,
+				"and larger than fully eaten (%.3f)" % half)
+	if err == "":
+		# The discontinuity this replaces: the bug used to be full-size right up to
+		# the frame it became a corpse.
+		pest.set_chewed(1.0)
+		pest.kill(Pest.DEATH_BITTEN)
+		var corpse: Vector2 = pest.corpse_scale()
+		err = _T.assert_gt(1.0, corpse.y,
+			("the corpse of a fully eaten bug is still small -- it must not pop back to"
+				+ " full size on the frame it dies (got y=%.3f)") % corpse.y)
+	pest.free()
+	return err
+
+
+## A pest released unharmed is whole again.
+##
+## A Chomp destroyed mid-chew lets its meal go, and a bug that walked away two-thirds
+## eaten would be a kill the game never scored.
+func test_a_pest_released_from_a_chomp_is_whole_again() -> String:
+	var pest: Pest = _pest(Pest.APHID, Vector2(200.0, 296.0))
+	var err: String = _T.assert_true(pest != null, "the suite can build a pest")
+	if err != "":
+		return err
+	pest.set_chewed(0.66)
+	if err == "":
+		err = _T.assert_gt(1.0, pest.chewed_scale(), "the bug is part-eaten to begin with")
+	if err == "":
+		err = _T.assert_float_eq(pest.chewed_fraction(), 0.66, 0.0001,
+			"and it reports back what was taken off it")
+	if err == "":
+		# The clamp, asserted where it matters: ChompFlower divides bites by
+		# BITES_PER_MEAL, so an off-by-one in that cadence hands this a value above 1
+		# and an unclamped one would invert the lerp and grow the bug.
+		pest.set_chewed(1.4)
+		err = _T.assert_float_eq(pest.chewed_fraction(), 1.0, 0.0001,
+			"a fraction past the end is clamped rather than inverting the shrink")
+	if err == "":
+		pest.set_chewed(0.0)
+		err = _T.assert_float_eq(pest.chewed_scale(), 1.0, 0.0001,
+			"and releasing it puts it back to full size")
+	pest.free()
+	return err
+
+
+# -- END a meal is eaten in bites ----------------------------------------------
+
+
+# -- BEGIN a dandelion survives a freed pest in its census ---------------------
+
+
+## `best_target()` skips a pest that has been freed under it.
+##
+## The sibling of plant-tower-defense-or67 / gh#43, which fixed exactly this in
+## `Plant._furthest_along_in_range`. Dandelion overrides targeting and kept none of
+## it: `grep -c is_instance_valid game/dandelion.gd` read 0 until this landed.
+##
+## A FREED pest, deliberately, not a null one. `is_instance_valid` and `!= null`
+## disagree on precisely this value -- a freed Object is not equal to null -- so a
+## test that appended `null` would pass against a `!= null` guard that still crashes
+## on the real case. That gap is also why no static gate could see this: the cast
+## resolves and the name check is clean.
+func test_a_dandelion_skips_a_pest_freed_under_it() -> String:
+	var dandelion := Dandelion.new()
+	dandelion.position = Vector2(200.0, 296.0)
+	var live: Pest = _pest(Pest.APHID, Vector2(220.0, 296.0))
+	var doomed: Pest = _pest(Pest.APHID, Vector2(240.0, 296.0))
+	var pests: Array[Pest] = [live, doomed]
+
+	# Freed, not removed from the array: that is the state the board actually reaches
+	# when a kernel kills a pest between the census and the targeting pass.
+	doomed.free()
+
+	var err: String = _T.assert_false(is_instance_valid(doomed),
+		"the pest really is freed, so this test is exercising the case it claims to")
+	if err == "":
+		var picked: Pest = dandelion.best_target(pests)
+		err = _T.assert_true(picked == live,
+			("best_target returns the survivor rather than crashing on the corpse"
+				+ " (got %s)") % picked)
+	if err == "":
+		# The other half, and the one a null-check would not have caught: the freed
+		# pest must not be counted into the blast census either, or the bomb aims at
+		# a phantom.
+		var only_dead: Array[Pest] = [doomed]
+		err = _T.assert_true(dandelion.best_target(only_dead) == null,
+			"and a census of nothing but corpses picks no target at all")
+	dandelion.free()
+	live.free()
+	return err
+
+
+# -- END a dandelion survives a freed pest ------------------------------------
+
+
+# -- BEGIN the campaign's second act (plant-tower-defense-iqp8) ---------------
+#
+# The campaign's back half stopped escalating: waves 10-22 averaged +6.7% of
+# threat a wave for thirteen waves against +14.7% to +80.0% for waves 2-8, and a
+# depth-first garden won all twenty-two of them in cycle 101 without losing a
+# life. The fix is a compounding health ramp under waves 10-22 -- one function,
+# `WaveDirector.health_scale_for`, rather than fourteen rewritten wave rows,
+# because the rows are capped by the seam bound at ENDLESS_BEETLE_BASE and have
+# about one beetle of headroom between them.
+#
+# Balance is the one thing no static gate can judge, so these tests do NOT claim
+# the campaign is now fun. They pin the four things that ARE checkable and that a
+# later balance pass will break without noticing: the first act is untouched, the
+# second one really climbs, the curve never falls anywhere from wave 1 to wave
+# 300, and the seam bound is exactly the number three other tests derive.
+#
+# Every number quoted below was priced offline against _raw_threat before
+# wave_director.gd was edited -- an arithmetic model of the pure statics, not a
+# measurement of a running game.
+
+
+## The shape of the ramp, asserted at both ends.
+##
+## Two halves and both matter. The first act must be bit-for-bit what it was --
+## wave 8 is MUTATION_START_WAVE and wave 9 already steps +29.1% on count alone,
+## and cycle 101's whole tuning was about not landing two difficulty increases on
+## one wave -- so health_scale_for is exactly 1.0 out to SECOND_ACT_START_WAVE and
+## wave 10 is the first tougher wave. The second act must then step by exactly
+## CAMPAIGN_HEALTH_STEP every wave, compounding, which is the property that stops
+## it front-loading the way a linear ramp would.
+func test_the_second_act_starts_where_it_says_it_does() -> String:
+	var err: String = ""
+	var flat: int = 0
+	for wave: int in range(1, WaveDirector.SECOND_ACT_START_WAVE + 1):
+		err = _T.assert_float_eq(WaveDirector.health_scale_for(wave), 1.0, 0.000001,
+			("wave %d is in the first act and must be bit-for-bit unscaled -- the ramp"
+				+ " anchors AT wave %d, it does not start on it")
+				% [wave, WaveDirector.SECOND_ACT_START_WAVE])
+		if err != "":
+			return err
+		flat += 1
+	err = _T.assert_gt(flat, 5, "the first act was actually swept (%d waves)" % flat)
+	if err != "":
+		return err
+
+	var climbed: int = 0
+	for wave: int in range(WaveDirector.SECOND_ACT_START_WAVE + 1, WaveDirector.WAVES.size() + 1):
+		var ratio: float = WaveDirector.health_scale_for(wave) \
+			/ WaveDirector.health_scale_for(wave - 1)
+		err = _T.assert_float_eq(ratio, 1.0 + WaveDirector.CAMPAIGN_HEALTH_STEP, 0.000001,
+			("wave %d sends pests exactly %.0f%% tougher than wave %d (got %+.2f%%)."
+				+ " Compounding rather than linear: a linear ramp puts its biggest"
+				+ " relative step on wave %d and its smallest on the finale, which is"
+				+ " the wrong way round for a second act")
+				% [wave, WaveDirector.CAMPAIGN_HEALTH_STEP * 100.0, wave - 1,
+					(ratio - 1.0) * 100.0, WaveDirector.SECOND_ACT_START_WAVE + 1])
+		if err != "":
+			return err
+		climbed += 1
+	err = _T.assert_gt(climbed, 10,
+		"and the second act is a real stretch of waves, not one row (%d)" % climbed)
+	if err == "":
+		# The finale, as the one number a human can hold: x1.665 at 0.04 over
+		# thirteen waves. Derived rather than typed, so the constant stays the only
+		# place the steepness is chosen.
+		var top: float = pow(1.0 + WaveDirector.CAMPAIGN_HEALTH_STEP,
+			float(WaveDirector.WAVES.size() - WaveDirector.SECOND_ACT_START_WAVE))
+		err = _T.assert_float_eq(WaveDirector.health_scale_for(WaveDirector.WAVES.size()), top,
+			0.000001, "the finale's pests are x%.3f of the wave-1 pest" % top)
+	if err == "":
+		# THE THING THAT MUST NOT HAVE MOVED. Speed feeds crossing_seconds, which
+		# feeds _paced_gap and peak_simultaneous_pests -- so a campaign speed ramp
+		# would silently re-price every road-budget number in wave_director.gd. It
+		# was available as a lever and was deliberately not used.
+		var pinned: int = 0
+		for wave: int in range(1, WaveDirector.WAVES.size() + 1):
+			err = _T.assert_float_eq(WaveDirector.speed_scale_for(wave), 1.0, 0.000001,
+				("wave %d's pests still walk at the species speed. Health was the lever"
+					+ " because it feeds damage and nothing else; speed feeds the road"
+					+ " budget") % wave)
+			if err == "":
+				err = _T.assert_float_eq(WaveDirector.mutation_chance_for(wave),
+					WaveDirector.MUTATION_CHANCE, 0.000001,
+					"and wave %d still rolls the flat campaign mutation rate" % wave)
+			if err != "":
+				return err
+			pinned += 1
+		err = _T.assert_gt(pinned, 20, "the whole campaign was checked (%d waves)" % pinned)
+	return err
+
+
+## The stated invariant, swept rather than argued: threat_for rises strictly at
+## every adjacent pair from wave 1 to wave 300 -- through the campaign, across the
+## seam into endless, and past the wave every per-pest multiplier has capped.
+##
+## test_selftest.gd and test_combat.gd already sweep this. It is repeated here
+## deliberately: it is the one thing the bead named as non-negotiable, and a
+## reader of this section should not have to go and find out whether anybody
+## checks it. If this fails and the sweeps elsewhere pass, the campaign ramp is
+## the cause.
+func test_the_second_act_never_lets_the_threat_curve_fall() -> String:
+	var err: String = _T.assert_float_eq(WaveDirector.threat_for(1), 1.0, 0.0001,
+		"wave 1 is still the unit every other number is quoted in")
+	if err != "":
+		return err
+	var walked: int = 0
+	var previous: float = WaveDirector.threat_for(1)
+	for wave: int in range(2, 301):
+		var threat: float = WaveDirector.threat_for(wave)
+		err = _T.assert_gt(threat, previous,
+			("wave %d (x%.2f) must price above wave %d (x%.2f). The campaign health"
+				+ " ramp multiplies the finale, so the seam is the pair to look at"
+				+ " first -- see health_scale_for on why the endless ramp is a"
+				+ " multiple of the campaign's last value and not an addition to it")
+				% [wave, threat, wave - 1, previous])
+		if err != "":
+			return err
+		previous = threat
+		walked += 1
+	return _T.assert_gt(walked, 250, "the sweep actually walked the curve (%d pairs)" % walked)
+
+
+## The bead's actual complaint, as a gate: no wave in the second act steps by
+## less than a floor, and the table alone cannot clear that floor.
+##
+## The second assertion is the load-bearing one. A floor that the wave rows
+## already satisfied would pass with the ramp deleted, and this whole change would
+## be untested. So the table's own contribution is recovered by dividing the ramp
+## back out, and the test asserts that six of the thirteen steps fall BELOW the
+## floor without it -- which is the plateau the bead was filed about, measured.
+func test_the_back_half_no_longer_plateaus() -> String:
+	var floor_step: float = 0.05
+	var first: int = WaveDirector.SECOND_ACT_START_WAVE + 1
+	var steps: Dictionary = {}
+	var flat_without_the_ramp: int = 0
+	var counted: int = 0
+	var err: String = ""
+	for wave: int in range(first, WaveDirector.WAVES.size() + 1):
+		var ratio: float = WaveDirector.threat_for(wave) / WaveDirector.threat_for(wave - 1)
+		var ramp: float = WaveDirector.health_scale_for(wave) \
+			/ WaveDirector.health_scale_for(wave - 1)
+		steps["wave %d" % wave] = ratio - 1.0
+		if ratio / ramp - 1.0 < floor_step:
+			flat_without_the_ramp += 1
+		err = _T.assert_gt(ratio - 1.0, floor_step,
+			("wave %d steps %+.1f%%, under the %.0f%% floor the second act is supposed"
+				+ " to hold. The measured minimum when this landed was +6.2%% at wave"
+				+ " 20; if this fires, either a row was edited or CAMPAIGN_HEALTH_STEP"
+				+ " was cut") % [wave, (ratio - 1.0) * 100.0, floor_step * 100.0])
+		if err != "":
+			return err
+		counted += 1
+	err = _T.assert_gt(counted, 10,
+		"every wave of the second act was priced (%d)" % counted)
+	if err == "":
+		err = _T.assert_gt(flat_without_the_ramp, 5,
+			("the ramp is load-bearing: only %d of the %d steps would fall under the"
+				+ " %.0f%% floor on the wave rows alone. Six did when this landed"
+				+ " (waves 15, 16, 18, 19, 20 and 21). If this drops to zero the rows"
+				+ " have been rewritten and the ramp is now redundant rather than the"
+				+ " thing holding the floor up")
+				% [flat_without_the_ramp, counted, floor_step * 100.0])
+	if err == "":
+		# The steps still sitting near the line, recorded by name. A future row edit
+		# that pushes a third wave down here has to say so out loud.
+		#
+		# TWO of them, and both numbers are from a RUN. The lane that wrote this
+		# priced the ramp offline at CAMPAIGN_HEALTH_STEP = 0.04 and recorded
+		# {"wave 20": 0.062366} from its own Python model. The step landed at 0.03
+		# instead -- 0.04 compounds into endless and took a real garden six waves past
+		# the seam from fighting half its escapees to fighting 11 of 38 -- so wave 20
+		# is 0.0522 now, and wave 16 came down to the line with it.
+		err = _T.assert_margin(steps, floor_step, 0.02,
+			{"wave 16": 0.066822, "wave 20": 0.052237},
+			("wave 20 is the second act's flattest join and the only step within 2 points"
+				+ " of the floor -- it is the +2.2%% join the bead singled out, lifted"
+				+ " to +6.2%% by the ramp and no further"))
+	return err
+
+
+## The seam bound did not move, and the reason it did not move is a design choice
+## that could easily have gone the other way.
+##
+## `threat_for` must rise across the seam, which caps the campaign finale at 436.7
+## points of base health -- test_economy.gd derives it, and two tests in this file
+## measure the finale's headroom under it. A campaign health ramp multiplies the
+## finale's threat, so it eats that headroom unless the endless ramp is expressed
+## as a MULTIPLE of where the campaign finished rather than as an addition to 1.0.
+## Written multiplicatively the campaign factor appears on both sides of the
+## division and cancels exactly; written additively it does not, and at
+## CAMPAIGN_HEALTH_STEP 0.04 the headroom drops from 18.7 points to 8.5 -- under
+## one Shield Bug, which is what the Shield Bug's own test in this file asserts it
+## is above. This pins the mechanism, not just the consequence.
+func test_the_second_act_costs_the_seam_bound_nothing() -> String:
+	var finale: int = WaveDirector.WAVES.size()
+	var first_endless: int = finale + 1
+
+	# The mechanism: one endless step of health past the finale is exactly
+	# ENDLESS_HEALTH_STEP *of the finale's scale*, not of 1.0.
+	var seam_ratio: float = WaveDirector.health_scale_for(first_endless) \
+		/ WaveDirector.health_scale_for(finale)
+	var err: String = _T.assert_float_eq(seam_ratio, 1.0 + WaveDirector.ENDLESS_HEALTH_STEP,
+		0.000001,
+		("the first endless wave's pests are one endless step tougher than the FINALE's"
+			+ " (x%.4f). If this becomes x%.4f the ramp has been made additive and the"
+			+ " seam bound has quietly shrunk")
+			% [seam_ratio, (1.0 + WaveDirector.ENDLESS_HEALTH_STEP)
+				/ WaveDirector.health_scale_for(finale)])
+	if err != "":
+		return err
+
+	# The consequence, computed the way test_economy.gd's seam test computes it --
+	# with the finale's own health scale now in the campaign multiplier, which is
+	# the correction the ramp forced on all three copies of this derivation.
+	var seam_health: float = 0.0
+	for group: Dictionary in WaveDirector.groups_for(first_endless):
+		seam_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
+	var finale_health: float = 0.0
+	for group: Dictionary in WaveDirector.groups_for(finale):
+		finale_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
+	err = _T.assert_gt(seam_health, 0.0, "the first endless wave has contents")
+	if err == "":
+		err = _T.assert_gt(finale_health, 0.0, "and so does the finale")
+	if err != "":
+		return err
+	var campaign_mult: float = (1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT) \
+		* WaveDirector.health_scale_for(finale)
+	var seam_mult: float = 1.0 + WaveDirector.mutation_chance_for(first_endless) \
+		* WaveDirector.MUTATION_THREAT_WEIGHT
+	var seam_scales: float = WaveDirector.health_scale_for(first_endless) \
+		* WaveDirector.speed_scale_for(first_endless)
+	var bound: float = seam_health * seam_mult * seam_scales / campaign_mult
+	err = _T.assert_float_eq(bound, 436.7, 0.5,
+		("the seam bound is still the 436.7 points of base health that"
+			+ " ENDLESS_BEETLE_BASE, test_economy.gd and two tests in this file all"
+			+ " quote (got %.2f). It is quoted in prose in three places, so a change"
+			+ " to it is a documentation change as much as a balance one")
+			% bound)
+	if err == "":
+		err = _T.assert_float_eq(bound - finale_health, 18.7, 0.5,
+			("and the finale keeps exactly the %.2f points of headroom it had before the"
+				+ " second act -- about one beetle, which is why plant-tower-defense-eeaq"
+				+ " could not append waves to the end of the table")
+				% (bound - finale_health))
+	return err
+
+
+## What the ramp actually is from the player's side, which none of the threat
+## arithmetic above says out loud: the swarm outgrows the plant they start with.
+##
+## A level-1 Corn Cobbler does 1.0 damage a kernel and an aphid has 3.0 health, so
+## a plain aphid has cost exactly three kernels in every wave of this game since
+## it shipped. Under the ramp it costs three through wave 9, four from wave 10 and
+## five from wave 17 -- the swarm's price against the default plant goes up by two
+## thirds across the second act, and the answer to that is a different plant
+## rather than more corn. That is the bead's "the plants unlocked at wave 7 have
+## something to be needed for", reduced to an integer.
+##
+## Asserted through the real Pest as well as the arithmetic, because
+## `apply_wave_scaling` is what the game actually calls and a ramp the spawner did
+## not apply would leave every number above true and the board unchanged.
+func test_the_swarm_outgrows_the_plant_the_player_starts_with() -> String:
+	var kernel: float = float(CornCobbler.LEVELS[0]["damage"])
+	var aphid: float = float(Pest.SPECIES[Pest.APHID]["health"])
+	var err: String = _T.assert_gt(kernel, 0.0, "a level-1 kernel does real damage")
+	if err == "":
+		err = _T.assert_gt(aphid, 0.0, "and an aphid has real health")
+	if err != "":
+		return err
+
+	var previous: int = 0
+	var rises: int = 0
+	var swept: int = 0
+	for wave: int in range(1, WaveDirector.WAVES.size() + 1):
+		var kernels: int = ceili(aphid * WaveDirector.health_scale_for(wave) / kernel)
+		err = _T.assert_gte(kernels, previous,
+			("the price of one aphid against a level-1 cob never goes DOWN"
+				+ " (wave %d wants %d kernels, wave %d wanted %d)")
+				% [wave, kernels, wave - 1, previous])
+		if err != "":
+			return err
+		if kernels > previous and previous > 0:
+			rises += 1
+		previous = kernels
+		swept += 1
+	err = _T.assert_gt(swept, 20, "the whole campaign was priced (%d waves)" % swept)
+	if err == "":
+		err = _T.assert_gte(rises, 2,
+			("the aphid gets more expensive at least twice across the campaign (got %d)."
+				+ " It rose at waves 10 and 17 when this landed, 3 kernels -> 4 -> 5")
+				% rises)
+	if err == "":
+		err = _T.assert_eq(ceili(aphid / kernel), 3,
+			"and it still starts at the three kernels it has always cost")
+	if err != "":
+		return err
+
+	# Through the code the spawner actually runs, not the multiplier alone.
+	var late: Pest = _pest(Pest.APHID, Vector2(100.0, 100.0))
+	var unscaled: float = late.max_health
+	late.apply_wave_scaling(WaveDirector.health_scale_for(WaveDirector.WAVES.size()),
+		WaveDirector.speed_scale_for(WaveDirector.WAVES.size()))
+	err = _T.assert_float_eq(late.max_health,
+		unscaled * WaveDirector.health_scale_for(WaveDirector.WAVES.size()), 0.0001,
+		("a finale aphid really carries %.2f health rather than the species' %.2f"
+			+ " -- Pest.apply_wave_scaling is the path Game takes, and its docstring"
+			+ " still calls this an endless-only multiplier")
+			% [late.max_health, unscaled])
+	if err == "":
+		err = _T.assert_float_eq(late.health, late.max_health, 0.0001,
+			"and spawns with a full bar rather than reading as pre-damaged")
+	if err == "":
+		err = _T.assert_float_eq(late.speed, float(Pest.SPECIES[Pest.APHID]["speed"]), 0.0001,
+			("at the unscaled species speed -- the finale's pests are tougher and not"
+				+ " one pixel faster, which is what keeps every pacing number in"
+				+ " wave_director.gd valid"))
+	late.free()
+	return err
+
+
+# -- END the campaign's second act --------------------------------------------
+
+
+# -- BEGIN what a death feels like (plant-tower-defense-6v39, -rowt) -----------
+#
+# Two cues on the one path every pest leaves the board by, `Pest.kill()`.
+#
+# -6v39: the kernel kill gets a knockback. Cycle 65 shipped a bitten corpse (narrower)
+# and a blasted one (tilted) and left the kernel on the straight default so the two
+# that differ would read as remarkable -- but a Corn Cobbler is the plant most players
+# own most of the time, so the default was the majority of corpses a player ever sees
+# and the moment of death said nothing. The shove is a third CHANNEL (position) rather
+# than a third `_death_cause` value, so a corpse can be chewed AND shoved.
+#
+# -rowt: `DEATH_LINGER` was a flat 0.35s, so an armoured beetle that soaked four
+# volleys left on the same beat as an aphid that took one. It is now scaled by
+# `husk_multiplier()`, which is already the game's answer to "how much did this cost to
+# deal with" -- the same number `Game._on_pest_died` reads for the husk and for
+# `Sfx.kill_event_for`.
+#
+# Both live past `GardenTheme.animations_enabled()`, false for every test in this suite
+# by construction, so both follow the rule the directional-animation block above
+# states: the composition comes out into a pure static (`Pest.knockback_offset`,
+# `Pest.death_linger_for`) and the result is recorded into a field written ABOVE the
+# gate (`_death_knockback`, `_death_linger`), read back through `death_knockback()` and
+# `death_linger()`. Deleting the shove from the kill goes red rather than going quiet.
+
+
+## Every side, not just one: a sign error that is right for a kernel flying right is
+## wrong for the other three, and the wrong sign here is a corpse thrown TOWARD the cob
+## that shot it -- which still renders a perfectly plausible frame.
+func test_a_kernels_knockback_is_aimed_away_from_the_shot_on_every_side() -> String:
+	var kernel := Vector2(300.0, 200.0)
+	var victims: Dictionary = {
+		"right": kernel + Vector2(17.0, 0.0),
+		"left": kernel + Vector2(-17.0, 0.0),
+		"below": kernel + Vector2(0.0, 12.0),
+		"above": kernel + Vector2(0.0, -12.0),
+		"down-left": kernel + Vector2(-9.0, 11.0),
+	}
+	var err: String = ""
+	for side: String in victims:
+		var pest_at: Vector2 = victims[side]
+		var shove: Vector2 = Pest.knockback_offset(kernel, pest_at)
+		var onward: Vector2 = (pest_at - kernel).normalized()
+		err = _T.assert_float_eq(shove.length(), Pest.DEATH_KNOCKBACK_PX, 0.001,
+			"a %s hit shoves by exactly DEATH_KNOCKBACK_PX, got %.3f" % [side, shove.length()])
+		if err != "":
+			break
+		# A unit dot of 1.0 is "the same way the kernel was travelling", and nothing
+		# else scores it: a corpse thrown back at the shooter scores -1, one thrown
+		# across the road scores 0.
+		err = _T.assert_float_eq(shove.normalized().dot(onward), 1.0, 0.0001,
+			"and carries the body ONWARD, not back at the cob (%s: shove %s, onward %s)"
+				% [side, shove, onward])
+		if err != "":
+			break
+	if err == "":
+		# `Kernel._physics_process` is a centre-to-centre distance test, so a kernel
+		# arriving exactly on a pest's centre is reachable and a normalize() there
+		# would be a NaN riding into a Tween and a sprite position.
+		err = _T.assert_eq(Pest.knockback_offset(kernel, kernel), Vector2.ZERO,
+			"a hit dead on the centre shoves nowhere, not to NaN")
+	if err == "":
+		# A shove, not a throw. Past a quarter cell the corpse starts landing in the
+		# square next door, and a husk the player is about to sweep is dropped at the
+		# body's cell -- the picture and the click would stop agreeing.
+		err = _T.assert_true(Pest.DEATH_KNOCKBACK_PX < float(Board.CELL) * 0.25,
+			"and the corpse stays in the cell it died in (%.1f px against %.1f)"
+				% [Pest.DEATH_KNOCKBACK_PX, float(Board.CELL) * 0.25])
+	if err == "":
+		# The slide has to be over before the fade begins, or the corpse is still
+		# moving while it disappears -- two cues competing for the same beat.
+		err = _T.assert_true(Pest.DEATH_KNOCKBACK_TIME < Pest.DEATH_LINGER - Pest.DEATH_FADE,
+			"and has settled before the fade starts (%.2fs of a %.2fs hold)"
+				% [Pest.DEATH_KNOCKBACK_TIME, Pest.DEATH_LINGER - Pest.DEATH_FADE])
+	return err
+
+
+## The reach half: the REAL kernel path composes the shove and the corpse really sits
+## on it, whatever the animation gate says.
+##
+## Driven through `Kernel._physics_process` rather than by calling `take_damage`
+## directly, because the thing being checked is that the kernel -- the only object in
+## the game that knows which way the shot was travelling -- hands the direction over at
+## all. A test that passed the vector in itself would pass with that line deleted.
+##
+## The frame-by-frame loop is deliberate: the kernel samples every SPEED*delta px
+## (7.0 px at 60 Hz) against an 18 px radius, so it detects the pest while still SHORT
+## of it. Stepping it in one big delta would park the kernel PAST the pest and record a
+## backwards shove that the real game never produces.
+func test_a_kernel_kill_shoves_the_corpse_along_the_shot_and_a_plain_kill_does_not() -> String:
+	var pest: Pest = _pest(Pest.APHID, Vector2(200.0, 100.0))
+	# One kernel's worth of life left, so the first hit is the killing one.
+	pest.health = 0.5
+	var kernel := Kernel.new()
+	kernel.setup(Vector2(120.0, 100.0), Vector2.RIGHT, 5.0, Rect2(Vector2.ZERO, Vector2(896.0, 576.0)))
+	# Stepped by hand below, the way the coverage simulation in this file drives them.
+	kernel.set_physics_process(false)
+	var host: Node2D = _host([pest, kernel])
+	await _T.instantiate_scene(host)
+
+	var err: String = _T.assert_eq(pest.death_knockback(), Vector2.ZERO,
+		"a living pest is not already mid-knockback")
+	var frames: int = 0
+	# The pest WALKS while the kernel closes -- it is a live pest with its own
+	# _physics_process -- so the body's own last position is the baseline, not the
+	# spawn point. Comparing against the spawn point measures the gait, not the
+	# knockback, and fails by ~1.3px for a reason that has nothing to do with the bead.
+	var last_live: Vector2 = pest.position
+	while err == "" and pest.is_alive() and frames < 60:
+		last_live = pest.position
+		kernel._physics_process(1.0 / 60.0)
+		frames += 1
+	if err == "":
+		err = _T.assert_false(pest.is_alive(),
+			"the kernel reached the pest and killed it (%d frames)" % frames)
+	if err == "":
+		err = _T.assert_float_eq(pest.death_knockback().length(), Pest.DEATH_KNOCKBACK_PX, 0.001,
+			"and recorded a full-strength shove, got %s" % pest.death_knockback())
+	if err == "":
+		err = _T.assert_float_eq(pest.death_knockback().normalized().dot(Vector2.RIGHT), 1.0, 0.0001,
+			("aimed the way the kernel was flying -- this cob shot rightward, so the body"
+				+ " goes right (got %s)") % pest.death_knockback())
+	if err == "":
+		# The picture, not just the number. Animations are off here, so this IS the
+		# corpse's resting state: a shove composed inside the Tween would read (0, 0).
+		err = _T.assert_eq(pest._sprite.position, pest.death_knockback(),
+			"and the corpse sprite is actually sitting there with animations off")
+	if err == "":
+		# The body itself must not have moved. `died` fires before `_play_death`, and
+		# `Game._on_pest_died` drops the husk and files the lane loss at `pest.position`
+		# -- a knockback on the Node2D would walk a husk off the cell it was earned on
+		# and shift what the coverage and escape simulations in this file count.
+		err = _T.assert_eq(pest.position, last_live,
+			("while the pest node stays exactly where it fell -- the shove is a sprite"
+				+ " offset. A body-level knockback would put this %.1fpx away")
+				% Pest.DEATH_KNOCKBACK_PX)
+
+	# And the straight corpse keeps its path, which is what leaves
+	# `test_a_corpse_lies_differently_depending_on_what_killed_it` meaning something: a
+	# Chomp's meal, a bomb's victim and any direct kill lie where they fell.
+	if err == "":
+		var chewed: Pest = _pest(Pest.APHID, Vector2(400.0, 300.0))
+		host.add_child(chewed)
+		chewed.kill(Pest.DEATH_BITTEN)
+		err = _T.assert_eq(chewed.death_knockback(), Vector2.ZERO,
+			"a chewed corpse is not shoved -- only a hit that arrived along a line is")
+		if err == "":
+			err = _T.assert_eq(chewed._sprite.position, Vector2.ZERO,
+				"and its sprite is still centred on the body")
+	_T.free_ui(host)
+	return err
+
+
+## Every husk multiplier the game can actually reach, derived from the mutation table
+## and `mutations_compose` rather than from a list somebody has to remember to grow --
+## the same derivation `test_selftest.gd`'s `_reachable_husk_values` uses, and for the
+## same reason: the hand-written version of that one was wrong.
+func _reachable_husk_multipliers() -> Array[float]:
+	var seen: Dictionary = {1.0: true}
+	for a: StringName in Pest.MUTATION_HUSK_MULTIPLIER:
+		var ma: float = float(Pest.MUTATION_HUSK_MULTIPLIER[a])
+		seen[ma] = true
+		for b: StringName in Pest.MUTATION_HUSK_MULTIPLIER:
+			if Pest.mutations_compose(a, b):
+				seen[ma * float(Pest.MUTATION_HUSK_MULTIPLIER[b])] = true
+	var out: Array[float] = []
+	for m: float in seen:
+		out.append(m)
+	out.sort()
+	return out
+
+
+## A hard-won kill holds the screen longer than an easy one, across every price the
+## game can actually charge.
+func test_a_corpse_holds_in_proportion_to_what_the_kill_cost() -> String:
+	var prices: Array[float] = _reachable_husk_multipliers()
+	var err: String = _T.assert_gt(prices.size(), 2,
+		"there is more than one price to tell apart (%d)" % prices.size())
+	if err == "":
+		err = _T.assert_float_eq(Pest.death_linger_for(1.0), Pest.DEATH_LINGER, 0.0001,
+			"a plain pest leaves on exactly the beat it always did")
+	var previous: float = 0.0
+	for price: float in prices:
+		if err != "":
+			break
+		var held: float = Pest.death_linger_for(price)
+		err = _T.assert_gt(held, previous,
+			"a %.2fx kill holds longer than every cheaper one (%.3fs against %.3fs)"
+				% [price, held, previous])
+		if err == "":
+			# The fade is a fixed tail and the HOLD is what grows. If a scaled linger
+			# ever dipped under DEATH_FADE the fade would swallow the whole beat and
+			# `_play_death` would queue a negative interval.
+			err = _T.assert_gt(held - Pest.DEATH_FADE, 0.0,
+				"and still has a solid hold in front of its fade (%.3fs at %.2fx)"
+					% [held - Pest.DEATH_FADE, price])
+		previous = held
+	if err == "":
+		# Visibly different, which is the acceptance. A tenth of a second is roughly
+		# the floor a player reads as "that one stayed"; the hardest pest today is
+		# three times the plain beat.
+		err = _T.assert_gt(Pest.death_linger_for(prices[prices.size() - 1]) - Pest.DEATH_LINGER, 0.1,
+			"and the dearest kill outlasts the cheapest by an eyeful, not by a frame")
+	if err == "":
+		# The cap is not decoration: `husk_multiplier()` is a PRODUCT, so a fourth
+		# mutation would multiply into it. Today nothing reaches the ceiling.
+		err = _T.assert_gte(Pest.DEATH_LINGER_MAX_MULTIPLIER, prices[prices.size() - 1],
+			("the cap is at or above the dearest kill the game can roll (%.2f against %.2f)"
+				+ " -- below it and the mutation stops being felt")
+				% [Pest.DEATH_LINGER_MAX_MULTIPLIER, prices[prices.size() - 1]])
+	if err == "":
+		err = _T.assert_float_eq(Pest.death_linger_for(99.0),
+			Pest.DEATH_LINGER * Pest.DEATH_LINGER_MAX_MULTIPLIER, 0.0001,
+			"and it really clamps, rather than documenting a clamp")
+	if err == "":
+		# Never faster than the default. A corpse that vanished quicker than a plain
+		# one would read as the game dropping frames, not as an easy kill.
+		err = _T.assert_float_eq(Pest.death_linger_for(0.1), Pest.DEATH_LINGER, 0.0001,
+			"nothing leaves faster than the plain beat, whatever it is worth")
+	if err == "":
+		# `test_a_pest_killed_headless_is_eventually_freed` waits 600 frames for a
+		# corpse to go. The longest one this can produce must sit comfortably inside
+		# that, or a mutation shipped today fails a test written months ago.
+		err = _T.assert_true(Pest.death_linger_for(Pest.DEATH_LINGER_MAX_MULTIPLIER) < 2.0,
+			"and the longest corpse in the game is still under two seconds (%.2fs)"
+				% Pest.death_linger_for(Pest.DEATH_LINGER_MAX_MULTIPLIER))
+	return err
+
+
+## The reach half, and the bead's acceptance verbatim: two pests of different difficulty
+## killed in the same frame leave at different times.
+##
+## Through `kill()`, the one path every death takes, so the scaling cannot be deleted
+## from it without this going red.
+func test_two_pests_killed_in_one_frame_leave_at_different_times() -> String:
+	var plain: Pest = _pest(Pest.APHID, Vector2(100.0, 100.0))
+	var dear: Pest = _pest(Pest.APHID, Vector2(160.0, 100.0))
+	var err: String = _T.assert_true(dear.apply_mutation(Pest.MUTATION_HUNGRY),
+		"the second aphid really took the mutation")
+	var host: Node2D = _host([plain, dear])
+	await _T.instantiate_scene(host)
+
+	if err == "":
+		err = _T.assert_float_eq(plain.death_linger(), Pest.DEATH_LINGER, 0.0001,
+			"a live pest reports the plain beat until something kills it")
+	if err == "":
+		err = _T.assert_gt(dear.husk_multiplier(), plain.husk_multiplier(),
+			"the mutated one costs the player more to deal with")
+	if err == "":
+		# The same frame, one after the other, which is the comparison the acceptance
+		# asks for -- not two runs with a stopwatch.
+		plain.kill()
+		dear.kill()
+		err = _T.assert_float_eq(plain.death_linger(), Pest.DEATH_LINGER, 0.0001,
+			"the plain corpse still leaves on the beat it always did")
+	if err == "":
+		err = _T.assert_gt(dear.death_linger(), plain.death_linger(),
+			"and the dear one outstays it (%.3fs against %.3fs)"
+				% [dear.death_linger(), plain.death_linger()])
+	if err == "":
+		# Exactly the price, not merely longer: the corpse and the husk are paid on the
+		# same number, which is the whole argument for reusing husk_multiplier() here
+		# instead of inventing a second measure of difficulty.
+		err = _T.assert_float_eq(dear.death_linger() / plain.death_linger(),
+			dear.husk_multiplier(), 0.0001,
+			("the two lingers stand in exactly the ratio the two husks do (%.3f against %.3f)")
+				% [dear.death_linger() / plain.death_linger(), dear.husk_multiplier()])
+	if err == "":
+		err = _T.assert_gt(dear.death_linger() - Pest.DEATH_FADE, 0.0,
+			"and its fade is still a tail on the end of a solid hold")
+	_T.free_ui(host)
+	return err
+
+
+# -- END what a death feels like -----------------------------------------------
+
+
+# -- BEGIN what the board says is happening to this pest right now --------------
+# plant-tower-defense-ayri (the cob points at its CURRENT target) and
+# plant-tower-defense-wlyz (a pest the garden actually touched says so).
+
+
+## Kernels living under `host` — the cob spawns them as its own SIBLINGS, so this is
+## how "did it fire" is asked without a stopwatch.
+func _kernels_under(host: Node) -> int:
+	var found: int = 0
+	for child: Node in host.get_children():
+		if child is Kernel:
+			found += 1
+	return found
+
+
+## The bead's first acceptance: a cob with a pest in range points at it BEFORE firing.
+##
+## Held deliberately off the trigger the whole way through — `_cooldown` is set well
+## above zero and the kernel count is asserted at zero — because the old behaviour
+## would pass any test that let a shot go off. `_aim_angle` was written in `_fire_at`
+## and nowhere else, so "points at its target" and "just shot at its target" were the
+## same observation, and only a cob that has NOT fired can tell them apart.
+func test_a_cob_points_at_the_pest_it_will_shoot_before_it_shoots_it() -> String:
+	var corn := CornCobbler.new()
+	# OUT of RANGE for the settle. instantiate_scene pumps frames before the line
+	# below can switch physics off, so an aphid parked in reach is already aimed at
+	# by the time the "never seen a pest" assertion runs -- it read -PI/2, the exact
+	# direction of a pest the test had put directly overhead. The precondition has to
+	# survive the settle or it is not a precondition.
+	var aphid: Pest = _pest(Pest.APHID, Vector2(0.0, -400.0))
+	var host: Node2D = _host([corn, aphid])
+	await _T.instantiate_scene(host)
+	corn.set_physics_process(false)
+	# Mid-reload. Nothing in this test is allowed to fire.
+	corn._cooldown = 0.5
+
+	var err: String = _T.assert_float_eq(corn.aim_angle(), 0.0, 0.0001,
+		"a cob that has never seen a pest sits on its initial angle")
+	# Now walk it into reach, by hand, with the cob frozen.
+	aphid.position = Vector2(0.0, -100.0)
+	var pests: Array[Pest] = [aphid]
+	corn._act(0.016, pests)
+	if err == "":
+		err = _T.assert_eq(_kernels_under(host), 0,
+			"no volley went off -- the cob is still most of a reload away")
+	if err == "":
+		# Due north of the cob: -Y is up, so the angle is -PI/2.
+		err = _T.assert_float_eq(corn.aim_angle(), -PI * 0.5, 0.0005,
+			"and it is ALREADY pointing at the pest standing north of it (%.1f deg)"
+				% rad_to_deg(corn.aim_angle()))
+	if err == "":
+		# And it tracks, rather than latching the first thing it ever saw.
+		aphid.position = Vector2(120.0, 120.0)
+		corn._act(0.016, pests)
+		err = _T.assert_float_eq(corn.aim_angle(), PI * 0.25, 0.0005,
+			"the fan follows the pest round the cob with no shot in between (%.1f deg)"
+				% rad_to_deg(corn.aim_angle()))
+	if err == "":
+		err = _T.assert_eq(_kernels_under(host), 0, "still without firing a kernel")
+	if err == "":
+		# The picture, not just the number: the drawn pip has to be on the pest's side
+		# of the cob, which is the whole of what a player reads off this.
+		var pips: PackedVector2Array = corn.muzzle_pip_positions()
+		err = _T.assert_gt(pips.size(), 0, "the cob draws at least one pip")
+		if err == "":
+			err = _T.assert_gt(pips[0].x, 0.0,
+				"and it sits on the same side of the cob as the pest (x = %.1f)" % pips[0].x)
+		if err == "":
+			err = _T.assert_gt(pips[0].y, 0.0, "on both axes")
+	_T.free_ui(host)
+	return err
+
+
+## The fan and the volley are aimed at the SAME pest, driven through the real _act()
+## with a decoy standing somewhere else entirely.
+##
+## This is the regression the fix could most easily have introduced: aiming and firing
+## used to be one statement, and splitting them into "aim every tick, fire when armed"
+## is exactly how a cob ends up drawing at one bug and shooting another.
+func test_the_fan_and_the_volley_are_pointed_at_the_same_pest() -> String:
+	var corn := CornCobbler.new()
+	# `_furthest_along_in_range` keeps the first pest of equal progress, and `_pest`
+	# gives every pest a two-point route, so both of these read progress 1.0 and the
+	# chosen one is the one listed first. Deliberate: the point is that the DECOY is
+	# somewhere the fan must not be.
+	# Both parked OUT of RANGE (176) for the settle. instantiate_scene pumps frames
+	# before physics can be switched off, so pests placed in reach let the cob fire a
+	# whole volley of its own before the _act below -- the kernel count then reads two
+	# volleys and the test fails on a number that has nothing to do with aiming.
+	var chosen: Pest = _pest(Pest.APHID, Vector2(-420.0, 0.0))
+	var decoy: Pest = _pest(Pest.APHID, Vector2(0.0, 420.0))
+	var host: Node2D = _host([corn, chosen, decoy])
+	await _T.instantiate_scene(host)
+	corn.set_physics_process(false)
+	corn._cooldown = 0.0
+	# Walked into reach by hand, with the cob frozen.
+	chosen.position = Vector2(-120.0, 0.0)
+	decoy.position = Vector2(0.0, 120.0)
+
+	var pests: Array[Pest] = [chosen, decoy]
+	corn._act(0.016, pests)
+	var err: String = _T.assert_eq(_kernels_under(host), corn.kernels_per_shot(),
+		"the cob fired its whole volley")
+	if err == "":
+		err = _T.assert_float_eq(absf(corn.aim_angle()), PI, 0.0005,
+			"and the fan is pointed due west at the pest it chose, not south at the decoy")
+	var fired: Kernel = null
+	for child: Node in host.get_children():
+		if child is Kernel:
+			fired = child as Kernel
+			break
+	if err == "":
+		err = _T.assert_true(fired != null, "a kernel is on the board to read back")
+	if err == "":
+		err = _T.assert_float_eq(wrapf(fired._velocity.angle() - corn.aim_angle(), -PI, PI),
+			0.0, 0.0005,
+			("the kernel really flies down the line the fan is drawn on (%.2f deg apart)"
+				% rad_to_deg(wrapf(fired._velocity.angle() - corn.aim_angle(), -PI, PI))))
+	_T.free_ui(host)
+	return err
+
+
+## The bead's third acceptance, verbatim: "the redraw rate is measured, not assumed".
+##
+## A fan that follows its target is a repaint every physics tick unless something
+## bounds it, on every cob on the board at once. AIM_STEPS is that bound and
+## `aim_repaints()` is the count, so this walks a pest right across a cob's face and
+## reads the actual number rather than trusting the constant's doc comment.
+##
+## The pest is MOVED BY HAND with physics off. A live pest walks itself, and a count
+## taken while the suite's own frame pump moves it would be measuring the gait.
+func test_the_fan_follows_a_walking_pest_without_repainting_every_frame() -> String:
+	var corn := CornCobbler.new()
+	var aphid: Pest = _pest(Pest.APHID, Vector2(-150.0, -60.0))
+	var host: Node2D = _host([corn, aphid])
+	await _T.instantiate_scene(host)
+	corn.set_physics_process(false)
+	# Never arms. Every repaint counted below belongs to the aim and nothing else.
+	corn._cooldown = 1000.0
+
+	# The bucketing itself first, as arithmetic: two angles inside one bucket are one
+	# repaint, a full turn wraps back onto bucket zero rather than opening a 49th
+	# nothing else can reach, and the count below is only worth reading if this holds.
+	var bucket_width: float = TAU / float(CornCobbler.AIM_STEPS)
+	var err: String = _T.assert_eq(CornCobbler.aim_step_for(0.0), 0,
+		"due east is bucket zero")
+	if err == "":
+		err = _T.assert_eq(CornCobbler.aim_step_for(TAU), CornCobbler.aim_step_for(0.0),
+			"a full turn wraps onto the same bucket rather than off the end")
+	if err == "":
+		err = _T.assert_eq(CornCobbler.aim_step_for(bucket_width * 0.2),
+			CornCobbler.aim_step_for(0.0),
+			"a fifth of a bucket is not a repaint")
+	if err == "":
+		err = _T.assert_eq(CornCobbler.aim_step_for(bucket_width * 4.0), 4,
+			"and four buckets along is bucket four")
+	if err != "":
+		_T.free_ui(host)
+		return err
+
+	var pests: Array[Pest] = [aphid]
+	var ticks: int = 240
+	var first: float = 0.0
+	var last: float = 0.0
+	for i: int in range(ticks + 1):
+		aphid.position = Vector2(lerpf(-150.0, 150.0, float(i) / float(ticks)), -60.0)
+		corn._act(0.0, pests)
+		if i == 0:
+			first = corn.aim_angle()
+		last = corn.aim_angle()
+
+	var sweep: float = absf(wrapf(last - first, -PI, PI))
+	var bucket: float = bucket_width
+	var repaints: float = float(corn.aim_repaints())
+	err = _T.assert_gt(sweep, 2.0,
+		"the pest really crossed the cob's face (%.0f deg of sweep)" % rad_to_deg(sweep))
+	if err == "":
+		err = _T.assert_gt(corn.aim_repaints(), 1,
+			"the fan really followed it -- a fan that never repainted is a fan nobody sees move")
+	if err == "":
+		# The bound, derived from the sweep rather than written down: one repaint per
+		# bucket crossed, plus the two partial buckets at the ends.
+		err = _T.assert_gte(sweep / bucket + 2.0, repaints,
+			"%.0f repaints for %.1f buckets of sweep -- the aim is bucketed, not per-frame"
+				% [repaints, sweep / bucket])
+	if err == "":
+		err = _T.assert_gt(repaints, sweep / bucket - 2.0,
+			"and it did not skip buckets either (%.0f against %.1f)" % [repaints, sweep / bucket])
+	if err == "":
+		err = _T.assert_gt(float(ticks) * 0.25, repaints,
+			"%.0f repaints across %d ticks is a fraction of a per-frame redraw"
+				% [repaints, ticks])
+	if err == "":
+		# The other half of the tradeoff: a bucket has to be small enough that the fan
+		# reads as turning rather than snapping. Measured at the pip, where it is seen.
+		err = _T.assert_gt(6.0, CornCobbler.aim_step_pip_travel(CornCobbler.LEVELS.size()),
+			"one bucket moves the widest pip %.1f px, which is a turn and not a jump"
+				% CornCobbler.aim_step_pip_travel(CornCobbler.LEVELS.size()))
+		if err == "":
+			err = _T.assert_gt(CornCobbler.aim_step_pip_travel(CornCobbler.LEVELS.size()), 0.0,
+				"and it does move -- a 0 px step is a frozen fan")
+	_T.free_ui(host)
+	return err
+
+
+## plant-tower-defense-wlyz's acceptance: an escape distinguishes fought-and-survived
+## from untouched, and the test drives both.
+##
+## `_ever_engaged` has known this since the run summary was written; what it has never
+## had is a picture. Both halves are asserted here — the flag the summary counts and
+## the mark the board draws — because the failure this is guarding against is the two
+## drifting apart, i.e. a pest counted as fought in the post-mortem and drawn as
+## untouched while the player could still have done something about it.
+func test_an_escaping_pest_says_whether_the_garden_ever_touched_it() -> String:
+	var fought: Pest = _pest(Pest.APHID, Vector2(100.0, 100.0))
+	var untouched: Pest = _pest(Pest.APHID, Vector2(160.0, 100.0))
+	var host: Node2D = _host([fought, untouched])
+	await _T.instantiate_scene(host)
+
+	var err: String = _T.assert_false(fought.shows_fought_mark(),
+		"a pest arrives on the board bare")
+	if err == "":
+		err = _T.assert_false(untouched.shows_fought_mark(), "both of them")
+	if err == "":
+		fought.take_damage(1.0)
+		err = _T.assert_true(fought.shows_fought_mark(),
+			"one kernel that lands is enough to mark it")
+	if err == "":
+		err = _T.assert_true(fought.shows_fought_mark() == fought.was_engaged(),
+			"and the mark says exactly what the summary counts")
+	if err == "":
+		err = _T.assert_false(untouched.shows_fought_mark(),
+			"while the one nothing ever shot at is still bare")
+
+	# The escape itself. `_escape()` emits and frees in the same frame, so the reading
+	# has to happen inside the handler -- deferring it would get a freed instance,
+	# which is the same reason Game._note_escape reads the flag where it does.
+	var seen: Array = []
+	fought.escaped.connect(func(p: Pest) -> void:
+		seen.append([p.was_engaged(), p.shows_fought_mark()]))
+	untouched.escaped.connect(func(p: Pest) -> void:
+		seen.append([p.was_engaged(), p.shows_fought_mark()]))
+	if err == "":
+		# Past the end of its two-point route, which is the real escape path.
+		fought._advance(1000.0)
+		untouched._advance(1000.0)
+		err = _T.assert_eq(seen.size(), 2, "both pests reached the exit")
+	if err == "":
+		err = _T.assert_true(bool(seen[0][0]) and bool(seen[0][1]),
+			"the one that was fought leaves wearing the mark")
+	if err == "":
+		err = _T.assert_false(bool(seen[1][0]) or bool(seen[1][1]),
+			"and the one that strolled past an empty road leaves bare")
+	_T.free_ui(host)
+	return err
+
+
+## The case the health bar cannot report, which is the case the mark is worth drawing
+## for: a Shield Bug whose plate ate the whole kernel.
+##
+## Nothing else on the board moves. The bar is full, the bug walks on, and "the garden
+## is shooting this one and getting nowhere" and "nothing in the garden can reach this
+## lane" look identical without the mark -- which is exactly the two sentences the bead
+## is about, at the moment the player can still buy a different plant.
+func test_a_hit_the_plate_ate_still_marks_the_pest_it_bounced_off() -> String:
+	var bug: Pest = _pest(Pest.SHIELDBUG, Vector2(100.0, 100.0))
+	var host: Node2D = _host([bug])
+	await _T.instantiate_scene(host)
+
+	var kernel: float = _top_kernel_damage()
+	var before: float = bug.health
+	var err: String = _T.assert_gt(Pest.shell_absorb(Pest.SHIELDBUG), kernel,
+		"the plate eats the whole of the biggest kernel in the game (%.2f against %.2f)"
+			% [Pest.shell_absorb(Pest.SHIELDBUG), kernel])
+	if err == "":
+		bug.take_damage(kernel)
+		err = _T.assert_float_eq(bug.health, before, 0.0001,
+			"so the health bar has nothing whatsoever to report")
+	if err == "":
+		err = _T.assert_true(bug.shows_fought_mark(),
+			"and the mark is the only thing on the board saying the garden reached it")
+	_T.free_ui(host)
+	return err
+
+
+## Being held counts, and it survives being let go.
+##
+## `_ever_engaged`'s own header argues this case: a Chomp destroyed mid-chew hands back
+## a live pest at full health that had very much been fought. The mark has to make the
+## same call, or a released bug walks the rest of the road looking untouched.
+func test_a_pest_a_chomp_held_keeps_the_mark_after_it_is_let_go() -> String:
+	var chomp := ChompFlower.new()
+	var aphid: Pest = _pest(Pest.APHID, Vector2(0.0, -Board.CELL))
+	var host: Node2D = _host([chomp, aphid])
+	await _T.instantiate_scene(host)
+
+	var pests: Array[Pest] = [aphid]
+	chomp._act(0.016, pests)
+	var err: String = _T.assert_true(chomp.is_busy(), "the Chomp closed on the aphid")
+	if err == "":
+		err = _T.assert_true(aphid.held_by != null, "and the aphid knows it is held")
+	if err == "":
+		# The pest's own frame is where being held is recorded -- `_pest` turns physics
+		# off, so this is the one call that reaches it.
+		aphid._physics_process(0.016)
+		err = _T.assert_true(aphid.shows_fought_mark(),
+			"a mouth closing on a pest marks it, even though a Chomp does no damage")
+	if err == "":
+		err = _T.assert_float_eq(aphid.health, aphid.max_health, 0.0001,
+			"at full health, which is why the mark is the only record of it")
+	if err == "":
+		chomp.release()
+		err = _T.assert_true(aphid.shows_fought_mark(),
+			"and letting it go does not un-fight it")
+	_T.free_ui(host)
+	return err
+
+
+## The mark's geometry, which is where it earns its place in `game/OVERLAY_GRAMMAR.md`
+## rather than inventing an eleventh shape.
+##
+## It is the DASHED RING row -- "a REMARK about the thing inside it" -- applied to a
+## pest for the first time, so what has to hold is the two things that row is
+## distinguished by: the break (a solid ring at this size would read as a reach), and
+## its position clear of every other mark a pest can wear at the same time. Both
+## asserted with the colour thrown away, which is that document's one rule with teeth.
+func test_the_fought_mark_is_a_broken_ring_clear_of_every_other_mark_on_a_pest() -> String:
+	var dashes: PackedVector2Array = Pest.fought_ring_dashes()
+	var err: String = _T.assert_eq(dashes.size(), Pest.FOUGHT_RING_DASHES,
+		"the ring is drawn in %d dashes" % Pest.FOUGHT_RING_DASHES)
+	if err == "":
+		err = _T.assert_gt(dashes.size(), 2,
+			"which is enough of them to read as a broken loop rather than as two arcs")
+	var ink: float = 0.0
+	for i: int in range(dashes.size()):
+		if err != "":
+			break
+		var dash: Vector2 = dashes[i]
+		err = _T.assert_gt(dash.y, dash.x, "dash %d covers an arc rather than a point" % i)
+		ink += dash.y - dash.x
+		if err == "" and i > 0:
+			err = _T.assert_gt(dash.x, dashes[i - 1].y,
+				("and there is a real gap in front of it -- the BREAK is the channel that "
+					+ "survives the colour being thrown away (dash %d)") % i)
+	if err == "":
+		err = _T.assert_float_eq(ink, PI, 0.0001,
+			"half the turn is ink and half is bare (%.3f of %.3f)" % [ink, TAU])
+	if err == "":
+		err = _T.assert_gt(TAU, dashes[dashes.size() - 1].y,
+			"and the last dash closes inside one turn")
+
+	# Every species at once, derived from SPECIES rather than a hand-list: a sixth
+	# pest at a new sprite scale must not be able to ship wearing its remark inside
+	# its own armour.
+	var checked: int = 0
+	for which: StringName in Pest.SPECIES:
+		if err != "":
+			break
+		var scale: float = float(Pest.SPECIES[which]["scale"])
+		var ring: float = Pest.fought_ring_radius(scale)
+		var plate: float = Pest.SPRITE_HALF * scale * Pest.PLATE_OUTER
+		err = _T.assert_gt(ring, plate,
+			"%s wears the remark outside its armour plate (%.1f against %.1f)"
+				% [which, ring, plate])
+		if err == "":
+			err = _T.assert_gt(ring, Pest.SPRITE_HALF * scale,
+				"%s wears it outside its own silhouette too" % which)
+		checked += 1
+	if err == "":
+		err = _T.assert_eq(checked, Pest.SPECIES.size(),
+			"every species in the table was measured, not just the ones anyone remembered")
+	return err
+
+
+# -- END what the board says is happening to this pest right now ----------------
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-sleq: the previous selection, held for comparison
+#
+# Selecting a second plant used to erase the first one's rings (game.gd:_select ->
+# Plant.set_selected(false), which hides the brackets AND empties the sole-cover
+# marks). The question a player actually has is comparative -- "which of these two
+# should I move?" -- so the two things being compared were never on screen together.
+#
+# The held-over look is a THIRD STATE of the SUBJECT row in game/OVERLAY_GRAMMAR.md,
+# not an eleventh shape: same corner brackets, two of the four corners drawn. Adding a
+# row would fail test_the_legend_names_as_many_shapes_as_the_grammar_documents, and it
+# would deserve to, because the shape has not changed.
+#
+# Everything here is asserted off pure statics -- SelectionMarker.bracket_corners,
+# SelectionMarker.held_ink, SoleCoverMarks.mark_radius -- because
+# GardenTheme.animations_enabled() is false for the whole suite and headless runs no
+# _draw() at all. The composition lives above that gate so deleting the demotion goes
+# red instead of quietly making two ring sets identical.
+
+
+## The corner table, which is the whole cue. Four corners = the subject now; two
+## diagonally opposite = the subject one click ago.
+func test_the_held_over_subject_is_the_same_brackets_with_two_corners_missing() -> String:
+	var live: Array[Vector2] = SelectionMarker.bracket_corners(false)
+	var held: Array[Vector2] = SelectionMarker.bracket_corners(true)
+	var err: String = _T.assert_eq(live.size(), 4,
+		"the live subject is a closed box: four detached corners")
+	if err == "":
+		err = _T.assert_eq(held.size(), 2,
+			"and the held-over one is the same box left open: two of them")
+	# COUNT is the channel. Size is spent separating live (22) from the hover promise
+	# (27), and colour is the channel this project's grammar forbids spending alone --
+	# so if these two ever have the same number of corners the cue has no carrier left.
+	if err == "":
+		err = _T.assert_gt(live.size(), held.size(),
+			("the two states differ in how many corners are drawn, which is the one "
+				+ "channel left: size belongs to the hover promise and colour to nobody"))
+	# Held is a SUBSET, not a different figure. A corner the live state never draws
+	# would make this a new shape rather than the same one, incomplete.
+	var subset: int = 0
+	for corner: Vector2 in held:
+		if err != "":
+			break
+		err = _T.assert_true(live.has(corner),
+			"held corner %s is one the live brackets already draw" % corner)
+		subset += 1
+	if err == "":
+		err = _T.assert_eq(subset, held.size(),
+			"every held corner was checked, not just the first")
+	# DIAGONALLY OPPOSITE. Two corners down one edge read as an arrow pointing
+	# somewhere; opposite corners still describe a box, which is what the row means.
+	if err == "":
+		err = _T.assert_true((held[0] + held[1]).is_equal_approx(Vector2.ZERO),
+			("the two are diagonally opposite (%s and %s) -- adjacent corners would "
+				+ "read as an arrow rather than as an unfinished box")
+				% [held[0], held[1]])
+	# Signs only: the corners are multiplied by `half` and `arm` at paint time, so a
+	# value that is not +-1 would put a bracket somewhere off the box entirely.
+	var checked: int = 0
+	for corner: Vector2 in live:
+		if err != "":
+			break
+		err = _T.assert_float_eq(absf(corner.x), 1.0, 0.0001,
+			"corner %s sits on the box's own x edge" % corner)
+		if err == "":
+			err = _T.assert_float_eq(absf(corner.y), 1.0, 0.0001,
+				"and on its y edge, so `half` and `arm` put it on the box")
+		checked += 1
+	if err == "":
+		err = _T.assert_eq(checked, live.size(), "every live corner was measured")
+	return err
+
+
+## The one rule with teeth: a cue must be legible when its colour is discarded. Held
+## versus live has to differ in something that is not a hue and not an alpha.
+func test_the_held_over_look_survives_its_colour_being_thrown_away() -> String:
+	# held_ink is alpha-only by construction, and that is what proves alpha is the
+	# SECOND channel rather than the carrier: the RGB is byte-identical, so a greyscale
+	# read of the two states is the corner count and the ring radius and nothing else.
+	var base := Color(0.2, 0.4, 0.8, 0.8)
+	var dim: Color = SelectionMarker.held_ink(base, true)
+	var err: String = _T.assert_float_eq(dim.r, base.r, 0.0001, "held ink keeps the red")
+	if err == "":
+		err = _T.assert_float_eq(dim.g, base.g, 0.0001, "and the green")
+	if err == "":
+		err = _T.assert_float_eq(dim.b, base.b, 0.0001,
+			("and the blue -- shifting the hue would make the held plant a different "
+				+ "statement instead of the same one, quieter"))
+	if err == "":
+		err = _T.assert_float_eq(dim.a, base.a * SelectionMarker.HELD_ALPHA_SCALE, 0.0001,
+			"only the alpha moves, by HELD_ALPHA_SCALE")
+	if err == "":
+		err = _T.assert_gt(1.0, SelectionMarker.HELD_ALPHA_SCALE,
+			"which dims rather than brightens (%.2f)" % SelectionMarker.HELD_ALPHA_SCALE)
+	if err == "":
+		err = _T.assert_gt(SelectionMarker.HELD_ALPHA_SCALE, 0.0,
+			"and leaves the cue on screen rather than erasing it")
+	# The live path must be untouched, or every existing assertion about MARKER_COLOR
+	# and WARNING_COLOR is now asserting a slightly different colour.
+	if err == "":
+		err = _T.assert_eq(SelectionMarker.held_ink(base, false), base,
+			("held_ink is the identity when nothing is held over -- the armed and "
+				+ "selected colours the rest of the suite pins must not move"))
+	# The rings' channel is SIZE, which is the channel that row already declares:
+	# OVERLAY_GRAMMAR.md tells a 9 px cell ring from a 176 px reach by "size and
+	# centre, not shape". A third size inside the same row is that logic once more.
+	if err == "":
+		err = _T.assert_gt(SoleCoverMarks.mark_radius(false),
+			SoleCoverMarks.mark_radius(true) * 1.5,
+			("the held ring is under two thirds of the live one (%.1f against %.1f) -- "
+				+ "a ratio no gamma curve or greyscale conversion touches")
+				% [SoleCoverMarks.mark_radius(true), SoleCoverMarks.mark_radius(false)])
+	if err == "":
+		err = _T.assert_gt(SoleCoverMarks.mark_radius(true), PlacementPreview.NEW_COVER_DOT,
+			("and still larger than the hover's gained-cell disc (%.1f against %.1f), so "
+				+ "where the two land near each other they nest rather than coincide")
+				% [SoleCoverMarks.mark_radius(true), PlacementPreview.NEW_COVER_DOT])
+	# WIDTH is the ARMED row's channel -- the only cue guarding an action that cannot be
+	# undone. A held-over ring is not an escalation and must not borrow it.
+	if err == "":
+		var marks := SoleCoverMarks.new()
+		marks.set_points(PackedVector2Array([Vector2(64.0, 64.0)]))
+		marks.set_held_over(true)
+		err = _T.assert_float_eq(marks.ring_width(), SoleCoverMarks.RING_WIDTH, 0.0001,
+			("holding a plant over does not thicken its rings -- doubled width means "
+				+ "ARMED and nothing else may spend that channel"))
+		if err == "":
+			err = _T.assert_true(marks.held_over, "set_held_over took")
+		if err == "":
+			marks.set_held_over(true)
+			err = _T.assert_true(marks.held_over, "and is idempotent, as its header claims")
+		if err == "":
+			err = _T.assert_float_eq(marks.ring_color().a,
+				SoleCoverMarks.MARK_COLOR.a * SoleCoverMarks.HELD_ALPHA_SCALE, 0.0001,
+				"the held rings dim through the same scale the brackets use")
+		if err == "":
+			marks.set_held_over(false)
+			err = _T.assert_eq(marks.ring_color(), SoleCoverMarks.MARK_COLOR,
+				"and restoring gives back exactly the live ink")
+		marks.free()
+	if err == "":
+		err = _T.assert_float_eq(SoleCoverMarks.HELD_ALPHA_SCALE,
+			SelectionMarker.HELD_ALPHA_SCALE, 0.0001,
+			("the rings and the brackets of one held plant dim by ONE number, borrowed "
+				+ "rather than declared twice"))
+	return err
+
+
+## The fact the whole design rests on: two plants' sole-cover sets can never share a
+## cell, so two ring sets on the board are two clusters and never two rings on one cell.
+## If this stopped being true, the reader would be asked to untangle overlapping marks
+## and the size channel above would not be enough.
+func test_two_plants_sole_cover_sets_never_share_a_cell() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var first := Vector2i(1, 3)
+	var second := Vector2i(0, 5)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, first), "",
+		"a cob goes in at %s" % first)
+	if err == "":
+		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, second), "",
+			"and a second at %s" % second)
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var a: Plant = game.plant_at(first)
+	var b: Plant = game.plant_at(second)
+	var a_cells: Array[Vector2i] = game.sole_cover_cells(a)
+	var b_cells: Array[Vector2i] = game.sole_cover_cells(b)
+	# Both non-empty, or the disjointness below is vacuous.
+	err = _T.assert_gt(a_cells.size(), 0, "the first cob solely holds something")
+	if err == "":
+		err = _T.assert_gt(b_cells.size(), 0, "and so does the second")
+	# And they overlap, or `covered_road_cells(except)` removed nothing and the two
+	# answers would be disjoint for the boring reason rather than the real one.
+	if err == "":
+		var shared: int = 0
+		for cell: Vector2i in PlacementPreview.covered_road_cell_list(
+				game.board, first, Game.engagement_reach(PlantCatalog.CORN)):
+			if PlacementPreview.covered_road_cell_list(
+					game.board, second,
+					Game.engagement_reach(PlantCatalog.CORN)).has(cell):
+				shared += 1
+		err = _T.assert_gt(shared, 0,
+			"the two cobs' reaches overlap, so this measures the exclusion and not luck")
+	var collisions: int = 0
+	for cell: Vector2i in a_cells:
+		if b_cells.has(cell):
+			collisions += 1
+	if err == "":
+		err = _T.assert_eq(collisions, 0,
+			("no cell is in both answers (%d were) -- sole cover means nothing else "
+				+ "standing covers it, so the two ring sets are disjoint by construction")
+				% collisions)
+	# Now the two cues side by side, which is what the player sees during a comparison.
+	var a_marks: SoleCoverMarks = a.sole_cover_marks()
+	var b_marks: SoleCoverMarks = b.sole_cover_marks()
+	if err == "":
+		err = _T.assert_true(a_marks != null and b_marks != null,
+			"both plants built their marks nodes")
+	if err == "":
+		a_marks.set_held_over(true)
+		err = _T.assert_gt(SoleCoverMarks.mark_radius(b_marks.held_over),
+			SoleCoverMarks.mark_radius(a_marks.held_over),
+			("with one held over, the live cluster's rings are the bigger ones -- the "
+				+ "reader tells the two apart without reading a colour"))
+	var a_marker := a.get_node_or_null(
+		NodePath(SelectionMarker.NODE_NAME)) as SelectionMarker
+	var b_marker := b.get_node_or_null(
+		NodePath(SelectionMarker.NODE_NAME)) as SelectionMarker
+	if err == "":
+		err = _T.assert_true(a_marker != null and b_marker != null,
+			"and both built their brackets, reachable by SelectionMarker.NODE_NAME")
+	if err == "":
+		a_marker.set_held_over(true)
+		err = _T.assert_gt(
+			SelectionMarker.bracket_corners(b_marker.held_over).size(),
+			SelectionMarker.bracket_corners(a_marker.held_over).size(),
+			"and the held plant's box is the open one")
+	# The precondition the held-over state depends on, and it holds TODAY: moving the
+	# selection off an armed plant disarms it, so the plant that becomes the held-over
+	# one never carries the red brackets or an open confirm arc. Held and armed are
+	# mutually exclusive because Game makes them so, not because either node checks.
+	if err == "":
+		game._select(b)
+		# "confirm needed", not "": arming is the FIRST of two clicks and says so.
+		# An empty string is what a committed uproot returns.
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed",
+			"an uproot arms on the second cob and asks for confirmation")
+	if err == "":
+		err = _T.assert_eq(b_marker.marker_color, SelectionMarker.WARNING_COLOR,
+			"and its brackets go red while it is the selection")
+	if err == "":
+		game._select(a)
+		err = _T.assert_false(game.uproot_armed(),
+			"selecting the other plant disarms it")
+	if err == "":
+		err = _T.assert_eq(b_marker.marker_color, SelectionMarker.MARKER_COLOR,
+			("so the plant now held over wears no warning -- a demoted cue and an armed "
+				+ "one are never the same brackets"))
+	if err == "":
+		err = _T.assert_float_eq(b_marker.uproot_window, 0.0, 0.0001,
+			"and carries no open confirm arc either")
+	_T.free_ui(game)
+	return err
+
+
+## The statics above describe a cue only if the paint calls actually read them. This is
+## the source check that says so, structural so it survives the numbers being retuned --
+## the same treatment test_placement.gd gives the uproot arc, and for the same reason:
+## headless has no renderer, so no test in this suite can watch a _draw() run.
+func test_the_held_over_demotion_is_what_the_cues_actually_paint() -> String:
+	var marker_src: String = FileAccess.get_file_as_string("res://game/selection_marker.gd")
+	var err: String = _T.assert_gt(marker_src.length(), 0,
+		"selection_marker.gd is readable -- every check below is vacuous otherwise")
+	if err != "":
+		return err
+	var brackets: int = marker_src.find("func _draw_brackets(")
+	err = _T.assert_gt(brackets, 0, "the brackets have a painter")
+	if err == "":
+		var body: String = marker_src.substr(brackets)
+		err = _T.assert_true(body.contains("bracket_corners("),
+			("its corners come from bracket_corners() -- a nested sign loop here would "
+				+ "leave the tested static describing a box nobody draws"))
+		if err == "":
+			err = _T.assert_true(body.contains("held_ink("),
+				"and its ink from held_ink(), so the dimming is not a second rule")
+	if err == "":
+		var marks_src: String = FileAccess.get_file_as_string("res://game/sole_cover_marks.gd")
+		err = _T.assert_gt(marks_src.length(), 0, "sole_cover_marks.gd is readable")
+		if err == "":
+			var painter: int = marks_src.find("func _draw(")
+			err = _T.assert_gt(painter, 0, "the rings have a painter")
+			if err == "":
+				var body: String = marks_src.substr(painter)
+				err = _T.assert_true(body.contains("mark_radius("),
+					("the road rings' radius comes from mark_radius(), not a literal -- "
+						+ "an inlined 9.0 makes the held cluster and the live one one cue"))
+	return err
+
+# END plant-tower-defense-sleq: the previous selection, held for comparison
+# =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-r8zc / plant-tower-defense-l69v: the per-play wobble,
+# and the husk cue that deliberately has none
+#
+# **Nothing below claims a sound was heard, and nothing below can.** `Sfx.play()`
+# is gated off headless by `should_play`, so a suite cannot watch a voice start —
+# the same limit the sound section at the top of this file states about itself.
+# What these hold is the COMPOSITION: `Sfx.pitch_for` is a pure function of an
+# event and a play index, so the number a voice would be given is assertable to
+# the last decimal even though the noise is not. That is the whole reason the
+# jitter is a static rather than a `randf_range` inside `play()`.
+# =============================================================================
+
+
+## The wobble exists, is bounded, and is centred (plant-tower-defense-r8zc).
+##
+## The mutation this is written to kill is the cheap one: delete the jitter term from
+## `Sfx.pitch_for` and every table in `sfx.gd` stays perfectly valid, `JITTER` stays
+## unique, `test_no_two_events_are_the_same_sound` stays green, and the player hears the
+## identical sample at the identical pitch six times a second again. So this asserts the
+## VARIATION rather than the table: 64 consecutive plays of a wobbled cue must produce 64
+## different pitches.
+##
+## Three claims, and each one fails to a different breakage:
+##   * distinct — a wobble that has been deleted or zeroed collapses all 64 onto the centre.
+##   * inside the band — a wobble scaled by the wrong thing (a raw hash, a full semitone)
+##     leaves the range `pitch_band` promises, and the twin check below is asserted against
+##     that band rather than against whatever `pitch_for` happens to do.
+##   * mean near the centre — a one-sided offset would detune the cue permanently rather
+##     than vary it, which is a retune of `PITCH` by the back door.
+##
+## The events are read off `Sfx.JITTER`, not named, so a row added tomorrow is checked
+## tomorrow.
+func test_a_repeated_cue_never_settles_on_one_pitch() -> String:
+	# Denominator first: an empty JITTER table would pass every loop below beautifully.
+	var err: String = _T.assert_gt(Sfx.JITTER.size(), 0,
+		"there are cues the game wobbles at all -- an empty JITTER makes this whole "
+			+ "sweep vacuous, and deleting the table is exactly one of the breakages "
+			+ "it is here to catch")
+	if err != "":
+		return err
+	for event: StringName in Sfx.JITTER:
+		var width: float = float(Sfx.JITTER[event])
+		err = _T.assert_gt(width, 0.0,
+			"'%s' has a real half-width -- a 0.0 row is an event that reads as wobbled "
+				% event + "and is not, which is worse than no row at all")
+		if err != "":
+			return err
+		var band: Vector2 = Sfx.pitch_band(event)
+		var seen: Dictionary = {}
+		var lowest: float = 999.0
+		var highest: float = -999.0
+		for index: int in range(64):
+			var pitch: float = Sfx.pitch_for(event, index)
+			seen[pitch] = true
+			lowest = minf(lowest, pitch)
+			highest = maxf(highest, pitch)
+			if pitch < band.x - 0.000001 or pitch > band.y + 0.000001:
+				return _T.assert_true(false,
+					("play %d of '%s' came out at %.5f, outside the band %.5f..%.5f its "
+						+ "JITTER row promises -- the twin check below is asserted "
+						+ "against that band, so a pitch outside it is a collision "
+						+ "nothing is watching for")
+						% [index, event, pitch, band.x, band.y])
+		err = _T.assert_eq(seen.size(), 64,
+			("64 plays of '%s' are 64 different pitches, got %d -- a machine gun is "
+				+ "exactly what a repeated identical pitch sounds like")
+				% [event, seen.size()])
+		if err != "":
+			return err
+		# And the spread is most of the band rather than a twitch in the middle of it.
+		# A jitter narrowed to a hundredth of its row would still be 64 distinct floats.
+		err = _T.assert_gte(highest - lowest, (band.y - band.x) * 0.75,
+			("'%s' actually uses its band: 64 plays spanned %.5f of the %.5f it is "
+				+ "allowed") % [event, highest - lowest, band.y - band.x])
+		if err != "":
+			return err
+		# Centred, over enough plays for the average to mean something. A wobble that
+		# only ever goes up is a retune of PITCH wearing a jitter's clothes.
+		var total: float = 0.0
+		for index: int in range(1024):
+			total += Sfx.jitter_offset(event, index)
+		err = _T.assert_float_eq(total / 1024.0, 0.0, 0.10,
+			("'%s' wobbles both ways -- 1024 plays averaged %+.4f of its half-width, "
+				+ "and a one-sided offset detunes the cue instead of varying it")
+				% [event, total / 1024.0])
+		if err != "":
+			return err
+	# The other side of the rule, and the one that keeps `PITCH` readable: a cue with no
+	# row gets its table value EXACTLY, not a value plus a zero. `pitch_for` early-returns
+	# for precisely this, and every event outside JITTER is checked for it.
+	for event: StringName in Sfx.SOUNDS:
+		if Sfx.JITTER.has(event):
+			continue
+		var centre: float = float(Sfx.PITCH.get(event, 1.0))
+		for index: int in [0, 1, 7, 4137]:
+			err = _T.assert_float_eq(Sfx.pitch_for(event, index), centre, 0.0000001,
+				("'%s' has no JITTER row, so play %d is its PITCH centre to the bit -- "
+					+ "a cue nobody asked to vary must not") % [event, index])
+			if err != "":
+				return err
+	return err
+
+
+## The wobble is a sequence, not a dice roll (plant-tower-defense-r8zc).
+##
+## `randf_range` was the obvious implementation and it is the wrong one twice over. A test
+## could bound a random pitch but never name it, so "wobbling correctly" and "wobbling at
+## all" would stop being distinguishable claims — and two people comparing what the game
+## sounds like would be comparing two different games. So `jitter_offset` is a hash of the
+## event id and the play index: same pair, same pitch, on every machine and every run.
+##
+## The literals below are the pin. They are not magic numbers to be updated when they fail:
+## a change to them is a change to what the game sounds like, and it should have to be
+## typed on purpose. The mixers are written out in `sfx.gd` rather than reaching for the
+## engine's `hash()` for the same reason — `hash()` carries no cross-version promise, and a
+## point release quietly reshuffling every cue's wobble is not a thing anyone would notice.
+func test_the_wobble_is_the_same_wobble_on_every_machine() -> String:
+	# Same input, same answer, twice — the floor a random implementation fails outright.
+	var first: float = Sfx.pitch_for(Sfx.CORN_FIRED, 12)
+	var err: String = _T.assert_float_eq(Sfx.pitch_for(Sfx.CORN_FIRED, 12), first, 0.0,
+		"asking twice gives the same pitch to the bit -- randf_range does not")
+	if err == "":
+		# The pins. Recorded from the implementation, then checked against an independent
+		# reimplementation of FNV-1a and lowbias32 outside the engine.
+		err = _T.assert_float_eq(Sfx.jitter_offset(Sfx.CORN_FIRED, 0), 0.680650325, 0.000001,
+			"CORN_FIRED's first play sits where it has always sat")
+	if err == "":
+		err = _T.assert_float_eq(Sfx.jitter_offset(Sfx.PEST_KILLED, 0), -0.221807225, 0.000001,
+			"and so does PEST_KILLED's")
+	if err == "":
+		err = _T.assert_float_eq(Sfx.jitter_offset(Sfx.PEST_KILLED, 3), -0.288870673, 0.000001,
+			"and the sequence advances the way it was recorded, not just its first step")
+	if err == "":
+		# Total, including the indices a long session or a negative reaches. An offset
+		# that escapes [-1, 1] escapes the band `pitch_band` promises, which is what the
+		# twin check trusts.
+		for index: int in [-9, -1, 0, 1, 63, 1000003]:
+			var offset: float = Sfx.jitter_offset(Sfx.PLANT_BITTEN, index)
+			err = _T.assert_true(offset >= -1.0 and offset <= 1.0,
+				"index %d answers inside [-1, 1], got %+.6f" % [index, offset])
+			if err != "":
+				return err
+	if err == "":
+		# Two cues must not step through one sequence together: a board where the corn
+		# and the kills wobble in lockstep is a board with one wobble on it. The seeds
+		# are what separate them, so the seeds are what is asserted, across the whole
+		# table rather than for a chosen pair.
+		var seeds: Dictionary = {}
+		for event: StringName in Sfx.SOUNDS:
+			var seed_value: int = Sfx.event_seed(event)
+			if seeds.has(seed_value):
+				return _T.assert_eq(str(event), str(seeds[seed_value]),
+					("'%s' and '%s' seed the same wobble sequence, so they step through "
+						+ "it together -- two cues varying in lockstep is one wobble, "
+						+ "not two") % [event, seeds[seed_value]])
+			seeds[seed_value] = event
+		err = _T.assert_eq(seeds.size(), Sfx.SOUNDS.size(),
+			"every event contributed its own wobble seed")
+	if err == "":
+		# And the implementation really is a hash rather than a die. Source-read, because
+		# the absence of a call is not observable any other way — there is no state a
+		# deleted `randf` leaves behind.
+		var src: String = FileAccess.get_file_as_string("res://game/sfx.gd")
+		err = _T.assert_gt(src.length(), 0, "sfx.gd is readable")
+		if err == "":
+			var start: int = src.find("static func jitter_offset(")
+			err = _T.assert_gt(start, 0, "jitter_offset has a body to read")
+			if err == "":
+				var body: String = src.substr(start, src.find("\n\n\n", start) - start)
+				err = _T.assert_false(body.contains("randf") or body.contains("randi"),
+					("the wobble draws no random numbers -- one `randf_range` here makes "
+						+ "every pin above unwritable and the game's sound "
+						+ "unreproducible"))
+	return err
+
+
+## The twin rule, restated for a table that now has ranges in it
+## (plant-tower-defense-r8zc).
+##
+## `test_no_two_events_are_the_same_sound` keys on the triple (file, volume, pitch) and is
+## the only thing stopping two cues arriving at the player identically. The wobble makes
+## that triple a statement about the CENTRES: two events on one file at one volume, 0.04
+## apart in `PITCH`, would pass it while overlapping on some pair of plays. So that check
+## keeps its job — the table is unique — and this one adds the half it can no longer see:
+## the RANGES are disjoint, by `Sfx.MIN_TWIN_PITCH_GAP`, for every pair that shares both a
+## file and a volume.
+##
+## Pairs that differ in volume are deliberately not checked. Volume is the other axis of
+## the same triple and it separates them on its own — `PEST_KILLED` and `SEED_BOMB_BURST`
+## are the same file at the same centre and are told apart at 3 dB, which is the table's
+## own long-standing answer (see `WAVE_CLEARED` against `RUN_WON`).
+##
+## Derived from `SOUNDS`, so an event added to a shared file tomorrow is checked against
+## every wobble already on that file.
+func test_two_events_on_one_file_never_overlap_once_they_wobble() -> String:
+	var events: Array[StringName] = []
+	for event: StringName in Sfx.SOUNDS:
+		events.append(event)
+	var err: String = _T.assert_gt(events.size(), 20,
+		"the table is populated -- an empty sweep is a vacuous pass, got %d" % events.size())
+	if err != "":
+		return err
+	# Denominator: this proves nothing unless files really are shared. If every event
+	# had its own file the loop below would examine zero pairs and pass.
+	var pairs: int = 0
+	var tightest: float = 999.0
+	for i: int in range(events.size()):
+		for j: int in range(i + 1, events.size()):
+			var a: StringName = events[i]
+			var b: StringName = events[j]
+			if String(Sfx.SOUNDS[a]).get_file() != String(Sfx.SOUNDS[b]).get_file():
+				continue
+			if not is_equal_approx(
+					float(Sfx.VOLUME_DB.get(a, 0.0)), float(Sfx.VOLUME_DB.get(b, 0.0))):
+				continue
+			pairs += 1
+			var band_a: Vector2 = Sfx.pitch_band(a)
+			var band_b: Vector2 = Sfx.pitch_band(b)
+			# Signed on purpose: two bands that overlap give a negative clearance and
+			# fail loudly, rather than an absolute distance that reads as a pass.
+			var clearance: float = band_a.x - band_b.y
+			if band_b.x > band_a.y:
+				clearance = band_b.x - band_a.y
+			tightest = minf(tightest, clearance)
+			err = _T.assert_gte(clearance, Sfx.MIN_TWIN_PITCH_GAP,
+				("'%s' (%.3f..%.3f) and '%s' (%.3f..%.3f) are the same file at the same "
+					+ "volume and leave %.3f between their pitch bands -- under "
+					+ "MIN_TWIN_PITCH_GAP (%.3f) they can arrive at the player as one "
+					+ "sound on some pair of plays, which the (file, volume, pitch) "
+					+ "triple check cannot see")
+					% [a, band_a.x, band_a.y, b, band_b.x, band_b.y, clearance,
+						Sfx.MIN_TWIN_PITCH_GAP])
+			if err != "":
+				return err
+	err = _T.assert_gt(pairs, 0,
+		"events really do share files -- with none shared this whole check is vacuous "
+			+ "and so is the palette argument in SOUNDS' comments")
+	if err == "":
+		# The budget, printed as an assertion rather than left implicit: a future JITTER
+		# row has this much room before it starts eating a twin's separation.
+		err = _T.assert_gte(tightest, Sfx.MIN_TWIN_PITCH_GAP,
+			"the tightest same-file same-volume pair leaves %.3f, against the %.3f floor"
+				% [tightest, Sfx.MIN_TWIN_PITCH_GAP])
+	return err
+
+
+## The wobble reaches the voice, and the play index reaches the wobble
+## (plant-tower-defense-r8zc).
+##
+## `pitch_for` being correct is worth nothing if nothing calls it — that is the exact
+## failure cycle 74 recorded, where `PITCH` stayed unique while `play()` had stopped
+## reading it and the player heard twins. `tune_voice` is the seam a headless test can
+## hold, so the first half is asserted through a real `AudioStreamPlayer`.
+##
+## The second half cannot be: `play()` is behind the headless gate, so nothing here can
+## watch it advance `_play_count` and hand the index down. That half is source-read, which
+## is weaker and is why it is stated rather than hidden — it catches `tune_voice(voice,
+## event)` being restored in `play()`, which would freeze every cue on index 0 forever
+## while every assertion above stayed green.
+func test_the_voice_a_play_tunes_actually_carries_the_wobble() -> String:
+	var voice := AudioStreamPlayer.new()
+	Sfx.tune_voice(voice, Sfx.CORN_FIRED, 0)
+	var first: float = voice.pitch_scale
+	Sfx.tune_voice(voice, Sfx.CORN_FIRED, 1)
+	var second: float = voice.pitch_scale
+	var err: String = _T.assert_true(first != second,
+		("two plays of one cue put two different pitches on the voice, got %.5f twice "
+			+ "-- tune_voice is the only place a voice's pitch is written, so if the "
+			+ "wobble does not arrive here it does not arrive at all") % first)
+	if err == "":
+		err = _T.assert_float_eq(second, Sfx.pitch_for(Sfx.CORN_FIRED, 1), 0.0000001,
+			"and it is the composed pitch, not a second rule living in tune_voice")
+	if err == "":
+		# The default the existing two-argument callers get. Not zero-jitter: index 0 is
+		# a real play of the sequence, and a caller that does not care which play it is
+		# gets the first one rather than a fourth behaviour nobody documented.
+		Sfx.tune_voice(voice, Sfx.CORN_FIRED)
+		err = _T.assert_float_eq(voice.pitch_scale, first, 0.0000001,
+			"an omitted index means play 0, so no existing caller changed meaning")
+	if err == "":
+		# A cue with no row is still exactly its table value through the same seam --
+		# the pooled-voice reuse hazard tune_voice was written for, now with a fourth
+		# table able to leave something behind.
+		Sfx.tune_voice(voice, Sfx.CORN_FIRED, 5)
+		Sfx.tune_voice(voice, Sfx.SUNDEW_CLAIM, 5)
+		err = _T.assert_float_eq(voice.pitch_scale, float(Sfx.PITCH.get(Sfx.SUNDEW_CLAIM, 1.0)),
+			0.0000001, "a voice borrowed by an unwobbled cue carries none of the last "
+				+ "cue's wobble forward, got %.5f" % voice.pitch_scale)
+	voice.free()
+	if err == "":
+		var src: String = FileAccess.get_file_as_string("res://game/sfx.gd")
+		err = _T.assert_gt(src.length(), 0, "sfx.gd is readable")
+		if err == "":
+			var start: int = src.find("static func play(event: StringName)")
+			err = _T.assert_gt(start, 0, "play() has a body to read")
+			if err == "":
+				var body: String = src.substr(start, src.find("\n\n\n", start) - start)
+				err = _T.assert_true(body.contains("_play_count"),
+					("play() advances the event's own play count -- without it every "
+						+ "cue is frozen on index 0 and the wobble is a constant that "
+						+ "every check above still passes"))
+				if err == "":
+					err = _T.assert_true(body.contains("tune_voice(voice, event, index)"),
+						"and hands that index to tune_voice, which is the only route "
+							+ "the wobble has to a voice")
+	return err
+
+
+## Every wobbled cue is one the game actually repeats (plant-tower-defense-r8zc).
+##
+## `JITTER`'s membership rule is "a cue ONE source repeats faster than about once a
+## second", and a rule stated only in a comment is a rule that expires quietly. This pins
+## it to the constants it was derived from, so slowing the Corn Cobbler down or lengthening
+## a Nettle's sting fails here rather than leaving a row whose justification has gone.
+##
+## Two kinds of cue, checked two ways, because they have two kinds of rate:
+##   * a cue one plant fires on its own clock, where the rate is that plant's constant;
+##   * a cue the whole BOARD produces, where no single constant is the rate and the
+##     `REPEAT_MS` gate is the real ceiling on how fast the player hears it.
+##
+## What this does NOT check: that a cue outside `JITTER` deserves to be. There is no table
+## anywhere that says how often `RUN_WON` fires, so the exclusions are argued in `JITTER`'s
+## own comment and only the two that were genuinely close are pinned below.
+func test_every_wobbled_cue_is_one_the_game_actually_repeats() -> String:
+	var err: String = _T.assert_gt(Sfx.JITTER.size(), 0, "there are rows to check")
+	if err != "":
+		return err
+	# The plant-clock cues. Each number is the constant JITTER's comment cites.
+	var clocks: Dictionary = {
+		Sfx.CORN_FIRED: float(CornCobbler.LEVELS[CornCobbler.LEVELS.size() - 1]["interval"]),
+		Sfx.DANDELION_PUFF: Dandelion.SHOT_INTERVAL,
+		Sfx.NETTLE_STING: Nettle.STING_INTERVAL,
+		Sfx.SEED_BOMB_BURST: Dandelion.SHOT_INTERVAL,
+	}
+	for event: StringName in clocks:
+		err = _T.assert_true(Sfx.JITTER.has(event),
+			"'%s' is wobbled -- it is on this list because its source has a clock" % event)
+		if err != "":
+			return err
+		err = _T.assert_true(float(clocks[event]) < 1.0,
+			("'%s' really does repeat faster than once a second: its source fires every "
+				+ "%.2fs. If this fails the cue got slower and its JITTER row is now "
+				+ "decoration on a sound nobody hears twice in a breath")
+				% [event, float(clocks[event])])
+		if err != "":
+			return err
+	# The board-rate cues, where the gate is the rate. Read off REPEAT_MS rather than
+	# retyped, so retuning a gate is checked against the row it justifies.
+	for event: StringName in [Sfx.PEST_KILLED, Sfx.PEST_KILLED_HARD, Sfx.PLANT_BITTEN]:
+		err = _T.assert_true(Sfx.JITTER.has(event), "'%s' is wobbled" % event)
+		if err != "":
+			return err
+		err = _T.assert_true(Sfx.REPEAT_MS.has(event),
+			("'%s' has a REPEAT_MS row -- for a board-rate cue that gate IS the rate, "
+				+ "and without one the claim in JITTER's comment has no number behind it")
+				% event)
+		if err != "":
+			return err
+		err = _T.assert_true(int(Sfx.REPEAT_MS[event]) < 1000,
+			"'%s' can be heard again inside a second (%dms)" % [event, int(Sfx.REPEAT_MS[event])])
+		if err != "":
+			return err
+	# Every row points at a real cue. `sfx_call_check.py` gates this statically too; it is
+	# repeated here because a key JITTER holds and SOUNDS does not is swallowed in silence
+	# by `JITTER.get(event, 0.0)`, exactly as a stale PITCH key would be.
+	for event: StringName in Sfx.JITTER:
+		err = _T.assert_true(Sfx.SOUNDS.has(event),
+			"'%s' has a JITTER row and no sound -- a wobble on nothing" % event)
+		if err != "":
+			return err
+	# And the kill pair's narrower width, which is the one magnitude with a second
+	# constraint on it: the whole interval carrying "that one was expensive" is 0.12, so
+	# the two wobbles together must not eat it.
+	var plain: float = float(Sfx.JITTER.get(Sfx.PEST_KILLED, 0.0))
+	var hard: float = float(Sfx.JITTER.get(Sfx.PEST_KILLED_HARD, 0.0))
+	var interval: float = absf(float(Sfx.PITCH.get(Sfx.PEST_KILLED_HARD, 1.0))
+		- float(Sfx.PITCH.get(Sfx.PEST_KILLED, 1.0)))
+	return _T.assert_gte(interval - plain - hard, Sfx.MIN_TWIN_PITCH_GAP,
+		("a hard kill stays audibly above a plain one under the wobble: %.3f of interval "
+			+ "less %.3f and %.3f of wobble leaves %.3f, against the %.3f floor")
+			% [interval, plain, hard, interval - plain - hard, Sfx.MIN_TWIN_PITCH_GAP])
+
+
+## The husk sweep is deliberately NOT wobbled and deliberately NOT value-pitched
+## (plant-tower-defense-l69v, closed unimplemented).
+##
+## The bead asked whether a rich husk should sound rich. The answer recorded here is no,
+## and the reason is not that it is hard — `Sfx.kill_event_for` is the pattern and a
+## `husk_event_for(value)` beside it would have been six lines. It is that pitch cannot
+## carry this particular fact:
+##
+##   * A kill and its sweep are seconds apart. `CompostMeter.lifetime_for` runs from
+##     `HUSK_LIFETIME` down to `MIN_HUSK_LIFETIME`, so the richest husk — the one the cue
+##     would be about — must be swept within 4.5s of the kill or it rots. Every pitch pair
+##     already in `PITCH` works because both halves are common and heard against each
+##     other; a sweep's only reference is the previous sweep, seconds ago and under a wave.
+##   * Wide enough to survive that gap, a pitch shift on `handleCoins.ogg` stops reading as
+##     "a bigger payout" and starts reading as a different coin — which is what `PITCH`'s
+##     header says pitch MEANS in this table, and it would collide semantically with
+##     `SEEDS_GROWN`, the other consumer of that file.
+##   * It arrives after the decision it would inform. The husk's value cue exists so a
+##     player sweeps the rich one first; `HUSK_COLLECTED` plays once the click is spent.
+##
+## The visual channel already carries it in the window where it is actionable, and this
+## asserts that rather than asserting the absence of a feature: radius, glow and — above
+## the point where both of those saturate — pip count. If that ever stops being true, the
+## question this bead asked reopens, and it reopens here.
+func test_a_husks_value_is_carried_by_the_husk_and_not_by_its_sweep() -> String:
+	# No wobble and no second event id on the sweep. Both would be additions nobody
+	# argued for; a row appearing here should have to argue with this test.
+	var err: String = _T.assert_false(Sfx.JITTER.has(Sfx.HUSK_COLLECTED),
+		("the sweep is unwobbled -- it is player-paced, not a stream, and its pitch was "
+			+ "examined and declined in plant-tower-defense-l69v"))
+	if err == "":
+		var husk_ids: int = 0
+		for event: StringName in Sfx.SOUNDS:
+			if String(event).begins_with("husk_"):
+				husk_ids += 1
+		err = _T.assert_eq(husk_ids, 2,
+			("there are exactly two husk cues, collected and rotted -- a third id would "
+				+ "be the value-pitched sweep this bead closed against, got %d")
+				% husk_ids)
+	if err == "":
+		# The gap the decision turns on, asserted as the bound it actually is. No median
+		# was measured -- driving a wave needs a running game -- but the ceiling is what
+		# the argument uses, and the ceiling is in the code.
+		var cheap: float = CompostMeter.lifetime_for(CompostMeter.BASE_VALUE)
+		var rich: float = CompostMeter.lifetime_for(CompostMeter.FULL_VALUE)
+		err = _T.assert_gte(rich, 1.0,
+			("a rich husk gives the player whole seconds to sweep it (%.1fs) -- if this "
+				+ "ever became a fraction of a second the kill and the sweep would be one "
+				+ "moment and a pitch pair between them would start working") % rich)
+		if err == "":
+			err = _T.assert_true(rich < cheap,
+				("and the rich one is the SHORTER window (%.1fs against %.1fs), which is "
+					+ "why its cue has to be legible before the click rather than after "
+					+ "it") % [rich, cheap])
+	if err == "":
+		# The channel that does carry it, in the window where it is actionable. Three
+		# steps, because the first two saturate: this is the whole "size and glow already
+		# say it" alternative the bead named, checked rather than repeated.
+		var base_radius: float = HuskLayer.radius_for(CompostMeter.BASE_VALUE)
+		var full_radius: float = HuskLayer.radius_for(CompostMeter.FULL_VALUE)
+		err = _T.assert_gt(full_radius, base_radius,
+			"a rich husk is drawn bigger than a cheap one (%.1f vs %.1f)"
+				% [full_radius, base_radius])
+		if err == "":
+			err = _T.assert_gt(HuskLayer.glow_for(CompostMeter.FULL_VALUE),
+				HuskLayer.glow_for(CompostMeter.BASE_VALUE),
+				"and brighter")
+		if err == "":
+			# Above FULL_VALUE both of those are flat, so the visual answer is complete
+			# only because of the pips. If it were not, the audio question would be open.
+			var saturated: int = CompostMeter.FULL_VALUE * 3
+			err = _T.assert_float_eq(HuskLayer.radius_for(saturated), full_radius, 0.0001,
+				"radius really has saturated by %d seeds, which is what makes the pips "
+					% saturated + "load-bearing rather than a flourish")
+			if err == "":
+				err = _T.assert_gt(HuskLayer.overflow_pips(saturated),
+					HuskLayer.overflow_pips(CompostMeter.FULL_VALUE),
+					("and the pips carry the range above it -- with these flat too, "
+						+ "nothing would distinguish a 9-seed husk from a 60-seed one "
+						+ "and plant-tower-defense-l69v would deserve another look"))
+	return err
+
+# END plant-tower-defense-r8zc / plant-tower-defense-l69v
+# =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-kmjp: what rain pays, now that drought pays 150%
+#
+# The bead's premise was FALSE and that is the finding: it said rain "heals pests"
+# and was therefore the only weather with a downside and no compensation. Rain heals
+# PLANTS -- `Game._apply_weather` calls `plant.heal(...)` on every plant Game owns --
+# and nothing in the game applies a weather term to a pest at all. So rain has no
+# downside to compensate, no number moved, and the decision is written at
+# `WaveDirector.WEATHER_RAIN_HEAL_FRACTION` with the three refused alternatives.
+#
+# What the bead's ACCEPTANCE clause still wanted is real and is not a number: every
+# weather's upside must be named before the wave commits. These tests pin the half
+# that is true today and the invariant a fourth weather would have to satisfy.
+
+
+## Every weather in the game gives the player something, and exactly one gives nothing
+## because it also asks for nothing.
+##
+## The set is DERIVED from `WaveDirector.weather_for` rather than typed, so a fourth
+## state added to that function arrives in this test on its own and has to answer the
+## same question. "Gives something" is derived too, from the three pure per-weather
+## functions -- and `heal_fraction_for` exists so that this sentence can be written
+## without a branch that already knows the answer involves rain.
+func test_no_weather_asks_for_something_and_gives_nothing_back() -> String:
+	var seen: Array[StringName] = []
+	for wave: int in range(1, 101):
+		var state: StringName = WaveDirector.weather_for(wave)
+		if not seen.has(state):
+			seen.append(state)
+	var err: String = _T.assert_eq(seen.size(), 3,
+		("the first hundred waves produce three distinct weathers, got %d (%s). That is "
+			+ "the denominator every assertion below divides by -- a sweep that found one "
+			+ "state would pass the loops underneath while checking nothing")
+			% [seen.size(), seen])
+	if err == "":
+		# The weathers that give nothing, collected rather than assumed. Exactly one may
+		# be here, and it has to be the one that asks for nothing either.
+		var giftless: Array[StringName] = []
+		var costly_and_giftless: Array[StringName] = []
+		for state: StringName in seen:
+			var gives: bool = (WaveDirector.seed_multiplier_for(state) > 1.0
+				or WaveDirector.heal_fraction_for(state) > 0.0)
+			var costs: bool = WaveDirector.fire_interval_scale_for(state) > 1.0
+			if not gives:
+				giftless.append(state)
+			if costs and not gives:
+				costly_and_giftless.append(state)
+		err = _T.assert_eq(costly_and_giftless.size(), 0,
+			("no weather slows the garden without paying for it: %s. This is the whole of "
+				+ "plant-tower-defense-kmjp's acceptance criterion as arithmetic")
+				% [costly_and_giftless])
+		if err == "":
+			err = _T.assert_eq(giftless.size(), 1,
+				("and exactly one weather has nothing to offer, got %s -- two would mean a "
+					+ "state the player is asked to notice and given no reason to want")
+					% [giftless])
+		if err == "":
+			err = _T.assert_eq(String(giftless[0]), String(WaveDirector.WEATHER_CLEAR),
+				("and it is clear: the baseline rather than a state, which is also why it "
+					+ "is the one weather `Hud.show_weather` refuses to announce"))
+	if err == "":
+		err = _T.assert_float_eq(
+			WaveDirector.fire_interval_scale_for(WaveDirector.WEATHER_CLEAR), 1.0, 0.0001,
+			"and clear really does ask for nothing, which is what earns it the exemption")
+	return err
+
+
+## Rain gives and never takes, which is the sentence the bead denied.
+##
+## Asserted on all three per-weather functions at once rather than on the heal alone:
+## the claim being refuted is "rain has a downside", and a downside would have to appear
+## in the interval scale or the seed multiplier, so both are named here as zeroes.
+func test_rain_gives_and_never_takes_which_is_why_no_number_moved() -> String:
+	var err: String = _T.assert_gt(
+		WaveDirector.heal_fraction_for(WaveDirector.WEATHER_RAIN), 0.0,
+		"rain gives health back (%.2f of maximum)"
+			% WaveDirector.heal_fraction_for(WaveDirector.WEATHER_RAIN))
+	if err == "":
+		err = _T.assert_float_eq(
+			WaveDirector.fire_interval_scale_for(WaveDirector.WEATHER_RAIN), 1.0, 0.0001,
+			("and takes nothing off the rate of fire -- a rain that slowed the garden is "
+				+ "the downside the bead reported and it does not exist"))
+	if err == "":
+		err = _T.assert_float_eq(
+			WaveDirector.seed_multiplier_for(WaveDirector.WEATHER_RAIN), 1.0, 0.0001,
+			("and nothing off the seed rate either. Paying rain LESS than clear was the "
+				+ "first alternative refused: it would make clear the punished state, and "
+				+ "clear is eleven waves in twelve"))
+	if err == "":
+		# The other side of the pair, so the refusal has both halves on the record: a
+		# drought is the weather that costs, and it is the one that pays.
+		err = _T.assert_gt(
+			WaveDirector.fire_interval_scale_for(WaveDirector.WEATHER_DROUGHT), 1.0,
+			"a drought is the weather that costs")
+		if err == "":
+			err = _T.assert_gt(
+				WaveDirector.seed_multiplier_for(WaveDirector.WEATHER_DROUGHT), 1.0,
+				"and the one that pays for it, which is the shape rain never needed")
+		if err == "":
+			err = _T.assert_float_eq(
+				WaveDirector.heal_fraction_for(WaveDirector.WEATHER_DROUGHT), 0.0, 0.0001,
+				"while a drought heals nothing, so the two gifts do not overlap")
+	return err
+
+
+## A weather's compensation has to be legible while the player can still act on it.
+##
+## The prep note is that surface: it is the message row's idle state through the whole
+## prep gap, BEFORE the wave commits, which is when seeds are spent. The banner
+## (`Hud.weather_note`) fires from `Game._on_wave_started` -- after.
+##
+## Both halves are asserted here and both pass. Rain's was the open one until cycle 110:
+## `next_wave_note` appended a bare "rain" and said nothing about the 35% it hands back,
+## so the only weather whose upside costs nothing was also the only one the player was
+## never told about in time to use it. The lane that found this could not fix it -- the
+## clause lives in `Hud.next_wave_note`, which it did not own -- so it wrote the edit out
+## and the parent landed the two together.
+##
+## Worth keeping about the shape of that gap: rain's gift is CONDITIONAL and often zero,
+## because a full-health garden mends nothing. That is what made it invisible rather than
+## merely unmentioned -- a player could sit through several rain waves and correctly
+## observe that rain did nothing, on exactly the waves where it would have paid least.
+## Told three waves out, they can leave a chewed Corn standing instead of uprooting at a
+## refund and paying full price again, which is the decision the sentence exists to buy.
+func test_a_compensation_is_named_where_the_player_can_still_act_on_it() -> String:
+	var note: String = Hud.next_wave_note(21, 30, false, WaveDirector.WEATHER_DROUGHT)
+	var percent: String = "%d%%" % int(round(WaveDirector.WEATHER_DROUGHT_SEED_BONUS * 100.0))
+	var err: String = _T.assert_true(note.contains("drought"),
+		"the prep note names the weather that is coming: %s" % note)
+	if err == "":
+		err = _T.assert_true(note.contains(percent),
+			("and the number it pays (%s), derived from WEATHER_DROUGHT_SEED_BONUS rather "
+				+ "than typed -- retuning the bonus without retuning the sentence is the "
+				+ "drift this pins. Got: %s") % [percent, note])
+	if err == "":
+		# The rain half, closed. The gift is written on the banner AND in the prep note,
+		# and only the second reaches the player while they can still act on it.
+		var rain: String = Hud.next_wave_note(20, 26, false, WaveDirector.WEATHER_RAIN)
+		var mend: String = "%d%%" % int(round(WaveDirector.WEATHER_RAIN_HEAL_FRACTION * 100.0))
+		err = _T.assert_true(rain.contains(mend),
+			("the prep note names what rain hands back (%s), derived from "
+				+ "WEATHER_RAIN_HEAL_FRACTION rather than typed. Got: %s") % [mend, rain])
+		if err == "":
+			err = _T.assert_true(rain.length() < note.length(),
+				("and its clause is shorter than drought's (%d chars against %d), which is "
+					+ "why the message row's worst case is still the drought sample in "
+					+ "Hud.message_corpus()") % [rain.length(), note.length()])
+		if err == "":
+			err = _T.assert_gt(Hud.weather_note(WaveDirector.WEATHER_RAIN).length(), 0,
+				"and the banner still says it too, as the wave opens")
+		if err == "":
+			err = _T.assert_eq(Hud.weather_note(WaveDirector.WEATHER_CLEAR), "",
+				("while clear says nothing on either surface, which is the exemption "
+					+ "test_no_weather_asks_for_something_and_gives_nothing_back earns it"))
+	return err
+
+# END plant-tower-defense-kmjp
+# =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-bt5i: whether a drought should slow the non-shooters
+#
+# The bead's numbers were stale and its substance was live. It said
+# Plant.fire_interval_scale is read by CornCobbler and Dandelion only -- two plants
+# of five. It is read by THREE of EIGHT: Nettle reads it too, and Nettle, Mint and
+# Aloe did not exist when the bead was written. What was true then and is still true
+# is that the split was an accident of which files happened to read the field.
+#
+# The decision is NO EXTENSION -- a drought lengthens a repeating attack interval and
+# nothing else -- and it is written per-plant at
+# WaveDirector.WEATHER_DROUGHT_INTERVAL_SCALE. This is the gate that stops it being
+# an accident again: the affected set is derived from the plant scripts rather than
+# recorded, so a ninth plant that starts reading the field, or a Nettle that quietly
+# stops, fails against that paragraph instead of extending it in silence.
+
+
+## The set a drought reaches, derived rather than recorded.
+##
+## Source of truth is `PlantCatalog.ids()` and the plant scripts themselves -- the ids
+## ARE the script basenames, and the readability check below is what turns a broken
+## mapping into a failure instead of into an empty set that agrees with everything.
+##
+## Comments are stripped before the search on purpose: all three affected files also
+## DESCRIBE `fire_interval_scale` in a doc comment next to the line that reads it, and a
+## raw scan would credit any future plant whose header merely mentions the field. This is
+## the same trap `tools/gdsource.py` exists for.
+func test_a_drought_slows_what_the_garden_shoots_and_nothing_else() -> String:
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_gt(ids.size(), 0,
+		"the catalogue has plants in it, or every loop below is vacuous")
+	if err != "":
+		return err
+	var slowed: PackedStringArray = []
+	var unreadable: PackedStringArray = []
+	var read: int = 0
+	for id: StringName in ids:
+		var path: String = "res://game/%s.gd" % String(id)
+		var src: String = FileAccess.get_file_as_string(path)
+		if src.length() == 0:
+			unreadable.append(path)
+			continue
+		read += 1
+		var code: String = ""
+		for line: String in src.split("\n"):
+			if line.strip_edges().begins_with("#"):
+				continue
+			code += line + "\n"
+		if code.contains("fire_interval_scale"):
+			slowed.append(String(id))
+	err = _T.assert_eq(unreadable.size(), 0,
+		("every catalogue id resolves to res://game/<id>.gd, missing: %s. That mapping is "
+			+ "this test's own assumption -- an id that stopped matching its filename would "
+			+ "otherwise read as a plant the drought does not touch") % [unreadable])
+	if err == "":
+		err = _T.assert_eq(read, ids.size(),
+			("and all %d of them were read (%d) -- the denominator, without which the set "
+				+ "below is a claim about however many files happened to open")
+				% [ids.size(), read])
+	if err == "":
+		slowed.sort()
+		var expected: PackedStringArray = [
+			String(PlantCatalog.CORN), String(PlantCatalog.DANDELION),
+			String(PlantCatalog.NETTLE),
+		]
+		expected.sort()
+		err = _T.assert_eq(", ".join(slowed), ", ".join(expected),
+			("a drought reaches exactly the plants that fire on a repeating interval. Got "
+				+ "[%s], decided [%s]. If a plant was ADDED here, read the per-plant "
+				+ "reasoning at WaveDirector.WEATHER_DROUGHT_INTERVAL_SCALE before widening "
+				+ "this list -- the bead that wrote it refused a chew, a seed clock, an "
+				+ "aura, a neighbour buff and a heal, each for a different reason. If one "
+				+ "was REMOVED, the garden now has a shooter the weather cannot touch")
+				% [", ".join(slowed), ", ".join(expected)])
+	if err == "":
+		# The claim that makes the Chomp bullet arithmetic rather than an opinion: a chew's
+		# length is the MEAL's, scaled by the flower's ladder and by nothing else. Asserted
+		# as proportionality so it survives the ladder being retuned or reindexed.
+		var one: float = ChompFlower.chew_seconds_for(1, 1.0)
+		err = _T.assert_gt(one, 0.0, "a level-1 chew of a 1s meal takes time")
+		if err == "":
+			err = _T.assert_float_eq(ChompFlower.chew_seconds_for(1, 2.6), one * 2.6, 0.0001,
+				("and a 2.6s meal takes 2.6 times as long -- the pest brings the number, so "
+					+ "a drought folded in here would lengthen the HOLD as much as the busy "
+					+ "time and change sign with the size of the lane"))
+	if err == "":
+		# The other two refusals, as the shape of their own APIs. Neither of these pure
+		# functions has a weather term to take, which is the concrete form of "there is
+		# nothing here for a drought to multiply".
+		err = _T.assert_float_eq(Aloe.heal_for(1.0), Aloe.HEAL_PER_SECOND, 0.0001,
+			("an Aloe's repair is per second and unconditioned -- it works between waves, "
+				+ "where nothing is racing it"))
+		if err == "":
+			err = _T.assert_float_eq(Sunflower.seconds_left_at(0.0), Sunflower.INTERVAL,
+				0.0001,
+				("and a Sunflower's clock is its own. Slowing it under the one weather that "
+					+ "pays WEATHER_DROUGHT_SEED_BONUS on kills would move two numbers "
+					+ "against each other so the total barely moved"))
+	if err == "":
+		# And the half that must keep working: the weather really does reach a shooter.
+		var drought: float = WaveDirector.fire_interval_scale_for(WaveDirector.WEATHER_DROUGHT)
+		err = _T.assert_float_eq(
+			Plant.composed_interval(Nettle.STING_INTERVAL, drought, 1.0),
+			Nettle.STING_INTERVAL * drought, 0.0001,
+			("while a Nettle's sting really is lengthened by the sky -- the third reader, "
+				+ "and the one the bead did not know about"))
+	return err
+
+# END plant-tower-defense-bt5i
+# =============================================================================

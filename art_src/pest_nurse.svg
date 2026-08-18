@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Nurse Beetle: the pest you must NOT shoot. She heals every other pest within
+       160px, and the garden's "furthest-along" rule will not target her, so the
+       player has to pick her out by eye and choose her.
+
+       Until plant-tower-defense-cnn7 she wore pest_beetle.png outright, which made a
+       whole boss mechanic unreadable: the one bug whose identity changes what you do
+       looked exactly like the fifteen ordinary beetles walking beside her.
+
+       TWO CHANNELS, because a hue difference alone is not a distinction in this
+       project (game/OVERLAY_GRAMMAR.md):
+         * VALUE — a Sand/paper carapace (#ECDCB8) against the ordinary beetle's
+           Stone/carapace (#939393). Much lighter, so it survives greyscale, which
+           red-on-grey would not have.
+         * SHAPE — the cross on her back. No other pest carries a closed geometric
+           figure on its shell, so the silhouette alone names her.
+
+       She keeps the beetle's legs, head and body plan, because she IS a beetle and
+       the species has to read; only the shell and the mandibles change. The
+       mandibles are stone rather than the attacker's red (#E74C3C) and they curl
+       inward rather than out — she is support, and the red pincers every other
+       pest wears are the game's own word for "this one bites". -->
+
+  <!-- legs (behind the body) -->
+  <g stroke="#5E5E5E" stroke-width="3" stroke-linecap="round" fill="none">
+    <path d="M22 26 L10 20"/>
+    <path d="M20 35 L7 35"/>
+    <path d="M22 44 L10 50"/>
+    <path d="M42 26 L54 20"/>
+    <path d="M44 35 L57 35"/>
+    <path d="M42 44 L54 50"/>
+  </g>
+
+  <!-- mandibles: stone, and curled IN rather than flaring out -->
+  <g fill="none" stroke="#727272" stroke-width="3" stroke-linecap="round">
+    <path d="M27 14 Q 23 9 28 6"/>
+    <path d="M37 14 Q 41 9 36 6"/>
+  </g>
+
+  <!-- head -->
+  <circle cx="32" cy="18" r="8" fill="#727272" stroke="#5E5E5E" stroke-width="2"/>
+  <circle cx="28.5" cy="16.5" r="1.8" fill="#FFFFFF"/>
+  <circle cx="35.5" cy="16.5" r="1.8" fill="#FFFFFF"/>
+
+  <!-- carapace: pale, so she is lighter than every other pest at a glance -->
+  <ellipse cx="32" cy="37" rx="14.5" ry="15" fill="#ECDCB8" stroke="#A69B81" stroke-width="2"/>
+  <ellipse cx="25.5" cy="32" rx="4.5" ry="7" fill="#FFEDC6"/>
+  <ellipse cx="38.5" cy="32" rx="4.5" ry="7" fill="#FFEDC6"/>
+
+  <!-- the cross: the shape channel. Foliage green, the hue this game already uses
+       for growing and mending, ringed in its own darker shade per STYLE.md. -->
+  <g fill="#2ECC71" stroke="#1F8A4C" stroke-width="1.5" stroke-linejoin="round">
+    <path d="M29 29 L35 29 L35 34 L40 34 L40 40 L35 40 L35 45 L29 45 L29 40 L24 40 L24 34 L29 34 Z"/>
+  </g>
+</svg>

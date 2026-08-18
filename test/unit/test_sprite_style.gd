@@ -40,6 +40,9 @@ const EXPECTED_SIZE := {
 	"chomp_flower": 64,
 	"chomp_flower_eating": 64,
 	"chomp_flower_eating_late": 64,
+	# The frame AT the bite, held for BITE_SQUASH_OUT_SECONDS before the eating
+	# sprite takes over (plant-tower-defense-81g9).
+	"chomp_flower_gape": 64,
 	"corn_cobbler": 64,
 	"mint": 64,
 	# The Shield Bug and its corpse. Added by the parent rather than by the agent that
@@ -61,6 +64,11 @@ const EXPECTED_SIZE := {
 	"pest_aphid_dead": 64,
 	"pest_beetle": 64,
 	"pest_beetle_dead": 64,
+	# The Nurse Beetle's own art (plant-tower-defense-cnn7). Same 64px canvas as
+	# every other pest; Pest.SPECIES[NURSE].scale (1.30) does the enlarging, the
+	# way the Queen's does.
+	"pest_nurse": 64,
+	"pest_nurse_dead": 64,
 	# The boss reads bigger than a beetle on the board, but it does it on the
 	# kit's own 64 px canvas — Pest.SPECIES[QUEEN].scale does the enlarging, so
 	# nothing here needs a second canvas size to justify.

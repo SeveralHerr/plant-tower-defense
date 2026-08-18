@@ -284,6 +284,91 @@ const PITCH: Dictionary = {
 	NETTLE_STING: 1.08,
 }
 
+## event -> the half-width of its per-play pitch wobble, in `pitch_scale` units.
+## Absent means 0.0, and a cue with no row here sounds exactly as it always has.
+##
+## **The fourth tuning table, and the first that varies WITHIN one event.** `SOUNDS`,
+## `VOLUME_DB` and `PITCH` each say what an event sounds like; this says how far the Nth
+## play of it may sit from the N−1th. What it answers is machine-gun sameness — the
+## identical sample at the identical pitch, arriving faster than the ear stops hearing the
+## repeats as one texture. `REPEAT_MS` above answers the OTHER half of that complaint and
+## cannot answer this one: a gate stops N calls in one frame becoming a single much louder
+## sound, and it is deliberately shorter than the rate any source actually fires at, so
+## every consecutive volley still plays. Two plays 620ms apart is exactly what the gate is
+## there to permit, and exactly what sounds like a machine gun for thirty seconds.
+##
+## **The membership rule, so this is a derivation and not a taste list: a row here belongs
+## to a cue that ONE source repeats faster than about once a second.** Each entry is that
+## claim backed by the constant that makes it true.
+##
+##   * `CORN_FIRED` — `CornCobbler.LEVELS[2]["interval"]` is 0.62s, and four Mints take a
+##     single cob to 0.62 * 0.75^4 = 0.196s. Several cobs on a board multiply that again.
+##   * `PEST_KILLED` / `PEST_KILLED_HARD` — not one source but the whole board, so the 70ms
+##     gate above IS the rate; a volley landing on a cleared wave spends it.
+##   * `PLANT_BITTEN` — the 420ms gate is likewise the rate, sustained for as long as a pest
+##     is eating, which is the most relentless repetition in the game.
+##   * `DANDELION_PUFF` — `Dandelion.SHOT_INTERVAL` is 0.45s.
+##   * `NETTLE_STING` — `Nettle.STING_INTERVAL` is 0.7s, with a 221ms floor under four Mints
+##     (the arithmetic is written out at that event's `REPEAT_MS` row).
+##   * `SEED_BOMB_BURST` — one Dandelion's bombs land `SHOT_INTERVAL` apart; a row of them
+##     spends the 90ms gate.
+##
+## **And what is absent because the rule excludes it, not because nobody thought of it.**
+##
+##   * The UI acknowledgements — `BUTTON_PRESSED`, `PURCHASE_DENIED`, `UPROOT_ARMED`. A click
+##     that wobbles does not read as variety, it reads as a fault in the button.
+##   * Everything once-a-run or once-a-wave: `RUN_WON`, `RUN_LOST`, `WAVE_STARTED`,
+##     `WAVE_CLEARED`, `PLANT_PLACED`, `PLANT_UPGRADED`, `PLANT_UPROOTED`, `PLANT_DESTROYED`,
+##     and `SEEDS_GROWN` at one per flower per six seconds. There is nothing for them to vary
+##     against, and a cue heard once a run should be exactly what it was authored as.
+##   * `CHOMP_BITE`, which is the near miss worth naming rather than passing over.
+##     `ChompFlower.BITES_PER_MEAL` is 3 and a gaping maw chews an aphid in 0.45 * 0.65 =
+##     0.29s, so its bites are ~97ms apart — fast enough by the rule above. It is out because
+##     a Chomp holds ONE pest at a time: the burst is three sounds and then silence, not a
+##     stream. Adding the row is a one-line opt-in and it costs one existing assertion; see
+##     `test_a_wobbled_cue_stays_inside_the_band_its_row_promises` for which.
+##   * `HUSK_COLLECTED`, which is player-paced, and whose pitch was the subject of
+##     plant-tower-defense-l69v — closed unimplemented, and the reasoning there is the
+##     reason this row is empty rather than an oversight.
+##
+## **The magnitudes.** 0.04 is about 0.68 of a semitone at the peak and 1.4 peak-to-peak:
+## enough that two plays cannot land in phase as one louder sound, too little to hum. The
+## kill pair gets 0.03 instead, and it is the one number here carrying a second constraint —
+## the whole distance between a plain kill and a hard one is 0.12 in `PITCH`, held small on
+## purpose (see `PEST_KILLED_HARD`'s comment), so a wobble here spends the interval that
+## carries "that one was expensive". 0.03 a side leaves 0.06 of clear air between the bands.
+##
+## **NOBODY HAS HEARD THIS.** The rates above are measured off the game's own constants; the
+## claim that the sameness is audible, and that these widths fix it without turning a wave
+## into a warble, is an argument from those numbers and not a listening test — see
+## plant-tower-defense-r8zc. A listener who disagrees edits rows, not code: an event opts out
+## by deleting its row and the whole feature opts out by emptying the table.
+const JITTER: Dictionary = {
+	CORN_FIRED: 0.04,
+	PLANT_BITTEN: 0.04,
+	DANDELION_PUFF: 0.04,
+	NETTLE_STING: 0.04,
+	SEED_BOMB_BURST: 0.04,
+	PEST_KILLED: 0.03,
+	PEST_KILLED_HARD: 0.03,
+}
+
+## How much clear air two events sharing BOTH a file and a volume must leave between their
+## pitch bands, once `JITTER` has widened each centre in `PITCH` into a range.
+##
+## This constant is the whole reason `JITTER` did not quietly break the uniqueness rule.
+## `test_no_two_events_are_the_same_sound` keys on the triple (file, volume, pitch) and so
+## asserts the TABLE is unique; with a wobble on top, two events 0.04 apart in `PITCH` could
+## still arrive at the player identically on some pair of plays, and that check would never
+## see it. So the table check keeps its job and a second one asserts the RANGES are disjoint
+## by at least this much — see `test_two_events_on_one_file_never_overlap_once_they_wobble`.
+##
+## 0.04 rather than 0.0 because touching bands are not a separation anyone can hear. The
+## tightest same-file same-volume pair in the table today is `UPROOT_ARMED` (0.88) against
+## `SUNDEW_CLAIM` (1.00), and neither is wobbled, so the live margin is the full 0.12; this
+## is the budget a future row has to fit inside rather than a limit anything is near.
+const MIN_TWIN_PITCH_GAP: float = 0.04
+
 const DEFAULT_REPEAT_MS: int = 45
 const REPEAT_MS: Dictionary = {
 	PLANT_BITTEN: 420,
@@ -398,6 +483,16 @@ static var _next_voice: int = 0
 static var _streams: Dictionary = {}
 ## event -> Time.get_ticks_msec() of its last actual play.
 static var _last_played: Dictionary = {}
+## event -> how many times it has ACTUALLY played this process, which is the index
+## `pitch_for` wobbles by. Advanced only past the repeat gate, so a throttled call does
+## not burn a step of the sequence and the count means "how many times a player heard
+## this" rather than "how many times something asked".
+##
+## Never reset, including across `reload_current_scene()`, and that matches `_last_played`
+## beside it: both describe the speaker rather than the run. A replayed board carrying on
+## from index 4137 is the same sequence of wobbles either way — see `jitter_offset` for why
+## the sequence has no period worth landing on.
+static var _play_count: Dictionary = {}
 
 
 # -- the gate ---------------------------------------------------------------
@@ -578,8 +673,10 @@ static func play(event: StringName) -> bool:
 	if voice == null:
 		return false
 	_last_played[event] = now
+	var index: int = int(_play_count.get(event, 0))
+	_play_count[event] = index + 1
 	voice.stream = stream
-	tune_voice(voice, event)
+	tune_voice(voice, event, index)
 	voice.play()
 	return true
 
@@ -598,6 +695,96 @@ static func kill_event_for(husk_multiplier: float) -> StringName:
 	return PEST_KILLED_HARD if husk_multiplier > 1.0 else PEST_KILLED
 
 
+# -- the wobble -------------------------------------------------------------
+#
+# THE COMPOSITION, pulled out into pure statics for the reason `should_play`,
+# `tune_voice` and `kill_event_for` were: `play()` is gated off headless, so the only
+# thing a suite can ever watch is a function that decides, never a voice that sounds.
+# A jitter written inline in `play()` would be a mutation nothing could kill. Written
+# as `pitch_for(event, index)` it is a table lookup plus arithmetic, assertable to the
+# last decimal with no tree, no pool and no audio server.
+#
+# **DETERMINISTIC, NOT RANDOM, and the reason is not only testability.** `randf_range`
+# would make the pitch of a given play unassertable — a test could bound it, never name
+# it, so the difference between "wobbling correctly" and "wobbling at all" would stop
+# being a claim anyone can write down. It would also make the sound of a board
+# unreproducible, which is the wrong trade for a cue whose whole job is to be heard the
+# same way twice by two people comparing notes. So the sequence is a hash of the event id
+# and the play index: same event, same index, same pitch, forever, on every machine.
+#
+# A CYCLING TABLE of offsets was the other candidate and is the one to avoid. A short
+# period is exactly what the ear latches onto — a five-entry ring played at 0.196s is a
+# five-note phrase at 300bpm, which is the melody `PEST_KILLED_HARD`'s comment warns
+# about arriving by a different door. A hash has no period a player will ever reach.
+#
+# The mixer below is written out here rather than reaching for `hash()` deliberately:
+# the engine makes no promise that `hash()` is stable across Godot versions, and a cue's
+# wobble sequence changing under a point release is a silent change to what the game
+# sounds like. FNV-1a and lowbias32 are both fully specified by the six lines they take.
+
+## Mask that keeps the mixers below in 32 bits. Everything is masked BEFORE each shift,
+## so `>>` never sees a negative int64 and never shifts sign bits in.
+const HASH_MASK: int = 0xFFFFFFFF
+
+
+## A 32-bit avalanche (the `lowbias32` finalizer). Low bits of the 64-bit products are
+## all that survive the mask, so an overflowing multiply is harmless by construction.
+static func _mix32(value: int) -> int:
+	var x: int = value & HASH_MASK
+	x = ((x ^ (x >> 16)) * 0x7FEB352D) & HASH_MASK
+	x = ((x ^ (x >> 15)) * 0x846CA68B) & HASH_MASK
+	return (x ^ (x >> 16)) & HASH_MASK
+
+
+## The seed an event id contributes to its own wobble sequence — FNV-1a over the id's
+## characters, so two cues never step through the same offsets in lockstep and neither
+## needs a row anywhere to say so.
+static func event_seed(event: StringName) -> int:
+	var text: String = String(event)
+	var acc: int = 2166136261
+	for i: int in range(text.length()):
+		acc = ((acc ^ text.unicode_at(i)) * 16777619) & HASH_MASK
+	return acc
+
+
+## Where in its band the `index`-th play of `event` lands, as a fraction in [-1.0, 1.0].
+##
+## Pure and total: every integer index answers, negatives included, and the answer for a
+## given pair never changes. This is the function to assert against — a wobble that has
+## stopped wobbling shows up here as a constant, which is a red test, where the same
+## breakage inside `play()` shows up as nothing at all.
+static func jitter_offset(event: StringName, index: int) -> float:
+	var mixed: int = _mix32(event_seed(event) ^ _mix32(index))
+	return float(mixed) / float(HASH_MASK) * 2.0 - 1.0
+
+
+## The pitch the `index`-th play of `event` is actually given: its `PITCH` centre, moved
+## by at most its `JITTER` half-width.
+##
+## An event with no `JITTER` row returns its centre EXACTLY, not a centre plus a zero —
+## the early return is what lets a reader (and `test_no_two_events_are_the_same_sound`)
+## keep reading the `PITCH` table as the literal truth for every cue outside the table
+## above.
+static func pitch_for(event: StringName, index: int) -> float:
+	var centre: float = float(PITCH.get(event, 1.0))
+	var width: float = float(JITTER.get(event, 0.0))
+	if width <= 0.0:
+		return centre
+	return centre + width * jitter_offset(event, index)
+
+
+## The lowest and highest pitch `event` can ever be played at, as `Vector2(low, high)`.
+##
+## Derived from the same two tables `pitch_for` reads rather than recomputed, so the band
+## a check asserts about and the pitch a player hears cannot come apart. This is what
+## makes "two events on one file never collide" a claim about ranges instead of about the
+## two numbers at their centres.
+static func pitch_band(event: StringName) -> Vector2:
+	var centre: float = float(PITCH.get(event, 1.0))
+	var width: float = maxf(float(JITTER.get(event, 0.0)), 0.0)
+	return Vector2(centre - width, centre + width)
+
+
 ## Puts everything except the stream onto a voice — every property that decides
 ## what an event SOUNDS like, in one place.
 ##
@@ -611,9 +798,13 @@ static func kill_event_for(husk_multiplier: float) -> StringName:
 ## Every property is written unconditionally, including the defaults: voices are
 ## pooled and reused, so a value left behind by the last event to borrow this voice
 ## would follow the next one around.
-static func tune_voice(voice: AudioStreamPlayer, event: StringName) -> void:
+## `index` is which play of this event the voice is for — `play()` passes the event's own
+## running count and everything else can leave it at 0. It only reaches `pitch_for`, and
+## for a cue with no `JITTER` row it changes nothing at all, which is why every existing
+## caller could keep its two arguments.
+static func tune_voice(voice: AudioStreamPlayer, event: StringName, index: int = 0) -> void:
 	voice.volume_db = float(VOLUME_DB.get(event, 0.0))
-	voice.pitch_scale = float(PITCH.get(event, 1.0))
+	voice.pitch_scale = pitch_for(event, index)
 	# THE ROUTING, written here and not in `_ensure_pool`, and that placement is the
 	# whole reason the dial is assertable. `play()` is gated off headless by
 	# `should_play`, so a suite cannot watch the pool being built — but it can hand

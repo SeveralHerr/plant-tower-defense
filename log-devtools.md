@@ -6598,3 +6598,136 @@ status rather than rewriting the entries that recorded these as open.
   - Improvement: unchanged in substance, sharpened by this cycle's evidence — a `check_all` mode that imports once into a LANE-LOCAL `.godot/` (a `--cache-dir` shim, or `GODOT_PROJECT_CACHE`) so N lanes each compile their own diff without colliding. Both lanes independently named the same fix. It would turn "not a compile" into "compiled, not run", which is most of the distance.
 
 - Note, not a gap: **a user screenshot outperformed every gate this project owns.** `findings`, `lint`, 741 tests and 16 checkers were all green over a playfield sitting in the wrong half of the window, because every one of them measures the design size and every test hosts the board at the origin. That is `godot-2d-placement-audit`'s central claim arriving here for the second time, and it is worth writing down that the cheapest detector in the toolkit remains a person looking at the game.
+
+## 2026-08-18 — Cycle 107: five parallel lanes, eight beads, and a seam neither lane could see
+
+- Value: **warranted** — the runtime pass produced one claim no gate in this project can
+  produce, and the merge produced two the gates were green over.
+  - Expected: runtime should show the road_shape budget verb printing the new test name
+    (a runtime string no gate reads), and the renamed predicate firing on a live preview
+    (a rename nothing compiled)
+  - Got: both, plus the one that mattered — `CornCobbler._recoil` sampled frozen read
+    `(0.920, 1.09333)` at t=0.0333 and `(0.89999, 1.11667)` at t=0.0666, which is linear
+    interpolation over `TWITCH_OUT_SECONDS=0.05` then `TWITCH_BACK_SECONDS=0.10` to five
+    decimals on both axes. `shows_redundant_patch_coverage` answered `false` on the live
+    preview and `shows_redundant_coverage` came back `has no method` — the rename proved
+    in both directions, which is what a rename actually needs.
+  - Found: the cross-lane seam. `sfx_call_check` (lane E) called
+    `gdsource.strip_comments` (lane A) bare, taking the `KEEP` default where it was
+    written and mutation-tested against `message_corpus_check`'s `BLANK` semantics; the
+    two modes differ on 40 of 44 `game/*.gd` files. Planting a `Sfx.play(Sfx.GHOST_CUE)`
+    inside a string literal gave 26 call sites and 1 false finding against the correct
+    25 and 0. `check_all.py` was **18 of 18 clean with the bug present.** Second half of
+    the same seam: `BLANK` blanks the `&` of `&"..."`, which `CONST_DECL` needs to tell a
+    StringName event id from a String const — lane A flagged that `&` as safe "since no
+    caller reads it", and lane E's checker, which did not exist in lane A's worktree,
+    reads exactly it.
+  - Cheaper: nothing for the tween arithmetic — no static gate here can observe a
+    duration, which is lane D's own argument for refusing to rescale the timings. The
+    rename and the budget string would have fallen to grep.
+
+- Gap: **a fan-out lane cannot type-check the file it just wrote** — `name_check.py` is
+  the only parallel-safe gate, and it resolves names without compiling; a fresh worktree
+  has no `.godot/`, so `--require-compile` false-positives every cross-file `class_name`.
+  Five lanes reported green this cycle having parsed nothing. Lane D worked around it by
+  porting its GDScript scanner to Python and running that against the pre- and
+  post-change trees — real proof of the logic, no proof of the GDScript.
+  - [G-124] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: a read-only shared-import mode — one `godot --check-only` per named
+    file against a `.godot/` the lane may read but not write, which is what
+    `--require-compile` already almost is. Needs the parent to have imported once and
+    the lane to be told it may read that cache.
+
+- Gap: **nothing gates a call-site's ARGUMENTS against the callee's default when a
+  shared helper gains a mode parameter.** The seam above is one function growing a
+  keyword argument whose default is not the behaviour its existing callers were written
+  against. Both sides were individually correct and every checker stayed green.
+  - [G-125] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: probably not a harness feature but a fan-out rule — when a lane
+    collapses N copies of a function into one shared implementation, the merge owes a
+    per-caller check that the chosen default matches what each caller previously had.
+    Worth adding to `merge-the-fanout` as a named failure class; it is currently absent
+    and it is the one that bit hardest this cycle.
+
+- Note: this project runs harness 0.38.0 while 0.60.0 is on the machine
+  (`plant-tower-defense-ny3h` is the open bead for that refresh). Gaps above are filed
+  against 0.38.0 and may already be closed upstream.
+
+- Gap: **the `/verify` skill shipped with the plugin describes a `run.json` the installed
+  ledger does not read.** The skill (from plugin 0.60.0) says the row carries
+  `"tier": "<full|headless-only|...>"` and that `stats` counts by it; this project runs
+  harness 0.38.0, whose `verify_ledger.record` reads eleven keys and `tier` is not one of
+  them. Caught by this project's own `tools/run_json_check.py`, not by the ledger:
+  `FINDING: unknown key 'tier' -- verify_ledger reads it nowhere, so it will be dropped
+  without a word and the row will not carry it.` Verified after the fact — the recorded
+  row has no `tier`. Removed the key; the row stands without it.
+  - [G-126] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: the skill's Phase 5 should say which harness version introduced each
+    `run.json` key, or `record` should warn on an unread key the way `run_json_check`
+    does rather than dropping it silently. Note the shape of this one: the guidance was
+    newer than the tool, so following the instructions correctly produced a row that
+    quietly lost a field. `plant-tower-defense-ny3h` (refresh 0.38.0 -> current) is the
+    standing fix.
+
+## 2026-08-18 — closed uqeo/hulz by measurement, merged two lanes, verified both live
+
+- Value: **warranted** — the bridge settled the "written or obvious" condition on both
+  lanes in four calls, which no headless gate could have.
+  - Expected: the rain prep-note clause renders and the pause tooltip matches its
+    destination; both plausible from the diff and neither provable from it.
+  - Got: `Wave 5 next — 16 pests · rain · beds mend 35%.` off the live `Hud`, and
+    `tooltip_text=Opens at page 13 of 14 — What the marks on the board mean.` against
+    `open_at=12` and `PageLabel text=13 / 14` — the promise and the destination read
+    back from the same running tree.
+  - Found: `node-bounds` confirmed `NotebookButton` is still `248x44`, i.e. the tooltip
+    did not widen the button past the rect `button_rects()` placed it in — the specific
+    failure that file's header warns about, and the reason the lane chose a tooltip over
+    a longer label. Nothing else; both lanes' work was correct as handed back.
+  - Cheaper: nothing. Three of the four reads are of live node state after a real press.
+
+- Gap: **no gap this turn.** `find-nodes --class Hud` recovered the node path in one
+  call after `/root/Game/HudLayer/Hud` (from a lane's report) turned out not to exist —
+  which is the verb working as documented rather than a gap.
+
+- Note, not a gap: the `uqeo` measurement was answered *without* the bridge. A 22-wave
+  live run would have produced one point on a curve whose shape `Plant.upgrade_ladder`,
+  `Sunflower.INTERVAL` and `can_start_wave` already decide. Worth recording because the
+  instinct was to launch the game, and the cheaper answer was strictly stronger: it
+  covers every playthrough rather than the one that got played.
+
+## 2026-08-18 — round 11: owdi driven, ox1p grouped, hb43 swept (no bridge this round)
+
+- Value: **warranted**, but for the headless suite rather than the bridge — the game
+  was never launched and did not need to be.
+  - Expected: `owdi`'s claim ("a foreign id cannot reach the shelf") was already true by
+    reading, so I expected a green test and nothing else.
+  - Got: green, 6 assertions — and then the part that mattered: patching
+    `shelf_progress_text` to count off `earned_milestones.size()` turned it **red**, and
+    restoring turned it green. That is the only evidence that a test about a protection
+    is asserting anything at all.
+  - Found: nothing in the game. The defects this round were both in **my own
+    measurements**: a history sweep that reported 554 false hits, then 144, before
+    asking `gdsource` instead of a regex.
+  - Cheaper: nothing for `owdi` — the bead's whole point was that reading had already
+    been done once and was not enough. For `hb43`, no engine at all was needed.
+
+- Gap: **`isolation: "worktree"` branched both lanes from the session's ORIGINAL HEAD,
+  not from current main.** `git worktree list` showed both agent worktrees at `bd9d332`
+  — the commit in this session's opening git status — while main was 17 commits ahead at
+  `d3e2c30`. Both lanes were therefore editing files that had moved underneath them, and
+  Lane B owns two files (`hud.gd`, `game.gd`) that round 10 had changed. Worked around by
+  messaging both lanes to `git merge main` mid-flight and telling each what specifically
+  had moved in its own files.
+  - [G-124] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: a spawn that creates a worktree should branch from the repo's CURRENT
+    HEAD, or say in the spawn result which commit it branched from. The failure is silent
+    and cheap to detect (`git worktree list`) but nothing prompts you to look — I only
+    checked because I wanted to see whether the lanes had committed yet. A lane that
+    reports "all gates clean" against a 17-commit-stale base is telling the truth about
+    the wrong tree, which is the same failure class as a clean `name_check` in a fresh
+    worktree that compiles nothing.
+
+- Note for the ledger, not a gap: the `hb43` survey is the clearest case this session of
+  a **zero that had to be earned**. Two wrong versions produced 554 and 144 findings; the
+  right one produces 0. A control file now pins all four outcomes, because "0 findings"
+  and "the sweep is broken" are the same output.

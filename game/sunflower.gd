@@ -175,9 +175,12 @@ func _bloom() -> void:
 	# it.
 	if not GardenTheme.animations_enabled():
 		return
+	# `Plant.FLOURISH_*` rather than the twitch tier, and deliberately: a payout is
+	# this plant's ONE visible event, so it is spent at the longer beat a cob only
+	# gets when it buys a level. Same pair as `CornCobbler._upgrade_flourish()`.
 	var pop := create_tween()
-	pop.tween_property(_sprite, "scale", Vector2(1.16, 1.16), 0.10)
-	pop.tween_property(_sprite, "scale", Vector2.ONE, 0.18)
+	pop.tween_property(_sprite, "scale", Vector2(1.16, 1.16), FLOURISH_OUT_SECONDS)
+	pop.tween_property(_sprite, "scale", Vector2.ONE, FLOURISH_BACK_SECONDS)
 	var flash := create_tween()
 	flash.tween_method(_set_bloom_flash, 1.0, 0.0, BLOOM_FLASH_TIME)
 

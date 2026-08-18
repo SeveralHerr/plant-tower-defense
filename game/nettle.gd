@@ -62,7 +62,51 @@ const RING_WIDTH: float = 2.0
 ## and for the same reason. A sting has no projectile, so without this the ONLY board-level
 ## evidence that a Nettle did anything is the victim's own hit flash — and that flash looks
 ## identical to a kernel landing from a cob three cells away.
-const STING_SQUASH := Vector2(1.16, 0.86)
+const STING_SQUASH := Vector2(1.26, 0.78)
+
+## The sting's own timing pair, plus the beat between them. NOT `Plant.TWITCH_*`.
+##
+## SOURCE: a player, verbatim -- "the red plant also needs a better animation, at the
+## moment it just jiggles" (plant-tower-defense-n2wd).
+##
+## The report was right and the reason is that a sting was spelled in the same grammar as
+## an idle. `_sting_twitch` rode `Plant.TWITCH_OUT/BACK_SECONDS` (0.05 / 0.10), the
+## per-action tier a Corn Cobbler's recoil uses, and 0.15s of symmetric-ish squash is
+## roughly `Mint`'s breathing pulse with a shear on it. Nothing in it says FORCE.
+##
+## Three changes, and only the third is a duration:
+##
+##   * it THRUSTS. The old gesture leaned (a signed skew) but never travelled, so the
+##     plant deformed in place. `STING_THRUST_PX` drives the sprite at the victim the way
+##     `ChompFlower.LUNGE_DISTANCE` drives the flower at its meal -- and the two read as
+##     different verbs because a bite closes on a held pest while a sting jabs and
+##     withdraws.
+##   * it HOLDS. `STING_HOLD_SECONDS` is a beat of stillness at full extension. This is
+##     the part that reads as force rather than as speed: a squash that turns around the
+##     instant it arrives is a wobble, and no amount of amplitude fixes that.
+##   * it RECOVERS SLOWLY. 0.04 out against 0.20 back is a 1:5 asymmetry where the old
+##     pair was 1:2. The strike should be faster than the eye and the withdrawal should be
+##     followable, which is the same shape `Pest.DEATH_LINGER`/`DEATH_FADE` uses.
+##
+## Total 0.29s against the old 0.15s. Declared here rather than by moving the shared pair,
+## because `CornCobbler._recoil()` reads that pair too and a cob is not stinging anything
+## -- `_sting_twitch`'s own header says so, and this is the bead it was written for.
+##
+## BACK is 0.20 and not the 0.22 this was first written with, and the two hundredths are
+## worth a sentence. `test_the_flourish_tier_is_pushed_further_and_held_longer_than_the_twitch`
+## bands every `*_OUT/BACK_SECONDS` pair to 0.04..0.20, and it exists to catch a constant
+## mis-pointed at something like `Aloe.PULSE_SECONDS` (3.4), which would freeze a plant for
+## three and a half seconds while passing every other check. 0.22 is not that mistake -- but
+## the cheap way out was to widen the band or except this pair, and neither is worth doing
+## for a difference nobody can see. The asymmetry the redesign is actually about survives
+## intact at 1:5.
+const STING_OUT_SECONDS: float = 0.04
+const STING_HOLD_SECONDS: float = 0.05
+const STING_BACK_SECONDS: float = 0.20
+## How far the sprite travels at the victim. Under the Chomp's 7px on purpose: a Nettle
+## jabs from where it stands and a Chomp lunges onto its meal, and the smaller throw is
+## what keeps the two gestures distinguishable at a glance.
+const STING_THRUST_PX: float = 5.0
 
 ## How far the sprite shears toward its victim at the top of a sting, in radians of skew.
 ##
@@ -126,6 +170,9 @@ var _cooldown: float = 0.0
 ## disagree.
 var _sting_lean: float = 0.0
 var _spark_ends: PackedVector2Array = PackedVector2Array()
+## The jab, composed beside `_sting_lean` and for the same reason: a sting always
+## knows which way it went, whether or not there is a tween to draw it.
+var _sting_thrust: Vector2 = Vector2.ZERO
 
 
 ## Whether this Nettle may sting `pest` at all.
@@ -250,6 +297,7 @@ func _sting(target: Pest) -> void:
 	# is going to draw it.
 	_sting_lean = sting_lean_skew(global_position, target.global_position)
 	_spark_ends = spark_spoke_ends(global_position, target.global_position)
+	_sting_thrust = sting_thrust_offset(global_position, target.global_position)
 	_sting_twitch()
 	_spawn_prickle_spark(target)
 
@@ -273,6 +321,24 @@ static func sting_lean_skew(from: Vector2, to: Vector2) -> float:
 	if delta.length_squared() <= 0.0001:
 		return 0.0
 	return STING_LEAN_SKEW * delta.normalized().x
+
+
+## Which way, and how far, the sprite jabs at a victim in that direction.
+##
+## Pure and static for the same reason `sting_lean_skew` is: the aim is then assertable
+## with no board, no frame and no open animation gate, which is the only way this project
+## can check an animation at all. Unlike the skew this keeps BOTH components — a shear has
+## nowhere to go but sideways, and a thrust at a pest directly above the plant is a real
+## thrust straight up.
+##
+## Same shape as `ChompFlower.lunge_offset()` deliberately: the two gestures differ in
+## distance and timing, not in how they are aimed, and writing the aim twice in two ways
+## would make them differ by accident later.
+static func sting_thrust_offset(from: Vector2, to: Vector2) -> Vector2:
+	var delta: Vector2 = to - from
+	if delta.length_squared() <= 0.0001:
+		return Vector2.ZERO
+	return delta.normalized() * STING_THRUST_PX
 
 
 ## The prickle spark's spokes, as end points in the spark's own local space — the spark
@@ -305,14 +371,31 @@ static func spark_spoke_ends(from: Vector2, to: Vector2) -> PackedVector2Array:
 ##
 ## Scale and skew in parallel and both back together — a lean that arrived after the squash
 ## had already recovered would read as two separate twitches rather than as one sting.
+##
+## Both channels ride `Plant.TWITCH_*`, the per-action tier, which is the same pair
+## `CornCobbler._recoil()` uses: a sting is one of hundreds, exactly as a shot is. Anything
+## retuning THIS gesture specifically — the sting redesign, say — must declare its own pair
+## on Nettle rather than move the shared one, or it retunes the cob's recoil at the same
+## time and nothing headless will notice.
 func _sting_twitch() -> void:
 	if _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
 		return
+	# Home is the origin, on ChompFlower._bite()'s authority: "`_sprite.position` is
+	# otherwise unwritten on a plant -- idle sway and flinch live on `_sway_pivot` and
+	# every event tween owns `_sprite.scale`". The thrust is a third channel here for
+	# the same reason it is one there, and it rides the sway pivot's frame, so a jab
+	# leans with whatever the idle is doing without ever aiming at the wrong neighbour.
+	var home: Vector2 = Vector2.ZERO
 	var tween := create_tween().set_parallel(true)
-	tween.tween_property(_sprite, "scale", STING_SQUASH, 0.05)
-	tween.tween_property(_sprite, "skew", _sting_lean, 0.05)
-	tween.chain().tween_property(_sprite, "scale", Vector2.ONE, 0.10)
-	tween.tween_property(_sprite, "skew", 0.0, 0.10)
+	tween.tween_property(_sprite, "scale", STING_SQUASH, STING_OUT_SECONDS)
+	tween.tween_property(_sprite, "skew", _sting_lean, STING_OUT_SECONDS)
+	tween.tween_property(_sprite, "position", home + _sting_thrust, STING_OUT_SECONDS)
+	# The beat at full extension. tween_interval on the chain, so all three channels
+	# arrive, stop, and leave together -- a hold on one of them is a drift, not a hold.
+	tween.chain().tween_interval(STING_HOLD_SECONDS)
+	tween.chain().tween_property(_sprite, "scale", Vector2.ONE, STING_BACK_SECONDS)
+	tween.tween_property(_sprite, "skew", 0.0, STING_BACK_SECONDS)
+	tween.tween_property(_sprite, "position", home, STING_BACK_SECONDS)
 
 
 ## The burst at the victim, which frees ITSELF off the end of its own tween rather than

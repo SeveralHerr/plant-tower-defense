@@ -90,6 +90,8 @@ import sys
 from bisect import bisect_right
 from pathlib import Path
 
+import gdsource
+
 TOOL_VERSION = "1.0.0"
 
 EXIT_OK = 0
@@ -158,69 +160,20 @@ class SourceText:
 def _blank_strings_and_comments(text):
     """Return the source with comments and string bodies replaced by spaces.
 
-    Handles every GDScript literal form: ''' and \"\"\" blocks, ' and " strings, the r""
-    raw prefix and the &"" / ^"" StringName and NodePath prefixes. Backslash escapes are
-    honoured outside raw strings, so a literal containing a quote does not end the string
-    early and leave the rest of the file parsed as code. Quote *delimiters* survive, which
-    is what lets the key extractor below recognise a literal argument at all.
+    Now one line over tools/gdsource.py, whose BLANK mode is this transform: it keeps
+    the quote *delimiters*, which is what lets the key extractor below recognise a
+    literal argument at all. Verified byte-identical to the implementation that used to
+    sit here over all 60 .gd files in the repo before the swap, which is the only
+    evidence that matters for a move like this.
+
+    Everything the docstring here used to promise is now promised, and TESTED, there:
+    ''' and \"\"\" blocks, ' and " strings, the r"" raw prefix and the &"" / ^"" prefixes,
+    backslash escapes outside raw strings (so a literal containing a quote does not end
+    the string early and leave the rest of the file parsed as code), a backslash-newline
+    continuation that keeps its line break, and an unterminated single-line literal that
+    stops at the newline instead of swallowing the file. `python tools/gdsource.py`.
     """
-    out = []
-    i = 0
-    n = len(text)
-    while i < n:
-        ch = text[i]
-        if ch == "\n":
-            out.append("\n")
-            i += 1
-            continue
-        if ch == "#":
-            j = text.find("\n", i)
-            if j < 0:
-                j = n
-            out.append(" " * (j - i))
-            i = j
-            continue
-        if ch in "\"'" or (ch in "r&^" and i + 1 < n and text[i + 1] in "\"'"):
-            if ch in "r&^":
-                raw = ch == "r"
-                i += 1
-                out.append(" ")
-                ch = text[i]
-            else:
-                raw = False
-            triple = text[i:i + 3] in ('"""', "'''")
-            quote = text[i:i + 3] if triple else ch
-            out.append(quote)
-            i += len(quote)
-            while i < n:
-                if text[i] == "\\" and not raw and i + 1 < n:
-                    # A backslash-newline continuation inside a literal is two characters
-                    # ONE of which is a newline. name_check.py's port emits two spaces
-                    # here, which is length-preserving but eats a line break, so every
-                    # line number after such a string is off by one -- and a finding that
-                    # points at the wrong line is worse than none. Keep the newline.
-                    out.append(" \n" if text[i + 1] == "\n" else "  ")
-                    i += 2
-                    continue
-                if text.startswith(quote, i):
-                    break
-                out.append("\n" if (text[i] == "\n" and triple) else " ")
-                if text[i] == "\n" and not triple:
-                    # An unterminated single-line string: Godot will not parse this file at
-                    # all. Stop at the newline rather than swallowing the rest of the file
-                    # into the literal. The newline itself has to be emitted (not the space
-                    # appended above) or every line number after it shifts.
-                    out[-1] = "\n"
-                    i += 1
-                    break
-                i += 1
-            if text.startswith(quote, i):
-                out.append(quote)
-                i += len(quote)
-            continue
-        out.append(ch)
-        i += 1
-    return "".join(out)
+    return gdsource.strip_comments(text, gdsource.BLANK)
 
 
 def _match_paren(code, open_pos):

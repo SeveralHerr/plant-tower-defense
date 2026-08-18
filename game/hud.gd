@@ -11,6 +11,14 @@ extends CanvasLayer
 
 signal plant_selected(id: StringName)
 signal packet_requested(tier: StringName)
+
+## The cursor arrived on (or left, with &"") a plant's shop entry. Hover and not
+## press, for the reason _on_packet_hover already gives: "where would this plant be
+## useless" is a question asked BEFORE buying, and a cue you only get by spending
+## seeds is not a cue. Fires on a DISABLED button too, which is the case that
+## matters most -- a plant you have not unlocked is exactly the one you are pricing
+## up (plant-tower-defense-tzz7).
+signal plant_hovered(id: StringName)
 signal next_wave_requested
 signal upgrade_requested
 signal uproot_requested
@@ -70,34 +78,203 @@ const NEXT_WAVE_BUTTON_SIZE := Vector2(130, 40)
 ## by shrinking another would not be a fix, just a different tight spot). The
 ## row's own headroom nearly triples, 8px to 19, and Seeds — the readout that
 ## started this — gains 3px it did not have before.
-## The stats row's font size, hoisted out of the four _add_stat calls so a budget
-## measured against it cannot be measured at a different one. The compost readout
-## is deliberately smaller and says so at its own call site.
+## The stats row's font sizes, hoisted out of the readout table below so a budget
+## measured against one cannot be measured at a different one.
+##
+## THREE sizes now, not two, and the ladder IS the row's hierarchy rather than a set of
+## separate preferences. Until plant-tower-defense-6tmf the row ran 26/26/26/20 — four
+## strings of near-identical weight on one flat slab, so a player scanning for the
+## number that changed had nothing to land on.
+##
+## Size is the cheapest channel available here, and cheap in the one sense this row
+## cares about: a step DOWN spends no width at all. Every readout is clipped to a slot
+## that was measured at the larger size (`_add_stat`), so shrinking a readout can only
+## leave it more room than it had, never less.
 const STAT_FONT_SIZE: int = 26
+## The wave readout takes the middle rung, and it is the one of the four that can
+## afford to. It is by far the most redundantly announced thing in this game: the wave
+## banner names it, the prep note names it again, the prep strip times it, and this
+## readout itself carries the live threat tint. Nothing else in the row is said four
+## ways.
+##
+## The slot stays 312px on purpose — see STAT_READOUTS' `width` column. At 24px the
+## declared worst case draws ~279 rather than ~302, so the wave readout now sits on
+## ~33px of internal headroom instead of ~10. That headroom is NOT reclaimed into the
+## row's own 19px of slack in this pass: doing so means retyping a measured constant
+## against a font measurement nobody has taken, and an over-tight slot fails silently
+## by clipping. Reclaiming it is a measurement, not an edit.
+const WAVE_FONT_SIZE: int = 24
+## Compost is the smallest, and it is the one stat that is not a resource you spend.
+## `_make_label` sets VERTICAL_ALIGNMENT_CENTER so the 20px text still sits on the same
+## baseline as the 26px text beside it.
+const COMPOST_FONT_SIZE: int = 20
 
-const SEEDS_LABEL_WIDTH: float = 171.0
-const WAVE_LABEL_WIDTH: float = 312.0
-const LIVES_LABEL_WIDTH: float = 146.0
-const COMPOST_LABEL_WIDTH: float = 198.0
+## The stroke weight a readout is drawn at: a font OUTLINE in the label's own colour,
+## so the glyphs thicken rather than gain a halo. This is the second half of the
+## hierarchy above, and it exists because size alone cannot separate the two readouts
+## that both have to stay at full size.
+##
+## Why an outline rather than a bold face: this project ships one font, so a bold
+## variant would be a new asset. An outline is a theme constant on a Label — no asset,
+## and, the part that actually decides it, NO WIDTH. Layout in this row comes from
+## `custom_minimum_size` (every readout sets `clip_text`), so an outline changes what
+## is drawn and not what is measured.
+##
+## What it does change is how far the drawn glyphs REACH: a weight of N puts N px
+## either side of the text. That is why the worst-case guard in `test_placement.gd`
+## measures `worst_case + 2 * weight` against the slot rather than the bare string —
+## `test_no_readout_clips_its_own_worst_case` and `cmd budgets` both measure the string
+## alone and would not see an outline pushing a full-width readout into its ellipsis.
+const READOUT_WEIGHT_HEAVY: int = 2
+const READOUT_WEIGHT_MEDIUM: int = 1
+const READOUT_WEIGHT_PLAIN: int = 0
 
-## The longest string each readout can ever hold. Budgets are only meaningful
-## against these, and a clipped Label fails *silently* — it just renders
-## "Seeds  4…" and nothing complains, which is exactly how the first pass at
-## these numbers shipped a 130px seeds slot that could not hold a 3-digit
-## total. `test_no_readout_clips_its_own_worst_case` measures each of these
-## against its budget in the real theme font.
-const WORST_CASE_TEXT: Dictionary = {
-	"SeedsLabel": "Seeds  99999",
-	# Weather is deliberately NOT here, and the number is why: the base string
-	# measures 302px in a 312px slot, so the tightest tag that could carry a weather
-	# state -- a bare "*" -- needs 317. Every option overflowed, which is the budget
-	# system saying the top bar is not weather's home. See plant-tower-defense-saaw.
-	"WaveLabel": "Wave  9999 ∞   threat 99",
-	"LivesLabel": "Garden  10",
-	# Includes the husk suffix. Leaving it out is what let a clipped readout ship:
-	# the widest string this label can hold is not the widest one anyone wrote down.
-	"CompostLabel": "Compost  9999  +99",
-}
+## THE FOUR READOUTS, and the only place any one of them is described.
+##
+## This was THREE hand-lists of the same four names: a `WORST_CASE_TEXT` dictionary,
+## four `SEEDS`/`WAVE`/`LIVES`/`COMPOST_LABEL_WIDTH` constants that
+## `stats_row_budget()` summed, and four `_add_stat()` calls in `_build_top_bar`. Nothing tied
+## any pair of them together until cycle 51 bolted two equality assertions across the
+## gaps, and both gaps were real: a readout could be added to the row and be invisible
+## to the worst-case table, or declared there and invisible to the width sum. One
+## table removes the class rather than the two instances -- `_build_top_bar` lays it out
+## by walking this, `stats_row_budget()` sums these same rows, and `WORST_CASE_TEXT`
+## below is a projection of it, so a fifth readout is one entry and cannot be
+## half-added.
+##
+## THE COLUMNS, and why each is a column rather than a constant somewhere else:
+##
+##   name        the Label's node name. Part of the contract -- the devtools bridge
+##               reads these by path -- and the key both `WORST_CASE_TEXT` and the
+##               `hud_readouts` budget are written against.
+##   member      the `_x_label` field the rest of this file reads. Assigned through
+##               `set()` in `_build_top_bar` so this table stays the only enumeration
+##               four; four hand-written assignments after the loop would just be a
+##               new third list wearing different clothes.
+##   width       the clipped slot in px, from the block above.
+##   font_size   One of the three sizes above. Carried per row because the difference
+##               IS information: a table that dropped it would be three lists collapsed
+##               into one plus an exception.
+##   weight      The stroke weight, as a font outline in the row's own colour. The other
+##               half of the same information, and a separate column rather than a
+##               function of `font_size` because two readouts share a size and must not
+##               share a treatment. See READOUT_WEIGHT_HEAVY.
+##   colour      PAPER for the three resources, COMPOST for the gold one. The wave
+##               readout's is also its ramp's base -- `threat_color_on` returns PAPER
+##               below THREAT_SHOW_FROM and `_ease_threat_tint` eases from there
+##               toward the warm/hot stops (and their colourblind-safe twins).
+##   worst_case  the longest string this readout can ever hold, and the value
+##               `WORST_CASE_TEXT` projects out.
+##   shapes      every format string the code assigns to this readout -- base branches
+##               and `+=` suffixes alike. `tools/readout_shape_check.py` ties this
+##               column to the real `_x_label.text =` assignments in BOTH directions.
+##               It exists because `worst_case` structurally cannot: one string is an
+##               instance of exactly ONE branch, and the wave readout has two.
+##
+## THE HIERARCHY, and how it is ranked (plant-tower-defense-6tmf). These are four
+## different kinds of thing — a currency you spend, a clock you cannot stop, a life
+## total, a bankable surplus — and until this pass they were four near-identical
+## strings. `font_size` x `weight` now gives each of them its own treatment:
+##
+##   Garden   26 / heavy    The only readout whose change cannot be undone, and the
+##                          rarest to change. It has to catch an eye that is on the
+##                          board, so it is the one the row shouts with.
+##   Seeds    26 / medium   The number every decision is priced against, and the one
+##                          scanned most often. It needs LEGIBILITY, not alarm.
+##   Wave     24 / plain    A clock. It owns a channel none of the others has — the
+##                          live threat tint — and it is announced three further ways
+##                          (banner, prep note, prep strip), so it gives up a rung.
+##   Compost  20 / plain    A surplus that can wait, and the row's pre-existing step
+##                          down. Gold, and the only readout that is.
+##
+## **No two rows share a `(font_size, weight)` pair**, which is the property that makes
+## this a hierarchy rather than four settings; `test_placement.gd` asserts it off this
+## table rather than against a hand-list, so a fifth readout that copied an existing
+## treatment fails instead of quietly rejoining the undifferentiated line.
+##
+## Both channels survive the colour being thrown away — required here, not optional:
+## `game/OVERLAY_GRAMMAR.md`'s two-channel rule is project-wide, and the wave readout's
+## tint is precisely the channel a greyscale reader loses.
+const STAT_READOUTS: Array[Dictionary] = [
+	{
+		"name": "SeedsLabel",
+		"member": "_seeds_label",
+		"width": 171.0,
+		"font_size": STAT_FONT_SIZE,
+		"weight": READOUT_WEIGHT_MEDIUM,
+		"colour": PAPER,
+		"worst_case": "Seeds  99999",
+		"shapes": ["Seeds  %d"],
+	},
+	{
+		# Weather is deliberately NOT a fifth readout, and the number is why: the base
+		# string measures 302px in a 312px slot, so the tightest tag that could carry
+		# a weather state -- a bare "*" -- needs 317. Every option overflowed, which
+		# is the budget system saying the top bar is not weather's home. See
+		# plant-tower-defense-saaw.
+		#
+		# TWO base shapes and one worst case, which is the thing `shapes` exists to
+		# say out loud. "Wave  %d / %d" is the fixed campaign, bounded by
+		# WaveDirector.WAVES at 22 waves with a single-digit threat level there; the
+		# endless branch spends four digits on the wave and two on the threat, so it
+		# is the wider of the two. That was an unwritten assumption until cycle 108 --
+		# the declared worst case was one string somebody wrote out, and nothing tied
+		# it to the branches the formatter can actually build.
+		"name": "WaveLabel",
+		"member": "_wave_label",
+		"width": 312.0,
+		"font_size": WAVE_FONT_SIZE,
+		# Plain on purpose, and it is the one row where that is a constraint rather than
+		# a choice: this label's colour is rewritten every frame of a threat ease, and an
+		# outline is drawn in a colour of its own. `_ease_threat_tint` keeps the two in
+		# step so a future weight here cannot strand a cream outline on a red number --
+		# but the cheapest way to be sure is to spend a different channel, and the tint
+		# already IS this readout's channel.
+		"weight": READOUT_WEIGHT_PLAIN,
+		"colour": PAPER,
+		"worst_case": "Wave  9999 ∞   threat 99",
+		"shapes": ["Wave  %d ∞", "Wave  %d / %d", "   threat %d"],
+	},
+	{
+		"name": "LivesLabel",
+		"member": "_lives_label",
+		"width": 146.0,
+		"font_size": STAT_FONT_SIZE,
+		"weight": READOUT_WEIGHT_HEAVY,
+		"colour": PAPER,
+		"worst_case": "Garden  10",
+		"shapes": ["Garden  %d"],
+	},
+	{
+		# The husk suffix is part of the worst case, not an extra on top of it.
+		# Leaving it out is what let a clipped readout ship: the table declared only
+		# "Compost  9999" while the formatter appended "  +N", and the width test has
+		# only ever measured the string the table names.
+		"name": "CompostLabel",
+		"member": "_compost_label",
+		"width": 198.0,
+		"font_size": COMPOST_FONT_SIZE,
+		"weight": READOUT_WEIGHT_PLAIN,
+		"colour": COMPOST,
+		"worst_case": "Compost  9999  +99",
+		"shapes": ["Compost  %d", "  +%d"],
+	},
+]
+
+## The longest string each readout can ever hold, keyed by node name. Budgets are only
+## meaningful against these, and a clipped Label fails *silently* -- it just renders
+## "Seeds  4..." and nothing complains, which is exactly how the first pass at these
+## numbers shipped a 130px seeds slot that could not hold a 3-digit total.
+## `test_no_readout_clips_its_own_worst_case` measures each of these against its
+## budget in the real theme font.
+##
+## A PROJECTION of STAT_READOUTS, not a table of its own. `Game`'s `hud_readouts`
+## budget, the `budgets` verb and three tests are all written against this shape and
+## there is no reason to make them walk a seven-column row to reach one cell. A
+## `static var` rather than a `const` because a const cannot be computed: it is filled
+## once when the script loads, and the payoff is that it cannot disagree with the rows
+## it describes.
+static var WORST_CASE_TEXT: Dictionary = _worst_case_text()
 
 ## The top bar's page rules: the notebook's own ruled lines, drawn on the ink band.
 ##
@@ -518,6 +695,47 @@ const MESSAGE_DEADLINE: int = 2
 ## replace it. Roughly the time to read a short sentence.
 const MESSAGE_MIN_READABLE: float = 1.2
 
+## WHAT AN IMPORTANT LINE LOOKS LIKE (plant-tower-defense-xvub).
+##
+## The three rungs above controlled queue PRIORITY and nothing else, so the armed-uproot
+## prompt — a four-second irreversible decision — was drawn exactly like "Composted a
+## husk for 3 seeds." A player learns to skim a row where most of what appears is
+## ambient, and the one line that must be read was styled identically to the ones that
+## need not be.
+##
+## TWO channels, and NEITHER of them is colour. That is `game/OVERLAY_GRAMMAR.md`'s
+## two-channel rule, which is project-wide and is this bead's stated acceptance: the
+## distinction has to survive the screen being read in greyscale. It is met here in the
+## strongest available form — a stressed line and an ambient one are drawn in the SAME
+## colour (LEAF), so there is no hue difference to throw away in the first place.
+##
+##   WEIGHT     the row's own text thickens, drawn as a font outline in the text's own
+##              colour. One pixel, not two: the message row is 15px and a 2px outline
+##              starts closing the counters of an `e` at that size.
+##   A MARK     a solid tick in the page margin beside the line, present for a stressed
+##              line and absent for an ambient one. Presence/absence is the cleanest
+##              greyscale channel there is, and marking an important line in the margin
+##              is what this game's whole notebook idiom already does on paper.
+##
+## Both are FREE in width, which is the constraint that ruled out the obvious answers.
+## The outline changes what is drawn and not what is measured; the mark is a ColorRect
+## child of the Label — the same trick `_readout_rule` uses — living in the 6px of
+## gutter between MARGIN_RULE_X's rule and the text at STATS_ROW_MARGIN, which is space
+## nothing was using. Neither is an option the row's budget could otherwise afford.
+##
+## Rejected: the bead's third suggestion, a brief HOLD before the queue advances. It is
+## the cheapest of the three in pixels and the most expensive in risk — it changes the
+## row's timing, which `show_message`, `_queue_message`, `queue_outcome`,
+## `line_was_read` and their tests all reason about, to buy a channel the two above
+## already carry.
+const MESSAGE_STRESS_OUTLINE: int = 1
+## The margin tick's box, and where it sits. Anchored to the MessageLabel's left edge
+## with NEGATIVE offsets, so it is drawn outside the label's own rect and inside the
+## bar: STATS_ROW_MARGIN (20) - GAP (2) - WIDTH (4) puts its left edge at 14, exactly
+## where MarginRule's own 12+2 ends. It touches the page rule and never overlaps it.
+const MESSAGE_MARK_WIDTH: float = 4.0
+const MESSAGE_MARK_GAP: float = 2.0
+
 
 ## Whether a line that has been on the row for `total - left` seconds has had long enough to
 ## have been read.
@@ -624,6 +842,37 @@ const PANEL_RISE_SECONDS: float = 0.16
 const READOUT_PUNCH_SCALE: float = 1.22
 const READOUT_PUNCH_SECONDS: float = 0.16
 
+## THE SEEDS ROLL. The punch above says "this number moved" and stops there, so a
+## 45-seed purchase and a 2-seed pest payout look identical: one pop, and a total that
+## is simply different afterwards. Seeds is the readout that moves most often in this
+## game and the one every decision is priced against, and it was the one number on
+## screen with no way to see HOW FAR it went (plant-tower-defense-r3e8).
+##
+## The pattern is `TitleScreen._arm_record_ratchet`'s, deliberately, down to the rule
+## that makes it safe: **the label already holds the final text before the roll runs.**
+## Headless pumps no frames, so a tween responsible for ARRIVING at the right value
+## leaves the right value unreachable in every test; this one only ever overwrites a
+## correct string with an intermediate one and then puts it back.
+##
+## FASTER AND COARSER THAN THE RECORD'S, and both of those are because of how often it
+## fires. The record rolls once, at the end of a run, over 0.8s; this can fire several
+## times in a wave, and a roll still running when the next one starts is a readout that
+## never settles. 0.35s lands well inside the gap between two pest payouts.
+const SEED_ROLL_SECONDS: float = 0.35
+## Stepped, not continuous, and this is the half the record ratchet declares
+## (`RATCHET_STEPS`) and then does not use. A counter that renders a different four-digit
+## number on all 21 frames of a 0.35s roll is noise: nothing is legible, so the roll
+## reads as a flicker rather than as travel. Ten stops is what the player actually sees.
+const SEED_ROLL_STEPS: int = 10
+## Below this the number SNAPS, and the punch alone carries it. Rolling +2 for a pest
+## kill would put the busiest readout in the game in permanent motion for a change a
+## player can read at a glance — and the roll exists to make a big jump legible, which
+## is a claim about big jumps.
+##
+## 5 is the smallest single seed payout in the game that is worth watching arrive; every
+## plant price and every wave bonus clears it by a wide margin.
+const SEED_ROLL_MIN_JUMP: int = 5
+
 ## The denial shake: rotation, not position. The plant bar's buttons are
 ## GridContainer children, and a Container's sort pass writes `position` and
 ## `size` on every child every time it runs — which a refresh() landing mid-shake
@@ -651,6 +900,9 @@ var _wave_label: Label
 var _lives_label: Label
 var _compost_label: Label
 var _message_label: Label
+## The margin tick beside an important line. See MESSAGE_STRESS_OUTLINE — it is a child
+## of `_message_label` so it costs the row nothing and follows the label's rect.
+var _message_mark: ColorRect
 ## A GridContainer, not a VBox: it runs one column until a fifth plant would
 ## push the buttons under the touch minimum, then two. See plant_bar_layout.
 var _plant_bar: GridContainer
@@ -673,6 +925,10 @@ var _banner_note: Label
 var _fx_layer: Container
 
 var _plant_buttons: Dictionary = {}
+## Which plant button the cursor is on, &"" for none. Needed because two adjacent
+## buttons in the GridContainer can fire mouse_exited(A) AFTER mouse_entered(B),
+## which with a bare &"" on exit would blank a hover that had just started.
+var _hovered_plant: StringName = &""
 ## The packet tier the cursor is currently resting on, or &"" for none. Drives the
 ## plant bar's hint tint — see plant_button_tint.
 var _packet_hint_tier: StringName = &""
@@ -733,6 +989,14 @@ var _shake_tweens: Dictionary = {}
 ## readout's text goes from "" to its real value on that call, which is the
 ## screen appearing, not a change the player made — see refresh().
 var _readouts_seeded: bool = false
+## The seed total the readout was last told to show. The roll needs somewhere to count
+## FROM, and the Label's own text is not it: parsing a number back out of "Seeds  120"
+## would read whatever intermediate value a roll already in flight had just written.
+var _seeds_shown: int = 0
+## The live seeds roll, killed and restarted rather than raced — the same rule
+## `_readout_tweens` exists for one member up. A second roll armed while the first is
+## mid-count would have two tweens writing the same Label from two different `from`s.
+var _seeds_roll: Tween
 
 ## The three surfaces whose geometry comes from the viewport rather than from a
 ## constant. Held as members for one reason: `_apply_viewport_layout()` has to be
@@ -970,10 +1234,24 @@ func _build_top_bar(root: Control) -> void:
 	bar.add_child(stats)
 	_stats_row = stats
 
-	_seeds_label = _add_stat(stats, "SeedsLabel", STAT_FONT_SIZE, PAPER, SEEDS_LABEL_WIDTH)
-	_wave_label = _add_stat(stats, "WaveLabel", STAT_FONT_SIZE, PAPER, WAVE_LABEL_WIDTH)
-	_lives_label = _add_stat(stats, "LivesLabel", STAT_FONT_SIZE, PAPER, LIVES_LABEL_WIDTH)
-	_compost_label = _add_stat(stats, "CompostLabel", 20, COMPOST, COMPOST_LABEL_WIDTH)
+	# The readouts, laid out by walking STAT_READOUTS rather than by four hand-written
+	# calls. That is what makes the row and the budget the same list: a fifth entry
+	# shows up on screen and in stats_row_budget() from one edit, and a Label in this
+	# row that no entry describes cannot exist -- which is what the two cycle-51
+	# assertions were bolted on to check from the outside.
+	for readout: Dictionary in STAT_READOUTS:
+		var colour: Color = readout["colour"]
+		var member: String = String(readout["member"])
+		var label: Label = _add_stat(stats, String(readout["name"]),
+			int(readout["font_size"]), int(readout["weight"]), colour,
+			float(readout["width"]))
+		# The field the rest of this file reads. Through set() so the table stays the
+		# only enumeration of the four; a `member` naming nothing would otherwise leave
+		# the field null and not say so until the first refresh().
+		set(member, label)
+		if get(member) != label:
+			push_error("Hud: STAT_READOUTS entry %s names no member `%s`"
+				% [readout["name"], member])
 
 	# The one element that absorbs slack. Without it the readouts spread across
 	# the whole bar; with it they stay left-grouped and the button stays right.
@@ -1017,7 +1295,33 @@ func _build_top_bar(root: Control) -> void:
 	_message_label = _make_label("MessageLabel", MESSAGE_FONT_SIZE, LEAF)
 	_message_label.clip_text = true
 	_message_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	# The stressed line's weight, in the text's own colour so the strokes thicken rather
+	# than gaining a halo. The SIZE is toggled per line by `_apply_message_stress`; the
+	# colour is written once here, and writing it once is what keeps the two states the
+	# same hue — the whole point of MESSAGE_STRESS_OUTLINE's two channels.
+	_message_label.add_theme_color_override("font_outline_color", LEAF)
+	_message_label.add_theme_constant_override("outline_size", 0)
 	bar.add_child(_message_label)
+
+	# The margin tick. A child of the Label rather than of the bar: it then follows the
+	# message row's rect through every `_apply_viewport_layout()` without a second copy
+	# of that arithmetic, exactly as `_readout_rule` does upstairs.
+	_message_mark = ColorRect.new()
+	_message_mark.name = "MessageMark"
+	_message_mark.color = PAPER
+	_message_mark.anchor_left = 0.0
+	_message_mark.anchor_right = 0.0
+	_message_mark.anchor_top = 0.0
+	_message_mark.anchor_bottom = 1.0
+	_message_mark.offset_left = -(MESSAGE_MARK_GAP + MESSAGE_MARK_WIDTH)
+	_message_mark.offset_right = -MESSAGE_MARK_GAP
+	_message_mark.offset_top = 0.0
+	_message_mark.offset_bottom = 0.0
+	_message_mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Ambient until something says otherwise. The row's resting state is the prep note,
+	# which is MESSAGE_NORMAL by construction.
+	_message_mark.visible = false
+	_message_label.add_child(_message_mark)
 
 	_prep_bar = ColorRect.new()
 	_prep_bar.name = "PrepBar"
@@ -1067,6 +1371,8 @@ func _build_side_panel(root: Control) -> void:
 		# away again as the answer changes.
 		button.tooltip_text = plant_button_tooltip(id, &"")
 		button.pressed.connect(_on_plant_button.bind(id))
+		button.mouse_entered.connect(_on_plant_hover.bind(id, false))
+		button.mouse_exited.connect(_on_plant_hover.bind(id, true))
 		_plant_bar.add_child(button)
 		_plant_buttons[id] = button
 
@@ -1229,8 +1535,18 @@ func _make_banner_label(node_name: String, font_size: int, colour: Color) -> Lab
 ## right edge of the screen. Every readout is budgeted rather than just the
 ## long one, so adding a fifth later is a matter of finding room in the sum
 ## instead of rediscovering this.
-func _add_stat(row: HBoxContainer, node_name: String, font_size: int, colour: Color, width: float) -> Label:
+##
+## `weight` is the readout's stroke weight, drawn as a font outline in the readout's
+## OWN colour so the glyphs thicken instead of gaining a halo — see
+## READOUT_WEIGHT_HEAVY for why an outline rather than a bold face, and STAT_READOUTS'
+## hierarchy block for which readout gets which. The outline colour is set even at
+## weight 0: it costs nothing, and it means a row that later takes a weight is already
+## drawn in the right colour rather than in Godot's default black.
+func _add_stat(row: HBoxContainer, node_name: String, font_size: int, weight: int,
+		colour: Color, width: float) -> Label:
 	var label := _make_label(node_name, font_size, colour)
+	label.add_theme_constant_override("outline_size", weight)
+	label.add_theme_color_override("font_outline_color", colour)
 	label.clip_text = true
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	label.custom_minimum_size = Vector2(width, 0)
@@ -1372,6 +1688,96 @@ static func plant_button_label(unlocked: bool, price: int) -> String:
 	return "free" if price == 0 else str(price)
 
 
+## THE UPROOT BUTTON'S RESTING LABEL, and the half of the trade it used to leave out.
+##
+## It said `Uproot (+12)` — what you GET BACK — and nothing anywhere said what putting
+## a plant back on that bed costs. Both numbers are known: the refund slides with the
+## plant's health (`Plant.uproot_refund`), the replant price is `SeedBank.placement_cost`
+## for the same `kind`, and the decision the player is actually making is the DIFFERENCE
+## between them, on a four-second confirm timer (plant-tower-defense-eupm).
+##
+## So the button does the subtraction. `Uproot (+12, net -8)` reads: twelve seeds come
+## back, and you end the round trip eight down.
+##
+## WHY THE NET AND NOT "replant 20". Two bare numbers side by side is the same
+## arithmetic in one more character; the bead's acceptance is that the NET COST is
+## visible while deciding, and a player mid-timer should not be subtracting. The
+## replant price is still reachable in words — see `uproot_button_tooltip`, which costs
+## no width at all.
+##
+## THE SIGN IS THE SECOND CHANNEL, and it has to be, because `net` genuinely goes both
+## ways: while the free starter is unspent `placement_cost` returns 0, so uprooting a
+## Corn Cobbler and replanting it is pure profit and the button says `+6`. A colour
+## would have been the obvious way to separate those two cases and it is exactly the
+## channel `game/OVERLAY_GRAMMAR.md` forbids as a sole signal; a leading `-` or `+`
+## survives greyscale, and this button already spends its one colour override on ARMED.
+##
+## THE ARMED LABEL IS DELIBERATELY UNCHANGED. `Really uproot? (+99)` is the longest
+## string this button has ever held and the width argument below is that nothing may
+## exceed it; more to the point, once the confirm is armed the decision is made and the
+## question on screen is "destroy this?", not "is the trade worth it?".
+##
+## Pure and static so the wording and the arithmetic are assertable without a HUD, and
+## so `test_the_uproot_buttons_worst_case_fits_the_selection_box` can measure the widest
+## string this can build rather than one somebody typed out.
+static func uproot_net(refund: int, replant: int) -> int:
+	return refund - replant
+
+
+## The net, signed. `%d` prints a loss as "-8" but a gain as a bare "8", so the two
+## directions would be told apart only by the reader knowing which one is normal; the
+## explicit `+` is the channel that survives the colour being thrown away.
+static func uproot_net_text(net: int) -> String:
+	return "+%d" % net if net > 0 else "%d" % net
+
+
+static func uproot_button_text(refund: int, replant: int) -> String:
+	return "Uproot (+%d, net %s)" % [refund, uproot_net_text(uproot_net(refund, replant))]
+
+
+## The armed label. Same shape it has always had — see the block above for why this one
+## does NOT gain the net.
+static func uproot_armed_text(refund: int) -> String:
+	return "Really uproot? (+%d)" % refund
+
+
+## The widest string this button can be asked to hold, and the value the fit test
+## measures. Two digits on both numbers because the catalogue tops out at 45 seeds
+## (`PlantCatalog`) and a refund can never exceed the cost it is a fraction of — the
+## third digit is headroom, not a reachable state.
+## A PLUS in the net, not a minus, and 15 rather than 99.
+##
+## The obvious worst case is the biggest numbers with the sign that looks heaviest,
+## and it is wrong on both counts. `net` is positive exactly once — the free starter,
+## where placement_cost is 0 and the trade pays — and in this theme's font `+` is
+## wider than `-`, so "Uproot (+15, net +15)" measures 171px against the 99s' 167.
+## The 15 is not free either: the refund is a fraction of a real catalogue price, so
+## 99 is not a string the game can build, and the widest it can is the dearest plant.
+##
+## Found by this constant's own test on its first real run, which is what that test
+## is for — the string was declared from the shape of the format and never measured.
+const UPROOT_WORST_CASE_TEXT: String = "Uproot (+15, net +15)"
+## And the armed branch's, which is the string every earlier pass measured this button
+## against. Both are measured against the 232px box by
+## `test_the_uproot_buttons_worst_case_fits_the_selection_box`, which also checks the
+## constant above is a real ceiling over every string the CATALOGUE can build — the two
+## are not ranked against each other, because which of them draws wider is a font
+## question and neither this comment nor that test needs an answer to it.
+const UPROOT_ARMED_WORST_CASE_TEXT: String = "Really uproot? (+99)"
+
+
+## The trade in words, on hover. This is where the replant PRICE lives: a tooltip is
+## the one surface in the side panel with no width budget at all, so the number the
+## button had to compress into a net is still available in full to anyone who asks.
+static func uproot_button_tooltip(plant_name: String, refund: int, replant: int) -> String:
+	var net: int = uproot_net(refund, replant)
+	if net >= 0:
+		return ("Digging up your %s pays %d seeds back. Planting another costs %d, "
+			+ "so the round trip leaves you %d up.") % [plant_name, refund, replant, net]
+	return ("Digging up your %s pays %d seeds back. Planting another costs %d, "
+		+ "so the round trip costs you %d.") % [plant_name, refund, replant, -net]
+
+
 ## What a plant button is tinted, in the three states it can be in.
 ##
 ## `hinted` is the packet rack talking to the plant bar: while the cursor rests on
@@ -1454,8 +1860,28 @@ static func plant_bar_layout(count: int) -> Dictionary:
 	}
 
 
+## WORST_CASE_TEXT's initialiser: name -> worst case, projected off STAT_READOUTS.
+##
+## Not a second table and not a cache -- it runs once, when the script loads, and its
+## whole reason for existing is that a `const` cannot be computed. Every caller that
+## wants a worst case wants exactly this shape.
+static func _worst_case_text() -> Dictionary:
+	var table: Dictionary = {}
+	for readout: Dictionary in STAT_READOUTS:
+		table[String(readout["name"])] = String(readout["worst_case"])
+	return table
+
+
+## The row's four slots plus its separations plus its two buttons.
+##
+## The widths are summed off STAT_READOUTS rather than off four named constants, which
+## is the half of that table's point that faces the budget: a readout added to the row
+## is added to this sum in the same edit, so `hud_stats_row` can no longer report a row
+## narrower than the one on screen.
 static func stats_row_budget(readouts: int) -> float:
-	var widths: float = SEEDS_LABEL_WIDTH + WAVE_LABEL_WIDTH + LIVES_LABEL_WIDTH + COMPOST_LABEL_WIDTH
+	var widths: float = 0.0
+	for readout: Dictionary in STAT_READOUTS:
+		widths += float(readout["width"])
 	return (widths + float(STATS_SEPARATION * readouts) + NEXT_WAVE_BUTTON_SIZE.x
 		+ GameSpeed.button_size().x)
 
@@ -1574,6 +2000,18 @@ func _on_plant_button(id: StringName) -> void:
 	plant_selected.emit(id)
 
 
+## Order-independent: an exit only clears the hover if it is the button that
+## currently owns it, so entering B before leaving A cannot blank B.
+func _on_plant_hover(id: StringName, leaving: bool) -> void:
+	if leaving:
+		if _hovered_plant != id:
+			return
+		_hovered_plant = &""
+	else:
+		_hovered_plant = id
+	plant_hovered.emit(_hovered_plant)
+
+
 func _on_packet_button(tier: StringName) -> void:
 	packet_requested.emit(tier)
 
@@ -1624,9 +2062,16 @@ func _process(delta: float) -> void:
 func refresh(state: Dictionary) -> void:
 	var bank: SeedBank = state["bank"]
 	var seeds_text: String = "Seeds  %d" % bank.seeds
-	if _readouts_seeded and seeds_text != _seeds_label.text:
-		_punch_readout(_seeds_label)
+	# The final text goes on FIRST and the roll is armed after it — see SEED_ROLL_SECONDS.
+	# `_seeds_shown`, not the Label, is what the roll counts from: a roll already in
+	# flight has the Label holding an intermediate value.
+	var seeds_moved: bool = _readouts_seeded and seeds_text != _seeds_label.text
+	var seeds_from: int = _seeds_shown
 	_seeds_label.text = seeds_text
+	_seeds_shown = bank.seeds
+	if seeds_moved:
+		_punch_readout(_seeds_label)
+		_arm_seeds_roll(seeds_from, bank.seeds)
 	if bool(state.get("endless", false)):
 		# "∞" rather than "— endless": at wave 509 with a threat level appended,
 		# the spelled-out version measured 397px against a 320px budget and was
@@ -1834,12 +2279,28 @@ func _refresh_selection(state: Dictionary) -> void:
 	# is called. It stays the same node at the same size — the devtools bridge and
 	# the tests press UprootButton by path, and a second button would not fit under
 	# SelectionBox anyway (the VBox already runs to within 16px of the panel foot).
+	#
+	# RESTING, the button now says both halves of the trade — see `uproot_button_text`.
+	# The replant price comes off the same SeedBank the panel is already holding, so the
+	# free starter's 0 is honoured rather than a flat catalogue price being quoted at a
+	# player who would not pay it.
+	var refund: int = plant.uproot_refund()
+	var replant: int = (state["bank"] as SeedBank).placement_cost(plant.kind)
 	if bool(state.get("uproot_armed", false)):
-		_uproot_button.text = "Really uproot? (+%d)" % plant.uproot_refund()
+		_uproot_button.text = uproot_armed_text(refund)
 		_uproot_button.add_theme_color_override("font_color", UPROOT_ARMED)
 	else:
-		_uproot_button.text = "Uproot (+%d)" % plant.uproot_refund()
+		_uproot_button.text = uproot_button_text(refund, replant)
 		_uproot_button.remove_theme_color_override("font_color")
+	# Set unconditionally, resting and armed alike: an armed button is the one moment a
+	# player most wants the sentence spelled out, and the tooltip is the only place the
+	# replant PRICE (rather than the net) is written.
+	var tip: String = uproot_button_tooltip(
+		PlantCatalog.display_name(plant.kind), refund, replant)
+	# Only on change, the same rule the plant buttons follow: a tooltip already on screen
+	# is not re-read when its text is reassigned, and this runs on every state push.
+	if _uproot_button.tooltip_text != tip:
+		_uproot_button.tooltip_text = tip
 
 
 ## The bar under the selection blurb. Appears only once a plant has been bitten,
@@ -2122,9 +2583,15 @@ static func selection_panel_budget(lines: Array[String], box_width: float,
 ## wave is running — so a fresh Tween per call would stack dozens of them onto one
 ## property. The live tween is kept and killed, and a target already reached is a
 ## no-op, which is the common case.
+##
+## Writes the OUTLINE colour alongside the fill on every step. The wave readout carries
+## READOUT_WEIGHT_PLAIN today, so nothing is drawn from it — but a readout's outline is
+## its own colour by construction (`_add_stat`), and this is the only label in the row
+## whose colour moves at runtime. Keeping the pair in step here is what stops a future
+## weight on this row from stranding a cream outline around a red number.
 func _ease_threat_tint(target: Color) -> void:
 	if not GardenTheme.animations_enabled():
-		_wave_label.add_theme_color_override("font_color", target)
+		_tint_wave_label(target)
 		return
 	if target.is_equal_approx(_threat_tint_target):
 		return
@@ -2134,8 +2601,14 @@ func _ease_threat_tint(target: Color) -> void:
 	var from: Color = _wave_label.get_theme_color("font_color")
 	_threat_tween = create_tween()
 	_threat_tween.tween_method(
-		func(c: Color) -> void: _wave_label.add_theme_color_override("font_color", c),
+		func(c: Color) -> void: _tint_wave_label(c),
 		from, target, THREAT_FADE_SECONDS)
+
+
+## The wave readout's fill and its outline, always together. See _ease_threat_tint.
+func _tint_wave_label(c: Color) -> void:
+	_wave_label.add_theme_color_override("font_color", c)
+	_wave_label.add_theme_color_override("font_outline_color", c)
 
 
 ## Carries a swept husk's payout across the screen: a SeedGlyph.launch() from
@@ -2180,6 +2653,75 @@ func _punch_readout(label: Label) -> void:
 	tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_property(label, "scale", Vector2.ONE, READOUT_PUNCH_SECONDS)
 	_readout_tweens[label] = tween
+
+
+## THE VALUE THE SEEDS READOUT SHOWS `t` OF THE WAY THROUGH A ROLL.
+##
+## Pure and static, and that is the whole reason this function exists as something other
+## than three lines inside a lambda: **a Tween does not run headless**, so every check
+## written against the roll would be a check that never executes. The interpolation is
+## the part with a decision in it, so the interpolation is the part that is assertable
+## without a HUD, a frame, or a renderer — the same split
+## `TitleScreen.high_score_text_at` makes for the record ratchet.
+##
+## `ceilf` rather than `floorf`, which is the one non-obvious line here: with `floorf`
+## the counter sits on `from_value` for the first tenth of the roll, and a readout that
+## does not move for 35ms after a purchase reads as a dropped frame rather than as the
+## start of a count. With `ceilf` the first step has already landed.
+##
+## Endpoints are exact by construction: `t <= 0` gives `from_value`, `t >= 1` gives
+## `to_value`, and the caller does not have to trust a float to land on 1.0.
+##
+## SIGNED, and that is the difference from the record. A record only ever climbs, so
+## `_arm_record_ratchet` never had to decide what a fall looks like. Seeds fall on every
+## purchase — and the purchase is the case the bead was filed about — so this lerps in
+## whichever direction the pair points and the count runs DOWN for a spend. A roll that
+## only ever went up would animate the payouts and leave every price the player pays
+## snapping, which is backwards: the payout is expected and the spend is the decision.
+static func seeds_roll_value(from_value: int, to_value: int, t: float) -> int:
+	var steps: float = float(SEED_ROLL_STEPS)
+	var stepped: float = ceilf(clampf(t, 0.0, 1.0) * steps) / steps
+	return int(round(lerpf(float(from_value), float(to_value), stepped)))
+
+
+## Is this change big enough to be worth watching arrive? See SEED_ROLL_MIN_JUMP.
+## Symmetric in the two directions on purpose — a 45-seed spend and a 45-seed payout are
+## the same size of event.
+static func seeds_roll_is_worth_showing(from_value: int, to_value: int) -> bool:
+	return absi(to_value - from_value) >= SEED_ROLL_MIN_JUMP
+
+
+## Counts the seeds readout from its old total to the one it already displays.
+##
+## Layered on top of an already-correct Label, gated on `animations_enabled()`, and
+## restored by a callback rather than by trusting the last interpolation step — a tween
+## interrupted mid-count (a scene change, another purchase) never runs its final step,
+## and the readout would keep whatever number it was passing through.
+func _arm_seeds_roll(from_value: int, to_value: int) -> void:
+	if not GardenTheme.animations_enabled() or _seeds_label == null:
+		return
+	# Killed before the size test, not after: a small change arriving mid-roll must STOP
+	# the roll rather than let it keep counting toward a total that is already stale.
+	if _seeds_roll != null and _seeds_roll.is_valid():
+		_seeds_roll.kill()
+	_seeds_roll = null
+	if not seeds_roll_is_worth_showing(from_value, to_value):
+		return
+	var settled: String = "Seeds  %d" % to_value
+	var roll := func(t: float) -> void:
+		if not is_instance_valid(_seeds_label):
+			return
+		var rolled: String = "Seeds  %d" % seeds_roll_value(from_value, to_value, t)
+		_seeds_label.text = rolled
+	var restore := func() -> void:
+		if is_instance_valid(_seeds_label):
+			_seeds_label.text = settled
+	var tween := create_tween()
+	var counting: MethodTweener = tween.tween_method(roll, 0.0, 1.0, SEED_ROLL_SECONDS)
+	counting.set_trans(Tween.TRANS_CUBIC)
+	counting.set_ease(Tween.EASE_OUT)
+	tween.tween_callback(restore)
+	_seeds_roll = tween
 
 
 ## A refused plant placement, shaking the bar slot the player picked it from —
@@ -2300,6 +2842,35 @@ func set_active(active: bool) -> void:
 
 func _paint_message_row() -> void:
 	_message_label.text = _message_text if _message_left > 0.0 else _idle_message
+	# The one place a line's LOOK is decided, for the same reason this is the one place
+	# its text is. Three writers of `_message_label.text` was the bug this function
+	# replaced; three writers of its emphasis would be that bug again in a new channel.
+	_apply_message_stress(message_is_stressed(_message_left, _message_priority))
+
+
+## Whether the line the row is showing right now is one the player must read.
+##
+## Static and pure so the rule is assertable without a live row — the same shape
+## `line_was_read` above takes, and for the same reason. The `seconds_left > 0.0` half
+## is not decoration: with no transient line the row falls through to `_idle_message`,
+## and the standing prep note is ambient however important the line it replaced was.
+##
+## MESSAGE_DEADLINE is stressed too, and deliberately by `>=` rather than by naming the
+## two rungs. DEADLINE is the armed-uproot prompt — the line this whole bead is about —
+## and a fourth rung added above it would be stressed by default, which is the right
+## default for a rung somebody thought was worth adding above DEADLINE.
+static func message_is_stressed(seconds_left: float, priority: int) -> bool:
+	return seconds_left > 0.0 and priority >= MESSAGE_IMPORTANT
+
+
+## Applies the two non-colour channels of MESSAGE_STRESS_OUTLINE. Never touches
+## `font_color`: the whole claim is that these two states are told apart in greyscale,
+## and a hue difference here would be the thing that lets the claim rot.
+func _apply_message_stress(stressed: bool) -> void:
+	_message_label.add_theme_constant_override("outline_size",
+		MESSAGE_STRESS_OUTLINE if stressed else 0)
+	if _message_mark != null:
+		_message_mark.visible = stressed
 
 
 ## Returns whether `text` is ON THE ROW when this call returns — false when it was
@@ -2513,7 +3084,16 @@ static func next_wave_note(number: int, pests: int, boss: bool, weather: StringN
 		# waves. Narrower than the old text, so no width budget moves.
 		parts.append("a boss")
 	if weather == WaveDirector.WEATHER_RAIN:
-		parts.append("rain")
+		# The gift named where the player can still act on it
+		# (plant-tower-defense-kmjp). The banner says it too, but the banner fires
+		# from Game._on_wave_started -- AFTER the seeds are spent. This is the
+		# surface they read while deciding, and until now it said "rain" and nothing
+		# else, which made the only free upside in the game the only one nobody was
+		# told about in time to use it. Twenty characters against the drought
+		# clause's twenty-four, so no width budget moves and the corpus sample below
+		# is still the worst case.
+		parts.append("rain · beds mend %d%%"
+			% int(round(WaveDirector.WEATHER_RAIN_HEAL_FRACTION * 100.0)))
 	elif weather == WaveDirector.WEATHER_DROUGHT:
 		# The bonus is named here because a payout the player cannot see is not a
 		# rule, it is a coincidence they might notice (plant-tower-defense-4c1l).
@@ -2762,6 +3342,105 @@ static func flight_tip() -> String:
 ## still buy something.
 static func upgrade_tip(plant_name: String, cost: int) -> String:
 	return "Your %s can be upgraded. Click it on the board — %d seeds." % [plant_name, cost]
+
+
+## THE HINT CARDS: the same three interactions the one-shot tips teach, written for a
+## reader who is not in the moment (plant-tower-defense-ei83).
+##
+## Every id in `RunConfig.HINTS` is shown exactly once per save and then never again,
+## which is right — a tip that becomes wallpaper is worse than no tip. The cost of that
+## rule is that a player who was looking at the board when the row posted has no route
+## back to it, and `spend_hint` makes the loss permanent by design. This table is the
+## route back. It is the CONTENT half only: the surface that renders it is the
+## notebook's, and building a second one in the HUD would spend the row this project
+## has measured for four cycles on a thing the player is not currently doing.
+##
+## HERE, beside `flight_tip` and `upgrade_tip`, rather than in a `game/hints.gd` of its
+## own mirroring `game/milestones.gd`. The milestone parallel is real and a separate
+## file is the tidier shape, but these are two renderings of ONE fact each, and the
+## failure that matters is the two disagreeing — a notebook that teaches a rule the row
+## states differently is worse than either alone. The sentences the row says are in this
+## file, so the sentences the notebook says are too, and a change to one has the other
+## in the same diff.
+##
+## The card is NOT the tip's own sentence. `flight_tip()` is written for a player
+## watching a specific bug walk over a specific mouth and leans on that; a notebook
+## reader has no bug in front of them. Same rule, two audiences, so two strings — the
+## suite asserts they agree about the mechanic, not that they match.
+##
+## Ids are literals here for the reason `Milestones.TABLE`'s are: `RunConfig` is an
+## autoload with no `class_name`, so `RunConfig.HINT_MOVE_PREVIEW` is an instance read
+## and cannot initialise a `const`. The drift that buys is closed by the gate rather
+## than by the compiler — `test_every_hint_has_a_notebook_card` walks `RunConfig.HINTS`
+## and fails on an id with no card AND on a card with no id, so a fourth hint added to
+## the list arrives here or fails the suite.
+const HINT_CARDS: Array[Dictionary] = [
+	{
+		"id": "seen_move_tip",
+		"title": "Compare before you dig",
+		"note": "With Uproot armed, hover another bed to see what the plant would reach there. Confirming still only uproots.",
+	},
+	{
+		"id": "seen_flight_tip",
+		"title": "Some pests fly over",
+		"note": "A winged pest passes a Chomp Flower untouched. Corn Cobblers can still hit it.",
+	},
+	{
+		"id": "seen_upgrade_tip",
+		"title": "Plants already down can grow",
+		"note": "Click a plant on the board to select it, then Upgrade. Climbing one plant beats adding another.",
+	},
+]
+
+
+## Every hint id, in `RunConfig.HINTS` order — which is the list's order and not this
+## table's, deliberately. `HINTS` is what `spend_hint` guards against, so it is the set
+## that decides what a hint IS; a page rendered off `HINT_CARDS` instead would happily
+## show a card for an id the persistence layer no longer knows about.
+## Built element by element rather than returned as `RunConfig.HINTS.duplicate()`:
+## `duplicate()` is declared `-> Array`, so handing it back as `Array[String]` leans on
+## an implicit conversion this project has no compile gate running to confirm.
+static func hint_ids() -> Array[String]:
+	var out: Array[String] = []
+	for id: Variant in RunConfig.HINTS:
+		out.append(String(id))
+	return out
+
+
+## The card row for `id`, or an empty Dictionary. Shaped like `Milestones.entry()` so a
+## caller that already renders milestone rows needs no second idiom.
+static func hint_entry(id: String) -> Dictionary:
+	for row: Dictionary in HINT_CARDS:
+		if String(row["id"]) == id:
+			return row
+	return {}
+
+
+## Falls back to the raw id rather than to "", exactly as `Milestones.title_of` does: a
+## hint with no card must be VISIBLE on the page as an untitled row, not silently absent
+## from a list whose whole job is completeness.
+static func hint_title(id: String) -> String:
+	var row: Dictionary = hint_entry(id)
+	return String(row["title"]) if row.has("title") else id
+
+
+## What a hint row's second line says, and whether the game has spent it yet.
+##
+## Mirrors `NotebookScreen.shelf_note_text` down to the prefix, for the same reason it
+## has one: the state has to survive the colour being thrown away. "A winged pest passes
+## a Chomp Flower untouched" and "Not shown yet — a winged pest passes a Chomp Flower
+## untouched" are the same fact in two tenses, so a greyed row is legible as greyed
+## without hue.
+##
+## The note reads in full in BOTH states, which is the entire bead: the shelf hides
+## nothing behind earning, and a hint the player never saw must be as readable as one
+## they did. The prefix says who has seen it, never what it is.
+static func hint_note_text(id: String, shown: bool) -> String:
+	var row: Dictionary = hint_entry(id)
+	var note: String = String(row["note"]) if row.has("note") else ""
+	if shown or note.is_empty():
+		return note
+	return "Not shown yet — %s%s" % [note.substr(0, 1).to_lower(), note.substr(1)]
 
 
 static func eaten_message(plant_name: String) -> String:

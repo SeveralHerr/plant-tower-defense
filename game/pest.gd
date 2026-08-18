@@ -231,8 +231,12 @@ const SPECIES: Dictionary = {
 	## about one Nurse in eight.
 	NURSE: {
 		"display": "Nurse Beetle",
-		"texture": "res://assets/sprites/pest_beetle.png",
-		"dead_texture": "res://assets/sprites/pest_beetle_dead.png",
+		# Her own art since plant-tower-defense-cnn7. She wore pest_beetle.png until
+		# then, which made a whole boss mechanic unreadable: the one bug whose identity
+		# changes what the player should do looked exactly like the fifteen ordinary
+		# beetles walking beside her.
+		"texture": "res://assets/sprites/pest_nurse.png",
+		"dead_texture": "res://assets/sprites/pest_nurse_dead.png",
 		"health": 48.0,
 		"speed": 44.0,
 		"seeds": 39,
@@ -403,6 +407,58 @@ const JAW_TIP: float = 1.14
 const JAW_HALF_WIDTH: float = 0.19
 const JAW_SPACING: float = 0.40
 
+## The fought mark: a broken ring around any pest the garden has actually touched
+## (plant-tower-defense-wlyz).
+##
+## WHAT IT IS FOR. `_ever_engaged` has always known the difference between a pest
+## that strolled past an empty road and one that was shot at, slowed, bitten and got
+## through anyway. Those are two different sentences about the same lost bed — "you
+## had no answer there" and "your answer was not enough" — and until this the player
+## only ever met them added together in the run summary. This is that flag, on the
+## board, on the bug, while there is still time to do something about it.
+##
+## WHY IT IS ON THE LIVING PEST RATHER THAN ON THE ESCAPE. `_escape()` emits and then
+## `queue_free()`s in the same frame, so a mark painted at the moment of escape would
+## be on screen for exactly zero frames. A pest wearing this all the way down the road
+## is wearing it when it reaches the exit, which is the distinction the bead asks for —
+## and it is legible earlier, when the answer is "put a plant in that lane" rather than
+## "read the summary".
+##
+## WHY A BROKEN RING, AND NOT A NEW SHAPE. `game/OVERLAY_GRAMMAR.md`: a dashed ring is
+## "a REMARK about the thing inside it", and this is a remark about the pest inside it.
+## It adds no row to that table — adding one fails
+## `test_the_legend_names_as_many_shapes_as_the_grammar_documents` until someone decides
+## whether it is taught — it is the third instance of a row that already has two
+## (`placement_preview.gd:320`, `sole_cover_marks.gd:150`), and the dash construction
+## below — count, step, gap, segments — is copied from those two verbatim on purpose,
+## so all three read as one language rather than as three people's idea of "dashed".
+##
+## That `SoleCoverMarks.ALONE_RADIUS` remark is 31 px and this one is 29 px on an aphid,
+## which is not a collision: what a remark is ABOUT is the thing inside it, and one of
+## them is drawn on a plant and the other on a bug. Same row, different subject — the
+## same way the reach ring and the marked-cell ring share a shape and are told apart by
+## size and centre.
+##
+## THE TWO-CHANNEL RULE. The signal is the BREAK: a solid ring at this size on a bug
+## would be read as a reach, a full ring is not what is drawn, and nothing else on a
+## pest is a loop at all — the armour plates are a partial arc across the underside and
+## stop at 1.06. Throw the colour away and a haloed bug and a bare one are still two
+## different pictures.
+##
+## RADIUS. 1.28 silhouettes, so it clears PLATE_OUTER (1.06) by a visible margin on
+## every species at once — an aphid at scale 0.72 wears it at 29 px and the queen at
+## 1.45 at 59 — and scales with the pest for the same reason every marker above does.
+## Drawn on the Pest's own canvas item, i.e. behind the sprite and behind the health
+## bar, so the topmost dash passes under the bar rather than fighting it.
+const FOUGHT_RING_RADIUS: float = 1.28
+const FOUGHT_RING_DASHES: int = 8
+const FOUGHT_RING_WIDTH: float = 2.0
+const FOUGHT_RING_SEGMENTS: int = 4
+## A pale bone ink rather than any mutation's hue: the mark is about what the GARDEN
+## did, not about what the pest is, and borrowing a MUTATION_TINT would say the
+## opposite. Kept light because it sits behind the sprite on dark road tiles.
+const FOUGHT_RING_COLOR := Color(0.94, 0.93, 0.82, 0.72)
+
 ## How close a hungry pest has to be to a plant to start eating it. Same
 ## reasoning as ChompFlower.GRAB_RADIUS: a pest walks the road, a plant stands
 ## one cell off it, so anything under one cell can never reach either.
@@ -434,6 +490,33 @@ const DEATH_LINGER: float = 0.35
 ## How much of DEATH_LINGER's tail is spent fading out rather than held solid —
 ## the corpse reads for a beat first, same as before this existed, then goes.
 const DEATH_FADE: float = 0.15
+
+## The ceiling on how far `husk_multiplier()` may stretch that beat
+## (plant-tower-defense-rowt).
+##
+## 3.0 is exactly the hardest pest the game can roll today — hungry (2.0) paired with
+## armoured or winged (1.5), the only pairs `mutations_compose` permits — so the cap
+## costs nothing now and is here for the fourth mutation. `husk_multiplier()` is a
+## PRODUCT, so a fourth trait would multiply into it and quietly hand the board
+## multi-second corpses; a corpse outstaying its wave is a bug, and a cap that has to
+## be raised on purpose is the cheap way to find out.
+const DEATH_LINGER_MAX_MULTIPLIER: float = 3.0
+
+
+## How long a corpse worth `multiplier` holds before it is freed. Pure, so "a hard-won
+## kill lingers longer than an easy one" is one assertion rather than two stopwatches.
+##
+## Scaled by `husk_multiplier()` at the call site and by nothing else: the game already
+## prices a harder kill twice (`Game._on_pest_died` reads it for the husk AND for
+## `Sfx.kill_event_for`), and the corpse is the third place that idea belongs — the one
+## the player is actually looking at. Inventing a second difficulty number here would
+## give the same pest two contradictory answers to "how hard was that".
+##
+## Clamped at the bottom too: nothing under 1.0 is reachable through
+## `MUTATION_HUSK_MULTIPLIER`, and a corpse that vanished FASTER than the plain default
+## would read as the game dropping frames rather than as an easy kill.
+static func death_linger_for(multiplier: float) -> float:
+	return DEATH_LINGER * clampf(multiplier, 1.0, DEATH_LINGER_MAX_MULTIPLIER)
 
 ## A kernel connecting and a kernel missing (leaving the board unaimed) used to
 ## look identical — Kernel._physics_process called queue_free() on either exit
@@ -559,7 +642,32 @@ var _health_bar: ColorRect
 var _health_back: ColorRect
 var _alive: bool = true
 var _dead_texture: Texture2D = null
+## How small a pest is chewed down to before the flower finishes it. Not zero: see
+## chewed_scale(). 0.55 leaves the bug plainly diminished while still legible as
+## the species it is, which is what makes the shrink read as being EATEN rather
+## than as walking away.
+const CHEWED_MIN_SCALE: float = 0.55
+
 var _sprite_scale: float = 1.0
+
+## How much of this pest has been eaten, 0.0 to 1.0. Written by the ChompFlower
+## holding it; nothing else touches it.
+##
+## SOURCE: a player, verbatim -- "the attack animation for the chomp flower doesn't
+## really look like it's taking bites out of the bugs, improve the animation
+## dramatically" (plant-tower-defense-h4v1).
+##
+## The report was exactly right and the reason was that the flower's side was rich
+## and the pest's side was empty. A held pest ran its full walk cycle on the spot,
+## unblemished, receiving one flash_hit() at the instant of the grab and nothing
+## after, until it swapped to a corpse in a single frame. Nothing was taken out of
+## the bug because nothing in the code took anything out of the bug.
+##
+## Kept as a plain fraction rather than a scale so the SHAPE of the mapping lives in
+## `chewed_scale()` where a test can read it, and so `set_chewed` can be asserted
+## without an open animation gate -- the pattern test_combat.gd:6331 requires of
+## every animation in this game.
+var _chewed: float = 0.0
 
 ## How this pest died, so the corpse can say so (plant-tower-defense-f5z6).
 ##
@@ -588,7 +696,64 @@ const BITTEN_SQUASH: float = 0.62
 ## living pest that stopped.
 const BLASTED_TILT: float = 0.55
 
+## The kernel kill's cue (plant-tower-defense-6v39), and the DECISION that bead asked
+## for before the change: the plain corpse stops being the majority case.
+##
+## Cycle 65 left a kernel kill on the straight default on purpose, so the bitten and
+## blasted corpses would read as remarkable. That reasoning holds for a rare cause and
+## fails for the common one — a Corn Cobbler is the plant most players own most of the
+## time, so "the exception" was most of the corpses a player ever sees, and the moment
+## of death carried nothing at all. So the kernel gets a cue, and it is the third
+## CHANNEL rather than a third value of `_death_cause`: rotation says blasted, scale
+## says bitten, and position now says shot. A corpse can therefore be chewed AND shoved
+## without the two cues having to agree on one enum.
+##
+## The straight corpse still keeps its path, which the bead requires and
+## `test_a_corpse_lies_differently_depending_on_what_killed_it` reads: a knockback of
+## `Vector2.ZERO` is the default for `kill()` and `take_damage()`, so a Chomp's meal, a
+## bomb's victim and any direct kill lie exactly where they always did.
+##
+## 9 px is a shove, not a throw: well under a quarter cell (Board.CELL is 64), so a
+## corpse never slides into the neighbouring square or off the road it died on.
+const DEATH_KNOCKBACK_PX: float = 9.0
+## How long the shove takes. A fraction of DEATH_LINGER's shortest form (0.35), so the
+## body has visibly settled before the fade starts rather than still sliding under it.
+const DEATH_KNOCKBACK_TIME: float = 0.09
+
+
+## Which way a corpse is shoved by a hit that arrived from `from`, and how far.
+##
+## Same shape as `ChompFlower.lunge_offset()` and `Nettle.sting_thrust_offset()`
+## deliberately — a direction is the one thing about an animation that can be flatly
+## wrong while still rendering a plausible frame, so it comes out into a pure static a
+## test can read with no board, no frame and no open animation gate.
+##
+## `to - from`, i.e. AWAY from the shooter and along the kernel's own travel: a body
+## knocked back toward the thing that shot it is the sign error this exists to catch.
+## Degenerate input returns `Vector2.ZERO` rather than a normalised NaN — `Kernel`'s hit
+## test is a distance check that a pest sitting exactly on the kernel passes.
+static func knockback_offset(from: Vector2, to: Vector2) -> Vector2:
+	var delta: Vector2 = to - from
+	if delta.length_squared() <= 0.0001:
+		return Vector2.ZERO
+	return delta.normalized() * DEATH_KNOCKBACK_PX
+
 var _death_cause: StringName = &""
+
+## The two things about this death that are settled the instant it happens, and are
+## therefore recorded ABOVE every animation gate — the rule `set_chewed()` states and
+## `_bite_lunge` / `_sting_thrust` follow. Headless never opens the gate, so a value
+## composed inside it is a value no test in this project can ever see: deleting the
+## shove or the scaled hold has to go red, not go quiet.
+##
+## `_death_knockback` is a SPRITE offset and nothing else reads it. That is deliberate
+## and load-bearing: `died` is emitted before `_play_death()` runs, and
+## `Game._on_pest_died` drops the husk and files the lane loss at `pest.position`, so
+## moving the body would move a husk the player has to click and shift a number the
+## balance sims count. The corpse is a picture by the time it is shoved.
+var _death_knockback: Vector2 = Vector2.ZERO
+## How long this particular corpse holds, from `death_linger_for(husk_multiplier())`.
+var _death_linger: float = DEATH_LINGER
 
 ## The walk cycle's own state. `_facing` is the cardinal rotation
 ## _update_facing() decides; `_sway` is the gait's offset from it. They are kept
@@ -621,7 +786,18 @@ static var _next_gait_index: int = 0
 ## otherwise report itself as having strolled past an empty lane.
 ##
 ## The reading this exists for is at the moment of escape; see Game._note_escape.
+## It is also drawn now, as the fought mark — see FOUGHT_RING_RADIUS.
 var _ever_engaged: bool = false
+
+## Whether the fought mark is currently part of this pest's picture.
+##
+## A separate field from `_ever_engaged` rather than a read of it, and written here in
+## game code rather than decided inside `_draw()`, for the reason `set_chewed()` gives:
+## headless runs no `_draw()` at all, so a cue whose only record is a draw call is a cue
+## no test can see. `shows_fought_mark()` is the state; `_draw_fought_mark()` is only
+## its rendering, and deleting the rendering leaves the state to be checked against a
+## screenshot while deleting the STATE goes red.
+var _shows_fought_mark: bool = false
 
 ## Did the most recent damaging hit fail to get through the plate?
 ##
@@ -976,6 +1152,12 @@ func _draw() -> void:
 				_draw_wings(r)
 			MARKER_JAWS:
 				_draw_jaws(r)
+	# Outside the marker loop, and not in MARKER_SOURCE: the three markers above say
+	# what this pest IS and are derived from its mutations, where this says what has
+	# been DONE to it. Folding it in would put it in `markers()`, which several tests
+	# read as the mutation list.
+	if _shows_fought_mark:
+		_draw_fought_mark()
 
 
 func _draw_plates(r: float) -> void:
@@ -1005,6 +1187,15 @@ func _draw_jaws(r: float) -> void:
 			Vector2(cx + JAW_HALF_WIDTH * r, JAW_TOP * r),
 			Vector2(cx, JAW_TIP * r),
 		]), MARKER_JAWS)
+
+
+## The rendering of `_shows_fought_mark`, and nothing more — every decision it makes
+## is read out of the two pure functions above so the picture is checkable headless.
+func _draw_fought_mark() -> void:
+	var radius: float = fought_ring_radius(_sprite_scale)
+	for dash: Vector2 in fought_ring_dashes():
+		draw_arc(Vector2.ZERO, radius, dash.x, dash.y, FOUGHT_RING_SEGMENTS,
+			FOUGHT_RING_COLOR, FOUGHT_RING_WIDTH, true)
 
 
 ## Filled light shape with a darker rim of its own hue — STYLE.md's rule, so a
@@ -1047,7 +1238,7 @@ func _physics_process(delta: float) -> void:
 	# is the one non-damaging way the garden engages a pest, and a Chomp that is
 	# destroyed mid-chew releases it unharmed. See _ever_engaged.
 	if held_by != null:
-		_ever_engaged = true
+		_mark_engaged()
 		return
 	# The Nurse Beetle's aura, and note where it sits: AFTER the `held_by` return
 	# above, so a Chomp that closes on a Nurse silences her for the whole
@@ -1233,7 +1424,11 @@ func _gait(delta: float) -> void:
 	# long axis (STYLE.md's up-screen convention), which makes +Y stretch a
 	# lengthening and -X squash a narrowing, whichever way the bug is walking.
 	var stretch: float = gait_stretch(sin(clock * GAIT_STRETCH_RATE), is_hungry)
-	_sprite.scale = Vector2(_sprite_scale * (1.0 - stretch), _sprite_scale * (1.0 + stretch))
+	# chewed_scale() rides the gait rather than being a separate tween: the gait
+	# rewrites _sprite.scale every frame, so a tween on the same property would be
+	# overwritten within one frame and look like nothing happened.
+	var eaten: float = chewed_scale()
+	_sprite.scale = Vector2(_sprite_scale * eaten * (1.0 - stretch), _sprite_scale * eaten * (1.0 + stretch))
 
 
 ## Pure: how fast this pest's walk cycle runs, in radians of clock per second.
@@ -1278,14 +1473,19 @@ static func gait_phase(index: int) -> float:
 	return fposmod(float(index) * GAIT_PHASE_STEP, TAU)
 
 
-func take_damage(amount: float, cause: StringName = &"") -> void:
+## `knockback` is the offset a corpse is shoved by if THIS hit is the one that kills —
+## per call, never remembered, so a kernel a pest survived cannot shove the body a
+## Chomp finishes ten seconds later. Callers that know where their hit came from build
+## it with `knockback_offset()` (see `Kernel._physics_process`); `Vector2.ZERO`, the
+## default, is a corpse that lies where it fell.
+func take_damage(amount: float, cause: StringName = &"", knockback: Vector2 = Vector2.ZERO) -> void:
 	if not _alive:
 		return
 	# A zero-damage call is not an engagement. Nothing in the game makes one
 	# today, but `amount` is a float off a kernel and a plant level table, and
 	# "something shot at it" must mean something landed.
 	if amount > 0.0:
-		_ever_engaged = true
+		_mark_engaged()
 	# The plate. `landed` is what actually reaches the bug; a block is spent on any
 	# damaging hit at all, whether it got through or not, which is the Shield Bug's
 	# whole small-versus-big axis (see its SPECIES entry). A zero-damage call spends
@@ -1299,7 +1499,7 @@ func take_damage(amount: float, cause: StringName = &"") -> void:
 	health = maxf(0.0, health - landed)
 	_refresh_health_bar()
 	if health <= 0.0:
-		kill(cause)
+		kill(cause, knockback)
 
 
 ## Pure: what `flash_hit` boosts a sprite's current tint towards for the flash's
@@ -1364,11 +1564,22 @@ func flash_hit() -> void:
 
 
 ## Death by any cause — kernels, or a Chomp finishing its meal.
-func kill(cause: StringName = &"") -> void:
+##
+## Everything the corpse needs is settled here, before `died` is emitted and long
+## before `_play_death()` reaches an animation gate: the cause, the shove, and how long
+## the body holds. `died`'s listeners run in between (Game pays the seeds and drops the
+## husk), so a value composed later than this is a value the corpse could disagree with.
+func kill(cause: StringName = &"", knockback: Vector2 = Vector2.ZERO) -> void:
 	if not _alive:
 		return
 	_alive = false
 	_death_cause = cause
+	_death_knockback = knockback
+	# A hard-won kill lingers longer than an easy one (plant-tower-defense-rowt). Read
+	# here rather than in `_play_death()` because `husk_multiplier()` is the price this
+	# same death is about to be paid at, and the corpse should outlast the aphid beside
+	# it by exactly the ratio the husk does.
+	_death_linger = death_linger_for(husk_multiplier())
 	if held_by != null and held_by.has_method("release"):
 		held_by.call("release")
 	died.emit(self)
@@ -1394,6 +1605,19 @@ func _play_death() -> void:
 		_sway = 0.0
 		_sprite.rotation = corpse_rotation()
 		_sprite.scale = corpse_scale()
+		# The third corpse channel, and the only one that is a POSITION. Written here
+		# unconditionally, above the gate below, for the same reason the rotation and
+		# the scale are: with animations off this is the corpse's whole static state,
+		# and a shove that only existed inside a Tween would be a cue no headless run
+		# and no unit test could ever see.
+		#
+		# Written on the CHILD, so the Pest node — the thing `Game._on_pest_died`
+		# already read a husk position off — never moves. `_sprite.position` lives in
+		# this node's space, and a Pest is placed by Board and never rotated or scaled
+		# (only `_sprite` is), so the global-space direction the killer measured is the
+		# same vector here with no basis change. `_sprite.position` is otherwise
+		# unwritten on a Pest: nothing else in this class can fight it for the channel.
+		_sprite.position = death_knockback()
 	if _dead_texture != null and _sprite != null:
 		_sprite.texture = _dead_texture
 		_sprite.modulate = Color.WHITE
@@ -1412,11 +1636,36 @@ func _play_death() -> void:
 		# "hold, then go" shape as the rest of a corpse's beat, just on alpha
 		# instead of a callback. Plant.play_exit_and_free() is the reference:
 		# a tween on the way off the board, gated the same way.
-		tween.tween_interval(DEATH_LINGER - DEATH_FADE)
+		#
+		# DEATH_FADE stays a fixed tail while the HOLD is what a hard kill lengthens:
+		# scaling both would give a queen the same shape of exit as an aphid, only
+		# slower, and a fade stretched to 0.45s reads as the game hitching. So the
+		# hold is `death_linger() - DEATH_FADE`, which `death_linger_for`'s floor of
+		# 1.0 keeps comfortably positive (0.20s at worst) rather than swallowing it.
+		tween.tween_interval(death_linger() - DEATH_FADE)
 		tween.tween_property(_sprite, "modulate:a", 0.0, DEATH_FADE)
 	else:
-		tween.tween_interval(DEATH_LINGER)
+		tween.tween_interval(death_linger())
 	tween.tween_callback(queue_free)
+	_play_knockback()
+
+
+## The shove, as motion. A separate Tween from the one above rather than a parallel
+## step inside it: that one is a strict sequence (hold, fade, free) and a
+## `set_parallel()` in the middle of it would run the free against the fade.
+##
+## Gated, and it starts from zero: `_play_death()` has already parked the sprite at its
+## final offset, so with animations off the corpse is simply displaced, and with them
+## on it slides there over DEATH_KNOCKBACK_TIME. Both are the same picture at rest,
+## which is what makes the headless assertion worth anything.
+func _play_knockback() -> void:
+	if _sprite == null or _death_knockback == Vector2.ZERO:
+		return
+	if not GardenTheme.animations_enabled():
+		return
+	_sprite.position = Vector2.ZERO
+	var shove := create_tween()
+	shove.tween_property(_sprite, "position", _death_knockback, DEATH_KNOCKBACK_TIME)
 
 
 ## How the corpse lies, as a predicate rather than a branch inside `_play_death()`
@@ -1442,9 +1691,53 @@ func corpse_rotation() -> float:
 ## corpse nose-to-tail, which is a pest that shrank; squashing X narrows it, which
 ## is a pest that was closed on.
 func corpse_scale() -> Vector2:
+	# The chewed-down factor rides through to the corpse: a bug eaten to a third of
+	# itself must not pop back to full size on the frame it dies, which is the exact
+	# discontinuity the old single-frame swap had.
+	var eaten: float = chewed_scale()
 	if _death_cause == DEATH_BITTEN:
-		return Vector2(_sprite_scale * BITTEN_SQUASH, _sprite_scale)
-	return Vector2(_sprite_scale, _sprite_scale)
+		return Vector2(_sprite_scale * BITTEN_SQUASH * eaten, _sprite_scale * eaten)
+	return Vector2(_sprite_scale * eaten, _sprite_scale * eaten)
+
+
+## Where this corpse was shoved to, relative to where the pest fell — the third of the
+## three corpse channels, beside `corpse_rotation()` and `corpse_scale()`.
+##
+## `Vector2.ZERO` until something kills this pest with a direction to give, which is
+## every death except a kernel's today. Read by `_play_death()` above the animation
+## gate, so it is the corpse's real resting offset and not a description of one.
+func death_knockback() -> Vector2:
+	return _death_knockback
+
+
+## How long this corpse holds before it is freed — `DEATH_LINGER` for a plain pest, up
+## to DEATH_LINGER_MAX_MULTIPLIER times that for one that cost the player more.
+func death_linger() -> float:
+	return _death_linger
+
+
+## How much of the pest is left to draw, as a scale factor. Pure, so the curve is
+## assertable with no board, no frame and no open animation gate.
+##
+## Floors at CHEWED_MIN_SCALE rather than running to zero: a bug that vanishes to a
+## point before the flower has finished is a bug that died early, and the kill is the
+## chew ending, not the sprite running out.
+func chewed_scale() -> float:
+	return lerpf(1.0, CHEWED_MIN_SCALE, clampf(_chewed, 0.0, 1.0))
+
+
+## Record how much of this pest has been eaten. Called by the ChompFlower holding it,
+## once per bite, and reset to 0.0 when a pest is released unharmed.
+##
+## Above every animation gate on purpose: the fraction is game state a test can read,
+## and only its rendering is gated. Deleting the call from the chew goes red instead
+## of silently doing nothing (test_combat.gd:6331's rule).
+func set_chewed(fraction: float) -> void:
+	_chewed = clampf(fraction, 0.0, 1.0)
+
+
+func chewed_fraction() -> float:
+	return _chewed
 
 
 func is_alive() -> bool:
@@ -1459,6 +1752,58 @@ func is_alive() -> bool:
 ## deferred the read would get a freed instance.
 func was_engaged() -> bool:
 	return _ever_engaged
+
+
+## Record that the garden has laid a finger on this pest, and put the fought mark on
+## it the first time that happens.
+##
+## The one writer of `_ever_engaged`, which is what makes the mark and the flag the
+## same claim: two call sites each setting the bool and only one of them repainting is
+## how a pest ends up counted as fought in the summary and drawn as untouched on the
+## board. The two callers are `take_damage()` (a hit that landed) and `_physics_process`
+## (a Chomp holding it) — the whole list, argued in `_ever_engaged`'s own header.
+##
+## Idempotent: engagement never comes back off, so the repaint is spent once.
+func _mark_engaged() -> void:
+	_ever_engaged = true
+	if _shows_fought_mark:
+		return
+	_shows_fought_mark = true
+	queue_redraw()
+
+
+## Is this pest wearing the fought mark right now — "the garden reached this one"?
+##
+## True from the first hit or hold onward. Read this rather than `was_engaged()` when
+## the question is about the picture: they agree today by construction, and the reason
+## to keep them apart is that only one of them is allowed to acquire a condition.
+func shows_fought_mark() -> bool:
+	return _shows_fought_mark
+
+
+## Pure: the radius the fought ring is drawn at, for a pest drawn at `sprite_scale`.
+##
+## Strictly outside PLATE_OUTER at the same scale, which is the property that matters
+## and the one `test_combat` pins: an armoured pest wears both marks at once, and a
+## remark that landed on top of the armour would read as one thicker plate.
+static func fought_ring_radius(sprite_scale: float) -> float:
+	return SPRITE_HALF * sprite_scale * FOUGHT_RING_RADIUS
+
+
+## Pure: the fought ring's dashes, as `(from, to)` angle pairs in radians, in order.
+##
+## The whole geometry of the cue, out where it can be asserted without a frame —
+## FOUGHT_RING_DASHES arcs with a gap of the same width after each, so the ring is
+## exactly half ink and unmistakably broken. That last part is the two-channel rule
+## for this cue: a solid ring here would be a reach, and "half of the turn is bare" is
+## the property that survives the colour being thrown away.
+static func fought_ring_dashes() -> PackedVector2Array:
+	var step: float = TAU / float(FOUGHT_RING_DASHES * 2)
+	var out := PackedVector2Array()
+	for i: int in range(FOUGHT_RING_DASHES):
+		var from: float = float(i) * step * 2.0
+		out.append(Vector2(from, from + step))
+	return out
 
 
 ## 1.0 for a plain pest; higher for a mutation, so a harder kill leaves a

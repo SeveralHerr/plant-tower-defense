@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Nurse Beetle, dead: same body, X eyes instead of a tint, following
+       pest_beetle_dead.svg exactly. Swapped in by Pest._play_death().
+
+       The cross STAYS on the corpse. It is what she was, and a husk the player is
+       reading back after the fact should still say which bug it came from — the
+       corpse is on the board for DEATH_LINGER (0.35s) plus the fade, which is long
+       enough to be looked at. -->
+
+  <!-- legs (behind the body), splayed flatter than idle -->
+  <g stroke="#5E5E5E" stroke-width="3" stroke-linecap="round" fill="none">
+    <path d="M22 30 L9 27"/>
+    <path d="M20 35 L7 35"/>
+    <path d="M22 40 L9 43"/>
+    <path d="M42 30 L55 27"/>
+    <path d="M44 35 L57 35"/>
+    <path d="M42 40 L55 43"/>
+  </g>
+
+  <!-- mandibles: stone and curled in, as in life -->
+  <g fill="none" stroke="#727272" stroke-width="3" stroke-linecap="round">
+    <path d="M27 14 Q 23 9 28 6"/>
+    <path d="M37 14 Q 41 9 36 6"/>
+  </g>
+
+  <!-- head -->
+  <circle cx="32" cy="18" r="8" fill="#727272" stroke="#5E5E5E" stroke-width="2"/>
+
+  <!-- X eyes (same ink as the shell outline, not a new hue) -->
+  <g stroke="#5E5E5E" stroke-width="1.6" stroke-linecap="round">
+    <path d="M27 15 L30.6 18.6"/>
+    <path d="M30.6 15 L27 18.6"/>
+    <path d="M33.4 15 L37 18.6"/>
+    <path d="M37 15 L33.4 18.6"/>
+  </g>
+
+  <!-- carapace -->
+  <ellipse cx="32" cy="37" rx="14.5" ry="15" fill="#ECDCB8" stroke="#A69B81" stroke-width="2"/>
+  <ellipse cx="25.5" cy="32" rx="4.5" ry="7" fill="#FFEDC6"/>
+  <ellipse cx="38.5" cy="32" rx="4.5" ry="7" fill="#FFEDC6"/>
+
+  <!-- the cross, kept -->
+  <g fill="#2ECC71" stroke="#1F8A4C" stroke-width="1.5" stroke-linejoin="round">
+    <path d="M29 29 L35 29 L35 34 L40 34 L40 40 L35 40 L35 45 L29 45 L29 40 L24 40 L24 34 L29 34 Z"/>
+  </g>
+</svg>

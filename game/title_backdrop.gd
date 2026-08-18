@@ -110,16 +110,76 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
+## The height HORIZON and SOIL_LINE are measured against, when it is not this
+## node's own. `-1.0` keeps the old behaviour for a backdrop used on its own.
+##
+## WHY THIS EXISTS. `HORIZON` was read against two different heights and nobody
+## noticed, because at the design size they agree. `TitleScreen.menu_capacity()`
+## multiplies it by `viewport_height()` — the *composition* height, a static 648
+## — while `_draw()` here multiplied it by this node's own LIVE height, which
+## `TitleScreen._apply_viewport_layout()` stretches to the whole window. One
+## constant, two heights, two horizons.
+##
+## The lawn is what made that visible. `PLANT_BASE_Y` (514) and `PEST_BASE_Y`
+## (606) are absolute design pixels, so on a 1920-tall phone the plants stood
+## 904px above the grass and the bugs 1037px above the soil — the whole lawn
+## floating in the sky, which is exactly what a player reported. The ground was
+## viewport-relative and everything standing on it was composition-relative, so
+## they could only ever agree at 648.
+##
+## So the ground is placed at the composition's own distance from the BOTTOM
+## edge, not at a fraction from the top. `ground_offset()` is that translation,
+## and `TitleScreen` adds the identical number to the lawn — one shift applied to
+## the ground and to everything standing on it, which is what
+## `TitleScreen._apply_viewport_layout()` already said the right fix was.
+##
+## Anchoring the lines to the composition from the TOP was tried first and is
+## wrong for a different reason: it keeps the plants on the grass, but a
+## 2048-tall viewport then renders 1480px of soil, and a title screen that is
+## 70% brown is not the composition either.
+var ground_height: float = -1.0
+
+
+## How far down the ground is pushed so it keeps the composition's own footing.
+## Zero at or below the design height — a SHORTER viewport must not drag the
+## horizon up off the top of its own sky.
+func ground_offset() -> float:
+	if ground_height <= 0.0:
+		return 0.0
+	return maxf(0.0, size.y - ground_height)
+
+
+## The height the bands are measured against: the composition's, or this node's
+## own when nobody has said otherwise.
+func ground_anchor() -> float:
+	return ground_height if ground_height > 0.0 else size.y
+
+
+## Where the grass starts, in this node's own coordinates.
+##
+## `_draw()` asks this rather than computing it, and so does the test. That is
+## deliberate and it is the whole repair: the bug was `HORIZON` multiplied by a
+## height of the caller's choosing in two places, and a test that did the
+## multiplication a third time would have agreed with whichever one it copied.
+func grass_line_y() -> float:
+	return ground_anchor() * HORIZON + ground_offset()
+
+
+## Where the soil starts, same contract as grass_line_y().
+func soil_line_y() -> float:
+	return ground_anchor() * SOIL_LINE + ground_offset()
+
+
 func _draw() -> void:
 	var w: float = size.x
 	var h: float = size.y
 	if w <= 0.0 or h <= 0.0:
 		return
-	var horizon: float = h * HORIZON
-	_draw_sky(w, horizon)
-	_draw_clouds(w, horizon)
+	# The composition's bands, translated to sit on the real bottom edge.
+	_draw_sky(w, grass_line_y())
+	_draw_clouds(w, grass_line_y())
 	_draw_glow(w, h)
-	_draw_ground(w, h, horizon)
+	_draw_ground(w, h, grass_line_y(), ground_anchor())
 
 
 func _draw_sky(w: float, horizon: float) -> void:
@@ -174,12 +234,12 @@ func _draw_puff(centre: Vector2, scale: float) -> void:
 	draw_circle(centre + Vector2(20.0, 5.0) * scale, 15.0 * scale, CLOUD_COLOR)
 
 
-func _draw_ground(w: float, h: float, horizon: float) -> void:
+func _draw_ground(w: float, h: float, horizon: float, anchor: float) -> void:
 	draw_rect(Rect2(0.0, horizon, w, h - horizon), GRASS_FAR)
 	_draw_scalloped_edge(w, horizon, GRASS_FAR)
 	_draw_tufts(w, horizon, GRASS_LIGHT)
 
-	var soil_top: float = h * SOIL_LINE
+	var soil_top: float = soil_line_y()
 	# A second, nearer band of grass. Without it the strip between the horizon
 	# and the soil is one 90px slab of a single green — the same flatness the
 	# sky gradient exists to avoid, just lower down. The scallop and the tufts
@@ -195,6 +255,10 @@ func _draw_ground(w: float, h: float, horizon: float) -> void:
 
 	# Furrows: the rows a garden is actually planted in, and the only cue that
 	# the soil band has depth rather than being a second flat rectangle.
+	#
+	# Four rows between the soil line and the bottom edge, unchanged: with the
+	# ground bottom-anchored the soil band is the composition's own 81px at any
+	# viewport height, so there is no band to stretch them across.
 	var rows: int = 4
 	for i: int in rows:
 		var y: float = lerpf(soil_top + 16.0, h - 8.0, float(i) / float(rows - 1))

@@ -67,7 +67,16 @@ func _physics_process(delta: float) -> void:
 		if pest == null or not pest.is_alive():
 			continue
 		if pest.global_position.distance_to(global_position) <= HIT_RADIUS:
-			pest.take_damage(damage)
+			# The third argument is the corpse's shove, and this is the only place in
+			# the game that has the direction to give one: a kernel arrives along a
+			# line, and `to - from` off the two positions IS that line at the moment of
+			# impact (plant-tower-defense-6v39). Composed here, at the call site, the
+			# same way ChompFlower._bite() composes its lunge — the pure static holds
+			# the arithmetic and the caller holds the two points.
+			#
+			# Costs nothing on a hit the pest survives: `take_damage` only carries it
+			# into `kill()`, and never remembers it.
+			pest.take_damage(damage, &"", Pest.knockback_offset(global_position, pest.global_position))
 			# A hit that didn't kill gets its own cue; a hit that did already has
 			# one — the corpse swap, fade and Sfx.PEST_KILLED in Pest._play_death
 			# (plant-tower-defense-7o3). Without this split, "connected but the

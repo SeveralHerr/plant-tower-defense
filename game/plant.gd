@@ -166,6 +166,12 @@ var _sprite: Sprite2D
 ## equivalent because `_gait` is the only writer of a pest's sprite scale
 ## (`game/pest.gd:743`); a plant is the case where two animations want the same
 ## number.
+##
+## The node sits AT the plant's origin and never moves; the point it turns about is
+## carried in the transform `sway_transform()` builds, not in this node's position.
+## See that function for why the pivot point cannot be a node position here without
+## breaking the two gestures that tween `_sprite.position` and the five that tween
+## `_sprite.scale`.
 var _sway_pivot: Node2D
 var _wobble_time: float = 0.0
 ## Seconds of flinch left. Re-armed by `take_damage`, decayed in `_wobble`.
@@ -176,6 +182,31 @@ var _flinch_left: float = 0.0
 ## purpose — this runs on every placed plant, every frame, for the whole run.
 const WOBBLE_RADIANS: float = 0.055
 const WOBBLE_RATE: float = 1.15
+
+## How far below the sprite's centre the sway rotates from, in the plant's own
+## frame (+Y is down, so this is a depth).
+##
+## The sway used to turn `_sway_pivot` about its own origin, which IS the sprite's
+## centre — so every bed on the board rocked about its waist and the base of the
+## stem swung as far as the head did. A tethered balloon, not something rooted in
+## soil. Rotating about the base instead pins the one point that should never move,
+## and the travel at the top comes free: a point `d` above the pivot moves
+## `d * sin(angle)` sideways, so the top of a 64 px sprite goes from `32 * sin` to
+## `(32 + STEM_PIVOT_Y) * sin` — 1.8x the visible swing out of an unchanged angle.
+##
+## 25 px and NOT the sprite's 32 px half-height, which is what the issue guessed at,
+## because the art does not reach the bottom of its own PNG. Measured across the
+## eight plant sprites, the last opaque row ends at +24 (nettle, mint, aloe), +25
+## (corn_cobbler, sticky_sundew) or +27 (chomp_flower, sunflower, dandelion). This is
+## the median: no plant's base is more than 2 px from it, and a pivot at 32 would
+## have sat up to 8 px below the visible stem, in transparent padding, hinging every
+## plant from a point underground.
+##
+## Not derived at runtime — an offset that cost an image decode per plant would be a
+## worse trade than a constant. It is derived at TEST time instead: see
+## `test_the_stem_pivot_is_the_bottom_of_the_art_not_the_bottom_of_the_png`, which
+## re-measures the PNGs and fails if new art moves the baseline out from under it.
+const STEM_PIVOT_Y: float = 25.0
 
 ## The flinch: the third word of the standing animation ask, after sway and breathe.
 ##
@@ -213,6 +244,61 @@ const FLINCH_SECONDS: float = 0.32
 ## body pulses twice per side-to-side swing, once at each extreme.
 const BREATHE_AMOUNT: float = 0.022
 const BREATHE_RATE: float = 2.0
+
+## The plant family's squash-and-return vocabulary, in two tiers.
+##
+## Every animation outside this family already names its duration — Hud's
+## PREP_BAR_PULSE_SECONDS / PANEL_RISE_SECONDS / READOUT_PUNCH_SECONDS, Music's
+## CROSSFADE_SECONDS, PauseScreen's RISE_SECONDS, and Pest's HIT_FLASH_DURATION,
+## which is split 0.35/0.65 OF itself rather than written out as two numbers. The
+## plant flourishes named nothing: nine gestures, twenty-one bare literals.
+##
+## The interesting part of re-running that census is what the twenty-one turned out
+## to be. They use seven distinct numbers between them, and two exact pairs account
+## for five of the nine gestures. These are those two pairs.
+##
+## TWITCH is the per-action beat — `CornCobbler._recoil()` on every shot,
+## `Nettle._sting_twitch()` on every sting. FLOURISH is the once-in-a-while beat —
+## `CornCobbler._upgrade_flourish()`, `ChompFlower._on_upgraded()`, and the
+## Sunflower's payout pop. Both of those upgrade headers already assert the
+## relationship between the tiers in prose: "pushed further and held longer", and
+## "a snap wider than `_bite`'s and held longer, the same relationship
+## `CornCobbler._upgrade_flourish` has to its own `_recoil`". Naming the pairs is
+## what turns those two sentences into something that can fail — see
+## `test_the_flourish_tier_is_pushed_further_and_held_longer_than_the_twitch`.
+##
+## NOT one pair that each subclass scales, which was the shape the issue guessed
+## at. The tiers do not sit on a single factor: out goes 0.05 -> 0.10 (x2.0) while
+## back goes 0.10 -> 0.18 (x1.8). One scalar would have had to move one of the four
+## numbers, and a duration is invisible to every gate in this project — nothing
+## headless can tell a 0.10 that was meant from a 0.10 that fell out of a multiply.
+## Two declared pairs, every value preserved exactly.
+##
+## TWITCH_BACK_SECONDS and FLOURISH_OUT_SECONDS are both 0.10, and that is a
+## coincidence rather than a dependency: the recovery of a small gesture happens to
+## be the strike of a large one. Declared separately on purpose. Tying them would
+## mean a recoil's recovery moved every time an upgrade's snap was retuned, which
+## is the bug that shared constants are supposed to prevent, not cause.
+const TWITCH_OUT_SECONDS: float = 0.05
+const TWITCH_BACK_SECONDS: float = 0.10
+const FLOURISH_OUT_SECONDS: float = 0.10
+const FLOURISH_BACK_SECONDS: float = 0.18
+
+## The planting pop, and the only gesture in the family whose OUT outlasts its
+## BACK. It is an arrival, not a strike: the sprite starts at 0.4 and has to be
+## SEEN growing before it settles, where every other pair here snaps out and eases
+## home. The test below names this as the deliberate exception rather than leaving
+## it as a pair that quietly breaks the rule the other five follow.
+const PLANTING_POP_OUT_SECONDS: float = 0.12
+const PLANTING_POP_BACK_SECONDS: float = 0.10
+
+## The uproot/death shrink. One-way — there is no return, because there is nothing
+## left to return to — so it is a single value rather than a pair. It equals
+## FLOURISH_BACK_SECONDS and is declared separately for the same reason the 0.10
+## above is: a plant leaving the board and a cob celebrating a purchase are not one
+## number wearing two names.
+const EXIT_SHRINK_SECONDS: float = 0.18
+
 var _selected: bool = false
 var _health_back: ColorRect = null
 var _health_bar: ColorRect = null
@@ -319,8 +405,8 @@ func _build_visuals() -> void:
 		return
 	_sprite.scale = Vector2(0.4, 0.4)
 	var tween := create_tween()
-	tween.tween_property(_sprite, "scale", Vector2(1.12, 1.12), 0.12)
-	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.10)
+	tween.tween_property(_sprite, "scale", Vector2(1.12, 1.12), PLANTING_POP_OUT_SECONDS)
+	tween.tween_property(_sprite, "scale", Vector2.ONE, PLANTING_POP_BACK_SECONDS)
 
 
 ## Every Control this plant owns stops taking mouse input.
@@ -378,7 +464,7 @@ func play_exit_and_free() -> void:
 		queue_free()
 		return
 	var tween := create_tween()
-	tween.tween_property(_sprite, "scale", Vector2.ZERO, 0.18)
+	tween.tween_property(_sprite, "scale", Vector2.ZERO, EXIT_SHRINK_SECONDS)
 	tween.tween_callback(queue_free)
 
 
@@ -411,9 +497,14 @@ func _wobble(delta: float) -> void:
 	# never phase-lock into one larger sway -- which is what a shared clock at a harmonic
 	# ratio would look like, and it would read as "sways more when bitten" instead of
 	# "flinched".
-	_sway_pivot.rotation = (sin(clock) * WOBBLE_RADIANS
+	var angle: float = (sin(clock) * WOBBLE_RADIANS
 		+ sin(_wobble_time * FLINCH_RATE) * FLINCH_RADIANS * flinch_amount(_flinch_left))
-	_sway_pivot.scale = breathe_scale(clock)
+	# One transform rather than `rotation` and `scale` separately, because the pivot
+	# POINT is the third thing being set and there is no property for it — see
+	# `sway_transform`. Both of the reads this replaces still work: Godot decomposes
+	# `rotation` and `scale` back out of the transform, and the origin it also carries
+	# is zero whenever the angle is.
+	_sway_pivot.transform = sway_transform(angle, breathe_scale(clock))
 
 
 ## Pure: the breathe's scale at a point on the sway clock. Split out for the same
@@ -434,6 +525,49 @@ static func flinch_amount(left: float) -> float:
 static func breathe_scale(clock: float) -> Vector2:
 	var breathe: float = sin(clock * BREATHE_RATE) * BREATHE_AMOUNT
 	return Vector2(1.0 - breathe, 1.0 + breathe)
+
+
+## Pure: the entire transform the idle sway puts on `_sway_pivot` — the rotation, the
+## breathe, and the point both of them happen ABOUT.
+##
+## Split out for the reason `breathe_scale` and `flinch_amount` were: everything in
+## `_wobble` past the `animations_enabled()` gate is unreachable headless, so a test
+## that pumps `_wobble` and reads what moved is testing an early return. This is the
+## whole geometry, in the one place a headless suite can hold it, and it is the same
+## call the running game makes rather than a restatement of it.
+##
+## **Why the pivot point is a transform and not this node's `position`.** `_sprite`
+## sits at the pivot's origin with `offset` zero, and both of those zeroes are
+## load-bearing, in different ways:
+##
+##   * `ChompFlower._bite()` and `Nettle._sting_twitch()` tween `_sprite.position` out
+##     to a lunge/thrust and home again to `Vector2.ZERO`. Pushing the pivot node down
+##     and pulling the sprite node up to compensate would make ZERO the wrong home, and
+##     both gestures would finish by yanking the plant STEM_PIVOT_Y px off its cell.
+##   * `Sprite2D.offset` is applied inside the sprite's OWN local space, so it is
+##     multiplied by `_sprite.scale`. Compensating with `offset` instead would make all
+##     five scale flourishes scale about the stem rather than about the sprite centre —
+##     the planting pop starts at 0.4, so it would arrive `0.6 * STEM_PIVOT_Y` = 15 px
+##     underground and slide up out of the soil, and `play_exit_and_free`'s shrink to
+##     zero would collapse into the ground rather than into the plant. The comment at
+##     the pop's own construction ("the sprites are centred on their own vertical axis,
+##     which is what makes a scale tween land without drifting off the cell") is exactly
+##     the invariant that route breaks.
+##
+## Folding the offset into the pivot's own transform touches neither, because a child's
+## local translation is mapped by the parent's BASIS and only the ORIGIN changed here.
+## The basis is the same rotation and scale it always was, so a 7 px lunge still travels
+## 7 px, still leans by at most the sway angle (the property `ChompFlower._bite` calls
+## deliberate), and still comes home to the same pixel.
+##
+## Returns `Transform2D.IDENTITY` at rest, which is the other half of the promise: a
+## plant standing still, and every headless run with the gate shut, is exactly what it
+## was before the pivot moved.
+static func sway_transform(angle: float, breathe: Vector2) -> Transform2D:
+	var about := Vector2(0.0, STEM_PIVOT_Y)
+	var spun := Transform2D(angle, breathe, 0.0, Vector2.ZERO)
+	spun.origin = about - spun.basis_xform(about)
+	return spun
 
 
 ## Pure: per-cell phase offset for the sway above. Split out so a test can
