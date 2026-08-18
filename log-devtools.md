@@ -6694,3 +6694,40 @@ status rather than rewriting the entries that recorded these as open.
   `Sunflower.INTERVAL` and `can_start_wave` already decide. Worth recording because the
   instinct was to launch the game, and the cheaper answer was strictly stronger: it
   covers every playthrough rather than the one that got played.
+
+## 2026-08-18 — round 11: owdi driven, ox1p grouped, hb43 swept (no bridge this round)
+
+- Value: **warranted**, but for the headless suite rather than the bridge — the game
+  was never launched and did not need to be.
+  - Expected: `owdi`'s claim ("a foreign id cannot reach the shelf") was already true by
+    reading, so I expected a green test and nothing else.
+  - Got: green, 6 assertions — and then the part that mattered: patching
+    `shelf_progress_text` to count off `earned_milestones.size()` turned it **red**, and
+    restoring turned it green. That is the only evidence that a test about a protection
+    is asserting anything at all.
+  - Found: nothing in the game. The defects this round were both in **my own
+    measurements**: a history sweep that reported 554 false hits, then 144, before
+    asking `gdsource` instead of a regex.
+  - Cheaper: nothing for `owdi` — the bead's whole point was that reading had already
+    been done once and was not enough. For `hb43`, no engine at all was needed.
+
+- Gap: **`isolation: "worktree"` branched both lanes from the session's ORIGINAL HEAD,
+  not from current main.** `git worktree list` showed both agent worktrees at `bd9d332`
+  — the commit in this session's opening git status — while main was 17 commits ahead at
+  `d3e2c30`. Both lanes were therefore editing files that had moved underneath them, and
+  Lane B owns two files (`hud.gd`, `game.gd`) that round 10 had changed. Worked around by
+  messaging both lanes to `git merge main` mid-flight and telling each what specifically
+  had moved in its own files.
+  - [G-124] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: a spawn that creates a worktree should branch from the repo's CURRENT
+    HEAD, or say in the spawn result which commit it branched from. The failure is silent
+    and cheap to detect (`git worktree list`) but nothing prompts you to look — I only
+    checked because I wanted to see whether the lanes had committed yet. A lane that
+    reports "all gates clean" against a 17-commit-stale base is telling the truth about
+    the wrong tree, which is the same failure class as a clean `name_check` in a fresh
+    worktree that compiles nothing.
+
+- Note for the ledger, not a gap: the `hb43` survey is the clearest case this session of
+  a **zero that had to be earned**. Two wrong versions produced 554 and 144 findings; the
+  right one produces 0. A control file now pins all four outcomes, because "0 findings"
+  and "the sweep is broken" are the same output.
