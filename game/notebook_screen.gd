@@ -216,13 +216,18 @@ static func pane_label_for(kind: String) -> String:
 
 
 ## How many shapes `game/OVERLAY_GRAMMAR.md` documents. Named here because the legend
-## page's provenance line says "5 of the board's 10", and a hard-typed 10 in a format
+## page's provenance line prints it to the player, and a hard-typed count inside a format
 ## string is a number nobody would ever re-check.
+##
+## This comment used to quote the rendered line as "5 of the board's 10". Both numbers had
+## drifted — six taught, eleven documented — because the test below guards the CONSTANT and
+## nothing guards prose that quotes it. Hence no example here: a comment that restates a
+## number it does not own is a second copy, and the second copy is always the one that rots.
 ##
 ## `test_the_legend_names_as_many_shapes_as_the_grammar_documents` parses the document's
 ## table and fails when it grows — which is the only way this stays true, since a new
 ## grammar row is added by someone editing markdown who will never open this file.
-const OVERLAY_GRAMMAR_SHAPES: int = 10
+const OVERLAY_GRAMMAR_SHAPES: int = 11
 const OVERLAY_GRAMMAR_PATH := "res://game/OVERLAY_GRAMMAR.md"
 
 
