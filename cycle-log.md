@@ -1,4 +1,4 @@
-# Cycle 113
+# Cycle 114
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,37 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 114 taught
+
+**A 3px jump is invisible in every still and obvious in play.** The Bramble's two new damage
+frames first rendered with painted bases at 53 and 52 against the whole frame's 56 — so the
+plant would have hopped upward the instant it was bitten. Caught by MEASURING the rendered
+PNGs, not by looking at them, and now pinned by a test that holds the three frames against
+*each other* rather than each against the family, which is the tighter claim and the one an
+animation actually needs.
+
+**A surviving mutant is not evidence of anything until you ask why it survived.** Swapping
+`DAMAGE_THRESHOLDS` produced no failure — because `texture_for_health` COUNTS thresholds
+rather than walking them, so the order genuinely cannot matter. An equivalent mutant, and a
+small virtue of the code. The second mutation (making the ragged frame unreachable) was
+caught at once. `house-static-checker` names this case and does not say how to tell; that is
+now `-fwlg`.
+
+**A test writing `health` proves the function; only the game proves it is wired.** Under a
+real aphid the frame changed between health 32.53 and 25.83 — the 2/3 boundary, crossed by
+damage rather than by a setter. That is the whole of what the launch bought, and it is worth
+buying.
+
+**The ninth plant broke a rule the game spent eight plants teaching, and says nothing.**
+Three one-shot hints exist for rules the board does not state (a flier ignores a Chomp; a
+planted plant can grow; Uproot compares before it digs). "You may build on the road" is not
+a gap in what the player knows — it is the reverse of what they learned, and
+`place_plant` still answers "pests walk there" for eight of the nine. Filed as `-lven`.
+
+**The steps held, third cycle running.** Worth noting rather than repeating: the two
+workflow candidates from cycles 113 and 114 both became beads (`-str8`, `-fwlg`) instead of
+edits, because each is a claim to decide rather than a repair to make.
 
 ## What cycle 113 taught
 

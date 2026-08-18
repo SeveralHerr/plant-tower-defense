@@ -4101,3 +4101,34 @@ Three findings kept out here rather than buried in a log:
   moves it", the ring over illegal ground becomes plainly wrong and this entry becomes a
   bug; if the answer is "no, the preview is only ever a comparison", it is arguably correct
   as-is. **Do not tidy this before `-h5w6` is answered** — that is the whole entry.
+
+### New in cycle 114 — grown from the wall's damage frames
+
+- **The game teaches three rules a player cannot infer, and the ninth plant added a fourth
+  that REVERSES one they already learned.** The mechanism exists and is deliberate:
+  `RunConfig.HINT_MOVE_PREVIEW` / `HINT_CHOMP_IGNORES_FLIGHT` / `HINT_UPGRADE_EXISTS`
+  (`game/run_config.gd:166`, `:195`, `:212`), each a one-shot tip with a matching notebook
+  card in `Hud.HINT_CARDS` (`game/hud.gd:3494`), and
+  `test_every_hint_has_a_notebook_card` fails on either half missing.
+  Look at what those three teach: a flier ignores a Chomp; a plant already down can grow;
+  Uproot compares before it digs. Each is a rule the board does not state. **"You may build
+  on the road" is a bigger one than any of them, because it is not a gap in what the player
+  knows — it is the opposite of what eight plants spent the whole game teaching.**
+  `Board.is_buildable` refused every road cell for the entire history of this project, and
+  `place_plant` still answers "pests walk there" for eight of nine plants. A player who has
+  internalised that will not try, and the Barrier Bramble's shop line ("Grows across the
+  road itself") is a sentence they have every reason to read as flavour.
+  A fourth hint costs one entry in each of two lists and the gate keeps them together. What
+  it needs deciding is the TRIGGER: on first seeing the Bramble in the shop, on first
+  selecting it, or on the first refusal of a road-plant-on-grass — the last is the most
+  teachable moment and the only one that fires when the player is already confused.
+
+- **The frame swap is a cut, not a change.** The three damage frames are swapped straight
+  into `_sprite.texture` (`game/bramble.gd`, `_refresh_damage_sprite`) with no transition —
+  correct as a first version, and worth watching. `Plant` already flinches on every bite
+  (`_flinch_left`, `FLINCH_SECONDS`), so the swap lands inside a shudder that is already
+  happening, which is why this reads acceptably rather than as a pop. That is also the
+  argument against adding motion: a second gesture on the same event would fight the flinch.
+  Taste, no citation offered: leave it. If it ever reads as a pop, the fix is to align the
+  swap to the flinch's peak rather than to add a tween — the frame changing at the moment
+  the plant is already moving hides the cut for free.
