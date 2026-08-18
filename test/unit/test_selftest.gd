@@ -15563,3 +15563,128 @@ func _turn_degrees(closed: PackedVector2Array, i: int) -> float:
 
 
 # -- END the page frame's corners are not the artifact --
+
+
+# -- BEGIN one-shots: plant-tower-defense-ei83, plant-tower-defense-q8db --------
+#
+# Two beads about a moment the game gets exactly ONE chance to land: a hint spent on a
+# player who was looking elsewhere, and the first record a garden ever sets.
+
+
+## THE GATE THAT MAKES `Hud.HINT_CARDS` A DERIVED LIST RATHER THAN A SECOND HAND-TYPED
+## ONE. `RunConfig.HINTS` decides what a hint IS -- `spend_hint` refuses an id that is
+## not in it -- so the card table is a lookup over that list and not a list of its own.
+##
+## Both directions, because each catches a different mistake: an id in HINTS with no
+## card is a one-shot with no route back, which is the whole defect ei83 is about; a
+## card whose id is not in HINTS is a page teaching an interaction the game never
+## offers, which is worse than a gap because it reads as authoritative.
+func test_every_hint_has_a_notebook_card() -> String:
+	var ids: Array[String] = Hud.hint_ids()
+	var err: String = _T.assert_gt(ids.size(), 0,
+		"there are hints to card at all -- an empty list would pass every loop below")
+	if err == "":
+		err = _T.assert_eq(ids.size(), RunConfig.HINTS.size(),
+			"hint_ids() is RunConfig.HINTS and not a private copy of it")
+	for i: int in ids.size():
+		if err != "":
+			break
+		err = _T.assert_eq(ids[i], String(RunConfig.HINTS[i]),
+			"hint %d is the one RunConfig lists in that slot" % i)
+	for id: String in ids:
+		if err != "":
+			break
+		var row: Dictionary = Hud.hint_entry(id)
+		err = _T.assert_false(row.is_empty(),
+			"'%s' is in RunConfig.HINTS, so it has a card to be found again by" % id)
+		if err == "":
+			err = _T.assert_true(Hud.hint_title(id) != id,
+				"'%s' has a real title rather than falling back to its raw id" % id)
+		if err == "":
+			err = _T.assert_gt(Hud.hint_note_text(id, true).length(), 0,
+				"'%s' has a note saying what the interaction actually is" % id)
+	# The reverse sweep. A card for an id nobody can spend is a page that teaches
+	# something the game has no door to.
+	for row: Dictionary in Hud.HINT_CARDS:
+		if err != "":
+			break
+		var id: String = String(row["id"])
+		err = _T.assert_true(RunConfig.is_hint(id),
+			"the card '%s' names an id RunConfig still calls a hint" % id)
+	return err
+
+
+## The bead's acceptance, as an assertion: a player who never saw the prompt can still
+## learn the interaction. So the note reads IN FULL in both states -- the seen/unseen
+## mark says who has read it, never what it says.
+##
+## And the mark is a text prefix, not a colour, which is `OVERLAY_GRAMMAR.md`'s
+## two-channel rule: strip every colour off the page and an unshown row is still
+## identifiable as unshown. Mirrors `NotebookScreen.shelf_note_text`, whose header
+## states the same rule for the milestone shelf one screen away.
+func test_a_hint_card_reads_in_full_whether_or_not_the_game_has_shown_it() -> String:
+	var ids: Array[String] = Hud.hint_ids()
+	var err: String = _T.assert_gt(ids.size(), 0, "there are hints to check")
+	for id: String in ids:
+		if err != "":
+			break
+		var shown: String = Hud.hint_note_text(id, true)
+		var unshown: String = Hud.hint_note_text(id, false)
+		# Hoisted out of the `if` blocks below on purpose: a `var` declared inside one
+		# is scoped to it, and the later assertion reading it would not compile.
+		var body: String = unshown.trim_prefix("Not shown yet — ")
+		err = _T.assert_true(shown != unshown,
+			"'%s' reads differently once the game has spent it" % id)
+		if err == "":
+			err = _T.assert_true(unshown.begins_with("Not shown yet — "),
+				("'%s' unshown carries the prefix that survives colour being discarded,"
+					+ " got '%s'") % [id, unshown])
+		if err == "":
+			# The half that matters: the SENTENCE is intact under the prefix, so the
+			# interaction is learnable by someone the row never reached. Compared on
+			# the body rather than on length, so a truncating change fails here.
+			err = _T.assert_eq(body.substr(1), shown.substr(1),
+				("'%s' says the same thing in both states -- only the first letter's"
+					+ " case and the prefix differ") % id)
+		if err == "":
+			err = _T.assert_eq(shown.substr(0, 1).to_lower(), body.substr(0, 1),
+				"'%s' lowercases exactly the one letter the prefix runs into" % id)
+	return err
+
+
+## The two renderings must not contradict each other, which is the specific risk of
+## having a notebook card and a message-row tip say the same rule in different words.
+##
+## Asserted on the PLANTS each names, not on the strings matching: `Hud.flight_tip()`
+## is written for a player watching a bug walk over a mouth and the card is written for
+## a reader with no bug in front of them, so they SHOULD differ as prose. What they may
+## never differ about is which plant catches a winged pest and which does not.
+func test_the_hint_cards_agree_with_the_tips_the_message_row_posts() -> String:
+	var tip: String = Hud.flight_tip()
+	var card: String = Hud.hint_note_text("seen_flight_tip", true)
+	var err: String = _T.assert_true(tip.contains("Chomp Flower") and card.contains("Chomp Flower"),
+		"both name the plant that cannot take it -- tip '%s', card '%s'" % [tip, card])
+	if err == "":
+		err = _T.assert_true(tip.contains("Corn Cobbler") and card.contains("Corn Cobbler"),
+			"and both name the plant that can -- tip '%s', card '%s'" % [tip, card])
+	if err == "":
+		err = _T.assert_true(tip != card,
+			"while staying two sentences for two audiences rather than one pasted twice")
+	if err == "":
+		# The upgrade card has to name the verb the button carries, or a player who
+		# reads it still does not know what to look for on the board.
+		err = _T.assert_true(Hud.hint_note_text("seen_upgrade_tip", true).contains("Upgrade"),
+			"the upgrade card names the button by the word printed on it")
+	if err == "":
+		# The move card is the one whose tip is a CLAUSE inside a longer sentence
+		# (`uproot_armed_message`), so it is the one most able to drift.
+		var armed: String = Hud.uproot_armed_message("Corn Cobbler", true, 0)
+		err = _T.assert_true(armed.contains("Hover"),
+			"the armed prompt still carries the hover clause -- '%s'" % armed)
+		if err == "":
+			err = _T.assert_true(Hud.hint_note_text("seen_move_tip", true).contains("hover"),
+				"and the card teaches the same hover")
+	return err
+
+
+# -- END one-shots: plant-tower-defense-ei83, plant-tower-defense-q8db ----------

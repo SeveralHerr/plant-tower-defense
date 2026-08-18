@@ -3066,6 +3066,105 @@ static func upgrade_tip(plant_name: String, cost: int) -> String:
 	return "Your %s can be upgraded. Click it on the board — %d seeds." % [plant_name, cost]
 
 
+## THE HINT CARDS: the same three interactions the one-shot tips teach, written for a
+## reader who is not in the moment (plant-tower-defense-ei83).
+##
+## Every id in `RunConfig.HINTS` is shown exactly once per save and then never again,
+## which is right — a tip that becomes wallpaper is worse than no tip. The cost of that
+## rule is that a player who was looking at the board when the row posted has no route
+## back to it, and `spend_hint` makes the loss permanent by design. This table is the
+## route back. It is the CONTENT half only: the surface that renders it is the
+## notebook's, and building a second one in the HUD would spend the row this project
+## has measured for four cycles on a thing the player is not currently doing.
+##
+## HERE, beside `flight_tip` and `upgrade_tip`, rather than in a `game/hints.gd` of its
+## own mirroring `game/milestones.gd`. The milestone parallel is real and a separate
+## file is the tidier shape, but these are two renderings of ONE fact each, and the
+## failure that matters is the two disagreeing — a notebook that teaches a rule the row
+## states differently is worse than either alone. The sentences the row says are in this
+## file, so the sentences the notebook says are too, and a change to one has the other
+## in the same diff.
+##
+## The card is NOT the tip's own sentence. `flight_tip()` is written for a player
+## watching a specific bug walk over a specific mouth and leans on that; a notebook
+## reader has no bug in front of them. Same rule, two audiences, so two strings — the
+## suite asserts they agree about the mechanic, not that they match.
+##
+## Ids are literals here for the reason `Milestones.TABLE`'s are: `RunConfig` is an
+## autoload with no `class_name`, so `RunConfig.HINT_MOVE_PREVIEW` is an instance read
+## and cannot initialise a `const`. The drift that buys is closed by the gate rather
+## than by the compiler — `test_every_hint_has_a_notebook_card` walks `RunConfig.HINTS`
+## and fails on an id with no card AND on a card with no id, so a fourth hint added to
+## the list arrives here or fails the suite.
+const HINT_CARDS: Array[Dictionary] = [
+	{
+		"id": "seen_move_tip",
+		"title": "Compare before you dig",
+		"note": "With Uproot armed, hover another bed to see what the plant would reach there. Confirming still only uproots.",
+	},
+	{
+		"id": "seen_flight_tip",
+		"title": "Some pests fly over",
+		"note": "A winged pest passes a Chomp Flower untouched. Corn Cobblers can still hit it.",
+	},
+	{
+		"id": "seen_upgrade_tip",
+		"title": "Plants already down can grow",
+		"note": "Click a plant on the board to select it, then Upgrade. Climbing one plant beats adding another.",
+	},
+]
+
+
+## Every hint id, in `RunConfig.HINTS` order — which is the list's order and not this
+## table's, deliberately. `HINTS` is what `spend_hint` guards against, so it is the set
+## that decides what a hint IS; a page rendered off `HINT_CARDS` instead would happily
+## show a card for an id the persistence layer no longer knows about.
+## Built element by element rather than returned as `RunConfig.HINTS.duplicate()`:
+## `duplicate()` is declared `-> Array`, so handing it back as `Array[String]` leans on
+## an implicit conversion this project has no compile gate running to confirm.
+static func hint_ids() -> Array[String]:
+	var out: Array[String] = []
+	for id: Variant in RunConfig.HINTS:
+		out.append(String(id))
+	return out
+
+
+## The card row for `id`, or an empty Dictionary. Shaped like `Milestones.entry()` so a
+## caller that already renders milestone rows needs no second idiom.
+static func hint_entry(id: String) -> Dictionary:
+	for row: Dictionary in HINT_CARDS:
+		if String(row["id"]) == id:
+			return row
+	return {}
+
+
+## Falls back to the raw id rather than to "", exactly as `Milestones.title_of` does: a
+## hint with no card must be VISIBLE on the page as an untitled row, not silently absent
+## from a list whose whole job is completeness.
+static func hint_title(id: String) -> String:
+	var row: Dictionary = hint_entry(id)
+	return String(row["title"]) if row.has("title") else id
+
+
+## What a hint row's second line says, and whether the game has spent it yet.
+##
+## Mirrors `NotebookScreen.shelf_note_text` down to the prefix, for the same reason it
+## has one: the state has to survive the colour being thrown away. "A winged pest passes
+## a Chomp Flower untouched" and "Not shown yet — a winged pest passes a Chomp Flower
+## untouched" are the same fact in two tenses, so a greyed row is legible as greyed
+## without hue.
+##
+## The note reads in full in BOTH states, which is the entire bead: the shelf hides
+## nothing behind earning, and a hint the player never saw must be as readable as one
+## they did. The prefix says who has seen it, never what it is.
+static func hint_note_text(id: String, shown: bool) -> String:
+	var row: Dictionary = hint_entry(id)
+	var note: String = String(row["note"]) if row.has("note") else ""
+	if shown or note.is_empty():
+		return note
+	return "Not shown yet — %s%s" % [note.substr(0, 1).to_lower(), note.substr(1)]
+
+
 static func eaten_message(plant_name: String) -> String:
 	return "A hungry pest ate your %s!" % plant_name
 
