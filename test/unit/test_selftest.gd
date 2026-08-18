@@ -16485,6 +16485,11 @@ func test_every_selection_detail_producer_is_priced_by_the_corpus() -> String:
 		Hud.chomp_chewing_detail(100),
 		Hud.sundew_detail(WaveDirector.SIMULTANEOUS_PEST_CEILING,
 			int(round(StickySundew.SLOW_FACTOR * 100.0))),
+		# The two support plants (plant-tower-defense-u9zb). Both showed idle_detail() and
+		# neither has ever touched a pest, so both were announcing that they were waiting
+		# for one.
+		Hud.mint_detail(),
+		Hud.aloe_detail(),
 		# The Barrier Bramble's line (plant-tower-defense-7daf), priced at the widest the
 		# FORMAT allows rather than at what a Bramble shows today -- see the corpus.
 		Hud.resisting_detail(999.0),
@@ -17633,6 +17638,64 @@ func test_every_bramble_frame_is_the_same_plant_standing_in_the_same_place() -> 
 
 # END plant-tower-defense-a180
 # =============================================================================
+
+
+## Only a plant that can actually touch a pest says it is waiting for one
+## (plant-tower-defense-u9zb).
+##
+## `idle_detail()` reads "Idle — waiting for a pest." and every plant without its own
+## branch in `_refresh_selection` gets it. That was true of the catalogue it was written
+## for. It stopped being true the moment plants arrived that never touch a pest at all: a
+## Garden Mint speeds its neighbours and a Salve Aloe repairs them, and both were
+## announcing that they were waiting for a pest.
+##
+## Driven off `PlantCatalog.engages()` rather than off a list of ids, so the TENTH plant
+## inherits the rule instead of inheriting the bug. `engages` is the catalogue's own
+## "can this touch a pest" key and is exactly the question this sentence makes a claim
+## about — which is why this can be a general assertion rather than three named cases.
+func test_no_plant_that_cannot_touch_a_pest_claims_to_be_waiting_for_one() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(4000)
+	game.bank.unlocked = PlantCatalog.ids()
+	var err: String = ""
+	var checked: int = 0
+	var idle: String = Hud.idle_detail()
+
+	for id: StringName in PlantCatalog.ids():
+		if err != "":
+			break
+		var cell: Vector2i = game.board.world_to_cell(game.board.route()[2]) \
+			if PlantCatalog.on_road(id) else _grass(game)
+		err = _T.assert_eq(game.place_plant(id, cell), "",
+			"%s went into the ground -- a plant this loop cannot place it does not check" % id)
+		if err != "":
+			break
+		game._select(game.plant_at(cell))
+		game._process(0.016)
+		await _pump(game)
+		var label: Label = game.hud.get_node_or_null(
+			"Root/SidePanel/SelectionBox/SelectionLabel") as Label
+		if label == null:
+			err = "the selection label is on screen"
+			break
+		checked += 1
+		if PlantCatalog.engages(id):
+			continue
+		err = _T.assert_false(label.text.contains(idle),
+			("%s cannot touch a pest (PlantCatalog.engages is false), so its panel must "
+				+ "not say \"%s\" -- got: %s")
+				% [id, idle, label.text.replace("\n", " / ")])
+
+	if err == "":
+		err = _T.assert_eq(checked, PlantCatalog.ids().size(),
+			"every plant in the catalogue was placed, selected and read")
+	if err == "":
+		# The other direction, or this passes on a game that deleted idle_detail entirely
+		# -- which would lose the line for the plants it is correct about.
+		err = _T.assert_true(Hud.selection_detail_corpus().has(idle),
+			"idle_detail is still a line the game can show, and still priced")
+	_T.free_ui(game)
+	return err
 
 
 ## The move preview cannot promise a cell the click will not plant (plant-tower-defense-l7ak).

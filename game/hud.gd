@@ -2302,6 +2302,14 @@ func _refresh_selection(state: Dictionary) -> void:
 					dandelion.seconds_until_armed())
 		elif chomp != null and chomp.is_busy():
 			busy = chomp_chewing_detail(int(round(chomp.chew_progress() * 100.0)))
+		elif plant is Mint:
+			# Class checks here rather than a property, unlike the resisting branch below.
+			# Mint and Aloe share no asked-of-the-plant question — one speeds neighbours and
+			# the other repairs them — so there is nothing to ask that is not just "which
+			# class is this". Same shape as the chomp/sundew/dandelion branches around it.
+			busy = mint_detail()
+		elif plant is Aloe:
+			busy = aloe_detail()
 		elif plant.bite_resistance() < 1.0:
 			# Asked of the PLANT rather than of `plant as Bramble`, so the second tough
 			# plant needs no branch here — the same move the ladder line below makes with
@@ -2437,6 +2445,35 @@ static func idle_detail() -> String:
 	return "Idle — waiting for a pest."
 
 
+## The two support plants, which were showing `idle_detail()` and should never have been.
+##
+## The Sundew already got its own line for exactly this reason, and the comment in
+## `_refresh_selection` says why: *"A Sundew is never busy and never idle — it is always
+## working, and the only question is how many pests are in the patch. 'Idle' was simply the
+## wrong word for the one plant that cannot be."* That argument was correct and was never
+## extended when Mint and Aloe landed, so two plants that never touch a pest at all have
+## been announcing that they are **waiting for one**.
+##
+## It is the same class of defect as `eaten_message` naming the hungry mutation for a wall:
+## a sentence that was true of the catalogue it was written for and quietly stopped being.
+## Nothing can catch either — `message_corpus_check.py` verifies a line is PRICED, never
+## that it is ACCURATE.
+##
+## ZERO-ARGUMENT, like `idle_detail`, and that is a deliberate limit rather than an
+## oversight. Neither plant tracks how many neighbours it is currently affecting; `Game`
+## owns `_plants` and applies the buff, and plumbing a live count up to the panel is a
+## bigger change than the sentence is worth. Both are phrased so **zero neighbours is not a
+## lie**: the plant is doing the thing whether or not anything is receiving it, and "this
+## one is wasted" is already the dead-ground cue's job — both have a real `reach()`, so a
+## Mint or an Aloe touching nothing is flagged on the board before it is ever selected.
+static func mint_detail() -> String:
+	return "Quickening the beds beside it — never the lane."
+
+
+static func aloe_detail() -> String:
+	return "Mending the beds beside it, slowly."
+
+
 ## What a plant that RESISTS says: how long the health it has now will actually last.
 ##
 ## This line exists because "Health 40/40" is true of a Barrier Bramble and misleading
@@ -2487,6 +2524,8 @@ static func selection_detail_corpus() -> Array[String]:
 	# ceiling. 999 is the widest a sane balance can reach and is deliberately wider than
 	# the game — the same over-pricing this corpus already does by crossing every plant
 	# with every detail.
+	out.append(mint_detail())
+	out.append(aloe_detail())
 	out.append(resisting_detail(999.0))
 	out.append(idle_detail())
 	return out

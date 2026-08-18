@@ -7335,3 +7335,45 @@ status rather than rewriting the entries that recorded these as open.
   into a child path. Three attempts were burnt guessing `Sway/Sprite2D` when the child is
   `Sway/@Sprite2D@161`. The verbs are right; the habit of guessing a child name is not, and
   `scene-tree --root` is one call.
+
+## 2026-08-18 — cycle 115: two plants that said they were waiting for a pest they cannot touch
+
+- Value: **warranted** — the sweep found a second instance of the class it was filed for,
+  and the fix is a rule the tenth plant inherits rather than three named cases.
+  - Expected: HUD sentences naming a MECHANISM go stale as the mechanism list grows, and
+    nothing can detect it. Predicted before reading: at least one more producer besides
+    `eaten_message` has rotted, and the likeliest is `idle_detail`, whose own comment
+    already carries a stale plant count.
+  - Got: exactly that, and worse than predicted. `idle_detail` reads "Idle — waiting for a
+    pest." and is shown by every plant without its own branch — which is Garden Mint, Salve
+    Aloe and Prickly Nettle. **Mint and Aloe cannot touch a pest at all.** Confirmed live:
+    Mint now reads "Quickening the beds beside it — never the lane.", Aloe "Mending the beds
+    beside it, slowly.", and the Nettle correctly KEEPS the idle line because it stings.
+  - Found: three.
+    **(1)** the two plants above. The damning part is that **the argument was already
+    written down and not applied** — the Sundew has its own line, and the comment three
+    lines above the fall-through says "'Idle' was simply the wrong word for the one plant
+    that cannot be." Right, and never extended when Mint and Aloe landed.
+    **(2)** two stale claims in `wave_director.gd`'s own headers ("three of the eight
+    plants", "A drought doubles every plant's firing interval" — three of nine do). Found by
+    following the MECHANISM rather than the producer list, which is the half a
+    producer-only sweep would have missed.
+    **(3)** the shape that makes a sentence safe. **21 of 33 producers interpolate the thing
+    they describe** and therefore cannot outlive it; every defect found across two cycles
+    has been in the handful that name a mechanism in prose. That is a reviewable property,
+    not a checkable one.
+  - Cheaper: the extraction script that dumped all 33 sentences — that IS the method, and it
+    cost one snippet. Honestly the launch was the cheaper half to skip this time: the new
+    test drives the real scene and reads the real Label, so runtime only re-confirmed it.
+
+- **Decision recorded: this cannot be mechanised, and the reason is not "too hard".**
+  `message_corpus_check.py` verifies a line is PRICED, which is the only property of a
+  sentence a static tool can decide. Accuracy is a claim about the relationship between
+  English and code, and there is no shared vocabulary to check — "hungry", "shoots", "idle"
+  are not identifiers. The useful residue is a review heuristic, not a gate.
+
+- Gap: **no gap this turn.** One habit worth keeping from the runtime pass: I burnt four
+  bridge calls on shell arithmetic mangling cell → screen coordinates, and placed a plant
+  that silently was not placed. `find-nodes --class Aloe --property cell` returning
+  `0 node(s) matched` is what caught it. **Read the placement's own reply, or ask the tree —
+  do not assume a `cmd place_plant` landed.**

@@ -811,9 +811,9 @@ static func wave_carries_boss(wave: int) -> bool:
 ##
 ## **A drought lengthens a repeating ATTACK interval and nothing else.** Everything that
 ## pays this scale reads it through `Plant.fire_interval_scale` into
-## `Plant.composed_interval`, and today that is three of the eight plants in
+## `Plant.composed_interval`, and today that is three of the NINE plants in
 ## `PlantCatalog`: `CornCobbler.fire_interval`, the Dandelion's per-seed cooldown off
-## `Dandelion.SHOT_INTERVAL`, and `Nettle.sting_interval`. The other five are untouched,
+## `Dandelion.SHOT_INTERVAL`, and `Nettle.sting_interval`. The other six are untouched,
 ## and until this bead that was an
 ## accident of which files happened to read the field rather than an answer anyone had
 ## given. (The bead itself said two of five, which was true of a smaller roster: Nettle
@@ -857,7 +857,9 @@ static func fire_interval_scale_for(weather: StringName) -> float:
 ## What a pest killed under this weather is worth, as a multiple of its seed value
 ## (plant-tower-defense-4c1l).
 ##
-## **Only drought pays.** A drought doubles every plant's firing interval, so the same
+## **Only drought pays.** A drought doubles the firing interval of every plant that HAS one
+## — three of the nine, per the block above; a Bramble and a Mint have nothing to slow — so
+## the same
 ## wave costs the player more plants, more lives and more attention — and until now it
 ## paid exactly what the easy version of that wave paid. This is the same idea as
 ## `Pest.husk_multiplier()`, which already pays more for a harder kill; weather is that
