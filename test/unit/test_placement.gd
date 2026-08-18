@@ -4310,7 +4310,11 @@ func test_the_nettle_targets_through_the_same_rule_the_cob_uses() -> String:
 	# distance picks `behind`.
 	var decoy: Pest = _still_pest(Pest.APHID, Vector2(100, 0), route)
 	# Leg 3 rather than 4, for the reason test_combat's own targeting test writes out: at
-	# leg 4 a pest is on its final step and frees itself during the settle frames.
+	# leg 4 a pest is on its final step and frees itself during the settle frames. Both
+	# numbers are asserted against Pest._advance by
+	# test_the_last_leg_of_a_route_is_the_one_a_pest_escapes_off in test_combat.gd, so
+	# this cites a checked fact now rather than another comment
+	# (plant-tower-defense-snba).
 	ahead._leg = 3
 	decoy._leg = 3
 	behind._leg = 1
