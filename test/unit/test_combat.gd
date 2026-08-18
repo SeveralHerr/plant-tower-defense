@@ -10114,3 +10114,241 @@ func test_the_last_leg_of_a_route_is_the_one_a_pest_escapes_off() -> String:
 
 # END plant-tower-defense-snba
 # =============================================================================
+
+
+# =============================================================================
+# plant-tower-defense-n3zm — the pitch scale has a DIRECTION, and it is asserted
+#
+# `Sfx.PITCH`'s header states a rule in prose: losses go lower, gains go higher, the
+# routine half of a pair keeps the base, magnitudes graded by how grave the event is.
+# Until these two checks, exactly one of the seven entries was held to any of it —
+# `test_tuning_a_voice_applies_both_axes_the_table_declares` puts PLANT_DESTROYED beside
+# CHOMP_BITE and asserts one number is below the other. The remaining six entries, the
+# grading, and "the routine half keeps the base" were prose, and prose in this project
+# has a record.
+#
+# WHERE THE JUDGEMENT LIVES, since that is the substance of this pair and not the
+# assertions. Which events count as losses is NOT derivable here. There is no ledger of
+# what an event costs the player; `Sfx` knows a file, a volume, a pitch, a wobble and a
+# repeat gap, and not one of those has a sign. Three derivations were tried and rejected:
+#
+#   * the sign of `PITCH` itself — the table agreeing with itself, which is the defect;
+#   * the `# Losses, gravest first.` / `# Gains` comments already sitting in `sfx.gd` —
+#     unreadable from GDScript, and a comment is the prose being escaped;
+#   * what the event costs in seeds, the only currency spanning both columns — it prices
+#     `PLANT_UPGRADED` as a loss, because upgrading is the one entry here the player pays
+#     for. A derivation that produces the wrong answer confidently is failure 4.
+#
+# So it is `derive-the-list`'s step-1 branch: a taste call is RECORDED — `Sfx.PITCH_GRADE`,
+# in `game/sfx.gd` beside the entries it grades, per the bead's acceptance — and what is
+# asserted is the PROPERTY it claims, not its membership. The two sides are the author's
+# stated intent (a rank) and the tuned number (a pitch), and neither is computed from the
+# other. Moving one without the other is red.
+#
+# What this pair still cannot say: whether the intent is RIGHT. Nobody has heard these
+# numbers (see `Sfx.JITTER`'s own note). It holds the table to what it says about itself.
+# =============================================================================
+
+
+## Every entry in `Sfx.PITCH` points the way `Sfx.PITCH_GRADE` says it does, and by the
+## amount the grading implies.
+##
+## Five claims, and the equality is deliberately both directions (`derive-the-list` step
+## 3): a `PITCH` entry with no grade is a pitch nobody stated the direction of, and a
+## grade with no `PITCH` entry is a rule about a sound that does not exist.
+func test_the_pitch_scale_points_the_way_its_grades_say() -> String:
+	# Denominator first: every sweep below iterates these tables, and an empty one
+	# satisfies all five claims beautifully.
+	var err: String = _T.assert_gt(Sfx.PITCH.size(), 6,
+		"PITCH is populated (an empty sweep is a vacuous pass), got %d" % Sfx.PITCH.size())
+	if err != "":
+		return err
+
+	# 1. The two tables are the same SET, both directions.
+	var ungraded: Array[String] = []
+	for event: StringName in Sfx.PITCH:
+		if not Sfx.PITCH_GRADE.has(event):
+			ungraded.append(String(event))
+	err = _T.assert_eq(ungraded.size(), 0,
+		("every PITCH entry is graded in PITCH_GRADE — ungraded: %s. An entry added to "
+			+ "PITCH and not graded is a number with no stated direction, which is "
+			+ "exactly what this check exists to stop shipping.") % str(ungraded))
+	if err != "":
+		return err
+	var unpitched: Array[String] = []
+	for event: StringName in Sfx.PITCH_GRADE:
+		if not Sfx.PITCH.has(event):
+			unpitched.append(String(event))
+	err = _T.assert_eq(unpitched.size(), 0,
+		("and every PITCH_GRADE entry is in PITCH — stray grades: %s. This is the "
+			+ "direction a one-sided `has` check cannot fail: a rule left behind about a "
+			+ "cue whose pitch row was deleted.") % str(unpitched))
+	if err != "":
+		return err
+	err = _T.assert_eq(Sfx.PITCH_GRADE.size(), Sfx.PITCH.size(),
+		"so the two tables are equal, not merely overlapping")
+	if err != "":
+		return err
+
+	# 2. The ranks are non-zero and all different. Zero would be "routine", which is what
+	# an ABSENT row means, and a tie makes claim 4 below vacuously true for that pair —
+	# two events the author never said which of was graver, whose pitches differ anyway.
+	var rank_owner: Dictionary = {}
+	for event: StringName in Sfx.PITCH_GRADE:
+		var rank: int = int(Sfx.PITCH_GRADE[event])
+		err = _T.assert_true(rank != 0,
+			("'%s' is graded 0, which is neither a loss nor a gain — a routine event "
+				+ "keeps the base by having NO row in PITCH at all") % event)
+		if err != "":
+			return err
+		err = _T.assert_false(rank_owner.has(rank),
+			("'%s' and '%s' are both graded %d — the ranks are an ordering, so a tie "
+				+ "says the table has no opinion about which is graver while the pitches "
+				+ "below still differ") % [event, rank_owner.get(rank, &""), rank])
+		if err != "":
+			return err
+		rank_owner[rank] = event
+
+	# 3. The sign of each pitch matches the sign of its grade. 1.0 is the base a routine
+	# event keeps, so "below 1.0" and "a loss" are the same statement — this is the claim
+	# the one existing pair check made about one entry, now made about all of them.
+	var signed_checked: int = 0
+	for event: StringName in Sfx.PITCH:
+		var pitch: float = float(Sfx.PITCH[event])
+		var rank: int = int(Sfx.PITCH_GRADE[event])
+		if rank < 0:
+			# No _T.assert_lt exists; the arguments are flipped instead.
+			err = _T.assert_gt(1.0, pitch,
+				("'%s' is graded %d (a loss) so it must sit BELOW the 1.0 base, got %.2f"
+					+ " — losses go lower is the whole rule") % [event, rank, pitch])
+		else:
+			err = _T.assert_gt(pitch, 1.0,
+				("'%s' is graded %d (a gain) so it must sit ABOVE the 1.0 base, got %.2f"
+					+ " — gains go higher is the whole rule") % [event, rank, pitch])
+		if err != "":
+			return err
+		signed_checked += 1
+	err = _T.assert_eq(signed_checked, Sfx.PITCH.size(),
+		"and the sign sweep visited every entry rather than a subset of them")
+	if err != "":
+		return err
+
+	# 4. The grading. Within one column, a graver rank sits STRICTLY further from the
+	# base — this is "the magnitudes are graded by how grave the event is" as an
+	# assertion. Compared across the column rather than to a neighbour, so a retune that
+	# reorders two entries three rows apart cannot slip past.
+	var graded: Array = Sfx.PITCH_GRADE.keys()
+	var compared: int = 0
+	for a: StringName in graded:
+		for b: StringName in graded:
+			var rank_a: int = int(Sfx.PITCH_GRADE[a])
+			var rank_b: int = int(Sfx.PITCH_GRADE[b])
+			if a == b or signi(rank_a) != signi(rank_b):
+				continue
+			if absi(rank_a) <= absi(rank_b):
+				continue
+			var far_a: float = absf(float(Sfx.PITCH[a]) - 1.0)
+			var far_b: float = absf(float(Sfx.PITCH[b]) - 1.0)
+			compared += 1
+			err = _T.assert_gt(far_a, far_b,
+				("'%s' is graded %d and '%s' only %d, so '%s' must sit further from the "
+					+ "1.0 base — got %.3f against %.3f. The table is meant to read as a "
+					+ "scale, not as %d numbers that happen to have signs.")
+					% [a, rank_a, b, rank_b, a, far_a, far_b, Sfx.PITCH.size()])
+			if err != "":
+				return err
+	err = _T.assert_gt(compared, 5,
+		("the grading sweep actually compared same-column pairs, got %d — a table whose "
+			+ "columns are one entry each compares nothing and passes") % compared)
+	if err != "":
+		return err
+
+	# 5. The gravest loss is the furthest thing from the base in the WHOLE table, gains
+	# included. This is the bead's own wording, and it is a design statement rather than
+	# arithmetic: a tower defense's worst news should be its most conspicuous sound, so no
+	# gain may ever be pitched further out than the worst loss.
+	var gravest: StringName = &""
+	var lowest_rank: int = 0
+	for event: StringName in Sfx.PITCH_GRADE:
+		var rank: int = int(Sfx.PITCH_GRADE[event])
+		if rank < lowest_rank:
+			lowest_rank = rank
+			gravest = event
+	err = _T.assert_true(gravest != &"",
+		"the table has a loss in it at all, or claim 5 is about nothing")
+	if err != "":
+		return err
+	var gravest_far: float = absf(float(Sfx.PITCH[gravest]) - 1.0)
+	for event: StringName in Sfx.PITCH:
+		if event == gravest:
+			continue
+		err = _T.assert_gt(gravest_far, absf(float(Sfx.PITCH[event]) - 1.0),
+			("the gravest loss '%s' (grade %d) sits furthest from the base, but '%s' is "
+				+ "further out — %.3f against %.3f. Nothing in this game should be a "
+				+ "wider interval than its worst news.")
+				% [gravest, lowest_rank, event, absf(float(Sfx.PITCH[event]) - 1.0),
+					gravest_far])
+		if err != "":
+			return err
+	return err
+
+
+## "The routine event of a pair keeps the base" — the third clause of `PITCH`'s rule, and
+## the one that makes 1.0 mean something rather than being an arbitrary origin.
+##
+## A pitched cue is only audibly pitched next to something: `PEST_ESCAPED` at 0.72 is a
+## lower `error_002.ogg` **than the `error_002.ogg` a refused purchase plays**. So every
+## `PITCH` entry must share its file with at least one event that has no `PITCH` row and
+## therefore sits at exactly 1.0. `RUN_LOST` is the counter-example living in the table
+## today: `bong_001.ogg` is its alone, so a `PITCH` row on it would be a number with
+## nothing to be heard against, and this check is what would say so.
+func test_every_pitched_event_moved_off_a_base_it_shares_a_file_with() -> String:
+	var err: String = _T.assert_gt(Sfx.SOUNDS.size(), 20,
+		"the sound table is populated (an empty sweep is a vacuous pass), got %d"
+			% Sfx.SOUNDS.size())
+	if err != "":
+		return err
+	var checked: int = 0
+	for event: StringName in Sfx.PITCH:
+		var file: String = str(Sfx.SOUNDS.get(event, "")).get_file()
+		err = _T.assert_false(file.is_empty(),
+			("'%s' has a PITCH row and no SOUNDS row — a pitch on a cue that cannot "
+				+ "play is tuning nothing") % event)
+		if err != "":
+			return err
+		# Every file-mate, NOT just the unpitched ones: filtering here would make the
+		# assertion below true by construction instead of being a claim about the table.
+		var mates: Array[String] = []
+		var at_base: Array[String] = []
+		for other: StringName in Sfx.SOUNDS:
+			if other == event or str(Sfx.SOUNDS[other]).get_file() != file:
+				continue
+			mates.append(String(other))
+			if is_equal_approx(float(Sfx.PITCH.get(other, 1.0)), 1.0):
+				at_base.append(String(other))
+		err = _T.assert_gt(mates.size(), 0,
+			("'%s' is the only event on %s, so its pitch of %.2f has nothing to be heard "
+				+ "against — a shift off a base is only audible beside that base")
+				% [event, file, float(Sfx.PITCH[event])])
+		if err != "":
+			return err
+		err = _T.assert_gt(at_base.size(), 0,
+			("'%s' shares %s with %s and every one of them is pitched too — the routine "
+				+ "half of the pair is supposed to KEEP the base, and here nothing does")
+				% [event, file, str(mates)])
+		if err != "":
+			return err
+		# And it really did move: a graded entry sitting on the base is a row that says
+		# "this is a loss" and sounds exactly like the routine event beside it.
+		err = _T.assert_gt(absf(float(Sfx.PITCH[event]) - 1.0), 0.0,
+			("'%s' is graded %d but sits at the 1.0 base, indistinguishable from %s")
+				% [event, int(Sfx.PITCH_GRADE.get(event, 0)), str(at_base)])
+		if err != "":
+			return err
+		checked += 1
+	return _T.assert_eq(checked, Sfx.PITCH.size(),
+		("the sweep visited every pitched event, got %d of %d")
+			% [checked, Sfx.PITCH.size()])
+
+# END plant-tower-defense-n3zm
+# =============================================================================

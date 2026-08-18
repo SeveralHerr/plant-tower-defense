@@ -249,14 +249,18 @@ const VOLUME_DB: Dictionary = {
 ## an escape means next to a refusal. Pitch says *a different thing happened*.
 ##
 ## **Losses go lower, gains go higher, and the routine event of a pair keeps the
-## base.** Every entry here is one half of a pair that already shared a file and a
-## volume, moved off it in the direction of what it means. The magnitudes are
-## graded by how grave the event is — losing a life is the furthest down, a warning
-## the least — so the table reads as a scale rather than five arbitrary numbers.
+## base.** Every entry here shares a file with at least one event that has no row here
+## and therefore sits at exactly 1.0, and this entry is that sound moved off the base in
+## the direction of what it means. The magnitudes are graded by how grave the event is —
+## losing a life is the furthest down, a warning the least — so the table reads as a
+## scale rather than seven arbitrary numbers.
 ##
 ## `test_no_two_events_are_the_same_sound` gates the uniqueness and cannot see the
-## direction; this comment is why the numbers point the way they do, and it is the
-## thing to read before adding a sixth.
+## direction. **`PITCH_GRADE` below is where the direction is written down**, and
+## `test_the_pitch_scale_points_the_way_its_grades_say` is what holds these numbers to
+## it — so this paragraph is now a summary of an assertion rather than the only place
+## the rule exists. Read that table before adding an eighth entry; an entry added here
+## and not graded there fails the suite.
 ##
 ## Found by deriving the (file, volume, pitch) triples rather than by listening:
 ## three of the five collisions were invisible to a hand-read of the table, and the
@@ -282,6 +286,48 @@ const PITCH: Dictionary = {
 	# than blunt because a sting is a needle and a kernel is not, which is the half of this
 	# number `test_the_gains_read_as_a_scale` cannot see.
 	NETTLE_STING: 1.08,
+}
+
+## event -> which way it means, as a signed rank. Negative is something going wrong,
+## positive is something going right, and the MAGNITUDE is the gravity order the block
+## above claims: −4 is the gravest thing in the table and +3 the largest gain. **These
+## are ranks, not pitches.** Only their sign and their order carry anything; the gaps
+## between them mean nothing and nothing reads their absolute value.
+##
+## **This is the one judgement call in the whole pitch scale, written down beside the
+## entries rather than left in prose or copied into a test.** Whether a pest reaching the
+## house is a loss and a Nettle's sting is a gain is not derivable from anything in this
+## project. There is no ledger of what an event costs the player, and the only currency
+## that spans both columns is seeds — which prices `PLANT_UPGRADED` as a LOSS, since
+## upgrading is the one entry here the player actually pays for. A derivation off the
+## sign of `PITCH` itself would be the table agreeing with itself. So this is recorded,
+## and the check asserts the PROPERTY it claims rather than its membership:
+## `test_the_pitch_scale_points_the_way_its_grades_say` requires every `PITCH` key to be
+## graded here and every graded key to be in `PITCH`, each sign to match its side of 1.0,
+## and — within a column — a graver rank to sit strictly further from 1.0. Retune a pitch
+## without moving its rank, or add an eighth entry pointing the wrong way, and it is red.
+##
+## `PITCH` is the tuned number; this is the intent behind it; the test is that the two
+## agree. Neither half can say the intent is RIGHT — that is what a listener is for (see
+## `JITTER`'s "NOBODY HAS HEARD THIS"), and it is why this is a rank and not a second
+## opinion about how many cents a life is worth.
+const PITCH_GRADE: Dictionary = {
+	# The losses, gravest first, and the order is the order of what stays gone. A life
+	# never comes back; a plant a pest ate was paid for and is off the board; a plant the
+	# player dug up was their own decision and hands part of itself back.
+	PEST_ESCAPED: -4,
+	PLANT_DESTROYED: -3,
+	PLANT_UPROOTED: -2,
+	# Down because it POINTS at a loss, not because one has happened — nothing is gone
+	# yet and the player can still walk away, which is what makes it the shallowest step
+	# down in the table. Its `PITCH` row says the same thing about the number.
+	UPROOT_ARMED: -1,
+	# The gains, smallest first: 3.0 damage off one pest, then a kill that was expensive
+	# enough to be worth calling out, then a permanent upgrade. The same order the three
+	# `PITCH` rows above already spell out one at a time.
+	NETTLE_STING: 1,
+	PEST_KILLED_HARD: 2,
+	PLANT_UPGRADED: 3,
 }
 
 ## event -> the half-width of its per-play pitch wobble, in `pitch_scale` units.
