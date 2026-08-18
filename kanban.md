@@ -3970,7 +3970,7 @@ Three findings kept out here rather than buried in a log:
   `game/hud.gd:2365` computes `fraction = plant.health / Plant.MAX_HEALTH` and `:2373`
   prints `"Health %d/%d"` against the same constant. Both are correct for all nine plants —
   `Bramble` does not change `MAX_HEALTH`; it scales the incoming bite in `take_damage`
-  (`game/bramble.gd:120`, `BITE_RESISTANCE` 0.25). So a Bramble at "Health 40/40"
+  (`game/bramble.gd:174`, `BITE_RESISTANCE` 0.25). So a Bramble at "Health 40/40"
   survives four times longer under a mouth than a Corn Cobbler reading the same 40/40, and
   nothing on screen says so.
   Note which claim is being made: not that the number is wrong, but that the panel has no
@@ -4040,7 +4040,7 @@ Three findings kept out here rather than buried in a log:
 ### New in cycle 112 — grown from confirming a bead and reading a sentence
 
 - **Nothing in this project can tell whether a sentence is TRUE, and cycle 112 found one
-  that had quietly stopped being.** `Hud.eaten_message` (`game/hud.gd:3586`) read "A hungry
+  that had quietly stopped being.** `Hud.eaten_message` (`game/hud.gd:3593`) read "A hungry
   pest ate your %s!" and was correct for every plant death in the game until the ninth
   plant: `Pest._physics_process` reaches `_adjacent_plant()` only inside its `is_hungry`
   branch (`game/pest.gd:1282-1286`), so a hungry pest really was the only thing that could
@@ -4108,7 +4108,7 @@ Three findings kept out here rather than buried in a log:
   that REVERSES one they already learned.** The mechanism exists and is deliberate:
   `RunConfig.HINT_MOVE_PREVIEW` / `HINT_CHOMP_IGNORES_FLIGHT` / `HINT_UPGRADE_EXISTS`
   (`game/run_config.gd:166`, `:195`, `:212`), each a one-shot tip with a matching notebook
-  card in `Hud.HINT_CARDS` (`game/hud.gd:3498`), and
+  card in `Hud.HINT_CARDS` (`game/hud.gd:3505`), and
   `test_every_hint_has_a_notebook_card` fails on either half missing.
   Look at what those three teach: a flier ignores a Chomp; a plant already down can grow;
   Uproot compares before it digs. Each is a rule the board does not state. **"You may build
@@ -4143,7 +4143,7 @@ Three findings kept out here rather than buried in a log:
   ("Slowing %d pest(s) to %d%% speed."), `wave_cleared_note` ("%d pests turned back.") and
   so on. A retune moves the number and the sentence follows. Every defect found in two
   cycles of looking has been in the handful that name a mechanism instead:
-  `eaten_message`'s "A hungry pest" (fixed cycle 112, `game/hud.gd:3625`) and
+  `eaten_message`'s "A hungry pest" (fixed cycle 112, `game/hud.gd:3632`) and
   `idle_detail`'s "waiting for a pest" (fixed cycle 115, `:2444`).
   Not a checker — `-u9zb`'s close records why, and the short version is that accuracy is a
   claim about the relationship between English and code with no shared vocabulary to check.
@@ -4152,7 +4152,7 @@ Three findings kept out here rather than buried in a log:
   shape rather than audited into it two cycles later.
 
 - **The one-shot teaching tips name a single answer where the catalogue now has three.**
-  `Hud.flight_tip` (`game/hud.gd:3482`) reads "That pest flies over Chomp Flowers. Corn
+  `Hud.flight_tip` (`game/hud.gd:3489`) reads "That pest flies over Chomp Flowers. Corn
   Cobblers can still hit it." Both halves are true. But a winged pest is also reachable by
   the Bomb Dandelion (its blast hits whatever is standing there) and by the Prickly Nettle,
   which exists *specifically* to sting the mutations — armoured, winged, hungry — and whose

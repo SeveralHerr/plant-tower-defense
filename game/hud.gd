@@ -2546,6 +2546,13 @@ static func selection_level_names() -> Array[String]:
 		out.append(String(level["name"]))
 	for level: Dictionary in ChompFlower.LEVELS:
 		out.append(String(level["name"]))
+	# The Barrier Bramble's rungs (plant-tower-defense-4u74). Added here because this list
+	# is hand-maintained ON PURPOSE -- upgrade_ladder() is an instance virtual, so there is
+	# no static registry to sweep -- and test_every_ladder_in_the_game_is_priced_by_the
+	# _selection_corpus fails until a new ladder arrives here. That test is what sent me to
+	# this function rather than my remembering it existed.
+	for level: Dictionary in Bramble.LEVELS:
+		out.append(String(level["name"]))
 	return out
 
 

@@ -16135,20 +16135,23 @@ func test_the_seed_sink_is_finite_while_the_seed_income_is_not() -> String:
 		dearest_cell = maxi(dearest_cell, PlantCatalog.cost(id) + climb)
 		plant.free()
 
-	# The floor of the whole argument: seven of the nine plants cannot be improved at
-	# any price. A garden of Sundews and Nettles has NO upgrade sink whatsoever.
+	# The floor of the whole argument: six of the nine plants cannot be improved at any
+	# price. A garden of Sundews and Nettles has NO upgrade sink whatsoever.
 	#
-	# The Barrier Bramble is the ninth and it makes the argument slightly WORSE rather
-	# than better, which is worth naming here rather than leaving for whoever next reads
-	# the number. It has no ladder either, so it joins the seven — but unlike the other
-	# six it is a RECURRING cost, because it is consumed by doing its job. That is a seed
-	# sink, and it is the first one in the game that is not an upgrade. It is not counted
-	# below because `with_ladder` is measuring upgrade ladders and a Bramble has none;
-	# the sink it does carry is a different mechanism and wants its own measurement.
+	# THE BRAMBLE MOVED, and the note it replaces is worth keeping in view. Cycle 110 wrote
+	# here that the ninth plant made this argument slightly WORSE -- it had no ladder, so it
+	# joined the seven, and the only sink it carried was that it is a RECURRING cost,
+	# consumed by doing its job. That observation is what -4u74 was filed on and what cycle
+	# 125 acted on: it now has a ladder, so it is a sink twice over, and it is the only plant
+	# in the game that is.
+	#
+	# Its rungs buy RESISTANCE rather than health, which is why this is a real sink and not
+	# just a bigger number: a heal is worth 1 / (EAT_DPS * bite_resistance()) seconds, so
+	# every rung scales the Salve Aloe standing behind the wall instead of diluting it.
 	with_ladder.sort()
-	err = _T.assert_eq(with_ladder, ["chomp_flower", "corn_cobbler"],
-		("only two of nine plants can absorb a seed after they are placed -- the "
-			+ "other seven are a one-time cost and then free forever"))
+	err = _T.assert_eq(with_ladder, ["bramble", "chomp_flower", "corn_cobbler"],
+		("only three of nine plants can absorb a seed after they are placed -- the "
+			+ "other six are a one-time cost and then free forever"))
 
 	# Be generous to the sink everywhere it is in doubt: every grid cell counts as
 	# buildable (the path really takes ~32 of them away), every cell holds the
@@ -16455,7 +16458,11 @@ func test_the_selection_corpus_is_derived_from_the_catalogue_and_both_ladders() 
 
 	# The half `selection_level_names()`'s own header promises: adding a third
 	# upgradable plant has to move this, and this is where it says so.
-	var ladders: Array = [CornCobbler.LEVELS, ChompFlower.LEVELS]
+	# THREE ladders since plant-tower-defense-4u74. This list is hand-written for the same
+	# reason Hud.selection_level_names() is -- upgrade_ladder() is an instance virtual and
+	# there is no static registry to sweep -- so a new ladder arrives here or the count
+	# below fails, which is the cost of writing them down and the reason it is worth it.
+	var ladders: Array = [CornCobbler.LEVELS, ChompFlower.LEVELS, Bramble.LEVELS]
 	var rungs_in_game: int = 1
 	for ladder: Array in ladders:
 		rungs_in_game += ladder.size()
@@ -17641,6 +17648,54 @@ func test_every_bramble_frame_is_the_same_plant_standing_in_the_same_place() -> 
 
 # END plant-tower-defense-a180
 # =============================================================================
+
+
+## The Bramble's ladder buys TIME, and a heal is worth more at every rung
+## (plant-tower-defense-4u74).
+##
+## The second half is the design and is the reason the rungs move `bite_resistance` rather
+## than `MAX_HEALTH`. A heal is worth `1 / (EAT_DPS * bite_resistance())` seconds, so a
+## rung that lowers resistance scales the Salve Aloe standing behind the wall — and the
+## rain — WITH the upgrade. A bigger health pool would have diluted both, making the board
+## this plant exists to create worse as you invested in it. Asserting only "each rung holds
+## longer" would pass on the pool version too, which is why the second assertion is here.
+func test_the_brambles_ladder_buys_time_and_makes_every_heal_worth_more() -> String:
+	var err: String = _T.assert_gt(Bramble.LEVELS.size(), 1,
+		"there is a ladder to climb -- one rung would make every comparison below vacuous")
+	if err == "":
+		# The base rung and the constant must agree, or the catalogue's 20-seed plant and
+		# the class header describe different plants.
+		err = _T.assert_float_eq(Bramble.resistance_at(1), Bramble.BITE_RESISTANCE, 0.0001,
+			"the ladder starts where BITE_RESISTANCE says it does")
+	if err == "":
+		for i: int in range(1, Bramble.LEVELS.size()):
+			# STRICTLY longer at every rung, and asserted as an ordering over the whole
+			# ladder rather than base-versus-top: a middle rung that went backwards would
+			# pass a two-point check.
+			err = _T.assert_true(Bramble.hold_seconds(1, i + 1) > Bramble.hold_seconds(1, i),
+				("rung %d holds longer than rung %d (%.1fs vs %.1fs)"
+					% [i + 1, i, Bramble.hold_seconds(1, i + 1), Bramble.hold_seconds(1, i)]))
+			if err != "":
+				break
+	if err == "":
+		# THE DESIGN. What one second of the Aloe's healing is WORTH, at the bottom rung and
+		# at the top. A bigger-pool ladder would leave this flat; this one must climb.
+		var bottom: float = Aloe.HEAL_PER_SECOND / (Pest.EAT_DPS * Bramble.resistance_at(1))
+		var top: float = Aloe.HEAL_PER_SECOND / (Pest.EAT_DPS
+			* Bramble.resistance_at(Bramble.LEVELS.size()))
+		err = _T.assert_true(top > bottom,
+			("a second of Aloe healing buys %.2fs of wall at the top rung against %.2fs at "
+				+ "the bottom -- rungs that bought HEALTH would leave this unchanged, which "
+				+ "is the whole reason they buy resistance") % [top, bottom])
+	if err == "":
+		# Clamped at both ends, like every other ladder lookup in this project.
+		err = _T.assert_float_eq(Bramble.resistance_at(0), Bramble.resistance_at(1), 0.0001,
+			"rung 0 clamps to the base")
+		if err == "":
+			err = _T.assert_float_eq(Bramble.resistance_at(99),
+				Bramble.resistance_at(Bramble.LEVELS.size()), 0.0001,
+				"and a rung past the top clamps to the top")
+	return err
 
 
 ## Every shop blurb is true of the code that makes it true (plant-tower-defense-2878).

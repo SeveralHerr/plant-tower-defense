@@ -6244,8 +6244,14 @@ func test_exactly_two_plants_in_the_catalogue_grow_and_the_rest_are_born_finishe
 		if err != "":
 			break
 	if err == "":
-		err = _T.assert_eq(upgradeable.size(), 2,
-			("two plants in this catalogue grow, and the list below says which — got %s. "
+		# THREE since plant-tower-defense-4u74. Decided here rather than inherited: the
+		# Barrier Bramble is the first RECURRING cost in the game -- it is consumed by
+		# doing its job -- so "spend more on this one so you replace it less often" is a
+		# seed sink the economy did not previously offer anywhere. Its rungs buy
+		# RESISTANCE, not health, so the Salve Aloe behind the wall scales with the
+		# upgrade instead of being diluted by it.
+		err = _T.assert_eq(upgradeable.size(), 3,
+			("three plants in this catalogue grow, and the list below says which — got %s. "
 			+ "A new id missing from Game._new_plant's match falls through to a CornCobbler "
 			+ "and arrives here wearing the cob's ladder, so check that arm before the ladder")
 				% str(upgradeable))

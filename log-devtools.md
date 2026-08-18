@@ -7725,3 +7725,42 @@ status rather than rewriting the entries that recorded these as open.
   session, and the honest note is that all three were mine, in a file whose entire subject is
   that failure. The rule is right; I keep reaching for the tool it forbids when an `Edit`
   match looks awkward, and the correct move is `Read` the bytes and `Edit` again.
+
+## 2026-08-18 — cycle 125: the rung names were budgeted, and the survey missed its own signature
+
+- Value: **warranted** — two real defects, each caught by a different gate, and neither was
+  the feature.
+  - Expected: the bead's taste call was two rungs buying TIME via resistance rather than
+    health, so the Aloe scales with the upgrade. Predicted the two hand-lists it names would
+    both fail until fed — those are deliberate gates and they did.
+  - Got: the ladder works and the panel tracks it live — `Holds 11s` → `Holds 16s` →
+    `Barrier Bramble — bulwark / Holds 24s`, with a fourth upgrade refused as "already fully
+    grown".
+  - Found: three.
+    **(1) THE RUNG NAMES ARE BUDGETED, and nothing said so.** The panel's first line is
+    display + rung and `selection_corpus` crosses every plant with every rung, so
+    *"Barrier Bramble — deep thicket"* at 30 characters against the previous worst of 25
+    pushed `hud_selection_panel` **25 px through its floor**. The budget check reported it
+    with three ways out, one being "shorten the plant name". Renamed to "bulwark" — 25
+    characters, exactly the existing worst case, so this ladder spends none of that budget.
+    **(2) I dropped a leading `#` while editing through a script — SIGNATURE B, the exact
+    defect the survey I built LAST CYCLE detects — and it reported 0 hits.** Its `PROSE`
+    regex needs a line starting with a capitalised word and containing no code tokens; mine
+    started lowercase and contained `selection_level_names()`. **lint** caught it at the
+    exact line. The survey's coverage of SIGNATURE B is far narrower than its name suggests,
+    on a codebase whose comments cite function names constantly.
+    **(3)** the design assertion had to be about what a HEAL is worth, not about the wall
+    lasting longer — "each rung holds longer" is equally true of the bigger-pool ladder the
+    bead argued against. Mutation-tested by flattening the resistances, which is exactly
+    what the pool version looks like from here.
+  - Cheaper: the budget check and lint caught both real defects, headlessly. The launch
+    confirmed the readout tracks the rung, which IS the feature and which no headless test
+    reads across an upgrade.
+
+- **Fourth script-edit damage this session, and the first the survey could not see.** The
+  previous three were caught by lint or by the runner's stderr; this one was too, and the
+  tool built one cycle ago specifically for it stayed silent. Filed rather than patched
+  blind — widening `PROSE` without a fixture would trade a false negative for false
+  positives, and its first version already reported 554 of those.
+
+- Gap: **no gap this turn.**
