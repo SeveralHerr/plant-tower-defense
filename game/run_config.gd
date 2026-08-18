@@ -523,9 +523,13 @@ func apply_key_bindings() -> void:
 ## Records the player's rebindings and writes them out. The one entry point the
 ## settings screen uses, so "changed on screen" and "changed on disk" cannot come
 ## apart.
-func store_key_bindings(map: Dictionary) -> void:
+## Returns whether the bindings reached disk, for the one caller that can say so
+## (plant-tower-defense-bia). Every other setter here still returns void: they are called
+## from places with no screen to report on, and giving them all a return value nobody reads
+## would be the dead code this repo has been bitten by before.
+func store_key_bindings(map: Dictionary) -> bool:
 	key_bindings = map
-	_save()
+	return _save()
 
 
 ## The record for a mode. Takes the flag rather than reading `endless`, so the
@@ -1293,7 +1297,22 @@ func _load() -> void:
 ## there. It shrinks the window from "the whole write" to "one rename", and the
 ## finished temp file is still on disk if we lose even that — which is why `_load`
 ## adopts the temp when the save has gone missing.
-func _save() -> void:
+## Returns whether the record reached disk (plant-tower-defense-bia).
+##
+## `-> void` until now, with four failure paths that each `push_warning` and return. A
+## warning goes to the editor log, which no player has, and to nowhere a SCREEN can read --
+## so `KeyBindingScreen._persist` wrote on every capture and reported success by changing
+## the row's key text, which looks identical when the write did not land.
+##
+## Every existing caller ignoring this is still correct: they had no answer before and the
+## behaviour on failure is unchanged. Only callers that can SAY something need read it.
+##
+## THE RENAME FAILURE RETURNS TRUE, and that is the one judgement in here. Its own warning
+## says "The finished save is at %s and _load will adopt it" -- the data is on disk, complete
+## and validated, and the next launch picks it up. Reporting "not saved" there would be a lie
+## in the other direction, and the one thing a save confirmation must never do is claim work
+## was lost when it was not.
+func _save() -> bool:
 	if _refused_path != "":
 		# Move the file `_load` could not read aside rather than over it. First
 		# refusal wins: that file is the one closest to the data the player set,
@@ -1307,7 +1326,7 @@ func _save() -> void:
 	if f == null:
 		push_warning("RunConfig: cannot write %s (%s). The record stands in memory only, and the previous save is untouched."
 			% [tmp, error_string(FileAccess.get_open_error())])
-		return
+		return false
 	f.store_string(compose_save(campaign_high_score, endless_high_score,
 		_milestone_line(), _preferences_line(), key_bindings))
 	f.flush()
@@ -1319,7 +1338,7 @@ func _save() -> void:
 		push_warning("RunConfig: %s while writing %s. Keeping the previous save."
 			% [error_string(write_error), tmp])
 		DirAccess.remove_absolute(tmp)
-		return
+		return false
 	var readback: Dictionary = _parse_save(tmp)
 	if not bool(readback["ok"]):
 		# Read back through the same validator the loader uses, so "whatever is at
@@ -1329,8 +1348,10 @@ func _save() -> void:
 		push_warning("RunConfig: %s does not read back (%s). Keeping the previous save."
 			% [tmp, str(readback["reason"])])
 		DirAccess.remove_absolute(tmp)
-		return
+		return false
 	var rename_error: int = DirAccess.rename_absolute(tmp, save_path)
 	if rename_error != OK:
 		push_warning("RunConfig: %s replacing %s. The finished save is at %s and _load will adopt it."
 			% [error_string(rename_error), save_path, tmp])
+	# See the header: the data is on disk and _load adopts it, so this is a success.
+	return true

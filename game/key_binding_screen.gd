@@ -391,9 +391,9 @@ func reset_all() -> void:
 		refresh()
 		return
 	KeyBindings.reset_all()
-	_persist()
+	var landed: bool = _persist()
 	_disarm_reset()
-	_note.text = "Every key is back where it started."
+	_note.text = persisted_note("Every key is back where it started.", landed)
 	refresh()
 
 
@@ -508,9 +508,10 @@ func capture(code: int) -> bool:
 	var moved: bool = KeyBindings.set_keys(action, [code])
 	_listening = &""
 	if moved:
-		_persist()
+		var landed: bool = _persist()
 		# Same shape the pause card's legend draws, for the same reason as above.
-		_note.text = "Set:  %s   %s" % [KeyBindings.key_label(code), KeyBindings.describe(action)]
+		_note.text = persisted_note("Set:  %s   %s" % [
+			KeyBindings.key_label(code), KeyBindings.describe(action)], landed)
 	else:
 		_note.text = IDLE_NOTE
 	refresh()
@@ -520,5 +521,27 @@ func capture(code: int) -> bool:
 ## Writes the moved rows out beside the high scores. Every path that changes a
 ## binding goes through here, so "changed on screen" and "changed on disk" cannot
 ## come apart.
-func _persist() -> void:
-	RunConfig.store_key_bindings(KeyBindings.overrides())
+## Returns whether it reached disk, so the two callers can say so
+## (plant-tower-defense-bia). Before this it returned void and the only feedback was the
+## row's key text changing — which looks identical when the write failed, on the one screen
+## whose entire job is changing something that has to survive the session.
+func _persist() -> bool:
+	return RunConfig.store_key_bindings(KeyBindings.overrides())
+
+
+## What the note says after a write, given whether it landed.
+##
+## Static and pure so both sentences are assertable without a screen, a save file or a
+## failing disk — which matters more than usual here, because the failure branch is
+## unreachable in a test that is not deliberately breaking `RunConfig.save_path`, and an
+## unreachable sentence is exactly the kind that ships misspelled.
+##
+## THE SUCCESS SENTENCE DOES NOT MENTION SAVING. "Set: M sound effects on or off" is what a
+## player wants to read, and appending "— saved" to every capture would put a word about
+## disks on a screen about keys, forever, to cover a case that essentially never happens.
+## Silence is the confirmation; the failure is what needs words. That asymmetry is the whole
+## design, and it is why this returns the caller's own sentence unchanged on success.
+static func persisted_note(base: String, landed: bool) -> String:
+	if landed:
+		return base
+	return base + "  (NOT saved — this key is set for now, but will be back to normal next time you play.)"

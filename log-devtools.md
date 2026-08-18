@@ -7540,3 +7540,36 @@ status rather than rewriting the entries that recorded these as open.
   question here — "is 0.45s long enough to READ" — is a fact about human perception that no
   bridge verb can measure. The harness can photograph the sweep (cycle 14 did, `-ip4n`) and
   cannot tell you whether anyone parsed it.
+
+## 2026-08-18 — cycle 120: a save that fails now says so, and a launch declined for safety
+
+- Value: **warranted** — small change, and the two judgements in it are the kind that only
+  surface once you have to write the sentence a player reads.
+  - Expected: `RunConfig._save` has four failure paths, all reporting via `push_warning`,
+    which no screen can read. Predicted: returning a bool is backward-compatible for all 13
+    callers, and the interesting decision is the RENAME failure — where the data IS on disk.
+  - Got: exactly that. Three paths return false; the rename path returns **true**, because
+    its own warning says *"The finished save is at %s and _load will adopt it"* — the record
+    is complete, validated and on disk, and the next launch picks it up. **A save
+    confirmation that claims work was lost when it was not is worse than no confirmation.**
+  - Found: three, none of them a bug.
+    **(1)** the rename judgement above.
+    **(2)** the SUCCESS sentence deliberately says nothing. Appending "saved" to every
+    capture would put a word about disks on a screen about keys, forever, to cover a case
+    that essentially never happens. Silence is the confirmation; only the failure gets
+    words — which is also what made `persisted_note` return its caller's sentence unchanged
+    and therefore testable without a screen.
+    **(3)** the failure sentence is unreachable in normal play, which is exactly the kind
+    that ships misspelled. It is built by a pure static both branches of the test read,
+    rather than assembled inline at the two call sites where nothing could see it.
+  - Cheaper: little. The change is small and the mutation was one command.
+
+- **The launch was declined for a SAFETY reason, which is a first this session.** Every
+  earlier decline was "the test already makes this claim". Here the branch is only reachable
+  by making a save FAIL, and doing that live writes the developer's real `user://` —
+  CLAUDE.md warns about exactly this and `--isolated` does not isolate `user://`. The test
+  redirects `RunConfig.save_path` to an unwritable path and restores it, which is the only
+  safe way in. Worth adding to the launch-triage question from cycle 115: **"what claim can
+  the launch make" has a sibling, "what would the launch have to break to make it".**
+
+- Gap: **no gap this turn.**

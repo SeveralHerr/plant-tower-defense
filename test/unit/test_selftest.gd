@@ -17643,6 +17643,62 @@ func test_every_bramble_frame_is_the_same_plant_standing_in_the_same_place() -> 
 # =============================================================================
 
 
+## A binding that did not reach disk says so (plant-tower-defense-bia).
+##
+## `RunConfig._save()` has four paths where the record does not land and every one of them
+## reported through `push_warning` — which goes to the editor log, a place no player has and
+## no screen can read. So the Keys screen wrote on every capture and confirmed success by
+## changing the row's key text, which looks identical when the write failed.
+func test_a_binding_that_did_not_reach_disk_says_so() -> String:
+	# The note text first, both branches, with no screen and no disk. This is the half that
+	# would otherwise never be exercised: the failure branch is unreachable unless something
+	# is deliberately breaking the save path, and an unreachable sentence is exactly the kind
+	# that ships misspelled.
+	var base: String = "Set:  M   sound effects on or off"
+	var err: String = _T.assert_eq(KeyBindingScreen.persisted_note(base, true), base,
+		("a save that landed says nothing extra — silence is the confirmation, and a word "
+			+ "about disks on every capture would be noise forever to cover a case that "
+			+ "essentially never happens"))
+	if err == "":
+		var bad: String = KeyBindingScreen.persisted_note(base, false)
+		err = _T.assert_true(bad.begins_with(base),
+			"a save that did not land still says what was set, then adds to it: %s" % bad)
+	if err == "":
+		err = _T.assert_true(bad_contains_not_saved(base),
+			"and it says NOT saved in words a player can act on")
+
+	# Then the wiring, on the real autoload: a write to an unwritable path must return
+	# false. This is the assertion that would have caught the original defect.
+	if err == "":
+		var stashed: String = RunConfig.save_path
+		var stashed_map: Dictionary = RunConfig.key_bindings.duplicate()
+		# A directory that cannot exist, so FileAccess.open fails on the temp file — the
+		# first of _save's four failure paths and the only one reachable without a
+		# filesystem fault.
+		RunConfig.save_path = "user://no_such_dir_bia/does_not_exist.save"
+		var landed: bool = RunConfig.store_key_bindings({"pause": [KEY_F9]})
+		RunConfig.save_path = stashed
+		RunConfig.key_bindings = stashed_map
+		err = _T.assert_false(landed,
+			"storing bindings into an unwritable path reports failure rather than void")
+	if err == "":
+		# And the other direction, or this passes on a store that always reports failure.
+		var stashed2: String = RunConfig.save_path
+		var stashed_map2: Dictionary = RunConfig.key_bindings.duplicate()
+		RunConfig.save_path = "user://test_bia_roundtrip.save"
+		var ok: bool = RunConfig.store_key_bindings(stashed_map2)
+		RunConfig.save_path = stashed2
+		RunConfig.key_bindings = stashed_map2
+		DirAccess.remove_absolute("user://test_bia_roundtrip.save")
+		err = _T.assert_true(ok, "and a writable path reports success")
+	return err
+
+
+## Helper kept out of the test body so the assertion above reads as one sentence.
+func bad_contains_not_saved(base: String) -> bool:
+	return KeyBindingScreen.persisted_note(base, false).contains("NOT saved")
+
+
 ## The Chomp's shop line is true of the chew table (plant-tower-defense-l86t).
 ##
 ## "Eats small pests instantly. Big ones take a while — and it is busy the whole time."
