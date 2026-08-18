@@ -6615,3 +6615,425 @@ func test_the_shop_hover_is_wired_to_the_boards_dead_ground() -> String:
 				+ " (%d cells against %d)") % [hovered.size(), resting.size()])
 	_T.free_ui(game)
 	return err
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-a6rf: covered is not served.
+#
+# The cue's own argument lives in game/placement_preview.gd's a6rf block; this
+# is what holds it up. Everything here runs with NO frame drawn and NO wave
+# running, which is the requirement rather than a convenience:
+# GardenTheme.animations_enabled() is false for the whole suite and headless
+# paints no `_draw()`, so "which cells would be marked" has to be answerable off
+# the derivation and off the Line2D children the Board actually builds.
+# =============================================================================
+
+## A gun on (4, 2) is the smallest garden that says anything: a cob there reaches
+## ten road cells and is the only thing covering any of them, so nine of the ten
+## are behind something in its own queue and one -- its deepest -- is not.
+##
+## Recorded rather than derived, and guarded below by re-deriving what it claims:
+## the cell must still be buildable and the coverage must still be ten, or the
+## nine stops meaning what it says. Same discipline as test_combat.gd's
+## test_the_recorded_gardens_still_have_the_property_they_claim, which exists
+## because cycle 53 reshaped the road and two recorded gardens went stale in
+## silence.
+const A6RF_LONE_GUN := Vector2i(4, 2)
+const A6RF_LONE_GUN_COVERS: int = 10
+const A6RF_LONE_GUN_DEFERS: int = 9
+## The deepest road cell that gun reaches -- the one cell of the ten a pest is
+## actually shot at on, because nothing the gun covers is further along.
+const A6RF_LONE_GUN_SERVES := Vector2i(3, 4)
+
+## The seven-cob garden test_combat.gd records as reaching every one of the 32
+## road cells. Copied rather than shared because that list is a method on another
+## suite; the copy is guarded by re-asserting the property it is copied FOR (all
+## 32 covered), so a road reshape fails here with a name instead of quietly
+## measuring a different garden.
+const A6RF_WHOLE_ROAD_GARDEN: Array[Vector2i] = [
+	Vector2i(0, 0), Vector2i(4, 2), Vector2i(11, 2),
+	Vector2i(5, 5), Vector2i(8, 5), Vector2i(3, 6), Vector2i(8, 6),
+]
+## 24 of the 32. THE number this cue is worth judging on: a garden that reaches
+## every cell of the road still leaves three quarters of it standing behind
+## something in the queue of the very guns covering it, and that is the 84% the
+## instrumented run measured, stated as ground rather than as a percentage.
+const A6RF_WHOLE_ROAD_DEFERS: int = 24
+
+
+## One gun and one list of reaches, built the way Game will build them.
+func _a6rf_guns(cells: Array[Vector2i], id: StringName) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	for _cell: Vector2i in cells:
+		out.append(Game.engagement_reach(id))
+	return out
+
+
+## The whole claim, on the smallest garden that can carry it.
+func test_the_deferred_cue_names_the_road_every_gun_covering_it_looks_past() -> String:
+	var board := Board.new()
+	var guns: Array[Vector2i] = [A6RF_LONE_GUN]
+	var err: String = _T.assert_true(board.is_buildable(A6RF_LONE_GUN),
+		"the recorded gun cell is still ground a plant may stand on")
+	var covers: Array[Vector2i] = PlacementPreview.covered_road_cell_list(board,
+		A6RF_LONE_GUN, Game.engagement_reach(PlantCatalog.CORN))
+	if err == "":
+		err = _T.assert_eq(covers.size(), A6RF_LONE_GUN_COVERS,
+			("the recorded gun still reaches %d road cells -- every count below is "
+				+ "measured against that") % A6RF_LONE_GUN_COVERS)
+	var deferred: Array[Vector2i] = PlacementPreview.deferred_road_cells(board, guns,
+		_a6rf_guns(guns, PlantCatalog.CORN))
+	if err == "":
+		err = _T.assert_eq(deferred.size(), A6RF_LONE_GUN_DEFERS,
+			("%d of the %d cells it covers are behind something in its own queue -- "
+				+ "one pest further along inside the same ring and each of them is "
+				+ "shot at by nothing") % [A6RF_LONE_GUN_DEFERS, A6RF_LONE_GUN_COVERS])
+	if err == "":
+		err = _T.assert_false(deferred.has(A6RF_LONE_GUN_SERVES),
+			("and %s is NOT marked: it is the deepest road the gun reaches, so a pest "
+				+ "standing there is the furthest along in range and gets shot")
+				% A6RF_LONE_GUN_SERVES)
+	if err == "":
+		# The complement, stated as a count so the pair cannot both drift.
+		err = _T.assert_eq(covers.size() - deferred.size(), 1,
+			"exactly one of the ten is served first, which is one per gun")
+	if err == "":
+		# Not a claim about uncovered road. That is the off-aim hatch's subject and
+		# the two sets must never overlap, or the board says both "nothing reaches
+		# here" and "something reaches here but looks past you" on one cell.
+		var reached: Dictionary = {}
+		for cell: Vector2i in covers:
+			reached[cell] = true
+		var strays: int = 0
+		for cell: Vector2i in deferred:
+			if not reached.has(cell):
+				strays += 1
+		err = _T.assert_eq(strays, 0,
+			("every deferred cell is a COVERED cell -- %d of %d were not, which would "
+				+ "put this mark on the hatch's ground") % [strays, deferred.size()])
+	if err == "":
+		err = _T.assert_eq(board.road_cells().size() - covers.size(), 22,
+			("and 22 road cells are covered by nothing at all in this garden, which is "
+				+ "the hatch's set and is disjoint from the 9 above"))
+	board.free()
+	return err
+
+
+## The tutorial, asserted: a second gun behind the first takes a cell OFF the
+## warning list, because the two no longer share a deeper cell to look at.
+##
+## (6, 3) is deferred by the lone cob on (4, 2) -- (6, 4) is further along and
+## inside that cob's ring. Add a cob on (7, 2) and (6, 3) is covered by both,
+## while (6, 4) is inside only the new one's ring, so no single pest can pull
+## both guns away and the mark clears. This is the thing a player is meant to
+## learn by watching, and it is why the cue is shown during prep.
+func test_a_second_gun_behind_the_first_clears_a_deferred_cell() -> String:
+	var board := Board.new()
+	var subject := Vector2i(6, 3)
+	var alone: Array[Vector2i] = [A6RF_LONE_GUN]
+	var paired: Array[Vector2i] = [A6RF_LONE_GUN, Vector2i(7, 2)]
+	var err: String = _T.assert_true(board.is_buildable(paired[1]),
+		"the second gun's cell is still ground a plant may stand on")
+	var before: Array[Vector2i] = PlacementPreview.deferred_road_cells(board, alone,
+		_a6rf_guns(alone, PlantCatalog.CORN))
+	if err == "":
+		err = _T.assert_true(before.has(subject),
+			("%s is deferred with one gun -- the positive control, without which the "
+				+ "assertion below passes against a cue that stopped firing entirely")
+				% subject)
+	var after: Array[Vector2i] = PlacementPreview.deferred_road_cells(board, paired,
+		_a6rf_guns(paired, PlantCatalog.CORN))
+	if err == "":
+		err = _T.assert_false(after.has(subject),
+			("and NOT deferred once a second gun covers it, because no single pest can "
+				+ "pull both guns off it any more"))
+	if err == "":
+		err = _T.assert_true(before != after,
+			"so the marked set moves when the garden does, which is what Game._refresh"
+				+ " repushes it for")
+	board.free()
+	return err
+
+
+## Empty is a real answer, and this is the garden that gives it.
+##
+## A Chomp Flower on (4, 2) reaches exactly one road cell, so that cell is the
+## deepest road it holds and there is nothing further along for it to look at.
+## Nothing is marked -- not because the cue failed to run, which is what the
+## positive control on the same cell rules out.
+func test_a_gun_that_holds_only_its_deepest_cell_defers_nothing() -> String:
+	var board := Board.new()
+	var guns: Array[Vector2i] = [A6RF_LONE_GUN]
+	var chomp: Array[Vector2i] = PlacementPreview.covered_road_cell_list(board,
+		A6RF_LONE_GUN, Game.engagement_reach(PlantCatalog.CHOMP))
+	var err: String = _T.assert_eq(chomp.size(), 1,
+		"a Chomp on (4, 2) reaches exactly one road cell")
+	if err == "":
+		err = _T.assert_eq(PlacementPreview.deferred_road_cells(board, guns,
+			_a6rf_guns(guns, PlantCatalog.CHOMP)).size(), 0,
+			("so it defers nothing -- there is no road further along inside its own "
+				+ "ring for it to turn towards"))
+	if err == "":
+		err = _T.assert_gt(PlacementPreview.deferred_road_cells(board, guns,
+			_a6rf_guns(guns, PlantCatalog.CORN)).size(), 0,
+			("and the SAME cell with a cob's reach does defer -- so the zero above is a "
+				+ "measurement and not a cue that has stopped running"))
+	if err == "":
+		var none: Array[Vector2i] = []
+		err = _T.assert_eq(PlacementPreview.deferred_road_cells(board, none,
+			PackedFloat32Array()).size(), 0,
+			"a garden with no guns defers nothing, which is the empty-board answer")
+	if err == "":
+		err = _T.assert_eq(PlacementPreview.deferred_road_cells(null, guns,
+			_a6rf_guns(guns, PlantCatalog.CORN)).size(), 0,
+			"and a null board answers empty rather than reporting the whole road")
+	board.free()
+	return err
+
+
+## The number worth judging the cue on, on a garden that has already won the
+## coverage argument.
+func test_the_whole_road_garden_still_defers_three_quarters_of_the_road() -> String:
+	var board := Board.new()
+	var road: int = board.road_cells().size()
+	var err: String = _T.assert_eq(road, 32,
+		"the road is still 32 cells, which every count here is a fraction of")
+	for at: Vector2i in A6RF_WHOLE_ROAD_GARDEN:
+		if err != "":
+			break
+		err = _T.assert_true(board.is_buildable(at),
+			("the recorded garden's %s is somewhere a plant may still stand -- a cell "
+				+ "that has become road would make this a smaller garden with every "
+				+ "number still reporting") % at)
+	var reach: float = Game.engagement_reach(PlantCatalog.CORN)
+	if err == "":
+		var union: Dictionary = {}
+		for at: Vector2i in A6RF_WHOLE_ROAD_GARDEN:
+			for cell: Vector2i in PlacementPreview.covered_road_cell_list(board, at, reach):
+				union[cell] = true
+		err = _T.assert_eq(union.size(), road,
+			("the recorded garden still reaches every one of the %d road cells -- that "
+				+ "property is the whole reason it is the garden this is measured on")
+				% road)
+	if err == "":
+		var deferred: Array[Vector2i] = PlacementPreview.deferred_road_cells(board,
+			A6RF_WHOLE_ROAD_GARDEN,
+			_a6rf_guns(A6RF_WHOLE_ROAD_GARDEN, PlantCatalog.CORN))
+		err = _T.assert_eq(deferred.size(), A6RF_WHOLE_ROAD_DEFERS,
+			("%d of the %d road cells are deferred even though all %d are covered -- "
+				+ "this is the board half of RunSummary.reach_note_text(), and if it "
+				+ "ever reads 0 the cue has been deleted rather than satisfied")
+				% [A6RF_WHOLE_ROAD_DEFERS, road, road])
+	if err == "":
+		err = _T.assert_eq(road - A6RF_WHOLE_ROAD_DEFERS, 8,
+			("leaving 8 cells served first against 7 guns -- roughly one apiece, which "
+				+ "is the arithmetic the mechanic actually has"))
+	board.free()
+	return err
+
+
+## The ink, read off the Line2D children the Board builds rather than off a
+## `_draw()` no headless run ever calls.
+##
+## This is the assertion that would have caught the mark drawn 72 px out of place
+## that this repo has already shipped: it pairs each bar's points against
+## Board.lane_bar_points() at that cell's own centre, so a bar in the right shape
+## in the wrong place fails.
+func test_the_board_draws_one_bar_across_the_lane_per_deferred_cell() -> String:
+	var board := Board.new()
+	var guns: Array[Vector2i] = [A6RF_LONE_GUN]
+	# NOT named `arm`: suite_reach_check matches by bare token and SelectionMarker
+	# declares an unreached `arm` that a local of that name silently credits.
+	var arm_px: float = PlacementPreview.DEFERRED_BAR_ARM
+	var ink: Color = PlacementPreview.deferred_road_color()
+	var width: float = PlacementPreview.DEFERRED_BAR_WIDTH
+	var cells: Array[Vector2i] = PlacementPreview.deferred_road_cells(board, guns,
+		_a6rf_guns(guns, PlantCatalog.CORN))
+	var err: String = _T.assert_eq(cells.size(), A6RF_LONE_GUN_DEFERS,
+		"there is deferred road to mark -- an empty set makes every check below vacuous")
+	if err == "":
+		err = _T.assert_true(board.mark_deferred_road(cells, arm_px, ink, width),
+			"marking a fresh board reports the set as changed")
+	if err == "":
+		err = _same_cells(board.deferred_road_marked(), cells,
+			"the board holds exactly the cells it was handed, in walk order")
+	var lines: Array[Line2D] = board.deferred_road_mark_lines()
+	if err == "":
+		err = _T.assert_eq(lines.size(), cells.size(),
+			"one visible bar per deferred cell -- %d bars for %d cells"
+				% [lines.size(), cells.size()])
+	if err == "":
+		for i: int in range(cells.size()):
+			var axis: Vector2 = board.lane_axis(cells[i])
+			var want: PackedVector2Array = Board.lane_bar_points(
+				board.cell_to_world(cells[i]), axis, arm_px)
+			var got: PackedVector2Array = lines[i].points
+			err = _T.assert_eq(got.size(), 2, "bar %d is a two-point stroke" % i)
+			if err == "":
+				err = _T.assert_true(got[0].is_equal_approx(want[0])
+					and got[1].is_equal_approx(want[1]),
+					("bar %d lands on %s's own centre: drew %s..%s, wanted %s..%s")
+						% [i, cells[i], got[0], got[1], want[0], want[1]])
+			if err == "":
+				# ACROSS the lane, which is the channel that survives the colour being
+				# thrown away: nothing else this board draws is square to the road.
+				err = _T.assert_float_eq((got[1] - got[0]).normalized().dot(axis), 0.0,
+					0.001, "bar %d is square to the lane at %s" % [i, cells[i]])
+			if err == "":
+				err = _T.assert_float_eq(got[0].distance_to(got[1]), arm_px * 2.0, 0.001,
+					"bar %d is %.0f px long" % [i, arm_px * 2.0])
+			if err == "":
+				err = _T.assert_float_eq(lines[i].width, width, 0.001,
+					"bar %d carries the cue's width" % i)
+			if err != "":
+				break
+	var pool: int = 0
+	if err == "":
+		var layer: Node2D = board.get_node_or_null(Board.DEFERRED_ROAD_LAYER) as Node2D
+		err = _T.assert_true(layer != null,
+			"the marks live on their own layer, added last so they sit over the hatch")
+		if err == "":
+			pool = layer.get_child_count()
+			err = _T.assert_eq(pool, cells.size(), "the pool is %d nodes" % cells.size())
+	if err == "":
+		err = _T.assert_false(board.mark_deferred_road(cells, arm_px, ink, width),
+			("re-marking the identical set reports no change, so Game._refresh() on "
+				+ "every seed payout does not rebuild the pool several times a second"))
+	if err == "":
+		var narrow: Array[Vector2i] = [cells[0]]
+		err = _T.assert_true(board.mark_deferred_road(narrow, arm_px, ink, width),
+			"shrinking the set does report a change")
+		if err == "":
+			err = _T.assert_eq(board.deferred_road_mark_lines().size(), 1,
+				"and shrinks by HIDING: one bar visible")
+		if err == "":
+			var layer: Node2D = board.get_node_or_null(Board.DEFERRED_ROAD_LAYER) as Node2D
+			err = _T.assert_eq(layer.get_child_count(), pool,
+				"with the pool still %d nodes rather than freed and rebuilt" % pool)
+	if err == "":
+		err = _T.assert_true(board.is_deferred_road(cells[0]),
+			"and the read-back answers from the Board's own copy, not from the layer")
+	if err == "":
+		# Buildable ground is not ground a pest queues on, so it is dropped the way
+		# mark_dead_ground() drops road.
+		var grass: Array[Vector2i] = [Vector2i(0, 0)]
+		board.mark_deferred_road(grass, arm_px, ink, width)
+		err = _T.assert_false(board.is_deferred_road(grass[0]),
+			"a mark handed buildable ground drops it rather than rendering it")
+		if err == "":
+			err = _T.assert_eq(board.deferred_road_mark_lines().size(), 0,
+				"leaving nothing visible, which is also how the cue is cleared")
+	board.free()
+	return err
+
+
+## The two-channel rule, mechanically. This cue and the dead-ground bar are the
+## same grammar row ("straight line through a box = a STATE"), so what separates
+## them has to be something a greyscale screenshot still shows.
+func test_the_deferred_bar_is_a_different_mark_from_the_dead_ground_bar() -> String:
+	var dead: Vector2 = PlacementPreview.dead_bar_arm()
+	# ORIENTATION. The dead bar is a diagonal; every bar this cue draws is square
+	# to a road that only ever steps orthogonally, so it is axis-aligned everywhere.
+	var err: String = _T.assert_true(absf(dead.x) > 0.5 and absf(dead.y) > 0.5,
+		"the dead-ground bar is a diagonal (%s), which is the orientation this cue "
+			% dead + "deliberately does not use")
+	var board := Board.new()
+	var checked: int = 0
+	if err == "":
+		for cell: Vector2i in board.road_cells():
+			var axis: Vector2 = board.lane_axis(cell)
+			checked += 1
+			err = _T.assert_true(absf(axis.x) < 0.001 or absf(axis.y) < 0.001,
+				("the lane at %s runs on an axis (%s) -- an averaged direction would be "
+					+ "diagonal at the road's four corners and the bar would stop being "
+					+ "distinguishable there") % [cell, axis])
+			if err == "":
+				err = _T.assert_float_eq(axis.length(), 1.0, 0.001,
+					"and it is a unit vector at %s" % cell)
+			if err != "":
+				break
+	if err == "":
+		err = _T.assert_eq(checked, board.road_cells().size(),
+			"every one of the %d road cells was checked" % board.road_cells().size())
+	if err == "":
+		err = _T.assert_eq(board.lane_axis(Vector2i(0, 0)), Vector2.ZERO,
+			"and buildable ground has no lane direction at all")
+	# LENGTH and INK. The deferred set is the denser of the two -- 24 cells of 32
+	# against dead ground's 36 of 94 -- so it has to be the lighter mark per cell
+	# or the road reads as covered in warnings.
+	if err == "":
+		var mine: float = PlacementPreview.DEFERRED_BAR_ARM * 2.0 \
+			* PlacementPreview.DEFERRED_BAR_WIDTH
+		var theirs: float = PlacementPreview.PREVIEW_HALF * 2.0 \
+			* PlacementPreview.DEAD_BAR_WIDTH
+		err = _T.assert_gt(theirs, mine * 2.0,
+			("the deferred bar inks %.0f px^2 against the dead bar's %.0f -- less than "
+				+ "half, which is what keeps 24 of them quieter than 36 of those")
+				% [mine, theirs])
+	# And it is thinner than one off-aim hatch stripe, so a lone bar can never read
+	# as a hatch that lost the rest of itself.
+	if err == "":
+		err = _T.assert_gt(LanePressureOverlay.HATCH_WIDTH,
+			PlacementPreview.DEFERRED_BAR_WIDTH,
+			"a deferred bar is thinner than one hatch stripe")
+	board.free()
+	return err
+
+
+## The mark has to survive the ground it is drawn on, which is the dirt tile and
+## not the lawn -- GardenTheme.reads_on_ground() exists because a mark has already
+## disappeared into the playfield here once.
+func test_the_deferred_bar_reads_on_the_road_it_is_drawn_on() -> String:
+	var ink: Color = PlacementPreview.deferred_road_color()
+	var err: String = _T.assert_true(GardenTheme.reads_on_ground(Color(ink, 1.0)),
+		"the deferred ink clears the luminance floor against both tile hues")
+	if err == "":
+		err = _T.assert_true(GardenTheme.reads_on(Color(ink, 1.0), GardenTheme.GROUND_DIRT),
+			"and against the dirt tile specifically, which is the only ground it lands on")
+	if err == "":
+		# Louder than the dead marks and deliberately so: those sit on plain grass,
+		# this sits under the lane-pressure hatch and, during a wave, under the pests.
+		err = _T.assert_gt(PlacementPreview.DEFERRED_ALPHA,
+			PlacementPreview.BOARD_DEAD_ALPHA,
+			"and is carried at a higher alpha than the dead marks on the grass")
+	if err == "":
+		err = _T.assert_float_eq(ink.a, PlacementPreview.DEFERRED_ALPHA, 0.001,
+			"which is the alpha the colour actually ships with")
+	return err
+
+
+## The cue and its trigger live in different files, and a cue nothing turns on is
+## a failure this project has shipped before: every gate passes, the marks are
+## correct, and no player ever sees one. So this asserts the JOIN.
+##
+## It goes RED until Game._refresh() calls into the board's deferred marks. That
+## is the point of it -- see test_the_shop_hover_is_wired_to_the_boards_dead_ground
+## above, which exists for the same reason and was written the same way.
+func test_the_deferred_cue_is_wired_to_the_game() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the game scene resolves headlessly")
+	if err != "":
+		return err
+	if err == "":
+		err = _T.assert_eq(game.board.deferred_road_marked().size(), 0,
+			"an empty garden has nothing standing behind anything, so nothing is marked")
+	if err == "":
+		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, A6RF_LONE_GUN), "",
+			"the free starter cob goes in on the recorded gun cell")
+	if err == "":
+		# place_plant() ends in _refresh(), which is the funnel the marks hang off.
+		err = _T.assert_eq(game.board.deferred_road_marked().size(),
+			A6RF_LONE_GUN_DEFERS,
+			("and the board is marked the moment it lands -- %d cells. A zero here is "
+				+ "the wiring, not the derivation: PlacementPreview.deferred_road_cells "
+				+ "is asserted directly above and Game._refresh() is what pushes it")
+				% A6RF_LONE_GUN_DEFERS)
+	if err == "":
+		err = _T.assert_eq(game.board.deferred_road_mark_lines().size(),
+			A6RF_LONE_GUN_DEFERS,
+			"with a visible bar on each of them")
+	_T.free_ui(game)
+	return err
+
+# END plant-tower-defense-a6rf
+# =============================================================================
