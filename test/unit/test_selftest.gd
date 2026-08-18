@@ -6946,7 +6946,49 @@ func test_the_notebook_subheading_stays_narrower_than_the_paper() -> String:
 ## The measurements every calibration above was taken against. If this fails,
 ## do not fix the number here — re-derive the three road-dependent constants
 ## the message names, then update these.
-func test_the_road_is_still_the_road_the_constants_were_measured_against() -> String:
+##
+## WHAT THIS GUARDS, EXACTLY, AND WHY THE NAME NOW SAYS SO (plant-tower-defense-kndl).
+## Two scalars and no more: the road is 32 CELLS long and 2112 PX of walking.
+## That is the whole assertion. It was previously called
+## `test_the_road_is_still_the_road_the_constants_were_measured_against`, which
+## reads as "the road has not changed" — a much larger claim than the body makes,
+## and a reader who trusted the name would conclude the route is untouched.
+##
+## The difference is not academic; it is the thing that made cycle 53's reshape
+## cheap. `Board.PATH_CORNERS` was rewritten from a route that never travelled
+## -Y into one that climbs (plant-tower-defense-84x0), the shape changed
+## COMPLETELY, and this test correctly stayed silent — because the reshape was
+## built to hold exactly these two numbers: 31 steps over 32 cells, 1984 px plus
+## two 64 px brackets = 2112 px. See `board.gd`'s own comment on PATH_CORNERS,
+## which states the same split: "Re-derive nothing that depends only on length or
+## cell count; DO re-check anything that depends on the road's SHAPE."
+##
+## SO THIS TEST IS NOT THE ALARM FOR SHAPE. Every one of these guards a fact
+## about WHERE the road runs, every one of them WILL move under a reshape that
+## this test passes through in silence, and each has to be re-derived by hand:
+##
+##   dead ground        `test_the_real_route_strands_exactly_the_cells_it_was_measured_to_strand`
+##                      (test/unit/test_placement.gd). Cycle 53 moved Corn from
+##                      15 stranded cells to 11 and Chomp from 34 to 36 — in
+##                      OPPOSITE directions, over an identical length and count.
+##   the split cell     `test_a_cell_can_be_dead_ground_for_a_chomp_and_good_ground_for_a_corn`
+##                      (test/unit/test_placement.gd). The cell that splits the
+##                      two reaches moved from (2, 3) to (1, 3): the new climb put
+##                      road at (2, 4), inside a Chomp's grab radius, so the old
+##                      square stopped splitting anything at all.
+##   garden coverage    `test_the_recorded_gardens_still_have_the_property_they_claim`
+##                      (test/unit/test_combat.gd). The two recorded cob gardens
+##                      are cell lists; a reshape can turn a garden cell into road
+##                      and every downstream ratio goes on reporting a number.
+##   Sundew coverage    `test_the_preview_warns_about_ground_an_existing_patch_already_covers`
+##                      (test/unit/test_placement.gd), which pins (2, 0) covering
+##                      every road cell (2, 2) would reach — a fact about this
+##                      route's geometry and nothing else.
+##
+## And one that reads the road and is guarded here by NEGATION, because provenance
+## is not consequence: `test_the_husk_margin_reads_the_road_but_does_not_depend_on_it`
+## below, whose walk yields CELL/2 for any road at all.
+func test_the_road_still_has_the_length_and_cell_count_the_constants_were_measured_against() -> String:
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 
@@ -6969,7 +7011,9 @@ func test_the_road_is_still_the_road_the_constants_were_measured_against() -> St
 	var whose_problem := "\n  Re-derive before touching this test:" \
 		+ "\n    - WaveDirector.SIMULTANEOUS_PEST_CEILING (40) — reasoned from" \
 		+ " %d cells / %.0f px as 3.5 pests per cell of road" % [cells, length] \
-		+ "\n    - the dead-ground count (15 of 94 cells)" \
+		+ "\n    - the dead-ground counts (11 of 94 cells for a Corn Cobbler, 36" \
+		+ " for a Chomp Flower) — see" \
+		+ " test_the_real_route_strands_exactly_the_cells_it_was_measured_to_strand" \
 		+ "\n    - the Sundew's coverage arithmetic" \
 		+ "\n  NOT affected: PlacementPreview.husk_click_margin(). It walks the" \
 		+ " route, but the walk yields CELL/2 for any road — see" \
