@@ -5374,3 +5374,297 @@ func test_the_title_screen_gives_its_lawn_the_backdrops_own_shift() -> String:
 
 # END the lawn stands on the ground at any viewport height
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN the top bar's four readouts are four different treatments
+# (plant-tower-defense-6tmf)
+# =============================================================================
+
+
+## The four readouts are four DIFFERENT kinds of thing, and until 6tmf they were four
+## near-identical strings: 26/26/26/20 with no other difference between them, on one
+## flat INK slab.
+##
+## What that fix has to be is a set of treatments no two readouts share, and that is
+## exactly what this asserts — off `Hud.STAT_READOUTS` itself rather than against a
+## hand-written list of the four, so a fifth readout added later cannot quietly rejoin
+## the undifferentiated line by copying an existing pair.
+##
+## Pure: no HUD, no viewport. The table is the declaration, and the live test below is
+## the separate question of whether the row actually wears what the table declares.
+func test_no_two_top_bar_readouts_share_a_typographic_treatment() -> String:
+	var rows: Array[Dictionary] = Hud.STAT_READOUTS
+	var err: String = _T.assert_gt(rows.size(), 1,
+		"there are at least two readouts to tell apart")
+	if err != "":
+		return err
+	# name -> "size/weight". Built rather than compared pairwise so the failure names
+	# both offenders instead of "two of them clash".
+	var seen: Dictionary = {}
+	var clashes: PackedStringArray = []
+	var checked: int = 0
+	for row: Dictionary in rows:
+		var name: String = String(row.get("name", ""))
+		err = _T.assert_true(row.has("weight"),
+			("%s declares its stroke weight. It is a column and not a function of "
+				+ "font_size because two readouts share a size") % name)
+		if err != "":
+			return err
+		err = _T.assert_gte(int(row["weight"]), Hud.READOUT_WEIGHT_PLAIN,
+			"%s's weight is not negative" % name)
+		if err != "":
+			return err
+		var treatment: String = "%dpx / weight %d" % [int(row["font_size"]), int(row["weight"])]
+		if seen.has(treatment):
+			clashes.append("%s and %s are both %s" % [String(seen[treatment]), name, treatment])
+		seen[treatment] = name
+		checked += 1
+	err = _T.assert_eq(checked, rows.size(),
+		"every declared readout was measured for a treatment (%d of %d)"
+			% [checked, rows.size()])
+	if err == "":
+		err = _T.assert_eq(clashes.size(), 0,
+			("no two readouts are drawn the same. That is the whole of 6tmf: four "
+				+ "kinds of thing reading as one line. %s") % ", ".join(clashes))
+	if err == "":
+		# And the ladder is a ladder, not four settings that happen to differ. The
+		# widest span has to be a real one -- a row of 26/26/25/24 would pass the
+		# clash check above and still look like one undifferentiated line.
+		var smallest: int = 9999
+		var largest: int = 0
+		for row: Dictionary in rows:
+			smallest = mini(smallest, int(row["font_size"]))
+			largest = maxi(largest, int(row["font_size"]))
+		err = _T.assert_gte(largest - smallest, 6,
+			("the size ladder spans %d px (%d to %d) -- a hierarchy nobody can see "
+				+ "at a glance is not one") % [largest - smallest, smallest, largest])
+	return err
+
+
+## And the row on screen actually wears what the table declares.
+##
+## Two separate claims, because they failed apart before the table existed: the
+## DECLARATION above is drift-proof by construction, and this is the wiring. A
+## `weight` column nothing reads would pass every check above it.
+##
+## The width guard at the end is the one thing no existing check makes. An outline of
+## N px puts N px either side of the drawn glyphs, and both
+## `test_no_readout_clips_its_own_worst_case` and `cmd budgets` measure the bare string
+## through `Font.get_string_size()` — neither sees an outline pushing a full-width
+## readout into its ellipsis. `_T.text_width`, never `get_minimum_size()`: every
+## readout here sets `clip_text`, so the obvious assertion passes unconditionally on
+## exactly the labels that need checking.
+func test_every_readout_wears_its_declared_size_and_weight_and_still_fits() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var stats: HBoxContainer = game.hud.get_node_or_null("Root/TopBar/StatsRow") as HBoxContainer
+	var err: String = _T.assert_true(stats != null, "the stats row is where the HUD puts it")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var wrong: PackedStringArray = []
+	var overflow: PackedStringArray = []
+	var measured: int = 0
+	for row: Dictionary in Hud.STAT_READOUTS:
+		var name: String = String(row["name"])
+		var label: Label = stats.get_node_or_null(name) as Label
+		if label == null:
+			wrong.append("%s: not in the row at all" % name)
+			continue
+		measured += 1
+		var size_px: int = label.get_theme_font_size("font_size")
+		if size_px != int(row["font_size"]):
+			wrong.append("%s: drawn at %dpx, declared %d" % [name, size_px, int(row["font_size"])])
+		var weight: int = label.get_theme_constant("outline_size")
+		if weight != int(row["weight"]):
+			wrong.append("%s: weight %d drawn, %d declared" % [name, weight, int(row["weight"])])
+		# The outline is the readout's OWN colour, so the glyphs thicken instead of
+		# gaining a halo. Checked against the live font colour rather than against the
+		# table's, because the wave readout's colour moves at runtime -- see
+		# _ease_threat_tint, which writes the pair together for exactly this reason.
+		var fill: Color = label.get_theme_color("font_color")
+		var edge: Color = label.get_theme_color("font_outline_color")
+		if not edge.is_equal_approx(fill):
+			wrong.append("%s: outlined in %s around %s text -- that is a halo, not weight"
+				% [name, edge, fill])
+		# And the widest thing it can ever hold, drawn at that weight, inside its slot.
+		var restore: String = label.text
+		label.text = String(row["worst_case"])
+		var drawn: float = _T.text_width(label) + 2.0 * float(weight)
+		label.text = restore
+		if drawn > label.custom_minimum_size.x:
+			overflow.append("%s: \"%s\" draws %.0fpx at weight %d, slot is %.0f"
+				% [name, String(row["worst_case"]), drawn, weight, label.custom_minimum_size.x])
+	err = _T.assert_eq(measured, Hud.STAT_READOUTS.size(),
+		"every declared readout is a Label in the row (%d of %d)"
+			% [measured, Hud.STAT_READOUTS.size()])
+	if err == "":
+		err = _T.assert_eq(wrong.size(), 0,
+			"every readout is drawn as the table declares it: %s" % ", ".join(wrong))
+	if err == "":
+		err = _T.assert_eq(overflow.size(), 0,
+			("a weight is drawn OUTSIDE the glyphs, so a readout can clip on an outline "
+				+ "that no width check measures: %s") % ", ".join(overflow))
+	_T.free_ui(game)
+	return err
+
+
+# END the top bar's four readouts are four different treatments
+# =============================================================================
+
+
+# =============================================================================
+# BEGIN an important message looks important (plant-tower-defense-xvub)
+# =============================================================================
+
+
+## The rule, with no row to hold it.
+##
+## Static and pure, so the four interesting cases are reachable without staging four
+## messages through a live HUD -- including the last one, which a live row makes
+## awkward: an EXPIRED deadline line is not stressed, because the row has fallen
+## through to the standing prep note and the note is ambient however urgent the line
+## it replaced was.
+func test_a_line_is_stressed_by_its_rung_and_only_while_it_is_up() -> String:
+	var err: String = _T.assert_false(Hud.message_is_stressed(3.0, Hud.MESSAGE_NORMAL),
+		"a husk line is ambient")
+	if err == "":
+		err = _T.assert_true(Hud.message_is_stressed(3.0, Hud.MESSAGE_IMPORTANT),
+			"a packet reveal is not")
+	if err == "":
+		err = _T.assert_true(Hud.message_is_stressed(3.0, Hud.MESSAGE_DEADLINE),
+			("and the armed-uproot prompt least of all -- DEADLINE is stressed by `>=` "
+				+ "rather than by naming two rungs, so a rung added above it inherits "
+				+ "the emphasis"))
+	if err == "":
+		err = _T.assert_false(Hud.message_is_stressed(0.0, Hud.MESSAGE_DEADLINE),
+			("an EXPIRED deadline line is ambient: the row has fallen back to the "
+				+ "standing prep note, which is nobody's emergency"))
+	return err
+
+
+## MESSAGE_IMPORTANT used to control queue PRIORITY and nothing else, so the
+## armed-uproot prompt -- a four-second irreversible decision -- was drawn exactly like
+## "Composted a husk for 3 seeds."
+##
+## The acceptance is that the two are told apart WITH COLOUR THROWN AWAY, and this
+## asserts it in the strongest available form: the two states are asserted to be the
+## SAME colour, so there is no hue to discard in the first place, and the distinction
+## is then read off two channels that survive greyscale -- stroke weight, and the
+## presence of the margin mark.
+func test_an_important_line_is_told_from_an_ambient_one_without_colour() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+	var mark: ColorRect = game.hud.get_node_or_null("Root/TopBar/MessageLabel/MessageMark") as ColorRect
+	var err: String = _T.assert_true(label != null and mark != null,
+		"the message row and its margin mark are where the HUD puts them")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# Drain whatever the opening state posted, so the two lines below are the only two
+	# the row is asked about. The same drain the uproot tests above use.
+	game.hud._message_left = 0.0
+	game.hud._message_queue.clear()
+	game.hud._advance_message_queue()
+
+	game.hud.show_message("Composted a husk for 3 seeds.", 3.0, Hud.MESSAGE_NORMAL)
+	var ambient_text: String = label.text
+	var ambient_weight: int = label.get_theme_constant("outline_size")
+	var ambient_colour: Color = label.get_theme_color("font_color")
+	var ambient_mark: bool = mark.visible
+
+	# The real line, at the real rung, from the real caller's shape: Game arms the
+	# uproot with MESSAGE_DEADLINE, which outranks the husk line and takes the row now.
+	game.hud.show_message("Uproot again to confirm. It will not grow back.",
+		4.0, Hud.MESSAGE_DEADLINE)
+	var urgent_text: String = label.text
+	var urgent_weight: int = label.get_theme_constant("outline_size")
+	var urgent_colour: Color = label.get_theme_color("font_color")
+	var urgent_mark: bool = mark.visible
+
+	err = _T.assert_true(ambient_text.contains("Composted") and urgent_text.contains("Uproot"),
+		("both lines actually reached the row -- a state read off a row showing "
+			+ "something else measures nothing (got \"%s\" then \"%s\")")
+			% [ambient_text, urgent_text])
+	if err == "":
+		# The load-bearing assertion. If this ever fails the row has started leaning on
+		# hue, and every other assertion here becomes a description of a cue a
+		# greyscale reader cannot see.
+		err = _T.assert_true(urgent_colour.is_equal_approx(ambient_colour),
+			("the two lines are the SAME colour (%s vs %s), so the distinction below "
+				+ "is not a colour one") % [urgent_colour, ambient_colour])
+	if err == "":
+		err = _T.assert_gt(urgent_weight, ambient_weight,
+			"channel one, WEIGHT: the urgent line's strokes are thicker (%d against %d)"
+				% [urgent_weight, ambient_weight])
+	if err == "":
+		err = _T.assert_false(ambient_mark, "channel two, THE MARK: absent beside a husk line")
+	if err == "":
+		err = _T.assert_true(urgent_mark, "and present beside the armed-uproot prompt")
+	if err == "":
+		# And it goes away again. A cue that latches on is a cue that stops meaning
+		# anything the second time the player sees it.
+		game.hud._message_left = 0.0
+		game.hud._message_queue.clear()
+		game.hud._advance_message_queue()
+		err = _T.assert_false(mark.visible,
+			"and both channels drop when the row falls back to its standing note")
+	if err == "":
+		err = _T.assert_eq(label.get_theme_constant("outline_size"), ambient_weight,
+			"including the weight")
+	_T.free_ui(game)
+	return err
+
+
+## The mark costs the row NOTHING, which is the constraint that chose it.
+##
+## The message row is the tight one -- `PREP_NOTE_WORST_CASE` is pinned against its
+## width in `test_selftest.gd` -- so an emphasis cue holding a slot in it would be
+## spending width the row does not have. It is a ColorRect child of the Label with
+## negative offsets, the same trick `_readout_rule` uses upstairs: drawn in the gutter
+## between the page's margin rule and the text, which is space nothing was using.
+func test_the_message_mark_is_drawn_outside_the_row_it_marks() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+	var mark: ColorRect = game.hud.get_node_or_null("Root/TopBar/MessageLabel/MessageMark") as ColorRect
+	var rule: ColorRect = game.hud.get_node_or_null("Root/TopBar/MarginRule") as ColorRect
+	var err: String = _T.assert_true(label != null and mark != null and rule != null,
+		"the message row, its mark and the page's margin rule are all built")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# Show it first: an anchored child's rect is only worth reading once the row has
+	# been laid out, and a hidden node measuring (0, 0) would satisfy every bound below
+	# by being nothing at all.
+	game.hud.show_message("Uproot again to confirm.", 4.0, Hud.MESSAGE_DEADLINE)
+	err = _T.assert_true(mark.visible, "the mark is up for a deadline line")
+	if err == "":
+		err = _T.assert_float_eq(mark.size.x, Hud.MESSAGE_MARK_WIDTH, 0.001,
+			"and the anchors resolved to a real box rather than to nothing")
+	if err == "":
+		# Local space: `position` is relative to the Label, so a right edge at or left
+		# of zero IS the claim "this is drawn outside the row's own box".
+		err = _T.assert_true(mark.position.x + mark.size.x <= 0.0,
+			("the mark's right edge sits at %.1f in the row's own space -- at or left "
+				+ "of 0, so it holds no width in the row it marks")
+				% [mark.position.x + mark.size.x])
+	if err == "":
+		err = _T.assert_gte(mark.global_position.x, rule.global_position.x + rule.size.x,
+			("and it starts at %.1f, clear of the page's margin rule which ends at "
+				+ "%.1f -- touching, never overlapping")
+				% [mark.global_position.x, rule.global_position.x + rule.size.x])
+	if err == "":
+		# Parented to the Label and not to the bar, which is what makes the two claims
+		# above true for free at every viewport width: the mark follows the row's rect
+		# through `_apply_viewport_layout()` rather than carrying a second copy of that
+		# arithmetic. A mark parented to TopBar would pass both bounds above at 1152
+		# and drift at any other width.
+		err = _T.assert_eq(String(mark.get_parent().name), String(label.name),
+			"the mark hangs off the row it marks, not off the bar (parent: %s)"
+				% mark.get_parent().name)
+	_T.free_ui(game)
+	return err
+
+
+# END an important message looks important
+# =============================================================================

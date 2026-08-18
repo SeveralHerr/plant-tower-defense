@@ -72,12 +72,54 @@ const NEXT_WAVE_BUTTON_SIZE := Vector2(130, 40)
 ## started this — gains 3px it did not have before.
 ## The stats row's font sizes, hoisted out of the readout table below so a budget
 ## measured against one cannot be measured at a different one.
+##
+## THREE sizes now, not two, and the ladder IS the row's hierarchy rather than a set of
+## separate preferences. Until plant-tower-defense-6tmf the row ran 26/26/26/20 — four
+## strings of near-identical weight on one flat slab, so a player scanning for the
+## number that changed had nothing to land on.
+##
+## Size is the cheapest channel available here, and cheap in the one sense this row
+## cares about: a step DOWN spends no width at all. Every readout is clipped to a slot
+## that was measured at the larger size (`_add_stat`), so shrinking a readout can only
+## leave it more room than it had, never less.
 const STAT_FONT_SIZE: int = 26
-## Compost is deliberately smaller than the other three, and that size difference is
-## the only hierarchy this row has: it is the one stat that is not a resource you
-## spend. `_make_label` sets VERTICAL_ALIGNMENT_CENTER so the 20px text still sits on
-## the same baseline as the 26px text beside it.
+## The wave readout takes the middle rung, and it is the one of the four that can
+## afford to. It is by far the most redundantly announced thing in this game: the wave
+## banner names it, the prep note names it again, the prep strip times it, and this
+## readout itself carries the live threat tint. Nothing else in the row is said four
+## ways.
+##
+## The slot stays 312px on purpose — see STAT_READOUTS' `width` column. At 24px the
+## declared worst case draws ~279 rather than ~302, so the wave readout now sits on
+## ~33px of internal headroom instead of ~10. That headroom is NOT reclaimed into the
+## row's own 19px of slack in this pass: doing so means retyping a measured constant
+## against a font measurement nobody has taken, and an over-tight slot fails silently
+## by clipping. Reclaiming it is a measurement, not an edit.
+const WAVE_FONT_SIZE: int = 24
+## Compost is the smallest, and it is the one stat that is not a resource you spend.
+## `_make_label` sets VERTICAL_ALIGNMENT_CENTER so the 20px text still sits on the same
+## baseline as the 26px text beside it.
 const COMPOST_FONT_SIZE: int = 20
+
+## The stroke weight a readout is drawn at: a font OUTLINE in the label's own colour,
+## so the glyphs thicken rather than gain a halo. This is the second half of the
+## hierarchy above, and it exists because size alone cannot separate the two readouts
+## that both have to stay at full size.
+##
+## Why an outline rather than a bold face: this project ships one font, so a bold
+## variant would be a new asset. An outline is a theme constant on a Label — no asset,
+## and, the part that actually decides it, NO WIDTH. Layout in this row comes from
+## `custom_minimum_size` (every readout sets `clip_text`), so an outline changes what
+## is drawn and not what is measured.
+##
+## What it does change is how far the drawn glyphs REACH: a weight of N puts N px
+## either side of the text. That is why the worst-case guard in `test_placement.gd`
+## measures `worst_case + 2 * weight` against the slot rather than the bare string —
+## `test_no_readout_clips_its_own_worst_case` and `cmd budgets` both measure the string
+## alone and would not see an outline pushing a full-width readout into its ellipsis.
+const READOUT_WEIGHT_HEAVY: int = 2
+const READOUT_WEIGHT_MEDIUM: int = 1
+const READOUT_WEIGHT_PLAIN: int = 0
 
 ## THE FOUR READOUTS, and the only place any one of them is described.
 ##
@@ -102,10 +144,13 @@ const COMPOST_FONT_SIZE: int = 20
 ##               four; four hand-written assignments after the loop would just be a
 ##               new third list wearing different clothes.
 ##   width       the clipped slot in px, from the block above.
-##   font_size   STAT_FONT_SIZE, or COMPOST_FONT_SIZE for the one that is smaller on
-##               purpose. Carried per row because the difference IS information: a
-##               table that dropped it would be three lists collapsed into one plus an
-##               exception.
+##   font_size   One of the three sizes above. Carried per row because the difference
+##               IS information: a table that dropped it would be three lists collapsed
+##               into one plus an exception.
+##   weight      The stroke weight, as a font outline in the row's own colour. The other
+##               half of the same information, and a separate column rather than a
+##               function of `font_size` because two readouts share a size and must not
+##               share a treatment. See READOUT_WEIGHT_HEAVY.
 ##   colour      PAPER for the three resources, COMPOST for the gold one. The wave
 ##               readout's is also its ramp's base -- `threat_color_on` returns PAPER
 ##               below THREAT_SHOW_FROM and `_ease_threat_tint` eases from there
@@ -117,12 +162,38 @@ const COMPOST_FONT_SIZE: int = 20
 ##               column to the real `_x_label.text =` assignments in BOTH directions.
 ##               It exists because `worst_case` structurally cannot: one string is an
 ##               instance of exactly ONE branch, and the wave readout has two.
+##
+## THE HIERARCHY, and how it is ranked (plant-tower-defense-6tmf). These are four
+## different kinds of thing — a currency you spend, a clock you cannot stop, a life
+## total, a bankable surplus — and until this pass they were four near-identical
+## strings. `font_size` x `weight` now gives each of them its own treatment:
+##
+##   Garden   26 / heavy    The only readout whose change cannot be undone, and the
+##                          rarest to change. It has to catch an eye that is on the
+##                          board, so it is the one the row shouts with.
+##   Seeds    26 / medium   The number every decision is priced against, and the one
+##                          scanned most often. It needs LEGIBILITY, not alarm.
+##   Wave     24 / plain    A clock. It owns a channel none of the others has — the
+##                          live threat tint — and it is announced three further ways
+##                          (banner, prep note, prep strip), so it gives up a rung.
+##   Compost  20 / plain    A surplus that can wait, and the row's pre-existing step
+##                          down. Gold, and the only readout that is.
+##
+## **No two rows share a `(font_size, weight)` pair**, which is the property that makes
+## this a hierarchy rather than four settings; `test_placement.gd` asserts it off this
+## table rather than against a hand-list, so a fifth readout that copied an existing
+## treatment fails instead of quietly rejoining the undifferentiated line.
+##
+## Both channels survive the colour being thrown away — required here, not optional:
+## `game/OVERLAY_GRAMMAR.md`'s two-channel rule is project-wide, and the wave readout's
+## tint is precisely the channel a greyscale reader loses.
 const STAT_READOUTS: Array[Dictionary] = [
 	{
 		"name": "SeedsLabel",
 		"member": "_seeds_label",
 		"width": 171.0,
 		"font_size": STAT_FONT_SIZE,
+		"weight": READOUT_WEIGHT_MEDIUM,
 		"colour": PAPER,
 		"worst_case": "Seeds  99999",
 		"shapes": ["Seeds  %d"],
@@ -144,7 +215,14 @@ const STAT_READOUTS: Array[Dictionary] = [
 		"name": "WaveLabel",
 		"member": "_wave_label",
 		"width": 312.0,
-		"font_size": STAT_FONT_SIZE,
+		"font_size": WAVE_FONT_SIZE,
+		# Plain on purpose, and it is the one row where that is a constraint rather than
+		# a choice: this label's colour is rewritten every frame of a threat ease, and an
+		# outline is drawn in a colour of its own. `_ease_threat_tint` keeps the two in
+		# step so a future weight here cannot strand a cream outline on a red number --
+		# but the cheapest way to be sure is to spend a different channel, and the tint
+		# already IS this readout's channel.
+		"weight": READOUT_WEIGHT_PLAIN,
 		"colour": PAPER,
 		"worst_case": "Wave  9999 ∞   threat 99",
 		"shapes": ["Wave  %d ∞", "Wave  %d / %d", "   threat %d"],
@@ -154,6 +232,7 @@ const STAT_READOUTS: Array[Dictionary] = [
 		"member": "_lives_label",
 		"width": 146.0,
 		"font_size": STAT_FONT_SIZE,
+		"weight": READOUT_WEIGHT_HEAVY,
 		"colour": PAPER,
 		"worst_case": "Garden  10",
 		"shapes": ["Garden  %d"],
@@ -167,6 +246,7 @@ const STAT_READOUTS: Array[Dictionary] = [
 		"member": "_compost_label",
 		"width": 198.0,
 		"font_size": COMPOST_FONT_SIZE,
+		"weight": READOUT_WEIGHT_PLAIN,
 		"colour": COMPOST,
 		"worst_case": "Compost  9999  +99",
 		"shapes": ["Compost  %d", "  +%d"],
@@ -582,6 +662,47 @@ const MESSAGE_DEADLINE: int = 2
 ## replace it. Roughly the time to read a short sentence.
 const MESSAGE_MIN_READABLE: float = 1.2
 
+## WHAT AN IMPORTANT LINE LOOKS LIKE (plant-tower-defense-xvub).
+##
+## The three rungs above controlled queue PRIORITY and nothing else, so the armed-uproot
+## prompt — a four-second irreversible decision — was drawn exactly like "Composted a
+## husk for 3 seeds." A player learns to skim a row where most of what appears is
+## ambient, and the one line that must be read was styled identically to the ones that
+## need not be.
+##
+## TWO channels, and NEITHER of them is colour. That is `game/OVERLAY_GRAMMAR.md`'s
+## two-channel rule, which is project-wide and is this bead's stated acceptance: the
+## distinction has to survive the screen being read in greyscale. It is met here in the
+## strongest available form — a stressed line and an ambient one are drawn in the SAME
+## colour (LEAF), so there is no hue difference to throw away in the first place.
+##
+##   WEIGHT     the row's own text thickens, drawn as a font outline in the text's own
+##              colour. One pixel, not two: the message row is 15px and a 2px outline
+##              starts closing the counters of an `e` at that size.
+##   A MARK     a solid tick in the page margin beside the line, present for a stressed
+##              line and absent for an ambient one. Presence/absence is the cleanest
+##              greyscale channel there is, and marking an important line in the margin
+##              is what this game's whole notebook idiom already does on paper.
+##
+## Both are FREE in width, which is the constraint that ruled out the obvious answers.
+## The outline changes what is drawn and not what is measured; the mark is a ColorRect
+## child of the Label — the same trick `_readout_rule` uses — living in the 6px of
+## gutter between MARGIN_RULE_X's rule and the text at STATS_ROW_MARGIN, which is space
+## nothing was using. Neither is an option the row's budget could otherwise afford.
+##
+## Rejected: the bead's third suggestion, a brief HOLD before the queue advances. It is
+## the cheapest of the three in pixels and the most expensive in risk — it changes the
+## row's timing, which `show_message`, `_queue_message`, `queue_outcome`,
+## `line_was_read` and their tests all reason about, to buy a channel the two above
+## already carry.
+const MESSAGE_STRESS_OUTLINE: int = 1
+## The margin tick's box, and where it sits. Anchored to the MessageLabel's left edge
+## with NEGATIVE offsets, so it is drawn outside the label's own rect and inside the
+## bar: STATS_ROW_MARGIN (20) - GAP (2) - WIDTH (4) puts its left edge at 14, exactly
+## where MarginRule's own 12+2 ends. It touches the page rule and never overlaps it.
+const MESSAGE_MARK_WIDTH: float = 4.0
+const MESSAGE_MARK_GAP: float = 2.0
+
 
 ## Whether a line that has been on the row for `total - left` seconds has had long enough to
 ## have been read.
@@ -715,6 +836,9 @@ var _wave_label: Label
 var _lives_label: Label
 var _compost_label: Label
 var _message_label: Label
+## The margin tick beside an important line. See MESSAGE_STRESS_OUTLINE — it is a child
+## of `_message_label` so it costs the row nothing and follows the label's rect.
+var _message_mark: ColorRect
 ## A GridContainer, not a VBox: it runs one column until a fifth plant would
 ## push the buttons under the touch minimum, then two. See plant_bar_layout.
 var _plant_bar: GridContainer
@@ -1043,7 +1167,8 @@ func _build_top_bar(root: Control) -> void:
 		var colour: Color = readout["colour"]
 		var member: String = String(readout["member"])
 		var label: Label = _add_stat(stats, String(readout["name"]),
-			int(readout["font_size"]), colour, float(readout["width"]))
+			int(readout["font_size"]), int(readout["weight"]), colour,
+			float(readout["width"]))
 		# The field the rest of this file reads. Through set() so the table stays the
 		# only enumeration of the four; a `member` naming nothing would otherwise leave
 		# the field null and not say so until the first refresh().
@@ -1094,7 +1219,33 @@ func _build_top_bar(root: Control) -> void:
 	_message_label = _make_label("MessageLabel", MESSAGE_FONT_SIZE, LEAF)
 	_message_label.clip_text = true
 	_message_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	# The stressed line's weight, in the text's own colour so the strokes thicken rather
+	# than gaining a halo. The SIZE is toggled per line by `_apply_message_stress`; the
+	# colour is written once here, and writing it once is what keeps the two states the
+	# same hue — the whole point of MESSAGE_STRESS_OUTLINE's two channels.
+	_message_label.add_theme_color_override("font_outline_color", LEAF)
+	_message_label.add_theme_constant_override("outline_size", 0)
 	bar.add_child(_message_label)
+
+	# The margin tick. A child of the Label rather than of the bar: it then follows the
+	# message row's rect through every `_apply_viewport_layout()` without a second copy
+	# of that arithmetic, exactly as `_readout_rule` does upstairs.
+	_message_mark = ColorRect.new()
+	_message_mark.name = "MessageMark"
+	_message_mark.color = PAPER
+	_message_mark.anchor_left = 0.0
+	_message_mark.anchor_right = 0.0
+	_message_mark.anchor_top = 0.0
+	_message_mark.anchor_bottom = 1.0
+	_message_mark.offset_left = -(MESSAGE_MARK_GAP + MESSAGE_MARK_WIDTH)
+	_message_mark.offset_right = -MESSAGE_MARK_GAP
+	_message_mark.offset_top = 0.0
+	_message_mark.offset_bottom = 0.0
+	_message_mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Ambient until something says otherwise. The row's resting state is the prep note,
+	# which is MESSAGE_NORMAL by construction.
+	_message_mark.visible = false
+	_message_label.add_child(_message_mark)
 
 	_prep_bar = ColorRect.new()
 	_prep_bar.name = "PrepBar"
@@ -1304,8 +1455,18 @@ func _make_banner_label(node_name: String, font_size: int, colour: Color) -> Lab
 ## right edge of the screen. Every readout is budgeted rather than just the
 ## long one, so adding a fifth later is a matter of finding room in the sum
 ## instead of rediscovering this.
-func _add_stat(row: HBoxContainer, node_name: String, font_size: int, colour: Color, width: float) -> Label:
+##
+## `weight` is the readout's stroke weight, drawn as a font outline in the readout's
+## OWN colour so the glyphs thicken instead of gaining a halo — see
+## READOUT_WEIGHT_HEAVY for why an outline rather than a bold face, and STAT_READOUTS'
+## hierarchy block for which readout gets which. The outline colour is set even at
+## weight 0: it costs nothing, and it means a row that later takes a weight is already
+## drawn in the right colour rather than in Godot's default black.
+func _add_stat(row: HBoxContainer, node_name: String, font_size: int, weight: int,
+		colour: Color, width: float) -> Label:
 	var label := _make_label(node_name, font_size, colour)
+	label.add_theme_constant_override("outline_size", weight)
+	label.add_theme_color_override("font_outline_color", colour)
 	label.clip_text = true
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	label.custom_minimum_size = Vector2(width, 0)
@@ -1975,9 +2136,15 @@ func _refresh_health(plant: Plant) -> void:
 ## wave is running — so a fresh Tween per call would stack dozens of them onto one
 ## property. The live tween is kept and killed, and a target already reached is a
 ## no-op, which is the common case.
+##
+## Writes the OUTLINE colour alongside the fill on every step. The wave readout carries
+## READOUT_WEIGHT_PLAIN today, so nothing is drawn from it — but a readout's outline is
+## its own colour by construction (`_add_stat`), and this is the only label in the row
+## whose colour moves at runtime. Keeping the pair in step here is what stops a future
+## weight on this row from stranding a cream outline around a red number.
 func _ease_threat_tint(target: Color) -> void:
 	if not GardenTheme.animations_enabled():
-		_wave_label.add_theme_color_override("font_color", target)
+		_tint_wave_label(target)
 		return
 	if target.is_equal_approx(_threat_tint_target):
 		return
@@ -1987,8 +2154,14 @@ func _ease_threat_tint(target: Color) -> void:
 	var from: Color = _wave_label.get_theme_color("font_color")
 	_threat_tween = create_tween()
 	_threat_tween.tween_method(
-		func(c: Color) -> void: _wave_label.add_theme_color_override("font_color", c),
+		func(c: Color) -> void: _tint_wave_label(c),
 		from, target, THREAT_FADE_SECONDS)
+
+
+## The wave readout's fill and its outline, always together. See _ease_threat_tint.
+func _tint_wave_label(c: Color) -> void:
+	_wave_label.add_theme_color_override("font_color", c)
+	_wave_label.add_theme_color_override("font_outline_color", c)
 
 
 ## Carries a swept husk's payout across the screen: a SeedGlyph.launch() from
@@ -2153,6 +2326,35 @@ func set_active(active: bool) -> void:
 
 func _paint_message_row() -> void:
 	_message_label.text = _message_text if _message_left > 0.0 else _idle_message
+	# The one place a line's LOOK is decided, for the same reason this is the one place
+	# its text is. Three writers of `_message_label.text` was the bug this function
+	# replaced; three writers of its emphasis would be that bug again in a new channel.
+	_apply_message_stress(message_is_stressed(_message_left, _message_priority))
+
+
+## Whether the line the row is showing right now is one the player must read.
+##
+## Static and pure so the rule is assertable without a live row — the same shape
+## `line_was_read` above takes, and for the same reason. The `seconds_left > 0.0` half
+## is not decoration: with no transient line the row falls through to `_idle_message`,
+## and the standing prep note is ambient however important the line it replaced was.
+##
+## MESSAGE_DEADLINE is stressed too, and deliberately by `>=` rather than by naming the
+## two rungs. DEADLINE is the armed-uproot prompt — the line this whole bead is about —
+## and a fourth rung added above it would be stressed by default, which is the right
+## default for a rung somebody thought was worth adding above DEADLINE.
+static func message_is_stressed(seconds_left: float, priority: int) -> bool:
+	return seconds_left > 0.0 and priority >= MESSAGE_IMPORTANT
+
+
+## Applies the two non-colour channels of MESSAGE_STRESS_OUTLINE. Never touches
+## `font_color`: the whole claim is that these two states are told apart in greyscale,
+## and a hue difference here would be the thing that lets the claim rot.
+func _apply_message_stress(stressed: bool) -> void:
+	_message_label.add_theme_constant_override("outline_size",
+		MESSAGE_STRESS_OUTLINE if stressed else 0)
+	if _message_mark != null:
+		_message_mark.visible = stressed
 
 
 ## Returns whether `text` is ON THE ROW when this call returns — false when it was
