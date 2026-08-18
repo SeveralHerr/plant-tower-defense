@@ -404,6 +404,23 @@ var _page_label: Label
 var _next_button: Button
 
 
+## The one overlay whose paper is NOT re-centred on the live canvas, and the
+## exception is recorded rather than left to be discovered
+## (plant-tower-defense-nrup).
+##
+## `PANEL.position.x` is 76 for a 1000-wide paper, which is `(1152 - 1000) / 2` —
+## the same design-width centring `OptionsScreen.PANEL` and
+## `KeyBindingScreen.panel_rect()` carry, and both of those now go through
+## `paper_left()`. This one cannot follow them yet, because this screen's content
+## is placed in ABSOLUTE viewport coordinates rather than as offsets from the
+## paper: `PAGE_SPLIT` (576), `LEFT_CENTRE` (358), `RIGHT_CENTRE` (858) and
+## `BACK_AT` are all authored against a paper at x=76. Centring the paper alone
+## would slide it out from under every one of them — a worse screen on a wide
+## window than an off-centre one.
+##
+## Converting those constants to paper-relative offsets is the follow-up. Until
+## then the Notebook is design-centred, and only the covering layer above it
+## (OverlayScreen's root rect and Backdrop) tracks the window.
 func panel_rect() -> Rect2:
 	return PANEL
 

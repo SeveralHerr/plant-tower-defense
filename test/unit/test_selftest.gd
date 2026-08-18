@@ -1534,7 +1534,12 @@ func test_every_overlay_wears_the_same_chrome() -> String:
 	for i: int in makers.size():
 		var who: String = who_list[i]
 		var built := await _T.instantiate_ui(makers[i].call() as OverlayScreen, Vector2i(1152, 648)) as OverlayScreen
-		err = _T.assert_eq(built.size, want, "%s fills the viewport it read out of ProjectSettings" % who)
+		# "the viewport it read out of ProjectSettings" until
+		# plant-tower-defense-nrup: these now read the LIVE canvas, which at the
+		# design host size is the same 1152x648 this has always asserted. The
+		# wide-canvas half is
+		# test_every_full_screen_surface_covers_a_wider_than_design_canvas.
+		err = _T.assert_eq(built.size, want, "%s fills the viewport it is hosted in" % who)
 		if err == "":
 			var backdrop: ColorRect = built.get_node_or_null(OverlayScreen.BACKDROP_NAME) as ColorRect
 			err = _T.assert_true(backdrop != null, "%s has a Backdrop, and it is a ColorRect" % who)
@@ -14110,4 +14115,444 @@ func test_no_two_hud_controls_share_pixels_at_any_viewport_shape() -> String:
 		_T.free_ui(game)
 		if err != "":
 			return err
+	return err
+
+
+# =============================================================================
+# ONE VIEWPORT HELPER, TWO QUESTIONS (plant-tower-defense-nrup)
+#
+# `Hud`, `TitleScreen`, `OverlayScreen` and `PauseScreen` each declared their own
+# `get_viewport_width()/height()` reading `ProjectSettings`, and
+# `KeyBindingScreen.panel_rect()` and `OptionsScreen.rows_capacity()` inlined the
+# same read again. Cycle 105 fixed the copy in `Hud`; this section is the rest of
+# it and, more to the point, the reason there were ever four.
+#
+# The reason is that one name answered two questions: "how big is the screen I
+# have to cover" (live, and genuinely different from the setting under
+# `stretch/aspect="expand"`) and "how big is the canvas this was composed on"
+# (the design size, which every row budget in the game is a statement about).
+# `ScreenMetrics` names them apart. These checks are about the SPLIT, not about
+# either half on its own -- the interesting failures are a covering layer left at
+# the design size, and a budget quietly following the window.
+#
+# GEOMETRY NOTE, because it decides whether these numbers are worth anything:
+# `_T.instantiate_ui` hosts the node in a SubViewport whose `size` it SETS, so
+# `get_visible_rect().size` inside these tests is exactly the Vector2i passed in,
+# on any machine, headless or not. These are NOT `[HEADLESS geometry]` readings
+# of a 64x64 window -- a 1536x648 host here is a real 1536x648 canvas. What they
+# cannot see is the stretch transform the ROOT viewport applies, which is what
+# turns a 1720x720 window into a 1548-unit canvas in the first place; that half
+# needs `cmd set_resolution` against a running game.
+# =============================================================================
+
+
+## The census: after this bead, which files still read the project setting directly?
+##
+## Written as a subset check against a NAMED allowlist rather than as "exactly
+## zero", because two of the copies live in files this lane did not own -- and
+## written as a list rather than a count, because a count going from 8 to 3 says
+## nothing about WHICH three survived. It passes now, it keeps passing when the
+## two parent-owned copies are folded in, and it fails the day a ninth appears.
+##
+## This is the check that makes "why are there three" a standing answer instead of
+## a paragraph in a commit message.
+func test_only_the_named_files_still_read_the_viewport_setting() -> String:
+	# ScreenMetrics is the one implementation and must read it.
+	# hud.gd and run_summary.gd are the two copies plant-tower-defense-nrup could
+	# not reach (file ownership, cycle 106 fan-out) -- folding them in is a
+	# follow-up, and this line is where it gets noticed if it never happens.
+	var allowed: Array[String] = [
+		"screen_metrics.gd", "hud.gd", "run_summary.gd",
+	]
+	var dir: DirAccess = DirAccess.open("res://game")
+	var err: String = _T.assert_true(dir != null, "res://game is readable")
+	if err != "":
+		return err
+	var offenders: Array[String] = []
+	var scanned: int = 0
+	for file_name: String in dir.get_files():
+		if not file_name.ends_with(".gd"):
+			continue
+		scanned += 1
+		var text: String = FileAccess.get_file_as_string("res://game/%s" % file_name)
+		# The setting KEY, not the word "viewport" -- every screen mentions the
+		# viewport in prose and matching that would report the whole directory.
+		if not text.contains("display/window/size/viewport_"):
+			continue
+		if not allowed.has(file_name):
+			offenders.append(file_name)
+	# The denominator: a glob that matched nothing would print a clean result
+	# identical to a directory with no offenders in it.
+	err = _T.assert_gt(scanned, 20, "the sweep read the game scripts (%d of them)" % scanned)
+	if err == "":
+		err = _T.assert_true(offenders.is_empty(),
+			("%s read display/window/size/viewport_* directly. Ask ScreenMetrics "
+				+ "instead -- design_width()/design_height() for a budget or a "
+				+ "composition coordinate, live_width()/live_height() for anything "
+				+ "that has to reach the edge of the window.") % [offenders])
+	return err
+
+
+## Both halves of the split, asserted as the two different answers they are.
+##
+## `design_*` is the project setting and every surface's design getter must agree
+## with it -- that agreement is what "one implementation" means here, and it is
+## checked rather than assumed because four of these used to be four bodies.
+##
+## `live_*` is asked of a node, and its two fallbacks are the whole reason the
+## ProjectSettings read was defensible in the first place: a screen with no
+## viewport, and a viewport with no size yet.
+func test_screen_metrics_answers_design_and_live_as_separate_questions() -> String:
+	var design_w: int = int(ProjectSettings.get_setting("display/window/size/viewport_width", 1152))
+	var design_h: int = int(ProjectSettings.get_setting("display/window/size/viewport_height", 648))
+	var err: String = _T.assert_eq(ScreenMetrics.design_width(), design_w,
+		"ScreenMetrics.design_width() is the project setting")
+	if err == "":
+		err = _T.assert_eq(ScreenMetrics.design_height(), design_h, "and design_height()")
+	if err == "":
+		err = _T.assert_eq(ScreenMetrics.design_size(), Vector2(float(design_w), float(design_h)),
+			"and design_size() is the pair of them")
+	# Every surface's design getter is the SAME number, from the same place. Four
+	# separate bodies agreed too, right up until one of them was fixed.
+	if err == "":
+		err = _T.assert_eq(OverlayScreen.design_width(), design_w, "OverlayScreen.design_width() agrees")
+	if err == "":
+		err = _T.assert_eq(OverlayScreen.design_height(), design_h, "OverlayScreen.design_height() agrees")
+	if err == "":
+		err = _T.assert_eq(TitleScreen.viewport_width(), design_w, "TitleScreen.viewport_width() agrees")
+	if err == "":
+		err = _T.assert_eq(TitleScreen.viewport_height(), design_h, "TitleScreen.viewport_height() agrees")
+	if err == "":
+		err = _T.assert_eq(Hud.design_width(), design_w, "Hud.design_width() agrees")
+	if err == "":
+		err = _T.assert_eq(Hud.design_height(), design_h, "Hud.design_height() agrees")
+	# The fallback that made the old ProjectSettings read defensible: a screen
+	# asked for its size before it is inside a viewport gets the design size, not
+	# a zero that would collapse every rect on it.
+	if err == "":
+		err = _T.assert_eq(ScreenMetrics.live_size(null), ScreenMetrics.design_size(),
+			"live_size(null) falls back to the design size rather than returning zero")
+	if err == "":
+		var unparented := Control.new()
+		err = _T.assert_eq(ScreenMetrics.live_size(unparented), ScreenMetrics.design_size(),
+			"and so does a Control that is not in any tree")
+		if err == "":
+			err = _T.assert_eq(ScreenMetrics.live_width(unparented), ScreenMetrics.design_width(),
+				"live_width() reads the same fallback")
+		if err == "":
+			err = _T.assert_eq(ScreenMetrics.live_height(unparented), ScreenMetrics.design_height(),
+				"and live_height()")
+		unparented.free()
+	# The centring idiom four surfaces had each written out. Pure, so it is checked
+	# without a node: a 700-wide paper on the 1152 design canvas starts at 226,
+	# which is exactly the constant OptionsScreen.PANEL carried.
+	if err == "":
+		err = _T.assert_float_eq(ScreenMetrics.centred_left(null, 700.0), 226.0, 0.001,
+			"centred_left() reproduces the 226 OptionsScreen.PANEL had baked in")
+	if err == "":
+		err = _T.assert_float_eq(ScreenMetrics.centred_left(null, 1000.0), 76.0, 0.001,
+			"and the 76 NotebookScreen.PANEL has")
+	if err == "":
+		# A composition WIDER than the canvas clamps to 0 rather than going
+		# negative: a paper starting off the left edge is worse than one overflowing
+		# the right, because its left column is the one carrying the row labels.
+		err = _T.assert_float_eq(ScreenMetrics.centred_left(null, 2000.0), 0.0, 0.001,
+			"and never returns a negative left edge")
+	return err
+
+
+## Every full-screen surface covers a canvas WIDER than the one it was composed on.
+##
+## This is the defect, stated as a check. At 1536x648 -- the canvas a 21:9 window
+## produces under `stretch/aspect="expand"` -- each of these used to size itself
+## and its backdrop to 1152 and leave 384px of whatever is behind it showing.
+##
+## On PauseScreen that strip is not cosmetic: its Backdrop is MOUSE_FILTER_STOP
+## precisely so the board underneath cannot be played through a pause, and the
+## part it does not cover is live, clickable board.
+func test_every_full_screen_surface_covers_a_wider_than_design_canvas() -> String:
+	var wide := Vector2i(1536, 648)
+	var builders: Array[Dictionary] = [
+		{"what": "TitleScreen", "make": func() -> Node: return (load("res://game/title.tscn") as PackedScene).instantiate()},
+		{"what": "KeyBindingScreen", "make": func() -> Node: return KeyBindingScreen.new()},
+		{"what": "OptionsScreen", "make": func() -> Node: return OptionsScreen.new()},
+		{"what": "NotebookScreen", "make": func() -> Node: return NotebookScreen.new()},
+		{"what": "PauseScreen", "make": func() -> Node: return PauseScreen.build("", Game.key_help())},
+	]
+	# The denominator. A list that lost an entry would still report a clean sweep.
+	var err: String = _T.assert_eq(builders.size(), 5,
+		"five full-screen surfaces swept -- add the sixth here or this is a subset")
+	if err != "":
+		return err
+	for spec: Dictionary in builders:
+		var what: String = String(spec["what"])
+		var make: Callable = spec["make"]
+		var screen := await _T.instantiate_ui(make.call(), wide) as Control
+		err = _T.assert_true(screen != null, "%s hosts at 1536x648" % what)
+		if err == "":
+			err = _T.assert_float_eq(screen.size.x, 1536.0, 0.5,
+				("%s sized itself to %.0f on a 1536-wide canvas -- that is the design "
+					+ "width, not the screen") % [what, screen.size.x])
+		if err == "":
+			err = _T.assert_float_eq(screen.size.y, 648.0, 0.5, "%s takes the full height too" % what)
+		if err == "":
+			var backdrop: Control = screen.get_node_or_null("Backdrop") as Control
+			err = _T.assert_true(backdrop != null, "%s has its Backdrop" % what)
+			if err == "":
+				err = _T.assert_float_eq(backdrop.size.x, 1536.0, 0.5,
+					("%s's Backdrop stops at %.0f, leaving %.0fpx of what is behind it "
+						+ "showing through") % [what, backdrop.size.x, 1536.0 - backdrop.size.x])
+			if err == "":
+				err = _T.assert_float_eq(backdrop.size.y, 648.0, 0.5,
+					"%s's Backdrop covers the height" % what)
+		_T.free_ui(screen)
+		if err != "":
+			return err
+	return err
+
+
+## A window resized WHILE a surface is on screen. The half that "it is rebuilt on
+## open" does not cover.
+##
+## Checked rather than assumed, per the bead: every overlay IS `new()` +
+## `add_child()` on open and `queue_free()` on close, so the next opening is
+## always correct. That says nothing about the opening in progress -- the Options
+## dials and the Keys table are read screens a player sits on, and the pause card
+## holds one open over a HELD run, which is the single most likely moment for
+## someone to maximise or drag a window.
+##
+## Both halves are asserted: the covering layer follows, and the composition
+## deliberately does NOT. The second is a known limitation recorded as a fact --
+## re-centring the paper means re-running the builder, which would take a Keys row
+## out of capture and move focus out from under the player.
+func test_a_resize_moves_the_covering_layer_and_leaves_the_composition() -> String:
+	var screen := await _T.instantiate_ui(KeyBindingScreen.new(), Vector2i(1152, 648)) as KeyBindingScreen
+	var err: String = _T.assert_true(screen != null, "the Keys screen hosts")
+	if err != "":
+		return err
+	var paper: Control = screen.get_node_or_null("Paper") as Control
+	var backdrop: Control = screen.get_node_or_null("Backdrop") as Control
+	err = _T.assert_true(paper != null and backdrop != null, "with a Paper and a Backdrop")
+	if err == "":
+		err = _T.assert_float_eq(backdrop.size.x, 1152.0, 0.5, "covering 1152 to start with")
+	var paper_before: float = 0.0
+	if err == "":
+		paper_before = paper.position.x
+		err = _T.assert_float_eq(paper_before,
+			ScreenMetrics.centred_left(screen, KeyBindingScreen.panel_width()), 1.0,
+			"and the paper centred on that canvas")
+
+	if err == "":
+		# The real event, not a stand-in: setting a Viewport's size is what emits
+		# `size_changed`, and this is the same signal a resized OS window raises.
+		var host: SubViewport = screen.get_viewport() as SubViewport
+		err = _T.assert_true(host != null, "the host is a SubViewport whose size can be driven")
+		if err == "":
+			host.size = Vector2i(1536, 648)
+			await screen.get_tree().process_frame
+			await screen.get_tree().process_frame
+			err = _T.assert_float_eq(screen.size.x, 1536.0, 0.5,
+				"the overlay grew with the window rather than staying at its opening size")
+		if err == "":
+			err = _T.assert_float_eq(backdrop.size.x, 1536.0, 0.5,
+				("the Backdrop followed -- at %.0f it would leave a live strip of whatever "
+					+ "it is covering") % backdrop.size.x)
+		if err == "":
+			# The recorded limitation. If someone makes the composition track a
+			# resize, THIS is the assertion that should be rewritten, on purpose,
+			# rather than a screen that silently started re-laying-out mid-capture.
+			err = _T.assert_float_eq(paper.position.x, paper_before, 0.5,
+				("the paper stays where it was opened -- re-centring it means re-running "
+					+ "the builder, which discards a row mid-capture. It re-centres on the "
+					+ "next open, and panel_rect() already reports the new one: %.0f")
+					% screen.panel_rect().position.x)
+	_T.free_ui(screen)
+	return err
+
+
+## The papers centre on the LIVE canvas, and the rows come with them.
+##
+## All three overlays centre their paper horizontally, and until this bead two of
+## them did it by carrying `(1152 - width) / 2` pre-computed into a constant --
+## which is why `OptionsScreen.PANEL`'s x of 226 never looked like a copy of
+## `KeyBindingScreen.panel_rect()`'s arithmetic. `paper_left()` is the one place
+## it lives now.
+##
+## The rows matter as much as the paper: every offset on these screens is measured
+## from `panel_rect().position.x`, so a paper that re-centres while the rows read a
+## constant is strictly worse than one that does not move at all.
+func test_the_overlay_papers_centre_on_the_live_canvas() -> String:
+	var wide := Vector2i(1536, 648)
+
+	var keys := await _T.instantiate_ui(KeyBindingScreen.new(), wide) as KeyBindingScreen
+	var expected_keys: float = (1536.0 - KeyBindingScreen.panel_width()) / 2.0
+	var err: String = _T.assert_float_eq(keys.panel_rect().position.x, expected_keys, 1.0,
+		"the Keys paper centres on 1536, not on the 1152 it was composed at")
+	if err == "":
+		err = _T.assert_float_eq(keys.paper_left(KeyBindingScreen.panel_width()), expected_keys, 1.0,
+			"and paper_left() is where that number comes from")
+	if err == "":
+		var drawn: Control = keys.get_node_or_null("Paper") as Control
+		err = _T.assert_true(drawn != null and absf(drawn.position.x - expected_keys) <= 1.0,
+			"the DRAWN paper is at the derived x, not a second copy of the sum")
+	if err == "":
+		var row: Control = keys.get_node_or_null("RowButton0") as Control
+		err = _T.assert_true(row != null, "the Keys screen drew its first row button")
+		if err == "":
+			err = _T.assert_float_eq(row.position.x,
+				keys.panel_rect().position.x + KeyBindingScreen.button_x(), 1.0,
+				"and the row travelled with the paper rather than staying at the constant")
+	_T.free_ui(keys)
+	if err != "":
+		return err
+
+	var options := await _T.instantiate_ui(OptionsScreen.new(), wide) as OptionsScreen
+	var expected_options: float = (1536.0 - OptionsScreen.PANEL.size.x) / 2.0
+	err = _T.assert_float_eq(options.panel_rect().position.x, expected_options, 1.0,
+		("the Options paper centres live -- PANEL's x was %.0f, which is the same sum "
+			+ "with 1152 already substituted in") % OptionsScreen.PANEL.position.x)
+	if err == "":
+		var row: Control = options.get_node_or_null("RowButton0") as Control
+		err = _T.assert_true(row != null, "the Options screen drew its first row button")
+		if err == "":
+			err = _T.assert_float_eq(row.position.x,
+				options.panel_rect().position.x + OptionsScreen.BUTTON_X, 1.0,
+				"and its rows travelled with the paper")
+	if err == "":
+		var back: Button = options.back_button()
+		err = _T.assert_true(back != null and absf(back.position.x
+			- (options.panel_rect().position.x + OptionsScreen.NAME_X)) <= 1.0,
+			"and so did the footer")
+	_T.free_ui(options)
+	if err != "":
+		return err
+
+	# The recorded exception. NotebookScreen's content is in ABSOLUTE viewport
+	# coordinates (PAGE_SPLIT, LEFT_CENTRE, RIGHT_CENTRE, BACK_AT) rather than as
+	# offsets from its paper, so centring the paper alone would slide it out from
+	# under all of them. Asserted so the exception is a decision on the record and
+	# not something rediscovered from a screenshot.
+	var notebook := await _T.instantiate_ui(NotebookScreen.new(), wide) as NotebookScreen
+	err = _T.assert_float_eq(notebook.panel_rect().position.x, NotebookScreen.PANEL.position.x, 0.5,
+		("the Notebook is still design-centred on purpose -- its content constants are "
+			+ "absolute viewport coordinates. Converting them to paper-relative offsets "
+			+ "is what lets this join the other two."))
+	_T.free_ui(notebook)
+	return err
+
+
+## The row budgets did NOT go live, and that is the point of the split.
+##
+## `stretch/aspect="expand"` never yields a canvas SMALLER than the design size on
+## either axis, so the design size is the WORST CASE a budget has to survive and a
+## ceiling measured against it holds on every window. Measured against the live
+## height instead, `OptionsScreen.rows_capacity()` would report 6 at 16:9, 8 at
+## 4:3, and something near 17 in a headless run -- where the root window is 64x64
+## and `expand` scales it to a 1152x1152 canvas. A tripwire that relaxes on the
+## machine running the suite is worse than no tripwire.
+##
+## So "six rows is the last count that fits a 648-tall viewport" survives this
+## bead unchanged, and means what it always meant: six is the last count that fits
+## the SMALLEST canvas this game can be shown on.
+func test_the_row_budgets_do_not_follow_the_window() -> String:
+	var options_before: int = OptionsScreen.rows_capacity()
+	var keys_before: float = KeyBindingScreen.panel_height()
+	var menu_before: int = TitleScreen.menu_capacity()
+
+	# Hosted on a canvas half again as TALL as the design one. Every one of these
+	# is static and reads the design height, so nothing here may move.
+	var tall := Vector2i(1152, 972)
+	var options := await _T.instantiate_ui(OptionsScreen.new(), tall) as OptionsScreen
+	var err: String = _T.assert_eq(OptionsScreen.rows_capacity(), options_before,
+		("rows_capacity() moved to %d on a 972-tall canvas. It is a budget against the "
+			+ "SMALLEST canvas this game can be shown on and must not relax on a taller "
+			+ "window -- least of all in the headless suite, whose canvas is taller still")
+			% OptionsScreen.rows_capacity())
+	if err == "":
+		# The shipped ceiling, in the same check that proves it is fixed: six rows.
+		# `test_every_row_limited_surface_is_exactly_full` owns the spare count; this
+		# owns the claim that the number is a constant of the design.
+		err = _T.assert_eq(options_before, 6,
+			"six rows is the last count that fits 648, unchanged by the live viewport")
+	if err == "":
+		# The panel is still sized from its rows against the design height, so it
+		# fits inside the DESIGN canvas -- which is the narrow case, not this one.
+		err = _T.assert_gte(float(ScreenMetrics.design_height()), options.panel_rect().end.y,
+			"and the Options paper still foots inside the 648 it is budgeted against")
+	_T.free_ui(options)
+	if err != "":
+		return err
+
+	var keys := await _T.instantiate_ui(KeyBindingScreen.new(), tall) as KeyBindingScreen
+	err = _T.assert_float_eq(KeyBindingScreen.panel_height(), keys_before, 0.001,
+		"the Keys panel height is derived from its rows, not from the window it is shown in")
+	if err == "":
+		err = _T.assert_gte(float(ScreenMetrics.design_height()), keys.panel_rect().end.y,
+			"and it still foots inside the 648 its nine-verb ceiling is written against")
+	_T.free_ui(keys)
+	if err != "":
+		return err
+
+	var title := await _T.instantiate_ui("res://game/title.tscn", tall) as TitleScreen
+	err = _T.assert_eq(TitleScreen.menu_capacity(), menu_before,
+		("menu_capacity() moved to %d on a taller canvas. Its ceiling is the horizon of a "
+			+ "648-tall composition; a menu budget that grows with the window is not a budget")
+			% TitleScreen.menu_capacity())
+	if err == "":
+		err = _T.assert_gt(menu_before, TitleScreen.MENU_BUTTON_NAMES.size(),
+			"and there is still room in it")
+	_T.free_ui(title)
+	return err
+
+
+## `button_column()` reports the column that is actually DRAWN -- the drift the
+## live viewport could have introduced and did not.
+##
+## `button_rect()` is static and places the menu at the DESIGN centre, because
+## `TitleScreen.PLANT_X` is a list of hand-placed lawn slots in design coordinates
+## and `test_the_title_lawn_clears_the_button_column_and_the_horizon` compares the
+## two. Had `button_column()` taken the live width when `get_viewport_width()` did,
+## its centre would move to 768 on a 1536 canvas while the lawn stayed at 576: the
+## reported column would drive straight through the plants, and the test guarding
+## the clearance would be measuring a column nobody can see.
+##
+## That is the whole argument for why a fixed composition wants CENTRING rather
+## than a live number substituted into each of its constants.
+func test_the_title_button_column_reports_the_column_that_is_drawn() -> String:
+	var title := await _T.instantiate_ui("res://game/title.tscn", Vector2i(1536, 648)) as TitleScreen
+	var err: String = _T.assert_true(title != null, "the title screen hosts on a 1536-wide canvas")
+	if err != "":
+		return err
+	# The screen really is on the wider canvas -- otherwise everything below is
+	# a test of the design case wearing a wide-canvas label.
+	err = _T.assert_eq(title.get_viewport_width(), 1536,
+		"and it reads the live width, so this is not the design case in disguise")
+	if err == "":
+		err = _T.assert_eq(TitleScreen.viewport_width(), 1152,
+			"while viewport_width() still answers the composition question")
+	var column: Vector2 = Vector2.ZERO
+	if err == "":
+		column = title.button_column()
+		var drawn: Rect2 = TitleScreen.button_rect(0, TitleScreen.MENU_BUTTON_NAMES.size())
+		err = _T.assert_float_eq(column.x, drawn.position.x, 0.5,
+			("button_column() reports %.0f..%.0f but the primary button is drawn at %.0f. "
+				+ "A report of a column nobody can see is what the lawn clearance test "
+				+ "would then be checking against") % [column.x, column.y, drawn.position.x])
+		if err == "":
+			err = _T.assert_float_eq(column.y, drawn.end.x, 0.5, "and its right edge")
+	if err == "":
+		# The invariant that report exists to protect, re-checked on the wide canvas
+		# where the drift would have shown. Not a duplicate of the placement suite's
+		# version: that one runs at the design size, where the bug is invisible.
+		var slots: int = TitleScreen.lawn_plants().size()
+		err = _T.assert_gt(slots, 0, "there are lawn slots to check -- an empty lawn passes everything")
+		for slot: int in range(slots):
+			if err != "":
+				break
+			var span: Vector2 = TitleScreen.plant_span(slot)
+			if span.y > column.x and span.x < column.y:
+				err = _T.assert_false(true,
+					"lawn slot %d spans %.0f..%.0f and runs into the button column %.0f..%.0f"
+						% [slot, span.x, span.y, column.x, column.y])
+	_T.free_ui(title)
 	return err

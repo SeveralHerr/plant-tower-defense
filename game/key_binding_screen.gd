@@ -242,10 +242,19 @@ const RESET_NOTHING_TO_DO := "Every key is already where it started."
 const RESET_MOVED_COUNT := "%d key%s moved."
 
 
+## Centred on the LIVE canvas, not on the design width it used to inline a
+## `ProjectSettings` read for (plant-tower-defense-nrup). Identical at 1152; on a
+## wider window this is the paper actually landing in the middle of the screen
+## instead of in the middle of the left 1152px of it. Every row on this screen is
+## placed at `panel_rect().position.x + <column offset>`, so they all follow from
+## this one number and none of them needed touching.
+##
+## The HEIGHT stays derived from the row count against the DESIGN height -- see
+## `panel_height()`'s nine-row ceiling, and `ScreenMetrics` for why a budget must
+## not follow the window.
 func panel_rect() -> Rect2:
 	var width: float = panel_width()
-	var viewport: float = float(ProjectSettings.get_setting("display/window/size/viewport_width", 1152))
-	return Rect2((viewport - width) / 2.0, PANEL_TOP, width, panel_height())
+	return Rect2(paper_left(width), PANEL_TOP, width, panel_height())
 
 
 func _build_contents() -> void:

@@ -348,8 +348,19 @@ static func panel_height() -> float:
 	return maxf(PANEL.size.y, needed)
 
 
+## `PANEL.position.x` was 226 for a 700-wide paper, which is `(1152 - 700) / 2`
+## with the design width already substituted in -- the same centring
+## `KeyBindingScreen.panel_rect()` computed, baked to a constant, which is why it
+## never looked like a copy of it (plant-tower-defense-nrup). Centred live now:
+## identical at 1152, and on a wider window the paper lands in the middle of the
+## SCREEN rather than in the middle of the left 1152px of it.
+##
+## `PANEL.position.y` stays a constant, and `panel_height()` stays derived against
+## the DESIGN height -- see `rows_capacity()` and `ScreenMetrics` for why a row
+## budget must not follow the window.
 func panel_rect() -> Rect2:
-	return Rect2(PANEL.position, Vector2(PANEL.size.x, panel_height()))
+	return Rect2(Vector2(paper_left(PANEL.size.x), PANEL.position.y),
+		Vector2(PANEL.size.x, panel_height()))
 
 
 func _build_contents() -> void:
@@ -380,11 +391,23 @@ func _build_header() -> void:
 ## The floor passed in is `- FOOTER_GAP` and not merely the footer's y, because a
 ## last row flush against the footer passes every overlap check ever written and is
 ## wrong only in a screenshot — which is the whole reason `FOOTER_GAP` exists.
+## **The height here is the DESIGN height and stays one, deliberately** — this is
+## the one place plant-tower-defense-nrup deliberately did NOT go live, and the
+## reason is the whole argument in `ScreenMetrics`. `stretch/aspect="expand"` never
+## yields a canvas SMALLER than 648 on the vertical, so 648 is the worst case a row
+## budget has to survive and a ceiling measured against it holds on every window.
+## Measured against the LIVE height instead, this would return 6 on a 16:9 window,
+## 8 on a 4:3 one, and — because the headless root window is 64x64 and `expand`
+## scales it to a 1152x1152 canvas — something near 17 in the very test suite whose
+## job is to notice when this surface fills up. A tripwire that goes slack in the
+## harness while still printing green is worse than no tripwire.
+##
+## So "six rows is the last count that fits a 648-tall viewport" is unchanged by
+## the live-viewport work, and it means what it always meant: six is the last count
+## that fits the SMALLEST canvas this game can be shown on.
 static func rows_capacity() -> int:
-	var viewport_height: float = float(ProjectSettings.get_setting(
-		"display/window/size/viewport_height", 648))
 	return OverlayScreen.rows_that_fit(ROWS_TOP, ROW_HEIGHT, ROW_BUTTON_SIZE.y,
-		viewport_height - FOOTER_HEIGHT - FOOTER_INSET - FOOTER_GAP)
+		float(OverlayScreen.design_height()) - FOOTER_HEIGHT - FOOTER_INSET - FOOTER_GAP)
 
 
 ## THE SWITCHES FIRST, THEN THE DIALS, and the order is a contract rather than a
@@ -393,6 +416,11 @@ static func rows_capacity() -> int:
 ## renumber a switch. It is also the right reading order — three yes/no answers,
 ## then two amounts.
 func _build_rows() -> void:
+	# The paper's own left edge, not PANEL.position.x. They are the same number at
+	# the design width and only panel_rect() knows the difference on any other
+	# window — reading the constant here would leave the rows behind when the paper
+	# re-centres (plant-tower-defense-nrup).
+	var left: float = panel_rect().position.x
 	var y: float = ROWS_TOP
 	for row: Dictionary in OPTIONS:
 		var id := StringName(row["id"])
@@ -400,16 +428,16 @@ func _build_rows() -> void:
 		_rows.append(id)
 
 		add_row_label("Row%d" % index, String(row["name"]),
-			Vector2(PANEL.position.x + NAME_X, y + 8.0), Vector2(NAME_WIDTH, 24.0),
+			Vector2(left + NAME_X, y + 8.0), Vector2(NAME_WIDTH, 24.0),
 			GardenTheme.INK)
 
 		_key_labels.append(add_row_label("RowKey%d" % index, "",
-			Vector2(PANEL.position.x + KEY_X, y + 8.0), Vector2(KEY_WIDTH, 24.0),
+			Vector2(left + KEY_X, y + 8.0), Vector2(KEY_WIDTH, 24.0),
 			GardenTheme.LEAF_DARK, HORIZONTAL_ALIGNMENT_CENTER))
 
 		# Bound, not read off the loop variable — a lambda closing over `id`
 		# directly is how three buttons all end up flipping the last switch.
-		add_row_button(index, Vector2(PANEL.position.x + BUTTON_X, y)).pressed.connect(flip.bind(id))
+		add_row_button(index, Vector2(left + BUTTON_X, y)).pressed.connect(flip.bind(id))
 
 		y += ROW_HEIGHT
 
@@ -422,7 +450,7 @@ func _build_rows() -> void:
 		_dials.append(id)
 
 		add_row_label("Row%d" % index, String(row["name"]),
-			Vector2(PANEL.position.x + NAME_X, y + 8.0), Vector2(NAME_WIDTH, 24.0),
+			Vector2(left + NAME_X, y + 8.0), Vector2(NAME_WIDTH, 24.0),
 			GardenTheme.INK)
 
 		# Built and left blank rather than skipped: every row on this paper has a
@@ -430,16 +458,16 @@ func _build_rows() -> void:
 		# two is a screen where a bridge recipe fails on exactly the rows a reader
 		# would not think to check. See DIALS for why there is no key to show.
 		add_row_label("RowKey%d" % index, "",
-			Vector2(PANEL.position.x + KEY_X, y + 8.0), Vector2(KEY_WIDTH, 24.0),
+			Vector2(left + KEY_X, y + 8.0), Vector2(KEY_WIDTH, 24.0),
 			GardenTheme.LEAF_DARK, HORIZONTAL_ALIGNMENT_CENTER)
 
-		add_row_button(index, Vector2(PANEL.position.x + BUTTON_X, y)).pressed.connect(turn.bind(id))
+		add_row_button(index, Vector2(left + BUTTON_X, y)).pressed.connect(turn.bind(id))
 
 		y += ROW_HEIGHT
 
 
 func _build_footer() -> void:
-	add_back_button(Vector2(PANEL.position.x + NAME_X, footer_y()))
+	add_back_button(Vector2(panel_rect().position.x + NAME_X, footer_y()))
 
 
 ## Flips one switch and redraws. The only writer the buttons have, so "changed on

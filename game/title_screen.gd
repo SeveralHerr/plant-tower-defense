@@ -330,6 +330,10 @@ var _notebook: NotebookScreen = null
 var _keys_screen: KeyBindingScreen = null
 var _options_screen: OptionsScreen = null
 
+## The gradient behind everything, held rather than re-found by name:
+## `_apply_viewport_layout()` re-sizes it on every window change.
+var _backdrop: TitleBackdrop = null
+
 var _plants: Array[Sprite2D] = []
 var _pests: Array[Sprite2D] = []
 var _elapsed: float = 0.0
@@ -348,14 +352,14 @@ func _ready() -> void:
 	# at runtime — inherits the same Button look without asking for it.
 	theme = GardenTheme.build()
 
-	var backdrop := TitleBackdrop.new()
-	backdrop.name = "Backdrop"
-	backdrop.position = Vector2.ZERO
-	backdrop.size = size
+	_backdrop = TitleBackdrop.new()
+	_backdrop.name = "Backdrop"
+	_backdrop.position = Vector2.ZERO
+	_backdrop.size = size
 	# The scenery is scenery. Without this it is a full-screen Control sitting
 	# over every button, and `reachable-ui` is right to call them blocked.
-	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(backdrop)
+	_backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_backdrop)
 
 	Music.play_for_scene(scene_file_path)
 
@@ -364,9 +368,44 @@ func _ready() -> void:
 	_build_buttons()
 	_play_entrance()
 
+	# CHECKED, not assumed: this is the main scene's root and it is never rebuilt.
+	# A player who resizes or maximises the window is, almost by definition, doing
+	# it on the first screen they see — so of the three surfaces this lane touched
+	# it is the one MOST likely to be live during a resize, not the least.
+	var vp: Viewport = get_viewport()
+	if vp != null and not vp.size_changed.is_connected(_apply_viewport_layout):
+		vp.size_changed.connect(_apply_viewport_layout)
+
+
+## The covering layer, re-derived. Deliberately NOT the composition.
+##
+## `TitleBackdrop` paints its gradient and its horizon across its own rect, so a
+## Backdrop left at the design size on a widened window leaves a bare strip of the
+## window's clear colour down one side — the most visible symptom this screen had
+## of reading the setting instead of the screen.
+##
+## The menu, the wordmark and the lawn do NOT move here. They are a fixed
+## composition in design coordinates whose internal relationships are pinned by
+## tests (`plant_span()` vs `button_column()`, `menu_capacity()` vs the horizon),
+## and the right fix for a fixed composition on a bigger canvas is one translation
+## of the whole thing — see `viewport_width()`.
+func _apply_viewport_layout() -> void:
+	# `size_changed` outlives the build: a resize landing while the scene is being
+	# swapped out for game.tscn reaches a half-torn-down screen.
+	if _backdrop == null or not is_instance_valid(_backdrop):
+		return
+	size = Vector2(get_viewport_width(), get_viewport_height())
+	_backdrop.position = Vector2.ZERO
+	_backdrop.size = size
+
 
 func _build_text() -> void:
-	var width: float = float(get_viewport_width())
+	# The COMPOSITION width, not the live one. These three Labels are full-width
+	# and centred, and the menu under them is placed by the static `button_rect()`
+	# — which is design-width by construction. A live width here would centre the
+	# wordmark on the window while the buttons stayed centred on the design canvas,
+	# which is a title screen with two different middles.
+	var width: float = float(viewport_width())
 
 	var title := Label.new()
 	title.name = "TitleLabel"
@@ -662,8 +701,16 @@ static func plant_span(slot: int) -> Vector2:
 ## The x span the buttons occupy, as (left, right). Derived from BUTTON_WIDTH and
 ## the viewport rather than written out, so the "426-726" in PLANT_X's comment
 ## stays a description of this rather than a second source of truth.
+## `viewport_width()`, not `get_viewport_width()`, and the two stopped being the
+## same number when the latter went live (plant-tower-defense-nrup). This function
+## exists to REPORT where `button_rect()` puts the buttons, and `button_rect()` is
+## static and design-width. Reading the live width here would make this a report
+## about a column that is not drawn — and since the lawn it is checked against is
+## the hand-placed `PLANT_X`, it would silently move the subject of
+## `test_the_title_lawn_clears_the_button_column_and_the_horizon` off the thing
+## the test is protecting.
 func button_column() -> Vector2:
-	var centre: float = float(get_viewport_width()) / 2.0
+	var centre: float = float(viewport_width()) / 2.0
 	return Vector2(centre - BUTTON_WIDTH / 2.0, centre + BUTTON_WIDTH / 2.0)
 
 
@@ -862,23 +909,46 @@ func _set_menu_active(active: bool) -> void:
 		button.mouse_filter = filter
 
 
+## The canvas this screen has to COVER. Live, and it has exactly two callers:
+## `_apply_viewport_layout()` (this Control's own rect and the Backdrop's) and
+## `_march_pests()` (scenery that walks off both edges, so it wants the real
+## edges). Everything else on this screen is a fixed composition and asks
+## `viewport_width()` below instead — see that function.
 func get_viewport_width() -> int:
-	return viewport_width()
+	return ScreenMetrics.live_width(self)
 
 
 func get_viewport_height() -> int:
-	return viewport_height()
+	return ScreenMetrics.live_height(self)
 
 
+## The canvas this screen was COMPOSED on, and the number every layout constant
+## here was authored against.
+##
 ## Static, because button_rect() and menu_capacity() are: the menu's shape has to
 ## be answerable before any instance exists, which is what lets a test ask "would
 ## a seventh destination fit" without building the screen to find out.
+##
+## **This one deliberately did NOT go live** (plant-tower-defense-nrup), and the
+## proof is `PLANT_X`. The lawn slots are hand-placed constants in design
+## coordinates, and `test_the_title_lawn_clears_the_button_column_and_the_horizon` compares
+## `plant_span(slot)` — a pure function of `PLANT_X` — against `button_column()`.
+## Move the button column onto the live width and its centre goes from 576 to 768
+## on a 21:9 window while the lawn stays put: the buttons drive straight through
+## the plants, and the invariant a test exists to hold is broken by the fix that
+## was supposed to be an improvement. `menu_capacity()` has the same problem for
+## the same reason — measured against a live height it reports a bigger menu on
+## every window that is not 16:9, and a ceiling that relaxes is not a ceiling.
+##
+## A fixed composition wants CENTRING, not re-derivation. That is the follow-up
+## named in the report on plant-tower-defense-nrup; it is one translation applied
+## to the whole screen, not a live number per constant.
 static func viewport_width() -> int:
-	return ProjectSettings.get_setting("display/window/size/viewport_width", 1152)
+	return ScreenMetrics.design_width()
 
 
 static func viewport_height() -> int:
-	return ProjectSettings.get_setting("display/window/size/viewport_height", 648)
+	return ScreenMetrics.design_height()
 
 
 func _start_campaign() -> void:
