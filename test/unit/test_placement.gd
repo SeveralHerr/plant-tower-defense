@@ -7556,19 +7556,26 @@ func test_a_hint_id_in_the_save_does_not_reach_the_milestone_shelf() -> String:
 
 ## Plants whose reach is real to `PlantCatalog.reach()` and deliberately NOT drawn.
 ##
-## One entry, and it is a decision rather than an oversight. `ChompFlower` overrides
-## `_draw()` to paint a chew clock — a partial arc at a fixed 22 px, the grammar's TIME
-## REMAINING row — and it was written before `draw_reach_ring()` existed, so it never
-## learned to call it. A Chomp therefore shows brackets and a clock on selection and
-## says nothing about its 73.6 px grab.
+## EMPTY, and it was emptied the same cycle it was written — which is the outcome this
+## array was shaped to produce rather than a sign it was never needed.
 ##
-## **That is a gap, not a design.** It is recorded here rather than fixed because
-## `chomp_flower.gd` belonged to another lane in the cycle that wrote this; the fix is
-## three lines (a `reach_ring_radius()` returning `GRAB_RADIUS`, a `reach_ring_color()`,
-## and a `draw_reach_ring()` call at the top of its `_draw()`), and applying it makes
-## this list empty and both tests below pass unchanged. Deleting the id from this array
-## is the last step of that fix, and the first test below demands it.
-const REACH_WITHOUT_A_RING: Array[StringName] = [PlantCatalog.CHOMP]
+## It held `PlantCatalog.CHOMP` for exactly as long as the fan-out lasted. `ChompFlower`
+## overrides `_draw()` to paint a chew clock and was written before `draw_reach_ring()`
+## existed, so it never learned to call it: a Chomp showed brackets and a clock on
+## selection and said nothing about its 73.6 px grab, while the PLACEMENT PREVIEW drew
+## that exact circle — `PlantCatalog.reach(CHOMP)` has always answered `GRAB_RADIUS` —
+## so the hover promised a reach the selection then withdrew. A gap, not a design.
+##
+## The lane that found it did not own `chomp_flower.gd`, so it recorded the exception
+## with the fix written out and made the test below DEMAND this array shrink the moment
+## someone applied it. The parent applied it at the merge. That is the shape worth
+## copying: **a recorded exception that names its own fix and fails when the fix lands
+## cannot quietly become permanent**, which is what every other waiver in this suite is
+## one forgetful cycle away from.
+##
+## Keep the array. An empty one costs nothing and the next plant to arrive without a
+## ring has somewhere honest to sit while its own file is someone else's.
+const REACH_WITHOUT_A_RING: Array[StringName] = []
 
 
 ## Every plant with a reach draws a ring AT that reach — the acceptance of -snnp, and

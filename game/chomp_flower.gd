@@ -91,6 +91,18 @@ const CHEW_RING_WIDTH: float = 3.0
 ## Named rather than inline now that two places would otherwise spell it.
 const CHEW_RING_COLOR := Color(1.0, 0.55, 0.15, 0.85)
 
+## The Chomp's hue for the SHARED reach ring (plant-tower-defense-snnp). Alpha comes
+## from `Plant.REACH_RING_ALPHA` rather than being a second copy of it, which is the
+## whole point of the shared helper: five plants had independently arrived at 0.55 and
+## the sixth would have been a coin toss.
+##
+## This plant had no reach ring at all until cycle 111, and that was a GAP rather than
+## a decision: `PlantCatalog.reach(CHOMP)` already answers `GRAB_RADIUS`, so the
+## placement preview draws this exact circle while the player is deciding where to put
+## the flower -- and then selecting the placed flower withdrew it. The hover promised a
+## reach the selection would not repeat. It repeats it now.
+const RING_COLOR := Color(0.86, 0.44, 0.62, Plant.REACH_RING_ALPHA)
+
 ## The fang crown: what an upgraded mouth WEARS, always on, whether or not it is
 ## chewing.
 ##
@@ -554,7 +566,24 @@ static func chew_arc_end(progress: float) -> float:
 ## The ring around the flower while the mouth is full — the whole Chomp/beetle
 ## trade-off ("mouth busy, lane open") made visible. Fixed radius, swept angle; see
 ## CHEW_RING_RADIUS for why round that way.
+func reach_ring_radius() -> float:
+	return GRAB_RADIUS
+
+
+func reach_ring_color() -> Color:
+	return RING_COLOR
+
+
 func _draw() -> void:
+	# The shared reach ring first, so everything this plant draws sits on top of it.
+	# `Plant.draw_reach_ring` gates itself on selection; this is an unconditional call
+	# by design, because the alternative is a seventh copy of that condition.
+	#
+	# This override exists at all — rather than inheriting Plant._draw() the way Mint,
+	# Nettle and Aloe now do — because the crown and the fangs are this plant's own.
+	# SelectionMarker's header is the reason it is a CALL and not something Plant._draw
+	# does and hopes for: this class does not chain to super, and never has.
+	draw_reach_ring()
 	# Always, and before the ring: the crown is what this flower's LEVEL looks like and
 	# the ring is what its current MEAL looks like. A cue the player has to catch the
 	# plant mid-chew to see cannot be the readout for something they bought.

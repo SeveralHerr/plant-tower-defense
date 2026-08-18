@@ -20,7 +20,7 @@ must survive its colour being thrown away.
 
 | Shape | Means | Instances |
 |---|---|---|
-| **Solid full ring**, plant-sized, centred on a plant | a REACH — "this is how far it acts" | `corn_cobbler.gd:149`, `dandelion.gd:377`, `dandelion.gd:381` (the bomb's blast radius), `placement_preview.gd:231` (the reach it *would* have) |
+| **Solid full ring**, plant-sized, centred on a plant | a REACH — "this is how far it acts" | **one implementation**, `Plant.draw_reach_ring`, called by Corn, Chomp, Dandelion and Sundew and inherited by Mint, Nettle and Aloe; plus `dandelion.gd` (the bomb's blast radius, the one instance that keeps a fill — see that file) and `placement_preview.gd:231` (the reach it *would* have) |
 | **Dashed ring** (an arc loop, not a full circle) | a REMARK about the thing inside it | `placement_preview.gd:320` (at risk), `sole_cover_marks.gd:150` (nothing depends on this plant) |
 | **Partial arc** at a fixed radius, sweeping closed | TIME REMAINING on a clock that is already running | `husk_layer.gd:113-122` (a husk's rot timer), `chomp_flower.gd:486-487` (a chew), `selection_marker.gd:206-208` (the uproot confirm window) |
 | **Small solid ring**, cell-sized, centred on a ROAD CELL | a MARKED CELL — "this one, specifically" | `sole_cover_marks.gd:154` |
