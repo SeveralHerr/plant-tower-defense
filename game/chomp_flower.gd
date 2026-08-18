@@ -146,6 +146,39 @@ const EATING_TEXTURE_PATH := "res://assets/sprites/chomp_flower_eating.png"
 ## that the last ~1s actually gets to show a second picture instead of the
 ## mouth just staying wide open the whole time.
 const LATE_BITE_THRESHOLD: float = 0.6
+
+## How many discrete bites a meal is eaten in.
+##
+## SOURCE: a player, verbatim -- "the attack animation for the chomp flower doesn't
+## really look like it's taking bites out of the bugs, improve the animation
+## dramatically" (plant-tower-defense-h4v1).
+##
+## The flower's half was already substantial -- a 7px lunge, a squash, three textures
+## and a chew ring draining round the rim -- and none of it touched the PEST. A held
+## bug walked in place, unmarked, took one flash at the grab and nothing after, then
+## became a corpse in a single frame. So the meal was a continuous drain with one
+## event at each end, and "taking bites" is exactly what a continuous drain is not.
+##
+## Three, and the number is doing work. Two reads as start-and-finish, which is what
+## it already looked like. Four inside CHEW_SECONDS puts the bites close enough
+## together that the pest's own HIT_FLASH_DURATION (0.10) has not finished before the
+## next one begins, so they smear into one long flash instead of reading as separate
+## bites.
+const BITES_PER_MEAL: int = 3
+
+
+## How many bites have been taken by a given point in the chew. Pure and static, so
+## the cadence is assertable with no board, no frame and no open animation gate --
+## the same treatment lunge_offset() and Nettle.sting_lean_skew() get, and for the
+## same reason.
+##
+## The last bite lands when the chew COMPLETES rather than before it, which is why
+## this floors a scaled progress rather than rounding: at progress 1.0 the meal ends
+## and Pest.kill() takes over, so a third bite landing at 0.999 would be a bite the
+## player never sees separately from the kill.
+static func bites_taken_for(progress: float) -> int:
+	var p: float = clampf(progress, 0.0, 1.0)
+	return mini(int(floorf(p * float(BITES_PER_MEAL))), BITES_PER_MEAL)
 const EATING_LATE_TEXTURE_PATH := "res://assets/sprites/chomp_flower_eating_late.png"
 
 ## How far the mouth throws itself at what it just caught, in px.
@@ -196,6 +229,10 @@ const BITE_SQUASH_BACK_SECONDS: float = 0.12
 
 var _held: Pest = null
 var _chew_left: float = 0.0
+## How many bites of the current meal have landed. Reset per meal, so a flower that
+## releases one pest and grabs another starts the new bug at zero rather than
+## finishing it in one.
+var _bites_taken: int = 0
 var _chew_total: float = 0.0
 var _idle_texture: Texture2D = null
 var _eating_texture: Texture2D = null
@@ -370,6 +407,16 @@ func _chew(delta: float) -> void:
 		release()
 		return
 	_chew_left -= delta
+	# The bites. Recorded and applied ABOVE the animation gate, because the fraction
+	# eaten is game state the suite reads and only its DRAWING is gated -- the rule
+	# test_combat.gd:6331 states for every animation in this game.
+	var taken: int = bites_taken_for(chew_progress())
+	if taken > _bites_taken:
+		_bites_taken = taken
+		_held.set_chewed(float(taken) / float(BITES_PER_MEAL))
+		# Once per bite, not once per meal. The single grab-time flash was the whole
+		# of the pest's feedback before plant-tower-defense-h4v1.
+		_held.flash_hit()
 	if chew_progress() > LATE_BITE_THRESHOLD and _sprite != null and _sprite.texture != _eating_late_texture:
 		_show_eating_late_sprite()
 	queue_redraw()
@@ -386,8 +433,15 @@ func _chew(delta: float) -> void:
 func release() -> void:
 	if _held != null and is_instance_valid(_held):
 		_held.held_by = null
+		# A pest released UNHARMED goes back to full size. A Chomp destroyed mid-chew
+		# lets its meal go (see this function's header), and a bug that walked away
+		# permanently two-thirds eaten would be a Chomp that killed something without
+		# the kill ever being scored.
+		if _held.is_alive():
+			_held.set_chewed(0.0)
 	_held = null
 	_chew_left = 0.0
+	_bites_taken = 0
 	_chew_total = 0.0
 	_show_idle_sprite()
 	queue_redraw()

@@ -7340,3 +7340,127 @@ func test_a_nettle_thrusts_at_its_victim_in_both_axes() -> String:
 
 
 # -- END the sting's thrust is aimed -------------------------------------------
+
+
+# -- BEGIN a meal is eaten in bites (plant-tower-defense-h4v1) ------------------
+
+
+## The chew lands three discrete bites, not one continuous drain.
+##
+## Pure statics, deliberately: `GardenTheme.animations_enabled()` is false for every
+## test in this suite by construction, so anything asserted through the drawing is
+## asserted through a closed gate. test_combat.gd's own rule (see the note above
+## `test_a_chomp_lunges_at_the_pest_it_grabbed`) is that the COMPOSITION comes out
+## into a static and the field is written above the gate, so deleting it goes red
+## rather than silently doing nothing.
+func test_a_chomp_eats_a_meal_in_discrete_bites() -> String:
+	var err: String = _T.assert_eq(ChompFlower.bites_taken_for(0.0), 0,
+		"nothing has been bitten off at the instant of the grab")
+	if err == "":
+		err = _T.assert_eq(ChompFlower.bites_taken_for(0.99), ChompFlower.BITES_PER_MEAL - 1,
+			("the last bite lands WITH the kill, not just before it -- a bite at 0.99"
+				+ " is one the player never sees separately from the pest dying"))
+	if err == "":
+		err = _T.assert_eq(ChompFlower.bites_taken_for(1.0), ChompFlower.BITES_PER_MEAL,
+			"and a finished chew has taken every bite")
+	if err == "":
+		# Monotone, and it actually advances: a function stuck at 0 satisfies the
+		# first assertion above and nothing else here.
+		var seen: int = 0
+		var last: int = -1
+		var steps: int = 0
+		for i: int in range(0, 21):
+			var taken: int = ChompFlower.bites_taken_for(float(i) / 20.0)
+			if taken < last:
+				return "bites_taken_for went BACKWARDS at progress %.2f (%d after %d)" % [
+					float(i) / 20.0, taken, last]
+			if taken > last:
+				steps += 1
+			last = taken
+			seen = maxi(seen, taken)
+		err = _T.assert_eq(seen, ChompFlower.BITES_PER_MEAL,
+			"the sweep reached every bite (%d of %d)" % [seen, ChompFlower.BITES_PER_MEAL])
+		if err == "":
+			err = _T.assert_gt(steps, 2,
+				("and it arrived in separate steps rather than in one jump -- %d"
+					+ " transitions over the sweep") % steps)
+	if err == "":
+		err = _T.assert_gt(ChompFlower.BITES_PER_MEAL, 2,
+			("two bites read as start-and-finish, which is what the meal already"
+				+ " looked like before plant-tower-defense-h4v1"))
+	return err
+
+
+## Each bite takes something off the bug, and the corpse keeps what was taken.
+func test_a_chewed_pest_shrinks_and_its_corpse_stays_shrunk() -> String:
+	# The suite's own idiom (see `_pest` above): a bare Pest with setup() called and
+	# physics off. Nothing here needs a tree -- every function under test is pure or a
+	# plain field write, which is the point of pulling them out of the drawing.
+	var pest: Pest = _pest(Pest.APHID, Vector2(200.0, 296.0))
+	var err: String = _T.assert_true(pest != null, "the suite can build a pest")
+	if err != "":
+		return err
+	if err == "":
+		err = _T.assert_float_eq(pest.chewed_scale(), 1.0, 0.0001,
+			"an untouched bug is drawn at full size")
+	if err == "":
+		pest.set_chewed(1.0)
+		err = _T.assert_float_eq(pest.chewed_scale(), Pest.CHEWED_MIN_SCALE, 0.0001,
+			"a fully eaten one is down to CHEWED_MIN_SCALE")
+	if err == "":
+		err = _T.assert_gt(Pest.CHEWED_MIN_SCALE, 0.0,
+			("and that floor is not zero -- a bug that vanishes to a point before the"
+				+ " flower finishes is a bug that died early"))
+	if err == "":
+		# Monotone down, with a real middle: a step function that only moved at 1.0
+		# would satisfy both endpoints above.
+		pest.set_chewed(0.5)
+		var half: float = pest.chewed_scale()
+		err = _T.assert_gt(1.0, half, "half-eaten is smaller than untouched (%.3f)" % half)
+		if err == "":
+			err = _T.assert_gt(half, Pest.CHEWED_MIN_SCALE,
+				"and larger than fully eaten (%.3f)" % half)
+	if err == "":
+		# The discontinuity this replaces: the bug used to be full-size right up to
+		# the frame it became a corpse.
+		pest.set_chewed(1.0)
+		pest.kill(Pest.DEATH_BITTEN)
+		var corpse: Vector2 = pest.corpse_scale()
+		err = _T.assert_gt(1.0, corpse.y,
+			("the corpse of a fully eaten bug is still small -- it must not pop back to"
+				+ " full size on the frame it dies (got y=%.3f)") % corpse.y)
+	pest.free()
+	return err
+
+
+## A pest released unharmed is whole again.
+##
+## A Chomp destroyed mid-chew lets its meal go, and a bug that walked away two-thirds
+## eaten would be a kill the game never scored.
+func test_a_pest_released_from_a_chomp_is_whole_again() -> String:
+	var pest: Pest = _pest(Pest.APHID, Vector2(200.0, 296.0))
+	var err: String = _T.assert_true(pest != null, "the suite can build a pest")
+	if err != "":
+		return err
+	pest.set_chewed(0.66)
+	if err == "":
+		err = _T.assert_gt(1.0, pest.chewed_scale(), "the bug is part-eaten to begin with")
+	if err == "":
+		err = _T.assert_float_eq(pest.chewed_fraction(), 0.66, 0.0001,
+			"and it reports back what was taken off it")
+	if err == "":
+		# The clamp, asserted where it matters: ChompFlower divides bites by
+		# BITES_PER_MEAL, so an off-by-one in that cadence hands this a value above 1
+		# and an unclamped one would invert the lerp and grow the bug.
+		pest.set_chewed(1.4)
+		err = _T.assert_float_eq(pest.chewed_fraction(), 1.0, 0.0001,
+			"a fraction past the end is clamped rather than inverting the shrink")
+	if err == "":
+		pest.set_chewed(0.0)
+		err = _T.assert_float_eq(pest.chewed_scale(), 1.0, 0.0001,
+			"and releasing it puts it back to full size")
+	pest.free()
+	return err
+
+
+# -- END a meal is eaten in bites ----------------------------------------------

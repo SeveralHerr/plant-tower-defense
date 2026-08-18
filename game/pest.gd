@@ -559,7 +559,32 @@ var _health_bar: ColorRect
 var _health_back: ColorRect
 var _alive: bool = true
 var _dead_texture: Texture2D = null
+## How small a pest is chewed down to before the flower finishes it. Not zero: see
+## chewed_scale(). 0.55 leaves the bug plainly diminished while still legible as
+## the species it is, which is what makes the shrink read as being EATEN rather
+## than as walking away.
+const CHEWED_MIN_SCALE: float = 0.55
+
 var _sprite_scale: float = 1.0
+
+## How much of this pest has been eaten, 0.0 to 1.0. Written by the ChompFlower
+## holding it; nothing else touches it.
+##
+## SOURCE: a player, verbatim -- "the attack animation for the chomp flower doesn't
+## really look like it's taking bites out of the bugs, improve the animation
+## dramatically" (plant-tower-defense-h4v1).
+##
+## The report was exactly right and the reason was that the flower's side was rich
+## and the pest's side was empty. A held pest ran its full walk cycle on the spot,
+## unblemished, receiving one flash_hit() at the instant of the grab and nothing
+## after, until it swapped to a corpse in a single frame. Nothing was taken out of
+## the bug because nothing in the code took anything out of the bug.
+##
+## Kept as a plain fraction rather than a scale so the SHAPE of the mapping lives in
+## `chewed_scale()` where a test can read it, and so `set_chewed` can be asserted
+## without an open animation gate -- the pattern test_combat.gd:6331 requires of
+## every animation in this game.
+var _chewed: float = 0.0
 
 ## How this pest died, so the corpse can say so (plant-tower-defense-f5z6).
 ##
@@ -1233,7 +1258,11 @@ func _gait(delta: float) -> void:
 	# long axis (STYLE.md's up-screen convention), which makes +Y stretch a
 	# lengthening and -X squash a narrowing, whichever way the bug is walking.
 	var stretch: float = gait_stretch(sin(clock * GAIT_STRETCH_RATE), is_hungry)
-	_sprite.scale = Vector2(_sprite_scale * (1.0 - stretch), _sprite_scale * (1.0 + stretch))
+	# chewed_scale() rides the gait rather than being a separate tween: the gait
+	# rewrites _sprite.scale every frame, so a tween on the same property would be
+	# overwritten within one frame and look like nothing happened.
+	var eaten: float = chewed_scale()
+	_sprite.scale = Vector2(_sprite_scale * eaten * (1.0 - stretch), _sprite_scale * eaten * (1.0 + stretch))
 
 
 ## Pure: how fast this pest's walk cycle runs, in radians of clock per second.
@@ -1442,9 +1471,37 @@ func corpse_rotation() -> float:
 ## corpse nose-to-tail, which is a pest that shrank; squashing X narrows it, which
 ## is a pest that was closed on.
 func corpse_scale() -> Vector2:
+	# The chewed-down factor rides through to the corpse: a bug eaten to a third of
+	# itself must not pop back to full size on the frame it dies, which is the exact
+	# discontinuity the old single-frame swap had.
+	var eaten: float = chewed_scale()
 	if _death_cause == DEATH_BITTEN:
-		return Vector2(_sprite_scale * BITTEN_SQUASH, _sprite_scale)
-	return Vector2(_sprite_scale, _sprite_scale)
+		return Vector2(_sprite_scale * BITTEN_SQUASH * eaten, _sprite_scale * eaten)
+	return Vector2(_sprite_scale * eaten, _sprite_scale * eaten)
+
+
+## How much of the pest is left to draw, as a scale factor. Pure, so the curve is
+## assertable with no board, no frame and no open animation gate.
+##
+## Floors at CHEWED_MIN_SCALE rather than running to zero: a bug that vanishes to a
+## point before the flower has finished is a bug that died early, and the kill is the
+## chew ending, not the sprite running out.
+func chewed_scale() -> float:
+	return lerpf(1.0, CHEWED_MIN_SCALE, clampf(_chewed, 0.0, 1.0))
+
+
+## Record how much of this pest has been eaten. Called by the ChompFlower holding it,
+## once per bite, and reset to 0.0 when a pest is released unharmed.
+##
+## Above every animation gate on purpose: the fraction is game state a test can read,
+## and only its rendering is gated. Deleting the call from the chew goes red instead
+## of silently doing nothing (test_combat.gd:6331's rule).
+func set_chewed(fraction: float) -> void:
+	_chewed = clampf(fraction, 0.0, 1.0)
+
+
+func chewed_fraction() -> float:
+	return _chewed
 
 
 func is_alive() -> bool:
