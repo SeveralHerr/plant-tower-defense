@@ -44,6 +44,24 @@ import repo_walk
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_FILES = ["kanban.md"]
 
+# The bead export. A PASSIVE EXPORT and not the source of truth -- CLAUDE.md's beads block
+# says so and bead_prose_check.py's NOT COVERED line says it again -- so a bead updated but
+# not exported is invisible here, and the output says that rather than implying live
+# coverage.
+BEADS_EXPORT = ".beads/issues.jsonl"
+
+# The fields that carry prose a person wrote. `close_reason` is included because a close is
+# where this project puts its evidence, and a close citing a line that has since moved is
+# exactly as misleading as a description doing it -- more so, because a close is read as a
+# record of what was verified.
+BEAD_PROSE_FIELDS = ("description", "close_reason")
+
+# A bead that says its citation is deliberately dead -- one about DELETING the thing it
+# cites, or one recording a line that has since moved. Same waiver mechanism
+# bead_prose_check.py uses: the correction note IS the waiver, so an issue that records the
+# problem stops being reported for it.
+BEAD_WAIVER = "citation-check: ok"
+
 # A citation is a backticked path with at least one directory part, a colon, a line, and
 # optionally a `-` and an end line. The directory part is what keeps `Vector2(1.0, 1.0)`
 # and prose like `9:00` out of the match.
@@ -68,8 +86,25 @@ CITATION = re.compile(
 # in a convention the project invented for itself.
 BARE = re.compile(r"`:(\d+)(?:-(\d+))?`")
 
+# BEAD PROSE IS NOT MARKDOWN. `bd`'s description and close_reason are plain text -- nothing
+# renders them, so nothing rewards backticks, and the hand that writes `game/hud.gd:806`
+# inside kanban.md writes game/hud.gd:806 bare inside a bead. Measured at the moment this
+# mode was added: 95 backticked against 495 unbackticked. Requiring the backticks would have
+# reported "468 bead(s) ... 0 finding(s)" while reading one citation in six -- a clean run
+# over an input set that was 84% invisible, which is the exact failure the NOT COVERED
+# contract exists to prevent, arriving through the front door of a new feature.
+#
+# This is cycle 77's lesson a third time, and the comment above BARE already states it: a
+# convention a document grows is invisible to a tool written from the outside. Applied only
+# to bead sources -- in markdown the backticks ARE the convention and loosening it there
+# would start matching prose.
+PLAIN = re.compile(
+    r"(?<![`\w./-])([A-Za-z0-9_./-]*[A-Za-z0-9_.-]+\.(?:gd|py|md|json|tscn|tres|gdshader))"
+    r":(\d+)(?:-(\d+))?(?![`\w])"
+)
 
-def citations(text: str) -> list[tuple[int, str, int, int]]:
+
+def citations(text: str, plain: bool = False) -> list[tuple[int, str, int, int]]:
     """(markdown_line, path, start, end) for every citation, in file order.
 
     Bare `:NN` continuations resolve against the last full citation in the same entry, and
@@ -82,10 +117,12 @@ def citations(text: str) -> list[tuple[int, str, int, int]]:
     for lineno, line in enumerate(text.splitlines(), start=1):
         if line.startswith("- ") or line.startswith("#"):
             context = None          # new entry: a continuation may not reach across it
-        # Interleave both forms in source order so `foo.gd:1`, `:2` binds left to right.
-        for m in sorted(list(CITATION.finditer(line)) + list(BARE.finditer(line)),
-                        key=lambda mm: mm.start()):
-            if m.re is CITATION:
+        # Interleave every form in source order so `foo.gd:1`, `:2` binds left to right.
+        forms = list(CITATION.finditer(line)) + list(BARE.finditer(line))
+        if plain:
+            forms += list(PLAIN.finditer(line))
+        for m in sorted(forms, key=lambda mm: mm.start()):
+            if m.re is CITATION or m.re is PLAIN:
                 context = m.group(1)
                 start = int(m.group(2))
                 end = int(m.group(3)) if m.group(3) else start
@@ -154,6 +191,115 @@ def uncited_entries(text: str) -> tuple[int, int]:
     return entries, uncited
 
 
+def bead_sources(export: Path | None = None) -> tuple[list[tuple[str, str, bool]],
+                                                      str | None]:
+    """[(label, prose, gating)] read from the bead export, plus a reason it is empty.
+
+    A bead is a ROOT-LEVEL document as far as the resolver is concerned -- its citations
+    use the same three conventions kanban.md's do, because the same hand writes both in the
+    same cycle -- so each source is handed `ROOT/kanban.md` as its citing path and gets
+    identical resolution. There is no fourth convention to teach it.
+
+    Gating follows `status`: an OPEN bead's citations are read by whoever picks the work up
+    next and a stale one sends them to the wrong line. A CLOSED bead is a record of what was
+    true when it closed, so its drift is advisory -- worth printing, not worth failing a
+    cycle over. Closing a bead would otherwise silently convert its citations into future
+    gate failures nobody can fix without rewriting history.
+    """
+    export = export or (ROOT / BEADS_EXPORT)
+    if not export.is_file():
+        return [], "no export at %s" % export
+    out: list[tuple[str, str, bool]] = []
+    for raw in export.read_text(encoding="utf-8", errors="replace").splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            issue = json.loads(raw)
+        except ValueError:
+            # One malformed line is not a reason to report zero beads checked. It IS a
+            # reason to say so, which the caller's count does by coming up short.
+            continue
+        if not isinstance(issue, dict) or not issue.get("id"):
+            continue
+        prose = "\n".join(str(issue.get(f) or "") for f in BEAD_PROSE_FIELDS)
+        if BEAD_WAIVER in prose:
+            continue
+        closed = str(issue.get("status", "")).lower() in ("closed", "done")
+        out.append(("bead %s%s" % (issue["id"], " (closed)" if closed else ""),
+                    prose, not closed))
+    return out, None
+
+
+def self_check() -> int:
+    """Prove the --beads mode can FAIL, and that a closed bead cannot make it fail.
+
+    A run reporting "468 bead(s) ... 0 finding(s)" is indistinguishable from a run whose
+    extraction silently matched nothing -- and that is not hypothetical here: the FIRST
+    version of this mode did exactly that, reading 95 of 590 bead citations because it
+    demanded markdown backticks in a plain-text field, and printed a clean sweep. The
+    denominator caught it (10 new citations from 468 beads is not a plausible number), but
+    a denominator is a thing a reader has to notice. This is the thing that notices.
+
+    Four cases, three of which are about the ROUTING rather than the detection:
+      1. an OPEN bead citing a line past the end of a real file          -> gates
+      2. the SAME defect in a CLOSED bead                                 -> advisory, no gate
+      3. an unbackticked citation, the form bead prose actually uses      -> seen at all
+      4. a bead carrying the waiver marker                                -> skipped entirely
+    """
+    import tempfile
+    probe = ROOT / "tools" / "citation_check.py"
+    past_end = len(probe.read_text(encoding="utf-8", errors="replace").splitlines()) + 5000
+    rows = [
+        {"id": "SELFCHECK-open", "status": "open",
+         "description": "unbackticked, past the end: tools/citation_check.py:%d" % past_end},
+        {"id": "SELFCHECK-closed", "status": "closed",
+         "close_reason": "same defect, closed: tools/citation_check.py:%d" % past_end},
+        {"id": "SELFCHECK-waived", "status": "open",
+         "description": "citation-check: ok -- tools/citation_check.py:%d" % past_end},
+    ]
+    with tempfile.TemporaryDirectory() as td:
+        fake = Path(td) / "issues.jsonl"
+        fake.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+        got, why = bead_sources(fake)
+    if why is not None:
+        print("SELF-CHECK FAILED: could not read the synthetic export: %s" % why)
+        return 1
+    labels = [lbl for lbl, _, _ in got]
+    problems: list[str] = []
+    if len(got) != 2:
+        problems.append("expected 2 sources (waived one dropped), got %d: %s"
+                        % (len(got), labels))
+    if not any("SELFCHECK-waived" in l for l in labels):
+        pass    # correct: the waiver removed it
+    else:
+        problems.append("the waiver marker did not suppress SELFCHECK-waived")
+    gating = {lbl: g for lbl, _, g in got}
+    for lbl, want in ((("SELFCHECK-open"), True), (("SELFCHECK-closed"), False)):
+        hit = [g for l, g in gating.items() if lbl in l]
+        if not hit:
+            problems.append("%s missing from the sources entirely" % lbl)
+        elif hit[0] is not want:
+            problems.append("%s gating=%s, expected %s" % (lbl, hit[0], want))
+    # And the detection itself, on the unbackticked form.
+    for lbl, prose, _ in got:
+        if not citations(prose, plain=True):
+            problems.append("%s: no citation extracted from unbackticked prose -- this is "
+                            "the 95-of-590 bug returning" % lbl)
+        if citations(prose, plain=False):
+            problems.append("%s: extracted an unbackticked citation with plain=False, so "
+                            "the markdown path has been loosened too" % lbl)
+    for p in problems:
+        print("SELF-CHECK FAILED: %s" % p)
+    if problems:
+        return 1
+    print("citation_check --self-check: 4 case(s) OK -- an open bead's dead citation gates, "
+          "the same defect in a closed bead does not, the unbackticked form is seen, and "
+          "the %r waiver suppresses a bead. NOT COVERED by this fixture: whether the real "
+          "export parses, and whether a landed line supports its claim." % BEAD_WAIVER)
+    return 0
+
+
 def _resolve(citing: Path, cited: str) -> tuple[Path | None, list[Path]]:
     """(the file, ambiguous candidates) — beside the citing file, then the repo root,
     then a unique basename anywhere under it.
@@ -215,7 +361,16 @@ def main(argv: list[str]) -> int:
                     help="report citations that still resolve but no longer land on the "
                          "text --snapshot recorded. Citations absent from the snapshot are "
                          "reported as NEW, never as drifted")
+    ap.add_argument("--beads", action="store_true",
+                    help="also read citations out of bead prose (%s -- description and "
+                         "close_reason). Open beads gate, closed ones are advisory"
+                         % BEADS_EXPORT)
+    ap.add_argument("--self-check", action="store_true",
+                    help="run the synthetic bead fixture and exit; proves --beads can fail")
     args = ap.parse_args(argv[1:])
+
+    if args.self_check:
+        return self_check()
 
     targets = [Path(f) for f in (args.files or DEFAULT_FILES)]
     missing = [t for t in targets if not (ROOT / t).is_file() and not t.is_file()]
@@ -244,6 +399,9 @@ def main(argv: list[str]) -> int:
     entries_total = 0
     entries_uncited = 0
     findings: list[tuple[str, str]] = []   # (key, message)
+    # Findings from CLOSED beads. Printed under their own heading, never counted into the
+    # exit code -- see bead_sources() for why closing a bead must not arm a gate.
+    non_gating: list[tuple[str, str]] = []
     advisories: list[str] = []
     # key -> the normalised text that key currently lands on. Only RESOLVED citations get an
     # entry: an unresolved one is already a finding and has no landing to compare.
@@ -256,32 +414,53 @@ def main(argv: list[str]) -> int:
     cited_at: dict[str, str] = {}
     resolved = 0
 
-    for target in targets:
-        path = target if target.is_file() else ROOT / target
-        text = path.read_text(encoding="utf-8", errors="replace")
-        found = citations(text)
-        files_seen += 1
+    # (label, text, is_file, gating). Files first so their line numbers keep their old
+    # meaning in the output; beads carry no file so their `label:N` is a line WITHIN the
+    # bead's prose, which the label makes unmistakable.
+    sources: list[tuple[str, str, bool, bool]] = [
+        (t.name, (t if t.is_file() else ROOT / t).read_text(encoding="utf-8",
+                                                            errors="replace"), True, True)
+        for t in targets]
+    beads_note: str | None = None
+    beads_seen = 0
+    if args.beads:
+        bs, why = bead_sources()
+        beads_note = why
+        beads_seen = len(bs)
+        sources += [(lbl, prose, False, gating) for lbl, prose, gating in bs]
+
+    for label, text, is_file, gating in sources:
+        # Every source resolves as a root-level document. For a file that is what it
+        # already did (`targets` are repo-root paths); for a bead there is no other
+        # sensible base, and sharing one keeps ONE resolver rather than a second copy.
+        path = ROOT / "kanban.md"
+        found = citations(text, plain=not is_file)
+        if is_file:
+            files_seen += 1
+            e, u = uncited_entries(text)
+            entries_total += e
+            entries_uncited += u
         total += len(found)
-        e, u = uncited_entries(text)
-        entries_total += e
-        entries_uncited += u
         for md_line, cited, start, end in found:
             src, ambiguous = _resolve(path, cited)
             k = key(cited, start, end)
+            # A closed bead's citations are recorded, printed and compared -- but routed to
+            # a sink that does not gate. Same evidence, different consequence.
+            sink = findings if gating else non_gating
             if ambiguous:
-                findings.append((k, "FINDING: %s:%d cites %s -- that bare name matches %s.\n"
+                sink.append((k, "FINDING: %s:%d cites %s -- that bare name matches %s.\n"
                                     "  fix: write the path out so it names one of them.\n"
                                     "  waive: none."
-                                 % (path.name, md_line, k,
+                                 % (label, md_line, k,
                                     " and ".join(str(a.relative_to(ROOT)) for a in ambiguous))))
                 continue
             if src is None:
                 if "/" in cited:
-                    findings.append((k, "FINDING: %s:%d cites %s -- no such file.\n"
+                    sink.append((k, "FINDING: %s:%d cites %s -- no such file.\n"
                                         "  fix: the file was renamed or removed; find where "
                                         "the claim lives now, or delete the entry.\n"
                                         "  waive: none."
-                                     % (path.name, md_line, k)))
+                                     % (label, md_line, k)))
                 else:
                     # A BARE name resolving nowhere is as likely to be prose as a broken
                     # citation: CLAUDE.md's harness section writes "reading `player.gd:40-60`"
@@ -290,7 +469,7 @@ def main(argv: list[str]) -> int:
                     advisories.append("ADVISORY: %s:%d has `%s`, which matches no file. "
                                       "Either a broken citation or prose shaped like one; "
                                       "writing the path out would settle it."
-                                      % (path.name, md_line, k))
+                                      % (label, md_line, k))
                 continue
             try:
                 lines = src.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -302,11 +481,11 @@ def main(argv: list[str]) -> int:
                       file=sys.stderr)
                 return 2
             if start < 1 or end > len(lines) or end < start:
-                findings.append((k, "FINDING: %s:%d cites %s -- out of range; %s has %d "
+                sink.append((k, "FINDING: %s:%d cites %s -- out of range; %s has %d "
                                     "line(s).\n  fix: re-derive the line number; an edit "
                                     "that ADDS lines above a citation moves it silently.\n"
                                     "  waive: none."
-                                 % (path.name, md_line, k, cited, len(lines))))
+                                 % (label, md_line, k, cited, len(lines))))
                 continue
             resolved += 1
             # NORMALISED: leading whitespace stripped, because indentation moves for reasons
@@ -316,7 +495,7 @@ def main(argv: list[str]) -> int:
             landed[k] = "\n".join(l.strip() for l in lines[start - 1:end])
             # First writer wins: a target cited from two entries collapses to one key, and
             # the first is as good a place to start as the second.
-            cited_at.setdefault(k, "%s:%d" % (path.name, md_line))
+            cited_at.setdefault(k, "%s:%d" % (label, md_line))
             if not args.quiet:
                 body = _printable(" | ".join(l.strip()[:60] for l in lines[start - 1:end]))
                 print("  %-34s %s" % (k, body))
@@ -386,9 +565,32 @@ def main(argv: list[str]) -> int:
     new = [(k, m) for k, m in findings if k not in baseline]
     pre = [(k, m) for k, m in findings if k in baseline]
 
-    print("citation_check: %d citation(s) across %d file(s), %d resolved, %d finding(s)"
-          % (total, files_seen, resolved, len(findings))
+    # NAME THE SOURCES (plant-tower-defense-9vq6). "across 1 file(s)" was the whole gap:
+    # a clean run read as "the citations are checked" when the tool had read kanban.md and
+    # nothing else, immediately after twenty fresh citations were written into three BEAD
+    # descriptions -- three of which were wrong. A reader could not tell a clean run from an
+    # empty one without opening the script.
+    print("citation_check: %d citation(s) across %d file(s) [%s]%s, %d resolved, "
+          "%d finding(s)"
+          % (total, files_seen, ", ".join(t.name for t in targets),
+             (" + %d bead(s)" % beads_seen) if args.beads else "",
+             resolved, len(findings))
           + (" (%d NEW, %d pre-existing)" % (len(new), len(pre)) if baseline else ""))
+    if args.beads:
+        if beads_note:
+            # Could not read the export. Not a clean bead result -- an unread one, and the
+            # difference is the whole contract.
+            print("citation_check: --beads read NOTHING (%s). No bead was checked; the "
+                  "count above is files only." % beads_note, file=sys.stderr)
+            return 2
+        print("             bead prose read from %s, which is a PASSIVE EXPORT: a bead "
+              "edited since the last export is not in it, so this says the exported "
+              "prose is clean, not that the tracker is. Fields read: %s."
+              % (BEADS_EXPORT, ", ".join(BEAD_PROSE_FIELDS)))
+    elif (ROOT / BEADS_EXPORT).is_file():
+        print("             NOT read: bead prose (%s). Citations written into bead "
+              "descriptions and close reasons are unchecked unless --beads is passed."
+              % BEADS_EXPORT)
     if entries_total:
         print("             %d of %d entr%s carry NO citation at all -- invisible to this "
               "check and to every other one. A clean result above is a statement about the "
@@ -405,6 +607,12 @@ def main(argv: list[str]) -> int:
         print(message)
     if baseline and pre:
         print("PRE-EXISTING (in the baseline, not gating): %d" % len(pre))
+    if non_gating:
+        print("CLOSED BEADS (%d finding(s), advisory -- a closed bead records what was "
+              "true when it closed, and rewriting its prose would falsify the record. "
+              "Worth reading before you trust one as evidence):" % len(non_gating))
+        for _, message in non_gating:
+            print("  " + message.replace("\n", "\n  "))
     print("NOT COVERED: this resolves citations; it cannot tell you whether the landed "
           "line SUPPORTS the claim around it -- cycles 68 and 76 each wrote a citation "
           "that resolved cleanly to a doc comment one line above the constant it meant. "

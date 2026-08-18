@@ -7764,3 +7764,35 @@ status rather than rewriting the entries that recorded these as open.
   positives, and its first version already reported 554 of those.
 
 - Gap: **no gap this turn.**
+
+## 2026-08-18 — citation_check names its sources and reads bead prose
+
+- Value: **warranted** — the harness proper did not run at all (tier (f), tooling-only), and
+  the run that mattered was the new checker over the real bead export, which falsified its
+  own first result.
+  - Expected: `--beads` would read ~500 citations out of bead prose and either find broken
+    ones or confirm they resolve; the interesting part would be the findings.
+  - Got: `citation_check: 362 citation(s) across 1 file(s) [kanban.md] + 468 bead(s), 362
+    resolved, 0 finding(s)` — ten new citations from 468 beads, printed as a clean sweep.
+    `bd` stores `description` and `close_reason` as PLAIN TEXT, so the markdown backtick
+    convention `CITATION` requires is simply absent: measured 95 backticked against 495
+    unbackticked. The mode was reading one citation in six.
+  - Found: that, plus `check_all.py`'s `run_one(name, [])` — an opt-in mode added to a
+    pooled checker never runs in the pool, so the feature would have shipped inert.
+  - Cheaper: nothing. The 95-vs-495 split is a fact about how `bd` stores prose; it is
+    invisible in the diff and only shows up by running the extraction over the real export.
+
+- Gap: **the installed ledger drops `tier` without a word** — `/verify` Phase 0.5 (plugin
+  0.60.0) says "Record the tier on the row … `run.json` carries `"tier": …`", and this
+  project runs harness 0.38.0, whose `verify_ledger.py` reads no such key. The row was
+  written with `tier: "tooling"` and came back without it.
+  - Only this repo's own `tools/run_json_check.py` said so: `FINDING: unknown key 'tier' --
+    verify_ledger reads it nowhere, so it will be dropped without a word and the row will
+    not carry it.` A project without that checker records the field, sees a clean
+    `recorded pass run`, and believes its ledger is tier-tagged.
+  - [G-130] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: this is the 0.38.0-vs-0.60.0 spread (`-ny3h`, blocked on upstream gh#43),
+    not a new upstream defect — the key landed in 0.50.0. Worth logging because it is the
+    first time the version spread produced a SILENT wrong record rather than a missing
+    feature: the skill text and the installed tool disagreed, and the skill won on the
+    write side while the tool won on the read side.

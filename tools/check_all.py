@@ -113,6 +113,15 @@ NOT_A_CHECKER = {
 
 # A checker whose exit 2 has a known, benign cause the runner can detect for
 # itself. Named rather than exempted: the runner reports the condition it found.
+# Flags a checker needs in order to cover everything it CAN cover. A checker whose wider
+# mode is opt-in runs in its narrow mode here forever otherwise -- citation_check read
+# kanban.md and nothing else for eleven cycles while ~500 citations accumulated in bead
+# prose, and adding the mode without adding this line would have changed nothing about what
+# the pool actually checks. Keep these to coverage flags; never put a suppression here.
+CHECKER_ARGS = {
+    "citation_check.py": ["--beads"],
+}
+
 CONDITIONAL_SKIP = {
     "run_json_check.py": (
         REPO / ".devtools" / "run.json",
@@ -188,6 +197,16 @@ def main(argv=None):
               "empty or the contract marker changed." % (TOOLS, CONTRACT_MARKER))
         return 2
 
+    # A CHECKER_ARGS key naming something the pool does not run is a coverage flag that
+    # silently does nothing -- the same class of defect the flags exist to fix. Report it
+    # rather than letting it rot: a rename would otherwise quietly narrow the pool back.
+    stray = sorted(k for k in CHECKER_ARGS if k not in checkers)
+    if stray:
+        print("check_all: CANNOT RUN -- CHECKER_ARGS names %s, which the pool does not "
+              "run. The flag(s) would be silently dropped. Fix the name or drop the entry."
+              % ", ".join(stray))
+        return 2
+
     # Conditional skips, detected rather than exempted.
     skipped = {}
     for name, (probe, why) in CONDITIONAL_SKIP.items():
@@ -197,7 +216,8 @@ def main(argv=None):
 
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-        futures = [pool.submit(run_one, name, []) for name in to_run]
+        futures = [pool.submit(run_one, name, CHECKER_ARGS.get(name, []))
+                   for name in to_run]
         for fut in concurrent.futures.as_completed(futures):
             results.append(fut.result())
     results.sort(key=lambda r: r[0])
