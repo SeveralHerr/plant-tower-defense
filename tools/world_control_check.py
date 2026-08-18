@@ -50,6 +50,8 @@ import os
 import re
 import sys
 
+import repo_walk
+
 # Engine classes that place their children in world space. A Control whose nearest
 # non-Control ancestor is one of these is a GUI root picked against the world transform.
 WORLD_BASES = {
@@ -131,8 +133,11 @@ def resolve_space(base: str, declared: dict[str, str], seen: set[str] | None = N
 
 def gd_files(root: str, ignore: list[str]) -> list[str]:
     found = []
+    # This walk is rooted at the REPO ROOT (--root defaults to "."), so it is one
+    # of the two in tools/ that a nested .claude/worktrees/ checkout doubles.
+    # Measured: 19 world-space script(s) became 38 with one fake lane planted.
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in (".godot", ".git", ".beads")]
+        repo_walk.prune(dirpath, dirnames, root)
         for fn in filenames:
             if not fn.endswith(".gd"):
                 continue

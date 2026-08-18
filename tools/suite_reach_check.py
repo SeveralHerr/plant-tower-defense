@@ -116,6 +116,8 @@ import os
 import re
 import sys
 
+import repo_walk
+
 # A declaration at indent 0, optionally preceded by annotations on the same line.
 DECL_RE = re.compile(
     r"^(?:@[A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?\s+)*"
@@ -143,7 +145,10 @@ ADVISORY_KINDS = ("const",)
 # harness's devtools_config.json, whose `entry_hook.method` is the only caller of
 # TitleScreen.skip_to_game() anywhere in the repo.
 TEXT_REF_EXT = (".tscn", ".tres", ".json", ".godot", ".cfg")
-SKIP_DIRS = (".godot", ".git", ".beads", "__pycache__")
+# Now repo_walk's shared set. Kept as a name because the text-corpus walk below
+# unions it with SKIP_TEXT_DIRS; the nested-checkout rule that goes with it is
+# applied through repo_walk.prune(), never by naming a directory here.
+SKIP_DIRS = tuple(sorted(repo_walk.SKIP_DIR_NAMES))
 # Additionally kept OUT of the text-reference corpus. `.devtools/` is where the
 # bridge dumps `scene-tree` and `scripts-seen` replies, and a node dump lists every
 # property of every node -- letting it count as a reference would rescue almost any
@@ -237,9 +242,17 @@ def assert_call_arg_tokens(blanked: str) -> set[str]:
 
 
 def gd_files(root: str) -> list[str]:
+    """Every .gd under root, skipping nested checkouts.
+
+    Called three times: twice on game/ and test/ (immune -- a worktree is not
+    under either) and once on the REPO ROOT, for the product-reference sweep at
+    the bottom of main(). That third call is the exposed one, and its failure
+    mode is a false NEGATIVE: a symbol whose only remaining reference lives in a
+    stale worktree copy gets silently rescued from the "nothing calls this" tag.
+    """
     found = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        repo_walk.prune(dirpath, dirnames, root)
         for fn in sorted(filenames):
             if fn.endswith(".gd"):
                 found.append(os.path.join(dirpath, fn))
@@ -300,8 +313,8 @@ def text_ref_corpus(root: str, exclude: str) -> str:
     chunks = []
     excl = os.path.abspath(exclude)
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames
-                       if d not in SKIP_DIRS and d not in SKIP_TEXT_DIRS]
+        repo_walk.prune(dirpath, dirnames, root)
+        dirnames[:] = [d for d in dirnames if d not in SKIP_TEXT_DIRS]
         if os.path.abspath(dirpath) == excl \
                 or os.path.abspath(dirpath).startswith(excl + os.sep):
             continue

@@ -65,6 +65,8 @@ import os
 import re
 import sys
 
+import repo_walk
+
 GROUP_CALL_RE = re.compile(r"\bget_nodes_in_group\s*\(\s*(?:\"([^\"]*)\"|'([^']*)')?")
 FIRST_CALL_RE = re.compile(r"\bget_first_node_in_group\s*\(\s*(?:\"([^\"]*)\"|'([^']*)')?")
 # `var pests: Array[Node] = game.get_tree().get_nodes_in_group("pests")`
@@ -184,7 +186,10 @@ def cardinality_pinned(body: str, var: str) -> bool:
 def gd_files(root: str) -> list[str]:
     found = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in (".godot", ".git", ".beads")]
+        # Called on test/ only, so a nested .claude/worktrees/ checkout cannot be
+        # under it today. Shared rule anyway: the immunity is a property of the
+        # CALLER's argument, not of this function, and --root can be given.
+        repo_walk.prune(dirpath, dirnames, root)
         for fn in sorted(filenames):
             if fn.endswith(".gd"):
                 found.append(os.path.join(dirpath, fn))

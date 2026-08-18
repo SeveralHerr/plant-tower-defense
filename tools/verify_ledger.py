@@ -33,7 +33,7 @@ snapshot can see. A changed file in that set that was not otherwise observed lan
 `reached_implicit` — credited as running, kept out of `unreached`, and deliberately not
 folded into `reached`, which stays what was *observed*.
 
-**Three things that were being scored as misses and are not.** A metric that reports a
+**Four things that were being scored as misses and are not.** A metric that reports a
 file as unreached when it demonstrably ran does not merely lose accuracy — it teaches
 its readers to discount the number, which is worse than not printing it.
 
@@ -58,6 +58,25 @@ its readers to discount the number, which is worse than not printing it.
   land in `reached_alias`, with the voucher recorded alongside in `reached_alias_via`,
   and never in `reached` — a declaration is a project's claim, not an observation, and
   the whole value of this field is that it does not blur the two.
+* *Unreachable by construction.* `reach_aliases` above is a per-file manual opt-in, and
+  so is `DevTools.mark_script_reached` — which means the ledger's honesty scaled with
+  how many static utilities somebody remembered to annotate. It does not need to. A
+  changed `.gd` whose `extends` chain terminates at `RefCounted` or `Object` can be
+  read off disk with no engine at all, and no node can carry it, so `scripts-seen`
+  could not have reported it however thoroughly it ran. Those land in
+  `unreachable_static` with the reason in `unreachable_static_why`.
+
+  **This is the split that changes what a reader DOES.** Before it, `NOT reached:
+  game/game_speed.gd, game/key_binding_screen.gd` was one list. The first is
+  `class_name GameSpeed extends RefCounted` and had just been driven by hand through
+  1x → 2x → half → 1x with `Engine.time_scale` following; the second was a screen the
+  session genuinely never opened. Identical text, opposite meanings — one says stop
+  looking, the other says go and drive the game — so the line taught people to read
+  neither (plant-tower-defense-v3ji).
+
+  Applied *after* every other credit, so an observation always beats the inference.
+  Excused, not credited, and named in full on the printed line: this says the run
+  could not have seen the file, never that the file works.
 
 **Reach has three states, not two.** `reached N/M` is one; `reach not computed` (no
 capture) is the second; and `reach: unavailable (not a git repository)` is the third,
@@ -535,6 +554,16 @@ def _script_class_index(root):
         rel = path.relative_to(root).as_posix()
         if rel.startswith(".godot/") or rel.startswith("addons/"):
             continue
+        # Skip any dot-directory. The case that forced this: Claude Code agent
+        # worktrees live at `.claude/worktrees/<lane>/`, INSIDE the repo. They
+        # are gitignored, and rglob does not read .gitignore, so during a
+        # fan-out every `class_name` in the project is declared N+1 times and
+        # this dict -- last writer wins, in rglob order -- can resolve `extends
+        # Foo` to a STALE COPY of foo.gd in some other lane's checkout. That
+        # silently changes `reached_base` credits. Same rule name_check.py's
+        # _walk_gd and coverage_check.py's _count_files already apply.
+        if any(part.startswith(".") for part in rel.split("/")[:-1]):
+            continue
         try:
             head = path.read_text(encoding="utf-8", errors="replace")[:2000]
         except OSError:
@@ -574,6 +603,124 @@ def _extends_chain(script_rel, root, class_index, _seen=None):
         out.append(base)
         current = base
     return out
+
+
+# Engine classes that no node can ever carry the script of. A `Node` needs a Node
+# base; anything terminating here is held as a plain field, a static utility, or a
+# preloaded helper, and `scripts-seen` / a scene-tree snapshot are structurally
+# incapable of reporting it however much of it ran.
+#
+# Deliberately NOT including `Resource`. A Resource subclass is equally invisible to
+# a scene-tree snapshot, but it is reachable through a `.tres` a scene instances, and
+# over-excusing is the dangerous direction here: an excused file is one nobody will go
+# and drive. Kept to the two cases where the claim is unarguable.
+NODELESS_ENGINE_BASES = frozenset({"RefCounted", "Object"})
+
+# Column 0 only, unlike _EXTENDS_RE. An inner class's `extends` is indented, and
+# `^\s*` would let one stand in for a file that has no top-level extends at all -
+# which would excuse a file on the strength of a declaration that is not its base.
+# Stricter than the chain walker on purpose: a missed excuse prints an honest
+# `NOT reached`, a wrong one tells somebody not to bother looking.
+_TOP_EXTENDS_RE = re.compile(r'^extends[ \t]+(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))', re.M)
+
+
+def _engine_base(script_rel, root, class_index):
+    """The engine class `script_rel` ultimately extends, or None if unresolvable.
+
+    Walks the same `extends` chain as _extends_chain but reports the far end - the
+    first name that resolves to no script in the project, which is by definition an
+    engine class. A file with NO top-level `extends` is `RefCounted`: that is
+    GDScript's default base, and it is the shape a `class_name`-only static utility
+    usually has.
+
+    None on any doubt (unreadable file, a quoted res:// path that is not on disk, a
+    cycle). None means "cannot say", and every caller here treats that as
+    not-excused rather than as an excuse.
+    """
+    seen = set()
+    current = script_rel
+    while current and current not in seen:
+        seen.add(current)
+        try:
+            text = (root / current).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+        m = _TOP_EXTENDS_RE.search(text)
+        if not m:
+            return "RefCounted"
+        if m.group(1):
+            nxt = _norm(m.group(1))
+            if not (root / nxt).exists():
+                return None
+            current = nxt
+            continue
+        name = m.group(2)
+        nxt = class_index.get(name)
+        if nxt is None:
+            return name
+        current = nxt
+    return None
+
+
+def _unreachable_by_construction(changed_rest, root):
+    r"""{script: why} for changed files no snapshot could ever have reported.
+
+    THE DEFECT THIS EXISTS FOR (plant-tower-defense-v3ji). `reach` split a changed
+    file two ways - reached, or NOT reached - and printed both halves identically.
+    Measured on cycle 102's runtime pass: the speed button was pressed under a human
+    hand and the label went 1x -> 2x -> half -> 1x with Engine.time_scale following
+    each time, and the row still said `NOT reached: game/game_speed.gd`, because
+    GameSpeed is `class_name GameSpeed extends RefCounted` and no node carries it.
+    Sitting beside it in the same comma-separated list was key_binding_screen.gd,
+    which was a REAL miss - a screen the session never navigated to.
+
+    A file that CANNOT be seen and a file that WAS NOT loaded are opposite results.
+    Only the second is a reason to go and drive the game; the first is a reason to
+    stop looking. Printing them the same taught readers to discount the whole line.
+
+    Static, no engine: the `extends` chain is read off disk. Applied LAST, after
+    `reached` / implicit / alias / base, so a DevTools.mark_script_reached() call
+    that made one of these genuinely observed still wins - an observation always
+    beats an inference about the same file.
+
+    Wider than the bead asked for, on purpose: it does not require `class_name`.
+    `class_name` contributes nothing to the argument - `extends RefCounted` is the
+    whole of it - and requiring it would leave an unnamed helper printing the same
+    misleading `NOT reached` the bead was filed about.
+
+    # fixture:   changed = {game_speed, garden_theme, key_bindings (all
+    #            `class_name X extends RefCounted`), key_binding_screen (extends
+    #            OverlayScreen -> Control, a REAL miss), hud (observed)};
+    #            observed = {hud, plant}. 58 .gd in this repo, 17 nodeless.
+    # mutations: (measured 2026-08-17)
+    #            NODELESS_ENGINE_BASES = frozenset()  -> RED. The row reverts to
+    #              exactly the defect this was filed for: `reached 1/5 ... NOT
+    #              reached: game_speed.gd, garden_theme.gd, key_binding_screen.gd,
+    #              key_bindings.gd` - four files, one list, three of them
+    #              unloadable. Fixed row: `reached 1/2 ... 3 UNREACHABLE BY
+    #              CONSTRUCTION ...; NOT reached ...: key_binding_screen.gd`.
+    #            run this BEFORE the observed/implicit/alias/base checks -> RED,
+    #              and worse than it looks: a game_speed.gd that WAS observed (a
+    #              real DevTools.mark_script_reached) drops out of `reached` and
+    #              lands in no bucket at all. The ordering is load-bearing.
+    #            _TOP_EXTENDS_RE -> `^\s*extends` (the loose form) -> SURVIVED,
+    #              0 of 58 files change verdict: nothing in this repo currently
+    #              has an inner-class `extends` and no top-level one. Kept anyway
+    #              - no invariant forbids that shape, and the failure direction is
+    #              the bad one (a wrong excuse tells somebody not to look). Recorded
+    #              as survived rather than quietly dropped: this guard is not yet
+    #              load-bearing here, and the next reader should know that.
+    """
+    wanted = [p for p in changed_rest if p.endswith(".gd")]
+    if not wanted:
+        return {}
+    class_index = _script_class_index(root)
+    why = {}
+    for p in wanted:
+        base = _engine_base(p, root, class_index)
+        if base in NODELESS_ENGINE_BASES:
+            why[p] = "extends %s" % base
+    return why
 
 
 def _base_credits(observed, root, changed_rest):
@@ -664,6 +811,8 @@ def split_reach(changed, observed, implicit, root, cfg=None):
             "reached_alias_via": None,
             "reached_base": None,
             "reached_base_via": None,
+            "unreachable_static": None,
+            "unreachable_static_why": None,
             "unreached": None,
             "not_applicable": None,
             "deleted": None,
@@ -694,6 +843,8 @@ def split_reach(changed, observed, implicit, root, cfg=None):
         "reached_alias_via": None,
         "reached_base": None,
         "reached_base_via": None,
+        "unreachable_static": None,
+        "unreachable_static_why": None,
         "unreached": None,
         "not_applicable": sorted(set(skipped) | excused),
         "deleted": deleted,
@@ -726,7 +877,14 @@ def split_reach(changed, observed, implicit, root, cfg=None):
     base_via = _base_credits(observed, root, rest)
     result["reached_base"] = sorted(base_via)
     result["reached_base_via"] = base_via
-    result["unreached"] = [p for p in rest if p not in base_via]
+    rest = [p for p in rest if p not in base_via]
+    # LAST, so every form of observation above has already had its chance. What is
+    # left is a file the run did not load; this is the split that says whether it
+    # COULD have (plant-tower-defense-v3ji).
+    nodeless = _unreachable_by_construction(rest, root)
+    result["unreachable_static"] = sorted(nodeless)
+    result["unreachable_static_why"] = nodeless
+    result["unreached"] = [p for p in rest if p not in nodeless]
     return result
 
 
@@ -743,10 +901,17 @@ def _sub_reach(split):
     `verify.md` already treat as "reach unknown, not counted". The key tells a new reader
     *which* unknown it was; it does not have to be read for the row to be read correctly
     (moving-in:G-003).
+
+    `unreachable_static` / `unreachable_static_why` are additions of the same kind. A
+    reader that has never heard of them sees a SHORTER `unreached` list, which is the
+    correct reading on its own - the files that left it were never things this run
+    could have loaded. Historic rows keep the meaning they were written with: nothing
+    here rewrites a row, and `stats` averages the buckets it finds.
     """
     return {k: split[k] for k in
             ("reached", "reached_implicit", "reached_alias", "reached_alias_via",
              "reached_base", "reached_base_via",
+             "unreachable_static", "unreachable_static_why",
              "unreached", "not_applicable", "deleted", "test_scripts",
              "headless_tools", "changed_unavailable")}
 
@@ -1061,13 +1226,26 @@ def _reach_line(split):
     base_via = split.get("reached_base_via") or {}
     tests = split.get("test_scripts") or []
     headless = split.get("headless_tools") or []
+    nodeless = split.get("unreachable_static") or []
+    nodeless_why = split.get("unreachable_static_why") or {}
     unreached = split.get("unreached") or []
+    # `nodeless` is deliberately OUT of the denominator, on the same terms as tests and
+    # headless tools: charging a run for not loading a file no snapshot can report is
+    # what made this number worth discounting. Named below, never silently dropped.
     total = len(reached) + len(implicit) + len(alias) + len(base) + len(unreached)
     if total:
         detail = "reached %d/%d changed file(s)" % (len(reached), total)
-    elif split.get("not_applicable"):
+    elif split.get("not_applicable") or nodeless:
         # A zero that git can vouch for: files did change, and every one of them is
         # excused from the denominator. The annotations below name which.
+        #
+        # `or nodeless` is load-bearing, and was found by running the static-only case
+        # rather than by reading this. unreachable_static is excluded from `total` but
+        # is NOT a member of not_applicable (it is decided after observation, so it
+        # cannot be), and without it here a diff of nothing but RefCounted helpers fell
+        # through to the branch below and printed "git reports nothing changed here" -
+        # a flatly false statement about a diff that changed two files. Precisely the
+        # well-formed-zero this whole file exists to not emit.
         detail = ("reached 0/0 changed file(s) - a real zero: every changed file is "
                   "excused from the denominator")
     else:
@@ -1095,8 +1273,18 @@ def _reach_line(split):
         # Same reasoning as the tests line above: named, not silently dropped.
         detail += ("; %d headless tool(s) excluded (run only under --headless --script, "
                    "so no node can carry them): %s" % (len(headless), ", ".join(headless)))
+    if nodeless:
+        # The whole point of the bucket is that this line reads DIFFERENTLY from the
+        # `NOT reached` line below it. Same list, same run, opposite instructions:
+        # one says go and drive the game, this one says driving it cannot help.
+        detail += ("; %d UNREACHABLE BY CONSTRUCTION (no node can carry these, so no "
+                   "snapshot could ever report them - not a gap in this run): %s"
+                   % (len(nodeless),
+                      ", ".join("%s (%s)" % (p, nodeless_why.get(p, "?"))
+                                for p in nodeless)))
     if unreached:
-        detail += "; NOT reached: " + ", ".join(unreached)
+        detail += "; NOT reached (loadable, and this run did not load them): " \
+                  + ", ".join(unreached)
     elif total > len(reached):
         # "reached 1/4" with three credited files reads as a bad run at a glance, and a
         # number that has to be read twice to be read right is a number people stop
@@ -1182,12 +1370,35 @@ def cmd_reach(args, root):
         print("credited as base class (an observed script `extends` it - a static read "
               "of the files, no config): "
               + ", ".join("%s extended by %s" % (p, bv.get(p, "?")) for p in u["reached_base"]))
+    if u.get("unreachable_static"):
+        why = u.get("unreachable_static_why") or {}
+        print("unreachable by construction (a static read of `extends`, no engine and "
+              "no config - no node can carry these, so scripts-seen could not have "
+              "reported them however much of them ran; excused, NOT credited): "
+              + ", ".join("%s (%s)" % (p, why.get(p, "?"))
+                          for p in u["unreachable_static"]))
+        print("  This is the OPPOSITE of the NOT-reached list, not a softer version of "
+              "it. Driving the game again cannot move these; only a bridge call that "
+              "exercises them, or a DevTools.mark_script_reached() at their entry "
+              "point, turns one into an observation.")
     if u["reached"] is not None and not u["reached"] \
             and not (u["reached_implicit"] or []) \
             and not (u["reached_alias"] or []) \
             and not (u.get("reached_base") or []) and u["unreached"]:
         print("\nNo changed file was loaded at runtime. Phase 6 verdict is "
               "`insufficient`, not `warranted`, even if every check passed.")
+    elif u["reached"] is not None and not u["reached"] \
+            and not (u["reached_implicit"] or []) \
+            and not (u["reached_alias"] or []) \
+            and not (u.get("reached_base") or []) \
+            and not u["unreached"] and u.get("unreachable_static"):
+        # The case the old two-way split could not express: nothing was observed, and
+        # nothing COULD have been. Saying `insufficient` here would be telling a
+        # developer to go and re-run something that has no way to succeed.
+        print("\nNothing was observed at runtime, and nothing here could have been - "
+              "every changed file is unreachable by construction. That is NOT grounds "
+              "for `insufficient` on reach alone: judge this run on its Phase 1 checks, "
+              "and say plainly that reach had nothing to measure.")
     return 0
 
 
@@ -1232,6 +1443,7 @@ def cmd_stats(args, root):
     base_n = 0
     test_n = 0
     headless_n = 0
+    nodeless_n = 0
     wt_reached = wt_denom = 0        # worktree denominator (0.8.0+ rows)
     br_reached = br_denom = 0        # branch denominator (0.8.0+ rows)
     per_version = defaultdict(lambda: [0, 0])
@@ -1295,6 +1507,10 @@ def cmd_stats(args, root):
             # .get on a key added in 0.13.0: every row written before it must still
             # parse, or stats silently mixes two populations in one average.
             headless_n += len(reach.get("headless_tools") or [])
+            # Same treatment, one version later. Historic rows have no such key, so
+            # they contribute 0 - which is honest: those runs really did count these
+            # files as misses, and the aggregate should not retroactively excuse them.
+            nodeless_n += len(reach.get("unreachable_static") or [])
             slot = per_version[row.get("harness") or "?"]
             slot[0] += len(r)
             slot[1] += len(r) + len(u or [])
@@ -1357,6 +1573,11 @@ def cmd_stats(args, root):
     if headless_n:
         print("       %d changed headless tool(s) excluded - they run under "
               "--headless --script, so no node ever carries them" % headless_n)
+    if nodeless_n:
+        print("       %d changed file(s) unreachable by construction - they extend "
+              "RefCounted/Object, so no node carries them and no snapshot could report "
+              "them. Counted only from rows written since the split existed; older rows "
+              "scored these as misses and are not retroactively excused." % nodeless_n)
     if no_snapshot:
         print("       %d run(s) recorded no snapshot - reach unknown, not counted" % no_snapshot)
     if no_vcs:
