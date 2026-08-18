@@ -16313,3 +16313,373 @@ func test_the_legend_is_never_one_press_from_a_plants_page() -> String:
 
 
 # -- END should the pause door open the SELECTED plant's page (plant-tower-defense-5s99) --
+
+
+# -- budget the selection panel (plant-tower-defense-r722) ----------------------------
+#
+# Every constraint on the selection panel used to be prose or a hand measurement.
+# Cycle 57 priced the cob's second line at "~190px of a 232px box" BY HAND, decided
+# against adding text there on the strength of it, and the measurement was gone by the
+# next cycle. `Hud.selection_panel_budget()` is that measurement taken by machine, over
+# every line the panel can draw rather than the one line someone happened to be reading.
+#
+# The blind spot these checks close is not hypothetical and it is not old. Three
+# `next_wave_note` goldens in this very file are plain `assert_eq` on a whole rendered
+# sentence; when the rain clause lengthened this cycle, not one budget or corpus
+# assertion noticed, because a golden asserts what the string SAYS and never what it
+# COSTS. A panel is priced in pixels or it is not priced.
+
+
+## Direction one AND direction two, which is the pair `derive-the-list` says gets
+## skipped: the corpus must contain every plant and every rung the game has, and
+## nothing else. A `has()`-shaped check passes with a stale ninth name in the list.
+func test_the_selection_corpus_is_derived_from_the_catalogue_and_both_ladders() -> String:
+	var corpus: Array[String] = Hud.selection_corpus()
+	var levels: Array[String] = Hud.selection_level_names()
+	var details: Array[String] = Hud.selection_detail_corpus()
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_gt(ids.size(), 6,
+		"the catalogue has plants to sweep (an empty sweep prices a roomy panel)")
+	if err == "":
+		err = _T.assert_eq(corpus.size(), ids.size() * levels.size() * details.size(),
+			("the corpus is exactly the cross product -- %d plant(s) x %d rung(s) x %d "
+				+ "detail(s). A size that does not multiply out means a branch was added "
+				+ "to _refresh_selection that selection_corpus() never learned about")
+				% [ids.size(), levels.size(), details.size()])
+	if err != "":
+		return err
+
+	# Read the names back OUT of the built strings rather than trusting the loop that
+	# built them: `selection_line` is what the panel actually calls, so this is the
+	# only reading that says the corpus and the panel agree on the shape of a line.
+	var names_seen: Dictionary = {}
+	var rungs_seen: Dictionary = {}
+	for text: String in corpus:
+		var head: String = text.split("\n")[0]
+		var halves: PackedStringArray = head.split(" — ")
+		names_seen[halves[0]] = true
+		rungs_seen["" if halves.size() < 2 else halves[1]] = true
+	var wanted_names: Array = []
+	for id: StringName in ids:
+		wanted_names.append(PlantCatalog.display_name(id))
+	wanted_names.sort()
+	var got_names: Array = names_seen.keys()
+	got_names.sort()
+	err = _T.assert_eq(str(got_names), str(wanted_names),
+		("every display name in PlantCatalog.ids() appears in the corpus AND nothing "
+			+ "else does. A name here that the catalogue no longer has is a budget "
+			+ "priced against a plant that was deleted"))
+	if err != "":
+		return err
+
+	var wanted_rungs: Array = levels.duplicate()
+	wanted_rungs.sort()
+	var got_rungs: Array = rungs_seen.keys()
+	got_rungs.sort()
+	err = _T.assert_eq(str(got_rungs), str(wanted_rungs),
+		"and every rung, including the empty one a plant with no ladder shows")
+	if err != "":
+		return err
+
+	# The half `selection_level_names()`'s own header promises: adding a third
+	# upgradable plant has to move this, and this is where it says so.
+	var ladders: Array = [CornCobbler.LEVELS, ChompFlower.LEVELS]
+	var rungs_in_game: int = 1
+	for ladder: Array in ladders:
+		rungs_in_game += ladder.size()
+	return _T.assert_eq(levels.size(), rungs_in_game,
+		("the rung list is the two ladders in the game plus the no-ladder case. A third "
+			+ "ladder makes this fail, which is the cost of writing the ladders down and "
+			+ "the reason it is worth paying -- there is no static registry of them"))
+
+
+## Every producer's own worst case is a line the budget actually prices.
+##
+## The failure this catches is a producer that gains a longer form -- or a new one
+## added beside these -- and never reaches the corpus, so the panel is measured against
+## a set of strings it no longer draws. Naming each producer here is also what makes
+## `suite_reach_check` able to see them.
+func test_every_selection_detail_producer_is_priced_by_the_corpus() -> String:
+	var details: Array[String] = Hud.selection_detail_corpus()
+	var err: String = _T.assert_gt(details.size(), 5,
+		"there are detail lines to check (an empty list would pass every `has` below)")
+	if err != "":
+		return err
+	var top: Dictionary = CornCobbler.LEVELS[CornCobbler.LEVELS.size() - 1]
+	var wanted: Array[String] = [
+		Hud.corn_detail(float(top["damage"]) * float(int(top["kernels"])),
+			float(top["interval"]), int(top["kernels"])),
+		Hud.sunflower_detail(Sunflower.YIELD, Sunflower.INTERVAL),
+		Hud.dandelion_armed_detail(Dandelion.FLUFF_MAX, Dandelion.SEED_DAMAGE),
+		Hud.dandelion_regrowing_detail(Dandelion.FLUFF_MAX, Dandelion.FLUFF_MAX,
+			Dandelion.REGROW_DELAY + float(Dandelion.FLUFF_MAX) * Dandelion.FLUFF_REGROW_SECONDS),
+		Hud.chomp_chewing_detail(100),
+		Hud.sundew_detail(WaveDirector.SIMULTANEOUS_PEST_CEILING,
+			int(round(StickySundew.SLOW_FACTOR * 100.0))),
+		Hud.idle_detail(),
+	]
+	for line: String in wanted:
+		err = _T.assert_true(details.has(line),
+			("the corpus prices \"%s\". A producer whose worst case is missing here is a "
+				+ "line the panel draws and the budget has never measured") % line)
+		if err != "":
+			return err
+	# And the other direction, so a detail left in the corpus after its producer was
+	# deleted shows up instead of quietly widening the budget forever.
+	return _T.assert_eq(details.size(), wanted.size() + CornCobbler.LEVELS.size() - 1,
+		("the corpus is those %d worst cases plus the cob's remaining %d ladder rows and "
+			+ "nothing more") % [wanted.size(), CornCobbler.LEVELS.size() - 1])
+
+
+## The arithmetic against the two numbers hud.gd already had written down in prose:
+## a two-row label foots the stack at 168, and a three-row one foots it at the panel's
+## own edge. Both were comments; neither was a check.
+func test_the_selection_stack_arithmetic_matches_what_hud_wrote_down() -> String:
+	var room: float = Hud.selection_room_below()
+	var err: String = _T.assert_float_eq(room, 184.0, 0.001,
+		("the design canvas leaves 184px under SelectionBox -- 648 tall, less the 72px "
+			+ "top bar, less SELECTION_BOX_Y at 392. Measured against the DESIGN size, "
+			+ "not the window, so a 21:9 screen does not hand this budget free room"))
+	if err != "":
+		return err
+	var below: Array[float] = Hud.selection_rows_below_label()
+	var fixed: float = 0.0
+	for row: float in below:
+		fixed += float(Hud.SELECTION_SEPARATION) + row
+	err = _T.assert_float_eq(fixed, 112.0, 0.001,
+		("the health bar and the two buttons cost 112px of the stack, separations "
+			+ "included -- 6+14, 6+40, 6+40. Rows: %s") % str(below))
+	if err != "":
+		return err
+
+	var two_rows: Array[String] = [Hud.selection_line("A", "", "B")]
+	var priced_two: Dictionary = Hud.selection_panel_budget(
+		two_rows, Hud.SELECTION_BOX_WIDTH, room)
+	err = _T.assert_eq(int(priced_two["rows"]), 2, "two short lines wrap to two rows")
+	if err == "":
+		err = _T.assert_float_eq(float(priced_two["label_height"]),
+			Hud.SELECTION_LABEL_MIN_HEIGHT, 0.001,
+			"and two rows sit under SelectionLabel's 56px floor, so the floor is the height")
+	if err == "":
+		err = _T.assert_float_eq(float(priced_two["stack_height"]), 168.0, 0.001,
+			("which foots the stack at 168 -- the number `_build_side_panel`'s comment "
+				+ "states as \"the damaged height is unchanged at 168\" and never checked"))
+	if err != "":
+		return err
+
+	var three_rows: Array[String] = ["A\nB\nC"]
+	var priced_three: Dictionary = Hud.selection_panel_budget(
+		three_rows, Hud.SELECTION_BOX_WIDTH, room)
+	err = _T.assert_eq(int(priced_three["rows"]), 3, "three lines wrap to three rows")
+	if err == "":
+		# Not asserted as a literal 184: the row height is a font metric, and the claim
+		# worth pinning is the RELATION -- a third row is what lands the foot on the
+		# panel's edge, which is what `_refresh_selection`'s comment records a draft
+		# doing at window y=648 and being sent back for.
+		err = _T.assert_float_eq(float(priced_three["height_left"]), 0.0, 1.0,
+			("a third row lands the stack's foot on the panel's own foot, with %s px "
+				+ "left of %s. That is the 648 in _refresh_selection's comment, measured")
+				% [priced_three["height_left"], room])
+	return err
+
+
+## The invariant, over the real corpus: nothing the panel can say pushes Upgrade and
+## Uproot out through the panel's foot.
+##
+## This is the check no per-Control pass can make. Every node involved stays inside its
+## own box the whole way down -- the label grows to fit, the VBox grows to fit, the
+## buttons are the size they were asked to be -- so `findings` and `validate-ui` report
+## a clean panel while the Uproot button sits below the screen.
+func test_no_selection_line_pushes_the_panel_buttons_out_through_its_foot() -> String:
+	var corpus: Array[String] = Hud.selection_corpus()
+	var priced: Dictionary = Hud.selection_panel_budget(
+		corpus, Hud.SELECTION_BOX_WIDTH, Hud.selection_room_below())
+	var err: String = _T.assert_true(bool(priced["measured"]),
+		"the sweep resolved a font and had lines to measure")
+	if err == "":
+		# The denominator. A corpus of nothing prices a roomy panel and reads identically.
+		err = _T.assert_eq(int(priced["physical_lines"]), corpus.size() * 2,
+			("every corpus text is two physical lines, so the sweep saw %d of them -- "
+				+ "a count that has drifted means a producer grew an extra newline")
+				% (corpus.size() * 2))
+	if err == "":
+		err = _T.assert_gte(float(priced["height_left"]), 0.0,
+			("the tallest thing the panel can say is \"%s\" at %d row(s); the stack foots "
+				+ "%s px into %s px of panel, leaving %s. Widest single line is \"%s\" at "
+				+ "%s px in a %s px box")
+				% [String(priced["tallest_text"]).replace("\n", " / "), int(priced["rows"]),
+					priced["stack_height"], priced["room_below"], priced["height_left"],
+					priced["widest_line"], priced["widest_px"], priced["box_width"]])
+	if err == "":
+		# The horizontal reading is not a pass/fail -- this label wraps -- but it must be
+		# REPORTED, because it is the number cycle 57 needed and lost.
+		err = _T.assert_gt(String(priced["widest_line"]).length(), 0,
+			"and the budget names the widest line rather than only its width")
+	return err
+
+
+## The proof the floor can fail. A budget nobody has watched break is a budget nobody
+## has any reason to believe, and this project has shipped ones that could not.
+func test_a_deliberately_worsened_selection_line_falls_through_its_floor() -> String:
+	var room: float = Hud.selection_room_below()
+	var corpus: Array[String] = Hud.selection_corpus()
+	var clean: Dictionary = Hud.selection_panel_budget(corpus, Hud.SELECTION_BOX_WIDTH, room)
+	var err: String = _T.assert_true(Game.BUDGET_FLOOR.has("hud_selection_panel"),
+		"the selection panel has a declared floor to fall through")
+	if err != "":
+		return err
+	var floor_left: float = float(Game.BUDGET_FLOOR["hud_selection_panel"])
+	var as_shipped: Array[Dictionary] = [_selection_entry(clean)]
+	err = _T.assert_eq(Game.budget_regressions(as_shipped).size(), 0,
+		("the build as it stands is not under its floor: %s px left against a floor of %s")
+			% [clean["height_left"], floor_left])
+	if err != "":
+		return err
+
+	# One line, worsened on purpose, in the shape a real edit would take: a few more
+	# words on the Chomp's chew readout. It already wraps to two rows; this takes it
+	# to three, which is a fourth row on the label and 25px the panel does not have.
+	var worsened: Array[String] = corpus.duplicate()
+	worsened.append(Hud.selection_line("Chomp Flower", "gaping maw",
+		Hud.chomp_chewing_detail(100) + " Hold still, this one is nearly done."))
+	var spoiled: Dictionary = Hud.selection_panel_budget(
+		worsened, Hud.SELECTION_BOX_WIDTH, room)
+	err = _T.assert_gt(int(spoiled["rows"]), int(clean["rows"]),
+		("the worsened line really did add a row: %d -> %d")
+			% [int(clean["rows"]), int(spoiled["rows"])])
+	if err == "":
+		err = _T.assert_gt(0.0, float(spoiled["height_left"]),
+			("and the stack now foots %s px into %s px of panel -- %s px PAST it")
+				% [spoiled["stack_height"], room, spoiled["height_left"]])
+	if err != "":
+		return err
+
+	var lines: Array[String] = Game.budget_regressions([_selection_entry(spoiled)])
+	err = _T.assert_eq(lines.size(), 1, "and exactly one budget warns: %s" % str(lines))
+	if err == "":
+		err = _T.assert_true(lines[0].contains("hud_selection_panel"),
+			"the warning names the budget: %s" % lines[0])
+	if err == "":
+		# The user-facing half of this whole bead: a budget that fires and says nothing
+		# actionable is a budget that gets muted. It has to name the fix.
+		err = _T.assert_true(lines[0].contains("Upgrade and Uproot"),
+			"and says what running out costs, in nodes a person can go and look at: %s"
+				% lines[0])
+	return err
+
+
+## Shared with the test above: the entry `budget_entries()` would build from a priced
+## sweep, so the staging and the run grade the same shape.
+func _selection_entry(priced: Dictionary) -> Dictionary:
+	return Game.computed_budget("hud_selection_panel",
+		"Hud.SELECTION_BOX_Y against Hud.selection_room_below()", "res://game/hud.gd",
+		"the selection stack's foot",
+		float(priced["stack_height"]), float(priced["room_below"]), "px",
+		"Hud.selection_panel_budget() over Hud.selection_corpus()",
+		("a selection line wraps to an extra row, SelectionLabel grows, and the VBox pushes "
+			+ "Upgrade and Uproot down through the panel's foot"),
+		Game.no_budget_observations())
+
+
+## The simulation against the engine. `wrapped_rows` is greedy word wrap done by hand,
+## and a budget built on a wrap rule the renderer does not share is a budget measuring
+## a panel that does not exist.
+##
+## The Label is built EMPTY and given its text last, after it is in the tree and sized:
+## a Label that already holds text reports its unwrapped width as its minimum, which is
+## exactly the reading that would make this agree for the wrong reason.
+func test_the_wrapped_row_count_agrees_with_a_real_label() -> String:
+	var label := await _T.instantiate_ui(Label.new(), Vector2i(1152, 648)) as Label
+	label.add_theme_font_size_override("font_size", Hud.SELECTION_LABEL_FONT_SIZE)
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.custom_minimum_size = Vector2(Hud.SELECTION_BOX_WIDTH, 0)
+	label.size = Vector2(Hud.SELECTION_BOX_WIDTH, 400)
+	var font: Font = label.get_theme_font("font")
+	var font_size: int = label.get_theme_font_size("font_size")
+	var err: String = _T.assert_true(font != null,
+		"the probe resolved the same theme font the panel draws in")
+	if err != "":
+		_T.free_ui(label)
+		return err
+
+	# The reading is worthless at any other width, and a Control's size is not the test's
+	# to assume: a viewport that stretched this to 1152 would wrap nothing and agree with
+	# `wrapped_rows` about every string in the corpus.
+	err = _T.assert_float_eq(label.size.x, Hud.SELECTION_BOX_WIDTH, 0.001,
+		"the probe Label really is the panel's 232px wide")
+	if err != "":
+		_T.free_ui(label)
+		return err
+
+	var checked: int = 0
+	var wrapped: int = 0
+	for detail: String in Hud.selection_detail_corpus():
+		label.size = Vector2(Hud.SELECTION_BOX_WIDTH, 400)
+		label.text = detail
+		await label.get_tree().process_frame
+		var engine_rows: int = label.get_line_count()
+		var ours: int = Hud.wrapped_rows(detail, font, font_size, Hud.SELECTION_BOX_WIDTH)
+		err = _T.assert_eq(ours, engine_rows,
+			("wrapped_rows and the renderer agree on \"%s\" at %s px: %d vs %d")
+				% [detail, Hud.SELECTION_BOX_WIDTH, ours, engine_rows])
+		if err != "":
+			break
+		checked += 1
+		if engine_rows > 1:
+			wrapped += 1
+	if err == "":
+		# Two denominators, because agreeing about nothing is free. The second is the
+		# one that matters: if NOTHING in the corpus wraps, this test agrees with the
+		# renderer only about the easy case and would pass a broken wrap rule.
+		err = _T.assert_eq(checked, Hud.selection_detail_corpus().size(),
+			"every detail line was compared, not an empty loop passing quietly")
+	if err == "":
+		err = _T.assert_gt(wrapped, 0,
+			("at least one real detail line WRAPS at 232px, so the agreement above is "
+				+ "about the case the budget exists for and not only about short strings"))
+	if err == "":
+		# And the width the budget measured is the width the harness's own measurer
+		# reads off this very Label -- the two cannot drift into disagreeing.
+		label.text = String(Hud.selection_panel_budget(Hud.selection_corpus(),
+			Hud.SELECTION_BOX_WIDTH, Hud.selection_room_below())["widest_line"])
+		await label.get_tree().process_frame
+		var priced: Dictionary = Hud.selection_panel_budget([label.text],
+			Hud.SELECTION_BOX_WIDTH, Hud.selection_room_below())
+		err = _T.assert_float_eq(float(priced["widest_px"]), _T.text_width(label), 0.5,
+			("the budget's width for \"%s\" is the one _T.text_width reads off the real "
+				+ "Label -- get_minimum_size() would have reported a clip stub") % label.text)
+	_T.free_ui(label)
+	return err
+
+
+## The wiring. A budget that measures perfectly and is never called is the failure
+## `budget_regressions()`'s own orphan-floor warning was written against, from the
+## other side.
+func test_the_run_prices_the_selection_panel_among_its_budgets() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var entries: Array[Dictionary] = game.budget_entries(30)
+	var found: Dictionary = {}
+	for entry: Dictionary in entries:
+		if str(entry["id"]) == "hud_selection_panel":
+			found = entry
+			break
+	var err: String = _T.assert_gt(found.size(), 0,
+		"a real run prices hud_selection_panel among its budgets")
+	if err == "":
+		err = _T.assert_true(bool(found["computed"]),
+			"and measures it rather than reporting a hole: %s" % found.get("summary", ""))
+	if err == "":
+		var seen: String = str(found["observations"])
+		err = _T.assert_true(seen.contains("widest line is"),
+			"the reading names the widest line, which is the half cycle 57 lost: %s" % seen)
+	if err == "":
+		err = _T.assert_true(str(found["observations"]).contains("vertical room left"),
+			"and the vertical room, which is the half that breaks: %s" % found["observations"])
+	if err == "":
+		err = _T.assert_eq(Game.budget_regressions(entries).size(), 0,
+			"and the run as it stands is under no budget's floor")
+	_T.free_ui(game)
+	return err
+
+
+# -- END budget the selection panel (plant-tower-defense-r722) ------------------------

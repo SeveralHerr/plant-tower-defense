@@ -2498,12 +2498,29 @@ static func wrapped_rows(line: String, font: Font, font_size: int, box_width: fl
 ## Price `lines` against the selection panel's box: the widest single line it can be
 ## asked to draw, and where the whole stack's foot lands.
 ##
-## TWO failure modes, and they are not the same one twice. **Horizontally**, a line
-## wider than `box_width` wraps rather than clipping. **Vertically**, the extra row
-## that wrap produces grows SelectionLabel, and a VBoxContainer pushes everything
-## after it down — so Upgrade and Uproot leave the panel through its foot. The first
-## causes the second, but not only the first does: a detail producer that grew a third
-## `\n` would move the foot with every line still comfortably inside the box.
+## TWO numbers, because there are two questions and they have different answers.
+##
+##   * `width_left` — how much room the WIDEST single line has in the box. This is the
+##     reading cycle 57 took by hand ("the cob's second line at ~190px of a 232px box")
+##     and lost. On its own it is not a pass/fail: this label AUTOWRAPS, so a line
+##     wider than the box is drawn, not clipped. It is the number a person needs
+##     before adding a word.
+##   * `height_left` — how much panel is left under the stack's foot once the label has
+##     grown to hold every row the wrap produced. THIS is the one that breaks: a
+##     VBoxContainer pushes Upgrade and Uproot down by the extra row, out through the
+##     panel's foot, where they are still pressable by path and invisible to a player.
+##     Nothing overflows its own box at any point, which is why no per-Control check
+##     sees it.
+##
+## The second is not the first restated. A detail producer that grew a third `\n` would
+## move the foot with every line still comfortably inside the box.
+##
+## `label_height` is `rows * (font height + line_spacing) - line_spacing`, floored at
+## SELECTION_LABEL_MIN_HEIGHT — Label's own arithmetic, not an approximation of it. It
+## reproduces both numbers this file already had written down: 2 rows lands the stack's
+## foot at 168 (the "damaged height is unchanged at 168" in `_build_side_panel`) and 3
+## rows lands it at 184, which is exactly the panel's own foot at window y=648 that
+## `_refresh_selection`'s comment records a draft having hit.
 ##
 ## `lines` is a parameter rather than a call to `selection_corpus()` so a test can hand
 ## this a corpus worsened on purpose and watch the number go negative. A budget nobody
@@ -2519,9 +2536,10 @@ static func selection_panel_budget(lines: Array[String], box_width: float,
 	probe.add_theme_font_size_override("font_size", SELECTION_LABEL_FONT_SIZE)
 	var font: Font = probe.get_theme_font("font")
 	var font_size: int = probe.get_theme_font_size("font_size")
+	var line_spacing: float = float(probe.get_theme_constant("line_spacing"))
 	var row_height: float = 0.0
 	if font != null:
-		row_height = font.get_height(font_size) + float(probe.get_theme_constant("line_spacing"))
+		row_height = font.get_height(font_size) + line_spacing
 	probe.free()
 
 	var widest_line: String = ""
@@ -2543,7 +2561,11 @@ static func selection_panel_budget(lines: Array[String], box_width: float,
 		if rows > tallest_rows:
 			tallest_rows = rows
 			tallest_text = text
-	var label_height: float = maxf(SELECTION_LABEL_MIN_HEIGHT, float(tallest_rows) * row_height)
+	# Label's own formula: the gap between rows is spent between them, not after the
+	# last. Getting this wrong by one `line_spacing` is a 3px error that would have put
+	# the shipped panel 3px past its own foot in the report and nowhere in the game.
+	var label_height: float = maxf(SELECTION_LABEL_MIN_HEIGHT,
+		float(tallest_rows) * row_height - line_spacing)
 	var stack_height: float = label_height
 	for row: float in selection_rows_below_label():
 		stack_height += float(SELECTION_SEPARATION) + row
@@ -2559,6 +2581,7 @@ static func selection_panel_budget(lines: Array[String], box_width: float,
 		"box_width": box_width,
 		"width_left": box_width - widest_px,
 		"row_height": row_height,
+		"line_spacing": line_spacing,
 		"rows": tallest_rows,
 		"tallest_text": tallest_text,
 		"label_height": label_height,

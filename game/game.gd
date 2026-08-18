@@ -2555,17 +2555,25 @@ const BUDGET_FLOOR: Dictionary = {
 	# what everyone assumed about the wave slot until it had 10px left.
 	"hud_message_row": 40.0,
 	"hud_stats_row": 19.0,
-	# The selection panel, in whichever of its two dimensions has less room
-	# (plant-tower-defense-r722). Cycle 57 priced the cob's second line against the
-	# 232px box BY HAND, wrote "~190 of 232" into a decision, and lost the number;
-	# this is that measurement, taken by machine, over every line the panel can draw
-	# rather than the one line someone happened to be looking at.
+	# ZERO, and it is the news this budget was filed to find (plant-tower-defense-r722).
 	#
-	# The binding dimension today is the VERTICAL one -- 16px between the stack's
-	# foot and the panel's -- which is exactly the reading a per-Control check
-	# cannot produce, because nothing is overflowing anything. See
-	# Hud.selection_panel_budget().
-	"hud_selection_panel": 15.0,
+	# Cycle 57 priced the cob's second line against the 232px box BY HAND, wrote
+	# "~190 of 232" into a decision, and lost the number. Measured mechanically over
+	# every line the panel can draw -- rather than the one line someone happened to be
+	# looking at -- the cob is not the worst case and never was. A Chomp Flower that is
+	# chewing shows "Chewing — 100% through this one." at 252 px in a 232 px box; it
+	# wraps to a second row, SelectionLabel grows from 56 to 72, and because the Chomp
+	# has a ladder its Upgrade button is in the stack. The foot lands at 184 px into
+	# 184 px of panel: flush with the panel edge, no margin at all -- which is the exact
+	# state `_refresh_selection`'s own comment records a draft having hit at window
+	# y=648 and being sent back for.
+	#
+	# So this floor is not a comfortable number ratcheted down. It is a tripwire on a
+	# panel that has already run out: the next row anybody adds leaves the panel, and
+	# `budgets_at_floor()` reports this entry as resting on its floor on every reading
+	# until the wrapping line is shortened. Filed separately -- shortening it is a text
+	# decision, not a budget one.
+	"hud_selection_panel": 0.0,
 	"pest_road_ceiling": 0.0,
 }
 
@@ -3002,18 +3010,22 @@ func _stats_row() -> HBoxContainer:
 ## by that row, out through the panel's foot. Nothing overflows its own box at any
 ## point, so `findings` / `validate-ui` see a clean panel the whole way down.
 ##
-## TWO numbers, because there are two ways to run out and they are not the same one:
+## TWO numbers, reported together and graded differently, and the asymmetry is the
+## whole design:
 ##
-##   * **horizontal** — the widest single line against Hud.SELECTION_BOX_WIDTH. This
-##     is the one cycle 57 measured by hand ("the cob's second line at ~190px of a
-##     232px box") to decide against adding words to it, and then lost.
-##   * **vertical** — the stack's foot against the panel's. A third `\n` in a detail
-##     producer moves this one with every line still comfortably inside the box, so
-##     it is not merely the first number restated.
+##   * **the widest per-plant line** against Hud.SELECTION_BOX_WIDTH. This is the
+##     reading cycle 57 took by hand ("the cob's second line at ~190px of a 232px
+##     box") to decide against adding words there, and then lost. It is reported, not
+##     graded -- the label autowraps, so a line wider than the box is drawn rather
+##     than clipped, and "over" here is a spend, not a break. Today the widest line in
+##     the game is over the box by 34px and the panel is fine.
+##   * **the vertical room left** under the stack's foot. This one is graded, because
+##     this is the one that breaks: the row the wrap produced grows SelectionLabel,
+##     and the VBox pushes Upgrade and Uproot down by it, through the panel's foot.
 ##
-## Graded on whichever has LESS room, with the other reported beside it in every
-## reading. A budget that reported only the binding one would go quiet about the
-## dimension somebody is about to spend.
+## Both are in `observations` on every reading, so the one that is not the gate is
+## still the one a person needs before adding a word. Naming the widest LINE and not
+## just its width is the actionable half: "232px" tells nobody which sentence to cut.
 ##
 ## Pure arithmetic over Hud's statics — no live node, deliberately. Unlike the stats
 ## row there is nothing to read off the running HUD that is not already a constant:
@@ -3027,8 +3039,8 @@ func _budget_hud_selection_panel() -> Dictionary:
 		corpus, Hud.SELECTION_BOX_WIDTH, Hud.selection_room_below())
 	if not bool(priced["measured"]):
 		return uncomputed_budget(BUDGET_UNMEASURED, "hud_selection_panel",
-			"Hud.SELECTION_BOX_WIDTH and Hud.SELECTION_BOX_Y", "res://game/hud.gd",
-			"the widest line and tallest stack the selection panel can hold",
+			"Hud.SELECTION_BOX_Y against Hud.selection_room_below()", "res://game/hud.gd",
+			"the selection stack's foot",
 			("the selection sweep measured nothing -- %d text(s), %d line(s), box %s px"
 				% [int(priced["texts"]), int(priced["physical_lines"]),
 					budget_number(float(priced["box_width"]))]),
@@ -3055,22 +3067,19 @@ func _budget_hud_selection_panel() -> Dictionary:
 			+ "Hud.selection_level_names() and Hud.selection_detail_corpus()")
 			% [int(priced["texts"]), int(priced["physical_lines"])],
 	]
-	var vertical_binds: bool = height_left <= width_left
-	var spends: String = ("the selection stack's foot" if vertical_binds
-		else "the widest selection line")
-	var spent: float = float(priced["stack_height"]) if vertical_binds else float(priced["widest_px"])
-	var ceiling: float = float(priced["room_below"]) if vertical_binds else float(priced["box_width"])
 	return computed_budget("hud_selection_panel",
-		"Hud.SELECTION_BOX_WIDTH and Hud.SELECTION_BOX_Y", "res://game/hud.gd",
-		spends, spent, ceiling, "px",
+		"Hud.SELECTION_BOX_Y against Hud.selection_room_below()", "res://game/hud.gd",
+		"the selection stack's foot",
+		float(priced["stack_height"]), float(priced["room_below"]), "px",
 		("Hud.selection_panel_budget() over Hud.selection_corpus() -- every plant in "
 			+ "PlantCatalog.ids() crossed with every ladder rung and every detail line, "
-			+ "measured in the real theme font and word-wrapped to the box. Graded on the "
-			+ "TIGHTER of the panel's two dimensions; the other is in the observations, and "
-			+ "on this build the binding one is %s. NOT covered: a detail assembled at "
-			+ "runtime from something no static caller can reach -- there is none today, and "
-			+ "the producers in hud.gd are what keeps it that way")
-				% ("vertical" if vertical_binds else "horizontal"),
+			+ "measured in the real theme font and word-wrapped to the box, then run "
+			+ "through Label's own row arithmetic. Graded on the VERTICAL room only: the "
+			+ "widest-line reading is in the observations because this label wraps rather "
+			+ "than clips, so a line over the box is a spend of the vertical budget and not "
+			+ "a break of its own. NOT covered: a detail assembled at runtime from something "
+			+ "no static caller can reach -- there is none today, and the producers in "
+			+ "hud.gd are what keeps it that way"),
 		("a selection line wraps to an extra row, SelectionLabel grows, and the VBox pushes "
 			+ "Upgrade and Uproot down through the panel's foot -- where they are still "
 			+ "pressable by path and invisible to a player. Shorten the detail line, shorten "
