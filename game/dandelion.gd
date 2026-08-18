@@ -119,11 +119,21 @@ const FLUFF_TEXTURES: Array[String] = [
 ## The selection ring. Sand rather than green: CornCobbler already owns a green
 ## ring at RANGE and the two plants would otherwise be telling the player the same
 ## thing in the same colour at nearly the same radius.
-const RING_FILL := Color(0.93, 0.86, 0.72, 0.10)
-const RING_EDGE := Color(0.65, 0.61, 0.51, 0.55)
+##
+## The 10%-alpha sand `RING_FILL` that used to sit inside it is gone — see
+## `Plant.draw_reach_ring()`, which is now the only implementation of this cue and
+## argues there why the edge is the whole mark.
+const RING_EDGE := Color(0.65, 0.61, 0.51, Plant.REACH_RING_ALPHA)
 ## The blast preview, drawn at the last place this plant actually threw a seed —
 ## the one number a player cannot infer from the range ring, and the whole reason
 ## to buy the plant.
+##
+## This one KEEPS its fill and is not an inconsistency with the ring above, which is
+## worth saying because the grammar file files both under the same REACH row. That row
+## is "centred on a plant"; this is centred on a landing point one throw away, with no
+## sprite under it to anchor the reader, and what it answers is "which cells would the
+## blast cover" — an area question the edge alone does not answer. Different centre,
+## different question, different mark.
 const BLAST_PREVIEW_FILL := Color(1.0, 0.93, 0.78, 0.13)
 const BLAST_PREVIEW_EDGE := Color(0.65, 0.61, 0.51, 0.7)
 
@@ -368,15 +378,21 @@ func _refresh_fluff_sprite() -> void:
 		_sprite.texture = texture
 
 
+func reach_ring_radius() -> float:
+	return RANGE
+
+
+func reach_ring_color() -> Color:
+	return RING_EDGE
+
+
 ## Note there is no super._draw() call here, and there must not be: the selection
 ## brackets live in a SelectionMarker child precisely because an override like
-## this one eats them. See SelectionMarker's header.
+## this one eats them. See SelectionMarker's header — the same trap is why
+## `Plant.draw_reach_ring()` is called on the first line rather than inherited.
 func _draw() -> void:
-	if not _selected:
-		return
-	draw_circle(Vector2.ZERO, RANGE, RING_FILL)
-	draw_arc(Vector2.ZERO, RANGE, 0.0, TAU, 48, RING_EDGE, 2.0, true)
-	if not _has_fired:
+	draw_reach_ring()
+	if not _selected or not _has_fired:
 		return
 	draw_circle(_last_landing, SeedBomb.BLAST_RADIUS, BLAST_PREVIEW_FILL)
 	draw_arc(_last_landing, SeedBomb.BLAST_RADIUS, 0.0, TAU, 24, BLAST_PREVIEW_EDGE, 2.0, true)
