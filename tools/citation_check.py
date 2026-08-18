@@ -62,6 +62,14 @@ BEAD_PROSE_FIELDS = ("description", "close_reason")
 # problem stops being reported for it.
 BEAD_WAIVER = "citation-check: ok"
 
+# ...but the marker must OPEN ITS OWN LINE, and this is not a nicety. The very first bead
+# closed by this feature quoted the marker mid-sentence -- "the marker `citation-check: ok`
+# anywhere in the bead's prose drops the whole bead" -- and thereby waived itself: the bead
+# count went 468 -> 467 and three citations vanished from the denominator. A waiver a bead
+# can trip by DESCRIBING the waiver is worse than no waiver, because it fires exactly on the
+# beads that discuss citation checking. Found by re-running the checker over its own close.
+BEAD_WAIVER_LINE = re.compile(r"^[ \t>*+-]*" + re.escape(BEAD_WAIVER), re.MULTILINE)
+
 # A citation is a backticked path with at least one directory part, a colon, a line, and
 # optionally a `-` and an end line. The directory part is what keeps `Vector2(1.0, 1.0)`
 # and prose like `9:00` out of the match.
@@ -223,7 +231,7 @@ def bead_sources(export: Path | None = None) -> tuple[list[tuple[str, str, bool]
         if not isinstance(issue, dict) or not issue.get("id"):
             continue
         prose = "\n".join(str(issue.get(f) or "") for f in BEAD_PROSE_FIELDS)
-        if BEAD_WAIVER in prose:
+        if BEAD_WAIVER_LINE.search(prose):
             continue
         closed = str(issue.get("status", "")).lower() in ("closed", "done")
         out.append(("bead %s%s" % (issue["id"], " (closed)" if closed else ""),
@@ -257,6 +265,11 @@ def self_check() -> int:
          "close_reason": "same defect, closed: tools/citation_check.py:%d" % past_end},
         {"id": "SELFCHECK-waived", "status": "open",
          "description": "citation-check: ok -- tools/citation_check.py:%d" % past_end},
+        # The bead that TALKS ABOUT the waiver must not BE waived. Case 5 is here because
+        # the first bead this feature ever closed did exactly that to itself.
+        {"id": "SELFCHECK-mentions", "status": "open",
+         "description": "the marker `citation-check: ok` mentioned mid-sentence must not "
+                        "waive: tools/citation_check.py:%d" % past_end},
     ]
     with tempfile.TemporaryDirectory() as td:
         fake = Path(td) / "issues.jsonl"
@@ -267,13 +280,14 @@ def self_check() -> int:
         return 1
     labels = [lbl for lbl, _, _ in got]
     problems: list[str] = []
-    if len(got) != 2:
-        problems.append("expected 2 sources (waived one dropped), got %d: %s"
-                        % (len(got), labels))
-    if not any("SELFCHECK-waived" in l for l in labels):
-        pass    # correct: the waiver removed it
-    else:
-        problems.append("the waiver marker did not suppress SELFCHECK-waived")
+    if len(got) != 3:
+        problems.append("expected 3 sources (only the line-initial waiver dropped), got "
+                        "%d: %s" % (len(got), labels))
+    if any("SELFCHECK-waived" in l for l in labels):
+        problems.append("the line-initial waiver marker did not suppress SELFCHECK-waived")
+    if not any("SELFCHECK-mentions" in l for l in labels):
+        problems.append("a bead MENTIONING the marker mid-sentence was waived -- this is "
+                        "the self-waiving close returning; the marker must open its line")
     gating = {lbl: g for lbl, _, g in got}
     for lbl, want in ((("SELFCHECK-open"), True), (("SELFCHECK-closed"), False)):
         hit = [g for l, g in gating.items() if lbl in l]
@@ -293,9 +307,9 @@ def self_check() -> int:
         print("SELF-CHECK FAILED: %s" % p)
     if problems:
         return 1
-    print("citation_check --self-check: 4 case(s) OK -- an open bead's dead citation gates, "
+    print("citation_check --self-check: 5 case(s) OK -- an open bead's dead citation gates, "
           "the same defect in a closed bead does not, the unbackticked form is seen, and "
-          "the %r waiver suppresses a bead. NOT COVERED by this fixture: whether the real "
+          "a line-initial %r waives a bead while a mid-sentence mention of it does not. NOT COVERED by this fixture: whether the real "
           "export parses, and whether a landed line supports its claim." % BEAD_WAIVER)
     return 0
 
