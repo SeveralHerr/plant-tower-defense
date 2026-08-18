@@ -534,8 +534,11 @@ func test_the_uproot_button_reprices_itself_as_the_plant_is_chewed() -> String:
 	if err == "":
 		err = _T.assert_true(button != null, "the uproot button is on screen")
 	if err == "":
-		err = _T.assert_eq(button.text, "Uproot (+%d)" % game.selected_placed.uproot_refund(),
-			"the resting label prints the live refund, got %s" % button.text)
+		err = _T.assert_eq(button.text, Hud.uproot_button_text(
+				game.selected_placed.uproot_refund(),
+				game.bank.placement_cost(game.selected_placed.kind)),
+			("the resting label prints the live refund AND the net of the trade"
+				+ " (plant-tower-defense-eupm), got %s") % button.text)
 	if err == "":
 		var before: String = button.text
 		game.selected_placed.take_damage(Plant.MAX_HEALTH - 1.0)
@@ -543,7 +546,9 @@ func test_the_uproot_button_reprices_itself_as_the_plant_is_chewed() -> String:
 		err = _T.assert_true(button.text != before,
 			"a chewed plant reprices its own uproot button, still says %s" % button.text)
 		if err == "":
-			err = _T.assert_eq(button.text, "Uproot (+%d)" % game.selected_placed.uproot_refund(),
+			err = _T.assert_eq(button.text, Hud.uproot_button_text(
+					game.selected_placed.uproot_refund(),
+					game.bank.placement_cost(game.selected_placed.kind)),
 				"and prints exactly what commit_uproot would pay, got %s" % button.text)
 	_T.free_ui(game)
 	return err

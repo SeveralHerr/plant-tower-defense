@@ -1704,7 +1704,18 @@ static func uproot_armed_text(refund: int) -> String:
 ## measures. Two digits on both numbers because the catalogue tops out at 45 seeds
 ## (`PlantCatalog`) and a refund can never exceed the cost it is a fraction of — the
 ## third digit is headroom, not a reachable state.
-const UPROOT_WORST_CASE_TEXT: String = "Uproot (+99, net -99)"
+## A PLUS in the net, not a minus, and 15 rather than 99.
+##
+## The obvious worst case is the biggest numbers with the sign that looks heaviest,
+## and it is wrong on both counts. `net` is positive exactly once — the free starter,
+## where placement_cost is 0 and the trade pays — and in this theme's font `+` is
+## wider than `-`, so "Uproot (+15, net +15)" measures 171px against the 99s' 167.
+## The 15 is not free either: the refund is a fraction of a real catalogue price, so
+## 99 is not a string the game can build, and the widest it can is the dearest plant.
+##
+## Found by this constant's own test on its first real run, which is what that test
+## is for — the string was declared from the shape of the format and never measured.
+const UPROOT_WORST_CASE_TEXT: String = "Uproot (+15, net +15)"
 ## And the armed branch's, which is the string every earlier pass measured this button
 ## against. Both are measured against the 232px box by
 ## `test_the_uproot_buttons_worst_case_fits_the_selection_box`, which also checks the
