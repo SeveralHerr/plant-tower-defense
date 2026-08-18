@@ -52,6 +52,15 @@ const CARD := Rect2(128.0, 96.0, 640.0, 456.0)
 const ROW_HEIGHT: float = 34.0
 const ROW_INSET: float = 36.0
 const FIRST_ROW_Y: float = 186.0
+## The row font, named because the budget has to measure at the size the label
+## actually renders at. It was typed inline in `_build_rows` twice — once for the
+## key column and once for the value — which is two copies of a number a width
+## budget reads as its own denominator.
+const ROW_FONT_SIZE: int = 17
+## How much of the card's width the value column takes, the key column getting the
+## rest. Named for the same reason: `value_slot_width()` below and `_build_rows`
+## must not be able to disagree about how wide the thing being measured is.
+const VALUE_COLUMN_FRACTION: float = 0.58
 ## Gap between rows. 4, not the 8 this started at: the card grew from five rows to
 ## seven when the run learned to count what it defeated, and at 8 the last row ran
 ## to y=472 against buttons at 476 — four pixels, measured live. Not an overlap,
@@ -328,6 +337,124 @@ static func score_line_at(earned: int, new_record: bool, first: bool, best: int,
 static func rows_capacity() -> int:
 	return OverlayScreen.rows_that_fit(FIRST_ROW_Y, ROW_HEIGHT + ROW_GAP, ROW_HEIGHT,
 		BUTTON_Y - BUTTON_CLEARANCE)
+
+
+## How wide the value column is, in pixels. One expression, read by `_build_rows`
+## and by the budget, so the panel and its measurement cannot disagree.
+static func value_slot_width() -> float:
+	return CARD.size.x * VALUE_COLUMN_FRACTION - ROW_INSET
+
+
+## The worst `_stats` this card can be handed, one dictionary per row it stresses.
+##
+## DERIVED WORST CASES, NOT WORST STRINGS. Every entry here is a *state*, and the
+## string comes out of the card's own producer for it — so a producer that learns
+## a new phrasing is measured with the new phrasing and nobody has to remember to
+## retype it here. That is the whole difference between this and the header
+## comment it replaces, which said "the beds row's `5 of 10 beds — 4 walked in
+## untouched` at 36 characters sets the card's high-water mark" and was (a) in
+## CHARACTERS, which is not a unit any proportional font respects, and (b) never
+## checked by anything.
+##
+## Numbers are deliberately absurd where absurd is reachable: an endless run has
+## no wave ceiling, so the wave count is four digits rather than two.
+## THE FIRST DRAFT OF THIS TABLE USED THE WRONG KEY NAMES and every producer fell
+## through to its default, so the corpus measured a card full of zeroes and reported
+## a comfortable 118 px of headroom. The tell was that the ALL-ZEROES state came out
+## widest — a worst case that loses to its own control is not a worst case. Keys here
+## are read straight off the `_stats.get(...)` calls in the producers below; if a
+## producer is renamed, `test_every_corpus_state_moves_every_row_off_its_default`
+## fails rather than this table quietly measuring nothing again.
+static func corpus_states() -> Array[Dictionary]:
+	# DERIVED, not typed: `reach_text` only reaches its longest form when `reach_par()`
+	# is positive, and `reach_par()` is only positive when `road_cells` MATCHES the real
+	# Board's road. A guessed 24 silently produced the short form, so the longest thing
+	# that row can say went unmeasured — a corpus can be wrong by being plausible.
+	var probe := Board.new()
+	var road: int = probe.road_cells().size()
+	probe.free()
+	var states: Array[Dictionary] = CORPUS_STATES.duplicate(true)
+	for state: Dictionary in states:
+		if int(state.get("road_cells", 0)) > 0:
+			state["road_cells"] = road
+			state["road_aimed"] = mini(int(state.get("road_aimed", 0)), road)
+	return states
+
+
+const CORPUS_STATES: Array[Dictionary] = [
+	# A long endless run that went badly: four-digit waves, every row at full width.
+	{
+		"wave": 9999, "wave_count": 22, "endless": true, "threat_level": 9,
+		"pests_defeated": 99999, "lives_lost": 10,
+		"escapes_recorded": 99, "escapes_untouched": 44,
+		"compost_total": 9999, "compost_resolved": 9999,
+		"seeds_on_plants": 99999, "seeds_on_upgrades": 99999,
+		"road_aimed": 24, "road_cells": 24,
+		"stop_cell": Vector2i(13, 8), "stop_cell_stops": 999,
+	},
+	# The prose branches the state above skips: "all were fought" instead of a count,
+	# and the reach row's third form, which is the longest thing that row can say.
+	{
+		"wave": 22, "wave_count": 22, "endless": false, "threat_level": 9,
+		"pests_defeated": 9999, "lives_lost": 10,
+		"escapes_recorded": 99, "escapes_untouched": 0,
+		"compost_total": 999, "compost_resolved": 999,
+		"seeds_on_plants": 9999, "seeds_on_upgrades": 9999,
+		"road_aimed": 0, "road_cells": 24,
+		"stop_cell": Vector2i(13, 8), "stop_cell_stops": 999,
+	},
+	# The other two prose branches: no ground held them, and no road measured.
+	{
+		"wave": 1, "wave_count": 22, "endless": false, "threat_level": 1,
+		"pests_defeated": 0, "lives_lost": 0,
+		"escapes_recorded": 0, "escapes_untouched": 0,
+		"compost_total": 0, "compost_resolved": -1,
+		"seeds_on_plants": 0, "seeds_on_upgrades": 0,
+		"road_aimed": 0, "road_cells": 0,
+		"stop_cell": Vector2i(-1, -1), "stop_cell_stops": 0,
+	},
+]
+
+
+## Every value string this card can print, at its worst — the `message_corpus()`
+## equivalent `wf4i` asked for, and the thing its budget reads.
+##
+## Built by driving the card's OWN `summary_rows()` over `CORPUS_STATES`, so this
+## enumerates states and the producers enumerate strings. A row whose text changes
+## shape is re-measured automatically; a row ADDED to `summary_rows()` is picked up
+## automatically too, which is the half a hand-written list always loses.
+static func summary_corpus() -> Array[String]:
+	var out: Array[String] = []
+	for state: Dictionary in corpus_states():
+		var card := RunSummary.new()
+		card._stats = state
+		for row: Array in card.summary_rows():
+			var text: String = String(row[1])
+			if text != "" and not out.has(text):
+				out.append(text)
+		card.free()
+	return out
+
+
+## The widest value string and what it needs, against the slot it has to fit.
+## `{"text": String, "needed": float, "slot": float, "left": float}`.
+##
+## WHY THIS SURFACE EARNS A BUDGET AT ALL, argued in full in
+## `.claude/corpus-checking-verdict.md` and in one line here: these labels are
+## `clip_text` with `OVERRUN_TRIM_ELLIPSIS`, so an over-long value does not wrap
+## and does not push anything. Its height is unchanged, which means
+## `BUTTON_CLEARANCE` — the only other gate on this card — reads a number a
+## content regression cannot move. Nothing else was watching.
+static func value_column_budget() -> Dictionary:
+	var slot: float = value_slot_width()
+	var worst: String = ""
+	var needed: float = 0.0
+	for text: String in summary_corpus():
+		var width: float = GardenTheme.measure(text, ROW_FONT_SIZE)
+		if width > needed:
+			needed = width
+			worst = text
+	return {"text": worst, "needed": needed, "slot": slot, "left": slot - needed}
 
 
 func summary_rows() -> Array:
@@ -1107,18 +1234,19 @@ func _build_rows() -> void:
 		key.name = "Row_%s" % String(row[0]).replace(" ", "")
 		key.text = String(row[0])
 		key.position = Vector2(CARD.position.x + ROW_INSET, y)
-		key.size = Vector2(CARD.size.x * 0.42, ROW_HEIGHT)
-		key.add_theme_font_size_override("font_size", 17)
+		key.size = Vector2(CARD.size.x * (1.0 - VALUE_COLUMN_FRACTION), ROW_HEIGHT)
+		key.add_theme_font_size_override("font_size", ROW_FONT_SIZE)
 		key.add_theme_color_override("font_color", Color(GardenTheme.INK, 0.62))
 		add_child(key)
 
 		var value := Label.new()
 		value.name = "Value_%s" % String(row[0]).replace(" ", "")
 		value.text = String(row[1])
-		value.position = Vector2(CARD.position.x + CARD.size.x * 0.42, y)
-		value.size = Vector2(CARD.size.x * 0.58 - ROW_INSET, ROW_HEIGHT)
+		value.position = Vector2(
+			CARD.position.x + CARD.size.x * (1.0 - VALUE_COLUMN_FRACTION), y)
+		value.size = Vector2(value_slot_width(), ROW_HEIGHT)
 		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		value.add_theme_font_size_override("font_size", 17)
+		value.add_theme_font_size_override("font_size", ROW_FONT_SIZE)
 		value.add_theme_color_override("font_color", GardenTheme.INK)
 		# The stopping-point row is the longest and the one that used to get
 		# ellipsised out of existence in the HUD message line. Clip rather than

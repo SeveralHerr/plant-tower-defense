@@ -16711,3 +16711,120 @@ func test_the_run_prices_the_selection_panel_among_its_budgets() -> String:
 
 
 # -- END budget the selection panel (plant-tower-defense-r722) ------------------------
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-wf4i: the run summary's value column
+#
+# Built because -yoc2's verdict said to, and the verdict turns on one fact: these
+# labels are `clip_text` with OVERRUN_TRIM_ELLIPSIS. An over-long value does not
+# wrap and does not push, so its height never changes, so BUTTON_CLEARANCE -- the
+# only other gate on this card -- reads a number a content regression cannot move.
+# It is the one surface in the HUD family where nothing at all was watching.
+# =============================================================================
+
+## The card's widest value fits the column it is drawn into.
+##
+## Measured through `GardenTheme.measure` at `RunSummary.ROW_FONT_SIZE`, not through
+## `get_minimum_size()`, and that is not a stylistic choice: `clip_text` makes
+## `get_minimum_size()` report the clip stub at ~1px, so the obvious assertion here
+## would pass unconditionally on exactly the labels it is meant to guard.
+func test_the_run_summarys_widest_value_fits_its_column() -> String:
+	var priced: Dictionary = RunSummary.value_column_budget()
+	var corpus: Array[String] = RunSummary.summary_corpus()
+	var err: String = _T.assert_gt(corpus.size(), 6,
+		("the corpus carries at least one string per row (%d) -- an empty or half-built "
+			+ "one makes every measurement below vacuously roomy") % corpus.size())
+	if err == "":
+		err = _T.assert_gt(float(priced["slot"]), 0.0,
+			"the value column has a width to fit into: %s" % str(priced))
+	if err == "":
+		err = _T.assert_gte(float(priced["left"]), 0.0,
+			("the widest value \"%s\" draws %.1f of %.1f px -- a negative here is a row "
+				+ "rendering as an ellipsis, silently, because nothing on this card can "
+				+ "see a string that clips instead of wrapping")
+				% [String(priced["text"]), float(priced["needed"]),
+					float(priced["slot"])])
+	return err
+
+
+## Every corpus state actually moves every row off its default.
+##
+## THIS IS THE TEST THAT WOULD HAVE CAUGHT THE FIRST DRAFT. `CORPUS_STATES` began
+## with invented key names (`beds_lost`, `compost_swept`, `seeds_spent_placing`)
+## and every producer fell through to its default, so the corpus measured a card
+## full of zeroes and reported a comfortable 118px of headroom. The tell was that
+## the ALL-ZEROES control came out widest -- a worst case that loses to its own
+## control is not a worst case -- and nothing but noticing that would have caught it.
+##
+## So: each stressing state must produce a strictly wider set of strings than the
+## deliberately empty one. A renamed `_stats` key breaks that immediately.
+func test_every_corpus_state_moves_every_row_off_its_default() -> String:
+	var states: Array[Dictionary] = RunSummary.corpus_states()
+	var err: String = _T.assert_gt(states.size(), 1,
+		"there is a control state to compare the stressing ones against")
+	if err != "":
+		return err
+
+	var widths: Array[float] = []
+	for state: Dictionary in states:
+		var card := RunSummary.new()
+		card._stats = state
+		var total: float = 0.0
+		for row: Array in card.summary_rows():
+			total += GardenTheme.measure(String(row[1]), RunSummary.ROW_FONT_SIZE)
+		widths.append(total)
+		card.free()
+
+	# The LAST state is the deliberately-empty one; every other must beat it.
+	var control: float = widths[widths.size() - 1]
+	err = _T.assert_gt(control, 0.0, "the control state still prints something")
+	for i: int in range(widths.size() - 1):
+		if err != "":
+			break
+		err = _T.assert_gt(widths[i], control,
+			("corpus state %d totals %.0f px against the empty control's %.0f -- a "
+				+ "stressing state that does not beat the control is one whose _stats "
+				+ "keys no longer match what the producers read, and it measures nothing")
+				% [i, widths[i], control])
+	return err
+
+
+## A deliberately worsened phrasing falls through the floor, and says where to go.
+func test_a_worsened_run_summary_value_falls_through_its_floor() -> String:
+	var priced: Dictionary = RunSummary.value_column_budget()
+	var err: String = _T.assert_true(Game.BUDGET_FLOOR.has("run_summary_values"),
+		"the column has a declared floor to fall through")
+	if err != "":
+		return err
+
+	# Six more words on the beds row, in the shape a real edit would take.
+	var worsened: String = String(priced["text"]) + " and never came back at all"
+	var needed: float = GardenTheme.measure(worsened, RunSummary.ROW_FONT_SIZE)
+	err = _T.assert_gt(needed, float(priced["slot"]),
+		("the worsened line really is too wide: %.0f against a %.0f px column")
+			% [needed, float(priced["slot"])])
+	if err == "":
+		var entry: Dictionary = Game.computed_budget("run_summary_values",
+			"RunSummary.value_slot_width()", "res://game/run_summary.gd",
+			"the run summary's widest value",
+			needed, float(priced["slot"]), "px",
+			"RunSummary.value_column_budget()",
+			"a value string is trimmed to an ellipsis mid-word",
+			Game.no_budget_observations())
+		var mine: Array[String] = []
+		# Filtered for the same reason the selection panel's is: budget_regressions
+		# grades a SET and warns about every declared floor nothing measured, so one
+		# entry handed to it correctly complains about all the others.
+		for line: String in Game.budget_regressions([entry]):
+			if line.contains("run_summary_values"):
+				mine.append(line)
+		err = _T.assert_eq(mine.size(), 1, "exactly one warning is mine: %s" % str(mine))
+		if err == "":
+			err = _T.assert_true(mine[0].contains("ellipsis"),
+				("and it says what running out LOOKS like, which is the half a player "
+					+ "would otherwise have to guess: %s") % mine[0])
+	return err
+
+# END plant-tower-defense-wf4i
+# =============================================================================

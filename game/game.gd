@@ -2544,6 +2544,19 @@ const BUDGET_SPENT_BY_DESIGN: String = "spent_by_design"
 ## that has quietly stopped running.
 const BUDGET_FLOOR: Dictionary = {
 	"husk_click": 4.0,
+	# FIVE PIXELS, on a surface where running out would have been silent
+	# (plant-tower-defense-wf4i, justified by -yoc2's verdict).
+	#
+	# The run summary's value labels are `clip_text` with OVERRUN_TRIM_ELLIPSIS, so a
+	# string that outgrows its column does not wrap and does not push anything: its
+	# height is unchanged, which means BUTTON_CLEARANCE -- the only other gate on that
+	# card -- reads a number a content regression cannot move. Nothing was watching.
+	#
+	# `run_summary.gd`'s own header carried a hand claim that the beds row "sets the
+	# card's value-column high-water mark" at 36 CHARACTERS. It named the right string
+	# and the wrong unit: measured in the font it renders in, that row draws 330.0 of
+	# 335.2px. The claim was right and comfortable-sounding and the margin is 1.5%.
+	"run_summary_values": 5.0,
 	# Ratcheted up from 7.0 / 8.0 in the same commit that re-proportioned
 	# hud.gd's readout widths and STATS_SEPARATION (plant-tower-defense-73y) --
 	# the pattern budget_regressions()'s own warning names: accept a spend (or
@@ -2634,6 +2647,7 @@ func check_budgets() -> Dictionary:
 func budget_entries(sweep: int = BUDGET_WAVE_SWEEP) -> Array[Dictionary]:
 	var entries: Array[Dictionary] = [
 		_budget_husk_click(),
+		_budget_run_summary_values(),
 		_budget_hud_readouts(),
 		_budget_hud_message_row(),
 		_budget_hud_stats_row(),
@@ -2909,6 +2923,39 @@ func _budget_hud_message_row() -> Dictionary:
 		("a message renders trimmed to an ellipsis and nothing errors -- shorten the "
 			+ "message, shorten the name, or widen the row (\"%s\")") % worst,
 		no_budget_observations())
+
+
+## The run summary's value column against the widest string it can print.
+##
+## The only budget here that needs NO live node — `RunSummary.value_column_budget()`
+## drives the card's own producers over `corpus_states()` and measures in the theme
+## font, so this reads the same on a fresh boot as at a game over. That is deliberate:
+## the card exists for about four seconds at the end of a run, and a budget that could
+## only be read while it was on screen would be a budget nobody read.
+func _budget_run_summary_values() -> Dictionary:
+	var priced: Dictionary = RunSummary.value_column_budget()
+	var corpus: Array[String] = RunSummary.summary_corpus()
+	var observations: Array[String] = [
+		("widest of %d string(s) is \"%s\" at %s of %s px" % [
+			corpus.size(), String(priced["text"]),
+			budget_number(float(priced["needed"])), budget_number(float(priced["slot"])),
+		]),
+		("the column is %s%% of a %s px card less a %s px inset, at font size %d" % [
+			budget_number(RunSummary.VALUE_COLUMN_FRACTION * 100.0),
+			budget_number(RunSummary.CARD.size.x), budget_number(RunSummary.ROW_INSET),
+			RunSummary.ROW_FONT_SIZE,
+		]),
+	]
+	return computed_budget("run_summary_values",
+		"RunSummary.value_slot_width()", "res://game/run_summary.gd",
+		"the run summary's widest value",
+		float(priced["needed"]), float(priced["slot"]), "px",
+		"RunSummary.value_column_budget() over RunSummary.summary_corpus()",
+		("a value string is trimmed to an ellipsis mid-word. It does NOT wrap and does "
+			+ "not push the buttons, so BUTTON_CLEARANCE cannot see it -- the row simply "
+			+ "stops saying what it said. Shorten the phrasing in the producer that "
+			+ "built it, or widen VALUE_COLUMN_FRACTION at the key column's expense"),
+		observations)
 
 
 func _budget_hud_readouts() -> Dictionary:
