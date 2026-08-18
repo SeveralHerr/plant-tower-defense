@@ -7463,3 +7463,81 @@ func test_the_grammar_rows_the_legend_teaches_are_the_recorded_six() -> String:
 
 # END plant-tower-defense-wenx
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-owdi: a foreign id in the save cannot move the shelf
+#
+# `earned_milestones` is one bag holding two kinds of thing: ACHIEVEMENTS, which the
+# shelf displays, and HINTS like `HINT_MOVE_PREVIEW`, which are one-shot spend flags
+# that happen to persist the same way. So a save legitimately contains ids the shelf's
+# table has never heard of -- and will contain more of them as hints are added.
+#
+# The protection already existed and was already deliberate: `_build_shelf` and
+# `shelf_progress_text` both iterate `Milestones.TABLE` rather than `earned_milestones`,
+# and both carry a header saying that is why a foreign id cannot inflate the total.
+# What did not exist was anything DRIVING it. Cycle 61 verified this by reading, which
+# means the guarantee was a comment plus somebody's attention -- and it is load-bearing
+# for a shipped feature, so it earns a test that fails when the iteration is changed.
+func test_a_hint_id_in_the_save_does_not_reach_the_milestone_shelf() -> String:
+	# Snapshot and restore rather than build a fresh RunConfig: it is an autoload, so
+	# this is tree-global state and a test that leaves a hint spent breaks a sibling.
+	# (That is not hypothetical -- it is exactly what a live session did to the upgrade
+	# tip's test this cycle.)
+	var saved: Dictionary = RunConfig.earned_milestones.duplicate(true)
+	var err: String = ""
+
+	# The baseline has to be taken with the foreign id ABSENT, or "unchanged" is a
+	# comparison against a number the id may already have moved.
+	RunConfig.earned_milestones.erase(RunConfig.HINT_MOVE_PREVIEW)
+	var before_text: String = NotebookScreen.shelf_progress_text()
+	var before_rows: int = 0
+	var book := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var shelf: Control = book.get_node_or_null("Shelf") as Control
+	err = _T.assert_true(shelf != null,
+		"the notebook builds a Shelf -- without it every count below is zero and equal")
+	if err == "":
+		before_rows = shelf.get_child_count()
+		err = _T.assert_gt(before_rows, 0,
+			("and the shelf has rows to begin with, so 'nothing moved' is a real "
+				+ "comparison rather than two empties matching"))
+	_T.free_ui(book)
+	if err != "":
+		RunConfig.earned_milestones = saved
+		return err
+
+	# Now the foreign id, recorded exactly as the game records it.
+	RunConfig.earned_milestones[RunConfig.HINT_MOVE_PREVIEW] = true
+	err = _T.assert_true(RunConfig.has_milestone(RunConfig.HINT_MOVE_PREVIEW),
+		"the hint is in the save, which is the precondition this whole test is about")
+	if err == "":
+		err = _T.assert_eq(NotebookScreen.shelf_progress_text(), before_text,
+			("the shelf's 'N of M earned' is unmoved by an id the table does not list "
+				+ "-- it counts off Milestones.TABLE, and this is what says so"))
+	if err == "":
+		var after := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+		var after_shelf: Control = after.get_node_or_null("Shelf") as Control
+		if after_shelf == null:
+			err = "the shelf disappeared once a hint id was in the save"
+		else:
+			err = _T.assert_eq(after_shelf.get_child_count(), before_rows,
+				("and the shelf draws the same rows -- a foreign id must not add a row, "
+					+ "which is the failure a player would see as a blank achievement"))
+			if err == "":
+				# The stronger half: not just the same COUNT but the same NAMES. A row
+				# added for the hint and a table row silently dropped would net to zero.
+				var stray: String = ""
+				for child: Node in after_shelf.get_children():
+					if String(child.name).contains(RunConfig.HINT_MOVE_PREVIEW):
+						stray = String(child.name)
+				err = _T.assert_eq(stray, "",
+					("and no row is NAMED for the hint -- rows are named ShelfPip_<id>, "
+						+ "so this catches a swap that keeps the count the same"))
+		if after_shelf != null or after != null:
+			_T.free_ui(after)
+
+	RunConfig.earned_milestones = saved
+	return err
+
+# END plant-tower-defense-owdi
+# =============================================================================
