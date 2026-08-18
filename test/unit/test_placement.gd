@@ -6189,6 +6189,15 @@ func test_the_sway_still_carries_the_sprite_and_nothing_else() -> String:
 # without a `_draw()` ever running.
 # =============================================================================
 
+## Cells dead for the whole catalogue's longest reach -- recorded so a road
+## reshape has to come past this list, the way the 11 and the 36 already do.
+## Bottom-right corner: the road's last leg runs along row 3 to the east edge and
+## turns nothing back down, so the corner under it is out of even a 192 px throw.
+const G8KC_DEAD_FOR_EVERYTHING: Array[Vector2i] = [
+	Vector2i(12, 8), Vector2i(13, 7), Vector2i(13, 8),
+]
+
+
 func _cells_to_text(cells: Array[Vector2i]) -> String:
 	var parts: Array[String] = []
 	for cell: Vector2i in cells:
@@ -6254,6 +6263,168 @@ func test_the_board_wide_dead_ground_matches_the_hover_cue_plant_by_plant() -> S
 		# make the comparison above pass on eight empty lists.
 		err = _T.assert_gt(plants_with_dead_ground, 0,
 			"at least one plant in the catalogue has dead ground to disagree about")
+	_T.free_ui(game)
+	return err
+
+
+## The measurement the whole one-cue design rests on: dead ground is MONOTONE in
+## reach, so the dead sets nest, so g8kc's set is inside tzz7's for every plant
+## the player owns and a cell can never want two marks.
+##
+## Also the place the max-reach shortcut is allowed to be a coincidence.
+## dead_for_every_reaching_plant() does a genuine intersection; this asserts it
+## equals dead_ground_cells(longest_reach), which is the property that would
+## quietly stop holding the day a reach stops being a plain radius.
+func test_the_dead_sets_are_nested_so_the_two_cues_can_never_be_two_marks() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var ids: Array[StringName] = PlantCatalog.ids()
+	# Reaching plants only, shortest first, and keyed on the REACH rather than on
+	# the plant: two plants at the same radius make one rung of the ladder, not
+	# two. A Sunflower has no reach and so no dead ground at all -- it is not part
+	# of this ordering, it is outside it.
+	var named: Dictionary = {}
+	var rungs: Array[float] = []
+	for id: StringName in PlacementPreview.reaching_ids(ids):
+		var r: float = PlantCatalog.reach(id)
+		if not named.has(r):
+			named[r] = PlantCatalog.display_name(id)
+			rungs.append(r)
+	rungs.sort()
+	var err: String = _T.assert_gt(rungs.size(), 1,
+		"there are at least two distinct reaches to nest -- one would be vacuous")
+	if err == "":
+		for i: int in range(rungs.size() - 1):
+			var shorter: Array[Vector2i] = PlacementPreview.dead_ground_cells(
+				game.board, rungs[i])
+			var longer: Array[Vector2i] = PlacementPreview.dead_ground_cells(
+				game.board, rungs[i + 1])
+			var escaped: Array[Vector2i] = []
+			for cell: Vector2i in longer:
+				if not shorter.has(cell):
+					escaped.append(cell)
+			err = _T.assert_eq(escaped.size(), 0,
+				("dead ground for %s (%.1f px) must be inside dead ground for %s (%.1f px); "
+					+ "these escaped: %s. The nesting is what stops the resting cue and the "
+					+ "hover cue ever wanting two bars on one cell")
+					% [named[rungs[i + 1]], rungs[i + 1], named[rungs[i]], rungs[i],
+						_cells_to_text(escaped)])
+			if err != "":
+				break
+	if err == "":
+		err = _T.assert_float_eq(PlacementPreview.longest_reach(ids), Dandelion.RANGE, 0.001,
+			"the catalogue's longest reach is the Bomb Dandelion's throw")
+	if err == "":
+		err = _same_cells(
+			PlacementPreview.dead_for_every_reaching_plant(game.board, ids),
+			PlacementPreview.dead_ground_cells(game.board, PlacementPreview.longest_reach(ids)),
+			("the intersection over every reaching plant equals the longest reach's own "
+				+ "dead set -- if this parts, the nesting above has stopped holding and "
+				+ "the cheap answer has started lying"))
+	if err == "":
+		err = _same_cells(
+			PlacementPreview.dead_for_every_reaching_plant(game.board, ids),
+			G8KC_DEAD_FOR_EVERYTHING,
+			("the cells dead for every reaching plant in the catalogue. Three, in the "
+				+ "bottom-right corner. Re-derive if PATH_CORNERS moves"))
+	_T.free_ui(game)
+	return err
+
+
+## g8kc's acceptance, in its own words: the resting cue is derived from the
+## catalogue's maximum reach, and it SHRINKS when a longer-reach plant unlocks.
+##
+## Note which unlock does nothing. Adding the Chomp Flower -- 73.6 px, the
+## shortest reach in the game -- moves the count not at all, because the set is
+## an intersection and the longest reach already owns it. That is the assertion
+## worth having: a test that only unlocked the Dandelion would pass on a cue that
+## took the union by mistake.
+func test_the_resting_cue_shrinks_as_a_longer_reach_unlocks() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var owned: Array[StringName] = PlantCatalog.starting_unlocks()
+	var err: String = _T.assert_eq(owned.size(), 1,
+		"a run starts owning exactly one plant, got %s" % [owned])
+	if err == "":
+		err = _T.assert_eq(owned[0], PlantCatalog.CORN, "and it is the Corn Cobbler")
+	if err == "":
+		err = _T.assert_eq(
+			PlacementPreview.dead_for_every_reaching_plant(game.board, owned).size(), 11,
+			("with only a Corn Cobbler owned the board marks its 11 dead cells -- the same "
+				+ "11 test_the_real_route_strands_exactly_the_cells_it_was_measured_to_strand "
+				+ "measures"))
+	if err == "":
+		owned.append(PlantCatalog.CHOMP)
+		err = _T.assert_eq(
+			PlacementPreview.dead_for_every_reaching_plant(game.board, owned).size(), 11,
+			("unlocking the Chomp Flower changes nothing: 36 cells are dead for a 73.6 px "
+				+ "grab, but the resting cue is an INTERSECTION, so a shorter reach can only "
+				+ "ever re-mark ground the longer one already marked"))
+	if err == "":
+		owned.append(PlantCatalog.DANDELION)
+		err = _T.assert_eq(
+			PlacementPreview.dead_for_every_reaching_plant(game.board, owned).size(), 3,
+			("unlocking the Bomb Dandelion's 192 px throw shrinks it to 3 -- the cue got "
+				+ "SMALLER because the garden got stronger, which is the whole claim"))
+	if err == "":
+		# The mode switch, both ways, which is what makes this one cue rather than two.
+		err = _same_cells(
+			PlacementPreview.board_dead_cells(game.board, &"", owned),
+			PlacementPreview.dead_for_every_reaching_plant(game.board, owned),
+			"nothing hovered: the board shows what nothing the player owns can use")
+	if err == "":
+		err = _same_cells(
+			PlacementPreview.board_dead_cells(game.board, PlantCatalog.CHOMP, owned),
+			PlacementPreview.dead_ground_cells(game.board,
+				PlantCatalog.reach(PlantCatalog.CHOMP)),
+			("a Chomp Flower hovered in the shop: the board answers about the CHOMP, all 36 "
+				+ "cells of it, not about the garden"))
+	if err == "":
+		err = _T.assert_eq(
+			PlacementPreview.board_dead_cells(game.board, PlantCatalog.DANDELION, owned).size(),
+			3,
+			("and hovering a longer reach than anything owned answers about THAT plant, 3 "
+				+ "cells -- not the union with the resting 3, and not the resting 11 either"))
+	_T.free_ui(game)
+	return err
+
+
+## The finding, pinned so nobody re-reads g8kc's title as the truth. The bead says
+## "ground no plant in the catalogue can use ... it is scenery, permanently". It is
+## not scenery. It is the best Seed Sunflower ground on the board, and the
+## Sunflower's own blurb sends the player there: "plant it somewhere the lane
+## doesn't need".
+##
+## So the cue speaks for the plants whose dead-ground question means anything --
+## the ones with a reach -- and the test that would have caught a cue calling
+## those three cells unusable is this one.
+func test_the_resting_cue_never_calls_sunflower_ground_scenery() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_float_eq(PlantCatalog.reach(PlantCatalog.SUNFLOWER), 0.0, 0.001,
+		"a Seed Sunflower reaches nothing")
+	if err == "":
+		err = _T.assert_eq(PlacementPreview.dead_ground_cells(game.board,
+			PlantCatalog.reach(PlantCatalog.SUNFLOWER)).size(), 0,
+			("so no cell is dead ground for one -- covers_road() answers true at reach 0 and "
+				+ "the board-wide cue inherits that rather than re-deciding it"))
+	if err == "":
+		err = _T.assert_false(
+			PlacementPreview.reaching_ids(PlantCatalog.ids()).has(PlantCatalog.SUNFLOWER),
+			"and it is dropped from the population the resting cue speaks for")
+	if err == "":
+		err = _T.assert_eq(
+			PlacementPreview.reaching_ids(PlantCatalog.ids()).size(), PlantCatalog.ids().size() - 1,
+			("the Sunflower is the ONLY entry dropped -- if a second reachless plant is added "
+				+ "this cue quietly stops speaking for it too, and that should be a decision"))
+	if err == "":
+		var scenery := Vector2i(13, 8)
+		err = _T.assert_true(
+			PlacementPreview.dead_for_every_reaching_plant(game.board,
+				PlantCatalog.ids()).has(scenery),
+			"(13, 8) is dead for every reaching plant in the catalogue")
+	if err == "":
+		# And it is legal ground, which is what makes the "scenery" reading wrong
+		# rather than merely imprecise.
+		err = _T.assert_true(game.board.is_buildable(Vector2i(13, 8)),
+			"and a plant may still stand there, which is why the mark is not 'unusable'")
 	_T.free_ui(game)
 	return err
 

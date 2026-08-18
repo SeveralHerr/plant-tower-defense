@@ -749,5 +749,85 @@ static func dead_ground_cells(on_board: Board, reach_px: float) -> Array[Vector2
 	return out
 
 
+## Those of `ids` that have a reach at all -- the plants the dead-ground cue can
+## say anything about. A Sunflower is dropped here, and that is the honest half
+## of g8kc: see this block's header.
+##
+## An id that is not in the catalogue is dropped too, so a caller holding a stale
+## unlock list gets a smaller answer rather than a wrong one.
+static func reaching_ids(ids: Array[StringName]) -> Array[StringName]:
+	var out: Array[StringName] = []
+	for id: StringName in ids:
+		if PlantCatalog.has(id) and PlantCatalog.reach(id) > 0.0:
+			out.append(id)
+	return out
+
+
+## The longest reach among `ids`, 0.0 for an empty or reachless set.
+##
+## Derived from PlantCatalog rather than recorded, which is g8kc's own
+## requirement: the number moves the day a longer-reach plant is added, and a
+## recorded 192.0 would go on being wrong quietly.
+static func longest_reach(ids: Array[StringName]) -> float:
+	var best: float = 0.0
+	for id: StringName in reaching_ids(ids):
+		best = maxf(best, PlantCatalog.reach(id))
+	return best
+
+
+## g8kc's set: the cells dead for EVERY plant in `ids` that has a reach.
+##
+## A genuine intersection, one plant at a time, rather than the one-line
+## `dead_ground_cells(board, longest_reach(ids))` that the nesting makes
+## equivalent. The shortcut is the faster answer and it is also the answer that
+## stops being true the moment a reach stops being a plain radius -- a cone, a
+## line-of-sight check, a plant that only reaches cells of its own colour. The
+## intersection is what the cue actually claims, so it is what runs; the
+## shortcut's equality with it is a TEST
+## (test_the_dead_sets_are_nested_so_the_two_cues_can_never_be_two_marks), which
+## is where a load-bearing coincidence belongs.
+static func dead_for_every_reaching_plant(on_board: Board,
+		ids: Array[StringName]) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var reaching: Array[StringName] = reaching_ids(ids)
+	if on_board == null or reaching.is_empty():
+		return out
+	out = dead_ground_cells(on_board, PlantCatalog.reach(reaching[0]))
+	for i: int in range(1, reaching.size()):
+		var theirs: Array[Vector2i] = dead_ground_cells(on_board,
+			PlantCatalog.reach(reaching[i]))
+		var kept: Array[Vector2i] = []
+		for cell: Vector2i in out:
+			if theirs.has(cell):
+				kept.append(cell)
+		out = kept
+		if out.is_empty():
+			break
+	return out
+
+
+## The one set the board draws, mode selected by what the cursor is on.
+##
+## `hovered` is a catalogue id while the cursor is over that plant's shop entry,
+## and &"" the rest of the time. With an id the board answers about that plant --
+## tzz7, "what would this purchase be unable to do", asked before the purchase.
+## With &"" it answers about the garden the player already owns -- g8kc.
+##
+## One set, so one mark per cell, so the two cues can never stack into the
+## redundancy cue's two bars. That is enforced here by returning a single list
+## rather than by a rule a caller has to remember.
+##
+## Deliberately NOT a union of the two. Hovering a plant you cannot yet afford --
+## or have not unlocked, which is exactly when a shop entry gets hovered longest
+## -- can name a LONGER reach than anything you own, and its dead set is then a
+## proper subset of the resting one. Unioning would answer the resting question
+## while the player is plainly asking the hover one, and would mark 11 cells dead
+## for a Bomb Dandelion that is dead on only 3 of them.
+static func board_dead_cells(on_board: Board, hovered: StringName,
+		unlocked: Array[StringName]) -> Array[Vector2i]:
+	if PlantCatalog.has(hovered):
+		return dead_ground_cells(on_board, PlantCatalog.reach(hovered))
+	return dead_for_every_reaching_plant(on_board, unlocked)
+
 # END plant-tower-defense-tzz7 / plant-tower-defense-g8kc
 # =============================================================================
