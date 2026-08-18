@@ -5329,16 +5329,36 @@ func test_the_chew_ring_sweeps_rather_than_shrinking() -> String:
 ## pest cannot be grabbed by a Chomp at all. So armoured-winged is armoured in name, in
 ## husk payout, and in nothing else. The bead worried the pair might be UNKILLABLE; it is
 ## the opposite, and checking before building is what turned the design around.
+##
+## The traits are DERIVED from `Pest.MUTATION_HUSK_MULTIPLIER` rather than retyped
+## (plant-tower-defense-xc07). That dictionary is the set `apply_mutation` will accept —
+## it refuses anything without a row (`game/pest.gd:852`) — so it is the game's own answer
+## to "every mutation there is", and the copy that used to sit here was a second one. The
+## size assertion that used to follow the copy went with it: once the traits come out of
+## the table, "the copy is as long as the table" is `n == n`, so it is replaced below by a
+## floor on how much this test is allowed to shrink to.
+##
+## Order does not matter to anything below: the double loop visits every ordered pair
+## whichever way round the traits come out, `excluded` is decided by identity rather than
+## by index, and `composed` is a count. (Godot dictionaries iterate in insertion order
+## anyway, so this is stable — but the test does not lean on that.)
+##
+## What stays hand-written is the `excluded` expression, deliberately. Deriving it from
+## `Pest.MUTATION_EXCLUSIONS` would leave `mutations_compose` compared against the list
+## `mutations_compose` reads, and the assertion would have one side. Someone adding a pair
+## has to come here and say so, which is the point.
 func test_every_mutation_pair_states_whether_it_composes() -> String:
-	var all: Array[StringName] = [Pest.MUTATION_ARMOURED, Pest.MUTATION_WINGED,
-		Pest.MUTATION_HUNGRY]
-	var err: String = _T.assert_eq(all.size(), Pest.MUTATION_HUSK_MULTIPLIER.size(),
-		"this table covers every mutation the game has")
+	var traits: Dictionary = Pest.MUTATION_HUSK_MULTIPLIER
+	# The denominator. An empty derivation would run zero assertions below, and a sweep
+	# over nothing reads exactly like a sweep that passed.
+	var err: String = _T.assert_gte(traits.size(), 3,
+		"the game declares at least the three traits this test was written for, got %d"
+			% traits.size())
 	if err != "":
 		return err
 	var composed: int = 0
-	for a: StringName in all:
-		for b: StringName in all:
+	for a: StringName in traits:
+		for b: StringName in traits:
 			var excluded: bool = (a == b) \
 				or (a == Pest.MUTATION_ARMOURED and b == Pest.MUTATION_WINGED) \
 				or (a == Pest.MUTATION_WINGED and b == Pest.MUTATION_ARMOURED)
@@ -5582,6 +5602,12 @@ func test_a_harder_kill_is_pitched_above_a_plain_one() -> String:
 ## Reading `husk_multiplier()` rather than checking `mutations.is_empty()` is what makes a
 ## fourth trait audible without anyone editing `_on_pest_died`. Asserted over every trait
 ## the game has plus a pair, because a single example would not show that the rule scales.
+##
+## "Every trait the game has" is read off `Pest.MUTATION_HUSK_MULTIPLIER` rather than
+## retyped (plant-tower-defense-xc07) — a third trait named here was a third place a fourth
+## mutation would have to be added by hand, and the sentence above would have gone on
+## claiming "every" while the sweep covered three of four. Order is irrelevant: each
+## iteration builds and frees its own pest and asserts the same thing about it.
 func test_every_mutation_makes_a_kill_count_as_hard() -> String:
 	var plain: Pest = _pest(Pest.APHID, Vector2(50, 50))
 	var err: String = _T.assert_float_eq(plain.husk_multiplier(), 1.0, 0.0001,
@@ -5589,8 +5615,14 @@ func test_every_mutation_makes_a_kill_count_as_hard() -> String:
 	plain.free()
 	if err != "":
 		return err
-	for mutation: StringName in [Pest.MUTATION_ARMOURED, Pest.MUTATION_WINGED,
-			Pest.MUTATION_HUNGRY]:
+	# The denominator: a derivation that came back empty would skip the loop entirely and
+	# still return the pair's assertions below, which is a shrunk test that reads clean.
+	err = _T.assert_gte(Pest.MUTATION_HUSK_MULTIPLIER.size(), 3,
+		"there are at least the three traits this sweep was written for, got %d"
+			% Pest.MUTATION_HUSK_MULTIPLIER.size())
+	if err != "":
+		return err
+	for mutation: StringName in Pest.MUTATION_HUSK_MULTIPLIER:
 		var pest: Pest = _pest(Pest.BEETLE, Vector2(50, 50))
 		pest.apply_mutation(mutation)
 		err = _T.assert_true(pest.husk_multiplier() > 1.0,
