@@ -132,6 +132,16 @@ const BLAST_PREVIEW_EDGE := Color(0.65, 0.61, 0.51, 0.7)
 ## upward after it and settles back.
 const PUFF_SCALE := Vector2(0.92, 1.12)
 
+## And how long it takes. Its own pair rather than `Plant.TWITCH_*`, for the reason
+## PUFF_SCALE is its own shape: the head does not snap, it drifts — the seed leaves
+## slowly and the tuft resettles slower still, which is why the back is more than
+## twice the out. A recoil's crisp 0.05/0.10 would read as the head being flicked.
+##
+## Both values preserved exactly from the literals that were here before naming
+## them; the shape argument above is what the numbers already were, written down.
+const PUFF_OUT_SECONDS: float = 0.06
+const PUFF_BACK_SECONDS: float = 0.14
+
 var _fluff: int = FLUFF_MAX
 ## Seconds until the next seed of the current volley may leave.
 var _shot_cooldown: float = 0.0
@@ -388,5 +398,5 @@ func _puff() -> void:
 	if _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
 		return
 	var tween := create_tween()
-	tween.tween_property(_sprite, "scale", PUFF_SCALE, 0.06)
-	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.14)
+	tween.tween_property(_sprite, "scale", PUFF_SCALE, PUFF_OUT_SECONDS)
+	tween.tween_property(_sprite, "scale", Vector2.ONE, PUFF_BACK_SECONDS)

@@ -213,6 +213,61 @@ const FLINCH_SECONDS: float = 0.32
 ## body pulses twice per side-to-side swing, once at each extreme.
 const BREATHE_AMOUNT: float = 0.022
 const BREATHE_RATE: float = 2.0
+
+## The plant family's squash-and-return vocabulary, in two tiers.
+##
+## Every animation outside this family already names its duration — Hud's
+## PREP_BAR_PULSE_SECONDS / PANEL_RISE_SECONDS / READOUT_PUNCH_SECONDS, Music's
+## CROSSFADE_SECONDS, PauseScreen's RISE_SECONDS, and Pest's HIT_FLASH_DURATION,
+## which is split 0.35/0.65 OF itself rather than written out as two numbers. The
+## plant flourishes named nothing: nine gestures, twenty-one bare literals.
+##
+## The interesting part of re-running that census is what the twenty-one turned out
+## to be. They use seven distinct numbers between them, and two exact pairs account
+## for five of the nine gestures. These are those two pairs.
+##
+## TWITCH is the per-action beat — `CornCobbler._recoil()` on every shot,
+## `Nettle._sting_twitch()` on every sting. FLOURISH is the once-in-a-while beat —
+## `CornCobbler._upgrade_flourish()`, `ChompFlower._on_upgraded()`, and the
+## Sunflower's payout pop. Both of those upgrade headers already assert the
+## relationship between the tiers in prose: "pushed further and held longer", and
+## "a snap wider than `_bite`'s and held longer, the same relationship
+## `CornCobbler._upgrade_flourish` has to its own `_recoil`". Naming the pairs is
+## what turns those two sentences into something that can fail — see
+## `test_the_flourish_tier_is_pushed_further_and_held_longer_than_the_twitch`.
+##
+## NOT one pair that each subclass scales, which was the shape the issue guessed
+## at. The tiers do not sit on a single factor: out goes 0.05 -> 0.10 (x2.0) while
+## back goes 0.10 -> 0.18 (x1.8). One scalar would have had to move one of the four
+## numbers, and a duration is invisible to every gate in this project — nothing
+## headless can tell a 0.10 that was meant from a 0.10 that fell out of a multiply.
+## Two declared pairs, every value preserved exactly.
+##
+## TWITCH_BACK_SECONDS and FLOURISH_OUT_SECONDS are both 0.10, and that is a
+## coincidence rather than a dependency: the recovery of a small gesture happens to
+## be the strike of a large one. Declared separately on purpose. Tying them would
+## mean a recoil's recovery moved every time an upgrade's snap was retuned, which
+## is the bug that shared constants are supposed to prevent, not cause.
+const TWITCH_OUT_SECONDS: float = 0.05
+const TWITCH_BACK_SECONDS: float = 0.10
+const FLOURISH_OUT_SECONDS: float = 0.10
+const FLOURISH_BACK_SECONDS: float = 0.18
+
+## The planting pop, and the only gesture in the family whose OUT outlasts its
+## BACK. It is an arrival, not a strike: the sprite starts at 0.4 and has to be
+## SEEN growing before it settles, where every other pair here snaps out and eases
+## home. The test below names this as the deliberate exception rather than leaving
+## it as a pair that quietly breaks the rule the other five follow.
+const PLANTING_POP_OUT_SECONDS: float = 0.12
+const PLANTING_POP_BACK_SECONDS: float = 0.10
+
+## The uproot/death shrink. One-way — there is no return, because there is nothing
+## left to return to — so it is a single value rather than a pair. It equals
+## FLOURISH_BACK_SECONDS and is declared separately for the same reason the 0.10
+## above is: a plant leaving the board and a cob celebrating a purchase are not one
+## number wearing two names.
+const EXIT_SHRINK_SECONDS: float = 0.18
+
 var _selected: bool = false
 var _health_back: ColorRect = null
 var _health_bar: ColorRect = null
@@ -319,8 +374,8 @@ func _build_visuals() -> void:
 		return
 	_sprite.scale = Vector2(0.4, 0.4)
 	var tween := create_tween()
-	tween.tween_property(_sprite, "scale", Vector2(1.12, 1.12), 0.12)
-	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.10)
+	tween.tween_property(_sprite, "scale", Vector2(1.12, 1.12), PLANTING_POP_OUT_SECONDS)
+	tween.tween_property(_sprite, "scale", Vector2.ONE, PLANTING_POP_BACK_SECONDS)
 
 
 ## Every Control this plant owns stops taking mouse input.
@@ -378,7 +433,7 @@ func play_exit_and_free() -> void:
 		queue_free()
 		return
 	var tween := create_tween()
-	tween.tween_property(_sprite, "scale", Vector2.ZERO, 0.18)
+	tween.tween_property(_sprite, "scale", Vector2.ZERO, EXIT_SHRINK_SECONDS)
 	tween.tween_callback(queue_free)
 
 

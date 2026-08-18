@@ -305,14 +305,20 @@ static func spark_spoke_ends(from: Vector2, to: Vector2) -> PackedVector2Array:
 ##
 ## Scale and skew in parallel and both back together — a lean that arrived after the squash
 ## had already recovered would read as two separate twitches rather than as one sting.
+##
+## Both channels ride `Plant.TWITCH_*`, the per-action tier, which is the same pair
+## `CornCobbler._recoil()` uses: a sting is one of hundreds, exactly as a shot is. Anything
+## retuning THIS gesture specifically — the sting redesign, say — must declare its own pair
+## on Nettle rather than move the shared one, or it retunes the cob's recoil at the same
+## time and nothing headless will notice.
 func _sting_twitch() -> void:
 	if _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
 		return
 	var tween := create_tween().set_parallel(true)
-	tween.tween_property(_sprite, "scale", STING_SQUASH, 0.05)
-	tween.tween_property(_sprite, "skew", _sting_lean, 0.05)
-	tween.chain().tween_property(_sprite, "scale", Vector2.ONE, 0.10)
-	tween.tween_property(_sprite, "skew", 0.0, 0.10)
+	tween.tween_property(_sprite, "scale", STING_SQUASH, TWITCH_OUT_SECONDS)
+	tween.tween_property(_sprite, "skew", _sting_lean, TWITCH_OUT_SECONDS)
+	tween.chain().tween_property(_sprite, "scale", Vector2.ONE, TWITCH_BACK_SECONDS)
+	tween.tween_property(_sprite, "skew", 0.0, TWITCH_BACK_SECONDS)
 
 
 ## The burst at the victim, which frees ITSELF off the end of its own tween rather than
