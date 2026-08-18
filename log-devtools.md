@@ -7573,3 +7573,39 @@ status rather than rewriting the entries that recorded these as open.
   the launch make" has a sibling, "what would the launch have to break to make it".**
 
 - Gap: **no gap this turn.**
+
+## 2026-08-18 — cycle 121: a skill whose first application disproved one of its own sections
+
+- Value: **warranted** — the run's whole product is a correction to the thing it produced,
+  which is only visible by running the method on a real set.
+  - Expected: the skill has been identified three times and never built. Predicted: applying
+    it to the existing sprites will find at least one whose fill is too close to its
+    background, because the Mint and Nettle post-mortems say the trap is easy to fall into.
+  - Got: the prediction was **wrong in the useful direction**. The corrected audit over 22
+    sprites found ZERO real problems. What it found instead was that **the skill's own audit
+    method was wrong**: reading the DOMINANT colour's luminance gap flagged five sprites —
+    Mint (dL 13), Aloe (9), aphid, Shield Bug and Queen (17–18) — and every one is fine.
+  - Found: three.
+    **(1) five false positives out of five flagged.** The separation lives in the RIM,
+    because `STYLE.md` mandates "outline = darker shade of the fill, 2px" — so the fill is
+    free to sit anywhere. The section now reads the best MAJOR colour and records the
+    false-positive rate, so nobody re-derives the naive version.
+    **(2)** the 5% floor guards the OPPOSITE failure: without it, "best major colour" is
+    whatever two-pixel highlight is brightest and the check passes on everything. Two
+    corrections, opposite directions, both needed.
+    **(3)** the rim is doing a job `STYLE.md` does not claim for it — it justifies the
+    outline as a Flash-export lookalike, and its real function is legibility against the
+    ground. Filed to kanban.
+  - Cheaper: nothing. The false-positive rate is invisible without running the method on a
+    real set, and reading the sprites would not have shown it.
+
+- **This is exactly what the loop's "USE the skill in the same cycle" rule is for.** The
+  rule says the first application tells you whether the skill is a recipe or an essay. One
+  section of this was an essay, it took about ten minutes to find out, and the correction is
+  now the most useful paragraph in the file.
+
+- Gap: **no gap this turn.** Tier (e) — the diff IS the run's output rather than its subject,
+  so reach is not expected and the row says so. Worth noting the harness was not involved at
+  all: this was PIL over rendered PNGs, and the one thing that would need the bridge
+  (sampling the aphid's rim at its drawn 0.72 scale rather than in the source) is filed
+  rather than done.

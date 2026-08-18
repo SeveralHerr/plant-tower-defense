@@ -4316,3 +4316,29 @@ Three findings kept out here rather than buried in a log:
   Taste: any sentence a player can reach only through a fault should be built by a pure
   function and asserted, or it is decoration. The cost is one static per sentence and the
   benefit is that the one time it appears, it is right.
+
+### New in cycle 121 — grown from a skill whose first use disproved one of its own sections
+
+- **The separation between a sprite and its ground lives in the RIM, and nothing had written
+  that down.** `art_src/STYLE.md` mandates *"outline = darker shade of the fill, 2 px"* and
+  explains it as matching the Kenney kit's look. It is doing a second job nobody stated:
+  because the rim carries the contrast, **the fill is free to sit anywhere**, and several
+  sprites' dominant colours are within 20 luminance points of the surface they stand on —
+  Garden Mint 13, Salve Aloe 9, the aphid, Shield Bug and Queen all 17–18. Every one of them
+  reads perfectly, because of the rim.
+  This is worth adding to STYLE.md's shading section, which currently justifies the outline
+  only as a Flash-export lookalike. **Its real function is legibility against the ground**,
+  and a future sprite that skips it — or a future style change that thins it — loses
+  something the table does not mention. The measured numbers are in
+  `.claude/skills/palette-against-the-background`.
+
+- **The 2px rim is the first thing to disappear when a sprite is drawn small, and one set of
+  sprites is drawn small.** The rim is 2px at 64px. `Pest.SPECIES` scales sprites per
+  species — an aphid renders at 0.72 — so its rim is under 1.5px, on the pest whose fill is
+  18 luminance points from the road it walks. Nothing has ever looked at whether the aphid's
+  outline survives its own scale.
+  Not filed as a defect, because it plainly reads in play and I have watched it. It is the
+  one configuration the cycle-121 audit named as worth a second look — low fill contrast
+  plus a scaled-down rim — and the honest next step is to sample the rendered frame at the
+  drawn scale rather than the source PNG, which `sample-pixels` can do on a live game and
+  the audit cannot.
