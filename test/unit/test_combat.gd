@@ -8508,3 +8508,283 @@ func test_the_fought_mark_is_a_broken_ring_clear_of_every_other_mark_on_a_pest()
 
 
 # -- END what the board says is happening to this pest right now ----------------
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-sleq: the previous selection, held for comparison
+#
+# Selecting a second plant used to erase the first one's rings (game.gd:_select ->
+# Plant.set_selected(false), which hides the brackets AND empties the sole-cover
+# marks). The question a player actually has is comparative -- "which of these two
+# should I move?" -- so the two things being compared were never on screen together.
+#
+# The held-over look is a THIRD STATE of the SUBJECT row in game/OVERLAY_GRAMMAR.md,
+# not an eleventh shape: same corner brackets, two of the four corners drawn. Adding a
+# row would fail test_the_legend_names_as_many_shapes_as_the_grammar_documents, and it
+# would deserve to, because the shape has not changed.
+#
+# Everything here is asserted off pure statics -- SelectionMarker.bracket_corners,
+# SelectionMarker.held_ink, SoleCoverMarks.mark_radius -- because
+# GardenTheme.animations_enabled() is false for the whole suite and headless runs no
+# _draw() at all. The composition lives above that gate so deleting the demotion goes
+# red instead of quietly making two ring sets identical.
+
+
+## The corner table, which is the whole cue. Four corners = the subject now; two
+## diagonally opposite = the subject one click ago.
+func test_the_held_over_subject_is_the_same_brackets_with_two_corners_missing() -> String:
+	var live: Array[Vector2] = SelectionMarker.bracket_corners(false)
+	var held: Array[Vector2] = SelectionMarker.bracket_corners(true)
+	var err: String = _T.assert_eq(live.size(), 4,
+		"the live subject is a closed box: four detached corners")
+	if err == "":
+		err = _T.assert_eq(held.size(), 2,
+			"and the held-over one is the same box left open: two of them")
+	# COUNT is the channel. Size is spent separating live (22) from the hover promise
+	# (27), and colour is the channel this project's grammar forbids spending alone --
+	# so if these two ever have the same number of corners the cue has no carrier left.
+	if err == "":
+		err = _T.assert_gt(live.size(), held.size(),
+			("the two states differ in how many corners are drawn, which is the one "
+				+ "channel left: size belongs to the hover promise and colour to nobody"))
+	# Held is a SUBSET, not a different figure. A corner the live state never draws
+	# would make this a new shape rather than the same one, incomplete.
+	var subset: int = 0
+	for corner: Vector2 in held:
+		if err != "":
+			break
+		err = _T.assert_true(live.has(corner),
+			"held corner %s is one the live brackets already draw" % corner)
+		subset += 1
+	if err == "":
+		err = _T.assert_eq(subset, held.size(),
+			"every held corner was checked, not just the first")
+	# DIAGONALLY OPPOSITE. Two corners down one edge read as an arrow pointing
+	# somewhere; opposite corners still describe a box, which is what the row means.
+	if err == "":
+		err = _T.assert_true((held[0] + held[1]).is_equal_approx(Vector2.ZERO),
+			("the two are diagonally opposite (%s and %s) -- adjacent corners would "
+				+ "read as an arrow rather than as an unfinished box")
+				% [held[0], held[1]])
+	# Signs only: the corners are multiplied by `half` and `arm` at paint time, so a
+	# value that is not +-1 would put a bracket somewhere off the box entirely.
+	var checked: int = 0
+	for corner: Vector2 in live:
+		if err != "":
+			break
+		err = _T.assert_float_eq(absf(corner.x), 1.0, 0.0001,
+			"corner %s sits on the box's own x edge" % corner)
+		if err == "":
+			err = _T.assert_float_eq(absf(corner.y), 1.0, 0.0001,
+				"and on its y edge, so `half` and `arm` put it on the box")
+		checked += 1
+	if err == "":
+		err = _T.assert_eq(checked, live.size(), "every live corner was measured")
+	return err
+
+
+## The one rule with teeth: a cue must be legible when its colour is discarded. Held
+## versus live has to differ in something that is not a hue and not an alpha.
+func test_the_held_over_look_survives_its_colour_being_thrown_away() -> String:
+	# held_ink is alpha-only by construction, and that is what proves alpha is the
+	# SECOND channel rather than the carrier: the RGB is byte-identical, so a greyscale
+	# read of the two states is the corner count and the ring radius and nothing else.
+	var base := Color(0.2, 0.4, 0.8, 0.8)
+	var dim: Color = SelectionMarker.held_ink(base, true)
+	var err: String = _T.assert_float_eq(dim.r, base.r, 0.0001, "held ink keeps the red")
+	if err == "":
+		err = _T.assert_float_eq(dim.g, base.g, 0.0001, "and the green")
+	if err == "":
+		err = _T.assert_float_eq(dim.b, base.b, 0.0001,
+			("and the blue -- shifting the hue would make the held plant a different "
+				+ "statement instead of the same one, quieter"))
+	if err == "":
+		err = _T.assert_float_eq(dim.a, base.a * SelectionMarker.HELD_ALPHA_SCALE, 0.0001,
+			"only the alpha moves, by HELD_ALPHA_SCALE")
+	if err == "":
+		err = _T.assert_gt(1.0, SelectionMarker.HELD_ALPHA_SCALE,
+			"which dims rather than brightens (%.2f)" % SelectionMarker.HELD_ALPHA_SCALE)
+	if err == "":
+		err = _T.assert_gt(SelectionMarker.HELD_ALPHA_SCALE, 0.0,
+			"and leaves the cue on screen rather than erasing it")
+	# The live path must be untouched, or every existing assertion about MARKER_COLOR
+	# and WARNING_COLOR is now asserting a slightly different colour.
+	if err == "":
+		err = _T.assert_eq(SelectionMarker.held_ink(base, false), base,
+			("held_ink is the identity when nothing is held over -- the armed and "
+				+ "selected colours the rest of the suite pins must not move"))
+	# The rings' channel is SIZE, which is the channel that row already declares:
+	# OVERLAY_GRAMMAR.md tells a 9 px cell ring from a 176 px reach by "size and
+	# centre, not shape". A third size inside the same row is that logic once more.
+	if err == "":
+		err = _T.assert_gt(SoleCoverMarks.mark_radius(false),
+			SoleCoverMarks.mark_radius(true) * 1.5,
+			("the held ring is under two thirds of the live one (%.1f against %.1f) -- "
+				+ "a ratio no gamma curve or greyscale conversion touches")
+				% [SoleCoverMarks.mark_radius(true), SoleCoverMarks.mark_radius(false)])
+	if err == "":
+		err = _T.assert_gt(SoleCoverMarks.mark_radius(true), PlacementPreview.NEW_COVER_DOT,
+			("and still larger than the hover's gained-cell disc (%.1f against %.1f), so "
+				+ "where the two land near each other they nest rather than coincide")
+				% [SoleCoverMarks.mark_radius(true), PlacementPreview.NEW_COVER_DOT])
+	# WIDTH is the ARMED row's channel -- the only cue guarding an action that cannot be
+	# undone. A held-over ring is not an escalation and must not borrow it.
+	if err == "":
+		var marks := SoleCoverMarks.new()
+		marks.set_points(PackedVector2Array([Vector2(64.0, 64.0)]))
+		marks.set_held_over(true)
+		err = _T.assert_float_eq(marks.ring_width(), SoleCoverMarks.RING_WIDTH, 0.0001,
+			("holding a plant over does not thicken its rings -- doubled width means "
+				+ "ARMED and nothing else may spend that channel"))
+		if err == "":
+			err = _T.assert_true(marks.held_over, "set_held_over took")
+		if err == "":
+			marks.set_held_over(true)
+			err = _T.assert_true(marks.held_over, "and is idempotent, as its header claims")
+		if err == "":
+			err = _T.assert_float_eq(marks.ring_color().a,
+				SoleCoverMarks.MARK_COLOR.a * SoleCoverMarks.HELD_ALPHA_SCALE, 0.0001,
+				"the held rings dim through the same scale the brackets use")
+		if err == "":
+			marks.set_held_over(false)
+			err = _T.assert_eq(marks.ring_color(), SoleCoverMarks.MARK_COLOR,
+				"and restoring gives back exactly the live ink")
+		marks.free()
+	if err == "":
+		err = _T.assert_float_eq(SoleCoverMarks.HELD_ALPHA_SCALE,
+			SelectionMarker.HELD_ALPHA_SCALE, 0.0001,
+			("the rings and the brackets of one held plant dim by ONE number, borrowed "
+				+ "rather than declared twice"))
+	return err
+
+
+## The fact the whole design rests on: two plants' sole-cover sets can never share a
+## cell, so two ring sets on the board are two clusters and never two rings on one cell.
+## If this stopped being true, the reader would be asked to untangle overlapping marks
+## and the size channel above would not be enough.
+func test_two_plants_sole_cover_sets_never_share_a_cell() -> String:
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var first := Vector2i(1, 3)
+	var second := Vector2i(0, 5)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, first), "",
+		"a cob goes in at %s" % first)
+	if err == "":
+		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, second), "",
+			"and a second at %s" % second)
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var a: Plant = game.plant_at(first)
+	var b: Plant = game.plant_at(second)
+	var a_cells: Array[Vector2i] = game.sole_cover_cells(a)
+	var b_cells: Array[Vector2i] = game.sole_cover_cells(b)
+	# Both non-empty, or the disjointness below is vacuous.
+	err = _T.assert_gt(a_cells.size(), 0, "the first cob solely holds something")
+	if err == "":
+		err = _T.assert_gt(b_cells.size(), 0, "and so does the second")
+	# And they overlap, or `covered_road_cells(except)` removed nothing and the two
+	# answers would be disjoint for the boring reason rather than the real one.
+	if err == "":
+		var shared: int = 0
+		for cell: Vector2i in PlacementPreview.covered_road_cell_list(
+				game.board, first, Game.engagement_reach(PlantCatalog.CORN)):
+			if PlacementPreview.covered_road_cell_list(
+					game.board, second,
+					Game.engagement_reach(PlantCatalog.CORN)).has(cell):
+				shared += 1
+		err = _T.assert_gt(shared, 0,
+			"the two cobs' reaches overlap, so this measures the exclusion and not luck")
+	var collisions: int = 0
+	for cell: Vector2i in a_cells:
+		if b_cells.has(cell):
+			collisions += 1
+	if err == "":
+		err = _T.assert_eq(collisions, 0,
+			("no cell is in both answers (%d were) -- sole cover means nothing else "
+				+ "standing covers it, so the two ring sets are disjoint by construction")
+				% collisions)
+	# Now the two cues side by side, which is what the player sees during a comparison.
+	var a_marks: SoleCoverMarks = a.sole_cover_marks()
+	var b_marks: SoleCoverMarks = b.sole_cover_marks()
+	if err == "":
+		err = _T.assert_true(a_marks != null and b_marks != null,
+			"both plants built their marks nodes")
+	if err == "":
+		a_marks.set_held_over(true)
+		err = _T.assert_gt(SoleCoverMarks.mark_radius(b_marks.held_over),
+			SoleCoverMarks.mark_radius(a_marks.held_over),
+			("with one held over, the live cluster's rings are the bigger ones -- the "
+				+ "reader tells the two apart without reading a colour"))
+	var a_marker := a.get_node_or_null(
+		NodePath(SelectionMarker.NODE_NAME)) as SelectionMarker
+	var b_marker := b.get_node_or_null(
+		NodePath(SelectionMarker.NODE_NAME)) as SelectionMarker
+	if err == "":
+		err = _T.assert_true(a_marker != null and b_marker != null,
+			"and both built their brackets, reachable by SelectionMarker.NODE_NAME")
+	if err == "":
+		a_marker.set_held_over(true)
+		err = _T.assert_gt(
+			SelectionMarker.bracket_corners(b_marker.held_over).size(),
+			SelectionMarker.bracket_corners(a_marker.held_over).size(),
+			"and the held plant's box is the open one")
+	# The precondition the held-over state depends on, and it holds TODAY: moving the
+	# selection off an armed plant disarms it, so the plant that becomes the held-over
+	# one never carries the red brackets or an open confirm arc. Held and armed are
+	# mutually exclusive because Game makes them so, not because either node checks.
+	if err == "":
+		game._select(b)
+		err = _T.assert_eq(game.arm_uproot(), "", "an uproot arms on the second cob")
+	if err == "":
+		err = _T.assert_eq(b_marker.marker_color, SelectionMarker.WARNING_COLOR,
+			"and its brackets go red while it is the selection")
+	if err == "":
+		game._select(a)
+		err = _T.assert_false(game.uproot_armed(),
+			"selecting the other plant disarms it")
+	if err == "":
+		err = _T.assert_eq(b_marker.marker_color, SelectionMarker.MARKER_COLOR,
+			("so the plant now held over wears no warning -- a demoted cue and an armed "
+				+ "one are never the same brackets"))
+	if err == "":
+		err = _T.assert_float_eq(b_marker.uproot_window, 0.0, 0.0001,
+			"and carries no open confirm arc either")
+	_T.free_ui(game)
+	return err
+
+
+## The statics above describe a cue only if the paint calls actually read them. This is
+## the source check that says so, structural so it survives the numbers being retuned --
+## the same treatment test_placement.gd gives the uproot arc, and for the same reason:
+## headless has no renderer, so no test in this suite can watch a _draw() run.
+func test_the_held_over_demotion_is_what_the_cues_actually_paint() -> String:
+	var marker_src: String = FileAccess.get_file_as_string("res://game/selection_marker.gd")
+	var err: String = _T.assert_gt(marker_src.length(), 0,
+		"selection_marker.gd is readable -- every check below is vacuous otherwise")
+	if err != "":
+		return err
+	var brackets: int = marker_src.find("func _draw_brackets(")
+	err = _T.assert_gt(brackets, 0, "the brackets have a painter")
+	if err == "":
+		var body: String = marker_src.substr(brackets)
+		err = _T.assert_true(body.contains("bracket_corners("),
+			("its corners come from bracket_corners() -- a nested sign loop here would "
+				+ "leave the tested static describing a box nobody draws"))
+		if err == "":
+			err = _T.assert_true(body.contains("held_ink("),
+				"and its ink from held_ink(), so the dimming is not a second rule")
+	if err == "":
+		var marks_src: String = FileAccess.get_file_as_string("res://game/sole_cover_marks.gd")
+		err = _T.assert_gt(marks_src.length(), 0, "sole_cover_marks.gd is readable")
+		if err == "":
+			var painter: int = marks_src.find("func _draw(")
+			err = _T.assert_gt(painter, 0, "the rings have a painter")
+			if err == "":
+				var body: String = marks_src.substr(painter)
+				err = _T.assert_true(body.contains("mark_radius("),
+					("the road rings' radius comes from mark_radius(), not a literal -- "
+						+ "an inlined 9.0 makes the held cluster and the live one one cue"))
+	return err
+
+# END plant-tower-defense-sleq: the previous selection, held for comparison
+# =============================================================================
