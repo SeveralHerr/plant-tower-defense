@@ -82,6 +82,19 @@ NOT_PARALLEL_SAFE = {
 # its contract line.
 SELF = "check_all.py"
 
+# A house tool that OWES a `NOT COVERED:` line (it is a tool in this repo) but is a RUNNER
+# rather than a checker: it runs other things and reports their exit codes. Marker-based
+# discovery cannot tell the two apart, because a runner's contract line looks exactly like
+# a checker's -- so runners are named here.
+#
+# This started as `if name == SELF` for check_all.py alone. `survey_all.py` arriving
+# (plant-tower-defense-98h3) demonstrated why one name was not enough: it was discovered as
+# a checker on its first run and DID run clean, because with no game on the bus its own
+# gate correctly declined to fire. The cost was invisible and real -- every check_all run
+# was silently spending ~30s inside heredoc_survey.py's whole-git-history sweep, in a pool
+# whose entire promise is that it is the fast parallel-safe one.
+RUNNERS = {SELF, "survey_all.py"}
+
 NOT_A_CHECKER = {
     "repo_walk.py": "a library, not a tool: the shared directory-exclusion rule the "
                     "rooted checkers import so a nested .claude/worktrees/ checkout "
@@ -118,7 +131,7 @@ def classify():
         # owes one, but it is a RUNNER, not a checker. Without this branch it
         # discovers itself and recurses. Its own first run reported exactly that
         # as an UNCLASSIFIED contradiction, which is the classifier working.
-        if name == SELF:
+        if name in RUNNERS:
             continue
         try:
             src = path.read_text(encoding="utf-8", errors="replace")
@@ -207,10 +220,21 @@ def main(argv=None):
     print("check_all: ran %d of %d discovered parallel-safe checker(s) -- "
           "%d clean, %d with findings, %d could not run"
           % (len(results), discovered, len(clean), len(found), len(broke)))
+    # Every category is named and the numbers ADD UP to the glob. `runner(s)` is here
+    # because it has to be: when RUNNERS grew from one name to two, the line printed
+    # 19 + 1 + 7 = 27 of 29 and looked exactly as authoritative as it does now. A
+    # classifier whose own summary silently loses two files is the bug it was written to
+    # catch, so the total is asserted rather than trusted -- see the SUM MISMATCH line.
+    total = len(list(TOOLS.glob("*.py")))
+    named = discovered + len(unparallel) + len(NOT_A_CHECKER) + len(RUNNERS) + len(unclassified)
     print("           CLASSIFIED %d tools/*.py: %d checker(s), %d not parallel-safe, "
-          "%d known non-checker(s), %d unclassified"
-          % (len(list(TOOLS.glob('*.py'))), discovered, len(unparallel),
-             len(NOT_A_CHECKER), len(unclassified)))
+          "%d known non-checker(s), %d runner(s), %d unclassified"
+          % (total, discovered, len(unparallel), len(NOT_A_CHECKER),
+             len(RUNNERS), len(unclassified)))
+    if named != total:
+        print("           SUM MISMATCH: %d file(s) accounted for against %d on disk -- a "
+              "category is missing from this line, so the counts above cannot be trusted"
+              % (named, total))
 
     for name, why in skipped.items():
         print("SKIPPED: %s -- %s" % (name, why))

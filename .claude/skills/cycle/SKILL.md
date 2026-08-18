@@ -435,6 +435,27 @@ region; all of it is the project's own and may be edited by step 5.
 python tools/check_all.py --quiet     # every parallel-safe checker, list DERIVED
 ```
 
+**The SURVEYS are a second command on a different clock, and are NOT part of the above.**
+
+```bash
+python tools/survey_all.py --quiet    # every .claude/surveys/ script, list DERIVED
+```
+
+`check_all` answers *is the tree clean now* and runs every cycle in about four seconds.
+`survey_all` answers *how often has this happened* — `heredoc_survey.py` sweeps the whole
+git history and takes ~30s, and `flourish_peak.py` needs a game on the bus and reports
+`COULD NOT RUN` without one. Folding them into `check_all` would put a history sweep on
+every cycle and a live-game verb into the pool whose defining property is that it needs no
+project; the two were separated on measured runtimes, not on taste. **Run it when a rule
+it surveys has just been broken, when a survey is added, and at least once every few
+cycles** — not every cycle. A could-not-run is NAMED with the survey's own reason and does
+not gate; `--strict` makes it gate.
+
+Both are runners rather than checkers, so `check_all`'s classifier skips them by name
+(`RUNNERS`). Its `CLASSIFIED` line now counts runners as their own category and prints a
+`SUM MISMATCH` if the categories stop adding up to the glob — which they briefly did not,
+the moment that set grew from one name to two.
+
 It discovers its own set — any `tools/*.py` declaring the house contract's `NOT COVERED:`
 line — runs them concurrently, and prints `ran N of M discovered` plus a classification of
 every `tools/*.py` into checker / not-parallel-safe / known-non-checker / **unclassified**.

@@ -7072,3 +7072,52 @@ status rather than rewriting the entries that recorded these as open.
     missing features. `harness-version --client` reports the machine is now on **0.60.0**
     against this project's 0.38.0 — twenty-two releases, up from four when `-ny3h` was
     filed.
+
+## 2026-08-18 — cycle 111: the surveys get a runner, and the runner got adopted by the wrong pool
+
+- Value: **warranted** — the design was decided by two measured runtimes rather than by
+  reading, and the predicted hazard fired invisibly under a green line.
+  - Expected: the surveys become reachable by one command that prints how many it ran of
+    how many it discovered, with a could-not-run named rather than dropped. Predicted
+    before writing: adding a `NOT COVERED` line to a new `tools/*.py` will make
+    `check_all.py` adopt it as a checker, because it discovers by that marker and excludes
+    only itself by name.
+  - Got: the prediction held, and the way it held is the finding. `check_all` adopted
+    `survey_all.py` and reported it **`clean`** — correctly, because with no game on the
+    bus `survey_all`'s own gate declines to fire — while spending ~30s inside
+    `heredoc_survey.py`'s whole-git-history sweep on every run of the pool whose entire
+    promise is that it is the fast parallel-safe one. `check_all` went 4.1s → ~34s with a
+    green line above it. Fixed by growing `SELF` into `RUNNERS`.
+  - Found: four things, and the second and third are the ones worth reading.
+    **(1)** the bead's premise was wrong in a way that changed the design. It said all
+    three surveys are in the house-checker shape; only `flourish_peak.py` carries a
+    `NOT COVERED` line, and the three are three different KINDS —
+    `heredoc_survey.py` 29.7s (whole history), `heredoc_survey_controls.py` 0.06s (the
+    fixture proving the sweep can fail), `flourish_peak.py` exit 2 (needs a live game).
+    Those runtimes are what settled "a second runner" over "a second discovery root",
+    and no amount of reading the bead produces them.
+    **(2)** the adoption above.
+    **(3)** fixing it immediately broke `check_all`'s own arithmetic: `CLASSIFIED`
+    printed `19 + 1 + 7 = 27` of 29 tools and looked exactly as authoritative as it does
+    now. A classifier that silently loses two files is precisely the bug it exists to
+    catch. Added a `runner(s)` category and a `SUM MISMATCH` guard, then mutated the sum
+    to prove the guard fires.
+    **(4)** `heredoc_survey.py` reports 0 hits for both damage signatures across the whole
+    history — the mechanical second opinion on cycle 110's break of the
+    no-script-writes-source rule, which I had only checked by hand.
+  - Cheaper: nothing. Reading the three surveys instead of running them gives the wrong
+    design, and would not have surfaced the adoption hazard at all.
+
+- **Both new guards were mutation-tested, because the skill says a positive control that
+  cannot fail is worse than none.** `survey_all --self-check` against a `run_one` forced to
+  report exit 0: `3 FAILURE(S)`, exit 1. `check_all`'s sum against a `named` missing
+  `len(RUNNERS)`: `SUM MISMATCH: 27 file(s) accounted for against 29 on disk`. Recording
+  the mutations rather than only the passes — a fixture reported as passing is the one
+  claim in a checker that nothing else checks.
+
+- Gap: **no gap this turn.** The harness was barely involved and correctly so: this is
+  tier (f) tooling-only in `/verify`'s own triage — two `tools/*.py` and one skill doc,
+  nothing under `res://`, so no Godot phase can speak to it. The ledger row is recorded
+  `--no-reach` for that reason rather than because a capture was missed. Worth noting the
+  triage table earned its keep by telling me NOT to launch: cycle 110's row cost a game
+  launch and twenty minutes, and this one correctly cost neither.
