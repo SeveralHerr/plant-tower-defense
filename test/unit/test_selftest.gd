@@ -1653,7 +1653,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 		err = _T.assert_eq(String(Game.key_help()[0]["keys"]), "F1", "the pause card's legend moved")
 	if err == "":
 		err = _T.assert_eq(FileAccess.get_file_as_string(path),
-			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
+			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
 			"and it was written down beside the scores")
 	if err == "":
 		# A key another verb already answers to is refused, and said so.
@@ -1690,7 +1690,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 				"Put them all back restores the shipped keys once confirmed")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(path),
-				"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
 				"and clears the overrides out of the save rather than pinning the defaults into it")
 
 	_T.free_ui(screen)
@@ -1969,8 +1969,14 @@ func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
 				button.pressed.emit()
 				err = _T.assert_eq(OptionsScreen.is_on(id), was, "and pressing it again puts it back")
 	if err == "":
-		err = _T.assert_true(screen.get_node_or_null("RowButton%d" % screen.rows().size()) == null,
-			"and there is no row for a switch that does not exist")
+		# Switches AND dials since v8 (plant-tower-defense-u9uh): the panel numbers its
+		# RowButtons through one sequence, so asking past `rows()` alone stopped meaning
+		# "past the end" the moment the two audio dials landed underneath the three
+		# switches. Summing both is what keeps this assertion about the END of the panel
+		# rather than about the end of the switches.
+		var row_count: int = screen.rows().size() + screen.dials().size()
+		err = _T.assert_true(screen.get_node_or_null("RowButton%d" % row_count) == null,
+			"and there is no row for a switch or dial that does not exist")
 	if err == "":
 		# The mute rows are inverted on purpose: the owner stores "muted", and a
 		# row labelled Sound effects reading On while silent would be lying.
@@ -2021,7 +2027,7 @@ func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
 		err = _T.assert_true(RunConfig.colorblind_safe, "the colourblind row sets the flag")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(path),
-				"v%d\n0\n0\nm0\ncb1 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n0\nm0\ncb1 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
 				"and it is written down beside the scores, not held for the session")
 	if err == "":
 		# Nothing on the paper may run off it or sit on top of anything else, and the
@@ -5334,7 +5340,7 @@ func test_rebound_keys_survive_a_save_and_load() -> String:
 	if err == "":
 		RunConfig.store_key_bindings(KeyBindings.overrides())
 		err = _T.assert_eq(FileAccess.get_file_as_string(path),
-			"v%d\n11\n22\nm0\ncb0 sfx0 mus0 spd0\n1\ngarden_mute_music %d\n" % [RunConfig.SAVE_VERSION, KEY_F7],
+			"v%d\n11\n22\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n1\ngarden_mute_music %d\n" % [RunConfig.SAVE_VERSION, KEY_F7],
 			"the save carries the count and one action row")
 	if err == "":
 		# Wipe every trace from memory, then read it all back off disk.
@@ -11467,8 +11473,20 @@ func test_every_row_limited_surface_is_exactly_full() -> String:
 	var surfaces: Array[Dictionary] = [
 		{
 			"what": "the options panel",
-			"spare": 0,
-			"used": OptionsScreen.OPTIONS.size(),
+			# 1 spare since v8 (plant-tower-defense-u9uh), and BOTH numbers under it moved
+			# for different reasons — which is why this row is not simply "0 -> 1".
+			#
+			# `used` was OPTIONS.size() alone, and that stopped being the panel's row count
+			# the moment DIALS landed underneath the switches: the surface shows five rows
+			# and this was measuring three. A tripwire that counts the wrong thing reads as
+			# "still full" while the surface fills up past it.
+			#
+			# `fits` moved because the panel stopped being a fixed 360px box. It derives its
+			# height from its rows now (see OptionsScreen.panel_height), so the binding
+			# constraint is the 648 viewport rather than a hardcoded paper size — six rows
+			# is the last count that lands, a seventh puts the foot at 672.
+			"spare": 1,
+			"used": OptionsScreen.OPTIONS.size() + OptionsScreen.DIALS.size(),
 			"fits": OptionsScreen.rows_capacity(),
 		},
 		{

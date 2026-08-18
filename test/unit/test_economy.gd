@@ -3225,7 +3225,16 @@ func test_a_save_with_a_broken_speed_field_is_refused_whole() -> String:
 ## re-earned and a speed can, so a downgrade must not cost the player both.
 func test_a_saved_speed_step_this_build_has_no_step_for_starts_at_one_x() -> String:
 	var future_step: int = GameSpeed.STEPS.size() + 1
-	var original: String = "v%d\n70\n80\nm0\ncb0 sfx0 mus0 spd%d\n0\n" % [
+	# SIX fields, not four. This fixture writes `RunConfig.SAVE_VERSION` in the header, so
+	# the line under it must have the shape THAT version declares — and at v8 a four-field
+	# line is malformed, so the file was refused for its field count and this test failed
+	# claiming the speed handling had regressed. It had not: the fixture had.
+	#
+	# That is the same weakening lane u9uh flagged on the two refusal fixtures at :1425-1449
+	# and on test_a_save_with_a_broken_speed_field_is_refused_whole — a fixture pinned to
+	# SAVE_VERSION rather than to the version whose shape it is testing goes stale silently
+	# on every bump, and the failure it produces points at the parser instead of at itself.
+	var original: String = "v%d\n70\n80\nm0\ncb0 sfx0 mus0 spd%d svol0 mvol0\n0\n" % [
 		RunConfig.SAVE_VERSION, future_step]
 	return _with_scratch_save(0, 0, original, func() -> String:
 		RunConfig._load()
