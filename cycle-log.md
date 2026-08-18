@@ -1,10 +1,44 @@
-# Cycle 104
+# Cycle 105
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
 what `bd` structurally cannot: which cycle we are on, what the last one taught, what is
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
+
+## What cycle 105 taught
+
+**The eighth plant, and the file that had already written down how to fit it.** The Salve
+Aloe is the first thing in the game that undoes damage — before it, `Plant.health` only
+ever fell, and the sole exception was the rain, which is the weather's doing and arrives
+every fifth wave whether you need it or not. It cannot save a plant under attack and that
+ceiling is the design: 3.0 HP/s against a mouth taking a full-health plant down in 2.86s.
+Verified live at 10.0 → 20.4 → 35.4 health.
+
+**`-ibvb` names four hand-lists a new plant must join. There are five.** The fifth is
+`TitleScreen.PLANT_X`, caught as `Expected 7 >= 8` — and its own header had already done the
+arithmetic and named the fix in advance: *"That is the day to drop PLANT_SCALE or go to two
+rows."* Dropped 1.7 → 1.5, which fits four 96px canvases per band with 42px spare and funds
+the ninth plant too. A comment that predicts its own failure is worth more than a test that
+reports it, because it also says what to do.
+
+**Read the denominator, again, and this time it was mine.** My first Aloe tests used
+`GAME_SCENE`, which `test_combat.gd` does not declare. The parse error took the whole script
+down and the suite reported **`Total: 564` against 705** — 141 tests silently absent, exit
+2. The exit code alone would have read as an ordinary failure.
+
+**Two tests failed at the audio merge and neither was wrong** — both had had their subject
+moved underneath them. A save fixture pinned to `SAVE_VERSION` rather than to the version
+whose *shape* it tests goes stale on every bump, and the failure it produces points at the
+parser instead of at itself. And the exactly-full tripwire counted `OPTIONS.size()` alone,
+so it measured three rows on a panel that now shows five: a tripwire counting the wrong set
+reads as "still full" while the surface fills up past it.
+
+**`set_resolution` answered what no headless test in this project can.** Lane 0jye said so
+plainly and handed it over as a named check rather than claiming it. Three resizes settled
+it: a 1720×720 window gives a 1548-wide canvas with the side panel at x 1292 (1292 + 256 =
+1548, still pinned), and 1024×768 gives 1152×792 — the width floor the whole stats-row
+budget silently rests on, confirmed rather than reasoned about.
 
 ## What cycle 104 taught
 
