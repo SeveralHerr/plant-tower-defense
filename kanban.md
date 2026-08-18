@@ -4231,3 +4231,32 @@ Three findings kept out here rather than buried in a log:
   on it, not only the place the problem is.** `message_corpus_check` and `suite_reach_check`
   both already do this; the drift report was the outlier because it was written to answer
   "what moved" rather than "what do I do".
+
+### New in cycle 118 — grown from a decision that was already half made
+
+- **A decision pinned only where it holds is not pinned.** The husk rot floor was defended
+  by two assertions — nothing rots faster than 4.5s, and everything at or above `FULL_VALUE`
+  shares it — and BOTH are satisfiable by flattening the curve entirely. Making every husk
+  rot at 4.5s would "fix" the inconsistency the bead complained about and pass them. Only a
+  third assertion, that below the saturation point a richer husk rots STRICTLY faster,
+  distinguishes "the floor is deliberate" from "the whole curve was deleted". Confirmed by
+  mutation rather than argued: `HUSK_LIFETIME = MIN_HUSK_LIFETIME` fires that one and
+  neither of the others.
+  The general shape, and it is worth carrying: **when you pin a decision that something is
+  FLAT over a range, you must also pin that it is NOT flat outside that range** — otherwise
+  the cheapest way to satisfy the gate is to make the flatness total. This is the same class
+  as a non-empty denominator, one level up: a denominator stops a check passing over
+  nothing, and this stops a check passing over everything.
+
+- **The knob's comment and the design question are different questions, and only one was on
+  the record.** `CompostMeter.FULL_VALUE` (`game/compost_meter.gd:97`) carries a long,
+  correct argument for not widening it — "a balance change wearing a legibility fix's
+  clothes". Reading it, it is easy to conclude the matter is settled. It is not: it settles
+  the KNOB and says nothing about whether the behaviour it produces is wanted, which is what
+  `-ix76` actually asked.
+  Worth watching for elsewhere, because this repo is dense with exactly this kind of
+  comment: **an argument for why a constant has its value is not an argument that the
+  resulting behaviour is right.** The two read alike, the first is far more common here, and
+  a reader looking for the second will accept the first. `-zfmv`'s sweep of the 47
+  `NOT COVERED` sentences is the same shape a level down; this is the version for balance
+  constants, and nobody has swept those.

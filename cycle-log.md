@@ -1,4 +1,4 @@
-# Cycle 117
+# Cycle 118
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,36 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 118 taught
+
+**A decision pinned only where it holds is not pinned.** The husk rot floor was defended by
+two assertions — nothing rots faster than 4.5s, and everything at or above `FULL_VALUE`
+shares it — and **both are satisfiable by flattening the curve entirely.** Making every husk
+rot at 4.5s would "fix" the inconsistency the bead complained about and pass them. Only a
+third assertion — that below the saturation point a richer husk rots STRICTLY faster —
+tells "the floor is deliberate" from "the whole curve was deleted". Confirmed by mutation,
+not argued. Same class as a non-empty denominator, one level up: a denominator stops a check
+passing over nothing; this stops one passing over everything.
+
+**An argument for why a constant has its VALUE is not an argument that the BEHAVIOUR is
+right.** `FULL_VALUE`'s comment argues at length against widening it ("a balance change
+wearing a legibility fix's clothes") and it is easy to read that as settling the matter. It
+settles the knob. Whether a 60-seed husk *should* share a 9-seed husk's rot floor is a
+different question, and it had never been answered. It is now, with different reasons —
+4.5s is a reaction time, the richest husks come from the two bosses and therefore drop at
+the busiest moment on the board, and the failure modes are asymmetric. Filed as `-8v43` for
+the constants nobody has swept.
+
+**Nothing player-facing shipped, and the sentence the loop asks for:** the item was a design
+question whose honest answer turned out to be "the current behaviour is right and was
+undefended". No balance moved. That is a real outcome for a bead filed "so the question is
+on the record, not so it gets built" — but it means cycle 119 takes a player-facing item.
+
+**The drift report's new "written at" line paid for itself one cycle after being added.**
+Three citations drifted from a comment I inserted; the report named all three and where each
+was written, and the fix was three edits with no searching. Last cycle the same report left
+twenty to be grepped out of a 4000-line file.
 
 ## What cycle 117 taught
 
@@ -630,11 +660,13 @@ tuning, so that lane waited.
 
 ## Waiting on the user
 
-**`-ix76` — should a 60-seed husk rot faster than a 9-seed one?** New this cycle and flagged
-with `bd human`. Both husks give the player 4.5 seconds, because `lifetime_for` saturates
-where the drawing used to. Either 4.5s is a floor on reaction time and the pips are the whole
-fix, or the richest drop should be the one you can least afford to miss. The two answers want
-opposite code, so this is not a thing to pick by whichever is easier.
+**`-ix76` — ANSWERED in cycle 118, not by James.** The question was whether a 60-seed husk
+should rot faster than a 9-seed one. The answer is no: 4.5s is a reaction time, the richest
+husks come from the two bosses and so drop at the busiest moment on the board, and the
+failure modes are asymmetric — too slow is a mildly generous meter, too fast teaches the
+player that boss kills are not worth chasing. Recorded above `MIN_HUSK_LIFETIME` and pinned
+by a test. Left here rather than deleted because it sat on this list as a question for
+several cycles and a reader who remembers it should find the answer where they left it.
 
 **`-oo7e` — weather has no counter-play.**
 
