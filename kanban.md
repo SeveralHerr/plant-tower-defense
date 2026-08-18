@@ -181,6 +181,36 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### Added cycle 105 — out of the eighth plant and the live viewport
+
+- **The roster has ONE genuinely uncovered role left that needs no pathing work: husks.**
+  Cycle 104 verified three were open — blocks the road, heals, uses husks — and the Salve
+  Aloe took the healing one. `husk_layer.gd` is still read only by the compost sweep, so a
+  plant that auto-composts husks in its reach is a new economy role that is not the
+  Sunflower's clock, and it needs no answer to "what does a pest do when its path is
+  occupied". That makes it the cheap ninth plant and the road-blocker the expensive one.
+- **The ninth plant is already funded and the tenth is the two-row day.** `PLANT_SCALE`
+  dropped 1.7 → 1.5 to fit an eighth slot on the title lawn, which puts four 96px canvases
+  in each 426px band with 42px to spare. `TitleScreen.PLANT_X`'s header carries the
+  arithmetic. Worth knowing before anyone designs a tenth: five 96px canvases need 480 in a
+  426px band, so there is no third trick.
+- **The Aloe makes a "repair between waves" loop possible that nothing yet closes.** Damage
+  is no longer permanent, but nothing tells the player a plant is damaged unless they select
+  it — the health bar is per-plant and only drawn under attack. A garden-wide "3 plants
+  hurt" cue, or a between-waves summary line, would turn the Aloe from a thing you own into
+  a thing you place deliberately. Taste call: the prep gap is the moment, and the message
+  row is already priced.
+- **The whole HUD now re-lays-out on resize, and nothing else does.** `game/hud.gd` reads
+  the live viewport; `game/title_screen.gd` and `game/overlay_screen.gd` each still declare
+  their OWN `get_viewport_width()` reading `ProjectSettings`. Filed as `-nrup`, and the
+  interesting half is that there are three copies of one method rather than two more bugs.
+- **`stretch/aspect="expand"` is load-bearing and now has exactly one test holding it.**
+  The stats-row width budget is only safe because `expand` gives the canvas a hard width
+  floor of the design size; below it the failure is silent, because `Control.size` clamps UP
+  to the container's minimum and the wave button simply lands off-screen with nothing
+  reporting it. Anyone who changes that project setting should expect a red test, and should
+  read why before changing it anyway.
+
 ### Added cycle 104 — out of four lanes and an absence sweep
 
 - **Three roster roles are genuinely uncovered, and two that `-ibvb` lists are not.**
