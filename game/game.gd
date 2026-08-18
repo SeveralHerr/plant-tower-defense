@@ -239,6 +239,8 @@ func _ready() -> void:
 	_entities.name = "Entities"
 	_entities.position = Vector2(0, Hud.BAR_HEIGHT)
 	add_child(_entities)
+	# Placed properly once the board exists; see _apply_board_layout. The value above is
+	# the design-size answer and is kept so nothing reads an unset position mid-_ready.
 
 	board = Board.new()
 	board.name = "Board"
@@ -311,6 +313,12 @@ func _ready() -> void:
 	# see its own header.
 	hud.uproot_requested.connect(arm_uproot)
 	hud.speed_requested.connect(_on_speed_requested)
+
+	# The playfield's own place in the window, and it has to be re-taken whenever the window
+	# changes shape — the HUD reserves a fixed-width panel on the right and a fixed-height
+	# bar on top, so what is left for the board moves with the viewport.
+	_apply_board_layout()
+	get_viewport().size_changed.connect(_apply_board_layout)
 
 	_prep_left = PREP_SECONDS
 	_refresh()
@@ -1950,9 +1958,26 @@ func _update_preview(cell: Vector2i, free: bool) -> void:
 ## test_placement gates it: today the nearest a husk can come to ground a plant
 ## may stand on is 32 px, four clear of the 28 px sweep.
 func _click_at(screen_pos: Vector2) -> void:
-	if screen_pos.y < Hud.BAR_HEIGHT or screen_pos.x > board.board_size().x:
-		return
+	# BOARD-LOCAL, and it has to be. This guard used to read
+	# `screen_pos.y < Hud.BAR_HEIGHT or screen_pos.x > board.board_size().x` — an absolute
+	# screen coordinate compared against a board-LOCAL width, which was correct for exactly
+	# as long as the board started at (0, BAR_HEIGHT) and silently wrong the moment
+	# `_apply_board_layout` began centring it. At a 1387-wide canvas the board sits at
+	# x = 117, so the old test rejected every click on its rightmost 117 px and ACCEPTED
+	# clicks in the left gutter, where `world_to_cell` returns a negative cell.
+	#
+	# That failure is invisible in a screenshot: the board draws perfectly and a strip of it
+	# just stops responding. Found by reading the guard, not by looking at the picture — the
+	# same lesson `Board.cell_to_global`'s header records.
+	# A FAITHFUL translation of the old test into board-local space, not a tightening.
+	# It deliberately does NOT reject `local.x < 0` or a y past the board's bottom: the
+	# husk branch below is reached from here on purpose, and `Board._build_route` brackets
+	# the road with an off-board entry and exit whose husks belong to no cell and are still
+	# the player's to collect. Rejecting the whole off-board area would have taken those
+	# with it — which is what the first draft of this guard did.
 	var local: Vector2 = screen_pos - _entities.position
+	if local.y < 0.0 or local.x > board.board_size().x:
+		return
 	var cell: Vector2i = board.world_to_cell(local)
 	# Ahead of the is_inside() guard below, exactly where the sweep has always
 	# been: Board._build_route brackets the road with an off-board entry and exit,
@@ -2002,6 +2027,50 @@ func _click_at(screen_pos: Vector2) -> void:
 ## sources writing one number is how the number stops meaning anything. Weather owns
 ## `fire_interval_scale`, this owns `neighbour_interval_scale`, and `Plant.composed_interval`
 ## is where they meet.
+## Centres the playfield in the space the HUD leaves it, and keeps it centred when the
+## window changes shape.
+##
+## WHY THIS EXISTS. The board is a fixed 896x576 (`Board.COLS * CELL` by `ROWS * CELL`) and
+## `_entities` sat at `Vector2(0, BAR_HEIGHT)` — hard against the left edge, forever. At the
+## design size that is exactly right and invisible: 896 of board plus 256 of side panel is
+## 1152, the whole canvas, with nothing left over.
+##
+## It stopped being invisible the moment the HUD started laying out against the LIVE
+## viewport (plant-tower-defense-0jye). `stretch/aspect="expand"` gives a wide window MORE
+## canvas width, the side panel is now correctly pinned to the right edge of it, and the
+## board still started at x=0 with a fixed width — so every pixel of the extra width piled
+## up in one grey gutter between the playfield and the panel. Reported from a screenshot,
+## which is the second time this file has learned something that way (see
+## `Board.cell_to_global`'s header for the first).
+##
+## Note what the old behaviour was actually doing: before -0jye the panel was ALSO in the
+## wrong place, at a hardcoded `1152 - PANEL_WIDTH`, so the gutter existed and was hidden by
+## a second bug sitting on top of it. Fixing the panel is what made this one visible.
+##
+## WHAT IT DOES: splits the leftover space evenly instead of dumping it on one side, in both
+## axes — horizontally between x=0 and the panel's left edge, vertically between the top bar
+## and the bottom of the canvas. `floorf` because a half-pixel offset on a 64px pixel-art
+## grid is visible as softening on every sprite at once.
+##
+## `maxf(0, ...)` because a viewport SMALLER than the board must not push it off the left or
+## up under the bar — it clamps to the old behaviour instead, which is the readable failure.
+##
+## Safe to move because both readers of `_entities.position` already subtract it
+## (`_click_at` and `_update_preview`), so the screen-to-cell mapping follows the board
+## rather than assuming where it sits. That was checked before this was written, not after.
+func _apply_board_layout() -> void:
+	if board == null or not is_instance_valid(board) or _entities == null:
+		return
+	var view: Vector2 = get_viewport().get_visible_rect().size
+	if view.x <= 0.0 or view.y <= 0.0:
+		return
+	var play: Vector2 = Vector2(view.x - Hud.PANEL_WIDTH, view.y - Hud.BAR_HEIGHT)
+	var board_px: Vector2 = board.board_size()
+	_entities.position = Vector2(
+		floorf(maxf(0.0, (play.x - board_px.x) * 0.5)),
+		Hud.BAR_HEIGHT + floorf(maxf(0.0, (play.y - board_px.y) * 0.5)))
+
+
 ## Every Aloe mends the damaged plants it reaches (plant-tower-defense-ibvb).
 ##
 ## The ITERATION is here and the decisions are in `Aloe`, for the reason its header spells

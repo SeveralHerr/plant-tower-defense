@@ -4798,6 +4798,66 @@ func test_a_damaged_plant_beside_an_aloe_gains_health_as_the_game_runs() -> Stri
 	return err
 
 
+## A click lands on the cell it is over, wherever the board has been centred.
+##
+## The playfield is centred in the space the HUD leaves it, so `_entities.position` is no
+## longer `(0, BAR_HEIGHT)` on any window that is not the design size. `_click_at` maps a
+## SCREEN position to a cell, and its guard used to compare `screen_pos.x` against
+## `board.board_size().x` — an absolute coordinate against a board-local width. Correct for
+## exactly as long as the board started at x = 0.
+##
+## THE CASE THAT CAN FAIL is the rightmost column at a non-zero offset: with the board at
+## x = 117 the old guard rejected every click past screen x 896, which is the last two
+## columns, while the board drew them perfectly. A screenshot cannot show a strip that
+## silently stops responding, and asserting only the centre cell would pass on both.
+func test_a_click_lands_on_its_cell_wherever_the_board_is_centred() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.seeds = 500
+	var offset := Vector2(117.0, 72.0)
+	game._entities.position = offset
+
+	# The last column the board has, which is the one the old guard ate.
+	var target := Vector2i(Board.COLS - 1, Board.ROWS - 1)
+	var screen: Vector2 = offset + game.board.cell_to_world(target)
+	# Walk left along the bottom row to the first plantable cell that is STILL past the old
+	# guard's threshold. Derived rather than hardcoded: the road's shape decides which cells
+	# are plantable and it has been reshaped before.
+	while target.x > 0 and not game.would_plant_at(target):
+		target.x -= 1
+	screen = offset + game.board.cell_to_world(target)
+
+	var err: String = _T.assert_true(screen.x > game.board.board_size().x,
+		("the probe really is past the old guard's threshold (%.0f > %.0f), or this test "
+			+ "passes without exercising the bug at all") % [screen.x, game.board.board_size().x])
+	if err == "":
+		err = _T.assert_true(game.plant_at(target) == null, "the target cell starts empty")
+	if err == "":
+		# The real door: _click_at takes a SCREEN position and is where the guard lives.
+		# Asserting world_to_cell alone would pass with the guard still broken.
+		game.selected_plant = PlantCatalog.CORN
+		game._click_at(screen)
+		err = _T.assert_true(game.plant_at(target) != null,
+			("a click at screen %s plants on cell %s — with the old absolute-x guard this "
+				+ "returned early and nothing happened") % [screen, target])
+	if err == "":
+		# The left gutter is dead space, not column -2. `world_to_cell` answers honestly
+		# and `is_inside` is what refuses it — asserted so a future guard cannot start
+		# treating the gutter as playable.
+		var gutter: Vector2 = Vector2(10.0, offset.y + 10.0)
+		var gutter_cell: Vector2i = game.board.world_to_cell(gutter - game._entities.position)
+		err = _T.assert_false(game.board.is_inside(gutter_cell),
+			"a click in the left gutter is off the board, got cell %s" % gutter_cell)
+	if err == "":
+		# And the design size is unchanged: no offset, same answers as before this landed.
+		game._entities.position = Vector2(0.0, Hud.BAR_HEIGHT)
+		var mid := Vector2i(3, 2)
+		var at: Vector2 = Vector2(0.0, Hud.BAR_HEIGHT) + game.board.cell_to_world(mid)
+		err = _T.assert_eq(game.board.world_to_cell(at - game._entities.position), mid,
+			"and the un-centred board still maps exactly as it always did")
+	_T.free_ui(game)
+	return err
+
+
 func test_row_is_quiet_is_what_stops_a_level_triggered_caller_stacking() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var err: String = _T.assert_true(game != null and game.hud != null, "the run has a HUD")
