@@ -90,30 +90,31 @@ drifted from its specification", which is invisible to every other tool here
 precisely because they all now depend on it.
 
     fixture:   the self-test IS the fixture, and it is permanent rather than
-               written-and-deleted. 40 cases: identity, comments, a `#` inside a
+               written-and-deleted. 44 cases: identity, comments, a `#` inside a
                literal, an unbalanced quote inside a COMMENT, escaped quotes, the
                `[\"key\"]` case that shipped broken, single quotes, a triple-quoted
                block, an unterminated literal, the &"" prefix, a raw string, the
                three modes against each other, length/newline preservation,
                first_arg_span over a comma inside a literal and over nested parens,
-               normalise_literal, and blanked_regions.
+               normalise_literal, and literal_spans -- including the triple-quoted
+               block that reads as N one-line strings if you diff the output.
     mutations: 6, all RED, restore clean. Run by hand -- there is no tools/mutate.py
                in this repo yet. Read the COUNT beside each, not just the verdict:
 
-               drop the escape handling in the body loop   -> 3 of 40. The `\"` case
+               drop the escape handling in the body loop   -> 3 of 44. The `\"` case
                  and the `[\"key\"]` case that shipped broken here once.
-               drop the `#` branch entirely                -> 4 of 40
-               truncate the comment instead of padding it  -> 7 of 40. The largest,
+               drop the `#` branch entirely                -> 6 of 44
+               truncate the comment instead of padding it  -> 7 of 44. The largest,
                  and rightly: offset preservation is the whole point of the module.
-               let an unterminated literal run to EOF      -> 1 of 40, and only the
-                 hand-written cycle-97 case catches it. The length/newline
-                 preservation cases DO NOT: a runaway literal copies the newline
-                 through as a body character, so the totals still balance while the
-                 rest of the file is blanked. That single case is the guard, and
-                 nothing weaker would do -- which is the argument for known-in,
-                 known-out over any statistic.
-               make BLANK and ERASE identical              -> 2 of 40
-               stop preserving newlines in a triple block  -> 3 of 40
+               let an unterminated literal run to EOF      -> 2 of 44, both of them
+                 cases written out by hand for it. The length/newline preservation
+                 checks DO NOT catch it: a runaway literal copies the newline through
+                 as a body character, so the totals still balance while the rest of
+                 the file is blanked. Nothing weaker than the two explicit cases
+                 would do -- which is the argument for known-in, known-out over any
+                 statistic about the real corpus.
+               make BLANK and ERASE identical              -> 2 of 44
+               stop preserving newlines in a triple block  -> 3 of 44
 
 Parallel-safe by construction: stdlib only, opens no project, writes nothing to
 `.godot/`, takes no lock. Exit codes follow the house contract: 0 clean, 1 findings
@@ -284,34 +285,14 @@ def normalise_literal(text):
     return re.sub(r"\s+", " ", text).strip()
 
 
-def blanked_regions(raw, blanked):
-    """Maximal [start, end) spans where `blanked` differs from `raw`.
-
-    The other half of "spans come from the blanked text, contents come from the raw
-    text". A checker that reports a token as ABSENT is making a claim about the
-    blanked view; this is how it asks the raw view whether the token was there all
-    along and got blanked -- which turns "no test names this" into "your test file has
-    an unterminated string literal", the finding cycle 97 needed and did not get.
-
-    Raises ValueError on a length mismatch, because a caller that lost offset
-    alignment must not get plausible-looking spans back.
-    """
-    if len(raw) != len(blanked):
-        raise ValueError("raw and blanked differ in length (%d vs %d); the offsets "
-                         "are not aligned and no span computed from them is valid"
-                         % (len(raw), len(blanked)))
-    spans = []
-    start = None
-    for i, (a, b) in enumerate(zip(raw, blanked)):
-        if a != b:
-            if start is None:
-                start = i
-        elif start is not None:
-            spans.append((start, i))
-            start = None
-    if start is not None:
-        spans.append((start, len(raw)))
-    return spans
+# There is deliberately no `blanked_regions(raw, blanked)` here, though this module
+# carried one for an afternoon. Diffing the raw text against the blanked text looks
+# like the way to ask "what did this scan hide", and it is wrong: newlines inside a
+# multi-line literal are PRESERVED, so the differing runs break at every line and one
+# `"""` block reads as N separate one-line strings. suite_reach_check's first draft of
+# the cycle-97 note did exactly that and mis-classified the only case it exists to
+# catch. `literal_spans` asks the scanner instead of second-guessing its output, and
+# is the answer to that question. Do not reintroduce the other one.
 
 
 # ---------------------------------------------------------------------------
@@ -446,14 +427,6 @@ SPAN_KIND_CASES = [
      'f("a", "b")\n', [(2, 5, "string"), (7, 10, "string")]),
 ]
 
-# (label, raw, blanked, expected spans)
-REGION_CASES = [
-    ("identical texts have no blanked region", "abcd", "abcd", []),
-    ("one run", 'x"ab"', 'x"  "', [(2, 4)]),
-    ("two runs", 'a"b"c"d"', 'a" "c" "', [(2, 3), (6, 7)]),
-    ("a trailing run reaches the end", 'ab', 'a ', [(1, 2)]),
-]
-
 
 def self_test(verbose=True):
     """Return the number of failures, printing each case. A broken transform means
@@ -523,34 +496,13 @@ def self_test(verbose=True):
         (print if not ok else say)("  %-6s literal_spans        %s (%r/%r)"
                                    % ("ok" if ok else "FAIL", label, got, want))
 
-    for label, raw, blanked, want in REGION_CASES:
-        cases += 1
-        got = blanked_regions(raw, blanked)
-        ok = got == want
-        if not ok:
-            fails += 1
-        (print if not ok else say)("  %-6s blanked_regions      %s (%r/%r)"
-                                   % ("ok" if ok else "FAIL", label, got, want))
-
-    cases += 1
-    try:
-        blanked_regions("abc", "ab")
-        ok = False
-    except ValueError:
-        ok = True
-    if not ok:
-        fails += 1
-    (print if not ok else say)(
-        "  %-6s blanked_regions      a length mismatch raises rather than guessing"
-        % ("ok" if ok else "FAIL"))
-
     print("")
     print("gdsource: %d hand-written case(s) over the shared blanker, %d failure(s)"
           % (cases, fails))
     print("          %d strip_comments case(s), %d x %d preservation case(s), "
-          "%d arg-span, %d normalise, %d literal-span, %d region"
+          "%d arg-span, %d normalise, %d literal-span"
           % (len(STRIP_CASES), len(PRESERVE_CASES), len(MODES), len(SPAN_CASES),
-             len(NORMALISE_CASES), len(SPAN_KIND_CASES), len(REGION_CASES) + 1))
+             len(NORMALISE_CASES), len(SPAN_KIND_CASES)))
     if cases == 0:
         print("NOTE: nothing to check -- the case tables are empty. An empty self-test "
               "is not a clean self-test.")
