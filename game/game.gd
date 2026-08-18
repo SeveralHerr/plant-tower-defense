@@ -1576,7 +1576,17 @@ func upgrade_selected() -> String:
 func arm_uproot() -> String:
 	if selected_placed == null or not is_instance_valid(selected_placed):
 		return "nothing is selected"
-	if _uproot_armed == selected_placed and _uproot_left > 0.0:
+	# No `and _uproot_left > 0.0` here, and _update_preview lost the same half for the
+	# same reason (plant-tower-defense-iljz). `selected_placed` is non-null by the guard
+	# above, so `_uproot_armed == selected_placed` already says something is armed — and
+	# `_disarm_uproot()` is the ONE place the arming is cleared and it clears the
+	# reference and the clock together, so an open window is exactly a non-null
+	# `_uproot_armed`. A second condition that cannot disagree is dead code wearing a
+	# safety belt, which is a shape this repo has now paid for twice.
+	# test_the_uproot_window_leaves_nothing_armed_behind_it pins the invariant at
+	# runtime; test_the_uproot_clock_is_never_written_without_the_arming pins that no
+	# future writer can move one without the other.
+	if _uproot_armed == selected_placed:
 		_disarm_uproot()
 		return commit_uproot()
 	_uproot_armed = selected_placed
@@ -1624,8 +1634,13 @@ func arm_uproot() -> String:
 
 ## True while a second Uproot click would commit. Read by the HUD to relabel the
 ## button, and by the tests.
+##
+## `_uproot_left > 0.0` is deliberately NOT a third term (plant-tower-defense-iljz):
+## it can never disagree with the first. The null check IS load-bearing and stays —
+## with nothing selected and nothing armed the two nulls compare EQUAL, and without it
+## this would answer true for a button that must read "Uproot".
 func uproot_armed() -> bool:
-	return _uproot_armed != null and _uproot_armed == selected_placed and _uproot_left > 0.0
+	return _uproot_armed != null and _uproot_armed == selected_placed
 
 
 ## Refreshes the panel when — and only when — the selected plant's health moves.
