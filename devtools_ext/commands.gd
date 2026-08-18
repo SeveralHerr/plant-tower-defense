@@ -86,6 +86,78 @@ func _fail(message: String) -> Dictionary:
 	return {"success": false, "message": message, "data": {}}
 
 
+# --- Required arguments, and the defaults that are deliberate ---------------
+#
+# The bus ignores a key a handler does not read. That is the harness's behaviour,
+# it is documented (`list-commands` prints each verb's arg keys and says outright
+# that a key not listed is silently ignored), and it is the right default for an
+# OPTIONAL key. It is the wrong one for a verb whose entire effect is the
+# argument: `place_plant` with no x/y is not a call anyone meant, and
+# `int(args.get("x", 0))` turns it into a perfectly successful plant at cell
+# (0, 0). Something happens, in the wrong place, and the mistake surfaces several
+# verbs later as a game that will not behave -- which is how [G-069] cost cycle 94
+# several minutes of suspecting the selection code.
+#
+# Guarded below, because the argument IS the effect:
+#   place_plant    x, y  -- would otherwise plant at cell (0, 0)
+#   upgrade_plant  x, y  -- would otherwise upgrade whatever grows at (0, 0),
+#                           which is a real plant and not the one you meant
+#   collect_husk   x, y  -- would otherwise sweep the board origin and report
+#                           "no husk", naming a radius rather than the mistake
+#
+# Deliberately defaulted, and why. Each of these is the value a person typing the
+# verb at a prompt means by leaving it out, and a WRONG value refuses itself by
+# name rather than doing something quiet:
+#   place_plant  plant = "corn_cobbler"  -- the starter; an unknown id is refused
+#                                           by Game.place_plant(), which names it
+#   spawn_pest   species = "aphid"       -- the commonest pest; an unknown species
+#                                           is refused against Pest.SPECIES by name
+#   spawn_pest   mutation/mutations = none, count = 1
+#                                        -- "one plain pest" is what `spawn_pest`
+#                                           with no arguments means
+#   add_seeds    amount = 100            -- "give me money to test with"
+#   buy_packet   tier = "common"         -- the cheapest tier; a wrong one is
+#                                           refused by Bank.buy_packet()
+#   budgets      id = "" (all), waves = Game.BUDGET_WAVE_SWEEP
+#                                        -- `id` is a display filter and an unknown
+#                                           one is refused naming every known id
+# Reads no arguments at all: game_state, start_wave, board_info, compost_state,
+# project_identity.
+#
+# NOT guarded here, and [G-069] is wrong about this: touch_press / touch_release /
+# touch_drag are the HARNESS's verbs, not this file's. `list-commands --offline`
+# prints them under "generic (57) from dev_tools.gd" while this file's twelve are
+# listed separately, and harness 0.38.0 already refuses a positionless press --
+# "touch_press on a new index requires 'position' as [x, y]" (dev_tools.gd:2644).
+# Nothing about them can be fixed from here.
+
+
+## Refuses a call that left out a key the verb's whole effect depends on.
+##
+## Returns "" when every required key is present. Otherwise a refusal naming three
+## things: the keys wanted; the keys the call ACTUALLY carried -- the omission is
+## almost always a key of the wrong NAME rather than no key at all, and that is the
+## half a bare "requires x, y" makes the reader guess at; and `instead`, what the
+## verb would silently have done with its defaults. The last one is the whole value:
+## it turns "this did nothing" into "this would have done a different thing".
+func _require(args: Dictionary, keys: PackedStringArray, verb: String, instead: String) -> String:
+	var absent: PackedStringArray = PackedStringArray()
+	for key: String in keys:
+		if not args.has(key):
+			absent.append(key)
+	if absent.is_empty():
+		return ""
+	var sent: PackedStringArray = PackedStringArray()
+	for key: Variant in args.keys():
+		sent.append(str(key))
+	sent.sort()
+	var carried: String = ("the call carried no arguments at all" if sent.is_empty()
+		else "the call carried %s" % ", ".join(sent))
+	return "%s needs %s -- %s. Without it this would have %s." % [
+		verb, ", ".join(absent), carried, instead,
+	]
+
+
 func _cmd_game_state(_args: Dictionary) -> Dictionary:
 	var game: Game = _game()
 	if game == null:
@@ -102,6 +174,13 @@ func _cmd_game_state(_args: Dictionary) -> Dictionary:
 
 
 func _cmd_place_plant(args: Dictionary) -> Dictionary:
+	# The call is checked before the world is. Both refusals are true on a title
+	# screen, and the one about the caller's own arguments is the useful one to hear
+	# first -- "no Game in the tree" sends a reader looking at the game.
+	var refused: String = _require(args, PackedStringArray(["x", "y"]), "place_plant",
+		"planted at cell (0, 0)")
+	if refused != "":
+		return _fail(refused)
 	var game: Game = _game()
 	if game == null:
 		return _fail("no Game in the tree")
@@ -197,6 +276,13 @@ func _cmd_compost_state(_args: Dictionary) -> Dictionary:
 
 
 func _cmd_collect_husk(args: Dictionary) -> Dictionary:
+	# Its own failure text is the trap here: with no x/y this swept the origin and
+	# answered "no husk within collect radius of (0, 0)", which is a sentence about
+	# husks and radii for what is actually a mistyped argument.
+	var refused: String = _require(args, PackedStringArray(["x", "y"]), "collect_husk",
+		"swept for a husk at the board origin and reported none there")
+	if refused != "":
+		return _fail(refused)
 	var game: Game = _game()
 	if game == null:
 		return _fail("no Game in the tree")
@@ -209,6 +295,14 @@ func _cmd_collect_husk(args: Dictionary) -> Dictionary:
 
 
 func _cmd_upgrade_plant(args: Dictionary) -> Dictionary:
+	# The worst of the three to leave defaulted: it does not fail, it SUCCEEDS on a
+	# different plant. It also mutates game.selected_placed on the way, so a
+	# positionless call would move the player's selection as a side effect of a
+	# typo.
+	var refused: String = _require(args, PackedStringArray(["x", "y"]), "upgrade_plant",
+		"upgraded whatever is growing at cell (0, 0) -- a real plant, and not yours")
+	if refused != "":
+		return _fail(refused)
 	var game: Game = _game()
 	if game == null:
 		return _fail("no Game in the tree")
