@@ -6763,3 +6763,33 @@ status rather than rewriting the entries that recorded these as open.
   are included*, which is what I assumed and is not what happened here. Not filed as a
   gap because the workaround was one call and the behaviour may be intended for scripts
   that are never directly attached; noted in case it recurs.
+
+## 2026-08-18 — merged the selection-budget lane; run_tests.py earned its wrapper
+
+- Value: **warranted** — the live `cmd budgets` read confirmed a number the lane could
+  only model, and the headless wrapper caught a test that reported PASS while aborting.
+  - Expected: the new `hud_selection_panel` entry appears among the budgets and reports
+    the lane's modelled 0 px.
+  - Got: verbatim off the running game — `the selection stack's foot 184 of 184 px max
+    -- 0 px left`, with `widest line is "Regrowing — 3/3 fluff, armed in 4.9s." at 266 of
+    232 px`. The model and the engine agree.
+  - Found: **two defects, both fixed mid-run.** (1) The lane's headline test asserted a
+    bare `budget_regressions([entry])` was empty — true in its sandbox, false here,
+    because that function also warns about every declared floor nothing measured, so one
+    entry produces five complaints about the other five budgets. (2) A format string fed
+    an `Array` to a single `%s`, which aborts the method *after* its assertions pass and
+    returns `""` — reported `[PASS]`.
+  - Cheaper: nothing. (2) is unreachable by reading; it is the exact failure the
+    `run_tests.py` wrapper exists for.
+
+- Gap: **no gap this turn.** `cmd budgets` answered the whole verification in one call,
+  and its `when_it_runs_out` string carried the three available fixes plus a warning that
+  one of them spends another budget's clearance — which is more than I would have thought
+  to check.
+
+- The entry worth keeping for the ledger: **`run_tests.gd` printed `ALL TESTS PASSED` and
+  `run_tests.py` exited 1 on the same run.** The harness docs describe this split
+  precisely (0.27.0, gh#27) and this is the first time this project has hit it in anger.
+  Anyone who had run the bare `.gd` would have merged a test that asserts nothing past
+  its third line. The denominator that exposed it was not a count but the wrapper's
+  `Errors: 1 emitted` line.
