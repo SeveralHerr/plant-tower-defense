@@ -7778,3 +7778,224 @@ func test_every_plant_that_paints_more_than_its_reach_still_calls_the_ring() -> 
 
 # END plant-tower-defense-snnp
 # =============================================================================
+
+
+# =============================================================================
+# plant-tower-defense-ynai -- LEVELS is the cob's single source of truth BY NAME
+#
+# `CornCobbler.LEVELS` now carries the rule its three derived statics were three
+# separate instances of: if the answer changes when a row changes, it is a pure
+# static over LEVELS taking `for_level`. Read that block before adding to this
+# section; these are the assertions that stop it being prose.
+#
+# Two of the three checks below walk LEVELS rather than naming rungs, per
+# `derive-the-list`: a rule stated at three known levels is a rule that a fourth
+# row silently escapes. The third walks the SOURCE, and it is the direction the
+# existing cob tests do not have -- they each assert one static, and none of them
+# can notice a static that nobody asserts.
+#
+# Nothing here instantiates anything: pure statics, one const table and two file
+# reads, so there is no tree to pollute and no frames to pump.
+# =============================================================================
+
+
+## The census, and the only check here that can see a question nobody asked.
+##
+## Derives the set of `static func f(for_level: int)` on the cob straight out of
+## `corn_cobbler.gd` and requires that every public one is NAMED by real code in
+## some test under `res://test/unit`. That is the second direction `derive-the-list`
+## says gets skipped: `test_combat` and the fan tests above each pin one static, so
+## adding a ninth one that nothing asserts breaks nothing today -- which is exactly
+## how the first three arrived, one per cycle, with no rule between them.
+##
+## Comments are stripped from BOTH sides, and that is not decoration. Six of these
+## names are discussed in prose beside the code that uses them, and
+## `test_combat.gd:6069` opens a header with "`CornCobbler.upgrade_spend(for_level)`
+## survives as a static because..." -- a raw substring scan credits that header as
+## coverage and the gate silently widens, which is the trap `derive-the-list` names
+## for source-scanned sets. `_lines_without_comments` drops full-line comments only,
+## which is all this corpus has; a trailing `# ...CornCobbler.foo(` would be a false
+## credit and there are none.
+##
+## Underscore-prefixed statics are excluded on purpose: `_level_stats` is the table
+## read itself, and requiring a test to name it would be asserting the private seam
+## rather than the questions asked through it.
+func test_every_level_taking_static_on_the_cob_is_exercised_across_the_ladder() -> String:
+	var source: String = _lines_without_comments(
+		FileAccess.get_file_as_string("res://game/corn_cobbler.gd"))
+	var err: String = _T.assert_gt(source.length(), 1000,
+		"corn_cobbler.gd was actually read, so this census is over the real file")
+	if err != "":
+		return err
+	var finder := RegEx.create_from_string(
+		"static func ([A-Za-z_][A-Za-z0-9_]*)\\(for_level: int")
+	var derived: Array[String] = []
+	for m: RegExMatch in finder.search_all(source):
+		var found: String = m.get_string(1)
+		if not found.begins_with("_") and not derived.has(found):
+			derived.append(found)
+	# The denominator, picked from what the file actually holds rather than `> 0`:
+	# eight public level-taking statics today. An empty sweep equals a clean sweep,
+	# and "more than nothing" is true in precisely the case being guarded against.
+	err = _T.assert_gte(derived.size(), 5,
+		("the regex still matches the cob's level-taking statics -- got %s, and a "
+			+ "census that finds nothing reports exactly what a clean one reports")
+			% str(derived))
+	if err != "":
+		return err
+	# The three the rule was written from must be in there, or the census has drifted
+	# off its own subject while still returning a plausible-looking list.
+	var written_from: Array[String] = [
+		"kernel_angle_offsets", "spread_arc_span", "upgrade_spend"]
+	for named: String in written_from:
+		err = _T.assert_true(derived.has(named),
+			("%s is one of the three statics the LEVELS rule is written from and the "
+				+ "census did not find it -- got %s") % [named, str(derived)])
+		if err != "":
+			return err
+	var corpus: String = _test_unit_code()
+	err = _T.assert_gt(corpus.length(), 10000,
+		"the test corpus was actually read, so 'no test names it' means something")
+	if err != "":
+		return err
+	for found: String in derived:
+		err = _T.assert_true(corpus.contains("CornCobbler." + found + "("),
+			("CornCobbler.%s(for_level) is a question about a LEVELS row and no test "
+				+ "under res://test/unit calls it. Every static in this family exists "
+				+ "because a caller derived a level's answer for itself; one that "
+				+ "nothing asserts is the same defect one step earlier. Assert it "
+				+ "across the whole ladder, not at one rung.") % found)
+		if err != "":
+			return err
+	return err
+
+
+## Every test script's code, comments dropped, as one string.
+##
+## Full-line comments only -- see the census above for why that is enough here and
+## what it would miss.
+func _test_unit_code() -> String:
+	var chunks: PackedStringArray = []
+	var dir := DirAccess.open("res://test/unit")
+	if dir == null:
+		return ""
+	dir.list_dir_begin()
+	var entry: String = dir.get_next()
+	while entry != "":
+		if entry.ends_with(".gd"):
+			chunks.append(_lines_without_comments(
+				FileAccess.get_file_as_string("res://test/unit".path_join(entry))))
+		entry = dir.get_next()
+	dir.list_dir_end()
+	return "\n".join(chunks)
+
+
+## The invariant `_draw_muzzle_fan` centres its arc on, asserted per rung.
+##
+## The draw site reads `spread_arc_span(level)` and paints it as `aim ± span/2`,
+## which is only the same picture as the outermost two offsets while
+## `kernel_angle_offsets` stays symmetric about the aim. That symmetry is stated in
+## that function's header and was, until this bead, stated ONLY there -- prose two
+## functions away from the code depending on it. `test_combat` asserts the nesting
+## (level N's angles contain level N-1's) and the count, neither of which is
+## symmetry: a table shifted a few degrees off-axis keeps both and puts every arc a
+## half-spread off the shot it is drawn for.
+##
+## Walks the whole ladder including the clamped ends, because `Plant.ladder_row`
+## clamps rather than erroring and a rung past the top is a real call -- `Hud` prices
+## the armed prompt at `LEVELS.size()`, one past every instance in the game.
+func test_the_cobs_kernel_angles_are_symmetric_about_the_aim_at_every_rung() -> String:
+	var err: String = _T.assert_gte(CornCobbler.LEVELS.size(), 3,
+		"there is a ladder with rungs to sweep")
+	if err != "":
+		return err
+	var swept: int = 0
+	for lvl: int in range(0, CornCobbler.LEVELS.size() + 2):
+		var offsets: PackedFloat32Array = CornCobbler.kernel_angle_offsets(lvl)
+		err = _T.assert_gt(offsets.size(), 0,
+			"level %d fires at least one kernel even clamped to the table's ends" % lvl)
+		if err != "":
+			return err
+		# Odd counts and a kernel on the aim line are what make an upgrade a strict
+		# superset of the level below -- the class header argues that at length.
+		err = _T.assert_eq(offsets.size() % 2, 1,
+			"level %d fires an odd number of kernels, so one of them is on the aim line"
+				% lvl)
+		if err != "":
+			return err
+		for i: int in range(offsets.size()):
+			err = _T.assert_float_eq(offsets[i], -offsets[offsets.size() - 1 - i], 0.0001,
+				("level %d's kernel %d mirrors its opposite about the aim line; the fan's "
+					+ "arc is drawn centred on the aim as aim +/- span/2, so an "
+					+ "asymmetric table paints the arc off the shot it describes -- got %s")
+					% [lvl, i, str(offsets)])
+			if err != "":
+				return err
+		# And the span the draw site paints IS the distance between those two ends,
+		# which is the equality that lets the centred form replace the two-offset one.
+		err = _T.assert_float_eq(CornCobbler.spread_arc_span(lvl),
+			absf(offsets[offsets.size() - 1] - offsets[0]), 0.0001,
+			("level %d's drawn arc spans exactly its outermost kernels -- got %s")
+				% [lvl, str(offsets)])
+		if err != "":
+			return err
+		swept += 1
+	return _T.assert_gte(swept, CornCobbler.LEVELS.size() + 2,
+		"the sweep reached every rung and both clamped ends, rather than stopping early")
+
+
+## "What does it cost to REACH level N" -- the fourth question the bead went looking
+## for, asserted to be the third one under another name rather than a missing static.
+##
+## `upgrade_cost()` answers only the next step, which is what makes the two read as
+## different subjects. They are one ladder read two ways, and this is that identity as
+## an assertion: the running sum of every step up to N equals `upgrade_spend(N)`, at
+## every N, walking LEVELS rather than checking the three rungs that exist today.
+##
+## Also pins the cob's static against the generic `Plant.ladder_spend` it delegates to.
+## Those two agreeing is the reason no fourth function is needed, and if they ever stop
+## agreeing the right answer is to delete the cob's wrapper, not to add another name.
+func test_what_it_costs_to_reach_a_cob_level_is_the_ladder_read_two_ways() -> String:
+	var err: String = _T.assert_gte(CornCobbler.LEVELS.size(), 3,
+		"there is a climb with more than one step in it")
+	if err != "":
+		return err
+	var running: int = 0
+	var steps: Array[int] = []
+	for lvl: int in range(1, CornCobbler.LEVELS.size() + 1):
+		err = _T.assert_eq(CornCobbler.upgrade_spend(lvl), running,
+			("reaching level %d costs the sum of every step below it. A hand-typed total "
+				+ "is the second source of truth this static exists to remove -- steps so "
+				+ "far %s") % [lvl, str(steps)])
+		if err != "":
+			return err
+		err = _T.assert_eq(CornCobbler.upgrade_spend(lvl),
+			Plant.ladder_spend(CornCobbler.LEVELS, lvl),
+			("CornCobbler.upgrade_spend(%d) and Plant.ladder_spend(LEVELS, %d) are the "
+				+ "same question; the cob's is a named wrapper on the generic one and "
+				+ "must never become a second answer") % [lvl, lvl])
+		if err != "":
+			return err
+		var step: int = Plant.ladder_upgrade_cost(CornCobbler.LEVELS, lvl)
+		steps.append(step)
+		running += step
+	# The top rung sells nothing, so the climb's total and the spend at the top agree.
+	err = _T.assert_eq(Plant.ladder_upgrade_cost(CornCobbler.LEVELS,
+		CornCobbler.LEVELS.size()), 0,
+		"the top of the ladder has nothing left to sell -- steps %s" % str(steps))
+	if err != "":
+		return err
+	err = _T.assert_eq(CornCobbler.upgrade_spend(CornCobbler.LEVELS.size()), running,
+		("the whole climb costs what its steps add up to -- %s. `Hud.message_corpus` "
+			+ "prices the armed prompt at exactly this number, which is why it is a "
+			+ "static on the class and not a method on a plant") % str(steps))
+	if err != "":
+		return err
+	# A level below the bottom is level 1's answer, not a negative or an index error:
+	# `ladder_row` clamps, and the armed prompt asks about rungs no cob is standing on.
+	return _T.assert_eq(CornCobbler.upgrade_spend(1), 0,
+		"a cob that has never been upgraded has forfeited nothing")
+
+
+# END plant-tower-defense-ynai
+# =============================================================================
