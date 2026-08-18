@@ -1,4 +1,4 @@
-# Cycle 124
+# Cycle 125
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,33 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 125 taught
+
+**Rung names are priced, and nothing said so.** `Hud.selection_corpus` crosses every plant
+name with every upgrade-rung name, so the longest PAIR sets the height of the whole
+selection stack. A top rung called "deep thicket" — 30 characters against the previous worst
+of 25 — pushed `hud_selection_panel` **25 px through its floor** before a pixel was drawn.
+Renamed "bulwark": 25 characters, exactly the existing worst case, and it climbs where "deep
+thicket" did not. **Three name tables in this project are budgeted and only one now says so.**
+
+**The ladder buys resistance, not health, and the test has to assert the reason.** "Each
+rung holds longer" is equally true of the bigger-pool version the bead argued against, so
+the test compares what a second of Aloe healing is WORTH at the bottom rung against the top.
+Mutation-tested by flattening the resistances — which is exactly what a pool ladder looks
+like from here.
+
+**I introduced SIGNATURE B and the survey built last cycle for it reported 0 hits.** Its
+`PROSE` regex needs a capitalised first word and no code tokens; my broken line started
+lowercase and contained `selection_level_names()`. **Lint** caught it. A detector's name is
+not its coverage, and this codebase's comments cite function names constantly — so the
+excluded set is large and is exactly the prose most likely to lose its marker in a bulk edit.
+Filed as `-n228` with "build the control case first", because that survey's first version
+reported 554 false positives.
+
+**Fourth script-edit damage this session, all mine.** Three were caught by lint, one by the
+runner's stderr. The rule is right and I keep reaching for the forbidden tool when an `Edit`
+match looks awkward.
 
 ## What cycle 124 taught
 

@@ -4423,3 +4423,32 @@ Three findings kept out here rather than buried in a log:
   trusting what the assertion says.** All three announced themselves — `0 citation(s)`,
   `5 findings`, `scanning 63 files` with no fixture among them — and in each case the number
   was visible and I nearly did not look at it.
+
+### New in cycle 125 — grown from a rung name that broke a layout budget
+
+- **Names are priced here, and a table of names is a table of widths nobody thinks of that
+  way.** `Hud.selection_corpus` crosses every plant name with every upgrade-rung name, so
+  the longest PAIR sets the height of the whole selection stack — and adding a ladder whose
+  top rung was called "deep thicket" pushed `hud_selection_panel` 25 px through its floor
+  before a single pixel of it was drawn. The budget check named the number and the three
+  ways out.
+  The entry is not the fix. It is that **three separate name tables in this project are
+  budgeted and only one of them says so**: the rung names (now documented in
+  `game/bramble.gd`'s `LEVELS` header), the plant `display` names, and `Hud.HINT_CARDS`'
+  titles. Each is written where a designer picks words, none of the other two mentions a
+  width, and the failure mode is a panel that grows a row and pushes its buttons off the
+  bottom. Worth one sentence in each, pointing at the corpus that prices it.
+
+- **A detector's NAME is not its coverage, and this one is much narrower than it reads.**
+  `heredoc_survey`'s SIGNATURE B is described as "a comment block whose leading '#' is
+  missing". Its `PROSE` regex requires the line to start with a **capitalised** word, and
+  `CODE_TOKEN` excludes any line containing parens, a colon or an arrow — so a wrapped
+  comment continuing mid-sentence, or one citing `some_function()`, is invisible to it.
+  This codebase's comments cite function names constantly, so the excluded set is large and
+  is exactly the prose most likely to lose its marker in a bulk edit.
+  Filed as `-n228`, deliberately with "build the control case first" rather than "widen the
+  regex": the survey's own first version reported **554 false positives**, and a survey
+  nobody believes is a survey nobody runs. The prior question it also asks is whether
+  SIGNATURE B is worth detecting at all — the history sweep says **0 instances in 1028 file
+  versions** ever survived into a commit, because lint catches them the same day. Its only
+  real value is the parallel case where lint cannot run.
