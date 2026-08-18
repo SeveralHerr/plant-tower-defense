@@ -139,6 +139,15 @@ running a command. **Never write a work checklist into it.**
      and not one reported a sibling's file. Keep saying "a finding in a file you do not own
      is not your finding" in the prompt anyway; it costs a line and it is still true of
      anything shared.
+     **A worktree also ADDS a hazard, in the checkers themselves.** A lane's own path
+     contains `.claude/worktrees/`, so any tool excluding nested checkouts by testing an
+     ABSOLUTE path (`"worktrees" in path.parts`) excludes the entire repo when run from
+     inside a lane. `citation_check.py` did exactly that after cycle 102 "fixed" it: the
+     parent read `298 resolved`, a lane read `260` and 38 bogus advisories — the same
+     asymmetry as the original bug, pointing the other way, and invisible to whichever
+     side you were not standing on. Exclusions must be computed RELATIVE to the tool's own
+     root; `tools/repo_walk.py` is the one place that rule now lives, and the rooted
+     checkers import it rather than each carrying a copy.
      **What it costs, measured rather than assumed (`-l638`).** A fresh worktree has never
      been imported, so it has no `.godot/`, and **`name_check.py --require-compile` does not
      work there** — two lanes ran it independently and both got exit 1 with fabricated

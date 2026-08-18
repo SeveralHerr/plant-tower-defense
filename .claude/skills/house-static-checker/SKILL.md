@@ -5,10 +5,11 @@ description: How to write a stdlib-only static checker for this repo — the exi
 
 # Writing a house static checker
 
-This repo has four: `world_control_check.py`, `meta_key_check.py`, `group_leak_check.py`,
-`svg_style_check.py`. Each exists because some defect class is invisible to every engine
-gate, and each was written by re-deriving these conventions from scratch. This is the
-convention.
+This repo has fifteen — it had four when this was written, and the number is the argument.
+`python tools/check_all.py --quiet` lists them, because a count in prose is exactly the
+hand-maintained thing these tools exist to remove. Each exists because some defect class
+is invisible to every engine gate, and the first several were written by re-deriving these
+conventions from scratch. This is the convention.
 
 ## Why these exist at all
 
@@ -362,9 +363,24 @@ known-out beats any statistic over the real corpus.
 
 ## Registering it
 
-Add it to the parallel-safe list in `.claude/skills/cycle/SKILL.md` — the loop lives
-there now, in one copy; `CLAUDE.md` and `AGENTS.md` carry only a pointer to it. Do not
-edit the harness's managed block in `CLAUDE.md`; `/scaffold-godot-harness` regenerates it.
+**You do not register it anywhere.** `check_all.py` derives its run-set from the contract
+marker itself — give the file a `NOT COVERED:` line and it joins the next run. The prose
+list in `.claude/skills/cycle/SKILL.md` is a description of what that command finds, not
+the source of truth, so adding a name there does nothing. Do not edit the harness's managed
+block in `CLAUDE.md`; `/scaffold-godot-harness` regenerates it.
+
+**Two corollaries that have both already bitten:**
+
+- **A LIBRARY under `tools/` must NOT contain the marker string**, or `check_all` will try
+  to run it as a checker. Add it to that file's `NOT_A_CHECKER` with a reason instead —
+  `repo_walk.py` is the worked example. The marker identifies a house tool, not a runnable
+  check.
+- **If the tool WALKS the repo tree, import `tools/repo_walk.py` rather than writing your
+  own exclusion.** Agent worktrees live at `.claude/worktrees/` INSIDE the repo and
+  `rglob`/`os.walk` do not read `.gitignore`, so during a fan-out an unguarded walk sees
+  N+1 copies of every file — and a hand-rolled exclusion that tests an ABSOLUTE path breaks
+  the opposite way when the tool is run from inside a lane, excluding the whole repo.
+  Both directions have shipped here. One rule, one place.
 
 Do not mint a `.uid` sidecar for a `.py` file. Those are for `.gd` scripts, and lint
 reports `UIDs: OK` either way, so a stray one is invisible until someone wonders what it
