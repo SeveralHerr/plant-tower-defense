@@ -8131,3 +8131,366 @@ func test_two_pests_killed_in_one_frame_leave_at_different_times() -> String:
 
 
 # -- END what a death feels like -----------------------------------------------
+
+
+# -- BEGIN what the board says is happening to this pest right now --------------
+# plant-tower-defense-ayri (the cob points at its CURRENT target) and
+# plant-tower-defense-wlyz (a pest the garden actually touched says so).
+
+
+## Kernels living under `host` — the cob spawns them as its own SIBLINGS, so this is
+## how "did it fire" is asked without a stopwatch.
+func _kernels_under(host: Node) -> int:
+	var found: int = 0
+	for child: Node in host.get_children():
+		if child is Kernel:
+			found += 1
+	return found
+
+
+## The bead's first acceptance: a cob with a pest in range points at it BEFORE firing.
+##
+## Held deliberately off the trigger the whole way through — `_cooldown` is set well
+## above zero and the kernel count is asserted at zero — because the old behaviour
+## would pass any test that let a shot go off. `_aim_angle` was written in `_fire_at`
+## and nowhere else, so "points at its target" and "just shot at its target" were the
+## same observation, and only a cob that has NOT fired can tell them apart.
+func test_a_cob_points_at_the_pest_it_will_shoot_before_it_shoots_it() -> String:
+	var corn := CornCobbler.new()
+	var aphid: Pest = _pest(Pest.APHID, Vector2(0.0, -100.0))
+	var host: Node2D = _host([corn, aphid])
+	await _T.instantiate_scene(host)
+	corn.set_physics_process(false)
+	# Mid-reload. Nothing in this test is allowed to fire.
+	corn._cooldown = 0.5
+
+	var err: String = _T.assert_float_eq(corn.aim_angle(), 0.0, 0.0001,
+		"a cob that has never seen a pest sits on its initial angle")
+	var pests: Array[Pest] = [aphid]
+	corn._act(0.016, pests)
+	if err == "":
+		err = _T.assert_eq(_kernels_under(host), 0,
+			"no volley went off -- the cob is still most of a reload away")
+	if err == "":
+		# Due north of the cob: -Y is up, so the angle is -PI/2.
+		err = _T.assert_float_eq(corn.aim_angle(), -PI * 0.5, 0.0005,
+			"and it is ALREADY pointing at the pest standing north of it (%.1f deg)"
+				% rad_to_deg(corn.aim_angle()))
+	if err == "":
+		# And it tracks, rather than latching the first thing it ever saw.
+		aphid.position = Vector2(120.0, 120.0)
+		corn._act(0.016, pests)
+		err = _T.assert_float_eq(corn.aim_angle(), PI * 0.25, 0.0005,
+			"the fan follows the pest round the cob with no shot in between (%.1f deg)"
+				% rad_to_deg(corn.aim_angle()))
+	if err == "":
+		err = _T.assert_eq(_kernels_under(host), 0, "still without firing a kernel")
+	if err == "":
+		# The picture, not just the number: the drawn pip has to be on the pest's side
+		# of the cob, which is the whole of what a player reads off this.
+		var pips: PackedVector2Array = corn.muzzle_pip_positions()
+		err = _T.assert_gt(pips.size(), 0, "the cob draws at least one pip")
+		if err == "":
+			err = _T.assert_gt(pips[0].x, 0.0,
+				"and it sits on the same side of the cob as the pest (x = %.1f)" % pips[0].x)
+		if err == "":
+			err = _T.assert_gt(pips[0].y, 0.0, "on both axes")
+	_T.free_ui(host)
+	return err
+
+
+## The fan and the volley are aimed at the SAME pest, driven through the real _act()
+## with a decoy standing somewhere else entirely.
+##
+## This is the regression the fix could most easily have introduced: aiming and firing
+## used to be one statement, and splitting them into "aim every tick, fire when armed"
+## is exactly how a cob ends up drawing at one bug and shooting another.
+func test_the_fan_and_the_volley_are_pointed_at_the_same_pest() -> String:
+	var corn := CornCobbler.new()
+	# `_furthest_along_in_range` keeps the first pest of equal progress, and `_pest`
+	# gives every pest a two-point route, so both of these read progress 1.0 and the
+	# chosen one is the one listed first. Deliberate: the point is that the DECOY is
+	# somewhere the fan must not be.
+	var chosen: Pest = _pest(Pest.APHID, Vector2(-120.0, 0.0))
+	var decoy: Pest = _pest(Pest.APHID, Vector2(0.0, 120.0))
+	var host: Node2D = _host([corn, chosen, decoy])
+	await _T.instantiate_scene(host)
+	corn.set_physics_process(false)
+	corn._cooldown = 0.0
+
+	var pests: Array[Pest] = [chosen, decoy]
+	corn._act(0.016, pests)
+	var err: String = _T.assert_eq(_kernels_under(host), corn.kernels_per_shot(),
+		"the cob fired its whole volley")
+	if err == "":
+		err = _T.assert_float_eq(absf(corn.aim_angle()), PI, 0.0005,
+			"and the fan is pointed due west at the pest it chose, not south at the decoy")
+	var fired: Kernel = null
+	for child: Node in host.get_children():
+		if child is Kernel:
+			fired = child as Kernel
+			break
+	if err == "":
+		err = _T.assert_true(fired != null, "a kernel is on the board to read back")
+	if err == "":
+		err = _T.assert_float_eq(wrapf(fired._velocity.angle() - corn.aim_angle(), -PI, PI),
+			0.0, 0.0005,
+			("the kernel really flies down the line the fan is drawn on (%.2f deg apart)"
+				% rad_to_deg(wrapf(fired._velocity.angle() - corn.aim_angle(), -PI, PI))))
+	_T.free_ui(host)
+	return err
+
+
+## The bead's third acceptance, verbatim: "the redraw rate is measured, not assumed".
+##
+## A fan that follows its target is a repaint every physics tick unless something
+## bounds it, on every cob on the board at once. AIM_STEPS is that bound and
+## `aim_repaints()` is the count, so this walks a pest right across a cob's face and
+## reads the actual number rather than trusting the constant's doc comment.
+##
+## The pest is MOVED BY HAND with physics off. A live pest walks itself, and a count
+## taken while the suite's own frame pump moves it would be measuring the gait.
+func test_the_fan_follows_a_walking_pest_without_repainting_every_frame() -> String:
+	var corn := CornCobbler.new()
+	var aphid: Pest = _pest(Pest.APHID, Vector2(-150.0, -60.0))
+	var host: Node2D = _host([corn, aphid])
+	await _T.instantiate_scene(host)
+	corn.set_physics_process(false)
+	# Never arms. Every repaint counted below belongs to the aim and nothing else.
+	corn._cooldown = 1000.0
+
+	# The bucketing itself first, as arithmetic: two angles inside one bucket are one
+	# repaint, a full turn wraps back onto bucket zero rather than opening a 49th
+	# nothing else can reach, and the count below is only worth reading if this holds.
+	var bucket_width: float = TAU / float(CornCobbler.AIM_STEPS)
+	var err: String = _T.assert_eq(CornCobbler.aim_step_for(0.0), 0,
+		"due east is bucket zero")
+	if err == "":
+		err = _T.assert_eq(CornCobbler.aim_step_for(TAU), CornCobbler.aim_step_for(0.0),
+			"a full turn wraps onto the same bucket rather than off the end")
+	if err == "":
+		err = _T.assert_eq(CornCobbler.aim_step_for(bucket_width * 0.2),
+			CornCobbler.aim_step_for(0.0),
+			"a fifth of a bucket is not a repaint")
+	if err == "":
+		err = _T.assert_eq(CornCobbler.aim_step_for(bucket_width * 4.0), 4,
+			"and four buckets along is bucket four")
+	if err != "":
+		_T.free_ui(host)
+		return err
+
+	var pests: Array[Pest] = [aphid]
+	var ticks: int = 240
+	var first: float = 0.0
+	var last: float = 0.0
+	for i: int in range(ticks + 1):
+		aphid.position = Vector2(lerpf(-150.0, 150.0, float(i) / float(ticks)), -60.0)
+		corn._act(0.0, pests)
+		if i == 0:
+			first = corn.aim_angle()
+		last = corn.aim_angle()
+
+	var sweep: float = absf(wrapf(last - first, -PI, PI))
+	var bucket: float = bucket_width
+	var repaints: float = float(corn.aim_repaints())
+	err = _T.assert_gt(sweep, 2.0,
+		"the pest really crossed the cob's face (%.0f deg of sweep)" % rad_to_deg(sweep))
+	if err == "":
+		err = _T.assert_gt(corn.aim_repaints(), 1,
+			"the fan really followed it -- a fan that never repainted is a fan nobody sees move")
+	if err == "":
+		# The bound, derived from the sweep rather than written down: one repaint per
+		# bucket crossed, plus the two partial buckets at the ends.
+		err = _T.assert_gte(sweep / bucket + 2.0, repaints,
+			"%.0f repaints for %.1f buckets of sweep -- the aim is bucketed, not per-frame"
+				% [repaints, sweep / bucket])
+	if err == "":
+		err = _T.assert_gt(repaints, sweep / bucket - 2.0,
+			"and it did not skip buckets either (%.0f against %.1f)" % [repaints, sweep / bucket])
+	if err == "":
+		err = _T.assert_gt(float(ticks) * 0.25, repaints,
+			"%.0f repaints across %d ticks is a fraction of a per-frame redraw"
+				% [repaints, ticks])
+	if err == "":
+		# The other half of the tradeoff: a bucket has to be small enough that the fan
+		# reads as turning rather than snapping. Measured at the pip, where it is seen.
+		err = _T.assert_gt(6.0, CornCobbler.aim_step_pip_travel(CornCobbler.LEVELS.size()),
+			"one bucket moves the widest pip %.1f px, which is a turn and not a jump"
+				% CornCobbler.aim_step_pip_travel(CornCobbler.LEVELS.size()))
+		if err == "":
+			err = _T.assert_gt(CornCobbler.aim_step_pip_travel(CornCobbler.LEVELS.size()), 0.0,
+				"and it does move -- a 0 px step is a frozen fan")
+	_T.free_ui(host)
+	return err
+
+
+## plant-tower-defense-wlyz's acceptance: an escape distinguishes fought-and-survived
+## from untouched, and the test drives both.
+##
+## `_ever_engaged` has known this since the run summary was written; what it has never
+## had is a picture. Both halves are asserted here — the flag the summary counts and
+## the mark the board draws — because the failure this is guarding against is the two
+## drifting apart, i.e. a pest counted as fought in the post-mortem and drawn as
+## untouched while the player could still have done something about it.
+func test_an_escaping_pest_says_whether_the_garden_ever_touched_it() -> String:
+	var fought: Pest = _pest(Pest.APHID, Vector2(100.0, 100.0))
+	var untouched: Pest = _pest(Pest.APHID, Vector2(160.0, 100.0))
+	var host: Node2D = _host([fought, untouched])
+	await _T.instantiate_scene(host)
+
+	var err: String = _T.assert_false(fought.shows_fought_mark(),
+		"a pest arrives on the board bare")
+	if err == "":
+		err = _T.assert_false(untouched.shows_fought_mark(), "both of them")
+	if err == "":
+		fought.take_damage(1.0)
+		err = _T.assert_true(fought.shows_fought_mark(),
+			"one kernel that lands is enough to mark it")
+	if err == "":
+		err = _T.assert_true(fought.shows_fought_mark() == fought.was_engaged(),
+			"and the mark says exactly what the summary counts")
+	if err == "":
+		err = _T.assert_false(untouched.shows_fought_mark(),
+			"while the one nothing ever shot at is still bare")
+
+	# The escape itself. `_escape()` emits and frees in the same frame, so the reading
+	# has to happen inside the handler -- deferring it would get a freed instance,
+	# which is the same reason Game._note_escape reads the flag where it does.
+	var seen: Array = []
+	fought.escaped.connect(func(p: Pest) -> void:
+		seen.append([p.was_engaged(), p.shows_fought_mark()]))
+	untouched.escaped.connect(func(p: Pest) -> void:
+		seen.append([p.was_engaged(), p.shows_fought_mark()]))
+	if err == "":
+		# Past the end of its two-point route, which is the real escape path.
+		fought._advance(1000.0)
+		untouched._advance(1000.0)
+		err = _T.assert_eq(seen.size(), 2, "both pests reached the exit")
+	if err == "":
+		err = _T.assert_true(bool(seen[0][0]) and bool(seen[0][1]),
+			"the one that was fought leaves wearing the mark")
+	if err == "":
+		err = _T.assert_false(bool(seen[1][0]) or bool(seen[1][1]),
+			"and the one that strolled past an empty road leaves bare")
+	_T.free_ui(host)
+	return err
+
+
+## The case the health bar cannot report, which is the case the mark is worth drawing
+## for: a Shield Bug whose plate ate the whole kernel.
+##
+## Nothing else on the board moves. The bar is full, the bug walks on, and "the garden
+## is shooting this one and getting nowhere" and "nothing in the garden can reach this
+## lane" look identical without the mark -- which is exactly the two sentences the bead
+## is about, at the moment the player can still buy a different plant.
+func test_a_hit_the_plate_ate_still_marks_the_pest_it_bounced_off() -> String:
+	var bug: Pest = _pest(Pest.SHIELDBUG, Vector2(100.0, 100.0))
+	var host: Node2D = _host([bug])
+	await _T.instantiate_scene(host)
+
+	var kernel: float = _top_kernel_damage()
+	var before: float = bug.health
+	var err: String = _T.assert_gt(Pest.shell_absorb(Pest.SHIELDBUG), kernel,
+		"the plate eats the whole of the biggest kernel in the game (%.2f against %.2f)"
+			% [Pest.shell_absorb(Pest.SHIELDBUG), kernel])
+	if err == "":
+		bug.take_damage(kernel)
+		err = _T.assert_float_eq(bug.health, before, 0.0001,
+			"so the health bar has nothing whatsoever to report")
+	if err == "":
+		err = _T.assert_true(bug.shows_fought_mark(),
+			"and the mark is the only thing on the board saying the garden reached it")
+	_T.free_ui(host)
+	return err
+
+
+## Being held counts, and it survives being let go.
+##
+## `_ever_engaged`'s own header argues this case: a Chomp destroyed mid-chew hands back
+## a live pest at full health that had very much been fought. The mark has to make the
+## same call, or a released bug walks the rest of the road looking untouched.
+func test_a_pest_a_chomp_held_keeps_the_mark_after_it_is_let_go() -> String:
+	var chomp := ChompFlower.new()
+	var aphid: Pest = _pest(Pest.APHID, Vector2(0.0, -Board.CELL))
+	var host: Node2D = _host([chomp, aphid])
+	await _T.instantiate_scene(host)
+
+	var pests: Array[Pest] = [aphid]
+	chomp._act(0.016, pests)
+	var err: String = _T.assert_true(chomp.is_busy(), "the Chomp closed on the aphid")
+	if err == "":
+		err = _T.assert_true(aphid.held_by != null, "and the aphid knows it is held")
+	if err == "":
+		# The pest's own frame is where being held is recorded -- `_pest` turns physics
+		# off, so this is the one call that reaches it.
+		aphid._physics_process(0.016)
+		err = _T.assert_true(aphid.shows_fought_mark(),
+			"a mouth closing on a pest marks it, even though a Chomp does no damage")
+	if err == "":
+		err = _T.assert_float_eq(aphid.health, aphid.max_health, 0.0001,
+			"at full health, which is why the mark is the only record of it")
+	if err == "":
+		chomp.release()
+		err = _T.assert_true(aphid.shows_fought_mark(),
+			"and letting it go does not un-fight it")
+	_T.free_ui(host)
+	return err
+
+
+## The mark's geometry, which is where it earns its place in `game/OVERLAY_GRAMMAR.md`
+## rather than inventing an eleventh shape.
+##
+## It is the DASHED RING row -- "a REMARK about the thing inside it" -- applied to a
+## pest for the first time, so what has to hold is the two things that row is
+## distinguished by: the break (a solid ring at this size would read as a reach), and
+## its position clear of every other mark a pest can wear at the same time. Both
+## asserted with the colour thrown away, which is that document's one rule with teeth.
+func test_the_fought_mark_is_a_broken_ring_clear_of_every_other_mark_on_a_pest() -> String:
+	var dashes: PackedVector2Array = Pest.fought_ring_dashes()
+	var err: String = _T.assert_eq(dashes.size(), Pest.FOUGHT_RING_DASHES,
+		"the ring is drawn in %d dashes" % Pest.FOUGHT_RING_DASHES)
+	if err == "":
+		err = _T.assert_gt(dashes.size(), 2,
+			"which is enough of them to read as a broken loop rather than as two arcs")
+	var ink: float = 0.0
+	for i: int in range(dashes.size()):
+		if err != "":
+			break
+		var dash: Vector2 = dashes[i]
+		err = _T.assert_gt(dash.y, dash.x, "dash %d covers an arc rather than a point" % i)
+		ink += dash.y - dash.x
+		if err == "" and i > 0:
+			err = _T.assert_gt(dash.x, dashes[i - 1].y,
+				("and there is a real gap in front of it -- the BREAK is the channel that "
+					+ "survives the colour being thrown away (dash %d)") % i)
+	if err == "":
+		err = _T.assert_float_eq(ink, PI, 0.0001,
+			"half the turn is ink and half is bare (%.3f of %.3f)" % [ink, TAU])
+	if err == "":
+		err = _T.assert_gt(TAU, dashes[dashes.size() - 1].y,
+			"and the last dash closes inside one turn")
+
+	# Every species at once, derived from SPECIES rather than a hand-list: a sixth
+	# pest at a new sprite scale must not be able to ship wearing its remark inside
+	# its own armour.
+	var checked: int = 0
+	for which: StringName in Pest.SPECIES:
+		if err != "":
+			break
+		var scale: float = float(Pest.SPECIES[which]["scale"])
+		var ring: float = Pest.fought_ring_radius(scale)
+		var plate: float = Pest.SPRITE_HALF * scale * Pest.PLATE_OUTER
+		err = _T.assert_gt(ring, plate,
+			"%s wears the remark outside its armour plate (%.1f against %.1f)"
+				% [which, ring, plate])
+		if err == "":
+			err = _T.assert_gt(ring, Pest.SPRITE_HALF * scale,
+				"%s wears it outside its own silhouette too" % which)
+		checked += 1
+	if err == "":
+		err = _T.assert_eq(checked, Pest.SPECIES.size(),
+			"every species in the table was measured, not just the ones anyone remembered")
+	return err
+
+
+# -- END what the board says is happening to this pest right now ----------------
