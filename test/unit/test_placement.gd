@@ -2672,6 +2672,7 @@ func test_the_notebook_plant_pages_fit_their_card() -> String:
 	var plant_pages: int = 0
 	var shelf_pages: int = 0
 	var legend_pages: int = 0
+	var hint_pages: int = 0
 	for page: int in NotebookScreen.PAGES.size():
 		if err != "":
 			break
@@ -2704,8 +2705,8 @@ func test_the_notebook_plant_pages_fit_their_card() -> String:
 			# `go_to` had (there the `else` meant SHELF), fixed there with
 			# NotebookScreen.PANE_LABELS. Kept as a branch here rather than a table
 			# because a test's business is the exclusivity, not the content: the left
-			# page holds exactly one of four things, and this asserts the other three
-			# are down.
+			# page holds exactly one of five things, and each branch asserts the panes
+			# it could most plausibly be confused with are down.
 			legend_pages += 1
 			err = _T.assert_false(drawing.visible, "page %d is the legend, not a photograph" % [page + 1])
 			if err == "":
@@ -2716,6 +2717,26 @@ func test_the_notebook_plant_pages_fit_their_card() -> String:
 			if err == "":
 				err = _T.assert_true((notebook.get_node("CueLegend") as Control).visible,
 					"the legend itself is what the left page shows")
+			continue
+		if kind == NotebookScreen.KIND_HINTS:
+			# The fifth (plant-tower-defense-ei83). Added as a branch for the reason the
+			# legend's comment above gives: without one it falls through to the plant
+			# case, and a page about no plant at all gets reported as a broken plant
+			# page rather than as a missing branch. The denominator below is what makes
+			# a SIXTH kind say so instead.
+			hint_pages += 1
+			err = _T.assert_false(drawing.visible, "page %d is the hints page, not a photograph" % [page + 1])
+			if err == "":
+				err = _T.assert_false(spec.visible, "and not a spec card")
+			if err == "":
+				err = _T.assert_false((notebook.get_node("Shelf") as Control).visible,
+					"and not the shelf")
+			if err == "":
+				err = _T.assert_false((notebook.get_node("CueLegend") as Control).visible,
+					"and not the legend")
+			if err == "":
+				err = _T.assert_true((notebook.get_node("Hints") as Control).visible,
+					"the hints pane itself is what the left page shows")
 			continue
 		plant_pages += 1
 		var id: StringName = StringName(entry.get("plant", &""))
@@ -2758,13 +2779,15 @@ func test_the_notebook_plant_pages_fit_their_card() -> String:
 	if err == "":
 		err = _T.assert_eq(legend_pages, 1, "and exactly one is the cue legend")
 	if err == "":
-		# The denominator, which is what makes the four counts above mean anything: a
-		# fifth kind added without a branch here would fall through to the plant case and
+		err = _T.assert_eq(hint_pages, 1, "and exactly one is the hints page")
+	if err == "":
+		# The denominator, which is what makes the five counts above mean anything: a
+		# sixth kind added without a branch here would fall through to the plant case and
 		# be counted as a plant page, so the sum is the only thing that notices.
-		err = _T.assert_eq(drawn_pages + plant_pages + shelf_pages + legend_pages,
+		err = _T.assert_eq(drawn_pages + plant_pages + shelf_pages + legend_pages + hint_pages,
 			NotebookScreen.PAGES.size(),
-			"every page was classified — %d + %d + %d + %d of %d" % [
-				drawn_pages, plant_pages, shelf_pages, legend_pages,
+			"every page was classified — %d + %d + %d + %d + %d of %d" % [
+				drawn_pages, plant_pages, shelf_pages, legend_pages, hint_pages,
 				NotebookScreen.PAGES.size()])
 	if err == "":
 		err = _T.assert_eq(drawn_pages, NotebookScreen.drawing_pages().size(),
@@ -7036,4 +7059,198 @@ func test_the_deferred_cue_is_wired_to_the_game() -> String:
 	return err
 
 # END plant-tower-defense-a6rf
+# =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-ei83 — the notebook's hints page
+#
+# A hint is shown exactly once per save and then spent, so the page that gives it
+# back has one job and two states, and the two states are the whole test. The
+# sentences themselves live in `Hud.HINT_CARDS` and are asserted there
+# (test_selftest.gd:15583+); nothing below restates one, it only asserts that the
+# page prints what that table says and that what it prints fits the paper.
+
+
+## The hint list is what the page is rendered off, so the page's own capacity is the
+## thing that has to move when the list does.
+##
+## `hints_capacity()` is 3 against 3 today, which is the same deliberate tightness
+## `test_the_milestone_shelf_fits_the_page` guards on the shelf: a FOURTH hint does not
+## fit at HINT_ROW_PITCH and must either drop the pitch or split the page, and this is
+## what says so rather than the fourth row quietly drawing below the matte.
+func test_the_hints_page_has_room_for_every_hint_the_game_can_spend() -> String:
+	var wanted: int = Hud.hint_ids().size()
+	var err: String = _T.assert_gt(wanted, 0,
+		"there are hints to give back — a page rendered off an empty list asserts nothing")
+	if err == "":
+		err = _T.assert_gte(NotebookScreen.hints_capacity(), wanted,
+			("%d hints at HINT_ROW_PITCH %.0f need more than DRAWING_BOX's %.0fpx "
+				+ "(capacity %d). Drop the pitch or split the page — do not let the last "
+				+ "row draw off the matte")
+				% [wanted, NotebookScreen.HINT_ROW_PITCH, NotebookScreen.DRAWING_BOX.size.y,
+					NotebookScreen.hints_capacity()])
+	if err == "":
+		# The bottom of the last row, computed the way `_build_hints` places it.
+		var last: float = NotebookScreen.SHELF_ROW_TOP \
+			+ float(wanted - 1) * NotebookScreen.HINT_ROW_PITCH \
+			+ NotebookScreen.SHELF_TITLE_HEIGHT + NotebookScreen.HINT_NOTE_HEIGHT
+		err = _T.assert_gte(NotebookScreen.DRAWING_BOX.size.y, last,
+			"the last hint row bottoms out at %.0fpx inside a %.0fpx matte" % [
+				last, NotebookScreen.DRAWING_BOX.size.y])
+	return err
+
+
+## The provenance line, counted off the hint list rather than off the save.
+##
+## Same failure the shelf's version guards and the same reason it can happen: an id
+## left in `earned_milestones` by a build that knew a hint this one does not would print
+## "4 of 3 seen" if the numerator came from the save.
+func test_the_hints_progress_line_counts_the_hint_list_and_not_the_save() -> String:
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	var ids: Array[String] = Hud.hint_ids()
+	var total: int = ids.size()
+	RunConfig.earned_milestones = {}
+	var err: String = _T.assert_eq(NotebookScreen.hints_progress_text(), "0 of %d seen" % total,
+		"a save with nothing spent reads as none seen")
+	if err == "":
+		RunConfig.earned_milestones = {ids[0]: true, "a_hint_from_the_future": true}
+		err = _T.assert_eq(NotebookScreen.hints_progress_text(), "1 of %d seen" % total,
+			"an id this build has no hint row for is not counted toward the total")
+	if err == "":
+		# And an ACHIEVEMENT in the save is not a hint either — the two contracts share
+		# one dictionary, so counting the dictionary would count milestones as hints.
+		RunConfig.earned_milestones = {String(Milestones.TABLE[0]["id"]): true}
+		err = _T.assert_eq(NotebookScreen.hints_progress_text(), "0 of %d seen" % total,
+			"and a milestone sitting in the same dictionary is not a hint that was seen")
+	RunConfig.earned_milestones = stashed
+	return err
+
+
+## The page itself, in both states at once: one hint spent, the rest not.
+##
+## What it asserts, in the order that matters. The rows say what `Hud` says — the page
+## must never teach a rule the message row words differently, which is why the titles
+## and notes are compared against `Hud.hint_title` / `Hud.hint_note_text` rather than
+## against strings written here. The unseen state survives the colour being thrown
+## away: the pip is a different SIZE and the note carries a "Not shown yet — " prefix,
+## so a reader who cannot separate the greens still reads which is which. And the note
+## of an unseen hint is drawn at the SAME alpha as a seen one, because it is the row a
+## player most needs to read — the state is in the prefix, never in the legibility.
+func test_the_notebook_hints_page_gives_back_a_hint_that_was_never_shown() -> String:
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	var ids: Array[String] = Hud.hint_ids()
+	var err: String = _T.assert_gt(ids.size(), 1,
+		"there is more than one hint, so the two states can both be on screen at once")
+	if err != "":
+		RunConfig.earned_milestones = stashed
+		return err
+	var seen_id: String = ids[0]
+	var unseen_id: String = ids[ids.size() - 1]
+	RunConfig.earned_milestones = {seen_id: true}
+
+	var notebook := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var at: int = NotebookScreen.page_for_kind(NotebookScreen.KIND_HINTS)
+	err = _T.assert_gt(at, -1, "the notebook has a hints page at all")
+	if err != "":
+		_T.free_ui(notebook)
+		RunConfig.earned_milestones = stashed
+		return err
+	notebook.go_to(at)
+	var hints: Control = notebook.get_node("Hints") as Control
+	var source: Label = notebook.get_node("SourceLabel") as Label
+
+	err = _T.assert_true(hints.visible, "and turning to it puts the hints pane up")
+	if err == "":
+		err = _T.assert_eq(source.text, "1 of %d seen" % ids.size(),
+			"with the provenance line saying how much of the page is news, got: %s" % source.text)
+	if err == "":
+		err = _T.assert_eq(NotebookScreen.pane_label_for(NotebookScreen.KIND_HINTS),
+			(notebook.get_node("DrawingPaneLabel") as Label).text,
+			"and the left pane relabelled itself off PANE_LABELS rather than keeping the last page's")
+
+	# Every hint has a row, the row says what Hud says, and the row fits the paper.
+	var rows: int = 0
+	for id: String in ids:
+		if err != "":
+			break
+		var title := hints.get_node_or_null("HintTitle_%s" % id) as Label
+		var note := hints.get_node_or_null("HintNote_%s" % id) as Label
+		var pip := hints.get_node_or_null("HintPip_%s" % id) as ColorRect
+		err = _T.assert_true(title != null and note != null and pip != null,
+			"'%s' has a row on the page — a hint with no row is one the player still cannot find" % id)
+		if err != "":
+			break
+		rows += 1
+		var shown: bool = id == seen_id
+		err = _T.assert_eq(title.text, Hud.hint_title(id),
+			"'%s' is titled off Hud.HINT_CARDS, not off a second copy of the sentence" % id)
+		if err == "":
+			err = _T.assert_eq(note.text, Hud.hint_note_text(id, shown),
+				"and its note is Hud's, in the tense that matches whether it was spent")
+		if err == "":
+			# The title is clip_text, so get_minimum_size() would report ~1px here and
+			# the assertion could not fail. Measured through the resolved theme font.
+			err = _T.assert_gte(title.size.x, _T.text_width(title),
+				"'%s' titles itself inside its column (%.0f of %.0fpx)" % [
+					id, _T.text_width(title), title.size.x])
+		if err == "":
+			var font: Font = note.get_theme_font("font")
+			var font_size: int = note.get_theme_font_size("font_size")
+			err = _T.assert_true(font != null and font_size > 0,
+				"the note resolved a theme font to measure in")
+			if err == "":
+				# The note WRAPS, which is the one way this page differs from the shelf,
+				# so the budget is a height and not a width. clip_text trims an overlong
+				# note silently — on the page whose whole job is carrying the instruction.
+				var needed: Vector2 = font.get_multiline_string_size(
+					note.text, HORIZONTAL_ALIGNMENT_LEFT, note.size.x, font_size)
+				err = _T.assert_gte(note.size.y, needed.y,
+					"'%s' wraps to %.0fpx in a %.0fpx box — trim the card or grow HINT_NOTE_HEIGHT"
+						% [id, needed.y, note.size.y])
+		if err == "":
+			var bottom: float = note.position.y + note.size.y
+			err = _T.assert_gte(NotebookScreen.DRAWING_BOX.size.y, bottom,
+				"'%s' row bottoms out at %.0fpx inside the %.0fpx matte" % [
+					id, bottom, NotebookScreen.DRAWING_BOX.size.y])
+	if err == "":
+		err = _T.assert_eq(rows, ids.size(), "every hint in RunConfig.HINTS was checked")
+
+	# The two states, side by side, with the colour thrown away.
+	if err == "":
+		var seen_note := hints.get_node("HintNote_%s" % seen_id) as Label
+		var unseen_note := hints.get_node("HintNote_%s" % unseen_id) as Label
+		err = _T.assert_true(unseen_note.text.begins_with("Not shown yet"),
+			"a hint the game never showed says so in words: \"%s\"" % unseen_note.text)
+		if err == "":
+			err = _T.assert_false(seen_note.text.begins_with("Not shown yet"),
+				"and one it did show is left as the card wrote it: \"%s\"" % seen_note.text)
+		if err == "":
+			# The bead's acceptance, stated as an assertion: the interaction is readable
+			# to a player who never saw the prompt. The unshown row is the FULL card with
+			# a prefix, not a locked stub.
+			err = _T.assert_true(unseen_note.text.ends_with(Hud.hint_note_text(unseen_id, true)
+					.substr(1)),
+				"and the whole card is still there behind the prefix — nothing is hidden "
+					+ "behind having seen it: \"%s\"" % unseen_note.text)
+		if err == "":
+			err = _T.assert_float_eq(
+				unseen_note.get_theme_color("font_color").a,
+				seen_note.get_theme_color("font_color").a, 0.001,
+				"an unseen hint is not whispered — it is the row that most needs reading")
+	if err == "":
+		var seen_pip := hints.get_node("HintPip_%s" % seen_id) as ColorRect
+		var unseen_pip := hints.get_node("HintPip_%s" % unseen_id) as ColorRect
+		err = _T.assert_gt(seen_pip.size.x, unseen_pip.size.x,
+			"the pip is a SIZE difference (%s vs %s), not merely a different green"
+				% [seen_pip.size, unseen_pip.size])
+		if err == "":
+			err = _T.assert_float_eq(seen_pip.position.x + seen_pip.size.x / 2.0,
+				unseen_pip.position.x + unseen_pip.size.x / 2.0, 0.001,
+				"and the two sizes share a centre line, so the column reads as one column")
+	_T.free_ui(notebook)
+	RunConfig.earned_milestones = stashed
+	return err
+
+# END plant-tower-defense-ei83
 # =============================================================================
