@@ -15008,8 +15008,9 @@ func test_the_stats_row_is_described_by_one_table() -> String:
 				"%s declares a clipped width" % name)
 		if err == "":
 			err = _T.assert_gt(int(readout.get("font_size", 0)), 0,
-				("%s declares its own font size -- the compost readout is smaller than "
-					+ "the rest and that difference is the row's only hierarchy") % name)
+				("%s declares its own font size -- three sizes now carry the row's "
+					+ "hierarchy, and STAT_READOUTS' `weight` column carries the rest "
+					+ "of it (plant-tower-defense-6tmf)") % name)
 		if err == "":
 			var shapes: Array = readout.get("shapes", [])
 			err = _T.assert_gt(shapes.size(), 0,
