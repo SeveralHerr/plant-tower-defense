@@ -95,9 +95,125 @@ Nothing else in the toolchain can see this:
   * a runtime run cannot help. The defect IS that the run passes; it only shows
     up when an unrelated test shifts the timing, months later.
 
+THE SECOND RULE: A TREE READ INSIDE A CORPSE WINDOW.
+
+Same defect, a different clock. Cycle 73 measured that a killed Pest survives its own
+kill by 18 process frames; `UI_SETTLE_FRAMES` pumps 2 (tools/run_tests.gd). `Pest.kill()`
+never frees anything - it sets `_alive = false`, emits `died`, and hands the body to a
+`tween_interval(death_linger())` whose floor is 1.0s (game/pest.gd:1602, `_play_death`).
+So between the kill and the free there is a window, measured in frames nobody declared,
+in which the corpse is STILL a valid instance and STILL a member of the "pests" group -
+and a test reading the tree in that window gets an answer it did not mean to ask for.
+
+A `.kill()` or a `.queue_free()` on a named variable OPENS such a window, textually, to
+the end of the function. `free()` does not and is deliberately not tracked: `free()` is
+immediate, `_T.free_ui` calls it, and there is no window to be wrong about.
+
+Two reads are exposed inside a window:
+
+  D. a LIVENESS read of the node that was killed - `is_instance_valid(x)`,
+     `x.is_inside_tree()`. At zero frames this is TRUE whatever the linger is, because
+     `queue_free()` defers to the end of the frame; at N frames it depends on N against
+     a game constant. Neither is a question the test asked. `is_instance_valid` alone
+     can only ever distinguish `queue_free()` from a synchronous `free()`.
+  E. a CENSUS - `get_nodes_in_group`, `get_first_node_in_group`, `get_child_count`,
+     `get_children`. The corpse is still in the group, so the count includes it and an
+     iteration visits it.
+
+Note that E is BROADER than the group rule above, on purpose. There, a whole-set `for`
+that only sets an existence flag is not judged, because a stranger the settle frames
+added can only make an existence claim MORE true. That argument does not survive a
+kill: the corpse is not a stranger, it is the node the test just removed, and a loop
+that reads `child.species` off it is reading a dead node's state.
+
+WHAT COUNTS AS A GUARD IN A CORPSE WINDOW. Four forms, all four already in this repo:
+
+  A. paired queued flag - `is_instance_valid(x) and not x.is_queued_for_deletion()`.
+     `is_queued_for_deletion()` is the half that can actually be false, so the pair
+     goes red when the corpse's lifetime moves. This is the repo's own idiom:
+     test_combat.gd:5202, test_placement.gd:216, test_placement.gd:240.
+  B. bounded condition await NAMING THE KILLED VARIABLE - `while is_instance_valid(pest)
+     and ... and frames < 600: await ...` (test_combat.gd:5206). Stricter than the
+     bounded-await guard the first rule accepts, which is structural and does not check
+     that the loop waits for the thing being read - a weakness that rule's own NOT
+     COVERED line admits. Here the name is required.
+  C. exclusion by name or by instance id - the census steps over the node it just
+     killed (`if p != early`, test_selftest.gd:2530; `if node != plain`,
+     test_selftest.gd:218) or over a set of ids captured before the removal
+     (`not before.has(pest.get_instance_id())`, test_selftest.gd:9251) - or filters
+     corpses explicitly with `is_alive()` / `is_queued_for_deletion()`.
+  D. a waiver THAT SAYS WHY.
+
+The waiver got stricter for both rules at the same time, and this is the change most
+likely to surprise: `# settle-read-check: ok` with no reason after it is now a FINDING
+in its own right rather than a silent pass. Both waivers standing in the repo when that
+landed already carried a reason (test_combat.gd:4500, test_placement.gd:1332), so the
+tightening cost nothing and closes the hole where a waiver silences a rule without
+recording a single word about why it was safe to.
+
+WHAT THE CORPSE RULE FOUND WHEN IT WAS WRITTEN. 19 removal calls across the suite; 6
+functions read the tree inside a window; 5 were guarded, by three different forms. The
+one finding was `test_selftest.gd:634`, in a test named
+`..._lingers_before_freeing`, asserting `is_instance_valid(pest)` zero frames after
+`pest.kill()` under the message "the corpse lingers on screen instead of vanishing
+instantly". That assertion cannot fail for the reason its message gives: delete
+`tween_interval(death_linger())` from `_play_death` entirely and it stays green.
+`test_combat.gd:5202`, two frames later and paired with `is_queued_for_deletion()`,
+is the same claim written so that it can go red.
+
 Parallel-safe by construction: opens no project, writes nothing to `.godot/`,
 takes no lock. Exit codes follow the house contract: 0 clean, 1 findings, 2 could
 not run.
+
+    fixture:   `python tools/settle_read_check.py --fixture`. KEPT, not written and
+               deleted: FIXTURE_SOURCE below is 13 synthetic functions producing 7
+               expected findings, and it is what the mutations are re-run against
+               after every edit to this file. Each case is asserted on three things,
+               not one - the finding COUNT, which guard NAME cleared it, and whether
+               it was in the denominator at all - because "cleared by a guard" and
+               "never counted" are different results a count alone cannot separate.
+               Cases: a naked `is_instance_valid` after a kill (BAD), the same paired
+               with `is_queued_for_deletion` (good), a naked one after `queue_free`
+               (BAD), a bounded loop naming the killed var (good), a bounded loop
+               naming a DIFFERENT var (BAD - the strictness the settle rule lacks), a
+               census excluding by name (good), a census with an id baseline (good), a
+               census with `!= null` only (BAD - a null check steps over nothing), a
+               naked census (BAD), a liveness read of a var nobody killed (good - not
+               in any window), a read BEFORE the kill (good - order within the function
+               is the whole rule), a waiver with a reason (good), and a waiver without
+               one (BAD, twice: the waiver is unexplained AND the read it was hiding
+               is unguarded).
+    mutations: 5, all RED, restore clean (13/13, 7 findings, repo back to 1). Read the
+               COUNT beside each, not the verdict:
+
+               make the corpse window whole-file instead of        -> 1 of 13 fixture,
+                 order-scoped (`killed = list(removals)`)             repo 1 -> 4.
+                 The repo number is the one that matters here: three of this suite's
+                 reads sit textually ABOVE the kill in their function, so order
+                 scoping is load-bearing on the real corpus and not only on the
+                 fixture.
+               accept any `!= <word>` as an exclusion               -> 2 of 13, repo
+                 (drop the killed-name requirement)                    unchanged.
+                 Two, not one, and the second is the point: the id-baseline case is
+                 still CLEARED but by the wrong guard, which only the guard-NAME
+                 column catches. A count-only fixture would have called it a pass.
+               drop the killed-name requirement from guard B       -> 1 of 13, repo
+                 (use BOUNDED_AWAIT_RE, i.e. behave like the          unchanged.
+                 settle rule)
+               accept a reasonless waiver (loosen WAIVER_RE        -> 1 of 13, repo
+                 back to a bare `ok` with no reason clause)           unchanged.
+               stop blanking comments (`code = raw`)               -> 1 of 13, repo
+                                                                      1 -> 2.
+                 Both directions in one mutation. In the fixture it CLEARS a real
+                 finding, because a comment saying `if p != early` about an exclusion
+                 the loop does not do reads as the exclusion. In the repo it INVENTS
+                 one at test_board.gd:661. The clearing direction is the dangerous
+                 half and the one a good-file/bad-file pair cannot show.
+
+               Three of the five leave the repo count untouched. That is not those
+               guards being dead: it is this suite not currently containing a case
+               that exercises them, which is exactly what the fixture is the
+               denominator for.
 """
 
 from __future__ import annotations
@@ -134,8 +250,32 @@ BOUNDED_AWAIT_RE = re.compile(
 # Bare awaits, counted and reported but NEVER accepted as a guard.
 BARE_AWAIT_RE = re.compile(r"\bawait\b[^\n]*")
 
-# Escape hatch for a body whose settling this regex cannot follow.
-WAIVER_RE = re.compile(r"settle-read-check:\s*ok\b")
+# Escape hatch for a body whose settling this regex cannot follow. A reason is
+# REQUIRED: `# settle-read-check: ok - <why>`. A waiver that says only "ok" silences a
+# rule and records nothing about why that was safe, which is the one thing a waiver is
+# for. Both waivers standing in the repo when this tightened already carried a reason,
+# so it cost nothing; a reasonless one is reported below as a finding of its own rather
+# than being quietly honoured.
+WAIVER_RE = re.compile(r"settle-read-check:\s*ok\b\s*[-:]\s*\S")
+ANY_WAIVER_RE = re.compile(r"settle-read-check:\s*ok\b")
+
+# -- the corpse rule ---------------------------------------------------------
+#
+# `kill()` and `queue_free()` open a window; `free()` does not, and is deliberately
+# absent. `free()` is immediate (`_T.free_ui` uses it), so there is no undeclared
+# frame count to be wrong about.
+REMOVAL_RE = re.compile(
+    r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(kill|queue_free)\s*\(")
+LIVENESS_CALL_RE = re.compile(
+    r"\bis_instance_valid\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)")
+LIVENESS_METHOD_RE = re.compile(
+    r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\.\s*is_inside_tree\s*\(")
+QUEUED_RE = re.compile(r"\bis_queued_for_deletion\s*\(")
+CENSUS_RE = re.compile(
+    r"\b(get_nodes_in_group|get_first_node_in_group|get_child_count|get_children)\s*\(")
+# A loop that filters corpses out by asking whether they are one.
+CORPSE_FILTER_RE = re.compile(
+    r"\b(?:is_queued_for_deletion|is_alive|is_instance_valid)\s*\(")
 
 # Typed locals, for form C. `var k := Kernel.new()` and `var p: Pest = _pest(...)`.
 DECL_INFER_RE = re.compile(
@@ -466,6 +606,390 @@ def guard_for(region: str, upto: int, end: int, kind: str, expr: str) -> str:
     return ""
 
 
+def waiver_finding(raw_body: str, rel: str, start_line: int, fname: str) -> str:
+    """A `settle-read-check: ok` with no reason after it, as a finding. "" if fine.
+
+    Read from the RAW body, because strip_comments blanks the comment the waiver lives
+    in - the bug that shipped in group_leak_check's first draft. Factored out so the
+    fixture below exercises this exact function rather than a copy of it that could
+    drift from what `main` actually runs.
+    """
+    if ANY_WAIVER_RE.search(raw_body) and not WAIVER_RE.search(raw_body):
+        return (
+            "%s:%d %s() carries a `settle-read-check: ok` waiver that does not say why. "
+            "A waiver is the record of a judgement this tool could not make; without "
+            "the reason it is just the rule turned off.\n"
+            "    fix: write `# settle-read-check: ok - <reason>`. Worked examples: "
+            "test/unit/test_combat.gd:4500, test/unit/test_placement.gd:1332.\n"
+            "    waive: there is no waiver for a missing waiver reason."
+            % (rel, start_line, fname))
+    return ""
+
+
+def _statement_at(region: str, offset: int) -> str:
+    """The whole statement containing `offset`, continuation lines included.
+
+    The pairing guard asks whether `is_queued_for_deletion()` sits in the SAME
+    expression as the liveness read, and the repo's own idiom routinely splits that
+    expression over two lines:
+
+        err = _T.assert_true(is_instance_valid(pest) and not pest.is_queued_for_deletion(),
+            "a corpse is still on the board two frames after the kill")
+
+    A one-physical-line window misses the pair whenever the message wraps, which would
+    report the single best-written case in the repo as the defect. So: start of the
+    read's own line, then forward while parentheses are still open. Depth is clamped at
+    zero so a read on a continuation line cannot run the scan backwards off the end.
+    """
+    start = region.rfind("\n", 0, offset) + 1
+    depth = 0
+    i = start
+    n = len(region)
+    while i < n:
+        ch = region[i]
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth = max(0, depth - 1)
+        elif ch == "\n" and depth == 0:
+            break
+        i += 1
+    return region[start:i]
+
+
+def _bounded_wait_names(region: str, var: str) -> bool:
+    """A `while`/`for` whose HEAD names `var` and whose body awaits.
+
+    Stricter than BOUNDED_AWAIT_RE, which the first rule uses and whose own NOT COVERED
+    line admits it accepts any bounded loop in the function regardless of what the loop
+    is waiting for. Inside a corpse window the name is cheap to require and is the whole
+    difference between "this test waits for THIS body to leave" and "this test waits for
+    something, and also reads a corpse".
+    """
+    pat = re.compile(r"^[ \t]*(?:while|for)\b[^\n]*\b%s\b[^\n]*:" % re.escape(var), re.M)
+    for m in pat.finditer(region):
+        if "await" in _block_after(region, m.end()):
+            return True
+    return False
+
+
+def _census_scope(region: str, offset: int) -> str:
+    """The census read's own statement plus, if it heads a loop, that loop's body.
+
+    A census is guarded by what the code around it does with the members - an
+    exclusion, an id diff, a corpse filter - and for a `for` head that lives in the
+    body rather than on the line.
+    """
+    return _statement_at(region, offset) + "\n" + _block_after(region, offset)
+
+
+def corpse_findings(body: str, raw_body: str, start_line: int, rel: str,
+                    fname: str) -> tuple[list[str], dict[str, int], bool]:
+    """(findings, guards used, whether this function opened a corpse window).
+
+    Order WITHIN the function is the entire rule: a `.kill()` in one test and an
+    `is_instance_valid` in the next are unrelated, and so are a read at line 10 and a
+    kill at line 20. Both directions have to hold, which is why the removal list is
+    filtered by offset at every read rather than collected per function.
+    """
+    guards: dict[str, int] = {}
+    findings: list[str] = []
+    removals = [(m.start(), m.group(1), m.group(2)) for m in REMOVAL_RE.finditer(body)]
+    if not removals:
+        return findings, guards, False
+
+    waived = bool(WAIVER_RE.search(raw_body))
+    exposed: list[tuple[int, str, str, str]] = []
+
+    for m in LIVENESS_CALL_RE.finditer(body):
+        exposed.append((m.start(), "liveness", "is_instance_valid(%s)" % m.group(1),
+                        m.group(1)))
+    for m in LIVENESS_METHOD_RE.finditer(body):
+        exposed.append((m.start(), "liveness", "%s.is_inside_tree()" % m.group(1),
+                        m.group(1)))
+    for m in CENSUS_RE.finditer(body):
+        exposed.append((m.start(), "census", "%s()" % m.group(1), ""))
+    exposed.sort()
+
+    read_any = False
+    for offset, kind, expr, var in exposed:
+        killed = [r for r in removals if r[0] < offset]
+        if not killed:
+            continue
+        killed_names = [r[1] for r in killed]
+        if kind == "liveness" and var not in killed_names:
+            # A liveness read of a node nothing in this function removed. Whatever it
+            # is asserting, it is not asserting it against a corpse.
+            continue
+        read_any = True
+        if waived:
+            guards["waiver (with a reason)"] = guards.get("waiver (with a reason)", 0) + 1
+            continue
+
+        guard = ""
+        if kind == "liveness":
+            if QUEUED_RE.search(_statement_at(body, offset)):
+                guard = "paired queued flag (is_queued_for_deletion in the same expression)"
+            elif _bounded_wait_names(body, var):
+                guard = "bounded condition await naming the killed node"
+        else:
+            scope = _census_scope(body, offset)
+            for name in sorted(set(killed_names)):
+                if re.search(r"!=\s*%s\b" % re.escape(name), scope) or \
+                        re.search(r"\b%s\s*!=" % re.escape(name), scope):
+                    guard = "exclusion by name (steps over the node it removed)"
+                    break
+            if not guard and "get_instance_id" in scope:
+                guard = "instance-id baseline (a set captured before the removal)"
+            if not guard and CORPSE_FILTER_RE.search(scope):
+                guard = "corpse filter (the loop asks whether each member is one)"
+            if not guard:
+                for name in sorted(set(killed_names)):
+                    if _bounded_wait_names(body, name):
+                        guard = "bounded condition await naming the killed node"
+                        break
+        if guard:
+            guards[guard] = guards.get(guard, 0) + 1
+            continue
+
+        removed_at, removed_var, removed_how = killed[-1]
+        line_no = start_line + body[:offset].count("\n")
+        kill_line = start_line + body[:removed_at].count("\n")
+        findings.append(
+            "%s:%d %s() reads %s (%s) inside the corpse window opened by "
+            "%s.%s() at line %d, with nothing stating how many frames have passed. "
+            "kill() frees nothing: it hands the body to a tween whose interval is a "
+            "game constant (game/pest.gd `_play_death`, floor 1.0s), and queue_free() "
+            "defers to the end of the frame. So the corpse is still a valid instance "
+            "and still a member of its groups, and the answer here is whatever that "
+            "undeclared frame count produced -- at zero frames it cannot be false at "
+            "all.\n"
+            "    fix: pair the read with the half that CAN fail -- "
+            "`is_instance_valid(x) and not x.is_queued_for_deletion()` "
+            "(test/unit/test_combat.gd:5202, test/unit/test_placement.gd:216) -- or "
+            "await a bounded condition that names the node "
+            "(test/unit/test_combat.gd:5206), or, for a census, step over what you "
+            "removed by name (test/unit/test_selftest.gd:2530) or by instance id "
+            "(test/unit/test_selftest.gd:9251).\n"
+            "    waive: add `# settle-read-check: ok - <reason>` in the body. The "
+            "reason is required."
+            % (rel, line_no, fname, expr, kind, removed_var, removed_how, kill_line))
+
+    return findings, guards, read_any
+
+
+# ---------------------------------------------------------------------------
+# The corpse rule's fixture, kept rather than written-and-deleted.
+#
+# gdsource.py's self-test makes the argument: the fixture is written once, but the
+# MUTATIONS are what you re-run after every edit to the checker, and re-deriving a
+# deleted fixture is most of the cost of writing it the first time. This one is
+# thirteen functions of synthetic GDScript that never reaches Godot, asserted through
+# `corpse_findings` and `waiver_finding` themselves - the same functions `main` calls,
+# not a copy that could drift from them.
+#
+# It deliberately contains PROSE naming `is_queued_for_deletion` and `!= early` in
+# comments explaining what the function does NOT do, so that a checker which stops
+# blanking comments clears a real finding instead of only inventing a false one. That
+# is the direction of failure a good-file/bad-file pair cannot show.
+
+FIXTURE_SOURCE = '''extends Node
+
+
+func test_bad_naked_liveness_after_kill() -> String:
+	var pest: Pest = _pest()
+	pest.kill()
+	# Prose, not code: this deliberately does NOT call is_queued_for_deletion(), and a
+	# checker that stops blanking comments reads this sentence as the guard.
+	return _T.assert_true(is_instance_valid(pest), "the corpse lingers")
+
+
+func test_good_paired_queued_flag() -> String:
+	var pest: Pest = _pest()
+	pest.kill()
+	return _T.assert_true(is_instance_valid(pest) and not pest.is_queued_for_deletion(),
+		"a corpse is still on the board, and has not been queued away either")
+
+
+func test_bad_naked_liveness_after_queue_free() -> String:
+	var pest: Pest = _pest()
+	pest.queue_free()
+	return _T.assert_true(is_instance_valid(pest), "still there")
+
+
+func test_good_bounded_loop_names_the_killed_node() -> String:
+	var pest: Pest = _pest()
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	pest.kill()
+	var frames: int = 0
+	while is_instance_valid(pest) and frames < 600:
+		await tree.process_frame
+		frames += 1
+	return _T.assert_true(frames < 600, "it does leave")
+
+
+func test_bad_bounded_loop_names_a_different_node() -> String:
+	var pest: Pest = _pest()
+	var director: Node = _director()
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	pest.kill()
+	var frames: int = 0
+	while director.is_spawning() and frames < 600:
+		await tree.process_frame
+		frames += 1
+	return _T.assert_true(is_instance_valid(pest), "the corpse outlived the wave")
+
+
+func test_good_census_excludes_by_name() -> String:
+	var early: Pest = _pest()
+	early.queue_free()
+	var late: Pest = null
+	for p: Node in get_tree().get_nodes_in_group("pests"):
+		if p != early:
+			late = p as Pest
+	return _T.assert_true(late != null, "the later pest was found")
+
+
+func test_good_census_uses_an_id_baseline() -> String:
+	var queen: Pest = _pest()
+	var before: Dictionary = {}
+	for node: Node in get_tree().get_nodes_in_group("pests"):
+		before[node.get_instance_id()] = true
+	queen.kill()
+	var brood: Array[Pest] = []
+	for node: Node in get_tree().get_nodes_in_group("pests"):
+		var pest := node as Pest
+		if pest != null and not before.has(pest.get_instance_id()):
+			brood.append(pest)
+	return _T.assert_eq(brood.size(), 2, "she left exactly the brood she declares")
+
+
+func test_bad_census_only_checks_null() -> String:
+	var early: Pest = _pest()
+	early.kill()
+	var seen: int = 0
+	for p: Node in get_tree().get_nodes_in_group("pests"):
+		# The exclusion this loop does NOT do would read `if p != early`.
+		if p != null:
+			seen += 1
+	return _T.assert_eq(seen, 1, "one pest is left")
+
+
+func test_bad_naked_census() -> String:
+	var pest: Pest = _pest()
+	pest.kill()
+	var live: int = get_tree().get_nodes_in_group("pests").size()
+	return _T.assert_eq(live, 0, "the board is clear")
+
+
+func test_good_liveness_of_a_node_nobody_killed() -> String:
+	var pest: Pest = _pest()
+	var host: Node2D = _host()
+	pest.kill()
+	return _T.assert_true(is_instance_valid(host), "the host outlives its pest")
+
+
+func test_good_read_before_the_kill() -> String:
+	var pest: Pest = _pest()
+	var err: String = _T.assert_true(is_instance_valid(pest), "a live pest is valid")
+	pest.kill()
+	return err
+
+
+func test_good_waiver_with_a_reason() -> String:
+	# settle-read-check: ok - the pest is never inside a tree here, so kill() takes
+	# the immediate branch and there is no linger to be wrong about.
+	var pest: Pest = _pest()
+	pest.kill()
+	return _T.assert_true(is_instance_valid(pest), "still an object")
+
+
+func test_bad_waiver_without_a_reason() -> String:
+	# settle-read-check: ok
+	var pest: Pest = _pest()
+	pest.kill()
+	return _T.assert_true(is_instance_valid(pest), "still an object")
+'''
+
+# name -> (expected findings, a substring of the guard that must have cleared it,
+#          whether the function should be IN the corpse denominator at all)
+#
+# The third column is a separate claim from the second and the reason both are here:
+# "cleared by a guard" and "never counted" are different results that a findings count
+# alone cannot tell apart, and a rule that quietly stops seeing a whole class of read
+# would otherwise look exactly like a rule whose guards all fired.
+FIXTURE_EXPECT = {
+    "test_bad_naked_liveness_after_kill": (1, None, True),
+    "test_good_paired_queued_flag": (0, "paired queued flag", True),
+    "test_bad_naked_liveness_after_queue_free": (1, None, True),
+    "test_good_bounded_loop_names_the_killed_node": (0, "bounded condition await", True),
+    "test_bad_bounded_loop_names_a_different_node": (1, None, True),
+    "test_good_census_excludes_by_name": (0, "exclusion by name", True),
+    "test_good_census_uses_an_id_baseline": (0, "instance-id baseline", True),
+    "test_bad_census_only_checks_null": (1, None, True),
+    "test_bad_naked_census": (1, None, True),
+    "test_good_liveness_of_a_node_nobody_killed": (0, None, False),
+    "test_good_read_before_the_kill": (0, None, False),
+    "test_good_waiver_with_a_reason": (0, "waiver", True),
+    "test_bad_waiver_without_a_reason": (2, None, True),
+}
+
+
+def run_fixture(verbose: bool = True) -> int:
+    """Run the corpse rule over FIXTURE_SOURCE. Returns the failure count.
+
+    Every function in the fixture must appear in FIXTURE_EXPECT and vice versa, so a
+    case added to one and not the other is a failure rather than a silently unchecked
+    function - the input set is a denominator too.
+    """
+    code = gdsource.strip_comments(FIXTURE_SOURCE, gdsource.BLANK)
+    funcs = split_functions(code, FIXTURE_SOURCE)
+    fails = 0
+    total_found = 0
+
+    seen = set(name for name, _, _, _ in funcs)
+    for extra in sorted(seen - set(FIXTURE_EXPECT)):
+        print("  FAIL   fixture function %s() has no entry in FIXTURE_EXPECT" % extra)
+        fails += 1
+    for missing in sorted(set(FIXTURE_EXPECT) - seen):
+        print("  FAIL   FIXTURE_EXPECT names %s(), which is not in the fixture" % missing)
+        fails += 1
+
+    for fname, start_line, body, raw_body in funcs:
+        if fname not in FIXTURE_EXPECT:
+            continue
+        want_n, want_guard, want_counted = FIXTURE_EXPECT[fname]
+        finds, guards, counted = corpse_findings(
+            body, raw_body, start_line, "fixture.gd", fname)
+        if waiver_finding(raw_body, "fixture.gd", start_line, fname):
+            finds = finds + ["<waiver has no reason>"]
+        got_n = len(finds)
+        total_found += got_n
+        guard_names = ", ".join(sorted(guards)) or "-"
+        ok = got_n == want_n and counted == want_counted
+        if want_guard is not None:
+            ok = ok and any(want_guard in g for g in guards)
+        if not ok:
+            fails += 1
+        line = ("  %-6s %-46s %d finding(s) (want %d), counted=%s (want %s), "
+                "guards: %s"
+                % ("ok" if ok else "FAIL", fname, got_n, want_n, counted,
+                   want_counted, guard_names))
+        if not ok or verbose:
+            print(line)
+
+    print("")
+    print("settle_read_check fixture: %d synthetic function(s), %d finding(s) "
+          "(want %d), %d failure(s)"
+          % (len(funcs), total_found,
+             sum(v[0] for v in FIXTURE_EXPECT.values()), fails))
+    if not funcs:
+        print("NOTE: nothing to check -- FIXTURE_SOURCE parsed to zero functions. An "
+              "empty fixture is not a clean fixture.")
+        fails += 1
+    return fails
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", default=".", help="project root (default: cwd)")
@@ -473,7 +997,18 @@ def main() -> int:
     ap.add_argument("--game", default="game",
                     help="game tree the volatile vocabulary is derived from")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--fixture", action="store_true",
+                    help="run the 13-function synthetic fixture for the corpse rule "
+                         "instead of scanning the repo, and exit 1 on any mismatch")
     args = ap.parse_args()
+
+    if args.fixture:
+        fails = run_fixture(verbose=not args.quiet)
+        print("  NOT COVERED: the fixture exercises the CORPSE rule only. It says "
+              "nothing about the settle rule above it, nothing about this repo's own "
+              "tests, and nothing about the volatile vocabulary derived from game/ -- "
+              "a clean fixture is a statement about the rule, not about the corpus.")
+        return 1 if fails else 0
 
     root = os.path.abspath(args.root)
     if not os.path.isfile(os.path.join(root, "project.godot")):
@@ -511,6 +1046,16 @@ def main() -> int:
     bare_await_only = 0
     findings: list[str] = []
 
+    # The corpse rule's own denominator. Kept separate from the settle rule's on
+    # purpose: the two scan different populations (every function versus only the ones
+    # that host a scene), and one summed number would let an empty corpus on either
+    # side hide behind the other's.
+    removal_calls = 0
+    fns_removing = 0
+    fns_corpse_reading = 0
+    corpse_guarded: dict[str, int] = {}
+    corpse_findings_out: list[str] = []
+
     for path in paths:
         try:
             with open(path, "r", encoding="utf-8") as fh:
@@ -525,6 +1070,29 @@ def main() -> int:
 
         for fname, start_line, body, raw_body in split_functions(code, raw):
             fns_total += 1
+
+            # An unexplained waiver, reported for its own sake rather than honoured: a
+            # waiver that records no reason silences a rule and leaves nothing behind
+            # saying why that was safe.
+            wf = waiver_finding(raw_body, rel, start_line, fname)
+            if wf:
+                findings.append(wf)
+
+            # The corpse rule runs on EVERY function, not only the ones that host a
+            # scene: a kill needs no hosting to open a window, and gating it on
+            # HOSTING_RE would have silently excluded any test that builds its own tree.
+            c_finds, c_guards, c_read = corpse_findings(
+                body, raw_body, start_line, rel, fname)
+            n_removals = len(REMOVAL_RE.findall(body))
+            if n_removals:
+                removal_calls += n_removals
+                fns_removing += 1
+            if c_read:
+                fns_corpse_reading += 1
+            for g, n in c_guards.items():
+                corpse_guarded[g] = corpse_guarded.get(g, 0) + n
+            corpse_findings_out.extend(c_finds)
+
             host = HOSTING_RE.search(body)
             if host is None:
                 continue
@@ -591,6 +1159,23 @@ def main() -> int:
                   "the tool." % fns_hosting)
         for g in sorted(guarded):
             print("    guarded by %s: %d" % (g, guarded[g]))
+        print("  corpse rule: %d removal call(s) (.kill()/.queue_free()) in %d "
+              "function(s), %d of those read the tree inside the window, %d guarded, "
+              "%d finding(s)"
+              % (removal_calls, fns_removing, fns_corpse_reading,
+                 sum(corpse_guarded.values()), len(corpse_findings_out)))
+        if removal_calls == 0:
+            print("    NOTE: nothing to check -- no function under %s calls .kill() or "
+                  ".queue_free() on a named node at all, so no corpse window was ever "
+                  "opened. A zero denominator looks exactly like a pass and is not one. "
+                  "(.free() is immediate and deliberately not tracked.)" % args.tests)
+        elif fns_corpse_reading == 0:
+            print("    NOTE: %d function(s) open a corpse window but NONE of them reads "
+                  "liveness or a census afterwards. Clean, but the rule never fired -- "
+                  "that is a statement about the corpus, not about the tool."
+                  % fns_removing)
+        for g in sorted(corpse_guarded):
+            print("      guarded by %s: %d" % (g, corpse_guarded[g]))
         for n in notes:
             print("  NOTE: %s" % n)
         if bare_await_only:
@@ -614,11 +1199,23 @@ def main() -> int:
               "excuses a naked read of another in the same test. It cannot tell a converging "
               "value from a diverging one beyond the three derived classes above -- "
               "notably it says nothing about Control layout, which settles on purpose. "
+              "The CORPSE rule adds its own blind spots: it tracks only a removal "
+              "written as `name.kill()` / `name.queue_free()` in the same function, so "
+              "a node removed inside a helper (`take_damage` reaching "
+              "`Plant.play_exit_and_free`, `game._check_wave_cleared` reading the group) "
+              "opens a window it cannot see -- which is why the two best-written "
+              "examples of the guard it wants, test_placement.gd:216 and :240, are not "
+              "even in its denominator. It judges TEXTUAL order within the function, so "
+              "a loop whose next iteration re-reads a group above a removal below it "
+              "(test_placement.gd:4726-4729) reads as clean; it does not follow a "
+              "variable that is reassigned between the removal and the read; and it "
+              "cannot tell a census the test MEANT to include the corpse in from one "
+              "that did not. "
               "Nor does it compile anything -- only import_check.py and "
               "lint_project.gd do that, and neither is parallel-safe.")
-    for f in findings:
+    for f in findings + corpse_findings_out:
         print("  FINDING: %s" % f)
-    return 1 if findings else 0
+    return 1 if (findings or corpse_findings_out) else 0
 
 
 if __name__ == "__main__":
