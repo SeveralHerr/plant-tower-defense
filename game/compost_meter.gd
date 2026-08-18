@@ -31,6 +31,34 @@ const HUSK_LIFETIME: float = 10.0
 ## difference" — which is what a single shared timer meant. It also gives the
 ## size/glow cue a second job: a big bright husk is now urgent as well as
 ## valuable, and those two readings point the same way.
+##
+## AND IT IS A FLOOR, NOT A MIDPOINT (plant-tower-defense-ix76). The question that bead
+## asked is whether a 60-seed husk should rot faster than a 9-seed one — six of the ten
+## reachable values sit at or above `FULL_VALUE`, so today they all get exactly this 4.5s,
+## and the pips say one is worth six times the other while the clock says hurry equally.
+##
+## DECIDED: NO. They keep the same floor. Three reasons, in the order they matter:
+##
+##   * 4.5s is a REACTION TIME, not a difficulty knob. The values above 9 come from the two
+##     bosses (`Pest.SPECIES` — the Nurse at 39 seeds, the Queen at 40) crossed with
+##     mutations, so the richest husks drop at the single busiest moment on the board: a
+##     health bar emptying, plants firing, lives possibly just spent. Going below this makes
+##     the rarest drop the hardest to claim, which punishes the player at the game's high
+##     point rather than making it tense.
+##   * THE URGENCY IS ALREADY CARRIED, TWICE, above the saturation point — size and glow to
+##     9, and `HuskLayer.overflow_pips` counting beyond it. A player already knows a 60 is
+##     special; what they do not need is less time to act on knowing.
+##   * THE FAILURES ARE NOT SYMMETRIC. Rot too slow and the compost meter is mildly too
+##     generous. Rot too fast on exactly the rarest drops and the player learns boss kills
+##     are not worth chasing — the opposite of what a boss should teach.
+##
+## The inconsistency the bead names is real and is ACCEPTED rather than denied: the pips
+## answer "how much is this worth" and the clock answers "how long do you have". Those are
+## different questions, and they are allowed to saturate differently because value is
+## unbounded and reaction time is not.
+##
+## `test_the_rot_floor_is_a_floor_and_the_curve_still_sorts_below_it` pins this, so widening
+## `FULL_VALUE` or adding a second rot curve fails the suite and lands the reader here.
 const MIN_HUSK_LIFETIME: float = 4.5
 ## How close a click has to land to sweep a husk.
 ##

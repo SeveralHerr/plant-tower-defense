@@ -17643,6 +17643,79 @@ func test_every_bramble_frame_is_the_same_plant_standing_in_the_same_place() -> 
 # =============================================================================
 
 
+## The rot floor is a floor, and the curve still sorts everything below it
+## (plant-tower-defense-ix76).
+##
+## The decision this pins is recorded above `CompostMeter.MIN_HUSK_LIFETIME`: six of the ten
+## reachable husk values sit at or above `FULL_VALUE` and all get the same 4.5s, and that is
+## deliberate — 4.5s is a reaction time, the richest husks drop at a boss death when the
+## player is busiest, and the urgency is already carried by size, glow and the overflow
+## pips. A comment saying so is a comment; this is the version that fails when somebody
+## widens FULL_VALUE or bolts a second curve on.
+func test_the_rot_floor_is_a_floor_and_the_curve_still_sorts_below_it() -> String:
+	# DERIVED, not listed. Pest.SPECIES crossed with every composable mutation set is where
+	# the ten values come from, so a new species or a new multiplier moves this test with
+	# the game instead of leaving it asserting a table nobody updated.
+	var values: Array[int] = []
+	for species: StringName in Pest.SPECIES:
+		var seeds: int = int((Pest.SPECIES[species] as Dictionary)["seeds"])
+		for mult: float in [1.0, 1.5, 2.0, 3.0]:
+			var v: int = CompostMeter.husk_value_for(seeds, mult)
+			if not values.has(v):
+				values.append(v)
+	values.sort()
+
+	var err: String = _T.assert_gt(values.size(), 4,
+		"there are several reachable husk values to sort — a short list would pass the "
+			+ "ordering below without exercising it")
+	if err == "":
+		# THE FLOOR. Nothing rots faster than MIN_HUSK_LIFETIME, at any value, including
+		# values far above anything the game drops today.
+		for v: int in values + [999, 100000]:
+			err = _T.assert_gte(CompostMeter.lifetime_for(v), CompostMeter.MIN_HUSK_LIFETIME,
+				"a husk worth %d rots no faster than the %.1fs floor (got %.2fs)"
+					% [v, CompostMeter.MIN_HUSK_LIFETIME, CompostMeter.lifetime_for(v)])
+			if err != "":
+				break
+	if err == "":
+		# AND EVERYTHING AT OR ABOVE FULL_VALUE SHARES IT. This is the half the bead asked
+		# about: they are the same on purpose, not by an oversight nobody noticed.
+		var saturated: Array[int] = []
+		for v: int in values:
+			if v >= CompostMeter.FULL_VALUE:
+				saturated.append(v)
+		err = _T.assert_gt(saturated.size(), 1,
+			"more than one reachable value saturates, or 'they share the floor' is vacuous")
+		for v: int in saturated:
+			if err != "":
+				break
+			err = _T.assert_float_eq(CompostMeter.lifetime_for(v),
+				CompostMeter.MIN_HUSK_LIFETIME, 0.001,
+				("a husk worth %d gets the same %.1fs as one worth %d — DECIDED, see "
+					+ "MIN_HUSK_LIFETIME: 4.5s is a reaction time and the richest husks "
+					+ "drop at a boss death") % [v, CompostMeter.MIN_HUSK_LIFETIME,
+						CompostMeter.FULL_VALUE])
+	if err == "":
+		# AND THE CURVE STILL DOES ITS JOB WHERE IT CAN. Below the saturation point a richer
+		# husk really does rot faster -- strictly. Without this the whole thing could be
+		# "fixed" by flattening the curve entirely, which would pass every assertion above.
+		var below: Array[int] = []
+		for v: int in values:
+			if v < CompostMeter.FULL_VALUE:
+				below.append(v)
+		err = _T.assert_gt(below.size(), 1, "there are values below the floor to order")
+		for i: int in range(1, below.size()):
+			if err != "":
+				break
+			err = _T.assert_true(
+				CompostMeter.lifetime_for(below[i]) < CompostMeter.lifetime_for(below[i - 1]),
+				("a husk worth %d rots strictly faster than one worth %d (%.2fs vs %.2fs) "
+					+ "— the curve is flat only above the saturation point")
+					% [below[i], below[i - 1], CompostMeter.lifetime_for(below[i]),
+						CompostMeter.lifetime_for(below[i - 1])])
+	return err
+
+
 # =============================================================================
 # plant-tower-defense-lven — the road rule, said once.
 # =============================================================================

@@ -38,7 +38,7 @@ Three things the audit turned up that deleting the prose quietly would have buri
   `run/main_scene="uid://ce2dtga2f08e"`, which is `game/title.tscn` — changed by an entry
   four rows further down that nobody reconciled upward. Same shape for compost: a flat 10s
   husk lifetime became a ceiling five rows later, and both numbers are live today
-  (`game/compost_meter.gd:28` is `HUSK_LIFETIME` 10.0, `:34` is `MIN_HUSK_LIFETIME` 4.5). A
+  (`game/compost_meter.gd:28` is `HUSK_LIFETIME` 10.0, `:62` is `MIN_HUSK_LIFETIME` 4.5). A
   Done section long enough to contradict itself is the whole argument for pruning it.
 - **The eight devtools verbs were never really done.** Only one of the eight is asserted by
   anything. Returned to the backlog below rather than deleted, because "shipped" and "held
@@ -602,7 +602,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   the opposite of the sentence around it. That is the exact failure `citation_check`'s own
   `NOT COVERED` line names and cannot detect.
 - **The game counts every husk it lets rot and, until this cycle, nothing it never said.**
-  `CompostMeter.total_rotted` (`game/compost_meter.gd:109`) exists specifically as the
+  `CompostMeter.total_rotted` (`game/compost_meter.gd:137`) exists specifically as the
   denominator for `total_collected` — the class header argues that a husk count alone would
   call sweeping one cheap husk and letting the richest rot a 50% run — and the post-mortem
   prints "Compost swept" off it (`game/run_summary.gd:260`). So this game already had the
@@ -780,7 +780,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 
 - **The husk's rot clock saturates exactly where its drawing did, and that half is a
   mechanic.** This cycle fixed the visual saturation with pips and deliberately left
-  `CompostMeter.lifetime_for` (`game/compost_meter.gd:93`) alone, because it lerps
+  `CompostMeter.lifetime_for` (`game/compost_meter.gd:121`) alone, because it lerps
   `HUSK_LIFETIME` 10.0 → `MIN_HUSK_LIFETIME` 4.5 by the same `value_fraction` that caps
   at `FULL_VALUE = 9`. Derived from `Pest.SPECIES` × every composable mutation set: six
   of the ten reachable husk values sit at or above 9, so a 60-seed queen husk and a

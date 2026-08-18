@@ -7462,3 +7462,44 @@ status rather than rewriting the entries that recorded these as open.
   surface, the notebook's own layout test caught the capacity, and the two defects that
   would actually have shipped were caught by the TEST RUNNER reading stderr — not by any
   assertion anyone wrote.
+
+## 2026-08-18 — cycle 118: deciding the half of a question that was still open
+
+- Value: **warranted** — the confirm step reshaped the item before any code, and the third
+  assertion exists only because the first two were satisfiable by making the game worse.
+  - Expected: the bead asks whether a 60-seed husk should rot faster than a 9-seed one and
+    says the two answers want opposite code. Predicted: the decision is PARTLY recorded
+    already, since `FULL_VALUE`'s own comment argues against widening it — but that argues
+    about the KNOB, not about whether rot should distinguish above 9 by some other means.
+  - Got: exactly that. The comment reads *"widening it to 60 would silently slow the rot of
+    every husk in the game — a balance change wearing a legibility fix's clothes"*, which
+    settles the knob and leaves the design question open. So the cycle recorded the
+    DECISION with reasons the comment does not have: 4.5s is a reaction time, the richest
+    husks come from the two bosses (`Pest.SPECIES` — Nurse 39, Queen 40) and so drop at the
+    busiest moment on the board, and the failure modes are asymmetric.
+  - Found: four.
+    **(1)** the prediction, which changed what shipped — from "decide" to "decide the half
+    that is still open", without re-deriving a constraint already written down.
+    **(2) the third assertion is the load-bearing one.** "Everything above the floor shares
+    it" and "nothing rots faster than the floor" are BOTH satisfiable by flattening the
+    curve entirely — which would "fix" the inconsistency by making every husk rot at 4.5s.
+    Confirmed by mutation: `HUSK_LIFETIME = MIN_HUSK_LIFETIME` fires only the ordering
+    assertion. **A decision pinned only where it holds is not pinned.**
+    **(3)** the reachable values are DERIVED from `Pest.SPECIES` crossed with the
+    multipliers rather than pasted from the bead, and re-deriving them independently got
+    the same ten — which is what made the premise safe to build on.
+    **(4)** three of this cycle's own citations drifted, from the comment I inserted pushing
+    cited lines down.
+  - Cheaper: reading `FULL_VALUE`'s existing comment. That IS the confirm step and it
+    reshaped the item. Nothing here needed a running game.
+
+- **The drift report's new "written at" line paid for itself immediately.** Last cycle the
+  same report named a target in `game.gd` and left 20 citations to be grepped out of a
+  4000-line file. This cycle it named all three drifts AND where each was written, and the
+  fix was three edits with no searching.
+
+- Gap: **no gap this turn.** Tier (c) headless-only and the reasoning is on the row:
+  `lifetime_for`, `husk_value_for` and `value_fraction` are pure statics with no node, no
+  scene and no clock, so a launch would re-evaluate the same functions with a renderer
+  attached. Second cycle running that naming *the claim a launch would make* has correctly
+  said there is none.
