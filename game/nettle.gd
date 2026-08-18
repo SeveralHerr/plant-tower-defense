@@ -55,8 +55,12 @@ const STING_INTERVAL: float = 0.7
 ## Orange rather than Corn's green, because the sprite is orange and every reach in this game
 ## is drawn in its own plant's hue. It carries no meaning on its own — the SHAPE is the
 ## signal, per the two-channel rule at the top of the grammar file.
-const RING_COLOR := Color(1.0, 0.40, 0.0, 0.55)
-const RING_WIDTH: float = 2.0
+##
+## The alpha is deliberately NOT written here — `Plant.REACH_RING_ALPHA` is the grammar's,
+## and a second copy of it is how one plant's ring ends up brighter than the rest. The width
+## used to sit beside it as a `RING_WIDTH` of 2.0 and is now `Plant.REACH_RING_WIDTH`, which
+## was already the same 2.0 in all five plants that drew this ring.
+const RING_COLOR := Color(1.0, 0.40, 0.0, Plant.REACH_RING_ALPHA)
 
 ## The sting twitch: a fast squash on the sprite, the same shape `CornCobbler._recoil` plays
 ## and for the same reason. A sting has no projectile, so without this the ONLY board-level
@@ -430,10 +434,16 @@ func _spawn_prickle_spark(target: Pest) -> void:
 	tween.chain().tween_callback(spark.queue_free)
 
 
-## Drawn only while selected, like every other reach in the game. No super._draw() call, and
-## there must not be one — the selection brackets live in a `SelectionMarker` child precisely
-## because an override here eats them. See that class's header.
-func _draw() -> void:
-	if not _selected:
-		return
-	draw_arc(Vector2.ZERO, RANGE, 0.0, TAU, 44, RING_COLOR, RING_WIDTH, true)
+## Drawn only while selected, like every other reach in the game — that gate lives in
+## `Plant.draw_reach_ring()` now, along with the reason a ring is not always up.
+##
+## There is no `_draw()` here any more, and its absence is the point: a Nettle paints nothing
+## except its reach, so it inherits `Plant._draw()` and answers the two questions below. That
+## also retires the `super._draw()` warning this comment used to carry — there is no override
+## left to eat the `SelectionMarker` child's brackets.
+func reach_ring_radius() -> float:
+	return RANGE
+
+
+func reach_ring_color() -> Color:
+	return RING_COLOR
