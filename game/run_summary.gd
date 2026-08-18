@@ -179,6 +179,10 @@ const RISE_OFFSET_LOSS: float = 18.0
 
 var _rows: Array[Label] = []
 
+## The reach par, memoised. -1 is "not asked yet"; 0 is a real answer meaning "this
+## card cannot vouch for a par" — see reach_par(), where the two are different runs.
+var _par_cache: int = -1
+
 
 ## `stats` is Game.state() plus the end-of-run extras; see Game._end_run.
 static func build(stats: Dictionary) -> RunSummary:
@@ -330,7 +334,7 @@ func summary_rows() -> Array:
 	var rows: Array = [
 		["Waves survived", _waves_text()],
 		["Pests defeated", "%d" % int(_stats.get("pests_defeated", 0))],
-		["Time in the garden", _duration_text()],
+		["Road in reach", reach_text()],
 		["Seeds spent", spend_text()],
 		["Garden lost", beds_text()],
 		["Compost swept", _compost_text()],
@@ -494,11 +498,183 @@ func _compost_text() -> String:
 	return "%d of %d" % [swept, resolved]
 
 
-## Minutes and seconds. A bare float of seconds is a number the player has to
-## convert, and "413.7" is not a thing anyone recognises about their own run.
-func _duration_text() -> String:
-	var total: int = int(round(float(_stats.get("run_seconds", 0.0))))
-	return "%d:%02d" % [total / 60, total % 60]
+## How much of the road the garden could touch, against how little it takes to
+## touch all of it — the run's one efficiency reading (plant-tower-defense-dgu5).
+##
+## WHAT THIS ROW DISPLACED, because it had to displace something. `rows_capacity()`
+## returns 7 against the 7 rows `summary_rows()` builds and an eighth foots at 486
+## against buttons at 476, so a new subject on this card is a swap and never an
+## addition — the argument `_waves_text` and `_compost_text` both make at length.
+## The row given up is "Time in the garden", on three counts:
+##
+##   - It is the only row that reported nothing about the GARDEN. Every other row
+##     names a decision the player made (waves, seeds spent) or something the road
+##     did to them (beds, held ground, compost, pests). A duration is the length of
+##     the sitting.
+##   - `run_seconds` is the only key `Game.summary_stats()` exports that nothing
+##     else in the game reads. There is no HUD clock, no milestone keyed on it —
+##     `Milestones.TABLE` runs on victory, beds, pests, wave, threat and compost —
+##     and no test in the suite ever asserted the row it drew, where every
+##     surviving row has at least one of those three readers.
+##   - It is a GAME clock wearing a wall clock's name. `Game._process` accumulates
+##     `delta`, which `Engine.time_scale` has already scaled, and `GameSpeed` is
+##     free to set that to 2 — so the same sitting reads 12:00 at double speed and
+##     6:00 at normal, and neither matches the player's own stopwatch at both.
+##
+## WHAT "EFFICIENT" MEANS HERE, and the reading this row deliberately does NOT
+## offer. The obvious par — "you held the road with 11 plants; 5 would have reached
+## it" — is a trap, and this repo already paid for finding it: cycle 54's greedy set
+## cover found five cobs reaching all 32 road cells where the recorded seven do, and
+## it BROKE TWO TESTS, because a cob shoots only the furthest-along pest in range, so
+## a minimal cover is a weaker garden than a redundant one covering the same cells
+## (see `test_combat._whole_road_garden`'s comment, which records exactly this). A
+## par that scored the player on plant COUNT would be telling them, on the card they
+## read after losing, to build the garden that loses harder. So the count of what the
+## player planted is not in this row and cannot be inferred from it.
+##
+## What is left when the count is taken out is a statement about PLACEMENT: the road
+## can be reached in full, cheaply, so the cells this garden never reached are a
+## choice and not a limit of the map. That is actionable and it is not a
+## build-fewer-plants instruction — plant elsewhere, not plant less.
+##
+## "reach alone" is the wording carrying reach-versus-sufficiency, and it is doing
+## real work rather than hedging: it says the number is about geometry and about
+## nothing else. The row is keyed "Road in reach" against the sibling row "Where you
+## held them" on purpose — `_stop_cell_text` spends four paragraphs establishing that
+## "held" is true of a kill and false of an escape, and "reach" is true of both and
+## of neither. The two rows are the same road under two different questions, and the
+## card now names both.
+##
+## THE FRACTION IS ALSO IN `reach_note_text()`, and that is not the "one measurement
+## stated twice" `_waves_text` killed a row for. That was a row deriving another row on
+## the same card. This is a number and an argument on two surfaces: the note is a
+## sentence about a targeting rule, whose two halves — aimed cells and untouched escapes
+## — only mean anything together, and it is silent on every run that lost no bed to an
+## unfought pest. The row is the run's coverage against a benchmark, and it is drawn on
+## every run. On the runs where both appear the fraction agrees, because both read the
+## same two keys.
+##
+## THREE BRANCHES, each a different run rather than a defensive default:
+##
+##   - `road_cells <= 0`: nobody handed this card the coverage. A card built by a
+##     test, or by a `Game` that predates the wiring. Says so; it does not invent an
+##     "0 of 0". Unlike `reach_note_text`, this cannot fall silent — a row is always
+##     drawn, and an empty value Label is what `validate-ui` reports as a zero-content
+##     Control and what every width gate in the suite reads as the `clip_text` stub.
+##   - a par of 0: `reach_par()` could not vouch for its probe (see there). The
+##     fraction is still true and is still printed; only the benchmark is dropped.
+##   - both: the full reading.
+func reach_text() -> String:
+	var total: int = int(_stats.get("road_cells", 0))
+	if total <= 0:
+		return "not measured"
+	var aimed: int = clampi(int(_stats.get("road_aimed", 0)), 0, total)
+	var par: int = reach_par()
+	if par <= 0:
+		return "%d of %d" % [aimed, total]
+	return "%d of %d — reach alone takes %d cobs" % [aimed, total, par]
+
+
+## Reach in pixels for one cob, read off the catalog rather than off `CornCobbler`
+## directly, so a plant whose reach moves takes the par with it — the same reason
+## `PlantCatalog.reach` exists for the placement ring.
+##
+## Corn and not the garden's real mix, and that is a limit worth stating rather than
+## hiding: `Game.covered_road_cells()` unions each standing plant's own reach, so the
+## numerator of this row can include a Chomp's grab and a Sundew's sap while the
+## benchmark counts cobs. Corn is the only plant in the game that does damage
+## (`PlantCatalog.CORN`'s own comment), so "how few plants could reach this road" has
+## exactly one honest unit and it is this one.
+static func par_reach_px() -> float:
+	return PlantCatalog.reach(PlantCatalog.CORN)
+
+
+## How many cobs it takes to put every road cell inside one — 0 when this card
+## cannot vouch for the answer.
+##
+## THE PROBE, and the guard that makes it honest. `Board.PATH_CORNERS` is a `const`
+## and `Board._build_path()` is pure arithmetic over it, so a `Board.new()` that never
+## entered the tree traces exactly the road the run was played on — the same probe
+## `test_the_map_legend_clears_the_card_the_road_and_the_bottom_of_the_screen` builds
+## for the same reason. "Exactly" is the part that could quietly stop being true, so it
+## is checked instead of assumed: the run's own `road_cells` is already in the stats
+## Dictionary, and a probe whose road is a different size is a probe describing a
+## different map. On a disagreement this returns 0 and `reach_text()` prints the
+## fraction without a benchmark, rather than benchmarking the run against a road it
+## did not play.
+##
+## Cached per card. `summary_rows()` is called by `_build_rows()` and again by every
+## test that reads the row, and the cover is ~94 candidate cells against 32 road cells
+## on each call.
+func reach_par() -> int:
+	if _par_cache >= 0:
+		return _par_cache
+	_par_cache = 0
+	var total: int = int(_stats.get("road_cells", 0))
+	if total <= 0:
+		return _par_cache
+	var probe := Board.new()
+	if probe.road_cells().size() == total:
+		_par_cache = reach_cover(probe, par_reach_px()).size()
+	probe.free()
+	return _par_cache
+
+
+## Cells for a garden of `reach_px` plants that reaches every road cell on `probe`,
+## chosen greedily: take the cell adding the most uncovered road, repeat.
+##
+## LIFTED FROM `test_combat._cover_greedily`, which is where this was written and
+## where it could not be read by the game (plant-tower-defense-dgu5). `derive-the-list`
+## is explicit that the game owns the rule and the test asks for it, not the reverse;
+## the direction of the remaining duplication is a follow-up, and until it lands
+## `test_the_reach_par_is_a_real_cover_of_this_road` gates THIS copy against the
+## property it claims rather than against the other copy's answer.
+##
+## AN UPPER BOUND, NOT A MINIMUM, and the row's wording is chosen to survive that.
+## Greedy set cover is an approximation — it exhibits a cover of this size, it does not
+## prove none is smaller. "reach alone takes N cobs" is a claim that N suffices, which
+## is exactly what a witnessed cover licenses; "the fewest" would not be.
+##
+## Deterministic: candidates are collected in (x, y) order and the tie-break is
+## strictly-greater, so the first cell at a given gain wins and one board yields one
+## garden. That is what lets a test assert the cover instead of its size.
+static func reach_cover(probe: Board, reach_px: float) -> Array[Vector2i]:
+	var garden: Array[Vector2i] = []
+	if probe == null or reach_px <= 0.0:
+		return garden
+	var uncovered: Dictionary = {}
+	for cell: Vector2i in probe.road_cells():
+		uncovered[cell] = true
+	if uncovered.is_empty():
+		return garden
+	var reaches: Dictionary = {}
+	for x: int in range(Board.COLS):
+		for y: int in range(Board.ROWS):
+			var at := Vector2i(x, y)
+			if not probe.is_buildable(at):
+				continue
+			var hit: Array[Vector2i] = PlacementPreview.covered_road_cell_list(
+				probe, at, reach_px)
+			if not hit.is_empty():
+				reaches[at] = hit
+	while not uncovered.is_empty() and not reaches.is_empty():
+		var best := Vector2i(-1, -1)
+		var best_gain: int = 0
+		for at: Vector2i in reaches:
+			var gain: int = 0
+			for cell: Vector2i in reaches[at]:
+				if uncovered.has(cell):
+					gain += 1
+			if gain > best_gain:
+				best_gain = gain
+				best = at
+		if best_gain == 0:
+			break
+		garden.append(best)
+		for cell: Vector2i in reaches[best]:
+			uncovered.erase(cell)
+		reaches.erase(best)
+	return garden
 
 
 ## The chokepoint, named as a chokepoint.
