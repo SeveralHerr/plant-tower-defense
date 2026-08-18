@@ -7121,3 +7121,60 @@ status rather than rewriting the entries that recorded these as open.
   `--no-reach` for that reason rather than because a capture was missed. Worth noting the
   triage table earned its keep by telling me NOT to launch: cycle 110's row cost a game
   launch and twenty minutes, and this one correctly cost neither.
+
+## 2026-08-18 — cycle 111 item 2: the panel learns to say "holds 11s", and a test that had stopped looking
+
+- Value: **warranted** — runtime confirmed the one claim that decided the design, and the
+  gate caught a coverage hole the change itself had created a cycle earlier.
+  - Expected: the selection panel gains a line saying how long a resisting plant actually
+    holds, shown only on a plant that resists. What runtime can show that the headless
+    suite cannot: whether the number MOVES as the wall is chewed — that is the entire
+    argument for printing seconds rather than a "x4" multiplier, and a static test of the
+    formatter proves the format, not the behaviour.
+  - Got: `Barrier Bramble / Holds 11s against one pest.`, and it tracks —
+    `health=40.0 -> 11s`, `health=39.42 -> 11s`, `health=21.86 -> 6s` (21.86 / 3.5 = 6.2).
+    A Corn Cobbler one cell over reads `Corn Cobbler — single / 1.0 dmg / 0.80s, 1
+    kernel(s)` and no "Holds", which is the half that stops the line becoming noise.
+  - Found: three, and the first is the one worth the cycle.
+    **(1) The test that should have gated this had silently stopped covering the plant the
+    change is for.** `test_the_selection_box_stays_inside_the_side_panel_when_damaged` says
+    "Every plant kind" in its own comment and `continue`d on any placement refusal. The
+    Barrier Bramble is refused on grass, so it was skipped — and the test went on passing.
+    Worse than one plant: the same `continue` swallowed `not paid for` just as silently, so
+    the loop only ever measured whatever the starting unlocks happened to cover. It now
+    picks a legal cell per plant, treats a refusal as a FAILURE, and asserts
+    `covered == PlantCatalog.ids().size()`. **A skip that reads as a pass, in a test whose
+    comment claims exhaustiveness.**
+    **(2)** the live tracking above.
+    **(3)** a third moving-value misread, third distinct cause. `Holds 0s against one pest.`
+    three times running looked like a broken readout; the Bramble had been eaten and freed,
+    the box was `visible=false` with `selected_placed=null`, and I was reading stale text on
+    a hidden Label. The session's three causes were: a modal covering the board, a paused
+    entrance tween, and now a hidden node retaining its last text. None produced a
+    malformed reply.
+  - Cheaper: nothing for the tracking check — it needs a pest actually eating the plant over
+    time. The coverage hole was the cheaper catch and the suite surfaced it the moment the
+    loop was made strict, which is an argument for asserting a denominator, not for
+    launching.
+
+- **I broke the no-literal-newline-in-a-string rule myself, with the Edit tool, and found
+  out what does and does not catch it.** Wrapping a long assertion message put a real
+  newline inside a GDScript string literal — the cycle-97 shape, arrived at without a
+  heredoc anywhere. What reported CLEAN over it: `name_check.py` (names resolve; its own
+  NOT COVERED line says so) and **`heredoc_survey.py`**, which is the project's designated
+  countermeasure for exactly this defect. The survey sweeps **git history**, not the working
+  tree, so it structurally cannot see an uncommitted break — it is a "how often has this
+  happened" tool, not a gate, and the newly-written `tools/survey_all.py` header says as
+  much. Only `lint_project.gd` caught it (`Parse Error`, exit 1). Worth writing down
+  plainly: **the countermeasure for the rule this project keeps breaking cannot see the
+  break until after it is committed.**
+  - [G-129] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: a working-tree mode for `heredoc_survey.py` (`--worktree`, scanning
+    tracked files as they are on disk rather than diffs) would make it a pre-commit gate
+    instead of a retrospective. Not a harness gap — this is a project-owned survey — so it
+    goes in the queue rather than upstream.
+
+- Gap: **no gap in the harness this turn.** `find-nodes --class Label --where name=X
+  --property text` was the whole diagnostic for both the readout and the stale-label
+  misread, in one call each, and `step-time --then-pause` gave the health/text pairs with
+  no ambient drift. The one thing that would have shortened this: see G-129 above.

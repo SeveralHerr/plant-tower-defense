@@ -117,7 +117,14 @@ static func stops(pest_is_winged: bool) -> bool:
 ## damage that actually landed. A zero-damage call stays zero and therefore still does
 ## not reset the regrowth clock, which is the rule `Plant.take_damage` states.
 func take_damage(amount: float) -> void:
-	super.take_damage(amount * BITE_RESISTANCE)
+	super.take_damage(amount * bite_resistance())
+
+
+## The declaration the HUD and `Plant.seconds_of_chewing_left` read. `take_damage` above
+## reads it too rather than reaching for `BITE_RESISTANCE` directly, so a readout saying
+## "holds 11 seconds" and the mouth actually eating it cannot come apart.
+func bite_resistance() -> float:
+	return BITE_RESISTANCE
 
 
 ## Nothing. See the class header: the pest owns the halt, not the wall.

@@ -2302,6 +2302,12 @@ func _refresh_selection(state: Dictionary) -> void:
 					dandelion.seconds_until_armed())
 		elif chomp != null and chomp.is_busy():
 			busy = chomp_chewing_detail(int(round(chomp.chew_progress() * 100.0)))
+		elif plant.bite_resistance() < 1.0:
+			# Asked of the PLANT rather than of `plant as Bramble`, so the second tough
+			# plant needs no branch here — the same move the ladder line below makes with
+			# `plant.has_upgrades()`. A Bramble is never busy and never idle: it is a wall,
+			# and the only question about it is how long it lasts.
+			busy = resisting_detail(plant.seconds_of_chewing_left(Pest.EAT_DPS))
 		elif sundew != null:
 			# A Sundew is never busy and never idle — it is always working, and the
 			# only question is how many pests are in the patch. "Idle" was simply
@@ -2431,6 +2437,28 @@ static func idle_detail() -> String:
 	return "Idle — waiting for a pest."
 
 
+## What a plant that RESISTS says: how long the health it has now will actually last.
+##
+## This line exists because "Health 40/40" is true of a Barrier Bramble and misleading
+## about it. That readout is raw health against `Plant.MAX_HEALTH`, which is the same 40
+## every plant has, while `Bramble.bite_resistance()` quarters the bite — so a Bramble
+## and a Corn Cobbler both read 40/40 and one of them lasts four times as long. The panel
+## had no vocabulary for toughness as distinct from health, and this is it.
+##
+## SECONDS, not a multiplier. "x4 tough" is a fact about the plant kind; "holds 11s" is
+## the answer to the question the player is actually asking while looking at a wall with
+## a wave coming, and it moves as the thing is chewed, which a multiplier never would.
+##
+## A SECOND LINE was the obvious shape and is the one thing this must not be. The header
+## above `selection_line` records why: a line too wide for the 232px box does not clip, it
+## WRAPS, the label grows a row, and the VBox pushes Upgrade and Uproot past the panel's
+## foot — and `_health_text`'s own comment records a third text row pushing SelectionBox's
+## foot to exactly 648, flush with the panel edge. So this rides in the existing `detail`
+## slot that seven plants already fill with `idle_detail()`, and costs the layout nothing.
+static func resisting_detail(seconds_left: float) -> String:
+	return "Holds %ds against one pest." % int(round(seconds_left))
+
+
 ## Every second line the panel can draw, each at the widest its own data allows.
 ##
 ## Derived, never typed. Corn sweeps its ladder, so a retune moves this number; the
@@ -2453,6 +2481,13 @@ static func selection_detail_corpus() -> Array[String]:
 	out.append(chomp_chewing_detail(100))
 	out.append(sundew_detail(WaveDirector.SIMULTANEOUS_PEST_CEILING,
 		int(round(StickySundew.SLOW_FACTOR * 100.0))))
+	# Priced at the widest the FORMAT can read, not at what a Bramble actually shows.
+	# `Bramble.hold_seconds(1)` is 11s today, which is two digits; the budget has to
+	# survive a retune that makes it three, and `int(round())` on a float has no natural
+	# ceiling. 999 is the widest a sane balance can reach and is deliberately wider than
+	# the game — the same over-pricing this corpus already does by crossing every plant
+	# with every detail.
+	out.append(resisting_detail(999.0))
 	out.append(idle_detail())
 	return out
 

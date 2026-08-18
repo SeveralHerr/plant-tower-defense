@@ -666,6 +666,40 @@ static func seconds_to_be_eaten(dps: float) -> float:
 	return MAX_HEALTH / dps
 
 
+## What fraction of an incoming bite actually lands on this plant. 1.0 for every plant
+## that simply takes what it is given, which is eight of the nine.
+##
+## A method on the base class rather than a type check in the HUD, and that is the whole
+## point of it: `_refresh_health` asks every plant the same question and gets an honest
+## answer, instead of the readout carrying a list of which plants are special. The list
+## is the thing that goes stale — see `PlantCatalog.on_road`'s header for the same
+## argument about placement.
+##
+## Overriding this is NOT enough on its own to make a plant tough; `take_damage` has to
+## apply it. `Bramble` does both and its override reads this rather than the constant
+## directly, so the two cannot disagree — which is what
+## test_a_resisting_plant_takes_exactly_the_fraction_it_declares pins.
+func bite_resistance() -> float:
+	return 1.0
+
+
+## How many seconds of chewing at `dps` this plant has left, from the health it has NOW
+## and through whatever resistance it declares.
+##
+## The instance counterpart of `seconds_to_be_eaten` above, and it answers the question a
+## player actually has while looking at the panel — "will this hold?" — rather than the
+## balance question "how tough is this kind of plant". Same ignorance of `Pest`: the rate
+## is an argument, so the caller names the number it means.
+##
+## INF when nothing is eating it or when it cannot be eaten, which is the honest answer
+## rather than a division by zero.
+func seconds_of_chewing_left(dps: float) -> float:
+	var rate: float = dps * bite_resistance()
+	if rate <= 0.0:
+		return INF
+	return health / rate
+
+
 ## Whether this plant is currently putting health back on. What the bar's colour
 ## follows, and what a readout would ask.
 func is_regrowing() -> bool:

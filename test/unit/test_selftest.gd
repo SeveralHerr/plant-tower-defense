@@ -3554,16 +3554,36 @@ func test_the_selection_panel_reports_a_chewed_plants_health() -> String:
 ## plausible panel until you look for the button that is no longer there.
 func test_the_selection_box_stays_inside_the_side_panel_when_damaged() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
-	game.bank.add_seeds(300)
+	game.bank.add_seeds(3000)
+	# Unlocked, and this is the second half of the same fix as the per-plant cell below.
+	# The old `continue` swallowed "not paid for" exactly as silently as it swallowed
+	# "pests walk there", so the loop was measuring only whatever the starting unlocks
+	# happened to cover -- fewer than the eight it looked like even before the Bramble.
+	game.bank.unlocked = PlantCatalog.ids()
 	var err: String = ""
 	# Every plant kind, each at 1 hp -- the longest the panel ever gets, since that
 	# is a wrapped name line, a state line and the health line all at once.
+	#
+	# THE CELL IS CHOSEN PER PLANT, and it has to be. This loop used to ask `_grass(game)`
+	# for every id and `continue` on a refusal, which said "every plant kind" in its own
+	# comment and silently stopped covering the Barrier Bramble the day a plant that
+	# stands on the ROAD arrived (plant-tower-defense-3mhn) -- `place_plant` refuses it on
+	# grass, the `continue` swallowed it, and the test went on passing while covering
+	# eight of nine. A skip that reads as a pass is exactly the shape this suite exists to
+	# refuse, so a refusal is now a FAILURE and the count is asserted below.
+	var covered: int = 0
 	for id: StringName in PlantCatalog.ids():
 		if err != "":
 			break
-		var cell: Vector2i = _grass(game)
-		if game.place_plant(id, cell) != "":
-			continue
+		var cell: Vector2i = game.board.world_to_cell(game.board.route()[2]) \
+			if PlantCatalog.on_road(id) else _grass(game)
+		var refusal: String = game.place_plant(id, cell)
+		err = _T.assert_eq(refusal, "",
+			("%s went into the ground at %s -- a plant this loop cannot place is a plant "
+				+ "it does not check") % [String(id), cell])
+		if err != "":
+			break
+		covered += 1
 		game.selected_placed.take_damage(Plant.MAX_HEALTH - 1.0)
 		game._process(0.016)
 		await _pump(game)
@@ -3580,6 +3600,12 @@ func test_the_selection_box_stays_inside_the_side_panel_when_damaged() -> String
 			err = _T.assert_true(box_foot <= panel_foot - SELECTION_FOOT_MARGIN,
 				"%s: selection box foot %.0f keeps %dpx clear of the panel foot %.0f"
 					% [String(id), box_foot, int(SELECTION_FOOT_MARGIN), panel_foot])
+	# The denominator, and the whole reason the loop above stopped using `continue`.
+	# Without this the test can cover eight of nine and report a clean pass, which is
+	# precisely what it did between the Bramble landing and this line being written.
+	if err == "":
+		err = _T.assert_eq(covered, PlantCatalog.ids().size(),
+			"every plant in the catalogue was actually placed and measured, not skipped")
 	_T.free_ui(game)
 	return err
 
@@ -16452,6 +16478,9 @@ func test_every_selection_detail_producer_is_priced_by_the_corpus() -> String:
 		Hud.chomp_chewing_detail(100),
 		Hud.sundew_detail(WaveDirector.SIMULTANEOUS_PEST_CEILING,
 			int(round(StickySundew.SLOW_FACTOR * 100.0))),
+		# The Barrier Bramble's line (plant-tower-defense-7daf), priced at the widest the
+		# FORMAT allows rather than at what a Bramble shows today -- see the corpus.
+		Hud.resisting_detail(999.0),
 		Hud.idle_detail(),
 	]
 	for line: String in wanted:
@@ -17249,4 +17278,109 @@ func test_a_husk_on_the_road_is_swept_rather_than_planted_over() -> String:
 	return err
 
 # END plant-tower-defense-3mhn
+# =============================================================================
+
+
+# =============================================================================
+# plant-tower-defense-7daf — the panel's vocabulary for toughness.
+# =============================================================================
+
+
+func test_a_resisting_plant_takes_exactly_the_fraction_it_declares() -> String:
+	# The declaration and the code that applies it, held against each other. Either alone
+	# passes on a plant that says it resists and does not, or resists and does not say so —
+	# and the readout below is built entirely on the declaration, so a divergence would
+	# make the panel lie rather than merely look odd.
+	var wall := Bramble.new()
+	wall.setup(PlantCatalog.BRAMBLE, Vector2i(0, 0), null)
+	var ordinary := Plant.new()
+	ordinary.setup(PlantCatalog.CORN, Vector2i(0, 0), null)
+
+	var err: String = _T.assert_float_eq(ordinary.bite_resistance(), 1.0, 0.001,
+		"a plant that does not resist declares 1.0, so the readout can ask every plant")
+	if err == "":
+		err = _T.assert_float_eq(wall.bite_resistance(), Bramble.BITE_RESISTANCE, 0.001,
+			"and a Bramble declares its own constant")
+	if err == "":
+		wall.take_damage(10.0)
+		err = _T.assert_float_eq(Plant.MAX_HEALTH - wall.health,
+			10.0 * wall.bite_resistance(), 0.001,
+			"take_damage applies exactly the fraction bite_resistance() declares")
+	if err == "":
+		# The seconds the panel prints, derived rather than re-listed.
+		err = _T.assert_float_eq(ordinary.seconds_of_chewing_left(Pest.EAT_DPS),
+			Plant.MAX_HEALTH / Pest.EAT_DPS, 0.001,
+			"an ordinary plant's remaining seconds are health over the raw rate")
+	if err == "":
+		err = _T.assert_float_eq(wall.seconds_of_chewing_left(Pest.EAT_DPS),
+			wall.health / (Pest.EAT_DPS * Bramble.BITE_RESISTANCE), 0.001,
+			"and a resisting plant's go through its resistance")
+	if err == "":
+		err = _T.assert_true(is_inf(ordinary.seconds_of_chewing_left(0.0)),
+			"nothing eating it lasts forever rather than dividing by zero")
+	wall.free()
+	ordinary.free()
+	return err
+
+
+func test_only_a_plant_that_resists_gets_the_holds_line() -> String:
+	# BOTH directions. Asserting only that a Bramble shows the line would pass on a HUD
+	# that showed it for everything, which is the version that makes the panel noise.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(400)
+	game.bank.unlocked = PlantCatalog.ids()
+	var road: Vector2i = game.board.world_to_cell(game.board.route()[2])
+
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.BRAMBLE, road), "",
+		"a Bramble is in the ground")
+	if err == "":
+		game._select(game.plant_at(road))
+		game._process(0.016)
+		await _pump(game)
+		var label: Label = game.hud.get_node_or_null(
+			"Root/SidePanel/SelectionBox/SelectionLabel") as Label
+		err = _T.assert_true(label != null, "the selection label is on screen")
+		if err == "":
+			err = _T.assert_true(label.text.contains("Holds"),
+				"a Bramble's panel says how long it holds, got %s" % label.text.replace("\n", " / "))
+		if err == "":
+			err = _T.assert_false(label.text.contains("Idle"),
+				"and does not also call itself idle -- it is a wall, not a gun waiting")
+	if err == "":
+		# The other direction, on a plant standing beside it.
+		var grass: Vector2i = _grass(game)
+		err = _T.assert_eq(game.place_plant(PlantCatalog.SUNFLOWER, grass), "",
+			"and a Sunflower is in the ground")
+		if err == "":
+			game._select(game.plant_at(grass))
+			game._process(0.016)
+			await _pump(game)
+			var label2: Label = game.hud.get_node_or_null(
+				"Root/SidePanel/SelectionBox/SelectionLabel") as Label
+			err = _T.assert_false(label2.text.contains("Holds"),
+				"a plant that does not resist never shows the line, got %s"
+					% label2.text.replace("\n", " / "))
+	_T.free_ui(game)
+	return err
+
+
+func test_the_holds_line_is_priced_by_the_selection_budget() -> String:
+	# The line has to be IN the corpus, not merely correct. hud.gd's own header explains
+	# the failure this prevents: a detail line too wide for the 232px box does not clip,
+	# it WRAPS, the label grows a row, and the VBox pushes Uproot past the panel's foot.
+	# A producer nobody added to the corpus is priced at zero.
+	var corpus: Array[String] = Hud.selection_detail_corpus()
+	var wanted: String = Hud.resisting_detail(999.0)
+	var err: String = _T.assert_true(corpus.has(wanted),
+		("the widest 'Holds' line the FORMAT allows is in the corpus the budget prices; "
+			+ "corpus holds %d line(s)") % corpus.size())
+	if err == "":
+		# And it is priced at the format's ceiling rather than at today's balance --
+		# a corpus entry that tracks the live number is a budget that moves when the
+		# balance does, which is the opposite of a budget.
+		err = _T.assert_false(corpus.has(Hud.resisting_detail(Bramble.hold_seconds(1))),
+			"priced at the format's ceiling, not at what a Bramble happens to show today")
+	return err
+
+# END plant-tower-defense-7daf
 # =============================================================================
