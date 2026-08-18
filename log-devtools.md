@@ -6906,3 +6906,34 @@ status rather than rewriting the entries that recorded these as open.
   changed is that `main` now has an upstream, because this session pushed. That is a
   plausible cause and not a demonstrated one; I did not test it. Next fan-out will say.
   - [G-124] status: open | seen: 3 | harness: 0.38.0
+
+## 2026-08-18 — round 14 close: verifying a lane's fix, and finding it did not hold
+
+- Value: **warranted** — the suite was the instrument that showed a proposed fix did not
+  do what its own message claimed, which no amount of reading would have.
+  - Expected: the lane's finding was right (an assertion that cannot fail for its stated
+    reason) and its one-line fix closed it.
+  - Got: the finding confirmed **by mutation** — deleting `tween_interval(death_linger())`
+    from `_play_death` leaves the old test green, all three assertions passing. Then the
+    same mutation against the FIXED test: **still green.** The pairing catches an
+    on-the-spot `queue_free()` and nothing else, because the remaining fade tween defers
+    the free just as well.
+  - Found: that second result. A lane's fix, verified by the lane against the checker
+    rather than against the defect, closing a narrower hole than its message claimed.
+    The message now says only what the pair checks, and the residue is written down.
+  - Cheaper: nothing. Two mutations and two filtered runs, about four minutes, and the
+    alternative was shipping a comment that overstated its own assertion.
+
+- Gap: **no gap this turn.** Worth recording that the first mutation attempt produced
+  **no verdict at all** — I deleted an `else` body and left it empty, which is a parse
+  error, and `run_tests.py --filter` printed `Assertions: 0` with no `[PASS]`/`[FAIL]`
+  line rather than an error. That is the runner behaving correctly (exit 2 territory,
+  selector matched nothing runnable) but it reads at a glance like a test that passed
+  quietly. **Read the `Selected: N of M` line on any filtered run**, not just the verdict.
+
+- The pattern this round is worth naming: **a lane verifying its fix against the CHECKER
+  is not the same as verifying it against the DEFECT.** The lane ran its edit through
+  `settle_read_check` in isolation, got exit 0, and reported it verified — correctly, for
+  what it measured. The checker asks "is this read guarded"; the defect was "can this
+  assertion fail". Those are different questions and the merge is where the second one
+  gets asked.
