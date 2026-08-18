@@ -24,15 +24,15 @@ const ROWS: int = 9
 ##   - WaveDirector.SIMULTANEOUS_PEST_CEILING (40) is reasoned from "32 road
 ##     cells, 2112 px, about 3.5 pests per cell". A shorter road makes 40 more
 ##     crowded than the reasoning intends; a longer one stops it biting.
-##   - the dead-ground count (15 of 94 cells).
+##   - the dead-ground counts (11 of 94 cells for a Corn Cobbler, 36 for a Chomp).
 ##   - the Sundew's coverage arithmetic, stated against how much road one
 ##     placement reaches on THIS route.
 ##
 ## `python tools/devtools.py cmd board_info` prints the husk click budget, which
 ## is the one that is NOT at risk here — it walks the route, but the walk yields
 ## CELL/2 for any road, so the 4 px clearance is two constants. See
-## test_the_road_is_still_the_road_the_constants_were_measured_against, which
-## measures the route and fails naming what has to be re-derived.
+## test_the_road_still_has_the_length_and_cell_count_the_constants_were_measured_against,
+## which measures the route and fails naming what has to be re-derived.
 ## The road CLIMBS once, and that is deliberate (plant-tower-defense-84x0).
 ##
 ## The previous route ran right, down, left, down, right — never once travelling
@@ -759,3 +759,355 @@ func mark_unaimed_road(cells: Array[Vector2i]) -> bool:
 ## own copy instead of answering false for everything.
 func is_unaimed(cell: Vector2i) -> bool:
 	return _unaimed.has(cell)
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-tzz7 / plant-tower-defense-g8kc: dead ground, drawn
+# on the board rather than only under the cursor.
+#
+# APPENDED WHOLE. Nothing above this line is touched -- no `_ready()` hook, no
+# `_build_tiles()`, no page frame, because the parent is working in that file's
+# rendering this cycle. The marks layer is built lazily on the first
+# mark_dead_ground() call, which also means a Board nobody marks costs nothing.
+#
+# WHY THE GEOMETRY IS AN ARGUMENT AND NOT A CONSTANT HERE. The stroke belongs to
+# PlacementPreview -- it is that class's DEAD_BAR_ANGLE, PREVIEW_HALF and
+# DEAD_COLOR, and the whole point is that the board's mark and the hover bar are
+# the SAME stroke. But PlacementPreview already depends on Board, and a Board
+# that named PlacementPreview back would be a cyclic class_name reference. So the
+# caller pushes the geometry in, exactly the way mark_unaimed_road() has the
+# garden's knowledge pushed in rather than reaching for it: Board goes on knowing
+# only the ground.
+#
+# WHY Line2D AND NOT A `_draw()`. A headless run paints no frame at all, so a
+# `_draw()` here would be a cue no gate could ever see -- and this repo has
+# shipped a cue drawn 72 px out of place that every test passed. Line2D children
+# are real nodes carrying real `points`, so
+# test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two asserts where the
+# ink actually lands with no frame ever drawn. It also matches _build_page_frame,
+# which draws the page's edge the same way for the same reason.
+# =============================================================================
+
+const DEAD_GROUND_LAYER := "DeadGroundMarks"
+
+## Buildable cell -> true for every cell the dead-ground cue is currently marking.
+## Kept on the Board beside _unaimed, and for the same reason its header gives: a
+## Board that never entered the tree can be asked and will answer from its own
+## copy rather than answering "nothing is dead" because it has no layer.
+var _dead_ground: Dictionary = {}
+var _dead_ground_layer: Node2D = null
+## Reused, never re-created. A cue redrawn on every shop hover that queue_free()d
+## its marks would show up as node churn on `performance --by-type`, which is the
+## one signal an in-tree leak has; the pool tops out at the number of buildable
+## cells and every mark past the current set is hidden, not freed.
+var _dead_ground_marks: Array[Line2D] = []
+
+
+## Mark `cells` as ground the plant in question would never fire from.
+##
+## `bar_arm` is one endpoint of the stroke measured from the cell centre (the
+## other is its negation) -- PlacementPreview.dead_bar_arm(). Non-buildable cells
+## are dropped, the same filter mark_unaimed_road() applies and for the same
+## reason: the road is not ground a plant can be dead on, so a mark there is one
+## nothing can render and nothing can clear.
+##
+## Returns whether the marked SET changed. Called from Game._refresh(), which
+## fires on every seed payout, so an unchanged set must not rebuild a line pool
+## several times a second. The consequence, stated because it is a real one: a
+## caller that changes only `colour` or `width` without changing the cells gets
+## no repaint. Both are constants at the only call site; a caller that wants to
+## animate them should clear first.
+func mark_dead_ground(cells: Array[Vector2i], bar_arm: Vector2, colour: Color,
+		width: float) -> bool:
+	var next: Dictionary = {}
+	for cell: Vector2i in cells:
+		if is_buildable(cell):
+			next[cell] = true
+	if not _dead_ground_differs(next):
+		return false
+	_dead_ground = next
+	_redraw_dead_ground(bar_arm, colour, width)
+	return true
+
+
+func _dead_ground_differs(next: Dictionary) -> bool:
+	if next.size() != _dead_ground.size():
+		return true
+	for cell: Vector2i in next:
+		if not _dead_ground.has(cell):
+			return true
+	return false
+
+
+## Row-major, so the mark at index i is always the same cell for the same set --
+## no sort, and a test can pair the pool against dead_ground_marked() by index.
+func _redraw_dead_ground(bar_arm: Vector2, colour: Color, width: float) -> void:
+	var marked: Array[Vector2i] = dead_ground_marked()
+	if marked.is_empty() and _dead_ground_layer == null:
+		# Nothing marked and nothing built: do not build a layer to hold nothing.
+		return
+	var layer: Node2D = _dead_ground_marks_layer()
+	for i: int in range(marked.size()):
+		var mark: Line2D
+		if i < _dead_ground_marks.size():
+			mark = _dead_ground_marks[i]
+		else:
+			mark = Line2D.new()
+			mark.name = "DeadMark%d" % i
+			mark.joint_mode = Line2D.LINE_JOINT_ROUND
+			mark.begin_cap_mode = Line2D.LINE_CAP_ROUND
+			mark.end_cap_mode = Line2D.LINE_CAP_ROUND
+			mark.antialiased = true
+			_dead_ground_marks.append(mark)
+			layer.add_child(mark)
+		var centre: Vector2 = cell_to_world(marked[i])
+		mark.points = PackedVector2Array([centre - bar_arm, centre + bar_arm])
+		mark.width = width
+		mark.default_color = colour
+		mark.visible = true
+	for i: int in range(marked.size(), _dead_ground_marks.size()):
+		_dead_ground_marks[i].visible = false
+
+
+## Built on demand and added LAST, so the marks sit over the tiles, the page
+## frame and the lane-pressure hatch. Over the hatch is free rather than lucky:
+## the hatch only ever paints road and this only ever paints buildable ground, so
+## the two sets are disjoint by construction.
+func _dead_ground_marks_layer() -> Node2D:
+	if _dead_ground_layer != null and is_instance_valid(_dead_ground_layer):
+		return _dead_ground_layer
+	_dead_ground_layer = Node2D.new()
+	_dead_ground_layer.name = DEAD_GROUND_LAYER
+	add_child(_dead_ground_layer)
+	return _dead_ground_layer
+
+
+## The marked cells, row-major. The read-back beside is_unaimed(), same contract:
+## ask the Board, not the layer, so a Board with no layer answers from its own
+## copy instead of answering empty.
+func dead_ground_marked() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for y: int in range(ROWS):
+		for x: int in range(COLS):
+			var cell := Vector2i(x, y)
+			if _dead_ground.has(cell):
+				out.append(cell)
+	return out
+
+
+func is_dead_ground(cell: Vector2i) -> bool:
+	return _dead_ground.has(cell)
+
+
+## The marks that are actually visible right now, which is emphatically not the
+## same list as the pool: the pool only ever grows, and a shrinking set hides its
+## tail rather than freeing it. This is the list a test should assert against,
+## because it is the list a player sees.
+func dead_ground_mark_lines() -> Array[Line2D]:
+	var out: Array[Line2D] = []
+	for mark: Line2D in _dead_ground_marks:
+		if is_instance_valid(mark) and mark.visible:
+			out.append(mark)
+	return out
+
+# END plant-tower-defense-tzz7 / plant-tower-defense-g8kc
+# =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-a6rf: the road cells every gun covering them will
+# look past, marked with a bar across the lane.
+#
+# APPENDED WHOLE, same discipline as the block above and for the same reason.
+#
+# WHAT THE CUE MEANS and why it is a static property of the garden rather than a
+# live read of what each plant is shooting at right now is argued once, in
+# PlacementPreview's own a6rf block. Board goes on knowing only the ground: it is
+# handed a list of road cells and draws a bar on each.
+#
+# WHY THE ORIENTATION IS DERIVED HERE AND THE GEOMETRY IS NOT. mark_dead_ground()
+# above takes its whole stroke as a `bar_arm` vector, because that stroke belongs
+# to PlacementPreview and a Board naming PlacementPreview back would be cyclic.
+# This one takes a scalar arm instead and works out the direction itself, because
+# the direction is which way the ROAD runs -- and the road is the one thing on
+# this board that is Board's own. lane_axis() is that knowledge given a name.
+#
+# The bar is drawn ACROSS the lane. It is axis-aligned everywhere (the road only
+# ever steps orthogonally), which matters: LanePressureOverlay's hatch already
+# owns both 45-degree diagonals -- hatch_segments() mirrors its lattice for
+# off-aim cells -- and the dead-ground bar owns -PI/4 on the grass. An
+# axis-aligned bar is the only straight line left on this board that reads as
+# nothing else, and it reads as what it is: something held up in a queue.
+#
+# WHY Line2D AND NOT A `_draw()`: unchanged from the block above. A headless run
+# paints no frame, so a `_draw()` would be a cue no gate could see, and this repo
+# has shipped a mark 72 px out of place past a suite that asserted its points and
+# never where they landed.
+# =============================================================================
+
+const DEFERRED_ROAD_LAYER := "DeferredRoadMarks"
+
+## Road cell -> true for every cell the deferred cue is currently marking. Kept
+## on the Board beside _unaimed and _dead_ground, and for the reason those two
+## give: a Board that never entered the tree answers from its own copy rather
+## than answering "nothing is deferred" because it has no layer.
+var _deferred_road: Dictionary = {}
+var _deferred_road_layer: Node2D = null
+## Reused, never re-created -- see _dead_ground_marks for the argument. The pool
+## tops out at the number of road cells and every mark past the current set is
+## hidden, not freed.
+var _deferred_road_marks: Array[Line2D] = []
+
+
+## Which way a pest LEAVES `cell`, as a unit vector, or Vector2.ZERO for a cell
+## that is not road.
+##
+## The outgoing step and not the average of the incoming and outgoing ones, which
+## is the whole of the correctness here: the road turns four times, and at a
+## corner an averaged direction is diagonal. Every value this returns is
+## axis-aligned, which is the property the bar's distinctness rests on.
+##
+## The exit cell has no next, so it answers with its incoming step instead -- the
+## direction a pest leaves it by is the direction it arrived travelling.
+func lane_axis(cell: Vector2i) -> Vector2:
+	_build_path()
+	var index: int = path_index(cell)
+	if index < 0:
+		return Vector2.ZERO
+	var step: Vector2i = Vector2i.ZERO
+	if index + 1 < _path_order.size():
+		step = _path_order[index + 1] - cell
+	elif index > 0:
+		step = cell - _path_order[index - 1]
+	if step == Vector2i.ZERO:
+		return Vector2.ZERO
+	return Vector2(step).normalized()
+
+
+## The two endpoints of a bar of half-length `arm_px` drawn ACROSS `axis`,
+## centred on `centre`.
+##
+## Pure and static so the composition is assertable with no frame drawn and no
+## Board built -- the same reason LanePressureOverlay.hatch_segments() is pure.
+## _redraw_deferred_road() below calls this and nothing else does the arithmetic,
+## so a test pairing a mark's `points` against this function is checking the ink
+## that actually lands rather than a constant that happens to exist.
+##
+## A zero `axis` falls back to horizontal rather than collapsing to a
+## zero-length line, which would be a mark drawn and invisible.
+static func lane_bar_points(centre: Vector2, axis: Vector2,
+		arm_px: float) -> PackedVector2Array:
+	var along: Vector2 = axis if axis.length_squared() > 0.0 else Vector2.RIGHT
+	var across: Vector2 = along.normalized().orthogonal() * arm_px
+	return PackedVector2Array([centre - across, centre + across])
+
+
+## Mark `cells` as road that every gun covering it will look past.
+##
+## Non-road cells are dropped, the same filter mark_unaimed_road() applies and for
+## the same reason: buildable ground is not ground a pest queues on, so a mark
+## there is one nothing can render and nothing can clear.
+##
+## Returns whether the marked SET changed, and that is not decoration -- this is
+## called from Game._refresh(), which fires on every seed payout. The same
+## consequence mark_dead_ground() names applies here: a caller that changes only
+## `colour`, `arm_px` or `width` without changing the cells gets no repaint. All
+## three are constants at the only call site.
+func mark_deferred_road(cells: Array[Vector2i], arm_px: float, colour: Color,
+		width: float) -> bool:
+	var next: Dictionary = {}
+	for cell: Vector2i in cells:
+		if is_path(cell):
+			next[cell] = true
+	if not _deferred_road_differs(next):
+		return false
+	_deferred_road = next
+	_redraw_deferred_road(arm_px, colour, width)
+	return true
+
+
+func _deferred_road_differs(next: Dictionary) -> bool:
+	if next.size() != _deferred_road.size():
+		return true
+	for cell: Vector2i in next:
+		if not _deferred_road.has(cell):
+			return true
+	return false
+
+
+## In WALK ORDER, so the mark at index i is always the same cell for the same set
+## -- no sort, and a test can pair the pool against deferred_road_marked() by
+## index. Walk order rather than the dead cue's row-major because that is the
+## order the road itself is recorded in, and it is the order the cue's own
+## meaning is about.
+func _redraw_deferred_road(arm_px: float, colour: Color, width: float) -> void:
+	var marked: Array[Vector2i] = deferred_road_marked()
+	if marked.is_empty() and _deferred_road_layer == null:
+		# Nothing marked and nothing built: do not build a layer to hold nothing.
+		return
+	var layer: Node2D = _deferred_road_marks_layer()
+	for i: int in range(marked.size()):
+		var mark: Line2D
+		if i < _deferred_road_marks.size():
+			mark = _deferred_road_marks[i]
+		else:
+			mark = Line2D.new()
+			mark.name = "DeferMark%d" % i
+			mark.joint_mode = Line2D.LINE_JOINT_ROUND
+			mark.begin_cap_mode = Line2D.LINE_CAP_ROUND
+			mark.end_cap_mode = Line2D.LINE_CAP_ROUND
+			mark.antialiased = true
+			_deferred_road_marks.append(mark)
+			layer.add_child(mark)
+		mark.points = lane_bar_points(cell_to_world(marked[i]),
+			lane_axis(marked[i]), arm_px)
+		mark.width = width
+		mark.default_color = colour
+		mark.visible = true
+	for i: int in range(marked.size(), _deferred_road_marks.size()):
+		_deferred_road_marks[i].visible = false
+
+
+## Built on demand and added LAST, so the bars sit over the tiles, the page frame
+## and the lane-pressure hatch. Over the hatch matters here rather than being
+## free: the hatch paints road, and although the two sets are disjoint by
+## construction (the hatch's off-aim texture only ever lands on road no gun
+## covers, and this only ever lands on road at least one gun covers), the hatch
+## also paints the AIMED texture on any road cell that has taken pressure, and
+## that is exactly the ground this cue speaks about.
+func _deferred_road_marks_layer() -> Node2D:
+	if _deferred_road_layer != null and is_instance_valid(_deferred_road_layer):
+		return _deferred_road_layer
+	_deferred_road_layer = Node2D.new()
+	_deferred_road_layer.name = DEFERRED_ROAD_LAYER
+	add_child(_deferred_road_layer)
+	return _deferred_road_layer
+
+
+## The marked cells, in walk order. The read-back beside dead_ground_marked(),
+## same contract: ask the Board, not the layer.
+func deferred_road_marked() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for cell: Vector2i in road_cells():
+		if _deferred_road.has(cell):
+			out.append(cell)
+	return out
+
+
+func is_deferred_road(cell: Vector2i) -> bool:
+	return _deferred_road.has(cell)
+
+
+## The marks actually visible right now, which is not the same list as the pool:
+## the pool only ever grows, and a shrinking set hides its tail rather than
+## freeing it. This is the list a test should assert against, because it is the
+## list a player sees.
+func deferred_road_mark_lines() -> Array[Line2D]:
+	var out: Array[Line2D] = []
+	for mark: Line2D in _deferred_road_marks:
+		if is_instance_valid(mark) and mark.visible:
+			out.append(mark)
+	return out
+
+# END plant-tower-defense-a6rf
+# =============================================================================

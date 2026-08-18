@@ -40,9 +40,15 @@ no lock. Exit codes follow the house contract: 0 clean, 1 findings, 2 could not 
 
     fixture:   identical / block deleted from AGENTS.md (the historical failure) /
                one-line drift / CRLF on one side only / block gutted on BOTH sides
-    mutations: drop the CRLF normalisation -> the CRLF fixture must go red.
-               It did NOT the first time this was tried, because `open()` in text mode
-               was silently doing the same job and the normalisation was dead code
+    mutations: RUN THEM: `python tools/mutate.py --target mirror`. Every mutation
+               described in this docstring lives in that file's `_target_mirror()` as
+               code, against a fixture in its `_fixture_mirror()`, and the sweep
+               reports RED / SURVIVED / NOT-APPLIED as three separate outcomes. They
+               were prose here for four cycles, which meant re-deriving them by hand
+               every time and getting the escaping wrong twice.
+               The first one: drop the CRLF normalisation -> the CRLF fixture must go
+               red. It did NOT the first time this was tried, because `open()` in text
+               mode was silently doing the same job and the normalisation was dead code
                carrying a comment that claimed it mattered. That is what the mutation
                found, and it is why these two lines are kept rather than re-derived.
 
@@ -55,9 +61,21 @@ nobody could act on it without this function. Its fixture and mutation set:
                preserved / AGENTS.md heading gone (refuse, explain) / CLAUDE.md heading
                gone (refuse, do not propagate a deletion) / a block containing `---` /
                write_mirror called directly on two matching files
-    mutations: all six go red -- drop the CRLF restore, take the inter-block whitespace
-               from the source instead of the destination, remove either refusal, neuter
-               the truncation guard, skip the post-write re-read.
+    mutations: six -- drop the CRLF restore, take the inter-block whitespace from the
+               source instead of the destination, remove either refusal, neuter the
+               truncation guard, skip the post-write re-read. Five go red. THE SIXTH
+               DOES NOT, and this line said "all six" until they were made runnable:
+               the post-write re-read cannot be killed by any fixture, because
+               write_mirror splices a block that by construction contains no end marker
+               (the span ENDS at the first one) between the destination's prefix and its
+               own end marker, so read_block() over the result returns exactly that block
+               and the re-read compares equal every time. The one case that used to reach
+               it -- a `---` rule inside the block -- is now intercepted by the truncation
+               guard. Keep the guard anyway: it defends a future write bug for the cost of
+               one read. Do not invent an assertion to "kill" it; that would lock in a
+               redundancy and call it coverage. mutate.py carries it as an EXPECTED
+               survivor with that reason attached, so the sweep stays green without the
+               claim quietly rotting back into "all six".
 
 The `---` case is the one that paid. It was written expecting the post-write re-check to
 catch a bad write; instead it exposed a defect in the ORIGINAL tool that had nothing to

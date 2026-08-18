@@ -2411,16 +2411,33 @@ func test_collecting_a_real_husk_through_game_reaches_fly_seed_glyph_without_err
 ## Campaign must be bit-for-bit unaffected. Both scales key off `wave - WAVES.size()`
 ## with no endless flag involved, so this is the check that the shared shape
 ## really does leave the fixed table alone.
+##
+## HALF OF THAT IS HISTORY (plant-tower-defense-iqp8). The campaign has a second act
+## now and health is what carries it, so the claim this test can still make about
+## health is the narrower and more interesting one: the FIRST act is untouched. That
+## is what stops the ramp landing on wave 9 next to a +29.1% count step, which is the
+## two-increases-on-one-wave problem cycle 101 spent its budget removing.
+##
+## Speed IS still flat across the whole table, and that asymmetry is the design: speed
+## feeds `crossing_seconds`, hence `_paced_gap` and `peak_simultaneous_pests`, so a
+## campaign speed ramp would silently re-price every road budget in wave_director.gd.
+## Health feeds damage and nothing else. That is why health was the lever.
 func test_pest_scaling_is_exactly_neutral_through_the_fixed_table() -> String:
+	var swept: int = 0
 	for w: int in range(1, WaveDirector.WAVES.size() + 1):
-		var err: String = _T.assert_float_eq(WaveDirector.health_scale_for(w), 1.0, 0.0001,
-			"wave %d health is unscaled" % w)
-		if err == "":
-			err = _T.assert_float_eq(WaveDirector.speed_scale_for(w), 1.0, 0.0001,
-				"wave %d speed is unscaled" % w)
+		var err: String = _T.assert_float_eq(WaveDirector.speed_scale_for(w), 1.0, 0.0001,
+			"wave %d speed is unscaled" % w)
+		if err == "" and w <= WaveDirector.SECOND_ACT_START_WAVE:
+			err = _T.assert_float_eq(WaveDirector.health_scale_for(w), 1.0, 0.0001,
+				("wave %d is in the first act and its health is unscaled -- the second"
+					+ " act anchors at wave %d and climbs from wave %d")
+					% [w, WaveDirector.SECOND_ACT_START_WAVE,
+						WaveDirector.SECOND_ACT_START_WAVE + 1])
 		if err != "":
 			return err
-	return ""
+		swept += 1
+	# The old `return ""` let a zero-wave table pass in silence.
+	return _T.assert_gt(swept, 20, "the whole fixed table was swept (%d waves)" % swept)
 
 
 func test_pest_scaling_climbs_the_further_endless_mode_runs() -> String:
@@ -3115,8 +3132,13 @@ func test_the_threat_level_stays_a_small_readable_number() -> String:
 	var table: int = WaveDirector.WAVES.size()
 	var err: String = _T.assert_eq(WaveDirector.threat_level(1), 1, "wave 1 is level 1")
 	if err == "":
-		err = _T.assert_true(WaveDirector.threat_level(table) <= 10,
-			"the whole campaign fits in single digits (wave %d is level %d)"
+		err = _T.assert_true(WaveDirector.threat_level(table) <= 12,
+			("the whole campaign stays a number a player can hold (wave %d is level %d)."
+				+ " It read exactly 10 before plant-tower-defense-iqp8 gave the back half"
+				+ " a second act, and 11 after -- so the old bound of 10 was sitting"
+				+ " precisely on the finale and ANY campaign escalation failed it. 11 is"
+				+ " one below Hud.THREAT_TINT_MAX, so the finale tints at 0.9 of the way"
+				+ " to THREAT_HOT rather than 0.8")
 				% [table, WaveDirector.threat_level(table)])
 	if err == "":
 		err = _T.assert_true(WaveDirector.threat_level(table + 100) <= 30,
@@ -6918,7 +6940,7 @@ func test_the_notebook_subheading_stays_narrower_than_the_paper() -> String:
 #       40 more crowded than the reasoning intends; a longer one makes the cap
 #       bite when it was not meant to. The constant does not change. Its
 #       justification does — silently, because nothing re-runs the derivation.
-#     - the dead-ground count (15 of 94 cells).
+#     - the dead-ground counts (11 of 94 cells for a Corn Cobbler, 36 for a Chomp).
 #     - the Sundew's coverage arithmetic: stated against how much road a
 #       single placement reaches on this route.
 #
@@ -6946,7 +6968,49 @@ func test_the_notebook_subheading_stays_narrower_than_the_paper() -> String:
 ## The measurements every calibration above was taken against. If this fails,
 ## do not fix the number here — re-derive the three road-dependent constants
 ## the message names, then update these.
-func test_the_road_is_still_the_road_the_constants_were_measured_against() -> String:
+##
+## WHAT THIS GUARDS, EXACTLY, AND WHY THE NAME NOW SAYS SO (plant-tower-defense-kndl).
+## Two scalars and no more: the road is 32 CELLS long and 2112 PX of walking.
+## That is the whole assertion. It was previously called
+## `test_the_road_is_still_the_road_the_constants_were_measured_against`, which
+## reads as "the road has not changed" — a much larger claim than the body makes,
+## and a reader who trusted the name would conclude the route is untouched.
+##
+## The difference is not academic; it is the thing that made cycle 53's reshape
+## cheap. `Board.PATH_CORNERS` was rewritten from a route that never travelled
+## -Y into one that climbs (plant-tower-defense-84x0), the shape changed
+## COMPLETELY, and this test correctly stayed silent — because the reshape was
+## built to hold exactly these two numbers: 31 steps over 32 cells, 1984 px plus
+## two 64 px brackets = 2112 px. See `board.gd`'s own comment on PATH_CORNERS,
+## which states the same split: "Re-derive nothing that depends only on length or
+## cell count; DO re-check anything that depends on the road's SHAPE."
+##
+## SO THIS TEST IS NOT THE ALARM FOR SHAPE. Every one of these guards a fact
+## about WHERE the road runs, every one of them WILL move under a reshape that
+## this test passes through in silence, and each has to be re-derived by hand:
+##
+##   dead ground        `test_the_real_route_strands_exactly_the_cells_it_was_measured_to_strand`
+##                      (test/unit/test_placement.gd). Cycle 53 moved Corn from
+##                      15 stranded cells to 11 and Chomp from 34 to 36 — in
+##                      OPPOSITE directions, over an identical length and count.
+##   the split cell     `test_a_cell_can_be_dead_ground_for_a_chomp_and_good_ground_for_a_corn`
+##                      (test/unit/test_placement.gd). The cell that splits the
+##                      two reaches moved from (2, 3) to (1, 3): the new climb put
+##                      road at (2, 4), inside a Chomp's grab radius, so the old
+##                      square stopped splitting anything at all.
+##   garden coverage    `test_the_recorded_gardens_still_have_the_property_they_claim`
+##                      (test/unit/test_combat.gd). The two recorded cob gardens
+##                      are cell lists; a reshape can turn a garden cell into road
+##                      and every downstream ratio goes on reporting a number.
+##   Sundew coverage    `test_the_preview_warns_about_ground_an_existing_patch_already_covers`
+##                      (test/unit/test_placement.gd), which pins (2, 0) covering
+##                      every road cell (2, 2) would reach — a fact about this
+##                      route's geometry and nothing else.
+##
+## And one that reads the road and is guarded here by NEGATION, because provenance
+## is not consequence: `test_the_husk_margin_reads_the_road_but_does_not_depend_on_it`
+## below, whose walk yields CELL/2 for any road at all.
+func test_the_road_still_has_the_length_and_cell_count_the_constants_were_measured_against() -> String:
 	var board := Board.new()
 	await _T.instantiate_scene(board)
 
@@ -6969,7 +7033,9 @@ func test_the_road_is_still_the_road_the_constants_were_measured_against() -> St
 	var whose_problem := "\n  Re-derive before touching this test:" \
 		+ "\n    - WaveDirector.SIMULTANEOUS_PEST_CEILING (40) — reasoned from" \
 		+ " %d cells / %.0f px as 3.5 pests per cell of road" % [cells, length] \
-		+ "\n    - the dead-ground count (15 of 94 cells)" \
+		+ "\n    - the dead-ground counts (11 of 94 cells for a Corn Cobbler, 36" \
+		+ " for a Chomp Flower) — see" \
+		+ " test_the_real_route_strands_exactly_the_cells_it_was_measured_to_strand" \
 		+ "\n    - the Sundew's coverage arithmetic" \
 		+ "\n  NOT affected: PlacementPreview.husk_click_margin(). It walks the" \
 		+ " route, but the walk yields CELL/2 for any road — see" \
@@ -7458,6 +7524,26 @@ func test_the_reach_corpus_blanker_drops_string_bodies_and_keeps_code() -> Strin
 ## rather than a feature. The three exit codes are pinned for the same reason --
 ## a checker that stopped returning 2 on a missing input would report "clean"
 ## over nothing at all, which is the failure this repo watches for above all.
+##
+## AND THE `contains` LOOP BELOW IS A FLOOR, NOT THE CHECK (plant-tower-defense-qewq).
+## Three of the four needles are satisfied by text that is not the thing they name:
+## `return 2` occurs NINE times in that file, and BOTH occurrences of
+## `suite-reach-check: ok` are help text -- the parser is
+## `WAIVER_RE = re.compile(r"suite-reach-check:\s*ok\b")`, which does not contain the
+## literal at all. Delete the waiver outright and this loop stays green. That is the
+## cycle-91 shape exactly: presence asserted where absence, or behaviour, was wanted.
+##
+## So the loop keeps its job -- a needle that vanishes ENTIRELY is still worth
+## catching cheaply -- and the assertions after it ask the questions it cannot:
+## the marker has to be PRINTED rather than merely written down, and the waiver has
+## to have a parser and a call site rather than only an advertisement.
+##
+## The behavioural half lives where it can actually run:
+## `python tools/mutate.py --target contract` drives the checker's own `main()` at a
+## rootless directory and asserts the documented waiver comment comes back waived.
+## Its fourth mutation deletes ONE of the two help-text mentions and is registered
+## `expect=SURVIVED` with the reason -- this loop's blind spot, executed rather than
+## described. If you change a needle here, run that sweep.
 func test_the_suite_reach_checker_still_declares_its_house_contract() -> String:
 	var src: String = FileAccess.get_file_as_string(SUITE_REACH_CHECKER)
 	var err: String = _T.assert_gt(src.length(), 0,
@@ -7465,6 +7551,7 @@ func test_the_suite_reach_checker_still_declares_its_house_contract() -> String:
 		+ " vacuous against an empty string")
 	if err != "":
 		return err
+	var checked: int = 0
 	for needle: Array in [
 		["NOT COVERED:", "the line that says what the tool structurally cannot see"],
 		["return 2", "the could-not-run exit code"],
@@ -7475,7 +7562,34 @@ func test_the_suite_reach_checker_still_declares_its_house_contract() -> String:
 			"the checker still carries %s (`%s`)" % [str(needle[1]), str(needle[0])])
 		if err != "":
 			return err
-	return ""
+		checked += 1
+	err = _T.assert_eq(checked, 4,
+		"all four contract needles were reached -- an empty needle table would make"
+			+ " the loop above a pass over nothing")
+	if err != "":
+		return err
+
+	# PRINTED, not merely present. `contains` cannot tell the marker from a line of
+	# prose ABOUT the marker, and prose is what a tidy-up leaves behind. The marker
+	# has to sit inside a print() call on its own line.
+	var at: int = src.find("NOT COVERED:")
+	var line_start: int = src.rfind("\n", at) + 1
+	err = _T.assert_true(src.substr(line_start, at - line_start).contains("print("),
+		"the NOT COVERED marker is inside a print() call and not sitting in a comment"
+			+ " or a docstring -- a contract line nobody prints is prose")
+	if err != "":
+		return err
+
+	# The waiver's PARSER and its CALL SITE, because the needle above finds neither.
+	# Both help lines could survive word for word with the waiver deleted.
+	err = _T.assert_true(src.contains("WAIVER_RE = re.compile("),
+		"the waiver has a parser and not only an advertisement -- the two help lines"
+			+ " the needle above matches are documentation, not the implementation")
+	if err == "":
+		err = _T.assert_true(src.contains("WAIVER_RE.search("),
+			"and the parser is consulted somewhere, so a waived declaration is"
+				+ " actually waived rather than merely documented as waivable")
+	return err
 
 
 # -- StickySundew's wash-order counter resets, not just climbs forever
@@ -10854,7 +10968,8 @@ func test_the_prep_note_says_what_the_next_wave_is_worth() -> String:
 	if err == "":
 		err = _T.assert_eq(
 			Hud.next_wave_note(10, 24, false, WaveDirector.WEATHER_RAIN),
-			"Wave 10 next — 24 pests · rain.", "and the weather rides with it")
+			"Wave 10 next — 24 pests · rain · beds mend %d%%." % _rain_mend_percent(),
+			"and the weather rides with it")
 	if err == "":
 		# Past the fixed table pests_in_wave() returns 0 because the schedule does
 		# not exist yet. "0 pests" would be a confident lie about the hardest waves
@@ -10924,7 +11039,8 @@ func test_the_prep_note_yields_to_a_message_and_comes_back() -> String:
 		hud._message_left = 0.0
 		hud._advance_message_queue()
 		hud._refresh_prep_note(prep)
-		err = _T.assert_eq(label.text, "Wave 5 next — 16 pests · rain.",
+		err = _T.assert_eq(label.text,
+			"Wave 5 next — 16 pests · rain · beds mend %d%%." % _rain_mend_percent(),
 			"the note is on the row during the prep gap")
 	if err == "":
 		hud.show_message("Composted a husk for 6 seeds.", 3.0)
@@ -10938,7 +11054,8 @@ func test_the_prep_note_yields_to_a_message_and_comes_back() -> String:
 		# The path refresh() cannot cover: the message expiring on its own.
 		hud._message_left = 0.0
 		hud._advance_message_queue()
-		err = _T.assert_eq(label.text, "Wave 5 next — 16 pests · rain.",
+		err = _T.assert_eq(label.text,
+			"Wave 5 next — 16 pests · rain · beds mend %d%%." % _rain_mend_percent(),
 			"when the message drains, the note comes back rather than the row "
 				+ "going blank")
 	if err == "":
@@ -12235,8 +12352,15 @@ func test_the_sting_reaches_a_voice_carrying_its_own_numbers() -> String:
 		float(Sfx.VOLUME_DB.get(Sfx.NETTLE_STING, 0.0)), 0.0001,
 		"the voice took the sting's volume off the table")
 	if err == "":
+		# A BAND, not a point, since plant-tower-defense-r8zc: the sting is one of the
+		# cues that wobbles, so its pitch is the table's centre plus a per-play offset
+		# inside Sfx.JITTER's half-width. The claim this line makes is unchanged -- the
+		# voice took the STING's numbers and not the previous event's -- and the band
+		# is still nowhere near any other cue's, which
+		# test_two_events_on_one_file_never_overlap_once_they_wobble pins separately.
 		err = _T.assert_float_eq(voice.pitch_scale,
-			float(Sfx.PITCH.get(Sfx.NETTLE_STING, 1.0)), 0.0001,
+			float(Sfx.PITCH.get(Sfx.NETTLE_STING, 1.0)),
+			float(Sfx.JITTER.get(Sfx.NETTLE_STING, 0.0)) + 0.0001,
 			"and its pitch, rather than keeping the last event's")
 	if err == "":
 		err = _T.assert_true(not is_equal_approx(voice.volume_db, corn_db)
@@ -13424,9 +13548,26 @@ func test_the_cheapest_upgrade_skips_a_plant_with_no_rung_left() -> String:
 ## a missing check are different bugs and only the boundary separates them.
 func test_the_upgrade_tip_waits_until_the_player_can_afford_it_and_fires_once() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+
+	# ESTABLISHED, NOT ASSERTED, and that is the fix rather than the shortcut it looks
+	# like. This line used to read `assert_false(has_milestone(...))` captioned "the
+	# suite's scratch save starts without this hint spent" -- but RunConfig is an
+	# autoload and there is no scratch save: it had loaded the developer's real
+	# `user://highscore.save`. So the assertion was not checking the game, it was
+	# checking whether whoever ran the suite had ever seen this hint while playing.
+	# Cycle 110 drove the live game for an unrelated measurement, spent the hint, and
+	# this test went red on a machine where nothing about the tip had changed.
+	#
+	# A milestone is one-shot and PERSISTENT by design, so any test about first-time
+	# behaviour has to set the state it needs instead of hoping to inherit it. The
+	# erase below is that setup, and it is the same call the busy-row case further down
+	# already makes for the same reason.
+	RunConfig.earned_milestones.erase(RunConfig.HINT_UPGRADE_EXISTS)
 	var err: String = _T.assert_false(
 		RunConfig.has_milestone(RunConfig.HINT_UPGRADE_EXISTS),
-		"the suite's scratch save starts without this hint spent")
+		("the hint reads unspent once cleared -- guards the erase against "
+			+ "earned_milestones changing shape, which would otherwise make every "
+			+ "assertion below vacuously true"))
 
 	if err == "":
 		game.bank.seeds = 500
@@ -13752,10 +13893,22 @@ func test_the_run_summary_says_where_the_seeds_went_without_grading_it() -> Stri
 ## project runs, so a refresh is an ordinary thing to do — and this file's recorded sha has
 ## already drifted from its manifest once. The failure mode is the bad one: everything
 ## keeps building and deploying, and the only symptom is players landing on the board.
+## READ FROM THE CODE, NOT FROM THE FILE (plant-tower-defense-qewq). `--devtools-force`
+## appears TWICE in dev_tools.gd and one of them is the comment on the line above the
+## gate. A version of this test that greps the raw file would pass with the flag deleted
+## from the condition and the comment left behind, which is the cycle-91 shape: a token
+## kept alive by an occurrence that does nothing. `_code_only` truncates `#` comments,
+## so both needles below are asserted against live code.
 func test_the_devtools_bridge_stays_out_of_a_players_build() -> String:
 	var path := "res://addons/godot_selftest/dev_tools.gd"
-	var src: String = FileAccess.get_file_as_string(path)
-	var err: String = _T.assert_gt(src.length(), 0, "dev_tools.gd is readable at %s" % path)
+	var raw: String = FileAccess.get_file_as_string(path)
+	var err: String = _T.assert_gt(raw.length(), 0, "dev_tools.gd is readable at %s" % path)
+	if err != "":
+		return err
+	var src: String = _code_only(raw)
+	err = _T.assert_gt(src.strip_edges().length(), 0,
+		"and it is not all comments -- an all-blank code half would make both needles"
+			+ " below fail for the wrong reason")
 	if err == "":
 		err = _T.assert_true(src.contains("OS.has_feature(\"template\")"),
 			("the passive gate still tests OS.has_feature(\"template\"). If this went red "
@@ -13766,8 +13919,9 @@ func test_the_devtools_bridge_stays_out_of_a_players_build() -> String:
 		# The opt-back-in half. Without it the patch is a wall rather than a gate, and
 		# driving a real export from the bridge becomes impossible instead of explicit.
 		err = _T.assert_true(src.contains("--devtools-force"),
-			"and the --devtools-force escape hatch survives, so a template build can still "
-				+ "be driven deliberately")
+			"and the --devtools-force escape hatch survives IN THE CONDITION and not only "
+				+ "in the comment beside it, so a template build can still be driven "
+				+ "deliberately")
 	return err
 
 
@@ -14556,3 +14710,1606 @@ func test_the_title_button_column_reports_the_column_that_is_drawn() -> String:
 						% [slot, span.x, span.y, column.x, column.y])
 	_T.free_ui(title)
 	return err
+
+
+# --- BEGIN plant-tower-defense-nj7w / -wy2v: the project's own devtools verbs ---
+#
+# These reach res://devtools_ext/commands.gd WITHOUT a running game, which is the
+# only reason they can live here at all. Every handler below refuses on the
+# caller's own arguments BEFORE it looks for a Game, so the refusal path runs with
+# `_dev` left null and never touches a tree. Anything past that point (the plant
+# actually landing, the pest actually spawning) is a live-bridge question and stays
+# one -- see the /verify Phase 4 list.
+#
+# DEVTOOLS_EXT is NOT redeclared here: this suite already declares it near the top
+# (the devtools-bridge tests use it). The lane that appended this block did declare
+# its own copy, git merged the two blocks cleanly, and GDScript refused the file
+# outright -- "Constant DEVTOOLS_EXT has the same name as a previously declared
+# constant", which took the whole suite from 746 discovered tests to 375. Two lanes
+# adding the same const to one file is a collision no parallel-safe gate can see.
+
+## The project verbs whose entire effect IS an argument, and the keys they need.
+## Cross-checked below against the register_command() calls in the file itself, so a
+## verb added later fails this test until somebody has classified it as one of these
+## or as deliberately defaulted.
+const POSITIONAL_VERBS := {
+	"place_plant": ["x", "y"],
+	"upgrade_plant": ["x", "y"],
+	"collect_husk": ["x", "y"],
+}
+
+## The rest: verbs that read no arguments, or whose defaults are the value a person
+## means by leaving the key out. The reasoning for each is written next to _require()
+## in commands.gd; this list only has to stay complete.
+const DEFAULTED_VERBS := [
+	"game_state", "spawn_pest", "add_seeds", "start_wave", "buy_packet",
+	"board_info", "compost_state", "budgets", "project_identity",
+]
+
+
+## Every name passed to _dev.register_command() in commands.gd, read out of the
+## source. Derived rather than transcribed on purpose: a hand-typed verb list is a
+## list that silently stops being the set of verbs the moment one is added.
+func _registered_project_verbs() -> PackedStringArray:
+	var out: PackedStringArray = PackedStringArray()
+	var file: FileAccess = FileAccess.open(DEVTOOLS_EXT, FileAccess.READ)
+	if file == null:
+		return out
+	for line: String in file.get_as_text().split("\n"):
+		var trimmed: String = line.strip_edges()
+		if not trimmed.begins_with("_dev.register_command(\""):
+			continue
+		var rest: String = trimmed.substr(trimmed.find("\"") + 1)
+		var close: int = rest.find("\"")
+		if close > 0:
+			out.append(rest.substr(0, close))
+	file.close()
+	return out
+
+
+## A positional verb with no position is not a call anyone meant.
+##
+## plant-tower-defense-nj7w, from [G-069]. The bus ignores a key a handler does not
+## read -- correct for an optional key, wrong for `place_plant`, which would take
+## `int(args.get("x", 0))` and plant, successfully, at cell (0, 0). The mistake then
+## surfaces several verbs downstream as a game that will not behave.
+##
+## Asserted in both directions: every classified verb is one the file registers, and
+## every verb the file registers is classified -- so this fails on a NEW verb rather
+## than quietly covering the three that happened to be here when it was written.
+func test_every_positional_devtools_verb_refuses_a_call_with_no_position() -> String:
+	var registered: PackedStringArray = _registered_project_verbs()
+	var err: String = _T.assert_gt(registered.size(), 0,
+		"the register_command() calls in %s are readable -- an empty list passes everything below"
+			% DEVTOOLS_EXT)
+	if err != "":
+		return err
+	for verb: String in registered:
+		if err != "":
+			break
+		err = _T.assert_true(POSITIONAL_VERBS.has(verb) or DEFAULTED_VERBS.has(verb),
+			("commands.gd registers '%s' and this test does not classify it. Decide which it "
+				+ "is: a verb whose effect IS an argument goes in POSITIONAL_VERBS and gets a "
+				+ "_require() guard, one with a deliberate default goes in DEFAULTED_VERBS and "
+				+ "gets its reason written next to _require()") % verb)
+	if err == "":
+		err = _T.assert_eq(registered.size(), POSITIONAL_VERBS.size() + DEFAULTED_VERBS.size(),
+			("this test classifies %d verbs but commands.gd registers %d -- a classified verb "
+				+ "that no longer exists is a guard nobody is checking")
+				% [POSITIONAL_VERBS.size() + DEFAULTED_VERBS.size(), registered.size()])
+	if err != "":
+		return err
+
+	# No tree, no Game, `_dev` left null: the guard runs before any of that is
+	# touched, and the fact that this works at all is what makes it testable here.
+	var ext: RefCounted = load(DEVTOOLS_EXT).new()
+	for verb: String in POSITIONAL_VERBS.keys():
+		if err != "":
+			break
+		# Built into a variable rather than concatenated in the call: name_check reads
+		# a literal first argument to call() as a method name and reports the prefix
+		# as unresolved.
+		var handler: String = "_cmd_%s" % verb
+		var reply: Variant = ext.call(handler, {})
+		err = _T.assert_true(reply is Dictionary,
+			"_cmd_%s({}) answered a Dictionary rather than dying inside its own reply" % verb)
+		if err != "":
+			break
+		var body: Dictionary = reply as Dictionary
+		err = _T.assert_false(bool(body.get("success", true)),
+			"%s with no arguments is refused rather than acted on with defaults" % verb)
+		if err != "":
+			break
+		var message: String = str(body.get("message", ""))
+		# The empty-message case is the one that cost the time in cycle 101: a reply
+		# that says only `success: false` reads exactly like the game refusing.
+		err = _T.assert_gt(message.length(), 0,
+			"%s's refusal says something -- an empty message is indistinguishable from a "
+				% verb + "game-level refusal")
+		for key: String in POSITIONAL_VERBS[verb]:
+			if err != "":
+				break
+			err = _T.assert_true(message.contains(key),
+				("%s's refusal names the key it wanted ('%s'); it said: %s")
+					% [verb, key, message])
+		if err == "":
+			err = _T.assert_true(message.contains(verb),
+				"%s's refusal names the verb, so it is readable out of a log: %s" % [verb, message])
+	if err == "":
+		# The other direction, or the whole thing passes by refusing everything: a
+		# complete call is NOT refused. Asserted on the guard itself, because acting
+		# on a complete call needs a Game and this suite has none.
+		err = _T.assert_eq(
+			str(ext._require({"x": 2, "y": 3}, PackedStringArray(["x", "y"]), "place_plant", "z")),
+			"", "a call carrying every required key is not refused")
+	return err
+
+
+## A handler must not die inside its own reply.
+##
+## plant-tower-defense-wy2v. `mutations` used to be `args.get("mutations", []) as
+## Array`, and the arguments arrive as parsed JSON -- so `mutations: "winged"`, one
+## letter from the singular key beside it, cast to null and the `for` over it was a
+## runtime error INSIDE the handler. The bus renders that as `success: false` with an
+## empty message, which reads exactly like the game refusing the spawn; that
+## mis-reading is what cycle 101 lost its time to on `upgrade_plant`.
+##
+## What this asserts is the narrow, checkable half: the handler ANSWERS. A reply that
+## comes back at all, saying which key was wrong, is the whole difference between the
+## two outcomes. Reached with no Game because spawn_pest validates its arguments
+## before it looks for one.
+func test_spawn_pest_answers_a_bad_mutations_argument_instead_of_dying_in_its_reply() -> String:
+	var ext: RefCounted = load(DEVTOOLS_EXT).new()
+	# A String, a Dictionary and a number: three JSON shapes that `as Array` turns
+	# into null, and the first of them ("winged") is the plausible typo -- the
+	# singular key beside it takes exactly that value.
+	var wrong_shapes: Array = ["winged", {"winged": true}, 3]
+	var err: String = _T.assert_gt(wrong_shapes.size(), 0,
+		"there are wrong shapes to try -- an empty list passes this test for free")
+	for shape: Variant in wrong_shapes:
+		if err != "":
+			break
+		var asked: Variant = ext._wanted_mutations("", shape)
+		err = _T.assert_true(asked is Dictionary,
+			("_wanted_mutations answered for mutations=%s rather than dying. A null here is "
+				+ "the handler dying while building its reply, which the bus renders as "
+				+ "success:false with an empty message") % [shape])
+		if err != "":
+			break
+		var body: Dictionary = asked as Dictionary
+		var refusal: String = str(body.get("refusal", ""))
+		err = _T.assert_gt(refusal.length(), 0,
+			"mutations=%s is refused rather than quietly treated as no mutations at all"
+				% [shape])
+		if err == "":
+			err = _T.assert_true(refusal.contains("mutations"),
+				"and the refusal names the key it objected to; it said: %s" % refusal)
+	if err == "":
+		# The other direction, without which the above passes by refusing everything.
+		var good: Dictionary = ext._wanted_mutations("", ["winged", "hungry"])
+		err = _T.assert_eq(str(good["refusal"]), "", "a well-formed array is not refused")
+		if err == "":
+			err = _T.assert_eq((good["mutations"] as Array).size(), 2,
+				"and both names survive the parse")
+	if err == "":
+		# The singular shorthand, which is what every existing script sends.
+		var single: Dictionary = ext._wanted_mutations("winged", [])
+		err = _T.assert_eq(str(single["refusal"]), "",
+			"`mutation` with no `mutations` at all is still a well-formed call")
+		if err == "":
+			err = _T.assert_eq((single["mutations"] as Array).size(), 1,
+				"and it yields the one mutation asked for")
+	return err
+
+# --- END plant-tower-defense-nj7w / -wy2v ---
+
+
+# -- BEGIN plant-tower-defense-iljz --------------------------------------------
+#
+# Two guards in game.gd lost `and _uproot_left > 0.0` this cycle -- arm_uproot's
+# already-armed branch and uproot_armed() -- for the reason _update_preview lost the
+# same half before them: the second condition could not disagree with the first, and a
+# condition that cannot disagree is dead code with a confident comment on it. The
+# acceptance for that bead is that anything removed leaves its invariant as a test.
+#
+# The runtime half already exists: test_placement.gd's
+# test_the_uproot_window_leaves_nothing_armed_behind_it drives both exit paths and
+# asserts the reference AND the clock are clear after each. What it cannot say is
+# that a FUTURE writer will keep them together -- it asserts the state after the two
+# paths that exist today, and the guards were removed on the strength of a claim about
+# every path there will ever be. That claim is structural, so this is a source check.
+#
+# Absence-shaped on purpose (plant-tower-defense-qewq is the other half of this
+# cycle): it does not assert that the three known writers are present -- which a
+# fourth, broken one would satisfy -- it asserts that NO function writes one of the
+# pair without the other going with it.
+
+
+## The invariant the two removed guards rest on: an open uproot window is exactly a
+## non-null `_uproot_armed`, because the reference and the clock are always written
+## TOGETHER -- `_uproot_armed = X` and `_uproot_left = Y` on adjacent lines of code,
+## in both of the two functions that set either.
+##
+## Adjacency and not "somewhere in the same function", which was this check's first
+## draft and was too weak to matter. `arm_uproot` both opens a window AND calls
+## `_disarm_uproot()` in its already-armed branch, so a per-function rule with a
+## `_disarm_uproot()` escape hatch forgave deleting `_uproot_armed = selected_placed`
+## from it -- the exact regression the two simplified guards would let through.
+## Adjacency kills that, and kills a new function that starts the clock on its own.
+##
+## The decrement in `_tick_uproot_confirm` is not an assignment and is deliberately
+## outside the rule: it narrows a window that is already open and hands the close-out
+## to `_disarm_uproot()`, which writes both.
+func test_the_uproot_clock_is_never_written_without_the_arming() -> String:
+	var src: String = _code_only(FileAccess.get_file_as_string("res://game/game.gd"))
+	var err: String = _T.assert_gt(src.length(), 0,
+		"game.gd is readable -- every check below is vacuous against an empty string")
+	if err != "":
+		return err
+
+	# A fresh Game is not armed AND has no clock running. Asserted separately because
+	# the declarations sit outside the pairing rule below -- a default of 4.0 there
+	# would pass the whole sweep.
+	err = _T.assert_true(src.contains("var _uproot_left: float = 0.0"),
+		"the clock starts at zero, so a Game that has never armed anything is not"
+			+ " holding an open window")
+	if err == "":
+		err = _T.assert_true(src.contains("var _uproot_armed: Plant = null"),
+			"and nothing starts armed")
+	if err != "":
+		return err
+
+	# `=` and not `==`: `_uproot_armed == selected_placed` is a read, and counting it
+	# as a write would let the guard that only compares them satisfy the rule. The
+	# clock's plain-assignment form is separate from its `-=` form for the reason in
+	# the header.
+	var clock_set := RegEx.create_from_string("_uproot_left\\s*=[^=]")
+	var clock_any := RegEx.create_from_string("_uproot_left\\s*[-+]?=[^=]")
+	var arm_set := RegEx.create_from_string("_uproot_armed\\s*=[^=]")
+
+	# Blank lines dropped, so a comment between the pair -- `_code_only` leaves an
+	# empty line where one was -- does not read as the two coming apart.
+	var code: PackedStringArray = PackedStringArray()
+	for line: String in src.split("\n"):
+		if line.strip_edges() != "":
+			code.append(line)
+
+	var writes: int = 0
+	var orphans: PackedStringArray = PackedStringArray()
+	for i: int in range(code.size()):
+		var line: String = code[i]
+		if clock_any.search(line) != null or arm_set.search(line) != null:
+			writes += 1
+		if line.begins_with("var "):
+			continue
+		var near: PackedStringArray = code.slice(maxi(0, i - 1), i + 2)
+		var has_arm: bool = false
+		var has_clock: bool = false
+		for n: String in near:
+			has_arm = has_arm or arm_set.search(n) != null
+			has_clock = has_clock or clock_set.search(n) != null
+		if clock_set.search(line) != null and not has_arm:
+			orphans.append("the clock is set with no arming beside it: " + line.strip_edges())
+		if arm_set.search(line) != null and not has_clock:
+			orphans.append("the arming is set with no clock beside it: " + line.strip_edges())
+
+	# The denominator, and the reason this cannot report clean over nothing. Five
+	# writing lines today: two in arm_uproot, two in _disarm_uproot, the decrement in
+	# _tick_uproot_confirm. A rename that hid all of them from the matchers would
+	# otherwise read as a spotless sweep.
+	err = _T.assert_gte(writes, 5,
+		("only %d line(s) in game.gd write `_uproot_left` or `_uproot_armed`; five did"
+			% writes)
+			+ " when this was written. If the matchers stopped seeing them, the sweep"
+			+ " below checked nothing, which is not the same as finding nothing")
+	if err != "":
+		return err
+	err = _T.assert_eq(orphans.size(), 0,
+		("game.gd writes the uproot pair apart: %s." % "; ".join(orphans))
+			+ " That breaks the invariant arm_uproot() and uproot_armed() were"
+			+ " simplified against (plant-tower-defense-iljz): an open window is"
+			+ " exactly a non-null `_uproot_armed`, which holds only while the"
+			+ " reference and the clock move together. Either write the two back"
+			+ " onto adjacent lines, or put `and _uproot_left > 0.0` back into both"
+			+ " guards and delete this test.")
+	return err
+
+# -- END plant-tower-defense-iljz ----------------------------------------------
+
+# -- BEGIN plant-tower-defense-i5ny / -rq94: the top bar's one readout table ----
+# Appended as a block on purpose: a sibling lane also appends here, and a clearly
+# delimited section is what makes the conflict resolvable by keeping both rather
+# than by picking one. Nothing above this line was touched.
+
+
+## The four readouts are described ONCE, and everything that used to be a separate
+## hand-list now reads that one description.
+##
+## Three lists became one in cycle 108. The two assertions cycle 51 bolted across the
+## gaps between them are gone, because the gaps are gone -- `_build_top_bar` walks it,
+## so a Label in the row that no row describes cannot be built, and `stats_row_budget`
+## sums the table, so a readout's width cannot be missing from the sum. What is left
+## to check is the one thing the structure does not make true by itself: that
+## `WORST_CASE_TEXT` really is the projection it claims to be, and that the widths the
+## budget spends are the widths the table declares.
+func test_the_stats_row_is_described_by_one_table() -> String:
+	var rows: Array[Dictionary] = Hud.STAT_READOUTS
+	# The row count first. A sweep over an empty table asserts nothing and prints
+	# [VACUOUS]; four is the row this bar has, and a fifth is a deliberate change.
+	var err: String = _T.assert_eq(rows.size(), 4,
+		"the top bar declares its four readouts in Hud.STAT_READOUTS")
+	if err != "":
+		return err
+	var widths: float = 0.0
+	for readout: Dictionary in rows:
+		if err != "":
+			break
+		var name: String = String(readout.get("name", ""))
+		err = _T.assert_true(name != "", "every row names its Label")
+		if err == "":
+			err = _T.assert_true(String(readout.get("member", "")) != "",
+				"%s names the field _build assigns it to" % name)
+		if err == "":
+			err = _T.assert_true(String(readout.get("worst_case", "")) != "",
+				"%s declares a worst case" % name)
+		if err == "":
+			err = _T.assert_gt(float(readout.get("width", 0.0)), 0.0,
+				"%s declares a clipped width" % name)
+		if err == "":
+			err = _T.assert_gt(int(readout.get("font_size", 0)), 0,
+				("%s declares its own font size -- three sizes now carry the row's "
+					+ "hierarchy, and STAT_READOUTS' `weight` column carries the rest "
+					+ "of it (plant-tower-defense-6tmf)") % name)
+		if err == "":
+			var shapes: Array = readout.get("shapes", [])
+			err = _T.assert_gt(shapes.size(), 0,
+				("%s declares the format shapes it is assigned. "
+					+ "tools/readout_shape_check.py ties this column to the real "
+					+ "_x_label.text = assignments, both directions") % name)
+		widths += float(readout.get("width", 0.0))
+	if err != "":
+		return err
+	# WORST_CASE_TEXT is a projection, not a second table. If it ever stops being one,
+	# the budget and test_no_readout_clips_its_own_worst_case go back to measuring a
+	# row that is not the row on screen.
+	err = _T.assert_eq(Hud.WORST_CASE_TEXT.size(), rows.size(),
+		"WORST_CASE_TEXT carries exactly the table's readouts")
+	for readout: Dictionary in rows:
+		if err != "":
+			break
+		var name: String = String(readout["name"])
+		err = _T.assert_true(Hud.WORST_CASE_TEXT.has(name),
+			"WORST_CASE_TEXT projects %s" % name)
+		if err == "":
+			err = _T.assert_eq(String(Hud.WORST_CASE_TEXT[name]),
+				String(readout["worst_case"]),
+				"and projects %s's worst case unchanged" % name)
+	if err != "":
+		return err
+	# The budget spends the table's widths and nothing else. Derived rather than
+	# retyped: stats_row_budget(0) is the four slots plus the two buttons, so backing
+	# the buttons out has to leave exactly the sum above.
+	var spent: float = (Hud.stats_row_budget(0) - Hud.NEXT_WAVE_BUTTON_SIZE.x
+		- GameSpeed.button_size().x)
+	return _T.assert_float_eq(spent, widths, 0.001,
+		("stats_row_budget() spends %.0fpx of readout width and the table declares "
+			+ "%.0f -- the sum is derived from the table, so these can only differ if "
+			+ "something else got added to it") % [spent, widths])
+
+
+## The wave readout's OTHER branch, measured.
+##
+## WORST_CASE_TEXT holds one string per readout, and the wave readout is built from two
+## base branches: "Wave  %d / %d" for the fixed campaign and the endless one, either of
+## which can carry the threat suffix. The declared worst case is an instance of the
+## endless branch, and STAT_READOUTS says in prose that endless is the wider of the two
+## because the campaign is bounded at WaveDirector.WAVES.size() waves with a
+## single-digit threat level.
+##
+## That prose is the claim this test turns into a number. `readout_shape_check` cannot
+## make it -- it compares shapes and measures no font -- and
+## `test_no_readout_clips_its_own_worst_case` cannot either, because it only ever
+## measures the string the table names. Nothing was checking the branch the player
+## actually sees for the whole fixed campaign.
+##
+## `_T.text_width`, NOT get_minimum_size(): every readout in this row sets clip_text,
+## and a clipped Label reports the ~1px clip stub as its minimum, so the obvious width
+## assertion passes unconditionally on exactly the labels that need checking.
+func test_the_wave_readouts_finite_branch_fits_its_slot() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/StatsRow/WaveLabel") as Label
+	var err: String = _T.assert_true(label != null, "the wave readout is in the row")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var last: int = WaveDirector.WAVES.size()
+	err = _T.assert_gt(last, 0, "the fixed campaign has waves to reach the end of")
+	if err == "":
+		# The shape the test measures has to be the shape the table declares, or this
+		# is measuring a string of its own invention. Found by name rather than by
+		# index: the row order is a layout decision and this is not a layout test.
+		var declared: Array = []
+		for row: Dictionary in Hud.STAT_READOUTS:
+			if String(row["name"]) == "WaveLabel":
+				declared = row["shapes"]
+		err = _T.assert_true(declared.has("Wave  %d / %d"),
+			"the finite branch is declared in WaveLabel's shapes: %s" % [declared])
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var slot: float = label.custom_minimum_size.x
+	var finite: String = ("Wave  %d / %d   threat %d"
+		% [last, last, WaveDirector.threat_level(last)])
+	label.text = finite
+	var finite_px: float = _T.text_width(label)
+	label.text = String(Hud.WORST_CASE_TEXT["WaveLabel"])
+	var declared_px: float = _T.text_width(label)
+	err = _T.assert_gt(finite_px, 0.0, "the finite branch measures something")
+	if err == "":
+		err = _T.assert_true(finite_px <= slot,
+			("the last fixed wave renders \"%s\", which needs %.0fpx of a %.0fpx slot. "
+				+ "The declared worst case is a different branch, so nothing else in "
+				+ "the suite measures this one") % [finite, finite_px, slot])
+	if err == "":
+		err = _T.assert_true(declared_px >= finite_px,
+			("WaveLabel's declared worst case is the WIDER branch (%.0fpx against the "
+				+ "finite branch's %.0f). That is the argument its comment in "
+				+ "STAT_READOUTS makes; if it inverts, the budget is priced against "
+				+ "the narrower of the two") % [declared_px, finite_px])
+	_T.free_ui(game)
+	return err
+
+# -- END plant-tower-defense-i5ny / -rq94 --------------------------------------
+
+
+# -- BEGIN plant-tower-defense-eupm / -r3e8 ------------------------------------
+#
+# Two player-facing HUD readouts, and the two things a headless suite can actually
+# hold them to:
+#
+#   -eupm  the uproot button now prints the NET of the trade, not just the refund.
+#          The wording is a pure static, so it is assertable without a HUD; the WIDTH
+#          is not, so that one measures a real Button in a real theme.
+#   -r3e8  the seeds readout counts to its new total instead of jumping. The count is
+#          a Tween and tweens do not run headless, so the assertable part is the pure
+#          value-at-time function underneath it -- the same split the record ratchet
+#          on the title screen makes.
+
+
+## The bead's own example, as an assertion: 12 back against a 20-seed replant is an
+## 8-seed loss, and the button used to print only the 12 and leave the subtraction to a
+## player on a four-second confirm timer.
+func test_the_uproot_button_prints_the_net_of_the_trade() -> String:
+	var err: String = _T.assert_eq(Hud.uproot_button_text(12, 20), "Uproot (+12, net -8)",
+		"a losing trade prints what the round trip actually costs")
+	if err == "":
+		err = _T.assert_eq(Hud.uproot_net(12, 20), -8,
+			"and the arithmetic under it is the subtraction, not the refund")
+	if err == "":
+		# The free starter. `SeedBank.placement_cost` returns 0 while it is unspent, so
+		# the round trip is pure profit -- a case a "replant costs N" label would have
+		# printed as "replant 0" and a net label prints as a gain.
+		err = _T.assert_eq(Hud.uproot_button_text(6, 0), "Uproot (+6, net +6)",
+			"a profitable trade prints a leading + rather than a bare number")
+	if err == "":
+		# The two directions must be distinguishable with the colour thrown away
+		# (game/OVERLAY_GRAMMAR.md's one rule with teeth). The sign is that channel, so
+		# a profit and a loss may not render the same glyphs.
+		err = _T.assert_true(Hud.uproot_net_text(6) != Hud.uproot_net_text(-6),
+			"a 6-seed gain and a 6-seed loss are different strings, not different colours")
+	if err == "":
+		err = _T.assert_eq(Hud.uproot_button_text(10, 10), "Uproot (+10, net 0)",
+			"and a break-even trade prints neither sign")
+	if err == "":
+		# Deliberately unchanged: once the confirm is armed the question on screen is
+		# "destroy this?", and the armed string is the longest this button has ever
+		# held. test_an_armed_uproot_button_relabels_and_reddens covers the render side.
+		err = _T.assert_eq(Hud.uproot_armed_text(12), "Really uproot? (+12)",
+			"the armed label still asks only the destructive question")
+	if err == "":
+		# The tooltip is where the replant PRICE survives the button's compression, so
+		# it has to carry the number the label folded away.
+		var tip: String = Hud.uproot_button_tooltip("Corn Cobbler", 12, 20)
+		err = _T.assert_true(tip.contains("20") and tip.contains("12"),
+			"the tooltip keeps both raw numbers, got \"%s\"" % tip)
+	if err == "":
+		# "up" alone would not do it -- every branch of this sentence opens with
+		# "Digging up", so the needle has to be the clause that differs.
+		var gain: String = Hud.uproot_button_tooltip("Corn Cobbler", 6, 0)
+		err = _T.assert_true(gain.contains("leaves you") and not gain.contains("costs you"),
+			"a profitable round trip is described as a gain, got \"%s\"" % gain)
+	if err == "":
+		var loss: String = Hud.uproot_button_tooltip("Corn Cobbler", 12, 20)
+		err = _T.assert_true(loss.contains("costs you") and not loss.contains("leaves you"),
+			"and a losing one as a cost, got \"%s\"" % loss)
+	return err
+
+
+## Does the longer resting label still FIT?
+##
+## The one question the pure test above cannot answer, and the one the bead said to
+## settle before writing any text: the selection panel is 232px wide and its VBox
+## already runs to within 16px of the panel foot, so a button whose minimum width
+## exceeds the box widens the box and pushes the panel's contents off the side panel.
+##
+## Measured, and measured over the strings the game can actually BUILD rather than one
+## worst case somebody typed: every catalogue price, both ends of the refund slope
+## (`Plant.UPROOT_RATE_FULL` down to `MIN_UPROOT_REFUND`), and both replant prices a bed
+## can quote (the catalogue cost, and 0 while the free starter is unspent).
+##
+## `get_minimum_size()` and not `_T.text_width` here, because this is a Button and not a
+## Label: nothing clips it, and its minimum is the measurement that decides whether the
+## Container grows -- which is the actual failure mode. The stylebox margins are in that
+## number and are not in a bare text measurement.
+func test_the_uproot_buttons_worst_case_fits_the_selection_box() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(200)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "",
+		"planted, so the selection panel is on screen")
+	var button: Button = game.hud.get_node_or_null(
+		"Root/SidePanel/SelectionBox/UprootButton") as Button
+	if err == "":
+		err = _T.assert_true(button != null, "the uproot button is where the bridge presses it")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	await _pump(game)
+	var box: float = float(Hud.PANEL_WIDTH - 24)
+	var widest: String = ""
+	var widest_px: float = 0.0
+	for id: StringName in PlantCatalog.ids():
+		var cost: int = PlantCatalog.cost(id)
+		for refund: int in [int(floor(cost * Plant.UPROOT_RATE_FULL)), Plant.MIN_UPROOT_REFUND]:
+			for replant: int in [cost, 0]:
+				button.text = Hud.uproot_button_text(refund, replant)
+				var drawn: float = button.get_minimum_size().x
+				if drawn > widest_px:
+					widest_px = drawn
+					widest = button.text
+	# A zero measurement means no font resolved, which would let every assertion below
+	# pass over a button nobody measured.
+	err = _T.assert_gt(widest_px, 0.0, "the button measures something in the real theme")
+	if err == "":
+		err = _T.assert_true(widest_px <= box,
+			("the widest resting label the catalogue can build is \"%s\", which needs "
+				+ "%.0fpx of a %.0fpx box. Over it the VBox grows and the panel's "
+				+ "contents leave the side panel") % [widest, widest_px, box])
+	if err == "":
+		# The armed branch was the previous ceiling, and it is still on screen.
+		button.text = Hud.UPROOT_ARMED_WORST_CASE_TEXT
+		var armed_px: float = button.get_minimum_size().x
+		err = _T.assert_true(armed_px <= box,
+			"the armed label \"%s\" still fits too (%.0fpx of %.0fpx)"
+				% [Hud.UPROOT_ARMED_WORST_CASE_TEXT, armed_px, box])
+	if err == "":
+		# The declared constant has to be a real ceiling over the derived set, or the
+		# next person to reason from it is reasoning from a string that undersells the
+		# widest thing the button can say.
+		button.text = Hud.UPROOT_WORST_CASE_TEXT
+		var declared_px: float = button.get_minimum_size().x
+		err = _T.assert_true(declared_px >= widest_px,
+			("Hud.UPROOT_WORST_CASE_TEXT (\"%s\", %.0fpx) is meant to be at or above "
+				+ "every string the catalogue can build, and \"%s\" needs %.0fpx")
+				% [Hud.UPROOT_WORST_CASE_TEXT, declared_px, widest, widest_px])
+	_T.free_ui(game)
+	return err
+
+
+## The number on the button comes off the LIVE bank, not off the catalogue.
+##
+## The distinction is the free starter: while it is unspent a Corn Cobbler replants for
+## nothing, and a button quoting `PlantCatalog.cost` would charge a player for a bed
+## they can refill free. Driven through a real placement rather than by calling the
+## static, so this fails if `_refresh_selection` stops passing the bank through.
+func test_the_resting_uproot_button_prices_the_replant_off_the_live_bank() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(200)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "",
+		"planted")
+	var button: Button = game.hud.get_node_or_null(
+		"Root/SidePanel/SelectionBox/UprootButton") as Button
+	if err == "":
+		err = _T.assert_true(button != null, "the uproot button is on screen")
+	if err == "":
+		err = _T.assert_true(game.selected_placed != null, "and the plant is selected")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var plant: Plant = game.selected_placed
+	var replant: int = game.bank.placement_cost(plant.kind)
+	err = _T.assert_gt(replant, 0,
+		"the free starter is spent by this placement, so a replant costs something")
+	if err == "":
+		err = _T.assert_eq(button.text, Hud.uproot_button_text(plant.uproot_refund(), replant),
+			"the resting label is the static's output for the live pair, got %s" % button.text)
+	if err == "":
+		err = _T.assert_true(button.text.contains("net"),
+			"and the net is the thing on it, got %s" % button.text)
+	if err == "":
+		# The replant PRICE itself lives in the tooltip, which costs no width -- that is
+		# the trade the button's compression is paid for by.
+		err = _T.assert_true(button.tooltip_text.contains("%d" % replant),
+			("the tooltip spells the replant price out in words, got \"%s\"")
+				% button.tooltip_text)
+	if err == "":
+		err = _T.assert_true(button.tooltip_text.contains(
+				PlantCatalog.display_name(plant.kind)),
+			"and names the plant it is talking about, got \"%s\"" % button.tooltip_text)
+	_T.free_ui(game)
+	return err
+
+
+## -r3e8. The roll itself is a Tween and `GardenTheme.animations_enabled()` is false
+## headless, so a test that drove `refresh()` and watched the Label would assert nothing
+## at all while looking like coverage. This asserts the pure function the Tween renders.
+func test_the_seeds_roll_counts_the_whole_way_in_both_directions() -> String:
+	# Endpoints exact, rather than trusting a float to land on 1.0 -- the record
+	# ratchet needs a restoring callback for precisely that reason.
+	var err: String = _T.assert_eq(Hud.seeds_roll_value(120, 75, 0.0), 120,
+		"t=0 shows the total the player had")
+	if err == "":
+		err = _T.assert_eq(Hud.seeds_roll_value(120, 75, 1.0), 75,
+			"t=1 shows the total they have now")
+	if err == "":
+		err = _T.assert_eq(Hud.seeds_roll_value(120, 75, 4.0), 75, "and t past the end clamps")
+	if err == "":
+		err = _T.assert_eq(Hud.seeds_roll_value(120, 75, -4.0), 120, "as does t before it")
+	if err == "":
+		# It has to MOVE on the first step. With floorf the readout sits on the old
+		# total for the first tenth of the roll, which reads as a dropped frame.
+		err = _T.assert_true(Hud.seeds_roll_value(120, 75, 0.01) < 120,
+			"the count has already left the old total one frame in")
+	# A SPEND, which is the case the bead was filed about: seeds go down as well as up,
+	# and a roll that only climbed would animate every payout and snap every price.
+	var falling: Dictionary = {}
+	var previous: int = 120
+	var samples: int = 0
+	if err == "":
+		for i: int in range(0, 101):
+			var t: float = float(i) / 100.0
+			var value: int = Hud.seeds_roll_value(120, 75, t)
+			samples += 1
+			falling[value] = true
+			if value > previous:
+				err = _T.assert_true(false,
+					"a spend never counts back up: %d after %d at t=%.2f" % [value, previous, t])
+				break
+			if value < 75 or value > 120:
+				err = _T.assert_true(false,
+					"and never leaves its endpoints: %d at t=%.2f" % [value, t])
+				break
+			previous = value
+	if err == "":
+		err = _T.assert_eq(samples, 101, "the sweep actually ran")
+	if err == "":
+		# STEPPED, which is the claim SEED_ROLL_STEPS makes -- and the claim the title
+		# screen's own RATCHET_STEPS states in a comment and then does not keep. A
+		# hundred distinct four-digit totals in 0.35s is a flicker, not a count.
+		err = _T.assert_true(falling.size() <= Hud.SEED_ROLL_STEPS + 1,
+			("a 101-sample sweep of a %d-step roll showed %d distinct totals")
+				% [Hud.SEED_ROLL_STEPS, falling.size()])
+	if err == "":
+		err = _T.assert_gt(falling.size(), 2,
+			"and it is a count rather than a snap with extra frames (%d totals shown)"
+				% falling.size())
+	# And the same climbing, since a payout uses the identical path.
+	if err == "":
+		var rising: int = Hud.seeds_roll_value(20, 65, 0.5)
+		err = _T.assert_true(rising > 20 and rising < 65,
+			"a payout counts up through the middle too, got %d" % rising)
+	return err
+
+
+## The floor under the roll, and the reason it is where it is.
+##
+## The roll exists to make a BIG jump legible; rolling a 2-seed pest payout would put
+## the busiest readout in the game in permanent motion for a change that is legible at a
+## glance. The floor is only correct if it sits under every price the player can pay --
+## derived off the catalogue rather than compared against a number typed twice.
+func test_a_small_seed_change_snaps_and_every_real_price_rolls() -> String:
+	var err: String = _T.assert_false(
+		Hud.seeds_roll_is_worth_showing(40, 40 + Hud.SEED_ROLL_MIN_JUMP - 1),
+		"a change one under the floor snaps, and the punch carries it alone")
+	if err == "":
+		err = _T.assert_true(Hud.seeds_roll_is_worth_showing(40, 40 + Hud.SEED_ROLL_MIN_JUMP),
+			"a change on the floor rolls")
+	if err == "":
+		err = _T.assert_true(Hud.seeds_roll_is_worth_showing(40, 40 - Hud.SEED_ROLL_MIN_JUMP),
+			"and it is symmetric -- a spend of the same size rolls too")
+	if err == "":
+		err = _T.assert_false(Hud.seeds_roll_is_worth_showing(40, 40),
+			"a readout that did not move does not roll")
+	if err == "":
+		var cheapest: int = -1
+		for id: StringName in PlantCatalog.ids():
+			var cost: int = PlantCatalog.cost(id)
+			if cost > 0 and (cheapest < 0 or cost < cheapest):
+				cheapest = cost
+		err = _T.assert_gt(cheapest, 0, "the catalogue prices something")
+		if err == "":
+			err = _T.assert_gte(cheapest, Hud.SEED_ROLL_MIN_JUMP,
+				("the cheapest plant in the catalogue costs %d, and the roll's floor is "
+					+ "%d -- above it, the purchase the roll was written for is the one "
+					+ "change that snaps") % [cheapest, Hud.SEED_ROLL_MIN_JUMP])
+	return err
+
+
+## The rule that makes the roll safe to add at all: **the readout already holds the
+## final total before anything animates.** A tween responsible for ARRIVING at the right
+## value leaves the right value unreachable headless, in every test and on any machine
+## with animation off -- and nothing about node paths or sizes would say so.
+##
+## Headless this passes because the roll never arms; that is the point. It is the check
+## that fails the day someone moves the `_seeds_label.text =` assignment inside the
+## tween.
+func test_a_seed_change_leaves_the_readout_holding_the_final_total() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/StatsRow/SeedsLabel") as Label
+	var err: String = _T.assert_true(label != null, "the seeds readout is in the row")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	game._process(0.016)
+	await _pump(game)
+	var before: String = label.text
+	# Comfortably over SEED_ROLL_MIN_JUMP, so a roll is armed on any machine that can
+	# run one.
+	game.bank.add_seeds(45)
+	game._process(0.016)
+	await _pump(game)
+	err = _T.assert_true(label.text != before,
+		"the readout moved at all, got %s both times" % label.text)
+	if err == "":
+		err = _T.assert_eq(label.text, "Seeds  %d" % game.bank.seeds,
+			("the readout holds the FINAL total, not an interpolation step: the roll "
+				+ "layers on top of a correct string and puts it back"))
+	if err == "":
+		# And down again, which is the direction that used to be the argument.
+		var spent: int = game.bank.seeds
+		# A charge, the way Game.upgrade_selected() makes one: a negative amount, which
+		# the sign guard already keeps off the score.
+		game.bank.add_seeds(-20)
+		game._process(0.016)
+		await _pump(game)
+		err = _T.assert_true(game.bank.seeds < spent, "the spend landed")
+		if err == "":
+			err = _T.assert_eq(label.text, "Seeds  %d" % game.bank.seeds,
+				"and a spend leaves the final total on the readout too")
+	_T.free_ui(game)
+	return err
+
+# -- END plant-tower-defense-eupm / -r3e8 --------------------------------------
+
+
+# -- BEGIN the page frame's corners are not the artifact (plant-tower-defense-twbt) --
+
+
+## The board's page frame turns cleanly at every corner.
+##
+## plant-tower-defense-twbt reported visible artifacts around the playfield edge and
+## named two suspects, asking for both to be confirmed before either was "fixed".
+## Suspect 1 was: `page_edge_points()` offsets each sample along its own side's
+## inward normal, so "at a corner the wobble jumps direction discontinuously instead
+## of easing round", making "a visible notch or spur at all four corners".
+##
+## MEASURED, and it is false. Reading the real polyline out of the running game and
+## taking the turn angle at every vertex:
+##
+##     corner (4.5, 4.5)     turn +90.0 deg   (error  0.0)
+##     corner (891.5, 4.5)   turn +91.9 deg   (error +1.9)
+##     corner (891.5, 571.5) turn +90.0 deg   (error  0.0)
+##     corner (4.5, 571.5)   turn +91.9 deg   (error +1.9)
+##     worst NON-corner turn      21.7 deg
+##
+## The corners are the SMOOTHEST joints on the whole outline. The wobble's own
+## mid-edge turns are more than ten times larger, because a +/-2px excursion over an
+## 8px sample step is inherently a ~20 degree kink and there are 360 of them. If the
+## frame reads as notchy, that is the wobble everywhere, not the corners -- and it is
+## PAGE_WOBBLE_PX against PAGE_SAMPLE_STEP that would have to change, which is a
+## different bead about a deliberate hand-drawn look.
+##
+## The second half of suspect 1 -- "two round caps stack on the same point" where the
+## loop closes -- is also ruled out: the closure appends the first point, which makes
+## the array's first and last point equal but produces NO zero-length segment (the
+## shortest is 7.99px). A degenerate segment is what would have painted a blob.
+##
+## This test exists so the next person who sees an edge artifact does not spend the
+## afternoon on the corners again.
+func test_the_page_frames_corners_turn_more_cleanly_than_its_own_wobble() -> String:
+	var board_px := Vector2(float(Board.COLS * Board.CELL), float(Board.ROWS * Board.CELL))
+	var inset: float = 4.5
+	var pts: PackedVector2Array = Board.page_edge_points(board_px, inset)
+	var err: String = _T.assert_gt(pts.size(), 100,
+		"the outline is sampled densely enough to have corners to check (%d points)" % pts.size())
+	if err != "":
+		return err
+	if err == "":
+		err = _T.assert_true(pts[0] == pts[pts.size() - 1],
+			"the outline closes on its own first point")
+	if err == "":
+		# Dropping the duplicated closing point: left in, it is a zero-length segment
+		# whose direction is undefined, and every angle through it reads as garbage.
+		# That artefact of the MEASUREMENT is what made the corner look broken the
+		# first time it was measured.
+		var closed: PackedVector2Array = pts.slice(0, pts.size() - 1)
+		var n: int = closed.size()
+		var nominal: Array[Vector2] = [
+			Vector2(inset, inset),
+			Vector2(board_px.x - inset, inset),
+			Vector2(board_px.x - inset, board_px.y - inset),
+			Vector2(inset, board_px.y - inset),
+		]
+		var corner_worst: float = 0.0
+		var corner_indices: Array[int] = []
+		for want: Vector2 in nominal:
+			var best: int = 0
+			var best_d: float = INF
+			for i: int in n:
+				var d: float = closed[i].distance_to(want)
+				if d < best_d:
+					best_d = d
+					best = i
+			corner_indices.append(best)
+			corner_worst = maxf(corner_worst, absf(_turn_degrees(closed, best) - 90.0))
+		err = _T.assert_gt(5.0, corner_worst,
+			("every corner turns within 5 degrees of a square right angle (worst %.1f)."
+				+ " If this ever fails, the corner really has become discontinuous and"
+				+ " twbt's suspect 1 has finally come true") % corner_worst)
+		if err == "":
+			var mid_worst: float = 0.0
+			for i: int in n:
+				if corner_indices.has(i):
+					continue
+				mid_worst = maxf(mid_worst, absf(_turn_degrees(closed, i)))
+			err = _T.assert_gt(mid_worst, corner_worst,
+				("and the wobble's own mid-edge kinks are LARGER than the corners'"
+					+ " (%.1f against %.1f) -- which is why the corners are not the"
+					+ " artifact") % [mid_worst, corner_worst])
+	if err == "":
+		var shortest: float = INF
+		for i: int in range(pts.size() - 1):
+			shortest = minf(shortest, pts[i].distance_to(pts[i + 1]))
+		err = _T.assert_gt(shortest, 0.001,
+			("no zero-length segment, so the two round line caps cannot stack into a"
+				+ " blob at the seam (shortest %.3f px)") % shortest)
+	return err
+
+
+## Signed turn at vertex `i` of a closed polyline, in degrees. +90 is a square corner.
+func _turn_degrees(closed: PackedVector2Array, i: int) -> float:
+	var n: int = closed.size()
+	var p: Vector2 = closed[(i - 1 + n) % n]
+	var q: Vector2 = closed[i]
+	var r: Vector2 = closed[(i + 1) % n]
+	var d: float = rad_to_deg((r - q).angle() - (q - p).angle())
+	while d > 180.0:
+		d -= 360.0
+	while d < -180.0:
+		d += 360.0
+	return d
+
+
+# -- END the page frame's corners are not the artifact --
+
+
+# -- BEGIN one-shots: plant-tower-defense-ei83, plant-tower-defense-q8db --------
+#
+# Two beads about a moment the game gets exactly ONE chance to land: a hint spent on a
+# player who was looking elsewhere, and the first record a garden ever sets.
+
+
+## THE GATE THAT MAKES `Hud.HINT_CARDS` A DERIVED LIST RATHER THAN A SECOND HAND-TYPED
+## ONE. `RunConfig.HINTS` decides what a hint IS -- `spend_hint` refuses an id that is
+## not in it -- so the card table is a lookup over that list and not a list of its own.
+##
+## Both directions, because each catches a different mistake: an id in HINTS with no
+## card is a one-shot with no route back, which is the whole defect ei83 is about; a
+## card whose id is not in HINTS is a page teaching an interaction the game never
+## offers, which is worse than a gap because it reads as authoritative.
+func test_every_hint_has_a_notebook_card() -> String:
+	var ids: Array[String] = Hud.hint_ids()
+	var err: String = _T.assert_gt(ids.size(), 0,
+		"there are hints to card at all -- an empty list would pass every loop below")
+	if err == "":
+		err = _T.assert_eq(ids.size(), RunConfig.HINTS.size(),
+			"hint_ids() is RunConfig.HINTS and not a private copy of it")
+	for i: int in ids.size():
+		if err != "":
+			break
+		err = _T.assert_eq(ids[i], String(RunConfig.HINTS[i]),
+			"hint %d is the one RunConfig lists in that slot" % i)
+	for id: String in ids:
+		if err != "":
+			break
+		var row: Dictionary = Hud.hint_entry(id)
+		err = _T.assert_false(row.is_empty(),
+			"'%s' is in RunConfig.HINTS, so it has a card to be found again by" % id)
+		if err == "":
+			err = _T.assert_true(Hud.hint_title(id) != id,
+				"'%s' has a real title rather than falling back to its raw id" % id)
+		if err == "":
+			err = _T.assert_gt(Hud.hint_note_text(id, true).length(), 0,
+				"'%s' has a note saying what the interaction actually is" % id)
+	# The reverse sweep. A card for an id nobody can spend is a page that teaches
+	# something the game has no door to.
+	for row: Dictionary in Hud.HINT_CARDS:
+		if err != "":
+			break
+		var id: String = String(row["id"])
+		err = _T.assert_true(RunConfig.is_hint(id),
+			"the card '%s' names an id RunConfig still calls a hint" % id)
+	return err
+
+
+## The bead's acceptance, as an assertion: a player who never saw the prompt can still
+## learn the interaction. So the note reads IN FULL in both states -- the seen/unseen
+## mark says who has read it, never what it says.
+##
+## And the mark is a text prefix, not a colour, which is `OVERLAY_GRAMMAR.md`'s
+## two-channel rule: strip every colour off the page and an unshown row is still
+## identifiable as unshown. Mirrors `NotebookScreen.shelf_note_text`, whose header
+## states the same rule for the milestone shelf one screen away.
+func test_a_hint_card_reads_in_full_whether_or_not_the_game_has_shown_it() -> String:
+	var ids: Array[String] = Hud.hint_ids()
+	var err: String = _T.assert_gt(ids.size(), 0, "there are hints to check")
+	for id: String in ids:
+		if err != "":
+			break
+		var shown: String = Hud.hint_note_text(id, true)
+		var unshown: String = Hud.hint_note_text(id, false)
+		# Hoisted out of the `if` blocks below on purpose: a `var` declared inside one
+		# is scoped to it, and the later assertion reading it would not compile.
+		var body: String = unshown.trim_prefix("Not shown yet — ")
+		err = _T.assert_true(shown != unshown,
+			"'%s' reads differently once the game has spent it" % id)
+		if err == "":
+			err = _T.assert_true(unshown.begins_with("Not shown yet — "),
+				("'%s' unshown carries the prefix that survives colour being discarded,"
+					+ " got '%s'") % [id, unshown])
+		if err == "":
+			# The half that matters: the SENTENCE is intact under the prefix, so the
+			# interaction is learnable by someone the row never reached. Compared on
+			# the body rather than on length, so a truncating change fails here.
+			err = _T.assert_eq(body.substr(1), shown.substr(1),
+				("'%s' says the same thing in both states -- only the first letter's"
+					+ " case and the prefix differ") % id)
+		if err == "":
+			err = _T.assert_eq(shown.substr(0, 1).to_lower(), body.substr(0, 1),
+				"'%s' lowercases exactly the one letter the prefix runs into" % id)
+	return err
+
+
+## The two renderings must not contradict each other, which is the specific risk of
+## having a notebook card and a message-row tip say the same rule in different words.
+##
+## Asserted on the PLANTS each names, not on the strings matching: `Hud.flight_tip()`
+## is written for a player watching a bug walk over a mouth and the card is written for
+## a reader with no bug in front of them, so they SHOULD differ as prose. What they may
+## never differ about is which plant catches a winged pest and which does not.
+func test_the_hint_cards_agree_with_the_tips_the_message_row_posts() -> String:
+	var tip: String = Hud.flight_tip()
+	var card: String = Hud.hint_note_text("seen_flight_tip", true)
+	var err: String = _T.assert_true(tip.contains("Chomp Flower") and card.contains("Chomp Flower"),
+		"both name the plant that cannot take it -- tip '%s', card '%s'" % [tip, card])
+	if err == "":
+		err = _T.assert_true(tip.contains("Corn Cobbler") and card.contains("Corn Cobbler"),
+			"and both name the plant that can -- tip '%s', card '%s'" % [tip, card])
+	if err == "":
+		err = _T.assert_true(tip != card,
+			"while staying two sentences for two audiences rather than one pasted twice")
+	if err == "":
+		# The upgrade card has to name the verb the button carries, or a player who
+		# reads it still does not know what to look for on the board.
+		err = _T.assert_true(Hud.hint_note_text("seen_upgrade_tip", true).contains("Upgrade"),
+			"the upgrade card names the button by the word printed on it")
+	if err == "":
+		# The move card is the one whose tip is a CLAUSE inside a longer sentence
+		# (`uproot_armed_message`), so it is the one most able to drift.
+		var armed: String = Hud.uproot_armed_message("Corn Cobbler", true, 0)
+		err = _T.assert_true(armed.contains("Hover"),
+			"the armed prompt still carries the hover clause -- '%s'" % armed)
+		if err == "":
+			err = _T.assert_true(Hud.hint_note_text("seen_move_tip", true).contains("hover"),
+				"and the card teaches the same hover")
+	return err
+
+
+## THE THREE BRANCHES OF THE CARD'S SUBHEADING, asserted off a pure static so all of
+## them are reachable without a save file, a played run, or a Control.
+##
+## The bead's complaint in one assertion: a FIRST record and a later one must not print
+## the same sentence. Before this, both said "a new best" -- which is a claim about
+## beating a number, and on a first record there is no number to have beaten.
+func test_a_first_record_does_not_read_as_a_new_best() -> String:
+	var first: String = RunSummary.score_line_at(308, true, true, 308, false)
+	var later: String = RunSummary.score_line_at(308, true, false, 308, false)
+	var none: String = RunSummary.score_line_at(120, false, false, 308, false)
+	var err: String = _T.assert_true(first != later,
+		"a first record and a later one do not print the same line -- both said '%s'"
+			% first)
+	if err == "":
+		err = _T.assert_true(first.contains("first"),
+			"the first-record line names itself as a first -- got '%s'" % first)
+	if err == "":
+		err = _T.assert_true(later.contains("a new best"),
+			"a later record still reads as a new best -- got '%s'" % later)
+	if err == "":
+		err = _T.assert_true(not first.contains("a new best"),
+			("and the first-record line does NOT claim a comparison that never"
+				+ " happened -- got '%s'") % first)
+	if err == "":
+		err = _T.assert_true(none.contains("your best campaign is 308"),
+			"a run that set no record still names the mode's standing best -- '%s'" % none)
+	if err == "":
+		# Every branch prints the seeds the run actually earned, which is the one
+		# number all three share and the easiest to lose in a rewrite.
+		err = _T.assert_true(first.begins_with("308 ") and later.begins_with("308 ")
+			and none.begins_with("120 "),
+			"all three branches lead with the run's own seed total")
+	return err
+
+
+## `first_record()` is the gate everything else keys off, and its DEFAULT is the half
+## worth pinning: `previous_best` is a key `Game.summary_stats` does not write yet, so
+## an absent one must read as "not a first" and leave the card saying what it says
+## today. A 0 default would relabel every record on every card.
+func test_an_absent_previous_best_is_not_read_as_a_first_record() -> String:
+	var unknown := RunSummary.build({"new_record": true, "seeds_earned_total": 308})
+	var err: String = _T.assert_false(unknown.first_record(),
+		"a record with no previous_best in the stats is not assumed to be a first")
+	if err == "":
+		err = _T.assert_true(unknown.ribbon_entries().is_empty(),
+			"so it grows no ribbon row either")
+	unknown.free()
+
+	var first := RunSummary.build({
+		"new_record": true, "seeds_earned_total": 308, "previous_best": 0,
+	})
+	if err == "":
+		err = _T.assert_true(first.first_record(),
+			"previous_best of 0 IS the first record -- there was nothing to beat")
+	first.free()
+
+	var later := RunSummary.build({
+		"new_record": true, "seeds_earned_total": 308, "previous_best": 240,
+	})
+	if err == "":
+		err = _T.assert_false(later.first_record(),
+			"and beating a real 240 is a later record, not a first")
+	if err == "":
+		err = _T.assert_true(later.ribbon_entries().is_empty(),
+			"which earns no ribbon row -- the row is for firsts only")
+	later.free()
+
+	var lost := RunSummary.build({"new_record": false, "previous_best": 0})
+	if err == "":
+		err = _T.assert_false(lost.first_record(),
+			("a run that set NO record is not a first record even on a garden with no"
+				+ " score yet -- previous_best is 0 for both"))
+	lost.free()
+	return err
+
+
+## The treatment itself: a first record is admitted to the ribbon, which is the surface
+## this card already reserves for "what this run did for the first time ever". That is
+## what makes it MORE than a later record rather than less.
+func test_a_first_record_earns_a_row_on_the_ribbon_of_firsts() -> String:
+	var card := RunSummary.build({
+		"victory": true,
+		"seeds_earned_total": 308,
+		"new_record": true,
+		"previous_best": 0,
+		"new_milestones": ["campaign_cleared"],
+	})
+	var host: Node = await _T.instantiate_ui(card, Vector2i(1152, 648))
+	var err: String = _T.assert_true(host != null, "the card stood up")
+	if err == "":
+		err = _T.assert_eq(card.ribbon_entries().size(), 2,
+			"the record row and the milestone are both on the ribbon")
+	if err == "":
+		err = _T.assert_eq(String(card.ribbon_entries()[0]["id"]), RunSummary.FIRST_RECORD_ID,
+			"with the record FIRST -- a garden opens its record book once")
+	if err == "":
+		var ribbon: Panel = card.get_node_or_null("MilestoneRibbon") as Panel
+		err = _T.assert_true(ribbon != null, "and the ribbon was drawn")
+		if err == "":
+			var row: Label = ribbon.get_node_or_null(
+				"Milestone_%s" % RunSummary.FIRST_RECORD_ID) as Label
+			err = _T.assert_true(row != null, "carrying a titled row for the record")
+			if err == "":
+				err = _T.assert_gt(row.text.length(), 0,
+					"whose title is real text and not an empty label")
+			if err == "":
+				var note: Label = ribbon.get_node_or_null(
+					"MilestoneNote_%s" % RunSummary.FIRST_RECORD_ID) as Label
+				err = _T.assert_true(note != null and note.text.contains("308"),
+					("and a note naming the score the garden will be measured against,"
+						+ " got '%s'") % ("<missing>" if note == null else note.text))
+		if err == "":
+			err = _T.assert_true(ribbon.get_node_or_null("Milestone_campaign_cleared") != null,
+				"the milestone row is still there beside it")
+		if err == "":
+			err = _T.assert_float_eq(ribbon.size.y, RunSummary.ribbon_height(2), 0.5,
+				"and the panel is sized for BOTH rows, not just the milestone")
+	_T.free_ui(host)
+	return err
+
+
+## The row costs vertical budget in the side column, and this is the measurement that
+## says how much is left. `_play_entrance` drops every child by RISE_OFFSET_WIN = 32, so
+## the real floor on this screen is 648 - 32 = 616 rather than the viewport.
+##
+## Asserted against `worst_ribbon_rows()` rather than `Milestones.TABLE.size()`, which is
+## the specific thing this change made wrong elsewhere: the two older clearance tests
+## still measure a 7-row ribbon, and the game can now draw an 8-row one.
+func test_the_widest_ribbon_this_game_can_draw_still_clears_the_rise() -> String:
+	var rows: int = RunSummary.worst_ribbon_rows()
+	var err: String = _T.assert_eq(rows, Milestones.TABLE.size() + 1,
+		"the worst case is every milestone plus the one synthesised record row")
+	if err == "":
+		err = _T.assert_gt(RunSummary.ribbon_height(rows),
+			RunSummary.ribbon_height(Milestones.TABLE.size()),
+			"which is genuinely taller than the case the older tests measure")
+	if err == "":
+		var foot: float = RunSummary.RIBBON_TOP + RunSummary.ribbon_height(rows)
+		err = _T.assert_true(foot <= RunSummary.MAP_LEGEND_Y,
+			"the tallest ribbon foots at %.0f, above the map legend strip at %.0f"
+				% [foot, RunSummary.MAP_LEGEND_Y])
+	if err == "":
+		# The note is pushed down by the ribbon, so it is the thing that actually
+		# runs out of room first.
+		var note_foot: float = RunSummary.reach_note_top(rows) + RunSummary.REACH_NOTE_HEIGHT
+		var floor_y: float = 648.0 - RunSummary.RISE_OFFSET_WIN
+		err = _T.assert_true(note_foot <= floor_y,
+			("under the tallest ribbon the reach note foots at %.0f, inside the %.0f"
+				+ " rise budget") % [note_foot, floor_y])
+		if err == "":
+			# The column is now FULL, and this is the assertion that says a ninth row
+			# is not free -- so the next person to add one is told by a red test
+			# rather than by a screenshot of a note hanging off the screen.
+			var ninth: float = (RunSummary.reach_note_top(rows + 1)
+				+ RunSummary.REACH_NOTE_HEIGHT)
+			err = _T.assert_true(ninth > floor_y,
+				("and a NINTH row would foot at %.0f, past %.0f -- this column has room"
+					+ " for no more") % [ninth, floor_y])
+	return err
+
+
+# -- END one-shots: plant-tower-defense-ei83, plant-tower-defense-q8db ----------
+
+
+# -- BEGIN the cleared line does not eat the prep window (plant-tower-defense-ifew) --
+
+
+## The wave-cleared line CARRIES the forecast instead of displacing it.
+##
+## plant-tower-defense-ifew asked whether the cleared line's window overlaps the
+## seconds a player needs for the prep note, since `_paint_message_row` gives a
+## transient precedence over the standing note and the cleared line fires exactly
+## when the forecast becomes relevant. It told us to measure before deciding, and
+## not to "fix" the precedence by inverting it.
+##
+## MEASURED, and the overlap is total — 6.0s of a PREP_SECONDS 18.0 window, so a
+## third of it. But the premise behind the worry is false, and that is the finding:
+## `Game._on_wave_cleared` builds the line as `wave_cleared_line(wave, prep_note())`,
+## and `wave_cleared_line` CONCATENATES. Read off the running game:
+##
+##     wave 1  -> "Wave 1 cleared. Next one grows in 18 seconds."
+##     wave 22 -> "Wave 22 cleared. Next one grows in 18 seconds."
+##
+## So for those six seconds the row says both things in one sentence, and the
+## player is not choosing between them. Nothing to fix, and the precedence rule
+## stays exactly as cycle 48 set it.
+##
+## The one way it could go wrong is `prep_note()` returning "" — the line then
+## degrades to "Wave 3 cleared." with no forecast at all. It cannot today: every
+## branch returns a sentence and the last is an unconditional fallback. This test
+## pins that, because it is the only thing holding the verdict up.
+func test_the_cleared_line_carries_the_forecast_rather_than_hiding_it() -> String:
+	var note: String = "Next one grows in 18 seconds."
+	var err: String = _T.assert_true(Hud.wave_cleared_line(3, note).contains(note),
+		"the cleared line carries the whole prep note, not a truncation of it")
+	if err == "":
+		err = _T.assert_true(Hud.wave_cleared_line(3, note).begins_with("Wave 3 cleared."),
+			"and still says what just happened, first")
+	if err == "":
+		# The degradation this verdict rests on NOT happening.
+		err = _T.assert_eq(Hud.wave_cleared_line(3, ""), "Wave 3 cleared.",
+			("an empty note is the one case where the forecast vanishes -- which is why"
+				+ " Game.prep_note()'s unconditional fallback is load-bearing, not tidy"))
+	if err == "":
+		# The window is a third of the prep gap. Recorded so a change to either
+		# number has to come past this sentence.
+		err = _T.assert_gt(Game.PREP_SECONDS, WAVE_CLEARED_MESSAGE_SECONDS,
+			("the cleared line is shorter than the prep gap it sits inside (%.1fs of"
+				+ " %.1fs). If it ever outlasts the gap the forecast never gets a"
+				+ " turn of its own at all") % [WAVE_CLEARED_MESSAGE_SECONDS, Game.PREP_SECONDS])
+	return err
+
+
+## The duration Game._on_wave_cleared passes to show_message for the cleared line.
+## Recorded here rather than read, because it is a literal at that call site; if it
+## becomes a constant, point this at it.
+const WAVE_CLEARED_MESSAGE_SECONDS: float = 6.0
+
+
+# -- END the cleared line does not eat the prep window --
+
+
+# -- BEGIN what the weather is actually worth on screen (plant-tower-defense-ki5h) --
+
+
+## A drought must not be quieter than rain, because only one of them asks for anything.
+##
+## plant-tower-defense-ki5h asked whether a drought is noticed MID-WAVE rather than
+## side by side, and said the asymmetry is the argument: a drought doubles every
+## plant's firing interval — a demand for more plants or better ones — while rain heals
+## beds by a fraction, a gift requiring no response. Equal visual weight for unequal
+## stakes.
+##
+## MEASURED on the running board, sampling one 40x40 patch of grass under all three
+## states and converting to Rec.709 luminance:
+##
+##     clear     0.5705
+##     drought   0.6008   +5.31%    dR +0.059  dG +0.024  dB +0.008
+##     rain      0.5950   +4.29%    dR -0.001  dG +0.023  dB +0.114
+##
+## Two findings, and the second is the one nobody expected. The weights ARE nearly
+## equal — a single percentage point apart — so the bead's claim holds. But
+## per-channel, RAIN IS THE LOUDER CUE: its blue excursion is nearly double the
+## drought's red one. The state that needs no response is the more visible of the two.
+##
+## Both are also hue shifts rather than value shifts, so in greyscale they collapse to
+## 5.3% against 4.3% — very nearly the same picture. What keeps them apart with colour
+## discarded is not the tint at all, it is the MARKS: flat dashes for drought, slanted
+## streaks for rain (`WeatherOverlay.DROUGHT_MARK_*` / `RAIN_MARK_*`). That is the
+## channel doing the work, and it is worth knowing that before anyone tunes an alpha.
+##
+## This test does not fix the asymmetry — the bead asked for a measurement before a
+## change, and which way to close it is a taste call about a board nobody has played
+## under drought. It pins the ORDERING that any fix has to respect.
+func test_a_drought_is_never_a_quieter_cue_than_rain() -> String:
+	var drought_ink: float = WeatherOverlay.DROUGHT_TINT.a
+	var rain_ink: float = WeatherOverlay.RAIN_TINT.a
+	var err: String = _T.assert_gt(drought_ink, rain_ink * 0.999,
+		("the drought tint is at least as opaque as rain's (%.3f against %.3f)."
+			+ " A drought doubles every plant's firing interval and rain is a gift;"
+			+ " the one that demands a response may not be the fainter mark")
+			% [drought_ink, rain_ink])
+	if err == "":
+		# The mark channel, which is what actually survives colour being thrown away.
+		# Drought's dash is SHORTER and THICKER than rain's streak — different shape,
+		# not a different colour — and that difference is the whole greyscale story.
+		err = _T.assert_gt(WeatherOverlay.RAIN_MARK_LENGTH,
+			WeatherOverlay.DROUGHT_MARK_LENGTH,
+			"rain streaks are longer than drought dashes, so the two read apart by shape")
+	if err == "":
+		err = _T.assert_gt(WeatherOverlay.DROUGHT_MARK_WIDTH,
+			WeatherOverlay.RAIN_MARK_WIDTH,
+			"and drought dashes are thicker, which is the second half of that shape difference")
+	if err == "":
+		# Both marks have to out-ink their own tint or the shape channel is decorative
+		# and the greyscale distinction rests on a 1-point luminance gap.
+		err = _T.assert_gt(WeatherOverlay.DROUGHT_MARK.a, WeatherOverlay.DROUGHT_TINT.a,
+			"the drought's marks are more opaque than its wash, so shape leads colour")
+	if err == "":
+		err = _T.assert_gt(WeatherOverlay.RAIN_MARK.a, WeatherOverlay.RAIN_TINT.a,
+			"and the same for rain")
+	return err
+
+
+# -- END what the weather is actually worth on screen --
+
+
+## What rain's prep-note clause says it mends, as the sentence renders it.
+##
+## The three full-sentence goldens above compare a whole rendered label, which is the
+## point of them -- word order, separators and the trailing stop are all in scope. But
+## the percentage inside that sentence is a TUNABLE, and typing it three times would
+## make retuning WEATHER_RAIN_HEAL_FRACTION fail three string comparisons that have
+## nothing to say about the tuning. So the sentence stays hand-written and the number
+## comes from the constant, which is the same split `Hud.next_wave_note` itself uses.
+func _rain_mend_percent() -> int:
+	return int(round(WaveDirector.WEATHER_RAIN_HEAL_FRACTION * 100.0))
+
+
+# -- the seed economy has a finite floor and an uncapped ceiling (uqeo) --
+
+## `uqeo` asked for a per-wave banked series off a live 22-wave run. That run would
+## have measured ONE point on a curve whose shape is decided by two facts you can
+## read off the source, and this test pins them instead:
+##
+##   the SINK is finite and one-time. Every seed the game can ever accept is a
+##   placement, an upgrade, or a packet, and all three are bounded -- 94-odd cells,
+##   a ladder on two of eight plants, seven packets to unlock the rest.
+##
+##   the INCOME is a rate with no cap. A Sunflower mints YIELD seeds every INTERVAL
+##   seconds unconditionally, and a wave never starts until the player presses the
+##   button (`can_start_wave` in Game.summary_stats), so prep time is unbounded.
+##
+## A finite sink meets an unbounded rate at exactly one place, and the surplus after
+## it has nowhere to go. That is the design gap the bead was reaching for, and no
+## amount of live play makes it more or less true. If someone adds a sink -- a third
+## ladder, a consumable, a per-wave cost -- this test fails and they get to re-read
+## the paragraph above rather than inheriting a stale conclusion.
+func test_the_seed_sink_is_finite_while_the_seed_income_is_not() -> String:
+	# Hand-built because plants are constructed in code (Game._new_plant), not from
+	# scenes -- so the list is checked against the catalogue rather than trusted.
+	var makers: Dictionary = {
+		PlantCatalog.CORN: func() -> Plant: return CornCobbler.new(),
+		PlantCatalog.CHOMP: func() -> Plant: return ChompFlower.new(),
+		PlantCatalog.SUNFLOWER: func() -> Plant: return Sunflower.new(),
+		PlantCatalog.SUNDEW: func() -> Plant: return StickySundew.new(),
+		PlantCatalog.DANDELION: func() -> Plant: return Dandelion.new(),
+		PlantCatalog.MINT: func() -> Plant: return Mint.new(),
+		PlantCatalog.NETTLE: func() -> Plant: return Nettle.new(),
+		PlantCatalog.ALOE: func() -> Plant: return Aloe.new(),
+	}
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_eq(makers.size(), ids.size(),
+		("this test builds one of every catalogue plant -- a new plant means a new "
+			+ "row here AND a fresh look at whether it carries a sink"))
+	for id: StringName in ids:
+		if err != "":
+			break
+		err = _T.assert_true(makers.has(id), "%s has a maker in this test" % id)
+	if err != "":
+		return err
+
+	# Walk every plant once: what it costs to place, and what its whole ladder costs
+	# to climb. Both come off the plant itself, never a number re-listed here.
+	var with_ladder: Array[String] = []
+	var dearest_cell: int = 0
+	for id: StringName in ids:
+		var plant: Plant = (makers[id] as Callable).call()
+		var ladder: Array[Dictionary] = plant.upgrade_ladder()
+		var climb: int = 0
+		for step: Dictionary in ladder:
+			climb += int(step.get("upgrade_cost", 0))
+		if climb > 0:
+			with_ladder.append(String(id))
+		dearest_cell = maxi(dearest_cell, PlantCatalog.cost(id) + climb)
+		plant.free()
+
+	# The floor of the whole argument: six of the eight plants cannot be improved at
+	# any price. A garden of Sundews and Nettles has NO upgrade sink whatsoever.
+	with_ladder.sort()
+	err = _T.assert_eq(with_ladder, ["chomp_flower", "corn_cobbler"],
+		("only two of eight plants can absorb a seed after they are placed -- the "
+			+ "other six are a one-time cost and then free forever"))
+
+	# Be generous to the sink everywhere it is in doubt: every grid cell counts as
+	# buildable (the path really takes ~32 of them away), every cell holds the
+	# dearest plant plus its full ladder, and every packet is bought at the top tier.
+	# The conclusion has to survive the most expensive game anyone could play.
+	var cells: int = Board.COLS * Board.ROWS
+	var packets: int = (ids.size() - 1) * int(SeedBank.PACKET_TIERS[&"epic"]["cost"])
+	var ceiling: int = cells * dearest_cell + packets
+	if err == "":
+		err = _T.assert_gt(ceiling, 0, "the lifetime sink is a finite number of seeds")
+
+	# And now the rate. One Sunflower alone mints the entire generous ceiling in a
+	# bounded stretch of prep, and nothing in the game asks the player to move on.
+	var per_second: float = float(Sunflower.YIELD) / Sunflower.INTERVAL
+	if err == "":
+		err = _T.assert_gt(per_second, 0.0,
+			"a Sunflower pays out on a clock, with no wave and no pest involved")
+	if err == "":
+		var minutes: float = float(ceiling) / per_second / 60.0
+		err = _T.assert_gt(60.0 * 8.0, minutes,
+			("ONE Sunflower buys out every sink the game has in %.0f minutes of "
+				+ "standing still; a real garden runs a dozen of them") % minutes)
+	return err
+
+
+# -- END the seed economy has a finite floor and an uncapped ceiling --
+
+
+# -- BEGIN should the pause door open the SELECTED plant's page (plant-tower-defense-5s99) --
+#
+# The bead asked a question and the answer is NO: the pause door keeps opening the
+# legend, whatever is selected on the board. The five reasons live on
+# `PauseScreen.notebook_door_kind()`; these four tests pin the MEASUREMENTS those
+# reasons rest on, so a future session that wants to re-open the decision finds out
+# from a failing test that its premises have moved rather than re-deriving them.
+#
+# Two of them are deliberately tripwires that fire when the codebase IMPROVES —
+# test_two_of_the_catalogues_plants_have_no_spec_page_to_send_a_player_to and
+# test_the_legend_is_never_one_press_from_a_plants_page. If either fails, the
+# corresponding reason has expired. Re-open plant-tower-defense-5s99 and decide it
+# again; do not flip the assertion.
+
+
+## The door's whole behaviour, end to end, plus the half that was actually missing.
+##
+## `open_at` is read once during NotebookScreen's build, so this drives the real
+## button rather than setting the property: a test that reached in and set `open_at`
+## would prove the notebook works and say nothing about the door.
+func test_the_pause_door_opens_the_legend_and_says_so_before_you_press_it() -> String:
+	var total: int = NotebookScreen.PAGES.size()
+	var legend: int = NotebookScreen.page_for_kind(NotebookScreen.KIND_LEGEND)
+	var err: String = _T.assert_gt(legend, 0,
+		"the legend is not page 0, so where this door opens is a real choice (page %d of %d)"
+			% [legend + 1, total])
+	if err == "":
+		# The door names its destination in exactly ONE place, which is what stops the
+		# tooltip and the `open_at` two functions below from drifting into two answers.
+		# Asked by KIND rather than by index, so reordering PAGES moves both together.
+		err = _T.assert_eq(
+			NotebookScreen.page_for_kind(PauseScreen.notebook_door_kind()), legend,
+			"the pause door's one named destination is the legend")
+	if err == "":
+		err = _T.assert_true(
+			NotebookScreen.PANE_LABELS.has(PauseScreen.notebook_door_kind()),
+			("and it is a kind the notebook actually has a page heading for, so the "
+				+ "tooltip cannot promise a blank"))
+	if err != "":
+		return err
+
+	var screen := await _T.instantiate_ui(
+		PauseScreen.build("", Game.key_help()), Vector2i(1152, 648)) as PauseScreen
+	var door: Button = screen.get_node_or_null("NotebookButton") as Button
+	err = _T.assert_true(door != null, "the pause card has a Notebook door to press")
+	if err != "":
+		_T.free_ui(screen)
+		return err
+
+	# WRITTEN, per the condition this change was made under. A player pressing this
+	# button from a pause lands on 13 / 14 while the identically labelled button on the
+	# title screen lands on 1 / 14, and until now nothing said so — which is exactly
+	# what a book that lost its place looks like.
+	err = _T.assert_eq(door.tooltip_text, PauseScreen.notebook_door_tooltip(),
+		"the door carries the promise, rather than the promise living only in a static")
+	if err == "":
+		err = _T.assert_true(door.tooltip_text.contains("%d of %d" % [legend + 1, total]),
+			"and the promise names the page the door really opens at, got %s" % door.tooltip_text)
+	if err == "":
+		# Derived from PANE_LABELS, so the tooltip and the heading the page itself draws
+		# cannot drift into describing the legend two different ways.
+		err = _T.assert_true(door.tooltip_text.contains(
+				NotebookScreen.pane_label_for(NotebookScreen.KIND_LEGEND)),
+			"and it says what is on that page in the page's own words, got %s" % door.tooltip_text)
+	if err != "":
+		_T.free_ui(screen)
+		return err
+
+	door.pressed.emit()
+	var page_label: Label = screen.get_node_or_null("Notebook/PageLabel") as Label
+	err = _T.assert_true(page_label != null, "pressing the door actually opens a notebook")
+	if err == "":
+		err = _T.assert_eq(page_label.text, "%d / %d" % [legend + 1, total],
+			"and it opens on the legend — the page about the board being paused behind it")
+	if err == "":
+		# Read through a get_node_or_null rather than a cast on a get_node: a missing node
+		# would abort this method with a runtime error, and an aborted `-> String` test
+		# returns "" — identical to a pass.
+		var pane: Control = screen.get_node_or_null("Notebook/CueLegend") as Control
+		err = _T.assert_true(pane != null and pane.visible,
+			"with the legend pane showing, not merely the page number agreeing")
+	_T.free_ui(screen)
+	return err
+
+
+## The distinguishability half the bead asked for, in the only form this design allows.
+##
+## The bead wanted "a plant selected, and nothing selected" driven separately, because
+## a default that equals one of the two expected answers cannot be told apart from the
+## property being ignored. PauseScreen has no channel to `Game.selected_placed` at all —
+## `build()` takes a note and a key table — so there is no second branch to drive. What
+## CAN be established, and is the same guarantee, is that the page the door opens could
+## never have been produced by a selection: no plant in the catalogue owns it. The
+## observed "13 / 14" above therefore means "the legend door", not "some plant's page
+## that happens to be there".
+func test_no_plant_selection_could_have_produced_the_page_the_pause_door_opens() -> String:
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var legend: int = NotebookScreen.page_for_kind(NotebookScreen.KIND_LEGEND)
+	var err: String = _T.assert_gt(ids.size(), 0, "there are plants that could be selected")
+	if err != "":
+		return err
+	for id: StringName in ids:
+		var page: int = NotebookScreen.page_for_plant(id)
+		err = _T.assert_true(page != legend,
+			("selecting %s could not have put the notebook on page %d — so the page the "
+				+ "pause door opens distinguishes the legend from every possible selection")
+				% [id, legend + 1])
+		if err != "":
+			return err
+	# And the reverse reading of the same fact: the legend page is not ABOUT a plant, so
+	# a door aimed at it is answering a different question from one aimed at a selection.
+	return _T.assert_eq(StringName(NotebookScreen.PAGES[legend].get("plant", &"")), &"",
+		"the legend page names no plant, which is why it is the run-context answer")
+
+
+## REASON 1 on PauseScreen.notebook_door_kind(), pinned.
+##
+## `page_for_plant` finds a page for every plant — that is asserted elsewhere — but not
+## every one of those pages ANSWERS "what does this plant do". `go_to()` shows the spec
+## index card only on KIND_PLANT (`_spec.visible = kind == KIND_PLANT`); a KIND_DRAWING
+## page shows a photograph of a pencil sketch and a note about where the idea came from.
+## The two plants in that position are the free starter and the bead's own worked
+## example, which is the whole reason the proposal was declined.
+##
+## FAILS WHEN THE CODEBASE IMPROVES, on purpose: give those two a spec page and reason 1
+## has expired. Re-open the bead, do not edit this number.
+func test_two_of_the_catalogues_plants_have_no_spec_page_to_send_a_player_to() -> String:
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_gt(ids.size(), 0, "the catalogue has plants")
+	if err != "":
+		return err
+	var specless: Array[String] = []
+	for id: StringName in ids:
+		var page: int = NotebookScreen.page_for_plant(id)
+		if page < 0:
+			continue
+		var kind: String = String(NotebookScreen.PAGES[page].get(
+			"kind", NotebookScreen.KIND_DRAWING))
+		if kind != NotebookScreen.KIND_PLANT:
+			specless.append("%s (page %d, kind '%s')" % [id, page + 1, kind])
+	err = _T.assert_gt(specless.size(), 0,
+		("at least one plant's own page carries no spec card, which is why a door aimed "
+			+ "at 'the selected plant's page' is not a door aimed at 'what does this do'"))
+	if err == "":
+		# Named rather than merely counted: the identity is the argument. If a THIRD name
+		# appears here the reason is stronger, not weaker, so this is a floor and not an
+		# equality — but the two below are the ones that decided it.
+		err = _T.assert_true(str(specless).contains("corn_cobbler"),
+			("the free starter plant is one of them — the plant a confused player is most "
+				+ "likely to have selected. Specless set: %s") % str(specless))
+	if err == "":
+		err = _T.assert_true(str(specless).contains("chomp_flower"),
+			("and so is the Chomp, which is the bead's own worked example of a player "
+				+ "wondering what a plant does. Specless set: %s") % str(specless))
+	return err
+
+
+## REASON 4, measured rather than assumed — the bead said to check it before assuming
+## "a wrong-but-plausible page costs one press", and it does not.
+##
+## The pager is one page a press in each direction and there is no jump, so the price of
+## landing on the wrong page is the walk. Both halves are asserted: the walk lengths off
+## PAGES, and the one-page step off a real NextButton.
+func test_the_legend_is_never_one_press_from_a_plants_page() -> String:
+	var total: int = NotebookScreen.PAGES.size()
+	var legend: int = NotebookScreen.page_for_kind(NotebookScreen.KIND_LEGEND)
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_gt(ids.size(), 0, "there are plant pages to walk from")
+	if err != "":
+		return err
+	var worst: int = 0
+	for id: StringName in ids:
+		var page: int = NotebookScreen.page_for_plant(id)
+		if page < 0:
+			continue
+		# The pager wraps, so the real price is the shorter of the two directions.
+		var walk: int = mini(posmod(legend - page, total), posmod(page - legend, total))
+		worst = maxi(worst, walk)
+		err = _T.assert_gt(walk, 1,
+			("the legend is %d presses from %s's page, not one — so a door that guessed "
+				+ "wrong would charge the player a walk, not a tap") % [walk, id])
+		if err != "":
+			return err
+	err = _T.assert_gt(worst, 4,
+		("the worst plant page is %d presses from the legend (of a possible %d on a "
+			+ "%d-page wrap), which is the number that decided reason 4")
+			% [worst, total / 2, total])
+	if err != "":
+		return err
+
+	# The other half: one press really is one page. A jump control added later would make
+	# the walk above cheap and reason 4 would need re-reading — this is what would say so.
+	var book := await _T.instantiate_ui(NotebookScreen.new(), Vector2i(1152, 648)) as NotebookScreen
+	var pager: Label = book.get_node_or_null("PageLabel") as Label
+	var next_button: Button = book.get_node_or_null("NextButton") as Button
+	err = _T.assert_true(pager != null and next_button != null,
+		"the notebook has a pager and a Next button")
+	if err == "":
+		err = _T.assert_eq(pager.text, "1 / %d" % total, "it opened at the front")
+	if err == "":
+		next_button.pressed.emit()
+		err = _T.assert_eq(pager.text, "2 / %d" % total,
+			"and one press of Next moves exactly one page")
+	_T.free_ui(book)
+	return err
+
+
+# -- END should the pause door open the SELECTED plant's page (plant-tower-defense-5s99) --

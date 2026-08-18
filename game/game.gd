@@ -81,11 +81,27 @@ var compost: CompostMeter
 var lives: int = LIVES
 var selected_plant: StringName = PlantCatalog.CORN
 var selected_placed: Plant = null
+## The plant the player is comparing FROM: the selection before this one, kept on
+## screen with its sole-cover rings demoted so two plants' answers to "what does this
+## one alone hold?" can be read side by side (plant-tower-defense-sleq).
+##
+## WHAT CLEARS IT: selecting a third plant, which drops the oldest. The window is
+## exactly two BY CONSTRUCTION rather than by a rule anybody has to learn, so the
+## board cannot accumulate rings however long a session runs. Every `_select(null)`
+## clears it too -- picking a packet out of the bar, a plant eaten under the cursor,
+## an uproot committing -- because all three are moments where the question changed.
+## No timer, no key, no modifier: a comparison is read at the player's pace, and a cue
+## that needs a keypress to dismiss is one most players will leave up.
+var _held_over: Plant = null
 var game_over: bool = false
 var victory: bool = false
 
 var _entities: Node2D
 var _cursor: ColorRect
+## The shop entry the cursor is on, &"" for none. Decides which question the
+## board's dead-ground marks answer: this plant's, or the whole garden's
+## (plant-tower-defense-tzz7 / -g8kc).
+var _hovered_shop_plant: StringName = &""
 var _preview: PlacementPreview
 ## Last cell the cursor was over, or x < 0 for "off the board". Kept so the
 ## preview can be re-drawn on events that are not mouse motion.
@@ -299,6 +315,7 @@ func _ready() -> void:
 	compost.husk_rotted.connect(_on_husk_rotted)
 
 	hud.plant_selected.connect(_on_plant_chosen)
+	hud.plant_hovered.connect(_on_plant_hovered)
 	hud.packet_requested.connect(_on_packet_requested)
 	# Through a handler rather than straight onto start_next_wave(), so the
 	# mutator underneath stays unguarded for the devtools verb, the prep-timer
@@ -405,8 +422,7 @@ func start_next_wave() -> bool:
 func _apply_weather(next: StringName) -> void:
 	weather = next
 	var scale: float = WaveDirector.fire_interval_scale_for(next)
-	var heal: float = (Plant.MAX_HEALTH * WaveDirector.WEATHER_RAIN_HEAL_FRACTION
-		if next == WaveDirector.WEATHER_RAIN else 0.0)
+	var heal: float = Plant.MAX_HEALTH * WaveDirector.heal_fraction_for(next)
 	for key: Vector2i in _plants:
 		var plant := _plants[key] as Plant
 		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
@@ -1269,6 +1285,13 @@ func summary_stats(new_record: bool) -> Dictionary:
 		# evidence" rather than as "every one of them was fought".
 		"escapes_recorded": _escapes_recorded,
 		"escapes_untouched": _escapes_untouched,
+		# The coverage half of "covered is not engaged", read off the same derived
+		# map the hover cue and the lane overlay use rather than recomputed, so the
+		# card cannot disagree with the board about which ground was aimed at.
+		# RunSummary.reach_note_text() is silent without both of these
+		# (plant-tower-defense-b7v5).
+		"road_aimed": covered_road_cells().size(),
+		"road_cells": board.road_cells().size(),
 	}
 
 
@@ -1295,7 +1318,64 @@ func _on_plant_chosen(id: StringName) -> void:
 
 ## Single point of truth for `selected_placed` — flips the range-ring/selection
 ## flag on the outgoing and incoming plant so exactly one plant ever shows it.
+
+## The board's dead-ground marks, repushed. One question at a time: with a shop
+## entry hovered the board answers about THAT plant (tzz7); with nothing hovered it
+## answers about the garden the player already owns (g8kc). Never both, which is why
+## board_dead_cells() returns one list rather than two -- two bars on that angle is
+## PlacementPreview's redundant-patch cue, a different sentence.
+func _refresh_dead_ground() -> void:
+	if board == null or not is_instance_valid(board):
+		return
+	board.mark_dead_ground(
+		PlacementPreview.board_dead_cells(board, _hovered_shop_plant, bank.unlocked),
+		PlacementPreview.dead_bar_arm(),
+		PlacementPreview.board_dead_color(),
+		PlacementPreview.DEAD_BAR_WIDTH)
+
+
+## The board's deferred-road bars, repushed. See PlacementPreview.deferred_road_cells
+## for what "deferred" means and why it is a static property of the garden's SHAPE
+## rather than a live read of what each gun is currently shooting at.
+##
+## The guns go in as two parallel lists rather than as the Game itself, because a
+## PlacementPreview naming Game back would be a cyclic class_name reference -- the
+## same seam _refresh_dead_ground() takes `bank.unlocked` across. The filter is
+## covered_road_cells()' filter exactly: standing, not destroyed, engagement_reach
+## above zero.
+func _refresh_deferred_road() -> void:
+	if board == null or not is_instance_valid(board):
+		return
+	var gun_cells: Array[Vector2i] = []
+	var gun_reaches := PackedFloat32Array()
+	for key: Vector2i in _plants:
+		var plant := _plants[key] as Plant
+		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
+			continue
+		var reach: float = engagement_reach(plant.kind)
+		if reach <= 0.0:
+			continue
+		gun_cells.append(plant.cell)
+		gun_reaches.append(reach)
+	board.mark_deferred_road(
+		PlacementPreview.deferred_road_cells(board, gun_cells, gun_reaches),
+		PlacementPreview.DEFERRED_BAR_ARM,
+		PlacementPreview.deferred_road_color(),
+		PlacementPreview.DEFERRED_BAR_WIDTH)
+
+
+## Applied straight away rather than left for the next _refresh(), for the reason
+## Hud._on_packet_hover spells out: a mouse crossing a button changes no state, so
+## waiting for a refresh would light the board only when something else happens to
+## happen, which is indistinguishable from a bug.
+func _on_plant_hovered(id: StringName) -> void:
+	if id == _hovered_shop_plant:
+		return
+	_hovered_shop_plant = id
+	_refresh_dead_ground()
+
 func _select(plant: Plant) -> void:
+	var previous: Plant = selected_placed
 	if selected_placed != null and is_instance_valid(selected_placed):
 		selected_placed.set_selected(false)
 	# Changing selection cancels a pending Uproot. Keying the arming to the plant
@@ -1307,6 +1387,68 @@ func _select(plant: Plant) -> void:
 	selected_placed = plant
 	if selected_placed != null:
 		selected_placed.set_selected(true)
+	# AFTER the assignment, because _apply_held_over asks whether a plant is the live
+	# selection before it hides anything. Exactly one previous selection is kept, and
+	# only when the selection actually moved to ANOTHER plant: re-clicking the plant
+	# already selected must not drop the one it is being compared against.
+	if plant == null:
+		_hold_over(null)
+	elif previous != null and previous != plant:
+		_hold_over(previous)
+
+
+
+## Moves the held-over slot, which holds exactly one plant. Idempotent.
+func _hold_over(plant: Plant) -> void:
+	if _held_over == plant:
+		return
+	_apply_held_over(_held_over, false)
+	_held_over = plant
+	_apply_held_over(_held_over, true)
+
+
+## Turns the demoted look on or off on one plant's two cue nodes.
+##
+## The marker is reached by node name for the reason `_push_uproot_clock` spells out:
+## `SelectionMarker.NODE_NAME` is documented as exactly this contract. A plant built
+## outside a Game has neither node, which is a silent no-op here as it is there.
+##
+## `live` guards the hiding half. A held plant RE-selected passes through here with
+## `held = false` on the same frame it becomes the selection, and emptying its marks
+## then would blank the rings the player just clicked for.
+func _apply_held_over(plant: Plant, held: bool) -> void:
+	if plant == null or not is_instance_valid(plant):
+		return
+	var live: bool = plant == selected_placed
+	var marker := plant.get_node_or_null(
+		NodePath(SelectionMarker.NODE_NAME)) as SelectionMarker
+	if marker != null:
+		marker.set_held_over(held)
+		marker.visible = held or live
+	var marks: SoleCoverMarks = plant.sole_cover_marks()
+	if marks != null:
+		marks.set_held_over(held)
+		marks.visible = held or live
+		if not held and not live:
+			marks.set_points(PackedVector2Array())
+
+
+## One plant's sole-cover rings, pushed from the garden as it now stands. Lifted out of
+## _refresh() because there are two of them now -- the selection and the plant held
+## over beside it -- and two copies of this loop is where the two would start
+## disagreeing.
+func _push_sole_cover(plant: Plant) -> void:
+	if plant == null or not is_instance_valid(plant):
+		return
+	var marks: SoleCoverMarks = plant.sole_cover_marks()
+	if marks == null:
+		return
+	var at: PackedVector2Array = PackedVector2Array()
+	for cell: Vector2i in sole_cover_cells(plant):
+		# GLOBAL, because SoleCoverMarks._draw hands these to to_local().
+		# cell_to_world is board-local and the marks drew 72 px high for it.
+		at.append(board.cell_to_global(cell))
+	marks.set_points(at)
 
 
 func plant_at(cell: Vector2i) -> Plant:
@@ -1576,13 +1718,27 @@ func upgrade_selected() -> String:
 func arm_uproot() -> String:
 	if selected_placed == null or not is_instance_valid(selected_placed):
 		return "nothing is selected"
-	if _uproot_armed == selected_placed and _uproot_left > 0.0:
+	# No `and _uproot_left > 0.0` here, and _update_preview lost the same half for the
+	# same reason (plant-tower-defense-iljz). `selected_placed` is non-null by the guard
+	# above, so `_uproot_armed == selected_placed` already says something is armed — and
+	# `_disarm_uproot()` is the ONE place the arming is cleared and it clears the
+	# reference and the clock together, so an open window is exactly a non-null
+	# `_uproot_armed`. A second condition that cannot disagree is dead code wearing a
+	# safety belt, which is a shape this repo has now paid for twice.
+	# test_the_uproot_window_leaves_nothing_armed_behind_it pins the invariant at
+	# runtime; test_the_uproot_clock_is_never_written_without_the_arming pins that no
+	# future writer can move one without the other.
+	if _uproot_armed == selected_placed:
 		_disarm_uproot()
 		return commit_uproot()
 	_uproot_armed = selected_placed
 	_uproot_left = UPROOT_CONFIRM_SECONDS
 	# The bed itself says so, not only the message row (plant-tower-defense-rtgp).
 	_uproot_armed.set_uproot_armed(true)
+	# And how LONG it says so for (plant-tower-defense-fjqp). Pushed on the arming frame
+	# rather than left to the first tick: the arc has to appear as a full circle the
+	# instant it appears, or its own first frame reads as time already spent.
+	_push_uproot_clock()
 	Sfx.play(Sfx.UPROOT_ARMED)
 	# IMPORTANT: this is an instruction with a live 4-second trigger behind it, and
 	# an ambient husk pickup used to wipe it mid-read.
@@ -1624,8 +1780,13 @@ func arm_uproot() -> String:
 
 ## True while a second Uproot click would commit. Read by the HUD to relabel the
 ## button, and by the tests.
+##
+## `_uproot_left > 0.0` is deliberately NOT a third term (plant-tower-defense-iljz):
+## it can never disagree with the first. The null check IS load-bearing and stays —
+## with nothing selected and nothing armed the two nulls compare EQUAL, and without it
+## this would answer true for a button that must read "Uproot".
 func uproot_armed() -> bool:
-	return _uproot_armed != null and _uproot_armed == selected_placed and _uproot_left > 0.0
+	return _uproot_armed != null and _uproot_armed == selected_placed
 
 
 ## Refreshes the panel when — and only when — the selected plant's health moves.
@@ -1664,6 +1825,35 @@ func _tick_uproot_confirm(delta: float) -> void:
 		_disarm_uproot()
 		hud.show_message("Uproot cancelled.", 2.0)
 		_refresh()
+		return
+	# Every surviving frame, and only here. The branch above hands the close-out to
+	# _disarm_uproot(), which zeroes the drawn arc through Plant.set_uproot_armed —
+	# so this line must not run after it, or a cleared clock is pushed straight back
+	# onto a marker that has just finished putting itself away.
+	_push_uproot_clock()
+
+
+## Hands the open window to the armed plant's `SelectionMarker`, which is what draws it
+## (plant-tower-defense-fjqp). Game owns the clock; the marker owns the paint.
+##
+## `_uproot_left` is read here and in `_tick_uproot_confirm` and nowhere else, and the
+## marker counts nothing of its own — so the arc a player watches close and the timer
+## that actually decides whether the next click destroys a bed are the same number.
+##
+## Reached by node name rather than through a `Plant` accessor because
+## `SelectionMarker.NODE_NAME` is exactly the contract that exists for this: it is the
+## path `test_selftest.gd` and the devtools bridge already look the marker up by, and it
+## is documented as a contract on the constant itself. A plant built outside a Game has
+## no marker, which is a silent no-op here for the same reason it is one in
+## `Plant.set_uproot_armed`.
+func _push_uproot_clock() -> void:
+	if _uproot_armed == null or not is_instance_valid(_uproot_armed):
+		return
+	var marker := _uproot_armed.get_node_or_null(
+		NodePath(SelectionMarker.NODE_NAME)) as SelectionMarker
+	if marker == null:
+		return
+	marker.set_uproot_window(_uproot_left, UPROOT_CONFIRM_SECONDS)
 
 
 ## The unguarded mutator: removes the selected plant and pays the refund with **no
@@ -2151,6 +2341,14 @@ func _refresh() -> void:
 	# the ones where a plant was bought, uprooted or eaten.
 	if board != null and is_instance_valid(board):
 		board.mark_unaimed_road(uncovered_road_cells())
+		# The dead-ground marks read the garden's unlocks, so they move when a packet
+		# is opened -- not only when the cursor moves. Same funnel and the same
+		# early-return discipline as mark_unaimed_road above.
+		_refresh_dead_ground()
+		# The deferred bars read the standing guns and their reaches, so they move
+		# when the garden does -- a cob bought, uprooted or eaten -- and not only
+		# when the cursor moves. Same funnel, same discipline.
+		_refresh_deferred_road()
 		# The preview's new-cover dots read the same set, and pushing it only from
 		# _update_preview would leave them stale whenever the garden changes while
 		# the cursor is STILL — a plant eaten mid-wave, an uproot committing, a
@@ -2161,20 +2359,19 @@ func _refresh() -> void:
 		if _preview != null and is_instance_valid(_preview) and _preview.visible:
 			_preview.covered_now = covered_road_cells()
 			_preview.queue_redraw()
-		# The selected plant's own half of the same question. Pushed here rather
-		# than from set_selected() because the answer changes when the GARDEN
-		# changes, not only when the selection does: plant a second cob beside the
-		# selected one and the rings under it should thin out without the player
-		# clicking anything.
-		if selected_placed != null and is_instance_valid(selected_placed):
-			var marks: SoleCoverMarks = selected_placed.sole_cover_marks()
-			if marks != null:
-				var at: PackedVector2Array = PackedVector2Array()
-				for cell: Vector2i in sole_cover_cells(selected_placed):
-					# GLOBAL, because SoleCoverMarks._draw hands these to to_local().
-					# cell_to_world is board-local and the marks drew 72 px high for it.
-					at.append(board.cell_to_global(cell))
-				marks.set_points(at)
+		# The selected plant's own half of the same question, and the plant held
+		# over beside it. Pushed here rather than from set_selected() because the
+		# answer changes when the GARDEN changes, not only when the selection does:
+		# plant a second cob beside the selected one and the rings under it should
+		# thin out without the player clicking anything.
+		#
+		# A held plant eaten or uprooted leaves a freed reference behind; cleared here
+		# rather than at each death path, because this is the one funnel every one of
+		# them already runs through.
+		if _held_over != null and not is_instance_valid(_held_over):
+			_held_over = null
+		_push_sole_cover(selected_placed)
+		_push_sole_cover(_held_over)
 	if hud == null:
 		return
 	hud.refresh(state())

@@ -119,6 +119,47 @@ const MAP_LEGEND_HEIGHT: float = 22.0
 const MAP_LEGEND_WIDTH: int = Board.COLS * Board.CELL
 const MAP_LEGEND_FONT_SIZE: int = 13
 
+## The reach note: the one sentence that says covered ground and fought ground are
+## not the same thing. See reach_note_text() for what it says and why the card
+## itself could not take it.
+##
+## WHERE, and the measurement that moved it. The obvious home was a second strip
+## under `map_legend_text`, and it does not survive the entrance. `_play_entrance`
+## drops every child by RISE_OFFSET_WIN = 32 and tweens it back up, so the real
+## bottom budget on this screen is not the 648-tall viewport — it is 648 - 32 = 616,
+## and the legend already foots at 610. There are six pixels down there, not the
+## thirty-eight the legend's own comment counts, because that comment measures the
+## resting position and the rise happens before it. A second 20px line would have
+## hung 14px off the bottom of the screen for the whole 0.2s of a winning card's
+## rise, on precisely the runs a player replays.
+##
+## So it goes in the column the ribbon opened — beside the card, where the same
+## comment already argues the post-mortem owns real estate it has never drawn in.
+## Vertically it follows the ribbon rather than sitting at a fixed y, which is what
+## `reach_note_top` is for: at the full seven milestones the ribbon foots at 438,
+## this clears it by REACH_NOTE_GAP and foots at 550, level with the card's own foot
+## at 552 and 66px inside the rise budget. With no milestones — the common case — it
+## takes the top of the column instead of leaving a hole above itself.
+##
+## RE-MEASURED for plant-tower-defense-q8db, which added an eighth possible row (the
+## first record, see `ribbon_entries`). At `worst_ribbon_rows()` = 8 the ribbon foots at
+## 478, the note starts at 494 and foots at 590 — still inside the 616 rise budget, by
+## 26px rather than 66. That is the whole of the slack this change spent, and it is
+## spent in the side column, not on the stats row. A NINTH row would foot at 630 and
+## hang off the bottom during the rise, so this column is now full:
+## `test_the_widest_ribbon_this_game_can_draw_still_clears_the_rise` is what says so.
+##
+## A Panel and not a bare Label, unlike the legend. The legend sits over dark road
+## for its whole width; this column straddles the seam at x = 896 where the board
+## ends and the side panel begins, so a bare label would be legible over one half
+## and not the other. Its box is the ribbon's ink WITHOUT the gold: gold is what this
+## game spends on compost and on firsts, which is to say on something you got, and
+## this is a note about what went wrong.
+const REACH_NOTE_GAP: float = 16.0
+const REACH_NOTE_HEIGHT: float = 96.0
+const REACH_NOTE_PAD: float = 14.0
+const REACH_NOTE_FONT_SIZE: int = 13
+
 ## Entrance rise, matching the title screen's idiom. Gated on
 ## GardenTheme.animations_enabled() — headless never pumps the tween, so the
 ## card must already be correct before it runs.
@@ -137,6 +178,10 @@ const RISE_SECONDS_LOSS: float = 0.42
 const RISE_OFFSET_LOSS: float = 18.0
 
 var _rows: Array[Label] = []
+
+## The reach par, memoised. -1 is "not asked yet"; 0 is a real answer meaning "this
+## card cannot vouch for a par" — see reach_par(), where the two are different runs.
+var _par_cache: int = -1
 
 
 ## `stats` is Game.state() plus the end-of-run extras; see Game._end_run.
@@ -180,6 +225,7 @@ func _ready() -> void:
 	_build_rows()
 	_build_milestone_ribbon()
 	_build_map_legend()
+	_build_reach_note()
 	_build_buttons()
 
 	if GardenTheme.animations_enabled():
@@ -216,17 +262,54 @@ func _build_heading() -> void:
 	add_child(sub)
 
 
+## Whether this run set the garden's FIRST record, rather than beat an earlier one
+## (plant-tower-defense-q8db).
+##
+## `previous_best` is the number the record just beat, and 0 means there was nothing
+## there — the mode had never been scored. `TitleScreen._arm_record_ratchet` reads the
+## same 0 and refuses to roll, correctly: counting up from a zero the player never held
+## would tell someone who has just set their first score that they climbed out of it.
+## But refusing the roll was the whole treatment, so the most significant record a
+## player will ever set ended up with strictly LESS than a later, smaller one. This is
+## the flag the card uses to give it something else instead.
+##
+## DEFAULTS TO -1, NOT 0, and the difference is the whole safety of it. `previous_best`
+## is a key `Game.summary_stats` does not write yet; absent must mean "unknown", which
+## reads as "not a first" and leaves the card saying exactly what it says today. A 0
+## default would call every record on every card a first — including on the pause exits,
+## which build a card from a stats dict assembled elsewhere.
+func first_record() -> bool:
+	if not bool(_stats.get("new_record", false)):
+		return false
+	return int(_stats.get("previous_best", -1)) == 0
+
+
 ## The seed total against the persisted best. Pulled out as its own builder so a
 ## test can assert every branch of it without standing up a Control — the same
 ## shape TitleScreen.high_score_text() uses for the same reason.
 func _score_line() -> String:
-	var earned: int = int(_stats.get("seeds_earned_total", 0))
-	if bool(_stats.get("new_record", false)):
+	return score_line_at(int(_stats.get("seeds_earned_total", 0)),
+		bool(_stats.get("new_record", false)), first_record(),
+		int(_stats.get("high_score", 0)), bool(_stats.get("endless", false)))
+
+
+## The same line for GIVEN numbers, static and pure, which is what lets the suite assert
+## all three branches without a save file or a played run — the shape
+## `TitleScreen.high_score_text_at` already uses next door for the same reason.
+##
+## "this garden's first record" and not "a new best". A first record is not a better
+## number than the one before it; there was no number before it, and "a new best" quietly
+## claims a comparison that did not happen. Naming it as a first is also the channel that
+## survives colour being discarded — it is the WORDS that differ, not a tint.
+static func score_line_at(earned: int, new_record: bool, first: bool, best: int,
+		endless: bool) -> String:
+	if first:
+		return "%d seeds grown — this garden's first record" % earned
+	if new_record:
 		return "%d seeds grown — a new best" % earned
-	var best: int = int(_stats.get("high_score", 0))
 	# "your best" is now the record for the mode just played, not a single number
 	# shared between the eight-wave campaign and an unbounded endless run.
-	var mode: String = "endless" if bool(_stats.get("endless", false)) else "campaign"
+	var mode: String = "endless" if endless else "campaign"
 	return "%d seeds grown — your best %s is %d" % [earned, mode, best]
 
 
@@ -251,7 +334,7 @@ func summary_rows() -> Array:
 	var rows: Array = [
 		["Waves survived", _waves_text()],
 		["Pests defeated", "%d" % int(_stats.get("pests_defeated", 0))],
-		["Time in the garden", _duration_text()],
+		["Road in reach", reach_text()],
 		["Seeds spent", spend_text()],
 		["Garden lost", beds_text()],
 		["Compost swept", _compost_text()],
@@ -415,11 +498,183 @@ func _compost_text() -> String:
 	return "%d of %d" % [swept, resolved]
 
 
-## Minutes and seconds. A bare float of seconds is a number the player has to
-## convert, and "413.7" is not a thing anyone recognises about their own run.
-func _duration_text() -> String:
-	var total: int = int(round(float(_stats.get("run_seconds", 0.0))))
-	return "%d:%02d" % [total / 60, total % 60]
+## How much of the road the garden could touch, against how little it takes to
+## touch all of it — the run's one efficiency reading (plant-tower-defense-dgu5).
+##
+## WHAT THIS ROW DISPLACED, because it had to displace something. `rows_capacity()`
+## returns 7 against the 7 rows `summary_rows()` builds and an eighth foots at 486
+## against buttons at 476, so a new subject on this card is a swap and never an
+## addition — the argument `_waves_text` and `_compost_text` both make at length.
+## The row given up is "Time in the garden", on three counts:
+##
+##   - It is the only row that reported nothing about the GARDEN. Every other row
+##     names a decision the player made (waves, seeds spent) or something the road
+##     did to them (beds, held ground, compost, pests). A duration is the length of
+##     the sitting.
+##   - `run_seconds` is the only key `Game.summary_stats()` exports that nothing
+##     else in the game reads. There is no HUD clock, no milestone keyed on it —
+##     `Milestones.TABLE` runs on victory, beds, pests, wave, threat and compost —
+##     and no test in the suite ever asserted the row it drew, where every
+##     surviving row has at least one of those three readers.
+##   - It is a GAME clock wearing a wall clock's name. `Game._process` accumulates
+##     `delta`, which `Engine.time_scale` has already scaled, and `GameSpeed` is
+##     free to set that to 2 — so the same sitting reads 12:00 at double speed and
+##     6:00 at normal, and neither matches the player's own stopwatch at both.
+##
+## WHAT "EFFICIENT" MEANS HERE, and the reading this row deliberately does NOT
+## offer. The obvious par — "you held the road with 11 plants; 5 would have reached
+## it" — is a trap, and this repo already paid for finding it: cycle 54's greedy set
+## cover found five cobs reaching all 32 road cells where the recorded seven do, and
+## it BROKE TWO TESTS, because a cob shoots only the furthest-along pest in range, so
+## a minimal cover is a weaker garden than a redundant one covering the same cells
+## (see `test_combat._whole_road_garden`'s comment, which records exactly this). A
+## par that scored the player on plant COUNT would be telling them, on the card they
+## read after losing, to build the garden that loses harder. So the count of what the
+## player planted is not in this row and cannot be inferred from it.
+##
+## What is left when the count is taken out is a statement about PLACEMENT: the road
+## can be reached in full, cheaply, so the cells this garden never reached are a
+## choice and not a limit of the map. That is actionable and it is not a
+## build-fewer-plants instruction — plant elsewhere, not plant less.
+##
+## "reach alone" is the wording carrying reach-versus-sufficiency, and it is doing
+## real work rather than hedging: it says the number is about geometry and about
+## nothing else. The row is keyed "Road in reach" against the sibling row "Where you
+## held them" on purpose — `_stop_cell_text` spends four paragraphs establishing that
+## "held" is true of a kill and false of an escape, and "reach" is true of both and
+## of neither. The two rows are the same road under two different questions, and the
+## card now names both.
+##
+## THE FRACTION IS ALSO IN `reach_note_text()`, and that is not the "one measurement
+## stated twice" `_waves_text` killed a row for. That was a row deriving another row on
+## the same card. This is a number and an argument on two surfaces: the note is a
+## sentence about a targeting rule, whose two halves — aimed cells and untouched escapes
+## — only mean anything together, and it is silent on every run that lost no bed to an
+## unfought pest. The row is the run's coverage against a benchmark, and it is drawn on
+## every run. On the runs where both appear the fraction agrees, because both read the
+## same two keys.
+##
+## THREE BRANCHES, each a different run rather than a defensive default:
+##
+##   - `road_cells <= 0`: nobody handed this card the coverage. A card built by a
+##     test, or by a `Game` that predates the wiring. Says so; it does not invent an
+##     "0 of 0". Unlike `reach_note_text`, this cannot fall silent — a row is always
+##     drawn, and an empty value Label is what `validate-ui` reports as a zero-content
+##     Control and what every width gate in the suite reads as the `clip_text` stub.
+##   - a par of 0: `reach_par()` could not vouch for its probe (see there). The
+##     fraction is still true and is still printed; only the benchmark is dropped.
+##   - both: the full reading.
+func reach_text() -> String:
+	var total: int = int(_stats.get("road_cells", 0))
+	if total <= 0:
+		return "not measured"
+	var aimed: int = clampi(int(_stats.get("road_aimed", 0)), 0, total)
+	var par: int = reach_par()
+	if par <= 0:
+		return "%d of %d" % [aimed, total]
+	return "%d of %d — reach alone takes %d cobs" % [aimed, total, par]
+
+
+## Reach in pixels for one cob, read off the catalog rather than off `CornCobbler`
+## directly, so a plant whose reach moves takes the par with it — the same reason
+## `PlantCatalog.reach` exists for the placement ring.
+##
+## Corn and not the garden's real mix, and that is a limit worth stating rather than
+## hiding: `Game.covered_road_cells()` unions each standing plant's own reach, so the
+## numerator of this row can include a Chomp's grab and a Sundew's sap while the
+## benchmark counts cobs. Corn is the only plant in the game that does damage
+## (`PlantCatalog.CORN`'s own comment), so "how few plants could reach this road" has
+## exactly one honest unit and it is this one.
+static func par_reach_px() -> float:
+	return PlantCatalog.reach(PlantCatalog.CORN)
+
+
+## How many cobs it takes to put every road cell inside one — 0 when this card
+## cannot vouch for the answer.
+##
+## THE PROBE, and the guard that makes it honest. `Board.PATH_CORNERS` is a `const`
+## and `Board._build_path()` is pure arithmetic over it, so a `Board.new()` that never
+## entered the tree traces exactly the road the run was played on — the same probe
+## `test_the_map_legend_clears_the_card_the_road_and_the_bottom_of_the_screen` builds
+## for the same reason. "Exactly" is the part that could quietly stop being true, so it
+## is checked instead of assumed: the run's own `road_cells` is already in the stats
+## Dictionary, and a probe whose road is a different size is a probe describing a
+## different map. On a disagreement this returns 0 and `reach_text()` prints the
+## fraction without a benchmark, rather than benchmarking the run against a road it
+## did not play.
+##
+## Cached per card. `summary_rows()` is called by `_build_rows()` and again by every
+## test that reads the row, and the cover is ~94 candidate cells against 32 road cells
+## on each call.
+func reach_par() -> int:
+	if _par_cache >= 0:
+		return _par_cache
+	_par_cache = 0
+	var total: int = int(_stats.get("road_cells", 0))
+	if total <= 0:
+		return _par_cache
+	var probe := Board.new()
+	if probe.road_cells().size() == total:
+		_par_cache = reach_cover(probe, par_reach_px()).size()
+	probe.free()
+	return _par_cache
+
+
+## Cells for a garden of `reach_px` plants that reaches every road cell on `probe`,
+## chosen greedily: take the cell adding the most uncovered road, repeat.
+##
+## LIFTED FROM `test_combat._cover_greedily`, which is where this was written and
+## where it could not be read by the game (plant-tower-defense-dgu5). `derive-the-list`
+## is explicit that the game owns the rule and the test asks for it, not the reverse;
+## the direction of the remaining duplication is a follow-up, and until it lands
+## `test_the_reach_par_is_a_real_cover_of_this_road` gates THIS copy against the
+## property it claims rather than against the other copy's answer.
+##
+## AN UPPER BOUND, NOT A MINIMUM, and the row's wording is chosen to survive that.
+## Greedy set cover is an approximation — it exhibits a cover of this size, it does not
+## prove none is smaller. "reach alone takes N cobs" is a claim that N suffices, which
+## is exactly what a witnessed cover licenses; "the fewest" would not be.
+##
+## Deterministic: candidates are collected in (x, y) order and the tie-break is
+## strictly-greater, so the first cell at a given gain wins and one board yields one
+## garden. That is what lets a test assert the cover instead of its size.
+static func reach_cover(probe: Board, reach_px: float) -> Array[Vector2i]:
+	var garden: Array[Vector2i] = []
+	if probe == null or reach_px <= 0.0:
+		return garden
+	var uncovered: Dictionary = {}
+	for cell: Vector2i in probe.road_cells():
+		uncovered[cell] = true
+	if uncovered.is_empty():
+		return garden
+	var reaches: Dictionary = {}
+	for x: int in range(Board.COLS):
+		for y: int in range(Board.ROWS):
+			var at := Vector2i(x, y)
+			if not probe.is_buildable(at):
+				continue
+			var hit: Array[Vector2i] = PlacementPreview.covered_road_cell_list(
+				probe, at, reach_px)
+			if not hit.is_empty():
+				reaches[at] = hit
+	while not uncovered.is_empty() and not reaches.is_empty():
+		var best := Vector2i(-1, -1)
+		var best_gain: int = 0
+		for at: Vector2i in reaches:
+			var gain: int = 0
+			for cell: Vector2i in reaches[at]:
+				if uncovered.has(cell):
+					gain += 1
+			if gain > best_gain:
+				best_gain = gain
+				best = at
+		if best_gain == 0:
+			break
+		garden.append(best)
+		for cell: Vector2i in reaches[best]:
+			uncovered.erase(cell)
+		reaches.erase(best)
+	return garden
 
 
 ## The chokepoint, named as a chokepoint.
@@ -509,6 +764,78 @@ func map_legend_text() -> String:
 		+ " — the card above counts only what held.") % [reddest.x + 1, reddest.y + 1]
 
 
+## "Covered" is not "fought", said once, in the player's own units.
+##
+## THE MECHANIC. A Corn Cobbler shoots only the pest furthest along, so a cob whose
+## ring sits over eight road cells is busy with one pest and the other seven get
+## nothing while it reloads. Measured three times and never once told to the
+## player: the coverage block in `game.gd` records 3,909 of 4,664 stays on covered
+## ground — 84% — passing with nothing touching the pest, and 82% of that is a cob
+## that fired at a DIFFERENT pest during the stay. The board paints those cells as
+## aimed at, correctly; the player loses beds on them anyway and is left to infer
+## why from having lost.
+##
+## The two numbers are the two halves of that sentence and BOTH are already the
+## game's own, neither recomputed here:
+##
+##   - `road_aimed` / `road_cells` is `Game.covered_road_cells()` against
+##     `Board.road_cells()` — the same derived map the placement cue and the lane
+##     overlay read, so the card cannot disagree with the board about which ground
+##     was aimed at.
+##   - `escapes_untouched` is `Pest._ever_engaged` counted at the exit, the flag
+##     that already separates "you had no answer" from "your answer was not enough"
+##     — see `Game._note_escape`, and `beds_text` above, which prints the same
+##     number as the second half of its own row.
+##
+## WHY A SENTENCE AND NOT A ROW. There is no room for a row and the arithmetic
+## saying so is `rows_capacity()`, which returns 7 against the 7 rows
+## `summary_rows()` builds: an eighth foots at 486 against buttons at 476. There is
+## no room in a fold either — `beds_text` already sets the card's value-column
+## high-water mark and the width gate in test_combat measures every other row
+## against it. And a fold would not do the job anyway: the ACCEPTANCE is that the
+## card names the distinction, and two numbers three rows apart are a juxtaposition,
+## not a statement. So it goes beside the card, in the column the milestone ribbon
+## opened; the constants block above carries that argument and the measurement that
+## ruled out the strip under the legend.
+##
+## LENGTH is the constraint out there, and it is a height rather than a width: the
+## box is 308px of text at font 13 in a 68px-tall well, the sentence wraps, and the
+## worst case — a road that grew to four digits, every cell of it aimed at, every
+## bed lost untouched — is 110 characters. How many lines that comes to is a
+## question about the resolved theme font and is therefore measured rather than
+## counted here: `get_visible_line_count() == get_line_count()`, which is a wrapped
+## Label's own report of whether it lost lines off the bottom. NOT `_T.text_width`,
+## which measures the unwrapped string and cannot see a wrap at all, and not
+## `get_minimum_size()`, which is the wrong answer on every Label this screen draws.
+##
+## THREE SILENCES, and each is a different run rather than a defensive default:
+##
+##   - `road_cells <= 0`: the stats Dictionary was not handed the coverage. That is
+##     a card built by a test, or by a `Game` that predates the wiring — and the
+##     honest output for "nobody told me" is nothing, never a fabricated 0 of 0.
+##   - `aimed <= 0`: nothing in the garden could touch any road. Real, and the
+##     opposite lesson: there is no covered ground for "covered" to contrast with,
+##     and a player with no garden is not being taught a targeting rule.
+##   - `untouched <= 0` (or no escape was readable at all): every pest that got out
+##     had been fought, so the mechanic did not bite this run. Same rule as
+##     `map_legend_text`'s empty branch — a caption for something that did not
+##     happen is worse than no caption.
+func reach_note_text() -> String:
+	var total: int = int(_stats.get("road_cells", 0))
+	if total <= 0:
+		return ""
+	var aimed: int = clampi(int(_stats.get("road_aimed", 0)), 0, total)
+	if aimed <= 0:
+		return ""
+	if int(_stats.get("escapes_recorded", 0)) <= 0:
+		return ""
+	var untouched: int = int(_stats.get("escapes_untouched", 0))
+	if untouched <= 0:
+		return ""
+	return ("%d of %d road cells were aimed at, and %d still walked in untouched"
+		+ " — a cob fires at the furthest pest only.") % [aimed, total, untouched]
+
+
 ## The ids this run earned for the first time, as `Game._end_run` filed them.
 ##
 ## Read through a method rather than inline so the whole ribbon — height, contents
@@ -523,10 +850,68 @@ func new_milestones() -> Array[String]:
 	return out
 
 
+## The node-name suffix and id for the first-record row. Not a milestone id and
+## deliberately not in `Milestones.TABLE` — it is not a thing the shelf can display,
+## because the shelf's rows are the fixed achievement list and this is a fact about a
+## number. See `ribbon_entries`.
+const FIRST_RECORD_ID := "first_record"
+
+
+## EVERY row the ribbon draws — milestones, plus the first record when there is one
+## (plant-tower-defense-q8db).
+##
+## The bead asked what a FIRST record should get instead of the roll a later one gets,
+## and the answer was already on this card: the ribbon's heading is literally "First
+## time", it is drawn in GOLD because gold is the colour this game spends on "something
+## you got", and it is the one surface here that exists to say *this run did a thing for
+## the first time ever*. A garden's first recorded score is exactly that and was the only
+## such event not listed on it.
+##
+## So a first record is not celebrated with a bigger number or a louder colour — it is
+## admitted to the list of firsts, which is the treatment the card already reserves for
+## them. That also fixes the ordering complaint directly: a later record gets a roll on
+## the title screen and one subheading, a first record gets a subheading that names it
+## as a first AND a gold ribbon row. More, not less.
+##
+## FIRST IN THE LIST, above the milestones. When a run earns both, the record is the
+## rarer event — a garden opens its record book once, and can clear the campaign in any
+## run that reaches the end.
+##
+## The row is synthesised rather than looked up because there is no table to look it up
+## in, and adding one to `Milestones.TABLE` would put a score on the achievement shelf
+## and break the shelf's earned count, which is deliberately taken off TABLE
+## (`notebook_screen.gd:650`) so a foreign id cannot push the total past its rows.
+func ribbon_entries() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if first_record():
+		out.append({
+			"id": FIRST_RECORD_ID,
+			"title": "The record book opens",
+			# The number is in the row because the row is the only place it is a
+			# FIRST. The subheading says the same seeds as a total; here it is the
+			# score the garden will be measured against from now on.
+			"note": ("%d seeds — the first score this garden has kept"
+				% int(_stats.get("seeds_earned_total", 0))),
+		})
+	for id: String in new_milestones():
+		out.append({
+			"id": id,
+			"title": Milestones.title_of(id),
+			"note": Milestones.note_of(id),
+		})
+	return out
+
+
 ## How tall the ribbon is for `count` entries. A function rather than a literal
 ## because the count is a runtime number and the clearance test has to be able to
-## ask about the worst case (every milestone in Milestones.TABLE at once) without
-## staging a run that earns them.
+## ask about the worst case without staging a run that earns it.
+##
+## THE WORST CASE IS `Milestones.TABLE.size() + 1`, not TABLE.size(), since
+## plant-tower-defense-q8db: `ribbon_entries()` prepends a first-record row, so the
+## tallest ribbon is every milestone at once on the run that also opened the record
+## book. `RunSummary.worst_ribbon_rows()` is that number — use it rather than
+## `Milestones.TABLE.size()`, which now understates the ribbon by one row and will
+## therefore measure a case that is not the worst one.
 static func ribbon_height(count: int) -> float:
 	if count <= 0:
 		return 0.0
@@ -534,8 +919,21 @@ static func ribbon_height(count: int) -> float:
 		+ float(count) * RIBBON_ROW_HEIGHT + RIBBON_PAD)
 
 
+## The most rows the ribbon can ever hold: every achievement in `Milestones.TABLE`, plus
+## the one synthesised row `ribbon_entries()` puts above them on a first record.
+##
+## Derived rather than written as 8, for the reason `shelf_capacity()` is derived rather
+## than written as 7: the number moves when the table does, and the person who appends a
+## milestone is not going to come back here and redo the arithmetic. Anything asking
+## "does the tallest ribbon still clear the map legend" must ask THIS, because the
+## honest worst case grew by a row and a test still measuring `Milestones.TABLE.size()`
+## now passes on a ribbon 40px shorter than the one the game can draw.
+static func worst_ribbon_rows() -> int:
+	return Milestones.TABLE.size() + 1
+
+
 func _build_milestone_ribbon() -> void:
-	var earned: Array[String] = new_milestones()
+	var earned: Array[Dictionary] = ribbon_entries()
 	if earned.is_empty():
 		return
 
@@ -563,10 +961,11 @@ func _build_milestone_ribbon() -> void:
 	panel.add_child(heading)
 
 	var y: float = RIBBON_PAD + RIBBON_HEADING_HEIGHT + RIBBON_HEADING_GAP
-	for id: String in earned:
+	for row: Dictionary in earned:
+		var id: String = String(row["id"])
 		var title := Label.new()
 		title.name = "Milestone_%s" % id
-		title.text = Milestones.title_of(id)
+		title.text = String(row["title"])
 		title.position = Vector2(RIBBON_PAD, y)
 		title.size = Vector2(RIBBON_WIDTH - RIBBON_PAD * 2.0, 22.0)
 		title.add_theme_font_size_override("font_size", RIBBON_TITLE_FONT_SIZE)
@@ -579,7 +978,7 @@ func _build_milestone_ribbon() -> void:
 
 		var note := Label.new()
 		note.name = "MilestoneNote_%s" % id
-		note.text = Milestones.note_of(id)
+		note.text = String(row["note"])
 		note.position = Vector2(RIBBON_PAD, y + 20.0)
 		note.size = Vector2(RIBBON_WIDTH - RIBBON_PAD * 2.0, 18.0)
 		note.add_theme_font_size_override("font_size", RIBBON_NOTE_FONT_SIZE)
@@ -627,6 +1026,78 @@ func _build_map_legend() -> void:
 	# card's paper, and it is the only text on the screen that does.
 	legend.add_theme_color_override("font_color", Color(GardenTheme.PAPER, 0.82))
 	add_child(legend)
+
+
+## Where the note's box starts, for a ribbon carrying `milestone_count` entries.
+##
+## A function rather than a constant for the same reason `ribbon_height` is one: the
+## count is a runtime number, and the clearance test has to be able to ask about the
+## worst case — every milestone in `Milestones.TABLE` at once — without staging a run
+## that earns them.
+static func reach_note_top(milestone_count: int) -> float:
+	var above: float = ribbon_height(milestone_count)
+	if above <= 0.0:
+		return RIBBON_TOP
+	return RIBBON_TOP + above + REACH_NOTE_GAP
+
+
+## Same no-node-at-all rule as the legend: an empty Panel here is exactly what
+## validate-ui reports as a zero-content Control, and most runs have nothing to say
+## on this subject — see the three silences on reach_note_text().
+##
+## AUTOWRAP, which is the one thing on this screen that is not clipped. Every value
+## Label on the card sets `clip_text` so a width regression shows as a trimmed row;
+## this is prose in a fixed box, where the same policy would silently delete the end
+## of the sentence — and the end of this sentence is the half that names the rule.
+## Wrapped, an over-long string overflows the box downward where the test can see it
+## as `get_visible_line_count() < get_line_count()`.
+##
+## OVERLAY_GRAMMAR's two-channel rule is satisfied trivially and deliberately: this
+## is plain prose, nothing in it means one thing in one colour and another in
+## another, and it reads identically with every colour on the screen discarded.
+func _build_reach_note() -> void:
+	var text: String = reach_note_text()
+	if text.is_empty():
+		return
+
+	var panel := Panel.new()
+	panel.name = "ReachNote"
+	# ribbon_entries(), not new_milestones(): the first-record row is a row the note
+	# has to clear like any other, and reading the shorter list here would slide the
+	# note up under the ribbon on exactly the run this cycle added a row for.
+	panel.position = Vector2(RIBBON_X, reach_note_top(ribbon_entries().size()))
+	panel.size = Vector2(RIBBON_WIDTH, REACH_NOTE_HEIGHT)
+	panel.add_theme_stylebox_override("panel", _note_box())
+	# The backdrop is what stops clicks reaching the live side panel underneath;
+	# nothing added out here may become the thing that eats one on the way there.
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(panel)
+
+	var note := Label.new()
+	note.name = "ReachNoteText"
+	note.text = text
+	note.position = Vector2(REACH_NOTE_PAD, REACH_NOTE_PAD)
+	note.size = Vector2(RIBBON_WIDTH - REACH_NOTE_PAD * 2.0,
+		REACH_NOTE_HEIGHT - REACH_NOTE_PAD * 2.0)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	note.add_theme_font_size_override("font_size", REACH_NOTE_FONT_SIZE)
+	# PAPER, like the legend and the ribbon: this sits on ink, not on the card's
+	# paper, and it is the only prose on the screen that is neither.
+	note.add_theme_color_override("font_color", Color(GardenTheme.PAPER, 0.86))
+	panel.add_child(note)
+
+
+## The ribbon's ink without the ribbon's gold. `_ribbon_box` spends GOLD because a
+## milestone is something the player earned; this box says the opposite kind of
+## thing, and wearing the same edge would file it under the same heading.
+func _note_box() -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(GardenTheme.INK, 0.9)
+	box.set_corner_radius_all(10)
+	box.set_border_width_all(GardenTheme.BORDER)
+	box.border_color = Color(GardenTheme.PAPER, 0.28)
+	return box
 
 
 func _build_rows() -> void:

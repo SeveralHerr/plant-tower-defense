@@ -111,7 +111,35 @@ it. `suite_reach_check` reports it as NEW **only after the merge**.
 > same stroke. Read both numbers. Write the tests, re-run until it reads `0 NEW`, and only
 > then bank the improvement.
 
-**4. A checker that walks the repo tree.** Agent worktrees live *inside* the repo and are
+**4. A shared function whose DEFAULT is not what its callers were written against.** The
+worst one, because both lanes are correct and every gate is green. One lane collapses N
+copies of a helper into a shared implementation and gives it a mode parameter; another
+lane, in parallel, writes a new caller against one of the old copies. The names match, the
+import resolves, the checkers pass — and the caller silently gets a behaviour it was never
+tested with.
+
+Cycle 107: lane A folded nine source-blankers into `gdsource.strip_comments(text,
+strings=KEEP)`. Lane E's new `sfx_call_check` called it bare, having been written and
+mutation-tested against `message_corpus_check`'s copy, which **blanked** string bodies.
+The two modes differ on 40 of 44 `game/*.gd` files. `check_all.py` reported **18 of 18
+clean** with the bug live; the counts only matched because no `Sfx.play(` happened to sit
+inside a string literal that day. Planting one gave 26 call sites and a false finding
+against the correct 25 and 0.
+
+The second half is subtler and is the part to remember: lane A's report *named* the
+behaviour change — "differs only in whether an `&` prefix is blanked, which no caller
+reads" — and it was true of every caller lane A could see. Lane E's checker did not exist
+in lane A's worktree, and it reads exactly that `&`.
+
+> **So: when any lane collapses duplicate implementations into one, the merge owes a
+> per-caller check that the chosen default matches what THAT caller previously had.** Do
+> not accept "no caller reads it" from a lane — it can only speak for the callers in its
+> own worktree, and a sibling lane's new caller is invisible to it by construction. Grep
+> the merged tree for every call site, and for each one ask which of the old copies it was
+> written against. Prove it by planting the input the modes disagree on and running the
+> caller both ways; the counts agreeing today is not the same as the modes agreeing.
+
+**5. A checker that walks the repo tree.** Agent worktrees live *inside* the repo and are
 gitignored, but `rglob` does not read `.gitignore`. Five lanes turn every bare-filename
 citation into a six-way ambiguity — **and only the parent sees it**, because a lane inside
 its own worktree has no nested copies. If a tree-walking checker starts reporting mass

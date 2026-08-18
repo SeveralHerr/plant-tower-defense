@@ -88,6 +88,8 @@ const LEVELS: Array[Dictionary] = [
 ##   * **below 32**, half a `Board.CELL`, so it stays inside its own cell.
 const CHEW_RING_RADIUS: float = 22.0
 const CHEW_RING_WIDTH: float = 3.0
+## Named rather than inline now that two places would otherwise spell it.
+const CHEW_RING_COLOR := Color(1.0, 0.55, 0.15, 0.85)
 
 ## The fang crown: what an upgraded mouth WEARS, always on, whether or not it is
 ## chewing.
@@ -146,7 +148,51 @@ const EATING_TEXTURE_PATH := "res://assets/sprites/chomp_flower_eating.png"
 ## that the last ~1s actually gets to show a second picture instead of the
 ## mouth just staying wide open the whole time.
 const LATE_BITE_THRESHOLD: float = 0.6
+
+## How many discrete bites a meal is eaten in.
+##
+## SOURCE: a player, verbatim -- "the attack animation for the chomp flower doesn't
+## really look like it's taking bites out of the bugs, improve the animation
+## dramatically" (plant-tower-defense-h4v1).
+##
+## The flower's half was already substantial -- a 7px lunge, a squash, three textures
+## and a chew ring draining round the rim -- and none of it touched the PEST. A held
+## bug walked in place, unmarked, took one flash at the grab and nothing after, then
+## became a corpse in a single frame. So the meal was a continuous drain with one
+## event at each end, and "taking bites" is exactly what a continuous drain is not.
+##
+## Three, and the number is doing work. Two reads as start-and-finish, which is what
+## it already looked like. Four inside CHEW_SECONDS puts the bites close enough
+## together that the pest's own HIT_FLASH_DURATION (0.10) has not finished before the
+## next one begins, so they smear into one long flash instead of reading as separate
+## bites.
+const BITES_PER_MEAL: int = 3
+
+
+## How many bites have been taken by a given point in the chew. Pure and static, so
+## the cadence is assertable with no board, no frame and no open animation gate --
+## the same treatment lunge_offset() and Nettle.sting_lean_skew() get, and for the
+## same reason.
+##
+## The last bite lands when the chew COMPLETES rather than before it, which is why
+## this floors a scaled progress rather than rounding: at progress 1.0 the meal ends
+## and Pest.kill() takes over, so a third bite landing at 0.999 would be a bite the
+## player never sees separately from the kill.
+static func bites_taken_for(progress: float) -> int:
+	var p: float = clampf(progress, 0.0, 1.0)
+	return mini(int(floorf(p * float(BITES_PER_MEAL))), BITES_PER_MEAL)
 const EATING_LATE_TEXTURE_PATH := "res://assets/sprites/chomp_flower_eating_late.png"
+
+## The jaw at full gape, worn for the instant of the bite and no longer.
+##
+## plant-tower-defense-81g9, the flower's half of a player report -- "the attack
+## animation for the chomp flower doesn't really look like it's taking bites out of
+## the bugs". The pest's half (-h4v1: three visible bites, the bug shrinking as it is
+## eaten) shipped first. This is the other one: the mouth already had three textures
+## and NONE of them was open. It lunged and squashed while wearing the same closed
+## head it wears through the whole chew, so the bite had no instant -- the frame a
+## player's eye lands on was a flower that had already finished.
+const GAPE_TEXTURE_PATH := "res://assets/sprites/chomp_flower_gape.png"
 
 ## How far the mouth throws itself at what it just caught, in px.
 ##
@@ -171,11 +217,41 @@ const EATING_LATE_TEXTURE_PATH := "res://assets/sprites/chomp_flower_eating_late
 ## and a readout that lurches every time the plant acts is harder to read, not livelier.
 const LUNGE_DISTANCE: float = 7.0
 
+## The bite's four durations. Declared here rather than taken from `Plant.TWITCH_*`
+## because the bite is the one gesture in the family that genuinely does not fit
+## either tier: the lunge's out is the twitch's 0.05, but everything else is longer,
+## and both channels come home slower than a recoil does. A bite has further to
+## travel than a squash — `LUNGE_DISTANCE` above moves the whole head — so it gets
+## its own numbers rather than being rounded onto a shared pair it does not match.
+##
+## The two channels are deliberately staggered by a hundredth of a second in each
+## direction, position leading on the way out and lagging on the way back. That is
+## what these numbers ALREADY were, preserved exactly. Whether the stagger was ever
+## intended or just drifted while nothing named it is a question only a pair of eyes
+## on the running game can answer, and no gate in this project can: a duration is
+## invisible to lint, to `name_check`, and to a headless suite that pumps no frames.
+## Naming them is what makes the question askable at all.
+##
+## `BITE_SQUASH_OUT_SECONDS` is the outward beat's real length (it is the longer of
+## the two outs, and `chain()` below waits for it), so it is the window anything
+## swapped in for the duration of the open jaw should be shown for.
+const BITE_LUNGE_OUT_SECONDS: float = 0.05
+const BITE_SQUASH_OUT_SECONDS: float = 0.06
+const BITE_LUNGE_BACK_SECONDS: float = 0.13
+const BITE_SQUASH_BACK_SECONDS: float = 0.12
+
 var _held: Pest = null
 var _chew_left: float = 0.0
+## How many bites of the current meal have landed. Reset per meal, so a flower that
+## releases one pest and grabs another starts the new bug at zero rather than
+## finishing it in one.
+var _bites_taken: int = 0
 var _chew_total: float = 0.0
 var _idle_texture: Texture2D = null
+## The canvas the chew ring paints on, above the flower. See _build_chew_layer.
+var _chew_layer: Node2D = null
 var _eating_texture: Texture2D = null
+var _gape_texture: Texture2D = null
 var _eating_late_texture: Texture2D = null
 ## Where the last bite threw the mouth, in the sprite's own space.
 ##
@@ -254,6 +330,54 @@ static func fang_offsets(for_level: int) -> PackedFloat32Array:
 ## mouth stuck "busy" pointing at a freed pest.
 func _on_setup() -> void:
 	destroyed.connect(func(_p: Plant) -> void: release())
+	_build_chew_layer()
+
+
+## The chew ring's own canvas, added AFTER the sway pivot so it paints OVER the
+## flower instead of under it.
+##
+## MEASURED, which is the whole reason this exists (plant-tower-defense-gfpj asked for
+## exactly this evidence). A Node2D paints its own `_draw()` before its children, and
+## `_sprite` is a child -- so the ring at CHEW_RING_RADIUS 22 was drawn beneath a
+## flower whose petals reach r=24 and whose two leaves reach r=31. Sampling the
+## rendered pixels at r=22 across six angles INSIDE the swept arc found the ring at
+## exactly one of them:
+##
+##     30deg #bd9400 petal   45deg #198c4a leaf    55deg #29c56b leaf
+##     65deg #bd9400 petal   75deg #bd9400 petal   90deg #ef8429 RING
+##
+## So the countdown a player is supposed to read was mostly invisible, and broke up as
+## it swept past each petal. The fang crown escapes only because it sits at r=25.3-30.7,
+## outside the petals -- which is also why moving the ring out is not available: the
+## fangs own that band and 32 is the half-cell.
+##
+## A `draw` signal on a bare Node2D rather than a new script: the layer has no state
+## and no behaviour, and a second class for eight lines of arc would be the heavier
+## answer. `Plant` frees it with the rest of the subtree.
+func _build_chew_layer() -> void:
+	if _chew_layer != null and is_instance_valid(_chew_layer):
+		return
+	_chew_layer = Node2D.new()
+	_chew_layer.name = "ChewRing"
+	add_child(_chew_layer)
+	_chew_layer.draw.connect(_draw_chew_ring)
+
+
+## Painted on the layer, not on the plant. Same arc, same radius, same colour as
+## before -- only the canvas it lands on changed.
+## The layer is a sibling canvas, so the plant's own queue_redraw() does not reach
+## it. Paired at every call site rather than folded into one, because a Chomp that
+## repaints its crown and not its ring is the bug this whole change is about.
+func _redraw_chew_layer() -> void:
+	if _chew_layer != null and is_instance_valid(_chew_layer):
+		_chew_layer.queue_redraw()
+
+
+func _draw_chew_ring() -> void:
+	if _held == null or _chew_layer == null or not is_instance_valid(_chew_layer):
+		return
+	_chew_layer.draw_arc(Vector2.ZERO, CHEW_RING_RADIUS, 0.0,
+		chew_arc_end(chew_progress()), 24, CHEW_RING_COLOR, CHEW_RING_WIDTH, true)
 
 
 ## Emitted when this Chomp is sitting still and the reason is flight — see
@@ -338,8 +462,20 @@ func _grab(pest: Pest) -> void:
 	_chew_total = chew_seconds_for(level, pest.chew_seconds)
 	_chew_left = _chew_total
 	_bite()
-	_show_eating_sprite()
+	# ONLY if the gape did not take. `_bite()` wears the open jaw for
+	# BITE_SQUASH_OUT_SECONDS and its own timer hands over to the eating sprite, so
+	# calling _show_eating_sprite() unconditionally here overwrote the gape on the
+	# very same frame and it never reached a screen. Every gate stayed green --
+	# name_check, lint and 769 tests all pass either way, because no test can watch a
+	# texture that is correct for 60ms. It was found by stepping a live bite frame by
+	# frame (plant-tower-defense-81g9).
+	#
+	# The fallback still matters: with animations off `_bite()` returns before the
+	# gape, and the mouth must still show that it is full.
+	if _sprite == null or _gape_texture == null or _sprite.texture != _gape_texture:
+		_show_eating_sprite()
 	queue_redraw()
+	_redraw_chew_layer()
 
 
 func _chew(delta: float) -> void:
@@ -347,9 +483,20 @@ func _chew(delta: float) -> void:
 		release()
 		return
 	_chew_left -= delta
+	# The bites. Recorded and applied ABOVE the animation gate, because the fraction
+	# eaten is game state the suite reads and only its DRAWING is gated -- the rule
+	# test_combat.gd:6331 states for every animation in this game.
+	var taken: int = bites_taken_for(chew_progress())
+	if taken > _bites_taken:
+		_bites_taken = taken
+		_held.set_chewed(float(taken) / float(BITES_PER_MEAL))
+		# Once per bite, not once per meal. The single grab-time flash was the whole
+		# of the pest's feedback before plant-tower-defense-h4v1.
+		_held.flash_hit()
 	if chew_progress() > LATE_BITE_THRESHOLD and _sprite != null and _sprite.texture != _eating_late_texture:
 		_show_eating_late_sprite()
 	queue_redraw()
+	_redraw_chew_layer()
 	if _chew_left <= 0.0:
 		var meal: Pest = _held
 		release()
@@ -363,11 +510,19 @@ func _chew(delta: float) -> void:
 func release() -> void:
 	if _held != null and is_instance_valid(_held):
 		_held.held_by = null
+		# A pest released UNHARMED goes back to full size. A Chomp destroyed mid-chew
+		# lets its meal go (see this function's header), and a bug that walked away
+		# permanently two-thirds eaten would be a Chomp that killed something without
+		# the kill ever being scored.
+		if _held.is_alive():
+			_held.set_chewed(0.0)
 	_held = null
 	_chew_left = 0.0
+	_bites_taken = 0
 	_chew_total = 0.0
 	_show_idle_sprite()
 	queue_redraw()
+	_redraw_chew_layer()
 
 
 func is_busy() -> bool:
@@ -404,10 +559,8 @@ func _draw() -> void:
 	# the ring is what its current MEAL looks like. A cue the player has to catch the
 	# plant mid-chew to see cannot be the readout for something they bought.
 	_draw_fang_crown()
-	if _held == null:
-		return
-	draw_arc(Vector2.ZERO, CHEW_RING_RADIUS, 0.0, chew_arc_end(chew_progress()), 24,
-		Color(1.0, 0.55, 0.15, 0.85), CHEW_RING_WIDTH, true)
+	# The chew ring is NOT here any more -- it is on _chew_layer, above the sprite.
+	# See _build_chew_layer for the pixel measurements that moved it.
 
 
 ## Level 1 draws nothing here and that is decided in `fang_offsets`, not by an `if`
@@ -471,11 +624,15 @@ func _bite() -> void:
 	# which leans the lunge without ever pointing it at the wrong neighbour. Deliberate:
 	# the body leaning at its meal is the picture, and un-rotating it would decouple the
 	# head from the stem it is attached to.
+	# The open jaw, on the same frame the lunge starts (plant-tower-defense-81g9).
+	# Inside the animations gate with the rest of the bite: a texture swap the player
+	# has turned animation off for is a flicker, not information.
+	_show_gape_sprite()
 	var tween := create_tween().set_parallel(true)
-	tween.tween_property(_sprite, "position", _bite_lunge, 0.05)
-	tween.tween_property(_sprite, "scale", Vector2(1.18, 0.82), 0.06)
-	tween.chain().tween_property(_sprite, "position", Vector2.ZERO, 0.13)
-	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.12)
+	tween.tween_property(_sprite, "position", _bite_lunge, BITE_LUNGE_OUT_SECONDS)
+	tween.tween_property(_sprite, "scale", Vector2(1.18, 0.82), BITE_SQUASH_OUT_SECONDS)
+	tween.chain().tween_property(_sprite, "position", Vector2.ZERO, BITE_LUNGE_BACK_SECONDS)
+	tween.tween_property(_sprite, "scale", Vector2.ONE, BITE_SQUASH_BACK_SECONDS)
 
 
 ## The teeth coming in: a snap wider than `_bite`'s and held longer, the same
@@ -494,8 +651,38 @@ func _on_upgraded() -> void:
 	if _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
 		return
 	var tween := create_tween()
-	tween.tween_property(_sprite, "scale", Vector2(1.30, 0.74), 0.10)
-	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.18)
+	tween.tween_property(_sprite, "scale", Vector2(1.30, 0.74), FLOURISH_OUT_SECONDS)
+	tween.tween_property(_sprite, "scale", Vector2.ONE, FLOURISH_BACK_SECONDS)
+
+
+## The gape, and the timer that takes it off again.
+##
+## BITE_SQUASH_OUT_SECONDS and not one of the other three bite constants: it is the
+## LONGER of the two outward channels (0.06 against the lunge's 0.05) and the one the
+## tween's chain() waits on, so it is literally the window the mouth is travelling
+## open for. Ending the gape earlier would close the jaw while the head is still
+## moving out; later would hold it open into the recovery.
+##
+## Guarded on still holding the SAME meal: a 0.06s timer outlives a release, and a
+## flower that let go mid-bite must not have a gaping mouth painted back onto it.
+func _show_gape_sprite() -> void:
+	if _sprite == null:
+		return
+	if _idle_texture == null:
+		_idle_texture = _sprite.texture
+	if _gape_texture == null:
+		_gape_texture = load(GAPE_TEXTURE_PATH) as Texture2D
+	if _gape_texture == null:
+		return
+	_sprite.texture = _gape_texture
+	var meal: Pest = _held
+	var timer: SceneTreeTimer = get_tree().create_timer(BITE_SQUASH_OUT_SECONDS)
+	timer.timeout.connect(func() -> void:
+		if not is_instance_valid(self) or _sprite == null:
+			return
+		if _held == null or _held != meal:
+			return
+		_show_eating_sprite())
 
 
 func _show_eating_sprite() -> void:

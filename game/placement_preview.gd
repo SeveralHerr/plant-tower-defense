@@ -200,7 +200,7 @@ func _init() -> void:
 ## opposite sides of "does it cover any road at all": dead ground covers none, so
 ## covering_patch_count() answers 0 there and rule 3 keeps the cell to itself.
 ## And 1 outranks all three in one place: `placeable` is a term in every one of
-## shows_dead_zone(), shows_redundant_coverage() and the `at_risk` branch below,
+## shows_dead_zone(), shows_redundant_patch_coverage() and the `at_risk` branch below,
 ## so a refusal is never annotated with a critique.
 ##
 ## There is deliberately no fifth state for "a husk will take this click". It
@@ -225,7 +225,7 @@ func _draw() -> void:
 	if reach <= 0.0 or not placeable:
 		return
 	var dead: bool = shows_dead_zone()
-	var redundant: bool = shows_redundant_coverage()
+	var redundant: bool = shows_redundant_patch_coverage()
 	var base: Color = DEAD_COLOR if dead or redundant else marker_color
 	var ring := Color(base.r, base.g, base.b, RING_ALPHA)
 	draw_arc(Vector2.ZERO, reach, 0.0, TAU, 48, ring, RING_WIDTH, true)
@@ -251,12 +251,14 @@ func _draw() -> void:
 ## still reads over an off-aim cell. This is a hover-time mark on a transient
 ## node, so it spends none of that.
 ##
-## AND WHY IT IS NOT A REDUNDANCY WARNING. `shows_redundant_coverage()` above
-## warns that a second Sundew patch on the same road buys nothing, which is true
-## of a field effect. It is FALSE of a Corn Cobbler: a cob engages one pest at a
-## time, so a second cob over identical cells is worth real money — measured, in
-## test_combat, as the difference between a five-cob garden that lets a pest
-## through and a seven-cob garden that does not. So no dots is not a warning
+## AND WHY IT IS NOT A REDUNDANCY WARNING. `shows_redundant_patch_coverage()`
+## above warns that a second Sundew PATCH on the same road buys nothing, which is
+## true of a field effect and of nothing else. It is FALSE of a Corn Cobbler: a
+## cob engages one pest at a time, so a second cob over identical cells is worth
+## real money — measured in cycle 54 (test_combat.gd, commit a00ada2) as the
+## difference between a five-cob garden that reaches all 32 road cells and lets a
+## pest through, and a seven-cob garden over that same road that does not. So no
+## dots is not a warning
 ## here. It means "you are buying depth rather than reach", which on a thin
 ## stretch is the right purchase and on a thick one is not, and the player can
 ## see which because the dots show where the road is bare.
@@ -322,7 +324,7 @@ func _draw_risk_ring() -> void:
 ## line in any preview state other than the four corner arms, so the state is
 ## legible with the colour thrown away.
 func _draw_dead_bar() -> void:
-	var arm_vec: Vector2 = Vector2.from_angle(DEAD_BAR_ANGLE) * PREVIEW_HALF
+	var arm_vec: Vector2 = dead_bar_arm()
 	draw_line(-arm_vec, arm_vec, DEAD_COLOR, DEAD_BAR_WIDTH, true)
 
 
@@ -330,7 +332,7 @@ func _draw_dead_bar() -> void:
 ## that you can count them, which survives greyscale, a colourblind player and a
 ## screenshot at half size. See REDUNDANT_BAR_GAP.
 func _draw_redundant_bars() -> void:
-	var along: Vector2 = Vector2.from_angle(DEAD_BAR_ANGLE) * PREVIEW_HALF
+	var along: Vector2 = dead_bar_arm()
 	var across: Vector2 = along.orthogonal().normalized() * (REDUNDANT_BAR_GAP * 0.5)
 	draw_line(-along + across, along + across, DEAD_COLOR, DEAD_BAR_WIDTH, true)
 	draw_line(-along - across, along - across, DEAD_COLOR, DEAD_BAR_WIDTH, true)
@@ -349,13 +351,32 @@ func shows_dead_zone() -> bool:
 ## shows_dead_zone(), and it obeys the same rule 1: an illegal cell answers false
 ## however redundant the ground under it is.
 ##
+## PATCH IS IN THE NAME BECAUSE THE ANSWER IS THE OPPOSITE FOR EVERYTHING ELSE.
+## This is not a general "you already cover that road" cue and must never be
+## reached for as one. It asks one question about one family of plant — patches,
+## whose effect is a field on the ground and therefore does not stack. Stacking a
+## Corn Cobbler over identical cells is VALUABLE, not redundant: a cob engages
+## only the furthest-along pest in range (CornCobbler._furthest_along_in_range),
+## so a second cob over the same road is a second gun, not a second copy of the
+## same gun. Cycle 54 measured exactly that (plant-tower-defense-m9u2, commit
+## a00ada2): a greedy set cover found FIVE cobs that reach all 32 road cells,
+## the same road the recorded SEVEN reach — and the five-cob garden lets a pest
+## through where the seven-cob garden does not. Coverage was identical; firepower
+## was not. A redundancy warning painted over that purchase would be telling the
+## player to buy the losing garden. See test_combat.gd's _whole_road_garden() for
+## the recorded seven and why they are recorded rather than derived.
+##
+## So the sibling predicates say "patch" for the same reason this one now does —
+## covering_patch_count() and previewing_non_stacking_patch() below are the gate
+## that keeps this cue off a cob at all.
+##
 ## The condition is not spelled out again here. It is read straight off the
 ## plant's own value model: the mark fires exactly when one more patch would
 ## multiply the crossing time of the road it covers by 1.0. If the balance ever
 ## changes so that a second patch is worth something, that constant moves and
 ## this cue stops firing on its own, rather than going on warning about a
 ## purchase that has become worth making.
-func shows_redundant_coverage() -> bool:
+func shows_redundant_patch_coverage() -> bool:
 	if not placeable or reach <= 0.0:
 		return false
 	var added: float = StickySundew.added_crossing_time_multiplier(covering_patch_count())
@@ -611,3 +632,397 @@ func _board() -> Board:
 			_resolved_board = found
 			break
 	return _resolved_board
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-tzz7 / plant-tower-defense-g8kc
+#   tzz7: surface dead ground BEFORE the player is holding a plant
+#   g8kc: mark ground no plant the player owns can use
+#
+# ONE CUE, NOT TWO, and the reason is a measurement rather than a preference.
+#
+# `covers_road()` is monotone in reach: a cell whose nearest road centre is
+# further away than a long reach is further away than every shorter reach too.
+# So the dead sets are strictly NESTED, and on this road they are
+# (test_the_dead_sets_are_nested_so_the_two_cues_can_never_be_two_marks):
+#
+#   mint      64.0 px -> 36 of 94 buildable cells
+#   chomp     73.6    -> 36
+#   aloe      96.0    -> 30
+#   nettle   112.0    -> 30
+#   sundew   118.4    -> 30
+#   corn     176.0    -> 11
+#   dandelion192.0    ->  3
+#   sunflower  0.0    ->  0   (no reach, so never dead ground -- see covers_road)
+#
+# g8kc's set is therefore a SUBSET of tzz7's set for every plant the player
+# owns, always, by construction. Two overlapping marks on the same cell would
+# not be an occasional accident here; it would be the guaranteed case. Worse,
+# two bars on one cell at DEAD_BAR_ANGLE is _draw_redundant_bars() -- the cue
+# that means "you already have a patch covering this" -- so the failure mode is
+# not clutter, it is a different sentence.
+#
+# The resolution is a MODE, not a union. The board answers one question at a
+# time: with a shop entry hovered it shows dead ground for THAT plant; with
+# nothing hovered it shows dead ground for the longest reach the player has
+# unlocked. g8kc is not a second cue. It is this cue's resting state, and that
+# is the whole reason these two beads are one change.
+#
+# WHY NOT A TINT, which is the word g8kc uses. OVERLAY_GRAMMAR.md's one rule
+# with teeth is that a cue must be legible with its colour discarded, and a
+# ground tint has no channel but colour. The mark is the existing "straight line
+# through a box = A STATE" row instead (`_draw_dead_bar` above, grammar row
+# `placement_preview.gd:328`) -- same angle, same width, same slate, drawn from
+# the same dead_bar_arm(). No row is added to the grammar, so the notebook
+# legend is untouched and
+# test_the_legend_names_as_many_shapes_as_the_grammar_documents is unaffected.
+#
+# WHAT THE RESTING STATE HONESTLY CLAIMS, because the bead's wording claims more.
+# "Ground no plant in the catalogue can use" is FALSE of these cells. A Seed
+# Sunflower has no reach, is never dead-zoned, and its own blurb says "plant it
+# somewhere the lane doesn't need" -- the three cells dead for the whole
+# catalogue's longest reach are the best Sunflower ground on the board. Mint and
+# Aloe reach over PLANTS rather than over the road (PlantCatalog.reach() says so
+# at both branches), so their dead-ground answer is already a known
+# approximation. The set below is therefore "dead for every unlocked plant whose
+# dead-ground cue can fire at all", i.e. every unlocked plant with reach > 0 --
+# which is exactly the population the hover cue already speaks for, and nothing
+# wider. Named accordingly.
+# =============================================================================
+
+## The ambient version of DEAD_COLOR: the same slate at a third of the alpha.
+##
+## Dimmer than the hover bar and deliberately the opposite way round from
+## OK_COLOR's relationship to SelectionMarker. There, a hover is the quiet
+## suggestion under a loud selection. Here the board-wide marks are the ambient
+## statement -- up to 36 of them at once -- and the hovered cell's own bar is the
+## focused one, so the ambient set has to be the quieter of the two or the board
+## reads as covered in warnings.
+const BOARD_DEAD_ALPHA: float = 0.34
+
+
+## The half-arm of the dead bar: one endpoint of the stroke, measured from the
+## cell centre. The other is its negation.
+##
+## Extracted so the board-wide mark and the hovered-cell bar are provably the
+## SAME stroke rather than two strokes that happen to agree -- Board draws its
+## marks from this vector, `_draw_dead_bar()` draws from this vector, and
+## test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two asserts the
+## endpoints coincide. Two coincident collinear strokes read as one bar; two
+## parallel ones read as the redundancy cue, which is the mistake this closes.
+static func dead_bar_arm() -> Vector2:
+	return Vector2.from_angle(DEAD_BAR_ANGLE) * PREVIEW_HALF
+
+
+## DEAD_COLOR at BOARD_DEAD_ALPHA. A function rather than a const because a
+## GDScript const initialiser cannot call Color's (Color, float) constructor --
+## the same limitation OK_COLOR's header spells out at length.
+static func board_dead_color() -> Color:
+	return Color(DEAD_COLOR, BOARD_DEAD_ALPHA)
+
+
+## Every buildable cell on which a plant of `reach_px` would stand for the whole
+## run and never fire once -- the hover cue's own question, asked of the whole
+## board at once instead of one cell at a time.
+##
+## Row-major, so the order is deterministic without a sort and a test can compare
+## two answers element by element.
+##
+## EMPTY is the answer for reach <= 0.0, and that is the same judgement
+## covers_road() already makes rather than a missing case: a Sunflower is not
+## supposed to fire, so no ground is dead for it. Empty is also the answer for a
+## null or unbuilt board, for the reason covered_road_cell_list() gives -- an
+## unbuilt board would otherwise report the entire field dead.
+static func dead_ground_cells(on_board: Board, reach_px: float) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if on_board == null or reach_px <= 0.0:
+		return out
+	if on_board.path_cell_count() <= 0:
+		return out
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if not on_board.is_buildable(cell):
+				continue
+			if covered_road_cells(on_board, cell, reach_px) == 0:
+				out.append(cell)
+	return out
+
+
+## Those of `ids` that have a reach at all -- the plants the dead-ground cue can
+## say anything about. A Sunflower is dropped here, and that is the honest half
+## of g8kc: see this block's header.
+##
+## An id that is not in the catalogue is dropped too, so a caller holding a stale
+## unlock list gets a smaller answer rather than a wrong one.
+static func reaching_ids(ids: Array[StringName]) -> Array[StringName]:
+	var out: Array[StringName] = []
+	for id: StringName in ids:
+		if PlantCatalog.has(id) and PlantCatalog.reach(id) > 0.0:
+			out.append(id)
+	return out
+
+
+## The longest reach among `ids`, 0.0 for an empty or reachless set.
+##
+## Derived from PlantCatalog rather than recorded, which is g8kc's own
+## requirement: the number moves the day a longer-reach plant is added, and a
+## recorded 192.0 would go on being wrong quietly.
+static func longest_reach(ids: Array[StringName]) -> float:
+	var best: float = 0.0
+	for id: StringName in reaching_ids(ids):
+		best = maxf(best, PlantCatalog.reach(id))
+	return best
+
+
+## g8kc's set: the cells dead for EVERY plant in `ids` that has a reach.
+##
+## A genuine intersection, one plant at a time, rather than the one-line
+## `dead_ground_cells(board, longest_reach(ids))` that the nesting makes
+## equivalent. The shortcut is the faster answer and it is also the answer that
+## stops being true the moment a reach stops being a plain radius -- a cone, a
+## line-of-sight check, a plant that only reaches cells of its own colour. The
+## intersection is what the cue actually claims, so it is what runs; the
+## shortcut's equality with it is a TEST
+## (test_the_dead_sets_are_nested_so_the_two_cues_can_never_be_two_marks), which
+## is where a load-bearing coincidence belongs.
+static func dead_for_every_reaching_plant(on_board: Board,
+		ids: Array[StringName]) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var reaching: Array[StringName] = reaching_ids(ids)
+	if on_board == null or reaching.is_empty():
+		return out
+	out = dead_ground_cells(on_board, PlantCatalog.reach(reaching[0]))
+	for i: int in range(1, reaching.size()):
+		var theirs: Array[Vector2i] = dead_ground_cells(on_board,
+			PlantCatalog.reach(reaching[i]))
+		var kept: Array[Vector2i] = []
+		for cell: Vector2i in out:
+			if theirs.has(cell):
+				kept.append(cell)
+		out = kept
+		if out.is_empty():
+			break
+	return out
+
+
+## The one set the board draws, mode selected by what the cursor is on.
+##
+## `hovered` is a catalogue id while the cursor is over that plant's shop entry,
+## and &"" the rest of the time. With an id the board answers about that plant --
+## tzz7, "what would this purchase be unable to do", asked before the purchase.
+## With &"" it answers about the garden the player already owns -- g8kc.
+##
+## One set, so one mark per cell, so the two cues can never stack into the
+## redundancy cue's two bars. That is enforced here by returning a single list
+## rather than by a rule a caller has to remember.
+##
+## Deliberately NOT a union of the two. Hovering a plant you cannot yet afford --
+## or have not unlocked, which is exactly when a shop entry gets hovered longest
+## -- can name a LONGER reach than anything you own, and its dead set is then a
+## proper subset of the resting one. Unioning would answer the resting question
+## while the player is plainly asking the hover one, and would mark 11 cells dead
+## for a Bomb Dandelion that is dead on only 3 of them.
+static func board_dead_cells(on_board: Board, hovered: StringName,
+		unlocked: Array[StringName]) -> Array[Vector2i]:
+	if PlantCatalog.has(hovered):
+		return dead_ground_cells(on_board, PlantCatalog.reach(hovered))
+	return dead_for_every_reaching_plant(on_board, unlocked)
+
+# END plant-tower-defense-tzz7 / plant-tower-defense-g8kc
+# =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-a6rf: covered is not served.
+#
+# APPENDED WHOLE, for the reason the block above gives: nothing already in this
+# file is touched, so a lane working on the hover preview and a lane working on
+# this cue cannot collide.
+#
+# THE MECHANIC, in the words RunSummary.reach_note_text() already uses. A cob
+# shoots the pest furthest along (`Plant._furthest_along_in_range`,
+# game/plant.gd:691), so a cob whose ring sits over eight road cells is busy with
+# one of them and the other seven get nothing. The instrumented run records 3,909
+# of 4,664 stays (84%) on covered ground with nothing touching the pest, 82% of
+# that a cob firing at a DIFFERENT pest. The board paints those cells as aimed at,
+# correctly, and the player loses beds on them anyway. This is the board half of
+# the sentence the run summary prints afterwards; the two must agree, and they do
+# because both are derived from `covered_road_cell_list` rather than recorded.
+#
+# THE CUE IS STATIC, AND THAT IS A DECISION RATHER THAN A SHORTCUT. "Busy" reads
+# like a runtime state -- this cob, this tick, this target -- and a cue built that
+# way is unusable for three separate reasons, each of which was checked before
+# this was written:
+#
+#   1. The game does not record it. The 84% figure comes from instrumentation in
+#      the over-promise tests, not from anything the running game keeps; there is
+#      no per-stay bookkeeping to read. `CornCobbler._act` re-picks its target
+#      every tick and keeps no history of it.
+#   2. A live read flickers by construction. The target changes on every kill and
+#      every overtake, so the marked set would repaint several times a second
+#      during exactly the wave the bead says it must not be noise in. Latching it
+#      per wave does not help: it is monotone, so within one heavy wave it
+#      converges on nearly every covered cell and stops distinguishing anything.
+#   3. It would be untestable here. `GardenTheme.animations_enabled()` is false
+#      for the whole suite and headless paints no frame, so "which cells would be
+#      marked" has to be answerable with no wave, no pest and no frame.
+#
+# What IS static is the shape of the queue, and it is the *cause* of the 84%
+# rather than a proxy for it. A road cell C is DEFERRED when some road cell D
+# further along is covered by EVERY gun that covers C. Put one pest on D and each
+# of C's guns finds a strictly greater `progress()` inside its own radius, so each
+# of them turns away, and a pest standing on C is shot at by nothing. That is not
+# an approximation of the targeting rule -- it is the targeting rule, quantified
+# over the guns that cell actually has.
+#
+# So the cue says "one pest ahead of you and this cell has nothing", which is
+# exactly the sentence the run summary prints in aggregate, and it is true of the
+# garden standing right now whether or not a wave is running. It is therefore
+# shown during PREP too, which is when it can still be acted on -- the same
+# argument LanePressureOverlay makes for the off-aim hatch: watching the marks
+# thin out as a second cob goes down IS the tutorial.
+#
+# WHAT IT DOES NOT CLAIM. Not "this cell is uncovered" -- the uncovered road is
+# the hatch's subject and the two sets are disjoint by construction (a cell with
+# no gun is skipped below). Not "a pest here always survives" -- it survives the
+# guns covering it, and a Kernel overshooting from elsewhere still kills, the same
+# caveat LanePressureOverlay's `unaimed` header spells out. And the rule is
+# `_furthest_along_in_range`, so it is exact for CornCobbler and Nettle, and an
+# UNDERSTATEMENT for ChompFlower (a busy mouth serves nobody at all, deferred or
+# not) and for Dandelion (which picks by clump size and only tie-breaks on
+# progress). Understating is the right direction for a warning.
+#
+# WHY NO NEW GRAMMAR ROW. This is the existing "straight line through a box = a
+# STATE" row (OVERLAY_GRAMMAR.md), whose other two instances are `_draw_dead_bar`
+# and `_draw_redundant_bars` above. Adding a row would fail
+# test_the_legend_names_as_many_shapes_as_the_grammar_documents until somebody
+# decided whether to teach it; adding an INSTANCE to a row does not, because that
+# test counts rows in the "What each shape means" section and nothing else.
+#
+# HOW IT STAYS DISTINCT FROM THE THREE MARKS IT SHARES A BOARD WITH, in the
+# channel that survives colour being discarded:
+#
+#   - the dead-ground bar (same row): POSITION -- that bar only ever lands on
+#     buildable ground and this only ever lands on road, filtered on both sides
+#     (Board.mark_dead_ground drops non-buildable, Board.mark_deferred_road drops
+#     non-road). Also ORIENTATION and LENGTH: the dead bar is a 54 px diagonal at
+#     -PI/4, this is a 28 px bar square to the lane.
+#   - the redundant-patch bars (same row): COUNT, two against one, and position
+#     again.
+#   - the off-aim hatch (LanePressureOverlay): DENSITY and ORIENTATION. The hatch
+#     is six-plus 45-degree stripes per cell and it owns BOTH diagonals already --
+#     `hatch_segments` mirrors the lattice for off-aim cells -- which is precisely
+#     why this bar is axis-aligned instead. It is the only axis-aligned straight
+#     line the board draws. The two are also disjoint: the hatch paints road no
+#     gun covers, this paints road at least one gun covers.
+#
+# The orientation is not a constant, and that is the point of `Board.lane_axis`:
+# the bar is drawn ACROSS the lane, square to the direction a pest leaves the
+# cell. It reads as a bar held up in a queue, it is axis-aligned everywhere
+# because the road only ever steps orthogonally, and the direction of the road is
+# the Board's own knowledge rather than something a caller should be pushing in.
+# =============================================================================
+
+## Half the length of the bar drawn across a deferred lane cell, in pixels.
+##
+## 14.0 puts a 28 px stroke on a 64 px cell -- comfortably inside it, and
+## deliberately about half the dead bar's 54 px so the two are different marks
+## before they are different colours. The ink budget is the number that actually
+## matters here, because up to 24 of the road's 32 cells carry one at once on a
+## garden that covers the whole road: 28 x 2.0 = 56 px^2 against the dead bar's
+## 54 x 3.0 = 162 px^2, so the denser cue is the lighter one per cell by a factor
+## of three. test_the_deferred_bar_is_a_different_mark_from_the_dead_ground_bar
+## pins that, along with the orientation and the length.
+const DEFERRED_BAR_ARM: float = 14.0
+
+## Thinner than DEAD_BAR_WIDTH for the reason above, and thinner than the off-aim
+## hatch's 4.0 px stripes so a lone bar can never read as one stripe of a hatch
+## that lost the rest of itself.
+const DEFERRED_BAR_WIDTH: float = 2.0
+
+## Higher than BOARD_DEAD_ALPHA's 0.34 rather than lower, and the asymmetry is
+## deliberate: the dead marks sit on plain grass and this sits on the kit's dirt
+## tile underneath the lane-pressure hatch and, during a wave, under the pests
+## themselves. The ink budget above is what keeps the set quiet; the alpha is what
+## keeps one mark legible.
+const DEFERRED_ALPHA: float = 0.55
+
+
+## The ink the deferred bar is drawn in: GardenTheme.INK_SOFT at DEFERRED_ALPHA.
+##
+## A function rather than a const for the reason board_dead_color() gives -- a
+## const initialiser cannot call Color's (Color, float) constructor.
+##
+## INK_SOFT rather than the dead cue's slate, and rather than DANGER, which the
+## hatch and the blocked-cell wash have already spent twice over. It clears
+## GardenTheme.reads_on_ground() against both tile hues
+## (test_the_deferred_bar_reads_on_the_road_it_is_drawn_on), which is the gate
+## that exists because a mark has already vanished into the lawn here once.
+static func deferred_road_color() -> Color:
+	return Color(GardenTheme.INK_SOFT, DEFERRED_ALPHA)
+
+
+## Every road cell that every gun covering it will look past -- see this block's
+## header for what that means and why it is the static half of a runtime state.
+##
+## `gun_cells` and `gun_reaches` are parallel: one entry per standing plant that
+## can engage, its cell and its `Game.engagement_reach`. Pushed in rather than
+## read, because "which plants are standing" is Game's knowledge and this class
+## naming Game back would be a cyclic class_name reference -- the same seam
+## board_dead_cells() takes its `unlocked` list across. The shorter of the two
+## lengths wins, so a caller that builds them out of step gets a smaller answer
+## rather than a wrong one.
+##
+## Coverage is derived through covered_road_cell_list(), not recomputed, so this
+## cue and Game.covered_road_cells() cannot disagree about which road a gun holds.
+##
+## In WALK ORDER, because Board.road_cells() is, and because "further along" is
+## the only comparison this function makes -- the index in that list IS the path
+## index, so no sort and no path_index() call is needed.
+##
+## EMPTY is the honest answer for a null board, for no guns, and for a garden
+## whose every covered cell is the deepest its guns reach. The last of those is a
+## real garden and a good one, not a missing case.
+static func deferred_road_cells(on_board: Board, gun_cells: Array[Vector2i],
+		gun_reaches: PackedFloat32Array) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if on_board == null:
+		return out
+	var guns: int = mini(gun_cells.size(), gun_reaches.size())
+	if guns <= 0:
+		return out
+	var road: Array[Vector2i] = on_board.road_cells()
+	if road.size() <= 1:
+		return out
+	var coverage: Array[Dictionary] = []
+	for i: int in range(guns):
+		var seen: Dictionary = {}
+		for covered_cell: Vector2i in covered_road_cell_list(on_board, gun_cells[i],
+				gun_reaches[i]):
+			seen[covered_cell] = true
+		if not seen.is_empty():
+			coverage.append(seen)
+	for i: int in range(road.size()):
+		var cell: Vector2i = road[i]
+		# The guns that hold THIS cell. A cell no gun holds is the off-aim hatch's
+		# subject and is skipped, which is what makes the two sets disjoint.
+		var here: Array[Dictionary] = []
+		for cover: Dictionary in coverage:
+			if cover.has(cell):
+				here.append(cover)
+		if here.is_empty():
+			continue
+		for j: int in range(i + 1, road.size()):
+			var every: bool = true
+			for held: Dictionary in here:
+				if not held.has(road[j]):
+					every = false
+					break
+			if every:
+				out.append(cell)
+				break
+	return out
+
+# END plant-tower-defense-a6rf
+# =============================================================================

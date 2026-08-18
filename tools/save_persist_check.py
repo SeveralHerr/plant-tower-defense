@@ -85,6 +85,7 @@ import os
 import re
 import sys
 
+import gdsource
 import repo_walk
 
 FUNC_RE = re.compile(r"^(?:static\s+)?func\s+([A-Za-z_][A-Za-z0-9_]*)", re.M)
@@ -105,43 +106,13 @@ SETUP_FUNC = "setup"
 DEFAULT_SOURCES = ("game", "devtools_ext", "ui", "addons/godot_selftest")
 
 
-def strip_comments(text: str) -> str:
-    """Comments removed, string bodies blanked to spaces.
-
-    Both, unlike group_leak_check.py, which keeps string bodies because the group
-    name it needs IS a literal. Nothing here is read out of a literal, and this
-    file's own docstring names `RunConfig.record_score()` and `_save()` several
-    times - a scan that read its own explanation would report the checker itself.
-    Line lengths and line count are preserved so the same slice indexes the raw
-    text, which is where the waiver comment has to be found.
-    """
-    out = []
-    for line in text.splitlines():
-        buf = []
-        in_s = None
-        i = 0
-        while i < len(line):
-            c = line[i]
-            if in_s:
-                buf.append(" ")
-                if c == "\\" and i + 1 < len(line):
-                    buf.append(" ")
-                    i += 2
-                    continue
-                if c == in_s:
-                    in_s = None
-                    buf[-1] = " "
-            elif c in "\"'":
-                in_s = c
-                buf.append(" ")
-            elif c == "#":
-                buf.append(" " * (len(line) - i))
-                break
-            else:
-                buf.append(c)
-            i += 1
-        out.append("".join(buf))
-    return "\n".join(out)
+# Comments blanked AND string bodies and their quotes blanked (gdsource.ERASE).
+# Both, unlike group_leak_check.py, which keeps string bodies because the group name
+# it needs IS a literal. Nothing here is read out of a literal, and this file's own
+# docstring names `RunConfig.record_score()` and `_save()` several times - a scan that
+# read its own explanation would report the checker itself. Offsets are preserved
+# exactly so the same slice indexes the raw text, which is where the waiver comment
+# has to be found. See tools/gdsource.py; `python tools/gdsource.py` is its test.
 
 
 def split_functions(code: str, raw: str) -> list[tuple[str, int, str, str]]:
@@ -208,7 +179,7 @@ def derive_persisting(root: str, sources: tuple[str, ...]) -> tuple[dict[str, st
             with open(path, "r", encoding="utf-8") as fh:
                 raw = fh.read()
             scripts += 1
-            code = strip_comments(raw)
+            code = gdsource.strip_comments(raw, gdsource.ERASE)
             for fname, _line, body, _rawbody in split_functions(code, raw):
                 funcs += 1
                 bodies.setdefault(fname, set()).update(calls_in(body))
@@ -298,7 +269,7 @@ def main() -> int:
             return 2
         test_scripts += 1
         rel = os.path.relpath(path, root).replace("\\", "/")
-        code = strip_comments(raw)
+        code = gdsource.strip_comments(raw, gdsource.ERASE)
         funcs = split_functions(code, raw)
 
         reaching: list[tuple[str, int, str]] = []

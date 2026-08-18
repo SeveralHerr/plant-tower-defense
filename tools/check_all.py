@@ -89,6 +89,10 @@ NOT_A_CHECKER = {
     "check_devtools_log.py": "a Claude Code Stop hook, not a repo checker -- it advises "
                              "about log-devtools.md and never gates",
     "devtools.py": "the bridge client; needs a running game",
+    "mutate.py": "a mutation harness, not a check: it WRITES tools/*.py in the working "
+                 "tree and puts them back, so it must never run in the parallel pool "
+                 "beside a checker reading the same file. Run it by hand: "
+                 "`python tools/mutate.py`",
     "run_tests.py": "opens the project and writes .godot/; the parent's, not a fan-out's",
     "upstream_gaps.py": "files gap reports upstream; writes to the network, not a check",
     "verify_ledger.py": "reads and appends the verify ledger; a record, not a check",

@@ -116,6 +116,7 @@ import os
 import re
 import sys
 
+import gdsource
 import repo_walk
 
 CORPUS_FUNC = "message_corpus"
@@ -130,78 +131,19 @@ LITERAL_ARG = re.compile(r'^\s*"((?:[^"\\]|\\.)*)"')
 CALLED_FUNC = re.compile(r"(?:Hud\.)?([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 
 
-def strip_comments(code: str) -> str:
-    """Blank `#` comments and string BODIES, keeping offsets and newlines intact.
-
-    Blanking string bodies matters here for the same reason it matters in every other
-    checker in this repo: a rule satisfied by prose is not a rule, and this file's own
-    docstring contains the token `show_message(` several times. Escapes are handled --
-    a `\\"` inside a literal must not be read as its terminator, which is the bug that
-    shipped in a first draft of the repo's other source blanker.
-    """
-    out = list(code)
-    i, n = 0, len(code)
-    quote = ""
-    while i < n:
-        ch = code[i]
-        if quote:
-            if ch == "\\" and i + 1 < n:
-                out[i] = out[i + 1] = " "
-                i += 2
-                continue
-            if ch == quote:
-                quote = ""
-            elif ch != "\n":
-                out[i] = " "
-        elif ch in "\"'":
-            quote = ch
-        elif ch == "#":
-            while i < n and code[i] != "\n":
-                out[i] = " "
-                i += 1
-            continue
-        i += 1
-    return "".join(out)
-
-
-def normalise_literal(text: str) -> str:
-    """Collapse a message to its shape, so a format string matches its filled-in twin.
-
-    `"That upgrade costs %d seeds."` at the call site and
-    `"That upgrade costs 99999 seeds."` in the corpus are the same message; the corpus
-    holds a worst case and the call site holds a template. Comparing them raw is how a
-    checker like this ends up demanding the corpus store unrenderable strings.
-    """
-    text = re.sub(r"%[-+ 0-9.]*[a-zA-Z]", "\x00", text)
-    text = re.sub(r"\d+", "\x00", text)
-    return re.sub(r"\s+", " ", text).strip()
-
-
-def first_arg_span(code: str, open_paren: int) -> tuple[int, int]:
-    """(start, end) of the first argument at a call whose `(` is at `open_paren`.
-
-    Returns a SPAN rather than text, and must be given the BLANKED source. Both of
-    those are the same lesson: run over raw source, this splits on the first comma it
-    sees, and a comma inside a string literal is still a comma. The opening hint --
-    "Plant your free Corn Cobbler on the grass, then grow the first wave." -- was cut
-    at `grass,` into an unterminated literal that matched nothing, and was reported as
-    absent from a corpus it was sitting in. Slice the raw text with the blanked span;
-    `strip_comments` preserves offsets exactly so the two stay aligned.
-    """
-    depth, i, n = 0, open_paren, len(code)
-    start = open_paren + 1
-    while i < n:
-        ch = code[i]
-        if ch in "([{":
-            depth += 1
-        elif ch in ")]}":
-            depth -= 1
-            if depth == 0:
-                return start, i
-        elif ch == "," and depth == 1:
-            return start, i
-        i += 1
-    return start, n
+# `strip_comments`, `normalise_literal` and `first_arg_span` all moved to
+# tools/gdsource.py, which this file now imports. They were written here first and the
+# bead that moved them was raised by this checker's own first run, which got the
+# raw/blanked pairing wrong in BOTH directions on the same day. Both lessons live with
+# the code now, in gdsource's docstring and in its hand-written test:
+#
+#   * spans come from the BLANKED text (`gdsource.BLANK`), because a comma inside a
+#     string literal is still a comma to a raw scan;
+#   * contents come from the RAW text at the same offsets, because a literal read out
+#     of the blanked source is hollowed to `""` and the set collapses it to one.
+#
+# `python tools/gdsource.py` is the known-in/known-out test of all three, and running
+# it is what would have caught either mistake before this checker ever ran.
 
 
 def read(path: str) -> str:
@@ -227,7 +169,7 @@ def corpus_from(blanked: str, raw: str) -> tuple[set[str], set[str], str]:
     end = blanked.find("\nfunc ", at + 1)
     end = end if end > 0 else len(blanked)
     producers = set(CORPUS_CALL.findall(blanked[at:end]))
-    literals = {normalise_literal(m) for m in CORPUS_LIT.findall(raw[at:end])}
+    literals = {gdsource.normalise_literal(m) for m in CORPUS_LIT.findall(raw[at:end])}
     return producers, literals, ""
 
 
@@ -320,7 +262,7 @@ def dead_producer_findings(hud_path: str, files: list[str], producers: set[str])
     dead: list[str] = []
     try:
         hud_raw = read(hud_path)
-        hud_blank = strip_comments(hud_raw)
+        hud_blank = gdsource.strip_comments(hud_raw, gdsource.BLANK)
     except (OSError, UnicodeDecodeError):
         return dead
     span = (0, 0)
@@ -339,7 +281,7 @@ def dead_producer_findings(hud_path: str, files: list[str], producers: set[str])
         calls = 0
         for path in files:
             try:
-                code = strip_comments(read(path))
+                code = gdsource.strip_comments(read(path), gdsource.BLANK)
             except (OSError, UnicodeDecodeError):
                 continue
             for m in re.finditer(r"\b%s\s*\(" % re.escape(name), code):
@@ -369,7 +311,8 @@ def main() -> int:
         return 2
     try:
         hud_raw = read(hud_path)
-        producers, literals, why = corpus_from(strip_comments(hud_raw), hud_raw)
+        producers, literals, why = corpus_from(
+            gdsource.strip_comments(hud_raw, gdsource.BLANK), hud_raw)
     except (OSError, UnicodeDecodeError) as exc:
         print("message_corpus_check: cannot read %s (%s)" % (hud_path, exc), file=sys.stderr)
         return 2
@@ -399,7 +342,7 @@ def main() -> int:
             raw = read(path)
         except (OSError, UnicodeDecodeError):
             continue
-        code = strip_comments(raw)
+        code = gdsource.strip_comments(raw, gdsource.BLANK)
         raw_lines = raw.split("\n")
         for m in re.finditer(re.escape(CALL), code):
             # The declaration itself is not a call site.
@@ -415,13 +358,13 @@ def main() -> int:
             if WAIVER.search(raw_lines[line_no - 1]):
                 waived += 1
                 continue
-            a_start, a_end = first_arg_span(code, m.end() - 1)
+            a_start, a_end = gdsource.first_arg_span(code, m.end() - 1)
             arg = code[a_start:a_end]
             if LITERAL_ARG.match(arg):
                 # The blanked code proves it IS a literal and gives the span; the raw
                 # text over that same span is what the literal actually says.
                 real = LITERAL_ARG.match(raw[a_start:a_end])
-                shape = normalise_literal(real.group(1) if real else "")
+                shape = gdsource.normalise_literal(real.group(1) if real else "")
                 if shape in literals:
                     continue
                 findings.append((path, line_no, "a literal absent from %s()" % CORPUS_FUNC,
@@ -433,7 +376,8 @@ def main() -> int:
             findings.append((path, line_no, "calls none of the corpus's producers",
                              arg.strip().replace("\n", " ")[:60]))
 
-    variants = bool_variant_findings(strip_comments(hud_raw), hud_raw)
+    variants = bool_variant_findings(
+        gdsource.strip_comments(hud_raw, gdsource.BLANK), hud_raw)
     dead = dead_producer_findings(hud_path, files, producers)
     print("message_corpus_check: %d .gd file(s) under %s, %d %s() call site(s), "
           "%d waived; corpus declares %d producer(s) and %d literal(s); "
