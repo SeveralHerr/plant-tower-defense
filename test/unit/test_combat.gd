@@ -7296,3 +7296,47 @@ func test_wave_carries_boss_sees_every_boss_species_and_not_just_the_queen() -> 
 			"and no endless wave carries one, which is what the campaign-only rule means")
 	return err
 
+
+
+# -- BEGIN the sting's thrust is aimed (plant-tower-defense-n2wd) ---------------
+
+
+## The jab travels at the victim, in both axes and at a fixed distance.
+##
+## `sting_lean_skew` above is a projection onto x, because a shear has nowhere to go but
+## sideways. A THRUST does: the player report this pair of gestures answers ("the red
+## plant also needs a better animation, at the moment it just jiggles") was about a plant
+## that deformed in place, and a jab that only moved horizontally would still not travel
+## at a pest sitting directly above the plant. So this asserts the case the skew
+## deliberately cannot cover.
+func test_a_nettle_thrusts_at_its_victim_in_both_axes() -> String:
+	var plant := Vector2(120.0, 400.0)
+	var right: Vector2 = Nettle.sting_thrust_offset(plant, plant + Vector2(64.0, 0.0))
+	var err: String = _T.assert_float_eq(right.x, Nettle.STING_THRUST_PX, 0.0001,
+		"a victim dead right pulls the jab fully right, got %.3f" % right.x)
+	if err == "":
+		err = _T.assert_float_eq(right.y, 0.0, 0.0001,
+			"and not at all vertically, got %.3f" % right.y)
+	if err == "":
+		# The case sting_lean_skew answers with zero, and the reason this is a vector.
+		var above: Vector2 = Nettle.sting_thrust_offset(plant, plant + Vector2(0.0, -80.0))
+		err = _T.assert_float_eq(above.y, -Nettle.STING_THRUST_PX, 0.0001,
+			("a victim straight up is jabbed UP -- the skew has no answer for this one,"
+				+ " which is why the thrust is a vector and not a second projection."
+				+ " got %.3f") % above.y)
+	if err == "":
+		var diag: Vector2 = Nettle.sting_thrust_offset(plant, plant + Vector2(50.0, -50.0))
+		err = _T.assert_float_eq(diag.length(), Nettle.STING_THRUST_PX, 0.0001,
+			("the throw is the same distance whichever way it points (%.3f) -- a jab"
+				+ " that reached further diagonally would read as two different gestures")
+				% diag.length())
+	if err == "":
+		# Degenerate input must not produce a NaN direction, which would put the sprite
+		# somewhere Godot will not draw and leave no error behind.
+		var same: Vector2 = Nettle.sting_thrust_offset(plant, plant)
+		err = _T.assert_true(same == Vector2.ZERO,
+			"a victim on top of the plant produces no thrust rather than a NaN, got %s" % same)
+	return err
+
+
+# -- END the sting's thrust is aimed -------------------------------------------
