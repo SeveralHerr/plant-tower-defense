@@ -12349,8 +12349,15 @@ func test_the_sting_reaches_a_voice_carrying_its_own_numbers() -> String:
 		float(Sfx.VOLUME_DB.get(Sfx.NETTLE_STING, 0.0)), 0.0001,
 		"the voice took the sting's volume off the table")
 	if err == "":
+		# A BAND, not a point, since plant-tower-defense-r8zc: the sting is one of the
+		# cues that wobbles, so its pitch is the table's centre plus a per-play offset
+		# inside Sfx.JITTER's half-width. The claim this line makes is unchanged -- the
+		# voice took the STING's numbers and not the previous event's -- and the band
+		# is still nowhere near any other cue's, which
+		# test_two_events_on_one_file_never_overlap_once_they_wobble pins separately.
 		err = _T.assert_float_eq(voice.pitch_scale,
-			float(Sfx.PITCH.get(Sfx.NETTLE_STING, 1.0)), 0.0001,
+			float(Sfx.PITCH.get(Sfx.NETTLE_STING, 1.0)),
+			float(Sfx.JITTER.get(Sfx.NETTLE_STING, 0.0)) + 0.0001,
 			"and its pitch, rather than keeping the last event's")
 	if err == "":
 		err = _T.assert_true(not is_equal_approx(voice.volume_db, corn_db)

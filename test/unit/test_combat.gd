@@ -5216,6 +5216,13 @@ func test_a_pest_killed_headless_is_eventually_freed() -> String:
 ## unique. Add a fourth thing to `play()` and this key must grow with it — which is
 ## the one way this check can go quietly wrong.
 ##
+## **A fourth thing HAS arrived and this key deliberately did not grow.** `Sfx.JITTER`
+## moves each play off its `PITCH` centre, so this triple is now a statement about the
+## CENTRES — still the right claim, and still the only thing forbidding a duplicate row.
+## The half it can no longer see is asserted next door, by
+## `test_two_events_on_one_file_never_overlap_once_they_wobble`, which keys on the
+## RANGES. Two checks, two claims; do not fold them (plant-tower-defense-r8zc).
+##
 ## **There is no waiver list, on purpose.** The one sharing anybody reasoned about —
 ## `WAVE_CLEARED` reusing `RUN_WON`'s jingle — passes because it was already trimmed
 ## to −9.0 against −4.0, and the comment at `game/sfx.gd:95` says that trim is the
