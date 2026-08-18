@@ -15563,3 +15563,289 @@ func _turn_degrees(closed: PackedVector2Array, i: int) -> float:
 
 
 # -- END the page frame's corners are not the artifact --
+
+
+# -- BEGIN one-shots: plant-tower-defense-ei83, plant-tower-defense-q8db --------
+#
+# Two beads about a moment the game gets exactly ONE chance to land: a hint spent on a
+# player who was looking elsewhere, and the first record a garden ever sets.
+
+
+## THE GATE THAT MAKES `Hud.HINT_CARDS` A DERIVED LIST RATHER THAN A SECOND HAND-TYPED
+## ONE. `RunConfig.HINTS` decides what a hint IS -- `spend_hint` refuses an id that is
+## not in it -- so the card table is a lookup over that list and not a list of its own.
+##
+## Both directions, because each catches a different mistake: an id in HINTS with no
+## card is a one-shot with no route back, which is the whole defect ei83 is about; a
+## card whose id is not in HINTS is a page teaching an interaction the game never
+## offers, which is worse than a gap because it reads as authoritative.
+func test_every_hint_has_a_notebook_card() -> String:
+	var ids: Array[String] = Hud.hint_ids()
+	var err: String = _T.assert_gt(ids.size(), 0,
+		"there are hints to card at all -- an empty list would pass every loop below")
+	if err == "":
+		err = _T.assert_eq(ids.size(), RunConfig.HINTS.size(),
+			"hint_ids() is RunConfig.HINTS and not a private copy of it")
+	for i: int in ids.size():
+		if err != "":
+			break
+		err = _T.assert_eq(ids[i], String(RunConfig.HINTS[i]),
+			"hint %d is the one RunConfig lists in that slot" % i)
+	for id: String in ids:
+		if err != "":
+			break
+		var row: Dictionary = Hud.hint_entry(id)
+		err = _T.assert_false(row.is_empty(),
+			"'%s' is in RunConfig.HINTS, so it has a card to be found again by" % id)
+		if err == "":
+			err = _T.assert_true(Hud.hint_title(id) != id,
+				"'%s' has a real title rather than falling back to its raw id" % id)
+		if err == "":
+			err = _T.assert_gt(Hud.hint_note_text(id, true).length(), 0,
+				"'%s' has a note saying what the interaction actually is" % id)
+	# The reverse sweep. A card for an id nobody can spend is a page that teaches
+	# something the game has no door to.
+	for row: Dictionary in Hud.HINT_CARDS:
+		if err != "":
+			break
+		var id: String = String(row["id"])
+		err = _T.assert_true(RunConfig.is_hint(id),
+			"the card '%s' names an id RunConfig still calls a hint" % id)
+	return err
+
+
+## The bead's acceptance, as an assertion: a player who never saw the prompt can still
+## learn the interaction. So the note reads IN FULL in both states -- the seen/unseen
+## mark says who has read it, never what it says.
+##
+## And the mark is a text prefix, not a colour, which is `OVERLAY_GRAMMAR.md`'s
+## two-channel rule: strip every colour off the page and an unshown row is still
+## identifiable as unshown. Mirrors `NotebookScreen.shelf_note_text`, whose header
+## states the same rule for the milestone shelf one screen away.
+func test_a_hint_card_reads_in_full_whether_or_not_the_game_has_shown_it() -> String:
+	var ids: Array[String] = Hud.hint_ids()
+	var err: String = _T.assert_gt(ids.size(), 0, "there are hints to check")
+	for id: String in ids:
+		if err != "":
+			break
+		var shown: String = Hud.hint_note_text(id, true)
+		var unshown: String = Hud.hint_note_text(id, false)
+		# Hoisted out of the `if` blocks below on purpose: a `var` declared inside one
+		# is scoped to it, and the later assertion reading it would not compile.
+		var body: String = unshown.trim_prefix("Not shown yet — ")
+		err = _T.assert_true(shown != unshown,
+			"'%s' reads differently once the game has spent it" % id)
+		if err == "":
+			err = _T.assert_true(unshown.begins_with("Not shown yet — "),
+				("'%s' unshown carries the prefix that survives colour being discarded,"
+					+ " got '%s'") % [id, unshown])
+		if err == "":
+			# The half that matters: the SENTENCE is intact under the prefix, so the
+			# interaction is learnable by someone the row never reached. Compared on
+			# the body rather than on length, so a truncating change fails here.
+			err = _T.assert_eq(body.substr(1), shown.substr(1),
+				("'%s' says the same thing in both states -- only the first letter's"
+					+ " case and the prefix differ") % id)
+		if err == "":
+			err = _T.assert_eq(shown.substr(0, 1).to_lower(), body.substr(0, 1),
+				"'%s' lowercases exactly the one letter the prefix runs into" % id)
+	return err
+
+
+## The two renderings must not contradict each other, which is the specific risk of
+## having a notebook card and a message-row tip say the same rule in different words.
+##
+## Asserted on the PLANTS each names, not on the strings matching: `Hud.flight_tip()`
+## is written for a player watching a bug walk over a mouth and the card is written for
+## a reader with no bug in front of them, so they SHOULD differ as prose. What they may
+## never differ about is which plant catches a winged pest and which does not.
+func test_the_hint_cards_agree_with_the_tips_the_message_row_posts() -> String:
+	var tip: String = Hud.flight_tip()
+	var card: String = Hud.hint_note_text("seen_flight_tip", true)
+	var err: String = _T.assert_true(tip.contains("Chomp Flower") and card.contains("Chomp Flower"),
+		"both name the plant that cannot take it -- tip '%s', card '%s'" % [tip, card])
+	if err == "":
+		err = _T.assert_true(tip.contains("Corn Cobbler") and card.contains("Corn Cobbler"),
+			"and both name the plant that can -- tip '%s', card '%s'" % [tip, card])
+	if err == "":
+		err = _T.assert_true(tip != card,
+			"while staying two sentences for two audiences rather than one pasted twice")
+	if err == "":
+		# The upgrade card has to name the verb the button carries, or a player who
+		# reads it still does not know what to look for on the board.
+		err = _T.assert_true(Hud.hint_note_text("seen_upgrade_tip", true).contains("Upgrade"),
+			"the upgrade card names the button by the word printed on it")
+	if err == "":
+		# The move card is the one whose tip is a CLAUSE inside a longer sentence
+		# (`uproot_armed_message`), so it is the one most able to drift.
+		var armed: String = Hud.uproot_armed_message("Corn Cobbler", true, 0)
+		err = _T.assert_true(armed.contains("Hover"),
+			"the armed prompt still carries the hover clause -- '%s'" % armed)
+		if err == "":
+			err = _T.assert_true(Hud.hint_note_text("seen_move_tip", true).contains("hover"),
+				"and the card teaches the same hover")
+	return err
+
+
+## THE THREE BRANCHES OF THE CARD'S SUBHEADING, asserted off a pure static so all of
+## them are reachable without a save file, a played run, or a Control.
+##
+## The bead's complaint in one assertion: a FIRST record and a later one must not print
+## the same sentence. Before this, both said "a new best" -- which is a claim about
+## beating a number, and on a first record there is no number to have beaten.
+func test_a_first_record_does_not_read_as_a_new_best() -> String:
+	var first: String = RunSummary.score_line_at(308, true, true, 308, false)
+	var later: String = RunSummary.score_line_at(308, true, false, 308, false)
+	var none: String = RunSummary.score_line_at(120, false, false, 308, false)
+	var err: String = _T.assert_true(first != later,
+		"a first record and a later one do not print the same line -- both said '%s'"
+			% first)
+	if err == "":
+		err = _T.assert_true(first.contains("first"),
+			"the first-record line names itself as a first -- got '%s'" % first)
+	if err == "":
+		err = _T.assert_true(later.contains("a new best"),
+			"a later record still reads as a new best -- got '%s'" % later)
+	if err == "":
+		err = _T.assert_true(not first.contains("a new best"),
+			("and the first-record line does NOT claim a comparison that never"
+				+ " happened -- got '%s'") % first)
+	if err == "":
+		err = _T.assert_true(none.contains("your best campaign is 308"),
+			"a run that set no record still names the mode's standing best -- '%s'" % none)
+	if err == "":
+		# Every branch prints the seeds the run actually earned, which is the one
+		# number all three share and the easiest to lose in a rewrite.
+		err = _T.assert_true(first.begins_with("308 ") and later.begins_with("308 ")
+			and none.begins_with("120 "),
+			"all three branches lead with the run's own seed total")
+	return err
+
+
+## `first_record()` is the gate everything else keys off, and its DEFAULT is the half
+## worth pinning: `previous_best` is a key `Game.summary_stats` does not write yet, so
+## an absent one must read as "not a first" and leave the card saying what it says
+## today. A 0 default would relabel every record on every card.
+func test_an_absent_previous_best_is_not_read_as_a_first_record() -> String:
+	var unknown := RunSummary.build({"new_record": true, "seeds_earned_total": 308})
+	var err: String = _T.assert_false(unknown.first_record(),
+		"a record with no previous_best in the stats is not assumed to be a first")
+	if err == "":
+		err = _T.assert_true(unknown.ribbon_entries().is_empty(),
+			"so it grows no ribbon row either")
+	unknown.free()
+
+	var first := RunSummary.build({
+		"new_record": true, "seeds_earned_total": 308, "previous_best": 0,
+	})
+	if err == "":
+		err = _T.assert_true(first.first_record(),
+			"previous_best of 0 IS the first record -- there was nothing to beat")
+	first.free()
+
+	var later := RunSummary.build({
+		"new_record": true, "seeds_earned_total": 308, "previous_best": 240,
+	})
+	if err == "":
+		err = _T.assert_false(later.first_record(),
+			"and beating a real 240 is a later record, not a first")
+	if err == "":
+		err = _T.assert_true(later.ribbon_entries().is_empty(),
+			"which earns no ribbon row -- the row is for firsts only")
+	later.free()
+
+	var lost := RunSummary.build({"new_record": false, "previous_best": 0})
+	if err == "":
+		err = _T.assert_false(lost.first_record(),
+			("a run that set NO record is not a first record even on a garden with no"
+				+ " score yet -- previous_best is 0 for both"))
+	lost.free()
+	return err
+
+
+## The treatment itself: a first record is admitted to the ribbon, which is the surface
+## this card already reserves for "what this run did for the first time ever". That is
+## what makes it MORE than a later record rather than less.
+func test_a_first_record_earns_a_row_on_the_ribbon_of_firsts() -> String:
+	var card := RunSummary.build({
+		"victory": true,
+		"seeds_earned_total": 308,
+		"new_record": true,
+		"previous_best": 0,
+		"new_milestones": ["campaign_cleared"],
+	})
+	var host: Node = await _T.instantiate_ui(card, Vector2i(1152, 648))
+	var err: String = _T.assert_true(host != null, "the card stood up")
+	if err == "":
+		err = _T.assert_eq(card.ribbon_entries().size(), 2,
+			"the record row and the milestone are both on the ribbon")
+	if err == "":
+		err = _T.assert_eq(String(card.ribbon_entries()[0]["id"]), RunSummary.FIRST_RECORD_ID,
+			"with the record FIRST -- a garden opens its record book once")
+	if err == "":
+		var ribbon: Panel = card.get_node_or_null("MilestoneRibbon") as Panel
+		err = _T.assert_true(ribbon != null, "and the ribbon was drawn")
+		if err == "":
+			var row: Label = ribbon.get_node_or_null(
+				"Milestone_%s" % RunSummary.FIRST_RECORD_ID) as Label
+			err = _T.assert_true(row != null, "carrying a titled row for the record")
+			if err == "":
+				err = _T.assert_gt(row.text.length(), 0,
+					"whose title is real text and not an empty label")
+			if err == "":
+				var note: Label = ribbon.get_node_or_null(
+					"MilestoneNote_%s" % RunSummary.FIRST_RECORD_ID) as Label
+				err = _T.assert_true(note != null and note.text.contains("308"),
+					("and a note naming the score the garden will be measured against,"
+						+ " got '%s'") % ("<missing>" if note == null else note.text))
+		if err == "":
+			err = _T.assert_true(ribbon.get_node_or_null("Milestone_campaign_cleared") != null,
+				"the milestone row is still there beside it")
+		if err == "":
+			err = _T.assert_float_eq(ribbon.size.y, RunSummary.ribbon_height(2), 0.5,
+				"and the panel is sized for BOTH rows, not just the milestone")
+	_T.free_ui(host)
+	return err
+
+
+## The row costs vertical budget in the side column, and this is the measurement that
+## says how much is left. `_play_entrance` drops every child by RISE_OFFSET_WIN = 32, so
+## the real floor on this screen is 648 - 32 = 616 rather than the viewport.
+##
+## Asserted against `worst_ribbon_rows()` rather than `Milestones.TABLE.size()`, which is
+## the specific thing this change made wrong elsewhere: the two older clearance tests
+## still measure a 7-row ribbon, and the game can now draw an 8-row one.
+func test_the_widest_ribbon_this_game_can_draw_still_clears_the_rise() -> String:
+	var rows: int = RunSummary.worst_ribbon_rows()
+	var err: String = _T.assert_eq(rows, Milestones.TABLE.size() + 1,
+		"the worst case is every milestone plus the one synthesised record row")
+	if err == "":
+		err = _T.assert_gt(RunSummary.ribbon_height(rows),
+			RunSummary.ribbon_height(Milestones.TABLE.size()),
+			"which is genuinely taller than the case the older tests measure")
+	if err == "":
+		var foot: float = RunSummary.RIBBON_TOP + RunSummary.ribbon_height(rows)
+		err = _T.assert_true(foot <= RunSummary.MAP_LEGEND_Y,
+			"the tallest ribbon foots at %.0f, above the map legend strip at %.0f"
+				% [foot, RunSummary.MAP_LEGEND_Y])
+	if err == "":
+		# The note is pushed down by the ribbon, so it is the thing that actually
+		# runs out of room first.
+		var note_foot: float = RunSummary.reach_note_top(rows) + RunSummary.REACH_NOTE_HEIGHT
+		var floor_y: float = 648.0 - RunSummary.RISE_OFFSET_WIN
+		err = _T.assert_true(note_foot <= floor_y,
+			("under the tallest ribbon the reach note foots at %.0f, inside the %.0f"
+				+ " rise budget") % [note_foot, floor_y])
+		if err == "":
+			# The column is now FULL, and this is the assertion that says a ninth row
+			# is not free -- so the next person to add one is told by a red test
+			# rather than by a screenshot of a note hanging off the screen.
+			var ninth: float = (RunSummary.reach_note_top(rows + 1)
+				+ RunSummary.REACH_NOTE_HEIGHT)
+			err = _T.assert_true(ninth > floor_y,
+				("and a NINTH row would foot at %.0f, past %.0f -- this column has room"
+					+ " for no more") % [ninth, floor_y])
+	return err
+
+
+# -- END one-shots: plant-tower-defense-ei83, plant-tower-defense-q8db ----------
