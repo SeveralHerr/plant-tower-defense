@@ -15310,3 +15310,145 @@ func test_the_resting_uproot_button_prices_the_replant_off_the_live_bank() -> St
 			"and names the plant it is talking about, got \"%s\"" % button.tooltip_text)
 	_T.free_ui(game)
 	return err
+
+
+## -r3e8. The roll itself is a Tween and `GardenTheme.animations_enabled()` is false
+## headless, so a test that drove `refresh()` and watched the Label would assert nothing
+## at all while looking like coverage. This asserts the pure function the Tween renders.
+func test_the_seeds_roll_counts_the_whole_way_in_both_directions() -> String:
+	# Endpoints exact, rather than trusting a float to land on 1.0 -- the record
+	# ratchet needs a restoring callback for precisely that reason.
+	var err: String = _T.assert_eq(Hud.seeds_roll_value(120, 75, 0.0), 120,
+		"t=0 shows the total the player had")
+	if err == "":
+		err = _T.assert_eq(Hud.seeds_roll_value(120, 75, 1.0), 75,
+			"t=1 shows the total they have now")
+	if err == "":
+		err = _T.assert_eq(Hud.seeds_roll_value(120, 75, 4.0), 75, "and t past the end clamps")
+	if err == "":
+		err = _T.assert_eq(Hud.seeds_roll_value(120, 75, -4.0), 120, "as does t before it")
+	if err == "":
+		# It has to MOVE on the first step. With floorf the readout sits on the old
+		# total for the first tenth of the roll, which reads as a dropped frame.
+		err = _T.assert_true(Hud.seeds_roll_value(120, 75, 0.01) < 120,
+			"the count has already left the old total one frame in")
+	# A SPEND, which is the case the bead was filed about: seeds go down as well as up,
+	# and a roll that only climbed would animate every payout and snap every price.
+	var falling: Dictionary = {}
+	var previous: int = 120
+	var samples: int = 0
+	if err == "":
+		for i: int in range(0, 101):
+			var t: float = float(i) / 100.0
+			var value: int = Hud.seeds_roll_value(120, 75, t)
+			samples += 1
+			falling[value] = true
+			if value > previous:
+				err = _T.assert_true(false,
+					"a spend never counts back up: %d after %d at t=%.2f" % [value, previous, t])
+				break
+			if value < 75 or value > 120:
+				err = _T.assert_true(false,
+					"and never leaves its endpoints: %d at t=%.2f" % [value, t])
+				break
+			previous = value
+	if err == "":
+		err = _T.assert_eq(samples, 101, "the sweep actually ran")
+	if err == "":
+		# STEPPED, which is the claim SEED_ROLL_STEPS makes -- and the claim the title
+		# screen's own RATCHET_STEPS states in a comment and then does not keep. A
+		# hundred distinct four-digit totals in 0.35s is a flicker, not a count.
+		err = _T.assert_true(falling.size() <= Hud.SEED_ROLL_STEPS + 1,
+			("a 101-sample sweep of a %d-step roll showed %d distinct totals")
+				% [Hud.SEED_ROLL_STEPS, falling.size()])
+	if err == "":
+		err = _T.assert_gt(falling.size(), 2,
+			"and it is a count rather than a snap with extra frames (%d totals shown)"
+				% falling.size())
+	# And the same climbing, since a payout uses the identical path.
+	if err == "":
+		var rising: int = Hud.seeds_roll_value(20, 65, 0.5)
+		err = _T.assert_true(rising > 20 and rising < 65,
+			"a payout counts up through the middle too, got %d" % rising)
+	return err
+
+
+## The floor under the roll, and the reason it is where it is.
+##
+## The roll exists to make a BIG jump legible; rolling a 2-seed pest payout would put
+## the busiest readout in the game in permanent motion for a change that is legible at a
+## glance. The floor is only correct if it sits under every price the player can pay --
+## derived off the catalogue rather than compared against a number typed twice.
+func test_a_small_seed_change_snaps_and_every_real_price_rolls() -> String:
+	var err: String = _T.assert_false(
+		Hud.seeds_roll_is_worth_showing(40, 40 + Hud.SEED_ROLL_MIN_JUMP - 1),
+		"a change one under the floor snaps, and the punch carries it alone")
+	if err == "":
+		err = _T.assert_true(Hud.seeds_roll_is_worth_showing(40, 40 + Hud.SEED_ROLL_MIN_JUMP),
+			"a change on the floor rolls")
+	if err == "":
+		err = _T.assert_true(Hud.seeds_roll_is_worth_showing(40, 40 - Hud.SEED_ROLL_MIN_JUMP),
+			"and it is symmetric -- a spend of the same size rolls too")
+	if err == "":
+		err = _T.assert_false(Hud.seeds_roll_is_worth_showing(40, 40),
+			"a readout that did not move does not roll")
+	if err == "":
+		var cheapest: int = -1
+		for id: StringName in PlantCatalog.ids():
+			var cost: int = PlantCatalog.cost(id)
+			if cost > 0 and (cheapest < 0 or cost < cheapest):
+				cheapest = cost
+		err = _T.assert_gt(cheapest, 0, "the catalogue prices something")
+		if err == "":
+			err = _T.assert_gte(cheapest, Hud.SEED_ROLL_MIN_JUMP,
+				("the cheapest plant in the catalogue costs %d, and the roll's floor is "
+					+ "%d -- above it, the purchase the roll was written for is the one "
+					+ "change that snaps") % [cheapest, Hud.SEED_ROLL_MIN_JUMP])
+	return err
+
+
+## The rule that makes the roll safe to add at all: **the readout already holds the
+## final total before anything animates.** A tween responsible for ARRIVING at the right
+## value leaves the right value unreachable headless, in every test and on any machine
+## with animation off -- and nothing about node paths or sizes would say so.
+##
+## Headless this passes because the roll never arms; that is the point. It is the check
+## that fails the day someone moves the `_seeds_label.text =` assignment inside the
+## tween.
+func test_a_seed_change_leaves_the_readout_holding_the_final_total() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/StatsRow/SeedsLabel") as Label
+	var err: String = _T.assert_true(label != null, "the seeds readout is in the row")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	game._process(0.016)
+	await _pump(game)
+	var before: String = label.text
+	# Comfortably over SEED_ROLL_MIN_JUMP, so a roll is armed on any machine that can
+	# run one.
+	game.bank.add_seeds(45)
+	game._process(0.016)
+	await _pump(game)
+	err = _T.assert_true(label.text != before,
+		"the readout moved at all, got %s both times" % label.text)
+	if err == "":
+		err = _T.assert_eq(label.text, "Seeds  %d" % game.bank.seeds,
+			("the readout holds the FINAL total, not an interpolation step: the roll "
+				+ "layers on top of a correct string and puts it back"))
+	if err == "":
+		# And down again, which is the direction that used to be the argument.
+		var spent: int = game.bank.seeds
+		# A charge, the way Game.upgrade_selected() makes one: a negative amount, which
+		# the sign guard already keeps off the score.
+		game.bank.add_seeds(-20)
+		game._process(0.016)
+		await _pump(game)
+		err = _T.assert_true(game.bank.seeds < spent, "the spend landed")
+		if err == "":
+			err = _T.assert_eq(label.text, "Seeds  %d" % game.bank.seeds,
+				"and a spend leaves the final total on the readout too")
+	_T.free_ui(game)
+	return err
+
+# -- END plant-tower-defense-eupm / -r3e8 --------------------------------------
