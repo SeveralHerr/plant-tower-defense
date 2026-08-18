@@ -44,7 +44,59 @@ const KERNEL_STEP_DEGREES: float = 13.0
 
 ## level -> firing pattern. `spread_degrees` is the total arc the kernels cover, and
 ## it is always KERNEL_STEP_DEGREES * (kernels - 1) — `test_combat` pins that, so a
-## hand-typed spread that breaks the nesting fails rather than shipping.
+## hand-typed spread that breaks the nesting fails rather than shipping. It is the one
+## number in this table that another number in this table implies, and it is written out
+## anyway because a ladder is retuned by reading the columns side by side; the pin is
+## what makes that affordable, and it is the only exception the rule below has.
+##
+## ---------------------------------------------------------------------------------
+## THE RULE THIS TABLE IS READ BY
+##
+## **If the answer changes when a row here changes, it is a pure static over LEVELS
+## taking `for_level` — never a literal, never a branch on the level number, and never
+## recomputed beside a caller that already had the row in hand.**
+##
+## That is not a preference, it is three bugs, and each of the statics below this table
+## is one of them already fixed. They read as three unrelated helpers, which is exactly
+## why the rule never transferred: what they have in common was never written down, so
+## the fourth question got answered wherever it was asked. Here is the common part.
+##
+##   * `kernel_angle_offsets` — TWO SUBSYSTEMS ASKED THE SAME QUESTION. Firing and
+##     drawing each spaced their own kernels, so an upgrade could widen the shot without
+##     widening the picture. One function, and the fan cannot lie about the volley.
+##   * `spread_arc_span` — A CALL SITE RESTATED A ROW. `_draw_muzzle_fan` carried a
+##     branch of its own for "level 1 gets no arc", which is `kernels == 1` wearing a
+##     level number; cycle 70 watched a mutation to that branch survive a test that only
+##     ever asked `kernel_angle_offsets`. Which levels wear an arc, and how wide, is one
+##     pure function now, and the draw site READS it rather than measuring the two
+##     outermost offsets for itself — which is what it went back to doing, silently,
+##     while three separate comments claimed otherwise.
+##   * `upgrade_spend` — A TOTAL THE TABLE IMPLIES AND NOBODY STORES. The climb is 20
+##     then 45, and a hand-typed 65 is a second source of truth that a retune silently
+##     falsifies — on the number the player is told they are forfeiting.
+##
+## Three callers, three different failures, one rule. The tells that you are about to
+## break it, in the order they show up: a literal that is arithmetic over a row; a
+## comparison against a level NUMBER standing in for a property of the row; the same
+## derivation appearing at two call sites in different subsystems.
+##
+## Take `for_level`, not this cob's `level`. The callers that most need these answers are
+## asking about a rung nothing is standing on — `Hud.message_corpus` prices the armed
+## prompt at the ladder's maximum, which no instance can answer.
+##
+## Where a new one goes. If the question is about A LADDER, it belongs on `Plant` beside
+## `ladder_row` / `ladder_upgrade_cost` / `ladder_spend`, and every future ladder gets it
+## for free. If it is about CORN, it goes here, under this rule.
+## `test_placement.test_every_level_taking_static_on_the_cob_is_exercised_across_the_ladder`
+## derives the set of `static func f(for_level: int)` straight out of this file and fails
+## on one no test names, so a fourth question added under this rule cannot arrive
+## unasserted the way the three above each did.
+##
+## And the obvious fourth question is already answered, twice. "What does it cost to
+## REACH level N" is `upgrade_spend(for_level)` here and `Plant.ladder_spend(ladder,
+## for_level)` generically. It looks missing because `upgrade_cost()` answers only the
+## next step and reads like the whole of the subject. Do not add a third name for it.
+## ---------------------------------------------------------------------------------
 const LEVELS: Array[Dictionary] = [
 	{"name": "single", "kernels": 1, "spread_degrees": 0.0, "interval": 0.80, "damage": 1.0, "upgrade_cost": 20},
 	{"name": "triple", "kernels": 3, "spread_degrees": 26.0, "interval": 0.72, "damage": 1.2, "upgrade_cost": 45},
@@ -284,15 +336,28 @@ func _draw_muzzle_fan() -> void:
 	if offsets.is_empty():
 		return
 	var fade: float = lerpf(READY_ALPHA_FLOOR, 1.0, readiness())
-	# Level 1 fires one kernel through a 0° spread, so there is no arc to draw —
-	# a lone pip is the honest picture of a single shot. That decision lives in
-	# `spread_arc_span` and NOT in an `if` here, on purpose: at level 1 the two ends
-	# coincide and `draw_arc` draws nothing, so "which levels get an arc" is decided
-	# in one pure function a test can assert without rendering a frame. A branch
-	# here would be a second copy of the rule, and cycle 70 watched a mutation to it
-	# survive a test that only ever asked `kernel_angle_offsets`.
-	draw_arc(muzzle_pivot(_aim_angle), FAN_LENGTH, _aim_angle + offsets[0],
-		_aim_angle + offsets[offsets.size() - 1], 24,
+	# Level 1 fires one kernel through a 0° spread, so there is no arc to draw — a lone
+	# pip is the honest picture of a single shot. That decision lives in
+	# `spread_arc_span` and NOT in an `if` here, on purpose: at level 1 the span is 0,
+	# the two ends coincide and `draw_arc` draws nothing, so "which levels get an arc"
+	# is decided in one pure function a test can assert without rendering a frame.
+	#
+	# It is READ here rather than recomputed, which is the whole of the LEVELS rule and
+	# is what this line got wrong until cycle 107. Taking `offsets[0]` and `offsets[-1]`
+	# here gives the identical picture — `kernel_angle_offsets` is symmetric about the
+	# aim, so the ends are ±span/2 — and that is exactly what made it survivable: the
+	# draw site had quietly gone back to measuring the spread for itself while the
+	# comment above it, `sfx.gd`'s "fourth time this project needed that move" note and
+	# `test_placement`'s own header all three said it read `spread_arc_span`, which by
+	# then had no production caller at all. A restated derivation does not announce
+	# itself; only the function nothing calls does.
+	#
+	# The symmetry this centring depends on is `kernel_angle_offsets`' own stated
+	# invariant, and `test_placement` now asserts it per rung rather than leaving it as
+	# prose two functions away.
+	var arc_span: float = spread_arc_span(level)
+	draw_arc(muzzle_pivot(_aim_angle), FAN_LENGTH, _aim_angle - arc_span * 0.5,
+		_aim_angle + arc_span * 0.5, 24,
 		Color(SPREAD_ARC_COLOR, SPREAD_ARC_COLOR.a * fade), 2.0, true)
 	for pip: Vector2 in muzzle_pips(level, _aim_angle):
 		draw_circle(pip, PIP_SIZE + PIP_RIM_WIDTH, Color(PIP_RIM_COLOR, PIP_RIM_COLOR.a * fade))
@@ -390,6 +455,12 @@ static func muzzle_pips(for_level: int, aim: float = 0.0) -> PackedVector2Array:
 ## than deciding for itself, so what gets drawn is checkable without rendering a
 ## frame, and the "lone pip versus a bow of pips" difference a player reads at a
 ## glance is one function rather than a condition at the draw site.
+##
+## "Reads this" is load-bearing and was untrue for the whole of cycles 70–106: the draw
+## site took the first and last offset instead, which paints the same arc and left this
+## function with no production caller while three comments said it had one. See the
+## LEVELS rule — a derivation restated at the call site is invisible, so the thing to
+## watch for is the pure function nothing outside the tests names.
 static func spread_arc_span(for_level: int) -> float:
 	var offsets: PackedFloat32Array = kernel_angle_offsets(for_level)
 	if offsets.size() < 2:
