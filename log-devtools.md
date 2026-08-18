@@ -7178,3 +7178,44 @@ status rather than rewriting the entries that recorded these as open.
   --property text` was the whole diagnostic for both the readout and the stale-label
   misread, in one call each, and `step-time --then-pause` gave the health/text pairs with
   no ambient drift. The one thing that would have shortened this: see G-129 above.
+
+## 2026-08-18 — cycle 112: confirm-the-premise built, and turned on a bead nobody wrote it about
+
+- Value: **warranted** — the confirmation changed the shape of the work three times before
+  a line was written, and one of those would have shipped a permanently-green test.
+  - Expected: the bead's premise is checkable before any code. It claims three tests cover
+    three screens and proposes one sweep replacing them. Predicted before checking: the
+    count is stale, because every count in a bead of that age has been.
+  - Got: three findings, escalating.
+    **The COUNT** is seven, not three — seven test functions assert a `focus_mode`
+    transition across five screen pairings. One grep.
+    **The ASK was already partly satisfied**, and neither the bead nor its kanban source
+    said so: `test_the_hud_is_inert_while_an_overlay_is_open` already builds its subject
+    from `Hud.interactive_controls()` rather than a written list — the derived-set version
+    of this exact idea — for one overlay over one layer. The remaining work was the
+    **cross-product**, not the sweep.
+    **The PROPOSED IMPLEMENTATION was nearly vacuous as worded.** "Walk every Control under
+    a lower CanvasLayer and assert `focus_mode == FOCUS_NONE`" passes identically over a
+    screen that went inert and one that was never focusable, because a Label, a ColorRect
+    and a Panel are `FOCUS_NONE` at all times. Written as specified it would have been a
+    permanently-green test — and the existing test's own defence against that (assert
+    `FOCUS_ALL` first, and check a non-empty denominator) is where the fix came from.
+  - Found: the three above, plus `name_check` catching the new test reaching for
+    `NotebookScreen.NODE_NAME`, which does not exist — the notebook is held as
+    `PauseScreen._notebook` while the other two overlays do declare `NODE_NAME`. An
+    asymmetry that would otherwise have surfaced at runtime.
+  - Cheaper: nothing for the vacuity finding. The other two were one grep each, which is
+    the argument — confirming cost about five minutes and changed the work three times.
+
+- **The test was mutation-tested, and passing first time is why.** A test that goes green on
+  its first run has told you nothing yet. Forcing `PauseScreen._set_card_active` to always
+  `FOCUS_ALL` produced `GateButton is unfocusable behind the notebook screen ... Expected 0
+  but got 2`, exit 1. Recording it because "it passed" and "it can fail" are different
+  claims and only the first one is free.
+
+- Gap: **no gap this turn**, and the harness was correctly barely involved: `/verify`'s
+  triage puts this at tier (c) headless-only — the test itself instantiates `GAME_SCENE`,
+  pauses the run, and drives all three real overlays through `PauseScreen`'s own buttons and
+  Escape handling, so launching would re-drive that code with a renderer attached and learn
+  nothing. The row is `--no-reach` by triage rather than by omission. Second cycle running
+  that the triage table has earned its keep by saying **do not launch**.

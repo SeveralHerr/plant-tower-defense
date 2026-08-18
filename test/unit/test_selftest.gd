@@ -17384,3 +17384,134 @@ func test_the_holds_line_is_priced_by_the_selection_budget() -> String:
 
 # END plant-tower-defense-7daf
 # =============================================================================
+
+
+# =============================================================================
+# plant-tower-defense-cs2k — the invariant, over every overlay rather than one.
+#
+# WHAT THIS ADDS, since seven tests already assert a focus transition and one of
+# them (test_the_hud_is_inert_while_an_overlay_is_open) is already the derived-set
+# version of this idea. That one covers ONE overlay (the pause card) over ONE layer
+# (the HUD). This is the cross-product: all three OverlayScreen subclasses, over
+# both the pause card beneath them AND the HUD beneath that.
+#
+# THE SUBJECT IS COLLECTED WHILE THE OVERLAY IS CLOSED, and that is the whole design
+# rather than a detail. The bead proposed "walk every Control under a lower
+# CanvasLayer and assert focus_mode == FOCUS_NONE", which is nearly vacuous as
+# worded: a Label, a ColorRect and a Panel are FOCUS_NONE at all times, so such a
+# sweep passes identically over a screen that went inert and one that was never
+# focusable. So the set here is "every Control that is FOCUS_ALL during play", built
+# before anything opens — a screen that contributes nothing to that set contributes
+# nothing to the assertion either, which is why the denominator is checked too.
+# =============================================================================
+
+
+## Every Control at or under `root` that a player could focus right now.
+##
+## A tree walk rather than a per-screen accessor, because there is no accessor to
+## call: `Hud.interactive_controls()` is the only method of its kind in the project
+## and PauseScreen has no counterpart. A walk is also what makes this survive a
+## fourth screen nobody has written, which is the bead's stated point.
+func _focusable_under(root: Node) -> Array[Control]:
+	var out: Array[Control] = []
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		var control := node as Control
+		if control != null and control.focus_mode == Control.FOCUS_ALL:
+			out.append(control)
+		for child: Node in node.get_children():
+			stack.append(child)
+	return out
+
+
+func test_every_overlay_makes_everything_under_it_unfocusable() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.pause_run()
+	await _pump(game)
+	var card := game.get_node_or_null("PauseLayer/PauseScreen") as PauseScreen
+	var err: String = _T.assert_true(card != null, "the pause card is up")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
+	# Collected with nothing open over it: the card's own buttons plus whatever the
+	# HUD still offers behind it. This is the "during play" set the header describes.
+	var live: Array[Control] = _focusable_under(card)
+	err = _T.assert_gt(live.size(), 2,
+		("the pause card has focusable controls to make inert -- an empty or tiny set "
+			+ "here would pass every assertion below without checking anything, which "
+			+ "is exactly the vacuity this test was written to avoid"))
+
+	# All three, by name, so a fourth OverlayScreen subclass landing without an entry
+	# is visible rather than silently uncovered. The predicates are PauseScreen's own.
+	var overlays: Array[Dictionary] = [
+		{"name": "notebook", "open": Callable(self, "_open_pause_notebook"),
+			"is_open": Callable(card, "notebook_open")},
+		{"name": "keys", "open": Callable(self, "_open_pause_keys"),
+			"is_open": Callable(card, "keys_open")},
+		{"name": "options", "open": Callable(self, "_open_pause_options"),
+			"is_open": Callable(card, "options_open")},
+	]
+	if err == "":
+		err = _T.assert_eq(overlays.size(), 3,
+			("every OverlayScreen subclass is exercised here -- there are three "
+				+ "(key_binding_screen.gd, notebook_screen.gd, options_screen.gd) and a "
+				+ "fourth needs a row above, which is the case this test exists for"))
+
+	var swept: int = 0
+	for entry: Dictionary in overlays:
+		if err != "":
+			break
+		var label: String = String(entry["name"])
+		err = (entry["open"] as Callable).call(card) as String
+		if err != "":
+			break
+		await _pump(game)
+		err = _T.assert_true((entry["is_open"] as Callable).call() as bool,
+			"the %s screen is open" % label)
+		if err != "":
+			break
+		# THE INVARIANT. Everything that was focusable during play is unreachable now.
+		for control: Control in live:
+			err = _T.assert_eq(control.focus_mode, Control.FOCUS_NONE,
+				("%s is unfocusable behind the %s screen -- Tab does not care what is "
+					+ "drawn on top") % [control.name, label])
+			if err != "":
+				break
+		if err != "":
+			break
+		# And back, which is the half that stops a screen passing by breaking the game
+		# underneath it permanently.
+		# The notebook is held as a field rather than found by name -- `notebook_open()`
+		# reads `_notebook` and NotebookScreen declares no NODE_NAME, unlike the other
+		# two. Asymmetric, and reaching for a NODE_NAME it does not have is what
+		# name_check caught here before this ran.
+		var overlay: Node = card._notebook if label == "notebook" \
+			else (card.get_node_or_null(KeyBindingScreen.NODE_NAME) if label == "keys" \
+			else card.get_node_or_null(OptionsScreen.NODE_NAME))
+		err = _T.assert_true(overlay != null, "the %s screen is in the tree to close" % label)
+		if err == "":
+			(overlay as Node).call("_input", _key_press(KEY_ESCAPE))
+			await _pump(game)
+			err = _T.assert_false((entry["is_open"] as Callable).call() as bool,
+				"the %s screen closed again" % label)
+		if err == "":
+			for control: Control in live:
+				err = _T.assert_eq(control.focus_mode, Control.FOCUS_ALL,
+					"%s is reachable again once the %s screen is gone"
+						% [control.name, label])
+				if err != "":
+					break
+		if err == "":
+			swept += 1
+
+	if err == "":
+		err = _T.assert_eq(swept, overlays.size(),
+			"every overlay was actually opened and measured, not skipped")
+	game.resume_run()
+	_T.free_ui(game)
+	return err
+
+# END plant-tower-defense-cs2k
+# =============================================================================
