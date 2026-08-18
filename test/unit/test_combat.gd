@@ -9540,3 +9540,148 @@ func test_a_drought_slows_what_the_garden_shoots_and_nothing_else() -> String:
 
 # END plant-tower-defense-bt5i
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-frzz: the gait reference speed, against the species
+# that actually exist
+#
+# The bead's line numbers were stale -- it said pest.gd:235-245 and the GAIT_ block
+# is at pest.gd:550-560 -- and its substance was live and worse than it knew.
+#
+# The header at pest.gd:553 justifies GAIT_REFERENCE_SPEED = 60.0 as sitting
+# "between the aphid's 78 and the beetle's 38, so the fast one scuttles fast and the
+# slow one plods without either needing a per-species constant".
+#
+# THERE ARE FIVE SPECIES NOW, NOT TWO. Derived from `Pest.SPECIES` rather than read
+# off that sentence: aphid 78, shieldbug 54, nurse 44, beetle 38, queen 30. So 60.0
+# is ABOVE FOUR OF THE FIVE, the corpus midpoint is 54 -- which is the Shield Bug's
+# own speed -- and the nearest species now sits 6.0 away. The bead worried that "a
+# species added at speed 61 would land on the boundary silently"; the corpus has
+# already crowded the constant without anyone saying so.
+#
+# What survives of the header's reasoning is weaker than "midpoint" and is what the
+# mechanic actually needs: species on BOTH sides, so `speed / GAIT_REFERENCE_SPEED`
+# is used in both directions, and none of them sitting so near the reference that its
+# gait reads as neutral. Those are the two tests below. Neither asserts the header's
+# arithmetic, because the header's arithmetic is no longer true.
+
+
+## Every species' walking speed, out of `Pest.SPECIES` rather than typed out.
+##
+## `speed` is a required key with no accessor -- pest.gd:820 reads it raw as
+## `stats["speed"]` -- so this reads it the way the game does. Keyed by String because
+## that is what `_T.assert_margin` compares its recorded set against.
+func _species_speeds() -> Dictionary:
+	var out: Dictionary = {}
+	for which: StringName in Pest.SPECIES:
+		var stats: Dictionary = Pest.SPECIES[which] as Dictionary
+		out[String(which)] = float(stats["speed"])
+	return out
+
+
+## How close a species' speed may come to GAIT_REFERENCE_SPEED before its gait stops
+## telling the player anything, in pixels per second.
+##
+## Not picked. `Pest.gait_rate` scales linearly with `for_speed / GAIT_REFERENCE_SPEED`,
+## so a species N% off the reference waggles N% off the neutral GAIT_RATE. The smallest
+## gait-rate difference this game already SHIPS as a readable tell is the subtler of its
+## two mutation rate multipliers -- ARMOURED 0.8 and WINGED 2.4, i.e. 0.2 and 1.4 away
+## from neutral. A species inside that band is being asked to communicate itself with a
+## difference smaller than the one the game uses to encode a whole separate mutation.
+##
+## Both multipliers go through `minf()` on purpose rather than 0.2 being written down:
+## a future mutation with a subtler tell moves this number and takes the band with it,
+## instead of leaving a fact about a version of the file that no longer exists.
+func _gait_reference_margin() -> float:
+	var subtlest: float = minf(
+		absf(1.0 - Pest.ARMOURED_RATE_MULTIPLIER),
+		absf(1.0 - Pest.WINGED_RATE_MULTIPLIER))
+	return subtlest * Pest.GAIT_REFERENCE_SPEED
+
+
+## The half of the header's sentence that still holds: some species walk faster than
+## the reference and some slower, so one constant really does buy both a scuttle and a
+## plod.
+##
+## Deliberately NOT asserted here: that 60.0 is a midpoint, or that the beetle is the
+## slow end. Neither is true any more -- the queen at 30 is the slow end and four of
+## five species are below the reference. A test written to the header would have to
+## fail or be fudged; this one asserts the property the mechanic depends on.
+func test_the_gait_reference_speed_still_has_species_on_both_sides_of_it() -> String:
+	var speeds: Dictionary = _species_speeds()
+	var err: String = _T.assert_gt(speeds.size(), 1,
+		("Pest.SPECIES yielded %d species. Every loop below divides by that, and a "
+			+ "corpus of one agrees with any reference speed at all")
+			% [speeds.size()])
+	if err != "":
+		return err
+	var faster: PackedStringArray = []
+	var slower: PackedStringArray = []
+	var fastest: float = -1.0
+	var slowest: float = -1.0
+	for name: String in speeds:
+		var speed: float = float(speeds[name])
+		if speed > Pest.GAIT_REFERENCE_SPEED:
+			faster.append(name)
+		elif speed < Pest.GAIT_REFERENCE_SPEED:
+			slower.append(name)
+		if fastest < 0.0 or speed > fastest:
+			fastest = speed
+		if slowest < 0.0 or speed < slowest:
+			slowest = speed
+	err = _T.assert_gt(faster.size(), 0,
+		("at least one species walks faster than GAIT_REFERENCE_SPEED %.1f, or the "
+			+ "clamp's whole upper half (GAIT_RATE_MAX %.2f) is unreachable outside "
+			+ "endless-mode scaling and the constant is a ceiling rather than a "
+			+ "reference. Speeds were %s")
+			% [Pest.GAIT_REFERENCE_SPEED, Pest.GAIT_RATE_MAX, str(speeds)])
+	if err == "":
+		err = _T.assert_gt(slower.size(), 0,
+			("and at least one plods. Speeds were %s") % [str(speeds)])
+	if err == "":
+		# The consequence, through the function that reads the constant rather than
+		# through the constant itself: the fastest species really does waggle faster
+		# than the slowest. This is "the fast one scuttles fast and the slow one plods"
+		# as arithmetic, and it is what would break if the reference walked off the top
+		# or the bottom of the corpus.
+		err = _T.assert_gt(
+			Pest.gait_rate(fastest, false, false),
+			Pest.gait_rate(slowest, false, false),
+			("the fastest species (%.1f px/s) waggles faster than the slowest (%.1f) "
+				+ "off GAIT_REFERENCE_SPEED alone, with no per-species constant")
+				% [fastest, slowest])
+	return err
+
+
+## The gate the bead asked for: nothing may walk close enough to the reference that its
+## gait reads as neutral, and the one species already near the line is recorded by name.
+##
+## The Shield Bug at 54.0 is 6.0 from the reference -- a gait rate of 0.90x neutral,
+## still readable, and inside the 12.0 band because the band is derived from the mutation
+## tells rather than fitted to the corpus. It is RECORDED, not exempted: a second species
+## landing in the band, or this one drifting, fails here instead of arriving in silence.
+func test_no_species_walks_close_enough_to_the_gait_reference_to_lose_its_tell() -> String:
+	var speeds: Dictionary = _species_speeds()
+	var margin: float = _gait_reference_margin()
+	var err: String = _T.assert_gt(speeds.size(), 1,
+		("Pest.SPECIES yielded %d species -- the corpus this gate sweeps")
+			% [speeds.size()])
+	if err == "":
+		err = _T.assert_gt(margin, 0.0,
+			("the band has to be a band, and it is %.4f px/s. It comes off the mutation "
+				+ "rate multipliers, so a pair of them both set to 1.0 would collapse it "
+				+ "to zero and leave the gate below agreeing with every corpus there is")
+				% [margin])
+	if err == "":
+		err = _T.assert_margin(speeds, Pest.GAIT_REFERENCE_SPEED, margin,
+			{"shieldbug": 54.0},
+			("the Shield Bug is the ONE species within %.1f px/s of GAIT_REFERENCE_SPEED "
+				+ "%.1f. The header still says the reference sits between the aphid's 78 "
+				+ "and the beetle's 38; there are five species now and it is above four "
+				+ "of them, so read that sentence as history. Speeds swept: %s")
+				% [margin, Pest.GAIT_REFERENCE_SPEED, str(speeds)])
+	return err
+
+# END plant-tower-defense-frzz
+# =============================================================================
