@@ -1,4 +1,4 @@
-# Cycle 111
+# Cycle 112
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,38 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 112 taught
+
+**A skill named twice is work, and this one paid on its first use.**
+`confirm-the-premise` had been identified twice without being built. Turned on `-cs2k` — a
+bead nobody wrote it about — it moved all three of that bead's factual claims before a line
+was written: the count was seven, not three; the ask was already partly satisfied by a test
+nobody had connected to it; and **the implementation the bead specified would have been a
+permanently-green test.** "Walk every Control under a lower CanvasLayer and assert
+`focus_mode == FOCUS_NONE`" passes identically over a screen that went inert and one that
+was never focusable, because a Label, a ColorRect and a Panel are `FOCUS_NONE` always.
+
+**The fix for that came from the test the bead was proposing to replace.**
+`test_the_hud_is_inert_while_an_overlay_is_open` already collects its subject while nothing
+is open and asserts a non-empty denominator — its own defence against exactly this vacuity.
+Reading the thing you are about to supersede is where the design was.
+
+**A test that passes on its first run has told you nothing yet.** Forcing
+`PauseScreen._set_card_active` to always `FOCUS_ALL` produced a named failure on a named
+button. Both new guards this cycle were mutation-tested, and both mutations were caught.
+
+**Nothing here can tell whether a sentence is TRUE, and one had quietly stopped being.**
+`"A hungry pest ate your %s!"` was correct for every plant death until the ninth plant —
+`Pest` only reaches `_adjacent_plant()` inside its `is_hungry` branch, and a wall is chewed
+by every pest. Nineteen checkers, lint and 897 tests were green over it for two cycles.
+Found by reading the producer while looking for something else. `message_corpus_check.py`
+is the closest this project gets to checking prose and it verifies a line is *priced*,
+never that it is *accurate*. That is now `-u9zb`.
+
+**The steps held.** No workflow change this cycle — step 3's rule about re-reading every
+citation *after* the code edits caught two of my own references drifting by eight lines,
+which is the rule doing its job rather than needing another one.
 
 ## What cycle 111 taught
 

@@ -4036,3 +4036,36 @@ Three findings kept out here rather than buried in a log:
   — a higher `bite_resistance()`, not a bigger pool — so the Aloe interaction scales with
   it instead of being diluted by it. That is the same argument `game/bramble.gd`'s header
   makes for choosing resistance in the first place, applied one level up.
+
+### New in cycle 112 — grown from confirming a bead and reading a sentence
+
+- **Nothing in this project can tell whether a sentence is TRUE, and cycle 112 found one
+  that had quietly stopped being.** `Hud.eaten_message` (`game/hud.gd:3563`) read "A hungry
+  pest ate your %s!" and was correct for every plant death in the game until the ninth
+  plant: `Pest._physics_process` reaches `_adjacent_plant()` only inside its `is_hungry`
+  branch (`game/pest.gd:1282-1286`), so a hungry pest really was the only thing that could
+  destroy a plant. A Barrier Bramble is chewed by `_blocking_plant()`, which every pest
+  runs. Nineteen checkers, lint and 897 tests were green over it throughout.
+  The entry is not the fix, which shipped this cycle. It is the class: **this project has
+  built fifteen checkers for things a machine can decide, and the message corpus is the
+  closest it gets to prose — and `message_corpus_check.py` verifies that a line is PRICED,
+  never that it is accurate.** Every one of the ~30 producer strings in `Hud` is a factual
+  claim about the game, several are years of cycles old, and nothing has ever re-read them
+  against the code. A sweep is cheap once and would not be a checker: read every producer,
+  ask what has to be true for it, and cite the line that makes it so. Do it once, record
+  the misses, and decide afterwards whether any of it can be mechanised.
+
+- **The three overlays are opened and found three different ways, which is why the new
+  inert sweep has to name them.** Enumerated: `KeyBindingScreen.NODE_NAME` is
+  `"KeysScreen"` (`game/key_binding_screen.gd:34`) and `OptionsScreen.NODE_NAME` is
+  `"OptionsScreen"` (`game/options_screen.gd:54`), but `NotebookScreen` declares no
+  `NODE_NAME` at all — `PauseScreen.notebook_open()` reads a `_notebook` field instead
+  (`game/pause_screen.gd:712-713`). `name_check` caught a new test reaching for the
+  constant that does not exist, which is the cheap version of this bill.
+  The cost is that `test_every_overlay_makes_everything_under_it_unfocusable` carries a
+  hand-written list of three and asserts its own length, rather than discovering overlays
+  from the tree — and `-cs2k`'s whole ambition was to "catch the fourth screen nobody has
+  written yet". Giving `NotebookScreen` a `NODE_NAME` like its two siblings, and
+  `PauseScreen` one accessor that returns whichever overlay is up, would make that sweep
+  genuinely automatic. Small, and it is the difference between a test that fails when a
+  fourth screen arrives and one that covers it.
