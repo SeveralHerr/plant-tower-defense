@@ -15979,3 +15979,95 @@ func test_a_drought_is_never_a_quieter_cue_than_rain() -> String:
 
 
 # -- END what the weather is actually worth on screen --
+
+
+# -- the seed economy has a finite floor and an uncapped ceiling (uqeo) --
+
+## `uqeo` asked for a per-wave banked series off a live 22-wave run. That run would
+## have measured ONE point on a curve whose shape is decided by two facts you can
+## read off the source, and this test pins them instead:
+##
+##   the SINK is finite and one-time. Every seed the game can ever accept is a
+##   placement, an upgrade, or a packet, and all three are bounded -- 94-odd cells,
+##   a ladder on two of eight plants, seven packets to unlock the rest.
+##
+##   the INCOME is a rate with no cap. A Sunflower mints YIELD seeds every INTERVAL
+##   seconds unconditionally, and a wave never starts until the player presses the
+##   button (`can_start_wave` in Game.summary_stats), so prep time is unbounded.
+##
+## A finite sink meets an unbounded rate at exactly one place, and the surplus after
+## it has nowhere to go. That is the design gap the bead was reaching for, and no
+## amount of live play makes it more or less true. If someone adds a sink -- a third
+## ladder, a consumable, a per-wave cost -- this test fails and they get to re-read
+## the paragraph above rather than inheriting a stale conclusion.
+func test_the_seed_sink_is_finite_while_the_seed_income_is_not() -> String:
+	# Hand-built because plants are constructed in code (Game._new_plant), not from
+	# scenes -- so the list is checked against the catalogue rather than trusted.
+	var makers: Dictionary = {
+		PlantCatalog.CORN: func() -> Plant: return CornCobbler.new(),
+		PlantCatalog.CHOMP: func() -> Plant: return ChompFlower.new(),
+		PlantCatalog.SUNFLOWER: func() -> Plant: return Sunflower.new(),
+		PlantCatalog.SUNDEW: func() -> Plant: return StickySundew.new(),
+		PlantCatalog.DANDELION: func() -> Plant: return Dandelion.new(),
+		PlantCatalog.MINT: func() -> Plant: return Mint.new(),
+		PlantCatalog.NETTLE: func() -> Plant: return Nettle.new(),
+		PlantCatalog.ALOE: func() -> Plant: return Aloe.new(),
+	}
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_eq(makers.size(), ids.size(),
+		("this test builds one of every catalogue plant -- a new plant means a new "
+			+ "row here AND a fresh look at whether it carries a sink"))
+	for id: StringName in ids:
+		if err != "":
+			break
+		err = _T.assert_true(makers.has(id), "%s has a maker in this test" % id)
+	if err != "":
+		return err
+
+	# Walk every plant once: what it costs to place, and what its whole ladder costs
+	# to climb. Both come off the plant itself, never a number re-listed here.
+	var with_ladder: Array[String] = []
+	var dearest_cell: int = 0
+	for id: StringName in ids:
+		var plant: Plant = (makers[id] as Callable).call()
+		var ladder: Array[Dictionary] = plant.upgrade_ladder()
+		var climb: int = 0
+		for step: Dictionary in ladder:
+			climb += int(step.get("upgrade_cost", 0))
+		if climb > 0:
+			with_ladder.append(String(id))
+		dearest_cell = maxi(dearest_cell, PlantCatalog.cost(id) + climb)
+		plant.free()
+
+	# The floor of the whole argument: six of the eight plants cannot be improved at
+	# any price. A garden of Sundews and Nettles has NO upgrade sink whatsoever.
+	with_ladder.sort()
+	err = _T.assert_eq(with_ladder, ["chomp_flower", "corn_cobbler"],
+		("only two of eight plants can absorb a seed after they are placed -- the "
+			+ "other six are a one-time cost and then free forever"))
+
+	# Be generous to the sink everywhere it is in doubt: every grid cell counts as
+	# buildable (the path really takes ~32 of them away), every cell holds the
+	# dearest plant plus its full ladder, and every packet is bought at the top tier.
+	# The conclusion has to survive the most expensive game anyone could play.
+	var cells: int = Board.COLS * Board.ROWS
+	var packets: int = (ids.size() - 1) * int(SeedBank.PACKET_TIERS[&"epic"]["cost"])
+	var ceiling: int = cells * dearest_cell + packets
+	if err == "":
+		err = _T.assert_gt(ceiling, 0, "the lifetime sink is a finite number of seeds")
+
+	# And now the rate. One Sunflower alone mints the entire generous ceiling in a
+	# bounded stretch of prep, and nothing in the game asks the player to move on.
+	var per_second: float = float(Sunflower.YIELD) / Sunflower.INTERVAL
+	if err == "":
+		err = _T.assert_gt(per_second, 0.0,
+			"a Sunflower pays out on a clock, with no wave and no pest involved")
+	if err == "":
+		var minutes: float = float(ceiling) / per_second / 60.0
+		err = _T.assert_gt(60.0 * 8.0, minutes,
+			("ONE Sunflower buys out every sink the game has in %.0f minutes of "
+				+ "standing still; a real garden runs a dozen of them") % minutes)
+	return err
+
+
+# -- END the seed economy has a finite floor and an uncapped ceiling --
