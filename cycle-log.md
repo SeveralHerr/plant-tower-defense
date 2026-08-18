@@ -1,4 +1,4 @@
-# Cycle 123
+# Cycle 124
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,36 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 124 taught
+
+**I broke the file that detects the break, with the break, for the third time in its
+history.** Writing `heredoc_survey`'s own `NOT_COVERED` constant through a shell heredoc
+turned every escaped newline into a real one inside a string literal — twice in one patch,
+unterminated strings at exactly the lines the patch touched. Its header already records two
+such incidents from when it was first written. Fixed by joining a list of plain lines, which
+has no escape to eat.
+
+**Third occurrence of the no-scripts-write-source rule this session, and all three were
+mine.** The rule is right. I keep reaching for the forbidden tool when an `Edit` match looks
+awkward, and the correct move is `Read` the bytes and `Edit` again.
+
+**The exit code has to depend on which question was asked.** A hit in HISTORY already
+happened and was already fixed — gating on those is permanently red, which
+`house-static-checker` calls worse than no gate. Only `--worktree` gates. That is also why
+this stayed OUT of `check_all`'s pool despite being perfectly parallel-safe: the pool runs
+each file one way and has nowhere to say "with a flag".
+
+**A fixture that is not tracked is invisible to any check that asks git what to scan.** The
+positive control needed `git add -N` first. That is the **third vacuous fixture this
+session**, each for a different reason — an absolute Windows path the regex could not match
+(116), the wrong colour read (121), untracked (124) — and **all three announced themselves in
+a denominator I nearly did not read.** Run the setup, read the number, then trust the
+assertion.
+
+**The rule now has a check a fan-out lane can run.** `lint_project.gd` was the only thing
+that could see this class and it is not parallel-safe, so a lane got `name_check` and nothing
+else. `--worktree` is stdlib and takes a second.
 
 ## What cycle 123 taught
 

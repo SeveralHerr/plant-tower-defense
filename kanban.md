@@ -4395,3 +4395,31 @@ Three findings kept out here rather than buried in a log:
   readouts have wanted "damage" specifically (the coverage note, this blurb, and the
   post-mortem's "held" row from `-fohy`). Three is usually the number at which a distinction
   is real; it is filed nowhere yet.
+
+### New in cycle 124 — grown from breaking the detector with the defect it detects
+
+- **A gate whose exit code should depend on WHICH QUESTION it answered cannot live in a pool
+  that runs it one way.** `heredoc_survey` now has two modes over one pair of detectors:
+  history (how often has this happened — advisory, because every hit is already fixed and
+  gating on them is permanently red) and `--worktree` (is the tree broken right now — gates).
+  `tools/check_all.py` runs each discovered file with one command and has nowhere to say
+  "run this one with a flag", so a genuinely parallel-safe check stayed out of the pool for a
+  structural reason rather than a technical one.
+  Worth deciding rather than working around: **should `check_all` learn a per-tool argv?**
+  Its `NOT_PARALLEL_SAFE` and `NOT_A_CHECKER` maps already carry per-tool knowledge, so a
+  third map is not a new idea — but every entry is a hand-maintained fact in a file whose
+  whole argument is that its list is DERIVED. Taste: no. Two commands the loop names
+  explicitly beat one command with a table of exceptions, and `survey_all` already
+  established that two runners on two clocks is the honest shape.
+
+- **A fixture that is not tracked is invisible to any check that asks git what to scan.**
+  The positive control for `--worktree` needed `git add -N` before the survey could see it —
+  `git ls-files` lists tracked paths, so a freshly-written fixture file scans as nothing and
+  the control passes over an empty set. This is the third fixture this session to be vacuous
+  on its first run for a different reason each time: cycle 116's citation fixture used an
+  absolute Windows path the regex could not match, cycle 121's palette audit read the wrong
+  colour, and this one was untracked.
+  The pattern is worth stating: **run the fixture's SETUP and read its denominator before
+  trusting what the assertion says.** All three announced themselves — `0 citation(s)`,
+  `5 findings`, `scanning 63 files` with no fixture among them — and in each case the number
+  was visible and I nearly did not look at it.
