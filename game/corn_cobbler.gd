@@ -125,6 +125,14 @@ const LEVELS: Array[Dictionary] = [
 ## edge, and a directional spray of filled dots on one side rather than anything
 ## ring-shaped, so it reads as neither the RANGE ring (green, 176 px, selected
 ## only) nor SelectionMarker's four thin corner brackets.
+##
+## "Inside a radius of ~26" is now a measurement rather than an estimate: the widest pip
+## rim sits at 25.88 from the plant's centre, computed off `muzzle_pips()` in
+## `ReadoutBand` (game/readout_band.gd). The fan is listed there as NOT radial, because
+## FAN_PIVOT is the whole reason — the pips are at a fixed radius from the pivot and a
+## moving one from the plant, so a radius interval is the wrong shape for this mark and a
+## directional spray is what tells it apart. Read that file before adding a mark to any
+## plant; the radii ARE finite, and the cob's are the only ones in the band that move.
 const FAN_PIVOT: float = 14.0
 const FAN_LENGTH: float = 34.0
 const PIP_SIZE: float = 2.4

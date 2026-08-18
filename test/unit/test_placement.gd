@@ -8423,3 +8423,353 @@ func test_the_chew_rings_remaining_ink_shrinks_the_way_a_clock_should() -> Strin
 
 # END plant-tower-defense-ip4n
 # =============================================================================
+
+
+# =============================================================================
+# plant-tower-defense-xf0b -- which radii the plant readouts occupy
+#
+# `ReadoutBand` (game/readout_band.gd) owns the band between a plant's sprite and its
+# cell edge. Read its header before adding anything to this section, and before adding
+# a mark to any plant: it holds the rule these three tests are the teeth of.
+#
+# The point of this section is that it names no pairs. Nine assertions across this file
+# and test_combat.gd each hold ONE mark against ONE neighbour by hand -- 22 against 26,
+# 16 against 22, a tooth's inner edge against a chew ring -- and between them they never
+# covered the pair that actually overlaps, because a hand-written pair list is only ever
+# as complete as the last person's memory of it. These three iterate.
+
+## Every collision the pairwise gate below currently finds, recorded rather than waived.
+##
+## A row here is a DEFECT that has not been fixed yet, not a permission. Two things keep
+## it from becoming permanent, both of them the shape `REACH_WITHOUT_A_RING` established
+## higher up this file: the gate fails if a collision appears that is not listed, AND it
+## fails if a listed one stops colliding. Fixing one means deleting its row in the same
+## commit; leaving the row behind is a red suite, not a quiet lie.
+##
+## ---------------------------------------------------------------------------------
+## fang crown + alone ring: they share 0.7 px of radius, and neither can simply move.
+##
+##   ChompFlower.FANG_RADIUS 28 puts a tooth's outer rim at 30.7. SoleCoverMarks
+##   .ALONE_RADIUS 31 puts that ring's inner edge at 30.0. A SELECTED, upgraded Chomp
+##   that holds no road cell alone wears both, and two of its four teeth (the pair at
+##   +-39 degrees, at 231 and 283 degrees round) fall under a dash rather than in a gap.
+##
+##   The crown cannot move out (30.7 is already near the 32 px half-cell) and the ring
+##   cannot move in (25.3 is the crown's inner edge) -- `ReadoutBand.free_slices()`
+##   reports the room left out there as 0.0 px. That is the finding, and it is why the
+##   fix is a design decision rather than a nudge: one of the two marks has to give up
+##   the outer band, and neither file's header knows the other exists.
+## ---------------------------------------------------------------------------------
+const READOUT_BAND_KNOWN_COLLISIONS: Array[String] = [
+	"fang crown + alone ring",
+]
+
+
+## The res:// path of the script that DECLARES `_draw()` for this node, walking up the
+## inheritance chain; "" when nothing in the chain declares one.
+##
+## The chain walk is the load-bearing part rather than a nicety. Mint carries mint.gd,
+## which has no `_draw()` at all -- it deleted its override to inherit `Plant`'s -- so a
+## sweep reading only the node's own script would conclude a Mint paints nothing, when
+## in fact it paints a reach ring. That is the same wrong answer, arrived at a different
+## way, as the unstripped-source scan this file's other source checks warn about.
+func _script_declaring_draw(node: Node) -> String:
+	var script: Script = node.get_script() as Script
+	while script != null:
+		var path: String = script.resource_path
+		if path != "":
+			var text: String = _lines_without_comments(FileAccess.get_file_as_string(path))
+			if text.contains("func _draw("):
+				return path
+		script = script.get_base_script()
+	return ""
+
+
+## Every script that paints something in a plant's own local space, derived, held
+## against what `ReadoutBand` has classified. Both directions.
+##
+## This is the half that makes the pairwise gate below mean anything. A registry of
+## radii can be perfectly consistent and still be silent about a mark nobody added to
+## it, which is exactly how the band filled up in the first place -- so the membership
+## is derived from the source and the scene, and `marks()` plus `not_radial()` must
+## account for all of it. A new mark either takes a radius (and is checked) or states
+## why radius is not its channel; there is no third option that compiles.
+##
+## Headless runs no `_draw()` at all, so "does this file paint anything" is read off the
+## source, with comment lines stripped first -- every one of these files discusses
+## drawing in prose, so an unstripped scan would credit all of them.
+func test_every_mark_a_plant_paints_is_classified_by_the_readout_band() -> String:
+	var declares: Dictionary = {}
+
+	# Half one: the plant family itself, off the filesystem. `_plant_family_sources()`
+	# finds Plant and everything that extends it, so a ninth plant is scanned whether or
+	# not anyone remembers this test.
+	var family: Dictionary = _plant_family_sources()
+	for path: String in family:
+		var text: String = _lines_without_comments(String(family[path]))
+		if text.contains("func _draw("):
+			declares[path] = true
+
+	# Half two: the nodes a plant BUILDS under itself. SelectionMarker and SoleCoverMarks
+	# are not Plant subclasses and no filesystem sweep of the family would ever see them,
+	# yet both paint on the plant's own origin -- and the alone ring is one half of the
+	# collision recorded above. Walked off a real placed plant rather than named here.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var cell: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "",
+		"the free starter goes in, so there is a real plant subtree to walk")
+	if err == "":
+		var planted: Plant = game.plant_at(cell)
+		err = _T.assert_true(planted != null, "and it can be found on the board")
+		if err == "":
+			for child: Node in planted.get_children():
+				var declarer: String = _script_declaring_draw(child)
+				if declarer != "":
+					declares[declarer] = true
+
+	if err == "":
+		# The vacuous-pass guard. Five plant scripts and two marker scripts draw today;
+		# a sweep that found three has lost half its input and would still "pass".
+		err = _T.assert_gt(declares.size(), 6,
+			("the sweep found only %d scripts that paint under a plant, which is fewer "
+				+ "than the plant family alone has -- an empty or short sweep agrees "
+				+ "with a registry that has forgotten everything. Found %s")
+				% [declares.size(), str(declares.keys())])
+
+	# What ReadoutBand claims to have classified: the owners of the radial marks, plus
+	# the files it has explicitly ruled out with a reason.
+	var classified: Dictionary = {}
+	for mark: Dictionary in ReadoutBand.marks():
+		classified[String(mark[ReadoutBand.OWNER])] = true
+	for path: String in ReadoutBand.not_radial():
+		classified[path] = true
+
+	# Direction one: something paints and nobody classified it.
+	if err == "":
+		for path: String in declares:
+			err = _T.assert_true(classified.has(path),
+				("%s declares a _draw() under a plant and appears in neither "
+					+ "ReadoutBand.marks() nor ReadoutBand.not_radial(). Every mark on a "
+					+ "plant either takes a radius in the band -- in which case add a row "
+					+ "to marks() and let the pairwise gate check it -- or is told apart "
+					+ "by something else, in which case say which in not_radial(). "
+					+ "Read game/readout_band.gd's header first: the band has %.1f px of "
+					+ "unclaimed radius left in its widest slice.")
+					% [path, ReadoutBand.widest_free_slice()])
+			if err != "":
+				break
+
+	# Direction two, the one that gets skipped. A row for a mark that no longer exists
+	# is a radius reserved for nothing, and it is invisible from the other direction:
+	# every pairwise check keeps passing and the band looks fuller than it is.
+	if err == "":
+		for path: String in classified:
+			err = _T.assert_true(declares.has(path),
+				("ReadoutBand classifies %s, but nothing in a plant's subtree declares a "
+					+ "_draw() there any more. Delete the row -- a reserved radius nobody "
+					+ "draws in is exactly the stale entry this registry exists to stop.")
+					% path)
+			if err != "":
+				break
+
+	_T.free_ui(game)
+	return err
+
+
+## The gate. Every ordered pair of radial marks that can be worn at once, checked for a
+## shared radius -- iterated, never named.
+func test_no_two_radial_marks_on_one_plant_can_share_a_radius() -> String:
+	var marks: Array[Dictionary] = ReadoutBand.marks()
+	var err: String = _T.assert_gt(marks.size(), 3,
+		("ReadoutBand.marks() returned %d rows, so there are barely any pairs to check "
+			+ "and a clean run says nothing") % marks.size())
+	if err != "":
+		return err
+
+	var pairs: int = 0
+	var found: Array[String] = []
+	for i: int in range(marks.size()):
+		for j: int in range(i + 1, marks.size()):
+			var a: Dictionary = marks[i]
+			var b: Dictionary = marks[j]
+			if not ReadoutBand.co_wearable(a, b):
+				# Two marks on two different plants never meet a pixel. Skipped rather
+				# than passed, and counted nowhere, so the denominator below stays honest.
+				continue
+			pairs += 1
+			if not ReadoutBand.collide(a, b):
+				continue
+			var key: String = "%s + %s" % [String(a[ReadoutBand.NAME]), String(b[ReadoutBand.NAME])]
+			found.append(key)
+			err = _T.assert_true(READOUT_BAND_KNOWN_COLLISIONS.has(key),
+				("%s overlaps by %.2f px: %s covers [%.2f, %.2f] and %s covers "
+					+ "[%.2f, %.2f], both of them centred on the same plant and both able "
+					+ "to be on it at once. Radius is the only channel between two rings "
+					+ "sharing a centre, so this is one mark, not two. Move one of them, "
+					+ "or -- if it really is not fixable today -- add %s to "
+					+ "READOUT_BAND_KNOWN_COLLISIONS with the reason.")
+					% [key, ReadoutBand.radial_overlap(a, b),
+						String(a[ReadoutBand.NAME]), float(a[ReadoutBand.INNER]),
+						float(a[ReadoutBand.OUTER_R]),
+						String(b[ReadoutBand.NAME]), float(b[ReadoutBand.INNER]),
+						float(b[ReadoutBand.OUTER_R]), key])
+			if err != "":
+				return err
+
+	# The denominator. Five marks that can all coexist is ten pairs; a run that checked
+	# three of them has lost most of the band and still reports clean.
+	if err == "":
+		err = _T.assert_gt(pairs, 8,
+			("only %d pairs could be worn at once, out of %d marks -- if that number "
+				+ "fell, a WEARERS list has narrowed and the gate is checking less than "
+				+ "it looks like it is") % [pairs, marks.size()])
+
+	# And the other direction: a recorded collision that has been fixed must be deleted,
+	# not left to sit there granting permission nobody needs any more.
+	if err == "":
+		for known: String in READOUT_BAND_KNOWN_COLLISIONS:
+			err = _T.assert_true(found.has(known),
+				("READOUT_BAND_KNOWN_COLLISIONS still lists '%s', but that pair no longer "
+					+ "overlaps -- somebody fixed it. Delete the row in the same commit, "
+					+ "or the next real collision between those two marks lands "
+					+ "pre-approved. Collisions actually found: %s")
+					% [known, str(found)])
+			if err != "":
+				break
+	return err
+
+
+## What is left of the band, as a measurement rather than a sentence -- and the one
+## thing the bead asked to be said explicitly: the reach rings are not in it.
+func test_the_readout_band_is_bounded_by_the_cell_and_not_by_the_reach_rings() -> String:
+	# The reach ring is a row in marks() like everything else, so it is pairwise-checked
+	# above rather than exempted. This is the separate, stronger claim its own header
+	# makes in prose: it is not near the band at all. Derived over the catalogue, so a
+	# plant added with a one-cell reach is measured instead of assumed.
+	var shortest: float = ReadoutBand.smallest_reach()
+	var err: String = _T.assert_gt(shortest - Plant.REACH_RING_WIDTH * 0.5, ReadoutBand.OUTER,
+		("the shortest reach any plant draws is %.1f px, whose ring's inner edge at %.1f "
+			+ "would be inside the %.1f px band -- a reach ring in the band stops being "
+			+ "a reach and becomes a fifth mark competing for a radius")
+			% [shortest, shortest - Plant.REACH_RING_WIDTH * 0.5, ReadoutBand.OUTER])
+
+	# Nothing in the band may spill onto the neighbouring bed. Three separate assertions
+	# in this suite and test_combat.gd each say this about one mark; this says it about
+	# every mark there is.
+	if err == "":
+		var checked: int = 0
+		for mark: Dictionary in ReadoutBand.marks():
+			if float(mark[ReadoutBand.INNER]) >= ReadoutBand.OUTER:
+				continue
+			checked += 1
+			err = _T.assert_gte(ReadoutBand.OUTER, float(mark[ReadoutBand.OUTER_R]),
+				("the %s reaches %.2f px, past the %.1f px half-cell, so it draws on the "
+					+ "next bed along where it reads as a remark about somebody else's "
+					+ "plant") % [String(mark[ReadoutBand.NAME]),
+						float(mark[ReadoutBand.OUTER_R]), ReadoutBand.OUTER])
+			if err != "":
+				break
+		if err == "":
+			err = _T.assert_gt(checked, 3,
+				("only %d marks were inside the band to check, which is fewer than the "
+					+ "four this bead counted") % checked)
+
+	# Recorded, not gated: how much room is actually left. This is the answer the bead
+	# wanted written down, and it is the reason a comment listing three numbers would not
+	# have been enough -- the useful fact is not where the marks are, it is that a new
+	# one has 3.0 px to fit a 2.0 px ring into and the outer slice is already gone.
+	if err == "":
+		err = _T.assert_gt(ReadoutBand.free_slices().size(), 0,
+			("the band reports no free slice at all, which is either a full band or a "
+				+ "broken sweep -- slices %s") % str(ReadoutBand.free_slices()))
+	if err == "":
+		err = _T.assert_gt(Plant.REACH_RING_WIDTH * 3.0, ReadoutBand.widest_free_slice(),
+			("recorded, not a complaint: the widest unclaimed slice in the band is "
+				+ "%.2f px against a %.1f px ring width. If this ever grows past three "
+				+ "ring widths a mark has been removed and this section's premise -- that "
+				+ "the band is spoken for -- should be re-read rather than assumed. "
+				+ "Slices: %s")
+				% [ReadoutBand.widest_free_slice(), Plant.REACH_RING_WIDTH,
+					str(ReadoutBand.free_slices())])
+	return err
+
+
+## The three derivations `marks()` leans on, held against something other than their own
+## output — because a row built from a broken derivation is a wrong number stated with
+## total confidence, and every gate above would keep passing on it.
+func test_the_readout_bands_derived_inputs_measure_what_they_claim() -> String:
+	# The crown's angular reach must include the TOOTH, not merely the tooth's centre.
+	# `test_combat` pins the centres inside the top half (`tooth.y < 0`); nothing pinned
+	# the rims, and a half-arc that forgot the body would be 39 degrees instead of 44.5
+	# and would report a crown narrower than the one on screen.
+	var widest_tooth: float = 0.0
+	for offset: float in ChompFlower.fang_offsets(ChompFlower.LEVELS.size()):
+		widest_tooth = maxf(widest_tooth, absf(offset))
+	var err: String = _T.assert_gt(widest_tooth, 0.0,
+		"the top level wears teeth at all, or the rest of this measures an empty crown")
+	if err == "":
+		err = _T.assert_gt(ReadoutBand.fang_half_arc(), widest_tooth,
+			("the crown's ink reaches %.1f degrees but its outermost tooth CENTRE is at "
+				+ "%.1f -- the half-arc has lost the tooth's own body, which is the half "
+				+ "that decides whether two marks touch")
+				% [rad_to_deg(ReadoutBand.fang_half_arc()), rad_to_deg(widest_tooth)])
+	if err == "":
+		# And a claim nothing else in the suite makes: the crown's RIM, not just its
+		# tooth centres, stays in the top half where the sprite's leaves are not.
+		err = _T.assert_gt(PI * 0.5, ReadoutBand.fang_half_arc(),
+			("the crown's ink reaches %.1f degrees off straight up, past the horizontal, "
+				+ "into the half of the sprite the two leaves own -- a tooth there is not "
+				+ "dim, it is painted under the sprite and gone")
+				% rad_to_deg(ReadoutBand.fang_half_arc()))
+	if err == "":
+		err = _T.assert_float_eq(ReadoutBand.fang_ink_radius(),
+			ChompFlower.FANG_SIZE + ChompFlower.FANG_RIM_WIDTH, 0.0001,
+			("a tooth's ink is its body plus its rim -- the rim is what makes it legible "
+				+ "against the sprite, so a band measured without it understates the "
+				+ "crown by %.1f px on each side") % ChompFlower.FANG_RIM_WIDTH)
+
+	# The reach ring row describes a FAMILY of rings, not one plant's. If these ever
+	# collapsed to one number the row would quietly be about a single plant while reading
+	# like a statement about all of them, and the band claim would cover one ring.
+	if err == "":
+		err = _T.assert_gt(ReadoutBand.largest_reach(), ReadoutBand.smallest_reach(),
+			("the catalogue's reaches span %.1f to %.1f -- if those were equal, the reach "
+				+ "ring row would be one plant wearing every plant's name")
+				% [ReadoutBand.smallest_reach(), ReadoutBand.largest_reach()])
+
+	# `arcs_meet` returns true for every pair in the band today, and saying so out loud is
+	# the point: it is a pass-through, kept because exactly one mark does not sweep and
+	# the next one that does not might be anchored somewhere other than straight up.
+	# What IS asserted is the shape it depends on -- that the non-sweeper really is one.
+	if err == "":
+		var sweepers: int = 0
+		var anchored: int = 0
+		for mark: Dictionary in ReadoutBand.marks():
+			if bool(mark[ReadoutBand.SWEEPS]):
+				sweepers += 1
+			else:
+				anchored += 1
+				err = _T.assert_gt(PI, float(mark[ReadoutBand.HALF_ARC]),
+					("%s is recorded as not sweeping, but its half-arc of %.2f rad covers "
+						+ "the whole turn -- mark it SWEEPS instead, or the pairwise gate "
+						+ "will let a second mark share its radius on the strength of an "
+						+ "angular clearance it does not have")
+						% [String(mark[ReadoutBand.NAME]), float(mark[ReadoutBand.HALF_ARC])])
+				if err != "":
+					break
+		if err == "":
+			err = _T.assert_gt(sweepers, 0, "and at least one mark does sweep")
+		if err == "":
+			err = _T.assert_gt(anchored, 0,
+				("and at least one does not -- with every mark sweeping, "
+					+ "ReadoutBand.arcs_meet() is unreachable as anything but `true` and "
+					+ "the pairwise gate is a radius comparison wearing a second name"))
+	if err == "":
+		var band: Array[Dictionary] = ReadoutBand.marks()
+		err = _T.assert_true(ReadoutBand.arcs_meet(band[0], band[1]),
+			"two sweeping marks meet at some angle, which is what makes their radii the "
+				+ "whole of the question between them")
+	return err
+
+# END plant-tower-defense-xf0b
+# =============================================================================

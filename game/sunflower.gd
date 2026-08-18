@@ -48,6 +48,14 @@ const YIELD: int = 3
 ##   * the selection brackets, whose lower-left arm runs down x = -22. The
 ##     column's right edge is x = -24.
 ## All of it stays inside the 64 px cell (|x| <= 31, |y| <= 31 with the rim).
+##
+## The gauge is deliberately NOT in `ReadoutBand` (game/readout_band.gd), and that file
+## records why: radius is not this mark's channel. Two of the three axes above — straight
+## rather than round, in a corner rather than centred — are exactly the reason a radius
+## interval says nothing useful about a rectangle. Read `ReadoutBand.not_radial()` before
+## concluding the gauge is unchecked; it is checked, by the assertions in `test_combat`
+## that hold it against the sprite, the health bar and the brackets in the units it
+## actually has.
 const GAUGE_WIDTH: float = 6.0
 const GAUGE_HEIGHT: float = 20.0
 const GAUGE_LEFT: float = -30.0
