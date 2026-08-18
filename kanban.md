@@ -3994,3 +3994,45 @@ Three findings kept out here rather than buried in a log:
   already has four-frame precedent (`dandelion`, `dandelion_thinning`, `dandelion_sparse`,
   `dandelion_bare`) and `test_sprite_style.gd`'s `EXPECTED_SIZE` documents that set as one
   drawing at four densities, which is the same shape a chewed bramble wants.
+
+### New in cycle 111 — grown from the toughness readout and the surveys
+
+- **Drought does nothing at all to a wall, and that is a free seam for the weather
+  counter-play question.** Enumerated rather than exampled: every consumer of the weather
+  factor is a call to `Plant.composed_interval` (`game/plant.gd:150-151`), and there are
+  exactly three — `game/corn_cobbler.gd:592`, `game/dandelion.gd:277`,
+  `game/nettle.gd:253`. All three are firing intervals. A Barrier Bramble fires nothing,
+  so `WaveDirector.fire_interval_scale_for` reaches it and changes nothing; the only
+  weather that touches it is rain, through `Game._apply_weather`'s flat
+  `Plant.MAX_HEALTH * heal_fraction_for(next)` loop (`game/game.gd:425`).
+  Two consequences, and the second is the interesting one. (a) A drought wave is strictly
+  easier for a garden built on walls than for one built on cobs, which nobody chose. (b)
+  That rain heal is a FLAT amount of health, so on a plant with `bite_resistance()` 0.25
+  it buys four times as many seconds as it buys anywhere else — the same multiplier
+  `game/bramble.gd`'s header argues makes the Salve Aloe worth having behind a wall, except
+  this one arrives from the sky every fifth wave whether it is wanted or not.
+  `-oo7e` is open and says weather has no counter-play and must not be built until James
+  picks a direction. This entry is not a proposal to build one; it is the observation that
+  the ninth plant quietly created an asymmetry the decision now has to account for, and
+  that "drought dries out a bramble and it is chewed faster" is a counter that needs no
+  terrain — which is exactly the cheap option `-oo7e`'s notes ask for.
+  (Note while you are in there: `game/wave_director.gd:814` says "three of the eight plants
+  in the catalogue". The three is still right; the eight is not.)
+
+- **The plant most obviously wanting an upgrade ladder is the one that cannot be upgraded,
+  and only two of nine can.** Searched for the behaviour, not one class: `upgrade_ladder()`
+  is a `Plant` virtual (`game/plant.gd:853`) and exactly two subclasses override it —
+  `game/corn_cobbler.gd:403` and `game/chomp_flower.gd:304`. That enumeration is already
+  gated: `test_the_seed_sink_is_finite_while_the_seed_income_is_not` asserts the override
+  set is exactly `["chomp_flower", "corn_cobbler"]`, so this is checked rather than
+  remembered.
+  A wall is the classic thing to thicken, the vocabulary already exists on the panel as of
+  this cycle ("Holds 11s against one pest"), and a ladder is the one seed sink this game
+  has (same test: "only two of nine plants can absorb a seed after they are placed"). A
+  Bramble is also the first plant that is a RECURRING cost, since it is consumed by working
+  — so "spend more on this one so you replace it less often" is a decision the economy does
+  not currently offer anywhere.
+  Taste, no citation offered: two rungs, and the second should buy TIME rather than health
+  — a higher `bite_resistance()`, not a bigger pool — so the Aloe interaction scales with
+  it instead of being diluted by it. That is the same argument `game/bramble.gd`'s header
+  makes for choosing resistance in the first place, applied one level up.

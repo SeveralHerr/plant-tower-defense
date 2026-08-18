@@ -1,4 +1,4 @@
-# Cycle 110
+# Cycle 111
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,59 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 111 taught
+
+**A tool that is shaped like a gate gets treated like one, and both of the surveys were
+neither.** `.claude/surveys/` held three scripts and nothing ran any of them — the exact
+failure `check_all.py` exists to prevent, one directory over, and its own honest line
+`CLASSIFIED 28 tools/*.py … 0 unclassified` says nothing whatever about a directory it
+never looks in. They have a runner now (`tools/survey_all.py`).
+
+**Measuring the three decided the design, and reading them would have got it wrong.** The
+bead assumed they were interchangeable. They are three different kinds: a 29.7s
+whole-history sweep, its 0.06s fixture, and one that needs a live game and exits 2 without
+one. That is why they are a second command rather than a second discovery root — a history
+sweep does not belong on a per-cycle clock, and a verb needing a live game can never join a
+pool whose defining property is that it opens no project.
+
+**Then the predicted hazard fired under a green line.** Giving `survey_all.py` the
+`NOT COVERED:` line a house tool owes made `check_all` adopt it as a checker and run it. It
+reported `clean` — correctly, since with no game up `survey_all`'s own gate declines to
+fire — while spending ~30s inside the git-history sweep on every run of the pool whose
+entire promise is that it is the fast one. 4.1s to ~34s, green throughout. And fixing it
+immediately broke `check_all`'s own arithmetic: `CLASSIFIED` printed 19+1+7 = 27 of 29 and
+looked exactly as authoritative as before. Both guards are mutation-tested now, because a
+positive control that cannot fail is worse than none.
+
+**The panel learned a word for tough, and runtime is what chose it.** "Health 40/40" is
+true of a Barrier Bramble and misleading about it. The line now reads
+"Holds 11s against one pest" — seconds rather than a multiplier, and the whole argument for
+that is that it MOVES: 40.0 health → 11s, 21.86 → 6s, watched live. No static test of the
+formatter could have made that claim.
+
+**And the test that should have gated it had silently stopped covering the plant it was
+for.** `test_the_selection_box_stays_inside_the_side_panel_when_damaged` says "Every plant
+kind" in its own comment and `continue`d on any placement refusal — so the Bramble, refused
+on grass since cycle 110, was skipped while the test went on passing. The same `continue`
+swallowed `not paid for` just as silently, so it had only ever measured whatever the
+starting unlocks covered. **A skip that reads as a pass, in a test that claims
+exhaustiveness.** It now asserts its own denominator.
+
+**I broke the string-literal rule with the sanctioned tool.** Wrapping a long assertion
+message inside an `Edit` put a real newline inside a GDScript string literal — the cycle-97
+defect with no heredoc and no script anywhere near it. The workflow's rule names the
+MECHANISM (heredoc, script) and the defect is something else, reachable by hand; the rule
+now says so. What reported clean over it: `name_check.py`, and `heredoc_survey.py` — the
+project's own designated countermeasure, which sweeps git history and structurally cannot
+see an uncommitted break. Only a real compile caught it. Filed as `-h613`.
+
+**Three moving-value misreads in one session, three distinct causes.** A modal covering the
+board (the run had ended unattended and I was measuring the summary card's paper); a paused
+tree freezing an entrance tween at `scale 0.4`; and a hidden node retaining its last text
+(`visible=false`, `selected_placed=null`, and I read "Holds 0s" three times running).
+None produced a malformed reply. `read-a-moving-value` exists for the first; the other two
+are worth adding to it.
 
 ## What cycle 110 taught
 

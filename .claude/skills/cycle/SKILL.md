@@ -224,6 +224,20 @@ running a command. **Never write a work checklist into it.**
      **When `Edit` will not match, the fallback is `Read` the exact bytes and `Edit` again,
      or `Write` the whole file — never a script that writes code.** And note what this cost:
      five gates agreed with me and one disagreed, and the one that disagreed was right.
+     **THE RULE ABOVE NAMES A MECHANISM; THE DEFECT IS SOMETHING ELSE, AND CYCLE 111 REACHED
+     IT THROUGH THE SANCTIONED TOOL.** Wrapping a long assertion message across two lines
+     inside an `Edit` put a real newline inside a GDScript string literal — the cycle-97
+     shape, with no heredoc and no script anywhere near it. Every sentence above is about
+     *how* the bytes are written; the thing that breaks is *a string literal containing a
+     newline* and *a comment block that lost its leading `#`*, and those are reachable by
+     hand. So: **when a string literal will not fit one line, close it and use `+` on the
+     next** (`("...long text " + "more text") % [...]`), which is what every other multi-line
+     message in this suite already does. And know what will and will not catch it —
+     `name_check.py` reports it CLEAN (names resolve; its own `NOT COVERED` line says so),
+     and `.claude/surveys/heredoc_survey.py` reports it clean too, because it sweeps **git
+     history rather than the working tree** and cannot see an uncommitted break. Only a real
+     compile does: `lint_project.gd` caught it at exit 1 with `Parse Error`. That is the
+     whole reason a fan-out lane, which gets no compile, is not "verified".
    - **If the cycle launched the game at all, run `findings` before quitting it.** It is
      the harness's headline check — every zero-config check at once against the live tree
      — and it was last run in cycle 48. Twelve cycles of runtime work went past on
