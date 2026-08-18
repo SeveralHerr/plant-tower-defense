@@ -550,11 +550,22 @@ const HIT_FLASH_BOOST: float = 1.9
 const GAIT_SWING: float = 0.13
 ## Waggles per second at GAIT_REFERENCE_SPEED, in radians of clock.
 const GAIT_RATE: float = 8.5
-## The speed a pest walks at to get exactly GAIT_RATE — between the aphid's 78
-## and the beetle's 38, so the fast one scuttles fast and the slow one plods
-## without either needing a per-species constant. Endless-mode speed scaling
-## rides along for free (a hasted pest visibly hurries), clamped either side so
-## a wave-30 beetle flails rather than blurs.
+## The speed a pest walks at to get exactly GAIT_RATE, so the fast ones scuttle and
+## the slow ones plod without any of them needing a per-species constant.
+## Endless-mode speed scaling rides along for free (a hasted pest visibly hurries),
+## clamped either side so a wave-30 beetle flails rather than blurs.
+##
+## THIS WAS PICKED AS A MIDPOINT AND IS NO LONGER ONE. It was chosen between the
+## aphid's 78 and the beetle's 38 when those were the only two species. There are
+## five now — aphid 78, shieldbug 54, nurse 44, beetle 38, queen 30 — so 60.0 sits
+## ABOVE FOUR OF THE FIVE, the corpus midpoint is 54 (the Shield Bug's own speed),
+## and the queen at 30 is already below the GAIT_RATE_MIN clamp before any wave
+## scaling touches her. What the mechanic needs is weaker than a midpoint and is
+## still true: species on both sides, and none of them sitting so close to the
+## reference that its gait reads as neutral. Both are asserted in test_combat.gd
+## (plant-tower-defense-frzz) against a corpus derived from SPECIES, so the next
+## species added at speed 61 fails there instead of landing on the line in silence.
+## Do not restore the midpoint claim without re-deriving it.
 const GAIT_REFERENCE_SPEED: float = 60.0
 const GAIT_RATE_MIN: float = 0.55
 const GAIT_RATE_MAX: float = 1.9
