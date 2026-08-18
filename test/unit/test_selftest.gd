@@ -17524,6 +17524,59 @@ func test_every_overlay_makes_everything_under_it_unfocusable() -> String:
 # =============================================================================
 
 
+## The move preview cannot promise a cell the click will not plant (plant-tower-defense-l7ak).
+##
+## `_update_preview` describes the plant being MOVED while an uproot is armed
+## (plant-tower-defense-qk5q) — its ring, its reach, its coverage dots. The green brackets
+## beside that ring are a different claim: `_click_at` plants `selected_plant`, the SHOP
+## pick, which during an armed window is not the plant the ring is describing.
+##
+## Before a plant existed that stands somewhere the others cannot, those two could not
+## visibly disagree — every plant was placeable in exactly the same cells, so "the brackets
+## are green" and "this plant could stand here" were the same sentence. The Barrier Bramble
+## made them different sentences, and this is the state where they contradict: a Corn armed
+## for a move, a Bramble picked in the shop, hovering a ROAD cell. The ring says "your cob
+## reaches this far from here"; the brackets said "yes, plant".
+func test_an_armed_move_never_shows_green_over_a_cell_the_moved_plant_cannot_stand_on() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(400)
+	game.bank.unlocked = PlantCatalog.ids()
+	var grass: Vector2i = _grass(game)
+	var road: Vector2i = game.board.world_to_cell(game.board.route()[2])
+
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, grass), "",
+		"a cob is in the ground to move")
+	if err == "":
+		game._select(game.plant_at(grass))
+		err = _T.assert_eq(game.arm_uproot(), "confirm needed",
+			"and its move window is open -- arm_uproot returns the prompt, not \"\"")
+	if err == "":
+		# The shop pick stays whatever it was: _select() writes `selected_placed`, not
+		# `selected_plant`, so picking a Bramble and then clicking a cob leaves both live
+		# at once. That is the whole reachability argument for this state.
+		game.selected_plant = PlantCatalog.BRAMBLE
+		err = _T.assert_true(game._uproot_armed != null, "the cob is the plant being moved")
+	if err == "":
+		err = _T.assert_true(game.would_plant_at(road),
+			("precondition: the shop's Bramble genuinely could be planted on this road "
+				+ "cell, so a preview asking only about `selected_plant` would say yes"))
+	if err == "":
+		err = _T.assert_false(game.board.is_buildable_for(road, PlantCatalog.CORN),
+			"and the cob being moved could never stand there")
+	if err == "":
+		game._update_cursor(game.board.cell_to_world(road) + game._entities.position)
+		err = _T.assert_false(game._preview.placeable,
+			("so the preview must NOT promise this cell -- it is describing the cob's "
+				+ "reach while the click would plant a Bramble"))
+	if err == "":
+		# The other direction, or this passes on a preview that never says yes at all.
+		game._update_cursor(game.board.cell_to_world(_grass(game)) + game._entities.position)
+		err = _T.assert_true(game._preview.plant_id == PlantCatalog.CORN,
+			"the preview is still describing the plant being moved")
+	_T.free_ui(game)
+	return err
+
+
 ## The death line names something that actually happened.
 ##
 ## "A hungry pest ate your X!" was true of every plant death in the game until the

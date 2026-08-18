@@ -7258,3 +7258,42 @@ status rather than rewriting the entries that recorded these as open.
   launch could add — the row clipping silently rather than erroring — is already swept for
   every plant name by `test_no_message_clips_for_any_plant_in_the_catalogue` against the
   real `MessageLabel` width.
+
+## 2026-08-18 — cycle 113: a cue that promised one plant while describing another
+
+- Value: **warranted** — the bead left reachability explicitly open, and the run settled it
+  twice; the launch then earned its keep on the one claim no headless test can make.
+  - Expected: the bead says the disagreeing state may be unreachable and that
+    `_arm_uproot`/`_disarm_uproot` must be read before writing code. Predicted from
+    reading: it IS reachable, because `_select()` writes `selected_placed` while the shop's
+    `selected_plant` is a separate field nothing in that path touches. Runtime should show
+    green brackets over a road cell with a cob armed.
+  - Got: reachable, confirmed as a RED test first (`Expected false but got true`) and then
+    on the running game — `placeable=false, plant_id=corn_cobbler, visible=true` after the
+    fix, and the cropped capture shows the brackets rendering **blocked** while the cob's
+    reach ring still draws from that cell. Before the fix those brackets were green over
+    ground no cob can occupy, which reads as "your cob moves here" and plants a Bramble.
+  - Found: three.
+    **(1)** the state is reachable and the bug is real — the half the bead refused to claim.
+    **(2)** the fix is a **no-op for every pre-Bramble configuration**, which is what makes
+    it safe to put in a path every hover runs: with nothing armed `previewing ==
+    selected_plant`, so the new term asks the question `would_plant_at` just answered. That
+    is why 898 existing tests were unmoved, and it is worth stating rather than assuming.
+    **(3)** `arm_uproot()` returns `"confirm needed"` on success, not `""` like
+    `place_plant()`. The first draft of the reproduction asserted `""` and failed on its
+    own precondition — **a test that fails for the wrong reason looks exactly like one that
+    works**, and only reading the failure message told them apart.
+  - Cheaper: the red test alone justified the fix and cost far less than the launch. The
+    launch earned one thing the test cannot assert — that the brackets RENDER blocked
+    rather than merely carrying `placeable=false`, since nothing headless draws them.
+
+- **Red-then-green beats a post-hoc mutation, and this is the cleanest example so far.**
+  Three cycles running I have mutated a passing test to prove it can fail. Here the test was
+  written before the fix, failed for the stated reason, and passed after — the same evidence
+  with none of the ceremony. Worth preferring where the defect is already understood well
+  enough to write the assertion first.
+
+- Gap: **no gap this turn.** `find-nodes --class PlacementPreview --property placeable
+  --property plant_id` gave both halves of the contradiction in one call, which is exactly
+  the shape this cue needed: the defect IS the disagreement between two properties, and a
+  screenshot alone can only show one of them.

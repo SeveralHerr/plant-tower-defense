@@ -2132,7 +2132,28 @@ func _update_preview(cell: Vector2i, free: bool) -> void:
 	# means this click plants. `free` is kept as the caller's override — the
 	# self-test suite drives this method with a forced value to pin the blocked
 	# rendering — and would_plant_at() recomputes it honestly from the board.
-	_preview.placeable = free and would_plant_at(cell)
+	#
+	# THE THIRD TERM IS THE ARMED-MOVE CASE (plant-tower-defense-l7ak), and it is a no-op
+	# in every other one: with nothing armed `previewing == selected_plant`, so it asks
+	# the same question would_plant_at() just answered.
+	#
+	# While an uproot IS armed the two halves of this cue describe different plants. The
+	# ring, the reach and the coverage dots are the plant being MOVED (`previewing`, per
+	# -qk5q); the brackets are a promise about what a click does, and a click plants
+	# `selected_plant` — the SHOP pick, which `_select()` never touches. Before a plant
+	# stood somewhere the others could not, those could not visibly disagree: every plant
+	# was placeable in exactly the same cells. Hover a road cell with a cob armed and a
+	# Barrier Bramble picked, and the old code drew green brackets around a cob's range
+	# ring over ground no cob can occupy — which reads as "your cob moves here" and plants
+	# a Bramble.
+	#
+	# Requiring BOTH is the conservative reading and the one that cannot mis-promise: the
+	# click must plant, AND the plant being described must be able to stand there. It
+	# refuses a cell rather than inventing a meaning for the disagreement — whether a move
+	# should be a single action at all is still open (plant-tower-defense-h5w6), and a cue
+	# that answered it here would be deciding that question by accident.
+	_preview.placeable = (free and would_plant_at(cell)
+		and board.is_buildable_for(cell, previewing))
 	# Only a plant that cannot defend itself is "at risk" beside the road. A
 	# Corn Cobbler there is the entire point of a Corn Cobbler; flagging it
 	# would teach the player to ignore the cue everywhere it matters.
