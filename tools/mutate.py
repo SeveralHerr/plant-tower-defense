@@ -123,6 +123,14 @@ DENOM_HINTS = (
 # Assembled, never written whole: see the self-mutation note in the module docstring.
 _TAG = "self-mutation:"
 
+# The house contract marker, assembled for the SAME reason and a second one. This file
+# is deliberately NOT a checker -- it writes source files -- and check_all.py classifies
+# by grepping tools/*.py for that marker, so writing it whole anywhere here (even inside
+# a mutation needle aimed at another file) makes check_all report mutate.py as both
+# NOT_A_CHECKER and contract-declaring, which is an UNCLASSIFIED contradiction. The
+# `contract` target below needs the literal to address a line in suite_reach_check.py.
+_MARKER = "NOT " + "COVERED"
+
 
 def _tag(name: str) -> str:
     return _TAG + name
@@ -518,7 +526,68 @@ def _target_self():
     return path, mutations, command
 
 
-TARGETS = {"mirror": _target_mirror, "self": _target_self}
+def _target_contract():
+    """suite_reach_check.py's house contract, asked as behaviour instead of as text.
+
+    WHY THIS TARGET EXISTS (plant-tower-defense-qewq). A GDScript test --
+    test_selftest.gd's `test_the_suite_reach_checker_still_declares_its_house_contract`
+    -- pins that contract with four `source.contains(NEEDLE)` calls. That is the
+    cycle-91 shape: it asserts the PRESENCE of a token where the property wanted is
+    about the CODE. `"suite-reach-check: ok"` occurs twice in that checker and BOTH
+    occurrences are help text; the parser is `WAIVER_RE = re.compile(r"suite-reach-
+    check:\\s*ok\\b")`, which does not contain the literal at all. Delete the waiver
+    outright and the text guard stays green.
+
+    So this target asks the behavioural question the text guard cannot, and the
+    mutations below are the proof rather than the argument: M1 deletes the parser and
+    goes RED here while the text guard would not have moved, and M4 deletes one of the
+    two help-text occurrences and is EXPECTED to survive -- the MARKER_COLOR failure
+    run for real, on a token that stays alive because a second copy of it does.
+    """
+    path = TOOLS / "suite_reach_check.py"
+    command = [sys.executable, str(TOOLS / "mutate.py"), "--fixture", "contract"]
+    mutations = [
+        Mutation(
+            "the documented waiver comment stops being matched",
+            r'WAIVER_RE = re.compile(r"suite-reach-check:\s*ok\b")',
+            r'WAIVER_RE = re.compile(r"mutated: this waiver matches nothing")',
+        ),
+        Mutation(
+            "a missing project root reports clean instead of could-not-run",
+            '        print("suite_reach_check: no project.godot at %s - cannot run." % root,\n'
+            '              file=sys.stderr)\n'
+            '        return 2',
+            '        print("suite_reach_check: no project.godot at %s - cannot run." % root,\n'
+            '              file=sys.stderr)\n'
+            '        return 0  # mutated: could-not-run collapsed into clean',
+        ),
+        Mutation(
+            "the blind-spot line stops being printed",
+            '    print("  ' + _MARKER + ': naming is a floor, not exercise. A test that writes "',
+            '    print("  (mutated away) naming is a floor, not exercise. A test that writes "',
+        ),
+        Mutation(
+            "one of the two waiver mentions is deleted",
+            '              "    waive: add `# suite-reach-check: ok - <reason>` in its body or on "',
+            '              "    waive: see the file-level note above; this line no longer says how, on "',
+            expect=SURVIVED,
+            reason=(
+                "the cycle-91 MARKER_COLOR shape, run rather than described. The "
+                "token survives in the OTHER help line, so the presence floor -- "
+                "`contains(\"suite-reach-check: ok\")`, which is what the GDScript "
+                "test actually asserts -- cannot see this go, and neither can the "
+                "presence case in this fixture. Nothing behavioural moved either, "
+                "because the parser was not touched. That is the point: presence is "
+                "the wrong question, and the fixture's waiver-matches case is the "
+                "right one. Do NOT 'fix' this by asserting an occurrence COUNT -- "
+                "that pins the help text's formatting, not the waiver."
+            ),
+        ),
+    ]
+    return path, mutations, command
+
+
+TARGETS = {"contract": _target_contract, "mirror": _target_mirror, "self": _target_self}
 
 
 # -------------------------------------------------------------------------- fixtures
@@ -838,7 +907,121 @@ def _fixture_self() -> int:
     return cases.report()
 
 
-FIXTURES = {"mirror": _fixture_mirror, "self": _fixture_self}
+# ---- contract fixture
+
+def _run_module_main(mod, argv0, argv) -> tuple[int, str]:
+    """Call a checker's argv-reading `main()` with a chosen argv, capturing output."""
+    old = sys.argv
+    sys.argv = [argv0] + list(argv)
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            code = mod.main()
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 1
+    finally:
+        sys.argv = old
+    return code, buf.getvalue()
+
+
+# The waiver comment the checker's own help text tells a reader to write. Written out
+# here as a USER would type it, not copied from the parser -- copying the parser would
+# make this case a tautology, which is the failure the whole target is about.
+_WAIVER_AS_DOCUMENTED = "# suite-reach-check: ok - the marker is asserted by name below"
+
+# The needle list the GDScript test uses. Kept here so a mutation report can SHOW which
+# form it killed: the text floor, or the behaviour underneath it.
+_CONTRACT_NEEDLES = (_MARKER + ":", "return 2", "NOTE: nothing to check",
+                     "suite-reach-check: ok")
+
+
+def _fixture_contract() -> int:
+    sys.path.insert(0, str(TOOLS))
+    import suite_reach_check as sr  # noqa: WPS433 - shipped beside this file
+
+    source = (TOOLS / "suite_reach_check.py").read_text(encoding="utf-8")
+    root = Path(tempfile.mkdtemp(prefix="mutate_contract_"))
+    cases = _Cases("contract")
+
+    def case_presence_floor():
+        # The GDScript test's own question, restated so the sweep can demonstrate what
+        # it does and does not see. It is a floor and it is recorded as one.
+        missing = [n for n in _CONTRACT_NEEDLES if n not in source]
+        if missing:
+            return False, "the contract needles %r are gone from the source" % (missing,)
+        return True, ""
+
+    def case_waiver_matches_what_the_help_advertises():
+        # The property the floor above cannot ask. Both help lines could stay word for
+        # word while the parser was deleted, and `contains` would report clean.
+        if sr.WAIVER_RE.search(_WAIVER_AS_DOCUMENTED) is None:
+            return False, ("the checker tells a reader to write %r and its own "
+                           "WAIVER_RE does not match that -- a documented waiver that "
+                           "does nothing is worse than no waiver"
+                           % _WAIVER_AS_DOCUMENTED)
+        if sr.WAIVER_RE.search("# nothing to do with this checker") is not None:
+            return False, "WAIVER_RE matches a comment that is not a waiver at all"
+        return True, ""
+
+    def case_waiver_is_actually_consulted():
+        # And that the parser is WIRED IN: a declaration carrying the documented
+        # comment must come back waived. Driven through the real scanner, so deleting
+        # the `WAIVER_RE.search(...)` call site fails here even with the regex intact.
+        body = ("extends Node\n\n\nfunc do_a_thing() -> void:\n\t%s\n\tpass\n"
+                % _WAIVER_AS_DOCUMENTED)
+        # (blanked, raw): the waiver is a COMMENT, so the scanner reads it out of the
+        # raw half. Passing the same text twice would let a blanker bug pass unseen.
+        decls = sr.declarations(sr.strip_comments(body), body)
+        waived = [d for d in decls if d[1] == "do_a_thing" and d[3]]
+        if not decls:
+            return False, "the scanner found no declaration in the fixture script at all"
+        if not waived:
+            return False, ("a declaration carrying the documented waiver comment came "
+                           "back UNWAIVED (%r) -- the regex exists but nothing asks it"
+                           % (decls,))
+        return True, ""
+
+    def case_missing_root_is_could_not_run():
+        empty = root / "no_project"
+        empty.mkdir(exist_ok=True)
+        code, out = _run_module_main(sr, "suite_reach_check.py", ["--root", str(empty)])
+        if code != 2:
+            return False, ("a root with no project.godot exited %d, not 2. 0 there is "
+                           "'clean over nothing', which is the one result this "
+                           "contract exists to forbid (%s)" % (code, out.strip()[:160]))
+        return True, ""
+
+    def case_not_covered_is_printed_not_merely_present():
+        # `contains` cannot tell a printed line from a line of prose about it. This
+        # can: the marker has to sit inside a print() call.
+        at = source.find(_MARKER + ":")
+        if at < 0:
+            return False, "the %s marker is gone" % _MARKER
+        head = source.rfind("print(", 0, at)
+        newline = source.rfind("\n", 0, at)
+        if head < 0 or head < newline:
+            return False, ("the %s marker is in the source but not inside a print() "
+                           "call -- a contract line nobody prints is prose" % _MARKER)
+        return True, ""
+
+    try:
+        cases.check("the four contract needles are still in the source (the FLOOR)",
+                    case_presence_floor)
+        cases.check("the waiver the help text advertises is one WAIVER_RE matches",
+                    case_waiver_matches_what_the_help_advertises)
+        cases.check("and a declaration carrying it comes back waived",
+                    case_waiver_is_actually_consulted)
+        cases.check("a root with no project.godot exits 2, not 0",
+                    case_missing_root_is_could_not_run)
+        cases.check("the blind-spot marker sits inside a print(), not in prose",
+                    case_not_covered_is_printed_not_merely_present)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    return cases.report()
+
+
+FIXTURES = {"contract": _fixture_contract, "mirror": _fixture_mirror,
+            "self": _fixture_self}
 
 
 # ------------------------------------------------------------------------------ main

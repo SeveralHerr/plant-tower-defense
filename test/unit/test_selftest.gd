@@ -7502,6 +7502,26 @@ func test_the_reach_corpus_blanker_drops_string_bodies_and_keeps_code() -> Strin
 ## rather than a feature. The three exit codes are pinned for the same reason --
 ## a checker that stopped returning 2 on a missing input would report "clean"
 ## over nothing at all, which is the failure this repo watches for above all.
+##
+## AND THE `contains` LOOP BELOW IS A FLOOR, NOT THE CHECK (plant-tower-defense-qewq).
+## Three of the four needles are satisfied by text that is not the thing they name:
+## `return 2` occurs NINE times in that file, and BOTH occurrences of
+## `suite-reach-check: ok` are help text -- the parser is
+## `WAIVER_RE = re.compile(r"suite-reach-check:\s*ok\b")`, which does not contain the
+## literal at all. Delete the waiver outright and this loop stays green. That is the
+## cycle-91 shape exactly: presence asserted where absence, or behaviour, was wanted.
+##
+## So the loop keeps its job -- a needle that vanishes ENTIRELY is still worth
+## catching cheaply -- and the assertions after it ask the questions it cannot:
+## the marker has to be PRINTED rather than merely written down, and the waiver has
+## to have a parser and a call site rather than only an advertisement.
+##
+## The behavioural half lives where it can actually run:
+## `python tools/mutate.py --target contract` drives the checker's own `main()` at a
+## rootless directory and asserts the documented waiver comment comes back waived.
+## Its fourth mutation deletes ONE of the two help-text mentions and is registered
+## `expect=SURVIVED` with the reason -- this loop's blind spot, executed rather than
+## described. If you change a needle here, run that sweep.
 func test_the_suite_reach_checker_still_declares_its_house_contract() -> String:
 	var src: String = FileAccess.get_file_as_string(SUITE_REACH_CHECKER)
 	var err: String = _T.assert_gt(src.length(), 0,
@@ -7509,6 +7529,7 @@ func test_the_suite_reach_checker_still_declares_its_house_contract() -> String:
 		+ " vacuous against an empty string")
 	if err != "":
 		return err
+	var checked: int = 0
 	for needle: Array in [
 		["NOT COVERED:", "the line that says what the tool structurally cannot see"],
 		["return 2", "the could-not-run exit code"],
@@ -7519,7 +7540,34 @@ func test_the_suite_reach_checker_still_declares_its_house_contract() -> String:
 			"the checker still carries %s (`%s`)" % [str(needle[1]), str(needle[0])])
 		if err != "":
 			return err
-	return ""
+		checked += 1
+	err = _T.assert_eq(checked, 4,
+		"all four contract needles were reached -- an empty needle table would make"
+			+ " the loop above a pass over nothing")
+	if err != "":
+		return err
+
+	# PRINTED, not merely present. `contains` cannot tell the marker from a line of
+	# prose ABOUT the marker, and prose is what a tidy-up leaves behind. The marker
+	# has to sit inside a print() call on its own line.
+	var at: int = src.find("NOT COVERED:")
+	var line_start: int = src.rfind("\n", at) + 1
+	err = _T.assert_true(src.substr(line_start, at - line_start).contains("print("),
+		"the NOT COVERED marker is inside a print() call and not sitting in a comment"
+			+ " or a docstring -- a contract line nobody prints is prose")
+	if err != "":
+		return err
+
+	# The waiver's PARSER and its CALL SITE, because the needle above finds neither.
+	# Both help lines could survive word for word with the waiver deleted.
+	err = _T.assert_true(src.contains("WAIVER_RE = re.compile("),
+		"the waiver has a parser and not only an advertisement -- the two help lines"
+			+ " the needle above matches are documentation, not the implementation")
+	if err == "":
+		err = _T.assert_true(src.contains("WAIVER_RE.search("),
+			"and the parser is consulted somewhere, so a waived declaration is"
+				+ " actually waived rather than merely documented as waivable")
+	return err
 
 
 # -- StickySundew's wash-order counter resets, not just climbs forever
@@ -13796,10 +13844,22 @@ func test_the_run_summary_says_where_the_seeds_went_without_grading_it() -> Stri
 ## project runs, so a refresh is an ordinary thing to do — and this file's recorded sha has
 ## already drifted from its manifest once. The failure mode is the bad one: everything
 ## keeps building and deploying, and the only symptom is players landing on the board.
+## READ FROM THE CODE, NOT FROM THE FILE (plant-tower-defense-qewq). `--devtools-force`
+## appears TWICE in dev_tools.gd and one of them is the comment on the line above the
+## gate. A version of this test that greps the raw file would pass with the flag deleted
+## from the condition and the comment left behind, which is the cycle-91 shape: a token
+## kept alive by an occurrence that does nothing. `_code_only` truncates `#` comments,
+## so both needles below are asserted against live code.
 func test_the_devtools_bridge_stays_out_of_a_players_build() -> String:
 	var path := "res://addons/godot_selftest/dev_tools.gd"
-	var src: String = FileAccess.get_file_as_string(path)
-	var err: String = _T.assert_gt(src.length(), 0, "dev_tools.gd is readable at %s" % path)
+	var raw: String = FileAccess.get_file_as_string(path)
+	var err: String = _T.assert_gt(raw.length(), 0, "dev_tools.gd is readable at %s" % path)
+	if err != "":
+		return err
+	var src: String = _code_only(raw)
+	err = _T.assert_gt(src.strip_edges().length(), 0,
+		"and it is not all comments -- an all-blank code half would make both needles"
+			+ " below fail for the wrong reason")
 	if err == "":
 		err = _T.assert_true(src.contains("OS.has_feature(\"template\")"),
 			("the passive gate still tests OS.has_feature(\"template\"). If this went red "
@@ -13810,8 +13870,9 @@ func test_the_devtools_bridge_stays_out_of_a_players_build() -> String:
 		# The opt-back-in half. Without it the patch is a wall rather than a gate, and
 		# driving a real export from the bridge becomes impossible instead of explicit.
 		err = _T.assert_true(src.contains("--devtools-force"),
-			"and the --devtools-force escape hatch survives, so a template build can still "
-				+ "be driven deliberately")
+			"and the --devtools-force escape hatch survives IN THE CONDITION and not only "
+				+ "in the comment beside it, so a template build can still be driven "
+				+ "deliberately")
 	return err
 
 
@@ -14787,3 +14848,116 @@ func test_spawn_pest_answers_a_bad_mutations_argument_instead_of_dying_in_its_re
 	return err
 
 # --- END plant-tower-defense-nj7w / -wy2v ---
+
+
+# -- BEGIN plant-tower-defense-iljz --------------------------------------------
+#
+# Two guards in game.gd lost `and _uproot_left > 0.0` this cycle -- arm_uproot's
+# already-armed branch and uproot_armed() -- for the reason _update_preview lost the
+# same half before them: the second condition could not disagree with the first, and a
+# condition that cannot disagree is dead code with a confident comment on it. The
+# acceptance for that bead is that anything removed leaves its invariant as a test.
+#
+# The runtime half already exists: test_placement.gd's
+# test_the_uproot_window_leaves_nothing_armed_behind_it drives both exit paths and
+# asserts the reference AND the clock are clear after each. What it cannot say is
+# that a FUTURE writer will keep them together -- it asserts the state after the two
+# paths that exist today, and the guards were removed on the strength of a claim about
+# every path there will ever be. That claim is structural, so this is a source check.
+#
+# Absence-shaped on purpose (plant-tower-defense-qewq is the other half of this
+# cycle): it does not assert that the three known writers are present -- which a
+# fourth, broken one would satisfy -- it asserts that NO function writes one of the
+# pair without the other going with it.
+
+
+## The invariant the two removed guards rest on: an open uproot window is exactly a
+## non-null `_uproot_armed`, because the reference and the clock are always written
+## TOGETHER -- `_uproot_armed = X` and `_uproot_left = Y` on adjacent lines of code,
+## in both of the two functions that set either.
+##
+## Adjacency and not "somewhere in the same function", which was this check's first
+## draft and was too weak to matter. `arm_uproot` both opens a window AND calls
+## `_disarm_uproot()` in its already-armed branch, so a per-function rule with a
+## `_disarm_uproot()` escape hatch forgave deleting `_uproot_armed = selected_placed`
+## from it -- the exact regression the two simplified guards would let through.
+## Adjacency kills that, and kills a new function that starts the clock on its own.
+##
+## The decrement in `_tick_uproot_confirm` is not an assignment and is deliberately
+## outside the rule: it narrows a window that is already open and hands the close-out
+## to `_disarm_uproot()`, which writes both.
+func test_the_uproot_clock_is_never_written_without_the_arming() -> String:
+	var src: String = _code_only(FileAccess.get_file_as_string("res://game/game.gd"))
+	var err: String = _T.assert_gt(src.length(), 0,
+		"game.gd is readable -- every check below is vacuous against an empty string")
+	if err != "":
+		return err
+
+	# A fresh Game is not armed AND has no clock running. Asserted separately because
+	# the declarations sit outside the pairing rule below -- a default of 4.0 there
+	# would pass the whole sweep.
+	err = _T.assert_true(src.contains("var _uproot_left: float = 0.0"),
+		"the clock starts at zero, so a Game that has never armed anything is not"
+			+ " holding an open window")
+	if err == "":
+		err = _T.assert_true(src.contains("var _uproot_armed: Plant = null"),
+			"and nothing starts armed")
+	if err != "":
+		return err
+
+	# `=` and not `==`: `_uproot_armed == selected_placed` is a read, and counting it
+	# as a write would let the guard that only compares them satisfy the rule. The
+	# clock's plain-assignment form is separate from its `-=` form for the reason in
+	# the header.
+	var clock_set := RegEx.create_from_string("_uproot_left\\s*=[^=]")
+	var clock_any := RegEx.create_from_string("_uproot_left\\s*[-+]?=[^=]")
+	var arm_set := RegEx.create_from_string("_uproot_armed\\s*=[^=]")
+
+	# Blank lines dropped, so a comment between the pair -- `_code_only` leaves an
+	# empty line where one was -- does not read as the two coming apart.
+	var code: PackedStringArray = PackedStringArray()
+	for line: String in src.split("\n"):
+		if line.strip_edges() != "":
+			code.append(line)
+
+	var writes: int = 0
+	var orphans: PackedStringArray = PackedStringArray()
+	for i: int in range(code.size()):
+		var line: String = code[i]
+		if clock_any.search(line) != null or arm_set.search(line) != null:
+			writes += 1
+		if line.begins_with("var "):
+			continue
+		var near: PackedStringArray = code.slice(maxi(0, i - 1), i + 2)
+		var has_arm: bool = false
+		var has_clock: bool = false
+		for n: String in near:
+			has_arm = has_arm or arm_set.search(n) != null
+			has_clock = has_clock or clock_set.search(n) != null
+		if clock_set.search(line) != null and not has_arm:
+			orphans.append("the clock is set with no arming beside it: " + line.strip_edges())
+		if arm_set.search(line) != null and not has_clock:
+			orphans.append("the arming is set with no clock beside it: " + line.strip_edges())
+
+	# The denominator, and the reason this cannot report clean over nothing. Five
+	# writing lines today: two in arm_uproot, two in _disarm_uproot, the decrement in
+	# _tick_uproot_confirm. A rename that hid all of them from the matchers would
+	# otherwise read as a spotless sweep.
+	err = _T.assert_gte(writes, 5,
+		("only %d line(s) in game.gd write `_uproot_left` or `_uproot_armed`; five did"
+			% writes)
+			+ " when this was written. If the matchers stopped seeing them, the sweep"
+			+ " below checked nothing, which is not the same as finding nothing")
+	if err != "":
+		return err
+	err = _T.assert_eq(orphans.size(), 0,
+		("game.gd writes the uproot pair apart: %s." % "; ".join(orphans))
+			+ " That breaks the invariant arm_uproot() and uproot_armed() were"
+			+ " simplified against (plant-tower-defense-iljz): an open window is"
+			+ " exactly a non-null `_uproot_armed`, which holds only while the"
+			+ " reference and the clock move together. Either write the two back"
+			+ " onto adjacent lines, or put `and _uproot_left > 0.0` back into both"
+			+ " guards and delete this test.")
+	return err
+
+# -- END plant-tower-defense-iljz ----------------------------------------------
