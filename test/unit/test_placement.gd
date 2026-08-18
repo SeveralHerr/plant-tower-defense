@@ -8353,3 +8353,73 @@ func test_every_drawn_glyph_can_say_what_it_means() -> String:
 
 # END plant-tower-defense-m14g
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-ip4n: how much chew ring is left, and when
+#
+# The bead asked for two photographs — one mid-chew at roughly 50%, one at
+# roughly 90% — and three earlier attempts failed to catch either, because an
+# aphid chews for 0.45s against a bus round trip of ~200ms. Both frames were
+# taken this cycle by spawning a BEETLE (2.6s chew, five times the window),
+# pausing before the grab, and stepping in 0.15s `--then-pause` slices: 47.4%
+# and 90.4%, each landing within a percent of target on the first try.
+#
+# A photograph is evidence that expires. THE NUMBER IT PRODUCED IS PINNED HERE,
+# because the acceptance's real question — "is the 90% frame legible?" — is a
+# question about arc length, and arc length is pure arithmetic over two
+# constants. The frames confirmed the maths; the maths is what survives.
+# =============================================================================
+
+## The chew ring sweeps CLOSED, and this is how much ink is left as it goes.
+##
+## `CHEW_RING_RADIUS` x `chew_arc_end(progress)` is the arc's length in pixels —
+## the ink a player actually has to see. It falls from 138 px at the grab to
+## 13 px at 90% chewed, which is the measurement the bead's acceptance turns on.
+##
+## THIS IS NOT ASSERTED AS A DEFECT, and the reasoning belongs with the number.
+## A clock that empties is the grammar's own reading of this shape (see
+## OVERLAY_GRAMMAR.md: "partial arc sweeping closed = TIME REMAINING"), and a
+## chew is not actionable — the player cannot hurry it or interrupt it — so a cue
+## that is quietest at the end is quiet exactly when nothing turns on it. What
+## the test pins is that the SHAPE stays monotone and that the early reading,
+## where the player might still choose to plant something, stays large.
+func test_the_chew_rings_remaining_ink_shrinks_the_way_a_clock_should() -> String:
+	var ink := func(p: float) -> float:
+		return ChompFlower.chew_arc_end(p) * ChompFlower.CHEW_RING_RADIUS
+
+	# Monotone, walked rather than spot-checked at two ends: a clock that ever
+	# grows mid-run is telling the player the wait got longer.
+	var err: String = ""
+	var previous: float = ink.call(0.0)
+	err = _T.assert_gt(previous, 100.0,
+		"a fresh chew draws a nearly full ring: %.1f px of arc" % previous)
+	for step: int in range(1, 21):
+		if err != "":
+			break
+		var here: float = ink.call(float(step) / 20.0)
+		err = _T.assert_gt(previous, here,
+			("the ring only ever shrinks -- at %d%% it draws %.1f px against %.1f px "
+				+ "a step earlier") % [step * 5, here, previous])
+		previous = here
+
+	# The reading that has to survive is the EARLY one, because that is the only
+	# part of a chew a player can act on: a Chomp busy on a big pest is a lane
+	# that needs something else planted in it.
+	if err == "":
+		err = _T.assert_gt(ink.call(0.5), 60.0,
+			("a half-done chew still draws %.1f px of arc -- this is the reading a "
+				+ "player buys a second plant on") % ink.call(0.5))
+
+	# And the late one, recorded rather than gated. 13 px of 3 px-wide ink is
+	# small; it is allowed to be, per the header. The number is here so that
+	# anyone who later decides it is TOO small is arguing with a measurement
+	# instead of re-photographing a 2.6 second window.
+	if err == "":
+		err = _T.assert_gt(20.0, ink.call(0.9),
+			("recorded, not a complaint: at 90%% chewed only %.1f px of arc remains, "
+				+ "measured live at 90.4%% on a beetle") % ink.call(0.9))
+	return err
+
+# END plant-tower-defense-ip4n
+# =============================================================================
