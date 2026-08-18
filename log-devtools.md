@@ -6967,3 +6967,30 @@ status rather than rewriting the entries that recorded these as open.
   the headless suite structurally cannot hold, because `animations_enabled()` is false
   there. That split is worth more explicit support: the project now has two of these
   (`heredoc_survey.py`, `flourish_peak.py`) and nothing runs them as a set.
+
+## 2026-08-18 — round 15 close: the readout band, and G-124 confirmed twice more
+
+- Value: **warranted** — `eval.gd` re-derived a lane's headline number independently in
+  three calls, which is what turned a report into a verified finding.
+  - Expected: the fang crown and the sole-cover ring overlap by 0.7 px, per the lane.
+  - Got: crown outer `30.7`, alone-ring inner `30.0`, half-cell `32.0` — read from the
+    game's own constants rather than from the report. The overlap is real and the ceiling
+    above it is 1.3 px, too little for the 2.0 px ring to move into.
+  - Found: nothing beyond confirming it. The finding was the lane's; the value here was
+    refusing to take a number on trust when the tool to check it costs one call.
+  - Cheaper: nothing. Reading the four constants by hand and multiplying is the same work
+    with more places to slip.
+
+- **`[G-124]` confirmed unfixed, twice more.** BOTH lanes this round reported
+  `STALE: YES`, 9 commits behind. Combined with the two clean rounds before, the harness
+  base is *sometimes* right — which is worse than always wrong, because a lane that skips
+  the check cannot tell which round it is in. The explicit "say yes or no" line in the
+  prompt is what produced this; without it a lane that silently merges looks identical to
+  one with nothing to merge.
+  - [G-124] status: open | seen: 5 | harness: 0.38.0
+
+- Gap: **no gap this turn.** Worth recording that the ordering discipline paid again: a
+  new `class_name ReadoutBand` arrived, `--import` ran before lint, and lint came back
+  `0 error(s)`. Skipping that order would have produced `Could not find type
+  "ReadoutBand"` cascading into files nobody touched — which reads as a broad regression
+  and is not one.
