@@ -3079,10 +3079,11 @@ func test_the_budgets_verb_reports_every_declared_coupling() -> String:
 		"hud_readouts",
 		"hud_message_row",
 		"hud_stats_row",
+		"hud_selection_panel",
 		"pest_road_ceiling",
 		"road_shape",
 	]
-	err = _T.assert_eq(wanted.size(), 7, "there are seven budgets to look for")
+	err = _T.assert_eq(wanted.size(), 8, "there are eight budgets to look for")
 	if err == "":
 		err = _T.assert_eq(int(data["count"]), wanted.size(),
 			"the verb reports exactly that many -- got %d" % int(data["count"]))

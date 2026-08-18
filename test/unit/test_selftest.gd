@@ -16530,7 +16530,7 @@ func test_a_deliberately_worsened_selection_line_falls_through_its_floor() -> St
 		return err
 	var floor_left: float = float(Game.BUDGET_FLOOR["hud_selection_panel"])
 	var as_shipped: Array[Dictionary] = [_selection_entry(clean)]
-	err = _T.assert_eq(Game.budget_regressions(as_shipped).size(), 0,
+	err = _T.assert_eq(_selection_warnings(as_shipped[0]).size(), 0,
 		("the build as it stands is not under its floor: %s px left against a floor of %s")
 			% [clean["height_left"], floor_left])
 	if err != "":
@@ -16554,11 +16554,14 @@ func test_a_deliberately_worsened_selection_line_falls_through_its_floor() -> St
 	if err != "":
 		return err
 
-	var lines: Array[String] = Game.budget_regressions([_selection_entry(spoiled)])
+	var lines: Array[String] = _selection_warnings(_selection_entry(spoiled))
 	err = _T.assert_eq(lines.size(), 1, "and exactly one budget warns: %s" % str(lines))
 	if err == "":
-		err = _T.assert_true(lines[0].contains("hud_selection_panel"),
-			"the warning names the budget: %s" % lines[0])
+		# NOT `contains("hud_selection_panel")` — `_selection_warnings` filters on exactly
+		# that, so asserting it here would be asking the filter whether it filtered. The
+		# line has to carry somewhere to GO, which is the half a filter cannot fake.
+		err = _T.assert_true(lines[0].contains("res://game/hud.gd"),
+			"the warning names the file that declares the coupling: %s" % lines[0])
 	if err == "":
 		# The user-facing half of this whole bead: a budget that fires and says nothing
 		# actionable is a budget that gets muted. It has to name the fix.
@@ -16566,6 +16569,25 @@ func test_a_deliberately_worsened_selection_line_falls_through_its_floor() -> St
 			"and says what running out costs, in nodes a person can go and look at: %s"
 				% lines[0])
 	return err
+
+
+## `budget_regressions()` grades a SET, not an entry, and this is the wrapper that says
+## so. Besides pricing what it is handed, it walks `Game.BUDGET_FLOOR` and warns about
+## every floor that NOTHING in the array measured — "the floor is guarding a coupling
+## that has been renamed or removed, so it is checking nothing." That is a real check
+## and a good one.
+##
+## It also means handing it one entry produces five warnings about the other five
+## budgets, correctly. The lane that wrote these tests could not run the suite, priced
+## its work in a sandbox project, and asserted a bare `budget_regressions([entry])` was
+## empty — which was true there and false here the moment a sixth floor joined five
+## others. So: a test about ONE budget has to ask about one budget.
+func _selection_warnings(entry: Dictionary) -> Array[String]:
+	var mine: Array[String] = []
+	for line: String in Game.budget_regressions([entry]):
+		if line.contains("hud_selection_panel"):
+			mine.append(line)
+	return mine
 
 
 ## Shared with the test above: the entry `budget_entries()` would build from a priced
@@ -16673,8 +16695,14 @@ func test_the_run_prices_the_selection_panel_among_its_budgets() -> String:
 		err = _T.assert_true(seen.contains("widest line is"),
 			"the reading names the widest line, which is the half cycle 57 lost: %s" % seen)
 	if err == "":
+		# str() on BOTH sides. `"%s" % an_array` makes GDScript read the array as the
+		# argument LIST, so a three-element observations array against one %s aborts the
+		# method with "not all arguments converted" -- after the assertion above it has
+		# already passed, which returns "" and reports [PASS]. run_tests.py caught this;
+		# run_tests.gd could not, and said ALL TESTS PASSED.
 		err = _T.assert_true(str(found["observations"]).contains("vertical room left"),
-			"and the vertical room, which is the half that breaks: %s" % found["observations"])
+			"and the vertical room, which is the half that breaks: %s"
+				% str(found["observations"]))
 	if err == "":
 		err = _T.assert_eq(Game.budget_regressions(entries).size(), 0,
 			"and the run as it stands is under no budget's floor")
