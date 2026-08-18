@@ -6793,3 +6793,34 @@ status rather than rewriting the entries that recorded these as open.
   Anyone who had run the bare `.gd` would have merged a test that asserts nothing past
   its third line. The denominator that exposed it was not a count but the wrapper's
   `Errors: 1 emitted` line.
+
+## 2026-08-18 — round 12: yoc2 decided, wf4i built, two lanes merged with no failures
+
+- Value: **warranted** — `eval.gd` turned a design question into four measurements in
+  about a minute each, and two of the four were wrong in ways only running them showed.
+  - Expected: the run summary's value column had comfortable headroom; its own header
+    said the widest row was 36 characters and "nowhere near" the limit.
+  - Got: `{"text": "10 of 10 beds — 44 walked in untouched", "needed": 330.0,
+    "slot": 335.2, "left": 5.2}`. The header named the right string, in characters,
+    which is not a unit a proportional font respects. 1.5% clearance.
+  - Found: **two defects in my own corpus, both caught by running it.** (1) Invented
+    `_stats` key names meant every producer fell through to its default and the corpus
+    measured a card of zeroes — reporting a comfortable 118 px. The tell was that the
+    **all-zeroes control came out widest**; a worst case that loses to its own control
+    is not a worst case. (2) A guessed `road_cells: 24` against a real 32 kept one row
+    in its short form, so the longest thing that row can say went unmeasured. **A corpus
+    can be wrong by being plausible.**
+  - Cheaper: nothing. Both defects are invisible in the diff and both produce a
+    confident, plausible number.
+
+- Gap: **no gap this turn.** `eval.gd --expr 'RunSummary.value_column_budget()'` is the
+  right shape for exactly this — a pure static answering a design question with no game
+  running and no test written yet. Worth noting it took four iterations and each cost
+  one command.
+
+- Worth recording: **`suite_reach_check` caught `value_slot_width` as named only inside
+  a string literal** — the budget's own `constant` field. It refuses to count that as
+  reach and was right to: the function existed, the budget divided by it, and no test
+  ever called it. The fix was the assertion its doc comment already claimed (the drawn
+  column equals the measured one), which is a better test than the one I would have
+  written unprompted.
