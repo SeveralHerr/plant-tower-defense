@@ -7541,3 +7541,238 @@ func test_a_hint_id_in_the_save_does_not_reach_the_milestone_shelf() -> String:
 
 # END plant-tower-defense-owdi
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-snnp: THE REACH RING, once
+#
+# `game/OVERLAY_GRAMMAR.md` says a solid plant-sized ring means REACH. Six plants
+# used to write that sentence themselves, in three shapes: fill-and-edge (Corn,
+# Dandelion), fill-only (the Sundew's wash) and edge-only (Mint, Nettle, Aloe).
+# `Plant.draw_reach_ring()` is now the only implementation, and these three tests
+# are what keep it the only one — one for the NUMBER, one for the GATE, one for the
+# WIRING, because a base-class draw helper can be perfectly correct and never run.
+# =============================================================================
+
+## Plants whose reach is real to `PlantCatalog.reach()` and deliberately NOT drawn.
+##
+## EMPTY, and it was emptied the same cycle it was written — which is the outcome this
+## array was shaped to produce rather than a sign it was never needed.
+##
+## It held `PlantCatalog.CHOMP` for exactly as long as the fan-out lasted. `ChompFlower`
+## overrides `_draw()` to paint a chew clock and was written before `draw_reach_ring()`
+## existed, so it never learned to call it: a Chomp showed brackets and a clock on
+## selection and said nothing about its 73.6 px grab, while the PLACEMENT PREVIEW drew
+## that exact circle — `PlantCatalog.reach(CHOMP)` has always answered `GRAB_RADIUS` —
+## so the hover promised a reach the selection then withdrew. A gap, not a design.
+##
+## The lane that found it did not own `chomp_flower.gd`, so it recorded the exception
+## with the fix written out and made the test below DEMAND this array shrink the moment
+## someone applied it. The parent applied it at the merge. That is the shape worth
+## copying: **a recorded exception that names its own fix and fails when the fix lands
+## cannot quietly become permanent**, which is what every other waiver in this suite is
+## one forgetful cycle away from.
+##
+## Keep the array. An empty one costs nothing and the next plant to arrive without a
+## ring has somewhere honest to sit while its own file is someone else's.
+const REACH_WITHOUT_A_RING: Array[StringName] = []
+
+
+## Every plant with a reach draws a ring AT that reach — the acceptance of -snnp, and
+## the assertion that could not exist before the ring had one implementation.
+##
+## Derived from `PlantCatalog.ids()` and `PlantCatalog.reach()` rather than from the six
+## class names, so a seventh plant is not merely permitted to reach this test but forced
+## through it: give it a reach and no `reach_ring_radius()` override and it arrives here
+## claiming a 0 px ring against a real number, which fails. Give it a reach of 0 and it
+## is asserted to draw nothing, so a Sunflower cannot quietly grow a ring either.
+##
+## Built through `Game._new_plant` for the same reason
+## `test_exactly_two_plants_in_the_catalogue_grow...` is: the question is about a PLACED
+## plant, and that match statement is what decides which class a placed id becomes.
+##
+## Headless runs no `_draw()` at all, which is exactly why `reach_ring_radius()` exists
+## as a method instead of a number passed to a draw call — see its header. This test is
+## the reason, and the source-scanning test below is the half it cannot cover.
+func test_every_plant_with_a_reach_draws_a_ring_at_that_reach() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var ringed: Array[StringName] = []
+	var err: String = _T.assert_gt(ids.size(), 0, "there is a catalogue to walk")
+	for id: StringName in ids:
+		if err != "":
+			break
+		var plant: Plant = game._new_plant(id)
+		if plant == null:
+			err = "Game._new_plant built nothing for %s" % id
+			break
+		var reach: float = PlantCatalog.reach(id)
+		var drawn: float = plant.reach_ring_radius()
+		if REACH_WITHOUT_A_RING.has(id):
+			# Pinned at 0 rather than skipped: if someone gives the Chomp a ring, this
+			# line is what tells them to take it out of the list above instead of
+			# leaving a recorded exception that has stopped being true.
+			err = _T.assert_float_eq(drawn, 0.0, 0.0001,
+				("%s is in REACH_WITHOUT_A_RING and draws no ring -- it now draws one at "
+					+ "%.1f px, so delete it from that array and let it be asserted "
+					+ "properly like every other plant") % [id, drawn])
+		elif reach <= 0.0:
+			err = _T.assert_float_eq(drawn, 0.0, 0.0001,
+				("%s reaches nothing, so it draws no reach ring -- a ring on a plant that "
+					+ "acts on nothing is a promise of coverage it does not have (got "
+					+ "%.1f px)") % [id, drawn])
+		else:
+			ringed.append(id)
+			err = _T.assert_float_eq(drawn, reach, 0.0001,
+				("%s reaches %.1f px and its ring must be drawn at that exact radius, not "
+					+ "at %.1f -- a ring that disagrees with the reach is a lie about "
+					+ "coverage, and PlantCatalog.reach() is what the placement preview "
+					+ "and the dead-ground cue already both read")
+					% [id, reach, drawn])
+		if err == "":
+			# The alpha is the grammar's, not the plant's. Hue IS per-plant on purpose
+			# (Nettle's header argues why), so only the fourth channel is asserted.
+			var alpha: float = plant.reach_ring_color().a
+			err = _T.assert_float_eq(alpha, Plant.REACH_RING_ALPHA, 0.0001,
+				("%s draws its reach ring at alpha %.2f and every other plant draws one "
+					+ "at Plant.REACH_RING_ALPHA (%.2f) -- one statement, one brightness")
+					% [id, alpha, Plant.REACH_RING_ALPHA])
+		plant.free()
+	if err == "":
+		# Guard against a vacuous pass: a catalogue in which nothing reached would
+		# satisfy every branch above without asserting the thing this test is named for.
+		err = _T.assert_gt(ringed.size(), 0,
+			"and at least one plant actually drew a ring, so the loop above said something")
+	_T.free_ui(game)
+	return err
+
+
+## A reach ring is shown when you ask for it, and not before — the third of the three
+## decisions inside `Plant.draw_reach_ring()`, and the only one that is behaviour rather
+## than geometry.
+##
+## It matters because the alternative was shipped once: a ring that is always up puts a
+## permanent circle under every plant on the board at once, and with eight plants that is
+## the board rather than a cue. The gate used to be an `if not _selected: return` inside
+## each of six `_draw()` bodies, where headless — which runs no `_draw()` at all — could
+## never see it. `Plant.draws_reach_ring()` is that condition lifted somewhere a test can
+## hold it.
+##
+## Derived from the catalogue like its two neighbours, so a plant added with a reach is
+## asserted to stay dark until it is selected without anyone adding a line here.
+func test_a_reach_ring_appears_on_selection_and_not_before() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var checked: int = 0
+	var err: String = ""
+	for id: StringName in PlantCatalog.ids():
+		if err != "":
+			break
+		var plant: Plant = game._new_plant(id)
+		if plant == null:
+			err = "Game._new_plant built nothing for %s" % id
+			break
+		err = _T.assert_false(plant.draws_reach_ring(),
+			("a freshly built %s is unselected and paints no reach ring -- an idle board "
+				+ "must not fill with rings") % id)
+		if err == "":
+			plant.set_selected(true)
+			var lit: bool = plant.draws_reach_ring()
+			if plant.reach_ring_radius() > 0.0:
+				checked += 1
+				err = _T.assert_true(lit,
+					("and selecting a %s lights its ring, since it draws one at %.1f px")
+						% [id, plant.reach_ring_radius()])
+			else:
+				err = _T.assert_false(lit,
+					("and selecting a %s lights nothing, because it has no ring to light "
+						+ "-- the gate must not paint a zero-radius arc") % id)
+		if err == "":
+			plant.set_selected(false)
+			err = _T.assert_false(plant.draws_reach_ring(),
+				"and deselecting a %s puts it out again" % id)
+		plant.free()
+	if err == "":
+		# Vacuity guard: without this, a catalogue where nothing drew a ring would pass
+		# on the "lights nothing" arm alone and assert none of what the test is named for.
+		err = _T.assert_gt(checked, 0,
+			"and at least one plant went dark-to-lit, which is the half that is behaviour")
+	_T.free_ui(game)
+	return err
+
+
+## The trap this bead was written around, and the half no runtime assertion can reach.
+##
+## `SelectionMarker`'s header records why: `CornCobbler`, `Dandelion`, `StickySundew` and
+## `ChompFlower` each fully override `Plant._draw()` and never call `super`, which is how
+## the Chomp Flower once ended up with no selection feedback at all. A shared helper on
+## the base class inherits that trap exactly — `Plant.draw_reach_ring()` can be correct,
+## `reach_ring_radius()` can return the right number, the first test above can pass, and
+## the ring still never appears on the two plants most likely to want one.
+##
+## Headless pumps no frames and runs no `_draw()`, so there is no way to observe this at
+## runtime. It is checked against the SOURCE instead, with comment lines stripped first
+## so a `## ... draw_reach_ring() ...` in a doc block cannot satisfy it — a mention is
+## not a call, and every one of these files mentions it in prose.
+##
+## The file list is derived, not typed: each script path comes off the instance
+## `Game._new_plant` builds, so a plant added to the catalogue is scanned whether or not
+## anyone remembers this test exists.
+func test_every_plant_that_paints_more_than_its_reach_still_calls_the_ring() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var overriders: Array[String] = []
+	var inheritors: Array[String] = []
+	var err: String = ""
+	for id: StringName in PlantCatalog.ids():
+		if err != "":
+			break
+		if PlantCatalog.reach(id) <= 0.0 or REACH_WITHOUT_A_RING.has(id):
+			continue
+		var plant: Plant = game._new_plant(id)
+		if plant == null:
+			err = "Game._new_plant built nothing for %s" % id
+			break
+		var script: Script = plant.get_script() as Script
+		var path: String = "" if script == null else script.resource_path
+		plant.free()
+		if path == "":
+			err = "%s has no script path to read" % id
+			break
+		# `_lines_without_comments` is the plant-tween sweep's stripper, reused rather
+		# than copied -- a second one in the same file would be exactly the duplication
+		# this bead is about, one directory over.
+		var code: String = _lines_without_comments(FileAccess.get_file_as_string(path))
+		if code == "":
+			err = "could not read %s to check it, so this test verified nothing" % path
+			break
+		if code.contains("func _draw("):
+			overriders.append(path.get_file())
+			err = _T.assert_true(code.contains("draw_reach_ring()"),
+				("%s overrides _draw() and never calls Plant.draw_reach_ring(), so its "
+					+ "reach ring is drawn by nothing. This is the SelectionMarker trap: "
+					+ "an override that does not chain to super silently eats whatever "
+					+ "the base class paints, which is why the helper must be CALLED. "
+					+ "Add `draw_reach_ring()` to that _draw().") % path.get_file())
+		else:
+			# No override at all is the better answer for a plant whose only overlay IS
+			# its reach: it inherits Plant._draw() and cannot get the call wrong. Mint,
+			# Nettle and Aloe each deleted a one-line _draw() to get here.
+			inheritors.append(path.get_file())
+			err = _T.assert_false(code.contains("draw_reach_ring()"),
+				("%s has no _draw() override, so it inherits Plant._draw() and must not "
+					+ "call draw_reach_ring() itself -- a second call paints the ring "
+					+ "twice, at double the effective alpha") % path.get_file())
+	if err == "":
+		err = _T.assert_gt(overriders.size(), 0,
+			("and at least one plant genuinely overrides _draw(), which is the only "
+				+ "condition under which this test says anything -- got %s")
+				% str(overriders))
+	if err == "":
+		err = _T.assert_gt(inheritors.size(), 0,
+			("and at least one gets the ring by inheriting Plant._draw(), which is the "
+				+ "shape this refactor was for -- got %s") % str(inheritors))
+	_T.free_ui(game)
+	return err
+
+
+# END plant-tower-defense-snnp
+# =============================================================================

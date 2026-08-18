@@ -245,6 +245,16 @@ const FLINCH_SECONDS: float = 0.32
 const BREATHE_AMOUNT: float = 0.022
 const BREATHE_RATE: float = 2.0
 
+## The three numbers every reach ring is drawn with — see `draw_reach_ring()` for the
+## decision they encode. Alpha and width were ALREADY unanimous across all five plants
+## that drew an edge (0.55 and 2.0, five times over); naming them here is not a change
+## of look, it is what stops the sixth plant from picking its own and being right by
+## luck. Segments were not unanimous (48, 48, 40, 44, 48) and are now 48 everywhere,
+## which is the one number in this block a player cannot see.
+const REACH_RING_ALPHA: float = 0.55
+const REACH_RING_WIDTH: float = 2.0
+const REACH_RING_SEGMENTS: int = 48
+
 ## The plant family's squash-and-return vocabulary, in two tiers.
 ##
 ## Every animation outside this family already names its duration — Hud's
@@ -1064,9 +1074,6 @@ func set_uproot_armed(armed: bool) -> void:
 		_sole_cover_marks.set_warning(armed)
 
 
-## Game toggles this when the plant is clicked/deselected. Base class just
-## tracks the flag and repaints; subclasses that draw a selection overlay
-## (e.g. a range ring) override `_draw()` and read `_selected`.
 ## The rings showing what only this plant covers, for Game to push into and for a
 ## test to read. Null before _ready has built the children, which is the one state
 ## a caller has to tolerate rather than assume away.
@@ -1074,6 +1081,105 @@ func sole_cover_marks() -> SoleCoverMarks:
 	return _sole_cover_marks
 
 
+# ------------------------------------------------------------------- reach ring
+
+## How far this plant's reach ring is drawn, in px, or 0.0 for a plant that draws
+## none — which is the honest answer for a Sunflower and the base answer here.
+##
+## A subclass overrides THIS rather than passing a number to `draw_reach_ring()`, and
+## the difference is the whole reason the ring is testable: headless runs no `_draw()`
+## at all, so a radius handed straight to a draw call is a number no test can ever
+## read. Overriding a getter puts the same number somewhere
+## `test_every_plant_with_a_reach_draws_a_ring_at_that_reach` can hold against
+## `PlantCatalog.reach()`, which is the other half of the same claim.
+func reach_ring_radius() -> float:
+	return 0.0
+
+
+## The hue of that ring. Per-plant on purpose — every reach in this game is drawn in
+## its own plant's colour, and Nettle's header argues why (the sprite is orange, the
+## SHAPE is the signal). The ALPHA is not per-plant: `REACH_RING_ALPHA` is the
+## grammar's, and a subclass returning some other one is picking a second brightness
+## for a single statement. Never read while `reach_ring_radius()` is 0.
+func reach_ring_color() -> Color:
+	return Color(1.0, 1.0, 1.0, REACH_RING_ALPHA)
+
+
+## The drawn-overlay grammar's REACH row (`game/OVERLAY_GRAMMAR.md`) — a solid full
+## ring, plant-sized, centred on a plant, meaning "this is how far it acts" — with
+## exactly one implementation.
+##
+## Six plants each wrote that sentence themselves before this existed, in THREE
+## different shapes: fill-and-edge (Corn, Dandelion), fill-only (the Sundew's wash)
+## and edge-only (Mint, Nettle, Aloe). One grammar row implemented six times is not a
+## rule, it is six agreements, and three of those six were written after the rule was
+## documented.
+##
+## **THE RING IS THE EDGE; the fill was a flourish and it is gone.** That is a
+## decision, so here is its reason rather than a preference. The grammar's own
+## per-row channel table names SIZE and CENTRE as what carries this row once the
+## colour is thrown away, and both of those live entirely in the edge — a fill adds no
+## channel. Worse, the same table's *Filled dot* row states outright that fill-versus-
+## outline is itself a meaning-bearing channel ("a disc and an outline ring are
+## different marks before they are different colours"), so a wash inside two of six
+## reach rings made those two a different mark by the document's own rule.
+## `PlacementPreview`, which draws the reach a plant *would* have, has never carried a
+## fill: a filled selected ring and an unfilled hover ring were already two shapes for
+## one statement, and the hover is the one the player meets first.
+##
+## The Sundew's sap wash is NOT an exception to this and never was. It is the patch
+## itself — ground with sap on it, painted whether or not anything is selected, and
+## clipped away where a neighbouring patch got there first. It keeps its fill because
+## it is not this cue; it now draws this cue as well, which is new and visible: a
+## Sundew crowded by neighbours shows a wash eaten down to a sliver, and selecting it
+## finally answers how far the patch actually reaches.
+##
+## **This must be CALLED from a subclass's own `_draw()`.** It cannot be left inside
+## `Plant._draw()` and hoped for. `CornCobbler`, `Dandelion`, `StickySundew` and
+## `ChompFlower` each fully override `_draw()` and never call `super` — the exact trap
+## `SelectionMarker`'s header documents, and the reason the selection brackets had to
+## be moved into a child node. A subclass whose only overlay is its reach should
+## delete its `_draw()` outright and inherit the default below, rather than write an
+## override that does nothing but call this; Mint, Nettle and Aloe each did.
+##
+## The selection gate lives here rather than in each caller, because "a reach is shown
+## when you ask for it" belongs to the rule and not to any one plant. A ring that was
+## always up would put a permanent circle under every plant on the board at once.
+func draw_reach_ring() -> void:
+	# suite-reach-check: ok - a draw_* call is only legal inside NOTIFICATION_DRAW and
+	# headless never enters one, so calling this from a test either errors on the engine
+	# side or exercises nothing. Its two decisions are split out where a test CAN hold
+	# them: `draws_reach_ring()` is the gate (asserted by
+	# test_a_reach_ring_appears_on_selection_and_not_before) and `reach_ring_radius()` /
+	# `reach_ring_color()` are the geometry (asserted by
+	# test_every_plant_with_a_reach_draws_a_ring_at_that_reach). That it is CALLED at all
+	# is the source scan in test_every_plant_that_paints_more_than_its_reach_still_calls_the_ring.
+	if not draws_reach_ring():
+		return
+	draw_arc(Vector2.ZERO, reach_ring_radius(), 0.0, TAU, REACH_RING_SEGMENTS,
+		reach_ring_color(), REACH_RING_WIDTH, true)
+
+
+## Would `draw_reach_ring()` paint anything if a draw pass ran right now?
+##
+## The gate, lifted out of the draw call so it is assertable at all. Headless runs no
+## `_draw()`, so a condition left inline inside one is a decision no test can ever
+## reach — and this particular decision is a real piece of design ("a reach is shown
+## when you ask for it, or the board fills with permanent circles"), not a detail.
+func draws_reach_ring() -> bool:
+	return _selected and reach_ring_radius() > 0.0
+
+
+## What a plant whose only overlay is its reach gets for free. Anything that paints
+## more than this overrides `_draw()` and calls `draw_reach_ring()` itself — see that
+## method for why it cannot be the other way round.
+func _draw() -> void:
+	draw_reach_ring()
+
+
+## Game toggles this when the plant is clicked/deselected. Base class tracks the flag
+## and repaints; the reach ring reads it through `draw_reach_ring()`, so a subclass
+## that wants one overrides `reach_ring_radius()` rather than `_draw()`.
 func set_selected(value: bool) -> void:
 	if _selected == value:
 		return

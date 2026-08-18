@@ -71,8 +71,12 @@ const REACH: float = Board.CELL * 1.5
 ## see the class header.
 const HEAL_PER_SECOND: float = 3.0
 
-const RING_COLOR := Color(0.90, 0.86, 0.72, 0.55)
-const RING_WIDTH: float = 2.0
+## The aloe's hue for the shared reach ring. The alpha is deliberately NOT written here —
+## `Plant.REACH_RING_ALPHA` is the grammar's, and a second copy of it is how one plant's ring
+## ends up brighter than the rest. The width used to sit beside it as a `RING_WIDTH` of 2.0
+## and is now `Plant.REACH_RING_WIDTH`, which was already the same 2.0 in all five plants
+## that drew this ring.
+const RING_COLOR := Color(0.90, 0.86, 0.72, Plant.REACH_RING_ALPHA)
 
 ## The slow breathing scale, the same idea as Mint's and for the same reason: this plant
 ## never fires, so without it the only two plants on the board that do nothing would also be
@@ -130,8 +134,14 @@ func _process(delta: float) -> void:
 ## "this is how far it acts" is exactly what a solid full ring means, and a second vocabulary
 ## for the same statement is how a grammar stops being one.
 ##
-## Drawn only while selected, like every other reach in the game.
-func _draw() -> void:
-	if not _selected:
-		return
-	draw_arc(Vector2.ZERO, REACH, 0.0, TAU, 48, RING_COLOR, RING_WIDTH, true)
+## Drawn only while selected, like every other reach in the game — that gate lives in
+## `Plant.draw_reach_ring()` now, along with the reason a ring is not always up.
+##
+## There is no `_draw()` here any more, and its absence is the point: an Aloe paints nothing
+## except its reach, so it inherits `Plant._draw()` and answers the two questions below.
+func reach_ring_radius() -> float:
+	return REACH
+
+
+func reach_ring_color() -> Color:
+	return RING_COLOR

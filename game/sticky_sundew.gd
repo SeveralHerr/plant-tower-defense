@@ -77,6 +77,10 @@ const DROPLET_FULL: float = 4.4
 const DROPLET_SWELL_AT: int = 3
 
 const PATCH_COLOR := Color(0.54, 0.64, 0.65, 0.10)
+## The reach ring's hue, which is the wash's own so the two read as one patch rather
+## than as a patch and an unrelated circle. Derived from PATCH_COLOR rather than
+## re-typed, so a change to the sap's colour moves the ring with it.
+const RING_COLOR := Color(PATCH_COLOR, Plant.REACH_RING_ALPHA)
 const DROPLET_COLOR := Color(0.64, 0.76, 0.78, 0.90)
 const DROPLET_RIM_COLOR := Color(0.46, 0.55, 0.56, 0.90)
 const DROPLET_RIM_WIDTH: float = 1.2
@@ -434,15 +438,35 @@ static func wash_polygons(claimed: PackedVector2Array) -> Array[PackedVector2Arr
 
 # ---------------------------------------------------------------------- visuals
 
+func reach_ring_radius() -> float:
+	return SAP_RADIUS
+
+
+func reach_ring_color() -> Color:
+	return RING_COLOR
+
+
 ## Note there is no super._draw() call here, and there must not be: the selection
 ## brackets live in a SelectionMarker child precisely because an override like
-## this one eats them. See SelectionMarker's header.
+## this one eats them. See SelectionMarker's header — the same trap is why
+## `Plant.draw_reach_ring()` is called below rather than inherited.
+##
+## **The ring on the last line is new, and it is the one visible change this patch
+## got out of six reach rings becoming one.** The wash is not a reach ring and never
+## was: it is the sap itself, painted always, and `_draw_wash` clips it away wherever
+## a neighbouring patch got to that ground first. So a Sundew hemmed in by two others
+## shows a crescent, and nothing on screen said how far the patch it belongs to
+## actually reaches. Selecting it now says. Drawn last so the edge sits over the
+## beads rather than under them, and gated on selection inside `draw_reach_ring()`
+## like every other reach in the game — the wash below is not, because the sap is
+## there whether or not you are looking at it.
 func _draw() -> void:
 	_draw_wash()
 	var radius: float = droplet_radius(stuck_count())
 	for bead: Vector2 in droplet_points():
 		draw_circle(bead, radius + DROPLET_RIM_WIDTH, DROPLET_RIM_COLOR)
 		draw_circle(bead, radius, DROPLET_COLOR)
+	draw_reach_ring()
 
 
 ## This patch's share of the union — see WASH_SEGMENTS for why it is a share

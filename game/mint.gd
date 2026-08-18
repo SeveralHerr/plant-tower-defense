@@ -40,8 +40,12 @@ const NEIGHBOUR_SCALE: float = 0.75
 ## Drawn reach, matching `Board.CELL` so the ring contains exactly the cells it affects.
 const REACH: float = Board.CELL
 
-const RING_COLOR := Color(0.54, 0.77, 0.72, 0.55)
-const RING_WIDTH: float = 2.0
+## The mint's hue for the shared reach ring. The alpha is deliberately NOT written
+## here — `Plant.REACH_RING_ALPHA` is the grammar's, and a second copy of it is how one
+## plant's ring ends up brighter than the rest. The width used to live beside it as a
+## `RING_WIDTH` of 2.0 and is now `Plant.REACH_RING_WIDTH`, which was already the same
+## 2.0 in all five plants that drew this ring.
+const RING_COLOR := Color(0.54, 0.77, 0.72, Plant.REACH_RING_ALPHA)
 const LEAF_PULSE_SECONDS: float = 2.6
 const LEAF_PULSE_SCALE: float = 0.04
 
@@ -96,9 +100,13 @@ func _process(delta: float) -> void:
 ## it acts" is exactly what the row means and a second vocabulary for the same statement is
 ## how a grammar stops being one.
 ##
-## Drawn only while selected, like every other reach in the game: a ring that was always up
-## would put a permanent circle on the board for a plant that never does anything visible.
-func _draw() -> void:
-	if not _selected:
-		return
-	draw_arc(Vector2.ZERO, REACH, 0.0, TAU, 40, RING_COLOR, RING_WIDTH, true)
+## There is no `_draw()` here any more, and its absence is the point: this plant paints
+## nothing except its reach, so it inherits `Plant._draw()` and answers the two questions
+## below instead. Drawn only while selected — that gate lives in `Plant.draw_reach_ring()`
+## now, with the reason a ring is not always up.
+func reach_ring_radius() -> float:
+	return REACH
+
+
+func reach_ring_color() -> Color:
+	return RING_COLOR

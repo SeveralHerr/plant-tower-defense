@@ -239,6 +239,20 @@ func _fire_at(direction: Vector2) -> void:
 	_recoil()
 
 
+## The cob's own hue for the shared reach ring. The green is the sprite's, and the
+## alpha is deliberately NOT written here — `Plant.REACH_RING_ALPHA` is the grammar's
+## and a second copy of it is how one plant's ring ends up brighter than the rest.
+const RING_COLOR := Color(0.35, 0.85, 0.45, Plant.REACH_RING_ALPHA)
+
+
+func reach_ring_radius() -> float:
+	return RANGE
+
+
+func reach_ring_color() -> Color:
+	return RING_COLOR
+
+
 ## The range ring is placement feedback and only appears while selected, so an
 ## idle board doesn't fill with rings. The muzzle fan is always on: it is the
 ## board-level readout of what an upgrade bought, and it is worthless if you have
@@ -246,13 +260,16 @@ func _fire_at(direction: Vector2) -> void:
 ##
 ## Note there is still no super._draw() call here, and there must not be: the
 ## selection brackets live in a SelectionMarker child precisely because this
-## override eats them. See SelectionMarker's header.
+## override eats them. See SelectionMarker's header — and note that the same trap
+## is why `Plant.draw_reach_ring()` is CALLED on the first line of `_draw()` below,
+## rather than inherited.
+##
+## The ring lost a 10%-alpha green wash inside it when the six copies of this cue
+## became one. `Plant.draw_reach_ring()` argues that at length; the short version is
+## that the grammar's channel for a reach is size and centre, which the edge carries
+## alone, and the hover ring this one promises never had a fill either.
 func _draw() -> void:
-	if _selected:
-		var fill := Color(0.35, 0.85, 0.45, 0.10)
-		var edge := Color(0.35, 0.85, 0.45, 0.55)
-		draw_circle(Vector2.ZERO, RANGE, fill)
-		draw_arc(Vector2.ZERO, RANGE, 0.0, TAU, 48, edge, 2.0, true)
+	draw_reach_ring()
 	_draw_muzzle_fan()
 
 
