@@ -9685,3 +9685,226 @@ func test_no_species_walks_close_enough_to_the_gait_reference_to_lose_its_tell()
 
 # END plant-tower-defense-frzz
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-f7y2: the weather multipliers, the same shape again
+#
+# -frzz above is a tuned constant whose justification is written in prose sitting
+# near a corpus nobody asserts it stays clear of. The weather multipliers are that
+# shape exactly: WEATHER_DROUGHT_SEED_BONUS 1.5, WEATHER_DROUGHT_INTERVAL_SCALE 2.0
+# and WEATHER_RAIN_HEAL_FRACTION 0.35, each with a paragraph of reasoning above it
+# in wave_director.gd and no test between the reasoning and the number.
+#
+# The bead names two failure modes and both are here:
+#
+#   1. A multiplier drifts back into the baseline and the weather stops being
+#      distinguishable from clear. That is `_T.assert_margin` against the neutral
+#      value of each effect, with the weathers already sitting on neutral recorded
+#      by name -- clear is SUPPOSED to be on the line, and rain is supposed to be on
+#      it for two of the three effects.
+#   2. Two weathers drift into each other and stop being different choices. Margin
+#      cannot express a pairwise claim -- it measures every value against one
+#      threshold -- so that half is plain assertions over the enumerated pairs.
+#
+# All three bands are derived from the smallest change the GAME ITSELF already treats
+# as meaningful in that quantity, never from what would make today's numbers pass.
+# See the three band helpers.
+#
+# The corpus is swept out of `weather_for(1..100)`, the same derivation
+# `test_no_weather_asks_for_something_and_gives_nothing_back` above uses: a fourth
+# weather joins these gates without anyone remembering to add it.
+#
+# NOT ASSERTED, but worth writing down because it is the most striking thing found
+# here: WEATHER_RAIN_HEAL_FRACTION 0.35 is exactly `Pest.EAT_DPS / Plant.MAX_HEALTH`
+# (14.0 / 40.0), i.e. rain hands back precisely one second of a pest chewing. That is
+# either design or coincidence, and nothing in wave_director.gd claims it, so it is
+# left as an observation rather than turned into a contract nobody agreed to.
+
+
+## The weathers the game can actually produce, swept rather than listed.
+func _weathers_in_play() -> Array[StringName]:
+	var seen: Array[StringName] = []
+	for wave: int in range(1, 101):
+		var state: StringName = WaveDirector.weather_for(wave)
+		if not seen.has(state):
+			seen.append(state)
+	return seen
+
+
+## How close a seed multiplier may come to 1.0 before it pays what clear pays.
+##
+## Not a perceptual guess. `Game.weather_seed_value` (game.gd:953) is
+## `maxi(1, int(round(float(base) * seed_multiplier_for(weather))))`, so the payout is
+## an INTEGER and a multiplier only changes it when it moves the rounded product off
+## `base`. The cheapest pest in `Pest.SPECIES` decides where that starts, and it is the
+## aphid at 3 seeds: any multiplier under 1 + 0.5/3 rounds straight back to 3 and hands
+## the player the clear number on the commonest kill in the game.
+##
+## The rounding rule is duplicated here rather than called, because
+## `weather_seed_value` is an instance method on `Game` and `Game` is a Node this suite
+## has no board for. That is the one line in this block that can go stale behind our
+## back, so it is named out loud: game.gd:953.
+func _seed_multiplier_band() -> float:
+	var cheapest: float = -1.0
+	for which: StringName in Pest.SPECIES:
+		var stats: Dictionary = Pest.SPECIES[which] as Dictionary
+		var seeds: float = float(stats["seeds"])
+		if cheapest < 0.0 or seeds < cheapest:
+			cheapest = seeds
+	if cheapest <= 0.0:
+		return 0.0
+	return 0.5 / cheapest
+
+
+## How far a firing-interval scale must sit from 1.0 to be worth announcing.
+##
+## This quantity has no integer quantum and no pixel to hide behind, so it borrows the
+## smallest interval change the game already ships as a thing the player is meant to
+## notice: `Mint.NEIGHBOUR_SCALE` 0.75, a quarter off neutral. A weather asking to be
+## read as an event off less than one Garden Mint is asking too much.
+##
+## Say plainly: this is the least-grounded of the three bands, and it is the one to
+## revisit first if a weather is ever separated from another by fire rate alone.
+func _fire_interval_band() -> float:
+	return absf(1.0 - Mint.NEIGHBOUR_SCALE)
+
+
+## How much of a plant's health a weather must give back before the heal is invisible.
+##
+## `Game._apply_weather` heals `Plant.MAX_HEALTH * heal_fraction_for(next)`
+## (game.gd:425) and the player reads the result off the plant's own health bar, which
+## is `Plant.HEALTH_BAR_SIZE.x` pixels wide in the plant's local space. A heal smaller
+## than one pixel of that bar does not move the only surface that reports it -- the
+## same kind of grounding as the seed band above, a display quantum rather than a
+## judgement.
+func _heal_fraction_band() -> float:
+	if Plant.HEALTH_BAR_SIZE.x <= 0.0:
+		return 0.0
+	return 1.0 / Plant.HEALTH_BAR_SIZE.x
+
+
+## Failure mode one: no weather's multiplier has drifted back into the clear baseline.
+##
+## Each effect is measured against ITS OWN neutral -- 1.0 for the two multiplicative
+## ones, 0.0 for the heal -- and the weathers legitimately sitting on that neutral are
+## recorded by name rather than skipped. That is the whole point of recording them:
+## clear must stay at neutral in all three, rain must stay at neutral in the two it
+## does not touch, and any of them moving off is a change to what the forecast means.
+func test_no_weather_multiplier_has_drifted_into_the_clear_baseline() -> String:
+	var weathers: Array[StringName] = _weathers_in_play()
+	var err: String = _T.assert_gt(weathers.size(), 1,
+		("`weather_for` produced %d distinct weather(s) over the first hundred waves "
+			+ "(%s). Every dictionary below is built from that sweep, and a corpus of "
+			+ "one would pass all three margins while checking nothing")
+			% [weathers.size(), str(weathers)])
+	if err != "":
+		return err
+	var seed_mult: Dictionary = {}
+	var interval: Dictionary = {}
+	var heal: Dictionary = {}
+	for state: StringName in weathers:
+		var key: String = String(state)
+		seed_mult[key] = WaveDirector.seed_multiplier_for(state)
+		interval[key] = WaveDirector.fire_interval_scale_for(state)
+		heal[key] = WaveDirector.heal_fraction_for(state)
+	var seed_band: float = _seed_multiplier_band()
+	var interval_band: float = _fire_interval_band()
+	var heal_band: float = _heal_fraction_band()
+	err = _T.assert_gt(minf(seed_band, minf(interval_band, heal_band)), 0.0,
+		("all three bands have to be bands: seeds %.5f, interval %.5f, heal %.5f. Each "
+			+ "is derived from another constant, and a zero here would leave its margin "
+			+ "agreeing with every value there is")
+			% [seed_band, interval_band, heal_band])
+	if err == "":
+		err = _T.assert_margin(seed_mult, 1.0, seed_band, {"clear": 1.0, "rain": 1.0},
+			("only drought pays, and it pays 1.5 -- three times the %.5f band it has to "
+				+ "clear to change the rounded payout on a 3-seed aphid at all "
+				+ "(game.gd:953). Clear and rain are recorded ON the line because that "
+				+ "is the design: rain is the mercy wave and paying it less was refused "
+				+ "outright in wave_director.gd:866. Swept: %s")
+				% [seed_band, str(seed_mult)])
+	if err == "":
+		err = _T.assert_margin(interval, 1.0, interval_band, {"clear": 1.0, "rain": 1.0},
+			("a drought doubles the interval, four times the %.5f band, which is what "
+				+ "lets Hud.weather_note say 'Everything shoots half as often' and be "
+				+ "exactly right. Swept: %s")
+				% [interval_band, str(interval)])
+	if err == "":
+		err = _T.assert_margin(heal, 0.0, heal_band, {"clear": 0.0, "drought": 0.0},
+			("rain's 0.35 of max health is eleven times the %.5f band -- one pixel of a "
+				+ "%.0f-pixel health bar -- so the heal is a thing the player watches "
+				+ "happen rather than a number in a log. Clear and drought are recorded "
+				+ "at zero: rain is the only weather in this game that heals, and a "
+				+ "second one appearing here has to say so. Swept: %s")
+				% [heal_band, Plant.HEALTH_BAR_SIZE.x, str(heal)])
+	return err
+
+
+## Failure mode two: no two weathers have drifted into being the same choice.
+##
+## `assert_margin` cannot state this -- it measures a corpus against ONE threshold, and
+## "these two are too alike" is a claim about a pair. So this is plain assertions over
+## the enumerated pairs, with the pair count asserted first so a sweep that produced one
+## weather cannot pass by running the inner loop zero times.
+##
+## The bar is deliberately low: a pair only has to be separated in ONE effect, by more
+## than that effect's own band. Two weathers alike in all three are not two weathers.
+func test_no_two_weathers_have_drifted_into_the_same_choice() -> String:
+	var weathers: Array[StringName] = _weathers_in_play()
+	var err: String = _T.assert_gt(weathers.size(), 1,
+		("`weather_for` produced %d distinct weather(s) (%s) -- fewer than two and the "
+			+ "pair loop below runs zero times and reports a clean pass")
+			% [weathers.size(), str(weathers)])
+	if err != "":
+		return err
+	var bands: Dictionary = {
+		"seed multiplier": _seed_multiplier_band(),
+		"fire interval scale": _fire_interval_band(),
+		"heal fraction": _heal_fraction_band(),
+	}
+	var effects: Dictionary = {
+		"seed multiplier": {},
+		"fire interval scale": {},
+		"heal fraction": {},
+	}
+	for state: StringName in weathers:
+		var key: String = String(state)
+		(effects["seed multiplier"] as Dictionary)[key] = (
+			WaveDirector.seed_multiplier_for(state))
+		(effects["fire interval scale"] as Dictionary)[key] = (
+			WaveDirector.fire_interval_scale_for(state))
+		(effects["heal fraction"] as Dictionary)[key] = (
+			WaveDirector.heal_fraction_for(state))
+	var pairs: int = 0
+	var alike: PackedStringArray = []
+	for i: int in range(weathers.size()):
+		for j: int in range(i + 1, weathers.size()):
+			pairs += 1
+			var a: String = String(weathers[i])
+			var b: String = String(weathers[j])
+			var separated: bool = false
+			for effect: String in effects:
+				var values: Dictionary = effects[effect] as Dictionary
+				var delta: float = absf(float(values[a]) - float(values[b]))
+				if delta > float(bands[effect]):
+					separated = true
+					break
+			if not separated:
+				alike.append("%s vs %s" % [a, b])
+	err = _T.assert_eq(pairs, weathers.size() * (weathers.size() - 1) / 2,
+		("every unordered pair of the %d weathers was compared, %d of them")
+			% [weathers.size(), pairs])
+	if err == "":
+		err = _T.assert_eq(alike.size(), 0,
+			("no two weathers are the same choice, and these were: %s. Today the three "
+				+ "separate on two effects -- drought against either of the others on "
+				+ "the seed bonus and the interval, clear against rain on the heal "
+				+ "alone. That last one is the thin pair: rain differs from clear in "
+				+ "ONE number, so WEATHER_RAIN_HEAL_FRACTION shrinking toward zero does "
+				+ "not just weaken rain, it deletes it as a distinct forecast")
+				% [str(alike)])
+	return err
+
+# END plant-tower-defense-f7y2
+# =============================================================================
