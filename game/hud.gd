@@ -1608,6 +1608,85 @@ static func plant_button_label(unlocked: bool, price: int) -> String:
 	return "free" if price == 0 else str(price)
 
 
+## THE UPROOT BUTTON'S RESTING LABEL, and the half of the trade it used to leave out.
+##
+## It said `Uproot (+12)` — what you GET BACK — and nothing anywhere said what putting
+## a plant back on that bed costs. Both numbers are known: the refund slides with the
+## plant's health (`Plant.uproot_refund`), the replant price is `SeedBank.placement_cost`
+## for the same `kind`, and the decision the player is actually making is the DIFFERENCE
+## between them, on a four-second confirm timer (plant-tower-defense-eupm).
+##
+## So the button does the subtraction. `Uproot (+12, net -8)` reads: twelve seeds come
+## back, and you end the round trip eight down.
+##
+## WHY THE NET AND NOT "replant 20". Two bare numbers side by side is the same
+## arithmetic in one more character; the bead's acceptance is that the NET COST is
+## visible while deciding, and a player mid-timer should not be subtracting. The
+## replant price is still reachable in words — see `uproot_button_tooltip`, which costs
+## no width at all.
+##
+## THE SIGN IS THE SECOND CHANNEL, and it has to be, because `net` genuinely goes both
+## ways: while the free starter is unspent `placement_cost` returns 0, so uprooting a
+## Corn Cobbler and replanting it is pure profit and the button says `+6`. A colour
+## would have been the obvious way to separate those two cases and it is exactly the
+## channel `game/OVERLAY_GRAMMAR.md` forbids as a sole signal; a leading `-` or `+`
+## survives greyscale, and this button already spends its one colour override on ARMED.
+##
+## THE ARMED LABEL IS DELIBERATELY UNCHANGED. `Really uproot? (+99)` is the longest
+## string this button has ever held and the width argument below is that nothing may
+## exceed it; more to the point, once the confirm is armed the decision is made and the
+## question on screen is "destroy this?", not "is the trade worth it?".
+##
+## Pure and static so the wording and the arithmetic are assertable without a HUD, and
+## so `test_the_uproot_buttons_worst_case_fits_the_selection_box` can measure the widest
+## string this can build rather than one somebody typed out.
+static func uproot_net(refund: int, replant: int) -> int:
+	return refund - replant
+
+
+## The net, signed. `%d` prints a loss as "-8" but a gain as a bare "8", so the two
+## directions would be told apart only by the reader knowing which one is normal; the
+## explicit `+` is the channel that survives the colour being thrown away.
+static func uproot_net_text(net: int) -> String:
+	return "+%d" % net if net > 0 else "%d" % net
+
+
+static func uproot_button_text(refund: int, replant: int) -> String:
+	return "Uproot (+%d, net %s)" % [refund, uproot_net_text(uproot_net(refund, replant))]
+
+
+## The armed label. Same shape it has always had — see the block above for why this one
+## does NOT gain the net.
+static func uproot_armed_text(refund: int) -> String:
+	return "Really uproot? (+%d)" % refund
+
+
+## The widest string this button can be asked to hold, and the value the fit test
+## measures. Two digits on both numbers because the catalogue tops out at 45 seeds
+## (`PlantCatalog`) and a refund can never exceed the cost it is a fraction of — the
+## third digit is headroom, not a reachable state.
+const UPROOT_WORST_CASE_TEXT: String = "Uproot (+99, net -99)"
+## And the armed branch's, which is the string every earlier pass measured this button
+## against. Both are measured against the 232px box by
+## `test_the_uproot_buttons_worst_case_fits_the_selection_box`, which also checks the
+## constant above is a real ceiling over every string the CATALOGUE can build — the two
+## are not ranked against each other, because which of them draws wider is a font
+## question and neither this comment nor that test needs an answer to it.
+const UPROOT_ARMED_WORST_CASE_TEXT: String = "Really uproot? (+99)"
+
+
+## The trade in words, on hover. This is where the replant PRICE lives: a tooltip is
+## the one surface in the side panel with no width budget at all, so the number the
+## button had to compress into a net is still available in full to anyone who asks.
+static func uproot_button_tooltip(plant_name: String, refund: int, replant: int) -> String:
+	var net: int = uproot_net(refund, replant)
+	if net >= 0:
+		return ("Digging up your %s pays %d seeds back. Planting another costs %d, "
+			+ "so the round trip leaves you %d up.") % [plant_name, refund, replant, net]
+	return ("Digging up your %s pays %d seeds back. Planting another costs %d, "
+		+ "so the round trip costs you %d.") % [plant_name, refund, replant, -net]
+
+
 ## What a plant button is tinted, in the three states it can be in.
 ##
 ## `hinted` is the packet rack talking to the plant bar: while the cursor rests on
@@ -2094,12 +2173,28 @@ func _refresh_selection(state: Dictionary) -> void:
 	# is called. It stays the same node at the same size — the devtools bridge and
 	# the tests press UprootButton by path, and a second button would not fit under
 	# SelectionBox anyway (the VBox already runs to within 16px of the panel foot).
+	#
+	# RESTING, the button now says both halves of the trade — see `uproot_button_text`.
+	# The replant price comes off the same SeedBank the panel is already holding, so the
+	# free starter's 0 is honoured rather than a flat catalogue price being quoted at a
+	# player who would not pay it.
+	var refund: int = plant.uproot_refund()
+	var replant: int = (state["bank"] as SeedBank).placement_cost(plant.kind)
 	if bool(state.get("uproot_armed", false)):
-		_uproot_button.text = "Really uproot? (+%d)" % plant.uproot_refund()
+		_uproot_button.text = uproot_armed_text(refund)
 		_uproot_button.add_theme_color_override("font_color", UPROOT_ARMED)
 	else:
-		_uproot_button.text = "Uproot (+%d)" % plant.uproot_refund()
+		_uproot_button.text = uproot_button_text(refund, replant)
 		_uproot_button.remove_theme_color_override("font_color")
+	# Set unconditionally, resting and armed alike: an armed button is the one moment a
+	# player most wants the sentence spelled out, and the tooltip is the only place the
+	# replant PRICE (rather than the net) is written.
+	var tip: String = uproot_button_tooltip(
+		PlantCatalog.display_name(plant.kind), refund, replant)
+	# Only on change, the same rule the plant buttons follow: a tooltip already on screen
+	# is not re-read when its text is reassigned, and this runs on every state push.
+	if _uproot_button.tooltip_text != tip:
+		_uproot_button.tooltip_text = tip
 
 
 ## The bar under the selection blurb. Appears only once a plant has been bitten,
