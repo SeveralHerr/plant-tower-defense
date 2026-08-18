@@ -634,6 +634,22 @@ func test_every_event_id_the_call_sites_use_is_in_the_table() -> String:
 	## The other half of the same guard. The constants are what game.gd and
 	## plant.gd actually pass, so a constant without a table row is a call site
 	## that compiles, runs, returns false and makes no sound forever.
+	##
+	## THIS LIST STAYS HAND-TYPED ON PURPOSE (plant-tower-defense-xc07). Deriving it
+	## from `Sfx.SOUNDS` is the obvious move and it is the wrong one: SOUNDS is what it
+	## is being compared against, so a derived list would assert that the table equals
+	## itself. `.claude/skills/derive-the-list/SKILL.md` has the case -- when deriving
+	## removes the second side, the hand-typing IS the check, and the cost of updating
+	## it is the feature, because paying it is what makes someone notice the set moved.
+	## Ten commits have paid it (34f436b, 2a162f3, 388db1a, 6117da4, 075fce9, a2f91d9,
+	## 6dbbe19, 5e6f766, 488b687, 5a7bfe8) and it has never once been stale, because
+	## the size assertion at the bottom will not let it be.
+	##
+	## What this test CANNOT see is the third side: whether any of these ids is still
+	## reached from a real `Sfx.play(` call site, and whether a cue played from one has
+	## a row at all when nobody thought to add it here. `Sfx.play()` is gated off
+	## headless, so no test can watch a call site; `python tools/sfx_call_check.py`
+	## scans game/ for that half and holds both directions.
 	var used: Array[StringName] = [
 		Sfx.PLANT_PLACED, Sfx.PLANT_BITTEN, Sfx.PLANT_DESTROYED,
 		# Both kill ids: game.gd picks between them on husk_multiplier(), so a table row
