@@ -7855,3 +7855,142 @@ func test_the_swarm_outgrows_the_plant_the_player_starts_with() -> String:
 
 
 # -- END the campaign's second act --------------------------------------------
+
+
+# -- BEGIN what a death feels like (plant-tower-defense-6v39) ------------------
+#
+# The kernel kill gets a knockback. Cycle 65 shipped a bitten corpse (narrower) and a
+# blasted one (tilted) and left the kernel on the straight default so the two that
+# differ would read as remarkable -- but a Corn Cobbler is the plant most players own
+# most of the time, so the default was the majority of corpses a player ever sees and
+# the moment of death said nothing. The shove is a third CHANNEL (position) rather than
+# a third `_death_cause` value, so a corpse can be chewed AND shoved.
+#
+# It lives past `GardenTheme.animations_enabled()`, false for every test in this suite
+# by construction, so it follows the rule the directional-animation block above states:
+# the composition comes out into a pure static (`Pest.knockback_offset`) and the result
+# is recorded into a field written ABOVE the gate (`_death_knockback`), read back
+# through `death_knockback()`. Deleting the shove from the kill goes red rather than
+# going quiet.
+
+
+## Every side, not just one: a sign error that is right for a kernel flying right is
+## wrong for the other three, and the wrong sign here is a corpse thrown TOWARD the cob
+## that shot it -- which still renders a perfectly plausible frame.
+func test_a_kernels_knockback_is_aimed_away_from_the_shot_on_every_side() -> String:
+	var kernel := Vector2(300.0, 200.0)
+	var victims: Dictionary = {
+		"right": kernel + Vector2(17.0, 0.0),
+		"left": kernel + Vector2(-17.0, 0.0),
+		"below": kernel + Vector2(0.0, 12.0),
+		"above": kernel + Vector2(0.0, -12.0),
+		"down-left": kernel + Vector2(-9.0, 11.0),
+	}
+	var err: String = ""
+	for side: String in victims:
+		var pest_at: Vector2 = victims[side]
+		var shove: Vector2 = Pest.knockback_offset(kernel, pest_at)
+		var onward: Vector2 = (pest_at - kernel).normalized()
+		err = _T.assert_float_eq(shove.length(), Pest.DEATH_KNOCKBACK_PX, 0.001,
+			"a %s hit shoves by exactly DEATH_KNOCKBACK_PX, got %.3f" % [side, shove.length()])
+		if err != "":
+			break
+		# A unit dot of 1.0 is "the same way the kernel was travelling", and nothing
+		# else scores it: a corpse thrown back at the shooter scores -1, one thrown
+		# across the road scores 0.
+		err = _T.assert_float_eq(shove.normalized().dot(onward), 1.0, 0.0001,
+			"and carries the body ONWARD, not back at the cob (%s: shove %s, onward %s)"
+				% [side, shove, onward])
+		if err != "":
+			break
+	if err == "":
+		# `Kernel._physics_process` is a centre-to-centre distance test, so a kernel
+		# arriving exactly on a pest's centre is reachable and a normalize() there
+		# would be a NaN riding into a Tween and a sprite position.
+		err = _T.assert_eq(Pest.knockback_offset(kernel, kernel), Vector2.ZERO,
+			"a hit dead on the centre shoves nowhere, not to NaN")
+	if err == "":
+		# A shove, not a throw. Past a quarter cell the corpse starts landing in the
+		# square next door, and a husk the player is about to sweep is dropped at the
+		# body's cell -- the picture and the click would stop agreeing.
+		err = _T.assert_true(Pest.DEATH_KNOCKBACK_PX < float(Board.CELL) * 0.25,
+			"and the corpse stays in the cell it died in (%.1f px against %.1f)"
+				% [Pest.DEATH_KNOCKBACK_PX, float(Board.CELL) * 0.25])
+	if err == "":
+		# The slide has to be over before the fade begins, or the corpse is still
+		# moving while it disappears -- two cues competing for the same beat.
+		err = _T.assert_true(Pest.DEATH_KNOCKBACK_TIME < Pest.DEATH_LINGER - Pest.DEATH_FADE,
+			"and has settled before the fade starts (%.2fs of a %.2fs hold)"
+				% [Pest.DEATH_KNOCKBACK_TIME, Pest.DEATH_LINGER - Pest.DEATH_FADE])
+	return err
+
+
+## The reach half: the REAL kernel path composes the shove and the corpse really sits
+## on it, whatever the animation gate says.
+##
+## Driven through `Kernel._physics_process` rather than by calling `take_damage`
+## directly, because the thing being checked is that the kernel -- the only object in
+## the game that knows which way the shot was travelling -- hands the direction over at
+## all. A test that passed the vector in itself would pass with that line deleted.
+##
+## The frame-by-frame loop is deliberate: the kernel samples every SPEED*delta px
+## (7.0 px at 60 Hz) against an 18 px radius, so it detects the pest while still SHORT
+## of it. Stepping it in one big delta would park the kernel PAST the pest and record a
+## backwards shove that the real game never produces.
+func test_a_kernel_kill_shoves_the_corpse_along_the_shot_and_a_plain_kill_does_not() -> String:
+	var pest: Pest = _pest(Pest.APHID, Vector2(200.0, 100.0))
+	# One kernel's worth of life left, so the first hit is the killing one.
+	pest.health = 0.5
+	var kernel := Kernel.new()
+	kernel.setup(Vector2(120.0, 100.0), Vector2.RIGHT, 5.0, Rect2(Vector2.ZERO, Vector2(896.0, 576.0)))
+	# Stepped by hand below, the way the coverage simulation in this file drives them.
+	kernel.set_physics_process(false)
+	var host: Node2D = _host([pest, kernel])
+	await _T.instantiate_scene(host)
+
+	var err: String = _T.assert_eq(pest.death_knockback(), Vector2.ZERO,
+		"a living pest is not already mid-knockback")
+	var frames: int = 0
+	while err == "" and pest.is_alive() and frames < 60:
+		kernel._physics_process(1.0 / 60.0)
+		frames += 1
+	if err == "":
+		err = _T.assert_false(pest.is_alive(),
+			"the kernel reached the pest and killed it (%d frames)" % frames)
+	if err == "":
+		err = _T.assert_float_eq(pest.death_knockback().length(), Pest.DEATH_KNOCKBACK_PX, 0.001,
+			"and recorded a full-strength shove, got %s" % pest.death_knockback())
+	if err == "":
+		err = _T.assert_float_eq(pest.death_knockback().normalized().dot(Vector2.RIGHT), 1.0, 0.0001,
+			("aimed the way the kernel was flying -- this cob shot rightward, so the body"
+				+ " goes right (got %s)") % pest.death_knockback())
+	if err == "":
+		# The picture, not just the number. Animations are off here, so this IS the
+		# corpse's resting state: a shove composed inside the Tween would read (0, 0).
+		err = _T.assert_eq(pest._sprite.position, pest.death_knockback(),
+			"and the corpse sprite is actually sitting there with animations off")
+	if err == "":
+		# The body itself must not have moved. `died` fires before `_play_death`, and
+		# `Game._on_pest_died` drops the husk and files the lane loss at `pest.position`
+		# -- a knockback on the Node2D would walk a husk off the cell it was earned on
+		# and shift what the coverage and escape simulations in this file count.
+		err = _T.assert_eq(pest.position, Vector2(200.0, 100.0),
+			"while the pest node stays exactly where it fell -- the shove is a sprite offset")
+
+	# And the straight corpse keeps its path, which is what leaves
+	# `test_a_corpse_lies_differently_depending_on_what_killed_it` meaning something: a
+	# Chomp's meal, a bomb's victim and any direct kill lie where they fell.
+	if err == "":
+		var chewed: Pest = _pest(Pest.APHID, Vector2(400.0, 300.0))
+		host.add_child(chewed)
+		chewed.kill(Pest.DEATH_BITTEN)
+		err = _T.assert_eq(chewed.death_knockback(), Vector2.ZERO,
+			"a chewed corpse is not shoved -- only a hit that arrived along a line is")
+		if err == "":
+			err = _T.assert_eq(chewed._sprite.position, Vector2.ZERO,
+				"and its sprite is still centred on the body")
+	_T.free_ui(host)
+	return err
+
+
+# -- END what a death feels like -----------------------------------------------
