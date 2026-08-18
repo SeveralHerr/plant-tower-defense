@@ -439,6 +439,33 @@ const DEATH_LINGER: float = 0.35
 ## the corpse reads for a beat first, same as before this existed, then goes.
 const DEATH_FADE: float = 0.15
 
+## The ceiling on how far `husk_multiplier()` may stretch that beat
+## (plant-tower-defense-rowt).
+##
+## 3.0 is exactly the hardest pest the game can roll today — hungry (2.0) paired with
+## armoured or winged (1.5), the only pairs `mutations_compose` permits — so the cap
+## costs nothing now and is here for the fourth mutation. `husk_multiplier()` is a
+## PRODUCT, so a fourth trait would multiply into it and quietly hand the board
+## multi-second corpses; a corpse outstaying its wave is a bug, and a cap that has to
+## be raised on purpose is the cheap way to find out.
+const DEATH_LINGER_MAX_MULTIPLIER: float = 3.0
+
+
+## How long a corpse worth `multiplier` holds before it is freed. Pure, so "a hard-won
+## kill lingers longer than an easy one" is one assertion rather than two stopwatches.
+##
+## Scaled by `husk_multiplier()` at the call site and by nothing else: the game already
+## prices a harder kill twice (`Game._on_pest_died` reads it for the husk AND for
+## `Sfx.kill_event_for`), and the corpse is the third place that idea belongs — the one
+## the player is actually looking at. Inventing a second difficulty number here would
+## give the same pest two contradictory answers to "how hard was that".
+##
+## Clamped at the bottom too: nothing under 1.0 is reachable through
+## `MUTATION_HUSK_MULTIPLIER`, and a corpse that vanished FASTER than the plain default
+## would read as the game dropping frames rather than as an easy kill.
+static func death_linger_for(multiplier: float) -> float:
+	return DEATH_LINGER * clampf(multiplier, 1.0, DEATH_LINGER_MAX_MULTIPLIER)
+
 ## A kernel connecting and a kernel missing (leaving the board unaimed) used to
 ## look identical — Kernel._physics_process called queue_free() on either exit
 ## with nothing in between (plant-tower-defense-7o3). A killed pest already gets
@@ -661,10 +688,11 @@ static func knockback_offset(from: Vector2, to: Vector2) -> Vector2:
 
 var _death_cause: StringName = &""
 
-## Settled the instant this death happens, and therefore recorded ABOVE every
-## animation gate — the rule `set_chewed()` states and `_bite_lunge` / `_sting_thrust`
-## follow. Headless never opens the gate, so a value composed inside it is a value no
-## test in this project can ever see: deleting the shove has to go red, not go quiet.
+## The two things about this death that are settled the instant it happens, and are
+## therefore recorded ABOVE every animation gate — the rule `set_chewed()` states and
+## `_bite_lunge` / `_sting_thrust` follow. Headless never opens the gate, so a value
+## composed inside it is a value no test in this project can ever see: deleting the
+## shove or the scaled hold has to go red, not go quiet.
 ##
 ## `_death_knockback` is a SPRITE offset and nothing else reads it. That is deliberate
 ## and load-bearing: `died` is emitted before `_play_death()` runs, and
@@ -672,6 +700,8 @@ var _death_cause: StringName = &""
 ## moving the body would move a husk the player has to click and shift a number the
 ## balance sims count. The corpse is a picture by the time it is shoved.
 var _death_knockback: Vector2 = Vector2.ZERO
+## How long this particular corpse holds, from `death_linger_for(husk_multiplier())`.
+var _death_linger: float = DEATH_LINGER
 
 ## The walk cycle's own state. `_facing` is the cardinal rotation
 ## _update_facing() decides; `_sway` is the gait's offset from it. They are kept
@@ -1458,15 +1488,20 @@ func flash_hit() -> void:
 ## Death by any cause — kernels, or a Chomp finishing its meal.
 ##
 ## Everything the corpse needs is settled here, before `died` is emitted and long
-## before `_play_death()` reaches an animation gate: the cause and the shove. `died`'s
-## listeners run in between (Game pays the seeds and drops the husk), so a value
-## composed later than this is a value the corpse could disagree with.
+## before `_play_death()` reaches an animation gate: the cause, the shove, and how long
+## the body holds. `died`'s listeners run in between (Game pays the seeds and drops the
+## husk), so a value composed later than this is a value the corpse could disagree with.
 func kill(cause: StringName = &"", knockback: Vector2 = Vector2.ZERO) -> void:
 	if not _alive:
 		return
 	_alive = false
 	_death_cause = cause
 	_death_knockback = knockback
+	# A hard-won kill lingers longer than an easy one (plant-tower-defense-rowt). Read
+	# here rather than in `_play_death()` because `husk_multiplier()` is the price this
+	# same death is about to be paid at, and the corpse should outlast the aphid beside
+	# it by exactly the ratio the husk does.
+	_death_linger = death_linger_for(husk_multiplier())
 	if held_by != null and held_by.has_method("release"):
 		held_by.call("release")
 	died.emit(self)
@@ -1523,10 +1558,16 @@ func _play_death() -> void:
 		# "hold, then go" shape as the rest of a corpse's beat, just on alpha
 		# instead of a callback. Plant.play_exit_and_free() is the reference:
 		# a tween on the way off the board, gated the same way.
-		tween.tween_interval(DEATH_LINGER - DEATH_FADE)
+		#
+		# DEATH_FADE stays a fixed tail while the HOLD is what a hard kill lengthens:
+		# scaling both would give a queen the same shape of exit as an aphid, only
+		# slower, and a fade stretched to 0.45s reads as the game hitching. So the
+		# hold is `death_linger() - DEATH_FADE`, which `death_linger_for`'s floor of
+		# 1.0 keeps comfortably positive (0.20s at worst) rather than swallowing it.
+		tween.tween_interval(death_linger() - DEATH_FADE)
 		tween.tween_property(_sprite, "modulate:a", 0.0, DEATH_FADE)
 	else:
-		tween.tween_interval(DEATH_LINGER)
+		tween.tween_interval(death_linger())
 	tween.tween_callback(queue_free)
 	_play_knockback()
 
@@ -1589,6 +1630,12 @@ func corpse_scale() -> Vector2:
 ## gate, so it is the corpse's real resting offset and not a description of one.
 func death_knockback() -> Vector2:
 	return _death_knockback
+
+
+## How long this corpse holds before it is freed — `DEATH_LINGER` for a plain pest, up
+## to DEATH_LINGER_MAX_MULTIPLIER times that for one that cost the player more.
+func death_linger() -> float:
+	return _death_linger
 
 
 ## How much of the pest is left to draw, as a scale factor. Pure, so the curve is

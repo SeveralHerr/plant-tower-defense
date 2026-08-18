@@ -7857,21 +7857,29 @@ func test_the_swarm_outgrows_the_plant_the_player_starts_with() -> String:
 # -- END the campaign's second act --------------------------------------------
 
 
-# -- BEGIN what a death feels like (plant-tower-defense-6v39) ------------------
+# -- BEGIN what a death feels like (plant-tower-defense-6v39, -rowt) -----------
 #
-# The kernel kill gets a knockback. Cycle 65 shipped a bitten corpse (narrower) and a
-# blasted one (tilted) and left the kernel on the straight default so the two that
-# differ would read as remarkable -- but a Corn Cobbler is the plant most players own
-# most of the time, so the default was the majority of corpses a player ever sees and
-# the moment of death said nothing. The shove is a third CHANNEL (position) rather than
-# a third `_death_cause` value, so a corpse can be chewed AND shoved.
+# Two cues on the one path every pest leaves the board by, `Pest.kill()`.
 #
-# It lives past `GardenTheme.animations_enabled()`, false for every test in this suite
-# by construction, so it follows the rule the directional-animation block above states:
-# the composition comes out into a pure static (`Pest.knockback_offset`) and the result
-# is recorded into a field written ABOVE the gate (`_death_knockback`), read back
-# through `death_knockback()`. Deleting the shove from the kill goes red rather than
-# going quiet.
+# -6v39: the kernel kill gets a knockback. Cycle 65 shipped a bitten corpse (narrower)
+# and a blasted one (tilted) and left the kernel on the straight default so the two
+# that differ would read as remarkable -- but a Corn Cobbler is the plant most players
+# own most of the time, so the default was the majority of corpses a player ever sees
+# and the moment of death said nothing. The shove is a third CHANNEL (position) rather
+# than a third `_death_cause` value, so a corpse can be chewed AND shoved.
+#
+# -rowt: `DEATH_LINGER` was a flat 0.35s, so an armoured beetle that soaked four
+# volleys left on the same beat as an aphid that took one. It is now scaled by
+# `husk_multiplier()`, which is already the game's answer to "how much did this cost to
+# deal with" -- the same number `Game._on_pest_died` reads for the husk and for
+# `Sfx.kill_event_for`.
+#
+# Both live past `GardenTheme.animations_enabled()`, false for every test in this suite
+# by construction, so both follow the rule the directional-animation block above
+# states: the composition comes out into a pure static (`Pest.knockback_offset`,
+# `Pest.death_linger_for`) and the result is recorded into a field written ABOVE the
+# gate (`_death_knockback`, `_death_linger`), read back through `death_knockback()` and
+# `death_linger()`. Deleting the shove from the kill goes red rather than going quiet.
 
 
 ## Every side, not just one: a sign error that is right for a kernel flying right is
@@ -7989,6 +7997,127 @@ func test_a_kernel_kill_shoves_the_corpse_along_the_shot_and_a_plain_kill_does_n
 		if err == "":
 			err = _T.assert_eq(chewed._sprite.position, Vector2.ZERO,
 				"and its sprite is still centred on the body")
+	_T.free_ui(host)
+	return err
+
+
+## Every husk multiplier the game can actually reach, derived from the mutation table
+## and `mutations_compose` rather than from a list somebody has to remember to grow --
+## the same derivation `test_selftest.gd`'s `_reachable_husk_values` uses, and for the
+## same reason: the hand-written version of that one was wrong.
+func _reachable_husk_multipliers() -> Array[float]:
+	var seen: Dictionary = {1.0: true}
+	for a: StringName in Pest.MUTATION_HUSK_MULTIPLIER:
+		var ma: float = float(Pest.MUTATION_HUSK_MULTIPLIER[a])
+		seen[ma] = true
+		for b: StringName in Pest.MUTATION_HUSK_MULTIPLIER:
+			if Pest.mutations_compose(a, b):
+				seen[ma * float(Pest.MUTATION_HUSK_MULTIPLIER[b])] = true
+	var out: Array[float] = []
+	for m: float in seen:
+		out.append(m)
+	out.sort()
+	return out
+
+
+## A hard-won kill holds the screen longer than an easy one, across every price the
+## game can actually charge.
+func test_a_corpse_holds_in_proportion_to_what_the_kill_cost() -> String:
+	var prices: Array[float] = _reachable_husk_multipliers()
+	var err: String = _T.assert_gt(prices.size(), 2,
+		"there is more than one price to tell apart (%d)" % prices.size())
+	if err == "":
+		err = _T.assert_float_eq(Pest.death_linger_for(1.0), Pest.DEATH_LINGER, 0.0001,
+			"a plain pest leaves on exactly the beat it always did")
+	var previous: float = 0.0
+	for price: float in prices:
+		if err != "":
+			break
+		var held: float = Pest.death_linger_for(price)
+		err = _T.assert_gt(held, previous,
+			"a %.2fx kill holds longer than every cheaper one (%.3fs against %.3fs)"
+				% [price, held, previous])
+		if err == "":
+			# The fade is a fixed tail and the HOLD is what grows. If a scaled linger
+			# ever dipped under DEATH_FADE the fade would swallow the whole beat and
+			# `_play_death` would queue a negative interval.
+			err = _T.assert_gt(held - Pest.DEATH_FADE, 0.0,
+				"and still has a solid hold in front of its fade (%.3fs at %.2fx)"
+					% [held - Pest.DEATH_FADE, price])
+		previous = held
+	if err == "":
+		# Visibly different, which is the acceptance. A tenth of a second is roughly
+		# the floor a player reads as "that one stayed"; the hardest pest today is
+		# three times the plain beat.
+		err = _T.assert_gt(Pest.death_linger_for(prices[prices.size() - 1]) - Pest.DEATH_LINGER, 0.1,
+			"and the dearest kill outlasts the cheapest by an eyeful, not by a frame")
+	if err == "":
+		# The cap is not decoration: `husk_multiplier()` is a PRODUCT, so a fourth
+		# mutation would multiply into it. Today nothing reaches the ceiling.
+		err = _T.assert_gte(Pest.DEATH_LINGER_MAX_MULTIPLIER, prices[prices.size() - 1],
+			("the cap is at or above the dearest kill the game can roll (%.2f against %.2f)"
+				+ " -- below it and the mutation stops being felt")
+				% [Pest.DEATH_LINGER_MAX_MULTIPLIER, prices[prices.size() - 1]])
+	if err == "":
+		err = _T.assert_float_eq(Pest.death_linger_for(99.0),
+			Pest.DEATH_LINGER * Pest.DEATH_LINGER_MAX_MULTIPLIER, 0.0001,
+			"and it really clamps, rather than documenting a clamp")
+	if err == "":
+		# Never faster than the default. A corpse that vanished quicker than a plain
+		# one would read as the game dropping frames, not as an easy kill.
+		err = _T.assert_float_eq(Pest.death_linger_for(0.1), Pest.DEATH_LINGER, 0.0001,
+			"nothing leaves faster than the plain beat, whatever it is worth")
+	if err == "":
+		# `test_a_pest_killed_headless_is_eventually_freed` waits 600 frames for a
+		# corpse to go. The longest one this can produce must sit comfortably inside
+		# that, or a mutation shipped today fails a test written months ago.
+		err = _T.assert_true(Pest.death_linger_for(Pest.DEATH_LINGER_MAX_MULTIPLIER) < 2.0,
+			"and the longest corpse in the game is still under two seconds (%.2fs)"
+				% Pest.death_linger_for(Pest.DEATH_LINGER_MAX_MULTIPLIER))
+	return err
+
+
+## The reach half, and the bead's acceptance verbatim: two pests of different difficulty
+## killed in the same frame leave at different times.
+##
+## Through `kill()`, the one path every death takes, so the scaling cannot be deleted
+## from it without this going red.
+func test_two_pests_killed_in_one_frame_leave_at_different_times() -> String:
+	var plain: Pest = _pest(Pest.APHID, Vector2(100.0, 100.0))
+	var dear: Pest = _pest(Pest.APHID, Vector2(160.0, 100.0))
+	var err: String = _T.assert_true(dear.apply_mutation(Pest.MUTATION_HUNGRY),
+		"the second aphid really took the mutation")
+	var host: Node2D = _host([plain, dear])
+	await _T.instantiate_scene(host)
+
+	if err == "":
+		err = _T.assert_float_eq(plain.death_linger(), Pest.DEATH_LINGER, 0.0001,
+			"a live pest reports the plain beat until something kills it")
+	if err == "":
+		err = _T.assert_gt(dear.husk_multiplier(), plain.husk_multiplier(),
+			"the mutated one costs the player more to deal with")
+	if err == "":
+		# The same frame, one after the other, which is the comparison the acceptance
+		# asks for -- not two runs with a stopwatch.
+		plain.kill()
+		dear.kill()
+		err = _T.assert_float_eq(plain.death_linger(), Pest.DEATH_LINGER, 0.0001,
+			"the plain corpse still leaves on the beat it always did")
+	if err == "":
+		err = _T.assert_gt(dear.death_linger(), plain.death_linger(),
+			"and the dear one outstays it (%.3fs against %.3fs)"
+				% [dear.death_linger(), plain.death_linger()])
+	if err == "":
+		# Exactly the price, not merely longer: the corpse and the husk are paid on the
+		# same number, which is the whole argument for reusing husk_multiplier() here
+		# instead of inventing a second measure of difficulty.
+		err = _T.assert_float_eq(dear.death_linger() / plain.death_linger(),
+			dear.husk_multiplier(), 0.0001,
+			("the two lingers stand in exactly the ratio the two husks do (%.3f against %.3f)")
+				% [dear.death_linger() / plain.death_linger(), dear.husk_multiplier()])
+	if err == "":
+		err = _T.assert_gt(dear.death_linger() - Pest.DEATH_FADE, 0.0,
+			"and its fade is still a tail on the end of a solid hold")
 	_T.free_ui(host)
 	return err
 
