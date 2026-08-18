@@ -88,6 +88,8 @@ const LEVELS: Array[Dictionary] = [
 ##   * **below 32**, half a `Board.CELL`, so it stays inside its own cell.
 const CHEW_RING_RADIUS: float = 22.0
 const CHEW_RING_WIDTH: float = 3.0
+## Named rather than inline now that two places would otherwise spell it.
+const CHEW_RING_COLOR := Color(1.0, 0.55, 0.15, 0.85)
 
 ## The fang crown: what an upgraded mouth WEARS, always on, whether or not it is
 ## chewing.
@@ -246,6 +248,8 @@ var _chew_left: float = 0.0
 var _bites_taken: int = 0
 var _chew_total: float = 0.0
 var _idle_texture: Texture2D = null
+## The canvas the chew ring paints on, above the flower. See _build_chew_layer.
+var _chew_layer: Node2D = null
 var _eating_texture: Texture2D = null
 var _gape_texture: Texture2D = null
 var _eating_late_texture: Texture2D = null
@@ -326,6 +330,54 @@ static func fang_offsets(for_level: int) -> PackedFloat32Array:
 ## mouth stuck "busy" pointing at a freed pest.
 func _on_setup() -> void:
 	destroyed.connect(func(_p: Plant) -> void: release())
+	_build_chew_layer()
+
+
+## The chew ring's own canvas, added AFTER the sway pivot so it paints OVER the
+## flower instead of under it.
+##
+## MEASURED, which is the whole reason this exists (plant-tower-defense-gfpj asked for
+## exactly this evidence). A Node2D paints its own `_draw()` before its children, and
+## `_sprite` is a child -- so the ring at CHEW_RING_RADIUS 22 was drawn beneath a
+## flower whose petals reach r=24 and whose two leaves reach r=31. Sampling the
+## rendered pixels at r=22 across six angles INSIDE the swept arc found the ring at
+## exactly one of them:
+##
+##     30deg #bd9400 petal   45deg #198c4a leaf    55deg #29c56b leaf
+##     65deg #bd9400 petal   75deg #bd9400 petal   90deg #ef8429 RING
+##
+## So the countdown a player is supposed to read was mostly invisible, and broke up as
+## it swept past each petal. The fang crown escapes only because it sits at r=25.3-30.7,
+## outside the petals -- which is also why moving the ring out is not available: the
+## fangs own that band and 32 is the half-cell.
+##
+## A `draw` signal on a bare Node2D rather than a new script: the layer has no state
+## and no behaviour, and a second class for eight lines of arc would be the heavier
+## answer. `Plant` frees it with the rest of the subtree.
+func _build_chew_layer() -> void:
+	if _chew_layer != null and is_instance_valid(_chew_layer):
+		return
+	_chew_layer = Node2D.new()
+	_chew_layer.name = "ChewRing"
+	add_child(_chew_layer)
+	_chew_layer.draw.connect(_draw_chew_ring)
+
+
+## Painted on the layer, not on the plant. Same arc, same radius, same colour as
+## before -- only the canvas it lands on changed.
+## The layer is a sibling canvas, so the plant's own queue_redraw() does not reach
+## it. Paired at every call site rather than folded into one, because a Chomp that
+## repaints its crown and not its ring is the bug this whole change is about.
+func _redraw_chew_layer() -> void:
+	if _chew_layer != null and is_instance_valid(_chew_layer):
+		_chew_layer.queue_redraw()
+
+
+func _draw_chew_ring() -> void:
+	if _held == null or _chew_layer == null or not is_instance_valid(_chew_layer):
+		return
+	_chew_layer.draw_arc(Vector2.ZERO, CHEW_RING_RADIUS, 0.0,
+		chew_arc_end(chew_progress()), 24, CHEW_RING_COLOR, CHEW_RING_WIDTH, true)
 
 
 ## Emitted when this Chomp is sitting still and the reason is flight — see
@@ -423,6 +475,7 @@ func _grab(pest: Pest) -> void:
 	if _sprite == null or _gape_texture == null or _sprite.texture != _gape_texture:
 		_show_eating_sprite()
 	queue_redraw()
+	_redraw_chew_layer()
 
 
 func _chew(delta: float) -> void:
@@ -443,6 +496,7 @@ func _chew(delta: float) -> void:
 	if chew_progress() > LATE_BITE_THRESHOLD and _sprite != null and _sprite.texture != _eating_late_texture:
 		_show_eating_late_sprite()
 	queue_redraw()
+	_redraw_chew_layer()
 	if _chew_left <= 0.0:
 		var meal: Pest = _held
 		release()
@@ -468,6 +522,7 @@ func release() -> void:
 	_chew_total = 0.0
 	_show_idle_sprite()
 	queue_redraw()
+	_redraw_chew_layer()
 
 
 func is_busy() -> bool:
@@ -504,10 +559,8 @@ func _draw() -> void:
 	# the ring is what its current MEAL looks like. A cue the player has to catch the
 	# plant mid-chew to see cannot be the readout for something they bought.
 	_draw_fang_crown()
-	if _held == null:
-		return
-	draw_arc(Vector2.ZERO, CHEW_RING_RADIUS, 0.0, chew_arc_end(chew_progress()), 24,
-		Color(1.0, 0.55, 0.15, 0.85), CHEW_RING_WIDTH, true)
+	# The chew ring is NOT here any more -- it is on _chew_layer, above the sprite.
+	# See _build_chew_layer for the pixel measurements that moved it.
 
 
 ## Level 1 draws nothing here and that is decided in `fang_offsets`, not by an `if`
