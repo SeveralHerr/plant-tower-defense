@@ -6468,3 +6468,73 @@ Noted on the bead.
   - Improvement: `quit` already prints `user://: no file changed during this run` when nothing moved — that line is the natural place for the other outcome, and it printed the *clean* wording on a run that had in fact changed a file, which is worse than silence. So: when `--snapshot-userstate` is in force, `quit` must say per file whether it was unchanged, restored, or **failed to restore**, and exit non-zero on the third. As it stands the flag's failure mode is indistinguishable from its success, and the whole reason to reach for it is that you already know the run will write.
 
 - Gap: **no gap for the double-post, and that is worth saying rather than leaving blank.** The defect was in this project's own code, not the harness, and no zero-config check could have had an opinion — it is a contract between two of our functions. `save_persist_check`, a project checker written to `house-static-checker`, is what caught the other one. That is the harness's own argument working: the generic checks cover the generic failures, and the project grows its own for the rest.
+
+## 2026-08-17 — Filed four beads from a user bug report; no code changed
+
+- Value: **inconclusive** — the harness was not run, because nothing was built or changed.
+  - Expected: nothing; this turn was static reading (grep/sed over `game/hud.gd`,
+    `game/board.gd`, `game/game.gd`, `project.godot`) to ground four bug reports in
+    `file:line` citations. No gameplay, script, or scene change, so the DEVELOPMENT RULE's
+    `/verify` trigger did not fire.
+  - Got: nothing from runtime. Every claim in the four beads is a static one and is
+    labelled as such — `twbt` explicitly makes "confirm which suspect with a cropped
+    `screenshot` before fixing" its first acceptance criterion rather than asserting the
+    cause, precisely because reading the code cannot distinguish a corner-normal
+    discontinuity from a non-integer-scale tile seam.
+  - Found: nothing — but reading found something a run would not have: `game.gd:1678`
+    handles no `InputEventScreenTouch`/`ScreenDrag` at all, so the reported "click and drag
+    is awkward" describes an interaction that does not exist. A live session would have
+    shown mouse emulation working and hidden the absence.
+  - Cheaper: nothing cheaper than what was done. `grep -n` over four files was the whole
+    cost and produced every citation in the beads.
+
+- Gap: **no gaps this turn** — the harness was not exercised, so it had no opportunity to
+  fall short. Nothing to file.
+
+## 2026-08-17 — Filed two animation beads (Chomp meal, Nettle sting); no code changed
+
+- Value: **inconclusive** — the harness was not run, because nothing was built or changed.
+  - Expected: nothing from runtime. This was intake, not implementation: a static read of
+    `game/chomp_flower.gd`, `game/pest.gd`, `game/nettle.gd`, `test/unit/test_combat.gd` and
+    `art_src/*.svg` to ground a two-sentence user report. No gameplay, script or scene edit,
+    so the DEVELOPMENT RULE's `/verify` trigger never fired.
+  - Got: nothing from the bus. Two NON-devtools gates did run and both matter:
+    `bead_prose_check.py` -> "0 finding(s) gating", confirming no shell-eaten prose in the
+    new beads; `citation_check.py` -> "298 citation(s) across 1 file(s), 298 resolved".
+  - Found: **yes, two things a clean read would have missed.** (1) `citation_check.py`
+    reports clean while checking only `kanban.md` — it does not read beads at all, so it
+    offered no protection over the 20-odd citations I had just written. Hand-checking with
+    `sed -n 'Np'` then caught three genuinely wrong line numbers (`nettle.gd:309`->308,
+    `:319`->326, `chomp_flower.gd:436`->438), all fixed before the beads were finalised.
+    (2) The Chomp's victim keeps running `_gait()` while held (`pest.gd:845`) — the bug
+    walks on the spot inside the jaws. That is the actual content of the user's complaint
+    and no screenshot would have named the cause.
+  - Cheaper: nothing. `grep`/`sed` over five files was the whole cost. A live session would
+    have been strictly worse here — it would have shown the animations playing and hidden
+    the absence of any victim-side change, which is the finding.
+
+- Gap: **`citation_check.py` reads only `kanban.md`, so bead citations are ungated** — ran
+  `python tools/citation_check.py`, got `298 citation(s) across 1 file(s), 298 resolved,
+  0 finding(s)` immediately after writing ~20 fresh `file:line` citations into three beads,
+  three of which were wrong. The exit-clean is honest about its scope only in the tool's own
+  `NOT COVERED:` line, which does not mention which files it read. Workaround: hand-checked
+  every load-bearing citation with `sed -n 'Np' FILE`.
+  - [G-123] status: open | seen: 1 | harness: (client version not queried; no bus opened
+    this turn — `harness-version --client` not run because no harness command was used)
+  - Improvement: have `citation_check.py` print the files it scanned (`scanned: kanban.md`)
+    so a clean exit cannot be mistaken for coverage it does not have, and add a `--beads`
+    mode reading `.beads/issues.jsonl` description/design/notes fields with the same
+    resolver. The scan is textual and the resolver already exists; this is a source-list
+    change, not new machinery.
+
+## 2026-08-17 — Cycle 104: four lanes, and the merge found a bug in my own previous fix
+
+- Value: **warranted** — three defects, none visible in any lane's diff, and one of them in code I wrote two cycles ago and had already called fixed.
+  - Expected: that the merge would find what the lanes structurally cannot — a lane compiles nothing and runs nothing, and two of these four changed PROCESS-GLOBAL state (`Engine.time_scale`, the save format) whose failures surface nowhere near where they are caused.
+  - Got: `705/705, Assertions: 14585, Suite: 7`; `lint: 0 error(s), 0 warning(s)`; `check_all: ran 15 of 15 ... 15 clean`, `CLASSIFIED 23 tools/*.py ... 0 unclassified`; `findings: 0 finding(s) across 5 of 5 checks` unpaused; and at runtime the speed toggle filed `spd1`, survived a quit, and read back `2x` on a fresh launch.
+  - Found: **three, all fixed in-run.** (1) Two tests failed on the `-zgzc` merge and **both were right** — the game had genuinely stopped starting at 1x, which is the feature; `GameSpeed._step` is a static var and `RunConfig.game_speed_step` is autoload state loaded from the real save before any `setup()` runs, so the chosen speed is process-global twice over and a `GameSpeed.reset()` at the top of a test is no longer enough. (2) The first suite run after the v6→v7 bump **rewrote the developer's real `highscore.save`** before any redirect could apply, because `RunConfig` is an autoload and `_ready()` beats `setup()` — nothing lost, but `save_persist_check` structurally cannot see it since there is no test function in the chain (`-58u7`). (3) **My own cycle-102 `citation_check` fix was wrong in the opposite direction**: it excluded on an ABSOLUTE path, so run from inside a lane — whose own path *is* `.claude/worktrees/…` — it discarded the entire repo. The parent read `298 resolved`; a lane read `260` and 38 bogus advisories.
+  - Cheaper: nothing for any of the three. The isolation failure needed the whole suite in one process, which no lane may run. The save migration needed reading a file no gate reads. And the `citation_check` asymmetry needed the checker executed from inside a worktree AND from the parent — a comparison only the fan-out itself produces, which is why two cycles of running it one way each never saw it.
+
+- Gap: **no NEW harness gap this turn, and that is worth writing rather than leaving blank.** All three defects were in this project's own code and its own checkers, not in the harness — and two of them were caught BY project checkers written to `house-static-checker` (`save_persist_check` printed a call chain last cycle; `check_all`'s classified denominator is what made "14 of 15 ran" legible this cycle). The one harness-shaped observation is that `check_all`'s **denominators** did all the work while its **exit code** stayed 0 through the entire `citation_check` defect: every run was clean before and after, and the only thing that moved was `19 world-space script(s)` → `38` and `298 resolved` → `260`. A gate whose number is the signal and whose verdict is not is exactly what `house-static-checker`'s denominator rule is about, and it held.
+  - [G-123] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: `check_all --compare-to FILE` — capture the classified denominators to a file, and diff a later run against it. Every check in this cycle's tree-walk audit was "run it twice under different filesystem conditions and see whether the numbers moved", done by hand with `diff` on two captured outputs. One flag would make that a standing check instead of a one-off, and it is the only thing that would have caught the absolute-path regression automatically.

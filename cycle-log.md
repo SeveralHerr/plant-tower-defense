@@ -1,10 +1,46 @@
-# Cycle 103
+# Cycle 104
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
 what `bd` structurally cannot: which cycle we are on, what the last one taught, what is
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
+
+## What cycle 104 taught
+
+**The merge found a bug in a fix I had already called done.** Cycle 102 stopped
+`citation_check` walking into `.claude/worktrees/` by testing `"worktrees" in path.parts` —
+an ABSOLUTE path. Run from inside a lane, whose own path *is* `.claude/worktrees/…`, that
+discards the entire repo: the parent read `298 resolved`, a lane read `260` and 38 bogus
+advisories. Same asymmetry as the original defect, pointing the other way, and **invisible
+from whichever side you happen to be standing on**. Only running the fan-out produces both
+viewpoints at once. Exclusions are now relative to the tool's own root, in `repo_walk.py`,
+imported rather than copied — and the sweep that found it enumerated every tree-walking
+tool instead of fixing the one that complained.
+
+**Read the denominator, not the verdict.** `check_all` exited 0 on every run through that
+entire defect. The only thing that ever moved was `19 world-space script(s)` → `38` and
+`298 resolved` → `260`. Filed `-G-123`: a `--compare-to` mode would make "run it twice
+under different conditions and diff the numbers" a standing check rather than something
+done by hand.
+
+**Two tests failed on a merge and both were right.** The garden remembers its speed now, so
+the game has genuinely stopped starting at 1x. `GameSpeed._step` is static and
+`RunConfig.game_speed_step` is autoload state loaded from the real save *before any
+`setup()` runs* — process-global twice over. A `GameSpeed.reset()` at the top of a test
+stopped being enough the moment `_ready()` began restoring the saved step.
+
+**An autoload beats `setup()`, and no checker can see it.** The first suite run after the
+v6→v7 save bump rewrote the developer's real `highscore.save`. Nothing was lost, and the
+migration is what the game would have done anyway — but `save_persist_check` is clean by
+construction there, because no *test function* is in the chain. `-58u7`.
+
+**Beads rot, and the rot is measurable.** A derived scan found **139 open beads carrying an
+absence claim**. Sixteen were resolved against the code; two had premises that were now
+entirely false and closed without a line written — one would have had somebody building a
+boss that already has 80 health, two sprites and 26 wave appearances. **123 were not
+reached**, and saying so is the point: a sweep that does not state where it stopped reads
+as complete.
 
 ## What cycle 103 taught
 

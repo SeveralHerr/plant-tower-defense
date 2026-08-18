@@ -181,6 +181,34 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### Added cycle 104 — out of four lanes and an absence sweep
+
+- **Three roster roles are genuinely uncovered, and two that `-ibvb` lists are not.**
+  Re-checked rather than inherited: nothing blocks or holds the road (`grep -rln
+  "blocks_road\|is_wall\|impassable" game/*.gd` returns nothing), no plant heals another
+  (the only `.heal(` on a plant is `game/game.gd:370`, the rain weather effect), and husks
+  are still read only by the compost sweep. The bead's other two — buffs neighbours, hits
+  only mutations — shipped as Mint and Nettle, whose own class headers say so. A blocker
+  plant is the interesting one: placement geometry currently only decides reach and lane
+  coverage, and a plant that contests a road cell would make the road itself a resource.
+- **The run summary is now the place strategy gets said, and it has exactly one free
+  subject.** `-bou9` put "Seeds spent — 275 on plants, 0 on upgrades" on the card by
+  SWAPPING out "Threat reached" (folded onto the waves row), because `rows_capacity()`
+  computes 7 and there were 7. Any future card subject is another swap. Worth deciding
+  what the seven are *for* before the next one is filed, rather than discovering the
+  ceiling again — the eighth row foots at 486 against buttons at 476.
+- **Four `show_message` sites are edge-triggered only by an explicit latch.**
+  `docs/message_trigger_audit.md` classifies all 17; the four at `game.gd:453`, `:1332`,
+  `:1582` and the packet-reveal loop are edge ONLY because `_wave_live`, `_flight_noted`,
+  `_uproot_left` and a bounded loop each latch them. Nothing marks them as load-bearing,
+  and any refactor that moves one turns a level-triggered caller loose on the message
+  queue. A comment at each, or a test naming the latch, is cheap insurance.
+- **`Hud.messages_refused` and `messages_evicted` are readable and nobody reads them.**
+  They exist precisely to answer "is the row dropping lines a player was owed", and the
+  only measurement of them is now a headless test. A `cmd budgets`-style verb or a line on
+  the run summary would make the row's real loss rate visible during an actual playtest,
+  which is the only place it can be judged.
+
 ### Added cycle 103 — out of the upgrade hint
 
 - **The hint teaches that upgrading EXISTS. It does not teach that upgrading BEATS
