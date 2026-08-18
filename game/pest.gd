@@ -231,8 +231,12 @@ const SPECIES: Dictionary = {
 	## about one Nurse in eight.
 	NURSE: {
 		"display": "Nurse Beetle",
-		"texture": "res://assets/sprites/pest_beetle.png",
-		"dead_texture": "res://assets/sprites/pest_beetle_dead.png",
+		# Her own art since plant-tower-defense-cnn7. She wore pest_beetle.png until
+		# then, which made a whole boss mechanic unreadable: the one bug whose identity
+		# changes what the player should do looked exactly like the fifteen ordinary
+		# beetles walking beside her.
+		"texture": "res://assets/sprites/pest_nurse.png",
+		"dead_texture": "res://assets/sprites/pest_nurse_dead.png",
 		"health": 48.0,
 		"speed": 44.0,
 		"seeds": 39,
