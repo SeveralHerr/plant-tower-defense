@@ -4605,3 +4605,247 @@ func test_nothing_the_board_paints_over_it_is_the_lawns_own_hue() -> String:
 		err = _T.assert_gt(GardenTheme.GROUND_SEPARATION_MIN, 0.0,
 			"and the floor it rejects against is a real number, not a disabled check")
 	return err
+
+
+# -- message row: is any caller stacking duplicates into the queue? ------------
+#
+# The audit these belong to is `docs/message_trigger_audit.md`: all 17
+# `show_message()` call sites under `game/`, classified EDGE vs LEVEL. The reading
+# concluded that exactly one is level-triggered with a condition that persists
+# (`_maybe_teach_upgrading`, already guarded by `Hud.row_is_quiet`). These two tests
+# are what stop that from being only a reading.
+#
+# `Hud.messages_refused` counts ONLY the terminal symptom -- a message arriving at a
+# queue already holding MESSAGE_QUEUE_MAX entries whose lowest priority ties or beats
+# it. That is precisely the fourth copy of a stacking one-shot. It does NOT count an
+# ordinary queued line, so a non-zero reading is evidence of stacking rather than of
+# a merely busy row.
+#
+# WHY BOTH TESTS AND NOT JUST THE FIRST. A zero from a counter can mean "nothing
+# stacked" or "this counter never moves in a headless suite", and those are different
+# facts. The second test drives the counter deliberately BEFORE the first one's zero
+# is worth anything -- the `scope-vs-claim` rule about a denominator that can be zero
+# for more than one reason.
+
+
+## The ambient reading: a Game driven through a realistic run, and both loss counters
+## off the end of it.
+##
+## Frames are advanced by calling `_process` with an explicit delta, the pattern the
+## uproot tests above already use. That is load-bearing rather than stylistic: with no
+## frames pumped, `_message_left` never decays, every line after the first queues, and
+## the counters would report a stacking defect that is really just a stopped clock.
+func test_a_realistic_run_refuses_no_messages_and_evicts_none() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null and game.hud != null,
+		"the run has a HUD, without which show_message is never reached at all")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# The opening hint posted from _ready() is already on the row. Let it expire, so
+	# what follows is measured against a quiet row rather than against startup.
+	game.hud._process(20.0)
+
+	# `RunConfig.earned_milestones` is autoload state loaded from the real save BEFORE
+	# setup() redirected save_path, so whether the upgrade hint fires at all otherwise
+	# depends on the developer's own progress and on which tests ran first. Pinned here
+	# so this run is the same run every time; restored at the end.
+	var stashed_hint: bool = RunConfig.has_milestone(RunConfig.HINT_UPGRADE_EXISTS)
+	RunConfig.earned_milestones.erase(RunConfig.HINT_UPGRADE_EXISTS)
+
+	game.bank.add_seeds(500)
+	var planted: int = 0
+	for i: int in range(6):
+		var cell: Vector2i = _grass(game)
+		if cell == Vector2i(-1, -1):
+			break
+		if game.place_plant(PlantCatalog.CORN, cell) == "":
+			planted += 1
+		# A second and a half of row time between beats, the way a player's clicks are
+		# spaced -- not zero, which would be a stopped clock, and not minutes.
+		game.hud._process(1.5)
+	err = _T.assert_gt(planted, 0, "the run actually planted something to narrate")
+
+	if err == "":
+		# An upgrade, a refused upgrade, an armed uproot and its cancellation -- four
+		# more call sites, two of them refusals.
+		var occupied: Vector2i = _grass_with_plant(game)
+		if occupied != Vector2i(-1, -1):
+			game._select(game.plant_at(occupied))
+			# The REFUSAL first and the success second, deliberately. Upgrading first
+			# could take the plant to the top of its ladder, and the second call would
+			# then return "already fully grown" -- a different branch, posting no
+			# message at all, and the refusal call site would go unreached while this
+			# test still passed.
+			#
+			# Emptied with add_seeds, NOT bank.set_seed(0): that one fixes the packet
+			# RNG and leaves the balance untouched, so the upgrade would quietly
+			# succeed and this beat would exercise nothing.
+			var stashed_seeds: int = game.bank.seeds
+			game.bank.add_seeds(-stashed_seeds, false)
+			var denied: String = game.upgrade_selected()
+			game.hud._process(4.0)
+			err = _T.assert_eq(denied, "not enough seeds",
+				"the broke-player refusal at game.gd:1460 was actually reached")
+			if err == "":
+				game.bank.add_seeds(stashed_seeds + 200)
+				var bought: String = game.upgrade_selected()
+				game.hud._process(4.0)
+				err = _T.assert_eq(bought, "", "and the success line at game.gd:1470 too")
+			if err == "":
+				var armed: String = game.arm_uproot()
+				game.hud._process(4.0)
+				err = _T.assert_eq(armed, "confirm needed",
+					"and the uproot prompt at game.gd:1534, which then expires below")
+			if err == "":
+				# The confirm window expires unclicked, which is the "Uproot
+				# cancelled." post at game.gd:1582 -- the other per-frame call site
+				# that is edge-triggered only because _disarm_uproot latches it.
+				game._process(Game.UPROOT_CONFIRM_SECONDS + 0.1)
+				game.hud._process(4.0)
+				err = _T.assert_false(game.uproot_armed(),
+					"and the window closed rather than staying armed")
+
+	if err == "":
+		# Waves, which is where _refresh runs hardest: every spawn, death and clear
+		# funnels through it, and a level-triggered caller would stack here or nowhere.
+		for wave: int in range(3):
+			game.start_next_wave()
+			for tick: int in range(40):
+				game._process(0.25)
+				game.hud._process(0.25)
+			for pest: Node in game.get_tree().get_nodes_in_group("pests"):
+				var p := pest as Pest
+				if p != null and is_instance_valid(p):
+					p.queue_free()
+			for tick: int in range(20):
+				game._process(0.25)
+				game.hud._process(0.25)
+
+	if err == "":
+		err = _T.assert_eq(game.hud.messages_refused, 0,
+			("no line was refused across the whole run -- refused=%d evicted=%d "
+				+ "preempted=%d, over 3 wave(s) with %d plant(s) placed. A non-zero "
+				+ "refusal here is a caller stacking copies into a full queue.")
+				% [game.hud.messages_refused, game.hud.messages_evicted,
+					game.hud.messages_preempted, planted])
+	if err == "":
+		err = _T.assert_eq(game.hud.messages_evicted, 0,
+			"and nothing already waiting was pushed out to make room: evicted=%d"
+				% game.hud.messages_evicted)
+	if stashed_hint:
+		RunConfig.earned_milestones[RunConfig.HINT_UPGRADE_EXISTS] = true
+	else:
+		RunConfig.earned_milestones.erase(RunConfig.HINT_UPGRADE_EXISTS)
+	_T.free_ui(game)
+	return err
+
+
+func _grass_with_plant(game: Game) -> Vector2i:
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if game.plant_at(cell) != null:
+				return cell
+	return Vector2i(-1, -1)
+
+
+## The control for the test above, and the assertion that `row_is_quiet` does the job
+## it was added for.
+##
+## Three parts, in order, because each one is worthless without the one before it:
+##   1. the counter CAN move -- post past MESSAGE_QUEUE_MAX at a busy row by hand and
+##      watch `messages_refused` rise. A zero above means nothing without this.
+##   2. an UNGUARDED level-triggered caller stacks -- the shape the audit is hunting,
+##      reproduced directly, so "stacking" is a thing this suite has actually seen.
+##   3. the guarded one does NOT -- `_refresh` called repeatedly with the hint's
+##      condition true and the row busy adds nothing to the queue and spends no hint.
+func test_row_is_quiet_is_what_stops_a_level_triggered_caller_stacking() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null and game.hud != null, "the run has a HUD")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var hud: Hud = game.hud
+	hud._process(20.0)
+
+	# 1. The instrument works. A long line holds the row, then MESSAGE_QUEUE_MAX + 2
+	# arrivals at equal priority: three queue, the rest tie and are refused.
+	hud.show_message("holding the row", 30.0)
+	for i: int in range(Hud.MESSAGE_QUEUE_MAX + 2):
+		hud.show_message("arrival %d" % i, 3.0)
+	err = _T.assert_eq(hud.pending_messages(), Hud.MESSAGE_QUEUE_MAX,
+		"the queue filled to its maximum of %d" % Hud.MESSAGE_QUEUE_MAX)
+	if err == "":
+		err = _T.assert_eq(hud.messages_refused, 2,
+			"and the 2 that did not fit were REFUSED and counted -- which is the proof "
+				+ "that a zero from this counter elsewhere is a result and not a dead gauge")
+
+	# 2. and 3. share a board: one upgradable plant the player can afford.
+	var stacked: int = -1
+	var guarded: int = -1
+	var hint_was_spent: bool = false
+	var stashed_hint: bool = RunConfig.has_milestone(RunConfig.HINT_UPGRADE_EXISTS)
+	if err == "":
+		RunConfig.earned_milestones.erase(RunConfig.HINT_UPGRADE_EXISTS)
+		game.bank.add_seeds(500)
+		var cell: Vector2i = _grass(game)
+		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "",
+			"a corn cobbler is in the ground for the hint to talk about")
+		if err == "":
+			var plant: Plant = game.plant_at(cell)
+			err = _T.assert_true(plant != null and plant.can_upgrade(),
+				"and it has a rung left to climb, so the hint's condition is reachable")
+		if err == "":
+			err = _T.assert_true(Game.cheapest_upgrade(game._plants.values()) != null,
+				"and the hint's own finder agrees there is something to upgrade")
+
+	if err == "":
+		# 2. UNGUARDED: what _maybe_teach_upgrading did before row_is_quiet existed.
+		# The row is deliberately busy and the condition is deliberately still true,
+		# which is the whole definition of level-triggered.
+		# Drain to a genuinely quiet row FIRST. Posting a holder while the previous
+		# one is still up would queue the holder instead of taking the row, and every
+		# count after it would be off by that one entry.
+		hud._message_queue.clear()
+		hud._process(60.0)
+		hud.messages_refused = 0
+		hud.show_message("holding the row again", 30.0)
+		for i: int in range(6):
+			hud.show_message(Hud.upgrade_tip("Corn Cobbler", 10))
+		stacked = hud.pending_messages()
+		err = _T.assert_gt(stacked, 1,
+			("an UNGUARDED level-triggered caller stacks: %d copies of one one-shot "
+				+ "sat in the queue at once, and %d more were refused outright")
+				% [stacked, hud.messages_refused])
+
+	if err == "":
+		# 3. GUARDED: the real funnel, same busy row, same persisting condition.
+		hud._message_queue.clear()
+		hud._process(60.0)
+		hud.messages_refused = 0
+		hud.show_message("holding the row a third time", 30.0)
+		err = _T.assert_false(hud.row_is_quiet(),
+			"the row is busy, which is the only state in which this test says anything")
+		if err == "":
+			for i: int in range(6):
+				game._refresh()
+			guarded = hud.pending_messages()
+			hint_was_spent = RunConfig.has_milestone(RunConfig.HINT_UPGRADE_EXISTS)
+			err = _T.assert_eq(guarded, 0,
+				("but the GUARDED caller queued nothing across 6 refreshes with the "
+					+ "condition still true -- %d queued, against %d for the unguarded "
+					+ "shape on the same board") % [guarded, stacked])
+		if err == "":
+			err = _T.assert_eq(hud.messages_refused, 0, "and refused nothing either")
+		if err == "":
+			err = _T.assert_false(hint_was_spent,
+				"and the one-shot is still OWED rather than burnt on a line the player "
+					+ "never read -- which is the point of asking before offering")
+
+	if stashed_hint:
+		RunConfig.earned_milestones[RunConfig.HINT_UPGRADE_EXISTS] = true
+	else:
+		RunConfig.earned_milestones.erase(RunConfig.HINT_UPGRADE_EXISTS)
+	_T.free_ui(game)
+	return err
