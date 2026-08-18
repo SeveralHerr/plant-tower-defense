@@ -13799,3 +13799,297 @@ func test_the_spend_row_fits_its_column_at_endless_magnitudes() -> String:
 
 	_T.free_ui(panel)
 	return err
+
+
+# -- The HUD lays out against the live viewport (plant-tower-defense-0jye) ----
+#
+# `Hud.get_viewport_width()/get_viewport_height()` used to return the project
+# SETTING and every caller believed they named the screen. With
+# `stretch/mode=canvas_items` + `stretch/aspect="expand"` the canvas genuinely
+# changes shape with the window, so on anything but a 16:9 window the top bar
+# stopped short of the edge, the side panel detached from it, and the prep
+# strip's 100% was not the screen's.
+#
+# Every geometry assertion below is REAL, not `[HEADLESS geometry]`: each one
+# measures a HUD hosted in a SubViewport of a size this test chose, which is the
+# one thing headless layout does honestly. What headless cannot tell us is
+# whether the ROOT window's content-scale override produces the canvas size these
+# tests assume for a given aspect — that half is named for the parent as a live
+# check rather than faked here.
+
+
+## The shapes `stretch/aspect="expand"` can actually hand this HUD. `expand`
+## divides the window size by min(window/base) per axis, so the canvas is the
+## design size on the constraining axis and LARGER on the other — never smaller
+## on either. A 21:9 window widens it; a 4:3 window makes it taller.
+const VIEWPORT_SHAPES: Array[Vector2i] = [
+	Vector2i(1152, 648),   # the design size, 16:9
+	Vector2i(1536, 648),   # 21:9 — the width case
+	Vector2i(1152, 864),   # 4:3 — the height case
+	Vector2i(1920, 648),   # absurdly wide, to prove nothing is centred on a constant
+]
+
+
+## The bug, as an assertion: every viewport-derived rect on the HUD is derived
+## from the viewport it is actually in.
+func test_the_hud_lays_itself_out_against_the_live_viewport_not_the_setting() -> String:
+	var err := ""
+	for shape: Vector2i in VIEWPORT_SHAPES:
+		var game := await _T.instantiate_scene(GAME_SCENE, shape) as Game
+		await _pump(game)
+		var hud: Hud = game.hud
+		var w: float = float(shape.x)
+		var h: float = float(shape.y)
+
+		err = _T.assert_eq(hud.get_viewport_width(), shape.x,
+			"the HUD reads the live canvas width at %s, not the %d it was designed at"
+				% [shape, Hud.design_width()])
+		if err == "":
+			err = _T.assert_eq(hud.get_viewport_height(), shape.y,
+				"and the live height at %s" % [shape])
+		if err == "":
+			var bar: ColorRect = hud.get_node_or_null("Root/TopBar") as ColorRect
+			err = _T.assert_float_eq(bar.size.x, w, 0.5,
+				"the top bar spans the full width at %s (%.0f of %.0f)" % [shape, bar.size.x, w])
+		if err == "":
+			var panel: ColorRect = hud.get_node_or_null("Root/SidePanel") as ColorRect
+			err = _T.assert_float_eq(panel.position.x + panel.size.x, w, 0.5,
+				"the side panel is flush with the right edge at %s (right edge %.0f of %.0f)"
+					% [shape, panel.position.x + panel.size.x, w])
+			if err == "":
+				err = _T.assert_float_eq(panel.position.y + panel.size.y, h, 0.5,
+					"and reaches the foot of the screen at %s (%.0f of %.0f)"
+						% [shape, panel.position.y + panel.size.y, h])
+		if err == "":
+			# The banner is centred on the BOARD's half, so its right edge is the
+			# panel's left edge at every shape — the abutment that keeps the two
+			# from sharing pixels.
+			var banner: Label = hud.get_node_or_null("Root/Banner") as Label
+			err = _T.assert_float_eq(banner.size.x, w - float(Hud.PANEL_WIDTH), 0.5,
+				"the banner stops where the side panel starts at %s (%.0f wide)"
+					% [shape, banner.size.x])
+		if err == "":
+			var message: Label = hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+			err = _T.assert_float_eq(message.position.x + message.size.x,
+				w - float(Hud.PANEL_WIDTH), 0.5,
+				"the message line stops at the panel's column at %s (%.0f)"
+					% [shape, message.position.x + message.size.x])
+		if err == "":
+			# The prep strip's 100% is the screen's 100%. Staged through the game's
+			# own state rather than by writing the strip's size, which the next
+			# _refresh() would put back.
+			#
+			# No _pump after the refresh, on purpose: _process() ticks _prep_left
+			# down every frame, so a pump here would measure a strip that is a
+			# frame or two short of full and the assertion would be about the
+			# clock rather than about the width. The strip's size is written
+			# directly by _refresh_prep_bar, not by a container pass, so it is
+			# already correct on return.
+			game._prep_left = Game.PREP_SECONDS
+			game._wave_live = false
+			game._refresh()
+			var strip: ColorRect = hud.get_node_or_null("Root/TopBar/PrepBar") as ColorRect
+			err = _T.assert_true(strip != null and strip.visible,
+				"the prep strip is up between waves at %s" % [shape])
+			if err == "":
+				err = _T.assert_float_eq(strip.size.x, w, 0.5,
+					"a full prep strip is a full screen wide at %s (%.0f of %.0f)"
+						% [shape, strip.size.x, w])
+		_T.free_ui(game)
+		if err != "":
+			return err
+	return err
+
+
+## The other half, and the one nothing in this project connected at all before:
+## the HUD re-runs its layout when the viewport CHANGES, not only when it is
+## built. Resizing the host SubViewport is a real `Viewport.size_changed`, which
+## is the same signal the root window emits on a resize.
+func test_the_hud_relays_itself_out_when_the_viewport_changes_shape() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE, Vector2i(1152, 648)) as Game
+	await _pump(game)
+	var hud: Hud = game.hud
+	var panel: ColorRect = hud.get_node_or_null("Root/SidePanel") as ColorRect
+	var bar: ColorRect = hud.get_node_or_null("Root/TopBar") as ColorRect
+	var err: String = _T.assert_true(panel != null and bar != null,
+		"the panel and the bar are both on screen to re-measure")
+	if err == "":
+		err = _T.assert_float_eq(panel.position.x + panel.size.x, 1152.0, 0.5,
+			"sanity: flush right at the size it was built at")
+	if err == "":
+		var host := game.get_viewport() as SubViewport
+		err = _T.assert_true(host != null, "the test host is a SubViewport we can resize")
+		if err == "":
+			host.size = Vector2i(1536, 720)
+			await _pump(game)
+			err = _T.assert_float_eq(panel.position.x + panel.size.x, 1536.0, 0.5,
+				("after a resize the panel is flush right again (%.0f of 1536) -- "
+					+ "this is what nothing connecting size_changed used to cost")
+					% (panel.position.x + panel.size.x))
+	if err == "":
+		err = _T.assert_float_eq(bar.size.x, 1536.0, 0.5,
+			"and the top bar re-spanned the new width (%.0f)" % bar.size.x)
+	if err == "":
+		err = _T.assert_float_eq(panel.position.y + panel.size.y, 720.0, 0.5,
+			"and the panel re-reached the new foot (%.0f)" % (panel.position.y + panel.size.y))
+	_T.free_ui(game)
+	return err
+
+
+## What the top row's width budget MEANS once the viewport can move.
+##
+## `Hud.stats_row_budget()` prices the readouts, separations and buttons; the row
+## is handed `viewport_width - 2 * STATS_ROW_MARGIN`. Ask an HBoxContainer for
+## less than its children's sum and it does not shrink — `Control.size` is
+## clamped UP to the combined minimum, so the assignment appears to succeed and
+## the wave button simply lands off the right edge with nothing reporting it.
+##
+## So the budget is only safe while the canvas cannot be narrower than the size
+## it was measured at, and that is a property of TWO settings, both asserted here
+## rather than assumed: `stretch/aspect="expand"` never yields a canvas smaller
+## than the base size, and the base width is `design_width()`. Change either and
+## this test goes red instead of the wave button going quietly off screen.
+func test_the_top_row_fits_the_narrowest_viewport_the_stretch_mode_can_produce() -> String:
+	var aspect: String = str(ProjectSettings.get_setting("display/window/stretch/aspect", "keep"))
+	var err: String = _T.assert_eq(aspect, "expand",
+		("the design width is only a FLOOR under stretch/aspect=expand; at \"%s\" the "
+			+ "canvas can be narrower than the base size and this budget needs re-deriving")
+			% aspect)
+	if err != "":
+		return err
+
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	await _pump(game)
+	var stats: HBoxContainer = game.hud.get_node_or_null("Root/TopBar/StatsRow") as HBoxContainer
+	err = _T.assert_true(stats != null, "the stats row is on the bar to price")
+	if err == "":
+		# Read off the live row, so a control added to the bar later is priced here
+		# without anyone remembering to update a literal.
+		var separations: int = stats.get_child_count() - 1
+		var floor_px: float = Hud.min_viewport_width(separations)
+		var design: float = float(Hud.design_width())
+		err = _T.assert_true(floor_px <= design,
+			("the top row needs %.0fpx of canvas and the narrowest canvas expand can "
+				+ "produce is %.0fpx -- %.0fpx of headroom")
+				% [floor_px, design, design - floor_px])
+		if err == "":
+			# And the live row agrees with the arithmetic: no shortfall at the
+			# narrowest shape the game can reach, on either axis.
+			err = _T.assert_float_eq(game.hud.stats_row_shortfall(), 0.0, 0.001,
+				"so the HUD reports no shortfall at the design width")
+		if err == "":
+			err = _T.assert_float_eq(game.hud.stats_row_shortfall_at(design), 0.0, 0.001,
+				"and the same asked as arithmetic rather than off the live viewport")
+		if err == "":
+			# The height half of the same floor. Nothing on this HUD is priced
+			# against it today, but the side panel's plant bar is laid out down a
+			# fixed column and it is the axis a 4:3 window expands.
+			err = _T.assert_eq(game.hud.get_viewport_height(), Hud.design_height(),
+				"the design height is what a HUD hosted at the design size reports")
+	_T.free_ui(game)
+	return err
+
+
+## The failure the check above prevents, made legible.
+##
+## A canvas narrower than the row's budget is unreachable through the window
+## today, but it is one settings edit away and it is reachable right now by
+## hosting the HUD in a small SubViewport — which is exactly what this does. The
+## point is that the HUD SAYS the number rather than silently clamping: without
+## `stats_row_shortfall()` the only symptom is a wave button off the right edge
+## that no per-node check can see, because the button fits its own box perfectly.
+func test_a_canvas_too_narrow_for_the_top_row_reports_the_shortfall() -> String:
+	var narrow := Vector2i(800, 648)
+	var game := await _T.instantiate_scene(GAME_SCENE, narrow) as Game
+	await _pump(game)
+	var hud: Hud = game.hud
+	var stats: HBoxContainer = hud.get_node_or_null("Root/TopBar/StatsRow") as HBoxContainer
+	var err: String = _T.assert_true(stats != null, "the stats row is on the bar")
+	if err == "":
+		var expected: float = Hud.min_viewport_width(stats.get_child_count() - 1) - float(narrow.x)
+		err = _T.assert_float_eq(hud.stats_row_shortfall(), expected, 0.5,
+			"the HUD names the %.0fpx it is short at %s" % [expected, narrow])
+	if err == "":
+		# The silent half, pinned so nobody has to rediscover it: the row did NOT
+		# take the width it was given.
+		err = _T.assert_true(stats.size.x > float(narrow.x) - Hud.STATS_ROW_MARGIN * 2.0,
+			("and the row held its minimum (%.0f) rather than the %.0f it was asked for "
+				+ "-- the clamp that makes this failure invisible")
+				% [stats.size.x, float(narrow.x) - Hud.STATS_ROW_MARGIN * 2.0])
+	if err == "":
+		# Everything that CAN reflow still did, so the shortfall is one legible
+		# problem rather than a HUD that fell apart.
+		var panel: ColorRect = hud.get_node_or_null("Root/SidePanel") as ColorRect
+		err = _T.assert_float_eq(panel.position.x + panel.size.x, float(narrow.x), 0.5,
+			"the side panel is still flush right at %s" % [narrow])
+	_T.free_ui(game)
+	return err
+
+
+## The occlusion audit's static half (`.claude/skills/godot-hud-occlusion-audit`),
+## swept across every shape the stretch mode can produce.
+##
+## A re-layout is precisely the thing that produces two siblings sharing pixels,
+## and `validate-ui` / `findings` structurally cannot see it: they measure each
+## Control against its OWN box, and in an overlap both boxes are fine. The
+## existing pairwise tests all measure one shape; this one asks the same question
+## at four, with the banner up and the readouts at their longest, because the
+## pairs that break are the ones whose gap is a difference of two viewport-derived
+## numbers.
+func test_no_two_hud_controls_share_pixels_at_any_viewport_shape() -> String:
+	var err := ""
+	for shape: Vector2i in VIEWPORT_SHAPES:
+		var game := await _T.instantiate_scene(GAME_SCENE, shape) as Game
+		# The longest state the top row can reach, staged through the game rather
+		# than by writing label text (which the next _refresh() would put back).
+		game.bank.seeds = 9999
+		game.director.current_wave = 42
+		for i: int in range(18):
+			game.compost.drop_husk(Vector2(float(i) * 8.0, 0.0), 9)
+		game.hud.show_message("A message long enough to want the whole width of the bar and then some more.")
+		game._refresh()
+		# And the banner up, which is the one surface that spans the board's half.
+		game.hud.announce_wave(12, 24, "tougher and faster")
+		await _pump(game)
+
+		# Two sets, deliberately, and not "every pair under Root". These are the two
+		# pairwise checks this suite already makes at 1152x648
+		# (test_no_two_top_bar_controls_share_pixels and
+		# test_the_wave_banner_shares_no_pixels_with_the_rest_of_the_hud), asked
+		# again at the other three shapes -- so a failure here means the RE-LAYOUT
+		# broke a pair, not that some pre-existing pair inside the side panel was
+		# never audited. Auditing those is a separate question at every shape alike.
+		var bar_rects: Dictionary = _hud_rects(game.hud.get_node("Root/TopBar"))
+		err = _T.assert_true(bar_rects.size() >= 4,
+			"at %s found %d sized Controls in the top bar to compare"
+				% [shape, bar_rects.size()])
+		var bar_names: Array = bar_rects.keys()
+		for i: int in range(bar_names.size()):
+			if err != "":
+				break
+			for j: int in range(i + 1, bar_names.size()):
+				var a: Rect2 = bar_rects[bar_names[i]]
+				var b: Rect2 = bar_rects[bar_names[j]]
+				if a.intersects(b):
+					err = _T.assert_false(true, "at %s top bar: %s %s overlaps %s %s"
+						% [shape, bar_names[i], a, bar_names[j], b])
+					break
+
+		if err == "":
+			var rects: Dictionary = _hud_rects(game.hud.get_node("Root"))
+			err = _T.assert_true(rects.has("Banner") and rects.has("BannerNote"),
+				"at %s the announced banner has both rows sized, got %s" % [shape, rects.keys()])
+			for row: String in ["Banner", "BannerNote"]:
+				if err != "":
+					break
+				for other: String in rects:
+					if other == "Banner" or other == "BannerNote":
+						continue
+					if (rects[row] as Rect2).intersects(rects[other] as Rect2):
+						err = _T.assert_false(true, "at %s %s %s overlaps %s %s"
+							% [shape, row, rects[row], other, rects[other]])
+						break
+		_T.free_ui(game)
+		if err != "":
+			return err
+	return err
