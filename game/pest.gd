@@ -1,13 +1,16 @@
 class_name Pest
 extends Node2D
 
-## A bug walking the road. Four species: a small fast one (aphid), a big slow one
-## (beetle), a plated one that shrugs off small hits (the Shield Bug), and the
-## boss the campaign builds toward (the Aphid Queen).
+## A bug walking the road. Five species: a small fast one (aphid), a big slow one
+## (beetle), a plated one that shrugs off small hits (the Shield Bug), and two
+## bosses — the Aphid Queen the campaign builds toward, and the Nurse Beetle that
+## walks up the middle of a wave putting back what the garden has chipped off it.
 ##
-## Three of the four are answered by damage and differ only in how much of it
-## they need. The Shield Bug is the one that is answered by a different KIND of
-## damage — see its SPECIES entry.
+## Three of the five are answered by damage and differ only in how much of it they
+## need. The other two each break a rule the garden is built on, and a different
+## rule each: the Shield Bug is answered by a different KIND of damage, and the
+## Nurse Beetle is answered by damage aimed somewhere other than the FRONT of the
+## queue. Both arguments are written out on their own SPECIES entries.
 ##
 ## The interesting state here is `held_by`. A Chomp Flower that grabs a pest does
 ## not delete it — it holds it in place for `chew_seconds` while the pest stays on
@@ -21,20 +24,29 @@ const APHID := &"aphid"
 const BEETLE := &"beetle"
 const SHIELDBUG := &"shieldbug"
 const QUEEN := &"queen"
+const NURSE := &"nurse"
 
 ## species -> stats. `chew_seconds` is the design doc's "eats small pests easily,
 ## takes a while eating bigger pests" expressed as a number.
 ##
-## `split_species` / `split_count` are the boss mechanic and one of the two
-## optional pairs here: a species that names them bursts into that many of that
-## species WHERE IT DIED rather than simply leaving the board.
+## Three optional groups sit alongside the stats every species carries, one per
+## mechanic, and each belongs to exactly one species today:
 ##
-## `shell_absorb` / `shell_hits` are the other, and belong to the Shield Bug.
+##   * `split_species` / `split_count` — the Aphid Queen's. A species that names
+##     them bursts into that many of that species WHERE IT DIED rather than simply
+##     leaving the board.
+##   * `shell_absorb` / `shell_hits` — the Shield Bug's plate.
+##   * `heal_radius` / `heal_amount` / `heal_period` — the Nurse Beetle's aura.
 ##
-## Both pairs are read through the accessors below — split_species() /
-## split_count() / shell_absorb() / shell_hits() — and never off the raw
-## Dictionary, so an ordinary pest answers "&"" / 0" instead of erroring on a
-## missing key.
+## `boss` is the fourth optional key and the only one that is not a mechanic: it
+## is what `WaveDirector.wave_carries_boss` reads, so "which species are bosses"
+## is a fact stated once, on the species, rather than a name written into a
+## comparison in another file (which is what it was until the second boss landed).
+##
+## Every one of them is read through an accessor below — split_species() /
+## split_count() / shell_absorb() / shell_hits() / heal_radius() / heal_amount() /
+## heal_period() / is_boss() — and never off the raw Dictionary, so an ordinary
+## pest answers "&"" / 0 / 0.0 / false" instead of erroring on a missing key.
 const SPECIES: Dictionary = {
 	APHID: {
 		"display": "Aphid",
@@ -125,6 +137,113 @@ const SPECIES: Dictionary = {
 		"shell_absorb": 1.5,
 		"shell_hits": 6,
 	},
+	## The SECOND boss (plant-tower-defense-gsai), and the whole reason it exists is
+	## that it asks a question the Aphid Queen does not.
+	##
+	## The queen's question is WHERE: killing her makes three more problems, so the
+	## player is deciding which stretch of road her death lands on. Every plant in
+	## the garden can answer her; only the placement is in doubt.
+	##
+	## The Nurse Beetle's question is WHAT YOUR DAMAGE IS AIMED AT. Every damaging
+	## plant in this game shoots the pest FURTHEST ALONG the road
+	## (`CornCobbler._furthest_along_in_range`, `Dandelion`'s own pick) — the player
+	## never chooses a target, the rule does. A Nurse walking behind the front of the
+	## queue is therefore something the garden's own targeting will not shoot at
+	## while it heals everything the garden IS shooting at. The answers are the two
+	## plants that do not obey the rule: a Chomp Flower at the mouth of the lane
+	## grabs whatever walks into it, and a Bomb Dandelion's blast lands on an area
+	## rather than on a pest. So the decision is "does my garden own anything that
+	## can hit the BACK of a wave", which nothing else on this board has ever asked.
+	##
+	## It is deliberately NOT "the queen with more health" — it has 48 against her 80
+	## and no split at all. The difficulty is the aura and the aura only.
+	##
+	## The numbers, and what each is for:
+	##   * heal_amount 3.0 every heal_period 1.5 s — i.e. 2.0 health a second put
+	##     back into every OTHER living pest inside heal_radius. That rate is picked
+	##     against the one damage source every player is guaranteed to own:
+	##     `CornCobbler.single_target_dps(1, d)` is 1 kernel x 1.0 damage / 0.80 s =
+	##     1.25/s at every distance in its ring. So ONE level-1 cob loses the race
+	##     outright and never finishes anything inside the aura, TWO of them win it
+	##     at a net 0.5/s, and one MAXED cob at the rim of its own ring (2.26/s)
+	##     just clears it. The band is the decision: trickle damage spread thin over
+	##     a lane does nothing here, and the same seeds concentrated do. Both ends
+	##     are asserted in test_combat against the cob's own table rather than
+	##     written down, so a balance pass on corn fails loudly instead of quietly
+	##     turning this species into a beetle.
+	##     Read it next to `Aloe.HEAL_PER_SECOND`, which is the mirror image: the
+	##     garden's healer is tuned to LOSE its race with one pest by design, and
+	##     this one is tuned to WIN its race with one plant. That asymmetry is the
+	##     boss.
+	##     One pulse is also exactly one whole aphid (3.0 = APHID health), which is
+	##     what makes the aura legible: a swarm inside it visibly stops dying.
+	##   * heal_radius 160 — two and a half cells, and chosen under
+	##     `CornCobbler.RANGE` (176) rather than over it. A cob that can reach the
+	##     Nurse can therefore reach everything she is protecting, so "shoot the
+	##     healer" is never a shot the player cannot take from a plant already
+	##     placed. It is also under the 192 px between the board's parallel road
+	##     rows (Board.PATH_CORNERS runs at y = 1, 4 and 7), so an aura never leaks
+	##     across into a lane the Nurse is not walking.
+	##   * health 48 — three beetles, and read the same way the queen's 80 is. Her
+	##     exposure crossing one cob's ring one cell off the road is 328 px of chord
+	##     at 44 px/s = 7.45 s, and a maxed cob at that rim does 2.26/s, so one cob
+	##     takes 16.8 off her and TWO still do not kill her while THREE do. Lower
+	##     than the queen on purpose: a boss that both undoes the garden's damage
+	##     and carries the queen's health pool is a wall, and the ask was a
+	##     different decision, not a bigger one.
+	##   * speed 44 — the only boss in the game that HURRIES. The queen at 30 is
+	##     slower than everything and the wave arrives around her; the Nurse is
+	##     faster than the beetle column (38) she is scheduled behind, so she walks
+	##     UP into it and the aura finds a crowd instead of waiting for one. It also
+	##     means the window in which a lane can kill her before she reaches the
+	##     column is short, which is the part of this fight the player can plan for.
+	##   * chew_seconds 5.0 — nearly double a beetle's 2.6 and less than half the
+	##     queen's 11.0, and that gap is deliberate. A Chomp is one of the only two
+	##     answers to this species, so eating her must be a real option rather than
+	##     the trap the queen's mouthful is; a mouth shut for 5 s is a price, not
+	##     the rest of the wave. A held Nurse also stops healing entirely — see
+	##     `_physics_process`, where the aura tick sits AFTER the `held_by` guard.
+	##   * seeds 39 — a shade under the queen's 40, because she is the lesser boss.
+	##     Not a free number: `CompostMeter.husk_value_for` crossed with the four
+	##     composable mutation multipliers turns a seed value into four husks, and
+	##     `HuskLayer`'s radius and glow both saturate at `CompostMeter.FULL_VALUE`,
+	##     so above that only the pip COUNT tells two husks apart. In the whole band
+	##     from 24 to 40 only 39 and 40 leave every husk this game can drop still
+	##     tellable from every other — `test_the_only_husks_that_look_alike_are_the`
+	##     `_ones_the_pip_cap_lumps_together` in test_selftest.gd is the gate that
+	##     would catch it; 39 is the one of those two that is not simply the queen's.
+	##   * scale 1.30 — bigger than any ordinary pest (a beetle is 1.0) so she reads
+	##     as a boss at a glance, and under the queen's 1.45 so the queen is still
+	##     the biggest thing on the board.
+	##
+	## SHE WEARS A BEETLE'S SPRITE, AND THAT IS A KNOWN DEBT rather than a design.
+	## A new species needs a 64 px SVG in art_src/, a render, a retina variant and a
+	## row in test_sprite_style.gd's EXPECTED_SIZE — none of which the lane that
+	## built her could do. `scale` 1.30 is doing the whole job of saying "this is not
+	## an ordinary beetle", which is thinner than the Shield Bug's plate or the
+	## queen's brood sac. See the bead for the follow-up.
+	##
+	## Like the queen, she can still roll a mutation — a winged Nurse cannot be
+	## grabbed by a Chomp at all, which removes one of her two answers. Left in
+	## rather than excluded, because the queen has carried exactly that exposure
+	## since she shipped and `MUTATION_EXCLUSIONS` is a rule about PAIRS of
+	## mutations, not about species. At MUTATION_CHANCE 0.4 over three traits it is
+	## about one Nurse in eight.
+	NURSE: {
+		"display": "Nurse Beetle",
+		"texture": "res://assets/sprites/pest_beetle.png",
+		"dead_texture": "res://assets/sprites/pest_beetle_dead.png",
+		"health": 48.0,
+		"speed": 44.0,
+		"seeds": 39,
+		"chew_seconds": 5.0,
+		"scale": 1.30,
+		"big": true,
+		"boss": true,
+		"heal_radius": 160.0,
+		"heal_amount": 3.0,
+		"heal_period": 1.5,
+	},
 	## The boss (plant-tower-defense-74a). Deliberately NOT a fourth mutation and
 	## deliberately not "a beetle with more health": what makes a queen a
 	## different fight is that killing her is a decision about WHERE, not about
@@ -162,6 +281,7 @@ const SPECIES: Dictionary = {
 		"chew_seconds": 11.0,
 		"scale": 1.45,
 		"big": true,
+		"boss": true,
 		"split_species": APHID,
 		"split_count": 3,
 	},
@@ -402,6 +522,16 @@ var shell_blocks: int = 0
 ## How much of ONE hit a block eats. Seeded from the species and never scaled.
 var shell_strength: float = 0.0
 
+## The Nurse Beetle's pulse clock, in seconds since the last pulse. 0.0 and idle
+## for every other species, because `heal_period()` answers 0.0 for them and the
+## tick in `_physics_process` is gated on it.
+##
+## Deliberately NOT reset when the pest is grabbed. A Chomp that holds a Nurse
+## silences her (the tick sits after the `held_by` guard), and a clock that also
+## rewound would hand a released Nurse a fresh full period on top — paying the
+## player twice for one grab and making the pause longer than the grab was.
+var _heal_clock: float = 0.0
+
 ## Set by a Chomp Flower while it is eating this pest. A held pest does not move.
 var held_by: Node = null
 
@@ -598,6 +728,72 @@ static func shell_hits(which: StringName) -> int:
 		return 0
 	var stats: Dictionary = SPECIES.get(which, {}) as Dictionary
 	return int(stats.get("shell_hits", 0))
+
+
+## Is `which` a boss?
+##
+## Stated on the species rather than asked as `species == QUEEN` at the call site,
+## which is what `WaveDirector.wave_carries_boss` did until a second boss existed.
+## That comparison was correct and unextendable at the same time: the day a second
+## boss landed it would have gone on answering `false` for it, silently, and the
+## two things that read it — the HUD's "a boss is coming" note and the rule that
+## drought never lands on a boss wave — would both have quietly stopped applying
+## to half the bosses in the game. A flag on the row cannot do that: a boss added
+## without it is a boss nobody claimed was one.
+static func is_boss(which: StringName) -> bool:
+	var stats: Dictionary = SPECIES.get(which, {}) as Dictionary
+	return bool(stats.get("boss", false))
+
+
+## Every species that is a boss, derived from the flag above rather than listed.
+## In `SPECIES` order, which is insertion order and therefore stable to read and to
+## compare against.
+static func boss_species() -> Array[StringName]:
+	var out: Array[StringName] = []
+	for which: StringName in SPECIES:
+		if is_boss(which):
+			out.append(which)
+	return out
+
+
+## How far the Nurse Beetle's aura reaches, in pixels; 0.0 for a species with no
+## aura. Same shape and same reason as shell_absorb() above — it is the GATE key,
+## so the two below read it first and a row that names a rate and forgets the reach
+## heals nothing rather than healing the whole board.
+static func heal_radius(which: StringName) -> float:
+	var stats: Dictionary = SPECIES.get(which, {}) as Dictionary
+	return float(stats.get("heal_radius", 0.0))
+
+
+## Health put back into each pest in reach, per pulse. 0.0 without a reach.
+static func heal_amount(which: StringName) -> float:
+	if heal_radius(which) <= 0.0:
+		return 0.0
+	var stats: Dictionary = SPECIES.get(which, {}) as Dictionary
+	return float(stats.get("heal_amount", 0.0))
+
+
+## Seconds between pulses. 0.0 without a reach, which is also what `_physics_process`
+## tests to decide whether this pest has an aura at all.
+static func heal_period(which: StringName) -> float:
+	if heal_radius(which) <= 0.0:
+		return 0.0
+	var stats: Dictionary = SPECIES.get(which, {}) as Dictionary
+	return float(stats.get("heal_period", 0.0))
+
+
+## The number the whole species is balanced on: health a second put back into one
+## pest standing inside the aura. Pure, and the thing to compare against a plant's
+## dps — `CornCobbler.single_target_dps(1, d)` is 1.25, and this sits above it and
+## below twice it deliberately. See the NURSE entry.
+##
+## A pulse rate of zero answers 0.0 rather than dividing by it, so this is safe to
+## call for every species in a sweep.
+static func heal_per_second(which: StringName) -> float:
+	var period: float = heal_period(which)
+	if period <= 0.0:
+		return 0.0
+	return heal_amount(which) / period
 
 
 ## Pure: how much of an `amount`-sized hit reaches the flesh under a plate with
@@ -853,6 +1049,15 @@ func _physics_process(delta: float) -> void:
 	if held_by != null:
 		_ever_engaged = true
 		return
+	# The Nurse Beetle's aura, and note where it sits: AFTER the `held_by` return
+	# above, so a Chomp that closes on a Nurse silences her for the whole
+	# `chew_seconds` rather than merely holding a still-nursing pest in place. That
+	# is what makes the Chomp one of the two real answers to this species instead of
+	# a body block that changes nothing. BEFORE the `is_hungry` branch below on
+	# purpose too: a Nurse stopped at a plant bed is not being held by anything, and
+	# a wave allowed to stand still healing itself while the player watches would be
+	# the worst version of this fight.
+	_tick_aura(delta)
 	if is_hungry:
 		var meal: Plant = _adjacent_plant()
 		if meal != null:
@@ -876,6 +1081,85 @@ func _adjacent_plant() -> Plant:
 			best_distance = d
 			best = plant
 	return best
+
+
+## One frame of the Nurse Beetle's aura clock. A no-op for every other species,
+## which is why `_physics_process` calls it unconditionally rather than behind a
+## species check — the same shape as the plate in `take_damage()`, where an
+## unshelled pest simply has nothing to block with.
+##
+## A `while` rather than an `if`: a frame long enough to span two periods (a stall,
+## or a headless test stepping a whole second by hand) owes the wave two pulses,
+## and a heal rate that quietly halves itself under load is a difficulty setting
+## nobody chose.
+func _tick_aura(delta: float) -> void:
+	var period: float = heal_period(species)
+	if period <= 0.0:
+		return
+	_heal_clock += delta
+	while _heal_clock >= period:
+		_heal_clock -= period
+		pulse_aura()
+
+
+## Put `heal_amount(species)` back into every OTHER living pest within
+## `heal_radius(species)`. One pulse of the aura.
+##
+## Public on purpose. It is the entire species, and a test that had to pump sixty
+## physics frames to watch it happen once would be measuring the frame pump; the
+## bridge can also fire it against a live board with
+## `run-method --node ... --method pulse_aura`.
+##
+## It never heals ITSELF, for exactly the reason `Aloe.reaches` refuses
+## `from_cell == to_cell`: a boss that also repairs its own bar is a bigger health
+## pool wearing a mechanic's name, and this species exists so the difficulty sits
+## somewhere other than its own bar.
+##
+## It DOES heal another Nurse. Two inside one aura would top each other up for as
+## long as they both live, which is why no wave schedules two — asserted in
+## test_combat rather than left to whoever edits the table next.
+func pulse_aura() -> void:
+	if not _alive or not is_inside_tree():
+		return
+	var reach: float = heal_radius(species)
+	if reach <= 0.0:
+		return
+	var amount: float = heal_amount(species)
+	for node: Node in get_tree().get_nodes_in_group("pests"):
+		var other := node as Pest
+		if other == null or other == self or not other.is_alive():
+			continue
+		if other.global_position.distance_to(global_position) > reach:
+			continue
+		other.heal(amount)
+
+
+## Pure: what a pest on `health_now` out of `ceiling` sits at after `amount` of
+## healing. Never past the ceiling, and never backwards — a negative amount heals
+## nothing rather than turning a nurse into a second mouth, which is the guard
+## `Aloe.heal_for` spends its own `maxf` on.
+static func healed_to(health_now: float, amount: float, ceiling: float) -> float:
+	return minf(ceiling, health_now + maxf(0.0, amount))
+
+
+## Restore health and repaint the bar.
+##
+## A dead pest is left alone. A corpse is on screen for DEATH_LINGER seconds and a
+## Nurse pulsing over one must not stand it back up — `_alive` is already false by
+## then and `died` has already been emitted, so the seeds and the husk are paid.
+func heal(amount: float) -> void:
+	if not _alive:
+		return
+	health = healed_to(health, amount, max_health)
+	_refresh_health_bar()
+
+
+## The one place the health bar's width is written. Split out of `take_damage()`
+## when healing arrived: two callers each computing the same fraction is how a bar
+## ends up honest about damage and stale about repair.
+func _refresh_health_bar() -> void:
+	if is_instance_valid(_health_bar):
+		_health_bar.size = Vector2(HEALTH_BAR_SIZE.x * (health / max_health), HEALTH_BAR_SIZE.y)
 
 
 ## Walk `distance` px along the remaining route, spending it across legs so a fast
@@ -1013,8 +1297,7 @@ func take_damage(amount: float, cause: StringName = &"") -> void:
 		_last_hit_blocked = landed <= 0.0
 		shell_blocks -= 1
 	health = maxf(0.0, health - landed)
-	if is_instance_valid(_health_bar):
-		_health_bar.size = Vector2(HEALTH_BAR_SIZE.x * (health / max_health), HEALTH_BAR_SIZE.y)
+	_refresh_health_bar()
 	if health <= 0.0:
 		kill(cause)
 

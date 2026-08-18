@@ -158,6 +158,15 @@ const ENDLESS_SPEED_MAX: float = 1.6
 ## untouched at 40 of 40 and 418 points of base health. Putting the species in the
 ## finale instead would have been the obvious place for it and was rejected on
 ## arithmetic — see WAVES' header for the 8-of-18.7 that would have cost.
+##
+## And a fourth time for the second boss (plant-tower-defense-gsai). Waves 17 and
+## 19 each traded three beetles for one Nurse Beetle, which is 48 points of base
+## health out and 48 back in, so both rows price at exactly what they always did
+## and both got EMPTIER on the road: 17 peaked 35 -> 33 and 19 peaked 33 -> 31. The
+## finale is untouched for the fourth time running. That is now the pattern rather
+## than a coincidence: past wave 12 this table has no slack left, so a new species
+## enters by displacement or not at all, and the finale is the one row with nothing
+## to displace.
 const SIMULTANEOUS_PEST_CEILING: int = 40
 
 ## How that ceiling is split between the wave's two groups. They sum to it
@@ -262,19 +271,23 @@ const MUTATION_THREAT_WEIGHT: float = 0.6
 ##       wave in this table is monotone in species order, so a garden that
 ##       re-commits after the swarm has passed is punished here for the first
 ##       time — the question is whether you hold anything back;
-##   17  THE LONG MARCH. Eighteen beetles at 2.2 s, which is 37 s of column
-##       before the swarm even starts: a 46 s wave against a table whose longest
-##       was 33 s. Nothing here is dangerous alone. It is the first wave that
-##       asks whether the garden can hold a lane for a minute without a lull to
-##       repair or replant in;
+##   17  THE LONG MARCH. Fifteen beetles at 2.2 s, which is 31 s of column before
+##       the swarm even starts: a 40 s wave against a table whose next longest is
+##       27 s. Nothing here is dangerous alone. It is the first wave that asks
+##       whether the garden can hold a lane for the better part of a minute
+##       without a lull to repair or replant in — and, since
+##       plant-tower-defense-gsai, whether it can do that against a Nurse Beetle
+##       putting 2.0 health a second back into whatever it is shooting;
 ##   18  THE QUEEN IN THE MIDDLE. Wave 12 puts her at the head of the wave and
 ##       wave 14 puts her at the head of the column; this buries her BETWEEN two
 ##       groups, so the cobs are committed down-lane when she arrives and the
 ##       swarm lands while they are still on her. Same boss, third question;
 ##   19  THE BATTERING RAM. The same species mix as 17 and the opposite tempo —
-##       21 beetles at 0.70 s, the whole wave delivered in 20 s. 17 asks about
+##       18 beetles at 0.70 s, the whole wave delivered in 19 s. 17 asks about
 ##       endurance, 19 asks about burst, and they are next to each other on
-##       purpose so the contrast is the lesson;
+##       purpose so the contrast is the lesson. Both carry a Nurse Beetle for
+##       that same reason: a boss in one and not the other would have turned a
+##       matched pair into two unrelated waves;
 ##   20  RAIN, AND THE FIRST PAIRS. weather_for(20) is rain, and 20 is
 ##       SECOND_MUTATION_START_WAVE — so the wave that heals the garden as it
 ##       opens is also the first that can send a pest carrying two traits. It is
@@ -342,6 +355,49 @@ const MUTATION_THREAT_WEIGHT: float = 0.6
 ## Both are placed LAST in their wave on purpose. The swarm and the column have
 ## already pulled every cob down-lane by then, so the plated group arrives at the
 ## one moment the answer to it is a plant the player either has or does not.
+##
+## -- The Nurse Beetle enters at 17 and 19 (plant-tower-defense-gsai) -----------
+##
+## The campaign's SECOND boss, and it is in the table because the bead asked for a
+## boss that poses a different question rather than a bigger one. The queen's
+## question is where a kill lands. The Nurse's is what the garden's damage is
+## AIMED at: every damaging plant here shoots the pest furthest along the road, so
+## a healer walking behind the front of the queue is something the garden's own
+## targeting rule will not shoot at while it undoes the damage that rule is doing.
+## The two answers are the two plants that ignore the rule — a Chomp at the mouth
+## of a lane and a Dandelion's area blast. `Pest.SPECIES[NURSE]` has the full
+## argument and every number's derivation.
+##
+## CAMPAIGN, NOT ENDLESS, and that was a decision rather than a default. Endless is
+## unbounded and would have been the cheap place to put her — but `_endless_groups`
+## is built on two invariants that a periodic boss breaks (threat rises EVERY wave,
+## and the rise is exactly one beetle's worth), and a third road share would have to
+## come out of two that already sum to SIMULTANEOUS_PEST_CEILING exactly. That
+## argument is already written out at `_endless_groups` for the queen and it is
+## unchanged by there being two bosses instead of one. The campaign is also simply
+## where this species means something: it is a question about whether the player's
+## garden owns a second kind of plant, and endless is played by a garden that
+## already owns everything.
+##
+## WHICH ROWS. Not 12, 14, 18, 20 or 22 — those carry the queen, and two bosses in
+## one wave dilutes both. Not 15, which is the Shield Bug's debut. Not 21: making a
+## row a boss row exempts it from drought (`weather_for`), so a Nurse there would
+## silently delete the campaign's second drought, which is the exact failure the row
+## for 21 warns about and test_economy enumerates against. Not 13, which is the
+## campaign's one deliberate "buy a plant" breather and sits between two queens.
+## That leaves 16, 17 and 19, and 17/19 are a matched pair by construction.
+##
+## WHAT THEY COST. Three beetles each, exactly:
+##   17  -3 beetles, +1 Nurse. 339 -> 339 points of base health (48 out, 48 in),
+##       35 -> 33 pests, peak 35 -> 33 of 40.
+##   19  -3 beetles, +1 Nurse. 372 -> 372 points, 33 -> 31 pests, peak 33 -> 31.
+## So the entire threat curve — wave 1 through wave 300, the seam, the finale's 418
+## against the 436.7 bound — is unmoved to the last decimal, and the finale is
+## byte-for-byte the row it has always been. The campaign got harder in two places
+## and the number on the bar did not move, which is honest rather than convenient:
+## `_raw_threat` prices a Nurse at her 48 points of health and cannot see the aura,
+## exactly as it cannot see the Shield Bug's plate. Both under-statements are
+## written down there rather than fudged.
 ##
 ## Every row here is checked, not eyeballed:
 ##   * peak_simultaneous_pests() stays inside SIMULTANEOUS_PEST_CEILING for all
@@ -465,16 +521,43 @@ const WAVES: Array[Array] = [
 		{"species": &"aphid", "count": 21, "gap": 0.30, "lead": 1.5},
 		{"species": &"beetle", "count": 8, "gap": 1.10, "lead": 1.5},
 	],
-	# The long march. 2.20 s is past every gap in the fifteen rows above it (the
-	# widest is 2.00 s, for TWO beetles in wave 4) and it is chosen against the
-	# beetle's own crossing time: 55.6 s to walk the road, so the seventeen gaps
-	# take 37.4 s and the eighteenth beetle spawns while the first is still two
-	# thirds of the way down it.
-	# The column is therefore continuous rather than a queue, which is what makes
-	# this an endurance wave instead of a slow one.
+	# The long march, and the Nurse Beetle's debut (plant-tower-defense-gsai).
+	#
+	# 2.20 s is past every gap in the fifteen rows above it (the widest is 2.00 s,
+	# for TWO beetles in wave 4) and it is chosen against the beetle's own crossing
+	# time: 55.6 s to walk the road, so the fourteen gaps take 30.8 s and the
+	# fifteenth beetle spawns while the first is still 55% of the way down it. The
+	# column is therefore continuous rather than a queue, which is what makes this an
+	# endurance wave instead of a slow one; at 40.2 s from the first spawn to the
+	# last it is still by half again the longest wave in the table (the next is
+	# 26.9 s).
+	#
+	# The Nurse is the MIDDLE group, which is the whole placement argument. Put at
+	# the head she is simply the furthest-along pest and every cob in the garden
+	# shoots her before the wave arrives, so the aura never happens; put last she
+	# walks alone behind a road that has already emptied. Second of three, she
+	# spawns as the column finishes and the swarm behind her — 78 px/s against her
+	# 44 — streams past and around her, so she is inside a crowd from the moment
+	# she is on the board. She is faster than the beetles ahead of her too, so she
+	# closes on the tail of the column rather than falling off it.
+	#
+	# WHY THIS ROW. The endurance wave is the one this species makes a different
+	# wave rather than a harder one. 17 asks whether the garden can hold a lane for
+	# forty seconds; a Nurse in it asks whether it can hold one for forty seconds
+	# while something puts back 2.0 health a second into whatever it is shooting.
+	# A garden of level-1 cobs (1.25 dps each, so one loses that race outright) has
+	# been getting away with breadth all campaign, and this is the row that says no.
+	#
+	# WHAT IT COST: -3 beetles, +1 Nurse. 48 points of base health out and 48 back
+	# in, so this row prices at exactly the 339 it always did and the whole threat
+	# curve from wave 1 to wave 300 is byte-for-byte unmoved. The headcount drops
+	# 35 -> 33 and the peak 35 -> 33 of 40. That the wave is genuinely harder and
+	# prices identically is not a bug in the numbers -- see `_raw_threat`, which
+	# cannot see an aura any more than it can see the Shield Bug's plate.
 	[
-		{"species": &"beetle", "count": 18, "gap": 2.20, "lead": 0.5},
-		{"species": &"aphid", "count": 17, "gap": 0.34, "lead": 1.0},
+		{"species": &"beetle", "count": 15, "gap": 2.20, "lead": 0.5},
+		{"species": &"nurse", "count": 1, "gap": 1.00, "lead": 2.0},
+		{"species": &"aphid", "count": 17, "gap": 0.34, "lead": 1.5},
 	],
 	# The queen in the middle. She is the second group of three, which is the
 	# arrangement neither wave 12 nor wave 14 uses.
@@ -483,9 +566,23 @@ const WAVES: Array[Array] = [
 		{"species": &"queen", "count": 1, "gap": 1.00, "lead": 2.0},
 		{"species": &"aphid", "count": 17, "gap": 0.32, "lead": 2.0},
 	],
-	# The battering ram — wave 17's species mix at three times the tempo.
+	# The battering ram — wave 17's species mix at three times the tempo, and that
+	# pairing is why the Nurse Beetle is in BOTH of them rather than only in 17.
+	# The two rows exist to be compared: same three species, opposite tempo, so the
+	# lesson is the contrast. Putting the new boss in one of them and not the other
+	# would have made them two different waves that happen to share a species list.
+	#
+	# 17 asks whether the garden can out-heal an aura for forty seconds; 19 asks
+	# whether it can out-heal one for twelve, with everything arriving at once. The
+	# answers are genuinely different plants -- sustained dps against a lane in 17,
+	# a Chomp or a Dandelion landing on the Nurse herself in 19, because there is no
+	# time to grind through 2.0 health a second at this tempo.
+	#
+	# Paid for the same way and to the same number: -3 beetles, +1 Nurse, 48 out and
+	# 48 back, so the row still prices at 372. Headcount 33 -> 31, peak 33 -> 31.
 	[
-		{"species": &"beetle", "count": 21, "gap": 0.70, "lead": 0.5},
+		{"species": &"beetle", "count": 18, "gap": 0.70, "lead": 0.5},
+		{"species": &"nurse", "count": 1, "gap": 1.00, "lead": 2.0},
 		{"species": &"aphid", "count": 12, "gap": 0.30, "lead": 1.5},
 	],
 	# Rain (weather_for(20)) and the first wave that can pair two mutations
@@ -606,12 +703,22 @@ static func weather_for(wave: int) -> StringName:
 
 
 ## Does this wave's table row contain a boss? False past the end of the table --
-## endless spawns no queens, so there is nothing there to protect.
+## endless spawns no bosses, so there is nothing there to protect.
+##
+## Asks `Pest.is_boss`, i.e. the `boss` flag on the SPECIES row, rather than
+## comparing against `Pest.QUEEN`. It compared against the queen by name until the
+## Nurse Beetle landed (plant-tower-defense-gsai), and that comparison was correct
+## and unextendable at the same time: a second boss would have gone on answering
+## `false` here, silently, and BOTH readers of this function would have quietly
+## stopped applying to half the bosses in the game -- the HUD's "a boss is coming"
+## prep note, and the rule that drought never lands on a boss wave. Neither has a
+## local tell. A flag on the species cannot fail that way: a boss added without one
+## is a boss nobody ever claimed was one.
 static func wave_carries_boss(wave: int) -> bool:
 	if wave < 1 or wave > WAVES.size():
 		return false
 	for group: Dictionary in WAVES[wave - 1]:
-		if StringName(group["species"]) == Pest.QUEEN:
+		if Pest.is_boss(StringName(group["species"])):
 			return true
 	return false
 
@@ -704,14 +811,16 @@ func start_next_wave() -> int:
 ## is the only one that is a property of the constants rather than of where the
 ## table happens to end.)
 ##
-## What endless does NOT do is queens. The boss lives in the fixed table only,
-## and that is a decision rather than an omission: the two endless invariants
-## worth having are that threat rises every single wave and that the rise is
-## exactly one beetle's worth (see _raw_threat), and a boss that appears every
-## Nth wave breaks both — the wave after a boss wave prices lower than the boss
-## wave, which the readout would have to report as the difficulty going down.
-## Making bosses permanent instead would need a third road share, and the two
-## that exist already sum to SIMULTANEOUS_PEST_CEILING exactly.
+## What endless does NOT do is bosses — neither the queen nor the Nurse Beetle.
+## Both live in the fixed table only, and that is a decision rather than an
+## omission: the two endless invariants worth having are that threat rises every
+## single wave and that the rise is exactly one beetle's worth (see _raw_threat),
+## and a boss that appears every Nth wave breaks both — the wave after a boss wave
+## prices lower than the boss wave, which the readout would have to report as the
+## difficulty going down. Making bosses permanent instead would need a third road
+## share, and the two that exist already sum to SIMULTANEOUS_PEST_CEILING exactly.
+## The second boss was weighed against exactly this paragraph and put in the
+## campaign for exactly these reasons; see WAVES' header.
 ##
 ## Static so threat_for() can price a wave that is not running — it reads only
 ## `number` and the table size, never instance state.
@@ -871,15 +980,29 @@ static func groups_for(wave: int) -> Array:
 ## threat number that fell because a wave was spread out would be reporting the
 ## fix as a difficulty cut.
 ##
-## **The second thing it cannot read is the Shield Bug's plate, and that one IS an
-## under-statement.** A plated bug is priced at its 10 points of health like any
-## other pest, while `shell_hits` 6 blocked hits are work a lane has to do and get
-## nothing for. So waves 15 and 21 are harder than the number on the bar, by an
-## amount that depends on which plants the player owns — which is exactly why it
-## is not fixable here. A fudge factor would have to guess the garden, and the
-## paragraph above is the standard this function is held to: it may over-state a
-## wave, never under-state one. This is the one place it does, it is bounded (two
-## rows, seven pests), and it is written down rather than corrected.
+## **The second thing it cannot read is a MECHANIC, and those two are the one place
+## it under-states a wave.** Both are bounded, both are written down here rather
+## than corrected, and neither is fixable in this function, because the size of
+## each depends on which plants the player owns and a fudge factor would have to
+## guess the garden:
+##
+##   * The Shield Bug's plate. A plated bug is priced at its 10 points of health
+##     like any other pest, while `shell_hits` 6 blocked hits are work a lane has
+##     to do and get nothing for. Waves 15 and 21 are harder than the bar says.
+##   * The Nurse Beetle's aura (plant-tower-defense-gsai). She is priced at her 48
+##     points of health and nothing else, while `Pest.heal_per_second(NURSE)` puts
+##     2.0 health a second back into every other pest inside 160 px of her for as
+##     long as she is alive — which, against a lane of level-1 Corn Cobblers doing
+##     1.25/s each, is unbounded work rather than merely extra work. Waves 17 and
+##     19 are harder than the bar says, and by more than the plate costs.
+##     Deliberately NOT priced by scaling her health up to compensate: that would
+##     put the whole error into her own bar, where the player would read it as a
+##     boss with a big health pool, which is the exact thing this species was
+##     built not to be.
+##
+## The standard this function is held to is the paragraph above: it may over-state
+## a wave, never under-state one. These are the two places it does — four rows and
+## nine pests in a twenty-two wave table — and they are named rather than hidden.
 ##
 ## Note the claim in the paragraph above — "there is no way to make an endless
 ## wave harder that this function cannot see" — is untouched by that, and stays

@@ -1965,6 +1965,18 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 	# first. The finale is deliberately unmoved: it is the only row with no road
 	# slack and only 18.7 points of health under the seam bound.
 	#
+	# Waves 17 (35 -> 33) and 19 (33 -> 31) moved when the Nurse Beetle entered the
+	# table (plant-tower-defense-gsai). Each row traded THREE beetles for ONE Nurse,
+	# which is 48 points of base health out and 48 points back in, so both rows still
+	# price at exactly what they did before (339 and 372) and the threat curve from
+	# wave 1 to wave 300 is unmoved -- the campaign got harder in two places and the
+	# number on the bar did not, because `_raw_threat` cannot see an aura any more
+	# than it can see a plate. Re-derived against an offline replica of `_raw_threat`
+	# and `peak_simultaneous_pests` before the rows were written, and the replica was
+	# itself validated by reproducing THIS array, the finale's 40-of-40 peak, the
+	# 436.7 seam bound and endless's 29 first. The finale is unmoved for the fourth
+	# species running: it is the only row with no road slack.
+	#
 	# THIS LIST STAYS RECORDED AND MUST NOT BE DERIVED. Its only possible source of
 	# truth is WAVES itself, so `expected[i] = pests_in_wave(i)` would assert a
 	# tautology and pass unconditionally -- the exact "recorded list that is RIGHT"
@@ -1975,7 +1987,7 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 	# shape) are the other half the skill asks for.
 	var expected: Array[int] = [
 		5, 9, 9, 14, 13, 19, 19, 21, 26, 32, 30, 23, 35, 29, 37,
-		37, 35, 32, 33, 36, 38, 36,
+		37, 33, 32, 31, 36, 38, 36,
 	]
 	var err: String = _T.assert_eq(WaveDirector.WAVES.size(), expected.size(),
 		"the campaign is still twenty-two waves long")
@@ -6789,3 +6801,450 @@ func test_the_shield_bug_was_paid_for_in_beetles_rather_than_out_of_the_finale()
 			return err
 		checked += 1
 	return _T.assert_gt(checked, 0, "the per-wave sweep actually ran (%d waves)" % checked)
+
+
+# -- The Nurse Beetle: the second boss (plant-tower-defense-gsai) --------------
+#
+# The bead's whole ask was a boss that poses a DIFFERENT question, not a bigger
+# one. The queen's question is where a kill lands; the Nurse's is what the
+# garden's damage is aimed at, because every damaging plant in this game shoots
+# the pest furthest along the road and a healer behind the front of the queue is
+# something that rule will not shoot at.
+#
+# So the tests below are in two halves. The first four pin the MECHANIC -- the
+# rate against the plant it was priced against, the aura's exclusivity, and that
+# it heals its neighbours and never itself. The last four pin that the species is
+# IN THE GAME and that putting it there did not spend the campaign's last scarce
+# budget, and they sweep the table rather than naming waves 17 and 19, so a row
+# that moves the species takes them with it.
+
+
+## Every campaign wave carrying a Nurse Beetle, and how many it sends. Derived off
+## the AURA rather than off the species name, so a third healer would be counted
+## here the day it landed instead of quietly escaping every check below.
+func _nurse_waves() -> Dictionary:
+	var out: Dictionary = {}
+	for wave: int in range(1, WaveDirector.WAVES.size() + 1):
+		var count: int = 0
+		for group: Dictionary in WaveDirector.groups_for(wave):
+			if Pest.heal_radius(StringName(group["species"])) > 0.0:
+				count += int(group["count"])
+		if count > 0:
+			out[wave] = count
+	return out
+
+
+## The best a level-1 Corn Cobbler can do to one pest anywhere inside its ring.
+## Swept rather than sampled at one distance: the claim being made is "the free
+## starter loses this race", and a claim about the starter's BEST case is the only
+## version of it worth asserting.
+func _best_starter_cob_dps() -> float:
+	var best: float = 0.0
+	var steps: int = 40
+	for i: int in range(steps + 1):
+		var distance: float = CornCobbler.RANGE * float(i) / float(steps)
+		best = maxf(best, CornCobbler.single_target_dps(1, distance))
+	return best
+
+
+## The number the whole species is balanced on, asserted against the plant it was
+## priced against rather than written down.
+##
+## `Pest.heal_per_second(NURSE)` sits ABOVE one level-1 Corn Cobbler's damage and
+## BELOW two of them. That band is the decision the boss exists to pose: trickle
+## damage spread thin over a lane does nothing at all inside the aura, and the same
+## seeds concentrated do. Reading it off `CornCobbler.LEVELS` means a balance pass
+## on corn fails here loudly instead of quietly turning this species into a beetle.
+func test_the_nurse_beetles_aura_out_paces_one_starter_cob_and_loses_to_two() -> String:
+	var heal: float = Pest.heal_per_second(Pest.NURSE)
+	var starter: float = _best_starter_cob_dps()
+	var err: String = _T.assert_gt(heal, 0.0, "the Nurse Beetle actually has an aura")
+	if err == "":
+		err = _T.assert_gt(starter, 0.0,
+			"and a level-1 cob actually does damage (a zero here is a vacuous pass)")
+	if err != "":
+		return err
+	err = _T.assert_gt(heal, starter,
+		("one level-1 Corn Cobbler loses the race outright -- %.2f health a second put"
+			+ " back against %.2f a second taken off, so a lane of free starter plants"
+			+ " never finishes anything standing inside the aura") % [heal, starter])
+	if err == "":
+		err = _T.assert_gt(starter * 2.0, heal,
+			("and TWO of them win it (%.2f against %.2f). If this ever fails the species"
+				+ " has become unanswerable by the plant every player owns, which is a"
+				+ " wall rather than a decision -- see Pest.SPECIES[NURSE]")
+				% [starter * 2.0, heal])
+	if err == "":
+		# The other end of the band: the top of the corn ladder, at the rim of its own
+		# ring where only the middle kernel connects, still clears the aura on its own.
+		var maxed_at_rim: float = CornCobbler.single_target_dps(
+			CornCobbler.LEVELS.size(), CornCobbler.RANGE * 0.95)
+		err = _T.assert_gt(maxed_at_rim, heal,
+			("a maxed cob at the far edge of its ring still out-damages the aura"
+				+ " (%.2f against %.2f) -- upgrading is an answer to this boss")
+				% [maxed_at_rim, heal])
+	if err == "":
+		# Legibility, and the reason the pulse is 3.0 rather than 2.0 every second: one
+		# pulse is exactly one whole aphid, so a swarm inside the aura visibly stops
+		# dying rather than dying slightly slower.
+		err = _T.assert_float_eq(Pest.heal_amount(Pest.NURSE),
+			float(Pest.SPECIES[Pest.APHID]["health"]), 0.0001,
+			"one pulse is exactly one aphid's whole health pool")
+	if err == "":
+		# The mirror image, and worth asserting together because the pair IS the design:
+		# the garden's own healer is tuned to LOSE its race with one pest, and this one
+		# is tuned to WIN its race with one plant.
+		err = _T.assert_gt(Pest.EAT_DPS, Aloe.HEAL_PER_SECOND,
+			("the Aloe still loses its race (%.1f/s of healing against %.1f/s of eating)"
+				+ " while the Nurse wins hers -- that asymmetry is what makes this a boss"
+				+ " and that a support plant") % [Aloe.HEAL_PER_SECOND, Pest.EAT_DPS])
+	return err
+
+
+## The reach, against the two numbers it was chosen between.
+##
+## Under `CornCobbler.RANGE` so a cob that can reach the Nurse can reach everything
+## she is protecting -- "shoot the healer" is never a shot the player cannot take
+## from a plant already on the board. And under the 192 px between the board's
+## parallel road rows, so an aura never leaks into a lane the Nurse is not walking.
+func test_the_auras_reach_sits_under_a_cobs_ring_and_under_the_gap_between_lanes() -> String:
+	var reach: float = Pest.heal_radius(Pest.NURSE)
+	var err: String = _T.assert_gt(reach, 0.0, "the aura has a reach")
+	if err == "":
+		err = _T.assert_gt(CornCobbler.RANGE, reach,
+			("a cob's ring (%.0f) contains the aura (%.0f), so anything the Nurse is"
+				+ " protecting is inside reach of a cob that can see her")
+				% [CornCobbler.RANGE, reach])
+	if err == "":
+		err = _T.assert_gt(reach, float(Board.CELL),
+			("and it reaches past her own cell (%.0f against %d) -- an aura that only"
+				+ " covered the pest it was standing on would be a health pool")
+				% [reach, Board.CELL])
+	if err == "":
+		# Derived from the road rather than written down: PATH_CORNERS runs along three
+		# rows of the board and the closest two are three cells apart.
+		var lane_gap: float = float(Board.CELL) * 3.0
+		err = _T.assert_gt(lane_gap, reach,
+			("and it does not bridge two lanes of the road (%.0f px apart against a"
+				+ " %.0f px aura) -- a Nurse heals the wave she is walking in")
+				% [lane_gap, reach])
+	return err
+
+
+## The branch must not leak, exactly as the plate's must not. Every other species
+## reports no aura at all rather than a rate with no reach behind it.
+func test_the_aura_belongs_to_exactly_one_species_and_leaves_the_others_alone() -> String:
+	var healers: Array[StringName] = []
+	for which: StringName in Pest.SPECIES:
+		if Pest.heal_radius(which) > 0.0:
+			healers.append(which)
+	var err: String = _T.assert_eq(healers.size(), 1,
+		"exactly one species carries an aura (found %s)" % [healers])
+	if err == "":
+		err = _T.assert_eq(String(healers[0]), String(Pest.NURSE), "and it is the Nurse Beetle")
+	if err != "":
+		return err
+	# heal_amount() and heal_period() read heal_radius() first on purpose: a row
+	# naming a rate and no reach must be auraless, not a heal that reaches the whole
+	# board because a missing key read as zero and zero compared as "no limit".
+	var checked: int = 0
+	for which: StringName in Pest.SPECIES:
+		if which == Pest.NURSE:
+			continue
+		err = _T.assert_float_eq(Pest.heal_per_second(which), 0.0, 0.0001,
+			"%s puts nothing back into anything" % which)
+		if err == "":
+			err = _T.assert_float_eq(Pest.heal_amount(which), 0.0, 0.0001,
+				"%s has no pulse size either" % which)
+		if err == "":
+			err = _T.assert_float_eq(Pest.heal_period(which), 0.0, 0.0001,
+				"%s has no pulse clock, so _tick_aura returns before it ever counts" % which)
+		if err != "":
+			return err
+		checked += 1
+	return _T.assert_gt(checked, 0, "there were other species to check (%d)" % checked)
+
+
+## The pure half of the heal, where the two guards live.
+func test_healing_never_overshoots_the_bar_and_never_runs_backwards() -> String:
+	var err: String = _T.assert_float_eq(Pest.healed_to(4.0, 3.0, 16.0), 7.0, 0.0001,
+		"an ordinary top-up is just addition")
+	if err == "":
+		err = _T.assert_float_eq(Pest.healed_to(15.0, 3.0, 16.0), 16.0, 0.0001,
+			"and it stops at the pest's own maximum rather than overfilling the bar")
+	if err == "":
+		err = _T.assert_float_eq(Pest.healed_to(8.0, -5.0, 16.0), 8.0, 0.0001,
+			("a negative amount heals nothing rather than turning a nurse into a second"
+				+ " mouth -- the same guard Aloe.heal_for spends a maxf on"))
+	return err
+
+
+## The aura on a real board: one pulse, three pests, three different answers.
+##
+## Driven by calling `pulse_aura()` directly rather than by pumping sixty physics
+## frames, which would be measuring the frame pump. Positions and health are set
+## AFTER the scene settles, because entering the tree switches physics processing
+## back on and the pests walk themselves down their own routes first -- the same
+## trap `_corn_volley_damage` documents above.
+func test_a_nurse_tops_up_the_pest_beside_her_and_never_herself() -> String:
+	var nurse: Pest = _pest(Pest.NURSE, Vector2.ZERO)
+	var near: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	var far: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	var host: Node2D = _host([nurse, near, far])
+	await _T.instantiate_scene(host)
+	var reach: float = Pest.heal_radius(Pest.NURSE)
+	var pulse: float = Pest.heal_amount(Pest.NURSE)
+	var three: Array[Pest] = [nurse, near, far]
+	for pest: Pest in three:
+		pest.set_physics_process(false)
+	nurse.position = Vector2.ZERO
+	near.position = Vector2(0.0, reach * 0.5)
+	far.position = Vector2(0.0, reach * 2.0)
+	# Hurt by more than one pulse, so a heal that landed cannot be hidden by the
+	# ceiling in healed_to().
+	var wound: float = pulse * 3.0
+	for pest: Pest in three:
+		pest.health = pest.max_health
+		pest.take_damage(wound)
+
+	var err: String = _T.assert_float_eq(near.health, near.max_health - wound, 0.0001,
+		"the neighbour starts hurt (a full-health pest could not show a heal)")
+	if err == "":
+		nurse.pulse_aura()
+		err = _T.assert_float_eq(near.health, near.max_health - wound + pulse, 0.0001,
+			("one pulse put %.1f back into the pest %.0f px away, inside the %.0f px aura"
+				% [pulse, reach * 0.5, reach]))
+	if err == "":
+		err = _T.assert_float_eq(far.health, far.max_health - wound, 0.0001,
+			("and nothing at all into the one %.0f px away, outside it -- the reach is a"
+				+ " real limit rather than decoration") % (reach * 2.0))
+	if err == "":
+		err = _T.assert_float_eq(nurse.health, nurse.max_health - wound, 0.0001,
+			("and nothing into HERSELF. A boss that also repairs its own bar is a health"
+				+ " pool wearing a mechanic's name, which is the one thing this species"
+				+ " was built not to be -- see Pest.pulse_aura"))
+	if err == "":
+		# A corpse must not be stood back up. `died` has already fired by then, so the
+		# seeds and the husk are paid and a revived pest would be paid for twice.
+		near.kill()
+		var dead_at: float = near.health
+		nurse.pulse_aura()
+		err = _T.assert_float_eq(near.health, dead_at, 0.0001,
+			"a pulse over a corpse leaves it dead rather than reviving a paid-for kill")
+	_T.free_ui(host)
+	return err
+
+
+## The bead's acceptance criterion, as one assertion. A species that exists, is
+## priced and is fully tested is still not in the game until the table sends one --
+## the exact defect the Shield Bug sat on for a whole cycle.
+func test_the_nurse_beetle_is_actually_in_a_wave_a_player_will_meet() -> String:
+	var waves: Dictionary = _nurse_waves()
+	var err: String = _T.assert_gt(waves.size(), 0,
+		("no campaign wave sends a Nurse Beetle, so no player will ever meet one."
+			+ " Pest.SPECIES holding the entry is not the same as the game containing"
+			+ " the species -- see WaveDirector.WAVES"))
+	if err != "":
+		return err
+	var total: int = 0
+	for wave: int in waves.keys():
+		total += int(waves[wave])
+	err = _T.assert_gt(total, 0, "and the rows send a positive number of them (%s)" % [waves])
+	if err == "":
+		# Campaign only, and deliberately: `_endless_groups` is built on threat rising
+		# every single wave by exactly one beetle's worth, and a boss on a cadence
+		# breaks that. The species therefore lives in the campaign or nowhere.
+		var endless_has_one: bool = false
+		for group: Dictionary in WaveDirector.groups_for(WaveDirector.WAVES.size() + 1):
+			if Pest.heal_radius(StringName(group["species"])) > 0.0:
+				endless_has_one = true
+		err = _T.assert_false(endless_has_one,
+			("endless still sends only the swarm and the column -- see _endless_groups"
+				+ " for why a periodic boss cannot go there"))
+	return err
+
+
+## Two Nurses inside one aura would top each other up for as long as they both
+## lived, because `pulse_aura` heals every OTHER pest in range and makes no
+## exception for a second healer. That is not a bug to patch in the pest -- an
+## exception the player cannot see is worse than the rule -- so the table carries
+## the constraint and this is what enforces it.
+func test_no_wave_sends_two_nurse_beetles_into_each_others_aura() -> String:
+	var waves: Dictionary = _nurse_waves()
+	var err: String = _T.assert_gt(waves.size(), 0,
+		"there are Nurse waves to check (a zero here is a vacuous pass)")
+	if err != "":
+		return err
+	for wave: int in waves.keys():
+		err = _T.assert_eq(int(waves[wave]), 1,
+			("wave %d sends %d Nurse Beetles. Two of them heal EACH OTHER (pulse_aura"
+				+ " excludes only `self`), so a pair inside one aura is a boss the"
+				+ " garden cannot finish -- send them on separate waves")
+				% [wave, int(waves[wave])])
+		if err != "":
+			return err
+	return err
+
+
+## Not too early, and never on a wave that already carries the other boss.
+##
+## The first half is the Shield Bug's rule for the same reason: the free starter
+## plant cannot beat this aura on its own, so a Nurse before the Chomp and the
+## Dandelion are realistically owned is a lane with no legal answer. The second
+## half is new -- two bosses in one row dilutes both, and the two questions they
+## pose are meant to be asked separately.
+func test_the_nurse_beetle_lands_late_and_never_shares_a_wave_with_the_queen() -> String:
+	var waves: Dictionary = _nurse_waves()
+	var err: String = _T.assert_gt(waves.size(), 0,
+		"there are Nurse waves to place (a zero here is a vacuous pass)")
+	if err != "":
+		return err
+	var half: int = WaveDirector.WAVES.size() / 2
+	var earliest: int = WaveDirector.WAVES.size() + 1
+	for wave: int in waves.keys():
+		err = _T.assert_gt(int(wave), half,
+			("wave %d sends a Nurse Beetle, but it is in the campaign's first half"
+				+ " (<= %d). One level-1 Corn Cobbler loses the race with the aura, so a"
+				+ " Nurse before a second kind of plant is realistically owned is a wall,"
+				+ " not a decision") % [wave, half])
+		if err != "":
+			return err
+		var shares_with_queen: bool = false
+		for group: Dictionary in WaveDirector.groups_for(int(wave)):
+			if StringName(group["species"]) == Pest.QUEEN:
+				shares_with_queen = true
+		err = _T.assert_false(shares_with_queen,
+			("wave %d carries both bosses. They pose different questions -- the queen"
+				+ " asks where a kill lands, the Nurse asks what the garden's damage is"
+				+ " aimed at -- and a row that asks both asks neither") % wave)
+		if err != "":
+			return err
+		earliest = mini(earliest, int(wave))
+	err = _T.assert_gt(earliest, WaveDirector.MUTATION_START_WAVE,
+		("the debut (wave %d) is past MUTATION_START_WAVE (%d) -- two new things to read"
+			+ " on one wave is the mistake cycle 101 had to undo on wave 8 itself")
+			% [earliest, WaveDirector.MUTATION_START_WAVE])
+	return err
+
+
+## What it displaced, pinned as the decision it was -- the Shield Bug's test one
+## species later, and the same two facts about the finale.
+##
+## The finale is the only campaign row with no road slack (40 of 40) and the least
+## health headroom under the seam bound derived at WaveDirector.ENDLESS_BEETLE_BASE.
+## A Nurse there would have been paid for out of that headroom; every other row pays
+## in beetles. This asserts the choice not to, so a future cycle that spends it does
+## so on purpose and reads why here.
+func test_the_nurse_beetle_was_paid_for_in_beetles_rather_than_out_of_the_finale() -> String:
+	var finale: int = WaveDirector.WAVES.size()
+	var waves: Dictionary = _nurse_waves()
+	var err: String = _T.assert_gt(waves.size(), 0,
+		"there are Nurse waves to check (a zero here is a vacuous pass)")
+	if err != "":
+		return err
+	err = _T.assert_false(waves.has(finale),
+		("the finale carries a Nurse Beetle. It is the one row with zero road slack and"
+			+ " the least health headroom in the campaign, so anything added there is"
+			+ " paid for out of the seam bound -- re-derive before allowing this"))
+	if err != "":
+		return err
+
+	# The headroom itself, computed exactly the way test_economy.gd's seam test and
+	# the Shield Bug's own test above compute it, so the three cannot disagree.
+	var seam_health: float = 0.0
+	for group: Dictionary in WaveDirector.groups_for(finale + 1):
+		seam_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
+	var finale_health: float = 0.0
+	for group: Dictionary in WaveDirector.groups_for(finale):
+		finale_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
+	err = _T.assert_gt(seam_health, 0.0, "the first endless wave has contents")
+	if err == "":
+		err = _T.assert_gt(finale_health, 0.0, "and so does the finale")
+	if err != "":
+		return err
+	var campaign_mult: float = 1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT
+	var seam_mult: float = 1.0 + WaveDirector.mutation_chance_for(finale + 1) \
+		* WaveDirector.MUTATION_THREAT_WEIGHT
+	var seam_scales: float = WaveDirector.health_scale_for(finale + 1) \
+		* WaveDirector.speed_scale_for(finale + 1)
+	var bound: float = seam_health * seam_mult * seam_scales / campaign_mult
+	var one_nurse: float = float(Pest.SPECIES[Pest.NURSE]["health"])
+	err = _T.assert_gt(one_nurse, bound - finale_health,
+		("the finale's headroom under the seam bound is %.1f points (finale %.0f, bound"
+			+ " %.1f), which is now enough to hold a %.0f-point Nurse Beetle. It measured"
+			+ " 18.7 when this species landed -- less than half a Nurse -- which is WHY"
+			+ " both of her rows paid in beetles instead. If this ever fails, the finale"
+			+ " has been made lighter or the seam bound raised, and the sentence above"
+			+ " needs rewriting rather than deleting")
+			% [bound - finale_health, finale_health, bound, one_nurse])
+	if err != "":
+		return err
+
+	# And every row that DID take one is still strictly inside the road budget --
+	# only the finale is allowed to land on it.
+	var checked: int = 0
+	for wave: int in waves.keys():
+		var peak: int = WaveDirector.peak_simultaneous_pests(int(wave))
+		err = _T.assert_gt(WaveDirector.SIMULTANEOUS_PEST_CEILING, peak,
+			("wave %d carries a Nurse Beetle and peaks at %d, strictly under the %d"
+				+ " ceiling -- only the finale is allowed to land on it")
+				% [wave, peak, WaveDirector.SIMULTANEOUS_PEST_CEILING])
+		if err != "":
+			return err
+		checked += 1
+	return _T.assert_gt(checked, 0, "the per-wave sweep actually ran (%d waves)" % checked)
+
+
+## `wave_carries_boss` used to compare against `Pest.QUEEN` by name. That was
+## correct and unextendable at the same time: a second boss would have gone on
+## answering `false`, silently, and both readers of it -- the HUD's "a boss is
+## coming" prep note and the rule that drought never lands on a boss wave -- would
+## have quietly stopped applying to half the bosses in the game.
+##
+## This is the check that a name written into a comparison cannot pass: the boss
+## list is derived from the SPECIES flag, and every wave containing any of them has
+## to answer true.
+func test_wave_carries_boss_sees_every_boss_species_and_not_just_the_queen() -> String:
+	var bosses: Array[StringName] = Pest.boss_species()
+	var err: String = _T.assert_gt(bosses.size(), 1,
+		("the game has more than one boss species (%s). If this fails, the test below"
+			+ " is asserting a single-species rule and proves nothing about the flag")
+			% [bosses])
+	if err == "":
+		err = _T.assert_false(Pest.is_boss(Pest.BEETLE),
+			"and an ordinary pest is not one, so the flag separates something")
+	if err != "":
+		return err
+	var seen: Dictionary = {}
+	var boss_waves: int = 0
+	var plain_waves: int = 0
+	for wave: int in range(1, WaveDirector.WAVES.size() + 1):
+		var carries: bool = false
+		for group: Dictionary in WaveDirector.groups_for(wave):
+			var which: StringName = StringName(group["species"])
+			if Pest.is_boss(which):
+				carries = true
+				seen[which] = true
+		err = _T.assert_eq(WaveDirector.wave_carries_boss(wave), carries,
+			"wave_carries_boss(%d) agrees with the species in the row" % wave)
+		if err != "":
+			return err
+		if carries:
+			boss_waves += 1
+		else:
+			plain_waves += 1
+	err = _T.assert_gt(boss_waves, 0, "some campaign waves carry a boss (%d)" % boss_waves)
+	if err == "":
+		err = _T.assert_gt(plain_waves, 0,
+			("and some do not (%d) -- a function answering true everywhere would pass the"
+				+ " sweep above and mean nothing") % plain_waves)
+	if err == "":
+		# The half a per-wave sweep cannot claim: every boss the game HAS is in the
+		# campaign somewhere, so none of them is a flag nothing ever exercises.
+		err = _T.assert_eq(seen.size(), bosses.size(),
+			("every boss species reaches a campaign wave -- %s of %s" % [seen.keys(), bosses]))
+	if err == "":
+		err = _T.assert_false(WaveDirector.wave_carries_boss(WaveDirector.WAVES.size() + 1),
+			"and no endless wave carries one, which is what the campaign-only rule means")
+	return err
+
