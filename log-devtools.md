@@ -7652,3 +7652,39 @@ status rather than rewriting the entries that recorded these as open.
   declining launches makes it easy to forget: a `print()` probe, launched, one bridge verb,
   read `.devtools/launch_stdout.log`, probe removed. Two minutes, and it answered a question
   about engine event ordering that no amount of reading the diff could.
+
+## 2026-08-18 — cycle 123: the shop and the panel disagreed about the same plant
+
+- Value: **warranted** — the sweep found one promise that had stopped being true, and the
+  player could see the contradiction without leaving the screen.
+  - Expected: nine blurbs, two already pinned, seven making factual promises nothing checks.
+    Predicted at least one has drifted, because these were written across many cycles and
+    the constants they name have been retuned since.
+  - Got: one. The Sundew's blurb said *"crawls at half speed"*; `StickySundew.SLOW_FACTOR`
+    is **0.55**, and the selection panel prints the real number — *"Slowing N pest(s) to 55%
+    speed."* **The shop and the panel disagreed about the same plant**, both on screen, one
+    click apart.
+  - Found: three.
+    **(1)** the Sundew. The SENTENCE moved, not the constant: 0.55 is tuned and carries its
+    own overlapping-patch reasoning, and changing a balance number to make a blurb true is
+    the tail wagging the dog.
+    **(2)** the assertion is a RELATIONSHIP, not a corrected string — the blurb may say "at
+    half speed" **if and only if** `SLOW_FACTOR` is 0.5. A future retune to an actual half
+    makes the sentence permissible again, rather than leaving a test that hard-codes today's
+    wording.
+    **(3)** the denominator is what outlives the cycle. Every plant must appear in the test,
+    checked or explicitly named as checked elsewhere, so the tenth plant fails until somebody
+    decides whether its blurb makes a checkable claim.
+  - Cheaper: reading the nine blurbs beside the constants they name — which is what this
+    was, about fifteen minutes. The test is what stops it needing doing again.
+
+- **Six of the seven were true, and that is the useful shape of the result.** Mint's "a
+  third again as fast" (1/0.75 = 1.333×), the Aloe's "too slow to save one being eaten"
+  (3.0/s against `EAT_DPS` 14.0), the Corn's "upgrades to a bunch" naming the actual top
+  rung, the Dandelion rearming inside a prep gap, the Sundew catching a winged pest. The
+  writing in this project is careful; what it lacked was anything that would notice when the
+  code moved underneath it.
+
+- Gap: **no gap this turn.** Headless-only, and the reason is unusually clean: blurbs live in
+  `tooltip_text`, so there is no width budget a launch could measure, and every claim is a
+  relationship between two values the test reads directly.

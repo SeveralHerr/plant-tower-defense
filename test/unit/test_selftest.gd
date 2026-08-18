@@ -17643,6 +17643,116 @@ func test_every_bramble_frame_is_the_same_plant_standing_in_the_same_place() -> 
 # =============================================================================
 
 
+## Every shop blurb is true of the code that makes it true (plant-tower-defense-2878).
+##
+## A blurb is a factual promise the player reads while deciding how to spend seeds, and it
+## lives in `tooltip_text` on the shop button — so unlike the message row it is not width
+## budgeted, and unlike a comment nobody re-reads it, it is read by everyone.
+##
+## Two were pinned before this: the Nettle's "dead weight until wave 8" against
+## `WaveDirector.MUTATION_START_WAVE`, and the Chomp's against `Pest.SPECIES` (cycle 119).
+## This is the other seven, and it found one that had stopped being true.
+##
+## EVERY PLANT MUST APPEAR BELOW, checked or explicitly excused. That is the denominator,
+## and it is what makes the tenth plant fail here rather than shipping an unchecked promise.
+func test_every_shop_blurb_is_true_of_the_code_that_makes_it_true() -> String:
+	var handled: Array[StringName] = []
+	var err: String = ""
+
+	# CORN -- "Upgrades to a bunch of corn." The top rung's own name.
+	handled.append(PlantCatalog.CORN)
+	var top: Dictionary = CornCobbler.LEVELS[CornCobbler.LEVELS.size() - 1]
+	err = _T.assert_true(PlantCatalog.blurb(PlantCatalog.CORN).contains(String(top["name"])),
+		"the cob's blurb names its top rung (%s)" % top["name"])
+
+	# SUNFLOWER -- "Fights nothing."
+	if err == "":
+		handled.append(PlantCatalog.SUNFLOWER)
+		err = _T.assert_false(PlantCatalog.engages(PlantCatalog.SUNFLOWER),
+			"a plant whose blurb opens 'Fights nothing' does not engage")
+
+	# SUNDEW -- three claims, and the one that had gone stale.
+	if err == "":
+		handled.append(PlantCatalog.SUNDEW)
+		var dew: String = PlantCatalog.blurb(PlantCatalog.SUNDEW)
+		err = _T.assert_false(PlantCatalog.engages(PlantCatalog.SUNDEW),
+			"'Hurts nothing' -- the Sundew does not engage")
+		if err == "":
+			# THE ONE THAT WAS WRONG. SLOW_FACTOR is 0.55, the panel prints "55% speed",
+			# and the blurb said "half speed". Asserted as a RELATIONSHIP so a retune moves
+			# the sentence with it: if the factor is not 0.5, the blurb may not say a bare
+			# "at half speed".
+			var half: bool = absf(StickySundew.SLOW_FACTOR - 0.5) < 0.001
+			err = _T.assert_eq(dew.contains("at half speed"), half,
+				("SLOW_FACTOR is %.2f, so the blurb %s say 'at half speed' -- the panel "
+					+ "prints %d%% and the two must not disagree about the same plant")
+					% [StickySundew.SLOW_FACTOR, "must" if half else "must not",
+						int(round(StickySundew.SLOW_FACTOR * 100.0))])
+		if err == "":
+			# "wings included, which no Chomp can say" -- asserted BEHAVIOURALLY, because
+			# neither half is a constant. The Sundew's `_act` claims any pest it `covers()`
+			# with no wing check; the Chomp has two `is_winged` guards. The Chomp half is
+			# already pinned by test_a_winged_pest_flies_over_a_chomps_reach, so this is the
+			# half nothing was checking.
+			var dew_patch := StickySundew.new()
+			dew_patch.setup(PlantCatalog.SUNDEW, Vector2i(0, 0), null)
+			var flier: Pest = _pest(Pest.APHID, Vector2(0, 0))
+			flier.apply_mutation(Pest.MUTATION_WINGED)
+			var dew_host: Node2D = _host([dew_patch, flier])
+			await _T.instantiate_scene(dew_host)
+			dew_patch._act(0.016, [flier])
+			err = _T.assert_true(dew_patch.covers(flier),
+				"the dew catches a WINGED pest -- which is the half of the sentence the "
+					+ "Chomp cannot match")
+			_T.free_ui(dew_host)
+
+	# MINT -- "shoot a third again as fast". 0.75 interval is 1/0.75 = 1.333x the rate.
+	if err == "":
+		handled.append(PlantCatalog.MINT)
+		var rate: float = 1.0 / Mint.scale_for(1)
+		err = _T.assert_float_eq(rate, 4.0 / 3.0, 0.02,
+			("one Mint makes a neighbour fire %.3fx as fast; 'a third again' is 1.333x"
+				% rate))
+
+	# ALOE -- "Too slow to save one being eaten."
+	if err == "":
+		handled.append(PlantCatalog.ALOE)
+		err = _T.assert_true(Aloe.HEAL_PER_SECOND < Pest.EAT_DPS,
+			("the Aloe heals %.1f/s against a mouth taking %.1f/s -- 'too slow to save one "
+				+ "being eaten' is a comparison, not a mood")
+				% [Aloe.HEAL_PER_SECOND, Pest.EAT_DPS])
+
+	# BRAMBLE -- "Winged pests go straight over."
+	if err == "":
+		handled.append(PlantCatalog.BRAMBLE)
+		err = _T.assert_false(Bramble.stops(true), "a winged pest is not held by the wall")
+
+	# DANDELION -- "grows its fluff back between volleys."
+	if err == "":
+		handled.append(PlantCatalog.DANDELION)
+		err = _T.assert_true(Dandelion.rearm_seconds() < Game.PREP_SECONDS,
+			("a spent head rearms in %.1fs inside the %.0fs gap between waves"
+				% [Dandelion.rearm_seconds(), Game.PREP_SECONDS]))
+
+	# The two pinned elsewhere, named so this test's denominator is honest about them.
+	if err == "":
+		handled.append(PlantCatalog.NETTLE)     # test_the_nettle_blurb_warns_it_is_dead_weight_before_mutations
+		handled.append(PlantCatalog.CHOMP)      # test_the_chomps_shop_line_is_true_of_the_chew_table
+
+	# THE DENOMINATOR. A tenth plant fails here until somebody decides whether its blurb
+	# makes a checkable claim -- which is the whole point, since the alternative is an
+	# unchecked promise the player pays for.
+	if err == "":
+		var missing: Array[String] = []
+		for id: StringName in PlantCatalog.ids():
+			if not handled.has(id):
+				missing.append(String(id))
+		err = _T.assert_true(missing.is_empty(),
+			("every plant's blurb is checked here or named as checked elsewhere; "
+				+ "unaccounted: %s") % [missing])
+	return err
+
+
 ## A touch commits where the finger LIFTS, not where it landed (plant-tower-defense-qdsi).
 ##
 ## The whole point of the touch layer: a tap placed on press gives a touch player no way to

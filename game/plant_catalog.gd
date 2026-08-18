@@ -59,7 +59,16 @@ const PLANTS: Dictionary = {
 		"tier": 2,
 		"unlocked_at_start": false,
 		"free_starter": false,
-		"blurb": "Hurts nothing. Everything in its dew crawls at half speed — wings included, which no Chomp can say.",
+		# "JUST OVER HALF", not "half" (plant-tower-defense-2878). `StickySundew.SLOW_FACTOR`
+		# is 0.55, and the selection panel prints the real number —
+		# `Hud.sundew_detail(pests, 55)` reads "Slowing N pest(s) to 55% speed." So the shop
+		# promised half and the panel delivered 55%, and a player who read both saw the two
+		# disagree about the same plant.
+		#
+		# The SENTENCE moved, not the constant: 0.55 is tuned, and its own comment at
+		# sticky_sundew.gd:40 explains the overlapping-patch reasoning behind it. Changing a
+		# balance number to make a blurb true is the tail wagging the dog.
+		"blurb": "Hurts nothing. Everything in its dew crawls at just over half speed — wings included, which no Chomp can say.",
 		# Slows, never damages. This is the entry that makes reach() the wrong
 		# question: SAP_RADIUS is a real reach and a lane walled in dew is
 		# undefended, so coverage must ask this key and not that one.
