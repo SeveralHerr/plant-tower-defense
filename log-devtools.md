@@ -6731,3 +6731,35 @@ status rather than rewriting the entries that recorded these as open.
   a **zero that had to be earned**. Two wrong versions produced 554 and 144 findings; the
   right one produces 0. A control file now pins all four outcomes, because "0 findings"
   and "the sweep is broken" are the same output.
+
+## 2026-08-18 — merged the reach-ring lane and verified three pixel changes on one frame
+
+- Value: **warranted** — this is the case screenshots exist for, and one frame settled
+  three separate claims that no headless gate can reach.
+  - Expected: the shared `draw_reach_ring()` paints for a plant that inherits `_draw()`
+    and for one that overrides it; and the Corn's wash is actually gone rather than
+    merely deleted from a constant.
+  - Got: one 560x340 crop with three plants selected at once — the Chomp's new rose ring
+    at 73.6 px (which `find-nodes --call reach_ring_radius` had already reported, but a
+    getter returning 73.6 says nothing about whether `_draw` ran), the Sundew's new edge
+    around its sap disc, and the Corn's 176 px ring with grass and dirt at their normal
+    colours inside it.
+  - Found: nothing broken. The suite was green before the screenshot and stayed green.
+    The value was **disproving** the cheap worry — that a `_draw()` override might
+    silently skip the shared call, which is the exact trap the bead named and the one
+    thing 851 headless tests structurally cannot see, because headless runs no `_draw()`.
+  - Cheaper: nothing. `node-bounds` and property reads cannot answer "did this paint".
+
+- Gap: **no gap this turn.** `set-state --property _selected --value true` on three
+  plants was the whole setup, and it let one capture carry three claims instead of three
+  captures carrying one each — `place_plant` refusing with "not paid for" and then
+  "something is already growing there" named both causes precisely enough to fix in one
+  step each.
+
+- Worth recording: `find-nodes --class Plant` matched **nothing**, because every plant on
+  the board is a concrete subclass and the verb's `--class` did not walk up to the base
+  `class_name`. `--class ChompFlower` worked. The docs say `--class` "takes a script
+  `class_name` too (subclasses included)" — that reads as *subclasses of the named class
+  are included*, which is what I assumed and is not what happened here. Not filed as a
+  gap because the workaround was one call and the behaviour may be intended for scripts
+  that are never directly attached; noted in case it recurs.
