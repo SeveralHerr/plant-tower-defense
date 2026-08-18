@@ -6673,6 +6673,63 @@ func test_the_shield_bug_never_lands_before_the_player_can_own_an_answer_to_it()
 ## after it. Putting three plated bugs in the finale was legal and cost 8 of those
 ## 18.7. This asserts the choice not to, so a future cycle that spends it does so
 ## on purpose and reads why here.
+# -- The Salve Aloe: the plant that undoes damage (plant-tower-defense-ibvb) ---
+
+
+## The reach, asserted where it can FAIL.
+##
+## `Aloe.REACH` is 1.5 cells, chosen so the drawn ring genuinely contains the eight
+## surrounding cells — a diagonal neighbour is `CELL * sqrt(2)` ~= 90.5px away and the ring
+## is 96. Mint's header records refusing diagonals for the opposite reason at a one-cell
+## ring, so the DIAGONAL is the case that separates a correct Aloe from one that quietly
+## copied Mint's radius. A test that only checked an orthogonal neighbour would pass on both.
+func test_an_aloe_reaches_its_diagonal_neighbours_and_not_the_cell_beyond() -> String:
+	var here := Vector2i(4, 4)
+	var err: String = _T.assert_true(Aloe.reaches(here, Vector2i(5, 4)),
+		"an orthogonal neighbour is in reach")
+	if err == "":
+		err = _T.assert_true(Aloe.reaches(here, Vector2i(5, 5)),
+			("and so is a DIAGONAL one, which is the whole reason REACH is 1.5 cells and "
+				+ "not Mint's 1.0 — %.1f px against a %.1f px diagonal")
+				% [Aloe.REACH, Vector2(Board.CELL, Board.CELL).length()])
+	if err == "":
+		err = _T.assert_false(Aloe.reaches(here, Vector2i(6, 4)),
+			"two cells away is not, so the ring is a real limit rather than decoration")
+	if err == "":
+		err = _T.assert_false(Aloe.reaches(here, here),
+			"and an Aloe does not heal itself — see reaches() for why that is not a nerf")
+	return err
+
+
+## The rate, and the ceiling that is the design rather than a number awaiting a buff.
+##
+## The second assertion is the one worth having: it pins that a single pest out-damages an
+## Aloe, which is the claim the blurb makes to the player. If someone ever "fixes" the heal
+## to be competitive, this is what argues back.
+func test_an_aloe_mends_slower_than_one_pest_eats() -> String:
+	var err: String = _T.assert_float_eq(Aloe.heal_for(1.0), Aloe.HEAL_PER_SECOND, 0.001,
+		"one second of healing is one second's worth")
+	if err == "":
+		err = _T.assert_float_eq(Aloe.heal_for(0.5), Aloe.HEAL_PER_SECOND * 0.5, 0.001,
+			"and it is proportional to delta, not a per-frame step")
+	if err == "":
+		err = _T.assert_float_eq(Aloe.heal_for(-1.0), 0.0, 0.001,
+			"a negative delta heals nothing rather than turning a healer into a mouth")
+	if err == "":
+		err = _T.assert_true(Aloe.HEAL_PER_SECOND < Pest.EAT_DPS,
+			("an Aloe loses the race with one pest (%.1f/s against %.1f/s) — this is the "
+				+ "ceiling aloe.gd argues for, not a balance oversight")
+				% [Aloe.HEAL_PER_SECOND, Pest.EAT_DPS])
+	return err
+
+
+## The LIVE half of this plant lives in `test_placement.gd`, not here: it needs a whole
+## `game.tscn`, and this script builds bare `_host([...])` boards with no `GAME_SCENE`
+## constant at all. Writing it here cost one run to learn — the parse error took the entire
+## script down and the suite reported `Total: 564` against 705, which is exactly the
+## denominator CLAUDE.md says to read instead of the exit code.
+
+
 func test_the_shield_bug_was_paid_for_in_beetles_rather_than_out_of_the_finale() -> String:
 	var finale: int = WaveDirector.WAVES.size()
 	var waves: Dictionary = _shieldbug_waves()

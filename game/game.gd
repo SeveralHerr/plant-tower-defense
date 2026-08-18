@@ -336,6 +336,7 @@ func _process(delta: float) -> void:
 	# After the early return, so the clock stops the instant the run does rather
 	# than counting the time the player spends reading the post-mortem.
 	run_seconds += delta
+	_apply_aloe_healing(delta)
 	_check_wave_cleared()
 	if not _wave_live and director.has_more_waves():
 		# `delta` is already scaled by Engine.time_scale, so the prep countdown runs
@@ -1476,6 +1477,8 @@ func _new_plant(id: StringName) -> Plant:
 			return Mint.new()
 		PlantCatalog.NETTLE:
 			return Nettle.new()
+		PlantCatalog.ALOE:
+			return Aloe.new()
 		_:
 			return CornCobbler.new()
 
@@ -1999,6 +2002,52 @@ func _click_at(screen_pos: Vector2) -> void:
 ## sources writing one number is how the number stops meaning anything. Weather owns
 ## `fire_interval_scale`, this owns `neighbour_interval_scale`, and `Plant.composed_interval`
 ## is where they meet.
+## Every Aloe mends the damaged plants it reaches (plant-tower-defense-ibvb).
+##
+## The ITERATION is here and the decisions are in `Aloe`, for the reason its header spells
+## out: `Game` owns `_plants`, and an Aloe reaching for the plant set itself would have to
+## ask the tree — which returns a second `Game`'s plants when the suite hosts two scenes at
+## once (`.claude/skills/godot-test-isolation`). `Aloe.reaches` and `Aloe.heal_for` are pure
+## and static, so the interesting half is assertable with no board at all.
+##
+## Unlike `_refresh_neighbour_buffs`, this runs per FRAME rather than per change to the
+## plant set, and that is the difference between a state and an event: a Mint's buff has to
+## be un-applied when the Mint goes, a heal that already happened does not. See Aloe's
+## header, which argues that asymmetry rather than leaving it looking like an oversight.
+##
+## `delta` is already scaled by `Engine.time_scale`, so an Aloe repairs at the same rate per
+## GAME second whatever speed the player has the garden running at. That is the right answer
+## and not an accident of where this sits: at 2x a wave arrives twice as fast, and a heal
+## that stayed on wall-clock time would quietly become half as effective for anyone using
+## the speed control.
+##
+## Skipped entirely when no Aloe is planted, which is every board until someone buys one —
+## the first loop is over `_plants` and breaks nothing, but the second is not entered at all
+## and the common case stays one cheap pass.
+func _apply_aloe_healing(delta: float) -> void:
+	var aloes: Array[Vector2i] = []
+	for key: Vector2i in _plants:
+		var plant := _plants[key] as Plant
+		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
+			continue
+		if plant is Aloe:
+			aloes.append(key)
+	if aloes.is_empty():
+		return
+	var amount: float = Aloe.heal_for(delta)
+	for key: Vector2i in _plants:
+		var plant := _plants[key] as Plant
+		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
+			continue
+		for from_cell: Vector2i in aloes:
+			if Aloe.reaches(from_cell, key):
+				# `Plant.heal` already refuses a destroyed or full-health plant and clamps
+				# at MAX_HEALTH, so two Aloes overlapping one Corn heal it twice as fast up
+				# to full and never past it. Deliberately NOT capped at one Aloe per plant:
+				# stacking support is the same decision Mint already lets the player make.
+				plant.heal(amount)
+
+
 func _refresh_neighbour_buffs() -> void:
 	var mints: Dictionary = {}
 	for key: Vector2i in _plants:

@@ -351,6 +351,14 @@ const PAGES: Array[Dictionary] = [
 		"note": "The fourth designed here, and the first plant that refuses a target. It stings only mutated pests — armoured, winged, hungry — and does nothing at all before wave 8, which its shop line says outright. A specialist you are told to buy late is a decision; one you are not is a trap.",
 	},
 	{
+		"kind": KIND_PLANT,
+		"plant": &"aloe",
+		"drawing": "res://assets/sprites/aloe.png",
+		"sprite": "res://assets/sprites/aloe.png",
+		"caption": "Salve Aloe",
+		"note": "The fifth designed here, and the first thing that undoes damage. Before it, health only ever fell — the rain heals, but that is the weather's doing. Too slow to save a plant being eaten, on purpose: a heal that beat a mouth would make one Aloe behind everything the only board.",
+	},
+	{
 		"kind": KIND_SHELF,
 		"plant": &"",
 		# Kept a real path even though the shelf page never shows it: Drawing is

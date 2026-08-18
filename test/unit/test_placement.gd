@@ -4760,6 +4760,44 @@ func _grass_with_plant(game: Game) -> Vector2i:
 ##      reproduced directly, so "stacking" is a thing this suite has actually seen.
 ##   3. the guarded one does NOT -- `_refresh` called repeatedly with the hint's
 ##      condition true and the row busy adds nothing to the queue and spends no hint.
+## A damaged plant beside a Salve Aloe gains health as the game runs
+## (plant-tower-defense-ibvb).
+##
+## Drives the real `Game._process` path rather than calling `heal()` directly, because the
+## thing that could silently be wrong is the WIRING — `_apply_aloe_healing` never reached,
+## or reaching only the Aloe itself. The pure halves (`Aloe.reaches`, `Aloe.heal_for`) are
+## asserted in `test_combat.gd`; this is the one that needs a whole board.
+func test_a_damaged_plant_beside_an_aloe_gains_health_as_the_game_runs() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.seeds = 500
+	game.bank.unlocked.append(PlantCatalog.ALOE)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, Vector2i(3, 2)), "",
+		"a cob goes down")
+	if err == "":
+		err = _T.assert_eq(game.place_plant(PlantCatalog.ALOE, Vector2i(4, 2)), "",
+			"and an Aloe beside it")
+	var cob: Plant = null
+	if err == "":
+		cob = game._plants.get(Vector2i(3, 2)) as Plant
+		err = _T.assert_true(cob != null, "the cob is on the board")
+	if err == "":
+		cob.health = 10.0
+		err = _T.assert_true(cob.health < Plant.MAX_HEALTH, "and it is damaged to begin with")
+	if err == "":
+		game._process(1.0)
+		err = _T.assert_float_eq(cob.health, 10.0 + Aloe.HEAL_PER_SECOND, 0.01,
+			"one second of game time mends it by exactly HEAL_PER_SECOND, got %.2f"
+				% cob.health)
+	if err == "":
+		# The ceiling. Nothing over-heals, however long the garden sits quiet.
+		for _i: int in range(60):
+			game._process(1.0)
+		err = _T.assert_float_eq(cob.health, Plant.MAX_HEALTH, 0.01,
+			"and it stops at MAX_HEALTH rather than climbing past it, got %.2f" % cob.health)
+	_T.free_ui(game)
+	return err
+
+
 func test_row_is_quiet_is_what_stops_a_level_triggered_caller_stacking() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var err: String = _T.assert_true(game != null and game.hud != null, "the run has a HUD")

@@ -36,6 +36,7 @@ const SRC_SUBDIR := "art_src"
 ## projectile the player is meant to watch: it arcs for SeedBomb.FLIGHT_SECONDS
 ## and is scaled up at the apex, where 16px of art is a smudge.
 const EXPECTED_SIZE := {
+	"aloe": 64,
 	"chomp_flower": 64,
 	"chomp_flower_eating": 64,
 	"chomp_flower_eating_late": 64,

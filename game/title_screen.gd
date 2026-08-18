@@ -176,7 +176,18 @@ static func menu_capacity() -> int:
 ## Where a decorative plant's stem meets the ground, and how much bigger than
 ## its board size it is drawn here.
 const PLANT_BASE_Y: float = 514.0
-const PLANT_SCALE: float = 1.7
+## 1.5 since the EIGHTH plant (the Salve Aloe, plant-tower-defense-ibvb). It was 1.7, and
+## the paragraph above `PLANT_X` predicted this exact day: "That is the day to drop
+## PLANT_SCALE or go to two rows." Dropping the scale is the cheaper of the two it named and
+## the one that keeps a single lawn line, which is the composition the screen is built on.
+##
+## The arithmetic, which is what makes 1.5 the number rather than a guess. A band runs from
+## the button column to the screen edge, 426px either side. A canvas is 64 * scale, so four
+## of them need 256 * scale: at 1.7 that is 436 and does not fit, at 1.5 it is 384 and fits
+## with 42px to spare. 1.6 also fits (409.6) but leaves only 16px across three joins, which
+## is inside the margin the seventh slot had to spend ink measurements to recover — so 1.5
+## buys the next plant as well, and the next one after that is the two-row day for real.
+const PLANT_SCALE: float = 1.5
 ## The board sprites are square art at this size; PLANT_SCALE enlarges them from
 ## it. Written down rather than measured off a texture because plant_span()
 ## below has to answer "does slot 3 clear the buttons" without loading anything —
@@ -261,14 +272,32 @@ const PLANT_ART_WIDTH: float = 64.0
 ## the screen edge. Putting any of the other three there would have been the same 2.5px of
 ## canvas over 8px of ink instead of 25.
 ##
-## An EIGHTH is a different problem and this trick does not stretch to it: the ink budget in
-## the left band is already spent, and a fifth sprite in either band overlaps in ink, not just
-## in canvas. That is the day to drop PLANT_SCALE or go to two rows, and lawn_plants()
-## degrades with a push_warning until someone does.
+## THE EIGHTH ARRIVED (the Salve Aloe), and the paragraph that used to sit here was right on
+## both counts: the ink trick did not stretch to it, and the answer was to drop PLANT_SCALE.
+## It is 1.5 now, and its own comment carries the arithmetic.
+##
+## At 1.5 a canvas is 96px, so FOUR fit in each 426px band with 42px to spare and the whole
+## ink argument above becomes slack rather than load-bearing. The slots are therefore
+## re-derived as an even four per band instead of the hand-tuned seven, which is a simpler
+## thing to keep true:
+##
+##   left  band, centres  60 / 165 / 270 / 375   (375 + 48 = 423, clear of the column at 426)
+##   right band, centres 780 / 885 / 990 / 1095  (780 - 48 = 732, clear of it; 1095 + 48 =
+##                                                1143, inside the 1152 viewport)
+##
+## Both hard edges keep more canvas margin than the seven-slot layout did — 3px at the
+## column and 9px at the screen edge, against 5.5 and 2.5 — so the Nettle no longer has to be
+## rightmost for its narrowness. It still is, because catalogue order puts it there and
+## nothing is gained by moving it.
+##
+## A NINTH is the two-row day, and this time there is no third trick: five 96px canvases need
+## 480 in a 426px band. lawn_plants() still degrades with a push_warning until someone does it.
 ##
 ## In CATALOGUE order, not left-to-right order -- lawn_plants() maps by index -- so the
-## out-of-sequence 330.0 near the end is correct and not a typo.
-const PLANT_X: Array[float] = [100.0, 215.0, 786.0, 889.0, 992.0, 330.0, 1095.0]
+## out-of-sequence 270.0 and 375.0 near the end are correct and not typos.
+const PLANT_X: Array[float] = [
+	60.0, 165.0, 780.0, 885.0, 990.0, 270.0, 1095.0, 375.0,
+]
 ## The bugs the plants are there to fight, marching across the soil.
 const PEST_BASE_Y: float = 606.0
 const PEST_SCALE: float = 1.15

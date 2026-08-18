@@ -14,6 +14,7 @@ const SUNDEW := &"sticky_sundew"
 const DANDELION := &"dandelion"
 const MINT := &"mint"
 const NETTLE := &"nettle"
+const ALOE := &"aloe"
 
 const PLANTS: Dictionary = {
 	CORN: {
@@ -128,6 +129,36 @@ const PLANTS: Dictionary = {
 		# yet -- see Nettle.can_sting, which is where the real answer lives.
 		"engages": true,
 	},
+	ALOE: {
+		"display": "Salve Aloe",
+		"texture": "res://assets/sprites/aloe.png",
+		# UNPLAYTESTED, as -ibvb instructs: landed at a guessed price for -t52o's second
+		# pass to price properly. The guess is 35 and the reasoning is the gradient rather
+		# than the number -- Sunflower and Mint 25, Sundew 30, Nettle 40, Dandelion 45. A
+		# plant that repairs the survivors of a wave is worth more than one that slows a
+		# lane and less than one that answers the mutations, so it sits between them.
+		"cost": 35,
+		# TIER 2, and it cannot be 3:
+		# test_the_dandelion_is_priced_against_the_four_plants_it_stands_beside asserts the
+		# Dandelion's tier is STRICTLY above every other entry's, so a second tier-3 plant
+		# fails the suite. Checked before writing the number, the same way the Nettle's was.
+		"tier": 2,
+		"unlocked_at_start": false,
+		"free_starter": false,
+		# Names the limit outright, and that is the whole blurb's job here. A player who
+		# reads "heals" and buys this as a shield has been mis-sold: HEAL_PER_SECOND is 3.0
+		# against Pest.EAT_DPS taking a full-health plant down in about 2.86s, so an Aloe
+		# changes no outcome in a fight and every outcome between fights. See aloe.gd's
+		# header for why that ceiling is the design rather than a number awaiting a buff.
+		"blurb": "Mends the plants around it, slowly. Too slow to save one being eaten — this is what makes the last wave's damage stop being permanent.",
+		# Never touches a pest. `false` for the same reason as Sunflower, Sundew and Mint,
+		# and for a FOURTH distinct reason again: Sunflower ignores the lane, Sundew touches
+		# pests without hurting them, Mint reaches over plants to change what they do, and
+		# an Aloe reaches over plants to undo what was done TO them. Anything asking "does
+		# this cell defend the lane" must answer no for an Aloe even when the cobs it is
+		# keeping alive plainly do.
+		"engages": false,
+	},
 }
 
 ## Order the shop and the plant bar list plants in. Keeps the UI stable as more
@@ -138,7 +169,13 @@ const PLANTS: Dictionary = {
 ## Nettle sits after it for the same class of reason and a sharper one: it is the only entry
 ## that does nothing AT ALL for the first seven waves, so the last thing a reader scrolling
 ## the shop meets is the one whose blurb has to be read before it is bought.
-const ORDER: Array[StringName] = [CORN, CHOMP, SUNFLOWER, SUNDEW, DANDELION, MINT, NETTLE]
+## Aloe sits last, after the Nettle, for the third version of the same reason: it is the
+## only entry whose value depends on the board having already been DAMAGED. A first-time
+## reader meeting it before they have lost a plant reads it as doing nothing, exactly as
+## they would read Mint before owning anything to speed up.
+const ORDER: Array[StringName] = [
+	CORN, CHOMP, SUNFLOWER, SUNDEW, DANDELION, MINT, NETTLE, ALOE,
+]
 
 
 static func ids() -> Array[StringName]:
@@ -204,6 +241,17 @@ static func reach(id: StringName) -> float:
 			# that is correct at every wave. What no reach can express is "wasted UNTIL wave
 			# 8" -- the blurb is where that lives, and it is the only place it can.
 			return Nettle.RANGE
+		ALOE:
+			# A real reach over PLANTS, like Mint's and unlike every weapon's. Read from
+			# Aloe's own constant rather than a copied 96.
+			#
+			# Note this makes the dead-ground cue say something slightly different for an
+			# Aloe than for anything else: a cell that touches no ROAD is dead for a cob and
+			# perfectly good for an Aloe, which wants to be behind the fighting rather than
+			# in it. That is the same limitation Mint already has and it is recorded here
+			# rather than papered over -- reach() answers "how far does it act", and what
+			# the cue then DOES with that answer is the cue's business.
+			return Aloe.REACH
 		_:
 			return 0.0
 
