@@ -631,7 +631,34 @@ func test_a_killed_pest_shows_a_dead_sprite_and_lingers_before_freeing() -> Stri
 	var err: String = _T.assert_true(pest._sprite.texture != idle_texture,
 		"the X-eyed corpse is a separate sprite, not the idle one tinted")
 	if err == "":
-		err = _T.assert_true(is_instance_valid(pest), "the corpse lingers on screen instead of vanishing instantly")
+		# PAIRED, and the message now claims only what the pair can check
+		# (plant-tower-defense-51eo, which is the finding that produced this line).
+		#
+		# `is_instance_valid(pest)` ALONE cannot fail here for the reason it used to
+		# give. `kill()` frees nothing — it hands the body to a tween, and
+		# `queue_free()` defers to the end of the frame — so at zero frames the answer
+		# is true whatever the linger is. That was measured, not supposed: deleting the
+		# `tween_interval(death_linger())` from `_play_death` outright leaves the old
+		# assertion green, with all three of this test's assertions still passing.
+		#
+		# `is_queued_for_deletion()` is the half that CAN go false, and it does the
+		# moment `_play_death` starts queueing the free on the spot instead of handing
+		# it to a tween. So this pair checks "not freed instantly" and nothing more,
+		# which is what it now says.
+		#
+		# STILL UNCHECKED ANYWHERE, and measured this cycle rather than assumed: that
+		# `_play_death` CONSUMES `death_linger()` at all. The duration itself is well
+		# covered as a pure value (`test_combat.gd`, five assertions on
+		# `death_linger_for` — its floor, its scaling, and both ends), but the wiring
+		# between the two is not: strip the interval out of the tween and every one of
+		# those tests stays green too, because they never look at `_play_death`. The
+		# pair below would not catch it either — the remaining fade still defers the
+		# free. Catching it needs the corpse observed ACROSS time, which is a live
+		# check rather than a headless one.
+		err = _T.assert_true(is_instance_valid(pest) and not pest.is_queued_for_deletion(),
+			("the corpse is not freed on the spot -- kill() hands the body to a tween"
+				+ " rather than queueing the free immediately, which is the branch"
+				+ " _play_death takes for a pest that is inside the tree"))
 	if err == "":
 		err = _T.assert_false(pest.is_alive(), "but it is already dead as far as the game is concerned")
 	_T.free_ui(host)
