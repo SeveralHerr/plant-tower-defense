@@ -744,12 +744,10 @@ func _build_hints() -> void:
 
 		var note := Label.new()
 		note.name = "HintNote_%s" % id
-		note.text = Hud.hint_note_text(id, shown)
 		note.position = Vector2(SHELF_TEXT_X, y + SHELF_TITLE_HEIGHT - 1.0)
+		# Size THEN autowrap, and no clip_text -- copied from _page_note (the facing
+		# page's wrapped note), which is the one shape in this file proven to wrap.
 		note.size = Vector2(text_width, HINT_NOTE_HEIGHT)
-		# Wrapped, unlike a shelf note, and that is the whole difference between the
-		# two lists — see HINT_ROW_PITCH. A one-line clip here would ellipsise the
-		# instruction the page exists to carry.
 		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		note.add_theme_font_size_override("font_size", HINT_NOTE_FONT_SIZE)
 		# An UNSHOWN hint's note is drawn at the same 0.7 a shown one is, not the
@@ -758,10 +756,23 @@ func _build_hints() -> void:
 		# to be able to read. The pip size and the "Not shown yet — " prefix carry the
 		# state, so nothing is hidden behind not having seen it.
 		note.add_theme_color_override("font_color", Color(GardenTheme.INK, 0.7))
-		note.clip_text = true
-		note.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		# NO clip_text and NO overrun trim, unlike the shelf's notes and unlike the
+		# title above. A clipped Label is single-line by definition, so it cancels the
+		# autowrap two lines up -- the note measured 848px wide in a 360px pane and hung
+		# 510px off the page onto the facing art, ellipsising the instruction this page
+		# exists to carry. The wrap IS the overrun policy here; the height budget
+		# (HINT_NOTE_HEIGHT, gated by the tests) is what stops it running long.
 		note.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_hints.add_child(note)
+		# TEXT LAST, and this is the mechanism -- not the property order above it.
+		# A Label's size is clamped up to its own minimum, and an autowrapping Label
+		# with text already in it reports the UNWRAPPED width as that minimum. Assigned
+		# first, the three notes came out 848, 607 and 726 px wide in a 360px pane,
+		# each exactly as wide as its own sentence, hanging over the facing page's art.
+		#
+		# _page_note (the facing note) never hit this because _build_page_note sizes it
+		# EMPTY and go_to() fills it afterwards. Same trick, made deliberate here.
+		note.text = Hud.hint_note_text(id, shown)
 
 
 ## "1 of 3 seen", the hints page's provenance line — the same slot the shelf's score
