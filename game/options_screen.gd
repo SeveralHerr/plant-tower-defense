@@ -1,8 +1,13 @@
 class_name OptionsScreen
 extends OverlayScreen
 
-## The screen that lets a player see and set the three switches this game has,
-## over the title screen.
+## The screen that lets a player see and set the audio and accessibility
+## preferences this game has, over the title screen.
+##
+## Three switches and two dials, in two tables (`OPTIONS`, `DIALS`) drawn into one
+## column of rows. The dials arrived at v8 with the audio levels
+## (plant-tower-defense-u9uh); before them sound was a switch and the only answer to
+## "this is too loud" was silence.
 ##
 ## Until this existed every one of them was reachable by exactly one route: a
 ## keystroke during a run, answered by a HUD sentence that faded. So the state of
@@ -98,14 +103,50 @@ const OPTIONS: Array[Dictionary] = [
 	},
 ]
 
-## Panel rect, in viewport coordinates, SIZED FROM THE ROW COUNT rather than
-## picked and then trusted to fit — the same discipline (and the same hard-won
-## reason) as KeyBindingScreen.PANEL. Three rows of OverlayScreen.ROW_HEIGHT from
-## ROWS_TOP put the last button's foot at 392; the footer starts at 440. That 48px
-## is a GAP, asserted as one against OverlayScreen.FOOTER_GAP, which is where that
-## rule lives for every overlay with rows: `Rect2.intersects` is false for two
-## boxes sharing an edge, so a footer laid flush against the last row passes every
-## overlap check ever written and is wrong only in a screenshot.
+## The DIALS, drawn under the switches, in the order they are listed.
+##
+## A SECOND table rather than two more entries in OPTIONS, and the reason is that
+## they are a different control, not a different setting. Every function above that
+## takes an OPTIONS id — `is_on`, `set_on`, `toggle`, `state_text` — answers a
+## yes/no question, and `rows()` is documented and asserted as "which switches this
+## screen drew". A dial has four positions and no answer to "is it on", so folding
+## it into that table would mean either a `kind` field every reader has to branch
+## on or an `is_on` that lies about a 25% row. Two tables, two vocabularies, one
+## row grammar.
+##
+## NO `action` KEY, and that is a statement rather than an omission: there is no
+## keystroke for a level. `KeyBindings.ACTIONS` is the Keys screen's table and is
+## not this lane's to grow, and a dial is a poor fit for a key anyway — a cycle key
+## for volume is four presses to get back where you were, on a control whose whole
+## purpose is being findable. The key column is left blank for these rows rather
+## than reading "unbound", which is what `KeyBindings.label_for(&"")` returns and
+## which would claim there is a binding waiting to be made.
+const SFX_LEVEL := &"sfx_level"
+const MUSIC_LEVEL := &"music_level"
+
+const DIALS: Array[Dictionary] = [
+	{
+		"id": SFX_LEVEL,
+		"name": "Sound effects volume",
+	},
+	{
+		"id": MUSIC_LEVEL,
+		"name": "Music volume",
+	},
+]
+
+## The panel this screen SHIPPED at, kept as the FLOOR. Position and width are
+## final; the height is now a floor under `panel_height()` below, exactly the
+## treatment `KeyBindingScreen.PANEL_MIN_HEIGHT` gets and for the same reason — a
+## derived number that silently redraws a screen everyone already knows is a worse
+## answer than one that only moves when it has to.
+##
+## Three rows of OverlayScreen.ROW_HEIGHT from ROWS_TOP put the last button's foot
+## at 392; the footer starts at 440. That 48px is a GAP, asserted as one against
+## OverlayScreen.FOOTER_GAP, which is where that rule lives for every overlay with
+## rows: `Rect2.intersects` is false for two boxes sharing an edge, so a footer laid
+## flush against the last row passes every overlap check ever written and is wrong
+## only in a screenshot.
 const PANEL := Rect2(226.0, 144.0, 700.0, 360.0)
 
 const HEADING_Y: float = 164.0
@@ -127,10 +168,19 @@ const OFF_TEXT := "Off"
 ## now (RunConfig's options line), so the sentence a player reads and the thing the
 ## file does finally agree — and the note is the only place on this screen that
 ## makes a promise about lifetime at all.
-const NOTE_TEXT := "These are remembered next time you play. The key beside each one still works."
+## Reworded at v8 from "The key beside each one still works", which stopped being
+## true the moment the screen gained two rows with no key: a promise made about
+## "each one" is a promise a dial row visibly breaks. Same length to the character,
+## so the 700px `Note` budget it is clipped against is unchanged.
+const NOTE_TEXT := "These are remembered next time you play. Where a key is shown, it still works."
 
 var _rows: Array[StringName] = []
 var _key_labels: Array[Label] = []
+## The dial ids, in the order they were drawn, kept apart from `_rows` so that
+## `rows()` keeps meaning exactly what its own doc comment and the suite say it
+## means. Their buttons are in `_row_buttons` after the switches', at the same
+## offset this array's indices carry.
+var _dials: Array[StringName] = []
 
 
 # -- the state itself -------------------------------------------------------
@@ -190,12 +240,62 @@ static func toggle(id: StringName) -> bool:
 	return set_on(id, not is_on(id))
 
 
-## The row for an id, or an empty Dictionary.
+## The row for an id, switch or dial, or an empty Dictionary. Both tables, because
+## `describe()` is asked for every row this screen draws — unlike `is_known()`
+## above, which answers "can this be flipped" and must stay switches-only.
 static func row_for(id: StringName) -> Dictionary:
 	for row: Dictionary in OPTIONS:
 		if StringName(row["id"]) == id:
 			return row
+	for row: Dictionary in DIALS:
+		if StringName(row["id"]) == id:
+			return row
 	return {}
+
+
+# -- the dials ---------------------------------------------------------------
+#
+# Same arrangement as the switches above: static, free of the screen, and reading
+# and writing through the owner rather than through a copy this screen kept.
+
+
+static func is_dial(id: StringName) -> bool:
+	for row: Dictionary in DIALS:
+		if StringName(row["id"]) == id:
+			return true
+	return false
+
+
+## The step a dial is currently on, read from the mixer that actually holds it.
+## An unknown id reads as full rather than erroring, the same contract `is_on`
+## documents one section up.
+static func level_of(id: StringName) -> int:
+	match id:
+		SFX_LEVEL:
+			return Sfx.level()
+		MUSIC_LEVEL:
+			return Music.level()
+	return Sfx.DEFAULT_LEVEL
+
+
+## What a dial's button says. Derived through `Sfx.level_text` rather than spelled
+## out here, so the screen cannot disagree with the table about what 0.75 is called.
+static func level_text(id: StringName) -> String:
+	return Sfx.level_text(level_of(id))
+
+
+## Advances a dial one step and reports where it landed. Goes through RunConfig,
+## never through `Sfx.set_level` directly, for exactly the reason `set_on` gives
+## for the two mutes: the mixer is what the player hears and the save is what the
+## next launch reads, and only RunConfig moves both. An unknown id is a no-op that
+## reports full, not an error.
+static func cycle(id: StringName) -> int:
+	match id:
+		SFX_LEVEL:
+			return RunConfig.cycle_sfx_level()
+		MUSIC_LEVEL:
+			return RunConfig.cycle_music_level()
+	return Sfx.DEFAULT_LEVEL
 
 
 ## What the switch is called on screen.
@@ -216,8 +316,40 @@ static func state_text(on: bool) -> String:
 # -- the screen -------------------------------------------------------------
 
 
+## HOW THIS PANEL GROWS, decided once and written where the next person adding a
+## row will read it (plant-tower-defense-1490).
+##
+## **It grows. It does not split.** The two candidates were this and putting audio
+## on its own overlay the way Keys already is, and Keys is the precedent AGAINST the
+## split rather than for it: that screen was separated because its rows come from
+## `KeyBindings.ACTIONS`, a table that grows every time the game gains a verb, and
+## because a row there is a capture flow rather than a value. Audio is two rows,
+## fixed, in exactly the row grammar the switches already use. A split would leave
+## this screen holding three switches and a door, put every audio change one
+## navigation step further away, and spend one of the title menu's destination slots
+## — which has its own budget — on a two-row screen.
+##
+## Six rows is the last count that fits, and that is arithmetic rather than taste:
+## at `PANEL.position.y` of 144 a seventh row returns 528, and 144 + 528 is 672
+## against a 648-tall viewport. Nothing here clamps it, deliberately, exactly as
+## `KeyBindingScreen.panel_height` does not — silently squashing the rows would hide
+## the problem, and the suite's own panel-inside-the-viewport assertion is what says
+## so out loud on the day it happens. The fix then is `ROWS_TOP`, the row PITCH, or
+## the header block, not this function.
+static func panel_height() -> float:
+	var rows: float = float(OPTIONS.size() + DIALS.size())
+	# The last row's BUTTON is what the footer has to clear, and it is
+	# ROW_BUTTON_SIZE.y tall rather than a whole ROW_HEIGHT — the pitch includes the
+	# gap between rows, and counting it on the last one would over-reserve. Copied in
+	# shape from KeyBindingScreen.panel_height, which is the same sum against the
+	# same four constants.
+	var last_row_foot: float = ROWS_TOP + maxf(rows - 1.0, 0.0) * ROW_HEIGHT + ROW_BUTTON_SIZE.y
+	var needed: float = (last_row_foot + FOOTER_GAP + FOOTER_HEIGHT + FOOTER_INSET) - PANEL.position.y
+	return maxf(PANEL.size.y, needed)
+
+
 func panel_rect() -> Rect2:
-	return PANEL
+	return Rect2(PANEL.position, Vector2(PANEL.size.x, panel_height()))
 
 
 func _build_contents() -> void:
@@ -234,20 +366,32 @@ func _build_header() -> void:
 
 ## One row per entry in OPTIONS, in table order — not a hand-written list, for
 ## the same reason KeyBindingScreen builds its rows off KeyBindings.ACTIONS.
-## How many option rows this panel can hold with the footer's clearance intact.
+## How many rows this screen can hold at all, with the footer's clearance intact
+## AND the paper still on the screen.
 ##
-## Computed rather than stated. The header above `PANEL` does the sums in prose and is
-## correct; this is the same sums as a number, so adding a fourth option moves it instead
-## of requiring someone to re-derive it while holding a feature.
+## **The question this answers changed with `panel_height()`, and the change is the
+## point.** It used to measure rows against a panel of a fixed 360, which made the
+## answer 3 and made every new option a geometry decision taken while holding a
+## feature — the thing -1490 was filed about. The panel now grows to its rows, so
+## the binding constraint is no longer the paper, it is the VIEWPORT the paper sits
+## in: the ceiling is the bottom of the screen, and a seventh row is what runs the
+## paper off it.
 ##
-## The floor is `footer_y() - OverlayScreen.FOOTER_GAP` and not `footer_y()`, because a
-## last row flush against the footer passes every overlap check ever written and is wrong
-## only in a screenshot — which is the whole reason `FOOTER_GAP` exists.
+## The floor passed in is `- FOOTER_GAP` and not merely the footer's y, because a
+## last row flush against the footer passes every overlap check ever written and is
+## wrong only in a screenshot — which is the whole reason `FOOTER_GAP` exists.
 static func rows_capacity() -> int:
+	var viewport_height: float = float(ProjectSettings.get_setting(
+		"display/window/size/viewport_height", 648))
 	return OverlayScreen.rows_that_fit(ROWS_TOP, ROW_HEIGHT, ROW_BUTTON_SIZE.y,
-		PANEL.position.y + PANEL.size.y - FOOTER_HEIGHT - FOOTER_INSET - FOOTER_GAP)
+		viewport_height - FOOTER_HEIGHT - FOOTER_INSET - FOOTER_GAP)
 
 
+## THE SWITCHES FIRST, THEN THE DIALS, and the order is a contract rather than a
+## preference: `rows()` is asserted to be exactly the OPTIONS ids in table order and
+## the suite reads `Row0`..`Row2` by name, so a dial drawn in among them would
+## renumber a switch. It is also the right reading order — three yes/no answers,
+## then two amounts.
 func _build_rows() -> void:
 	var y: float = ROWS_TOP
 	for row: Dictionary in OPTIONS:
@@ -269,6 +413,30 @@ func _build_rows() -> void:
 
 		y += ROW_HEIGHT
 
+	for row: Dictionary in DIALS:
+		var id := StringName(row["id"])
+		# Numbered on past the switches, so `Row%d` / `RowButton%d` stay one
+		# continuous sequence down the paper — the naming contract OverlayScreen
+		# documents is about the row's PLACE on the screen, not about its kind.
+		var index: int = _rows.size() + _dials.size()
+		_dials.append(id)
+
+		add_row_label("Row%d" % index, String(row["name"]),
+			Vector2(PANEL.position.x + NAME_X, y + 8.0), Vector2(NAME_WIDTH, 24.0),
+			GardenTheme.INK)
+
+		# Built and left blank rather than skipped: every row on this paper has a
+		# `RowKey%d`, and a screen where the node exists for three rows and not for
+		# two is a screen where a bridge recipe fails on exactly the rows a reader
+		# would not think to check. See DIALS for why there is no key to show.
+		add_row_label("RowKey%d" % index, "",
+			Vector2(PANEL.position.x + KEY_X, y + 8.0), Vector2(KEY_WIDTH, 24.0),
+			GardenTheme.LEAF_DARK, HORIZONTAL_ALIGNMENT_CENTER)
+
+		add_row_button(index, Vector2(PANEL.position.x + BUTTON_X, y)).pressed.connect(turn.bind(id))
+
+		y += ROW_HEIGHT
+
 
 func _build_footer() -> void:
 	add_back_button(Vector2(PANEL.position.x + NAME_X, footer_y()))
@@ -278,6 +446,15 @@ func _build_footer() -> void:
 ## screen" and "changed in the thing that owns it" cannot come apart.
 func flip(id: StringName) -> bool:
 	var now: bool = toggle(id)
+	refresh()
+	return now
+
+
+## Advances one dial and redraws. The dials' counterpart to `flip` and the only
+## writer their buttons have, for the same reason: "changed on screen" and "changed
+## in the thing that owns it" cannot come apart if there is one door.
+func turn(id: StringName) -> int:
+	var now: int = cycle(id)
 	refresh()
 	return now
 
@@ -294,10 +471,31 @@ func refresh() -> void:
 		_row_buttons[i].text = state_text(on)
 		_row_buttons[i].add_theme_color_override("font_color",
 			GardenTheme.LEAF_DARK if on else GardenTheme.INK_SOFT)
+	for j: int in _dials.size():
+		var dial: StringName = _dials[j]
+		var button: Button = _row_buttons[_rows.size() + j]
+		button.text = level_text(dial)
+		# Dimmed at the quietest step and inked at every other, which is the same
+		# two-channel treatment the switches get one loop up: the percentage is the
+		# text channel and this is the colour one, so a player who cannot read the
+		# tint still has the number. Not DANGER — a quiet game is a choice, not a
+		# warning.
+		button.add_theme_color_override("font_color",
+			GardenTheme.INK_SOFT if level_of(dial) == Sfx.LEVELS.size() - 1
+			else GardenTheme.LEAF_DARK)
 
 
 ## Which switches this screen drew, in row order. For tests and the bridge — the
 ## alternative is reading it back off rendered text, which asserts on the wrong
 ## layer.
+##
+## SWITCHES ONLY, and it stays that way: the dials are `dials()` below. This is
+## asserted equal to the OPTIONS ids, and a reader of either the test or this name
+## expects the set of things `is_on`/`toggle` answer for.
 func rows() -> Array[StringName]:
 	return _rows.duplicate()
+
+
+## Which dials this screen drew, in row order. The `rows()` of the second table.
+func dials() -> Array[StringName]:
+	return _dials.duplicate()

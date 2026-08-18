@@ -789,6 +789,12 @@ func _with_scratch_save(campaign: int, endless_best: int, contents: Variant, bod
 	# startup, so a maintainer who plays at 2x would read `spd1` in every byte-exact
 	# assertion below without ever having mentioned speed.
 	RunConfig.game_speed_step = 0
+	# The eighth and ninth, added to the preferences line at v8, and they leak exactly
+	# the way the mutes and the speed do: RunConfig loads them from the developer's own
+	# save at startup, so a maintainer who plays with the music turned down would read
+	# `mvol2` in every byte-exact assertion below without ever having mentioned volume.
+	RunConfig.sfx_level = 0
+	RunConfig.music_level = 0
 	var err: String = str(body.call())
 	_restore_run_config()
 	return err
@@ -836,6 +842,15 @@ func _stash_run_config() -> void:
 		"game_speed_step": RunConfig.game_speed_step,
 		"engine_time_scale": Engine.time_scale,
 		"game_speed_chosen_step": GameSpeed.step(),
+		# The two audio levels, both halves each, exactly like the mutes -- RunConfig's
+		# persisted index and the mixer `apply_audio_levels` pushes it into. The mixer
+		# half is `AudioServer` bus volume, which is PROCESS-GLOBAL in the same way
+		# `Engine.time_scale` is: a leaked 25% would not fail here, it would sit under
+		# every later script in the run.
+		"sfx_level": RunConfig.sfx_level,
+		"music_level": RunConfig.music_level,
+		"sfx_bus_level": Sfx.level(),
+		"music_bus_level": Music.level(),
 		# Private, and stashed anyway: a refusal leaves a quarantine pending, and
 		# leaking that into a later test means an unrelated `_save` tries to move a
 		# file this one deleted.
@@ -860,6 +875,12 @@ func _restore_run_config() -> void:
 	Sfx.set_muted(bool(_stashed_run_config["sfx_is_muted"]))
 	Music.set_muted(bool(_stashed_run_config["music_is_muted"]))
 	RunConfig.game_speed_step = int(_stashed_run_config["game_speed_step"])
+	RunConfig.sfx_level = int(_stashed_run_config["sfx_level"])
+	RunConfig.music_level = int(_stashed_run_config["music_level"])
+	# Through the setters, so the BUS goes back and not just the remembered index --
+	# the bus is the process-global half and the only one a later script can trip over.
+	Sfx.set_level(int(_stashed_run_config["sfx_bus_level"]))
+	Music.set_level(int(_stashed_run_config["music_bus_level"]))
 	# `reset()` FIRST, and it is doing real work: it is the only thing that clears
 	# `GameSpeed._held_step`, so a body that returned early while held would otherwise
 	# leave the whole rest of the run parked -- and `set_step` on a held table moves
@@ -1002,7 +1023,7 @@ func test_a_well_formed_save_round_trips_exactly() -> String:
 	return _with_scratch_save(1234, 5678, null, func() -> String:
 		RunConfig._save()
 		var err: String = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-			"v%d\n1234\n5678\nm0\ncb0 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
+			"v%d\n1234\n5678\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
 			"the save is a version stamp, campaign, endless, the milestone set, the options, then a count of rebound keys")
 		if err == "":
 			err = _T.assert_false(FileAccess.file_exists(HIGHSCORE_TEST_PATH + ".tmp"),
@@ -1047,7 +1068,7 @@ func test_a_refused_save_is_not_immediately_overwritten() -> String:
 				"the unreadable file was moved aside, not written over")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n9999\n8765\nm0\ncb0 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n9999\n8765\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
 				"and the new save kept the endless record the refusal had preserved")
 		return err)
 
@@ -1069,7 +1090,7 @@ func test_a_version_one_save_still_migrates_into_the_endless_slot() -> String:
 		if err == "":
 			# A parse that fully succeeded is the one case that may rewrite the file.
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n0\n31337\nm0\ncb0 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n31337\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
 				"and the ambiguity is resolved on disk once, not re-guessed every launch")
 		return err)
 
@@ -1121,7 +1142,7 @@ func test_a_run_with_milestones_round_trips_through_the_save() -> String:
 			# Sorted on the way out, so the bytes are a function of the SET rather
 			# than of the order the run happened to earn things in.
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n1234\n5678\nm2:campaign_cleared,hundred_pests\ncb0 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n1234\n5678\nm2:campaign_cleared,hundred_pests\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
 				"filing a milestone wrote the file, ids sorted")
 		if err == "":
 			# Deliberately not empty: a `_load` that assigned nothing would pass an
@@ -1296,7 +1317,7 @@ func test_a_version_two_save_migrates_forward_with_an_empty_milestone_set() -> S
 				"a player who predates milestones has earned none of them")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
 				"and the file is now the current shape, resolved once")
 		return err)
 
@@ -1337,7 +1358,7 @@ func test_a_milestone_id_this_build_has_never_heard_of_survives_a_round_trip() -
 	# carrying the unknown id through a version bump is no longer a thing this test
 	# can express. What it is about — the parser keeping an id it has no rule for —
 	# is unchanged and is what stays asserted here.
-	return _with_scratch_save(0, 0, "v%d\n10\n20\nm2:from_the_future,hundred_pests\ncb0 sfx0 mus0 spd0\n0\n"
+	return _with_scratch_save(0, 0, "v%d\n10\n20\nm2:from_the_future,hundred_pests\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n"
 			% RunConfig.SAVE_VERSION,
 		func() -> String:
 			RunConfig._load()
@@ -1351,7 +1372,7 @@ func test_a_milestone_id_this_build_has_never_heard_of_survives_a_round_trip() -
 			if err == "":
 				RunConfig.record_milestones(["threat_peak"])
 				err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-					"v%d\n10\n20\nm3:from_the_future,hundred_pests,threat_peak\ncb0 sfx0 mus0 spd0\n0\n"
+					"v%d\n10\n20\nm3:from_the_future,hundred_pests,threat_peak\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n"
 						% RunConfig.SAVE_VERSION,
 					"and the next save writes it back out rather than eating it")
 			return err)
@@ -1371,7 +1392,7 @@ func test_the_colourblind_option_round_trips_through_the_save() -> String:
 			"one toggle turns the safe ramp on")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb1 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb1 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
 				"and wrote it down rather than holding it for the session")
 		if err == "":
 			# Deliberately the wrong value, so a `_load` that assigned nothing at
@@ -1383,7 +1404,7 @@ func test_the_colourblind_option_round_trips_through_the_save() -> String:
 			err = _T.assert_false(RunConfig.toggle_colorblind_safe(), "a second toggle turns it off")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb0 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
 				"and that is written down too -- off is a choice, not an absence")
 		return err)
 
@@ -1395,7 +1416,7 @@ func test_setting_the_option_to_what_it_already_is_does_not_rewrite_the_save() -
 	return _with_scratch_save(5, 6, null, func() -> String:
 		RunConfig.set_colorblind_safe(true)
 		var written: String = FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH)
-		var err: String = _T.assert_true(written.contains("\ncb1 sfx0 mus0 spd0\n"), "the first set wrote the file")
+		var err: String = _T.assert_true(written.contains("\ncb1 sfx0 mus0 spd0 svol0 mvol0\n"), "the first set wrote the file")
 		if err == "":
 			# Move the scores under it. A second set that rewrites would pick these
 			# up; one that no-ops leaves the file as it was.
@@ -1477,13 +1498,13 @@ func test_the_two_mutes_round_trip_through_the_save() -> String:
 			err = _T.assert_true(Sfx.is_muted(), "and the flag the player hears moved too")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb0 sfx1 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb0 sfx1 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
 				"the options line carries all three switches, colourblind first")
 		if err == "":
 			err = _T.assert_true(RunConfig.set_mute_music(true), "and the bed mutes independently")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb0 sfx1 mus1 spd0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb0 sfx1 mus1 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
 				"which is a third field, not the same field written twice")
 		if err == "":
 			# Deliberately wrong in memory, and deliberately asymmetric: a `_load`
@@ -1521,7 +1542,7 @@ func test_the_two_mutes_round_trip_through_the_save() -> String:
 			err = _T.assert_true(RunConfig.toggle_mute_music(), "and one silences the bed")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb0 sfx0 mus1 spd0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb0 sfx0 mus1 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
 				"and both presses were written down, which is the whole point of the issue")
 		if err == "":
 			# Drift, staged deliberately: the live flag says muted, the save says not.
@@ -1538,7 +1559,7 @@ func test_setting_a_mute_to_what_it_already_is_does_not_rewrite_the_save() -> St
 	return _with_scratch_save(5, 6, null, func() -> String:
 		RunConfig.set_mute_sfx(true)
 		var written: String = FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH)
-		var err: String = _T.assert_true(written.contains("\ncb0 sfx1 mus0 spd0\n"), "the first set wrote the file")
+		var err: String = _T.assert_true(written.contains("\ncb0 sfx1 mus0 spd0 svol0 mvol0\n"), "the first set wrote the file")
 		if err == "":
 			# Move a score under it. A second set that rewrites picks this up; one
 			# that no-ops leaves the file exactly as it was.
@@ -1592,7 +1613,7 @@ func test_a_version_five_save_reads_forward_into_the_current_version() -> String
 			err = _T.assert_false(RunConfig.mute_music, "both of them")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n70\n80\nm1:threat_peak\ncb1 sfx0 mus0 spd0\n1\ngarden_pause 4194332\n" % RunConfig.SAVE_VERSION,
+				"v%d\n70\n80\nm1:threat_peak\ncb1 sfx0 mus0 spd0 svol0 mvol0\n1\ngarden_pause 4194332\n" % RunConfig.SAVE_VERSION,
 				"and the file is rewritten in the new shape once, keeping everything it carried")
 		if err == "":
 			# The rewritten file has to be one this build reads back as current,
@@ -3099,7 +3120,7 @@ func test_the_chosen_garden_speed_round_trips_through_the_save() -> String:
 				"and it wrote the save, rather than only moving the field")
 		if err == "":
 			err = _T.assert_true(
-				FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH).contains("\ncb0 sfx0 mus0 spd1\n"),
+				FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH).contains("\ncb0 sfx0 mus0 spd1 svol0 mvol0\n"),
 				"the speed rides on the options line as the fourth field -- got %s"
 					% [FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH)])
 		if err == "":
@@ -3162,7 +3183,7 @@ func test_a_save_written_before_the_speed_field_reads_as_one_x_and_is_rewritten(
 				"and so does its rebound key -- the field under the one that moved")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n70\n80\nm1:threat_peak\ncb1 sfx0 mus0 spd0\n1\ngarden_pause 4194332\n"
+				"v%d\n70\n80\nm1:threat_peak\ncb1 sfx0 mus0 spd0 svol0 mvol0\n1\ngarden_pause 4194332\n"
 					% RunConfig.SAVE_VERSION,
 				"and it is rewritten once in the new shape, with the speed defaulted in place")
 		if err == "":
@@ -3328,3 +3349,457 @@ func test_ending_a_run_resets_the_engine_but_not_the_remembered_choice() -> Stri
 				"so the next run starts at the speed the last one chose")
 		GameSpeed.reset()
 		return err)
+
+
+# -- the two audio dials (plant-tower-defense-u9uh) ---------------------------
+#
+# Sound was a switch: `mute_sfx` / `mute_music`, and a player who found the music
+# loud had exactly one option and it was silence. `AudioServer` appeared nowhere in
+# game/ -- there were no buses and never had been -- so a level had nowhere to
+# land. v8 adds two, one per category, and two persisted indices into `Sfx.LEVELS`.
+#
+# EVERY TEST BELOW GOES THROUGH `_with_scratch_save`, including the ones that never
+# open a file. `AudioServer` bus volume is PROCESS-GLOBAL in exactly the way
+# `Engine.time_scale` is, and `_stash_run_config` is where both halves of the pair
+# -- the remembered index and the bus it is pushed into -- are put back. A test
+# here that moved the mixer outside that wrapper would not fail; it would sit under
+# every later script in the run, which is how the remembered speed leaked at
+# cycle 104.
+
+
+## The acceptance clause the bead is actually about: not that the setting is
+## STORED, but that it reaches the thing that makes the noise.
+##
+## `Sfx.tune_voice` is the seam, and it is the seam for the reason cycle 74 wrote
+## down: `play()` is gated off headless by `should_play`, so a suite cannot watch a
+## voice start -- but it can hand `tune_voice` a bare AudioStreamPlayer and read
+## back every property the event decided, which now includes which bus it plays on.
+## A dial wired only into the save file would pass a storage test and be inaudible.
+func test_the_dial_reaches_the_voice_and_the_bus_not_only_the_save() -> String:
+	return _with_scratch_save(0, 0, null, func() -> String:
+		var voice := AudioStreamPlayer.new()
+		Sfx.tune_voice(voice, Sfx.PEST_KILLED)
+		var err: String = _T.assert_eq(String(voice.bus), String(Sfx.BUS_NAME),
+			"tune_voice routes the voice to the effects bus, so a cue cannot be played past the dial")
+		if err == "":
+			err = _T.assert_true(Sfx.ensure_bus(Sfx.BUS_NAME) >= 0,
+				"and that bus exists in the running mixer rather than being a name nobody made")
+		if err == "":
+			# The other half: the level the player chose is the number the bus holds.
+			# Every step, not just one -- a mapping asserted at a single point is a
+			# mapping that can be a constant.
+			for step: int in Sfx.LEVELS.size():
+				Sfx.set_level(step)
+				var bus: int = Sfx.ensure_bus(Sfx.BUS_NAME)
+				err = _T.assert_float_eq(AudioServer.get_bus_volume_db(bus), Sfx.level_db(step), 0.001,
+					"effects level %d puts %.2fdB on the bus" % [step, Sfx.level_db(step)])
+				if err != "":
+					break
+		if err == "":
+			for step: int in Sfx.LEVELS.size():
+				Music.set_level(step)
+				var bus: int = Sfx.ensure_bus(Music.BUS_NAME)
+				err = _T.assert_float_eq(AudioServer.get_bus_volume_db(bus), Sfx.level_db(step), 0.001,
+					"music level %d puts %.2fdB on ITS OWN bus" % [step, Sfx.level_db(step)])
+				if err != "":
+					break
+		if err == "":
+			# Two faders, not one master, and this is what says so: the two buses are
+			# different buses, so "turn the music down and leave the game audible" is
+			# expressible. A single master could not say it at all.
+			err = _T.assert_true(Sfx.ensure_bus(Sfx.BUS_NAME) != Sfx.ensure_bus(Music.BUS_NAME),
+				"effects and music are separate buses, which is what makes them separate dials")
+		if err == "":
+			Sfx.set_level(0)
+			Music.set_level(Sfx.LEVELS.size() - 1)
+			err = _T.assert_float_eq(
+				AudioServer.get_bus_volume_db(Sfx.ensure_bus(Sfx.BUS_NAME)), Sfx.level_db(0), 0.001,
+				"and turning the music right down leaves the effects bus where it was")
+		voice.free()
+		return err)
+
+
+## The design question, pinned so it cannot be quietly reversed: a dial at zero
+## would BE a mute, so no step is zero and silence stays exactly one mechanism.
+##
+## Without this, the obvious "improvement" of adding a 0% step reintroduces two
+## ways to silence one category -- and then the mute key has to stash the level it
+## silenced and put it back, which is the state machine the header refuses.
+func test_no_level_is_silence_so_the_mute_stays_the_only_way_to_be_quiet() -> String:
+	return _with_scratch_save(0, 0, null, func() -> String:
+		var err: String = _T.assert_gt(Sfx.LEVELS.size(), 1,
+			"a dial with one position is a switch again")
+		for step: int in Sfx.LEVELS.size():
+			if err != "":
+				break
+			err = _T.assert_true(Sfx.LEVELS[step] > 0.0,
+				("level %d is %.2f -- no step may be zero, or a dial becomes a second mute "
+					+ "and unmuting has to guess what to come back to") % [step, Sfx.LEVELS[step]])
+		if err == "":
+			err = _T.assert_float_eq(Sfx.LEVELS[Sfx.DEFAULT_LEVEL], 1.0, 0.0001,
+				"and index 0 is FULL, so a default save reads svol0 and the shipped mix is unchanged")
+		if err == "":
+			# Orthogonal, demonstrated rather than asserted about: mute and unmute
+			# across a level change, and the level is exactly where it was left.
+			Sfx.set_level(2)
+			Sfx.set_muted(true)
+			Sfx.set_muted(false)
+			err = _T.assert_eq(Sfx.level(), 2,
+				"muting and unmuting leaves the chosen level alone -- nothing is stashed anywhere")
+		if err == "":
+			err = _T.assert_false(Sfx.is_muted(),
+				"and the level did not silently mute anything on its way past")
+		return err)
+
+
+## The round trip proper, byte-exact on the file, through the real setters and the
+## real parser.
+func test_the_two_levels_round_trip_through_the_save() -> String:
+	return _with_scratch_save(0, 0, null, func() -> String:
+		# Through the setters, not by assigning the fields: the setter is what the
+		# Options screen reaches, and it is the half that writes the file.
+		var err: String = _T.assert_eq(RunConfig.set_sfx_level(2), 2,
+			"set_sfx_level hands back what it stored")
+		if err == "":
+			err = _T.assert_eq(RunConfig.set_music_level(1), 1, "and so does the music half")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+				"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol2 mvol1\n0\n" % RunConfig.SAVE_VERSION,
+				"the two levels are the fifth and sixth fields of the preferences line")
+		if err == "":
+			# Wipe first, or a `_load` that never touched them would pass by leaving
+			# what it found.
+			RunConfig.sfx_level = 0
+			RunConfig.music_level = 0
+			RunConfig._load()
+			err = _T.assert_eq(RunConfig.load_status, "loaded",
+				"a file this build just wrote reads back as current, not as migrated")
+		if err == "":
+			err = _T.assert_eq(RunConfig.sfx_level, 2, "and the effects level comes back")
+		if err == "":
+			err = _T.assert_eq(RunConfig.music_level, 1, "and the music level with it")
+		if err == "":
+			# `_load` is data only -- the mixer is `apply_audio_levels`'s job, and that
+			# split is what keeps a parser test from retuning the whole suite.
+			Sfx.set_level(0)
+			Music.set_level(0)
+			RunConfig._load()
+			err = _T.assert_eq(Sfx.level(), 0,
+				"_load does NOT touch the mixer: AudioServer is process-global, so only apply_audio_levels may")
+		if err == "":
+			RunConfig.apply_audio_levels()
+			err = _T.assert_eq(Sfx.level(), 2, "and apply_audio_levels is the one door that does")
+		if err == "":
+			err = _T.assert_eq(Music.level(), 1, "for both halves")
+		return err)
+
+
+## An index this build has no level for is REFUSED at the setter and KEPT from a
+## save — the same asymmetry `store_game_speed` / `MAX_SPEED_STEP` draws, for the
+## same reason: a caller's off-by-one must not be persisted forever, and a file
+## from a later build must not cost two high scores that cannot be re-earned.
+func test_a_level_this_build_has_no_step_for_is_refused_by_the_setter_and_kept_from_a_save() -> String:
+	return _with_scratch_save(0, 0, null, func() -> String:
+		var past_the_end: int = Sfx.LEVELS.size()
+		RunConfig.sfx_level = 1
+		var err: String = _T.assert_eq(RunConfig.set_sfx_level(past_the_end), 1,
+			"a step this build has no level for is refused and the stored one is kept")
+		if err == "":
+			err = _T.assert_eq(RunConfig.set_sfx_level(-1), 1, "and so is a negative one")
+		return err)
+
+
+## Read from a save rather than from a caller, which is the other side of the rule
+## above: a later build's eighth step is data this one must not destroy.
+func test_a_level_from_a_later_build_is_read_and_kept_and_falls_back_to_full() -> String:
+	var future: String = ("v%d\n40\n50\nm0\ncb0 sfx0 mus0 spd0 svol%d mvol0\n0\n"
+		% [RunConfig.SAVE_VERSION, RunConfig.MAX_LEVEL_STEP])
+	return _with_scratch_save(0, 0, future, func() -> String:
+		RunConfig._load()
+		var err: String = _T.assert_eq(RunConfig.load_status, "loaded",
+			"a level index this build has no step for does not condemn the file")
+		if err == "":
+			err = _T.assert_eq(RunConfig.sfx_level, RunConfig.MAX_LEVEL_STEP,
+				"the index is KEPT, so a downgrade does not silently rewrite it away")
+		if err == "":
+			err = _T.assert_eq(RunConfig.campaign_high_score, 40,
+				"and the scores in the same file survive it")
+		if err == "":
+			# Refused at the point of USE instead, exactly like apply_game_speed.
+			err = _T.assert_float_eq(Sfx.level_db(RunConfig.MAX_LEVEL_STEP),
+				Sfx.level_db(Sfx.DEFAULT_LEVEL), 0.0001,
+				"and it is refused where it is used: an unreadable level plays at full, not silent")
+		return err)
+
+
+## What an OLD save does when the fields are absent. Follows
+## `test_a_save_written_before_the_speed_field_...` deliberately, including the
+## milestone and the rebound key: what goes wrong in a bump is never the new field,
+## it is an OLD one defaulted and written back out empty by the migration rewrite.
+func test_a_save_written_before_the_levels_reads_as_full_and_is_rewritten() -> String:
+	var original: String = "v7\n70\n80\nm1:threat_peak\ncb1 sfx1 mus0 spd1\n1\ngarden_pause 4194332\n"
+	return _with_scratch_save(0, 0, original, func() -> String:
+		RunConfig._load()
+		var err: String = _T.assert_eq(RunConfig.load_status, "migrated",
+			"a v7 file is read forward, not refused")
+		if err == "":
+			err = _T.assert_eq(RunConfig.sfx_level, 0,
+				("a save with no level fields reads as full -- a player who never had the "
+					+ "dial had a game at the volume it shipped with"))
+		if err == "":
+			err = _T.assert_eq(RunConfig.music_level, 0, "and the same for the music half")
+		if err == "":
+			# THE FIELD THE BUMP COULD HAVE COST, and the reason a v8 line ADDS two
+			# fields rather than widening `sfx`/`mus` from a flag into a level: a save
+			# that already said `sfx1 mus0` still means effects muted, music audible.
+			err = _T.assert_true(RunConfig.mute_sfx,
+				"its effects mute survives the bump meaning exactly what it meant")
+		if err == "":
+			err = _T.assert_false(RunConfig.mute_music, "and its music mute stays off")
+		if err == "":
+			err = _T.assert_eq(RunConfig.game_speed_step, 1, "and the speed under it is untouched")
+		if err == "":
+			err = _T.assert_true(RunConfig.has_milestone("threat_peak"),
+				"and its milestone survives")
+		if err == "":
+			err = _T.assert_eq(RunConfig.key_bindings.size(), 1,
+				"and so does its rebound key -- the field under the line that moved")
+		if err == "":
+			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+				"v%d\n70\n80\nm1:threat_peak\ncb1 sfx1 mus0 spd1 svol0 mvol0\n1\ngarden_pause 4194332\n"
+					% RunConfig.SAVE_VERSION,
+				"and it is rewritten once in the new shape, with the levels defaulted in place")
+		if err == "":
+			RunConfig._load()
+			err = _T.assert_eq(RunConfig.load_status, "loaded",
+				"the migrated file loads as current next time, rather than migrating forever")
+		return err)
+
+
+## The two level fields are the second and third on that line that are not flags,
+## so their own malformed shapes need the same sweep the speed field got.
+##
+## Every fixture here is SIX fields — the current shape — so each one fails on the
+## field it names rather than on the count. The four-field cases in
+## `test_a_save_with_a_broken_options_line_is_refused_whole` are still refused at
+## v8, but they are now refused for being short, which is not what they were
+## written to check.
+func test_a_save_with_a_broken_level_field_is_refused_whole() -> String:
+	var cases: Dictionary = {
+		"a level field with no digits":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svol mvol0\n" % RunConfig.SAVE_VERSION,
+		"a level field that is not a number":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svolx mvol0\n" % RunConfig.SAVE_VERSION,
+		"a negative level":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svol-1 mvol0\n" % RunConfig.SAVE_VERSION,
+		"a level past the bound":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svol%d mvol0\n"
+				% [RunConfig.SAVE_VERSION, RunConfig.MAX_LEVEL_STEP + 1],
+		# The whole reason each field carries its own marker. The two levels are
+		# adjacent fields about the same subject, so a transposition is the mistake
+		# most likely to actually happen and the one a bare digit could not catch.
+		"the two levels transposed":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 mvol0 svol0\n" % RunConfig.SAVE_VERSION,
+		"a level field wearing the mute's marker":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 sfx0 mvol0\n" % RunConfig.SAVE_VERSION,
+		"the music level missing":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svol0\n" % RunConfig.SAVE_VERSION,
+		"a seventh field":
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0 xyz1\n" % RunConfig.SAVE_VERSION,
+	}
+	for what: String in cases:
+		var err: String = _with_scratch_save(4321, 8765, cases[what],
+			func() -> String: return _assert_refused(4321, 8765, what))
+		if err != "":
+			return err
+	return ""
+
+
+## The geometry answer (plant-tower-defense-1490), asserted rather than left in a
+## comment — which is the whole complaint that bead makes about the shipped PANEL.
+##
+## The panel GROWS to its rows now instead of the rows being trusted to fit it, so
+## the binding constraint moved from the paper to the viewport. Both halves are
+## checked here: the derivation holds for the rows the screen actually declares, and
+## the ceiling it is heading toward is a real one rather than infinity.
+func test_the_options_panel_grows_to_its_rows_and_stays_on_the_screen() -> String:
+	var rows: int = OptionsScreen.OPTIONS.size() + OptionsScreen.DIALS.size()
+	var height: float = OptionsScreen.panel_height()
+	var last_row_foot: float = (OptionsScreen.ROWS_TOP + float(rows - 1) * OverlayScreen.ROW_HEIGHT
+		+ OverlayScreen.ROW_BUTTON_SIZE.y)
+	var footer_top: float = (OptionsScreen.PANEL.position.y + height
+		- OverlayScreen.FOOTER_HEIGHT - OverlayScreen.FOOTER_INSET)
+	var err: String = _T.assert_gt(rows, OptionsScreen.OPTIONS.size(),
+		"the screen has dials as well as switches, or this item did not land")
+	if err == "":
+		err = _T.assert_true(footer_top - last_row_foot >= OverlayScreen.FOOTER_GAP,
+			("the footer stands %.1fpx clear of the last of %d rows, against a FOOTER_GAP of %.1f"
+				% [footer_top - last_row_foot, rows, OverlayScreen.FOOTER_GAP]))
+	if err == "":
+		err = _T.assert_true(OptionsScreen.PANEL.position.y + height <= 648.0,
+			("the paper's foot is at %.1f in a 648-tall viewport"
+				% [OptionsScreen.PANEL.position.y + height]))
+	if err == "":
+		err = _T.assert_true(rows <= OptionsScreen.rows_capacity(),
+			("%d rows against a capacity of %d -- if this fails, the fix is ROWS_TOP, the row "
+				+ "pitch or the header block, NOT a clamp inside panel_height()")
+				% [rows, OptionsScreen.rows_capacity()])
+	if err == "":
+		# A capacity that is not a real ceiling would make the assertion above a
+		# formality. One more row than it allows must genuinely run off the screen.
+		var over: int = OptionsScreen.rows_capacity() + 1
+		var over_foot: float = (OptionsScreen.ROWS_TOP + float(over - 1) * OverlayScreen.ROW_HEIGHT
+			+ OverlayScreen.ROW_BUTTON_SIZE.y + OverlayScreen.FOOTER_GAP
+			+ OverlayScreen.FOOTER_HEIGHT + OverlayScreen.FOOTER_INSET)
+		err = _T.assert_true(over_foot > 648.0,
+			("row %d would put the paper's foot at %.1f, off a 648-tall screen -- so the "
+				+ "capacity is a ceiling and not a formality") % [over, over_foot])
+	if err == "":
+		# The shipped three-switch layout is pixel-identical: the floor is doing its
+		# job, so nobody's screen moved because the arithmetic became a function.
+		err = _T.assert_true(height >= OptionsScreen.PANEL.size.y,
+			"and PANEL's height is a floor, so the panel can only ever grow from where it shipped")
+	return err
+
+
+## The cycle itself, as pure functions, before any screen or save is involved.
+## `next_level` is split out of the button for the reason `Sfx.kill_event_for` was:
+## a ternary at a call site is a decision no test can watch.
+func test_the_dial_cycles_through_every_level_and_wraps() -> String:
+	return _with_scratch_save(0, 0, null, func() -> String:
+		var seen: Array[int] = []
+		var step: int = Sfx.DEFAULT_LEVEL
+		for _i: int in Sfx.LEVELS.size():
+			seen.append(step)
+			step = Sfx.next_level(step)
+		var err: String = _T.assert_eq(step, Sfx.DEFAULT_LEVEL,
+			"cycling once per level comes back to where it started")
+		if err == "":
+			err = _T.assert_eq(seen.size(), Sfx.LEVELS.size(),
+				"and every level is reachable by pressing -- %s" % [seen])
+		if err == "":
+			# A wrap that skipped one would still return to 0 and still have the right
+			# length if it visited the same step twice.
+			for i: int in seen.size():
+				err = _T.assert_eq(seen[i], i, "step %d of the cycle is level %d" % [i, i])
+				if err != "":
+					break
+		if err == "":
+			err = _T.assert_eq(Sfx.next_level(Sfx.LEVELS.size() + 9), Sfx.next_level(Sfx.DEFAULT_LEVEL),
+				"and a step this build has no level for cycles on from full rather than erroring")
+		if err == "":
+			# The text is derived from LEVELS, so a fifth step cannot arrive unnamed.
+			err = _T.assert_eq(Sfx.level_text(Sfx.DEFAULT_LEVEL), "100%",
+				"full reads as 100%% -- got %s" % [Sfx.level_text(Sfx.DEFAULT_LEVEL)])
+		if err == "":
+			err = _T.assert_eq(Sfx.cycle_level(), Sfx.next_level(Sfx.DEFAULT_LEVEL),
+				"Sfx.cycle_level advances the live mixer by one step")
+		if err == "":
+			err = _T.assert_eq(Music.cycle_level(), Sfx.next_level(Sfx.DEFAULT_LEVEL),
+				"and Music.cycle_level does the same on its own bus")
+		if err == "":
+			var quiet: int = Sfx.LEVELS.size() - 1
+			err = _T.assert_float_eq(Sfx.apply_bus_level(Sfx.BUS_NAME, quiet), Sfx.level_db(quiet), 0.001,
+				"apply_bus_level reports the dB it wrote, so nobody has to read the mixer back")
+		if err == "":
+			# The doors the row buttons actually go through, named directly rather than
+			# only reached via OptionsScreen.cycle: `Sfx.cycle_level` moves the mixer and
+			# nothing else, and a screen wired to THAT would be a dial the save never
+			# hears about. These are the pair that move both halves.
+			Sfx.set_level(0)
+			RunConfig.sfx_level = 0
+			err = _T.assert_eq(RunConfig.cycle_sfx_level(), Sfx.next_level(0),
+				"RunConfig.cycle_sfx_level advances the mixer AND records it")
+		if err == "":
+			err = _T.assert_eq(RunConfig.sfx_level, Sfx.level(),
+				"leaving the remembered index and the live bus in step")
+		if err == "":
+			Music.set_level(0)
+			RunConfig.music_level = 0
+			err = _T.assert_eq(RunConfig.cycle_music_level(), Sfx.next_level(0),
+				"and RunConfig.cycle_music_level does the same for the bed")
+		return err)
+
+
+## The player's actual route to the dial: the row on the Options screen, pressed.
+##
+## Not folded into `_with_scratch_save` because this one has to `await` the UI up,
+## and that wrapper takes a Callable whose return it stringifies — a coroutine
+## handed to it would be silently mangled. The stash and the restore are therefore
+## called by hand here, and `teardown()` calls the restore again on an aborted run.
+func test_pressing_a_dial_row_turns_the_volume_down_and_writes_it_down() -> String:
+	_stash_run_config()
+	RunConfig.save_path = HIGHSCORE_TEST_PATH
+	RunConfig.campaign_high_score = 0
+	RunConfig.endless_high_score = 0
+	RunConfig.earned_milestones = {}
+	RunConfig.colorblind_safe = false
+	RunConfig.mute_sfx = false
+	RunConfig.mute_music = false
+	RunConfig.game_speed_step = 0
+	RunConfig.sfx_level = 0
+	RunConfig.music_level = 0
+	Sfx.set_level(0)
+	Music.set_level(0)
+
+	var screen := await _T.instantiate_ui(OptionsScreen.new(), Vector2i(1152, 648)) as OptionsScreen
+	var declared: Array[StringName] = []
+	for row: Dictionary in OptionsScreen.DIALS:
+		declared.append(StringName(row["id"]))
+
+	var err: String = _T.assert_eq(screen.dials(), declared,
+		"the screen draws every dial the table declares, in table order")
+	if err == "":
+		err = _T.assert_eq(screen.rows().size(), OptionsScreen.OPTIONS.size(),
+			"and rows() still means the SWITCHES -- the dials are a second table, not three more switches")
+	for j: int in screen.dials().size():
+		if err != "":
+			break
+		var id: StringName = screen.dials()[j]
+		# The dials are drawn under the switches, so their row index is offset.
+		var index: int = screen.rows().size() + j
+		var label: Label = screen.get_node_or_null("Row%d" % index) as Label
+		var key: Label = screen.get_node_or_null("RowKey%d" % index) as Label
+		var button: Button = screen.get_node_or_null("RowButton%d" % index) as Button
+		err = _T.assert_true(label != null and key != null and button != null,
+			"dial %d (%s) has a name, a key cell and a button at row %d" % [j, id, index])
+		if err == "":
+			err = _T.assert_true(OptionsScreen.is_dial(id), "%s is a dial and not a switch" % [id])
+		if err == "":
+			err = _T.assert_eq(label.text, OptionsScreen.describe(id), "row %d says what it is" % index)
+		if err == "":
+			# Blank, not "unbound": there is no key for a level, and a key cell reading
+			# "unbound" would claim there is a binding waiting to be made.
+			err = _T.assert_eq(key.text, "", "row %d shows no key, because a dial has none" % index)
+		if err == "":
+			err = _T.assert_eq(button.text, OptionsScreen.level_text(id),
+				"row %d reads the mixer rather than a copy the screen kept" % index)
+		if err == "":
+			err = _T.assert_true(button.size.x >= 40.0 and button.size.y >= 40.0,
+				"row %d's button is a real touch target" % index)
+		if err == "":
+			var was: int = OptionsScreen.level_of(id)
+			button.pressed.emit()
+			err = _T.assert_eq(OptionsScreen.level_of(id), Sfx.next_level(was),
+				"pressing row %d turns %s one step" % [index, id])
+		if err == "":
+			err = _T.assert_eq(button.text, OptionsScreen.level_text(id),
+				"and the button says the new level afterwards")
+	if err == "":
+		# The half a mixer-only dial would fail: the press has to reach the file, not
+		# just the bus, or the level is gone at the next launch.
+		err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
+			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol1 mvol1\n0\n" % RunConfig.SAVE_VERSION,
+			"and both presses are in the save, not held for the session")
+	if err == "":
+		# `turn` is the screen's own door and the only writer the buttons have; named
+		# directly so it is exercised rather than only reached through a signal.
+		err = _T.assert_eq(screen.turn(OptionsScreen.SFX_LEVEL), Sfx.level(),
+			"turn() reports where the dial landed, and the mixer agrees")
+	if err == "":
+		err = _T.assert_eq(RunConfig.sfx_level, Sfx.level(),
+			"and the remembered index and the live mixer never come apart")
+
+	_T.free_ui(screen)
+	_restore_run_config()
+	return err

@@ -328,7 +328,68 @@ const REPEAT_MS: Dictionary = {
 ## made overlap of the SAME event impossible while still costing a node each.
 const POOL_SIZE: int = 8
 
+
+# -- the mixer --------------------------------------------------------------
+#
+# THE DIAL, and the reason it is a BUS rather than a per-voice trim.
+#
+# `VOLUME_DB` above is the composition: what a sting is worth NEXT TO a kernel,
+# tuned over four cycles and written down as a scale. The player's dial is a
+# different quantity entirely -- how loud that whole composition is in the room
+# -- and folding the two into one number would mean every future cue's author
+# has to remember to ask about a preference before it can be heard. A bus is set
+# once and everything routed through it is already asking.
+#
+# It also puts the two categories on separate faders for free, which is what the
+# player actually wants: `Music` sends its beds to its own bus (`Music.BUS_NAME`)
+# and reads the same LEVELS table below, so "turn the music down but leave the
+# game audible" is two independent numbers rather than one master that cannot
+# express it. The two mutes were split for exactly this reason at cycle 74 (see
+# `Music._muted`); a single master dial would re-make that mistake one axis over.
+#
+# Both buses are created at runtime rather than in a `default_bus_layout.tres`.
+# There is no bus layout in this project and adding one is a binary resource that
+# no reader of this file would find; `ensure_bus` below is idempotent, so the
+# game, a test and a headless lint can each ask for it without coordinating.
+
+## The bus every one-shot cue plays on. `Music` has its own; see the block above.
+const BUS_NAME := &"Sfx"
+
+## The dial's steps, as linear amplitudes, LOUDEST FIRST.
+##
+## Index 0 is full, exactly the way `GameSpeed.STEPS[0]` is `NORMAL` -- so the
+## default is `0`, the shipped mix is bit-for-bit what it was before the dial
+## existed, and the persisted field reads `svol0` beside the four other zeros on
+## `RunConfig`'s preferences line rather than as a magic 3.
+##
+## **NOTHING HERE IS ZERO, and that is the whole answer to "a dial at zero is a
+## mute".** Two independent ways to silence one category is a state machine
+## nobody asked for: the mute key would have to stash the level it silenced and
+## put it back, and a level of 0 saved with the mute off is a player who has no
+## idea why their game is quiet. So silence stays exactly one thing -- the mute,
+## which is on a key, on the Options screen, and in the save already -- and the
+## dial only ever chooses between four audible levels. Unmuting therefore always
+## lands back on the level the player chose, with nothing remembered anywhere.
+##
+## Four steps rather than a continuous slider for the same reason `GameSpeed` has
+## three: the control is a row button that cycles, so every value is reachable by
+## pressing, reportable as a word, and assertable as an index.
+const LEVELS: Array[float] = [1.0, 0.75, 0.5, 0.25]
+
+## The step a level this build has no entry for falls back to. FULL, deliberately:
+## a save from a later build with more steps is READ and KEPT (see
+## `RunConfig.MAX_LEVEL_STEP`) and refused at the point of use, and the safe
+## reading of "a volume I cannot interpret" is the one the game shipped with, not
+## silence.
+const DEFAULT_LEVEL: int = 0
+
 static var _muted: bool = false
+## Which entry of LEVELS this bus is set to. The live twin of
+## `RunConfig.sfx_level`, exactly as `_muted` is the live twin of
+## `RunConfig.mute_sfx`: this one is what the mixer is doing, that one is what
+## the file records, and `RunConfig.set_sfx_level` is the only supported writer of
+## the pair.
+static var _level: int = DEFAULT_LEVEL
 static var _host: Node = null
 static var _voices: Array[AudioStreamPlayer] = []
 static var _next_voice: int = 0
@@ -378,6 +439,108 @@ static func set_muted(value: bool) -> bool:
 
 static func toggle_muted() -> bool:
 	return set_muted(not _muted)
+
+
+# -- the dial ---------------------------------------------------------------
+#
+# Static and pure wherever it can be, for the reason `should_play` is: whether a
+# sound was AUDIBLE is not observable headlessly, so the tests assert on the
+# state that drives playback. Here that state is a real `AudioServer` bus, which
+# IS readable headless -- `AudioServer.get_bus_volume_db` answers on the dummy
+# driver -- so unlike `play()` the whole path from a level index to the number
+# the mixer is holding can be pinned by a headless test.
+#
+# **`AudioServer` bus state is PROCESS-GLOBAL.** A test that moves it must stash
+# and restore, the same rule `Engine.time_scale` earned in `GameSpeed`. Adding a
+# bus is not undone by anything here, deliberately: `ensure_bus` is idempotent by
+# name, so the cost of a suite that touched it is one bus that was going to exist
+# the moment the game launched anyway.
+
+
+## The index of `bus_name`, creating the bus if this process has not got one yet.
+## Returns -1 if the bus could not be made -- `AudioServer.set_bus_name` silently
+## uniquifies a name that collides, so the index is read back BY NAME rather than
+## assumed to be the one just added.
+##
+## Lives here rather than in a third file that both `Sfx` and `Music` import.
+## `Music` already delegates `is_headless()` to this class for the same reason:
+## two static functions do not earn a `class_name` of their own, and a file named
+## for one of the two categories is a worse home for the shared half than the file
+## that already owns the sound system.
+static func ensure_bus(bus_name: StringName) -> int:
+	var existing: int = AudioServer.get_bus_index(bus_name)
+	if existing >= 0:
+		return existing
+	AudioServer.add_bus(-1)
+	var added: int = AudioServer.bus_count - 1
+	if added < 0:
+		return -1
+	AudioServer.set_bus_name(added, String(bus_name))
+	# Explicitly onto the master bus rather than left to whatever `add_bus`
+	# defaulted to: a bus that sends nowhere is silent, and silence is the one
+	# failure this whole file is written to avoid being able to ship quietly.
+	AudioServer.set_bus_send(added, AudioServer.get_bus_name(0))
+	return AudioServer.get_bus_index(bus_name)
+
+
+## The amplitude a step means, in dB. Pure, so the mapping is assertable without
+## a bus, a game or a tree -- and so the one place a level becomes a number is a
+## function rather than a line inside a setter.
+##
+## An index this build has no step for reads as `DEFAULT_LEVEL` (full) rather
+## than erroring: see that constant, and `RunConfig.apply_game_speed` for the same
+## rule one preference over.
+static func level_db(index: int) -> float:
+	var step: int = index if (index >= 0 and index < LEVELS.size()) else DEFAULT_LEVEL
+	return linear_to_db(LEVELS[step])
+
+
+## What the row on the Options screen says. Derived from LEVELS rather than
+## spelled out beside it, so a fifth step cannot arrive with no name.
+static func level_text(index: int) -> String:
+	var step: int = index if (index >= 0 and index < LEVELS.size()) else DEFAULT_LEVEL
+	return "%d%%" % int(round(LEVELS[step] * 100.0))
+
+
+## The next step, wrapping. The row button's whole behaviour, as a pure function
+## of the current index — same shape as `GameSpeed.STEPS` cycling, and split out
+## for the same reason `Sfx.kill_event_for` is: a ternary at the call site is a
+## decision no test can watch.
+static func next_level(index: int) -> int:
+	if LEVELS.is_empty():
+		return DEFAULT_LEVEL
+	var step: int = index if (index >= 0 and index < LEVELS.size()) else DEFAULT_LEVEL
+	return (step + 1) % LEVELS.size()
+
+
+## Puts a level onto a bus and reports the dB it actually wrote, so a caller (or
+## a test) never has to read the mixer back to find out what happened. Returns
+## `NAN` when the bus could not be made — a mixer that is not there is not a
+## volume of zero.
+static func apply_bus_level(bus_name: StringName, index: int) -> float:
+	var bus: int = ensure_bus(bus_name)
+	if bus < 0:
+		push_warning("Sfx: no audio bus '%s' — that category's level cannot be set." % [bus_name])
+		return NAN
+	var db: float = level_db(index)
+	AudioServer.set_bus_volume_db(bus, db)
+	return db
+
+
+## The one-shot cues' own level. Returns the step it is now on, so a caller can
+## report it without asking again — the shape every setter in this project uses.
+static func set_level(index: int) -> int:
+	_level = index
+	apply_bus_level(BUS_NAME, _level)
+	return _level
+
+
+static func level() -> int:
+	return _level
+
+
+static func cycle_level() -> int:
+	return set_level(next_level(_level))
 
 
 ## The entire decision behind a `play()`, as a pure function of its inputs.
@@ -451,6 +614,19 @@ static func kill_event_for(husk_multiplier: float) -> StringName:
 static func tune_voice(voice: AudioStreamPlayer, event: StringName) -> void:
 	voice.volume_db = float(VOLUME_DB.get(event, 0.0))
 	voice.pitch_scale = float(PITCH.get(event, 1.0))
+	# THE ROUTING, written here and not in `_ensure_pool`, and that placement is the
+	# whole reason the dial is assertable. `play()` is gated off headless by
+	# `should_play`, so a suite cannot watch the pool being built — but it can hand
+	# this function a bare AudioStreamPlayer and read the bus back, which is what
+	# makes "the player's level reaches the thing that makes the noise" a headless
+	# claim instead of a hope. Same argument the pitch line above earned in cycle 74.
+	#
+	# `ensure_bus` first, unconditionally: voices are pooled and a caller (a test,
+	# most often) can hand in a player this process has never routed, and assigning a
+	# bus name the server does not have leaves the voice on Master with the dial
+	# doing nothing to it.
+	ensure_bus(BUS_NAME)
+	voice.bus = BUS_NAME
 
 
 ## The stream behind an event, or null if there isn't one.
