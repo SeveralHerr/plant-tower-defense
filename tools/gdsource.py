@@ -58,6 +58,29 @@ WHAT IT HANDLES.
     an UNTERMINATED single-line literal, which stops at the newline instead of
       swallowing the file -- the cycle-97 defect, fixed at the source
 
+WHICH CHECKERS THE BLANKED-REGION BLIND SPOT REACHES.
+
+A blanked region hides tokens, and a checker that reports a token ABSENT will then
+accuse the wrong thing. `suite_reach_check` did exactly that in cycle 97 and now says
+so in its findings (see its `blanked_token_note`). The other five were checked:
+
+    group_leak / world_control   safe from the ACCUSATION, not from the miss. They
+                                 report patterns they FOUND, so a hidden region can
+                                 only cost a false negative, never a wrong cause.
+    save_persist / settle_read   susceptible in principle: both report a call that
+                                 lacks a guard, and a guard inside a hidden region
+                                 reads as absent. Neither has been observed doing it.
+    message_corpus / meta_key    susceptible, and message_corpus has already done it
+                                 once -- a literal cut at a comma matched nothing and
+                                 was reported missing from a corpus it was in.
+
+None of them has grown the note clause, because the ROOT cause is fixed here rather
+than reported better there: an unterminated single-line literal now costs one line
+instead of the rest of the file. What is left is an unterminated `\"\"\"` block, which
+Godot will not parse either, and which `suite_reach_check` will name if it sees one.
+If a second checker starts producing puzzling absences, the clause is 30 lines and it
+belongs there, not copied.
+
 NOT A LIBRARY-ONLY FILE. It declares the house contract marker on purpose and
 `check_all.py` therefore runs it, bare, every cycle. Bare, it runs `--self-test`.
 That is deliberate: the alternative -- listing it in `NOT_A_CHECKER` like
@@ -112,17 +135,28 @@ ERASE = "erase"
 MODES = (KEEP, BLANK, ERASE)
 
 
-def strip_comments(text, strings=KEEP):
+def strip_comments(text, strings=KEEP, spans=None):
     """GDScript source with `#` comments blanked and string bodies per `strings`.
 
     Exactly length-preserving and newline-preserving in every mode, so an index into
     the result indexes the same character of `text`. See the module docstring for the
     mode table and for what this handles.
+
+    If `spans` is a list, every comment and literal this finds is appended to it as
+    `(start, end, kind)` with `kind` either "comment" or "string" -- the scanner's own
+    account of what it decided, rather than a second parse of its output. Callers need
+    that: a blanked literal spanning lines is indistinguishable, in the OUTPUT, from
+    several one-line ones, because the newlines inside it are preserved. See
+    `literal_spans`.
     """
     if strings not in MODES:
         raise ValueError("strings must be one of %r, got %r" % (MODES, strings))
     keep_body = strings == KEEP
     keep_quote = strings != ERASE
+
+    def record(start, end, kind):
+        if spans is not None:
+            spans.append((start, end, kind))
 
     out = []
     i = 0
@@ -140,9 +174,11 @@ def strip_comments(text, strings=KEEP):
             if j < 0:
                 j = n
             out.append(" " * (j - i))
+            record(i, j, "comment")
             i = j
             continue
         if ch in "\"'" or (ch in "r&^" and i + 1 < n and text[i + 1] in "\"'"):
+            opened_at = i
             raw = False
             if ch in "r&^":
                 raw = ch == "r"
@@ -186,10 +222,26 @@ def strip_comments(text, strings=KEEP):
             if text.startswith(quote, i):
                 out.append(quote if keep_quote else " " * len(quote))
                 i += len(quote)
+            record(opened_at, i, "string")
             continue
         out.append(ch)
         i += 1
     return "".join(out)
+
+
+def literal_spans(text):
+    """[(start, end, kind)] for every comment and string literal, kind-tagged.
+
+    One pass of the same scanner that does the blanking, so the two can never
+    disagree about where a literal begins and ends. This is the question a caller
+    cannot answer from the blanked TEXT: newlines inside a multi-line literal are
+    preserved, so a `\"\"\"` block over forty lines and forty one-line strings blank to
+    output that differs from the raw source in exactly the same places. Only the
+    scanner knows it was one literal, and this is it saying so.
+    """
+    spans = []
+    strip_comments(text, KEEP, spans)
+    return spans
 
 
 def first_arg_span(code, open_paren):
@@ -371,6 +423,29 @@ NORMALISE_CASES = [
     ("different words stay different", "buy corn", "buy peas", False),
 ]
 
+# (label, source, expected [(start, end, kind)])
+SPAN_KIND_CASES = [
+    ("a plain literal", 'x = "ab"\n', [(4, 8, "string")]),
+    ("a comment", 'x = 1  # hi\n', [(7, 11, "comment")]),
+    ("a # inside a literal belongs to the literal",
+     'x = "a # b"\n', [(4, 11, "string")]),
+    ("a quote inside a comment opens nothing",
+     '# he said "hi\nx = 1\n', [(0, 13, "comment")]),
+    ("the &\"\" prefix is part of the literal's span",
+     'x = &"ab"\n', [(4, 9, "string")]),
+    # The case the whole thing exists for: ONE literal over three lines. Blanked
+    # output cannot say this -- the newlines inside it survive, so the differing
+    # runs look like three separate one-line literals.
+    ("a triple-quoted block is ONE span, not one per line",
+     'x = """a\nb\nc"""\n', [(4, 15, "string")]),
+    ("an unterminated single-line literal ends at the newline",
+     'x = "oops\ny = 1\n', [(4, 10, "string")]),
+    ("an unterminated triple block runs to the end",
+     'x = """oops\ny = 1\n', [(4, 18, "string")]),
+    ("two literals on one line are two spans",
+     'f("a", "b")\n', [(2, 5, "string"), (7, 10, "string")]),
+]
+
 # (label, raw, blanked, expected spans)
 REGION_CASES = [
     ("identical texts have no blanked region", "abcd", "abcd", []),
@@ -439,6 +514,15 @@ def self_test(verbose=True):
         (print if not ok else say)("  %-6s normalise_literal    %s (%s/%s)"
                                    % ("ok" if ok else "FAIL", label, got, want))
 
+    for label, src, want in SPAN_KIND_CASES:
+        cases += 1
+        got = literal_spans(src)
+        ok = got == want
+        if not ok:
+            fails += 1
+        (print if not ok else say)("  %-6s literal_spans        %s (%r/%r)"
+                                   % ("ok" if ok else "FAIL", label, got, want))
+
     for label, raw, blanked, want in REGION_CASES:
         cases += 1
         got = blanked_regions(raw, blanked)
@@ -464,9 +548,9 @@ def self_test(verbose=True):
     print("gdsource: %d hand-written case(s) over the shared blanker, %d failure(s)"
           % (cases, fails))
     print("          %d strip_comments case(s), %d x %d preservation case(s), "
-          "%d span, %d normalise, %d region"
+          "%d arg-span, %d normalise, %d literal-span, %d region"
           % (len(STRIP_CASES), len(PRESERVE_CASES), len(MODES), len(SPAN_CASES),
-             len(NORMALISE_CASES), len(REGION_CASES) + 1))
+             len(NORMALISE_CASES), len(SPAN_KIND_CASES), len(REGION_CASES) + 1))
     if cases == 0:
         print("NOTE: nothing to check -- the case tables are empty. An empty self-test "
               "is not a clean self-test.")

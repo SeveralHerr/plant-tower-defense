@@ -103,6 +103,38 @@ Advisory only: printed as a NOTE next to the findings, never subtracted from
 the exit code, and not written into the baseline file - shrinking it is real
 progress, but nothing here can turn a clean run into a gating one.
 
+WHEN THE FINDING IS ABOUT THE TEST FILE'S SYNTAX, NOT YOUR TEST SUITE
+Cycle 97 reported four symbols "public and no test names it" that were named at
+lines anyone could point at. The checker was RIGHT about its own input: a stray
+literal newline had made an unterminated string literal, and the blanker of the
+day read the following 1018 characters as one string body. The finding accused
+the suite; the cause was the file. Two things changed:
+
+  * the root cause is gone. tools/gdsource.py stops an unterminated single-line
+    literal AT the newline, so that exact defect now costs one line. What is
+    left is an unterminated `\"\"\"` block, which really does run to EOF.
+  * every finding now asks the RAW text whether the token it is about to call
+    absent was there and blanked, and says which of three things it found -- a
+    comment, a one-line literal, or ONE literal spanning lines, which is the
+    shape that means "go and look at that file". See `blanked_token_note`.
+
+# fixture:   scratch project, one game script with three public funcs, one test
+#            file in four states -- the cycle-97 defect verbatim (self-heals now:
+#            2 of 3 funcs still reach, no note, which is the point), an
+#            unterminated `\"\"\"` block (multi-line note, both funcs), a token in
+#            a one-line literal (literal note), a token in a comment (comment
+#            note), and a func named nowhere at all (finding, NO note).
+# mutations: 4, all RED, restore clean --
+#            drop the note from the symbol finding    -> the note vanishes
+#            classify every span as one-line          -> the multi-line note,
+#              which is the only one that redirects the reader, vanishes
+#            never record a span in gdsource          -> the note vanishes
+#            treat a triple block as one span per line-> the multi-line note
+#              vanishes. This one is a bug the FIRST DRAFT shipped: it read the
+#              blanked OUTPUT, where the newlines inside a literal survive, so a
+#              40-line block was indistinguishable from 40 one-line strings. The
+#              spans now come from the scanner itself, which knows.
+
 Parallel-safe by construction: opens no project, writes nothing to `.godot/`,
 takes no lock, stdlib only. Exit codes follow the house contract: 0 clean, 1
 findings, 2 could not run.
@@ -194,6 +226,77 @@ def blank_strings(code: str) -> str:
     a token turns up in the raw text of a file this scan blanked.
     """
     return gdsource.strip_comments(code, gdsource.ERASE)
+
+
+def blanked_token_note(name: str, scanned: list[tuple[str, str, str]]) -> str:
+    """A clause naming where `name` sits in a test file's RAW text inside a region
+    this scan blanked, or "" if it does not.
+
+    WHY. Cycle 97 reported four symbols as "public and no test names it" while all
+    four were named at lines anyone could point at. The checker was RIGHT about its
+    own input: a heredoc had put a literal newline inside a string literal, and the
+    blanker of the day read the remaining 1018 characters as one string body, so
+    every symbol after that point was invisible. The finding accused the test suite
+    when the cause was the file's syntax, and it cost several minutes of treating the
+    tool as broken.
+
+    Both facts were in hand at the moment of reporting -- the raw text and the blanked
+    text, at the same offsets -- and only one of them was consulted. This consults the
+    other, and names which of three things it found, because they need different
+    responses:
+
+      * a COMMENT              -> prose, correctly ignored. Nothing to do.
+      * a single-line LITERAL  -> the string_only policy, now with a file and a line.
+      * a MULTI-LINE region    -> a single-line literal cannot span lines. Either a
+                                  `\"\"\"` block or, far more likely, an unterminated
+                                  literal. Go and look at the file, do not write a test.
+
+    `scanned` is [(rel, raw, spans)] for every test file, where `spans` is
+    gdsource.literal_spans(raw) -- the SCANNER's own account of what it blanked, not a
+    second reading of the blanked output. That distinction is load-bearing: newlines
+    inside a multi-line literal are preserved, so in the output a `\"\"\"` block over
+    forty lines is indistinguishable from forty one-line strings, and the first draft
+    of this function got exactly that wrong on its first fixture run.
+    """
+    pattern = re.compile(r"\b%s\b" % re.escape(name))
+    best = None
+    for rel, raw, spans in scanned:
+        for start, end, kind in spans:
+            m = pattern.search(raw, start, end)
+            if not m:
+                continue
+            line = raw.count("\n", 0, m.start()) + 1
+            first = raw.count("\n", 0, start) + 1
+            last = raw.count("\n", 0, end) + 1
+            if kind == "comment":
+                rank, label = 2, "comment"
+            elif last > first:
+                rank, label = 0, "multiline"
+            else:
+                rank, label = 1, "literal"
+            if best is None or rank < best[0]:
+                best = (rank, label, rel, line, first, last, end - start)
+            if rank == 0:
+                break
+        if best and best[0] == 0:
+            break
+    if best is None:
+        return ""
+    _rank, label, rel, line, first, last, size = best
+    if label == "multiline":
+        return ("\n    note: the token DOES appear in %s:%d -- but inside ONE string "
+                "literal of %d characters, spanning lines %d-%d, which this scan "
+                "blanked. A single-line literal cannot span lines, so before writing "
+                "any test go and check that file for an UNTERMINATED or multi-line "
+                "string literal. This finding may be about that file's syntax rather "
+                "than about your test suite at all: cycle 97 lost several minutes to "
+                "exactly this, with the checker correct and the accusation wrong."
+                % (rel, line, size, first, last))
+    if label == "literal":
+        return ("\n    note: the token DOES appear in %s:%d, but only inside a string "
+                "literal, which this scan does not count as reach." % (rel, line))
+    return ("\n    note: the token DOES appear in %s:%d, but only inside a comment, "
+            "which this scan blanks on purpose." % (rel, line))
 
 
 def assert_call_arg_tokens(blanked: str) -> set[str]:
@@ -404,6 +507,10 @@ def main() -> int:
     # module docstring's WHAT THE ASSERT SIGNAL section for why that is
     # deliberately weaker than it sounds.
     assert_arg_tokens: set[str] = set()
+    # (rel, raw, literal_spans) for every test file, kept so a finding can ask the RAW
+    # view whether a token it called absent was actually blanked away. See
+    # blanked_token_note() for the cycle-97 incident that makes this worth the memory.
+    scanned: list[tuple[str, str, list]] = []
     for path in test_paths:
         try:
             raw = read(path)
@@ -411,8 +518,12 @@ def main() -> int:
             print("suite_reach_check: cannot read %s (%s) - cannot run."
                   % (path, exc), file=sys.stderr)
             return 2
-        code = strip_comments(raw)
+        # The spans come out of the SAME pass that does the blanking -- one scan, and
+        # no way for the two to disagree about where a literal begins.
+        spans: list = []
+        code = gdsource.strip_comments(raw, gdsource.KEEP, spans)
         blanked = blank_strings(code)
+        scanned.append((os.path.relpath(path, root).replace("\\", "/"), raw, spans))
         test_paths_named.update(RES_PATH_RE.findall(code))
         test_tokens.update(IDENT_RE.findall(blanked))
         assert_arg_tokens.update(assert_call_arg_tokens(blanked))
@@ -693,27 +804,34 @@ def main() -> int:
             for rel in sorted(by_file):
                 print("      %-32s %s" % (rel, ", ".join(sorted(by_file[rel]))))
 
+    # Every finding below asks the RAW test text whether the token it is about to call
+    # absent was actually there and blanked. When it was, the note goes BEFORE the fix
+    # line, because "check that file for an unterminated string literal" and "write a
+    # test for this" are opposite instructions and the reader acts on the first one.
     for rel, how in new_files:
+        note = "".join(blanked_token_note(h, scanned)
+                       for h in how.split(", ") if h and " " not in h)
         print("  FINDING: %s is a game script no test names. Nothing in %s "
               "mentions %s, nor the literal \"res://%s\". No test in this repo can "
-              "be asserting anything about it.\n"
+              "be asserting anything about it.%s\n"
               "    fix: write a check in test/unit/test_selftest.gd that names the "
               "type and asserts something about it -- see the CompostMeter tests at "
               "the top of that file for the shape.\n"
               "    waive: add `# suite-reach-check: ok - <reason>` to the file."
-              % (rel, args.tests, how, rel))
+              % (rel, args.tests, how, rel, note))
     for i in new_syms:
         dead = (" Nothing else in the project references it either -- no .gd outside "
                 "the test tree, no .tscn, no config file -- so this may be dead code "
                 "rather than a test gap. Check lint's Orphans: pass before writing a "
                 "test for it.") if i["dead"] else ""
-        print("  FINDING: %s:%d %s `%s` is public and no test names it.%s\n"
+        print("  FINDING: %s:%d %s `%s` is public and no test names it.%s%s\n"
               "    fix: name it in a check under test/unit/ -- calling it and "
               "asserting the result, or for a signal, connecting to it and "
               "asserting it fired.\n"
               "    waive: add `# suite-reach-check: ok - <reason>` in its body or on "
               "its line."
-              % (i["rel"], i["line"], i["kind"], i["name"], dead))
+              % (i["rel"], i["line"], i["kind"], i["name"], dead,
+                 blanked_token_note(i["name"], scanned)))
 
     return 1 if (new_files or new_syms) else 0
 
