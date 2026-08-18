@@ -420,6 +420,14 @@ const PAGES: Array[Dictionary] = [
 		"note": "The fifth designed here, and the first thing that undoes damage. Before it, health only ever fell — the rain heals, but that is the weather's doing. Too slow to save a plant being eaten, on purpose: a heal that beat a mouth would make one Aloe behind everything the only board.",
 	},
 	{
+		"kind": KIND_PLANT,
+		"plant": &"bramble",
+		"drawing": "res://assets/sprites/bramble.png",
+		"sprite": "res://assets/sprites/bramble.png",
+		"caption": "Barrier Bramble",
+		"note": "The sixth designed here, and the only plant that stands in the road. Everything before it acted on a pest walking past — and the pest walked past regardless. This one sells time: nothing gets by until it is chewed through, and the cobs behind it get those seconds. Fliers go over.",
+	},
+	{
 		"kind": KIND_SHELF,
 		"plant": &"",
 		# Kept a real path even though the shelf page never shows it: Drawing is

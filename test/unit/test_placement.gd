@@ -6444,10 +6444,27 @@ func test_the_resting_cue_never_calls_sunflower_ground_scenery() -> String:
 			PlacementPreview.reaching_ids(PlantCatalog.ids()).has(PlantCatalog.SUNFLOWER),
 			"and it is dropped from the population the resting cue speaks for")
 	if err == "":
+		# THE SECOND DROP, decided rather than absorbed. The Barrier Bramble
+		# (plant-tower-defense-3mhn) is the other reachless entry, and the reason is not the
+		# Sunflower's. A Sunflower stands on the grass and reaches nothing, so "no cell is
+		# dead ground for it" is a claim about a plant the cue could have spoken for and
+		# chooses not to. A Bramble stands on the ROAD (PlantCatalog.on_road), and this cue
+		# only ever scans BUILDABLE cells — so the set of cells it could speak about for a
+		# Bramble is empty before reach is consulted at all. Dropping it is not the cue
+		# declining to answer; it is the cue having no question.
+		err = _T.assert_false(
+			PlacementPreview.reaching_ids(PlantCatalog.ids()).has(PlantCatalog.BRAMBLE),
+			"and the Bramble is dropped too -- it never stands on a cell this cue scans")
+	if err == "":
+		err = _T.assert_true(PlantCatalog.on_road(PlantCatalog.BRAMBLE),
+			"which is exactly why: the cue walks buildable grass and the Bramble is on the road")
+	if err == "":
 		err = _T.assert_eq(
-			PlacementPreview.reaching_ids(PlantCatalog.ids()).size(), PlantCatalog.ids().size() - 1,
-			("the Sunflower is the ONLY entry dropped -- if a second reachless plant is added "
-				+ "this cue quietly stops speaking for it too, and that should be a decision"))
+			PlacementPreview.reaching_ids(PlantCatalog.ids()).size(), PlantCatalog.ids().size() - 2,
+			("the Sunflower and the Bramble are the ONLY entries dropped -- if a THIRD "
+				+ "reachless plant is added this cue quietly stops speaking for it too, and "
+				+ "that should be a decision. The two above are the two reasons there are: "
+				+ "reaches nothing, or stands where this cue does not look"))
 	if err == "":
 		var scenery := Vector2i(13, 8)
 		err = _T.assert_true(

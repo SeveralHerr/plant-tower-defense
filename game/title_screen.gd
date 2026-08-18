@@ -290,13 +290,44 @@ const PLANT_ART_WIDTH: float = 64.0
 ## rightmost for its narrowness. It still is, because catalogue order puts it there and
 ## nothing is gained by moving it.
 ##
-## A NINTH is the two-row day, and this time there is no third trick: five 96px canvases need
-## 480 in a 426px band. lawn_plants() still degrades with a push_warning until someone does it.
+## THE NINTH ARRIVED (the Barrier Bramble, plant-tower-defense-3mhn) and the paragraph that
+## used to sit here said "this time there is no third trick: five 96px canvases need 480 in a
+## 426px band". That arithmetic is correct and it is about CANVASES, which was the wrong
+## quantity — the seven-slot layout two paragraphs up had already established that canvases
+## may overlap and only ink may not, then the eight-slot rewrite dropped the scale and threw
+## the ink argument away as "slack rather than load-bearing". It was not slack; it was the
+## headroom that fits this plant.
+##
+## The trick is therefore neither of the two the old paragraph offered. It is WHICH plants
+## go in which band, and it works because the catalogue's ink widths are not close to equal.
+## Measured off assets/sprites/*.png (opaque bounds, alpha > 16), not estimated:
+##
+##   mint 32   nettle 38   chomp 48   sundew 48   aloe 48
+##   corn 52   dandelion 52   bramble 54   sunflower 54
+##
+## Every one of them is ink-centred on its 64px canvas, so a slot's ink half-width is just
+## `width * PLANT_SCALE / 2`. Put the five NARROWEST in the crowded five-slot band and the
+## four widest in the four-slot band, and both bands have room to spare at the current scale:
+##
+##   left  band (5): ink 214 * 1.5 = 321 in 426 -> 105 free over six gaps, 17.5 px each
+##   right band (4): ink 212 * 1.5 = 318 in 426 -> 108 free over five gaps, 21.6 px each
+##
+## So PLANT_SCALE stays at 1.5 and the lawn stays one row. The canvases do overlap in the
+## left band and no ink does, which is exactly the property the seven-slot layout established
+## and is what test_the_title_lawn_shows_every_plant_in_the_catalogue and its clearance
+## sibling are checking between them.
+##
+## A TENTH is the two-row day for real, and now the claim can be made honestly rather than
+## rediscovered: this trick has spent the last of the width asymmetry. Every plant left in
+## the catalogue to shuffle is already in the band that suits it, so a tenth adds ink to one
+## band with nothing narrow left to trade out of it.
 ##
 ## In CATALOGUE order, not left-to-right order -- lawn_plants() maps by index -- so the
-## out-of-sequence 270.0 and 375.0 near the end are correct and not typos.
+## bands interleaving down the array is correct and not a typo. Reading it as pairs:
+## corn/right, chomp/left, bramble/right, sunflower/right, sundew/left, dandelion/right,
+## mint/left, nettle/left, aloe/left.
 const PLANT_X: Array[float] = [
-	60.0, 165.0, 780.0, 885.0, 990.0, 270.0, 1095.0, 375.0,
+	786.5, 53.5, 887.5, 990.5, 143.0, 1091.5, 220.5, 290.5, 372.5,
 ]
 ## The bugs the plants are there to fight, marching across the soil.
 const PEST_BASE_Y: float = 606.0

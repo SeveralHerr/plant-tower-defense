@@ -3667,8 +3667,8 @@ func test_every_plant_that_can_touch_a_pest_is_named_as_one() -> String:
 	# Named positively, and named exactly. A new plant landing in the catalogue
 	# has to be decided about here; it must not inherit an answer.
 	if err == "":
-		err = _T.assert_eq(Game.engaging_plants().size(), 4,
-			"four plants in this catalogue can touch a pest, and the list says which")
+		err = _T.assert_eq(Game.engaging_plants().size(), 5,
+			"five plants in this catalogue can touch a pest, and the list says which")
 	if err == "":
 		err = _T.assert_true(Game.engaging_plants().has(PlantCatalog.CORN),
 			"a kernel that lands is one of the things that set Pest._ever_engaged")
@@ -3685,15 +3685,34 @@ func test_every_plant_that_can_touch_a_pest_is_named_as_one() -> String:
 	if err == "":
 		err = _T.assert_true(Game.engaging_plants().has(PlantCatalog.DANDELION),
 			"and a seed bomb bursting on one is the third — SeedBomb.detonate() calls take_damage")
+	if err == "":
+		# Bramble, added with the ninth plant. Decided about here rather than inherited,
+		# and it is the entry that most looks like it should be false: it does no damage
+		# at all, ever. The key's rule is "damage OR HOLD" and the Chomp is already in
+		# this list for holding rather than for hurting, so a plant every pest has to
+		# stop and chew through is in it for the same reason.
+		err = _T.assert_true(Game.engaging_plants().has(PlantCatalog.BRAMBLE),
+			"a Bramble holds every pest that walks into it, which is what the Chomp is here for")
 	if err != "":
 		return err
 
-	# The divergence itself, on the one plant it exists for.
+	# The divergence itself, on the two plants it exists for — and they point OPPOSITE
+	# ways, which is the thing worth pinning. If either key were ever quietly derived
+	# from the other, exactly one of these two pairs would still pass.
 	err = _T.assert_gt(PlantCatalog.reach(PlantCatalog.SUNDEW), 0.0,
 		"the Sundew has a reach the placement cue rightly warns about")
 	if err == "":
 		err = _T.assert_float_eq(Game.engagement_reach(PlantCatalog.SUNDEW), 0.0, 0.0001,
 			"and none at all by the only measure a coverage map may use — dew never touches a pest")
+	if err == "":
+		err = _T.assert_true(PlantCatalog.engages(PlantCatalog.BRAMBLE),
+			"the Bramble is the mirror: it engages,")
+	if err == "":
+		err = _T.assert_float_eq(PlantCatalog.reach(PlantCatalog.BRAMBLE), 0.0, 0.0001,
+			"and reaches nothing at all — it acts on the cell it is standing on")
+	if err == "":
+		err = _T.assert_float_eq(Game.engagement_reach(PlantCatalog.BRAMBLE), 0.0, 0.0001,
+			"so it contributes no coverage to a map built on reach, which is correct")
 	if err != "":
 		return err
 

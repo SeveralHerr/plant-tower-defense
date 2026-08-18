@@ -6994,3 +6994,81 @@ status rather than rewriting the entries that recorded these as open.
   `0 error(s)`. Skipping that order would have produced `Could not find type
   "ReadoutBand"` cascading into files nobody touched — which reads as a broad regression
   and is not one.
+
+## 2026-08-18 — cycle 110: the Barrier Bramble, the ninth plant and the first that stands in the road
+
+- Value: **warranted** — the run measured the halt distance against the constant that
+  declares it, on the real route, and three headless gates each rejected the plant for a
+  different reason before it ever launched.
+  - Expected: a plain aphid halts at a Bramble's cell (position stops advancing while the
+    Bramble's health falls), and a Bramble places on a road cell where a Corn is refused.
+    The thing runtime can show that the 893 headless tests structurally cannot: whether
+    the Bramble renders visibly ON the road — plants and road tiles are different draw
+    layers, so a plant on a road cell could be painted underneath the tile and be
+    invisible — and whether the preview's green brackets actually appear over road cells.
+  - Got: the aphid walked 70.7 → 173.4 → **250.1** and stopped there for three seconds
+    while the wall went 40.0 → 39.2 → 34.6 → 30.1 → 25.8. The wall stands at x=288, so the
+    gap is **37.9 px against `Bramble.STOP_RADIUS` 38.4** — the header's geometry argument
+    holds on the real route and not only in a synthetic two-point path. The paired guard
+    inverted on the same road with the same species: a WINGED aphid went 47.3 → 150.0 →
+    **251.4** → 352.8 → 416 with the wall untouched at `health=40.0` throughout. The
+    preview inverted with it — grass `placeable=false`, road `placeable=true`.
+  - Found: five things, three of them before launch.
+    **(1)** `art_src/bramble.svg` carried a `--` inside an XML comment. Godot's rasteriser
+    accepted it and wrote a correct 64×64 PNG, so the sprite *looked* finished — but
+    `svg_style_check.py` reported `ERR bramble ? geometry not measured` and skipped both
+    `raster_size` checks. The sprite would have shipped exempt from every geometry gate
+    while the summary still read `Checked: 28 of 28`. **A checker that names what it
+    skipped is what made this visible; a bare pass/fail count would have hidden it.**
+    **(2)** the painted base sat at 19.0 against a family spread of 24–27, so the bramble
+    would have swayed about a point in its own middle rather than about the ground.
+    Invisible in a still; only the pivot gate can see it.
+    **(3)** the title lawn overturned a written claim. `PLANT_X`'s header said "a NINTH is
+    the two-row day, and this time there is no third trick: five 96px canvases need 480 in
+    a 426px band". True, and about the wrong quantity — measuring the nine sprites' real
+    ink (mint 32 … sunflower 54) showed the five narrowest fit that band with 17.5 px of
+    clear ink per join at the current scale. The file had discarded its own ink argument
+    as "slack rather than load-bearing" exactly one plant earlier.
+    **(4)** the halt distance above.
+    **(5)** two measurement errors of my own, both of which produced confident, well-formed,
+    wrong numbers — see the gap below.
+  - Cheaper: nothing for the halt distance and the render check; both need a playing game
+    on the real route. The three gate catches were all cheaper than the runtime pass and
+    all ran in Phase 1, which is an argument for the headless gates rather than for
+    launching.
+
+- **Two live reads that were confidently wrong, in one session, for two different reasons.**
+  This is not a new gap — it is `read-a-moving-value` biting twice — but the second half is
+  worth writing down because the skill does not currently name it.
+  First: I sampled `sample-pixels --rect 264,72,48,48` expecting my sprite and got
+  `dominant #29c56b (79%)`. The game had been left running while I worked, the garden had
+  been eaten, and I was measuring the **run-summary card's cream paper**. Nothing in the
+  reply says "a modal is covering the board"; the numbers are well-formed.
+  Second, after relaunching and pausing: the crop showed a ~20 px speck where a 64 px plant
+  should be. That was `Plant`'s planting-pop tween frozen at its `Vector2(0.4, 0.4)` start
+  scale — **`pause` froze the entrance the same way it freezes a fade.** `findings` warns
+  about paused `ui_transparent`/`container_layout_drift`; the same hazard applies to any
+  `_sprite.scale` entrance and to `sample-pixels`/`screenshot`, which are not UI checks.
+  The fix both times was `unpause` → `wait-frames 90` → `pause` → read.
+  - [G-127] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: `screenshot` and `sample-pixels` should say `TREE IS PAUSED` in their
+    reply the way `ping` and `performance` already do. A paused capture is a legitimate
+    thing to want (that is the whole point of `--then-pause`), so this is a label and not a
+    refusal — but a still of a half-finished entrance is indistinguishable from a still of
+    a finished one, and the reply is the only place that could say so.
+
+- Gap: **`run.json`'s `tier` key is dropped by this project's installed ledger.**
+  `tools/run_json_check.py` caught it before `record` ran, which is exactly what that
+  checker is for: `unknown key 'tier' -- verify_ledger reads it nowhere, so it will be
+  dropped without a word`. The `/verify` workflow text this session followed documents
+  `tier` as required and says `stats` counts by it; this project runs 0.38.0 and the key
+  landed in 0.50.0. Not a defect in either half — it is version skew between the skill
+  and the install, and it is blocked behind the same thing everything else is.
+  - [G-128] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: nothing to fix here — `-ny3h` (refresh 0.38.0 → 0.42.0+) is still
+    BLOCKED on upstream gh#43, the deterministic `0xC0000005` segfault at
+    `test_corn_shoots_the_pest_closest_to_escaping`. Recording it so the next reader of
+    that bead knows the skew has started producing concrete drops rather than only
+    missing features. `harness-version --client` reports the machine is now on **0.60.0**
+    against this project's 0.38.0 — twenty-two releases, up from four when `-ny3h` was
+    filed.

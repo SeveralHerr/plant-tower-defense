@@ -1312,7 +1312,7 @@ func _on_plant_chosen(id: StringName) -> void:
 	# cue that only updates on mouse motion would show the old plant's reach
 	# until the player happened to move.
 	if _hover_cell.x >= 0:
-		_update_preview(_hover_cell, board.is_buildable(_hover_cell) and not _plants.has(_hover_cell))
+		_update_preview(_hover_cell, board.is_buildable_for(_hover_cell, selected_plant) and not _plants.has(_hover_cell))
 	_refresh()
 
 
@@ -1471,7 +1471,11 @@ func would_plant_at(cell: Vector2i) -> bool:
 		return false
 	if not PlantCatalog.has(selected_plant):
 		return false
-	if not board.is_buildable(cell):
+	# is_buildable_FOR, not is_buildable: since the Barrier Bramble the answer depends on
+	# which plant is selected, and this predicate's whole contract is that it says exactly
+	# what place_plant() would say. The two calls have to move together or the green
+	# brackets start promising a plant the click then refuses.
+	if not board.is_buildable_for(cell, selected_plant):
 		return false
 	if _plants.has(cell):
 		return false
@@ -1487,8 +1491,17 @@ func place_plant(id: StringName, cell: Vector2i) -> String:
 		return "the run is over"
 	if not PlantCatalog.has(id):
 		return "no such plant: %s" % id
-	if not board.is_buildable(cell):
-		return "pests walk there" if board.is_path(cell) else "off the garden"
+	if not board.is_buildable_for(cell, id):
+		# Three reasons now, not two, and the new one is the road plant's mirror image.
+		# "Pests walk there" is exactly wrong for a Bramble — pests walking there is the
+		# entire point — so a road plant refused on grass gets its own sentence. The order
+		# matters: off-board is checked through is_inside first, because a road plant
+		# clicked outside the garden is off the garden and not "no pests walk there".
+		if not board.is_inside(cell):
+			return "off the garden"
+		if PlantCatalog.on_road(id):
+			return "no pests walk there"
+		return "pests walk there"
 	if _plants.has(cell):
 		return "something is already growing there"
 	# Priced BEFORE the charge, and this order is load-bearing: pay_for_plant()
@@ -1629,6 +1642,8 @@ func _new_plant(id: StringName) -> Plant:
 			return Nettle.new()
 		PlantCatalog.ALOE:
 			return Aloe.new()
+		PlantCatalog.BRAMBLE:
+			return Bramble.new()
 		_:
 			return CornCobbler.new()
 
@@ -2064,7 +2079,7 @@ func _update_cursor(screen_pos: Vector2) -> void:
 	_hover_cell = cell
 	_cursor.visible = true
 	_cursor.position = Vector2(cell.x * Board.CELL, cell.y * Board.CELL)
-	var free: bool = board.is_buildable(cell) and not _plants.has(cell)
+	var free: bool = board.is_buildable_for(cell, selected_plant) and not _plants.has(cell)
 	_cursor.color = Color(GardenTheme.LEAF, 0.30) if free else Color(GardenTheme.DANGER, 0.30)
 	_update_preview(cell, free)
 
@@ -2121,7 +2136,15 @@ func _update_preview(cell: Vector2i, free: bool) -> void:
 	# Only a plant that cannot defend itself is "at risk" beside the road. A
 	# Corn Cobbler there is the entire point of a Corn Cobbler; flagging it
 	# would teach the player to ignore the cue everywhere it matters.
-	_preview.at_risk = _preview.reach <= 0.0 and board.is_road_adjacent(cell)
+	#
+	# A road plant is excluded by that same sentence rather than by an exception to it.
+	# A Barrier Bramble has reach 0.0 and stands on a cell every neighbour of which is
+	# road, so both halves of the test above are true of it — and being eaten is the
+	# entire point of a Barrier Bramble, exactly as shooting is the entire point of a
+	# cob. Warning the player about the one purchase whose whole job is to be chewed is
+	# how a cue gets ignored on the cells where it means something.
+	_preview.at_risk = (_preview.reach <= 0.0 and board.is_road_adjacent(cell)
+		and not PlantCatalog.on_road(previewing))
 	_preview.queue_redraw()
 
 
@@ -2141,12 +2164,22 @@ func _update_preview(cell: Vector2i, free: bool) -> void:
 ##
 ## Harvesting is untouched by the reordering, and provably so rather than
 ## hopefully so. Pests only ever walk Board.route(), which is one point per road
-## cell centre bracketed by two off-board tails, so every husk lands on the road —
-## and nothing may ever be planted on the road. A click on a husk therefore always
-## sweeps it, because would_plant_at() is false everywhere a husk can be reached
-## from. PlacementPreview.husk_click_margin() is that claim as a number, and
-## test_placement gates it: today the nearest a husk can come to ground a plant
-## may stand on is 32 px, four clear of the 28 px sweep.
+## cell centre bracketed by two off-board tails, so every husk lands on the road.
+##
+## THAT ARGUMENT USED TO END "and nothing may ever be planted on the road", which was
+## true for eight plants and stopped being true the day the Barrier Bramble arrived
+## (PlantCatalog.on_road). The invariant it rested on is gone; the guarantee is not,
+## because the branch below now sweeps FIRST on any road cell rather than relying on
+## would_plant_at() being false there. Two halves, and they cover different ground:
+##
+##   * On grass, the old argument still stands unchanged — a husk cannot land there, so
+##     the preview's promise ("if you see the brackets, the click plants it") is intact
+##     everywhere it was ever made. PlacementPreview.husk_click_margin() is that claim
+##     as a number and test_placement still gates it: the nearest a husk can come to
+##     GRASS a plant may stand on is 32 px, four clear of the 28 px sweep.
+##   * On road, the sweep wins outright. A husk is already-earned seeds and a Bramble
+##     can be planted a pixel to either side, so the cheap mistake is the one to make
+##     impossible.
 func _click_at(screen_pos: Vector2) -> void:
 	# BOARD-LOCAL, and it has to be. This guard used to read
 	# `screen_pos.y < Hud.BAR_HEIGHT or screen_pos.x > board.board_size().x` — an absolute
@@ -2173,7 +2206,16 @@ func _click_at(screen_pos: Vector2) -> void:
 	# been: Board._build_route brackets the road with an off-board entry and exit,
 	# a Corn Cobbler can shoot a pest standing on either, and the husk that drops
 	# there belongs to no cell at all. It is still the player's to collect.
-	if not would_plant_at(cell):
+	# `or board.is_path(cell)` is the Barrier Bramble's amendment to the rule the header
+	# above states, and the header has been rewritten to match. On GRASS nothing changed:
+	# the preview's promise still holds, because a husk never lands on grass. On the ROAD
+	# the sweep now goes first, and it has to — a road cell can hold a husk AND accept a
+	# Bramble at the same time, and without this the first click on a husk in a lane the
+	# player is walling plants a Bramble on top of it and the husk is gone unrefunded.
+	#
+	# Costs the placement nothing, because collect_at() returns 0 when no husk is in
+	# range: a road click with nothing to sweep falls straight through to place_plant().
+	if not would_plant_at(cell) or board.is_path(cell):
 		var swept: int = compost.collect_at(local)
 		if swept > 0:
 			bank.add_seeds(swept)
@@ -2198,7 +2240,7 @@ func _click_at(screen_pos: Vector2) -> void:
 	# The cell under the cursor just changed state — either it now holds a
 	# plant, or the purchase drained the seeds that made it affordable. Either
 	# way the cue on screen is stale until the mouse moves, which it need not.
-	_update_preview(cell, board.is_buildable(cell) and not _plants.has(cell))
+	_update_preview(cell, board.is_buildable_for(cell, selected_plant) and not _plants.has(cell))
 
 
 # -- state ------------------------------------------------------------------

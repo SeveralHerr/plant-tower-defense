@@ -1260,6 +1260,25 @@ func _physics_process(delta: float) -> void:
 	# a wave allowed to stand still healing itself while the player watches would be
 	# the worst version of this fight.
 	_tick_aura(delta)
+	# The Barrier Bramble, and note that it is checked for EVERY pest rather than behind
+	# a mutation the way the meal below is. That is the whole of what the plant sells: a
+	# wall the ordinary aphid walks past is not a wall.
+	#
+	# It sits ABOVE the `is_hungry` branch on purpose. Both branches end in a bite and
+	# both return, so the order only matters when a pest could satisfy both at once — a
+	# hungry pest standing on a Bramble with a cob one cell off the road. Whichever wins,
+	# something gets eaten; putting the wall first means the thing in its way is what it
+	# eats, which is what a player watching it expects. The alternative has a hungry pest
+	# reaching PAST the plant blocking it to chew something behind, and no picture of that
+	# reads as anything but a bug.
+	var wall: Bramble = _blocking_plant()
+	if wall != null:
+		# Held by the garden, so a pest that only ever met a Bramble still counts as
+		# engaged -- the same reason `held_by` marks it above. A wave stalled at a wall
+		# and shot dead by the cobs behind it was fought, not ignored.
+		_mark_engaged()
+		wall.take_damage(EAT_DPS * delta)
+		return
 	if is_hungry:
 		var meal: Plant = _adjacent_plant()
 		if meal != null:
@@ -1271,6 +1290,38 @@ func _physics_process(delta: float) -> void:
 ## The doc's "hungry" trait: eats the plant instead of walking past. Only ever
 ## looks at the lane it is currently beside — same one-cell reach as a Chomp's
 ## grab, so a hungry pest cannot reach across the road to a different lane.
+## The Barrier Bramble standing in this pest's way, or null.
+##
+## Deliberately shaped like `_adjacent_plant()` below rather than like something
+## cleverer, and the two differ in exactly three ways, each of which is the mechanic:
+##
+##   * the radius. `Bramble.STOP_RADIUS` is 0.6 of a cell against EAT_RADIUS's 1.15,
+##     because a Bramble is ON the road and a meal is one cell OFF it. Its header has
+##     the geometry.
+##   * the type. `as Bramble` is the whole "which plants block" question, so there is no
+##     second list of blocking ids to drift from `PlantCatalog.on_road`.
+##   * the wings. `Bramble.stops()` is asked rather than `is_winged` read directly, for
+##     the reason `mutation_markers()` gives about cues that re-decide a rule: the plant
+##     owns its own counter, and a pest re-deriving it is how the shop line and the
+##     behaviour end up disagreeing.
+##
+## It walks the tree-global `plants` group, which `.claude/skills/godot-test-isolation`
+## warns can return a second Game's plants when the suite hosts two scenes at once. That
+## is a known and accepted shape here because `_adjacent_plant()` has always had it and
+## a divergence between the two would be worse than the shared hazard; the pest-side
+## tests build one board.
+func _blocking_plant() -> Bramble:
+	if not Bramble.stops(is_winged):
+		return null
+	for node: Node in get_tree().get_nodes_in_group("plants"):
+		var wall := node as Bramble
+		if wall == null or wall.is_destroyed():
+			continue
+		if wall.global_position.distance_to(global_position) <= Bramble.STOP_RADIUS:
+			return wall
+	return null
+
+
 func _adjacent_plant() -> Plant:
 	var best: Plant = null
 	var best_distance: float = EAT_RADIUS

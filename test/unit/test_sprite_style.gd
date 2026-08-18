@@ -37,6 +37,11 @@ const SRC_SUBDIR := "art_src"
 ## and is scaled up at the apex, where 16px of art is a smudge.
 const EXPECTED_SIZE := {
 	"aloe": 64,
+	# The ninth plant, and the only sprite in this table drawn to read against the ROAD
+	# rather than against the lawn — art_src/bramble.svg's header has the measurement
+	# (towerDefense_tile050.png is a flat #BB8044) and why that rules out the brown family
+	# every other bramble would be drawn in.
+	"bramble": 64,
 	"chomp_flower": 64,
 	"chomp_flower_eating": 64,
 	"chomp_flower_eating_late": 64,

@@ -15,6 +15,7 @@ const DANDELION := &"dandelion"
 const MINT := &"mint"
 const NETTLE := &"nettle"
 const ALOE := &"aloe"
+const BRAMBLE := &"bramble"
 
 const PLANTS: Dictionary = {
 	CORN: {
@@ -159,6 +160,55 @@ const PLANTS: Dictionary = {
 		# keeping alive plainly do.
 		"engages": false,
 	},
+	BRAMBLE: {
+		"display": "Barrier Bramble",
+		"texture": "res://assets/sprites/bramble.png",
+		# 20, and this is the one price in the catalogue that is NOT set by the tier
+		# gradient — it is set by the fact that this plant is CONSUMED by working.
+		#
+		# Every other entry is an asset: a cob bought at wave 2 is still shooting at
+		# wave 12, and its price is amortised over the whole run. A Bramble's job is to
+		# be eaten (bramble.gd's BITE_RESISTANCE puts one pest through it in 11.4s), so
+		# its price is paid again every time it does the thing it is for. Priced like an
+		# asset it would be the plant nobody buys twice — which is the same trap the
+		# Nettle's entry names, arriving from the other direction.
+		#
+		# 20 makes it the dearest tier-1 entry (Corn 10, Chomp 15) and the cheapest thing
+		# in the shop that is not a starter weapon. Two cobs' worth of held lane.
+		"cost": 20,
+		# TIER 1, deliberately, and it is the only support-shaped plant down here.
+		#
+		# Tier is "how early may a packet offer this", not "how good is it"
+		# (SeedBank.PACKET_TIERS). A wall is a FUNDAMENTAL verb — it is the first answer
+		# to "the pests are getting through" that does not require aiming at anything —
+		# and a player who meets it at wave 9 has already learned to play without it.
+		# Everything in tier 2 is a specialist that modifies a garden you already have;
+		# this modifies whether you get one.
+		"tier": 1,
+		"unlocked_at_start": false,
+		"free_starter": false,
+		# Says the two things a player has to know before spending: it does no damage,
+		# and fliers ignore it. The second is the counter, and a wall whose counter is
+		# not on its own shop line is the trap nettle.gd's header describes.
+		"blurb": "Grows across the road itself, and everything walking it stops to chew through. Hurts nothing — it buys the plants behind it time. Winged pests go straight over.",
+		# The ONLY plant on the road, and the key the placement rule reads
+		# (Board.is_buildable_for). A missing key reads as false, which keeps every other
+		# plant exactly where it was; see on_road() below for why that default is allowed
+		# to stand here when `engages`'s is not.
+		"on_road": true,
+		# TRUE, and it is worth saying why since this plant does no damage at all.
+		#
+		# The key's own rule is "true if it can damage OR HOLD a pest"
+		# (test_every_plant_declares_whether_it_engages states it, and the Chomp is in the
+		# list for holding rather than for hurting). A Bramble holds every pest that walks
+		# into it, so it engages.
+		#
+		# That makes it the SECOND divergence between reach() and engages(), pointing the
+		# opposite way from the first: a Sundew REACHES without ENGAGING, and a Bramble
+		# ENGAGES without REACHING. Both are honest and the pair is what stops either key
+		# being quietly derived from the other. See reach() below for the 0.0.
+		"engages": true,
+	},
 }
 
 ## Order the shop and the plant bar list plants in. Keeps the UI stable as more
@@ -173,8 +223,13 @@ const PLANTS: Dictionary = {
 ## only entry whose value depends on the board having already been DAMAGED. A first-time
 ## reader meeting it before they have lost a plant reads it as doing nothing, exactly as
 ## they would read Mint before owning anything to speed up.
+## Bramble sits third, with the two tier-1 weapons rather than out at the end with the
+## three plants whose blurbs have to be read first. It is the one addition since the
+## Sundew whose value does NOT depend on the board already containing something — it
+## works on an empty garden, on the first wave, with nothing else planted — so the
+## reason those three were pushed to the end does not apply to it.
 const ORDER: Array[StringName] = [
-	CORN, CHOMP, SUNFLOWER, SUNDEW, DANDELION, MINT, NETTLE, ALOE,
+	CORN, CHOMP, BRAMBLE, SUNFLOWER, SUNDEW, DANDELION, MINT, NETTLE, ALOE,
 ]
 
 
@@ -252,6 +307,23 @@ static func reach(id: StringName) -> float:
 			# rather than papered over -- reach() answers "how far does it act", and what
 			# the cue then DOES with that answer is the cue's business.
 			return Aloe.REACH
+		BRAMBLE:
+			# ZERO, and written as an explicit arm rather than left to fall through the
+			# default below, because a Bramble is the one plant where a reader would
+			# reasonably expect a number and the silence would be a trap.
+			#
+			# It does act on pests — Bramble.STOP_RADIUS is a real 38.4 px. It is not a
+			# REACH. Everything that reads this key is asking the dead-ground cue's
+			# question, "which cells would this plant be wasted on"
+			# (PlacementPreview.dead_ground_cells), and that scan walks BUILDABLE cells,
+			# which is exactly the set a Bramble can never stand on. Handing it 38.4
+			# would paint a dead-ground bar over every square of grass on the board while
+			# the player hovers the one plant that does not go there.
+			#
+			# The honest answer to "which cells is a Bramble wasted on" is "none of the
+			# ones it can be placed on", and 0.0 is how this catalogue already spells
+			# that — it is the Sunflower's answer too.
+			return 0.0
 		_:
 			return 0.0
 
@@ -271,6 +343,29 @@ static func reach(id: StringName) -> float:
 ## test_every_plant_declares_whether_it_engages fails on an entry that omits it.
 static func engages(id: StringName) -> bool:
 	return bool(entry(id).get("engages", false))
+
+
+## Does a plant of `id` stand ON the road instead of on the grass beside it?
+##
+## The whole of the placement exception, as one key beside the plant it describes,
+## for the same reason `engages` lives there: the alternative is a list of ids in
+## `Board` or in `Game`, two files from the catalogue, that has to be remembered.
+##
+## It is an EITHER/OR and not a widening. `Board.is_buildable_for` reads this and puts
+## a road plant on the road ONLY — never on the grass — because a wall standing beside
+## the road blocks nothing, and a purchase that is silently useless is worse than one
+## that is refused.
+##
+## A missing key reads as false, and here — unlike `engages` — the default is allowed to
+## stand rather than being forced into every entry. The two keys differ in which
+## direction a wrong default fails. An unstated `engages` makes the coverage map claim a
+## hole that is not there, which is silent; an unstated `on_road` puts a plant on the
+## grass, which is where all eight of the others already are and where any new one will
+## be seen standing the first time it is planted. `test_exactly_one_plant_stands_on_the
+## _road` pins the count, so a second one arriving is a decision somebody made rather
+## than a key that drifted.
+static func on_road(id: StringName) -> bool:
+	return bool(entry(id).get("on_road", false))
 
 
 ## Every plant that can touch a pest, in catalogue order.

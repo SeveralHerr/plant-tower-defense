@@ -16071,6 +16071,7 @@ func test_the_seed_sink_is_finite_while_the_seed_income_is_not() -> String:
 		PlantCatalog.MINT: func() -> Plant: return Mint.new(),
 		PlantCatalog.NETTLE: func() -> Plant: return Nettle.new(),
 		PlantCatalog.ALOE: func() -> Plant: return Aloe.new(),
+		PlantCatalog.BRAMBLE: func() -> Plant: return Bramble.new(),
 	}
 	var ids: Array[StringName] = PlantCatalog.ids()
 	var err: String = _T.assert_eq(makers.size(), ids.size(),
@@ -16098,12 +16099,20 @@ func test_the_seed_sink_is_finite_while_the_seed_income_is_not() -> String:
 		dearest_cell = maxi(dearest_cell, PlantCatalog.cost(id) + climb)
 		plant.free()
 
-	# The floor of the whole argument: six of the eight plants cannot be improved at
+	# The floor of the whole argument: seven of the nine plants cannot be improved at
 	# any price. A garden of Sundews and Nettles has NO upgrade sink whatsoever.
+	#
+	# The Barrier Bramble is the ninth and it makes the argument slightly WORSE rather
+	# than better, which is worth naming here rather than leaving for whoever next reads
+	# the number. It has no ladder either, so it joins the seven — but unlike the other
+	# six it is a RECURRING cost, because it is consumed by doing its job. That is a seed
+	# sink, and it is the first one in the game that is not an upgrade. It is not counted
+	# below because `with_ladder` is measuring upgrade ladders and a Bramble has none;
+	# the sink it does carry is a different mechanism and wants its own measurement.
 	with_ladder.sort()
 	err = _T.assert_eq(with_ladder, ["chomp_flower", "corn_cobbler"],
-		("only two of eight plants can absorb a seed after they are placed -- the "
-			+ "other six are a one-time cost and then free forever"))
+		("only two of nine plants can absorb a seed after they are placed -- the "
+			+ "other seven are a one-time cost and then free forever"))
 
 	# Be generous to the sink everywhere it is in doubt: every grid cell counts as
 	# buildable (the path really takes ~32 of them away), every cell holds the
@@ -17050,4 +17059,194 @@ func test_a_seeded_wave_is_reproducible_and_one_extra_draw_reshuffles_it() -> St
 	return err
 
 # END plant-tower-defense-9afm
+# =============================================================================
+
+
+# =============================================================================
+# plant-tower-defense-3mhn — the Barrier Bramble, the ninth plant and the only
+# one that stands on the road.
+#
+# Two claims are being pinned here and they fail in different places. The
+# MECHANIC (every pest stops, fliers do not) lives in Pest._physics_process and
+# is asserted against a pest's own position, because "did not advance" is the
+# only observable that cannot be faked by a plant losing health. The PLACEMENT
+# RULE (this plant on the road, nothing else, and this plant nowhere else) lives
+# in Board.is_buildable_for and is asserted over the WHOLE catalogue rather than
+# over the one new entry — a rule stated about one id is a rule the tenth plant
+# inherits silently.
+# =============================================================================
+
+
+func test_a_bramble_stops_an_ordinary_pest_and_it_walks_on_once_the_wall_is_gone() -> String:
+	# The headline claim, and note the pest: a plain aphid with NO mutations. Before
+	# this plant the only thing that stopped one was a Chomp's mouth, and the only
+	# thing that made one stop for a plant was the hungry mutation.
+	var wall := Bramble.new()
+	wall.setup(PlantCatalog.BRAMBLE, Vector2i(0, 0), null)
+	wall.position = Vector2.ZERO
+	var pest := Pest.new()
+	pest.setup(Pest.APHID, PackedVector2Array([Vector2.ZERO, Vector2(600, 0)]))
+	pest.set_physics_process(false)
+	var host: Node2D = _host([wall, pest])
+	await _T.instantiate_scene(host)
+
+	var start: Vector2 = pest.position
+	pest._physics_process(0.1)
+	pest._physics_process(0.1)
+	var err: String = _T.assert_eq(pest.position, start,
+		"an unmutated aphid standing at a Bramble does not advance")
+	if err == "":
+		err = _T.assert_true(wall.health < Plant.MAX_HEALTH,
+			"and it is chewing rather than merely standing still (%.2f health)" % wall.health)
+	if err == "":
+		# The other half, and the half a "does not advance" assertion alone would let
+		# rot: a wall that is never released is a permanent barricade, which is a
+		# different and much worse plant. Destroy it and step again.
+		wall.health = 0.0
+		pest._physics_process(0.1)
+		err = _T.assert_true(pest.position.x > start.x,
+			("and it walks on the moment the wall is destroyed (%.1f -> %.1f)"
+				% [start.x, pest.position.x]))
+	_T.free_ui(host)
+	return err
+
+
+func test_a_winged_pest_walks_straight_past_a_bramble() -> String:
+	# The counter, and the only one. Asserted through the same position observable as
+	# the test above so the pair reads as one sentence with the mutation flipped.
+	var wall := Bramble.new()
+	wall.setup(PlantCatalog.BRAMBLE, Vector2i(0, 0), null)
+	wall.position = Vector2.ZERO
+	var pest := Pest.new()
+	pest.setup(Pest.APHID, PackedVector2Array([Vector2.ZERO, Vector2(600, 0)]))
+	pest.apply_mutation(Pest.MUTATION_WINGED)
+	pest.set_physics_process(false)
+	var host: Node2D = _host([wall, pest])
+	await _T.instantiate_scene(host)
+
+	var start: Vector2 = pest.position
+	pest._physics_process(0.1)
+	var err: String = _T.assert_true(pest.position.x > start.x,
+		"a winged pest crosses a Bramble's cell without stopping")
+	if err == "":
+		err = _T.assert_float_eq(wall.health, Plant.MAX_HEALTH, 0.001,
+			"and does not touch it on the way over")
+	if err == "":
+		# The rule and the behaviour, held against each other. Bramble.stops() is what
+		# the shop line promises; Pest._blocking_plant is what the board does. Asserting
+		# only the predicate would pass on a game that had stopped reading it.
+		err = _T.assert_false(Bramble.stops(true), "and Bramble.stops() is where that rule is written")
+	if err == "":
+		err = _T.assert_true(Bramble.stops(false), "while everything unwinged is held")
+	_T.free_ui(host)
+	return err
+
+
+func test_a_bramble_is_chewed_at_a_quarter_speed_and_holds_four_times_as_long() -> String:
+	# The balance claim from bramble.gd's header, made executable — and made executable
+	# in the two places it can disagree with itself. BITE_RESISTANCE is the constant;
+	# take_damage() is the code that has to apply it; hold_seconds() is the arithmetic
+	# the header quotes. All three, or a retune moves one and leaves the other two.
+	var wall := Bramble.new()
+	wall.setup(PlantCatalog.BRAMBLE, Vector2i(0, 0), null)
+	var ordinary := Plant.new()
+	ordinary.setup(PlantCatalog.CORN, Vector2i(0, 0), null)
+
+	wall.take_damage(10.0)
+	ordinary.take_damage(10.0)
+	var wall_lost: float = Plant.MAX_HEALTH - wall.health
+	var ordinary_lost: float = Plant.MAX_HEALTH - ordinary.health
+	var err: String = _T.assert_float_eq(wall_lost, ordinary_lost * Bramble.BITE_RESISTANCE, 0.001,
+		("the same bite costs a Bramble %.2f health where it costs a cob %.2f"
+			% [wall_lost, ordinary_lost]))
+	if err == "":
+		err = _T.assert_float_eq(Bramble.hold_seconds(1),
+			Plant.seconds_to_be_eaten(Pest.EAT_DPS) / Bramble.BITE_RESISTANCE, 0.001,
+			"and one pest is held exactly 1/BITE_RESISTANCE times as long as it eats a cob")
+	if err == "":
+		# The shape the header claims: a lot against a trickle, little against a crush.
+		# Asserted as a relationship rather than as two numbers, so a retune of either
+		# constant moves both sides.
+		err = _T.assert_float_eq(Bramble.hold_seconds(4), Bramble.hold_seconds(1) / 4.0, 0.001,
+			"four mouths get through it in a quarter of the time — a wall lengthens a lane, it does not close one")
+	if err == "":
+		err = _T.assert_true(is_inf(Bramble.hold_seconds(0)),
+			"and nothing eating it holds forever, rather than dividing by zero")
+	wall.free()
+	ordinary.free()
+	return err
+
+
+func test_only_the_bramble_stands_on_the_road_and_it_stands_nowhere_else() -> String:
+	# Over the WHOLE catalogue, both directions. The tenth plant inherits this test.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var road: Vector2i = game.board.world_to_cell(game.board.route()[2])
+	var grass: Vector2i = _grass(game)
+	var err: String = _T.assert_true(game.board.is_path(road), "there is a road cell to test")
+	if err == "":
+		err = _T.assert_true(game.board.is_buildable(grass), "and a grass cell beside it")
+
+	var road_plants: int = 0
+	for id: StringName in PlantCatalog.ids():
+		if err != "":
+			break
+		if PlantCatalog.on_road(id):
+			road_plants += 1
+			err = _T.assert_true(game.board.is_buildable_for(road, id),
+				"%s stands on the road" % id)
+			if err == "":
+				err = _T.assert_false(game.board.is_buildable_for(grass, id),
+					"%s is refused on grass — a wall beside the road blocks nothing" % id)
+		else:
+			err = _T.assert_false(game.board.is_buildable_for(road, id),
+				"%s is still refused on the road" % id)
+			if err == "":
+				err = _T.assert_true(game.board.is_buildable_for(grass, id),
+					"%s still stands on grass" % id)
+	if err == "":
+		# The count PlantCatalog.on_road()'s header promises. A second road plant is a
+		# decision somebody made rather than a key that drifted.
+		err = _T.assert_eq(road_plants, 1,
+			"exactly one plant in the catalogue stands on the road")
+	if err == "":
+		err = _T.assert_true(PlantCatalog.on_road(PlantCatalog.BRAMBLE), "and it is the Bramble")
+	_T.free_ui(game)
+	return err
+
+
+func test_a_husk_on_the_road_is_swept_rather_than_planted_over() -> String:
+	# The invariant _click_at's header used to rest on ("nothing may ever be planted on
+	# the road") is gone, and this is the guarantee that replaced it. Drives the real
+	# click path rather than compost.collect_at() directly, because the whole defect
+	# lives in which of the two branches _click_at takes.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var road: Vector2i = game.board.world_to_cell(game.board.route()[2])
+	game.selected_plant = PlantCatalog.BRAMBLE
+	game.bank.add_seeds(PlantCatalog.cost(PlantCatalog.BRAMBLE) * 4)
+	game.bank.unlocked.append(PlantCatalog.BRAMBLE)
+
+	var err: String = _T.assert_true(game.would_plant_at(road),
+		"with a Bramble selected the road cell is genuinely plantable — the precondition")
+	if err == "":
+		var at: Vector2 = game.board.cell_to_world(road)
+		game.compost.drop_husk(at, 7)
+		var seeds_before: int = game.bank.seeds
+		game._click_at(at + game._entities.position)
+		err = _T.assert_eq(game.bank.seeds, seeds_before + 7,
+			"the click swept the husk for its 7 seeds")
+		if err == "":
+			err = _T.assert_eq(game.compost.husk_count(), 0, "and the husk is gone")
+		if err == "":
+			err = _T.assert_true(game.plant_at(road) == null,
+				"and nothing was planted on top of it — the sweep wins on the road")
+	if err == "":
+		# The other side of the same branch: with no husk there, the click plants.
+		var at: Vector2 = game.board.cell_to_world(road)
+		game._click_at(at + game._entities.position)
+		err = _T.assert_true(game.plant_at(road) is Bramble,
+			"and a road click with nothing to sweep falls through and plants the Bramble")
+	_T.free_ui(game)
+	return err
+
+# END plant-tower-defense-3mhn
 # =============================================================================

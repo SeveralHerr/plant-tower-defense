@@ -374,8 +374,37 @@ func is_path(cell: Vector2i) -> bool:
 
 
 ## A plant may stand on any in-bounds cell that is not the pests' road.
+##
+## THIS IS THE GRASS RULE AND IT IS NOT THE PLACEMENT RULE ANY MORE. Since the Barrier
+## Bramble it answers a narrower question than its name suggests: "is this a grass cell
+## a plant could stand on", which is what its thirty-odd callers actually want — the
+## dead-ground scan, the husk-click margin, and every test looking for somewhere to put
+## a cob. What it no longer answers on its own is "may the player put the SELECTED plant
+## here", because that depends on the plant. `is_buildable_for` is that question, and
+## `Game.would_plant_at` / `Game.place_plant` are the two callers that must use it.
+##
+## Left unchanged rather than redefined on purpose: `PlacementPreview.husk_click_margin`
+## measures how near a husk can fall to ground a plant may stand on, and its 32-vs-28 px
+## gate is a claim about GRASS. Widening this to include road cells would have moved that
+## number to zero and broken a guarantee that is still true for the eight plants it was
+## written about.
 func is_buildable(cell: Vector2i) -> bool:
 	return is_inside(cell) and not is_path(cell)
+
+
+## May a plant of `id` be planted on `cell`?
+##
+## An either/or rather than a widening, and `PlantCatalog.on_road`'s header carries the
+## reason: a road plant goes on the road ONLY. A Barrier Bramble standing on the grass
+## blocks nothing at all, so allowing it there would sell the player a plant that does
+## nothing and looks like it should.
+##
+## Everything without the key keeps exactly the rule it has always had, which is why the
+## grass branch is a call to `is_buildable` rather than a second copy of its expression.
+func is_buildable_for(cell: Vector2i, id: StringName) -> bool:
+	if not PlantCatalog.on_road(id):
+		return is_buildable(cell)
+	return is_inside(cell) and is_path(cell)
 
 
 ## Is this cell within a hungry pest's reach of the road? Orthogonal only, and
