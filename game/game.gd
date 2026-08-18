@@ -129,6 +129,35 @@ var _selected_health: float = -1.0
 var pests_defeated: int = 0
 var run_seconds: float = 0.0
 
+## Where the run's seeds actually went, as opposed to how many it earned.
+##
+## Cycle 101's A/B varied exactly one bit — whether a surplus bought another plant
+## or another level on a plant already in the ground. Same economy, no cheats, same
+## map. The breadth-first campaign reached eleven level-1 plants and died at wave
+## 10; the depth-first one won all 22 waves without losing a bed. That bit is the
+## single largest thing a new player gets wrong, and until these two counters
+## existed the game wrote down every number about the run EXCEPT the one the run
+## was decided by. `seeds_earned_total` is income; nothing recorded outgoings.
+##
+## SEEDS, not purchase counts. A plant and an upgrade are differently priced, so
+## "11 plants, 6 upgrades" reads as a near-balance where the same run's "275 on
+## plants, 90 on upgrades" reads as a policy — and seeds are what cycle 101 varied,
+## so seeds are what the post-mortem should hand back. They also stay short enough
+## for the card's value column at endless magnitudes, which a count-and-price pair
+## does not (see RunSummary.spend_text).
+##
+## GROSS, not net. An uproot refund is not taken back out of `seeds_on_plants`, and
+## re-planting the same cob somewhere else charges this a second time. Both are
+## right for the question being asked: the player chose breadth with those seeds on
+## both occasions, and a "net" number would let a player who churns plants read as
+## though they had been spending on depth.
+##
+## Packets are a THIRD sink and are deliberately in neither total. See
+## RunSummary.spend_text — the row names two destinations and never claims they add
+## up to everything spent, so a packet is not silently filed under either policy.
+var seeds_on_plants: int = 0
+var seeds_on_upgrades: int = 0
+
 ## The post-mortem card and the layer it sits on, built once when the run ends.
 var _summary: RunSummary = null
 var _summary_layer: CanvasLayer = null
@@ -1187,6 +1216,16 @@ func summary_stats(new_record: bool) -> Dictionary:
 		"compost_resolved": compost.total_resolved(),
 		"pests_defeated": pests_defeated,
 		"run_seconds": run_seconds,
+		# The run's own policy, read off the run rather than recomputed from the
+		# price table afterwards — a board of eleven cobs at the end says nothing
+		# about what was uprooted, what a packet cost, or which cob was free.
+		#
+		# Always written, both of them, so `0` on the card means the run genuinely
+		# spent nothing there. That is why spend_text needs no absent-value sentinel
+		# where _compost_text does: an unrecorded denominator and a perfect sweep
+		# read the same, but an unrecorded spend and a spend of nothing do not.
+		"seeds_on_plants": seeds_on_plants,
+		"seeds_on_upgrades": seeds_on_upgrades,
 		# The peak of the painted map, kept because the map is painted from it and
 		# the two must agree about which cell is reddest. Not what the card's row
 		# names — see below, and Board.worst_stop_cell.
@@ -1283,8 +1322,16 @@ func place_plant(id: StringName, cell: Vector2i) -> String:
 		return "pests walk there" if board.is_path(cell) else "off the garden"
 	if _plants.has(cell):
 		return "something is already growing there"
+	# Priced BEFORE the charge, and this order is load-bearing: pay_for_plant()
+	# clears `free_starter_available` on the way through, so asking the bank what
+	# this cost after it had been paid for would bill the one free cob at full
+	# price. Read first, charge, then bank the number the charge actually used.
+	var price: int = bank.placement_cost(id)
 	if not bank.pay_for_plant(id):
 		return "not paid for"
+	# The free starter really does add 0, which is the truth: a run that planted
+	# nothing but its free cob spent nothing on breadth.
+	seeds_on_plants += price
 	var plant: Plant = _new_plant(id)
 	_entities.add_child(plant)
 	plant.setup(id, cell, board)
@@ -1466,6 +1513,13 @@ func upgrade_selected() -> String:
 		Sfx.play(Sfx.PURCHASE_DENIED)
 		return "not enough seeds"
 	bank.add_seeds(-price)
+	# BELOW the refusal, not beside it. Every early return above this line is a
+	# purchase that did not happen — "nothing upgradeable is selected", "already
+	# fully grown", and the `bank.seeds < price` denial that shakes the button —
+	# and a counter incremented at the top of this method would credit the player
+	# with depth for the clicks that bought nothing. This is the only line in the
+	# game that charges for a level, so it is the only line that may count one.
+	seeds_on_upgrades += price
 	plant.upgrade()
 	hud.show_message(Hud.upgrade_message(PlantCatalog.display_name(plant.kind), plant.level_name()))
 	_refresh()
