@@ -65,6 +65,7 @@ import os
 import re
 import sys
 
+import gdsource
 import repo_walk
 
 GROUP_CALL_RE = re.compile(r"\bget_nodes_in_group\s*\(\s*(?:\"([^\"]*)\"|'([^']*)')?")
@@ -85,36 +86,17 @@ SELECTORS = ("front(", "back(", "pop_front(", "pop_back(", "pick_random(", "max(
 FUNC_RE = re.compile(r"^(?:static\s+)?func\s+([A-Za-z_][A-Za-z0-9_]*)", re.M)
 
 
-def strip_comments(text: str) -> str:
-    """Comments removed, string bodies kept.
-
-    String bodies are kept on purpose: the group name is a string literal and the
-    rule needs it. Comments are removed on purpose: this repo has already been
-    bitten by a source-scanning check that matched the prose explaining why a
-    token was absent - and the very docstring that mis-describes this defect
-    contains `get_nodes_in_group` three times.
-    """
-    out = []
-    for line in text.splitlines():
-        cut = None
-        in_s = None
-        i = 0
-        while i < len(line):
-            c = line[i]
-            if in_s:
-                if c == "\\":
-                    i += 2
-                    continue
-                if c == in_s:
-                    in_s = None
-            elif c in "\"'":
-                in_s = c
-            elif c == "#":
-                cut = i
-                break
-            i += 1
-        out.append(line[:cut] if cut is not None else line)
-    return "\n".join(out)
+# Comments blanked, string bodies KEPT (gdsource.KEEP). Both halves are deliberate.
+# The group name is a string literal and this rule needs to read it, so bodies stay.
+# Comments go because this repo has already been bitten by a source-scanning check
+# that matched the prose explaining why a token was absent - and the very docstring
+# that mis-describes this defect contains `get_nodes_in_group` three times.
+#
+# This used to be a local `strip_comments` that TRUNCATED the comment rather than
+# padding it, and reset its quote state at every newline. tools/gdsource.py pads (so
+# every offset still indexes the raw source) and understands triple-quoted blocks and
+# the &"" prefix. It is one implementation for six checkers, with its own
+# known-in/known-out test: `python tools/gdsource.py`.
 
 
 def split_functions(code: str, raw: str) -> list[tuple[str, int, str, str]]:
@@ -238,7 +220,7 @@ def main() -> int:
             return 2
         scripts += 1
         rel = os.path.relpath(path, root).replace("\\", "/")
-        code = strip_comments(raw)
+        code = gdsource.strip_comments(raw, gdsource.KEEP)
 
         for fname, start_line, body, raw_body in split_functions(code, raw):
             waived_here = WAIVER_RE.search(raw_body) is not None

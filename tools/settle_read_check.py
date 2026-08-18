@@ -107,6 +107,7 @@ import os
 import re
 import sys
 
+import gdsource
 import repo_walk
 
 FUNC_RE = re.compile(r"^(?:static\s+)?func\s+([A-Za-z_][A-Za-z0-9_]*)", re.M)
@@ -143,61 +144,28 @@ DECL_TYPED_RE = re.compile(
     r"\bvar\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z_][A-Za-z0-9_]*)\s*=")
 
 
-def strip_comments(text: str) -> str:
-    """Comments removed, string bodies blanked, line count preserved.
-
-    Both halves matter. Comments go because this repo has already shipped a check
-    that matched the prose explaining why a token was absent - and the docstrings
-    on the very tests this tool judges say `get_nodes_in_group` out loud while
-    explaining that they do not do the bad thing.
-
-    String BODIES are blanked rather than kept, unlike group_leak_check, because
-    this rule never needs a string's contents: an assertion message reading
-    "position after the wave" must not register as a read of `.position`. The
-    quotes are kept so the blanked span is still visibly a string, and the span is
-    padded to its original width so every column index still lines up.
-
-    Escapes are handled. A blanker that does not understand `\\"` reads the tail of
-    an escaped string as live code, which is an error a good-file/bad-file fixture
-    cannot surface because it corrupts both files identically.
-    """
-    out = []
-    for line in text.splitlines():
-        buf = []
-        in_s = None
-        i = 0
-        n = len(line)
-        while i < n:
-            c = line[i]
-            if in_s is not None:
-                if c == "\\" and i + 1 < n:
-                    buf.append("  ")
-                    i += 2
-                    continue
-                if c == in_s:
-                    in_s = None
-                    buf.append(c)
-                else:
-                    buf.append(" ")
-                i += 1
-                continue
-            if c in "\"'":
-                in_s = c
-                buf.append(c)
-                i += 1
-                continue
-            if c == "#":
-                # Padded, not truncated. Every offset into the stripped text must
-                # index the same character in the raw text, because the raw text is
-                # where the group-name literal still exists to be reported. A
-                # truncating stripper made this tool's first output read
-                # `get_nodes_in_group("     ")`.
-                buf.append(" " * (n - i))
-                break
-            buf.append(c)
-            i += 1
-        out.append("".join(buf))
-    return "\n".join(out)
+# Comments blanked, string BODIES blanked, quote delimiters kept (gdsource.BLANK),
+# with the line count and every offset preserved.
+#
+# Every part of that matters. Comments go because this repo has already shipped a
+# check that matched the prose explaining why a token was absent - and the docstrings
+# on the very tests this tool judges say `get_nodes_in_group` out loud while
+# explaining that they do not do the bad thing.
+#
+# String BODIES are blanked rather than kept, unlike group_leak_check, because this
+# rule never needs a string's contents: an assertion message reading "position after
+# the wave" must not register as a read of `.position`. The quotes are KEPT so the
+# blanked span is still visibly a string.
+#
+# The comment is PADDED, not truncated. Every offset into the stripped text must index
+# the same character in the raw text, because the raw text is where the group-name
+# literal still exists to be reported. A truncating stripper made this tool's first
+# output read `get_nodes_in_group("     ")`.
+#
+# Escapes are handled. A blanker that does not understand `\"` reads the tail of an
+# escaped string as live code, which is an error a good-file/bad-file fixture cannot
+# surface because it corrupts both files identically. That is now one of the cases in
+# `python tools/gdsource.py`, which is where all of this lives.
 
 
 def split_functions(code: str, raw: str) -> list[tuple[str, int, str, str]]:
@@ -252,7 +220,7 @@ def volatile_vocabulary(game_root: str) -> tuple[set[str], set[str], list[str]]:
     for path in gd_files(game_root):
         try:
             with open(path, "r", encoding="utf-8") as fh:
-                code = strip_comments(fh.read())
+                code = gdsource.strip_comments(fh.read(), gdsource.BLANK)
         except (OSError, UnicodeDecodeError) as exc:
             notes.append("unreadable %s (%s)" % (path, exc))
             continue
@@ -553,7 +521,7 @@ def main() -> int:
             return 2
         scripts += 1
         rel = os.path.relpath(path, root).replace("\\", "/")
-        code = strip_comments(raw)
+        code = gdsource.strip_comments(raw, gdsource.BLANK)
 
         for fname, start_line, body, raw_body in split_functions(code, raw):
             fns_total += 1

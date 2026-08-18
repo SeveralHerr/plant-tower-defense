@@ -116,6 +116,7 @@ import os
 import re
 import sys
 
+import gdsource
 import repo_walk
 
 # A declaration at indent 0, optionally preceded by annotations on the same line.
@@ -160,10 +161,7 @@ DEFAULT_BASELINE = os.path.join("tools", "suite_reach_baseline.json")
 
 
 def strip_comments(text: str) -> str:
-    """Comments blanked, string bodies kept, line count and line length preserved.
-
-    Length-preserving so a later `STRING_RE.sub` and the line/column arithmetic
-    both still index the original source.
+    """Comments blanked, string bodies KEPT, every offset preserved (gdsource.KEEP).
 
     Comments go first and unconditionally. This repo has been bitten by a source
     scan that matched the very comment explaining why a token was absent, and
@@ -173,31 +171,11 @@ def strip_comments(text: str) -> str:
     `StickySundew`, `WaveDirector.reset` and `PIP_RIM_COLOR` while explaining that
     nothing tests them. A scan that read prose would call all of those reached.
     """
-    out = []
-    for line in text.splitlines():
-        cut = None
-        in_s = None
-        i = 0
-        while i < len(line):
-            c = line[i]
-            if in_s:
-                if c == "\\":
-                    i += 2
-                    continue
-                if c == in_s:
-                    in_s = None
-            elif c in "\"'":
-                in_s = c
-            elif c == "#":
-                cut = i
-                break
-            i += 1
-        out.append(line if cut is None else line[:cut] + " " * (len(line) - cut))
-    return "\n".join(out)
+    return gdsource.strip_comments(text, gdsource.KEEP)
 
 
 def blank_strings(code: str) -> str:
-    """String bodies blanked, everything else and every offset intact.
+    """String bodies AND their quotes blanked, every offset intact (gdsource.ERASE).
 
     Separate from strip_comments because the two serve opposite needs. Identifier
     matching must not see string bodies -- `"Sticky Sundew"` in a HUD label is not
@@ -205,8 +183,17 @@ def blank_strings(code: str) -> str:
     is only ever written inside one. So callers run this for the identifier pass
     and skip it for the path pass, over source that has already lost its comments
     either way.
+
+    This used to be `STRING_RE.sub(...)`, a regex whose `"(?:\\\\.|[^"\\\\])*"` arm
+    matches a newline inside `[^"\\\\]`. That is the cycle-97 defect exactly: one
+    stray literal newline in a test file made an unterminated literal run 1018
+    characters to the next quote, and four symbols that were named at lines anyone
+    could point at were reported "public and no test names it". gdsource stops an
+    unterminated single-line literal AT the newline, so the same defect now costs
+    one line instead of a thousand characters -- and `main()` says so out loud when
+    a token turns up in the raw text of a file this scan blanked.
     """
-    return STRING_RE.sub(lambda m: " " * len(m.group(0)), code)
+    return gdsource.strip_comments(code, gdsource.ERASE)
 
 
 def assert_call_arg_tokens(blanked: str) -> set[str]:

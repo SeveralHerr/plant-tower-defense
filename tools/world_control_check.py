@@ -50,6 +50,7 @@ import os
 import re
 import sys
 
+import gdsource
 import repo_walk
 
 # Engine classes that place their children in world space. A Control whose nearest
@@ -85,33 +86,17 @@ IGNORE_RE = re.compile(r"MOUSE_FILTER_IGNORE")
 SWEEP_RE = re.compile(r"find_children\s*\([^)]*[\"']Control[\"']", re.S)
 
 
-def strip_code(text: str) -> str:
-    """Comments and string bodies removed, so a rule is never satisfied by prose.
-
-    The project has been bitten by the other version of this: a test that scanned source
-    for a token matched the comment explaining why the token was absent.
-    """
-    out = []
-    for line in text.splitlines():
-        cut = None
-        in_s = None
-        i = 0
-        while i < len(line):
-            c = line[i]
-            if in_s:
-                if c == "\\":
-                    i += 2
-                    continue
-                if c == in_s:
-                    in_s = None
-            elif c in "\"'":
-                in_s = c
-            elif c == "#":
-                cut = i
-                break
-            i += 1
-        out.append(line[:cut] if cut is not None else line)
-    return "\n".join(out)
+# Comments blanked, string bodies KEPT (gdsource.KEEP), so a rule is never satisfied
+# by prose. The project has been bitten by the other version of this: a test that
+# scanned source for a token matched the comment explaining why the token was absent.
+#
+# Bodies are KEPT because SWEEP_RE below matches `find_children(..., "Control", ...)`
+# and the class name it needs is a string literal. The local `strip_code` this
+# replaces was byte-for-byte the same code as group_leak_check's `strip_comments`, and
+# its docstring claimed it removed string bodies. It never has, in any revision --
+# which would have made SWEEP_RE match nothing. The doc was wrong, not the code, and
+# nothing could say so while the claim and the implementation sat in the same file
+# with no test between them. `python tools/gdsource.py` is now that test.
 
 
 def resolve_space(base: str, declared: dict[str, str], seen: set[str] | None = None) -> str:
@@ -189,7 +174,7 @@ def main() -> int:
     world_scripts = 0
     checked = 0
     for p in sorted(sources):
-        code = strip_code(sources[p])
+        code = gdsource.strip_comments(sources[p], gdsource.KEEP)
         ex = EXTENDS_RE.search(code)
         if not ex:
             continue
