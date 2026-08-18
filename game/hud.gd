@@ -809,6 +809,37 @@ const PANEL_RISE_SECONDS: float = 0.16
 const READOUT_PUNCH_SCALE: float = 1.22
 const READOUT_PUNCH_SECONDS: float = 0.16
 
+## THE SEEDS ROLL. The punch above says "this number moved" and stops there, so a
+## 45-seed purchase and a 2-seed pest payout look identical: one pop, and a total that
+## is simply different afterwards. Seeds is the readout that moves most often in this
+## game and the one every decision is priced against, and it was the one number on
+## screen with no way to see HOW FAR it went (plant-tower-defense-r3e8).
+##
+## The pattern is `TitleScreen._arm_record_ratchet`'s, deliberately, down to the rule
+## that makes it safe: **the label already holds the final text before the roll runs.**
+## Headless pumps no frames, so a tween responsible for ARRIVING at the right value
+## leaves the right value unreachable in every test; this one only ever overwrites a
+## correct string with an intermediate one and then puts it back.
+##
+## FASTER AND COARSER THAN THE RECORD'S, and both of those are because of how often it
+## fires. The record rolls once, at the end of a run, over 0.8s; this can fire several
+## times in a wave, and a roll still running when the next one starts is a readout that
+## never settles. 0.35s lands well inside the gap between two pest payouts.
+const SEED_ROLL_SECONDS: float = 0.35
+## Stepped, not continuous, and this is the half the record ratchet declares
+## (`RATCHET_STEPS`) and then does not use. A counter that renders a different four-digit
+## number on all 21 frames of a 0.35s roll is noise: nothing is legible, so the roll
+## reads as a flicker rather than as travel. Ten stops is what the player actually sees.
+const SEED_ROLL_STEPS: int = 10
+## Below this the number SNAPS, and the punch alone carries it. Rolling +2 for a pest
+## kill would put the busiest readout in the game in permanent motion for a change a
+## player can read at a glance — and the roll exists to make a big jump legible, which
+## is a claim about big jumps.
+##
+## 5 is the smallest single seed payout in the game that is worth watching arrive; every
+## plant price and every wave bonus clears it by a wide margin.
+const SEED_ROLL_MIN_JUMP: int = 5
+
 ## The denial shake: rotation, not position. The plant bar's buttons are
 ## GridContainer children, and a Container's sort pass writes `position` and
 ## `size` on every child every time it runs — which a refresh() landing mid-shake
@@ -921,6 +952,14 @@ var _shake_tweens: Dictionary = {}
 ## readout's text goes from "" to its real value on that call, which is the
 ## screen appearing, not a change the player made — see refresh().
 var _readouts_seeded: bool = false
+## The seed total the readout was last told to show. The roll needs somewhere to count
+## FROM, and the Label's own text is not it: parsing a number back out of "Seeds  120"
+## would read whatever intermediate value a roll already in flight had just written.
+var _seeds_shown: int = 0
+## The live seeds roll, killed and restarted rather than raced — the same rule
+## `_readout_tweens` exists for one member up. A second roll armed while the first is
+## mid-count would have two tweens writing the same Label from two different `from`s.
+var _seeds_roll: Tween
 
 ## The three surfaces whose geometry comes from the viewport rather than from a
 ## constant. Held as members for one reason: `_apply_viewport_layout()` has to be
@@ -1608,6 +1647,85 @@ static func plant_button_label(unlocked: bool, price: int) -> String:
 	return "free" if price == 0 else str(price)
 
 
+## THE UPROOT BUTTON'S RESTING LABEL, and the half of the trade it used to leave out.
+##
+## It said `Uproot (+12)` — what you GET BACK — and nothing anywhere said what putting
+## a plant back on that bed costs. Both numbers are known: the refund slides with the
+## plant's health (`Plant.uproot_refund`), the replant price is `SeedBank.placement_cost`
+## for the same `kind`, and the decision the player is actually making is the DIFFERENCE
+## between them, on a four-second confirm timer (plant-tower-defense-eupm).
+##
+## So the button does the subtraction. `Uproot (+12, net -8)` reads: twelve seeds come
+## back, and you end the round trip eight down.
+##
+## WHY THE NET AND NOT "replant 20". Two bare numbers side by side is the same
+## arithmetic in one more character; the bead's acceptance is that the NET COST is
+## visible while deciding, and a player mid-timer should not be subtracting. The
+## replant price is still reachable in words — see `uproot_button_tooltip`, which costs
+## no width at all.
+##
+## THE SIGN IS THE SECOND CHANNEL, and it has to be, because `net` genuinely goes both
+## ways: while the free starter is unspent `placement_cost` returns 0, so uprooting a
+## Corn Cobbler and replanting it is pure profit and the button says `+6`. A colour
+## would have been the obvious way to separate those two cases and it is exactly the
+## channel `game/OVERLAY_GRAMMAR.md` forbids as a sole signal; a leading `-` or `+`
+## survives greyscale, and this button already spends its one colour override on ARMED.
+##
+## THE ARMED LABEL IS DELIBERATELY UNCHANGED. `Really uproot? (+99)` is the longest
+## string this button has ever held and the width argument below is that nothing may
+## exceed it; more to the point, once the confirm is armed the decision is made and the
+## question on screen is "destroy this?", not "is the trade worth it?".
+##
+## Pure and static so the wording and the arithmetic are assertable without a HUD, and
+## so `test_the_uproot_buttons_worst_case_fits_the_selection_box` can measure the widest
+## string this can build rather than one somebody typed out.
+static func uproot_net(refund: int, replant: int) -> int:
+	return refund - replant
+
+
+## The net, signed. `%d` prints a loss as "-8" but a gain as a bare "8", so the two
+## directions would be told apart only by the reader knowing which one is normal; the
+## explicit `+` is the channel that survives the colour being thrown away.
+static func uproot_net_text(net: int) -> String:
+	return "+%d" % net if net > 0 else "%d" % net
+
+
+static func uproot_button_text(refund: int, replant: int) -> String:
+	return "Uproot (+%d, net %s)" % [refund, uproot_net_text(uproot_net(refund, replant))]
+
+
+## The armed label. Same shape it has always had — see the block above for why this one
+## does NOT gain the net.
+static func uproot_armed_text(refund: int) -> String:
+	return "Really uproot? (+%d)" % refund
+
+
+## The widest string this button can be asked to hold, and the value the fit test
+## measures. Two digits on both numbers because the catalogue tops out at 45 seeds
+## (`PlantCatalog`) and a refund can never exceed the cost it is a fraction of — the
+## third digit is headroom, not a reachable state.
+const UPROOT_WORST_CASE_TEXT: String = "Uproot (+99, net -99)"
+## And the armed branch's, which is the string every earlier pass measured this button
+## against. Both are measured against the 232px box by
+## `test_the_uproot_buttons_worst_case_fits_the_selection_box`, which also checks the
+## constant above is a real ceiling over every string the CATALOGUE can build — the two
+## are not ranked against each other, because which of them draws wider is a font
+## question and neither this comment nor that test needs an answer to it.
+const UPROOT_ARMED_WORST_CASE_TEXT: String = "Really uproot? (+99)"
+
+
+## The trade in words, on hover. This is where the replant PRICE lives: a tooltip is
+## the one surface in the side panel with no width budget at all, so the number the
+## button had to compress into a net is still available in full to anyone who asks.
+static func uproot_button_tooltip(plant_name: String, refund: int, replant: int) -> String:
+	var net: int = uproot_net(refund, replant)
+	if net >= 0:
+		return ("Digging up your %s pays %d seeds back. Planting another costs %d, "
+			+ "so the round trip leaves you %d up.") % [plant_name, refund, replant, net]
+	return ("Digging up your %s pays %d seeds back. Planting another costs %d, "
+		+ "so the round trip costs you %d.") % [plant_name, refund, replant, -net]
+
+
 ## What a plant button is tinted, in the three states it can be in.
 ##
 ## `hinted` is the packet rack talking to the plant bar: while the cursor rests on
@@ -1880,9 +1998,16 @@ func _process(delta: float) -> void:
 func refresh(state: Dictionary) -> void:
 	var bank: SeedBank = state["bank"]
 	var seeds_text: String = "Seeds  %d" % bank.seeds
-	if _readouts_seeded and seeds_text != _seeds_label.text:
-		_punch_readout(_seeds_label)
+	# The final text goes on FIRST and the roll is armed after it — see SEED_ROLL_SECONDS.
+	# `_seeds_shown`, not the Label, is what the roll counts from: a roll already in
+	# flight has the Label holding an intermediate value.
+	var seeds_moved: bool = _readouts_seeded and seeds_text != _seeds_label.text
+	var seeds_from: int = _seeds_shown
 	_seeds_label.text = seeds_text
+	_seeds_shown = bank.seeds
+	if seeds_moved:
+		_punch_readout(_seeds_label)
+		_arm_seeds_roll(seeds_from, bank.seeds)
 	if bool(state.get("endless", false)):
 		# "∞" rather than "— endless": at wave 509 with a threat level appended,
 		# the spelled-out version measured 397px against a 320px budget and was
@@ -2094,12 +2219,28 @@ func _refresh_selection(state: Dictionary) -> void:
 	# is called. It stays the same node at the same size — the devtools bridge and
 	# the tests press UprootButton by path, and a second button would not fit under
 	# SelectionBox anyway (the VBox already runs to within 16px of the panel foot).
+	#
+	# RESTING, the button now says both halves of the trade — see `uproot_button_text`.
+	# The replant price comes off the same SeedBank the panel is already holding, so the
+	# free starter's 0 is honoured rather than a flat catalogue price being quoted at a
+	# player who would not pay it.
+	var refund: int = plant.uproot_refund()
+	var replant: int = (state["bank"] as SeedBank).placement_cost(plant.kind)
 	if bool(state.get("uproot_armed", false)):
-		_uproot_button.text = "Really uproot? (+%d)" % plant.uproot_refund()
+		_uproot_button.text = uproot_armed_text(refund)
 		_uproot_button.add_theme_color_override("font_color", UPROOT_ARMED)
 	else:
-		_uproot_button.text = "Uproot (+%d)" % plant.uproot_refund()
+		_uproot_button.text = uproot_button_text(refund, replant)
 		_uproot_button.remove_theme_color_override("font_color")
+	# Set unconditionally, resting and armed alike: an armed button is the one moment a
+	# player most wants the sentence spelled out, and the tooltip is the only place the
+	# replant PRICE (rather than the net) is written.
+	var tip: String = uproot_button_tooltip(
+		PlantCatalog.display_name(plant.kind), refund, replant)
+	# Only on change, the same rule the plant buttons follow: a tooltip already on screen
+	# is not re-read when its text is reassigned, and this runs on every state push.
+	if _uproot_button.tooltip_text != tip:
+		_uproot_button.tooltip_text = tip
 
 
 ## The bar under the selection blurb. Appears only once a plant has been bitten,
@@ -2206,6 +2347,75 @@ func _punch_readout(label: Label) -> void:
 	tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_property(label, "scale", Vector2.ONE, READOUT_PUNCH_SECONDS)
 	_readout_tweens[label] = tween
+
+
+## THE VALUE THE SEEDS READOUT SHOWS `t` OF THE WAY THROUGH A ROLL.
+##
+## Pure and static, and that is the whole reason this function exists as something other
+## than three lines inside a lambda: **a Tween does not run headless**, so every check
+## written against the roll would be a check that never executes. The interpolation is
+## the part with a decision in it, so the interpolation is the part that is assertable
+## without a HUD, a frame, or a renderer — the same split
+## `TitleScreen.high_score_text_at` makes for the record ratchet.
+##
+## `ceilf` rather than `floorf`, which is the one non-obvious line here: with `floorf`
+## the counter sits on `from_value` for the first tenth of the roll, and a readout that
+## does not move for 35ms after a purchase reads as a dropped frame rather than as the
+## start of a count. With `ceilf` the first step has already landed.
+##
+## Endpoints are exact by construction: `t <= 0` gives `from_value`, `t >= 1` gives
+## `to_value`, and the caller does not have to trust a float to land on 1.0.
+##
+## SIGNED, and that is the difference from the record. A record only ever climbs, so
+## `_arm_record_ratchet` never had to decide what a fall looks like. Seeds fall on every
+## purchase — and the purchase is the case the bead was filed about — so this lerps in
+## whichever direction the pair points and the count runs DOWN for a spend. A roll that
+## only ever went up would animate the payouts and leave every price the player pays
+## snapping, which is backwards: the payout is expected and the spend is the decision.
+static func seeds_roll_value(from_value: int, to_value: int, t: float) -> int:
+	var steps: float = float(SEED_ROLL_STEPS)
+	var stepped: float = ceilf(clampf(t, 0.0, 1.0) * steps) / steps
+	return int(round(lerpf(float(from_value), float(to_value), stepped)))
+
+
+## Is this change big enough to be worth watching arrive? See SEED_ROLL_MIN_JUMP.
+## Symmetric in the two directions on purpose — a 45-seed spend and a 45-seed payout are
+## the same size of event.
+static func seeds_roll_is_worth_showing(from_value: int, to_value: int) -> bool:
+	return absi(to_value - from_value) >= SEED_ROLL_MIN_JUMP
+
+
+## Counts the seeds readout from its old total to the one it already displays.
+##
+## Layered on top of an already-correct Label, gated on `animations_enabled()`, and
+## restored by a callback rather than by trusting the last interpolation step — a tween
+## interrupted mid-count (a scene change, another purchase) never runs its final step,
+## and the readout would keep whatever number it was passing through.
+func _arm_seeds_roll(from_value: int, to_value: int) -> void:
+	if not GardenTheme.animations_enabled() or _seeds_label == null:
+		return
+	# Killed before the size test, not after: a small change arriving mid-roll must STOP
+	# the roll rather than let it keep counting toward a total that is already stale.
+	if _seeds_roll != null and _seeds_roll.is_valid():
+		_seeds_roll.kill()
+	_seeds_roll = null
+	if not seeds_roll_is_worth_showing(from_value, to_value):
+		return
+	var settled: String = "Seeds  %d" % to_value
+	var roll := func(t: float) -> void:
+		if not is_instance_valid(_seeds_label):
+			return
+		var rolled: String = "Seeds  %d" % seeds_roll_value(from_value, to_value, t)
+		_seeds_label.text = rolled
+	var restore := func() -> void:
+		if is_instance_valid(_seeds_label):
+			_seeds_label.text = settled
+	var tween := create_tween()
+	var counting: MethodTweener = tween.tween_method(roll, 0.0, 1.0, SEED_ROLL_SECONDS)
+	counting.set_trans(Tween.TRANS_CUBIC)
+	counting.set_ease(Tween.EASE_OUT)
+	tween.tween_callback(restore)
+	_seeds_roll = tween
 
 
 ## A refused plant placement, shaking the bar slot the player picked it from —

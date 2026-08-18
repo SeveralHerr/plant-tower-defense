@@ -15133,3 +15133,322 @@ func test_the_wave_readouts_finite_branch_fits_its_slot() -> String:
 	return err
 
 # -- END plant-tower-defense-i5ny / -rq94 --------------------------------------
+
+
+# -- BEGIN plant-tower-defense-eupm / -r3e8 ------------------------------------
+#
+# Two player-facing HUD readouts, and the two things a headless suite can actually
+# hold them to:
+#
+#   -eupm  the uproot button now prints the NET of the trade, not just the refund.
+#          The wording is a pure static, so it is assertable without a HUD; the WIDTH
+#          is not, so that one measures a real Button in a real theme.
+#   -r3e8  the seeds readout counts to its new total instead of jumping. The count is
+#          a Tween and tweens do not run headless, so the assertable part is the pure
+#          value-at-time function underneath it -- the same split the record ratchet
+#          on the title screen makes.
+
+
+## The bead's own example, as an assertion: 12 back against a 20-seed replant is an
+## 8-seed loss, and the button used to print only the 12 and leave the subtraction to a
+## player on a four-second confirm timer.
+func test_the_uproot_button_prints_the_net_of_the_trade() -> String:
+	var err: String = _T.assert_eq(Hud.uproot_button_text(12, 20), "Uproot (+12, net -8)",
+		"a losing trade prints what the round trip actually costs")
+	if err == "":
+		err = _T.assert_eq(Hud.uproot_net(12, 20), -8,
+			"and the arithmetic under it is the subtraction, not the refund")
+	if err == "":
+		# The free starter. `SeedBank.placement_cost` returns 0 while it is unspent, so
+		# the round trip is pure profit -- a case a "replant costs N" label would have
+		# printed as "replant 0" and a net label prints as a gain.
+		err = _T.assert_eq(Hud.uproot_button_text(6, 0), "Uproot (+6, net +6)",
+			"a profitable trade prints a leading + rather than a bare number")
+	if err == "":
+		# The two directions must be distinguishable with the colour thrown away
+		# (game/OVERLAY_GRAMMAR.md's one rule with teeth). The sign is that channel, so
+		# a profit and a loss may not render the same glyphs.
+		err = _T.assert_true(Hud.uproot_net_text(6) != Hud.uproot_net_text(-6),
+			"a 6-seed gain and a 6-seed loss are different strings, not different colours")
+	if err == "":
+		err = _T.assert_eq(Hud.uproot_button_text(10, 10), "Uproot (+10, net 0)",
+			"and a break-even trade prints neither sign")
+	if err == "":
+		# Deliberately unchanged: once the confirm is armed the question on screen is
+		# "destroy this?", and the armed string is the longest this button has ever
+		# held. test_an_armed_uproot_button_relabels_and_reddens covers the render side.
+		err = _T.assert_eq(Hud.uproot_armed_text(12), "Really uproot? (+12)",
+			"the armed label still asks only the destructive question")
+	if err == "":
+		# The tooltip is where the replant PRICE survives the button's compression, so
+		# it has to carry the number the label folded away.
+		var tip: String = Hud.uproot_button_tooltip("Corn Cobbler", 12, 20)
+		err = _T.assert_true(tip.contains("20") and tip.contains("12"),
+			"the tooltip keeps both raw numbers, got \"%s\"" % tip)
+	if err == "":
+		# "up" alone would not do it -- every branch of this sentence opens with
+		# "Digging up", so the needle has to be the clause that differs.
+		var gain: String = Hud.uproot_button_tooltip("Corn Cobbler", 6, 0)
+		err = _T.assert_true(gain.contains("leaves you") and not gain.contains("costs you"),
+			"a profitable round trip is described as a gain, got \"%s\"" % gain)
+	if err == "":
+		var loss: String = Hud.uproot_button_tooltip("Corn Cobbler", 12, 20)
+		err = _T.assert_true(loss.contains("costs you") and not loss.contains("leaves you"),
+			"and a losing one as a cost, got \"%s\"" % loss)
+	return err
+
+
+## Does the longer resting label still FIT?
+##
+## The one question the pure test above cannot answer, and the one the bead said to
+## settle before writing any text: the selection panel is 232px wide and its VBox
+## already runs to within 16px of the panel foot, so a button whose minimum width
+## exceeds the box widens the box and pushes the panel's contents off the side panel.
+##
+## Measured, and measured over the strings the game can actually BUILD rather than one
+## worst case somebody typed: every catalogue price, both ends of the refund slope
+## (`Plant.UPROOT_RATE_FULL` down to `MIN_UPROOT_REFUND`), and both replant prices a bed
+## can quote (the catalogue cost, and 0 while the free starter is unspent).
+##
+## `get_minimum_size()` and not `_T.text_width` here, because this is a Button and not a
+## Label: nothing clips it, and its minimum is the measurement that decides whether the
+## Container grows -- which is the actual failure mode. The stylebox margins are in that
+## number and are not in a bare text measurement.
+func test_the_uproot_buttons_worst_case_fits_the_selection_box() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(200)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "",
+		"planted, so the selection panel is on screen")
+	var button: Button = game.hud.get_node_or_null(
+		"Root/SidePanel/SelectionBox/UprootButton") as Button
+	if err == "":
+		err = _T.assert_true(button != null, "the uproot button is where the bridge presses it")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	await _pump(game)
+	var box: float = float(Hud.PANEL_WIDTH - 24)
+	var widest: String = ""
+	var widest_px: float = 0.0
+	for id: StringName in PlantCatalog.ids():
+		var cost: int = PlantCatalog.cost(id)
+		for refund: int in [int(floor(cost * Plant.UPROOT_RATE_FULL)), Plant.MIN_UPROOT_REFUND]:
+			for replant: int in [cost, 0]:
+				button.text = Hud.uproot_button_text(refund, replant)
+				var drawn: float = button.get_minimum_size().x
+				if drawn > widest_px:
+					widest_px = drawn
+					widest = button.text
+	# A zero measurement means no font resolved, which would let every assertion below
+	# pass over a button nobody measured.
+	err = _T.assert_gt(widest_px, 0.0, "the button measures something in the real theme")
+	if err == "":
+		err = _T.assert_true(widest_px <= box,
+			("the widest resting label the catalogue can build is \"%s\", which needs "
+				+ "%.0fpx of a %.0fpx box. Over it the VBox grows and the panel's "
+				+ "contents leave the side panel") % [widest, widest_px, box])
+	if err == "":
+		# The armed branch was the previous ceiling, and it is still on screen.
+		button.text = Hud.UPROOT_ARMED_WORST_CASE_TEXT
+		var armed_px: float = button.get_minimum_size().x
+		err = _T.assert_true(armed_px <= box,
+			"the armed label \"%s\" still fits too (%.0fpx of %.0fpx)"
+				% [Hud.UPROOT_ARMED_WORST_CASE_TEXT, armed_px, box])
+	if err == "":
+		# The declared constant has to be a real ceiling over the derived set, or the
+		# next person to reason from it is reasoning from a string that undersells the
+		# widest thing the button can say.
+		button.text = Hud.UPROOT_WORST_CASE_TEXT
+		var declared_px: float = button.get_minimum_size().x
+		err = _T.assert_true(declared_px >= widest_px,
+			("Hud.UPROOT_WORST_CASE_TEXT (\"%s\", %.0fpx) is meant to be at or above "
+				+ "every string the catalogue can build, and \"%s\" needs %.0fpx")
+				% [Hud.UPROOT_WORST_CASE_TEXT, declared_px, widest, widest_px])
+	_T.free_ui(game)
+	return err
+
+
+## The number on the button comes off the LIVE bank, not off the catalogue.
+##
+## The distinction is the free starter: while it is unspent a Corn Cobbler replants for
+## nothing, and a button quoting `PlantCatalog.cost` would charge a player for a bed
+## they can refill free. Driven through a real placement rather than by calling the
+## static, so this fails if `_refresh_selection` stops passing the bank through.
+func test_the_resting_uproot_button_prices_the_replant_off_the_live_bank() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(200)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _grass(game)), "",
+		"planted")
+	var button: Button = game.hud.get_node_or_null(
+		"Root/SidePanel/SelectionBox/UprootButton") as Button
+	if err == "":
+		err = _T.assert_true(button != null, "the uproot button is on screen")
+	if err == "":
+		err = _T.assert_true(game.selected_placed != null, "and the plant is selected")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var plant: Plant = game.selected_placed
+	var replant: int = game.bank.placement_cost(plant.kind)
+	err = _T.assert_gt(replant, 0,
+		"the free starter is spent by this placement, so a replant costs something")
+	if err == "":
+		err = _T.assert_eq(button.text, Hud.uproot_button_text(plant.uproot_refund(), replant),
+			"the resting label is the static's output for the live pair, got %s" % button.text)
+	if err == "":
+		err = _T.assert_true(button.text.contains("net"),
+			"and the net is the thing on it, got %s" % button.text)
+	if err == "":
+		# The replant PRICE itself lives in the tooltip, which costs no width -- that is
+		# the trade the button's compression is paid for by.
+		err = _T.assert_true(button.tooltip_text.contains("%d" % replant),
+			("the tooltip spells the replant price out in words, got \"%s\"")
+				% button.tooltip_text)
+	if err == "":
+		err = _T.assert_true(button.tooltip_text.contains(
+				PlantCatalog.display_name(plant.kind)),
+			"and names the plant it is talking about, got \"%s\"" % button.tooltip_text)
+	_T.free_ui(game)
+	return err
+
+
+## -r3e8. The roll itself is a Tween and `GardenTheme.animations_enabled()` is false
+## headless, so a test that drove `refresh()` and watched the Label would assert nothing
+## at all while looking like coverage. This asserts the pure function the Tween renders.
+func test_the_seeds_roll_counts_the_whole_way_in_both_directions() -> String:
+	# Endpoints exact, rather than trusting a float to land on 1.0 -- the record
+	# ratchet needs a restoring callback for precisely that reason.
+	var err: String = _T.assert_eq(Hud.seeds_roll_value(120, 75, 0.0), 120,
+		"t=0 shows the total the player had")
+	if err == "":
+		err = _T.assert_eq(Hud.seeds_roll_value(120, 75, 1.0), 75,
+			"t=1 shows the total they have now")
+	if err == "":
+		err = _T.assert_eq(Hud.seeds_roll_value(120, 75, 4.0), 75, "and t past the end clamps")
+	if err == "":
+		err = _T.assert_eq(Hud.seeds_roll_value(120, 75, -4.0), 120, "as does t before it")
+	if err == "":
+		# It has to MOVE on the first step. With floorf the readout sits on the old
+		# total for the first tenth of the roll, which reads as a dropped frame.
+		err = _T.assert_true(Hud.seeds_roll_value(120, 75, 0.01) < 120,
+			"the count has already left the old total one frame in")
+	# A SPEND, which is the case the bead was filed about: seeds go down as well as up,
+	# and a roll that only climbed would animate every payout and snap every price.
+	var falling: Dictionary = {}
+	var previous: int = 120
+	var samples: int = 0
+	if err == "":
+		for i: int in range(0, 101):
+			var t: float = float(i) / 100.0
+			var value: int = Hud.seeds_roll_value(120, 75, t)
+			samples += 1
+			falling[value] = true
+			if value > previous:
+				err = _T.assert_true(false,
+					"a spend never counts back up: %d after %d at t=%.2f" % [value, previous, t])
+				break
+			if value < 75 or value > 120:
+				err = _T.assert_true(false,
+					"and never leaves its endpoints: %d at t=%.2f" % [value, t])
+				break
+			previous = value
+	if err == "":
+		err = _T.assert_eq(samples, 101, "the sweep actually ran")
+	if err == "":
+		# STEPPED, which is the claim SEED_ROLL_STEPS makes -- and the claim the title
+		# screen's own RATCHET_STEPS states in a comment and then does not keep. A
+		# hundred distinct four-digit totals in 0.35s is a flicker, not a count.
+		err = _T.assert_true(falling.size() <= Hud.SEED_ROLL_STEPS + 1,
+			("a 101-sample sweep of a %d-step roll showed %d distinct totals")
+				% [Hud.SEED_ROLL_STEPS, falling.size()])
+	if err == "":
+		err = _T.assert_gt(falling.size(), 2,
+			"and it is a count rather than a snap with extra frames (%d totals shown)"
+				% falling.size())
+	# And the same climbing, since a payout uses the identical path.
+	if err == "":
+		var rising: int = Hud.seeds_roll_value(20, 65, 0.5)
+		err = _T.assert_true(rising > 20 and rising < 65,
+			"a payout counts up through the middle too, got %d" % rising)
+	return err
+
+
+## The floor under the roll, and the reason it is where it is.
+##
+## The roll exists to make a BIG jump legible; rolling a 2-seed pest payout would put
+## the busiest readout in the game in permanent motion for a change that is legible at a
+## glance. The floor is only correct if it sits under every price the player can pay --
+## derived off the catalogue rather than compared against a number typed twice.
+func test_a_small_seed_change_snaps_and_every_real_price_rolls() -> String:
+	var err: String = _T.assert_false(
+		Hud.seeds_roll_is_worth_showing(40, 40 + Hud.SEED_ROLL_MIN_JUMP - 1),
+		"a change one under the floor snaps, and the punch carries it alone")
+	if err == "":
+		err = _T.assert_true(Hud.seeds_roll_is_worth_showing(40, 40 + Hud.SEED_ROLL_MIN_JUMP),
+			"a change on the floor rolls")
+	if err == "":
+		err = _T.assert_true(Hud.seeds_roll_is_worth_showing(40, 40 - Hud.SEED_ROLL_MIN_JUMP),
+			"and it is symmetric -- a spend of the same size rolls too")
+	if err == "":
+		err = _T.assert_false(Hud.seeds_roll_is_worth_showing(40, 40),
+			"a readout that did not move does not roll")
+	if err == "":
+		var cheapest: int = -1
+		for id: StringName in PlantCatalog.ids():
+			var cost: int = PlantCatalog.cost(id)
+			if cost > 0 and (cheapest < 0 or cost < cheapest):
+				cheapest = cost
+		err = _T.assert_gt(cheapest, 0, "the catalogue prices something")
+		if err == "":
+			err = _T.assert_gte(cheapest, Hud.SEED_ROLL_MIN_JUMP,
+				("the cheapest plant in the catalogue costs %d, and the roll's floor is "
+					+ "%d -- above it, the purchase the roll was written for is the one "
+					+ "change that snaps") % [cheapest, Hud.SEED_ROLL_MIN_JUMP])
+	return err
+
+
+## The rule that makes the roll safe to add at all: **the readout already holds the
+## final total before anything animates.** A tween responsible for ARRIVING at the right
+## value leaves the right value unreachable headless, in every test and on any machine
+## with animation off -- and nothing about node paths or sizes would say so.
+##
+## Headless this passes because the roll never arms; that is the point. It is the check
+## that fails the day someone moves the `_seeds_label.text =` assignment inside the
+## tween.
+func test_a_seed_change_leaves_the_readout_holding_the_final_total() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/StatsRow/SeedsLabel") as Label
+	var err: String = _T.assert_true(label != null, "the seeds readout is in the row")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	game._process(0.016)
+	await _pump(game)
+	var before: String = label.text
+	# Comfortably over SEED_ROLL_MIN_JUMP, so a roll is armed on any machine that can
+	# run one.
+	game.bank.add_seeds(45)
+	game._process(0.016)
+	await _pump(game)
+	err = _T.assert_true(label.text != before,
+		"the readout moved at all, got %s both times" % label.text)
+	if err == "":
+		err = _T.assert_eq(label.text, "Seeds  %d" % game.bank.seeds,
+			("the readout holds the FINAL total, not an interpolation step: the roll "
+				+ "layers on top of a correct string and puts it back"))
+	if err == "":
+		# And down again, which is the direction that used to be the argument.
+		var spent: int = game.bank.seeds
+		# A charge, the way Game.upgrade_selected() makes one: a negative amount, which
+		# the sign guard already keeps off the score.
+		game.bank.add_seeds(-20)
+		game._process(0.016)
+		await _pump(game)
+		err = _T.assert_true(game.bank.seeds < spent, "the spend landed")
+		if err == "":
+			err = _T.assert_eq(label.text, "Seeds  %d" % game.bank.seeds,
+				"and a spend leaves the final total on the readout too")
+	_T.free_ui(game)
+	return err
+
+# -- END plant-tower-defense-eupm / -r3e8 --------------------------------------
