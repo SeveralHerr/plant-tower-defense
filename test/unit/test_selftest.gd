@@ -16932,3 +16932,95 @@ func test_a_long_named_packet_tier_falls_through_the_racks_floor() -> String:
 
 # END plant-tower-defense-0y0w
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-9afm — the RNG stream under the seeded simulations
+#
+# Four tests in `test_combat.gd` drive a seeded wave through `_over_promise_run`
+# and read counts off the pests it produced. All four rest on one unstated
+# assumption — that `set_seed(N)` makes the wave reproducible — and on one
+# unstated hazard: that the reproduction is of the DRAW ORDER, not of the wave,
+# so a draw added anywhere in `WaveDirector._build_schedule` silently hands the
+# same seed a different wave.
+#
+# Cycle 81 met that hazard as a mysterious behavioural regression in a test about
+# the coverage map, spent a cycle proving it was the stream and not the feature,
+# and wrote the proof down as a paragraph. This is the paragraph as an executable
+# statement. Nothing here asserts a count; both halves are about the mechanism.
+#
+# NO PLAYER SEES ANY OF THIS. It changes no game behaviour whatsoever — it is a
+# gate under four other tests, and the reason the coverage test above it can no
+# longer be broken by an unrelated RNG change.
+# =============================================================================
+
+
+## One string per schedule, stable under nothing but the draws.
+##
+## Species, spawn time and the FULL mutation list, in schedule order — the whole
+## of what `_build_schedule` decides. Deliberately not a count of mutated pests: a
+## reshuffle that happens to keep the count would slip past that and is exactly
+## the case this is trying to catch.
+func _schedule_signature(director: WaveDirector) -> String:
+	var parts: PackedStringArray = PackedStringArray()
+	for entry: Dictionary in director._schedule:
+		# str() around the Array on purpose: `"%s" % some_array` makes GDScript read
+		# the array as the argument LIST, which aborts the method mid-run and reports
+		# a pass.
+		parts.append("%s|%.4f|%s" % [str(entry["species"]), float(entry["at"]),
+			str(entry["mutations"])])
+	return "/".join(parts)
+
+
+## Builds the wave `test_the_coverage_map_keeps_its_promise_...` drives, exactly the
+## way `_over_promise_run` builds it, optionally burning `waste` draws off the
+## director's generator first. Burning one is what "somebody added a randf()"
+## looks like from outside the function.
+func _schedule_for_the_over_promise_wave(waste: int) -> String:
+	var wave: int = WaveDirector.WAVES.size() + 6
+	var director := WaveDirector.new()
+	director.set_seed(12345)
+	director.endless = wave > WaveDirector.WAVES.size()
+	director.current_wave = wave - 1
+	for _i: int in range(waste):
+		director._rng.randf()
+	director.start_next_wave()
+	var signature: String = _schedule_signature(director)
+	director.free()
+	return signature
+
+
+func test_a_seeded_wave_is_reproducible_and_one_extra_draw_reshuffles_it() -> String:
+	var first: String = _schedule_for_the_over_promise_wave(0)
+	var again: String = _schedule_for_the_over_promise_wave(0)
+	var shifted: String = _schedule_for_the_over_promise_wave(1)
+
+	# Vacuity guard. A wave that built nothing would make both halves below true
+	# for the wrong reason — two empty signatures are equal, and an empty one and a
+	# shifted empty one are not unequal.
+	var err: String = _T.assert_gt(first.length(), 100,
+		("wave %d built a schedule worth comparing (%d chars of signature)"
+			% [WaveDirector.WAVES.size() + 6, first.length()]))
+	if err == "":
+		# HALF ONE: the assumption. Compared as a bool rather than through assert_eq
+		# so a failure prints a sentence instead of two schedules.
+		err = _T.assert_true(again == first,
+			("set_seed(12345) twice built the same wave twice — every seeded simulation "
+				+ "in test_combat.gd is a measurement of one wave, and this is the line "
+				+ "that says which wave"))
+	if err == "":
+		# HALF TWO: the hazard. One draw consumed and thrown away before the wave is
+		# built stands in for a draw added anywhere in _build_schedule.
+		err = _T.assert_true(shifted != first,
+			("and ONE extra randf() off the same generator built a DIFFERENT wave off "
+				+ "the same seed. That is the whole hazard: a seed does not pin the "
+				+ "wave, it pins the draw order, so any change to what WaveDirector "
+				+ "consumes hands every seeded simulation a new wave. A count asserted "
+				+ "off one of those waves is a measurement, not an invariant — see the "
+				+ "last assertion in "
+				+ "test_the_coverage_map_keeps_its_promise_to_a_pest_that_never_leaves_"
+				+ "covered_ground for the shape that survives it"))
+	return err
+
+# END plant-tower-defense-9afm
+# =============================================================================
