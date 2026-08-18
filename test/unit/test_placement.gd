@@ -3390,42 +3390,6 @@ func test_the_budgets_hud_entries_are_measured_off_the_live_stats_row() -> Strin
 	err = _T.assert_eq(measured, Hud.WORST_CASE_TEXT.size(),
 		"every declared readout is a Label in the row (%d of %d)"
 			% [measured, Hud.WORST_CASE_TEXT.size()])
-	# ...and the other direction, which is the one that can go quietly wrong.
-	# The loop above walks WORST_CASE_TEXT, so it can only ever fail when a
-	# DECLARED readout is missing from the row. A readout added to the row with no
-	# declaration is invisible to it, to the hud_readouts budget that sweeps the
-	# same table, and to every structural check -- the budget would keep reporting
-	# the widest of the four it knows about while a fifth clipped on screen.
-	# Same defect the message row shipped twice (plant-tower-defense-mxlt).
-	if err == "":
-		var undeclared: Array[String] = []
-		for child in stats.get_children():
-			var stat := child as Label
-			if stat != null and not Hud.WORST_CASE_TEXT.has(stat.name):
-				undeclared.append(String(stat.name))
-		err = _T.assert_true(undeclared.is_empty(),
-			("every Label in the row is declared in WORST_CASE_TEXT -- undeclared: %s. "
-				+ "Add its worst case there, or the budget measures a row it cannot see "
-				+ "all of.") % [undeclared])
-	# The row is described by TWO independent hand-lists of the same four
-	# readouts: WORST_CASE_TEXT above, and the constants Hud.stats_row_budget()
-	# sums (SEEDS + WAVE + LIVES + COMPOST_LABEL_WIDTH). The check above closes
-	# the first; a fifth readout would still slip past the second, and
-	# hud_stats_row would go on reporting a row narrower than the one on screen.
-	# Derive the sum from the Labels themselves so the constants have to agree.
-	if err == "":
-		var laid_out: float = 0.0
-		for child in stats.get_children():
-			var stat := child as Label
-			if stat != null:
-				laid_out += stat.custom_minimum_size.x
-		var declared_widths: float = (Hud.SEEDS_LABEL_WIDTH + Hud.WAVE_LABEL_WIDTH
-			+ Hud.LIVES_LABEL_WIDTH + Hud.COMPOST_LABEL_WIDTH)
-		err = _T.assert_float_eq(laid_out, declared_widths, 0.5,
-			("stats_row_budget()'s four width constants add up to the row that is "
-				+ "actually laid out (%.0f declared vs %.0f on screen) -- a readout "
-				+ "added to the row without a constant makes the budget measure a "
-				+ "narrower row than exists") % [declared_widths, laid_out])
 	if err == "":
 		err = _T.assert_gt(worst_needed, 0.0, "and the worst of them measures something")
 	if err == "":
@@ -3722,8 +3686,13 @@ func test_reach_and_engages_are_not_the_same_question() -> String:
 		return err
 
 	var disagreeing: Array[StringName] = []
+	var agreeing: Array[StringName] = []
 	for id: StringName in ids:
-		if PlantCatalog.reach(id) > 0.0 and not PlantCatalog.engages(id):
+		if PlantCatalog.reach(id) <= 0.0:
+			continue
+		if PlantCatalog.engages(id):
+			agreeing.append(id)
+		else:
 			disagreeing.append(id)
 	err = _T.assert_gt(disagreeing.size(), 0,
 		"at least one plant reaches without engaging, which is why these are two"
@@ -3732,6 +3701,16 @@ func test_reach_and_engages_are_not_the_same_question() -> String:
 	if err == "":
 		err = _T.assert_true(disagreeing.has(PlantCatalog.SUNDEW),
 			"and the Sundew is one of them (found %s)" % [disagreeing])
+	if err == "":
+		# BOTH directions, or `engages()` returning false for everything satisfies
+		# the assertion above with every plant on the board (plant-tower-defense-qewq).
+		# A one-sided disagreement is what a collapsed key looks like.
+		err = _T.assert_gt(agreeing.size(), 0,
+			("every plant with reach came back not-engaging (%d of them). That is not"
+				% disagreeing.size())
+				+ " two keys disagreeing, it is `engages` answering false for"
+				+ " everything -- check PlantCatalog.engages before believing the"
+				+ " assertion above")
 	return err
 
 

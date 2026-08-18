@@ -14671,8 +14671,13 @@ func test_the_title_button_column_reports_the_column_that_is_drawn() -> String:
 # `_dev` left null and never touches a tree. Anything past that point (the plant
 # actually landing, the pest actually spawning) is a live-bridge question and stays
 # one -- see the /verify Phase 4 list.
-
-const DEVTOOLS_EXT := "res://devtools_ext/commands.gd"
+#
+# DEVTOOLS_EXT is NOT redeclared here: this suite already declares it near the top
+# (the devtools-bridge tests use it). The lane that appended this block did declare
+# its own copy, git merged the two blocks cleanly, and GDScript refused the file
+# outright -- "Constant DEVTOOLS_EXT has the same name as a previously declared
+# constant", which took the whole suite from 746 discovered tests to 375. Two lanes
+# adding the same const to one file is a collision no parallel-safe gate can see.
 
 ## The project verbs whose entire effect IS an argument, and the keys they need.
 ## Cross-checked below against the register_command() calls in the file itself, so a
@@ -14961,3 +14966,147 @@ func test_the_uproot_clock_is_never_written_without_the_arming() -> String:
 	return err
 
 # -- END plant-tower-defense-iljz ----------------------------------------------
+
+# -- BEGIN plant-tower-defense-i5ny / -rq94: the top bar's one readout table ----
+# Appended as a block on purpose: a sibling lane also appends here, and a clearly
+# delimited section is what makes the conflict resolvable by keeping both rather
+# than by picking one. Nothing above this line was touched.
+
+
+## The four readouts are described ONCE, and everything that used to be a separate
+## hand-list now reads that one description.
+##
+## Three lists became one in cycle 108. The two assertions cycle 51 bolted across the
+## gaps between them are gone, because the gaps are gone -- `_build_top_bar` walks it,
+## so a Label in the row that no row describes cannot be built, and `stats_row_budget`
+## sums the table, so a readout's width cannot be missing from the sum. What is left
+## to check is the one thing the structure does not make true by itself: that
+## `WORST_CASE_TEXT` really is the projection it claims to be, and that the widths the
+## budget spends are the widths the table declares.
+func test_the_stats_row_is_described_by_one_table() -> String:
+	var rows: Array[Dictionary] = Hud.STAT_READOUTS
+	# The row count first. A sweep over an empty table asserts nothing and prints
+	# [VACUOUS]; four is the row this bar has, and a fifth is a deliberate change.
+	var err: String = _T.assert_eq(rows.size(), 4,
+		"the top bar declares its four readouts in Hud.STAT_READOUTS")
+	if err != "":
+		return err
+	var widths: float = 0.0
+	for readout: Dictionary in rows:
+		if err != "":
+			break
+		var name: String = String(readout.get("name", ""))
+		err = _T.assert_true(name != "", "every row names its Label")
+		if err == "":
+			err = _T.assert_true(String(readout.get("member", "")) != "",
+				"%s names the field _build assigns it to" % name)
+		if err == "":
+			err = _T.assert_true(String(readout.get("worst_case", "")) != "",
+				"%s declares a worst case" % name)
+		if err == "":
+			err = _T.assert_gt(float(readout.get("width", 0.0)), 0.0,
+				"%s declares a clipped width" % name)
+		if err == "":
+			err = _T.assert_gt(int(readout.get("font_size", 0)), 0,
+				("%s declares its own font size -- the compost readout is smaller than "
+					+ "the rest and that difference is the row's only hierarchy") % name)
+		if err == "":
+			var shapes: Array = readout.get("shapes", [])
+			err = _T.assert_gt(shapes.size(), 0,
+				("%s declares the format shapes it is assigned. "
+					+ "tools/readout_shape_check.py ties this column to the real "
+					+ "_x_label.text = assignments, both directions") % name)
+		widths += float(readout.get("width", 0.0))
+	if err != "":
+		return err
+	# WORST_CASE_TEXT is a projection, not a second table. If it ever stops being one,
+	# the budget and test_no_readout_clips_its_own_worst_case go back to measuring a
+	# row that is not the row on screen.
+	err = _T.assert_eq(Hud.WORST_CASE_TEXT.size(), rows.size(),
+		"WORST_CASE_TEXT carries exactly the table's readouts")
+	for readout: Dictionary in rows:
+		if err != "":
+			break
+		var name: String = String(readout["name"])
+		err = _T.assert_true(Hud.WORST_CASE_TEXT.has(name),
+			"WORST_CASE_TEXT projects %s" % name)
+		if err == "":
+			err = _T.assert_eq(String(Hud.WORST_CASE_TEXT[name]),
+				String(readout["worst_case"]),
+				"and projects %s's worst case unchanged" % name)
+	if err != "":
+		return err
+	# The budget spends the table's widths and nothing else. Derived rather than
+	# retyped: stats_row_budget(0) is the four slots plus the two buttons, so backing
+	# the buttons out has to leave exactly the sum above.
+	var spent: float = (Hud.stats_row_budget(0) - Hud.NEXT_WAVE_BUTTON_SIZE.x
+		- GameSpeed.button_size().x)
+	return _T.assert_float_eq(spent, widths, 0.001,
+		("stats_row_budget() spends %.0fpx of readout width and the table declares "
+			+ "%.0f -- the sum is derived from the table, so these can only differ if "
+			+ "something else got added to it") % [spent, widths])
+
+
+## The wave readout's OTHER branch, measured.
+##
+## WORST_CASE_TEXT holds one string per readout, and the wave readout is built from two
+## base branches: "Wave  %d / %d" for the fixed campaign and the endless one, either of
+## which can carry the threat suffix. The declared worst case is an instance of the
+## endless branch, and STAT_READOUTS says in prose that endless is the wider of the two
+## because the campaign is bounded at WaveDirector.WAVES.size() waves with a
+## single-digit threat level.
+##
+## That prose is the claim this test turns into a number. `readout_shape_check` cannot
+## make it -- it compares shapes and measures no font -- and
+## `test_no_readout_clips_its_own_worst_case` cannot either, because it only ever
+## measures the string the table names. Nothing was checking the branch the player
+## actually sees for the whole fixed campaign.
+##
+## `_T.text_width`, NOT get_minimum_size(): every readout in this row sets clip_text,
+## and a clipped Label reports the ~1px clip stub as its minimum, so the obvious width
+## assertion passes unconditionally on exactly the labels that need checking.
+func test_the_wave_readouts_finite_branch_fits_its_slot() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/StatsRow/WaveLabel") as Label
+	var err: String = _T.assert_true(label != null, "the wave readout is in the row")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var last: int = WaveDirector.WAVES.size()
+	err = _T.assert_gt(last, 0, "the fixed campaign has waves to reach the end of")
+	if err == "":
+		# The shape the test measures has to be the shape the table declares, or this
+		# is measuring a string of its own invention. Found by name rather than by
+		# index: the row order is a layout decision and this is not a layout test.
+		var declared: Array = []
+		for row: Dictionary in Hud.STAT_READOUTS:
+			if String(row["name"]) == "WaveLabel":
+				declared = row["shapes"]
+		err = _T.assert_true(declared.has("Wave  %d / %d"),
+			"the finite branch is declared in WaveLabel's shapes: %s" % [declared])
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var slot: float = label.custom_minimum_size.x
+	var finite: String = ("Wave  %d / %d   threat %d"
+		% [last, last, WaveDirector.threat_level(last)])
+	label.text = finite
+	var finite_px: float = _T.text_width(label)
+	label.text = String(Hud.WORST_CASE_TEXT["WaveLabel"])
+	var declared_px: float = _T.text_width(label)
+	err = _T.assert_gt(finite_px, 0.0, "the finite branch measures something")
+	if err == "":
+		err = _T.assert_true(finite_px <= slot,
+			("the last fixed wave renders \"%s\", which needs %.0fpx of a %.0fpx slot. "
+				+ "The declared worst case is a different branch, so nothing else in "
+				+ "the suite measures this one") % [finite, finite_px, slot])
+	if err == "":
+		err = _T.assert_true(declared_px >= finite_px,
+			("WaveLabel's declared worst case is the WIDER branch (%.0fpx against the "
+				+ "finite branch's %.0f). That is the argument its comment in "
+				+ "STAT_READOUTS makes; if it inverts, the budget is priced against "
+				+ "the narrower of the two") % [declared_px, finite_px])
+	_T.free_ui(game)
+	return err
+
+# -- END plant-tower-defense-i5ny / -rq94 --------------------------------------
