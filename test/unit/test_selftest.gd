@@ -15914,3 +15914,68 @@ const WAVE_CLEARED_MESSAGE_SECONDS: float = 6.0
 
 
 # -- END the cleared line does not eat the prep window --
+
+
+# -- BEGIN what the weather is actually worth on screen (plant-tower-defense-ki5h) --
+
+
+## A drought must not be quieter than rain, because only one of them asks for anything.
+##
+## plant-tower-defense-ki5h asked whether a drought is noticed MID-WAVE rather than
+## side by side, and said the asymmetry is the argument: a drought doubles every
+## plant's firing interval — a demand for more plants or better ones — while rain heals
+## beds by a fraction, a gift requiring no response. Equal visual weight for unequal
+## stakes.
+##
+## MEASURED on the running board, sampling one 40x40 patch of grass under all three
+## states and converting to Rec.709 luminance:
+##
+##     clear     0.5705
+##     drought   0.6008   +5.31%    dR +0.059  dG +0.024  dB +0.008
+##     rain      0.5950   +4.29%    dR -0.001  dG +0.023  dB +0.114
+##
+## Two findings, and the second is the one nobody expected. The weights ARE nearly
+## equal — a single percentage point apart — so the bead's claim holds. But
+## per-channel, RAIN IS THE LOUDER CUE: its blue excursion is nearly double the
+## drought's red one. The state that needs no response is the more visible of the two.
+##
+## Both are also hue shifts rather than value shifts, so in greyscale they collapse to
+## 5.3% against 4.3% — very nearly the same picture. What keeps them apart with colour
+## discarded is not the tint at all, it is the MARKS: flat dashes for drought, slanted
+## streaks for rain (`WeatherOverlay.DROUGHT_MARK_*` / `RAIN_MARK_*`). That is the
+## channel doing the work, and it is worth knowing that before anyone tunes an alpha.
+##
+## This test does not fix the asymmetry — the bead asked for a measurement before a
+## change, and which way to close it is a taste call about a board nobody has played
+## under drought. It pins the ORDERING that any fix has to respect.
+func test_a_drought_is_never_a_quieter_cue_than_rain() -> String:
+	var drought_ink: float = WeatherOverlay.DROUGHT_TINT.a
+	var rain_ink: float = WeatherOverlay.RAIN_TINT.a
+	var err: String = _T.assert_gt(drought_ink, rain_ink * 0.999,
+		("the drought tint is at least as opaque as rain's (%.3f against %.3f)."
+			+ " A drought doubles every plant's firing interval and rain is a gift;"
+			+ " the one that demands a response may not be the fainter mark")
+			% [drought_ink, rain_ink])
+	if err == "":
+		# The mark channel, which is what actually survives colour being thrown away.
+		# Drought's dash is SHORTER and THICKER than rain's streak — different shape,
+		# not a different colour — and that difference is the whole greyscale story.
+		err = _T.assert_gt(WeatherOverlay.RAIN_MARK_LENGTH,
+			WeatherOverlay.DROUGHT_MARK_LENGTH,
+			"rain streaks are longer than drought dashes, so the two read apart by shape")
+	if err == "":
+		err = _T.assert_gt(WeatherOverlay.DROUGHT_MARK_WIDTH,
+			WeatherOverlay.RAIN_MARK_WIDTH,
+			"and drought dashes are thicker, which is the second half of that shape difference")
+	if err == "":
+		# Both marks have to out-ink their own tint or the shape channel is decorative
+		# and the greyscale distinction rests on a 1-point luminance gap.
+		err = _T.assert_gt(WeatherOverlay.DROUGHT_MARK.a, WeatherOverlay.DROUGHT_TINT.a,
+			"the drought's marks are more opaque than its wash, so shape leads colour")
+	if err == "":
+		err = _T.assert_gt(WeatherOverlay.RAIN_MARK.a, WeatherOverlay.RAIN_TINT.a,
+			"and the same for rain")
+	return err
+
+
+# -- END what the weather is actually worth on screen --
