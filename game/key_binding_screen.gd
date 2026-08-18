@@ -169,6 +169,19 @@ const KEY_MIN_WIDTH: float = 140.0
 ##
 ## The key column's width includes it (see `key_column_width`), so arming the reset
 ## never widens the panel or clips a name.
+##
+## DELIBERATELY NOT `Glyphs.BULLET`, though `Glyphs.TABLE` documents this character and
+## a test asserts the two agree (plant-tower-defense-m14g). Building the literal from
+## the constant would make that assertion compare `Glyphs.BULLET` to `Glyphs.BULLET`,
+## and the table earns its keep precisely by being a CHECKED CACHE with two independent
+## sides — one of them here, one of them there. Wiring collapses it to one side and the
+## check stops being able to fail.
+##
+## So the pointer is prose and the agreement is a test: **before choosing a new mark,
+## read `Glyphs.ROLE_MARK`.** It records which characters are already spoken for and
+## why a mark, unlike a worded label such as `OverlayScreen.BACK_TEXT`, must not be a
+## glyph `KeyBindings.SHORT_NAMES` also prints — a bare mark beside a key's name reads
+## as one string, which is the bug that produced that table.
 const KEY_REVERT_MARK := "  •"
 ## What add_row_label draws at. Hoisted so the derivation and the Label cannot end up
 ## measuring different fonts -- the same reason PauseScreen.KEY_ROW_FONT_SIZE exists.

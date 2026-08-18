@@ -8082,7 +8082,7 @@ func _key_name_glyphs() -> PackedStringArray:
 func test_no_mark_is_also_a_key_name() -> String:
 	var marks: PackedStringArray = Glyphs.marks()
 	var key_names: PackedStringArray = _key_name_glyphs()
-	var err := _T.assert_gt(marks.size(), 0,
+	var err: String = _T.assert_gt(marks.size(), 0,
 		"the table records no marks at all, so this gate is checking nothing")
 	if err != "":
 		return err
@@ -8110,7 +8110,7 @@ func test_no_mark_is_also_a_key_name() -> String:
 func test_the_key_name_rows_are_exactly_what_key_bindings_prints() -> String:
 	var recorded: PackedStringArray = Glyphs.with_role(Glyphs.ROLE_KEY_NAME)
 	var derived: PackedStringArray = _key_name_glyphs()
-	var err := _T.assert_gt(derived.size(), 3,
+	var err: String = _T.assert_gt(derived.size(), 3,
 		"SHORT_NAMES yielded %d glyph key names, which cannot be right" % derived.size())
 	if err != "":
 		return err
@@ -8126,7 +8126,7 @@ func test_the_key_name_rows_are_exactly_what_key_bindings_prints() -> String:
 ## than a list so a glyph typed straight into a screen cannot escape it.
 func test_every_glyph_in_the_source_has_a_row() -> String:
 	var sources := _game_sources()
-	var err := _T.assert_gt(sources.size(), 40,
+	var err: String = _T.assert_gt(sources.size(), 40,
 		("swept %d source files under res://game, which is far fewer than this "
 			+ "project has — an empty sweep documents everything") % sources.size())
 	if err != "":
@@ -8155,7 +8155,7 @@ func test_every_glyph_in_the_source_has_a_row() -> String:
 func test_every_row_names_a_glyph_the_source_still_contains() -> String:
 	var sources := _game_sources()
 	var found: PackedStringArray = _glyphs_in(sources)
-	var err := _T.assert_gt(found.size(), 10,
+	var err: String = _T.assert_gt(found.size(), 10,
 		"the sweep found %d glyphs, so this direction is vacuous" % found.size())
 	if err != "":
 		return err
@@ -8184,7 +8184,7 @@ func test_the_witness_files_still_carry_their_glyphs() -> String:
 				missing.append("%s: no such file %s" % [glyph, witness])
 			elif not String(sources[witness]).contains(glyph):
 				missing.append("%s: gone from %s" % [glyph, witness])
-	var err := _T.assert_gt(checked, 12,
+	var err: String = _T.assert_gt(checked, 12,
 		("only %d witness pairs to check; every drawn glyph should name at least "
 			+ "one file") % checked)
 	if err != "":
@@ -8252,7 +8252,7 @@ func test_the_named_constants_still_carry_the_glyph_the_table_gives_them() -> St
 ## rather than discovered in a screenshot.
 func test_the_only_glyph_that_means_two_things_is_the_one_we_chose() -> String:
 	var dual: PackedStringArray = Glyphs.dual_role_glyphs()
-	var err := _T.assert_eq(", ".join(dual), Glyphs.LEFT_ARROW,
+	var err: String = _T.assert_eq(", ".join(dual), Glyphs.LEFT_ARROW,
 		("the set of glyphs carrying more than one role changed: %s. The left arrow "
 			+ "is allowed two (KEY_LEFT's name, and the decoration on a worded back "
 			+ "affordance) because a back button always carries its word. Anything "
@@ -8303,7 +8303,7 @@ func test_every_row_is_filled_in_and_uses_a_declared_role() -> String:
 	var distinct: Dictionary = {}
 	for glyph: String in Glyphs.all_glyphs():
 		distinct[glyph] = true
-	var err := _T.assert_eq(checked, distinct.size(),
+	var err: String = _T.assert_eq(checked, distinct.size(),
 		("the table has two rows for the same character: %d rows, %d distinct "
 			+ "glyphs. `row_for` returns the first, so the second row is a meaning "
 			+ "nothing reads") % [checked, distinct.size()])
@@ -8332,7 +8332,7 @@ func test_every_drawn_glyph_can_say_what_it_means() -> String:
 			silent.append(glyph)
 		if Glyphs.row_for(glyph).is_empty():
 			silent.append(glyph + " (no row at all)")
-	var err := _T.assert_gt(asked, 10,
+	var err: String = _T.assert_gt(asked, 10,
 		("asked %d drawn glyphs what they mean, which is fewer than this game "
 			+ "draws — the sweep is the thing that is broken") % asked)
 	if err != "":
