@@ -1335,6 +1335,36 @@ func _refresh_dead_ground() -> void:
 		PlacementPreview.DEAD_BAR_WIDTH)
 
 
+## The board's deferred-road bars, repushed. See PlacementPreview.deferred_road_cells
+## for what "deferred" means and why it is a static property of the garden's SHAPE
+## rather than a live read of what each gun is currently shooting at.
+##
+## The guns go in as two parallel lists rather than as the Game itself, because a
+## PlacementPreview naming Game back would be a cyclic class_name reference -- the
+## same seam _refresh_dead_ground() takes `bank.unlocked` across. The filter is
+## covered_road_cells()' filter exactly: standing, not destroyed, engagement_reach
+## above zero.
+func _refresh_deferred_road() -> void:
+	if board == null or not is_instance_valid(board):
+		return
+	var gun_cells: Array[Vector2i] = []
+	var gun_reaches := PackedFloat32Array()
+	for key: Vector2i in _plants:
+		var plant := _plants[key] as Plant
+		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
+			continue
+		var reach: float = engagement_reach(plant.kind)
+		if reach <= 0.0:
+			continue
+		gun_cells.append(plant.cell)
+		gun_reaches.append(reach)
+	board.mark_deferred_road(
+		PlacementPreview.deferred_road_cells(board, gun_cells, gun_reaches),
+		PlacementPreview.DEFERRED_BAR_ARM,
+		PlacementPreview.deferred_road_color(),
+		PlacementPreview.DEFERRED_BAR_WIDTH)
+
+
 ## Applied straight away rather than left for the next _refresh(), for the reason
 ## Hud._on_packet_hover spells out: a mouse crossing a button changes no state, so
 ## waiting for a refresh would light the board only when something else happens to
@@ -2316,6 +2346,10 @@ func _refresh() -> void:
 		# is opened -- not only when the cursor moves. Same funnel and the same
 		# early-return discipline as mark_unaimed_road above.
 		_refresh_dead_ground()
+		# The deferred bars read the standing guns and their reaches, so they move
+		# when the garden does -- a cob bought, uprooted or eaten -- and not only
+		# when the cursor moves. Same funnel, same discipline.
+		_refresh_deferred_road()
 		# The preview's new-cover dots read the same set, and pushing it only from
 		# _update_preview would leave them stale whenever the garden changes while
 		# the cursor is STILL — a plant eaten mid-wave, an uproot committing, a
