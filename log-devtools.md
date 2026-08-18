@@ -6554,3 +6554,33 @@ Noted on the bead.
 - Note, not a gap: **`set_resolution` earned its place and I had not used it before.** Lane 0jye's report said plainly that headless cannot answer whether the root window's content-scale override produces the canvas `expand` documents, and handed it over as a named check. Three `cmd set_resolution` calls and three `node-bounds` reads settled it: 1720x720 gives a 1548-wide canvas with the side panel at x 1292 (1292 + 256 = 1548, pinned), and 1024x768 gives 1152x792 — the width floor the whole stats-row budget rests on, confirmed rather than reasoned about.
 
 - Addendum (cycle 105, the audio lane landing later): **`quit`'s `user://` warning fired correctly and named the file**, which is worth recording because last cycle's `[G-122]` is about the flag it then recommends. The run's dial press persisted to the developer's real `highscore.save`; `quit` printed `this run wrote the developer's REAL user data ... changed: highscore.save` and suggested `launch --snapshot-userstate` — the flag that does not restore. So the DETECTION half is good and only the REPAIR half is broken, which narrows `-zzx3` usefully: whatever fixes it can rely on quit already knowing which files moved.
+
+## 2026-08-17 — Cycle 106 gap reconciliation (no run; a status pass over two open ids)
+
+Not a harness run, so no `Value:` block — this is step 4's reconcile bullet, appending
+status rather than rewriting the entries that recorded these as open.
+
+- Gap: **`reach` cannot distinguish a static utility from a file the run did not load.**
+  - [G-077] status: fixed | seen: 1 | harness: 0.38.0
+  - Fixed in cycle 104 by `plant-tower-defense-v3ji`. `verify_ledger.py` splits three ways
+    now, and it proved itself on its own cycle's row: `1 UNREACHABLE BY CONSTRUCTION (no
+    node can carry these, so no snapshot could ever report them - not a gap in this run):
+    game/game_speed.gd (extends RefCounted)`, printed separately from `NOT reached
+    (loadable, and this run did not load them)`. Cycle 102's row went from four
+    genuinely-unreached files to one with no `mark_script_reached` added. **Caveat that
+    keeps this worth reading:** `verify_ledger.py` IS harness-managed — it is in
+    `.harness_manifest.json` and its sha matched before the edit — so
+    `/scaffold-godot-harness` will revert it. The fix was written stdlib-only and
+    self-contained specifically so the diff is portable upstream.
+
+- Gap: **a tree-walking checker sees N+1 copies of the repo during a worktree fan-out.**
+  - [G-078] status: fixed | seen: 1 | harness: 0.38.0
+  - Fixed in cycle 104 by `plant-tower-defense-tfnv`. `tools/repo_walk.py` is the single
+    exclusion rule and the rooted checkers import it rather than each carrying a copy. It
+    was PLANTED rather than asserted: two fake lanes plus a third checkout detectable only
+    by `.git`, 98 planted `.gd` files, and `check_all` output byte-identical with and
+    without them (`diff` returned 0 lines). Before the fix `world_control_check` went 19 →
+    38 scripts. The sweep also enumerated every tree-walking tool rather than fixing only
+    the one that complained, and found the reverse defect in cycle 102's own fix — an
+    ABSOLUTE-path exclusion discards the whole repo when the checker runs from inside a
+    lane, which is why the rule is now computed relative to each tool's own root.
