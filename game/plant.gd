@@ -251,6 +251,15 @@ const BREATHE_RATE: float = 2.0
 ## of look, it is what stops the sixth plant from picking its own and being right by
 ## luck. Segments were not unanimous (48, 48, 40, 44, 48) and are now 48 everywhere,
 ## which is the one number in this block a player cannot see.
+##
+## The reach ring's RADIUS is the one number not named here, because it is per-plant —
+## and the reason it can be per-plant without anyone checking is that every reach in the
+## catalogue is at least 64 px, twice the 32 px half-cell. `ReadoutBand`
+## (game/readout_band.gd) is where that stops being a coincidence: the ring is a row in
+## its registry like every other mark drawn at a fixed radius on a plant, and
+## `test_placement.gd` asserts the shortest reach in the catalogue still clears the band.
+## A plant added with a one-cell reach would put a green ring in among the clocks, and
+## nothing before that file would have said so.
 const REACH_RING_ALPHA: float = 0.55
 const REACH_RING_WIDTH: float = 2.0
 const REACH_RING_SEGMENTS: int = 48

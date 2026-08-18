@@ -86,6 +86,13 @@ const LEVELS: Array[Dictionary] = [
 ##     `test_combat` asserts that corner is strictly outside this ring so the two
 ##     radial-looking readouts never share a pixel;
 ##   * **below 32**, half a `Board.CELL`, so it stays inside its own cell.
+##
+## Those three bounds are two neighbours and a cell edge, written as a pair each. The
+## whole set of neighbours now lives in `ReadoutBand` (game/readout_band.gd), which
+## derives this ring's interval from the two constants below rather than restating them
+## and holds it against every other mark drawn at a fixed radius on a plant. **Read that
+## file before moving this number or adding a mark of your own** — the band is full, and
+## the widest unclaimed slice left in it is 3.0 px.
 const CHEW_RING_RADIUS: float = 22.0
 const CHEW_RING_WIDTH: float = 3.0
 ## Named rather than inline now that two places would otherwise spell it.
@@ -139,6 +146,15 @@ const RING_COLOR := Color(0.86, 0.44, 0.62, Plant.REACH_RING_ALPHA)
 ##     below, so level N's angles are a strict superset of level N-1's. Straight from
 ##     `CornCobbler.KERNEL_STEP_DEGREES`: a readout whose marks MOVE when you pay for
 ##     it reads as a different thing, not as more of the same thing.
+##
+## A fourth constraint this header did not know about, found by `ReadoutBand`
+## (game/readout_band.gd) the moment the hand-written pairs became a sweep: the crown's
+## outer rim at 30.7 overlaps `SoleCoverMarks.ALONE_RADIUS`'s inner edge at 30.0 by
+## 0.7 px, so a SELECTED, upgraded Chomp holding no road cell alone draws two of its
+## four teeth under a dash. Recorded as a live defect in `test_placement.gd`'s
+## `READOUT_BAND_KNOWN_COLLISIONS` rather than fixed here: neither mark has anywhere to
+## go — see that entry — so which of the two gives up the outer band is a decision about
+## the cue grammar, not a nudge to a number.
 const FANG_RADIUS: float = 28.0
 const FANG_STEP_DEGREES: float = 26.0
 const FANG_SIZE: float = 1.8
