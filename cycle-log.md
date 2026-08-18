@@ -1,4 +1,4 @@
-# Cycle 121
+# Cycle 122
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,37 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 122 taught
+
+**The emulated mouse event arrives BEFORE the touch that produced it.** Measured, not
+reasoned about: `PROBE mouse press device=-1 touch_index=-1` then `PROBE screen touch
+pressed index=0 device=0`. So every design that guards the mouse path with a flag set by the
+touch handler is wrong — **and looks right**. The first implementation of the touch layer
+planted at the press cell, which is precisely the behaviour commit-on-release exists to
+remove. The discriminator is the device id (-1 emulated, 0 real), narrowed by
+`is_touchscreen_available()` because -1 means *synthesised*, not *from touch*.
+
+**When two input paths can describe one gesture, the arrival order is a measurement.** It
+cost a `print()`, one bridge verb, and reading `.devtools/launch_stdout.log` — two minutes.
+This project has three other places where two paths describe one action and none has been
+measured.
+
+**Emulation cannot be turned off, and that is now load-bearing.** Every Button here is a
+Control answering MOUSE events, so switching emulation off to get clean touch handling would
+kill the shop, the pause card and every Back button on exactly the devices touch is for —
+and would pass every headless test, because tests press buttons through `pressed.emit()`
+rather than through the pointer.
+
+**The bridge and the suite covered genuinely different halves, for once.** Three cycles of
+declining launches made that easy to forget. The headless test cannot reach the
+emulated-mouse guard at all — `is_touchscreen_available()` is a property of the machine —
+so `set-feature --touchscreen` plus `touch press/drag/release` was the only way in.
+
+**Three of four acceptance clauses, and the fourth split out.** "Reproduced on an actual
+touch device" is a criterion no commit can produce, so it is `-bfbb` with the three ways a
+real device differs from the bridge written down. Leaving it inside would have made a
+finished item look unstarted in `bd ready` — which `-6cqi` did for twelve cycles.
 
 ## What cycle 121 taught
 

@@ -1497,7 +1497,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   `hud_readouts` said "Font.get_string_size() over each live readout", which parses as
   measuring the CURRENT text — a budget that passes because the counter happens to read
   "Seeds 25" today. It actually sweeps `Hud.WORST_CASE_TEXT` against each readout's live
-  slot, and I misread it before opening `game/game.gd:2239`. Corrected. The general shape
+  slot, and I misread it before opening `game/game.gd:2329`. Corrected. The general shape
   is worth watching: an evidence string naming the SURFACE is ambiguous about whether the
   worst case or the current value was measured, and those differ by everything.
 
@@ -1932,7 +1932,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   heal shrinks with it. This is the direct consequence of shipping 4c1l and it is worth
   deciding on purpose rather than letting drought stay the good one by accident.
 - **The other five budgets have never been checked against the corpus they claim.**
-  `_budget_hud_message_row` (`game/game.gd:2073`) measured four plant-name messages and
+  `_budget_hud_message_row` (`game/game.gd:2163`) measured four plant-name messages and
   not the prep note that shares the row, and was wrong by 36px for seven cycles while
   reporting green. `Game.budget_entries()` (`game/game.gd:1881`) builds six others the same
   way. Each one names its corpus in an `evidence` string; nothing checks that the string
@@ -1941,7 +1941,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   silent by construction: a budget over a subset always reports more headroom than exists.
 - **The prep note is measured at a wave number the game cannot reach.**
   `_budget_hud_message_row` now measures `Hud.next_wave_note(999, 9999, ...)`
-  (`game/game.gd:2087`), deliberately — a budget is about what the format allows. But
+  (`game/game.gd:2040`), deliberately — a budget is about what the format allows. But
   `Hud.next_wave_note()` (`game/hud.gd`) formats the wave number with no width cap, so the
   budget's worst case is set by a digit count nothing constrains. Either cap the formatted
   number, or say in the note's own header that its width is bounded by the budget and not
@@ -4093,7 +4093,7 @@ Three findings kept out here rather than buried in a log:
   Cycle 113 stopped the preview PROMISING those cells (`_preview.placeable` now requires the
   moved plant could stand there too), but the ring, the reach and the coverage dots still
   paint from a road cell when a cob is armed — `_update_preview` sets `_preview.reach` and
-  `_preview.plant_id` from `previewing` unconditionally (`game/game.gd:2150-2155`). So the
+  `_preview.plant_id` from `previewing` unconditionally (`game/game.gd:2240-2245`). So the
   cue now says "not here" and "here is what your cob would reach from here" in the same
   frame, which is honest and slightly odd.
   Deliberately left, because the alternative decides an open question by accident: whether a
@@ -4342,3 +4342,28 @@ Three findings kept out here rather than buried in a log:
   plus a scaled-down rim — and the honest next step is to sample the rendered frame at the
   drawn scale rather than the source PNG, which `sample-pixels` can do on a live game and
   the audit cannot.
+
+### New in cycle 122 — grown from a touch layer whose obvious design was wrong
+
+- **The emulated mouse event arrives BEFORE the touch that produced it, and that fact is
+  worth more than the feature it blocked.** Measured on the running game rather than
+  reasoned about: `PROBE mouse press device=-1 touch_index=-1` then `PROBE screen touch
+  pressed index=0 device=0`. Every design that guards the mouse path with a flag set by the
+  touch handler is therefore wrong, and looks right — the first implementation of the touch
+  layer planted at the press cell, which is precisely the behaviour commit-on-release
+  exists to remove.
+  The general form, and it is why this is an entry rather than just a comment: **when two
+  input paths can describe one gesture, the order they arrive in is a measurement, not an
+  assumption**, and it is cheap to take — a `print()`, one bridge verb, read
+  `.devtools/launch_stdout.log`. Two minutes. The project has three other places where two
+  paths can describe one action (a key vs an `InputEventAction` from the bridge, a `press`
+  verb vs a real click, an emulated drag vs a real one) and none has ever been measured.
+
+- **Every Button in this game is a Control that answers MOUSE events, which is what pins
+  emulation on.** `emulate_mouse_from_touch` cannot be turned off — the shop bar, the pause
+  card, the Back button on every overlay and the notebook pager all rely on it, on exactly
+  the devices touch support is for. That constraint is now load-bearing and is written where
+  the guard is, but it is worth knowing more widely: **any future "handle input properly"
+  work inherits it**, and a change that switches emulation off to clean something up will
+  break every screen at once and pass every headless test, because a headless test presses
+  buttons through `pressed.emit()` rather than through the pointer.
