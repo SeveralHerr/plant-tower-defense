@@ -15849,3 +15849,61 @@ func test_the_widest_ribbon_this_game_can_draw_still_clears_the_rise() -> String
 
 
 # -- END one-shots: plant-tower-defense-ei83, plant-tower-defense-q8db ----------
+
+
+# -- BEGIN the cleared line does not eat the prep window (plant-tower-defense-ifew) --
+
+
+## The wave-cleared line CARRIES the forecast instead of displacing it.
+##
+## plant-tower-defense-ifew asked whether the cleared line's window overlaps the
+## seconds a player needs for the prep note, since `_paint_message_row` gives a
+## transient precedence over the standing note and the cleared line fires exactly
+## when the forecast becomes relevant. It told us to measure before deciding, and
+## not to "fix" the precedence by inverting it.
+##
+## MEASURED, and the overlap is total — 6.0s of a PREP_SECONDS 18.0 window, so a
+## third of it. But the premise behind the worry is false, and that is the finding:
+## `Game._on_wave_cleared` builds the line as `wave_cleared_line(wave, prep_note())`,
+## and `wave_cleared_line` CONCATENATES. Read off the running game:
+##
+##     wave 1  -> "Wave 1 cleared. Next one grows in 18 seconds."
+##     wave 22 -> "Wave 22 cleared. Next one grows in 18 seconds."
+##
+## So for those six seconds the row says both things in one sentence, and the
+## player is not choosing between them. Nothing to fix, and the precedence rule
+## stays exactly as cycle 48 set it.
+##
+## The one way it could go wrong is `prep_note()` returning "" — the line then
+## degrades to "Wave 3 cleared." with no forecast at all. It cannot today: every
+## branch returns a sentence and the last is an unconditional fallback. This test
+## pins that, because it is the only thing holding the verdict up.
+func test_the_cleared_line_carries_the_forecast_rather_than_hiding_it() -> String:
+	var note: String = "Next one grows in 18 seconds."
+	var err: String = _T.assert_true(Hud.wave_cleared_line(3, note).contains(note),
+		"the cleared line carries the whole prep note, not a truncation of it")
+	if err == "":
+		err = _T.assert_true(Hud.wave_cleared_line(3, note).begins_with("Wave 3 cleared."),
+			"and still says what just happened, first")
+	if err == "":
+		# The degradation this verdict rests on NOT happening.
+		err = _T.assert_eq(Hud.wave_cleared_line(3, ""), "Wave 3 cleared.",
+			("an empty note is the one case where the forecast vanishes -- which is why"
+				+ " Game.prep_note()'s unconditional fallback is load-bearing, not tidy"))
+	if err == "":
+		# The window is a third of the prep gap. Recorded so a change to either
+		# number has to come past this sentence.
+		err = _T.assert_gt(Game.PREP_SECONDS, WAVE_CLEARED_MESSAGE_SECONDS,
+			("the cleared line is shorter than the prep gap it sits inside (%.1fs of"
+				+ " %.1fs). If it ever outlasts the gap the forecast never gets a"
+				+ " turn of its own at all") % [WAVE_CLEARED_MESSAGE_SECONDS, Game.PREP_SECONDS])
+	return err
+
+
+## The duration Game._on_wave_cleared passes to show_message for the cleared line.
+## Recorded here rather than read, because it is a literal at that call site; if it
+## becomes a constant, point this at it.
+const WAVE_CLEARED_MESSAGE_SECONDS: float = 6.0
+
+
+# -- END the cleared line does not eat the prep window --
