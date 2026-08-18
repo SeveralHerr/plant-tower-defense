@@ -9268,3 +9268,147 @@ func test_a_husks_value_is_carried_by_the_husk_and_not_by_its_sweep() -> String:
 
 # END plant-tower-defense-r8zc / plant-tower-defense-l69v
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-kmjp: what rain pays, now that drought pays 150%
+#
+# The bead's premise was FALSE and that is the finding: it said rain "heals pests"
+# and was therefore the only weather with a downside and no compensation. Rain heals
+# PLANTS -- `Game._apply_weather` calls `plant.heal(...)` on every plant Game owns --
+# and nothing in the game applies a weather term to a pest at all. So rain has no
+# downside to compensate, no number moved, and the decision is written at
+# `WaveDirector.WEATHER_RAIN_HEAL_FRACTION` with the three refused alternatives.
+#
+# What the bead's ACCEPTANCE clause still wanted is real and is not a number: every
+# weather's upside must be named before the wave commits. These tests pin the half
+# that is true today and the invariant a fourth weather would have to satisfy.
+
+
+## Every weather in the game gives the player something, and exactly one gives nothing
+## because it also asks for nothing.
+##
+## The set is DERIVED from `WaveDirector.weather_for` rather than typed, so a fourth
+## state added to that function arrives in this test on its own and has to answer the
+## same question. "Gives something" is derived too, from the three pure per-weather
+## functions -- and `heal_fraction_for` exists so that this sentence can be written
+## without a branch that already knows the answer involves rain.
+func test_no_weather_asks_for_something_and_gives_nothing_back() -> String:
+	var seen: Array[StringName] = []
+	for wave: int in range(1, 101):
+		var state: StringName = WaveDirector.weather_for(wave)
+		if not seen.has(state):
+			seen.append(state)
+	var err: String = _T.assert_eq(seen.size(), 3,
+		("the first hundred waves produce three distinct weathers, got %d (%s). That is "
+			+ "the denominator every assertion below divides by -- a sweep that found one "
+			+ "state would pass the loops underneath while checking nothing")
+			% [seen.size(), seen])
+	if err == "":
+		# The weathers that give nothing, collected rather than assumed. Exactly one may
+		# be here, and it has to be the one that asks for nothing either.
+		var giftless: Array[StringName] = []
+		var costly_and_giftless: Array[StringName] = []
+		for state: StringName in seen:
+			var gives: bool = (WaveDirector.seed_multiplier_for(state) > 1.0
+				or WaveDirector.heal_fraction_for(state) > 0.0)
+			var costs: bool = WaveDirector.fire_interval_scale_for(state) > 1.0
+			if not gives:
+				giftless.append(state)
+			if costs and not gives:
+				costly_and_giftless.append(state)
+		err = _T.assert_eq(costly_and_giftless.size(), 0,
+			("no weather slows the garden without paying for it: %s. This is the whole of "
+				+ "plant-tower-defense-kmjp's acceptance criterion as arithmetic")
+				% [costly_and_giftless])
+		if err == "":
+			err = _T.assert_eq(giftless.size(), 1,
+				("and exactly one weather has nothing to offer, got %s -- two would mean a "
+					+ "state the player is asked to notice and given no reason to want")
+					% [giftless])
+		if err == "":
+			err = _T.assert_eq(String(giftless[0]), String(WaveDirector.WEATHER_CLEAR),
+				("and it is clear: the baseline rather than a state, which is also why it "
+					+ "is the one weather `Hud.show_weather` refuses to announce"))
+	if err == "":
+		err = _T.assert_float_eq(
+			WaveDirector.fire_interval_scale_for(WaveDirector.WEATHER_CLEAR), 1.0, 0.0001,
+			"and clear really does ask for nothing, which is what earns it the exemption")
+	return err
+
+
+## Rain gives and never takes, which is the sentence the bead denied.
+##
+## Asserted on all three per-weather functions at once rather than on the heal alone:
+## the claim being refuted is "rain has a downside", and a downside would have to appear
+## in the interval scale or the seed multiplier, so both are named here as zeroes.
+func test_rain_gives_and_never_takes_which_is_why_no_number_moved() -> String:
+	var err: String = _T.assert_gt(
+		WaveDirector.heal_fraction_for(WaveDirector.WEATHER_RAIN), 0.0,
+		"rain gives health back (%.2f of maximum)"
+			% WaveDirector.heal_fraction_for(WaveDirector.WEATHER_RAIN))
+	if err == "":
+		err = _T.assert_float_eq(
+			WaveDirector.fire_interval_scale_for(WaveDirector.WEATHER_RAIN), 1.0, 0.0001,
+			("and takes nothing off the rate of fire -- a rain that slowed the garden is "
+				+ "the downside the bead reported and it does not exist"))
+	if err == "":
+		err = _T.assert_float_eq(
+			WaveDirector.seed_multiplier_for(WaveDirector.WEATHER_RAIN), 1.0, 0.0001,
+			("and nothing off the seed rate either. Paying rain LESS than clear was the "
+				+ "first alternative refused: it would make clear the punished state, and "
+				+ "clear is eleven waves in twelve"))
+	if err == "":
+		# The other side of the pair, so the refusal has both halves on the record: a
+		# drought is the weather that costs, and it is the one that pays.
+		err = _T.assert_gt(
+			WaveDirector.fire_interval_scale_for(WaveDirector.WEATHER_DROUGHT), 1.0,
+			"a drought is the weather that costs")
+		if err == "":
+			err = _T.assert_gt(
+				WaveDirector.seed_multiplier_for(WaveDirector.WEATHER_DROUGHT), 1.0,
+				"and the one that pays for it, which is the shape rain never needed")
+		if err == "":
+			err = _T.assert_float_eq(
+				WaveDirector.heal_fraction_for(WaveDirector.WEATHER_DROUGHT), 0.0, 0.0001,
+				"while a drought heals nothing, so the two gifts do not overlap")
+	return err
+
+
+## A weather's compensation has to be legible while the player can still act on it.
+##
+## The prep note is that surface: it is the message row's idle state through the whole
+## prep gap, BEFORE the wave commits, which is when seeds are spent. The banner
+## (`Hud.weather_note`) fires from `Game._on_wave_started` -- after.
+##
+## Drought's half is asserted here and it passes. RAIN'S HALF IS THE OPEN ONE: today
+## `next_wave_note` appends a bare "rain" and says nothing about the 35% it hands back,
+## so the only weather whose upside costs nothing is also the only one the player is
+## never told about in time to use. That fix is one clause in `Hud.next_wave_note`, a
+## file this lane does not own; the assertion for it ships beside the edit rather than
+## red in here.
+func test_a_compensation_is_named_where_the_player_can_still_act_on_it() -> String:
+	var note: String = Hud.next_wave_note(21, 30, false, WaveDirector.WEATHER_DROUGHT)
+	var percent: String = "%d%%" % int(round(WaveDirector.WEATHER_DROUGHT_SEED_BONUS * 100.0))
+	var err: String = _T.assert_true(note.contains("drought"),
+		"the prep note names the weather that is coming: %s" % note)
+	if err == "":
+		err = _T.assert_true(note.contains(percent),
+			("and the number it pays (%s), derived from WEATHER_DROUGHT_SEED_BONUS rather "
+				+ "than typed -- retuning the bonus without retuning the sentence is the "
+				+ "drift this pins. Got: %s") % [percent, note])
+	if err == "":
+		# The rain half, as far as it goes today: the upside IS written, on the banner.
+		# What it is not is written in TIME. Both halves of that sentence are checked so
+		# the gap cannot be closed by deleting the banner line instead of adding a
+		# prep-note clause.
+		err = _T.assert_gt(Hud.weather_note(WaveDirector.WEATHER_RAIN).length(), 0,
+			"rain's gift is written somewhere -- the banner says it as the wave opens")
+		if err == "":
+			err = _T.assert_eq(Hud.weather_note(WaveDirector.WEATHER_CLEAR), "",
+				("while clear says nothing on either surface, which is the exemption "
+					+ "test_no_weather_asks_for_something_and_gives_nothing_back earns it"))
+	return err
+
+# END plant-tower-defense-kmjp
+# =============================================================================

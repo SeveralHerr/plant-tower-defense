@@ -827,6 +827,9 @@ static func fire_interval_scale_for(weather: StringName) -> float:
 ##
 ## 1.5 rather than 2.0: a drought should be worth surviving, not worth WANTING. At 2.0
 ## the arithmetic starts to favour praying for bad weather, which inverts the mechanic.
+##
+## Re-opened once the 1.5 shipped and left standing: see `WEATHER_RAIN_HEAL_FRACTION`
+## below for the three alternatives plant-tower-defense-kmjp refused and why.
 const WEATHER_DROUGHT_SEED_BONUS: float = 1.5
 
 static func seed_multiplier_for(weather: StringName) -> float:
@@ -836,7 +839,57 @@ static func seed_multiplier_for(weather: StringName) -> float:
 ## How much of a plant's maximum health a rain wave gives back, applied once as
 ## the wave opens rather than trickled -- a heal the player can SEE happen is
 ## worth more than a slightly larger one they cannot.
+##
+## ## WHAT RAIN PAYS, asked again now drought pays 150% (plant-tower-defense-kmjp)
+##
+## The bead this answers said rain "heals pests" and was therefore the only weather with
+## a downside and no compensation. **IT HEALS PLANTS.** `Game._apply_weather` walks the
+## plants Game owns and calls `plant.heal(Plant.MAX_HEALTH * WEATHER_RAIN_HEAL_FRACTION)`
+## on each of them; nothing anywhere applies a weather term to a pest's health, its damage
+## or its speed. So rain has no downside at all -- it is the only weather in this game that
+## gives without taking, and the forecast a player reads is one weather that pays for a
+## cost (drought), one that gives for free (rain), and a baseline (clear).
+##
+## SO NOTHING HERE MOVES. All three shapes the bead offered are refused:
+##
+##   * **Rain pays a smaller seed bonus.** It already has a compensation, and a second one
+##     makes CLEAR the punished state -- clear is eleven waves in twelve.
+##   * **Drought's bonus and rain's heal shrink together.** That moves two numbers so the
+##     ratio between them does not move: the balance change nobody can perceive, which is
+##     the one kind this project was told not to ship.
+##   * **A non-seed upside for rain** (a free replant, faster regrowth). New mechanism, and
+##     the bead's own note puts any weather rebalance downstream of the blocked
+##     counter-play question rather than in front of it.
+##
+## WHAT WAS ACTUALLY MISSING is the bead's acceptance clause and not its premise: an upside
+## has to be NAMED BEFORE THE WAVE COMMITS. Rain's heal is announced by `Hud.weather_note`,
+## which `Game._on_wave_started` fires through `Hud.show_weather` AFTER the wave has begun
+## -- after the player has already spent. The surface they read while deciding is
+## `Hud.next_wave_note`, and that function appends a bare "rain" while drought gets
+## "drought · pests pay 150%". The asymmetry is the whole defect and the fix is one clause
+## in that function, not a number in this file.
+##
+## Worth saying out loud, because the fraction below is what makes it matter: this heal is
+## CONDITIONAL AND FREQUENTLY ZERO. A full-health garden gets nothing from rain. A player
+## who can read the number three waves out can leave a chewed Corn standing instead of
+## uprooting it at a refund and paying full price again -- which is a decision, and it is
+## only available to someone told the number in advance.
 const WEATHER_RAIN_HEAL_FRACTION: float = 0.35
+
+
+## The fraction of its maximum health a plant gets back when this weather arrives.
+##
+## The third member of a family that had two (`fire_interval_scale_for`,
+## `seed_multiplier_for`), and its absence is half of why rain read as the weather with
+## nothing to say: the other two effects were functions of the weather and this one was a
+## ternary inlined at its single call site, so no caller and no test could ask "what does
+## THIS weather give" without knowing in advance that the answer involved rain.
+##
+## Pure and static, like its two siblings, so "every weather gives the player something"
+## is assertable across the whole set without a board, a wave or a hand-written table of
+## which weather is which.
+static func heal_fraction_for(weather: StringName) -> float:
+	return WEATHER_RAIN_HEAL_FRACTION if weather == WEATHER_RAIN else 0.0
 
 
 func has_more_waves() -> bool:
