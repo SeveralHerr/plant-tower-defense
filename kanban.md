@@ -3946,3 +3946,51 @@ Three findings kept out here rather than buried in a log:
   independent numbering runs with different subtitles — so `uniq -d` on the headings finds
   nothing and a naive `index()` on one deletes from the wrong place. Cut this file by line
   number, never by heading.
+
+### New in cycle 110 — grown from the Barrier Bramble (`plant-tower-defense-3mhn`)
+
+- **The word "held" now means two different things, and the file that owns it argued
+  itself into the collision.** `game/run_summary.gd:468` is the row's heading and `:838-851` (`_stop_cell_text`) the text under it, printing
+  "Where you held them", and `:830-837` spends a paragraph choosing that word over
+  "stopped" on exactly this reasoning: *"'Held' is true of a kill and false of an escape,
+  so it cannot be read off the tint at all."* The number behind it is `stop_cell_stops` —
+  `Board`'s per-cell losses with escapes subtracted (`game/board.gd:150-162`), i.e. KILLS.
+  As of this cycle the game has a plant whose entire mechanic is holding and which kills
+  nothing: a pest stopped by a Barrier Bramble stands there, chews through, and walks on,
+  contributing zero to that row. So a run won on a wall of Brambles and cobs reports the
+  cobs' cell, and a run where Brambles bought every one of those seconds says nothing
+  about them at all.
+  Both readings are defensible and the entry is NOT "rename the row". The card has one
+  spatial row and now two spatial stories — where they died, and where they were made to
+  wait — and the interesting question is whether the second is worth its own row, its own
+  tint on the map underneath, or nothing at all. Decide before adding a second wall-shaped
+  plant, because the ambiguity is cheap now and expensive once two plants share it.
+
+- **The selection panel's health readout is true and misleading on exactly one plant.**
+  `game/hud.gd:2365` computes `fraction = plant.health / Plant.MAX_HEALTH` and `:2373`
+  prints `"Health %d/%d"` against the same constant. Both are correct for all nine plants —
+  `Bramble` does not change `MAX_HEALTH`; it scales the incoming bite in `take_damage`
+  (`game/bramble.gd:120`, `BITE_RESISTANCE` 0.25). So a Bramble at "Health 40/40"
+  survives four times longer under a mouth than a Corn Cobbler reading the same 40/40, and
+  nothing on screen says so.
+  Note which claim is being made: not that the number is wrong, but that the panel has no
+  vocabulary for *toughness* as distinct from *health*, and this is the first plant that
+  needs one. `Bramble.hold_seconds(n)` already computes the honest answer in seconds and is
+  currently read only by a test (lint: `hold_seconds() is referenced only from tests`).
+  The cheap version is a second line on the panel for a plant that resists; the expensive
+  version is a second bar. Taste: a line, and only on plants where the two numbers differ.
+
+- **Nothing in the game changes a plant's picture as it is damaged, and a wall is where
+  that first stops being acceptable.** Searched for the property rather than the API: every
+  assignment to `_sprite.texture` in `game/` is in `chomp_flower.gd:717-757` (idle → gape →
+  eating → late-bite, driven by `chew_progress()`) and `dandelion.gd:374` (fluff frames,
+  driven by ammo). Both are STATE machines; neither reads `health`. Grepping `health`
+  across `game/*.gd` for any texture, sprite or frame term returns nothing on any plant.
+  So damage is shown only by the in-world bar (`Plant.HEALTH_BAR_ORIGIN`) and the flinch.
+  On eight plants that is fine — they are damaged incidentally. A Barrier Bramble is
+  damaged *as its function*, the player is watching it specifically to judge whether it
+  will last, and the whole readout is a 32×5 px bar. Two or three chewed-through frames
+  would put the answer in the silhouette, where the player is already looking. `art_src/`
+  already has four-frame precedent (`dandelion`, `dandelion_thinning`, `dandelion_sparse`,
+  `dandelion_bare`) and `test_sprite_style.gd`'s `EXPECTED_SIZE` documents that set as one
+  drawing at four densities, which is the same shape a chewed bramble wants.

@@ -72,6 +72,22 @@ running a command. **Never write a work checklist into it.**
      that a reader of either file is still told where the loop lives, which is the same
      silent-deletion failure at a smaller size. The loop text has one copy: this file.
 
+   - **The cycle counter, DERIVED and not read.** `cycle-log.md`'s top line against
+     `git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n | tail -1`.
+     **The MAX, not a count** — the first draft of this bullet said `grep -c` and got 72,
+     because the early cycles' commits are worded differently and a count is not an index.
+     Caught within a minute by running it, which is the argument for a derived check being
+     a command you actually run rather than a number you write down.
+     The two disagreed at cycle 110 by three:
+     the file said `# Cycle 106` while `.claude/bead-audit-cycle109.md` existed and
+     `kanban.md:14` cited cycle 108. Cause: the work started calling itself "round 11".."round
+     15" in `log-devtools.md` and step 6's "bump the cycle number" was never run again.
+     This is the same silent-drift shape as the mirror — a file that quietly stops being
+     updated rather than a list that fills up unread — and it belongs beside the mirror for
+     that reason. Derive it; do not read the number and believe it. **If they disagree, the
+     first thing this cycle writes is the missing sections**, because the counter is what
+     every other retrospective in the loop is indexed by.
+
    The harness is deliberately NOT checked here — it is checked in step 4, after it has
    actually been used. Pre-flight REPORTS AND FILES, it does not block.
 

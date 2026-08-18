@@ -1,10 +1,85 @@
-# Cycle 106
+# Cycle 110
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
 what `bd` structurally cannot: which cycle we are on, what the last one taught, what is
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
+
+## Cycles 107, 108 and 109 are MISSING from this file, and that is the first thing to fix
+
+This file said `# Cycle 106` when cycle 110 opened it. A commit titled "Close cycle 107"
+exists and did not touch this file; `.claude/bead-audit-cycle109.md` exists; `kanban.md:14`
+says "audited and pruned at cycle 108". In between, the work started calling itself
+"round 11" through "round 15" in `log-devtools.md` and step 6's "bump the cycle number"
+stopped being run.
+
+Nothing caught it because every other pre-flight item is a list that fills up unread and
+this one is a file that quietly stops being written — the same shape as the `AGENTS.md`
+mirror, which has been silently emptied twice. So the cycle skill's step 0 now derives the
+number instead of reading it:
+
+```
+git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n | tail -1
+```
+
+The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
+work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 110 taught
+
+**The ninth plant, and the first thing a pest has to deal with rather than walk past.**
+The Barrier Bramble stands in the road. Every plant before it acts on a pest that is
+walking by, and the pest walks by regardless — `Pest`'s physics step stopped for exactly
+two things, a Chomp's mouth and, for the `is_hungry` mutation only, a bed it had chosen to
+eat. What the Bramble sells is time. Verified on the real route rather than asserted: an
+aphid walks 70.7 → 173.4 → 250.1 and stops there for three seconds while the wall goes
+40.0 → 25.8. The wall is at x=288, so it halts 37.9px out against the 38.4px `STOP_RADIUS`
+the constant declares.
+
+**A resistance rather than a bigger health pool, and the reason is the Aloe.** Both buy the
+same seconds against a lone pest. They differ in what a point of HEALING is worth —
+four times more here — so the Salve Aloe standing off the road is worth four times more
+behind a Bramble than behind anything else, and "Aloe behind the wall" becomes a real
+board. A bigger pool would have made the Aloe proportionally worse. The cheaper diff and
+the better design happened to agree; the design is why.
+
+**A file argued itself into a contradiction one plant early.** `title_screen.gd`'s `PLANT_X`
+header said "a NINTH is the two-row day, and this time there is no third trick: five 96px
+canvases need 480 in a 426px band." The arithmetic is right and it is about CANVASES. The
+seven-slot layout below it had already established that canvases may overlap and only INK
+may not — then the eight-slot rewrite dropped the scale and discarded the ink argument as
+"slack rather than load-bearing". Measuring the nine sprites' real ink (mint 32 … sunflower
+54) shows the five narrowest fit that band with 17.5px of clear ink per join at the current
+scale. The lawn is still one row.
+
+**The gates rejected the plant five times and each rejection was a different hand-list.**
+Title lawn slots, the sprite-size table, the engaging-plants count, the reachless-plant
+count, the seed-sink maker table. None of these is derivable and all five are deliberate:
+each exists to force a decision rather than let a new plant inherit an answer. That is the
+catalogue working, and it is why the ninth plant cost a cycle rather than an afternoon.
+
+**A checker that names what it SKIPPED beat one that counts what it checked.**
+`art_src/bramble.svg` carried a `--` inside an XML comment. Godot's rasteriser accepted it
+and wrote a perfect 64×64 PNG. `svg_style_check.py` could not parse the file and said so —
+`ERR bramble ? geometry not measured`, plus two named skipped checks — while its summary
+line still read `Checked: 28 of 28 discovered`. A pass/fail count would have shipped a
+sprite exempt from every geometry gate.
+
+**Two confident, well-formed, wrong live readings in one session.** First I sampled pixels
+for my new sprite and measured the run-summary card's cream paper, because the game had
+been left running and the garden had been eaten. Then, after relaunching and pausing, I
+photographed a 20px speck — `Plant`'s planting-pop tween frozen at its 0.4 start scale.
+`pause` freezes an entrance exactly the way it freezes a fade. Both were measurement
+errors, neither produced a malformed reply, and the fix both times was
+`unpause` → `wait-frames 90` → `pause` → read. Filed as `[G-127]`: `screenshot` and
+`sample-pixels` should say `TREE IS PAUSED` the way `ping` and `performance` already do.
+
+**No fan-out, deliberately.** `fan-out-a-cycle` §5 rules out a lane for anything needing a
+new asset, an import pass, or a running game, and rules out an item that is "mostly a
+decision rather than mostly typing". This cycle's player-facing item needed all three of
+the first and the rest of the ready queue is largely the second. Run serially at the
+parent; the skill's own section is what decided it, in about a minute.
 
 ## What cycle 106 taught
 
@@ -315,6 +390,23 @@ opposite code, so this is not a thing to pick by whichever is easier.
 **`-ogxu` — should a budget floor keep a reserve?** Three HUD rows are at floor because each
 was ratcheted down in the commit that spent it; every one was the right local move, and
 together they made a HUD with no slack that nobody chose.
+
+**`-fohy` — what does "held" mean now?** New in cycle 110 and the one worth reading first,
+because it is cheap today and expensive later. The post-mortem's "Where you held them" row
+counts KILLS at a cell, and `run_summary.gd:830-837` argues at length for that word on the
+grounds that "'Held' is true of a kill and false of an escape". Sound when it was written,
+and the Barrier Bramble now holds pests without killing any of them — so the plant whose
+whole mechanic is holding contributes exactly nothing to the row named after it. Three
+options in the bead; the ambiguity gets expensive the moment a second wall-shaped plant
+exists.
+
+**A note, not a question: the harness is twenty-two releases behind.** `-ny3h` has been
+BLOCKED since cycle 44 on upstream gh#43, a deterministic `0xC0000005` segfault at
+`test_corn_shoots_the_pest_closest_to_escaping` on 0.42.0. It was four releases when that
+was filed; the machine now carries 0.60.0 against this project's 0.38.0, and cycle 110 hit
+the first concrete cost — `run.json`'s `tier` key is documented as required by the current
+workflow and is silently dropped by this project's ledger (`[G-128]`). Nothing to do until
+gh#43 closes; recorded so the size of the gap is visible rather than assumed stable.
 
 ## Answered by the user, and now ordinary work
 
