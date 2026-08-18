@@ -68,21 +68,120 @@ const GROW_START_SCALE: float = 0.55
 const WARNING_COLOR := Color(GardenTheme.DANGER, 0.95)
 const WARNING_LINE_WIDTH: float = LINE_WIDTH * 2.0
 
+## The uproot confirm window, drawn on the bed that is four seconds from being dug up
+## (plant-tower-defense-fjqp).
+##
+## **Not a new shape.** `game/OVERLAY_GRAMMAR.md` already has a row reading "partial arc
+## at a fixed radius, sweeping closed = TIME REMAINING on a clock that is already
+## running", with two instances: a husk's rot timer (`HuskLayer._draw`) and a Chomp's
+## chew (`ChompFlower.chew_arc_end`). `Game.UPROOT_CONFIRM_SECONDS` is the same sentence
+## about the one decision in this game that cannot be undone, so it is the third
+## instance of that row rather than a fifth cue. The legend already teaches the shape.
+##
+## **It is the missing CHANNEL, not a second copy of the armed cue.** Arming already
+## changes two things on this plant — these brackets go `WARNING_COLOR` at
+## `WARNING_LINE_WIDTH`, and `SoleCoverMarks` escalates with them (`Plant.set_uproot_armed`
+## drives both). Both are BINARY. They say a destructive action is one click away and
+## say nothing at all about how long that stays true, and the window closes in silence:
+## the player who hesitates finds the next click doing something else. Time was the
+## channel nothing on screen carried.
+##
+## RADIUS, and both bounds are asserted rather than merely written here
+## (`test_placement.gd`, the fjqp section):
+##   * strictly inside `HALF` — the bracket arms lie on the lines |x| = HALF and
+##     |y| = HALF, so any circle of radius < HALF crosses none of them and the clock
+##     never draws through the subject cue it sits inside.
+##   * strictly inside `ChompFlower.CHEW_RING_RADIUS`, and this one is load-bearing. A
+##     Chomp Flower can be armed for uproot WHILE chewing. Two arcs at the same radius
+##     both sweeping closed would be told apart by hue alone, which is the one rule
+##     OVERLAY_GRAMMAR.md says a cue may not break. Different radii keep them two
+##     concentric clocks in greyscale.
+const UPROOT_RING_RADIUS: float = 16.0
+const UPROOT_RING_WIDTH: float = 3.0
+const UPROOT_RING_SEGMENTS: int = 32
+
+## Twelve o'clock, sweeping clockwise. The two board instances of this row start at 0.0
+## (three o'clock) and nothing forces a choice, but `CueLegend`'s swatch for the row is
+## drawn from -PI * 0.5 — that is the picture on the page the player is taught it on,
+## so the one cue guarding an irreversible action matches the teaching rather than the
+## two cues nobody is taught.
+const UPROOT_RING_START: float = -PI * 0.5
+
 var marker_color: Color = MARKER_COLOR
 var half: float = HALF
 var arm: float = ARM
 var line_width: float = LINE_WIDTH
 
+## The open confirm window as this marker last heard it. `Game` owns the clock that
+## actually fires and pushes both numbers here every frame it is open
+## (`Game._push_uproot_clock`); this node counts nothing of its own, so the arc on
+## screen and the timer that expires cannot drift apart. Zero means no window, which is
+## what `set_warning(false)` restores on every disarm path there is.
+var uproot_left: float = 0.0
+var uproot_window: float = 0.0
+
 var _entrance_tween: Tween = null
+
+
+## Where the confirm arc ENDS, in radians, with `seconds_left` of a `window_seconds`
+## window still to run.
+##
+## Pure and static so the sweep is assertable with no board, no frame and no renderer:
+## headless never runs a `_draw()` at all, so a composition left inside the paint call
+## is a composition the suite can only assert the existence of. Same treatment
+## `ChompFlower.chew_arc_end` and `HuskLayer.radius_for` get, for the same reason.
+##
+## A full circle at the instant of arming, closing back toward `UPROOT_RING_START` as
+## the window runs out. A window of zero or less returns the start angle — an arc of no
+## length, which is the correct picture for "nothing is armed" rather than a full ring
+## drawn by a division that went to infinity.
+static func uproot_arc_end(seconds_left: float, window_seconds: float) -> float:
+	if window_seconds <= 0.0:
+		return UPROOT_RING_START
+	return UPROOT_RING_START + TAU * clampf(seconds_left / window_seconds, 0.0, 1.0)
+
+
+## Feeds the confirm arc. Both numbers arrive from `Game` rather than one of them being
+## remembered here, because `uproot_arc_end` needs the window to turn seconds into a
+## sweep and a window remembered in two places is a window that can disagree.
+##
+## Negative input is floored at zero instead of rejected: the last tick of a window
+## overshoots past zero by whatever `delta` was, and that frame should draw an empty
+## arc, not an arc swept backwards.
+func set_uproot_window(seconds_left: float, window_seconds: float) -> void:
+	var left: float = maxf(seconds_left, 0.0)
+	var span: float = maxf(window_seconds, 0.0)
+	if is_equal_approx(uproot_left, left) and is_equal_approx(uproot_window, span):
+		return
+	uproot_left = left
+	uproot_window = span
+	queue_redraw()
 
 
 ## Arms or disarms the warning look. Idempotent and repaint-only — the marker's
 ## visibility is `set_selected`'s business and this never touches it, so a plant that
 ## is armed and then deselected does not flicker.
+##
+## Disarming also closes the confirm arc, and it is done HERE rather than at the caller
+## because this is already the one call every exit from the armed state runs through:
+## `Game._disarm_uproot` is the sole place the arming is cleared, and it goes through
+## `Plant.set_uproot_armed`, which goes through this. An arc left drawn over a window
+## that has closed is worse than no arc at all — it tells the player a click will
+## destroy this bed when the click will now do something else entirely.
 func set_warning(warning: bool) -> void:
 	var next_color: Color = WARNING_COLOR if warning else MARKER_COLOR
 	var next_width: float = WARNING_LINE_WIDTH if warning else LINE_WIDTH
-	if marker_color == next_color and is_equal_approx(line_width, next_width):
+	# Read before the clearing below, and folded into the early-return test: a marker
+	# already wearing the base look but still holding a clock has to repaint, or the
+	# stale arc survives precisely the no-op call the idempotence promise invites.
+	var stale_clock: bool = not warning and (uproot_left > 0.0 or uproot_window > 0.0)
+	if not warning:
+		uproot_left = 0.0
+		uproot_window = 0.0
+	var unchanged: bool = (marker_color == next_color
+		and is_equal_approx(line_width, next_width)
+		and not stale_clock)
+	if unchanged:
 		return
 	marker_color = next_color
 	line_width = next_width
@@ -91,6 +190,22 @@ func set_warning(warning: bool) -> void:
 
 func _draw() -> void:
 	_draw_brackets()
+	_draw_uproot_window()
+
+
+## The confirm arc, and nothing at all on every frame except the four seconds after an
+## Uproot is armed. A cue the player only ever meets while it is saying something.
+##
+## `WARNING_COLOR`, the same red the brackets and the sole-cover rings are already
+## wearing: three marks in one hue read as one statement about this plant, where a
+## second red would read as a second, unrelated warning. Colour is not this cue's
+## channel — the sweep is — so sharing it costs nothing.
+func _draw_uproot_window() -> void:
+	if uproot_window <= 0.0 or uproot_left <= 0.0:
+		return
+	draw_arc(Vector2.ZERO, UPROOT_RING_RADIUS, UPROOT_RING_START,
+		uproot_arc_end(uproot_left, uproot_window), UPROOT_RING_SEGMENTS,
+		WARNING_COLOR, UPROOT_RING_WIDTH, true)
 
 
 func _draw_brackets() -> void:

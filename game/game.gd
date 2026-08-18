@@ -1593,6 +1593,10 @@ func arm_uproot() -> String:
 	_uproot_left = UPROOT_CONFIRM_SECONDS
 	# The bed itself says so, not only the message row (plant-tower-defense-rtgp).
 	_uproot_armed.set_uproot_armed(true)
+	# And how LONG it says so for (plant-tower-defense-fjqp). Pushed on the arming frame
+	# rather than left to the first tick: the arc has to appear as a full circle the
+	# instant it appears, or its own first frame reads as time already spent.
+	_push_uproot_clock()
 	Sfx.play(Sfx.UPROOT_ARMED)
 	# IMPORTANT: this is an instruction with a live 4-second trigger behind it, and
 	# an ambient husk pickup used to wipe it mid-read.
@@ -1679,6 +1683,35 @@ func _tick_uproot_confirm(delta: float) -> void:
 		_disarm_uproot()
 		hud.show_message("Uproot cancelled.", 2.0)
 		_refresh()
+		return
+	# Every surviving frame, and only here. The branch above hands the close-out to
+	# _disarm_uproot(), which zeroes the drawn arc through Plant.set_uproot_armed —
+	# so this line must not run after it, or a cleared clock is pushed straight back
+	# onto a marker that has just finished putting itself away.
+	_push_uproot_clock()
+
+
+## Hands the open window to the armed plant's `SelectionMarker`, which is what draws it
+## (plant-tower-defense-fjqp). Game owns the clock; the marker owns the paint.
+##
+## `_uproot_left` is read here and in `_tick_uproot_confirm` and nowhere else, and the
+## marker counts nothing of its own — so the arc a player watches close and the timer
+## that actually decides whether the next click destroys a bed are the same number.
+##
+## Reached by node name rather than through a `Plant` accessor because
+## `SelectionMarker.NODE_NAME` is exactly the contract that exists for this: it is the
+## path `test_selftest.gd` and the devtools bridge already look the marker up by, and it
+## is documented as a contract on the constant itself. A plant built outside a Game has
+## no marker, which is a silent no-op here for the same reason it is one in
+## `Plant.set_uproot_armed`.
+func _push_uproot_clock() -> void:
+	if _uproot_armed == null or not is_instance_valid(_uproot_armed):
+		return
+	var marker := _uproot_armed.get_node_or_null(
+		NodePath(SelectionMarker.NODE_NAME)) as SelectionMarker
+	if marker == null:
+		return
+	marker.set_uproot_window(_uproot_left, UPROOT_CONFIRM_SECONDS)
 
 
 ## The unguarded mutator: removes the selected plant and pays the refund with **no
