@@ -7959,7 +7959,13 @@ func test_a_kernel_kill_shoves_the_corpse_along_the_shot_and_a_plain_kill_does_n
 	var err: String = _T.assert_eq(pest.death_knockback(), Vector2.ZERO,
 		"a living pest is not already mid-knockback")
 	var frames: int = 0
+	# The pest WALKS while the kernel closes -- it is a live pest with its own
+	# _physics_process -- so the body's own last position is the baseline, not the
+	# spawn point. Comparing against the spawn point measures the gait, not the
+	# knockback, and fails by ~1.3px for a reason that has nothing to do with the bead.
+	var last_live: Vector2 = pest.position
 	while err == "" and pest.is_alive() and frames < 60:
+		last_live = pest.position
 		kernel._physics_process(1.0 / 60.0)
 		frames += 1
 	if err == "":
@@ -7982,8 +7988,10 @@ func test_a_kernel_kill_shoves_the_corpse_along_the_shot_and_a_plain_kill_does_n
 		# `Game._on_pest_died` drops the husk and files the lane loss at `pest.position`
 		# -- a knockback on the Node2D would walk a husk off the cell it was earned on
 		# and shift what the coverage and escape simulations in this file count.
-		err = _T.assert_eq(pest.position, Vector2(200.0, 100.0),
-			"while the pest node stays exactly where it fell -- the shove is a sprite offset")
+		err = _T.assert_eq(pest.position, last_live,
+			("while the pest node stays exactly where it fell -- the shove is a sprite"
+				+ " offset. A body-level knockback would put this %.1fpx away")
+				% Pest.DEATH_KNOCKBACK_PX)
 
 	# And the straight corpse keeps its path, which is what leaves
 	# `test_a_corpse_lies_differently_depending_on_what_killed_it` meaning something: a
