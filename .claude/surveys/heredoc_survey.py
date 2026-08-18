@@ -31,6 +31,8 @@ SIGNATURE B -- a comment block whose leading '#' is missing.
   position with no marker. Almost all are hard parse errors, which is why they were
   caught the same day -- so the question is whether any ever SURVIVED into a commit.
 """
+import argparse
+import io
 import re
 import subprocess
 import sys
@@ -41,6 +43,25 @@ import gdsource  # noqa: E402
 PROSE = re.compile(r"^[ \t]*[A-Z][a-z]+(?: [A-Za-z,'-]+){2,}[.:,]?[ \t]*$")
 CODE_TOKEN = re.compile(r"[=(){}\[\]:;]|->|\bfunc\b|\bvar\b|\bconst\b|\breturn\b")
 NEWLINE = chr(10)
+
+# Built by joining, not by embedding escapes. THE THIRD TIME THIS FILE HAS BEEN DAMAGED BY
+# THE THING IT MEASURES: the header records two, and writing this very constant through a
+# shell heredoc turned every "\n" into a real newline inside a string literal -- an
+# unterminated string, at exactly the lines the patch touched, which is SIGNATURE A. Joining
+# a list of plain lines has no escape to eat.
+NOT_COVERED = NEWLINE.join([
+    "NOT COVERED: two signatures, and neither of them is a parse. SIGNATURE A asks",
+    "             gdsource for string literals and reports one containing a newline;",
+    "             SIGNATURE B looks for comment prose that lost its leading '#'. A heredoc",
+    "             that ate a backslash somewhere else -- a regex, a path, a format string",
+    "             -- produces neither signature and is invisible here. Nor does this",
+    "             compile: only import_check.py and lint_project.gd do that, and neither is",
+    "             parallel-safe.",
+    "             HISTORY mode cannot see an uncommitted defect at all, and --worktree",
+    "             cannot see one already committed and since fixed. They answer different",
+    "             questions and neither subsumes the other.",
+])
+
 
 
 def gd_versions():
@@ -77,10 +98,56 @@ def blobs(pairs):
     return out
 
 
-def main():
-    versions = list(dict.fromkeys(gd_versions()))
-    print("scanning %d (commit, .gd file) version(s)" % len(versions))
-    texts = blobs([(s, p) for s, _, p in versions])
+def worktree_versions():
+    """Every tracked .gd file as it is ON DISK right now.
+
+    plant-tower-defense-h613. The history sweep above reads BLOBS, so it cannot see a
+    defect that has not been committed -- and the defect this survey exists for is
+    introduced while editing, which is precisely before the commit. Cycle 111 broke a
+    string literal, ran this survey, and got `SIGNATURE A: 0 hit(s)` over a live parse
+    error; only lint caught it, and lint is not parallel-safe.
+
+    Same tuple shape as gd_versions() so main() consumes either without branching, with
+    the sha slot reading "worktree" -- a place a sha would go, filled with what is
+    actually true, rather than a blank that reads as a missing value.
+    """
+    out = subprocess.run(["git", "ls-files", "*.gd"],
+                         capture_output=True, text=True, errors="replace",
+                         check=True).stdout
+    for path in out.splitlines():
+        path = path.strip()
+        if path:
+            yield "worktree", "(uncommitted working tree)", path
+
+
+def read_worktree(paths):
+    """Read each path off disk, None for one that will not open."""
+    out = []
+    for p in paths:
+        try:
+            out.append(io.open(p, encoding="utf-8", errors="replace").read())
+        except OSError:
+            out.append(None)
+    return out
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--worktree", action="store_true",
+                    help="scan tracked .gd files AS THEY ARE ON DISK instead of sweeping "
+                         "history -- the mode that can see a defect you have not committed")
+    args = ap.parse_args(argv)
+
+    if args.worktree:
+        versions = list(worktree_versions())
+        print("scanning %d tracked .gd file(s) in the WORKING TREE (uncommitted changes "
+              "included)" % len(versions))
+        texts = read_worktree([p for _, _, p in versions])
+    else:
+        versions = list(dict.fromkeys(gd_versions()))
+        print("scanning %d (commit, .gd file) version(s) from HISTORY -- this cannot see "
+              "an uncommitted defect; use --worktree for that" % len(versions))
+        texts = blobs([(s, p) for s, _, p in versions])
 
     a_hits, b_hits, scanned = [], [], 0
     for (sha, subject, path), text in zip(versions, texts):
@@ -102,6 +169,12 @@ def main():
                 b_hits.append((sha, subject, path, n, line.strip()[:100]))
 
     print("scanned %d file version(s)" % scanned)
+    if scanned == 0:
+        # A zero denominator says so in words. "0 hits" over nothing looks
+        # exactly like "0 hits" over everything.
+        print("NOTHING WAS SCANNED -- no .gd file version was readable.")
+        print("That is not a clean result; it is an empty one.")
+        return 2
     for name, hits in (("SIGNATURE A  string literal broken across a newline", a_hits),
                        ("SIGNATURE B  comment prose with no leading #", b_hits)):
         print("")
@@ -112,6 +185,18 @@ def main():
             print("      in: %s" % subject[:88])
         if len(hits) > 25:
             print("  ... and %d more" % (len(hits) - 25))
+    print(NOT_COVERED)
+    # EXIT CODE DEPENDS ON THE MODE, and conflating them would produce the permanently-red
+    # gate .claude/skills/house-static-checker warns about.
+    #
+    # A hit in HISTORY is a defect that already happened and was already fixed -- the very
+    # first version of this survey documents two of them, in itself. Gating on those means a
+    # red run forever, which teaches its operator to skip the check and then it is not there
+    # for the one that matters.
+    #
+    # A hit in the WORKING TREE is a live defect in a file on disk right now. That gates.
+    if args.worktree:
+        return 1 if (a_hits or b_hits) else 0
     return 0
 
 

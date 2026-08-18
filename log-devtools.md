@@ -7688,3 +7688,40 @@ status rather than rewriting the entries that recorded these as open.
 - Gap: **no gap this turn.** Headless-only, and the reason is unusually clean: blurbs live in
   `tooltip_text`, so there is no width budget a launch could measure, and every claim is a
   relationship between two values the test reads directly.
+
+## 2026-08-18 — cycle 124: I broke the file that detects the break, for the third time
+
+- Value: **warranted** — the mode works and is verified both directions, and the way it went
+  wrong on the way is better evidence for the rule than the feature is.
+  - Expected: the survey sweeps git blobs, so it cannot see an uncommitted defect — which is
+    the only time the defect exists, since it is introduced while editing. Predicted a
+    `--worktree` mode is a second INPUT to the same two detectors, not a second detector,
+    and that the exit code must differ by mode or a historical hit makes it permanently red.
+  - Got: both, and it now catches what it could not. Positive control — a broken string
+    literal in a tracked `.gd` — gives `2 hit(s)` named by `file:line`, exit 1. Negative
+    control, fixture removed: 0 hits, exit 0. History mode unchanged at 1028 versions and
+    still advisory.
+  - Found: three.
+    **(1) I broke this file with the exact defect it detects, for the THIRD time in its
+    history.** Writing its `NOT_COVERED` constant through a shell heredoc turned every
+    escaped newline into a real one inside a string literal — twice in one patch. The file's
+    own header already records two such incidents while it was being written. Fixed by
+    joining a list of plain lines, which has no escape to eat.
+    **(2)** the exit code HAD to differ by mode and the first draft did not. A hit in
+    HISTORY already happened and was already fixed — gating on those is permanently red,
+    which `house-static-checker` calls worse than no gate. Only `--worktree` gates.
+    **(3)** the positive control needed a TRACKED file: `worktree_versions` uses
+    `git ls-files`, so an untracked fixture is invisible and the control would have passed
+    over nothing. `git add -N` was the fix — the same vacuity trap cycle 116's citation
+    fixture hit from the other direction.
+  - Cheaper: nothing. Both controls are one command each.
+
+- **The rule now has a check that runs in a fan-out lane.** `lint_project.gd` was the only
+  thing that could see this class and it is not parallel-safe, so a lane got `name_check`
+  and nothing else. `--worktree` is stdlib, opens no project, and takes a second — it is in
+  the cycle skill's step 2 beside the rule it guards.
+
+- Gap: **no gap this turn.** Third occurrence of the no-scripts-write-source rule this
+  session, and the honest note is that all three were mine, in a file whose entire subject is
+  that failure. The rule is right; I keep reaching for the tool it forbids when an `Edit`
+  match looks awkward, and the correct move is `Read` the bytes and `Edit` again.

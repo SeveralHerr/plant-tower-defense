@@ -234,10 +234,22 @@ running a command. **Never write a work checklist into it.**
      next** (`("...long text " + "more text") % [...]`), which is what every other multi-line
      message in this suite already does. And know what will and will not catch it —
      `name_check.py` reports it CLEAN (names resolve; its own `NOT COVERED` line says so),
-     and `.claude/surveys/heredoc_survey.py` reports it clean too, because it sweeps **git
-     history rather than the working tree** and cannot see an uncommitted break. Only a real
-     compile does: `lint_project.gd` caught it at exit 1 with `Parse Error`. That is the
-     whole reason a fan-out lane, which gets no compile, is not "verified".
+     and `name_check.py` reports it CLEAN (names resolve; its own `NOT COVERED` line says
+     so). Only a real compile finds it — `lint_project.gd` at exit 1 with `Parse Error` —
+     and lint is not parallel-safe, which is the whole reason a fan-out lane, which gets no
+     compile, is not "verified".
+     **There is now a parallel-safe check for exactly this defect, and it takes a second:**
+
+     ```bash
+     python .claude/surveys/heredoc_survey.py --worktree    # tracked .gd files AS ON DISK
+     ```
+
+     Exit 1 naming the file and line. It reads the working tree rather than git history, so
+     unlike the bare survey it CAN see a break you have not committed — which is the only
+     time it matters, since the defect is introduced while editing. Run it before committing
+     any `.gd` change, and in a fan-out lane, where it is the only thing besides
+     `check_all.py` that can see this class at all. The bare (history) form answers a
+     different question — "how often has this happened" — and stays advisory.
    - **WHETHER to launch is `/verify`'s triage table's decision, not a mood.** This step
      tells you what to do once the game is up and never said when to bring it up, so the
      default became "it is player-facing, therefore look at it". Cycles 110-115 launched in
