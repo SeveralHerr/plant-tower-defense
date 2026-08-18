@@ -47,6 +47,99 @@ const SHAPE_GAIN := "gain"
 ## game guarding an action that cannot be undone.
 const SHAPE_ARMED := "armed"
 
+# =============================================================================
+# BEGIN plant-tower-defense-wenx: does any remaining untaught cue deserve a row?
+#
+# The answer is NO, and this block is the audit, recorded here so the next person
+# asking re-reads it instead of re-deriving it. Nothing below this comment is a
+# behaviour change; the page teaches exactly what it taught before.
+#
+# WHAT COUNTS AS A CUE, stated because the answer depends on it: a mark whose
+# PRESENCE, SHAPE or GEOMETRY carries state the player has to read. A sprite
+# drawing its own body is not one, however much ink it uses. The test is whether
+# removing it changes what the player KNOWS rather than what the game looks like.
+#
+# TWO TRAPS IN THE DERIVATION, both live in the repo right now, both reported to
+# whoever owns OVERLAY_GRAMMAR.md rather than fixed here:
+#
+#   1. THE GREP IN THAT FILE NO LONGER FINDS THE NEWEST CUES. Its "How this was
+#      derived" section says to re-run
+#      `grep -n "draw_arc(\|draw_circle(\|draw_line(\|draw_rect(" game/*.gd` and
+#      records 55 calls across 15 files. It is 80 across 20 now -- and, worse, it
+#      is structurally blind to `Board.mark_dead_ground` and
+#      `Board.mark_deferred_road`, which paint Line2D CHILDREN and not a `_draw()`
+#      at all. Board's own header says why they had to: "a headless run paints no
+#      frame, so a `_draw()` here would be a cue no gate could ever see". So the
+#      recipe misses exactly the two cues that were built to be gateable. A census
+#      of one API is a census of the asker's assumption.
+#   2. THE LANE-PRESSURE HATCH HAS NO GRAMMAR ROW AT ALL. `lane_pressure_overlay.gd`
+#      is named in that file's cue-file list and its 45-degree stripe lattice
+#      matches none of the ten shapes. That is a hole in the GRAMMAR, not in this
+#      page, and it is not a hole this page can close.
+#
+# THE DIFF, one line per grammar row. "taught" means this file has a row for the
+# SHAPE; the instances after it are what actually draws it today.
+#
+#   1  solid full ring         TAUGHT  reach    aloe/mint/nettle/corn/dandelion rings,
+#                                               the bomb's blast preview, the hover ring
+#   2  dashed ring             TAUGHT  remark   sole-cover holds-nothing ring, the hover
+#                                               at-risk ring, Pest's fought mark
+#   3  partial arc             TAUGHT  clock    husk rot, Chomp chew, uproot confirm
+#   4  small solid ring        untaught         sole-cover road rings, live and held-over
+#   5  filled dot              TAUGHT  gain     new-cover dots
+#   6  straight line in a box  untaught         hover dead bar, hover redundant pair,
+#                                               BOARD dead-ground bars, BOARD deferred bars
+#   7  corner brackets         TAUGHT  subject  live, hover promise, held-over (2 of 4)
+#   8  scattered short marks   untaught         drought dashes, rain streaks
+#   9  doubled line width      TAUGHT  armed    brackets and sole-cover rings, together
+#  10  a row of small pips     untaught         a husk worth more than CompostMeter.FULL_VALUE
+#
+# WHAT A ROW COSTS, AND HOW MANY ARE LEFT: none. `rows_that_fit()` below answers
+# it mechanically and `test_the_legend_page_is_exactly_full` pins it -- the last
+# row's text ends at 294 px inside a 300 px matte and a seventh lands at 340. And
+# it cannot be bought back by cutting ROW_PITCH: a row's own ink is 50 px tall
+# (SWATCH_RADIUS above the centre line, MEANS_HEIGHT + DETAIL_FONT_SIZE + 4 below
+# it) and seven rows need a pitch of 39, so they would OVERLAP. The next row costs
+# a smaller swatch, smaller type, or a second notebook page. Not a line -- a page.
+#
+# THE VERDICT, per untaught cue, against that price:
+#
+#   * BOARD DEAD-GROUND BARS and BOARD DEFERRED-ROAD BARS (row 6) -- the strongest
+#     case and still no. They are the only untaught cues that are PERSISTENT: both
+#     are repushed from `Game._refresh()` with no hover, the deferred bars from the
+#     garden's shape alone, and up to 24 road cells can carry one at once. A player
+#     meets them without having asked. But row 6 is the row a single legend line
+#     teaches WORST: its four instances mean four different things (this cell
+#     refuses the plant / this second patch buys nothing / this ground fires at
+#     nothing / this road cell is behind a queue), and the grammar defines the row
+#     by its CHANNEL -- "legible with colour discarded" -- rather than by a meaning.
+#     A row reading "a straight line: this one is out of the conversation" is true
+#     of all four and actionable for none. Teaching it honestly is four rows, which
+#     is more than a page. The right home for it is the hints page or a mark-side
+#     tooltip, both of which carry a sentence per instance. Filed as that, not as a
+#     legend row.
+#   * HELD-OVER BRACKETS (row 7, taught row / untaught state) -- no, confidently.
+#     The cue only ever exists because the player just selected a second plant, and
+#     it appears with the LIVE brackets beside it in the same frame: same shape, one
+#     closed and one open, one bright and one dim. Two states of one cue, side by
+#     side, at the instant the player produced them, is a better teaching condition
+#     than a page read minutes earlier on another screen.
+#   * UPROOT CONFIRM ARC (row 3, taught row / untaught instance) -- no. It draws
+#     only in the four seconds after arming, next to the doubled red brackets this
+#     page already teaches as "armed -- one more click does it". The player has the
+#     noun; the arc supplies the tense.
+#   * SOLE-COVER ROAD RINGS (row 4) -- the closest call, and still no. They are met
+#     earliest of anything here: they appear on the first plant the player ever
+#     selects. But this page already teaches the OTHER branch of the same node --
+#     the dashed ring, "on a plant nothing depends on" -- so the concept is on the
+#     page and the road rings are its positive case. Worth revisiting if row 4 ever
+#     gains an instance that is not SoleCoverMarks.
+#   * WEATHER MARKS (row 8) -- no. Whole-screen, unmistakable, and announced.
+#   * HUSK PIPS (row 10) -- no. Late, rare, and a magnitude on a mark already taught.
+#
+# END plant-tower-defense-wenx
+# =============================================================================
+
 ## Id, the line that names the meaning, and the line that says where it is seen.
 ##
 ## `means` is the grammar's own wording where the grammar has wording, so the two cannot
@@ -97,10 +190,37 @@ static func row_center_y(index: int) -> float:
 	return ROW_TOP + float(index) * ROW_PITCH + SWATCH_RADIUS
 
 
+## How far BELOW a row's swatch centre the row's lowest ink sits — the `means` line plus
+## the detail line under it. Split out of `content_bottom` rather than written twice
+## because `rows_that_fit` needs the same tail, and a row height derived in two places is
+## the layout arithmetic `OverlayScreen.rows_that_fit`'s own header says gets re-derived
+## wrongly.
+static func row_ink_below_center() -> float:
+	return MEANS_HEIGHT + float(DETAIL_FONT_SIZE) + 4.0
+
+
 ## The bottom edge of the last row's text, which is what has to fit rather than the swatch:
 ## the detail line sits below the swatch's centre line and is the lowest ink on the page.
 static func content_bottom() -> float:
-	return row_center_y(ROWS.size() - 1) + MEANS_HEIGHT + float(DETAIL_FONT_SIZE) + 4.0
+	return row_center_y(ROWS.size() - 1) + row_ink_below_center()
+
+
+## How many rows this page could hold in a matte `box_height` tall — the answer to "what
+## does another row cost", as a number rather than as arithmetic in a comment.
+##
+## `box_height` is an ARGUMENT and not `NotebookScreen.DRAWING_BOX.size.y` read directly,
+## which would be the cyclic `class_name` reference this project refuses everywhere else
+## (`Board` takes `PlacementPreview`'s geometry as arguments for exactly this reason):
+## `NotebookScreen` already names `CueLegend`, so `CueLegend` may not name it back.
+##
+## The item height is a row's WHOLE ink, swatch top to detail bottom — `SWATCH_RADIUS`
+## above the centre line and `row_ink_below_center()` under it. That is the number that
+## makes the answer honest: the page currently fits exactly `ROWS.size()`, and a seventh
+## row cannot be bought by cutting `ROW_PITCH`, because seven rows need a pitch smaller
+## than one row is tall and they would overlap. See the wenx audit block above.
+static func rows_that_fit(box_height: float) -> int:
+	return OverlayScreen.rows_that_fit(ROW_TOP, ROW_PITCH,
+		SWATCH_RADIUS + row_ink_below_center(), box_height)
 
 
 func _ready() -> void:
