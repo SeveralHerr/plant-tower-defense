@@ -2815,7 +2815,16 @@ static func next_wave_note(number: int, pests: int, boss: bool, weather: StringN
 		# waves. Narrower than the old text, so no width budget moves.
 		parts.append("a boss")
 	if weather == WaveDirector.WEATHER_RAIN:
-		parts.append("rain")
+		# The gift named where the player can still act on it
+		# (plant-tower-defense-kmjp). The banner says it too, but the banner fires
+		# from Game._on_wave_started -- AFTER the seeds are spent. This is the
+		# surface they read while deciding, and until now it said "rain" and nothing
+		# else, which made the only free upside in the game the only one nobody was
+		# told about in time to use it. Twenty characters against the drought
+		# clause's twenty-four, so no width budget moves and the corpus sample below
+		# is still the worst case.
+		parts.append("rain · beds mend %d%%"
+			% int(round(WaveDirector.WEATHER_RAIN_HEAL_FRACTION * 100.0)))
 	elif weather == WaveDirector.WEATHER_DROUGHT:
 		# The bonus is named here because a payout the player cannot see is not a
 		# rule, it is a coincidence they might notice (plant-tower-defense-4c1l).

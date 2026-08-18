@@ -9381,12 +9381,19 @@ func test_rain_gives_and_never_takes_which_is_why_no_number_moved() -> String:
 ## prep gap, BEFORE the wave commits, which is when seeds are spent. The banner
 ## (`Hud.weather_note`) fires from `Game._on_wave_started` -- after.
 ##
-## Drought's half is asserted here and it passes. RAIN'S HALF IS THE OPEN ONE: today
-## `next_wave_note` appends a bare "rain" and says nothing about the 35% it hands back,
-## so the only weather whose upside costs nothing is also the only one the player is
-## never told about in time to use. That fix is one clause in `Hud.next_wave_note`, a
-## file this lane does not own; the assertion for it ships beside the edit rather than
-## red in here.
+## Both halves are asserted here and both pass. Rain's was the open one until cycle 110:
+## `next_wave_note` appended a bare "rain" and said nothing about the 35% it hands back,
+## so the only weather whose upside costs nothing was also the only one the player was
+## never told about in time to use it. The lane that found this could not fix it -- the
+## clause lives in `Hud.next_wave_note`, which it did not own -- so it wrote the edit out
+## and the parent landed the two together.
+##
+## Worth keeping about the shape of that gap: rain's gift is CONDITIONAL and often zero,
+## because a full-health garden mends nothing. That is what made it invisible rather than
+## merely unmentioned -- a player could sit through several rain waves and correctly
+## observe that rain did nothing, on exactly the waves where it would have paid least.
+## Told three waves out, they can leave a chewed Corn standing instead of uprooting at a
+## refund and paying full price again, which is the decision the sentence exists to buy.
 func test_a_compensation_is_named_where_the_player_can_still_act_on_it() -> String:
 	var note: String = Hud.next_wave_note(21, 30, false, WaveDirector.WEATHER_DROUGHT)
 	var percent: String = "%d%%" % int(round(WaveDirector.WEATHER_DROUGHT_SEED_BONUS * 100.0))
@@ -9398,12 +9405,21 @@ func test_a_compensation_is_named_where_the_player_can_still_act_on_it() -> Stri
 				+ "than typed -- retuning the bonus without retuning the sentence is the "
 				+ "drift this pins. Got: %s") % [percent, note])
 	if err == "":
-		# The rain half, as far as it goes today: the upside IS written, on the banner.
-		# What it is not is written in TIME. Both halves of that sentence are checked so
-		# the gap cannot be closed by deleting the banner line instead of adding a
-		# prep-note clause.
-		err = _T.assert_gt(Hud.weather_note(WaveDirector.WEATHER_RAIN).length(), 0,
-			"rain's gift is written somewhere -- the banner says it as the wave opens")
+		# The rain half, closed. The gift is written on the banner AND in the prep note,
+		# and only the second reaches the player while they can still act on it.
+		var rain: String = Hud.next_wave_note(20, 26, false, WaveDirector.WEATHER_RAIN)
+		var mend: String = "%d%%" % int(round(WaveDirector.WEATHER_RAIN_HEAL_FRACTION * 100.0))
+		err = _T.assert_true(rain.contains(mend),
+			("the prep note names what rain hands back (%s), derived from "
+				+ "WEATHER_RAIN_HEAL_FRACTION rather than typed. Got: %s") % [mend, rain])
+		if err == "":
+			err = _T.assert_true(rain.length() < note.length(),
+				("and its clause is shorter than drought's (%d chars against %d), which is "
+					+ "why the message row's worst case is still the drought sample in "
+					+ "Hud.message_corpus()") % [rain.length(), note.length()])
+		if err == "":
+			err = _T.assert_gt(Hud.weather_note(WaveDirector.WEATHER_RAIN).length(), 0,
+				"and the banner still says it too, as the wave opens")
 		if err == "":
 			err = _T.assert_eq(Hud.weather_note(WaveDirector.WEATHER_CLEAR), "",
 				("while clear says nothing on either surface, which is the exemption "

@@ -10968,7 +10968,8 @@ func test_the_prep_note_says_what_the_next_wave_is_worth() -> String:
 	if err == "":
 		err = _T.assert_eq(
 			Hud.next_wave_note(10, 24, false, WaveDirector.WEATHER_RAIN),
-			"Wave 10 next — 24 pests · rain.", "and the weather rides with it")
+			"Wave 10 next — 24 pests · rain · beds mend %d%%." % _rain_mend_percent(),
+			"and the weather rides with it")
 	if err == "":
 		# Past the fixed table pests_in_wave() returns 0 because the schedule does
 		# not exist yet. "0 pests" would be a confident lie about the hardest waves
@@ -11038,7 +11039,8 @@ func test_the_prep_note_yields_to_a_message_and_comes_back() -> String:
 		hud._message_left = 0.0
 		hud._advance_message_queue()
 		hud._refresh_prep_note(prep)
-		err = _T.assert_eq(label.text, "Wave 5 next — 16 pests · rain.",
+		err = _T.assert_eq(label.text,
+			"Wave 5 next — 16 pests · rain · beds mend %d%%." % _rain_mend_percent(),
 			"the note is on the row during the prep gap")
 	if err == "":
 		hud.show_message("Composted a husk for 6 seeds.", 3.0)
@@ -11052,7 +11054,8 @@ func test_the_prep_note_yields_to_a_message_and_comes_back() -> String:
 		# The path refresh() cannot cover: the message expiring on its own.
 		hud._message_left = 0.0
 		hud._advance_message_queue()
-		err = _T.assert_eq(label.text, "Wave 5 next — 16 pests · rain.",
+		err = _T.assert_eq(label.text,
+			"Wave 5 next — 16 pests · rain · beds mend %d%%." % _rain_mend_percent(),
 			"when the message drains, the note comes back rather than the row "
 				+ "going blank")
 	if err == "":
@@ -13545,9 +13548,26 @@ func test_the_cheapest_upgrade_skips_a_plant_with_no_rung_left() -> String:
 ## a missing check are different bugs and only the boundary separates them.
 func test_the_upgrade_tip_waits_until_the_player_can_afford_it_and_fires_once() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+
+	# ESTABLISHED, NOT ASSERTED, and that is the fix rather than the shortcut it looks
+	# like. This line used to read `assert_false(has_milestone(...))` captioned "the
+	# suite's scratch save starts without this hint spent" -- but RunConfig is an
+	# autoload and there is no scratch save: it had loaded the developer's real
+	# `user://highscore.save`. So the assertion was not checking the game, it was
+	# checking whether whoever ran the suite had ever seen this hint while playing.
+	# Cycle 110 drove the live game for an unrelated measurement, spent the hint, and
+	# this test went red on a machine where nothing about the tip had changed.
+	#
+	# A milestone is one-shot and PERSISTENT by design, so any test about first-time
+	# behaviour has to set the state it needs instead of hoping to inherit it. The
+	# erase below is that setup, and it is the same call the busy-row case further down
+	# already makes for the same reason.
+	RunConfig.earned_milestones.erase(RunConfig.HINT_UPGRADE_EXISTS)
 	var err: String = _T.assert_false(
 		RunConfig.has_milestone(RunConfig.HINT_UPGRADE_EXISTS),
-		"the suite's scratch save starts without this hint spent")
+		("the hint reads unspent once cleared -- guards the erase against "
+			+ "earned_milestones changing shape, which would otherwise make every "
+			+ "assertion below vacuously true"))
 
 	if err == "":
 		game.bank.seeds = 500
@@ -15979,6 +15999,18 @@ func test_a_drought_is_never_a_quieter_cue_than_rain() -> String:
 
 
 # -- END what the weather is actually worth on screen --
+
+
+## What rain's prep-note clause says it mends, as the sentence renders it.
+##
+## The three full-sentence goldens above compare a whole rendered label, which is the
+## point of them -- word order, separators and the trailing stop are all in scope. But
+## the percentage inside that sentence is a TUNABLE, and typing it three times would
+## make retuning WEATHER_RAIN_HEAL_FRACTION fail three string comparisons that have
+## nothing to say about the tuning. So the sentence stays hand-written and the number
+## comes from the constant, which is the same split `Hud.next_wave_note` itself uses.
+func _rain_mend_percent() -> int:
+	return int(round(WaveDirector.WEATHER_RAIN_HEAL_FRACTION * 100.0))
 
 
 # -- the seed economy has a finite floor and an uncapped ceiling (uqeo) --

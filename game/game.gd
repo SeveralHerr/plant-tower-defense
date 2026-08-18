@@ -422,8 +422,7 @@ func start_next_wave() -> bool:
 func _apply_weather(next: StringName) -> void:
 	weather = next
 	var scale: float = WaveDirector.fire_interval_scale_for(next)
-	var heal: float = (Plant.MAX_HEALTH * WaveDirector.WEATHER_RAIN_HEAL_FRACTION
-		if next == WaveDirector.WEATHER_RAIN else 0.0)
+	var heal: float = Plant.MAX_HEALTH * WaveDirector.heal_fraction_for(next)
 	for key: Vector2i in _plants:
 		var plant := _plants[key] as Plant
 		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():

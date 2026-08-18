@@ -41,7 +41,6 @@
     "game/seed_bank.gd::var::free_starter_available",
     "game/selection_marker.gd::var::arm",
     "game/sticky_sundew.gd::func::rewash_neighbourhood",
-    "game/sunflower.gd::func::seconds_left_at",
     "game/title_screen.gd::func::skip_to_game",
     "game/wave_director.gd::func::endless_beetle_count",
     "game/wave_director.gd::signal::wave_spawning_finished",
