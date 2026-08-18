@@ -806,6 +806,48 @@ static func wave_carries_boss(wave: int) -> bool:
 ## What a plant's firing interval is multiplied by under this weather. Drought is
 ## the only one that touches it; the number is 2.0 because "halves fire rate" is
 ## the design brief's own wording and an interval is the reciprocal of a rate.
+##
+## ## WHAT A DROUGHT SLOWS, decided rather than inherited (plant-tower-defense-bt5i)
+##
+## **A drought lengthens a repeating ATTACK interval and nothing else.** Everything that
+## pays this scale reads it through `Plant.fire_interval_scale` into
+## `Plant.composed_interval`, and today that is three of the eight plants in
+## `PlantCatalog`: `CornCobbler.fire_interval`, the Dandelion's per-seed cooldown off
+## `Dandelion.SHOT_INTERVAL`, and `Nettle.sting_interval`. The other five are untouched,
+## and until this bead that was an
+## accident of which files happened to read the field rather than an answer anyone had
+## given. (The bead itself said two of five, which was true of a smaller roster: Nettle
+## and Aloe did not exist when it was written.) It is the answer now, and the reason is a
+## different one for each of the five:
+##
+##   * **Chomp Flower** — a chew is a grip, not a rate of fire, and its length belongs to
+##     the MEAL rather than to the plant (`Pest.chew_seconds` through
+##     `ChompFlower.chew_seconds_for`). Lengthening it lengthens how long the pest is HELD
+##     exactly as much as how long the flower is busy: a nerf on a thin lane and a buff on
+##     a crowded one. A weather whose SIGN depends on the board is not a readable event,
+##     which is the same standard `weather_for` already applies when it refuses to run
+##     rain and drought over one wave.
+##   * **Seed Sunflower** — its clock IS the seed economy (`Sunflower.INTERVAL`), and a
+##     drought already pays `WEATHER_DROUGHT_SEED_BONUS` on every kill. Slowing seed
+##     growth under the one weather that raises seed income moves two numbers against
+##     each other so the total barely moves: the balance change nobody can perceive.
+##   * **Sticky Sundew** — an aura has no rate to multiply. It is on, permanently, or it
+##     is not there at all.
+##   * **Garden Mint** — it never acts. Its output is `neighbour_interval_scale` on plants
+##     the drought is ALREADY slowing, and `Plant.composed_interval` multiplies both
+##     factors, so slowing the Mint too would apply one weather twice to one shot.
+##   * **Salve Aloe** — it repairs between waves, where nothing is racing it, and inside a
+##     fight it loses to `Pest.EAT_DPS` by design. Halving `Aloe.heal_for` costs the
+##     player nothing they can feel in the first case and nothing that matters in the
+##     second.
+##
+## This is what lets `Hud.weather_note` say "Everything shoots half as often" and be
+## exactly right rather than roughly right: SHOOTS is the boundary, and that sentence is
+## now the specification rather than a description of whatever the plant files happen to
+## do. `test_a_drought_slows_what_the_garden_shoots_and_nothing_else` derives the affected
+## set from `PlantCatalog.ids()` and the plant scripts themselves, so a ninth plant that
+## starts reading `fire_interval_scale` — or a Nettle that quietly stops — fails against
+## this paragraph instead of extending it in silence.
 const WEATHER_DROUGHT_INTERVAL_SCALE: float = 2.0
 
 static func fire_interval_scale_for(weather: StringName) -> float:

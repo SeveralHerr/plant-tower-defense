@@ -9412,3 +9412,115 @@ func test_a_compensation_is_named_where_the_player_can_still_act_on_it() -> Stri
 
 # END plant-tower-defense-kmjp
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-bt5i: whether a drought should slow the non-shooters
+#
+# The bead's numbers were stale and its substance was live. It said
+# Plant.fire_interval_scale is read by CornCobbler and Dandelion only -- two plants
+# of five. It is read by THREE of EIGHT: Nettle reads it too, and Nettle, Mint and
+# Aloe did not exist when the bead was written. What was true then and is still true
+# is that the split was an accident of which files happened to read the field.
+#
+# The decision is NO EXTENSION -- a drought lengthens a repeating attack interval and
+# nothing else -- and it is written per-plant at
+# WaveDirector.WEATHER_DROUGHT_INTERVAL_SCALE. This is the gate that stops it being
+# an accident again: the affected set is derived from the plant scripts rather than
+# recorded, so a ninth plant that starts reading the field, or a Nettle that quietly
+# stops, fails against that paragraph instead of extending it in silence.
+
+
+## The set a drought reaches, derived rather than recorded.
+##
+## Source of truth is `PlantCatalog.ids()` and the plant scripts themselves -- the ids
+## ARE the script basenames, and the readability check below is what turns a broken
+## mapping into a failure instead of into an empty set that agrees with everything.
+##
+## Comments are stripped before the search on purpose: all three affected files also
+## DESCRIBE `fire_interval_scale` in a doc comment next to the line that reads it, and a
+## raw scan would credit any future plant whose header merely mentions the field. This is
+## the same trap `tools/gdsource.py` exists for.
+func test_a_drought_slows_what_the_garden_shoots_and_nothing_else() -> String:
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_gt(ids.size(), 0,
+		"the catalogue has plants in it, or every loop below is vacuous")
+	if err != "":
+		return err
+	var slowed: PackedStringArray = []
+	var unreadable: PackedStringArray = []
+	var read: int = 0
+	for id: StringName in ids:
+		var path: String = "res://game/%s.gd" % String(id)
+		var src: String = FileAccess.get_file_as_string(path)
+		if src.length() == 0:
+			unreadable.append(path)
+			continue
+		read += 1
+		var code: String = ""
+		for line: String in src.split("\n"):
+			if line.strip_edges().begins_with("#"):
+				continue
+			code += line + "\n"
+		if code.contains("fire_interval_scale"):
+			slowed.append(String(id))
+	err = _T.assert_eq(unreadable.size(), 0,
+		("every catalogue id resolves to res://game/<id>.gd, missing: %s. That mapping is "
+			+ "this test's own assumption -- an id that stopped matching its filename would "
+			+ "otherwise read as a plant the drought does not touch") % [unreadable])
+	if err == "":
+		err = _T.assert_eq(read, ids.size(),
+			("and all %d of them were read (%d) -- the denominator, without which the set "
+				+ "below is a claim about however many files happened to open")
+				% [ids.size(), read])
+	if err == "":
+		slowed.sort()
+		var expected: PackedStringArray = [
+			String(PlantCatalog.CORN), String(PlantCatalog.DANDELION),
+			String(PlantCatalog.NETTLE),
+		]
+		expected.sort()
+		err = _T.assert_eq(", ".join(slowed), ", ".join(expected),
+			("a drought reaches exactly the plants that fire on a repeating interval. Got "
+				+ "[%s], decided [%s]. If a plant was ADDED here, read the per-plant "
+				+ "reasoning at WaveDirector.WEATHER_DROUGHT_INTERVAL_SCALE before widening "
+				+ "this list -- the bead that wrote it refused a chew, a seed clock, an "
+				+ "aura, a neighbour buff and a heal, each for a different reason. If one "
+				+ "was REMOVED, the garden now has a shooter the weather cannot touch")
+				% [", ".join(slowed), ", ".join(expected)])
+	if err == "":
+		# The claim that makes the Chomp bullet arithmetic rather than an opinion: a chew's
+		# length is the MEAL's, scaled by the flower's ladder and by nothing else. Asserted
+		# as proportionality so it survives the ladder being retuned or reindexed.
+		var one: float = ChompFlower.chew_seconds_for(1, 1.0)
+		err = _T.assert_gt(one, 0.0, "a level-1 chew of a 1s meal takes time")
+		if err == "":
+			err = _T.assert_float_eq(ChompFlower.chew_seconds_for(1, 2.6), one * 2.6, 0.0001,
+				("and a 2.6s meal takes 2.6 times as long -- the pest brings the number, so "
+					+ "a drought folded in here would lengthen the HOLD as much as the busy "
+					+ "time and change sign with the size of the lane"))
+	if err == "":
+		# The other two refusals, as the shape of their own APIs. Neither of these pure
+		# functions has a weather term to take, which is the concrete form of "there is
+		# nothing here for a drought to multiply".
+		err = _T.assert_float_eq(Aloe.heal_for(1.0), Aloe.HEAL_PER_SECOND, 0.0001,
+			("an Aloe's repair is per second and unconditioned -- it works between waves, "
+				+ "where nothing is racing it"))
+		if err == "":
+			err = _T.assert_float_eq(Sunflower.seconds_left_at(0.0), Sunflower.INTERVAL,
+				0.0001,
+				("and a Sunflower's clock is its own. Slowing it under the one weather that "
+					+ "pays WEATHER_DROUGHT_SEED_BONUS on kills would move two numbers "
+					+ "against each other so the total barely moved"))
+	if err == "":
+		# And the half that must keep working: the weather really does reach a shooter.
+		var drought: float = WaveDirector.fire_interval_scale_for(WaveDirector.WEATHER_DROUGHT)
+		err = _T.assert_float_eq(
+			Plant.composed_interval(Nettle.STING_INTERVAL, drought, 1.0),
+			Nettle.STING_INTERVAL * drought, 0.0001,
+			("while a Nettle's sting really is lengthened by the sky -- the third reader, "
+				+ "and the one the bead did not know about"))
+	return err
+
+# END plant-tower-defense-bt5i
+# =============================================================================
