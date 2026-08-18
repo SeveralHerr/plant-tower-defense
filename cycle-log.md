@@ -1,10 +1,53 @@
-# Cycle 105
+# Cycle 106
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
 what `bd` structurally cannot: which cycle we are on, what the last one taught, what is
 waiting on the user, and how to restart. **Never write a work checklist here.** `bd ready`
 is the checklist.
+
+## What cycle 106 taught
+
+**A screenshot from James beat every gate this project owns.** The playfield sat hard left
+on a wide window with all the extra canvas in one grey gutter, while `findings`, lint, 741
+tests and 16 checkers were green over it — because every one of them measures the design
+size, and every test hosts the board at the origin. The cheapest detector in the toolkit is
+still a person looking at the game.
+
+**Two bugs were stacked and fixing the first exposed the second.** Before cycle 105 the side
+panel sat at a hardcoded `1152 - PANEL_WIDTH` and the board at `x = 0`. Both were wrong and
+they hid each other, because the panel's error happened to sit exactly where the board's
+gutter would have been. Agreeing at the design size is not evidence of anything.
+
+**Then moving the board exposed a third.** `_click_at` compared an absolute `screen_pos.x`
+against a board-LOCAL width — correct for exactly as long as the board started at x=0. A
+centred board silently ate every click on its rightmost 117px **while drawing them
+perfectly**. No picture of that can ever be wrong; it was found by reading the guard.
+
+**The same shape, one screen over.** `PauseScreen`'s Backdrop is `MOUSE_FILTER_STOP`
+precisely so the board cannot be played through a pause — and at 1152 on a 1548 canvas it
+stopped 396px short, leaving live clickable board over a held run. A correctness bug wearing
+a layout bug's clothes.
+
+**"Three copies" was eight.** The count was the finding: one name was answering two
+different questions — how big is the screen I must cover, and how big is the canvas this was
+composed on — and half the callers are `static` on purpose, so `ProjectSettings` was the
+only implementation that could serve them. At 16:9 the two answers are identical, which is
+why it drifted invisibly for so long.
+
+**A boss that the targeting rule refuses to shoot.** Every damaging plant fires at the pest
+furthest along the road; the Nurse Beetle walks behind the front and heals everything near
+her. The Queen asks *where do I want it to die*; the Nurse asks *does my garden own anything
+that can hit the back of a wave*. It cost 48 points of beetle and displaced nothing — the
+finale is byte-for-byte the row it has been for four species running.
+
+**Closes are honest now; clause-by-clause answers still are not.** 40 of 146 closed beads
+carry the literal reason `'Closed'` — all under the old id scheme, all unauditable, since
+the evidence was never written. Under the current scheme it is **97 of 97 with a real
+reason**. But a real reason is necessary and not sufficient: `-1d07` has a good close that
+leaves one acceptance clause unanswered and another only partly. The prototype gate flagged
+122 of 146, which is a permanently-red gate and therefore no gate at all — so the answer is
+`-txme`, making the close *start* from the acceptance rather than adding another instruction.
 
 ## What cycle 105 taught
 
