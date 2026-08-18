@@ -43,6 +43,22 @@ cannot see past its end. Applied five times in these projects now: `SURFACES_ABO
    something objectively better by its stated rule, and the tests get *worse*. The stated
    rule was never the whole requirement.
 2. **Derive the set from the source of truth**, in code, at check time.
+
+   **When the source of truth is "which files call a thing", the derivation is a source
+   scan, and a raw substring scan is wrong.** This is the case the rest of the skill
+   does not cover: the set is not a table you can read, it is the set of files that
+   actually *reach* a symbol. In this repo, three of the eight plants read
+   `Plant.fire_interval_scale` — and **all three also name it in a doc comment beside
+   the line that reads it**, as do files that only discuss it. So `grep -l` credits a
+   future plant whose header merely mentions the field, and the gate silently widens.
+
+   **Use `tools/gdsource.py`, which exists for exactly this trap** — it blanks comments
+   and string bodies while preserving offsets, so a match is a real reference rather
+   than prose about one. Six checkers under `tools/` each rolled their own version of
+   that pass and disagreed four ways; do not write a seventh.
+
+   Found by `plant-tower-defense-bt5i`, whose whole subject was a set that had become
+   "whichever files happened to read the field" without anyone deciding it should be.
 3. **Assert the recorded list EQUALS the derived set** — not `has`, not `is_subset_of`.
 4. **Plant both directions** and watch each fail. Add a member to the source that the
    list lacks; remove a member the list has. Both must go red, for different reasons.

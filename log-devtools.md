@@ -6668,3 +6668,29 @@ status rather than rewriting the entries that recorded these as open.
     newer than the tool, so following the instructions correctly produced a row that
     quietly lost a field. `plant-tower-defense-ny3h` (refresh 0.38.0 -> current) is the
     standing fix.
+
+## 2026-08-18 — closed uqeo/hulz by measurement, merged two lanes, verified both live
+
+- Value: **warranted** — the bridge settled the "written or obvious" condition on both
+  lanes in four calls, which no headless gate could have.
+  - Expected: the rain prep-note clause renders and the pause tooltip matches its
+    destination; both plausible from the diff and neither provable from it.
+  - Got: `Wave 5 next — 16 pests · rain · beds mend 35%.` off the live `Hud`, and
+    `tooltip_text=Opens at page 13 of 14 — What the marks on the board mean.` against
+    `open_at=12` and `PageLabel text=13 / 14` — the promise and the destination read
+    back from the same running tree.
+  - Found: `node-bounds` confirmed `NotebookButton` is still `248x44`, i.e. the tooltip
+    did not widen the button past the rect `button_rects()` placed it in — the specific
+    failure that file's header warns about, and the reason the lane chose a tooltip over
+    a longer label. Nothing else; both lanes' work was correct as handed back.
+  - Cheaper: nothing. Three of the four reads are of live node state after a real press.
+
+- Gap: **no gap this turn.** `find-nodes --class Hud` recovered the node path in one
+  call after `/root/Game/HudLayer/Hud` (from a lane's report) turned out not to exist —
+  which is the verb working as documented rather than a gap.
+
+- Note, not a gap: the `uqeo` measurement was answered *without* the bridge. A 22-wave
+  live run would have produced one point on a curve whose shape `Plant.upgrade_ladder`,
+  `Sunflower.INTERVAL` and `can_start_wave` already decide. Worth recording because the
+  instinct was to launch the game, and the cheaper answer was strictly stronger: it
+  covers every playthrough rather than the one that got played.
