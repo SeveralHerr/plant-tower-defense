@@ -1998,6 +1998,28 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 
 ### New this cycle (27 of 30) — a green test proved nothing, and the suite cannot tell
 
+> Audited cycle 108 (`plant-tower-defense-0x2j`), together with the two sections below
+> it — sections 27, 26 and 25, twelve entries, the second of the two independent
+> "N of 30" runs in this file. (The first was audited at cycle 64 and came out 6 shipped
+> / 2 stale / 0 wanted. This one came out **2 shipped / 0 stale / 1 drifted / 8 still
+> real / 1 unresolved**, which is the opposite result: this run is mostly live work, not
+> history. Cut by line number, never by heading — `### New this cycle (24 of 30)` exists
+> twice in this file under two different subtitles, which is how cycle 64 nearly deleted
+> 1937 lines instead of 85.)
+>
+> Two entries were removed as shipped. **"One test holds node references across an
+> `await`"**: `test_corn_shoots_the_pest_closest_to_escaping` now asserts
+> `is_instance_valid(near) and is_instance_valid(far)` immediately after
+> `await _T.instantiate_scene(host)` and returns early if either has gone, so the
+> targeting answer below it can no longer be about a set of one. **"`_furthest_along_in_range`
+> dereferences without checking the reference"**: the guard shipped at `game/plant.gd:616`
+> under `plant-tower-defense-or67` / gh#43. That entry cited `game/plant.gd:412`, which
+> today lands inside `_make_world_controls_click_through` — a real line in a different
+> function, which is precisely the drift `citation_check` says in its own NOT COVERED
+> text that it cannot see. Everything still listed here was re-checked against the code
+> and is still true; where the code moved under an entry, the entry was rewritten rather
+> than deleted.
+
 - **The suite reports assertions executed and cannot report assertions that MEANT
   something.** `test_corn_shoots_the_pest_closest_to_escaping` ran its assertion every
   time and compared two freed references; `Assertions: 12143 executed` counted it.
@@ -2016,25 +2038,22 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   each time. It is `_route.size() - 2`, it is written down nowhere, and getting it wrong
   by one is exactly this cycle's bug. A `Pest.last_survivable_leg()` — or a test helper
   that places a pest *at a fraction of its route* — removes the arithmetic.
-- **`Plant._furthest_along_in_range` is the only targeting function in the game**, and
-  three plants pick targets by other means (`ChompFlower` grabs, `StickySundew`
-  slows in radius, `Dandelion` arcs). None of them guards against a stale reference
-  either, and they were not part of this fix because nothing crashed in them.
+- **`Dandelion.best_target()` is the last targeting function that dereferences a pest
+  without checking it is still there.** Rewritten at the cycle-108 audit, because both
+  halves of what this entry originally said have since moved. It read
+  "`Plant._furthest_along_in_range` is the only targeting function in the game, and three
+  plants pick targets by other means; none of them guards against a stale reference
+  either". The guard shipped (`game/plant.gd:616`, `if pest == null or not
+  is_instance_valid(pest)`), and the roster grew — `Nettle` now routes through the same
+  function (`game/nettle.gd:209`), so it is no longer one function against three
+  exceptions. Of the plants that still pick their own way, `ChompFlower` and
+  `StickySundew` both guard. `Dandelion.best_target()` (`game/dandelion.gd:215-231`)
+  reads `pest.global_position` twice — once building `here`, once measuring `RANGE` —
+  and `game/dandelion.gd` contains no `is_instance_valid` call anywhere in the file.
+  Same defect, one plant left, and the fix is the same three lines.
 
 ### New this cycle (26 of 30) — what a reverted upgrade exposed about our own tests
 
-- **One test holds node references across an `await` and it is the one that crashed.**
-  `test_corn_shoots_the_pest_closest_to_escaping` (`test/unit/test_combat.gd:288`)
-  builds `near` and `far`, hosts them, awaits `instantiate_scene`, and only then puts
-  them in a typed array. Under 0.42.0 one is already freed by then. Whether or not the
-  harness caused it, **the test is written the way the project's own
-  `settle_read_check.py` exists to catch** — a value read after settle frames that
-  were still moving. Worth auditing every test that hosts nodes and then names them.
-- **`_furthest_along_in_range` dereferences without checking the reference**
-  (`game/plant.gd:412`). It takes `Array[Pest]` and reads `pest.global_position` with
-  no `is_instance_valid`. Game builds that array fresh from the group each frame, so
-  it is safe today by construction rather than by contract — and a targeting function
-  that crashes on a stale entry is a crash in a shipped game, not a failed assertion.
 - **Nothing in this project records what the suite counted before a dependency
   changed.** The bisect that proved gh#43 rested on a number I happened to take by
   hand. `.devtools/verify-runs.jsonl` records `tests.total` per run, so the history is
@@ -2066,6 +2085,10 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   (rule, node path), so a genuine overlap arriving later at the same pair is silent.
   Filed upstream as gh#42 to make the check reachability-aware; until that lands the
   baseline is load-bearing and should be re-read, not carried forward blindly.
+  (Cycle-108 audit: the premise still holds — `[G-055] status: open` at
+  `log-devtools.md:4170`, gh#42 not landed. The count of twelve could not be
+  re-derived, and cannot be from a checkout: the baseline lives under `user://`, not
+  in the repo. Treat the number as the day's observation, not as a standing figure.)
 - **The plant bar is built from the catalogue and the packet bar from a tier list**,
   and `interactive_controls()` had to know both. A HUD that could name its own
   interactive set — one list, built where the buttons are built — would have made
