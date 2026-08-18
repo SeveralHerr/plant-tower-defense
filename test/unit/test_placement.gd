@@ -1656,7 +1656,7 @@ func test_the_preview_warns_about_ground_an_existing_patch_already_covers() -> S
 	preview.reach = reach
 	preview.position = game.board.cell_to_world(doubled)
 	# Before and after, so a cue that simply fired on everything could not pass.
-	err = _T.assert_false(preview.shows_redundant_coverage(),
+	err = _T.assert_false(preview.shows_redundant_patch_coverage(),
 		"with nothing planted yet, (2, 2) is ground worth covering")
 	if err == "":
 		err = _T.assert_eq(preview.covering_patch_count(), 0, "and no patch is covering it")
@@ -1672,7 +1672,7 @@ func test_the_preview_warns_about_ground_an_existing_patch_already_covers() -> S
 		err = _T.assert_eq(preview.covering_patch_count(), 1,
 			"and finds the one patch already covering every road cell (2, 2) would")
 	if err == "":
-		err = _T.assert_true(preview.shows_redundant_coverage(),
+		err = _T.assert_true(preview.shows_redundant_patch_coverage(),
 			"so hovering (2, 2) is marked as a second patch over the same road")
 	if err == "":
 		err = _T.assert_false(preview.shows_dead_zone(),
@@ -1681,12 +1681,12 @@ func test_the_preview_warns_about_ground_an_existing_patch_already_covers() -> S
 		# Told rather than inferred: the one-line call-site change has to agree
 		# with the fallback, not quietly switch the cue off.
 		preview.plant_id = PlantCatalog.SUNDEW
-		err = _T.assert_true(preview.shows_redundant_coverage(),
+		err = _T.assert_true(preview.shows_redundant_patch_coverage(),
 			"and says the same thing when the caller names the plant outright")
 	if err == "":
 		preview.plant_id = PlantCatalog.CORN
 		preview.reach = PlantCatalog.reach(PlantCatalog.CORN)
-		err = _T.assert_false(preview.shows_redundant_coverage(),
+		err = _T.assert_false(preview.shows_redundant_patch_coverage(),
 			"a Corn Cobbler on that cell is not redundant — guns stack, dew does not")
 	if err == "":
 		preview.plant_id = PlantCatalog.SUNDEW
@@ -1695,7 +1695,7 @@ func test_the_preview_warns_about_ground_an_existing_patch_already_covers() -> S
 		err = _T.assert_eq(preview.covering_patch_count(), 0,
 			"one cell along, the existing patch no longer covers everything")
 	if err == "":
-		err = _T.assert_false(preview.shows_redundant_coverage(),
+		err = _T.assert_false(preview.shows_redundant_patch_coverage(),
 			"so a patch that extends the sticky road is not warned about")
 	if err == "":
 		err = _T.assert_false(preview.shows_dead_zone(), "and is not dead ground either")
@@ -1722,11 +1722,11 @@ func test_the_redundancy_mark_never_lands_on_top_of_another_cue() -> String:
 	# Rule 1 over rule 4: the cell really is redundant, and the refusal still wins.
 	preview.position = game.board.cell_to_world(Vector2i(2, 2))
 	preview.placeable = true
-	err = _T.assert_true(patch != null and preview.shows_redundant_coverage(),
+	err = _T.assert_true(patch != null and preview.shows_redundant_patch_coverage(),
 		"(2, 2) is redundant ground while a patch stands on (2, 0)")
 	if err == "":
 		preview.placeable = false
-		err = _T.assert_false(preview.shows_redundant_coverage(),
+		err = _T.assert_false(preview.shows_redundant_patch_coverage(),
 			"but an illegal hover draws only the refusal, never both cues")
 	if err == "":
 		err = _T.assert_eq(preview.covering_patch_count(), 1,
@@ -1742,7 +1742,7 @@ func test_the_redundancy_mark_never_lands_on_top_of_another_cue() -> String:
 	if err == "":
 		err = _T.assert_true(preview.shows_dead_zone(), "so it is still marked dead ground")
 	if err == "":
-		err = _T.assert_false(preview.shows_redundant_coverage(),
+		err = _T.assert_false(preview.shows_redundant_patch_coverage(),
 			"and never also marked redundant — no cell can wear both marks")
 	# And the cue cycle 8 shipped is untouched for the plant it was built for.
 	if err == "":
@@ -1751,7 +1751,7 @@ func test_the_redundancy_mark_never_lands_on_top_of_another_cue() -> String:
 		err = _T.assert_true(preview.shows_dead_zone(),
 			"a Corn Cobbler on (13, 0) is dead ground exactly as before")
 	if err == "":
-		err = _T.assert_false(preview.shows_redundant_coverage(),
+		err = _T.assert_false(preview.shows_redundant_patch_coverage(),
 			"with no second mark added on top of it")
 	_T.free_ui(game)
 	return err
@@ -4945,5 +4945,66 @@ func test_row_is_quiet_is_what_stops_a_level_triggered_caller_stacking() -> Stri
 		RunConfig.earned_milestones[RunConfig.HINT_UPGRADE_EXISTS] = true
 	else:
 		RunConfig.earned_milestones.erase(RunConfig.HINT_UPGRADE_EXISTS)
+	_T.free_ui(game)
+	return err
+
+
+# -- The redundancy cue is patch-only (plant-tower-defense-y1gh) --------------
+
+
+## What the rename in plant-tower-defense-y1gh asserts rather than merely
+## documents: shows_redundant_patch_coverage() fires for a PATCH and for nothing
+## else the catalog offers.
+##
+## test_a_second_patch_over_the_same_road_is_worth_exactly_nothing already checks
+## the Corn Cobbler case by hand. Corn is the plant a reader thinks of, which is
+## exactly why checking only it is thin — previewing_non_stacking_patch() falls
+## back to comparing `reach` against StickySundew.SAP_RADIUS whenever no plant_id
+## is set, so any FUTURE plant sharing that reach would silently inherit a warning
+## built for dew. Sweeping PlantCatalog.ids() covers a plant on the day it is
+## added to the catalog with no edit here: `derive-the-list` over the source of
+## truth instead of a hand-typed set of "the ones that matter".
+##
+## Why the answer must be no for a gun: stacking is the OPPOSITE of redundant for
+## a cob. Cycle 54 measured a five-cob garden reaching all 32 road cells letting a
+## pest through where the recorded seven cobs over that same road do not (commit
+## a00ada2, test_combat.gd's _whole_road_garden). A cue that fired on cobs would
+## be steering the player into the losing garden.
+func test_only_a_patch_is_ever_marked_redundant_over_covered_road() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var preview: PlacementPreview = _preview(game)
+	var err: String = _T.assert_true(preview != null, "the game built a placement preview")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# The same redundant ground the hand-written tests above stand on: a patch on
+	# (2, 0) already covers every road cell a patch on (2, 2) would reach.
+	var patch: StickySundew = _sundew_at(game, Vector2i(2, 0))
+	preview.placeable = true
+	preview.at_risk = false
+	preview.position = game.board.cell_to_world(Vector2i(2, 2))
+	preview.plant_id = PlantCatalog.SUNDEW
+	preview.reach = PlantCatalog.reach(PlantCatalog.SUNDEW)
+	# Positive control FIRST, and it is load-bearing: without it every assert_false
+	# below would pass just as happily against a cue that had stopped firing for
+	# anything at all.
+	err = _T.assert_true(patch != null and preview.shows_redundant_patch_coverage(),
+		"a Sundew on (2, 2) IS marked, so the sweep below is reading a live cue")
+	var swept: int = 0
+	for id: StringName in PlantCatalog.ids():
+		if err != "":
+			break
+		if id == PlantCatalog.SUNDEW:
+			continue
+		preview.plant_id = id
+		preview.reach = PlantCatalog.reach(id)
+		swept += 1
+		err = _T.assert_false(preview.shows_redundant_patch_coverage(),
+			("%s is not a patch, so it is never marked redundant -- not even on the "
+				+ "one cell that IS redundant for dew, because a second gun over "
+				+ "covered road is depth and depth is what wins the wave") % id)
+	if err == "":
+		err = _T.assert_gt(swept, 1,
+			"and the catalog offered more than one non-patch plant to sweep")
 	_T.free_ui(game)
 	return err

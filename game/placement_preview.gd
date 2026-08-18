@@ -200,7 +200,7 @@ func _init() -> void:
 ## opposite sides of "does it cover any road at all": dead ground covers none, so
 ## covering_patch_count() answers 0 there and rule 3 keeps the cell to itself.
 ## And 1 outranks all three in one place: `placeable` is a term in every one of
-## shows_dead_zone(), shows_redundant_coverage() and the `at_risk` branch below,
+## shows_dead_zone(), shows_redundant_patch_coverage() and the `at_risk` branch below,
 ## so a refusal is never annotated with a critique.
 ##
 ## There is deliberately no fifth state for "a husk will take this click". It
@@ -225,7 +225,7 @@ func _draw() -> void:
 	if reach <= 0.0 or not placeable:
 		return
 	var dead: bool = shows_dead_zone()
-	var redundant: bool = shows_redundant_coverage()
+	var redundant: bool = shows_redundant_patch_coverage()
 	var base: Color = DEAD_COLOR if dead or redundant else marker_color
 	var ring := Color(base.r, base.g, base.b, RING_ALPHA)
 	draw_arc(Vector2.ZERO, reach, 0.0, TAU, 48, ring, RING_WIDTH, true)
@@ -251,12 +251,14 @@ func _draw() -> void:
 ## still reads over an off-aim cell. This is a hover-time mark on a transient
 ## node, so it spends none of that.
 ##
-## AND WHY IT IS NOT A REDUNDANCY WARNING. `shows_redundant_coverage()` above
-## warns that a second Sundew patch on the same road buys nothing, which is true
-## of a field effect. It is FALSE of a Corn Cobbler: a cob engages one pest at a
-## time, so a second cob over identical cells is worth real money — measured, in
-## test_combat, as the difference between a five-cob garden that lets a pest
-## through and a seven-cob garden that does not. So no dots is not a warning
+## AND WHY IT IS NOT A REDUNDANCY WARNING. `shows_redundant_patch_coverage()`
+## above warns that a second Sundew PATCH on the same road buys nothing, which is
+## true of a field effect and of nothing else. It is FALSE of a Corn Cobbler: a
+## cob engages one pest at a time, so a second cob over identical cells is worth
+## real money — measured in cycle 54 (test_combat.gd, commit a00ada2) as the
+## difference between a five-cob garden that reaches all 32 road cells and lets a
+## pest through, and a seven-cob garden over that same road that does not. So no
+## dots is not a warning
 ## here. It means "you are buying depth rather than reach", which on a thin
 ## stretch is the right purchase and on a thick one is not, and the player can
 ## see which because the dots show where the road is bare.
@@ -349,13 +351,32 @@ func shows_dead_zone() -> bool:
 ## shows_dead_zone(), and it obeys the same rule 1: an illegal cell answers false
 ## however redundant the ground under it is.
 ##
+## PATCH IS IN THE NAME BECAUSE THE ANSWER IS THE OPPOSITE FOR EVERYTHING ELSE.
+## This is not a general "you already cover that road" cue and must never be
+## reached for as one. It asks one question about one family of plant — patches,
+## whose effect is a field on the ground and therefore does not stack. Stacking a
+## Corn Cobbler over identical cells is VALUABLE, not redundant: a cob engages
+## only the furthest-along pest in range (CornCobbler._furthest_along_in_range),
+## so a second cob over the same road is a second gun, not a second copy of the
+## same gun. Cycle 54 measured exactly that (plant-tower-defense-m9u2, commit
+## a00ada2): a greedy set cover found FIVE cobs that reach all 32 road cells,
+## the same road the recorded SEVEN reach — and the five-cob garden lets a pest
+## through where the seven-cob garden does not. Coverage was identical; firepower
+## was not. A redundancy warning painted over that purchase would be telling the
+## player to buy the losing garden. See test_combat.gd's _whole_road_garden() for
+## the recorded seven and why they are recorded rather than derived.
+##
+## So the sibling predicates say "patch" for the same reason this one now does —
+## covering_patch_count() and previewing_non_stacking_patch() below are the gate
+## that keeps this cue off a cob at all.
+##
 ## The condition is not spelled out again here. It is read straight off the
 ## plant's own value model: the mark fires exactly when one more patch would
 ## multiply the crossing time of the road it covers by 1.0. If the balance ever
 ## changes so that a second patch is worth something, that constant moves and
 ## this cue stops firing on its own, rather than going on warning about a
 ## purchase that has become worth making.
-func shows_redundant_coverage() -> bool:
+func shows_redundant_patch_coverage() -> bool:
 	if not placeable or reach <= 0.0:
 		return false
 	var added: float = StickySundew.added_crossing_time_multiplier(covering_patch_count())
