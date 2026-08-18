@@ -14682,4 +14682,66 @@ func test_the_stats_row_is_described_by_one_table() -> String:
 			+ "something else got added to it") % [spent, widths])
 
 
+## The wave readout's OTHER branch, measured.
+##
+## WORST_CASE_TEXT holds one string per readout, and the wave readout is built from two
+## base branches: "Wave  %d / %d" for the fixed campaign and the endless one, either of
+## which can carry the threat suffix. The declared worst case is an instance of the
+## endless branch, and STAT_READOUTS says in prose that endless is the wider of the two
+## because the campaign is bounded at WaveDirector.WAVES.size() waves with a
+## single-digit threat level.
+##
+## That prose is the claim this test turns into a number. `readout_shape_check` cannot
+## make it -- it compares shapes and measures no font -- and
+## `test_no_readout_clips_its_own_worst_case` cannot either, because it only ever
+## measures the string the table names. Nothing was checking the branch the player
+## actually sees for the whole fixed campaign.
+##
+## `_T.text_width`, NOT get_minimum_size(): every readout in this row sets clip_text,
+## and a clipped Label reports the ~1px clip stub as its minimum, so the obvious width
+## assertion passes unconditionally on exactly the labels that need checking.
+func test_the_wave_readouts_finite_branch_fits_its_slot() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/StatsRow/WaveLabel") as Label
+	var err: String = _T.assert_true(label != null, "the wave readout is in the row")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var last: int = WaveDirector.WAVES.size()
+	err = _T.assert_gt(last, 0, "the fixed campaign has waves to reach the end of")
+	if err == "":
+		# The shape the test measures has to be the shape the table declares, or this
+		# is measuring a string of its own invention. Found by name rather than by
+		# index: the row order is a layout decision and this is not a layout test.
+		var declared: Array = []
+		for row: Dictionary in Hud.STAT_READOUTS:
+			if String(row["name"]) == "WaveLabel":
+				declared = row["shapes"]
+		err = _T.assert_true(declared.has("Wave  %d / %d"),
+			"the finite branch is declared in WaveLabel's shapes: %s" % [declared])
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var slot: float = label.custom_minimum_size.x
+	var finite: String = ("Wave  %d / %d   threat %d"
+		% [last, last, WaveDirector.threat_level(last)])
+	label.text = finite
+	var finite_px: float = _T.text_width(label)
+	label.text = String(Hud.WORST_CASE_TEXT["WaveLabel"])
+	var declared_px: float = _T.text_width(label)
+	err = _T.assert_gt(finite_px, 0.0, "the finite branch measures something")
+	if err == "":
+		err = _T.assert_true(finite_px <= slot,
+			("the last fixed wave renders \"%s\", which needs %.0fpx of a %.0fpx slot. "
+				+ "The declared worst case is a different branch, so nothing else in "
+				+ "the suite measures this one") % [finite, finite_px, slot])
+	if err == "":
+		err = _T.assert_true(declared_px >= finite_px,
+			("WaveLabel's declared worst case is the WIDER branch (%.0fpx against the "
+				+ "finite branch's %.0f). That is the argument its comment in "
+				+ "STAT_READOUTS makes; if it inverts, the budget is priced against "
+				+ "the narrower of the two") % [declared_px, finite_px])
+	_T.free_ui(game)
+	return err
+
 # -- END plant-tower-defense-i5ny / -rq94 --------------------------------------
