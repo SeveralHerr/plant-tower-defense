@@ -11309,7 +11309,10 @@ func test_the_message_corpus_covers_every_catalogue_producer() -> String:
 	# for EVERY plant rather than the one each plant can reach, because a corpus that
 	# reasons about which plant can show which line is wrong the first time a plant
 	# changes where it stands -- and the wall line is 6 characters longer.
-	var catalogue_entries: int = (PlantCatalog.PLANTS.size() * 7
+	# EIGHT per plant since cycle 117: road_plant_tip joins the two death lines, priced
+	# per plant for the same reason -- pricing only the one plant that can currently show
+	# it is a budget that is wrong the first time a second road plant exists.
+	var catalogue_entries: int = (PlantCatalog.PLANTS.size() * 8
 		+ CornCobbler.LEVELS.size() + ChompFlower.LEVELS.size())
 	return _T.assert_eq(corpus.size() - catalogue_entries, 9,
 		("the corpus carries its 9 non-catalogue entries (prep note, wave-cleared "
@@ -17638,6 +17641,90 @@ func test_every_bramble_frame_is_the_same_plant_standing_in_the_same_place() -> 
 
 # END plant-tower-defense-a180
 # =============================================================================
+
+
+# =============================================================================
+# plant-tower-defense-lven — the road rule, said once.
+# =============================================================================
+
+
+func test_the_road_rule_is_told_once_and_only_for_a_plant_that_goes_there() -> String:
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	RunConfig.earned_milestones = {}
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.unlocked = PlantCatalog.ids()
+
+	# A plant that stands on grass must NOT spend the hint. Asserted FIRST, because a hint
+	# that fires for everything would pass every assertion below.
+	game._on_plant_chosen(PlantCatalog.CORN)
+	var err: String = _T.assert_false(
+		RunConfig.has_milestone(RunConfig.HINT_ROAD_PLANTS),
+		"picking a plant that goes on the grass says nothing about the road")
+
+	if err == "":
+		# THE ROW IS BUSY AT SCENE START (the prep note), and `show_message` QUEUES rather
+		# than stomps a line that has not been up long enough to read -- returning false.
+		# So the first pick does NOT spend the hint, and that is the two-door contract
+		# working: "I called show_message" and "the player read it" are different facts,
+		# and a dropped line leaves the hint owed for the next pick. Asserted rather than
+		# worked around, because a future change that made spend_hint fire on the CALL
+		# would pass every other assertion here.
+		game._on_plant_chosen(PlantCatalog.BRAMBLE)
+		err = _T.assert_false(RunConfig.has_milestone(RunConfig.HINT_ROAD_PLANTS),
+			"a pick while the row is busy leaves the hint owed rather than spending it")
+	if err == "":
+		game.hud._message_left = 0.0
+		game._on_plant_chosen(PlantCatalog.BRAMBLE)
+		err = _T.assert_true(RunConfig.has_milestone(RunConfig.HINT_ROAD_PLANTS),
+			"and the next pick with a free row spends it")
+	if err == "":
+		var label: Label = game.hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+		err = _T.assert_true(label != null and label.text.contains("ON the road"),
+			"and the row actually carries it, got: %s" % ("<no label>" if label == null
+				else label.text))
+	if err == "":
+		# ONCE. Re-picking must not re-post it -- the whole contract of a hint.
+		# Free the row FIRST, then put a different line on it, or the tip simply lingers
+		# and "the row still says it" proves nothing about whether it was re-posted.
+		game.hud._message_left = 0.0
+		game.hud.show_message("Something else entirely.")
+		game._on_plant_chosen(PlantCatalog.BRAMBLE)
+		var after: String = (game.hud.get_node("Root/TopBar/MessageLabel") as Label).text
+		err = _T.assert_eq(after, "Something else entirely.",
+			"picking it a second time posts nothing -- the hint is spent (row says: %s)"
+				% after)
+	_T.free_ui(game)
+	RunConfig.earned_milestones = stashed
+	return err
+
+
+func test_a_packet_that_hands_over_a_road_plant_tells_the_rule_too() -> String:
+	# The SECOND route into `selected_plant`, and the one _on_plant_chosen's own comment
+	# says does not exist ("This is the only route in"). True of the BAR; a packet hands
+	# the player a plant already selected, so a Bramble can arrive having never been
+	# pressed in the bar -- which is exactly the player meeting it for the first time.
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	RunConfig.earned_milestones = {}
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+
+	# Drive the real handler rather than the bar: force the packet to yield the Bramble by
+	# selecting it the way the packet path does, then calling the same hint offer.
+	game.hud._message_left = 0.0   # see the sibling test: a busy row defers rather than spends
+	game.selected_plant = PlantCatalog.BRAMBLE
+	game._offer_road_hint()
+	var err: String = _T.assert_true(RunConfig.has_milestone(RunConfig.HINT_ROAD_PLANTS),
+		"the packet route spends the hint as well as the bar route")
+	if err == "":
+		# And the producer is the one the corpus prices, not a second copy of the sentence.
+		err = _T.assert_true(Hud.message_corpus().has(
+			Hud.road_plant_tip(PlantCatalog.display_name(PlantCatalog.BRAMBLE))),
+			"the road tip is priced by the message-row budget")
+	if err == "":
+		err = _T.assert_true(RunConfig.HINTS.has(RunConfig.HINT_ROAD_PLANTS),
+			"and it is registered as a hint, so spend_hint will not refuse it")
+	_T.free_ui(game)
+	RunConfig.earned_milestones = stashed
+	return err
 
 
 ## Only a plant that can actually touch a pest says it is waiting for one

@@ -3398,6 +3398,10 @@ static func message_corpus() -> Array[String]:
 		# it stands. "The wave chewed through your X!" is 6 characters longer than "A
 		# hungry pest ate your X!", so pricing only the reachable one would under-measure
 		# this row by exactly the amount the new line added.
+		# Per-plant, like the death lines above and for the same reason: pricing only the
+		# one plant that can currently show it is a budget that is wrong the first time a
+		# second road plant exists.
+		out.append(road_plant_tip(display))
 		out.append(eaten_message(display))  # message-corpus-check: ok - reached through Hud.destroyed_message(), which game.gd:1660 calls; the dispatcher is one level of indirection this checker does not trace
 		out.append(chewed_through_message(display))  # message-corpus-check: ok - same dispatcher as the line above; both forms are priced for every plant on purpose
 		# BOTH forms of the armed prompt. The tip is shown once per save and the
@@ -3496,6 +3500,20 @@ static func flight_tip() -> String:
 ## The price is here because it is the half that makes it a decision rather than an
 ## instruction — a player holding 40 seeds reads "25" and knows they can do this AND
 ## still buy something.
+## Where a road plant goes, said once, the first time the player has one selected.
+##
+## INTERPOLATES THE PLANT NAME rather than saying "the Barrier Bramble", which is the safe
+## shape cycle 115's sweep argued for: a sentence that names its subject cannot be wrong
+## about a second road plant, and a sentence that hard-codes one can.
+##
+## "ON the road, not beside it" rather than "on the road": the mistake this exists to
+## prevent is not ignorance of where it goes, it is the player's correct and hard-won belief
+## that nothing goes there. Naming the thing they will otherwise do is what makes it a
+## correction rather than an instruction.
+static func road_plant_tip(plant_name: String) -> String:
+	return "Your %s goes ON the road, not beside it." % plant_name
+
+
 static func upgrade_tip(plant_name: String, cost: int) -> String:
 	return "Your %s can be upgraded. Click it on the board — %d seeds." % [plant_name, cost]
 
@@ -3545,6 +3563,11 @@ const HINT_CARDS: Array[Dictionary] = [
 		"id": "seen_upgrade_tip",
 		"title": "Plants already down can grow",
 		"note": "Click a plant on the board to select it, then Upgrade. Climbing one plant beats adding another.",
+	},
+	{
+		"id": "seen_road_tip",
+		"title": "One plant goes in the road",
+		"note": "Every other plant is refused on the road — pests walk there. The Barrier Bramble is the exception: it only goes on road cells, and everything walking one stops to chew through it.",
 	},
 ]
 

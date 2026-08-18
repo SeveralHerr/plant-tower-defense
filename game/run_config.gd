@@ -211,8 +211,19 @@ const HINT_CHOMP_IGNORES_FLIGHT := "seen_flight_tip"
 ## somebody who already knew, or a caption in a screen they had to go and open.
 const HINT_UPGRADE_EXISTS := "seen_upgrade_tip"
 
+## The one rule in this game that REVERSES something the player already learned, rather
+## than filling a gap in what they know (plant-tower-defense-lven).
+##
+## The other three hints teach rules the board does not state. This one contradicts a rule
+## the board stated for the entire history of the project: `Board.is_buildable` refused
+## every road cell until the Barrier Bramble, and `Game.place_plant` still answers "pests
+## walk there" for eight of the nine plants. A player who has internalised that will read
+## "Grows across the road itself" as flavour and never try — so this is the hint most likely
+## to be load-bearing, and it is the last of the four to exist.
+const HINT_ROAD_PLANTS := "seen_road_tip"
+
 const HINTS: Array[String] = [
-	HINT_MOVE_PREVIEW, HINT_CHOMP_IGNORES_FLIGHT, HINT_UPGRADE_EXISTS,
+	HINT_MOVE_PREVIEW, HINT_CHOMP_IGNORES_FLIGHT, HINT_UPGRADE_EXISTS, HINT_ROAD_PLANTS,
 ]
 
 

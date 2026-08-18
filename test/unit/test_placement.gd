@@ -2779,7 +2779,15 @@ func test_the_notebook_plant_pages_fit_their_card() -> String:
 	if err == "":
 		err = _T.assert_eq(legend_pages, 1, "and exactly one is the cue legend")
 	if err == "":
-		err = _T.assert_eq(hint_pages, 1, "and exactly one is the hints page")
+		# NOT "exactly one" since plant-tower-defense-lven. The hint list outgrew a single
+		# page at its fourth entry, so the book carries as many hints pages as the list
+		# needs -- and this is now the assertion that fails when a SEVENTH hint arrives with
+		# no page to sit on, which is the property the old `== 1` was really defending.
+		err = _T.assert_eq(hint_pages, NotebookScreen.hint_pages_needed(),
+			("the book carries exactly as many hints pages as the hint list needs (%d in "
+				+ "PAGES, %d needed for %d hint(s) at %d per page)")
+				% [hint_pages, NotebookScreen.hint_pages_needed(), Hud.hint_ids().size(),
+					NotebookScreen.hints_capacity()])
 	if err == "":
 		# The denominator, which is what makes the five counts above mean anything: a
 		# sixth kind added without a branch here would fall through to the plant case and
@@ -7107,21 +7115,35 @@ func test_the_hints_page_has_room_for_every_hint_the_game_can_spend() -> String:
 	var wanted: int = Hud.hint_ids().size()
 	var err: String = _T.assert_gt(wanted, 0,
 		"there are hints to give back — a page rendered off an empty list asserts nothing")
+	# PER PAGE since plant-tower-defense-lven, and the two claims below were one sentence
+	# before it: with every hint on a single page, "they all fit" and "the page fits" could
+	# not come apart. They can now, and a slicing bug that dropped a hint would leave every
+	# page fitting perfectly.
+	var seen: Array[String] = []
 	if err == "":
-		err = _T.assert_gte(NotebookScreen.hints_capacity(), wanted,
-			("%d hints at HINT_ROW_PITCH %.0f need more than DRAWING_BOX's %.0fpx "
-				+ "(capacity %d). Drop the pitch or split the page — do not let the last "
-				+ "row draw off the matte")
-				% [wanted, NotebookScreen.HINT_ROW_PITCH, NotebookScreen.DRAWING_BOX.size.y,
-					NotebookScreen.hints_capacity()])
+		for page: int in range(NotebookScreen.hint_pages_needed()):
+			var rows: Array[String] = NotebookScreen.hints_on_page(page)
+			err = _T.assert_gte(NotebookScreen.hints_capacity(), rows.size(),
+				("hint page %d holds %d row(s) at HINT_ROW_PITCH %.0f, more than "
+					+ "DRAWING_BOX's %.0fpx fits (capacity %d) — do not let the last row "
+					+ "draw off the matte")
+					% [page, rows.size(), NotebookScreen.HINT_ROW_PITCH,
+						NotebookScreen.DRAWING_BOX.size.y, NotebookScreen.hints_capacity()])
+			if err == "":
+				# The bottom of this page's last row, the way `_build_hints` places it.
+				var last: float = NotebookScreen.SHELF_ROW_TOP \
+					+ float(rows.size() - 1) * NotebookScreen.HINT_ROW_PITCH \
+					+ NotebookScreen.SHELF_TITLE_HEIGHT + NotebookScreen.HINT_NOTE_HEIGHT
+				err = _T.assert_gte(NotebookScreen.DRAWING_BOX.size.y, last,
+					"hint page %d bottoms out at %.0fpx inside a %.0fpx matte"
+						% [page, last, NotebookScreen.DRAWING_BOX.size.y])
+			if err != "":
+				break
+			seen.append_array(rows)
 	if err == "":
-		# The bottom of the last row, computed the way `_build_hints` places it.
-		var last: float = NotebookScreen.SHELF_ROW_TOP \
-			+ float(wanted - 1) * NotebookScreen.HINT_ROW_PITCH \
-			+ NotebookScreen.SHELF_TITLE_HEIGHT + NotebookScreen.HINT_NOTE_HEIGHT
-		err = _T.assert_gte(NotebookScreen.DRAWING_BOX.size.y, last,
-			"the last hint row bottoms out at %.0fpx inside a %.0fpx matte" % [
-				last, NotebookScreen.DRAWING_BOX.size.y])
+		err = _T.assert_eq(seen, Hud.hint_ids(),
+			("every hint reaches exactly one page, in list order — got %s across %d page(s)")
+				% [seen, NotebookScreen.hint_pages_needed()])
 	return err
 
 
@@ -7198,6 +7220,16 @@ func test_the_notebook_hints_page_gives_back_a_hint_that_was_never_shown() -> St
 	for id: String in ids:
 		if err != "":
 			break
+		# TURN TO THIS HINT'S PAGE FIRST (plant-tower-defense-lven). The list outgrew one
+		# page at its fourth entry and `Hints` is REBUILT per page, so the pane holding
+		# this row may not be the one on screen. Gathering the nodes up front instead
+		# was tried and is wrong: the previous page's pane is freed on the next
+		# rebuild, and the cast then fails with "Trying to cast a freed object" while
+		# every assertion still passes -- run_tests.py caught it on stderr, the suite
+		# itself reported 903/903.
+		notebook.go_to(NotebookScreen.page_for_hint_page(
+			ids.find(id) / NotebookScreen.hints_capacity()))
+		hints = notebook.get_node("Hints") as Control
 		var title := hints.get_node_or_null("HintTitle_%s" % id) as Label
 		var note := hints.get_node_or_null("HintNote_%s" % id) as Label
 		var pip := hints.get_node_or_null("HintPip_%s" % id) as ColorRect
@@ -7242,35 +7274,55 @@ func test_the_notebook_hints_page_gives_back_a_hint_that_was_never_shown() -> St
 
 	# The two states, side by side, with the colour thrown away.
 	if err == "":
-		var seen_note := hints.get_node("HintNote_%s" % seen_id) as Label
-		var unseen_note := hints.get_node("HintNote_%s" % unseen_id) as Label
-		err = _T.assert_true(unseen_note.text.begins_with("Not shown yet"),
-			"a hint the game never showed says so in words: \"%s\"" % unseen_note.text)
+		# Each read on its OWN page: seen_id is ids[0] and unseen_id is the LAST id,
+		# which since the split lives on a different page and a different pane.
+		notebook.go_to(NotebookScreen.page_for_hint_page(0))
+		# The TEXT, not the Label. Turning to the other page frees this pane, and a Label
+		# captured here is read after that -- which is a "previously freed" access that
+		# every assertion below still passes through. run_tests.py caught it on stderr
+		# while the suite reported 903/903.
+		var pane0: Control = notebook.get_node("Hints") as Control
+		var seen_text: String = (pane0.get_node("HintNote_%s" % seen_id) as Label).text
+		var seen_alpha: float = (pane0.get_node("HintNote_%s" % seen_id) as Label) \
+			.get_theme_color("font_color").a
+		var seen_pip_rect: Rect2 = (pane0.get_node("HintPip_%s" % seen_id) as ColorRect) \
+			.get_rect()
+		notebook.go_to(NotebookScreen.page_for_hint_page(
+			ids.find(unseen_id) / NotebookScreen.hints_capacity()))
+		var paneN: Control = notebook.get_node("Hints") as Control
+		var unseen_text: String = (paneN.get_node("HintNote_%s" % unseen_id) as Label).text
+		var unseen_alpha: float = (paneN.get_node("HintNote_%s" % unseen_id) as Label) \
+			.get_theme_color("font_color").a
+		var unseen_pip_rect: Rect2 = (paneN.get_node("HintPip_%s" % unseen_id) as ColorRect) \
+			.get_rect()
+		err = _T.assert_true(unseen_text.begins_with("Not shown yet"),
+			"a hint the game never showed says so in words: \"%s\"" % unseen_text)
 		if err == "":
-			err = _T.assert_false(seen_note.text.begins_with("Not shown yet"),
-				"and one it did show is left as the card wrote it: \"%s\"" % seen_note.text)
+			err = _T.assert_false(seen_text.begins_with("Not shown yet"),
+				"and one it did show is left as the card wrote it: \"%s\"" % seen_text)
 		if err == "":
 			# The bead's acceptance, stated as an assertion: the interaction is readable
 			# to a player who never saw the prompt. The unshown row is the FULL card with
 			# a prefix, not a locked stub.
-			err = _T.assert_true(unseen_note.text.ends_with(Hud.hint_note_text(unseen_id, true)
+			err = _T.assert_true(unseen_text.ends_with(Hud.hint_note_text(unseen_id, true)
 					.substr(1)),
 				"and the whole card is still there behind the prefix — nothing is hidden "
-					+ "behind having seen it: \"%s\"" % unseen_note.text)
+					+ "behind having seen it: \"%s\"" % unseen_text)
+		if err == "":
+			err = _T.assert_float_eq(unseen_alpha, seen_alpha, 0.001,
+				"an unseen hint is not whispered — it is the row that most needs reading")
+		if err == "":
+			# Rects captured on their own pages above, for the same freed-pane reason as
+			# the text. The two pips now live on DIFFERENT pages, which is exactly why the
+			# centre-line assertion below is worth more than it was: it was comparing two
+			# rows of one built pane and is now comparing the column across two.
+			err = _T.assert_gt(seen_pip_rect.size.x, unseen_pip_rect.size.x,
+				"the pip is a SIZE difference (%s vs %s), not merely a different green"
+					% [seen_pip_rect.size, unseen_pip_rect.size])
 		if err == "":
 			err = _T.assert_float_eq(
-				unseen_note.get_theme_color("font_color").a,
-				seen_note.get_theme_color("font_color").a, 0.001,
-				"an unseen hint is not whispered — it is the row that most needs reading")
-	if err == "":
-		var seen_pip := hints.get_node("HintPip_%s" % seen_id) as ColorRect
-		var unseen_pip := hints.get_node("HintPip_%s" % unseen_id) as ColorRect
-		err = _T.assert_gt(seen_pip.size.x, unseen_pip.size.x,
-			"the pip is a SIZE difference (%s vs %s), not merely a different green"
-				% [seen_pip.size, unseen_pip.size])
-		if err == "":
-			err = _T.assert_float_eq(seen_pip.position.x + seen_pip.size.x / 2.0,
-				unseen_pip.position.x + unseen_pip.size.x / 2.0, 0.001,
+				seen_pip_rect.position.x + seen_pip_rect.size.x / 2.0,
+				unseen_pip_rect.position.x + unseen_pip_rect.size.x / 2.0, 0.001,
 				"and the two sizes share a centre line, so the column reads as one column")
 	_T.free_ui(notebook)
 	RunConfig.earned_milestones = stashed

@@ -335,6 +335,56 @@ static func hints_capacity() -> int:
 		SHELF_TITLE_HEIGHT + HINT_NOTE_HEIGHT, DRAWING_BOX.size.y)
 
 
+## How many hint PAGES the current hint list needs.
+##
+## The fourth hint (plant-tower-defense-lven) hit the ceiling the block above predicted:
+## "a FOURTH hint does not fit". It was right, and the two ways out it named were "drop the
+## pitch or split the page". The pitch cannot drop — four rows need a pitch of 67 against a
+## row that is 94 tall, and shrinking the note to reach it clips the UNSHOWN form, which the
+## same block calls "the state a reader most needs to read". So: split.
+##
+## The page is still FINITE and still fails loudly. A third hint page needs a second
+## KIND_HINTS entry in PAGES with its own byte-distinct drawing, and
+## test_the_hints_page_has_room_for_every_hint_the_game_can_spend now asserts this against
+## the number of those entries rather than against a single page's row count — so hint seven
+## fails the suite exactly as hint four did, instead of drawing off the matte.
+static func hint_pages_needed() -> int:
+	var per: int = hints_capacity()
+	if per <= 0:
+		return 0
+	return int(ceil(float(Hud.hint_ids().size()) / float(per)))
+
+
+## Which page of the BOOK carries hint page `index`, or -1.
+##
+## Separate from `page_for_kind`, which answers "where is the first hints page" and is what
+## the pause door and the pager use. This answers "where is hint page 2", which only a
+## caller walking every hints page needs — and the two hints pages are not required to be
+## adjacent in the book, so it is a scan rather than an offset from the first.
+static func page_for_hint_page(index: int) -> int:
+	for i: int in PAGES.size():
+		var entry: Dictionary = PAGES[i]
+		if String(entry.get("kind", "")) == KIND_HINTS \
+				and int(entry.get("hint_page", 0)) == index:
+			return i
+	return -1
+
+
+## The hint ids that belong on hint page `index` (0-based), in list order.
+##
+## Pure and static so the slicing is assertable without building a Control — the same
+## reason `Bramble.texture_for_health` takes a fraction rather than a plant.
+static func hints_on_page(index: int) -> Array[String]:
+	var per: int = hints_capacity()
+	var out: Array[String] = []
+	if per <= 0 or index < 0:
+		return out
+	var ids: Array[String] = Hud.hint_ids()
+	for i: int in range(index * per, mini((index + 1) * per, ids.size())):
+		out.append(ids[i])
+	return out
+
+
 const PAGES: Array[Dictionary] = [
 	{
 		"plant": &"corn_cobbler",
@@ -462,7 +512,25 @@ const PAGES: Array[Dictionary] = [
 		"drawing": "res://assets/sprites/chomp_flower_gape.png",
 		"sprite": "res://assets/sprites/chomp_flower_gape.png",
 		"caption": "Said once",
-		"note": "Three things the garden says exactly once, the frame each becomes true, and then never again. A player watching the board instead of the message row lost them for good — so they are written out here, greyed and prefixed until the game has really said one.",
+		"note": "Things the garden says exactly once, the frame each becomes true, and then never again. A player watching the board instead of the message row lost them for good — so they are written out here, greyed and prefixed until the game has really said one.",
+		"hint_page": 0,
+	},
+	{
+		"kind": KIND_HINTS,
+		"plant": &"",
+		# The SECOND hints page (plant-tower-defense-lven). Three rows fit a page and the
+		# fourth hint did not; hints_capacity()'s block above records why the pitch could
+		# not simply drop.
+		#
+		# Byte-distinct from every other drawing, which the uniqueness check across PAGES
+		# requires. A bramble chewed through to two stubs is the picture for the page that
+		# now carries the road rule: the plant whose whole existence contradicts "nothing
+		# goes on the road" is the one whose hint pushed this page into two.
+		"drawing": "res://assets/sprites/bramble_ragged.png",
+		"sprite": "res://assets/sprites/bramble_ragged.png",
+		"caption": "Said once, continued",
+		"note": "The list outgrew one page at the fourth entry. Same rules as the facing side: each is said the frame it becomes true, once, and is written here greyed until then.",
+		"hint_page": 1,
 	},
 ]
 
@@ -713,7 +781,22 @@ func _build_shelf() -> void:
 ##
 ## Read once, here, for the reason `_build_shelf` gives: the notebook is rebuilt every
 ## time it is opened, and nothing can spend a hint while it is up.
+## Which hint page `_build_hints` is currently drawing. Set by `_show_page` before the
+## rebuild, because the rows are positioned from their index ON THE PAGE.
+var _hints_page: int = 0
+
+
 func _build_hints() -> void:
+	# Rebuilt rather than built once, since which rows belong here depends on the page.
+	# Cheap: the notebook is opened by hand and holds at most hints_capacity() rows.
+	if _hints != null and is_instance_valid(_hints):
+		# remove_child + free(), NOT queue_free(). queue_free is deferred, so the old pane
+		# would still be in the tree when the new one is added -- Godot renames the
+		# newcomer to "Hints2" and every `get_node("Hints")` keeps returning the stale
+		# page. That is exactly how this presented: page two built correctly and the test
+		# read page one's pane, reporting "a hint with no row" for a row that existed.
+		remove_child(_hints)
+		_hints.free()
 	_hints = Control.new()
 	_hints.name = "Hints"
 	_hints.position = DRAWING_BOX.position
@@ -723,7 +806,10 @@ func _build_hints() -> void:
 	add_child(_hints)
 
 	var text_width: float = DRAWING_BOX.size.x - SHELF_TEXT_X - 4.0
-	var ids: Array[String] = Hud.hint_ids()
+	# The slice for THIS page, not the whole list (plant-tower-defense-lven). `i` is the row
+	# on the page rather than the index in the list, so a hint on page two draws at the top
+	# of page two rather than 294 px down an invisible one.
+	var ids: Array[String] = hints_on_page(_hints_page)
 	for i: int in ids.size():
 		var id: String = ids[i]
 		# The same read the message row's guard makes. `spend_hint` writes into
@@ -1027,6 +1113,14 @@ func go_to(page: int) -> void:
 	_drawing_rect.visible = drawn
 	_spec.visible = spec
 	_shelf.visible = kind == KIND_SHELF
+	if kind == KIND_HINTS:
+		# Rebuild for THIS page's slice before showing it. The page index rides on the
+		# PAGES entry rather than being derived from the page number, so the two hint
+		# pages do not have to be adjacent in the book.
+		var want: int = int(entry.get("hint_page", 0))
+		if want != _hints_page or _hints == null or not is_instance_valid(_hints):
+			_hints_page = want
+			_build_hints()
 	_hints.visible = kind == KIND_HINTS
 	_legend.visible = kind == KIND_LEGEND
 	_spec.text = plant_spec(StringName(entry.get("plant", &""))) if spec else ""

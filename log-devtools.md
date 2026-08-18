@@ -7415,3 +7415,50 @@ status rather than rewriting the entries that recorded these as open.
 - Gap: **no gap this turn.** Tier (f) tooling-only, and this is the first cycle where the
   triage rule added last cycle was applied to *decline* a launch rather than to justify one:
   nothing under `res://` changed, so no Godot phase could have spoken to it.
+
+## 2026-08-18 — cycle 117: the fourth hint, and the page that only held three
+
+- Value: **warranted** — `run_tests.py` caught two freed-object defects the suite itself
+  reported as 903/903 passing, and the notebook's own gate refused the fourth hint exactly
+  as its prose said it would.
+  - Expected: the fourth hint teaches the one rule that REVERSES what eight plants taught.
+    Predicted: the trigger is the decision, and firing on SELECTION beats firing on the
+    refusal, because the refusal already posts its own message ("No pests walk there.") —
+    so what is missing is not feedback but the positive instruction. Runtime should show
+    whether the tip reaches a real priority-queued row and whether a second notebook page
+    renders and is reachable.
+  - Got: both. `Your Barrier Bramble goes ON the road, not beside it.` on the live row, and
+    hint page 0 holding the three old hints with page 1 holding the road tip, the notebook
+    reading `4 of 4 seen` across both and the pager at 16/16.
+  - Found: five, and only one was the feature.
+    **(1)** the hints page holds exactly THREE, and the file predicted it: *"a FOURTH hint
+    does not fit"*. Its two named ways out were "drop the pitch or split the page" — and the
+    pitch cannot drop, because four rows need a pitch of 67 against a row that is 94 tall,
+    and shrinking the note to reach it clips the UNSHOWN form, which the same block calls
+    the state a reader most needs. So: split, with the capacity still finite and still
+    loud — a seventh hint fails the suite exactly as the fourth did.
+    **(2)** `queue_free()` on the rebuilt pane is DEFERRED, so the old `Hints` was still in
+    the tree when the new one was added; Godot renamed the newcomer and every
+    `get_node("Hints")` kept returning page one. It presented as "a hint with no row" for a
+    row that existed and rendered.
+    **(3) and (4)** two freed-object accesses — a cast and a `.text` read on Labels whose
+    pane the next page rebuild had freed. **The suite reported `903/903 | ALL TESTS PASSED`
+    through both.** Only `run_tests.py`'s stderr check saw them. Third time this session it
+    has earned its place over `run_tests.gd`.
+    **(5)** `suite_reach_check` found `road_plant_tip` public with no test naming it — I had
+    built the whole notebook split and never written the hint's own tests. The checker
+    noticed what I had *forgotten*, not what I had got wrong.
+  - Cheaper: nothing for (3) and (4). The notebook capacity was caught headlessly and was
+    the expensive finding; the launch bought the priority-queue claim and page two rendering.
+
+- **The two-door contract is now asserted rather than worked around.** The hint is DEFERRED
+  at scene start because the prep note owns the row and `show_message` queues rather than
+  stomping an unread line. My first test "fixed" this by clearing the row; the test now
+  asserts BOTH — a busy row leaves the hint owed, a free row spends it — because a future
+  change that spent the hint on the CALL would pass every other assertion in the file.
+
+- Gap: **no gap this turn.** Worth noting which tool caught what, since the answer was not
+  the obvious one: the engine gates caught nothing, `check_all` caught the untested public
+  surface, the notebook's own layout test caught the capacity, and the two defects that
+  would actually have shipped were caught by the TEST RUNNER reading stderr — not by any
+  assertion anyone wrote.

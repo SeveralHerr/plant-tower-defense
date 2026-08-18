@@ -1306,6 +1306,7 @@ func summary_stats(new_record: bool) -> Dictionary:
 func _on_plant_chosen(id: StringName) -> void:
 	Sfx.play(Sfx.BUTTON_PRESSED)
 	selected_plant = id
+	_offer_road_hint()
 	_select(null)
 	# Picking a different plant while the cursor sits still must re-draw the
 	# ring: switching from a Chomp to a Corn triples the coverage, and a hover
@@ -1555,6 +1556,34 @@ func place_plant(id: StringName, cell: Vector2i) -> String:
 ## MESSAGE_NORMAL, not a deadline: nothing is counting down. The player has as long as
 ## the wave to act on it, and a higher priority would let a one-shot tutorial line stomp
 ## a lives-lost readout.
+## Told once, the first time the player has a road plant selected by any route
+## (plant-tower-defense-lven).
+##
+## ON SELECTION rather than on the first refusal, and the refusal is why. `_click_at`
+## already answers a misplaced road plant with "No pests walk there." — so the confused
+## moment is not silent, and what the player is missing is not feedback but the POSITIVE
+## instruction: where it does go. A hint that fires after the mistake would be the second
+## thing they read about it.
+##
+## The other three hints fire on an EVENT the player caused and did not understand (a flier
+## crossed a mouth, an uproot was armed). This one has no such event, because the mistake it
+## prevents is a click the player will not make: they learned the road is unbuildable and
+## will not try. Selection is the last moment before that, and it is guaranteed — nothing
+## can be planted without being selected.
+##
+## Spent on `show_message`'s RETURN VALUE, exactly as `_on_flight_ignored` is: the row drops
+## a line when its queue is full, "I called show_message" and "the player read it" are
+## different facts, and a dropped line leaves the hint owed for the next selection.
+func _offer_road_hint() -> void:
+	if not PlantCatalog.on_road(selected_plant):
+		return
+	if RunConfig.has_milestone(RunConfig.HINT_ROAD_PLANTS):
+		return
+	var posted: bool = hud.show_message(
+		Hud.road_plant_tip(PlantCatalog.display_name(selected_plant)))
+	RunConfig.spend_hint(RunConfig.HINT_ROAD_PLANTS, posted)
+
+
 func _on_flight_ignored() -> void:
 	if RunConfig.has_milestone(RunConfig.HINT_CHOMP_IGNORES_FLIGHT):
 		return
@@ -1912,6 +1941,13 @@ func _on_packet_requested(tier: StringName = &"common") -> void:
 	var got: StringName = bank.buy_packet(tier)
 	if got != &"":
 		selected_plant = got
+		# The SECOND route in, and the comment above _on_plant_chosen says there is only
+		# one ("This is the only route in; there is no keyboard shortcut"). That is true of
+		# the BAR and not of `selected_plant`: a packet hands the player a plant already
+		# selected, so a Bramble can arrive here having never been pressed in the bar. A
+		# hint wired only to the bar would miss exactly the player meeting the plant for
+		# the first time, which is the only player it is for.
+		_offer_road_hint()
 	else:
 		hud.shake_packet_button(tier)
 
