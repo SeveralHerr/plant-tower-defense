@@ -70,34 +70,123 @@ const NEXT_WAVE_BUTTON_SIZE := Vector2(130, 40)
 ## by shrinking another would not be a fix, just a different tight spot). The
 ## row's own headroom nearly triples, 8px to 19, and Seeds — the readout that
 ## started this — gains 3px it did not have before.
-## The stats row's font size, hoisted out of the four _add_stat calls so a budget
-## measured against it cannot be measured at a different one. The compost readout
-## is deliberately smaller and says so at its own call site.
+## The stats row's font sizes, hoisted out of the readout table below so a budget
+## measured against one cannot be measured at a different one.
 const STAT_FONT_SIZE: int = 26
+## Compost is deliberately smaller than the other three, and that size difference is
+## the only hierarchy this row has: it is the one stat that is not a resource you
+## spend. `_make_label` sets VERTICAL_ALIGNMENT_CENTER so the 20px text still sits on
+## the same baseline as the 26px text beside it.
+const COMPOST_FONT_SIZE: int = 20
 
-const SEEDS_LABEL_WIDTH: float = 171.0
-const WAVE_LABEL_WIDTH: float = 312.0
-const LIVES_LABEL_WIDTH: float = 146.0
-const COMPOST_LABEL_WIDTH: float = 198.0
+## THE FOUR READOUTS, and the only place any one of them is described.
+##
+## This was THREE hand-lists of the same four names: a `WORST_CASE_TEXT` dictionary,
+## four `SEEDS`/`WAVE`/`LIVES`/`COMPOST_LABEL_WIDTH` constants that
+## `stats_row_budget()` summed, and four `_add_stat()` calls in `_build_top_bar`. Nothing tied
+## any pair of them together until cycle 51 bolted two equality assertions across the
+## gaps, and both gaps were real: a readout could be added to the row and be invisible
+## to the worst-case table, or declared there and invisible to the width sum. One
+## table removes the class rather than the two instances -- `_build_top_bar` lays it out
+## by walking this, `stats_row_budget()` sums these same rows, and `WORST_CASE_TEXT`
+## below is a projection of it, so a fifth readout is one entry and cannot be
+## half-added.
+##
+## THE COLUMNS, and why each is a column rather than a constant somewhere else:
+##
+##   name        the Label's node name. Part of the contract -- the devtools bridge
+##               reads these by path -- and the key both `WORST_CASE_TEXT` and the
+##               `hud_readouts` budget are written against.
+##   member      the `_x_label` field the rest of this file reads. Assigned through
+##               `set()` in `_build_top_bar` so this table stays the only enumeration
+##               four; four hand-written assignments after the loop would just be a
+##               new third list wearing different clothes.
+##   width       the clipped slot in px, from the block above.
+##   font_size   STAT_FONT_SIZE, or COMPOST_FONT_SIZE for the one that is smaller on
+##               purpose. Carried per row because the difference IS information: a
+##               table that dropped it would be three lists collapsed into one plus an
+##               exception.
+##   colour      PAPER for the three resources, COMPOST for the gold one. The wave
+##               readout's is also its ramp's base -- `threat_color_on` returns PAPER
+##               below THREAT_SHOW_FROM and `_ease_threat_tint` eases from there
+##               toward the warm/hot stops (and their colourblind-safe twins).
+##   worst_case  the longest string this readout can ever hold, and the value
+##               `WORST_CASE_TEXT` projects out.
+##   shapes      every format string the code assigns to this readout -- base branches
+##               and `+=` suffixes alike. `tools/readout_shape_check.py` ties this
+##               column to the real `_x_label.text =` assignments in BOTH directions.
+##               It exists because `worst_case` structurally cannot: one string is an
+##               instance of exactly ONE branch, and the wave readout has two.
+const STAT_READOUTS: Array[Dictionary] = [
+	{
+		"name": "SeedsLabel",
+		"member": "_seeds_label",
+		"width": 171.0,
+		"font_size": STAT_FONT_SIZE,
+		"colour": PAPER,
+		"worst_case": "Seeds  99999",
+		"shapes": ["Seeds  %d"],
+	},
+	{
+		# Weather is deliberately NOT a fifth readout, and the number is why: the base
+		# string measures 302px in a 312px slot, so the tightest tag that could carry
+		# a weather state -- a bare "*" -- needs 317. Every option overflowed, which
+		# is the budget system saying the top bar is not weather's home. See
+		# plant-tower-defense-saaw.
+		#
+		# TWO base shapes and one worst case, which is the thing `shapes` exists to
+		# say out loud. "Wave  %d / %d" is the fixed campaign, bounded by
+		# WaveDirector.WAVES at 22 waves with a single-digit threat level there; the
+		# endless branch spends four digits on the wave and two on the threat, so it
+		# is the wider of the two. That was an unwritten assumption until cycle 108 --
+		# the declared worst case was one string somebody wrote out, and nothing tied
+		# it to the branches the formatter can actually build.
+		"name": "WaveLabel",
+		"member": "_wave_label",
+		"width": 312.0,
+		"font_size": STAT_FONT_SIZE,
+		"colour": PAPER,
+		"worst_case": "Wave  9999 ∞   threat 99",
+		"shapes": ["Wave  %d ∞", "Wave  %d / %d", "   threat %d"],
+	},
+	{
+		"name": "LivesLabel",
+		"member": "_lives_label",
+		"width": 146.0,
+		"font_size": STAT_FONT_SIZE,
+		"colour": PAPER,
+		"worst_case": "Garden  10",
+		"shapes": ["Garden  %d"],
+	},
+	{
+		# The husk suffix is part of the worst case, not an extra on top of it.
+		# Leaving it out is what let a clipped readout ship: the table declared only
+		# "Compost  9999" while the formatter appended "  +N", and the width test has
+		# only ever measured the string the table names.
+		"name": "CompostLabel",
+		"member": "_compost_label",
+		"width": 198.0,
+		"font_size": COMPOST_FONT_SIZE,
+		"colour": COMPOST,
+		"worst_case": "Compost  9999  +99",
+		"shapes": ["Compost  %d", "  +%d"],
+	},
+]
 
-## The longest string each readout can ever hold. Budgets are only meaningful
-## against these, and a clipped Label fails *silently* — it just renders
-## "Seeds  4…" and nothing complains, which is exactly how the first pass at
-## these numbers shipped a 130px seeds slot that could not hold a 3-digit
-## total. `test_no_readout_clips_its_own_worst_case` measures each of these
-## against its budget in the real theme font.
-const WORST_CASE_TEXT: Dictionary = {
-	"SeedsLabel": "Seeds  99999",
-	# Weather is deliberately NOT here, and the number is why: the base string
-	# measures 302px in a 312px slot, so the tightest tag that could carry a weather
-	# state -- a bare "*" -- needs 317. Every option overflowed, which is the budget
-	# system saying the top bar is not weather's home. See plant-tower-defense-saaw.
-	"WaveLabel": "Wave  9999 ∞   threat 99",
-	"LivesLabel": "Garden  10",
-	# Includes the husk suffix. Leaving it out is what let a clipped readout ship:
-	# the widest string this label can hold is not the widest one anyone wrote down.
-	"CompostLabel": "Compost  9999  +99",
-}
+## The longest string each readout can ever hold, keyed by node name. Budgets are only
+## meaningful against these, and a clipped Label fails *silently* -- it just renders
+## "Seeds  4..." and nothing complains, which is exactly how the first pass at these
+## numbers shipped a 130px seeds slot that could not hold a 3-digit total.
+## `test_no_readout_clips_its_own_worst_case` measures each of these against its
+## budget in the real theme font.
+##
+## A PROJECTION of STAT_READOUTS, not a table of its own. `Game`'s `hud_readouts`
+## budget, the `budgets` verb and three tests are all written against this shape and
+## there is no reason to make them walk a seven-column row to reach one cell. A
+## `static var` rather than a `const` because a const cannot be computed: it is filled
+## once when the script loads, and the payoff is that it cannot disagree with the rows
+## it describes.
+static var WORST_CASE_TEXT: Dictionary = _worst_case_text()
 
 ## The top bar's page rules: the notebook's own ruled lines, drawn on the ink band.
 ##
@@ -945,10 +1034,23 @@ func _build_top_bar(root: Control) -> void:
 	bar.add_child(stats)
 	_stats_row = stats
 
-	_seeds_label = _add_stat(stats, "SeedsLabel", STAT_FONT_SIZE, PAPER, SEEDS_LABEL_WIDTH)
-	_wave_label = _add_stat(stats, "WaveLabel", STAT_FONT_SIZE, PAPER, WAVE_LABEL_WIDTH)
-	_lives_label = _add_stat(stats, "LivesLabel", STAT_FONT_SIZE, PAPER, LIVES_LABEL_WIDTH)
-	_compost_label = _add_stat(stats, "CompostLabel", 20, COMPOST, COMPOST_LABEL_WIDTH)
+	# The readouts, laid out by walking STAT_READOUTS rather than by four hand-written
+	# calls. That is what makes the row and the budget the same list: a fifth entry
+	# shows up on screen and in stats_row_budget() from one edit, and a Label in this
+	# row that no entry describes cannot exist -- which is what the two cycle-51
+	# assertions were bolted on to check from the outside.
+	for readout: Dictionary in STAT_READOUTS:
+		var colour: Color = readout["colour"]
+		var member: String = String(readout["member"])
+		var label: Label = _add_stat(stats, String(readout["name"]),
+			int(readout["font_size"]), colour, float(readout["width"]))
+		# The field the rest of this file reads. Through set() so the table stays the
+		# only enumeration of the four; a `member` naming nothing would otherwise leave
+		# the field null and not say so until the first refresh().
+		set(member, label)
+		if get(member) != label:
+			push_error("Hud: STAT_READOUTS entry %s names no member `%s`"
+				% [readout["name"], member])
 
 	# The one element that absorbs slack. Without it the readouts spread across
 	# the whole bar; with it they stay left-grouped and the button stays right.
@@ -1427,8 +1529,28 @@ static func plant_bar_layout(count: int) -> Dictionary:
 	}
 
 
+## WORST_CASE_TEXT's initialiser: name -> worst case, projected off STAT_READOUTS.
+##
+## Not a second table and not a cache -- it runs once, when the script loads, and its
+## whole reason for existing is that a `const` cannot be computed. Every caller that
+## wants a worst case wants exactly this shape.
+static func _worst_case_text() -> Dictionary:
+	var table: Dictionary = {}
+	for readout: Dictionary in STAT_READOUTS:
+		table[String(readout["name"])] = String(readout["worst_case"])
+	return table
+
+
+## The row's four slots plus its separations plus its two buttons.
+##
+## The widths are summed off STAT_READOUTS rather than off four named constants, which
+## is the half of that table's point that faces the budget: a readout added to the row
+## is added to this sum in the same edit, so `hud_stats_row` can no longer report a row
+## narrower than the one on screen.
 static func stats_row_budget(readouts: int) -> float:
-	var widths: float = SEEDS_LABEL_WIDTH + WAVE_LABEL_WIDTH + LIVES_LABEL_WIDTH + COMPOST_LABEL_WIDTH
+	var widths: float = 0.0
+	for readout: Dictionary in STAT_READOUTS:
+		widths += float(readout["width"])
 	return (widths + float(STATS_SEPARATION * readouts) + NEXT_WAVE_BUTTON_SIZE.x
 		+ GameSpeed.button_size().x)
 

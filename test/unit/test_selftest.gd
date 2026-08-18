@@ -14600,3 +14600,86 @@ func test_the_title_button_column_reports_the_column_that_is_drawn() -> String:
 						% [slot, span.x, span.y, column.x, column.y])
 	_T.free_ui(title)
 	return err
+
+
+# -- BEGIN plant-tower-defense-i5ny / -rq94: the top bar's one readout table ----
+# Appended as a block on purpose: a sibling lane also appends here, and a clearly
+# delimited section is what makes the conflict resolvable by keeping both rather
+# than by picking one. Nothing above this line was touched.
+
+
+## The four readouts are described ONCE, and everything that used to be a separate
+## hand-list now reads that one description.
+##
+## Three lists became one in cycle 108. The two assertions cycle 51 bolted across the
+## gaps between them are gone, because the gaps are gone -- `_build_top_bar` walks it,
+## so a Label in the row that no row describes cannot be built, and `stats_row_budget`
+## sums the table, so a readout's width cannot be missing from the sum. What is left
+## to check is the one thing the structure does not make true by itself: that
+## `WORST_CASE_TEXT` really is the projection it claims to be, and that the widths the
+## budget spends are the widths the table declares.
+func test_the_stats_row_is_described_by_one_table() -> String:
+	var rows: Array[Dictionary] = Hud.STAT_READOUTS
+	# The row count first. A sweep over an empty table asserts nothing and prints
+	# [VACUOUS]; four is the row this bar has, and a fifth is a deliberate change.
+	var err: String = _T.assert_eq(rows.size(), 4,
+		"the top bar declares its four readouts in Hud.STAT_READOUTS")
+	if err != "":
+		return err
+	var widths: float = 0.0
+	for readout: Dictionary in rows:
+		if err != "":
+			break
+		var name: String = String(readout.get("name", ""))
+		err = _T.assert_true(name != "", "every row names its Label")
+		if err == "":
+			err = _T.assert_true(String(readout.get("member", "")) != "",
+				"%s names the field _build assigns it to" % name)
+		if err == "":
+			err = _T.assert_true(String(readout.get("worst_case", "")) != "",
+				"%s declares a worst case" % name)
+		if err == "":
+			err = _T.assert_gt(float(readout.get("width", 0.0)), 0.0,
+				"%s declares a clipped width" % name)
+		if err == "":
+			err = _T.assert_gt(int(readout.get("font_size", 0)), 0,
+				("%s declares its own font size -- the compost readout is smaller than "
+					+ "the rest and that difference is the row's only hierarchy") % name)
+		if err == "":
+			var shapes: Array = readout.get("shapes", [])
+			err = _T.assert_gt(shapes.size(), 0,
+				("%s declares the format shapes it is assigned. "
+					+ "tools/readout_shape_check.py ties this column to the real "
+					+ "_x_label.text = assignments, both directions") % name)
+		widths += float(readout.get("width", 0.0))
+	if err != "":
+		return err
+	# WORST_CASE_TEXT is a projection, not a second table. If it ever stops being one,
+	# the budget and test_no_readout_clips_its_own_worst_case go back to measuring a
+	# row that is not the row on screen.
+	err = _T.assert_eq(Hud.WORST_CASE_TEXT.size(), rows.size(),
+		"WORST_CASE_TEXT carries exactly the table's readouts")
+	for readout: Dictionary in rows:
+		if err != "":
+			break
+		var name: String = String(readout["name"])
+		err = _T.assert_true(Hud.WORST_CASE_TEXT.has(name),
+			"WORST_CASE_TEXT projects %s" % name)
+		if err == "":
+			err = _T.assert_eq(String(Hud.WORST_CASE_TEXT[name]),
+				String(readout["worst_case"]),
+				"and projects %s's worst case unchanged" % name)
+	if err != "":
+		return err
+	# The budget spends the table's widths and nothing else. Derived rather than
+	# retyped: stats_row_budget(0) is the four slots plus the two buttons, so backing
+	# the buttons out has to leave exactly the sum above.
+	var spent: float = (Hud.stats_row_budget(0) - Hud.NEXT_WAVE_BUTTON_SIZE.x
+		- GameSpeed.button_size().x)
+	return _T.assert_float_eq(spent, widths, 0.001,
+		("stats_row_budget() spends %.0fpx of readout width and the table declares "
+			+ "%.0f -- the sum is derived from the table, so these can only differ if "
+			+ "something else got added to it") % [spent, widths])
+
+
+# -- END plant-tower-defense-i5ny / -rq94 --------------------------------------
