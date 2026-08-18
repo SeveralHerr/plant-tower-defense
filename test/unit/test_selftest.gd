@@ -15452,3 +15452,114 @@ func test_a_seed_change_leaves_the_readout_holding_the_final_total() -> String:
 	return err
 
 # -- END plant-tower-defense-eupm / -r3e8 --------------------------------------
+
+
+# -- BEGIN the page frame's corners are not the artifact (plant-tower-defense-twbt) --
+
+
+## The board's page frame turns cleanly at every corner.
+##
+## plant-tower-defense-twbt reported visible artifacts around the playfield edge and
+## named two suspects, asking for both to be confirmed before either was "fixed".
+## Suspect 1 was: `page_edge_points()` offsets each sample along its own side's
+## inward normal, so "at a corner the wobble jumps direction discontinuously instead
+## of easing round", making "a visible notch or spur at all four corners".
+##
+## MEASURED, and it is false. Reading the real polyline out of the running game and
+## taking the turn angle at every vertex:
+##
+##     corner (4.5, 4.5)     turn +90.0 deg   (error  0.0)
+##     corner (891.5, 4.5)   turn +91.9 deg   (error +1.9)
+##     corner (891.5, 571.5) turn +90.0 deg   (error  0.0)
+##     corner (4.5, 571.5)   turn +91.9 deg   (error +1.9)
+##     worst NON-corner turn      21.7 deg
+##
+## The corners are the SMOOTHEST joints on the whole outline. The wobble's own
+## mid-edge turns are more than ten times larger, because a +/-2px excursion over an
+## 8px sample step is inherently a ~20 degree kink and there are 360 of them. If the
+## frame reads as notchy, that is the wobble everywhere, not the corners -- and it is
+## PAGE_WOBBLE_PX against PAGE_SAMPLE_STEP that would have to change, which is a
+## different bead about a deliberate hand-drawn look.
+##
+## The second half of suspect 1 -- "two round caps stack on the same point" where the
+## loop closes -- is also ruled out: the closure appends the first point, which makes
+## the array's first and last point equal but produces NO zero-length segment (the
+## shortest is 7.99px). A degenerate segment is what would have painted a blob.
+##
+## This test exists so the next person who sees an edge artifact does not spend the
+## afternoon on the corners again.
+func test_the_page_frames_corners_turn_more_cleanly_than_its_own_wobble() -> String:
+	var board_px := Vector2(float(Board.COLS * Board.CELL), float(Board.ROWS * Board.CELL))
+	var inset: float = 4.5
+	var pts: PackedVector2Array = Board.page_edge_points(board_px, inset)
+	var err: String = _T.assert_gt(pts.size(), 100,
+		"the outline is sampled densely enough to have corners to check (%d points)" % pts.size())
+	if err != "":
+		return err
+	if err == "":
+		err = _T.assert_true(pts[0] == pts[pts.size() - 1],
+			"the outline closes on its own first point")
+	if err == "":
+		# Dropping the duplicated closing point: left in, it is a zero-length segment
+		# whose direction is undefined, and every angle through it reads as garbage.
+		# That artefact of the MEASUREMENT is what made the corner look broken the
+		# first time it was measured.
+		var closed: PackedVector2Array = pts.slice(0, pts.size() - 1)
+		var n: int = closed.size()
+		var nominal: Array[Vector2] = [
+			Vector2(inset, inset),
+			Vector2(board_px.x - inset, inset),
+			Vector2(board_px.x - inset, board_px.y - inset),
+			Vector2(inset, board_px.y - inset),
+		]
+		var corner_worst: float = 0.0
+		var corner_indices: Array[int] = []
+		for want: Vector2 in nominal:
+			var best: int = 0
+			var best_d: float = INF
+			for i: int in n:
+				var d: float = closed[i].distance_to(want)
+				if d < best_d:
+					best_d = d
+					best = i
+			corner_indices.append(best)
+			corner_worst = maxf(corner_worst, absf(_turn_degrees(closed, best) - 90.0))
+		err = _T.assert_gt(5.0, corner_worst,
+			("every corner turns within 5 degrees of a square right angle (worst %.1f)."
+				+ " If this ever fails, the corner really has become discontinuous and"
+				+ " twbt's suspect 1 has finally come true") % corner_worst)
+		if err == "":
+			var mid_worst: float = 0.0
+			for i: int in n:
+				if corner_indices.has(i):
+					continue
+				mid_worst = maxf(mid_worst, absf(_turn_degrees(closed, i)))
+			err = _T.assert_gt(mid_worst, corner_worst,
+				("and the wobble's own mid-edge kinks are LARGER than the corners'"
+					+ " (%.1f against %.1f) -- which is why the corners are not the"
+					+ " artifact") % [mid_worst, corner_worst])
+	if err == "":
+		var shortest: float = INF
+		for i: int in range(pts.size() - 1):
+			shortest = minf(shortest, pts[i].distance_to(pts[i + 1]))
+		err = _T.assert_gt(shortest, 0.001,
+			("no zero-length segment, so the two round line caps cannot stack into a"
+				+ " blob at the seam (shortest %.3f px)") % shortest)
+	return err
+
+
+## Signed turn at vertex `i` of a closed polyline, in degrees. +90 is a square corner.
+func _turn_degrees(closed: PackedVector2Array, i: int) -> float:
+	var n: int = closed.size()
+	var p: Vector2 = closed[(i - 1 + n) % n]
+	var q: Vector2 = closed[i]
+	var r: Vector2 = closed[(i + 1) % n]
+	var d: float = rad_to_deg((r - q).angle() - (q - p).angle())
+	while d > 180.0:
+		d -= 360.0
+	while d < -180.0:
+		d += 360.0
+	return d
+
+
+# -- END the page frame's corners are not the artifact --
