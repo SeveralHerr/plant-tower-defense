@@ -5374,3 +5374,140 @@ func test_the_title_screen_gives_its_lawn_the_backdrops_own_shift() -> String:
 
 # END the lawn stands on the ground at any viewport height
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN the top bar's four readouts are four different treatments
+# (plant-tower-defense-6tmf)
+# =============================================================================
+
+
+## The four readouts are four DIFFERENT kinds of thing, and until 6tmf they were four
+## near-identical strings: 26/26/26/20 with no other difference between them, on one
+## flat INK slab.
+##
+## What that fix has to be is a set of treatments no two readouts share, and that is
+## exactly what this asserts — off `Hud.STAT_READOUTS` itself rather than against a
+## hand-written list of the four, so a fifth readout added later cannot quietly rejoin
+## the undifferentiated line by copying an existing pair.
+##
+## Pure: no HUD, no viewport. The table is the declaration, and the live test below is
+## the separate question of whether the row actually wears what the table declares.
+func test_no_two_top_bar_readouts_share_a_typographic_treatment() -> String:
+	var rows: Array[Dictionary] = Hud.STAT_READOUTS
+	var err: String = _T.assert_gt(rows.size(), 1,
+		"there are at least two readouts to tell apart")
+	if err != "":
+		return err
+	# name -> "size/weight". Built rather than compared pairwise so the failure names
+	# both offenders instead of "two of them clash".
+	var seen: Dictionary = {}
+	var clashes: PackedStringArray = []
+	var checked: int = 0
+	for row: Dictionary in rows:
+		var name: String = String(row.get("name", ""))
+		err = _T.assert_true(row.has("weight"),
+			("%s declares its stroke weight. It is a column and not a function of "
+				+ "font_size because two readouts share a size") % name)
+		if err != "":
+			return err
+		err = _T.assert_gte(int(row["weight"]), Hud.READOUT_WEIGHT_PLAIN,
+			"%s's weight is not negative" % name)
+		if err != "":
+			return err
+		var treatment: String = "%dpx / weight %d" % [int(row["font_size"]), int(row["weight"])]
+		if seen.has(treatment):
+			clashes.append("%s and %s are both %s" % [String(seen[treatment]), name, treatment])
+		seen[treatment] = name
+		checked += 1
+	err = _T.assert_eq(checked, rows.size(),
+		"every declared readout was measured for a treatment (%d of %d)"
+			% [checked, rows.size()])
+	if err == "":
+		err = _T.assert_eq(clashes.size(), 0,
+			("no two readouts are drawn the same. That is the whole of 6tmf: four "
+				+ "kinds of thing reading as one line. %s") % ", ".join(clashes))
+	if err == "":
+		# And the ladder is a ladder, not four settings that happen to differ. The
+		# widest span has to be a real one -- a row of 26/26/25/24 would pass the
+		# clash check above and still look like one undifferentiated line.
+		var smallest: int = 9999
+		var largest: int = 0
+		for row: Dictionary in rows:
+			smallest = mini(smallest, int(row["font_size"]))
+			largest = maxi(largest, int(row["font_size"]))
+		err = _T.assert_gte(largest - smallest, 6,
+			("the size ladder spans %d px (%d to %d) -- a hierarchy nobody can see "
+				+ "at a glance is not one") % [largest - smallest, smallest, largest])
+	return err
+
+
+## And the row on screen actually wears what the table declares.
+##
+## Two separate claims, because they failed apart before the table existed: the
+## DECLARATION above is drift-proof by construction, and this is the wiring. A
+## `weight` column nothing reads would pass every check above it.
+##
+## The width guard at the end is the one thing no existing check makes. An outline of
+## N px puts N px either side of the drawn glyphs, and both
+## `test_no_readout_clips_its_own_worst_case` and `cmd budgets` measure the bare string
+## through `Font.get_string_size()` — neither sees an outline pushing a full-width
+## readout into its ellipsis. `_T.text_width`, never `get_minimum_size()`: every
+## readout here sets `clip_text`, so the obvious assertion passes unconditionally on
+## exactly the labels that need checking.
+func test_every_readout_wears_its_declared_size_and_weight_and_still_fits() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var stats: HBoxContainer = game.hud.get_node_or_null("Root/TopBar/StatsRow") as HBoxContainer
+	var err: String = _T.assert_true(stats != null, "the stats row is where the HUD puts it")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var wrong: PackedStringArray = []
+	var overflow: PackedStringArray = []
+	var measured: int = 0
+	for row: Dictionary in Hud.STAT_READOUTS:
+		var name: String = String(row["name"])
+		var label: Label = stats.get_node_or_null(name) as Label
+		if label == null:
+			wrong.append("%s: not in the row at all" % name)
+			continue
+		measured += 1
+		var size_px: int = label.get_theme_font_size("font_size")
+		if size_px != int(row["font_size"]):
+			wrong.append("%s: drawn at %dpx, declared %d" % [name, size_px, int(row["font_size"])])
+		var weight: int = label.get_theme_constant("outline_size")
+		if weight != int(row["weight"]):
+			wrong.append("%s: weight %d drawn, %d declared" % [name, weight, int(row["weight"])])
+		# The outline is the readout's OWN colour, so the glyphs thicken instead of
+		# gaining a halo. Checked against the live font colour rather than against the
+		# table's, because the wave readout's colour moves at runtime -- see
+		# _ease_threat_tint, which writes the pair together for exactly this reason.
+		var fill: Color = label.get_theme_color("font_color")
+		var edge: Color = label.get_theme_color("font_outline_color")
+		if not edge.is_equal_approx(fill):
+			wrong.append("%s: outlined in %s around %s text -- that is a halo, not weight"
+				% [name, edge, fill])
+		# And the widest thing it can ever hold, drawn at that weight, inside its slot.
+		var restore: String = label.text
+		label.text = String(row["worst_case"])
+		var drawn: float = _T.text_width(label) + 2.0 * float(weight)
+		label.text = restore
+		if drawn > label.custom_minimum_size.x:
+			overflow.append("%s: \"%s\" draws %.0fpx at weight %d, slot is %.0f"
+				% [name, String(row["worst_case"]), drawn, weight, label.custom_minimum_size.x])
+	err = _T.assert_eq(measured, Hud.STAT_READOUTS.size(),
+		"every declared readout is a Label in the row (%d of %d)"
+			% [measured, Hud.STAT_READOUTS.size()])
+	if err == "":
+		err = _T.assert_eq(wrong.size(), 0,
+			"every readout is drawn as the table declares it: %s" % ", ".join(wrong))
+	if err == "":
+		err = _T.assert_eq(overflow.size(), 0,
+			("a weight is drawn OUTSIDE the glyphs, so a readout can clip on an outline "
+				+ "that no width check measures: %s") % ", ".join(overflow))
+	_T.free_ui(game)
+	return err
+
+
+# END the top bar's four readouts are four different treatments
+# =============================================================================

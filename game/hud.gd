@@ -72,12 +72,54 @@ const NEXT_WAVE_BUTTON_SIZE := Vector2(130, 40)
 ## started this — gains 3px it did not have before.
 ## The stats row's font sizes, hoisted out of the readout table below so a budget
 ## measured against one cannot be measured at a different one.
+##
+## THREE sizes now, not two, and the ladder IS the row's hierarchy rather than a set of
+## separate preferences. Until plant-tower-defense-6tmf the row ran 26/26/26/20 — four
+## strings of near-identical weight on one flat slab, so a player scanning for the
+## number that changed had nothing to land on.
+##
+## Size is the cheapest channel available here, and cheap in the one sense this row
+## cares about: a step DOWN spends no width at all. Every readout is clipped to a slot
+## that was measured at the larger size (`_add_stat`), so shrinking a readout can only
+## leave it more room than it had, never less.
 const STAT_FONT_SIZE: int = 26
-## Compost is deliberately smaller than the other three, and that size difference is
-## the only hierarchy this row has: it is the one stat that is not a resource you
-## spend. `_make_label` sets VERTICAL_ALIGNMENT_CENTER so the 20px text still sits on
-## the same baseline as the 26px text beside it.
+## The wave readout takes the middle rung, and it is the one of the four that can
+## afford to. It is by far the most redundantly announced thing in this game: the wave
+## banner names it, the prep note names it again, the prep strip times it, and this
+## readout itself carries the live threat tint. Nothing else in the row is said four
+## ways.
+##
+## The slot stays 312px on purpose — see STAT_READOUTS' `width` column. At 24px the
+## declared worst case draws ~279 rather than ~302, so the wave readout now sits on
+## ~33px of internal headroom instead of ~10. That headroom is NOT reclaimed into the
+## row's own 19px of slack in this pass: doing so means retyping a measured constant
+## against a font measurement nobody has taken, and an over-tight slot fails silently
+## by clipping. Reclaiming it is a measurement, not an edit.
+const WAVE_FONT_SIZE: int = 24
+## Compost is the smallest, and it is the one stat that is not a resource you spend.
+## `_make_label` sets VERTICAL_ALIGNMENT_CENTER so the 20px text still sits on the same
+## baseline as the 26px text beside it.
 const COMPOST_FONT_SIZE: int = 20
+
+## The stroke weight a readout is drawn at: a font OUTLINE in the label's own colour,
+## so the glyphs thicken rather than gain a halo. This is the second half of the
+## hierarchy above, and it exists because size alone cannot separate the two readouts
+## that both have to stay at full size.
+##
+## Why an outline rather than a bold face: this project ships one font, so a bold
+## variant would be a new asset. An outline is a theme constant on a Label — no asset,
+## and, the part that actually decides it, NO WIDTH. Layout in this row comes from
+## `custom_minimum_size` (every readout sets `clip_text`), so an outline changes what
+## is drawn and not what is measured.
+##
+## What it does change is how far the drawn glyphs REACH: a weight of N puts N px
+## either side of the text. That is why the worst-case guard in `test_placement.gd`
+## measures `worst_case + 2 * weight` against the slot rather than the bare string —
+## `test_no_readout_clips_its_own_worst_case` and `cmd budgets` both measure the string
+## alone and would not see an outline pushing a full-width readout into its ellipsis.
+const READOUT_WEIGHT_HEAVY: int = 2
+const READOUT_WEIGHT_MEDIUM: int = 1
+const READOUT_WEIGHT_PLAIN: int = 0
 
 ## THE FOUR READOUTS, and the only place any one of them is described.
 ##
@@ -102,10 +144,13 @@ const COMPOST_FONT_SIZE: int = 20
 ##               four; four hand-written assignments after the loop would just be a
 ##               new third list wearing different clothes.
 ##   width       the clipped slot in px, from the block above.
-##   font_size   STAT_FONT_SIZE, or COMPOST_FONT_SIZE for the one that is smaller on
-##               purpose. Carried per row because the difference IS information: a
-##               table that dropped it would be three lists collapsed into one plus an
-##               exception.
+##   font_size   One of the three sizes above. Carried per row because the difference
+##               IS information: a table that dropped it would be three lists collapsed
+##               into one plus an exception.
+##   weight      The stroke weight, as a font outline in the row's own colour. The other
+##               half of the same information, and a separate column rather than a
+##               function of `font_size` because two readouts share a size and must not
+##               share a treatment. See READOUT_WEIGHT_HEAVY.
 ##   colour      PAPER for the three resources, COMPOST for the gold one. The wave
 ##               readout's is also its ramp's base -- `threat_color_on` returns PAPER
 ##               below THREAT_SHOW_FROM and `_ease_threat_tint` eases from there
@@ -117,12 +162,38 @@ const COMPOST_FONT_SIZE: int = 20
 ##               column to the real `_x_label.text =` assignments in BOTH directions.
 ##               It exists because `worst_case` structurally cannot: one string is an
 ##               instance of exactly ONE branch, and the wave readout has two.
+##
+## THE HIERARCHY, and how it is ranked (plant-tower-defense-6tmf). These are four
+## different kinds of thing — a currency you spend, a clock you cannot stop, a life
+## total, a bankable surplus — and until this pass they were four near-identical
+## strings. `font_size` x `weight` now gives each of them its own treatment:
+##
+##   Garden   26 / heavy    The only readout whose change cannot be undone, and the
+##                          rarest to change. It has to catch an eye that is on the
+##                          board, so it is the one the row shouts with.
+##   Seeds    26 / medium   The number every decision is priced against, and the one
+##                          scanned most often. It needs LEGIBILITY, not alarm.
+##   Wave     24 / plain    A clock. It owns a channel none of the others has — the
+##                          live threat tint — and it is announced three further ways
+##                          (banner, prep note, prep strip), so it gives up a rung.
+##   Compost  20 / plain    A surplus that can wait, and the row's pre-existing step
+##                          down. Gold, and the only readout that is.
+##
+## **No two rows share a `(font_size, weight)` pair**, which is the property that makes
+## this a hierarchy rather than four settings; `test_placement.gd` asserts it off this
+## table rather than against a hand-list, so a fifth readout that copied an existing
+## treatment fails instead of quietly rejoining the undifferentiated line.
+##
+## Both channels survive the colour being thrown away — required here, not optional:
+## `game/OVERLAY_GRAMMAR.md`'s two-channel rule is project-wide, and the wave readout's
+## tint is precisely the channel a greyscale reader loses.
 const STAT_READOUTS: Array[Dictionary] = [
 	{
 		"name": "SeedsLabel",
 		"member": "_seeds_label",
 		"width": 171.0,
 		"font_size": STAT_FONT_SIZE,
+		"weight": READOUT_WEIGHT_MEDIUM,
 		"colour": PAPER,
 		"worst_case": "Seeds  99999",
 		"shapes": ["Seeds  %d"],
@@ -144,7 +215,14 @@ const STAT_READOUTS: Array[Dictionary] = [
 		"name": "WaveLabel",
 		"member": "_wave_label",
 		"width": 312.0,
-		"font_size": STAT_FONT_SIZE,
+		"font_size": WAVE_FONT_SIZE,
+		# Plain on purpose, and it is the one row where that is a constraint rather than
+		# a choice: this label's colour is rewritten every frame of a threat ease, and an
+		# outline is drawn in a colour of its own. `_ease_threat_tint` keeps the two in
+		# step so a future weight here cannot strand a cream outline on a red number --
+		# but the cheapest way to be sure is to spend a different channel, and the tint
+		# already IS this readout's channel.
+		"weight": READOUT_WEIGHT_PLAIN,
 		"colour": PAPER,
 		"worst_case": "Wave  9999 ∞   threat 99",
 		"shapes": ["Wave  %d ∞", "Wave  %d / %d", "   threat %d"],
@@ -154,6 +232,7 @@ const STAT_READOUTS: Array[Dictionary] = [
 		"member": "_lives_label",
 		"width": 146.0,
 		"font_size": STAT_FONT_SIZE,
+		"weight": READOUT_WEIGHT_HEAVY,
 		"colour": PAPER,
 		"worst_case": "Garden  10",
 		"shapes": ["Garden  %d"],
@@ -167,6 +246,7 @@ const STAT_READOUTS: Array[Dictionary] = [
 		"member": "_compost_label",
 		"width": 198.0,
 		"font_size": COMPOST_FONT_SIZE,
+		"weight": READOUT_WEIGHT_PLAIN,
 		"colour": COMPOST,
 		"worst_case": "Compost  9999  +99",
 		"shapes": ["Compost  %d", "  +%d"],
@@ -1043,7 +1123,8 @@ func _build_top_bar(root: Control) -> void:
 		var colour: Color = readout["colour"]
 		var member: String = String(readout["member"])
 		var label: Label = _add_stat(stats, String(readout["name"]),
-			int(readout["font_size"]), colour, float(readout["width"]))
+			int(readout["font_size"]), int(readout["weight"]), colour,
+			float(readout["width"]))
 		# The field the rest of this file reads. Through set() so the table stays the
 		# only enumeration of the four; a `member` naming nothing would otherwise leave
 		# the field null and not say so until the first refresh().
@@ -1304,8 +1385,18 @@ func _make_banner_label(node_name: String, font_size: int, colour: Color) -> Lab
 ## right edge of the screen. Every readout is budgeted rather than just the
 ## long one, so adding a fifth later is a matter of finding room in the sum
 ## instead of rediscovering this.
-func _add_stat(row: HBoxContainer, node_name: String, font_size: int, colour: Color, width: float) -> Label:
+##
+## `weight` is the readout's stroke weight, drawn as a font outline in the readout's
+## OWN colour so the glyphs thicken instead of gaining a halo — see
+## READOUT_WEIGHT_HEAVY for why an outline rather than a bold face, and STAT_READOUTS'
+## hierarchy block for which readout gets which. The outline colour is set even at
+## weight 0: it costs nothing, and it means a row that later takes a weight is already
+## drawn in the right colour rather than in Godot's default black.
+func _add_stat(row: HBoxContainer, node_name: String, font_size: int, weight: int,
+		colour: Color, width: float) -> Label:
 	var label := _make_label(node_name, font_size, colour)
+	label.add_theme_constant_override("outline_size", weight)
+	label.add_theme_color_override("font_outline_color", colour)
 	label.clip_text = true
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	label.custom_minimum_size = Vector2(width, 0)
@@ -1975,9 +2066,15 @@ func _refresh_health(plant: Plant) -> void:
 ## wave is running — so a fresh Tween per call would stack dozens of them onto one
 ## property. The live tween is kept and killed, and a target already reached is a
 ## no-op, which is the common case.
+##
+## Writes the OUTLINE colour alongside the fill on every step. The wave readout carries
+## READOUT_WEIGHT_PLAIN today, so nothing is drawn from it — but a readout's outline is
+## its own colour by construction (`_add_stat`), and this is the only label in the row
+## whose colour moves at runtime. Keeping the pair in step here is what stops a future
+## weight on this row from stranding a cream outline around a red number.
 func _ease_threat_tint(target: Color) -> void:
 	if not GardenTheme.animations_enabled():
-		_wave_label.add_theme_color_override("font_color", target)
+		_tint_wave_label(target)
 		return
 	if target.is_equal_approx(_threat_tint_target):
 		return
@@ -1987,8 +2084,14 @@ func _ease_threat_tint(target: Color) -> void:
 	var from: Color = _wave_label.get_theme_color("font_color")
 	_threat_tween = create_tween()
 	_threat_tween.tween_method(
-		func(c: Color) -> void: _wave_label.add_theme_color_override("font_color", c),
+		func(c: Color) -> void: _tint_wave_label(c),
 		from, target, THREAT_FADE_SECONDS)
+
+
+## The wave readout's fill and its outline, always together. See _ease_threat_tint.
+func _tint_wave_label(c: Color) -> void:
+	_wave_label.add_theme_color_override("font_color", c)
+	_wave_label.add_theme_color_override("font_outline_color", c)
 
 
 ## Carries a swept husk's payout across the screen: a SeedGlyph.launch() from
