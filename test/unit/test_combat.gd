@@ -8791,3 +8791,391 @@ func test_the_held_over_demotion_is_what_the_cues_actually_paint() -> String:
 
 # END plant-tower-defense-sleq: the previous selection, held for comparison
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-r8zc / plant-tower-defense-l69v: the per-play wobble,
+# and the husk cue that deliberately has none
+#
+# **Nothing below claims a sound was heard, and nothing below can.** `Sfx.play()`
+# is gated off headless by `should_play`, so a suite cannot watch a voice start —
+# the same limit the sound section at the top of this file states about itself.
+# What these hold is the COMPOSITION: `Sfx.pitch_for` is a pure function of an
+# event and a play index, so the number a voice would be given is assertable to
+# the last decimal even though the noise is not. That is the whole reason the
+# jitter is a static rather than a `randf_range` inside `play()`.
+# =============================================================================
+
+
+## The wobble exists, is bounded, and is centred (plant-tower-defense-r8zc).
+##
+## The mutation this is written to kill is the cheap one: delete the jitter term from
+## `Sfx.pitch_for` and every table in `sfx.gd` stays perfectly valid, `JITTER` stays
+## unique, `test_no_two_events_are_the_same_sound` stays green, and the player hears the
+## identical sample at the identical pitch six times a second again. So this asserts the
+## VARIATION rather than the table: 64 consecutive plays of a wobbled cue must produce 64
+## different pitches.
+##
+## Three claims, and each one fails to a different breakage:
+##   * distinct — a wobble that has been deleted or zeroed collapses all 64 onto the centre.
+##   * inside the band — a wobble scaled by the wrong thing (a raw hash, a full semitone)
+##     leaves the range `pitch_band` promises, and the twin check below is asserted against
+##     that band rather than against whatever `pitch_for` happens to do.
+##   * mean near the centre — a one-sided offset would detune the cue permanently rather
+##     than vary it, which is a retune of `PITCH` by the back door.
+##
+## The events are read off `Sfx.JITTER`, not named, so a row added tomorrow is checked
+## tomorrow.
+func test_a_repeated_cue_never_settles_on_one_pitch() -> String:
+	# Denominator first: an empty JITTER table would pass every loop below beautifully.
+	var err: String = _T.assert_gt(Sfx.JITTER.size(), 0,
+		"there are cues the game wobbles at all -- an empty JITTER makes this whole "
+			+ "sweep vacuous, and deleting the table is exactly one of the breakages "
+			+ "it is here to catch")
+	if err != "":
+		return err
+	for event: StringName in Sfx.JITTER:
+		var width: float = float(Sfx.JITTER[event])
+		err = _T.assert_gt(width, 0.0,
+			"'%s' has a real half-width -- a 0.0 row is an event that reads as wobbled "
+				% event + "and is not, which is worse than no row at all")
+		if err != "":
+			return err
+		var band: Vector2 = Sfx.pitch_band(event)
+		var seen: Dictionary = {}
+		var lowest: float = 999.0
+		var highest: float = -999.0
+		for index: int in range(64):
+			var pitch: float = Sfx.pitch_for(event, index)
+			seen[pitch] = true
+			lowest = minf(lowest, pitch)
+			highest = maxf(highest, pitch)
+			if pitch < band.x - 0.000001 or pitch > band.y + 0.000001:
+				return _T.assert_true(false,
+					("play %d of '%s' came out at %.5f, outside the band %.5f..%.5f its "
+						+ "JITTER row promises -- the twin check below is asserted "
+						+ "against that band, so a pitch outside it is a collision "
+						+ "nothing is watching for")
+						% [index, event, pitch, band.x, band.y])
+		err = _T.assert_eq(seen.size(), 64,
+			("64 plays of '%s' are 64 different pitches, got %d -- a machine gun is "
+				+ "exactly what a repeated identical pitch sounds like")
+				% [event, seen.size()])
+		if err != "":
+			return err
+		# And the spread is most of the band rather than a twitch in the middle of it.
+		# A jitter narrowed to a hundredth of its row would still be 64 distinct floats.
+		err = _T.assert_gte(highest - lowest, (band.y - band.x) * 0.75,
+			("'%s' actually uses its band: 64 plays spanned %.5f of the %.5f it is "
+				+ "allowed") % [event, highest - lowest, band.y - band.x])
+		if err != "":
+			return err
+		# Centred, over enough plays for the average to mean something. A wobble that
+		# only ever goes up is a retune of PITCH wearing a jitter's clothes.
+		var total: float = 0.0
+		for index: int in range(1024):
+			total += Sfx.jitter_offset(event, index)
+		err = _T.assert_float_eq(total / 1024.0, 0.0, 0.10,
+			("'%s' wobbles both ways -- 1024 plays averaged %+.4f of its half-width, "
+				+ "and a one-sided offset detunes the cue instead of varying it")
+				% [event, total / 1024.0])
+		if err != "":
+			return err
+	# The other side of the rule, and the one that keeps `PITCH` readable: a cue with no
+	# row gets its table value EXACTLY, not a value plus a zero. `pitch_for` early-returns
+	# for precisely this, and every event outside JITTER is checked for it.
+	for event: StringName in Sfx.SOUNDS:
+		if Sfx.JITTER.has(event):
+			continue
+		var centre: float = float(Sfx.PITCH.get(event, 1.0))
+		for index: int in [0, 1, 7, 4137]:
+			err = _T.assert_float_eq(Sfx.pitch_for(event, index), centre, 0.0000001,
+				("'%s' has no JITTER row, so play %d is its PITCH centre to the bit -- "
+					+ "a cue nobody asked to vary must not") % [event, index])
+			if err != "":
+				return err
+	return err
+
+
+## The wobble is a sequence, not a dice roll (plant-tower-defense-r8zc).
+##
+## `randf_range` was the obvious implementation and it is the wrong one twice over. A test
+## could bound a random pitch but never name it, so "wobbling correctly" and "wobbling at
+## all" would stop being distinguishable claims — and two people comparing what the game
+## sounds like would be comparing two different games. So `jitter_offset` is a hash of the
+## event id and the play index: same pair, same pitch, on every machine and every run.
+##
+## The literals below are the pin. They are not magic numbers to be updated when they fail:
+## a change to them is a change to what the game sounds like, and it should have to be
+## typed on purpose. The mixers are written out in `sfx.gd` rather than reaching for the
+## engine's `hash()` for the same reason — `hash()` carries no cross-version promise, and a
+## point release quietly reshuffling every cue's wobble is not a thing anyone would notice.
+func test_the_wobble_is_the_same_wobble_on_every_machine() -> String:
+	# Same input, same answer, twice — the floor a random implementation fails outright.
+	var first: float = Sfx.pitch_for(Sfx.CORN_FIRED, 12)
+	var err: String = _T.assert_float_eq(Sfx.pitch_for(Sfx.CORN_FIRED, 12), first, 0.0,
+		"asking twice gives the same pitch to the bit -- randf_range does not")
+	if err == "":
+		# The pins. Recorded from the implementation, then checked against an independent
+		# reimplementation of FNV-1a and lowbias32 outside the engine.
+		err = _T.assert_float_eq(Sfx.jitter_offset(Sfx.CORN_FIRED, 0), 0.680650325, 0.000001,
+			"CORN_FIRED's first play sits where it has always sat")
+	if err == "":
+		err = _T.assert_float_eq(Sfx.jitter_offset(Sfx.PEST_KILLED, 0), -0.221807225, 0.000001,
+			"and so does PEST_KILLED's")
+	if err == "":
+		err = _T.assert_float_eq(Sfx.jitter_offset(Sfx.PEST_KILLED, 3), -0.288870673, 0.000001,
+			"and the sequence advances the way it was recorded, not just its first step")
+	if err == "":
+		# Total, including the indices a long session or a negative reaches. An offset
+		# that escapes [-1, 1] escapes the band `pitch_band` promises, which is what the
+		# twin check trusts.
+		for index: int in [-9, -1, 0, 1, 63, 1000003]:
+			var offset: float = Sfx.jitter_offset(Sfx.PLANT_BITTEN, index)
+			err = _T.assert_true(offset >= -1.0 and offset <= 1.0,
+				"index %d answers inside [-1, 1], got %+.6f" % [index, offset])
+			if err != "":
+				return err
+	if err == "":
+		# Two cues must not step through one sequence together: a board where the corn
+		# and the kills wobble in lockstep is a board with one wobble on it. The seeds
+		# are what separate them, so the seeds are what is asserted, across the whole
+		# table rather than for a chosen pair.
+		var seeds: Dictionary = {}
+		for event: StringName in Sfx.SOUNDS:
+			var seed_value: int = Sfx.event_seed(event)
+			if seeds.has(seed_value):
+				return _T.assert_eq(str(event), str(seeds[seed_value]),
+					("'%s' and '%s' seed the same wobble sequence, so they step through "
+						+ "it together -- two cues varying in lockstep is one wobble, "
+						+ "not two") % [event, seeds[seed_value]])
+			seeds[seed_value] = event
+		err = _T.assert_eq(seeds.size(), Sfx.SOUNDS.size(),
+			"every event contributed its own wobble seed")
+	if err == "":
+		# And the implementation really is a hash rather than a die. Source-read, because
+		# the absence of a call is not observable any other way — there is no state a
+		# deleted `randf` leaves behind.
+		var src: String = FileAccess.get_file_as_string("res://game/sfx.gd")
+		err = _T.assert_gt(src.length(), 0, "sfx.gd is readable")
+		if err == "":
+			var start: int = src.find("static func jitter_offset(")
+			err = _T.assert_gt(start, 0, "jitter_offset has a body to read")
+			if err == "":
+				var body: String = src.substr(start, src.find("\n\n\n", start) - start)
+				err = _T.assert_false(body.contains("randf") or body.contains("randi"),
+					("the wobble draws no random numbers -- one `randf_range` here makes "
+						+ "every pin above unwritable and the game's sound "
+						+ "unreproducible"))
+	return err
+
+
+## The twin rule, restated for a table that now has ranges in it
+## (plant-tower-defense-r8zc).
+##
+## `test_no_two_events_are_the_same_sound` keys on the triple (file, volume, pitch) and is
+## the only thing stopping two cues arriving at the player identically. The wobble makes
+## that triple a statement about the CENTRES: two events on one file at one volume, 0.04
+## apart in `PITCH`, would pass it while overlapping on some pair of plays. So that check
+## keeps its job — the table is unique — and this one adds the half it can no longer see:
+## the RANGES are disjoint, by `Sfx.MIN_TWIN_PITCH_GAP`, for every pair that shares both a
+## file and a volume.
+##
+## Pairs that differ in volume are deliberately not checked. Volume is the other axis of
+## the same triple and it separates them on its own — `PEST_KILLED` and `SEED_BOMB_BURST`
+## are the same file at the same centre and are told apart at 3 dB, which is the table's
+## own long-standing answer (see `WAVE_CLEARED` against `RUN_WON`).
+##
+## Derived from `SOUNDS`, so an event added to a shared file tomorrow is checked against
+## every wobble already on that file.
+func test_two_events_on_one_file_never_overlap_once_they_wobble() -> String:
+	var events: Array[StringName] = []
+	for event: StringName in Sfx.SOUNDS:
+		events.append(event)
+	var err: String = _T.assert_gt(events.size(), 20,
+		"the table is populated -- an empty sweep is a vacuous pass, got %d" % events.size())
+	if err != "":
+		return err
+	# Denominator: this proves nothing unless files really are shared. If every event
+	# had its own file the loop below would examine zero pairs and pass.
+	var pairs: int = 0
+	var tightest: float = 999.0
+	for i: int in range(events.size()):
+		for j: int in range(i + 1, events.size()):
+			var a: StringName = events[i]
+			var b: StringName = events[j]
+			if String(Sfx.SOUNDS[a]).get_file() != String(Sfx.SOUNDS[b]).get_file():
+				continue
+			if not is_equal_approx(
+					float(Sfx.VOLUME_DB.get(a, 0.0)), float(Sfx.VOLUME_DB.get(b, 0.0))):
+				continue
+			pairs += 1
+			var band_a: Vector2 = Sfx.pitch_band(a)
+			var band_b: Vector2 = Sfx.pitch_band(b)
+			# Signed on purpose: two bands that overlap give a negative clearance and
+			# fail loudly, rather than an absolute distance that reads as a pass.
+			var clearance: float = band_a.x - band_b.y
+			if band_b.x > band_a.y:
+				clearance = band_b.x - band_a.y
+			tightest = minf(tightest, clearance)
+			err = _T.assert_gte(clearance, Sfx.MIN_TWIN_PITCH_GAP,
+				("'%s' (%.3f..%.3f) and '%s' (%.3f..%.3f) are the same file at the same "
+					+ "volume and leave %.3f between their pitch bands -- under "
+					+ "MIN_TWIN_PITCH_GAP (%.3f) they can arrive at the player as one "
+					+ "sound on some pair of plays, which the (file, volume, pitch) "
+					+ "triple check cannot see")
+					% [a, band_a.x, band_a.y, b, band_b.x, band_b.y, clearance,
+						Sfx.MIN_TWIN_PITCH_GAP])
+			if err != "":
+				return err
+	err = _T.assert_gt(pairs, 0,
+		"events really do share files -- with none shared this whole check is vacuous "
+			+ "and so is the palette argument in SOUNDS' comments")
+	if err == "":
+		# The budget, printed as an assertion rather than left implicit: a future JITTER
+		# row has this much room before it starts eating a twin's separation.
+		err = _T.assert_gte(tightest, Sfx.MIN_TWIN_PITCH_GAP,
+			"the tightest same-file same-volume pair leaves %.3f, against the %.3f floor"
+				% [tightest, Sfx.MIN_TWIN_PITCH_GAP])
+	return err
+
+
+## The wobble reaches the voice, and the play index reaches the wobble
+## (plant-tower-defense-r8zc).
+##
+## `pitch_for` being correct is worth nothing if nothing calls it — that is the exact
+## failure cycle 74 recorded, where `PITCH` stayed unique while `play()` had stopped
+## reading it and the player heard twins. `tune_voice` is the seam a headless test can
+## hold, so the first half is asserted through a real `AudioStreamPlayer`.
+##
+## The second half cannot be: `play()` is behind the headless gate, so nothing here can
+## watch it advance `_play_count` and hand the index down. That half is source-read, which
+## is weaker and is why it is stated rather than hidden — it catches `tune_voice(voice,
+## event)` being restored in `play()`, which would freeze every cue on index 0 forever
+## while every assertion above stayed green.
+func test_the_voice_a_play_tunes_actually_carries_the_wobble() -> String:
+	var voice := AudioStreamPlayer.new()
+	Sfx.tune_voice(voice, Sfx.CORN_FIRED, 0)
+	var first: float = voice.pitch_scale
+	Sfx.tune_voice(voice, Sfx.CORN_FIRED, 1)
+	var second: float = voice.pitch_scale
+	var err: String = _T.assert_true(first != second,
+		("two plays of one cue put two different pitches on the voice, got %.5f twice "
+			+ "-- tune_voice is the only place a voice's pitch is written, so if the "
+			+ "wobble does not arrive here it does not arrive at all") % first)
+	if err == "":
+		err = _T.assert_float_eq(second, Sfx.pitch_for(Sfx.CORN_FIRED, 1), 0.0000001,
+			"and it is the composed pitch, not a second rule living in tune_voice")
+	if err == "":
+		# The default the existing two-argument callers get. Not zero-jitter: index 0 is
+		# a real play of the sequence, and a caller that does not care which play it is
+		# gets the first one rather than a fourth behaviour nobody documented.
+		Sfx.tune_voice(voice, Sfx.CORN_FIRED)
+		err = _T.assert_float_eq(voice.pitch_scale, first, 0.0000001,
+			"an omitted index means play 0, so no existing caller changed meaning")
+	if err == "":
+		# A cue with no row is still exactly its table value through the same seam --
+		# the pooled-voice reuse hazard tune_voice was written for, now with a fourth
+		# table able to leave something behind.
+		Sfx.tune_voice(voice, Sfx.CORN_FIRED, 5)
+		Sfx.tune_voice(voice, Sfx.SUNDEW_CLAIM, 5)
+		err = _T.assert_float_eq(voice.pitch_scale, float(Sfx.PITCH.get(Sfx.SUNDEW_CLAIM, 1.0)),
+			0.0000001, "a voice borrowed by an unwobbled cue carries none of the last "
+				+ "cue's wobble forward, got %.5f" % voice.pitch_scale)
+	voice.free()
+	if err == "":
+		var src: String = FileAccess.get_file_as_string("res://game/sfx.gd")
+		err = _T.assert_gt(src.length(), 0, "sfx.gd is readable")
+		if err == "":
+			var start: int = src.find("static func play(event: StringName)")
+			err = _T.assert_gt(start, 0, "play() has a body to read")
+			if err == "":
+				var body: String = src.substr(start, src.find("\n\n\n", start) - start)
+				err = _T.assert_true(body.contains("_play_count"),
+					("play() advances the event's own play count -- without it every "
+						+ "cue is frozen on index 0 and the wobble is a constant that "
+						+ "every check above still passes"))
+				if err == "":
+					err = _T.assert_true(body.contains("tune_voice(voice, event, index)"),
+						"and hands that index to tune_voice, which is the only route "
+							+ "the wobble has to a voice")
+	return err
+
+
+## Every wobbled cue is one the game actually repeats (plant-tower-defense-r8zc).
+##
+## `JITTER`'s membership rule is "a cue ONE source repeats faster than about once a
+## second", and a rule stated only in a comment is a rule that expires quietly. This pins
+## it to the constants it was derived from, so slowing the Corn Cobbler down or lengthening
+## a Nettle's sting fails here rather than leaving a row whose justification has gone.
+##
+## Two kinds of cue, checked two ways, because they have two kinds of rate:
+##   * a cue one plant fires on its own clock, where the rate is that plant's constant;
+##   * a cue the whole BOARD produces, where no single constant is the rate and the
+##     `REPEAT_MS` gate is the real ceiling on how fast the player hears it.
+##
+## What this does NOT check: that a cue outside `JITTER` deserves to be. There is no table
+## anywhere that says how often `RUN_WON` fires, so the exclusions are argued in `JITTER`'s
+## own comment and only the two that were genuinely close are pinned below.
+func test_every_wobbled_cue_is_one_the_game_actually_repeats() -> String:
+	var err: String = _T.assert_gt(Sfx.JITTER.size(), 0, "there are rows to check")
+	if err != "":
+		return err
+	# The plant-clock cues. Each number is the constant JITTER's comment cites.
+	var clocks: Dictionary = {
+		Sfx.CORN_FIRED: float(CornCobbler.LEVELS[CornCobbler.LEVELS.size() - 1]["interval"]),
+		Sfx.DANDELION_PUFF: Dandelion.SHOT_INTERVAL,
+		Sfx.NETTLE_STING: Nettle.STING_INTERVAL,
+		Sfx.SEED_BOMB_BURST: Dandelion.SHOT_INTERVAL,
+	}
+	for event: StringName in clocks:
+		err = _T.assert_true(Sfx.JITTER.has(event),
+			"'%s' is wobbled -- it is on this list because its source has a clock" % event)
+		if err != "":
+			return err
+		err = _T.assert_true(float(clocks[event]) < 1.0,
+			("'%s' really does repeat faster than once a second: its source fires every "
+				+ "%.2fs. If this fails the cue got slower and its JITTER row is now "
+				+ "decoration on a sound nobody hears twice in a breath")
+				% [event, float(clocks[event])])
+		if err != "":
+			return err
+	# The board-rate cues, where the gate is the rate. Read off REPEAT_MS rather than
+	# retyped, so retuning a gate is checked against the row it justifies.
+	for event: StringName in [Sfx.PEST_KILLED, Sfx.PEST_KILLED_HARD, Sfx.PLANT_BITTEN]:
+		err = _T.assert_true(Sfx.JITTER.has(event), "'%s' is wobbled" % event)
+		if err != "":
+			return err
+		err = _T.assert_true(Sfx.REPEAT_MS.has(event),
+			("'%s' has a REPEAT_MS row -- for a board-rate cue that gate IS the rate, "
+				+ "and without one the claim in JITTER's comment has no number behind it")
+				% event)
+		if err != "":
+			return err
+		err = _T.assert_true(int(Sfx.REPEAT_MS[event]) < 1000,
+			"'%s' can be heard again inside a second (%dms)" % [event, int(Sfx.REPEAT_MS[event])])
+		if err != "":
+			return err
+	# Every row points at a real cue. `sfx_call_check.py` gates this statically too; it is
+	# repeated here because a key JITTER holds and SOUNDS does not is swallowed in silence
+	# by `JITTER.get(event, 0.0)`, exactly as a stale PITCH key would be.
+	for event: StringName in Sfx.JITTER:
+		err = _T.assert_true(Sfx.SOUNDS.has(event),
+			"'%s' has a JITTER row and no sound -- a wobble on nothing" % event)
+		if err != "":
+			return err
+	# And the kill pair's narrower width, which is the one magnitude with a second
+	# constraint on it: the whole interval carrying "that one was expensive" is 0.12, so
+	# the two wobbles together must not eat it.
+	var plain: float = float(Sfx.JITTER.get(Sfx.PEST_KILLED, 0.0))
+	var hard: float = float(Sfx.JITTER.get(Sfx.PEST_KILLED_HARD, 0.0))
+	var interval: float = absf(float(Sfx.PITCH.get(Sfx.PEST_KILLED_HARD, 1.0))
+		- float(Sfx.PITCH.get(Sfx.PEST_KILLED, 1.0)))
+	return _T.assert_gte(interval - plain - hard, Sfx.MIN_TWIN_PITCH_GAP,
+		("a hard kill stays audibly above a plain one under the wobble: %.3f of interval "
+			+ "less %.3f and %.3f of wobble leaves %.3f, against the %.3f floor")
+			% [interval, plain, hard, interval - plain - hard, Sfx.MIN_TWIN_PITCH_GAP])
+
+
+# END plant-tower-defense-r8zc / plant-tower-defense-l69v
+# =============================================================================
