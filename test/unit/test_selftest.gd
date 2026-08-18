@@ -13460,3 +13460,281 @@ func test_the_upgrade_tip_waits_until_the_player_can_afford_it_and_fires_once() 
 	_T.free_ui(game)
 	RunConfig.earned_milestones.erase(RunConfig.HINT_UPGRADE_EXISTS)
 	return err
+
+
+# -- Where the run's seeds went (plant-tower-defense-bou9) -------------------
+#
+# Cycle 101 measured the one bit that decides a campaign: two runs, same economy,
+# same map, no cheats, differing only in whether a surplus bought another plant or
+# another level on one already in the ground. Breadth-first reached eleven level-1
+# plants and died at wave 10; depth-first won all 22 waves and lost no lives.
+#
+# The game recorded neither half of that. `seeds_earned_total` is income; nothing
+# counted outgoings, so the post-mortem could report everything about a run except
+# the decision the run turned on. These three tests cover the two halves of the
+# fix — the counters being incremented at the moment seeds actually change hands,
+# and the card stating them without grading the player for them.
+
+
+## The counters are read off the RUN, at the two lines that charge for a purchase.
+##
+## The mutation this is really aimed at is an increment placed ABOVE the refusals
+## in `Game.upgrade_selected` rather than below `bank.add_seeds(-price)`. That
+## version passes any test that only ever upgrades successfully, and it credits a
+## broke player with depth for every denied click — which is precisely the
+## breadth-first player this row exists to describe, and precisely the direction
+## that would make the row lie in their favour.
+##
+## The free starter is the other trap: `SeedBank.pay_for_plant` clears
+## `free_starter_available` on its way through, so a price read after the charge
+## bills the one free cob at full cost. Asserted here at 0 rather than assumed.
+func test_a_placement_and_an_upgrade_each_land_on_the_run_s_own_spend() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_eq(game.seeds_on_plants, 0, "a fresh run has spent nothing on plants")
+	if err == "":
+		err = _T.assert_eq(game.seeds_on_upgrades, 0, "and nothing on upgrades")
+
+	# The free starter, priced by the bank rather than by this test.
+	var first: Vector2i = _grass(game)
+	var free_price: int = game.bank.placement_cost(PlantCatalog.CORN)
+	if err == "":
+		err = _T.assert_eq(free_price, 0, "the first cob really is the free starter")
+	if err == "":
+		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, first), "", "the free cob goes in")
+	if err == "":
+		err = _T.assert_eq(game.seeds_on_plants, 0,
+			"and adds nothing to the spend — a run that planted only its free cob spent nothing")
+
+	# A second cob, which is not free.
+	var second: Vector2i = _grass(game)
+	var paid_price: int = 0
+	if err == "":
+		err = _T.assert_true(second != first and second.x >= 0, "a second buildable cell exists")
+	if err == "":
+		game.bank.seeds = 500
+		paid_price = game.bank.placement_cost(PlantCatalog.CORN)
+		err = _T.assert_gt(paid_price, 0, "the second cob costs something")
+	if err == "":
+		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, second), "", "the paid cob goes in")
+	if err == "":
+		err = _T.assert_eq(game.seeds_on_plants, paid_price,
+			"exactly what the bank charged lands on the run's breadth spend")
+
+	# A REFUSED upgrade must move nothing. This is the assertion that fails on an
+	# increment written above the denial.
+	var corn: CornCobbler = null
+	if err == "":
+		corn = game.plant_at(second) as CornCobbler
+		err = _T.assert_true(corn != null, "the cob is a Corn Cobbler with a ladder to climb")
+	if err == "":
+		game._select(corn)
+		game.bank.seeds = 0
+		err = _T.assert_eq(game.upgrade_selected(), "not enough seeds", "the upgrade is refused")
+	if err == "":
+		err = _T.assert_eq(game.seeds_on_upgrades, 0,
+			"a refused upgrade banks no depth — the click bought nothing")
+
+	# And a real one moves exactly its price.
+	var level_price: int = 0
+	if err == "":
+		level_price = corn.upgrade_cost()
+		game.bank.seeds = level_price
+		err = _T.assert_gt(level_price, 0, "the next level costs something")
+	if err == "":
+		err = _T.assert_eq(game.upgrade_selected(), "", "the upgrade goes through")
+	if err == "":
+		err = _T.assert_eq(game.seeds_on_upgrades, level_price,
+			"and exactly its price lands on the run's depth spend")
+	if err == "":
+		err = _T.assert_eq(game.seeds_on_plants, paid_price,
+			"while the breadth total is untouched — the two sinks do not leak into each other")
+
+	# The card reads the run, not a price table. Both keys, on every run.
+	if err == "":
+		var stats: Dictionary = game.summary_stats(false)
+		err = _T.assert_true(stats.has("seeds_on_plants") and stats.has("seeds_on_upgrades"),
+			"summary_stats carries both halves of the policy")
+		if err == "":
+			err = _T.assert_eq(int(stats["seeds_on_plants"]), paid_price, "breadth carried through")
+		if err == "":
+			err = _T.assert_eq(int(stats["seeds_on_upgrades"]), level_price, "depth carried through")
+
+	_T.free_ui(game)
+	RunConfig.earned_milestones.erase(RunConfig.HINT_UPGRADE_EXISTS)
+	return err
+
+
+## The card states the policy, in numbers, and grades nobody for it.
+##
+## Two things are pinned that a later edit would plausibly undo. The card is still
+## SEVEN rows — the new subject is a swap for "Threat reached", not an eighth row,
+## because rows_capacity() is 7 and an eighth foots at 486 against buttons at 476.
+## And the threat number is not lost by the swap: it moved onto the waves row,
+## which is honest because `Game.summary_stats` derives `threat_level` from the
+## wave number that row already prints.
+##
+## The no-verdict assertion is the design, not decoration. Every sentence that
+## explains this comparison also grades the player for it, and the losing run is
+## the one that reads this card.
+func test_the_run_summary_says_where_the_seeds_went_without_grading_it() -> String:
+	var stats: Dictionary = {
+		"victory": false,
+		"endless": false,
+		"wave": 10,
+		"wave_count": 22,
+		"threat_level": 3,
+		"lives_lost": 10,
+		"seeds_earned_total": 412,
+		"high_score": 900,
+		"new_record": false,
+		"compost_total": 30,
+		"compost_resolved": 44,
+		"pests_defeated": 180,
+		"run_seconds": 604.0,
+		"stop_cell": Vector2i(6, 3),
+		"stop_cell_stops": 41,
+		"worst_cell": Vector2i(13, 7),
+		"worst_cell_losses": 10,
+		# The breadth-first run of cycle 101, in the two numbers that describe it.
+		"seeds_on_plants": 275,
+		"seeds_on_upgrades": 0,
+	}
+	var panel := RunSummary.build(stats)
+	await _T.instantiate_scene(panel)
+	var rows: Array = panel.summary_rows()
+
+	var err: String = _T.assert_eq(rows.size(), 7,
+		"the card is still seven rows — the spend row is a swap, not an eighth")
+
+	var keys: Array[String] = []
+	for row: Array in rows:
+		keys.append(String(row[0]))
+	if err == "":
+		err = _T.assert_true(keys.has("Seeds spent"),
+			"the card names where the seeds went, got rows: %s" % str(keys))
+	if err == "":
+		err = _T.assert_false(keys.has("Threat reached"),
+			"and the row it replaced is gone rather than both being on the card")
+
+	# The value, both halves of it, off the built label rather than off the builder.
+	var spend: Label = panel.get_node_or_null("Value_Seedsspent") as Label
+	if err == "":
+		err = _T.assert_true(spend != null, "the spend row was really built")
+	if err == "":
+		err = _T.assert_eq(spend.text, "275 on plants, 0 on upgrades",
+			"stated as two totals — the breadth-first run's policy, back in its own numbers")
+	if err == "":
+		# The builder direct, the way _compost_text and beds_text are asserted: every
+		# branch of it is readable off a plain Dictionary with no Control built.
+		err = _T.assert_eq(panel.spend_text(), spend.text,
+			"the row draws exactly what the builder returns")
+	if err == "":
+		# The depth-first run of the same A/B, and a run that spent nothing at all.
+		# The zero case is a real reading, not a missing one — Game.summary_stats
+		# writes both keys on every run — which is why there is no sentinel branch.
+		var depth := RunSummary.build({"seeds_on_plants": 60, "seeds_on_upgrades": 215})
+		var nothing := RunSummary.build({})
+		err = _T.assert_eq(depth.spend_text(), "60 on plants, 215 on upgrades",
+			"the depth-first run reads back the opposite policy")
+		if err == "":
+			err = _T.assert_eq(nothing.spend_text(), "0 on plants, 0 on upgrades",
+				"and a run that bought nothing says so rather than showing an empty row")
+		depth.free()
+		nothing.free()
+
+	# The threat number survived the swap, on the row it can be derived from.
+	var waves: Label = panel.get_node_or_null("Value_Wavessurvived") as Label
+	if err == "":
+		err = _T.assert_true(waves != null, "the waves row exists")
+	if err == "":
+		err = _T.assert_eq(waves.text, "10 of 22 — threat level 3",
+			"the threat scale folded onto the row its own input is printed on")
+	if err == "":
+		# Level 1 is the scale's floor and says nothing, same rule the live readout
+		# follows (test_the_threat_readout_hides_itself_at_wave_one).
+		var early := RunSummary.build({"wave": 1, "wave_count": 22, "threat_level": 1})
+		var early_rows: Array = early.summary_rows()
+		err = _T.assert_eq(String(early_rows[0][1]), "1 of 22",
+			"at level 1 the clause is omitted rather than printed as noise")
+		early.free()
+
+	# No verdict, anywhere on the card. A sentence that scolds is worse than nothing.
+	if err == "":
+		var scolds: Array[String] = ["should", "too many", "instead", "wasted", "spread",
+			"mistake", "never upgraded", "you failed"]
+		for row: Array in rows:
+			var line: String = ("%s %s" % [String(row[0]), String(row[1])]).to_lower()
+			for word: String in scolds:
+				err = _T.assert_false(line.contains(word),
+					"no row grades the player (found '%s' in '%s')" % [word, line])
+				if err != "":
+					break
+			if err != "":
+				break
+
+	_T.free_ui(panel)
+	return err
+
+
+## The spend row fits its column at the biggest numbers the game can produce.
+##
+## Measured through `_T.text_width`, which reads the label's own resolved theme
+## font. `get_minimum_size()` would report ~1px here: every value label on this
+## card sets `clip_text` and OVERRUN_TRIM_ELLIPSIS, so the obvious width assertion
+## passes unconditionally on exactly the labels that need checking — and a row that
+## overflows would show as a silently ellipsised number rather than as a failure.
+##
+## The comparison is against the beds row, which the file names as this column's
+## width high-water mark. A new row is affordable precisely while it stays under
+## the row that already sets the ceiling.
+func test_the_spend_row_fits_its_column_at_endless_magnitudes() -> String:
+	var stats: Dictionary = {
+		"endless": true,
+		"wave": 137,
+		"threat_level": 9,
+		"lives_lost": 5,
+		"escapes_recorded": 5,
+		"escapes_untouched": 4,
+		"seeds_on_plants": 8421,
+		"seeds_on_upgrades": 4210,
+	}
+	var panel := RunSummary.build(stats)
+	await _T.instantiate_scene(panel)
+
+	var column: float = RunSummary.CARD.size.x * 0.58 - RunSummary.ROW_INSET
+	var spend: Label = panel.get_node_or_null("Value_Seedsspent") as Label
+	var err: String = _T.assert_true(spend != null, "the spend row is on the card")
+	if err == "":
+		err = _T.assert_eq(spend.text, "8421 on plants, 4210 on upgrades",
+			"four digits on both sides, which is the widest this row gets")
+	var wanted: float = 0.0
+	if err == "":
+		wanted = _T.text_width(spend)
+		err = _T.assert_gt(wanted, 1.0,
+			"the font really measured it — a 1px answer is the clip_text stub, not a width")
+	if err == "":
+		err = _T.assert_true(wanted <= column,
+			"the spend row fits without ellipsis (%.0f of %.0f px)" % [wanted, column])
+	if err == "":
+		# The folded waves row is the other string this change lengthened.
+		var waves: Label = panel.get_node_or_null("Value_Wavessurvived") as Label
+		err = _T.assert_true(waves != null, "the waves row is on the card")
+		if err == "":
+			err = _T.assert_eq(waves.text, "137 — threat level 9", "endless prints a bare wave count")
+		if err == "":
+			err = _T.assert_true(_T.text_width(waves) <= column,
+				"and the fold still fits (%.0f of %.0f px)" % [_T.text_width(waves), column])
+	if err == "":
+		# The row the file names as this column's high-water mark, measured in the
+		# same breath. Which of the two is wider is a font-metric fact this test
+		# deliberately does not predict — what it pins is that BOTH fit, so a
+		# regression cannot hide behind "the other row was the wide one".
+		var beds: Label = panel.get_node_or_null("Value_Gardenlost") as Label
+		err = _T.assert_true(beds != null, "the beds row is on the card to measure against")
+		if err == "":
+			err = _T.assert_true(_T.text_width(beds) <= column,
+				("and the beds row, which sets this column's high-water mark, still fits "
+					+ "(%.0f of %.0f px)") % [_T.text_width(beds), column])
+
+	_T.free_ui(panel)
+	return err

@@ -248,19 +248,97 @@ static func rows_capacity() -> int:
 
 
 func summary_rows() -> Array:
-	var wave: int = int(_stats.get("wave", 0))
-	var endless: bool = bool(_stats.get("endless", false))
-	var waves: String = "%d" % wave if endless else "%d of %d" % [wave, int(_stats.get("wave_count", 0))]
 	var rows: Array = [
-		["Waves survived", waves],
+		["Waves survived", _waves_text()],
 		["Pests defeated", "%d" % int(_stats.get("pests_defeated", 0))],
 		["Time in the garden", _duration_text()],
-		["Threat reached", "level %d" % int(_stats.get("threat_level", 1))],
+		["Seeds spent", spend_text()],
 		["Garden lost", beds_text()],
 		["Compost swept", _compost_text()],
 		["Where you held them", _stop_cell_text()],
 	]
 	return rows
+
+
+## Waves, with the threat scale folded in — the subject the row "Threat reached"
+## used to hold on its own, and the reason this card could afford a new seventh
+## subject without growing an eighth row.
+##
+## The fold is free of information loss in the strict sense, not merely the
+## convenient one. `Game.summary_stats` writes `threat_level` as
+## `WaveDirector.threat_level(current_wave)` — a pure function of the wave number
+## this very row already prints. The two rows were one measurement stated twice,
+## once raw and once scaled, and the card was paying a whole row for the second
+## copy. Every other fold on this card (see _compost_text, beds_text) had to argue
+## that a second number was worth crowding a row; this one only has to point out
+## that the second number was already there.
+##
+## Height is why it had to happen at all: rows step ROW_HEIGHT + ROW_GAP = 38 from
+## FIRST_ROW_Y, rows_capacity() is 7, and ROW_GAP has already been cut once (8 to
+## 4) to fit the seventh. An eighth row foots at 486 against buttons at 476 — below
+## them, not merely inside BUTTON_CLEARANCE. So a new subject on this card is
+## always a swap, never an addition, and the row to give up is the one whose number
+## another row can already be read off.
+##
+## Level 1 prints no threat clause, matching the HUD's own rule for the same
+## number: `test_the_threat_readout_hides_itself_at_wave_one` pins the readout
+## hiding itself at wave one because "threat level 1" is the scale's floor and
+## says nothing. A post-mortem is not a live readout, but the number is the same
+## number and it is no more informative here.
+##
+## Width: the longest this row gets is a deep endless run, "137 — threat level 9"
+## at 20 characters, against the beds row's "5 of 10 beds — 4 walked in untouched"
+## at 36, which sets the card's value-column high-water mark. Nowhere near it.
+func _waves_text() -> String:
+	var wave: int = int(_stats.get("wave", 0))
+	var endless: bool = bool(_stats.get("endless", false))
+	var waves: String = "%d" % wave if endless else "%d of %d" % [wave, int(_stats.get("wave_count", 0))]
+	var level: int = int(_stats.get("threat_level", 1))
+	if level <= 1:
+		return waves
+	return "%s — threat level %d" % [waves, level]
+
+
+## Where the run's seeds went: breadth against depth, as two numbers and no verdict.
+##
+## This is the row cycle 101 bought. Two campaigns, same economy, same map, no
+## cheats, differing in one policy bit — whether a surplus bought another plant or
+## another level on one already planted. Breadth-first reached eleven level-1
+## plants and died at wave 10. Depth-first won all 22 waves and lost no lives. The
+## losing run was not ignorant of the Upgrade button; it spent the seeds elsewhere.
+## That is why the one-shot hint teaching that the button exists — see
+## `Game._maybe_teach_upgrading` — cannot reach this player: it answers a question
+## they had already answered, and one line on a live message row cannot carry a
+## policy anyway. This card can, because it is the moment the player is asking.
+##
+## NUMBERS, NOT A SENTENCE, and that is the whole design. Every phrasing that
+## explains the comparison also grades the player for it, and a card that says
+## "you spread yourself thin" to someone who just lost their garden is a worse
+## screen than one that says nothing. Two totals side by side state the policy and
+## leave the conclusion where it belongs. The row is also placed fourth, in the
+## middle of the card among the run's shape rather than down among the damage, so
+## it reads as a fact about the run and not as a cause of death.
+##
+## SEEDS, not purchase counts — argued at length on `Game.seeds_on_plants`. Short
+## version: a plant and an upgrade cost different amounts, so counts of them are
+## not comparable quantities, and it was the seeds that cycle 101 varied.
+##
+## No sentinel branch, unlike _compost_text. That one needs `-1` because an absent
+## denominator and a perfect sweep would otherwise read alike. Here they do not:
+## `Game.summary_stats` writes both keys on every run, so "0 on plants" is a run
+## that really did spend nothing on breadth — the free starter is free, so a run
+## that planted only its one free cob and died genuinely reads 0, correctly.
+##
+## Not a ledger, and phrased so it never claims to be one. Packets are a third
+## sink and are in neither total; the row names two destinations rather than
+## partitioning a total, so nothing here has to be true of `seeds_earned_total`
+## minus the purse. Widest realistic string is a long endless run's "8421 on
+## plants, 4210 on upgrades" at 32 characters, inside the beds row's 36-character
+## high-water mark for this column.
+func spend_text() -> String:
+	var plants: int = int(_stats.get("seeds_on_plants", 0))
+	var upgrades: int = int(_stats.get("seeds_on_upgrades", 0))
+	return "%d on plants, %d on upgrades" % [plants, upgrades]
 
 
 ## The beds row — the run's escape count, and now the only place the card says
