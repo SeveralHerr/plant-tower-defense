@@ -1844,9 +1844,9 @@ func _paint_message_row() -> void:
 ## Returns whether `text` is ON THE ROW when this call returns — false when it was
 ## queued behind something, and false when the queue was full and dropped it.
 ##
-## The return value exists because a caller could not previously tell those apart. All
-## 22 call sites under `game/` ignore it and are right to; the one that must not is a
-## one-shot HINT,
+## The return value exists because a caller could not previously tell those apart. Of
+## the 17 call sites under `game/`, 15 ignore it and are right to; the two that must
+## not are one-shot HINTS,
 ## which is spent on the player having SEEN something. `_queue_message` drops the
 ## lowest-priority entry when the queue is full and drops the NEW one if it is the
 ## lowest — silently, and this method returned void. So "I called show_message" and
@@ -1921,8 +1921,9 @@ const QUEUE_REFUSED := "refused"
 ## Pure and static so the rule can be asserted without staging four messages through a live
 ## HUD — and because the interesting cases are the ones a live HUD makes hardest to reach.
 ## Note the `>=`: on a TIE the arriving message is refused, which matters more here than
-## anywhere else because 19 of the game's 22 `show_message` call sites pass no priority at
-## all and therefore all tie.
+## anywhere else because 14 of the game's 17 `show_message` call sites pass no priority at
+## all and therefore all tie. (The three that do: `Hud.MESSAGE_DEADLINE` on the armed
+## uproot, and `Hud.MESSAGE_IMPORTANT` on both halves of the packet reveal.)
 static func queue_outcome(queued: Array[int], arriving: int) -> String:
 	if queued.size() < MESSAGE_QUEUE_MAX:
 		return QUEUE_ACCEPTED
