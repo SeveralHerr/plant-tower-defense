@@ -4289,3 +4289,30 @@ Three findings kept out here rather than buried in a log:
   living somewhere else in the code**, and every one is read by a player deciding how to
   spend seeds. This is the same class as cycle 115's HUD-sentence sweep, on the sentences
   that cost the player money.
+
+### New in cycle 120 — grown from a save that could not say it had failed
+
+- **`RunConfig._save()` can now report, and four other things that write still cannot say
+  whether they landed.** The Keys screen was the right place to start — the bead said so and
+  it was correct, because a capture is synchronous with a button press and there is an
+  unambiguous moment to report. Everything else that persists has no such moment: the
+  options toggles (mute, sfx, music, garden speed, colourblind bars) write on a click with
+  the screen staying put, and the high-score write happens as a run ends while the player is
+  reading a post-mortem card.
+  The mechanism now exists — `_save()` returns a bool and `store_key_bindings` threads it —
+  so this is a design question rather than a plumbing one: **what does a settings toggle do
+  when its own write fails?** The toggle has already moved on screen, so silence is a lie
+  and reverting it is worse. Probably: leave the toggle, say it in the same place the Keys
+  screen says it. Nobody has decided, and the honest answer may be "these are not worth a
+  sentence and here is why", which is also a decision.
+
+- **A sentence a player will almost never see is the one most likely to ship misspelled.**
+  `KeyBindingScreen.persisted_note`'s failure branch is unreachable without a filesystem
+  fault, so nothing in normal play or normal testing renders it. It is a pure static
+  precisely so both branches can be asserted with no screen and no failing disk — and the
+  same shape is worth looking for elsewhere: every `push_warning` string in
+  `RunConfig._save`, the refusal strings in `Game.place_plant` that only one test drives,
+  and whatever `OverlayScreen` says when a footer is flush.
+  Taste: any sentence a player can reach only through a fault should be built by a pure
+  function and asserted, or it is decoration. The cost is one static per sentence and the
+  benefit is that the one time it appears, it is right.

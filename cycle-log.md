@@ -1,4 +1,4 @@
-# Cycle 119
+# Cycle 120
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,36 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 120 taught
+
+**A save confirmation must not claim work was lost when it was not.** `RunConfig._save()`
+has four failure paths and three of them lose the write — but the RENAME failure does not:
+its own warning says *"The finished save is at %s and _load will adopt it"*, so the record
+is complete, validated, on disk, and adopted next launch. It returns **true**. That was the
+only real judgement in the change, and it is the failure direction a player cannot recover
+from by ignoring the message.
+
+**Silence is the confirmation; only the failure gets words.** Appending "saved" to every key
+capture would put a word about disks on a screen about keys, forever, to cover a case that
+essentially never happens. `persisted_note` therefore returns its caller's own sentence
+UNCHANGED on success — which is also what made both branches pure and assertable with no
+screen and no failing disk.
+
+**A sentence a player will almost never see is the one most likely to ship misspelled.** The
+failure branch is unreachable without a filesystem fault, so nothing in normal play or
+normal testing renders it. Building it as a pure static both branches of the test read is
+the cheap insurance; assembling it inline at the two call sites would have put it where
+nothing could see it.
+
+**The launch was declined for SAFETY, a first this session.** Every earlier decline was "the
+test already makes this claim". Here the branch is only reachable by making a save FAIL, and
+doing that live writes the developer's real `user://` — `--isolated` does not isolate it.
+Worth adding to cycle 115's launch-triage question: *"what claim can the launch make"* has a
+sibling, *"what would the launch have to break to make it"*.
+
+**Filed `-05va`:** four other things still write without being able to say whether they
+landed, and the honest answer for some of them is probably "say nothing, and here is why".
 
 ## What cycle 119 taught
 
