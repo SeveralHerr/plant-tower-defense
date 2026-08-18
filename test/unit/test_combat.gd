@@ -7464,3 +7464,50 @@ func test_a_pest_released_from_a_chomp_is_whole_again() -> String:
 
 
 # -- END a meal is eaten in bites ----------------------------------------------
+
+
+# -- BEGIN a dandelion survives a freed pest in its census ---------------------
+
+
+## `best_target()` skips a pest that has been freed under it.
+##
+## The sibling of plant-tower-defense-or67 / gh#43, which fixed exactly this in
+## `Plant._furthest_along_in_range`. Dandelion overrides targeting and kept none of
+## it: `grep -c is_instance_valid game/dandelion.gd` read 0 until this landed.
+##
+## A FREED pest, deliberately, not a null one. `is_instance_valid` and `!= null`
+## disagree on precisely this value -- a freed Object is not equal to null -- so a
+## test that appended `null` would pass against a `!= null` guard that still crashes
+## on the real case. That gap is also why no static gate could see this: the cast
+## resolves and the name check is clean.
+func test_a_dandelion_skips_a_pest_freed_under_it() -> String:
+	var dandelion := Dandelion.new()
+	dandelion.position = Vector2(200.0, 296.0)
+	var live: Pest = _pest(Pest.APHID, Vector2(220.0, 296.0))
+	var doomed: Pest = _pest(Pest.APHID, Vector2(240.0, 296.0))
+	var pests: Array[Pest] = [live, doomed]
+
+	# Freed, not removed from the array: that is the state the board actually reaches
+	# when a kernel kills a pest between the census and the targeting pass.
+	doomed.free()
+
+	var err: String = _T.assert_false(is_instance_valid(doomed),
+		"the pest really is freed, so this test is exercising the case it claims to")
+	if err == "":
+		var picked: Pest = dandelion.best_target(pests)
+		err = _T.assert_true(picked == live,
+			("best_target returns the survivor rather than crashing on the corpse"
+				+ " (got %s)") % picked)
+	if err == "":
+		# The other half, and the one a null-check would not have caught: the freed
+		# pest must not be counted into the blast census either, or the bomb aims at
+		# a phantom.
+		var only_dead: Array[Pest] = [doomed]
+		err = _T.assert_true(dandelion.best_target(only_dead) == null,
+			"and a census of nothing but corpses picks no target at all")
+	dandelion.free()
+	live.free()
+	return err
+
+
+# -- END a dandelion survives a freed pest ------------------------------------

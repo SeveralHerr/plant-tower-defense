@@ -213,13 +213,28 @@ func _grow_fluff(delta: float) -> void:
 ## this plant does better than a 10-seed cob. Progress is still the tie-break, so
 ## with nothing clumped it degrades to exactly the usual rule.
 func best_target(pests: Array[Pest]) -> Pest:
+	# Guarded in BOTH loops, and the first one is the reason this was a defect rather
+	# than a style point. `here` is the blast-radius census, so a freed pest left in it
+	# is not merely a crash risk -- it is a phantom the bomb counts as caught, which
+	# picks the wrong target while looking like it worked.
+	#
+	# Same defect plant-tower-defense-or67 / gh#43 fixed in `Plant._furthest_along_in_range`
+	# (game/plant.gd:616), whose guard this copies. Dandelion was the one targeting path
+	# that still had none -- `grep -c is_instance_valid game/dandelion.gd` read 0. Found
+	# by two separate audits reading the same file, and by nothing in the gates: a freed
+	# Object is NOT `== null`, so a `!= null` check would have looked like a guard and
+	# resolved clean in name_check while still dereferencing a dead node.
 	var here: PackedVector2Array = PackedVector2Array()
 	for pest: Pest in pests:
+		if pest == null or not is_instance_valid(pest):
+			continue
 		here.append(pest.global_position)
 	var best: Pest = null
 	var best_caught: int = 0
 	var best_progress: float = -1.0
 	for pest: Pest in pests:
+		if pest == null or not is_instance_valid(pest):
+			continue
 		if pest.global_position.distance_to(global_position) > RANGE:
 			continue
 		var catches: int = SeedBomb.caught(pest.global_position, here)
