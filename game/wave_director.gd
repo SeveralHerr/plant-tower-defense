@@ -806,6 +806,48 @@ static func wave_carries_boss(wave: int) -> bool:
 ## What a plant's firing interval is multiplied by under this weather. Drought is
 ## the only one that touches it; the number is 2.0 because "halves fire rate" is
 ## the design brief's own wording and an interval is the reciprocal of a rate.
+##
+## ## WHAT A DROUGHT SLOWS, decided rather than inherited (plant-tower-defense-bt5i)
+##
+## **A drought lengthens a repeating ATTACK interval and nothing else.** Everything that
+## pays this scale reads it through `Plant.fire_interval_scale` into
+## `Plant.composed_interval`, and today that is three of the eight plants in
+## `PlantCatalog`: `CornCobbler.fire_interval`, the Dandelion's per-seed cooldown off
+## `Dandelion.SHOT_INTERVAL`, and `Nettle.sting_interval`. The other five are untouched,
+## and until this bead that was an
+## accident of which files happened to read the field rather than an answer anyone had
+## given. (The bead itself said two of five, which was true of a smaller roster: Nettle
+## and Aloe did not exist when it was written.) It is the answer now, and the reason is a
+## different one for each of the five:
+##
+##   * **Chomp Flower** — a chew is a grip, not a rate of fire, and its length belongs to
+##     the MEAL rather than to the plant (`Pest.chew_seconds` through
+##     `ChompFlower.chew_seconds_for`). Lengthening it lengthens how long the pest is HELD
+##     exactly as much as how long the flower is busy: a nerf on a thin lane and a buff on
+##     a crowded one. A weather whose SIGN depends on the board is not a readable event,
+##     which is the same standard `weather_for` already applies when it refuses to run
+##     rain and drought over one wave.
+##   * **Seed Sunflower** — its clock IS the seed economy (`Sunflower.INTERVAL`), and a
+##     drought already pays `WEATHER_DROUGHT_SEED_BONUS` on every kill. Slowing seed
+##     growth under the one weather that raises seed income moves two numbers against
+##     each other so the total barely moves: the balance change nobody can perceive.
+##   * **Sticky Sundew** — an aura has no rate to multiply. It is on, permanently, or it
+##     is not there at all.
+##   * **Garden Mint** — it never acts. Its output is `neighbour_interval_scale` on plants
+##     the drought is ALREADY slowing, and `Plant.composed_interval` multiplies both
+##     factors, so slowing the Mint too would apply one weather twice to one shot.
+##   * **Salve Aloe** — it repairs between waves, where nothing is racing it, and inside a
+##     fight it loses to `Pest.EAT_DPS` by design. Halving `Aloe.heal_for` costs the
+##     player nothing they can feel in the first case and nothing that matters in the
+##     second.
+##
+## This is what lets `Hud.weather_note` say "Everything shoots half as often" and be
+## exactly right rather than roughly right: SHOOTS is the boundary, and that sentence is
+## now the specification rather than a description of whatever the plant files happen to
+## do. `test_a_drought_slows_what_the_garden_shoots_and_nothing_else` derives the affected
+## set from `PlantCatalog.ids()` and the plant scripts themselves, so a ninth plant that
+## starts reading `fire_interval_scale` — or a Nettle that quietly stops — fails against
+## this paragraph instead of extending it in silence.
 const WEATHER_DROUGHT_INTERVAL_SCALE: float = 2.0
 
 static func fire_interval_scale_for(weather: StringName) -> float:
@@ -827,6 +869,9 @@ static func fire_interval_scale_for(weather: StringName) -> float:
 ##
 ## 1.5 rather than 2.0: a drought should be worth surviving, not worth WANTING. At 2.0
 ## the arithmetic starts to favour praying for bad weather, which inverts the mechanic.
+##
+## Re-opened once the 1.5 shipped and left standing: see `WEATHER_RAIN_HEAL_FRACTION`
+## below for the three alternatives plant-tower-defense-kmjp refused and why.
 const WEATHER_DROUGHT_SEED_BONUS: float = 1.5
 
 static func seed_multiplier_for(weather: StringName) -> float:
@@ -836,7 +881,57 @@ static func seed_multiplier_for(weather: StringName) -> float:
 ## How much of a plant's maximum health a rain wave gives back, applied once as
 ## the wave opens rather than trickled -- a heal the player can SEE happen is
 ## worth more than a slightly larger one they cannot.
+##
+## ## WHAT RAIN PAYS, asked again now drought pays 150% (plant-tower-defense-kmjp)
+##
+## The bead this answers said rain "heals pests" and was therefore the only weather with
+## a downside and no compensation. **IT HEALS PLANTS.** `Game._apply_weather` walks the
+## plants Game owns and calls `plant.heal(Plant.MAX_HEALTH * WEATHER_RAIN_HEAL_FRACTION)`
+## on each of them; nothing anywhere applies a weather term to a pest's health, its damage
+## or its speed. So rain has no downside at all -- it is the only weather in this game that
+## gives without taking, and the forecast a player reads is one weather that pays for a
+## cost (drought), one that gives for free (rain), and a baseline (clear).
+##
+## SO NOTHING HERE MOVES. All three shapes the bead offered are refused:
+##
+##   * **Rain pays a smaller seed bonus.** It already has a compensation, and a second one
+##     makes CLEAR the punished state -- clear is eleven waves in twelve.
+##   * **Drought's bonus and rain's heal shrink together.** That moves two numbers so the
+##     ratio between them does not move: the balance change nobody can perceive, which is
+##     the one kind this project was told not to ship.
+##   * **A non-seed upside for rain** (a free replant, faster regrowth). New mechanism, and
+##     the bead's own note puts any weather rebalance downstream of the blocked
+##     counter-play question rather than in front of it.
+##
+## WHAT WAS ACTUALLY MISSING is the bead's acceptance clause and not its premise: an upside
+## has to be NAMED BEFORE THE WAVE COMMITS. Rain's heal is announced by `Hud.weather_note`,
+## which `Game._on_wave_started` fires through `Hud.show_weather` AFTER the wave has begun
+## -- after the player has already spent. The surface they read while deciding is
+## `Hud.next_wave_note`, and that function appends a bare "rain" while drought gets
+## "drought · pests pay 150%". The asymmetry is the whole defect and the fix is one clause
+## in that function, not a number in this file.
+##
+## Worth saying out loud, because the fraction below is what makes it matter: this heal is
+## CONDITIONAL AND FREQUENTLY ZERO. A full-health garden gets nothing from rain. A player
+## who can read the number three waves out can leave a chewed Corn standing instead of
+## uprooting it at a refund and paying full price again -- which is a decision, and it is
+## only available to someone told the number in advance.
 const WEATHER_RAIN_HEAL_FRACTION: float = 0.35
+
+
+## The fraction of its maximum health a plant gets back when this weather arrives.
+##
+## The third member of a family that had two (`fire_interval_scale_for`,
+## `seed_multiplier_for`), and its absence is half of why rain read as the weather with
+## nothing to say: the other two effects were functions of the weather and this one was a
+## ternary inlined at its single call site, so no caller and no test could ask "what does
+## THIS weather give" without knowing in advance that the answer involved rain.
+##
+## Pure and static, like its two siblings, so "every weather gives the player something"
+## is assertable across the whole set without a board, a wave or a hand-written table of
+## which weather is which.
+static func heal_fraction_for(weather: StringName) -> float:
+	return WEATHER_RAIN_HEAL_FRACTION if weather == WEATHER_RAIN else 0.0
 
 
 func has_more_waves() -> bool:
