@@ -7254,3 +7254,201 @@ func test_the_notebook_hints_page_gives_back_a_hint_that_was_never_shown() -> St
 
 # END plant-tower-defense-ei83
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-wenx: the cue legend's budget, and the taught/untaught
+# diff, recorded so the next person asking "should this cue get a row?" reads a
+# number instead of re-deriving one.
+#
+# The bead was a QUESTION and the answer was no -- see the audit block in
+# `game/cue_legend.gd` for the per-cue argument. These two tests are what stops
+# that answer from silently becoming stale: one pins the price of a row, the other
+# pins which rows are taught. Neither asserts a new behaviour; both fail when the
+# facts the audit rests on move.
+# =============================================================================
+
+
+func test_the_legend_page_is_exactly_full() -> String:
+	## `test_the_legend_fits_the_page_it_is_drawn_on` asserts the page is not OVERFULL.
+	## That is one direction, and it is the direction that produces a visible bug, so it
+	## reads as the whole check -- but it cannot say whether there is room for another
+	## row, which is exactly the question the wenx bead asked. This is the other side:
+	## the page holds `ROWS.size()` and not one more.
+	##
+	## It goes red in both directions on purpose. A seventh row added without a layout
+	## change fails it, and so does a layout change that quietly makes room -- because
+	## room appearing is the event that reopens "should we teach a seventh cue", and it
+	## must not pass unnoticed.
+	var box: float = NotebookScreen.DRAWING_BOX.size.y
+	var err: String = _T.assert_gt(CueLegend.ROWS.size(), 0, "there are rows to price")
+	if err != "":
+		return err
+	err = _T.assert_eq(CueLegend.rows_that_fit(box), CueLegend.ROWS.size(),
+		("the %.0fpx matte holds exactly %d rows and the legend has %d -- if room has "
+			% [box, CueLegend.rows_that_fit(box), CueLegend.ROWS.size()])
+			+ "appeared, re-read the wenx audit block in cue_legend.gd before filling it")
+	if err != "":
+		return err
+
+	# Where a seventh row would actually land, computed the way the page computes every
+	# other row rather than by adding ROW_PITCH to content_bottom(): the row's lowest ink
+	# is its detail line, not its swatch.
+	var seventh: float = (CueLegend.row_center_y(CueLegend.ROWS.size())
+		+ CueLegend.row_ink_below_center())
+	err = _T.assert_gt(seventh, box,
+		"a row %d would bottom out at %.0fpx in a %.0fpx matte"
+			% [CueLegend.ROWS.size() + 1, seventh, box])
+	if err != "":
+		return err
+
+	# And the part that makes the price a PAGE rather than a line: the pitch cannot be
+	# cut to buy the row back, because a row is taller than the pitch it would need.
+	var ink: float = CueLegend.SWATCH_RADIUS + CueLegend.row_ink_below_center()
+	var needed_pitch: float = (box - CueLegend.ROW_TOP - ink) / float(CueLegend.ROWS.size())
+	err = _T.assert_gt(ink, needed_pitch,
+		("one row is %.0fpx of ink and %d rows would need a %.1fpx pitch, so they would "
+			% [ink, CueLegend.ROWS.size() + 1, needed_pitch])
+			+ "overlap -- the next row costs a smaller swatch, smaller type, or a "
+			+ "second page")
+	return err
+
+
+func test_the_grammar_rows_the_legend_teaches_are_the_recorded_six() -> String:
+	## Which of `game/OVERLAY_GRAMMAR.md`'s shapes this page teaches, written down once.
+	##
+	## THE HAND-TYPED MAPPING IS THE CHECK, and that is deliberate rather than the smell
+	## it looks like. The grammar's rows are markdown prose and the legend's are
+	## `CueLegend.ROWS` ids; there is no shared key to derive a pairing from, and a
+	## derivation that invented one would be pairing the two things it was meant to
+	## compare. So the two sides stay independent -- the document on one, the code on the
+	## other -- and this table in the middle is what someone has to re-open when either
+	## moves. Paying that by hand is the feature: it is what makes a new grammar row or a
+	## new legend row a decision rather than an edit.
+	##
+	## Both directions are asserted. Every recorded shape must match exactly one row in
+	## the document (a renamed or deleted grammar row goes red), and every row in the
+	## document must be matched by exactly one recorded shape (an ELEVENTH grammar row
+	## goes red, which is the drift the wenx bead existed to catch). Then the same again
+	## for the legend: every taught id must be a real `CueLegend.ROWS` shape, and every
+	## `CueLegend.ROWS` shape must be claimed by exactly one recorded row.
+	##
+	## Empty `taught` means the shape is drawn on the board and not on this page. The
+	## four of them are argued one at a time in cue_legend.gd's wenx block; the short
+	## version is that none of them earns the layout price the test above measures.
+	var recorded: Array[Dictionary] = [
+		{"shape": "Solid full ring", "taught": CueLegend.SHAPE_REACH},
+		{"shape": "Dashed ring", "taught": CueLegend.SHAPE_REMARK},
+		{"shape": "Partial arc", "taught": CueLegend.SHAPE_CLOCK},
+		{"shape": "Small solid ring", "taught": ""},
+		{"shape": "Filled dot", "taught": CueLegend.SHAPE_GAIN},
+		{"shape": "Straight line through a box", "taught": ""},
+		{"shape": "Corner brackets", "taught": CueLegend.SHAPE_SUBJECT},
+		{"shape": "Scattered short marks", "taught": ""},
+		{"shape": "Doubled line width", "taught": CueLegend.SHAPE_ARMED},
+		{"shape": "A row of small pips", "taught": ""},
+	]
+
+	# The document's rows, parsed out of the SECTION rather than the file -- the same
+	# scoping test_the_legend_names_as_many_shapes_as_the_grammar_documents uses, and for
+	# the reason its own comment gives: cycle 97 added a second table whose header also
+	# begins "| Shape".
+	var text: String = FileAccess.get_file_as_string(NotebookScreen.OVERLAY_GRAMMAR_PATH)
+	var err: String = _T.assert_gt(text.length(), 0, "the grammar document is readable")
+	if err != "":
+		return err
+	var start: int = text.find("## What each shape means")
+	err = _T.assert_gt(start, 0, "the shapes section is findable")
+	if err != "":
+		return err
+	var section: String = text.substr(start)
+	var stop: int = section.find("\n## ", 1)
+	if stop > 0:
+		section = section.substr(0, stop)
+	var rows: Array[String] = []
+	for line: String in section.split("\n"):
+		var trimmed: String = line.strip_edges()
+		if not trimmed.begins_with("|"):
+			continue
+		if trimmed.begins_with("| Shape") or trimmed.begins_with("|---"):
+			continue
+		rows.append(trimmed)
+	# The denominator, and not `> 0`: "more than nothing" is true in exactly the
+	# situation an empty parse produces, which would make every loop below vacuous.
+	err = _T.assert_gt(rows.size(), 5,
+		"the shapes table parsed to %d rows -- an empty or half parse makes every "
+			% rows.size() + "pairing below vacuously true")
+	if err != "":
+		return err
+
+	# Direction one: each recorded shape names exactly one row of the document.
+	var matched: Array[String] = []
+	for entry: Dictionary in recorded:
+		var shape: String = String(entry["shape"])
+		var hits: int = 0
+		var hit: String = ""
+		for row: String in rows:
+			if row.contains(shape):
+				hits += 1
+				hit = row
+		err = _T.assert_eq(hits, 1,
+			"'%s' names exactly one row of OVERLAY_GRAMMAR.md's shapes table (%d)"
+				% [shape, hits])
+		if err != "":
+			return err
+		err = _T.assert_false(matched.has(hit),
+			"'%s' claims a row no earlier entry already claimed" % shape)
+		if err != "":
+			return err
+		matched.append(hit)
+
+	# Direction two: no row of the document is left unclaimed. This is the assertion the
+	# bead's question turns on -- a cue added on a NEW shape appears here as an eleventh
+	# row nothing accounts for.
+	err = _T.assert_eq(matched.size(), rows.size(),
+		("%d of the document's %d shape rows are accounted for here -- an unclaimed row "
+			% [matched.size(), rows.size()])
+			+ "is a shape the board draws that nobody has decided whether to teach")
+	if err != "":
+		return err
+
+	# Direction three and four: the taught ids and CueLegend.ROWS are the same set.
+	var claimed: Array[String] = []
+	for entry: Dictionary in recorded:
+		var taught: String = String(entry["taught"])
+		if taught == "":
+			continue
+		var found: bool = false
+		for row: Dictionary in CueLegend.ROWS:
+			if String(row["shape"]) == taught:
+				found = true
+				break
+		err = _T.assert_true(found,
+			"'%s' is recorded as taught and is a real CueLegend.ROWS shape" % taught)
+		if err != "":
+			return err
+		err = _T.assert_false(claimed.has(taught), "'%s' is recorded once" % taught)
+		if err != "":
+			return err
+		claimed.append(taught)
+	for row: Dictionary in CueLegend.ROWS:
+		err = _T.assert_true(claimed.has(String(row["shape"])),
+			("the legend teaches '%s' and this table does not say which grammar shape "
+				% String(row["shape"])) + "that is")
+		if err != "":
+			return err
+
+	# The number the page prints to the player, derived rather than typed: "N of the
+	# board's M marks". Both halves come out of the pairing above.
+	err = _T.assert_eq(claimed.size(), CueLegend.row_count(),
+		"the page says it teaches %d shapes and the pairing finds %d"
+			% [CueLegend.row_count(), claimed.size()])
+	if err == "":
+		err = _T.assert_eq(rows.size() - claimed.size(), 4,
+			("%d of the board's %d documented shapes go untaught -- the wenx audit "
+				% [rows.size() - claimed.size(), rows.size()])
+				+ "argued four of them one at a time, so a fifth needs arguing too")
+	return err
+
+# END plant-tower-defense-wenx
+# =============================================================================
