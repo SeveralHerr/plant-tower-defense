@@ -134,6 +134,18 @@ const STATS_ROW_HEIGHT: float = 40.0
 const MESSAGE_ROW_Y: float = 47.0
 const MESSAGE_ROW_HEIGHT: float = 20.0
 
+## The page margin either side of the top row. It was the literal `20` in the
+## row's x and the literal `40` in its width, which is the same number written
+## twice with nothing saying so -- and it is a term in `min_viewport_width()`,
+## so it had to become a name before that arithmetic could be checked.
+const STATS_ROW_MARGIN: float = 20.0
+
+## How much of the bar's width the message line gives up on the right. Same
+## number as the literal `276` it replaces, derived rather than typed: the line
+## starts at the page margin and stops where the side panel's column begins, so
+## a change to either end moves it instead of leaving it stale.
+const MESSAGE_ROW_RIGHT_INSET: float = STATS_ROW_MARGIN + float(PANEL_WIDTH)
+
 ## The palette: aliases, not copies. Every value below is declared once, in
 ## GardenTheme, so the title screen, the Designer's Notebook and the post-mortem
 ## card can reach the same shades — most of all the red, which is the one colour
@@ -697,6 +709,25 @@ var _shake_tweens: Dictionary = {}
 ## screen appearing, not a change the player made — see refresh().
 var _readouts_seeded: bool = false
 
+## The three surfaces whose geometry comes from the viewport rather than from a
+## constant. Held as members for one reason: `_apply_viewport_layout()` has to be
+## able to rewrite them long after `_ready()` returned, and a local `var bar` in
+## the builder is unreachable from a signal handler.
+var _top_bar: ColorRect
+var _stats_row: HBoxContainer
+var _side_panel: ColorRect
+
+## The prep strip's width is a FRACTION of the viewport, not a px count, so a
+## resize mid-countdown has to re-multiply rather than keep the old pixels.
+## Stored here because `_refresh_prep_bar` is driven by `state` and a resize is
+## not: without it the strip would freeze at its pre-resize width until the next
+## refresh(), which on a paused tree is never.
+var _prep_fraction: float = 0.0
+
+## Edge-detected so the warning below fires on the CROSSING, not once per resize
+## event -- a window dragged narrower emits `size_changed` every frame.
+var _too_narrow: bool = false
+
 
 func _ready() -> void:
 	layer = 10
@@ -734,6 +765,132 @@ func _ready() -> void:
 	_fx_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(_fx_layer)
 
+	# The builders above create nodes and set everything that is a CONSTANT. Every
+	# number that comes from the viewport is written here instead, once, and again
+	# on every resize -- so there is exactly one function to read to know what this
+	# HUD does at a different window shape.
+	var vp: Viewport = get_viewport()
+	if vp != null and not vp.size_changed.is_connected(_apply_viewport_layout):
+		vp.size_changed.connect(_apply_viewport_layout)
+	_apply_viewport_layout()
+
+
+## Every size and position on this HUD that depends on the viewport, in one
+## place, re-runnable.
+##
+## This is the fix for plant-tower-defense-0jye. `get_viewport_width()` used to
+## name the project SETTING, and every caller believed it named the screen; with
+## `stretch/mode=canvas_items` and `stretch/aspect="expand"` the two genuinely
+## differ, because `expand` shows MORE canvas on whichever axis the window has
+## spare (Godot divides the window size by min(window/base) per axis, so the
+## viewport is the base size on the constraining axis and larger on the other).
+## A 21:9 window is 1536x648 canvas units, not 1152x648, and every number below
+## was stale from the moment the window stopped being 16:9.
+##
+## Re-derived rather than anchored, deliberately. The top row's widths are a
+## budget that has to add up (`stats_row_budget`), the side panel's column is a
+## constant the plant bar is sized against, and the banner is centred on the
+## board's half rather than the window's -- an anchor preset expresses none of
+## that, and a HUD half in anchors and half in arithmetic is worse than either.
+## What this HUD needed was not anchors; it was for its arithmetic to be run
+## more than once.
+func _apply_viewport_layout() -> void:
+	# `size_changed` can outlive the build (a viewport resized while this HUD is
+	# mid-teardown), so the guard is real rather than defensive dressing. The
+	# banner's second row is the LAST thing `_ready()` builds, so it is the one
+	# that means "everything below exists".
+	if _top_bar == null or _banner_note == null:
+		return
+	var w: float = float(get_viewport_width())
+	var h: float = float(get_viewport_height())
+
+	_top_bar.position = Vector2.ZERO
+	_top_bar.size = Vector2(w, float(BAR_HEIGHT))
+
+	_stats_row.position = Vector2(STATS_ROW_MARGIN, STATS_ROW_Y)
+	_stats_row.size = Vector2(maxf(0.0, w - STATS_ROW_MARGIN * 2.0), STATS_ROW_HEIGHT)
+
+	_message_label.position = Vector2(STATS_ROW_MARGIN, MESSAGE_ROW_Y)
+	_message_label.size = Vector2(maxf(0.0, w - MESSAGE_ROW_RIGHT_INSET), MESSAGE_ROW_HEIGHT)
+
+	_prep_bar.position = Vector2(0.0, float(BAR_HEIGHT) - PREP_BAR_HEIGHT)
+	_prep_bar.size = Vector2(w * _prep_fraction, PREP_BAR_HEIGHT)
+
+	_side_panel.position = Vector2(w - float(PANEL_WIDTH), float(BAR_HEIGHT))
+	_side_panel.size = Vector2(float(PANEL_WIDTH), maxf(0.0, h - float(BAR_HEIGHT)))
+
+	# The banner spans the board's half of the screen, stopping exactly where the
+	# side panel's column starts -- that abutment is what
+	# `test_the_wave_banner_shares_no_pixels_with_the_rest_of_the_hud` pins, and
+	# it is the one pair on this HUD a resize could push into an overlap.
+	var banner_width: float = maxf(0.0, w - float(PANEL_WIDTH))
+	_banner.position = Vector2(0.0, BANNER_Y)
+	_banner.size = Vector2(banner_width, BANNER_HEIGHT)
+	_banner_note.position = Vector2(0.0, BANNER_Y + BANNER_HEIGHT)
+	_banner_note.size = Vector2(banner_width, BANNER_NOTE_HEIGHT)
+
+	_report_if_too_narrow(w)
+
+
+## The top row is the one part of this HUD that a narrow viewport BREAKS rather
+## than merely reshapes, and it breaks silently, so it gets said out loud.
+##
+## `Control.size` is clamped up to `get_combined_minimum_size()`, and an
+## HBoxContainer's minimum is the sum of its children. So asking the StatsRow for
+## less width than `stats_row_budget()` does not squeeze it -- the assignment
+## appears to succeed, the row keeps its full width, and the wave button simply
+## ends up past the right edge of the screen with nothing anywhere reporting it.
+## That is the exact failure `test_an_absurdly_long_readout_pushes_rather_than_underlaps`
+## already caught once at a fixed width; a live viewport is a second way to reach it.
+##
+## Today it cannot happen: `stretch/aspect="expand"` never yields a canvas
+## SMALLER than the design size on either axis, so `design_width()` is the
+## narrowest the top row is ever laid out in, and
+## `test_the_top_row_fits_the_narrowest_viewport_the_stretch_mode_can_produce`
+## is what keeps that true if the aspect setting or the base size ever changes.
+## This warning is what a SubViewport-hosted HUD, or that settings change, gets
+## instead of a wave button quietly off screen.
+func _report_if_too_narrow(width: float) -> void:
+	var narrow: bool = stats_row_shortfall_at(width) > 0.0
+	if narrow == _too_narrow:
+		return
+	_too_narrow = narrow
+	if narrow:
+		push_warning(("Hud: the top row needs %.0fpx of viewport width and has %.0f. "
+			+ "The StatsRow will hold its minimum size and the wave button will sit "
+			+ "%.0fpx off the right edge.") % [
+				min_viewport_width(_stats_row_separations()), width,
+				stats_row_shortfall_at(width),
+			])
+
+
+## How many separations the live top row carries -- one fewer than its children,
+## which is the argument `stats_row_budget()` actually wants. Read off the row so
+## a control added to the bar later is priced without anyone updating a literal.
+func _stats_row_separations() -> int:
+	if _stats_row == null:
+		return 0
+	return maxi(0, _stats_row.get_child_count() - 1)
+
+
+## The narrowest viewport the top row can be laid out in: its contents plus the
+## page margin either side. Static and pure so the suite can compare it against
+## `design_width()` without building a HUD.
+static func min_viewport_width(separations: int) -> float:
+	return stats_row_budget(separations) + STATS_ROW_MARGIN * 2.0
+
+
+## How many px of viewport width the top row is short of at `width`, or 0.0 when
+## it fits. The legible form of the silent clamp `_report_if_too_narrow`
+## describes -- a number a test can assert instead of a geometry bug to notice.
+func stats_row_shortfall_at(width: float) -> float:
+	return maxf(0.0, min_viewport_width(_stats_row_separations()) - width)
+
+
+## The same question about the viewport this HUD is actually in.
+func stats_row_shortfall() -> float:
+	return stats_row_shortfall_at(float(get_viewport_width()))
+
 
 ## The top row is an HBoxContainer, not four labels at hand-picked x positions.
 ##
@@ -753,12 +910,14 @@ func _ready() -> void:
 ## is not a fix; `test_an_absurdly_long_readout_pushes_rather_than_underlaps`
 ## now pins both halves.
 func _build_top_bar(root: Control) -> void:
+	# Position and size come from `_apply_viewport_layout()`, here and for every
+	# other viewport-derived rect in this file. Written once at the end of
+	# `_ready()` and again on every `size_changed`.
 	var bar := ColorRect.new()
 	bar.name = "TopBar"
 	bar.color = INK
-	bar.position = Vector2.ZERO
-	bar.size = Vector2(get_viewport_width(), BAR_HEIGHT)
 	root.add_child(bar)
+	_top_bar = bar
 
 	# The page's gutter. It lives in the 20px the StatsRow already leaves empty on
 	# the left, so it is drawn in space nothing was using rather than bought out of
@@ -781,11 +940,10 @@ func _build_top_bar(root: Control) -> void:
 
 	var stats := HBoxContainer.new()
 	stats.name = "StatsRow"
-	stats.position = Vector2(20, STATS_ROW_Y)
-	stats.size = Vector2(get_viewport_width() - 40, STATS_ROW_HEIGHT)
 	stats.add_theme_constant_override("separation", STATS_SEPARATION)
 	stats.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.add_child(stats)
+	_stats_row = stats
 
 	_seeds_label = _add_stat(stats, "SeedsLabel", STAT_FONT_SIZE, PAPER, SEEDS_LABEL_WIDTH)
 	_wave_label = _add_stat(stats, "WaveLabel", STAT_FONT_SIZE, PAPER, WAVE_LABEL_WIDTH)
@@ -832,16 +990,12 @@ func _build_top_bar(root: Control) -> void:
 	# Second row, outside the container: it is a full-width status line, not a
 	# stat competing for space with the others.
 	_message_label = _make_label("MessageLabel", MESSAGE_FONT_SIZE, LEAF)
-	_message_label.position = Vector2(20, MESSAGE_ROW_Y)
-	_message_label.size = Vector2(get_viewport_width() - 276, MESSAGE_ROW_HEIGHT)
 	_message_label.clip_text = true
 	_message_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	bar.add_child(_message_label)
 
 	_prep_bar = ColorRect.new()
 	_prep_bar.name = "PrepBar"
-	_prep_bar.position = Vector2(0, float(BAR_HEIGHT) - PREP_BAR_HEIGHT)
-	_prep_bar.size = Vector2(get_viewport_width(), PREP_BAR_HEIGHT)
 	_prep_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_prep_bar.visible = false
 	bar.add_child(_prep_bar)
@@ -851,9 +1005,8 @@ func _build_side_panel(root: Control) -> void:
 	var panel := ColorRect.new()
 	panel.name = "SidePanel"
 	panel.color = PAPER_DARK
-	panel.position = Vector2(get_viewport_width() - PANEL_WIDTH, BAR_HEIGHT)
-	panel.size = Vector2(PANEL_WIDTH, get_viewport_height() - BAR_HEIGHT)
 	root.add_child(panel)
+	_side_panel = panel
 
 	var heading := _make_label("Heading", 20, INK)
 	heading.position = Vector2(14, 12)
@@ -1010,18 +1163,13 @@ func _build_side_panel(root: Control) -> void:
 ## wrapper would share pixels with everything inside it, which is a real finding
 ## for the pairwise occlusion checks and would have to be explained away forever.
 func _build_banner(root: Control) -> void:
-	var width: float = float(get_viewport_width() - PANEL_WIDTH)
-
 	_banner = _make_banner_label("Banner", BANNER_FONT_SIZE, PAPER)
-	_banner.position = Vector2(0, BANNER_Y)
-	_banner.size = Vector2(width, BANNER_HEIGHT)
 	root.add_child(_banner)
 
 	# Stacked directly under the headline, sharing no pixels with it: the two
 	# rects abut at BANNER_Y + BANNER_HEIGHT rather than overlapping.
+	# Both rows' rects are written by `_apply_viewport_layout()`.
 	_banner_note = _make_banner_label("BannerNote", BANNER_NOTE_FONT_SIZE, PAPER)
-	_banner_note.position = Vector2(0, BANNER_Y + BANNER_HEIGHT)
-	_banner_note.size = Vector2(width, BANNER_NOTE_HEIGHT)
 	root.add_child(_banner_note)
 
 
@@ -1141,7 +1289,11 @@ func _refresh_prep_bar(state: Dictionary) -> void:
 		return
 	var left: float = clampf(float(state.get("prep_left", 0.0)), 0.0, total)
 	_prep_bar.visible = true
-	_prep_bar.size = Vector2(float(get_viewport_width()) * (left / total), PREP_BAR_HEIGHT)
+	# The FRACTION is the state; the px width is derived from it and the live
+	# viewport, so a resize mid-countdown re-multiplies instead of keeping the
+	# pixels the old window bought.
+	_prep_fraction = left / total
+	_prep_bar.size = Vector2(float(get_viewport_width()) * _prep_fraction, PREP_BAR_HEIGHT)
 	# The wave that is coming, not the one that just finished — the strip is a
 	# warning about the next thing, so it wears the next thing's colour.
 	_prep_bar.color = threat_color(int(state.get("next_threat_level", 1)))
@@ -1343,12 +1495,52 @@ static func health_color_on(fraction: float, safe: bool) -> Color:
 	return low.lerp(full, clampf(fraction, 0.0, 1.0))
 
 
+## The width of the canvas this HUD is actually laid out on, in the units it is
+## laid out in.
+##
+## It used to be `ProjectSettings.display/window/size/viewport_width` -- the
+## DESIGN width, which is a different number from the live one on any window
+## that is not 16:9 (plant-tower-defense-0jye). `get_visible_rect()` is the read
+## that respects the content-scale override `stretch/mode=canvas_items` installs,
+## so this returns canvas units (1536 on a 21:9 window) rather than physical
+## pixels; `Window.size` would return the latter and be wrong for every Control
+## on this layer.
+##
+## Falls back to the design size when there is no viewport to ask -- a HUD built
+## outside a tree, which is how a couple of budget probes construct screens.
 func get_viewport_width() -> int:
-	return ProjectSettings.get_setting("display/window/size/viewport_width", 1152)
+	return int(_live_viewport_size().x)
 
 
 func get_viewport_height() -> int:
-	return ProjectSettings.get_setting("display/window/size/viewport_height", 648)
+	return int(_live_viewport_size().y)
+
+
+func _live_viewport_size() -> Vector2:
+	var fallback := Vector2(float(design_width()), float(design_height()))
+	var vp: Viewport = get_viewport()
+	if vp == null:
+		return fallback
+	var live: Vector2 = vp.get_visible_rect().size
+	# A viewport with no size yet reports (0, 0), and laying the HUD out against
+	# zero would collapse every rect on it into something `findings`' own
+	# ui_zero_size check would then report. The design size is the honest answer
+	# to "how big is the screen" before there is one.
+	if live.x <= 0.0 or live.y <= 0.0:
+		return fallback
+	return live
+
+
+## The size this HUD was DESIGNED at -- the project setting, under a name that
+## says so. Kept because it is the reference the width budget is measured
+## against (`min_viewport_width`), and because `stretch/aspect="expand"` never
+## produces a canvas smaller than it, which is what makes the budget safe.
+static func design_width() -> int:
+	return int(ProjectSettings.get_setting("display/window/size/viewport_width", 1152))
+
+
+static func design_height() -> int:
+	return int(ProjectSettings.get_setting("display/window/size/viewport_height", 648))
 
 
 func _on_plant_button(id: StringName) -> void:
