@@ -1366,6 +1366,25 @@ func _refresh_health_bar() -> void:
 
 ## Walk `distance` px along the remaining route, spending it across legs so a fast
 ## pest cannot skip a corner at low frame rates.
+##
+## WHERE THE END OF THE ROAD IS, since two different numbers get called "the last leg"
+## and confusing them is a live bug this project has already paid for once.
+##
+## `_leg` is the waypoint index being walked TOWARD, so on a route of N points:
+##
+##   * `N - 1` is the last leg the model has. `enter_road_at` clamps to exactly it,
+##     and a pest sitting on it is on its FINAL STEP — reaching `_route[N - 1]` takes
+##     `_leg` to `N`, and the next pass round this loop escapes.
+##   * `N - 2` is the last leg with a whole leg of road still in front of it. That is
+##     not a rule of the game — it is what a test needs, because `instantiate_scene`
+##     pumps settle frames that call this function before the test body runs, and a
+##     pest parked on its final step is freed by them.
+##
+## The second number is therefore deliberately NOT exposed here: it is a fact about
+## the harness, not about a bug walking a road, and a `Pest` method returning `N - 2`
+## would state as a game rule something only a hosted test cares about. It is written
+## down instead as `test_the_last_leg_of_a_route_is_the_one_a_pest_escapes_off`
+## (test/unit/test_combat.gd), which pins both numbers against this loop.
 func _advance(distance: float) -> void:
 	while distance > 0.0:
 		if _leg >= _route.size():

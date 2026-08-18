@@ -294,6 +294,12 @@ func test_corn_shoots_the_pest_closest_to_escaping() -> String:
 	# before this test ever looked at it. `target == far` then compared two freed
 	# references and passed, so the rule this test is named for has never actually
 	# been checked. Leg 3 is the last leg a pest can sit on and still be here.
+	#
+	# Both halves of that — `route.size() - 1` is the model's last leg, `route.size() - 2`
+	# is the last one a hosted test may park on — are asserted against `Pest._advance`
+	# by test_the_last_leg_of_a_route_is_the_one_a_pest_escapes_off at the foot of this
+	# file, so the 3 below is a consequence of a checked rule rather than a number
+	# somebody counted off a route literal.
 	far._leg = 3
 
 	var host: Node2D = _host([corn, near, far])
@@ -9907,4 +9913,107 @@ func test_no_two_weathers_have_drifted_into_the_same_choice() -> String:
 	return err
 
 # END plant-tower-defense-f7y2
+# =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-snba: where the end of a route actually is
+#
+# THE BEAD, AND WHY IT IS ANSWERED WITH A TEST RATHER THAN A METHOD.
+#
+# The bead asked for `Pest.last_survivable_leg()` returning `_route.size() - 2`,
+# because three test files hand-set `_leg` and nothing writes that number down.
+# Building it would have shipped a false claim, and the falseness is the finding:
+#
+#   * `_route.size() - 1` is the last leg the MODEL has. `Pest.enter_road_at`
+#     clamps to exactly it (game/pest.gd:869) and `_advance` escapes at
+#     `_leg >= _route.size()`. A pest on it is alive and walking, not doomed.
+#   * `_route.size() - 2` is the last leg a HOSTED TEST can park a pest on, because
+#     `_T.instantiate_scene` pumps settle frames that walk it. That is a fact about
+#     the harness, and putting it on `Pest` under the name "survivable" would tell
+#     every future reader the game forbids a leg the game clamps TO.
+#
+# So the model number stays where it already lives (the clamp), the harness number
+# stays in the tests, and the pair is made executable here instead of being prose in
+# one test's comment. The alternative the bead offered — a helper placing a pest at a
+# FRACTION of its route — was rejected for the same reason plus one: a fraction is
+# more arithmetic, not less, and its failing case is 1.0, which is precisely the
+# value a caller reaching for "at the end" would type.
+#
+# Nothing a player can see changes here. This is a testing-model change and a
+# comment; it is written down rather than shown.
+# =============================================================================
+
+
+## Both numbers, pinned against `Pest._advance` itself.
+##
+## No hosting, on purpose: this test drives `_advance` by hand rather than letting
+## settle frames drive it, so the escape it observes is the one this route asked for
+## and not however many frames the harness happened to pump. That is also what makes
+## it the right place to state the harness rule the OTHER tests obey — see
+## `test_corn_shoots_the_pest_closest_to_escaping` above, which is the test that was
+## silently comparing two freed references until leg 4 was walked back to leg 3.
+func test_the_last_leg_of_a_route_is_the_one_a_pest_escapes_off() -> String:
+	var route := PackedVector2Array([
+		Vector2(0, 0), Vector2(40, 0), Vector2(80, 0), Vector2(120, 0), Vector2(160, 0),
+	])
+	var last: int = route.size() - 1
+	var parkable: int = route.size() - 2
+	# One leg's length, plus a pixel. The plus-a-pixel matters: `_advance` spends
+	# distance in a `while distance > 0.0` loop, so landing EXACTLY on a waypoint
+	# leaves the loop with `_leg` already incremented and the escape check unrun.
+	var stride: float = route[0].distance_to(route[1]) + 1.0
+
+	# 1. The model's ceiling, read off the clamp rather than retyped.
+	var over := Pest.new()
+	over.setup(Pest.APHID, route)
+	over.set_physics_process(false)
+	over.enter_road_at(route[0], last + 5)
+	var err: String = _T.assert_eq(over.route_leg(), last,
+		("enter_road_at clamps a runaway leg to %d on a %d-point route, so that — not "
+			+ "anything smaller — is the last leg the game itself has")
+			% [last, route.size()])
+	over.free()
+	if err != "":
+		return err
+
+	# 2. And a pest on it is on its final step: one leg of walking ends the walk.
+	var final_step := Pest.new()
+	final_step.setup(Pest.APHID, route)
+	final_step.set_physics_process(false)
+	final_step.enter_road_at(route[last - 1], last)
+	err = _T.assert_true(final_step.is_alive(), "the pest starts its final step alive")
+	if err == "":
+		final_step._advance(stride)
+		err = _T.assert_false(final_step.is_alive(),
+			("a pest walking leg %d of a %d-point route is off the board when that leg "
+				+ "ends — which is why a hosted test must never park one there")
+				% [last, route.size()])
+	# `_escape()` has already called queue_free() on it; free() as well is a double
+	# free. Left to the deferred deletion the game itself relies on.
+	if err != "":
+		return err
+
+	# 3. One leg back survives exactly the same walk. This is the number the tests use.
+	var parked := Pest.new()
+	parked.setup(Pest.APHID, route)
+	parked.set_physics_process(false)
+	parked.enter_road_at(route[parkable - 1], parkable)
+	parked._advance(stride)
+	err = _T.assert_true(parked.is_alive(),
+		("a pest parked on leg %d of a %d-point route survives the same walk that "
+			+ "took leg %d off the board") % [parkable, route.size(), last])
+	if err == "":
+		err = _T.assert_eq(parked.route_leg(), last,
+			"and it lands on the final leg rather than skipping past it")
+	if err == "":
+		# The guard against a route so short that the two numbers coincide: on a
+		# two-point route `parkable` is 0, which enter_road_at clamps up to 1, and
+		# every assertion above would be about the same leg twice.
+		err = _T.assert_gt(parkable, 0,
+			"the two legs this test compares are distinct, or it proves nothing")
+	parked.free()
+	return err
+
+# END plant-tower-defense-snba
 # =============================================================================
