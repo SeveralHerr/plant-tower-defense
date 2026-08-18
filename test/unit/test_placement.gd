@@ -5908,3 +5908,265 @@ func test_the_uproot_arc_is_actually_painted_and_the_marker_is_its_only_clock() 
 
 # END plant-tower-defense-fjqp: the uproot window, drawn
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-om5f: the sway rotates about the stem
+
+## Alpha above which a pixel counts as painted. Deliberately NOT test_sprite_style.gd's
+## `OPAQUE` of 250, which asks "is this pixel solid" — the question here is "is there any
+## ink at all in this row", so an antialiased edge counts. The answer is insensitive to
+## the exact number anyway: sweeping this from 8 to 128 moves two of the eight bases by a
+## pixel and never moves the family's median off 25 or its worst deviation off 2.
+const OM5F_OPAQUE_ALPHA: float = 8.0 / 255.0
+
+## How far a single plant's painted base may sit from `Plant.STEM_PIVOT_Y`. The
+## family's own bases span 3 px (+24 to +27), so the median is at worst 2 px from
+## any of them; this is that spread, not a slack budget.
+const OM5F_BASELINE_SPREAD: float = 2.0
+
+## The plant sprites are 64 px, so the sprite's own centre is 32 px above its bottom
+## edge. Written out here rather than read off a texture because it is the number the
+## OLD pivot used, and the point of the comparison below is what changed.
+const OM5F_SPRITE_HALF: float = 32.0
+
+
+## The bead in one assertion: the point the sway turns about is the base of the plant,
+## and it does not move.
+##
+## Asserted as the FIXED POINT of the transform the game actually builds, not as a node
+## position, because there is no node position to read — `Plant.sway_transform`'s header
+## has the whole reason, and the short version is that pushing `_sway_pivot.position`
+## down would make `Vector2.ZERO` the wrong home for the two gestures that tween
+## `_sprite.position` back to it. The fixed point is the pivot, and it is the same call
+## `_wobble` makes rather than a restatement of it, which is what a headless suite can
+## hold: everything past `animations_enabled()` is an early return here.
+##
+## A mutation putting `STEM_PIVOT_Y` back to 0 moves the base by the full
+## `STEM_PIVOT_Y * sin(angle)` and fails on the first angle.
+func test_the_sway_turns_about_the_stem_and_the_base_stays_put() -> String:
+	var base := Vector2(0.0, Plant.STEM_PIVOT_Y)
+	var angles: Array[float] = [
+		Plant.WOBBLE_RADIANS,
+		-Plant.WOBBLE_RADIANS,
+		Plant.WOBBLE_RADIANS + Plant.FLINCH_RADIANS,
+	]
+	var err: String = _T.assert_gt(angles.size(), 0,
+		"there are angles to sweep -- an empty list here is a vacuous pass")
+	if err != "":
+		return err
+	for angle: float in angles:
+		var landed: Vector2 = Plant.sway_transform(angle, Vector2.ONE) * base
+		err = _T.assert_float_eq(landed.distance_to(base), 0.0, 0.0001,
+			("at %.3f rad the base of the stem has moved to %s, %.3f px off the soil it "
+				+ "was planted in -- a plant hinges at the ground or it is a balloon on "
+				+ "a string") % [angle, landed, landed.distance_to(base)])
+		if err != "":
+			return err
+	return err
+
+
+## The other half of the same change, and the half a player actually sees: pinning the
+## base does not shrink the motion, it moves all of it to the top.
+##
+## A point `d` from the pivot travels `d * sin(angle)` sideways. About the waist the top
+## of a 64 px sprite was 32 px out; about the stem it is `32 + STEM_PIVOT_Y` = 57 px out,
+## so the same unchanged `WOBBLE_RADIANS` buys 1.78x the visible swing. The comparison is
+## against a bare `rotated()`, which is exactly what `_sway_pivot.rotation` used to be.
+func test_the_head_swings_further_than_it_did_about_the_waist() -> String:
+	var top := Vector2(0.0, -OM5F_SPRITE_HALF)
+	var angle: float = Plant.WOBBLE_RADIANS
+	var about_stem: Vector2 = Plant.sway_transform(angle, Vector2.ONE) * top
+	var about_waist: Vector2 = top.rotated(angle)
+	var err: String = _T.assert_float_eq(absf(about_stem.x),
+		(OM5F_SPRITE_HALF + Plant.STEM_PIVOT_Y) * sin(angle), 0.001,
+		("the top of the sprite swings the full stem-to-crown radius, got %.3f px"
+			% absf(about_stem.x)))
+	if err == "":
+		err = _T.assert_gt(absf(about_stem.x), absf(about_waist.x) * 1.5,
+			("and that is a real gain over the old centre pivot: %.3f px against %.3f px "
+				+ "for the same %.3f rad") % [absf(about_stem.x), absf(about_waist.x), angle])
+	return err
+
+
+## Nothing about a plant that is not currently swaying moved, which is the promise that
+## makes this bead safe to land in a lane of its own.
+##
+## Three separate zeroes, each load-bearing for something in a file this lane does not
+## own, and each of them still zero:
+##
+##   * `sway_transform(0, ONE)` is the identity, so a headless run and a player with
+##     animations off see the board they saw yesterday, to the pixel.
+##   * `_sprite.position` is still the origin, which is where `ChompFlower._bite()` and
+##     `Nettle._sting_twitch()` both send the sprite home to.
+##   * `_sprite.offset` is still zero, which is what keeps all five scale flourishes
+##     scaling about the sprite's centre. `Sprite2D.offset` is multiplied by the node's
+##     own `scale`, so a counterweight parked there would start the planting pop
+##     `0.6 * STEM_PIVOT_Y` px underground.
+func test_a_plant_standing_still_is_exactly_where_it_always_was() -> String:
+	var err: String = _T.assert_eq(Plant.sway_transform(0.0, Vector2.ONE),
+		Transform2D.IDENTITY,
+		("a plant at rest carries no transform at all, got %s"
+			% Plant.sway_transform(0.0, Vector2.ONE)))
+	var plant := Plant.new()
+	plant.setup(PlantCatalog.CORN, Vector2i(3, 5), null)
+	if err == "":
+		err = _T.assert_eq(plant._sway_pivot.transform, Transform2D.IDENTITY,
+			("and a freshly built one carries none either, got %s"
+				% plant._sway_pivot.transform))
+	if err == "":
+		err = _T.assert_eq(plant._sprite.position, Vector2.ZERO,
+			("the sprite's home is still the origin -- ChompFlower._bite() and "
+				+ "Nettle._sting_twitch() both tween `position` back to Vector2.ZERO, and "
+				+ "a sprite parked anywhere else would be yanked there by every bite"))
+	if err == "":
+		err = _T.assert_eq(plant._sprite.offset, Vector2.ZERO,
+			("and its offset is still zero -- Sprite2D.offset rides `scale`, so the "
+				+ "counterweight the issue proposed putting there would drag the planting "
+				+ "pop underground and collapse the exit shrink into the soil"))
+	plant.free()
+	return err
+
+
+## The risk this bead carried, settled with arithmetic instead of a screenshot.
+##
+## `ChompFlower._bite()` tweens `_sprite.position` by `LUNGE_DISTANCE` at its meal and
+## `Nettle._sting_twitch()` by `STING_THRUST_PX` at its victim, both in the sway pivot's
+## frame and both deliberately: the header on the first says the lunge leaning by at most
+## `FLINCH_RADIANS` "leans the lunge without ever pointing it at the wrong neighbour".
+##
+## Moving the pivot could have changed the frame those offsets are applied in. It does
+## not, and the reason is structural rather than lucky: a child's local translation is
+## mapped by its parent's BASIS, and this bead changed only the ORIGIN. So the assertion
+## is equality against the transform the pivot used to carry — the same rotation, the
+## same breathe, origin zero — rather than a tolerance anyone has to argue about.
+func test_the_lunge_and_the_sting_land_exactly_where_they_did_before() -> String:
+	var angle: float = Plant.WOBBLE_RADIANS + Plant.FLINCH_RADIANS
+	var breathe: Vector2 = Plant.breathe_scale(0.25)
+	var moved: Transform2D = Plant.sway_transform(angle, breathe)
+	var waist := Transform2D(angle, breathe, 0.0, Vector2.ZERO)
+	var here := Vector2(320.0, 320.0)
+	var offsets: Array[Vector2] = [
+		ChompFlower.lunge_offset(here, here + Vector2(64.0, 0.0)),
+		ChompFlower.lunge_offset(here, here + Vector2(-64.0, 64.0)),
+		Nettle.sting_thrust_offset(here, here + Vector2(0.0, -64.0)),
+		Nettle.sting_thrust_offset(here, here + Vector2(64.0, 64.0)),
+	]
+	var err: String = _T.assert_gt(offsets.size(), 0,
+		"there are gestures to check -- an empty list here is a vacuous pass")
+	if err != "":
+		return err
+	for offset: Vector2 in offsets:
+		var after: Vector2 = moved.basis_xform(offset)
+		var before: Vector2 = waist.basis_xform(offset)
+		err = _T.assert_float_eq(after.distance_to(before), 0.0, 0.00001,
+			("a %.1f px gesture aimed %s lands at %s under the stem pivot and landed at "
+				+ "%s under the waist pivot -- moving the pivot must not move where a "
+				+ "lunge points") % [offset.length(), offset, after, before])
+		if err != "":
+			return err
+	# And the lean the Chomp's header claims is still bounded by the sway angle, which is
+	# the property that stops a bite pointing at the wrong neighbour.
+	var aimed: Vector2 = offsets[0]
+	err = _T.assert_true(absf(moved.basis_xform(aimed).angle_to(aimed)) <= angle + 0.0001,
+		("and the lean is still at most the sway angle itself (%.3f rad), got %.3f"
+			% [angle, absf(moved.basis_xform(aimed).angle_to(aimed))]))
+	return err
+
+
+## What makes `STEM_PIVOT_Y` a measurement rather than a taste: it is re-derived from the
+## PNGs on disk every run, and new art that moves the family's baseline fails here.
+##
+## The issue proposed 32 px, the sprite's half-height. That is the bottom of the FILE,
+## not the bottom of the plant — none of the eight arts reaches its own bottom edge, so a
+## pivot there would hinge every bed from a point in transparent padding, several pixels
+## underground. The bases actually land at +24 (nettle, mint, aloe), +25 (corn_cobbler,
+## sticky_sundew) and +27 (chomp_flower, sunflower, dandelion).
+##
+## Decoded straight off disk with `load_png_from_buffer`, the way test_sprite_style.gd
+## does it and for the same reason: a stale import cannot make a wrong pivot pass.
+func test_the_stem_pivot_is_the_bottom_of_the_art_not_the_bottom_of_the_png() -> String:
+	var bases: Dictionary = {}
+	for id: StringName in PlantCatalog.ORDER:
+		var path: String = PlantCatalog.texture_path(id)
+		if not FileAccess.file_exists(path):
+			return "%s: no PNG at '%s' -- every measurement below would be vacuous" % [id, path]
+		var img := Image.new()
+		if img.load_png_from_buffer(FileAccess.get_file_as_bytes(path)) != OK:
+			return "%s: '%s' did not decode as a PNG" % [id, path]
+		var bottom: int = -1
+		for y: int in range(img.get_height()):
+			for x: int in range(img.get_width()):
+				if img.get_pixel(x, y).a > OM5F_OPAQUE_ALPHA:
+					bottom = y
+					break
+		if bottom < 0:
+			return "%s: '%s' is entirely transparent" % [id, path]
+		# Row `bottom` spans [bottom, bottom + 1) in texture pixels, and a centred
+		# Sprite2D puts the texture's middle on the node's origin.
+		bases[String(id)] = float(bottom + 1) - float(img.get_height()) * 0.5
+	var err: String = _T.assert_eq(bases.size(), PlantCatalog.ORDER.size(),
+		"every plant in the catalogue was measured, or this sweep has a hole in it")
+	if err != "":
+		return err
+	var worst: float = 0.0
+	var deepest: float = -1000.0
+	for name: String in bases:
+		worst = maxf(worst, absf(float(bases[name]) - Plant.STEM_PIVOT_Y))
+		deepest = maxf(deepest, float(bases[name]))
+	err = _T.assert_true(worst <= OM5F_BASELINE_SPREAD,
+		("the worst plant's painted base is %.1f px from STEM_PIVOT_Y (%.1f), past the "
+			+ "%.1f px the family's own spread allows. Measured bases: %s. Retune the "
+			+ "constant or the art -- do not leave the pivot hinging in padding")
+			% [worst, Plant.STEM_PIVOT_Y, OM5F_BASELINE_SPREAD, bases])
+	if err == "":
+		err = _T.assert_gt(OM5F_SPRITE_HALF - deepest, 3.0,
+			("and no plant's art reaches the PNG's own bottom edge at +%.0f -- the "
+				+ "deepest stops at %.1f, which is why the pivot is not the half-height "
+				+ "the issue guessed at") % [OM5F_SPRITE_HALF, deepest])
+	return err
+
+
+## The regression this bead could have introduced and did not: the sway must still move
+## the sprite and nothing else.
+##
+## The health bar, its backing, the regrowth notches, the selection marker and the sole
+## cover marks are all children of the PLANT, not of the pivot, so none of them swings.
+## Pinned here rather than left to `_build_visuals`'s call order because a pivot that has
+## just been given a point to turn about is exactly the pivot somebody reparents a cue
+## onto next, and a health bar rocking about the soil line is a bug the suite would
+## otherwise never see — headless runs no `_draw()` and never opens the animation gate.
+func test_the_sway_still_carries_the_sprite_and_nothing_else() -> String:
+	var plant := Plant.new()
+	plant.setup(PlantCatalog.CORN, Vector2i(3, 5), null)
+	var err: String = _T.assert_eq(plant._sway_pivot.get_child_count(), 1,
+		("the sprite is the only thing riding the sway; anything else parented here "
+			+ "now rocks about the soil line with it, got %d children"
+			% plant._sway_pivot.get_child_count()))
+	if err == "":
+		err = _T.assert_eq(plant._sway_pivot.get_child(0), plant._sprite,
+			"and the one thing riding it is the sprite")
+	if err == "":
+		err = _T.assert_eq(plant._health_bar.get_parent(), plant,
+			"the health bar hangs off the plant, so it stays level while the plant leans")
+	if err == "":
+		err = _T.assert_eq(plant._health_back.get_parent(), plant, "and its backing")
+	if err == "":
+		err = _T.assert_gt(plant._health_notches.size(), 0,
+			"there are regrowth notches to check -- none would be a vacuous pass")
+	if err == "":
+		for notch: ColorRect in plant._health_notches:
+			err = _T.assert_eq(notch.get_parent(), plant, "and every regrowth notch")
+			if err != "":
+				break
+	if err == "":
+		err = _T.assert_eq(plant._selection_marker.get_parent(), plant,
+			"and the selection marker, which is drawn around the cell and not the plant")
+	if err == "":
+		err = _T.assert_eq(plant._sole_cover_marks.get_parent(), plant,
+			"and the sole cover marks, which sit whole cells away")
+	plant.free()
+	return err
+
+# END plant-tower-defense-om5f: the sway rotates about the stem
+# =============================================================================
