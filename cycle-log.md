@@ -1,4 +1,4 @@
-# Cycle 120
+# Cycle 121
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,32 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 121 taught
+
+**A skill's first application disproved one of its own sections, in about ten minutes.**
+`palette-against-the-background` had been identified three times and never built. Section 5
+told you to audit an existing sprite by reading its dominant colour's luminance gap against
+the background. Run on the real set, that flagged **five sprites and every one was fine** —
+Mint at dL 13, Aloe at 9, the aphid, Shield Bug and Queen at 17–18.
+
+**The separation lives in the RIM, and nothing had written that down.** `STYLE.md` mandates
+"outline = darker shade of the fill, 2px" and justifies it as matching the kit's look. Its
+real function is legibility against the ground — which means **the fill is free to sit
+anywhere**, and a fill-only audit condemns most of the set by design. The section now reads
+the best MAJOR colour with a 5% floor, and records the 5-of-5 false-positive rate.
+
+**The two corrections guard opposite failures.** Without the rim fix the check fires on
+everything; without the 5% floor "best major colour" becomes whatever two-pixel highlight is
+brightest and it passes on everything. Either alone would have been worse than useless.
+
+**The corrected result is 0 findings over 22 sprites**, and that is a meaningful clean
+result rather than a vacuous one only because the denominator is stated and the method had
+just survived being wrong.
+
+**This is precisely what the loop's "USE it in the same cycle" rule exists for.** The rule
+says the first application tells you whether the skill is a recipe or an essay. One section
+was an essay. Writing it well would never have shown that.
 
 ## What cycle 120 taught
 
