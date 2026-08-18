@@ -248,6 +248,12 @@ def main(argv: list[str]) -> int:
     # key -> the normalised text that key currently lands on. Only RESOLVED citations get an
     # entry: an unresolved one is already a finding and has no landing to compare.
     landed: dict[str, str] = {}
+    # key -> "kanban.md:412", where the citation is WRITTEN. Not snapshotted (it moves for
+    # its own reasons); kept for this run so a DRIFTED line can say where to go and fix it.
+    # Without it the report names `game/game.gd:1464` and leaves you grepping a 4000-line
+    # markdown file for a bare `:1464` that appears three times -- which is most of the cost
+    # of acting on a drift report, and it was paid in full the first cycle this ran.
+    cited_at: dict[str, str] = {}
     resolved = 0
 
     for target in targets:
@@ -308,6 +314,9 @@ def main(argv: list[str]) -> int:
             # is not a citation going stale). Everything else is kept, including trailing
             # comments -- a line whose comment changed is a line worth re-reading.
             landed[k] = "\n".join(l.strip() for l in lines[start - 1:end])
+            # First writer wins: a target cited from two entries collapses to one key, and
+            # the first is as good a place to start as the second.
+            cited_at.setdefault(k, "%s:%d" % (path.name, md_line))
             if not args.quiet:
                 body = _printable(" | ".join(l.strip()[:60] for l in lines[start - 1:end]))
                 print("  %-34s %s" % (k, body))
@@ -349,7 +358,7 @@ def main(argv: list[str]) -> int:
               "citation(s), %d drifted, %d new, %d no longer resolving"
               % (sp.name, len(landed), resolved, len(drifted), len(fresh), len(gone)))
         for k, was, now in drifted:
-            print("DRIFTED: %s" % k)
+            print("DRIFTED: %s   (written at %s)" % (k, cited_at.get(k, "?")))
             print("    was: %s" % _printable(was.replace("\n", " | ")[:100]))
             print("    now: %s" % _printable(now.replace("\n", " | ")[:100]))
         if fresh:

@@ -1,4 +1,4 @@
-# Cycle 116
+# Cycle 117
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,43 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 117 taught
+
+**The drift checker found 48 stale citations on its first real cycle.** Cycle 116 built it
+because drift had bitten twice and been caught by hand both times. Its first genuine use
+reported **48** — every one written by an earlier cycle, moved by this cycle's edits to
+`game.gd`, and every one reported CLEAN by the ordinary run because each still landed
+somewhere real. The manual rule ("read every citation back after the edits") was being
+honoured all along — for the two or three written *that* cycle. **A discipline scoped to
+what you wrote cannot maintain what everyone else wrote.** All 48 are fixed.
+
+**A finding must name where you go to act on it, not only where the problem is.** Fixing
+those 48 meant locating each in a 4000-line file, and 20 were bare `:NNNN` continuations
+whose number repeats. The checker already knew the citing line and did not print it. It does
+now, and that turned the last third of the job from a search into an edit.
+
+**The notebook refused the fourth hint, exactly as its own prose predicted.** *"A FOURTH
+hint does not fit."* Both ways out it named were considered: the pitch cannot drop (four rows
+need 67 against a 94px row, and shrinking the note clips the UNSHOWN form, which the same
+block calls the state a reader most needs), so the page splits — still finite, still loud, a
+seventh hint fails the suite exactly as the fourth did.
+
+**The suite reported 903/903 ALL TESTS PASSED through two freed-object defects.** A cast and
+a `.text` read on Labels whose pane the next page rebuild had freed. Only `run_tests.py`'s
+stderr check saw them. Third time this session it has earned its place over `run_tests.gd`,
+and the first time the defects were mine rather than inherited.
+
+**`queue_free()` is deferred, and that is a correctness bug in a rebuild.** The old pane was
+still in the tree when the new one was added, so Godot renamed the newcomer and every
+`get_node("Hints")` kept returning page one. It presented as "a hint with no row" for a row
+that existed and rendered perfectly.
+
+**Which gate caught what is the useful summary, and it was not the obvious one.** The engine
+gates caught nothing. `check_all` caught a public surface no test named — the hint's own
+tests, which I had forgotten while building the page split. The notebook's layout test caught
+the capacity. The two defects that would actually have shipped were caught by the test
+runner reading stderr, not by any assertion anyone wrote.
 
 ## What cycle 116 taught
 

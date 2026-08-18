@@ -81,7 +81,7 @@ have rebuilt the same trap.
   The distinction that matters: an unasserted verb does not fail loudly, it answers a
   well-formed lie, and the reply is then quoted into a verify ledger row as evidence.
   Cheap to close and the pattern already exists — `_board_info(game)` in
-  `test/unit/test_placement.gd:2800-2804` instantiates the extension directly, points
+  `test/unit/test_placement.gd:2808-2812` instantiates the extension directly, points
   `ext._dev` at a hosted `Game`, and calls the handler as a pure function with no bus and
   no running game. Nine more of those is an afternoon.
   - The narrow version, if the full sweep is too much: assert the **envelope** for all
@@ -165,8 +165,8 @@ have rebuilt the same trap.
   what the seven are *for* before the next one is filed, rather than discovering the
   ceiling again — the eighth row foots at 486 against buttons at 476.
 - **Four `show_message` sites are edge-triggered only by an explicit latch.**
-  `docs/message_trigger_audit.md` classifies all 17; the four at `game.gd:453`, `:1332`,
-  `:1582` and the packet-reveal loop are edge ONLY because `_wave_live`, `_flight_noted`,
+  `docs/message_trigger_audit.md` classifies all 17; the four at `game.gd:453`, `:1333`,
+  `:1611` and the packet-reveal loop are edge ONLY because `_wave_live`, `_flight_noted`,
   `_uproot_left` and a bounded loop each latch them. Nothing marks them as load-bearing,
   and any refactor that moves one turns a level-triggered caller loose on the message
   queue. A comment at each, or a test naming the latch, is cheap insurance.
@@ -471,7 +471,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   displaced line. Six waves, 54 kills, eight lives lost, 257 seconds with `run_seconds`
   moving as a witness: `messages_preempted` **0**. That reads as "never happens" and would
   have closed the bead — except every pre-empting call site is a **player action**. Arming an
-  uproot (`game/game.gd:1392`) and opening a seed packet (`:1518`, `:1528`) are the only
+  uproot (`game/game.gd:1393`) and opening a seed packet (`:1519`, `:1529`) are the only
   three, and six waves of driving the wave director contain neither. One `arm_uproot` over a
   live message: `messages_preempted` 1, first try.
   **This retroactively weakens cycle 93's answer to `-i366`.** That cycle measured
@@ -553,7 +553,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   exactly one place (`game/plant.gd:614`, health reaching zero inside `take_damage`), and
   `Plant.take_damage` has exactly one caller in the whole game — `game/pest.gd:714`,
   `meal.take_damage(EAT_DPS * delta)`, the eating path. Uprooting does not go near it:
-  `commit_uproot` frees the plant with `play_exit_and_free()` (`game/game.gd:1459`), so
+  `commit_uproot` frees the plant with `play_exit_and_free()` (`game/game.gd:1460`), so
   digging up your own Corn Cobbler does not accuse a pest of eating it.
   The message is therefore accurate by a coincidence of there being one cause, and
   `Game._on_plant_destroyed` names that cause unconditionally. **Anything that ever kills a
@@ -572,13 +572,13 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   lives lost, every wave transition), and the threshold is five messages inside one 2-4 s
   window against a row that holds four. Ordinary play never gets close.
   What the rungs actually buy is pre-emption. Enumerated: exactly three of the twenty-two
-  `show_message` call sites pass a priority — `game/game.gd:1392` (`MESSAGE_DEADLINE`, the
-  uproot prompt) and `:1518`, `:1528` (`MESSAGE_IMPORTANT`). When one of those arrives, the
+  `show_message` call sites pass a priority — `game/game.gd:1393` (`MESSAGE_DEADLINE`, the
+  uproot prompt) and `:1519`, `:1529` (`MESSAGE_IMPORTANT`). When one of those arrives, the
   line already on the row is pushed into the queue (`game/hud.gd:1462`), and against a full
   queue of equals it is **refused** — so an urgent message costs the sentence the player was
   mid-way through, not one they had not reached.
   The uproot case is the one worth looking at, and its `DEADLINE` is argued for in place
-  (`game/game.gd:1389-1391`: the countdown is already running, so deferring eats the window
+  (`game/game.gd:1390-1392`: the countdown is already running, so deferring eats the window
   the message describes). That reasoning is right. What nobody decided is what it should be
   allowed to erase — and "A hungry pest ate your Corn Cobbler!" is one of the nineteen at
   `MESSAGE_NORMAL` (`game/game.gd:1287`), so a player who arms an uproot in the same second
@@ -642,7 +642,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   of writing a tool. Cycle 92 found `shelf_page()` and a newly-written `page_for_kind()`
   were the same search over `PAGES` by different names, fixed it by delegation, then
   checked whether the pattern recurs: `NotebookScreen` has three finders over that table
-  (`page_for_kind` at `game/notebook_screen.gd:232`, `shelf_page` at `:620`,
+  (`page_for_kind` at `game/notebook_screen.gd:232`, `shelf_page` at `:688`,
   `page_for_plant` at `:753`) and the other two search **different fields**, so they are the
   same shape and not duplicates.
   What caught the duplicate was grepping for existing accessors *before* writing a new one —
@@ -655,7 +655,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 
 - **The page that teaches the board is the last page of the notebook.** `CueLegend` ships
   as `KIND_LEGEND`, the tenth of ten `NotebookScreen.PAGES` entries, and the screen opens
-  on page 0 (`game/notebook_screen.gd:370`, `go_to(0)` at the end of the build). So the
+  on page 0 (`game/notebook_screen.gd:420`, `go_to(0)` at the end of the build). So the
   route is: title screen → Notebook → **nine presses of Next**. The title's own header
   calls the notebook "a click further away" deliberately
   (`game/title_screen.gd:56-60`) — that reasoning was about a designer's scrapbook, and it
@@ -698,7 +698,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   `show_message(` in `game/*.gd`, not by grepping one line each — these calls wrap, and a
   single-line grep reports all 22 as defaulted, which is how this nearly went in wrong.
   The real split is 19 at the default `MESSAGE_NORMAL`, two `MESSAGE_IMPORTANT`
-  (`game/game.gd:1518`, `:1528`) and one `MESSAGE_DEADLINE` (`game/game.gd:1392`).
+  (`game/game.gd:1519`, `:1529`) and one `MESSAGE_DEADLINE` (`game/game.gd:1393`).
   `MESSAGE_QUEUE_MAX` is 3 (`game/hud.gd:355`), and `_queue_message` returns without
   appending when the queue is full and the lowest entry's priority is `>=` the arrival's
   (`game/hud.gd:1486`) — **`>=`, so a tie discards the new one**. With 19 producers
@@ -706,7 +706,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   What makes that a player-facing problem rather than a curiosity is WHICH lines are
   tied. "A hungry pest ate your Corn Cobbler!" is one of the nineteen
   (`game/game.gd:1287`, no priority argument) and so is "Composted a husk for N seeds."
-  (`game/game.gd:1735`). A bed being destroyed and a click paying out compete as equals,
+  (`game/game.gd:1764`). A bed being destroyed and a click paying out compete as equals,
   and in the wave where several things happen at once the loss notice is exactly as
   droppable as the receipt. Cycle 90 made this **detectable** for the first time —
   `show_message` now returns whether the line landed — so the fix is no longer a guess:
@@ -749,8 +749,8 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   which refuse each other's ids, so a hint can no longer be recorded by a path that never
   rendered it. `HINTS` (`game/run_config.gd:137`) has one member.
   **Enumerated rather than assumed**: `has_milestone` used as a SHOW gate appears once in the
-  whole game, at `game/game.gd:1355`. Its other two call sites (`notebook_screen.gd:445`,
-  `:505`) read earned state to draw the shelf, which is rendering, not gating a sight. So one
+  whole game, at `game/game.gd:1356`. Its other two call sites (`notebook_screen.gd:418`,
+  `:573`) read earned state to draw the shelf, which is rendering, not gating a sight. So one
   member is the whole set, not an oversight.
   The idea is which teaching moments would want the second. The constraint the new contract
   imposes, and it is a real design filter rather than a formality: **a hint is spent on being
@@ -770,7 +770,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   to lint (it is type-valid for a `Variant`), and a silent green.
   Grepped for it across `game/` and `test/unit/`: `.has(` against a const `Array[Dictionary]`
   occurs **zero** times outside the comment recording the mistake. The correct idiom is
-  already in the codebase and was already the majority — `notebook_screen.gd:505` reads
+  already in the codebase and was already the majority — `notebook_screen.gd:573` reads
   `String(row["id"])`. A checker with a zero denominator is one the house rules say must
   announce its own emptiness, and one that has never been observed to fire is not a checker.
   **Recorded so nobody proposes it a second time**; if a second instance ever appears, this
@@ -1066,12 +1066,12 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   three features arriving at it means the ROW is the wrong surface for at least one of
   them. The selection panel is the obvious second home and `-r722` already wants it budgeted.
 - **The move tip is now a courtesy that an upgraded plant never sees.** It fires on the
-  first arm ever (`game/game.gd:1325-1327` records `HINT_MOVE_PREVIEW`), and from cycle 79
+  first arm ever (`game/game.gd:1326-1328` records `HINT_MOVE_PREVIEW`), and from cycle 79
   the forfeit clause displaces it. A player whose first-ever uproot happens to be on an
   upgraded cob — which is *likely*, since uprooting something cheap is not a decision worth
   a prompt — gets the money sentence and never sees the tip at all, and the milestone is
   recorded either way so it never comes back. Two fixes and they differ in cost: record the
-  milestone only when the tip is actually shown (one line, `game/game.gd:1326`), or accept
+  milestone only when the tip is actually shown (one line, `game/game.gd:1327`), or accept
   it and drop the tip entirely, since a hint nobody reliably sees is a hint that is not
   doing its job.
 - **`upgrade_spend` is the second derived-from-`LEVELS` helper and the pattern is now worth
@@ -1402,9 +1402,9 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 ### New this cycle (69) — the game draws two countdowns and refuses to draw the third
 
 - **The only line with a clock behind it is the only clock the game never draws.**
-  `_uproot_left` ticks down at `game/game.gd:1375` and lives entirely inside `game.gd` —
+  `_uproot_left` ticks down at `game/game.gd:1376` and lives entirely inside `game.gd` —
   outside it the identifier appears only in tests, never in `hud.gd`, so the HUD learns
-  *armed or not* through `uproot_armed()` (`game/game.gd:1340`) and never *how much is
+  *armed or not* through `uproot_armed()` (`game/game.gd:1341`) and never *how much is
   left*. Meanwhile the game draws this exact thing twice already: `husk_layer.gd:69-77`
   sweeps `TAU * frac` around a husk as its rot timer runs, and `hud.gd:643-647` drains
   `PrepBar` across the whole top bar over the prep gap. A four-second irreversible
@@ -1413,7 +1413,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   natural other half — and it is a shape the player has already been taught by husks.
 - **"Only one line may carry a deadline" is a paragraph, and paragraphs do not fail.**
   `game/hud.gd:347` warns that two `MESSAGE_DEADLINE` lines cannot defer each other —
-  whichever waits is wrong by construction — and `game/game.gd:1333` is, today, the only
+  whichever waits is wrong by construction — and `game/game.gd:1334` is, today, the only
   producer (`grep -rn MESSAGE_DEADLINE game/` returns the constant at `hud.gd:351`, one
   comment and that one call). The person who adds the second will be reading their own
   feature, not this constant. A test asserting the call-site count is exactly one, failing
@@ -1482,7 +1482,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 
 - **Three budgets sit exactly at their declared floor, and nothing on screen says the HUD
   is full.** `husk_click` has 4 px of 32, `hud_readouts` 10 of 171, `hud_stats_row` 19 of
-  1112 — each precisely its floor in `Game.BUDGET_FLOOR` (`game/game.gd:1887-1899`),
+  1112 — each precisely its floor in `Game.BUDGET_FLOOR` (`game/game.gd:1916-1928`),
   because this project ratchets floors down to the measurement on purpose. The consequence
   is invisible until someone tries: the next label that grows by a pixel fires a
   regression, and a designer nudging a font size has no way to know they are spending the
@@ -1497,7 +1497,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   `hud_readouts` said "Font.get_string_size() over each live readout", which parses as
   measuring the CURRENT text — a budget that passes because the counter happens to read
   "Seeds 25" today. It actually sweeps `Hud.WORST_CASE_TEXT` against each readout's live
-  slot, and I misread it before opening `game/game.gd:2203`. Corrected. The general shape
+  slot, and I misread it before opening `game/game.gd:2239`. Corrected. The general shape
   is worth watching: an evidence string naming the SURFACE is ambiguous about whether the
   worst case or the current value was measured, and those differ by everything.
 
@@ -1637,7 +1637,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 - **Teaching a one-time lesson in a recurring message is a permanent tax.** The armed
   prompt now points at the move preview, and it cost 185 px of the message row's 306 px of
   headroom — every uproot, forever, to teach something once. `Game.BUDGET_FLOOR`
-  (`game/game.gd:1883`) declares 40 px for that row and 121 remain, so it passes and the
+  (`game/game.gd:1912`) declares 40 px for that row and 121 remain, so it passes and the
   state is `tight`. `RunConfig`'s milestone set (`MILESTONE_PREFIX`, `game/run_config.gd:91`)
   is already a persisted seen-once mechanism, so a first-time-only hint needs no
   save-version bump. That is the shape every future hint should take.
@@ -1670,7 +1670,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   knows the rebate. Whether a move should be free, cost the difference, or cost full price
   is a balance question worth deciding on purpose rather than by default.
 - **`_update_preview` now decides two things and is named for one.** It resolves the hover
-  cell AND, since this cycle, which plant the hover is about (`game/game.gd:1569`). That
+  cell AND, since this cycle, which plant the hover is about (`game/game.gd:1598`). That
   second decision is three lines of subject-selection at the top of a function whose name
   promises only "update the preview". It is fine now and it is exactly where a third mode
   would go in badly — the move preview should probably be a named predicate the way
@@ -1703,7 +1703,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   VBox comment at `game/hud.gd:1203` says the stack already runs to within 16 px of the
   panel foot. This cycle measured the cob's second line at roughly 190 px of a 232 px box.
   Every one of those numbers is a comment or a measurement taken by hand — there is no
-  `hud_selection_panel` entry in `Game.budget_entries()` (`game/game.gd:1921`) beside the
+  `hud_selection_panel` entry in `Game.budget_entries()` (`game/game.gd:1957`) beside the
   five that exist. The next person who wants a line there will rediscover the constraint
   the expensive way, exactly as the third-line failure recorded in that header did.
 - **Two plants can now be compared, but only one at a time.** Selecting a plant rings what
@@ -1824,13 +1824,13 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 - **Six `show_message()` durations are hand-picked and nothing relates them.**
   4.0s (eaten), 5.0s (packet), 6.0s (wave cleared), 8.0s (opening hint), 2.0s (uproot
   cancelled, husk swept), 2.5s (mute, colourblind) — at `game/game.gd:264`, `:415`,
-  `:1197`, `:1319`, `:1407`, `:1464`, `:1484`, `:1588`. A message the player must read to
+  `:1197`, `:1320`, `:1408`, `:1465`, `:1485`, `:1617`. A message the player must read to
   act on (the opening hint) and one that is pure confirmation (uproot cancelled) are four
   seconds apart, which is probably right, but nothing says the rule. Reading time scales
   with length, and the corpus now knows every length — a duration derived from character
   count with a floor would make the 8.0 and the 2.0 consequences of one decision.
 - **The waiver reasons are the best documentation of the message system and live in five
-  scattered comments.** `game/game.gd:231`, `:1397`, `:1464`, `:1468`, `:1605` each carry
+  scattered comments.** `game/game.gd:231`, `:1398`, `:1465`, `:1469`, `:1634` each carry
   a `# message-corpus-check: ok - <reason>` that says something true and non-obvious about
   why that text cannot be measured statically. That is a good use of waivers, but it means
   the answer to "what can the row show that we cannot price?" is assembled by grep — which
@@ -1848,7 +1848,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   all read. `derive-the-list` says the recorded-list-plus-equality-assertion form is
   legitimate; it does not say three of them are.
 - **`show_message()` has eight call sites and no single place says so.**
-  `game/game.gd:231` (purchase refusal), `:1464` and `:1468` (mute), `:1605` (placement
+  `game/game.gd:231` (purchase refusal), `:1465` and `:1469` (mute), `:1634` (placement
   refusal), plus the four `Hud.*_message` producers. The message-row budget had to
   enumerate them by grepping call sites, got it wrong once, and got it wrong again a
   cycle later. A `Hud` surface that names its own message producers — even just a comment
@@ -1932,16 +1932,16 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   heal shrinks with it. This is the direct consequence of shipping 4c1l and it is worth
   deciding on purpose rather than letting drought stay the good one by accident.
 - **The other five budgets have never been checked against the corpus they claim.**
-  `_budget_hud_message_row` (`game/game.gd:2037`) measured four plant-name messages and
+  `_budget_hud_message_row` (`game/game.gd:2073`) measured four plant-name messages and
   not the prep note that shares the row, and was wrong by 36px for seven cycles while
-  reporting green. `Game.budget_entries()` (`game/game.gd:1852`) builds six others the same
+  reporting green. `Game.budget_entries()` (`game/game.gd:1881`) builds six others the same
   way. Each one names its corpus in an `evidence` string; nothing checks that the string
   describes what the code sweeps. A checker could compare the two — or, cheaper, one pass
   reading all seven and asking "what else can reach this measurement?" The failure is
   silent by construction: a budget over a subset always reports more headroom than exists.
 - **The prep note is measured at a wave number the game cannot reach.**
   `_budget_hud_message_row` now measures `Hud.next_wave_note(999, 9999, ...)`
-  (`game/game.gd:2071`), deliberately — a budget is about what the format allows. But
+  (`game/game.gd:2087`), deliberately — a budget is about what the format allows. But
   `Hud.next_wave_note()` (`game/hud.gd`) formats the wave number with no width cap, so the
   budget's worst case is set by a digit count nothing constrains. Either cap the formatted
   number, or say in the note's own header that its width is bounded by the budget and not
@@ -2396,7 +2396,7 @@ a guess about the rest of the codebase. See `.claude/skills/kanban-staleness-aud
   picture is a record you want to beat; a bigger integer is a bigger integer.
 - ~~**The milestone shelf.**~~ **SHIPPED, and this entry was wrong when it was
   written.** The shelf exists in full — `NotebookScreen.KIND_SHELF`, built by
-  `_build_shelf()` (`game/notebook_screen.gd:415`), all seven `Milestones.TABLE`
+  `_build_shelf()` (`game/notebook_screen.gd:425`), all seven `Milestones.TABLE`
   rows drawn with earned/unearned pips, a `shelf_progress_text()` reading
   "N of 7 earned", and tests in both `test_placement.gd:2185` and
   `test_selftest.gd:7760`. It is in the notebook rather than on the title screen
@@ -3220,7 +3220,7 @@ a guess about the rest of the codebase. See `.claude/skills/kanban-staleness-aud
   zero `create_tween` calls; every tween in the project is in-world (`plant.gd:72` plant
   pop, `corn_cobbler.gd:70` recoil, `chomp_flower.gd:142` bite, `sunflower.gd:33` bloom,
   `pest.gd:262` death linger) or on the two `GardenTheme`-styled screens
-  (`title_screen.gd:287`, `notebook_screen.gd:415`). So `_selection_box.visible = true`
+  (`title_screen.gd:287`, `notebook_screen.gd:425`). So `_selection_box.visible = true`
   snaps a 152px panel into existence, `show_banner` pops 48px of text at full opacity,
   the Uproot relabel changes colour between one frame and the next, and `threat_color`
   jumps a whole segment of its ramp the instant a wave starts rather than easing there —
@@ -4040,7 +4040,7 @@ Three findings kept out here rather than buried in a log:
 ### New in cycle 112 — grown from confirming a bead and reading a sentence
 
 - **Nothing in this project can tell whether a sentence is TRUE, and cycle 112 found one
-  that had quietly stopped being.** `Hud.eaten_message` (`game/hud.gd:3563`) read "A hungry
+  that had quietly stopped being.** `Hud.eaten_message` (`game/hud.gd:3586`) read "A hungry
   pest ate your %s!" and was correct for every plant death in the game until the ninth
   plant: `Pest._physics_process` reaches `_adjacent_plant()` only inside its `is_hungry`
   branch (`game/pest.gd:1282-1286`), so a hungry pest really was the only thing that could
@@ -4075,10 +4075,10 @@ Three findings kept out here rather than buried in a log:
 - **One function returns both success sentinels, and a test comment already misreads it.**
   Every `-> String` method on `Game` follows one convention: `""` means it worked, a
   non-empty string is the reason it refused, and the callers print it
-  (`game/game.gd:1489` `place_plant`, `:1682` `upgrade_selected`, `:1882` `commit_uproot`).
-  `arm_uproot` (`game/game.gd:1733`) breaks it in the most confusing available way: the
-  first press returns `"confirm needed"` (`:1793`) and the second returns `""` — via
-  `commit_uproot()` at `:1749` — so the SAME function uses the refusal sentinel for one
+  (`game/game.gd:1490` `place_plant`, `:1711` `upgrade_selected`, `:1911` `commit_uproot`).
+  `arm_uproot` (`game/game.gd:1762`) breaks it in the most confusing available way: the
+  first press returns `"confirm needed"` (`:1822`) and the second returns `""` — via
+  `commit_uproot()` at `:1778` — so the SAME function uses the refusal sentinel for one
   success and the success sentinel for another.
   The cost is already visible in the suite rather than hypothetical. Five call sites assert
   the literal, and `test/unit/test_placement.gd:255` labels it *"the first click refuses"* —
@@ -4093,7 +4093,7 @@ Three findings kept out here rather than buried in a log:
   Cycle 113 stopped the preview PROMISING those cells (`_preview.placeable` now requires the
   moved plant could stand there too), but the ring, the reach and the coverage dots still
   paint from a road cell when a cob is armed — `_update_preview` sets `_preview.reach` and
-  `_preview.plant_id` from `previewing` unconditionally (`game/game.gd:2114-2119`). So the
+  `_preview.plant_id` from `previewing` unconditionally (`game/game.gd:2150-2155`). So the
   cue now says "not here" and "here is what your cob would reach from here" in the same
   frame, which is honest and slightly odd.
   Deliberately left, because the alternative decides an open question by accident: whether a
@@ -4108,7 +4108,7 @@ Three findings kept out here rather than buried in a log:
   that REVERSES one they already learned.** The mechanism exists and is deliberate:
   `RunConfig.HINT_MOVE_PREVIEW` / `HINT_CHOMP_IGNORES_FLIGHT` / `HINT_UPGRADE_EXISTS`
   (`game/run_config.gd:166`, `:195`, `:212`), each a one-shot tip with a matching notebook
-  card in `Hud.HINT_CARDS` (`game/hud.gd:3494`), and
+  card in `Hud.HINT_CARDS` (`game/hud.gd:3498`), and
   `test_every_hint_has_a_notebook_card` fails on either half missing.
   Look at what those three teach: a flier ignores a Chomp; a plant already down can grow;
   Uproot compares before it digs. Each is a rule the board does not state. **"You may build
@@ -4143,7 +4143,7 @@ Three findings kept out here rather than buried in a log:
   ("Slowing %d pest(s) to %d%% speed."), `wave_cleared_note` ("%d pests turned back.") and
   so on. A retune moves the number and the sentence follows. Every defect found in two
   cycles of looking has been in the handful that name a mechanism instead:
-  `eaten_message`'s "A hungry pest" (fixed cycle 112, `game/hud.gd:3602`) and
+  `eaten_message`'s "A hungry pest" (fixed cycle 112, `game/hud.gd:3625`) and
   `idle_detail`'s "waiting for a pest" (fixed cycle 115, `:2444`).
   Not a checker — `-u9zb`'s close records why, and the short version is that accuracy is a
   claim about the relationship between English and code with no shared vocabulary to check.
@@ -4152,7 +4152,7 @@ Three findings kept out here rather than buried in a log:
   shape rather than audited into it two cycles later.
 
 - **The one-shot teaching tips name a single answer where the catalogue now has three.**
-  `Hud.flight_tip` (`game/hud.gd:3478`) reads "That pest flies over Chomp Flowers. Corn
+  `Hud.flight_tip` (`game/hud.gd:3482`) reads "That pest flies over Chomp Flowers. Corn
   Cobblers can still hit it." Both halves are true. But a winged pest is also reachable by
   the Bomb Dandelion (its blast hits whatever is standing there) and by the Prickly Nettle,
   which exists *specifically* to sting the mutations — armoured, winged, hungry — and whose
@@ -4200,3 +4200,34 @@ Three findings kept out here rather than buried in a log:
   Taste: the distinction belongs in the sentences themselves. "Cannot, by construction" and
   "does not, yet" are different promises to the reader, and a checker that conflates them
   teaches its operator to stop reading the line.
+
+### New in cycle 117 — grown from the fourth hint and 48 stale citations
+
+- **The drift checker found 48 stale citations on its first real cycle, where the manual
+  read-back had been catching two or three.** Cycle 116 built `--snapshot` / `--against` on
+  the strength of drift having bitten twice. Its first genuine use, one cycle later,
+  reported **48 drifted** — every one a citation written by an earlier cycle, silently moved
+  by this cycle's edits to `game.gd`, and every one reported CLEAN by `citation_check`'s
+  ordinary run because each still landed on a real line.
+  The number is the entry. Step 3's rule has always been "read every citation back after the
+  edits", and it was being honoured — for the two or three citations written *that* cycle.
+  Nothing was ever going to re-read the other 348, and a citation written in cycle 60 has
+  had sixty cycles of other people's edits to drift under. **A manual discipline scoped to
+  what you wrote cannot maintain what everyone else wrote.**
+  All 48 are fixed. What is worth doing next is running `--against` from a snapshot taken at
+  a much older commit — the 48 found here are only the ones this cycle moved.
+
+- **A drift report that names the target is half a report; it has to name where the citation
+  is WRITTEN.** Fixing the 48 meant locating each in a 4000-line markdown file, and 20 of
+  them were bare `:NNNN` continuations whose number appears two or three times — so the
+  report named a target line and left the reader grepping for it. (Quoting the actual
+  example here is not possible: a stale `path:line` written in this prose is indistinguishable
+  from a live citation, and the drift checker flags it — which it did, on the first draft of
+  this very entry.) `citation_check` already
+  knew the citing line (`md_line`, used in its own findings) and did not print it in the
+  drift output; it does now (`written at kanban.md:1827`), which turned the last third of
+  that job from a search into an edit.
+  Taste, and it generalises past this tool: **a finding should name the place you go to act
+  on it, not only the place the problem is.** `message_corpus_check` and `suite_reach_check`
+  both already do this; the drift report was the outlier because it was written to answer
+  "what moved" rather than "what do I do".
