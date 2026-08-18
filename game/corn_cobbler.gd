@@ -183,8 +183,8 @@ func _recoil() -> void:
 	if _sprite == null or not is_inside_tree():
 		return
 	var tween := create_tween()
-	tween.tween_property(_sprite, "scale", Vector2(0.88, 1.14), 0.05)
-	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.10)
+	tween.tween_property(_sprite, "scale", Vector2(0.88, 1.14), TWITCH_OUT_SECONDS)
+	tween.tween_property(_sprite, "scale", Vector2.ONE, TWITCH_BACK_SECONDS)
 
 
 ## This cob's ladder. The one override the generic upgrade surface needs — see
@@ -331,8 +331,8 @@ func _upgrade_flourish() -> void:
 	if _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
 		return
 	var tween := create_tween()
-	tween.tween_property(_sprite, "scale", Vector2(0.72, 1.34), 0.10)
-	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.18)
+	tween.tween_property(_sprite, "scale", Vector2(0.72, 1.34), FLOURISH_OUT_SECONDS)
+	tween.tween_property(_sprite, "scale", Vector2.ONE, FLOURISH_BACK_SECONDS)
 
 
 func _on_upgraded() -> void:

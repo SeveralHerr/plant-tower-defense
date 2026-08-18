@@ -171,6 +171,29 @@ const EATING_LATE_TEXTURE_PATH := "res://assets/sprites/chomp_flower_eating_late
 ## and a readout that lurches every time the plant acts is harder to read, not livelier.
 const LUNGE_DISTANCE: float = 7.0
 
+## The bite's four durations. Declared here rather than taken from `Plant.TWITCH_*`
+## because the bite is the one gesture in the family that genuinely does not fit
+## either tier: the lunge's out is the twitch's 0.05, but everything else is longer,
+## and both channels come home slower than a recoil does. A bite has further to
+## travel than a squash — `LUNGE_DISTANCE` above moves the whole head — so it gets
+## its own numbers rather than being rounded onto a shared pair it does not match.
+##
+## The two channels are deliberately staggered by a hundredth of a second in each
+## direction, position leading on the way out and lagging on the way back. That is
+## what these numbers ALREADY were, preserved exactly. Whether the stagger was ever
+## intended or just drifted while nothing named it is a question only a pair of eyes
+## on the running game can answer, and no gate in this project can: a duration is
+## invisible to lint, to `name_check`, and to a headless suite that pumps no frames.
+## Naming them is what makes the question askable at all.
+##
+## `BITE_SQUASH_OUT_SECONDS` is the outward beat's real length (it is the longer of
+## the two outs, and `chain()` below waits for it), so it is the window anything
+## swapped in for the duration of the open jaw should be shown for.
+const BITE_LUNGE_OUT_SECONDS: float = 0.05
+const BITE_SQUASH_OUT_SECONDS: float = 0.06
+const BITE_LUNGE_BACK_SECONDS: float = 0.13
+const BITE_SQUASH_BACK_SECONDS: float = 0.12
+
 var _held: Pest = null
 var _chew_left: float = 0.0
 var _chew_total: float = 0.0
@@ -472,10 +495,10 @@ func _bite() -> void:
 	# the body leaning at its meal is the picture, and un-rotating it would decouple the
 	# head from the stem it is attached to.
 	var tween := create_tween().set_parallel(true)
-	tween.tween_property(_sprite, "position", _bite_lunge, 0.05)
-	tween.tween_property(_sprite, "scale", Vector2(1.18, 0.82), 0.06)
-	tween.chain().tween_property(_sprite, "position", Vector2.ZERO, 0.13)
-	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.12)
+	tween.tween_property(_sprite, "position", _bite_lunge, BITE_LUNGE_OUT_SECONDS)
+	tween.tween_property(_sprite, "scale", Vector2(1.18, 0.82), BITE_SQUASH_OUT_SECONDS)
+	tween.chain().tween_property(_sprite, "position", Vector2.ZERO, BITE_LUNGE_BACK_SECONDS)
+	tween.tween_property(_sprite, "scale", Vector2.ONE, BITE_SQUASH_BACK_SECONDS)
 
 
 ## The teeth coming in: a snap wider than `_bite`'s and held longer, the same
@@ -494,8 +517,8 @@ func _on_upgraded() -> void:
 	if _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
 		return
 	var tween := create_tween()
-	tween.tween_property(_sprite, "scale", Vector2(1.30, 0.74), 0.10)
-	tween.tween_property(_sprite, "scale", Vector2.ONE, 0.18)
+	tween.tween_property(_sprite, "scale", Vector2(1.30, 0.74), FLOURISH_OUT_SECONDS)
+	tween.tween_property(_sprite, "scale", Vector2.ONE, FLOURISH_BACK_SECONDS)
 
 
 func _show_eating_sprite() -> void:
