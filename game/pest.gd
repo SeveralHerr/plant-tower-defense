@@ -439,6 +439,33 @@ const DEATH_LINGER: float = 0.35
 ## the corpse reads for a beat first, same as before this existed, then goes.
 const DEATH_FADE: float = 0.15
 
+## The ceiling on how far `husk_multiplier()` may stretch that beat
+## (plant-tower-defense-rowt).
+##
+## 3.0 is exactly the hardest pest the game can roll today — hungry (2.0) paired with
+## armoured or winged (1.5), the only pairs `mutations_compose` permits — so the cap
+## costs nothing now and is here for the fourth mutation. `husk_multiplier()` is a
+## PRODUCT, so a fourth trait would multiply into it and quietly hand the board
+## multi-second corpses; a corpse outstaying its wave is a bug, and a cap that has to
+## be raised on purpose is the cheap way to find out.
+const DEATH_LINGER_MAX_MULTIPLIER: float = 3.0
+
+
+## How long a corpse worth `multiplier` holds before it is freed. Pure, so "a hard-won
+## kill lingers longer than an easy one" is one assertion rather than two stopwatches.
+##
+## Scaled by `husk_multiplier()` at the call site and by nothing else: the game already
+## prices a harder kill twice (`Game._on_pest_died` reads it for the husk AND for
+## `Sfx.kill_event_for`), and the corpse is the third place that idea belongs — the one
+## the player is actually looking at. Inventing a second difficulty number here would
+## give the same pest two contradictory answers to "how hard was that".
+##
+## Clamped at the bottom too: nothing under 1.0 is reachable through
+## `MUTATION_HUSK_MULTIPLIER`, and a corpse that vanished FASTER than the plain default
+## would read as the game dropping frames rather than as an easy kill.
+static func death_linger_for(multiplier: float) -> float:
+	return DEATH_LINGER * clampf(multiplier, 1.0, DEATH_LINGER_MAX_MULTIPLIER)
+
 ## A kernel connecting and a kernel missing (leaving the board unaimed) used to
 ## look identical — Kernel._physics_process called queue_free() on either exit
 ## with nothing in between (plant-tower-defense-7o3). A killed pest already gets
@@ -617,7 +644,64 @@ const BITTEN_SQUASH: float = 0.62
 ## living pest that stopped.
 const BLASTED_TILT: float = 0.55
 
+## The kernel kill's cue (plant-tower-defense-6v39), and the DECISION that bead asked
+## for before the change: the plain corpse stops being the majority case.
+##
+## Cycle 65 left a kernel kill on the straight default on purpose, so the bitten and
+## blasted corpses would read as remarkable. That reasoning holds for a rare cause and
+## fails for the common one — a Corn Cobbler is the plant most players own most of the
+## time, so "the exception" was most of the corpses a player ever sees, and the moment
+## of death carried nothing at all. So the kernel gets a cue, and it is the third
+## CHANNEL rather than a third value of `_death_cause`: rotation says blasted, scale
+## says bitten, and position now says shot. A corpse can therefore be chewed AND shoved
+## without the two cues having to agree on one enum.
+##
+## The straight corpse still keeps its path, which the bead requires and
+## `test_a_corpse_lies_differently_depending_on_what_killed_it` reads: a knockback of
+## `Vector2.ZERO` is the default for `kill()` and `take_damage()`, so a Chomp's meal, a
+## bomb's victim and any direct kill lie exactly where they always did.
+##
+## 9 px is a shove, not a throw: well under a quarter cell (Board.CELL is 64), so a
+## corpse never slides into the neighbouring square or off the road it died on.
+const DEATH_KNOCKBACK_PX: float = 9.0
+## How long the shove takes. A fraction of DEATH_LINGER's shortest form (0.35), so the
+## body has visibly settled before the fade starts rather than still sliding under it.
+const DEATH_KNOCKBACK_TIME: float = 0.09
+
+
+## Which way a corpse is shoved by a hit that arrived from `from`, and how far.
+##
+## Same shape as `ChompFlower.lunge_offset()` and `Nettle.sting_thrust_offset()`
+## deliberately — a direction is the one thing about an animation that can be flatly
+## wrong while still rendering a plausible frame, so it comes out into a pure static a
+## test can read with no board, no frame and no open animation gate.
+##
+## `to - from`, i.e. AWAY from the shooter and along the kernel's own travel: a body
+## knocked back toward the thing that shot it is the sign error this exists to catch.
+## Degenerate input returns `Vector2.ZERO` rather than a normalised NaN — `Kernel`'s hit
+## test is a distance check that a pest sitting exactly on the kernel passes.
+static func knockback_offset(from: Vector2, to: Vector2) -> Vector2:
+	var delta: Vector2 = to - from
+	if delta.length_squared() <= 0.0001:
+		return Vector2.ZERO
+	return delta.normalized() * DEATH_KNOCKBACK_PX
+
 var _death_cause: StringName = &""
+
+## The two things about this death that are settled the instant it happens, and are
+## therefore recorded ABOVE every animation gate — the rule `set_chewed()` states and
+## `_bite_lunge` / `_sting_thrust` follow. Headless never opens the gate, so a value
+## composed inside it is a value no test in this project can ever see: deleting the
+## shove or the scaled hold has to go red, not go quiet.
+##
+## `_death_knockback` is a SPRITE offset and nothing else reads it. That is deliberate
+## and load-bearing: `died` is emitted before `_play_death()` runs, and
+## `Game._on_pest_died` drops the husk and files the lane loss at `pest.position`, so
+## moving the body would move a husk the player has to click and shift a number the
+## balance sims count. The corpse is a picture by the time it is shoved.
+var _death_knockback: Vector2 = Vector2.ZERO
+## How long this particular corpse holds, from `death_linger_for(husk_multiplier())`.
+var _death_linger: float = DEATH_LINGER
 
 ## The walk cycle's own state. `_facing` is the cardinal rotation
 ## _update_facing() decides; `_sway` is the gait's offset from it. They are kept
@@ -1311,7 +1395,12 @@ static func gait_phase(index: int) -> float:
 	return fposmod(float(index) * GAIT_PHASE_STEP, TAU)
 
 
-func take_damage(amount: float, cause: StringName = &"") -> void:
+## `knockback` is the offset a corpse is shoved by if THIS hit is the one that kills —
+## per call, never remembered, so a kernel a pest survived cannot shove the body a
+## Chomp finishes ten seconds later. Callers that know where their hit came from build
+## it with `knockback_offset()` (see `Kernel._physics_process`); `Vector2.ZERO`, the
+## default, is a corpse that lies where it fell.
+func take_damage(amount: float, cause: StringName = &"", knockback: Vector2 = Vector2.ZERO) -> void:
 	if not _alive:
 		return
 	# A zero-damage call is not an engagement. Nothing in the game makes one
@@ -1332,7 +1421,7 @@ func take_damage(amount: float, cause: StringName = &"") -> void:
 	health = maxf(0.0, health - landed)
 	_refresh_health_bar()
 	if health <= 0.0:
-		kill(cause)
+		kill(cause, knockback)
 
 
 ## Pure: what `flash_hit` boosts a sprite's current tint towards for the flash's
@@ -1397,11 +1486,22 @@ func flash_hit() -> void:
 
 
 ## Death by any cause — kernels, or a Chomp finishing its meal.
-func kill(cause: StringName = &"") -> void:
+##
+## Everything the corpse needs is settled here, before `died` is emitted and long
+## before `_play_death()` reaches an animation gate: the cause, the shove, and how long
+## the body holds. `died`'s listeners run in between (Game pays the seeds and drops the
+## husk), so a value composed later than this is a value the corpse could disagree with.
+func kill(cause: StringName = &"", knockback: Vector2 = Vector2.ZERO) -> void:
 	if not _alive:
 		return
 	_alive = false
 	_death_cause = cause
+	_death_knockback = knockback
+	# A hard-won kill lingers longer than an easy one (plant-tower-defense-rowt). Read
+	# here rather than in `_play_death()` because `husk_multiplier()` is the price this
+	# same death is about to be paid at, and the corpse should outlast the aphid beside
+	# it by exactly the ratio the husk does.
+	_death_linger = death_linger_for(husk_multiplier())
 	if held_by != null and held_by.has_method("release"):
 		held_by.call("release")
 	died.emit(self)
@@ -1427,6 +1527,19 @@ func _play_death() -> void:
 		_sway = 0.0
 		_sprite.rotation = corpse_rotation()
 		_sprite.scale = corpse_scale()
+		# The third corpse channel, and the only one that is a POSITION. Written here
+		# unconditionally, above the gate below, for the same reason the rotation and
+		# the scale are: with animations off this is the corpse's whole static state,
+		# and a shove that only existed inside a Tween would be a cue no headless run
+		# and no unit test could ever see.
+		#
+		# Written on the CHILD, so the Pest node — the thing `Game._on_pest_died`
+		# already read a husk position off — never moves. `_sprite.position` lives in
+		# this node's space, and a Pest is placed by Board and never rotated or scaled
+		# (only `_sprite` is), so the global-space direction the killer measured is the
+		# same vector here with no basis change. `_sprite.position` is otherwise
+		# unwritten on a Pest: nothing else in this class can fight it for the channel.
+		_sprite.position = death_knockback()
 	if _dead_texture != null and _sprite != null:
 		_sprite.texture = _dead_texture
 		_sprite.modulate = Color.WHITE
@@ -1445,11 +1558,36 @@ func _play_death() -> void:
 		# "hold, then go" shape as the rest of a corpse's beat, just on alpha
 		# instead of a callback. Plant.play_exit_and_free() is the reference:
 		# a tween on the way off the board, gated the same way.
-		tween.tween_interval(DEATH_LINGER - DEATH_FADE)
+		#
+		# DEATH_FADE stays a fixed tail while the HOLD is what a hard kill lengthens:
+		# scaling both would give a queen the same shape of exit as an aphid, only
+		# slower, and a fade stretched to 0.45s reads as the game hitching. So the
+		# hold is `death_linger() - DEATH_FADE`, which `death_linger_for`'s floor of
+		# 1.0 keeps comfortably positive (0.20s at worst) rather than swallowing it.
+		tween.tween_interval(death_linger() - DEATH_FADE)
 		tween.tween_property(_sprite, "modulate:a", 0.0, DEATH_FADE)
 	else:
-		tween.tween_interval(DEATH_LINGER)
+		tween.tween_interval(death_linger())
 	tween.tween_callback(queue_free)
+	_play_knockback()
+
+
+## The shove, as motion. A separate Tween from the one above rather than a parallel
+## step inside it: that one is a strict sequence (hold, fade, free) and a
+## `set_parallel()` in the middle of it would run the free against the fade.
+##
+## Gated, and it starts from zero: `_play_death()` has already parked the sprite at its
+## final offset, so with animations off the corpse is simply displaced, and with them
+## on it slides there over DEATH_KNOCKBACK_TIME. Both are the same picture at rest,
+## which is what makes the headless assertion worth anything.
+func _play_knockback() -> void:
+	if _sprite == null or _death_knockback == Vector2.ZERO:
+		return
+	if not GardenTheme.animations_enabled():
+		return
+	_sprite.position = Vector2.ZERO
+	var shove := create_tween()
+	shove.tween_property(_sprite, "position", _death_knockback, DEATH_KNOCKBACK_TIME)
 
 
 ## How the corpse lies, as a predicate rather than a branch inside `_play_death()`
@@ -1482,6 +1620,22 @@ func corpse_scale() -> Vector2:
 	if _death_cause == DEATH_BITTEN:
 		return Vector2(_sprite_scale * BITTEN_SQUASH * eaten, _sprite_scale * eaten)
 	return Vector2(_sprite_scale * eaten, _sprite_scale * eaten)
+
+
+## Where this corpse was shoved to, relative to where the pest fell — the third of the
+## three corpse channels, beside `corpse_rotation()` and `corpse_scale()`.
+##
+## `Vector2.ZERO` until something kills this pest with a direction to give, which is
+## every death except a kernel's today. Read by `_play_death()` above the animation
+## gate, so it is the corpse's real resting offset and not a description of one.
+func death_knockback() -> Vector2:
+	return _death_knockback
+
+
+## How long this corpse holds before it is freed — `DEATH_LINGER` for a plain pest, up
+## to DEATH_LINGER_MAX_MULTIPLIER times that for one that cost the player more.
+func death_linger() -> float:
+	return _death_linger
 
 
 ## How much of the pest is left to draw, as a scale factor. Pure, so the curve is
