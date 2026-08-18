@@ -6878,3 +6878,31 @@ status rather than rewriting the entries that recorded these as open.
   the lane**, before the merge — `Glyphs.meaning`, public and named by no test, written
   in the same sitting as the table. That is the third real hole that checker has found
   in three cycles, and none of them were formalities.
+
+## 2026-08-18 — round 14: ip4n photographed at last, 9afm merged
+
+- Value: **warranted** — the bridge did the thing no headless gate can: caught a
+  sub-second visual state deterministically, after three sessions had failed to.
+  - Expected: an arc partway round the chew ring, at roughly 50% and 90%.
+  - Got: 47.4% and 90.4%, each within a percent of target **on the first attempt**, with
+    the grab landing at `x = 187.77` against a predicted `x >= 187.7`.
+  - Found: the arc **sweeps closed**, which changes what the acceptance was even asking.
+    Its ink falls 138 px → 72.7 → 13.3 as the chew completes, so "is the 90% frame
+    legible" is arithmetic over two constants rather than a judgement about a photo.
+  - Cheaper: nothing for the capture. But the *finding* was cheaper than the capture —
+    once the sweep direction was known, `chew_arc_end(p) * CHEW_RING_RADIUS` answered it
+    without a renderer. The photograph confirmed the maths; the maths is what got pinned.
+
+- Gap: **no gap this turn**, and one technique worth reusing. `read-a-moving-value` says
+  pause before you START the thing. Here the trigger was a physics interaction I could
+  not call — a pest had to walk into range — so the sequence was **pause → coarse-step
+  the approach (1.0 s) → fine-step the event (0.15 s)**, switching resolution at a
+  boundary computed from `GRAB_RADIUS` and the cell centres. That is a variant the skill
+  does not cover and it turned a three-time failure into a first-try capture.
+
+- **`[G-124]` may be fixed, and the correlation is worth recording rather than claiming.**
+  Both lanes this round were spawned at `2563734`, which WAS main at spawn time — the
+  first round in four where a worktree was not ~130 commits behind. The one thing that
+  changed is that `main` now has an upstream, because this session pushed. That is a
+  plausible cause and not a demonstrated one; I did not test it. Next fan-out will say.
+  - [G-124] status: open | seen: 3 | harness: 0.38.0
