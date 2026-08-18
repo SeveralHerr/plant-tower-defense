@@ -662,6 +662,47 @@ const MESSAGE_DEADLINE: int = 2
 ## replace it. Roughly the time to read a short sentence.
 const MESSAGE_MIN_READABLE: float = 1.2
 
+## WHAT AN IMPORTANT LINE LOOKS LIKE (plant-tower-defense-xvub).
+##
+## The three rungs above controlled queue PRIORITY and nothing else, so the armed-uproot
+## prompt — a four-second irreversible decision — was drawn exactly like "Composted a
+## husk for 3 seeds." A player learns to skim a row where most of what appears is
+## ambient, and the one line that must be read was styled identically to the ones that
+## need not be.
+##
+## TWO channels, and NEITHER of them is colour. That is `game/OVERLAY_GRAMMAR.md`'s
+## two-channel rule, which is project-wide and is this bead's stated acceptance: the
+## distinction has to survive the screen being read in greyscale. It is met here in the
+## strongest available form — a stressed line and an ambient one are drawn in the SAME
+## colour (LEAF), so there is no hue difference to throw away in the first place.
+##
+##   WEIGHT     the row's own text thickens, drawn as a font outline in the text's own
+##              colour. One pixel, not two: the message row is 15px and a 2px outline
+##              starts closing the counters of an `e` at that size.
+##   A MARK     a solid tick in the page margin beside the line, present for a stressed
+##              line and absent for an ambient one. Presence/absence is the cleanest
+##              greyscale channel there is, and marking an important line in the margin
+##              is what this game's whole notebook idiom already does on paper.
+##
+## Both are FREE in width, which is the constraint that ruled out the obvious answers.
+## The outline changes what is drawn and not what is measured; the mark is a ColorRect
+## child of the Label — the same trick `_readout_rule` uses — living in the 6px of
+## gutter between MARGIN_RULE_X's rule and the text at STATS_ROW_MARGIN, which is space
+## nothing was using. Neither is an option the row's budget could otherwise afford.
+##
+## Rejected: the bead's third suggestion, a brief HOLD before the queue advances. It is
+## the cheapest of the three in pixels and the most expensive in risk — it changes the
+## row's timing, which `show_message`, `_queue_message`, `queue_outcome`,
+## `line_was_read` and their tests all reason about, to buy a channel the two above
+## already carry.
+const MESSAGE_STRESS_OUTLINE: int = 1
+## The margin tick's box, and where it sits. Anchored to the MessageLabel's left edge
+## with NEGATIVE offsets, so it is drawn outside the label's own rect and inside the
+## bar: STATS_ROW_MARGIN (20) - GAP (2) - WIDTH (4) puts its left edge at 14, exactly
+## where MarginRule's own 12+2 ends. It touches the page rule and never overlaps it.
+const MESSAGE_MARK_WIDTH: float = 4.0
+const MESSAGE_MARK_GAP: float = 2.0
+
 
 ## Whether a line that has been on the row for `total - left` seconds has had long enough to
 ## have been read.
@@ -795,6 +836,9 @@ var _wave_label: Label
 var _lives_label: Label
 var _compost_label: Label
 var _message_label: Label
+## The margin tick beside an important line. See MESSAGE_STRESS_OUTLINE — it is a child
+## of `_message_label` so it costs the row nothing and follows the label's rect.
+var _message_mark: ColorRect
 ## A GridContainer, not a VBox: it runs one column until a fifth plant would
 ## push the buttons under the touch minimum, then two. See plant_bar_layout.
 var _plant_bar: GridContainer
@@ -1175,7 +1219,33 @@ func _build_top_bar(root: Control) -> void:
 	_message_label = _make_label("MessageLabel", MESSAGE_FONT_SIZE, LEAF)
 	_message_label.clip_text = true
 	_message_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	# The stressed line's weight, in the text's own colour so the strokes thicken rather
+	# than gaining a halo. The SIZE is toggled per line by `_apply_message_stress`; the
+	# colour is written once here, and writing it once is what keeps the two states the
+	# same hue — the whole point of MESSAGE_STRESS_OUTLINE's two channels.
+	_message_label.add_theme_color_override("font_outline_color", LEAF)
+	_message_label.add_theme_constant_override("outline_size", 0)
 	bar.add_child(_message_label)
+
+	# The margin tick. A child of the Label rather than of the bar: it then follows the
+	# message row's rect through every `_apply_viewport_layout()` without a second copy
+	# of that arithmetic, exactly as `_readout_rule` does upstairs.
+	_message_mark = ColorRect.new()
+	_message_mark.name = "MessageMark"
+	_message_mark.color = PAPER
+	_message_mark.anchor_left = 0.0
+	_message_mark.anchor_right = 0.0
+	_message_mark.anchor_top = 0.0
+	_message_mark.anchor_bottom = 1.0
+	_message_mark.offset_left = -(MESSAGE_MARK_GAP + MESSAGE_MARK_WIDTH)
+	_message_mark.offset_right = -MESSAGE_MARK_GAP
+	_message_mark.offset_top = 0.0
+	_message_mark.offset_bottom = 0.0
+	_message_mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Ambient until something says otherwise. The row's resting state is the prep note,
+	# which is MESSAGE_NORMAL by construction.
+	_message_mark.visible = false
+	_message_label.add_child(_message_mark)
 
 	_prep_bar = ColorRect.new()
 	_prep_bar.name = "PrepBar"
@@ -2256,6 +2326,35 @@ func set_active(active: bool) -> void:
 
 func _paint_message_row() -> void:
 	_message_label.text = _message_text if _message_left > 0.0 else _idle_message
+	# The one place a line's LOOK is decided, for the same reason this is the one place
+	# its text is. Three writers of `_message_label.text` was the bug this function
+	# replaced; three writers of its emphasis would be that bug again in a new channel.
+	_apply_message_stress(message_is_stressed(_message_left, _message_priority))
+
+
+## Whether the line the row is showing right now is one the player must read.
+##
+## Static and pure so the rule is assertable without a live row — the same shape
+## `line_was_read` above takes, and for the same reason. The `seconds_left > 0.0` half
+## is not decoration: with no transient line the row falls through to `_idle_message`,
+## and the standing prep note is ambient however important the line it replaced was.
+##
+## MESSAGE_DEADLINE is stressed too, and deliberately by `>=` rather than by naming the
+## two rungs. DEADLINE is the armed-uproot prompt — the line this whole bead is about —
+## and a fourth rung added above it would be stressed by default, which is the right
+## default for a rung somebody thought was worth adding above DEADLINE.
+static func message_is_stressed(seconds_left: float, priority: int) -> bool:
+	return seconds_left > 0.0 and priority >= MESSAGE_IMPORTANT
+
+
+## Applies the two non-colour channels of MESSAGE_STRESS_OUTLINE. Never touches
+## `font_color`: the whole claim is that these two states are told apart in greyscale,
+## and a hue difference here would be the thing that lets the claim rot.
+func _apply_message_stress(stressed: bool) -> void:
+	_message_label.add_theme_constant_override("outline_size",
+		MESSAGE_STRESS_OUTLINE if stressed else 0)
+	if _message_mark != null:
+		_message_mark.visible = stressed
 
 
 ## Returns whether `text` is ON THE ROW when this call returns — false when it was
