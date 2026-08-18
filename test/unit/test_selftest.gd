@@ -16745,6 +16745,35 @@ func test_the_run_summarys_widest_value_fits_its_column() -> String:
 				+ "see a string that clips instead of wrapping")
 				% [String(priced["text"]), float(priced["needed"]),
 					float(priced["slot"])])
+	if err != "":
+		return err
+
+	# THE SLOT THE BUDGET MEASURED AGAINST IS THE SLOT THE CARD ACTUALLY DRAWS, and
+	# this is the assertion that makes `value_slot_width()` worth having rather than a
+	# second copy of the arithmetic. A budget whose denominator drifts from the real
+	# column reports headroom the player does not have -- and it would drift silently,
+	# because both numbers look plausible on their own.
+	#
+	# It is also what `suite_reach_check` demanded: the function was named in this
+	# file ONLY inside a string literal (the budget's `constant` field), which that
+	# checker refuses to count as reach, and it was right to.
+	var card := RunSummary.new()
+	card._stats = RunSummary.corpus_states()[0]
+	var built := await _T.instantiate_ui(card, Vector2i(1152, 648)) as RunSummary
+	var value: Label = built.get_node_or_null("Value_Gardenlost") as Label
+	if value == null:
+		# Named off the row key, so a renamed row must be noticed here rather than
+		# silently skipping the comparison.
+		var keys: Array[String] = []
+		for row: Array in built.summary_rows():
+			keys.append(String(row[0]))
+		err = "no Value_Gardenlost label on the card; rows are %s" % str(keys)
+	else:
+		err = _T.assert_float_eq(value.size.x, RunSummary.value_slot_width(), 0.01,
+			("the drawn column is %.1f px and value_slot_width() says %.1f -- the budget "
+				+ "above divides by the second number and the player sees the first")
+				% [value.size.x, RunSummary.value_slot_width()])
+	_T.free_ui(built)
 	return err
 
 
