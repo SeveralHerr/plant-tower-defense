@@ -314,6 +314,31 @@ const PACKET_ROW_PITCH: float = 42.0
 ## Named because two things now depend on it rather than one.
 const SELECTION_BOX_Y: float = 392.0
 
+## The selection panel's own geometry, hoisted out of the literals it was built
+## from so `selection_panel_budget()` can price it without a second copy of any
+## number. Every one of these was a bare literal in `_build_side_panel` and a
+## sentence in a comment somewhere else — which is exactly the state
+## `plant-tower-defense-r722` was filed against: cycle 57 measured the cob's
+## second line against the box BY HAND, wrote the verdict in prose, and the
+## measurement was gone by the next cycle.
+##
+## SELECTION_BOX_WIDTH is `PANEL_WIDTH - 24`, the panel's 12px inset on both
+## sides — the same expression the health bar sizes itself from.
+const SELECTION_BOX_WIDTH: float = float(PANEL_WIDTH) - 24.0
+## SelectionLabel's floor, sized for TWO wrapped rows. A third row does not
+## overflow the label, it GROWS it, and the VBox pushes the two buttons down by
+## the difference — see the comment on `_selection_label` for the cycle that
+## landed SelectionBox's foot on exactly 648.
+const SELECTION_LABEL_MIN_HEIGHT: float = 56.0
+const SELECTION_LABEL_FONT_SIZE: int = 15
+const SELECTION_SEPARATION: int = 6
+## Upgrade and Uproot. 40 is the touch minimum PLANT_BUTTON_MIN_HEIGHT is also
+## pinned to, and these are the controls the stack pushes out when it grows.
+const SELECTION_BUTTON_HEIGHT: float = 40.0
+## The rows below the label are HealthRow and the two buttons — see
+## `selection_rows_below_label()`, which is a function rather than a const only
+## because HEALTH_ROW_HEIGHT is declared further down this file.
+
 ## What a plant button that cannot be bought right now is tinted — locked, or
 ## unlocked and unaffordable. Extracted from the literal it was, because a second
 ## reader (plant_button_tint) now has to return exactly the same value the rest
@@ -1086,8 +1111,8 @@ func _build_side_panel(root: Control) -> void:
 	_selection_box = VBoxContainer.new()
 	_selection_box.name = "SelectionBox"
 	_selection_box.position = Vector2(12, SELECTION_BOX_Y)
-	_selection_box.size = Vector2(PANEL_WIDTH - 24, 152)
-	_selection_box.add_theme_constant_override("separation", 6)
+	_selection_box.size = Vector2(SELECTION_BOX_WIDTH, 152)
+	_selection_box.add_theme_constant_override("separation", SELECTION_SEPARATION)
 	_selection_box.visible = false
 	panel.add_child(_selection_box)
 
@@ -1096,9 +1121,11 @@ func _build_side_panel(root: Control) -> void:
 	# plant button's tooltip, which still carries it. Every branch below now spends
 	# those two lines on live state instead, and the 20px this frees is exactly what
 	# the health row costs, so SelectionBox's damaged height is unchanged at 168 and
-	# its foot stays 16px clear of the panel bottom.
-	_selection_label = _make_label("SelectionLabel", 15, INK)
-	_selection_label.custom_minimum_size = Vector2(0, 56)
+	# its foot stays 16px clear of the panel bottom. That 16 is no longer a claim in
+	# this comment: `selection_panel_budget()` measures it, and the hud_selection_panel
+	# budget grades it against Game.BUDGET_FLOOR on every launch.
+	_selection_label = _make_label("SelectionLabel", SELECTION_LABEL_FONT_SIZE, INK)
+	_selection_label.custom_minimum_size = Vector2(0, SELECTION_LABEL_MIN_HEIGHT)
 	_selection_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_selection_box.add_child(_selection_label)
 
@@ -1142,14 +1169,14 @@ func _build_side_panel(root: Control) -> void:
 	_upgrade_button = Button.new()
 	_upgrade_button.name = "UpgradeButton"
 	_upgrade_button.text = "Upgrade"
-	_upgrade_button.custom_minimum_size = Vector2(0, 40)
+	_upgrade_button.custom_minimum_size = Vector2(0, SELECTION_BUTTON_HEIGHT)
 	_upgrade_button.pressed.connect(func() -> void: upgrade_requested.emit())
 	_selection_box.add_child(_upgrade_button)
 
 	_uproot_button = Button.new()
 	_uproot_button.name = "UprootButton"
 	_uproot_button.text = "Uproot"
-	_uproot_button.custom_minimum_size = Vector2(0, 40)
+	_uproot_button.custom_minimum_size = Vector2(0, SELECTION_BUTTON_HEIGHT)
 	_uproot_button.pressed.connect(func() -> void: uproot_requested.emit())
 	_selection_box.add_child(_uproot_button)
 
@@ -1739,6 +1766,13 @@ func _refresh_selection(state: Dictionary) -> void:
 		_play_panel_entrance()
 	var corn := plant as CornCobbler
 	var sunflower := plant as Sunflower
+	# Every branch below now ends in `selection_line(display, level, detail)` and a
+	# `selection_*_detail()` producer, and NOT in a format string spelled out at the
+	# call site. That is what lets `selection_corpus()` price this panel without
+	# anyone re-typing what it can say — the same move `message_corpus()` made for
+	# the status row, for the same reason: the hand-recovered list was wrong three
+	# cycles running (plant-tower-defense-r722).
+	var display: String = PlantCatalog.display_name(plant.kind)
 	if corn != null:
 		# The kernel count alone stopped being the story. Past ~80px most of a
 		# bunch's five kernels sail past the pest it aimed at, so what an upgrade
@@ -1749,51 +1783,40 @@ func _refresh_selection(state: Dictionary) -> void:
 		# exactly the panel's own 648 — caught by the 8px clearance test written
 		# three cycles ago for the same overflow. Damage per volley is the number
 		# that actually changed and the one the upgrade is bought for.
-		_selection_label.text = "%s — %s\n%.1f dmg / %.2fs, %d kernel(s)" % [
-			PlantCatalog.display_name(plant.kind), corn.level_name(),
-			corn.kernel_damage() * float(corn.kernels_per_shot()),
-			corn.fire_interval(), corn.kernels_per_shot(),
-		]
+		_selection_label.text = selection_line(display, corn.level_name(),
+			corn_detail(corn.kernel_damage() * float(corn.kernels_per_shot()),
+				corn.fire_interval(), corn.kernels_per_shot()))
 	elif sunflower != null:
-		_selection_label.text = "%s\nNext %d seeds in %.0fs" % [
-			PlantCatalog.display_name(plant.kind), Sunflower.YIELD, sunflower.seconds_until_next_yield(),
-		]
+		_selection_label.text = selection_line(display, "",
+			sunflower_detail(Sunflower.YIELD, sunflower.seconds_until_next_yield()))
 	else:
 		var chomp := plant as ChompFlower
 		var sundew := plant as StickySundew
 		var dandelion := plant as Dandelion
-		var busy: String = "Idle — waiting for a pest."
+		var busy: String = idle_detail()
 		if dandelion != null:
 			# The fluff count is already on the sprite — this is the half the
 			# drawing cannot carry: how long until the head is armed again. A
 			# player watching a bald Dandelion has no other way to tell a plant
 			# that is reloading from one that has nothing to shoot at.
 			if dandelion.is_volley_open() and dandelion.fluff() > 0:
-				busy = "%d seed(s) up, %.0f dmg a burst." % [
-					dandelion.fluff(), Dandelion.SEED_DAMAGE,
-				]
+				busy = dandelion_armed_detail(dandelion.fluff(), Dandelion.SEED_DAMAGE)
 			else:
-				busy = "Regrowing — %d/%d fluff, armed in %.1fs." % [
-					dandelion.fluff(), Dandelion.FLUFF_MAX, dandelion.seconds_until_armed(),
-				]
+				busy = dandelion_regrowing_detail(dandelion.fluff(), Dandelion.FLUFF_MAX,
+					dandelion.seconds_until_armed())
 		elif chomp != null and chomp.is_busy():
-			busy = "Chewing — %d%% through this one." % int(round(chomp.chew_progress() * 100.0))
+			busy = chomp_chewing_detail(int(round(chomp.chew_progress() * 100.0)))
 		elif sundew != null:
 			# A Sundew is never busy and never idle — it is always working, and the
 			# only question is how many pests are in the patch. "Idle" was simply
 			# the wrong word for the one plant that cannot be.
-			busy = "Slowing %d pest(s) to %d%% speed." % [
-				sundew.stuck_count(), int(round(StickySundew.SLOW_FACTOR * 100.0)),
-			]
+			busy = sundew_detail(sundew.stuck_count(),
+				int(round(StickySundew.SLOW_FACTOR * 100.0)))
 		# A plant that grows says which rung it is on, the way the cob's line does.
 		# Asked of the plant rather than of `chomp != null`, so the third plant with
 		# a ladder needs no branch here.
-		if plant.has_upgrades():
-			_selection_label.text = "%s — %s\n%s" % [
-				PlantCatalog.display_name(plant.kind), plant.level_name(), busy,
-			]
-		else:
-			_selection_label.text = "%s\n%s" % [PlantCatalog.display_name(plant.kind), busy]
+		_selection_label.text = selection_line(display,
+			plant.level_name() if plant.has_upgrades() else "", busy)
 	# One decision for every plant, outside the per-class branches that describe
 	# them. The three `visible =` assignments this replaces were the reason a second
 	# upgradable plant could not be reached: two of them said `false` unconditionally
@@ -1836,6 +1859,252 @@ func _refresh_health(plant: Plant) -> void:
 	_health_fill.size = Vector2(full_width * fraction, HEALTH_ROW_HEIGHT)
 	_health_fill.color = health_color(fraction)
 	_health_text.text = "Health %d/%d" % [int(ceil(plant.health)), int(Plant.MAX_HEALTH)]
+
+
+# -- the selection panel's own corpus and budget --------------------------------
+#
+# Same shape as `message_corpus()` further down, and for the same reason. The
+# selection panel is a fixed box holding a worst-case set of strings with a failure
+# mode no per-Control check can see: a line too wide to fit 232px does not clip, it
+# WRAPS, the label grows a row, and the VBox pushes Upgrade and Uproot down past the
+# panel's foot. Cycle 57 priced the cob's second line at "~190px of a 232px box" by
+# hand, decided against adding text on the strength of it, and the measurement was
+# gone the next cycle — which is the whole of plant-tower-defense-r722.
+#
+# So the panel's text is built by the producers below and nowhere else, the corpus
+# is derived from `PlantCatalog.ids()` and the ladders rather than typed out, and
+# `Game._budget_hud_selection_panel()` prices it on every launch.
+
+
+## The panel's two-line blurb: who this is, and what it is doing right now.
+##
+## `level_name` empty means a plant with no ladder — the em-dash rung is omitted
+## rather than printed empty, which is the `has_upgrades()` branch `_refresh_selection`
+## used to spell out twice.
+static func selection_line(display: String, level_name: String, detail: String) -> String:
+	if level_name == "":
+		return "%s\n%s" % [display, detail]
+	return "%s — %s\n%s" % [display, level_name, detail]
+
+
+## Damage per volley, rate, and kernels — the three numbers an upgrade actually moves.
+static func corn_detail(damage_per_volley: float, interval: float, kernels: int) -> String:
+	return "%.1f dmg / %.2fs, %d kernel(s)" % [damage_per_volley, interval, kernels]
+
+
+static func sunflower_detail(seeds: int, seconds: float) -> String:
+	return "Next %d seeds in %.0fs" % [seeds, seconds]
+
+
+static func dandelion_armed_detail(fluff: int, damage: float) -> String:
+	return "%d seed(s) up, %.0f dmg a burst." % [fluff, damage]
+
+
+static func dandelion_regrowing_detail(fluff: int, fluff_max: int, seconds: float) -> String:
+	return "Regrowing — %d/%d fluff, armed in %.1fs." % [fluff, fluff_max, seconds]
+
+
+static func chomp_chewing_detail(percent: int) -> String:
+	return "Chewing — %d%% through this one." % percent
+
+
+static func sundew_detail(pests: int, percent: int) -> String:
+	return "Slowing %d pest(s) to %d%% speed." % [pests, percent]
+
+
+## What a plant with nothing to say says. A zero-argument PRODUCER and not a `const`,
+## for the reason `flight_tip()` gives beside `message_corpus()`: a const reference is
+## invisible to a corpus sweep, and this is the line seven of the eight plants show.
+static func idle_detail() -> String:
+	return "Idle — waiting for a pest."
+
+
+## Every second line the panel can draw, each at the widest its own data allows.
+##
+## Derived, never typed. Corn sweeps its ladder, so a retune moves this number; the
+## rest are priced at the constants that bound them — FLUFF_MAX, SEED_DAMAGE, the
+## Sunflower's whole INTERVAL (the clock counts down from it, so it is the widest
+## the "%.0fs" can read), a full regrow, a chew at 100%, and a Sundew holding a road
+## filled to WaveDirector.SIMULTANEOUS_PEST_CEILING. That last one is another budget's
+## ceiling on purpose: the two are coupled, and pricing the Sundew's line at "9 pests"
+## would be this budget quietly assuming the road's.
+static func selection_detail_corpus() -> Array[String]:
+	var out: Array[String] = []
+	for level: Dictionary in CornCobbler.LEVELS:
+		out.append(corn_detail(
+			float(level.get("damage", 0.0)) * float(int(level.get("kernels", 0))),
+			float(level.get("interval", 0.0)), int(level.get("kernels", 0))))
+	out.append(sunflower_detail(Sunflower.YIELD, Sunflower.INTERVAL))
+	out.append(dandelion_armed_detail(Dandelion.FLUFF_MAX, Dandelion.SEED_DAMAGE))
+	out.append(dandelion_regrowing_detail(Dandelion.FLUFF_MAX, Dandelion.FLUFF_MAX,
+		Dandelion.REGROW_DELAY + float(Dandelion.FLUFF_MAX) * Dandelion.FLUFF_REGROW_SECONDS))
+	out.append(chomp_chewing_detail(100))
+	out.append(sundew_detail(WaveDirector.SIMULTANEOUS_PEST_CEILING,
+		int(round(StickySundew.SLOW_FACTOR * 100.0))))
+	out.append(idle_detail())
+	return out
+
+
+## Every rung name the panel's first line can carry, plus `""` for a plant with no
+## ladder.
+##
+## The two `LEVELS` arrays are named here the same way `message_corpus()` names them,
+## and for the same unglamorous reason: `upgrade_ladder()` is an instance virtual, so
+## there is no static registry of ladders to sweep. Adding a third upgradable plant
+## means adding its ladder here — and `test_every_ladder_in_the_game_is_priced_by_the_
+## selection_corpus` in test_selftest.gd fails until someone does, which is the point
+## of writing it down rather than deriving it from nothing.
+static func selection_level_names() -> Array[String]:
+	var out: Array[String] = [""]
+	for level: Dictionary in CornCobbler.LEVELS:
+		out.append(String(level["name"]))
+	for level: Dictionary in ChompFlower.LEVELS:
+		out.append(String(level["name"]))
+	return out
+
+
+## Every string SelectionLabel can be asked to hold, at its widest.
+##
+## Every plant crossed with every rung and every detail. That is deliberately wider
+## than the game can actually reach — a Sunflower never shows a chew percentage — and
+## it is the same over-pricing `message_corpus()` does when it gives every plant an
+## `upgrade_tip`. A budget is about the worst case the FORMAT allows, and a corpus
+## that reasons about which plant can reach which line is a corpus that will be wrong
+## the first time a plant gains a behaviour.
+static func selection_corpus() -> Array[String]:
+	var out: Array[String] = []
+	var details: Array[String] = selection_detail_corpus()
+	var levels: Array[String] = selection_level_names()
+	for id: StringName in PlantCatalog.ids():
+		var display: String = PlantCatalog.display_name(id)
+		for level_name: String in levels:
+			for detail: String in details:
+				out.append(selection_line(display, level_name, detail))
+	return out
+
+
+## The fixed rows under SelectionLabel, in VBox order: the health bar and the two
+## buttons. Damaged AND upgradable is the tallest the box ever gets, and it is the
+## only case worth budgeting — priced on the common case, this budget would read
+## clean right up until a plant was bitten.
+static func selection_rows_below_label() -> Array[float]:
+	var rows: Array[float] = [
+		HEALTH_ROW_HEIGHT, SELECTION_BUTTON_HEIGHT, SELECTION_BUTTON_HEIGHT,
+	]
+	return rows
+
+
+## How much panel there is under SelectionBox's top edge — the height the whole
+## stack has to fit inside.
+##
+## Measured against the DESIGN canvas, not the live one, and that is the whole
+## point of the number. `stretch/aspect="expand"` never yields a canvas SHORTER
+## than the design size, so the design height is the worst case this budget has to
+## survive; reading `_side_panel.size.y` instead would hand the panel a bigger
+## allowance on every window that is not exactly 16:9 — including the 64x64
+## headless one, where the canvas comes out 1152x1152 and this budget would report
+## 504px of room it does not have. ScreenMetrics' own header makes this argument at
+## length; this is a caller of it.
+static func selection_room_below() -> float:
+	return float(ScreenMetrics.design_height()) - float(BAR_HEIGHT) - SELECTION_BOX_Y
+
+
+## How many rows `line` occupies once the label has wrapped it to `box_width`.
+##
+## Greedy word wrap, which is what AUTOWRAP_WORD_SMART does for every string this
+## panel can produce. The one case it under-counts is a single WORD wider than the
+## box, which WORD_SMART breaks mid-word and this returns 1 for — noted rather than
+## handled, because no plant name or detail in the corpus comes close and a budget
+## that mis-priced it would be reporting a string the game cannot build.
+static func wrapped_rows(line: String, font: Font, font_size: int, box_width: float) -> int:
+	if font == null or box_width <= 0.0:
+		return 1
+	var words: PackedStringArray = line.split(" ", false)
+	if words.is_empty():
+		return 1
+	var rows: int = 1
+	var current: String = ""
+	for word: String in words:
+		var candidate: String = word if current == "" else current + " " + word
+		if font.get_string_size(candidate, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x <= box_width:
+			current = candidate
+			continue
+		rows += 1
+		current = word
+	return rows
+
+
+## Price `lines` against the selection panel's box: the widest single line it can be
+## asked to draw, and where the whole stack's foot lands.
+##
+## TWO failure modes, and they are not the same one twice. **Horizontally**, a line
+## wider than `box_width` wraps rather than clipping. **Vertically**, the extra row
+## that wrap produces grows SelectionLabel, and a VBoxContainer pushes everything
+## after it down — so Upgrade and Uproot leave the panel through its foot. The first
+## causes the second, but not only the first does: a detail producer that grew a third
+## `\n` would move the foot with every line still comfortably inside the box.
+##
+## `lines` is a parameter rather than a call to `selection_corpus()` so a test can hand
+## this a corpus worsened on purpose and watch the number go negative. A budget nobody
+## has ever seen fail is a budget nobody has any reason to believe.
+##
+## Measured through ONE detached Label, resolving exactly the font
+## `GardenTheme.measure` resolves — see its header for why a detached Label rather
+## than a Font loaded by path. Batched because the corpus is hundreds of strings and
+## a probe per string would be a UI built and thrown away for each one.
+static func selection_panel_budget(lines: Array[String], box_width: float,
+		room_below: float) -> Dictionary:
+	var probe := Label.new()
+	probe.add_theme_font_size_override("font_size", SELECTION_LABEL_FONT_SIZE)
+	var font: Font = probe.get_theme_font("font")
+	var font_size: int = probe.get_theme_font_size("font_size")
+	var row_height: float = 0.0
+	if font != null:
+		row_height = font.get_height(font_size) + float(probe.get_theme_constant("line_spacing"))
+	probe.free()
+
+	var widest_line: String = ""
+	var widest_px: float = 0.0
+	var tallest_text: String = ""
+	var tallest_rows: int = 0
+	var physical_lines: int = 0
+	for text: String in lines:
+		var rows: int = 0
+		for physical: String in text.split("\n"):
+			physical_lines += 1
+			var drawn: float = 0.0
+			if font != null:
+				drawn = font.get_string_size(physical, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+			if drawn > widest_px:
+				widest_px = drawn
+				widest_line = physical
+			rows += wrapped_rows(physical, font, font_size, box_width)
+		if rows > tallest_rows:
+			tallest_rows = rows
+			tallest_text = text
+	var label_height: float = maxf(SELECTION_LABEL_MIN_HEIGHT, float(tallest_rows) * row_height)
+	var stack_height: float = label_height
+	for row: float in selection_rows_below_label():
+		stack_height += float(SELECTION_SEPARATION) + row
+	return {
+		# The denominator, not the verdict. A corpus that swept nothing and a font
+		# that failed to resolve both produce a tidy zero-width worst case, which is
+		# indistinguishable from a panel with room to spare.
+		"measured": font != null and physical_lines > 0 and box_width > 0.0,
+		"texts": lines.size(),
+		"physical_lines": physical_lines,
+		"widest_line": widest_line,
+		"widest_px": widest_px,
+		"box_width": box_width,
+		"width_left": box_width - widest_px,
+		"row_height": row_height,
+		"rows": tallest_rows,
+		"tallest_text": tallest_text,
+		"label_height": label_height,
+		"stack_height": stack_height,
+		"room_below": room_below,
+		"height_left": room_below - stack_height,
+	}
 
 
 ## Puts a line on the status row. Higher `priority` wins ties and can cut a
