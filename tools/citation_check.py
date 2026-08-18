@@ -203,6 +203,18 @@ def main(argv: list[str]) -> int:
                     help="split findings into NEW and PRE-EXISTING against a snapshot")
     ap.add_argument("--baseline-write", metavar="PATH",
                     help="write the current findings as a snapshot and exit 0")
+    # DRIFT, and note these are NOT --baseline. That pair snapshots FINDINGS, so it answers
+    # "which broken citations are new". This pair snapshots the text every RESOLVED citation
+    # landed on, so it answers "did a citation that still resolves stop pointing at what it
+    # pointed at". Different questions, and overloading one flag with both would make a
+    # clean --baseline run read as evidence about drift, which it is not.
+    ap.add_argument("--snapshot", metavar="PATH",
+                    help="record what every RESOLVED citation currently lands on, and exit "
+                         "0. Take this BEFORE editing code you are also citing")
+    ap.add_argument("--against", metavar="PATH",
+                    help="report citations that still resolve but no longer land on the "
+                         "text --snapshot recorded. Citations absent from the snapshot are "
+                         "reported as NEW, never as drifted")
     args = ap.parse_args(argv[1:])
 
     targets = [Path(f) for f in (args.files or DEFAULT_FILES)]
@@ -233,6 +245,9 @@ def main(argv: list[str]) -> int:
     entries_uncited = 0
     findings: list[tuple[str, str]] = []   # (key, message)
     advisories: list[str] = []
+    # key -> the normalised text that key currently lands on. Only RESOLVED citations get an
+    # entry: an unresolved one is already a finding and has no landing to compare.
+    landed: dict[str, str] = {}
     resolved = 0
 
     for target in targets:
@@ -288,9 +303,69 @@ def main(argv: list[str]) -> int:
                                  % (path.name, md_line, k, cited, len(lines))))
                 continue
             resolved += 1
+            # NORMALISED: leading whitespace stripped, because indentation moves for reasons
+            # that have nothing to do with the claim (a block re-indented under a new `if`
+            # is not a citation going stale). Everything else is kept, including trailing
+            # comments -- a line whose comment changed is a line worth re-reading.
+            landed[k] = "\n".join(l.strip() for l in lines[start - 1:end])
             if not args.quiet:
                 body = _printable(" | ".join(l.strip()[:60] for l in lines[start - 1:end]))
                 print("  %-34s %s" % (k, body))
+
+    if args.snapshot:
+        Path(args.snapshot).write_text(
+            json.dumps(landed, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        # BOTH numbers, because they differ and the difference is not a bug. `landed` is
+        # keyed by file:start-end, so the same target cited from two entries collapses to
+        # one -- today 310 distinct targets from 351 citations. Printing only the smaller
+        # one next to a default run that says 351 reads as 41 citations gone missing.
+        print("citation_check: snapshotted %d distinct target(s) from %d resolved "
+              "citation(s) to %s. Re-run with --against that path AFTER the code edits land."
+              % (len(landed), resolved, args.snapshot))
+        return 0
+
+    if args.against:
+        sp = Path(args.against)
+        if not sp.is_file():
+            # A missing snapshot is exit 2, not a clean run. Reporting "0 drifted" against
+            # a file that does not exist is the shape every NOT COVERED line in this repo
+            # exists to prevent: it is indistinguishable from having checked.
+            print("citation_check: no snapshot at %s -- nothing to compare against, so "
+                  "nothing was checked. Take one with --snapshot BEFORE the code edits."
+                  % sp, file=sys.stderr)
+            return 2
+        try:
+            before: dict[str, str] = json.loads(sp.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            print("citation_check: snapshot %s is not readable JSON: %s" % (sp, exc),
+                  file=sys.stderr)
+            return 2
+        drifted = [(k, before[k], landed[k]) for k in sorted(landed)
+                   if k in before and before[k] != landed[k]]
+        fresh = sorted(k for k in landed if k not in before)
+        gone = sorted(k for k in before if k not in landed)
+        print("")
+        print("citation_check --against %s: %d distinct target(s) from %d resolved "
+              "citation(s), %d drifted, %d new, %d no longer resolving"
+              % (sp.name, len(landed), resolved, len(drifted), len(fresh), len(gone)))
+        for k, was, now in drifted:
+            print("DRIFTED: %s" % k)
+            print("    was: %s" % _printable(was.replace("\n", " | ")[:100]))
+            print("    now: %s" % _printable(now.replace("\n", " | ")[:100]))
+        if fresh:
+            # NEW is not a finding and must never be one: a citation written this cycle has
+            # nothing to compare against. Printed so the denominator adds up.
+            print("NEW (no snapshot entry, not drifted): %s" % ", ".join(fresh[:8])
+                  + (" ... and %d more" % (len(fresh) - 8) if len(fresh) > 8 else ""))
+        if gone:
+            print("NO LONGER RESOLVING (a finding above, not a drift): %s"
+                  % ", ".join(gone[:8]))
+        print("NOT COVERED by --against: it compares TEXT, so a citation whose target line "
+              "was edited IN PLACE reports as drifted when the claim may be fine, and one "
+              "that moved onto a line with identical text (two `return \"\"` lines) reports "
+              "as clean. It says the line is not the line you cited; whether the claim "
+              "still holds is a read, same as always.")
+        return 1 if drifted else 0
 
     if args.baseline_write:
         Path(args.baseline_write).write_text(

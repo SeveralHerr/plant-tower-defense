@@ -305,6 +305,23 @@ running a command. **Never write a work checklist into it.**
      verdict.
 3. **Before reflecting, always add to `kanban.md`** — cool new features or concrete
    improvements (UX, game juice, animations, enhancements, or full features).
+   - **Snapshot the citations BEFORE step 2's code edits, and check them after.** The
+     entries you write here cite code you changed an hour ago, and your own edits move the
+     lines out from under them. It has happened in cycles 112 and 115 — five citations, one
+     drifting by 39 lines — and `citation_check` reported clean both times, correctly, since
+     each landed somewhere real. Its own `NOT COVERED:` line used to call this "the one
+     nothing can automate"; deciding whether a line SUPPORTS a claim cannot be automated,
+     noticing it is not the line you cited can:
+
+     ```bash
+     python tools/citation_check.py --snapshot .devtools/citations.json   # before step 2
+     python tools/citation_check.py --against  .devtools/citations.json   # after step 3
+     ```
+
+     Exit 1 lists each drifted citation with its `was:` and `now:` line. A citation written
+     THIS cycle is reported as `NEW`, never as drifted — there is nothing to compare it
+     against — so the read-back by hand is still yours for anything new. This closes the
+     half that is mechanical, which is the half that kept failing.
    - **Follow `.claude/skills/kanban-idea-pass/SKILL.md`, which is not optional reading.**
      It holds the five citation rules this step used to state inline — cite a `file:line` for
      every claim about code as it is now, search for the BEHAVIOUR not one implementation of

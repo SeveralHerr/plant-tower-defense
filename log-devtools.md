@@ -7377,3 +7377,41 @@ status rather than rewriting the entries that recorded these as open.
   that silently was not placed. `find-nodes --class Aloe --property cell` returning
   `0 node(s) matched` is what caught it. **Read the placement's own reply, or ask the tree —
   do not assume a `cmd place_plant` landed.**
+
+## 2026-08-18 — cycle 116: disputing a NOT COVERED line, and finding it was half right
+
+- Value: **warranted** — the two controls are the whole verification and one of them would
+  have been vacuous without reading a denominator on the SETUP run.
+  - Expected: `citation_check`'s own `NOT COVERED:` line calls drift "the one nothing can
+    automate". Predicted: the undecidable half is whether a line SUPPORTS a claim; whether
+    it is the SAME line is a string comparison. A snapshot of the landed text should catch
+    the exact cycle-112 and cycle-115 failures.
+  - Got: it does. Inserting one line above a cited line reports
+    `DRIFTED: game/bramble.gd:120-120 / was: super.take_damage(...) / now: func
+    take_damage(...)`, exit 1; reverting returns exit 0; a missing snapshot is exit 2 rather
+    than a clean "0 drifted".
+  - Found: three, and none of them was the feature.
+    **(1) Confirming the premise stopped me overloading an existing flag.**
+    `citation_check` already has `--baseline`/`--baseline-write` and I nearly reused them.
+    They snapshot **findings** — "which broken citations are new". Drift is about citations
+    that still **resolve**. One flag meaning both would have made a clean `--baseline` run
+    read as evidence about drift, which it is not.
+    **(2)** the new mode's denominator contradicted the tool's existing one: **310 against
+    351**, because `landed` is keyed by `file:start-end` so a target cited from two entries
+    collapses to one. Correct behaviour; printing only the smaller number beside a default
+    run saying 351 reads as 41 citations gone missing. Both numbers now print in both modes.
+    **(3)** the fixture had to cite a REPO-RELATIVE path — an absolute Windows path's drive
+    colon is not matched by the `CITATION` regex, so the first fixture reported
+    `0 citation(s), 0 resolved` and **both controls would have been vacuous**. Caught by
+    reading the denominator on the setup run, not on the assertion.
+  - Cheaper: nothing. The two controls are one command each, and a drift detector that
+    cannot fire is exactly the failure this repo's fixture rule exists for.
+
+- **The tool is wired into step 3, not just written.** Cycle 111's whole lesson was that
+  `.claude/surveys/` held three scripts nobody ran; shipping a checker without a caller
+  repeats it one directory over. Step 3 now carries the snapshot-before / check-after pair
+  with the reason.
+
+- Gap: **no gap this turn.** Tier (f) tooling-only, and this is the first cycle where the
+  triage rule added last cycle was applied to *decline* a launch rather than to justify one:
+  nothing under `res://` changed, so no Godot phase could have spoken to it.
