@@ -61,11 +61,12 @@ lock, stdlib only. Exit codes follow the house contract: 0 clean, 1 findings, 2 
 not run.
 
 THE SOURCE BLANKER IS BORROWED, DELIBERATELY. See the import below: this file owns no
-copy of `strip_comments`/`first_arg_span`. It prefers `tools/gdsource.py` and falls back
-to `message_corpus_check`'s originals until that module lands. Both halves matter on
-this corpus -- `game/nettle.gd:240` and `game/chomp_flower.gd:441` both write
-`Sfx.play()` inside a COMMENT, and counting either as a call site puts an unresolvable
-argument into the run.
+copy of `strip_comments`/`first_arg_span`. They come from `tools/gdsource.py`, and this
+file asks for `strings=BLANK` rather than taking the default. Both halves matter on this
+corpus -- `game/nettle.gd:240` and `game/chomp_flower.gd:441` both write `Sfx.play()`
+inside a COMMENT, and counting either as a call site puts an unresolvable argument into
+the run; a `Sfx.play(` inside a string literal would do the same, which is what the
+BLANK mode is for and what the KEEP default would let through.
 
     fixture:   13 cases, run out of tree, baseline exit 1 with exactly 5 findings -
                a covered id / a played id with no SOUNDS row / a SOUNDS row nothing plays
@@ -141,14 +142,17 @@ import repo_walk
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(errors="replace")
 
-# The shared source blanker. `tools/gdsource.py` is where these live once the
-# refactor that gathers them lands; until then the originals are the copy in
-# message_corpus_check, imported rather than duplicated. Deleting the fallback is a
-# one-line change and nothing else in this file moves.
-try:
-    from gdsource import first_arg_span, strip_comments
-except ImportError:  # pragma: no cover - the state of the tree before gdsource.py
-    from message_corpus_check import first_arg_span, strip_comments
+# The shared source blanker, which now lives in tools/gdsource.py. The fallback that
+# stood here until plant-tower-defense-g1j9 landed imported message_corpus_check's own
+# copy; that copy no longer exists, so the fallback would have raised rather than
+# fallen back. Removed rather than repointed.
+#
+# `strings=BLANK` is NOT the default and must be passed. gdsource.strip_comments
+# defaults to KEEP, which leaves string BODIES intact -- and the two modes differ on 40
+# of this repo's 44 game/*.gd files. This file was written and mutation-tested against
+# the blanking behaviour, so taking the default would silently count a `Sfx.play(`
+# written inside a string literal as a real call site.
+from gdsource import BLANK, first_arg_span, strip_comments
 
 CALL = "Sfx.play("
 TABLE = "SOUNDS"
@@ -361,9 +365,16 @@ def main() -> int:
     except (OSError, UnicodeDecodeError) as exc:
         print("sfx_call_check: cannot read %s (%s)" % (sfx_path, exc), file=sys.stderr)
         return 2
-    sfx_blank = strip_comments(sfx_raw)
+    sfx_blank = strip_comments(sfx_raw, strings=BLANK)
+    # CONST_DECL needs the `&` of `&"..."` -- the StringName prefix is what separates an
+    # event id from an ordinary String const, and BLANK blanks the prefix along with the
+    # body. So the declarations are matched against a comments-only pass, where the `&`
+    # survives. The offsets are the SAME string index either way: gdsource is exactly
+    # length-preserving in every mode, which is what makes reading one pass and
+    # measuring against the other legitimate rather than a coincidence.
+    sfx_decls = strip_comments(sfx_raw)
 
-    consts = {m.group(1): line_of(sfx_blank, m.start()) for m in CONST_DECL.finditer(sfx_blank)}
+    consts = {m.group(1): line_of(sfx_blank, m.start()) for m in CONST_DECL.finditer(sfx_decls)}
     values = {m.group(2): m.group(1) for m in CONST_VALUE.finditer(sfx_raw)}
     if not consts:
         print("sfx_call_check: %s declares no `const X := &\"...\"` event ids - cannot "
@@ -411,7 +422,7 @@ def main() -> int:
             raw = read(path)
         except (OSError, UnicodeDecodeError):
             continue
-        code = strip_comments(raw)
+        code = strip_comments(raw, strings=BLANK)
         raw_lines = raw.split("\n")
         for m in re.finditer(re.escape(CALL), code):
             sites += 1
