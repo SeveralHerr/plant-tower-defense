@@ -8157,7 +8157,12 @@ func _kernels_under(host: Node) -> int:
 ## same observation, and only a cob that has NOT fired can tell them apart.
 func test_a_cob_points_at_the_pest_it_will_shoot_before_it_shoots_it() -> String:
 	var corn := CornCobbler.new()
-	var aphid: Pest = _pest(Pest.APHID, Vector2(0.0, -100.0))
+	# OUT of RANGE for the settle. instantiate_scene pumps frames before the line
+	# below can switch physics off, so an aphid parked in reach is already aimed at
+	# by the time the "never seen a pest" assertion runs -- it read -PI/2, the exact
+	# direction of a pest the test had put directly overhead. The precondition has to
+	# survive the settle or it is not a precondition.
+	var aphid: Pest = _pest(Pest.APHID, Vector2(0.0, -400.0))
 	var host: Node2D = _host([corn, aphid])
 	await _T.instantiate_scene(host)
 	corn.set_physics_process(false)
@@ -8166,6 +8171,8 @@ func test_a_cob_points_at_the_pest_it_will_shoot_before_it_shoots_it() -> String
 
 	var err: String = _T.assert_float_eq(corn.aim_angle(), 0.0, 0.0001,
 		"a cob that has never seen a pest sits on its initial angle")
+	# Now walk it into reach, by hand, with the cob frozen.
+	aphid.position = Vector2(0.0, -100.0)
 	var pests: Array[Pest] = [aphid]
 	corn._act(0.016, pests)
 	if err == "":
@@ -8211,12 +8218,19 @@ func test_the_fan_and_the_volley_are_pointed_at_the_same_pest() -> String:
 	# gives every pest a two-point route, so both of these read progress 1.0 and the
 	# chosen one is the one listed first. Deliberate: the point is that the DECOY is
 	# somewhere the fan must not be.
-	var chosen: Pest = _pest(Pest.APHID, Vector2(-120.0, 0.0))
-	var decoy: Pest = _pest(Pest.APHID, Vector2(0.0, 120.0))
+	# Both parked OUT of RANGE (176) for the settle. instantiate_scene pumps frames
+	# before physics can be switched off, so pests placed in reach let the cob fire a
+	# whole volley of its own before the _act below -- the kernel count then reads two
+	# volleys and the test fails on a number that has nothing to do with aiming.
+	var chosen: Pest = _pest(Pest.APHID, Vector2(-420.0, 0.0))
+	var decoy: Pest = _pest(Pest.APHID, Vector2(0.0, 420.0))
 	var host: Node2D = _host([corn, chosen, decoy])
 	await _T.instantiate_scene(host)
 	corn.set_physics_process(false)
 	corn._cooldown = 0.0
+	# Walked into reach by hand, with the cob frozen.
+	chosen.position = Vector2(-120.0, 0.0)
+	decoy.position = Vector2(0.0, 120.0)
 
 	var pests: Array[Pest] = [chosen, decoy]
 	corn._act(0.016, pests)

@@ -11,6 +11,14 @@ extends CanvasLayer
 
 signal plant_selected(id: StringName)
 signal packet_requested(tier: StringName)
+
+## The cursor arrived on (or left, with &"") a plant's shop entry. Hover and not
+## press, for the reason _on_packet_hover already gives: "where would this plant be
+## useless" is a question asked BEFORE buying, and a cue you only get by spending
+## seeds is not a cue. Fires on a DISABLED button too, which is the case that
+## matters most -- a plant you have not unlocked is exactly the one you are pricing
+## up (plant-tower-defense-tzz7).
+signal plant_hovered(id: StringName)
 signal next_wave_requested
 signal upgrade_requested
 signal uproot_requested
@@ -892,6 +900,10 @@ var _banner_note: Label
 var _fx_layer: Container
 
 var _plant_buttons: Dictionary = {}
+## Which plant button the cursor is on, &"" for none. Needed because two adjacent
+## buttons in the GridContainer can fire mouse_exited(A) AFTER mouse_entered(B),
+## which with a bare &"" on exit would blank a hover that had just started.
+var _hovered_plant: StringName = &""
 ## The packet tier the cursor is currently resting on, or &"" for none. Drives the
 ## plant bar's hint tint — see plant_button_tint.
 var _packet_hint_tier: StringName = &""
@@ -1334,6 +1346,8 @@ func _build_side_panel(root: Control) -> void:
 		# away again as the answer changes.
 		button.tooltip_text = plant_button_tooltip(id, &"")
 		button.pressed.connect(_on_plant_button.bind(id))
+		button.mouse_entered.connect(_on_plant_hover.bind(id, false))
+		button.mouse_exited.connect(_on_plant_hover.bind(id, true))
 		_plant_bar.add_child(button)
 		_plant_buttons[id] = button
 
@@ -1957,6 +1971,18 @@ static func design_height() -> int:
 
 func _on_plant_button(id: StringName) -> void:
 	plant_selected.emit(id)
+
+
+## Order-independent: an exit only clears the hover if it is the button that
+## currently owns it, so entering B before leaving A cannot blank B.
+func _on_plant_hover(id: StringName, leaving: bool) -> void:
+	if leaving:
+		if _hovered_plant != id:
+			return
+		_hovered_plant = &""
+	else:
+		_hovered_plant = id
+	plant_hovered.emit(_hovered_plant)
 
 
 func _on_packet_button(tier: StringName) -> void:

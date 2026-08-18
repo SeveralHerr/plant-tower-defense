@@ -86,6 +86,10 @@ var victory: bool = false
 
 var _entities: Node2D
 var _cursor: ColorRect
+## The shop entry the cursor is on, &"" for none. Decides which question the
+## board's dead-ground marks answer: this plant's, or the whole garden's
+## (plant-tower-defense-tzz7 / -g8kc).
+var _hovered_shop_plant: StringName = &""
 var _preview: PlacementPreview
 ## Last cell the cursor was over, or x < 0 for "off the board". Kept so the
 ## preview can be re-drawn on events that are not mouse motion.
@@ -299,6 +303,7 @@ func _ready() -> void:
 	compost.husk_rotted.connect(_on_husk_rotted)
 
 	hud.plant_selected.connect(_on_plant_chosen)
+	hud.plant_hovered.connect(_on_plant_hovered)
 	hud.packet_requested.connect(_on_packet_requested)
 	# Through a handler rather than straight onto start_next_wave(), so the
 	# mutator underneath stays unguarded for the devtools verb, the prep-timer
@@ -1269,6 +1274,13 @@ func summary_stats(new_record: bool) -> Dictionary:
 		# evidence" rather than as "every one of them was fought".
 		"escapes_recorded": _escapes_recorded,
 		"escapes_untouched": _escapes_untouched,
+		# The coverage half of "covered is not engaged", read off the same derived
+		# map the hover cue and the lane overlay use rather than recomputed, so the
+		# card cannot disagree with the board about which ground was aimed at.
+		# RunSummary.reach_note_text() is silent without both of these
+		# (plant-tower-defense-b7v5).
+		"road_aimed": covered_road_cells().size(),
+		"road_cells": board.road_cells().size(),
 	}
 
 
@@ -1295,6 +1307,32 @@ func _on_plant_chosen(id: StringName) -> void:
 
 ## Single point of truth for `selected_placed` — flips the range-ring/selection
 ## flag on the outgoing and incoming plant so exactly one plant ever shows it.
+
+## The board's dead-ground marks, repushed. One question at a time: with a shop
+## entry hovered the board answers about THAT plant (tzz7); with nothing hovered it
+## answers about the garden the player already owns (g8kc). Never both, which is why
+## board_dead_cells() returns one list rather than two -- two bars on that angle is
+## PlacementPreview's redundant-patch cue, a different sentence.
+func _refresh_dead_ground() -> void:
+	if board == null or not is_instance_valid(board):
+		return
+	board.mark_dead_ground(
+		PlacementPreview.board_dead_cells(board, _hovered_shop_plant, bank.unlocked),
+		PlacementPreview.dead_bar_arm(),
+		PlacementPreview.board_dead_color(),
+		PlacementPreview.DEAD_BAR_WIDTH)
+
+
+## Applied straight away rather than left for the next _refresh(), for the reason
+## Hud._on_packet_hover spells out: a mouse crossing a button changes no state, so
+## waiting for a refresh would light the board only when something else happens to
+## happen, which is indistinguishable from a bug.
+func _on_plant_hovered(id: StringName) -> void:
+	if id == _hovered_shop_plant:
+		return
+	_hovered_shop_plant = id
+	_refresh_dead_ground()
+
 func _select(plant: Plant) -> void:
 	if selected_placed != null and is_instance_valid(selected_placed):
 		selected_placed.set_selected(false)
@@ -2199,6 +2237,10 @@ func _refresh() -> void:
 	# the ones where a plant was bought, uprooted or eaten.
 	if board != null and is_instance_valid(board):
 		board.mark_unaimed_road(uncovered_road_cells())
+		# The dead-ground marks read the garden's unlocks, so they move when a packet
+		# is opened -- not only when the cursor moves. Same funnel and the same
+		# early-return discipline as mark_unaimed_road above.
+		_refresh_dead_ground()
 		# The preview's new-cover dots read the same set, and pushing it only from
 		# _update_preview would leave them stale whenever the garden changes while
 		# the cursor is STILL — a plant eaten mid-wave, an uproot committing, a

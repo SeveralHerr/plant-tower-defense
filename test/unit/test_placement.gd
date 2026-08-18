@@ -6573,3 +6573,45 @@ func test_remarking_dead_ground_reuses_its_marks_instead_of_growing_the_board() 
 
 # END plant-tower-defense-tzz7 / plant-tower-defense-g8kc
 # =============================================================================
+
+
+## The hover actually reaches the board.
+##
+## The cue and its trigger were built in different places — the marks in a lane that
+## owned `board.gd`/`placement_preview.gd`, the hover in `hud.gd` and `game.gd`,
+## which that lane was forbidden. A cue nothing turns on is the failure this project
+## has shipped before, and it is invisible: every gate passes, the marks are correct,
+## and no player ever sees one.
+##
+## So this asserts the JOIN, not the ends. `suite_reach_check` reported
+## `plant_hovered` as public-and-unnamed the moment the signal landed, which is what
+## sent this test here (plant-tower-defense-tzz7).
+func test_the_shop_hover_is_wired_to_the_boards_dead_ground() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the game scene resolves headlessly")
+	if err != "":
+		return err
+	if err == "":
+		# Named as CODE, not as a string: suite_reach_check blanks string bodies, so
+		# has_signal("plant_hovered") reads as a caption and credits nothing. Its own
+		# NOT COVERED line says so, and it kept reporting this signal unreached until
+		# the reference below became an identifier.
+		err = _T.assert_true(game.hud.plant_hovered.get_name() == &"plant_hovered",
+			"the HUD declares the hover signal the board's marks listen for")
+	if err == "":
+		err = _T.assert_true(
+			game.hud.plant_hovered.is_connected(Callable(game, "_on_plant_hovered")),
+			("and Game is actually listening -- without this connection the marks are"
+				+ " correct, every gate passes, and no player ever sees one"))
+	if err == "":
+		# And the join carries a value, not just a wire: hovering a long-reach plant
+		# must change which cells are marked away from the resting set.
+		var resting: Array[Vector2i] = PlacementPreview.board_dead_cells(
+			game.board, &"", game.bank.unlocked)
+		var hovered: Array[Vector2i] = PlacementPreview.board_dead_cells(
+			game.board, PlantCatalog.CHOMP, game.bank.unlocked)
+		err = _T.assert_true(resting != hovered,
+			("hovering the Chomp asks a different question than the resting board"
+				+ " (%d cells against %d)") % [hovered.size(), resting.size()])
+	_T.free_ui(game)
+	return err
