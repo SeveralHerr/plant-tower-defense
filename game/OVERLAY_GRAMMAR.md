@@ -116,8 +116,19 @@ HUD's ramps; the board's cues never needed it because they were built to survive
 
 ## How this was derived
 
-`grep -n "draw_arc(\|draw_circle(\|draw_line(\|draw_rect(" game/*.gd` returns 55 calls
-across 15 files. Most are sprites drawing themselves (`sunflower.gd`, `seed_glyph.gd`,
+`grep -n "draw_arc(\|draw_circle(\|draw_line(\|draw_rect(" game/*.gd` returns **80 calls
+across 20 files** (it said 55 across 15 when this was written).
+
+**AND THAT GREP IS BLIND TO TWO OF THE CUES ON THIS PAGE.** `Board.mark_dead_ground` and
+`Board.mark_deferred_road` paint `Line2D` children rather than calling `draw_*`, which
+`board.gd`'s own header explains was deliberate: "a `_draw()` here would be a cue no gate
+could ever see" headlessly. So the recipe misses precisely the two marks that were built
+to be checkable, and a survey run from it would report the board as drawing fewer cues
+than it does. **Grep `Line2D.new()` as well.** Found by plant-tower-defense-wenx while
+pricing a seventh legend row; the full diff is in `game/cue_legend.gd`'s audit block.
+
+Also unrecorded here: `lane_pressure_overlay.gd`'s hatch matches none of the ten shapes
+above. That is a cue with no row — a hole in this table rather than in the legend. Most are sprites drawing themselves (`sunflower.gd`, `seed_glyph.gd`,
 `title_backdrop.gd`, `notebook_page.gd`) and are not cues. The cue files are
 `placement_preview.gd`, `selection_marker.gd`, `sole_cover_marks.gd`,
 `lane_pressure_overlay.gd`, `husk_layer.gd`, and the range rings inside the four plants.
