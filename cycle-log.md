@@ -1,4 +1,4 @@
-# Cycle 114
+# Cycle 115
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,40 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 115 taught
+
+**The argument was already written down, three lines above the bug.** `idle_detail()` says
+"Idle — waiting for a pest", and every plant without its own branch gets it — which is Mint,
+Aloe and Nettle. Mint speeds its neighbours and Aloe repairs them; **neither can touch a
+pest at all**, and both had been announcing that they were waiting for one. The Sundew got
+its own line for exactly this reason and the comment saying why sits directly above the
+fall-through: *"'Idle' was simply the wrong word for the one plant that cannot be."* Right,
+and never extended when Mint and Aloe landed two cycles later.
+
+**The shape that makes a sentence safe, counted rather than felt.** Of 33 producers in
+`hud.gd`, **21 interpolate the thing they describe** and therefore cannot outlive it. Every
+defect found in two cycles of looking has been in the handful that name a MECHANISM in prose
+— "a hungry pest", "waiting for a pest". That is a review heuristic and not a gate:
+`-u9zb`'s close records the decision that accuracy cannot be mechanised, because there is no
+shared vocabulary between English and code to check.
+
+**Fixed as a rule, not as three cases.** The new test drives off `PlantCatalog.engages()`
+over the whole catalogue, so the tenth plant inherits the rule rather than the bug. That was
+only available because `engages` already means exactly "can this touch a pest" — the claim
+the sentence makes. Worth noticing as luck rather than design.
+
+**I have been launching out of habit.** Four of six cycles launched, and in two the ledger's
+own `cheaper_alternative` records that the launch only re-confirmed what a headless test had
+already asserted — because the test hosted the real scene and read the real node. Step 2 now
+says the launch decision belongs to `/verify`'s triage table, and gives the question that
+settles it: **name the claim the launch will make that the suite structurally cannot.**
+
+**Citation drift is not unautomatable, and the checker says it is.** All three new citations
+drifted this cycle under my own edits, by 39, 8 and 39 lines; `citation_check` reported
+351 of 351 clean, correctly, since each landed on a real line. Deciding whether a line
+SUPPORTS a claim cannot be automated. Noticing that it is not the line it pointed at before
+can. Filed as `-5sxj`.
 
 ## What cycle 114 taught
 

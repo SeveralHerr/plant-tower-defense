@@ -4132,3 +4132,36 @@ Three findings kept out here rather than buried in a log:
   Taste, no citation offered: leave it. If it ever reads as a pop, the fix is to align the
   swap to the flinch's peak rather than to add a tween — the frame changing at the moment
   the plant is already moving hides the cut for free.
+
+### New in cycle 115 — grown from reading all 33 HUD sentences
+
+- **A sentence that interpolates what it describes cannot outlive it; one that names a
+  mechanism in prose can.** This is the residue of `-u9zb`'s sweep and it is the only
+  reviewable rule that came out of it. Counted rather than estimated: of the 33 producers in
+  `game/hud.gd` matching the sentence-producer pattern, **21 interpolate the thing they are
+  describing** — `corn_detail` ("%.1f dmg / %.2fs, %d kernel(s)"), `sundew_detail`
+  ("Slowing %d pest(s) to %d%% speed."), `wave_cleared_note` ("%d pests turned back.") and
+  so on. A retune moves the number and the sentence follows. Every defect found in two
+  cycles of looking has been in the handful that name a mechanism instead:
+  `eaten_message`'s "A hungry pest" (fixed cycle 112, `game/hud.gd:3602`) and
+  `idle_detail`'s "waiting for a pest" (fixed cycle 115, `:2444`).
+  Not a checker — `-u9zb`'s close records why, and the short version is that accuracy is a
+  claim about the relationship between English and code with no shared vocabulary to check.
+  What it is worth is one line in `message_corpus()`'s header: **prefer interpolating the
+  thing you are describing over naming it**, so the next producer is written in the safe
+  shape rather than audited into it two cycles later.
+
+- **The one-shot teaching tips name a single answer where the catalogue now has three.**
+  `Hud.flight_tip` (`game/hud.gd:3478`) reads "That pest flies over Chomp Flowers. Corn
+  Cobblers can still hit it." Both halves are true. But a winged pest is also reachable by
+  the Bomb Dandelion (its blast hits whatever is standing there) and by the Prickly Nettle,
+  which exists *specifically* to sting the mutations — armoured, winged, hungry — and whose
+  notebook card says so.
+  So the tip is accurate and narrow, and narrowing may be correct: it is shown once, to a
+  player watching a specific bug walk over a specific mouth, and "Corn Cobblers can still
+  hit it" is more memorable than a list of three. The entry is not "fix it" — it is that
+  **nobody has decided** whether a teaching line should name the cheapest answer or the
+  complete one, and there are three such lines (`flight_tip`, `upgrade_tip`, the move tip)
+  that will all face the same question as the catalogue grows.
+  Taste: name the cheapest answer, always, and let the notebook carry the complete one —
+  which is what the notebook cards are already for.

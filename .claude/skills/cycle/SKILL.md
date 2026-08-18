@@ -238,6 +238,18 @@ running a command. **Never write a work checklist into it.**
      history rather than the working tree** and cannot see an uncommitted break. Only a real
      compile does: `lint_project.gd` caught it at exit 1 with `Parse Error`. That is the
      whole reason a fan-out lane, which gets no compile, is not "verified".
+   - **WHETHER to launch is `/verify`'s triage table's decision, not a mood.** This step
+     tells you what to do once the game is up and never said when to bring it up, so the
+     default became "it is player-facing, therefore look at it". Cycles 110-115 launched in
+     four of six, and in TWO of those the ledger row's own `cheaper_alternative` field
+     records that the launch only re-confirmed what a headless test had already asserted —
+     because the test hosted the real scene and read the real node. That is what tier (c)
+     in the triage table is for, and the table is one read.
+     The question that decides it: **name the claim the launch will make that the suite
+     structurally cannot.** "The frame swaps when a REAL pest chews, not when a test writes
+     `health`" is such a claim and was worth a launch. "The Label says the right string" is
+     not, when a test already instantiates the scene and reads that Label. If you cannot
+     name one, the honest tier is headless-only and the row should say so.
    - **If the cycle launched the game at all, run `findings` before quitting it.** It is
      the harness's headline check — every zero-config check at once against the live tree
      — and it was last run in cycle 48. Twelve cycles of runtime work went past on
