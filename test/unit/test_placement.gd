@@ -3075,6 +3075,7 @@ func test_the_budgets_verb_reports_every_declared_coupling() -> String:
 	# shows up here as a number that moved.
 	var wanted: Array[String] = [
 		"husk_click",
+		"packet_rack",
 		"run_summary_values",
 		"notebook_subhead",
 		"hud_readouts",
@@ -3084,7 +3085,7 @@ func test_the_budgets_verb_reports_every_declared_coupling() -> String:
 		"pest_road_ceiling",
 		"road_shape",
 	]
-	err = _T.assert_eq(wanted.size(), 9, "there are nine budgets to look for")
+	err = _T.assert_eq(wanted.size(), 10, "there are ten budgets to look for")
 	if err == "":
 		err = _T.assert_eq(int(data["count"]), wanted.size(),
 			"the verb reports exactly that many -- got %d" % int(data["count"]))

@@ -2544,6 +2544,13 @@ const BUDGET_SPENT_BY_DESIGN: String = "spent_by_design"
 ## that has quietly stopped running.
 const BUDGET_FLOOR: Dictionary = {
 	"husk_click": 4.0,
+	# 53px, and roomy on purpose (plant-tower-defense-0y0w). The rack's widest label
+	# is "Common Packet (20)" at 179 of 232px, and a price would have to gain four
+	# digits to close that -- so this floor is not guarding today's margin, it is
+	# guarding a FOURTH TIER with a longer name, which is the only realistic way the
+	# rack ever overflows. Declared at 40 rather than at 53 so a modest retune does
+	# not trip it; a new tier that eats 140px will.
+	"packet_rack": 40.0,
 	# FIVE PIXELS, on a surface where running out would have been silent
 	# (plant-tower-defense-wf4i, justified by -yoc2's verdict).
 	#
@@ -2647,6 +2654,7 @@ func check_budgets() -> Dictionary:
 func budget_entries(sweep: int = BUDGET_WAVE_SWEEP) -> Array[Dictionary]:
 	var entries: Array[Dictionary] = [
 		_budget_husk_click(),
+		_budget_packet_rack(),
 		_budget_run_summary_values(),
 		_budget_hud_readouts(),
 		_budget_hud_message_row(),
@@ -2923,6 +2931,46 @@ func _budget_hud_message_row() -> Dictionary:
 		("a message renders trimmed to an ellipsis and nothing errors -- shorten the "
 			+ "message, shorten the name, or widen the row (\"%s\")") % worst,
 		no_budget_observations())
+
+
+## What running the packet rack out of width costs, and what to do about it.
+##
+## A constant rather than a literal inside `_budget_packet_rack` because the test that
+## proves this budget CAN fail has to rebuild the entry with a worsened width, and an
+## assertion against a sentence the test itself typed proves nothing. Both sides read
+## this, so the test checks that the production consequence reaches the warning.
+const PACKET_RACK_WHEN_FULL: String = (
+	"a packet label outgrows the fixed 232px button it is drawn in. The button "
+	+ "cannot grow to fit -- packet_row_rect hands it a size -- so nothing pushes and "
+	+ "no layout gate sees it. Shorten the tier's display name in "
+	+ "SeedBank.PACKET_TIERS, or widen PANEL_WIDTH, which every other panel budget "
+	+ "also divides by")
+
+
+## The packet rack's widest label against the fixed rect it is drawn into.
+##
+## Needs no live node, like the run summary's: `Hud.packet_rack_budget()` sweeps
+## `SeedBank.PACKET_ORDER` and measures in the theme's Button font. The rack is the
+## ONLY content-driven text in the side panel — the plant buttons are icon-only with
+## their names in tooltips, which have no slot to overflow. See
+## `Hud.packet_rack_corpus`'s header for why the rest of the panel is not priced.
+func _budget_packet_rack() -> Dictionary:
+	var priced: Dictionary = Hud.packet_rack_budget()
+	var corpus: Array[String] = Hud.packet_rack_corpus()
+	var observations: Array[String] = [
+		("widest of %d label(s) is \"%s\" at %s of %s px" % [
+			corpus.size(), String(priced["text"]),
+			budget_number(float(priced["needed"])), budget_number(float(priced["slot"])),
+		]),
+		("%d tier(s) in SeedBank.PACKET_ORDER x 2 stock states, at font size %d" % [
+			SeedBank.PACKET_ORDER.size(), GardenTheme.BUTTON_FONT_SIZE,
+		]),
+	]
+	return computed_budget("packet_rack", "Hud.packet_row_rect().size.x",
+		"res://game/hud.gd", "the packet rack's widest label",
+		float(priced["needed"]), float(priced["slot"]), "px",
+		"Hud.packet_rack_budget() over Hud.packet_rack_corpus()",
+		PACKET_RACK_WHEN_FULL, observations)
 
 
 ## The run summary's value column against the widest string it can print.

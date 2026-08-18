@@ -594,6 +594,57 @@ static func packet_button_name(tier: StringName) -> String:
 ## and would have overflowed the row it was added to fix. "Common — Empty" is 14,
 ## ~126px, and the packet icon beside it is what still says "packet".
 ##
+## Every label the packet rack can carry, swept over `SeedBank.PACKET_ORDER` in both
+## stock states — the corpus its budget reads (plant-tower-defense-0y0w).
+##
+## THE REST OF THE SIDE PANEL NEEDS NO CORPUS, and that is the finding rather than an
+## omission. `0y0w` asked to price the panel as "the widest column of text in the game
+## — plant names, blurbs and prices". It is not, and mostly it is not text at all:
+##
+##   * the plant buttons are ICON-ONLY (`button.icon`, `expand_icon`); their names and
+##     blurbs live in `tooltip_text`, and a tooltip is a floating popup with no slot to
+##     overflow, nothing to clip against and nothing to push;
+##   * the heading is the literal "Garden";
+##   * the SelectionBox is already priced, by `hud_selection_panel` (-r722).
+##
+## What is left is this rack: content-driven text (tier names crossed with prices
+## crossed with stock state) inside the FIXED 232 px rect `packet_row_rect` hands it.
+## Fixed is the operative word — these buttons cannot grow to fit, so an over-long
+## label does not push the layout where a gate would see it. That is the
+## `.claude/corpus-checking-verdict.md` rule applied: not clipping exactly, but the
+## same silence for the same reason.
+##
+## Swept rather than listed so a FOURTH tier is priced the day it is added, which is
+## the only realistic way this ever breaks — the widest label today is 179 of 232 px
+## and a price would have to gain four digits to close that.
+static func packet_rack_corpus() -> Array[String]:
+	var out: Array[String] = []
+	for tier: StringName in SeedBank.PACKET_ORDER:
+		for stock: int in [3, 0]:
+			var text: String = packet_button_text(tier, stock)
+			if text != "" and not out.has(text):
+				out.append(text)
+	return out
+
+
+## The widest packet label against the rack it is drawn into.
+## `{"text": String, "needed": float, "slot": float, "left": float}`.
+static func packet_rack_budget() -> Dictionary:
+	var slot: float = packet_row_rect(0).size.x
+	var worst: String = ""
+	var needed: float = 0.0
+	for text: String in packet_rack_corpus():
+		# GardenTheme.BUTTON_FONT_SIZE, not a number typed here: these buttons set no
+		# font override, so they render at the theme's Button size. Measuring at any
+		# other size prices a rack that does not exist — an earlier pass of this used
+		# 15 and reported 149 px for something that draws 179.
+		var width: float = GardenTheme.measure(text, GardenTheme.BUTTON_FONT_SIZE)
+		if width > needed:
+			needed = width
+			worst = text
+	return {"text": worst, "needed": needed, "slot": slot, "left": slot - needed}
+
+
 ## `stock` is packet_pool(tier).size() — derived, never a flag someone has to
 ## remember to set, so a tier that empties mid-run cannot forget to say so.
 static func packet_button_text(tier: StringName, stock: int) -> String:

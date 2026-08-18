@@ -16857,3 +16857,78 @@ func test_a_worsened_run_summary_value_falls_through_its_floor() -> String:
 
 # END plant-tower-defense-wf4i
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-0y0w: the packet rack, and why the rest of the panel
+# is not priced
+#
+# The bead asked to price the side panel as "the widest column of text in the
+# game — plant names, blurbs and prices". It is none of those things. The plant
+# buttons are ICON-ONLY and carry their names and blurbs in `tooltip_text`, which
+# is a floating popup with no slot to overflow; the heading is a literal; the
+# SelectionBox is already priced by -r722. What is genuinely at risk is the packet
+# rack, and only because `packet_row_rect` hands those buttons a FIXED width — a
+# button that cannot grow cannot push, so no layout gate would see it overflow.
+# =============================================================================
+
+## The rack's widest label fits the button it is drawn in, and the sweep is real.
+func test_the_packet_rack_label_fits_the_button_it_is_drawn_in() -> String:
+	var priced: Dictionary = Hud.packet_rack_budget()
+	var corpus: Array[String] = Hud.packet_rack_corpus()
+	# Two states per tier, and asserted against PACKET_ORDER rather than a number,
+	# so a fourth tier is priced the day it arrives instead of the day it breaks.
+	var err: String = _T.assert_eq(corpus.size(), SeedBank.PACKET_ORDER.size() * 2,
+		("the corpus is every tier in both stock states (%d of %d expected) -- a short "
+			+ "sweep prices a rack that is not the one on screen")
+			% [corpus.size(), SeedBank.PACKET_ORDER.size() * 2])
+	if err == "":
+		err = _T.assert_float_eq(float(priced["slot"]), Hud.packet_row_rect(0).size.x,
+			0.01, "the budget measures against the rect the rack actually draws into")
+	if err == "":
+		err = _T.assert_gte(float(priced["left"]), 0.0,
+			("the widest label \"%s\" draws %.0f of %.0f px")
+				% [String(priced["text"]), float(priced["needed"]),
+					float(priced["slot"])])
+	return err
+
+
+## A fourth tier with a long name falls through the floor — the case this exists for.
+##
+## Not "a price grows": the widest label is 179 of 232 px and a price would have to
+## gain four digits to close that. The realistic break is a NEW TIER, which is why
+## the corpus sweeps `PACKET_ORDER` instead of listing three strings.
+func test_a_long_named_packet_tier_falls_through_the_racks_floor() -> String:
+	var priced: Dictionary = Hud.packet_rack_budget()
+	var err: String = _T.assert_true(Game.BUDGET_FLOOR.has("packet_rack"),
+		"the rack has a declared floor to fall through")
+	if err != "":
+		return err
+
+	# Built the way a real tier would read, not padded with filler.
+	var invented: String = "Heirloom Collector's Packet (250)"
+	var needed: float = GardenTheme.measure(invented, GardenTheme.BUTTON_FONT_SIZE)
+	err = _T.assert_gt(needed, float(priced["slot"]),
+		("a plausible fourth tier really is too wide: %.0f against a %.0f px button")
+			% [needed, float(priced["slot"])])
+	if err == "":
+		var entry: Dictionary = Game.computed_budget("packet_rack",
+			"Hud.packet_row_rect().size.x", "res://game/hud.gd",
+			"the packet rack's widest label",
+			needed, float(priced["slot"]), "px", "Hud.packet_rack_budget()",
+			Game.PACKET_RACK_WHEN_FULL, Game.no_budget_observations())
+		# Filtered: budget_regressions grades a SET and warns about every declared
+		# floor nothing measured, so one entry handed to it complains about the rest.
+		var mine: Array[String] = []
+		for line: String in Game.budget_regressions([entry]):
+			if line.contains("packet_rack"):
+				mine.append(line)
+		err = _T.assert_eq(mine.size(), 1, "exactly one warning is mine: %s" % str(mine))
+		if err == "":
+			err = _T.assert_true(mine[0].contains("cannot grow"),
+				("and it says WHY nothing else would catch it, which is the whole "
+					+ "reason this budget exists: %s") % mine[0])
+	return err
+
+# END plant-tower-defense-0y0w
+# =============================================================================
