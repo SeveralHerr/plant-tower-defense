@@ -11,158 +11,41 @@ idea backlog that isn't filed yet.
 
 ## Done
 
-- **Style contract measured, not guessed** — `art_src/STYLE.md` records the Kenney
-  Tower Defense kit's real conventions: 64x64 canvas, top-down, up-screen facing,
-  outline = darker shade of the fill (never black), and the 32-colour palette
-  sampled by frequency from the kit's own PNGs. `plant-tower-defense-udz`
-- **First sprite set** — Corn Cobbler, Chomp Flower, Aphid, Beetle, corn kernel,
-  seed packet. SVG sources in `art_src/`, rasterised to `assets/sprites/` (1x) and
-  `assets/sprites/retina/` (2x) by `tools/render_svg.gd`.
-- **The contract is a gate** — `test/unit/test_sprite_style.gd` fails the build on
-  a sprite that drifts: wrong size, missing retina copy, blank render, off-centre
-  axis, clipped edge, or a colour that isn't a kit colour or a blend of two.
-- **Kit vendored** — `assets/kenney/` (299 sprites + tilesheet + CC0 licence).
-- **The game is playable end to end.** 14x9 board with a dirt road cut through the
-  grass, both plants, both pests, eight waves, seeds, packets, upgrades, uproot,
-  win and lose. `game/game.tscn` is the main scene. `plant-tower-defense-iks`,
-  `-95o`, `-cv3`, `-el9`, `-wn0`, `-1e9`
-- **The road tiles are derived, not eyeballed** — `Board.GRASS_EDGE_TILE` maps a
-  four-neighbour mask to the Kenney tile whose edges match, worked out by sampling
-  every kit PNG. A test fails the build if the path shape ever needs a tile the kit
-  does not ship.
-- **Eight project devtools verbs** (`game_state`, `place_plant`, `spawn_pest`,
-  `add_seeds`, `start_wave`, `buy_packet`, `upgrade_plant`, `board_info`) plus a
-  status provider, so a runtime check is a command rather than a mouse.
-- **Selection is wired up, and the two readouts it unlocks both ship.** Clicking a
-  placed plant flips `Plant._selected` (`Game._select()` is the one place that ever
-  touches it), which closed a real dead-code gap from last session — `set_selected()`
-  had no caller and the range ring could never draw; `/verify` confirmed the fix with
-  `sample-pixels` (ring visible only while selected, gone on deselect). Chomp Flower's
-  mouth also gets a shrinking ring keyed off `chew_progress()`, so "this mouth is busy
-  and your lane is open" is now something the player sees. `plant-tower-defense-how`,
-  `-x7h`
+Audited and pruned at cycle 108 (`plant-tower-defense-tkdz`). Every row below shipped
+**and** is held there by a named test — the pair is the point. A Done line with nothing
+asserting it is a claim, not a fact, and the one entry that turned out to be exactly that
+has gone back to the backlog instead of staying here. The prose each row used to carry is
+in the commit it cites; this is the index, not the record.
 
-- **Six features shipped and /verify'd in one session** — sprite pass 2, pest mutations,
-  seed packet tiers with a third plant, the compost meter, a title screen with endless
-  mode, and the Designer's Notebook. `plant-tower-defense-eeq`, `-5fu`, `-b5k`, `-d0w`,
-  `-e0w`, `-1qo`
-  - **Sprite pass 2** — a Chomp mid-bite and X-eyed dead pests are separate sprites, not
-    tints, per the design doc: `art_src/chomp_flower_eating.svg`,
-    `pest_aphid_dead.svg`, `pest_beetle_dead.svg`. A killed pest now lingers 0.35s
-    showing its corpse instead of vanishing.
-  - **Pest mutations** — from wave 8, a spawned pest may roll armoured (2x chew time),
-    winged (a Chomp's mouth can't reach it), or hungry (eats an adjacent plant down to
-    0 health instead of walking past — plants now have `health`/`take_damage`, drawn
-    with the same health-bar look as a pest's).
-  - **Seed packet tiers + Seed Sunflower** — common packets (20 seeds, tier-1 only) vs.
-    rare (45 seeds, reaches tier 2). The third plant, `Sunflower`, fights nothing and
-    pays out seeds on a clock — the first plant that makes a tile a pure economy choice.
-  - **Compost meter** — a killed pest drops a husk worth half its seed value; click it
-    before `CompostMeter.HUSK_LIFETIME` (10s) to collect the bonus, or it rots.
-  - **Title screen + endless mode** — `game/title.tscn` is now `run/main_scene`; Start
-    plays the fixed 8 waves, Endless keeps `WaveDirector` escalating past the table
-    forever. `RunConfig` (autoload) persists a seed-count high score to `user://`.
-  - **Designer's Notebook** — pages through `image1.jpg`–`image6.jpg` beside the
-    finished sprite for each plant, reachable from the title screen.
-  - Two real layout bugs only a live screenshot caught, both fixed: the notebook's
-    backdrop resolved to a 0x0 rect (`PRESET_FULL_RECT` on a Control with no sized
-    Control ancestor to anchor against — silent on the bare title screen, fatal on an
-    overlay meant to hide what's under it), and its preview images blew up to fill the
-    screen (`EXPAND_FIT_WIDTH_PROPORTIONAL` outside a Container). See `log-devtools.md`
-    2026-08-15 for the full writeup, including two tests that verified nothing until a
-    GDScript lambda-capture gotcha was found.
+| Shipped | Commit | Beads | Held by |
+|---|---|---|---|
+| Style contract measured out of the kit, not guessed — 64x64, up-screen facing, outline a darker shade of the fill, 32-colour palette | `fe45397` | `-udz` | `tools/svg_style_check.py` cross-reads `art_src/STYLE.md`'s palette table; `test_every_colour_is_kit_palette_or_a_blend_of_two` |
+| First sprite set — SVG sources in `art_src/`, rasterised 1x and 2x by `tools/render_svg.gd` | `fe45397` | — | `test_every_svg_source_is_declared`, `test_no_rendered_png_is_an_orphan`, `test_rendered_png_matches_its_svg_source_size` |
+| The contract is a gate — six ways a sprite can drift | `fe45397` | — | one test each: `test_sprites_are_square_and_kit_sized`, `test_retina_is_exactly_double`, `test_sprites_actually_drew_something`, `test_content_is_bilaterally_centred`, `test_content_stays_inside_the_canvas`, `test_every_colour_is_kit_palette_or_a_blend_of_two` |
+| Kenney kit vendored — 299 PNGs, tilesheet, CC0 (`assets/kenney/License.txt:9`) | `fe45397` | — | `test_every_grass_cell_has_a_tile_the_kit_actually_ships` |
+| The game is playable end to end — 14x9 board (`game/board.gd:15`), both plants, both pests, eight waves, seeds, packets, upgrades, uproot, win and lose | `fe45397` | `-iks`, `-95o`, `-cv3`, `-el9`, `-wn0`, `-1e9` | most of `test/unit/`; entry and exit pinned by `test_route_covers_every_path_cell_plus_an_entry_and_an_exit` |
+| Road tiles derived from the kit, not eyeballed — `Board.GRASS_EDGE_TILE` | `fe45397` | — | `test_every_grass_cell_has_a_tile_the_kit_actually_ships`, plus the reverse check at `test/unit/test_board.gd:128` that no dead mask survives |
+| Selection, the range ring it unlocked, and the Chomp's shrinking chew ring | `6016294` | `-how`, `-x7h` | `test_a_chomp_flowers_selection_marker_shows_even_though_it_owns_draw` |
+| Sprite pass 2, pest mutations, packet tiers + Sunflower, compost meter, title screen + endless, Designer's Notebook | `628f799` | `-eeq`, `-5fu`, `-b5k`, `-d0w`, `-e0w`, `-1qo` | `test_a_killed_pest_shows_a_dead_sprite_and_lingers_before_freeing`, `test_an_armoured_pest_takes_twice_as_long_to_chew`, `test_a_winged_pest_flies_over_a_chomps_reach`, `test_a_hungry_pest_eventually_destroys_the_plant_it_eats`, `test_a_common_packet_never_rolls_above_its_tier_cap`, `test_a_sunflower_grows_seeds_once_its_interval_elapses`, `test_an_uncollected_husk_rots_away`, `test_each_mode_reports_its_own_best`, `test_no_two_notebook_pages_show_the_same_drawing` |
+| SelectionMarker as its own node; lane pressure; husk value by mutation; endless mutates faster; second bite frame | `8e6f2e7`, `ca7b163`, `86fa345`, `6ef0972`, `88f507f` | `-42t`, `-4wv`, `-1rh`, `-1qi`, `-rrx` | `test_a_sunflowers_selection_marker_is_shared_from_the_base_plant_class`, `test_lane_pressure_is_committed_even_when_the_last_life_is_lost_mid_wave`, `test_each_mutation_has_a_husk_multiplier_above_one`, `test_endless_still_gets_harder_after_every_per_pest_scale_has_capped`, `test_the_late_bite_frame_is_showing_by_the_time_any_chew_finishes` |
+| Husk size/glow by value; endless scales the pests themselves; lane pressure as a distribution; placement preview | `7450fc6`, `5e1af7a`, `3a607bf`, `83f0bc7` | `-afd`, `-nps`, `-j1h`, `-rfh` | `test_a_richer_husk_draws_bigger_than_a_poorer_one`, `test_the_biggest_husk_still_fits_inside_its_own_click_radius`, `test_a_pest_spawned_deep_in_endless_is_tougher_than_a_wave_one_pest`, `test_a_single_loss_in_a_huge_wave_is_still_visible`, `test_the_placement_preview_is_a_selection_marker` |
+| HUD top bar as a container; richer husks rot faster; readable threat level; unfaded per-run lane pressure; hungry-pest warning | `780eeac`, `792cc5e`, `10176a6`, `3d61206`, `0863707` | `-kcj`, `-kh9`, `-o1p`, `-dbg`, `-8bb` | `test_no_two_top_bar_controls_share_pixels`, `test_the_stats_row_budget_fits_the_bar`, `test_size_glow_and_urgency_all_agree_about_which_husk_is_rich`, `test_the_threat_level_stays_a_small_readable_number`, `test_the_run_depth_is_weighted_by_losses_not_by_lit_cells`, `test_a_sunflower_away_from_the_road_is_not_flagged` |
 
-- **Five more shipped and /verify'd, one session each with runtime evidence** —
-  selection's second visual cue, the lane pressure readout, husk value scaled by
-  mutation, endless mode mutating faster over time, and a second bite frame for a
-  beetle's long chew. `plant-tower-defense-42t`, `-4wv`, `-1rh`, `-1qi`, `-rrx`
-  - **SelectionMarker** — a separate child node, not code inside each plant's own
-    `_draw()`. CornCobbler and ChompFlower both fully override `_draw()` for their
-    own overlays and never call `super._draw()`, so a cue placed there would have
-    been silently dropped by exactly the subclasses most likely to want one — which
-    is how ChompFlower ended up with no selection feedback at all before this.
-  - **Lane pressure readout** — `Board.record_lane_pressure()` tints the road cell
-    where pests got furthest last wave, fading whatever an earlier wave lit up.
-    Caught live, not on read: losing the last life mid-wave sets `game_over`, and
-    `Game._process`'s own early-return guard meant the one place that committed
-    this never ran on that path — a run lost outright left the readout stuck on
-    whatever the previous wave showed, forever. Fixed and covered by a unit test
-    that reproduces the bug.
-  - **Husk value scaled by mutation** — `Pest.husk_multiplier()` (armoured/winged
-    1.5x, hungry 2x, since hungry destroys a plant outright). Ties the mutation and
-    compost systems together instead of leaving them side by side.
-  - **Endless mode mutates faster** — `WaveDirector.mutation_chance_for(wave)`
-    climbs 0.02/wave past the fixed table, capped at 0.85, instead of holding the
-    flat 40% forever.
-  - **Second bite frame** — `chomp_flower_eating_late.png` swaps in past
-    `chew_progress() > 0.6`, the same fraction the shrinking chew ring reads.
-  - A real harness gap surfaced verifying the last of these: three separate zombie
-    Godot processes were found alive at once mid-session, all still answering the
-    devtools bus — `quit`'s "STILL ALIVE" pid is the bus-answering engine process,
-    but on Windows the console-wrapper `launch` reports as "Launched pid" doesn't
-    reliably take that child process down with it when killed. Presented as
-    newly-spawned pest nodes reporting "Node not found" seconds after `scene-tree`
-    had just listed them. See `log-devtools.md` 2026-08-15 (G-012).
+Three things the audit turned up that deleting the prose quietly would have buried:
 
-- **Four more shipped and /verify'd, one commit each** — husk size/glow by value,
-  endless scaling the pests themselves, lane pressure as a distribution, and a
-  placement preview. `plant-tower-defense-afd`, `-nps`, `-j1h`, `-rfh`
-  - **Husk size/glow scales with value** — `HuskLayer.radius_for()`/`glow_for()` are
-    static and pure so the size↔value relationship is assertable without a viewport,
-    and the constants are pinned to the drops the game can actually produce (2 for a
-    plain aphid, 9 for a hungry beetle). A live board with eleven husks down returned
-    exactly those two values, and the largest husk's outer edge is checked to sit
-    inside `CompostMeter.COLLECT_RADIUS`, so no drawn pixel is unclickable.
-  - **Endless scales the pests, not just the count** — `health_scale_for()` /
-    `speed_scale_for()` take the same `over <= 0` shape as `mutation_chance_for()`, so
-    campaign is untouched by construction rather than by a mode flag. Health is the
-    bigger lever (3.0x cap), speed the smaller (1.6x). Verified live at wave 38:
-    8.4 hp / 113.1 px/s aphids, and all 18 sampled pests still on road cells.
-  - **Lane pressure is a distribution, not one pixel** — every cell a wave lost a pest
-    at is tallied and committed as one batch, normalised against the wave's own worst
-    cell so five pests and eighty read the same, with a `MIN_ALPHA` floor so "one got
-    through here" stays visible. Batching is load-bearing: N single-cell calls would
-    fade each cell by its own wave-mates. Also deleted the per-frame scan over every
-    live pest — the `died`/`escaped` signals say everything the high-water mark did
-    and more. Live wave 1 painted four cells at two strengths.
-  - **Placement preview** — `PlacementPreview extends SelectionMarker`, so the hover
-    brackets are literally the shape the plant will wear once placed, one size out and
-    dimmer. Adds the coverage ring, which was previously invisible until *after* the
-    seeds were spent. `PlantCatalog.reach()` reads each plant's own constant rather
-    than re-listing numbers. Verified through the 72px HUD offset: mouse (200,300)
-    puts the preview at screen (224,296).
-  - Two harness gaps surfaced: `find-nodes --class X` does not match a script
-    `class_name` and reports the miss as an empty result (G-013), and `validate-ui`
-    measures a multiline Label as one joined line, gating on a banner that renders
-    correctly (G-014). Plus G-015, reach treating a base class as unreached.
-
-- **Cycle 2 of 30 shipped five more** — the HUD top bar rebuilt as a container, husk
-  lifetime scaled by value, a readable endless threat level, an unfaded per-run lane
-  pressure post-mortem, and a hungry-pest warning on the placement preview.
-  `plant-tower-defense-kcj`, `-kh9`, `-o1p`, `-dbg`, `-8bb`
-  - **HUD top bar cannot self-collide** — four labels at hand-picked x positions became
-    an HBoxContainer with an expanding spacer and a clipped width budget per readout.
-    Two non-obvious failures on the way: an HBox will not shrink a child below its
-    minimum, so the spacer-only version shoved the button 97px off-screen instead of
-    overlapping; and trimming the button to 34px to fit two rows put it under the 40x40
-    minimum touch target, which `findings` flagged.
-  - **Richer husks rot faster** — 4.5s against 10s, so sweep order is a decision. The
-    value→urgency curve moved into `CompostMeter.value_fraction()` and `HuskLayer`
-    delegates to it, so size, glow and clock cannot disagree.
-  - **Readable threat level** — `threat_for()` prices a wave as total pest health scaled
-    by every endless multiplier; `threat_level()` is the log-scaled small integer the bar
-    shows, because the raw multiple hits x897 by wave 108. The wave-start message names
-    what climbed and drops a scale once it caps.
-  - **Per-run lane pressure** — the live overlay fades by design, so `Board` now also
-    keeps an unfaded run total and `_end_run` swaps the board to it. Verified on a real
-    lost run: painted map came out exactly `run_losses / max`, worst cell was the exit.
-  - **Hungry-pest warning** — a dashed amber ring on a defenceless plant hovering within
-    one cell of the road. Only plants with no reach of their own; a Corn Cobbler there is
-    the point of a Corn Cobbler.
-  - Four more harness gaps found and filed: `step-time` cannot isolate a state shorter
-    than a bus round-trip (G-016), a clipped Label's trimming is reported identically to
-    a real overflow (G-017), a sibling worktree silently answers your bus (G-018), and
-    `set-state` on a typed Array silently no-ops (G-019).
+- **Done had gone stale about itself, twice, and both times against its own next entry.**
+  The first-session row said "`game/game.tscn` is the main scene"; `project.godot:14` reads
+  `run/main_scene="uid://ce2dtga2f08e"`, which is `game/title.tscn` — changed by an entry
+  four rows further down that nobody reconciled upward. Same shape for compost: a flat 10s
+  husk lifetime became a ceiling five rows later, and both numbers are live today
+  (`game/compost_meter.gd:28` is `HUSK_LIFETIME` 10.0, `:34` is `MIN_HUSK_LIFETIME` 4.5). A
+  Done section long enough to contradict itself is the whole argument for pruning it.
+- **The eight devtools verbs were never really done.** Only one of the eight is asserted by
+  anything. Returned to the backlog below rather than deleted, because "shipped" and "held
+  there" are different claims and only the second one keeps.
+- **Harness gaps G-012 through G-019 were duplicated here from `log-devtools.md`**, which is
+  the file that actually reconciles them against a harness version. Dropped from this copy;
+  nothing was lost.
 
 ## Next up
 
@@ -180,6 +63,32 @@ have rebuilt the same trap.
 ---
 
 ## Cool new features (idea backlog)
+
+### Returned from Done — audited cycle 108 (`plant-tower-defense-tkdz`)
+
+- **The project's own devtools verbs are the least-tested code in the repo, and they are
+  what every runtime claim is read through.** `devtools_ext/commands.gd:19-38` registers
+  thirteen verbs and one status provider. Exactly three are asserted by anything:
+  `board_info` (`test_board_info_prints_the_husk_click_budget_as_a_subtraction`), `budgets`
+  (`test/unit/test_economy.gd:2123` and two sites in `test_placement.gd`) and
+  `project_identity` (`test_project_identity_returns_the_three_key_envelope`,
+  `test_project_identity_is_registered_with_a_literal_name`). The mechanism searched was
+  both spellings a test could use — the registered name as a literal (`"place_plant"`) and
+  the handler symbol (`_cmd_place_plant`) — across all of `test/`; `game_state`,
+  `place_plant`, `spawn_pest`, `add_seeds`, `start_wave`, `buy_packet`, `upgrade_plant`,
+  `compost_state` and `collect_husk` return **zero hits for either**, and nothing calls
+  `_status` directly. This sat in Done for a hundred cycles reading like finished work.
+  The distinction that matters: an unasserted verb does not fail loudly, it answers a
+  well-formed lie, and the reply is then quoted into a verify ledger row as evidence.
+  Cheap to close and the pattern already exists — `_board_info(game)` in
+  `test/unit/test_placement.gd:2800-2804` instantiates the extension directly, points
+  `ext._dev` at a hosted `Game`, and calls the handler as a pure function with no bus and
+  no running game. Nine more of those is an afternoon.
+  - The narrow version, if the full sweep is too much: assert the **envelope** for all
+    thirteen in one loop — every handler returns exactly `{success, message, data}` with
+    those three keys and nothing else. `test_project_identity_returns_the_three_key_envelope`
+    already asserts it for one; the same three lines over a list of handlers catches the
+    class of defect that makes a reply unparseable, without needing per-verb semantics.
 
 ### Added cycle 106 — out of a screenshot James sent
 
