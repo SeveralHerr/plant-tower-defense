@@ -6824,3 +6824,32 @@ status rather than rewriting the entries that recorded these as open.
   ever called it. The fix was the assertion its doc comment already claimed (the drawn
   column equals the measured one), which is a better test than the one I would have
   written unprompted.
+
+## 2026-08-18 — round 13: 0y0w triaged by the new rule, snba merged
+
+- Value: **warranted** — `eval.gd` answered a design question four times in a row, and
+  one of the four answers was wrong in a way only re-running it showed.
+  - Expected: the side panel carried "the widest column of text in the game", as its
+    bead claimed, and would need a corpus.
+  - Got: the plant buttons are **icon-only** with their text in tooltips, so most of the
+    panel has no measurable slot at all. The one real surface is the packet rack, whose
+    widest label draws `{"text": "Common Packet (20)", "needed": 179.0, "slot": 232.0,
+    "left": 53.0}`.
+  - Found: **I measured it wrong first.** I passed font size 15 to `GardenTheme.measure`
+    and got a comfortable 149 px. These buttons set no font override, so they render at
+    `GardenTheme.BUTTON_FONT_SIZE` = 18 and draw 179. A width measured at a size the
+    control does not use prices a rack that does not exist — caught only by going to
+    look for where the size comes from, not by anything the tool said.
+  - Cheaper: nothing. The premise correction needed reading `_build_side_panel`, and the
+    number needed the font.
+
+- Gap: **no gap this turn.** Worth noting the shape that worked: `-yoc2`'s verdict turned
+  a bead that would have been an afternoon of corpus-building into three greps and one
+  measurement, because the rule ("does this surface clip, wrap, or push?") is answerable
+  from the source. A decision recorded as a *rule* rather than as a *verdict per item*
+  is what made the next item cheap.
+
+- Also: `eval.gd` refuses `&"name"` StringName literals in `--expr` (`PARSE ERROR:
+  Expected expression`); `StringName("name")` works. Not filing it — the workaround is
+  shorter than the report — but recording it so the next session does not spend the
+  two minutes I did.
