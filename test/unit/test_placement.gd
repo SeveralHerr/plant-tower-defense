@@ -7999,3 +7999,352 @@ func test_what_it_costs_to_reach_a_cob_level_is_the_ladder_read_two_ways() -> St
 
 # END plant-tower-defense-ynai
 # =============================================================================
+
+
+# =============================================================================
+# plant-tower-defense-m14g — the glyph table, and the collision it gates
+#
+# `Glyphs.TABLE` names every non-ASCII character in res://game/*.gd and what it
+# means. These checks are what stop it being a third copy sitting beside the two
+# vocabularies it is supposed to reconcile:
+#
+#   * the KEY_NAME rows are DERIVED from `KeyBindings.SHORT_NAMES`, both
+#     directions, so an arrow added or removed there breaks the table;
+#   * the table's coverage is swept over the real source files, both directions,
+#     so a new glyph typed into a screen has nowhere to hide and a row for a
+#     glyph nobody draws any more cannot rot;
+#   * the six glyphs that have a named constant behind them are asserted against
+#     THAT constant, not against the table's own copy of the character.
+#
+# The gate the bead asked for is `test_no_mark_is_also_a_key_name`. It is narrow
+# on purpose: "← Back" is fine, because the word carries the meaning. What is
+# not fine is a glyph standing ALONE beside a value while also being a key's
+# printed name, which is how an armed revert once rendered as "← ←".
+# =============================================================================
+
+## Every .gd under res://game except the table itself, as {basename: source}.
+##
+## `glyphs.gd` is excluded and that is load-bearing, not tidiness: it contains
+## every glyph by construction, so a sweep including it would find every row
+## "still drawn somewhere" and every character "already documented" no matter
+## what the screens did. That is the vacuous pass this whole section exists to
+## avoid.
+func _game_sources() -> Dictionary:
+	var out: Dictionary = {}
+	for name: String in DirAccess.get_files_at("res://game"):
+		if not name.ends_with(".gd") or name == "glyphs.gd":
+			continue
+		out[name] = FileAccess.get_file_as_string("res://game/" + name)
+	return out
+
+
+## Sorted distinct non-ASCII characters across `sources`.
+func _glyphs_in(sources: Dictionary) -> PackedStringArray:
+	var seen: Dictionary = {}
+	for name: String in sources:
+		for ch: String in String(sources[name]):
+			if ch.unicode_at(0) > 127:
+				seen[ch] = true
+	var out: PackedStringArray = []
+	for ch: String in seen:
+		out.append(ch)
+	out.sort()
+	return out
+
+
+## The non-ASCII characters KeyBindings prints as key names. Derived — the arrows
+## are never typed on this side of the check.
+func _key_name_glyphs() -> PackedStringArray:
+	var seen: Dictionary = {}
+	for label: String in KeyBindings.SHORT_NAMES.values():
+		for ch: String in label:
+			if ch.unicode_at(0) > 127:
+				seen[ch] = true
+	var out: PackedStringArray = []
+	for ch: String in seen:
+		out.append(ch)
+	out.sort()
+	return out
+
+
+## THE gate. A mark stands alone beside a value, so a mark that is also a key's
+## printed name renders as a second key: the armed revert on the key screen read
+## "← ←" until the mark became a bullet, and only a screenshot caught it.
+##
+## Note which side is derived. `Glyphs.marks()` is the recorded half; the key
+## names come out of `KeyBindings.SHORT_NAMES` at check time, so choosing a mark
+## that a future SHORT_NAMES entry happens to use also fails here.
+func test_no_mark_is_also_a_key_name() -> String:
+	var marks: PackedStringArray = Glyphs.marks()
+	var key_names: PackedStringArray = _key_name_glyphs()
+	var err := _T.assert_gt(marks.size(), 0,
+		"the table records no marks at all, so this gate is checking nothing")
+	if err != "":
+		return err
+	err = _T.assert_gt(key_names.size(), 3,
+		("KeyBindings.SHORT_NAMES printed %d non-ASCII key names; the four arrows "
+			+ "alone should give four, so the derivation is broken and this gate "
+			+ "would pass against an empty set") % key_names.size())
+	if err != "":
+		return err
+	var collisions: PackedStringArray = []
+	for mark: String in marks:
+		if key_names.has(mark):
+			collisions.append(mark)
+	return _T.assert_eq(", ".join(collisions), "",
+		("a glyph is both a bare mark and a key's printed name, so the two read as "
+			+ "one string: marks %s, key names %s. Pick a mark from outside the key "
+			+ "vocabulary and give it a row in Glyphs.TABLE")
+			% [str(marks), str(key_names)])
+
+
+## The KEY_NAME rows equal the arrows KeyBindings actually prints — BOTH
+## directions. Adding KEY_TAB with a glyph name breaks this because the table
+## lacks a row; dropping KEY_UP from SHORT_NAMES breaks it because the table
+## keeps one. A `has()` here would catch neither.
+func test_the_key_name_rows_are_exactly_what_key_bindings_prints() -> String:
+	var recorded: PackedStringArray = Glyphs.with_role(Glyphs.ROLE_KEY_NAME)
+	var derived: PackedStringArray = _key_name_glyphs()
+	var err := _T.assert_gt(derived.size(), 3,
+		"SHORT_NAMES yielded %d glyph key names, which cannot be right" % derived.size())
+	if err != "":
+		return err
+	return _T.assert_eq(", ".join(recorded), ", ".join(derived),
+		("the table's KEY_NAME rows and KeyBindings.SHORT_NAMES disagree. Recorded "
+			+ "%s, SHORT_NAMES prints %s. The table is a cache of that dictionary, "
+			+ "so the dictionary wins and the row follows it")
+			% [str(recorded), str(derived)])
+
+
+## Nothing undocumented: every non-ASCII character in the shipped source has a
+## row. This is the "one table for EVERY glyph" half, and it is a sweep rather
+## than a list so a glyph typed straight into a screen cannot escape it.
+func test_every_glyph_in_the_source_has_a_row() -> String:
+	var sources := _game_sources()
+	var err := _T.assert_gt(sources.size(), 40,
+		("swept %d source files under res://game, which is far fewer than this "
+			+ "project has — an empty sweep documents everything") % sources.size())
+	if err != "":
+		return err
+	var found: PackedStringArray = _glyphs_in(sources)
+	err = _T.assert_gt(found.size(), 10,
+		("found %d distinct non-ASCII characters, which is too few to be the real "
+			+ "corpus — the reader is broken, not the table") % found.size())
+	if err != "":
+		return err
+	var recorded: PackedStringArray = Glyphs.all_glyphs()
+	var undocumented: PackedStringArray = []
+	for ch: String in found:
+		if not recorded.has(ch):
+			undocumented.append("%s (U+%04X)" % [ch, ch.unicode_at(0)])
+	return _T.assert_eq(", ".join(undocumented), "",
+		("res://game draws or writes a character with no row in Glyphs.TABLE. Add "
+			+ "one saying what it means and which role it plays; if it only ever "
+			+ "appears in a comment, that role is ROLE_PROSE"))
+
+
+## Nothing stale: every row's glyph is still somewhere in the source. The other
+## direction of the same sweep, and the one that is always skipped — without it
+## a row can point at a screen that was deleted twenty cycles ago and no test
+## anywhere would notice.
+func test_every_row_names_a_glyph_the_source_still_contains() -> String:
+	var sources := _game_sources()
+	var found: PackedStringArray = _glyphs_in(sources)
+	var err := _T.assert_gt(found.size(), 10,
+		"the sweep found %d glyphs, so this direction is vacuous" % found.size())
+	if err != "":
+		return err
+	var orphaned: PackedStringArray = []
+	for ch: String in Glyphs.all_glyphs():
+		if not found.has(ch):
+			orphaned.append("%s (U+%04X)" % [ch, ch.unicode_at(0)])
+	return _T.assert_eq(", ".join(orphaned), "",
+		("Glyphs.TABLE has a row for a character that no longer appears anywhere in "
+			+ "res://game. Delete the row, or find out what stopped drawing it"))
+
+
+## Each row's witness files still contain its glyph, and the sweep can say no.
+##
+## The control is the point: an ASCII-only script and a character this game has
+## never used both have to come back NOT FOUND, or "the file contains the glyph"
+## is a sentence that is true of everything and this check is measuring nothing.
+func test_the_witness_files_still_carry_their_glyphs() -> String:
+	var sources := _game_sources()
+	var checked: int = 0
+	var missing: PackedStringArray = []
+	for glyph: String in Glyphs.drawn():
+		for witness: String in Glyphs.witnesses(glyph):
+			checked += 1
+			if not sources.has(witness):
+				missing.append("%s: no such file %s" % [glyph, witness])
+			elif not String(sources[witness]).contains(glyph):
+				missing.append("%s: gone from %s" % [glyph, witness])
+	var err := _T.assert_gt(checked, 12,
+		("only %d witness pairs to check; every drawn glyph should name at least "
+			+ "one file") % checked)
+	if err != "":
+		return err
+	err = _T.assert_eq(", ".join(missing), "",
+		("a glyph's witness file no longer contains it. Either the screen stopped "
+			+ "drawing it — in which case find out why — or the witness moved and "
+			+ "the row should follow it"))
+	if err != "":
+		return err
+	# Control: a character this project has never used, against the same reader.
+	# If this comes back present, "contains" is answering yes to everything above.
+	var control_hits: PackedStringArray = []
+	for name: String in sources:
+		if String(sources[name]).contains("§"):
+			control_hits.append(name)
+	return _T.assert_eq(", ".join(control_hits), "",
+		"the control glyph U+00A7 was found in res://game, so the sweep cannot say no")
+
+
+## The strong anchors: for the glyphs that have a named constant, assert the
+## CONSTANT, not the table's copy of the character. This is what keeps the table
+## a cache rather than a second source of truth — retyping "·" in the table
+## while `KeyBindings.KEY_JOIN` uses something else fails here.
+func test_the_named_constants_still_carry_the_glyph_the_table_gives_them() -> String:
+	# `LABELS` is one label per speed step, so flatten it before asking whether the
+	# half sign is still in there. Built by hand rather than joined because
+	# `String.join` takes a PackedStringArray and this constant is an Array[String].
+	var speed_labels := ""
+	for label: String in GameSpeed.LABELS:
+		speed_labels += label + " "
+	var pairs: Array[Array] = [
+		[Glyphs.MIDDOT, KeyBindings.KEY_JOIN, "KeyBindings.KEY_JOIN"],
+		[Glyphs.LEFT_ARROW, OverlayScreen.BACK_TEXT, "OverlayScreen.BACK_TEXT"],
+		[Glyphs.BULLET, KeyBindingScreen.KEY_REVERT_MARK,
+			"KeyBindingScreen.KEY_REVERT_MARK"],
+		[Glyphs.ELLIPSIS, KeyBindingScreen.PROMPT, "KeyBindingScreen.PROMPT"],
+		[Glyphs.HALF, speed_labels, "GameSpeed.LABELS"],
+	]
+	var err := ""
+	for pair: Array in pairs:
+		err = _T.assert_true(String(pair[1]).contains(String(pair[0])),
+			("%s no longer contains the glyph Glyphs.TABLE says it draws (%s). One "
+				+ "of the two moved; the constant is the one on screen")
+				% [String(pair[2]), String(pair[0])])
+		if err != "":
+			return err
+	# The endless mark lives inside the HUD's readout corpus rather than in a
+	# constant of its own, so reach it the way the corpus is shaped.
+	var wave_text := ""
+	for readout: Dictionary in Hud.STAT_READOUTS:
+		if String(readout["name"]) == "WaveLabel":
+			wave_text = String(readout["worst_case"]) + " " + str(readout["shapes"])
+	err = _T.assert_gt(wave_text.length(), 0,
+		"Hud.STAT_READOUTS has no WaveLabel row, so the endless mark went unchecked")
+	if err != "":
+		return err
+	return _T.assert_true(wave_text.contains(Glyphs.INFINITY),
+		("the HUD's WaveLabel readout no longer draws %s, which Glyphs.TABLE says "
+			+ "is how an endless run says it has no last wave") % Glyphs.INFINITY)
+
+
+## Exactly one glyph means two things, and we know which. A second dual-role
+## glyph is a decision, not an accident — this is where it gets made out loud
+## rather than discovered in a screenshot.
+func test_the_only_glyph_that_means_two_things_is_the_one_we_chose() -> String:
+	var dual: PackedStringArray = Glyphs.dual_role_glyphs()
+	var err := _T.assert_eq(", ".join(dual), Glyphs.LEFT_ARROW,
+		("the set of glyphs carrying more than one role changed: %s. The left arrow "
+			+ "is allowed two (KEY_LEFT's name, and the decoration on a worded back "
+			+ "affordance) because a back button always carries its word. Anything "
+			+ "else needs the same argument written down first") % str(dual))
+	if err != "":
+		return err
+	var roles: PackedStringArray = []
+	for role: String in [Glyphs.ROLE_KEY_NAME, Glyphs.ROLE_MARK,
+			Glyphs.ROLE_SEPARATOR, Glyphs.ROLE_WORDED, Glyphs.ROLE_NUMERAL,
+			Glyphs.ROLE_PROSE]:
+		if Glyphs.with_role(role).has(Glyphs.LEFT_ARROW):
+			roles.append(role)
+	roles.sort()
+	return _T.assert_eq(", ".join(roles),
+		"%s, %s" % [Glyphs.ROLE_KEY_NAME, Glyphs.ROLE_WORDED],
+		("the left arrow's two roles are the argument for allowing them; it now "
+			+ "carries %s. In particular it must never become a %s, which is the "
+			+ "shape that collides") % [str(roles), Glyphs.ROLE_MARK])
+
+
+## Every row is complete and every role is one the table declares. A row with a
+## typo'd role silently drops out of `with_role`, which would make the gate above
+## pass by having nothing to check.
+func test_every_row_is_filled_in_and_uses_a_declared_role() -> String:
+	var known: PackedStringArray = [Glyphs.ROLE_KEY_NAME, Glyphs.ROLE_MARK,
+		Glyphs.ROLE_SEPARATOR, Glyphs.ROLE_WORDED, Glyphs.ROLE_NUMERAL,
+		Glyphs.ROLE_PROSE]
+	var problems: PackedStringArray = []
+	var checked: int = 0
+	for row: Dictionary in Glyphs.TABLE:
+		checked += 1
+		var glyph := String(row["glyph"])
+		if glyph.length() != 1:
+			problems.append("%s is not a single character" % glyph)
+		if int(row["codepoint"]) != glyph.unicode_at(0):
+			problems.append("%s: codepoint says U+%04X, character is U+%04X"
+				% [glyph, int(row["codepoint"]), glyph.unicode_at(0)])
+		if String(row["unicode_name"]).strip_edges() == "":
+			problems.append("%s has no unicode_name" % glyph)
+		if String(row["means"]).length() < 20:
+			problems.append("%s: `means` is too short to have said anything" % glyph)
+		var row_roles: Array = row["roles"]
+		if row_roles.is_empty():
+			problems.append("%s has no role" % glyph)
+		for role: String in row_roles:
+			if not known.has(role):
+				problems.append("%s carries unknown role %s" % [glyph, role])
+	var distinct: Dictionary = {}
+	for glyph: String in Glyphs.all_glyphs():
+		distinct[glyph] = true
+	var err := _T.assert_eq(checked, distinct.size(),
+		("the table has two rows for the same character: %d rows, %d distinct "
+			+ "glyphs. `row_for` returns the first, so the second row is a meaning "
+			+ "nothing reads") % [checked, distinct.size()])
+	if err != "":
+		return err
+	err = _T.assert_gt(checked, 12,
+		"only %d rows in Glyphs.TABLE, so this sweep is close to vacuous" % checked)
+	if err != "":
+		return err
+	return _T.assert_eq(", ".join(problems), "",
+		"Glyphs.TABLE has malformed rows")
+
+
+## The lookup half — "and what it means" is the other clause of the bead, and it
+## is only true if asking is possible. Every drawn glyph answers, and a glyph the
+## game does not use answers with "" rather than with somebody else's sentence.
+##
+## The control is a character with no row: without it, a `meaning()` that
+## returned the first row's text for everything would pass the loop above.
+func test_every_drawn_glyph_can_say_what_it_means() -> String:
+	var asked: int = 0
+	var silent: PackedStringArray = []
+	for glyph: String in Glyphs.drawn():
+		asked += 1
+		if Glyphs.meaning(glyph).strip_edges() == "":
+			silent.append(glyph)
+		if Glyphs.row_for(glyph).is_empty():
+			silent.append(glyph + " (no row at all)")
+	var err := _T.assert_gt(asked, 10,
+		("asked %d drawn glyphs what they mean, which is fewer than this game "
+			+ "draws — the sweep is the thing that is broken") % asked)
+	if err != "":
+		return err
+	err = _T.assert_eq(", ".join(silent), "",
+		"a glyph the game draws cannot say what it means")
+	if err != "":
+		return err
+	# Control: a character with no row must come back empty, not inherit a row.
+	err = _T.assert_eq(Glyphs.meaning("§"), "",
+		("a character with no row was given a meaning, so `meaning` is answering "
+			+ "from position rather than from the glyph asked about"))
+	if err != "":
+		return err
+	return _T.assert_true(Glyphs.row_for("§").is_empty(),
+		"row_for returned a row for a character the table does not carry")
+
+
+# END plant-tower-defense-m14g
+# =============================================================================
