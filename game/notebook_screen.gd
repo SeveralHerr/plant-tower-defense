@@ -168,6 +168,30 @@ const KIND_SHELF := "shelf"
 ## precedent one screen away, and the note was corrected rather than worked around.
 const KIND_LEGEND := "legend"
 
+## KIND_HINTS is the fifth (plant-tower-defense-ei83), and it is the only page whose
+## content the player has already been shown and cannot get back.
+##
+## Every id in `RunConfig.HINTS` is displayed exactly once per save and then spent —
+## `RunConfig.spend_hint` makes that permanent on purpose, because a tip that reposts
+## every time becomes wallpaper. The cost is that a player looking at the board when
+## the row posted has no route back to it, and the three hints teach three things the
+## game says nowhere else: that an armed Uproot previews reach elsewhere, that a Chomp
+## declines a flier by design rather than by fault, and that upgrading a plant already
+## down is a stronger move than adding another.
+##
+## It is NOT the shelf with a second section. Hints are deliberately outside
+## `Milestones.TABLE` (`game/run_config.gd:166-222`) — an achievement is EARNED and a
+## hint is SPENT, and the shelf counts earned off TABLE so a foreign id there would
+## either be invisible or push the count past its own rows. `shelf_capacity()` is 7
+## against a 7-row table, so there is no room either. A separate page is the shape the
+## split already implies.
+##
+## The sentences come from `Hud.HINT_CARDS` and are read through `Hud.hint_title` /
+## `Hud.hint_note_text` rather than restated here, so the page and the message row can
+## never teach the same rule two different ways: that failure is worse than either
+## surface alone, so they share one table.
+const KIND_HINTS := "hints"
+
 
 ## What the left pane's own label says on each kind of page.
 ##
@@ -182,6 +206,7 @@ const PANE_LABELS: Dictionary = {
 	KIND_PLANT: "No drawing — the spec",
 	KIND_SHELF: "Every first the garden records",
 	KIND_LEGEND: "What the marks on the board mean",
+	KIND_HINTS: "Tips the garden only gives once",
 }
 
 
@@ -273,6 +298,37 @@ const SHELF_TITLE_HEIGHT: float = 20.0
 const SHELF_NOTE_HEIGHT: float = 17.0
 const SHELF_TITLE_FONT_SIZE: int = 15
 const SHELF_NOTE_FONT_SIZE: int = 11
+
+## The hints page reuses the shelf's pip column, text inset and title band, and does
+## NOT reuse its pitch. That is the one place the two lists genuinely differ and it is
+## worth the two extra constants: a milestone note is a half-line label ("Cleared it
+## without an escape") and a hint note is an instruction that has to be followable
+## without the board in front of you, so it is two to three wrapped lines. Dropped into
+## the shelf's 17px single-line clip, the longest of the three lost everything after
+## "hover another bed to see what the plant" — an ellipsis in the middle of the only
+## sentence teaching the mechanic, on the page whose entire job is teaching it.
+##
+## Three rows at 98 is 3 + 2*98 + 94 = 293 against DRAWING_BOX's 300, so a FOURTH hint
+## does not fit — the same deliberate tightness `shelf_capacity()` has, and
+## `hints_capacity()` below is the number a test asserts against `Hud.hint_ids().size()`
+## so hint four fails the suite rather than silently dropping off the matte.
+##
+## The note height is four wrapped lines at 12 and the longest card today wraps to
+## three. The spare line is not slack: the unshown form of a card is the shown form
+## plus "Not shown yet — ", so every note on this page is ~16 characters longer than
+## the sentence anyone wrote, and the state a reader most needs to read is the state
+## that overflows first.
+const HINT_ROW_PITCH: float = 98.0
+const HINT_NOTE_HEIGHT: float = 74.0
+const HINT_NOTE_FONT_SIZE: int = 12
+
+
+## How many hint rows fit inside DRAWING_BOX. Computed, for the reason
+## `shelf_capacity()` is: the arithmetic in the comment above moves when a constant does.
+static func hints_capacity() -> int:
+	return OverlayScreen.rows_that_fit(SHELF_ROW_TOP, HINT_ROW_PITCH,
+		SHELF_TITLE_HEIGHT + HINT_NOTE_HEIGHT, DRAWING_BOX.size.y)
+
 
 const PAGES: Array[Dictionary] = [
 	{
@@ -383,6 +439,18 @@ const PAGES: Array[Dictionary] = [
 		"caption": "Reading the board",
 		"note": "The garden draws on itself. A shape means the same thing wherever it appears — a full ring is always a reach, a closing arc is always a clock running down — so the five here are worth more than five facts. The rest of the marks follow the same grammar once these are familiar.",
 	},
+	{
+		"kind": KIND_HINTS,
+		"plant": &"",
+		# Distinct bytes from every other page's `drawing`, which the byte-uniqueness
+		# check across PAGES requires (see the shelf entry above). A gaping Chomp is the
+		# picture of the thing a hint is FOR: a mouth sitting open beside a winged pest
+		# looks exactly like a broken plant until somebody says it is a rule.
+		"drawing": "res://assets/sprites/chomp_flower_gape.png",
+		"sprite": "res://assets/sprites/chomp_flower_gape.png",
+		"caption": "Said once",
+		"note": "Three things the garden says exactly once, the frame each becomes true, and then never again. A player watching the board instead of the message row lost them for good — so they are written out here, greyed and prefixed until the game has really said one.",
+	},
 ]
 
 var _page: int = 0
@@ -391,6 +459,7 @@ var _drawing_rect: TextureRect
 var _drawing_pane_label: Label
 var _spec: Label
 var _shelf: Control
+var _hints: Control
 var _legend: CueLegend
 var _sprite_rect: TextureRect
 var _caption: Label
@@ -544,6 +613,7 @@ func _build_left_page() -> void:
 	add_child(_spec)
 
 	_build_shelf()
+	_build_hints()
 	_build_legend()
 
 	_source = Label.new()
@@ -617,6 +687,94 @@ func _build_shelf() -> void:
 		note.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_shelf.add_child(note)
 
+
+
+## The fourth thing the left page can hold: one row per id in `RunConfig.HINTS`, in
+## that list's order, shown or not (plant-tower-defense-ei83).
+##
+## Off `Hud.hint_ids()` and NOT off `Hud.HINT_CARDS`: `HINTS` is the set `spend_hint`
+## guards, so it is what decides what a hint IS, and a page rendered off the card table
+## would happily print a row for an id the persistence layer no longer knows about.
+## `hint_title` falls back to the raw id, so a hint with no card shows up here as an
+## untitled row rather than silently missing from a list whose whole job is completeness.
+##
+## Read once, here, for the reason `_build_shelf` gives: the notebook is rebuilt every
+## time it is opened, and nothing can spend a hint while it is up.
+func _build_hints() -> void:
+	_hints = Control.new()
+	_hints.name = "Hints"
+	_hints.position = DRAWING_BOX.position
+	_hints.size = DRAWING_BOX.size
+	_hints.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hints.visible = false
+	add_child(_hints)
+
+	var text_width: float = DRAWING_BOX.size.x - SHELF_TEXT_X - 4.0
+	var ids: Array[String] = Hud.hint_ids()
+	for i: int in ids.size():
+		var id: String = ids[i]
+		# The same read the message row's guard makes. `spend_hint` writes into
+		# `earned_milestones`, so "has the player been shown this" is `has_milestone`
+		# — there is no second store, which is what lets this page be honest.
+		var shown: bool = RunConfig.has_milestone(id)
+		var y: float = SHELF_ROW_TOP + float(i) * HINT_ROW_PITCH
+
+		var pip := ColorRect.new()
+		pip.name = "HintPip_%s" % id
+		var side: float = SHELF_PIP_EARNED if shown else SHELF_PIP_UNEARNED
+		var inset: float = (SHELF_PIP_EARNED - side) / 2.0
+		pip.position = Vector2(SHELF_PIP_X + inset, y + 5.0 + inset)
+		pip.size = Vector2(side, side)
+		pip.color = GardenTheme.LEAF_DARK if shown else Color(GardenTheme.INK, 0.35)
+		pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_hints.add_child(pip)
+
+		var title := Label.new()
+		title.name = "HintTitle_%s" % id
+		title.text = Hud.hint_title(id)
+		title.position = Vector2(SHELF_TEXT_X, y)
+		title.size = Vector2(text_width, SHELF_TITLE_HEIGHT)
+		title.add_theme_font_size_override("font_size", SHELF_TITLE_FONT_SIZE)
+		title.add_theme_color_override("font_color",
+			GardenTheme.LEAF_DARK if shown else Color(GardenTheme.INK, 0.38))
+		title.clip_text = true
+		title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_hints.add_child(title)
+
+		var note := Label.new()
+		note.name = "HintNote_%s" % id
+		note.text = Hud.hint_note_text(id, shown)
+		note.position = Vector2(SHELF_TEXT_X, y + SHELF_TITLE_HEIGHT - 1.0)
+		note.size = Vector2(text_width, HINT_NOTE_HEIGHT)
+		# Wrapped, unlike a shelf note, and that is the whole difference between the
+		# two lists — see HINT_ROW_PITCH. A one-line clip here would ellipsise the
+		# instruction the page exists to carry.
+		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		note.add_theme_font_size_override("font_size", HINT_NOTE_FONT_SIZE)
+		# An UNSHOWN hint's note is drawn at the same 0.7 a shown one is, not the
+		# shelf's 0.32. A greyed milestone is a thing you have not done and reads fine
+		# as a whisper; an unshown hint is the one row on this page a player most needs
+		# to be able to read. The pip size and the "Not shown yet — " prefix carry the
+		# state, so nothing is hidden behind not having seen it.
+		note.add_theme_color_override("font_color", Color(GardenTheme.INK, 0.7))
+		note.clip_text = true
+		note.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		note.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_hints.add_child(note)
+
+
+## "1 of 3 seen", the hints page's provenance line — the same slot the shelf's score
+## sits in, and counted the same way: off `Hud.hint_ids()`, which is `RunConfig.HINTS`,
+## so an id in an older save that is no longer a hint cannot push the total past the
+## rows the page actually drew.
+static func hints_progress_text() -> String:
+	var ids: Array[String] = Hud.hint_ids()
+	var shown: int = 0
+	for id: String in ids:
+		if RunConfig.has_milestone(id):
+			shown += 1
+	return "%d of %d seen" % [shown, ids.size()]
 
 
 ## The legend pane, on the same matte as a photograph and the shelf. Mirrors
@@ -841,10 +999,11 @@ func go_to(page: int) -> void:
 	# Drawing left holding a null texture is a node every layout check has to
 	# special-case, and the load is a cached one either way.
 	_drawing_rect.texture = load(String(entry["drawing"])) as Texture2D
-	# Exactly one of the three is up at a time; they share the matte on purpose.
+	# Exactly one of the five is up at a time; they share the matte on purpose.
 	_drawing_rect.visible = drawn
 	_spec.visible = spec
 	_shelf.visible = kind == KIND_SHELF
+	_hints.visible = kind == KIND_HINTS
 	_legend.visible = kind == KIND_LEGEND
 	_spec.text = plant_spec(StringName(entry.get("plant", &""))) if spec else ""
 	_drawing_pane_label.text = pane_label_for(kind)
@@ -863,6 +1022,11 @@ func go_to(page: int) -> void:
 		# lists should be told that is expected rather than left to doubt the page.
 		_source.text = "%d of the board's %d marks — the ones you meet first" % [
 			CueLegend.row_count(), OVERLAY_GRAMMAR_SHAPES]
+	elif kind == KIND_HINTS:
+		# A score, like the shelf's, and deliberately not read as one: "1 of 3 seen" is
+		# not progress a player can go and make. It says how much of this page is a
+		# reminder and how much is news, which is the only thing the number is for here.
+		_source.text = hints_progress_text()
 	else:
 		_source.text = shelf_progress_text()
 	_sprite_rect.texture = load(GardenTheme.retina_path(String(entry["sprite"]))) as Texture2D
@@ -905,7 +1069,13 @@ func _play_turn(direction: float) -> void:
 		return
 	var tween := create_tween()
 	tween.set_parallel(true)
-	for node: Control in [_drawing_rect, _spec, _shelf, _sprite_rect, _caption, _page_note, _source]:
+	# `_hints` is here because `_shelf` is: they are the same pane built twice, and a
+	# left page that stayed still while the right one turned would read as a stuck
+	# screen. (`_legend` is the one left out, and predates this — CueLegend draws itself
+	# in `_draw`, so nudging its position:x mid-turn is a repaint per frame rather than
+	# a moved child. Not changed here; it is not this page's to decide.)
+	for node: Control in [_drawing_rect, _spec, _shelf, _hints, _sprite_rect, _caption,
+			_page_note, _source]:
 		tween.tween_property(node, "modulate:a", 1.0, TURN_SECONDS).from(TURN_START_ALPHA)
 		tween.tween_property(node, "position:x", node.position.x, TURN_SECONDS) \
 			.from(node.position.x + TURN_NUDGE * direction) \
