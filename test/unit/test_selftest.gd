@@ -13709,6 +13709,45 @@ func test_the_run_summary_says_where_the_seeds_went_without_grading_it() -> Stri
 ## The comparison is against the beds row, which the file names as this column's
 ## width high-water mark. A new row is affordable precisely while it stays under
 ## the row that already sets the ceiling.
+## The devtools bridge must stay out of a build a player can run
+## (plant-tower-defense-kdnl).
+##
+## `dev_tools.gd` carries a local patch gating the bus and the `entry_hook` on
+## `OS.has_feature("template")`. It fixes a defect that took a real itch.io deploy to
+## notice: the hook that skips the title screen for `/verify` was skipping it for every
+## player, so the web build opened straight onto the board.
+##
+## WHY THIS READS SOURCE INSTEAD OF BEHAVIOUR, which is normally the wrong shape: the two
+## branches are IDENTICAL in an editor build. `OS.has_feature("template")` is false here
+## whatever the code says, so a run with the guard and a run without it agree on every
+## observable — there is nothing to assert at runtime, and lint, the suite and `findings`
+## all pass either way. The only witness is the text.
+##
+## AND IT IS LOAD-BEARING BECAUSE THE FILE IS NOT OURS. `dev_tools.gd` is listed in
+## `addons/godot_selftest/.harness_manifest.json`, so `/scaffold-godot-harness` regenerates
+## it and silently reverts this. A newer harness is already on this machine than the
+## project runs, so a refresh is an ordinary thing to do — and this file's recorded sha has
+## already drifted from its manifest once. The failure mode is the bad one: everything
+## keeps building and deploying, and the only symptom is players landing on the board.
+func test_the_devtools_bridge_stays_out_of_a_players_build() -> String:
+	var path := "res://addons/godot_selftest/dev_tools.gd"
+	var src: String = FileAccess.get_file_as_string(path)
+	var err: String = _T.assert_gt(src.length(), 0, "dev_tools.gd is readable at %s" % path)
+	if err == "":
+		err = _T.assert_true(src.contains("OS.has_feature(\"template\")"),
+			("the passive gate still tests OS.has_feature(\"template\"). If this went red "
+				+ "after /scaffold-godot-harness, the harness overwrote the patch: "
+				+ "re-apply it and see plant-tower-defense-kdnl. An exported build without "
+				+ "it polls the bus and fires entry_hook for PLAYERS."))
+	if err == "":
+		# The opt-back-in half. Without it the patch is a wall rather than a gate, and
+		# driving a real export from the bridge becomes impossible instead of explicit.
+		err = _T.assert_true(src.contains("--devtools-force"),
+			"and the --devtools-force escape hatch survives, so a template build can still "
+				+ "be driven deliberately")
+	return err
+
+
 func test_the_spend_row_fits_its_column_at_endless_magnitudes() -> String:
 	var stats: Dictionary = {
 		"endless": true,
