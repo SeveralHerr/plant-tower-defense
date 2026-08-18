@@ -2226,7 +2226,7 @@ func _refresh_prep_note(state: Dictionary) -> void:
 ##
 ## Names the boss and the weather because those are what change the SHAPE of a wave --
 ## the threat number already on the prep strip answers how much, and a player deciding
-## between damage and coverage needs to know a queen is coming, not that the number
+## between damage and coverage needs to know a boss is coming, not that the number
 ## went up.
 static func next_wave_note(number: int, pests: int, boss: bool, weather: StringName,
 		last: bool = false) -> String:
@@ -2238,7 +2238,11 @@ static func next_wave_note(number: int, pests: int, boss: bool, weather: StringN
 	if pests > 0:
 		parts.append("%d pests" % pests)
 	if boss:
-		parts.append("a queen")
+		# "a boss", not "a queen", since plant-tower-defense-gsai: waves 17 and 19 carry a
+		# Nurse Beetle and `wave_carries_boss` is derived from a `boss` flag on the species
+		# row now, so naming the Queen here was a sentence that had become false on two
+		# waves. Narrower than the old text, so no width budget moves.
+		parts.append("a boss")
 	if weather == WaveDirector.WEATHER_RAIN:
 		parts.append("rain")
 	elif weather == WaveDirector.WEATHER_DROUGHT:
@@ -2428,7 +2432,7 @@ static func message_corpus() -> Array[String]:
 	# or shorten, so (boss, last) = (true, true) strictly dominates the other three
 	# combinations and pricing them would add three shorter strings for nothing.
 	# Checked in the body above rather than assumed: `if last: parts.append("the last
-	# one")` and `if boss: parts.append("a queen")`. If either flag ever CHANGES a
+	# one")` and `if boss: parts.append("a boss")`. If either flag ever CHANGES a
 	# clause instead of adding one, delete this waiver — the checker will then be
 	# right and this comment will be the reason it was ever wrong.
 	out.append(next_wave_note(999, 9999, true, WaveDirector.WEATHER_DROUGHT, true))

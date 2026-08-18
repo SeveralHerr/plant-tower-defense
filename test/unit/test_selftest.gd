@@ -10850,7 +10850,7 @@ func test_the_prep_note_says_what_the_next_wave_is_worth() -> String:
 	if err == "":
 		err = _T.assert_eq(
 			Hud.next_wave_note(14, 30, true, WaveDirector.WEATHER_CLEAR),
-			"Wave 14 next — 30 pests · a queen.", "a boss wave says so")
+			"Wave 14 next — 30 pests · a boss.", "a boss wave says so")
 	if err == "":
 		err = _T.assert_eq(
 			Hud.next_wave_note(10, 24, false, WaveDirector.WEATHER_RAIN),
@@ -11028,7 +11028,7 @@ func test_the_last_wave_says_that_it_is_the_last() -> String:
 	var last: int = WaveDirector.WAVES.size()
 	var err: String = _T.assert_eq(
 		Hud.next_wave_note(last, 40, true, WaveDirector.WEATHER_CLEAR, true),
-		"Wave %d next — the last one · 40 pests · a queen." % last,
+		"Wave %d next — the last one · 40 pests · a boss." % last,
 		"finality leads the line, because it changes what the run is about")
 	if err == "":
 		err = _T.assert_eq(
