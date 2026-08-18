@@ -6170,3 +6170,225 @@ func test_the_sway_still_carries_the_sprite_and_nothing_else() -> String:
 
 # END plant-tower-defense-om5f: the sway rotates about the stem
 # =============================================================================
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-tzz7 / plant-tower-defense-g8kc
+#   tzz7: surface dead ground before the player is holding a plant
+#   g8kc: mark ground no plant the player owns can use
+#
+# The argument for why these are one cue and not two is in placement_preview.gd's
+# matching block. The part that has to be MEASURED rather than argued is here:
+# the dead sets are nested, so g8kc's set is always inside tzz7's, so two marks
+# on one cell is the guaranteed case rather than an edge case -- and two bars at
+# DEAD_BAR_ANGLE is already the redundancy cue's picture.
+#
+# Everything below is a pure static or a node read. `GardenTheme.animations_enabled()`
+# is false for the whole suite and headless paints no frame, so the marks are
+# Line2D children with real `points` and these tests assert where the ink lands
+# without a `_draw()` ever running.
+# =============================================================================
+
+func _cells_to_text(cells: Array[Vector2i]) -> String:
+	var parts: Array[String] = []
+	for cell: Vector2i in cells:
+		parts.append("(%d,%d)" % [cell.x, cell.y])
+	return "[" + ", ".join(parts) + "]"
+
+
+func _same_cells(actual: Array[Vector2i], expected: Array[Vector2i], what: String) -> String:
+	var err: String = _T.assert_eq(actual.size(), expected.size(),
+		("%s: %d cells, expected %d. got %s want %s")
+			% [what, actual.size(), expected.size(), _cells_to_text(actual),
+				_cells_to_text(expected)])
+	if err != "":
+		return err
+	for i: int in range(expected.size()):
+		err = _T.assert_eq(actual[i], expected[i],
+			"%s: cell %d of %d" % [what, i, expected.size()])
+		if err != "":
+			return err
+	return ""
+
+
+## tzz7's acceptance, and the only version of it worth having: the board-wide
+## answer is not merely plausible, it is the SAME answer the hover cue gives,
+## plant by plant, cell by cell, across the whole catalogue.
+##
+## Driven through the live PlacementPreview node rather than through
+## covers_road() directly, because shows_dead_zone() is what a player actually
+## sees and it carries the legality term the geometry does not.
+func test_the_board_wide_dead_ground_matches_the_hover_cue_plant_by_plant() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var preview: PlacementPreview = _preview(game)
+	var err: String = _T.assert_true(preview != null, "the game built a placement preview")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	preview.board = game.board
+	preview.placeable = true
+	var plants_with_dead_ground: int = 0
+	for id: StringName in PlantCatalog.ids():
+		var reach: float = PlantCatalog.reach(id)
+		preview.reach = reach
+		preview.plant_id = id
+		var by_hover: Array[Vector2i] = []
+		for y: int in range(Board.ROWS):
+			for x: int in range(Board.COLS):
+				var cell := Vector2i(x, y)
+				if not game.board.is_buildable(cell):
+					continue
+				preview.position = game.board.cell_to_world(cell)
+				if preview.shows_dead_zone():
+					by_hover.append(cell)
+		var by_board: Array[Vector2i] = PlacementPreview.dead_ground_cells(game.board, reach)
+		if not by_hover.is_empty():
+			plants_with_dead_ground += 1
+		err = _same_cells(by_board, by_hover,
+			("the board cue and the hover cue disagree for %s (reach %.1f)")
+				% [PlantCatalog.display_name(id), reach])
+		if err != "":
+			break
+	if err == "":
+		# Vacuity guard. Every plant answering "no dead ground anywhere" would
+		# make the comparison above pass on eight empty lists.
+		err = _T.assert_gt(plants_with_dead_ground, 0,
+			"at least one plant in the catalogue has dead ground to disagree about")
+	_T.free_ui(game)
+	return err
+
+
+## The grammar, asserted rather than argued: the board's mark IS the hover bar's
+## stroke, so a cell carrying both shows one bar and never the two parallel bars
+## that mean "redundant patch".
+##
+## Headless never runs `_draw()`, so this reads the Line2D children the Board
+## actually builds. Their endpoints are the same two points `_draw_dead_bar()`
+## passes to draw_line(), offset to the cell -- which is the only way to check a
+## cue whose whole defence is "these two marks coincide".
+func test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two() -> String:
+	var board := Board.new()
+	var arm: Vector2 = PlacementPreview.dead_bar_arm()
+	var cells: Array[Vector2i] = PlacementPreview.dead_ground_cells(board,
+		PlantCatalog.reach(PlantCatalog.CORN))
+	var err: String = _T.assert_gt(cells.size(), 0,
+		"there is dead ground to mark -- an empty set would make every check below vacuous")
+	if err == "":
+		err = _T.assert_true(board.mark_dead_ground(cells, arm,
+			PlacementPreview.board_dead_color(), PlacementPreview.DEAD_BAR_WIDTH),
+			"marking a fresh board reports the set as changed")
+	if err == "":
+		err = _same_cells(board.dead_ground_marked(), cells,
+			"the board holds exactly the cells it was handed")
+	var lines: Array[Line2D] = board.dead_ground_mark_lines()
+	if err == "":
+		err = _T.assert_eq(lines.size(), cells.size(),
+			("one visible mark per dead cell -- %d marks for %d cells"
+				% [lines.size(), cells.size()]))
+	if err == "":
+		for i: int in range(cells.size()):
+			var centre: Vector2 = board.cell_to_world(cells[i])
+			var pts: PackedVector2Array = lines[i].points
+			err = _T.assert_eq(pts.size(), 2,
+				"mark %d is a straight two-point stroke, not a shape" % i)
+			if err == "":
+				err = _T.assert_float_eq(pts[0].distance_to(centre - arm), 0.0, 0.001,
+					"mark %d starts where _draw_dead_bar() would start" % i)
+			if err == "":
+				err = _T.assert_float_eq(pts[1].distance_to(centre + arm), 0.0, 0.001,
+					"mark %d ends where _draw_dead_bar() would end" % i)
+			if err == "":
+				# The claim in one number: the mark and the hover bar are the same
+				# line, so their perpendicular separation is zero. The redundancy cue
+				# is the same stroke at REDUNDANT_BAR_GAP apart, and a nonzero gap
+				# here would be that cue said by accident.
+				err = _T.assert_float_eq(
+					((pts[0] + pts[1]) * 0.5).distance_to(centre), 0.0, 0.001,
+					("mark %d is centred on the cell, so it lies ON the hover bar rather "
+						+ "than beside it -- any separation at all is the redundant-patch "
+						+ "cue drawn by mistake") % i)
+			if err == "":
+				err = _T.assert_float_eq(lines[i].width, PlacementPreview.DEAD_BAR_WIDTH, 0.001,
+					"mark %d is the dead bar's own width" % i)
+			if err != "":
+				break
+	if err == "":
+		err = _T.assert_gt(PlacementPreview.REDUNDANT_BAR_GAP, 0.0,
+			("and the picture it must not become is a real one: two bars "
+				+ "REDUNDANT_BAR_GAP apart on this same angle"))
+	if err == "":
+		# Colour is the channel the grammar says may not carry meaning alone, so
+		# the ambient mark is allowed to be dimmer -- but only dimmer.
+		err = _T.assert_float_eq(PlacementPreview.board_dead_color().a,
+			PlacementPreview.BOARD_DEAD_ALPHA, 0.001,
+			"the ambient mark is the dead slate at BOARD_DEAD_ALPHA")
+	if err == "":
+		err = _T.assert_gt(PlacementPreview.DEAD_COLOR.a, PlacementPreview.BOARD_DEAD_ALPHA,
+			("and it is the quieter of the two: up to 36 ambient marks sit under one "
+				+ "focused hover bar, so the hovered cell has to win"))
+	board.free()
+	return err
+
+
+## The pool, because this cue redraws on every shop hover and Game._refresh()
+## fires on every seed payout. A mark set that queue_free()d and rebuilt would
+## read as node churn on `performance --by-type`, which is the only signal an
+## in-tree accumulation gives.
+func test_remarking_dead_ground_reuses_its_marks_instead_of_growing_the_board() -> String:
+	var board := Board.new()
+	var arm: Vector2 = PlacementPreview.dead_bar_arm()
+	var colour: Color = PlacementPreview.board_dead_color()
+	var width: float = PlacementPreview.DEAD_BAR_WIDTH
+	var wide: Array[Vector2i] = PlacementPreview.dead_ground_cells(board,
+		PlantCatalog.reach(PlantCatalog.CHOMP))
+	var narrow: Array[Vector2i] = PlacementPreview.dead_ground_cells(board,
+		PlantCatalog.reach(PlantCatalog.DANDELION))
+	var err: String = _T.assert_eq(wide.size(), 36, "36 cells are dead for a Chomp Flower")
+	if err == "":
+		err = _T.assert_eq(narrow.size(), 3, "and 3 for a Bomb Dandelion")
+	if err == "":
+		board.mark_dead_ground(wide, arm, colour, width)
+	var layer: Node2D = board.get_node_or_null(Board.DEAD_GROUND_LAYER) as Node2D
+	if err == "":
+		err = _T.assert_true(layer != null, "marking built the marks layer")
+	var pool: int = layer.get_child_count() if layer != null else -1
+	if err == "":
+		err = _T.assert_eq(pool, 36, "one Line2D per marked cell, %d built" % pool)
+	if err == "":
+		err = _T.assert_false(board.mark_dead_ground(wide, arm, colour, width),
+			("re-marking the identical set reports no change, so Game._refresh() on every "
+				+ "seed payout does not rebuild the pool several times a second"))
+	if err == "":
+		err = _T.assert_true(board.mark_dead_ground(narrow, arm, colour, width),
+			"shrinking the set does report a change")
+	if err == "":
+		err = _T.assert_eq(layer.get_child_count(), pool,
+			("and shrinks by HIDING, not by freeing: the pool is still %d nodes" % pool))
+	if err == "":
+		err = _T.assert_eq(board.dead_ground_mark_lines().size(), 3,
+			"with only 3 of them visible")
+	if err == "":
+		err = _T.assert_true(board.mark_dead_ground(wide, arm, colour, width),
+			"growing back reports a change")
+	if err == "":
+		err = _T.assert_eq(layer.get_child_count(), pool,
+			("and reuses the hidden marks rather than adding 36 more -- the pool is still "
+				+ "%d nodes after a full shrink-and-grow cycle" % pool))
+	if err == "":
+		err = _T.assert_eq(board.dead_ground_mark_lines().size(), 36,
+			"with all 36 visible again")
+	if err == "":
+		# A road cell is not ground a plant can be dead on, so it is dropped the way
+		# mark_unaimed_road() drops non-road.
+		var road: Array[Vector2i] = [board.road_cells()[0]]
+		board.mark_dead_ground(road, arm, colour, width)
+		err = _T.assert_false(board.is_dead_ground(road[0]),
+			"a mark handed a road cell drops it rather than rendering it")
+	if err == "":
+		err = _T.assert_eq(board.dead_ground_mark_lines().size(), 0,
+			"leaving nothing visible, which is also how the cue is cleared")
+	board.free()
+	return err
+
+# END plant-tower-defense-tzz7 / plant-tower-defense-g8kc
+# =============================================================================

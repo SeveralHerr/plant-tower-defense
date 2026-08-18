@@ -324,7 +324,7 @@ func _draw_risk_ring() -> void:
 ## line in any preview state other than the four corner arms, so the state is
 ## legible with the colour thrown away.
 func _draw_dead_bar() -> void:
-	var arm_vec: Vector2 = Vector2.from_angle(DEAD_BAR_ANGLE) * PREVIEW_HALF
+	var arm_vec: Vector2 = dead_bar_arm()
 	draw_line(-arm_vec, arm_vec, DEAD_COLOR, DEAD_BAR_WIDTH, true)
 
 
@@ -332,7 +332,7 @@ func _draw_dead_bar() -> void:
 ## that you can count them, which survives greyscale, a colourblind player and a
 ## screenshot at half size. See REDUNDANT_BAR_GAP.
 func _draw_redundant_bars() -> void:
-	var along: Vector2 = Vector2.from_angle(DEAD_BAR_ANGLE) * PREVIEW_HALF
+	var along: Vector2 = dead_bar_arm()
 	var across: Vector2 = along.orthogonal().normalized() * (REDUNDANT_BAR_GAP * 0.5)
 	draw_line(-along + across, along + across, DEAD_COLOR, DEAD_BAR_WIDTH, true)
 	draw_line(-along - across, along - across, DEAD_COLOR, DEAD_BAR_WIDTH, true)
@@ -632,3 +632,122 @@ func _board() -> Board:
 			_resolved_board = found
 			break
 	return _resolved_board
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-tzz7 / plant-tower-defense-g8kc
+#   tzz7: surface dead ground BEFORE the player is holding a plant
+#   g8kc: mark ground no plant the player owns can use
+#
+# ONE CUE, NOT TWO, and the reason is a measurement rather than a preference.
+#
+# `covers_road()` is monotone in reach: a cell whose nearest road centre is
+# further away than a long reach is further away than every shorter reach too.
+# So the dead sets are strictly NESTED, and on this road they are
+# (test_the_dead_sets_are_nested_so_the_two_cues_can_never_be_two_marks):
+#
+#   mint      64.0 px -> 36 of 94 buildable cells
+#   chomp     73.6    -> 36
+#   aloe      96.0    -> 30
+#   nettle   112.0    -> 30
+#   sundew   118.4    -> 30
+#   corn     176.0    -> 11
+#   dandelion192.0    ->  3
+#   sunflower  0.0    ->  0   (no reach, so never dead ground -- see covers_road)
+#
+# g8kc's set is therefore a SUBSET of tzz7's set for every plant the player
+# owns, always, by construction. Two overlapping marks on the same cell would
+# not be an occasional accident here; it would be the guaranteed case. Worse,
+# two bars on one cell at DEAD_BAR_ANGLE is _draw_redundant_bars() -- the cue
+# that means "you already have a patch covering this" -- so the failure mode is
+# not clutter, it is a different sentence.
+#
+# The resolution is a MODE, not a union. The board answers one question at a
+# time: with a shop entry hovered it shows dead ground for THAT plant; with
+# nothing hovered it shows dead ground for the longest reach the player has
+# unlocked. g8kc is not a second cue. It is this cue's resting state, and that
+# is the whole reason these two beads are one change.
+#
+# WHY NOT A TINT, which is the word g8kc uses. OVERLAY_GRAMMAR.md's one rule
+# with teeth is that a cue must be legible with its colour discarded, and a
+# ground tint has no channel but colour. The mark is the existing "straight line
+# through a box = A STATE" row instead (`_draw_dead_bar` above, grammar row
+# `placement_preview.gd:328`) -- same angle, same width, same slate, drawn from
+# the same dead_bar_arm(). No row is added to the grammar, so the notebook
+# legend is untouched and
+# test_the_legend_names_as_many_shapes_as_the_grammar_documents is unaffected.
+#
+# WHAT THE RESTING STATE HONESTLY CLAIMS, because the bead's wording claims more.
+# "Ground no plant in the catalogue can use" is FALSE of these cells. A Seed
+# Sunflower has no reach, is never dead-zoned, and its own blurb says "plant it
+# somewhere the lane doesn't need" -- the three cells dead for the whole
+# catalogue's longest reach are the best Sunflower ground on the board. Mint and
+# Aloe reach over PLANTS rather than over the road (PlantCatalog.reach() says so
+# at both branches), so their dead-ground answer is already a known
+# approximation. The set below is therefore "dead for every unlocked plant whose
+# dead-ground cue can fire at all", i.e. every unlocked plant with reach > 0 --
+# which is exactly the population the hover cue already speaks for, and nothing
+# wider. Named accordingly.
+# =============================================================================
+
+## The ambient version of DEAD_COLOR: the same slate at a third of the alpha.
+##
+## Dimmer than the hover bar and deliberately the opposite way round from
+## OK_COLOR's relationship to SelectionMarker. There, a hover is the quiet
+## suggestion under a loud selection. Here the board-wide marks are the ambient
+## statement -- up to 36 of them at once -- and the hovered cell's own bar is the
+## focused one, so the ambient set has to be the quieter of the two or the board
+## reads as covered in warnings.
+const BOARD_DEAD_ALPHA: float = 0.34
+
+
+## The half-arm of the dead bar: one endpoint of the stroke, measured from the
+## cell centre. The other is its negation.
+##
+## Extracted so the board-wide mark and the hovered-cell bar are provably the
+## SAME stroke rather than two strokes that happen to agree -- Board draws its
+## marks from this vector, `_draw_dead_bar()` draws from this vector, and
+## test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two asserts the
+## endpoints coincide. Two coincident collinear strokes read as one bar; two
+## parallel ones read as the redundancy cue, which is the mistake this closes.
+static func dead_bar_arm() -> Vector2:
+	return Vector2.from_angle(DEAD_BAR_ANGLE) * PREVIEW_HALF
+
+
+## DEAD_COLOR at BOARD_DEAD_ALPHA. A function rather than a const because a
+## GDScript const initialiser cannot call Color's (Color, float) constructor --
+## the same limitation OK_COLOR's header spells out at length.
+static func board_dead_color() -> Color:
+	return Color(DEAD_COLOR, BOARD_DEAD_ALPHA)
+
+
+## Every buildable cell on which a plant of `reach_px` would stand for the whole
+## run and never fire once -- the hover cue's own question, asked of the whole
+## board at once instead of one cell at a time.
+##
+## Row-major, so the order is deterministic without a sort and a test can compare
+## two answers element by element.
+##
+## EMPTY is the answer for reach <= 0.0, and that is the same judgement
+## covers_road() already makes rather than a missing case: a Sunflower is not
+## supposed to fire, so no ground is dead for it. Empty is also the answer for a
+## null or unbuilt board, for the reason covered_road_cell_list() gives -- an
+## unbuilt board would otherwise report the entire field dead.
+static func dead_ground_cells(on_board: Board, reach_px: float) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if on_board == null or reach_px <= 0.0:
+		return out
+	if on_board.path_cell_count() <= 0:
+		return out
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			if not on_board.is_buildable(cell):
+				continue
+			if covered_road_cells(on_board, cell, reach_px) == 0:
+				out.append(cell)
+	return out
+
+
+# END plant-tower-defense-tzz7 / plant-tower-defense-g8kc
+# =============================================================================
