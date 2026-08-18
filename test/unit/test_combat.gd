@@ -4572,11 +4572,24 @@ func _over_promise_run(wave: int, corn_cells: Array, chomp_cells: Array,
 	var walked_bare: Dictionary = {}
 	var touched_ever: Dictionary = {}
 	var escaped_ids: Dictionary = {}
+	var escaped_unengaged_ids: Dictionary = {}
 
 	var tally: Dictionary = {
 		"covered_cells": covered_at_start, "road_cells": board.road_cells().size(),
 		"foreign_pests": foreign,
 		"spawned": 0, "winged": 0, "killed": 0, "escaped": 0, "escaped_engaged": 0,
+		# The escape-side pair the callers assert on instead of a count of engagements.
+		# `escaped_unengaged` is every pest that reached the exit wearing no fought mark;
+		# `escaped_unengaged_all_covered` is the subset of those whose WHOLE road walk was
+		# on ground the map was still covering at the moment they stood on it. The second
+		# is the one an over-promise would show up in, and it is draw-independent in a way
+		# a floor on the first can never be — see the caller's argument.
+		"escaped_unengaged": 0, "escaped_unengaged_all_covered": 0,
+		# The schedule signature. Not asserted anywhere: it exists so that when a premise
+		# guard below goes red, the message can say whether the WAVE changed rather than
+		# leaving a reader to conclude the garden did. Any draw added to
+		# WaveDirector._build_schedule moves these two numbers.
+		"mutated": 0, "double_mutated": 0,
 		"frames": 0, "plants_eaten": 0,
 		"stays": 0, "unanswered": 0,
 		"answered": 0, "answered_in_reach": 0, "answered_aimed": 0,
@@ -4626,6 +4639,15 @@ func _over_promise_run(wave: int, corn_cells: Array, chomp_cells: Array,
 				pest.apply_mutation(StringName(which))
 			pests.append(pest)
 			tally["spawned"] = int(tally["spawned"]) + 1
+			# Read off the schedule entry rather than off the pest's own flags: the
+			# entry is exactly what _build_schedule emitted, which is what the draws
+			# decided. apply_mutation() is a step further downstream and would fold a
+			# species rule into a number that is only useful as a signature of the roll.
+			var traits: int = (entry["mutations"] as Array).size()
+			if traits >= 1:
+				tally["mutated"] = int(tally["mutated"]) + 1
+			if traits >= 2:
+				tally["double_mutated"] = int(tally["double_mutated"]) + 1
 			if pest.is_winged:
 				tally["winged"] = int(tally["winged"]) + 1
 		pending.clear()
@@ -4682,6 +4704,9 @@ func _over_promise_run(wave: int, corn_cells: Array, chomp_cells: Array,
 					escaped_ids[id] = true
 					if pest.was_engaged():
 						tally["escaped_engaged"] = int(tally["escaped_engaged"]) + 1
+					else:
+						escaped_unengaged_ids[id] = true
+						tally["escaped_unengaged"] = int(tally["escaped_unengaged"]) + 1
 				else:
 					tally["killed"] = int(tally["killed"]) + 1
 				continue
@@ -4735,6 +4760,13 @@ func _over_promise_run(wave: int, corn_cells: Array, chomp_cells: Array,
 		var whole_walk: bool = not walked_bare.has(id)
 		if whole_walk:
 			tally["pests_all_covered"] = int(tally["pests_all_covered"]) + 1
+		# Counted BEFORE the untouched `continue` below on purpose. `was_engaged()` and
+		# this test's own `touched_ever` are near-twins but not the same predicate — a
+		# hit the Shield Bug's plate ate marks the pest engaged and drops no health —
+		# so an unfought escapee must be counted off its own set rather than inferred
+		# from the untouched one.
+		if whole_walk and escaped_unengaged_ids.has(id):
+			tally["escaped_unengaged_all_covered"] = int(tally["escaped_unengaged_all_covered"]) + 1
 		if touched_ever.has(id):
 			continue
 		tally["pests_untouched"] = int(tally["pests_untouched"]) + 1
@@ -4949,11 +4981,18 @@ func test_the_recorded_gardens_still_have_the_property_they_claim() -> String:
 ## of 34 when the same offset was wave 14). If "covered" over-promised, this is
 ## the run where a player would be misled
 ## — the board says every cell is answered and the beds go anyway. It does not.
-## Every pest that reached the exit had been fought, and every pest that spent its
-## WHOLE walk inside covered ground was touched. The pests that got out untouched
-## in the wider sweep (68 of them, over 14 driven runs and four gardens) had every
-## one walked at least one cell the map already marks `unaimed` — so the mark was
-## right about them, and it was right about them before they died.
+## Every pest that spent its WHOLE walk inside covered ground was touched, and every
+## escape that went unfought had walked ground the map had already stopped covering
+## — a cob it was relying on had been eaten out from under the promise. The pests
+## that got out untouched in the wider sweep (68 of them, over 14 driven runs and
+## four gardens) had every one walked at least one cell the map already marks
+## `unaimed` — so the mark was right about them, and it was right about them before
+## they died.
+##
+## It used to say "every pest that reached the exit had been fought" here, and that
+## sentence was a count off one RNG stream rather than a property of the map. See
+## the last assertion in the body: the paragraph there is the whole argument, and it
+## is the reason this test cannot be broken by adding a draw to WaveDirector.
 ##
 ## Read together with the sibling test below, which runs a wave the garden wins
 ## outright and gets the same 66% off the same predicate: the "in reach and did
@@ -4984,10 +5023,22 @@ func test_the_coverage_map_keeps_its_promise_to_a_pest_that_never_leaves_covered
 		err = _T.assert_gt(int(run["frames"]), 600,
 			"and the wave was really driven, not stopped on frame one")
 	if err == "":
+		# THE STREAM-FRAGILE PREMISE, and the one place in this test where an RNG change
+		# in WaveDirector can still turn a line red. It is a premise and not the claim:
+		# "this seed produces a losing wave" is a fact about one schedule, so the message
+		# carries the schedule's signature and says what to suspect first. A reader who
+		# arrives here because a draw moved should re-pick the seed, not go looking for a
+		# hole in the coverage map.
 		err = _T.assert_gt(int(run["escaped"]), int(run["spawned"]) / 3,
 			("and the garden is LOSING it — %d of %d walked out, which is the only state "
-				+ "an over-promise could cost anything in")
-				% [int(run["escaped"]), int(run["spawned"])])
+				+ "an over-promise could cost anything in. IF THIS IS THE RED LINE, read "
+				+ "the schedule before the garden: this wave rolled %d mutated pests and "
+				+ "%d doubly-mutated ones, and ANY draw added to or removed from "
+				+ "WaveDirector._build_schedule reshuffles every roll after it, so the "
+				+ "same seed stops producing the same wave. A different-but-valid wave "
+				+ "the garden happens to win is a stream change, not a coverage failure")
+				% [int(run["escaped"]), int(run["spawned"]),
+					int(run["mutated"]), int(run["double_mutated"])])
 	if err == "":
 		err = _T.assert_gt(int(run["stays"]), 100,
 			"there are %d stays on covered ground to read" % int(run["stays"]))
@@ -5010,27 +5061,73 @@ func test_the_coverage_map_keeps_its_promise_to_a_pest_that_never_leaves_covered
 				+ "this run it was kept every time")
 				% int(run["pests_all_covered"]))
 	if err == "":
-		# MOST escapes were fought, not all — and the difference is worth the paragraph,
-		# because this line asserted equality until cycle 81 and the equality was a
-		# coincidence of one RNG draw.
+		# NOT A COUNT OF HOW MANY ESCAPES WERE FOUGHT. A count lived on this line for
+		# most of this file's history and it was a measurement wearing an assertion's
+		# clothes. plant-tower-defense-9afm is about that, not about the number.
 		#
-		# Cycle 81 added a second-mutation roll past wave 20, which this run is (WAVES +
-		# 6 = 22). The extra `randf()` reshuffles every draw after it and the count went
-		# 34-of-34 to 20-of-34. **Demonstrated to be the stream and not the feature**: with
-		# the draws still consumed and the second mutation never actually applied, the
-		# failure is byte-identical. So nothing about doubly-mutated pests caused it; a
-		# different-but-equally-valid wave did.
+		# THE HISTORY, because it is the evidence and not an anecdote. The line asserted
+		# `escaped_engaged == escaped` for many cycles and read as an invariant. Cycle 81
+		# added the second-mutation roll (`SECOND_MUTATION_START_WAVE`, one extra
+		# `randf()` per mutated pest, and a second `randi_range` behind it) and the count
+		# fell to 20 of 34. That was DEMONSTRATED to be the stream and not the feature:
+		# with the draws still consumed and the second mutation never actually applied,
+		# the failure was byte-identical. Nothing about doubly-mutated pests caused it; a
+		# different-but-equally-valid wave did. Cycle 81 replaced the equality with a
+		# half floor, which was honest and was still a quantity taken off one schedule.
 		#
-		# The claim that survives is the one above it — `pests_all_covered_untouched` is 0,
-		# so no pest that stayed on covered ground went untouched. A pest can still cross
-		# covered ground while everything covering it is mid-reload, and whether that
-		# happens 0 or 14 times is a property of the draw. Half is a floor, not a
-		# measurement: it distinguishes "the garden was fighting" from "the garden was
-		# ignoring them", which is all this line was ever able to say.
-		err = _T.assert_gte(int(run["escaped_engaged"]) * 2, int(run["escaped"]),
-			("and most of the %d escapes had been fought on the way down (%d were), so the "
-				+ "beds were lost to throughput and not to a hole the map was hiding")
-				% [int(run["escaped"]), int(run["escaped_engaged"])])
+		# Those numbers were measured when WAVES had sixteen rows and `WAVES.size() + 6`
+		# was wave 22. The table has 22 rows today, so this run is wave 28 and spawns a
+		# different, larger wave — the header's counts are the re-measured ones. The
+		# arithmetic in a paragraph going stale under it is itself the argument against
+		# asserting a count here.
+		#
+		# WHAT IS ASSERTED INSTEAD, and why a reshuffle cannot move it. An implication
+		# over pests rather than a count of them: no pest walked out unfought having
+		# spent its WHOLE road walk on ground the map was still covering. That is
+		# universally quantified over whatever the schedule happened to be, so a draw
+		# added anywhere in `_build_schedule` changes WHICH pests are examined and never
+		# whether the sentence holds. It is the only shape of claim a seeded 34-or-48-pest
+		# simulation can carry safely, and it is the same shape as
+		# `pests_all_covered_untouched` above — the one assertion here that cycle 81 left
+		# untouched, which is the evidence that derivable claims are the durable ones.
+		#
+		# It is a live cross-check and not a restatement. `_ever_engaged` is the game's
+		# flag and `touched_ever` is this test's own reading, and they are different
+		# predicates: engagement is a superset, because a hit the Shield Bug's plate ate
+		# marks the pest and drops no health. This line goes red exactly when a damage or
+		# hold path stops marking the pest — a real defect, since the fought ring the
+		# player sees is painted off that same flag. The superset is not assumed here; it
+		# is asserted by `test_the_engagement_flag_can_only_ever_mark_a_prefix_of_the_road`
+		# (damage that lands sets it), `test_a_pest_knows_whether_the_garden_ever_reached_it`
+		# (a Chomp's hold sets it) and
+		# `test_a_shield_bug_ignores_a_whole_stream_of_kernels_and_then_stops_ignoring_them`
+		# (a shot that achieved nothing still sets it).
+		#
+		# REJECTED — a private RandomNumberGenerator for this simulation. There is
+		# exactly one consumer of `WaveDirector._rng` and it is `_build_schedule`, so a
+		# second generator isolates nothing: the reshuffle comes from the SHAPE of
+		# consumption, not from a competing reader. And a test driving an RNG the game
+		# does not use is a test of a wave no player can meet.
+		#
+		# REJECTED — N seeds and a distribution. It would genuinely work, and it
+		# multiplies a forty-thousand-frame simulation by N in a helper five tests in
+		# this file already call once each.
+		#
+		# REJECTED — recording the schedule as a fixture so a reshuffle reads as a diff.
+		# Right shape, wrong cost: wave 28 is generated rather than tabled, so the
+		# fixture is dozens of rows nobody can re-derive by reading and it has to be
+		# regenerated from the game every time WAVES grows. The signature in the LOSING
+		# guard above is the cheap tenth of this idea that was kept.
+		#
+		# NO PLAYER SEES ANY OF THIS. Nothing about the garden, the wave or the coverage
+		# map changed; this test asserts a different sentence about the same run.
+		err = _T.assert_eq(int(run["escaped_unengaged_all_covered"]), 0,
+			("and of the %d escapes, the %d that went unfought had every one of them "
+				+ "walked ground the map had already stopped covering — not one crossed "
+				+ "a whole covered road untouched. The beds were lost to throughput, and "
+				+ "where they were lost to a hole, the map had stopped promising that "
+				+ "cell first")
+				% [int(run["escaped"]), int(run["escaped_unengaged"])])
 	return err
 
 
