@@ -67,10 +67,35 @@ const SAVE_PATH := "user://highscore.save"
 ## a line of its own, moves every field under it and changes `compose_save`'s
 ## signature, and line geometry is what every reader and every test of this file
 ## depends on. The fourth field is also the first that is not a bool, so it is
-## parsed by `_parse_step` rather than by the loop over `OPTIONS_PREFIXES` — which
+## parsed by `_parse_step` rather than by the loop over the flag prefixes — which
 ## is the seam to watch. If a fifth non-switch preference ever lands, this line has
 ## stopped being "the options" and should be renamed rather than grown again.
-const SAVE_VERSION: int = 7
+##
+## Version 8 is that fifth, and the sixth with it: `cb0 sfx0 mus0 spd0 svol0 mvol0`,
+## adding the two audio LEVELS (`sfx_level`, `music_level`). Neither is a switch, so
+## the line is now four non-bools out of six and the note above has fired.
+##
+## **IT WAS RENAMED, NOT JUST GROWN, and the rename is the whole of what v8 changes
+## about how this file reads.** `_options_line` is `_preferences_line`,
+## `_parse_options` is `_parse_preferences`, `OPTIONS_PREFIXES` — which never held
+## anything but the bools — is `SWITCH_PREFIXES`, and `compose_save`'s parameter says
+## `preferences_line`. Not a byte on disk moves because of any of that: it is
+## line 5 either way, in the same place, written by the same writer. What changes is
+## that the next person adding a preference reads a name that does not promise them
+## a screen. The old name said "the options", the Options screen shows three of the
+## six fields, and the two that were already wrong (`spd`, and now the levels) were
+## each argued into place against a name that did not fit them.
+##
+## The alternative considered again and refused again was a line of its own for the
+## levels. Same answer v7 gave: it moves every field under it, changes
+## `compose_save`'s signature, and line geometry is what every reader and every
+## byte-exact test of this file depends on. A rename costs no geometry at all.
+##
+## What would change it: a preference that is not one scalar per player — a list, a
+## per-plant setting, anything with its own length. THAT wants a line, because a
+## variable-length field on a fixed line is the thing the binding block is kept last
+## to avoid.
+const SAVE_VERSION: int = 8
 
 ## The version that introduced the milestone line, the options line and the
 ## binding block — all three landed together, so one number covers them.
@@ -94,6 +119,11 @@ const VERSION_WITH_MUTES: int = 6
 ## v6 line has three fields, a v7 line has four, and the parser is told which it is
 ## looking at instead of guessing from the field count.
 const VERSION_WITH_SPEED: int = 7
+
+## The version that put the two audio levels on the preferences line. Same role a
+## fourth time: a v6 line has three fields, a v7 line has four, a v8 line has six,
+## and the parser is told which it is looking at rather than counting and guessing.
+const VERSION_WITH_LEVELS: int = 8
 
 ## The first version this build refuses on sight, and the last. See SAVE_VERSION.
 const AMBIGUOUS_VERSIONS: Array[int] = [3, 4]
@@ -196,6 +226,12 @@ static func is_hint(id: String) -> bool:
 ## read as "the option is off" — a setting silently reverting on a player who needs
 ## it is the exact failure these options exist to prevent.
 ##
+## THE PREFERENCES LINE, and it is called that rather than "the options" since v8 —
+## see SAVE_VERSION for the rename and why it changes no bytes. It is every
+## remembered player preference that is one scalar, switch or not, in a fixed
+## prefixed order. Three of the six are Options-screen switches; the other three are
+## a top-bar button and two dials.
+##
 ## In v5 the whole line was `cb0` or `cb1`. In v6 it is three space-separated flags
 ## in a fixed order — `cb0 sfx0 mus0` — because the screen that shows these is one
 ## list of three switches (see OptionsScreen.OPTIONS), and one screen reading one
@@ -215,10 +251,15 @@ const OPTIONS_MUTE_MUSIC_PREFIX := "mus"
 ## its whole options line is one of these two exactly.
 const OPTIONS_COLORBLIND_OFF := "cb0"
 const OPTIONS_COLORBLIND_ON := "cb1"
-## The v6 options line's fields, in the order they are written and read. Order is
-## fixed by this array and by nothing else, so the writer and the reader cannot
-## drift apart.
-const OPTIONS_PREFIXES: Array[String] = [
+## The preferences line's BOOL fields, in the order they are written and read.
+## Order is fixed by this array and by nothing else, so the writer and the reader
+## cannot drift apart.
+##
+## Named for what it holds rather than for the line it sits on — it was
+## `OPTIONS_PREFIXES` until v8, and by then the line had four fields of which this
+## covered three. Everything after these is a step index parsed by `_parse_step`,
+## which is the seam v7's own note asked the next reader to watch.
+const SWITCH_PREFIXES: Array[String] = [
 	OPTIONS_COLORBLIND_PREFIX,
 	OPTIONS_MUTE_SFX_PREFIX,
 	OPTIONS_MUTE_MUSIC_PREFIX,
@@ -245,6 +286,28 @@ const OPTIONS_SPEED_PREFIX := "spd"
 ##
 ## Bounded all the same, so a corrupt digit cannot claim step 900000000.
 const MAX_SPEED_STEP: int = 15
+
+## The v8 fields: which step of `Sfx.LEVELS` the player last chose for each of the
+## two audio categories, written `svol0`/`mvol0`. Prefixed for the reason every
+## other field on this line is, and spelled four characters rather than three so a
+## reader skimming the line cannot mistake `svol` for `sfx` — they are adjacent
+## fields about the same category, and the whole argument for prefixes is that a
+## transposition must be refused rather than read.
+##
+## `Sfx.LEVELS[0]` is FULL, so a default save reads `svol0 mvol0` and sits beside
+## the four other zeros rather than carrying a magic index nobody can check by eye.
+const OPTIONS_SFX_LEVEL_PREFIX := "svol"
+const OPTIONS_MUSIC_LEVEL_PREFIX := "mvol"
+
+## The largest level index this parser will read out of a save.
+##
+## Same value and same argument as MAX_SPEED_STEP, and a SEPARATE constant on
+## purpose: they bound two different tables, and one shared number is how a change
+## to the speed table's ceiling silently moves the level table's. An index this
+## build has no level for is READ and KEPT — a save from a later build with eight
+## steps must not condemn two high scores that cannot be re-earned — and refused at
+## the point of use, where `Sfx.level_db` falls back to full.
+const MAX_LEVEL_STEP: int = 15
 
 ## The file this autoload persists to. A variable rather than a constant for
 ## exactly one reason: the unit tests need to drive this code over a scratch file
@@ -349,6 +412,30 @@ var colorblind_safe: bool = false
 var mute_sfx: bool = false
 var mute_music: bool = false
 
+## The two audio levels, as indices into `Sfx.LEVELS`, as the save records them.
+##
+## Plain data, for the fourth time in this file and for the fourth identical
+## reason: `AudioServer` bus volume is PROCESS-GLOBAL, so a `_load` that pushed
+## these into the mixer would make every test that drives this parser over a
+## scratch file a test that silently retunes the whole suite's audio.
+## `apply_audio_levels()` is the one door.
+##
+## **A LEVEL IS NOT A MUTE AND NEITHER SUBSUMES THE OTHER**, which is the design
+## question this field exists to have answered rather than left implicit.
+## `Sfx.LEVELS` contains no zero (see its own comment), so a dial cannot silence a
+## category and a mute cannot be expressed as a level — the two are orthogonal, the
+## mixer composes them, and unmuting always lands back on the level the player
+## chose with nothing stashed anywhere. That is also why v8 ADDS two fields rather
+## than widening `sfx`/`mus` from a flag to a level: a save that already reads
+## `sfx1 mus0` still means exactly what it meant, effects muted and music audible,
+## and migrating it costs nothing but the two new zeros appended to its line.
+##
+## Default 0 — full — which is both the first-launch value and what every save
+## older than v8 reads as, by the same argument the speed's 0 makes: a player who
+## never had the dial had a game at the volume it shipped with.
+var sfx_level: int = 0
+var music_level: int = 0
+
 ## Which step of `GameSpeed.STEPS` the player last chose, as the save records it.
 ##
 ## Plain data, exactly like `key_bindings` and the two mutes above it, and for the
@@ -406,6 +493,7 @@ func _ready() -> void:
 	_load()
 	apply_key_bindings()
 	apply_audio_mutes()
+	apply_audio_levels()
 
 
 ## Pushes whatever `_load` made of the save into the live InputMap. Separate from
@@ -462,13 +550,13 @@ func record_score(seeds_earned: int) -> bool:
 ## consumed them knows exactly where the block starts. Put the bindings in the
 ## middle and every field under them moves whenever a player rebinds a key.
 static func compose_save(campaign: int, endless_best: int, milestone_line: String,
-		options_line: String, bindings: Dictionary) -> String:
+		preferences_line: String, bindings: Dictionary) -> String:
 	var out: PackedStringArray = [
 		"v%d" % SAVE_VERSION,
 		str(campaign),
 		str(endless_best),
 		milestone_line,
-		options_line,
+		preferences_line,
 		str(bindings.size()),
 	]
 	var names: Array = bindings.keys()
@@ -612,6 +700,70 @@ func set_mute_music(muted: bool) -> bool:
 
 func toggle_mute_music() -> bool:
 	return set_mute_music(not Music.is_muted())
+
+
+## Pushes whatever `_load` made of the two levels into the mixer. The dial twin of
+## `apply_audio_mutes`, and safe on every load path for the same reason: a refused
+## or absent save leaves both indices at 0, which is the same instruction as "play
+## at the volume the game shipped with".
+##
+## CALLED FROM `_ready()`, unlike `apply_game_speed`, and the difference is worth
+## stating because both touch process-global engine state. A saved ½x applied at
+## autoload time would run the TITLE screen's animations at half speed, so the
+## speed is a fact about a run and `Game._ready` applies it. A saved volume has no
+## such seam: the title screen plays a music bed of its own within a frame of this
+## running, and a dial that only took effect once a run started would leave the one
+## piece of audio a player hears before pressing anything at full volume. So this is
+## applied at process start, exactly like the mutes it sits beside.
+func apply_audio_levels() -> void:
+	Sfx.set_level(sfx_level)
+	Music.set_level(music_level)
+
+
+## Records a level for the one-shot cues and writes it down. Same shape and same
+## contract as `set_mute_sfx`: the owner is set unconditionally so a mixer moved
+## behind this file's back is resynced, the file is written only on an actual
+## change, and the value afterwards is returned so a caller need not read it back.
+##
+## Refuses an index outside this build's own table, exactly as `store_game_speed`
+## does and for the same reason: `Sfx.set_level` tolerates one by falling back to
+## full, which is right for a save from a later build and wrong for a caller's
+## off-by-one, because persisting it would make that off-by-one survive forever.
+func set_sfx_level(index: int) -> int:
+	if index < 0 or index >= Sfx.LEVELS.size():
+		push_warning(("RunConfig: refusing to persist sound level %d — this build has %d levels. "
+			+ "Keeping %d.") % [index, Sfx.LEVELS.size(), sfx_level])
+		return sfx_level
+	Sfx.set_level(index)
+	if sfx_level == index:
+		return sfx_level
+	sfx_level = index
+	_save()
+	return sfx_level
+
+
+func cycle_sfx_level() -> int:
+	return set_sfx_level(Sfx.next_level(Sfx.level()))
+
+
+## The music bed's half. Identical in shape to `set_sfx_level`; the level table is
+## `Sfx.LEVELS` for both, because they are the same four steps on two faders (see
+## `Music._level`).
+func set_music_level(index: int) -> int:
+	if index < 0 or index >= Sfx.LEVELS.size():
+		push_warning(("RunConfig: refusing to persist music level %d — this build has %d levels. "
+			+ "Keeping %d.") % [index, Sfx.LEVELS.size(), music_level])
+		return music_level
+	Music.set_level(index)
+	if music_level == index:
+		return music_level
+	music_level = index
+	_save()
+	return music_level
+
+
+func cycle_music_level() -> int:
+	return set_music_level(Sfx.next_level(Music.level()))
 
 
 ## Records the garden speed the player has cycled to and writes it down. Returns
@@ -774,32 +926,39 @@ static func _parse_flag(text: String, prefix: String) -> Variant:
 ##
 ## `is_valid_int()` before `int()`, for the reason `_is_score` spells out: `int("")`
 ## and `int("x")` are both 0 in GDScript, and 0 is a legal-looking step.
-static func _parse_step(text: String, prefix: String) -> Variant:
+##
+## `max_step` is a parameter with a default rather than a read of MAX_SPEED_STEP
+## inside the body, because v8 gave this function three callers over two tables and
+## a bound belongs to a table, not to a parser. The default keeps every existing
+## two-argument call reading exactly as it did.
+static func _parse_step(text: String, prefix: String, max_step: int = MAX_SPEED_STEP) -> Variant:
 	if not text.begins_with(prefix):
 		return null
 	var body: String = text.substr(prefix.length())
 	if not body.is_valid_int():
 		return null
 	var step: int = int(body)
-	if step < 0 or step > MAX_SPEED_STEP:
+	if step < 0 or step > max_step:
 		return null
 	return step
 
 
-## The options line, read in the shape the file's own version defines.
+## The preferences line, read in the shape the file's own version defines.
 ##
-## v5 is the lone colourblind flag; v6 is OPTIONS_PREFIXES in order, space
-## separated, all three required; v7 is those three followed by the speed field.
+## v5 is the lone colourblind flag; v6 is SWITCH_PREFIXES in order, space
+## separated, all three required; v7 is those three followed by the speed field; v8
+## is those four followed by the two audio levels.
 ## Split with empties KEPT, so `cb0  sfx0 mus0` is four fields and is refused: two
 ## spaces is not a shape this writer produces, and a parser that shrugs at it is a
 ## parser that would shrug at a half-written line.
 ##
-## Returns {colorblind_safe, mute_sfx, mute_music, game_speed_step}, or `null` on
-## anything else. A v5 line's two absent mutes read as false — a player who never
-## had the setting had a game that made noise, which is exactly what unmuted means.
-## A v5 or v6 line's absent speed reads as step 0, by the same argument: a player
-## who never had the control had a garden running at 1x.
-static func _parse_options(text: String, version: int) -> Variant:
+## Returns {colorblind_safe, mute_sfx, mute_music, game_speed_step, sfx_level,
+## music_level}, or `null` on anything else. A v5 line's two absent mutes read as
+## false — a player who never had the setting had a game that made noise, which is
+## exactly what unmuted means. A v5 or v6 line's absent speed reads as step 0, and a
+## line older than v8 reads both absent levels as step 0, by the same argument each
+## time: a player who never had the control had whatever the game shipped with.
+static func _parse_preferences(text: String, version: int) -> Variant:
 	if version < VERSION_WITH_MUTES:
 		# Compared against the two v5 spellings outright rather than run through
 		# `_parse_flag`. v5's line was one fixed word, not a prefixed field in a
@@ -808,52 +967,74 @@ static func _parse_options(text: String, version: int) -> Variant:
 		# readable years after the writer that would have produced it is gone.
 		if text == OPTIONS_COLORBLIND_ON:
 			return {"colorblind_safe": true, "mute_sfx": false, "mute_music": false,
-				"game_speed_step": 0}
+				"game_speed_step": 0, "sfx_level": 0, "music_level": 0}
 		if text == OPTIONS_COLORBLIND_OFF:
 			return {"colorblind_safe": false, "mute_sfx": false, "mute_music": false,
-				"game_speed_step": 0}
+				"game_speed_step": 0, "sfx_level": 0, "music_level": 0}
 		return null
-	# Exactly three fields at v6, exactly four at v7 — never "at least three". A
-	# tolerant count is how a v6 line read by this build would silently keep its
-	# speed at 1x while the version header claimed the field was there.
+	# Exactly three fields at v6, exactly four at v7, exactly six at v8 — never "at
+	# least three". A tolerant count is how a v6 line read by this build would
+	# silently keep its speed at 1x while the version header claimed the field was
+	# there, and at v8 it is how a save whose levels were cut off would come back at
+	# full volume for a player who had turned it down.
 	var has_speed: bool = version >= VERSION_WITH_SPEED
-	var expected: int = OPTIONS_PREFIXES.size() + (1 if has_speed else 0)
+	var has_levels: bool = version >= VERSION_WITH_LEVELS
+	var expected: int = SWITCH_PREFIXES.size() + (1 if has_speed else 0) + (2 if has_levels else 0)
 	var fields: PackedStringArray = text.split(" ")
 	if fields.size() != expected:
 		return null
 	var values: Array[bool] = []
-	for i: int in range(OPTIONS_PREFIXES.size()):
-		var flag: Variant = _parse_flag(fields[i], OPTIONS_PREFIXES[i])
+	for i: int in range(SWITCH_PREFIXES.size()):
+		var flag: Variant = _parse_flag(fields[i], SWITCH_PREFIXES[i])
 		if flag == null:
 			return null
 		values.append(bool(flag))
 	var step: int = 0
 	if has_speed:
-		var parsed_step: Variant = _parse_step(fields[OPTIONS_PREFIXES.size()], OPTIONS_SPEED_PREFIX)
+		var parsed_step: Variant = _parse_step(fields[SWITCH_PREFIXES.size()], OPTIONS_SPEED_PREFIX)
 		if parsed_step == null:
 			return null
 		step = int(parsed_step)
+	var sfx_step: int = 0
+	var music_step: int = 0
+	if has_levels:
+		# Bounded by MAX_LEVEL_STEP, not MAX_SPEED_STEP: same number today, two
+		# different tables, and reading one table's field against the other's ceiling
+		# is how a change to `GameSpeed.STEPS` silently starts refusing volumes.
+		var parsed_sfx: Variant = _parse_step(fields[SWITCH_PREFIXES.size() + 1],
+			OPTIONS_SFX_LEVEL_PREFIX, MAX_LEVEL_STEP)
+		if parsed_sfx == null:
+			return null
+		var parsed_music: Variant = _parse_step(fields[SWITCH_PREFIXES.size() + 2],
+			OPTIONS_MUSIC_LEVEL_PREFIX, MAX_LEVEL_STEP)
+		if parsed_music == null:
+			return null
+		sfx_step = int(parsed_sfx)
+		music_step = int(parsed_music)
 	return {"colorblind_safe": values[0], "mute_sfx": values[1], "mute_music": values[2],
-		"game_speed_step": step}
+		"game_speed_step": step, "sfx_level": sfx_step, "music_level": music_step}
 
 
 static func _flag_text(prefix: String, on: bool) -> String:
 	return "%s%d" % [prefix, 1 if on else 0]
 
 
-func _options_line() -> String:
+func _preferences_line() -> String:
 	return " ".join(PackedStringArray([
 		_flag_text(OPTIONS_COLORBLIND_PREFIX, colorblind_safe),
 		_flag_text(OPTIONS_MUTE_SFX_PREFIX, mute_sfx),
 		_flag_text(OPTIONS_MUTE_MUSIC_PREFIX, mute_music),
 		"%s%d" % [OPTIONS_SPEED_PREFIX, game_speed_step],
+		"%s%d" % [OPTIONS_SFX_LEVEL_PREFIX, sfx_level],
+		"%s%d" % [OPTIONS_MUSIC_LEVEL_PREFIX, music_level],
 	]))
 
 
 func _parse_failed(reason: String) -> Dictionary:
 	return {"ok": false, "campaign": 0, "endless": 0, "milestones": [],
 		"colorblind_safe": false, "mute_sfx": false, "mute_music": false,
-		"game_speed_step": 0, "bindings": {}, "version": 0, "reason": reason}
+		"game_speed_step": 0, "sfx_level": 0, "music_level": 0,
+		"bindings": {}, "version": 0, "reason": reason}
 
 
 ## Validates an entire save file and only then hands back its contents.
@@ -893,7 +1074,8 @@ func _parse_save(path: String) -> Dictionary:
 		# reading rather than a fallback.
 		return {"ok": true, "campaign": 0, "endless": int(header), "milestones": [],
 			"colorblind_safe": false, "mute_sfx": false, "mute_music": false,
-			"game_speed_step": 0, "bindings": {}, "version": 1, "reason": "v1"}
+			"game_speed_step": 0, "sfx_level": 0, "music_level": 0,
+			"bindings": {}, "version": 1, "reason": "v1"}
 
 	var version_text: String = header.substr(1)
 	if not version_text.is_valid_int():
@@ -947,19 +1129,23 @@ func _parse_save(path: String) -> Dictionary:
 	var muted_sfx: bool = false
 	var muted_music: bool = false
 	var speed_step: int = 0
+	var sfx_step: int = 0
+	var music_step: int = 0
 	if version >= VERSION_WITH_EXTRAS:
-		# The one line whose SHAPE differs between three readable versions, so the
+		# The one line whose SHAPE differs between four readable versions, so the
 		# version goes in rather than being compared against here — a v5 line has one
-		# field, a v6 line has three, a v7 line has four, and the parser is told which
-		# it is looking at.
-		var parsed_options: Variant = _parse_options(f.get_line().strip_edges(), version)
-		if parsed_options == null:
-			return _parse_failed("its options line is not an options line")
-		var options := parsed_options as Dictionary
-		colorblind = bool(options["colorblind_safe"])
-		muted_sfx = bool(options["mute_sfx"])
-		muted_music = bool(options["mute_music"])
-		speed_step = int(options["game_speed_step"])
+		# field, a v6 line has three, a v7 line has four, a v8 line has six, and the
+		# parser is told which it is looking at.
+		var parsed_prefs: Variant = _parse_preferences(f.get_line().strip_edges(), version)
+		if parsed_prefs == null:
+			return _parse_failed("its preferences line is not a preferences line")
+		var prefs := parsed_prefs as Dictionary
+		colorblind = bool(prefs["colorblind_safe"])
+		muted_sfx = bool(prefs["mute_sfx"])
+		muted_music = bool(prefs["mute_music"])
+		speed_step = int(prefs["game_speed_step"])
+		sfx_step = int(prefs["sfx_level"])
+		music_step = int(prefs["music_level"])
 
 	# The count is what makes a truncation here detectable at all — without it, a
 	# file cut after the options line is indistinguishable from a player who never
@@ -1002,6 +1188,8 @@ func _parse_save(path: String) -> Dictionary:
 		"mute_sfx": muted_sfx,
 		"mute_music": muted_music,
 		"game_speed_step": speed_step,
+		"sfx_level": sfx_step,
+		"music_level": music_step,
 		"version": version,
 		"bindings": bindings,
 		"reason": "v%d" % version,
@@ -1058,6 +1246,12 @@ func _load() -> void:
 	# stages a save file. `apply_game_speed()` is the one door, and `Game._ready` is
 	# the one caller — see `game_speed_step`.
 	game_speed_step = int(parsed["game_speed_step"])
+	# Data only for the fourth time, and this pair MUST be for the same reason the
+	# speed must: `AudioServer` bus volume is process-global, so a `_load` that
+	# applied it would retune every test in the suite that stages a save file.
+	# `apply_audio_levels()` is the one door, and `_ready` is the one caller.
+	sfx_level = int(parsed["sfx_level"])
+	music_level = int(parsed["music_level"])
 	if recovered:
 		load_status = "recovered"
 		_save()
@@ -1104,7 +1298,7 @@ func _save() -> void:
 			% [tmp, error_string(FileAccess.get_open_error())])
 		return
 	f.store_string(compose_save(campaign_high_score, endless_high_score,
-		_milestone_line(), _options_line(), key_bindings))
+		_milestone_line(), _preferences_line(), key_bindings))
 	f.flush()
 	var write_error: int = f.get_error()
 	f.close()

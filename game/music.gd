@@ -54,6 +54,30 @@ const BASE_VOLUME_DB: float = -14.0
 const SILENT_DB: float = -80.0
 const CROSSFADE_SECONDS: float = 1.4
 
+## The bed's own mixer bus. Separate from `Sfx.BUS_NAME` because the two dials
+## are separate -- see the mixer block in sfx.gd for the argument, and
+## `Music._muted` below for the same split one axis over.
+##
+## The three numbers above stay on the PLAYERS, not on this bus, and the division
+## is the point. `BASE_VOLUME_DB` is where the bed sits UNDER the cues; `SILENT_DB`
+## and `CROSSFADE_SECONDS` are a transition. Both are composition, and the tween in
+## `_start_playing` writes `volume_db` sixty times a second while it runs -- a dial
+## sharing that property would be overwritten mid-crossfade by a fade that knows
+## nothing about it. The bus is downstream of all of it, so the player's level
+## multiplies the crossfade instead of fighting it.
+const BUS_NAME := &"Music"
+
+## The bed's level, as an index into `Sfx.LEVELS` -- the SAME table, not a second
+## one. Two tables would be two sets of steps that could drift, and a screen
+## showing "75%" for music and "70%" for effects because two files disagreed is
+## the exact class of defect `Sfx.PITCH`'s header is about.
+## Written as a literal 0 rather than as `Sfx.DEFAULT_LEVEL`, which is what it
+## means: a static var's initializer runs at class load, and one class's static
+## initializer reaching into another global class is an ordering question nobody
+## should have to answer to read this line. Every other reference to the default
+## goes through the constant.
+static var _level: int = 0
+
 ## Music's own mute flag -- independent of Sfx.is_muted(). Before this existed,
 ## Music had no state of its own at all: refresh_mute() read Sfx.is_muted()
 ## directly, so the run had exactly one volume knob and it was labelled "sound"
@@ -143,6 +167,35 @@ static func toggle_muted() -> bool:
 	return set_muted(not _muted)
 
 
+# -- the dial ----------------------------------------------------------------
+#
+# Mirrors Sfx's, and deliberately does not re-implement it: the steps, the
+# index-to-dB mapping, the wrap and the bus creation are all `Sfx`'s and are
+# called here. What is Music's own is which bus and which remembered index.
+
+
+## The bed's level. Returns the step it is now on, same contract as
+## `Sfx.set_level` and as every other setter in this project.
+##
+## Unlike `set_muted`, this does NOT have to bring a stopped bed back: a bus
+## volume is applied to whatever is already playing, so a level changed mid-track
+## lands on the note currently sounding rather than at the next `_play`. That is
+## the second thing the bus buys over a per-player trim, and it is why there is no
+## `refresh_level()` beside `refresh_mute()`.
+static func set_level(index: int) -> int:
+	_level = index
+	Sfx.apply_bus_level(BUS_NAME, _level)
+	return _level
+
+
+static func level() -> int:
+	return _level
+
+
+static func cycle_level() -> int:
+	return set_level(Sfx.next_level(_level))
+
+
 ## Re-applies the current mute state to whatever is already selected. Reads
 ## Music's own _muted flag, not Sfx's -- the two used to be the same flag
 ## (Sfx.is_muted(), read here directly), which meant a run had exactly one
@@ -217,6 +270,17 @@ static func _start(player: AudioStreamPlayer, track: StringName, volume_db: floa
 		return
 	player.stream = stream
 	player.volume_db = volume_db
+	# THE ROUTING, and this is `Music`'s counterpart to `Sfx.tune_voice`'s own bus
+	# line -- the same reason for the same placement. Both beds pass through here on
+	# every start and every crossfade, so there is no path that reaches `play()` on a
+	# player the dial cannot touch, and a test can call `_start` on a bare
+	# AudioStreamPlayer and read the bus back without a tree.
+	#
+	# Written unconditionally on every start, like the volume above it: the two
+	# players are reused for the life of the process and a bus left behind by an
+	# earlier build's name would follow them forever.
+	Sfx.ensure_bus(BUS_NAME)
+	player.bus = BUS_NAME
 	player.play()
 
 
