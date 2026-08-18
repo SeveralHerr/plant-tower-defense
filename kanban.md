@@ -4165,3 +4165,38 @@ Three findings kept out here rather than buried in a log:
   that will all face the same question as the catalogue grows.
   Taste: name the cheapest answer, always, and let the notebook carry the complete one —
   which is what the notebook cards are already for.
+
+### New in cycle 116 — grown from a tool that falsified its own caveat
+
+- **Forty-seven sentences describe what this project's checkers cannot do, and nothing
+  checks any of them.** Counted: 22 of the 29 files under `tools/` carry a `NOT COVERED:`
+  line and there are 47 occurrences between them. Every one is a factual claim about the
+  code around it, several are cycles old, and they are trusted more than ordinary comments
+  because they are **printed to the operator on every run** — a caveat on screen reads as
+  current by construction.
+  Cycle 116 broke one and shipped it. `citation_check.py`'s line said drift was "the one
+  nothing can automate"; the same commit made it automatable, and the sentence went on
+  printing under every run of the tool that had just disproved it. It was caught only
+  because I went back to verify a claim I had written about my own work.
+  This is the `idle_detail` shape (cycle 115) and the `eaten_message` shape (cycle 112) for
+  the third time, and the third instance is the one that says it is a class rather than
+  three accidents: **a sentence naming what something cannot do goes stale the moment
+  somebody makes it do that.** `-3w66` already proposes writing the safe-sentence rule into
+  `message_corpus()`'s header for player-facing copy; this is the same rule for operator
+  copy, and the population is 47 sentences nobody has re-read.
+  Not a checker — for the same reason `-u9zb` concluded, and the conclusion is now
+  load-bearing enough to reuse rather than re-derive. What is worth doing is one sweep, the
+  way `-u9zb` swept the 33 HUD producers: read all 47, verdict each, fix what has rotted.
+  The `-u9zb` sweep found two real defects in 33 sentences; there is no reason to expect a
+  better ratio here, and these are the sentences a person consults when deciding whether to
+  trust a green run.
+
+- **A `NOT COVERED:` line is the one place a checker admits a gap, which makes it the one
+  place to look for the next feature.** `citation_check`'s admission was a to-do list
+  disguised as a limitation, and reading it as one produced `-5sxj`. Worth doing
+  deliberately rather than by accident: sweep the 47 for the ones that say "cannot" about
+  something that is merely *unimplemented*, as against genuinely undecidable. The two are
+  written identically today and only one of them is work.
+  Taste: the distinction belongs in the sentences themselves. "Cannot, by construction" and
+  "does not, yet" are different promises to the reader, and a checker that conflates them
+  teaches its operator to stop reading the line.

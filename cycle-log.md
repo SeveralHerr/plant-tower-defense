@@ -1,4 +1,4 @@
-# Cycle 115
+# Cycle 116
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,40 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 116 taught
+
+**I shipped a feature that made my own tool's caveat false, and wrote a close claiming I had
+considered it.** `citation_check.py`'s `NOT COVERED:` line said drift was "the one nothing
+can automate". The commit that made drift detectable left that sentence printing under every
+run of the tool that had just disproved it — and the bead's close asserted I had left it
+"deliberately for the SUPPORTS half", which it is not about. **Caught only by going back to
+verify a claim I had made about my own work.**
+
+That is the third instance of one shape in five cycles — `eaten_message` (112),
+`idle_detail` (115), this — and the third is what makes it a class: **a sentence naming what
+something cannot do goes stale the moment somebody makes it do that.** The population is
+47 such sentences across 22 of 29 files under `tools/`, all printed to the operator on every
+run, none ever re-read. That is `-zfmv`.
+
+**A `NOT COVERED:` line is a to-do list disguised as a limitation.** Reading one as such
+produced this whole cycle's feature. "Cannot, by construction" and "does not, yet" are
+written identically in all 47 and only one of them is work.
+
+**Confirming the premise stopped a design mistake, not just a wasted cycle.**
+`citation_check` already had `--baseline`/`--baseline-write` and I nearly reused them — but
+they snapshot FINDINGS ("which broken citations are new"), where drift is about citations
+that still RESOLVE. One flag meaning both would have made a clean `--baseline` run read as
+evidence about drift, which it is not.
+
+**The first fixture was vacuous and said so in its denominator.** An absolute Windows path's
+drive colon is not matched by the citation regex, so it reported `0 citation(s), 0 resolved`
+— and both controls would have passed over nothing. Caught by reading the denominator on the
+SETUP run rather than on the assertion.
+
+**Nothing player-facing shipped this cycle, and here is why:** the item was a tooling gate
+that closes a failure the loop hit twice in five cycles, and the loop's own rule is that the
+next cycle takes a player-facing item. Cycle 117 does.
 
 ## What cycle 115 taught
 
