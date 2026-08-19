@@ -18772,3 +18772,98 @@ func test_the_arming_click_is_a_success_and_leaves_the_plant_in_the_ground() -> 
 
 # END LANE SECTION — plant-tower-defense-qewm
 # =============================================================================
+
+
+# --- PARENT SECTION (plant-tower-defense-ais1): warn on a NEW floor, not on a state ---
+
+
+## The acceptance, both halves, and the second half is the one that matters: "a build that
+## newly spends a row's last pixel says so at startup; a build that merely inherits three
+## at-floor rows does not."
+##
+## Three rows sit at floor permanently by ratchet. An unconditional warning naming them every
+## launch is wallpaper within a day, and a warning nobody reads is worse than no warning
+## because it is still there when the one that matters arrives.
+##
+## Asserted on the pure static rather than by launching: the state under test is a STARTUP,
+## which is the hardest moment to observe, and the wording is the whole deliverable.
+func test_a_build_that_merely_inherits_its_floors_says_nothing() -> String:
+	var accepted: Array[String] = Game.BUDGET_FLOOR_ACCEPTED
+	# Exactly the accepted set, in a different order, because a set comparison written as a
+	# list comparison passes today and fails the first time somebody reorders the constant.
+	var same: Array[String] = accepted.duplicate()
+	same.reverse()
+	return _T.assert_eq(Game.new_floor_warning(same, accepted), "",
+		"inheriting the known at-floor rows warns about nothing")
+
+
+func test_a_build_that_spends_a_rows_last_pixel_says_so() -> String:
+	var accepted: Array[String] = Game.BUDGET_FLOOR_ACCEPTED
+	var now: Array[String] = accepted.duplicate()
+	now.append("packet_rack")
+	var text: String = Game.new_floor_warning(now, accepted)
+	var err: String = _T.assert_true(text != "", "a newly at-floor row warns")
+	if err == "":
+		err = _T.assert_true(text.contains("packet_rack"),
+			"and NAMES the row that was spent, got: %s" % text)
+	if err == "":
+		# The three inherited ones must not be named -- naming them is the wallpaper the
+		# bead exists to avoid, and a warning that lists four rows when one changed is
+		# indistinguishable from the unconditional version.
+		for id: String in accepted:
+			err = _T.assert_false(text.contains(id),
+				"the inherited row '%s' is not named in a change warning: %s" % [id, text])
+			if err != "":
+				return err
+	return err
+
+
+## The other direction, which nothing asked for and which keeps the constant honest: an
+## accepted row that has LIFTED off its floor means the list is stale, and a stale entry
+## silences the next real regression on that row.
+func test_an_accepted_row_that_lifted_reports_the_list_as_stale() -> String:
+	var accepted: Array[String] = Game.BUDGET_FLOOR_ACCEPTED
+	var err: String = _T.assert_gt(accepted.size(), 0,
+		"BUDGET_FLOOR_ACCEPTED has entries -- without this the rest asserts nothing")
+	if err != "":
+		return err
+	var now: Array[String] = accepted.duplicate()
+	var lifted: String = String(now.pop_back())
+	var text: String = Game.new_floor_warning(now, accepted)
+	err = _T.assert_true(text.contains("stale"),
+		"a lifted row reports the list as stale, got: %s" % text)
+	if err == "":
+		err = _T.assert_true(text.contains(lifted),
+			"and names which row lifted, got: %s" % text)
+	return err
+
+
+## Every id in BUDGET_FLOOR_ACCEPTED must be a real budget id. A typo there silences a row
+## forever and reads as "that row is fine".
+func test_every_accepted_floor_id_is_a_real_budget() -> String:
+	var err: String = ""
+	for id: String in Game.BUDGET_FLOOR_ACCEPTED:
+		err = _T.assert_true(Game.BUDGET_FLOOR.has(id),
+			"'%s' in BUDGET_FLOOR_ACCEPTED is a declared budget id" % id)
+		if err != "":
+			return err
+	return err
+
+
+## The wiring, not just the wording. `new_floor_warning` is pure and asserted above; this is
+## the instance path `check_budgets()` actually calls at startup, over the budgets THIS build
+## really has — which is the half that caught my first draft of BUDGET_FLOOR_ACCEPTED being
+## wrong in both directions.
+func test_this_build_warns_about_no_new_floor_at_startup() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var entries: Array[Dictionary] = game.budget_entries()
+	var err: String = _T.assert_gt(entries.size(), 0,
+		"there are budgets to price -- without this the warning below is vacuously silent")
+	if err == "":
+		# Silent, because every row at floor on this build is in BUDGET_FLOOR_ACCEPTED.
+		# If this fails, either a row was newly spent (read the message -- that is the
+		# feature working) or the constant has gone stale (also in the message).
+		err = _T.assert_eq(game.warn_new_floors(entries), "",
+			"this build inherits its floors and says nothing at startup")
+	_T.free_ui(game)
+	return err

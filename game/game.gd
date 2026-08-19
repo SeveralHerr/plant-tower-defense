@@ -2961,6 +2961,12 @@ func check_budgets() -> Dictionary:
 	}
 	for line: String in warnings:
 		push_warning(line)
+	# AFTER the regressions, deliberately. `budget_regressions()` reports what has fallen
+	# THROUGH a floor, which is an error; this reports what newly came to REST on one, which
+	# is a decision somebody made. Printing the error first keeps the ordering honest when
+	# both fire, and the two never name the same row -- budgets_at_floor() excludes anything
+	# budget_regressions() would report.
+	warn_new_floors(entries)
 	return budget_report
 
 
@@ -3006,6 +3012,72 @@ func budget_entries(sweep: int = BUDGET_WAVE_SWEEP) -> Array[Dictionary]:
 ## `BUDGET_SLIP` on both sides: a budget one pixel over its floor is resting on it
 ## for every practical purpose, and the same tolerance keeps this from disagreeing
 ## with `budget_regressions()` about a borderline case.
+## The rows already known to rest on their floor, so the startup warning can fire on a
+## CHANGE rather than on a state.
+##
+## Three rows sit at floor permanently, by ratchet. An unconditional warning naming them
+## every launch is wallpaper within a day -- and a warning nobody reads is worse than no
+## warning, because it is still there when the one that matters arrives. So the question the
+## warning answers is not "is anything at floor" but "did THIS build spend a row's last
+## pixel".
+##
+## Declared IN CODE rather than persisted to `user://` or to a gitignored file, and that is
+## the whole design. Accepting a newly-at-floor row becomes a one-line edit that shows up in
+## review next to the floor it concerns, which is where somebody can ask whether spending it
+## was intended. A baseline written automatically at runtime would accept the regression
+## silently on the next launch, which is the failure mode of every self-updating baseline.
+##
+## KEEP THIS IN SYNC BY LETTING THE WARNING TELL YOU. It reports both directions: a row here
+## that is no longer at floor is named too, because a stale entry silences a real finding.
+## READ OFF THE LIVE GAME, not guessed. `cmd budgets` on this build reports
+## at_floor = [husk_click, run_summary_values, hud_readouts, hud_selection_panel] -- FOUR, and
+## the bead that asked for this warning says three. My first draft of this list was written
+## from the bead and was wrong in both directions: it named `hud_stats_row`, which is not at
+## floor, and missed `husk_click` and `hud_readouts`. That draft passed every headless test I
+## wrote, because the tests assert the WARNING's behaviour against whatever this list says --
+## and it would have fired on every launch naming three rows as newly spent and one as stale,
+## which is precisely the wallpaper this design exists to avoid.
+const BUDGET_FLOOR_ACCEPTED: Array[String] = [
+	"husk_click",
+	"run_summary_values",
+	"hud_readouts",
+	"hud_selection_panel",
+]
+
+
+## What `warn_new_floors` should say, or "" for nothing. Pure and static so the wording is
+## assertable without launching the game -- the run that produces this state is a startup,
+## which is the hardest moment to observe.
+static func new_floor_warning(at_floor: Array[String], accepted: Array[String]) -> String:
+	var newly: Array[String] = []
+	for id: String in at_floor:
+		if not accepted.has(id):
+			newly.append(id)
+	var lifted: Array[String] = []
+	for id: String in accepted:
+		if not at_floor.has(id):
+			lifted.append(id)
+	if newly.is_empty() and lifted.is_empty():
+		return ""
+	var parts: Array[String] = []
+	if not newly.is_empty():
+		parts.append("this build spent the last pixel of %s" % ", ".join(newly))
+	if not lifted.is_empty():
+		# Not a defect, and said anyway: an accepted entry that has lifted means the list is
+		# stale, and a stale entry is a row whose next regression will be silent.
+		parts.append("%s no longer rest%s at floor, so BUDGET_FLOOR_ACCEPTED is stale"
+			% [", ".join(lifted), "" if lifted.size() > 1 else "s"])
+	return "Budgets: %s." % "; ".join(parts)
+
+
+## Print the warning, if there is one. Called from check_budgets() at startup.
+func warn_new_floors(entries: Array[Dictionary]) -> String:
+	var text: String = new_floor_warning(budgets_at_floor(entries), BUDGET_FLOOR_ACCEPTED)
+	if text != "":
+		push_warning(text)
+	return text
+
+
 static func budgets_at_floor(entries: Array[Dictionary]) -> Array[String]:
 	var at_floor: Array[String] = []
 	for entry: Dictionary in entries:
