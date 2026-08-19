@@ -4737,3 +4737,38 @@ Three findings kept out here rather than buried in a log:
   have delayed every packet behind an ambient husk notice — a visible regression shipped as a
   fix. A flourish posts at `MESSAGE_IMPORTANT` and preempts ambient lines, so only a line at
   IMPORTANT or above can make it queue, and only that is worth waiting for.
+
+### New in cycle 132 — grown from a number nobody had
+
+- **6% of this project's citations cannot be checked by any tool, and every one sampled was
+  wrong.** `citation_check --weak` classifies a resolved citation as unverifiable when its
+  landed text is blank, a bare comment marker or brace, or a line repeated more than five
+  times in its file: **58 of 937**. Four were then read against the symbol their sentence
+  names, and all four were wrong — `uproot_armed()` cited 491 lines off, the
+  `Really uproot? (+N)` button 586 off, the `_has_fired` gate 250 off, and one citation
+  pointing at a blank line for a `show_message` call that lives 1900 lines away. Fourteen of
+  fourteen sampled across four cycles.
+  **So the 6% is a floor on the wrong-citation count, not a list of suspects.** The value of
+  the pass is the denominator: "some citations are imprecise" was always true and never
+  actionable, and 58 is.
+
+- **A checker whose failure mode is printing zero needs its fixture to test both
+  directions.** A weakness rule that calls nothing weak prints `0 of 937` and reads exactly
+  like a corpus with no problem in it — the same shape as the `--beads` mode two cycles ago
+  reading one citation in six and printing a clean sweep. Case 7 asserts that blank and `##`
+  ARE weak *and* that a distinctive line is NOT; mutating the classifier to call nothing weak
+  fails it.
+
+- **When a list of coordinates has one member wrong by 1900 lines, re-derive it rather than
+  repairing it.** One entry cites eight line numbers for six `show_message` durations. Fixing
+  the one sampled and leaving seven unread would produce a list that LOOKS checked, which is
+  worse than an obviously stale one. It is flagged in place instead, with the note that its
+  claim — six hand-picked durations with nothing relating them — does not depend on the
+  coordinates being right.
+
+- **A python heredoc ate a `\n` inside a string literal again**, in the very cycle whose
+  subject is citations that silently point at the wrong thing. `.claude/skills/cycle/SKILL.md`
+  forbids exactly this and names it as the shape the rule keeps getting broken in — reaching
+  for a script when `Edit` looks awkward. Caught immediately by a `SyntaxError` rather than
+  silently, which is the difference between Python and the GDScript case the rule was written
+  for. Fixed with `Edit`, which is what the rule says.

@@ -7992,3 +7992,29 @@ status rather than rewriting the entries that recorded these as open.
   for itself here. `launch --snapshot-userstate` also worked exactly as documented: `quit`
   reported `restored 1 file(s)` on both launches, against cycle 128 where an unguarded run
   wrote the developer's real `highscore.save`.
+
+## 2026-08-18 — the count nobody had, and a fixture that had to fail both ways
+
+- Value: **warranted** — the harness proper did not run at all (tier (f), tooling-only), and
+  the result is a measurement of this project's own evidence quality rather than of the game.
+  - Expected: `--weak` would print how many citations land somewhere no text comparison can
+    check. I had no estimate of how many of those would be actually WRONG.
+  - Got: `58 of 937 resolved citation(s) land somewhere that carries no information -- 6%`,
+    broken down 26 blank / 16 bare `##` / 10 repeated-line / 6 braces and keywords.
+  - Found: four sampled from `kanban.md`, **all four wrong**, each confirmed by locating the
+    symbol its sentence names — `uproot_armed()` off by 491 lines, the `Really uproot? (+N)`
+    button by 586, the `_has_fired` gate by 250, and one pointing at a blank line for a call
+    1900 lines away. Fourteen of fourteen across four cycles, so the 6% is a floor on the
+    wrong-citation count rather than a triage list.
+  - Cheaper: nothing. The count required classifying every resolved citation and the
+    wrongness rate required reading them.
+
+- Gap: **no gap this turn** — and one self-inflicted incident worth recording against the
+  project's own rule rather than the harness's. Writing the fixture through a Python heredoc
+  ate a `\n` inside a string literal, in the cycle whose entire subject is citations that
+  silently point at the wrong thing. `.claude/skills/cycle/SKILL.md` forbids exactly this and
+  names it as the shape the rule keeps getting broken in — reaching for a script when `Edit`
+  looks awkward. Python turned it into an immediate `SyntaxError`, which is the difference
+  between this and the GDScript case the rule was written for, where the same damage compiles
+  and passes 613 tests. Fixed with `Edit`. That is the fifth occurrence and the log entry is
+  the countermeasure the rule already says it is not; using the right tool is.

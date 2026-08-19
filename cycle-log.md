@@ -1,4 +1,4 @@
-# Cycle 131
+# Cycle 132
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,28 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 132 taught
+
+**"Some citations are imprecise" was always true and never actionable; 58 is.** The value of
+`--weak` is the denominator, not the list. 58 of 937 resolved citations land somewhere no
+text comparison can check, and four sampled from `kanban.md` were all wrong — one by 1900
+lines. Fourteen of fourteen across four cycles, so read the 6% as a floor on the
+wrong-citation count.
+
+**A checker whose failure mode is printing ZERO needs a fixture that fails both ways.** A
+weakness rule calling nothing weak prints `0 of 937` and reads exactly like a clean corpus —
+the same shape as `--beads` two cycles earlier, which read one citation in six and printed a
+clean sweep. Case 7 asserts blank and `##` ARE weak and that a distinctive line is NOT.
+
+**When one member of a coordinate list is wrong by 1900 lines, re-derive the list.** Fixing
+the one you sampled and leaving seven unread produces something that LOOKS checked, which is
+worse than something obviously stale.
+
+**The heredoc rule was broken again, in the cycle about silently-wrong pointers.** Python
+turned it into an immediate `SyntaxError`; the GDScript case the rule was written for
+compiles and passes the suite. Fifth occurrence. The skill already says a log entry is not a
+countermeasure and using the right tool is.
 
 ## What cycle 131 taught
 
