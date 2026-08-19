@@ -129,6 +129,47 @@ FINDING: <file>:<line> <function> <what is wrong and why it matters>
   waive: add `# <tool>: ok - <reason>` in the body.
 ```
 
+### A checker that reads HUMAN PROSE must state its extraction convention
+
+Everything above assumes a source with a fixed grammar. A source written by hand has no
+grammar — it has a **convention**, and the convention belongs to the document, not to you.
+Three times here the tool imported the convention of the document it was written *for* and
+then read a fraction of the document it was pointed *at* — silently, cleanly, and twice the
+miss was larger than the hit:
+
+- `tools/citation_check.py:81-86` — `game/OVERLAY_GRAMMAR.md` lives in `game/` and cites its
+  neighbours bare, no directory part. The first version demanded one and saw **none** of
+  that file's twelve citations. That file is nothing *but* citations.
+- `tools/citation_check.py:90-94` — the continuation form: a full path, then bare `:91`,
+  `:106` inheriting it. 44 of these in `kanban.md`, invisible to the first version — a third
+  again on top of the 130 it did see, in a form this project invented for itself.
+- `tools/citation_check.py:97-108` — `bd` stores `description` and `close_reason` as PLAIN
+  TEXT. Nothing renders them, so nothing rewards backticks: **95 backticked against 495
+  unbackticked**. The first working `--beads` printed `468 bead(s) ... 0 finding(s)` over an
+  input set that was 84% invisible.
+
+Note what the third one is **not**. The denominator rule fired and printed a true number:
+there really were 468 beads. The count that was small is the one nobody printed — the
+citations extracted *from* those beads. **A denominator over the containers does not measure
+the extraction**, so a prose checker owes a second number that the exit-code contract above
+never asked for.
+
+Before adding a source to such a checker, answer both questions in a comment beside the
+pattern:
+
+- **who writes this file, and with what tool?**
+- **what does the RENDERING of it reward?** Markdown rewards backticks. A `bd` description
+  renders nowhere and rewards nothing. A GDScript comment rewards neither.
+
+Then **measure both forms over the real corpus and print the ratio**, the way the 95/495
+count is recorded at `tools/citation_check.py:97-108`. The measurement is the deliverable:
+without it you have a guess about someone else's habits.
+
+And scope the loosening to the source that needs it. Making the permissive form the default
+everywhere is the wrong fix — in `kanban.md` the backticks *are* the convention, and a
+looser pattern there starts matching prose. This repo has the false-positive history to
+match: `heredoc_survey`'s first version reported 554. Per-source, measured, is the answer.
+
 **Make the module docstring a raw string (`r"""`) if it contains regex.** `\S`, `\d` and
 friends are invalid escape sequences in a normal string, so Python emits a `SyntaxWarning`
 — and that warning prints **the offending source line to stderr**, ahead of the tool's own
