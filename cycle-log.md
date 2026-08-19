@@ -1,4 +1,4 @@
-# Cycle 133
+# Cycle 134
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,34 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 134 taught
+
+**A stale lane's gates all pass, because a stale tree is internally consistent.**
+`isolation: "worktree"` branches from `origin/main`, which this project keeps deliberately
+behind — 81 commits, on the fan-out that found it. Every one of four lanes started there, and
+the danger is not the merge conflict: it is a lane reporting "the bead's premise is false"
+with every checker green, because on its tree the premise really was false. One command
+before spawning: `git rev-list --count origin/main..HEAD`.
+
+**"Premise wrong" and "premise understated" need checking for separately.** Two beads this
+cycle understated their own scope — five call sites that were 21, and a "less exposed" class
+that was the real exposure. An understated premise reads as CONFIRMATION when you check it,
+which is why confirm-before-claim caught the wrong ones and not these. Ask "is it at least
+this bad", not "is this true".
+
+**A waiver subtracts from the denominator without moving the gate.** Un-anchoring one made a
+real finding vanish while the exit code stayed 1. A suppression marker therefore needs a
+fixture MORE than the rule it suppresses does, and three checkers here had none.
+
+**Measure a detector against the damage, not against a case you chose.** Deriving the corpus
+— every prose comment line with its `#` deleted — showed 6.3% recall where a hand-picked
+fixture would have shown a working detector.
+
+**And I corrected my own P1.** Cycle 133 blamed `--snapshot-userstate` for stopping saves on
+a paired measurement. Reversing the run ORDER disproved it; the real cause was an unknown
+milestone id poisoning `earned_milestones`. A paired measurement is not a controlled one
+until you have swapped the order.
 
 ## What cycle 133 taught
 

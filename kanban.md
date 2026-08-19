@@ -4811,3 +4811,38 @@ Three findings kept out here rather than buried in a log:
   suite run, underneath a green `ALL TESTS PASSED` — noise in exactly the section where a
   real aborted-test error would appear. Now 0, and the message was forced to fail once so it
   has been read at least once in its life, which is what its bead asked for.
+
+### New in cycle 134 — a 4-lane fan-out, and every lane started 81 commits behind
+
+- **`isolation: "worktree"` branches from `origin/main`, not from local `HEAD`.** This project
+  batches pushes deliberately, so `origin/main` was `2563734` while local main was `b28e8f5`
+  — **81 commits**. All four lanes started there. On that tree `tools/citation_check.py` had
+  no `--beads` mode at all, `game/game.gd` had no packet serialisation, and
+  `test/unit/test_selftest.gd` was missing ten tests.
+  **The failure mode is worse than a merge conflict: a stale lane's gates all pass, because a
+  stale tree is internally consistent.** One lane's bead cited three sightings of which the
+  third did not exist there; the honest report from that tree is "premise disconfirmed", and
+  it would have been wrong and confident. Two lanes noticed unprompted, one was told
+  mid-flight and redid its work, one was on main by luck of timing. Now step 0 of
+  `.claude/skills/fan-out-a-cycle/SKILL.md`, with the one-command check.
+
+- **Two beads had premises that were UNDERSTATED, and in both cases that changed the work.**
+  `-qewm` said five call sites assert the uproot sentinel literal; there are 21, across four
+  files, three of which the lane could not open — so it shipped an additive named constant
+  and a pure predicate instead of the signature change the bead preferred, and all 21
+  assertions still pass. `-vvww`'s framing would have written the four `.gd` scanners off as
+  "less exposed"; they were the real exposure, and `test/unit/test_selftest.gd:7612` already
+  holds a marker inside a string literal, because a test pinning a checker's contract must
+  name its marker. **"Premise wrong" and "premise understated" need checking for separately —
+  the second reads as confirmation.**
+
+- **A waiver subtracts from the denominator without moving the gate.** Un-anchoring
+  `group_leak_check`'s marker made a real finding vanish **while the exit code stayed 1**.
+  That is why a waiver needs a fixture more than the rules it suppresses do — and three of
+  the checkers audited had no fixture of any kind, which is a house-contract violation
+  nobody had noticed because their waivers had never been mutated.
+
+- **Measure the detector against the damage, not against a hand-picked case.** `-n228`'s
+  corpus is every one of this repo's 27,755 prose-shaped comment lines with its `#` deleted —
+  which IS the damage SIGNATURE B exists to catch. It was finding **6.3%** of it. A
+  hand-picked fixture would have shown a detector that works.
