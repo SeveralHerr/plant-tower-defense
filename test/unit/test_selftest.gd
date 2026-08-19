@@ -10559,7 +10559,14 @@ func test_the_cards_own_measurement_agrees_with_the_labels_it_builds() -> String
 			# TextServer calls is a test that fails on a rounding change rather than
 			# on the defect it is for.
 			err = _T.assert_float_eq(PauseScreen._measure(row.text), _T.text_width(row), 1.0,
-				"%s: the card measured %.1fpx for %r and the Label drew %.1fpx -- the "
+				# %s, not %r. GDScript's String.format supports %s and %d and nothing else
+				# python-shaped; %r made this message unbuildable, so the one string a
+				# reader needs in order to ACT on this failure was the one string that
+				# could not be produced. And because the argument is evaluated eagerly it
+				# fired on every iteration whether the assertion passed or not -- 12
+				# `String formatting error: unsupported format character` lines per suite
+				# run, underneath a green ALL TESTS PASSED (plant-tower-defense-kl7r).
+				"%s: the card measured %.1fpx for \"%s\" and the Label drew %.1fpx -- the "
 					% [node_name, PauseScreen._measure(row.text), row.text, _T.text_width(row)]
 					+ "static measurement and the real font have come apart, which is what "
 					+ "a custom theme added to this project would do")
