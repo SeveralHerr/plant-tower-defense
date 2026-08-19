@@ -7805,3 +7805,47 @@ status rather than rewriting the entries that recorded these as open.
     first time the version spread produced a SILENT wrong record rather than a missing
     feature: the skill text and the installed tool disagreed, and the skill won on the
     write side while the tool won on the read side.
+
+## 2026-08-18 — the notebook audit, and the legend page counting its own rows
+
+- Value: **warranted** — the launch produced a claim the diff could not, and the headless
+  runner caught a defect in my own test that the suite itself reported as a pass.
+  - Expected: the derived note would read "six" and the two extra characters would still
+    fit the note box; the launch would confirm what the unit test already asserted.
+  - Got: `NoteLabel.text` on the live screen carries "...so the six here are worth more
+    than six facts...", and `contained-in NoteLabel within Paper` passed at
+    `658,372 400x142` inside `76,32 1000x584`. `findings --no-scenes`: `0 finding(s)
+    across 4 of 5 checks`.
+  - Found: three things, none of them the thing I was looking for. (1) `_T.assert_equal`
+    does not exist in this suite — it is `assert_eq` — and the aborted method returned
+    `""`, which `run_tests.gd` prints as `[PASS]`. Only `run_tests.py`'s stderr and
+    `Assertions: 0 executed` saw it, exactly as CLAUDE.md warns. (2) Pre-existing and
+    unrelated: `test/unit/test_selftest.gd:10562` formats a message with `%r`, which
+    GDScript cannot format — 12 `String formatting error` lines per full suite run under a
+    green `ALL TESTS PASSED`, confirmed pre-existing by stashing and re-running. Filed as
+    `-kl7r`. (3) The legend page was showing a correct derived count and a wrong
+    hand-written one at the same time, which is why the wrong one survived.
+  - Cheaper: for the count itself, the unit test alone. The launch earned its place only
+    because a player-facing word got two characters longer, and that is a layout question
+    no static check answers.
+
+- Gap: **the ledger's reach denominator measures the BRANCH, not the run** — this run
+  reported `reached 2/15 changed file(s)` while `git status --porcelain` shows five
+  modified files, two of them `.gd`.
+  - `tools/verify_ledger.py:297` derives changed files as
+    `git diff --name-only <base> HEAD`, where base is the first of
+    `origin/main, main, origin/master, master` that resolves — documented at `:274` as
+    "the branch's accumulated diff", which is exactly what it does. This checkout is
+    **56 commits ahead of origin/main**, because the project's push policy is deliberately
+    to batch (every push auto-deploys to itch.io), so the denominator is 56 cycles of work
+    and grows every cycle.
+  - The consequence is that `reach` trends toward zero on this project regardless of how
+    well any individual run is targeted, and `verify_ledger.py stats` aggregates it. The
+    numerator is still honest — `notebook_screen.gd` was reached and is absent from the
+    NOT-reached list — but the ratio is not a statement about the run.
+  - [G-131] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: derive the denominator from the run's own working-tree diff plus the
+    commits since the LAST LEDGER ROW, not since the branch base — the ledger already
+    knows when it last recorded. Failing that, print both and label them, so a reader can
+    tell "this run touched little of a long branch" from "this run verified little of what
+    it changed". Filed as a bead so it is not only a log line.

@@ -1,4 +1,4 @@
-# Cycle 126
+# Cycle 127
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,35 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 127 taught
+
+**A surface can show a right number and a wrong number at the same time, and that is what
+keeps the wrong one alive.** The notebook's legend page has always derived its source line
+from `CueLegend.row_count()`. Its note, one field over in the same dictionary, said "the five
+here" beside a six-row table. Anything that compared the two would have caught it instantly;
+nothing was comparing, and the correct number sitting next to the incorrect one made the page
+look checked. When auditing a screen, the numbers that agree with each other are worth less
+attention than the two that come from different places.
+
+**The audit found the opposite of what it went looking for.** `-pa4g` expected stale
+mechanics after several cycles of new ones. Every structural count on the notebook derives
+from its table and says so in a comment; all three findings were in hand-written English.
+That is a better result than a list of drifted pages, and it is only visible because the
+audit enumerated what it checked rather than reporting what it found.
+
+**When a fix replaces a literal with a derivation, assert the DERIVATION.** Two of the three
+new assertions pass if somebody deletes the placeholder and hard-codes "six" — the original
+defect with a newer number. Only the third, which requires the `PAGES` entry to still contain
+`%s`, can tell the difference. Every value-assertion is also satisfied by a fresh literal.
+
+**The workflow did not change this cycle, and that is the entry.** Step 2's confirm-before-
+claim caught `-pa4g`'s stale motivation (it claimed the notebook was untouched in seven
+cycles; five commits say otherwise). Step 3's citation read-back caught my own
+`notebook_screen.gd:611` going stale inside the same cycle that wrote it — my edits moved it
+to `:618`. Both rules did exactly what they were added for, on the first cycle after the one
+that widened them. Adding an eleventh rule on top of two that just worked would be the wrong
+lesson to draw.
 
 ## What cycle 126 taught
 

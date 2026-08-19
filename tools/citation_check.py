@@ -106,8 +106,17 @@ BARE = re.compile(r"`:(\d+)(?:-(\d+))?`")
 # convention a document grows is invisible to a tool written from the outside. Applied only
 # to bead sources -- in markdown the backticks ARE the convention and loosening it there
 # would start matching prose.
+#
+# `res://` IS CONSUMED, NOT EXCLUDED, and the difference is a whole citation. Bead prose
+# quotes engine paths verbatim -- a GDScript backtrace says `res://test/unit/foo.gd:10561`
+# -- and without the prefix in the pattern the match started after `res:`, producing the
+# finding `cites //test/unit/test_selftest.gd -- no such file`. Merely excluding a leading
+# `:` would have silenced that and lost the citation, which is the failure mode this whole
+# mode exists to stop. So the prefix is matched and dropped, and the path resolves at the
+# repo root like any other. Found on the first run over a bead that quoted a backtrace.
 PLAIN = re.compile(
-    r"(?<![`\w./-])([A-Za-z0-9_./-]*[A-Za-z0-9_.-]+\.(?:gd|py|md|json|tscn|tres|gdshader))"
+    r"(?<![`\w.:/-])(?:res://)?"
+    r"([A-Za-z0-9_./-]*[A-Za-z0-9_.-]+\.(?:gd|py|md|json|tscn|tres|gdshader))"
     r":(\d+)(?:-(\d+))?(?![`\w])"
 )
 
@@ -295,6 +304,17 @@ def self_check() -> int:
             problems.append("%s missing from the sources entirely" % lbl)
         elif hit[0] is not want:
             problems.append("%s gating=%s, expected %s" % (lbl, hit[0], want))
+    # Case 6: an engine path quoted verbatim from a backtrace. Bead prose does this whenever
+    # it quotes a GDScript error, and the first version matched from after `res:`, reporting
+    # `cites //test/unit/foo.gd -- no such file` against a citation that was perfectly good.
+    engine = citations("SCRIPT ERROR at res://tools/citation_check.py:%d" % past_end,
+                       plain=True)
+    if not engine:
+        problems.append("a res:// path was not seen at all")
+    elif engine[0][1] != "tools/citation_check.py":
+        problems.append("a res:// path resolved to %r, not the repo-relative path -- the "
+                        "prefix must be consumed, not split" % engine[0][1])
+
     # And the detection itself, on the unbackticked form.
     for lbl, prose, _ in got:
         if not citations(prose, plain=True):
@@ -307,10 +327,12 @@ def self_check() -> int:
         print("SELF-CHECK FAILED: %s" % p)
     if problems:
         return 1
-    print("citation_check --self-check: 5 case(s) OK -- an open bead's dead citation gates, "
+    print("citation_check --self-check: 6 case(s) OK -- an open bead's dead citation gates, "
           "the same defect in a closed bead does not, the unbackticked form is seen, and "
-          "a line-initial %r waives a bead while a mid-sentence mention of it does not. NOT COVERED by this fixture: whether the real "
-          "export parses, and whether a landed line supports its claim." % BEAD_WAIVER)
+          "a line-initial %r waives a bead while a mid-sentence mention of it does not, "
+          "and a res:// path quoted from a backtrace resolves repo-relative. NOT COVERED "
+          "by this fixture: whether the real export parses, and whether a landed line "
+          "supports its claim." % BEAD_WAIVER)
     return 0
 
 

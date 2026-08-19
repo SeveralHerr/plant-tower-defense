@@ -4495,3 +4495,45 @@ Three findings kept out here rather than buried in a log:
   stating because the pool is designed to DERIVE its members rather than list them, and
   this is the one thing it cannot derive: what each member needs in order to cover
   everything it can.
+
+### New in cycle 127 — grown from a page showing a right number and a wrong one at once
+
+- **The notebook is structurally derived nearly everywhere, and both places it is not were
+  hand-written English sentences.** The audit (`-pa4g`) went page by page expecting to find
+  stale mechanics and found the opposite: the header count, the shelf score, the hint
+  pagination and the page label all derive from their tables and each carries a comment
+  saying why. Every finding was in prose. The legend page is the sharpest case — its source
+  line has always derived `CueLegend.row_count()` while its note, one field over, said "the
+  five here" beside a six-row table (`game/cue_legend.gd:172`). **The page displayed a
+  correct count and an incorrect one simultaneously, which is exactly why the incorrect one
+  survived**: anything comparing the two would have caught it in a second, and nothing was
+  comparing.
+  The entry is that this is the SECOND hand-written count on this screen to go stale and the
+  first already has a comment about it (`game/notebook_screen.gd:618`, "Counted from PAGES,
+  not written out. The hard-coded \"Six pages\" outlived the sixth page by about four
+  minutes"). Two is not a pattern — the audit enumerated every other count on the screen and
+  found no third — so it stayed a fix rather than becoming a checker. Recording the
+  enumeration is the point: the answer to "should this be a checker" was "no, and here is
+  the list that says so".
+
+- **A `const Array[Dictionary]` cannot call a function, which is what kept the count
+  hand-written.** The obvious fix — derive it in `PAGES` — is not available in GDScript, and
+  that constraint is invisible until you try it. The shape that works is the one this class
+  already used twice for the same reason (`shelf_progress_text`, `shelf_note_text`): keep a
+  TEMPLATE in the const and fill it from a static at build time. Worth knowing before the
+  next stale number in a const table, because the first instinct is to conclude the
+  derivation is impossible and hand-write it again.
+
+- **A test asserting the filled string is not enough; assert the template is still a
+  template.** Two of the three new assertions pass if somebody deletes the `%s` and
+  hard-codes "six" — which is the original defect with a newer number. The third reads
+  `PAGES[...]["note"]` and requires it to contain `%s`. Generalising: **when a fix replaces a
+  literal with a derivation, at least one assertion has to be about the DERIVATION, not the
+  value it currently produces.** Every value-assertion is also satisfied by a fresh literal.
+
+- **`_T.assert_equal` does not exist in this suite and reports as a pass.** Writing it cost
+  one run: the method aborts, returns `""`, and `run_tests.gd` prints `[PASS]`. Only
+  `run_tests.py`'s stderr and `Assertions: 0 executed` saw it. The suite uses `assert_eq`
+  (625 uses), `assert_true` (831), `assert_float_eq` (227), `assert_gt` (220),
+  `assert_false` (206), `assert_gte` (47) — and now zero `assert_equal`. Filed nothing;
+  the lesson is the one CLAUDE.md already states, arriving on schedule.
