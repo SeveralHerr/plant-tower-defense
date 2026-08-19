@@ -18464,3 +18464,37 @@ func test_the_message_row_reports_its_own_live_state() -> String:
 				"the snapshot is a copy -- a caller cannot edit the queue through it")
 	_T.free_ui(game)
 	return err
+
+
+## The reason the notebook has NO weather page is that weather is already taught on screen
+## at the moment it can be acted on. That reason is written beside KIND_LEGEND in
+## notebook_screen.gd, and it is only true while these three surfaces keep saying it --
+## a comment recording a decision is exactly as perishable as the count that said "the five
+## here" beside six rows. So the decision is asserted, not just written down.
+func test_weather_is_taught_on_screen_which_is_why_the_notebook_has_no_page_for_it() -> String:
+	# The banner: the whole mechanic in one sentence, both halves of it.
+	var note: String = Hud.weather_note(WaveDirector.WEATHER_DROUGHT)
+	var err: String = _T.assert_true(note.contains("half as often"),
+		"the drought banner says what it COSTS, got: %s" % note)
+	if err == "":
+		err = _T.assert_true(
+			note.contains("%d%%" % int(round(WaveDirector.WEATHER_DROUGHT_SEED_BONUS * 100.0))),
+			"the drought banner says what it PAYS, got: %s" % note)
+	if err == "":
+		err = _T.assert_true(Hud.weather_headline(WaveDirector.WEATHER_DROUGHT) != "",
+			"the drought banner has a headline to carry the note")
+	if err == "":
+		# The prep note: the surface read BEFORE the seeds are spent, which is the one
+		# that makes the mechanic actionable rather than merely explained.
+		var prep: String = Hud.next_wave_note(4, 9, false, WaveDirector.WEATHER_DROUGHT, 0)
+		err = _T.assert_true(prep.to_lower().contains("drought"),
+			"the prep note names the weather before the player spends, got: %s" % prep)
+	if err == "":
+		# And rain, so the claim is about WEATHER rather than about drought.
+		err = _T.assert_true(Hud.weather_note(WaveDirector.WEATHER_RAIN) != "",
+			"rain is announced too")
+	if err == "":
+		# Clear says nothing, deliberately -- a banner that fires every wave stops being read.
+		err = _T.assert_eq(Hud.weather_note(WaveDirector.WEATHER_CLEAR), "",
+			"clear weather says nothing at all")
+	return err

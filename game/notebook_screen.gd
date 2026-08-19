@@ -168,6 +168,33 @@ const KIND_SHELF := "shelf"
 ## precedent one screen away, and the note was corrected rather than worked around.
 const KIND_LEGEND := "legend"
 
+## AND HERE IS THE COUNTER-CASE, because the paragraph above reads as an argument for
+## adding a page whenever the game has a rule, and it is not (plant-tower-defense-djvk).
+##
+## Cycle 127's notebook audit measured that this file never once says "drought", and filed
+## a P2 to give weather a page: the player meets it from wave 4
+## (`game/wave_director.gd:754`) and drought halves every plant's rate of fire. The
+## measurement was right and the conclusion was wrong. Weather is taught in THREE places,
+## each at the moment it can be acted on:
+##
+##   - the prep note, BEFORE the seeds are spent — "drought · pests pay 150%"
+##     (`game/hud.gd:3304-3310`)
+##   - a banner as the wave opens — "Dry ground. Everything shoots half as often — and
+##     every pest pays 150%." (`game/hud.gd:3829-3831`), which is the whole mechanic in
+##     one sentence
+##   - a status row carrying the state after the banner is gone (`weather_note`)
+##
+## The test the legend passed is the one weather fails: a language the game SPEAKS and
+## TEACHES TO NOBODY. Weather is spoken and taught. `OVERLAY_GRAMMAR.md` was referenced
+## only from GDScript comments; `weather_note` is on the player's screen.
+##
+## THE ERROR IS WORTH MORE THAN THE ANSWER, and it is why this is written here rather
+## than left in a closed bead. The audit enumerated over `notebook_screen.gd` and drew a
+## conclusion about THE GAME. `-pa4g`, the very bead that commissioned the audit, warned
+## in its own text: "two of my last four absence claims about this codebase were wrong,
+## both because the enumeration was over the wrong set." One bead later, same mistake.
+## Before adding a page for a rule, grep the HUD for the rule's own words first.
+
 ## KIND_HINTS is the fifth (plant-tower-defense-ei83), and it is the only page whose
 ## content the player has already been shown and cannot get back.
 ##
