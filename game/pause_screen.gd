@@ -49,9 +49,12 @@ var _notebook: NotebookScreen = null
 var _keys_screen: KeyBindingScreen = null
 ## The Options screen, while it covers this card. Null the rest of the time.
 var _options_screen: OptionsScreen = null
-## Every button on the card, so the whole row block can be made inert under an
-## overlay without naming them one at a time. Filled by _build_buttons().
-var _buttons: Array[Button] = []
+# There is deliberately NO `_buttons` array here any more. It existed for exactly one
+# reader -- `_set_card_active`, this card's copy of the eight lines that are now
+# `OverlayScreen.set_controls_active` -- and a hand-kept list of "every button on the
+# card" is a thing a seventh button gets left out of. What COVERS this card derives
+# the set from the tree instead (`OverlayScreen.interactive_under`), so a row added to
+# `BUTTONS` is inert under an overlay without anyone editing a second place.
 ## The click-eating layer, held rather than re-found by name:
 ## `_apply_viewport_layout()` re-sizes it on every window change, and a
 ## `get_node("Backdrop")` per resize would be a lookup that can silently miss.
@@ -574,7 +577,6 @@ func _build_buttons() -> void:
 		if which == "notebook_requested":
 			button.tooltip_text = notebook_door_tooltip()
 		add_child(button)
-		_buttons.append(button)
 		if first == null:
 			first = button
 	if first != null:
@@ -806,8 +808,11 @@ func _open_notebook() -> void:
 	_notebook.open_at = maxi(0, NotebookScreen.page_for_kind(notebook_door_kind()))
 	_notebook.process_mode = Node.PROCESS_MODE_ALWAYS
 	_notebook.back_requested.connect(_close_notebook, CONNECT_DEFERRED)
+	# No `_set_card_active(false)` here, and none in `_close_notebook` either: the
+	# overlay makes this card inert on `add_child` and hands it back on `close()`.
+	# See OverlayScreen.hold_inert — an opener that has to remember is an opener that
+	# can forget, and one did (plant-tower-defense-csrc).
 	add_child(_notebook)
-	_set_card_active(false)
 
 
 ## Back to the card, with the run still held. Nothing here touches
@@ -815,13 +820,16 @@ func _open_notebook() -> void:
 ## places that flag is written stay Game.pause_run and Game.resume_run.
 ##
 ## Deferred by its connection, so it can land after the notebook has already been
-## freed by a resume that happened first -- hence the is_instance_valid guard
-## rather than a bare queue_free.
+## freed by a resume that happened first -- hence the `notebook_open()` guard, which
+## is an is_instance_valid check, rather than a bare `close()` on a dead reference.
 func _close_notebook() -> void:
+	# `close()` rather than `queue_free()`, and the difference is the line below it:
+	# the overlay hands the card back synchronously here, so `grab_focus()` lands on a
+	# button that is focusable again. `queue_free()` defers to the end of the frame,
+	# which would put the restore AFTER the grab and make it an error, not a focus.
 	if notebook_open():
-		_notebook.queue_free()
+		_notebook.close()
 	_notebook = null
-	_set_card_active(true)
 	var button: Button = get_node_or_null("NotebookButton") as Button
 	if button != null:
 		button.grab_focus()
@@ -847,8 +855,9 @@ func _open_keys() -> void:
 		return
 	_keys_screen = KeyBindingScreen.build()
 	_keys_screen.back_requested.connect(_close_keys, CONNECT_DEFERRED)
+	# The card goes inert on add_child and comes back on close(), by the overlay
+	# rather than by this door — see _open_notebook.
 	add_child(_keys_screen)
-	_set_card_active(false)
 
 
 ## Back to the card, with the run still held -- and with the legend redrawn.
@@ -861,10 +870,9 @@ func _open_keys() -> void:
 ## whole job is to say what the keys are.
 func _close_keys() -> void:
 	if keys_open():
-		_keys_screen.queue_free()
+		_keys_screen.close()
 	_keys_screen = null
 	_refresh_key_list()
-	_set_card_active(true)
 	var button: Button = get_node_or_null("KeysButton") as Button
 	if button != null:
 		button.grab_focus()
@@ -890,8 +898,9 @@ func _open_options() -> void:
 		return
 	_options_screen = OptionsScreen.build()
 	_options_screen.back_requested.connect(_close_options, CONNECT_DEFERRED)
+	# The card goes inert on add_child and comes back on close(), by the overlay
+	# rather than by this door — see _open_notebook.
 	add_child(_options_screen)
-	_set_card_active(false)
 
 
 ## Back to the card, with the run still held. The legend is redrawn for the same
@@ -900,10 +909,9 @@ func _open_options() -> void:
 ## cheap redraw is what keeps that from being a fact anyone has to remember.
 func _close_options() -> void:
 	if options_open():
-		_options_screen.queue_free()
+		_options_screen.close()
 	_options_screen = null
 	_refresh_key_list()
-	_set_card_active(true)
 	var button: Button = get_node_or_null("OptionsButton") as Button
 	if button != null:
 		button.grab_focus()
@@ -958,22 +966,6 @@ func _refresh_key_list() -> void:
 		key_label.size.x = key_col
 		does_label.position.x = key_label.position.x + key_col + KEY_COL_GAP
 		does_label.size.x = room - key_col - KEY_COL_GAP
-
-
-## Nothing under an overlay may still be live.
-##
-## The overlay's Backdrop is a MOUSE_FILTER_STOP ColorRect, so these buttons
-## cannot be *pressed* through it -- but focus is a separate channel, and Tab or
-## an arrow key would walk straight onto "Start over" behind the paper. The mouse
-## filter goes too: at 0.88 alpha a button still tracking the cursor underneath
-## lights up in its hover colour and that glow shows through. Same treatment, for
-## the same two reasons, that TitleScreen._set_menu_active gives its own menu.
-func _set_card_active(active: bool) -> void:
-	var mode: Control.FocusMode = Control.FOCUS_ALL if active else Control.FOCUS_NONE
-	var filter: Control.MouseFilter = Control.MOUSE_FILTER_STOP if active else Control.MOUSE_FILTER_IGNORE
-	for button: Button in _buttons:
-		button.focus_mode = mode
-		button.mouse_filter = filter
 
 
 ## The DESIGN canvas — the size this card was composed at, which is what these two

@@ -53,6 +53,30 @@ extends Control
 ## Setting it here for every overlay would make it an inherited fact again, one
 ## layer further away, and the point is that it is a stated property a test can
 ## read.
+##
+## ## What is under an overlay goes inert, and the OVERLAY is what does it
+##
+## **Focus and the mouse are two channels and both have to go.** Every overlay here
+## carries a full-viewport `MOUSE_FILTER_STOP` Backdrop, so nothing underneath can
+## be CLICKED through it — and focus does not care what is drawn on top, so Tab or
+## an arrow key walks straight onto a button the player cannot see. The mouse filter
+## goes too because `BACKDROP_ALPHA` is 0.88: a button still tracking the cursor
+## underneath lights up in its hover colour and the glow shows through the paper.
+##
+## That was eight lines written three times under three names — `Hud.set_active`,
+## `PauseScreen._set_card_active`, `TitleScreen._set_menu_active` — each added the
+## cycle its own screen got caught. It is `set_controls_active()` below now, once.
+##
+## More to the point, **the overlay calls it**. An overlay knows when it opens and
+## when it closes; an opener has to remember, twice, and the HUD's opener forgot for
+## several cycles (plant-tower-defense-csrc). `_ready()` derives the surface from
+## this node's PARENT — no list, nothing declared at a call site — holds it inert,
+## and `close()` / `_exit_tree()` hand it back exactly as it was found.
+##
+## The one thing it cannot see is a surface on a DIFFERENT `CanvasLayer`: that is
+## nobody's child. The HUD is precisely that, which is why `Game.pause_run` still
+## makes it inert separately. Such a caller hands the surface over with a second
+## `hold_inert()` call rather than writing the eight lines again.
 
 signal back_requested
 
@@ -146,6 +170,12 @@ var _note: Label
 ## the rule silently skips.
 var _row_buttons: Array[Button] = []
 
+## What this overlay is holding inert while it is open, and what each of those
+## controls WAS at the moment it opened. One Dictionary per control:
+## `{"control": Control, "focus": Control.FocusMode, "filter": Control.MouseFilter}`.
+## See `hold_inert()` for why the prior state is recorded rather than assumed.
+var _held: Array[Dictionary] = []
+
 
 ## Backdrop, paper, contents, then focus — in that order, once, for every overlay.
 ##
@@ -172,6 +202,14 @@ func _ready() -> void:
 	_add_paper()
 	_build_contents()
 	_warn_if_footer_is_flush()
+	# The overlay makes the surface it opened over inert ITSELF, so no opener has to
+	# remember to — which is the half that got forgotten. DERIVED from this node's
+	# parent, so nothing is declared at a call site and a button added to that surface
+	# later is covered without anyone editing a list. See hold_inert().
+	#
+	# Before _focus_default(), not after: a menu button that currently holds focus is
+	# dropped by going FOCUS_NONE, and the Back button should be what picks it up.
+	hold_inert(interactive_under(get_parent(), self))
 	_focus_default()
 
 	# CHECKED, not assumed: every overlay is `new()`/`build()` + `add_child()` on
@@ -251,6 +289,147 @@ func _add_paper() -> void:
 func _focus_default() -> void:
 	if _back_button != null and is_instance_valid(_back_button):
 		_back_button.grab_focus()
+
+
+# -- what is underneath goes inert --------------------------------------------
+
+
+## Focus mode and mouse filter over a list of controls, in ONE place.
+##
+## The eight lines `Hud.set_active`, `PauseScreen._set_card_active` and
+## `TitleScreen._set_menu_active` had each written out separately, each with its own
+## copy of the paragraph explaining why the mouse filter goes as well as the focus.
+## The class header above carries that paragraph now, once.
+##
+## Static, and takes a plain `Array` rather than `Array[Button]`, so a caller
+## holding `Array[Button]`, `Array[BaseButton]` or `Array[Control]` passes it
+## straight in. A non-Control entry is skipped rather than crashing the caller: the
+## lists that reach here are collected from live trees.
+static func set_controls_active(controls: Array, active: bool) -> void:
+	var mode: Control.FocusMode = Control.FOCUS_ALL if active else Control.FOCUS_NONE
+	var filter: Control.MouseFilter = (Control.MOUSE_FILTER_STOP if active
+		else Control.MOUSE_FILTER_IGNORE)
+	for entry: Variant in controls:
+		if not is_instance_valid(entry):
+			continue
+		var control := entry as Control
+		if control == null:
+			continue
+		control.focus_mode = mode
+		control.mouse_filter = filter
+
+
+## Every `BaseButton` under `root`, minus everything inside `except`.
+##
+## DERIVED, not listed. The three copies this replaces each walked a list its own
+## screen kept — `Hud.interactive_controls()`, `PauseScreen._buttons`,
+## `TitleScreen.menu_buttons()` — and a list is a thing a new button gets left out of
+## with nothing to say so. What an overlay covers is not a list: it is whatever sits
+## under the node it was added to, which the tree already knows.
+##
+## `except` is skipped WITH ITS WHOLE SUBTREE, so an overlay never makes its own Back
+## button inert. An overlay that did would be a screen with no way out of it, which
+## is the same failure `PROCESS_MODE_ALWAYS` exists to prevent one layer down.
+##
+## `BaseButton` rather than `Control`: a Label or a Panel underneath is already
+## unfocusable, and a blanket `Control` sweep would be a much larger set restored
+## from a much larger snapshot for no behaviour.
+static func interactive_under(root: Node, except: Node) -> Array[BaseButton]:
+	var out: Array[BaseButton] = []
+	if root == null or not is_instance_valid(root):
+		return out
+	for child: Node in root.get_children():
+		if child == except:
+			continue
+		var button := child as BaseButton
+		if button != null:
+			out.append(button)
+		out.append_array(interactive_under(child, except))
+	return out
+
+
+## Holds `controls` inert until this overlay closes, remembering what each of them
+## was first.
+##
+## **The remembering is the part the three copies did not do.** They restored a
+## DEFAULT — `FOCUS_ALL` / `MOUSE_FILTER_STOP` — so a control deliberately left
+## unfocusable or click-through before the overlay opened came back live, and
+## nothing would have said so. Every surface covered today happens to be
+## all-default buttons, which is exactly why that would go unnoticed until it
+## didn't.
+##
+## Idempotent per control: one already held keeps its ORIGINAL snapshot rather than
+## being re-recorded as inert. That matters while `TitleScreen._set_menu_active`
+## still runs around this one — a second snapshot taken after the first made
+## everything `FOCUS_NONE` would turn the release into a no-op and leave the menu
+## dead behind a closed notebook.
+func hold_inert(controls: Array) -> void:
+	for entry: Variant in controls:
+		if not is_instance_valid(entry):
+			continue
+		var control := entry as Control
+		if control == null or _is_held(control):
+			continue
+		_held.append({
+			"control": control,
+			"focus": control.focus_mode,
+			"filter": control.mouse_filter,
+		})
+	set_controls_active(controls, false)
+
+
+func _is_held(control: Control) -> bool:
+	for entry: Dictionary in _held:
+		if entry["control"] == control:
+			return true
+	return false
+
+
+## Hands back everything this overlay took, exactly as it found it.
+##
+## Idempotent, and called from two places on purpose: `close()`, which is the
+## intended way out, and `_exit_tree()`, which is the backstop for an overlay freed
+## some other way — `Game.resume_run()` frees the whole pause layer with an overlay
+## possibly still open over the card. "The opener forgot" is what this entire class
+## of bug is made of (plant-tower-defense-csrc), so the overlay does not depend on
+## being asked.
+func release_inert() -> void:
+	for entry: Dictionary in _held:
+		var held: Variant = entry["control"]
+		# Checked before it is typed: assigning a previously-freed instance to a
+		# `Control`-typed local is itself a runtime error, so the guard cannot come
+		# after the cast. A held control CAN be freed before this runs — teardown frees
+		# the surface and the overlay sitting on it in the same pass.
+		if not is_instance_valid(held):
+			continue
+		var control := held as Control
+		if control == null:
+			continue
+		# Straight from the Dictionary into the property, with no enum-typed local in
+		# between: these two came OUT of the same properties, so the engine's own
+		# setter is the only conversion that has to be right.
+		control.focus_mode = entry["focus"]
+		control.mouse_filter = entry["filter"]
+	_held.clear()
+
+
+## The way out: hands back what this overlay covered, then frees itself.
+##
+## Openers call this instead of `queue_free()`, and the difference is a frame.
+## `queue_free()` defers deletion to the end of the frame, so the `_exit_tree()`
+## restore lands AFTER the opener's own `grab_focus()` — and `grab_focus()` on a
+## control still sitting at `FOCUS_NONE` does nothing but push an error. Closing
+## through here means the surface is live again on the line the caller asked for it,
+## which is what lets a close path be `close()` + `grab_focus()` and nothing else.
+func close() -> void:
+	release_inert()
+	queue_free()
+
+
+## The backstop, for an overlay that went away without anyone calling `close()`.
+## See `release_inert()`.
+func _exit_tree() -> void:
+	release_inert()
 
 
 # -- the pieces a screen assembles itself out of ------------------------------
