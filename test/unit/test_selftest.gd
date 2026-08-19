@@ -11321,12 +11321,16 @@ func test_the_message_corpus_covers_every_catalogue_producer() -> String:
 	# it is a budget that is wrong the first time a second road plant exists.
 	var catalogue_entries: int = (PlantCatalog.PLANTS.size() * 8
 		+ CornCobbler.LEVELS.size() + ChompFlower.LEVELS.size())
-	return _T.assert_eq(corpus.size() - catalogue_entries, 9,
-		("the corpus carries its 9 non-catalogue entries (prep note, wave-cleared "
-			+ "line, the flight tip, and six literals -- BOTH colourblind lines, since "
-			+ "the checker reads the leading literal of that ternary). If this moved "
-			+ "because you ADDED one, raise the number; if it moved because one "
-			+ "vanished, the row's budget just got quietly optimistic"))
+	# TEN since cycle 138, not nine: the deferred-road tip (plant-tower-defense-0xhf)
+	# is the second one-shot with a producer of its own, and it is the widest tip in
+	# the game -- so a corpus without it would report this row roomier than it is on
+	# exactly the line most likely to want the space.
+	return _T.assert_eq(corpus.size() - catalogue_entries, 10,
+		("the corpus carries its 10 non-catalogue entries (prep note, wave-cleared "
+			+ "line, the flight tip, the defer tip, and six literals -- BOTH "
+			+ "colourblind lines, since the checker reads the leading literal of that "
+			+ "ternary). If this moved because you ADDED one, raise the number; if it "
+			+ "moved because one vanished, the row's budget just got quietly optimistic"))
 ##
 ## The catalogue is SWEPT rather than sampled, and the level table with it — so this
 ## is checked against every name the game can actually produce, not against a worst
@@ -20045,3 +20049,146 @@ func test_widening_the_short_names_did_not_raise_the_widest_key_label() -> Strin
 	return err
 # END LANE SECTION — plant-tower-defense-vte
 # =============================================================================
+
+
+# =============================================================================
+# The deferred-road one-shot (plant-tower-defense-0xhf)
+#
+# Filed off a player looking at their own board and asking what the marks in the
+# lanes were. `Board._redraw_deferred_road`'s bar has been on the board since
+# cycle 112 and no surface in the game named it.
+#
+# Both tests stash and restore `earned_milestones` around themselves. It is an
+# autoload Dictionary and a hint is one-shot PER SAVE, so a test that spends one
+# and walks away decides the answer for every later test in the run -- the
+# tree-global read `.claude/skills/godot-test-isolation/SKILL.md` is about, in the
+# one shape where the leak is silent rather than noisy.
+# =============================================================================
+
+
+## The gate that keeps the tip out of the opening tutorial, asserted against the
+## const the game reads rather than against a 2 typed here twice.
+##
+## The one-gun half is the half worth having. A lone Corn Cobbler DEFERS almost
+## everything it covers -- that is what one gun always looks like, on any board --
+## so "the bars are showing" is true from the first plant and is not yet a fact
+## about this player's garden. Firing there would also displace the beat
+## `test_an_armed_prompt_outranks_a_line_that_is_merely_important` protects, which
+## is how this gate was found rather than argued.
+func test_the_defer_hint_waits_for_a_second_gun() -> String:
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	RunConfig.earned_milestones = {}
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(500)
+
+	var first: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, first), "",
+		"a first gun goes down")
+	if err == "":
+		# The precondition the whole test rests on: this board really does defer
+		# cells with one gun on it. Asserted rather than assumed, because a garden
+		# with no deferred cell would make the next assertion pass for the wrong
+		# reason -- see .claude/skills/scope-vs-claim/SKILL.md.
+		err = _T.assert_gt(game.board.deferred_road_marked().size(), 0,
+			"one gun already deferred road, so the hint had something to fire about")
+	if err == "":
+		err = _T.assert_false(RunConfig.has_milestone(RunConfig.HINT_DEFERRED_ROAD),
+			("and it did not fire on a one-gun board: DEFER_HINT_MIN_GUNS is %d"
+				% Game.DEFER_HINT_MIN_GUNS))
+	if err == "":
+		var second: Vector2i = _grass(game)
+		err = _T.assert_true(second != first, "there is a second buildable cell")
+		if err == "":
+			err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, second), "",
+				"a second gun goes down")
+	if err == "":
+		# Placing posts its own confirmation, so the row is NOT quiet on the refresh
+		# that second plant caused, and the hint is level-triggered: it declines and
+		# stays owed rather than stacking a copy into the queue. That is the whole of
+		# `Hud.row_is_quiet`, and asserting it here is what stops a later change
+		# turning this test's setup into its subject.
+		err = _T.assert_false(RunConfig.has_milestone(RunConfig.HINT_DEFERRED_ROAD),
+			"not yet -- the placement line still has the row, so the hint is owed")
+	if err == "":
+		game.hud._process(9.0)
+		game.hud._message_left = 0.0
+		game.hud._message_queue.clear()
+		game.hud._advance_message_queue()
+		game._refresh_deferred_road()
+		err = _T.assert_true(RunConfig.has_milestone(RunConfig.HINT_DEFERRED_ROAD),
+			"and the next refresh onto a quiet row spends it")
+	if err == "":
+		# The sentence, not just the flag. A hint recorded without its line reaching
+		# the row is the cycle-79 defect `RunConfig.HINTS` was written to end.
+		var label: Label = game.hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+		err = _T.assert_true(label != null, "the message row is where the HUD put it")
+		if err == "":
+			err = _T.assert_eq(label.text, Hud.defer_tip(),
+				"the row is showing the defer tip itself -- got %s" % label.text)
+	_T.free_ui(game)
+	RunConfig.earned_milestones = stashed
+	return err
+
+
+## Spent once, never again -- the property that separates a hint from wallpaper.
+##
+## Driven through `_refresh_deferred_road()` directly rather than by planting a
+## third gun, because the thing being pinned is that a REPEATED refresh does not
+## repost. `_refresh()` fires on every seed payout, so the un-gated version of this
+## would put the same sentence on the row several times a second.
+func test_the_defer_hint_is_spent_only_once() -> String:
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	RunConfig.earned_milestones = {}
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(500)
+
+	var err: String = ""
+	for i: int in range(Game.DEFER_HINT_MIN_GUNS):
+		var cell: Vector2i = _grass(game)
+		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "",
+			"gun %d goes down" % [i + 1])
+		if err != "":
+			break
+	var hud: Hud = game.hud
+	if err == "":
+		# Drain, then one refresh onto a quiet row: that is the moment the tip is
+		# spent, since placing a plant leaves the row busy with its own confirmation.
+		hud._process(9.0)
+		hud._message_left = 0.0
+		hud._message_queue.clear()
+		hud._advance_message_queue()
+		game._refresh_deferred_road()
+		err = _T.assert_true(RunConfig.has_milestone(RunConfig.HINT_DEFERRED_ROAD),
+			"the tip was spent on the first quiet refresh after the second gun")
+	if err == "":
+		hud._process(9.0)
+		hud._message_left = 0.0
+		hud._message_queue.clear()
+		hud._advance_message_queue()
+		var label: Label = hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+		err = _T.assert_true(label != null, "the message row is where the HUD put it")
+		if err == "":
+			# NOT asserted as an empty row. Draining lets the HUD repost its standing
+			# prep note ("Wave 1 next -- 5 pests."), so "" is a state this row does not
+			# sit in for long and a test demanding it is testing the drain rather than
+			# the hint. What the hint must not do is change what is on the row or put
+			# anything behind it, so both are recorded first and compared after.
+			var before_text: String = label.text
+			var before_pending: int = hud.pending_messages()
+			game._refresh_deferred_road()
+			game._refresh_deferred_road()
+			err = _T.assert_eq(label.text, before_text,
+				("two more refreshes did not touch the row -- was %s, got %s"
+					% [before_text, label.text]))
+			if err == "":
+				err = _T.assert_eq(hud.pending_messages(), before_pending,
+					"and stacked nothing behind it either")
+			if err == "":
+				err = _T.assert_true(label.text != Hud.defer_tip(),
+					"and the tip specifically is not back on the row")
+	if err == "":
+		err = _T.assert_gt(game.board.deferred_road_marked().size(), 0,
+			"and the bars really were still on the board while it stayed quiet")
+	_T.free_ui(game)
+	RunConfig.earned_milestones = stashed
+	return err

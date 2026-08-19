@@ -3701,6 +3701,7 @@ static func message_corpus() -> Array[String]:
 	out.append("Colourblind-safe bars off.")
 	out.append("Colourblind-safe bars on.")
 	out.append(flight_tip())
+	out.append(defer_tip())
 	return out
 
 
@@ -3725,6 +3726,32 @@ static func message_corpus() -> Array[String]:
 ## exactly that).
 static func flight_tip() -> String:
 	return "That pest flies over Chomp Flowers. Corn Cobblers can still hit it."
+
+
+## Said once ever, the first time the board actually draws a bar across the road
+## (plant-tower-defense-0xhf).
+##
+## A zero-argument PRODUCER for the reason `flight_tip` above spells out: the corpus
+## resolves producer calls and literals, and a `const` is invisible to the row's budget.
+##
+## NAMES THE MARK FIRST, which none of the other four tips do. They answer "why did
+## that not work"; this one answers "what is that". A player who cannot pick the bar
+## out of the four straight marks the board can draw gets nothing from a sentence about
+## targeting, so the sentence starts where their eyes are.
+##
+## "the pest ahead" and not "the furthest-along pest in range": the mechanic is
+## `CornCobbler._furthest_along_in_range`, and `placement_preview.gd`'s a6rf block
+## defines a deferred cell exactly — some cell further along the road is covered by
+## EVERY gun that covers this one, so a pest there takes all of them. "Ahead" is the
+## player's word for that and it is the direction they watch pests walk.
+##
+## The second clause is the counter-play, and it is the whole reason this is worth a
+## one-shot rather than a caption. The same a6rf block records the measurement: a cue
+## saying only "this cell is weak" is a complaint. What clears a bar is DEPTH — one
+## more gun over the same stretch, which is the purchase `_draw_new_cover_dots`'s
+## header argues players read as wasted because it gains no new cells.
+static func defer_tip() -> String:
+	return "Bars mark road your plants skip — each is busy with the pest ahead. Add depth there."
 
 
 ## Said once ever, the first time the player can actually afford an upgrade on their
@@ -3812,6 +3839,11 @@ const HINT_CARDS: Array[Dictionary] = [
 		"id": "seen_road_tip",
 		"title": "One plant goes in the road",
 		"note": "Every other plant is refused on the road — pests walk there. The Barrier Bramble is the exception: it only goes on road cells, and everything walking one stops to chew through it.",
+	},
+	{
+		"id": "seen_defer_tip",
+		"title": "A bar across the road",
+		"note": "Every plant that reaches that cell shoots at the pest furthest along its range first, so a cell with a busier one ahead of it gets nothing. The bar is drawn square to the lane, on road only. It clears when one more plant covers that stretch — depth, not reach.",
 	},
 ]
 

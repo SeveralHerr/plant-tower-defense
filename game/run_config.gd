@@ -222,8 +222,29 @@ const HINT_UPGRADE_EXISTS := "seen_upgrade_tip"
 ## to be load-bearing, and it is the last of the four to exist.
 const HINT_ROAD_PLANTS := "seen_road_tip"
 
+## The fifth, and the first one about a MARK rather than about a rule
+## (plant-tower-defense-0xhf). Filed off a player's own words, looking at their own
+## board: "what are all these artifacts in the lanes? If they mean something, it is
+## not obvious."
+##
+## The other four teach a rule the board does not state. This one names a thing the
+## board is already drawing — `Board._redraw_deferred_road`'s bar across the lane —
+## and that difference is why it is a hint and not a legend row. `CueLegend.ROWS` is
+## measurably full: `OVERLAY_GRAMMAR.md`'s cycle-109 note prices a seventh row at
+## 340 px against the 300 px the page has, and `CueLegend.rows_that_fit` is the
+## function that says so. A cue that arrives on the board with no player action and
+## no name anywhere in the game is exactly what a one-shot is for.
+##
+## It is also the hint whose cue is HARDEST to guess at, because the bar looks like
+## the one mark the player may already have met. `placement_preview.gd`'s a6rf block
+## enumerates the four straight marks the board can draw and the channel that keeps
+## each distinct — position, orientation, length, count — and every one of those
+## channels is a distinction a reader has to already know about to read.
+const HINT_DEFERRED_ROAD := "seen_defer_tip"
+
 const HINTS: Array[String] = [
 	HINT_MOVE_PREVIEW, HINT_CHOMP_IGNORES_FLIGHT, HINT_UPGRADE_EXISTS, HINT_ROAD_PLANTS,
+	HINT_DEFERRED_ROAD,
 ]
 
 

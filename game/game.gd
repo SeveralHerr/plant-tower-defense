@@ -22,6 +22,12 @@ const PREP_SECONDS: float = 18.0
 ## enough to read the relabelled button and short enough that a wave arriving
 ## mid-decision does not leave a live trigger sitting under the cursor.
 const UPROOT_CONFIRM_SECONDS: float = 4.0
+
+## The fewest guns on the board before the deferred-road one-shot is offered. See
+## `_offer_defer_hint`, which argues why this is 2 by derivation and not by taste.
+## A const rather than a literal in that guard so
+## `test_the_defer_hint_waits_for_a_second_gun` names the same number the game does.
+const DEFER_HINT_MIN_GUNS: int = 2
 ## What `arm_uproot()` returns for the click that ARMED the confirm — a success, not a
 ## refusal, and the one value on Game that breaks the "" == it-worked convention every
 ## other `-> String` method here follows (plant-tower-defense-qewm).
@@ -1388,11 +1394,77 @@ func _refresh_deferred_road() -> void:
 			continue
 		gun_cells.append(plant.cell)
 		gun_reaches.append(reach)
+	var deferred: Array[Vector2i] = PlacementPreview.deferred_road_cells(
+		board, gun_cells, gun_reaches)
 	board.mark_deferred_road(
-		PlacementPreview.deferred_road_cells(board, gun_cells, gun_reaches),
+		deferred,
 		PlacementPreview.DEFERRED_BAR_ARM,
 		PlacementPreview.deferred_road_color(),
 		PlacementPreview.DEFERRED_BAR_WIDTH)
+	_offer_defer_hint(deferred, gun_cells.size())
+
+
+## The one-shot that names the bar, offered the first time the board actually draws
+## one (plant-tower-defense-0xhf).
+##
+## GATED ON THE CELL LIST AND NOT ON `mark_deferred_road`'s return, which is the near
+## miss worth writing down. That return means the marked SET CHANGED, and the set
+## changes every time a bar appears OR disappears -- including on the refresh that
+## clears the last one. A hint spent there could name a mark that is no longer on the
+## board. `deferred` non-empty is the condition the sentence is actually about.
+##
+## `is_empty()` is also cheaper than the `has_milestone` read in the common case, and
+## this runs from `_refresh()`, which fires on every seed payout.
+##
+## Spent on `show_message`'s RETURN VALUE, exactly as `_offer_road_hint` and
+## `_on_flight_ignored` are: the row drops a line when its queue is full, and a
+## dropped line has to leave the hint owed for the next refresh rather than burning
+## it unseen. Cycle 79 paid for that distinction once already -- see `RunConfig.HINTS`.
+##
+## NOT gated on a wave running. `placement_preview.gd`'s a6rf block argues at length
+## that the cue is a static property of the garden's shape and is shown during PREP
+## for exactly that reason: prep is when another plant can still be bought. A hint
+## held back until a wave started would name the mark at the one moment its
+## counter-play is unavailable.
+## `guns` is the count of standing plants with reach, so the ONE-GUN GARDEN IS
+## EXCLUDED, and that gate is derived rather than tuned. A deferred cell is one with
+## a cell further along covered by every gun that covers it; with a single gun that
+## is every cell it reaches except the furthest one, always, on any board. So at one
+## plant the bars are at their densest and say nothing about this player's garden --
+## they say what one gun looks like. Worse, the tip's counter-play is "add depth
+## there", and depth is not a purchase available to somebody who has just put down
+## their free Corn Cobbler.
+##
+## Two is therefore the first count at which the mark carries information and the
+## advice can be taken, not a number that looked about right. It is also what keeps
+## this out of the opening tutorial's message row, where
+## `test_an_armed_prompt_outranks_a_line_that_is_merely_important` measured it
+## landing: that test drains the row, posts a five-second reveal and arms an uproot
+## on a ONE-PLANT board, and a hint firing there displaced the beat the test exists
+## to protect.
+func _offer_defer_hint(deferred: Array[Vector2i], guns: int) -> void:
+	if hud == null or not is_instance_valid(hud):
+		return
+	if deferred.is_empty() or guns < DEFER_HINT_MIN_GUNS:
+		return
+	if RunConfig.has_milestone(RunConfig.HINT_DEFERRED_ROAD):
+		return
+	# Ask before offering, for the reason `_maybe_teach_upgrading` does and with the
+	# same failure behind it. This caller is LEVEL-triggered -- a garden with a
+	# deferred cell stays deferred until a plant moves -- so a refused post is not a
+	# one-off: the next `_refresh()` offers it again, and the one after that, stacking
+	# copies into the row's queue until `MESSAGE_QUEUE_MAX` starts refusing them.
+	#
+	# That is not a hypothetical here. The version of this without the guard was
+	# caught by `test_a_realistic_run_refuses_no_messages_and_evicts_none` at
+	# `refused=11` over three waves -- the row is busy at exactly the moment a plant
+	# lands, which is exactly the moment the deferred set changes. `Hud.row_is_quiet`
+	# exists for this and its header names this trap; it is worth reading before
+	# adding a sixth hint.
+	if not hud.row_is_quiet():
+		return
+	var posted: bool = hud.show_message(Hud.defer_tip())
+	RunConfig.spend_hint(RunConfig.HINT_DEFERRED_ROAD, posted)
 
 
 ## Applied straight away rather than left for the next _refresh(), for the reason
