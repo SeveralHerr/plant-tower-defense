@@ -27,6 +27,13 @@ session edited and whether this run loaded it — while the *branch* ratio dilut
 run's contribution as the branch accumulates commits nobody expects a single run to
 re-exercise.
 
+Both `reach` and `record` print the two apart and labelled. `record` used to print only
+the union, which on a branch that batches its pushes is dominated by commits no single
+run was ever asked to re-exercise — a `7/13` beside a row whose real per-session number
+was `1/1`. The union stays the first line and stays word-for-word; the worktree line
+sits under it, and nothing stored changed, because the row has carried `reach.worktree`
+and `reach.branch` since 0.8.0 (plant-tower-defense-6wfo).
+
 **Implicit reach.** Autoload scripts (from `project.godot` `[autoload]`) and the
 DevTools `extension_script` run in every launched session but own no persistent node a
 snapshot can see. A changed file in that set that was not otherwise observed lands in
@@ -1108,6 +1115,7 @@ def cmd_record(args, root):
     if args.no_reach and observed is None:
         reach_obj = None
         u = split_reach(set(), None, implicit, root, cfg)  # _reconcile inputs stay None
+        w = None  # no per-denominator split to print; the summary line below skips it
     else:
         # None passes straight through in all three: `or set()` here was half of the bug.
         u = split_reach(union, observed, implicit, root, cfg)
@@ -1191,8 +1199,27 @@ def cmd_record(args, root):
     with path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(row, sort_keys=True) + "\n")
 
-    print("verify_ledger: recorded %s run, value=%s - %s"
+    # Two lines, because one of them was being read as a score for this run and is not
+    # (plant-tower-defense-6wfo). The union denominator is the worktree edits PLUS every
+    # commit since the base ref, and this project deliberately batches its pushes - a
+    # push to origin/main auto-deploys - so `origin/main` sits scores of commits behind
+    # and the union counts all of them. Measured on the 2026-08-19T01:32:59Z row: the
+    # union said `7/13` while the worktree said `1/1`. Both are correct and they answer
+    # different questions, and a reader of the diluted one cannot tell "this run touched
+    # little of a long branch" from "this run verified little of what it changed" -
+    # which is precisely the distinction reach was built to make.
+    #
+    # `reach` has printed the two apart since 0.8.0; `record` did not, and `record` is
+    # the line that lands in the transcript beside the row. The union line is kept first
+    # and word-for-word so anything already reading `reached N/M changed file(s)` here
+    # keeps working; nothing stored changes, because the row has carried
+    # `reach.worktree` and `reach.branch` all along. No existing row is rewritten.
+    print("verify_ledger: recorded %s run, value=%s - union (this session's edits + "
+          "every commit since the base ref): %s"
           % (row["verdict"], value, _reach_line(u)))
+    if w is not None:
+        print("verify_ledger:   worktree (what THIS session edited - the per-run number, "
+              "and the one to judge this run by): %s" % _reach_line(w))
     if reach_obj is not None and reach_obj.get("changed_unavailable"):
         print("verify_ledger: reach recorded as UNAVAILABLE (not a git repository), not "
               "as 0/0 - the row's buckets are null, so `stats` excludes it instead of "
