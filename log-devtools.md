@@ -7849,3 +7849,45 @@ status rather than rewriting the entries that recorded these as open.
     knows when it last recorded. Failing that, print both and label them, so a reader can
     tell "this run touched little of a long branch" from "this run verified little of what
     it changed". Filed as a bead so it is not only a log line.
+
+## 2026-08-18 — re-measuring the message row with player actions in it
+
+- Value: **warranted** — the diff was EMPTY and the runtime produced a claim that reverses a
+  conclusion two cycles have been carrying, plus a second one that inverts the bead's own
+  prime suspect. This is the shape the harness exists for.
+  - Expected: cycle 93 read `messages_refused` = 0 over six waves and concluded the row does
+    not drop lines in ordinary play. I expected a run containing purchases and uproots to
+    confirm it, or to produce a small non-zero number.
+  - Got: `messages_refused = 12` after four packet purchases fired back to back during a
+    live wave — exactly three per purchase, against `PACKET_OPEN_STEPS` = 3.
+  - Found: the cause is not what the bead predicted, and four controls were needed to say so.
+    One purchase on a quiet row refuses nothing; one over a deliberately-held ambient line
+    refuses nothing and *preempts* four times; twelve pests spawned and killed with no
+    purchase refuse nothing. The mechanism then reproduced with **no purchase at all** — one
+    `MESSAGE_IMPORTANT` post held for 5s, then five more at equal priority: all five returned
+    `false`, three queued (`MESSAGE_QUEUE_MAX` = 3) and two were refused. So the producer is
+    the 5-second **reveal**, not the flicker, and the flourish's own comment describes only
+    the case that drops nothing. Filed as `-47v7`.
+  - Cheaper: nothing. Reading the code produced the *wrong* answer twice here — once in cycle
+    93's close and once in the flourish's own comment — and both readings were reasonable.
+
+- Gap: **nothing on the bridge can select a placed plant**, so the `MESSAGE_DEADLINE`
+  producer — one of the two the bead named — went unmeasured and half its acceptance is
+  unmet.
+  - `run-method /root/Game _select ["<path>"]` cannot work: `_select` takes a `Plant` node
+    and the bridge passes a `String`. None of the 69 registered verbs selects. And the
+    documented workaround failed: `touch press`/`release` at the plant's `global_position`
+    (read as `224,296` off the node) left `selected_placed` empty through four attempts,
+    with `touch list` reporting `No active touches` after.
+  - `cycle-log.md` carries "a plant is selected by a real click, which `cmd touch_press`/
+    `touch_release` at its `global_position` will deliver" as durable knowledge. That did not
+    hold in this run. Whether the note is stale, whether it needs `set-feature --touchscreen`
+    before the scene loads, or whether the emulated-mouse guard in `_unhandled_input` changed
+    which events reach the handler is **unestablished** — and the note is deliberately not
+    edited until it is known which.
+  - [G-132] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: a project verb beside the existing `place_plant` / `upgrade_plant` /
+    `collect_husk`, all of which already take `x,y` — `select_plant x,y`, plus a cancel, or
+    arming becomes a one-way trip that uproots on the second call (which is what happened
+    here). Filed as `-cfvb`, which says to settle the touch question FIRST, because if a
+    click can select then this is a documentation gap and a verb is only a convenience.

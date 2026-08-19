@@ -1,4 +1,4 @@
-# Cycle 127
+# Cycle 128
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,32 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 128 taught
+
+**A control that produces ZERO is what converts a reading into a cause.** `messages_refused`
+= 12 beside four packet purchases is a correlation, and this cycle's bead existed precisely
+because cycle 93 had accepted one of those. Three deliberately boring runs — a purchase on a
+quiet row, a purchase over a held ambient line, twelve pest kills with no purchase — all
+returned zero, and a fourth reproduced the refusals with **no purchase at all**. That last
+one moved the claim from "packets refuse messages" to "an IMPORTANT line held longer than the
+next IMPORTANT post's patience refuses messages", which is a fact about `Hud` rather than
+about packets. Budget for the controls; they are most of the work and all of the confidence.
+
+**A comment that is accurate about the single case reads as coverage of the general one.**
+The packet flourish's comment says each flicker replaces the last rather than queuing, and
+that is TRUE — the preempt control confirms it — for one flourish. Two overlapping is the
+only case that drops lines and nothing anywhere describes it. Both cycle 93's close and this
+bead's own prime suspect were reasoned from that comment, and both were wrong.
+
+**Do not correct a durable note you have not diagnosed.** `cycle-log.md` says a touch
+press/release at a plant's `global_position` selects it; four attempts left `selected_placed`
+empty. Three explanations are live and none was checked, so the note stands and the bead
+names the check. Replacing one unverified sentence with another is not a correction.
+
+**Half an acceptance is reported as half.** The uproot producer could not be driven at all —
+nothing on the bridge selects a placed plant — so the close says the `MESSAGE_DEADLINE` half
+is unmeasured rather than quietly scoping it out.
 
 ## What cycle 127 taught
 

@@ -480,6 +480,24 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   the two producers most likely to fill one are exactly the two actions that run was missing.
   The counters still exist and the re-measurement is cheap; until it happens, "the row drops
   nothing" is a claim about a game nobody was playing.
+  **ANSWERED IN CYCLE 128 (`-gd27`), and cycle 93's conclusion is CORRECTED: the row does
+  drop lines.** Four packet purchases fired back to back during a live wave produced
+  `messages_refused` = **12**, exactly three per purchase against `PACKET_OPEN_STEPS` = 3
+  (`game/game.gd:1931`). Four controls separate the cause from the correlation: one purchase
+  on a quiet row refuses nothing; one purchase over a deliberately-held ambient line refuses
+  nothing and preempts four times; twelve pests spawned and killed with no purchase refuse
+  nothing; and the mechanism reproduces with no purchase at all — one `MESSAGE_IMPORTANT`
+  post held for 5s followed by five more at the same priority queues three
+  (`MESSAGE_QUEUE_MAX`, `game/hud.gd:804`) and refuses two.
+  **The producer is the REVEAL, not the flicker**, which inverts the bead's prime suspect.
+  `_reveal_plant_unlock` holds the row at `MESSAGE_IMPORTANT` for 5.0s, so a second purchase
+  inside that window is equal priority, cannot preempt, and its steps fill the queue. The
+  flourish's own comment is correct about one flourish and silent about two overlapping —
+  which is the only case that drops anything. Filed as `-47v7`.
+  And the other half of the acceptance went unmeasured: **nothing on the bridge can select a
+  placed plant**, so the `MESSAGE_DEADLINE` producer could not be driven at all (`-cfvb`).
+  `cycle-log.md`'s standing note that a touch press/release at a plant's `global_position`
+  selects it did not hold in this run, and why is unestablished.
   The general form is worth more than either instance: **"drive it in a real run" is not the
   same as "exercise it", and a zero is only as good as the actions the run contained.** Ask
   what triggers the thing before deciding what to drive.
@@ -4537,3 +4555,35 @@ Three findings kept out here rather than buried in a log:
   (625 uses), `assert_true` (831), `assert_float_eq` (227), `assert_gt` (220),
   `assert_false` (206), `assert_gte` (47) — and now zero `assert_equal`. Filed nothing;
   the lesson is the one CLAUDE.md already states, arriving on schedule.
+
+### New in cycle 128 — grown from a zero that meant "nobody played this"
+
+- **Four controls, not one, before believing a counter.** `messages_refused` = 12 sitting
+  next to four packet purchases is a correlation, and this bead existed *because* cycle 93
+  accepted one of those. What made the finding real was the three runs that produced nothing
+  — a purchase on a quiet row, a purchase over a held ambient line, twelve pest kills with no
+  purchase — and one that reproduced the refusals **with no purchase at all**. The last is
+  the strongest: it turns "purchases refuse messages" into "an `IMPORTANT` line held longer
+  than the next `IMPORTANT` post's patience refuses messages", which is a statement about
+  `Hud`, not about packets.
+  Worth stating as a rule: **a control that produces zero is what converts a non-zero
+  reading into a cause.** Three of the four runs here were expected to be boring and all
+  three earned their place.
+
+- **The code comment was true and still pointed at the wrong producer.** `game/game.gd`'s
+  flourish says "each flicker replaces the last rather than queuing up behind it", and the
+  preempt control confirms it — for ONE flourish. The refusals come from
+  `_reveal_plant_unlock` holding the row at `MESSAGE_IMPORTANT` for 5.0s, so a *second*
+  purchase inside that window is equal priority and cannot preempt. **A comment that is
+  accurate about the single case reads as coverage of the general one**, and both cycle 93's
+  close and this bead's own prime suspect were written from it. The case nobody commented on
+  is the case that drops lines. Filed as `-47v7`.
+
+- **`cycle-log.md` carries a durable note that did not hold, and it is not edited.** "A plant
+  is selected by a real click, which `cmd touch_press`/`touch_release` at its
+  `global_position` will deliver" — four attempts at `224,296` left `selected_placed` empty.
+  Three explanations are live (stale note; needs `set-feature --touchscreen` before the
+  scene loads; the emulated-mouse guard in `_unhandled_input` changed which events reach the
+  handler) and none was checked, so **correcting the note now would be replacing one
+  unverified sentence with another**. Filed as `-cfvb` with the check named. This is the
+  `kanban-staleness-audit` bar applied to the durable-knowledge file itself.
