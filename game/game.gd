@@ -1972,8 +1972,95 @@ func _on_plant_unlocked(id: StringName) -> void:
 ## by the time this runs, `id` is already unlocked (buy_packet() appends it
 ## before emitting), so the pool is naturally everything BUT the real pick —
 ## exactly the "other candidates" a flicker needs, with nothing to filter out.
+## Packets waiting for the flourish, each carrying its OWN tier.
+##
+## `_opening_tier` is set immediately before `buy_packet()` and read inside the flourish,
+## which was safe while exactly one flourish could be running. It is not safe once a
+## purchase can wait for another: a common packet queued behind a rare one would flash
+## candidates from the rare pool by the time it ran. The tier travels with the id instead.
+var _packet_queue: Array[Dictionary] = []
+
+## Whether the runner below is already draining `_packet_queue`.
+var _packet_opening: bool = false
+
+
+## SERIALISED, and this is the fix for plant-tower-defense-47v7 rather than a tidy-up.
+##
+## The flourish is a coroutine: three steps with an `await` between each. Two purchases
+## inside about a second put two of them in flight at once, and their posts interleave --
+## measured in cycle 129 with `cmd messages`, two purchases back to back gave
+##
+##     refused 1
+##     refused_log ["The packet held a Chomp Flower!"]
+##     row "The packet held a Barrier Bramble!" | 3 pending
+##
+## The refused line is a REVEAL. The first packet's flourish reached `_reveal_plant_unlock`
+## while the second packet's flicker steps held the row and filled the queue, so the player
+## was told what the second packet contained and never told about the first -- which they
+## had paid seeds for, and which the reveal is the only announcement of.
+##
+## Of the three options the bead offered -- collapse the flicker, queue properly, or leave
+## it -- this is "queue properly", chosen because the player bought two packets and is owed
+## two answers. Collapsing would still have dropped one of them.
+##
+## Serialising at the FLOURISH rather than raising the reveal's priority, because the
+## priority ladder is about how much a line matters to the player and both reveals matter
+## exactly the same amount. The contention is between two runs of one animation, which is a
+## sequencing problem; solving it with priorities would have made a second reveal preempt a
+## first that had been on screen for a tenth of a second.
 func _open_packet(id: StringName) -> void:
-	var pool: Array[StringName] = bank.packet_pool(_opening_tier)
+	_packet_queue.append({"id": id, "tier": _opening_tier})
+	if _packet_opening:
+		return
+	_packet_opening = true
+	while not _packet_queue.is_empty():
+		var next: Dictionary = _packet_queue.pop_front()
+		# BEFORE each flourish, including the first, and that "including the first" is the
+		# whole fix. Serialising only the queue looked correct and the game was still broken:
+		# a flourish lasts PACKET_OPEN_STEPS * PACKET_OPEN_STEP_SECONDS, about a quarter of a
+		# second, so two purchases half a second apart never overlap and never queue. The
+		# second one starts fresh -- and posts its steps behind the FIRST one's five-second
+		# reveal, refusing it exactly as before. Caught by re-running cycle 129's live recipe
+		# against the "fix"; the headless test passed throughout, because it fires both
+		# purchases in the same frame, which is the one case serialisation alone did cover.
+		await _row_ready_for_a_flourish()
+		await _play_packet_flourish(StringName(next["id"]), StringName(next["tier"]))
+	_packet_opening = false
+
+
+## Wait until an equal-priority post will land on the row instead of queueing behind it.
+##
+## SERIALISING THE FLOURISHES IS NOT ENOUGH ON ITS OWN, which is worth stating because it
+## looks like it should be. A reveal is posted for 5 seconds; `show_message` overwrites at
+## equal priority only once the current line has `MESSAGE_MIN_READABLE` or less remaining.
+## So a second flourish starting the instant the first returns still posts three steps
+## behind a 5-second reveal, fills the queue, and gets its own reveal refused -- the
+## original defect, one call deeper.
+##
+## Asked of the row rather than computed from the constants: `5.0 - MESSAGE_MIN_READABLE`
+## would be a fourth place that has to change when the reveal's duration does, and the row
+## already knows the answer. `message_seconds_left()` exists because cycle 129 needed it for
+## `cmd messages`; this is its second caller and the reason it is not a debug-only reader.
+##
+## The frame cap is a stop, not a timeout: nothing should hold the row this long, and if
+## something does, the packet still gets its reveal rather than the coroutine waiting
+## forever. Sixty seconds of frames at 60fps, which is far past any message this game posts.
+## The priority test matters as much as the time one. A flourish posts at
+## `MESSAGE_IMPORTANT`, so it PREEMPTS anything ambient sitting on the row -- waiting for an
+## ambient line to expire would delay every packet behind a husk notice for no reason, and
+## would be a visible regression rather than a fix. Only a line at IMPORTANT or above can
+## make a flourish queue, so only that is worth waiting for.
+func _row_ready_for_a_flourish() -> void:
+	var frames: int = 0
+	while frames < 3600 \
+			and hud.message_priority() >= Hud.MESSAGE_IMPORTANT \
+			and hud.message_seconds_left() > Hud.MESSAGE_MIN_READABLE:
+		frames += 1
+		await get_tree().process_frame
+
+
+func _play_packet_flourish(id: StringName, tier: StringName) -> void:
+	var pool: Array[StringName] = bank.packet_pool(tier)
 	for i: int in range(PACKET_OPEN_STEPS):
 		var flash: StringName = id if pool.is_empty() else pool[i % pool.size()]
 		# Same priority on every step, deliberately: show_message() only queues

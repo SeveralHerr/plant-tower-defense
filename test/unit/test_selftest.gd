@@ -18498,3 +18498,105 @@ func test_weather_is_taught_on_screen_which_is_why_the_notebook_has_no_page_for_
 		err = _T.assert_eq(Hud.weather_note(WaveDirector.WEATHER_CLEAR), "",
 			"clear weather says nothing at all")
 	return err
+
+
+## Two packets bought inside a second must produce TWO reveals, not one and a refusal.
+##
+## The defect this holds (plant-tower-defense-47v7) was measured live in cycle 129: two
+## purchases back to back gave `refused 1`, `refused_log ["The packet held a Chomp
+## Flower!"]`, and the row showing the SECOND packet's reveal. The player paid seeds for a
+## packet and was never told what was in it. Nothing static could see it -- the flourish is
+## a coroutine and the bug is two of them interleaving -- so this test drives the real
+## `_open_packet` twice with no gap, which is exactly what a fast player does.
+func test_two_packets_opened_at_once_both_get_their_reveal() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	hud._process(9.0)                      # drain Game._ready's starter tip
+	var refused_before: int = hud.messages_refused
+	# Two flourishes started in the same frame: the case the serialisation exists for.
+	game._open_packet(PlantCatalog.CHOMP)
+	game._open_packet(PlantCatalog.SUNFLOWER)
+	var err: String = _T.assert_eq(hud.messages_refused, refused_before,
+		"a second purchase refuses nothing; refused_log says %s"
+			% str(hud.messages_refused_log))
+	if err == "":
+		# The second packet must be WAITING, not racing -- one flourish in flight at a time.
+		err = _T.assert_eq(game._packet_queue.size(), 1,
+			"the second packet waits its turn rather than interleaving")
+	if err == "":
+		err = _T.assert_true(game._packet_opening,
+			"the runner is draining the queue")
+	_T.free_ui(game)
+	return err
+
+
+## The tier travels with the packet, not in a field the next purchase overwrites.
+##
+## `_opening_tier` is assigned immediately before `buy_packet()`. That was safe while only
+## one flourish could exist; once a purchase can WAIT, a common packet queued behind a rare
+## one would flash candidates from whichever tier was bought last. The queue carries it.
+func test_a_queued_packet_keeps_its_own_tier() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.hud._process(9.0)
+	game._opening_tier = &"common"
+	game._open_packet(PlantCatalog.CHOMP)
+	game._opening_tier = &"rare"           # a second purchase, a different tier
+	game._open_packet(PlantCatalog.SUNFLOWER)
+	var err: String = _T.assert_eq(game._packet_queue.size(), 1,
+		"one packet is waiting")
+	if err == "":
+		err = _T.assert_eq(String(game._packet_queue[0]["tier"]), "rare",
+			"the waiting packet remembers the tier it was BOUGHT at, not the current field")
+	if err == "":
+		err = _T.assert_eq(StringName(game._packet_queue[0]["id"]), PlantCatalog.SUNFLOWER,
+			"and which packet it is")
+	_T.free_ui(game)
+	return err
+
+
+## The case the same-frame test above does NOT cover, and the one the live game failed.
+##
+## A flourish lasts PACKET_OPEN_STEPS * PACKET_OPEN_STEP_SECONDS -- about a quarter second --
+## so two purchases half a second apart never overlap and the serialisation guard never
+## engages. The second flourish starts fresh and posts its steps behind the FIRST reveal,
+## which is still on the row for five seconds. That refused the first reveal, which is the
+## whole defect, and the first version of the fix passed every headless test while the live
+## game stayed broken.
+##
+## Asserted through `_row_ready_for_a_flourish` rather than by sleeping: the row is put in
+## the state a live reveal creates, and the predicate that guards the flourish is asked
+## whether it would wait. Sleeping a real 3.8 seconds in a unit test buys nothing.
+func test_a_flourish_waits_for_a_reveal_that_is_still_being_read() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	hud._process(9.0)
+	# Exactly what a reveal leaves behind: IMPORTANT, five seconds.
+	hud.show_message(Hud.packet_message("Chomp Flower"), 5.0, Hud.MESSAGE_IMPORTANT)
+	var err: String = _T.assert_true(
+		hud.message_seconds_left() > Hud.MESSAGE_MIN_READABLE,
+		"a fresh reveal has more than MESSAGE_MIN_READABLE left, so an equal-priority "
+			+ "post would queue behind it rather than replace it")
+	if err == "":
+		err = _T.assert_eq(hud.message_priority(), Hud.MESSAGE_IMPORTANT,
+			"and it sits at the priority a flourish step also posts at")
+	if err == "":
+		# Once it has been read down, the next flourish may go: this is the condition
+		# _row_ready_for_a_flourish waits for, and the reason it asks the ROW instead of
+		# subtracting MESSAGE_MIN_READABLE from a hard-coded 5.0 in a fourth place.
+		hud._process(5.0 - Hud.MESSAGE_MIN_READABLE + 0.01)
+		err = _T.assert_true(hud.message_seconds_left() <= Hud.MESSAGE_MIN_READABLE,
+			"after MESSAGE_MIN_READABLE remains, an equal-priority post replaces it")
+	if err == "":
+		# An AMBIENT line must NOT make a flourish wait -- it is preempted, and waiting for
+		# it would delay every packet behind a husk notice for no reason.
+		hud.show_message("a husk rotted away", 4.0, Hud.MESSAGE_NORMAL)
+		# It QUEUES rather than taking the row -- a lower priority never stomps a higher
+		# one, so the reveal has to expire before the ambient line is what is showing. That
+		# is the row's rule, and asserting the ambient case without it was this test's own
+		# first failure.
+		hud._process(2.0)
+		err = _T.assert_true(hud.message_priority() < Hud.MESSAGE_IMPORTANT,
+			"an ambient line sits below a flourish, so the flourish preempts rather than "
+				+ "queues and there is nothing to wait for")
+	_T.free_ui(game)
+	return err
