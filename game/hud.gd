@@ -3981,9 +3981,14 @@ func announce_wave(number: int, pests: int, note: String) -> void:
 ## What the weather did, said once as the wave opens
 ## (plant-tower-defense-q3lx).
 ##
-## Through the same banner as the wave announcement rather than a new readout, and
-## it LOSES to one, which is why weather has a status line too (`weather_note()`):
-## the banner is the beat, the status row is the state.
+## Through the same banner as the wave announcement rather than a new readout, and it
+## LOSES to one. The old version of this sentence justified that loss with "which is
+## why weather has a status line too (`weather_note()`): the banner is the beat, the
+## status row is the state" -- and there is no status line. `weather_note()` is this
+## function's own subtitle argument, called from exactly one place, three lines below.
+## The real justification is that weather is taught EARLIER, by `next_wave_note` on the
+## message row, before the seeds are spent; see `banner_claim_rank` below
+## (plant-tower-defense-zhqf).
 ##
 ## That loss used to be a statement order rather than a rule. `Game._on_wave_started`
 ## calls `_apply_weather` (which reaches here) and then `announce_wave` one line
@@ -4043,9 +4048,21 @@ func announce_wave_cleared(number: int, pests: int) -> void:
 ## they cannot be simultaneous -- a wave cannot start and clear in the same breath --
 ## so the only thing a tie between them can mean is two consecutive events, which the
 ## tie rule below resolves correctly. Weather sits below them because it is a modifier
-## on the wave and it already has two other surfaces carrying it for the whole wave
-## (the status row's `weather_note` and the full-screen overlay), where the wave beat
-## has only this one.
+## on the wave, and because the surface that actually TEACHES it fires earlier and
+## elsewhere: `next_wave_note` puts "rain - beds mend 25%" / "drought - pests pay 150%"
+## on the message row BEFORE the wave commits, which is while the player can still
+## spend on it (plant-tower-defense-kmjp, -4c1l). The banner fires from
+## `Game._on_wave_started`, after the seeds are gone. Losing here costs weather nothing
+## it was doing.
+##
+## THERE IS NO STATUS ROW, and this comment used to say there was
+## (plant-tower-defense-zhqf). The standing surface is the full-screen
+## `WeatherOverlay`, which Game rebuilds on every weather change and which draws for
+## the whole wave. A top-bar weather readout was proposed as `-saaw` and **measured and
+## refused**: the wave slot's base string is 302px in a 312px box, so even a bare "*"
+## needed 317. Four comments across three files went on citing that refused readout as
+## though it had shipped; `weather_note()` is this banner's own subtitle and has never
+## been anywhere else.
 ##
 ## An unrecognised claim ranks BELOW everything, including the un-claimed state. A
 ## name typoed into a caller added next year therefore loses the banner rather than

@@ -919,12 +919,21 @@ static func seed_multiplier_for(weather: StringName) -> float:
 ##     counter-play question rather than in front of it.
 ##
 ## WHAT WAS ACTUALLY MISSING is the bead's acceptance clause and not its premise: an upside
-## has to be NAMED BEFORE THE WAVE COMMITS. Rain's heal is announced by `Hud.weather_note`,
-## which `Game._on_wave_started` fires through `Hud.show_weather` AFTER the wave has begun
-## -- after the player has already spent. The surface they read while deciding is
-## `Hud.next_wave_note`, and that function appends a bare "rain" while drought gets
-## "drought · pests pay 150%". The asymmetry is the whole defect and the fix is one clause
-## in that function, not a number in this file.
+## has to be NAMED BEFORE THE WAVE COMMITS. Rain's heal was announced by
+## `Hud.weather_note`, which `Game._on_wave_started` fires through `Hud.show_weather`
+## AFTER the wave has begun -- after the player has already spent. The surface they read
+## while deciding is `Hud.next_wave_note`, and that function appended a bare "rain" while
+## drought got "drought · pests pay 150%". The asymmetry was the whole defect and the fix
+## was one clause in that function, not a number in this file.
+##
+## FIXED, and both halves of the sentence above are now history rather than description
+## (plant-tower-defense-zhqf, which found this reading as present tense). `next_wave_note`
+## appends "rain · beds mend 25%" -- `game/hud.gd:3460-3461`, derived from
+## WEATHER_RAIN_HEAL_FRACTION rather than typed. And `Hud.weather_note` turned out to
+## announce nothing to anybody: it is the banner's subtitle, and that banner was
+## overwritten in the same call stack for its whole life, so the "after the player has
+## already spent" objection understated the case -- the surface was not late, it was
+## never there.
 ##
 ## Worth saying out loud, because the fraction below is what makes it matter: this heal is
 ## CONDITIONAL AND FREQUENTLY ZERO. A full-health garden gets nothing from rain. A player

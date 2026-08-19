@@ -10530,3 +10530,88 @@ func test_dropping_the_banner_claim_leaves_no_stale_headline_behind() -> String:
 
 # END plant-tower-defense-jk4a
 # =============================================================================
+
+
+# --- Weather's teaching surfaces, pinned (plant-tower-defense-zhqf) ----------------
+#
+# Five comments across three files described weather as taught by three surfaces: the
+# prep note, a banner as the wave opens, and "a status row carrying the state after the
+# banner is gone (`weather_note`)". Two of the three did not exist.
+#
+#   * THE BANNER was written by Hud.show_weather and overwritten by Hud.announce_wave
+#     ten lines later in the same call stack (game/game.gd:453 then :465), every wave,
+#     for its whole life. It now loses by rule instead of by statement order.
+#   * THE STATUS ROW was proposed as -saaw and MEASURED AND REFUSED: the wave slot's
+#     base string is 302px in a 312px box, so even a bare "*" needed 317.
+#     `weather_note()` is the banner's own subtitle and has never been anywhere else.
+#
+# The surface that does the teaching is `next_wave_note`, on the message row, BEFORE
+# the wave commits -- which is the half -kmjp and -4c1l argued for, because a player
+# can only act on an upside they are told about while they still have the seeds.
+#
+# These pin that, in the direction that failed: prose drifted and nothing could see it.
+# A test asserting only "weather_note returns a string" passes against every state
+# above, including the one where five comments were wrong.
+
+
+## The surface a player can ACT on names the weather, and names its number.
+##
+## Both directions, because a note that mentioned rain and not drought is the exact
+## asymmetry -kmjp filed: assert each weather is named AND that the number it is worth
+## is in the string, derived from the constant rather than typed here.
+func test_the_prep_note_is_where_weather_is_actually_taught() -> String:
+	var rain: String = Hud.next_wave_note(4, 8, false, WaveDirector.WEATHER_RAIN, false)
+	var err: String = _T.assert_true(rain.to_lower().contains("rain"),
+		"the prep note names rain (got: %s)" % rain)
+	if err == "":
+		err = _T.assert_true(
+			rain.contains(str(int(round(WaveDirector.WEATHER_RAIN_HEAL_FRACTION * 100.0)))),
+			("and carries the heal PERCENTAGE, not a bare 'rain' -- a player cannot "
+				+ "spend on an upside whose size they are not told (got: %s)" % rain))
+	if err == "":
+		var dry: String = Hud.next_wave_note(4, 8, false, WaveDirector.WEATHER_DROUGHT, false)
+		err = _T.assert_true(dry.to_lower().contains("drought"),
+			"the prep note names drought too (got: %s)" % dry)
+		if err == "":
+			err = _T.assert_true(
+				dry.contains(str(int(round(WaveDirector.WEATHER_DROUGHT_SEED_BONUS * 100.0)))),
+				"and its compensation percentage (got: %s)" % dry)
+	if err == "":
+		var clear: String = Hud.next_wave_note(4, 8, false, WaveDirector.WEATHER_CLEAR, false)
+		err = _T.assert_false(clear.to_lower().contains("rain") or clear.to_lower().contains("drought"),
+			("and a clear wave names neither -- without this the two assertions above "
+				+ "pass on a note that names both every time (got: %s)" % clear))
+	return err
+
+
+## `weather_note` is the banner's subtitle and nothing else, which is the fact five
+## comments got wrong.
+##
+## Asserted as a REACHABILITY claim rather than a string claim: the point is not what
+## the words are, it is that `show_weather` is the only thing that consumes them and
+## that `show_weather` loses the banner to a wave beat. A future status row would break
+## this test, and breaking it is the correct outcome -- it should be re-read, not
+## deleted, because the comment above it is the argument that would need rewriting.
+func test_the_weather_subtitle_reaches_the_player_only_through_a_banner_that_loses() -> String:
+	var err: String = _T.assert_gt(Hud.weather_note(WaveDirector.WEATHER_RAIN).length(), 0,
+		"there is a weather subtitle to place")
+	if err == "":
+		err = _T.assert_true(
+			Hud.banner_claim_rank(Hud.BANNER_CLAIM_WEATHER)
+				< Hud.banner_claim_rank(Hud.BANNER_CLAIM_WAVE),
+			("and it ranks BELOW the wave beat, so it is refused whenever a wave opens "
+				+ "-- which is every time Game._on_wave_started calls it"))
+	if err == "":
+		err = _T.assert_true(
+			Hud.banner_claim_rank(Hud.BANNER_CLAIM_WEATHER)
+				< Hud.banner_claim_rank(Hud.BANNER_CLAIM_CLEARED),
+			"and below the cleared beat, which is the other thing that can be standing")
+	if err == "":
+		# The direction that makes the two above mean something: weather still OUTRANKS
+		# nothing-claimed, so it is a real claim that loses, not a no-op.
+		err = _T.assert_true(
+			Hud.banner_claim_rank(Hud.BANNER_CLAIM_WEATHER)
+				> Hud.banner_claim_rank(Hud.BANNER_CLAIM_NONE),
+			("while still outranking the un-claimed banner -- weather LOSES a contest, "
+				+ "it is not a claim that does nothing"))
+	return err

@@ -193,14 +193,24 @@ const KIND_LEGEND := "legend"
 ##
 ##   - the prep note, BEFORE the seeds are spent — "drought · pests pay 150%"
 ##     (`game/hud.gd:3304-3310`)
-##   - a banner as the wave opens — "Dry ground. Everything shoots half as often — and
-##     every pest pays 150%." (`game/hud.gd:3829-3831`), which is the whole mechanic in
-##     one sentence
-##   - a status row carrying the state after the banner is gone (`weather_note`)
+##   - the full-screen `WeatherOverlay`, which draws for the whole wave and is the
+##     standing state a player can look back at
+##
+## TWO OF THE THREE SURFACES THIS LIST ORIGINALLY NAMED DID NOT EXIST
+## (plant-tower-defense-zhqf), and the list is corrected above rather than quietly
+## trimmed, because the correction is the interesting part. It claimed "a banner as the
+## wave opens" and "a status row carrying the state after the banner is gone
+## (`weather_note`)". The banner was written by `Hud.show_weather` and overwritten by
+## `Hud.announce_wave` ten lines later in the same call stack, so no player has ever
+## seen it; it now loses by rule instead. The status row was proposed as `-saaw` and
+## measured and REFUSED — every candidate tag overflowed the wave slot — and four
+## comments across three files went on citing it as shipped.
 ##
 ## The test the legend passed is the one weather fails: a language the game SPEAKS and
-## TEACHES TO NOBODY. Weather is spoken and taught. `OVERLAY_GRAMMAR.md` was referenced
-## only from GDScript comments; `weather_note` is on the player's screen.
+## TEACHES TO NOBODY. Weather is still spoken and taught, and the conclusion survives —
+## but it now rests on the prep note and the overlay, which is one fewer surface than
+## the argument was written against. If a fourth thing ever wants weather's teaching
+## reduced, this is the paragraph to re-read first.
 ##
 ## THE ERROR IS WORTH MORE THAN THE ANSWER, and it is why this is written here rather
 ## than left in a closed bead. The audit enumerated over `notebook_screen.gd` and drew a
