@@ -17898,10 +17898,19 @@ func test_every_shop_blurb_is_true_of_the_code_that_makes_it_true() -> String:
 				+ "being eaten' is a comparison, not a mood")
 				% [Aloe.HEAL_PER_SECOND, Pest.EAT_DPS])
 
-	# BRAMBLE -- "Winged pests go straight over."
+	# BRAMBLE -- two clauses now. "Winged pests go straight over", and "Hurts nothing",
+	# which was the ONE clause in nine blurbs nothing could assert until
+	# PlantCatalog.damages() existed (plant-tower-defense-i8k9). `engages` is the obvious
+	# key and says the opposite: a Bramble engages, by holding. The identical sentence on
+	# the Sundew was already checkable through `engages` further up -- purely because
+	# there the two questions happen to agree.
 	if err == "":
 		handled.append(PlantCatalog.BRAMBLE)
 		err = _T.assert_false(Bramble.stops(true), "a winged pest is not held by the wall")
+		if err == "":
+			err = _T.assert_false(PlantCatalog.damages(PlantCatalog.BRAMBLE),
+				("'Hurts nothing' -- and it is the ONE plant where this is not the same "
+					+ "claim as `engages` being false, which is why it needed its own key"))
 
 	# DANDELION -- "grows its fluff back between volleys."
 	if err == "":

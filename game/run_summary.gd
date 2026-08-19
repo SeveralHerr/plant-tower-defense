@@ -709,9 +709,12 @@ func reach_text() -> String:
 ## Corn and not the garden's real mix, and that is a limit worth stating rather than
 ## hiding: `Game.covered_road_cells()` unions each standing plant's own reach, so the
 ## numerator of this row can include a Chomp's grab and a Sundew's sap while the
-## benchmark counts cobs. Corn is the only plant in the game that does damage
-## (`PlantCatalog.CORN`'s own comment), so "how few plants could reach this road" has
-## exactly one honest unit and it is this one.
+## benchmark counts cobs. Corn is NOT the only plant that damages any more — this
+## sentence used to say it was, citing `PlantCatalog.CORN`'s own comment, and both were
+## stale by two plants before `PlantCatalog.damages()` existed to answer it
+## (plant-tower-defense-i8k9). What keeps the benchmark honest is a different fact: corn
+## is the FREE STARTER, the one plant every player owns whatever else they buy, so "how
+## few plants could reach this road" still has exactly one unit every run shares.
 static func par_reach_px() -> float:
 	return PlantCatalog.reach(PlantCatalog.CORN)
 
