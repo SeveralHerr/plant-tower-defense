@@ -8200,7 +8200,7 @@ status rather than rewriting the entries that recorded these as open.
   VISITING the screen is not enough, because reach is computed from a snapshot rather
   than from a history. Workaround: capture `scene-tree` while each screen is open and
   pass `--scene-tree` repeatedly — two captures moved the number from 3/7 to 4/7.
-  - [G-136] status: open | seen: 1 | harness: 0.60.0
+  - [G-136] status: open | seen: 1 | harness: 0.60.0 | upstream: SeveralHerr/godot-selftest-harness#61
   - Improvement: `scene-tree` could stamp each capture with the visible screen, and
     `reach` could say "reached in capture 2 of 3" rather than merging silently — or,
     smaller and enough, one sentence in `reach`'s own output naming the deadline.
@@ -8213,7 +8213,7 @@ status rather than rewriting the entries that recorded these as open.
   `lint: null` and `tests: null` on a run where lint was clean and the suite was
   959/959. The ledger is append-only, so the row stands wrong; recorded here rather
   than rewritten, same rule as a superseded status line.
-  - [G-137] status: open | seen: 1 | harness: 0.60.0
+  - [G-137] status: open | seen: 1 | harness: 0.60.0 | upstream: SeveralHerr/godot-selftest-harness#61
   - Improvement: `record` should refuse a `--run` object missing a key it accepts
     (or warn loudly on stderr), since it is the only writer and the write cannot be
     undone. The check being advisory is right for a check; it is wrong as the last
