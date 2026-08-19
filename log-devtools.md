@@ -7962,3 +7962,33 @@ status rather than rewriting the entries that recorded these as open.
     and neither can see a claim written in prose. A `--weak` pass that lists citations whose
     landed text is uninformative is the cheapest version of that for any project keeping
     file:line citations in markdown, which is why it is logged here as well as filed.
+
+## 2026-08-18 — the clearest case for the runtime pass this project has produced
+
+- Value: **warranted**, and not marginally. Five headless gates and a purpose-written unit
+  test all agreed a bug was fixed; one live reproduction of a recipe written two cycles
+  earlier said it was not, and it was right.
+  - Expected: serialising the packet flourish would stop the first reveal being refused, and
+    the unit test asserting the queue would prove it.
+  - Got: against fix v1 — `refused 1`, `refused_log ["The packet held a Chomp Flower!"]`,
+    **identical to cycle 129's measurement**, while `920/920`, `lint 0/0`, import clean and
+    `check_all 19 of 19` all passed. A flourish lasts ~0.25s, so two purchases half a second
+    apart never overlap and the guard never engaged; the second flourish started fresh and
+    posted behind the first's five-second reveal.
+  - Found: that, plus the shape of why the test could not see it — it fires both purchases in
+    the same frame, which is the one case serialisation alone did cover. The third test now
+    covers the case that actually broke, asserted through the row's state rather than by
+    sleeping 3.8 seconds. Against fix v2: `refused 0, 0 pending`, and polling the row shows
+    `"The packet held a Salve Aloe!"` → `"...Sticky Sundew?"` → `"The packet held a Sticky
+    Sundew!"` — both reveals in turn with the second packet's flicker still playing.
+  - Cheaper: nothing, and this is the entry to point at when `overkill` starts to look like
+    the usual verdict. The diff was seventeen lines of GDScript, every static gate was green,
+    and the game was broken.
+
+- Gap: **no gap this turn**, and one thing worth crediting rather than filing. `cmd messages`
+  — built last cycle — is what made this diagnosable at all: `refused 1` plus the refused
+  line's text, in one call, is the difference between "something was dropped" and "the first
+  packet's reveal was dropped". A verb built one cycle earlier for a different question paid
+  for itself here. `launch --snapshot-userstate` also worked exactly as documented: `quit`
+  reported `restored 1 file(s)` on both launches, against cycle 128 where an unguarded run
+  wrote the developer's real `highscore.save`.

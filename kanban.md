@@ -1519,7 +1519,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   `hud_readouts` said "Font.get_string_size() over each live readout", which parses as
   measuring the CURRENT text — a budget that passes because the counter happens to read
   "Seeds 25" today. It actually sweeps `Hud.WORST_CASE_TEXT` against each readout's live
-  slot, and I misread it before opening `game/game.gd:2329`. Corrected. The general shape
+  slot, and I misread it before opening `game/game.gd:2416`. Corrected. The general shape
   is worth watching: an evidence string naming the SURFACE is ambiguous about whether the
   worst case or the current value was measured, and those differ by everything.
 
@@ -1954,7 +1954,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   heal shrinks with it. This is the direct consequence of shipping 4c1l and it is worth
   deciding on purpose rather than letting drought stay the good one by accident.
 - **The other five budgets have never been checked against the corpus they claim.**
-  `_budget_hud_message_row` (`game/game.gd:2163`) measured four plant-name messages and
+  `_budget_hud_message_row` (`game/game.gd:3163`) measured four plant-name messages and
   not the prep note that shares the row, and was wrong by 36px for seven cycles while
   reporting green. `Game.budget_entries()` (`game/game.gd:1881`) builds six others the same
   way. Each one names its corpus in an `evidence` string; nothing checks that the string
@@ -1962,8 +1962,16 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   reading all seven and asking "what else can reach this measurement?" The failure is
   silent by construction: a budget over a subset always reports more headroom than exists.
 - **The prep note is measured at a wave number the game cannot reach.**
-  `_budget_hud_message_row` now measures `Hud.next_wave_note(999, 9999, ...)`
-  (`game/game.gd:2040`), deliberately — a budget is about what the format allows. But
+  **SUPERSEDED, re-read in cycle 131: `next_wave_note` no longer appears in `game/game.gd`
+  at all.** `_budget_hud_message_row` (`game/game.gd:3163`) now measures one declared corpus
+  (`Hud.message_corpus()`) rather than a hand-built list of calls, so the specific defect
+  below — a budget whose worst case is set by an unconstrained digit count — no longer has
+  the call site it was about. Left rather than deleted because the QUESTION it raises
+  survives the rewrite and the corpus does not obviously answer it: does anything cap the
+  width of a formatted number inside a corpus entry? Reads as a live idea until somebody
+  checks. The original text follows.
+  `_budget_hud_message_row` measured `Hud.next_wave_note(999, 9999, ...)`,
+  deliberately — a budget is about what the format allows. But
   `Hud.next_wave_note()` (`game/hud.gd`) formats the wave number with no width cap, so the
   budget's worst case is set by a digit count nothing constrains. Either cap the formatted
   number, or say in the note's own header that its width is bounded by the budget and not
@@ -4115,7 +4123,7 @@ Three findings kept out here rather than buried in a log:
   Cycle 113 stopped the preview PROMISING those cells (`_preview.placeable` now requires the
   moved plant could stand there too), but the ring, the reach and the coverage dots still
   paint from a road cell when a cob is armed — `_update_preview` sets `_preview.reach` and
-  `_preview.plant_id` from `previewing` unconditionally (`game/game.gd:2240-2245`). So the
+  `_preview.plant_id` from `previewing` unconditionally (`game/game.gd:2327-2332`). So the
   cue now says "not here" and "here is what your cob would reach from here" in the same
   frame, which is honest and slightly odd.
   Deliberately left, because the alternative decides an open question by accident: whether a
@@ -4686,3 +4694,38 @@ Three findings kept out here rather than buried in a log:
   so it is asserted rather than asserted-in-prose: the banner must carry both halves, the
   prep note must name the weather, rain must be announced, clear must stay silent. If
   somebody deletes the banner, the gate reopens the decision instead of a reader noticing.
+
+### New in cycle 131 — grown from a fix that passed every gate and changed nothing
+
+- **A green suite proved a fix worked and the game was still broken, and the reason
+  generalises.** Serialising the packet flourish is correct: two `_open_packet` calls in the
+  same frame do queue behind one another, and the test asserting it passed next to 919
+  others, `lint 0/0`, a clean import and all nineteen parallel-safe checkers. Re-running the
+  bead's own live recipe gave `refused 1` and the same `refused_log` as two cycles earlier.
+  **The test fired both purchases in the SAME FRAME, which is the one case the wrong fix did
+  cover.** A flourish lasts about a quarter of a second (`game/game.gd:1930-1931`), so two real
+  purchases half a second apart never overlap at all — the second starts fresh and posts
+  behind the first's five-second reveal.
+  The general form: **when a defect is about two things overlapping, the test's timing IS the
+  test.** Writing "both at once" is the easiest case to construct and often the only one that
+  does not reproduce. Ask what interval the real producer works at before choosing one.
+
+- **Ask the object, do not recompute its constant.** The wait uses
+  `hud.message_seconds_left()` and `hud.message_priority()` rather than
+  `5.0 - MESSAGE_MIN_READABLE`. That subtraction would have been a fourth place needing an
+  edit when the reveal's duration changes, and the row already knows the answer. Both
+  accessors were added last cycle for `cmd messages`; this is their second caller, and it is
+  what stops them being debug-only readers that `suite_reach_check` has to be told about.
+
+- **A field set "immediately before" a call stops being safe the moment that call can wait.**
+  `_opening_tier` is assigned just before `buy_packet()` and read inside the flourish — fine
+  while exactly one flourish could exist, wrong once a purchase can queue, because a common
+  packet waiting behind a rare one would flash candidates from the rare pool. The tier
+  travels with the id now. **Every "set just before" field in this codebase is a latent
+  version of this**, and the trigger is always the same: making something asynchronous that
+  used to be immediate.
+
+- **The priority test mattered as much as the time test.** Waiting for the row to clear would
+  have delayed every packet behind an ambient husk notice — a visible regression shipped as a
+  fix. A flourish posts at `MESSAGE_IMPORTANT` and preempts ambient lines, so only a line at
+  IMPORTANT or above can make it queue, and only that is worth waiting for.

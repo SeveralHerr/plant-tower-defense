@@ -1,4 +1,4 @@
-# Cycle 130
+# Cycle 131
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,34 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 131 taught
+
+**A green suite proved a fix worked and the game was still broken.** Serialising the packet
+flourish is correct as far as it goes, and the test asserting it passed beside 919 others,
+`lint 0/0`, a clean import and all nineteen parallel-safe checkers. Re-running the bead's own
+live recipe produced the identical `refused 1` and `refused_log` from two cycles earlier. The
+test fired both purchases in the SAME FRAME — the one case the wrong fix did cover. This is
+the entry to point at when `overkill` starts looking like the usual verdict: seventeen lines
+of GDScript, every static gate green, game broken.
+
+**When a defect is about two things overlapping, the test's timing IS the test.** "Both at
+once" is the easiest case to construct and is often the only one that does not reproduce. A
+flourish lasts a quarter of a second; real purchases arrive half a second apart, so they
+never overlap and the guard never engaged. Ask what interval the real producer works at
+before picking one.
+
+**A field set "immediately before" a call stops being safe the moment that call can wait.**
+`_opening_tier` was assigned just before `buy_packet()` and read inside the flourish — fine
+while one flourish could exist, wrong once a purchase can queue. Every "set just before"
+field in this codebase is a latent version of this, and the trigger is always making
+something asynchronous that used to be immediate.
+
+**Yesterday's debug verb is today's production reader.** `message_seconds_left()` and
+`message_priority()` were added last cycle so `cmd messages` could report the row. The fix
+uses them instead of recomputing `5.0 - MESSAGE_MIN_READABLE` in a fourth place. And
+`cmd messages` itself is why the bug was diagnosable at all: `refused 1` plus the dropped
+line's text, in one call.
 
 ## What cycle 130 taught
 
