@@ -212,6 +212,22 @@ running a command. **Never write a work checklist into it.**
      silently absent, reported as a clean run. Only the denominator (490 against 557)
      and exit `2` caught it. Four occurrences and an "environment note" in the log each
      time is not a countermeasure; using the right tool is.
+     **THE ONE NARROWING, earned in cycle 138 and stated because the absolute form is now
+     a rule this loop breaks rather than follows.** A **quoted** heredoc — `<<'EOF'`, with
+     the delimiter in quotes — performs no expansion and no backslash processing at all,
+     so it cannot eat a `#`, a `\n` or a `%`. Every instance this rule has ever paid for
+     was an UNQUOTED `<<EOF` or a Python script writing source; none was `<<'EOF'`. Cycle
+     138 appended 110 lines of GDScript through `<<'GDEOF'` while a session-level
+     instruction said to prefer Bash for file edits, and the bytes landed exact —
+     confirmed by `cat -A` on the section header and by `heredoc_survey.py --worktree`
+     at exit 0. So: `<<'EOF'` is permitted for an APPEND to the end of a file, and
+     **must be followed by `heredoc_survey.py --worktree` before the commit**. Everything
+     else in this bullet stands unchanged: unquoted heredocs, in-place splices, and any
+     script that writes source are still forbidden, and `Edit`/`Write` remain the default
+     for anything that is not a clean append. The reason to narrow rather than restate:
+     an absolute rule that conflicts with a live instruction gets broken silently and
+     logged as an environment note, which is precisely the countermeasure this paragraph
+     already says does not work.
      **This includes a Python script in a heredoc that writes the file** — that is the same
      shell, plus a second escaping layer, and it is the shape the rule keeps getting broken
      in because it is what you reach for **when `Edit`'s exact match fails**. Cycle 97 hit a

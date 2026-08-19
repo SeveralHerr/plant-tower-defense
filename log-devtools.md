@@ -8239,3 +8239,20 @@ status rather than rewriting the entries that recorded these as open.
   is a real limit on the one gate that gives a lane a compile, and it is worth knowing
   before someone reads it as a regression. Already implied by the flag's own docs; not
   filed separately.
+
+## 2026-08-19 — Cycle 138: the launch log's own false alarm, and naming a cue by bisecting the board
+
+- Value: **warranted** — both of this cycle's items produced claims no diff and no headless gate could, and the second one was found by a bridge verb rather than by reading code.
+  - Expected: identify the marks in a player's screenshot from the draw calls, then confirm a one-shot hint fires.
+  - Got: reading draw calls sent me to `WeatherOverlay.DROUGHT_MARK` (a 7 px horizontal line) and then to a pest health bar, both wrong. What settled it was `screenshot --hide /root/Game/Entities/<plant>/SoleCoverMarks --region 385,140,80,190` — the yellow rings vanished and the dark bars stayed, so they are two cues, not one glyph. Hiding `HuskLayer` and `WeatherOverlay` changed neither. The bar is `Board._redraw_deferred_road`, a Line2D child, which is why no `_draw()` grep could ever have found it.
+  - Found: the launch error the user reported — `remove_child` refused mid-add — reproduced from the entry hook and fixed; `fire-entry-point campaign` calling the SAME method wrote nothing to stderr, which is what isolated it to launch timing rather than to the method. And, mid-run, the first cut of the defer hint stacked 11 refused messages into a realistic run; the suite caught that, not the bridge.
+  - Cheaper: for the hint's behaviour, nothing — but the headless test already asserted the string reaches the Label, so the launch was only worth its cost for the WIDTH on a real 876 px row (headless measures `label.size.x` under a 64×64 window) and for seeing tip and bars composited.
+
+- Gap: **no verb answers "what drew the pixel at (x, y)"** — identifying a 32×5 mark took five hide-and-capture rounds plus a `scene-tree --depth 1` scan of every child's position, and the answer turned out to be a Line2D pool under a node the first scan did not descend into. `find-nodes --class` cannot help, because the question is not what the node IS.
+  - The workaround, which is the shape a verb should have: `screenshot --hide NODE --region X,Y,W,H` twice and compare one pixel. It works and it is O(number of candidate layers) round trips.
+  - [G-138] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: a `what-drew --at X,Y` verb walking the CanvasItem tree back-to-front and reporting every node whose bounds contain that point, with its `script`, `z_index` and whether it is a `Line2D`/`Sprite2D`/`_draw()` painter. `node-bounds` already computes screen-space rects for one node; this is that, inverted, over the tree.
+
+- Gap: **`reach` still cannot credit a file whose scene the entry hook replaces** — `game/title_screen.gd` read `0/1` on a run that had unquestionably executed `skip_to_game()`, because the title scene is gone by capture time. Recovered by firing `fire-entry-point notebook` to put `/root/TitleScreen` back and passing a second `--scene-tree`, which took the row to 1/1.
+  - [G-137] status: open | seen: 2 | harness: 0.38.0
+  - Improvement: unchanged — the capture deadline is per SCREEN, not per run. A `--scene-tree-auto` that snapshots on every scene change and unions the captures would remove the judgement call entirely.

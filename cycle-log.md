@@ -1,4 +1,4 @@
-# Cycle 137
+# Cycle 138
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,43 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 138 taught
+
+**A player asked what the marks on their board meant, and the repo had already written the
+answer down and filed it under someone else's name.** `game/cue_legend.gd:61-74` records,
+in full, that `OVERLAY_GRAMMAR.md`'s "derived from the draw calls" recipe is structurally
+blind to `Board.mark_dead_ground` and `Board.mark_deferred_road` — they paint Line2D
+children and call no `draw_*` at all — and it ends "reported to whoever owns
+OVERLAY_GRAMMAR.md rather than fixed here". Nobody owns OVERLAY_GRAMMAR.md. The report sat
+there through several cycles until a user looking at a screenshot rediscovered it from the
+outside. **A comment addressed to a role nobody holds is not a report, it is a note to
+self**, and the fix is a `bd` item, which is now `plant-tower-defense-ktti`.
+
+**Reading the draw calls was the wrong way to identify a drawn mark, twice over.** The
+32×5 dark bar was theorised as `WeatherOverlay.DROUGHT_MARK` (a horizontal line — but 7px
+and unaligned to the grid) and then as a pest health bar (a 32×5 ColorRect at (−16,−34) —
+the right shape, but no pest within four cells). What settled it was
+`screenshot --hide <plant>/SoleCoverMarks --region 385,140,80,190`: the rings vanished and
+the bars stayed, so they were two cues rather than one glyph. Five hide-and-compare rounds,
+filed as [G-138] upstream and as `plant-tower-defense-0cl8` here.
+
+**The failure a comment describes is still a failure you will commit.** `Hud.row_is_quiet`
+exists solely because a level-triggered hint stacks copies into a busy row, and its header
+says so at length. The fifth hint went in without the guard anyway and shipped 11 refused
+messages into a realistic run before the suite caught it — by a symptom test three files
+from the cause, whose message correctly says "a caller stacking copies into a full queue"
+and does not name the caller. Documentation is not a gate; `plant-tower-defense-j724` is.
+
+**A citation relocation that satisfies `--against` is not a citation that is right, and
+this cycle can put four numbers on it.** One `const` near the top of `game.gd` drifted 63
+kanban citations. Offsets from git's hunk map, applied over each entry's span and iterated
+to a fixpoint, fixed 59 of them. The four that survived every automated pass had snapshot
+text of: a blank line, two bare comments, and a `spend_hint` one line below the
+`show_message` the entry was actually describing — **all four were already wrong before
+this cycle touched anything**, and a faithful offset would have carried each forward with
+the check green. Measured onto `plant-tower-defense-2174`, whose subject is a relocator
+that refuses rather than one that renumbers.
 
 ## What cycle 137 taught
 
