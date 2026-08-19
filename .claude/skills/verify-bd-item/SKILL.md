@@ -243,6 +243,42 @@ criterion rather than summarising the work.
 If a clause genuinely should not be met, say so in the reason and why. "Refused the third
 clause because X" is a fine close and a useful one; silently satisfying two of three is not.
 
+**START THE REASON FILE FROM THE ACCEPTANCE, NOT FROM A BLANK ONE.** The instruction above
+has been in this skill since cycle 95 and `-1d07` skipped a clause anyway — a four-clause
+acceptance, two answered plainly, one partially, one not addressed at all. So this is not a
+second copy of the instruction; it is the mechanics, and the point is to make answering the
+clauses the path of least resistance rather than an act of discipline.
+
+Seed the file with the criterion before writing a word of the answer:
+
+```bash
+bd show <id> | sed -n '/ACCEPTANCE/,$p' > close-<id>.txt   # the clauses, verbatim
+```
+
+Then split it so each clause is on its own line **in quotes**, and answer underneath each.
+A skipped clause is then a visibly unanswered line in the file you are editing, rather than
+something you have to remember — which is the difference that matters, because remembering
+is exactly what failed.
+
+```
+ACCEPTANCE, clause by clause:
+
+"the counter is read after a run containing purchases as well as waves" -- done, ...
+"the numbers are recorded next to cycle 93's" -- done, in kanban.md under ...
+"-i366's conclusion is confirmed or corrected" -- CORRECTED, and here is why: ...
+```
+
+**Do not paraphrase the clause you are answering.** Quoting it is what makes a missing one
+visible; a summary of the criterion is indistinguishable from a summary of the work, which
+is the failure mode the paragraph above describes.
+
+**A gate for this was prototyped and rejected — do not rebuild it.** Splitting the
+acceptance on `;` and `and` and flagging clauses whose content words are absent from the
+close flagged **122 of 146**, including plain false positives where the splitter ate
+mid-description prose. `.claude/skills/house-static-checker/SKILL.md` is explicit that a
+permanently-red gate is worse than no gate: it teaches its operator to skip the check, and
+then it is not there for the finding that matters.
+
 **Never pass the reason as a shell literal** — `--reason "$(cat FILE)"`, per `CLAUDE.md`.
 Backticks in a close reason are command substitution and the word vanishes leaving a
 still-grammatical sentence, which has now happened four times in this project.
