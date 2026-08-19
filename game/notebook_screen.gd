@@ -500,7 +500,14 @@ const PAGES: Array[Dictionary] = [
 		"drawing": "res://assets/sprites/pest_aphid.png",
 		"sprite": "res://assets/sprites/pest_aphid.png",
 		"caption": "Reading the board",
-		"note": "The garden draws on itself. A shape means the same thing wherever it appears — a full ring is always a reach, a closing arc is always a clock running down — so the five here are worth more than five facts. The rest of the marks follow the same grammar once these are familiar.",
+		# A TEMPLATE, not the finished sentence: the two %s are the row count, filled by
+		# legend_note_text() from CueLegend.ROWS.size(). It said "the five here" while the
+		# table held six — the uncounted one being ARMED, the cue that guards uproot, so the
+		# row a player most needs the legend to be right about. Meanwhile the source line on
+		# this very page (see go_to) has always derived its own count correctly, which is
+		# what made the hand-written one survive: the page showed a right number and a wrong
+		# one at the same time.
+		"note": "The garden draws on itself. A shape means the same thing wherever it appears — a full ring is always a reach, a closing arc is always a clock running down — so the %s here are worth more than %s facts. The rest of the marks follow the same grammar once these are familiar.",
 	},
 	{
 		"kind": KIND_HINTS,
@@ -900,6 +907,33 @@ func _build_legend() -> void:
 	add_child(_legend)
 
 
+## The legend page's note, with its row count filled in from the table rather than
+## written out. Static and pure so the wording is assertable without building the
+## screen — the same reason shelf_note_text() below is static.
+##
+## Spelled rather than printed as a digit because the sentence is prose a player reads,
+## not a readout: "the 6 here are worth more than 6 facts" is a different register from
+## every other note on the screen. count_word() falls back to the digit above twelve,
+## which is well past the point where the page stops fitting (game/cue_legend.gd:242
+## prices the seventh row).
+static func legend_note_text() -> String:
+	var word: String = count_word(CueLegend.row_count())
+	return String(PAGES[page_for_kind(KIND_LEGEND)]["note"]) % [word, word]
+
+
+## An English number word for 1-12, the digit beyond that. Small on purpose: this exists
+## for prose that must agree with a table, and a table that reaches thirteen has a layout
+## problem long before it has a spelling one.
+static func count_word(n: int) -> String:
+	const WORDS: Array[String] = [
+		"zero", "one", "two", "three", "four", "five", "six",
+		"seven", "eight", "nine", "ten", "eleven", "twelve",
+	]
+	if n < 0 or n >= WORDS.size():
+		return str(n)
+	return WORDS[n]
+
+
 ## What a shelf row's second line says. The prefix is the channel that survives
 ## being printed in one colour: "Cleared it without an escape" and "Not yet —
 ## cleared it without an escape" are the same fact in two tenses, and a player who
@@ -1150,7 +1184,8 @@ func go_to(page: int) -> void:
 	_sprite_rect.texture = load(GardenTheme.retina_path(String(entry["sprite"]))) as Texture2D
 	_fit_sprite()
 	_caption.text = String(entry["caption"])
-	_page_note.text = String(entry["note"])
+	# The legend's note is a template (see its PAGES entry); every other page's is final.
+	_page_note.text = legend_note_text() if kind == KIND_LEGEND else String(entry["note"])
 	_page_label.text = "%d / %d" % [_page + 1, PAGES.size()]
 	_paper.current_page = _page
 	if previous != _page:

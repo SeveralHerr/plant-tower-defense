@@ -18322,3 +18322,45 @@ func test_a_wall_is_chewed_through_and_a_bed_is_eaten_by_something_hungry() -> S
 			Hud.chewed_through_message(PlantCatalog.display_name(PlantCatalog.BRAMBLE))),
 			"the wall line is priced by the message-row budget")
 	return err
+
+
+## The legend page's prose has to agree with the table it describes. It said "the five
+## here" while CueLegend.ROWS held six -- and the uncounted row was ARMED, the cue
+## guarding uproot. The page has always shown a DERIVED count in its source line at the
+## same time, so a reader comparing the two would have caught it; nobody was comparing.
+##
+## Asserted against the count rather than against the word: hard-coding "six" here would
+## reproduce the original defect one file over, which is exactly how the first one got in.
+func test_the_legend_note_counts_the_rows_the_legend_actually_has() -> String:
+	var note: String = NotebookScreen.legend_note_text()
+	var word: String = NotebookScreen.count_word(CueLegend.row_count())
+	var err: String = _T.assert_true(note.contains("the %s here" % word),
+		"the legend note names %d rows; it says: %s" % [CueLegend.row_count(), note])
+	if err != "":
+		return err
+	# And no stray format specifier survived into prose a player reads.
+	err = _T.assert_false(note.contains("%s"),
+		"the legend note still carries an unfilled placeholder: %s" % note)
+	if err != "":
+		return err
+	# The template must actually be a template. Without this, deleting the %s from PAGES
+	# and hard-coding the word again would pass every assertion above.
+	return _T.assert_true(
+		String(NotebookScreen.PAGES[NotebookScreen.page_for_kind(
+			NotebookScreen.KIND_LEGEND)]["note"]).contains("%s"),
+		"the legend note in PAGES is no longer a template, so the count is hand-written again")
+
+
+## count_word is prose-facing, so its edges matter more than its middle: a table that
+## outgrows the list must print a digit rather than an empty string or an index error.
+func test_count_word_falls_back_to_a_digit_past_its_table() -> String:
+	var err: String = _T.assert_eq(NotebookScreen.count_word(6), "six",
+		"six is spelled")
+	if err != "":
+		return err
+	err = _T.assert_eq(NotebookScreen.count_word(13), "13",
+		"past the table, the digit")
+	if err != "":
+		return err
+	return _T.assert_eq(NotebookScreen.count_word(-1), "-1",
+		"a negative count is a bug elsewhere, but must not crash the page")
