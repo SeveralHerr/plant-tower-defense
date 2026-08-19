@@ -7921,3 +7921,44 @@ status rather than rewriting the entries that recorded these as open.
   Cycle 128's `G-132` (nothing can select a placed plant) was not re-hit, because this
   cycle's producer is a purchase rather than an uproot — it stays `open` at `seen: 1` rather
   than being bumped for a run that never needed it.
+
+## 2026-08-18 — a bead I filed, disproved by the surface it was about
+
+- Value: **warranted** — but note the harness proper barely ran. This was tier (c)
+  headless-only, and the thing that produced the result was `grep` plus reading, not the
+  bridge. Recording it as warranted because the run produced a claim that reversed a P2 and
+  caught two wrong numbers, not because the tooling was clever.
+  - Expected: to confirm `-djvk` and give the notebook a weather page. It never says
+    "drought" and the player meets drought from wave 4.
+  - Got: the bead is wrong, and I filed it. Weather is taught three times, each where it can
+    be acted on — the prep note before seeds are spent, a banner carrying the entire mechanic
+    in one sentence ("Everything shoots half as often — and every pest pays 150%"), and a
+    status row after. Cycle 127 enumerated over `notebook_screen.gd` and concluded about the
+    game.
+  - Found: two more, both by reading back citations I had just written. The comment recording
+    the decision quoted "pests pay 25%" twice, invented rather than read
+    (`WEATHER_DROUGHT_SEED_BONUS` is 1.5). And the cycle's 27-line insertion drifted eleven
+    citations, of which **six were already wrong before this cycle touched anything** — a
+    uniform-offset restore satisfies `--against` while preserving a citation that points at a
+    blank line. Filed as `-oa6z`.
+  - Cheaper: one `grep drought game/hud.gd` in cycle 127, before filing the bead. Four hits.
+    That is now written into `notebook_screen.gd` as a standing instruction rather than as a
+    lesson in a closed bead, because a warning inside a bead did not survive to the next one.
+
+- Gap: **`--snapshot`/`--against` cannot distinguish a restored citation from a correct
+  one**, and this is a gap in a tool this project owns rather than in the harness.
+  - Relocating eleven drifted citations by matching the snapshot's recorded text worked for
+    four and reported `AMBIGUOUS` for the rest — **114 candidate lines** for one of them,
+    because the recorded text was blank. Applying the uniform `+27` made `--against` report
+    `0 drifted` for all eleven, and reading the landings then found six pointing at a blank
+    line, an autowrap setting, a Label name, a shelf-greying comment and a sprite path.
+  - Not filed as a `[G-NNN]` harness gap: `citation_check.py` is this repo's own tool, so it
+    is `-oa6z` with an acceptance that starts with the COUNT — nobody knows how many of 931
+    citations land somewhere unverifiable, and the sample this cycle was six wrong out of six
+    read.
+  - [G-133] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: the harness-side half is that `verify_ledger`'s `reach` and this project's
+    citation drift both answer "did the thing I claim to have checked actually get checked",
+    and neither can see a claim written in prose. A `--weak` pass that lists citations whose
+    landed text is uninformative is the cheapest version of that for any project keeping
+    file:line citations in markdown, which is why it is logged here as well as filed.

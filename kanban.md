@@ -327,7 +327,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   tells the player upgrading exists" — across three mechanisms rather than one: `milestones.gd`
   (no entry mentions upgrades or levels), all twenty `show_message` call sites in `game/game.gd`
   (only `:1321` "That upgrade costs N seeds", a refusal after you already tried, and `:1331`, a
-  confirmation after you succeeded), and the notebook (`game/notebook_screen.gd:296-297`, one
+  confirmation after you succeeded), and the notebook (`game/notebook_screen.gd:434`, one
   caption, in a screen the player must go and open). The opening tutorial line
   (`game/game.gd:273`) teaches placing and starting waves and stops there. So every mention of
   the mechanic that decides the run is either a reply to a player who already found it, or
@@ -660,8 +660,8 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   of writing a tool. Cycle 92 found `shelf_page()` and a newly-written `page_for_kind()`
   were the same search over `PAGES` by different names, fixed it by delegation, then
   checked whether the pattern recurs: `NotebookScreen` has three finders over that table
-  (`page_for_kind` at `game/notebook_screen.gd:232`, `shelf_page` at `:688`,
-  `page_for_plant` at `:753`) and the other two search **different fields**, so they are the
+  (`page_for_kind` at `game/notebook_screen.gd:289`, `shelf_page` at `:990`,
+  `page_for_plant` at `:1123`) and the other two search **different fields**, so they are the
   same shape and not duplicates.
   What caught the duplicate was grepping for existing accessors *before* writing a new one —
   a habit, not a gate, and no checker in this repo could have seen it: two functions with
@@ -673,7 +673,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 
 - **The page that teaches the board is the last page of the notebook.** `CueLegend` ships
   as `KIND_LEGEND`, the tenth of ten `NotebookScreen.PAGES` entries, and the screen opens
-  on page 0 (`game/notebook_screen.gd:420`, `go_to(0)` at the end of the build). So the
+  on page 0 (`game/notebook_screen.gd:630`, `go_to(open_at)` at the end of the build). So the
   route is: title screen → Notebook → **nine presses of Next**. The title's own header
   calls the notebook "a click further away" deliberately
   (`game/title_screen.gd:56-60`) — that reasoning was about a designer's scrapbook, and it
@@ -767,9 +767,13 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   which refuse each other's ids, so a hint can no longer be recorded by a path that never
   rendered it. `HINTS` (`game/run_config.gd:137`) has one member.
   **Enumerated rather than assumed**: `has_milestone` used as a SHOW gate appears once in the
-  whole game, at `game/game.gd:1356`. Its other two call sites (`notebook_screen.gd:418`,
-  `:573`) read earned state to draw the shelf, which is rendering, not gating a sight. So one
-  member is the whole set, not an oversight.
+  whole game, at `game/game.gd:1356`. Its other call sites read earned state to RENDER rather than to gate a
+  sight, which is why one member is the whole set and not an oversight. Re-checked in cycle
+  130 and the count in this sentence had gone stale as well as its line numbers: there are
+  now four, not two. Two draw the shelf (`notebook_screen.gd:764` in `_build_shelf`, `:982`
+  in `shelf_progress_text`) and two postdate this entry entirely, reading the same flag for
+  the hints page (`:852`, `:919`). The conclusion survives the recount — none of the four
+  gates a sight — which is the only reason this is a correction rather than a re-opening.
   The idea is which teaching moments would want the second. The constraint the new contract
   imposes, and it is a real design filter rather than a formality: **a hint is spent on being
   SEEN, so a new one needs a `shown` answer at its call site — which means the decision must
@@ -788,7 +792,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   to lint (it is type-valid for a `Variant`), and a silent green.
   Grepped for it across `game/` and `test/unit/`: `.has(` against a const `Array[Dictionary]`
   occurs **zero** times outside the comment recording the mistake. The correct idiom is
-  already in the codebase and was already the majority — `notebook_screen.gd:573` reads
+  already in the codebase and was already the majority — `notebook_screen.gd:600` reads
   `String(row["id"])`. A checker with a zero denominator is one the house rules say must
   announce its own emptiness, and one that has never been observed to fire is not a checker.
   **Recorded so nobody proposes it a second time**; if a second instance ever appears, this
@@ -2414,7 +2418,7 @@ a guess about the rest of the codebase. See `.claude/skills/kanban-staleness-aud
   picture is a record you want to beat; a bigger integer is a bigger integer.
 - ~~**The milestone shelf.**~~ **SHIPPED, and this entry was wrong when it was
   written.** The shelf exists in full — `NotebookScreen.KIND_SHELF`, built by
-  `_build_shelf()` (`game/notebook_screen.gd:425`), all seven `Milestones.TABLE`
+  `_build_shelf()` (`game/notebook_screen.gd:452`), all seven `Milestones.TABLE`
   rows drawn with earned/unearned pips, a `shelf_progress_text()` reading
   "N of 7 earned", and tests in both `test_placement.gd:2185` and
   `test_selftest.gd:7760`. It is in the notebook rather than on the title screen
@@ -3238,7 +3242,7 @@ a guess about the rest of the codebase. See `.claude/skills/kanban-staleness-aud
   zero `create_tween` calls; every tween in the project is in-world (`plant.gd:72` plant
   pop, `corn_cobbler.gd:70` recoil, `chomp_flower.gd:142` bite, `sunflower.gd:33` bloom,
   `pest.gd:262` death linger) or on the two `GardenTheme`-styled screens
-  (`title_screen.gd:287`, `notebook_screen.gd:425`). So `_selection_box.visible = true`
+  (`title_screen.gd:287`, `notebook_screen.gd:452`). So `_selection_box.visible = true`
   snaps a 152px panel into existence, `show_banner` pops 48px of text at full opacity,
   the Uproot relabel changes colour between one frame and the next, and `threat_color`
   jumps a whole segment of its ramp the instant a wave starts rather than easing there —
@@ -4527,7 +4531,7 @@ Three findings kept out here rather than buried in a log:
   survived**: anything comparing the two would have caught it in a second, and nothing was
   comparing.
   The entry is that this is the SECOND hand-written count on this screen to go stale and the
-  first already has a comment about it (`game/notebook_screen.gd:618`, "Counted from PAGES,
+  first already has a comment about it (`game/notebook_screen.gd:645`, "Counted from PAGES,
   not written out. The hard-coded \"Six pages\" outlived the sixth page by about four
   minutes"). Two is not a pattern — the audit enumerated every other count on the screen and
   found no third — so it stayed a fix rather than becoming a checker. Recording the
@@ -4622,3 +4626,63 @@ Three findings kept out here rather than buried in a log:
   new accessors as reached by nothing. Both were right. The second produced the better test —
   asserting that `message_queue_snapshot()` returns a **copy**, so a verb whose whole job is
   to look cannot be used to edit the queue.
+
+### New in cycle 130 — grown from an absence claim that was measured over one file
+
+- **Silence in one file is not silence in the game, and the warning against exactly this
+  was in the bead that commissioned the audit.** Cycle 127 measured that
+  `game/notebook_screen.gd` never says "drought" and filed a P2 for a weather page. The
+  measurement was right; the sentence built on it — "the entire player-facing documentation
+  of the weather system is a dependent clause" — was a claim about THE GAME derived from an
+  enumeration over ONE FILE. Weather is taught three times, each where it can be acted on:
+  the prep note before the seeds are spent (`game/hud.gd:3304-3310`), the banner as the wave
+  opens (`game/hud.gd:3829-3831`, the whole mechanic in one sentence), and a status row after.
+  `-pa4g` said it outright — "two of my last four absence claims about this codebase were
+  wrong, both because the enumeration was over the wrong set" — and I made the mistake one
+  bead later, in a bead that audit filed. **A warning inside a bead does not survive contact
+  with the next bead.** So it went into `game/notebook_screen.gd` beside `KIND_LEGEND`,
+  immediately after the paragraph arguing FOR adding a page, where somebody about to add one
+  is already reading.
+
+- **The rule that would have prevented it is one command: grep the HUD for the rule's own
+  words.** Not "check whether the game explains this" — that is a judgement — but a literal
+  search for the mechanic's vocabulary in the surfaces the player reads. `drought` appears
+  in `game/hud.gd` four times.
+
+- **Step 3's read-back caught a number I invented rather than read.** The comment recording
+  this decision quoted the banner as "pests pay 25%" — twice. `WEATHER_DROUGHT_SEED_BONUS`
+  is 1.5, so it says 150%. The citation resolved and the prose beside it was wrong, which is
+  precisely the failure `citation_check`'s own NOT COVERED line describes. Reading back
+  citations in a **code comment**, not just in `kanban.md`, is what caught it — worth doing
+  every time a comment quotes a value from another file.
+
+- **A citation landing on a blank line is invisible to the drift check, and restoring it by
+  offset LAUNDERS the error.** Cycle 130's comment insertion moved eleven citations at once.
+  Relocating them by matching the snapshot's recorded text worked for four and reported
+  AMBIGUOUS for the rest — 114 candidate lines for one of them — because the recorded text
+  was blank. Applying the uniform +27 satisfied `--against` for every one, and then reading
+  the landings found six that were wrong: `page_for_kind at :259` on a blank line (really
+  `game/notebook_screen.gd:289`), `shelf_page` on an autowrap setting (really `:990`),
+  `page_for_plant` on a Label name (really `:1123`), a claimed caption on a shelf-greying
+  comment (really `:434`), `go_to(0)` on a sprite path (really `:630`, and it is
+  `go_to(open_at)`).
+  **Every one was already wrong before this cycle touched anything.** The tool says it cannot
+  tell whether a landed line supports its claim; what is new is that the snapshot/restore
+  workflow will faithfully carry a wrong citation forward forever, because a blank line
+  matches a blank line. Filed as `-oa6z`, whose acceptance is the COUNT first — nobody knows
+  how many of 931 citations are unverifiable by any tool, and this cycle's sample was six
+  wrong out of six read.
+
+- **One of them had drifted in substance, not just position.** "Its other two call sites read
+  earned state to draw the shelf" — there are now four `has_milestone` call sites in
+  `game/notebook_screen.gd`, two of which postdate the entry and belong to the hints page.
+  The conclusion survived the recount (none of the four gates a sight), which is why it was
+  corrected rather than reopened. Nothing in the loop would have surfaced the recount: the
+  drift check watches line numbers, and this was a number written out in prose.
+
+- **A decision recorded in a comment is as perishable as a count.** Two cycles ago the
+  notebook said "the five here" beside six rows; the fix was to derive it. The same file
+  now carries a decision that depends on three HUD surfaces continuing to say what they say,
+  so it is asserted rather than asserted-in-prose: the banner must carry both halves, the
+  prep note must name the weather, rain must be announced, clear must stay silent. If
+  somebody deletes the banner, the gate reopens the decision instead of a reader noticing.

@@ -1,4 +1,4 @@
-# Cycle 129
+# Cycle 130
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,37 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 130 taught
+
+**A warning written inside a bead does not survive contact with the next bead.** `-pa4g`
+said "two of my last four absence claims about this codebase were wrong, both because the
+enumeration was over the wrong set". I read it, ran the audit it asked for, and filed an
+absence claim enumerated over one file — `game/notebook_screen.gd` never says "drought", so
+the player is never told — while the HUD says it three times. The fix is placement: the
+lesson now lives in `notebook_screen.gd` beside `KIND_LEGEND`, immediately after the
+paragraph arguing FOR adding a page, where somebody about to add one is already reading.
+
+**The preventive rule has to be a command, not a judgement.** Not "check whether the game
+explains this" but "grep the HUD for the mechanic's own vocabulary". `drought` appears in
+`game/hud.gd` four times, and one grep in cycle 127 would have stopped the bead being filed.
+
+**Read back citations in CODE COMMENTS too, not just in kanban.md.** The comment recording
+this decision quoted the banner as "pests pay 25%" — twice, invented rather than read.
+`WEATHER_DROUGHT_SEED_BONUS` is 1.5, so it says 150%. The citation beside it resolved
+perfectly; the prose was wrong. That is exactly the case `citation_check`'s NOT COVERED line
+describes and cannot catch.
+
+**A decision recorded in a comment is as perishable as a count.** Two cycles ago this same
+file said "the five here" beside six rows. So the decision not to add a weather page is
+asserted rather than merely written: the banner must carry both halves, the prep note must
+name the weather before seeds are spent, rain must be announced, clear must stay silent. If
+somebody deletes the banner, the gate reopens the decision instead of a reader noticing.
+
+**Rule overridden, deliberately, and named here.** `-47v7` is a fully diagnosed P2
+player-facing bug and was the obvious next item — but cycles 128 and 129 both worked the
+message row, and taking it would have made three straight. It is filed with a complete
+diagnosis and a reproduce recipe, so nothing is lost by it waiting.
 
 ## What cycle 129 taught
 
