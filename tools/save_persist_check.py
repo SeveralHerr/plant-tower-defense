@@ -89,7 +89,23 @@ import gdsource
 import repo_walk
 
 FUNC_RE = re.compile(r"^(?:static\s+)?func\s+([A-Za-z_][A-Za-z0-9_]*)", re.M)
-WAIVER_RE = re.compile(r"save-persist-check:\s*ok\b")
+# The marker must OPEN A COMMENT. It is matched against the whole raw file (see the
+# call site), which makes this the broadest waiver in tools/: one hit anywhere in a
+# 7,600-line test script silences every finding in it.
+#
+# Unanchored it also matched the marker inside a STRING LITERAL, and that is not
+# hypothetical here -- `test/unit/test_selftest.gd:7612` already writes
+# `["suite-reach-check: ok", "the waiver, which has to be greppable to be usable"]`
+# inside a test function, because a test that pins a checker's contract has to name
+# the checker's marker. The day someone writes the same test for THIS checker, the
+# file holding it goes quiet and the exit code does not move. That is cycle 126's
+# citation_check.py incident (a bead waived itself with the sentence explaining the
+# waiver) transplanted into GDScript.
+#
+# Requiring `#` costs nothing: the one waiver standing in the repo,
+# `test/unit/test_sprite_style.gd:116`, already opens its own comment, as does every
+# other `*-check: ok` in game/ and test/.
+WAIVER_RE = re.compile(r"#+[ \t]*save-persist-check:\s*ok\b")
 # The one thing that makes a persisting call safe: pointing the autoload somewhere
 # else BEFORE it writes. Restoring afterwards is not a guard - that is precisely
 # what hid both of the defects in the header.
@@ -199,6 +215,139 @@ def derive_persisting(root: str, sources: tuple[str, ...]) -> tuple[dict[str, st
     return chains, scripts, funcs
 
 
+# ---------------------------------------------------------------------------
+# The synthetic fixture. This tool shipped without one, and its waiver is the broadest
+# in tools/: it is matched against the WHOLE RAW FILE, so a single hit anywhere in a
+# 7,600-line test script silences every finding in it. A waiver also fails QUIET --
+# findings leave the denominator and the exit code need not move at all -- so the one
+# rule here that can subtract was the one thing nothing exercised.
+#
+# Driven through the real main() over a temp project, so deleting the
+# `WAIVER_RE.search(raw)` call site fails here even with the regex intact.
+FIXTURE_SEED = '''extends Node
+
+
+func _save() -> void:
+\tvar f = FileAccess.open(save_path, FileAccess.WRITE)
+\tf.store_string("scores")
+
+
+func record_score(v: int) -> void:
+\t_save()
+'''
+
+FIXTURE_BARE = '''extends Node
+
+
+func test_writes_a_score() -> String:
+\tRunConfig.record_score(10)
+\treturn ""
+'''
+
+FIXTURE_WAIVED = '''extends Node
+
+# save-persist-check: ok - this fixture never reaches the real autoload.
+
+
+func test_writes_a_score() -> String:
+\tRunConfig.record_score(10)
+\treturn ""
+'''
+
+# CYCLE 126's INCIDENT, as GDScript. citation_check.py's --beads waiver was a bare
+# substring and the FIRST bead the feature closed waived ITSELF, because its close
+# reason carried the sentence explaining the waiver: 468 beads became 467, three
+# citations left the denominator, exit code stayed 0, nothing said a word.
+#
+# The .gd version is not hypothetical. `test/unit/test_selftest.gd:7612` already writes
+# `["suite-reach-check: ok", "the waiver, which has to be greppable to be usable"]`
+# inside a test method, because a test that pins a checker's contract has to name that
+# checker's marker -- and this checker scans `test/` whole-file. Write that test for
+# THIS marker and the entire script holding it goes quiet.
+FIXTURE_MENTION = '''extends Node
+
+
+func test_names_the_marker() -> String:
+\tvar needles: Array = ["save-persist-check: ok - the marker, quoted not meant"]
+\treturn _T.assert_eq(needles.size(), 1, "one needle")
+
+
+func test_writes_a_score() -> String:
+\tRunConfig.record_score(10)
+\treturn ""
+'''
+
+# (findings, waived, exit code).
+FIXTURE_EXPECT = (2, 1, 1)
+
+
+def run_fixture() -> int:
+    """Return the failure count. Prints what it compared, never just a verdict."""
+    import io
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="save_persist_fixture_")
+    fails = 0
+    try:
+        os.makedirs(os.path.join(root, "game"))
+        os.makedirs(os.path.join(root, "test"))
+        with open(os.path.join(root, "project.godot"), "w", encoding="utf-8") as fh:
+            fh.write("config_version=5\n")
+        for rel, text in (
+                (os.path.join("game", "run_config.gd"), FIXTURE_SEED),
+                (os.path.join("test", "test_bare.gd"), FIXTURE_BARE),
+                (os.path.join("test", "test_waived.gd"), FIXTURE_WAIVED),
+                (os.path.join("test", "test_mention.gd"), FIXTURE_MENTION)):
+            with open(os.path.join(root, rel), "w", encoding="utf-8", newline="") as fh:
+                fh.write(text)
+
+        old_argv, old_stdout = sys.argv, sys.stdout
+        sys.argv = ["save_persist_check.py", "--root", root]
+        sys.stdout = io.StringIO()
+        try:
+            code = main()
+            out = sys.stdout.getvalue()
+        finally:
+            sys.argv, sys.stdout = old_argv, old_stdout
+
+        found = out.count("  FINDING: ")
+        m = re.search(r"function\(s\)\), (\d+) waived", out)
+        waived = int(m.group(1)) if m else -1
+        want_found, want_waived, want_code = FIXTURE_EXPECT
+        for label, got, want in (("finding(s)", found, want_found),
+                                 ("waived", waived, want_waived),
+                                 ("exit code", code, want_code)):
+            ok = got == want
+            if not ok:
+                fails += 1
+            print("  %-6s %-12s %s (want %s)" % ("ok" if ok else "FAIL", label, got, want))
+
+        # Named individually: two findings is also what a run produces if the waiver
+        # breaks and a real finding is lost in the same change.
+        for script, should_fire in (("test/test_bare.gd", True),
+                                    ("test/test_waived.gd", False),
+                                    ("test/test_mention.gd", True)):
+            fired = script in out
+            ok = fired == should_fire
+            if not ok:
+                fails += 1
+            print("  %-6s %-24s fired=%s (want %s)"
+                  % ("ok" if ok else "FAIL", script, fired, should_fire))
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    print("save_persist_check fixture: 3 synthetic test script(s), %d failure(s). "
+          "test_mention.gd is cycle 126's incident in GDScript -- a script that only "
+          "QUOTES the marker in a string literal must still be reported. Drop the "
+          "`#+[ \\t]*` from WAIVER_RE and that case goes red." % fails)
+    print("  NOT COVERED: the fixture exercises the redirect rule and the waiver over "
+          "three hand-written scripts and a two-function seed. It says nothing about "
+          "this repo's real tests, and a clean fixture is a statement about the rule, "
+          "not about the corpus.")
+    return fails
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", default=".", help="project root (default: cwd)")
@@ -208,7 +357,13 @@ def main() -> int:
     ap.add_argument("--print-set", action="store_true",
                     help="print the derived persisting set and its chains, then exit 0")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--fixture", action="store_true",
+                    help="run the synthetic fixture and exit; proves this checker can "
+                         "FAIL, and that a marker quoted in a string does not waive")
     args = ap.parse_args()
+
+    if args.fixture:
+        return 2 if run_fixture() else 0
 
     root = os.path.abspath(args.root)
     if not os.path.isfile(os.path.join(root, "project.godot")):

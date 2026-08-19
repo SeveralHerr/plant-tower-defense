@@ -77,7 +77,20 @@ ASSIGN_RE = re.compile(
 # `get_nodes_in_group("kernels")[0]` with no variable in between.
 INLINE_INDEX_RE = re.compile(r"\bget_nodes_in_group\s*\([^)]*\)\s*\[")
 # Escape hatch for a body that establishes provenance some way this regex cannot follow.
-WAIVER_RE = re.compile(r"group-leak-check:\s*ok\b")
+# The marker must OPEN A COMMENT. Matched against the raw function body, so before
+# this it also matched the marker inside a STRING LITERAL -- and a test that pins a
+# checker's contract is exactly where such a literal appears:
+# `test/unit/test_selftest.gd:7612` already holds
+# `["suite-reach-check: ok", "the waiver, which has to be greppable to be usable"]`
+# inside a test method. Write that test for THIS checker and the test function
+# asserting the marker is greppable becomes a function this checker refuses to look
+# at, silently, with the exit code unchanged. Same shape as cycle 126's
+# citation_check.py incident, where a bead waived itself with the sentence explaining
+# the waiver. `#` is documented in the `waive:` hint this tool already prints
+# (`add \`# group-leak-check: ok - <reason>\` in the body`); this makes the parser
+# agree with the hint. No waiver of this marker exists in the repo today, so nothing
+# moves.
+WAIVER_RE = re.compile(r"#+[ \t]*group-leak-check:\s*ok\b")
 
 # Selecting ONE node out of the array. `.size()`, `.is_empty()` and a plain `for`
 # over the whole array are NOT selection - they read the set, not a member.
@@ -178,12 +191,122 @@ def gd_files(root: str) -> list[str]:
     return sorted(found)
 
 
+# ---------------------------------------------------------------------------
+# The synthetic fixture. This tool shipped without one, so the rule that can REMOVE
+# findings -- the waiver -- was the least guarded thing in the file, and a waiver
+# fails quiet: findings leave the denominator and the exit code does not move.
+#
+# Driven through the real main() over a temp project rather than by poking WAIVER_RE,
+# so deleting the `WAIVER_RE.search(...)` call site fails here even with the regex
+# intact. The house contract wants a fixture that proves the checker can FAIL; the
+# first case is the one that does that.
+FIXTURE_SOURCE = '''extends Node
+
+
+func test_bad_naked_index() -> String:
+\tvar pests: Array = get_tree().get_nodes_in_group("pests")
+\tvar pest = pests[0]
+\treturn _T.assert_true(pest != null, "got one")
+
+
+func test_good_waived() -> String:
+\t# group-leak-check: ok - this fixture's tree holds exactly the one node it made.
+\tvar pests: Array = get_tree().get_nodes_in_group("pests")
+\tvar pest = pests[0]
+\treturn _T.assert_true(pest != null, "got one")
+
+
+func test_bad_marker_named_in_a_string_is_not_a_waiver() -> String:
+\tvar needles: Array = ["group-leak-check: ok - the marker, quoted not meant"]
+\tvar pests: Array = get_tree().get_nodes_in_group("pests")
+\tvar pest = pests[0]
+\treturn _T.assert_true(pest != null and needles.size() == 1, "got one")
+'''
+
+# (findings, waived, exit code). Three functions, three different results.
+FIXTURE_EXPECT = (2, 1, 1)
+
+
+def run_fixture() -> int:
+    """Return the failure count. Prints what it compared, never just a verdict."""
+    import io
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="group_leak_fixture_")
+    fails = 0
+    try:
+        with open(os.path.join(root, "project.godot"), "w", encoding="utf-8") as fh:
+            fh.write("config_version=5\n")
+        os.makedirs(os.path.join(root, "test"))
+        with open(os.path.join(root, "test", "test_fixture.gd"), "w",
+                  encoding="utf-8", newline="") as fh:
+            fh.write(FIXTURE_SOURCE)
+
+        old_argv, old_stdout = sys.argv, sys.stdout
+        sys.argv = ["group_leak_check.py", "--root", root]
+        sys.stdout = io.StringIO()
+        try:
+            code = main()
+            out = sys.stdout.getvalue()
+        finally:
+            sys.argv, sys.stdout = old_argv, old_stdout
+
+        found = out.count("  FINDING: ")
+        m = re.search(r"(\d+) of those select a single node, (\d+) waived", out)
+        waived = int(m.group(2)) if m else -1
+        want_found, want_waived, want_code = FIXTURE_EXPECT
+
+        for label, got, want in (("finding(s)", found, want_found),
+                                 ("waived", waived, want_waived),
+                                 ("exit code", code, want_code)):
+            ok = got == want
+            if not ok:
+                fails += 1
+            print("  %-6s %-12s %s (want %s)" % ("ok" if ok else "FAIL", label, got, want))
+
+        # Named individually, because the counts above can be right for the wrong
+        # reasons -- two findings is also what you get if the waiver stops working and
+        # a real finding is lost at the same time.
+        for fname, should_fire in (("test_bad_naked_index", True),
+                                   ("test_good_waived", False),
+                                   ("test_bad_marker_named_in_a_string_is_not_a_waiver",
+                                    True)):
+            fired = fname in out
+            ok = fired == should_fire
+            if not ok:
+                fails += 1
+            print("  %-6s %-52s fired=%s (want %s)"
+                  % ("ok" if ok else "FAIL", fname, fired, should_fire))
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    print("group_leak_check fixture: %d synthetic function(s), %d failure(s). The third "
+          "case is cycle 126's incident in GDScript: citation_check.py's waiver was a "
+          "bare substring and the first bead it closed waived ITSELF on the sentence "
+          "explaining the waiver. `test/unit/test_selftest.gd:7612` already holds "
+          "`[\"suite-reach-check: ok\", ...]` inside a test method, so a marker quoted "
+          "in a string is a real thing in this repo's test tree -- which is the tree "
+          "this checker scans. Drop the `#+[ \\t]*` from WAIVER_RE and that case goes "
+          "red." % (len(FUNC_RE.findall(FIXTURE_SOURCE)), fails))
+    print("  NOT COVERED: the fixture exercises the selection rule and the waiver over "
+          "three hand-written functions. It says nothing about this repo's real tests, "
+          "and a clean fixture is a statement about the rule, not about the corpus.")
+    return fails
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", default=".", help="project root (default: cwd)")
     ap.add_argument("--tests", default="test", help="test tree to scan (default: test)")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--fixture", action="store_true",
+                    help="run the synthetic fixture and exit; proves this checker can "
+                         "FAIL, and that a marker quoted in a string does not waive")
     args = ap.parse_args()
+
+    if args.fixture:
+        return 2 if run_fixture() else 0
 
     root = os.path.abspath(args.root)
     if not os.path.isfile(os.path.join(root, "project.godot")):

@@ -231,12 +231,28 @@ CITE_BARE = re.compile(r"(?<=[\s(\[`]):\d+(?:-\d+)?\b")
 # The waiver: the bead already records a verdict reached against the code. Cycle
 # 104's notes are the first form; the other two are what a human writing one
 # freehand tends to produce.
-WAIVER = re.compile(
-    r"ABSENCE CLAIMS? (?:RE)?(?:SOLVED|CHECKED|VERIFIED)"
-    r"|CLAIMS? (?:RE)?VERIFIED AGAINST THE CODE"
-    r"|CLAIMS? RE-?CHECKED AGAINST THE (?:CODE|REPO)",
-    re.I,
-)
+#
+# ANCHORED TO THE START OF A LINE. citation_check.py shipped this same waiver idea as
+# a bare substring and the FIRST bead its --beads mode closed waived ITSELF, because
+# the close reason explaining the waiver contained the marker: 468 beads became 467,
+# three citations left the denominator, exit code stayed 0, nothing said a word.
+#
+# The exposure here is the same one and arguably sharper, because this checker's own
+# NOT COVERED line already admits the neighbouring version of it: "it cannot tell a
+# claim from a QUOTATION of one: a bead about absence claims uses their vocabulary".
+# A bead about the RESOLUTION convention quotes the resolution vocabulary, and
+# unanchored that quotation removed the bead from the denominator entirely -- which is
+# strictly worse than the over-counting the NOT COVERED line describes, because an
+# extra claim is visible in the ranking and a missing bead is not.
+#
+# MEASURED before changing it, against .beads/issues.jsonl at 479 issues: TWELVE
+# matches, and every single one sits at column 0. Anchoring moves nothing -- the
+# waived set, the positive control and the control STRENGTH line are all unchanged --
+# it only closes the door. SELF_TEST_WAIVER's last three cases are the guard.
+WAIVER_BODY = (r"ABSENCE CLAIMS? (?:RE)?(?:SOLVED|CHECKED|VERIFIED)"
+               r"|CLAIMS? (?:RE)?VERIFIED AGAINST THE CODE"
+               r"|CLAIMS? RE-?CHECKED AGAINST THE (?:CODE|REPO)")
+WAIVER = re.compile(r"^[ \t>*+-]*(?:" + WAIVER_BODY + r")", re.I | re.M)
 
 
 def merge(spans):
@@ -359,8 +375,21 @@ SELF_TEST = [
 SELF_TEST_WAIVER = [
     ("ABSENCE CLAIM RESOLVED (cycle 104 sweep, -g1o4): STILL TRUE.", True),
     ("Claims re-checked against the code: all four stand.",          True),
+    ("  - ABSENCE CLAIMS VERIFIED: two of three still stand.",       True),
     ("There is no absence claim on this bead at all.",               False),
     ("",                                                             False),
+    # The incident, restated as a case. citation_check.py's --beads waiver was a bare
+    # substring and the first bead it closed waived itself on the sentence explaining
+    # the waiver. These three are prose ABOUT the resolution convention -- exactly
+    # what a bead filed to change that convention contains -- and none of them is a
+    # verdict reached against the code. Unanchor WAIVER (drop the `^[ \t>*+-]*` and
+    # re.M) and all three go red; nothing else in this file moves.
+    ("The waiver is any note reading ABSENCE CLAIM RESOLVED, which is why a bead "
+     "describing it drops out of the denominator.",                  False),
+    ("Cycle 104 wrote 13 notes; a bead saying its claims re-checked against the code "
+     "mid-sentence is not one of them.",                             False),
+    ("Acceptance: the close reason says CLAIMS VERIFIED AGAINST THE CODE somewhere "
+     "in a paragraph, and the bead vanishes from the count.",        False),
 ]
 
 

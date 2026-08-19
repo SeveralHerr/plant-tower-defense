@@ -124,6 +124,18 @@ for _stream in (sys.stdout, sys.stderr):
             pass
 
 TABLE = "STAT_READOUTS"
+# AUDITED against the cycle-126 self-waive incident (plant-tower-defense-vvww) and
+# recorded as NOT EXPOSED. citation_check.py's --beads waiver was a bare substring and
+# the first bead it closed waived ITSELF on the sentence explaining the waiver. Three
+# things already stop that here: `#` is required, so the marker inside a STRING
+# literal is not a waiver (a real shape -- `test/unit/test_selftest.gd:7612` holds
+# `["suite-reach-check: ok", ...]` inside a test method); the scan set is
+# `--sources game`, `.gd` only, while every document that discusses this marker is
+# markdown or the beads export; and the waiver is read from the SCORED LINE ONLY
+# (`raw_lines[line - 1]` at the call site below), which is the narrowest waiver span
+# in tools/. Nothing was changed here. Same verdict for message_corpus_check.py and
+# sfx_call_check.py; group_leak, save_persist, settle_read and suite_reach required
+# none of this and were anchored instead.
 WAIVER = re.compile(r"#\s*readout-shape-check:\s*ok\b")
 
 # The mutation tag, assembled and never written whole -- see run_mutations() for why a

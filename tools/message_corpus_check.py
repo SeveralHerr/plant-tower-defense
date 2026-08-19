@@ -121,6 +121,26 @@ import repo_walk
 
 CORPUS_FUNC = "message_corpus"
 CALL = "show_message("
+# AUDITED against the cycle-126 self-waive incident (plant-tower-defense-vvww) and
+# recorded as NOT EXPOSED, so the next reader does not have to redo it.
+# citation_check.py's --beads waiver was a bare substring, and the first bead the
+# feature closed waived ITSELF because its close reason explained the waiver. Three
+# things stop that here, and all three are already in this line and its call sites:
+#   1. `#` is required, so the marker in a STRING literal is not a waiver. That is a
+#      real shape in this repo -- `test/unit/test_selftest.gd:7612` holds
+#      `["suite-reach-check: ok", ...]` inside a test method -- and it is what caught
+#      out group_leak/save_persist/settle_read/suite_reach, whose waivers did not
+#      require it before that bead.
+#   2. The scan set is `--sources game` (`.gd` only). The documents that discuss this
+#      marker are kanban.md, .beads/issues.jsonl, log-devtools.md and
+#      .claude/skills/. `kanban.md:1864` really does contain the bare text
+#      `message-corpus-check: ok` today -- and it is outside the scan set, which is
+#      the whole reason it is harmless.
+#   3. The waiver is LINE-scoped, not file- or function-scoped: it is read from the
+#      call's own raw line, or from the unbroken comment block directly above one
+#      (see the two call sites below). A stray mention has to be a comment attached to
+#      a scored `show_message(` line to do anything at all.
+# Same audit and same verdict for readout_shape_check.py and sfx_call_check.py.
 WAIVER = re.compile(r"#\s*message-corpus-check:\s*ok\b")
 # A producer named in the corpus as `out.append(name(...))`, and a literal as
 # `out.append("...")`. Both forms are what the function actually contains; anything

@@ -256,8 +256,21 @@ BARE_AWAIT_RE = re.compile(r"\bawait\b[^\n]*")
 # for. Both waivers standing in the repo when this tightened already carried a reason,
 # so it cost nothing; a reasonless one is reported below as a finding of its own rather
 # than being quietly honoured.
-WAIVER_RE = re.compile(r"settle-read-check:\s*ok\b\s*[-:]\s*\S")
-ANY_WAIVER_RE = re.compile(r"settle-read-check:\s*ok\b")
+#
+# The marker must also OPEN A COMMENT, which is what the paragraph above already
+# WROTE (`# settle-read-check: ok - <why>`) and what the regex did not require.
+# Matched against the raw function body, so unanchored it fired on the marker inside
+# a STRING LITERAL too -- and `test/unit/test_selftest.gd:7612` already writes
+# `["suite-reach-check: ok", "the waiver, which has to be greppable to be usable"]`
+# inside a test method, because a test that pins a checker's contract must name that
+# checker's marker. This checker scans `test/`. Write that test for this marker and
+# the function goes quiet with no finding and no change in exit code -- cycle 126's
+# citation_check.py incident, where a bead waived itself with the sentence explaining
+# the waiver, in GDScript. Both waivers standing in the repo
+# (`test/unit/test_combat.gd:4519`, `test/unit/test_placement.gd:1332`) already open
+# their own comment, so this costs nothing.
+WAIVER_RE = re.compile(r"#+[ \t]*settle-read-check:\s*ok\b\s*[-:]\s*\S")
+ANY_WAIVER_RE = re.compile(r"#+[ \t]*settle-read-check:\s*ok\b")
 
 # -- the corpse rule ---------------------------------------------------------
 #
@@ -909,6 +922,13 @@ func test_bad_waiver_without_a_reason() -> String:
 	var pest: Pest = _pest()
 	pest.kill()
 	return _T.assert_true(is_instance_valid(pest), "still an object")
+
+
+func test_bad_marker_named_in_a_string_is_not_a_waiver() -> String:
+	var needles: Array = ["settle-read-check: ok - this is the marker, quoted"]
+	var pest: Pest = _pest()
+	pest.kill()
+	return _T.assert_true(is_instance_valid(pest) and needles.size() == 1, "still there")
 '''
 
 # name -> (expected findings, a substring of the guard that must have cleared it,
@@ -932,6 +952,20 @@ FIXTURE_EXPECT = {
     "test_good_read_before_the_kill": (0, None, False),
     "test_good_waiver_with_a_reason": (0, "waiver", True),
     "test_bad_waiver_without_a_reason": (2, None, True),
+    # CYCLE 126's INCIDENT, as GDScript. citation_check.py's --beads waiver was a bare
+    # substring and the first bead the feature closed waived ITSELF, on the sentence
+    # explaining the waiver: 468 beads became 467, three citations left the
+    # denominator, exit code stayed 0, nothing said a word. The .gd version is not
+    # hypothetical -- `test/unit/test_selftest.gd:7612` already writes
+    # `["suite-reach-check: ok", "the waiver, ..."]` inside a test method, because a
+    # test that pins a checker's contract has to name that checker's marker. This
+    # checker scans `test/`.
+    #
+    # So: the marker QUOTED IN A STRING waives nothing, and the naked read underneath
+    # it is still reported. Drop the `#+[ \t]*` from WAIVER_RE and this case goes to 0
+    # findings and red; ANY_WAIVER_RE loses it too, so it does not turn into a
+    # reasonless-waiver finding either.
+    "test_bad_marker_named_in_a_string_is_not_a_waiver": (1, None, True),
 }
 
 
