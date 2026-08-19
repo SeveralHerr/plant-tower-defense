@@ -95,6 +95,7 @@ func register_commands(dev: Node) -> void:
 	_dev.register_command("compost_state", _cmd_compost_state)
 	_dev.register_command("collect_husk", _cmd_collect_husk)
 	_dev.register_command("budgets", _cmd_budgets)
+	_dev.register_command("messages", _cmd_messages)
 	# Not a game verb: it answers "which checkout am I actually driving?" before any
 	# of the above are believed. Registered with a literal name so `list-commands
 	# --offline` can still find it with no game running.
@@ -1008,3 +1009,53 @@ func _git_identity(root: String) -> Dictionary:
 	if sha != "":
 		out["sha"] = sha
 	return out
+
+
+# --- What the player did NOT see -------------------------------------------
+#
+# Four counters on `Hud` exist purely to answer that, and until now all four were
+# reachable only by `get-state --property` against a running game, one property at
+# a time. That is fine for a measurement and poor for a habit: nothing surfaced
+# them, so the next person suspecting a dropped line had to know the names first.
+#
+# BUILT BECAUSE THE MEASUREMENT ASKED FOR IT, not speculatively. `-a9pi` named its
+# own tiebreaker -- do this after the re-measurement of cycle 93's answer, only if
+# that work reads the counters repeatedly across scenarios, otherwise not at all.
+# Cycle 128 read all four EIGHT times across five scenarios, each a four-flag
+# `find-nodes --class Hud --property ...` line, and the thing it could not answer
+# was WHICH line got dropped. Hence `refused_log` beside the count.
+func _cmd_messages(_args: Dictionary) -> Dictionary:
+	var game: Game = _game()
+	if game == null:
+		return _fail("no Game in the tree")
+	var hud: Hud = game.hud
+	if hud == null:
+		return _fail("the Game has no Hud")
+	var pending: Array[Dictionary] = []
+	for entry: Dictionary in hud.message_queue_snapshot():
+		pending.append(entry)
+	# The message names the two numbers a reader actually acts on -- what is on the row
+	# now, and how much has been dropped -- so a run that is fine says so in one line.
+	return {
+		"success": true,
+		"message": "row %s | refused %d, evicted %d, preempted %d, retired %d | %d pending"
+			% ["quiet" if hud.row_is_quiet() else "\"%s\"" % hud.message_text(),
+				hud.messages_refused, hud.messages_evicted, hud.messages_preempted,
+				hud.messages_retired, pending.size()],
+		"data": {
+			"refused": hud.messages_refused,
+			"evicted": hud.messages_evicted,
+			"preempted": hud.messages_preempted,
+			"retired": hud.messages_retired,
+			# WHICH lines, not just how many. Newest last, capped at Hud.REFUSED_LOG_MAX.
+			"refused_log": hud.messages_refused_log.duplicate(),
+			"refused_log_cap": Hud.REFUSED_LOG_MAX,
+			"row_quiet": hud.row_is_quiet(),
+			"row_text": hud.message_text(),
+			"row_seconds_left": hud.message_seconds_left(),
+			"row_priority": hud.message_priority(),
+			"pending": pending,
+			"queue_max": Hud.MESSAGE_QUEUE_MAX,
+			"min_readable": Hud.MESSAGE_MIN_READABLE,
+		},
+	}

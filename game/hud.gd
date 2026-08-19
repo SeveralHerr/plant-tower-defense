@@ -3069,6 +3069,36 @@ func row_is_quiet() -> bool:
 	return _message_left <= 0.0 and _message_queue.is_empty()
 
 
+## The row's live state, for the bridge's `cmd messages` and for tests.
+##
+## Readers, not new state: everything below returns a private field the row already
+## owns. They exist because the alternative was `get-state --property _message_text`,
+## which reaches past the class into a name with an underscore in front of it — and the
+## comment above `_message_text` is emphatic that ONE owner sets the row and nothing
+## reads the Label to decide what the Label should say. A private field read from
+## outside is the same mistake one level down.
+func message_text() -> String:
+	return _message_text
+
+
+func message_seconds_left() -> float:
+	return _message_left
+
+
+func message_priority() -> int:
+	return _message_priority
+
+
+## What is waiting behind the current line, oldest first. A COPY, and of the entries too:
+## handing out the live Dictionaries would let a caller mutate the queue by accident, and
+## the one caller is a debug verb whose whole job is to look without touching.
+func message_queue_snapshot() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for entry: Dictionary in _message_queue:
+		out.append(entry.duplicate())
+	return out
+
+
 func show_message(text: String, seconds: float = 3.0, priority: int = MESSAGE_NORMAL) -> bool:
 	if _message_left > 0.0:
 		if priority > _message_priority:
@@ -3161,6 +3191,25 @@ var messages_retired: int = 0
 ## countdown.
 var _message_total: float = 0.0
 
+## The last few lines the queue REFUSED, newest last, capped at `REFUSED_LOG_MAX`.
+##
+## `messages_refused` counts; this says WHICH, and the difference decided a live question.
+## Cycle 128 measured four packet purchases refusing twelve messages and could not tell
+## whether the player had lost the flourish's flicker steps (cosmetic) or the reveal naming
+## the plant they had just bought (they are not told what they paid for). The count is the
+## same number either way, and `_queue_message` had the text in hand and dropped it.
+##
+## Capped and text-only on purpose: this is a diagnostic tail, not a transcript. An unbounded
+## list on a `Hud` that runs for a whole endless run is a leak, and the interesting refusals
+## are always the most recent ones — a refusal explains itself by what was on the row at the
+## time, which is minutes gone by the time an old entry is read.
+var messages_refused_log: Array[String] = []
+
+## Keep this SMALL. Eight is two full flourishes' worth of posts, which is the longest burst
+## any producer in this game emits; a cap that can hold a whole run's refusals invites reading
+## it as a transcript, which it is not.
+const REFUSED_LOG_MAX: int = 8
+
 
 func _queue_message(text: String, seconds: float, priority: int) -> void:
 	var queued: Array[int] = []
@@ -3169,6 +3218,9 @@ func _queue_message(text: String, seconds: float, priority: int) -> void:
 	match queue_outcome(queued, priority):
 		QUEUE_REFUSED:
 			messages_refused += 1
+			messages_refused_log.append(text)
+			if messages_refused_log.size() > REFUSED_LOG_MAX:
+				messages_refused_log.remove_at(0)
 			return
 		QUEUE_EVICTED:
 			messages_evicted += 1

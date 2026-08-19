@@ -14807,6 +14807,11 @@ const POSITIONAL_VERBS := {
 const DEFAULTED_VERBS := [
 	"game_state", "spawn_pest", "add_seeds", "start_wave", "buy_packet",
 	"board_info", "compost_state", "budgets", "project_identity",
+	# `messages` reads no args at all: it reports the row's whole state and all four
+	# counters in one call, and there is no subset of that worth asking for separately.
+	# Same reason `budgets` is here -- a verb that exists so you need not know the names
+	# must not require you to know a name.
+	"messages",
 ]
 
 
@@ -18364,3 +18369,98 @@ func test_count_word_falls_back_to_a_digit_past_its_table() -> String:
 		return err
 	return _T.assert_eq(NotebookScreen.count_word(-1), "-1",
 		"a negative count is a bug elsewhere, but must not crash the page")
+
+
+## The refused log answers WHICH line was dropped, which the count cannot. Cycle 128 read
+## `messages_refused` = 12 after four packet purchases and could not tell whether the player
+## had lost the flourish's flicker steps or the reveal naming the plant they just bought --
+## the same 12 either way, and `_queue_message` had the text in hand and threw it away.
+func test_a_refused_message_records_which_line_was_dropped() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	# Game._ready posts an 8-second starter tip. Drain it, or the row is already held by a
+	# line this test did not post and every count below is really about that one.
+	hud._process(9.0)
+	# Hold the row, then post more at EQUAL priority than the queue can hold. Equal is the
+	# case that refuses: a higher priority preempts, a lower one waits.
+	hud.show_message("the line holding the row", 5.0, Hud.MESSAGE_IMPORTANT)
+	for i: int in range(Hud.MESSAGE_QUEUE_MAX + 2):
+		hud.show_message("refusable line %d" % i, 0.5, Hud.MESSAGE_IMPORTANT)
+	var err: String = _T.assert_eq(hud.messages_refused, 2,
+		"two posts past the queue's %d are refused" % Hud.MESSAGE_QUEUE_MAX)
+	if err == "":
+		err = _T.assert_eq(hud.messages_refused_log.size(), 2,
+			"the log holds one entry per refusal, not a count")
+	if err == "":
+		# The LAST two posted are the ones refused -- the queue fills first-come, so the
+		# log must name lines 3 and 4 rather than 0 and 1.
+		err = _T.assert_true(hud.messages_refused_log.has("refusable line 4"),
+			"the log names the line actually dropped, got %s"
+				% str(hud.messages_refused_log))
+	_T.free_ui(game)
+	return err
+
+
+## Capped, because a Hud lives for a whole endless run and an unbounded diagnostic list on
+## it is a leak. The cap is also what keeps it a tail rather than a transcript.
+func test_the_refused_log_is_capped_and_keeps_the_newest() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	hud._process(9.0)
+	hud.show_message("the line holding the row", 30.0, Hud.MESSAGE_IMPORTANT)
+	var posts: int = Hud.MESSAGE_QUEUE_MAX + Hud.REFUSED_LOG_MAX + 3
+	for i: int in range(posts):
+		hud.show_message("line %d" % i, 0.5, Hud.MESSAGE_IMPORTANT)
+	var err: String = _T.assert_eq(hud.messages_refused_log.size(), Hud.REFUSED_LOG_MAX,
+		"%d posts past the queue, log capped at %d" % [posts, Hud.REFUSED_LOG_MAX])
+	if err == "":
+		# Newest kept, oldest dropped: a refusal is explained by what was on the row at the
+		# time, and that context is long gone for the oldest entries.
+		err = _T.assert_eq(hud.messages_refused_log[-1], "line %d" % (posts - 1),
+			"the newest refusal is kept")
+	if err == "":
+		err = _T.assert_false(hud.messages_refused_log.has("line %d" % Hud.MESSAGE_QUEUE_MAX),
+			"the oldest refusal is dropped once the cap is reached")
+	_T.free_ui(game)
+	return err
+
+
+## The four readers `cmd messages` reports through. They are the verb's data contract: if
+## `message_seconds_left` returned the total rather than the remainder, or the queue snapshot
+## handed out the live Dictionaries, the verb would still answer and would answer wrongly --
+## and a debug verb that lies is worse than no verb, because it is believed.
+func test_the_message_row_reports_its_own_live_state() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	hud._process(9.0)          # drain Game._ready's starter tip
+	hud.show_message("on the row now", 4.0, Hud.MESSAGE_IMPORTANT)
+	var err: String = _T.assert_eq(hud.message_text(), "on the row now",
+		"message_text is the line currently shown")
+	if err == "":
+		err = _T.assert_float_eq(hud.message_seconds_left(), 4.0, 0.001,
+			"message_seconds_left starts at what the poster asked for")
+	if err == "":
+		err = _T.assert_eq(hud.message_priority(), Hud.MESSAGE_IMPORTANT,
+			"message_priority is the current line's, not the last posted")
+	if err == "":
+		hud._process(1.5)
+		# The REMAINDER, not the total -- the distinction the verb reports and the one a
+		# reader uses to decide whether a queued line is about to get the row.
+		err = _T.assert_float_eq(hud.message_seconds_left(), 2.5, 0.01,
+			"message_seconds_left counts down")
+	if err == "":
+		# Queue one behind it, at a priority that waits rather than stomps.
+		hud.show_message("waiting its turn", 2.0, Hud.MESSAGE_IMPORTANT)
+		var pending: Array[Dictionary] = hud.message_queue_snapshot()
+		err = _T.assert_eq(pending.size(), 1, "one line is waiting behind the current one")
+		if err == "":
+			err = _T.assert_eq(String(pending[0]["text"]), "waiting its turn",
+				"the snapshot carries the queued line's text")
+		if err == "":
+			# A COPY: mutating what the snapshot handed back must not touch the real queue.
+			pending[0]["text"] = "tampered"
+			err = _T.assert_eq(String(hud.message_queue_snapshot()[0]["text"]),
+				"waiting its turn",
+				"the snapshot is a copy -- a caller cannot edit the queue through it")
+	_T.free_ui(game)
+	return err
