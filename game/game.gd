@@ -349,7 +349,11 @@ func _ready() -> void:
 
 	_prep_left = PREP_SECONDS
 	_refresh()
-	hud.show_message("Plant your free Corn Cobbler on the grass, then grow the first wave.", 8.0)
+	# ACT, the longest band there is: this sentence is an instruction to be carried out
+	# by a player who has not yet learned where the grass is or what the button does.
+	# Its length is incidental — see Hud.message_seconds for why that is not the variable.
+	hud.show_message("Plant your free Corn Cobbler on the grass, then grow the first wave.",
+		Hud.message_seconds(Hud.ROLE_ACT))
 
 	# Last, and deliberately here rather than a frame later: the two HUD budgets
 	# read StatsRow.size and the readouts' custom_minimum_size, both of which are
@@ -522,7 +526,13 @@ func _check_wave_cleared() -> void:
 		# After _commit_lane_pressure above, not before: prep_note() reads the
 		# batch that call just posted, and running it first would describe the
 		# wave before last for the whole of the window the player buys in.
-		hud.show_message(Hud.wave_cleared_line(director.current_wave, prep_note()), 6.0)
+		# DIGEST, the longest ambient band: this is the between-waves beat, the one moment
+		# the player is reading rather than clicking, and the line carries prep_note()'s
+		# whole clause. Note it outlasts far LONGER strings elsewhere — "Wave 3 cleared."
+		# is fifteen characters and gets six seconds, which is the pair in
+		# Hud.message_seconds that rules out deriving any of this from length.
+		hud.show_message(Hud.wave_cleared_line(director.current_wave, prep_note()),
+			Hud.message_seconds(Hud.ROLE_DIGEST))
 	else:
 		victory = true
 		_end_run("The garden holds!")
@@ -1696,7 +1706,11 @@ func _on_plant_destroyed(plant: Plant) -> void:
 	if selected_placed == plant:
 		_select(null)
 	Sfx.play(Sfx.PLANT_DESTROYED)
-	hud.show_message(Hud.destroyed_message(plant.kind), 4.0)  # message-corpus-check: ok - destroyed_message is a one-line dispatcher over eaten_message/chewed_through_message; BOTH are priced for every plant in message_corpus(), which is wider than this call site can reach
+	# NOTICE: a plant died during a wave, when the player's attention is on the road
+	# rather than the row. Longer than a confirmation because nothing else on screen
+	# says WHICH plant went — the sprite is simply gone.
+	hud.show_message(Hud.destroyed_message(plant.kind),  # message-corpus-check: ok - destroyed_message is a one-line dispatcher over eaten_message/chewed_through_message; BOTH are priced for every plant in message_corpus(), which is wider than this call site can reach
+		Hud.message_seconds(Hud.ROLE_NOTICE))
 	plant.play_exit_and_free()
 	_refresh()
 
@@ -1838,6 +1852,13 @@ func arm_uproot() -> String:
 	# DEADLINE, not IMPORTANT: `_uproot_left` is already counting down by the time
 	# this line is posted, so a deferral here does not postpone the message, it
 	# eats the window it describes. See Hud.MESSAGE_DEADLINE.
+	#
+	# AND ITS DURATION IS AN OVERRIDE, not a band from `Hud.message_seconds`. Four
+	# seconds here is not a reading time, it is UPROOT_CONFIRM_SECONDS — the window
+	# `_tick_uproot_confirm` is counting down as this prints. The prompt has to last
+	# exactly as long as the thing it describes: shorter and the player believes the
+	# window lapsed while it is still open, longer and they confirm into nothing. This
+	# is the call site that must NOT move when the ambient bands are retuned.
 	hud.show_message(
 		Hud.uproot_armed_message(PlantCatalog.display_name(selected_placed.kind), first_arm,
 			forfeited),
@@ -1906,7 +1927,11 @@ func _tick_uproot_confirm(delta: float) -> void:
 	_uproot_left -= delta
 	if _uproot_left <= 0.0:
 		_disarm_uproot()
-		hud.show_message("Uproot cancelled.", 2.0)
+		# CONFIRM: the arc on the marker has already finished unwinding and the plant has
+		# visibly stopped being armed, so this line is a receipt for something the board
+		# already showed. The shortest band, and still comfortably over
+		# Hud.MESSAGE_MIN_READABLE.
+		hud.show_message("Uproot cancelled.", Hud.message_seconds(Hud.ROLE_CONFIRM))
 		_refresh()
 		return
 	# Every surviving frame, and only here. The branch above hands the close-out to
@@ -2107,6 +2132,13 @@ func _play_packet_flourish(id: StringName, tier: StringName) -> void:
 		# or a higher priority. Equal priority and a step well under that falls
 		# through to the immediate-overwrite branch instead, so each flicker
 		# replaces the last rather than queuing up behind it.
+		#
+		# WHICH IS ALSO WHY THE DURATION IS AN OVERRIDE and takes no band from
+		# `Hud.message_seconds`: these steps are an animation, not messages, and
+		# being UNDER MESSAGE_MIN_READABLE is the whole mechanism. Give them a
+		# readable duration and every step queues behind the last, filling the row's
+		# queue and getting the reveal below refused — the defect
+		# `_row_ready_for_a_flourish` was written to fix, reintroduced one call deeper.
 		hud.show_message("...%s?" % PlantCatalog.display_name(flash),  # message-corpus-check: ok - a plant name already bounded by packet_message() plus three characters
 			PACKET_OPEN_STEP_SECONDS, Hud.MESSAGE_IMPORTANT)
 		await get_tree().create_timer(PACKET_OPEN_STEP_SECONDS).timeout
@@ -2117,8 +2149,12 @@ func _reveal_plant_unlock(id: StringName) -> void:
 	# IMPORTANT, matching every step of the flourish above it: an ambient
 	# message re-surfacing between those steps (see _open_packet) would
 	# otherwise queue the reveal itself behind it instead of showing it.
-	hud.show_message(Hud.packet_message(PlantCatalog.display_name(id)), 5.0,
-		Hud.MESSAGE_IMPORTANT)
+	# REVEAL, and it is the one band that is not free to retune: `_row_ready_for_a_flourish`
+	# above waits on this line still holding the row, so its length decides how two quick
+	# packet purchases interleave. Changing ROLE_REVEAL is a gameplay change, not a
+	# cosmetic one — see Hud.message_seconds.
+	hud.show_message(Hud.packet_message(PlantCatalog.display_name(id)),
+		Hud.message_seconds(Hud.ROLE_REVEAL), Hud.MESSAGE_IMPORTANT)
 	_refresh()
 
 
@@ -2264,12 +2300,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		# The key named in the message is read back out of the InputMap, not typed
 		# here. "Press M to bring them back" printed at a player who had rebound
 		# the verb to F2 is worse than saying nothing at all.
+		# SETTING for all three toggles below: the world answers as well, but subtly —
+		# silence and a repaint are both easy to miss, and the un-mute half of the line
+		# names the key to press. A hair longer than a CONFIRM for that reason and no
+		# other; "Music on." is ten characters and outlasts sentences twice its length.
 		hud.show_message(mute_message("Sound effects", RunConfig.toggle_mute_sfx(),  # message-corpus-check: ok - keybind-dependent; the budget measures the CURRENT binding live
-			KeyBindings.ACTION_MUTE_SFX, "them"), 2.5)
+			KeyBindings.ACTION_MUTE_SFX, "them"), Hud.message_seconds(Hud.ROLE_SETTING))
 		return
 	if event.is_action_pressed(KeyBindings.ACTION_MUTE_MUSIC):
 		hud.show_message(mute_message("Music", RunConfig.toggle_mute_music(),  # message-corpus-check: ok - keybind-dependent; the budget measures the CURRENT binding live
-			KeyBindings.ACTION_MUTE_MUSIC), 2.5)
+			KeyBindings.ACTION_MUTE_MUSIC), Hud.message_seconds(Hud.ROLE_SETTING))
 		return
 	# Swaps the health fill and the threat readout onto GardenTheme's blue/orange
 	# ramp. This arrived as a raw scancode check from the branch that added the
@@ -2285,7 +2325,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(KeyBindings.ACTION_COLORBLIND):
 		var safe: bool = RunConfig.toggle_colorblind_safe()
 		hud.show_message(
-			"Colourblind-safe bars on." if safe else "Colourblind-safe bars off.", 2.5)
+			"Colourblind-safe bars on." if safe else "Colourblind-safe bars off.",
+			Hud.message_seconds(Hud.ROLE_SETTING))
 		repaint_for_palette()
 		return
 	# The designer's "faster button", and the backlog's slow mode, as one verb —
@@ -2492,7 +2533,12 @@ func _click_at(screen_pos: Vector2) -> void:
 		var swept: int = compost.collect_at(local)
 		if swept > 0:
 			bank.add_seeds(swept)
-			hud.show_message("Composted a husk for %d seeds." % swept, 2.0)
+			# CONFIRM: the husk vanished from the board on this same click and the seed
+			# counter moved. Deliberately SHORTER than the settings toggles above despite
+			# being a longer sentence — see Hud.message_seconds, where this exact pair is
+			# the evidence that these durations are not derived from length.
+			hud.show_message("Composted a husk for %d seeds." % swept,
+				Hud.message_seconds(Hud.ROLE_CONFIRM))
 			return
 	if not board.is_inside(cell):
 		return
