@@ -10377,3 +10377,156 @@ func test_every_pitched_event_moved_off_a_base_it_shares_a_file_with() -> String
 
 # END plant-tower-defense-n3zm
 # =============================================================================
+
+
+# =============================================================================
+# The wave banner's painter (plant-tower-defense-jk4a)
+#
+# `Hud._show_banner` used to assign both banner Labels unconditionally for three
+# callers, so which of `announce_wave`, `announce_wave_cleared` and `show_weather`
+# a player saw was decided by statement order in `Game._on_wave_started`. It is
+# now one painter (`_paint_banner`) resolving one claim, with `banner_claim_wins`
+# as the pure arbitration rule -- the shape the message row already uses.
+#
+# These assert the ARBITRATION, not that a string lands. A test that only checked
+# "announce_wave puts the wave text on the Label" passes identically against the
+# code this replaced, so it would have measured nothing about the change.
+# =============================================================================
+
+
+## The rule itself, with no HUD at all. Static and pure for the same reason
+## `Hud.message_is_stressed` is: the contended cases -- two claims live at once,
+## one expiring under another -- are exactly the ones a live HUD makes hardest to
+## stage, and every one of them is one call here.
+func test_the_banner_arbitration_ranks_the_wave_beats_above_the_weather() -> String:
+	var err: String = _T.assert_eq(
+		Hud.banner_claim_rank(Hud.BANNER_CLAIM_WAVE),
+		Hud.banner_claim_rank(Hud.BANNER_CLAIM_CLEARED),
+		"the two wave beats share a rung -- a wave starting and one being held are "
+			+ "the same weight of event, which is the whole of plant-tower-defense-d2a")
+	if err == "":
+		err = _T.assert_gt(
+			Hud.banner_claim_rank(Hud.BANNER_CLAIM_WAVE),
+			Hud.banner_claim_rank(Hud.BANNER_CLAIM_WEATHER),
+			"and both outrank the weather, which has a status row and a full-screen "
+				+ "overlay carrying it for the whole wave where the beat has only this")
+	if err == "":
+		err = _T.assert_gt(
+			Hud.banner_claim_rank(Hud.BANNER_CLAIM_WEATHER),
+			Hud.banner_claim_rank(&"a_claim_nobody_registered"),
+			"an unrecognised claim ranks below everything, so a name typoed into a "
+				+ "caller added next year loses the banner rather than taking it")
+
+	# The two rules, one assertion each, both directions.
+	if err == "":
+		err = _T.assert_false(
+			Hud.banner_claim_wins(Hud.BANNER_CLAIM_WEATHER, Hud.BANNER_CLAIM_WAVE, 1.0),
+			"a weaker claim does not take a banner a live wave beat is standing on")
+	if err == "":
+		err = _T.assert_true(
+			Hud.banner_claim_wins(Hud.BANNER_CLAIM_WEATHER, Hud.BANNER_CLAIM_WAVE, 0.0),
+			"but a claim with no time left is not a claim -- the same weather takes "
+				+ "the same banner the moment the beat before it has finished")
+	if err == "":
+		err = _T.assert_true(
+			Hud.banner_claim_wins(Hud.BANNER_CLAIM_WAVE, Hud.BANNER_CLAIM_WEATHER, 1.0),
+			"and a stronger claim takes it while the weaker one is still live")
+	if err == "":
+		err = _T.assert_true(
+			Hud.banner_claim_wins(Hud.BANNER_CLAIM_CLEARED, Hud.BANNER_CLAIM_WAVE, 1.0),
+			"a tie goes to the ARRIVING claim -- refusing it would leave 'Wave 7' "
+				+ "standing over a wave 7 the player has already held")
+	if err == "":
+		err = _T.assert_true(
+			Hud.banner_claim_wins(Hud.BANNER_CLAIM_WEATHER, Hud.BANNER_CLAIM_NONE, 0.0),
+			"and an unclaimed banner is free for anything")
+	return err
+
+
+## The same rule through the real HUD, in the order the game actually produces it.
+##
+## `Game._on_wave_started` calls `_apply_weather` -- which reaches
+## `Hud.show_weather` -- and then `announce_wave` one line later, so the wave beat
+## has always been what a player sees. What is asserted here is that it is the HUD
+## deciding that: the weather is refused while the beat stands, and takes the same
+## banner once the beat's clock has run out.
+func test_a_standing_banner_claim_refuses_a_weaker_one_and_yields_once_it_expires() -> String:
+	var game := await _T.instantiate_ui("res://game/game.tscn", Vector2i(1152, 648)) as Game
+	var banner: Label = game.hud.get_node_or_null("Root/Banner") as Label
+	var err: String = _T.assert_true(banner != null, "the banner's headline row exists")
+
+	if err == "":
+		game.hud.announce_wave(7, 19, "faster")
+		err = _T.assert_eq(String(game.hud.banner_claim()), String(Hud.BANNER_CLAIM_WAVE),
+			"announcing a wave claims the banner for the wave")
+	if err == "":
+		game.hud.show_weather(WaveDirector.WEATHER_DROUGHT)
+		err = _T.assert_eq(String(game.hud.banner_claim()), String(Hud.BANNER_CLAIM_WAVE),
+			"weather arriving under a live wave beat is refused, not queued behind it")
+	if err == "":
+		err = _T.assert_eq(banner.text, Hud.wave_headline(7),
+			("and the headline is never even momentarily overwritten -- got '%s', "
+				+ "which is what the old shared setter would have left here") % banner.text)
+
+	# Equal rank: the wave the player just held is the true thing about the board.
+	if err == "":
+		game.hud.announce_wave_cleared(7, 19)
+		err = _T.assert_eq(banner.text, Hud.wave_cleared_headline(7),
+			"a claim of equal rank does take it, so consecutive beats both land")
+
+	# The claim expires. Driven by the fade's own clock rather than by pumped
+	# frames: the alpha is a pure function of the time left, so the deltas are the
+	# test's to choose (see .claude/skills/assert-an-animation, rung 1).
+	if err == "":
+		game.hud._fade_banner(Hud.BANNER_HOLD_SECONDS)
+		err = _T.assert_eq(String(game.hud.banner_claim()), String(Hud.BANNER_CLAIM_NONE),
+			"running the hold out drops the claim rather than leaving it standing")
+	if err == "":
+		err = _T.assert_true(game.hud.banner_seconds_left() <= 0.0,
+			"with no time left on it, got %.2f" % game.hud.banner_seconds_left())
+
+	# And now the weaker claim wins, which is what makes the refusal above a rule
+	# rather than `show_weather` simply never doing anything.
+	if err == "":
+		game.hud.show_weather(WaveDirector.WEATHER_DROUGHT)
+		err = _T.assert_eq(String(game.hud.banner_claim()), String(Hud.BANNER_CLAIM_WEATHER),
+			"the same weather takes the freed banner")
+	if err == "":
+		err = _T.assert_eq(banner.text, Hud.weather_headline(WaveDirector.WEATHER_DROUGHT),
+			"and the painter puts its headline on the row, got '%s'" % banner.text)
+	_T.free_ui(game)
+	return err
+
+
+## A dropped claim empties the rows rather than only hiding them.
+##
+## `hide_banner()` is what `Hud.refresh()` calls when a run ends, and the old
+## version left the last headline sitting in a hidden 48px Label over the board.
+## Three separate live misreads in cycles 110-111 were a hidden Control still
+## holding its last text, and this is the widest one in the game.
+func test_dropping_the_banner_claim_leaves_no_stale_headline_behind() -> String:
+	var game := await _T.instantiate_ui("res://game/game.tscn", Vector2i(1152, 648)) as Game
+	var banner: Label = game.hud.get_node_or_null("Root/Banner") as Label
+	var note: Label = game.hud.get_node_or_null("Root/BannerNote") as Label
+	var err: String = _T.assert_true(banner != null and note != null, "both rows exist")
+	if err == "":
+		game.hud.announce_wave(12, 30, "tougher")
+		err = _T.assert_true(banner.text != "" and note.text != "",
+			"the banner is up with both rows written")
+	if err == "":
+		game.hud.hide_banner()
+		err = _T.assert_eq(banner.text, "",
+			("taking it down empties the headline, got '%s' -- a hidden Label still "
+				+ "holding a wave number is what the next thing to show this row for "
+				+ "any reason at all would put on screen") % banner.text)
+	if err == "":
+		err = _T.assert_eq(note.text, "", "and the note row with it, got '%s'" % note.text)
+	if err == "":
+		err = _T.assert_float_eq(banner.modulate.a, 1.0, 0.001,
+			("and it is left at full opacity, not at whatever alpha the fade had "
+				+ "reached, got %.2f") % banner.modulate.a)
+	_T.free_ui(game)
+	return err
+
+# END plant-tower-defense-jk4a
+# =============================================================================
