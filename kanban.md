@@ -9,6 +9,160 @@ idea backlog that isn't filed yet.
 
 ---
 
+<!-- INDEX:BEGIN — generated, do not hand-edit. Regenerate by re-running the
+     generator over this file; the block is delimited by INDEX:BEGIN/INDEX:END so it
+     can be replaced without touching anything else. A hand-maintained index in a file
+     that grows every cycle is what .claude/skills/derive-the-list/SKILL.md forbids, so
+     this one is DERIVED and says so. TWO IDENTICAL ENTRIES HERE ARE A HEADING
+     COLLISION -- which is how this index earns its place, and is what -hynr found nine
+     of. A tool to regenerate and verify it belongs in tools/ (plant-tower-defense-4yz6). -->
+
+## Index
+
+136 headings, and they are UNIQUE -- `-hynr` renamed nine that were not, all from a
+"(N of 30)" numbering that restarted. Line numbers drift as the file grows, so the
+HEADINGS are the durable handle. A section with no audit date in its own prose has
+never been audited, which is itself the finding this index makes visible.
+
+- Index
+- Done
+- Next up
+- Cool new features (idea backlog)
+  - Returned from Done — audited cycle 108 (`plant-tower-defense-tkdz`)
+  - Added cycle 106 — out of a screenshot James sent
+  - Added cycle 105 — out of the eighth plant and the live viewport
+  - Added cycle 104 — out of four lanes and an absence sweep
+  - Added cycle 103 — out of the upgrade hint
+  - Added cycle 102 — out of the five-lane fan-out
+  - Requested directly by James — not grown, asked for
+  - New this cycle (101) — the campaign was played, and it has exactly one difficulty event
+  - New this cycle (100) — three lanes at once, and five failures in the seams
+  - New this cycle (99) — three cycles divided the bar; none changed what was in it
+  - New this cycle (98) — the roster has a ceiling and it is a UI one
+  - New this cycle (97) — a checker that was right while looking wrong
+  - New this cycle (96) — "measured in a real run" measures the game, not the player
+  - New this cycle (95) — a test edited by whoever breaks it, and one cue that needs no row
+  - New this cycle (94) — a line that comes back looks like a line that happened twice
+  - New this cycle (93) — the row loses nothing, and the one message that takes something
+  - New this cycle (92) — a door that knows what you asked, and one that could know more
+  - New this cycle (91) — the legend exists and is nine clicks away
+  - New this cycle (90) — 19 messages on one rung, and a class with one member
+  - New this cycle (89) — one hint, a contract for more, and a checker not worth building
+  - New this cycle (88) — a cue that saturates, and the ten nobody teaches
+  - New this cycle (87) — the mixer has a scale now, and one thing left off it
+  - New this cycle (86) — the garden has three idle motions and one interruption
+  - New this cycle (85) — nothing checks the board, and a player found out first
+  - New this cycle (84) — the refusal held the answer
+  - New this cycle (83) — four screens were checked for the first time and all were clean
+  - New this cycle (82) — the surface that computes its limit is the one with room
+  - New this cycle (81) — a pest can carry two traits and nothing on screen says which
+  - New this cycle (80) — one-shots are a system and nothing treats them as one
+  - New this cycle (79) — the row holds one extra clause and there are three candidates
+  - New this cycle (78) — an exception in a grammar is often a missing row
+  - New this cycle (77) — three quarters of this file cites nothing
+  - New this cycle (76) — six kinds of enemy, and one knob that raises how often
+  - New this cycle (75) — four surfaces are capacity-bound and one of them computes it
+  - New this cycle (74) — sound is a switch, and the switch panel is full
+  - New this cycle (73) — twenty-two named beats, eleven sounds
+  - New this cycle (72) — eleven animation steps nobody has ever seen run
+  - New this cycle (71) — every idle motion in the game is the same sine wave
+  - New this cycle (70) — every plant draws underneath its own art
+  - New this cycle (69) — the game draws two countdowns and refuses to draw the third
+  - New this cycle (68) — the grammar is written; the plants do not follow it
+  - New this cycle (67) — the HUD reports how full it is; the game does not
+  - New this cycle (66) — the HUD is at its floor on three rows out of four
+  - New this cycle (65) — a corpse can carry information, and only one does
+  - New this cycle (64) — three surfaces are each exactly one item from full
+  - New this cycle (63) — the message row is fully checked; nothing else is
+  - New this cycle (62) — the corpus is checked two ways and neither is about time
+  - New this cycle (61) — one-shot hints are a mechanism now, and there is only one
+  - New this cycle (60) — the message row is nearly full and teaching costs permanent space
+  - New this cycle (59) — the move tool exists; nothing tells the player it does
+  - New this cycle (58) — the uproot flow is nearly a move tool
+  - New this cycle (57) — the selection panel is full, and that is now a known quantity
+  - New this cycle (56) — the garden can now be read, and that suggests what to read next
+  - New this cycle (55) — the hover now answers "what does this buy?"
+  - New this cycle (54) — coverage and firepower are two different pictures
+  - New this cycle (53) — the road can change now, and that is newly interesting
+  - New this cycle (52) — the row is solved; the same shape is everywhere else
+  - New this cycle (51) — two hand-lists describe one row, and neither knew about the other
+  - New this cycle (50) — the road never climbs, and a mutation sweep that proved nothing
+  - New this cycle (49) — a user request that already ships, and a checker that was checking a stub
+  - New this cycle (48) — weather has an upside now, and a budget was measuring half its row
+  - New this cycle (29 of 30) — comments that make checkable claims, and one that was false
+  - New this cycle (28 of 30) — a node with no name is a node nothing can address
+  - New this cycle (27 of 30) — a green test proved nothing, and the suite cannot tell
+  - New this cycle (26 of 30) — what a reverted upgrade exposed about our own tests
+  - New this cycle (25 of 30) — three screens learned the same lesson separately
+  - New this cycle (24 of 30) — glyphs are a vocabulary, and this game has two
+  - New this cycle (23 of 30) — seven budgets now, and the shape they share
+  - New this cycle (22 of 30) — the one-owner pattern, and where else it is missing
+  - New this cycle (21 of 30) — grown from a Label two systems both write to
+  - New this cycle (20 of 30) — grown from the first animation this game asserts
+  - New this cycle (19 of 30) — grown from the gap ledger, which is the fourth derived-status file here
+  - New this cycle (18 of 30) — the top bar is full, and that is now a measured fact
+  - New this cycle (16 of 30) — the pause card learned to measure itself; four screens have not
+  - New this cycle (15 of 30) — grown from the pause card, after widening it
+  - New this cycle (14 of 30) — grown from the keys screen, each with the line that proves it is not already built
+  - New this cycle (13 of 30) — grown from the save file, after spending a cycle inside it
+  - New this cycle (12 of 30) — grown from the features above
+  - New this cycle (11 of 30) — grown from the features above
+  - New this cycle (10 of 30) — grown from the features above
+  - New this cycle (9 of 30) — grown from the features above
+  - New this cycle (8 of 30) — grown from the features above
+  - New this cycle (7 of 30) — grown from the features above
+  - New this cycle (5 of 30) — grown from the five features above
+  - New this cycle (4 of 30) — grown from the five features above
+  - New this cycle (3 of 30) — grown from the four features above
+  - New this cycle (2 of 30) — grown from watching the five features run
+  - From the previous cycle — grown from watching the four features run
+  - Grown from the previous session — grown from what the running game actually feels like
+    - Grown from an earlier session's five features — all four shipped 2026-08-15
+    - Grown from the *previous* session's six features, after watching them run
+  - Grown straight from the brief — ALL FOUR SHIPPED (audited cycle 34)
+  - Systems that give a short game long legs
+  - Feel and polish
+  - Accessibility
+  - New this cycle (14 of 30, first pass) — grown from the features above
+  - New this cycle (15 of 30, first pass) — grown from the features above
+  - New this cycle (16 of 30, first pass) — grown from the features above
+  - New this cycle (17 of 30) — grown from the features above
+  - New this cycle (18 of 30, first pass) — grown from the features above
+  - New this cycle (20 of 30, first pass) — grown from the features above
+  - New this cycle (21 of 30, first pass) — grown from the features above
+  - New this cycle (22 of 30, first pass)
+  - New this cycle (23 of 30, first pass) — grown from the features above
+  - New this cycle (24 of 30, first pass) — grown from the features above
+  - Audited and removed: the "grown from the features above" sections 25-27 (cycle 64)
+  - New in cycle 110 — grown from the Barrier Bramble (`plant-tower-defense-3mhn`)
+  - New in cycle 111 — grown from the toughness readout and the surveys
+  - New in cycle 112 — grown from confirming a bead and reading a sentence
+  - New in cycle 113 — grown from the move-preview mis-promise
+  - New in cycle 114 — grown from the wall's damage frames
+  - New in cycle 115 — grown from reading all 33 HUD sentences
+  - New in cycle 116 — grown from a tool that falsified its own caveat
+  - New in cycle 117 — grown from the fourth hint and 48 stale citations
+  - New in cycle 118 — grown from a decision that was already half made
+  - New in cycle 119 — grown from a cue that was already promised
+  - New in cycle 120 — grown from a save that could not say it had failed
+  - New in cycle 121 — grown from a skill whose first use disproved one of its own sections
+  - New in cycle 122 — grown from a touch layer whose obvious design was wrong
+  - New in cycle 123 — grown from the shop and the panel disagreeing
+  - New in cycle 124 — grown from breaking the detector with the defect it detects
+  - New in cycle 125 — grown from a rung name that broke a layout budget
+  - New in cycle 126 — grown from a checker reading one citation in six
+  - New in cycle 127 — grown from a page showing a right number and a wrong one at once
+  - New in cycle 128 — grown from a zero that meant "nobody played this"
+  - New in cycle 129 — grown from a bead that set its own tiebreaker and then met it
+  - New in cycle 130 — grown from an absence claim that was measured over one file
+  - New in cycle 131 — grown from a fix that passed every gate and changed nothing
+  - New in cycle 132 — grown from a number nobody had
+  - New in cycle 133 — grown from a safety flag that made verification meaningless
+  - New in cycle 134 — a 4-lane fan-out, and every lane started 81 commits behind
+  - New in cycle 135 — a lane that refuted its bead, and a constant arguing for a number it lost
+
+<!-- INDEX:END -->
+
 ## Done
 
 Audited and pruned at cycle 108 (`plant-tower-defense-tkdz`). Every row below shipped
@@ -3468,7 +3622,7 @@ said "not filed yet".
 - **Slow-mode toggle** (global `time_scale`), so the game is playable by whoever
   drew it.
 
-### New this cycle (14 of 30) — grown from the features above
+### New this cycle (14 of 30, first pass) — grown from the features above
 
 - **The prep sentence and the hatch answer the same question in two registers,
   and nothing reconciles them.** `prep_depth_note()` now says "they got 62% of
@@ -3503,7 +3657,7 @@ said "not filed yet".
   a process note: an issue that names a specific file:line is far more likely
   to be right than one that names a concept.
 
-### New this cycle (15 of 30) — grown from the features above
+### New this cycle (15 of 30, first pass) — grown from the features above
 
 - **`_on_pest_escaped` throws away the only information it has.** Every escape is
   filed against `Board.exit_cell()`, because an escaped pest's own position is
@@ -3538,7 +3692,7 @@ said "not filed yet".
   budget with its current headroom, would make the set visible before someone
   goes looking.
 
-### New this cycle (16 of 30) — grown from the features above
+### New this cycle (16 of 30, first pass) — grown from the features above
 
 - **A test that passes for its own reasons is invisible until the order changes.**
   `test_kernels_launch` read `kernels[0]` out of a tree-global group and measured a
@@ -3596,7 +3750,7 @@ said "not filed yet".
   scripts are never loaded by any test. `scripts-seen` exists in the bridge and nothing
   compares it against the file list.
 
-### New this cycle (18 of 30) — grown from the features above
+### New this cycle (18 of 30, first pass) — grown from the features above
 
 - **Two tests in this repo now wait for a thing instead of assuming a frame count, and
   nothing finds the third.** `test_hosting_a_loaded_cob` asserted a volley had fired by
@@ -3624,7 +3778,7 @@ said "not filed yet".
   "unaimed", which is exactly right, but a player never learns that unaimed ground still
   gets kills — which is the thing that would stop them over-buying cover.
 
-### New this cycle (20 of 30) — grown from the features above
+### New this cycle (20 of 30, first pass) — grown from the features above
 
 - **Corn Cobbler counts down to its next shot in a private variable, and nothing about
   the plant says whether it is loaded.** Sunflower's payout clock got a gauge that
@@ -3821,7 +3975,7 @@ said "not filed yet".
   density — for exactly these two ramps is the natural next entry under that same
   heading.
 
-### New this cycle (21 of 30) — grown from the features above
+### New this cycle (21 of 30, first pass) — grown from the features above
 
 - **Upgrading a Corn Cobbler is `level += 1` and a redraw, with nothing marking the
   instant it happens.** `CornCobbler.upgrade()` (corn_cobbler.gd:290-297) bumps
@@ -3864,7 +4018,7 @@ said "not filed yet".
   `_claim()`, sticky_sundew.gd:244-250, already got this note last cycle; it turns
   out the same gap runs through all three attacking plants, not just that one.)
 
-### New this cycle (22 of 30)
+### New this cycle (22 of 30, first pass)
 
 - **`Plant` has a field for idle sway and nothing ever writes to it.**
   `_wobble_time: float = 0.0` (plant.gd:104) is declared and never read or written
@@ -3901,7 +4055,7 @@ said "not filed yet".
   anywhere in it. The two headings already disagree about how the run went; the
   motion carrying them onto the screen currently does not.
 
-### New this cycle (23 of 30) — grown from the features above
+### New this cycle (23 of 30, first pass) — grown from the features above
 
 - **A kernel that connects and a kernel that whiffs both just vanish.** `Kernel._physics_process`
   (kernel.gd:60-72) has exactly two exits: leave `_bounds` and `queue_free()`, or land
@@ -3935,7 +4089,7 @@ said "not filed yet".
   drawing and sprite in. The one readout built specifically to answer "how many
   pages are left" is the one piece of the page turn that never turns.
 
-### New this cycle (24 of 30) — grown from the features above
+### New this cycle (24 of 30, first pass) — grown from the features above
 
 - **Music shipped with exactly one volume: on or off.** `Music.BASE_VOLUME_DB`
   (music.gd:53) is a fixed constant every track plays at; the only lever anywhere is
