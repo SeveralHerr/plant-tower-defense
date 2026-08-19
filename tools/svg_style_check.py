@@ -197,7 +197,63 @@ Usage:
     python tools/svg_style_check.py --strict           # warnings gate too
     python tools/svg_style_check.py --json             # machine-readable
     python tools/svg_style_check.py --quiet            # findings and totals only
+    python tools/svg_style_check.py --fixture          # the fixture; can it FAIL?
     python tools/svg_style_check.py -p ../other-game
+
+    fixture:   `python tools/svg_style_check.py --fixture`. KEPT, not written and
+               deleted -- the mutations below are what you re-run after every edit to
+               this file. The whole contract is read at runtime out of two other
+               files, so the fixture builds a miniature of all of it in a temp
+               project: a gate script with EXPECTED_SIZE and PALETTE, a STYLE.md with
+               a palette table, nine SVGs, and the eighteen PNGs plus the manifest the
+               render half looks for (a real IHDR and no image data -- png_size reads
+               24 bytes and nothing else). Cases: clean on all thirteen checks / 48x48
+               against a declared 64 / a colour on no palette segment / a grey rim on
+               a coloured fill / a <linearGradient> declared AND referenced / no fill
+               declared anywhere (renders black) / opacity="0.5" / content 6px off the
+               vertical axis / an SVG with no EXPECTED_SIZE row / an EXPECTED_SIZE row
+               with no SVG.
+               Baseline: 11 findings = 10 errors + 1 warning, exit 1.
+               ASSERTED PER CHECK, plus the three SEVERITY totals, plus which checks
+               name each sprite. Per check because this tool prints a thirteen-way
+               denominator and a check that stops firing prints `0` there exactly as a
+               clean corpus does; per severity because `outline` has an ERROR branch
+               and a WARNING branch that fire on the SAME sprite -- see mutation 1.
+    mutations: 6, all RED, restore clean. Measured 2026-08-18; baseline 0 failure(s).
+               Note that FIVE of the six leave the exit code at 1.
+               `if stroke_grey and not fill_grey:`
+                 -> `if False and ...`         -> 2 failures, and THE PER-CHECK COUNT
+                                                  DOES NOT MOVE. grey_rim falls through
+                                                  to the hue branch, so `outline` still
+                                                  reports 1 finding against the same
+                                                  sprite; only errors 10 -> 9 and
+                                                  warnings 1 -> 2 show it. Without the
+                                                  severity totals this one SURVIVES
+               freshness `!= actual` -> `== actual`
+                                              -> 11 failures. Every stamp "mismatches",
+                                                 freshness 0 -> 9, errors 10 -> 19
+               PALETTE regex `"([0-9a-fA-F]{6})"`
+                 -> `"#([0-9a-fA-F]{6})"`     -> the contract loader refuses and the
+                                                 whole run is COULD NOT RUN (exit 2).
+                                                 The fixture reports that as a named
+                                                 failure, never as findings: exit 2
+                                                 means nothing was verified
+               `if expected is None:` (declared)
+                 -> `if False and ...`        -> 3 failures. declared 2 -> 1; the
+                                                 EXPECTED_SIZE-with-no-SVG half still
+                                                 fires, which is why both halves are
+                                                 asserted by sprite name
+               `off > CENTRE_ERROR`
+                 -> `off > CENTRE_ERROR * 10` -> 2 failures, again per-check count
+                                                 UNCHANGED at 1: the 6px offset demotes
+                                                 from the error branch to the warning
+                                                 branch. errors 10 -> 9, warnings 1 -> 2
+               `want_w = round(svg_w * scale)`
+                 -> `... + 1`                 -> 12 failures, raster_size 0 -> 18. This
+                                                 one exists to prove the checks the
+                                                 fixture expects ZERO from can fire at
+                                                 all -- an expectation of 0 that no
+                                                 mutation can move is not an assertion
 """
 
 from __future__ import annotations
@@ -211,6 +267,7 @@ import re
 import struct
 import sys
 import xml.etree.ElementTree as ET
+import zlib
 
 # ---------------------------------------------------------------------------
 # Where the contract lives. Nothing here is a copy of it -- these are paths.
@@ -1721,6 +1778,289 @@ def wrap_detail(text, indent):
     return out
 
 
+# ---------------------------------------------------------------------------
+# The synthetic fixture.
+#
+# This tool shipped without one. It has thirteen named checks and reports them as a
+# denominator line, which makes it the exact shape the house rule warns about: a
+# check that stops firing does not disappear from the output, it prints `0`, and `0`
+# is what a clean corpus prints too. So the fixture asserts PER CHECK, not in total.
+#
+# The whole contract is read at runtime out of two other files, so the fixture has to
+# build a miniature of all of it: a gate script with EXPECTED_SIZE and PALETTE, a
+# STYLE.md with a palette table, the SVGs, and the PNGs the render half looks for.
+# ---------------------------------------------------------------------------
+
+FIXTURE_GATE = '''extends Node
+
+const EXPECTED_SIZE := {
+\t"good": 64,
+\t"wrong_size": 64,
+\t"off_palette": 64,
+\t"grey_rim": 64,
+\t"gradient": 64,
+\t"no_fill": 64,
+\t"translucent": 64,
+\t"off_centre": 64,
+\t"phantom": 64,
+}
+
+const PALETTE: PackedStringArray = [
+\t"1F8A4C", "2ECC71", "31D978",
+\t"727272", "939393", "AAAAAA",
+]
+'''
+
+FIXTURE_STYLE = '''# Sprite style (fixture)
+
+| Role | Dark rim | Base | Light facet |
+|---|---|---|---|
+| Foliage green | `#1F8A4C` | `#2ECC71` | `#31D978` |
+| Stone | `#727272` | `#939393` | `#AAAAAA` |
+
+Outline = 2px at 64x64, a darker shade of the fill. Never a gradient.
+'''
+
+
+def _svg(body, width=64, height=64):
+    return ('<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" '
+            'viewBox="0 0 %d %d">%s</svg>\n' % (width, height, width, height, body))
+
+
+# stem -> (svg text, declared canvas the PNGs must match)
+FIXTURE_SVGS = {
+    # Clean on every one of the thirteen checks. Without this the fixture proves the
+    # tool can fire but not that it can stay quiet, and a checker that fires on
+    # everything is as useless as one that fires on nothing.
+    "good": _svg('<circle cx="32" cy="32" r="24" fill="#2ECC71" stroke="#1F8A4C" '
+                 'stroke-width="2"/>'),
+    # Square, but not the size EXPECTED_SIZE declares. The PNGs match the SVG, so
+    # this is a `canvas` finding and NOT a `raster_size` one -- the two are
+    # deliberately measured against different things.
+    "wrong_size": _svg('<circle cx="24" cy="24" r="18" fill="#2ECC71" '
+                       'stroke="#1F8A4C" stroke-width="2"/>', 48, 48),
+    # A colour on no palette segment.
+    "off_palette": _svg('<circle cx="32" cy="32" r="24" fill="#FF00FF"/>'),
+    # A grey rim on a coloured fill. STYLE.md forbids it in those words.
+    "grey_rim": _svg('<circle cx="32" cy="32" r="24" fill="#2ECC71" '
+                     'stroke="#727272" stroke-width="2"/>'),
+    # A gradient, declared in defs and referenced. Two separate findings: the
+    # declaration and the use.
+    "gradient": _svg('<defs><linearGradient id="g"/></defs>'
+                     '<circle cx="32" cy="32" r="24" fill="url(#g)" '
+                     'stroke="#1F8A4C" stroke-width="2"/>'),
+    # No fill declared anywhere up the ancestry, so SVG's initial fill applies and it
+    # renders black. STYLE.md forbids black outright.
+    "no_fill": _svg('<circle cx="32" cy="32" r="24"/>'),
+    # Sub-1 opacity composites against whatever is under it and lands on no palette
+    # segment.
+    "translucent": _svg('<circle cx="32" cy="32" r="24" fill="#2ECC71" '
+                        'opacity="0.5"/>'),
+    # Content pushed off the vertical axis by 6px, well past the 1.5px error bar.
+    "off_centre": _svg('<circle cx="38" cy="32" r="20" fill="#2ECC71"/>'),
+    # `undeclared` has no EXPECTED_SIZE row; `phantom` has a row and no SVG. The two
+    # halves of the `declared` check, and only the second is obvious.
+    "undeclared": _svg('<circle cx="32" cy="32" r="24" fill="#2ECC71" '
+                       'stroke="#1F8A4C" stroke-width="2"/>'),
+}
+
+# check name -> how many findings it must produce over the corpus above.
+# Asserted PER CHECK, never as a total: this tool prints a thirteen-way denominator,
+# and a check that stops firing prints `0` exactly as a clean corpus does.
+FIXTURE_BY_CHECK = {
+    "declared": 2,      # undeclared.svg has no row; phantom has a row and no file
+    "canvas": 1,        # wrong_size is 48x48 against a declared 64
+    "palette": 2,       # off_palette's magenta, no_fill's implied black
+    "flat_paint": 3,    # the <linearGradient>, the url(#g) use, the 0.5 opacity
+    "outline": 1,       # grey_rim
+    "outline_width": 0,
+    "black_fill": 1,    # no_fill
+    "content": 0,
+    "centred": 1,       # off_centre
+    "margin": 0,
+    "pairing": 0,       # every SVG has both renders, and no render is orphaned
+    "raster_size": 0,
+    "freshness": 0,     # the manifest is written, and it matches
+}
+
+FIXTURE_EXPECT_EXIT = 1
+
+# (errors, warnings, advisory) over the whole corpus. 11 findings in total:
+# declared 2 + canvas 1 + palette 2 + outline 1 + black_fill 1 + centred 1 = 8 errors,
+# plus flat_paint's <linearGradient> declaration and its url(#g) use = 10; the one
+# warning is flat_paint's opacity="0.5".
+FIXTURE_EXPECT_SEVERITY = (10, 1, 0)
+
+# stem -> the checks that must name it. Named individually because the per-check
+# counts can still be right for the wrong reasons: two `declared` findings is also
+# what you get if the undeclared half breaks and some other sprite starts firing.
+FIXTURE_SPRITE_CHECKS = {
+    "good": set(),
+    "wrong_size": {"canvas"},
+    "off_palette": {"palette"},
+    "grey_rim": {"outline"},
+    "gradient": {"flat_paint"},
+    "no_fill": {"black_fill", "palette"},
+    "translucent": {"flat_paint"},
+    "off_centre": {"centred"},
+    "undeclared": {"declared"},
+    "phantom": {"declared"},
+}
+
+
+def _write_png(path, width, height):
+    """A PNG whose header says WxH. png_size() reads the first 24 bytes and nothing
+    else, so signature + IHDR + IEND is a complete input for this tool -- and writing
+    a real IDAT would mean shipping a compressor's output in a fixture nobody can
+    read."""
+    def chunk(tag, payload):
+        return (struct.pack(">I", len(payload)) + tag + payload
+                + struct.pack(">I", zlib.crc32(tag + payload) & 0xFFFFFFFF))
+
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    with open(path, "wb") as fh:
+        fh.write(PNG_MAGIC + chunk(b"IHDR", ihdr) + chunk(b"IEND", b""))
+
+
+def run_fixture():
+    """Return the failure count. Prints what it compared, never just a verdict."""
+    import io
+    import shutil
+    import tempfile
+
+    root = tempfile.mkdtemp(prefix="svg_style_fixture_")
+    fails = 0
+    try:
+        os.makedirs(os.path.join(root, "art_src"))
+        os.makedirs(os.path.join(root, "test", "unit"))
+        os.makedirs(os.path.join(root, "assets", "sprites", "retina"))
+        with open(os.path.join(root, GATE_SCRIPT), "w", encoding="utf-8") as fh:
+            fh.write(FIXTURE_GATE)
+        with open(os.path.join(root, STYLE_DOC), "w", encoding="utf-8") as fh:
+            fh.write(FIXTURE_STYLE)
+
+        stamps = {}
+        for stem, text in FIXTURE_SVGS.items():
+            svg_path = os.path.join(root, SRC_DIR, "%s.svg" % stem)
+            with open(svg_path, "w", encoding="utf-8") as fh:
+                fh.write(text)
+            m = re.search(r'width="(\d+)" height="(\d+)"', text)
+            w, h = int(m.group(1)), int(m.group(2))
+            one, two = render_paths(root, stem)
+            _write_png(one, w, h)
+            _write_png(two, w * RETINA_SCALE, h * RETINA_SCALE)
+            stamps[stem] = sha256_file(svg_path)
+        with open(os.path.join(root, MANIFEST), "w", encoding="utf-8") as fh:
+            json.dump(stamps, fh)
+
+        old_stdout, old_stderr = sys.stdout, sys.stderr
+        sys.stdout = io.StringIO()
+        sys.stderr = io.StringIO()
+        try:
+            code = main(["-p", root, "--json"])
+            out = sys.stdout.getvalue()
+            err = sys.stderr.getvalue()
+        finally:
+            sys.stdout, sys.stderr = old_stdout, old_stderr
+        try:
+            data = json.loads(out)
+        except ValueError:
+            data = None
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    # A COULD NOT RUN is a distinct outcome from a finding, and the two must never be
+    # confused: exit 2 means nothing was verified. Reported as a named failure rather
+    # than allowed to raise, because "the mutation did not apply" and "the guard is
+    # not load-bearing" look identical from a traceback.
+    if data is None:
+        print("  FAIL   the checker produced no JSON (exit %d). That is a COULD NOT "
+              "RUN, not a clean result -- nothing below was verified.\n"
+              "         it said: %s" % (code, (err or out).strip().splitlines()[:1]))
+        print("svg_style_check fixture: 1 failure(s) -- aborted before any check was "
+              "asserted.")
+        return 1
+
+    got_by_check = {name: 0 for name in CHECKS}
+    by_sprite = {}
+    for f in data["findings"]:
+        got_by_check[f["check"]] = got_by_check.get(f["check"], 0) + 1
+        by_sprite.setdefault(f["sprite"], set()).add(f["check"])
+
+    # The denominator FIRST: a check missing from CHECKS entirely would never be
+    # asserted below, so confirm the two lists are the same length before trusting
+    # a single count.
+    ok = sorted(FIXTURE_BY_CHECK) == sorted(CHECKS)
+    if not ok:
+        fails += 1
+    print("  %-6s the fixture covers %d of %d named check(s)%s"
+          % ("ok" if ok else "FAIL", len(FIXTURE_BY_CHECK), len(CHECKS),
+             "" if ok else "  MISMATCH: %s" % sorted(set(CHECKS)
+                                                     ^ set(FIXTURE_BY_CHECK))))
+
+    for name in CHECKS:
+        want = FIXTURE_BY_CHECK.get(name)
+        got = got_by_check.get(name, 0)
+        ok = got == want
+        if not ok:
+            fails += 1
+        print("  %-6s check %-14s %d finding(s) (want %s)"
+              % ("ok" if ok else "FAIL", name, got, want))
+
+    for stem, want in sorted(FIXTURE_SPRITE_CHECKS.items()):
+        got = by_sprite.get(stem, set())
+        ok = got == want
+        if not ok:
+            fails += 1
+        print("  %-6s sprite %-12s named by %-28s (want %s)"
+              % ("ok" if ok else "FAIL", stem, sorted(got) or "nothing",
+                 sorted(want) or "nothing"))
+
+    # Severities as well as counts. `outline` has an ERROR branch (grey rim on a
+    # coloured fill) and a WARNING branch (hue too far apart) that fire on the SAME
+    # sprite for the same reason, so disabling the error branch leaves the per-check
+    # count at 1 and only the severity moves. Without these three numbers that
+    # mutation survives, looking exactly like a guard that is not load-bearing.
+    for label, got, want in (("errors", data["errors"], FIXTURE_EXPECT_SEVERITY[0]),
+                             ("warnings", data["warnings"],
+                              FIXTURE_EXPECT_SEVERITY[1]),
+                             ("advisory", data["advisory"],
+                              FIXTURE_EXPECT_SEVERITY[2]),
+                             ("sprites checked", data["checked"],
+                              len(FIXTURE_SVGS)),
+                             ("sprites discovered", data["discovered"],
+                              len(FIXTURE_SVGS)),
+                             ("renders matching source", data["renders_ok"],
+                              len(FIXTURE_SVGS))):
+        if want is None:
+            continue
+        ok = got == want
+        if not ok:
+            fails += 1
+        print("  %-6s %-24s %s (want %s)" % ("ok" if ok else "FAIL", label, got, want))
+
+    ok = code == FIXTURE_EXPECT_EXIT
+    if not ok:
+        fails += 1
+    print("  %-6s %-24s %s (want %s)"
+          % ("ok" if ok else "FAIL", "exit code", code, FIXTURE_EXPECT_EXIT))
+
+    print("svg_style_check fixture: %d synthetic sprite(s) + 1 declared-with-no-source "
+          "over %d named check(s), %d failure(s). Asserted PER CHECK rather than in "
+          "total: this tool prints a thirteen-way denominator, and a check that stops "
+          "firing prints `0` there in exactly the way a clean corpus does."
+          % (len(FIXTURE_SVGS), len(CHECKS), fails))
+    print("  NOT COVERED: the fixture exercises the contract loader, the paint and "
+          "geometry rules and the render pairing over nine hand-written SVGs whose "
+          "shapes are all circles. It does NOT exercise the path parser (`d` "
+          "tokenising, bezier extrema), the transform stack, or the blend-distance "
+          "metric near its tolerance -- the numeric heart of the geometry half is "
+          "untested here. And the PNGs it writes carry a real IHDR and no image data, "
+          "so nothing about the RENDERED pixels is checked; that is the raster gate's "
+          "job and always was.")
+    return fails
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
         prog="svg_style_check.py",
@@ -1736,7 +2076,13 @@ def main(argv=None):
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.add_argument("--quiet", action="store_true",
                     help="findings and totals only, no per-sprite table")
+    ap.add_argument("--fixture", action="store_true",
+                    help="run the synthetic fixture and exit; proves this checker can "
+                         "FAIL, per check rather than in total")
     args = ap.parse_args(argv)
+
+    if args.fixture:
+        return 2 if run_fixture() else 0
 
     root = os.path.abspath(args.project)
     src = os.path.join(root, SRC_DIR)
