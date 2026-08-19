@@ -129,6 +129,47 @@ FINDING: <file>:<line> <function> <what is wrong and why it matters>
   waive: add `# <tool>: ok - <reason>` in the body.
 ```
 
+### A checker that reads HUMAN PROSE must state its extraction convention
+
+Everything above assumes a source with a fixed grammar. A source written by hand has no
+grammar — it has a **convention**, and the convention belongs to the document, not to you.
+Three times here the tool imported the convention of the document it was written *for* and
+then read a fraction of the document it was pointed *at* — silently, cleanly, and twice the
+miss was larger than the hit:
+
+- `tools/citation_check.py:81-86` — `game/OVERLAY_GRAMMAR.md` lives in `game/` and cites its
+  neighbours bare, no directory part. The first version demanded one and saw **none** of
+  that file's twelve citations. That file is nothing *but* citations.
+- `tools/citation_check.py:90-94` — the continuation form: a full path, then bare `:91`,
+  `:106` inheriting it. 44 of these in `kanban.md`, invisible to the first version — a third
+  again on top of the 130 it did see, in a form this project invented for itself.
+- `tools/citation_check.py:97-108` — `bd` stores `description` and `close_reason` as PLAIN
+  TEXT. Nothing renders them, so nothing rewards backticks: **95 backticked against 495
+  unbackticked**. The first working `--beads` printed `468 bead(s) ... 0 finding(s)` over an
+  input set that was 84% invisible.
+
+Note what the third one is **not**. The denominator rule fired and printed a true number:
+there really were 468 beads. The count that was small is the one nobody printed — the
+citations extracted *from* those beads. **A denominator over the containers does not measure
+the extraction**, so a prose checker owes a second number that the exit-code contract above
+never asked for.
+
+Before adding a source to such a checker, answer both questions in a comment beside the
+pattern:
+
+- **who writes this file, and with what tool?**
+- **what does the RENDERING of it reward?** Markdown rewards backticks. A `bd` description
+  renders nowhere and rewards nothing. A GDScript comment rewards neither.
+
+Then **measure both forms over the real corpus and print the ratio**, the way the 95/495
+count is recorded at `tools/citation_check.py:97-108`. The measurement is the deliverable:
+without it you have a guess about someone else's habits.
+
+And scope the loosening to the source that needs it. Making the permissive form the default
+everywhere is the wrong fix — in `kanban.md` the backticks *are* the convention, and a
+looser pattern there starts matching prose. This repo has the false-positive history to
+match: `heredoc_survey`'s first version reported 554. Per-source, measured, is the answer.
+
 **Make the module docstring a raw string (`r"""`) if it contains regex.** `\S`, `\d` and
 friends are invalid escape sequences in a normal string, so Python emits a `SyntaxWarning`
 — and that warning prints **the offending source line to stderr**, ahead of the tool's own
@@ -241,6 +282,32 @@ if you only look at pass/fail.
 
 Before believing a survivor, ask what the mutated line now computes. If you cannot say
 what changed, nothing did.
+
+**How to tell, when the mutation DID change something.** The paragraph above catches a
+no-op expression. The harder case is a real change that nothing can read — so ask the
+second question too: **is the mutated expression read in a way that can distinguish the
+change?** Three shapes, each of which reads in the moment, and in a log, exactly like a
+weak test:
+
+- **an order swap read by a counter.** Cycle 114 swapped the two entries of
+  `Bramble.DAMAGE_THRESHOLDS` and nothing failed. `texture_for_health`
+  (`game/bramble.gd:231-236`) *counts* how many thresholds the fraction is below rather than
+  walking them in order, so the array's order genuinely cannot matter.
+- **a threshold nudged past a point nothing samples.** A test that samples only the
+  midpoints of the bands cannot see a boundary that moved within its band.
+- **a constant scaled, asserted as a ratio of itself.** An assertion written in terms of the
+  constant moves with it and can never disagree with it.
+
+If the mutant is equivalent, the finding is about the **CODE** and is usually a small
+virtue — here, that the table cannot be mis-ordered. Record it as that, not as a coverage
+gap. ("A survivor is sometimes a finding about the CODE, not about the test", below, is the
+same reading from the other side: there the equivalent code was redundant and wanted
+deleting; here it is load-bearing and merely order-free.)
+
+Then **mutate again, differently, until one is caught.** Cycle 114's second mutation made
+one frame unreachable and died at once, naming the frame that vanished — which is the only
+thing that established the first mutation as equivalent rather than unwatched. **A single
+surviving mutant is not evidence, in either direction.**
 
 ### Then mutate the checker, not just the input
 
