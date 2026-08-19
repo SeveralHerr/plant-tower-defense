@@ -11468,8 +11468,8 @@ func test_the_armed_reset_marks_the_rows_it_will_take_back() -> String:
 ## The pause card and the post-mortem both carry a full-viewport MOUSE_FILTER_STOP
 ## backdrop, so a player cannot CLICK a plant button through them — and focus is a
 ## separate channel that does not care what is drawn on top. `OverlayScreen`'s class
-## header documents exactly this hazard, and both `PauseScreen._set_card_active` and
-## `TitleScreen._set_menu_active` already answer it for their own buttons. The HUD is
+## header documents exactly this hazard, and `OverlayScreen.set_controls_active` (which
+## `TitleScreen._set_menu_active` calls) already answers it for their own buttons. The HUD is
 ## on its own CanvasLayer and is nobody's child, so nothing answered it here.
 ##
 ## The set is COLLECTED from the catalogue-built bars rather than listed, so a plant

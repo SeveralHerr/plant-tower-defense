@@ -3097,7 +3097,7 @@ func interactive_controls() -> Array[Button]:
 ## player cannot CLICK a plant button through the pause card -- and Tab or an arrow
 ## key walks straight onto one, because focus does not care what is drawn on top.
 ## That is the same hazard `OverlayScreen`'s class header documents, and the same fix
-## `PauseScreen._set_card_active` and `TitleScreen._set_menu_active` already apply to
+## `OverlayScreen.set_controls_active` is now, and `TitleScreen._set_menu_active` applies to
 ## their own buttons. Nothing applied it to the HUD, which is a different CanvasLayer
 ## and therefore nobody's child.
 ##
@@ -3109,12 +3109,11 @@ func interactive_controls() -> Array[Button]:
 ## an overlay's, after an unrelated change widened that overlay by 14px. The overlap
 ## was the symptom; this was the defect, and it was several cycles old.
 func set_active(active: bool) -> void:
-	var mode: Control.FocusMode = Control.FOCUS_ALL if active else Control.FOCUS_NONE
-	var filter: Control.MouseFilter = (Control.MOUSE_FILTER_STOP if active
-		else Control.MOUSE_FILTER_IGNORE)
-	for button: Button in interactive_controls():
-		button.focus_mode = mode
-		button.mouse_filter = filter
+	# DELEGATED, not copied (plant-tower-defense-9a2y). These were three byte-identical
+	# copies of the same eight lines; OverlayScreen owns them now. The HUD keeps its own
+	# entry point because it is not an OverlayScreen and Game drives it directly -- what
+	# it no longer keeps is the arithmetic.
+	OverlayScreen.set_controls_active(interactive_controls(), active)
 
 
 func _paint_message_row() -> void:

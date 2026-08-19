@@ -3396,7 +3396,11 @@ func _budget_packet_rack() -> Dictionary:
 			budget_number(float(priced["needed"])), budget_number(float(priced["slot"])),
 		]),
 		("%d tier(s) in SeedBank.PACKET_ORDER x 2 stock states, at font size %d" % [
-			SeedBank.PACKET_ORDER.size(), GardenTheme.BUTTON_FONT_SIZE,
+			# The size the buttons WEAR, matching what packet_rack_budget() measures at.
+			# This said GardenTheme.BUTTON_FONT_SIZE while the budget measured at it too --
+			# so the observation agreed with the budget and both disagreed with the screen
+			# (plant-tower-defense-fo96).
+			SeedBank.PACKET_ORDER.size(), Hud.PACKET_BUTTON_FONT_SIZE,
 		]),
 	]
 	return computed_budget("packet_rack", "Hud.packet_row_rect().size.x",
