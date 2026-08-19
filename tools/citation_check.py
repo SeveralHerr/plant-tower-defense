@@ -208,6 +208,57 @@ def uncited_entries(text: str) -> tuple[int, int]:
     return entries, uncited
 
 
+# A landed line carrying no information about what was cited. Not "wrong" -- unverifiable,
+# which is a different and worse thing, because every check this file performs will report it
+# clean forever.
+WEAK_LINES = frozenset(["", "#", "##", "###", "}", "]", ")", "},", "],", "],", "})",
+                        "return", "pass", "else:", "continue", "break"])
+
+## How many times a line may repeat in its file before a citation to it stops meaning
+## anything. Five is a guess and is meant to be tuned against the printed list rather than
+## defended -- the case that motivated it had 114 identical candidates, which no threshold in
+## this range would miss.
+WEAK_REPEAT_MAX = 5
+
+_line_counts: dict[str, dict[str, int]] = {}
+
+
+def weakness(landed_text: str, src: Path) -> str | None:
+    """Why this citation cannot be checked by comparing text, or None if it can.
+
+    THE POINT, because it is easy to read this as pedantry. `--against` compares the text a
+    citation lands on. A citation landing on a blank line matches a blank line ANYWHERE, so
+    when an edit moves it, restoring it by offset satisfies the drift check while pointing at
+    something else entirely. Measured across cycles 129-131: ten citations found wrong by
+    hand, every one of them landing somewhere like this, and two had drifted in SUBSTANCE
+    rather than position -- a count written out in prose, and a function that no longer
+    exists at all.
+
+    Advisory by construction. These are citations to READ, not citations that are wrong.
+    """
+    lines = [l.strip() for l in landed_text.split("\n")]
+    if all(l in WEAK_LINES for l in lines):
+        return "lands on %s" % ("nothing" if not any(lines) else "only " + repr(lines[0]))
+    key = str(src)
+    if key not in _line_counts:
+        counts: dict[str, int] = {}
+        try:
+            for raw in src.read_text(encoding="utf-8", errors="replace").splitlines():
+                stripped = raw.strip()
+                counts[stripped] = counts.get(stripped, 0) + 1
+        except OSError:
+            counts = {}
+        _line_counts[key] = counts
+    counts = _line_counts[key]
+    # Only single-line citations: a multi-line span is distinctive even when each of its
+    # lines is not, which is the whole reason ranges are worth writing.
+    if len(lines) == 1:
+        n = counts.get(lines[0], 0)
+        if n > WEAK_REPEAT_MAX:
+            return "lands on a line that appears %d times in %s" % (n, src.name)
+    return None
+
+
 def bead_sources(export: Path | None = None) -> tuple[list[tuple[str, str, bool]],
                                                       str | None]:
     """[(label, prose, gating)] read from the bead export, plus a reason it is empty.
@@ -304,6 +355,23 @@ def self_check() -> int:
             problems.append("%s missing from the sources entirely" % lbl)
         elif hit[0] is not want:
             problems.append("%s gating=%s, expected %s" % (lbl, hit[0], want))
+    # Case 7: the --weak classifier, both directions. A rule that calls everything weak is
+    # as useless as one that calls nothing weak, and the second failure is the silent one --
+    # it prints "0 of 937" and reads exactly like a corpus with no problem in it.
+    probe_src = ROOT / "tools" / "citation_check.py"
+    if weakness("", probe_src) is None:
+        problems.append("a blank landing was not called weak")
+    if weakness("##", probe_src) is None:
+        problems.append("a bare '##' landing was not called weak")
+    if weakness("BEAD_WAIVER = \"citation-check: ok\"", probe_src) is not None:
+        problems.append("a distinctive one-line landing was called weak; the rule is too "
+                        "broad and the list it prints will not be read")
+    # A multi-line span is distinctive even when its lines are not -- that is what ranges
+    # are for, and calling them weak would flood the list with the citations most worth
+    # writing.
+    if weakness("\n".join(["##", "##"]), probe_src) is None:
+        problems.append("a span of nothing but comment markers was not called weak")
+
     # Case 6: an engine path quoted verbatim from a backtrace. Bead prose does this whenever
     # it quotes a GDScript error, and the first version matched from after `res:`, reporting
     # `cites //test/unit/foo.gd -- no such file` against a citation that was perfectly good.
@@ -327,10 +395,10 @@ def self_check() -> int:
         print("SELF-CHECK FAILED: %s" % p)
     if problems:
         return 1
-    print("citation_check --self-check: 6 case(s) OK -- an open bead's dead citation gates, "
+    print("citation_check --self-check: 7 case(s) OK -- an open bead's dead citation gates, "
           "the same defect in a closed bead does not, the unbackticked form is seen, and "
           "a line-initial %r waives a bead while a mid-sentence mention of it does not, "
-          "and a res:// path quoted from a backtrace resolves repo-relative. NOT COVERED "
+          "a res:// path quoted from a backtrace resolves repo-relative, and --weak calls a blank landing weak while leaving a distinctive one alone. NOT COVERED "
           "by this fixture: whether the real export parses, and whether a landed line "
           "supports its claim." % BEAD_WAIVER)
     return 0
@@ -401,6 +469,12 @@ def main(argv: list[str]) -> int:
                     help="also read citations out of bead prose (%s -- description and "
                          "close_reason). Open beads gate, closed ones are advisory"
                          % BEADS_EXPORT)
+    ap.add_argument("--weak", action="store_true",
+                    help="list RESOLVED citations whose landed line carries no information "
+                         "-- blank, a bare brace or comment marker, or a line repeated "
+                         "throughout its file. ADVISORY: these are citations to READ, not "
+                         "citations that are wrong. They are the ones --against can never "
+                         "check, because a blank line matches a blank line anywhere")
     ap.add_argument("--self-check", action="store_true",
                     help="run the synthetic bead fixture and exit; proves --beads can fail")
     args = ap.parse_args(argv[1:])
@@ -456,6 +530,8 @@ def main(argv: list[str]) -> int:
     # did on the run that added this. A gate that is red every cycle for reasons nobody can
     # fix is the permanently-red gate house-static-checker calls worse than no gate.
     gating_keys: set[str] = set()
+    # key -> why it cannot be checked by comparing text. Populated only under --weak.
+    weak_seen: dict[str, str] = {}
     resolved = 0
 
     # (label, text, is_file, gating). Files first so their line numbers keep their old
@@ -537,6 +613,10 @@ def main(argv: list[str]) -> int:
             # is not a citation going stale). Everything else is kept, including trailing
             # comments -- a line whose comment changed is a line worth re-reading.
             landed[k] = "\n".join(l.strip() for l in lines[start - 1:end])
+            if args.weak and k not in weak_seen:
+                why = weakness(landed[k], src)
+                if why is not None:
+                    weak_seen[k] = why
             if gating:
                 gating_keys.add(k)
             # First writer wins: a target cited from two entries collapses to one key, and
@@ -545,6 +625,30 @@ def main(argv: list[str]) -> int:
             if not args.quiet:
                 body = _printable(" | ".join(l.strip()[:60] for l in lines[start - 1:end]))
                 print("  %-34s %s" % (k, body))
+
+    if args.weak:
+        # THE COUNT IS THE RESULT, which is why it prints before the list. Nobody knew how
+        # many of this project's citations land somewhere no text comparison can check; the
+        # sample that motivated this was ten wrong out of ten read, across three cycles.
+        print("")
+        print("citation_check --weak: %d of %d resolved citation(s) land somewhere that "
+              "carries no information -- %.0f%%."
+              % (len(weak_seen), resolved,
+                 (100.0 * len(weak_seen) / resolved) if resolved else 0.0))
+        for k in sorted(weak_seen):
+            print("  %-38s %s" % (k, weak_seen[k]))
+            print("      %-36s written at %s" % ("", cited_at.get(k, "?")))
+        print("ADVISORY, exit 0 always. These are citations to READ, not citations that are "
+              "wrong -- a `return out` really is the line somebody meant often enough. What "
+              "they share is that `--against` can never check them: it compares TEXT, and a "
+              "blank line matches a blank line anywhere, so relocating one by offset after "
+              "an edit satisfies the drift check while pointing at something else.")
+        print("NOT COVERED by --weak: a citation landing on a DISTINCTIVE line that is "
+              "nonetheless the wrong one. Two of the ten found by hand were that -- a count "
+              "written out in prose, and a function that no longer exists at all -- and no "
+              "rule over the landed text can see either. This narrows the reading list; it "
+              "does not replace the reading.")
+        return 0
 
     if args.snapshot:
         Path(args.snapshot).write_text(

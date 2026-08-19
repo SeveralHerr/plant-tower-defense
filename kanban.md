@@ -1413,7 +1413,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 - **Two plants draw where they will act next, and both only after they have already acted.**
   The cob's fan points along `_aim_angle`, set inside `_fire_at` (`game/corn_cobbler.gd:119`),
   and the Dandelion's blast circle sits on `_last_landing`, set inside its own fire path
-  (`game/dandelion.gd:234`) behind a `_has_fired` gate (`:378`). Both are *post*-views wearing
+  (`game/dandelion.gd:234`) behind a `_has_fired` gate (`:420`). Both are *post*-views wearing
   the shape of a preview: a freshly planted cob points wherever it happened to be initialised
   until its first shot, and a Dandelion shows nothing at all. The information a player wants
   before committing seeds — *which way will this thing shoot* — exists in both plants a frame
@@ -1426,7 +1426,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 - **The only line with a clock behind it is the only clock the game never draws.**
   `_uproot_left` ticks down at `game/game.gd:1376` and lives entirely inside `game.gd` —
   outside it the identifier appears only in tests, never in `hud.gd`, so the HUD learns
-  *armed or not* through `uproot_armed()` (`game/game.gd:1341`) and never *how much is
+  *armed or not* through `uproot_armed()` (`game/game.gd:1832`) and never *how much is
   left*. Meanwhile the game draws this exact thing twice already: `husk_layer.gd:69-77`
   sweeps `TAU * frac` around a husk as its rot timer runs, and `hud.gd:643-647` drains
   `PrepBar` across the whole top bar over the prep gap. A four-second irreversible
@@ -1680,7 +1680,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 
 - **The move preview is complete and undiscoverable.** Arming an uproot and then hovering
   a destination now shows cost and gain together, which is a real tool — and the only thing
-  that hints at it is a button reading `Really uproot? (+N)` (`game/hud.gd:1206`). A player
+  that hints at it is a button reading `Really uproot? (+N)` (`game/hud.gd:1792`). A player
   who arms an uproot is being asked to confirm a deletion, not invited to go looking at
   other cells. One word in that button ("Really uproot? (+12) — or hover to move") or a
   one-shot message the first time a window opens would turn a feature nobody finds into the
@@ -1846,7 +1846,15 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 - **Six `show_message()` durations are hand-picked and nothing relates them.**
   4.0s (eaten), 5.0s (packet), 6.0s (wave cleared), 8.0s (opening hint), 2.0s (uproot
   cancelled, husk swept), 2.5s (mute, colourblind) — at `game/game.gd:264`, `:415`,
-  `:1197`, `:1320`, `:1408`, `:1465`, `:1485`, `:1617`. A message the player must read to
+  `:1197`, `:1320`, `:1408`, `:1465`, `:1485`, `:1617`. **THESE EIGHT NUMBERS NEED A
+  RECOUNT and are not to be trusted** — cycle 132's `--weak` pass flagged `game/game.gd:264`
+  as landing on a blank line, and the two `show_message` calls this entry describes as "2.5s
+  (mute, colourblind)" are at `game/game.gd:2228` and `:2232`. The rest of the list was
+  written in one pass and has not been re-read since; deliberately NOT patched one number at
+  a time, because a list of eight coordinates where the one sampled was wrong by 1900 lines
+  wants re-deriving, not repairing. The CLAIM — six hand-picked durations with nothing
+  relating them — is unaffected and is what the entry is for.
+  A message the player must read to
   act on (the opening hint) and one that is pure confirmation (uproot cancelled) are four
   seconds apart, which is probably right, but nothing says the rule. Reading time scales
   with length, and the corpus now knows every length — a duration derived from character
