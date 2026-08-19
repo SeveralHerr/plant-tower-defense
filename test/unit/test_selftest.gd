@@ -17437,6 +17437,20 @@ func test_the_holds_line_is_priced_by_the_selection_budget() -> String:
 # focusable. So the set here is "every Control that is FOCUS_ALL during play", built
 # before anything opens — a screen that contributes nothing to that set contributes
 # nothing to the assertion either, which is why the denominator is checked too.
+#
+# plant-tower-defense-j7b1 — THE SUBJECT IS NOW DISCOVERED, NOT LISTED. This shipped
+# with a hand-written array of three overlays asserting its own length, which FAILS
+# when a fourth arrives: the honest fallback, and the opposite of the "catches the
+# fourth screen nobody has written yet" the bead above asked for. It was written that
+# way because there was nothing uniform to discover — NotebookScreen declared no
+# NODE_NAME and PauseScreen offered only three separate bool predicates, so the
+# notebook had to be reached through a private `_notebook` field. Both of those are
+# fixed now (NotebookScreen.NODE_NAME, PauseScreen.open_overlay()), so both ends are
+# derived instead: `_overlay_subclass_names()` asks the engine which subclasses
+# exist, `_self_answered_doors()` asks the card which of its own buttons it answers
+# itself. The "there are three" assertion is deleted rather than updated, and the set
+# equality between those two derivations replaced it — which is the assertion a
+# fourth screen satisfies for free by being wired up.
 # =============================================================================
 
 
@@ -17459,6 +17473,72 @@ func _focusable_under(root: Node) -> Array[Control]:
 	return out
 
 
+## Every OverlayScreen subclass this project declares, asked of the engine's own
+## global class table rather than written down here (plant-tower-defense-j7b1).
+##
+## This is the DENOMINATOR the sweep below has to match. The list it replaced was
+## three literals asserting their own length, which fails the moment a fourth screen
+## lands -- the honest fallback, but the opposite of the "catches the fourth screen
+## nobody has written yet" this test was asked for.
+##
+## Walked through `get_base_script()` rather than by reading each entry's `base`
+## string, which makes it transitive for free: a subclass of a subclass is still an
+## overlay, and neither is the spelling of a base class name something this has to
+## get right.
+## Keyed by class name, valued by the Script itself — the second half is what
+## test_every_overlay_screen_declares_a_node_name reads its constants out of.
+func _overlay_subclasses() -> Dictionary:
+	var found: Dictionary = {}
+	for entry: Dictionary in ProjectSettings.get_global_class_list():
+		var cls: String = String(entry.get("class", ""))
+		if cls == "":
+			continue
+		var script := load(String(entry.get("path", ""))) as Script
+		var walk: Script = script
+		while walk != null:
+			walk = walk.get_base_script()
+			# Identity against the class itself, not against the string
+			# "OverlayScreen": a typo in a string is a silently empty sweep, and a typo
+			# here does not parse.
+			if walk == OverlayScreen:
+				found[cls] = script
+				break
+	return found
+
+
+func _overlay_subclass_names() -> Array[String]:
+	var found: Array[String] = []
+	for cls: String in _overlay_subclasses().keys():
+		found.append(cls)
+	found.sort()
+	return found
+
+
+## Every button on the pause card that the card answers ITSELF -- the doors it opens
+## over its own face, as against the rows Game answers by ending or leaving the run.
+##
+## THE CONNECTION IS WHAT DECIDES IT, not the button's name, and that is not a
+## stylistic choice: `resume_requested`, `restart_requested` and `gate_requested` are
+## connected by Game, and a sweep that pressed those would tear the run down
+## underneath itself. "Answered by the card" is exactly "opens something over the
+## card" and is readable off the live signal connections.
+##
+## Derived from `PauseScreen.BUTTONS` and those connections, so a fourth door is
+## swept by being wired up rather than by being written down here.
+func _self_answered_doors(card: PauseScreen) -> Array[Button]:
+	var out: Array[Button] = []
+	for spec: Dictionary in PauseScreen.BUTTONS:
+		var button := card.get_node_or_null(NodePath(String(spec["name"]))) as Button
+		if button == null:
+			continue
+		for conn: Dictionary in card.get_signal_connection_list(
+				StringName(String(spec["signal"]))):
+			if (conn["callable"] as Callable).get_object() == card:
+				out.append(button)
+				break
+	return out
+
+
 func test_every_overlay_makes_everything_under_it_unfocusable() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	game.pause_run()
@@ -17477,33 +17557,53 @@ func test_every_overlay_makes_everything_under_it_unfocusable() -> String:
 			+ "here would pass every assertion below without checking anything, which "
 			+ "is exactly the vacuity this test was written to avoid"))
 
-	# All three, by name, so a fourth OverlayScreen subclass landing without an entry
-	# is visible rather than silently uncovered. The predicates are PauseScreen's own.
-	var overlays: Array[Dictionary] = [
-		{"name": "notebook", "open": Callable(self, "_open_pause_notebook"),
-			"is_open": Callable(card, "notebook_open")},
-		{"name": "keys", "open": Callable(self, "_open_pause_keys"),
-			"is_open": Callable(card, "keys_open")},
-		{"name": "options", "open": Callable(self, "_open_pause_options"),
-			"is_open": Callable(card, "options_open")},
-	]
+	# THE SUBJECT, DISCOVERED. Both halves are derived: what the project declares, and
+	# what the card can actually open. Neither is a list with a length to assert.
+	var declared: Array[String] = _overlay_subclass_names()
+	var doors: Array[Button] = _self_answered_doors(card)
 	if err == "":
-		err = _T.assert_eq(overlays.size(), 3,
-			("every OverlayScreen subclass is exercised here -- there are three "
-				+ "(key_binding_screen.gd, notebook_screen.gd, options_screen.gd) and a "
-				+ "fourth needs a row above, which is the case this test exists for"))
+		err = _T.assert_gt(declared.size(), 0,
+			("no OverlayScreen subclass came back from ProjectSettings.get_global_class_list() "
+				+ "-- that is the DERIVATION broken, not the game, and every assertion "
+				+ "below would otherwise sweep nothing and report a clean pass"))
+	if err == "":
+		err = _T.assert_gt(doors.size(), 0,
+			("the pause card offers at least one door it answers itself -- an empty set "
+				+ "here is the same vacuous pass one guard up"))
 
-	var swept: int = 0
-	for entry: Dictionary in overlays:
+	# The class names actually opened and measured, collected rather than counted: the
+	# comparison at the end is a set equality, which is what catches BOTH a screen that
+	# is declared and never swept and a sweep that visited something undeclared.
+	var swept: Array[String] = []
+	for button: Button in doors:
 		if err != "":
 			break
-		var label: String = String(entry["name"])
-		err = (entry["open"] as Callable).call(card) as String
+		err = _T.assert_false(button.disabled,
+			"%s is a live way in with nothing open over the card" % button.name)
 		if err != "":
 			break
+		# Through the button's own signal, the way a player does. Calling
+		# PauseScreen._open_notebook() directly passes just as happily with nothing
+		# wired to the button -- see _open_pause_notebook for the same argument.
+		button.pressed.emit()
 		await _pump(game)
-		err = _T.assert_true((entry["is_open"] as Callable).call() as bool,
-			"the %s screen is open" % label)
+		# ONE accessor for all three, which is the change this test was rewritten
+		# around: the notebook used to need `card._notebook` (a private field, because
+		# NotebookScreen declared no NODE_NAME) while its two siblings were found by
+		# theirs.
+		var overlay: OverlayScreen = card.open_overlay()
+		if overlay == null:
+			# A door the card answers itself that opens no overlay is not this test's
+			# subject. It is not silently skipped either: it contributes nothing to
+			# `swept`, and the set equality below is what would notice.
+			continue
+		var label: String = String(overlay.name)
+		var cls: String = String((overlay.get_script() as Script).get_global_name())
+		# Read here rather than after Escape: the close queue_frees the node, and a
+		# script read off a freed object is an aborted method, which the runner reports
+		# as a pass.
+		err = _T.assert_true(cls != "" and label != "",
+			"the open overlay names itself (node %s, class %s)" % [label, cls])
 		if err != "":
 			break
 		# THE INVARIANT. Everything that was focusable during play is unreachable now.
@@ -17517,19 +17617,10 @@ func test_every_overlay_makes_everything_under_it_unfocusable() -> String:
 			break
 		# And back, which is the half that stops a screen passing by breaking the game
 		# underneath it permanently.
-		# The notebook is held as a field rather than found by name -- `notebook_open()`
-		# reads `_notebook` and NotebookScreen declares no NODE_NAME, unlike the other
-		# two. Asymmetric, and reaching for a NODE_NAME it does not have is what
-		# name_check caught here before this ran.
-		var overlay: Node = card._notebook if label == "notebook" \
-			else (card.get_node_or_null(KeyBindingScreen.NODE_NAME) if label == "keys" \
-			else card.get_node_or_null(OptionsScreen.NODE_NAME))
-		err = _T.assert_true(overlay != null, "the %s screen is in the tree to close" % label)
-		if err == "":
-			(overlay as Node).call("_input", _key_press(KEY_ESCAPE))
-			await _pump(game)
-			err = _T.assert_false((entry["is_open"] as Callable).call() as bool,
-				"the %s screen closed again" % label)
+		overlay._input(_key_press(KEY_ESCAPE))
+		await _pump(game)
+		err = _T.assert_true(card.open_overlay() == null,
+			"the %s screen closed again" % label)
 		if err == "":
 			for control: Control in live:
 				err = _T.assert_eq(control.focus_mode, Control.FOCUS_ALL,
@@ -17537,12 +17628,19 @@ func test_every_overlay_makes_everything_under_it_unfocusable() -> String:
 						% [control.name, label])
 				if err != "":
 					break
-		if err == "":
-			swept += 1
+		if err != "":
+			break
+		swept.append(cls)
 
 	if err == "":
-		err = _T.assert_eq(swept, overlays.size(),
-			"every overlay was actually opened and measured, not skipped")
+		swept.sort()
+		err = _T.assert_eq(swept, declared,
+			("every OverlayScreen subclass the project declares was opened over the "
+				+ "pause card and measured, and nothing else was. A FOURTH SCREEN NEEDS "
+				+ "NO EDIT HERE -- it needs a door on this card that the card answers "
+				+ "itself. If a fourth deliberately has none, that exemption belongs in "
+				+ "this assertion, where it can be read, rather than in a screen this "
+				+ "sweep quietly never sees."))
 	game.resume_run()
 	_T.free_ui(game)
 	return err
@@ -18771,4 +18869,104 @@ func test_the_arming_click_is_a_success_and_leaves_the_plant_in_the_ground() -> 
 	return err
 
 # END LANE SECTION — plant-tower-defense-qewm
+# =============================================================================
+
+
+# =============================================================================
+# LANE SECTION — plant-tower-defense-j7b1
+#
+# The overlay sweep discovers its subject now (see the cs2k section above). These
+# two guard the things that made the discovery possible, because both of them are
+# the kind of contract that is true until somebody adds a screen without reading it.
+#
+# The FIRST is the one that matters: `NODE_NAME` is the uniform way an overlay is
+# named, and it was uniform across two of three. Nothing in the game fails when a
+# subclass omits it — it just becomes the one that has to be special-cased, which is
+# how the cs2k sweep ended up with a hand-written list and a length assertion.
+# =============================================================================
+
+
+func test_every_overlay_screen_declares_a_node_name_and_they_are_distinct() -> String:
+	var subclasses: Dictionary = _overlay_subclasses()
+	var err: String = _T.assert_gt(subclasses.size(), 0,
+		("the engine named at least one OverlayScreen subclass -- an empty map here is "
+			+ "the derivation broken, and every loop below would pass over nothing"))
+	# Name -> the class that claims it, so the duplicate message can say which two.
+	var claimed: Dictionary = {}
+	for cls: String in subclasses.keys():
+		if err != "":
+			break
+		var script := subclasses[cls] as GDScript
+		err = _T.assert_true(script != null,
+			"%s's script loaded as a GDScript to read its constants from" % cls)
+		if err != "":
+			break
+		var consts: Dictionary = script.get_script_constant_map()
+		err = _T.assert_true(consts.has("NODE_NAME"),
+			("%s declares NODE_NAME, the way every overlay says what its node is "
+				+ "called. Without one it is the screen every sweep over 'all the "
+				+ "overlays' has to special-case, which is what this contract exists "
+				+ "to stop.") % cls)
+		if err != "":
+			break
+		var value: String = String(consts["NODE_NAME"])
+		err = _T.assert_true(value != "", "%s.NODE_NAME is an actual name" % cls)
+		if err != "":
+			break
+		err = _T.assert_false(claimed.has(value),
+			("%s.NODE_NAME is \"%s\", which %s already uses -- two overlays under one "
+				+ "parent would collide and Godot would silently rename the second, "
+				+ "moving it out from under every get_node that looks for it")
+				% [cls, value, claimed.get(value, "")])
+		claimed[value] = cls
+	if err == "":
+		err = _T.assert_eq(claimed.size(), subclasses.size(),
+			"every subclass contributed a name, so the loop above skipped none")
+	return err
+
+
+## `open_overlay()` is what let the sweep stop naming its three screens. It is only
+## worth having if it agrees with the three bools it was factored out of, in both
+## states -- and the notebook is the one to drive it with, because the notebook is
+## the one that had no NODE_NAME and could not be found by name at all.
+func test_the_pause_card_hands_back_the_overlay_that_is_actually_up() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.pause_run()
+	await _pump(game)
+	var card := game.get_node_or_null("PauseLayer/PauseScreen") as PauseScreen
+	var err: String = _T.assert_true(card != null, "the pause card is up")
+	if err == "":
+		err = _T.assert_true(card.open_overlay() == null,
+			"nothing is over the card yet, and open_overlay() says so")
+	if err == "":
+		err = _T.assert_false(card.overlay_open(),
+			"and the bool it now reads through agrees")
+	if err == "":
+		err = _open_pause_notebook(card)
+	if err == "":
+		await _pump(game)
+		var by_name: Node = card.get_node_or_null(NotebookScreen.NODE_NAME)
+		err = _T.assert_true(by_name is NotebookScreen,
+			("the notebook the card built carries NotebookScreen.NODE_NAME (\"%s\"), so "
+				+ "it is reachable the same way the Keys and Options screens are")
+				% NotebookScreen.NODE_NAME)
+		if err == "":
+			err = _T.assert_true(card.open_overlay() == by_name,
+				"and open_overlay() hands back that same node, not a second answer")
+		if err == "":
+			err = _T.assert_true(card.notebook_open() and card.overlay_open(),
+				"with both bools still agreeing that it is the notebook that is up")
+		if err == "":
+			(card.open_overlay() as OverlayScreen)._input(_key_press(KEY_ESCAPE))
+			await _pump(game)
+			err = _T.assert_true(card.open_overlay() == null,
+				"and closed, open_overlay() is back to null rather than a freed node")
+		if err == "":
+			err = _T.assert_false(card.overlay_open(),
+				"which is also what the bool says, in the state that matters for Escape")
+	game.resume_run()
+	_T.free_ui(game)
+	return err
+
+# END LANE SECTION — plant-tower-defense-j7b1
 # =============================================================================

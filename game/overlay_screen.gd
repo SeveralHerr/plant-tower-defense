@@ -20,6 +20,16 @@ extends Control
 ## screen; a subclass that wants a different name wants a different contract, and
 ## that is a conversation and not an edit.
 ##
+## The screen's OWN node name is the other half of that contract, and every subclass
+## declares it as `NODE_NAME` — `KeyBindingScreen.NODE_NAME`, `OptionsScreen.NODE_NAME`,
+## `NotebookScreen.NODE_NAME`. It is not declared here because the value differs per
+## screen, but the CONSTANT is not optional: a subclass without one is the screen
+## every sweep over "all the overlays" has to special-case, which is what the
+## notebook was until plant-tower-defense-j7b1.
+## `test_every_overlay_screen_declares_a_node_name_and_they_are_distinct` derives the
+## subclass set from the engine's global class table and asserts it, so a fourth
+## screen is asked for a NODE_NAME without anyone having to remember this paragraph.
+##
 ## ## What a subclass supplies
 ##
 ## `panel_rect()` — where the paper sits, sized from the screen's own row count
