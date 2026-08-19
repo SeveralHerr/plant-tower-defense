@@ -8018,3 +8018,40 @@ status rather than rewriting the entries that recorded these as open.
   between this and the GDScript case the rule was written for, where the same damage compiles
   and passes 613 tests. Fixed with `Edit`. That is the fifth occurrence and the log entry is
   the countermeasure the rule already says it is not; using the right tool is.
+
+## 2026-08-18 — the flag that made every save verification meaningless
+
+- Value: **warranted** — the runtime pass disproved a P2 bead's diagnosis and replaced it
+  with a worse one, and neither could have been reached by reading.
+  - Expected: to confirm `-zzx3` (`--snapshot-userstate` failed to restore, so a run's write
+    survived into the developer's real save) and close it.
+  - Got: the opposite mechanism. `_save()` returns **FALSE** under the flag and **TRUE**
+    without it — same build, same three calls, sixty seconds apart, file byte-identical
+    during the flagged run. Nothing survives because nothing is ever written.
+  - Found: `quit` prints `userstate: restored 1 file(s) and removed 0 created during the run`
+    **unconditionally**. I read that exact line twice in cycle 131 and took it as
+    confirmation the flag was doing its job. It is a report about the mechanism, not about
+    the run.
+  - Cheaper: nothing. Both the symptom and its correction needed a live game driven twice
+    with and without one flag.
+
+- Gap: **`launch --snapshot-userstate` prevents the game from saving**, so every runtime
+  verification of save-related behaviour taken under it was run against a game that cannot
+  save and would pass identically either way.
+  - Reproduce: `launch --snapshot-userstate`, then
+    `run-method /root/RunConfig --method toggle_mute_sfx` (true) and
+    `run-method /root/RunConfig --method _save` (**false**); `user://highscore.save` is
+    unchanged. Repeat without the flag: `_save` is **true** and the file changes.
+  - The developer's real save was backed up by hand first and verified byte-identical after
+    (`4a0369eb1eb6d1716da1`) — this project's own `-zzx3` is the warning that a careless
+    experiment here is silent data loss, and it was right about that.
+  - Not established: **why** the write fails. The plausible cause is the snapshot holding the
+    file open or read-only so `FileAccess.open(WRITE)` fails, but the harness implementation
+    was not opened. Read the 0.60.0 template first — this project runs 0.38.0 and
+    `harness-version --client` says outright that gaps logged against it may already be fixed.
+  - [G-134] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: two, and the second is worth having even if the first is fixed upstream.
+    (1) make the write succeed under the flag — snapshot by copying, not by holding.
+    (2) make `quit`'s restore line report what it DID: "restored 1 file(s), 0 of which the
+    run had modified" is the honest form, and it would have exposed this a cycle earlier.
+    Filed as `-ooih` at P1.

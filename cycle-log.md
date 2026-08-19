@@ -1,4 +1,4 @@
-# Cycle 132
+# Cycle 133
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,31 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 133 taught
+
+**A safety mechanism whose success message does not depend on anything having happened is
+not evidence.** `launch --snapshot-userstate` prints `userstate: restored 1 file(s)` every
+time, and I read it twice in cycle 131 as confirmation the flag was working. It stops the
+game saving: `_save()` returns FALSE under the flag and TRUE without it. Every runtime
+verification of save behaviour taken under it ran against a game that cannot save.
+
+**A `-> bool` on a save function is worth more than it looks.** `_save -> FALSE` is a
+complete diagnosis in one command. That return was added in an earlier cycle for exactly this
+reason and it paid here; a project whose save returns `void` meets this bug as "the feature I
+verified does not work for the one person who would notice".
+
+**A bead can be right that something is broken and wrong about what.** `-zzx3` said the flag
+failed to RESTORE, so a write survived. The write never happened. Closed rather than edited —
+leaving it open sends the next reader hunting a restore bug that is not there.
+
+**An eagerly-built failure message fires whether the assertion passes or not.** One `%r`
+emitted 12 engine errors per suite run, in exactly the section where a real aborted-test
+error would appear. The message argument is evaluated before the call; a bad specifier there
+costs every run, not only failing ones.
+
+**Back up by hand before an experiment that can write real user data.** The bead being
+investigated was itself the warning, and it was right about that part.
 
 ## What cycle 132 taught
 

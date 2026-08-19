@@ -4772,3 +4772,34 @@ Three findings kept out here rather than buried in a log:
   for a script when `Edit` looks awkward. Caught immediately by a `SyntaxError` rather than
   silently, which is the difference between Python and the GDScript case the rule was written
   for. Fixed with `Edit`, which is what the rule says.
+
+### New in cycle 133 — grown from a safety flag that made verification meaningless
+
+- **A tool that reports success unconditionally is worse than one that fails loudly.**
+  `launch --snapshot-userstate` exists so a runtime pass can exercise save behaviour without
+  writing the developer's real `user://`. What it does is stop the game saving at all:
+  `_save()` returns `false` with the flag and `true` without it, same build sixty seconds
+  apart. So every verification of save-related behaviour taken under it ran against a game
+  that **cannot save**, and would have passed identically whether the save path worked or
+  not. And `quit` prints `userstate: restored 1 file(s)` every time — I read that line twice
+  in cycle 131 as confirmation the flag was working. Filed as `-ooih` (P1).
+  **The generalisable part: a safety mechanism whose success message does not depend on
+  anything having happened is not evidence.** The line should say what it actually did.
+
+- **A `-> bool` on a save function is worth more than it looks.** `RunConfig._save()` was
+  given a return in an earlier cycle so a failed write could be *seen* rather than inferred.
+  That is the only reason this took two commands instead of a bisect: `_save -> FALSE` is a
+  complete diagnosis. A project whose save returns `void` experiences this as "the feature I
+  just verified does not work for the one person who would notice".
+
+- **A bead can be right that something is broken and wrong about what.** `-zzx3` said the
+  flag failed to RESTORE, so a write survived into the real save. The write never happened.
+  Closed rather than edited, because leaving it open sends the next reader looking for a
+  restore bug that is not there — and the new bead carries the recipe and the control.
+
+- **An eagerly-built failure message fires whether the assertion passes or not.** `%r` is a
+  Python specifier; GDScript formats `%s` and `%d`. Because the message argument is evaluated
+  before the call, one bad specifier emitted **12** `unsupported format character` lines per
+  suite run, underneath a green `ALL TESTS PASSED` — noise in exactly the section where a
+  real aborted-test error would appear. Now 0, and the message was forced to fail once so it
+  has been read at least once in its life, which is what its bead asked for.
