@@ -8065,3 +8065,29 @@ status rather than rewriting the entries that recorded these as open.
     (2) make `quit`'s restore line report what it DID: "restored 1 file(s), 0 of which the
     run had modified" is the honest form, and it would have exposed this a cycle earlier.
     Filed as `-ooih` at P1.
+
+## 2026-08-18 — a 4-lane fan-out, and every lane started 71 commits behind
+
+- Value: **warranted** — four lanes shipped six beads, and the parent pass found what the
+  merge skill says it always finds. The harness itself barely featured; the finding is about
+  the fan-out mechanism.
+  - Expected: four independent lanes on disjoint files, merged with one appended-test
+    conflict.
+  - Got: that, plus **every worktree checked out at `origin/main` (`2563734`), 81 commits
+    behind local `main`**. `isolation: "worktree"` branches from the remote, and this project
+    batches pushes on purpose, so the default base is arbitrarily stale.
+  - Found: the failure mode is worse than a merge conflict. On the stale tree
+    `tools/citation_check.py` had no `--beads` mode at all, so one lane's bead cited three
+    sightings of which one did not exist — it would have reported "premise disconfirmed" and
+    been wrong. Two lanes caught it unprompted and rebased; one was told mid-flight and redid
+    its work; the fourth was on main by luck of timing. **A stale lane's gates all pass,
+    because the stale tree is internally consistent.** Written into
+    `.claude/skills/fan-out-a-cycle/SKILL.md` as step 0, with the check and the verbatim
+    prompt paragraph, since the next fan-out's author is the person who needs it.
+  - Cheaper: `git rev-list --count origin/main..HEAD` before spawning. One command.
+
+- Gap: **no harness gap this turn.** The lane gate allowlist (`check_all.py` alone) held —
+  19 of 19 clean in the parent after every merge — and the parent pass caught exactly what
+  `merge-the-fanout` predicts it catches: an appended-test conflict where both sides held two
+  real tests, resolved by deleting only the three markers and asserting the `func test_` count
+  was unchanged (446 → 446) rather than eyeballing it.

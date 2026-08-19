@@ -5,6 +5,39 @@ description: Write the lane prompts for a parallel cycle — how to partition be
 
 # Writing the lanes
 
+## 0. CHECK THE WORKTREE BASE BEFORE YOU TRUST A SINGLE LANE REPORT
+
+`isolation: "worktree"` branches from **`origin/main`**, not from your local `HEAD`. This
+project batches pushes on purpose — every push auto-deploys — so `origin/main` is
+routinely dozens of commits behind. Measured on the fan-out that produced this section:
+**all four lanes were checked out at `2563734`, 71 commits behind local `main`.**
+
+That is not a cosmetic difference. On that tree `tools/citation_check.py` was 339 lines with
+no `--beads` mode at all, `game/game.gd` had no packet serialisation, and
+`test/unit/test_selftest.gd` was missing ten tests. **Every absence claim a stale lane makes
+is a fact about the checkout rather than about the repo** — one lane would have reported
+"the bead's premise is false, the third sighting does not exist" and been wrong.
+
+So, before spawning and again in every prompt:
+
+```bash
+git rev-parse --short origin/main; git rev-parse --short HEAD
+git rev-list --count origin/main..HEAD      # 0 means the default base is fine
+```
+
+If those differ, put this in **every** lane prompt, verbatim:
+
+> Your worktree may be checked out behind local `main`. Before anything else, run
+> `git rev-list --count HEAD..main`. If it is not 0, run `git checkout -B lane/<bead-id> main`
+> and re-confirm the bead's citations against that tree — line numbers and neighbouring code
+> have moved. Report your base sha in your final report.
+
+Two of four lanes caught this unprompted and rebased themselves; one had to be told
+mid-flight and redid its work; the fourth was already on main by luck of timing. **Do not
+rely on the lane noticing** — a lane that does not notice reports a clean, confident, wrong
+answer, and its gates all pass because the stale tree is internally consistent.
+
+
 The prompt-writing IS the skill. Cycle 100 wrote three lane prompts from scratch and they
 were 90% identical; cycle 102 wrote five and they were 90% identical to those. What varies
 between lanes is four things — the bead, the owned files, the tests, the acceptance — and
