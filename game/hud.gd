@@ -3446,6 +3446,33 @@ static func prep_depth_note(last_wave: float, run: float) -> String:
 ##     by `packet_message()` and three characters.
 ## Both are waived at their call sites with a reason, because a corpus that
 ## quietly omits something is the defect this function exists to end.
+##
+## PREFER INTERPOLATING THE THING YOU DESCRIBE OVER NAMING IT IN PROSE
+## (plant-tower-defense-3w66) — read this before adding a line below.
+##
+## Counted at cycle 115 over the 33 producers this file then held
+## (plant-tower-defense-u9zb's sweep): 21 interpolated the thing they described, and are
+## safe for one shared reason — corn_detail's "%.1f dmg / %.2fs, %d kernel(s)",
+## sundew_detail's "Slowing %d pest(s) to %d%% speed.", wave_cleared_note's "%d pests
+## turned back." A retune moves the number and the sentence follows it; those cannot rot.
+## Every accuracy defect ever found here has been in the handful that name a MECHANISM in
+## prose instead: eaten_message, "A hungry pest ate your NAME!", true of every plant death
+## until a plant arrived that is chewed by every pest, hungry or not (cycle 112, fixed by
+## `chewed_through_message` below); idle_detail, "Idle — waiting for a pest.", shown by a
+## Mint and an Aloe that cannot touch one (cycle 115, fixed by `mint_detail`/`aloe_detail`);
+## and packet_tooltip, "the only reliable way to a Seed Sunflower", false the moment a
+## second tier-2 plant shipped (commit 71f024b) — which is NOT among those 33, because that
+## population was derived by name suffix and `_tooltip` is not one of them, so treat the
+## count as a floor rather than a census. Hold on to eaten_message: it DOES interpolate, so
+## the rule is not "use a format string" but interpolate the thing the sentence CLAIMS —
+## that one claimed a killer and interpolated a victim, and the substitution stayed true
+## while the sentence went false. This is a review heuristic and NOT a gate:
+## `message_corpus_check.py` verifies a line is PRICED, never that it is TRUE, and
+## plant-tower-defense-u9zb's close records why accuracy cannot be mechanised — it is a
+## claim about the relationship between English and code, and there is no shared vocabulary
+## to check it against. When a mechanic changes, the prose producers that interpolate
+## nothing at all are where to look first: `idle_detail`, `mint_detail`, `aloe_detail`,
+## `flight_tip`.
 static func message_corpus() -> Array[String]:
 	var out: Array[String] = []
 	for id: StringName in PlantCatalog.PLANTS:
