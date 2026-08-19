@@ -340,6 +340,18 @@ running a command. **Never write a work checklist into it.**
      THIS cycle is reported as `NEW`, never as drifted — there is nothing to compare it
      against — so the read-back by hand is still yours for anything new. This closes the
      half that is mechanical, which is the half that kept failing.
+
+     **RELOCATING A DRIFTED CITATION BY OFFSET SATISFIES `--against` WITHOUT MAKING IT
+     CORRECT, and this is where the real findings are.** The check compares TEXT, so a
+     citation landing on a blank line, a bare `##`, or a closing brace matches anywhere and
+     a uniform `+N` restore carries it forward looking clean. Cycles 129, 130 and 131 each
+     found citations that were already wrong *before* that cycle touched anything — ten in
+     total, and every one was found by reading the landing rather than by any tool. One had
+     114 candidate lines. Two had drifted in SUBSTANCE (a count written out in prose; a
+     function that no longer exists), which no line-number check can ever see.
+     So: after the offsets go in, **read what each relocated citation lands on, against the
+     sentence that cites it.** If the code it described is gone rather than moved, say so in
+     the entry instead of repointing it at the nearest survivor.
    - **Follow `.claude/skills/kanban-idea-pass/SKILL.md`, which is not optional reading.**
      It holds the five citation rules this step used to state inline — cite a `file:line` for
      every claim about code as it is now, search for the BEHAVIOUR not one implementation of
