@@ -8845,3 +8845,252 @@ func test_the_readout_bands_derived_inputs_measure_what_they_claim() -> String:
 
 # END plant-tower-defense-xf0b
 # =============================================================================
+
+
+# =============================================================================
+# plant-tower-defense-22a — one key column, two screens
+# =============================================================================
+
+## The edge of a key label's DRAWN TEXT that faces the phrase column beside it.
+##
+## Measured through `_T.text_width`, never `get_minimum_size()`: these labels carry
+## `clip_text` and a trimming overrun behaviour, so their reported minimum width is the
+## ~1px clip stub, and any arithmetic built on it agrees with itself and with nothing
+## on the screen.
+##
+## "Toward the phrase" is what makes ONE number comparable across two screens that put
+## the columns in opposite orders. On the pause card the phrase sits to the right of the
+## key, so the facing edge is the text's right edge; on the Keys screen it sits to the
+## left, so the facing edge is the text's left edge. A column is flush when that number
+## is the same on every row, and ragged when it is not — and ragged is the defect: a
+## different-width gap between every verb and the key it is on.
+func _key_edge_toward_phrase(label: Label, phrase_left: float) -> float:
+	var drawn: float = _T.text_width(label)
+	var text_left: float = label.position.x
+	if int(label.horizontal_alignment) == HORIZONTAL_ALIGNMENT_RIGHT:
+		text_left = label.position.x + label.size.x - drawn
+	elif int(label.horizontal_alignment) == HORIZONTAL_ALIGNMENT_CENTER:
+		text_left = label.position.x + (label.size.x - drawn) / 2.0
+	if phrase_left > label.position.x:
+		return text_left + drawn
+	return text_left
+
+
+## Spread of the drawn text widths in a set of labels. Used to prove the flush check
+## below is exercising something: if every key drew the same width, a centred column and
+## a flush one would put the text in the same place and the assertion would hold for a
+## screen that had never been fixed.
+func _drawn_width_spread(labels: Array[Label]) -> float:
+	var lo: float = -1.0
+	var hi: float = -1.0
+	for label: Label in labels:
+		var w: float = _T.text_width(label)
+		if lo < 0.0 or w < lo:
+			lo = w
+		if hi < 0.0 or w > hi:
+			hi = w
+	if lo < 0.0:
+		return 0.0
+	return hi - lo
+
+
+## The two screens that tell a player which key does what are the pause card and the
+## Keys screen, and they told it two different ways: the card right-aligned its key
+## column against the gutter, the Keys screen CENTRED its `RowKey%d` labels. Centred is
+## ragged on both edges, so the gap between a verb's phrase and its key was a different
+## width on every row — on the one screen a player reads down looking for exactly that
+## pairing.
+##
+## WHAT IS ASSERTED HERE IS THE AGREEMENT, not two screens each matching its own
+## constant. A test that read `HORIZONTAL_ALIGNMENT_RIGHT` off the card and
+## `HORIZONTAL_ALIGNMENT_LEFT` off the Keys screen would still pass the day somebody
+## changed one of them, because each half would go on matching the literal written
+## beside it. So both halves are put to ONE function — `KeyBindingScreen.key_alignment`
+## — fed each screen's own real column positions, and separately to one geometric
+## property, flushness, that does not name an enum value at all.
+##
+## The two screens do NOT list the same rows, which is recorded here because the bead
+## that asked for this said they showed "the same eight keys". Neither half was right:
+## the card lists `KeyBindings.actions_in(SCOPE_RUN)` and the Keys screen lists every
+## `KeyBindings.actions()`, a strict superset, and the table holds nine rows rather than
+## eight. That is why the claim under test is about the SHAPE of the column and never
+## about matching the rows in it one for one.
+func test_the_key_column_is_flush_against_its_phrase_on_both_screens() -> String:
+	var keys_screen := await _T.instantiate_ui(
+		KeyBindingScreen.new(), Vector2i(1152, 648)) as KeyBindingScreen
+	var card := await _T.instantiate_ui(
+		PauseScreen.build("", Game.key_help()), Vector2i(1152, 648)) as PauseScreen
+
+	var rows: int = KeyBindings.actions().size()
+	var card_rows: int = Game.key_help().size()
+	var err: String = _T.assert_gt(rows, 1,
+		("the Keys screen has more than one row to compare — with one row every "
+			+ "alignment produces the same column and this test asserts nothing"))
+	if err == "":
+		err = _T.assert_gt(card_rows, 1, "and so does the pause card")
+
+	var keys_key: Array[Label] = []
+	var keys_does: Array[Label] = []
+	if err == "":
+		for i: int in rows:
+			var k: Label = keys_screen.get_node_or_null("RowKey%d" % i) as Label
+			var d: Label = keys_screen.get_node_or_null("Row%d" % i) as Label
+			if k == null or d == null:
+				err = "the Keys screen is missing Row%d or RowKey%d" % [i, i]
+				break
+			keys_key.append(k)
+			keys_does.append(d)
+
+	var card_key: Array[Label] = []
+	var card_does: Array[Label] = []
+	if err == "":
+		for i: int in card_rows:
+			var k: Label = card.get_node_or_null("KeyRow%d" % i) as Label
+			var d: Label = card.get_node_or_null("KeyRowDoes%d" % i) as Label
+			if k == null or d == null:
+				err = "the pause card is missing KeyRow%d or KeyRowDoes%d" % [i, i]
+				break
+			card_key.append(k)
+			card_does.append(d)
+
+	# The two spreads first: without them, "every row's facing edge is the same" is a
+	# claim a centred column could satisfy by accident.
+	if err == "":
+		err = _T.assert_gt(_drawn_width_spread(keys_key), 1.0,
+			("the Keys screen's keys are not all drawn the same width (spread %.0fpx) — "
+				+ "if they were, a centred column and a flush one would be "
+				+ "indistinguishable here") % _drawn_width_spread(keys_key))
+	if err == "":
+		err = _T.assert_gt(_drawn_width_spread(card_key), 1.0,
+			"and neither are the pause card's (spread %.0fpx)"
+				% _drawn_width_spread(card_key))
+
+	if err == "":
+		var edge: float = _key_edge_toward_phrase(keys_key[0], keys_does[0].position.x)
+		for i: int in rows:
+			var e: float = _key_edge_toward_phrase(keys_key[i], keys_does[i].position.x)
+			err = _T.assert_float_eq(e, edge, 0.5,
+				("Keys screen row %d puts its key's phrase-facing edge at %.1f where row 0 "
+					+ "puts it at %.1f — a ragged column, which is a different-width gap "
+					+ "between every verb and the key it is on") % [i, e, edge])
+			if err != "":
+				break
+
+	if err == "":
+		var edge: float = _key_edge_toward_phrase(card_key[0], card_does[0].position.x)
+		for i: int in card_rows:
+			var e: float = _key_edge_toward_phrase(card_key[i], card_does[i].position.x)
+			err = _T.assert_float_eq(e, edge, 0.5,
+				("pause card row %d puts its key's phrase-facing edge at %.1f where row 0 "
+					+ "puts it at %.1f") % [i, e, edge])
+			if err != "":
+				break
+
+	# And the agreement itself: one function, each screen's own geometry.
+	if err == "":
+		err = _T.assert_eq(int(keys_key[0].horizontal_alignment),
+			KeyBindingScreen.key_alignment(keys_key[0].position.x, keys_does[0].position.x),
+			("the Keys screen draws its key column the way the shared rule says, given "
+				+ "where its own columns actually are"))
+	if err == "":
+		# The screen's own shorthand for the line above. Asserted separately because it
+		# reassembles the geometry from the column CONSTANTS while the line above reads
+		# it off the built Labels — so this is the check that the constants and the
+		# things placed from them have not come apart.
+		err = _T.assert_eq(KeyBindingScreen.row_key_alignment(),
+			int(keys_key[0].horizontal_alignment),
+			("KeyBindingScreen.row_key_alignment() answers for the column the screen "
+				+ "actually built, not for one the constants describe on their own"))
+	if err == "":
+		err = _T.assert_eq(int(card_key[0].horizontal_alignment),
+			KeyBindingScreen.key_alignment(card_key[0].position.x, card_does[0].position.x),
+			("and so does the pause card — same function, each screen's own geometry, "
+				+ "which is the whole of what 'aligned across both screens' can mean when "
+				+ "the two put their columns in opposite orders"))
+	if err == "":
+		# The rule has to depend on the column order, or both calls above are one
+		# constant wearing a function's name and neither screen is being checked.
+		err = _T.assert_true(
+			KeyBindingScreen.key_alignment(0.0, 100.0)
+				!= KeyBindingScreen.key_alignment(100.0, 0.0),
+			"and it answers differently for the two column orders")
+	if err == "":
+		err = _T.assert_eq(KeyBindingScreen.key_alignment(0.0, 100.0),
+			HORIZONTAL_ALIGNMENT_RIGHT,
+			"phrase on the right means the key is flush right against the gutter")
+	if err == "":
+		err = _T.assert_eq(KeyBindingScreen.key_alignment(100.0, 0.0),
+			HORIZONTAL_ALIGNMENT_LEFT, "and phrase on the left means flush left")
+
+	# Recorded rather than assumed: the bead said both screens showed the same eight
+	# keys. A later reader "fixing" the alignment by matching the two lists row for row
+	# would be matching lists of different lengths.
+	if err == "":
+		err = _T.assert_gt(rows, card_rows,
+			("the Keys screen lists strictly more verbs (%d) than the pause card (%d) — "
+				+ "every action against the run-scope ones") % [rows, card_rows])
+	if err == "":
+		err = _T.assert_eq(card_rows,
+			KeyBindings.actions_in(KeyBindings.SCOPE_RUN).size(),
+			"and the card's rows are exactly the run-scope actions")
+	if err == "":
+		for action: StringName in KeyBindings.actions_in(KeyBindings.SCOPE_RUN):
+			err = _T.assert_true(KeyBindings.actions().has(action),
+				"%s is on the card and also on the Keys screen" % action)
+			if err != "":
+				break
+
+	_T.free_ui(card)
+	_T.free_ui(keys_screen)
+	return err
+
+
+## The Keys screen's key column is sized from `KeyBindings.key_label()` — the string a
+## row actually DRAWS — rather than from `OS.get_keycode_string()`, which is what it
+## swept before.
+##
+## The two differ for exactly the codes in `KeyBindings.SHORT_NAMES`, and that table is
+## not only a shortener: its stated job is making a key READABLE, so an entry giving a
+## punctuation key a word is WIDER than the engine's name for the same key. Sized off
+## the engine's name, the column would then clip precisely the name the table was
+## extended to make readable — on the one screen whose entire job is telling the player
+## which key a verb sits on.
+##
+## Derived over the table itself rather than over a list of the entries that exist
+## today, so an entry added tomorrow is checked without anybody editing this test.
+func test_the_keys_column_fits_every_name_the_short_name_table_invents() -> String:
+	var keys_screen := await _T.instantiate_ui(
+		KeyBindingScreen.new(), Vector2i(1152, 648)) as KeyBindingScreen
+	var column: float = KeyBindingScreen.key_column_width()
+	var err: String = _T.assert_gt(KeyBindings.SHORT_NAMES.size(), 0,
+		"SHORT_NAMES has entries to check — an empty table would pass this vacuously")
+	if err == "":
+		for code: Variant in KeyBindings.SHORT_NAMES.keys():
+			var drawn_name: String = KeyBindings.key_label(int(code))
+			var drawn: float = GardenTheme.measure(drawn_name,
+				KeyBindingScreen.ROW_FONT_SIZE)
+			err = _T.assert_true(drawn <= column,
+				("the key column (%.0fpx) holds the name SHORT_NAMES gives keycode %d "
+					+ "[%s, %.0fpx]") % [column, int(code), drawn_name, drawn])
+			if err != "":
+				break
+	if err == "":
+		# And the rows as built. Measured with _T.text_width, never get_minimum_size():
+		# these labels carry clip_text and a trimming overrun behaviour, so the minimum
+		# size is the ~1px clip stub and the obvious assertion passes unconditionally on
+		# exactly the labels that need checking.
+		for i: int in KeyBindings.actions().size():
+			var label: Label = keys_screen.get_node_or_null("RowKey%d" % i) as Label
+			if label == null:
+				err = "the Keys screen is missing RowKey%d" % i
+				break
+			err = _T.assert_true(_T.text_width(label) <= label.size.x,
+				"row %d's key [%s] draws %.0fpx in a %.0fpx column"
+					% [i, label.text, _T.text_width(label), label.size.x])
+			if err != "":
+				break
+	_T.free_ui(keys_screen)
+	return err
+
+# END plant-tower-defense-22a
+# =============================================================================

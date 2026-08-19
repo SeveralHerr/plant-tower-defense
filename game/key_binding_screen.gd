@@ -211,17 +211,66 @@ static func key_column_width() -> float:
 	if _key_column_cache > 0.0:
 		return _key_column_cache
 	var widest: float = KEY_MIN_WIDTH
-	# The printable range, then the special block (KEY_SPECIAL is 1 << 22). Codes the
-	# engine does not name come back "" and measure 0.
+	# The printable range, then the special block (KEY_SPECIAL is 1 << 22). A code the
+	# engine does not name comes back as `KeyBindings.key_label`'s "?" placeholder,
+	# which measures a few px and cannot be what wins the max.
+	#
+	# `KeyBindings.key_label`, NOT `OS.get_keycode_string` -- the string the row
+	# actually DRAWS. The two differ for every code in `KeyBindings.SHORT_NAMES`, and
+	# that table is not only a shortener: it exists to make a key READABLE, so an entry
+	# giving a punctuation key a word ("Apostrophe" for what the engine calls "'") is
+	# WIDER than the engine's name. Measuring the engine's name would then size this
+	# column for a string no row ever shows, and the one screen whose entire job is
+	# telling the player which key a verb sits on would clip the name it invented.
+	# Sweeping the drawn label means a change to SHORT_NAMES flows through here with
+	# nobody remembering to come and widen anything.
 	for code: int in range(32, 127):
-		widest = maxf(widest, GardenTheme.measure(OS.get_keycode_string(code), ROW_FONT_SIZE))
+		widest = maxf(widest, GardenTheme.measure(KeyBindings.key_label(code), ROW_FONT_SIZE))
 	for code: int in range(1 << 22, (1 << 22) + 512):
-		widest = maxf(widest, GardenTheme.measure(OS.get_keycode_string(code), ROW_FONT_SIZE))
+		widest = maxf(widest, GardenTheme.measure(KeyBindings.key_label(code), ROW_FONT_SIZE))
 	# Room for the revert mark on the widest of them. Arming the reset appends it to
 	# every moved row, and a column sized without it would clip the longest key name
 	# exactly when the player is being asked to decide about that key.
 	_key_column_cache = ceilf(widest + GardenTheme.measure(KEY_REVERT_MARK, ROW_FONT_SIZE))
 	return _key_column_cache
+
+
+## Which way the key text sits in its column, for EVERY screen that draws a key
+## beside the phrase it belongs to (plant-tower-defense-22a).
+##
+## One rule, stated once: **the key text is flush against the gutter it shares with
+## its `does` phrase.** The pause card wrote that rule down first -- "a ragged right
+## edge on the key column would put a variable gap in the middle of every row" -- and
+## then wrote, one line above it, that the keys "line up vertically the way they
+## already do on the Keys screen". They did not. The card right-aligned; this screen
+## centred, which is ragged on BOTH edges, so the gap between a verb's phrase and its
+## key was a different width on every row and the card's comment was describing a
+## screen that did not exist.
+##
+## It is derived from the LAYOUT rather than written down per screen, because the two
+## screens put the columns in opposite orders and the alignment is a consequence of
+## that order, not an independent choice:
+##
+##   PauseScreen       [key][gap][does]   phrase to the RIGHT -> key aligns RIGHT
+##   KeyBindingScreen  [does][gap][key]   phrase to the LEFT  -> key aligns LEFT
+##
+## So the two screens disagree about the enum and agree about the rule, which is the
+## only reading of "align the key column across both screens" that survives the
+## columns being in different orders. Reorder a screen's columns and the alignment
+## follows on its own; hand-writing it is how they came apart the first time.
+##
+## Takes the two columns' LEFT edges rather than a flag, so there is no second copy
+## of "which side is the phrase on" to drift from the positions actually used.
+static func key_alignment(key_left: float, phrase_left: float) -> int:
+	if phrase_left > key_left:
+		return HORIZONTAL_ALIGNMENT_RIGHT
+	return HORIZONTAL_ALIGNMENT_LEFT
+
+
+## This screen's own answer, so a caller does not have to reassemble the geometry to
+## ask. Both terms are the same column offsets `_build_rows` places the labels at.
+static func row_key_alignment() -> int:
+	return key_alignment(key_x(), DOES_X)
 
 
 static func key_x() -> float:
@@ -298,9 +347,12 @@ func _build_rows() -> void:
 			Vector2(panel_rect().position.x + DOES_X, y + 8.0), Vector2(DOES_WIDTH, 24.0),
 			GardenTheme.INK)
 
+		# Flush against the phrase column, not centred -- see `key_alignment`. Centred
+		# put a different-width gap between every verb and its key, on the one screen
+		# a player reads down looking for one.
 		_key_labels.append(add_row_label("RowKey%d" % index, "",
 			Vector2(panel_rect().position.x + key_x(), y + 8.0), Vector2(key_column_width(), 24.0),
-			GardenTheme.LEAF_DARK, HORIZONTAL_ALIGNMENT_CENTER))
+			GardenTheme.LEAF_DARK, row_key_alignment()))
 
 		var button: Button = add_row_button(index, Vector2(panel_rect().position.x + button_x(), y))
 		button.text = "Change"
