@@ -1,4 +1,4 @@
-# Cycle 136
+# Cycle 137
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,61 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 137 taught
+
+**A feature can be invisible for its whole life because the CAUSE is in a different file
+from the SYMPTOM.** `Hud.show_weather` writes the banner; ten lines later, in the same
+function and the same call stack, `Game._on_wave_started` writes it again with the wave
+headline. `show_weather` is called from nowhere else. So the weather banner has never
+once been visible to a player, and no gate could see it: a test calls `show_weather` and
+watches the Label change, correctly. `show_weather`'s own header even said "this one is
+the overwritten half" — the code knew, and the reason lived in another file's statement
+order. Found by a lane that opened `game.gd` instead of trusting its own bead's header.
+
+**All four lanes reported their bead UNDERSTATED or partly refuted — five cycles running
+now.** "~100 bindable keys" was 193. "Three writers" was four public plus two internal,
+and the fourth was a *clearing* writer, the class an arbitration exists to handle.
+"A fixed 140px column, neither derived" had been derived for cycles. "The same eight
+keys" was six on one screen and nine on the other. Zero beads were flatly wrong. Ask "is
+it at least this bad", because an understated premise reads as confirmation.
+
+**Two lanes independently reported `derive-the-list` insufficient, for two DIFFERENT
+reasons**, which is worth more than either alone. One hit a derivation whose predicate is
+a judgement ("the keys the engine names badly") and has to be a stated proxy; the other
+hit the record-it-or-derive-it fork, where both options are principled and the deciding
+test is whether a static context can even ask. Filed rather than built — one
+identification each.
+
+**Following a rule exactly can produce the wrong number, and the rule was mine.** The
+loop said make `scene-tree` the last thing before `quit`. Cycle 137 did, having spent ten
+verbs inside the Keys screen first — and `reach` reported `key_binding_screen.gd` NOT
+reached, correctly, because reach reads a SNAPSHOT and not a history. The deadline is not
+"before quit", it is "while the diff's node is still in the tree", and there is one per
+screen. Two captures moved the row from 3/7 to 4/7 over an identical session. The bullet
+is amended; that was this cycle's one workflow change.
+
+**An advisory check chained with `&&` before an irreversible write is not a guard.**
+`run_json_check` printed two findings — `lint` absent, `tests` absent — exited 0 because
+it is advisory by design, and `verify_ledger record` proceeded and wrote `null` for both
+on a run where lint was clean and the suite was 959/959. The ledger is append-only, so
+the row stands wrong. Being advisory is right for a standing check and wrong for the last
+thing before an append.
+
+**Git already knows the citation map; four cycles of hand-relocation did not use it.**
+`git diff -U0` gives every hunk's exact old→new correspondence, so a surviving line has
+one true new number and a line INSIDE an edited hunk has none and must be REFUSED —
+which is the feature, because that is exactly the citation whose *claim* may be stale.
+Moved 64, refused 0. A per-file offset would have been wrong by construction and would
+have satisfied `--against` anyway, since the check compares text and a blank line matches
+anywhere.
+
+**A lane that dies mid-flight leaves a worktree indistinguishable from one that
+finished.** All four died to an expired login a minute in, each leaving a registered
+worktree on its `lane/<id>` branch with a clean `git status`. `git log main..lane/<id>`
+being empty is the tell; `git status` is not. Also found an empty worktree directory from
+three days earlier that `git worktree prune` reported nothing about — and learned that
+`git -C` on a non-worktree directory silently answers for the parent repo.
 
 ## What cycle 136 taught
 

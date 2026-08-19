@@ -149,6 +149,35 @@ headroom it left — so the parent learned the row was 43px short from a lane th
 the button. A lane that knows what is coming reports the number that makes the merge
 cheap.
 
+## 4b. A lane can die mid-flight, and the worktree it leaves looks like a finished one
+
+Cycle 137's four lanes all terminated a minute in — `Agent terminated early due to an API
+error: Login expired`. Each left a **registered worktree, checked out on its `lane/<id>`
+branch, with a clean `git status`**. That is exactly what a lane that finished and
+committed leaves behind, minus the commit, and `git worktree list` cannot tell them apart.
+
+So when a lane comes back failed, or comes back at all:
+
+```bash
+git worktree list                       # branch and sha per lane
+git log --oneline main..lane/<bead-id>  # EMPTY means it committed nothing
+```
+
+An empty log is the tell, not `git status`. Clean up with `git worktree remove --force`
+and `git branch -D` before re-spawning, or the new lane collides with the old branch name.
+
+Two things worth knowing while you are in there:
+
+- **`git worktree prune` does not remove a stale worktree DIRECTORY** whose admin files
+  are already gone. Cycle 137 found one from three days earlier that `prune` reported
+  nothing about and `git worktree list` never showed; it was empty, so it was harmless,
+  but a non-empty one is another copy of the repo for every tree-walking checker to find.
+  `ls .claude/worktrees/` and compare against `git worktree list` — they should match.
+- **`git -C <dir>` on a directory that is not a worktree silently resolves to the PARENT
+  repo**, so a loop over `.claude/worktrees/*` reports the parent's dirty state as if it
+  were a lane's. That is how the stale directory above got noticed at all, and it is a
+  reading error waiting to happen in the other direction.
+
 ## 5. Decide before you spawn: is this worth a lane?
 
 A lane costs a full prompt, a worktree, a merge, and a parent pass — and **it compiles

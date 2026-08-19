@@ -8166,3 +8166,76 @@ status rather than rewriting the entries that recorded these as open.
     `.claude/skills/`, so every skill carrying `file:line` claims is outside the gate's
     denominator. Lane 4's 24 citations were only checked because it invoked the checker on
     its own file by hand.
+
+## 2026-08-19 — Cycle 137: four lanes, two parent items, and a banner nobody has ever seen
+
+- Value: **warranted** — runtime made one claim the suite structurally cannot, and it
+  is the claim the cycle's main bead was filed for.
+  - Expected: the two new bus verbs (`select_plant`, `deselect_plant`) work OVER THE
+    BUS. Every test calls them as pure functions against a hosted `Game` and never
+    touches the bridge, so a verb registered under the wrong name, taking the wrong
+    arg keys, or dying while building its reply would pass all 959 tests.
+  - Got: `list-commands` shows `select_plant  args: x, y` and `deselect_plant (reads
+    no args)`. The cycle-128 blocked scenario ran end to end: `select_plant` put a
+    plant in `selected_placed`, `arm_uproot` answered `confirm needed` where it had
+    answered `nothing is selected` through four attempts, and `deselect_plant`
+    reported `was_armed: true` then `uproot_armed: false`.
+  - Found: a false defect I nearly filed. `uproot_armed()` read `false` immediately
+    after `arm_uproot` returned `confirm needed`. The confirm window is a 4-second
+    clock and each bus round trip spends real time, so it had simply expired between
+    two calls. Pausing the tree first gave `true`. `read-a-moving-value`'s exact case,
+    and it cost one `pause` rather than a bug report.
+  - Cheaper: nothing for the bus half — no headless test can reach the bridge, which
+    is the entire point of those verbs. The banner-arbitration and key-alignment halves
+    WERE cheaper headless and the lanes' own tests already held them; the launch only
+    re-confirmed those, which is tier (c) and worth saying.
+
+- Gap: **reach's evidence deadline is earlier than "before quit" — it is "while the
+  diff's node is still in the tree", and nothing says so.** I opened the Keys screen,
+  measured its nine `RowKey` labels with `node-bounds`, closed both overlays, THEN
+  captured `scene-tree` — and `verify_ledger reach` reported `game/key_binding_screen.gd`
+  as `NOT reached (loadable, and this run did not load them)`. That is correct and it
+  is indistinguishable from a screen I never opened. The loop already warns that a diff
+  confined to an unopened screen reaches nothing; the half it does not say is that
+  VISITING the screen is not enough, because reach is computed from a snapshot rather
+  than from a history. Workaround: capture `scene-tree` while each screen is open and
+  pass `--scene-tree` repeatedly — two captures moved the number from 3/7 to 4/7.
+  - [G-136] status: open | seen: 1 | harness: 0.60.0
+  - Improvement: `scene-tree` could stamp each capture with the visible screen, and
+    `reach` could say "reached in capture 2 of 3" rather than merging silently — or,
+    smaller and enough, one sentence in `reach`'s own output naming the deadline.
+
+- Gap: **`run_json_check` is advisory by design, so chaining it before
+  `verify_ledger record` does not stop a row losing keys.** Ran
+  `python tools/run_json_check.py && python tools/verify_ledger.py record ...`. The
+  check printed `6 key(s) in run.json, 11 accepted` and two findings — `'lint' is
+  absent`, `'tests' is absent` — exited 0, and `record` proceeded. The row went in with
+  `lint: null` and `tests: null` on a run where lint was clean and the suite was
+  959/959. The ledger is append-only, so the row stands wrong; recorded here rather
+  than rewritten, same rule as a superseded status line.
+  - [G-137] status: open | seen: 1 | harness: 0.60.0
+  - Improvement: `record` should refuse a `--run` object missing a key it accepts
+    (or warn loudly on stderr), since it is the only writer and the write cannot be
+    undone. The check being advisory is right for a check; it is wrong as the last
+    guard before an append-only write.
+
+- Gap: **a fresh worktree gives a lane no compile at all, and all four lanes said so
+  in the words the prompt asked for.** Not new — this is the known one — but four more
+  sightings, and the shape of the cost is now measured: every lane returned
+  `inconclusive` or `insufficient` as its own harness verdict, explicitly because
+  nothing compiled or executed a line. The parent pass found one real merge failure
+  (`suite_reach_baseline` after Lane 3's tests started naming `hide_banner` and
+  `show_weather`) and one verb-classification failure on my own parent item. Both were
+  facts about files the lane was correctly forbidden to open.
+  - [G-129] status: open | seen: 3 | harness: 0.60.0
+  - Improvement: unchanged — a `name_check --require-compile` able to bootstrap
+    `.godot/` read-only from the parent checkout would close it. Lane 1 proposed the
+    same independently.
+
+- Note, not a gap: **`name_check --require-compile` reports `test/unit/test_board.gd`
+  as failing on `Identifier not found: RunConfig`, and it does so on the UNMODIFIED
+  file** — verified by stashing my change and re-running. The flag cannot see autoload
+  singletons, so a test script touching one is un-compilable by it in isolation. That
+  is a real limit on the one gate that gives a lane a compile, and it is worth knowing
+  before someone reads it as a regression. Already implied by the flag's own docs; not
+  filed separately.

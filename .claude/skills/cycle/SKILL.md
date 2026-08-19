@@ -315,6 +315,19 @@ running a command. **Never write a work checklist into it.**
      had already earned. Make `python tools/devtools.py scene-tree > .devtools/tree.json`
      the last thing you do before `quit`, every time, even when you do not yet know the
      verdict.
+     **ONE capture at the end is NOT ENOUGH, and following this rule literally is what
+     produced a wrong number.** `reach` is computed from the SNAPSHOT, not from a history
+     of the session — so a screen you opened, drove and measured, and then closed before
+     capturing, reads exactly like a screen you never opened. Cycle 137 pressed into the
+     Keys screen, measured all nine of its `RowKey` labels with `node-bounds`, backed out
+     to the board, captured, and got `NOT reached: game/key_binding_screen.gd` for a file
+     it had just spent ten verbs inside. The evidence deadline is not "before `quit`", it
+     is **"while the diff's node is still in the tree"** — which is EARLIER, and there is
+     one deadline per screen rather than one per run. So: **capture as you go**
+     (`scene-tree > .devtools/tree-<screen>.json` while each screen is open) and pass every
+     capture, `--scene-tree` being repeatable. Two captures took cycle 137's row from 3/7
+     to 4/7 over an identical session. A single end-of-run capture is only sufficient for a
+     diff confined to whatever is on screen at the end.
 3. **Before reflecting, always add to `kanban.md`** — cool new features or concrete
    improvements (UX, game juice, animations, enhancements, or full features).
    - **Snapshot the citations BEFORE step 2's code edits, and check them after.** The
