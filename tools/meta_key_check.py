@@ -78,9 +78,58 @@ Usage:
     python tools/meta_key_check.py --only game/     # report only findings under a prefix
     python tools/meta_key_check.py --no-scenes      # ignore .tscn/.tres `metadata/` writes
     python tools/meta_key_check.py --json           # machine-readable verdict
+    python tools/meta_key_check.py --fixture        # the synthetic fixture; can it FAIL?
 
 (`python` on Windows -- `python3` there is a Microsoft Store alias stub that satisfies
 `command -v` and then refuses to run.)
+
+    fixture:   `python tools/meta_key_check.py --fixture`. KEPT, not written and
+               deleted -- the mutations below are what you re-run after every edit to
+               this file. Twelve synthetic scripts over a temp project, driven through
+               the real main() with --json, in TWO passes (the second adds a
+               get_meta_list() caller, which must DEMOTE the never-read finding rather
+               than remove it). Cases: both ends in two files / a read with no default
+               and no writer / a defaulted read with no writer / a write nothing reads
+               / a Dictionary literal spelling the same word (must not count as a read)
+               / `set_meta(k, null)` paired with a read (a null write is a DELETE, so
+               the key is still never written) / a writer that exists only inside a
+               COMMENT / a key literal containing `)` and `,` / a file DECLARING a
+               same-named method / a key built from a variable.
+               Baseline (5 errors, 1 warning, 1 advisory, exit 1) and (5, 0, 2, exit 1).
+               All three severity counts are asserted in both passes, plus the RULE
+               each key is reported under -- this tool gates on ERRORS ALONE, so the
+               whole never-read rule can stop firing without moving the exit code, and
+               four of the five mutations below leave the exit code at exactly 1.
+    mutations: 5, all RED, restore clean. Measured 2026-08-18; baseline 0 failure(s).
+               `BLANK` -> `KEEP` in
+                 _blank_strings_and_comments  -> 3 failures. String bodies survive, so
+                                                 the `)` inside `"weird)key, and a
+                                                 comma"` closes the call early and
+                                                 BOTH its sites go unresolved: advisory
+                                                 1 -> 3. NOTE: this mutation SURVIVED
+                                                 the first version of this fixture,
+                                                 which had no key containing a
+                                                 delimiter. The case was added because
+                                                 of that survival, not before it
+               `(rec.deletes if null_write else rec.writes)`
+                 -> `rec.writes`              -> 3 failures. nulled_key pairs up and
+                                                 its finding disappears: errors 5 -> 4,
+                                                 EXIT STILL 1
+               `if enum_sites:` -> `if False:` -> 2 failures, second pass only. The
+                                                 never-read finding stays a WARNING
+                                                 instead of demoting to advisory
+               drop the `(?<!func )` lookbehind
+                 on RE_META_CALL              -> 3 failures. `func set_meta(key, value)`
+                                                 is read as a call site with an
+                                                 unresolvable key: advisory 1 -> 2
+               `if site["key"] is not None` ->
+                 `if True or ...` in the
+                 unresolved loop              -> 2 failures. advisory 1 -> 0. Read the
+                                                 line under it: `unresolved call
+                                                 site(s) 1` is STILL RIGHT. The stats
+                                                 denominator and the findings list are
+                                                 separate, so the count kept telling the
+                                                 truth while the finding vanished
 """
 
 import argparse
@@ -793,6 +842,244 @@ def report(project, keys, findings, counts, stats):
     print("NOT COVERED: %s" % NOT_COVERED)
 
 
+# ---------------------------------------------------------------------------
+# The synthetic fixture.
+#
+# This tool shipped without one. Every rule here can REMOVE a finding as easily as
+# produce one -- a comment counted as a writer, a Dictionary key counted as a reader,
+# a `set_meta(k, null)` counted as a write -- and all three fail quiet: the key pairs
+# up, the finding leaves the list, and a broken rule prints what a clean project
+# prints.
+#
+# Driven through the real main() with --json over a temp project, so a deleted call
+# site fails here even with the helper intact.
+# ---------------------------------------------------------------------------
+
+FIXTURE_FILES = {
+    # Both ends, in two different files. The clean case, and the one that proves the
+    # scan is finding anything at all.
+    "game/paired_writer.gd": '''extends Node
+
+
+func mark(pest: Node) -> void:
+\tpest.set_meta("paired_key", 1.5)
+''',
+    "game/paired_reader.gd": '''extends Node
+
+
+func read(pest: Node) -> float:
+\treturn pest.get_meta("paired_key", 0.0)
+''',
+    # The typo, in its loud form: no default, so at runtime it is an error and a null.
+    "game/typo_read.gd": '''extends Node
+
+
+func read(pest: Node) -> float:
+\treturn pest.get_meta("typo_key")
+''',
+    # The typo in its quiet form: defaulted, so nothing crashes and the read returns
+    # the default forever. This is the shape that gates rather than warns.
+    "game/defaulted_read.gd": '''extends Node
+
+
+func read(pest: Node) -> int:
+\treturn pest.get_meta("silent_key", 0)
+''',
+    # Written and never read. Dead weight, or a half-applied rename.
+    "game/orphan_write.gd": '''extends Node
+
+
+func mark(pest: Node) -> void:
+\tpest.set_meta("orphan_key", true)
+''',
+    # A Dictionary literal spelling the same word. If keys were harvested from bare
+    # string literals this would give orphan_key a reader and the finding above would
+    # vanish -- which is the failure this case exists to catch.
+    "game/dictionary_key.gd": '''extends Node
+
+
+func table() -> Dictionary:
+\treturn {"orphan_key": 3, "typo_key": 4}
+''',
+    # `set_meta(key, null)` is documented as equivalent to remove_meta. Counted as a
+    # write, this file pairs up and the finding disappears.
+    "game/null_write.gd": '''extends Node
+
+
+func clear(pest: Node) -> void:
+\tpest.set_meta("nulled_key", null)
+
+
+func read(pest: Node) -> int:
+\treturn pest.get_meta("nulled_key", 0)
+''',
+    # The only writer is inside a comment. If comment blanking stops working this
+    # file pairs up and goes clean.
+    "game/comment_only.gd": '''extends Node
+
+
+func read(pest: Node) -> int:
+\t# the writer used to be here: pest.set_meta("commented_key", 1)
+\treturn pest.get_meta("commented_key", 0)
+''',
+    # A key literal containing the characters that delimit a call. The argument span
+    # is taken from the BLANKED text, where a `)` inside a string is a space; taken
+    # from the raw text the call would close early and the key would come out as
+    # `"weird` -- unresolvable, and reported as a defect in a file that has none.
+    # message_corpus_check shipped exactly this bug, in the comma direction.
+    "game/paren_in_key.gd": '''extends Node
+
+
+func mark(pest: Node) -> void:
+\tpest.set_meta("weird)key, and a comma", 1)
+
+
+func read(pest: Node) -> int:
+\treturn pest.get_meta("weird)key, and a comma", 0)
+''',
+    # DECLARES a same-named method. A declaration is not a call site: read as one it
+    # becomes a write of an unresolvable key, which is a finding about nothing at the
+    # wrong location.
+    "game/declares_setter.gd": '''extends Node
+
+
+func set_meta(key: String, value: int) -> void:
+\tprints(key, value)
+
+
+func read(pest: Node) -> int:
+\treturn pest.get_meta("declared_key", 0)
+''',
+    # A key this pass cannot read. Reported at its own location and counted in the
+    # denominator rather than skipped, because a checker that silently drops what it
+    # cannot parse overstates its own coverage.
+    "game/unresolved.gd": '''extends Node
+
+
+func mark(pest: Node, which: String) -> void:
+\tpest.set_meta(which, 1)
+''',
+}
+
+# Added only for the second pass. `get_meta_list()` reads every key without naming
+# one, so its presence anywhere makes "written and never read" unprovable and the
+# never-read finding must DEMOTE from warning to advisory rather than disappear.
+FIXTURE_ENUMERATE = {
+    "game/enumerate.gd": '''extends Node
+
+
+func dump(pest: Node) -> Array:
+\treturn pest.get_meta_list()
+''',
+}
+
+# pass label -> (errors, warnings, advisory, exit code)
+FIXTURE_EXPECT = {
+    "no get_meta_list": (5, 1, 1, 1),
+    "with get_meta_list": (5, 0, 2, 1),
+}
+
+# key -> the rule it must be reported under, in the first pass. Named individually
+# because the counts above can be right for the wrong reasons: four errors is also
+# what you get if the comment rule breaks and the null-write rule breaks together.
+FIXTURE_RULE_OF_KEY = {
+    "typo_key": RULE_NEVER_WRITTEN,
+    "silent_key": RULE_NEVER_WRITTEN,
+    "nulled_key": RULE_NEVER_WRITTEN,
+    "commented_key": RULE_NEVER_WRITTEN,
+    "declared_key": RULE_NEVER_WRITTEN,
+    "orphan_key": RULE_NEVER_READ,
+}
+FIXTURE_CLEAN_KEYS = ("paired_key", "weird)key, and a comma")
+
+
+def run_fixture():
+    """Return the failure count. Prints what it compared, never just a verdict."""
+    import io
+    import shutil
+    import tempfile
+
+    fails = 0
+    for label, expect in FIXTURE_EXPECT.items():
+        root = tempfile.mkdtemp(prefix="meta_key_fixture_")
+        try:
+            with open(Path(root) / "project.godot", "w", encoding="utf-8") as fh:
+                fh.write("config_version=5\n")
+            files = dict(FIXTURE_FILES)
+            if label == "with get_meta_list":
+                files.update(FIXTURE_ENUMERATE)
+            for rel, body in files.items():
+                path = Path(root).joinpath(*rel.split("/"))
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with open(path, "w", encoding="utf-8", newline="") as fh:
+                    fh.write(body)
+
+            old_argv, old_stdout = sys.argv, sys.stdout
+            sys.argv = ["meta_key_check.py", "-p", root, "--json"]
+            sys.stdout = io.StringIO()
+            try:
+                code = main()
+                out = sys.stdout.getvalue()
+            finally:
+                sys.argv, sys.stdout = old_argv, old_stdout
+            data = json.loads(out)
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+        got = (data["counts"][SEVERITY_ERROR], data["counts"][SEVERITY_WARNING],
+               data["counts"][SEVERITY_ADVISORY], code)
+        for name, g, w in zip(("errors", "warnings", "advisory", "exit code"),
+                              got, expect):
+            ok = g == w
+            if not ok:
+                fails += 1
+            print("  %-6s [%-18s] %-10s %s (want %s)"
+                  % ("ok" if ok else "FAIL", label, name, g, w))
+
+        if label != "no get_meta_list":
+            # The demotion pass only needs its counts checked; the per-key evidence
+            # below is about the rules, which do not change between the two passes.
+            continue
+
+        by_key = {}
+        for f in data["findings"]:
+            by_key.setdefault(f["subject"], []).append(f["rule"])
+        for key, want_rule in FIXTURE_RULE_OF_KEY.items():
+            got_rules = by_key.get(key, [])
+            ok = got_rules == [want_rule]
+            if not ok:
+                fails += 1
+            print("  %-6s key %-14s reported as %-24s (want [%s])"
+                  % ("ok" if ok else "FAIL", key, got_rules, want_rule))
+        for key in FIXTURE_CLEAN_KEYS:
+            ok = key not in by_key
+            if not ok:
+                fails += 1
+            print("  %-6s key %-14s reported: %s (want no finding)"
+                  % ("ok" if ok else "FAIL", key, by_key.get(key)))
+        # The unresolved site is the denominator half: it must be COUNTED, not
+        # skipped, or the tool overstates how much of the project it read.
+        unresolved = data["call_sites"]["unresolved"]
+        ok = unresolved == 1
+        if not ok:
+            fails += 1
+        print("  %-6s unresolved call site(s) %d (want 1) of %d resolved"
+              % ("ok" if ok else "FAIL", unresolved, data["call_sites"]["resolved"]))
+
+    print("meta_key_check fixture: %d synthetic script(s) over %d pass(es), %d "
+          "failure(s). Every pass asserts all three severity counts AND the rule each "
+          "key is reported under: this tool gates on errors alone, so a warning-level "
+          "rule can stop firing entirely without moving the exit code."
+          % (len(FIXTURE_FILES) + len(FIXTURE_ENUMERATE), len(FIXTURE_EXPECT), fails))
+    print("  NOT COVERED: the fixture exercises the pairing rules, the null-write "
+          "equivalence, the get_meta_list demotion, comment blanking and the "
+          "'keys come only from an argument position' rule over ten hand-written "
+          "scripts. It does not cover .tscn/.tres `metadata/` entries, autoloads, or "
+          "--only filtering, and a clean fixture is a statement about the rules, not "
+          "about this repo's corpus.")
+    return fails
+
+
 def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -821,7 +1108,14 @@ def main():
     parser.add_argument("--strict", action="store_true",
                         help="Count warnings towards the exit code")
     parser.add_argument("--json", action="store_true", help="Emit the verdict as JSON")
+    parser.add_argument("--fixture", action="store_true",
+                        help="Run the synthetic fixture and exit; proves this checker "
+                             "can FAIL, and that a comment, a Dictionary key and a "
+                             "set_meta(k, null) each still fail to pair a key up")
     args = parser.parse_args()
+
+    if args.fixture:
+        return EXIT_OK if run_fixture() == 0 else EXIT_CANNOT_RUN
 
     root = Path(args.project).expanduser().resolve()
     if not (root / "project.godot").is_file():

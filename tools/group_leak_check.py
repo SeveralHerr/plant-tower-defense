@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""group_leak_check.py - a test that picks one node out of a tree-global group
+r"""group_leak_check.py - a test that picks one node out of a tree-global group
 picks whichever node the engine lists first, which is not necessarily the one
 the test just created.
 
@@ -56,6 +56,44 @@ Nothing else in the toolchain can see this:
 
 Parallel-safe by construction: opens no project, writes nothing to `.godot/`, takes
 no lock. Exit codes follow the house contract: 0 clean, 1 findings, 2 could not run.
+
+    fixture:   `python tools/group_leak_check.py --fixture`. KEPT, driven through the
+               real main() over a temp project. Five synthetic test functions: a naked
+               `[0]` off a group read / one waived by a real comment / the marker
+               spelled inside a STRING LITERAL (cycle 126's incident, in GDScript) /
+               `assert_eq(pests.size(), 1)` before the index, which IS provenance /
+               `assert_gt(pests.size(), 0)` before the index, which is NOT.
+               Baseline (3 findings, 1 waived, exit 1), and each function is asserted
+               by NAME as well: three findings is also what you get if the waiver
+               stops working and a real finding is lost in the same stroke.
+    mutations: 4, all RED, restore clean. Measured 2026-08-18; baseline 0 failure(s).
+               Read the FINDING COUNT, not the exit code -- three of the four leave it
+               at exactly 1.
+               drop the `#+[ \t]*` anchor
+                 from WAIVER_RE               -> 3 failures. The marker quoted inside a
+                                                 string waives its own function:
+                                                 findings 3 -> 2, waived 1 -> 2, and
+                                                 THE EXIT CODE STAYS 1. A checker can
+                                                 lose a finding without moving its gate
+               `WAIVER_RE.search(raw_body)`
+                 -> `search(body)`            -> 3 failures. The waiver is a COMMENT and
+                                                 `body` is the comment-stripped text, so
+                                                 the legitimately waived function fires:
+                                                 findings 3 -> 4 (2 shown of the old
+                                                 3-case fixture), waived 1 -> 0
+               `WAIVER_RE.search(raw_body)`
+                 -> `search(raw)`             -> 5 failures. One waiver anywhere in the
+                                                 file silences every function in it --
+                                                 the bug that beat this tool's FIRST
+                                                 fixture. findings -> 0, exit 1 -> 0
+               `cardinality_pinned`'s
+                 `assert_eq` -> `assert_\w+`  -> 2 failures. This one SURVIVED the
+                                                 original three-case fixture entirely:
+                                                 no case established provenance by
+                                                 cardinality, so neither the accepted
+                                                 form nor the refused one was present.
+                                                 The last two fixture cases were added
+                                                 because of that survival
 """
 
 from __future__ import annotations
@@ -221,10 +259,31 @@ func test_bad_marker_named_in_a_string_is_not_a_waiver() -> String:
 \tvar pests: Array = get_tree().get_nodes_in_group("pests")
 \tvar pest = pests[0]
 \treturn _T.assert_true(pest != null and needles.size() == 1, "got one")
+
+
+func test_good_cardinality_pinned() -> String:
+\tvar pests: Array = get_tree().get_nodes_in_group("pests")
+\tvar sized := _T.assert_eq(pests.size(), 1, "exactly one")
+\tvar pest = pests[0]
+\treturn sized if sized != "" else _T.assert_true(pest != null, "got one")
+
+
+func test_bad_gt_is_not_provenance() -> String:
+\tvar pests: Array = get_tree().get_nodes_in_group("pests")
+\tvar sized := _T.assert_gt(pests.size(), 0, "at least one")
+\tvar pest = pests[0]
+\treturn sized if sized != "" else _T.assert_true(pest != null, "got one")
 '''
 
-# (findings, waived, exit code). Three functions, three different results.
-FIXTURE_EXPECT = (2, 1, 1)
+# (findings, waived, exit code). Five functions, four different results.
+#
+# The last two exist because a mutation survived without them. Widening
+# `cardinality_pinned`'s `assert_eq` to `assert_\w+` -- which makes the tool accept
+# the ONE guard its docstring says it must refuse -- changed nothing at all: the
+# original three cases never establish provenance by cardinality, so the accepted
+# form was never exercised and the refused form was never present. A rule the fixture
+# cannot reach is a rule nobody is watching.
+FIXTURE_EXPECT = (3, 1, 1)
 
 
 def run_fixture() -> int:
@@ -271,7 +330,9 @@ def run_fixture() -> int:
         for fname, should_fire in (("test_bad_naked_index", True),
                                    ("test_good_waived", False),
                                    ("test_bad_marker_named_in_a_string_is_not_a_waiver",
-                                    True)):
+                                    True),
+                                   ("test_good_cardinality_pinned", False),
+                                   ("test_bad_gt_is_not_provenance", True)):
             fired = fname in out
             ok = fired == should_fire
             if not ok:
@@ -289,8 +350,10 @@ def run_fixture() -> int:
           "in a string is a real thing in this repo's test tree -- which is the tree "
           "this checker scans. Drop the `#+[ \\t]*` from WAIVER_RE and that case goes "
           "red." % (len(FUNC_RE.findall(FIXTURE_SOURCE)), fails))
-    print("  NOT COVERED: the fixture exercises the selection rule and the waiver over "
-          "three hand-written functions. It says nothing about this repo's real tests, "
+    print("  NOT COVERED: the fixture exercises the selection rule, the waiver and the "
+          "cardinality-provenance rule over five hand-written functions. It does NOT "
+          "exercise the diff-the-group form of provenance, a non-literal group name, "
+          "or get_first_node_in_group. It says nothing about this repo's real tests, "
           "and a clean fixture is a statement about the rule, not about the corpus.")
     return fails
 
