@@ -729,7 +729,7 @@ static func _best_cap_under(tier: StringName) -> int:
 ## DEADLINE is not "more important than IMPORTANT" — it is **expires**. A line at
 ## this rung is describing a window that is already counting down somewhere else
 ## in the game, so deferring it does not delay the message, it shortens it. There
-## is exactly one such line today (the armed-uproot prompt, `game/game.gd:1330`)
+## is exactly one such line today (the armed-uproot prompt, `Game.arm_uproot`)
 ## and it is the reason the rung exists: two IMPORTANT lines defer each other for
 ## up to `5.0 - MESSAGE_MIN_READABLE` seconds, and the prompt's whole window is
 ## `Game.UPROOT_CONFIRM_SECONDS` = 4.0. Measured in cycle 69 by
@@ -802,6 +802,96 @@ const MESSAGE_MARK_GAP: float = 2.0
 static func line_was_read(total_seconds: float, seconds_left: float) -> bool:
 	return (total_seconds - seconds_left) >= MESSAGE_MIN_READABLE
 const MESSAGE_QUEUE_MAX: int = 3
+
+## HOW LONG A LINE SITS ON THE ROW — the variable is what the player must DO with it,
+## and it is NOT the sentence's length (plant-tower-defense-uhno).
+##
+## The bead that filed this asked for the durations to be derived from character count,
+## on the reasoning that reading time scales with length and `message_corpus()` now knows
+## every length. **The game's own strings refute that**, and it takes only two of them:
+##
+##   "Wave 3 cleared."               15 chars, 6.0s   (`wave_cleared_line(3, "")`)
+##   "Composted a husk for 3 seeds." 29 chars, 2.0s
+##
+## Any monotone function of length gives the husk line MORE time than the wave-cleared
+## line. The same inversion appears again at "Music on." (10 chars, 2.5s) against
+## "Uproot cancelled." (17 chars, 2.0s). Length is not what these numbers encode.
+##
+## What they encode is the ROLE the line plays, in three bands and two pins:
+##
+##   ACT      the player has to carry the sentence out, at a moment they know nothing.
+##   DIGEST   the longest ambient line in the game, read between waves, not during one.
+##   REVEAL   names something the player is NOT told anywhere else on screen.
+##   NOTICE   a loss or a change during combat, when attention is on the board.
+##   AMBIENT  everything else: refusals, tips, confirmations of a thing just clicked.
+##   SETTING  a settings toggle — the world answers too, but subtly (a repaint, silence).
+##   CONFIRM  a confirmation whose effect is already visible on the board.
+##
+## That ordering is what explains the pairs above: a collected husk visibly vanishes
+## (CONFIRM), a colourblind repaint may not be noticed at all (SETTING), and a cleared
+## wave is the beat where the player is reading rather than clicking (DIGEST). The band
+## is a fact about the player's attention; the character count is a fact about the prose.
+##
+## THE FLOOR IS NOT A STYLE CHOICE. `MESSAGE_MIN_READABLE` (1.2) is the window inside
+## which an equal-priority arrival QUEUES instead of replacing — see `show_message`. Any
+## role below it changes queueing behaviour for every caller at once, so the shortest
+## band here is 2.0 and nothing may go under 1.2 without that being the point of the
+## change rather than a side effect of it.
+##
+## TWO CALL SITES DELIBERATELY DO NOT USE THIS TABLE, and both are overrides with a
+## written reason rather than numbers nobody re-derived:
+##
+##   `Game.UPROOT_CONFIRM_SECONDS` (4.0) at the armed-uproot prompt. That value is not a
+##   reading time, it is the decision window itself, counted down by `_tick_uproot_confirm`.
+##   The prompt must last exactly as long as the thing it describes: shorter and the
+##   player believes the window lapsed, longer and they confirm into nothing. See the
+##   `MESSAGE_DEADLINE` block above, which exists for this one line.
+##
+##   `Game.PACKET_OPEN_STEP_SECONDS` (0.09) at the packet flicker. Those steps are an
+##   ANIMATION, not messages, and they are under `MESSAGE_MIN_READABLE` on purpose so
+##   each one falls through `show_message`'s immediate-overwrite branch. Giving them a
+##   readable duration would make every step queue behind the last and get the reveal
+##   itself refused — the exact defect `Game._row_ready_for_a_flourish` was written for.
+const ROLE_ACT: int = 0
+const ROLE_DIGEST: int = 1
+const ROLE_REVEAL: int = 2
+const ROLE_NOTICE: int = 3
+const ROLE_AMBIENT: int = 4
+const ROLE_SETTING: int = 5
+const ROLE_CONFIRM: int = 6
+
+
+## The one place a message duration is written down.
+##
+## Static and pure so the whole table can be asserted with no HUD, no scene and no clock,
+## and so a call site reads `Hud.message_seconds(Hud.ROLE_CONFIRM)` — a decision about the
+## player — rather than `2.0`, a number whose reason lived in whoever typed it.
+##
+## `ROLE_REVEAL` is load-bearing beyond its own line: `Game._row_ready_for_a_flourish`
+## waits on the reveal still holding the row, so shortening it changes how two quick
+## packet purchases interleave. It is not free to retune the way the other bands are.
+##
+## `ROLE_AMBIENT` has no arm of its own and falls through to the trailing `return`, which
+## is deliberate rather than an omission: that band and the unknown-role fallback are the
+## SAME answer, and giving them two arms would put 3.0 in the function twice. An unknown
+## role is a caller nobody updated, and the right thing to hand it is the duration every
+## unremarkable line already gets — not a zero-second message that never appears at all.
+static func message_seconds(role: int) -> float:
+	match role:
+		ROLE_ACT:
+			return 8.0
+		ROLE_DIGEST:
+			return 6.0
+		ROLE_REVEAL:
+			return 5.0
+		ROLE_NOTICE:
+			return 4.0
+		ROLE_SETTING:
+			return 2.5
+		ROLE_CONFIRM:
+			return 2.0
+	return 3.0
+
 
 ## The wave banner. Two events, two named callers, one surface.
 ##
@@ -3032,7 +3122,7 @@ func _apply_message_stress(stressed: bool) -> void:
 ## queued behind something, and false when the queue was full and dropped it.
 ##
 ## The return value exists because a caller could not previously tell those apart. Of
-## the 17 call sites under `game/`, 15 ignore it and are right to; the two that must
+## the 18 call sites under `game/`, 15 ignore it and are right to; the three that must
 ## not are one-shot HINTS,
 ## which is spent on the player having SEEN something. `_queue_message` drops the
 ## lowest-priority entry when the queue is full and drops the NEW one if it is the
@@ -3099,6 +3189,12 @@ func message_queue_snapshot() -> Array[Dictionary]:
 	return out
 
 
+## `seconds` defaults to the AMBIENT band, and the 3.0 is spelled out rather than written
+## `message_seconds(ROLE_AMBIENT)` because a default argument is part of the signature and
+## this project has no other call in one — see plant-tower-defense-uhno's report. It is the
+## one number that lives outside `message_seconds`, and the seven ambient call sites all
+## reach it through here, so `test_the_default_duration_is_the_ambient_band` pins the two
+## together THROUGH the row rather than by reading the signature.
 func show_message(text: String, seconds: float = 3.0, priority: int = MESSAGE_NORMAL) -> bool:
 	if _message_left > 0.0:
 		if priority > _message_priority:
@@ -3138,7 +3234,7 @@ const QUEUE_REFUSED := "refused"
 ## Pure and static so the rule can be asserted without staging four messages through a live
 ## HUD — and because the interesting cases are the ones a live HUD makes hardest to reach.
 ## Note the `>=`: on a TIE the arriving message is refused, which matters more here than
-## anywhere else because 14 of the game's 17 `show_message` call sites pass no priority at
+## anywhere else because 15 of the game's 18 `show_message` call sites pass no priority at
 ## all and therefore all tie. (The three that do: `Hud.MESSAGE_DEADLINE` on the armed
 ## uproot, and `Hud.MESSAGE_IMPORTANT` on both halves of the packet reveal.)
 static func queue_outcome(queued: Array[int], arriving: int) -> String:

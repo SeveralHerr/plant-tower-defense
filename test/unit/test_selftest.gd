@@ -19448,4 +19448,171 @@ func test_the_static_measurement_takes_the_widest_line_the_way_a_label_does() ->
 	_T.free_ui(root)
 	return err
 # END LANE SECTION — plant-tower-defense-fo96
+# LANE SECTION — plant-tower-defense-uhno
+# Message durations: one owner, seven bands, two written overrides — and the
+# evidence that the bead's proposed rule (derive from character count) is the
+# wrong one. See Hud.message_seconds.
+# =============================================================================
+
+
+## The table itself, asserted from the constants rather than from remembered numbers.
+##
+## The ORDERING is the claim worth keeping if any single band is ever retuned: a line the
+## player must act on outlasts one they must notice, which outlasts one that merely
+## confirms something the board already showed. A retune that inverts two bands is a
+## design decision and has to break something; this is the something.
+func test_the_message_duration_bands_are_ordered_by_what_the_player_must_do() -> String:
+	var act: float = Hud.message_seconds(Hud.ROLE_ACT)
+	var digest: float = Hud.message_seconds(Hud.ROLE_DIGEST)
+	var reveal: float = Hud.message_seconds(Hud.ROLE_REVEAL)
+	var notice: float = Hud.message_seconds(Hud.ROLE_NOTICE)
+	var ambient: float = Hud.message_seconds(Hud.ROLE_AMBIENT)
+	var setting: float = Hud.message_seconds(Hud.ROLE_SETTING)
+	var confirm: float = Hud.message_seconds(Hud.ROLE_CONFIRM)
+	var err: String = _T.assert_float_eq(act, 8.0, 0.001,
+		"the opening instruction still gets the longest band")
+	if err == "":
+		err = _T.assert_float_eq(digest, 6.0, 0.001, "and the wave-cleared line six seconds")
+	if err == "":
+		# Pinned to its literal on purpose, unlike the bands around it. This one is not
+		# free to move: Game._row_ready_for_a_flourish waits on the reveal holding the
+		# row, so a shorter REVEAL changes how two quick packet purchases interleave.
+		err = _T.assert_float_eq(reveal, 5.0, 0.001,
+			("and the packet reveal exactly five, which _row_ready_for_a_flourish's"
+				+ " serialisation is written against"))
+	if err == "":
+		err = _T.assert_float_eq(notice, 4.0, 0.001, "and a plant's death four")
+	if err == "":
+		err = _T.assert_float_eq(setting, 2.5, 0.001, "and a settings toggle two and a half")
+	if err == "":
+		err = _T.assert_float_eq(confirm, 2.0, 0.001, "and a board confirmation two")
+	if err == "":
+		# The unknown-role arm, which must land on AMBIENT rather than on zero: a
+		# zero-second message is one the player never sees at all.
+		err = _T.assert_float_eq(Hud.message_seconds(-99), ambient, 0.001,
+			"an unrecognised role falls back to the ambient band, not to nothing")
+	if err == "":
+		err = _T.assert_gt(act, digest, "ACT outlasts DIGEST")
+	if err == "":
+		err = _T.assert_gt(digest, reveal, "DIGEST outlasts REVEAL")
+	if err == "":
+		err = _T.assert_gt(reveal, notice, "REVEAL outlasts NOTICE")
+	if err == "":
+		err = _T.assert_gt(notice, ambient, "NOTICE outlasts AMBIENT")
+	if err == "":
+		err = _T.assert_gt(ambient, setting, "AMBIENT outlasts SETTING")
+	if err == "":
+		err = _T.assert_gt(setting, confirm, "SETTING outlasts CONFIRM")
+	if err == "":
+		# The floor, and it is a behaviour boundary rather than a taste one: inside
+		# MESSAGE_MIN_READABLE an equal-priority arrival QUEUES instead of replacing,
+		# so a band under it silently changes queueing for every caller at once.
+		err = _T.assert_gt(confirm, Hud.MESSAGE_MIN_READABLE,
+			("and even the shortest band clears MESSAGE_MIN_READABLE (%.1f), under which"
+				+ " an equal-priority arrival queues instead of replacing")
+				% Hud.MESSAGE_MIN_READABLE)
+	return err
+
+
+## THE FALSIFIER for the rule this bead proposed: message durations cannot be derived from
+## message length, because the game's own strings are non-monotone in exactly that variable.
+##
+## Two real pairs, taken from the producers rather than typed out: the wave-cleared line is
+## HALF the length of the husk receipt and gets THREE TIMES the seconds; the mute line is
+## shorter still and outlasts the uproot cancellation. Any monotone function of character
+## count reverses both.
+##
+## This is written as a test and not a comment because a comment cannot fail. If someone
+## later introduces `seconds = clamp(len(text) * k, lo, hi)`, that change has to come here
+## and delete this, which is the moment the decision gets made deliberately.
+func test_no_message_duration_is_derivable_from_the_length_of_its_own_text() -> String:
+	var cleared: String = Hud.wave_cleared_line(3, "")
+	var husk: String = "Composted a husk for 3 seeds."
+	var cancelled: String = "Uproot cancelled."
+	var music_on: String = Game.mute_message("Music", false, KeyBindings.ACTION_MUTE_MUSIC)
+	var err: String = _T.assert_eq(cleared, "Wave 3 cleared.",
+		"the short form of the wave-cleared line is what the producer still returns")
+	if err == "":
+		err = _T.assert_eq(music_on, "Music on.",
+			"and the un-muted form of the settings line is what mute_message still returns")
+	if err == "":
+		err = _T.assert_gt(husk.length(), cleared.length(),
+			("the husk receipt (%d chars) is LONGER than the wave-cleared line (%d)")
+				% [husk.length(), cleared.length()])
+	if err == "":
+		err = _T.assert_gt(Hud.message_seconds(Hud.ROLE_DIGEST),
+			Hud.message_seconds(Hud.ROLE_CONFIRM),
+			("and yet the shorter line gets the longer duration -- so no monotone function"
+				+ " of length reproduces this pair, which is the whole of why these numbers"
+				+ " are bands and not a formula"))
+	if err == "":
+		err = _T.assert_gt(cancelled.length(), music_on.length(),
+			("second independent pair: the uproot cancellation (%d chars) is longer than"
+				+ " \"Music on.\" (%d)") % [cancelled.length(), music_on.length()])
+	if err == "":
+		err = _T.assert_gt(Hud.message_seconds(Hud.ROLE_SETTING),
+			Hud.message_seconds(Hud.ROLE_CONFIRM),
+			"and again the shorter one is the one that stays up longer")
+	return err
+
+
+## The two call sites that deliberately take no band, and why each is safe to leave.
+##
+## Both are pinned to a clock owned elsewhere in Game, so the failure mode is not "wrong
+## reading time" but "the message and the mechanism it describes disagree". A band applied
+## to either would break something the player can see.
+func test_the_two_overridden_message_durations_stay_pinned_to_their_own_clocks() -> String:
+	# The armed-uproot prompt IS the window. Not "about as long as" it.
+	var err: String = _T.assert_float_eq(Game.UPROOT_CONFIRM_SECONDS, 4.0, 0.001,
+		"the uproot window is four seconds")
+	if err == "":
+		err = _T.assert_gt(Game.UPROOT_CONFIRM_SECONDS, Hud.MESSAGE_MIN_READABLE,
+			"long enough that the prompt is not itself queueable behind an equal rung")
+	if err == "":
+		# The flicker steps are an animation. Being UNDER the readable floor is the
+		# mechanism, not an oversight: it is what makes each step fall through
+		# show_message's immediate-overwrite branch instead of queueing behind the last.
+		err = _T.assert_gt(Hud.MESSAGE_MIN_READABLE, Game.PACKET_OPEN_STEP_SECONDS,
+			("the packet flicker step (%.2fs) is under MESSAGE_MIN_READABLE (%.1fs) on"
+				+ " purpose, so each step replaces the last rather than queueing")
+				% [Game.PACKET_OPEN_STEP_SECONDS, Hud.MESSAGE_MIN_READABLE])
+	if err == "":
+		# And the flourish as a whole stays inside the reveal it precedes, which is the
+		# relationship _row_ready_for_a_flourish is written against.
+		var flourish: float = Game.PACKET_OPEN_STEPS * Game.PACKET_OPEN_STEP_SECONDS
+		err = _T.assert_gt(Hud.message_seconds(Hud.ROLE_REVEAL), flourish,
+			("and the whole flourish (%.2fs) is far shorter than the reveal that follows"
+				+ " it (%.1fs)") % [flourish, Hud.message_seconds(Hud.ROLE_REVEAL)])
+	return err
+
+
+## `show_message`'s default argument is the one duration that does NOT live inside
+## `message_seconds`, because a default argument is part of the signature and cannot call
+## it. That makes it the one place the two can drift apart — so it is pinned THROUGH the
+## live row rather than by reading the signature, which no test can do.
+##
+## Seven of the game's eighteen call sites post with no `seconds` at all, so this is the
+## most-used duration in the game and the least visible one.
+func test_the_default_message_duration_is_the_ambient_band() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+	var err: String = _T.assert_true(hud != null, "the run has a HUD to post onto")
+	if err == "":
+		# Game._ready posts an 8-second starter tip. Drain it, or the reading below is
+		# that line's remaining time rather than the default under test.
+		hud._process(9.0)
+		err = _T.assert_true(hud.row_is_quiet(),
+			"and the starter tip has expired, so the row is measuring this post")
+	if err == "":
+		var posted: bool = hud.show_message("a line posted with no duration argument")
+		err = _T.assert_true(posted, "a post onto a quiet row lands rather than queueing")
+	if err == "":
+		err = _T.assert_float_eq(hud.message_seconds_left(),
+			Hud.message_seconds(Hud.ROLE_AMBIENT), 0.001,
+			("show_message's default argument is the AMBIENT band. If this fails, the"
+				+ " literal in the signature and the ROLE_AMBIENT arm have drifted -- fix"
+				+ " the signature, not this assertion"))
+	_T.free_ui(game)
+	return err
+# END LANE SECTION — plant-tower-defense-uhno
 # =============================================================================
