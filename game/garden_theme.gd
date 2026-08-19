@@ -319,8 +319,43 @@ static func retina_path(sprite_path: String) -> String:
 ##
 ## The one primitive every "does this text fit its box" question in this project
 ## needs, and it lives here because the answer depends on the theme — which is what
-## this class is. Three screens now size themselves from it and four tests assert
-## against it.
+## this class is.
+##
+## **WHO CALLS IT, AND AT WHAT SIZE.** Derived from the call sites rather than
+## remembered, because the header used to say "three screens and four tests" and the
+## real number had grown past it in both columns. Eight production calls across six
+## files, at five distinct sizes:
+##
+##   13  PauseScreen.KEY_ROW_FONT_SIZE      pause_screen.gd `_measure` -> `card_width`
+##   15  Hud.MESSAGE_FONT_SIZE              game.gd `message_row_budget`
+##   16  KeyBindingScreen.ROW_FONT_SIZE     key_binding_screen.gd `key_column_width`
+##   17  RunSummary.ROW_FONT_SIZE           run_summary.gd `value_column_budget`
+##   18  GardenTheme.BUTTON_FONT_SIZE       hud.gd `packet_rack_budget`
+##   18  GameSpeed.BUTTON_FONT_SIZE         game_speed.gd `button_min_width`
+##
+## `Hud.STAT_FONT_SIZE` (26) is deliberately NOT in that list: the stats row is
+## budgeted from `WORST_CASE_TEXT` slots, not from this function, so a sweep that
+## included it would be measuring a size nothing here is priced at.
+##
+## One caller is missing from it for a worse reason. `Hud.selection_panel_budget()`
+## builds its own detached probe Label at `Hud.SELECTION_LABEL_FONT_SIZE` (15) and calls
+## `Font.get_string_size` directly — an inline second copy of this function, at a
+## sixth size, that no sweep of THIS function's callers can ever reach. It is not
+## listed above because it is not a caller; it is named here because that is the only
+## way a reader of this header finds out it exists.
+##
+## The list is the thing that rots, so it is asserted rather than trusted:
+## test_the_static_measurement_agrees_with_a_real_label_at_every_size_it_is_priced_at
+## sweeps every size above against real in-tree Labels, and
+## test_every_budget_measures_at_the_size_its_own_widget_resolves checks the other
+## half — that the widget each budget prices actually renders at the size it was
+## priced at. A new caller at a sixth size belongs in both.
+##
+## **The failure mode a naive agreement test cannot see.** This returns 0.0 when no
+## font resolves, and `_T.text_width` returns 0.0 for the same reason — so
+## `measure(t, n) == text_width(label)` passes unconditionally on exactly the run
+## where the font is missing. Any comparison against a real Label must first assert
+## the drawn width is non-zero; that is not belt-and-braces, it is the assertion.
 ##
 ## **Why a detached Label rather than a Font loaded by path.** The width that matters
 ## is the one the real Label will draw at, and a Label resolves its font through the
@@ -345,7 +380,17 @@ static func measure(text: String, font_size: int) -> float:
 	var font: Font = probe.get_theme_font("font")
 	var width: float = 0.0
 	if font != null:
-		width = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1,
-			probe.get_theme_font_size("font_size")).x
+		var resolved: int = probe.get_theme_font_size("font_size")
+		# Per line, widest wins — because that is what a Label is. `get_string_size`
+		# measures its argument as ONE run, so a two-line string came back at roughly
+		# the SUM of its lines where the Label drawing it is only as wide as the wider
+		# one. Every caller today passes single-line text (game.gd splits its corpus
+		# before calling), so this changes no shipped number: `split()` on a string
+		# with no newline in it yields that string and nothing else. What it removes is
+		# the trap waiting for the first caller that does not split first, which would
+		# have over-budgeted silently — the failure a width helper cannot report.
+		for line: String in text.split("\n"):
+			width = maxf(width, font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT,
+				-1, resolved).x)
 	probe.free()
 	return width

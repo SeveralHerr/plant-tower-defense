@@ -19223,3 +19223,229 @@ func test_the_campaign_ramp_spends_the_endless_ceiling_without_reordering_it() -
 	return err
 # END LANE SECTION — plant-tower-defense-8v43
 # =============================================================================
+
+
+# =============================================================================
+# LANE SECTION — plant-tower-defense-fo96
+#
+# `GardenTheme.measure()` is a DETACHED Label resolving the default theme, and it
+# prices width budgets on five screens. Its correctness rests on "this project sets
+# no custom theme", which was asserted in exactly one place —
+# test_the_cards_own_measurement_agrees_with_the_labels_it_builds — and only at the
+# pause card's 13px. The other four sizes were trusted.
+#
+# TWO QUESTIONS, and they are different. The first is whether the detached probe and
+# a real in-tree Label agree AT a size (below, the sweep). The second is whether the
+# widget a budget prices actually RENDERS at the size the budget measured — a budget
+# can be perfectly self-consistent and still price a font nothing on screen is
+# wearing. The second is the one that has no other gate at all.
+# =============================================================================
+
+
+## The static measurement against a real, in-tree, rendered Label, at every size any
+## production caller actually names.
+##
+## The size list is derived from the call sites rather than copied: six production
+## calls of `GardenTheme.measure()` live in five files, and every one of them passes
+## one of the six constants below. Each is read from its owning class here, so a
+## retune moves the sweep with it instead of leaving the sweep pinned to a stale
+## literal. `Hud.STAT_FONT_SIZE` (26) is deliberately absent — the stats row is
+## budgeted from `WORST_CASE_TEXT` slots and never reaches this function, so sweeping
+## it would be measuring a size nothing is priced at.
+func test_the_static_measurement_agrees_with_a_real_label_at_every_size_it_is_priced_at() -> String:
+	var sizes: Dictionary = {
+		"PauseScreen.KEY_ROW_FONT_SIZE": PauseScreen.KEY_ROW_FONT_SIZE,
+		"Hud.MESSAGE_FONT_SIZE": Hud.MESSAGE_FONT_SIZE,
+		"KeyBindingScreen.ROW_FONT_SIZE": KeyBindingScreen.ROW_FONT_SIZE,
+		"RunSummary.ROW_FONT_SIZE": RunSummary.ROW_FONT_SIZE,
+		"GardenTheme.BUTTON_FONT_SIZE": GardenTheme.BUTTON_FONT_SIZE,
+		"GameSpeed.BUTTON_FONT_SIZE": GameSpeed.BUTTON_FONT_SIZE,
+	}
+	# Real strings off the surfaces these sizes actually price, plus the two runs a
+	# font table is most likely to disagree about: solid caps and solid digits.
+	var corpus: Array[String] = [
+		"Esc  ·  P",
+		"Put them all back",
+		"Common (20)",
+		"Legendary Packet — Empty",
+		"The wave chewed through your Sunflower!",
+		"WWWWWWWWWW",
+		"1234567890",
+		"i",
+	]
+
+	var root := Control.new()
+	root.name = "MeasureSweepHost"
+	var probes: Dictionary = {}
+	for key: String in sizes:
+		var probe := Label.new()
+		probe.name = "Probe_%s" % key.replace(".", "_")
+		probe.add_theme_font_size_override("font_size", int(sizes[key]))
+		root.add_child(probe)
+		probes[key] = probe
+	await _T.instantiate_ui(root, Vector2i(1152, 648))
+
+	var err: String = ""
+	var pairs: int = 0
+	var worst_gap: float = 0.0
+	var worst_where: String = "nothing"
+	for key: String in sizes:
+		if err != "":
+			break
+		var probe: Label = probes[key] as Label
+		# The size the LABEL resolved, not the one we asked for. If a theme ever
+		# swallowed the override these two would part company and every width below
+		# would be measured at a size the row does not draw at — a sweep that agreed
+		# with itself about the wrong font.
+		err = _T.assert_eq(probe.get_theme_font_size("font_size"), int(sizes[key]),
+			"%s: an in-tree Label resolves the size the override asked for" % key)
+		if err != "":
+			break
+		for text: String in corpus:
+			probe.text = text
+			var drawn: float = _T.text_width(probe)
+			# FIRST, and this is the assertion rather than a politeness: measure()
+			# returns 0.0 when no font resolves and _T.text_width returns 0.0 for the
+			# same reason, so the equality below passes UNCONDITIONALLY on exactly the
+			# run where the font went missing. `get_minimum_size()` is not used here
+			# for the project's usual reason — these are the labels it lies about.
+			err = _T.assert_gt(drawn, 0.0,
+				"%s: \"%s\" draws a non-zero width (0 == 0 is not an agreement)" % [key, text])
+			if err != "":
+				break
+			var priced: float = GardenTheme.measure(text, int(sizes[key]))
+			pairs += 1
+			var gap: float = absf(priced - drawn)
+			if gap > worst_gap:
+				worst_gap = gap
+				worst_where = "%s / \"%s\"" % [key, text]
+			# One pixel of tolerance, for the reason the pause card's own comparison
+			# gives: two TextServer calls agreeing to the bit is a test that fails on a
+			# rounding change rather than on the defect it exists for.
+			err = _T.assert_float_eq(priced, drawn, 1.0,
+				("%s: the static measurement said %.1fpx for \"%s\" and a real in-tree "
+					+ "Label drew %.1fpx — the detached probe and the tree have come "
+					+ "apart, which is what a custom theme added to this project would do")
+					% [key, priced, text, drawn])
+			if err != "":
+				break
+	if err == "":
+		err = _T.assert_gt(pairs, 40,
+			("the sweep genuinely ran (%d size/string pairs; an empty loop here is a "
+				+ "green result that checked nothing)") % pairs)
+	if err == "":
+		# The number this test exists to produce, kept in the message so a reader
+		# learns what "agrees" actually cost rather than only that it passed.
+		err = _T.assert_true(worst_gap <= 1.0,
+			"and the worst disagreement anywhere in the sweep was %.3fpx, at %s"
+				% [worst_gap, worst_where])
+	_T.free_ui(root)
+	return err
+
+
+## The other half: is each budget measuring the size its own widget renders at?
+##
+## A budget can agree with `GardenTheme.measure()` to the pixel and still be wrong,
+## because the question `measure()` answers is "how wide is this string AT SIZE N" and
+## nothing checks that N is the size the thing on screen is wearing. Two of the three
+## HUD sites below set the size explicitly (`_make_label`, `style_paper_button`). The
+## packet rack does not: those Buttons carry no font override, and the HUD refuses
+## `GardenTheme.build()` on purpose, so whatever they resolve comes from the default
+## theme and NOT from `GardenTheme.BUTTON_FONT_SIZE` — which is the constant
+## `packet_rack_budget()` prices them at.
+##
+## Every site is checked before reporting, rather than short-circuiting on the first,
+## so a failure names the whole set that disagrees instead of one of them.
+func test_every_budget_measures_at_the_size_its_own_widget_resolves() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var sites: Array = [
+		["Root/SidePanel/PacketButton", GardenTheme.BUTTON_FONT_SIZE,
+			"Hud.packet_rack_budget() via GardenTheme.BUTTON_FONT_SIZE"],
+		["Root/TopBar/MessageLabel", Hud.MESSAGE_FONT_SIZE,
+			"the message row budget via Hud.MESSAGE_FONT_SIZE"],
+		["Root/TopBar/StatsRow/SpeedButton", GameSpeed.BUTTON_FONT_SIZE,
+			"GameSpeed.button_min_width() via GameSpeed.BUTTON_FONT_SIZE"],
+	]
+	var err: String = ""
+	var checked: int = 0
+	var problems: PackedStringArray = PackedStringArray()
+	for site: Array in sites:
+		if err != "":
+			break
+		var path: String = String(site[0])
+		var priced_at: int = int(site[1])
+		var who: String = String(site[2])
+		var control: Control = game.hud.get_node_or_null(path) as Control
+		err = _T.assert_true(control != null, "%s is on the HUD" % path)
+		if err != "":
+			break
+		checked += 1
+		var resolved: int = control.get_theme_font_size("font_size")
+		if resolved != priced_at:
+			problems.append(("%s renders at %d but %s prices it at %d"
+				% [path, resolved, who, priced_at]))
+	if err == "":
+		err = _T.assert_eq(checked, sites.size(),
+			"all three priced HUD widgets were reached (an unreached one is not a pass)")
+	if err == "":
+		err = _T.assert_true(problems.is_empty(),
+			("a budget is measuring a font its widget does not wear, so it is wrong by "
+				+ "the ratio of the two sizes: %s") % "; ".join(problems))
+	_T.free_ui(game)
+	return err
+
+
+## The one string shape the static measurement got wrong: a line break.
+##
+## `Font.get_string_size()` measures its argument as ONE run, so a two-line string
+## came back at roughly the SUM of its lines, while the Label drawing it is only as
+## wide as the wider one. Nothing shipped passes multi-line text today (game.gd splits
+## its corpus before calling), which is exactly why this went unnoticed and why it
+## would have been the first caller that did not split who paid for it — silently,
+## as an over-budget nobody could see.
+##
+## Grounded against a real Label rather than against `measure()`'s own other answer,
+## so this asserts the definition rather than restating the implementation.
+func test_the_static_measurement_takes_the_widest_line_the_way_a_label_does() -> String:
+	var size: int = Hud.MESSAGE_FONT_SIZE
+	var wide: String = "The wave chewed through your Sunflower!"
+	var narrow: String = "i"
+	var both: String = "%s\n%s" % [wide, narrow]
+
+	var probe := Label.new()
+	probe.name = "LineBreakProbe"
+	probe.add_theme_font_size_override("font_size", size)
+	probe.text = both
+	var root := Control.new()
+	root.name = "LineBreakHost"
+	root.add_child(probe)
+	await _T.instantiate_ui(root, Vector2i(1152, 648))
+
+	var drawn: float = _T.text_width(probe)
+	# Non-zero first, for the reason the sweep above gives at length.
+	var err: String = _T.assert_gt(drawn, 0.0,
+		"the two-line Label draws a non-zero width")
+	if err == "":
+		err = _T.assert_float_eq(GardenTheme.measure(both, size), drawn, 1.0,
+			("a two-line string is priced at the width of its WIDER line: the "
+				+ "measurement said %.1fpx and the Label drew %.1fpx")
+				% [GardenTheme.measure(both, size), drawn])
+	if err == "":
+		# And the widest line is genuinely the long one, so the assertion above is not
+		# passing on a pair of strings that happen to measure the same.
+		err = _T.assert_float_eq(GardenTheme.measure(both, size),
+			GardenTheme.measure(wide, size), 0.5,
+			"and that wider line is the long one, not the 'i'")
+	if err == "":
+		err = _T.assert_gt(GardenTheme.measure(wide, size),
+			GardenTheme.measure(narrow, size) * 4.0,
+			("the two lines are wildly different widths, so a sum and a max cannot "
+				+ "coincide here — without this the test above proves nothing"))
+	if err == "":
+		# The single-line path, unchanged: every shipped caller is on it.
+		err = _T.assert_gt(GardenTheme.measure(wide, size), 0.0,
+			"and the ordinary single-line measurement still answers")
+	_T.free_ui(root)
+	return err
+# END LANE SECTION — plant-tower-defense-fo96
+# =============================================================================
