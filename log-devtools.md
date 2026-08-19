@@ -7891,3 +7891,33 @@ status rather than rewriting the entries that recorded these as open.
     arming becomes a one-way trip that uproots on the second call (which is what happened
     here). Filed as `-cfvb`, which says to settle the touch question FIRST, because if a
     click can select then this is a documentation gap and a verb is only a convenience.
+
+## 2026-08-18 — a verb built on evidence, and the answer it was built to get
+
+- Value: **warranted** — the verb's first real call settled a question that had been filed as
+  unestablished one cycle earlier, and that no amount of reading could have answered.
+  - Expected: `cmd messages` would collapse cycle 128's four-flag `find-nodes --class Hud
+    --property ...` lines into one call, and `refused_log` would name which line a double
+    purchase drops.
+  - Got: two packet purchases back to back — `refused 1`, `refused_log ["The packet held a
+    Chomp Flower!"]`, row showing `"The packet held a Barrier Bramble!"` with `3 pending`.
+    The refused line is a **reveal**, so the player is told what the second packet held and
+    never told what the first one did.
+  - Found: three more. The log survives its own frame — read back after the row had cleared
+    (`row_text ""`, `0 pending`) it still named the dropped reveal. A house gate
+    (`test_every_positional_devtools_verb_refuses_a_call_with_no_position`) failed the first
+    time the suite ran after the verb was registered, until `messages` was classified in
+    `DEFAULTED_VERBS` with a reason. And `suite_reach_check` named all four new accessors as
+    reached by no test — covered rather than waived, including that `message_queue_snapshot`
+    returns a copy, since a debug verb handing out the live Dictionaries lets a caller edit
+    the queue by looking at it.
+  - Cheaper: nothing. `_queue_message` had the refused text in hand and discarded it, so the
+    severity question is unanswerable from source by construction — `messages_refused` is the
+    same number whichever of the four posts per purchase was dropped.
+
+- Gap: **no gap this turn.** The bridge did everything asked of it: `cmd` reached a new
+  project verb the moment it was registered, `list-commands` picked it up without being
+  told, and `findings` / `quit` reported clean including "no file changed during this run".
+  Cycle 128's `G-132` (nothing can select a placed plant) was not re-hit, because this
+  cycle's producer is a purchase rather than an uproot — it stays `open` at `seen: 1` rather
+  than being bumped for a run that never needed it.

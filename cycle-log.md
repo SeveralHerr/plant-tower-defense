@@ -1,4 +1,4 @@
-# Cycle 128
+# Cycle 129
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,33 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 129 taught
+
+**A bead that names the evidence which would justify it beats a bead that argues for
+itself.** `-a9pi` refused to answer its own question and set a condition instead: build the
+verb only if the re-measurement of cycle 93's answer reads the counters repeatedly across
+scenarios. Cycle 128 then read all four eight times across five scenarios, for reasons that
+had nothing to do with wanting a verb. A tiebreaker met by a measurement taken for another
+purpose is the only kind that cannot be rationalised afterwards. Write more beads this way.
+
+**A counter and a log answer different questions, and the gap was a whole severity rating.**
+`messages_refused` is the same number whether the player lost a cosmetic flicker step or the
+line naming the plant they just paid for. One `append` turned that into `refused_log ["The
+packet held a Chomp Flower!"]` — a reveal, the serious reading. When a counter exists to
+describe something the player did NOT see, the thing they did not see is the datum and the
+count is only a summary of it.
+
+**Keep a short tail of anything transient you count.** The refused log read correctly after
+the row had cleared entirely — `row_text ""`, `0 pending`. A transient only readable during
+the frame it occurs in is a transient nobody diagnoses; this is why `findings_last.json`
+exists, and the same argument applies to every counter in the project.
+
+**The house gates caught the new verb before I did.** The positional-verb classifier and
+`suite_reach_check` both fired on the first suite run after registration, and neither is a
+test written for this work. The second produced the better assertion: that
+`message_queue_snapshot()` returns a copy, so a verb whose only job is to look cannot be
+used to edit what it is looking at.
 
 ## What cycle 128 taught
 

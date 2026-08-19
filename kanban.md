@@ -4058,7 +4058,7 @@ Three findings kept out here rather than buried in a log:
 ### New in cycle 112 — grown from confirming a bead and reading a sentence
 
 - **Nothing in this project can tell whether a sentence is TRUE, and cycle 112 found one
-  that had quietly stopped being.** `Hud.eaten_message` (`game/hud.gd:3593`) read "A hungry
+  that had quietly stopped being.** `Hud.eaten_message` (`game/hud.gd:3645`) read "A hungry
   pest ate your %s!" and was correct for every plant death in the game until the ninth
   plant: `Pest._physics_process` reaches `_adjacent_plant()` only inside its `is_hungry`
   branch (`game/pest.gd:1282-1286`), so a hungry pest really was the only thing that could
@@ -4126,7 +4126,7 @@ Three findings kept out here rather than buried in a log:
   that REVERSES one they already learned.** The mechanism exists and is deliberate:
   `RunConfig.HINT_MOVE_PREVIEW` / `HINT_CHOMP_IGNORES_FLIGHT` / `HINT_UPGRADE_EXISTS`
   (`game/run_config.gd:166`, `:195`, `:212`), each a one-shot tip with a matching notebook
-  card in `Hud.HINT_CARDS` (`game/hud.gd:3505`), and
+  card in `Hud.HINT_CARDS` (`game/hud.gd:3557`), and
   `test_every_hint_has_a_notebook_card` fails on either half missing.
   Look at what those three teach: a flier ignores a Chomp; a plant already down can grow;
   Uproot compares before it digs. Each is a rule the board does not state. **"You may build
@@ -4161,7 +4161,7 @@ Three findings kept out here rather than buried in a log:
   ("Slowing %d pest(s) to %d%% speed."), `wave_cleared_note` ("%d pests turned back.") and
   so on. A retune moves the number and the sentence follows. Every defect found in two
   cycles of looking has been in the handful that name a mechanism instead:
-  `eaten_message`'s "A hungry pest" (fixed cycle 112, `game/hud.gd:3632`) and
+  `eaten_message`'s "A hungry pest" (fixed cycle 112, `game/hud.gd:3684`) and
   `idle_detail`'s "waiting for a pest" (fixed cycle 115, `:2444`).
   Not a checker — `-u9zb`'s close records why, and the short version is that accuracy is a
   claim about the relationship between English and code with no shared vocabulary to check.
@@ -4170,7 +4170,7 @@ Three findings kept out here rather than buried in a log:
   shape rather than audited into it two cycles later.
 
 - **The one-shot teaching tips name a single answer where the catalogue now has three.**
-  `Hud.flight_tip` (`game/hud.gd:3489`) reads "That pest flies over Chomp Flowers. Corn
+  `Hud.flight_tip` (`game/hud.gd:3541`) reads "That pest flies over Chomp Flowers. Corn
   Cobblers can still hit it." Both halves are true. But a winged pest is also reachable by
   the Bomb Dandelion (its blast hits whatever is standing there) and by the Prickly Nettle,
   which exists *specifically* to sting the mutations — armoured, winged, hungry — and whose
@@ -4587,3 +4587,38 @@ Three findings kept out here rather than buried in a log:
   handler) and none was checked, so **correcting the note now would be replacing one
   unverified sentence with another**. Filed as `-cfvb` with the check named. This is the
   `kanban-staleness-audit` bar applied to the durable-knowledge file itself.
+
+### New in cycle 129 — grown from a bead that set its own tiebreaker and then met it
+
+- **A bead that names the evidence which would justify it is worth more than a bead that
+  argues for itself.** `-a9pi` asked whether the message counters should get a devtools verb
+  and refused to answer: "the tiebreaker is the re-measurement of cycle 93's answer. If that
+  work wants these counters read repeatedly across several scenarios, the verb pays for
+  itself immediately. If it is one read, it does not. So do this AFTER that, or not at all."
+  Cycle 128 then read all four counters eight times across five scenarios. The decision was
+  made by a measurement taken for another reason entirely, which is the only kind of
+  tiebreaker that cannot be rationalised after the fact.
+  It also **falsified its own strongest counter-argument**: "the counters are diagnostic
+  scaffolding for questions that are now ANSWERED". The work that was meant to close the
+  last of those questions re-opened and corrected it instead.
+
+- **A counter and a log answer different questions, and the gap between them was a whole
+  severity rating.** `messages_refused` was 12 after four purchases and 1 after two, and it
+  is the same number whether the player lost a cosmetic flicker step or the line naming the
+  plant they just paid for. `_queue_message` had the text in hand and dropped it
+  (`game/hud.gd:3214`). One `append` later (`:3221`) the answer is `refused_log ["The packet held a
+  Chomp Flower!"]` — a reveal. **When a counter exists to describe something the player did
+  not see, the thing they did not see is the datum; the count is a summary of it.**
+
+- **The log survives the frame that produced it, and that is a design property worth
+  copying.** Read after the row had cleared — `row_text ""`, `0 pending` — it still named the
+  dropped reveal. Same reason `findings_last.json` exists: a transient that is only readable
+  during the frame it occurs in is a transient nobody diagnoses. Anything counting a
+  disappearing event should keep a short tail of what disappeared.
+
+- **Two house gates fired on the new verb the first time the suite ran after it existed**,
+  and neither is a test anyone wrote for this work: the positional-verb classifier demanded
+  `messages` be declared defaulted *with a reason*, and `suite_reach_check` named all four
+  new accessors as reached by nothing. Both were right. The second produced the better test —
+  asserting that `message_queue_snapshot()` returns a **copy**, so a verb whose whole job is
+  to look cannot be used to edit the queue.
