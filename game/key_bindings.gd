@@ -140,16 +140,85 @@ const ACTIONS: Array[Dictionary] = [
 ## The budget is named rather than repeated as a number: this comment said "the
 ## pause card is 320px wide" and stayed saying it after the card was widened to
 ## hold the longest `does` phrase.
+##
+## ## What earns a row here, and what does not
+##
+## The engine names a key badly in two different ways, and only one of them needs
+## writing down.
+##
+## **It spends a word where the key prints a glyph.** `KEY_BRACKETLEFT` comes back
+## "BracketLeft"; the key has `[` printed on it and `[` is what a player calls it.
+## That set is a RULE and not a taste call — across the printable block the glyph
+## simply IS the keycode — so it is not recorded at all. `key_label()` falls
+## through to `glyph_for()`, and the 32 punctuation keys need no rows. The 36
+## letter and digit keycodes take the same path and come out character-for-
+## character identical to the engine's own name, which is why that rule could be
+## stated over the whole block rather than over a list of the keys it improves.
+##
+## **It spends an abbreviation nobody says where the key prints no glyph.** "Kp 0"
+## for the numeric keypad; "Escape" where every keyboard prints Esc. Nothing
+## derives "Num 0" from "Kp 0", so those rows live here. Their KEYS are still
+## derivable — the engine's own name for a keypad key begins with "Kp " — and
+## `test_short_names_is_exactly_the_keys_the_glyph_rule_cannot_reach` asserts the
+## recorded keys equal that derived set in both directions, so a keypad key the
+## engine grows arrives as a failing test rather than as one stray "Kp" on a
+## legend. The seven rows below the keypad block are the judgement half and are
+## hand-typed on purpose: changing that set should cost somebody a diff.
+##
+## Everything else keeps the engine's name. "F1", "Home", "PageUp" are already
+## what a player calls them, and a second spelling for those would be the second
+## key table this file exists to avoid.
+##
+## One row is LONGER than what it replaces: "Num 0" (5) against the engine's
+## "Kp 0" (4). It is the only place the trade goes that way and it is safe in both
+## places a key is drawn — `PauseScreen.key_column_width()` measures
+## `label_for()` itself, and `KeyBindingScreen.key_column_width()` is sized for
+## every name the ENGINE can produce, whose widest ("On-screen keyboard") no row
+## here comes close to.
 const SHORT_NAMES: Dictionary = {
+	# Keypad. Derived keys, chosen values: the engine calls these "Kp 0" .. "Kp 9",
+	# "Kp Multiply" and so on, and "Kp" is not a word anybody says out loud.
+	KEY_KP_MULTIPLY: "Num *",
+	KEY_KP_DIVIDE: "Num /",
+	KEY_KP_SUBTRACT: "Num -",
+	KEY_KP_PERIOD: "Num .",
+	KEY_KP_ADD: "Num +",
+	KEY_KP_0: "Num 0",
+	KEY_KP_1: "Num 1",
+	KEY_KP_2: "Num 2",
+	KEY_KP_3: "Num 3",
+	KEY_KP_4: "Num 4",
+	KEY_KP_5: "Num 5",
+	KEY_KP_6: "Num 6",
+	KEY_KP_7: "Num 7",
+	KEY_KP_8: "Num 8",
+	KEY_KP_9: "Num 9",
+	# The keypad's Enter is the one keypad key a player does not distinguish from
+	# the other one, so it is named for what it does rather than for where it sits.
+	KEY_KP_ENTER: "Enter",
+	# Judgement. No rule reaches these: the arrows print an arrow that the engine
+	# spells as a word, and the rest are what the keycap says.
 	KEY_ESCAPE: "Esc",
 	KEY_LEFT: "←",
 	KEY_RIGHT: "→",
 	KEY_UP: "↑",
 	KEY_DOWN: "↓",
+	# Space and Enter already match `OS.get_keycode_string`, so neither shortens
+	# anything. They are pins, not abbreviations: Space sits one code below
+	# `GLYPH_FIRST`, and widening that bound by one would otherwise render it as
+	# the invisible character it prints.
 	KEY_SPACE: "Space",
 	KEY_ENTER: "Enter",
-	KEY_KP_ENTER: "Enter",
 }
+
+## The keycodes whose glyph is the character the code IS: the printable ASCII
+## block, minus space (0x20), whose glyph is invisible and which therefore keeps
+## the word `SHORT_NAMES` gives it.
+##
+## Anchored on the engine's own first and last printable constants rather than on
+## 0x21 and 0x7E, so a keycode table that renumbers takes this bound with it.
+const GLYPH_FIRST: int = KEY_EXCLAM
+const GLYPH_LAST: int = KEY_ASCIITILDE
 
 ## Separator between the keys of a multi-key verb, matching the legend the pause
 ## card has always drawn ("Esc  ·  P").
@@ -323,10 +392,26 @@ static func apply_overrides(saved: Dictionary) -> Array[String]:
 	return dropped
 
 
+## The character printed on this key, or "" for a key that prints none.
+##
+## This is the whole of "the engine names it badly" that needs no judgement, and
+## the reason 32 punctuation keys have no rows in `SHORT_NAMES`. Inside the
+## printable block the engine's own fallback for an unnamed code is this same
+## character, so letters and digits come out unchanged and only the keys the
+## engine spelled as a word move — "BracketLeft" to "[".
+static func glyph_for(code: int) -> String:
+	if code < GLYPH_FIRST or code > GLYPH_LAST:
+		return ""
+	return String.chr(code)
+
+
 ## One key, as short as it can be said.
 static func key_label(code: int) -> String:
 	if SHORT_NAMES.has(code):
 		return String(SHORT_NAMES[code])
+	var glyph: String = glyph_for(code)
+	if glyph != "":
+		return glyph
 	var name: String = OS.get_keycode_string(code)
 	return name if name != "" else "?"
 
