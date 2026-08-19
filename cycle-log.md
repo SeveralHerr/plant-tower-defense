@@ -808,6 +808,52 @@ decision rather than mostly typing". This cycle's player-facing item needed all 
 the first and the rest of the ready queue is largely the second. Run serially at the
 parent; the skill's own section is what decided it, in about a minute.
 
+## What cycle 109 taught
+
+**BACKFILLED IN CYCLE 135 (`-p9qo`), from the commit record rather than from memory** — and
+the honest caveat first: nobody wrote these down at the time, so what follows is
+reconstructed from what the repo can still prove. Where the record does not support a lesson,
+this says so rather than inventing one. These three are the only gap in the file: every cycle
+from 100 to 134 is otherwise present.
+
+## What cycle 108 taught
+
+**The Done section, pruned by `-tkdz`.** `kanban.md:14` still credits it: "Audited
+and pruned at cycle 108. Every row below shipped **and** is held there by a named test — the
+pair is the point." The lesson is in that sentence: a Done line with nothing asserting it is a
+claim rather than a fact, and the one entry that turned out to be exactly that went back to
+the backlog instead of staying. The audit also found Done had **gone stale about itself,
+twice, both times against its own next entry** — a section long enough to contradict itself is
+the whole argument for pruning it.
+
+### The cycle-109 bead audit itself: all 138 open beads read and judged (`c2ea0ca`, record kept at
+`.claude/bead-audit-cycle109.md`, 49KB). Verdicts: 11 stale, 66 not worth doing, 40 a player
+would notice. The method is the part worth keeping — `bd list --status=open --json` for the
+bodies, then **the cited file opened before the verdict was written**, under
+`kanban-staleness-audit`'s bar that a wrong `STALE` deletes an idea nobody will have again.
+That "open the file before judging" discipline is the direct ancestor of the confirm-before-
+claim step now in the cycle skill.
+
+**And the lesson the gap itself carries, which is why the backfill is worth more than the
+three entries.** These three went unwritten because step 6 said "bump the cycle number" and
+nothing derived it, so the file quietly stopped being written while every other pre-flight
+item was a list that visibly filled up. Cycle 110 fixed that by DERIVING the counter from the
+commit titles. **A file that quietly empties needs a different guard from a list that visibly
+fills** — the same shape as the `AGENTS.md` mirror, which has been silently emptied twice and
+now has a checker.
+
+## What cycle 107 taught
+
+**Eight beads in five lanes, and the seam between two of them.** The close
+(`6acc3cf`) filed three harness gaps, and the one that bit is worth carrying: **nothing gates
+a call site's arguments against the callee's default when a shared helper gains a mode
+parameter** (G-125). Two lanes touched opposite ends of one helper; each was individually
+correct. The other two are the same fan-out lesson this project keeps re-learning from a new
+angle — a lane cannot type-check the file it wrote (G-124: "five lanes reported green this
+cycle having parsed nothing"), and the `/verify` skill shipping with plugin 0.60.0 describes a
+`run.json` the installed 0.38.0 ledger does not read (G-126). All three were live again in
+cycles 129–134, which is the argument for writing the log entry at the time.
+
 ## What cycle 106 taught
 
 **A screenshot from James beat every gate this project owns.** The playfield sat hard left
