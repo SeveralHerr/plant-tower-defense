@@ -8049,7 +8049,17 @@ status rather than rewriting the entries that recorded these as open.
     file open or read-only so `FileAccess.open(WRITE)` fails, but the harness implementation
     was not opened. Read the 0.60.0 template first — this project runs 0.38.0 and
     `harness-version --client` says outright that gaps logged against it may already be fixed.
-  - [G-134] status: open | seen: 1 | harness: 0.38.0
+  - [G-134] status: wontfix | seen: 1 | harness: 0.38.0
+  - **WITHDRAWN IN CYCLE 134 — this gap is not a gap.** Re-run with the order reversed
+    (plain launch first, flagged second), `_save()` returns TRUE under the flag, twice.
+    `userstate_snapshot` (`tools/devtools.py:1835`) copies matching files into `.devtools/`
+    with `shutil.copy2` and holds nothing open, so it cannot affect `user://` writability.
+    The real trigger was an unknown milestone id left in `earned_milestones` by
+    `record_milestones`, which makes `_save()`'s readback fail for the rest of the session —
+    a defect in this project's own save code, now fixed. I filed a P1 against the harness on
+    a paired measurement without reading the implementation the bead itself told me to read
+    first. The half that survives: `quit`'s restore line is printed unconditionally and is a
+    report about the mechanism rather than about the run.
   - Improvement: two, and the second is worth having even if the first is fixed upstream.
     (1) make the write succeed under the flag — snapshot by copying, not by holding.
     (2) make `quit`'s restore line report what it DID: "restored 1 file(s), 0 of which the

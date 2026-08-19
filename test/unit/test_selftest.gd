@@ -18607,3 +18607,60 @@ func test_a_flourish_waits_for_a_reveal_that_is_still_being_read() -> String:
 				+ "queues and there is nothing to wait for")
 	_T.free_ui(game)
 	return err
+
+
+# --- PARENT SECTION (plant-tower-defense-ooih): a milestone id that cannot round-trip ---
+#
+# Appended by the parent during a fan-out. Lane 4 appends its own section below or above
+# this one; the conflict is expected and mechanical.
+
+
+## An id the writer accepts and its own reader rejects breaks EVERY LATER SAVE.
+##
+## Measured on a live game: `record_milestones(["SNAPSHOT_PROBE"])` returned
+## `["SNAPSHOT_PROBE"]` as freshly recorded, and the next four `_save()` calls all returned
+## false. `_save` writes the file then reads it back through the loader's validator, and
+## `_parse_milestones` rejects any character outside `MILESTONE_ID_CHARS`; the bad id stays
+## in `earned_milestones`, so the failure is permanent for that session. The player's high
+## score and settings quietly stop persisting, and `record_milestones` reported success.
+func test_a_milestone_id_that_cannot_round_trip_is_refused_at_the_door() -> String:
+	var err: String = _T.assert_false(RunConfig.is_recordable_milestone("SNAPSHOT_PROBE"),
+		"an uppercase id cannot survive the save format and must be refused")
+	if err == "":
+		err = _T.assert_false(RunConfig.is_recordable_milestone("has-a-hyphen"),
+			"a hyphen is outside MILESTONE_ID_CHARS")
+	if err == "":
+		err = _T.assert_false(RunConfig.is_recordable_milestone(""),
+			"an empty id is not recordable")
+	if err == "":
+		# And the other direction, which is the half that matters: every id the game
+		# ACTUALLY records must still be recordable. A predicate that refuses everything
+		# would pass all three assertions above and silently disable milestones.
+		for row: Dictionary in Milestones.TABLE:
+			var id: String = String(row["id"])
+			err = _T.assert_true(RunConfig.is_recordable_milestone(id),
+				"the real milestone '%s' is still recordable" % id)
+			if err != "":
+				return err
+	return err
+
+
+## The predicate must agree with the PARSER, not merely look reasonable. They were written
+## independently once and that is exactly how a writer comes to accept what its reader
+## rejects -- so this asserts the round trip itself rather than the rule.
+func test_every_recordable_milestone_survives_the_parser() -> String:
+	var ids: Array[String] = []
+	for row: Dictionary in Milestones.TABLE:
+		ids.append(String(row["id"]))
+	var err: String = _T.assert_gt(ids.size(), 0,
+		"Milestones.TABLE has rows -- without this the loop below asserts nothing")
+	if err != "":
+		return err
+	var line: String = "m%d:%s" % [ids.size(), ",".join(ids)]
+	var parsed: Variant = RunConfig._parse_milestones(line)
+	err = _T.assert_true(parsed != null,
+		"the parser reads back a line built from every real milestone id: %s" % line)
+	if err == "":
+		err = _T.assert_eq((parsed as Array).size(), ids.size(),
+			"and reads back the same number of them")
+	return err

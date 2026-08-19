@@ -615,6 +615,30 @@ func record_milestones(ids: Array) -> Array[String]:
 			continue
 		if text.is_empty() or has_milestone(text):
 			continue
+		# REFUSED AT THE DOOR, because the alternative is that every later save in
+		# this session fails and nothing says so to the caller.
+		#
+		# `_save()` writes the file and then reads it back through the loader's own
+		# validator, and `_parse_milestones` rejects any id containing a character
+		# outside MILESTONE_ID_CHARS (lowercase, digits, underscore). So an id with a
+		# capital or a hyphen in it is accepted here, written, rejected on readback,
+		# and `_save()` returns false -- for THIS call and for every subsequent one,
+		# because the bad id is still sitting in `earned_milestones`. The player's
+		# high score, settings and real milestones all quietly stop persisting.
+		#
+		# Measured: `record_milestones(["SNAPSHOT_PROBE"])` returned ["SNAPSHOT_PROBE"]
+		# as freshly recorded, and the next four `_save()` calls in that session all
+		# returned false. It cost most of a cycle to attribute, because the symptom
+		# ("saves are failing") is nowhere near the cause and the reporting is split:
+		# `_save` warns, `record_milestones` returns success.
+		#
+		# Loud rather than silent, and matching the hint refusal above: the run must
+		# not stop over a bad id, but nobody should have to find this by bisection.
+		if not is_recordable_milestone(text):
+			push_warning(("RunConfig: '%s' is not a recordable milestone id -- only "
+				+ "%s are legal. Refusing it here, because accepting it would make "
+				+ "every save in this session fail silently.") % [text, MILESTONE_ID_CHARS])
+			continue
 		earned_milestones[text] = true
 		fresh.append(text)
 	if not fresh.is_empty():
@@ -885,6 +909,22 @@ static func _is_action_name(text: String) -> bool:
 ##
 ## Returns Array[String] on success, `null` on anything else — a distinction
 ## `[]` cannot make, since the empty set is a legitimate reading.
+## Whether `id` can survive a save/load round trip.
+##
+## Derived from the same constant `_parse_milestones` validates against, rather than
+## re-stating the rule — the two halves being written independently is exactly how a writer
+## comes to accept what its own reader rejects, and that is the defect this exists to close.
+## Static and pure so a test can ask without a save file, and so the check costs nothing at
+## the call site.
+static func is_recordable_milestone(id: String) -> bool:
+	if id.is_empty():
+		return false
+	for i: int in range(id.length()):
+		if not MILESTONE_ID_CHARS.contains(id[i]):
+			return false
+	return true
+
+
 static func _parse_milestones(text: String) -> Variant:
 	if not text.begins_with(MILESTONE_PREFIX):
 		return null

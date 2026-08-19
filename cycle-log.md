@@ -30,9 +30,13 @@ work and is filed as `plant-tower-defense-p9qo` rather than faked here.
 
 **A safety mechanism whose success message does not depend on anything having happened is
 not evidence.** `launch --snapshot-userstate` prints `userstate: restored 1 file(s)` every
-time, and I read it twice in cycle 131 as confirmation the flag was working. It stops the
-game saving: `_save()` returns FALSE under the flag and TRUE without it. Every runtime
-verification of save behaviour taken under it ran against a game that cannot save.
+time, and I read it twice in cycle 131 as confirmation the flag was working. That much still
+stands. **The rest of this paragraph was wrong and cycle 134 corrected it**: I measured
+`_save()` FALSE under the flag and TRUE without, and concluded the flag stopped the game
+saving. Reversing the run ORDER gives TRUE under the flag. The real trigger was an unknown
+milestone id poisoning `earned_milestones`, and the flag copies files into `.devtools/`
+without holding anything open. **A paired measurement is not a controlled one until you have
+swapped the order** — that is cycle 134's lesson and it belongs here, next to the mistake.
 
 **A `-> bool` on a save function is worth more than it looks.** `_save -> FALSE` is a
 complete diagnosis in one command. That return was added in an earlier cycle for exactly this

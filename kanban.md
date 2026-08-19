@@ -4775,9 +4775,17 @@ Three findings kept out here rather than buried in a log:
 
 ### New in cycle 133 — grown from a safety flag that made verification meaningless
 
+- **CORRECTED IN CYCLE 134: the flag was innocent and this entry accused it.** Re-running
+  with the order reversed — plain launch first, flagged second — gives `_save() -> TRUE`
+  under the flag. `userstate_snapshot` copies files into `.devtools/` and holds nothing open.
+  The real trigger was an UNKNOWN MILESTONE ID: `record_milestones(["SNAPSHOT_PROBE"])`
+  reports success and leaves an id in `earned_milestones` that `_parse_milestones` rejects,
+  so `_save()`'s readback fails on that call and on every later one in the session. Fixed at
+  the door in `game/run_config.gd`. The paragraph below is left as written because the
+  reasoning it draws is still right and the mis-attribution is the more useful half of it.
 - **A tool that reports success unconditionally is worse than one that fails loudly.**
   `launch --snapshot-userstate` exists so a runtime pass can exercise save behaviour without
-  writing the developer's real `user://`. What it does is stop the game saving at all:
+  writing the developer's real `user://`. I measured it as stopping the game saving:
   `_save()` returns `false` with the flag and `true` without it, same build sixty seconds
   apart. So every verification of save-related behaviour taken under it ran against a game
   that **cannot save**, and would have passed identically whether the save path worked or
