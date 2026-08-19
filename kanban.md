@@ -307,7 +307,7 @@ have rebuilt the same trap.
 - **Three roster roles are genuinely uncovered, and two that `-ibvb` lists are not.**
   Re-checked rather than inherited: nothing blocks or holds the road (`grep -rln
   "blocks_road\|is_wall\|impassable" game/*.gd` returns nothing), no plant heals another
-  (the only `.heal(` on a plant is `game/game.gd:370`, the rain weather effect), and husks
+  (the only `.heal(` on a plant is `game/game.gd:446`, the rain weather effect), and husks
   are still read only by the compost sweep. The bead's other two — buffs neighbours, hits
   only mutations — shipped as Mint and Nettle, whose own class headers say so. A blocker
   plant is the interesting one: placement geometry currently only decides reach and lane
@@ -744,8 +744,12 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   lives lost, every wave transition), and the threshold is five messages inside one 2-4 s
   window against a row that holds four. Ordinary play never gets close.
   What the rungs actually buy is pre-emption. Enumerated: exactly three of the twenty-two
-  `show_message` call sites pass a priority — `game/game.gd:1403` (`MESSAGE_DEADLINE`, the
-  uproot prompt) and `:1529`, `:1529` (`MESSAGE_IMPORTANT`). When one of those arrives, the
+  `show_message` call sites pass a priority. **RE-DERIVED IN CYCLE 136 (`-uhno`) and this
+  count is stale**: there are EIGHTEEN call sites, not twenty-two, and the priority-passing
+  ones are the armed uproot (`game/game.gd:1865`, `MESSAGE_DEADLINE`) and the packet
+  flourish plus its reveal (`MESSAGE_IMPORTANT`). The SHAPE of the claim survives — a
+  handful of sites pre-empt and the rest do not — and its coordinates did not. When one of
+  those arrives, the
   line already on the row is pushed into the queue (`game/hud.gd:1584`), and against a full
   queue of equals it is **refused** — so an urgent message costs the sentence the player was
   mid-way through, not one they had not reached.
@@ -870,7 +874,9 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   `show_message(` in `game/*.gd`, not by grepping one line each — these calls wrap, and a
   single-line grep reports all 22 as defaulted, which is how this nearly went in wrong.
   The real split is 19 at the default `MESSAGE_NORMAL`, two `MESSAGE_IMPORTANT`
-  (`game/game.gd:1539`, `:1529`) and one `MESSAGE_DEADLINE` (`game/game.gd:1403`).
+  (the packet flourish and its reveal) and one `MESSAGE_DEADLINE` (`game/game.gd:1865`,
+  the armed uproot). Coordinates re-derived in cycle 136; the two IMPORTANT sites moved
+  into `_play_packet_flourish` and `_reveal_plant_unlock` when the flourish was serialised.
   `MESSAGE_QUEUE_MAX` is 3 (`game/hud.gd:355`), and `_queue_message` returns without
   appending when the queue is full and the lowest entry's priority is `>=` the arrival's
   (`game/hud.gd:1608`) — **`>=`, so a tie discards the new one**. With 19 producers
@@ -2000,7 +2006,13 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 - **Six `show_message()` durations are hand-picked and nothing relates them.**
   4.0s (eaten), 5.0s (packet), 6.0s (wave cleared), 8.0s (opening hint), 2.0s (uproot
   cancelled, husk swept), 2.5s (mute, colourblind) — at `game/game.gd:264`, `:415`,
-  `:1207`, `:1330`, `:1418`, `:1475`, `:1495`, `:1627`. **THESE EIGHT NUMBERS NEED A
+  `:1207`, `:1330`, `:1418`, `:1475`, `:1495`, `:1627`. **SUPERSEDED BY `-uhno`, CYCLE 136,
+  which derived the real list: EIGHTEEN call sites and EIGHT distinct durations, not six.
+  This entry missed the 3.0 DEFAULT — seven sites, the most-used duration in the game — and
+  the 0.09 flicker step. The durations are named bands now (`Hud.message_seconds`), and the
+  question this entry raised is answered: length is NOT the variable, and two pairs of the
+  game's own strings refute it non-monotonically.** The original text follows.
+  **THESE EIGHT NUMBERS NEED A
   RECOUNT and are not to be trusted** — cycle 132's `--weak` pass flagged `game/game.gd:264`
   as landing on a blank line, and the two `show_message` calls this entry describes as "2.5s
   (mute, colourblind)" are at `game/game.gd:2264` and `:2268`. The rest of the list was
@@ -2118,7 +2130,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 - **The other five budgets have never been checked against the corpus they claim.**
   `_budget_hud_message_row` (`game/game.gd:3281`) measured four plant-name messages and
   not the prep note that shares the row, and was wrong by 36px for seven cycles while
-  reporting green. `Game.budget_entries()` (`game/game.gd:1881`) builds six others the same
+  reporting green. `Game.budget_entries()` (`game/game.gd:3021`) builds six others the same
   way. Each one names its corpus in an `evidence` string; nothing checks that the string
   describes what the code sweeps. A checker could compare the two — or, cheaper, one pass
   reading all seven and asking "what else can reach this measurement?" The failure is
@@ -2178,7 +2190,9 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   the code will refer to again, so a test or the bridge probably wants to as well. That
   is derivable; "a bare `add_child(ColorRect.new())`" is derivably not.
 - **`request_uproot` arms and `uproot_selected` removes**, and the names do not say
-  which is which (`game/game.gd:1245`, `:1210`). I called the wrong one while writing
+  which is which. **FIXED SINCE, and `game/game.gd:1789` records the rename**: they are
+  `arm_uproot` and `commit_uproot` now, and that header argues the pair-naming rule this
+  entry was asking for. Kept as the incident, not as live work. I called the wrong one while writing
   this cycle's test and it silently uprooted the plant instead of arming. A caller that
   guesses wrong destroys a bed; the pair wants renaming to `arm_uproot` /
   `commit_uproot`, or one entry point with a flag.
@@ -4267,7 +4281,7 @@ Three findings kept out here rather than buried in a log:
 - **One function returns both success sentinels, and a test comment already misreads it.**
   Every `-> String` method on `Game` follows one convention: `""` means it worked, a
   non-empty string is the reason it refused, and the callers print it
-  (`game/game.gd:1500` `place_plant`, `:1725` `upgrade_selected`, `:1911` `commit_uproot`).
+  (`game/game.gd:1510` `place_plant`, `:1735` `upgrade_selected`, `:1975` `commit_uproot`).
   `arm_uproot` (`game/game.gd:1776`) breaks it in the most confusing available way: the
   first press returns `"confirm needed"` (`:1836`) and the second returns `""` — via
   `commit_uproot()` at `:1792` — so the SAME function uses the refusal sentinel for one
