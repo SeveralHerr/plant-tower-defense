@@ -19768,3 +19768,260 @@ func test_holding_a_control_twice_still_remembers_what_it_was() -> String:
 	return err
 # END LANE SECTION — plant-tower-defense-9a2y
 # =============================================================================
+
+
+# =============================================================================
+# LANE SECTION — plant-tower-defense-vte: the keys the engine names badly
+#
+# `KeyBindings.SHORT_NAMES` used to hold eight rows against ~190 bindable
+# keycodes, and everything else fell through to `OS.get_keycode_string()`. That is
+# right for "F1" and wrong for "BracketLeft", which is a key with `[` printed on
+# it. The bead asked for the set to be DERIVED rather than complained about one
+# key at a time, and "names it badly" is a judgement, so the predicate is stated
+# twice — once in `key_bindings.gd`'s own header and once here — and it splits in
+# two:
+#
+#   * the engine spends more than one character where the key prints a glyph.
+#     Mechanical, total, and needs no table: across `GLYPH_FIRST..GLYPH_LAST` the
+#     glyph IS the keycode, so `glyph_for()` computes it and nothing is recorded.
+#   * the engine spends an abbreviation nobody says where the key prints no glyph
+#     ("Kp 0"). The KEYS are derivable — the engine's own name begins with "Kp " —
+#     but the values are a choice, so those rows are recorded and the recorded
+#     keys are asserted EQUAL to the derived set.
+#
+# Both directions are planted in both checks: adding `KEY_F1: "Function 1"` to
+# SHORT_NAMES fails (a row for a key nothing derived), and dropping `KEY_KP_5`
+# fails (a derived key with no row). The exclusion half is the one a `has()` test
+# would have missed, and it is what stops this becoming the second key table the
+# file's header exists to prevent.
+# =============================================================================
+
+
+## The glyph rule covers exactly the printable keys the engine spells as a word.
+##
+## The set is derived from the engine at check time — nothing here lists the 32
+## punctuation keys — and both halves are asserted, which is what makes it a rule
+## rather than a sweep that would pass against a `key_label()` returning the glyph
+## for everything: the letters and digits must still come back with the engine's
+## own name, character for character.
+func test_the_glyph_rule_covers_exactly_the_printable_keys_the_engine_names_badly() -> String:
+	var badly: Array[int] = []
+	var well: Array[int] = []
+	for code: int in range(KeyBindings.GLYPH_FIRST, KeyBindings.GLYPH_LAST + 1):
+		var engine: String = OS.get_keycode_string(code)
+		if engine == "":
+			continue
+		if engine.length() > 1:
+			badly.append(code)
+		else:
+			well.append(code)
+
+	# 32 is every punctuation keycode in the printable block: 15 from `!` to `/`,
+	# 7 from `:` to `@`, 6 from `[` to backtick, 4 from `{` to `~`. Counted rather
+	# than floored, because "more than nothing" is true in exactly the situation a
+	# denominator is guarding against.
+	var err: String = _T.assert_eq(badly.size(), 32,
+		("the printable block holds %d keys the engine spells as a word, not 32 -- "
+			+ "either the keycode table renumbered under GLYPH_FIRST/GLYPH_LAST or "
+			+ "get_keycode_string stopped naming them, and both make every assertion "
+			+ "below describe a smaller repo than the one that shipped") % badly.size())
+	if err == "":
+		err = _T.assert_gte(well.size(), 36,
+			("only %d printable keys came back already one character long; A-Z and 0-9 "
+				+ "alone are 36, so the other direction of this check is measuring "
+				+ "nothing") % well.size())
+
+	for code: int in badly:
+		if err != "":
+			break
+		err = _T.assert_eq(KeyBindings.key_label(code), String.chr(code),
+			("the key the engine calls %s prints %s, and that is what a player calls "
+				+ "it") % [OS.get_keycode_string(code), String.chr(code)])
+		if err == "":
+			# The half that says the rule DID something. Without it this passes on a
+			# key_label() that never stopped returning the engine's own name.
+			err = _T.assert_true(KeyBindings.key_label(code) != OS.get_keycode_string(code),
+				"and it is no longer the engine's word for it (%s)"
+					% OS.get_keycode_string(code))
+
+	for code: int in well:
+		if err != "":
+			break
+		err = _T.assert_eq(KeyBindings.key_label(code), OS.get_keycode_string(code),
+			("the engine already names keycode %d in one character (%s), so the glyph "
+				+ "rule must leave it exactly alone -- a rule that renames what was "
+				+ "already right is a second key table")
+				% [code, OS.get_keycode_string(code)])
+	return err
+
+
+## `glyph_for()` answers inside the printable block and nowhere else.
+##
+## The two ends are the whole of the rule's scope, and both are off-by-one hazards
+## that no sweep over the block itself can see: space sits one code BELOW
+## `GLYPH_FIRST` and prints an invisible character, so a bound widened by one would
+## render the Space row as a blank cell; and every named key above `GLYPH_LAST`
+## (F-keys, Home, the media keys) has no glyph at all, so an answer there would be
+## a garbage character where the engine had a good name.
+func test_glyph_for_answers_only_inside_the_printable_block() -> String:
+	var err: String = _T.assert_eq(KeyBindings.glyph_for(KEY_BRACKETLEFT), "[",
+		"the bead's own example: the engine says %s, the keycap says ["
+			% OS.get_keycode_string(KEY_BRACKETLEFT))
+	if err == "":
+		err = _T.assert_eq(KeyBindings.glyph_for(KeyBindings.GLYPH_FIRST),
+			String.chr(KeyBindings.GLYPH_FIRST), "the low end is inside the rule")
+	if err == "":
+		err = _T.assert_eq(KeyBindings.glyph_for(KeyBindings.GLYPH_LAST),
+			String.chr(KeyBindings.GLYPH_LAST), "and so is the high end")
+	if err == "":
+		err = _T.assert_eq(KeyBindings.glyph_for(KEY_SPACE), "",
+			("space is one code below the block and prints nothing you can see, so it "
+				+ "keeps its SHORT_NAMES word -- a glyph rule that reached it would "
+				+ "draw an empty key column and no gate measures blankness"))
+	if err == "":
+		err = _T.assert_eq(KeyBindings.glyph_for(KEY_F1), "",
+			"and a key the engine names well is left to the engine")
+	if err == "":
+		# The consequence, at the same two boundaries, through the function a screen
+		# actually calls.
+		err = _T.assert_eq(KeyBindings.key_label(KEY_SPACE), "Space",
+			"so Space still reads Space")
+	if err == "":
+		err = _T.assert_eq(KeyBindings.key_label(KEY_F1), OS.get_keycode_string(KEY_F1),
+			"and F1 still reads whatever the engine calls it")
+	return err
+
+
+## SHORT_NAMES holds exactly the keys the glyph rule cannot reach — both directions.
+##
+## The keypad half is derived from the engine ("Kp " is the engine's own prefix for
+## it), so a keypad key Godot adds shows up here as a missing row. The seven rows
+## under it are hand-typed on purpose: no rule produces them, and paying a diff to
+## change that set is what makes somebody notice it changed.
+func test_short_names_is_exactly_the_keys_the_glyph_rule_cannot_reach() -> String:
+	# The special block, swept the way the rest of this suite sweeps it (KEY_SPECIAL
+	# is 1 << 22; codes the engine does not name come back ""). Lower-cased before
+	# the prefix test so a capitalisation change in the engine's table reads as the
+	# same key rather than as a key that vanished.
+	var keypad: Array[int] = []
+	for code: int in range(1 << 22, (1 << 22) + 512):
+		if OS.get_keycode_string(code).to_lower().begins_with("kp "):
+			keypad.append(code)
+
+	# Hand-typed ON PURPOSE, and the only hand-typed key list in this file's checks.
+	# derive-the-list's "a list that exists to disagree": these rows are a judgement
+	# about what a keycap says, so deriving them from SHORT_NAMES would leave the
+	# assertion with only one side.
+	var judgement: Array[int] = [KEY_ESCAPE, KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN,
+		KEY_SPACE, KEY_ENTER]
+
+	var err: String = _T.assert_eq(keypad.size(), 16,
+		("the sweep found %d keypad keys, not 16 (Enter, five operators, ten digits). "
+			+ "A zero here means the engine stopped prefixing them with \"Kp \" and "
+			+ "this check silently became an assertion about seven rows")
+			% keypad.size())
+	if err == "":
+		err = _T.assert_eq(judgement.size(), 7,
+			"and the judgement half is the seven rows the header names")
+
+	var derived: Array[int] = []
+	if err == "":
+		derived.append_array(keypad)
+		derived.append_array(judgement)
+		derived.sort()
+		var recorded: Array[int] = []
+		for code: Variant in KeyBindings.SHORT_NAMES.keys():
+			recorded.append(int(code))
+		recorded.sort()
+		err = _T.assert_eq(str(recorded), str(derived),
+			("SHORT_NAMES and the set it claims to be disagree. Recorded %s, derived "
+				+ "%s. A key in the derived half with no row prints \"Kp 4\" on a "
+				+ "legend; a row with nothing deriving it is a second key table")
+				% [str(recorded), str(derived)])
+
+	if err == "":
+		# The exclusion a `has()` check cannot make: nothing in here may name a key
+		# the glyph rule already answers, because then two places decide what `[`
+		# is called and only one of them is derived.
+		var overlap: PackedStringArray = []
+		for code: Variant in KeyBindings.SHORT_NAMES.keys():
+			if int(code) >= KeyBindings.GLYPH_FIRST and int(code) <= KeyBindings.GLYPH_LAST:
+				overlap.append("%s -> %s" % [OS.get_keycode_string(int(code)),
+					String(KeyBindings.SHORT_NAMES[code])])
+		err = _T.assert_eq(", ".join(overlap), "",
+			("a SHORT_NAMES row shadows the glyph rule (%s). glyph_for() already "
+				+ "answers every code from GLYPH_FIRST to GLYPH_LAST, so the row is "
+				+ "unreachable at best and a disagreement at worst")
+				% ", ".join(overlap))
+	return err
+
+
+## Widening the table did not raise the widest key label a player can produce.
+##
+## Two screens size a key column, and they derive it differently: PauseScreen from
+## `label_for()` and KeyBindingScreen from every name the ENGINE can produce. The
+## second is only a valid bound while no label is wider than the engine's own name
+## for the same key, and one row deliberately is — "Num 0" against "Kp 0" — so the
+## ceiling is asserted directly rather than assumed from the per-row rule.
+func test_widening_the_short_names_did_not_raise_the_widest_key_label() -> String:
+	var codes: Array[int] = []
+	for code: int in range(32, 127):
+		codes.append(code)
+	for code: int in range(1 << 22, (1 << 22) + 512):
+		codes.append(code)
+
+	var widest_engine: String = ""
+	var widest_label: String = ""
+	var named: int = 0
+	for code: int in codes:
+		var engine: String = OS.get_keycode_string(code)
+		if engine == "":
+			continue
+		named += 1
+		if engine.length() > widest_engine.length():
+			widest_engine = engine
+		var label: String = KeyBindings.key_label(code)
+		if label.length() > widest_label.length():
+			widest_label = label
+
+	var err: String = _T.assert_gt(named, 100,
+		"the sweep found keys to measure -- a near-empty one makes the ceiling below "
+			+ "vacuous, and \"\" for everything is what a renamed enum looks like")
+	if err == "":
+		err = _T.assert_eq(widest_label, widest_engine,
+			("the widest label a player can put in a key column is %s (%d chars) "
+				+ "against the widest name the engine has, %s (%d). They must be the "
+				+ "same string: KeyBindingScreen.key_column_width() is sized from the "
+				+ "engine's names, so a label wider than all of them clips on the one "
+				+ "screen whose whole job is telling a player which key a verb is on")
+				% [widest_label, widest_label.length(), widest_engine,
+					widest_engine.length()])
+	if err == "":
+		# Per row, with the one exception written into the bound rather than waived:
+		# "Num 0" is one character longer than the engine's "Kp 0" and that is the
+		# whole of the slack. A row two characters over would be a decision.
+		var over: PackedStringArray = []
+		for code: Variant in KeyBindings.SHORT_NAMES.keys():
+			var label: String = String(KeyBindings.SHORT_NAMES[code])
+			var engine: String = OS.get_keycode_string(int(code))
+			if label.length() > engine.length() + 1:
+				over.append("%s -> %s" % [engine, label])
+		err = _T.assert_eq(", ".join(over), "",
+			("a short name is more than one character longer than the engine name it "
+				+ "replaces (%s). A SHORT_NAMES row exists to make a key readable, and "
+				+ "one that also makes it wider is spending a column budget somebody "
+				+ "else derived") % ", ".join(over))
+	if err == "":
+		# The number the pause card's key column is worth in the worst case a TABLE
+		# row can cause, as opposed to the worst case the engine can. Recorded so a
+		# row that grows past it is a decision rather than a surprise on a card.
+		var longest_row: int = 0
+		for value: Variant in KeyBindings.SHORT_NAMES.values():
+			longest_row = maxi(longest_row, String(value).length())
+		err = _T.assert_eq(longest_row, 5,
+			("the widest cell a SHORT_NAMES row can put in a key column is %d "
+				+ "characters, not 5 (\"Space\", \"Num 0\"). Both key columns derive "
+				+ "from this, so moving it is a layout change") % longest_row)
+	return err
+# END LANE SECTION — plant-tower-defense-vte
+# =============================================================================
