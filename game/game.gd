@@ -22,6 +22,16 @@ const PREP_SECONDS: float = 18.0
 ## enough to read the relabelled button and short enough that a wave arriving
 ## mid-decision does not leave a live trigger sitting under the cursor.
 const UPROOT_CONFIRM_SECONDS: float = 4.0
+## What `arm_uproot()` returns for the click that ARMED the confirm — a success, not a
+## refusal, and the one value on Game that breaks the "" == it-worked convention every
+## other `-> String` method here follows (plant-tower-defense-qewm).
+##
+## It has a name so that the twenty-one call sites asserting it stop asserting a bare
+## literal, and so that `uproot_press_accepted()` below has one thing to compare against
+## instead of a string repeated across four files. Do not read it as a reason: the arming
+## click sets `_uproot_armed`, starts the clock, marks the bed, plays a sound and posts a
+## message. Nothing was refused.
+const UPROOT_CONFIRM_NEEDED := "confirm needed"
 ## Where "Back to the gate" goes. The game could previously only be left by
 ## quitting: the sole scene change in the project ran the other way, title into
 ## game, and R reloaded the run without ever offering the menu.
@@ -1744,9 +1754,23 @@ func upgrade_selected() -> String:
 ## What the Uproot button is wired to. The first click arms; a second click on
 ## the same plant within UPROOT_CONFIRM_SECONDS commits.
 ##
-## Returns "" when the plant was actually uprooted, and otherwise the reason it
-## was not — "confirm needed" for the arming click, which is a refusal the caller
-## can distinguish from a real failure.
+## Three returns, and only ONE of them is a refusal (plant-tower-defense-qewm):
+##
+## * `""` — the second click. The plant was uprooted. Success, and the value this
+##   class's convention reserves for success.
+## * `UPROOT_CONFIRM_NEEDED` — the first click. The confirm was ARMED: `_uproot_armed`
+##   is set, the four-second clock is running, the bed is marked, a sound played and a
+##   message posted. Also a success. This is the one place on Game where a non-empty
+##   return does not mean "it did not happen", which is why it is a named constant and
+##   why `uproot_press_accepted()` exists to state it in code rather than in prose.
+## * `"nothing is selected"` — the only genuine refusal. Nothing happened.
+##
+## The wording here used to call the arming click "a refusal the caller can distinguish
+## from a real failure". A test call site duly labelled it "the first click refuses",
+## and a later cycle, reading the convention rather than this method, wrote a
+## reproduction asserting `""` for the arming click — which failed on its own
+## precondition and looked exactly like the bug it was written for. A caller that only
+## wants "was the press taken" must ask `uproot_press_accepted()` and compare no strings.
 ##
 ## **`arm_` and `commit_`, and the names were `request_uproot` / `uproot_selected`
 ## until a caller guessed wrong** (plant-tower-defense-mim5). Neither old name carried
@@ -1819,7 +1843,22 @@ func arm_uproot() -> String:
 			forfeited),
 		UPROOT_CONFIRM_SECONDS, Hud.MESSAGE_DEADLINE)
 	_refresh()
-	return "confirm needed"
+	return UPROOT_CONFIRM_NEEDED
+
+
+## Which `arm_uproot()` returns mean the press was TAKEN, as code rather than as a
+## sentence in a doc comment (plant-tower-defense-qewm).
+##
+## Static and pure on purpose: the ambiguity this answers is a property of the three
+## return values and of nothing else, so pinning it needs no Game instance, no scene,
+## no selected plant and no clock — which is the whole reason the convention was
+## uncheckable before. `arm_uproot()` cannot drift away from it without this failing.
+##
+## Deliberately NOT `not reply.is_empty()`-shaped: adding a fourth return value that is
+## a real refusal must make this answer false without anyone remembering to come here,
+## and the only way to get that is to enumerate the successes rather than the failures.
+static func uproot_press_accepted(reply: String) -> bool:
+	return reply == "" or reply == UPROOT_CONFIRM_NEEDED
 
 
 ## True while a second Uproot click would commit. Read by the HUD to relabel the
