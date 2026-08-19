@@ -91,6 +91,8 @@ func register_commands(dev: Node) -> void:
 	_dev.register_command("start_wave", _cmd_start_wave)
 	_dev.register_command("buy_packet", _cmd_buy_packet)
 	_dev.register_command("upgrade_plant", _cmd_upgrade_plant)
+	_dev.register_command("select_plant", _cmd_select_plant)
+	_dev.register_command("deselect_plant", _cmd_deselect_plant)
 	_dev.register_command("board_info", _cmd_board_info)
 	_dev.register_command("compost_state", _cmd_compost_state)
 	_dev.register_command("collect_husk", _cmd_collect_husk)
@@ -462,6 +464,93 @@ func _cmd_upgrade_plant(args: Dictionary) -> Dictionary:
 	if corn != null:
 		out["kernels"] = corn.kernels_per_shot()
 	return {"success": true, "message": "upgraded", "data": out}
+
+
+## Select the plant growing at a cell, the way a real click would.
+##
+## WHY THIS EXISTS (plant-tower-defense-cfvb). `arm_uproot` refuses with "nothing is
+## selected" unless `selected_placed` holds a live plant, and cycle 128 found no way to
+## put one there from the bus. `run-method _select` cannot: `_select` takes a Plant NODE
+## and the bridge passes JSON, so a String nulls the parameter. `touch press`/`release`
+## at the plant's own `global_position` did not deliver either — `selected_placed` stayed
+## empty through four attempts. So the MESSAGE_DEADLINE producer, one of the two most
+## likely to stack, went unmeasured, and half of -gd27's acceptance was unreachable.
+##
+## `game.selected_placed = plant` is what `_cmd_upgrade_plant` does above, and it is the
+## WRONG move for a verb whose whole purpose is the selection: a raw write skips
+## `_select`, which is the single point of truth for the selection (game.gd:1398) and
+## also clears the previous plant's ring, disarms any pending uproot, and sets the new
+## plant's own selected flag. A verb that left four of those five undone would report a
+## selection the game does not have — the well-formed lie this file's header is about.
+## So this calls `_select` and then READS `selected_placed` back rather than trusting it.
+##
+## AND `_refresh()` AFTER IT, because that is what the click path does. game.gd:2547 is
+## the real board click: `_select(existing)` then `_refresh()`, and `place_plant` does
+## the same pair at :1562. `_select` alone updates the model and leaves the HUD showing
+## the previous selection — a state a player cannot reach, and the exact shape that makes
+## a screenshot taken straight after this verb evidence for the wrong thing.
+##
+## BOTH ARE PRIVATE, and this reaches through that on purpose: `Game` has no public
+## selection entry point at all, only `_select` and the input handler that calls it.
+## Filed as the observation rather than papered over — if a public one is ever added,
+## this verb should move to it, and the read-back below is what will keep this honest
+## until then.
+func _cmd_select_plant(args: Dictionary) -> Dictionary:
+	# Same reasoning as upgrade_plant: a defaulted cell does not fail, it succeeds on a
+	# different plant — and here that also disarms whatever the player had armed.
+	var refused: String = _require(args, PackedStringArray(["x", "y"]), "select_plant",
+		"selected whatever is growing at cell (0, 0), disarming any pending uproot")
+	if refused != "":
+		return _fail(refused)
+	var game: Game = _game()
+	if game == null:
+		return _fail("no Game in the tree")
+	var cell := Vector2i(int(args.get("x", 0)), int(args.get("y", 0)))
+	var plant: Plant = game.plant_at(cell)
+	if plant == null:
+		return _fail("nothing growing at %s" % cell)
+	game._select(plant)
+	game._refresh()
+	# Read back rather than report the intent. `_select` can legitimately end with a
+	# different selection than it was handed, and a verb that echoes its own argument
+	# cannot tell a working selection from a silently refused one.
+	var landed: Plant = game.selected_placed
+	if landed == null or not is_instance_valid(landed):
+		return _fail("_select(%s) left nothing selected" % cell)
+	return {"success": true, "message": "selected", "data": {
+		"cell": [cell.x, cell.y],
+		"plant": landed.level_name(),
+		"level": landed.level,
+		"uproot_armed": game.uproot_armed(),
+	}}
+
+
+## Clear the selection, which is also the cancel path for an armed uproot.
+##
+## A SEPARATE VERB rather than `select_plant` with the cell omitted, deliberately. The
+## two operations are one keystroke apart and destructive in opposite directions: a
+## typo'd key name under one combined verb would silently deselect and disarm instead of
+## refusing, which is exactly the class `_require` exists to prevent above. Two names
+## cost one line each and cannot be confused by a dropped argument.
+##
+## `_select(null)` reaches `_disarm_uproot()` (game.gd:1407) — the ONE place the arming
+## is cleared, and it clears the reference and the clock together. Nothing else here
+## needs to know that, which is the point of routing through `_select`.
+func _cmd_deselect_plant(_args: Dictionary) -> Dictionary:
+	var game: Game = _game()
+	if game == null:
+		return _fail("no Game in the tree")
+	var was_armed: bool = game.uproot_armed()
+	game._select(null)
+	game._refresh()
+	if game.selected_placed != null and is_instance_valid(game.selected_placed):
+		return _fail("_select(null) left a plant selected")
+	# Reported as a value, not assumed: the disarm is a side effect of `_select` and a
+	# future edit could separate them without touching this file.
+	return {"success": true, "message": "deselected", "data": {
+		"was_armed": was_armed,
+		"uproot_armed": game.uproot_armed(),
+	}}
 
 
 ## The board's shape, plus the one budget on it that is nearly spent.

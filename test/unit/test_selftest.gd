@@ -14806,6 +14806,11 @@ const POSITIONAL_VERBS := {
 	"place_plant": ["x", "y"],
 	"upgrade_plant": ["x", "y"],
 	"collect_husk": ["x", "y"],
+	# plant-tower-defense-cfvb. Positional for the sharpest reason on this list: a
+	# defaulted cell does not fail, it selects a DIFFERENT plant, and `_select` disarms
+	# any pending uproot on its way past -- so a dropped key would silently cancel the
+	# confirm window this verb exists to make reachable.
+	"select_plant": ["x", "y"],
 }
 
 ## The rest: verbs that read no arguments, or whose defaults are the value a person
@@ -14819,6 +14824,12 @@ const DEFAULTED_VERBS := [
 	# Same reason `budgets` is here -- a verb that exists so you need not know the names
 	# must not require you to know a name.
 	"messages",
+	# `deselect_plant` takes nothing and can take nothing: clearing the selection is the
+	# whole operation. It is a SEPARATE verb from `select_plant` rather than that verb
+	# with the cell omitted precisely so that this list can hold them apart -- one
+	# combined verb would have to be defaulted, and a dropped `x` would then deselect
+	# instead of being refused.
+	"deselect_plant",
 ]
 
 

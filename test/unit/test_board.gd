@@ -1022,3 +1022,174 @@ func test_a_cell_position_for_to_local_is_global_and_board_local_is_not() -> Str
 			"which is still the cell we asked about")
 	entities.free()
 	return err
+
+
+# --- Selecting a placed plant from the bus (plant-tower-defense-cfvb) -------------
+#
+# Cycle 128 could not select a placed plant from the bridge at all. `run-method
+# _select` cannot — `_select` takes a Plant NODE and the bridge passes JSON, so a
+# String nulls the parameter — and `touch press`/`release` at the plant's own
+# `global_position` left `selected_placed` empty through four attempts. So
+# `arm_uproot` answered "nothing is selected" every time, and the MESSAGE_DEADLINE
+# producer, one of the two most likely to stack, went unmeasured.
+#
+# The two verbs are the fix. These are what stop them being a well-formed lie.
+#
+# WHY THEY LIVE HERE. They need a hosted `Game` and a real cell, which is this
+# file's subject, and the reply is pure logic once the game is in the tree.
+# `_board_info` in test_placement.gd is the pattern: instantiate the extension
+# directly, point `_dev` at the hosted Game, call the handler as a function — no
+# bus, no running game, no bridge.
+func _selection_ext(game: Game):
+	var ext = preload("res://devtools_ext/commands.gd").new()
+	ext._dev = game
+	return ext
+
+
+## The verb puts a plant in `selected_placed` — the thing four attempts could not do.
+##
+## Asserted through the REPLY as well as through the game, because those are the two
+## ways this can be wrong and they fail differently: a verb that selected nothing and
+## said so is a refusal, a verb that selected nothing and reported a plant name is the
+## well-formed lie devtools_ext/commands.gd's own header is about.
+func test_select_plant_actually_selects_the_plant_at_that_cell() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var cell: Vector2i = _plot_below_the_top_row(game)
+	game.bank.add_seeds(100)
+	err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "",
+		"a plant goes in at %s" % cell)
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# place_plant already selects. Clear it first, or this test passes on a selection
+	# the verb never made — the shape that would let _cmd_select_plant do nothing at
+	# all and still read green.
+	var ext = _selection_ext(game)
+	var cleared: Dictionary = ext._cmd_deselect_plant({})
+	err = _T.assert_true(game.selected_placed == null,
+		"the plot starts with nothing selected, so the verb has work to do")
+	if err == "":
+		err = _T.assert_true(bool(cleared["success"]), "and deselect_plant said so")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var reply: Dictionary = ext._cmd_select_plant({"x": cell.x, "y": cell.y})
+	err = _T.assert_true(bool(reply["success"]),
+		"select_plant succeeds on an occupied cell (said: %s)" % reply["message"])
+	if err == "":
+		err = _T.assert_true(game.selected_placed == game.plant_at(cell),
+			"and the GAME holds that plant, not just the reply")
+	if err == "":
+		var data: Dictionary = reply["data"]
+		err = _T.assert_eq(data["cell"], [cell.x, cell.y],
+			"the reply names the cell it was asked about")
+		if err == "":
+			err = _T.assert_eq(data["plant"], game.plant_at(cell).level_name(),
+				("and reads the name back off the SELECTION rather than echoing "
+					+ "the argument it was handed"))
+	_T.free_ui(game)
+	return err
+
+
+## An empty cell is a refusal, not a silent success on nothing.
+##
+## The direction that matters: a verb returning success having selected null would let
+## a whole scenario run against no selection and report every step of it green.
+func test_select_plant_refuses_an_empty_cell_rather_than_selecting_nothing() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var cell: Vector2i = _plot_below_the_top_row(game)
+	err = _T.assert_true(game.plant_at(cell) == null, "the cell %s is empty" % cell)
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var reply: Dictionary = _selection_ext(game)._cmd_select_plant({"x": cell.x, "y": cell.y})
+	err = _T.assert_false(bool(reply["success"]), "select_plant refuses an empty cell")
+	if err == "":
+		err = _T.assert_true(String(reply["message"]).length() > 0,
+			("and says why — an empty message reads exactly like a handler that died "
+				+ "while building its reply"))
+	if err == "":
+		err = _T.assert_true(game.selected_placed == null, "and left the selection alone")
+	_T.free_ui(game)
+	return err
+
+
+## A cell-less call is refused, not defaulted to (0, 0).
+##
+## The same rule `_cmd_upgrade_plant` follows, for a sharper reason: a defaulted cell
+## here does not fail, it succeeds on a DIFFERENT plant, and disarms whatever the
+## player had armed on the way past.
+func test_select_plant_refuses_a_call_with_no_cell() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var reply: Dictionary = _selection_ext(game)._cmd_select_plant({})
+	err = _T.assert_false(bool(reply["success"]), "select_plant with no cell refuses")
+	if err == "":
+		err = _T.assert_true(String(reply["message"]).contains("x"),
+			"and names the argument it wanted (said: %s)" % reply["message"])
+	_T.free_ui(game)
+	return err
+
+
+## The whole point of the pair: arm an uproot, then cancel it, from the bus.
+##
+## This is -cfvb's acceptance and -gd27's blocked half. `arm_uproot` gets past
+## "nothing is selected" only with a live selection, and `_disarm_uproot` is private —
+## so without `deselect_plant` there was no cancel path either, and a scenario could
+## arm exactly once and never return to a clean state.
+##
+## Asserts BOTH directions. A test that only checked the arming passes against a
+## deselect verb that does nothing at all.
+func test_the_bus_can_arm_an_uproot_and_then_cancel_it() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_true(game != null, "the main scene loads")
+	if err != "":
+		return err
+	var cell: Vector2i = _plot_below_the_top_row(game)
+	game.bank.add_seeds(100)
+	err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "",
+		"a plant goes in at %s" % cell)
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var ext = _selection_ext(game)
+	ext._cmd_deselect_plant({})
+	var selected: Dictionary = ext._cmd_select_plant({"x": cell.x, "y": cell.y})
+	err = _T.assert_true(bool(selected["success"]), "the plant is selected")
+	if err == "":
+		err = _T.assert_false(bool(selected["data"]["uproot_armed"]),
+			"and nothing is armed yet")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	# The call that returned "nothing is selected" every time in cycle 128.
+	var armed: String = game.arm_uproot()
+	err = _T.assert_false(armed == "nothing is selected",
+		"arm_uproot no longer refuses for want of a selection (said: %s)" % armed)
+	if err == "":
+		err = _T.assert_true(game.uproot_armed(),
+			"and the game reports the confirm window open")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var cancelled: Dictionary = ext._cmd_deselect_plant({})
+	err = _T.assert_true(bool(cancelled["success"]), "deselect_plant succeeds")
+	if err == "":
+		err = _T.assert_true(bool(cancelled["data"]["was_armed"]),
+			"and reports it found an armed uproot to cancel")
+	if err == "":
+		err = _T.assert_false(game.uproot_armed(),
+			("and the window is shut — without this the cancel path is a no-op and a "
+				+ "scenario can arm exactly once"))
+	if err == "":
+		err = _T.assert_true(game.selected_placed == null, "with nothing left selected")
+	_T.free_ui(game)
+	return err
