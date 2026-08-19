@@ -19359,8 +19359,12 @@ func test_the_static_measurement_agrees_with_a_real_label_at_every_size_it_is_pr
 func test_every_budget_measures_at_the_size_its_own_widget_resolves() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var sites: Array = [
-		["Root/SidePanel/PacketButton", GardenTheme.BUTTON_FONT_SIZE,
-			"Hud.packet_rack_budget() via GardenTheme.BUTTON_FONT_SIZE"],
+		# Was GardenTheme.BUTTON_FONT_SIZE (18) and the button wears 16, which is the
+		# defect this test was written to find and did. The budget and the button now
+		# both read Hud.PACKET_BUTTON_FONT_SIZE, so this row asserts they still agree
+		# rather than asserting a number.
+		["Root/SidePanel/PacketButton", Hud.PACKET_BUTTON_FONT_SIZE,
+			"Hud.packet_rack_budget() via Hud.PACKET_BUTTON_FONT_SIZE"],
 		["Root/TopBar/MessageLabel", Hud.MESSAGE_FONT_SIZE,
 			"the message row budget via Hud.MESSAGE_FONT_SIZE"],
 		["Root/TopBar/StatsRow/SpeedButton", GameSpeed.BUTTON_FONT_SIZE,

@@ -508,6 +508,23 @@ const SELECTION_BOX_WIDTH: float = float(PANEL_WIDTH) - 24.0
 ## landed SelectionBox's foot on exactly 648.
 const SELECTION_LABEL_MIN_HEIGHT: float = 56.0
 const SELECTION_LABEL_FONT_SIZE: int = 15
+
+## The size the packet buttons ACTUALLY wear, read by both the widget and the budget that
+## prices it — so they agree by construction rather than by coincidence
+## (plant-tower-defense-fo96).
+##
+## 16, which is what they already rendered at, so nothing on screen moves. The bug was in
+## the OTHER direction: `packet_rack_budget()` measured at `GardenTheme.BUTTON_FONT_SIZE`
+## (18) on the reasoning that "these buttons set no font override, so they render at the
+## theme's Button size". Sound reasoning, wrong conclusion — the HUD deliberately refuses
+## `GardenTheme.build()` (it is the one surface that does), so with no override they
+## resolved the DEFAULT theme's Button size and the budget priced a rack two points wider
+## than the one a player sees. Over-pricing, so nothing overflowed; it simply reported less
+## headroom than the rack has, for as long as the comment beside it argued it was right.
+##
+## Caught by `test_every_budget_measures_at_the_size_its_own_widget_resolves`, which asks
+## each budget what size its own widget resolves rather than what size the budget thinks.
+const PACKET_BUTTON_FONT_SIZE: int = 16
 const SELECTION_SEPARATION: int = 6
 ## Upgrade and Uproot. 40 is the touch minimum PLANT_BUTTON_MIN_HEIGHT is also
 ## pinned to, and these are the controls the stack pushes out when it grows.
@@ -634,11 +651,17 @@ static func packet_rack_budget() -> Dictionary:
 	var worst: String = ""
 	var needed: float = 0.0
 	for text: String in packet_rack_corpus():
-		# GardenTheme.BUTTON_FONT_SIZE, not a number typed here: these buttons set no
-		# font override, so they render at the theme's Button size. Measuring at any
-		# other size prices a rack that does not exist — an earlier pass of this used
-		# 15 and reported 149 px for something that draws 179.
-		var width: float = GardenTheme.measure(text, GardenTheme.BUTTON_FONT_SIZE)
+		# PACKET_BUTTON_FONT_SIZE, which the buttons themselves now wear as an explicit
+		# override — so this measures the rack that exists rather than one argued for.
+		#
+		# It read GardenTheme.BUTTON_FONT_SIZE, on the reasoning that "these buttons set
+		# no font override, so they render at the theme's Button size". That reasoning
+		# was sound and its conclusion was wrong: the HUD deliberately refuses
+		# GardenTheme.build(), so with no override they resolved the DEFAULT theme's
+		# Button size and this priced a rack 2pt wider than the one on screen. The old
+		# comment's "draws 179" was the same mistake stated as a measurement
+		# (plant-tower-defense-fo96).
+		var width: float = GardenTheme.measure(text, PACKET_BUTTON_FONT_SIZE)
 		if width > needed:
 			needed = width
 			worst = text
@@ -1542,6 +1565,15 @@ func _build_side_panel(root: Control) -> void:
 		packet.position = rect.position
 		packet.size = rect.size
 		packet.tooltip_text = packet_tooltip(tier)
+		# EXPLICIT, so the budget and the widget cannot disagree by coincidence
+		# (plant-tower-defense-fo96). packet_rack_budget() prices this rack, and it used
+		# to price it at GardenTheme.BUTTON_FONT_SIZE on the reasoning that "these
+		# buttons set no font override, so they render at the theme's Button size".
+		# The reasoning is sound and the conclusion was wrong: the HUD deliberately
+		# refuses GardenTheme.build(), so with no override these resolved the DEFAULT
+		# theme's Button size, and the budget measured a rack 2pt wider than the one on
+		# screen. Now both read PACKET_BUTTON_FONT_SIZE and agree by construction.
+		packet.add_theme_font_size_override("font_size", PACKET_BUTTON_FONT_SIZE)
 		# `tier` is bound, not captured: a bare closure over the loop variable is
 		# the one mistake this rewrite could make that two hand-written buttons
 		# could not, and it would wire every button to the last tier.
