@@ -723,12 +723,38 @@ func options_open() -> bool:
 	return _options_screen != null and is_instance_valid(_options_screen)
 
 
+## Whichever overlay currently covers this card, or null when none does.
+##
+## The same shape as `overlay_open()` returning the NODE instead of a bool, and the
+## reason it exists is that a caller who wants the screen had three different ways
+## to get it and no uniform one: `KeyBindingScreen.NODE_NAME` and
+## `OptionsScreen.NODE_NAME` off this card, and `_notebook` — a private field — for
+## the third. A sweep over "every overlay" had to spell all three out, and a fourth
+## door would have been silently uncovered by it rather than picked up.
+##
+## Order is the order the fields are declared and does not matter: `_open_notebook`,
+## `_open_keys` and `_open_options` each refuse while `overlay_open()`, so at most
+## one of the three is ever live. That is the invariant this method reads, not one
+## it enforces.
+func open_overlay() -> OverlayScreen:
+	if notebook_open():
+		return _notebook
+	if keys_open():
+		return _keys_screen
+	if options_open():
+		return _options_screen
+	return null
+
+
 ## True while ANY overlay covers this card. One shared guard rather than three,
 ## matching TitleScreen.overlay_open for the same reason: three independent "is
 ## mine open" checks would happily stack the options screen on the keys screen,
 ## leaving the one underneath still eating Escape.
+##
+## Asks `open_overlay()` rather than re-ORing the three predicates, so the bool and
+## the node can never disagree about whether something is up.
 func overlay_open() -> bool:
-	return notebook_open() or keys_open() or options_open()
+	return open_overlay() != null
 
 
 ## The Designer's Notebook, over the pause card.
@@ -756,7 +782,11 @@ func _open_notebook() -> void:
 	if overlay_open():
 		return
 	_notebook = NotebookScreen.new()
-	_notebook.name = "Notebook"
+	# NotebookScreen._init already assigns this; kept here so the three doors on this
+	# card read the same way (KeyBindingScreen.build() and OptionsScreen.build() name
+	# theirs from their own NODE_NAME too) and so the string is never spelled out at
+	# a construction site again.
+	_notebook.name = NotebookScreen.NODE_NAME
 	# Opened FROM A PAUSED RUN, so it opens on the page about the board rather than on the
 	# pencil drawings. Somebody who stopped a wave to look something up is looking at a
 	# mark they do not recognise; somebody browsing from the title screen is not looking at

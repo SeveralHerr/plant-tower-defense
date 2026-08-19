@@ -27,6 +27,20 @@ extends OverlayScreen
 ## behind them. Nothing here is in a Container; see TitleScreen for why that is
 ## deliberate on a fixed-size fullscreen menu.
 
+## What this screen's node is called once it is in the tree, matching
+## `KeyBindingScreen.NODE_NAME` and `OptionsScreen.NODE_NAME`. The third overlay
+## went without one, so the only way to ask "is the notebook up" was to read
+## `PauseScreen._notebook` -- a private field, and a different question from the
+## one the other two answer. A sweep over "every overlay" had to special-case this
+## one, which is the opposite of what a shared base class is for.
+##
+## "Notebook", NOT "NotebookScreen": this is the name both construction sites
+## already assign (PauseScreen._open_notebook, TitleScreen._open_notebook) and the
+## name six checks in test_selftest.gd already reach for. The constant is being
+## given to a name that exists, not a rename — a rename here would move the node
+## out from under every one of them.
+const NODE_NAME := "Notebook"
+
 ## Panel rect, in viewport coordinates. Everything else is placed against it.
 const PANEL := Rect2(76.0, 32.0, 1000.0, 584.0)
 const PAGE_SPLIT: float = 576.0
@@ -617,6 +631,22 @@ var _next_button: Button
 ## (OverlayScreen's root rect and Backdrop) tracks the window.
 func panel_rect() -> Rect2:
 	return PANEL
+
+
+## Carries NODE_NAME from the moment it is constructed, whoever constructs it.
+##
+## The two siblings do this in a static `build()` and their callers go through it.
+## This screen has no `build()` — it is `NotebookScreen.new()` at two sites that
+## then set `open_at`, `process_mode` and the signal differently — so the name is
+## attached here instead, which is strictly stronger: a THIRD construction site
+## cannot forget it, and the two that already assign the same string outright are
+## left agreeing rather than being the only reason it is true.
+##
+## `_init` rather than `_ready`: OverlayScreen's header says a subclass `_ready`
+## silently replaces the base one and loses the backdrop, so this class does not
+## define one at all.
+func _init() -> void:
+	name = NODE_NAME
 
 
 ## The one overlay whose paper is not a Panel: a ruled two-page spread that draws
