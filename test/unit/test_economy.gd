@@ -4420,3 +4420,163 @@ func test_the_reach_row_replaced_the_duration_row_and_fits_the_card() -> String:
 
 
 # -- END plant-tower-defense-dgu5 ---------------------------------------------
+
+
+# -- plant-tower-defense-i8k9: hurting is not the same question as holding ------
+#
+# `PlantCatalog.engages` is "can this touch a pest", which its own header defines as
+# "damage OR HOLD". `PlantCatalog.damages` is the narrower half, added because three
+# readouts wanted it and each asked `engages` instead — getting the right answer for a
+# reason unrelated to what it asked. The three tests below are, in order: that the two
+# keys really are different questions, that the one production consumer now asks the
+# right one, and that `damages` is derived from each plant's own damage constant
+# rather than hardcoded.
+
+
+## The two keys are different questions, and BOTH directions are planted.
+##
+## A `damages()` that answered false for everything would satisfy "the Bramble does not
+## damage" and every implication assertion here, so the buckets are counted and each is
+## required to be non-empty. A `damages()` that simply mirrored `engages()` would leave
+## the holding-only bucket empty, which is the assertion that says the second key is
+## doing work rather than being ceremony.
+func test_the_catalogue_tells_hurting_apart_from_holding() -> String:
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_gt(ids.size(), 1,
+		"the catalogue has plants to sweep at all — an empty sweep is a vacuous pass")
+
+	var hurting: Array[StringName] = []
+	var holding_only: Array[StringName] = []
+	var neither: Array[StringName] = []
+	for id: StringName in ids:
+		if err != "":
+			break
+		if PlantCatalog.damages(id):
+			hurting.append(id)
+			# The invariant that makes `damages` the NARROWER key rather than a second
+			# unrelated one: you cannot hurt what you cannot touch.
+			err = _T.assert_true(PlantCatalog.engages(id),
+				("%s damages a pest, so it must engage one too — `damages` is a subset of"
+					+ " `engages`, never a rival to it") % id)
+		elif PlantCatalog.engages(id):
+			holding_only.append(id)
+		else:
+			neither.append(id)
+
+	if err == "":
+		err = _T.assert_eq(hurting.size() + holding_only.size() + neither.size(), ids.size(),
+			"every plant in the catalogue landed in exactly one of the three buckets")
+	if err == "":
+		err = _T.assert_gt(hurting.size(), 0,
+			("some plant hurts a pest — without this, a `damages()` answering false for"
+				+ " everything passes every other assertion in this test"))
+	if err == "":
+		err = _T.assert_gt(holding_only.size(), 0,
+			("some plant engages WITHOUT hurting — that disagreement is the entire reason"
+				+ " `damages` exists, and without one the two keys are indistinguishable"))
+	if err == "":
+		err = _T.assert_gt(neither.size(), 0,
+			("and some plant does neither, so `damages()` is not merely `engages()` spelled"
+				+ " a second way"))
+	if err == "":
+		err = _T.assert_true(holding_only.has(PlantCatalog.BRAMBLE),
+			("the Bramble is the plant that holds and hurts nothing — its blurb says"
+				+ " \"Hurts nothing\" and this is the key that clause can be read against."
+				+ " Holding-only found: %s") % [holding_only])
+	return err
+
+
+## The one production consumer asks the narrower question now.
+##
+## `Game.engagement_reach` feeds `covered_road_cells`, `sole_cover_cells` and
+## `_refresh_deferred_road`, and everything they draw is worded "aimed at". It returned
+## 0.0 for a Bramble before this bead too — but only because a Bramble's `reach()`
+## happens to be 0.0, so a holding plant WITH a reach would have been counted as
+## covering road it cannot hurt anything on. This asserts the number AND the reason.
+func test_the_coverage_map_asks_whether_a_plant_hurts_not_whether_it_engages() -> String:
+	var err: String = _T.assert_true(PlantCatalog.engages(PlantCatalog.BRAMBLE),
+		"the Bramble engages — so the OLD gate on engagement_reach would have let it in")
+	if err == "":
+		err = _T.assert_false(PlantCatalog.damages(PlantCatalog.BRAMBLE),
+			"and it hurts nothing, which is the gate engagement_reach reads now")
+	if err == "":
+		err = _T.assert_float_eq(Game.engagement_reach(PlantCatalog.BRAMBLE), 0.0, 0.0001,
+			"so it contributes no coverage")
+	if err == "":
+		# Named explicitly so the assertion above is not silently leaning on it: the
+		# reach IS 0.0 today, and the point of the change is that it no longer has to be.
+		err = _T.assert_float_eq(PlantCatalog.reach(PlantCatalog.BRAMBLE), 0.0, 0.0001,
+			("the Bramble's reach is still 0.0 today — give a holding plant a real radius"
+				+ " and engagement_reach must STILL be 0.0, which is what the damages gate"
+				+ " now guarantees and the reach accident never did"))
+
+	# The other direction: a plant that hurts keeps its full reach through the gate.
+	if err == "":
+		err = _T.assert_gt(PlantCatalog.reach(PlantCatalog.CORN), 0.0,
+			"a cob has a real firing range — a zero here would make the next line vacuous")
+	if err == "":
+		err = _T.assert_float_eq(Game.engagement_reach(PlantCatalog.CORN),
+			PlantCatalog.reach(PlantCatalog.CORN), 0.0001,
+			"and it still reaches all of it through the new gate")
+
+	# And the case `engages` was introduced for, which `damages` must not undo: a plant
+	# with a real reach that touches pests without hurting them.
+	if err == "":
+		err = _T.assert_gt(PlantCatalog.reach(PlantCatalog.SUNDEW), 0.0,
+			"the Sundew has a real sap radius")
+	if err == "":
+		err = _T.assert_float_eq(Game.engagement_reach(PlantCatalog.SUNDEW), 0.0, 0.0001,
+			"and still contributes no coverage — a lane walled in dew is undefended road")
+	return err
+
+
+## `damages` is read off each plant's own damage constant, not hardcoded beside it.
+##
+## This is the anti-drift half. A second boolean key in PLANTS would have to be
+## remembered when a balance change zeroes a damage number; a derivation cannot be
+## forgotten. The assertions are written as `damages(id) == <the constant is positive>`
+## rather than as `damages(id) == true`, so retuning the constant to zero moves the
+## expectation with it instead of turning this test red for the wrong reason.
+func test_damages_is_read_off_each_plants_own_damage_constant() -> String:
+	var err: String = _T.assert_gt(Nettle.STING_DAMAGE, 0.0,
+		"the Nettle's sting takes health off a pest")
+	if err == "":
+		err = _T.assert_eq(PlantCatalog.damages(PlantCatalog.NETTLE),
+			Nettle.STING_DAMAGE > 0.0,
+			"and the catalogue answers off THAT constant rather than a hardcoded true")
+	if err == "":
+		err = _T.assert_gt(Dandelion.SEED_DAMAGE, 0.0, "the Dandelion's seeds do too")
+	if err == "":
+		err = _T.assert_eq(PlantCatalog.damages(PlantCatalog.DANDELION),
+			Dandelion.SEED_DAMAGE > 0.0,
+			"and the catalogue answers off Dandelion.SEED_DAMAGE the same way")
+
+	if err == "":
+		var rungs: int = 0
+		var armed: int = 0
+		for row: Dictionary in CornCobbler.LEVELS:
+			rungs += 1
+			if float(row.get("damage", 0.0)) > 0.0:
+				armed += 1
+		err = _T.assert_gt(rungs, 0,
+			"the cob's level table has rungs to read — an empty ladder is a vacuous pass")
+		if err == "":
+			err = _T.assert_eq(PlantCatalog.damages(PlantCatalog.CORN), armed > 0,
+				("and the cob answers off the damage column of its own ladder"
+					+ " (%d of %d rungs armed)") % [armed, rungs])
+
+	if err == "":
+		# The Chomp is the one arm with no constant to derive from — it deals no damage
+		# at all, it holds and then calls Pest.kill(DEATH_BITTEN). Asserted here so the
+		# declaration is recorded as a declaration rather than mistaken for a derivation
+		# by the next reader of damages().
+		err = _T.assert_true(PlantCatalog.damages(PlantCatalog.CHOMP),
+			("a Chomp kills what it eats, so it hurts pests — and it is the one arm of"
+				+ " damages() written out rather than read off a damage constant"))
+	if err == "":
+		err = _T.assert_false(PlantCatalog.damages(PlantCatalog.SUNFLOWER),
+			"a Sunflower fights nothing, which is what its own blurb promises")
+	return err
+
+
+# -- END plant-tower-defense-i8k9 ---------------------------------------------

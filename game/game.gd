@@ -709,14 +709,24 @@ static func engaging_plants() -> Array[StringName]:
 const COVERAGE_NOTE_WORST_CASE: String = "Wave 9999 cleared. Nothing is aimed at the last 100% of the road."
 
 
-## How far a plant of `id` can actually touch a pest, in pixels; 0.0 for one that
-## cannot touch one at all.
+## How far a plant of `id` can actually HURT a pest, in pixels; 0.0 for one that
+## cannot hurt one at all.
 ##
-## The engaging kinds return PlantCatalog.reach(id) rather than a second copy of
+## The damaging kinds return PlantCatalog.reach(id) rather than a second copy of
 ## the number, so a balance change to CornCobbler.RANGE moves this with it instead
 ## of leaving a coverage map quoting a radius the cob no longer has.
+##
+## GATED ON PlantCatalog.damages(), NOT ON engages() (plant-tower-defense-i8k9), and
+## the two answer differently for exactly one plant. Every readout downstream of this
+## is worded "aimed at" — coverage_note_for's "Nothing is aimed at the last N% of the
+## road", Board.mark_unaimed_road, the card's `road_aimed` — and "aimed" is the
+## narrower question. A Bramble already contributed nothing here, but only because a
+## Bramble's reach() happens to be 0.0; a holding plant with a real reach would have
+## been counted as covering road it cannot hurt anything on. This changes no number
+## in today's catalogue and removes that accident. See PlantCatalog.damages() for why
+## it is a derived function rather than a second key beside `engages`.
 static func engagement_reach(id: StringName) -> float:
-	if not PlantCatalog.engages(id):
+	if not PlantCatalog.damages(id):
 		return 0.0
 	return PlantCatalog.reach(id)
 

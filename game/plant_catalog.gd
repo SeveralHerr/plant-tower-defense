@@ -26,7 +26,13 @@ const PLANTS: Dictionary = {
 		"unlocked_at_start": true,
 		"free_starter": true,
 		"blurb": "Fires kernels down the lane. Upgrades to a bunch of corn.",
-		# Kernels do damage. The only plant in the game that does.
+		# Kernels do damage. It was the only plant in the game that did, and that
+		# sentence stood here after it stopped being true: the Dandelion's seeds and
+		# the Nettle's sting both take health off a pest, and the Chomp kills outright.
+		# `damages()` below is now the place that answers this, read off each plant's
+		# own damage constant rather than off a comment nobody re-reads -- and this
+		# stale line is what a derived key would have caught the day it went stale.
+		# `RunSummary.par_reach_px`'s header still cites the old claim.
 		"engages": true,
 	},
 	CHOMP: {
@@ -216,6 +222,11 @@ const PLANTS: Dictionary = {
 		# opposite way from the first: a Sundew REACHES without ENGAGING, and a Bramble
 		# ENGAGES without REACHING. Both are honest and the pair is what stops either key
 		# being quietly derived from the other. See reach() below for the 0.0.
+		#
+		# It is also the ONLY entry where `engages` and `damages()` disagree, which is
+		# what `damages()` was added for — its blurb's "Hurts nothing" clause could not
+		# be asserted against this key, because this key says the opposite and means
+		# something else by it.
 		"engages": true,
 	},
 }
@@ -350,8 +361,75 @@ static func reach(id: StringName) -> float:
 ## coverage hole, and a readout that nags is recoverable where one promising cover
 ## it does not have costs beds. But defaulting is not the same as deciding, so
 ## test_every_plant_declares_whether_it_engages fails on an entry that omits it.
+##
+## THIS KEY IS "DAMAGE OR HOLD" AND THAT IS DELIBERATE — see `damages()` directly
+## below for the narrower question, and for which callers want which. The short
+## version, so the next reader does not re-open it (plant-tower-defense-i8k9): this
+## one answers "does this cell defend the lane", which is what the selection panel's
+## "waiting for a pest" line asks; `damages()` answers "can this cell HURT anything",
+## which is what every readout worded "aimed at" asks. They differ on exactly one
+## entry today, the Bramble, and that entry is why both exist.
 static func engages(id: StringName) -> bool:
 	return bool(entry(id).get("engages", false))
+
+
+## Can a plant of `id` HURT a pest — take health off it, or kill it outright?
+##
+## The narrower half of `engages`, which is "damage OR hold". They differ on exactly
+## one entry today: a Barrier Bramble holds every pest that walks into it and hurts
+## none of them.
+##
+## WHY IT EXISTS. Three readouts wanted this question and each asked `engages`
+## instead, getting the right answer for a reason unrelated to what it asked
+## (plant-tower-defense-i8k9). The one in production is `Game.engagement_reach`,
+## which returned 0.0 for a Bramble only because a Bramble's `reach()` happens to be
+## 0.0 — so a future holding plant WITH a reach would have been counted as covering
+## road it cannot hurt anything on. Reading this key instead changes no number today
+## and removes the accident.
+##
+## DERIVED, and NOT a second boolean key beside `engages` in PLANTS. Two booleans
+## that agree on eight of nine entries invite exactly the drift the single key was
+## introduced to prevent — somebody sets one and not the other. So this reads each
+## plant's OWN damage constant, in the same shape `reach()` above already uses for
+## the same class of fact: retune `Nettle.STING_DAMAGE` to zero and this answers
+## false without anyone remembering to come back here. The stale "the only plant in
+## the game that does damage" comment on the CORN entry is what a hand-written second
+## list would have become.
+##
+## NOT a `Plant` virtual, and that was checked rather than guessed at:
+## `Game.engagement_reach` is a STATIC function, and `PlacementPreview.dead_ground_cells`
+## draws the hover cue before any plant of the hovered kind exists, so there is no
+## instance to ask. That is the same constraint that made `engages` a catalogue key
+## rather than a method on Plant.
+##
+## A missing arm reads as false, the same default and the same safe direction as
+## `engages`: it under-reports coverage rather than promising cover that is not there.
+static func damages(id: StringName) -> bool:
+	match id:
+		CORN:
+			# The damage column of the level table, walked rather than copied, so a
+			# rung retuned to zero is seen here instead of being asserted around.
+			for row: Dictionary in CornCobbler.LEVELS:
+				if float(row.get("damage", 0.0)) > 0.0:
+					return true
+			return false
+		CHOMP:
+			# TRUE, and the one arm with no constant to read, so it is written out
+			# rather than derived — the same way reach()'s Bramble arm is. A Chomp
+			# deals no damage at all: it holds a pest for `chew_seconds_for` and then
+			# calls `Pest.kill(DEATH_BITTEN)`. "Can it hurt one" is the question, and
+			# a pest that has been eaten has been hurt by every reading a readout has.
+			return true
+		DANDELION:
+			return Dandelion.SEED_DAMAGE > 0.0
+		NETTLE:
+			# TRUE, and conditional on the pest in exactly the way `engages`'s own
+			# entry comment already records — `Nettle.can_sting` refuses an unmutated
+			# one. What neither key can express is "against some pests only", and the
+			# coverage map does not ask that; `Nettle.can_sting` is where it lives.
+			return Nettle.STING_DAMAGE > 0.0
+		_:
+			return false
 
 
 ## Does a plant of `id` stand ON the road instead of on the grass beside it?
