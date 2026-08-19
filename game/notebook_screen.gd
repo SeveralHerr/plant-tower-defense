@@ -432,7 +432,17 @@ const PAGES: Array[Dictionary] = [
 		"drawing": "res://image3.jpg",
 		"sprite": "res://assets/sprites/corn_kernel.png",
 		"caption": "The bunch-of-corn upgrade",
-		"note": "An arrow from one cob to another, \"bunch of corn\" written at the top, and a scatter of D-shapes flying off to the right. That is the whole upgrade path — one kernel becomes several at once — and the D-shapes became the kernel sprite.",
+		# "one rung of the three", not "the whole upgrade path" (plant-tower-defense-hvdj).
+		# The drawing really does show a single arrow, and every other clause on this page
+		# is about the paper — so the page keeps describing the artefact. But
+		# CornCobbler.LEVELS has three rungs (single, triple, bunch) and this was the one
+		# clause making a claim about the GAME, which is the clause that went stale.
+		#
+		# Scoped rather than expanded: CornCobbler now draws the ladder on the board, one
+		# pip per kernel, so a player counts the rungs without opening the notebook. There
+		# is nothing here for a documented ladder to add. Note bodies are budgeted at 300
+		# characters (test_notebook_every_page_carries_a_caption_and_a_note); this is 263.
+		"note": "An arrow from one cob to another, \"bunch of corn\" written at the top, and a scatter of D-shapes flying off to the right. That is one rung of the three the upgrade path ended up with — one kernel becomes several at once — and the D-shapes became the kernel sprite.",
 	},
 	{
 		"plant": &"chomp_flower",

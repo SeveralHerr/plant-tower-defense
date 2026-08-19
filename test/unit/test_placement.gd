@@ -252,7 +252,10 @@ func test_one_uproot_click_only_arms_and_a_second_commits() -> String:
 	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "planted")
 	if err == "":
 		var seeds_before: int = game.bank.seeds
-		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "the first click refuses")
+		# NOT a refusal, whatever the non-empty return looks like: this click ARMS.
+		# See Game.UPROOT_CONFIRM_NEEDED (plant-tower-defense-qewm).
+		err = _T.assert_eq(game.arm_uproot(), Game.UPROOT_CONFIRM_NEEDED,
+			"the first click only arms")
 		if err == "":
 			err = _T.assert_true(game.plant_at(cell) != null, "the plant is still in the ground")
 		if err == "":

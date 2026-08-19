@@ -18664,3 +18664,111 @@ func test_every_recordable_milestone_survives_the_parser() -> String:
 		err = _T.assert_eq((parsed as Array).size(), ids.size(),
 			"and reads back the same number of them")
 	return err
+# =============================================================================
+# LANE SECTION — plant-tower-defense-qewm (arm_uproot's success is not a refusal)
+# Appended at end of file by a fan-out lane. plant-tower-defense-hvdj, this lane's
+# other bead, is a one-sentence notebook reword and adds no test.
+#
+# The convention every other `-> String` method on Game keeps is "" == it worked,
+# non-empty == the reason it did not, and callers print it. `arm_uproot()` keeps it
+# for one of its three returns and inverts it for another: the ARMING click returns
+# a non-empty string for something that plainly happened. That is not a bug in the
+# game — the values are distinguishable — it is a contract that lived only in the
+# reader's head, and the reader duly got it wrong twice (a test call site labelled
+# "the first click refuses", and a later cycle's reproduction that asserted "" for
+# the arming click and failed on its own precondition, which is a failure
+# indistinguishable from the bug it was written for).
+#
+# These two tests are that contract written somewhere a mutation has to answer to.
+# The first is pure and needs no scene at all, which is the point:
+# `uproot_press_accepted` was extracted precisely so that "which of these returns
+# are wins" stops being unassertable prose. The second pins the pure answer against
+# the behaviour it claims to describe, because a predicate agreeing with a constant
+# while both are wrong about the game is the failure a pure test cannot see.
+# =============================================================================
+
+
+func test_uproot_press_accepted_enumerates_the_successes_not_the_failures() -> String:
+	## No Game, no scene, no clock: the ambiguity is a property of three String
+	## values, so it is checkable without any of that. It was not checkable before
+	## only because nothing had named the values.
+	var err: String = _T.assert_true(Game.UPROOT_CONFIRM_NEEDED != "",
+		("the arming return really is the odd one out — non-empty, and a success. "
+			+ "If this ever becomes \"\" the whole bead is moot and this test should "
+			+ "go, not be relaxed."))
+	if err == "":
+		err = _T.assert_true(Game.uproot_press_accepted(""),
+			"the committing click is a success")
+	if err == "":
+		err = _T.assert_true(Game.uproot_press_accepted(Game.UPROOT_CONFIRM_NEEDED),
+			"and so is the arming click, which is the whole claim")
+	if err == "":
+		err = _T.assert_false(Game.uproot_press_accepted("nothing is selected"),
+			"the one genuine refusal arm_uproot can return is not a success")
+	if err == "":
+		# A refusal nobody has written yet. `not reply.is_empty()` would answer
+		# false here too, so this assertion alone does not distinguish the two
+		# shapes — the pair of it and the UPROOT_CONFIRM_NEEDED case above does.
+		# Together they say: successes are enumerated, everything else refuses.
+		err = _T.assert_false(Game.uproot_press_accepted("the wave is running"),
+			("a refusal a later cycle invents is refused by default, because the "
+				+ "predicate lists the wins rather than the losses"))
+	return err
+
+
+func test_the_arming_click_is_a_success_and_leaves_the_plant_in_the_ground() -> String:
+	## The half the pure test cannot reach. `uproot_press_accepted` could agree with
+	## `UPROOT_CONFIRM_NEEDED` perfectly while `arm_uproot` returned it from a path
+	## that refused; only a real Game says which click does what.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(100)
+	var cell: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "", "planted")
+
+	var armed_reply: String = ""
+	if err == "":
+		armed_reply = game.arm_uproot()
+		err = _T.assert_eq(armed_reply, Game.UPROOT_CONFIRM_NEEDED,
+			"the first click returns the named arming value")
+	if err == "":
+		err = _T.assert_true(Game.uproot_press_accepted(armed_reply),
+			"which the predicate calls a success, not a refusal")
+	if err == "":
+		# The evidence that something HAPPENED, which is what makes calling it a
+		# refusal wrong: three separate pieces of state moved on that click.
+		err = _T.assert_true(game.uproot_armed(),
+			"because the click armed the confirm")
+	if err == "":
+		# settle-read-check: ok - not an ambient read. The `arm_uproot()` call above
+		# is what set this, from 0.0 to UPROOT_CONFIRM_SECONDS, and nothing between
+		# that line and this one advances the tree. The assertion is about the write
+		# that click made, not about where a free-running clock happens to be.
+		err = _T.assert_gt(game._uproot_left, 0.0,
+			"started the four-second clock")
+	if err == "":
+		err = _T.assert_true(game.plant_at(cell) != null,
+			"and left the plant standing, which is the only thing it did NOT do")
+
+	var commit_reply: String = ""
+	if err == "":
+		commit_reply = game.arm_uproot()
+		err = _T.assert_eq(commit_reply, "",
+			"the second click returns the ordinary success value")
+	if err == "":
+		err = _T.assert_true(Game.uproot_press_accepted(commit_reply),
+			"which is a success too — both clicks are, by different sentinels")
+	if err == "":
+		err = _T.assert_true(game.plant_at(cell) == null,
+			"and this is the click that actually removed the bed")
+
+	if err == "":
+		# The genuine refusal, from the same method, for contrast. Nothing is
+		# selected now because the bed it was holding is gone.
+		var refused: String = game.arm_uproot()
+		err = _T.assert_false(Game.uproot_press_accepted(refused),
+			"with nothing selected the same method really does refuse: \"%s\"" % refused)
+	_T.free_ui(game)
+	return err
+
+# END LANE SECTION — plant-tower-defense-qewm
+# =============================================================================
