@@ -19223,3 +19223,155 @@ func test_the_campaign_ramp_spends_the_endless_ceiling_without_reordering_it() -
 	return err
 # END LANE SECTION — plant-tower-defense-8v43
 # =============================================================================
+
+
+# =============================================================================
+# LANE SECTION — plant-tower-defense-9a2y
+# set_active moves onto OverlayScreen, and the overlay is what calls it
+# =============================================================================
+
+
+## The overlay makes what it covers inert WITHOUT BEING TOLD TO.
+##
+## `TitleScreen._set_menu_active`, `PauseScreen._set_card_active` and `Hud.set_active`
+## were the same eight lines under three names, and every one of them had to be CALLED
+## by whoever opened the overlay — twice, once each way. The HUD's opener forgot for
+## several cycles (plant-tower-defense-csrc). The claim here is that the opener no
+## longer has a line to forget: nothing in this test calls anything, the overlay is
+## simply added to the surface it covers.
+func test_an_overlay_makes_what_it_covers_inert_without_being_asked() -> String:
+	var surface := Control.new()
+	surface.name = "Surface"
+	var live := Button.new()
+	live.name = "LiveButton"
+	surface.add_child(live)
+	# Deliberately NOT at its defaults. All three copies this replaces restored a
+	# DEFAULT rather than what they found, so a control that was already unfocusable
+	# came back live — invisible on today's screens because every surface they cover
+	# happens to be all-default buttons.
+	var quiet := Button.new()
+	quiet.name = "QuietButton"
+	quiet.focus_mode = Control.FOCUS_NONE
+	quiet.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	surface.add_child(quiet)
+
+	var host := await _T.instantiate_scene(surface) as Control
+	var err: String = _T.assert_eq(live.focus_mode, Control.FOCUS_ALL,
+		"the surface starts live — otherwise everything below passes on nothing")
+	if err == "":
+		var all_of_them: Array[BaseButton] = OverlayScreen.interactive_under(host, null)
+		err = _T.assert_eq(all_of_them.size(), 2,
+			"interactive_under finds both by walking the tree rather than a kept list")
+
+	var overlay: OverlayScreen = null
+	if err == "":
+		overlay = OverlayScreen.new()
+		overlay.name = "Overlay"
+		host.add_child(overlay)
+		await _pump(host)
+		err = _T.assert_eq(live.focus_mode, Control.FOCUS_NONE,
+			"the overlay took focus off the button underneath on its own")
+	if err == "":
+		err = _T.assert_eq(live.mouse_filter, Control.MOUSE_FILTER_IGNORE,
+			("and the mouse with it — the backdrop is 0.88 alpha, so a button still"
+				+ " tracking the cursor lights up through the paper"))
+	if err == "":
+		err = _T.assert_eq(OverlayScreen.interactive_under(host, overlay).size(), 2,
+			"excluding the overlay's own subtree leaves the surface's two buttons")
+
+	if err == "":
+		overlay.close()
+		err = _T.assert_eq(live.focus_mode, Control.FOCUS_ALL,
+			("close() hands the surface back on this line, not a frame later — a"
+				+ " grab_focus() straight after it has to land on a focusable button"))
+	if err == "":
+		err = _T.assert_eq(live.mouse_filter, Control.MOUSE_FILTER_STOP,
+			"both channels come back, not just focus")
+	if err == "":
+		err = _T.assert_eq(quiet.focus_mode, Control.FOCUS_NONE,
+			("and the button that was ALREADY unfocusable is still unfocusable: what is"
+				+ " restored is what was found, not FOCUS_ALL"))
+	if err == "":
+		err = _T.assert_eq(quiet.mouse_filter, Control.MOUSE_FILTER_IGNORE,
+			"same for the filter it was deliberately left with")
+	await _pump(host)
+	_T.free_ui(host)
+	return err
+
+
+## The backstop: an overlay freed WITHOUT `close()` still hands the surface back.
+##
+## `Game.resume_run()` frees the whole pause layer with an overlay possibly still open
+## over the card, and nothing calls `close()` on the way past. A surface left inert
+## behind a freed overlay is a menu with no way out of it — the same class of bug
+## PROCESS_MODE_ALWAYS exists to prevent one layer down.
+func test_an_overlay_hands_the_surface_back_even_when_nobody_closes_it() -> String:
+	var surface := Control.new()
+	surface.name = "Surface"
+	var button := Button.new()
+	button.name = "OnlyButton"
+	surface.add_child(button)
+	var host := await _T.instantiate_scene(surface) as Control
+
+	var overlay := OverlayScreen.new()
+	overlay.name = "Overlay"
+	host.add_child(overlay)
+	await _pump(host)
+	var err: String = _T.assert_eq(button.focus_mode, Control.FOCUS_NONE,
+		"inert while the overlay is up")
+	if err == "":
+		# queue_free(), NOT close(): this is the path an opener that forgot leaves.
+		overlay.queue_free()
+		await _pump(host)
+		err = _T.assert_eq(button.focus_mode, Control.FOCUS_ALL,
+			"_exit_tree hands it back anyway — forgetting is not a way to leave it dead")
+	if err == "":
+		err = _T.assert_eq(button.mouse_filter, Control.MOUSE_FILTER_STOP,
+			"both channels on the backstop path too")
+	_T.free_ui(host)
+	return err
+
+
+## Holding a control twice must not lose what it was.
+##
+## `TitleScreen` still calls its own `_set_menu_active` around the overlay's hold, so
+## the second application lands on a control the overlay has already recorded. If that
+## re-snapshotted, the recorded state would be FOCUS_NONE and `release_inert()` would
+## hand back a dead menu behind a closed notebook — which looks exactly like a working
+## close until someone reaches for Tab.
+func test_holding_a_control_twice_still_remembers_what_it_was() -> String:
+	var surface := Control.new()
+	surface.name = "Surface"
+	var button := Button.new()
+	button.name = "OnlyButton"
+	surface.add_child(button)
+	var host := await _T.instantiate_scene(surface) as Control
+
+	var overlay := OverlayScreen.new()
+	overlay.name = "Overlay"
+	host.add_child(overlay)
+	await _pump(host)
+	var covered: Array[BaseButton] = OverlayScreen.interactive_under(host, overlay)
+	var err: String = _T.assert_eq(covered.size(), 1,
+		"the overlay's own subtree is excluded, so only the surface button is covered")
+	if err == "":
+		# What TitleScreen._set_menu_active still does, on top of the overlay's hold.
+		OverlayScreen.set_controls_active(covered, false)
+		err = _T.assert_eq(button.focus_mode, Control.FOCUS_NONE,
+			"set_controls_active moves focus, and it is the one copy of those lines now")
+	if err == "":
+		err = _T.assert_eq(button.mouse_filter, Control.MOUSE_FILTER_IGNORE,
+			"and the filter, in the same call rather than in a second one somebody adds")
+	if err == "":
+		overlay.hold_inert(covered)
+		overlay.release_inert()
+		err = _T.assert_eq(button.focus_mode, Control.FOCUS_ALL,
+			("release_inert hands back the state at the FIRST hold, not the inert state"
+				+ " the second hold would have seen"))
+	if err == "":
+		err = _T.assert_eq(button.mouse_filter, Control.MOUSE_FILTER_STOP,
+			"and the filter it had at that same first hold")
+	_T.free_ui(host)
+	return err
+# END LANE SECTION — plant-tower-defense-9a2y
+# =============================================================================
