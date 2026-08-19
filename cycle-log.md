@@ -1,4 +1,4 @@
-# Cycle 134
+# Cycle 135
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,33 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 135 taught
+
+**Measure a proposed rule against the incidents it was filed for, BEFORE building it.** A
+lane was asked to build "no bead without a citation" and instead checked it against all five
+documented false-premise beads in this project's record. It would have caught zero, the
+correlation runs backwards — the four most heavily cited beads are the four whose premises
+turned out false — and it would have stood red on 21% of the queue. The lane wrote no code.
+That is the best outcome a lane produced this cycle.
+
+**A test that derives its expectation from a constant cannot protect prose that quotes a
+number.** `CAMPAIGN_HEALTH_STEP` went 0.04 → 0.03 a cycle ago and the six figures its comment
+argues were never re-derived. Both tests over that ramp compute their expectation from the
+constant, so they pass identically at either value: correct about the shape, blind to every
+magnitude. Derived-not-typed is house style here, and this is what it costs.
+
+**A list written from a bead is a stale number with extra steps.** My `BUDGET_FLOOR_ACCEPTED`
+came from the bead's "three rows"; the running game says four, and my draft named one that is
+not at floor while missing two that are. Every headless test passed, because they assert the
+warning against whatever the list says. Read the live value before writing the constant, not
+after.
+
+**"Is it at least this bad" is a different question from "is this true", and nothing checks
+it.** Four beads across cycles 134 and 135 were UNDERSTATED — five call sites that were 21, a
+class dismissed as less exposed that was the real exposure, a producer count stale by 85
+commits, a fallback already 80% shipped — against zero that were flatly wrong.
+Confirm-the-premise catches the second kind and reads an understated premise as confirmation.
 
 ## What cycle 134 taught
 

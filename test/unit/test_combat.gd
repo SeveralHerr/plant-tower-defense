@@ -7731,7 +7731,7 @@ func test_the_second_act_starts_where_it_says_it_does() -> String:
 	err = _T.assert_gt(climbed, 10,
 		"and the second act is a real stretch of waves, not one row (%d)" % climbed)
 	if err == "":
-		# The finale, as the one number a human can hold: x1.665 at 0.04 over
+		# The finale, as the one number a human can hold: x1.469 at 0.03 over
 		# thirteen waves. Derived rather than typed, so the constant stays the only
 		# place the steepness is chosen.
 		var top: float = pow(1.0 + WaveDirector.CAMPAIGN_HEALTH_STEP,
@@ -7859,7 +7859,7 @@ func test_the_back_half_no_longer_plateaus() -> String:
 ## as a MULTIPLE of where the campaign finished rather than as an addition to 1.0.
 ## Written multiplicatively the campaign factor appears on both sides of the
 ## division and cancels exactly; written additively it does not, and at
-## CAMPAIGN_HEALTH_STEP 0.04 the headroom drops from 18.7 points to 8.5 -- under
+## CAMPAIGN_HEALTH_STEP 0.03 the headroom drops from 18.7 points to about 11 -- one
 ## one Shield Bug, which is what the Shield Bug's own test in this file asserts it
 ## is above. This pins the mechanism, not just the consequence.
 func test_the_second_act_costs_the_seam_bound_nothing() -> String:
@@ -7922,7 +7922,7 @@ func test_the_second_act_costs_the_seam_bound_nothing() -> String:
 ## A level-1 Corn Cobbler does 1.0 damage a kernel and an aphid has 3.0 health, so
 ## a plain aphid has cost exactly three kernels in every wave of this game since
 ## it shipped. Under the ramp it costs three through wave 9, four from wave 10 and
-## five from wave 17 -- the swarm's price against the default plant goes up by two
+## five from wave 19 -- the swarm's price against the default plant goes up by two
 ## thirds across the second act, and the answer to that is a different plant
 ## rather than more corn. That is the bead's "the plants unlocked at wave 7 have
 ## something to be needed for", reduced to an integer.
@@ -7958,7 +7958,7 @@ func test_the_swarm_outgrows_the_plant_the_player_starts_with() -> String:
 	if err == "":
 		err = _T.assert_gte(rises, 2,
 			("the aphid gets more expensive at least twice across the campaign (got %d)."
-				+ " It rose at waves 10 and 17 when this landed, 3 kernels -> 4 -> 5")
+				+ " It rose at waves 10 and 19 when this landed, 3 kernels -> 4 -> 5")
 				% rises)
 	if err == "":
 		err = _T.assert_eq(ceili(aphid / kernel), 3,

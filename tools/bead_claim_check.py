@@ -573,8 +573,10 @@ def main(argv=None):
           "why two of this tool's own must-not-fire fixture cases fired on their titles. "
           "It COUNTS citation shapes and does not resolve them -- a bead may cite "
           "`game/hud.gd:900` in a 300-line file and still score a citation; "
-          "citation_check.py resolves citations but only in markdown files handed to it, "
-          "and nothing in this repo resolves a citation living in bead prose. The waiver "
+          "citation_check.py --beads DOES resolve citations living in bead prose now "
+          "(description and close_reason, from this same export) -- what neither tool "
+          "reads is the SENTENCE around the citation, which is where the claim is. "
+          "The waiver "
           "never expires, so a verdict reached in cycle 104 silences a bead forever. And "
           "it reads the JSONL export, not the Dolt DB: a bead updated since the last "
           "export is scanned as it was." % len(NEEDLES))

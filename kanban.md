@@ -284,9 +284,9 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   **AUDITED (cycle 76): DRIFTED — two of the three factual claims are false.** The
   description used to open "the wave table currently ends at 8 fixed waves before endless
   mode takes over with escalating mutation chance on the same two pests, and there is no
-  boss". `WaveDirector.WAVES` (`game/wave_director.gd:164`) holds **16** entries, not 8 —
+  boss". `WaveDirector.WAVES` (`game/wave_director.gd:177`) holds **16** entries, not 8 —
   the file's own prose treats wave 16 as a deliberately sized landing point. And a boss
-  mechanic ships: `WaveDirector.wave_carries_boss()` (`:319`) feeds the HUD's prep note,
+  mechanic ships: `WaveDirector.wave_carries_boss()` (`:332`) feeds the HUD's prep note,
   and the mechanic itself is documented at `game/game.gd:796` — a pest whose species names
   a split bursts into that many.
   **What holds** is the two-species part: `Pest` still declares only `APHID` and `BEETLE`
@@ -327,17 +327,17 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   tells the player upgrading exists" — across three mechanisms rather than one: `milestones.gd`
   (no entry mentions upgrades or levels), all twenty `show_message` call sites in `game/game.gd`
   (only `:1321` "That upgrade costs N seeds", a refusal after you already tried, and `:1331`, a
-  confirmation after you succeeded), and the notebook (`game/notebook_screen.gd:434`, one
+  confirmation after you succeeded), and the notebook (`game/notebook_screen.gd:448`, one
   caption, in a screen the player must go and open). The opening tutorial line
   (`game/game.gd:273`) teaches placing and starting waves and stops there. So every mention of
   the mechanic that decides the run is either a reply to a player who already found it, or
   optional reading.
 
 - **The back half of the campaign does not escalate.** Derived from all 22 rows through
-  `WaveDirector._raw_threat` (`game/wave_director.gd:755`), not sampled: waves 9-22 step between
+  `WaveDirector._raw_threat` (`game/wave_director.gd:768`), not sampled: waves 9-22 step between
   **+2.0% and +13.6%** in threat, averaging about +6%, while waves 2-7 step +15% to +80%. The
   reason is structural rather than a matter of table-writing taste — `health_scale_for`
-  (`:850`) returns exactly 1.0 for every campaign wave and `mutation_chance_for` (`:840`)
+  (`:863`) returns exactly 1.0 for every campaign wave and `mutation_chance_for` (`:853`)
   returns a flat constant, both by an `over <= 0` early return, so the entire escalation
   machinery is endless-only **by construction**. Inside the campaign, difficulty IS the table,
   and the table plateaus at 26-37 pests from wave 8 to the finale.
@@ -660,8 +660,8 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   of writing a tool. Cycle 92 found `shelf_page()` and a newly-written `page_for_kind()`
   were the same search over `PAGES` by different names, fixed it by delegation, then
   checked whether the pattern recurs: `NotebookScreen` has three finders over that table
-  (`page_for_kind` at `game/notebook_screen.gd:289`, `shelf_page` at `:990`,
-  `page_for_plant` at `:1123`) and the other two search **different fields**, so they are the
+  (`page_for_kind` at `game/notebook_screen.gd:303`, `shelf_page` at `:1020`,
+  `page_for_plant` at `:1153`) and the other two search **different fields**, so they are the
   same shape and not duplicates.
   What caught the duplicate was grepping for existing accessors *before* writing a new one —
   a habit, not a gate, and no checker in this repo could have seen it: two functions with
@@ -673,7 +673,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 
 - **The page that teaches the board is the last page of the notebook.** `CueLegend` ships
   as `KIND_LEGEND`, the tenth of ten `NotebookScreen.PAGES` entries, and the screen opens
-  on page 0 (`game/notebook_screen.gd:630`, `go_to(open_at)` at the end of the build). So the
+  on page 0 (`game/notebook_screen.gd:660`, `go_to(open_at)` at the end of the build). So the
   route is: title screen → Notebook → **nine presses of Next**. The title's own header
   calls the notebook "a click further away" deliberately
   (`game/title_screen.gd:56-60`) — that reasoning was about a designer's scrapbook, and it
@@ -770,9 +770,9 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   whole game, at `game/game.gd:1356`. Its other call sites read earned state to RENDER rather than to gate a
   sight, which is why one member is the whole set and not an oversight. Re-checked in cycle
   130 and the count in this sentence had gone stale as well as its line numbers: there are
-  now four, not two. Two draw the shelf (`notebook_screen.gd:764` in `_build_shelf`, `:982`
+  now four, not two. Two draw the shelf (`notebook_screen.gd:794` in `_build_shelf`, `:1012`
   in `shelf_progress_text`) and two postdate this entry entirely, reading the same flag for
-  the hints page (`:852`, `:919`). The conclusion survives the recount — none of the four
+  the hints page (`:892`, `:959`). The conclusion survives the recount — none of the four
   gates a sight — which is the only reason this is a correction rather than a re-opening.
   The idea is which teaching moments would want the second. The constraint the new contract
   imposes, and it is a real design filter rather than a formality: **a hint is spent on being
@@ -792,7 +792,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   to lint (it is type-valid for a `Variant`), and a silent green.
   Grepped for it across `game/` and `test/unit/`: `.has(` against a const `Array[Dictionary]`
   occurs **zero** times outside the comment recording the mistake. The correct idiom is
-  already in the codebase and was already the majority — `notebook_screen.gd:600` reads
+  already in the codebase and was already the majority — `notebook_screen.gd:640` reads
   `String(row["id"])`. A checker with a zero denominator is one the house rules say must
   announce its own emptiness, and one that has never been observed to fire is not a checker.
   **Recorded so nobody proposes it a second time**; if a second instance ever appears, this
@@ -833,7 +833,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   deleted, because the mistake is the useful part.** The claim was that both candidate
   surfaces are the wrong shape and the game therefore needs a read-the-board surface it
   does not have. The notebook half of that is false: `NotebookScreen` was already a
-  three-kind pager, and its own header at `game/notebook_screen.gd:142` says `KIND_SHELF`
+  three-kind pager, and its own header at `game/notebook_screen.gd:156` says `KIND_SHELF`
   is "about the player rather than about the game" — the milestone shelf had stopped this
   being a pure design-history artefact several cycles earlier. A fourth kind was the
   precedent one screen away, and the legend shipped as `KIND_LEGEND` + `CueLegend`.
@@ -843,7 +843,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   contents; the claim was about its SHAPE, and `KIND_SHELF` is thirteen lines from the top.
   That is `kanban-idea-pass` rule 2 — search for the behaviour, not one implementation of
   it — failing in a form the rule does not yet name: **searching for the wrong NOUN.**
-  The `PauseScreen` half stands. Its two-column list (`game/pause_screen.gd:778`) is a
+  The `PauseScreen` half stands. Its two-column list (`game/pause_screen.gd:808`) is a
   controls reference and a dashed ring has no keystroke to sit beside.
 
 ### New this cycle (87) — the mixer has a scale now, and one thing left off it
@@ -955,7 +955,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   "whatever fits", which is how the top bar got into the state `-saaw` measured.
 - **Drought is legible now and rain still is not, for a reason worth naming.** Both weathers
   draw, and only one of them changes what the player must DO. A drought doubles every
-  plant's firing interval (`game/wave_director.gd:353`), which is a demand for more plants
+  plant's firing interval (`game/wave_director.gd:366`), which is a demand for more plants
   or better ones; rain heals beds by a fraction, which is a gift that requires nothing. So
   the overlay gives them equal visual weight for unequal stakes. That may be right — a
   weather system where you cannot tell which weather you are in is worse — but the drought
@@ -1213,7 +1213,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   - `OptionsScreen` writes the arithmetic in a comment (`game/options_screen.gd:100-108`):
     three rows from 256 at 48 foot at 392, footer at 440, gap 48 against
     `OverlayScreen.FOOTER_GAP` of 24.
-  - The milestone shelf writes it in a comment (`game/notebook_screen.gd:166-168`):
+  - The milestone shelf writes it in a comment (`game/notebook_screen.gd:180-182`):
     `SHELF_ROW_PITCH` 42 × 7 entries + 3 = 297 against a 300 px box.
   - `RunSummary` writes it in a comment (`game/run_summary.gd:77`): rows step
     `ROW_HEIGHT + ROW_GAP` = 38, the seventh foots at 448, `BUTTON_Y` is 476, an eighth
@@ -1261,7 +1261,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   `OptionsScreen.PANEL` (`game/options_screen.gd:109`) is sized from the row count on
   purpose, and its own header does the arithmetic: three rows from `ROWS_TOP` 256 at
   `ROW_HEIGHT` 48 put the last button's foot at 392 against a footer starting at 440, so the
-  gap is 48. `OverlayScreen.FOOTER_GAP` is 24 (`game/overlay_screen.gd:92`). **A fourth row
+  gap is 48. `OverlayScreen.FOOTER_GAP` is 24 (`game/overlay_screen.gd:102`). **A fourth row
   puts the foot at exactly 440 — gap 0 — and trips the rule.** That is the good kind of
   wall, and it means "add a volume slider" is a panel-geometry decision before it is an
   audio one. Worth choosing the way out now (grow the panel, or split audio onto its own
@@ -1562,7 +1562,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 
 - **The milestone shelf holds seven and has room for seven.** `SHELF_ROW_PITCH` is 42 and
   `Milestones.TABLE` has 7 entries, so `7 * 42 + 3 = 297` against a 300 px drawing box
-  (`game/notebook_screen.gd:163-168`). An eighth milestone does not fit at these numbers,
+  (`game/notebook_screen.gd:177-182`). An eighth milestone does not fit at these numbers,
   and `test_the_milestone_shelf_fits_the_page` fails the moment `TABLE` grows — which is
   the good kind of wall, but it means "add a milestone" is a layout decision rather than a
   data change. The header names the two ways out (drop the pitch, or split the shelf across
@@ -1962,7 +1962,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   heal shrinks with it. This is the direct consequence of shipping 4c1l and it is worth
   deciding on purpose rather than letting drought stay the good one by accident.
 - **The other five budgets have never been checked against the corpus they claim.**
-  `_budget_hud_message_row` (`game/game.gd:3163`) measured four plant-name messages and
+  `_budget_hud_message_row` (`game/game.gd:3235`) measured four plant-name messages and
   not the prep note that shares the row, and was wrong by 36px for seven cycles while
   reporting green. `Game.budget_entries()` (`game/game.gd:1881`) builds six others the same
   way. Each one names its corpus in an `evidence` string; nothing checks that the string
@@ -1971,7 +1971,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   silent by construction: a budget over a subset always reports more headroom than exists.
 - **The prep note is measured at a wave number the game cannot reach.**
   **SUPERSEDED, re-read in cycle 131: `next_wave_note` no longer appears in `game/game.gd`
-  at all.** `_budget_hud_message_row` (`game/game.gd:3163`) now measures one declared corpus
+  at all.** `_budget_hud_message_row` (`game/game.gd:3235`) now measures one declared corpus
   (`Hud.message_corpus()`) rather than a hand-built list of calls, so the specific defect
   below — a budget whose worst case is set by an unconstrained digit count — no longer has
   the call site it was about. Left rather than deleted because the QUESTION it raises
@@ -2331,7 +2331,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 - **Four more panels are hand-picked rectangles**, and the pause card just spent two
   cycles demonstrating what that costs: `KeyBindingScreen.PANEL`
   (`game/key_binding_screen.gd:76`, 700x600), `NotebookScreen.PANEL`
-  (`game/notebook_screen.gd:31`, 1000x584), `OptionsScreen.PANEL`
+  (`game/notebook_screen.gd:45`, 1000x584), `OptionsScreen.PANEL`
   (`game/options_screen.gd:109`, 700x360), `RunSummary.CARD`
   (`game/run_summary.gd:51`, 640x456). Each is correct against today's contents and
   says nothing when the contents grow. The pause card's own header narrates three
@@ -2434,7 +2434,7 @@ a guess about the rest of the codebase. See `.claude/skills/kanban-staleness-aud
   picture is a record you want to beat; a bigger integer is a bigger integer.
 - ~~**The milestone shelf.**~~ **SHIPPED, and this entry was wrong when it was
   written.** The shelf exists in full — `NotebookScreen.KIND_SHELF`, built by
-  `_build_shelf()` (`game/notebook_screen.gd:452`), all seven `Milestones.TABLE`
+  `_build_shelf()` (`game/notebook_screen.gd:466`), all seven `Milestones.TABLE`
   rows drawn with earned/unearned pips, a `shelf_progress_text()` reading
   "N of 7 earned", and tests in both `test_placement.gd:2185` and
   `test_selftest.gd:7760`. It is in the notebook rather than on the title screen
@@ -3258,7 +3258,7 @@ a guess about the rest of the codebase. See `.claude/skills/kanban-staleness-aud
   zero `create_tween` calls; every tween in the project is in-world (`plant.gd:72` plant
   pop, `corn_cobbler.gd:70` recoil, `chomp_flower.gd:142` bite, `sunflower.gd:33` bloom,
   `pest.gd:262` death linger) or on the two `GardenTheme`-styled screens
-  (`title_screen.gd:287`, `notebook_screen.gd:452`). So `_selection_box.visible = true`
+  (`title_screen.gd:287`, `notebook_screen.gd:466`). So `_selection_box.visible = true`
   snaps a 152px panel into existence, `show_banner` pops 48px of text at full opacity,
   the Uproot relabel changes colour between one frame and the next, and `threat_color`
   jumps a whole segment of its ramp the instant a wave starts rather than easing there —
@@ -4054,7 +4054,7 @@ Three findings kept out here rather than buried in a log:
   the ninth plant quietly created an asymmetry the decision now has to account for, and
   that "drought dries out a bramble and it is chewed faster" is a counter that needs no
   terrain — which is exactly the cheap option `-oo7e`'s notes ask for.
-  (Note while you are in there: `game/wave_director.gd:814` says "three of the eight plants
+  (Note while you are in there: `game/wave_director.gd:827` says "three of the eight plants
   in the catalogue". The three is still right; the eight is not.)
 
 - **The plant most obviously wanting an upgrade ladder is the one that cannot be upgraded,
@@ -4078,7 +4078,7 @@ Three findings kept out here rather than buried in a log:
 ### New in cycle 112 — grown from confirming a bead and reading a sentence
 
 - **Nothing in this project can tell whether a sentence is TRUE, and cycle 112 found one
-  that had quietly stopped being.** `Hud.eaten_message` (`game/hud.gd:3645`) read "A hungry
+  that had quietly stopped being.** `Hud.eaten_message` (`game/hud.gd:3672`) read "A hungry
   pest ate your %s!" and was correct for every plant death in the game until the ninth
   plant: `Pest._physics_process` reaches `_adjacent_plant()` only inside its `is_hungry`
   branch (`game/pest.gd:1282-1286`), so a hungry pest really was the only thing that could
@@ -4146,7 +4146,7 @@ Three findings kept out here rather than buried in a log:
   that REVERSES one they already learned.** The mechanism exists and is deliberate:
   `RunConfig.HINT_MOVE_PREVIEW` / `HINT_CHOMP_IGNORES_FLIGHT` / `HINT_UPGRADE_EXISTS`
   (`game/run_config.gd:166`, `:195`, `:212`), each a one-shot tip with a matching notebook
-  card in `Hud.HINT_CARDS` (`game/hud.gd:3557`), and
+  card in `Hud.HINT_CARDS` (`game/hud.gd:3584`), and
   `test_every_hint_has_a_notebook_card` fails on either half missing.
   Look at what those three teach: a flier ignores a Chomp; a plant already down can grow;
   Uproot compares before it digs. Each is a rule the board does not state. **"You may build
@@ -4181,7 +4181,7 @@ Three findings kept out here rather than buried in a log:
   ("Slowing %d pest(s) to %d%% speed."), `wave_cleared_note` ("%d pests turned back.") and
   so on. A retune moves the number and the sentence follows. Every defect found in two
   cycles of looking has been in the handful that name a mechanism instead:
-  `eaten_message`'s "A hungry pest" (fixed cycle 112, `game/hud.gd:3684`) and
+  `eaten_message`'s "A hungry pest" (fixed cycle 112, `game/hud.gd:3711`) and
   `idle_detail`'s "waiting for a pest" (fixed cycle 115, `:2444`).
   Not a checker — `-u9zb`'s close records why, and the short version is that accuracy is a
   claim about the relationship between English and code with no shared vocabulary to check.
@@ -4190,7 +4190,7 @@ Three findings kept out here rather than buried in a log:
   shape rather than audited into it two cycles later.
 
 - **The one-shot teaching tips name a single answer where the catalogue now has three.**
-  `Hud.flight_tip` (`game/hud.gd:3541`) reads "That pest flies over Chomp Flowers. Corn
+  `Hud.flight_tip` (`game/hud.gd:3568`) reads "That pest flies over Chomp Flowers. Corn
   Cobblers can still hit it." Both halves are true. But a winged pest is also reachable by
   the Bomb Dandelion (its blast hits whatever is standing there) and by the Prickly Nettle,
   which exists *specifically* to sting the mutations — armoured, winged, hungry — and whose
@@ -4547,7 +4547,7 @@ Three findings kept out here rather than buried in a log:
   survived**: anything comparing the two would have caught it in a second, and nothing was
   comparing.
   The entry is that this is the SECOND hand-written count on this screen to go stale and the
-  first already has a comment about it (`game/notebook_screen.gd:645`, "Counted from PAGES,
+  first already has a comment about it (`game/notebook_screen.gd:675`, "Counted from PAGES,
   not written out. The hard-coded \"Six pages\" outlived the sixth page by about four
   minutes"). Two is not a pattern — the audit enumerated every other count on the screen and
   found no third — so it stayed a fix rather than becoming a checker. Recording the
@@ -4652,7 +4652,7 @@ Three findings kept out here rather than buried in a log:
   of the weather system is a dependent clause" — was a claim about THE GAME derived from an
   enumeration over ONE FILE. Weather is taught three times, each where it can be acted on:
   the prep note before the seeds are spent (`game/hud.gd:3304-3310`), the banner as the wave
-  opens (`game/hud.gd:3829-3831`, the whole mechanic in one sentence), and a status row after.
+  opens (`game/hud.gd:3856-3858`, the whole mechanic in one sentence), and a status row after.
   `-pa4g` said it outright — "two of my last four absence claims about this codebase were
   wrong, both because the enumeration was over the wrong set" — and I made the mistake one
   bead later, in a bead that audit filed. **A warning inside a bead does not survive contact
@@ -4678,9 +4678,9 @@ Three findings kept out here rather than buried in a log:
   AMBIGUOUS for the rest — 114 candidate lines for one of them — because the recorded text
   was blank. Applying the uniform +27 satisfied `--against` for every one, and then reading
   the landings found six that were wrong: `page_for_kind at :259` on a blank line (really
-  `game/notebook_screen.gd:289`), `shelf_page` on an autowrap setting (really `:990`),
-  `page_for_plant` on a Label name (really `:1123`), a claimed caption on a shelf-greying
-  comment (really `:434`), `go_to(0)` on a sprite path (really `:630`, and it is
+  `game/notebook_screen.gd:303`), `shelf_page` on an autowrap setting (really `:1030`),
+  `page_for_plant` on a Label name (really `:1163`), a claimed caption on a shelf-greying
+  comment (really `:448`), `go_to(0)` on a sprite path (really `:670`, and it is
   `go_to(open_at)`).
   **Every one was already wrong before this cycle touched anything.** The tool says it cannot
   tell whether a landed line supports its claim; what is new is that the snapshot/restore
@@ -4846,3 +4846,39 @@ Three findings kept out here rather than buried in a log:
   corpus is every one of this repo's 27,755 prose-shaped comment lines with its `#` deleted —
   which IS the damage SIGNATURE B exists to catch. It was finding **6.3%** of it. A
   hand-picked fixture would have shown a detector that works.
+
+### New in cycle 135 — a lane that refuted its bead, and a constant arguing for a number it lost
+
+- **Measure a proposed rule against the incidents it was filed for, before building it.**
+  `-ztue` asked that no bead be filed from an uncited kanban entry. Checked against all five
+  documented false-premise beads in this project's record, the rule would have caught
+  **zero** — and the correlation runs backwards: the four most heavily cited beads are the
+  four whose premises turned out false. `-e1u3`'s eight citations enumerate `create_tween()`
+  sites, and they are what made "Verified unbuilt" read as established. **The citations were
+  the vehicle of the error.** It would also have stood red on 21% of the open queue. No code
+  written, which is the result.
+
+- **A comment can argue a behaviour impeccably, for a number the constant no longer has.**
+  `WaveDirector.CAMPAIGN_HEALTH_STEP` shipped at 0.04 and settled at 0.03 in `a067d5f`; the
+  whole "WHAT 0.04 BUYS" paragraph was priced at 0.04 and none of its six figures re-derived
+  (finale ×1.665 → ×1.469, the aphid's fifth kernel wave 17 → 19, endless pinning wave 36 →
+  40). **Nothing caught it because both tests over that ramp derive their expectation FROM
+  the constant** — so they pass identically at either value, correct about the shape and
+  blind to every magnitude. Derived-not-typed is house style here and this is its cost: **a
+  test that derives its expectation from a constant cannot protect prose that quotes a
+  number.**
+
+- **A list written from a bead is a stale number with extra steps.** My
+  `BUDGET_FLOOR_ACCEPTED` was drafted from `-ais1`, which says three rows are permanently at
+  floor. `cmd budgets` on the running game says four — and my draft named one that is not at
+  floor while missing two that are. **Every headless test passed**, because they assert the
+  warning's behaviour against whatever the list says, which is correct test design and
+  completely blind to the list being wrong. Shipped, it would have warned on every launch:
+  exactly the wallpaper the bead exists to prevent.
+
+- **Two beads were understated in the same direction as last cycle's two.** `-3w66`'s
+  producer count was stale by 85 commits (33 → 39) and its swept population was a floor, not
+  a census — with a third instance of the defect class sitting outside it. `-6wfo`'s own
+  fallback was already 80% shipped. That is four understated premises in two cycles, against
+  zero flatly-wrong ones. **Confirm-the-premise catches "is this true"; nothing yet catches
+  "is it at least this bad".**

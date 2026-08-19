@@ -8091,3 +8091,37 @@ status rather than rewriting the entries that recorded these as open.
   `merge-the-fanout` predicts it catches: an appended-test conflict where both sides held two
   real tests, resolved by deleting only the three markers and asserting the `func test_` count
   was unchanged (446 → 446) rather than eyeballing it.
+
+## 2026-08-19 — five lanes, and the live game correcting a constant I wrote from a bead
+
+- Value: **warranted** — the runtime pass caught a defect every headless gate passed, and it
+  was mine.
+  - Expected: five independent lanes, merged with appended-test conflicts, and a parent pass
+    over what the lanes could not compile or run.
+  - Got: that, and `cmd budgets` on the running game disproving a constant I had just
+    written. `BUDGET_FLOOR_ACCEPTED` was drafted from `-ais1`, which says three rows are
+    permanently at floor; the live reading is
+    `[husk_click, run_summary_values, hud_readouts, hud_selection_panel]` — **four**, and my
+    draft named one that is not at floor while missing two that are.
+  - Found: **every headless test passed over the wrong list**, because they assert the
+    warning's behaviour against whatever the list says. That is correct test design and
+    completely blind to the list being wrong. Shipped, it would have warned on every launch —
+    the exact wallpaper the bead exists to prevent. Also: lane C rated itself `insufficient`
+    for having compiled nothing, and the parent's suite run (933/933) plus a live
+    `find-nodes --class NotebookScreen --property name` returning
+    `/root/TitleScreen/Notebook name=Notebook` is what actually settled its two runtime-API
+    questions.
+  - Cheaper: one `cmd budgets` call **before** writing the constant rather than after. The
+    launch was going to happen anyway; the ordering was the mistake.
+
+- Gap: **no harness gap this turn**, and one bridge limitation worth recording rather than
+  filing. `run-method` cannot pass a typed `Array[String]` parameter — calling
+  `new_floor_warning(["a"],["b"])` returns `null` with the "declares `-> String`, check stderr"
+  hint, because the untyped Array the bridge builds does not satisfy the typed signature. The
+  workaround was to verify the equivalent claim instead: read `at_floor` off `cmd budgets` and
+  show it equals the constant, which makes the warning silent by construction. That is a real
+  answer and not a lesser one — but it is worth knowing before designing a pure static with
+  typed Array parameters and expecting to drive it from the bridge.
+  - Credit where it is due: `-6wfo`'s change proved itself on the very next row recorded —
+    `union 2/18` beside `worktree 1/1`, same run, opposite readings. The union number is the
+    one the ledger printed alone for 148 rows.

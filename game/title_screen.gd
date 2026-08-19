@@ -885,7 +885,11 @@ func _open_notebook() -> void:
 	if overlay_open():
 		return
 	_notebook = NotebookScreen.new()
-	_notebook.name = "Notebook"
+	# The constant, not the literal. `NotebookScreen._init()` assigns this itself now, so
+	# this line is belt-and-braces -- but a second construction site spelling the name by
+	# hand is exactly how the three overlay screens came to be found three different ways
+	# (plant-tower-defense-j7b1).
+	_notebook.name = NotebookScreen.NODE_NAME
 	_notebook.back_requested.connect(_close_notebook)
 	add_child(_notebook)
 	_set_menu_active(false)
