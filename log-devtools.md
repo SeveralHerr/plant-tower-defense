@@ -7778,7 +7778,16 @@ status rather than rewriting the entries that recorded these as open.
     convention `CITATION` requires is simply absent: measured 95 backticked against 495
     unbackticked. The mode was reading one citation in six.
   - Found: that, plus `check_all.py`'s `run_one(name, [])` — an opt-in mode added to a
-    pooled checker never runs in the pool, so the feature would have shipped inert.
+    pooled checker never runs in the pool, so the feature would have shipped inert. Then
+    two more, both from running the new checker over what this cycle itself wrote: the
+    first bead the feature ever closed WAIVED ITSELF, because its close reason quotes the
+    waiver marker and the marker was a bare substring (468 beads → 467, three citations out
+    of the denominator, exit 0, silent); and step 3's own `--against` run came back with
+    five drifted citations, all in closed beads pointing into `cycle-log.md`, which grows
+    ~25 lines at its top every cycle — a gate that would have been red every cycle forever.
+    Closed-bead drift is advisory now, and the gating half was positive-controlled by
+    corrupting a `kanban.md`-cited snapshot entry (exit 1, `DRIFTED:
+    game/OVERLAY_GRAMMAR.md:55-56 (written at kanban.md:1424)`).
   - Cheaper: nothing. The 95-vs-495 split is a fact about how `bd` stores prose; it is
     invisible in the diff and only shows up by running the extraction over the real export.
 

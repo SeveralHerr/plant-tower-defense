@@ -426,6 +426,14 @@ def main(argv: list[str]) -> int:
     # markdown file for a bare `:1464` that appears three times -- which is most of the cost
     # of acting on a drift report, and it was paid in full the first cycle this ran.
     cited_at: dict[str, str] = {}
+    # Keys reached from at least one GATING source. A target cited by both an open bead and
+    # a closed one is the open one's problem; a target only ever cited by closed beads is a
+    # record, and its drift is advisory in --against for the same reason its findings are.
+    # This is not symmetry for its own sake: cycle-log.md grows ~25 lines at its TOP every
+    # cycle, so every citation into it from a closed bead drifts every cycle, forever. Five
+    # did on the run that added this. A gate that is red every cycle for reasons nobody can
+    # fix is the permanently-red gate house-static-checker calls worse than no gate.
+    gating_keys: set[str] = set()
     resolved = 0
 
     # (label, text, is_file, gating). Files first so their line numbers keep their old
@@ -507,6 +515,8 @@ def main(argv: list[str]) -> int:
             # is not a citation going stale). Everything else is kept, including trailing
             # comments -- a line whose comment changed is a line worth re-reading.
             landed[k] = "\n".join(l.strip() for l in lines[start - 1:end])
+            if gating:
+                gating_keys.add(k)
             # First writer wins: a target cited from two entries collapses to one key, and
             # the first is as good a place to start as the second.
             cited_at.setdefault(k, "%s:%d" % (label, md_line))
@@ -542,18 +552,28 @@ def main(argv: list[str]) -> int:
             print("citation_check: snapshot %s is not readable JSON: %s" % (sp, exc),
                   file=sys.stderr)
             return 2
-        drifted = [(k, before[k], landed[k]) for k in sorted(landed)
-                   if k in before and before[k] != landed[k]]
+        all_drift = [(k, before[k], landed[k]) for k in sorted(landed)
+                     if k in before and before[k] != landed[k]]
+        drifted = [d for d in all_drift if d[0] in gating_keys]
+        drift_record = [d for d in all_drift if d[0] not in gating_keys]
         fresh = sorted(k for k in landed if k not in before)
         gone = sorted(k for k in before if k not in landed)
         print("")
         print("citation_check --against %s: %d distinct target(s) from %d resolved "
-              "citation(s), %d drifted, %d new, %d no longer resolving"
-              % (sp.name, len(landed), resolved, len(drifted), len(fresh), len(gone)))
+              "citation(s), %d drifted, %d new, %d no longer resolving%s"
+              % (sp.name, len(landed), resolved, len(drifted), len(fresh), len(gone),
+                 (", %d drifted in CLOSED beads (advisory)" % len(drift_record))
+                 if drift_record else ""))
         for k, was, now in drifted:
             print("DRIFTED: %s   (written at %s)" % (k, cited_at.get(k, "?")))
             print("    was: %s" % _printable(was.replace("\n", " | ")[:100]))
             print("    now: %s" % _printable(now.replace("\n", " | ")[:100]))
+        if drift_record:
+            print("DRIFTED IN A CLOSED BEAD (%d, advisory -- the citation is part of a "
+                  "record, and the file it points into moved for its own reasons):"
+                  % len(drift_record))
+            for k, _, _ in drift_record:
+                print("    %-34s (written at %s)" % (k, cited_at.get(k, "?")))
         if fresh:
             # NEW is not a finding and must never be one: a citation written this cycle has
             # nothing to compare against. Printed so the denominator adds up.

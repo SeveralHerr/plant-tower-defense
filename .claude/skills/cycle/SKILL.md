@@ -326,9 +326,15 @@ running a command. **Never write a work checklist into it.**
      noticing it is not the line you cited can:
 
      ```bash
-     python tools/citation_check.py --snapshot .devtools/citations.json   # before step 2
-     python tools/citation_check.py --against  .devtools/citations.json   # after step 3
+     python tools/citation_check.py --beads --snapshot .devtools/citations.json  # before step 2
+     python tools/citation_check.py --beads --against  .devtools/citations.json  # after step 3
      ```
+
+     **`--beads` is not optional here, and it is the larger half.** This loop writes its
+     evidence into bead descriptions and close reasons — cycle 126 alone filed ~25 heavily
+     cited ones — and `citation_check` read `kanban.md` and nothing else for eleven cycles
+     while ~500 citations accumulated where nothing looked. Without the flag the snapshot
+     covers 352 citations; with it, 880.
 
      Exit 1 lists each drifted citation with its `was:` and `now:` line. A citation written
      THIS cycle is reported as `NEW`, never as drifted — there is nothing to compare it

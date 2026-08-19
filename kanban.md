@@ -4452,3 +4452,46 @@ Three findings kept out here rather than buried in a log:
   SIGNATURE B is worth detecting at all — the history sweep says **0 instances in 1028 file
   versions** ever survived into a commit, because lint catches them the same day. Its only
   real value is the parallel case where lint cannot run.
+
+### New in cycle 126 — grown from a checker reading one citation in six
+
+- **A convention a document GROWS is invisible to a tool written from the outside — third
+  sighting, and this file already says so twice.** `tools/citation_check.py:81-86` records
+  it about `game/OVERLAY_GRAMMAR.md` citing its neighbours bare, and `:90-94` records it
+  again about the `` `:NN` `` continuation form. Cycle 126 walked into it a third time:
+  `bd` stores `description` and `close_reason` as PLAIN TEXT, nothing renders them, so
+  nothing rewards backticks — 95 backticked citations against 495 unbackticked. The first
+  working version of `--beads` demanded the markdown backticks and printed
+  `468 bead(s) ... 0 finding(s)` over an input set that was 84% invisible.
+  The entry is not "add PLAIN". It is that **the three sightings share a shape and the
+  file's own comments predicted this one**: a document written by a different hand, or
+  stored by a different tool, grows its own citation convention within a cycle or two. The
+  question worth asking before the next source is added is not "does my regex work" but
+  "who writes this file, and what does rendering reward them for". Filed as `-yla3`.
+
+- **The only thing that caught it was a denominator, and a denominator is something a
+  reader has to notice.** Ten new citations from 468 beads is implausible, and it was
+  printed in the same line as `0 finding(s)`. `tools/citation_check.py` now carries a
+  `--self-check` whose five cases include the unbackticked form, and mutating the regex
+  back fails it with "this is the 95-of-590 bug returning". Three of the five cases are
+  about ROUTING rather than detection (open gates, closed advisory, waiver suppresses) —
+  which is where this repo's checkers keep going wrong, because routing has no output of
+  its own to read.
+
+- **A waiver a document can trip by DESCRIBING the waiver is worse than no waiver.** The
+  first bead ever closed by the `--beads` mode waived itself: its close reason contains the
+  sentence "marker `citation-check: ok` anywhere in the bead's prose drops the whole bead",
+  which was true and thereby made itself false. Bead count 468 → 467, three citations out
+  of the denominator, and nothing said a word. Fixed by requiring the marker to open its own
+  line (`tools/citation_check.py:71`), but the general point is filed as `-vvww`: **every
+  suppression marker in this repo is a bare substring** and the beads and logs that discuss
+  suppression are exactly the documents most likely to quote one. Found only because the
+  checker was re-run over the close it had just been handed.
+
+- **An opt-in mode on a pooled checker never runs.** `tools/check_all.py` called
+  `run_one(name, [])` — no arguments, ever — so `--beads` would have shipped inert and the
+  pool's `citation_check.py clean` line would have kept meaning "kanban.md only". Fixed with
+  `CHECKER_ARGS`, plus exit 2 when a key names a checker the pool does not run. Worth
+  stating because the pool is designed to DERIVE its members rather than list them, and
+  this is the one thing it cannot derive: what each member needs in order to cover
+  everything it can.

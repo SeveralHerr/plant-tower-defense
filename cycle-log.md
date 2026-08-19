@@ -1,4 +1,4 @@
-# Cycle 125
+# Cycle 126
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,29 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 126 taught
+
+**A clean run over an input set you never measured is the same lie as a clean run over an
+empty one.** `citation_check --beads` shipped its first working version reporting
+`468 bead(s) ... 0 finding(s)` while extracting ten citations from 468 beads. `bd` stores
+`description` and `close_reason` as plain text -- nothing renders them, so nothing rewards
+backticks -- and the regex demanded them: 95 backticked against 495 unbackticked, so the
+mode read one citation in six. Every number printed was true. The only thing wrong was that
+ten-from-468 is implausible, and noticing that is a thing a reader has to do. The fixture
+notices instead now.
+
+**Re-run a new checker over the artefact the cycle itself just produced.** The first bead
+this feature ever closed waived itself: the close reason explains the waiver marker, and the
+marker was a bare substring. 468 beads became 467, three citations left the denominator, exit
+code stayed 0. Nothing in the loop would have caught it -- it was found by running the tool
+once more, over its own close, for no reason other than curiosity. That is now the cheapest
+known way to test a prose checker: point it at the prose the cycle wrote about it.
+
+**An opt-in mode on a derived checker pool never runs.** `check_all.py` derives its members
+by reading source for a contract marker, which is the right design, and called
+`run_one(name, [])` -- so a flag was the one thing it could not derive. `--beads` would have
+shipped inert with the pool still printing `citation_check.py clean` meaning kanban.md only.
 
 ## What cycle 125 taught
 
