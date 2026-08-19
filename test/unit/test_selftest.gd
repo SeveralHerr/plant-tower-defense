@@ -19063,3 +19063,163 @@ func test_the_pause_card_hands_back_the_overlay_that_is_actually_up() -> String:
 
 # END LANE SECTION — plant-tower-defense-j7b1
 # =============================================================================
+# LANE SECTION — plant-tower-defense-8v43 (a comment arguing a value is not an
+# argument the behaviour is right)
+# Appended at end of file by a fan-out lane.
+#
+# The sweep this bead asked for found one constant whose comment was not merely
+# arguing the wrong thing but arguing the RIGHT thing about a number the game no
+# longer has. `WaveDirector.CAMPAIGN_HEALTH_STEP` shipped at 0.04 in 8f7ffb5 and
+# was settled at 0.03 in a067d5f; its comment block — the only place in this repo
+# where the second act's difficulty is quantified at all — kept every figure it
+# had priced at 0.04.
+#
+# The reason nothing caught it is the interesting half, and it is why these
+# checks are worth writing rather than just fixing the prose. The two tests over
+# this ramp in test_combat.gd are both, correctly, written to derive FROM the
+# constant: `test_the_second_act_starts_where_it_says_it_does` computes its own
+# `top` out of CAMPAIGN_HEALTH_STEP, and
+# `test_the_swarm_outgrows_the_plant_the_player_starts_with` asserts only that
+# the aphid's kernel price `rises` at least twice. Both pass identically at 0.03
+# and at 0.04. That is the right shape for the SHAPE of the ramp and it leaves
+# every magnitude the comment states unchecked by construction — so the prose was
+# the sole custodian of the numbers, and prose does not fail a suite.
+#
+# So these assert the magnitudes, in the player's own units, deliberately NOT
+# derived from CAMPAIGN_HEALTH_STEP — an assertion written in the units of the
+# thing under test passes when that thing moves. Move the step and every one of
+# these fails and lands the editor on the paragraph that has to be rewritten.
+# =============================================================================
+
+
+## What the second act costs, priced the way its comment prices it.
+##
+## Three claims off that block, none of which mentions the constant:
+##   * an aphid's price against the starting plant steps 3 -> 4 -> 5 at waves 1,
+##     10 and 19. This is the bead's whole thesis reduced to an integer, and the
+##     comment had the last boundary at 17;
+##   * the finale sends x1.469 pests, the one figure a human can hold;
+##   * the campaign's steepest step is wave 12 at +17.0%, still well under wave
+##     8's +43.3%, which is what "introduces no new cliff" means.
+func test_the_second_act_costs_what_its_comment_says_it_costs() -> String:
+	var kernel: float = float(CornCobbler.LEVELS[0]["damage"])
+	var aphid: float = float(Pest.SPECIES[Pest.APHID]["health"])
+	var finale: int = WaveDirector.WAVES.size()
+	var err: String = _T.assert_gt(kernel, 0.0, "a level-1 kernel does real damage")
+	if err == "":
+		err = _T.assert_gt(aphid, 0.0, "and an aphid has real health")
+	if err != "":
+		return err
+
+	# The boundaries themselves, not "it rose twice". Every wave is swept so a
+	# boundary that MOVED is caught as well as one that vanished.
+	var expected: Dictionary = {1: 3, 10: 4, 19: 5}
+	var priced: int = 0
+	var previous: int = 0
+	for wave: int in range(1, finale + 1):
+		var kernels: int = ceili(aphid * WaveDirector.health_scale_for(wave) / kernel)
+		if kernels != previous:
+			err = _T.assert_true(expected.has(wave),
+				("wave %d is where the aphid's price steps to %d kernels."
+					+ " health_scale_for's comment names 1, 10 and 19 as the only three"
+					+ " boundaries — a fourth, or one in the wrong place, means"
+					+ " CAMPAIGN_HEALTH_STEP moved and that paragraph is now fiction")
+					% [wave, kernels])
+			if err == "":
+				err = _T.assert_eq(kernels, int(expected[wave]),
+					"and wave %d costs exactly the %d kernels the comment claims"
+						% [wave, int(expected[wave])])
+			if err != "":
+				return err
+			expected.erase(wave)
+			previous = kernels
+		priced += 1
+	err = _T.assert_gt(priced, 20, "the whole campaign was priced (%d waves)" % priced)
+	if err == "":
+		err = _T.assert_eq(expected.size(), 0,
+			("and every boundary the comment names was actually reached"
+				+ " (%d never happened)") % expected.size())
+	if err != "":
+		return err
+
+	# The finale multiplier, as a literal rather than as pow(1 + STEP, 13). The
+	# derived form is what test_combat.gd already does and it is exactly what
+	# cannot notice the constant changing.
+	err = _T.assert_float_eq(WaveDirector.health_scale_for(finale), 1.469, 0.001,
+		"the finale's pests are x1.469 of a wave-1 pest, which is the number the"
+			+ " SECOND_ACT_START_WAVE block quotes")
+	if err != "":
+		return err
+
+	# No new cliff: the steepest campaign step is wave 12's queen, and wave 8 is
+	# still the biggest jump in the game.
+	var steepest_wave: int = 0
+	var steepest: float = 0.0
+	var stepped: int = 0
+	for wave: int in range(10, finale + 1):
+		var ratio: float = WaveDirector.threat_for(wave) / WaveDirector.threat_for(wave - 1)
+		if ratio > steepest:
+			steepest = ratio
+			steepest_wave = wave
+		stepped += 1
+	err = _T.assert_gt(stepped, 10, "the back half was actually stepped (%d)" % stepped)
+	if err == "":
+		err = _T.assert_eq(steepest_wave, 12,
+			"the second act's steepest step is wave 12, the first queen")
+	if err == "":
+		err = _T.assert_float_eq(steepest, 1.170, 0.002,
+			"at +17.0%% (got %+.1f%%) — the comment's ceiling on the whole campaign"
+				% [(steepest - 1.0) * 100.0])
+	if err == "":
+		var wave8: float = WaveDirector.threat_for(8) / WaveDirector.threat_for(7)
+		err = _T.assert_gt(wave8, steepest,
+			("and wave 8 (%+.1f%%) is still comfortably the largest step in the game,"
+				+ " which is what \"introduces no new cliff\" means")
+				% [(wave8 - 1.0) * 100.0])
+	return err
+
+
+## What the second act spends out of the endless ceiling.
+##
+## ENDLESS_HEALTH_MAX is an absolute bound on how tough a pest may ever get, not
+## an allowance belonging to endless, so a campaign ramp brings the wave at which
+## health pins forward. The comment quoted wave 36, which was the 0.04 answer;
+## it is 40. The claim that outlives any particular step is the ORDER — speed has
+## to pin last, so "the first wave past which nothing per-pest is moving" keeps
+## naming the same wave it always did.
+func test_the_campaign_ramp_spends_the_endless_ceiling_without_reordering_it() -> String:
+	var health_cap: int = 0
+	var speed_cap: int = 0
+	var swept: int = 0
+	for wave: int in range(WaveDirector.WAVES.size() + 1, 200):
+		if health_cap == 0 and is_equal_approx(WaveDirector.health_scale_for(wave),
+				WaveDirector.ENDLESS_HEALTH_MAX):
+			health_cap = wave
+		if speed_cap == 0 and is_equal_approx(WaveDirector.speed_scale_for(wave),
+				WaveDirector.ENDLESS_SPEED_MAX):
+			speed_cap = wave
+		swept += 1
+	var err: String = _T.assert_gt(swept, 100, "endless was actually swept (%d waves)" % swept)
+	if err == "":
+		err = _T.assert_eq(health_cap, 40,
+			("health pins at wave 40. At CAMPAIGN_HEALTH_STEP 0.04 it was 36 and the"
+				+ " SECOND_ACT_START_WAVE comment still said so for a cycle; with no"
+				+ " campaign ramp at all it would be 56"))
+	if err == "":
+		err = _T.assert_eq(speed_cap, 62, "speed pins at wave 62, untouched by the campaign")
+	if err == "":
+		# The invariant that survives the step being retuned. This is the claim
+		# worth keeping if the number above ever has to move again.
+		err = _T.assert_gt(speed_cap, health_cap,
+			("and speed still pins LAST, so anything searching for the first wave past"
+				+ " which nothing per-pest is moving finds wave %d exactly as it did"
+				+ " before the second act existed") % speed_cap)
+	if err == "":
+		# A cap is only a cap if the wave under it is genuinely below.
+		err = _T.assert_gt(WaveDirector.ENDLESS_HEALTH_MAX,
+			WaveDirector.health_scale_for(health_cap - 1),
+			("and wave %d is still climbing, so %d is where health lands rather than"
+				+ " a wave it had already passed") % [health_cap - 1, health_cap])
+	return err
+# END LANE SECTION — plant-tower-defense-8v43
+# =============================================================================
