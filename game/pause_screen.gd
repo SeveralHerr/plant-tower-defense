@@ -589,6 +589,21 @@ func _build_key_list() -> void:
 	if _keys.is_empty():
 		return
 	var y: float = card_rect().position.y + key_list_offset()
+	# Hoisted out of the row loop: they are loop-invariant, and the alignment below
+	# is derived from them, so recomputing them per row would be three chances for the
+	# label's box and the label's alignment to be reasoning about different columns.
+	var row_left: float = card_rect().position.x + KEY_ROW_INSET
+	var key_col: float = key_column_width()
+	# NOT the bare HORIZONTAL_ALIGNMENT_RIGHT this used to write down
+	# (plant-tower-defense-22a). The rule -- key text flush against the gutter it shares
+	# with its phrase -- now lives in ONE place for both screens that show these keys,
+	# and it is derived from where the columns actually are. The comment three lines
+	# below this one used to claim the keys lined up "the way they already do on the
+	# Keys screen", which was false: that screen centred them. Routing both screens
+	# through `KeyBindingScreen.key_alignment` is what makes the sentence true, and
+	# what stops it going quietly false again.
+	var key_align: int = KeyBindingScreen.key_alignment(row_left,
+		row_left + key_col + KEY_COL_GAP)
 	for i: int in range(_keys.size()):
 		var row: Dictionary = _keys[i]
 		# TWO Labels, not one string. As `"%s   %s"` the key and the phrase shared a
@@ -600,10 +615,10 @@ func _build_key_list() -> void:
 		var key_label := Label.new()
 		key_label.name = "KeyRow%d" % i
 		key_label.text = String(row["keys"])
-		# Right-aligned against the gutter: the two columns read as one pair, and a
-		# ragged right edge on the key column would put a variable gap in the middle
-		# of every row.
-		key_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		# Flush against the gutter: the two columns read as one pair, and a ragged edge
+		# on the key column would put a variable gap in the middle of every row. Which
+		# EDGE is flush follows from the column order and is not decided here.
+		key_label.horizontal_alignment = key_align
 		var label := Label.new()
 		label.name = "KeyRowDoes%d" % i
 		label.text = String(row["does"])
@@ -619,10 +634,9 @@ func _build_key_list() -> void:
 		# later font_size/clip_text overrides lowered the minimum without ever
 		# shrinking the box back. Set the three things that decide the minimum
 		# first, and the assigned width is the one that survives.
-		var left: float = card_rect().position.x + KEY_ROW_INSET
-		var key_col: float = key_column_width()
-		for pair: Array in [[key_label, left, key_col],
-				[label, left + key_col + KEY_COL_GAP, key_row_max_width() - key_col - KEY_COL_GAP]]:
+		for pair: Array in [[key_label, row_left, key_col],
+				[label, row_left + key_col + KEY_COL_GAP,
+					key_row_max_width() - key_col - KEY_COL_GAP]]:
 			var text_label: Label = pair[0]
 			text_label.add_theme_font_size_override("font_size", KEY_ROW_FONT_SIZE)
 			text_label.clip_text = true
