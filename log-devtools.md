@@ -8125,3 +8125,44 @@ status rather than rewriting the entries that recorded these as open.
   - Credit where it is due: `-6wfo`'s change proved itself on the very next row recorded —
     `union 2/18` beside `worktree 1/1`, same run, opposite readings. The union number is the
     one the ledger printed alone for 148 rows.
+
+## 2026-08-19 — five lanes, and a budget that was wrong in the safe direction
+
+- Value: **warranted** — the runtime pass confirmed a defect a lane had predicted but could
+  not execute, and the live game settled two more claims lanes had rated unverifiable.
+  - Expected: five lanes on disjoint files, merged with appended-test conflicts, and a parent
+    pass over what the lanes could not compile or run.
+  - Got: a real budget defect, predicted by the lane that wrote the instrument and confirmed
+    by the parent running it — `Root/SidePanel/PacketButton renders at 16 but
+    Hud.packet_rack_budget() via GardenTheme.BUTTON_FONT_SIZE prices it at 18`. Live after
+    the fix, `cmd budgets` reads `at font size 16` and `159 of 232 px`, against a comment
+    claiming 179.
+  - Found: the defect was **wrong in the safe direction** — over-pricing, so nothing ever
+    overflowed and nothing complained. It reported less headroom than the rack has, for as
+    long as the comment beside it argued the reasoning correctly and concluded it wrongly.
+    Also settled lane 1's `inconclusive` (943/943 on three tests it never executed) and lane
+    4's skill citations (24/24 resolved).
+  - Cheaper: nothing for the defect. But for the **relocation** — see the gap below — an
+    hour of this cycle went into 105 drifted citations, and that is now the single most
+    expensive consequence of fanning out.
+
+- Gap: **a five-lane merge drifts ~100 citations, and relocating them is now a large
+  fraction of the cycle.**
+  - 72 relocated by matching the snapshot's recorded text; 25 by piecewise offset
+    interpolation; **8 refused** because the bracketing anchors disagreed. That refusal is
+    the feature — `hud.gd`'s real offsets this cycle span **0 to +127**, so the uniform
+    per-file offset that worked in cycle 131 would have laundered errors here exactly as it
+    did in cycle 130.
+  - Reading the 8 found **three describing problems that had since been solved**, not
+    citations that had moved. Those were marked superseded with the derived answer rather
+    than repointed.
+  - [G-135] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: the interpolation logic is currently a scratch script. It belongs in
+    `tools/` beside `citation_check.py` as `--relocate --against SNAP`, printing the plan and
+    **refusing the ambiguous ones by name** rather than applying a blanket offset. The refusal
+    list is the valuable output: it is exactly the set a human must read, and it was 8 of 105
+    this cycle rather than all 105.
+  - Also worth noting and not filed: `citation_check --beads` does not walk
+    `.claude/skills/`, so every skill carrying `file:line` claims is outside the gate's
+    denominator. Lane 4's 24 citations were only checked because it invoked the checker on
+    its own file by hand.

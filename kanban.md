@@ -441,13 +441,13 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   boss". `WaveDirector.WAVES` (`game/wave_director.gd:177`) holds **16** entries, not 8 —
   the file's own prose treats wave 16 as a deliberately sized landing point. And a boss
   mechanic ships: `WaveDirector.wave_carries_boss()` (`:332`) feeds the HUD's prep note,
-  and the mechanic itself is documented at `game/game.gd:796` — a pest whose species names
+  and the mechanic itself is documented at `game/game.gd:920` — a pest whose species names
   a split bursts into that many.
   **What holds** is the two-species part: `Pest` still declares only `APHID` and `BEETLE`
   (`game/pest.gd:16-17`).
   **What is genuinely unbuilt** is narrower than the bullet reads, and it is the half the
   ask cared about visually: the boss is the **same `Pest` object**, said outright at
-  `game/game.gd:767`. So "a mechanic that isn't just armoured but more" shipped, and
+  `game/game.gd:930`. So "a mechanic that isn't just armoured but more" shipped, and
   "bigger health pool, a distinct sprite" did not. That is one bead, not three.
 - **An animated dandelion plant that blows its seeds as bombs**, in an "epic" seed packet
   tier above the common/rare split — the head visibly losing fluff as it fires, seeds
@@ -5050,3 +5050,40 @@ Three findings kept out here rather than buried in a log:
   fallback was already 80% shipped. That is four understated premises in two cycles, against
   zero flatly-wrong ones. **Confirm-the-premise catches "is this true"; nothing yet catches
   "is it at least this bad".**
+
+### New in cycle 136 — five lanes, and a relocation pass that had to refuse
+
+- **A five-lane merge drifted 105 citations, and a blanket per-file offset would have
+  laundered the errors.** `hud.gd`'s real offsets this cycle span **0 to +127**, because the
+  lanes edited it at several points — so the single-offset relocation that worked in cycle
+  131 is wrong here by construction. What worked: 72 relocated by matching the snapshot's
+  recorded text, 25 by **piecewise interpolation** between the nearest anchor above and
+  below, and **8 refused** because those anchors disagreed, which is exactly the signal that
+  a citation sits inside an edited region.
+  Reading the 8 found that **three described problems that had since been SOLVED** —
+  `request_uproot`/`uproot_selected` were renamed to `arm_`/`commit_` and
+  `game/game.gd:1789` now records the rename. Marked superseded with the derived answer
+  rather than patched: **patching a line number into prose whose CLAIM is stale produces
+  something that looks checked.**
+
+- **Four of five lanes reported their bead UNDERSTATED, and one refuted its own premise.**
+  `-uhno` was asked to derive message durations from length and disproved that with two
+  non-monotonic pairs from the game's own strings — `"Wave 3 cleared."` is 15 chars at 6.0s
+  while `"Composted a husk for 3 seeds."` is 29 chars at 2.0s. It shipped named bands with
+  **zero behaviour change** and a falsifier test a future length formula must come and
+  delete. That is now four cycles running where deriving the list beat reading the bead.
+
+- **A budget can be wrong in the safe direction and stay wrong for exactly as long as the
+  comment beside it argues it is right.** `packet_rack_budget()` priced its rack at
+  `GardenTheme.BUTTON_FONT_SIZE` (18) while the buttons resolved 16, because the HUD is the
+  one surface that deliberately refuses `GardenTheme.build()`. Over-pricing, so nothing ever
+  overflowed — it simply reported less headroom than the rack has. The comment's "149 px for
+  something that draws 179" was the same mistake **stated as a measurement**; live it is 159.
+  Both now read one constant, so they agree by construction.
+
+- **A fixture that asserts only the exit code passes four of this cycle's mutations.**
+  `group_leak_check`'s provenance rule had **never been exercised** — widening it to accept
+  the one guard its docstring says it must refuse changed nothing at all. Three more
+  mutations moved a real finding while the gate stayed green, and `svg_style_check`'s left
+  both the per-check count and the sprite map unchanged, so only the **severity totals**
+  caught it. Assert the finding count and the named case; the exit code is not enough.

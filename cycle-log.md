@@ -1,4 +1,4 @@
-# Cycle 135
+# Cycle 136
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,31 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 136 taught
+
+**A relocation pass has to be able to REFUSE.** A five-lane merge drifted 105 citations, and
+`hud.gd`'s real offsets spanned 0 to +127 — so the single per-file offset that worked in
+cycle 131 is wrong here by construction. Piecewise interpolation between bracketing anchors
+handled 25 and refused 8 where the anchors disagreed, which is precisely the signal that a
+citation sits inside an edited region. Reading those 8 found three describing problems that
+had since been SOLVED. Patching a line number into prose whose claim is stale produces
+something that looks checked.
+
+**A budget can be wrong in the SAFE direction and survive on the strength of the comment
+beside it.** The packet rack was priced 2pt too wide, so nothing overflowed and nothing
+complained; it simply reported less headroom than it had, while its comment argued the
+reasoning correctly and concluded it wrongly. The instrument that caught it asks each budget
+what size its own WIDGET resolves, rather than what size the budget thinks.
+
+**A fixture asserting only the exit code passes four of this cycle's mutations.** A checker
+rule that had never been exercised, an un-anchored waiver, a stripped comment pass, and a
+severity branch all removed a real finding while the gate stayed green. Assert the finding
+count and the named case.
+
+**Deriving the list beat reading the bead for the fourth cycle running** — four of five lanes
+reported UNDERSTATED premises, and one refuted its own bead outright with two of the game's
+own strings.
 
 ## What cycle 135 taught
 
