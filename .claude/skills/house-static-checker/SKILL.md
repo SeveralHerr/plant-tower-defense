@@ -283,6 +283,32 @@ if you only look at pass/fail.
 Before believing a survivor, ask what the mutated line now computes. If you cannot say
 what changed, nothing did.
 
+**How to tell, when the mutation DID change something.** The paragraph above catches a
+no-op expression. The harder case is a real change that nothing can read — so ask the
+second question too: **is the mutated expression read in a way that can distinguish the
+change?** Three shapes, each of which reads in the moment, and in a log, exactly like a
+weak test:
+
+- **an order swap read by a counter.** Cycle 114 swapped the two entries of
+  `Bramble.DAMAGE_THRESHOLDS` and nothing failed. `texture_for_health`
+  (`game/bramble.gd:231-236`) *counts* how many thresholds the fraction is below rather than
+  walking them in order, so the array's order genuinely cannot matter.
+- **a threshold nudged past a point nothing samples.** A test that samples only the
+  midpoints of the bands cannot see a boundary that moved within its band.
+- **a constant scaled, asserted as a ratio of itself.** An assertion written in terms of the
+  constant moves with it and can never disagree with it.
+
+If the mutant is equivalent, the finding is about the **CODE** and is usually a small
+virtue — here, that the table cannot be mis-ordered. Record it as that, not as a coverage
+gap. ("A survivor is sometimes a finding about the CODE, not about the test", below, is the
+same reading from the other side: there the equivalent code was redundant and wanted
+deleting; here it is load-bearing and merely order-free.)
+
+Then **mutate again, differently, until one is caught.** Cycle 114's second mutation made
+one frame unreachable and died at once, naming the frame that vanished — which is the only
+thing that established the first mutation as equivalent rather than unwatched. **A single
+surviving mutant is not evidence, in either direction.**
+
 ### Then mutate the checker, not just the input
 
 The fixture proves the checker fires on a bad file. It does **not** prove the checker is
