@@ -137,10 +137,31 @@ OUTPUT_PATTERNS = [
 ]
 
 # The waiver: the issue already records that the shell ate something here.
-WAIVER = re.compile(
-    r"CORRECTION:|eaten by (the )?shell|shell backticks|words? (were|was) eaten",
-    re.I,
-)
+#
+# ANCHORED TO THE START OF A LINE, and the reason is an incident rather than a taste.
+# citation_check.py shipped the same idea as a bare substring, and the FIRST bead its
+# --beads mode ever closed waived ITSELF: the close reason explaining the waiver
+# contained the marker. 468 beads became 467, three citations left the denominator,
+# and the exit code stayed 0. This checker is more exposed than that one, not less --
+# its waiver is not a deliberate marker but ORDINARY ENGLISH about shell damage, and
+# the documents most likely to contain that English are beads about shell damage.
+# Unanchored, a bead filed to report this failure mode waives itself while reporting
+# it, which is the shape the whole cycle is about.
+#
+# MEASURED before changing it, against .beads/issues.jsonl at 479 issues: six matches
+# over three beads (-qdsi, -a4hk, -b3nt). Every one of the three is waived by a
+# `CORRECTION:` sitting at column 0. The other three matches are the freehand phrases
+# ("...lost two words to shell backticks", columns 71, 16 and 36) INSIDE those same
+# notes, and they waive nothing the anchored `CORRECTION:` does not already waive.
+# So this is a pure tightening: the waived set does not move, and the self-waive is
+# gone. If that ever stops being true, --self-check case 3 is the one that will say so.
+#
+# The bracket class matches citation_check.py's BEAD_WAIVER_LINE deliberately: leading
+# whitespace, a markdown bullet, or a quote marker may precede the note, because that
+# is how a note gets written inside a list. Nothing else may.
+WAIVER_BODY = (r"CORRECTION:|eaten by (the )?shell|shell backticks"
+               r"|words? (were|was) eaten")
+WAIVER = re.compile(r"^[ \t>*+-]*(?:" + WAIVER_BODY + r")", re.I | re.M)
 
 
 def snippet(text, at, width=76):
@@ -197,13 +218,78 @@ def scan(issues):
     return fields_scanned, findings, waived
 
 
+# ---------------------------------------------------------------------------
+# The waiver's own known-in / known-out table.
+#
+# This tool had no fixture of any kind before this: the `# fixture:` block at the top
+# of the file describes one that was run by hand once and never again, and the
+# mutations beside it are numbers a past session observed rather than anything a
+# later run re-checks. So the waiver -- the one rule here that can REMOVE findings
+# from the denominator, silently, with the exit code unchanged -- was the least
+# guarded rule in the file.
+#
+# Every case is written as prose a human would actually type, never assembled from
+# WAIVER's own pattern; copying the pattern in would make the table a tautology.
+SELF_CHECK_WAIVER = [
+    # (text, waived?, what this case is for)
+    ("CORRECTION: two words were eaten by shell backticks when this was filed.",
+     True, "the note as -b3nt actually writes it, at column 0"),
+    ("  - CORRECTION: the sentence should read 'resolving every path-colon-line'.",
+     True, "the same note inside a markdown bullet -- the bracket class earns its keep"),
+    ("This bead is about the waiver itself: any bead whose prose says CORRECTION: "
+     "anywhere at all is dropped from the count, which is how -9vq6 waived itself.",
+     False, "THE INCIDENT. A bead DESCRIBING the marker must not be waived by it. "
+            "Unanchor WAIVER and this case goes red."),
+    ("The close reason was mangled because two words were eaten by the shell, and "
+     "nothing said so.",
+     False, "the freehand phrase mid-sentence: a report of the damage, not a "
+            "correction note. Unanchor WAIVER and this case goes red."),
+    ("`bd close --reason` passes prose through shell backticks, which is the whole "
+     "problem.",
+     False, "prose explaining the mechanism, quoting the phrase mid-line"),
+    ("The description reads fine and nothing was lost.",
+     False, "no waiver anywhere -- the ordinary case"),
+    ("", False, "an empty field waives nothing"),
+]
+
+
+def self_check():
+    """Return the number of failures, printing each.
+
+    Exit 2 if any fail, matching bead_claim_check.py: a broken waiver means every
+    `waived` number this tool has ever printed is unverified, and unlike a broken
+    finding rule it fails QUIET -- findings leave the denominator and the exit code
+    does not move.
+    """
+    fails = 0
+    for text, want, why in SELF_CHECK_WAIVER:
+        got = bool(WAIVER.search(text))
+        ok = got == want
+        if not ok:
+            fails += 1
+        print("  %-6s waiver %-5s/%-5s  %s" % ("ok" if ok else "FAIL", got, want, why))
+    print("self-check: %d case(s), %d failure(s) -- this tests the WAIVER transform, "
+          "not the corpus. Three of the cases are prose ABOUT the waiver and must not "
+          "be waived by it; replacing WAIVER with the unanchored "
+          "`re.compile(WAIVER_BODY, re.I)` turns those three red and is the intended "
+          "way to prove this table is not decorative."
+          % (len(SELF_CHECK_WAIVER), fails))
+    return fails
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("jsonl", nargs="?", default=str(DEFAULT_JSONL),
                     help="beads export to scan (default %s)" % DEFAULT_JSONL)
     ap.add_argument("--all", action="store_true",
                     help="gate on closed issues too (default: report them as PRE)")
+    ap.add_argument("--self-check", action="store_true",
+                    help="run the waiver's known-in/known-out table and exit; "
+                         "proves the waiver can reject prose that merely mentions it")
     args = ap.parse_args(argv)
+
+    if args.self_check:
+        return 2 if self_check() else 0
 
     path = Path(args.jsonl)
     if not path.exists():

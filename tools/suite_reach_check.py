@@ -165,7 +165,24 @@ RES_PATH_RE = re.compile(r"res://[A-Za-z0-9_/\.\-]+")
 STRING_RE = re.compile(r'"""(?:.|\n)*?"""|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'')
 AUTOLOAD_RE = re.compile(
     r'^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"\*?(res://[^"]+)"', re.M)
-WAIVER_RE = re.compile(r"suite-reach-check:\s*ok\b")
+# The marker must OPEN A COMMENT. This file's waiver is the one with a live proof of
+# the hazard sitting in the repo: `test/unit/test_selftest.gd:7612` writes
+# `["suite-reach-check: ok", "the waiver, which has to be greppable to be usable"]`
+# inside a test method, and mutate.py's `--target contract` documents that BOTH
+# occurrences of the literal in this very file are help text. A marker that appears
+# in string literals and prose as a matter of routine must not be honoured from
+# either. The waiver span here is a declaration in `--source` (game/), so the
+# test_selftest.gd literal does not reach it today -- but nothing stops a game/ script
+# from naming the marker in a string or a docstring, and unanchored that would waive
+# whatever declaration it sat under, silently, with the exit code unchanged. Cycle
+# 126's citation_check.py incident, where a bead waived itself on the sentence
+# explaining the waiver, is the same failure one file over.
+#
+# `#` matches what this checker's own help already tells a reader to write, and what
+# mutate.py's `_WAIVER_AS_DOCUMENTED` types out as a user would
+# (`# suite-reach-check: ok - the marker is asserted by name below`). The only waiver
+# standing in the repo, `game/plant.gd:1192`, already opens its own comment.
+WAIVER_RE = re.compile(r"#+[ \t]*suite-reach-check:\s*ok\b")
 # This project's entire assertion vocabulary is `_T.assert_*(...)` (see
 # tools/run_tests.gd) - matched loosely on the method name so a new assert_*
 # helper added later is picked up with no change here.

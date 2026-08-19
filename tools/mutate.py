@@ -549,8 +549,13 @@ def _target_contract():
     mutations = [
         Mutation(
             "the documented waiver comment stops being matched",
-            r'WAIVER_RE = re.compile(r"suite-reach-check:\s*ok\b")',
+            r'WAIVER_RE = re.compile(r"#+[ \t]*suite-reach-check:\s*ok\b")',
             r'WAIVER_RE = re.compile(r"mutated: this waiver matches nothing")',
+        ),
+        Mutation(
+            "the waiver goes back to matching the marker anywhere, comment or not",
+            r'WAIVER_RE = re.compile(r"#+[ \t]*suite-reach-check:\s*ok\b")',
+            r'WAIVER_RE = re.compile(r"suite-reach-check:\s*ok\b")',
         ),
         Mutation(
             "a missing project root reports clean instead of could-not-run",
@@ -981,6 +986,36 @@ def _fixture_contract() -> int:
                            % (decls,))
         return True, ""
 
+    def case_a_mention_is_not_a_waiver():
+        # CYCLE 126's INCIDENT, transplanted into GDScript. citation_check.py's --beads
+        # waiver was a bare substring, and the FIRST bead that feature closed waived
+        # ITSELF: its close reason contained the sentence explaining the waiver. 468
+        # beads became 467, three citations left the denominator, the exit code stayed
+        # 0, and nothing said a word.
+        #
+        # The same text really does live in .gd in this repo -- `test_selftest.gd:7612`
+        # holds `["suite-reach-check: ok", "the waiver, which has to be greppable to be
+        # usable"]` inside a test method, because a test that pins a checker's contract
+        # has to name that checker's marker. So: a declaration that MERELY NAMES the
+        # marker in a string literal must come back UNWAIVED. This is the case that
+        # goes red if WAIVER_RE loses its `#+[ \t]*` prefix, and it is the only one
+        # here that can -- `case_waiver_is_actually_consulted` above passes either way,
+        # because a looser regex still matches the documented comment.
+        mention = ('extends Node\n\n\nfunc names_the_marker() -> void:\n'
+                   '\tvar needles := ["suite-reach-check: ok", "greppable"]\n'
+                   '\tprint(needles)\n')
+        decls = sr.declarations(sr.strip_comments(mention), mention)
+        hits = [d for d in decls if d[1] == "names_the_marker"]
+        if not hits:
+            return False, "the scanner found no declaration in the mention fixture"
+        if hits[0][3]:
+            return False, ("a declaration that only NAMES the marker in a string "
+                           "literal came back WAIVED. This is the cycle-126 shape: "
+                           "the text explaining a waiver trips it, findings leave the "
+                           "denominator, and the exit code does not move. WAIVER_RE "
+                           "must require the marker to open a comment.")
+        return True, ""
+
     def case_missing_root_is_could_not_run():
         empty = root / "no_project"
         empty.mkdir(exist_ok=True)
@@ -1011,6 +1046,8 @@ def _fixture_contract() -> int:
                     case_waiver_matches_what_the_help_advertises)
         cases.check("and a declaration carrying it comes back waived",
                     case_waiver_is_actually_consulted)
+        cases.check("but a declaration that only NAMES the marker in a string does not",
+                    case_a_mention_is_not_a_waiver)
         cases.check("a root with no project.godot exits 2, not 0",
                     case_missing_root_is_could_not_run)
         cases.check("the blind-spot marker sits inside a print(), not in prose",
