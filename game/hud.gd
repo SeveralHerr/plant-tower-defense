@@ -962,6 +962,20 @@ const BANNER_NOTE_FONT_SIZE: int = 20
 const BANNER_HOLD_SECONDS: float = 2.8
 const BANNER_FADE_SECONDS: float = 0.5
 
+## Who the surface belongs to right now. Three events share two Labels, and every
+## writer names its claim instead of assigning the Labels itself -- the shape
+## `_paint_message_row()` already uses on the status row next door, and adopted here
+## for the reason that row learned twice: several writers, one Control, and timing
+## between them is how both of its defects got in.
+##
+## The empty StringName is the un-claimed state on purpose. It is what a freshly
+## built banner holds and what `hide_banner()` puts back, so "nobody is speaking" is
+## a value the arbitration can compare rather than a Label somebody has to look at.
+const BANNER_CLAIM_NONE: StringName = &""
+const BANNER_CLAIM_WEATHER: StringName = &"weather"
+const BANNER_CLAIM_WAVE: StringName = &"wave"
+const BANNER_CLAIM_CLEARED: StringName = &"wave_cleared"
+
 ## Same contract as WORST_CASE_TEXT above, for the same reason: the banner is a
 ## fixed-width box whose text is built from runtime numbers, and a Label that
 ## overruns it fails silently. `test_the_wave_banner_fits_its_own_worst_case`
@@ -1107,6 +1121,23 @@ var _packet_hint_pools: Dictionary = {}
 ## refresh(), read by _apply_plant_hints(), so hover has one job (lift or restore)
 ## and does not need to re-derive affordability without a bank in hand.
 var _plant_rest_tint: Dictionary = {}
+## The banner's one claim, and `_paint_banner()` is the only thing that resolves it
+## onto the two Labels.
+##
+## **This is one owner and one claim, and it replaced three writers sharing a private
+## setter.** `announce_wave`, `announce_wave_cleared` and `show_weather` each called
+## `_show_banner`, which assigned both rows unconditionally -- so which event a player
+## actually saw was decided by the order of two statements in `Game._on_wave_started`
+## rather than by anything on this class. Nothing had bitten yet only because every
+## claim on this surface expires on its own; the message row below is the identical
+## arrangement and it produced a defect in each of the last two cycles.
+##
+## `_banner_left` is both the countdown and the claim's validity: a claim with no time
+## left is not a claim, which is the first of the two rules `banner_claim_wins` turns
+## on. Nothing reads the Labels to decide what the Labels should say.
+var _banner_claim: StringName = BANNER_CLAIM_NONE
+var _banner_headline: String = ""
+var _banner_note_text: String = ""
 var _banner_left: float = 0.0
 var _message_left: float = 0.0
 ## The two claims on the message row, and `_paint_message_row()` is the only thing
@@ -3944,24 +3975,31 @@ static func wave_cleared_line(number: int, note: String) -> String:
 ## The wave-starting half of this surface. Named for its event on purpose: see
 ## the BANNER_* block above for why there is no generic `show_banner(text)`.
 func announce_wave(number: int, pests: int, note: String) -> void:
-	_show_banner(wave_headline(number), wave_note(pests, note))
+	_claim_banner(BANNER_CLAIM_WAVE, wave_headline(number), wave_note(pests, note))
 
 
 ## What the weather did, said once as the wave opens
 ## (plant-tower-defense-q3lx).
 ##
 ## Through the same banner as the wave announcement rather than a new readout, and
-## AFTER it, so the two do not race for the same two lines -- the wave banner fires
-## from Game._on_wave_started immediately after _apply_weather, so this one is the
-## overwritten half. That is deliberate and it is why weather has a status line too
-## (`weather_note()`): the banner is the beat, the status row is the state.
+## it LOSES to one, which is why weather has a status line too (`weather_note()`):
+## the banner is the beat, the status row is the state.
+##
+## That loss used to be a statement order rather than a rule. `Game._on_wave_started`
+## calls `_apply_weather` (which reaches here) and then `announce_wave` one line
+## later, so the weather headline was written onto the Label and stomped in the same
+## frame -- correct on screen, and correct for a reason that lived in another file.
+## It now claims at BANNER_CLAIM_WEATHER, which `banner_claim_rank` puts below both
+## wave beats, so the same thing happens because this class says so. A player sees
+## exactly what they saw before; nothing is written and immediately overwritten to
+## get there.
 ##
 ## Clear weather says nothing at all. A banner that reads "Clear" on eleven waves
 ## out of twelve teaches the player to stop reading banners.
 func show_weather(weather: StringName) -> void:
 	if weather == WaveDirector.WEATHER_CLEAR:
 		return
-	_show_banner(weather_headline(weather), weather_note(weather))
+	_claim_banner(BANNER_CLAIM_WEATHER, weather_headline(weather), weather_note(weather))
 
 
 ## Pure, and static, so the suite asserts the words without building a HUD -- the
@@ -3991,32 +4029,119 @@ static func weather_note(weather: StringName) -> String:
 ## gets a beat comparable to the one that opens it rather than a single line on
 ## the status row. Same mechanism, same weight, its own event and its own text.
 func announce_wave_cleared(number: int, pests: int) -> void:
-	_show_banner(wave_cleared_headline(number), wave_cleared_note(pests))
+	_claim_banner(BANNER_CLAIM_CLEARED, wave_cleared_headline(number), wave_cleared_note(pests))
 
 
-## The mechanism both events above drive. Not itself a generic setter — it is
-## private, and every caller still has to go through a method named for its own
-## event; see the BANNER_* block above for why that restriction is the point.
-func _show_banner(headline: String, note: String) -> void:
-	_banner.text = headline
-	_banner_note.text = note
-	# Correct before any fade touches it — the alpha ramp below only ever runs
-	# down from here, so a frame that never arrives cannot leave this invisible.
-	_banner.modulate = Color.WHITE
-	_banner_note.modulate = Color.WHITE
-	_banner.visible = true
-	_banner_note.visible = true
-	_banner_left = BANNER_HOLD_SECONDS
+## How the three events rank against each other when two of them want the surface.
+##
+## Pure and static so the rule is assertable without staging two events through a
+## live HUD -- the same split `message_is_stressed` takes on the status row, and for
+## the same reason: the contended cases are exactly the ones a live HUD makes hardest
+## to reach.
+##
+## Both wave beats sit on one rung deliberately. They are the run's structure and
+## they cannot be simultaneous -- a wave cannot start and clear in the same breath --
+## so the only thing a tie between them can mean is two consecutive events, which the
+## tie rule below resolves correctly. Weather sits below them because it is a modifier
+## on the wave and it already has two other surfaces carrying it for the whole wave
+## (the status row's `weather_note` and the full-screen overlay), where the wave beat
+## has only this one.
+##
+## An unrecognised claim ranks BELOW everything, including the un-claimed state. A
+## name typoed into a caller added next year therefore loses the banner rather than
+## silently outranking the wave, and the losing side is the side someone will notice.
+static func banner_claim_rank(claim: StringName) -> int:
+	if claim == BANNER_CLAIM_WAVE or claim == BANNER_CLAIM_CLEARED:
+		return 1
+	if claim == BANNER_CLAIM_WEATHER:
+		return 0
+	return -1
 
 
-func hide_banner() -> void:
-	_banner_left = 0.0
-	if not _banner.visible and not _banner_note.visible:
+## Whether an arriving claim takes the banner off the one standing on it.
+##
+## Two rules. **A claim with no time left is not a claim** -- `standing_left <= 0.0`
+## means the last event has finished saying its piece and anything at all may take
+## the surface, including a weather note that would have lost to the same event one
+## frame earlier. That is the case the old code could not express at all: it had no
+## claim to expire, only a Label that had already been assigned.
+##
+## Otherwise rank decides and a TIE goes to the ARRIVING claim. That is the opposite
+## of `queue_outcome`'s `>=` refusal on the status row, and the difference is what the
+## two surfaces are for: a message is a line to be read and stomping an unread one
+## loses it, while a banner is a beat about the board's current state. Refusing a tie
+## here would leave "Wave 7 cleared" standing over a wave 8 that is already spawning.
+static func banner_claim_wins(arriving: StringName, standing: StringName,
+		standing_left: float) -> bool:
+	if standing == BANNER_CLAIM_NONE or standing_left <= 0.0:
+		return true
+	return banner_claim_rank(arriving) >= banner_claim_rank(standing)
+
+
+## The one way a claim gets onto this surface, and the only caller of `_paint_banner`
+## that sets anything. Still not a generic setter -- it takes a claim name, not just
+## text, and every public caller goes through a method named for its own event; see
+## the BANNER_* block above for why that restriction is the point.
+func _claim_banner(claim: StringName, headline: String, note: String) -> void:
+	if not banner_claim_wins(claim, _banner_claim, _banner_left):
 		return
-	_banner.visible = false
-	_banner_note.visible = false
-	_banner.modulate = Color.WHITE
-	_banner_note.modulate = Color.WHITE
+	_banner_claim = claim
+	_banner_headline = headline
+	_banner_note_text = note
+	_banner_left = BANNER_HOLD_SECONDS
+	_paint_banner()
+
+
+## The one place the banner's text, visibility and alpha are assigned.
+##
+## Alpha is derived here rather than inside the fade, for the reason `_fade_banner`
+## gives below: a value computed from the countdown is correct on every frame,
+## including all the ones headless never pumps. A full-opacity repaint is therefore
+## not a special case that `_claim_banner` has to remember -- a fresh claim has
+## BANNER_HOLD_SECONDS left, which is well past BANNER_FADE_SECONDS, so the ramp
+## clamps to 1.0 on its own.
+##
+## An unclaimed banner is repainted EMPTY rather than merely hidden. A hidden Label
+## still holding its last headline is what three live misreads in cycles 110-111
+## were, and this one is 48px over the board: the next thing to make it visible for
+## any reason at all would show the wave before last.
+func _paint_banner() -> void:
+	var showing: bool = _banner_claim != BANNER_CLAIM_NONE and _banner_left > 0.0
+	_banner.text = _banner_headline if showing else ""
+	_banner_note.text = _banner_note_text if showing else ""
+	_banner.visible = showing
+	_banner_note.visible = showing
+	var alpha: float = minf(_banner_left / BANNER_FADE_SECONDS, 1.0) if showing else 1.0
+	_banner.modulate = Color(1, 1, 1, alpha)
+	_banner_note.modulate = Color(1, 1, 1, alpha)
+
+
+## Drops whatever claim is standing. Public because `refresh()` takes the banner down
+## when a run ends, which is a real event on this surface rather than a reach into it.
+##
+## The guard used to read `if not _banner.visible and not _banner_note.visible`, which
+## asked the Control whether the Control was showing anything -- the same "read the
+## Label to decide what the Label should say" the message row's painter exists to
+## remove, one surface over. The claim answers it without touching a Label.
+func hide_banner() -> void:
+	if _banner_claim == BANNER_CLAIM_NONE and _banner_left <= 0.0:
+		return
+	_banner_claim = BANNER_CLAIM_NONE
+	_banner_headline = ""
+	_banner_note_text = ""
+	_banner_left = 0.0
+	_paint_banner()
+
+
+## What the banner is currently showing, for tests and for the same reason the status
+## row has `message_text()` next door: the alternative is reaching past the class into
+## `_banner_claim` from outside, which is the painter's own rule broken one level down.
+func banner_claim() -> StringName:
+	return _banner_claim
+
+
+func banner_seconds_left() -> float:
+	return _banner_left
 
 
 ## The fade is a pure function of the time left, not a Tween.
@@ -4026,11 +4151,12 @@ func hide_banner() -> void:
 ## visibility inside something headless never runs. Deriving alpha from the same
 ## countdown that hides it means the banner is in a correct state on every frame
 ## including the ones that never happen.
+##
+## Since the painter owns the alpha, this function's whole job is the clock: spend
+## `delta`, and either drop the claim or repaint at whatever the clock now implies.
 func _fade_banner(delta: float) -> void:
 	_banner_left -= delta
 	if _banner_left <= 0.0:
 		hide_banner()
 		return
-	var alpha: float = minf(_banner_left / BANNER_FADE_SECONDS, 1.0)
-	_banner.modulate = Color(1, 1, 1, alpha)
-	_banner_note.modulate = Color(1, 1, 1, alpha)
+	_paint_banner()
