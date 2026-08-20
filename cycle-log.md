@@ -1,4 +1,4 @@
-# Cycle 154
+# Cycle 155
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,41 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 155 taught
+
+**A defect can be correct when written and wrong when the premise moves under it.**
+`lives_lost` was `LIVES - lives` and the post-mortem's denominator was `Game.LIVES` —
+both fine for a hundred and fifty cycles, because every run started with ten. The instant
+a second difficulty profile existed they were wrong: on gentle a player losing four of
+fifteen would have been told four of ten; on harsh a full wipe would have read "5 of 10",
+a loss they never took, on a card that exists to be read once. No gate could have caught
+it and none was at fault. The generalisation is the sweep now filed: **every site that
+computes a proportion against a constant a profile varies.**
+
+**Difficulty profiles shipped, and standard is DERIVED rather than restated.** Its three
+values read `LIVES`, `PREP_SECONDS` and `SeedBank.STARTING_SEEDS`, so the forty-odd
+references to those keep meaning what they meant and there is no second ten to drift. The
+profile is applied ahead of every node `_ready()` builds, and that ordering is the only
+part of this a running game had to answer: a headless assertion reads the settled state
+and would pass either way. Live, a harsh run's top bar reads "Seeds 15 / Garden 5" on the
+first frame, with no correction visible.
+
+**And the sizing that deferred it was itself an enumeration over the wrong set.** Cycle
+154 measured this at "78 references to three consts" and declined to start it. The 78 were
+grep hits, overwhelmingly comments and tests; the runtime sites are about eight. That is
+the fourth instance of the shape, with a consequence the other three did not have — a
+wrong-set count does not only send you at the wrong thing, **it defers the right thing**,
+and a deferral leaves no evidence to be caught by. Step 5 spent its change there: a size
+is a claim too, and a `grep -c` is not one.
+
+**Two other things worth carrying forward, neither of them changed this cycle.** Drift hit
+**94**, by a wide margin the highest of the series (13, 21, 71, 11, 0, 14, 26, 13, 73, 14,
+22, 94), because ~90 lines went in at line 51 of `game.gd` — the most-cited file, at the
+worst possible place in it. And I filed a duplicate bead for the **second cycle running**,
+both times after writing "NOT A DUPLICATE — check first" into the body instead of running
+`bd show`. Hedging in the text is not checking. If it happens a third time it should stop
+being a note and become the step-5 change.
 
 ## What cycle 154 taught
 

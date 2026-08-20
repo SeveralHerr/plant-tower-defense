@@ -8928,3 +8928,29 @@ is likely to be at least as productive.
   that was made earlier in the same cycle. Nothing caught it; re-reading did. The standing
   rule about verifying a restore is about `.bak` files and says nothing about `checkout`,
   which is the blunter instrument — it restores the whole file, not the mutated span.
+
+## 2026-08-20 — Cycle 155: difficulty profiles, verified through the real title -> game path
+
+- Value: **warranted**, and the live half answered a question no headless assertion can.
+  - Expected: a harsh run to open on 5 beds / 9 s prep / 15 seeds, and the HUD to show it
+    on the FIRST frame rather than showing 25 seeds and correcting itself — which is the
+    whole reason the profile is applied ahead of every node `_ready()` builds.
+  - Got: `set-state /root/RunConfig difficulty harsh` then `fire-entry-point campaign`
+    reported `lives: 5, starting_lives: 5, prep_seconds: 9.0, seeds: 15`, and the top-bar
+    capture reads **"Seeds 15 / Garden 5"** with no correction visible.
+  - Found: the ORDERING claim is the only part of this that needed a running game, and it
+    is the part a test cannot make — a headless assertion reads the settled state and
+    would pass either way. Everything else (the table, the fallback, the post-mortem
+    denominator) is pinned by four new headless tests and two mutations.
+  - Cheaper: for the logic, the tests — and they carry it. For "does the player ever see
+    the standard numbers", nothing.
+
+- Gap: **no new harness gaps this turn.** `set-state` on an autoload field followed by
+  `fire-entry-point` is exactly the shape the bridge documents, and it worked first try
+  including the `StringName` coercion (`difficulty = harsh  (coerced)`).
+
+- Note on the ledger, not a gap: `reach` read 1 of 3 because `run_summary.gd` is only
+  loaded when a run ENDS, and this session started one. That is the known
+  `plant-tower-defense-fs2b` shape — a screen the capture never visited — and it is
+  honest rather than wrong. Not bumping its sighting count: the earlier sightings were
+  about a screen CLOSED before capture, which is a different and fixable thing.

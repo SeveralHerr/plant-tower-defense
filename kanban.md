@@ -218,6 +218,32 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 155 — a defect that could not exist until a constant stopped being one
+
+- **`LIVES - lives` was correct for a hundred and fifty cycles and wrong the moment a
+  second profile existed.** The post-mortem computed beds lost against `Game.LIVES` and
+  the card's denominator read the same const (`game/run_summary.gd:591` is the repaired
+  line), which is fine while every run starts with ten and silently wrong the instant one
+  does not — on `gentle` a player losing four of fifteen would have been told four of ten.
+  Nothing was broken when it was written; the *premise* changed underneath it.
+  **The sweep this asks for: every site that computes a proportion, a remainder or a
+  "lost/total" against a `const` that a difficulty profile now varies.** `starting_lives`
+  (`game/game.gd:180`) is the pattern — the run's own copy of what it started with — and
+  the enumerable set is every reader of the three names in
+  `Game.DIFFICULTIES` (`game/game.gd:54`). Do it before bead 4 puts a picker on the title
+  screen, because that is the change that makes every one of these reachable by a player
+  rather than by a devtools verb.
+
+- **The fourth wrong-set enumeration, and the first that cost SCHEDULING rather than
+  correctness.** Cycle 154 sized this item at "78 references to three consts" and
+  declined to start it on that basis. The 78 were `grep` hits — overwhelmingly comments
+  and tests. The runtime sites are about eight, and the whole change took one item.
+  Counting MENTIONS and calling them USES is the same shape as the three already recorded
+  in cycle 154's entry, with a new consequence: a wrong-set count does not only send you
+  at the wrong thing, it can **defer the right thing**. Worth adding to
+  `plant-tower-defense-u3zp`'s tell, because the fix is the same one sentence: a `grep -c`
+  is a count of mentions until you have looked at them.
+
 ### New in cycle 154 — three enumerations over the wrong set, and they rhyme
 
 - **The rule against this already exists, has been broken three times, and twice by the

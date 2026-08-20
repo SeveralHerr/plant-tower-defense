@@ -115,6 +115,15 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      returns one mark per flag twenty lines below the `_tint` call the claim was read
      from, and the test the acceptance asked for was written the same day.
      A bead is a claim about the repo made at some past cycle, and the repo has moved.
+     **A SIZE IS A CLAIM TOO, and a `grep -c` is not one.** Cycle 154 measured a feature at
+     "78 references to three consts", concluded it was a whole cycle's work, and declined
+     to start it. Cycle 155 did it as one item: the 78 were grep hits, overwhelmingly
+     comments and tests, and the runtime sites were about eight. Counting mentions and
+     calling them uses is the same wrong-set failure the project has recorded three times
+     already, with a consequence the others did not have — **it does not send you at the
+     wrong thing, it defers the right thing**, and a deferral leaves no evidence behind to
+     be caught by. So when a count decides scope, open a sample of what it counted before
+     believing it.
    - **RUN INDEPENDENT ITEMS IN PARALLEL (asked for directly, cycle 99).** The loop did one
      item at a time for 99 cycles and the queue is 100 deep; most of it does not touch what
      the rest of it touches. Spawn agents for items whose files do not overlap, and say in
