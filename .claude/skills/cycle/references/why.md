@@ -201,11 +201,16 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      no shell parsing of the content at all, and it is what the rule says in the first
      place: Edit/Write for code, always. The env-var pattern legitimises the *interpreter*,
      never the payload.
-     **AND THE ASSIGNMENT MUST BE A COMMAND PREFIX, NOT A STATEMENT.** `VAR=x python - …`
-     exports for that one command; `VAR=x; python - …` does not, and `os.environ["VAR"]`
-     then raises `KeyError` — or worse, an `os.environ.get("VAR", ".")` silently falls back
-     and the script reads the wrong path. Cycle 150 did it twice in one cycle, losing a
-     patch and a commit message. The example above is written as a prefix for this reason.
+     **DO NOT PASS A PATH THROUGH THE ENVIRONMENT INTO A HEREDOC. `cd` there first, or
+     write the literal path in the script.** This rule used to say "the assignment must be
+     a COMMAND PREFIX, not a statement" — `VAR=x python -` exports for that one command,
+     `VAR=x; python -` does not — and it named the failure mode exactly, including that an
+     `os.environ.get("VAR", ".")` fallback turns the `KeyError` into a script silently
+     reading the wrong path. Cycle 150 broke it twice. **Cycle 152 then broke it again,
+     including the fallback half, with the warning sitting right here.** A rule that
+     precise, re-broken by the session that had just read it, is not a wording problem: the
+     pattern is too easy to type wrong and there is nothing a heredoc needs the environment
+     for. Removing the variable removes the class.
 
      **NEVER BATCH LONG WORK THAT MUTATES THE TREE.** Cycle 150 ran a six-mutation sweep as
      one background command and it was KILLED mid-mutation — twice — each time leaving a

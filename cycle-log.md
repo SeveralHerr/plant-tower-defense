@@ -1,4 +1,4 @@
-# Cycle 151
+# Cycle 152
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,45 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 152 taught
+
+**A gate can exist, be correct, be installed, and never have been aimed at the thing it
+was written for.** `GardenTheme.reads_on_ground` exists because a mark once vanished into
+this lawn. Two cues are the same grammar row; the deferred bar has had a test naming it
+since it shipped, and the dead-ground bar had none — and sat at 0.086 separation against a
+floor of 0.12, at FULL opacity, on the only ground it is ever drawn on. Last cycle's
+screenshot suggested "faint". The measurement said "below the project's own floor before
+alpha is even considered", with a header directly above the constant claiming the bar
+survives colour being thrown away.
+
+**Separation scales by exactly alpha, and that turns a palette question into an arithmetic
+one.** Grass sits at luminance 0.643 of a possible 1.0, so clearing the floor at a third of
+an alpha from the pale side needs a luminance above 1.0. Pale on this lawn is not a value
+chosen slightly wrong — it is a direction with no room in it. `reads_on_at` and
+`composite_over` are the missing half of a gate that said in its own header that it could
+not see opacity, and the new sweep found a second failing mark on its first run.
+
+**The reconciler was wrong in the direction that invites action.** `harness-version
+--client`'s first number credited 17 gaps as fixed upstream and did an hour of work in a
+second. Its second number said 12 open gaps here are already fixed in what we run — and was
+wrong all twelve times, eleven because it resolves `status: open` per LINE in an
+append-only log, and one because it read a workaround citation as a fix credit. Acting on
+it would have flipped eleven correct lines and closed a live gap. Filed as gh#63.
+
+**And the pass caught itself once.** G-069's first draft said the cause was a bug in this
+project and filed a bead for it. Then `devtools_ext/commands.gd` turned out to say, already
+and at length, that G-069 is wrong at both ends. The bead was never created. Opening the
+file before writing the claim is the only thing that stopped it — the same rule
+`kanban-idea-pass` states for kanban entries, which apparently applies to gap
+reconciliation too.
+
+Step 5 DELETED a rule rather than adding one. "The assignment must be a command prefix, not
+a statement" named its failure mode exactly, including the silent-fallback half — and this
+cycle broke it again anyway, with the warning sitting right there. A rule that precise,
+re-broken by the session that had just read it, is not a wording problem. It now says: do
+not pass a path through the environment into a heredoc at all; `cd` there first. Removing
+the variable removes the class.
 
 ## What cycle 151 taught
 

@@ -218,6 +218,49 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 152 — a gate nobody aimed, and a log two tools read differently
+
+- **A gate that exists, is correct, and was never pointed at the thing it was written
+  for.** `GardenTheme.reads_on_ground` (`game/garden_theme.gd:188`) exists because a mark
+  once vanished into this lawn. The deferred bar has had a test naming it since it shipped
+  (`test/unit/test_placement.gd:7048`). Its twin in the same grammar row — the dead-ground
+  bar — had none, and `DEAD_COLOR` sat at **0.086 separation against a floor of 0.12**
+  (`game/garden_theme.gd:163`) at FULL opacity, on the only ground it is ever drawn on.
+  Fixed in this cycle, but the interesting half is that every gate this project owns has
+  the same exposure: **a checker's coverage is the set of call sites someone remembered to
+  write, and nothing counts that set.** `coverage_check.py` answers "which defect CLASSES
+  does this project ask about"; the missing sibling asks, per gate, "which of the things
+  this gate could speak about does it actually get asked about". Start with the
+  `reads_on*` family since the answer there is now known to have been 3 of 5, then
+  `contained-in`, then the budget helpers.
+
+- **Separation scales by exactly alpha, and that turns a palette question into an
+  arithmetic one.** `GardenTheme.reads_on_at` (`:234`) and `composite_over` (`:242`) were
+  built this cycle, and the consequence is bigger than the one bug: GROUND_GRASS sits at
+  luminance 0.643 of a possible 1.0, so at `BOARD_DEAD_ALPHA` (`game/placement_preview.gd:731`)
+  a mark needs a base separation of 0.35 to clear the floor — meaning **a luminance at or
+  under 0.29, or above 0.99, which is brighter than white.** A pale mark on a bright lawn
+  is not a value chosen slightly wrong; it is a direction with no room in it. Worth
+  sweeping every drawn colour in the game through `reads_on_at` at the alpha it actually
+  ships with, HUD included via `reads_on`. The new test
+  (`test/unit/test_placement.gd:7088`) covers six board marks and already found a seventh
+  case it could not gate — the reach ring at `RING_ALPHA`
+  (`game/placement_preview.gd:65`), filed as `plant-tower-defense-qt79`.
+
+- **An append-only log is unreadable to any tool that scans lines instead of resolving per
+  id, and this repo has two tools reading `log-devtools.md` with different answers.**
+  `gap_ledger.py:189` is explicit — `current[row[0]] = row  # last write wins: entries are
+  chronological` — and it gets the right answer. The 0.60.0 harness's
+  `harness-version --client` does not, and reported eleven `fixed` gaps as open (filed as
+  gh#63). The one in this repo worth a look is `upstream_gaps.py:245`, which filters
+  `status` **per gap BLOCK** rather than per resolved id — so a gap whose later block says
+  `fixed` can still be selected from an earlier `open` block. That may well be correct:
+  the comment above it (`:238-241`) records that two sessions once minted the same id for
+  different gaps and that pooling them lost one, which is exactly why it reads blocks. So
+  this is a question, not a bug report: **does the status filter want the block's status or
+  the id's?** They are the same until an id is reused, and reuse is the case that block
+  was written for.
+
 ### New in cycle 151 — two sweeps over one corpus, covering different sets
 
 - **The message row is swept for COMPLETENESS and swept for WIDTH, and the two sweeps do
