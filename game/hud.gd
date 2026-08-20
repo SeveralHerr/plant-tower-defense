@@ -3933,39 +3933,63 @@ static func upgrade_tip(plant_name: String, cost: int) -> String:
 ## than by the compiler — `test_every_hint_has_a_notebook_card` walks `RunConfig.HINTS`
 ## and fails on an id with no card AND on a card with no id, so a fourth hint added to
 ## the list arrives here or fails the suite.
+## `grammar_row` is which numbered row of `OVERLAY_GRAMMAR.md` this hint teaches, or 0
+## for a hint that teaches a RULE rather than a mark — four of the seven, since "some
+## pests fly over" is not about a shape.
+##
+## It exists so the mapping runs BOTH ways (plant-tower-defense-mk1b). `CueLegend`'s
+## ledger has one line per grammar row saying TAUGHT or untaught, and it is not
+## decoration: the verdict block beneath it is where every "should this cue get a legend
+## row" decision in this project has been made and re-read. It has now drifted twice in
+## the same direction — row 4 read `untaught` for two cycles after `HINT_SOLE_COVER`
+## taught it, and row 6 read `untaught` while TWO hints taught its two bars — and a wrong
+## `untaught` invites work that has already shipped. Cycle 148 nearly spent a cycle on it.
+##
+## Without this key the drift is uncheckable in the direction that actually happens: a
+## checker can confirm that a row claiming to be TAUGHT names a surface that exists, but
+## not that a row claiming `untaught` is unclaimed by anything, because nothing else in
+## the codebase records which row a hint teaches. `tools/teaching_ledger_check.py` reads
+## this.
 const HINT_CARDS: Array[Dictionary] = [
 	{
 		"id": "seen_move_tip",
+		"grammar_row": 0,
 		"title": "Compare before you dig",
 		"note": "With Uproot armed, hover another bed to see what the plant would reach there — then click it to move the plant, keeping its level, for a quarter of what you have put into it. Clicking Uproot again still digs it up instead.",
 	},
 	{
 		"id": "seen_flight_tip",
+		"grammar_row": 0,
 		"title": "Some pests fly over",
 		"note": "A winged pest passes a Chomp Flower untouched. Corn Cobblers can still hit it.",
 	},
 	{
 		"id": "seen_upgrade_tip",
+		"grammar_row": 0,
 		"title": "Plants already down can grow",
 		"note": "Click a plant on the board to select it, then Upgrade. Climbing one plant beats adding another.",
 	},
 	{
 		"id": "seen_road_tip",
+		"grammar_row": 0,
 		"title": "One plant goes in the road",
 		"note": "Every other plant is refused on the road — pests walk there. The Barrier Bramble is the exception: it only goes on road cells, and everything walking one stops to chew through it.",
 	},
 	{
 		"id": "seen_defer_tip",
+		"grammar_row": 6,
 		"title": "A bar across the road",
 		"note": "Every plant that reaches that cell shoots at the pest furthest along its range first, so a cell with a busier one ahead of it gets nothing. The bar is drawn square to the lane, on road only. It clears when one more plant covers that stretch — depth, not reach.",
 	},
 	{
 		"id": "seen_sole_cover_tip",
+		"grammar_row": 4,
 		"title": "Rings mark what only this plant holds",
 		"note": "Select a plant and rings mark the road cells no other plant of yours reaches — the ones that go unwatched if it dies. Many rings, worth defending; none, safe to move.",
 	},
 	{
 		"id": "seen_dead_ground_tip",
+		"grammar_row": 6,
 		"title": "Slanted bars on the grass",
 		"note": "A plant only shoots as far as its reach, so beds past that never fire at all. Hover a packet and the bars show which beds are dead for THAT plant — a short-reaching one darkens more of the garden than a Corn Cobbler does. They are drawn slanted, on grass only; the bar square to the lane, on road, is a different sentence.",
 	},

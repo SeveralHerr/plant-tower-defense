@@ -89,8 +89,19 @@ const SHAPE_ARMED := "armed"
 #                                               (by HINT_SOLE_COVER, cycle 145 -- NOT by a
 #                                                legend row; see the verdict below)
 #   5  filled dot              TAUGHT  gain     new-cover dots
-#   6  straight line in a box  untaught         hover dead bar, hover redundant pair,
+#   6  straight line in a box  TAUGHT           hover dead bar, hover redundant pair,
 #                                               BOARD dead-ground bars, BOARD deferred bars
+#                                               (by HINT_DEFERRED_ROAD, cycle 144, and
+#                                                HINT_DEAD_GROUND, cycle 151 -- one hint
+#                                                per BAR, which is what the verdict below
+#                                                asks for and a legend row cannot give.
+#                                                It read `untaught` until cycle 154, and
+#                                                that drift is what tools/
+#                                                teaching_ledger_check.py now catches:
+#                                                the verdict beneath this table is read
+#                                                whenever anyone prices a teaching
+#                                                surface, and it was inviting work that
+#                                                had already shipped twice)
 #   7  corner brackets         TAUGHT  subject  live, hover promise, held-over (2 of 4)
 #   8  scattered short marks   untaught         drought dashes, rain streaks
 #   9  doubled line width      TAUGHT  armed    brackets and sole-cover rings, together
