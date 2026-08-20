@@ -7064,6 +7064,96 @@ func test_the_deferred_bar_reads_on_the_road_it_is_drawn_on() -> String:
 	return err
 
 
+## Every board mark measured as it is actually DRAWN, alpha included
+## (plant-tower-defense-3h0s).
+##
+## The test above and its three siblings all ask `reads_on_ground` about a base colour,
+## and `reads_on_ground`'s own header says it cannot see opacity. That is not a small
+## remainder: source-over composites to `lerp(ground, mark, alpha)`, so the separation
+## scales by EXACTLY alpha, and every mark on this board is drawn at well under 1.0.
+## The dead-ground slate spent many cycles at 0.086 base separation against grass —
+## already under the floor at full opacity — and 0.029 as drawn, with a header directly
+## above it claiming the bar survives colour being thrown away. Nobody had pointed the
+## gate at it; the deferred bar one grammar row over had a test since the day it shipped.
+##
+## SWEPT FROM A TABLE, and the table names its ground per row rather than asking
+## `reads_on_ground` for both. That is not a loosening: `Board.mark_dead_ground` drops
+## non-buildable cells and `mark_deferred_road` drops the rest, so each mark has exactly
+## one ground it can land on and pricing the other would refuse a case the game cannot
+## produce. The reach ring is the one that crosses both, and it is priced against both.
+##
+## The margin is reported on failure rather than just a bool, because the answer "by how
+## much" is what tells you whether to move the colour or the alpha — and at this floor
+## those are different repairs.
+func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at() -> String:
+	var grass: Color = GardenTheme.GROUND_GRASS
+	var dirt: Color = GardenTheme.GROUND_DIRT
+	var dead: Color = PlacementPreview.DEAD_COLOR
+	var ring: Color = Color(dead.r, dead.g, dead.b)
+	var rows: Array[Dictionary] = [
+		{"what": "dead-ground bar, board-wide", "mark": dead, "gates": true,
+			"alpha": PlacementPreview.BOARD_DEAD_ALPHA, "ground": grass, "on": "grass"},
+		{"what": "dead-ground bar, hovered cell", "mark": dead, "gates": true,
+			"alpha": dead.a, "ground": grass, "on": "grass"},
+		{"what": "redundant-patch bars", "mark": dead, "gates": true,
+			"alpha": dead.a, "ground": grass, "on": "grass"},
+		{"what": "deferred-road bar", "mark": PlacementPreview.deferred_road_color(),
+			"alpha": PlacementPreview.DEFERRED_ALPHA, "ground": dirt, "on": "dirt",
+			"gates": true},
+		# NOT GATED, and filed as plant-tower-defense-qt79 rather than waived quietly.
+		# A ring is not a mark: GROUND_SEPARATION_MIN was calibrated against the page
+		# frame's hairline, the cream, and the road hatch, all of them small strokes,
+		# and RING_ALPHA is shared with every NON-dead reach ring in the game, so
+		# raising it to clear this floor is a change to a cue that is not broken.
+		# Recorded here with its number so the question stays visible.
+		{"what": "dead/redundant reach ring", "mark": ring, "gates": false,
+			"alpha": PlacementPreview.RING_ALPHA, "ground": grass, "on": "grass"},
+		{"what": "dead/redundant reach ring", "mark": ring, "gates": false,
+			"alpha": PlacementPreview.RING_ALPHA, "ground": dirt, "on": "dirt"},
+	]
+	var err: String = ""
+	var checked: int = 0
+	var ungated: Array[String] = []
+	for row: Dictionary in rows:
+		var mark: Color = row["mark"]
+		var alpha: float = row["alpha"]
+		var ground: Color = row["ground"]
+		var drawn: Color = GardenTheme.composite_over(mark, alpha, ground)
+		var got: float = GardenTheme.separation(drawn, ground)
+		checked += 1
+		if not bool(row["gates"]):
+			ungated.append("%s on %s (%.3f)" % [row["what"], row["on"], got])
+			continue
+		err = _T.assert_true(GardenTheme.reads_on_at(mark, alpha, ground),
+			("%s on %s: %.3f separation as drawn, floor is %.2f. Base separation is "
+				+ "%.3f and it scales by alpha, so a base under %.3f cannot clear this "
+				+ "at %.2f no matter how the hue is nudged")
+				% [row["what"], row["on"], got, GardenTheme.GROUND_SEPARATION_MIN,
+					GardenTheme.separation(Color(mark, 1.0), ground),
+					GardenTheme.GROUND_SEPARATION_MIN / maxf(alpha, 0.001), alpha])
+		if err != "":
+			return err
+	# The denominator, because a table that lost its rows would pass in silence.
+	if err == "":
+		err = _T.assert_eq(checked, 6,
+			"the sweep visited every board mark and both grounds for the ring")
+	if err == "":
+		# AND the exception set is pinned by membership, not by count alone. A new mark
+		# that fails and is quietly marked `gates: false` is exactly how a gate rots;
+		# this makes doing that a failing test rather than a passing one.
+		err = _T.assert_eq(ungated.size(), 2,
+			"exactly the two reach-ring rows are ungated, and they are: %s"
+				% ", ".join(ungated))
+	if err == "":
+		# The mutation guard: without this, replacing reads_on_at with `return true`
+		# leaves every assertion above green. A ring at RING_ALPHA over grass is the
+		# tightest real pair here, so the floor has to be a number this can fail.
+		err = _T.assert_false(
+			GardenTheme.reads_on_at(GardenTheme.LEAF, 1.0, GardenTheme.GROUND_GRASS),
+			"and the gate still refuses the lawn's own hue painted on the lawn")
+	return err
+
+
 ## The cue and its trigger live in different files, and a cue nothing turns on is
 ## a failure this project has shipped before: every gate passes, the marks are
 ## correct, and no player ever sees one. So this asserts the JOIN.

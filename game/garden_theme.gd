@@ -204,6 +204,45 @@ static func reads_on(mark: Color, ground: Color) -> bool:
 	return separation(mark, ground) >= GROUND_SEPARATION_MIN
 
 
+## The half `reads_on` says it cannot see (plant-tower-defense-3h0s): the same
+## question asked about the colour that actually lands on the pixel.
+##
+## Every mark on this board is drawn with an alpha, most of them well under 1.0,
+## and the arithmetic is unforgiving in a way nobody had written down: a source
+## over a ground composites to `lerp(ground, mark, alpha)`, so the SEPARATION
+## SCALES BY EXACTLY ALPHA. A mark clearing the floor by a hair at 1.0 is a third
+## of the way there at 0.34, and no amount of "it looked fine in the editor"
+## recovers it, because the editor is not greyscale.
+##
+## The consequence worth knowing before picking a colour: on GROUND_GRASS, whose
+## luminance is 0.64 of a possible 1.0, a PALE mark has almost nowhere to go. To
+## clear this floor at alpha 0.34 a mark needs a base separation of 0.35, which
+## from grass means a luminance at or under 0.29 — dark — or above 0.99, which is
+## brighter than white. **A light mark on a bright lawn is not a tuning problem,
+## it is an arithmetic one.** That is why `deferred_road_color` uses INK_SOFT and
+## reads at every alpha it has ever been drawn at, and why `PlacementPreview`'s
+## dead-ground slate did not.
+##
+## Takes ONE ground rather than both, unlike `reads_on_ground`, because the marks
+## this exists for are placed by rules that already fix which ground they land
+## on — `Board.mark_dead_ground` drops non-buildable cells, so its bar is only
+## ever on grass, and asking it to clear dirt too would price a case the game
+## cannot produce. The caller names the ground it is actually drawing on.
+##
+## Same greyscale caveats as `reads_on`, and the same ones about speckle, other
+## overlays and sprites underneath. What it removes is the single largest term.
+static func reads_on_at(mark: Color, alpha: float, ground: Color) -> bool:
+	return reads_on(composite_over(mark, alpha, ground), ground)
+
+
+## `mark` at `alpha` painted over `ground`, as source-over actually resolves it.
+## Public because a test that wants to REPORT the number rather than assert a
+## bool needs the colour, and a second copy of a lerp is how two callers start
+## disagreeing about what "drawn" means.
+static func composite_over(mark: Color, alpha: float, ground: Color) -> Color:
+	return ground.lerp(Color(mark, 1.0), clampf(alpha, 0.0, 1.0))
+
+
 ## A Theme applied to a screen's root Control, inherited by every descendant —
 ## which is why the Notebook, added as a child of the title screen at runtime,
 ## does not have to ask for it.

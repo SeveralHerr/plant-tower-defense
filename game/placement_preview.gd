@@ -86,7 +86,30 @@ const RISK_DASHES: int = 8
 ## The reach ring is still drawn, dimmed to the same slate, because "how far it
 ## would reach" is exactly the evidence for the claim — the player can see the
 ## circle falling short of the road rather than being told so.
-const DEAD_COLOR := Color(0.70, 0.73, 0.80, 0.80)
+##
+## DARK SLATE SINCE CYCLE 152, AND IT USED TO BE A PALE ONE (plant-tower-defense-3h0s).
+## The paragraph above claims the bar survives colour being thrown away. It did not:
+## `Color(0.70, 0.73, 0.80)` sits at luminance 0.729 against GROUND_GRASS's 0.643, a
+## separation of **0.086 against a floor of 0.12** — so the mark failed
+## `GardenTheme.reads_on_ground` at full opacity, on the only ground it is ever drawn
+## on, while the header argued it was legible in greyscale. Composited at
+## `BOARD_DEAD_ALPHA` it was 0.029, a quarter of the floor.
+##
+## Nobody had pointed the gate at it. `reads_on_ground` exists precisely because a mark
+## vanished into this lawn once, and the deferred bar one grammar row over has a test
+## naming it (`test_the_deferred_bar_reads_on_the_road_it_is_drawn_on`). This cue had
+## neither, and the two failures compound: the gate was alpha-blind and said so, and
+## alpha is the dominant term for every board mark.
+##
+## WHY DARK RATHER THAN A BRIGHTER PALE. `GardenTheme.reads_on_at`'s header carries the
+## arithmetic: separation scales by exactly alpha, grass is bright at 0.643, and clearing
+## the floor at a third of an alpha from the pale side needs a luminance above 1.0. Pale
+## on this lawn is not a value that was chosen slightly wrong; it is a direction with no
+## room in it. Going dark also puts this bar in the same ink family as the deferred bar,
+## which is not a collision — `OVERLAY_GRAMMAR.md` defines row 6 by its CHANNEL and both
+## bars are that row. They are told apart by the ground they land on and by their angle,
+## which is exactly what `Hud.dead_ground_tip` tells the player.
+const DEAD_COLOR := Color(0.24, 0.27, 0.36, 0.80)
 const DEAD_BAR_WIDTH: float = 3.0
 ## Bar length is the bracket box, not the ring: a Corn Cobbler's ring is 176 px,
 ## and a 352 px diagonal slashed across the playfield reads as a board-wide
@@ -698,7 +721,14 @@ func _board() -> Board:
 ## statement -- up to 36 of them at once -- and the hovered cell's own bar is the
 ## focused one, so the ambient set has to be the quieter of the two or the board
 ## reads as covered in warnings.
-const BOARD_DEAD_ALPHA: float = 0.34
+##
+## 0.40 SINCE CYCLE 152, up from 0.34, and the six hundredths are margin rather than
+## volume. At the new dark slate the composited separation on grass is 0.372 x alpha:
+## 0.127 at 0.34, which clears `GROUND_SEPARATION_MIN` by six thousandths and would be
+## re-broken by any nudge to either constant; 0.149 at 0.40, which clears it by a
+## quarter. The argument above is unchanged and still holds — 0.40 is half the hover
+## bar's 0.80, so the ambient set is still the quieter of the two.
+const BOARD_DEAD_ALPHA: float = 0.40
 
 
 ## The half-arm of the dead bar: one endpoint of the stroke, measured from the
