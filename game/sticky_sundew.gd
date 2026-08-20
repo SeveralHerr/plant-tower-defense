@@ -282,7 +282,10 @@ func _claim(pest: Pest) -> void:
 	# is_alive() guard anyway, kept for the pattern (and for defense against a
 	# pest that died the instant it entered the patch, before this ran).
 	if pest.is_alive():
-		pest.flash_hit()
+		# GLANCING: this patch never damaged the pest, it slowed one. See
+		# Pest.GLANCE_FLINCH_SCALE -- before it, "stuck" and "shot" were the same word in
+		# the game's vocabulary of movement (plant-tower-defense-zdy2).
+		pest.flash_hit(true)
 	var sources: int = slow_sources(pest)
 	if sources == 0:
 		pest.set_meta(META_BASE_SPEED, pest.speed)

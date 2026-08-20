@@ -10990,3 +10990,145 @@ func test_every_plant_stands_up_until_it_is_in_danger() -> String:
 		err = _T.assert_gt(checked, 1, "the catalogue was swept (%d plants)" % checked)
 	_T.free_ui(game)
 	return err
+
+
+## The recoil and the flash now read the same verdict (plant-tower-defense-zdy2).
+##
+## THE DEFECT THIS PINS is not the one the bead asked about. It asked whether a
+## sundew-stuck pest should recoil as hard as a shot one. The enumeration found something
+## worse alongside it: a hit a Shield Bug's plate ATE already flashes at
+## `SHELL_FLASH_DIM` 0.45 against `HIT_FLASH_BOOST` 1.9 — a 4.2x split saying "that did
+## nothing" — while the recoil said "that hit hard" in the same frame. Two channels, one
+## event, opposite claims. That is a contradiction rather than a judgement.
+##
+## Asserted through the constants and the armed state rather than by watching a pest,
+## because `_gait` early-returns on `animations_enabled()` headless — the same seam
+## `gait_yaw` and `flinch_amount` exist for.
+func test_a_glancing_cue_shakes_less_than_a_hit_that_landed() -> String:
+	var err: String = _T.assert_true(Pest.GLANCE_FLINCH_SCALE < 1.0,
+		"a glance is gentler than a hit that landed (%.2f)" % Pest.GLANCE_FLINCH_SCALE)
+	if err == "":
+		err = _T.assert_gt(Pest.GLANCE_FLINCH_SCALE, 0.0,
+			"and is not nothing -- something DID happen to the bug")
+	if err == "":
+		# THE FLOOR, and it is absolute rather than a fraction of itself: a scale that
+		# drops the recoil below the pest's own walk is not a quiet cue, it is no cue.
+		# Written against GAIT_SWING because that is the motion it has to out-read, the
+		# same rule FLINCH_RADIANS itself is pinned by.
+		var glanced: float = Pest.FLINCH_RADIANS * Pest.GLANCE_FLINCH_SCALE
+		err = _T.assert_gt(glanced, Pest.GAIT_SWING,
+			("a glancing recoil still out-reads the walk: %.3f rad against GAIT_SWING "
+				+ "%.3f") % [glanced, Pest.GAIT_SWING])
+	if err == "":
+		# And the colour's own split, quoted here so the two channels are compared in one
+		# place. This is what the recoil was contradicting.
+		# assert_gt with the operands the other way up: the helper set has no assert_lt.
+		err = _T.assert_gt(Pest.HIT_FLASH_BOOST, Pest.SHELL_FLASH_DIM,
+			("the colour already split these 4.2x (%.2f bright vs %.2f dim) while the "
+				+ "recoil split them not at all -- that gap is what this cycle closed")
+				% [Pest.HIT_FLASH_BOOST, Pest.SHELL_FLASH_DIM])
+	return err
+
+
+## Half the callers of flash_hit never damaged the pest, and the split is deliberate
+## (plant-tower-defense-zdy2).
+##
+## THE ENUMERATION IS THE TEST. Six call sites; three of them damage. The Chomp calls
+## nothing that damages at all — it holds a pest, chews it cosmetically through
+## `set_chewed`, and kills it when its own clock runs out — so before this cycle it was
+## saying "a hit landed" in motion about a pest that had taken nothing.
+##
+## Read from SOURCE rather than by driving each plant, because the question is "which
+## callers pass the glancing flag", which is a fact about the call sites and not about any
+## runtime state. A behavioural version would need six scenarios and would still not tell
+## you a seventh caller had appeared.
+func test_only_the_sundew_calls_the_hit_cue_glancing() -> String:
+	var glancing: Array[String] = []
+	var plain: Array[String] = []
+	var dir: DirAccess = DirAccess.open("res://game")
+	var err: String = _T.assert_true(dir != null, "res://game is readable")
+	if err != "":
+		return err
+	for name: String in dir.get_files():
+		if not name.ends_with(".gd"):
+			continue
+		var src: String = FileAccess.get_file_as_string("res://game/%s" % name)
+		if name == "pest.gd":
+			continue  # the declaration itself, not a call site
+		var from: int = 0
+		while true:
+			var at: int = src.find("flash_hit(", from)
+			if at < 0:
+				break
+			from = at + 1
+			var close: int = src.find(")", at)
+			var args: String = src.substr(at + 10, maxi(0, close - at - 10)).strip_edges()
+			if args == "true":
+				glancing.append(name)
+			elif args == "":
+				plain.append(name)
+	if err == "":
+		err = _T.assert_gt(glancing.size() + plain.size(), 3,
+			("the sweep found %d call site(s) -- a scan that matches almost nothing "
+				+ "reports clean over the wrong thing")
+				% (glancing.size() + plain.size()))
+	if err == "":
+		# THE DECISION, asserted so a future caller has to come past it.
+		err = _T.assert_eq(glancing, ["sticky_sundew.gd"] as Array[String],
+			("only the Sundew flashes glancing -- it is the one caller where nothing "
+				+ "struck the bug. Got %s") % str(glancing))
+	if err == "":
+		# The Chomp deliberately does NOT, and this is the assertion that stops a future
+		# tidy-up from "fixing" it: being eaten alive is the most violent thing in the
+		# game, and it routes through _chew_left rather than take_damage as an
+		# implementation detail the bug does not care about.
+		err = _T.assert_true(plain.has("chomp_flower.gd"),
+			("the Chomp keeps the full recoil on purpose -- see GLANCE_FLINCH_SCALE. "
+				+ "Plain callers: %s") % str(plain))
+	if err == "":
+		err = _T.assert_false(glancing.has("chomp_flower.gd"),
+			"and does not also appear as glancing, which would mean two call sites disagree")
+	return err
+
+
+## `flash_hit` actually APPLIES the verdict it computes (plant-tower-defense-zdy2).
+##
+## WRITTEN BECAUSE A MUTATION SURVIVED. The two tests above assert the CONSTANT and the
+## CALL SITES, and neither noticed `_flinch_force = 1.0` being pinned unconditionally --
+## which restores the exact defect this cycle set out to fix. A table and a list of callers
+## are not the thing that reads them; see .claude/skills/extract-a-testable-seam.
+##
+## Readable headlessly only because `flash_hit` arms BEFORE its `animations_enabled()`
+## gate, which cycle 139 did on purpose so the decay in `_gait` could never inherit a value
+## armed only on animated machines. That decision is what makes this assertion possible at
+## all, three cycles later.
+func test_the_hit_cue_applies_the_verdict_it_computes() -> String:
+	var pest: Pest = _pest(Pest.APHID, Vector2(100, 100))
+	var err: String = _T.assert_float_eq(pest._flinch_force, 1.0, 0.0001,
+		"a pest starts at full force, so a glance below is a change and not a default")
+	if err == "":
+		pest.flash_hit(true)
+		err = _T.assert_float_eq(pest._flinch_force, Pest.GLANCE_FLINCH_SCALE, 0.0001,
+			"a glancing cue arms the reduced force")
+	if err == "":
+		pest.flash_hit()
+		err = _T.assert_float_eq(pest._flinch_force, 1.0, 0.0001,
+			"and a hit that landed arms the full one -- the force does not stick")
+	if err == "":
+		# THE SHELL HALF, which is the contradiction the bead did not see: a plate-blocked
+		# hit is a plain flash_hit() from Kernel, so the reduction has to come from the
+		# CONSUMED `_last_hit_blocked` rather than from the caller.
+		pest._last_hit_blocked = true
+		pest.flash_hit()
+		err = _T.assert_float_eq(pest._flinch_force, Pest.GLANCE_FLINCH_SCALE, 0.0001,
+			("a hit the plate ate shakes like a glance, because the colour already says "
+				+ "so at SHELL_FLASH_DIM and the two channels must not disagree"))
+	if err == "":
+		err = _T.assert_false(pest._last_hit_blocked,
+			"and the verdict is CONSUMED, so the next cue does not inherit it")
+	if err == "":
+		pest.flash_hit()
+		err = _T.assert_float_eq(pest._flinch_force, 1.0, 0.0001,
+			"which the very next plain flash proves by coming back at full force")
+	pest.free()
+	return err

@@ -600,6 +600,41 @@ const GAIT_STRETCH_RATE: float = 2.0
 ## test_combat.gd asserts that against the trait matrix rather than against this
 ## sentence.
 const FLINCH_RADIANS: float = 0.40
+
+## How hard a cue that did NOT follow damage shakes the bug (plant-tower-defense-zdy2).
+##
+## THE BEAD ASKED ABOUT THE SUNDEW AND THE ENUMERATION FOUND THREE. Six things call
+## `flash_hit`, and only three of them ever damaged the pest:
+##
+##   Kernel, SeedBomb, Nettle   damage landed        -> full recoil, unchanged
+##   ChompFlower (catch, bite)  no take_damage AT ALL
+##   StickySundew               no take_damage at all
+##
+## The Chomp calls nothing that damages — `grep take_damage game/chomp_flower.gd` is empty;
+## it holds a pest, chews it cosmetically through `set_chewed`, and kills it when the clock
+## runs out. So half the callers were saying "a hit landed" in motion about a pest that had
+## taken nothing.
+##
+## WHAT EACH ONE GETS, and the split is between VIOLENCE and RESTRAINT rather than between
+## damage and no damage:
+##   * THE CHOMP KEEPS THE FULL RECOIL. Being eaten alive is the most violent thing in this
+##     game, and routing it through `_chew_left` instead of `take_damage` is an
+##     implementation detail the bug does not care about. A gentler shake there would be
+##     the cue lying about the situation to be consistent with a function call.
+##   * THE SUNDEW GETS THIS. Nothing struck it; it walked into glue and slowed down. Before
+##     this, "stuck" and "shot" were the same word in the game's vocabulary of movement,
+##     which is the bead's own sentence and is exactly right.
+##   * A PLATE-BLOCKED HIT GETS THIS TOO, and that half was a defect rather than a
+##     judgement. `SHELL_FLASH_DIM` already dims the colour to 0.45 against
+##     `HIT_FLASH_BOOST`'s 1.9 — a 4.2x split saying "that did nothing" — while the recoil
+##     said "that hit hard" in the same frame. Two channels, one event, opposite claims.
+##
+## 0.35 rather than zero: something DID happen, and a bug that is grabbed or that shrugs a
+## kernel off should not be indistinguishable from one nothing touched. Above
+## `GAIT_SWING` 0.13 once multiplied (0.40 * 0.35 = 0.14) so it still out-reads the walk,
+## and asserted as that rather than as a fraction — a scale that drops below the gait is
+## not a quiet cue, it is no cue.
+const GLANCE_FLINCH_SCALE: float = 0.35
 const FLINCH_RATE: float = 46.0
 const FLINCH_SECONDS: float = 0.28
 
@@ -805,6 +840,11 @@ var _gait_time: float = 0.0
 var _gait_phase: float = 0.0
 ## Seconds of recoil left. Armed by flash_hit(), decayed by _gait().
 var _flinch_left: float = 0.0
+## How hard THIS recoil shakes, 0..1. Set beside `_flinch_left` so the two can never
+## disagree about which cue is running, and read in `_gait` rather than folded into the
+## decay — scaling the SECONDS would make a glance shorter instead of gentler, which is a
+## different sentence: a brief full-strength shake still says "struck".
+var _flinch_force: float = 1.0
 
 ## Handed out at setup() and wrapped at GAIT_PHASE_PERIOD. Static because the
 ## thing being spread out is *between* pests — a per-instance seed cannot know
@@ -1535,7 +1575,7 @@ func _gait(delta: float) -> void:
 		return
 	var clock: float = _gait_time * gait_rate(speed, is_armoured, is_winged) + _gait_phase
 	_sway = gait_yaw(sin(clock), gait_swing(is_armoured, is_winged),
-		sin(_gait_time * FLINCH_RATE), flinch_amount(_flinch_left))
+		sin(_gait_time * FLINCH_RATE), flinch_amount(_flinch_left) * _flinch_force)
 	_apply_facing()
 	# Local to the sprite, so it follows the facing rotation: -Y is the body's
 	# long axis (STYLE.md's up-screen convention), which makes +Y stretch a
@@ -1687,7 +1727,10 @@ static func shell_flash_color(base: Color) -> Color:
 ## frames, so a Tween queued there never runs and this is a silent no-op rather
 ## than a wasted node. The reset is therefore deliberately BEFORE the gate — a flag
 ## that outlived an animations-off session would come back stale.
-func flash_hit() -> void:
+## `glancing` is the caller saying THIS CUE DID NOT FOLLOW DAMAGE
+## (plant-tower-defense-zdy2). Default false, so the three damaging callers — Kernel,
+## SeedBomb and Nettle — are untouched and say nothing.
+func flash_hit(glancing: bool = false) -> void:
 	var blocked: bool = _last_hit_blocked
 	_last_hit_blocked = false
 	# The recoil is armed HERE, beside the flash and before the gate, because the two are
@@ -1695,6 +1738,14 @@ func flash_hit() -> void:
 	# pest that spoke on only one of the two channels is the thing this pair exists to
 	# stop. Before the gate for the same reason the reset above is — a value armed only
 	# on animated machines is a value the decay in _gait() can never clear.
+	#
+	# AND NOW THE TWO CHANNELS READ THE SAME VERDICT, which they did not
+	# (plant-tower-defense-zdy2). The colour has always split a hit three ways — 1.9x
+	# brighter for one that landed, 0.45x DIMMER for one a Shield Bug's plate ate — and the
+	# recoil split it none, so a plate-blocked hit said "that did nothing" in colour and
+	# "that hit hard" in motion IN THE SAME FRAME. That is a contradiction rather than a
+	# judgement, and it is the half of this the bead did not see.
+	_flinch_force = GLANCE_FLINCH_SCALE if (blocked or glancing) else 1.0
 	_flinch_left = FLINCH_SECONDS
 	if not _alive or _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
 		return
