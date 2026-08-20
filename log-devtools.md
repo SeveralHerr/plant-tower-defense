@@ -8584,3 +8584,31 @@ status rather than rewriting the entries that recorded these as open.
 - Gap: **no new gaps this turn.** [G-141] (no absolute mouse position) was not re-hit
   because this cycle never needed to drive the pointer — the panel updates through
   `_refresh()`, not through hover.
+
+## 2026-08-20 — a checker for dangling bead ids (plant-tower-defense-xnmz)
+
+- Value: **warranted**, and no engine gate was involved at all — this is a `tools/` checker,
+  the tier the triage table calls (f) tooling-only.
+  - Expected: to find zero and build the tool anyway as prevention, since I had corrected
+    all three ids I invented this session.
+  - Got: **one still there.** `plant-tower-defense-9dq7` (bead-ref-check: ok - quoted) was
+    invented in cycle 142, corrected in cycle 142, and was live in cycle 146 — the
+    correction patched one occurrence of two. `157 reference(s) across 28 source(s) … 2
+    finding(s)`, both in the description of the bead that ASKED for the checker, one of them
+    inside a sentence claiming the id appeared there "nowhere, deliberately".
+  - Found: that a believed correction had not held, which is a different and worse thing
+    than an uncorrected mistake — it leaves no trace and nobody re-reads. Also, by mutation,
+    a guard in my own new code that could never fire: `ref == own` is unreachable because a
+    bead's own id is in the export by definition. Deleted rather than kept.
+  - Cheaper: nothing. The measurement that decided whether to build the tool at all was ~20
+    lines of throwaway Python and is exactly what `house-static-checker` asks for first.
+
+- **The `2` that proved nothing, recorded because the skill warns about it.** My first
+  mutation replaced the id set with an EMPTY one, expecting every reference to become a
+  finding. It exited **2** — tripping the tool's own could-not-run guard — and a sweep
+  reading truthiness would have logged that as a kill. Re-run with a single junk id instead:
+  `5 -> 163 findings`, which is the result that actually shows the id set is doing the
+  deciding.
+
+- Gap: **no new gaps this turn.** No launch, no bridge, nothing asked of the harness that it
+  could not do.

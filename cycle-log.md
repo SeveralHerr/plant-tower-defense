@@ -1,4 +1,4 @@
-# Cycle 145
+# Cycle 146
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,43 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 146 taught
+
+**A correction can be made, believed, and not hold — and that is worse than an
+uncorrected mistake, because it leaves no trace.** An id invented in cycle 142 was
+corrected in cycle 142 and was still live in cycle 146: the fix replaced one occurrence of
+two and nobody counted. `tools/bead_ref_check.py` found it on its first run. The general
+form is filed: this repo corrects prose by string replacement constantly — 116 relocated
+citations, reworded tips, renamed producers — and every one is only as complete as a count
+nobody printed.
+
+**The checker caught me three times while I was writing about it.** Once in the bead that
+asked for it, in a sentence claiming the invented id appeared there "nowhere, deliberately";
+once more in the same description; and again in the `kanban.md` entry reporting that. So
+`kanban-idea-pass` rule 1 is now generalised past citations: **writing about ANY token a
+checker matches creates one**, and the way out is to name the symbol rather than the token,
+or waive it on the same line. Deleting the report is wrong — the report is usually the most
+useful sentence on the page.
+
+**A surviving mutation was a finding about the code, for the second time in this repo.** I
+had written a `ref == own` guard so a bead naming itself would not be flagged. Mutating it
+away changed nothing: a bead's own id is in the export *by definition*, so the guard could
+never fire where the membership test did not. One bead does cite itself and was correctly
+silent either way. Deleted, with the invariant recorded where the guard had been. The
+reflex on a survivor is to strengthen the test; the first question should be whether the
+mutated code can change any behaviour at all.
+
+**An exit `2` in a mutation sweep proves nothing, and looks exactly like a kill.** My first
+attempt replaced the id set with an EMPTY one and tripped the tool's own could-not-run
+guard. A sweep reading truthiness would have logged it as RED. Re-run with a single junk id:
+`5 → 163 findings`, which is the result that actually demonstrates the id set decides.
+
+**The drift series is complete and the theory holds.** 13, 21, 71, 11, **0** across cycles
+142–146. This cycle added a new file and edited no existing code, and drifted nothing at
+all. Position predicts it completely; size predicts nothing. That makes the step-3 threshold
+a lottery on where a cycle happened to edit, which is the strongest argument yet for
+scheduling the relocator rather than waiting for it.
 
 ## What cycle 145 taught
 

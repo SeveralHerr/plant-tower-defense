@@ -50,6 +50,20 @@ entry that you have left the numbers out deliberately — otherwise the next rea
 back as a kindness. The same trap fires in a bead description, a close reason, and a commit
 message that a checker reads.
 
+**GENERALISE IT: writing about ANY token a checker matches creates one.** Cycle 146 built
+`tools/bead_ref_check.py`, which flags a `plant-tower-defense-XXXX` naming no real issue —
+and it fired twice on the bead that ASKED for it, once inside a sentence claiming the
+invented id appeared there "nowhere, deliberately". Then it fired again on the `kanban.md`
+entry reporting that. Three times, on three documents whose whole subject was the trap.
+So the rule is not about citations; it is about **reporting a defect in the notation the
+defect is written in**, and this repo now has two token types with checkers watching them
+(`file:line`, bead ids) and more coming. Two ways out, and pick deliberately:
+**name the symbol instead of the token** ("an id invented in cycle 142", "the constant the
+entry cited") — best, because it survives the token moving; or **waive it on the same
+line**, which every house checker offers precisely for prose that must quote a bad value.
+Deleting the report is the wrong answer: the report is usually the most useful sentence
+on the page.
+
 ### 2. Search for the BEHAVIOUR, not for one implementation of it
 
 This is the absence half, and it fails differently: cycle 70 wrote "no plant has idle motion,

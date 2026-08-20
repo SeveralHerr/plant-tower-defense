@@ -218,6 +218,40 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 146 — a correction that did not hold, and the drift series completes
+
+- **A fix can be believed and not hold, and nothing in this repo could say so until now.**
+  An id invented in cycle 142 was corrected in the same cycle, and was
+  still sitting in a bead description in cycle 146 — because the correction patched one
+  occurrence of two and nobody re-read. That is a different failure from "I made a mistake":
+  the mistake was noticed, acted on, and the action was incomplete in a way that left no
+  trace. **The general shape is worth more than the instance: a correction applied by
+  string-replacement is only as complete as the count nobody checked**, and this repo does
+  that constantly — citation relocation, bead-prose fixes, renamed producers. `bead_ref_check`
+  now closes the case for bead ids specifically. The same question is open for every other
+  by-hand correction: *how many occurrences were there, and did you count them before and
+  after?*
+
+- **The drift series is now five points and the theory holds.** Cycle 142 edited mid-file and
+  drifted 13; 143 appended and drifted 21; 144 made two mid-file edits in a 20,000-line test
+  file and drifted **71**; 145 edited low in its files and drifted 11; 146 added a NEW file,
+  edited no existing code, and drifted **0**. Nothing about the size of the change predicts
+  the number — position does, completely. **A cycle that adds a file pays nothing; a cycle
+  that inserts high in a heavily-cited file pays a great deal, and neither is a property
+  anyone selects on purpose.** That makes the loop's step-3 threshold a lottery on edit
+  position, and it is the strongest argument yet for `plant-tower-defense-2174` (a relocator
+  that refuses rather than renumbers) being scheduled rather than waited for.
+
+- **A guard that cannot fire is worth deleting, and the way to find one is to mutate it.**
+  `bead_ref_check` was written with a `ref == own` guard so a bead naming itself would not be
+  reported. Mutating it away changed nothing — a bead's own id is in the export *by
+  definition*, so the guard could never fire where the membership test did not. One bead does
+  cite itself and was correctly silent either way. **The reflex on a surviving mutation is to
+  strengthen the test; the first question should be whether the mutated code can change any
+  behaviour at all.** Deleted, with the invariant that makes it redundant recorded where the
+  guard used to be. This is the second time in this repo (after `mirror_check`'s CRLF
+  normalisation) that mutating found dead code rather than a weak test.
+
 ### New in cycle 145 — a permanent reference taught a rule the game had stopped following
 
 - **A notebook card said "Confirming still only uproots" for two cycles after that became
