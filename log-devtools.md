@@ -8897,3 +8897,34 @@ is likely to be at least as productive.
     claim it sharpens ("safe") is correct as written.
   - Improvement: add "safe, but slower — expect roughly double while a game holds
     `.godot/`" to that line, so a killed run is diagnosed rather than investigated.
+
+## 2026-08-20 — Cycle 154: probed a number two cycles had assumed, and caught a ledger drifting twice
+
+- Value: **warranted**, and the cheapest run in a while — no game was launched at all.
+  - Expected: `label.size.x` under `_T.instantiate_scene` to be the 64x64 headless window,
+    which is what this project's own notes had said for two cycles and what sent cycle 151
+    to the running game to measure one tip.
+  - Got: **876.0**, exactly what `node-bounds` reports live. A two-line temporary
+    assertion settled it. The `get_window().size` caveat in `CLAUDE.md` is real and does
+    not touch a Control laid out under a properly-sized root, which is what
+    `instantiate_scene` gives.
+  - Found: two things, and the second is the one that matters.
+    `plant-tower-defense-9ji4`'s premise is FALSE — `Game._budget_hud_message_row`
+    (`game/game.gd:3632`) already sweeps `Hud.message_corpus()` through
+    `GardenTheme.measure` and adds both mute lines at their current keybinds on top.
+    Lengthening one bar tip past the row turned THREE tests red through it. And the
+    enumeration that produced the bead — "eight test functions call `message_corpus()` and
+    not one measures a width" — was literally true and over the wrong set: the measurer is
+    in `game/`, not `test/`. **Third instance of that shape in this project.**
+  - Cheaper: the probe itself, which is what should have happened in cycle 151 before
+    launching. Two lines and one suite run.
+
+- Gap: **no new harness gaps this turn.** The two runs that mattered were `run_tests.py`
+  and a temporary assertion; neither needed the bridge, and the one number in question
+  turned out to be readable headlessly all along. [G-143] was not re-hit.
+
+- Process note, not a harness gap: recovering from a checker mutation with
+  `git checkout -- game/cue_legend.gd` silently reverted an unrelated fix in the same file
+  that was made earlier in the same cycle. Nothing caught it; re-reading did. The standing
+  rule about verifying a restore is about `.bak` files and says nothing about `checkout`,
+  which is the blunter instrument — it restores the whole file, not the mutated span.

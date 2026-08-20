@@ -218,6 +218,42 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 154 — three enumerations over the wrong set, and they rhyme
+
+- **The rule against this already exists, has been broken three times, and twice by the
+  cycle that had just read it.** `.claude/skills/kanban-idea-pass/SKILL.md:67` is "Search
+  for the BEHAVIOUR, not for one implementation of it". The three failures:
+  cycle 70 enumerated every `create_tween()` call and concluded no plant had idle motion,
+  while `Plant._wobble` had swayed every plant since the first playable build; cycle 153's
+  first draft of `gate_aim_check` enumerated `draw_*` call sites and reported 0 of 24,
+  omitting every mark handed to `Board` to draw; cycle 154 enumerated *test functions
+  naming `message_corpus()`* and concluded the row's non-catalogue lines were measured by
+  nothing, while `Game._budget_hud_message_row` (`game/game.gd:3632`) had been sweeping
+  exactly them.
+  **The shape is the same in all three: the enumeration was over HOW rather than over
+  WHAT.** Tweens instead of "what moves the property"; draw calls instead of "what colour
+  lands on the ground"; tests-naming-the-corpus instead of "what measures the row". Each
+  set was chosen from the mechanism the author already had in mind, which is why each felt
+  exhaustive.
+  The rule is filed under writing `kanban.md` entries, and all three failures were in
+  CHECKERS and TESTS. **Worth moving it somewhere both audiences read** — or at least
+  adding the tell: if you can name the API you searched for, you have probably searched
+  for an implementation.
+
+- **A hand-maintained table cannot be checked into correctness; it has to be made
+  derivable.** `game/cue_legend.gd:80` carries one line per grammar row marking it TAUGHT
+  or `untaught`, and it drifted twice in the same direction — row 4, then row 6, both
+  claiming `untaught` for cues that two hints already taught. Correcting it a third time
+  would have bought exactly one cycle. What made it *checkable* was that `Hud.HINT_CARDS`
+  (`game/hud.gd:3953`) gained a `grammar_row` key (`:3936`) — a machine-readable link from
+  a hint to the row it teaches, which **did not exist anywhere in the codebase before**.
+  Generalisable, and the interesting half: for every remaining hand-maintained table here,
+  the question is not "is it right" but **"what link is missing that would let something
+  else say so"**. `plant-tower-defense-snhb` is the same class for notebook cards and is
+  harder for a stated reason — a card's claim is prose about a mechanic — so the sweep
+  should start by sorting the tables into those with a missing link and those where the
+  claim is genuinely unformalisable.
+
 ### New in cycle 153 — the arithmetic said one ground, the picture said two
 
 - **A cue whose geometry leaves the cell it is anchored to does not inherit that cell's

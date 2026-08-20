@@ -219,6 +219,14 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      that does not exist. Both kills happened around five suite runs in, so the limit is
      real and not bad luck.
      So: **one mutation per FOREGROUND call, and verify the restore before the next one.**
+     **And restore from the copy you made, never with `git checkout --`.** That rule was
+     written about `.bak` files and cycle 154 reached for the blunter instrument out of
+     habit: `git checkout -- game/cue_legend.gd` put the mutated span back AND silently
+     reverted an unrelated correction made to the same file earlier in the same cycle.
+     `checkout` restores the FILE, and the file is not what you mutated. Nothing caught it
+     — the suite was green either way, because the thing reverted was a comment — and
+     re-reading the diff is what found it. A `cp` back from the `.bak` cannot do this,
+     which is the whole argument for making one.
      Check `git status` after any run that was killed or timed out, before believing
      anything it printed. And pass `-u` to a long-running Python child — a killed batch
      otherwise leaves an EMPTY log, because its stdout was still buffered, which is how the

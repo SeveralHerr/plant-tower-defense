@@ -1,4 +1,4 @@
-# Cycle 153
+# Cycle 154
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,52 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 154 taught
+
+**Two cycles of this project believed a number nobody had measured.** The notes said a
+headless run measures the message row under a 64x64 window, so its width was unanswerable
+without launching the game — and cycle 151 launched the game to price one tip because of
+it. A two-line temporary assertion says **876.0**, exactly what `node-bounds` reports
+live. The `get_window().size` caveat is real and does not touch a Control laid out under
+a properly-sized root, which is what `instantiate_scene` gives.
+
+**And the bead built on that belief was false in its main claim.** `-9ji4` said the
+message row's 13 non-catalogue lines were counted by one test and measured by neither.
+`Game._budget_hud_message_row` had been sweeping the whole corpus all along, and adding
+both mute lines at their current keybinds on top. Lengthening one bar tip past the row
+turned three tests red through it.
+
+**That is the third enumeration in this project that was complete over the wrong set.**
+Cycle 70 enumerated `create_tween()` calls and missed `_wobble`; cycle 153's first draft
+enumerated `draw_*` calls and missed every mark handed to `Board`; cycle 154 enumerated
+tests naming the corpus and missed the budget system. The shape is identical every time:
+the enumeration was over HOW rather than over WHAT, and the set was chosen from the
+mechanism already in mind — which is why each felt exhaustive. `kanban-idea-pass` rule 2
+already forbids this and was read in two of the three cycles that broke it. The tell it
+lacks: **if you can name the API you searched for, you have probably searched for an
+implementation.**
+
+**A hand-maintained table cannot be checked into correctness; it has to be made
+derivable.** The cue-legend ledger drifted twice in the same direction — and cycle 151
+read the block while shipping the second hint that falsified it. Correcting it a third
+time would have bought one cycle. What made it checkable was `Hud.HINT_CARDS` gaining a
+`grammar_row` key: a link from a hint to the row it teaches that **did not exist anywhere
+in the codebase**. For every remaining table here the question is not "is it right" but
+"what link is missing that would let something else say so".
+
+Step 5 sharpened the restore rule: **restore from the copy you made, never with
+`git checkout --`.** The rule was written about `.bak` files; this cycle reached for the
+blunter instrument, and `checkout` put the mutated span back while silently reverting an
+unrelated correction made to the same file earlier in the cycle. `checkout` restores the
+FILE, and the file is not what you mutated.
+
+**Nothing player-visible shipped, and that is worth stating rather than glossing.** Both
+items were checks: a de-duplicated width sweep and a new gating checker (`check_all` 21 →
+22). The cycle also surfaced no new player-facing item, so the refill rule added last
+cycle got its first honest test — the intent is a queue that holds player-facing work, not
+a quota that forces inventing some. `-s1o8.3` was opened, measured at 78 references across
+three consts, and deliberately not started as a second item. Cycle 155 takes it first.
 
 ## What cycle 153 taught
 
