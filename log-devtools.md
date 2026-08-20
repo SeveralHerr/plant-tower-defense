@@ -9629,3 +9629,39 @@ is likely to be at least as productive.
     took a worktree and a lucky timestamp match; the next one may not be datable at all.
     Filed as an idea rather than a gap, because it is this project's choice and not the
     harness's.
+
+## 2026-08-20 — put the profile on the post-mortem, and found the rebinder had been lying about "text gone"
+
+- Value: **warranted**, and the finding was not the feature. The feature is three
+  sentences. What runtime and the citation tooling between them produced was a correction
+  to a number this log published one cycle ago.
+  - Expected: the score line takes the profile the way the title line already does, and
+    the only open question is width.
+  - Got: all THREE branches over-claimed rather than the one the bead named, and the
+    ribbon entry titled "The record book opens" said "the first score this garden has
+    kept" — which record book being exactly the missing word. Live:
+    `308 seeds grown — a new best on Harsh` at 640x26.
+  - Found: **`citation_rebind.py` compared lines with `rstrip()` only**, while
+    `citation_check --snapshot` records each line with its LEADING indentation already
+    removed. Every tab-indented GDScript line therefore reported as `TEXT IS GONE` —
+    text sitting in the file, findable by grep, one indent away. On this cycle's own six
+    drifted citations: `rstrip` gave 4 gone / 1 rebindable, `strip` gives 0 gone / 5
+    rebindable. **Cycle 176's headline "54 text gone" is inflated by an unknown amount**,
+    and the bead scoped around it now carries a correction note.
+  - Cheaper: for the feature, the headless test — and it is permanent. For the bug,
+    nothing: it only surfaced because I distrusted a "text gone" verdict enough to grep
+    for the string myself.
+
+- Gap: **no new gap.** Two notes.
+  - **`cmd end_run` can never reach the first-record branch.** It leaves `previous_best`
+    at its `-1` default, so a synthetic run always takes the new-best sentence. Nothing is
+    wrong with the verb — it is classified `DEFAULTED` precisely to record that its setters
+    leave a partial state — but it means one of three branches on this card is
+    headless-only, and that is worth knowing before trying to photograph it. Filed as an
+    idea: each DEFAULTED verb reaches some branches and not others and nobody has written
+    down which.
+  - **A tool's own verdict is evidence, not proof, and "gone" is the verdict most worth
+    distrusting.** `TEXT IS GONE` reads as final. It took one `grep -n` to disprove it
+    four times over. The general form for this log: when a tool reports an ABSENCE, the
+    cheap check is to look for the thing yourself, because absence is the verdict a
+    comparison bug produces most readily.

@@ -142,6 +142,20 @@ clean on a plain run.
 Follow `.claude/skills/kanban-idea-pass/SKILL.md`, which holds the five citation rules and
 is not optional reading. Taste needs no citation; a claim about the code does. → `why.md` §3
 
+**Most drift is mechanical, and `tools/citation_rebind.py` does it.** The snapshot stores
+the exact TEXT each citation landed on, so re-pointing is "find this text" rather than a
+guess; a target whose text now appears zero times or more than once is reported for a
+human instead. Dry run by default:
+
+```bash
+python tools/citation_check.py --beads --against .devtools/citations.json > .devtools/drift.txt
+python tools/citation_rebind.py --against .devtools/citations.json --report .devtools/drift.txt
+```
+
+**Verify it with `citation_check`'s resolved count, not with its own.** It reported "24
+written" on a run that had just corrupted a citation, and "1 written" on a run that should
+have written 34 — a fixer that quietly does almost nothing reads exactly like progress.
+
 **If `--against` reports more than ten drifted, the relocation is a WORK ITEM, not part of
 this step.** Fix what your own entries cite, file the rest as a bead, and say in the close
 how many you left. Cycles 139 and 140 each absorbed it silently and each spent something

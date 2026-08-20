@@ -1,4 +1,4 @@
-# Cycle 176
+# Cycle 177
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,36 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 177 taught
+
+**The post-mortem now says which garden it is reporting on**, and all THREE branches needed
+it rather than the one the bead named. "This garden's first record" on a first Harsh run
+denies a campaign record the garden may already hold; "a new best" is the same claim one
+size smaller; and the ribbon entry titled *The record book opens* said "the first score
+this garden has kept" — which record book being exactly the missing word. Live:
+`308 seeds grown — a new best on Harsh`.
+
+**The rebinder had been lying about "text gone", and it took one `grep` to catch.**
+`citation_rebind.py` compared lines with `rstrip()` while `citation_check --snapshot`
+stores each line with its LEADING indentation already removed — so every tab-indented
+GDScript line reported as absent. On this cycle's own six drifted citations: `rstrip` gave
+4 gone / 1 rebindable, `strip` gives **0 gone / 5 rebindable**. Cycle 176's headline "54
+text gone" is inflated by an unknown amount and the bead scoped around it now says so.
+
+**An ABSENCE is the verdict a comparison bug produces most readily, and the one that reads
+as most final.** "Not found" looks like a fact about the world; it is a fact about the
+comparison. The cheap disconfirmation here was grepping for the string myself, and it
+worked four times running.
+
+**`cmd end_run` can never reach the first-record branch** — it leaves `previous_best` at
+its `-1` default, so a synthetic run always takes the new-best sentence. The verb is
+classified DEFAULTED for exactly that reason, but which branches each such verb cannot
+reach is written down nowhere.
+
+Step 5 pointed step 3 at the rebinder, with the warning that matters: **verify it with
+`citation_check`'s resolved count, not with its own.** It has reported "24 written" on a
+run that corrupted a citation and "1 written" on a run that should have written 34.
 
 ## What cycle 176 taught
 

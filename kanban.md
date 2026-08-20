@@ -466,7 +466,7 @@ have rebuilt the same trap.
 
 - **Two screens in this game cannot be looked at without playing it, and one of them got
   changed unseen.** The run summary needs a FINISHED run to render and no entry point
-  produces one, so its button was renamed this cycle (`game/run_summary.gd:1291`) on
+  produces one, so its button was renamed this cycle (`game/run_summary.gd:1322`) on
   reasoning alone — inside a bead whose entire method is looking. `entry_points` reaches
   the title, the notebook, the keys and options screens and a pause; it cannot reach an
   ENDING. **The ask: a route to the states that need a game to have happened, not just a
@@ -534,7 +534,7 @@ have rebuilt the same trap.
 
 - **`LIVES - lives` was correct for a hundred and fifty cycles and wrong the moment a
   second profile existed.** The post-mortem computed beds lost against `Game.LIVES` and
-  the card's denominator read the same const (`game/run_summary.gd:591` is the repaired
+  the card's denominator read the same const (`game/run_summary.gd:610` is the repaired
   line), which is fine while every run starts with ten and silently wrong the instant one
   does not — on `gentle` a player losing four of fifteen would have been told four of ten.
   Nothing was broken when it was written; the *premise* changed underneath it.
@@ -5288,7 +5288,7 @@ Three findings kept out here rather than buried in a log:
 ### New in cycle 110 — grown from the Barrier Bramble (`plant-tower-defense-3mhn`)
 
 - **The word "held" now means two different things, and the file that owns it argued
-  itself into the collision.** `game/run_summary.gd:468` is the row's heading and `:838-851` (`_stop_cell_text`) the text under it, printing
+  itself into the collision.** `game/run_summary.gd:487` is the row's heading and `:838-851` (`_stop_cell_text`) the text under it, printing
   "Where you held them", and `:830-837` spends a paragraph choosing that word over
   "stopped" on exactly this reasoning: *"'Held' is true of a kill and false of an escape,
   so it cannot be read off the tint at all."* The number behind it is `stop_cell_stops` —
@@ -6563,3 +6563,36 @@ Three findings kept out here rather than buried in a log:
   writes should be verified by something it does not control**, and the cheap version here
   was already sitting in the repo. Worth remembering the next time a fixer is written: the
   question is not "what does it report" but "what independent count must not move".
+
+### New in cycle 177 — the difficulty is on every screen that reports a number, and on no screen that doesn't
+
+- **The loop opened in cycle 161 is closed, and the shape of the answer is worth naming.**
+  `grep -c difficulty` across the screens: `title_screen.gd` 30, `run_summary.gd` 7,
+  `pause_screen.gd` 5, **`hud.gd` 0**. That zero is the interesting number and it is not an
+  omission. The rule the four cycles arrived at without stating it: **a surface that
+  reports a NUMBER says which profile produced it** (the title's record line, the
+  post-mortem's score line and its record ribbon), and **a surface that reports a STATE
+  says it once where the player can go look** (the pause card). The HUD reports state
+  continuously and has no room — its message row has been the binding width constraint
+  three separate cycles — so it says nothing, deliberately. Recorded because the next
+  person adding a screen will have to make this call and there is now an answer.
+
+- **`cmd end_run` can never reach the first-record branch, and that is the DEFAULTED
+  classification earning its name.** The verb leaves `previous_best` at its `-1` default,
+  so `RunSummary.first_record()` (`game/run_summary.gd:290`) is false for every synthetic
+  run and the card always takes the new-best sentence. Nothing is wrong with the verb —
+  `devtools_ext/commands.gd` is classified `DEFAULTED` in `test_selftest.gd` precisely to
+  record that its setters leave a partial state. **The general shape is worth a sweep**:
+  each DEFAULTED verb reaches some branches of the screen it drives and not others, and
+  nobody has written down which. The cheap version is one line per verb in that
+  classification saying what it cannot reach, and the denominator is small — the
+  classification already lists them.
+
+- **No width budget stands behind the post-mortem's subheading.** The pause heading got one
+  in cycle 174 because it tripled in width on a fixed card; this line was already a
+  sentence on a 640px card, so cycle 177 swept it over `Game.DIFFICULTY_ORDER` for CONTENT
+  and never measured it. That is the right call today and it is a trap tomorrow: the two
+  sibling lines now differ in whether anything catches a lengthening edit.
+  `test_the_pause_heading_names_the_profile_and_still_fits_the_card` is the worked example
+  if it ever needs one, and the honest first move is to ask what the longest realistic
+  addition is rather than adding a test because the neighbour has one.

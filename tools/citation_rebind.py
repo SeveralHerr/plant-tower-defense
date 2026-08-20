@@ -69,12 +69,18 @@ def load_drifts(text: str) -> list[dict]:
 def find_text(haystack: str, needle: str) -> list[int]:
     """1-based start lines where `needle`'s lines appear consecutively in `haystack`.
 
-    Compared line by line with trailing whitespace stripped, because the snapshot and the
-    file can disagree about a trailing space without disagreeing about anything a reader
-    would notice.
+    Compared line by line with BOTH ends stripped, and the leading half is not cosmetic:
+    citation_check --snapshot records each line with its indentation already REMOVED, so
+    a tab-indented GDScript line never matches the file's own copy of itself. Comparing
+    with rstrip alone reported those as TEXT IS GONE -- text sitting in the file,
+    findable by grep, one indent away. Cycle 176 counted 54 such citations and sent them
+    all for a human read; an unknown number were only indented.
+
+    The looser match cannot produce a wrong rebind by itself: two lines differing only in
+    indentation both match, and a multi-match is refused rather than resolved.
     """
-    hay = [ln.rstrip() for ln in haystack.split("\n")]
-    ned = [ln.rstrip() for ln in needle.split("\n")]
+    hay = [ln.strip() for ln in haystack.split("\n")]
+    ned = [ln.strip() for ln in needle.split("\n")]
     if not ned or all(not ln for ln in ned):
         return []
     hits = []
