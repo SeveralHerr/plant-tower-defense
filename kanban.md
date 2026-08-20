@@ -6454,3 +6454,38 @@ Three findings kept out here rather than buried in a log:
   rather than as a reach miss, is **not**: 0 upstream against 17 local. Only the second half
   needs filing, and anyone reading "this file has local edits" as one fact would have filed
   both or neither.
+
+### New in cycle 174 — the post-mortem still does not say which garden it is reporting
+
+- **The run summary is the one surface left that never names the difficulty.** Cycle 174
+  put it on the title screen (`game/title_screen.gd:770` refreshes the record line when
+  the picker moves) and on the pause card (`game/pause_screen.gd:263`), and
+  `grep -rn "difficulty" game/run_summary.gd` still returns **zero**. That is the surface
+  where it matters most for a different reason from the other two: the post-mortem is
+  what a player looks at when deciding whether the run went well, and "you grew 4138
+  seeds" answers that differently on Gentle than on Harsh. It is also the screen most
+  likely to be screenshotted and shown to somebody, at which point the number travels
+  without its context. **Cheap now** — `TitleScreen.difficulty_label` already exists and
+  the pause card's heading is the worked example of the same one-line shape.
+
+- **A defaulted parameter that reads mutable global state is a hidden coupling, and it
+  cost nine tests.** `RunConfig.best_for(for_endless, difficulty_name := &"")`
+  (`game/run_config.gd:717`) falls back to the live `RunConfig.difficulty` when the caller
+  names none — which is exactly right for the call sites and means **every existing
+  caller's behaviour now depends on a global the caller never mentions**. The first run of
+  cycle 174's new test left `difficulty` on Gentle and nine unrelated tests failed,
+  because `_stash_run_config` restored `endless` and `save_path` and not this. The fix was
+  the stash, not the signature. **The shape is worth a sweep**: any defaulted parameter
+  whose default is a global read has the same property, and the tell is that the default
+  is an expression rather than a literal. `grep -nE "func .*:= *[A-Z][A-Za-z]*\." game/*.gd`
+  is the starting denominator, and if it is small the answer is to read them rather than
+  build anything.
+
+- **The bead's acceptance was met on paper by work that did not meet it.** `-1hgx` asked
+  that "a player can find out which difficulty a run is on **without leaving it**". The
+  first commit named the profile on the title screen and I read that as satisfying the
+  criterion — the title screen is where the record line lives, so it felt like the same
+  surface. It is not: the words say *without leaving the run*. Caught by re-reading the
+  acceptance against **what had shipped** rather than against what had been built, which
+  is a different act and evidently not an automatic one. No citation, because this is a
+  claim about a process rather than about the code.

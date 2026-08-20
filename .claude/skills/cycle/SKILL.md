@@ -68,8 +68,15 @@ has been used. → `why.md` §0
 cycle number and what the last cycle learned; the beads are the queue and there is nothing
 to transcribe.
 
-**2. Do the items one at a time: confirm → claim → implement → `/verify` → commit.** One
-commit per item, never batched. Follow `.claude/skills/verify-bd-item/SKILL.md`.
+**2. Do the items one at a time: confirm → claim → implement → `/verify` → commit → close
+against the ACCEPTANCE.** One commit per item, never batched. Follow
+`.claude/skills/verify-bd-item/SKILL.md`.
+
+The last step is new and is a distinct act: re-read the acceptance criteria **against what
+shipped**, not against what you built. Those feel identical and are not. Cycle 174's bead
+asked that a player "can find out which difficulty a run is on *without leaving it*"; the
+work named the profile on the title screen, which is where the record line lives, and that
+read as satisfying it right up until the words were read again. It took a second commit.
 
 - **If the bead names a CATEGORY, enumerate the category from the code.** "every tip",
   "all the cues", "each of the X" — the bead's own list is a snapshot of what its author

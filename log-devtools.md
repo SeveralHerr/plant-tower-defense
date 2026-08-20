@@ -9517,3 +9517,37 @@ is likely to be at least as productive.
     (`devtools.py --project . harness-version --client`). `-p .` after it is an
     `unrecognized arguments` error. One retry, no consequence, noted so the next reader of
     this log does not spend it again.
+
+## 2026-08-20 — made the record know which difficulty earned it
+
+- Value: **warranted**, and unusually clearly: the live pass caught two defects the whole
+  headless suite could not, and both were player-visible.
+  - Expected: the per-difficulty records would be the hard part and the title line a
+    one-line change.
+  - Got: the records were mechanical. The line was where the bugs were. Pressing the
+    picker twice left the label reading `on Standard` both times — `_cycle_difficulty`
+    updated the difficulty and start buttons and not the record label — and the empty case
+    read `No garden on record yet on Harsh`, which is the same " on X" clause the record
+    sentence uses, with a spare "on" in a sentence that had no room for it.
+  - Found: those two, plus the migration running on the developer's REAL v8 file during
+    the windowed pass — `v8 -> v9`, `4138`/`5008` intact, a `d0` line. That is the
+    migration exercised on real data, which no fixture can be.
+  - Cheaper: nothing, for either. The suite asserts the RENDERER and both bugs were in
+    callers that never re-rendered or in a sentence only a reader can judge. The headless
+    width tests are permanent and cover the fit; they cannot cover the reading.
+
+- Gap: **no new gap this turn.** Three notes, all about the harness being right.
+  - **The bridge answering while PAUSED is what made the pause card checkable at all.**
+    `findings` ran clean with `TREE IS PAUSED`, and the heading was read and measured in
+    that state. `CLAUDE.md` calls this out and it is the first cycle here that depended on
+    it.
+  - **Cycle 172's headless-save guard did its job on the first format bump since it
+    landed.** Every headless run left the real `user://highscore.save` alone; only the
+    windowed launch migrated it. Before that guard, the v8 → v9 bump would have been
+    performed by whichever `run_tests.py` ran first — which is precisely the bug that
+    filed `-58u7`, arriving on schedule.
+  - **`suite_reach_check`'s two-numbers-together design paid.** The new test named
+    `card_width` and the baseline test went red; `--baseline-write` rewrites the whole
+    file, so acting on the `PROGRESS:` line alone can bank a regression in the same
+    stroke. `0 NEW` beside it is what made re-banking safe, and it is printed there
+    deliberately.

@@ -1,4 +1,4 @@
-# Cycle 173
+# Cycle 174
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,40 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 174 taught
+
+**A high score now knows which difficulty earned it.** Gentle gives 15 lives, 26s of prep
+and 40 seeds; Harsh gives 5, 9.0 and 15. Both used to file into the same slot, so beating
+your own record by picking an easier setting was indistinguishable from beating it by
+playing better — a correctness question about the score, not a presentation question about
+a label. Save v9 makes lines 2 and 3 mean *Standard's* records specifically and adds a
+count-prefixed line for the rest, so **a v8 file migrates by keeping its numbers exactly
+where they are** and gaining a precise meaning.
+
+**The live pass caught two player-visible defects the whole headless suite could not, and
+both were in the same twelve lines.** `_cycle_difficulty` updated the difficulty and start
+buttons and not the record label, so pressing the picker twice left it reading "on
+Standard" both times. And the empty case read "No garden on record yet on Harsh" — the
+same `" on X"` clause the record sentence uses, in a sentence with no room for a second
+"on". The suite passed throughout and was right to: it asserts the renderer, and the bugs
+were in a caller that never re-rendered and in a sentence only a reader can judge.
+
+**The new test broke nine of its neighbours before it broke anything real.**
+`best_for()` now reads `RunConfig.difficulty` when a caller names none, and
+`_stash_run_config` restored `endless` and `save_path` and not that. A state leak, not a
+logic error — and a reminder that **a defaulted parameter whose default is a global read
+makes every existing caller depend on something it never mentions.**
+
+**Cycle 172's headless-save guard earned itself on the first format bump since it landed.**
+Every headless run left the real save alone; only the windowed launch migrated it, v8 → v9
+with both scores intact. Without that guard the bump would have been performed by whichever
+`run_tests.py` ran first — which is exactly the bug that filed `-58u7`, arriving on
+schedule.
+
+Step 5 completed the sequence in step 2: **close against the ACCEPTANCE.** Re-read the
+criteria against what SHIPPED, not against what you built. Those feel identical; this bead
+took two commits because they are not.
 
 ## What cycle 173 taught
 
@@ -2503,7 +2537,7 @@ tuning, so that lane waited.
 
 ## Waiting on the user
 
-**79 commits are held locally and unpushed, and this is the item to raise first.** Every
+**82 commits are held locally and unpushed, and this is the item to raise first.** Every
 push to `origin/main` auto-deploys to itch.io (`severalherr/pest-control:html5`) via
 `.github/workflows/deploy-to-itchio.yml`, with no paths filter — so pushing is publishing,
 and the loop commits once per bd item rather than once per release. The held work is a
