@@ -275,6 +275,21 @@ def main(argv=None):
           "and its exit code trusted. It compiles nothing: only import_check.py and "
           "lint_project.gd do that, and neither is parallel-safe, which is why neither "
           "runs here.")
+    print("NOT COVERED, and this is the SHAPE of the blind spot rather than another "
+          "item in it: every gate here asks about NAMES, and none asks whether a CALL "
+          "is well-formed. name_check resolves types, class_names, autoloads, preload "
+          "paths and method names inside string literals; suite_reach_check counts "
+          "whether a symbol is NAMED by a test; gate_aim_check counts whether a colour "
+          "is NAMED in an assertion. So `x.no_such_method()` on a statically typed `x` "
+          "is clean HERE, clean to import_check, and clean to lint_project.gd at 0 "
+          "errors and 0 warnings -- measured in cycle 160 with three mutations, on a "
+          "project type, on an engine type with the API index live, and inside game/ to "
+          "rule out a scan root. It fails at runtime and nowhere else. Enabling Godot's "
+          "own gdscript/warnings/unsafe_method_access in project.godot does NOT close "
+          "it: lint's compile check is load()-based (tools/lint_project.gd:693) and a "
+          "script with that call still loads and instantiates, so the warning never "
+          "reaches the exit code. Recorded so the cheap fix is not re-tried. "
+          "plant-tower-defense-zlm2.")
 
     if found or unclassified:
         return 1

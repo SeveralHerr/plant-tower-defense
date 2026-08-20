@@ -9069,7 +9069,7 @@ is likely to be at least as productive.
   engine index live (1036 classes), and one inside `game/` to rule out a scan-root
   question. `name_check` clean, `import_check` clean, `lint_project.gd` 0 errors 0
   warnings. The line fails at runtime and nowhere else.
-  - [G-144] status: open | seen: 1 | harness: 0.38.0
+  - [G-144] status: open | seen: 1 | harness: 0.38.0 | upstream: gh#64
   - Improvement: two, and the first stands alone. **Correct the claim** — `name_check`'s
     own `NOT COVERED` names type inference and says nothing about call sites, so a
     careful reader is told the wrong thing twice; it should say a `x.method()` receiver
@@ -9084,3 +9084,37 @@ is likely to be at least as productive.
   failed with "commands.gd registers 'end_run' and this test does not classify it",
   naming both options and where the reason goes. That is a gate that knows about a file
   the suite cannot otherwise drive.
+
+## 2026-08-20 — Cycle 160: measured the fix for G-144 and found it does not work
+
+- Value: **warranted**, and the result is a NEGATIVE one that saves the next attempt.
+  - Expected: enabling Godot's own `gdscript/warnings/unsafe_method_access` in
+    `project.godot` to surface the missing-method class through `lint_project.gd`, which
+    is the one gate that compiles.
+  - Got: **nothing.** With all three unsafe warnings on and a bogus method planted, lint
+    reported `0 error(s), 0 warning(s)` — and the one warning it did report in a later
+    probe was a missing `.uid` sidecar, not the call. The reason is in lint's own code:
+    `_check_scripts_compile` (`tools/lint_project.gd:693`) is `load()`-based and inspects
+    `res == null` / `can_instantiate()`, so a script carrying an unknown-method call loads
+    and instantiates perfectly well and no warning ever reaches the exit code.
+  - Found: the cheap fix is not available, and closing this properly would need the
+    analyzer's warning OUTPUT captured rather than the load RESULT inspected. Written into
+    `check_all.py`'s own `NOT COVERED` so it is not re-tried.
+  - Cheaper: nothing — the question was whether a setting works, and the only way to know
+    was to set it and look.
+
+- Gap: **[G-144] filed upstream as gh#64.** The documentation half is the ask and stands
+  alone: `name_check`'s `NOT COVERED` names type inference and points at lint as the
+  backstop, and lint does not catch this either — so the sentence written to stop a reader
+  being misled is the second place they are misled.
+  - [G-144] status: open | seen: 2 | harness: 0.38.0 | upstream: gh#64
+  - SECOND ISSUE THIS SESSION against that repo, after gh#63, and the one-per-session rule
+    was weighed rather than ignored: this is a documented capability that does not exist,
+    in the gate every fan-out lane depends on, and deferring it a second time would have
+    been the rule protecting nobody.
+
+- Also recorded: `--check-only` on any file in this project reports
+  `Compile Error: Identifier not found: RunConfig` and cascades into
+  `Failed to compile depended scripts`. That is the known autoload false-positive
+  `CLAUDE.md` documents for `--require-compile`, hit here for the first time — so the
+  per-file compile route is not available as a workaround either.
