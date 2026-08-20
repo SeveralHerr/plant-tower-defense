@@ -218,6 +218,41 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 148 — a wall that was two speed bumps and a finished page
+
+- **"Full" and "complete" look identical from outside and mean opposite things.** The cue
+  legend is at 294 of 300px and has been called a hard ceiling in three separate beads. It
+  is also **out of things it should say**: the audit block above it (`game/cue_legend.gd:53`)
+  dispositions every untaught grammar row by name, and the strongest case, row 6, is refused
+  because a legend row teaches it *worst* — four instances meaning four different things on
+  a row the grammar defines by CHANNEL. So the page is finished, not blocked, and every
+  bead that treated its fullness as the obstacle was measuring the wrong thing. **The
+  general test: before treating a limit as a constraint, ask what is queued behind it.** A
+  full container with an empty queue is not a bottleneck, and this project has spent three
+  cycles' worth of bead text on one.
+
+- **A hand-maintained TAUGHT/untaught table drifted, in the same week another one did.**
+  `cue_legend.gd`'s ledger listed row 4 (small solid ring) as untaught, two cycles after
+  cycle 145's sixth hint taught it — and cycle 145's own finding was a notebook card
+  teaching a rule the game had dropped. Two tables, same class, nothing checking either
+  against the thing it describes. `plant-tower-defense-snhb` covers the cards;
+  **the ledger has no equivalent and is arguably easier**, because it is a mapping from
+  grammar row to teaching surface and both ends are enumerable — `RunConfig.HINTS`,
+  `CueLegend.ROWS`, and the grammar rows in `OVERLAY_GRAMMAR.md`. A checker could assert
+  that every row marked TAUGHT names a surface that exists and every untaught one has a
+  verdict beneath it.
+
+- **The cheapest teaching has no ceiling and this game has been using it without saying so.**
+  Cycles 141, 143 and 147 shipped three cues — the pest recoil, the Chomp's champ, the wilt
+  — and none spent a hint, a legend row or a card. Motion is ICONIC where a mark is
+  ARBITRARY: a plant leaning means "in trouble" to someone who has never opened the
+  notebook, and `cue_legend.gd`'s own hatch verdict makes the same argument from the other
+  side ("placing the plant IS the lesson"). **That is now written down as the first thing to
+  try**, ahead of any budget. Worth noticing what it implies for the untaught marks that
+  remain: rows 6, 8, 10 and 11 are all DRAWN marks, and the reason they are hard to teach is
+  the reason they needed teaching in the first place. A future cue that can be motion should
+  be motion.
+
 ### New in cycle 147 — a cue that turned out to be about recovery, not death
 
 - **The wilt is mostly not a death warning, and the arithmetic says so before any playtest
@@ -484,7 +519,7 @@ have rebuilt the same trap.
 
 - **The notebook's HINTS page has its own 300px ceiling, and the whole repo only knows
   about the legend's.** The legend page being full is this project's most-cited budget —
-  `game/cue_legend.gd:102` prices the seventh row at 340px against 300 and three
+  `game/cue_legend.gd:104` prices the seventh row at 340px against 300 and three
   separate beads turn on it. The hints page has the *same* matte
   (`NotebookScreen.DRAWING_BOX`, `game/notebook_screen.gd:59`, 360x300) and its own
   independent capacity model: `hints_capacity()` (`game/notebook_screen.gd:384`) derives
@@ -595,10 +630,10 @@ have rebuilt the same trap.
 
 - **The cue vocabulary has outgrown the one surface that teaches it, and the overflow is
   now measured.** PLAYER-FACING. `game/OVERLAY_GRAMMAR.md:67` says "Six of the eleven"
-  cues are taught, on `CueLegend.ROWS` — six rows, `game/cue_legend.gd:191`. That page is
+  cues are taught, on `CueLegend.ROWS` — six rows, `game/cue_legend.gd:255`. That page is
   full, and not by opinion: the same file's cycle-109 note prices a seventh row at 340 px
   against the 300 px the page has, and `CueLegend.rows_that_fit`
-  (`game/cue_legend.gd:264`) is the function that says so. Cycle 138 spent the fifth
+  (`game/cue_legend.gd:328`) is the function that says so. Cycle 138 spent the fifth
   one-shot hint on ONE of the untaught cues because a legend row was unavailable, which
   works and does not scale — there are four more untaught and `RunConfig.HINTS`
   (`game/run_config.gd:260`) is not a legend. **The notebook is already a PAGER**

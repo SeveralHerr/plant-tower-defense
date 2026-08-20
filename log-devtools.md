@@ -8649,3 +8649,31 @@ status rather than rewriting the entries that recorded these as open.
 
 - Gap: **no new gaps this turn.** `launch --snapshot-userstate` again restored 1 file; the
   reflex is holding four cycles on.
+
+## 2026-08-20 — the three teaching budgets, decided (plant-tower-defense-4tt4)
+
+- Value: **warranted**, and no game ran. Tier (b): the only production change is a comment
+  block, so there was no runtime claim available to make — and saying that plainly is the
+  point of the tier table.
+  - Expected: nothing from runtime, predicted before Phase 1 and true. The risk in this
+    bead was never execution, it was ARITHMETIC — whether the three budgets are really
+    three ceilings — and that is answered by reading the functions.
+  - Got: **two of the three are not budgets.** `hint_pages_needed()` computes pages from
+    the list, so the notebook hints page is a pager with a one-row cost and a test that
+    fails until the row is there. And the legend page is COMPLETE rather than full: the
+    audit block already dispositions every untaught grammar row by name, and the strongest
+    case is refused because a legend row teaches it *worst*, not for want of room.
+  - Found: that, plus a stale ledger — `cue_legend.gd` listed row 4 as untaught two cycles
+    after the sixth hint taught it. Second hand-maintained teaching table to drift in four
+    cycles, after cycle 145's notebook card.
+  - Cheaper: nothing cheaper ran. Reading `hint_pages_needed` and the audit block IS the
+    work, and it is what turned "raise one of three" into "raise none of them".
+
+- **A decision bead's real deliverable is where the decision is written, not that it was
+  made.** This one went into `cue_legend.gd`'s audit block rather than only into the close
+  reason, because that block is what the next person pricing a teaching surface opens —
+  and its own worked example is the lane-pressure hatch, which went untaught because "the
+  decision had already been made by the layout, before anyone asked". A close reason nobody
+  greps would have repeated that exactly.
+
+- Gap: **no new gaps this turn.** No launch, no bridge.

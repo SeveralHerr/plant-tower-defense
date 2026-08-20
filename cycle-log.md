@@ -1,4 +1,4 @@
-# Cycle 147
+# Cycle 148
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,38 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 148 taught
+
+**"Full" and "complete" look identical from outside and mean opposite things.** The cue
+legend is at 294 of 300px and three separate beads treated that as the wall blocking the
+next cue. It is also out of things it *should* say: the audit block above it dispositions
+every untaught grammar row by name, and the strongest case is refused because a legend row
+teaches it WORST — four instances, four meanings, one channel — not for want of room. **Ask
+what is queued behind a limit before treating it as a constraint.** A full container with an
+empty queue is not a bottleneck, and this project spent three cycles' worth of bead text on
+one.
+
+**Two of the three "budgets" were not budgets.** `hint_pages_needed()` computes pages from
+the list, so the notebook hints page is a pager — a seventh hint costs one row in `PAGES`
+with a test that fails until it is there. The bead counted a speed bump with a working alarm
+as a wall. Only the hint list is a real ceiling, and cycle 145 already showed even that
+binds on DELIVERY rather than slots.
+
+**A decision bead's deliverable is WHERE the decision is written.** This one went into
+`cue_legend.gd`'s audit block, not just the close reason, because that block is what the
+next person pricing a teaching surface opens — and its own worked example is the
+lane-pressure hatch, which went untaught because "the decision had already been made by the
+layout, before anyone asked". A close reason nobody greps would have repeated that exactly.
+
+**Second hand-maintained teaching table to drift in four cycles.** The ledger listed row 4
+as untaught two cycles after the sixth hint taught it; cycle 145's was a notebook card
+teaching a rule the game had dropped. Both ends of the ledger are enumerable, unlike the
+cards, so it is the easier one to check — filed.
+
+**The cheapest teaching has no ceiling and the game was already using it.** Three cues
+shipped in cycles 141, 143 and 147 and none spent a word, because motion is iconic where a
+mark is arbitrary. Now written down as the first thing to try, ahead of any budget.
 
 ## What cycle 147 taught
 
