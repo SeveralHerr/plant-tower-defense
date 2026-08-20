@@ -96,6 +96,13 @@ SELF = "check_all.py"
 RUNNERS = {SELF, "survey_all.py"}
 
 NOT_A_CHECKER = {
+    "citation_rebind.py": "a FIXER, not a check: it re-points drifted citations at the "
+                          "line their text moved to, and it WRITES kanban.md. It owes a "
+                          "NOT COVERED line because it is a house tool, and that line is "
+                          "exactly what marker-based discovery reads as a contract -- so "
+                          "it was run as a checker on its first pass and exited 2 on its "
+                          "own argparse, because it needs --against and --report. A tool "
+                          "that cannot run without arguments can never be a checker here",
     "repo_walk.py": "a library, not a tool: the shared directory-exclusion rule the "
                     "rooted checkers import so a nested .claude/worktrees/ checkout "
                     "cannot change their denominators. Has no main() and prints nothing",
