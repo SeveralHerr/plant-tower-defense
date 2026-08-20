@@ -4510,10 +4510,28 @@ func test_a_kernel_can_kill_on_ground_the_coverage_map_calls_unaimed() -> String
 ## fixed dt. `queue_free()` therefore never lands, which is why kernels are
 ## dropped on `is_queued_for_deletion()` and pests on `is_alive()` rather than on
 ## `is_instance_valid()`.
+## `road_corners` is the road this run walks; empty means `Board.PATH_CORNERS`, which is what
+## every caller before cycle 170 wanted and still gets by omitting it
+## (plant-tower-defense-s1o8.1). A whole-wave simulation is the only place the corpus can
+## answer "does this road PLAY", as opposed to "is it shaped legally", and it could not be
+## asked at all while this helper built its board with no road.
+##
+## A REFUSED ROAD RETURNS `road_refusal` AND NOTHING ELSE, rather than falling back to the
+## default. A caller that passes a road it believes is legal and silently gets the default
+## snake would be measuring the shipped board and reporting it as the corpus — the failure
+## would be a number that looks plausible, on the one axis where a plausible number is
+## indistinguishable from a right one. `road_refusal` is `""` on every normal return, so a
+## caller can assert on it without knowing whether it passed a road.
 func _over_promise_run(wave: int, corn_cells: Array, chomp_cells: Array,
-		corn_level: int, roll_seed: int, max_frames: int) -> Dictionary:
+		corn_level: int, roll_seed: int, max_frames: int,
+		road_corners: Array[Vector2i] = []) -> Dictionary:
 	var dt: float = 1.0 / 60.0
 	var board := Board.new()
+	if not road_corners.is_empty():
+		var refusal: String = board.set_road(road_corners)
+		if refusal != "":
+			board.free()
+			return {"road_refusal": refusal}
 	var route: PackedVector2Array = board.route()
 
 	var host := Node2D.new()
@@ -4603,6 +4621,7 @@ func _over_promise_run(wave: int, corn_cells: Array, chomp_cells: Array,
 	var escaped_unengaged_ids: Dictionary = {}
 
 	var tally: Dictionary = {
+		"road_refusal": "",
 		"covered_cells": covered_at_start, "road_cells": board.road_cells().size(),
 		"foreign_pests": foreign,
 		"spawned": 0, "winged": 0, "killed": 0, "escaped": 0, "escaped_engaged": 0,
@@ -5026,6 +5045,63 @@ func test_the_recorded_gardens_still_have_the_property_they_claim() -> String:
 ## outright and gets the same 66% off the same predicate: the "in reach and did
 ## not act" reading is loud everywhere and quiet nowhere, so nothing can be built
 ## on it. That is why this issue closes with a number rather than a readout.
+## The driven wave takes a ROAD now, and the parameter is proved by USE rather than by
+## existing (plant-tower-defense-s1o8.1).
+##
+## `_over_promise_run` built its board with no road until cycle 170, which meant the one
+## place in the suite that runs a whole wave over real plants, real kernels and the real
+## schedule could only ever run it over the shipped snake. A road corpus that cannot be
+## driven answers "is this shaped legally" and never "does this PLAY", and the second
+## question is the one a player would notice.
+##
+## Two things asserted, and the second is the one that matters: a DIFFERENT road produces
+## a different road-cell count, so the parameter is reaching the board rather than being
+## accepted and dropped. A test that only checked the refusal would pass on a helper that
+## validated the road and then built the default anyway — which is precisely the failure
+## the helper's own header says would be indistinguishable from a right answer.
+func test_a_driven_wave_can_be_run_over_a_road_that_is_not_the_shipped_one() -> String:
+	# A straight run across row 4. Legal, and nothing like the default's switchback.
+	var straight: Array[Vector2i] = [Vector2i(0, 4), Vector2i(13, 4)]
+	var default_run: Dictionary = await _over_promise_run(2, [], [], 1, 4242, 600)
+	var err: String = _T.assert_eq(String(default_run.get("road_refusal", "missing")), "",
+		"a run that passes no road is not refused, and reports so rather than omitting it")
+	if err == "":
+		err = _T.assert_gt(int(default_run.get("road_cells", 0)), 0,
+			"the default run walked a real road")
+	var straight_run: Dictionary = {}
+	if err == "":
+		straight_run = await _over_promise_run(2, [], [], 1, 4242, 600, straight)
+		err = _T.assert_eq(String(straight_run.get("road_refusal", "missing")), "",
+			"a legal non-default road is accepted by the driven wave")
+	if err == "":
+		# THE assertion. Same seed, same garden, same wave — only the road differs, so a
+		# difference here can only have come from the road reaching the board.
+		err = _T.assert_true(
+			int(straight_run.get("road_cells", -1)) != int(default_run.get("road_cells", -2)),
+			("the straight road walks a different number of cells from the default "
+				+ "(%d vs %d) -- equal counts here would mean the road was validated and "
+				+ "then thrown away") % [int(straight_run.get("road_cells", -1)),
+					int(default_run.get("road_cells", -2))])
+	if err == "":
+		err = _T.assert_eq(int(straight_run.get("road_cells", -1)), 14,
+			"and it is the 14 cells a full row of a 14-wide board implies")
+	# The guard gates: a diagonal segment is the road that would HANG `_build_path`, and
+	# the helper must refuse it rather than quietly walking the default.
+	if err == "":
+		var diagonal: Array[Vector2i] = [Vector2i(0, 0), Vector2i(5, 5)]
+		var refused: Dictionary = await _over_promise_run(2, [], [], 1, 4242, 600, diagonal)
+		err = _T.assert_true(String(refused.get("road_refusal", "")).contains("diagonal"),
+			("a diagonal road is refused BY NAME rather than run, since walking it is an "
+				+ "infinite loop: got '%s'") % String(refused.get("road_refusal", "")))
+	if err == "":
+		err = _T.assert_eq(int(
+			(await _over_promise_run(2, [], [], 1, 4242, 600,
+				[Vector2i(0, 0), Vector2i(5, 5)])).get("road_cells", -1)), -1,
+			"and a refused run carries no measurements at all, so nothing downstream can "
+				+ "read a zero as a result")
+	return err
+
+
 func test_the_coverage_map_keeps_its_promise_to_a_pest_that_never_leaves_covered_ground() -> String:
 	# Six waves past the fixed table, written as an offset rather than as the
 	# literal 14 it used to be. The table grew from eight waves to sixteen

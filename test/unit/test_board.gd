@@ -1321,6 +1321,207 @@ func test_every_road_in_the_corpus_walks_the_length_its_corners_imply() -> Strin
 	return err
 
 
+## DEAD GROUND AS A PROPERTY, RATHER THAN AS 11 AND 36
+## (plant-tower-defense-s1o8.1).
+##
+## The suite recorded "11 stranded cells for a Corn Cobbler and 36 for a Chomp, of 94",
+## and those numbers were correct and were the whole problem: they describe ONE snake.
+## Cycle 53 reshaped the road at an identical length and cell count and moved the two in
+## OPPOSITE directions, so they cannot be predicted from the invariant the length/count
+## test pins — which is exactly why the bead asks for a property a bad road violates
+## instead of a second literal recorded beside the first.
+##
+## THE PROPERTY: a buildable cell is dead ground for reach R exactly when no road cell's
+## centre lies within R of it. Derived here from the road cells directly, and deliberately
+## NOT by calling `covered_road_cells` — that is the function under test, and an
+## "independent" derivation that calls it asserts only that it is deterministic. Two
+## nested sweeps and a distance, which is the definition rather than the implementation.
+##
+## Both directions, because each catches a different mistake: a cell reported dead that is
+## in range means the cue darkens ground the player can use, and a cell in range of
+## nothing that is NOT reported means the cue stays silent about a bed that can never
+## fire. The second is the one this project shipped a bug for.
+##
+## THE DEFAULT'S 11 AND 36 ARE STILL PINNED at the bottom. Deriving the rule does not
+## make the numbers uninteresting — the game was tuned on that board, and a change to the
+## walker that keeps the property while moving the count is a real change to the game.
+func test_dead_ground_is_exactly_the_cells_no_road_cell_reaches() -> String:
+	var err: String = ""
+	var reaches: Array[Dictionary] = [
+		{"who": "Corn Cobbler", "px": PlantCatalog.reach(PlantCatalog.CORN)},
+		{"who": "Chomp Flower", "px": PlantCatalog.reach(PlantCatalog.CHOMP)},
+	]
+	var checked: int = 0
+	var default_counts: Dictionary = {}
+	for road: Dictionary in _road_corpus():
+		if err != "":
+			break
+		var name: String = str(road["name"])
+		var corners: Array[Vector2i] = road["corners"]
+		var board := Board.new()
+		if name != "default":
+			err = _T.assert_eq(board.set_road(corners), "",
+				"the %s road is accepted by set_road" % name)
+			if err != "":
+				board.free()
+				return err
+		await _T.instantiate_scene(board)
+
+		# Vacuity guard, and the important one here: `dead_ground_cells` returns an EMPTY
+		# array for a board whose path has not been built, which would make every
+		# assertion below compare two empty sets and pass.
+		err = _T.assert_gt(board.path_cell_count(), 0,
+			"the %s road built its path before anything was measured" % name)
+		var road_centres: Array[Vector2] = []
+		if err == "":
+			for y: int in range(Board.ROWS):
+				for x: int in range(Board.COLS):
+					if board.is_path(Vector2i(x, y)):
+						road_centres.append(board.cell_to_world(Vector2i(x, y)))
+		for reach: Dictionary in reaches:
+			if err != "":
+				break
+			var px: float = float(reach["px"])
+			var who: String = str(reach["who"])
+			var reported: Array[Vector2i] = PlacementPreview.dead_ground_cells(board, px)
+			var derived: Array[Vector2i] = []
+			for y: int in range(Board.ROWS):
+				for x: int in range(Board.COLS):
+					var cell := Vector2i(x, y)
+					if not board.is_buildable(cell):
+						continue
+					var here: Vector2 = board.cell_to_world(cell)
+					var nearest: float = -1.0
+					for centre: Vector2 in road_centres:
+						var d: float = here.distance_to(centre)
+						if nearest < 0.0 or d < nearest:
+							nearest = d
+					if nearest > px:
+						derived.append(cell)
+			checked += 1
+			# Reported-but-reachable: the cue darkens a bed the player can use.
+			for cell: Vector2i in reported:
+				if err != "":
+					break
+				err = _T.assert_true(derived.has(cell),
+					("%s on the %s road: %s is called dead ground, but a road cell lies "
+						+ "within %.1f px of it") % [who, name, cell, px])
+			# Reachable-by-nothing but not reported: the cue stays silent about a bed
+			# that can never fire, which is the direction this project has shipped.
+			for cell: Vector2i in derived:
+				if err != "":
+					break
+				err = _T.assert_true(reported.has(cell),
+					("%s on the %s road: no road cell is within %.1f px of %s, and the "
+						+ "cue does not call it dead ground") % [who, name, px, cell])
+			if err == "" and name == "default":
+				default_counts[who] = reported.size()
+		_T.free_ui(board)
+
+	# Six sweeps, three roads by two reaches. A corpus that quietly shrank would make
+	# every assertion above vacuous while the test went on passing.
+	if err == "":
+		err = _T.assert_eq(checked, _road_corpus().size() * reaches.size(),
+			("every road in the corpus was swept at every reach (%d of %d)")
+				% [checked, _road_corpus().size() * reaches.size()])
+	# The default board's own numbers, still pinned. The property holding says the RULE
+	# is right; these say the board the game was tuned on has not moved under it.
+	if err == "":
+		err = _T.assert_eq(int(default_counts.get("Corn Cobbler", -1)), 11,
+			"the default road still strands 11 cells for a Corn Cobbler")
+	if err == "":
+		err = _T.assert_eq(int(default_counts.get("Chomp Flower", -1)), 36,
+			"and 36 for a Chomp Flower")
+	return err
+
+
+## THE SUNDEW'S COVERAGE ARITHMETIC, SAID ABOUT ANY ROAD RATHER THAN ABOUT THIS ONE
+## (plant-tower-defense-s1o8.1).
+##
+## The last of the three entries under cycle 53's "PROPERTY OF *THIS* ROAD" heading
+## (`test/unit/test_selftest.gd`): "the Sundew's coverage arithmetic: stated against how
+## much road a single placement reaches on this route". The live test that guards it picks
+## `Vector2i(4, 0)` by hand, because on THIS road that cell is grass and lies over road a
+## cob cannot reach. Neither of those is true of an arbitrary road, and nothing said so.
+##
+## THE TWO CLAIMS, separated because they fail differently:
+##
+## 1. On every road, SOMEWHERE is worth putting a patch. If the best cell on some road
+##    covers no road at all, a Sundew is unplayable on that board and the corpus has to
+##    know before a player does. This is the property.
+## 2. The best cell's coverage is NOT the same number across the corpus. That is what
+##    makes it arithmetic about a route rather than a constant nobody noticed was one —
+##    and it is the assertion that fails if a future refactor starts answering from
+##    SAP_RADIUS alone.
+##
+## Uses only `Board` and `PlacementPreview` statics: no `Game`, no unlock, no thirty
+## seeds. The live test keeps guarding the default board's specific cell, which is the
+## regression this cannot replace.
+func test_a_sundews_best_patch_is_worth_laying_on_every_road_and_not_the_same_size() -> String:
+	var err: String = ""
+	var best_by_road: Dictionary = {}
+	for road: Dictionary in _road_corpus():
+		if err != "":
+			break
+		var name: String = str(road["name"])
+		var corners: Array[Vector2i] = road["corners"]
+		var board := Board.new()
+		if name != "default":
+			err = _T.assert_eq(board.set_road(corners), "",
+				"the %s road is accepted by set_road" % name)
+			if err != "":
+				board.free()
+				return err
+		await _T.instantiate_scene(board)
+		err = _T.assert_gt(board.path_cell_count(), 0,
+			"the %s road built its path before anything was measured" % name)
+		var best: int = 0
+		var best_cell := Vector2i(-1, -1)
+		if err == "":
+			for y: int in range(Board.ROWS):
+				for x: int in range(Board.COLS):
+					var cell := Vector2i(x, y)
+					if not board.is_buildable(cell):
+						continue
+					var covers: int = PlacementPreview.covered_road_cells(
+						board, cell, StickySundew.SAP_RADIUS)
+					if covers > best:
+						best = covers
+						best_cell = cell
+		if err == "":
+			# Claim 1. A road where the answer is zero is a road no Sundew can be played
+			# on, and the corpus is where that has to surface.
+			err = _T.assert_gt(best, 0,
+				("the %s road has somewhere worth laying a patch -- the best buildable "
+					+ "cell covers %d road cells, so a Sundew is unplayable here")
+					% [name, best])
+		if err == "":
+			best_by_road[name] = best
+			err = _T.assert_true(board.is_buildable(best_cell),
+				"and the cell that scored best (%s) really is grass" % best_cell)
+		_T.free_ui(board)
+
+	if err == "":
+		err = _T.assert_eq(best_by_road.size(), _road_corpus().size(),
+			("every road in the corpus was measured (%d of %d) -- a corpus that shrank "
+				+ "would leave the spread claim below comparing one number to itself")
+				% [best_by_road.size(), _road_corpus().size()])
+	if err == "":
+		# Claim 2. The spread is the point: equal numbers across three genuinely
+		# different roads would mean the answer had stopped depending on the route.
+		var values: Array = best_by_road.values()
+		var lowest: int = int(values[0])
+		var highest: int = int(values[0])
+		for v: Variant in values:
+			lowest = mini(lowest, int(v))
+			highest = maxi(highest, int(v))
+		err = _T.assert_gt(highest, lowest,
+			("how much road one patch buys varies across the corpus (%d..%d over %s) -- "
+				+ "one number for every road would mean this is answered from SAP_RADIUS "
+				+ "and not from the route") % [lowest, highest, str(best_by_road)])
+	return err
+
+
 ## set_road refuses the road that would HANG, and three that would merely be wrong
 ## (plant-tower-defense-s1o8.1).
 ##
