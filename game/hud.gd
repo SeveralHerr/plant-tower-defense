@@ -2490,7 +2490,8 @@ func _refresh_selection(state: Dictionary) -> void:
 			_upgrade_button.text = "Fully grown"
 			_upgrade_button.disabled = true
 		else:
-			_upgrade_button.text = "Upgrade (%d)" % plant.upgrade_cost()
+			_upgrade_button.text = upgrade_button_text(plant.upgrade_cost(),
+				plant.upgrade_gain())
 			_upgrade_button.disabled = (state["bank"] as SeedBank).seeds < plant.upgrade_cost()
 	_refresh_health(plant)
 	# Armed, the button says what the next click does rather than what the action
@@ -2595,6 +2596,27 @@ func _refresh_health(plant: Plant) -> void:
 ## the button beside this line is already carrying the refund arithmetic.
 static func move_hint_detail(cost: int) -> String:
 	return "Click a spot to move it (%d)" % cost
+
+
+## The upgrade button's face: the price, and what the price buys
+## (plant-tower-defense-jvnm).
+##
+## ON THE BUTTON RATHER THAN IN THE SELECTION LABEL, and the reason is written above
+## `_refresh_selection`: that label is two lines by force, because the first draft spelled
+## out kernels, damage and interval, wrapped to a third, and pushed `SelectionBox`'s foot
+## to exactly the panel's own 648 — caught by an 8px clearance test. The button is a
+## separate node with a line of its own, and it is also where the player is looking when
+## they decide, because it is the thing they are about to press.
+##
+## `gain` EMPTY FALLS BACK TO THE BARE PRICE, which is what a plant at its top rung and a
+## plant with no ladder both hand back. No branch at the call site.
+##
+## The separator is a middle dot rather than a dash: the gain phrases contain "→" and a
+## dash beside an arrow reads as a range.
+static func upgrade_button_text(cost: int, gain: String) -> String:
+	if gain == "":
+		return "Upgrade (%d)" % cost
+	return "Upgrade (%d) · %s" % [cost, gain]
 
 
 static func selection_line(display: String, level_name: String, detail: String) -> String:

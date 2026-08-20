@@ -4900,6 +4900,80 @@ func _scripted_nodes(root: Node) -> Array[Node]:
 	return out
 
 
+## THE UPGRADE BUTTON STILL FITS NOW THAT IT SAYS WHAT THE PRICE BUYS
+## (plant-tower-defense-jvnm).
+##
+## The button is 232px — `SELECTION_BOX_WIDTH`, which is `PANEL_WIDTH - 24` — and it now
+## carries "Upgrade (45) · 1.2→3.6 dmg" where it used to carry "Upgrade (45)". That is
+## roughly double, on a fixed-width node, so this is not a formality.
+##
+## MEASURED THROUGH THE BUTTON'S OWN `get_minimum_size()`, not through a font this test
+## picks. `Label.get_minimum_size()` is the one that lies — it reports a ~1px clip stub on
+## any Label with `clip_text`, which is why `_T.text_width` exists — but a `Button` sizes
+## to its text, and going through the real node also settles the font size, which the HUD
+## resolves to 16 rather than to `GardenTheme.BUTTON_FONT_SIZE`'s 18. Cycle 167 found a
+## budget priced at the wrong one of those two and reported headroom the rack did not have.
+##
+## EVERY LADDER PLANT AT EVERY RUNG THAT HAS A NEXT ONE — derived from
+## `PlantCatalog.ids()` and `has_upgrades()`, not from a list of the three that have
+## ladders today, because a fourth is exactly the case a recorded list would miss.
+func test_every_upgrade_button_face_fits_the_panel() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var button: Button = game.hud.get_node_or_null(
+		"Root/SidePanel/SelectionBox/UpgradeButton") as Button
+	var err: String = _T.assert_true(button != null, "the Upgrade button exists")
+	var budget: float = 0.0
+	if err == "":
+		budget = Hud.SELECTION_BOX_WIDTH
+		err = _T.assert_gt(budget, 0.0, "and the box it sits in has a width")
+
+	var checked: int = 0
+	var with_gain: int = 0
+	var worst: String = ""
+	var worst_px: float = 0.0
+	if err == "":
+		for id: StringName in PlantCatalog.ids():
+			if err != "":
+				break
+			var plant: Plant = game._new_plant(id)
+			if plant == null:
+				continue
+			if not plant.has_upgrades():
+				plant.free()
+				continue
+			for rung: int in range(1, plant.max_level() + 1):
+				plant.level = rung
+				var face: String = Hud.upgrade_button_text(
+					plant.upgrade_cost(), plant.upgrade_gain())
+				button.text = face
+				var wide: float = button.get_minimum_size().x
+				checked += 1
+				if plant.upgrade_gain() != "":
+					with_gain += 1
+				if wide > worst_px:
+					worst_px = wide
+					worst = face
+			plant.free()
+
+	if err == "":
+		# Denominators, both of them. A catalogue that stopped reporting ladders would
+		# make this pass over nothing, and a gain that silently became "" everywhere
+		# would leave it measuring the bare price it was measuring before.
+		err = _T.assert_gt(checked, 0,
+			"at least one plant has a ladder, or this sweep priced nothing")
+	if err == "":
+		err = _T.assert_gt(with_gain, 0,
+			("at least one rung actually names a gain (%d of %d faces) -- all-empty "
+				+ "gains would make this test measure the old button") % [with_gain, checked])
+	if err == "":
+		err = _T.assert_true(worst_px <= budget,
+			("the widest upgrade button face fits its box: %.0fpx of %.0f -- '%s'. "
+				+ "Shorten the gain phrase, or the button needs a wider box")
+				% [worst_px, budget, worst])
+	_T.free_ui(game)
+	return err
+
+
 ## The plant bar sizes itself to the catalogue instead of to a number that happened
 ## to fit when it was written.
 ##

@@ -588,6 +588,26 @@ func _on_upgraded() -> void:
 	_upgrade_flourish()
 
 
+## Damage per VOLLEY, before and after (plant-tower-defense-jvnm).
+##
+## Per volley and not per kernel, and the reason is recorded three cycles earlier in
+## `Hud._refresh_selection`: "Damage per volley is the number that actually changed and
+## the one the upgrade is bought for", written after a 45-seed upgrade ended up worse
+## than a 20-seed one. Per-kernel damage climbs 1.0 -> 1.2 -> 1.4, which understates the
+## rung by most of what it buys — the kernel COUNT is climbing at the same time.
+##
+## Read from `LEVELS` through `ladder_row` rather than from `kernel_damage()`, which
+## answers for the rung this cob is standing on. Nothing is mutated to find out.
+func upgrade_gain() -> String:
+	if is_max_level():
+		return ""
+	var now: Dictionary = ladder_row(LEVELS, level)
+	var next: Dictionary = ladder_row(LEVELS, level + 1)
+	return "%.1f→%.1f dmg" % [
+		float(now["damage"]) * float(now["kernels"]),
+		float(next["damage"]) * float(next["kernels"])]
+
+
 func kernels_per_shot() -> int:
 	return int(level_row()["kernels"])
 

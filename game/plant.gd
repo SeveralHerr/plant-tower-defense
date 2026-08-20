@@ -1040,6 +1040,33 @@ func has_upgrades() -> bool:
 	return not upgrade_ladder().is_empty()
 
 
+## WHAT THE NEXT RUNG BUYS, as a short phrase for the upgrade button
+## (plant-tower-defense-jvnm).
+##
+## The notebook tells the player "Climbing one plant beats adding another", and until
+## cycle 171 they had no way to check it: the selection panel shows what this plant IS at
+## its current rung, and the price arrives separately, with nothing connecting the two. A
+## player at the moment of deciding had a damage number and a number of seeds.
+##
+## `""` FOR A PLANT WITH NO LADDER AND FOR ONE AT THE TOP, and both callers want that: the
+## button is hidden for the first and reads "Fully grown" for the second, so there is no
+## next rung to describe in either case.
+##
+## EACH PLANT ANSWERS IN THE CURRENCY ITS OWN DETAIL LINE ALREADY USES, and that is the
+## rule rather than a coincidence. A cob's line reads damage, so its gain is damage. A
+## Bramble's reads how many seconds of chewing it has left, so its gain is seconds. A
+## Chomp's reads chew PROGRESS and has no absolute to point at — a chew's length belongs
+## to the pest, not the flower (`Pest.chew_seconds` runs 0.45 to 2.6 by species) — so its
+## gain is the proportion, which is the only honest thing a flower can say by itself.
+## Forcing one shape on all three would mean inventing a number for the Chomp.
+##
+## Overridden, not dispatched on. `Hud._refresh_selection` asks the plant, the way it
+## already asks `has_upgrades()` and `bite_resistance()` — the casts that used to live
+## there are what made a second upgradeable plant unreachable.
+func upgrade_gain() -> String:
+	return ""
+
+
 ## The top rung. 1 for a plant with no ladder, so `is_max_level()` is true for it
 ## and every "already at the top" path treats it as finished rather than broken.
 func max_level() -> int:

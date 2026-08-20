@@ -185,6 +185,34 @@ func bite_resistance() -> float:
 	return resistance_at(level)
 
 
+## How long it holds under one mouth, before and after (plant-tower-defense-jvnm).
+##
+## SECONDS, because that is the currency `Hud.resisting_detail` already prints for this
+## plant — "a Bramble is never busy and never idle: it is a wall, and the only question
+## about it is how long it lasts". A resistance of 0.25 -> 0.18 is the honest number and
+## it is meaningless to a player; the same fact as 11.4 -> 15.9 seconds is not.
+##
+## From FULL health rather than from the health it has now, and the distinction matters:
+## the detail line answers "how long does THIS bramble have left", which falls as it is
+## eaten. A rung is bought for what it will be worth on the next wall too, so the gain is
+## quoted against a fresh one. One mouth, at `Pest.EAT_DPS`, matching the detail line's
+## own assumption.
+func upgrade_gain() -> String:
+	if is_max_level():
+		return ""
+	var now: float = resistance_at(level)
+	var next: float = resistance_at(level + 1)
+	if now <= 0.0 or next <= 0.0:
+		return ""
+	# NO VERB, and the same number->number->unit shape the cob's gain uses. "holds
+	# 11.4→15.9s" was the first phrasing and it measured 252px in a 232px box --
+	# `test_every_upgrade_button_face_fits_the_panel` refused it before a player saw it.
+	# The word was the widest thing in the phrase and the least informative: the button
+	# already says Upgrade, and the unit says the rest.
+	return "%.1f→%.1fs" % [
+		MAX_HEALTH / (Pest.EAT_DPS * now), MAX_HEALTH / (Pest.EAT_DPS * next)]
+
+
 ## The ladder, for `Plant`'s upgrade machinery. Same shape the cob and the Chomp return.
 func upgrade_ladder() -> Array[Dictionary]:
 	return LEVELS

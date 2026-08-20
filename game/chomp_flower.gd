@@ -349,6 +349,31 @@ static func chew_seconds_for(for_level: int, base_seconds: float) -> float:
 	return base_seconds * float(ladder_row(LEVELS, for_level).get("chew_scale", 1.0))
 
 
+## How much faster the next rung eats, as a proportion (plant-tower-defense-jvnm).
+##
+## A PROPORTION AND NOT A NUMBER OF SECONDS, and that is forced rather than chosen: how
+## long a chew takes belongs to the PEST — `Pest.chew_seconds` runs from 0.45 for the
+## smallest to 2.6 for the queen — so a flower on its own has no absolute to name. What it
+## can say is by how much it shortens whatever meal arrives, which is exactly what
+## `chew_scale` is. Naming a number of seconds here would mean picking a pest and calling
+## it typical.
+##
+## `reach_scale` climbs on the same rung and is deliberately NOT in this phrase. The
+## button holds one line beside a price; two gains make it a sentence, and the reach is
+## already drawn on the board as the flower's own ring, which is the better channel for it.
+func upgrade_gain() -> String:
+	if is_max_level():
+		return ""
+	var now: float = float(ladder_row(LEVELS, level).get("chew_scale", 1.0))
+	var next: float = float(ladder_row(LEVELS, level + 1).get("chew_scale", 1.0))
+	if now <= 0.0:
+		return ""
+	# NO VERB, for the reason the Bramble's gain carries: "eats 20%% faster" measured
+	# 238px in a 232px box and the width test refused it. Every phrase on this button is
+	# now as short as its unit allows, which is what a 232px node buys.
+	return "%d%% faster" % int(round((1.0 - next / now) * 100.0))
+
+
 ## This flower's reach right now — what `_act` and `_nearest_free_pest` both close on,
 ## so an upgrade cannot widen one without widening the other.
 func grab_radius() -> float:
