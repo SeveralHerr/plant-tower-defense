@@ -1,4 +1,4 @@
-# Cycle 172
+# Cycle 173
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,44 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 173 taught
+
+**The drift audit changed the answer, which is why the bead put it before the overwrite.**
+`-qcp1` asked whether to refresh the harness — 22 releases behind, three cycles of gaps
+filed against a version this project does not run. Twelve of fourteen files are cleanly
+stale and would just be updated. **Two carry local edits, and one of them is a shipped-game
+fix**: the exported-build guard from upstream #58, still open, absent from the 0.60.0
+templates, without which `entry_hook` skips the title screen for every itch.io player.
+Refreshing would have reverted it silently. So the answer is *not yet, and here is exactly
+what unblocks it* — better than either "refresh" or "don't".
+
+**Correct code replaced by other correct code is invisible to every correctness gate.** The
+reverted file compiles, lints and passes the suite, because it *is* the upstream file. The
+only possible defence is a marker naming the local thing, which is what
+`tools/harness_patch_check.py` now does — and its own NOT COVERED line admits the part it
+cannot: the table is hand-maintained, so a local edit made and not added is unguarded by
+construction.
+
+**Twelve open gaps are already fixed in the harness we RUN**, and seventeen more in
+releases we do not have. The newer client prints both numbers and the installed one cannot.
+The first twelve need no refresh and no decision — just someone opening each installed file
+and re-checking the claim, which `gap_ledger.py` says in its own output is a human job.
+
+**Half a local patch can already be upstream.** `verify_ledger.py`'s worktree/union split is
+in 0.60.0; `unreachable_static` beside it is not. Reading "this file has local edits" as one
+fact would have filed both or neither.
+
+Step 5 sharpened the acceptance-criterion rule with the thing that made this cycle work:
+**where a bead proposes an ACTION, the criterion should permit "no, and here is why" as a
+pass.** A criterion that only accepts the action makes the cycle that discovers otherwise
+look like a failure, which is how a bad action gets taken on schedule.
+
+**Two cycles running have shipped nothing a player would see** — 172 protected the save,
+173 protected the harness. Both were right and the rule is now binding: **cycle 174 takes a
+player-facing item whatever else is ready.** The queue has three waiting, and the newest is
+the sharpest: the difficulty is picked once and never mentioned again, including beside the
+high score it set.
 
 ## What cycle 172 taught
 
@@ -2465,7 +2503,7 @@ tuning, so that lane waited.
 
 ## Waiting on the user
 
-**77 commits are held locally and unpushed, and this is the item to raise first.** Every
+**79 commits are held locally and unpushed, and this is the item to raise first.** Every
 push to `origin/main` auto-deploys to itch.io (`severalherr/pest-control:html5`) via
 `.github/workflows/deploy-to-itchio.yml`, with no paths filter — so pushing is publishing,
 and the loop commits once per bd item rather than once per release. The held work is a

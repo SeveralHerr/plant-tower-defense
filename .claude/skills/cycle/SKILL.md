@@ -146,7 +146,13 @@ what fifty cycles of refilling from reflection produces. → `why.md` §6
   Write a file and use `--body-file` / `--stdin` / `"$(cat PATH)"`.
 - A source pointing at an already-open bead gets a note on that bead, not a duplicate.
 - An acceptance criterion must be something the closing commit can produce, or you have
-  written two beads and filed one.
+  written two beads and filed one. **And where the bead proposes an ACTION, the criterion
+  should permit "no, and here is why" as a pass** — naming what evidence would settle it
+  and what recording that evidence is worth on its own. `-qcp1` said to record the drift
+  bearing for every file before overwriting anything, and that the bearings were most of
+  the value either way; the bearings then showed a refresh would revert a shipped-game
+  fix. A criterion that only accepts the action makes the cycle that discovers otherwise
+  look like a failed cycle, which is how a bad action gets taken on schedule.
 - Then rewrite `cycle-log.md`: bump the number, a sentence or two on what this cycle
   taught, refresh what is waiting on the user. Prose, not a checklist. → `why.md` §6
 

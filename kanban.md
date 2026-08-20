@@ -6417,3 +6417,40 @@ Three findings kept out here rather than buried in a log:
   automatically is the open question** — a per-run temp path makes concurrent runs safe
   and makes a failing run's save state harder to inspect afterwards, and that trade wants
   deciding rather than assuming.
+
+### New in cycle 173 — twelve gaps whose fix is already installed, and a refresh that would break the shipped game
+
+- **Twelve of this project's open gaps are already fixed in the harness it RUNS.** Not the
+  one on the machine — the installed 0.38.0. `devtools.py harness-version --client` (run
+  from the 0.60.0 copy, which knows how to compare) prints: *"12 open gap(s) in this
+  project's log (G-014, G-016, G-018, G-019, G-025, G-029, G-030, G-033, G-044, G-046,
+  G-047, G-049) are already credited in the templates it RUNS — the fix is installed; the
+  log's status line is what is stale."* A separate 17 (G-050…G-073) are fixed in releases
+  we do not have. **The first twelve need no refresh and no decision** — they need someone
+  to check each claim and move a status line, which is the reconciliation step 4 of the
+  cycle asks for and which has evidently not been done at this scale. `gap_ledger.py`'s own
+  NOT COVERED line says why it cannot do it: *"it cannot tell you whether an open gap has
+  since been FIXED upstream — that needs the installed version opened and the claim
+  re-checked, which is the actual reconciliation work and is a human job."*
+
+- **A tool that rewrites files in place, with no diff, turns an unfixed upstream issue into
+  a silent regression.** `/scaffold-godot-harness` refreshes every harness file from the
+  plugin's templates. This repo carries two local patches; one is the exported-build guard
+  from upstream #58, which is **still open** and **absent from the 0.60.0 templates** —
+  without it the `entry_hook` that skips the title screen for `/verify` skips it for every
+  itch.io player. Refreshing would revert it and no gate would object, because the reverted
+  file compiles, lints and passes: it is the upstream file. **The general shape is worth
+  keeping**: correct code replaced by other correct code is invisible to every correctness
+  gate, so the only defence is a marker that names the *local* thing.
+  `tools/harness_patch_check.py` is that defence here, and its own NOT COVERED line admits
+  the part it cannot cover — the table is hand-maintained, so a local edit made and not
+  added is unguarded by construction.
+
+- **Half of a local patch can already be upstream, and porting it wholesale would be
+  wrong.** `tools/verify_ledger.py` carries two edits. The worktree/union reach split — the
+  `worktree (what THIS session edited)` line every cycle's ledger row is judged by — **is**
+  in 0.60.0: 30 hits for `worktree` on both sides. `unreachable_static`, which classifies a
+  changed `.gd` whose `extends` chain ends at `RefCounted` as unreachable *by construction*
+  rather than as a reach miss, is **not**: 0 upstream against 17 local. Only the second half
+  needs filing, and anyone reading "this file has local edits" as one fact would have filed
+  both or neither.

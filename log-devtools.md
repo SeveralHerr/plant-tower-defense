@@ -9485,3 +9485,35 @@ is likely to be at least as productive.
     "brings the autoload up passive: safe to run while another session drives this game."
     True of the BUS. It was not true of `user://`, and this cycle is why. The sentence is
     about DevTools and reads as being about headless runs generally.
+
+## 2026-08-20 — audited the harness drift before refreshing, and did not refresh
+
+- Value: **warranted**, and it is the cheapest `warranted` this log has recorded — the
+  whole finding came from hashing fourteen files against `harness_history.json`. No
+  engine, no game, a Python loop. What would have been expensive is running
+  `/scaffold-godot-harness` first and finding out afterwards.
+  - Expected: the install is cleanly stale, the refresh is one command, and three cycles
+    of "gaps filed against a version this project does not run" ends today.
+  - Got: `addons/godot_selftest/dev_tools.gd  LOCAL EDITS -- hash in NO released version`,
+    and the same for `tools/verify_ledger.py`. Twelve of fourteen files are cleanly stale;
+    two are not. **Refreshing would have reverted a shipped-game fix** — the exported-build
+    guard from upstream #58, which is still OPEN and absent from the 0.60.0 templates, and
+    without which `entry_hook` skips the title screen for every itch.io player.
+  - Found: that, plus two numbers the newer client prints and the installed one cannot —
+    **17** gaps this project filed are credited as fixed in releases it does not have, and
+    **12** open gaps in its own log are already fixed in the templates it RUNS. The second
+    twelve need no refresh at all. G-058, which I have hit three cycles running, is in the
+    first list.
+  - Cheaper: nothing. This IS the cheap version, and the expensive version is the one that
+    happens if you skip it.
+
+- Gap: **no new gap this turn.** Two things worth recording that are not gaps.
+  - The `/verify` skill's drift procedure is the reason this cycle went well, and it earned
+    its length: the per-file bearing (`LOCAL EDITS` vs `matches 0.38.0` vs `plugin ahead
+    unreleased`) is the whole finding, and a plain `diff -q` would have reported all
+    fourteen as drifted with no way to tell which mattered. Worth saying out loud because
+    the previous cycles skimmed that block as boilerplate.
+  - `harness-version --client` takes `--project` BEFORE the subcommand, not after
+    (`devtools.py --project . harness-version --client`). `-p .` after it is an
+    `unrecognized arguments` error. One retry, no consequence, noted so the next reader of
+    this log does not spend it again.
