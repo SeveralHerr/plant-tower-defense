@@ -3706,6 +3706,9 @@ static func message_corpus() -> Array[String]:
 	# and not per-plant: it names a MARK rather than a plant, so no display name enters
 	# it and there is only the one form to measure.
 	out.append(sole_cover_tip())
+	# The lapsed-move refusal (plant-tower-defense-b9bl). Named a MARK and a verb rather
+	# than a plant, like sole_cover_tip above, so there is one form to measure.
+	out.append(move_window_closed_tip())
 	return out
 
 
@@ -3773,6 +3776,24 @@ static func defer_tip() -> String:
 ## the brackets, so colour is the one channel that cannot separate it from the selection
 ## it arrives with, and this project's standing rule is that colour is never the only
 ## signal. Shape and position carry it — "ringed", "on the road".
+## The click that arrived one moment late (plant-tower-defense-b9bl).
+##
+## Said INSTEAD of buying a plant, not alongside it. A player who armed an uproot, hovered
+## a destination and clicked just after the window ran out was silently buying a second
+## plant at full price — an action they did not choose, on the click they believed was a
+## move, with the seed counter moving the wrong way.
+##
+## Names the ARM rather than apologising, because the player's next move is to do it again
+## and the sentence should tell them how. "Closed" and not "expired": the window is a thing
+## they opened, and closed is what an opened thing does.
+##
+## Priced in `message_corpus()` beside the other producers. The row's budget is enforced
+## and this is a new line on it — see `uproot_armed_message`, where the forfeit and the tip
+## are mutually exclusive because `check_budgets` refused the build at 188 px over.
+static func move_window_closed_tip() -> String:
+	return "The move window closed — arm Uproot again to move it."
+
+
 static func sole_cover_tip() -> String:
 	return "Ringed road cells are held by this plant alone — lose it and they go unwatched."
 

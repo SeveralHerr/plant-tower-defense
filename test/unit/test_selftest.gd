@@ -11341,12 +11341,17 @@ func test_the_message_corpus_covers_every_catalogue_producer() -> String:
 	# and unlike the two above it names a MARK rather than a plant -- so no display name
 	# enters it and there is exactly one form to price, which is why it lands here in the
 	# non-catalogue count rather than in the per-plant multiplier.
-	return _T.assert_eq(corpus.size() - catalogue_entries, 11,
-		("the corpus carries its 11 non-catalogue entries (prep note, wave-cleared "
-			+ "line, the flight tip, the defer tip, the sole-cover tip, and six literals "
-			+ "-- BOTH colourblind lines, since the checker reads the leading literal of "
-			+ "that ternary). If this moved because you ADDED one, raise the number; if "
-			+ "it moved because one vanished, the row's budget just got quietly optimistic"))
+	# TWELVE since cycle 144: the lapsed-move refusal (plant-tower-defense-b9bl), which is
+	# the fourth plant-name-free producer and is on this row INSTEAD of a purchase rather
+	# than alongside one -- so it is a line the row must fit on a click that used to say
+	# nothing at all.
+	return _T.assert_eq(corpus.size() - catalogue_entries, 12,
+		("the corpus carries its 12 non-catalogue entries (prep note, wave-cleared "
+			+ "line, the flight tip, the defer tip, the sole-cover tip, the lapsed-move "
+			+ "refusal, and six literals -- BOTH colourblind lines, since the checker "
+			+ "reads the leading literal of that ternary). If this moved because you "
+			+ "ADDED one, raise the number; if it moved because one vanished, the row's "
+			+ "budget just got quietly optimistic"))
 ##
 ## The catalogue is SWEPT rather than sampled, and the level table with it — so this
 ## is checked against every name the game can actually produce, not against a worst
@@ -20571,5 +20576,148 @@ func test_a_refused_move_costs_nothing_and_leaves_the_plant_where_it_was() -> St
 	if err == "":
 		err = _T.assert_eq(game.plant_at(from), plant,
 			"and the plant is still standing where it was")
+	_T.free_ui(game)
+	return err
+
+
+## The confirm clock holds while the pointer is on a legal destination
+## (plant-tower-defense-b9bl).
+##
+## Arming means two things since the move shipped, and they pull opposite ways: "are you
+## sure" wants a SHORT window, "choose a destination" wants a LONG one, and
+## `UPROOT_CONFIRM_SECONDS` was tuned for the first. Holding the clock while the player is
+## demonstrably mid-decision resolves that without weakening the confirm — the window only
+## outlives four seconds while a legal destination is under the pointer.
+##
+## Driven through `_tick_uproot_confirm` with a delta the test chooses, which is the same
+## clock `_physics_process` drives. The alternative — waiting four real seconds — is what a
+## headless suite must never do, and is also the shape of test that cannot say WHY it
+## passed.
+func test_the_move_window_holds_while_a_destination_is_hovered() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(500)
+	var from: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, from), "",
+		"a cob goes down")
+	var plant: Plant = null
+	var dest: Vector2i = Vector2i(-1, -1)
+	if err == "":
+		plant = game.plant_at(from)
+		err = _T.assert_true(plant != null, "and is on the board")
+	if err == "":
+		dest = _grass(game)
+		# The precondition the whole test rests on, asserted rather than assumed: a cell
+		# the clock is supposed to hold for has to actually BE a legal destination, or the
+		# hold below would be measuring the wrong branch.
+		err = _T.assert_true(game.can_move_to(plant, dest),
+			"there is a legal destination to hover")
+	if err == "":
+		game._select(plant)
+		err = _T.assert_true(Game.uproot_press_accepted(game.arm_uproot()),
+			"the window arms")
+	if err == "":
+		# Pointer nowhere: the clock runs.
+		game._hover_cell = Vector2i(-1, -1)
+		var before: float = game._uproot_left
+		game._tick_uproot_confirm(0.5)
+		err = _T.assert_true(game._uproot_left < before,
+			"with the pointer off a destination the window is closing (%.2f -> %.2f)"
+				% [before, game._uproot_left])
+	if err == "":
+		# Pointer on a legal destination: the clock holds.
+		game._hover_cell = dest
+		var held: float = game._uproot_left
+		game._tick_uproot_confirm(0.5)
+		err = _T.assert_float_eq(game._uproot_left, held, 0.0001,
+			"and holds while a legal destination is under the pointer")
+	if err == "":
+		# It has to RESUME, or the window never closes at all and the confirm is gone.
+		game._hover_cell = plant.cell
+		var resumed: float = game._uproot_left
+		game._tick_uproot_confirm(0.5)
+		err = _T.assert_true(game._uproot_left < resumed,
+			"and resumes the moment the pointer leaves (%.2f -> %.2f)"
+				% [resumed, game._uproot_left])
+	_T.free_ui(game)
+	return err
+
+
+## A click one moment late refuses out loud instead of silently buying a plant
+## (plant-tower-defense-b9bl).
+##
+## THE DEFECT THIS PINS, observed on a running game in cycle 143 rather than theorised: a
+## player armed an uproot, spent four seconds reading, clicked the destination they had
+## chosen, and BOUGHT A SECOND LEVEL-1 PLANT at full price. The expiry itself was already
+## announced ("Uproot cancelled."); the purchase that followed was not, and it is the
+## purchase that costs seeds and puts a plant somewhere nobody asked for.
+##
+## The assertion is the PLANT COUNT, not the message. A test that only read the row would
+## pass against an implementation that says the right thing and buys anyway.
+func test_a_click_just_after_the_window_lapses_does_not_buy_a_plant() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(500)
+	var from: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, from), "",
+		"a cob goes down")
+	var plant: Plant = null
+	var dest: Vector2i = Vector2i(-1, -1)
+	if err == "":
+		plant = game.plant_at(from)
+		dest = _grass(game)
+		err = _T.assert_true(plant != null and dest != from, "and there is somewhere to go")
+	if err == "":
+		game._select(plant)
+		err = _T.assert_true(Game.uproot_press_accepted(game.arm_uproot()),
+			"the window arms")
+	if err == "":
+		# Run it out with the pointer off any destination, so the hold above does not
+		# keep it open — this test is about what happens AFTER it closes.
+		game._hover_cell = Vector2i(-1, -1)
+		game._tick_uproot_confirm(Game.UPROOT_CONFIRM_SECONDS + 0.1)
+		err = _T.assert_false(game.uproot_armed(), "and then runs out")
+	if err == "":
+		err = _T.assert_gt(game._move_lapsed_left, 0.0,
+			"leaving the grace that catches the click already in flight")
+	var seeds_before: int = 0
+	var plants_before: int = 0
+	if err == "":
+		seeds_before = game.bank.seeds
+		plants_before = game._plants.size()
+		# Drain the row first. Four seconds of real time have passed for the player, so the
+		# armed prompt and the "Uproot cancelled." receipt have both had their turn; a test
+		# that only advances the CONFIRM clock leaves the row frozen on the armed prompt and
+		# would be asserting against a line from before the lapse.
+		game.hud._process(9.0)
+		game.hud._message_left = 0.0
+		game.hud._message_queue.clear()
+		game.hud._advance_message_queue()
+		game._click_at(game.board.cell_to_global(dest))
+		var plants_after: int = game._plants.size()
+		# THE assertion. Not the message — the absence of a plant nobody asked for.
+		err = _T.assert_eq(plants_after, plants_before,
+			"the late click bought nothing")
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, seeds_before, "and spent nothing")
+	if err == "":
+		# The OUT LOUD half, which is the other half of this bead's acceptance. The count
+		# above is the primary claim -- a refusal that says the right thing and buys anyway
+		# would pass a message-only test -- but a silent refusal is the defect too: the
+		# player clicked, nothing happened, and nothing said why.
+		var label: Label = game.hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+		err = _T.assert_true(label != null, "the message row is where the HUD put it")
+		if err == "":
+			err = _T.assert_eq(label.text, Hud.move_window_closed_tip(),
+				"and it says the window closed rather than nothing -- got %s" % label.text)
+	if err == "":
+		# Consumed on the first click, or the player's next genuine purchase is refused
+		# too and they cannot buy at all without waiting the grace out.
+		err = _T.assert_float_eq(game._move_lapsed_left, 0.0, 0.0001,
+			"and the grace is spent, so the next click is an ordinary one")
+	if err == "":
+		var plants_before_buy: int = game._plants.size()
+		game._click_at(game.board.cell_to_global(dest))
+		err = _T.assert_eq(game._plants.size(),
+			plants_before_buy + 1,
+			"which does buy, because refusing twice would be the worse bug")
 	_T.free_ui(game)
 	return err

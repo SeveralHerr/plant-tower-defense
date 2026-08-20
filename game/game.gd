@@ -144,6 +144,20 @@ var _score_recorded: bool = false
 var _uproot_armed: Plant = null
 var _uproot_left: float = 0.0
 
+## How long after the move window lapses a click on empty ground is read as "you meant to
+## move" rather than as a purchase (plant-tower-defense-b9bl).
+##
+## SHORT ON PURPOSE, and this is the whole tuning. The grace exists to catch the click
+## already in flight when the deadline passed — a player mid-reach, whose hand was
+## committed before the arc ran out. It is not a second move window: making it long turns
+## every ordinary purchase near a lapsed uproot into a refusal, which trades a silent wrong
+## action for a loud wrong one and is worse, because the player then cannot buy at all
+## without waiting the grace out.
+##
+## Consumed on the first click either way, so it can never refuse twice.
+const MOVE_LAPSED_GRACE_SECONDS: float = 1.5
+var _move_lapsed_left: float = 0.0
+
 ## Last health reading of the selected plant, so the panel can follow a chew.
 ##
 ## Plant has no health_changed signal and damage is applied per physics frame by
@@ -375,6 +389,9 @@ func _process(delta: float) -> void:
 	# still disarm, or the trigger is left live under the cursor on the results
 	# screen and survives into whatever the player clicks next.
 	_tick_uproot_confirm(delta)
+	# Decayed here rather than inside _tick_uproot_confirm, which early-returns the moment
+	# `_uproot_left` hits zero — and zero is exactly when this clock starts.
+	_move_lapsed_left = maxf(0.0, _move_lapsed_left - delta)
 	_watch_selected_health()
 	if game_over or victory:
 		return
@@ -2039,8 +2056,28 @@ func _tick_uproot_confirm(delta: float) -> void:
 		_disarm_uproot()
 		_refresh()
 		return
-	_uproot_left -= delta
+	# THE CLOCK DOES NOT RUN WHILE THE PLAYER IS VISIBLY DECIDING
+	# (plant-tower-defense-b9bl). Arming means two things since the move shipped: "are you
+	# sure" — a destructive confirm, which wants to be SHORT — and "choose a destination",
+	# which wants to be LONG, because the move tip asks the player to hover and compare.
+	# UPROOT_CONFIRM_SECONDS was tuned for the first and cycle 143 handed it the second.
+	#
+	# Holding while the pointer sits on a legal destination resolves that without weakening
+	# the confirm: the window only outlives four seconds while the player is demonstrably
+	# mid-decision, and it resumes the instant they look away. The arc stops unwinding,
+	# which is honest — the deadline really has stopped.
+	#
+	# `_push_uproot_clock()` still runs at the bottom, so the marker keeps being told the
+	# same value rather than being left with a stale one.
+	if not can_move_to(_uproot_armed, _hover_cell):
+		_uproot_left -= delta
 	if _uproot_left <= 0.0:
+		# The window lapsed with a plant still armed, which is exactly the state a player
+		# is in when they hesitate over a destination. The next click on empty ground is
+		# far more likely to be the move they were composing than a purchase they suddenly
+		# decided on, so `_click_at` gets a short grace to refuse it out loud instead of
+		# silently buying a second plant.
+		_move_lapsed_left = MOVE_LAPSED_GRACE_SECONDS
 		_disarm_uproot()
 		# CONFIRM: the arc on the marker has already finished unwinding and the plant has
 		# visibly stopped being armed, so this line is a receipt for something the board
@@ -2118,6 +2155,22 @@ func commit_uproot() -> String:
 ## Refusal strings rather than a bool, like `place_plant` and `commit_uproot`: every caller
 ## here wants to say what went wrong, and "not paid for" is deliberately the same wording
 ## `place_plant` uses so `_click_at` can shake the same button for the same reason.
+## Would a move to `cell` land, ignoring price? The GROUND half of `commit_move`'s
+## refusals, split out because the confirm clock needs the same answer
+## (plant-tower-defense-b9bl) and two copies of "is this a legal destination" is how the
+## clock and the click start disagreeing about what the player is doing.
+##
+## Deliberately NOT including affordability: a player hovering a destination they cannot
+## yet afford is still deciding, and freezing the clock for them is right. The refusal for
+## that is `commit_move`'s and it names the seeds.
+func can_move_to(plant: Plant, cell: Vector2i) -> bool:
+	if plant == null or not is_instance_valid(plant):
+		return false
+	if cell == plant.cell or _plants.has(cell):
+		return false
+	return board.is_inside(cell) and board.is_buildable_for(cell, plant.kind)
+
+
 func commit_move(cell: Vector2i) -> String:
 	if selected_placed == null or not is_instance_valid(selected_placed):
 		return "nothing is selected"
@@ -2742,6 +2795,17 @@ func _click_at(screen_pos: Vector2) -> void:
 	if existing != null:
 		_select(existing)
 		_refresh()
+		return
+	# THE CLICK THAT ARRIVED ONE MOMENT LATE (plant-tower-defense-b9bl). Below the
+	# select branch, so clicking another plant still selects it — that is unambiguous and
+	# never a move. Above `place_plant`, because the whole point is not to buy.
+	#
+	# Consumed either way. A grace that survived its own refusal would refuse the player's
+	# next genuine purchase too, and they would have no way to buy but to wait it out.
+	if _move_lapsed_left > 0.0:
+		_move_lapsed_left = 0.0
+		hud.show_message(Hud.move_window_closed_tip(),
+			Hud.message_seconds(Hud.ROLE_CONFIRM))
 		return
 	var refusal: String = place_plant(selected_plant, cell)
 	if refusal == "not paid for":
