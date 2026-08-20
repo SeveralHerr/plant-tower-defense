@@ -1,4 +1,4 @@
-# Cycle 171
+# Cycle 172
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,38 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 172 taught
+
+**A headless test run was rewriting the developer's real save, and every redirect in the
+suite was installed too late to stop it.** `RunConfig` is an autoload: `_ready()` runs at
+process start, loads the real file, migrates an old format and writes it back — all before
+the runner calls any `setup()`. `save_persist_check.py` was clean throughout and was right
+to be, because it asks whether a test FUNCTION reaches `_save()` and there is no test
+function anywhere in that chain. Closed by resolving the path from
+`DisplayServer.get_name()` before `_load()` runs.
+
+**The signal is HEADLESS, not "under test", and that distinction is the fix.** A rule keyed
+on the unit runner would have left `godot --headless --script res://tools/lint_project.gd`
+exposed — documented in `CLAUDE.md`, wrapped by no Python. Every headless entry point here
+is a tool; `capture.gd` already refuses to run headless because there is no renderer.
+
+**The guard took three tries and the first two looked fine.** Asserting
+`RunConfig.save_path` SURVIVED the ordering mutation it was written for: both orders leave
+`save_path` on the scratch file by the time a test can read it, so it cannot tell
+"redirected then loaded" from "loaded the real save then redirected" — and the second is
+the bug. Recording the path `_load` opened caught it, but only while the test happened to
+run before its neighbours. `boot_loaded_from`, frozen once, is the version that holds. **A
+guard written for a specific mutation is not a guard until that mutation has been run.**
+
+**`OS.has_feature("headless")` is false under `--headless`.** It is the obvious thing to
+reach for. A four-line probe script settled it before anything depended on it.
+
+Step 5 sharpened a rule this cycle had been technically breaking all the way through:
+**the heredoc ban is about who ESCAPES THE STRING, not which tool touches the file.**
+Authoring GDScript in a shell heredoc is what ate a backslash and left a newline inside a
+string literal. A Python `str.replace` guarded by `assert t.count(old) == 1` cannot
+half-apply or silently no-op, which is a property `Edit` gives for one match only.
 
 ## What cycle 171 taught
 
@@ -2433,7 +2465,7 @@ tuning, so that lane waited.
 
 ## Waiting on the user
 
-**75 commits are held locally and unpushed, and this is the item to raise first.** Every
+**77 commits are held locally and unpushed, and this is the item to raise first.** Every
 push to `origin/main` auto-deploys to itch.io (`severalherr/pest-control:html5`) via
 `.github/workflows/deploy-to-itchio.yml`, with no paths filter — so pushing is publishing,
 and the loop commits once per bd item rather than once per release. The held work is a

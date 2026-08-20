@@ -6376,3 +6376,44 @@ Three findings kept out here rather than buried in a log:
   place it during prep. The harness already says a capture must land "while the diff's
   node is still in the tree"; what it cannot say is that for one plant the tree is trying
   to remove it.
+
+### New in cycle 172 — a save can be refused, recovered or migrated and the player is never told
+
+- **`RunConfig.load_status` is read by nothing outside its own file.** Verified with
+  `grep -rn "load_status" --include=*.gd .` — every hit is in `game/run_config.gd` or
+  under `test/`. It takes five values (`game/run_config.gd`: `absent`, `refused`,
+  `recovered`, `migrated`, `loaded`) and two of them are events a player would want to
+  know about. **`refused`** means the file was there and was not readable — a truncated
+  write, or a save from a newer build, which `test_a_save_from_a_newer_build_is_refused_not_reinterpreted`
+  (`test/unit/test_economy.gd:1071`) pins as deliberate. **`recovered`** means an
+  interrupted `_save` left a complete temp file with no save beside it and the game
+  adopted it. In both cases the title screen simply shows whatever it shows — zeros, or
+  an older pair of scores — and the player is left to conclude their records vanished.
+  **The machinery is already there and already correct**; what is missing is one line
+  saying so. `Hud.message_corpus()` is the wrong home (this is a title-screen event, not
+  a run event), and cycle 168's rules about refusals apply to the wording: say what
+  happened and what they can do.
+
+- **A per-test redirect cannot protect anything an autoload does at process start**, and
+  the denominator is two. `project.godot`'s `[autoload]` block holds exactly `DevTools`
+  and `RunConfig`. `RunConfig` was the one that wrote the player's data before any
+  `setup()` could run, and cycle 172 closed it; `DevTools._ready`
+  (`addons/godot_selftest/dev_tools.gd:254`) writes at process start too, but only bus
+  and session files, and it already takes `GODOT_DEVTOOLS_BUSDIR` to move them. **So the
+  exposure is currently zero and the shape is not.** `save_persist_check.py` cannot see
+  this class at all — it asks whether a test FUNCTION reaches `_save()` — so a third
+  autoload that writes on load reintroduces the hole silently. Adding one is the moment
+  to re-ask this question, and that sentence is now in the checker's own NOT COVERED
+  output so it is asked where someone will read it.
+
+- **The headless scratch save is shared between parallel instances, and cannot not be.**
+  `RunConfig.HEADLESS_SAVE_PATH` is `user://headless_scratch.save`, and `CLAUDE.md`'s bus
+  section records that `launch --isolated` isolates the **bus only** — Godot has no
+  `--user-data-dir` flag and honours no `GODOT_USERDATA` env var (harness gh#28). Two
+  headless runs at once therefore share one scratch file. That is a large improvement on
+  sharing the player's real save and it is not isolation. The seam already exists:
+  `PLANT_TD_SAVE_PATH` beats the headless default by design, so a runner that wants a
+  private file can set one per process. **Whether `run_tests.py` should set it
+  automatically is the open question** — a per-run temp path makes concurrent runs safe
+  and makes a failing run's save state harder to inspect afterwards, and that trade wants
+  deciding rather than assuming.

@@ -9453,3 +9453,35 @@ is likely to be at least as productive.
   - `find-nodes --class X --call METHOD` is the verb that made this cycle cheap: an
     auto-named node found by what it IS and a computed value read off it in one trip, with
     no path to guess. Three of the four live facts here came from it.
+
+## 2026-08-20 — stopped a headless run rewriting the player's save
+
+- Value: **warranted**, and there was no cheaper option even in principle. The defect is
+  what an AUTOLOAD does at process start, so it cannot be reproduced without starting a
+  process, and the proof is an md5 of a file on disk before and after — which no unit
+  test can take of itself.
+  - Expected: the redirect would move the boot load off the player's save and the hard
+    part would be writing it.
+  - Got: the redirect was five lines. The GUARD took three tries and the first two looked
+    fine. `assert RunConfig.save_path != SAVE_PATH` **survived** the ordering mutation it
+    was written for, because both orders leave `save_path` on the scratch file by the time
+    a test can read it. The second version worked only while the test happened to run
+    before its neighbours. Neither would have been noticed without mutating.
+  - Found: those two, plus `OS.has_feature("headless")` being **false** under `--headless`
+    — the obvious reach, wrong, established with a four-line probe script before anything
+    depended on it. `DisplayServer.get_name()` returns `"headless"`.
+  - Cheaper: nothing. `python tools/run_tests.py` against a planted v6 save, and an md5
+    either side, IS the cheap version.
+
+- Gap: **no new gap this turn**, and one piece of harness behaviour worth writing down
+  because it shaped the fix rather than merely annoying me.
+  - `launch --isolated` isolates the **bus only**; `user://` cannot be isolated at all
+    (harness gh#28, already recorded in `CLAUDE.md`). That is why the fix could not be
+    "give each run its own user dir" and had to be "point this one file elsewhere". The
+    scratch save is consequently shared between concurrent headless runs — better than
+    sharing the player's real save, and not isolation. `PLANT_TD_SAVE_PATH` is the seam
+    left for whoever decides that trade; it is filed rather than guessed at.
+  - Worth recording against the harness's own advice: `CLAUDE.md` says a headless gate
+    "brings the autoload up passive: safe to run while another session drives this game."
+    True of the BUS. It was not true of `user://`, and this cycle is why. The sentence is
+    about DevTools and reads as being about headless runs generally.

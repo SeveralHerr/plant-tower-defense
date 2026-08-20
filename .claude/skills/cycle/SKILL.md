@@ -90,9 +90,13 @@ commit per item, never batched. Follow `.claude/skills/verify-bd-item/SKILL.md`.
   steer, the steer wins** — it is the rule with the worse failure mode, because a stale
   neighbourhood costs a cycle of tunnel vision and a stalled game costs the game. Say in
   the close which rule you overrode either way.
-- **Write code with Edit/Write, not through a shell heredoc**, and keep every string
-  literal on one line. A newline inside a GDScript string literal compiles, passes, and is
-  invisible to every gate but a real compile. → `why.md` §2
+- **Never AUTHOR GDScript inside a shell heredoc**, and keep every string literal on one
+  line. A newline inside a GDScript string literal compiles, passes, and is invisible to
+  every gate but a real compile — the shell ate a backslash, and the helper silently
+  returned `""` for a cycle. Editing through a *script* is fine and is often better:
+  a Python `str.replace` guarded by `assert t.count(old) == 1` cannot half-apply or
+  silently no-op, which `Edit` can only promise for one match. The rule is about who
+  escapes the string, not about which tool touches the file. → `why.md` §2
 - **Read `git diff --stat` before every commit** and check the shape is the one you meant.
   It is the only gate a docs-only change has.
 - **The ledger row lands before the commit**, and its `scene-tree` capture lands **while
