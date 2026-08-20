@@ -7133,6 +7133,63 @@ func test_the_deferred_bar_reads_on_the_road_it_is_drawn_on() -> String:
 ## The margin is reported on failure rather than just a bool, because the answer "by how
 ## much" is what tells you whether to move the colour or the alpha — and at this floor
 ## those are different repairs.
+## The spread arc is DRAWN with its rim, not merely supplied with one
+## (plant-tower-defense-uwf8).
+##
+## This test exists because deleting the rim pass entirely left the whole suite green.
+## The contrast table below asserts that `PIP_RIM_COLOR` clears both grounds -- which it
+## does, and which says nothing about whether anything draws with it. A constant test and
+## a call-site test are different claims, and this project has shipped the gap between
+## them before; the table was the constant half and this is the other one.
+##
+## READS THE SOURCE, because `_draw` paints through `draw_arc` and a headless run pumps no
+## frames, so there is no node to interrogate afterwards. The blanking is what keeps it
+## from being satisfied by the comment ABOVE the call explaining the rim -- a rule
+## satisfied by prose is not a rule, and that comment is long.
+##
+## Two arcs, not "an arc and a rim": the pass order (rim first, wider, then the fill on
+## top) is what makes it read as one stroke with an outline rather than two arcs, and the
+## widths assert that ordering is possible at all.
+func test_the_spread_arc_is_actually_drawn_with_its_rim() -> String:
+	var path: String = "res://game/corn_cobbler.gd"
+	var src: FileAccess = FileAccess.open(path, FileAccess.READ)
+	var err: String = _T.assert_true(src != null, "corn_cobbler.gd opens")
+	if err != "":
+		return err
+	var text: String = src.get_as_text()
+	src.close()
+	# Comments blanked line-wise: enough for this, and it cannot match the paragraph
+	# above the call, which names draw_arc while explaining why there are two of them.
+	var code: String = ""
+	for line: String in text.split("
+"):
+		var stripped: String = line.strip_edges()
+		if not stripped.begins_with("#"):
+			code += line + "
+"
+	var arcs: int = code.count("draw_arc(")
+	err = _T.assert_eq(arcs, 2,
+		("the fan draws TWO arcs -- the rim, then the fill on top of it -- and found %d. "
+			+ "One means the rim pass was removed and the arc is back to dissolving into "
+			+ "the grass at 0.064 separation, which no colour assertion can notice")
+			% arcs)
+	if err == "":
+		err = _T.assert_true(code.contains("PIP_RIM_COLOR, PIP_RIM_COLOR.a * fade"),
+			"and the rim is drawn in the dark rim ink, faded with the rest of the fan")
+	if err == "":
+		# The widths, so the rim is actually OUTSIDE the fill rather than under it.
+		err = _T.assert_gt(
+			CornCobbler.SPREAD_ARC_WIDTH + CornCobbler.SPREAD_ARC_RIM_WIDTH * 2.0,
+			CornCobbler.SPREAD_ARC_WIDTH,
+			"the rim stroke is wider than the fill it outlines")
+	if err == "":
+		# Matching the pips is the whole argument for the rim: one cue, one weight.
+		err = _T.assert_float_eq(CornCobbler.SPREAD_ARC_RIM_WIDTH,
+			CornCobbler.PIP_RIM_WIDTH, 0.001,
+			"and it is the same rim weight the pips beside it use")
+	return err
+
+
 func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at() -> String:
 	var grass: Color = GardenTheme.GROUND_GRASS
 	var dirt: Color = GardenTheme.GROUND_DIRT
@@ -7227,13 +7284,23 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 			"ground": dirt,
 			"mark": SelectionMarker.held_ink(SelectionMarker.MARKER_COLOR, true),
 			"alpha": SelectionMarker.held_ink(SelectionMarker.MARKER_COLOR, true).a},
-		# NOT GATED, and filed as plant-tower-defense-uwf8. A Corn Cobbler's spread arc is
+		# THE ARC'S RIM, gating, added in cycle 166. The fill below still clears neither
+		# ground and that is now FINE rather than filed: the arc is rimmed the way the
+		# pips beside it always were, and a cue is legible by its DARKEST channel. The rim
+		# is what this row asserts, and it clears both by a wide margin.
+		{"what": "corn spread arc, rim", "mark": CornCobbler.PIP_RIM_COLOR, "gates": true,
+			"alpha": CornCobbler.PIP_RIM_COLOR.a, "ground": grass, "on": "grass"},
+		{"what": "corn spread arc, rim", "mark": CornCobbler.PIP_RIM_COLOR, "gates": true,
+			"alpha": CornCobbler.PIP_RIM_COLOR.a, "ground": dirt, "on": "dirt"},
+		# NOT GATED, and no longer a defect. A Corn Cobbler's spread arc is
 		# drawn from `muzzle_pivot` out to FAN_LENGTH, so it lies across whatever ground
 		# the lane is made of -- and at 0.45 alpha it clears NEITHER: 0.064 on grass,
-		# 0.113 on dirt. It is left ungated rather than fixed because the same draw call
-		# paints the muzzle pips in PIP_COLOR, and moving one without the other splits a
-		# cue that reads as one thing. Recorded with its numbers so the question stays
-		# visible, which is the same treatment the reach ring gets above.
+		# 0.113 on dirt. It is left ungated because the FILL alone was never going to
+		# clear it: at 0.45 that needs a near-white yellow at luminance 0.91, or double
+		# the alpha on a 34 px arc which would then compete with the pips it exists to
+		# frame. Cycle 166 rimmed it instead, so these two rows are the fill's numbers
+		# kept visible rather than an outstanding question -- the rim rows above are what
+		# make the cue legible.
 		{"what": "corn spread arc", "mark": CornCobbler.SPREAD_ARC_COLOR, "gates": false,
 			"alpha": CornCobbler.SPREAD_ARC_COLOR.a, "ground": grass, "on": "grass"},
 		{"what": "corn spread arc", "mark": CornCobbler.SPREAD_ARC_COLOR, "gates": false,
@@ -7273,7 +7340,7 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 			return err
 	# The denominator, because a table that lost its rows would pass in silence.
 	if err == "":
-		err = _T.assert_eq(checked, 22,
+		err = _T.assert_eq(checked, 24,
 			"the sweep visited every board mark and both grounds for the ring")
 	if err == "":
 		# AND the exception set is pinned by membership, not by count alone. A new mark

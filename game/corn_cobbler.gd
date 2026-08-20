@@ -142,6 +142,14 @@ const PIP_RIM_WIDTH: float = 1.2
 const PIP_COLOR := Color(1.0, 0.78, 0.20, 0.95)
 const PIP_RIM_COLOR := Color(0.24, 0.16, 0.04, 0.9)
 const SPREAD_ARC_COLOR := Color(1.0, 0.78, 0.20, 0.45)
+## The fill's width, and the rim drawn on each side of it. Named rather than the 2.0 that
+## sat inline, because the rim is derived from the fill (`width + rim * 2`) and two
+## numbers that have to move together should not be one literal and one absence.
+##
+## 1.2 matches PIP_RIM_WIDTH deliberately: the arc and the pips are one cue drawn in one
+## call, and a rim that reads as a different weight on the two halves would split it.
+const SPREAD_ARC_WIDTH: float = 2.0
+const SPREAD_ARC_RIM_WIDTH: float = PIP_RIM_WIDTH
 
 ## The muzzle's floor brightness the instant a volley fires. Never 0 — the fan
 ## is the picture of what an upgrade bought, and a fired cob should still show
@@ -364,9 +372,27 @@ func _draw_muzzle_fan() -> void:
 	# invariant, and `test_placement` now asserts it per rung rather than leaving it as
 	# prose two functions away.
 	var arc_span: float = spread_arc_span(level)
+	# RIMMED SINCE CYCLE 166, the same way the pips two lines below have been since they
+	# were drawn (plant-tower-defense-uwf8). PIP_RIM_COLOR's own header says why: "a bare
+	# yellow dot this small dissolves into both a grass tile and the cob's own sprite,
+	# and the rim is what keeps it legible". The arc is the SAME yellow as the pips --
+	# literally the same RGB, at 0.45 instead of 0.95 -- and it had no rim, so it
+	# dissolved for exactly the stated reason. Measured: 0.064 separation on grass and
+	# 0.113 on dirt, both under GardenTheme.GROUND_SEPARATION_MIN.
+	#
+	# THE RIM RATHER THAN A LOUDER ARC, and that is the point. Clearing the floor with
+	# the fill alone needs either alpha 0.85 -- twice what it is, on a 34 px arc that
+	# would then compete with the pips it exists to frame -- or a near-white yellow at
+	# luminance 0.91. The rim costs neither: it is dark, it clears both grounds by a wide
+	# margin at 0.427 and 0.329, and it is the answer this file already reached for the
+	# identical problem one mark over. A cue is legible by its darkest channel.
+	var rim_fade: Color = Color(PIP_RIM_COLOR, PIP_RIM_COLOR.a * fade)
+	draw_arc(muzzle_pivot(_aim_angle), FAN_LENGTH, _aim_angle - arc_span * 0.5,
+		_aim_angle + arc_span * 0.5, 24, rim_fade,
+		SPREAD_ARC_WIDTH + SPREAD_ARC_RIM_WIDTH * 2.0, true)
 	draw_arc(muzzle_pivot(_aim_angle), FAN_LENGTH, _aim_angle - arc_span * 0.5,
 		_aim_angle + arc_span * 0.5, 24,
-		Color(SPREAD_ARC_COLOR, SPREAD_ARC_COLOR.a * fade), 2.0, true)
+		Color(SPREAD_ARC_COLOR, SPREAD_ARC_COLOR.a * fade), SPREAD_ARC_WIDTH, true)
 	for pip: Vector2 in muzzle_pips(level, _aim_angle):
 		draw_circle(pip, PIP_SIZE + PIP_RIM_WIDTH, Color(PIP_RIM_COLOR, PIP_RIM_COLOR.a * fade))
 		draw_circle(pip, PIP_SIZE, Color(PIP_COLOR, PIP_COLOR.a * fade))
