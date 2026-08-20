@@ -8819,7 +8819,7 @@ status rather than rewriting the entries that recorded these as open.
 
 - Gap: **`harness-version --client`'s gap reconciliation over-reports "already fixed here"
   by resolving status per LINE, not per id.**
-  - [G-142] status: open | seen: 1 | harness: 0.60.0 (client) / 0.38.0 (installed)
+  - [G-142] status: open | seen: 1 | harness: 0.60.0 (client) / 0.38.0 (installed) | upstream: gh#63
   - Improvement: resolve each id from its LAST status line, the way `gap_ledger.py` does,
     and say which line the verdict came from. And separate CITED from CREDITED: a
     `plant-tower-defense:G-044` in a comment describing a workaround is evidence the gap is
