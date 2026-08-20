@@ -6254,3 +6254,50 @@ Three findings kept out here rather than buried in a log:
   language. A checker could find the phrasings (`same … as`, `mirrors`, `must match`) and
   ask for a shared symbol — though it would need a real count first, and this is the first
   sighting of the shape in this repo.
+
+### New in cycle 169 — two words holding up a sentence, and a claim the player cannot check
+
+- **The upgrade panel shows what a plant IS, never what the next rung would make it.**
+  `_refresh_selection` builds the line from `corn.kernel_damage() * kernels_per_shot()`,
+  `fire_interval()` and `kernels_per_shot()` (`game/hud.gd:2435-2437`) — all read off the
+  plant's CURRENT level. The cost of the next rung reaches the player through
+  `Hud.upgrade_tip` (`game/hud.gd:3920-3921`), which is a price and nothing else: *"Your %s
+  can be upgraded. Click it on the board — %d seeds."* So at the moment of deciding, the
+  player sees this plant's damage, and a number of seeds, and nothing connecting them.
+  Meanwhile the notebook tells them *"Climbing one plant beats adding another"*
+  (`game/hud.gd:4007`) — a claim cycle 169 recorded as an **opinion** precisely because it
+  cannot be asserted. **Showing the delta is how an unassertable claim becomes a checkable
+  one, for the player rather than for the suite.** The comment above the panel line already
+  argues the case without drawing the conclusion: it says a 45-seed upgrade once ended up
+  worse than a 20-seed one, and that damage per volley "is the number that actually changed
+  and the one the upgrade is bought for". The constraint is real and recorded in the same
+  comment — the first draft wrapped to a third line and pushed `SelectionBox`'s foot to the
+  panel's own 648px. So this is a two-line problem, and an arrow rather than a sentence
+  (`14 → 21`) is the shape that fits.
+
+- **A word in player-facing prose can be the only reason the sentence is true, and it reads
+  as ordinary prose.** Two in one seven-entry table, both found by trying to assert the
+  claim rather than by reading it. `seen_road_tip` says everything **walking** a Bramble
+  stops to chew through it — `Bramble.stops()` is `return not pest_is_winged`
+  (`game/bramble.gd:167-168`), so a winged pest does not stop, and dropping one word for
+  brevity would make the card false. `seen_dead_ground_tip` says its bars are **slanted**,
+  which is the channel that separates them from the bar square to the lane; the angle is
+  `DEAD_BAR_ANGLE = -PI * 0.25` (`game/placement_preview.gd:161`) and any tidying toward
+  "the bars" loses the distinction the card is drawing. Both are now asserted. **The idea
+  worth taking further is the sweep**, not these two: every player-facing sentence with a
+  qualifier — *walking*, *slanted*, *only*, *still*, *other*, *on road* — is a candidate,
+  and the question is whether the qualifier is load-bearing or decorative. First sighting
+  of the shape as a shape; a second instance elsewhere in the prose is what would justify
+  a checker.
+
+- **A comment pointing at a test is only as good as the test's name, and nothing checks
+  it.** Cycle 169's card gate records, per claim, either an assertion or the NAME of a test
+  elsewhere that already covers it — and then asserts that name still exists in the suite
+  source (`test/unit/test_selftest.gd`, the `func %s(` sweep in
+  `test_every_hint_card_claim_still_holds`). Renaming the pointed-at test fails the gate
+  instead of silently orphaning the card, which was verified by mutating one name and
+  reading the failure. **This repo is full of the unchecked form**: prose naming a test,
+  and prose naming a `file:line`, which `tools/citation_check.py` covers for `kanban.md`
+  and beads but not for GDScript comments. The count is the thing to get before building
+  anything — `grep -rn "test_[a-z_]*" game/*.gd` is the denominator, and if it is small the
+  answer is to fix them by hand and say so.

@@ -1,4 +1,4 @@
-# Cycle 168
+# Cycle 169
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,38 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 169 taught
+
+**The rule cycle 168 added caught something on its first outing.** "If the bead names a
+category, enumerate the category from the code" — the bead asked for every card in
+`Hud.HINT_CARDS` and listed six. There are seven. `seen_dead_ground_tip` arrived between
+the bead being filed and being worked, which is why the verdict table is swept against
+`HINT_CARDS` rather than typed beside it, and why that sweep is not a formality.
+
+**Two words in the notebook turned out to be load-bearing, and neither was found by reading
+the prose.** `seen_road_tip` says everything *walking* a Bramble stops to chew through it —
+`Bramble.stops()` is `return not pest_is_winged`, so the sentence is true only because of
+that word. `seen_dead_ground_tip` says its bars are *slanted*, which is the channel that
+separates them from the bar square to the lane. Both surfaced only when someone tried to
+write the assertion. Proofreading would have passed both.
+
+**"Opinion" is a real verdict, and it points at a feature rather than closing a question.**
+"Climbing one plant beats adding another" cannot be asserted — pinning a balance judgement
+as a mechanical fact makes playtesting unable to change it. But the player is being told
+that and cannot check it either: the panel shows what a plant IS, never what the next rung
+would make it, and the cost arrives in a separate sentence. The right resolution is not an
+assertion; it is showing the delta. Filed.
+
+**A verdict that names another test is only as good as the name.** The gate asserts the
+named test still exists in the suite source, so renaming it fails rather than quietly
+orphaning the card. The unchecked form of this is everywhere else in the repo — comments
+naming tests, comments citing `file:line` — and `citation_check` says in its own output
+that it covers `kanban.md` and beads and not GDScript comments.
+
+Step 5 sharpened pre-flight rather than adding to it: **"absent" is matched on what a skill
+DOES, against the descriptions, not on the name the log invented.** Cycle 168 logged
+`audit-a-category` as missing. `derive-the-list` is that skill.
 
 ## What cycle 168 taught
 
@@ -2331,7 +2363,7 @@ tuning, so that lane waited.
 
 ## Waiting on the user
 
-**68 commits are held locally and unpushed, and this is the item to raise first.** Every
+**70 commits are held locally and unpushed, and this is the item to raise first.** Every
 push to `origin/main` auto-deploys to itch.io (`severalherr/pest-control:html5`) via
 `.github/workflows/deploy-to-itchio.yml`, with no paths filter — so pushing is publishing,
 and the loop commits once per bd item rather than once per release. The held work is a

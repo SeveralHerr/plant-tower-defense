@@ -43,7 +43,10 @@ with three values in it looks exactly like a line with four: `beads=N ready`,
 
 - `bd ready` and `bd list --status=open`. If everything open is blocked, say so.
 - Skill ideas in `C:\Users\gotmi\documents\github\log.md` against `.claude/skills/`. Named
-  twice and absent means build it, not identify it again.
+  twice and absent means build it, not identify it again — and **"absent" is matched on what
+  the skill DOES, against the descriptions, not on the name the log happened to invent.**
+  Cycle 168 logged `audit-a-category` as missing; `derive-the-list` is that skill, and its
+  own description opens with the same recipe. Names differ, recipes do not.
 - `kanban.md` — recent sections plus the backlog you are about to mine. Roughly half of the
   historical sections are stale; run `kanban-staleness-audit` before promoting anything.
 - `python tools/mirror_check.py` (`--fix` regenerates `AGENTS.md`'s copy). This guards the

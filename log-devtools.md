@@ -9350,3 +9350,43 @@ is likely to be at least as productive.
     in `stats`. **A checker this project built caught a defect caused by following its own
     harness documentation** — which is the argument for the refresh, not against the
     checker.
+
+## 2026-08-20 — checked every notebook hint card against the game it describes
+
+- Value: **overkill**, and the row says so — no game was launched, and none should have
+  been. The bead predicted this ("no running game needed, since these are claims about
+  code") and was right. Recording it rather than dressing a clean headless run as a
+  runtime win.
+  - Expected: the six cards the bead listed would mostly check out, and the work would be
+    writing assertions for claims that were already true.
+  - Got: they were all true. `1007 tests / 19203 assertions`, and the only thing runtime
+    could have added is a screenshot of a page whose text is already asserted.
+  - Found: two things, both from the derived sweep rather than from any gate. `HINT_CARDS`
+    holds **seven** cards; the bead enumerated six, because `seen_dead_ground_tip` arrived
+    between filing and working it. And `Dandelion.RANGE` is 192 against
+    `CornCobbler.RANGE`'s 176, so the dead-ground card's cob is not the longest reach in
+    the game — the sentence survives on a technicality it did not know it was relying on.
+    Neither needed the harness. Both needed reading the table instead of the bead.
+  - Cheaper: nothing cheaper existed. This IS the cheap tier.
+
+- Gap: **[G-145] `_T` has no way to read a script's source.**
+  - [G-145] status: open | seen: 1 | harness: 0.38.0 | upstream: gh#65
+    Filed against SeveralHerr/godot-selftest-harness as issue 65, re-checked against
+    the **0.60.0** templates rather than the 0.38.0 install — `run_tests.gd@0.60.0`
+    still ships no source-reading helper, so this is current and not a stale-install
+    false alarm. Symptom and mechanism verified; the fix is NOT — I have not run the
+    proposed static inside `run_tests.gd` itself, and whether `res://` resolves the
+    same for a static on `_T` as for one on the test script is the open question.
+  - The assertions this cycle needed most were about GUARDS, not values: "a winged pest
+    passes a Chomp Flower untouched" is `if pest.is_winged: continue` inside a private
+    method, with no predicate to call and nothing to read off an instance. Going through a
+    live grab would assert the grab, not the exemption. So the check has to read
+    `chomp_flower.gd` — and every test that has ever needed this opened a `FileAccess` by
+    hand. **There are eight such call sites across `test/unit/`** (5 in `test_selftest.gd`,
+    2 in `test_placement.gd`, 1 in `test_economy.gd`), each re-deciding what to do with a
+    null handle. I added a ninth as `_source_text`, local to one file, because that is
+    cheaper than the alternative and is exactly how the eighth got there.
+  - Improvement: `_T.file_text(path: String) -> String` on the test helper, returning `""`
+    for a path that will not open. Six lines. The null-handle policy is the part worth
+    centralising: an unreadable source is precisely the case where a `contains()` check
+    passes for the wrong reason, and a caller who has to remember that will eventually not.
