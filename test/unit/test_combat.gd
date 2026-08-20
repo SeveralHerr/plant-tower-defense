@@ -10745,3 +10745,99 @@ func test_damage_arms_a_pest_recoil_that_then_runs_out() -> String:
 			"and at full recoil against the walk it still moves the body the other way")
 	pest.free()
 	return err
+
+
+## A Chomp with a full mouth champs, and out-reads its own breathe
+## (plant-tower-defense-ts34).
+##
+## The asymmetry this closes: the pest IN the mouth has always shown the meal —
+## `ChompFlower._chew` calls `set_chewed` on it and `Pest._gait` multiplies that into the
+## sprite scale every frame — while the flower doing the eating swayed exactly like an idle
+## one. Its only tell was the drawn chew ring, which is a timer readout, and one channel is
+## not enough here.
+##
+## Asserted through `champ_scale`, which is pure, because everything in `Plant._wobble`
+## past the `animations_enabled()` gate is unreachable headless — the same seam
+## `Plant.breathe_scale` and `Pest.gait_yaw` exist for, and the trap
+## `assert-an-animation` names: a test that pumps `_wobble` and reads the pivot is
+## asserting an early return.
+func test_a_chewing_chomp_champs_further_than_it_breathes() -> String:
+	var err: String = _T.assert_eq(ChompFlower.champ_scale(0.0, false), Vector2.ONE,
+		"an empty mouth is the identity — a Chomp with nothing in it moves like any plant")
+	if err == "":
+		# Across a whole period, so the claim is about the motion and not about one lucky
+		# sample. The peak has to clear the idle breathe or the champ reads as nothing.
+		var peak: float = 0.0
+		var trough: float = 0.0
+		for i: int in range(0, 121):
+			var clock: float = float(i) / 120.0 * (TAU / ChompFlower.CHAMP_RATE)
+			var at: Vector2 = ChompFlower.champ_scale(clock, true)
+			peak = maxf(peak, at.x - 1.0)
+			trough = minf(trough, at.x - 1.0)
+			# The two axes are opposite at every point: a mouth closing is a head
+			# flattening AND widening, not a plant getting bigger.
+			err = _T.assert_float_eq(at.x + at.y, 2.0, 0.0001,
+				"the champ trades one axis for the other at clock %.3f (got %s)" % [clock, at])
+			if err != "":
+				return err
+		if err == "":
+			err = _T.assert_gt(peak, Plant.BREATHE_AMOUNT * 2.0,
+				("a champ has to clearly out-read the idle breathe (%.4f peak vs "
+					+ "BREATHE_AMOUNT %.4f)") % [peak, Plant.BREATHE_AMOUNT])
+		if err == "":
+			# No assert_lt in the runner, so the same claim as a positive magnitude.
+			err = _T.assert_gt(-trough, Plant.BREATHE_AMOUNT * 2.0,
+				"and in both directions, not just one (%.4f trough)" % trough)
+		if err == "":
+			# The absolute floor, in pixels, on a 64px sprite. Every assertion above is
+			# relative to CHAMP_AMOUNT and would pass with it set to 0.0 -- which is
+			# exactly the mutation that survived cycle 71 on BREATHE_AMOUNT.
+			var swing_px: float = peak * float(Board.CELL)
+			err = _T.assert_gte(swing_px, 2.0,
+				"and big enough to see: %.2f px on a cell-sized sprite" % swing_px)
+	return err
+
+
+## The hook changes nothing for a plant that does not want it (plant-tower-defense-ts34).
+##
+## `Plant.idle_scale_multiplier` is multiplied into the breathe for EVERY plant, so the
+## default has to be the exact identity or the hook's existence is a silent change to all
+## eight of them. Vector2.ONE is that identity for a component-wise multiply, and this is
+## the test that says so rather than the comment.
+##
+## Swept over the catalogue rather than sampled: a plant added later that overrides the
+## hook by accident, or a base class that stops returning ONE, fails here instead of
+## quietly shifting every bed on the board.
+func test_only_the_chomp_overrides_the_idle_scale_hook() -> String:
+	# Through Game._new_plant and over PlantCatalog.ids(), the same pairing
+	# test_exactly_two_plants_in_the_catalogue_grow_and_the_rest_are_born_finished uses
+	# and for the same reason: the match in _new_plant is what decides which class a
+	# placed plant actually gets, so a plant added to the catalogue reaches this test
+	# whether or not anyone remembers it exists.
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var overriding: Array[String] = []
+	var checked: int = 0
+	var err: String = ""
+	for id: StringName in PlantCatalog.ids():
+		var plant: Plant = game._new_plant(id)
+		if plant == null:
+			err = "Game._new_plant built nothing for %s" % id
+			break
+		checked += 1
+		# Two clocks, because a hook returning ONE only at zero would pass a single read.
+		if (plant.idle_scale_multiplier(0.0) != Vector2.ONE
+				or plant.idle_scale_multiplier(1.234) != Vector2.ONE):
+			overriding.append(str(id))
+		plant.free()
+	if err == "":
+		err = _T.assert_gt(checked, 1,
+			"the catalogue really was swept -- a loop over nothing asserts nothing")
+	if err == "":
+		# An UNHELD Chomp is the identity too, and that is the point: the override is keyed
+		# to having a pest in the mouth, not to being a Chomp. So a freshly built plant of
+		# every kind, Chomp included, must be inert here.
+		err = _T.assert_eq(overriding.size(), 0,
+			("no plant moves off the shared breathe while idle, and these do: %s"
+				% str(overriding)))
+	_T.free_ui(game)
+	return err

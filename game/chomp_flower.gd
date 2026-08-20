@@ -596,6 +596,51 @@ func chew_progress() -> float:
 	return clampf(1.0 - _chew_left / _chew_total, 0.0, 1.0)
 
 
+## The champ, and the answer to an asymmetry this plant shipped with: the pest in the
+## mouth shows the meal — `_chew` calls `set_chewed` on it and `Pest._gait` multiplies
+## that into its sprite scale every frame — while the flower doing the eating swayed
+## exactly like an idle one. The only tell a chewing Chomp had was the drawn chew ring,
+## a timer readout, and one channel is not enough in this game.
+##
+## `Plant.idle_scale_multiplier`'s hook rather than a Tween, for the reason
+## `.claude/skills/assert-an-animation/SKILL.md` gives at its first rung: the value is a
+## function of a clock this object already owns, so deriving it leaves the plant in a
+## correct state on every frame including the ones headless never renders. A Tween here
+## would also be overwritten within one frame, since `_wobble` rewrites the whole pivot
+## transform every frame — the same trap `Pest._gait`'s own header records for
+## `chewed_scale`.
+##
+## Vertical squash, not horizontal: a mouth closes along the body's long axis, which
+## STYLE.md puts up-screen. `1 + s` on X and `1 - s` on Y is a head flattening and
+## widening, which is a bite; the other sign is a yawn.
+##
+## Faster and deeper than the breathe on purpose. BREATHE_RATE is 2.0 and BREATHE_AMOUNT
+## is 0.022, and a champ that does not clearly out-read the idle motion reads as nothing —
+## the same rule `Plant.FLINCH_RADIANS` and `Pest.FLINCH_RADIANS` are both pinned by, and
+## the same mutation that survived cycle 71 when every assertion was written as a multiple
+## of the amplitude rather than against an absolute.
+const CHAMP_AMOUNT: float = 0.075
+const CHAMP_RATE: float = 9.0
+
+
+## Pure: the champ's scale at a point on the clock, or the identity when the mouth is
+## empty. Split out for the reason `Plant.breathe_scale` and `Pest.gait_yaw` are —
+## everything in `_wobble` past the `animations_enabled()` gate is unreachable headless,
+## so a test that pumps the plant and reads its pivot is asserting an early return.
+static func champ_scale(clock: float, chewing: bool) -> Vector2:
+	if not chewing:
+		return Vector2.ONE
+	var s: float = sin(clock * CHAMP_RATE) * CHAMP_AMOUNT
+	return Vector2(1.0 + s, 1.0 - s)
+
+
+## Chews visibly, or does not move at all. `is_busy()` and not `chew_progress()`: the
+## progress is 0.0 on the frame the mouth closes AND on every frame with no pest in it,
+## so a champ keyed to progress would be invisible at exactly the moment the bite lands.
+func idle_scale_multiplier(clock: float) -> Vector2:
+	return champ_scale(clock, is_busy())
+
+
 ## How far round the chew ring is drawn: a full circle when the mouth has just
 ## closed, sweeping down to nothing as the meal finishes.
 ##

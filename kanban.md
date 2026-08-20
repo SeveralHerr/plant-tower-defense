@@ -662,11 +662,27 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   reading as a rigid sprite being turned. Shipped in cycle 71 as
   `Plant.breathe_scale` on a `Sway` pivot — a separate node because `_sprite.scale`
   already has five event owners that all tween back to `Vector2.ONE`.
-  **What is still open under this heading** is the third word of the ask, *twitch*:
-  every idle motion in the game is a continuous sinusoid, so nothing is ever
-  startled, surprised, or briefly out of rhythm. A Chomp with a full mouth
-  (`game/chomp_flower.gd:83`) and a plant being eaten (`game/plant.gd`'s `_quiet_time`
-  regrowth clock) both know something a sway does not.
+  **CLOSED (cycle 141). The third word of the ask, *twitch*, is now answered three
+  times, and this paragraph used to claim it was answered none.** It read "every idle
+  motion in the game is a continuous sinusoid, so nothing is ever startled, surprised, or
+  briefly out of rhythm", and named two things that knew something a sway did not: a plant
+  being eaten, and a Chomp with a full mouth. Both have since been built, and the sentence
+  was stale for the first of them for fifty-odd cycles:
+  * A plant being eaten flinches — `Plant.FLINCH_RADIANS` (`game/plant.gd:231`), re-armed
+    every physics frame by `take_damage`, shipped cycle 86.
+  * A pest that survives a hit recoils — `Pest.FLINCH_RADIANS` (`game/pest.gd:602`), armed
+    in `flash_hit`, shipped cycle 139. Not named in the original ask and worth more than
+    either: it is the half of the fight the player is aiming at.
+  * A Chomp with a full mouth champs — `ChompFlower.champ_scale`
+    (`game/chomp_flower.gd:630`) through the `Plant.idle_scale_multiplier` hook
+    (`game/plant.gd:548`), shipped cycle 141, which is this bullet's own second example.
+
+  What that leaves is not "twitch" but the general point underneath it, and it is worth
+  keeping as an idea rather than as an absence claim: **a state a plant is IN still mostly
+  reads as a drawn cue rather than as motion.** The Chomp was the case where a readout
+  (the chew ring) stood in for a body, and there are others — a Sunflower filling its
+  gauge, a Sundew holding something, a plant one bite from dying. Each is a judgement about
+  whether the state is worth a channel, not a bug.
 - **More waves, and bosses.** The ask: real additional waves in the table, and at least
   one boss pest — bigger health pool, a distinct sprite, a mechanic that isn't just
   "armoured but more".

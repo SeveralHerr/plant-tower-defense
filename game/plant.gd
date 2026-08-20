@@ -523,7 +523,30 @@ func _wobble(delta: float) -> void:
 	# `sway_transform`. Both of the reads this replaces still work: Godot decomposes
 	# `rotation` and `scale` back out of the transform, and the origin it also carries
 	# is zero whenever the angle is.
-	_sway_pivot.transform = sway_transform(angle, breathe_scale(clock))
+	# MULTIPLIED into the breathe rather than replacing it, so a plant with something to
+	# say about its own body says it ON TOP of the idle motion every plant shares. The
+	# default is Vector2.ONE, which is the identity for a component-wise multiply, so a
+	# plant that does not override this is byte-for-byte unchanged by the hook existing.
+	_sway_pivot.transform = sway_transform(angle,
+		breathe_scale(clock) * idle_scale_multiplier(_wobble_time))
+
+
+## Subclass hook: an extra body-axis scale this plant wants on top of the shared breathe.
+##
+## SCALE and not rotation, because rotation on `_sway_pivot` is already spoken for twice —
+## the sway and the flinch ride it, and a third writer there would have to phase against
+## both. Scale has exactly one owner on this pivot (`breathe_scale`) and multiplying is
+## how two scales compose without either needing to know the other's amplitude.
+##
+## Takes the raw `_wobble_time` rather than the sway's `clock`, deliberately: the sway
+## clock carries a per-cell phase (`_wobble_phase`) so a bed of plants does not rock as
+## one slab, and a subclass motion that is ABOUT AN EVENT — a mouth chewing — should be in
+## step with the event rather than with where the plant happens to stand.
+##
+## Returns ONE here rather than being abstract, because "no opinion" is the right answer
+## for every plant but one and an abstract hook would make eight files declare it.
+func idle_scale_multiplier(_clock: float) -> Vector2:
+	return Vector2.ONE
 
 
 ## Pure: the breathe's scale at a point on the sway clock. Split out for the same
