@@ -218,6 +218,36 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 150 — a hang is worse than a failure, and four tests could hang
+
+- **A test that hangs reports nothing, and is indistinguishable from a mutation that never
+  applied.** Four loops in the suite terminated on a condition the CODE UNDER TEST owns —
+  `while corn.upgrade():`, `while not cob.is_max_level():`, and two more. Mutating
+  `level += 1` out of `Plant.upgrade()` made all four spin forever; the runner was SIGTERMed
+  at 6m40s with no output, twice, before I stopped assuming the suite was slow. **A failure
+  names its assertion; a hang names nothing and burns the whole run.** The suite already had
+  the convention (`guard < 4000`, `waited < 30`) and two of the four even kept a counter
+  without putting it in the condition — **a loop that is already counting has admitted it
+  can run long.** Worth a checker eventually: a `while` in `test/` whose condition calls a
+  method on the object under test, with no bound, is mechanically findable.
+
+- **Everything past an `animations_enabled()` gate is invisible to the entire suite, and
+  that is now measured rather than suspected.** Replacing `gait_swing(...)` with `0.0`
+  inside `Pest._gait` survives the full suite with zero failures; so does killing
+  `gait_stretch`. The pure functions are all well tested and nothing can assert `_gait`
+  calls them. `Plant._wobble` is identical — sway, breathe, flinch, wilt and
+  `idle_scale_multiplier` all compose past the same gate. **This is the single largest blind
+  spot in the project's testing**, it covers every animation cue shipped in cycles 139–149,
+  and the only reason `flash_hit`'s recoil is assertable at all is that cycle 139 put the
+  arming ABOVE the gate for an unrelated reason.
+
+- **Four of five suspected coverage gaps were not gaps.** The ladders are killed twice over
+  (the cost accessor and the level advance, separately), and the message row by eighteen
+  tests. The audit's value was as much in the negatives as the positive: three suspicions
+  retired, one confirmed and quantified. **A control mutation is what makes that readable** —
+  the road walker skipping a cell died with 37 failures and named cycle 142's own paired
+  test, which is how you know a `SURVIVED` elsewhere means something.
+
 ### New in cycle 149 — two channels describing one event, disagreeing
 
 - **A cue built from two channels can contradict itself, and nothing in this project looks

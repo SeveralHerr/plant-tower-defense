@@ -201,6 +201,24 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      no shell parsing of the content at all, and it is what the rule says in the first
      place: Edit/Write for code, always. The env-var pattern legitimises the *interpreter*,
      never the payload.
+     **AND THE ASSIGNMENT MUST BE A COMMAND PREFIX, NOT A STATEMENT.** `VAR=x python - …`
+     exports for that one command; `VAR=x; python - …` does not, and `os.environ["VAR"]`
+     then raises `KeyError` — or worse, an `os.environ.get("VAR", ".")` silently falls back
+     and the script reads the wrong path. Cycle 150 did it twice in one cycle, losing a
+     patch and a commit message. The example above is written as a prefix for this reason.
+
+     **NEVER BATCH LONG WORK THAT MUTATES THE TREE.** Cycle 150 ran a six-mutation sweep as
+     one background command and it was KILLED mid-mutation — twice — each time leaving a
+     game file modified with a `.bak` beside it. That state is not merely untidy: a mutated
+     working tree reads exactly like a finding, and any gate run against it reports a defect
+     that does not exist. Both kills happened around five suite runs in, so the limit is
+     real and not bad luck.
+     So: **one mutation per FOREGROUND call, and verify the restore before the next one.**
+     Check `git status` after any run that was killed or timed out, before believing
+     anything it printed. And pass `-u` to a long-running Python child — a killed batch
+     otherwise leaves an EMPTY log, because its stdout was still buffered, which is how the
+     first kill looked like a hang with no information at all.
+
      **This includes a Python script in a heredoc that writes the file** — that is the same
      shell, plus a second escaping layer, and it is the shape the rule keeps getting broken
      in because it is what you reach for **when `Edit`'s exact match fails**. Cycle 97 hit a

@@ -8707,3 +8707,35 @@ status rather than rewriting the entries that recorded these as open.
   what you put above it is what a future test can reach.
 
 - Gap: **no new gaps this turn.** `launch --snapshot-userstate` restored 1 file again.
+
+## 2026-08-20 — the reader audit (plant-tower-defense-4uts)
+
+- Value: **warranted**, and no game ran. Six mutations of READERS rather than tables, one
+  per foreground run, full suite each time.
+  - Expected: that the gait mutations would survive, because `_gait` early-returns on
+    `animations_enabled()` and no headless test can reach its composition — written down
+    before running, and confirmed.
+  - Got: the control fired first and correctly (road walker skips a cell → 37 failing,
+    first kill being cycle 142's own paired test), so the rest is readable. Ladder cost →
+    RED 2. Ladder level advance → RED 10. Message row → RED 18. Both gait mutations →
+    **SURVIVED, zero failures.**
+  - Found: **four test loops that hang the suite**, which the sweep was not looking for.
+    Each terminates on a condition the code under test owns, so the `level += 1` mutation
+    spun them forever and the runner was SIGTERMed with no output — twice, before I stopped
+    reading it as slowness. A hang is worse than a failure and, in a mutation sweep,
+    indistinguishable from a mutation that never applied.
+  - Cheaper: nothing. Reasoning about which readers are covered is exactly what the sweep
+    disproved — three of my four suspicions were wrong.
+
+- **Method note, paid for twice.** Batched sweeps of six mutations were KILLED mid-run in
+  this environment, both times leaving a game file mutated with a `.bak` beside it — a state
+  that reads exactly like a finding, and which would void every verdict above it if not
+  caught. One mutation per foreground call, restore verified before the next. Also: a
+  long-running Python child buffers stdout, so a killed batch leaves an EMPTY log; `-u` is
+  worth it from the start.
+
+- Gap: **no new gaps this turn**, but two self-inflicted slips worth recording. I set
+  `SCRATCH=...` as a shell statement rather than a command prefix TWICE, so `os.environ`
+  never saw it and both a patch and a commit-message write failed. Cycle 141's own rule says
+  `VAR="$VAR" python - <<'PY'` — as a PREFIX. A shell variable is not an environment
+  variable until it is exported or used as one.

@@ -1,4 +1,4 @@
-# Cycle 149
+# Cycle 150
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,35 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 150 taught
+
+**A hang is worse than a failure, and four tests could hang.** Each terminated on a
+condition the CODE UNDER TEST owns — `while corn.upgrade():`, `while not
+cob.is_max_level():` and two more. Mutating `level += 1` out of `Plant.upgrade()` made all
+four spin forever, and the runner was SIGTERMed with no output — twice, before I stopped
+reading it as slowness. **A failure names its assertion; a hang names nothing**, and inside
+a mutation sweep it is indistinguishable from a mutation that never applied. The suite
+already had the `guard < N` convention, and two of the four kept a counter without putting
+it in the condition — a loop that is already counting has admitted it can run long.
+
+**Everything past an `animations_enabled()` gate is invisible to the entire suite, now
+measured rather than suspected.** Replacing `gait_swing(...)` with `0.0` inside `_gait`
+survives with zero failures; so does killing `gait_stretch`. The pure functions are all well
+tested and nothing can assert `_gait` calls them. `Plant._wobble` is identical. That covers
+every animation cue shipped in cycles 139–149, and the only reason `flash_hit`'s recoil is
+assertable is that cycle 139 put the arming ABOVE the gate for an unrelated reason.
+
+**Four of five suspected gaps were not gaps, and the control is what made that readable.**
+The ladders are killed twice over, the message row by eighteen tests. Three suspicions
+retired, one confirmed and quantified — and the road-walker control dying with 37 failures,
+naming cycle 142's own paired test, is how a `SURVIVED` elsewhere earns belief.
+
+**Two self-inflicted process failures, both repeated within the cycle.** A batched sweep was
+killed mid-mutation twice, each time leaving a game file modified — a state that reads
+exactly like a finding. And I wrote `SCRATCH=...` as a statement rather than a command
+prefix twice, so `os.environ` never saw it. Both now in `why.md`: one mutation per foreground
+call with the restore verified, and the assignment must be a prefix.
 
 ## What cycle 149 taught
 
