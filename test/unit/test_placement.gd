@@ -7200,6 +7200,33 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 		{"what": "selection marker, at risk", "mark": SelectionMarker.WARNING_COLOR,
 			"alpha": SelectionMarker.WARNING_COLOR.a, "ground": dirt, "on": "dirt",
 			"gates": true},
+		# THE DIMMED STATES, added in cycle 165, and they are the ones worth having:
+		# `SelectionMarker.held_ink` HALVES the alpha, and separation scales by exactly
+		# alpha, so every held-over mark loses half its contrast. Nobody had priced that.
+		#
+		# WHAT IS REACHABLE IS NOT WHAT IS COMPUTABLE, and this table nearly got four rows
+		# that describe nothing. A dimmed WARNING colour fails dirt at 0.075 -- and cannot
+		# occur: both call sites refuse it in as many words ("ARMED OUTRANKS HELD",
+		# game/selection_marker.gd:309). A dimmed sole-cover ring fails GRASS at 0.103 --
+		# and cannot occur either, because those rings mark ROAD cells only
+		# (game/sole_cover_marks.gd:9). Only the reachable pairs are here.
+		{"what": "sole-cover ring, held over", "gates": true, "on": "dirt", "ground": dirt,
+			"mark": SelectionMarker.held_ink(SoleCoverMarks.MARK_COLOR, true),
+			"alpha": SelectionMarker.held_ink(SoleCoverMarks.MARK_COLOR, true).a},
+		{"what": "sole-cover ring, armed", "gates": true, "on": "dirt", "ground": dirt,
+			"mark": SoleCoverMarks.WARNING_COLOR,
+			"alpha": SoleCoverMarks.WARNING_COLOR.a},
+		# The selection brackets DO reach both grounds -- a Bramble is selected on the
+		# road, everything else on grass. Held on grass is 0.124 against a floor of 0.12,
+		# which is the tightest pair in this whole table and the reason it is in it.
+		{"what": "selection marker, held over", "gates": true, "on": "grass",
+			"ground": grass,
+			"mark": SelectionMarker.held_ink(SelectionMarker.MARKER_COLOR, true),
+			"alpha": SelectionMarker.held_ink(SelectionMarker.MARKER_COLOR, true).a},
+		{"what": "selection marker, held over", "gates": true, "on": "dirt",
+			"ground": dirt,
+			"mark": SelectionMarker.held_ink(SelectionMarker.MARKER_COLOR, true),
+			"alpha": SelectionMarker.held_ink(SelectionMarker.MARKER_COLOR, true).a},
 		# NOT GATED, and filed as plant-tower-defense-uwf8. A Corn Cobbler's spread arc is
 		# drawn from `muzzle_pivot` out to FAN_LENGTH, so it lies across whatever ground
 		# the lane is made of -- and at 0.45 alpha it clears NEITHER: 0.064 on grass,
@@ -7246,7 +7273,7 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 			return err
 	# The denominator, because a table that lost its rows would pass in silence.
 	if err == "":
-		err = _T.assert_eq(checked, 18,
+		err = _T.assert_eq(checked, 22,
 			"the sweep visited every board mark and both grounds for the ring")
 	if err == "":
 		# AND the exception set is pinned by membership, not by count alone. A new mark
