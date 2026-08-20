@@ -822,6 +822,50 @@ func uproot_refund() -> int:
 	return maxi(MIN_UPROOT_REFUND, int(floor(PlantCatalog.cost(kind) * rate)))
 
 
+## What the player has put into this plant: what it cost to buy plus every seed spent
+## climbing it. The number a MOVE is priced against, and it is not the same number a
+## refund is priced against — `uproot_refund()` scales the BASE cost alone, which is
+## exactly why relocating an upgraded plant is expensive today (plant-tower-defense-h5w6).
+func invested_value() -> int:
+	return PlantCatalog.cost(kind) + upgrade_spent()
+
+
+## THE PRICE OF MOVING, and the decision this constant records
+## (plant-tower-defense-h5w6).
+##
+## THE BEAD ASKED THE WRONG QUESTION, and answering the asked one would have shipped
+## nothing worth having. It framed the choice as "free moves are costless, full price is
+## cruel, refund-minus-cost is the middle" — but refund-minus-cost is FOUR SEEDS on a
+## healthy Corn Cobbler, which is the free option with extra arithmetic. The reason nobody
+## relocates anything is not the seeds. It is that `commit_uproot()` frees the plant, so a
+## move destroys the LEVEL: `uproot_refund()` scales the base cost, and `Hud`'s own armed
+## prompt says the quiet part out loud — "Its %d upgrade seeds are not refunded."
+##
+## Priced out, on a healthy Corn Cobbler:
+##   * fresh, uproot + rebuy:      10 - 6 = 4 seeds and nothing lost
+##   * fully climbed, same route:  10 - 6 + 65 forfeited = 69 seeds AND the climb again
+##
+## So the cost of moving today scales with exactly how much the player cared about the
+## plant, which is backwards: the plants worth moving are the ones it is prohibitive to
+## move. That is the defect, and the price is only half its fix — the other half is that
+## a move must PRESERVE the plant rather than replacing it.
+##
+## A QUARTER OF WHAT YOU HAVE PUT IN, so four moves cost you the plant. That is the whole
+## rule and it is meant to be sayable: it scales with what is at stake without ever
+## approaching the 69 that made the feature dead, it is never free, and a player can
+## predict it from a number the game already shows them in the forfeit clause.
+##
+## Rounded UP and floored at one, so the cheapest possible move still costs something —
+## a free move is the option the bead correctly rules out, and integer division would
+## have quietly reintroduced it for every plant under four seeds.
+const MOVE_RATE: float = 0.25
+const MIN_MOVE_COST: int = 1
+
+
+func move_cost() -> int:
+	return maxi(MIN_MOVE_COST, int(ceil(float(invested_value()) * MOVE_RATE)))
+
+
 # -- Upgrades ---------------------------------------------------------------
 #
 # The whole upgrade surface, for every plant, in one place. It was a CornCobbler

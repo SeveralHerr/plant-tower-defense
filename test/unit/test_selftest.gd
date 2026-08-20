@@ -20366,3 +20366,210 @@ func test_the_sole_cover_tip_names_a_shape_and_not_a_colour() -> String:
 		err = _T.assert_gt(Hud.hint_title(RunConfig.HINT_SOLE_COVER).length(), 0,
 			"and it has a card title rather than falling back to the raw id")
 	return err
+
+
+## Moving a plant keeps the plant, which is the whole decision (plant-tower-defense-h5w6).
+##
+## READ THE PRICE CONSTANT'S HEADER BEFORE CHANGING THIS. The bead framed the choice as a
+## price — free, full, or refund-minus-cost — and refund-minus-cost is FOUR SEEDS on a
+## healthy Corn Cobbler, which is the free option with extra arithmetic. What made
+## relocating prohibitive was never the seeds: `commit_uproot()` frees the plant, so a move
+## destroyed the LEVEL, and `uproot_refund()` scales the BASE cost. A fully climbed cob cost
+## 69 seeds and the climb again to shift one cell.
+##
+## So the assertion that matters is not the number, it is the IDENTITY: the same node, at a
+## new cell, with its level and health intact. A test that only checked the price would pass
+## against an implementation that uprooted and re-bought at a discount — which is the
+## feature the bead asked for and the wrong one.
+func test_moving_a_plant_keeps_the_same_plant_at_the_new_cell() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(500)
+	var from: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, from), "",
+		"a cob goes down")
+	var plant: Plant = null
+	var to: Vector2i = Vector2i(-1, -1)
+	if err == "":
+		plant = game.plant_at(from)
+		err = _T.assert_true(plant != null, "and is on the board")
+	if err == "":
+		# Climb it, because an unclimbed plant cannot show the thing this feature is about.
+		err = _T.assert_true(plant.has_upgrades(), "a cob has a ladder to climb")
+	if err == "":
+		err = _T.assert_true(plant.upgrade(), "and it climbs one rung")
+	if err == "":
+		err = _T.assert_gt(plant.upgrade_spent(), 0,
+			"so there is an investment a move could destroy")
+	if err == "":
+		to = _grass(game)
+		err = _T.assert_true(to != from and game.plant_at(to) == null,
+			"there is an empty second cell to move to")
+	if err == "":
+		game._select(plant)
+		# Through `Game.uproot_press_accepted` and not against "": `arm_uproot` returns
+		# UPROOT_CONFIRM_NEEDED on the arming press, and that predicate exists precisely
+		# so callers stop guessing which of its three returns mean the press was taken.
+		err = _T.assert_true(Game.uproot_press_accepted(game.arm_uproot()),
+			"the window arms")
+	var level_before: int = 0
+	var spent_before: int = 0
+	var id_before: int = 0
+	var seeds_before: int = 0
+	var price: int = 0
+	if err == "":
+		level_before = plant.level
+		spent_before = plant.upgrade_spent()
+		id_before = plant.get_instance_id()
+		seeds_before = game.bank.seeds
+		price = plant.move_cost()
+		err = _T.assert_eq(game.commit_move(to), "", "and the move is accepted")
+	if err == "":
+		var landed: Plant = game.plant_at(to)
+		err = _T.assert_true(landed != null, "something is standing at the destination")
+		if err == "":
+			# THE assertion. Same node, not an equivalent one.
+			err = _T.assert_eq(landed.get_instance_id(), id_before,
+				"and it is the SAME plant, not a fresh one bought at a discount")
+	if err == "":
+		err = _T.assert_true(game.plant_at(from) == null,
+			"the cell it came from is empty")
+	if err == "":
+		err = _T.assert_eq(plant.cell, to,
+			"the plant agrees with the board about where it now stands")
+	if err == "":
+		err = _T.assert_eq(plant.level, level_before, "its level survived the move")
+	if err == "":
+		err = _T.assert_eq(plant.upgrade_spent(), spent_before,
+			"and so did every seed spent climbing it")
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, seeds_before - price,
+			"and the move cost exactly move_cost() (%d)" % price)
+	_T.free_ui(game)
+	return err
+
+
+## The price scales with what is at stake, and always beats the route it replaces
+## (plant-tower-defense-h5w6).
+##
+## Two claims, both of which have to hold or the constant is wrong rather than merely
+## different:
+##   * A move is never free. Free moves make placement mistakes costless, which the bead
+##     rules out and is right to.
+##   * A move is cheaper than uproot-and-rebuy wherever anything is invested — otherwise
+##     the feature is decoration and players go on not moving anything.
+##
+## Swept over the catalogue through `Game._new_plant`, the same pairing
+## `test_exactly_two_plants_in_the_catalogue_grow_and_the_rest_are_born_finished` uses, so
+## a plant added later is priced here whether or not anyone remembers this test exists.
+func test_a_move_always_costs_something_and_always_beats_uprooting() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = ""
+	var checked: int = 0
+	for id: StringName in PlantCatalog.ids():
+		var plant: Plant = game._new_plant(id)
+		if plant == null:
+			err = "Game._new_plant built nothing for %s" % id
+			break
+		plant.setup(id, Vector2i(0, 0), game.board)
+		checked += 1
+		err = _T.assert_gte(plant.move_cost(), Plant.MIN_MOVE_COST,
+			"%s never moves for free" % id)
+		if err == "":
+			# The number the price rests on, asserted directly because it is the whole
+			# correction this feature makes: `uproot_refund()` scales the BASE cost alone,
+			# which is why relocating a climbed plant was ruinous, and a move is priced
+			# against what the player has actually put in instead.
+			err = _T.assert_eq(plant.invested_value(),
+				PlantCatalog.cost(id) + plant.upgrade_spent(),
+				"%s is worth what it cost plus what was spent climbing it" % id)
+		if err == "":
+			# The route a move replaces, at full health: pay the base cost again, get the
+			# refund back, and forfeit everything spent climbing.
+			var rebuy: int = (PlantCatalog.cost(id) - plant.uproot_refund()
+				+ plant.upgrade_spent())
+			err = _T.assert_gte(maxi(rebuy, Plant.MIN_MOVE_COST), plant.move_cost(),
+				("%s costs %d to move against %d to uproot and rebuy — a move dearer than "
+					+ "the thing it replaces is a feature nobody will use")
+					% [id, plant.move_cost(), rebuy])
+		plant.free()
+		if err != "":
+			break
+	if err == "":
+		err = _T.assert_gt(checked, 1, "the catalogue was swept (%d plants)" % checked)
+	if err == "":
+		# The case the whole feature is for, in numbers, so MOVE_RATE's header is checked
+		# rather than asserted. A climbed cob is where uproot-and-rebuy is ruinous.
+		var cob: Plant = game._new_plant(PlantCatalog.CORN)
+		cob.setup(PlantCatalog.CORN, Vector2i(0, 0), game.board)
+		while not cob.is_max_level():
+			cob.upgrade()
+		var climbed: int = (PlantCatalog.cost(PlantCatalog.CORN) - cob.uproot_refund()
+			+ cob.upgrade_spent())
+		err = _T.assert_gt(climbed, cob.move_cost() * 2,
+			("a fully climbed cob moves for %d against %d to uproot and rebuy — the "
+				+ "feature exists because that gap was the whole problem")
+				% [cob.move_cost(), climbed])
+		cob.free()
+	_T.free_ui(game)
+	return err
+
+
+## A move is refused everywhere a placement would be, and the seeds stay put
+## (plant-tower-defense-h5w6).
+##
+## The guard half. A move that could reach ground a purchase could not would be a way
+## around `is_buildable_for` — most sharply for the road, where only a Barrier Bramble may
+## stand and a moved Corn Cobbler would be sitting in a lane pests walk.
+##
+## Every refusal asserts the BANK as well as the string, because the failure that matters
+## is not the wrong message: it is charging for a move that did not happen.
+func test_a_refused_move_costs_nothing_and_leaves_the_plant_where_it_was() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(500)
+	var from: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, from), "",
+		"a cob goes down")
+	var plant: Plant = null
+	if err == "":
+		plant = game.plant_at(from)
+		err = _T.assert_true(plant != null, "and is on the board")
+	if err == "":
+		# Unarmed: the window IS the gesture, so a move outside it is not a move.
+		err = _T.assert_gt(game.commit_move(_grass(game)).length(), 0,
+			"an unarmed plant does not move")
+	if err == "":
+		game._select(plant)
+		# Through `Game.uproot_press_accepted` and not against "": `arm_uproot` returns
+		# UPROOT_CONFIRM_NEEDED on the arming press, and that predicate exists precisely
+		# so callers stop guessing which of its three returns mean the press was taken.
+		err = _T.assert_true(Game.uproot_press_accepted(game.arm_uproot()),
+			"the window arms")
+	var seeds_before: int = 0
+	if err == "":
+		seeds_before = game.bank.seeds
+		var road: Array[Vector2i] = game.board.road_cells()
+		err = _T.assert_gt(road.size(), 0, "the board has road to refuse")
+		if err == "":
+			err = _T.assert_gt(game.commit_move(road[0]).length(), 0,
+				"a cob cannot be moved into a lane pests walk")
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, seeds_before, "and the refusal charged nothing")
+	if err == "":
+		err = _T.assert_eq(game.plant_at(from), plant,
+			"and left the plant exactly where it was")
+	if err == "":
+		err = _T.assert_true(game.commit_move(from).contains("already"),
+			"clicking its own cell is not a move")
+	if err == "":
+		# Affordability, checked by spending the bank down rather than by trusting a
+		# comparison: SeedBank.spend is the one place that decides this.
+		game.bank.seeds = 0
+		var elsewhere: Vector2i = _grass(game)
+		if elsewhere != from:
+			err = _T.assert_eq(game.commit_move(elsewhere), "not paid for",
+				"a move nobody can afford is refused in place_plant's own words")
+	if err == "":
+		err = _T.assert_eq(game.plant_at(from), plant,
+			"and the plant is still standing where it was")
+	_T.free_ui(game)
+	return err

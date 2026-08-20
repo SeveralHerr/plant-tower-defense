@@ -150,6 +150,29 @@ func refund(amount: int) -> void:
 	add_seeds(amount, false)
 
 
+## Take seeds for something that is not a plant purchase — today, moving one
+## (plant-tower-defense-h5w6). Returns false and changes nothing when the seeds are not
+## there, so a caller can refuse before acting rather than going negative.
+##
+## Separate from `pay_for_plant` on purpose: that one checks `is_unlocked`, reads
+## `placement_cost` and clears `free_starter_available`, none of which mean anything for a
+## plant already standing in the garden. Routing a move through it would have made the
+## free starter payable twice — buy the free cob, move it, and the "free" slot is spent
+## against a plant the player already owns.
+##
+## Emits `seeds_changed` like every other writer here. A silent deduction leaves the HUD
+## reading the old number until something else happens to refresh it, which is the shape
+## of bug that gets reported as "the move was free".
+func spend(amount: int) -> bool:
+	if amount <= 0:
+		return true
+	if seeds < amount:
+		return false
+	seeds -= amount
+	seeds_changed.emit(seeds)
+	return true
+
+
 ## Everything `tier`'s packet could still roll: locked plants at or below its
 ## `max_tier`. An empty pool means that packet has nothing left to give — the HUD
 ## can disable the button on it, and buy_packet() refuses rather than reaching

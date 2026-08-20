@@ -3973,7 +3973,7 @@ static func destroyed_message(id: StringName) -> String:
 ## between a player and an irreversible act. It leads with the destructive verb
 ## and keeps "it will not grow back" rather than trading that away for the tip.
 ## `forfeited` is seeds already spent upgrading this plant, which `uproot_refund()` does
-## not pay back — it scales the plant's BASE cost (`game/plant.gd:541-544`). Said only
+## not pay back — it scales the plant's BASE cost (`game/plant.gd:819-822`). Said only
 ## when there is something to forfeit: on a fresh plant the clause would be noise on the
 ## row this project has spent four cycles measuring, and on an upgraded one it is the
 ## difference between a plausible number and an informed decision.

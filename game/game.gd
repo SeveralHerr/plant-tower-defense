@@ -2100,6 +2100,65 @@ func commit_uproot() -> String:
 	return ""
 
 
+## Move the armed plant to `cell`, keeping the plant (plant-tower-defense-h5w6).
+##
+## THE POINT IS THE PRESERVATION, not the price. `commit_uproot()` above frees the plant
+## and hands back a base-cost-scaled refund, so relocating a climbed Corn Cobbler costs 69
+## seeds and the climb; this keeps the same node — its level, its health, its upgrade
+## spend — and charges `Plant.move_cost()`, a quarter of what the player has put in. See
+## that constant's header for why the bead's own framing (refund-minus-cost) was the free
+## option with extra arithmetic.
+##
+## GATED ON THE ARMED WINDOW rather than being a mode of its own. `arm_uproot()` already
+## selects the plant, starts the confirm clock and turns on the destination preview the
+## move tip tells the player to hover — every piece was there and nothing consumed the
+## click. So a move is the armed window's OTHER ending, beside confirming and cancelling,
+## and it costs no new gesture to learn.
+##
+## Refusal strings rather than a bool, like `place_plant` and `commit_uproot`: every caller
+## here wants to say what went wrong, and "not paid for" is deliberately the same wording
+## `place_plant` uses so `_click_at` can shake the same button for the same reason.
+func commit_move(cell: Vector2i) -> String:
+	if selected_placed == null or not is_instance_valid(selected_placed):
+		return "nothing is selected"
+	if not uproot_armed():
+		return "arm the move first"
+	var plant: Plant = selected_placed
+	if cell == plant.cell:
+		return "it is already there"
+	if _plants.has(cell):
+		return "something is already growing there"
+	if not board.is_buildable_for(cell, plant.kind):
+		# Same refusal text `place_plant` gives, and for the same reason: whether a
+		# Barrier Bramble may stand here is a fact about the plant and the ground, and a
+		# move must not be a way around it.
+		return "pests walk there" if board.is_path(cell) else "that is not ground it can take"
+	var price: int = plant.move_cost()
+	if not bank.spend(price):
+		# Checked by SPENDING rather than by comparing first: `SeedBank.spend` refuses and
+		# changes nothing when the seeds are not there, so there is one place that decides
+		# affordability instead of a comparison here that can drift from it.
+		return "not paid for"
+	# The dictionary key and the plant's own idea of where it stands are two facts and
+	# both have to move. `_plants` is keyed by cell and `plant.cell` is read by
+	# `_on_plant_destroyed`, the husk drop, the neighbour buff and the sole-cover marks —
+	# leaving either behind puts the plant in one place and its consequences in another.
+	_plants.erase(plant.cell)
+	plant.cell = cell
+	plant.position = board.cell_to_world(cell)
+	_plants[cell] = plant
+	# The window is spent either way, exactly as confirming or cancelling spends it. A
+	# move that left the plant armed would leave the next click one press from digging up
+	# the thing that was just rescued. `_disarm_uproot` is the ONE place the arming is
+	# cleared and puts the marker back with it, which its own header says is why every
+	# exit runs through it.
+	_disarm_uproot()
+	Sfx.play(Sfx.PLANT_PLACED)
+	seeds_on_plants += price
+	_refresh()
+	return ""
+
+
 ## Beat between a purchase landing and its reveal. SeedBank's own header calls
 ## this "a gamble that reads as suspense" (seed_bank.gd), but buy_packet()
 ## rolls and returns synchronously, so nothing used to separate the click from
@@ -2657,6 +2716,28 @@ func _click_at(screen_pos: Vector2) -> void:
 			return
 	if not board.is_inside(cell):
 		return
+	# THE ARMED WINDOW'S THIRD ENDING (plant-tower-defense-h5w6). Above the
+	# select-or-place branches on purpose: while an uproot is armed the player is already
+	# being shown what the plant would reach from wherever they hover, and the two
+	# branches below would answer that preview by selecting a different plant or buying a
+	# second one. Whichever cell they click, the question they are answering is "move it
+	# here?" — so this consumes the click first and reports its own refusal.
+	if uproot_armed():
+		var moved: String = commit_move(cell)
+		if moved == "":
+			return
+		if moved == "not paid for":
+			# The bar slot for THIS plant's kind, which is the thing on screen that names
+			# what they were trying to spend on — the same shake place_plant's refusal
+			# gets, for the same reason.
+			hud.shake_plant_button(selected_placed.kind)
+			return
+		if moved != "it is already there":
+			hud.show_message(moved.capitalize() + ".")  # message-corpus-check: ok - move refusals are assembled at runtime, not written here
+			return
+		# Clicking the plant's own cell is not a refusal worth a line: it is what a player
+		# does when they change their mind, and the armed window already says how to
+		# cancel. Fall through so the click still selects, exactly as it did before.
 	var existing: Plant = plant_at(cell)
 	if existing != null:
 		_select(existing)
