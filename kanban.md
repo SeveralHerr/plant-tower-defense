@@ -218,6 +218,34 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 153 — the arithmetic said one ground, the picture said two
+
+- **A cue whose geometry leaves the cell it is anchored to does not inherit that cell's
+  ground.** Cycle 153 darkened `RISK_COLOR` (`game/placement_preview.gd:94` names its
+  radius) and priced it against grass alone, reasoning that hovering only reaches
+  buildable ground. True of the CELL and false of the RING: `RISK_RADIUS` is 30 against
+  `Board.CELL`'s 64 (`game/board.gd:14`), so a ring anchored one cell from the lane
+  spills across it, and the screenshot taken to *confirm* the colour showed the lower arc
+  lying on dirt. **Every number said grass-only and the picture said otherwise** — which
+  is the cheapest possible argument for looking at a visual change even when the
+  arithmetic is clean.
+  Worth enumerating the rest: `CHEW_RING_RADIUS` 22 (`game/chomp_flower.gd:96`),
+  `FANG_RADIUS` 28 (`:158`), `HIT_RADIUS` 18 (`game/kernel.gd:8`) all sit inside the
+  32 px half-cell and cannot spill; the reach rings are the extreme case at up to 176 px
+  and cross both grounds and several cells. **The rule the entry proposes: a cue's ground
+  is the set of grounds its INK can land on, not the ground of the cell that owns it.**
+
+- **2 of 35, and the ratio is the artefact worth keeping.** `tools/gate_aim_check.py`
+  counts what the `reads_on` family is actually pointed at, against a derived denominator
+  of every colour declared in a world-space script. `coverage_check.py` reports this
+  class covered — correctly — and would have done so for every cycle the dead-ground bar
+  spent below the floor. The number moved 2 → 3 in the same cycle the checker was written,
+  which is what a coverage ratio is for: it is a thing you can watch. Two other gates want
+  the same treatment and are deliberately absent because their denominators are not
+  derivable from source (`contained-in`, the budget helpers) — **the interesting work is
+  not the counting, it is finding a derivation for those two**, and a hand-maintained list
+  of what a gate should cover is exactly the thing that let the dead-ground bar go unasked.
+
 ### New in cycle 152 — a gate nobody aimed, and a log two tools read differently
 
 - **A gate that exists, is correct, and was never pointed at the thing it was written

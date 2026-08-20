@@ -1,4 +1,4 @@
-# Cycle 152
+# Cycle 153
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,43 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 153 taught
+
+**A coverage ratio is a thing you can watch, and this project had none for its own
+gates.** `coverage_check.py` answers which defect CLASSES get asked about, and it would
+have reported the colour-legibility class covered — correctly — for every cycle the
+dead-ground bar spent below the floor. `tools/gate_aim_check.py` asks the sibling
+question per gate: of the sites this gate could speak about, how many actually ask it.
+The answer for the `reads_on` family was **2 of 35**, and it moved to 3 within the same
+cycle. A gate's coverage is the set of call sites somebody remembered to write, and until
+that set has a denominator it cannot be read.
+
+**Its first draft said 0 of 24 and was measuring its own regex.** Both halves were over
+the wrong set: the numerator was call-scoped, and tests bind a colour to a local before
+passing it, so the symbol is never inside the parentheses; the denominator was built from
+`draw_*` call sites, which omits every mark handed to `Board` to draw — that is, exactly
+the marks the gate exists for. A checker that reports zero is not thereby thorough.
+
+**And the arithmetic was clean and wrong.** The darkened `RISK_COLOR` was priced against
+grass alone, on the reasoning that hovering only reaches buildable ground — true of the
+CELL, false of the RING. `RISK_RADIUS` is 30 against a 64 px cell, so a ring anchored one
+cell from the lane spills onto it, and the screenshot taken to *confirm* the colour showed
+the lower arc lying across dirt. **A cue whose geometry leaves the cell it is anchored to
+does not inherit that cell's ground.** No number in the working said so; the picture did.
+
+The thing left filed rather than fixed is the sharper one: `BLOCKED_COLOR` sits at 0.004
+separation against dirt — the road's own luminance — so in greyscale a blocked bracket on
+a road cell is simply gone, while `OK_COLOR` reads on both grounds. The cue saying YES
+reads and the cue saying NO does not. The cause is a convention, not a typo: both are
+palette entries LIGHTENED to read as suggestions, and lightening walks a mark *toward*
+both grounds because both sit in the middle of the range.
+
+Step 5 sharpened step 2 rather than adding to it: **a reasoned exclusion is a claim, and
+gets the same check as a citation.** The citation rules cover what you assert and say
+nothing about what you write down that you have deliberately left out — and an exclusion
+arrives wearing the costume of rigour, with a precedent cited and a convention named. This
+cycle wrote one into a constant's header and had it refuted by a screenshot minutes later.
 
 ## What cycle 152 taught
 

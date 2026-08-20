@@ -8857,3 +8857,43 @@ G-070, G-072) already carried a `reconciled` note against 0.54.0 and were left a
 rather than re-stated, and G-060 was already `fixed`. 63 open ids remain unreconciled;
 they are older and were filed against versions further back, so the same pass over them
 is likely to be at least as productive.
+
+## 2026-08-20 — Cycle 153: counted what the reads_on gate is aimed at, then aimed it once more
+
+- Value: **warranted**, and on a claim the arithmetic had already got wrong.
+  - Expected: the darkened `RISK_COLOR` to read as a warning on grass, which is the only
+    ground the hovered CELL can be. Predicted before launching, and written into the
+    constant's header as a reasoned exclusion of dirt.
+  - Got: a paused board with `at_risk` forced on, and the dashed ring's lower arc lying
+    **across the road**. `RISK_RADIUS` is 30 against a 64 px cell, so a ring anchored one
+    cell from the lane spills onto it. The first amber sat at 0.063 separation there.
+  - Found: **a cue whose geometry LEAVES the cell it is anchored to does not inherit that
+    cell's ground.** Every number in the working said grass-only; the picture said
+    otherwise. Re-picked the colour to clear both grounds (0.237 / 0.144) and the sweep
+    now prices both rows. This is the cheapest possible argument for looking at a visual
+    change even when the arithmetic is clean — the arithmetic was clean and wrong.
+  - Cheaper: nothing. `node-bounds` would have given the ring's radius, which I already
+    knew; what was missing was the relationship between that radius and where the cell
+    sits, and no verb answers that.
+
+- Gap: **`new-uid --write` mints a `.uid` sidecar for any path, including a `.py`.**
+  Ran `python tools/devtools.py new-uid --write tools/gate_aim_check.py` out of habit
+  after adding a new tool file; it printed
+  `uid://bwfh52uu6dksi  -> ...\tools\gate_aim_check.py.uid` and wrote it. A UID is a Godot
+  resource identity; a sidecar beside a Python file is meaningless, is not tracked by
+  lint's UID pass (which walks `.gd`), and would sit in the tree unexplained. Deleted by
+  hand. The verb has the information to refuse — it knows the extension.
+  - [G-143] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: refuse a path whose suffix is not one Godot mints UIDs for
+    (`.gd`, `.tscn`, `.tres`, `.gdshader`), naming the suffix it got. One `if`, and it
+    turns a silent wrong file into a one-line error.
+
+- Gap: **the unit suite takes >2 minutes while a launched game is up, and ~90 s when it is
+  not.** `CLAUDE.md` says a headless gate "never touches the bus ... safe to run while
+  another session drives this game", which is true — it passed cleanly once the game was
+  quit, and nothing was corrupted. What is missing is the COST: the run exceeded a
+  two-minute budget and was killed, which reads as a hang rather than as contention.
+  - Not opening an id: this is a documentation sharpening rather than a defect, and the
+    claim it sharpens ("safe") is correct as written.
+  - Improvement: add "safe, but slower — expect roughly double while a game holds
+    `.godot/`" to that line, so a killed run is diagnosed rather than investigated.

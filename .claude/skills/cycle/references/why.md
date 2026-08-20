@@ -316,6 +316,18 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      appear twice; the intended cut was 85 lines and the diff said **1937**. Nothing else
      in the loop would have caught it, and a markdown file is exactly where nobody looks
      twice.
+   - **A REASONED EXCLUSION IS A CLAIM, and gets the same check as a citation.** The
+     citation rules cover what you assert; they say nothing about what you write down
+     that you have deliberately left OUT, and an exclusion arrives wearing the costume of
+     rigour — "this does not clear dirt, and that is correct rather than a compromise,
+     for the same reason the sweep names one ground per row". Cycle 153 wrote that
+     sentence into a constant's header, with a precedent cited and a convention named,
+     and the screenshot taken minutes later showed the ring lying across dirt: the radius
+     was 30 against a 64 px cell, so the cue leaves the cell whose ground it was
+     inheriting. **Every number said the exclusion was safe and the picture said
+     otherwise.** So: when you catch yourself justifying a case you are not covering,
+     that case is the one to go and look at. It is the cheapest argument there is for
+     launching the game on a visual change whose arithmetic is already clean.
    - **The ledger row lands BEFORE the commit, never after.** `reach` is the diff
      intersected against what the running game loaded, and after a commit the diff is
      empty — so a row recorded afterwards reads `reached 0/0 changed file(s)`, which is
