@@ -7100,6 +7100,17 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 		{"what": "deferred-road bar", "mark": PlacementPreview.deferred_road_color(),
 			"alpha": PlacementPreview.DEFERRED_ALPHA, "ground": dirt, "on": "dirt",
 			"gates": true},
+		# BOTH grounds, unlike the bars above, and the difference is geometry rather than
+		# rule: `RISK_RADIUS` is 30 against a 64 px cell, so a ring anchored one cell from
+		# the lane SPILLS onto it. A cue that leaves the cell it is anchored to does not
+		# inherit that cell's ground. It failed on grass for many cycles at 0.085 and
+		# nothing asked (plant-tower-defense-pt8p).
+		{"what": "hungry-pest risk ring", "mark": PlacementPreview.RISK_COLOR,
+			"alpha": PlacementPreview.RISK_COLOR.a, "ground": grass, "on": "grass",
+			"gates": true},
+		{"what": "hungry-pest risk ring", "mark": PlacementPreview.RISK_COLOR,
+			"alpha": PlacementPreview.RISK_COLOR.a, "ground": dirt, "on": "dirt",
+			"gates": true},
 		# NOT GATED, and filed as plant-tower-defense-qt79 rather than waived quietly.
 		# A ring is not a mark: GROUND_SEPARATION_MIN was calibrated against the page
 		# frame's hairline, the cream, and the road hatch, all of them small strokes,
@@ -7135,7 +7146,7 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 			return err
 	# The denominator, because a table that lost its rows would pass in silence.
 	if err == "":
-		err = _T.assert_eq(checked, 6,
+		err = _T.assert_eq(checked, 8,
 			"the sweep visited every board mark and both grounds for the ring")
 	if err == "":
 		# AND the exception set is pinned by membership, not by count alone. A new mark

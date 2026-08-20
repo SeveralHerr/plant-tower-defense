@@ -67,7 +67,30 @@ const RING_WIDTH: float = 1.5
 
 ## The hungry-pest warning. Amber, not the blocked red — the cell is legal and
 ## the player may well want it anyway; this is a risk, not a refusal.
-const RISK_COLOR := Color(1.0, 0.72, 0.20, 0.85)
+##
+## DEEP AMBER SINCE CYCLE 153, AND IT USED TO BE A BRIGHT ONE
+## (plant-tower-defense-pt8p turned up that nothing had ever asked about it).
+## `Color(1.0, 0.72, 0.20)` sits at luminance 0.742 against GROUND_GRASS's 0.643 — a
+## separation of 0.100 against a floor of 0.12, and 0.085 at the alpha it ships with.
+## `_draw_risk_ring` runs on the hovered cell and hovering only reaches buildable
+## ground, so grass is the only ground this ring lands on and it failed there.
+##
+## The hue is unchanged in kind and the value is what moved: deep amber still reads as
+## neither the blocked red nor the placeable green, which is the whole job of the
+## colour, and it now clears BOTH grounds — 0.237 on grass and 0.144 on dirt, as drawn.
+##
+## BOTH, and the first attempt priced only grass. The reasoning was that hovering only
+## reaches buildable ground, which is true of the CELL and false of the RING: at
+## `RISK_RADIUS` 30 against a 64 px cell, a ring centred one cell from the lane spills
+## onto it, and the live capture that was supposed to confirm the colour showed the
+## lower arc lying across dirt. A cue whose geometry leaves the cell it is anchored to
+## does not inherit that cell's ground.
+##
+## THIS RING IS ALSO DASHED AND THIN (`RISK_WIDTH` 2.0, `RISK_DASHES` 8), which is why
+## the floor is the wrong thing to shave. A thin broken stroke has less ink to carry
+## the contrast than the solid bars do, so if anything it wants more margin than a bar,
+## not less.
+const RISK_COLOR := Color(0.66, 0.31, 0.03, 0.85)
 const RISK_RADIUS: float = 30.0
 const RISK_WIDTH: float = 2.0
 const RISK_DASHES: int = 8
