@@ -6527,3 +6527,39 @@ Three findings kept out here rather than buried in a log:
   should stay silent. It is that the bridge has no verb for "click this CELL", so every
   session re-derives the conversion. `Board.cell_to_global` already exists and its header
   records the same lesson from the other side.
+
+### New in cycle 176 — a baseline you refresh on a schedule is a baseline you never read
+
+- **Refreshing a baseline as a ritual banks whatever drifted since.** Cycle 175 moved the
+  citation snapshot into pre-flight and refreshed it at the end of the cycle "so the next
+  one starts clean" — which accepted all 98 drifted citations in the same stroke, and the
+  snapshot is gitignored (`.gitignore:8`, `.devtools/*`) so the evidence was destroyed
+  rather than dated. `house-static-checker` documents this exact shape for
+  `--baseline-write`: *"a tool that says 'you improved, re-bank' and nothing else is worse
+  than one that says nothing."* The repo has three baselines of this kind —
+  `tools/suite_reach_baseline.json`, `user://ui_findings_baseline.json`, and this one —
+  and **only the first is tracked in git**. The other two cannot be diffed, recovered, or
+  compared across machines. That asymmetry is worth deciding on deliberately rather than
+  inheriting from whichever cycle created each.
+
+- **A house tool that is a FIXER cannot carry the checker contract line, and `check_all`
+  is right to refuse both.** `citation_rebind.py` owes a caveat because it is a repo tool;
+  the words `NOT COVERED:` are what `check_all.py`'s marker discovery reads as "this is a
+  checker"; and a fixer needing `--against` and `--report` exits 2 on its own argparse
+  when run without them. Listing it in `NOT_A_CHECKER` while the source still declared the
+  marker produced `UNCLASSIFIED: ... one of the two is wrong` **and** a `SUM MISMATCH`,
+  which is the tool declining to let a contradiction pass as a count. The fix was to keep
+  the caveat under a different heading. **The general point**: this repo now has three
+  categories of `tools/*.py` — checkers, runners, and fixers — and only the first two were
+  ever named. A fourth arriving is the moment to check that the classifier still adds up.
+
+- **The invariant caught the fixer, not the fixer's own output.** `citation_rebind`
+  reported "24 written" on a run that had just corrupted a citation into a backwards range
+  — `game.gd`, start 2151, end 2071, the start replaced and the end left behind. (Written
+  out in words on purpose: spelled as a citation it *is* one, and `citation_check` reported
+  it as an out-of-range finding in this very entry.) What caught it was the checker falling
+  from 537 of 537
+  resolving to 536 — a number the fixer does not compute and cannot fake. **Any tool that
+  writes should be verified by something it does not control**, and the cheap version here
+  was already sitting in the repo. Worth remembering the next time a fixer is written: the
+  question is not "what does it report" but "what independent count must not move".

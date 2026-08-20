@@ -1,4 +1,4 @@
-# Cycle 175
+# Cycle 176
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,38 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 176 taught
+
+**Cycle 175 banked the 98 drifted citations it had just found.** It moved the snapshot into
+pre-flight and then refreshed it at the end "so the next cycle starts clean" — which
+accepts whatever drifted, in one stroke, and `.devtools/*` is gitignored so the evidence
+was destroyed rather than dated. That is the `--baseline-write` trap `house-static-checker`
+documents, arriving *inside* the rule written to prevent it.
+
+**Recovered exactly**, because the snapshot's mtime happened to fall two minutes after a
+commit. A worktree at `25cac96` reproduced 98 / 38 / 83 to the unit. The next one may not
+be datable at all.
+
+**And cycle 175's arithmetic was wrong.** "15 gating" was `98 − 83`; the checker reports
+those two counts *separately*, not as a subset. Six times the work the follow-up bead was
+scoped for.
+
+**A fixer that quietly does almost nothing is worse than one that fails.** The rebinder's
+first apply corrupted a range citation, caught by `citation_check` falling from 537 of 537
+resolving to 536 — a number the fixer does not compute and cannot fake. Its second apply
+wrote **one of thirty-four** and reported success, because the checker normalises a
+single-line target to `2070-2070` while the prose says `2070`. **Verify a writer with a
+count it does not control.**
+
+**`check_all` behaved better than I did.** A fixer owes a caveat because it is a house
+tool; the words that caveat starts with are exactly what marker discovery reads as "this is
+a checker"; and a fixer needing arguments exits 2 on argparse. Listing it as a non-checker
+while its source still declared the marker produced `UNCLASSIFIED: one of the two is wrong`
+**and** a `SUM MISMATCH` — it refused to let a contradiction pass as a count.
+
+Step 5 fixed the rule it added last cycle: **re-snapshot only if the comparison is clean.**
+If it is not clean, the drift is the work, and overwriting is how it stops being visible.
 
 ## What cycle 175 taught
 

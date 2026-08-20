@@ -57,11 +57,21 @@ with three values in it looks exactly like a line with four: `beads=N ready`,
   historical sections are stale; run `kanban-staleness-audit` before promoting anything.
 - `python tools/mirror_check.py` (`--fix` regenerates `AGENTS.md`'s copy). This guards the
   nine-line pointer to this skill, which has been silently deleted twice.
-- **Snapshot the citations, BEFORE anything is edited** — step 3 checks them against this
-  and cannot take it retroactively:
+- **Check the citations against the existing snapshot, and only re-snapshot if it is
+  clean.** Step 3 compares against this and cannot take it retroactively — but
+  **overwriting a snapshot that still has drift in it ACCEPTS that drift**, and
+  `.devtools/*` is gitignored so the evidence is destroyed rather than dated:
   ```bash
+  python tools/citation_check.py --beads --against .devtools/citations.json   # first
+  # ONLY if that reports 0 gating drifted:
   python tools/citation_check.py --beads --snapshot .devtools/citations.json
   ```
+  Cycle 175 added this line and refreshed unconditionally at the end of the cycle "so the
+  next one starts clean", which banked 98 drifted citations in one stroke — the
+  `--baseline-write` trap `house-static-checker` documents, arriving inside the rule meant
+  to prevent it. Recovering them needed a worktree at the snapshot's exact epoch and a
+  timestamp lucky enough to identify it. **If it is not clean, the drift is the work** —
+  leave the snapshot alone so the next cycle can still see it.
 - The cycle counter, **derived not read**:
   `git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n | tail -1`
   against `cycle-log.md`'s top line. The MAX, not a count. If they disagree, fix that first.

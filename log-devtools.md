@@ -9593,3 +9593,39 @@ is likely to be at least as productive.
     workaround that worked was to call the pure predicate (`sole_legal_plant_for`) directly
     and compare it against the observed behaviour — i.e. verify the parts separately when
     the whole is silent.
+
+## 2026-08-20 — recovered the citation drift cycle 175 banked, and built the tool that re-points it
+
+- Value: **warranted**, and none of it involved the game. The harness earned its keep as a
+  set of INVARIANTS rather than as a bridge: what caught the fixer corrupting a citation
+  was `citation_check` falling from `537 of 537 resolving` to `536`, a number the fixer
+  does not compute and cannot fake.
+  - Expected: the 98 drifted citations were gone, because the snapshot that found them had
+    been overwritten and `.devtools/*` is gitignored.
+  - Got: recoverable exactly. The file was dated 10:11, `25cac96` closed cycle 167 at
+    10:08, and a worktree there reproduced **98 drifted / 38 new / 83 closed-bead** to the
+    unit.
+  - Found: five things, and four of them are mine. Cycle 175's refresh **banked** all 98.
+    Its close said "15 gating", which was `98 - 83` where the two are separate counts, not
+    a subset. The fixer's first apply corrupted a range citation into `:2151-2071`. Its
+    second wrote **one of thirty-four** and reported success. And `check_all` refused to
+    classify a fixer that carried the checker contract line, printing the contradiction
+    *and* a sum mismatch rather than picking one.
+  - Cheaper: nothing. The recovery needs a worktree at the right commit; the rebind needs
+    the snapshot's stored text. The alternative was 98 hand edits, which contains a
+    transcription error by construction.
+
+- Gap: **no new gap this turn**, and two notes about tools this project owns rather than
+  the harness.
+  - **`check_all.py` behaved better than I did.** Given a tool listed as a non-checker
+    whose source still declared the contract marker, it printed
+    `UNCLASSIFIED: ... one of the two is wrong` and a `SUM MISMATCH` saying the counts
+    above could not be trusted. It refused to let a contradiction pass as a number. That
+    is the "print both numbers at the point of invitation" rule from
+    `house-static-checker`, applied to its own classification, and it is why the fixer got
+    registered properly instead of half-registered.
+  - **A gitignored baseline cannot be recovered, only re-derived.** Three baselines in this
+    repo work this way and only `tools/suite_reach_baseline.json` is tracked. Re-deriving
+    took a worktree and a lucky timestamp match; the next one may not be datable at all.
+    Filed as an idea rather than a gap, because it is this project's choice and not the
+    harness's.
