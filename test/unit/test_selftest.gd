@@ -7063,6 +7063,18 @@ func test_the_notebook_subheading_stays_narrower_than_the_paper() -> String:
 ## And one that reads the road and is guarded here by NEGATION, because provenance
 ## is not consequence: `test_the_husk_margin_reads_the_road_but_does_not_depend_on_it`
 ## below, whose walk yields CELL/2 for any road at all.
+##
+## SUPERSEDED IN PART, cycle 141 (plant-tower-defense-s1o8.1). The road is a parameter
+## now — `Board.set_road()` — and the length/count half of this is asserted properly by
+## `test_every_road_in_the_corpus_walks_the_length_its_corners_imply` in
+## `test/unit/test_board.gd`, which runs over three roads and DERIVES the expected numbers
+## from the corners by arithmetic instead of recording them. This test is kept for the two
+## things that one does not carry: the literal 32 and 2112.0 as a second, independent
+## statement about the default board, and the inventory ABOVE, which is the only written
+## list of what a reshape moves. **Four of the five entries in that inventory are still
+## literals against one snake** — dead ground, the split cell, the recorded gardens and
+## the Sundew's coverage — and converting them is the rest of s1o8.1, deliberately not
+## done in the cycle that made the road settable.
 func test_the_road_still_has_the_length_and_cell_count_the_constants_were_measured_against() -> String:
 	var board := Board.new()
 	await _T.instantiate_scene(board)

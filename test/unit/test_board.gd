@@ -1193,3 +1193,256 @@ func test_the_bus_can_arm_an_uproot_and_then_cancel_it() -> String:
 		err = _T.assert_true(game.selected_placed == null, "with nothing left selected")
 	_T.free_ui(game)
 	return err
+
+
+# =============================================================================
+# THE ROAD CORPUS (plant-tower-defense-s1o8.1)
+#
+# Board.PATH_CORNERS was a const and every number measured against it was a
+# literal recorded in a test. `Board.set_road()` makes the road a parameter; this
+# corpus is what stops the tests from going on describing one specific snake.
+#
+# THREE roads, chosen to be different in the ways the recorded numbers depend on
+# rather than to be pretty:
+#   * the DEFAULT, so every derivation is checked against the shape the whole
+#     game was tuned on and a change to the walker shows up here first;
+#   * a SHORT straight run, which is the smallest road the walker can be handed
+#     and is what makes a density claim about the pest ceiling say something --
+#     40 pests over 14 cells is a different game from 40 over 32;
+#   * a LONG serpentine, more cells than the default, so the derivations are
+#     exercised in both directions rather than only downward.
+#
+# Hand-written rather than derived, and that is the right call here: this is a
+# corpus of INPUTS, and `derive-the-list` is about not hand-typing the answers.
+# The answers -- cell counts, lengths, densities -- are all computed below.
+# =============================================================================
+
+const ROAD_DEFAULT: Array[Vector2i] = []   # empty = Board.PATH_CORNERS
+
+const ROAD_SHORT: Array[Vector2i] = [
+	Vector2i(0, 4),
+	Vector2i(13, 4),
+]
+
+const ROAD_LONG: Array[Vector2i] = [
+	Vector2i(0, 0),
+	Vector2i(13, 0),
+	Vector2i(13, 2),
+	Vector2i(0, 2),
+	Vector2i(0, 4),
+	Vector2i(13, 4),
+	Vector2i(13, 6),
+	Vector2i(0, 6),
+	Vector2i(0, 8),
+	Vector2i(13, 8),
+]
+
+
+## Every road the corpus holds, resolved -- the default expanded to its real corners so a
+## caller never has to know that empty means default.
+func _road_corpus() -> Array:
+	return [
+		{"name": "default", "corners": Board.PATH_CORNERS},
+		{"name": "short straight", "corners": ROAD_SHORT},
+		{"name": "long serpentine", "corners": ROAD_LONG},
+	]
+
+
+## The road is a parameter now, and its length and cell count are DERIVED from it
+## (plant-tower-defense-s1o8.1).
+##
+## This replaces a test that pinned 32 cells and 2112 px as literals. Those numbers were
+## correct and they were also the whole problem: they describe one snake, and cycle 53's
+## note above records that the same test "passes in silence" through a reshape that moves
+## every shape-dependent number in the game.
+##
+## WHAT MAKES THIS A CHECK RATHER THAN A RESTATEMENT: the expected values come from
+## `Board.road_cell_count` / `road_length_px`, which compute from the CORNERS by
+## arithmetic -- one cell per step plus the cell you start on -- while the actual values
+## come from `_build_path()`, which WALKS the corners a cell at a time and from
+## `_build_route()`, which measures the points it produced. Two independent routes to the
+## same number. A walker that skipped a cell, stepped twice, or mis-signed an axis makes
+## them disagree; a test that recomputed the answer the same way the code does would not.
+##
+## The default road still produces exactly 32 and 2112.0, asserted by name below, because
+## "the road is a parameter now" must not mean "the game changed".
+func test_every_road_in_the_corpus_walks_the_length_its_corners_imply() -> String:
+	var err: String = ""
+	var checked: int = 0
+	for road: Dictionary in _road_corpus():
+		var name: String = str(road["name"])
+		var corners: Array[Vector2i] = road["corners"]
+		var board := Board.new()
+		if name != "default":
+			err = _T.assert_eq(board.set_road(corners), "",
+				"the %s road is accepted by set_road" % name)
+			if err != "":
+				board.free()
+				return err
+		await _T.instantiate_scene(board)
+
+		var route: PackedVector2Array = board.route()
+		# Vacuity guard: an unbuilt board hands back an empty route and every assertion
+		# below would measure nothing while passing.
+		err = _T.assert_gt(route.size(), 2, "the %s road built a route" % name)
+		if err != "":
+			_T.free_ui(board)
+			return err
+		var cells: int = route.size() - 2
+		var length: float = 0.0
+		for i: int in range(route.size() - 1):
+			length += route[i].distance_to(route[i + 1])
+
+		checked += 1
+		err = _T.assert_eq(cells, Board.road_cell_count(corners),
+			("the %s road walks the cell count its corners imply -- the walker and the "
+				+ "arithmetic disagree, which means one of them is wrong") % name)
+		if err == "":
+			err = _T.assert_float_eq(length, Board.road_length_px(corners), 0.01,
+				"the %s road measures the length its cell count implies" % name)
+		if err == "":
+			err = _T.assert_eq(board.road_cells().size(), cells,
+				"and road_cells() agrees with route() about how many there are (%s)" % name)
+		_T.free_ui(board)
+		if err != "":
+			return err
+	if err == "":
+		err = _T.assert_eq(checked, 3,
+			"all three corpus roads were walked (%d were)" % checked)
+	if err == "":
+		# The default road, by name and by literal, because every constant in the game was
+		# tuned against exactly these two numbers and "the road is a parameter now" must
+		# not quietly mean "the road changed".
+		err = _T.assert_eq(Board.road_cell_count(Board.PATH_CORNERS), 32,
+			"the default road is still 32 cells")
+	if err == "":
+		err = _T.assert_float_eq(Board.road_length_px(Board.PATH_CORNERS), 2112.0, 0.01,
+			"and still 2112 px of walking")
+	return err
+
+
+## set_road refuses the road that would HANG, and three that would merely be wrong
+## (plant-tower-defense-s1o8.1).
+##
+## The diagonal case is the one this test exists for and it is not a tidiness check.
+## `_build_path()` walks each segment with `while at != to`, stepping `signi` on each
+## axis, so a segment from (0,0) to (3,4) steps (1,1) forever and never arrives: the loop
+## does not terminate, and it runs in `_ready()`, so the game hangs with no error and
+## nothing on screen. A refusal is the only thing between a caller's typo and that.
+##
+## Asserted by REFUSAL STRING rather than by calling it and seeing what happens, for the
+## obvious reason -- a test that hands the walker a diagonal to prove it hangs never
+## returns, and would take the whole suite with it.
+func test_set_road_refuses_the_roads_that_cannot_be_walked() -> String:
+	var board := Board.new()
+	var err: String = _T.assert_true(board.set_road([
+			Vector2i(0, 0), Vector2i(3, 4)]).contains("diagonal"),
+		"a diagonal segment is refused by name -- the walker would never arrive")
+	if err == "":
+		err = _T.assert_true(board.set_road([Vector2i(0, 1)]).length() > 0,
+			"one corner is not a road")
+	if err == "":
+		err = _T.assert_true(board.set_road([
+				Vector2i(0, 1), Vector2i(Board.COLS, 1)]).contains("off a"),
+			"a corner past the last column is refused")
+	if err == "":
+		err = _T.assert_true(board.set_road([
+				Vector2i(0, 1), Vector2i(0, -1)]).contains("off a"),
+			"and one above the first row")
+	if err == "":
+		err = _T.assert_true(board.set_road([
+				Vector2i(2, 2), Vector2i(2, 2)]).length() > 0,
+			"a zero-length segment is refused rather than silently skipped")
+	if err == "":
+		# The other direction, which is what stops all of the above from being satisfied
+		# by a set_road that refuses everything.
+		err = _T.assert_eq(board.set_road(ROAD_SHORT), "",
+			"and a legal road is still accepted")
+	if err == "":
+		err = _T.assert_eq(board.road_corners(), ROAD_SHORT,
+			"and is the road the board then reports as its own")
+	board.free()
+	return err
+
+
+## A board already in the tree refuses a new road, and says why
+## (plant-tower-defense-s1o8.1).
+##
+## `_build_tiles()` adds one Sprite2D per cell straight onto the Board with no container
+## and no names, so there is nothing to re-tile through: a second run would stack 126 more
+## sprites on the old ones and the board would show the previous road's tiles under the
+## new road's cells. Refusing is the honest answer and this pins it, because the
+## alternative failure is silent and visual.
+func test_a_board_in_the_tree_will_not_change_its_road() -> String:
+	var board := Board.new()
+	var err: String = _T.assert_eq(board.set_road(ROAD_SHORT), "",
+		"the road is set before the board enters the tree")
+	if err == "":
+		await _T.instantiate_scene(board)
+		err = _T.assert_true(board.set_road(ROAD_LONG).contains("already in the tree"),
+			"and refused after, because the tiles are built from the old one")
+	if err == "":
+		err = _T.assert_eq(board.road_corners(), ROAD_SHORT,
+			"the refused call left the board on the road it had")
+	if err == "":
+		err = _T.assert_eq(board.road_cells().size(),
+			Board.road_cell_count(ROAD_SHORT),
+			"and its cells are still that road's")
+	_T.free_ui(board)
+	return err
+
+
+## SIMULTANEOUS_PEST_CEILING is a hard cap, not a road derivation, and the corpus is what
+## says whether a fixed 40 survives a different road (plant-tower-defense-s1o8.1).
+##
+## READ THE CONSTANT'S OWN ARGUMENT BEFORE CHANGING THIS. 40 is not computed from the
+## road. `wave_director.gd`'s header derives the PROBLEM from the road -- sweeping the real
+## schedule found 115 pests alive at once "on a 14x9 board with a 32-cell road, i.e. three
+## and a half pests per cell of road" -- and then sets 40 by CONSTRUCTION from the wave
+## table, the two group shares summing to it exactly so the bound holds without tuning.
+## The road decided that a ceiling was needed and what it would MEAN; the table decided
+## the number. A test asserting `ceiling == cells * something` would therefore be
+## inventing a derivation the code does not have.
+##
+## What the road genuinely constrains is DENSITY, and that is what this checks: 40 pests
+## on the default road is 1.25 per cell, against the 3.5 per cell the header names as the
+## quantity problem the ceiling exists to prevent. A shorter road makes the same 40 denser
+## without anything in the director noticing, so the corpus is where that shows up.
+##
+## The bound is 3.5 because that is the number the header already argued as too many. It
+## is not a fresh opinion, and if it moves, the header is what has to move first.
+func test_the_pest_ceiling_stays_a_playable_density_on_every_road_in_the_corpus() -> String:
+	var worst_name: String = ""
+	var worst: float = 0.0
+	var checked: int = 0
+	for road: Dictionary in _road_corpus():
+		var cells: int = Board.road_cell_count(road["corners"])
+		var err: String = _T.assert_gt(cells, 0,
+			"the %s road has cells to spread pests over" % str(road["name"]))
+		if err != "":
+			return err
+		checked += 1
+		var density: float = float(WaveDirector.SIMULTANEOUS_PEST_CEILING) / float(cells)
+		if density > worst:
+			worst = density
+			worst_name = str(road["name"])
+	var err: String = _T.assert_eq(checked, 3,
+		"every corpus road was priced (%d were)" % checked)
+	if err == "":
+		err = _T.assert_true(worst < 3.5,
+			("%s puts %d pests on %d cells = %.2f per cell, at or past the 3.5 per cell "
+				+ "wave_director.gd's own header calls the quantity problem this ceiling "
+				+ "exists to prevent. Either that road leaves the corpus or the ceiling "
+				+ "becomes road-derived -- do not raise this bound without moving the "
+				+ "header's argument first.")
+				% [worst_name, WaveDirector.SIMULTANEOUS_PEST_CEILING,
+					Board.road_cell_count(_road_corpus()[0]["corners"]), worst])
+	if err == "":
+		# The default road, by name: 40 over 32 cells. Pinned so that a change to the
+		# ceiling or to the default road has to come past this sentence.
+		var default_density: float = (float(WaveDirector.SIMULTANEOUS_PEST_CEILING)
+			/ float(Board.road_cell_count(Board.PATH_CORNERS)))
+		err = _T.assert_float_eq(default_density, 1.25, 0.001,
+			"the default road carries 1.25 pests per cell at the ceiling (%.3f)"
+				% default_density)
+	return err

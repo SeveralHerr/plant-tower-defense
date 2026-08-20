@@ -58,6 +58,106 @@ const PATH_CORNERS: Array[Vector2i] = [
 	Vector2i(13, 3),
 ]
 
+## The road this board actually walks. Empty means PATH_CORNERS, so every existing
+## caller — `Board.new()` in eight tests, the scene's own Board, `_over_promise_run` —
+## keeps the road it always had without being told about this at all
+## (plant-tower-defense-s1o8.1).
+##
+## A VAR and not a second const because the point is that a board can be handed a
+## different one. Read only through `road_corners()`, which resolves the empty case, so
+## there is one answer to "which road is this" rather than two.
+var _road_corners: Array[Vector2i] = []
+
+
+## The corners this board walks, default included. One reader for `_build_path` and for
+## anything asking the board about its own road, because a caller that reached for
+## `PATH_CORNERS` directly would be right about the default board and silently wrong
+## about every other one.
+func road_corners() -> Array[Vector2i]:
+	return PATH_CORNERS if _road_corners.is_empty() else _road_corners
+
+
+## Hand this board a different road. Returns "" on success, or the reason it was
+## refused — a refusal string rather than a bool for the same reason `place_plant`
+## returns one: the caller usually wants to say what went wrong.
+##
+## VALIDATION IS NOT POLITENESS HERE. `_build_path` walks each pair with
+## `while at != to`, stepping by `signi` per axis, so a segment that is not axis-aligned
+## steps DIAGONALLY and never reaches `to`: the loop does not terminate and the game
+## hangs with no error, in `_ready`, before anything is on screen. That is the whole
+## reason this method exists rather than the field being public. The other three refusals
+## are ordinary bounds-checking; this one is a hang.
+##
+## Rebuilds the path immediately if it was already built lazily — several public getters
+## call `_build_path()` on demand, so a board can have a road before it has a tree.
+##
+## REFUSED once the board is INSIDE THE TREE, and that is a real limit rather than
+## caution. `_build_tiles()` adds one Sprite2D per cell straight onto the Board with no
+## container and no names, so there is nothing to re-tile THROUGH: running it again would
+## add 126 more sprites over the old ones, and a board showing the previous road's tiles
+## under the new road's cells is worse than a refusal. Set the road before the board
+## enters the tree — which is what a headless test does anyway, and what `Game` would do.
+func set_road(corners: Array[Vector2i]) -> String:
+	if is_inside_tree():
+		return ("this board is already in the tree and its tiles are built from the old "
+			+ "road; set the road before instantiating it")
+	if corners.size() < 2:
+		return "a road needs at least two corners"
+	for i: int in range(corners.size()):
+		var at: Vector2i = corners[i]
+		if at.x < 0 or at.x >= COLS or at.y < 0 or at.y >= ROWS:
+			return "corner %d %s is off a %dx%d board" % [i, at, COLS, ROWS]
+	for i: int in range(corners.size() - 1):
+		var from: Vector2i = corners[i]
+		var to: Vector2i = corners[i + 1]
+		if from == to:
+			return "corners %d and %d are the same cell %s" % [i, i + 1, from]
+		if from.x != to.x and from.y != to.y:
+			# The hang, refused by name so the message says what it prevented.
+			return ("segment %d %s -> %s is diagonal; the walker steps one axis at a "
+				+ "time and would never arrive") % [i, from, to]
+	_road_corners = corners.duplicate()
+	var was_built: bool = not _path_order.is_empty()
+	_path_cells.clear()
+	_path_order.clear()
+	_route = PackedVector2Array()
+	if was_built:
+		_build_path()
+	return ""
+
+
+## Pure: how many cells a road covers, computed from the corners rather than by walking
+## them. The INDEPENDENT half of what `_build_path` produces — an axis-aligned path
+## covers one cell per step plus the cell it starts on — so a test can compare the two
+## and actually be checking the walker rather than restating it.
+##
+## Assumes the road does not cross itself, which `_build_path` handles by skipping a
+## repeat (`_add_path_cell` early-returns on a known cell) and this arithmetic does not.
+## A self-crossing road therefore makes these two disagree, which is the correct
+## behaviour for a check: the two answers differ and the test says so.
+static func road_cell_count(corners: Array[Vector2i]) -> int:
+	if corners.size() < 2:
+		return 0
+	var steps: int = 0
+	for i: int in range(corners.size() - 1):
+		var d: Vector2i = corners[i + 1] - corners[i]
+		steps += absi(d.x) + absi(d.y)
+	return steps + 1
+
+
+## Pure: the walking length of a road in pixels, from the corners.
+##
+## `route()` is one point per cell bracketed by an off-board entry and exit, so the walk
+## is (cells - 1) interior segments plus the two brackets — (cells + 1) segments of CELL
+## each. That identity is what makes 2112 px a consequence of 32 cells rather than a
+## second measured fact, and it is why the length assertion below can be derived.
+static func road_length_px(corners: Array[Vector2i]) -> float:
+	var cells: int = road_cell_count(corners)
+	if cells <= 0:
+		return 0.0
+	return float(cells + 1) * float(CELL)
+
+
 const PATH_TILE: int = 50
 
 ## Plain grass. tile024 carries the kit's faint speckle; tiles 038-045, which look
@@ -188,15 +288,18 @@ func _ready() -> void:
 func _build_path() -> void:
 	if not _path_order.is_empty():
 		return
-	for i: int in range(PATH_CORNERS.size() - 1):
-		var from: Vector2i = PATH_CORNERS[i]
-		var to: Vector2i = PATH_CORNERS[i + 1]
+	# Through road_corners() rather than PATH_CORNERS, so a board handed a different road
+	# by set_road() builds THAT one. The default is resolved there, once.
+	var corners: Array[Vector2i] = road_corners()
+	for i: int in range(corners.size() - 1):
+		var from: Vector2i = corners[i]
+		var to: Vector2i = corners[i + 1]
 		var step := Vector2i(signi(to.x - from.x), signi(to.y - from.y))
 		var at: Vector2i = from
 		while at != to:
 			_add_path_cell(at)
 			at += step
-	_add_path_cell(PATH_CORNERS[PATH_CORNERS.size() - 1])
+	_add_path_cell(corners[corners.size() - 1])
 	_build_route()
 
 
