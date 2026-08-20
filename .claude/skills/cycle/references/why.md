@@ -124,6 +124,16 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      wrong thing, it defers the right thing**, and a deferral leaves no evidence behind to
      be caught by. So when a count decides scope, open a sample of what it counted before
      believing it.
+     **And the same suspicion runs the other way: a derivation that returns almost NOTHING
+     over a codebase this size is more likely a broken scan than a clean result.** Cycle
+     156 swept for arithmetic on three constants, blanked string bodies while scanning, and
+     found three readers — while the run state it was chasing crosses to the HUD as
+     Dictionary KEYS, which the blanking had hollowed out. Three is worse than zero here: a
+     plausible small number invites belief where an empty one invites a second look. That
+     is the denominator rule `house-static-checker` states for checkers, and it applies
+     just as hard to a grep you ran once in a terminal. It was caught mid-flight for the
+     first time, by asking whether the number was plausible for the question rather than
+     whether the command had worked.
    - **RUN INDEPENDENT ITEMS IN PARALLEL (asked for directly, cycle 99).** The loop did one
      item at a time for 99 cycles and the queue is 100 deep; most of it does not touch what
      the rest of it touches. Spawn agents for items whose files do not overlap, and say in

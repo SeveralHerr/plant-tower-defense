@@ -218,6 +218,34 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 156 — the sweep found prose, and one line of it was an invariant
+
+- **A design claim in a header is either a READING or an INVARIANT, and only one of them
+  survives a premise change quietly.** Three headers priced themselves against
+  "PREP_SECONDS is 18". `Bramble`'s (`game/bramble.gd:130`) is a reading — "11.4s holds
+  one pest for most of a prep gap" simply *means something different* on a nine-second
+  gap, and saying so is the whole fix. `Dandelion`'s (`game/dandelion.gd:91`) is an
+  invariant: "always at a full head when a wave arrives" is either true or the plant is a
+  different plant, and it survived three profiles **by luck**, at 4.9 s against harsh's
+  9 s, with nothing between the claim and the table. Now gated
+  (`test/unit/test_selftest.gd:20542`).
+  **The generalisation worth sweeping: every header in this repo that states a number
+  relative to another constant.** Sort each into reading or invariant; the invariants want
+  a test priced against the extreme of whatever table now varies their terms, and the
+  readings want one sentence naming which profile they describe. There are a lot of these
+  — this project writes its reasoning down, which is exactly why it accumulates claims
+  that were true once.
+
+- **A derivation that returns almost nothing over a big codebase is more likely a broken
+  scan than a clean result.** The first pass of this sweep blanked string bodies and
+  reported three arithmetic readers; the run state crosses to the HUD as **Dictionary
+  keys** (`game/hud.gd:1830` reads `state.get("prep_total")`), so the scan had hollowed
+  out the exact mechanism it was looking for. It happened to still find three, which is
+  worse than finding zero — a plausible small number invites belief. Caught by noticing
+  the number was implausibly small for the question, which is the denominator rule
+  `house-static-checker` states for checkers, applied to an ad-hoc grep. **Fifth sighting
+  of the wrong-set shape here and the first caught mid-flight rather than a cycle later.**
+
 ### New in cycle 155 — a defect that could not exist until a constant stopped being one
 
 - **`LIVES - lives` was correct for a hundred and fifty cycles and wrong the moment a

@@ -1,4 +1,4 @@
-# Cycle 155
+# Cycle 156
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,41 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 156 taught
+
+**The sweep found no defects, and that is the result.** Cycle 155 shipped difficulty
+profiles and asked for a sweep of every site computing against a constant those profiles
+now vary — before a title-screen picker makes them reachable by a player. The answer is
+that the running code reads run STATE rather than the constants: the prep bar divides
+`prep_left` by `prep_total` and both are per-run; `milestones.gd` compares `lives_lost`
+to zero, which no profile can move. Three arithmetic readers across `game/`, all correct.
+
+**What it found instead was prose, and one line of it was an invariant.** Three headers
+priced themselves against "PREP_SECONDS is 18". Two are READINGS — Bramble's "11.4s holds
+one pest for most of a prep gap" simply means something different on a nine-second gap,
+and saying so is the whole fix. Dandelion's is an INVARIANT: "always at a full head when a
+wave arrives" is either true or the plant is a different plant, and it survived three new
+profiles **by luck**, at 4.9 s against harsh's 9 s, with nothing between the claim and the
+table. **A reading becomes different when its premise moves; an invariant becomes false.**
+Only the second kind can be gated, and now is — priced against the minimum of the table
+rather than against `harsh` by name, so a fourth shorter profile fails the test instead of
+quietly falsifying the header.
+
+**And the wrong-set shape was caught mid-flight for the first time.** The sweep's first
+derivation blanked string bodies and reported three readers — while the run state it was
+chasing crosses to the HUD as Dictionary KEYS, which the blanking had hollowed out. Three
+is worse than zero: **a plausible small number invites belief where an empty one invites a
+second look.** What caught it was asking whether the number was plausible for the question
+rather than whether the command had worked. Fifth sighting; first one that cost nothing.
+
+Step 5 wrote that down as the other half of last cycle's sizing rule: a count that decides
+scope needs a sample opened, and a derivation returning almost nothing over a codebase
+this size is more likely a broken scan than a clean result.
+
+The harness was not used at all this cycle and should not have been — `log-devtools.md`
+records it as **overkill avoided** rather than leaving the absence unexplained. A sweep
+whose subject is "which expressions exist" is a source question.
 
 ## What cycle 155 taught
 

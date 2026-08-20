@@ -8954,3 +8954,33 @@ is likely to be at least as productive.
   `plant-tower-defense-fs2b` shape — a screen the capture never visited — and it is
   honest rather than wrong. Not bumping its sighting count: the earlier sightings were
   about a screen CLOSED before capture, which is a different and fixable thing.
+
+## 2026-08-20 — Cycle 156: swept the profile-varied constants, and found prose rather than code
+
+- Value: **overkill**, and writing that down is the point of this field. No game was
+  launched and none should have been.
+  - Expected: several sites computing a proportion against a constant a difficulty profile
+    now varies — the shape cycle 155 found two of while shipping the profiles.
+  - Got: **three arithmetic readers across `game/`, all correct.** The running code reads
+    run STATE rather than the constants: `_refresh_prep_bar` divides `prep_left` by
+    `prep_total` and both are per-run; `milestones.gd` compares `lives_lost` to zero, which
+    no profile can move.
+  - Found: nothing in the code, and that is the honest answer. What the sweep found was
+    PROSE — three headers priced against "PREP_SECONDS is 18" — one of which
+    (`Dandelion`'s full-head-within-prep) is an INVARIANT rather than a reading and had
+    survived three profiles with nothing between the claim and the table. Now gated.
+  - Cheaper: two greps and a scan, which is what it cost. The harness was not involved and
+    did not need to be; a sweep whose subject is "which expressions exist" is a source
+    question, and reaching for `findings` or the bridge here would have been the overkill
+    this entry is naming.
+
+- Gap: **no new harness gaps this turn, and none were expected** — this cycle used
+  `run_tests.py`, `lint_project.gd` and `check_all.py` and nothing else. Recording it
+  explicitly so an absent gap is distinguishable from a forgotten log.
+
+- Method note worth more than a gap: the first derivation blanked string bodies and so
+  missed dictionary-key access, which is exactly how run state crosses to the HUD. It
+  returned THREE readers rather than zero, and a plausible small number invites belief
+  where an empty one invites a second look. Caught by asking whether the number was
+  plausible for the question rather than whether the command had worked — the first time
+  this project has caught that shape mid-flight rather than a cycle later.
