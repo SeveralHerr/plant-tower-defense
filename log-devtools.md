@@ -8256,3 +8256,59 @@ status rather than rewriting the entries that recorded these as open.
 - Gap: **`reach` still cannot credit a file whose scene the entry hook replaces** — `game/title_screen.gd` read `0/1` on a run that had unquestionably executed `skip_to_game()`, because the title scene is gone by capture time. Recovered by firing `fire-entry-point notebook` to put `/root/TitleScreen` back and passing a second `--scene-tree`, which took the row to 1/1.
   - [G-137] status: open | seen: 2 | harness: 0.38.0
   - Improvement: unchanged — the capture deadline is per SCREEN, not per run. A `--scene-tree-auto` that snapshots on every scene change and unions the captures would remove the judgement call entirely.
+
+## 2026-08-19 — merged the three loop skills into one `/cycle`
+
+- Value: **overkill** — the only harness surface this turn was `name_check.py` inside
+  `check_all.py`, and a skill/docs restructure has nothing for it to see.
+  - Expected: nothing. No `.gd`, `.tscn` or `.tres` changed; the gates were run to prove
+    the restructure did not break `mirror_check` or `citation_check`, not to verify code.
+  - Got: `check_all: ran 19 of 19 discovered parallel-safe checker(s) -- 19 clean`, and
+    `mirror_check` correctly went `DIFFERENT` after the `CLAUDE.md` pointer edit and back to
+    `identical` after `--fix`. That second one was worth having: the pointer block now names
+    a directory rather than a file, and the mirror is what stops `AGENTS.md` disagreeing.
+  - Found: nothing in the game. In the skills, two rules I had dropped in the restructure
+    (the worktree-per-lane default, and "one bus per checkout") — caught by a sentence-level
+    no-loss diff of the old files against the new tree, not by any gate.
+  - Cheaper: `python tools/mirror_check.py` alone, ~1s. `check_all` was ~4s and told me
+    nothing the mirror check did not, but it is the cheapest way to be sure a deleted path
+    was not cited by a checker.
+
+- Gap: **no gaps this turn** — nothing was asked of the harness that it could not do. The
+  one thing missing was in `skill-creator`, not here, and is logged in
+  `C:\Users\gotmi\documents\github\log.md`.
+
+## 2026-08-19 — filed the replayability epic (plant-tower-defense-s1o8) and five children
+
+- Value: **inconclusive** — no gameplay, script or scene changed this turn, so no gate
+  had anything to gate. The harness was used as a *reading* instrument, not a runtime
+  one: `bead_prose_check.py` and `citation_check.py` ran, the bridge never launched.
+  - Expected: nothing from runtime. The question was "what does this repo already
+    assert about the road, the wave table and the title menu", which is a static
+    question, and I predicted the checkers would confirm the bead prose was undamaged.
+  - Got: `bead_prose_check.py` printed no findings against `s1o8*` — but only 1 of the
+    6 new ids is in `.beads/issues.jsonl`, so that clean result is a statement about
+    one bead, not six. `citation_check.py --quiet` over the six draft bodies:
+    "1 citation(s) across 6 file(s), 1 resolved, 0 finding(s)" against roughly forty
+    citations actually present.
+  - Found: two wrong line citations, both fixed before filing — `Board.GRASS_EDGE_TILE`
+    is at `game/board.gd:72` not `:76`, and the up-screen-travel comment is at `:36-43`
+    not `:33-45`. Neither checker saw either; opening the file did. Also caught two
+    stale claims in the backlog the beads were grown from: `WaveDirector.WAVES` is 22
+    rows, not the eight `run_config.gd:14` still says, and `STARTING_SEEDS` is in
+    `seed_bank.gd:16`, not `game.gd` as `kanban.md:2898` has it.
+  - Cheaper: reading `test/unit/test_selftest.gd:7040-7065` alone, which is a
+    hand-written inventory of every road-shape-dependent test and was worth more than
+    both checkers put together.
+
+- Gap: **`bead_prose_check.py` reads the JSONL export, and the export lags `bd create` by
+  a whole session** — so running it straight after filing checks almost nothing. Ran it
+  immediately after creating six beads; `grep -c s1o8 .beads/issues.jsonl` returned `1`.
+  The tool's NOT COVERED line names what it cannot judge in the prose it reads, but not
+  that the prose it reads may not include the beads you just wrote. Workaround: read one
+  bead back with `bd show` and eyeball it.
+  - [G-139] status: open | seen: 1 | harness: 0.60.0
+  - Improvement: have `bead_prose_check.py` compare its JSONL row count against
+    `bd stats` (or the DB directly) and print a second denominator — "N of M issues in
+    the export; the export is K issues behind" — so a clean run after a filing session
+    is legible as stale rather than as clean.
