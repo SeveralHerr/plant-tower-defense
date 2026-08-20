@@ -16076,6 +16076,207 @@ func test_every_hint_has_a_notebook_card() -> String:
 	return err
 
 
+## A script's own source as text. Three places in this suite opened a FileAccess by hand
+## to do this before it was a helper; the assertions that need it are the ones whose seam
+## is a GUARD rather than a value, and there is nothing to call for those.
+##
+## Returns "" on a path that will not open, which every caller asserts against rather than
+## treating as an empty file — an unreadable source is exactly the case where a
+## `contains()` check passes for the wrong reason.
+func _source_text(path: String) -> String:
+	var file: FileAccess = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return ""
+	return file.get_as_text()
+
+
+## EVERY HINT CARD'S FACTUAL CLAIM, CHECKED AGAINST THE GAME
+## (plant-tower-defense-snhb).
+##
+## The test above checks a card EXISTS for every hint. Another one checks a card against
+## its TIP. Nothing checked a card against the GAME, and these are not copy: every card
+## makes a claim about a mechanic. `seen_move_tip` said "Confirming still only uproots"
+## for two cycles after cycle 143 made confirming MOVE the plant, and it was caught by
+## accident — by a cycle rewording the matching tip and noticing the two had drifted from
+## each other, which says nothing about whether either was true.
+##
+## A wrong card is worse than a wrong comment. A comment is read by whoever is already
+## editing the code; a card is read by a PLAYER who is confused and went looking for help.
+##
+## THE VERDICT TABLE IS SWEPT AGAINST `HINT_CARDS`, NOT TYPED BESIDE IT. The bead that
+## asked for this listed six cards. There were SEVEN by the time it was worked —
+## `seen_dead_ground_tip` arrived in between — so the sweep at the bottom, which fails on
+## any card id with no row here, is not a formality: it already caught one.
+##
+## "OPINION" IS A LEGITIMATE VERDICT, recorded rather than reworded. "Climbing one plant
+## beats adding another" is a balance judgement. Asserting it would pin a design opinion
+## as a mechanical fact and make the sentence unchangeable by playtesting, which is the
+## opposite of what a card is for.
+##
+## A verdict that names another test is checked too — the name must still exist in the
+## suite. A pointer nobody can follow is how the card ends up unwatched again.
+func test_every_hint_card_claim_still_holds() -> String:
+	var judged: Array[Dictionary] = [
+		{"id": "seen_move_tip", "claim": "a quarter of what you have put into it",
+			"by": "here"},
+		{"id": "seen_move_tip", "claim": "the move keeps the plant's level",
+			"by": "test_a_move_always_costs_something_and_always_beats_uprooting"},
+		{"id": "seen_move_tip", "claim": "hovering another bed previews its reach there",
+			"by": "test_an_armed_uproot_turns_the_hover_into_a_move_preview"},
+		{"id": "seen_flight_tip", "claim": "a winged pest passes a Chomp Flower untouched",
+			"by": "here"},
+		{"id": "seen_flight_tip", "claim": "Corn Cobblers can still hit a winged pest",
+			"by": "test_a_winged_pest_only_outruns_the_map_in_a_garden_with_no_corn_in_it"},
+		{"id": "seen_upgrade_tip", "claim": "climbing one plant beats adding another",
+			"by": "opinion: a balance judgement, and the card is where it is allowed to "
+				+ "be one. Pinning it would make playtesting unable to change it"},
+		{"id": "seen_road_tip", "claim": "the Bramble is the only plant that goes on road",
+			"by": "here"},
+		{"id": "seen_road_tip", "claim": "everything WALKING one stops to chew through it",
+			"by": "here"},
+		{"id": "seen_defer_tip",
+			"claim": "plants shoot the pest furthest along their range first",
+			"by": "here"},
+		{"id": "seen_sole_cover_tip",
+			"claim": "rings mark road cells no other plant of yours reaches",
+			"by": "test_two_plants_sole_cover_sets_never_share_a_cell"},
+		{"id": "seen_dead_ground_tip", "claim": "the bars are drawn slanted", "by": "here"},
+		{"id": "seen_dead_ground_tip",
+			"claim": "a short-reaching plant darkens more of the garden than a cob does",
+			"by": "here"},
+		{"id": "seen_dead_ground_tip",
+			"claim": "which beds are dead depends on the plant hovered",
+			"by": "test_a_cell_can_be_dead_ground_for_a_chomp_and_good_ground_for_a_corn"},
+	]
+
+	# "A quarter of what you have put into it." Both halves matter: the RATE is the
+	# quarter, and the FLOOR is what stops a cheap plant's quarter rounding to nothing,
+	# which would make the sentence read as a lie to anyone moving a Sunflower.
+	var err: String = _T.assert_eq(Plant.MOVE_RATE, 0.25,
+		"seen_move_tip's 'a quarter of what you have put into it' is still a quarter")
+	if err == "":
+		err = _T.assert_gt(Plant.MIN_MOVE_COST, 0,
+			"and a move always costs something, so 'a quarter' never reads as free")
+
+	# "A winged pest passes a Chomp Flower untouched." The seam is the guard itself, so
+	# this reads the source: there is no predicate to call, and asserting through a live
+	# grab would be asserting the grab rather than the exemption.
+	if err == "":
+		var chomp: String = _source_text("res://game/chomp_flower.gd")
+		err = _T.assert_gt(chomp.length(), 0, "the Chomp Flower's source is readable")
+		if err == "":
+			err = _T.assert_true(chomp.contains("is_winged"),
+				"seen_flight_tip's 'passes a Chomp Flower untouched' is still a guard in "
+					+ "chomp_flower.gd -- if this went away the card became false")
+
+	# "Every other plant is refused on the road ... the Barrier Bramble is the exception."
+	# Swept over the catalogue rather than spot-checked, because "the exception" is a claim
+	# about ALL the others and one counter-example makes the card wrong.
+	if err == "":
+		var on_road: Array[StringName] = []
+		for id: StringName in PlantCatalog.ids():
+			if PlantCatalog.on_road(id):
+				on_road.append(id)
+		err = _T.assert_eq(on_road.size(), 1,
+			("seen_road_tip calls the Bramble THE exception, so exactly one plant goes "
+				+ "on the road. Found %d: %s") % [on_road.size(), str(on_road)])
+		if err == "":
+			err = _T.assert_eq(String(on_road[0]), String(PlantCatalog.BRAMBLE),
+				"and the one that does is the Bramble the card names")
+
+	# "Everything WALKING one stops to chew through it." The card's precision is the whole
+	# reason it is still true: a winged pest does NOT stop, and the sentence survives that
+	# only because it says walking. Both directions, or the assertion passes on a Bramble
+	# that stops nothing at all.
+	if err == "":
+		err = _T.assert_true(Bramble.stops(false),
+			"a pest that WALKS is stopped by a Bramble, as seen_road_tip says")
+	if err == "":
+		err = _T.assert_false(Bramble.stops(true),
+			("and a winged one is not -- which is why the card says 'walking' and is the "
+				+ "word an edit must not tidy away"))
+
+	# "Every plant that reaches that cell shoots at the pest furthest along its range
+	# first." Read from the shooter's source for the same reason as the Chomp guard: the
+	# selection is a private helper, and the card's claim is that it is the one being used.
+	if err == "":
+		var cob: String = _source_text("res://game/corn_cobbler.gd")
+		err = _T.assert_gt(cob.length(), 0, "the Corn Cobbler's source is readable")
+		if err == "":
+			err = _T.assert_true(cob.contains("_furthest_along_in_range"),
+				"seen_defer_tip's 'furthest along its range first' is still how a cob "
+					+ "picks its target")
+
+	# "They are drawn slanted." Asserted as a real diagonal rather than as "not zero": a
+	# bar at 0.1 radians is non-zero and is not slanted, and the card's next clause
+	# distinguishes these bars from the axis-aligned one by exactly this property.
+	if err == "":
+		var slant: float = PlacementPreview.DEAD_BAR_ANGLE
+		err = _T.assert_true(absf(absf(sin(slant)) - absf(cos(slant))) < 0.001,
+			("seen_dead_ground_tip's 'drawn slanted' is a true 45-degree diagonal, which "
+				+ "is what keeps it distinct from the bar square to the lane. Angle is "
+				+ "%.4f rad") % slant)
+
+	# "A short-reaching one darkens more of the garden than a Corn Cobbler does."
+	if err == "":
+		err = _T.assert_gt(PlantCatalog.reach(PlantCatalog.CORN),
+			PlantCatalog.reach(PlantCatalog.MINT),
+			"seen_dead_ground_tip compares a short reach against a cob's, so a cob still "
+				+ "out-reaches the short one it is being compared to")
+
+	# Every verdict that names another test names one that still exists. Read from the
+	# suite's own source, so renaming the test breaks this rather than quietly orphaning
+	# the card.
+	var suite: String = ""
+	if err == "":
+		for path: String in ["res://test/unit/test_selftest.gd",
+				"res://test/unit/test_placement.gd", "res://test/unit/test_combat.gd"]:
+			suite += _source_text(path)
+		err = _T.assert_gt(suite.length(), 0, "the suite's own source is readable")
+	var named: int = 0
+	var opinions: int = 0
+	for row: Dictionary in judged:
+		if err != "":
+			break
+		var by: String = String(row["by"])
+		if by == "here":
+			continue
+		if by.begins_with("opinion:"):
+			opinions += 1
+			err = _T.assert_gt(by.length(), 30,
+				("'%s' is recorded as an opinion, so it says WHY rather than just "
+					+ "declining to check it") % String(row["claim"]))
+			continue
+		named += 1
+		err = _T.assert_true(suite.contains("func %s(" % by),
+			("'%s' points at %s, and that test no longer exists -- the card is unwatched "
+				+ "again") % [String(row["claim"]), by])
+	if err == "":
+		err = _T.assert_gt(named, 0,
+			"at least one claim is covered by a named test, so the check above ran")
+
+	# THE SWEEP. Every card carries at least one judged claim, so a card added later
+	# cannot ship unread. This direction is the one that has already caught something.
+	for row: Dictionary in Hud.HINT_CARDS:
+		if err != "":
+			break
+		var id: String = String(row["id"])
+		var rows: int = 0
+		for judgement: Dictionary in judged:
+			if String(judgement["id"]) == id:
+				rows += 1
+		err = _T.assert_gt(rows, 0,
+			("the card '%s' has no judged claim. Read its note against the code that "
+				+ "implements it and add a row -- 'opinion: <why>' is a fine answer, "
+				+ "silence is not") % id)
+	if err == "":
+		err = _T.assert_eq(opinions, 1,
+			("exactly one claim is currently recorded as an opinion (%d found). A second "
+				+ "one appearing without a cycle noticing is how a card stops being "
+				+ "checkable") % opinions)
+	return err
+
+
 ## The bead's acceptance, as an assertion: a player who never saw the prompt can still
 ## learn the interaction. So the note reads IN FULL in both states -- the seen/unseen
 ## mark says who has read it, never what it says.

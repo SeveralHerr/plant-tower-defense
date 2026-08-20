@@ -3968,6 +3968,25 @@ static func upgrade_tip(plant_name: String, cost: int) -> String:
 ## not that a row claiming `untaught` is unclaimed by anything, because nothing else in
 ## the codebase records which row a hint teaches. `tools/teaching_ledger_check.py` reads
 ## this.
+##
+## EVERY `note` BELOW IS A FACTUAL CLAIM ABOUT A MECHANIC, and since cycle 169 each one is
+## checked against the code that implements it by
+## `test_every_hint_card_claim_still_holds`. **If you are here because you changed a
+## mechanic, that test is what tells you which sentence you just falsified.** Its table
+## records, per claim, whether it is asserted directly, asserted by a named test elsewhere,
+## or an opinion the game deliberately does not pin — and it fails on any card added here
+## without a verdict, so a new card cannot ship unjudged.
+##
+## The reason it exists: `seen_move_tip` claimed "Confirming still only uproots" for two
+## cycles after confirming started MOVING the plant, and nothing noticed. A card is read by
+## a player who is already confused and went looking for help, which makes a wrong one
+## worse than a wrong comment.
+##
+## Two words below are load-bearing and read as ordinary prose. `seen_road_tip` says
+## everything **walking** a Bramble stops to chew through it — a winged pest does not, and
+## `Bramble.stops()` is asserted in both directions so that word cannot be tidied away.
+## `seen_dead_ground_tip` says its bars are **slanted**, which is what distinguishes them
+## from the bar square to the lane, and the angle is asserted as a true diagonal.
 const HINT_CARDS: Array[Dictionary] = [
 	{
 		"id": "seen_move_tip",
