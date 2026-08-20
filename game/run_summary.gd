@@ -584,7 +584,12 @@ func spend_text() -> String:
 ## none of its escapes falls back to the bare bed count it always printed rather
 ## than announcing "all were fought" about pests nothing ever looked at.
 func beds_text() -> String:
-	var beds: String = "%d of %d beds" % [int(_stats.get("lives_lost", 0)), Game.LIVES]
+	# The denominator is the RUN's starting beds, not Game.LIVES, which is only the
+	# standard profile's ten (plant-tower-defense-s1o8.3). Falls back to Game.LIVES for a
+	# stats dictionary written before this key existed -- an old save's card should read
+	# as it always did rather than as "0 of 0".
+	var total: int = int(_stats.get("starting_lives", Game.LIVES))
+	var beds: String = "%d of %d beds" % [int(_stats.get("lives_lost", 0)), total]
 	var read: int = int(_stats.get("escapes_recorded", 0))
 	if read <= 0:
 		return beds

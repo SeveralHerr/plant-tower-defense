@@ -380,6 +380,23 @@ const MAX_LEVEL_STEP: int = 15
 var save_path: String = SAVE_PATH
 
 var endless: bool = false
+
+## Which named bundle of run-shaping constants this run uses
+## (plant-tower-defense-s1o8.3). The SECOND thing carried across the title -> game swap,
+## and deliberately shaped exactly like `endless` above: one field, written by the title
+## screen, read once by `Game._ready()`. A run-shaping choice is a fact about a RUN.
+##
+## A NAME rather than the values. The bundle itself lives on `Game.DIFFICULTIES`, beside
+## the constants it varies, so a reader who opens `LIVES` to ask "can this be other than
+## 10" finds the answer in the next paragraph rather than in an autoload two files away.
+## Carrying values here would also put a save-format question on something that is not
+## saved: this is not persisted and must not be, because it describes one run and the
+## high scores it would otherwise silently make incomparable are already split by mode.
+##
+## AN UNKNOWN NAME IS NOT A CRASH. `Game.difficulty_profile()` falls back to the standard
+## bundle and says so, for the same reason `RunConfig`'s save reader keeps its scores when
+## it cannot understand a file: a value from a later build must not take the run down.
+var difficulty: StringName = &"standard"
 ## True from the moment a run beats its mode's record until the title screen has
 ## said so. Not persisted: it is about the journey the player just took, not about
 ## the save file.

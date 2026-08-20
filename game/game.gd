@@ -8,10 +8,88 @@ extends Node2D
 ## board coordinates and cell coordinates agree — a plant at cell (3, 2) is at
 ## board-local (224, 160) whatever the top bar does.
 
+## The STANDARD profile's value, and the name a test means when it says "ten beds"
+## (plant-tower-defense-s1o8.3). It stayed a const when difficulty profiles landed
+## precisely so the 40-odd references to it across `game/`, `test/` and `tools/` kept
+## meaning what they already meant; `DIFFICULTIES` below reads it rather than restating
+## it, so there is still one number and no second copy to drift.
+##
+## What a RUN uses is `lives`, seeded from the chosen profile in `_ready()`. Anything
+## computing a proportion — "beds lost of beds" — must use `starting_lives` and not this,
+## or a gentler profile reports its losses against a total it never had.
 const LIVES: int = 10
 ## Seconds between a wave being cleared and the next one starting on its own. The
 ## button is still there; this stops a finished wave from stalling the run.
 const PREP_SECONDS: float = 18.0
+## THE DIFFICULTY PROFILES (plant-tower-defense-s1o8.3). A named bundle of the three
+## run-shaping constants above, chosen once and carried across the scene swap on
+## `RunConfig.difficulty` exactly the way `endless` is.
+##
+## The campaign was one curve for everyone: `LIVES`, `PREP_SECONDS` and
+## `SeedBank.STARTING_SEEDS` were const, and the machinery to DESCRIBE difficulty already
+## existed and was unreachable — `WaveDirector.threat_for` prices any wave as a multiple
+## of wave 1, and `set_seed` on both the director and the bank had only test callers.
+##
+## STANDARD IS DERIVED, NOT RESTATED. Its three values read the constants rather than
+## repeating them, so the numbers that forty-odd references across the repo already mean
+## cannot drift from the profile that ships them. Change `LIVES` and standard follows.
+##
+## WHAT VARIES AND WHAT DOES NOT. These three shape how much ROOM the player has: beds to
+## lose, seconds to think, seeds to open with. The wave curve itself is untouched and is
+## deliberately out of scope — `_raw_threat`'s own block records that the curve is
+## asserted to rise strictly wave over wave out to 300, so a strength multiplier is a
+## change that has to be re-verified against that property rather than added beside it.
+## Filed separately. A difficulty that changes only the room is still a real difficulty:
+## on `gentle` a player who loses four beds to a wave they misread is still in the run.
+##
+## THE ORDER IS THE ORDER A PICKER SHOWS. `DIFFICULTY_ORDER` exists so the title screen
+## (bead 4) has one list to iterate instead of sorting a Dictionary, which in GDScript is
+## insertion-ordered but not documented as a promise anyone should lean on.
+const DIFFICULTY_STANDARD := &"standard"
+const DIFFICULTY_GENTLE := &"gentle"
+const DIFFICULTY_HARSH := &"harsh"
+const DIFFICULTY_ORDER: Array[StringName] = [
+	DIFFICULTY_GENTLE, DIFFICULTY_STANDARD, DIFFICULTY_HARSH,
+]
+const DIFFICULTIES: Dictionary = {
+	DIFFICULTY_GENTLE: {
+		"label": "Gentle",
+		"blurb": "More beds, more time, more seeds. The same waves.",
+		"lives": 15,
+		"prep_seconds": 26.0,
+		"starting_seeds": 40,
+	},
+	DIFFICULTY_STANDARD: {
+		"label": "Standard",
+		"blurb": "The garden as it was designed.",
+		"lives": LIVES,
+		"prep_seconds": PREP_SECONDS,
+		"starting_seeds": SeedBank.STARTING_SEEDS,
+	},
+	DIFFICULTY_HARSH: {
+		"label": "Harsh",
+		"blurb": "Half the beds, half the thinking time, one plant's grace.",
+		"lives": 5,
+		"prep_seconds": 9.0,
+		"starting_seeds": 15,
+	},
+}
+
+
+## The bundle for `name`, falling back to standard for anything unknown.
+##
+## FALLS BACK RATHER THAN FAILING, and that is the same rule `RunConfig`'s save reader
+## follows: a value written by a later build must not take the run down. An unknown name
+## here means a save or a title screen from a build that knows a profile this one does
+## not, and the honest response is the designed game rather than a crash.
+##
+## Static and pure so the table is assertable without starting a run.
+static func difficulty_profile(name: StringName) -> Dictionary:
+	if DIFFICULTIES.has(name):
+		return DIFFICULTIES[name]
+	return DIFFICULTIES[DIFFICULTY_STANDARD]
+
+
 ## How long an armed Uproot stays armed before it disarms itself.
 ##
 ## Uproot is the only irreversible click in the game — it refunds 60% and frees
@@ -94,7 +172,16 @@ var director: WaveDirector
 var hud: Hud
 var compost: CompostMeter
 
+## Beds left, and how many there were. `starting_lives` is not decoration: `lives_lost`
+## and the post-mortem's denominator both used `LIVES` directly, which is the standard
+## profile's ten, so on any other profile they would have reported a loss the player
+## never took.
 var lives: int = LIVES
+var starting_lives: int = LIVES
+## Seconds of prep this run gets, from the profile. Read in place of `PREP_SECONDS`
+## everywhere the RUN is what is being timed; `PREP_SECONDS` itself stays the standard
+## profile's value and the thing the comments about pacing still refer to.
+var prep_seconds: float = PREP_SECONDS
 var selected_plant: StringName = PlantCatalog.CORN
 var selected_placed: Plant = null
 ## The plant the player is comparing FROM: the selection before this one, kept on
@@ -260,6 +347,20 @@ func _ready() -> void:
 	add_to_group("game")
 	Music.play_for_scene(scene_file_path)
 
+	# THE PROFILE IS APPLIED FIRST, ahead of every node this method builds
+	# (plant-tower-defense-s1o8.3). `bank` reads `starting_seeds` in its own initialiser
+	# and the HUD reads `lives` on the frame it is built, so a profile applied further
+	# down would be a run that starts on the standard numbers and corrects itself a few
+	# lines later -- visibly, on the first frame, for the seed counter.
+	#
+	# Read through `difficulty_profile()` rather than indexing `DIFFICULTIES`, so an
+	# unknown name from a later build falls back to the designed game instead of
+	# crashing here. See that function.
+	var profile: Dictionary = difficulty_profile(RunConfig.difficulty)
+	starting_lives = int(profile["lives"])
+	lives = starting_lives
+	prep_seconds = float(profile["prep_seconds"])
+
 	# The speed the player chose in their last run (plant-tower-defense-zgzc).
 	# Here rather than in RunConfig._ready(), which fires at process start while the
 	# TITLE screen is coming up — a saved half speed applied there would slow that
@@ -270,6 +371,10 @@ func _ready() -> void:
 
 	bank = SeedBank.new()
 	bank.name = "SeedBank"
+	# Set before the node enters the tree, so nothing can observe the standard opening
+	# balance and then watch it change. SeedBank.seeds is a plain field with no setter
+	# and no signal, so this is a write rather than a correction.
+	bank.seeds = int(profile["starting_seeds"])
 	add_child(bank)
 
 	director = WaveDirector.new()
@@ -367,7 +472,7 @@ func _ready() -> void:
 	_apply_board_layout()
 	get_viewport().size_changed.connect(_apply_board_layout)
 
-	_prep_left = PREP_SECONDS
+	_prep_left = prep_seconds
 	_refresh()
 	# ACT, the longest band there is: this sentence is an instruction to be carried out
 	# by a player who has not yet learned where the grass is or what the button does.
@@ -537,7 +642,7 @@ func _check_wave_cleared() -> void:
 	if director.is_spawning() or not get_tree().get_nodes_in_group("pests").is_empty():
 		return
 	_wave_live = false
-	_prep_left = PREP_SECONDS
+	_prep_left = prep_seconds
 	_commit_lane_pressure()
 	if director.has_more_waves():
 		# The wave that was about to attack got a banner and a bell the instant
@@ -604,7 +709,7 @@ func prep_note() -> String:
 	var note: String = Hud.prep_depth_note(last_wave, board.run_depth())
 	if note != "":
 		return note
-	return "Next one grows in %d seconds." % int(PREP_SECONDS)
+	return "Next one grows in %d seconds." % int(prep_seconds)
 
 
 # -- coverage ---------------------------------------------------------------
@@ -1302,7 +1407,8 @@ func summary_stats(new_record: bool) -> Dictionary:
 		"wave": director.current_wave,
 		"wave_count": director.wave_count(),
 		"threat_level": WaveDirector.threat_level(maxi(1, director.current_wave)),
-		"lives_lost": LIVES - lives,
+		"lives_lost": starting_lives - lives,
+		"starting_lives": starting_lives,
 		"seeds_earned_total": bank.seeds_earned_total,
 		"high_score": RunConfig.best_for(director.endless),
 		"new_record": new_record,
@@ -3065,7 +3171,7 @@ func state() -> Dictionary:
 		"wave_count": director.wave_count(),
 		"wave_live": _wave_live,
 		"prep_left": _prep_left,
-		"prep_total": PREP_SECONDS,
+		"prep_total": prep_seconds,
 		"more_waves": director.has_more_waves(),
 		"next_threat_level": WaveDirector.threat_level(maxi(1, director.current_wave + 1)),
 		# The wave AFTER the one just cleared, described for the prep gap. Unlike

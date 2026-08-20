@@ -20385,6 +20385,142 @@ func test_the_dead_ground_hint_is_spent_only_once() -> String:
 	return err
 
 
+# =============================================================================
+# Difficulty profiles (plant-tower-defense-s1o8.3)
+#
+# The campaign was one curve for everyone. These pin that a named profile actually
+# reaches the run, that the standard one is DERIVED from the constants rather than a
+# second copy of them, and that a name from a later build cannot take the run down.
+#
+# Every one of them stashes and restores `RunConfig.difficulty`. It is an autoload
+# field, `Game._ready()` reads it, and a test that leaves it set decides the shape of
+# every game instantiated after it in the run -- the same tree-global leak
+# `.claude/skills/godot-test-isolation/SKILL.md` is about, in its silent form: a later
+# test would simply get a game with five beds and no idea why.
+# =============================================================================
+
+
+## The standard profile is the constants, not a copy of them.
+##
+## This is the assertion that keeps forty-odd references across `game/`, `test/` and
+## `tools/` honest. `LIVES` stayed a const so those references kept meaning what they
+## meant; the moment `DIFFICULTIES[standard]["lives"]` is typed as `10` instead of read
+## from `LIVES`, there are two tens and one of them will move first.
+func test_the_standard_profile_is_derived_from_the_constants_it_replaces() -> String:
+	var standard: Dictionary = Game.DIFFICULTIES[Game.DIFFICULTY_STANDARD]
+	var err: String = _T.assert_eq(int(standard["lives"]), Game.LIVES,
+		"standard's beds ARE Game.LIVES, not a second ten")
+	if err == "":
+		err = _T.assert_float_eq(float(standard["prep_seconds"]), Game.PREP_SECONDS, 0.001,
+			"standard's prep IS Game.PREP_SECONDS")
+	if err == "":
+		err = _T.assert_eq(int(standard["starting_seeds"]), SeedBank.STARTING_SEEDS,
+			"standard's opening balance IS SeedBank.STARTING_SEEDS")
+	if err == "":
+		# The order list is what a picker iterates, and a profile missing from it would
+		# be unreachable from the title screen while looking present in the table.
+		err = _T.assert_eq(Game.DIFFICULTY_ORDER.size(), Game.DIFFICULTIES.size(),
+			("every profile is in DIFFICULTY_ORDER (%d ordered, %d in the table) -- one "
+				+ "missing is a profile no picker can show")
+				% [Game.DIFFICULTY_ORDER.size(), Game.DIFFICULTIES.size()])
+	if err == "":
+		for name: StringName in Game.DIFFICULTY_ORDER:
+			err = _T.assert_true(Game.DIFFICULTIES.has(name),
+				"DIFFICULTY_ORDER names %s and the table has it" % name)
+			if err != "":
+				break
+	return err
+
+
+## A profile reaches the run it starts, on all three axes at once.
+##
+## Driven through a real `instantiate_scene` rather than by reading the table, because
+## the table being right and the run using it are different claims and this project has
+## shipped the gap between them before: a constant test and a call-site test can both
+## pass while the feature is reverted.
+##
+## HARSH rather than gentle, because every one of its three numbers differs from
+## standard's in the direction that would be caught if the profile were ignored -- a
+## fallback to standard makes all three assertions fail rather than one.
+func test_a_difficulty_profile_shapes_the_run_it_starts() -> String:
+	var stashed: StringName = RunConfig.difficulty
+	RunConfig.difficulty = Game.DIFFICULTY_HARSH
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var harsh: Dictionary = Game.DIFFICULTIES[Game.DIFFICULTY_HARSH]
+
+	var err: String = _T.assert_eq(game.lives, int(harsh["lives"]),
+		"the run opens on the profile's beds, not Game.LIVES")
+	if err == "":
+		err = _T.assert_eq(game.starting_lives, int(harsh["lives"]),
+			"and remembers how many it started with, which lives_lost is counted from")
+	if err == "":
+		err = _T.assert_float_eq(game.prep_seconds, float(harsh["prep_seconds"]), 0.001,
+			"the prep clock is the profile's")
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, int(harsh["starting_seeds"]),
+			("the opening balance is the profile's and was set BEFORE the bank entered "
+				+ "the tree -- a correction a frame later is visible in the counter"))
+	if err == "":
+		# The point of the whole item, stated as an assertion: this is a different game.
+		err = _T.assert_true(game.lives != Game.LIVES,
+			"and harsh is genuinely not the standard curve")
+	_T.free_ui(game)
+	RunConfig.difficulty = stashed
+	return err
+
+
+## A name this build does not know falls back to the designed game.
+##
+## Not a crash and not an empty Dictionary. The rule is `RunConfig`'s own, stated in its
+## header: a save we cannot understand leaves what we have alone. A profile name is
+## exactly the value a later build writes and this one reads.
+func test_an_unknown_difficulty_falls_back_to_standard_rather_than_crashing() -> String:
+	var stashed: StringName = RunConfig.difficulty
+	RunConfig.difficulty = &"a_profile_from_a_later_build"
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+
+	var err: String = _T.assert_eq(game.lives, Game.LIVES,
+		"an unknown profile opens the standard game rather than none")
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, SeedBank.STARTING_SEEDS,
+			"and the standard opening balance with it")
+	if err == "":
+		# The static half, asserted separately: a caller that never starts a run still
+		# needs a Dictionary back rather than an empty one it will index into.
+		var got: Dictionary = Game.difficulty_profile(&"nonsense")
+		err = _T.assert_eq(got, Game.DIFFICULTIES[Game.DIFFICULTY_STANDARD],
+			"difficulty_profile() hands back the standard bundle for an unknown name")
+	_T.free_ui(game)
+	RunConfig.difficulty = stashed
+	return err
+
+
+## The post-mortem counts beds against the beds THIS run started with.
+##
+## The defect this closes shipped invisibly for as long as there was one profile:
+## `lives_lost` was `LIVES - lives` and the card's denominator was `Game.LIVES`, both of
+## which are the standard ten. On `gentle` a player who lost four of fifteen would have
+## been told they lost four of ten, and on `harsh` a full wipe would have read "5 of 10"
+## -- a loss they never took, on a card that exists to be read once at the end.
+func test_the_post_mortem_counts_beds_against_the_beds_the_run_started_with() -> String:
+	var stashed: StringName = RunConfig.difficulty
+	RunConfig.difficulty = Game.DIFFICULTY_GENTLE
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var gentle: int = int(Game.DIFFICULTIES[Game.DIFFICULTY_GENTLE]["lives"])
+
+	game.lives = gentle - 4
+	var stats: Dictionary = game.summary_stats(false)
+	var err: String = _T.assert_eq(int(stats["lives_lost"]), 4,
+		"four beds lost is four, not four plus the difference between the profiles")
+	if err == "":
+		err = _T.assert_eq(int(stats["starting_lives"]), gentle,
+			("and the card is handed the denominator rather than left to assume ten -- "
+				+ "without this key RunSummary falls back to Game.LIVES"))
+	_T.free_ui(game)
+	RunConfig.difficulty = stashed
+	return err
+
+
 ## The sixth one-shot names the first cue a player ever meets (plant-tower-defense-bkss).
 ##
 ## Unlike the defer tip above there is NO minimum-guns gate, and that asymmetry is the
