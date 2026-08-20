@@ -218,6 +218,39 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 149 — two channels describing one event, disagreeing
+
+- **A cue built from two channels can contradict itself, and nothing in this project looks
+  for that.** A plate-blocked hit flashed at `SHELL_FLASH_DIM` 0.45 against
+  `HIT_FLASH_BOOST` 1.9 — a 4.2× split deliberately saying "that did nothing" — while the
+  recoil said "that hit hard" in the same frame, because the recoil had no branch at all.
+  Both halves were written on purpose, two cycles apart, each correct alone. **The standing
+  rule in this project is that colour is never the only signal; the corollary nobody wrote
+  down is that a second signal must AGREE with the first.** Worth a sweep: every cue in the
+  game that speaks on more than one channel — the husk's ring plus its pips, the selection
+  brackets plus their doubled width, the weather's marks plus its banner — and asking
+  whether both halves read the same event the same way.
+
+- **The Chomp damages nothing, and that is invisible from every direction except a grep.**
+  `grep take_damage game/chomp_flower.gd` is empty. It holds a pest, chews it cosmetically
+  through `set_chewed`, and kills it when `_chew_left` runs out. Every reasonable-looking
+  question — "does the Chomp hurt pests?", "is a chewed pest taking damage?" — answers YES
+  from the player's side and NO from the code's, and any predicate written as "did this
+  cue follow damage" gets the Chomp exactly backwards. **The lesson generalises past this
+  plant: when writing a predicate over CALLERS, enumerate what each one actually did rather
+  than what its name implies.** That enumeration is what turned this cycle from a one-line
+  tweak into a real finding.
+
+- **A constant test and a call-site test can both pass while the feature is reverted.**
+  Cycle 149 wrote both, then mutated `_flinch_force = 1.0` — restoring the exact defect the
+  cycle existed to fix — and neither noticed. A table is not the thing that reads the table;
+  a list of callers is not the thing that dispatches on it. **The tell is that neither
+  assertion mentions the function under test.** `extract-a-testable-seam` names this shape
+  and this is its cleanest instance yet: the fix was one test asserting the armed state
+  after the call, readable headlessly only because cycle 139 armed the recoil BEFORE the
+  animations gate on purpose. Worth auditing the other checks written against constants in
+  this repo — the gait table, the ladder tables, the message corpus — for the same gap.
+
 ### New in cycle 148 — a wall that was two speed bumps and a finished page
 
 - **"Full" and "complete" look identical from outside and mean opposite things.** The cue

@@ -1,4 +1,4 @@
-# Cycle 148
+# Cycle 149
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,37 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 149 taught
+
+**A mutation found a hole in tests I had written minutes earlier, and the tell was
+visible in hindsight: neither assertion named the function under test.** I wrote a CONSTANT
+test (is the glance scale sane) and a CALL-SITE test (which callers pass the flag), then
+pinned `_flinch_force = 1.0` — restoring the exact defect the cycle existed to fix — and
+both passed. A table is not the thing that reads the table; a list of callers is not the
+thing that dispatches on it. One behaviour test closed it, and it was readable headlessly
+only because cycle 139 armed the recoil BEFORE the animations gate for an unrelated reason.
+**What you put above a gate is what a future test can reach.**
+
+**A cue built from two channels can contradict itself, and nothing looks for that.** A
+plate-blocked hit flashed at 0.45 against 1.9 — a 4.2× split deliberately meaning "that did
+nothing" — while the recoil said "that hit hard" in the same frame. Both halves were written
+on purpose, two cycles apart, each correct alone. This project's standing rule is that
+colour is never the only signal; **the corollary nobody wrote down is that the second signal
+must AGREE with the first**, and adding a channel to satisfy the first rule is exactly how
+you get an instance of the second. Filed as a sweep.
+
+**Enumerate what each caller DID, not what its name implies.** `grep take_damage
+game/chomp_flower.gd` is empty — the Chomp holds a pest, chews it cosmetically, and kills it
+on its own clock. Every reasonable question ("does the Chomp hurt pests?") answers yes from
+the player's side and no from the code's, so a predicate written as "did this cue follow
+damage" gets the Chomp exactly backwards. That enumeration turned a one-line tweak into the
+finding.
+
+**The decision the bead asked for was the smaller half.** It asked whether a sundew-stuck
+pest should recoil as hard as a shot one — a judgement. Beside it sat a contradiction, which
+is not a judgement and was not optional. Third time in seven cycles that a bead's framing
+was the thing to check first.
 
 ## What cycle 148 taught
 

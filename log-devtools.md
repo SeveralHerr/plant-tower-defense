@@ -8677,3 +8677,33 @@ status rather than rewriting the entries that recorded these as open.
   greps would have repeated that exactly.
 
 - Gap: **no new gaps this turn.** No launch, no bridge.
+
+## 2026-08-20 — stuck and shot stop being the same word (plant-tower-defense-zdy2)
+
+- Value: **warranted**, and the mutation sweep was worth more than the launch.
+  - Expected: that a glancing recoil is visibly gentler than a full one on a real pest and
+    still visibly a recoil. `_gait` composes `_flinch_force` past the
+    `animations_enabled()` gate, so the composed yaw has no headless reader.
+  - Got: exactly that, frozen between reads. Full recoil peaks `0.382`, glancing peaks
+    `0.194` — half the amplitude, still 1.5× the walk's `GAIT_SWING` 0.13.
+  - Found: **a mutation found a hole in my own tests.** I had written a CONSTANT test (is
+    the glance scale sane) and a CALL-SITE test (which callers pass the flag), and pinning
+    `_flinch_force = 1.0` — restoring the exact defect the cycle set out to fix — passed
+    both. A table is not the thing that reads the table. The tell, in hindsight: neither
+    assertion mentioned `flash_hit` at all. Fixed with one behaviour test, and re-mutating
+    now dies with `Expected 0.350000 but got 1.000000`.
+    Also: the bead asked about the Sundew and the enumeration found a CONTRADICTION beside
+    it — a plate-blocked hit flashes at 0.45 against 1.9 saying "that did nothing" while
+    the recoil said "that hit hard" in the same frame.
+  - Cheaper: the mutation sweep, which is headless and takes seconds. It found the test
+    hole; the launch confirmed amplitudes the constants already predicted. The launch was
+    still right — the bead's own instruction was "decide by looking", and
+    half-amplitude-but-still-above-the-walk is a judgement no constant makes for you.
+
+- **The seam that made the fix testable was built three cycles earlier for another reason.**
+  `flash_hit` arms the recoil BEFORE its animations gate, which cycle 139 did so the decay
+  in `_gait` could never inherit a value armed only on animated machines. That is what let
+  cycle 149 assert `_flinch_force` headlessly at all. Worth noticing when writing a gate:
+  what you put above it is what a future test can reach.
+
+- Gap: **no new gaps this turn.** `launch --snapshot-userstate` restored 1 file again.
