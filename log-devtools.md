@@ -9146,3 +9146,34 @@ is likely to be at least as productive.
   now warns, one cycle too late to help. **An attempt to clear the flag was refused by the
   sandbox, and that is the right default** — it is the developer's save, the flag is
   cosmetic, and a wrong clear is worse than a wrong set. Reported rather than fixed.
+
+## 2026-08-20 — Cycle 162: three probes killed the filed fix and produced a better one
+
+- Value: **warranted**, and the harness's own engine API index is what made the fix
+  possible at all.
+  - Expected: to enable Godot's `unsafe_method_access` and have `lint_project.gd` capture
+    it, closing the gap cycle 159 found.
+  - Got: **there is no warning to capture.** `project-settings --filter debug/gdscript`
+    on the running game showed all 52 settings and confirmed the four `unsafe_*` ones
+    exist and default to 0. Then three `--check-only` probes: a `Dictionary` receiver
+    hard-errors on an unknown method (exit 1, no settings); a `Node2D` receiver does not
+    (exit 0, silent); and `unsafe_method_access` is the OPPOSITE case, firing on a
+    Variant-typed receiver. Godot is silent here BY DESIGN, because a method may arrive
+    with a script at runtime.
+  - Found: cycle 160's null result is now explained rather than filed, and the fix had to
+    be a checker that resolves the call itself. Built as `tools/method_call_check.py`,
+    reading the SAME engine API cache `name_check.py` maintains rather than a second copy.
+  - Cheaper: nothing. Each of the three probes changed the design, and the first draft —
+    written without them — resolved 0 calls of 2214.
+
+- Gap: **no new harness gaps.** The opposite, in fact: `name_check.py`'s cached engine API
+  index turned out to be reusable by a project checker with no work at all, which is a
+  harness asset nothing had drawn on before. Worth knowing that the cache is
+  `~/AppData/Local/godot-selftest-harness/api/engine_api_<version>.json.gz`, shaped
+  `{"classes": {Name: {"inherits": ..., "members": [...]}}}`, and that a project tool can
+  read it directly.
+  - One measured caveat, and it cost four false findings: **`Object.free` is not in the
+    index** (60 members for `Object`, no `free`), while `Node.queue_free` is. Engine
+    built-ins ClassDB does not expose as ordinary methods are absent, so a consumer needs
+    a named list. `[G-144]` is not re-hit by this; it is a separate property of the cache
+    and is recorded here rather than filed, since the workaround is four characters.

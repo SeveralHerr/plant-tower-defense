@@ -218,6 +218,34 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 162 — the checker's own drafts were the fixture
+
+- **A checker that resolves 0 of 2214 is honest and worthless, and the second draft is
+  where the design happens.** `tools/method_call_check.py` went through three states
+  before it was worth committing, and every one produced a fact rather than a tweak:
+  stopping at the project boundary resolved **nothing**, because in a Godot game
+  essentially every class extends an engine type; checking engine-typed receivers gave
+  **29 findings that were all `var _dev: Node` holding a scripted autoload**, which is
+  the language working; dropping the index-omissions list gave **4 that were all
+  `free`** — a real `Object` method the 4.7.1 API index does not list, while `queue_free`
+  is (`tools/method_call_check.py:93`). **Each wrong draft named a rule the right one
+  needed**, which is an argument for keeping the drafts in the docstring rather than the
+  final logic alone. Worth applying to the other checkers here: `gate_aim_check` and
+  `teaching_ledger_check` both have a first-draft story in their headers; the older ones
+  do not, and the question is whether those were built right first time or whether the
+  reasoning was lost.
+
+- **Godot is silent on unknown methods for Object-derived receivers BY DESIGN, and that
+  reframes three cycles of filings.** A `Dictionary` receiver hard-errors; a `Node2D` one
+  does not, because any Object may gain a method at runtime through a script. So there
+  was never a setting to turn on — `unsafe_method_access` is the opposite case, warning
+  when the type is UNKNOWN. **The generalisation worth carrying: when a language declines
+  to check something, the reason is usually a capability it is preserving**, and a gate
+  that wants to check it anyway has to say which slice it is safe on. This one checks 284
+  calls of 2048 and prints both numbers. Worth asking the same of the other gates: which
+  slice, and how big is it? `suite_reach_check` and `gate_aim_check` both answer it;
+  `name_check` does not, and its slice is the one every fan-out lane leans on.
+
 ### New in cycle 161 — one copy gated and its twin silent is worse than neither
 
 - **A number with two player-facing copies, one pinned and one not, degrades in a way

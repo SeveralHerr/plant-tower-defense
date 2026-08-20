@@ -181,6 +181,16 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      the failing one gone and nothing pointing at it. **A pinning test creates a false
      sense that the number is handled**, so the moment you write one, grep for the value
      and count what else says it.
+   - **WHEN A LANGUAGE OR A TOOL DECLINES TO CHECK SOMETHING, FIND OUT WHAT IT IS
+     PRESERVING BEFORE BUILDING THE CHECK.** Cycle 162 set out to make lint capture a
+     Godot warning and discovered there was none to capture: the analyzer stays silent on
+     an unknown method for any Object-derived receiver BY DESIGN, because a method may
+     arrive with a script at runtime. Two cycles had treated that silence as an oversight.
+     Knowing the reason is what produced a checker that works — it says which SLICE it is
+     safe on (receivers typed as one of this project's own classes) and prints the size of
+     what it skipped, 284 calls of 2048. **A gate built without that question either
+     false-positives on the case the silence was protecting — 29 of them, on the first
+     draft — or checks nothing and says so.** Both happened here, in that order.
    - **RUN INDEPENDENT ITEMS IN PARALLEL (asked for directly, cycle 99).** The loop did one
      item at a time for 99 cycles and the queue is 100 deep; most of it does not touch what
      the rest of it touches. Spawn agents for items whose files do not overlap, and say in

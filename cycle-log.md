@@ -1,4 +1,4 @@
-# Cycle 161
+# Cycle 162
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,38 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 162 taught
+
+**There was no warning to capture.** Two cycles had treated Godot's silence on unknown
+methods as an oversight to switch off. Three probes: a `Dictionary` receiver hard-errors
+(exit 1, no settings); a `Node2D` receiver does not (exit 0, silent); and
+`unsafe_method_access` is the OPPOSITE case, firing on a **Variant**-typed receiver — it
+warns when the type is unknown and says nothing when the type is known and the method
+absent. **The silence is by design**, because any Object may gain a method at runtime
+through a script. Cycle 160's null result is now explained rather than filed.
+
+**Knowing what the silence was protecting is what produced a checker that works.** The
+first draft, written without it, resolved **0 calls of 2214** — honest, printed its own
+zero, worthless. The second, checking engine-typed receivers too, produced **29 findings
+that were all `var _dev: Node` holding a scripted autoload** — precisely the case the
+language was preserving. The third, before an index-omissions list, produced **4 that
+were all `free`**, a real `Object` method the API index does not carry while `queue_free`
+is. Each wrong draft named a rule the right one needed, and all three are in the
+docstring rather than only the final logic.
+
+Step 5 made that the rule: **when a language or a tool declines to check something, find
+out what it is preserving before building the check.** A gate built without that question
+either false-positives on the protected case or checks nothing — both happened here, in
+that order.
+
+The result checks 284 calls of 2048 and prints both numbers, and planting cycle 159's
+`game.run_over()` back produces exactly one finding with its file, line, receiver and
+class. `check_all` is 23.
+
+Worth recording as an asset rather than a gap: `name_check.py`'s cached engine API index
+turned out to be directly reusable by a project checker, and nothing had drawn on it
+before.
 
 ## What cycle 161 taught
 
