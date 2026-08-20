@@ -8353,3 +8353,39 @@ status rather than rewriting the entries that recorded these as open.
     design` gap already found that chaining it with `&&` cannot work for the same reason.
     So the concrete ask is now one of two: `run_json_check` gates (exit 1) on an unknown
     key, or `record` refuses a key it cannot store.
+
+## 2026-08-20 — the sixth one-shot names the sole-cover rings (plant-tower-defense-bkss)
+
+- Value: **warranted**, and NOT from runtime — the harness never launched. This is a
+  tier (c) headless-only row, and the value came from two budgets the diff could not
+  show me.
+  - Expected: nothing runtime could add. Written before Phase 1: the changed call site is
+    driven end-to-end by a hosted-scene test, so I predicted headless-only and said so in
+    the triage rather than launching to confirm what a test already asserts. Cycles
+    110-115 recorded four launches of which two only re-confirmed a headless assertion;
+    this is the triage table being used instead.
+  - Got: two failures that are invisible in a diff. `[FAIL]
+    test_the_notebook_hints_page_gives_back_a_hint_that_was_never_shown` —
+    "'seen_sole_cover_tip' row bottoms out at 335px inside the 300px matte". And
+    `message_corpus_check: FINDING: game\game.gd:1494 calls none of the corpus's
+    producers -- Hud.sole_cover_tip()`. Then a third, downstream of the second: the
+    suite's hand-kept count, "the corpus carries its 10 non-catalogue entries ...
+    Expected 10 but got 11", which states its own resolution in the failure message.
+  - Found: **the notebook's hints page has its own 300px ceiling and nothing in the repo
+    says so.** The legend page's fullness is this project's most-cited budget — three
+    beads turn on it — and I knew that one. The hints page uses the same
+    `NotebookScreen.DRAWING_BOX` with an independent capacity model
+    (`hints_capacity()`, three rows) and a pager of its own. A sixth card overflowed it
+    by 35px. I would not have looked, because the surface I was watching was the message
+    row's width, which is a different budget again. Filed as a kanban entry.
+  - Cheaper: nothing — this WAS the cheap tier. The expensive mistake available here was
+    launching, and the triage table is what refused it.
+
+- Gap: **no new gaps this turn.** The one thing that bit twice is already
+  filed: relocating drifted citations by script produced an inverted range
+  (`2440-2412`), caught by `citation_check` plain mode reporting the target out of
+  range. That is not a harness gap — it is the argument `plant-tower-defense-2174`
+  already makes for a relocator that refuses rather than renumbers, and this cycle is
+  its evidence. G-130 (the ledger dropping `tier`) was avoided rather than re-hit: the
+  key was left out of `run.json` on purpose this time, `run_json_check` exited 0, and
+  `runtime.skipped` carries the tier reasoning in prose where the schema will keep it.

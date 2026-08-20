@@ -90,6 +90,15 @@ python tools/citation_check.py --beads --against  .devtools/citations.json  # af
 Follow `.claude/skills/kanban-idea-pass/SKILL.md`, which holds the five citation rules and
 is not optional reading. Taste needs no citation; a claim about the code does. → `why.md` §3
 
+**If `--against` reports more than ten drifted, the relocation is a WORK ITEM, not part of
+this step.** Fix what your own entries cite, file the rest as a bead, and say in the close
+how many you left. Cycles 139 and 140 each absorbed it silently and each spent something
+like a third of the cycle there — 11 dead citations then, 9 more now — because the count
+is set by how many lines the feature happened to insert, which is nothing to do with what
+the cycle is for. **Every one of those twenty was already wrong before the cycle that found
+it**, so this is real work and it deserves to be scheduled rather than to arrive as a tax
+on whichever feature touched a busy file.
+
 **4. Reflect on the HARNESS, now that you have used it.** Was it worth it
 (`warranted`/`overkill`/`insufficient`/`inconclusive`, with the reason) — write the
 `log-devtools.md` entry. What was missing — file it as `[G-NNN]`, and upstream it with

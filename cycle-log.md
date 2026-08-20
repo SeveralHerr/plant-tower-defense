@@ -1,4 +1,4 @@
-# Cycle 139
+# Cycle 140
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,46 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 140 taught
+
+**The decision the bead asked for had already been made, in a code comment nobody would
+find, and it was wrong.** `game/cue_legend.gd` had refused the sole-cover rings a legend
+row with a good argument — the page teaches the dashed ring, and the road rings are the
+same node's positive case, so the concept is on the page. A player looked at the board and
+asked what the marks meant. The note is amended rather than deleted because HOW it failed
+generalises: the revisit condition it set itself was "if row 4 gains an instance that is
+not SoleCoverMarks", a fact about the drawing code, while the condition that actually fired
+was a fact about a person. **A teaching decision cannot set its own trigger in the code it
+is about.** That is cycle 138's lesson one node over — a comment addressed to a role nobody
+holds — pointing this time at an event nobody was watching for.
+
+**A third budget existed and only one of the three was written down anywhere findable.**
+The legend page's 300px is this project's most-cited number. The notebook's HINTS page has
+the same matte and a completely separate capacity model, and nothing outside
+`notebook_screen.gd` mentions it; the sixth hint's card overflowed it by 35px and a test
+caught it. The message row's width is a third. All three are now at their limit at once for
+the first time, so the next cue this game draws cannot be taught by adding a row, a hint or
+a card — filed as a decision bead, deliberately before the cue arrives rather than during
+the cycle that ships one, which is how the lane-pressure hatch ended up untaught.
+
+**Nine more citations were already dead, and two of them were stale COUNTS.** Same class as
+cycle 139's eleven, same discovery mechanism — an unrelated edit moved them and the landing
+got read. Two could never be caught by any line-number check: an entry said `show_message()`
+"has eight call sites" when the checker prints twenty on every run, and another said the
+waivers "live in five scattered comments" when there are six. Both now derive their number
+from the tool that counts it.
+
+**Step 5's change, and it is about scheduling rather than about tooling.** Two cycles
+running, the citation pass took roughly a third of the cycle, and its size is set by how
+many lines the cycle's feature happened to insert into a busy file — nothing to do with
+what the cycle is for. Step 3 now says that past ten drifted, the relocation is a work item:
+fix what your own entries cite, file the rest, say how many you left.
+
+**And the rule added last cycle caught the hand that wrote it.** Quoting the broken range as
+an example inside the entry reporting it made it a live citation and failed the checker on
+the spot. `kanban-idea-pass` rule 1 is right; it is also easy to break while writing about
+the thing it forbids.
 
 ## What cycle 139 taught
 

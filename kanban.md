@@ -218,6 +218,62 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 140 — a second page budget nobody had named, and nine more dead citations
+
+- **The notebook's HINTS page has its own 300px ceiling, and the whole repo only knows
+  about the legend's.** The legend page being full is this project's most-cited budget —
+  `game/cue_legend.gd:102` prices the seventh row at 340px against 300 and three
+  separate beads turn on it. The hints page has the *same* matte
+  (`NotebookScreen.DRAWING_BOX`, `game/notebook_screen.gd:59`, 360x300) and its own
+  independent capacity model: `hints_capacity()` (`game/notebook_screen.gd:384`) derives
+  three rows from `SHELF_ROW_TOP` 3, `HINT_ROW_PITCH` 98 and a 94px row, and
+  `hint_pages_needed()` (`:402`) pages past that. Cycle 140 added a sixth hint and its card
+  overflowed by 35px — caught by
+  `test_the_notebook_hints_page_gives_back_a_hint_that_was_never_shown`, whose message even
+  names the two fixes ("trim the card or grow HINT_NOTE_HEIGHT"). **The gap is that nothing
+  says the two ceilings are the same number for different reasons**, so the next person to
+  price a teaching surface will find the legend's argument and think it is the only one.
+  Cheap fix: one sentence in `cue_legend.gd`'s audit block pointing at `hints_capacity()`,
+  since that block is where anyone pricing a surface will already be reading.
+
+- **Nine MORE citations were already dead, in three files this cycle did not touch for that
+  reason.** Same class as cycle 139's eleven and the same discovery mechanism — an
+  unrelated edit moved them and the landing was read. This time the stale ones were spread
+  rather than clustered: `BUDGET_FLOOR` cited into the 2000s and actually at
+  `game/game.gd:3024-3077`; `hud_selection_panel` at `game/game.gd:3075`; `uproot_armed()`
+  at `game/game.gd:2007`; `commit_uproot()` at `game/game.gd:2090`; `Hud.eaten_message` at
+  `game/hud.gd:3929`; `weather_note` at `game/hud.gd:4082`. **Two were stale COUNTS, not
+  just stale lines**, which no line-number check can ever see: an entry said
+  `show_message()` "has eight call sites" when `message_corpus_check` prints twenty on every
+  run, and another said the waiver comments "live in five scattered comments" when there
+  are six. Both are now written to derive their number from the tool that counts it. Twenty
+  dead citations across two cycles is not an accident rate; it is the detection gap
+  `plant-tower-defense-nalv` describes, and this is its second sighting.
+
+- **Relocating citations by script broke one, exactly the way `-2174` says it will.** A
+  regex replacing the START of a range moved the first number and left the second, producing
+  an INVERTED range — caught only because `citation_check` plain mode reports an
+  out-of-range target. (The actual numbers are left out on purpose. Writing them here as an
+  example made them a live citation and failed the checker on the spot — which is
+  `kanban-idea-pass` rule 1's newest paragraph, added last cycle by the same hand that then
+  walked into it while writing this bullet. The rule is right and it is easy to break.)
+  That is the strongest concrete
+  argument yet for the relocator bead's own design premise: **refusing is the product.** A
+  relocator that renumbers confidently produces citations that resolve, look checked, and
+  point somewhere nobody chose — and the failure here was visible only because the arithmetic
+  happened to go backwards. The same bug going forwards would have been silent.
+
+- **The cue vocabulary now has five taught marks and the sixth hint is spent, so the next
+  cue to arrive has no teaching surface left.** PLAYER-FACING, and it is a wall rather than
+  an idea. `RunConfig.HINTS` (`game/run_config.gd:259`) holds six ids; the legend page holds
+  six rows and is full; the notebook hints page holds three per page and now needs two pages.
+  Every one of those is a budget, and all three are at their limit at once for the first
+  time. The next cue this game draws — and `game/OVERLAY_GRAMMAR.md` already lists marks
+  with no teaching at all — cannot be taught by adding a row, a hint, or a card; it needs one
+  of the three budgets raised first. Worth deciding WHICH before the next cue arrives, rather
+  than discovering it during the cycle that ships one, which is how the lane-pressure hatch
+  ended up untaught.
+
 ### New in cycle 139 — the recoil landed on five callers, and eleven citations were dead where nobody was looking
 
 - **The pest recoil inherited every caller of `flash_hit()`, and one of them never damaged
@@ -277,13 +333,13 @@ have rebuilt the same trap.
 
 - **The cue vocabulary has outgrown the one surface that teaches it, and the overflow is
   now measured.** PLAYER-FACING. `game/OVERLAY_GRAMMAR.md:67` says "Six of the eleven"
-  cues are taught, on `CueLegend.ROWS` — six rows, `game/cue_legend.gd:172`. That page is
+  cues are taught, on `CueLegend.ROWS` — six rows, `game/cue_legend.gd:191`. That page is
   full, and not by opinion: the same file's cycle-109 note prices a seventh row at 340 px
   against the 300 px the page has, and `CueLegend.rows_that_fit`
-  (`game/cue_legend.gd:245`) is the function that says so. Cycle 138 spent the fifth
+  (`game/cue_legend.gd:264`) is the function that says so. Cycle 138 spent the fifth
   one-shot hint on ONE of the untaught cues because a legend row was unavailable, which
   works and does not scale — there are four more untaught and `RunConfig.HINTS`
-  (`game/run_config.gd:246`) is not a legend. **The notebook is already a PAGER**
+  (`game/run_config.gd:260`) is not a legend. **The notebook is already a PAGER**
   (`game/notebook_page.gd:137` draws the page dots, `NotebookScreen.PAGES` is the list),
   so the 300 px ceiling is per PAGE and not per legend. A second `KIND_LEGEND` page is
   the cheapest width in the building, and it is the shape `rows_that_fit` was written
@@ -327,7 +383,7 @@ have rebuilt the same trap.
   into a full queue") does not name the caller. A checker that finds every
   `spend_hint(...)` call site reachable from `_refresh` and requires a `row_is_quiet()`
   guard above it would name the file. Two of the five hint sites are level-triggered now
-  (`game/game.gd:1741` and `game/game.gd:1445`), so the pattern has a population.
+  (`game/game.gd:1774` and `game/game.gd:1445`), so the pattern has a population.
 
 ### New in cycle 137 — four lanes, and a banner nobody has ever seen
 
@@ -499,7 +555,7 @@ have rebuilt the same trap.
   ceiling again — the eighth row foots at 486 against buttons at 476.
 - **Four `show_message` sites are edge-triggered only by an explicit latch.**
   `docs/message_trigger_audit.md` classifies all 17; the four at `game.gd:463`, `:1349`,
-  `:1692` and the packet-reveal loop are edge ONLY because `_wave_live`, `_flight_noted`,
+  `:1725` and the packet-reveal loop are edge ONLY because `_wave_live`, `_flight_noted`,
   `_uproot_left` and a bounded loop each latch them. Nothing marks them as load-bearing,
   and any refactor that moves one turns a level-triggered caller loose on the message
   queue. A comment at each, or a test naming the latch, is cheap insurance.
@@ -804,7 +860,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   displaced line. Six waves, 54 kills, eight lives lost, 257 seconds with `run_seconds`
   moving as a witness: `messages_preempted` **0**. That reads as "never happens" and would
   have closed the bead — except every pre-empting call site is a **player action**. Arming an
-  uproot (`game/game.gd:1485`) and opening a seed packet (`:1611`, `:1611`) are the only
+  uproot (`game/game.gd:1915`) and opening a seed packet (`:2257`, `:2271`) are the only
   three, and six waves of driving the wave director contain neither. One `arm_uproot` over a
   live message: `messages_preempted` 1, first try.
   **This retroactively weakens cycle 93's answer to `-i366`.** That cycle measured
@@ -816,7 +872,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   **ANSWERED IN CYCLE 128 (`-gd27`), and cycle 93's conclusion is CORRECTED: the row does
   drop lines.** Four packet purchases fired back to back during a live wave produced
   `messages_refused` = **12**, exactly three per purchase against `PACKET_OPEN_STEPS` = 3
-  (`game/game.gd:2038`). Four controls separate the cause from the correlation: one purchase
+  (`game/game.gd:2071`). Four controls separate the cause from the correlation: one purchase
   on a quiet row refuses nothing; one purchase over a deliberately-held ambient line refuses
   nothing and preempts four times; twelve pests spawned and killed with no purchase refuse
   nothing; and the mechanism reproduces with no purchase at all — one `MESSAGE_IMPORTANT`
@@ -904,7 +960,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   exactly one place (`game/plant.gd:614`, health reaching zero inside `take_damage`), and
   `Plant.take_damage` has exactly one caller in the whole game — `game/pest.gd:1315`,
   `meal.take_damage(EAT_DPS * delta)`, the eating path. Uprooting does not go near it:
-  `commit_uproot` frees the plant with `play_exit_and_free()` (`game/game.gd:1552`), so
+  `commit_uproot` frees the plant with `play_exit_and_free()` (`game/game.gd:1584`), so
   digging up your own Corn Cobbler does not accuse a pest of eating it.
   The message is therefore accurate by a coincidence of there being one cause, and
   `Game._on_plant_destroyed` names that cause unconditionally. **Anything that ever kills a
@@ -925,7 +981,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   What the rungs actually buy is pre-emption. Enumerated: exactly three of the twenty-two
   `show_message` call sites pass a priority. **RE-DERIVED IN CYCLE 136 (`-uhno`) and this
   count is stale**: there are EIGHTEEN call sites, not twenty-two, and the priority-passing
-  ones are the armed uproot (`game/game.gd:2019`, `MESSAGE_DEADLINE`) and the packet
+  ones are the armed uproot (`game/game.gd:2052`, `MESSAGE_DEADLINE`) and the packet
   flourish plus its reveal (`MESSAGE_IMPORTANT`). The SHAPE of the claim survives — a
   handful of sites pre-empt and the rest do not — and its coordinates did not. When one of
   those arrives, the
@@ -933,7 +989,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   queue of equals it is **refused** — so an urgent message costs the sentence the player was
   mid-way through, not one they had not reached.
   The uproot case is the one worth looking at, and its `DEADLINE` is argued for in place
-  (`game/game.gd:1482-1484`: the countdown is already running, so deferring eats the window
+  (`game/game.gd:1510-1512`: the countdown is already running, so deferring eats the window
   the message describes). That reasoning is right. What nobody decided is what it should be
   allowed to erase — and "A hungry pest ate your Corn Cobbler!" is one of the nineteen at
   `MESSAGE_NORMAL` (`game/game.gd:1313`), so a player who arms an uproot in the same second
@@ -1053,7 +1109,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   `show_message(` in `game/*.gd`, not by grepping one line each — these calls wrap, and a
   single-line grep reports all 22 as defaulted, which is how this nearly went in wrong.
   The real split is 19 at the default `MESSAGE_NORMAL`, two `MESSAGE_IMPORTANT`
-  (the packet flourish and its reveal) and one `MESSAGE_DEADLINE` (`game/game.gd:2019`,
+  (the packet flourish and its reveal) and one `MESSAGE_DEADLINE` (`game/game.gd:2052`,
   the armed uproot). Coordinates re-derived in cycle 136; the two IMPORTANT sites moved
   into `_play_packet_flourish` and `_reveal_plant_unlock` when the flourish was serialised.
   `MESSAGE_QUEUE_MAX` is 3 (`game/hud.gd:355`), and `_queue_message` returns without
@@ -1063,7 +1119,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   What makes that a player-facing problem rather than a curiosity is WHICH lines are
   tied. "A hungry pest ate your Corn Cobbler!" is one of the nineteen
   (`game/game.gd:1313`, no priority argument) and so is "Composted a husk for N seeds."
-  (`game/game.gd:1874`). A bed being destroyed and a click paying out compete as equals,
+  (`game/game.gd:1907`). A bed being destroyed and a click paying out compete as equals,
   and in the wave where several things happen at once the loss notice is exactly as
   droppable as the receipt. Cycle 90 made this **detectable** for the first time —
   `show_message` now returns whether the line landed — so the fix is no longer a guess:
@@ -1765,7 +1821,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 - **The only line with a clock behind it is the only clock the game never draws.**
   `_uproot_left` ticks down at `game/game.gd:1402` and lives entirely inside `game.gd` —
   outside it the identifier appears only in tests, never in `hud.gd`, so the HUD learns
-  *armed or not* through `uproot_armed()` (`game/game.gd:1914`) and never *how much is
+  *armed or not* through `uproot_armed()` (`game/game.gd:2007`) and never *how much is
   left*. Meanwhile the game draws this exact thing twice already: `husk_layer.gd:69-77`
   sweeps `TAU * frac` around a husk as its rot timer runs, and `hud.gd:666-670` drains
   `PrepBar` across the whole top bar over the prep gap. A four-second irreversible
@@ -1843,7 +1899,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 
 - **Three budgets sit exactly at their declared floor, and nothing on screen says the HUD
   is full.** `husk_click` has 4 px of 32, `hud_readouts` 10 of 171, `hud_stats_row` 19 of
-  1112 — each precisely its floor in `Game.BUDGET_FLOOR` (`game/game.gd:2023-2035`),
+  1112 — each precisely its floor in `Game.BUDGET_FLOOR` (`game/game.gd:3024-3077`),
   because this project ratchets floors down to the measurement on purpose. The consequence
   is invisible until someone tries: the next label that grows by a pixel fires a
   regression, and a designer nudging a font size has no way to know they are spending the
@@ -1858,7 +1914,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   `hud_readouts` said "Font.get_string_size() over each live readout", which parses as
   measuring the CURRENT text — a budget that passes because the counter happens to read
   "Seeds 25" today. It actually sweeps `Hud.WORST_CASE_TEXT` against each readout's live
-  slot, and I misread it before opening `game/game.gd:2539`. Corrected. The general shape
+  slot, and I misread it before opening `game/game.gd:2572`. Corrected. The general shape
   is worth watching: an evidence string naming the SURFACE is ambiguous about whether the
   worst case or the current value was measured, and those differ by everything.
 
@@ -2005,7 +2061,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 - **Teaching a one-time lesson in a recurring message is a permanent tax.** The armed
   prompt now points at the move preview, and it cost 185 px of the message row's 306 px of
   headroom — every uproot, forever, to teach something once. `Game.BUDGET_FLOOR`
-  (`game/game.gd:2019`) declares 40 px for that row and 121 remain, so it passes and the
+  (`game/game.gd:2052`) declares 40 px for that row and 121 remain, so it passes and the
   state is `tight`. `RunConfig`'s milestone set (`MILESTONE_PREFIX`, `game/run_config.gd:91`)
   is already a persisted seen-once mechanism, so a first-time-only hint needs no
   save-version bump. That is the shape every future hint should take.
@@ -2038,7 +2094,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   knows the rebate. Whether a move should be free, cost the difference, or cost full price
   is a balance question worth deciding on purpose rather than by default.
 - **`_update_preview` now decides two things and is named for one.** It resolves the hover
-  cell AND, since this cycle, which plant the hover is about (`game/game.gd:1690`). That
+  cell AND, since this cycle, which plant the hover is about (`game/game.gd:1723`). That
   second decision is three lines of subject-selection at the top of a function whose name
   promises only "update the preview". It is fine now and it is exactly where a third mode
   would go in badly — the move preview should probably be a named predicate the way
@@ -2071,7 +2127,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   VBox comment at `game/hud.gd:1347` says the stack already runs to within 16 px of the
   panel foot. This cycle measured the cob's second line at roughly 190 px of a 232 px box.
   Every one of those numbers is a comment or a measurement taken by hand — there is no
-  `hud_selection_panel` entry in `Game.budget_entries()` (`game/game.gd:2064`) beside the
+  `hud_selection_panel` entry in `Game.budget_entries()` (`game/game.gd:3075`) beside the
   five that exist. The next person who wants a line there will rediscover the constraint
   the expensive way, exactly as the third-line failure recorded in that header did.
 - **Two plants can now be compared, but only one at a time.** Selecting a plant rings what
@@ -2192,7 +2248,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 - **Six `show_message()` durations are hand-picked and nothing relates them.**
   4.0s (eaten), 5.0s (packet), 6.0s (wave cleared), 8.0s (opening hint), 2.0s (uproot
   cancelled, husk swept), 2.5s (mute, colourblind) — at `game/game.gd:270`, `:421`,
-  `:1213`, `:1336`, `:1490`, `:1547`, `:1567`, `:1699`. **SUPERSEDED BY `-uhno`, CYCLE 136,
+  `:1213`, `:1336`, `:1584`, `:1612`, `:1600`, `:1732`. **SUPERSEDED BY `-uhno`, CYCLE 136,
   which derived the real list: EIGHTEEN call sites and EIGHT distinct durations, not six.
   This entry missed the 3.0 DEFAULT — seven sites, the most-used duration in the game — and
   the 0.09 flicker step. The durations are named bands now (`Hud.message_seconds`), and the
@@ -2201,7 +2257,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   **THESE EIGHT NUMBERS NEED A
   RECOUNT and are not to be trusted** — cycle 132's `--weak` pass flagged `game/game.gd:270`
   as landing on a blank line, and the two `show_message` calls this entry describes as "2.5s
-  (mute, colourblind)" are at `game/game.gd:2346` and `:2340`. The rest of the list was
+  (mute, colourblind)" are at `game/game.gd:2379` and `:2373`. The rest of the list was
   written in one pass and has not been re-read since; deliberately NOT patched one number at
   a time, because a list of eight coordinates where the one sampled was wrong by 1900 lines
   wants re-deriving, not repairing. The CLAIM — six hand-picked durations with nothing
@@ -2211,8 +2267,9 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   seconds apart, which is probably right, but nothing says the rule. Reading time scales
   with length, and the corpus now knows every length — a duration derived from character
   count with a floor would make the 8.0 and the 2.0 consequences of one decision.
-- **The waiver reasons are the best documentation of the message system and live in five
-  scattered comments.** `game/game.gd:237`, `:1490`, `:1547`, `:1551`, `:1716` each carry
+- **The waiver reasons are the best documentation of the message system and live in six
+  scattered comments.** `game/game.gd:317`, `:1827`, `:2257`, `:2422`, `:2426`, `:2673` each
+  carry
   a `# message-corpus-check: ok - <reason>` that says something true and non-obvious about
   why that text cannot be measured statically. That is a good use of waivers, but it means
   the answer to "what can the row show that we cannot price?" is assembled by grep — which
@@ -2229,9 +2286,14 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   one table of `{name, worst_case_text, width}` that `_build`, the budget and the tests
   all read. `derive-the-list` says the recorded-list-plus-equality-assertion form is
   legitimate; it does not say three of them are.
-- **`show_message()` has eight call sites and no single place says so.**
-  `game/game.gd:237` (purchase refusal), `:1547` and `:1551` (mute), `:1716` (placement
-  refusal), plus the four `Hud.*_message` producers. The message-row budget had to
+- **`show_message()` has TWENTY call sites and no single place says so.** (Was "eight"
+  until cycle 140, when a `--against` pass caught all four of its citations pointing at a
+  much older shape of `game.gd`. The count is now read from the tool that counts them:
+  `message_corpus_check` prints `20 show_message() call site(s), 6 waived` on every run, so
+  the number above is derived rather than recounted by hand — which is the whole complaint
+  this entry is making, one level up.)
+  `game/game.gd:317` (purchase refusal), `:2422` and `:2426` (mute), `:2673` (placement
+  refusal), plus the `Hud.*_message` producers. The message-row budget had to
   enumerate them by grepping call sites, got it wrong once, and got it wrong again a
   cycle later. A `Hud` surface that names its own message producers — even just a comment
   block listing them beside `_paint_message_row` — would make the budget's corpus
@@ -2314,16 +2376,16 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   heal shrinks with it. This is the direct consequence of shipping 4c1l and it is worth
   deciding on purpose rather than letting drought stay the good one by accident.
 - **The other five budgets have never been checked against the corpus they claim.**
-  `_budget_hud_message_row` (`game/game.gd:3363`) measured four plant-name messages and
+  `_budget_hud_message_row` (`game/game.gd:3399`) measured four plant-name messages and
   not the prep note that shares the row, and was wrong by 36px for seven cycles while
-  reporting green. `Game.budget_entries()` (`game/game.gd:3103`) builds six others the same
+  reporting green. `Game.budget_entries()` (`game/game.gd:3139`) builds six others the same
   way. Each one names its corpus in an `evidence` string; nothing checks that the string
   describes what the code sweeps. A checker could compare the two — or, cheaper, one pass
   reading all seven and asking "what else can reach this measurement?" The failure is
   silent by construction: a budget over a subset always reports more headroom than exists.
 - **The prep note is measured at a wave number the game cannot reach.**
   **SUPERSEDED, re-read in cycle 131: `next_wave_note` no longer appears in `game/game.gd`
-  at all.** `_budget_hud_message_row` (`game/game.gd:3363`) now measures one declared corpus
+  at all.** `_budget_hud_message_row` (`game/game.gd:3399`) now measures one declared corpus
   (`Hud.message_corpus()`) rather than a hand-built list of calls, so the specific defect
   below — a budget whose worst case is set by an unconstrained digit count — no longer has
   the call site it was about. Left rather than deleted because the QUESTION it raises
@@ -2376,7 +2438,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   the code will refer to again, so a test or the bridge probably wants to as well. That
   is derivable; "a bare `add_child(ColorRect.new())`" is derivably not.
 - **`request_uproot` arms and `uproot_selected` removes**, and the names do not say
-  which is which. **FIXED SINCE, and `game/game.gd:1871` records the rename**: they are
+  which is which. **FIXED SINCE, and `game/game.gd:1904` records the rename**: they are
   `arm_uproot` and `commit_uproot` now, and that header argues the pair-naming rule this
   entry was asking for. Kept as the incident, not as live work. I called the wrong one while writing
   this cycle's test and it silently uprooted the plant instead of arming. A caller that
@@ -4432,7 +4494,7 @@ Three findings kept out here rather than buried in a log:
 ### New in cycle 112 — grown from confirming a bead and reading a sentence
 
 - **Nothing in this project can tell whether a sentence is TRUE, and cycle 112 found one
-  that had quietly stopped being.** `Hud.eaten_message` (`game/hud.gd:3862`) read "A hungry
+  that had quietly stopped being.** `Hud.eaten_message` (`game/hud.gd:3929`) read "A hungry
   pest ate your %s!" and was correct for every plant death in the game until the ninth
   plant: `Pest._physics_process` reaches `_adjacent_plant()` only inside its `is_hungry`
   branch (`game/pest.gd:1312-1316`), so a hungry pest really was the only thing that could
@@ -4467,10 +4529,10 @@ Three findings kept out here rather than buried in a log:
 - **One function returns both success sentinels, and a test comment already misreads it.**
   Every `-> String` method on `Game` follows one convention: `""` means it worked, a
   non-empty string is the reason it refused, and the callers print it
-  (`game/game.gd:1592` `place_plant`, `:1807` `upgrade_selected`, `:2047` `commit_uproot`).
-  `arm_uproot` (`game/game.gd:1858`) breaks it in the most confusing available way: the
-  first press returns `"confirm needed"` (`:1949`) and the second returns `""` — via
-  `commit_uproot()` at `:2057` — so the SAME function uses the refusal sentinel for one
+  (`game/game.gd:1625` `place_plant`, `:1840` `upgrade_selected`, `:2090` `commit_uproot`).
+  `arm_uproot` (`game/game.gd:1891`) breaks it in the most confusing available way: the
+  first press returns `"confirm needed"` (`:1982`) and the second returns `""` — via
+  `commit_uproot()` at `:2090` — so the SAME function uses the refusal sentinel for one
   success and the success sentinel for another.
   The cost is already visible in the suite rather than hypothetical. Five call sites assert
   the literal, and `test/unit/test_placement.gd:255` labels it *"the first click refuses"* —
@@ -4485,7 +4547,7 @@ Three findings kept out here rather than buried in a log:
   Cycle 113 stopped the preview PROMISING those cells (`_preview.placeable` now requires the
   moved plant could stand there too), but the ring, the reach and the coverage dots still
   paint from a road cell when a cob is armed — `_update_preview` sets `_preview.reach` and
-  `_preview.plant_id` from `previewing` unconditionally (`game/game.gd:2450-2455`). So the
+  `_preview.plant_id` from `previewing` unconditionally (`game/game.gd:2523-2527`). So the
   cue now says "not here" and "here is what your cob would reach from here" in the same
   frame, which is honest and slightly odd.
   Deliberately left, because the alternative decides an open question by accident: whether a
@@ -4500,7 +4562,7 @@ Three findings kept out here rather than buried in a log:
   that REVERSES one they already learned.** The mechanism exists and is deliberate:
   `RunConfig.HINT_MOVE_PREVIEW` / `HINT_CHOMP_IGNORES_FLIGHT` / `HINT_UPGRADE_EXISTS`
   (`game/run_config.gd:166`, `:195`, `:212`), each a one-shot tip with a matching notebook
-  card in `Hud.HINT_CARDS` (`game/hud.gd:3901`), and
+  card in `Hud.HINT_CARDS` (`game/hud.gd:3929`), and
   `test_every_hint_has_a_notebook_card` fails on either half missing.
   Look at what those three teach: a flier ignores a Chomp; a plant already down can grow;
   Uproot compares before it digs. Each is a rule the board does not state. **"You may build
@@ -4535,7 +4597,7 @@ Three findings kept out here rather than buried in a log:
   ("Slowing %d pest(s) to %d%% speed."), `wave_cleared_note` ("%d pests turned back.") and
   so on. A retune moves the number and the sentence follows. Every defect found in two
   cycles of looking has been in the handful that name a mechanism instead:
-  `eaten_message`'s "A hungry pest" (fixed cycle 112, `game/hud.gd:3901`) and
+  `eaten_message`'s "A hungry pest" (fixed cycle 112, `game/hud.gd:3929`) and
   `idle_detail`'s "waiting for a pest" (fixed cycle 115, `:2566`).
   Not a checker — `-u9zb`'s close records why, and the short version is that accuracy is a
   claim about the relationship between English and code with no shared vocabulary to check.
@@ -4544,7 +4606,7 @@ Three findings kept out here rather than buried in a log:
   shape rather than audited into it two cycles later.
 
 - **The one-shot teaching tips name a single answer where the catalogue now has three.**
-  `Hud.flight_tip` (`game/hud.gd:3727`) reads "That pest flies over Chomp Flowers. Corn
+  `Hud.flight_tip` (`game/hud.gd:3731`) reads "That pest flies over Chomp Flowers. Corn
   Cobblers can still hit it." Both halves are true. But a winged pest is also reachable by
   the Bomb Dandelion (its blast hits whatever is standing there) and by the Prickly Nettle,
   which exists *specifically* to sting the mutations — armoured, winged, hungry — and whose
@@ -4896,7 +4958,7 @@ Three findings kept out here rather than buried in a log:
   pagination and the page label all derive from their tables and each carries a comment
   saying why. Every finding was in prose. The legend page is the sharpest case — its source
   line has always derived `CueLegend.row_count()` while its note, one field over, said "the
-  five here" beside a six-row table (`game/cue_legend.gd:172`). **The page displayed a
+  five here" beside a six-row table (`game/cue_legend.gd:191`). **The page displayed a
   correct count and an incorrect one simultaneously, which is exactly why the incorrect one
   survived**: anything comparing the two would have caught it in a second, and nothing was
   comparing.
@@ -5006,7 +5068,7 @@ Three findings kept out here rather than buried in a log:
   of the weather system is a dependent clause" — was a claim about THE GAME derived from an
   enumeration over ONE FILE. Weather is taught three times, each where it can be acted on:
   the prep note before the seeds are spent (`game/hud.gd:3462-3468`), the banner as the wave
-  opens (`game/hud.gd:4053-4055`, the whole mechanic in one sentence), and a status row after.
+  opens (`game/hud.gd:4072-4082`, the whole mechanic in one sentence), and a status row after.
   `-pa4g` said it outright — "two of my last four absence claims about this codebase were
   wrong, both because the enumeration was over the wrong set" — and I made the mistake one
   bead later, in a bead that audit filed. **A warning inside a bead does not survive contact
@@ -5065,7 +5127,7 @@ Three findings kept out here rather than buried in a log:
   others, `lint 0/0`, a clean import and all nineteen parallel-safe checkers. Re-running the
   bead's own live recipe gave `refused 1` and the same `refused_log` as two cycles earlier.
   **The test fired both purchases in the SAME FRAME, which is the one case the wrong fix did
-  cover.** A flourish lasts about a quarter of a second (`game/game.gd:2037-2038`), so two real
+  cover.** A flourish lasts about a quarter of a second (`game/game.gd:2070-2071`), so two real
   purchases half a second apart never overlap at all — the second starts fresh and posts
   behind the first's five-second reveal.
   The general form: **when a defect is about two things overlapping, the test's timing IS the
@@ -5248,7 +5310,7 @@ Three findings kept out here rather than buried in a log:
   a citation sits inside an edited region.
   Reading the 8 found that **three described problems that had since been SOLVED** —
   `request_uproot`/`uproot_selected` were renamed to `arm_`/`commit_` and
-  `game/game.gd:1871` now records the rename. Marked superseded with the derived answer
+  `game/game.gd:1904` now records the rename. Marked superseded with the derived answer
   rather than patched: **patching a line number into prose whose CLAIM is stale produces
   something that looks checked.**
 
