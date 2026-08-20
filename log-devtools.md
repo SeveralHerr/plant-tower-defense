@@ -9118,3 +9118,31 @@ is likely to be at least as productive.
   `Failed to compile depended scripts`. That is the known autoload false-positive
   `CLAUDE.md` documents for `--require-compile`, hit here for the first time — so the
   per-file compile route is not available as a workaround either.
+
+## 2026-08-20 — Cycle 161: read the notebook, using the bridge as a page-turner
+
+- Value: **warranted**, and the instrument again was a rendered screen and a person.
+  - Expected: label problems on the game's most prose-heavy surface, 17 pages of it.
+  - Got: `fire-entry-point notebook` plus `run-method go_to` walked to any page by index
+    in one call each — four pages by KIND (two plant, cue-legend, shelf) in under a
+    minute. The hints pages were read in cycle 151.
+  - Found: the notebook's nettle note hard-codes "wave 8" while its twin in
+    `PlantCatalog`'s shop line has been pinned against `WaveDirector.MUTATION_START_WAVE`
+    for cycles. **One copy checked and one silent is worse than neither** — move the
+    constant and the shop line fails, gets fixed, and the notebook is the only version
+    left saying the old number with nothing pointing at it. Confirmed by mutation.
+  - Cheaper: nothing for the reading. The four-line gate that followed would never have
+    been written without it.
+
+- Technique: `run-method --node <notebook> --method go_to --args '[N]'` is a page-turner
+  and made this cheap. Worth pairing with the cycle-158 note that `fire-entry-point` will
+  not re-fire while its screen is open — together they are the whole recipe for touring a
+  screen that lives inside another one.
+
+- Gap: **no new harness gaps.** One tooling consequence of MY OWN earlier work surfaced
+  instead, on the shelf page: "Nothing left on the ground" reads as earned, because cycle
+  159's first `cmd end_run` call unlocked it off a synthetic run before
+  `--snapshot-userstate` was in use. That is the verb behaving exactly as its own docstring
+  now warns, one cycle too late to help. **An attempt to clear the flag was refused by the
+  sandbox, and that is the right default** — it is the developer's save, the flag is
+  cosmetic, and a wrong clear is worse than a wrong set. Reported rather than fixed.

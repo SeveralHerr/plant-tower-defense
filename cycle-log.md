@@ -1,4 +1,4 @@
-# Cycle 160
+# Cycle 161
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,41 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 161 taught
+
+**One copy of a number gated and its twin silent is worse than gating neither.**
+`PlantCatalog`'s nettle blurb says "wave 8" and has been pinned against
+`WaveDirector.MUTATION_START_WAVE` for cycles, with a comment explaining that a const
+String cannot interpolate one. The notebook's note for the same plant said the same
+number and was pinned by nothing. Move the constant and the shop line fails, somebody
+fixes it, **and the notebook page is then the only version left telling the player the
+old number — with the failing copy gone and nothing pointing at it.** A pinning test
+creates a false sense that a number is handled; step 5 made the rule that writing one
+means grepping for the value and counting what else says it.
+
+**The label sweep finished at six of six screens, and its two best outputs are clean
+results.** The Keys screen is a model — every row a verb phrase naming an action, so no
+noun/value confusion is available to it. The notebook's cue-legend page is the other:
+"6 of the board's 11 marks" is two derived counts, the constant is gated by a test that
+parses the markdown, and the block above it records that a comment quoting a number is
+the copy that rots. Both were written down as models rather than passed over.
+
+**And the method met its limit.** The Designer's Notebook legitimises developer
+vocabulary — filenames, pixel counts, "never on paper" — every one of which would be a
+finding on the pause card. **A method that depends on reading as a player needs to know
+which screens speak in a different register**, and a screenshot cannot tell you. Filed;
+the useful output is the list of such screens, which is currently one.
+
+Also seen and deliberately not fixed: the shelf shows "Nothing left on the ground" as
+earned, because cycle 159's first `end_run` call unlocked it off a synthetic run before
+`--snapshot-userstate` was in use — the verb behaving exactly as its own docstring now
+warns, one cycle too late. An attempt to clear the flag was refused by the sandbox, and
+that is the right default: it is the developer's save, the flag is cosmetic, and a wrong
+clear is worse than a wrong set.
+
+This was the player-facing cycle the two-in-a-row rule forced, and it is worth noting
+what that produced: not a feature, but a lie the game was one constant away from telling.
 
 ## What cycle 160 taught
 

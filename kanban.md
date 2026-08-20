@@ -218,6 +218,33 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 161 — one copy gated and its twin silent is worse than neither
+
+- **A number with two player-facing copies, one pinned and one not, degrades in a way
+  neither-pinned does not.** `PlantCatalog`'s nettle blurb says "wave 8" and has been
+  gated against `WaveDirector.MUTATION_START_WAVE` for cycles.
+  `NotebookScreen.PAGES`'s note for the same plant (`game/notebook_screen.gd:523`) said
+  the same number and was gated by nothing. Move the constant and the shop line fails,
+  gets fixed — **and the notebook page is then the only version left saying the old
+  number, with the failing copy gone and nothing pointing at it.** Now swept
+  (`test/unit/test_placement.gd:4397`). Worth asking of every other pinned constant in
+  this repo: is the thing being pinned the ONLY copy, or the only copy somebody
+  remembered? The pinning tests are enumerable and so are the strings.
+
+- **The Designer's Notebook legitimises developer vocabulary, which makes "read it as a
+  player" weaker there than anywhere else.** Filenames (`dandelion.png`), pixel counts
+  ("Reaches 192 px"), and "never on paper" are all in-voice on a screen whose conceit is
+  a designer's working notes — and every one of them would be a finding on the pause card.
+  **A method that depends on reading as a player needs to know which screens are speaking
+  in a different register**, and this is the only one that does. Recorded rather than
+  resolved: the sweep cannot make that judgement from a screenshot, and the useful output
+  is the list of screens where the register differs, which is currently one.
+  Its cue-legend page is the counter-model and is worth copying: `"%d of the board's %d
+  marks"` is `CueLegend.row_count()` and `OVERLAY_GRAMMAR_SHAPES`
+  (`game/notebook_screen.gd:1271`), the constant is gated by a test that parses the
+  markdown, and the block above it records that a comment quoting a number is the copy
+  that rots.
+
 ### New in cycle 160 — a negative result needs a home the next attempt will open
 
 - **The obvious fix for the missing-method blind spot does not work, and the reason is

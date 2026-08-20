@@ -173,6 +173,14 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      instead, which is the sentence printed directly under the clean count that invites
      the wrong conclusion. **Ask where the next person will be standing when they have the
      idea, and put it there.**
+   - **WHEN A CONSTANT IS PINNED BY A TEST, CHECK WHETHER THE PINNED COPY IS THE ONLY
+     COPY.** Cycle 161 found `wave 8` in two player-facing strings: one gated against
+     `WaveDirector.MUTATION_START_WAVE` for cycles, one gated by nothing. That is worse
+     than gating neither — move the constant and the checked copy fails, somebody fixes
+     it, and the silent copy is then the only version left saying the old number, with
+     the failing one gone and nothing pointing at it. **A pinning test creates a false
+     sense that the number is handled**, so the moment you write one, grep for the value
+     and count what else says it.
    - **RUN INDEPENDENT ITEMS IN PARALLEL (asked for directly, cycle 99).** The loop did one
      item at a time for 99 cycles and the queue is 100 deep; most of it does not touch what
      the rest of it touches. Spawn agents for items whose files do not overlap, and say in
