@@ -7177,6 +7177,40 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 		{"what": "blocked brackets", "mark": PlacementPreview.BLOCKED_COLOR,
 			"alpha": PlacementPreview.BLOCKED_COLOR.a, "ground": dirt, "on": "dirt",
 			"gates": true},
+		# THE SELECTION MARKER, both states, added in cycle 164 by walking
+		# gate_aim_check's list of every colour declared in a world-space script rather
+		# than by waiting for one to look wrong. Both clear comfortably today; the point
+		# of the rows is that BLOCKED_COLOR also looked fine right up until a palette
+		# convention pushed it to 0.004.
+		#
+		# WARNING_COLOR is `Color(GardenTheme.DANGER, 0.95)` -- the SAME palette colour
+		# the blocked bracket failed with, clearing dirt here at 0.151 purely because its
+		# alpha is 0.95 rather than 0.75. At the bracket's alpha it would be 0.119, under
+		# the floor. One colour, two verdicts, decided by alpha alone: that is the whole
+		# argument for pricing marks AS DRAWN rather than as declared.
+		{"what": "selection marker", "mark": SelectionMarker.MARKER_COLOR,
+			"alpha": SelectionMarker.MARKER_COLOR.a, "ground": grass, "on": "grass",
+			"gates": true},
+		{"what": "selection marker", "mark": SelectionMarker.MARKER_COLOR,
+			"alpha": SelectionMarker.MARKER_COLOR.a, "ground": dirt, "on": "dirt",
+			"gates": true},
+		{"what": "selection marker, at risk", "mark": SelectionMarker.WARNING_COLOR,
+			"alpha": SelectionMarker.WARNING_COLOR.a, "ground": grass, "on": "grass",
+			"gates": true},
+		{"what": "selection marker, at risk", "mark": SelectionMarker.WARNING_COLOR,
+			"alpha": SelectionMarker.WARNING_COLOR.a, "ground": dirt, "on": "dirt",
+			"gates": true},
+		# NOT GATED, and filed as plant-tower-defense-uwf8. A Corn Cobbler's spread arc is
+		# drawn from `muzzle_pivot` out to FAN_LENGTH, so it lies across whatever ground
+		# the lane is made of -- and at 0.45 alpha it clears NEITHER: 0.064 on grass,
+		# 0.113 on dirt. It is left ungated rather than fixed because the same draw call
+		# paints the muzzle pips in PIP_COLOR, and moving one without the other splits a
+		# cue that reads as one thing. Recorded with its numbers so the question stays
+		# visible, which is the same treatment the reach ring gets above.
+		{"what": "corn spread arc", "mark": CornCobbler.SPREAD_ARC_COLOR, "gates": false,
+			"alpha": CornCobbler.SPREAD_ARC_COLOR.a, "ground": grass, "on": "grass"},
+		{"what": "corn spread arc", "mark": CornCobbler.SPREAD_ARC_COLOR, "gates": false,
+			"alpha": CornCobbler.SPREAD_ARC_COLOR.a, "ground": dirt, "on": "dirt"},
 		# NOT GATED, and filed as plant-tower-defense-qt79 rather than waived quietly.
 		# A ring is not a mark: GROUND_SEPARATION_MIN was calibrated against the page
 		# frame's hairline, the cream, and the road hatch, all of them small strokes,
@@ -7212,15 +7246,15 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 			return err
 	# The denominator, because a table that lost its rows would pass in silence.
 	if err == "":
-		err = _T.assert_eq(checked, 12,
+		err = _T.assert_eq(checked, 18,
 			"the sweep visited every board mark and both grounds for the ring")
 	if err == "":
 		# AND the exception set is pinned by membership, not by count alone. A new mark
 		# that fails and is quietly marked `gates: false` is exactly how a gate rots;
 		# this makes doing that a failing test rather than a passing one.
-		err = _T.assert_eq(ungated.size(), 2,
-			"exactly the two reach-ring rows are ungated, and they are: %s"
-				% ", ".join(ungated))
+		err = _T.assert_eq(ungated.size(), 4,
+			("exactly four rows are ungated -- the two reach-ring ones and the two corn "
+				+ "spread-arc ones -- and they are: %s") % ", ".join(ungated))
 	if err == "":
 		# The mutation guard: without this, replacing reads_on_at with `return true`
 		# leaves every assertion above green. A ring at RING_ALPHA over grass is the
