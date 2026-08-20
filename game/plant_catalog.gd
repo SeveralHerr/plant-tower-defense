@@ -463,6 +463,29 @@ static func engaging_ids() -> Array[StringName]:
 			out.append(id)
 	return out
 
+## Can this plant be UPGRADED, asked before one exists (plant-tower-defense-nmvb).
+##
+## WHY THE CATALOGUE ANSWERS THIS AT ALL. The ladder lives on the subclass as `LEVELS`,
+## and `Plant.upgrade_ladder()` reads it — but that is an INSTANCE method, and the question
+## a player needs answered is "should I buy this one", which is asked while the plant bar
+## is showing a packet and nothing has been planted. Same reason `reach()` above is static
+## and keyed on the id: the answer has to exist before the plant does.
+##
+## THE NOTEBOOK MAKES THIS URGENT rather than merely tidy. It advises "Climbing one plant
+## beats adding another", and six of the nine plants cannot climb — so a player following
+## that advice buys a Sundew, selects it, and finds no Upgrade button and no explanation.
+##
+## EXPLICIT ARMS, mirroring `reach()` two functions up, and the hazard is the same one:
+## nothing here notices a fourth plant growing a ladder. `test_the_catalogue_and_the_plants_
+## agree_about_which_can_grow` closes that by instantiating every id and comparing this
+## answer against `has_upgrades()`, so the two cannot disagree for longer than one test run.
+static func can_grow(id: StringName) -> bool:
+	match id:
+		CORN, CHOMP, BRAMBLE:
+			return true
+	return false
+
+
 static func texture_path(id: StringName) -> String:
 	return String(entry(id).get("texture", ""))
 

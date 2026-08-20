@@ -2020,6 +2020,17 @@ static func plant_button_tint(unlocked: bool, affordable: bool, hinted: bool) ->
 ## safe in this direction because the name comes out of the table at draw time.
 static func plant_button_tooltip(id: StringName, from_tier: StringName) -> String:
 	var tip: String = "%s — %s" % [PlantCatalog.display_name(id), PlantCatalog.blurb(id)]
+	# WHETHER IT CAN GROW, before the player spends anything on it
+	# (plant-tower-defense-nmvb). The notebook advises "Climbing one plant beats adding
+	# another" and six of the nine cannot climb, so a player following that advice buys a
+	# Sundew, selects it, and finds no Upgrade button and nothing saying why.
+	#
+	# SAID IN BOTH DIRECTIONS, not only for the three that grow. "This one does not grow"
+	# is the half a player needs to hear: silence on a packet reads as "not mentioned"
+	# rather than as "no", and the whole complaint is that they cannot tell which they are
+	# looking at. It is also the direction that applies to two thirds of the catalogue.
+	tip += "\n%s" % ("Grows: it can be upgraded once planted." if PlantCatalog.can_grow(id)
+		else "Does not grow — this is the plant it stays.")
 	var spec: Dictionary = SeedBank.PACKET_TIERS.get(from_tier, {}) as Dictionary
 	if spec.is_empty():
 		return tip

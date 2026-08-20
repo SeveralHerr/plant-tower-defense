@@ -4987,6 +4987,101 @@ func _scripted_nodes(root: Node) -> Array[Node]:
 	return out
 
 
+## THE CATALOGUE AND THE PLANTS CANNOT DISAGREE ABOUT WHICH ONES GROW
+## (plant-tower-defense-nmvb).
+##
+## `PlantCatalog.can_grow` is a `match` with three ids in it, mirroring `reach()` beside
+## it — and that shape has one hazard: **nothing in the catalogue notices a fourth plant
+## growing a ladder.** A new subclass declares `LEVELS`, `Plant.upgrade_ladder()` picks it
+## up for free, the Upgrade button appears on the board, and the packet tooltip goes on
+## saying "Does not grow" for the rest of the project's life.
+##
+## This is the both-directions plant that makes the hard-coded arms safe: every id in the
+## catalogue is instantiated and the static answer is compared against the instance's own
+## `has_upgrades()`. Either one drifting fails, and the failure names the plant.
+##
+## Instantiated rather than read from source, deliberately. A source scan for `const LEVELS`
+## would find the same three today and would ALSO have to know that `Sfx.LEVELS` is a
+## volume table — `grep -rln "^const LEVELS" game/*.gd` returns four files, and only three
+## are plants. Asking the object removes that trap entirely.
+func test_the_catalogue_and_the_plants_agree_about_which_can_grow() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = ""
+	var checked: int = 0
+	var growers: int = 0
+	for id: StringName in PlantCatalog.ids():
+		var plant: Plant = game._new_plant(id)
+		if plant == null:
+			err = "the catalogue lists %s but Game cannot build one" % id
+			break
+		checked += 1
+		if plant.has_upgrades():
+			growers += 1
+		err = _T.assert_eq(PlantCatalog.can_grow(id), plant.has_upgrades(),
+			("the catalogue and the plant agree about whether %s grows -- if this fails "
+				+ "after adding a plant, the catalogue's match is what needs the new id")
+				% id)
+		plant.free()
+		if err != "":
+			break
+	if err == "":
+		# Denominators. A catalogue that stopped listing ids, or a build that returned
+		# ladder-less plants for everything, would make the loop above pass over nothing.
+		err = _T.assert_eq(checked, PlantCatalog.ids().size(),
+			"every plant in the catalogue was built and asked (%d of %d)"
+				% [checked, PlantCatalog.ids().size()])
+	if err == "":
+		err = _T.assert_gt(growers, 0,
+			"at least one plant actually grows, or `can_grow` is trivially right")
+	if err == "":
+		err = _T.assert_true(growers < checked,
+			("and at least one does NOT (%d of %d grow) -- if every plant grew, the "
+				+ "tooltip's 'Does not grow' branch would be unreachable and untested")
+				% [growers, checked])
+	_T.free_ui(game)
+	return err
+
+
+## THE PACKET TOOLTIP ANSWERS "WILL THIS ONE GROW" IN BOTH DIRECTIONS
+## (plant-tower-defense-nmvb).
+##
+## The notebook advises "Climbing one plant beats adding another" and six of the nine
+## cannot climb. A player following that advice buys a Sundew, selects it, finds no Upgrade
+## button, and has nothing telling them why.
+##
+## BOTH DIRECTIONS IS THE POINT. Saying it only for the three that grow leaves the other
+## six silent, and silence on a packet reads as "not mentioned" rather than as "no" — which
+## is the original complaint in a new place, applying to two thirds of the catalogue.
+func test_the_packet_tooltip_says_whether_the_plant_grows() -> String:
+	var said_grows: int = 0
+	var said_not: int = 0
+	var err: String = ""
+	for id: StringName in PlantCatalog.ids():
+		var tip: String = Hud.plant_button_tooltip(id, &"")
+		if PlantCatalog.can_grow(id):
+			said_grows += 1
+			err = _T.assert_true(tip.contains("Grows"),
+				"%s grows and its tooltip says so: %s" % [id, tip])
+		else:
+			said_not += 1
+			err = _T.assert_true(tip.contains("Does not grow"),
+				"%s does not grow and its tooltip says so rather than staying silent: %s"
+					% [id, tip])
+		if err != "":
+			break
+	if err == "":
+		err = _T.assert_gt(said_grows, 0, "some plant took the grows branch")
+	if err == "":
+		err = _T.assert_gt(said_not, 0, "and some plant took the does-not branch")
+	if err == "":
+		# The packet clause still composes after the new line, rather than the two running
+		# together — the tooltip is the one place three sentences meet.
+		var locked: String = Hud.plant_button_tooltip(PlantCatalog.ids()[0], &"rare")
+		err = _T.assert_true(locked.contains("Still in a packet"),
+			"and a locked plant still says which packet holds it: %s" % locked)
+	return err
+
+
 ## THE UPGRADE BUTTON STILL FITS NOW THAT IT SAYS WHAT THE PRICE BUYS
 ## (plant-tower-defense-jvnm).
 ##
