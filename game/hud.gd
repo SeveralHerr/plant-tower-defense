@@ -2507,6 +2507,16 @@ func _refresh_selection(state: Dictionary) -> void:
 	if bool(state.get("uproot_armed", false)):
 		_uproot_button.text = uproot_armed_text(refund)
 		_uproot_button.add_theme_color_override("font_color", UPROOT_ARMED)
+		# THE SECOND ENDING, said where the player is already looking
+		# (plant-tower-defense-28un). Overwrites the detail set above rather than adding a
+		# row: see move_hint_detail's header for why the message row cannot carry this and
+		# why the panel has no 16px to spare. Every branch above ended in
+		# `selection_line(display, level, detail)`, so this replaces only the third
+		# argument and the name/level line is untouched.
+		_selection_label.text = selection_line(
+			PlantCatalog.display_name(plant.kind),
+			plant.level_name() if plant.has_upgrades() else "",
+			move_hint_detail(plant.move_cost()))
 	else:
 		_uproot_button.text = uproot_button_text(refund, replant)
 		_uproot_button.remove_theme_color_override("font_color")
@@ -2560,6 +2570,33 @@ func _refresh_health(plant: Plant) -> void:
 ## `level_name` empty means a plant with no ladder — the em-dash rung is omitted
 ## rather than printed empty, which is the `has_upgrades()` branch `_refresh_selection`
 ## used to spell out twice.
+## THE ARMED PANEL'S SECOND ENDING (plant-tower-defense-28un).
+##
+## Arming a plant can end three ways since the move shipped — confirm, cancel, move — and
+## every surface named exactly one of them. `uproot_armed_text` says "Really uproot?", the
+## message row says "Click Uproot again to dig up your X", and the click that MOVES it was
+## written down nowhere a player could find.
+##
+## WHY THIS SLOT AND NOT THE MESSAGE ROW, which is where the bead looked first. The row is
+## measurably full: `uproot_armed_message` already carries at most ONE extra clause because
+## `check_budgets` refused the build at 188px over, and the forfeit wins that contest when
+## there is anything to forfeit. So an UPGRADED plant never sees the move tip — and an
+## upgraded plant is precisely the one worth moving, because `Plant.move_cost` prices a
+## quarter of what was put in against a rebuy that forfeits all of it. The row cannot carry
+## this for the plants that need it most.
+##
+## WHY NOT A NEW PANEL ROW: `_health_row`'s header records the panel's real headroom — the
+## damaged box is 168 tall and its foot stays 16px clear — and a damaged plant can be armed
+## at the same time, so the worst case is both. A row does not fit in 16px. This spends the
+## DETAIL slot instead, which costs no height at all: the label is two lines either way.
+##
+## What is given up is the plant's stats for the seconds it is armed, and that is the right
+## trade. The armed question is what to DO with this plant, not what its numbers are, and
+## the button beside this line is already carrying the refund arithmetic.
+static func move_hint_detail(cost: int) -> String:
+	return "Click a spot to move it (%d)" % cost
+
+
 static func selection_line(display: String, level_name: String, detail: String) -> String:
 	if level_name == "":
 		return "%s\n%s" % [display, detail]
@@ -2671,6 +2708,11 @@ static func selection_detail_corpus() -> Array[String]:
 	out.append(chomp_chewing_detail(100))
 	out.append(sundew_detail(WaveDirector.SIMULTANEOUS_PEST_CEILING,
 		int(round(StickySundew.SLOW_FACTOR * 100.0))))
+	# The armed move hint (plant-tower-defense-28un), priced at a cost far wider than the
+	# game can reach: move_cost() is a quarter of base plus upgrade spend, so three digits
+	# needs an investment no ladder allows. Same over-pricing this corpus already does by
+	# crossing every plant with every detail.
+	out.append(move_hint_detail(999))
 	# Priced at the widest the FORMAT can read, not at what a Bramble actually shows.
 	# `Bramble.hold_seconds(1)` is 11s today, which is two digits; the budget has to
 	# survive a retune that makes it three, and `int(round())` on a float has no natural
@@ -3867,7 +3909,7 @@ const HINT_CARDS: Array[Dictionary] = [
 	{
 		"id": "seen_move_tip",
 		"title": "Compare before you dig",
-		"note": "With Uproot armed, hover another bed to see what the plant would reach there. Confirming still only uproots.",
+		"note": "With Uproot armed, hover another bed to see what the plant would reach there — then click it to move the plant, keeping its level, for a quarter of what you have put into it. Clicking Uproot again still digs it up instead.",
 	},
 	{
 		"id": "seen_flight_tip",
@@ -4012,7 +4054,12 @@ static func uproot_armed_message(plant_name: String, with_tip: bool = false,
 	if forfeited > 0:
 		return warning + " Its %d upgrade seeds are not refunded." % forfeited
 	if uproot_shows_tip(with_tip, forfeited):
-		return warning + " Hover to compare a new spot."
+		# NAMES THE CLICK, not the hover (plant-tower-defense-28un). It said "Hover to
+		# compare a new spot" — true, and it described the preview rather than the action,
+		# so the one sentence a player ever gets about moving never mentioned that moving
+		# was possible. Same length class, so the budget this clause already fits in is
+		# unchanged; it replaces a clause rather than adding one.
+		return warning + " Or click a spot to move it there."
 	return warning
 
 

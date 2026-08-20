@@ -15817,8 +15817,12 @@ func test_the_hint_cards_agree_with_the_tips_the_message_row_posts() -> String:
 		# The move card is the one whose tip is a CLAUSE inside a longer sentence
 		# (`uproot_armed_message`), so it is the one most able to drift.
 		var armed: String = Hud.uproot_armed_message("Corn Cobbler", true, 0)
-		err = _T.assert_true(armed.contains("Hover"),
-			"the armed prompt still carries the hover clause -- '%s'" % armed)
+		# NAMES THE CLICK since cycle 145 (plant-tower-defense-28un). It asserted "Hover"
+		# for as long as the tip described the preview; the tip now describes the ACTION,
+		# because a sentence about hovering was the only thing a player was ever told
+		# about moving and it never mentioned that moving was possible.
+		err = _T.assert_true(armed.contains("click a spot to move"),
+			"the armed prompt still carries the move clause -- '%s'" % armed)
 		if err == "":
 			err = _T.assert_true(Hud.hint_note_text("seen_move_tip", true).contains("hover"),
 				"and the card teaches the same hover")
@@ -16552,6 +16556,12 @@ func test_every_selection_detail_producer_is_priced_by_the_corpus() -> String:
 		# FORMAT allows rather than at what a Bramble shows today -- see the corpus.
 		Hud.resisting_detail(999.0),
 		Hud.idle_detail(),
+		# The armed move hint (plant-tower-defense-28un). Unlike every other entry here it
+		# is not a plant's STATE -- it is what the panel says INSTEAD of the state while an
+		# uproot is armed, because the row that would otherwise carry it is full and the
+		# panel has no 16px for another line. Priced at 999 for the reason the Bramble's is:
+		# a budget is about the widest the format allows.
+		Hud.move_hint_detail(999),
 	]
 	for line: String in wanted:
 		err = _T.assert_true(details.has(line),
@@ -20720,4 +20730,137 @@ func test_a_click_just_after_the_window_lapses_does_not_buy_a_plant() -> String:
 			plants_before_buy + 1,
 			"which does buy, because refusing twice would be the worse bug")
 	_T.free_ui(game)
+	return err
+
+
+## The armed panel names the move, and names its price (plant-tower-defense-28un).
+##
+## Arming a plant can end three ways since cycle 143 — confirm, cancel, move — and every
+## surface named exactly one. The button says "Really uproot?", the message row says "Click
+## Uproot again to dig up your X", and the click that MOVES it was written down nowhere a
+## player could find. The mechanic worked and was undiscoverable.
+##
+## THE PANEL AND NOT THE ROW, and the reason is sharper than "the row is full". The armed
+## prompt already carries at most ONE extra clause because `check_budgets` refused the build
+## at 188px over, and the forfeit clause WINS that contest whenever there is anything to
+## forfeit. So an upgraded plant never sees the move tip — and an upgraded plant is exactly
+## the one worth moving, since `move_cost` prices a quarter of the investment against a
+## rebuy that forfeits all of it. Asserted below, because that asymmetry is the argument.
+func test_the_armed_panel_says_the_move_and_its_price() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(500)
+	var cell: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "",
+		"a cob goes down")
+	var plant: Plant = null
+	if err == "":
+		plant = game.plant_at(cell)
+		err = _T.assert_true(plant != null, "and is on the board")
+	var label: Label = null
+	if err == "":
+		label = game.hud.get_node_or_null("Root/SidePanel/SelectionBox/SelectionLabel") as Label
+		if label == null:
+			# The panel is built in code; find it by name rather than by pinning a path
+			# that a layout change would break silently.
+			for node: Node in game.hud.find_children("SelectionLabel", "Label", true, false):
+				label = node as Label
+				break
+		err = _T.assert_true(label != null, "the selection label is somewhere in the HUD")
+	if err == "":
+		game._select(plant)
+		game._refresh()
+		err = _T.assert_false(label.text.contains("move it"),
+			"a merely selected plant is not told about moving -- got %s" % label.text)
+	if err == "":
+		err = _T.assert_true(Game.uproot_press_accepted(game.arm_uproot()), "the window arms")
+	if err == "":
+		game._refresh()
+		err = _T.assert_true(label.text.contains(Hud.move_hint_detail(plant.move_cost())),
+			("the armed panel names the move and its price -- expected to contain \"%s\", "
+				+ "got \"%s\"") % [Hud.move_hint_detail(plant.move_cost()), label.text])
+	if err == "":
+		# The PRICE has to be this plant's, not a recomputed second copy of the
+		# arithmetic. Climbing changes it, and the panel has to follow.
+		var before: String = label.text
+		if plant.has_upgrades() and plant.upgrade():
+			game._refresh()
+			err = _T.assert_true(label.text != before,
+				"and follows the plant up its ladder rather than quoting a base price")
+			if err == "":
+				err = _T.assert_true(
+					label.text.contains(Hud.move_hint_detail(plant.move_cost())),
+					"still quoting move_cost() itself (%d)" % plant.move_cost())
+	if err == "":
+		# THE ASYMMETRY that sent this to the panel. An upgraded plant has something to
+		# forfeit, so the row spends its one clause on the forfeit and the move tip is
+		# never shown -- for exactly the plants most worth moving.
+		var forfeited: int = plant.upgrade_spent()
+		err = _T.assert_gt(forfeited, 0, "the climbed plant has something to forfeit")
+		if err == "":
+			var armed_row: String = Hud.uproot_armed_message("Corn Cobbler", true, forfeited)
+			err = _T.assert_false(armed_row.contains("move it there"),
+				("the row gives its one clause to the forfeit, so an upgraded plant is "
+					+ "never told about moving there -- '%s'") % armed_row)
+	_T.free_ui(game)
+	return err
+
+
+## The armed line costs the panel no height (plant-tower-defense-28un).
+##
+## `_health_row`'s header records the real headroom: the damaged box is 168 tall and its
+## foot stays 16px clear of the panel bottom. A damaged plant can be ARMED at the same
+## time, so the worst case is both — and 16px does not hold another row. That is why the
+## move hint spends the DETAIL slot rather than adding one: the label is two lines either
+## way.
+##
+## Asserted through `selection_panel_budget`, which is what `Game.BUDGET_FLOOR` grades on
+## every launch, rather than by measuring the built panel — the budget is the thing that
+## has to keep holding, and it prices the whole corpus rather than the one string on screen.
+func test_the_armed_move_hint_fits_the_panel_it_is_drawn_in() -> String:
+	var corpus: Array[String] = Hud.selection_corpus()
+	var err: String = _T.assert_gt(corpus.size(), 0, "there is a corpus to price")
+	if err == "":
+		# The hint has to BE in the corpus, or the budget below is measuring a panel that
+		# never shows this line and the whole check is vacuous.
+		var priced: bool = false
+		for line: String in corpus:
+			if line.contains(Hud.move_hint_detail(999)):
+				priced = true
+				break
+		err = _T.assert_true(priced,
+			"the corpus prices the armed move hint at its widest")
+	if err == "":
+		# RELATIVE, not absolute. The panel's widest line already wraps to three rows
+		# before this feature existed -- that is the pre-existing worst case
+		# `selection_panel_budget`'s own header prices as footing the stack at the panel
+		# edge, and it is not this bead's to change. The claim that matters is that the
+		# armed hint does not make it WORSE, so the corpus is measured twice: with the
+		# hint, and with every line carrying it removed.
+		var without: Array[String] = []
+		for line: String in corpus:
+			if not line.contains(Hud.move_hint_detail(999)):
+				without.append(line)
+		err = _T.assert_gt(corpus.size(), without.size(),
+			"the hint really is in the corpus, so the two measurements differ by it")
+		if err == "":
+			var room: float = float(Hud.PANEL_WIDTH)
+			var with_hint: Dictionary = Hud.selection_panel_budget(corpus,
+				Hud.SELECTION_BOX_WIDTH, room)
+			var before: Dictionary = Hud.selection_panel_budget(without,
+				Hud.SELECTION_BOX_WIDTH, room)
+			err = _T.assert_eq(int(with_hint["rows"]), int(before["rows"]),
+				("the armed hint bought a panel row: %d without it, %d with. It spends the "
+					+ "DETAIL slot precisely so it costs no height -- the panel has 16px "
+					+ "clear and a damaged plant can be armed at the same time")
+					% [int(before["rows"]), int(with_hint["rows"])])
+			if err == "":
+				# `stack_height` is what the budget actually reports -- the whole panel
+				# stack, which is the number `height_left` is measured against and the one
+				# Game.BUDGET_FLOOR grades. There is no "height" key; reading one was a
+				# guess and the runner caught it.
+				err = _T.assert_gte(float(before["stack_height"]),
+					float(with_hint["stack_height"]),
+					("and bought no pixels either: %.1f without it, %.1f with (%.1f px of "
+						+ "room left)") % [float(before["stack_height"]),
+						float(with_hint["stack_height"]), float(with_hint["height_left"])])
 	return err

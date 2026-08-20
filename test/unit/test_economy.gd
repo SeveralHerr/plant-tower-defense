@@ -2742,7 +2742,7 @@ func test_an_upgrade_is_not_refunded_and_the_prompt_says_the_number() -> String:
 		# The two extras never share the row. The budget refused that build at 188 px
 		# over, so this is a constraint rather than a preference.
 		var both: String = Hud.uproot_armed_message("Bomb Dandelion", true, 65)
-		err = _T.assert_false(both.contains("Hover to compare"),
+		err = _T.assert_false(both.contains("click a spot to move"),
 			"the forfeit clause displaces the move tip rather than joining it -- got %s" % both)
 	return err
 
@@ -2841,7 +2841,7 @@ func test_the_move_tip_is_spent_only_when_it_is_actually_shown() -> String:
 		err = _T.assert_true(label.text.contains("upgrade seeds are not refunded"),
 			"the money clause is what the player got -- %s" % label.text)
 	if err == "":
-		err = _T.assert_false(label.text.contains("Hover to compare"),
+		err = _T.assert_false(label.text.contains("click a spot to move"),
 			"and the tip was displaced, not shown")
 	if err == "":
 		err = _T.assert_false(RunConfig.has_milestone(RunConfig.HINT_MOVE_PREVIEW),
@@ -2855,7 +2855,7 @@ func test_the_move_tip_is_spent_only_when_it_is_actually_shown() -> String:
 		game.selected_placed = game.plant_at(planted[0])
 		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "arming on the fresh one")
 	if err == "":
-		err = _T.assert_true(label.text.contains("Hover to compare"),
+		err = _T.assert_true(label.text.contains("click a spot to move"),
 			"the tip finally shows -- %s" % label.text)
 	if err == "":
 		err = _T.assert_true(RunConfig.has_milestone(RunConfig.HINT_MOVE_PREVIEW),

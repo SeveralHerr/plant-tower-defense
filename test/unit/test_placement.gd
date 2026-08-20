@@ -1268,7 +1268,7 @@ func test_the_move_tip_is_shown_once_and_the_warning_every_time() -> String:
 	if err == "":
 		err = _T.assert_true(label != null, "the message row is where the HUD put it")
 	if err == "":
-		err = _T.assert_true(label.text.contains("Hover to compare"),
+		err = _T.assert_true(label.text.contains("click a spot to move"),
 			"the first arm ever carries the move tip -- got %s" % label.text)
 	if err == "":
 		# ON THE FIRST ARM TOO, which is the case a mutation caught this test missing.
@@ -1295,7 +1295,7 @@ func test_the_move_tip_is_shown_once_and_the_warning_every_time() -> String:
 		game.selected_placed = game.plant_at(here)
 		err = _T.assert_eq(game.arm_uproot(), "confirm needed", "arming a second time")
 	if err == "":
-		err = _T.assert_false(label.text.contains("Hover to compare"),
+		err = _T.assert_false(label.text.contains("click a spot to move"),
 			"drops the tip -- got %s" % label.text)
 	if err == "":
 		err = _T.assert_true(label.text.contains("it will not grow back"),
