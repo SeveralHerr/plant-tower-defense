@@ -7133,6 +7133,128 @@ func test_the_deferred_bar_reads_on_the_road_it_is_drawn_on() -> String:
 ## The margin is reported on failure rather than just a bool, because the answer "by how
 ## much" is what tells you whether to move the colour or the alpha — and at this floor
 ## those are different repairs.
+## Every `_draw()`-painted cue still issues its draw calls
+## (plant-tower-defense-saro).
+##
+## THE MEASUREMENT THAT PRODUCED THIS. Deleting four draw sites in
+## `PlacementPreview` -- the risk ring, the dead bar, the redundant bars and the reach
+## ring -- left all 1003 tests green. So did short-circuiting `SelectionMarker._draw` and
+## `SoleCoverMarks._draw` entirely. Between them those are eight rows of the contrast
+## table below, plus the dead-zone bar three cycles of work went into.
+##
+## AND THE PROJECT ALREADY KNEW WHY. Doing the same to `Board.mark_dead_ground` and
+## `mark_deferred_road` fails FOUR tests, because those push their marks onto `Line2D`
+## children -- real nodes carrying real `points` -- and `board.gd`'s own header says that
+## is deliberate: "A headless run paints no frame at all, so a `_draw()` here would be a
+## cue no gate could ever see." The rule was written down and applied in one file.
+##
+## SO THIS IS THE BLUNT INSTRUMENT, and it is honest about being one. It reads source and
+## counts draw primitives per function; it cannot tell you the cue is CORRECT, only that
+## something still paints. The right fix for any row here is the Board's -- push the mark
+## onto a node and assert its state -- and each conversion should delete its row from this
+## table. A shrinking table is the progress signal; a growing one means new cues are
+## choosing `_draw()`.
+##
+## Comments are blanked before counting, because several of these functions carry
+## paragraphs that name `draw_arc` while explaining the call below them.
+func test_every_draw_painted_cue_still_issues_its_draw_calls() -> String:
+	var expect: Array[Dictionary] = [
+		{"file": "res://game/placement_preview.gd", "func": "_draw", "calls": 1},
+		{"file": "res://game/placement_preview.gd", "func": "_draw_risk_ring", "calls": 1},
+		{"file": "res://game/placement_preview.gd", "func": "_draw_dead_bar", "calls": 1},
+		{"file": "res://game/placement_preview.gd", "func": "_draw_redundant_bars",
+			"calls": 2},
+		{"file": "res://game/selection_marker.gd", "func": "_draw_brackets", "calls": 2},
+		{"file": "res://game/selection_marker.gd", "func": "_draw_uproot_window",
+			"calls": 1},
+		{"file": "res://game/sole_cover_marks.gd", "func": "_draw", "calls": 2},
+	]
+	var err: String = ""
+	var checked: int = 0
+	for row: Dictionary in expect:
+		var body: String = _function_body_without_comments(
+			String(row["file"]), String(row["func"]))
+		err = _T.assert_true(body != "",
+			"%s has a %s() to read" % [row["file"], row["func"]])
+		if err != "":
+			return err
+		var found: int = _count_draw_calls(body)
+		checked += 1
+		err = _T.assert_eq(found, int(row["calls"]),
+			("%s.%s() issues %d draw call(s), expected %d. A cue nothing paints is "
+				+ "invisible to every colour assertion in the table below -- that is how "
+				+ "this test came to exist. If the count went UP on purpose, raise it "
+				+ "here; if the cue moved onto a node, delete this row and assert the "
+				+ "node's state instead, the way board.gd does")
+				% [row["file"], row["func"], found, int(row["calls"])])
+		if err != "":
+			return err
+	return _T.assert_eq(checked, 7,
+		"every listed cue was read -- a shrunken table would pass over nothing")
+
+
+## The body of `name` in `path`, with `#` comment lines removed. Line-wise is enough:
+## what it has to defeat is a paragraph ABOVE or INSIDE the function naming a draw
+## primitive while explaining one, which several of these carry.
+func _function_body_without_comments(path: String, name: String) -> String:
+	var f: FileAccess = FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return ""
+	var text: String = f.get_as_text()
+	f.close()
+	var out: String = ""
+	var inside: bool = false
+	# `\n` written as an escape, not as a real line break in the literal. The first draft
+	# of this helper carried an ACTUAL newline inside both string literals -- it compiled,
+	# the suite ran, and the function silently returned "". That is the trap this
+	# project's own loop rule names: a newline inside a GDScript string literal compiles,
+	# passes, and is invisible to every gate. It arrived here through a shell heredoc
+	# eating the backslash, which is the other half of the same rule.
+	for line: String in text.split("\n"):
+		var stripped: String = line.strip_edges()
+		if line.begins_with("func ") or line.begins_with("static func "):
+			inside = line.begins_with("func %s(" % name)
+			continue
+		if inside and not stripped.begins_with("#"):
+			out += line + "\n"
+	return out
+
+
+func _count_draw_calls(body: String) -> int:
+	var n: int = 0
+	for verb: String in ["draw_arc(", "draw_circle(", "draw_line(", "draw_rect(",
+			"draw_polyline(", "draw_polygon(", "draw_colored_polygon(",
+			"draw_dashed_line(", "draw_texture(", "draw_string("]:
+		n += body.count(verb)
+	# A draw call the function returns before ever reaching is not a draw call, and
+	# counting source text cannot tell the difference. This is the second-cheapest thing
+	# that can: an UNCONDITIONAL `return` at the function's own indent, before any of the
+	# verbs above, makes everything after it dead. It was found the way everything else
+	# here was -- the first version of this counter passed while both mutations short-
+	# circuited their functions with exactly that line, which is how the whole suite
+	# passed the deletions this test exists to catch.
+	#
+	# Guards are unaffected: `if x: return` is indented deeper, and an early return inside
+	# a branch is how half these functions legitimately open.
+	var reached: bool = false
+	for line: String in body.split("\n"):
+		# `strip_edges()` rather than `== "\treturn"`: these files are CRLF, so the raw
+		# line is `"\treturn\r"` and an equality test silently never matches. The first
+		# version of this loop used equality, and the early-return mutation survived a
+		# second time because of it -- twice fooled by the same file's line endings.
+		var stripped: String = line.strip_edges()
+		var top_level: bool = line.begins_with("\t") and not line.begins_with("\t\t")
+		if stripped == "return" and top_level:
+			return 0 if not reached else n
+		for verb: String in ["draw_arc(", "draw_circle(", "draw_line(", "draw_rect(",
+				"draw_polyline(", "draw_polygon(", "draw_colored_polygon(",
+				"draw_dashed_line(", "draw_texture(", "draw_string("]:
+			if line.contains(verb):
+				reached = true
+				break
+	return n
+
+
 ## The spread arc is DRAWN with its rim, not merely supplied with one
 ## (plant-tower-defense-uwf8).
 ##
