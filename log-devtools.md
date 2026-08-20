@@ -8789,3 +8789,71 @@ status rather than rewriting the entries that recorded these as open.
   - Improvement: `scene-tree` could print the count of `res://` scripts it saw against the
     count `scripts-seen` reports for the session — a one-line denominator that makes
     "this is one screen of several" visible while the game is still running to fix it.
+
+## 2026-08-20 — Cycle 152: reconciled the open gap ledger against 0.60.0 (plant-tower-defense-8wzs)
+
+- Value: **warranted** — no game was launched and none was needed; the claim runtime could
+  not have produced came from opening a *different version of the harness* than the one
+  this project runs.
+  - Expected: that a good fraction of 75 open gaps would turn out to be fixed in the 0.60.0
+    on this machine, since the project is 22 releases behind and every `harness-version`
+    call says so.
+  - Got: `python <0.60.0 templates>/tools/devtools.py --project . harness-version --client`
+    prints the reconciliation directly — **17 credited as fixed in releases this project
+    does not have**, and 12 supposedly open here that are "already credited in the
+    templates it RUNS".
+  - Found: **the second of those two numbers is wrong, 12 out of 12.** Cross-checked
+    against `gap_ledger.py --open`: eleven of the twelve (G-014, G-016, G-018, G-019,
+    G-025, G-029, G-030, G-033, G-046, G-047, G-049) are **already `status: fixed`** in
+    this log and appear in `gap_ledger`'s own NOTE as ids "with an earlier `open` line
+    above their current status". The twelfth, G-044, is open on purpose: the citation in
+    `tools/import_check.py:224` and `:259` is a **retry-until-progress workaround around a
+    Godot importer segfault**, not a fix of it, and this log re-confirmed a 7th sighting.
+    So the check is resolving `status: open` PER LINE rather than per id from the last
+    one — the exact trap `gap_ledger` was built to avoid and that
+    `plant-tower-defense-8wzs` warned about in advance ("`grep -c "status: open"` counts
+    LINES and once said 61 when the answer was 44"). A citation is also not a credit: a
+    workaround marker and a fix marker are the same string to it.
+  - Cheaper: nothing. The first number is a real service and would have taken an hour by
+    hand; the second is only detectable by having the per-id resolver as a second opinion.
+
+- Gap: **`harness-version --client`'s gap reconciliation over-reports "already fixed here"
+  by resolving status per LINE, not per id.**
+  - [G-142] status: open | seen: 1 | harness: 0.60.0 (client) / 0.38.0 (installed)
+  - Improvement: resolve each id from its LAST status line, the way `gap_ledger.py` does,
+    and say which line the verdict came from. And separate CITED from CREDITED: a
+    `plant-tower-defense:G-044` in a comment describing a workaround is evidence the gap is
+    KNOWN, not that it is closed. The first number in the same output is careful about this
+    (it searched for credits in the release notes); the second is not.
+
+- Gap: **no new harness gaps beyond G-142 this turn** — this was a bookkeeping pass over
+  the ledger itself and it used one command.
+
+### Reconciled against 0.60.0 — the four-way split
+
+Twelve ids reconciled, one appended status line each. **Fixed upstream and STILL LIVE
+HERE** is the large bucket and the status stays `open` deliberately: a fix in 0.44.0 does
+nothing for a project running 0.38.0, and G-058 proved it by biting cycle 151. The route
+is `/scaffold-godot-harness`, tracked separately as `plant-tower-defense-ny3h` and
+out of scope here on purpose.
+
+  - [G-050] status: open | seen: 1 | harness: 0.38.0 | fixed-upstream-in: 0.39.0 | note: reconciled cycle 152, not installed
+  - [G-051] status: open | seen: 1 | harness: 0.38.0 | fixed-upstream-in: 0.39.0 | note: reconciled cycle 152, not installed
+  - [G-052] status: open | seen: 1 | harness: 0.38.0 | upstream: gh#39 | fixed-upstream-in: 0.40.0 | note: reconciled cycle 152, not installed
+  - [G-053] status: open | seen: 1 | harness: 0.38.0 | upstream: gh#39 | fixed-upstream-in: 0.40.0 | note: reconciled cycle 152, not installed
+  - [G-054] status: open | seen: 2 | harness: 0.38.0 | upstream: gh#40 | fixed-upstream-in: 0.40.0 | note: reconciled cycle 152, not installed
+  - [G-057] status: open | seen: 1 | harness: 0.38.0 | upstream: gh#44 | fixed-upstream-in: 0.44.0 | note: reconciled cycle 152, not installed
+  - [G-058] status: open | seen: 2 | harness: 0.38.0 | upstream: gh#46 | fixed-upstream-in: 0.44.0 (`verify_ledger --schema` prints the key set) | note: reconciled cycle 152, not installed — this is the one that cost cycle 151 a row
+  - [G-061] status: open | seen: 1 | harness: 0.38.0 | fixed-upstream-in: 0.55.0 (`repaint` verb) | note: reconciled cycle 152, not installed
+  - [G-066] status: open | seen: 1 | harness: 0.38.0 | upstream: gh#54 | fixed-upstream-in: 0.56.0 | note: reconciled cycle 152 against 0.60.0, not installed
+  - [G-073] status: open | seen: 2 | harness: 0.38.0 | upstream: gh#57 | fixed-upstream-in: 0.60.0 | note: reconciled cycle 152, not installed
+  - [G-044] status: open | seen: 7 | harness: 0.38.0 | note: reconciled cycle 152 — upstream calls this fixed in 0.29.0/0.34.0/0.35.0 and the retry-while-progressing loop IS installed here, but what is installed is a workaround around a Godot importer segfault rather than a fix of it, and this log's 7th sighting was taken on that code. Stays open until a run goes a full cycle without the retry firing.
+  - [G-069] status: wontfix | seen: 1 | harness: 0.38.0 | note: reconciled cycle 152 — **the gap was simply wrong, and had already been refuted twice before this pass looked.** 0.60.0's line refuses it, and `devtools_ext/commands.gd:196-201` in THIS repo says the same thing in more detail: `touch_press` is the harness's verb and not this project's, and 0.38.0 — the version installed — already refuses a positionless press with "touch_press on a new index requires 'position' as [x, y]" (`dev_tools.gd:2644`). No bead: there is nothing to fix at either end. The first draft of this very line said the cause was a project bug and filed one; opening `commands.gd` before writing the bead is what stopped it.
+
+**The split: 10 fixed upstream and not installed · 1 still open at 0.60.0 (G-044, and it
+is a workaround rather than a fix) · 1 wontfix (G-069, a project bug wearing a harness
+gap's clothes) · 0 could-not-tell.** Five more of the seventeen (G-063, G-065, G-067,
+G-070, G-072) already carried a `reconciled` note against 0.54.0 and were left alone
+rather than re-stated, and G-060 was already `fixed`. 63 open ids remain unreconciled;
+they are older and were filed against versions further back, so the same pass over them
+is likely to be at least as productive.
