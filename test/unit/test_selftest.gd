@@ -11345,13 +11345,18 @@ func test_the_message_corpus_covers_every_catalogue_producer() -> String:
 	# the fourth plant-name-free producer and is on this row INSTEAD of a purchase rather
 	# than alongside one -- so it is a line the row must fit on a click that used to say
 	# nothing at all.
-	return _T.assert_eq(corpus.size() - catalogue_entries, 12,
-		("the corpus carries its 12 non-catalogue entries (prep note, wave-cleared "
+	# THIRTEEN since cycle 151: the dead-ground tip (plant-tower-defense-rr02), the
+	# fifth plant-name-free producer and the SECOND about a bar. It is the longest of
+	# the five, which is the reason it is priced here and not waved through: the two
+	# bar tips have to be distinguishable from each other, and the words that do that
+	# ("grass", "closer to the road") are words neither could drop to fit.
+	return _T.assert_eq(corpus.size() - catalogue_entries, 13,
+		("the corpus carries its 13 non-catalogue entries (prep note, wave-cleared "
 			+ "line, the flight tip, the defer tip, the sole-cover tip, the lapsed-move "
-			+ "refusal, and six literals -- BOTH colourblind lines, since the checker "
-			+ "reads the leading literal of that ternary). If this moved because you "
-			+ "ADDED one, raise the number; if it moved because one vanished, the row's "
-			+ "budget just got quietly optimistic"))
+			+ "refusal, the dead-ground tip, and six literals -- BOTH colourblind lines, "
+			+ "since the checker reads the leading literal of that ternary). If this "
+			+ "moved because you ADDED one, raise the number; if it moved because one "
+			+ "vanished, the row's budget just got quietly optimistic"))
 ##
 ## The catalogue is SWEPT rather than sampled, and the level table with it — so this
 ## is checked against every name the game can actually produce, not against a worst
@@ -20219,6 +20224,135 @@ func test_the_defer_hint_is_spent_only_once() -> String:
 					"and the tip specifically is not back on the row")
 	if err == "":
 		err = _T.assert_gt(game.board.deferred_road_marked().size(), 0,
+			"and the bars really were still on the board while it stayed quiet")
+	_T.free_ui(game)
+	RunConfig.earned_milestones = stashed
+	return err
+# END plant-tower-defense-0xhf
+# =============================================================================
+
+
+# =============================================================================
+# The dead-ground one-shot (plant-tower-defense-rr02)
+#
+# The other half of grammar row 6. The section above named the bar on the ROAD;
+# these name the bar on the GRASS, which `Board.mark_dead_ground` has drawn since
+# long before either had a sentence.
+#
+# Same stash-and-restore of `earned_milestones` as the section above, for the same
+# reason: a hint is one-shot per SAVE, so a test that spends one and walks away has
+# answered for every test after it in the run.
+# =============================================================================
+
+
+## THE GATE IS THE HOVER, and this test exists because that gate is unlike every
+## other hint's: it is not a threshold that the board eventually crosses.
+##
+## The dead-ground bars are on the board from the opening frame — with nothing
+## hovered `PlacementPreview.board_dead_cells` answers about the garden's unlocks —
+## so "the bars are showing" is true before the player has done anything at all. The
+## first assertion below pins exactly that, and it is the assertion that makes the
+## second one mean something: the hint declines while the mark is visibly present,
+## on a row that is provably free to take it.
+##
+## THE ROW IS ASSERTED QUIET BEFORE THE DECLINE. Without that, `row_is_quiet()`
+## would be an equally good explanation for the hint not firing, and this test would
+## pass with the hover gate deleted.
+func test_the_dead_ground_hint_waits_for_a_hovered_packet() -> String:
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	RunConfig.earned_milestones = {}
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+
+	# Drain first: the opening prep note holds the row, and a busy row is the other
+	# reason this hint can decline.
+	hud._process(9.0)
+	hud._message_left = 0.0
+	hud._message_queue.clear()
+	hud._advance_message_queue()
+	hud._message_left = 0.0
+	hud._message_queue.clear()
+
+	game._refresh_dead_ground()
+	var err: String = _T.assert_true(hud.row_is_quiet(),
+		"the row is free to take a line, so a decline below is about the hover")
+	if err == "":
+		err = _T.assert_gt(game.board.dead_ground_marked().size(), 0,
+			("the bars are already on the board with nothing hovered -- that is what "
+				+ "board_dead_cells' unlocked fallback draws, and it is why a count "
+				+ "gate would fire at a board the player has not touched"))
+	if err == "":
+		err = _T.assert_false(RunConfig.has_milestone(RunConfig.HINT_DEAD_GROUND),
+			"and it did not fire: the marks are ambient until a packet is hovered")
+	if err == "":
+		# A Chomp Flower rather than a Corn Cobbler on purpose. It is the short reach,
+		# so it darkens strictly more of the garden than the unlocked fallback does --
+		# the case the sentence is written for.
+		game._on_plant_hovered(PlantCatalog.CHOMP)
+		err = _T.assert_true(RunConfig.has_milestone(RunConfig.HINT_DEAD_GROUND),
+			"hovering a packet spends it, because now the bars are about a choice")
+	if err == "":
+		# The sentence, not just the flag -- a hint recorded without its line reaching
+		# the row is the cycle-79 defect `RunConfig.HINTS` was written to end.
+		var label: Label = hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+		err = _T.assert_true(label != null, "the message row is where the HUD put it")
+		if err == "":
+			err = _T.assert_eq(label.text, Hud.dead_ground_tip(),
+				"the row is showing the dead-ground tip itself -- got %s" % label.text)
+	_T.free_ui(game)
+	RunConfig.earned_milestones = stashed
+	return err
+
+
+## Spent once, never again. Driven through `_refresh_dead_ground()` directly rather
+## than by hovering a second packet, because the thing being pinned is that a
+## REPEATED refresh does not repost — and `_refresh()` re-enters here on every seed
+## payout while the cursor rests on one packet, which is the level-triggered shape
+## `Hud.row_is_quiet`'s header describes and `_offer_defer_hint` measured at
+## `refused=11`.
+func test_the_dead_ground_hint_is_spent_only_once() -> String:
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	RunConfig.earned_milestones = {}
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var hud: Hud = game.hud
+
+	hud._process(9.0)
+	hud._message_left = 0.0
+	hud._message_queue.clear()
+	hud._advance_message_queue()
+	hud._message_left = 0.0
+	hud._message_queue.clear()
+
+	game._on_plant_hovered(PlantCatalog.CHOMP)
+	var err: String = _T.assert_true(
+		RunConfig.has_milestone(RunConfig.HINT_DEAD_GROUND),
+		"the tip was spent on the first hover onto a quiet row")
+	if err == "":
+		hud._process(9.0)
+		hud._message_left = 0.0
+		hud._message_queue.clear()
+		hud._advance_message_queue()
+		var label: Label = hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+		err = _T.assert_true(label != null, "the message row is where the HUD put it")
+		if err == "":
+			# Recorded and compared rather than asserted empty, for the reason the
+			# defer tip's twin gives: draining lets the HUD repost its standing prep
+			# note, so "" is a state this row does not sit in for long.
+			var before_text: String = label.text
+			var before_pending: int = hud.pending_messages()
+			game._refresh_dead_ground()
+			game._refresh_dead_ground()
+			err = _T.assert_eq(label.text, before_text,
+				("two more refreshes did not touch the row -- was %s, got %s"
+					% [before_text, label.text]))
+			if err == "":
+				err = _T.assert_eq(hud.pending_messages(), before_pending,
+					"and stacked nothing behind it either")
+			if err == "":
+				err = _T.assert_true(label.text != Hud.dead_ground_tip(),
+					"and the tip specifically is not back on the row")
+	if err == "":
+		err = _T.assert_gt(game.board.dead_ground_marked().size(), 0,
 			"and the bars really were still on the board while it stayed quiet")
 	_T.free_ui(game)
 	RunConfig.earned_milestones = stashed

@@ -256,9 +256,25 @@ const HINT_DEFERRED_ROAD := "seen_defer_tip"
 ## actually fired was a fact about a person.
 const HINT_SOLE_COVER := "seen_sole_cover_tip"
 
+## The other half of grammar row 6 (plant-tower-defense-rr02). `HINT_DEFERRED_ROAD`
+## above named the bar on the ROAD; this names the bar on the GRASS, and cycle 144
+## named one of the two without noticing there were two.
+##
+## `cue_legend.gd:112` is the audit that priced them together and refused them a
+## legend row — "four instances, four meanings, one channel", which is true of the
+## pair and is exactly why they need a sentence EACH rather than a shared row. Two
+## hints is what that verdict costs when you take it seriously.
+##
+## AND THE TWO BARS ARE TOLD APART BY WHERE THEY ARE, not by their angle, which is
+## why this sentence leads with the ground. `placement_preview.gd`'s a6rf block
+## enumerates the four straight marks and the channel that keeps each distinct;
+## orientation is one a reader has to already know to read, and "on grass" is one
+## they can use on first sight.
+const HINT_DEAD_GROUND := "seen_dead_ground_tip"
+
 const HINTS: Array[String] = [
 	HINT_MOVE_PREVIEW, HINT_CHOMP_IGNORES_FLIGHT, HINT_UPGRADE_EXISTS, HINT_ROAD_PLANTS,
-	HINT_DEFERRED_ROAD, HINT_SOLE_COVER,
+	HINT_DEFERRED_ROAD, HINT_SOLE_COVER, HINT_DEAD_GROUND,
 ]
 
 

@@ -3748,6 +3748,7 @@ static func message_corpus() -> Array[String]:
 	# and not per-plant: it names a MARK rather than a plant, so no display name enters
 	# it and there is only the one form to measure.
 	out.append(sole_cover_tip())
+	out.append(dead_ground_tip())
 	# The lapsed-move refusal (plant-tower-defense-b9bl). Named a MARK and a verb rather
 	# than a plant, like sole_cover_tip above, so there is one form to measure.
 	out.append(move_window_closed_tip())
@@ -3838,6 +3839,33 @@ static func move_window_closed_tip() -> String:
 
 static func sole_cover_tip() -> String:
 	return "Ringed road cells are held by this plant alone — lose it and they go unwatched."
+
+
+## Said once ever, the first time the player hovers a shop entry while the board is
+## drawing dead-ground bars for it (plant-tower-defense-rr02).
+##
+## A zero-argument PRODUCER, for the reason `flight_tip` spells out: the corpus
+## resolves producer calls and literals, and a `const` is invisible to the row's budget.
+##
+## NAMES WHERE THE MARK IS, not what shape it is, and that is the one decision in this
+## sentence. `defer_tip` above could open with "Bars mark road" because road is the only
+## place its bar appears; this bar is the same word on the other kind of ground, and a
+## player who has met one has no way to tell it is a different sentence. Angle is what
+## the drawing code uses to keep them apart (-PI/4 here, square to the lane there) and it
+## is the wrong channel to hand a reader — "grass" and "road" are the distinction they
+## can already see.
+##
+## "would never fire from" is `Board.mark_dead_ground`'s own wording, kept verbatim for
+## the reason `CueLegend.ROWS` keeps the grammar's: two descriptions of one mechanic
+## drift, and the one in the header is the one a maintainer edits.
+##
+## The second clause is the counter-play and it is deliberately about POSITION rather
+## than about the plant. `PlacementPreview.dead_ground_cells` takes a reach and marks
+## every buildable cell further than that from the road, so "pick a longer-reaching
+## plant" is also true — and it is advice to abandon the purchase they are hovering.
+## Moving one bed closer is advice they can take without changing their mind.
+static func dead_ground_tip() -> String:
+	return "Slanted bars mark grass this plant would never fire from — plant it closer to the road."
 
 
 ## Said once ever, the first time the player can actually afford an upgrade on their
@@ -3935,6 +3963,11 @@ const HINT_CARDS: Array[Dictionary] = [
 		"id": "seen_sole_cover_tip",
 		"title": "Rings mark what only this plant holds",
 		"note": "Select a plant and rings mark the road cells no other plant of yours reaches — the ones that go unwatched if it dies. Many rings, worth defending; none, safe to move.",
+	},
+	{
+		"id": "seen_dead_ground_tip",
+		"title": "Slanted bars on the grass",
+		"note": "A plant only shoots as far as its reach, so beds past that never fire at all. Hover a packet and the bars show which beds are dead for THAT plant — a short-reaching one darkens more of the garden than a Corn Cobbler does. They are drawn slanted, on grass only; the bar square to the lane, on road, is a different sentence.",
 	},
 ]
 

@@ -600,6 +600,25 @@ const PAGES: Array[Dictionary] = [
 		"note": "The list outgrew one page at the fourth entry. Same rules as the facing side: each is said the frame it becomes true, once, and is written here greyed until then.",
 		"hint_page": 1,
 	},
+	{
+		"kind": KIND_HINTS,
+		"plant": &"",
+		# The THIRD hints page (plant-tower-defense-rr02), and this one was ORDERED
+		# rather than discovered. Cycle 148's budget audit said a seventh hint needs one
+		# row here and that a test fails until it arrives (game/cue_legend.gd:206) —
+		# adding the seventh id failed three tests at once, naming the count and the
+		# missing row. The alarm worked exactly as it was written to.
+		#
+		# Byte-distinct from every other drawing, which the uniqueness check across PAGES
+		# requires. The Corn Cobbler is the picture for the page that carries the
+		# dead-ground bar: the bar marks beds a plant's REACH cannot cover, and this is
+		# the plant whose reach covers the most of them.
+		"drawing": "res://assets/sprites/corn_cobbler.png",
+		"sprite": "res://assets/sprites/corn_cobbler.png",
+		"caption": "Said once, and again",
+		"note": "A third side, at the seventh entry. The last two are about marks the board was already drawing before anything named them — the bar across a lane, and the slanted bars on the grass.",
+		"hint_page": 2,
+	},
 ]
 
 var _page: int = 0

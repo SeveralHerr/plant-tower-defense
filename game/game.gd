@@ -1381,11 +1381,60 @@ func _on_plant_chosen(id: StringName) -> void:
 func _refresh_dead_ground() -> void:
 	if board == null or not is_instance_valid(board):
 		return
+	var dead: Array[Vector2i] = PlacementPreview.board_dead_cells(
+		board, _hovered_shop_plant, bank.unlocked)
 	board.mark_dead_ground(
-		PlacementPreview.board_dead_cells(board, _hovered_shop_plant, bank.unlocked),
+		dead,
 		PlacementPreview.dead_bar_arm(),
 		PlacementPreview.board_dead_color(),
 		PlacementPreview.DEAD_BAR_WIDTH)
+	_offer_dead_ground_hint(dead)
+
+
+## The one-shot that names the bar on the grass (plant-tower-defense-rr02), offered
+## the first time it is drawn for a plant the player is actually considering.
+##
+## THE HOVER IS THE GATE, and it is the whole decision in this function. Unlike the
+## deferred bar's `DEFER_HINT_MIN_GUNS`, there is no count that makes this cue
+## informative — because these bars are on the board from the opening screen. The
+## header above says why: with nothing hovered, `board_dead_cells` answers about the
+## garden's unlocks (g8kc), which resolves to the LONGEST reach the player owns. So an
+## ungated hint would fire at a board the player has done nothing to, and would teach
+## "some grass is far from the road" — true, unactionable, and forgotten by the time it
+## matters.
+##
+## With a packet hovered the same marks answer about THAT plant (tzz7), and they move
+## under the player's hand: hovering a short-reaching plant darkens grass a Corn
+## Cobbler leaves clear. That is the moment the mark is about a decision in progress
+## and the counter-play in the sentence — one bed closer — is a thing they can do next
+## click. A gate derived from what the cue MEANS at each call site, not a threshold.
+##
+## THE SHARPER VERSION, considered and not taken: fire only when the hovered set is
+## strictly larger than the ambient one, i.e. only when hovering REVEALED bars. It is
+## a better moment and it costs a second `dead_ground_cells` sweep over every
+## buildable cell on a path that runs on each shop hover. It is also dead early on:
+## with one plant unlocked the ambient set IS that plant's set, so the refinement
+## would never fire for the player who most needs the sentence.
+##
+## Spent on `show_message`'s RETURN VALUE, as `_offer_defer_hint` and `_offer_road_hint`
+## are: a line the row drops must leave the hint owed rather than burning it unseen.
+##
+## `row_is_quiet()` before offering, for the reason `_offer_defer_hint`'s own comment
+## records at length — this caller is LEVEL-triggered. A hovered packet keeps its dead
+## set for as long as the cursor rests there and `_refresh()` re-enters here on every
+## seed payout, so a refused post is re-offered and re-offered until the row's queue
+## starts dropping. That was measured once already, at `refused=11`.
+func _offer_dead_ground_hint(dead: Array[Vector2i]) -> void:
+	if hud == null or not is_instance_valid(hud):
+		return
+	if dead.is_empty() or _hovered_shop_plant == &"":
+		return
+	if RunConfig.has_milestone(RunConfig.HINT_DEAD_GROUND):
+		return
+	if not hud.row_is_quiet():
+		return
+	var posted: bool = hud.show_message(Hud.dead_ground_tip())
+	RunConfig.spend_hint(RunConfig.HINT_DEAD_GROUND, posted)
 
 
 ## The board's deferred-road bars, repushed. See PlacementPreview.deferred_road_cells
