@@ -10615,3 +10615,133 @@ func test_the_weather_subtitle_reaches_the_player_only_through_a_banner_that_los
 			("while still outranking the un-claimed banner -- weather LOSES a contest, "
 				+ "it is not a claim that does nothing"))
 	return err
+
+
+## A shot pest recoils, and the recoil out-reads its own walk (plant-tower-defense-qhgs).
+##
+## The other side of the fight finally answers. `Plant` has flinched since cycle 86; a pest
+## taking a kernel to the face differed from one that took nothing in HIT_FLASH_DURATION's
+## 0.10s of hue and in nothing else, against this project's standing rule that colour is
+## never the only signal.
+##
+## Asserted through `flinch_amount` and `gait_yaw`, both pure, because everything in
+## `_gait` past the `animations_enabled()` gate is unreachable headless — the same reason
+## `Plant.flinch_amount` exists and the same trap `assert-an-animation` names: a test that
+## pumps `_gait` and reads `_sprite.rotation` is asserting an early return.
+##
+## The arm-and-decay half IS driven through the real methods, because `flash_hit()` arms
+## before its gate on purpose, so `_gait` can be stepped headless and the clock watched
+## run down. What no headless test can see is the yaw actually on screen; that is the one
+## claim left for a running game.
+func test_a_shot_pest_recoils_further_than_it_walks() -> String:
+	var err: String = _T.assert_float_eq(Pest.flinch_amount(Pest.FLINCH_SECONDS), 1.0,
+		0.0001, "the instant of a hit is full recoil")
+	if err == "":
+		err = _T.assert_float_eq(Pest.flinch_amount(0.0), 0.0, 0.0001,
+			"and it is gone once the window closes")
+	if err == "":
+		# Monotone down across the whole window, which a before/after pair cannot see.
+		var previous: float = 1.0
+		for i: int in range(1, 17):
+			var left: float = Pest.FLINCH_SECONDS * (1.0 - float(i) / 16.0)
+			var here: float = Pest.flinch_amount(left)
+			err = _T.assert_true(here < previous,
+				"the recoil only decays; at %.3fs left it went %.3f -> %.3f"
+					% [left, previous, here])
+			if err != "":
+				return err
+			previous = here
+	if err == "":
+		err = _T.assert_float_eq(Pest.flinch_amount(Pest.FLINCH_SECONDS * 4.0), 1.0,
+			0.0001, "and a re-arm under sustained fire is clamped rather than stacking")
+	if err == "":
+		# GAIT_SWING is the LARGEST yaw any pest walks with -- both multipliers shrink it
+		# (WINGED 0.45, ARMOURED 0.6), so the base is the ceiling and the comparison holds
+		# for every pest on the board rather than for the plain one.
+		err = _T.assert_true(Pest.FLINCH_RADIANS > Pest.GAIT_SWING * 2.0,
+			"a recoil is clearly bigger than the walk (%.3f vs %.3f rad)"
+				% [Pest.FLINCH_RADIANS, Pest.GAIT_SWING])
+	if err == "":
+		# The absolute floor, in pixels, at half a cell from the pivot. Every assertion
+		# above is written in terms of FLINCH_RADIANS and would pass with it set to 0.0 --
+		# which is the mutation that survived cycle 71 on the plant's side.
+		var swing_px: float = sin(Pest.FLINCH_RADIANS) * (float(Board.CELL) * 0.5)
+		err = _T.assert_gte(swing_px, 2.0,
+			"and big enough to see: %.2f px at half a cell out" % swing_px)
+	return err
+
+
+## The recoil clock is faster than any walk it has to interrupt (plant-tower-defense-qhgs).
+##
+## This is the one place a pest's flinch could not copy the plant's numbers. `Plant` sways
+## at WOBBLE_RATE 1.15 and can pick any fast flinch rate it likes; a pest's gait clock is
+## computed per pest from its speed and its mutations, and a winged one at the speed clamp
+## runs at GAIT_RATE * GAIT_RATE_MAX * WINGED_RATE_MULTIPLIER. A FLINCH_RATE below that is
+## SLOWER than the walk it is meant to interrupt, and would read as a lurch in the gait
+## rather than as a hit.
+##
+## Enumerated over the whole trait matrix and both ends of the speed clamp rather than
+## checked against the fastest species that happens to exist today, so a species added at
+## speed 200, or a fourth rate multiplier, fails here instead of quietly landing above it.
+func test_the_recoil_clock_outruns_every_gait_clock() -> String:
+	var err: String = ""
+	# Either side of the clamp by a wide margin, so the clamp itself is what is measured
+	# rather than any species' current speed.
+	var speeds: Array[float] = [1.0, Pest.GAIT_REFERENCE_SPEED, 10000.0]
+	var checked: int = 0
+	for armoured: bool in [false, true]:
+		for winged: bool in [false, true]:
+			for speed: float in speeds:
+				var rate: float = Pest.gait_rate(speed, armoured, winged)
+				checked += 1
+				err = _T.assert_true(Pest.FLINCH_RATE > rate,
+					("the recoil must out-run the walk it interrupts: armoured=%s "
+						+ "winged=%s speed=%.0f walks at %.2f rad/s, recoil is %.2f")
+						% [armoured, winged, speed, rate, Pest.FLINCH_RATE])
+				if err != "":
+					return err
+	if err == "":
+		err = _T.assert_eq(checked, 12,
+			"the trait matrix is 2 x 2 x 3 and every cell must be asked (%d asked)" % checked)
+	return err
+
+
+## Damage arms the recoil and time takes it away (plant-tower-defense-qhgs).
+##
+## Driven through the real `flash_hit()` and `_gait()` rather than through the pure pair
+## above, because the thing worth checking here is the WIRING: that the cue a Kernel
+## already fires is the one that arms the motion, and that the decay runs on a machine
+## where `animations_enabled()` is false. Both are true only because each sits before its
+## early return, which is an ordering nothing else in the suite would notice if it moved.
+func test_damage_arms_a_pest_recoil_that_then_runs_out() -> String:
+	var pest: Pest = _pest(Pest.APHID, Vector2(100, 100))
+	var err: String = _T.assert_float_eq(Pest.flinch_amount(pest._flinch_left), 0.0, 0.0001,
+		"an unhit pest carries no recoil")
+	if err == "":
+		pest.flash_hit()
+		err = _T.assert_float_eq(Pest.flinch_amount(pest._flinch_left), 1.0, 0.0001,
+			"a hit that landed arms it in full, headless included")
+	if err == "":
+		pest._gait(Pest.FLINCH_SECONDS * 0.5)
+		var half: float = Pest.flinch_amount(pest._flinch_left)
+		err = _T.assert_true(half > 0.4 and half < 0.6,
+			"half the window later it is about half gone (%.3f)" % half)
+	if err == "":
+		# Past the end of the window, not exactly on it, so the clamp at zero is what is
+		# being read rather than a float landing on the boundary.
+		pest._gait(Pest.FLINCH_SECONDS)
+		err = _T.assert_float_eq(Pest.flinch_amount(pest._flinch_left), 0.0, 0.0001,
+			"and it runs out rather than going negative or sticking")
+	if err == "":
+		# The yaw seam, at the two states the wiring above produces. A pest with no recoil
+		# left must walk exactly as it did before anything shot it -- a flinch that leaves
+		# a permanent offset in the gait is the failure this pins.
+		err = _T.assert_float_eq(Pest.gait_yaw(1.0, Pest.GAIT_SWING, 1.0, 0.0),
+			Pest.GAIT_SWING, 0.0001,
+			"with the recoil spent, the yaw is the walk and nothing else")
+	if err == "":
+		err = _T.assert_gt(absf(Pest.gait_yaw(1.0, Pest.GAIT_SWING, -1.0, 1.0)),
+			Pest.GAIT_SWING,
+			"and at full recoil against the walk it still moves the body the other way")
+	pest.free()
+	return err

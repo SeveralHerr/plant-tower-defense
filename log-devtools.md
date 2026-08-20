@@ -8312,3 +8312,44 @@ status rather than rewriting the entries that recorded these as open.
     `bd stats` (or the DB directly) and print a second denominator — "N of M issues in
     the export; the export is K issues behind" — so a clean run after a filing session
     is legible as stale rather than as clean.
+
+## 2026-08-19 — a shot pest recoils (plant-tower-defense-qhgs)
+
+- Value: **warranted** — the yaw a player sees only exists in a running game; `_gait`
+  early-returns on `animations_enabled()`, so every headless assertion is against the pure
+  seam and none of them can read the composed value.
+  - Expected: a real pest, shot by a real kernel, shows `_sprite.rotation` deviating beyond
+    its own `GAIT_SWING` and returning to the plain gait within `FLINCH_SECONDS` — the
+    claim the suite structurally cannot make, since `_gait` early-returns headless and every
+    headless assertion is against the pure seam instead.
+  - Got: exactly that, and measured rather than seen. `pause`, `run-method flash_hit`,
+    then six `step-time --seconds 0.02 --then-pause` reads on one live pest:
+    `_flinch_left` 0.28 → 0.2467 → 0.2133 → 0.18 … and `_sway` −0.2217, +0.0531, **+0.3664**,
+    +0.1621, −0.0955, −0.0354. The peak is 2.8x `GAIT_SWING` (0.13). Stepping past the
+    window: `_flinch_left: 0.0` with `_sway` back at −0.1281, −0.1275, −0.1098, −0.0773 —
+    inside the gait's own band, so the recoil leaves no permanent offset.
+  - Found: **the two populations do not overlap at all.** 24 samples of unhit pests across
+    six steps peaked at `_sway=0.129999750999911` — `GAIT_SWING` to seven decimals, i.e. the
+    sine actually reaches its analytic maximum in play. The headless test asserts
+    `FLINCH_RADIANS > GAIT_SWING * 2.0` on the *constants*; only the running game showed the
+    walk genuinely attains that ceiling, so the separation the constant promises is the
+    separation a player gets rather than an upper bound the gait never approaches. A pure
+    test cannot distinguish those two worlds.
+  - Cheaper: nothing. There is no headless read of the yaw at all — the gate is the whole
+    reason `gait_yaw` and `flinch_amount` were extracted.
+
+- Gap: **the installed ledger drops `tier` without a word** — second sighting, same shape as
+  the first. `/verify` Phase 0.5 (plugin 0.60.0) instructs `"tier"` on the row; this project
+  runs 0.38.0, whose `verify_ledger.py` reads no such key. Written as `"tier": "full"`, the
+  row came back without it, and again the only thing that said so was this repo's own
+  `tools/run_json_check.py`: `FINDING: unknown key 'tier' -- verify_ledger reads it nowhere,
+  so it will be dropped without a word`. `harness-version --client` names the cause in one
+  line: `A newer harness (0.60.0) is already on this machine than this project runs (0.38.0)`.
+  - [G-130] status: open | seen: 2 | harness: 0.38.0
+  - Improvement: unchanged — this is the 0.38.0-vs-0.60.0 spread (`-ny3h`, blocked on
+    upstream gh#43), not a new upstream defect. What the second sighting adds: the checker
+    fires *after* `record` has already appended the row, so the finding arrives one step too
+    late to act on — and the earlier entry at this file's `run_json_check is advisory by
+    design` gap already found that chaining it with `&&` cannot work for the same reason.
+    So the concrete ask is now one of two: `run_json_check` gates (exit 1) on an unknown
+    key, or `record` refuses a key it cannot store.

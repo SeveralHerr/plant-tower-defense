@@ -575,6 +575,34 @@ const GAIT_STRETCH: float = 0.06
 ## what stops the two reading as one motion.
 const GAIT_STRETCH_RATE: float = 2.0
 
+## The recoil, and the second channel a damaged pest speaks on.
+##
+## Until this existed a pest's only tell for a hit it survived was HIT_FLASH_DURATION's
+## 0.10s of hue, so a bug taking a kernel to the face and a bug that took nothing
+## differed in colour and in nothing else — against this project's standing rule that
+## colour is never the only signal. `Plant` already solved the same problem for the
+## other side of the fight (`plant.gd:211-231`) and its whole argument transfers:
+##
+##   * RE-ARMED rather than accumulated, in flash_hit(), so a pest under sustained fire
+##     shudders continuously and decays out once the shooting stops. Same three lines
+##     for a twitch and for a shudder.
+##   * Clearly bigger than the idle motion or it reads as nothing. GAIT_SWING is the
+##     largest yaw any pest walks with (the two multipliers only ever shrink it), and
+##     FLINCH_RADIANS is a shade over three times it, matching the plant's ratio.
+##   * Its own fast clock, not a multiple of the gait's, so the two never phase-lock
+##     into one larger waggle — which would read as "walks harder when shot".
+##
+## FLINCH_RATE is where the pest differs from the plant, and it is not a taste call:
+## the plant sways at 1.15 and can pick any fast number, but a winged pest at the speed
+## clamp runs its gait clock at GAIT_RATE * GAIT_RATE_MAX * WINGED_RATE_MULTIPLIER =
+## 38.8 rad/s, so anything slower than that is SLOWER than the walk it is supposed to
+## interrupt. This sits above the fastest gait clock any pest can reach, and
+## test_combat.gd asserts that against the trait matrix rather than against this
+## sentence.
+const FLINCH_RADIANS: float = 0.40
+const FLINCH_RATE: float = 46.0
+const FLINCH_SECONDS: float = 0.28
+
 ## Each mutation's gait tell, so the trait is readable from movement alone and
 ## not only from the hue + marker pair above. Winged flutters (fast, shallow);
 ## armoured plods (slow, stiff); hungry lunges — see gait_stretch() for why that
@@ -775,6 +803,8 @@ var _facing: float = 0.0
 var _sway: float = 0.0
 var _gait_time: float = 0.0
 var _gait_phase: float = 0.0
+## Seconds of recoil left. Armed by flash_hit(), decayed by _gait().
+var _flinch_left: float = 0.0
 
 ## Handed out at setup() and wrapped at GAIT_PHASE_PERIOD. Static because the
 ## thing being spread out is *between* pests — a per-instance seed cannot know
@@ -1496,10 +1526,16 @@ func _apply_facing() -> void:
 ## phase instead of every pest on the board snapping from a frozen 0.
 func _gait(delta: float) -> void:
 	_gait_time += delta
+	# Decayed OUTSIDE the gate, for the same reason the clock above advances outside it:
+	# a mid-run animations toggle should find a meaningful recoil, not one frozen at
+	# whatever it held when the toggle went off. Plant._wobble() decays its own for the
+	# same reason.
+	_flinch_left = maxf(0.0, _flinch_left - delta)
 	if _sprite == null or not GardenTheme.animations_enabled():
 		return
 	var clock: float = _gait_time * gait_rate(speed, is_armoured, is_winged) + _gait_phase
-	_sway = sin(clock) * gait_swing(is_armoured, is_winged)
+	_sway = gait_yaw(sin(clock), gait_swing(is_armoured, is_winged),
+		sin(_gait_time * FLINCH_RATE), flinch_amount(_flinch_left))
 	_apply_facing()
 	# Local to the sprite, so it follows the facing rotation: -Y is the body's
 	# long axis (STYLE.md's up-screen convention), which makes +Y stretch a
@@ -1547,6 +1583,25 @@ static func gait_stretch(wave: float, hungry: bool) -> float:
 	if hungry:
 		return wave * wave * wave * GAIT_STRETCH * HUNGRY_STRETCH_MULTIPLIER
 	return wave * GAIT_STRETCH
+
+
+## Pure: how much recoil is left, as a 0..1 fraction, with `left` seconds on the clock.
+##
+## Clamped at the top rather than allowed past 1.0 so a pest under continuous fire —
+## flash_hit() re-arms this every connecting shot — shudders at a fixed amplitude
+## instead of winding up into a spin.
+static func flinch_amount(left: float) -> float:
+	return clampf(left / FLINCH_SECONDS, 0.0, 1.0)
+
+
+## Pure: the total yaw the gait puts on the sprite, added to `_facing`.
+##
+## Split out (with the three above) for the reason `Plant.sway_transform` was: everything
+## in `_gait` past the `animations_enabled()` gate is unreachable headless, so a test that
+## pumps `_gait` and reads `_sprite.rotation` is asserting an early return. This is the
+## seam the suite actually asserts against.
+static func gait_yaw(wave: float, swing: float, flinch_wave: float, flinch: float) -> float:
+	return wave * swing + flinch_wave * FLINCH_RADIANS * flinch
 
 
 ## Pure: the phase the `index`-th pest spawned this run walks on.
@@ -1635,6 +1690,12 @@ static func shell_flash_color(base: Color) -> Color:
 func flash_hit() -> void:
 	var blocked: bool = _last_hit_blocked
 	_last_hit_blocked = false
+	# The recoil is armed HERE, beside the flash and before the gate, because the two are
+	# one cue: the flash says a hit landed in colour and this says it in motion, and a
+	# pest that spoke on only one of the two channels is the thing this pair exists to
+	# stop. Before the gate for the same reason the reset above is — a value armed only
+	# on animated machines is a value the decay in _gait() can never clear.
+	_flinch_left = FLINCH_SECONDS
 	if not _alive or _sprite == null or not is_inside_tree() or not GardenTheme.animations_enabled():
 		return
 	var base: Color = _sprite.modulate
