@@ -311,11 +311,23 @@ have rebuilt the same trap.
 
   Cycle 151 measured its own tip live because of it — `clip_text` is true and
   `text_overrun_behavior` is 3 on that row, which is exactly the pair `CLAUDE.md` warns
-  makes `get_minimum_size()` report the clip stub. **The open question the entry does not
-  answer: what `label.size.x` actually is under `instantiate_scene`.** If it is the 64px
-  headless window rather than the real 876, the existing budget test is passing on a
-  number that has nothing to do with the shipped row, and that is a bigger finding than
-  the missing entries. Measure it before building anything.
+  makes `get_minimum_size()` report the clip stub.
+
+  **CORRECTED IN CYCLE 154, AND THE ENTRY IS WRONG IN ITS MAIN CLAIM.** Two things were
+  measured rather than argued. First, `label.size.x` under `instantiate_scene` is
+  **876.0** — exactly what `node-bounds` reports on the running game, not the 64 px this
+  entry feared. The `get_window().size` caveat is real and does not touch a Control laid
+  out under a properly-sized root. Second, and larger: the 13 non-catalogue entries **are**
+  measured, by `Game._budget_hud_message_row` (`game/game.gd:3632`), which sweeps
+  `Hud.message_corpus()` through `GardenTheme.measure` and adds both mute lines at their
+  current keybinds on top. Lengthening one bar tip past the row turned **three** tests red
+  through it. The enumeration behind this entry — "eight functions read `message_corpus()`
+  and not one measures a width" — was literally true and over the wrong set: the measurer
+  is in `game/`, not `test/`, and is reached through the budget system rather than by a
+  test naming the corpus. **Third instance in this project of an enumeration that looks
+  exhaustive because it is complete over the set you chose.** The tidy-up was still worth
+  doing and landed: the width test now reads the corpus instead of rebuilding the
+  catalogue cross beside it.
 
 - **A one-shot's gate can be a MOMENT rather than a THRESHOLD, and the game now has one
   of each to compare.** Every hint before this cycle waited for the board to cross a

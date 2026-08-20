@@ -11362,6 +11362,28 @@ func test_the_message_corpus_covers_every_catalogue_producer() -> String:
 ## is checked against every name the game can actually produce, not against a worst
 ## case someone typed out and hoped was still the worst. A plant added with a long
 ## name fails here rather than shipping a trimmed sentence.
+##
+## SWEPT FROM `Hud.message_corpus()` SINCE CYCLE 154, and it used to build its own list
+## (plant-tower-defense-9ji4). The two are not the same set and nobody could see it from
+## either side: the corpus is kept whole by
+## `test_the_message_corpus_covers_every_catalogue_producer` above, whose header calls it
+## "the budget's denominator" — and this test, the one that actually spends that budget,
+## never read it. It rebuilt the catalogue cross itself and so priced NONE of the corpus's
+## 13 non-catalogue entries, the two bar tips among them, which are the longest
+## plant-name-free lines in the game. Eight test functions across the suite called
+## `message_corpus()` and not one measured a width.
+##
+## Reading the corpus closes that by construction: a producer added to the corpus is
+## priced the day it is written, and the completeness test and the budget test can no
+## longer disagree about what "every message" means.
+##
+## AND THE ROW IS REALLY 876 px HEADLESS — measured, not assumed. Two cycles of this
+## project's notes said a headless run measures this under a 64x64 window and that the row
+## width was therefore unanswerable without launching the game; cycle 154 probed it and
+## got 876.0, exactly what `node-bounds` reports on the running game. The caveat is real
+## for anything positioned from `get_window().size`; it is not true of a Control laid out
+## under a properly-sized root, which is what `instantiate_scene` gives. Cycle 151
+## launched the game to measure a tip this test could have priced.
 func test_no_message_clips_for_any_plant_in_the_catalogue() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var label: Label = game.hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
@@ -11375,34 +11397,38 @@ func test_no_message_clips_for_any_plant_in_the_catalogue() -> String:
 	var worst: String = ""
 	var worst_px: float = 0.0
 	if err == "":
-		for id: StringName in PlantCatalog.PLANTS:
-			var display: String = PlantCatalog.display_name(id)
-			for line: String in [Hud.eaten_message(display),
-					Hud.uproot_armed_message(display), Hud.packet_message(display)]:
-				checked += 1
-				var drawn: float = GardenTheme.measure(line, Hud.MESSAGE_FONT_SIZE)
-				if drawn > worst_px:
-					worst_px = drawn
-					worst = line
-		# Every ladder in the game, keyed to the plant that owns it -- the message now
-		# carries the plant's name, so measuring the cob's rungs alone would price the
-		# wrong sentence for the Chomp's.
-		var ladders: Dictionary = {
-			PlantCatalog.CORN: CornCobbler.LEVELS,
-			PlantCatalog.CHOMP: ChompFlower.LEVELS,
-		}
-		for id: StringName in ladders:
-			for level: Dictionary in (ladders[id] as Array):
-				var line: String = Hud.upgrade_message(
-					PlantCatalog.display_name(id), String(level["name"]))
-				checked += 1
-				var drawn: float = GardenTheme.measure(line, Hud.MESSAGE_FONT_SIZE)
-				if drawn > worst_px:
-					worst_px = drawn
-					worst = line
-		err = _T.assert_gt(checked, 10,
-			"the sweep visited the catalogue and the level table -- a near-empty "
-				+ "sweep here would pass without measuring anything")
+		for line: String in Hud.message_corpus():
+			checked += 1
+			var drawn: float = GardenTheme.measure(line, Hud.MESSAGE_FONT_SIZE)
+			if drawn > worst_px:
+				worst_px = drawn
+				worst = line
+		# The floor is derived, not typed: the corpus crosses every plant with several
+		# producers, so anything at or under one-per-plant means the corpus itself
+		# collapsed and this sweep is passing over almost nothing.
+		err = _T.assert_gt(checked, PlantCatalog.PLANTS.size(),
+			("the corpus is more than one line per plant (%d lines for %d plants) -- a "
+				+ "near-empty sweep here would pass without measuring anything")
+				% [checked, PlantCatalog.PLANTS.size()])
+	if err == "":
+		# THE LADDER IS STILL IN THE DENOMINATOR, asserted by naming the producer rather
+		# than trusting the corpus to have kept it. Reading the corpus removed this
+		# sweep's only direct mention of `Hud.upgrade_message`, and `suite_reach_check`
+		# reported it NEW-unreached within the minute -- so the de-duplication bought a
+		# smaller test at the price of a symbol nothing names, which is the trade that
+		# checker exists to refuse. This buys it back AND pins the thing the sweep now
+		# depends on: the widest upgrade line is the CORN's top rung, and a corpus that
+		# quietly stopped crossing the ladder would make this test pass over a set that
+		# no longer contains its own worst case.
+		var top: String = String(
+			(CornCobbler.LEVELS[CornCobbler.LEVELS.size() - 1] as Dictionary)["name"])
+		var rung: String = Hud.upgrade_message(
+			PlantCatalog.display_name(PlantCatalog.CORN), top)
+		err = _T.assert_true(Hud.message_corpus().has(rung),
+			("the corpus still carries the top rung's upgrade line, which is what makes "
+				+ "sweeping it equivalent to the hand-built cross this replaced: %s")
+				% rung)
+
 	if err == "":
 		err = _T.assert_true(worst_px <= budget,
 			"the widest message any plant can produce fits the row: %.0fpx of %.0f -- "
