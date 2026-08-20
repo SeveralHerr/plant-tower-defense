@@ -113,7 +113,10 @@ changing, say so explicitly — silence is indistinguishable from not having loo
 
 **6. Refill the queue, then update the log.** File 3-8 concrete items as bd issues drawn
 from step 0's sources plus what steps 4 and 5 produced, naming which source each came from.
-At least one must come from outside this cycle's neighbourhood.
+At least one must come from outside this cycle's neighbourhood, **and at least one must be
+something a PLAYER would notice** — step 2's bias is worthless over a queue with nothing to
+bias toward, and a queue of 85 that is nearly all audits, checkers and "decide whether" is
+what fifty cycles of refilling from reflection produces. → `why.md` §6
 
 - **Never put prose in ANY `bd` field as a shell argument** — backticks are command
   substitution and a word that is also a command lands its output in the field silently.

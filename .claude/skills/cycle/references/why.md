@@ -498,6 +498,20 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      older `kanban.md` section, or from the design brief, and run
      `kanban-staleness-audit` over that section first, since those are the parts the
      file itself calls half stale.
+   - **And at least one must be something a PLAYER would notice** — added in cycle 151,
+     which is fifty cycles after the rule above and is the same finding arriving one
+     layer down. That rule fixed *where* items come from and left *what kind* alone, so
+     the queue kept growing in one direction: 85 ready items, and a read of the first
+     forty found audits, checkers and "decide whether" almost throughout. Two of the
+     three the cycle could find were refusals, and the one thing it shipped came from
+     CLOSING a bead rather than from the queue.
+     **The player-facing bias at the top of this file is a bias over whatever the queue
+     holds, so it cannot correct a queue that holds nothing to bias toward.** A steer at
+     selection time and no steer at filing time is a thermostat wired to nothing.
+     The cheap version is enough: while filing the 3-8, ask of each one "could I show
+     this to somebody playing?", and if the answer is no for all of them, go and find
+     one. `kanban.md`'s older sections are full of them and the staleness audit above is
+     already the way in.
    - **Then rewrite `cycle-log.md`**: bump the cycle number, write what THIS cycle
      taught in a sentence or two, and refresh what is waiting on the user and why.
      Keep it short and keep it prose — the moment it grows a checklist it has started

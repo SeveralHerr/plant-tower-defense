@@ -1,4 +1,4 @@
-# Cycle 150
+# Cycle 151
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,47 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 151 taught
+
+**Refusing a bead properly produced the cycle's best work.** `-xfbo` asked for a second
+legend page and its central claim was false: the two board-drawn `Line2D` cues are not
+missing from the grammar, they ARE grammar row 6, which cycle 148 had already priced and
+declined for a reason that was never about room. Reading that verdict to the end turned up
+its own closing sentence -- "the hints page or a mark-side tooltip ... Filed as that, not
+as a legend row" -- and then that cycle 144 built exactly that for ONE of row 6's two bars
+and nobody noticed there were two. The dead-ground bar had been drawn on the grass for
+dozens of cycles with nothing in the game naming it. That is what shipped.
+
+**A one-shot's gate can be a MOMENT rather than a THRESHOLD.** Every hint before this one
+waited for the board to cross a line -- two guns, a bank balance, a first selection. The
+dead-ground bars are on the board from the opening frame, because with nothing hovered
+they answer about the garden's unlocks, so no quantity of them is informative. The gate is
+the hover: the frame the cue acquires a subject. When a cue is ambient, ask what makes it
+ABOUT something rather than how much of it there is.
+
+**Cycle 148's alarm fired exactly as written.** It said a seventh hint needs one row in
+`PAGES` and that a test fails until it is there. Adding the id turned three tests red at
+once, naming the count and the missing row, and a fourth caught the corpus count. A
+prediction made in a comment, paid off two cycles later, with no one having to remember it.
+
+**And the verification found what the verification could not do.** The message row is
+swept for completeness by one test and for width by another, and the two cover different
+sets -- eight functions read `message_corpus()` and not one measures a width. The new tip
+had to be measured live because `clip_text` plus `text_overrun_behavior 3` make the
+headless question unanswerable. Filed, along with the sharper worry: nobody knows what
+`label.size.x` is under `instantiate_scene`, and the existing budget test rests on it.
+
+Step 5 spent its change on step 6: **at least one filed item must be something a player
+would notice.** Step 2's player-facing bias is a bias over whatever the queue holds, and
+after fifty cycles of refilling from reflection the queue is 85 deep and nearly all
+audits, checkers and "decide whether". A steer at selection time with no steer at filing
+time is a thermostat wired to nothing.
+
+Two rules were re-broken in the cycle that read them: a bare `:NN` citation bound to the
+wrong file four times (`citation_check` caught all four), and `phase4` was written where
+`verify_ledger` wanted `checks` -- a gap the log had already filed as G-058 and described
+down to the exact suggested error string.
 
 ## What cycle 150 taught
 

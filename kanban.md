@@ -218,6 +218,48 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 151 — two sweeps over one corpus, covering different sets
+
+- **The message row is swept for COMPLETENESS and swept for WIDTH, and the two sweeps do
+  not cover the same lines.** `test_the_message_corpus_covers_every_catalogue_producer`
+  (`test/unit/test_selftest.gd:11276`) exists to keep `Hud.message_corpus()`
+  (`game/hud.gd:3676`) whole, and its own header calls the corpus "the budget's
+  denominator". The budget test is
+  `test_no_message_clips_for_any_plant_in_the_catalogue`
+  (`test/unit/test_selftest.gd:11365`) — and it never reads
+  the corpus. It builds its own sweep from `PlantCatalog.PLANTS` crossed with the level
+  tables, measures each through `GardenTheme.measure` (`game/garden_theme.gd:377`), and
+  compares the worst against `label.size.x` (`test/unit/test_selftest.gd:11371`, asserted
+  at `test/unit/test_selftest.gd:11407`). So the
+  denominator's **13 non-catalogue entries are counted by one test and measured by
+  neither** — including both bar tips, which are the two longest plant-name-free lines
+  in the game. Enumerated rather than sampled: eight test functions across the suite
+  call `message_corpus()`, and a function-scoped scan shows not one of them measures a
+  width. The two halves each look complete and the seam between them is invisible from
+  either side.
+
+  Cycle 151 measured its own tip live because of it — `clip_text` is true and
+  `text_overrun_behavior` is 3 on that row, which is exactly the pair `CLAUDE.md` warns
+  makes `get_minimum_size()` report the clip stub. **The open question the entry does not
+  answer: what `label.size.x` actually is under `instantiate_scene`.** If it is the 64px
+  headless window rather than the real 876, the existing budget test is passing on a
+  number that has nothing to do with the shipped row, and that is a bigger finding than
+  the missing entries. Measure it before building anything.
+
+- **A one-shot's gate can be a MOMENT rather than a THRESHOLD, and the game now has one
+  of each to compare.** Every hint before this cycle waited for the board to cross a
+  line: `Game.DEFER_HINT_MIN_GUNS` (`game/game.gd:30`) is a count, the upgrade tip waits
+  on a bank balance, the sole-cover tip waits on a first selection. `_offer_dead_ground_hint`
+  (`game/game.gd:1427`) has no threshold at all and cannot have one — its marks are on the
+  board from the opening frame — so it fires on the frame the cue starts being ABOUT
+  something the player is doing. **The general form: when a cue is ambient, no amount of it
+  is informative, and the gate has to be the moment it acquires a subject.** Worth walking
+  the other five (`RunConfig.HINTS`, `game/run_config.gd:275`) and asking which are
+  thresholds by necessity and which are thresholds because a count was the easy thing to
+  write. `_offer_defer_hint` (`game/game.gd:1511`) is genuinely the first kind and says so; the
+  upgrade tip's "can they afford it yet" may be the second wearing the first's clothes,
+  since affording an upgrade and being ready to hear about one are different events.
+
 ### New in cycle 150 — a hang is worse than a failure, and four tests could hang
 
 - **A test that hangs reports nothing, and is indistinguishable from a mutation that never
@@ -4435,6 +4477,15 @@ said "not filed yet".
   caught pest's own sprite. Corn's `_recoil()` fires from `_fire_at()` and Chomp's
   `_bite()` fires from `_grab()` — every other plant marks its verb at the instant it
   lands, and Sundew is the one whose defining moment is currently silent on both ends.
+
+  **SHIPPED, BOTH HALVES — struck through in cycle 151, which opened the file to mine it
+  and found the claim false in every particular.** `_claim()` now begins
+  `Sfx.play(Sfx.SUNDEW_CLAIM)` (`game/sticky_sundew.gd:278`) and calls
+  `pest.flash_hit(true)` (`:287`) — cycle 149's glancing flinch, whose own comment says
+  that before it, "stuck" and "shot" were the same word in the game's vocabulary of
+  movement. Two cycles closed one entry from two directions without either knowing this
+  paragraph existed. Left in place rather than deleted: the entry is the record of what
+  was true when it was written, and the correction is what makes the next miner check.
 
 - **A field named for the fix already exists on `Plant`, and nothing ever writes to
   it.** `var _wobble_time: float = 0.0` sits at plant.gd:104, and no method in the

@@ -8739,3 +8739,53 @@ status rather than rewriting the entries that recorded these as open.
   never saw it and both a patch and a commit-message write failed. Cycle 141's own rule says
   `VAR="$VAR" python - <<'PY'` — as a PREFIX. A shell variable is not an environment
   variable until it is exported or used as one.
+
+## 2026-08-20 — Cycle 151: named the slanted bars, refused a legend page, refused a rot hold
+
+- Value: **warranted** — but only half the session was, and the half that was is the half
+  headless CANNOT do. Worth splitting, because the other half is a textbook `overkill` row
+  hiding inside a `warranted` one.
+  - Expected: the tip would post on hover and would fit the row. Both predicted before running.
+  - Got: `MessageLabel` at `876x22`, the sentence ending near 640 px with no ellipsis, and
+    `run-method _on_plant_hovered(chomp_flower)` putting `dead_ground_tip()` on the row.
+    Then the notebook's new third hints page at 17/17, its card holding the note with room
+    and its derived counter reading "6 of 7 seen".
+  - Found: **the message row is swept for COMPLETENESS and swept for WIDTH by two tests
+    that cover different sets, and neither knows it.**
+    `test_the_message_corpus_covers_every_catalogue_producer` calls the corpus "the
+    budget's denominator"; `test_no_message_clips_for_any_plant_in_the_catalogue` never
+    reads the corpus at all — it builds its own sweep from `PlantCatalog.PLANTS` crossed
+    with the level tables. Enumerated function-scoped across the suite: eight functions
+    read `message_corpus()` and not one measures a width. So the 13 non-catalogue entries,
+    both bar tips among them, are counted by one test and measured by neither. Found only
+    because the live run forced the question "what would have told me this headlessly".
+  - Cheaper: for the WIDTH, nothing — the row is `clip_text` with `text_overrun_behavior`
+    3, the pair `CLAUDE.md` names as making `get_minimum_size()` report the clip stub, so
+    there is no headless answer to buy. For the TRIGGER, the two headless tests already
+    pinned it and killed two mutations before the game was launched; re-driving
+    `_on_plant_hovered` live confirmed what was already known and is the overkill half.
+
+- Gap: **[G-058] again, and I made the same mistake the log already describes.**
+  Wrote `"phase4"` in `run.json`; `verify_ledger record` printed `warranted with no Phase 4
+  checks recorded - the claim that earned it is not in the row` and the row went in without
+  its three Phase 4 entries. The key is `checks` (`tools/verify_ledger.py:1136`). `--help`
+  says "the Phase 4 checks" and never names the key; `/verify`'s own doc says the same.
+  Recovered only because the evidence also went into `found` and `note`.
+  - [G-058] status: open | seen: 2 | harness: 0.38.0 | upstream: gh#46
+  - Improvement: unchanged from the first sighting — name the dropped key and suggest the
+    nearest known one. Adding the second sighting because the first entry predicted this
+    exact string (`did you mean 'checks'?`) and a year of prose in the log did not stop it
+    happening again, which is the argument for fixing it in the tool.
+
+- Gap: **reach was `null` until the game was relaunched, and nothing said so at capture
+  time.** `scene-tree` was taken after `quit`, so the first `reach` read
+  `NOT reached ... game/notebook_screen.gd` — true, and true only because the notebook had
+  been closed with the process. A second launch, `fire-entry-point notebook`, a second
+  capture, and `--scene-tree A --scene-tree B` gave `3/4, nothing left unreached`. The
+  repeatable flag is the fix and it works; what is missing is anything at CAPTURE time
+  saying a one-screen snapshot cannot speak for a multi-screen run.
+  - This is `plant-tower-defense-fs2b`, already filed as a bead, now on its second sighting.
+    Not opening a G id: the bead has the detail and a G would be a second record of one thing.
+  - Improvement: `scene-tree` could print the count of `res://` scripts it saw against the
+    count `scripts-seen` reports for the session — a one-line denominator that makes
+    "this is one screen of several" visible while the game is still running to fix it.
