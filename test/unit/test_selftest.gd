@@ -15050,6 +15050,15 @@ const POSITIONAL_VERBS := {
 const DEFAULTED_VERBS := [
 	"game_state", "spawn_pest", "add_seeds", "start_wave", "buy_packet",
 	"board_info", "compost_state", "budgets", "project_identity",
+	# `end_run` defaults every one of its arguments, and the defaults are the point:
+	# `cmd end_run` with no args gives a LOSING run at the wave the table's difficulty
+	# curve calls midway, which is the commonest card a player actually sees. A verb
+	# whose job is "put the post-mortem on screen so somebody can look at it" must not
+	# make you specify a run first. It is not defaulted in the incoherent direction,
+	# though -- it REFUSES a victory that is not at the last wave and a defeat with beds
+	# left, which is CLAUDE.md's rule that a setter must leave the game somewhere the
+	# game itself can get to, enforced rather than documented.
+	"end_run",
 	# `messages` reads no args at all: it reports the row's whole state and all four
 	# counters in one call, and there is no subset of that worth asking for separately.
 	# Same reason `budgets` is here -- a verb that exists so you need not know the names

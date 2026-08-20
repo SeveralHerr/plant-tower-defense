@@ -101,6 +101,7 @@ func register_commands(dev: Node) -> void:
 	# Not a game verb: it answers "which checkout am I actually driving?" before any
 	# of the above are believed. Registered with a literal name so `list-commands
 	# --offline` can still find it with no game running.
+	_dev.register_command("end_run", _cmd_end_run)
 	_dev.register_command("project_identity", _cmd_project_identity)
 	# Merged into every reply: a session that has quietly lost its Game answers
 	# well-formed zeros otherwise, which reads exactly like a clean pass.
@@ -966,6 +967,98 @@ func _budget_road_shape(game: Game) -> Dictionary:
 ## 40 hex chars, or "unavailable"), is_worktree (bool, true when .git is a file
 ## pointing elsewhere), user_dir (String, the shared-by-project-name dir the bus
 ## lives under), engine_version (String), pid (int).
+## Ends the current run so the post-mortem card is on screen
+## (plant-tower-defense-dklv).
+##
+## FIVE SURFACES IN THIS GAME NEED A RUN TO HAVE HAPPENED, not a scene to be loaded: the
+## summary card, its victory and defeat variants, the new-record ratchet and the milestone
+## shelf. `entry_points` reaches the title, the notebook, Keys, Options and a pause, and
+## none of them can reach an ENDING, because what is missing is a history. Cycle 158
+## renamed a button on that card without ever seeing it, which is what this verb is for.
+##
+## IT REFUSES AN UNREACHABLE STATE RATHER THAN PRODUCING ONE. `CLAUDE.md`'s rule for a
+## setter verb is that it must leave the game somewhere the game itself can get to, and a
+## card is exactly where that bites: `victory` with beds still to lose is a picture the
+## player can never be shown, and a run "won" at wave 0 renders a perfectly clean card of
+## an impossible run. So a victory is refused unless the wave asked for is the last one in
+## the table, and a defeat is refused unless the beds are gone. The refusal names both
+## numbers, because the caller's next question is always which of the two was wrong.
+##
+## IT ALSO REFUSES A CARD OF ZEROES. That was the trap the bead named in advance: a run
+## ended at wave 0 with nothing earned renders, and is nobody's card. The seed and pest
+## totals default to something a run of that length would plausibly have produced rather
+## than to 0, and a caller wanting the empty card asks for it explicitly.
+##
+## IT WRITES THE PLAYER'S SAVE, and there is no version of it that does not. `_end_run`
+## files the score through `bank_score()` and the earned flags through
+## `RunConfig.record_milestones` — that is what ending a run MEANS here, and a verb that
+## skipped it would be producing a card the game never produces. Measured: the first call
+## of this verb changed `highscore.save` and unlocked "Nothing left on the ground" off a
+## synthetic run. So launch with `--snapshot-userstate`, which puts it back on quit, and
+## the reply says so every time rather than leaving it to a docstring nobody re-reads.
+##
+## Args: victory (bool), wave (int), lives_left (int), seeds_earned (int), pests (int),
+##       compost (int), seconds (float), allow_empty (bool). Every one has a default;
+##       `cmd end_run` with no args gives a losing run at the wave the table's difficulty
+##       curve calls midway, which is the commonest card a player actually sees.
+func _cmd_end_run(args: Dictionary) -> Dictionary:
+	var game: Game = _game()
+	if game == null:
+		return _fail("no Game in the tree")
+	# `game_over or victory` is the game's OWN test for this -- `place_plant` refuses on
+	# exactly that pair (game/game.gd:1798) -- rather than a third opinion invented here.
+	if game.game_over or game.victory:
+		return _fail("this run has already ended -- the card is up. Relaunch, or "
+			+ "fire-entry-point campaign, to get a run to end")
+
+	var last: int = game.director.wave_count()
+	var want_win: bool = bool(args.get("victory", false))
+	var wave: int = int(args.get("wave", last if want_win else maxi(1, last / 2)))
+	var beds: int = int(args.get("lives_left", 0 if not want_win else game.lives))
+
+	if want_win and wave != last:
+		return _fail(("a run cannot be WON at wave %d of %d -- the campaign is won by "
+			+ "clearing the last one. Pass wave=%d, or victory=false") % [wave, last, last])
+	if want_win and beds <= 0:
+		return _fail("a run cannot be WON with no beds left; pass lives_left>0")
+	if not want_win and beds > 0:
+		return _fail(("a run cannot be LOST with %d bed(s) left -- a defeat is the beds "
+			+ "running out. Pass lives_left=0, or victory=true") % beds)
+
+	# Plausible rather than zero, and derived from how far the run got: the card's whole
+	# job is reporting numbers, and a card of zeroes is a rendering rather than a report.
+	var reached: int = maxi(1, wave)
+	var earned: int = int(args.get("seeds_earned", reached * 45))
+	var pests: int = int(args.get("pests", reached * 7))
+	var swept: int = int(args.get("compost", reached * 6))
+	if bool(args.get("allow_empty", false)):
+		earned = int(args.get("seeds_earned", 0))
+		pests = int(args.get("pests", 0))
+		swept = int(args.get("compost", 0))
+
+	game.victory = want_win
+	game.lives = beds
+	game.director.current_wave = wave
+	game.bank.seeds_earned_total = earned
+	game.pests_defeated = pests
+	game.compost.total_collected = swept
+	game.run_seconds = float(args.get("seconds", float(reached) * 34.0))
+	game._end_run("")
+
+	return {
+		"success": true,
+		"message": ("run ended as %s at wave %d of %d. THIS WROTE user:// -- the score "
+			+ "and any milestone this run earned are now in the real save. Relaunch with "
+			+ "`launch --snapshot-userstate` if you did not mean to keep them.") % [
+			"VICTORY" if want_win else "defeat", wave, last],
+		"data": {
+			"victory": want_win, "wave": wave, "wave_count": last, "lives_left": beds,
+			"seeds_earned_total": earned, "pests_defeated": pests, "compost": swept,
+			"card_up": game._summary != null and is_instance_valid(game._summary),
+		},
+	}
+
+
 func _cmd_project_identity(_args: Dictionary) -> Dictionary:
 	var root: String = ProjectSettings.globalize_path("res://")
 	if root == "":
