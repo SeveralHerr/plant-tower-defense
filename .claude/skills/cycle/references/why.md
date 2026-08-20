@@ -173,6 +173,25 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      an absolute rule that conflicts with a live instruction gets broken silently and
      logged as an environment note, which is precisely the countermeasure this paragraph
      already says does not work.
+     **AND THE RULE HAD NO ESCAPE HATCH FOR THE ONE CASE THAT MAKES PEOPLE BREAK IT,
+     which is why cycle 141 broke it.** "Use `<<'EOF'`" is unusable the moment the block
+     needs ONE shell variable — a scratchpad path, a bead id — so the reach is for `<<PY`
+     unquoted, and then every backtick inside becomes command substitution. Cycle 141 wrote
+     a test comment naming four identifiers in backticks and got
+     `the match in  is what decides` in the file, plus four `command not found` lines lost
+     in the noise. Same mechanism as the `bd` prose rule three steps down, arriving through
+     a different door. **The fix is to keep the heredoc quoted and pass the variable through
+     the ENVIRONMENT**, which no quoting touches:
+
+     ```bash
+     SCRATCH="$SCRATCH" python - <<'PY'
+     import os, pathlib
+     p = pathlib.Path(os.environ["SCRATCH"]) / "thing.md"
+     PY
+     ```
+
+     Same for `bd`: `BID="$b" python - <<'PY'`. If you find yourself typing an unquoted
+     heredoc delimiter, that is the signal — not a licence.
      **This includes a Python script in a heredoc that writes the file** — that is the same
      shell, plus a second escaping layer, and it is the shape the rule keeps getting broken
      in because it is what you reach for **when `Edit`'s exact match fails**. Cycle 97 hit a

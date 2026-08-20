@@ -8389,3 +8389,53 @@ status rather than rewriting the entries that recorded these as open.
   its evidence. G-130 (the ledger dropping `tier`) was avoided rather than re-hit: the
   key was left out of `run.json` on purpose this time, `run_json_check` exited 0, and
   `runtime.skipped` carries the tier reasoning in prose where the schema will keep it.
+
+## 2026-08-20 — the Chomp champs (plant-tower-defense-ts34)
+
+- Value: **warranted** — the wiring from the new hook into `_sway_pivot.transform` sits
+  past the `animations_enabled()` gate, so no headless test can read it at all. The suite
+  asserts the pure `champ_scale`; only the running game says the composition happens.
+  - Expected: that the champ actually reaches `_sway_pivot` on a live Chomp with a real
+    pest in its mouth, and that an idle one does not move — the wiring lives past the
+    animations gate, so the suite can only assert the pure function.
+  - Got: exactly that, measured with `is_busy` and the pivot scale read in the SAME poll.
+    Idle, 14 samples, `is_busy false` on each: x spanned `0.978 .. 1.022`. Chewing, 10
+    samples with `is_busy true` pinned per read: x spanned `0.9446 .. 1.0478`. Both
+    chewing extremes are outside the idle band.
+  - Found: **the idle band IS the breathe's analytic maximum in play.** `BREATHE_AMOUNT`
+    is 0.022 and the plant reaches `1.022` — so the separation the constants promise is
+    the separation a player gets, rather than an upper bound the breathe never
+    approaches. A test over the constants cannot distinguish those two worlds. (Same
+    finding shape as cycle 139's pest recoil, which is now twice, and is an argument for
+    always measuring the QUIET side of a "clearly bigger than" claim rather than the loud
+    one.)
+    And: **I nearly filed the opposite conclusion.** The first pivot samples read ±7%
+    while `find-nodes` had just reported `is_busy false`, which looks exactly like "the
+    idle breathe is three times its own constant". The Chomp had grabbed a pest between
+    the state read and the scale read. `read-a-moving-value`'s question arriving in a
+    shape it does not name: the VALUE and the PREDICATE were both moving, and pausing
+    only the value is not enough.
+  - Cheaper: nothing. `_wobble` early-returns headless, so the composition has no
+    headless reader.
+
+- Gap: **`verify_ledger.py record --about` takes ONE file, and the help does not say so.**
+  This change spans `game/chomp_flower.gd` (the champ) and `game/plant.gd` (the hook), so
+  `--about game/chomp_flower.gd game/plant.gd` is the honest narrowing. It exits with
+  `error: unrecognized arguments: game/plant.gd`. `/verify`'s own Phase 5 text says
+  "`--about <file> [<file> ...]` naming only the file(s) this run set out to verify",
+  plural and bracketed, so the skill and the installed tool disagree. Recorded without
+  `--about`; reach came out `1/2 (+1 by alias)` and correct, so nothing was lost here —
+  but in a fan-out, where `--about` is the whole point, a two-file lane would be told to
+  drop one.
+  - [G-140] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: `nargs="+"` on the argument, or one line in the help saying it takes a
+    single path. Same 0.38.0-vs-0.60.0 spread as G-130 — check whether 0.60.0 already
+    takes several before filing upstream.
+
+- Also worth recording, not a gap: **the run wrote the developer's real
+  `highscore.save`**, and `quit` said so unprompted — "A save changed here is loaded by
+  the game's next start, including the headless test suite, and reads there as an
+  unrelated failure." The suite was re-run afterwards and is clean
+  (`user:// writes: 0 file(s) changed by the suite`). `launch --snapshot-userstate` is the
+  flag that would have avoided it and I did not use it; worth making the default reflex
+  for any run that drives a scoring path.

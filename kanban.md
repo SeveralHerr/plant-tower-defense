@@ -218,6 +218,48 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 141 — a state that reads as a readout, and a checker that hides its own backlog
+
+- **A plant's STATE still mostly reads as a drawn cue rather than as motion, and the Chomp
+  was only the loudest case.** PLAYER-FACING. Cycle 141 gave a chewing Chomp a champ
+  (`ChompFlower.champ_scale`, `game/chomp_flower.gd:630`) because its only tell was the
+  drawn chew ring — a timer readout standing in for a body. The same shape is still
+  everywhere: `Sunflower` draws a yield gauge (`yield_gauge_rect`, its own function) while
+  its body does nothing; `StickySundew` holds a pest and shows it with a wash rather than
+  with the plant; a plant one bite from death shows a health bar and an unchanged silhouette
+  (the flinch, `game/plant.gd:231`, fires on the BITE and decays in 0.32s — it says "just
+  hit", never "nearly gone"). **The hook to do any of these with now exists and costs
+  nothing to the other plants**: `Plant.idle_scale_multiplier` (`game/plant.gd:548`) is
+  multiplied into the shared breathe and returns the identity by default. Each of these is a
+  judgement about whether the state earns a channel, not a bug — but the cost has dropped a
+  lot, and the argument for the Chomp ("one channel is not enough") applies unchanged to a
+  plant at 10% health.
+
+- **`citation_check` reports ONE citing location per target, so fixing a drifted citation
+  reveals the next one and the pass is not done when it says it is.** Cycle 141 relocated
+  ten, re-ran, got four more, fixed those, re-ran, got one more. Every round was the same
+  targets cited from a second and third place — `game/chomp_flower.gd:674` alone was cited
+  from `kanban.md`, from a second `kanban.md` entry, and from a bead. Nothing in the output
+  says this: it prints `N drifted` where N is targets, and a reader takes it for citations.
+  Not a defect, but it makes `--against` look done twice before it is, and it means the
+  "more than ten drifted" threshold in the loop's step 3 is measuring the wrong unit — ten
+  targets can be thirty citations. **A `--count citations` line beside the target count
+  would fix the reading**, and it is one `sum(len(locations))` in a tool this repo owns.
+  Cheap, and it goes with `plant-tower-defense-nalv`'s `--symbol` work rather than being its
+  own change.
+
+- **The quiet side of a "clearly bigger than" claim is the one worth measuring, and this is
+  now twice.** Cycle 139 asserted `FLINCH_RADIANS > GAIT_SWING * 2.0` on the constants and
+  then measured 24 unhit pests peaking at `GAIT_SWING` to seven decimals. Cycle 141 asserted
+  the champ out-reads `BREATHE_AMOUNT` and then measured 14 idle Chomps spanning exactly
+  `1 ± 0.022`. **In both cases the constant-vs-constant test would have passed identically in
+  a world where the quiet motion never approaches its own amplitude** — and in that world
+  the promised separation is fiction, because the reader's eye calibrates against what the
+  quiet thing actually does. So: when a new motion is justified as "clearly bigger than the
+  idle one", the live check to run is on the IDLE one. That is not obvious, it is cheap
+  (`pause`, `step-time --then-pause`, a dozen reads), and it is the thing that turns an
+  arithmetic claim into a measured one.
+
 ### New in cycle 140 — a second page budget nobody had named, and nine more dead citations
 
 - **The notebook's HINTS page has its own 300px ceiling, and the whole repo only knows
@@ -282,7 +324,7 @@ have rebuilt the same trap.
   the gait reads (`game/pest.gd:1538`) and any second writer would show up there. So the set
   of things that now make a bug recoil is exactly the set that calls `flash_hit()`, and it is
   six call sites across five files: `game/kernel.gd:85` (a kernel that landed),
-  `game/seed_bomb.gd:229`, `game/nettle.gd:296`, `game/chomp_flower.gd:551` and `:674` (a
+  `game/seed_bomb.gd:229`, `game/nettle.gd:296`, `game/chomp_flower.gd:551` and `:719` (a
   mouth holding one), and **`game/sticky_sundew.gd:285`, which flashes a pest it never
   damaged** — `flash_hit`'s own header says so at `game/pest.gd:1682-1684`, which is why
   `_last_hit_blocked` is consumed there rather than read. That was the right call for a
@@ -295,7 +337,7 @@ have rebuilt the same trap.
 
 - **A chewed pest is held still, and now it recoils in place — check that before adding
   anything else to the mouth.** `ChompFlower` calls `flash_hit()` on `_held`
-  (`game/chomp_flower.gd:551`, `:674`), and a held pest's gait is still running: nothing in
+  (`game/chomp_flower.gd:551`, `:719`), and a held pest's gait is still running: nothing in
   `Pest._gait` (`game/pest.gd:1527`) consults the hold, and `_play_death`
   (`game/pest.gd:1735-1736`) is the only thing that stops the physics process. So the yaw
   measured this cycle — peak 0.366 rad, 2.8x `GAIT_SWING` (`game/pest.gd:550`) — applies to a
@@ -973,7 +1015,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   one is the most interesting because it *shortens* the row's work rather than adding to it.
 - **"A hungry pest ate your X!" is honest today, and that is a constraint on every future
   way of losing a plant.** Enumerated rather than assumed: `Plant.destroyed` is emitted from
-  exactly one place (`game/plant.gd:614`, health reaching zero inside `take_damage`), and
+  exactly one place (`game/plant.gd:1031`, health reaching zero inside `take_damage`), and
   `Plant.take_damage` has exactly one caller in the whole game — `game/pest.gd:1315`,
   `meal.take_damage(EAT_DPS * delta)`, the eating path. Uprooting does not go near it:
   `commit_uproot` frees the plant with `play_exit_and_free()` (`game/game.gd:1584`), so
@@ -1544,7 +1586,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   Worth measuring against a beetle before adding any more to that ring.
 
 - **An upgrade is unrefundable and nothing says so.** `Plant.uproot_refund()`
-  (`game/plant.gd:541-544`) scales `PlantCatalog.cost(kind)` — the **base** cost — by a rate
+  (`game/plant.gd:563-564`) scales `PlantCatalog.cost(kind)` — the **base** cost — by a rate
   that slides with remaining health, and no plant overrides it (grepped: `uproot_refund` is
   declared once, in `plant.gd`, and nowhere else). So a Corn Cobbler with 65 seeds of
   upgrades in it refunds exactly what a fresh one does. The HUD shows the number
@@ -2482,7 +2524,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 > `is_instance_valid(near) and is_instance_valid(far)` immediately after
 > `await _T.instantiate_scene(host)` and returns early if either has gone, so the
 > targeting answer below it can no longer be about a set of one. **"`_furthest_along_in_range`
-> dereferences without checking the reference"**: the guard shipped at `game/plant.gd:616`
+> dereferences without checking the reference"**: the guard shipped at `game/plant.gd:639`
 > under `plant-tower-defense-or67` / gh#43. That entry cited `game/plant.gd:412`, which
 > today lands inside `_make_world_controls_click_through` — a real line in a different
 > function, which is precisely the drift `citation_check` says in its own NOT COVERED
@@ -2513,7 +2555,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   halves of what this entry originally said have since moved. It read
   "`Plant._furthest_along_in_range` is the only targeting function in the game, and three
   plants pick targets by other means; none of them guards against a stale reference
-  either". The guard shipped (`game/plant.gd:616`, `if pest == null or not
+  either". The guard shipped (`game/plant.gd:639`, `if pest == null or not
   is_instance_valid(pest)`), and the roster grew — `Nettle` now routes through the same
   function (`game/nettle.gd:209`), so it is no longer one function against three
   exceptions. Of the plants that still pick their own way, `ChompFlower` and
@@ -4452,7 +4494,7 @@ Three findings kept out here rather than buried in a log:
 
 - **Nothing in the game changes a plant's picture as it is damaged, and a wall is where
   that first stops being acceptable.** Searched for the property rather than the API: every
-  assignment to `_sprite.texture` in `game/` is in `chomp_flower.gd:745-785` (idle → gape →
+  assignment to `_sprite.texture` in `game/` is in `chomp_flower.gd:789-830` (idle → gape →
   eating → late-bite, driven by `chew_progress()`) and `dandelion.gd:374` (fluff frames,
   driven by ammo). Both are STATE machines; neither reads `health`. Grepping `health`
   across `game/*.gd` for any texture, sprite or frame term returns nothing on any plant.
@@ -4491,7 +4533,7 @@ Three findings kept out here rather than buried in a log:
 
 - **The plant most obviously wanting an upgrade ladder is the one that cannot be upgraded,
   and only two of nine can.** Searched for the behaviour, not one class: `upgrade_ladder()`
-  is a `Plant` virtual (`game/plant.gd:853`) and exactly two subclasses override it —
+  is a `Plant` virtual (`game/plant.gd:876`) and exactly two subclasses override it —
   `game/corn_cobbler.gd:403` and `game/chomp_flower.gd:332`. That enumeration is already
   gated: `test_the_seed_sink_is_finite_while_the_seed_income_is_not` asserts the override
   set is exactly `["chomp_flower", "corn_cobbler"]`, so this is checked rather than

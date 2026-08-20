@@ -1,4 +1,4 @@
-# Cycle 140
+# Cycle 141
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,45 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 141 taught
+
+**Measure the QUIET side of a "clearly bigger than" claim, not the loud one — and this is
+now twice.** Cycle 139 asserted the pest recoil beats `GAIT_SWING` and then measured 24
+unhit pests peaking at `GAIT_SWING` to seven decimals. Cycle 141 asserted the Chomp's champ
+beats `BREATHE_AMOUNT` and then measured 14 idle Chomps spanning exactly `1 ± 0.022`. In
+both cases a constant-vs-constant test passes identically in a world where the quiet motion
+never approaches its own amplitude — and in that world the promised separation is fiction,
+because the eye calibrates against what the quiet thing actually does. The live check worth
+running is on the thing you are claiming to exceed.
+
+**A predicate can be moving too, and pausing only the value is not enough.** The first
+pivot samples read ±7% while `find-nodes` had just said `is_busy false` — which reads
+exactly like "the idle breathe is three times its own constant", and was nearly filed as
+one. The Chomp had grabbed a pest between the state read and the scale read.
+`read-a-moving-value` asks what was moving when you read it; this was the shape where the
+VALUE and the PREDICATE were both moving, and the fix was reading both in one poll.
+
+**Two of this cycle's failures were caught by gates rather than by care, and both are
+rules this project had already written down.** `_T.assert_lt` does not exist, and the test
+reported `[PASS]` while aborting mid-method — the coerced-empty-return case `run_tests.py`
+exists to wrap, catching it on the error count while the suite line said pass. And an
+UNQUOTED heredoc ate four backticked identifiers out of a test comment, leaving "the match
+in  is what decides". The loop permits `<<'EOF'` and forbids `<<EOF`; I used the unquoted
+form to interpolate one shell variable.
+
+**Step 5's change is the escape hatch that rule was missing.** "Use `<<'EOF'`" is unusable
+the moment the block needs one shell variable, so the reach is for the unquoted form and
+every backtick inside becomes command substitution. `why.md` §2 now says to keep the
+heredoc quoted and pass the variable through the ENVIRONMENT, with the pattern. An absolute
+rule with no path for its own commonest exception is a rule that gets broken quietly — which
+is what the paragraph above it already said about a different absolute.
+
+**The cycle-140 threshold got its first test and held.** `--against` reported ten drifted;
+ten is not more than ten, so they were fixed inline and cost minutes rather than a third of
+the cycle. But the unit is wrong: `citation_check` counts distinct TARGETS and prints
+"drifted", so fixing one reveals the next citing location and the pass looked finished
+twice before it was — three rounds this cycle. Filed.
 
 ## What cycle 140 taught
 
