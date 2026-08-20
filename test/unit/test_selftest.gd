@@ -7399,7 +7399,13 @@ func test_the_placement_brackets_come_from_the_palette_and_still_look_the_same()
 	# hand-typed value is exactly what this test exists to catch, and a diff
 	# against nothing catches nothing.
 	var was_ok := Color(0.55, 0.95, 0.62, 0.75)
-	var was_blocked := Color(0.95, 0.42, 0.36, 0.75)
+	# BLOCKED's baseline MOVED in cycle 163, and the guard fired first, which is the
+	# guard working: the old Color(0.95, 0.42, 0.36) sat at luminance 0.528 against
+	# GROUND_DIRT's 0.534 -- 0.004 separation as drawn, so a blocked bracket on a road
+	# cell was gone in greyscale. That change is deliberately VISIBLE, unlike the
+	# source-unification this baseline was recorded for, so the number is re-recorded
+	# rather than the tolerance widened (plant-tower-defense-wovu).
+	var was_blocked := Color(0.72, 0.21, 0.19, 0.75)
 
 	var err: String = _T.assert_true(
 		ok.a == 0.75 and blocked.a == 0.75,
@@ -7426,7 +7432,12 @@ func test_the_placement_brackets_come_from_the_palette_and_still_look_the_same()
 	# relationship therefore lives here or nowhere. Change DANGER and leave
 	# BLOCKED_COLOR behind, and this is what says so.
 	for pair: Array in [
-		[blocked, GardenTheme.DANGER.lightened(0.25), "BLOCKED", "DANGER"],
+		# DARKENED, not lightened, since cycle 163. Both grounds sit in the MIDDLE of
+		# the luminance range, so lightening walks a mark toward them: raw DANGER is
+		# 0.375 and still fails dirt at 0.119, and DANGER.lightened(0.25) was at 0.004.
+		# The dimming the brackets want is carried by ALPHA, asserted above and
+		# unmoved at 0.75; it does not have to be carried by luminance too.
+		[blocked, GardenTheme.DANGER.darkened(0.15), "BLOCKED", "DANGER"],
 		[ok, GardenTheme.LEAF.lightened(0.45), "OK", "LEAF"],
 	]:
 		var now: Color = pair[0]
@@ -7434,8 +7445,8 @@ func test_the_placement_brackets_come_from_the_palette_and_still_look_the_same()
 		var off: float = maxf(maxf(absf(now.r - want.r), absf(now.g - want.g)),
 			absf(now.b - want.b))
 		err = _T.assert_true(off < 0.08,
-			"%s_COLOR is %.3f away from %s lightened (%s vs %s). The brackets are"
-				% [pair[2], off, pair[3], now, want]
+			"%s_COLOR is %.3f away from its palette source (%s vs %s). The brackets are"
+				% [pair[2], off, now, want]
 				+ " meant to be that palette colour, dimmed — if the palette moved,"
 				+ " move these with it rather than widening this tolerance")
 		if err != "":

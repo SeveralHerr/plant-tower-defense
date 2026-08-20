@@ -59,7 +59,28 @@ const PREVIEW_ARM: float = 9.0
 ## is the point — a hover is a suggestion, and the marker on the plant the
 ## player actually selected has to stay the loudest thing on the board.
 const OK_COLOR := Color(0.55, 0.95, 0.62, 0.75)
-const BLOCKED_COLOR := Color(0.95, 0.42, 0.36, 0.75)
+## DARKENED SINCE CYCLE 163, AND IT WAS LIGHTENED (plant-tower-defense-wovu). The
+## paragraph above argues that dimming a hover is the point, and it was right about the
+## intent and wrong about the direction: `Color(0.95, 0.42, 0.36)` sits at luminance
+## 0.528 against GROUND_DIRT's 0.534 — a separation of **0.006**, which is the road's own
+## luminance, and 0.004 as drawn. In greyscale a blocked bracket on a road cell was gone.
+## On grass it was 0.086, also under the 0.12 floor.
+##
+## THE ASYMMETRY IS WHAT MADE IT A DEFECT RATHER THAN A DIM CUE: OK_COLOR clears both
+## grounds (0.149 and 0.230 as drawn) and BLOCKED cleared neither, so the cue that says
+## YES read and the cue that says NO did not — on the state a player meets by hovering
+## the road with anything but a Bramble selected.
+##
+## AND UN-LIGHTENING IS NOT ENOUGH, which is the measurement that decided the value. Raw
+## `GardenTheme.DANGER` is 0.375 and still fails dirt at 0.119. Both grounds sit in the
+## MIDDLE of the range, so a mark must leave the middle in one direction or the other,
+## and lightening walks it toward them. This is DANGER darkened by 0.15: 0.242 on grass
+## and 0.161 on dirt, both clear.
+##
+## The quiet the paragraph above wants is still there and is carried by ALPHA, which has
+## not moved — a hover stays at 0.75 against the selection marker, and that ordering is
+## what the test asserts. Quiet is not the same as unreadable.
+const BLOCKED_COLOR := Color(0.72, 0.21, 0.19, 0.75)
 ## Dimmer still — the ring covers a large area, so at bracket alpha it would
 ## dominate the board.
 const RING_ALPHA: float = 0.30
