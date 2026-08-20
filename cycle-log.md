@@ -1,4 +1,4 @@
-# Cycle 138
+# Cycle 139
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,43 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 139 taught
+
+**Eleven citations were dead by eight hundred lines, and the only thing that could ever
+have revealed them was an unrelated edit.** Adding 30 lines to `game/pest.gd` for a pest
+recoil drifted eleven `kanban.md` citations; reading where they landed showed every one had
+already been wrong long before this cycle, pointing into a shape that file had years ago.
+Three claimed `Pest._gait`, three `_update_facing`, and two landed on **blank lines**, which
+match anything and would have survived an offset restore looking perfect. Nothing was
+careless: `citation_check` plain mode proves a line EXISTS and says so itself, and
+`--snapshot`/`--against` records the wrong text as its own baseline, so a citation already
+wrong at snapshot time compares clean forever. Cycle 138 found four of these; this cycle
+found eleven more, in the same file, by the same accident. The class is not rare and the
+detection is structurally blind to it — `plant-tower-defense-nalv` asks for the `--symbol`
+mode that would fire without needing anything to move, and is cross-noted onto `-2174`,
+because a relocator built without it makes already-wrong citations HARDER to find.
+
+**Two self-inflicted citation traps, both of which look like careful work.** Writing a
+correction note that named the two wrong line numbers re-created them as live citations —
+there is no quoting form, the checker sees text — and a bare `:NN` in `kanban.md` binds to
+the last full path before it, so listing eleven dead `pest.gd` numbers inside the entry
+reporting them would have re-filed all eleven. Both caught only by re-running `--against`
+and watching the count go UP. Written into `kanban-idea-pass` rule 1.
+
+**The run that measured the recoil found something a test over the constants cannot.** The
+headless suite asserts `FLINCH_RADIANS > GAIT_SWING * 2.0`; the running game showed 24
+samples of unhit pests peaking at `_sway=0.129999750999911` — `GAIT_SWING` to seven decimals,
+so the walk genuinely attains its own analytic maximum while the shot pest reached 0.366.
+The two populations do not overlap at all. A constant-vs-constant test cannot tell that world
+from one where the gait never approaches its ceiling and the "2x separation" is fiction.
+
+**The loop, `fan-out-a-cycle` and `loop-forever` are one skill now.** 830 lines across three
+files became a 144-line `SKILL.md` plus `references/{why,gates,fan-out}.md`. `loop-forever`
+was superseded rather than merged: its frontmatter was malformed, so the skill listing showed
+the literal string `name: loop-forever` as its description, and its body told the agent to
+keep a TodoWrite list and treat `kanban.md` as the queue — both replaced by `bd` many cycles
+ago. That is step 5's one change, and it spends it on deleting.
 
 ## What cycle 138 taught
 

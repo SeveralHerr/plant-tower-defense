@@ -38,6 +38,18 @@ bare `:331` whose nearest preceding citation was a 183-line file; the intended t
 named earlier in the same sentence, which is why no reader caught it. **If the path you mean
 is not the last one you wrote, write it out in full.**
 
+**WRITING ABOUT A CITATION WRITES A CITATION.** There is no quoting form — the checker sees
+text, so a line number that appears in prose *describing* a citation is indistinguishable
+from one making it. Cycle 139 repointed eleven dead `game/pest.gd` citations and then wrote
+a correction note saying which two numbers had been wrong; both were bare `:NN`, both bound
+to `game/pest.gd`, and the note re-filed the exact citations it was reporting. Caught only
+by re-running `--against` and seeing the count go UP.
+So when an entry needs to say a citation was wrong: **name the symbol, never the old
+number** ("it cited a line for a two-writer design that no longer exists"), and say in the
+entry that you have left the numbers out deliberately — otherwise the next reader adds them
+back as a kindness. The same trap fires in a bead description, a close reason, and a commit
+message that a checker reads.
+
 ### 2. Search for the BEHAVIOUR, not for one implementation of it
 
 This is the absence half, and it fails differently: cycle 70 wrote "no plant has idle motion,
