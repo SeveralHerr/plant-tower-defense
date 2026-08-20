@@ -9177,3 +9177,27 @@ is likely to be at least as productive.
     built-ins ClassDB does not expose as ordinary methods are absent, so a consumer needs
     a named list. `[G-144]` is not re-hit by this; it is a separate property of the cache
     and is recorded here rather than filed, since the workaround is four characters.
+
+## 2026-08-20 — Cycle 163: the arithmetic picked the colour, the picture confirmed the reading
+
+- Value: **warranted**, and the split between what each half answered is the point.
+  - Expected: darkening `DANGER` to clear the floor on both grounds. Computed first — raw
+    DANGER fails dirt at 0.119, `darkened(0.15)` gives 0.242 and 0.161 — so the VALUE was
+    settled before anything was launched.
+  - Got: hovering a road cell (`_update_cursor` then reading `placeable` until it came
+    back false) and capturing it showed a deep red bracket and wash, plainly legible on
+    brown. The green placeable bracket on grass is unchanged.
+  - Found: the arithmetic could not have answered whether a deep red still reads as a
+    REFUSAL rather than as shadow, and that is the only question the launch was for.
+    Everything else — which colour, how much, on which ground — came from a table.
+  - Cheaper: for the value, yes, and it was taken. For the reading, nothing.
+
+- Technique that made the live half quick: `_update_cursor` at a screen position, then
+  `get-state --property placeable` on the PlacementPreview, in a loop over four guesses.
+  Three came back `true` and one `false` — so finding the state a cue exists to show cost
+  four round-trips and no screenshots. **Reading a boolean to locate a visual state is
+  cheaper than looking for it**, and `node-bounds`/`get-state` being the token-cheap pair
+  is already the standing advice; this is that advice applied to FINDING the frame rather
+  than to measuring one.
+
+- Gap: **no new harness gaps.** [G-143] and [G-144] not re-hit.

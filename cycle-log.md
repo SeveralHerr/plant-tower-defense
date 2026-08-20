@@ -1,4 +1,4 @@
-# Cycle 162
+# Cycle 163
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,30 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 163 taught
+
+**Both playfield grounds sit in the middle of the luminance range, so dimming has a
+direction and this project had been dimming the wrong way.** The convention is to lighten
+a palette colour to make a hover read as a suggestion — and grass is 0.643, dirt 0.534, so
+lightening walks a mark *toward* them. `BLOCKED_COLOR` ended at **0.004** separation from
+the road it was drawn on: in greyscale, a blocked bracket on a road cell was gone. And
+un-lightening is not enough — raw `DANGER` is 0.375 and still fails dirt at 0.119.
+
+**The resolution generalises: carry the quiet in ALPHA and leave luminance to do the
+reading.** Alpha has not moved at 0.75, which is what the test asserts and what keeps a
+hover quieter than the selection beside it. Quiet is not the same as unreadable.
+
+**The asymmetry was closed at the gate, not only in the colour, and that is the durable
+half.** `OK_COLOR` cleared both grounds and `BLOCKED_COLOR` cleared neither — for as long
+as neither was in the alpha-aware sweep. The colour fix would have held until the next
+palette edit; the four new gating rows hold indefinitely. Reverting now fires two guards.
+
+Step 5 spent its change on how the cycle was run: **split what the arithmetic can decide
+from what only the picture can, and say which is which.** The value came from a table
+before anything launched; the launch answered exactly one question the table could not —
+does a deep red still read as a refusal rather than as shadow. Cycle 153 got this backwards
+and had a screenshot refute a number it had already believed.
 
 ## What cycle 162 taught
 

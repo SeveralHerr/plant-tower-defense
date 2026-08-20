@@ -191,6 +191,16 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      what it skipped, 284 calls of 2048. **A gate built without that question either
      false-positives on the case the silence was protecting — 29 of them, on the first
      draft — or checks nothing and says so.** Both happened here, in that order.
+   - **SPLIT WHAT THE ARITHMETIC CAN DECIDE FROM WHAT ONLY THE PICTURE CAN, AND SAY WHICH
+     IS WHICH IN THE CLOSE.** Cycle 163 computed the new colour before launching anything
+     — raw `DANGER` fails one ground at 0.119, `darkened(0.15)` clears both at 0.242 and
+     0.161 — so the VALUE was settled from a table. The launch answered exactly one
+     question the table could not: does a deep red still read as a REFUSAL rather than as
+     shadow. Cycle 157 had the same shape and cycle 153 got it wrong in the other
+     direction, priced a ring against one ground and had the screenshot refute it.
+     **A run that cannot name the question it is for is the run that ends up `overkill`
+     in the ledger.** Deciding the split in advance is also what keeps the live pass short:
+     one question, one capture.
    - **RUN INDEPENDENT ITEMS IN PARALLEL (asked for directly, cycle 99).** The loop did one
      item at a time for 99 cycles and the queue is 100 deep; most of it does not touch what
      the rest of it touches. Spawn agents for items whose files do not overlap, and say in

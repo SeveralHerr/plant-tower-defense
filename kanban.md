@@ -218,6 +218,30 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 163 — both grounds are in the middle, so dimming has a direction
+
+- **A palette convention and a legibility floor collided, and the resolution generalises.**
+  This game dims a hover by LIGHTENING its palette colour — the intent being that a
+  suggestion should be quieter than the selection it sits beside. Both playfield grounds
+  sit in the MIDDLE of the luminance range (grass 0.643, dirt 0.534 of a possible 1.0), so
+  **lightening walks a mark toward them**, and `BLOCKED_COLOR`
+  (`game/placement_preview.gd:83`) ended at 0.004 separation from the road it was drawn on.
+  Un-lightening is not enough either: raw `DANGER` is 0.375 and still fails dirt at 0.119.
+  **The fix that works is to carry the quiet in ALPHA and leave luminance to do the
+  reading** — quiet is not the same as unreadable. Worth checking every other cue this
+  project dims: if the dimming is a `lightened()` and the mark lands on the playfield,
+  it has the same problem waiting.
+
+- **The asymmetry was closed at the gate, not just in the colour, and that is the durable
+  half.** `OK_COLOR` cleared both grounds and `BLOCKED_COLOR` cleared neither — for as
+  long as nobody put either of them in the alpha-aware sweep
+  (`test/unit/test_placement.gd:7136`). The colour fix would have held until the next
+  palette edit; the four new gating rows hold indefinitely. **The general question for the
+  rest of the board: which cues are in that table and which are merely correct today?**
+  It now carries twelve rows and the board draws more marks than that, so the answer is
+  known to be "not all of them" and the gap is enumerable against
+  `plant-tower-defense-w86n`'s list of every drawn colour.
+
 ### New in cycle 162 — the checker's own drafts were the fixture
 
 - **A checker that resolves 0 of 2214 is honest and worthless, and the second draft is
