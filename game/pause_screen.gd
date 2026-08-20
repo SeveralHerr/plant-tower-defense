@@ -363,7 +363,19 @@ const BUTTONS: Array[Dictionary] = [
 	{"name": "KeysButton", "text": "Keys", "signal": "keys_requested"},
 	{"name": "OptionsButton", "text": "Options", "signal": "options_requested", "share_row": true},
 	{"name": "RestartButton", "text": "Start over", "signal": "restart_requested"},
-	{"name": "GateButton", "text": "Back to the gate", "signal": "gate_requested"},
+	# "Leave this run" since cycle 158, and it was "Back to the gate"
+	# (plant-tower-defense-bo6h). Read as a player rather than as a width: the card's
+	# FIRST button says "Back to the garden" and RESUMES, its last said "Back to the
+	# gate" and ABANDONS, and the two were four words of shared opening apart with a
+	# second run-ending button ("Start over") sitting between them. A hurried reader
+	# skims to the difference and the difference is one noun.
+	#
+	# AND "the gate" was never the game's word for anything. It appears nowhere else in
+	# `game/` except the comment above `Game.TITLE_SCENE` explaining where this button
+	# goes — so the label was self-referential vocabulary, charming on the card and
+	# meaningless off it. The new text names the COST instead of the destination, which
+	# is what the two run-enders have in common and what the resume button does not.
+	{"name": "GateButton", "text": "Leave this run", "signal": "gate_requested"},
 ]
 
 

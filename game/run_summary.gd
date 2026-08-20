@@ -1279,7 +1279,16 @@ func _build_buttons() -> void:
 
 	var gate := Button.new()
 	gate.name = "GateButton"
-	gate.text = "Back to the gate"
+	# "Back to the title" since cycle 158, retiring "the gate" — a word this game used
+	# for the title screen on two buttons and nowhere else, so it named the destination
+	# only to someone who had already pressed it once (plant-tower-defense-bo6h).
+	#
+	# NOT the pause card's "Leave this run", and the difference is the situation rather
+	# than an inconsistency. There, the run is live and the choice is whether to abandon
+	# it, so the label names the COST; here the run is already over and nothing is at
+	# stake, so it names the DESTINATION. Its partner is "Plant another garden", which
+	# is unmistakable either way.
+	gate.text = "Back to the title"
 	gate.position = Vector2(CARD.position.x + CARD.size.x - ROW_INSET - BUTTON_SIZE.x, BUTTON_Y)
 	gate.size = BUTTON_SIZE
 	gate.pressed.connect(func() -> void: gate_requested.emit())

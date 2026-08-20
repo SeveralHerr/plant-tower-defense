@@ -116,7 +116,7 @@ const DEFER_HINT_MIN_GUNS: int = 2
 ## click sets `_uproot_armed`, starts the clock, marks the bed, plays a sound and posts a
 ## message. Nothing was refused.
 const UPROOT_CONFIRM_NEEDED := "confirm needed"
-## Where "Back to the gate" goes. The game could previously only be left by
+## Where the pause card's "Leave this run" goes. The game could previously only be left by
 ## quitting: the sole scene change in the project ran the other way, title into
 ## game, and R reloaded the run without ever offering the menu.
 const TITLE_SCENE := "res://game/title.tscn"

@@ -1184,6 +1184,55 @@ func test_title_controls_all_clear_the_scenery() -> String:
 ## table had grown twice without anyone re-reading the sentence about it. Asserted
 ## against `WaveDirector.WAVES.size()` rather than against 22, because hard-coding the
 ## right number here reproduces the original defect one file over.
+## No button that ENDS the run may open with the same words as the one that resumes it
+## (plant-tower-defense-bo6h).
+##
+## The pause card's first button said "Back to the garden" and resumed; its last said
+## "Back to the gate" and abandoned the run, with a second run-ender ("Start over")
+## sitting between them. Three shared words, and the difference was one noun that named
+## nothing else in the game. Every width budget on that card was clear the whole time;
+## this is the property a width budget cannot express.
+##
+## TWO WORDS is the threshold, not one. "Back to" is a shared opening a reader skims;
+## "Start" alone is not, and a rule at one word would refuse "Start over" beside a
+## hypothetical "Start again" that means the same thing. The failure this guards is
+## SKIMMING, and a skimmer reads a phrase.
+##
+## The run-enders are derived from the signal each button emits rather than listed here,
+## so a seventh button that ends the run is covered on the day it is added.
+func test_no_run_ending_button_opens_like_the_one_that_resumes() -> String:
+	var resume_text: String = ""
+	var enders: Array[String] = []
+	for row: Dictionary in PauseScreen.BUTTONS:
+		var sig: String = String(row["signal"])
+		if sig == "resume_requested":
+			resume_text = String(row["text"])
+		elif sig == "restart_requested" or sig == "gate_requested":
+			enders.append(String(row["text"]))
+	var err: String = _T.assert_true(resume_text != "",
+		"the card has a resume button to compare against")
+	if err == "":
+		err = _T.assert_gt(enders.size(), 1,
+			("the card has more than one run-ending button (%d) -- a sweep over one is "
+				+ "not a sweep") % enders.size())
+	if err != "":
+		return err
+	var lead: PackedStringArray = resume_text.split(" ", false)
+	var opening: String = " ".join([lead[0], lead[1]]) if lead.size() > 1 else resume_text
+	for text: String in enders:
+		err = _T.assert_false(text.begins_with(opening),
+			("\"%s\" ends the run and opens with the same two words as \"%s\", which "
+				+ "resumes it. A reader skimming to the difference finds one noun.")
+				% [text, resume_text])
+		if err != "":
+			return err
+	# The mutation guard: without it, an `opening` that came out empty would make every
+	# begins_with above trivially false and this test would pass over nothing.
+	return _T.assert_gt(opening.length(), 2,
+		"the shared-opening test compared a real phrase (%s), not an empty string"
+			% opening)
+
+
 func test_the_start_row_names_the_wave_count_the_table_actually_holds() -> String:
 	var text: String = TitleScreen.start_button_text(Game.DIFFICULTY_STANDARD)
 	var err: String = _T.assert_true(
