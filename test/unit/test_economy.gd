@@ -946,6 +946,90 @@ func _assert_refused(campaign: int, endless_best: int, what: String) -> String:
 	return err
 
 
+## A HEADLESS PROCESS NEVER WRITES THE PLAYER'S SAVE (plant-tower-defense-58u7).
+##
+## Every test in this file redirects `RunConfig.save_path` in its setup. None of that
+## helps with the defect this guards: `RunConfig` is an AUTOLOAD, its `_ready()` runs at
+## PROCESS START, and `_load()` migrates an old format and writes it back — all before the
+## runner has called any `setup()`. The first `run_tests.py` after the v6 -> v7 bump
+## rewrote the developer's real `user://highscore.save`, and it was found by reading the
+## file afterwards rather than by any gate. `save_persist_check.py` was clean throughout,
+## correctly: it asks whether a test FUNCTION reaches `_save()`, and there is no test
+## function anywhere in that chain.
+##
+## ASSERTED ON THE PURE FUNCTION, plus the live autoload's own resolved path. The pure
+## half pins the rule; the live half is what would catch `_ready()` being reordered so the
+## redirect lands after `_load()`, which is the mistake that recreates the bug exactly.
+##
+## The rule is HEADLESS, not "under test", and that is deliberate: a bare
+## `godot --headless --script res://tools/lint_project.gd` is documented in `CLAUDE.md`
+## and brings this autoload up too, so a rule keyed on the unit runner would have left the
+## linter exposed. Every headless entry point here is a tool; `capture.gd` refuses to run
+## headless at all because there is no renderer, and a player's process always has one.
+func test_a_headless_process_never_writes_the_players_save() -> String:
+	# The live autoload, first: this is the assertion that fails if `_ready()` is
+	# reordered so the redirect lands after `_load()`.
+	# `RunConfig.loaded_from` AND NOT `RunConfig.save_path`, and the difference is the
+	# whole assertion. Both orders of `_ready()` leave `save_path` pointing at the scratch
+	# file by the time a test can read it, so `save_path` cannot tell "redirected, then
+	# loaded" from "loaded the real save, then redirected" — the second being exactly the
+	# bug. Mutating the order and watching this test still pass is how that was found.
+	# `boot_loaded_from` is captured once in `_ready()`, so no later test can erase it.
+	var err: String = _T.assert_true(RunConfig.boot_loaded_from != RunConfig.SAVE_PATH,
+		("this process is headless and boot loaded %s, which is the player's real save. "
+			+ "_ready() must resolve the path BEFORE _load(), because _load() migrates an "
+			+ "old format and writes it back") % RunConfig.boot_loaded_from)
+	if err == "":
+		err = _T.assert_eq(RunConfig.resolved_save_path("", "headless"),
+			RunConfig.HEADLESS_SAVE_PATH,
+			"a headless process with no override goes to the scratch file")
+	if err == "":
+		err = _T.assert_eq(RunConfig.resolved_save_path("", "windows"),
+			RunConfig.SAVE_PATH,
+			"and a process with a real display gets the player's save, or the game "
+				+ "would never load it")
+	if err == "":
+		# An explicit path beats both, because a caller that named one has said what it
+		# wants. This is the seam `--isolated` runs and any future per-run redirect need.
+		err = _T.assert_eq(
+			RunConfig.resolved_save_path("user://named.save", "headless"),
+			"user://named.save",
+			"an explicit PLANT_TD_SAVE_PATH wins over the headless default")
+	if err == "":
+		err = _T.assert_eq(
+			RunConfig.resolved_save_path("user://named.save", "windows"),
+			"user://named.save", "and over the player's save too")
+	if err == "":
+		# `OS.get_environment` returns "" for a variable that does not exist, so empty
+		# MUST mean unset rather than "a file called nothing".
+		err = _T.assert_eq(RunConfig.resolved_save_path("", "headless"),
+			RunConfig.HEADLESS_SAVE_PATH,
+			"an unset variable reads as \"\" and must not be treated as a path")
+	if err == "":
+		err = _T.assert_true(RunConfig.HEADLESS_SAVE_PATH != RunConfig.SAVE_PATH,
+			"the scratch file is a different file from the player's, which is the whole "
+				+ "point and would be a silent no-op if the two constants converged")
+	# THE TWO FIELDS DO DIFFERENT JOBS, and this is what says so. `loaded_from` follows
+	# every load; `boot_loaded_from` is frozen at process start. Collapsing them into one
+	# field is the tempting simplification, and it would make the assertion above pass
+	# vacuously the moment any earlier test drove a load over its own scratch path -- which
+	# is precisely the fragility this pair was split to remove.
+	if err == "":
+		var scratch: String = "user://loaded_from_probe.save"
+		var boot_before: String = RunConfig.boot_loaded_from
+		var was: String = RunConfig.save_path
+		RunConfig.save_path = scratch
+		RunConfig._load()
+		RunConfig.save_path = was
+		err = _T.assert_eq(RunConfig.loaded_from, scratch,
+			"loaded_from follows the load that just happened")
+		if err == "":
+			err = _T.assert_eq(RunConfig.boot_loaded_from, boot_before,
+				("boot_loaded_from did NOT move, which is the only reason the guard above "
+					+ "cannot be made vacuous by a neighbouring test"))
+	return err
+
+
 func test_a_truncated_save_leaves_the_records_alone() -> String:
 	## The original defect. A save is three `store_line` calls, so an interrupted
 	## write leaves the header alone, or the header and one score, or a score cut

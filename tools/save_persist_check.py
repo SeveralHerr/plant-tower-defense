@@ -485,6 +485,18 @@ def main() -> int:
               "points or that teardown puts it back; and it says nothing about the other "
               "user:// files a suite may write. Nor does it compile anything -- only "
               "import_check.py and lint_project.gd do that, and neither is parallel-safe.")
+        print("  NOT COVERED, and this one has already happened: it asks whether a test "
+              "FUNCTION can reach _save(), so it says NOTHING about what an AUTOLOAD does "
+              "at process start, before the runner has called any setup(). RunConfig._ready "
+              "loads the real save and MIGRATES it -- the first run_tests.py after the v6 "
+              "-> v7 bump rewrote the developer's real user://highscore.save while this "
+              "checker exited clean, because there was no test function anywhere in that "
+              "chain to find. A redirect installed per-test cannot protect anything an "
+              "autoload does before the first test runs. Closed since cycle 172 by "
+              "RunConfig.resolved_save_path, which sends any process whose DisplayServer "
+              "is 'headless' to a scratch file; this line stays because the checker still "
+              "cannot SEE that, and a future autoload doing the same thing would be "
+              "equally invisible here. plant-tower-defense-58u7.")
     for f in findings:
         print("  FINDING: %s" % f)
     return 1 if findings else 0
