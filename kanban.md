@@ -583,7 +583,7 @@ have rebuilt the same trap.
   or `untaught`, and it drifted twice in the same direction — row 4, then row 6, both
   claiming `untaught` for cues that two hints already taught. Correcting it a third time
   would have bought exactly one cycle. What made it *checkable* was that `Hud.HINT_CARDS`
-  (`game/hud.gd:4012`) gained a `grammar_row` key (`:3936`) — a machine-readable link from
+  (`game/hud.gd:4023`) gained a `grammar_row` key (`:3936`) — a machine-readable link from
   a hint to the row it teaches, which **did not exist anywhere in the codebase before**.
   Generalisable, and the interesting half: for every remaining hand-maintained table here,
   the question is not "is it right" but **"what link is missing that would let something
@@ -667,15 +667,15 @@ have rebuilt the same trap.
 
 - **The message row is swept for COMPLETENESS and swept for WIDTH, and the two sweeps do
   not cover the same lines.** `test_the_message_corpus_covers_every_catalogue_producer`
-  (`test/unit/test_selftest.gd:11276`) exists to keep `Hud.message_corpus()`
-  (`game/hud.gd:3698`) whole, and its own header calls the corpus "the budget's
+  (`test/unit/test_selftest.gd:11371`) exists to keep `Hud.message_corpus()`
+  (`game/hud.gd:3709`) whole, and its own header calls the corpus "the budget's
   denominator". The budget test is
   `test_no_message_clips_for_any_plant_in_the_catalogue`
   (`test/unit/test_selftest.gd:11365`) — and it never reads
   the corpus. It builds its own sweep from `PlantCatalog.PLANTS` crossed with the level
   tables, measures each through `GardenTheme.measure` (`game/garden_theme.gd:377`), and
   compares the worst against `label.size.x` (`test/unit/test_selftest.gd:11371`, asserted
-  at `test/unit/test_selftest.gd:11407`). So the
+  at `test/unit/test_selftest.gd:11502`). So the
   denominator's **13 non-catalogue entries are counted by one test and measured by
   neither** — including both bar tips, which are the two longest plant-name-free lines
   in the game. Enumerated rather than sampled: eight test functions across the suite
@@ -1101,7 +1101,7 @@ have rebuilt the same trap.
   rather than clustered: `BUDGET_FLOOR` cited into the 2000s and actually at
   `game/game.gd:3024-3077`; `hud_selection_panel` at `game/game.gd:3075`; `uproot_armed()`
   at `game/game.gd:2088`; `commit_uproot()` at `game/game.gd:2090`; `Hud.eaten_message` at
-  `game/hud.gd:3929`; `weather_note` at `game/hud.gd:4141`. **Two were stale COUNTS, not
+  `game/hud.gd:3929`; `weather_note` at `game/hud.gd:4152`. **Two were stale COUNTS, not
   just stale lines**, which no line-number check can ever see: an entry said
   `show_message()` "has eight call sites" when `message_corpus_check` prints twenty on every
   run, and another said the waiver comments "live in five scattered comments" when there
@@ -1444,7 +1444,7 @@ have rebuilt the same trap.
   reading how many upgrades were bought against how many plants were placed would let a
   breadth-first player see their own policy stated back to them. This is where the A/B
   belongs.
-- **`Hud.row_is_quiet()` (`game/hud.gd:2034`) is now a general capability and only one
+- **`Hud.row_is_quiet()` (`game/hud.gd:2045`) is now a general capability and only one
   caller uses it.** It exists because `show_message` returns false on a busy row but QUEUES
   the text, so a LEVEL-triggered caller stacks copies — true of any cue driven off
   `_refresh` rather than off an event. Worth a sweep: which other advisory lines are posted
@@ -1802,7 +1802,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 - **One of the four cues the legend still does not teach needs no row, because the game says
   it in words.** The weather's scattered marks are the row a seventh legend entry would most
   obviously want — a player sees the whole board change texture. But `Hud.show_weather`
-  (`game/hud.gd:2052`) puts a banner up naming it, `Hud.weather_headline` (`:2029`) is what
+  (`game/hud.gd:2063`) puts a banner up naming it, `Hud.weather_headline` (`:2029`) is what
   writes that sentence, and `Hud.next_wave_note` (`:1704`) names the coming weather in the
   prep note as well. Three places tell the player the word.
   So the marks are a second channel on a named state rather than the only carrier, which is
@@ -5305,7 +5305,7 @@ Three findings kept out here rather than buried in a log:
   plant, because the ambiguity is cheap now and expensive once two plants share it.
 
 - **The selection panel's health readout is true and misleading on exactly one plant.**
-  `game/hud.gd:2518` computes `fraction = plant.health / Plant.MAX_HEALTH` and `:2495`
+  `game/hud.gd:2529` computes `fraction = plant.health / Plant.MAX_HEALTH` and `:2495`
   prints `"Health %d/%d"` against the same constant. Both are correct for all nine plants —
   `Bramble` does not change `MAX_HEALTH`; it scales the incoming bite in `take_damage`
   (`game/bramble.gd:174`, `BITE_RESISTANCE` 0.25). So a Bramble at "Health 40/40"
@@ -5490,7 +5490,7 @@ Three findings kept out here rather than buried in a log:
   shape rather than audited into it two cycles later.
 
 - **The one-shot teaching tips name a single answer where the catalogue now has three.**
-  `Hud.flight_tip` (`game/hud.gd:3731`) reads "That pest flies over Chomp Flowers. Corn
+  `Hud.flight_tip` (`game/hud.gd:3742`) reads "That pest flies over Chomp Flowers. Corn
   Cobblers can still hit it." Both halves are true. But a winged pest is also reachable by
   the Bomb Dandelion (its blast hits whatever is standing there) and by the Prickly Nettle,
   which exists *specifically* to sting the mutations — armoured, winged, hungry — and whose
@@ -5926,7 +5926,7 @@ Three findings kept out here rather than buried in a log:
   severity rating.** `messages_refused` was 12 after four purchases and 1 after two, and it
   is the same number whether the player lost a cosmetic flicker step or the line naming the
   plant they just paid for. `_queue_message` had the text in hand and dropped it
-  (`game/hud.gd:3394`). One `append` later (`:3348`) the answer is `refused_log ["The packet held a
+  (`game/hud.gd:3405`). One `append` later (`:3348`) the answer is `refused_log ["The packet held a
   Chomp Flower!"]` — a reveal. **When a counter exists to describe something the player did
   not see, the thing they did not see is the datum; the count is a summary of it.**
 
@@ -5951,8 +5951,8 @@ Three findings kept out here rather than buried in a log:
   measurement was right; the sentence built on it — "the entire player-facing documentation
   of the weather system is a dependent clause" — was a claim about THE GAME derived from an
   enumeration over ONE FILE. Weather is taught three times, each where it can be acted on:
-  the prep note before the seeds are spent (`game/hud.gd:3462-3468`), the banner as the wave
-  opens (`game/hud.gd:4072-4082`, the whole mechanic in one sentence), and a status row after.
+  the prep note before the seeds are spent (`game/hud.gd:3473-3479`), the banner as the wave
+  opens (`game/hud.gd:4083-4093`, the whole mechanic in one sentence), and a status row after.
   `-pa4g` said it outright — "two of my last four absence claims about this codebase were
   wrong, both because the enumeration was over the wrong set" — and I made the mistake one
   bead later, in a bead that audit filed. **A warning inside a bead does not survive contact
@@ -6131,7 +6131,7 @@ Three findings kept out here rather than buried in a log:
   files, three of which the lane could not open — so it shipped an additive named constant
   and a pure predicate instead of the signature change the bead preferred, and all 21
   assertions still pass. `-vvww`'s framing would have written the four `.gd` scanners off as
-  "less exposed"; they were the real exposure, and `test/unit/test_selftest.gd:7612` already
+  "less exposed"; they were the real exposure, and `test/unit/test_selftest.gd:7707` already
   holds a marker inside a string literal, because a test pinning a checker's contract must
   name its marker. **"Premise wrong" and "premise understated" need checking for separately —
   the second reads as confirmation.**
@@ -6230,7 +6230,7 @@ Three findings kept out here rather than buried in a log:
   only two**: `grep -rn "\.capitalize()" game/*.gd` returns three hits, of which one is a
   comment and one is `game/hud.gd:588`, which builds a *node name* (`"%sPacketButton"`) from
   a tier and is exactly what the function is for. Fixed by `Hud.as_sentence`
-  (`game/hud.gd:3852`), so this entry is a record of the shape rather than an open idea: the
+  (`game/hud.gd:3863`), so this entry is a record of the shape rather than an open idea: the
   next player-visible string assembled at runtime is where to look again.
 
 - **A waiver written for one gate quietly exempted a string from a different one.**
@@ -6259,13 +6259,13 @@ Three findings kept out here rather than buried in a log:
 
 - **The upgrade panel shows what a plant IS, never what the next rung would make it.**
   `_refresh_selection` builds the line from `corn.kernel_damage() * kernels_per_shot()`,
-  `fire_interval()` and `kernels_per_shot()` (`game/hud.gd:2435-2437`) — all read off the
+  `fire_interval()` and `kernels_per_shot()` (`game/hud.gd:2446-2448`) — all read off the
   plant's CURRENT level. The cost of the next rung reaches the player through
-  `Hud.upgrade_tip` (`game/hud.gd:3920-3921`), which is a price and nothing else: *"Your %s
+  `Hud.upgrade_tip` (`game/hud.gd:3931-3932`), which is a price and nothing else: *"Your %s
   can be upgraded. Click it on the board — %d seeds."* So at the moment of deciding, the
   player sees this plant's damage, and a number of seeds, and nothing connecting them.
   Meanwhile the notebook tells them *"Climbing one plant beats adding another"*
-  (`game/hud.gd:4007`) — a claim cycle 169 recorded as an **opinion** precisely because it
+  (`game/hud.gd:4018`) — a claim cycle 169 recorded as an **opinion** precisely because it
   cannot be asserted. **Showing the delta is how an unassertable claim becomes a checkable
   one, for the player rather than for the suite.** The comment above the panel line already
   argues the case without drawing the conclusion: it says a 45-seed upgrade once ended up
@@ -6345,12 +6345,12 @@ Three findings kept out here rather than buried in a log:
 ### New in cycle 171 — six of nine plants cannot grow, and the notebook does not say so
 
 - **The notebook tells the player "Climbing one plant beats adding another"
-  (`game/hud.gd:4029`) and two thirds of the catalogue cannot climb.** Enumerated, not
+  (`game/hud.gd:4040`) and two thirds of the catalogue cannot climb.** Enumerated, not
   guessed: `grep -rn "^const LEVELS" game/*.gd` finds three in `game/` — `game/bramble.gd:112`,
   `game/chomp_flower.gd:64`, `game/corn_cobbler.gd:100` (the fourth hit is
   `game/sfx.gd:508`, a volume table). Sunflower, Sticky Sundew, Dandelion, Mint, Aloe and
   Nettle have no ladder, so `Plant.has_upgrades()` is false for them and
-  `_refresh_selection` hides the Upgrade button entirely (`game/hud.gd:2487`). **That is
+  `_refresh_selection` hides the Upgrade button entirely (`game/hud.gd:2498`). **That is
   probably the right design** — not every plant should be a growth curve — but the advice
   the player is given does not mention that it applies to three plants, and there is no
   way to find out which three before spending 30 seeds on one. The tooltip is the obvious
@@ -6596,3 +6596,37 @@ Three findings kept out here rather than buried in a log:
   `test_the_pause_heading_names_the_profile_and_still_fits_the_card` is the worked example
   if it ever needs one, and the honest first move is to ask what the longest realistic
   addition is rather than adding a test because the neighbour has one.
+
+### New in cycle 178 — three matches on the same key, and no map behind any of them
+
+- **The project looks up "what is this plant" by hard-coded `match id:` in at least three
+  places, and there is no id → class map to derive any of them from.**
+  `Game._new_plant` (`game/game.gd:2046`) matches id → constructor;
+  `PlantCatalog.reach` (`game/plant_catalog.gd:289`) matches id → the subclass's own
+  constant; and cycle 178 added `PlantCatalog.can_grow` in the same shape because
+  `Plant.upgrade_ladder()` is an **instance** method and the question is asked before any
+  plant exists. Each is individually defensible and documented. Together they are the same
+  lookup written three times, and **each one silently answers wrong for a plant added
+  without touching it** — a new subclass gets its ladder for free from `has_upgrades()`
+  while the catalogue goes on saying "Does not grow". **An id → class map would let all
+  three derive**, and `_new_plant` is the one that would have to hold it since it is
+  already the place that knows the constructors. Not attempted in 178: it is a bigger
+  change than the tooltip that surfaced it.
+
+- **A source scan for `const LEVELS` finds four files and only three are plants.**
+  `game/sfx.gd:508` declares `const LEVELS: Array[float]` — a volume table, not an upgrade
+  ladder. That is why cycle 178's cross-check instantiates every plant and asks
+  `has_upgrades()` rather than grepping: the object cannot be confused about what it is.
+  **Worth keeping as a worked example** of `derive-the-list`'s own warning that an
+  enumeration over the wrong set looks exhaustive — the grep would have found three plants
+  and one impostor, and the impostor is only obvious to someone who already knows the
+  answer.
+
+- **Six of nine plants do not grow, and the tooltip now says so — which makes the notebook
+  card's advice checkable for the first time.** `seen_upgrade_tip` says "Climbing one
+  plant beats adding another" (`game/hud.gd:4040`), recorded in cycle 169 as an **opinion**
+  the suite deliberately does not pin. A player can now at least tell which plants the
+  advice is *about* before spending. **What is still missing is the comparison itself**:
+  nothing tells them what a second Corn Cobbler costs against upgrading the one they have,
+  and cycle 171's upgrade-delta on the button gives half of it. The other half is the price
+  of the alternative, which the plant bar already knows.

@@ -9665,3 +9665,32 @@ is likely to be at least as productive.
     four times over. The general form for this log: when a tool reports an ABSENCE, the
     cheap check is to look for the thing yourself, because absence is the verdict a
     comparison bug produces most readily.
+
+## 2026-08-20 — told the packet whether the plant can ever grow
+
+- Value: **warranted**, and the runtime half answered a question the suite structurally
+  cannot: whether THREE clauses compose in the right order on one tooltip. The tests
+  assert each clause; nothing asserts the assembled string on a locked plant, and that is
+  the string a player reads.
+  - Expected: a tooltip clause, with the only real question being where the catalogue gets
+    the answer from.
+  - Got: `Sticky Sundew — Hurts nothing. ... / Does not grow — this is the plant it stays.
+    / Still in a packet: a Rare Packet (45) can hand it over.` Read off the running plant
+    bar, in that order.
+  - Found: `grep -rln "^const LEVELS" game/*.gd` returns FOUR files and only three are
+    plants — `Sfx.LEVELS` is a volume table. That is why the cross-check instantiates every
+    plant and asks `has_upgrades()` rather than scanning source: the object cannot be
+    confused about what it is, and a grep would have found three plants and one impostor.
+  - Cheaper: for the content, the headless tests, and they are permanent. For the
+    composition, nothing short of reading the real tooltip.
+
+- Gap: **no new gap.** One note about this project's own tooling, and it is a good-news
+  one.
+  - **`citation_rebind.py` paid for itself this cycle.** Step 3 reported 40 drifted —
+    over the ten-line, which the loop says makes relocation a work item rather than part
+    of the step. The rebinder cleared 19 mechanically in one command, and the residual is
+    the set already filed. Two cycles ago this would have been an hour of hand edits or a
+    bead deferring all forty.
+  - And the rule from cycle 177 held on its first real use: **the fixer said "19 written"
+    and the number I believed was `citation_check`'s `1423 resolved, 0 findings`.** Those
+    are different claims and only the second one is an invariant.

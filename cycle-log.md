@@ -1,4 +1,4 @@
-# Cycle 177
+# Cycle 178
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,37 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 178 taught
+
+**The packet now says whether the plant can ever grow, before the seeds are spent.** The
+notebook advises "Climbing one plant beats adding another"; six of the nine cannot climb.
+A player following that advice bought a Sundew, selected it, found no Upgrade button and
+nothing saying why. **Said in both directions** — marking only the three that grow leaves
+six silent, and silence on a packet reads as "not mentioned" rather than as "no".
+
+**A source scan for the ladder would have found an impostor.** `grep -rln "^const LEVELS"
+game/*.gd` returns FOUR files and only three are plants — `Sfx.LEVELS` is a volume table.
+The cross-check instantiates every plant and asks `has_upgrades()` instead, because an
+object cannot be confused about what it is. That is `derive-the-list`'s "an enumeration
+over the wrong set looks exhaustive", with a worked example.
+
+**One acceptance criterion was met in spirit and not in letter, and the close says so.**
+The bead asked that the answer be "derived from the plant rather than listed";
+`PlantCatalog.can_grow` is a `match` with three ids in it. I looked for a real derivation
+and there is none without new infrastructure — `upgrade_ladder()` is an instance method
+and the catalogue has no id → class map. What makes the list defensible is the test that
+instantiates every plant and compares, so it cannot disagree for longer than one run.
+Filed the map as its own item rather than pretending.
+
+**The rebinder paid for itself.** Step 3 reported 40 drifted, over the ten-line that makes
+relocation a work item. One command cleared 19 mechanically. And cycle 177's rule held on
+its first real use: the fixer said "19 written" and the number I believed was
+`citation_check`'s **1423 resolved, 0 findings** — different claims, and only the second is
+an invariant.
+
+Step 5 **deleted** rather than added: step 3 was retelling the snapshot's history that
+step 0 already tells.
 
 ## What cycle 177 taught
 
