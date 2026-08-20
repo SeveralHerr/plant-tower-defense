@@ -1,4 +1,4 @@
-# Cycle 144
+# Cycle 145
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,45 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 145 taught
+
+**A permanent player-facing reference taught a rule the game had stopped following, for two
+cycles, and the only thing that noticed was a test about internal consistency.** The
+notebook card for the move tip said "Confirming still only uproots" — false since cycle 143.
+`test_the_hint_cards_agree_with_the_tips_the_message_row_posts` caught it, and caught it for
+the wrong reason: it checks a card against its TIP, and the tip only moved because this
+cycle reworded it. **Nothing checks a hint card against the game.** Six cards, six factual
+claims about mechanics, read as copy rather than as assertions — filed.
+
+**A tip can be true and useless.** "Hover to compare a new spot" described what the GAME
+does, not what the player can do, so the one sentence a player ever got about moving never
+mentioned that moving was possible. The test worth applying to every tip: does it name a
+VERB the player can perform? `defer_tip` passes; `sole_cover_tip` states a fact and may be
+right to. Filed as a judgement pass, not a rewrite.
+
+**The message row is full in a DIRECTION, not just full.** The forfeit clause and the move
+tip are mutually exclusive and the forfeit always wins — so an upgraded plant never sees the
+move tip, and an upgraded plant is exactly the one worth moving. **A mutually-exclusive pair
+with a fixed winner is a routing decision wearing a budget's clothes**: the losing clause is
+withheld from precisely the population that triggered the other one. That, not "the row is
+full", is why this belonged in the panel.
+
+**Checking the tier beat assuming it.** Last cycle's lesson — a behaviour keyed to a field
+the tests write directly has a second question, does anything drive it in the real game —
+applied directly: the test calls `_refresh()` by hand, so the question was whether arming
+does. It does, at `game/game.gd:1998`. The launch was refused on evidence rather than on
+mood, and the two findings came out of the headless suite anyway.
+
+**`run_tests.py` over `run_tests.gd`, third time this session.** I guessed a `height` key on
+`selection_panel_budget` that does not exist; the test aborted mid-method and reported
+`[PASS]`, and only the error count failed the run.
+
+**The drift number confirmed cycle 144's theory rather than just extending it.** A
+comparable amount of work — a new producer, a rewritten card, a reworded tip, two new tests,
+five assertions across three files — produced ELEVEN drifted citations against cycle 144's
+seventy-one, because the edits landed low in their files and mostly appended. Same size,
+one seventh the drift, position the only difference. 116 on `-5w4v` now.
 
 ## What cycle 144 taught
 

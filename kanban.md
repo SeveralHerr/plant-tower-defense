@@ -218,6 +218,44 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 145 — a permanent reference taught a rule the game had stopped following
+
+- **A notebook card said "Confirming still only uproots" for two cycles after that became
+  false, and only a consistency test noticed.** `Hud.HINT_CARDS`' `seen_move_tip` entry is
+  a PERMANENT reference — a player can open the notebook and re-read it at any point in any
+  run — so a stale card is worse than a stale one-shot: the one-shot is seen once and
+  forgotten, the card is what a confused player deliberately goes to look at.
+  `test_the_hint_cards_agree_with_the_tips_the_message_row_posts` caught it, and it caught
+  it for the wrong reason — it exists to keep the card and the TIP consistent with each
+  other, and the tip only changed because cycle 145 reworded it. **Nothing in this repo
+  checks a hint card against the GAME.** The cards make factual claims about mechanics
+  ("Corn Cobblers can still hit it", "The Barrier Bramble is the exception", "Confirming
+  still only uproots") and each is exactly the kind of absence-or-behaviour claim
+  `kanban-idea-pass` was written for, except nobody applies that standard to them because
+  they read as copy rather than as assertions. Worth a sweep: six cards, six claims, read
+  each against the code that implements it.
+
+- **A one-shot tip described the PREVIEW when the player needed the ACTION.** "Hover to
+  compare a new spot" was true and useless — it named the thing the game does, not the
+  thing the player can do, so the single sentence a player ever got about moving never
+  mentioned that moving was possible. The reworded version costs nothing because it
+  replaces a clause rather than adding one. **Generalises to every tip in the game**: the
+  test is whether the sentence names a VERB the player can perform. `defer_tip` passes
+  ("Add depth there"), `sole_cover_tip` does not ("Ringed road cells are held by this plant
+  alone — lose it and they go unwatched" is a fact, not an instruction), and the flight tip
+  is borderline. Cheap to audit, and the fix each time is a rewording inside an existing
+  budget.
+
+- **The message row is full in a DIRECTION, not just full.** `uproot_armed_message` carries
+  at most one extra clause because `check_budgets` refused a build at 188px over, and when
+  both are available the forfeit wins. That means an upgraded plant never sees the move
+  tip — and an upgraded plant is exactly the one worth moving, since `Plant.move_cost`
+  (`game/plant.gd:865`) prices a quarter of the investment against a rebuy that forfeits all
+  of it. **A mutually-exclusive pair with a fixed winner is not a budget decision, it is a
+  routing decision**, and it deserves the same scrutiny: whichever clause loses is being
+  withheld from precisely the population that triggered the other one. Worth checking the
+  other exclusive pairs in the row for the same shape before adding a third clause anywhere.
+
 ### New in cycle 144 — a clock that stops while you think, and drift that is about WHERE you edit
 
 - **Pausing a deadline while the player is visibly deciding is a cheap, honest pattern and

@@ -8552,3 +8552,35 @@ status rather than rewriting the entries that recorded these as open.
     `InputEventMouseMotion` (with `relative` defaulting to the delta from the previous
     position, so existing callers are unaffected). Check 0.60.0 first — this project runs
     0.38.0 and `harness-version --client` says a newer harness is on this machine.
+
+## 2026-08-20 — the armed panel names the move (plant-tower-defense-28un)
+
+- Value: **warranted**, and from the HEADLESS half — no launch, and the tier was checked
+  rather than assumed.
+  - Expected: nothing runtime could add. Written before Phase 1, and then verified rather
+    than believed: cycle 144's lesson was that a behaviour keyed to a field the tests write
+    directly has a second question — does anything drive it in the real game. Here that is
+    whether ARMING refreshes the panel, since the test calls `_refresh()` by hand. It does,
+    at `game/game.gd:1998`, and the armed button's own text has always depended on that
+    same call. So the launch was refused on evidence, not on mood.
+  - Got: two findings out of the suite. `test_the_hint_cards_agree_with_the_tips_the_
+    message_row_posts` failed with "the armed prompt still carries the hover clause", which
+    led to the notebook card saying **"Confirming still only uproots"** — false since cycle
+    143. And `test_every_selection_detail_producer_is_priced_by_the_corpus` failed
+    `Expected 12 but got 13`, which is the hand-enumerated producer list doing its job.
+  - Found: **a permanent player-facing reference was teaching a rule the game had stopped
+    following, for two cycles, and the only thing that noticed was a test about internal
+    consistency.** Nothing in this repo checks a hint card against the GAME — the cards
+    make factual claims ("Corn Cobblers can still hit it", "The Barrier Bramble is the
+    exception") and read as copy rather than as assertions, so nobody applies
+    `kanban-idea-pass`'s standard to them. Filed.
+    Also: I guessed a `height` key on `selection_panel_budget` that does not exist. The
+    test aborted mid-method and **reported `[PASS]`** — the coerced-empty-return case — and
+    `run_tests.py` caught it on the error count. That is the third time this session the
+    wrapper has earned its place over `run_tests.gd`.
+  - Cheaper: nothing cheaper ran. This was the cheap tier and both findings came out of it;
+    the expensive mistake available was launching.
+
+- Gap: **no new gaps this turn.** [G-141] (no absolute mouse position) was not re-hit
+  because this cycle never needed to drive the pointer — the panel updates through
+  `_refresh()`, not through hover.
