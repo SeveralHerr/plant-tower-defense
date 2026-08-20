@@ -1,4 +1,4 @@
-# Cycle 169
+# Cycle 170
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,41 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 170 taught
+
+**Three beads were blocked on a bead that had already been half-finished, and its own notes
+said which half.** `-s1o8.1` shipped `Board.set_road` in cycle 141, went `in_progress`, and
+carried an accurate `DONE:` / `STILL OPEN:` list in its NOTES from then on. Nothing surfaced
+it: `bd ready` excludes an in-progress item and `bd blocked` prints the dependency rather
+than its state. **Someone had already done the expensive half**, which makes it the cheapest
+work in the queue rather than the stalest. Step 5 added the pre-flight line, and it found two
+more the same hour — including the title-screen board picker.
+
+**The suite builds a `Board` forty-six times and sets a road on none of them.** Counted, not
+estimated. `set_road` has existed for thirty cycles. So the whole suite is evidence about one
+specific snake, and every number in it inherits that silently — which is cycle 53's inventory
+again at the scale of the suite rather than three constants. The fix is not a sweep: most of
+those 46 rightly want the shipped board, and the work is sorting them into *pinning* and
+*asserting a property* and saying which.
+
+**A helper that falls back to a default is worse than one that refuses.** `_over_promise_run`
+now takes a road, and a refused one returns `road_refusal` and no measurements at all. Had it
+defaulted, a caller passing a road it believed legal would have measured the shipped board and
+reported it as the corpus — and that failure produces a *plausible* number, on the one axis
+where plausible is indistinguishable from right. The test proves the parameter by **use**, not
+by existence: same seed, same garden, different road-cell count.
+
+**`name_check` printed `errors: 0` over a hard parse error again**, this time a parameter named
+`road` in a function with two `for road:` loops. Recorded as a sighting rather than a gap: the
+tool's own `NOT COVERED:` line says it resolves names and does not compile, the import gate
+caught it one command later, and filing it would be filing the tool's own text back at it.
+
+**This cycle ships nothing a player would see, and that is now two in a row.** It was the right
+call — it closed the item blocking three beads on the replayability path, including the board
+picker, and the neighbourhood rule ruled out the player-facing bead in the queue, which is in
+`hud.gd` for a third consecutive cycle. **Cycle 171 takes a player-facing item whatever else is
+ready.**
 
 ## What cycle 169 taught
 
@@ -2363,7 +2398,7 @@ tuning, so that lane waited.
 
 ## Waiting on the user
 
-**70 commits are held locally and unpushed, and this is the item to raise first.** Every
+**73 commits are held locally and unpushed, and this is the item to raise first.** Every
 push to `origin/main` auto-deploys to itch.io (`severalherr/pest-control:html5`) via
 `.github/workflows/deploy-to-itchio.yml`, with no paths filter — so pushing is publishing,
 and the loop commits once per bd item rather than once per release. The held work is a

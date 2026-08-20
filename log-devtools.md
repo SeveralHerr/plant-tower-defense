@@ -9390,3 +9390,33 @@ is likely to be at least as productive.
     for a path that will not open. Six lines. The null-handle policy is the part worth
     centralising: an unreadable source is precisely the case where a `contains()` check
     passes for the wrong reason, and a caller who has to remember that will eventually not.
+
+## 2026-08-20 — finished making the road's numbers properties rather than one snake's measurements
+
+- Value: **overkill**, and correctly so — no game was launched and none could have been.
+  `Board.set_road` refuses once the board is in the tree, by design (the tiles are built
+  from the old road and there is no container to re-tile through), so the road corpus is
+  reachable headless and nowhere else. A runtime pass here would have re-driven the
+  shipped board with a renderer attached.
+  - Expected: the two remaining road-dependent numbers would turn into properties and the
+    work would be arithmetic.
+  - Got: it was, and the arithmetic held. `1010 tests / 19605 assertions`. Five mutations,
+    five distinct failures — the useful one being the corpus collapsed to three identical
+    roads, which fails the Sundew spread claim printing `5..5 over {default: 5, short
+    straight: 5, long serpentine: 5}`.
+  - Found: a live parse error, and it is the documented gap rather than a new one.
+    `name_check.py` printed `errors: 0 | warnings: 1` over
+    `Parse Error: There is already a parameter named "road" declared in this scope` —
+    `_over_promise_run` has two `for road:` loops and I named the new parameter `road`.
+    Every name in it resolves, which is exactly what `name_check`'s own `NOT COVERED:`
+    line says it can and cannot do. The import gate caught it in the next command. Worth
+    recording as a **sighting** rather than a gap: the tool said in advance it would miss
+    this, and it did, and the gate that exists for it worked.
+  - Cheaper: nothing. This is the cheap tier.
+
+- Gap: **no new gap this turn.** The `name_check` parse error above is the documented
+  limitation behaving as documented, not a defect — filing it would be filing the tool's
+  own `NOT COVERED` text back at it. The two standing items are unchanged: **[G-145]** is
+  open upstream as gh#65, and the harness is still 0.38.0 against 0.60.0 on this machine
+  (`plant-tower-defense-qcp1`), which is the item that would let this project verify any
+  of its 77 open gaps against the harness it actually runs.

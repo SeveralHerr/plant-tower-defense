@@ -41,7 +41,13 @@ than the instructions.
 with three values in it looks exactly like a line with four: `beads=N ready`,
 `skills=N (none named twice)`, `kanban=<the section you looked at>`, `mirror=0`.
 
-- `bd ready` and `bd list --status=open`. If everything open is blocked, say so.
+- `bd ready`, `bd list --status=open`, and **`bd list --status=in_progress`**. If everything
+  open is blocked, say so. The third is new and is the one worth reading: `bd ready` excludes
+  an in-progress item and `bd blocked` prints the dependency rather than its state, so a
+  half-finished bead that blocks others is invisible to both. `-s1o8.1` blocked three beads
+  for many cycles with its first half shipped and its own NOTES carrying an accurate
+  `STILL OPEN:` list. **Someone already did the expensive half** — that makes it the cheapest
+  work in the queue, not the stalest.
 - Skill ideas in `C:\Users\gotmi\documents\github\log.md` against `.claude/skills/`. Named
   twice and absent means build it, not identify it again — and **"absent" is matched on what
   the skill DOES, against the descriptions, not on the name the log happened to invent.**

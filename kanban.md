@@ -6301,3 +6301,43 @@ Three findings kept out here rather than buried in a log:
   and beads but not for GDScript comments. The count is the thing to get before building
   anything — `grep -rn "test_[a-z_]*" game/*.gd` is the denominator, and if it is small the
   answer is to fix them by hand and say so.
+
+### New in cycle 170 — forty-six boards, all of them the same board
+
+- **`test/unit/` constructs a `Board` forty-six times and sets a road on none of them.**
+  Counted: `grep -rn "Board.new()" test/unit/*.gd | wc -l` is 46, and piping that through
+  `grep -c set_road` is 0. `Board.set_road` has existed since cycle 141
+  (`game/board.gd:100`) and cycle 170 used it in exactly two places. So the suite is a
+  large body of evidence about **one specific snake**, and every number in it inherits
+  that without saying so — which is the same defect cycle 53 wrote its inventory about,
+  at the scale of the whole suite rather than three constants. **This is not a
+  find-and-replace**: most of those 46 genuinely want the default, because the default is
+  the board the game ships and a regression on it is a regression. The work is deciding
+  which ones are *asserting a property* — those should sweep the corpus — and which are
+  *pinning the shipped board*, and saying so in each. `-s1o8.2` needs this answered before
+  a second road can be called playable.
+
+- **A road can make a plant unplayable, and nothing in the game would notice.** Cycle 170
+  asserted the property for the Sundew over the corpus
+  (`test/unit/test_board.gd`, `test_a_sundews_best_patch_is_worth_laying_on_every_road_and_not_the_same_size`):
+  if the best buildable cell covers no road at `StickySundew.SAP_RADIUS`
+  (`game/sticky_sundew.gd:34`), a Sundew buys nothing anywhere on that board. The test
+  catches it for the three roads in the corpus. **The game has no such guard**, and
+  `Board.set_road` (`game/board.gd:100-118`) validates only structure — bounds, corner
+  count, zero-length segments, and the diagonal that would hang the walker. It says
+  nothing about whether the result is worth playing. The same question applies to every
+  plant with a reach, and `PlantCatalog.reach` (`game/plant_catalog.gd:289`) is the
+  derived list to sweep. **Player-facing consequence**: a board picker that offers a road
+  where a 30-seed purchase is dead weight is worse than one that offers fewer roads.
+
+- **`bd blocked` says what a bead waits on, never whether the blocker is actually stuck.**
+  `-s1o8.2` and `-s1o8.5` sat blocked on `-s1o8.1` for many cycles. `-s1o8.1` was
+  `in_progress`, its first half shipped in cycle 141 (commit `56b1514`), and its own NOTES
+  field carried a `DONE:` list and a `STILL OPEN:` list — a complete, accurate account of
+  the remaining work, readable at any time by anyone who ran `bd show`. Nothing surfaced
+  it, because `bd ready` correctly excludes an in-progress item and `bd blocked` prints
+  the dependency rather than its state. **The cheap version is a pre-flight line**: an
+  `in_progress` bead that blocks something and has not been touched in N cycles is the
+  most valuable thing in the queue, because someone already did the expensive half. The
+  count is small enough to check by hand today — `bd list --status=in_progress` — and that
+  is the number to get before proposing anything.
