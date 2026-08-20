@@ -1,4 +1,4 @@
-# Cycle 170
+# Cycle 171
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,41 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 171 taught
+
+**The notebook's one unassertable claim is now checkable by the player instead.** "Climbing
+one plant beats adding another" is a balance judgement, and cycle 169 recorded it as an
+opinion rather than pinning it — right for the suite, and it left the player holding a claim
+they could not test. `Upgrade (20)` now reads `Upgrade (20) · 1.0→3.6 dmg`. The resolution of
+an unassertable claim is not a reworded sentence; it is showing the number.
+
+**Three plants have ladders, not the one the bead named.** Bramble, Chomp Flower, Corn
+Cobbler. The category rule again, on its fourth consecutive cycle of finding the derived list
+bigger than the written one.
+
+**Each plant answers in the currency its own detail line already uses**, and that is forced
+rather than tidy. A Chomp cannot name a number of seconds because a chew's length belongs to
+the pest — 0.45s to 2.6s by species — so its gain is a proportion. Making all three the same
+shape would have meant inventing a number for it.
+
+**The width test failed twice on its first run**, at 252px and 238px in a 232px box. Both
+phrases lost their verb: the button already says Upgrade and the unit carries the rest, so
+the verb was the widest thing in each phrase and the least informative. That is now the
+binding constraint on the whole surface and is filed as a decision to make rather than
+re-litigate.
+
+**I nearly filed a harness bug that was my own timing.** Reach said `bramble.gd` was not
+reached in a run where I had just read `upgrade_gain()` off a live Bramble. The Bramble is
+the one plant that stands ON the road; a pest ate it between the read and the capture, and
+reach reported the tree as it was. Two commands settled it. The cost of not checking would
+have been a false report filed against a tool that was right.
+
+Step 5 fixed a rule this cycle had to argue with: **"same file" is a bad proxy for "same
+subsystem"** — `hud.gd` is 4000 lines and three consecutive cycles touched it while working
+three unrelated things. And when the neighbourhood rule collides with the player-facing
+steer, **the steer wins**: a stale neighbourhood costs a cycle of tunnel vision, a stalled
+game costs the game.
 
 ## What cycle 170 taught
 
@@ -2398,7 +2433,7 @@ tuning, so that lane waited.
 
 ## Waiting on the user
 
-**73 commits are held locally and unpushed, and this is the item to raise first.** Every
+**75 commits are held locally and unpushed, and this is the item to raise first.** Every
 push to `origin/main` auto-deploys to itch.io (`severalherr/pest-control:html5`) via
 `.github/workflows/deploy-to-itchio.yml`, with no paths filter — so pushing is publishing,
 and the loop commits once per bd item rather than once per release. The held work is a

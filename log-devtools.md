@@ -9420,3 +9420,36 @@ is likely to be at least as productive.
   open upstream as gh#65, and the harness is still 0.38.0 against 0.60.0 on this machine
   (`plant-tower-defense-qcp1`), which is the item that would let this project verify any
   of its 77 open gaps against the harness it actually runs.
+
+## 2026-08-20 — put what an upgrade buys on the button that charges for it
+
+- Value: **warranted**, but the credit belongs mostly to the HEADLESS gate, and saying so
+  is the point of this field. The width test caught two real overflows on its first run —
+  252px and 238px in a 232px box — before the game was ever launched. What the launch
+  added was the **reading**: whether "1.0→3.6 dmg" is a phrase a player parses in the
+  moment of deciding, which no measurement answers.
+  - Expected: the three gain phrases would fit, since the bead argued the two-line
+    selection label was the constraint and the button was the way around it.
+  - Got: `the widest upgrade button face fits its box: 252px of 232 -- 'Upgrade (30) ·
+    holds 11.4→15.9s'`, then 238 of 232 for the Chomp. Live afterwards:
+    `text: Upgrade (20) · 1.0→3.6 dmg`, `Rect: 908, 526, 232x40`, `findings` 0 across 4 of
+    5, and a screenshot showing it unclipped beside the current-state line.
+  - Found: the two overflows, and that **three** plants have ladders rather than the one
+    the bead named.
+  - Cheaper: for the fit, yes — the headless test, and it is now permanent. For the
+    reading, nothing; a 232px number does not tell you whether a sentence lands.
+
+- Gap: **no new gap this turn**, and one near-miss worth recording because I nearly filed
+  it as one.
+  - The ledger's reach line said `game/bramble.gd` was NOT reached, in a run where I had
+    just called `upgrade_gain()` on a live Bramble through `find-nodes --class Bramble
+    --call upgrade_gain` and read back `11.4→15.9s`. That reads exactly like reach
+    under-reporting a file that was executing. It is not: the Bramble is the one plant
+    that stands ON the road, a pest ate it between the read and the `scene-tree` capture,
+    and reach correctly reported the tree as it was at capture time. **The harness was
+    right and my timing was wrong.** Checking the capture for the node (`@Node2D@149`,
+    absent; the Chomp's `@Node2D@156`, present with its script) is what settled it, and it
+    cost two commands against the cost of a false gap report upstream.
+  - `find-nodes --class X --call METHOD` is the verb that made this cycle cheap: an
+    auto-named node found by what it IS and a computed value read off it in one trip, with
+    no path to guess. Three of the four live facts here came from it.

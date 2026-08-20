@@ -82,9 +82,14 @@ commit per item, never batched. Follow `.claude/skills/verify-bd-item/SKILL.md`.
 - **Run independent items in parallel** when their files do not overlap. Lane prompts,
   gate allowlist and worktree traps: `references/fan-out.md`. Two items that want the same
   file are one item.
-- **If the last two cycles worked the same file or subsystem, take something else** —
-  unless the player-facing steer says otherwise, in which case say in the close which rule
-  you overrode.
+- **If the last two cycles worked the same SUBSYSTEM, take something else** — the rule
+  said "file or subsystem" and the file half is a bad proxy: `game/hud.gd` is 4000 lines,
+  and cycles 169–171 all touched it while working the hint cards, the placement refusals
+  and the upgrade ladder, which share nothing but a filename. Ask what the last two cycles
+  were ABOUT, not which files they opened. **When this collides with the player-facing
+  steer, the steer wins** — it is the rule with the worse failure mode, because a stale
+  neighbourhood costs a cycle of tunnel vision and a stalled game costs the game. Say in
+  the close which rule you overrode either way.
 - **Write code with Edit/Write, not through a shell heredoc**, and keep every string
   literal on one line. A newline inside a GDScript string literal compiles, passes, and is
   invisible to every gate but a real compile. → `why.md` §2

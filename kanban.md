@@ -6341,3 +6341,38 @@ Three findings kept out here rather than buried in a log:
   most valuable thing in the queue, because someone already did the expensive half. The
   count is small enough to check by hand today — `bd list --status=in_progress` — and that
   is the number to get before proposing anything.
+
+### New in cycle 171 — six of nine plants cannot grow, and the notebook does not say so
+
+- **The notebook tells the player "Climbing one plant beats adding another"
+  (`game/hud.gd:4029`) and two thirds of the catalogue cannot climb.** Enumerated, not
+  guessed: `grep -rn "^const LEVELS" game/*.gd` finds three in `game/` — `game/bramble.gd:112`,
+  `game/chomp_flower.gd:64`, `game/corn_cobbler.gd:100` (the fourth hit is
+  `game/sfx.gd:508`, a volume table). Sunflower, Sticky Sundew, Dandelion, Mint, Aloe and
+  Nettle have no ladder, so `Plant.has_upgrades()` is false for them and
+  `_refresh_selection` hides the Upgrade button entirely (`game/hud.gd:2487`). **That is
+  probably the right design** — not every plant should be a growth curve — but the advice
+  the player is given does not mention that it applies to three plants, and there is no
+  way to find out which three before spending 30 seeds on one. The tooltip is the obvious
+  place: `Hud.plant_button_tooltip` (`game/hud.gd:2021-2028`) already composes name, blurb
+  and a packet line, and adding a fourth clause is the pattern it is already built for.
+
+- **The upgrade button is 232px and that is now the binding constraint on this whole
+  surface.** `SELECTION_BOX_WIDTH` is `PANEL_WIDTH - 24` (`game/hud.gd:504`), and cycle
+  171's three gain phrases are each as short as their unit allows because two longer ones
+  were refused at 252px and 238px by
+  `test_every_upgrade_button_face_fits_the_panel`. Recorded so the next person does not
+  re-derive it: **the verb is the first thing to cut** — the button already says Upgrade,
+  and the unit carries the rest. A fourth ladder plant gets roughly 14 characters after
+  the price. If a gain genuinely needs more room, the honest fix is a wider `SelectionBox`
+  or a second line, not a shorter truth.
+
+- **A live check placed a Bramble on a road cell and a pest ate it before the snapshot.**
+  The `scene-tree` capture then had no `bramble.gd` in it and the ledger's reach line said
+  the file was not reached — which read exactly like a harness bug and was the game
+  working correctly. The Bramble is the one plant that stands where things walk
+  (`game/plant_catalog.gd:454`, `on_road`), so it is the one plant whose live verification
+  is racing a wave. **Worth knowing before the next live check**: pause the tree first, or
+  place it during prep. The harness already says a capture must land "while the diff's
+  node is still in the tree"; what it cannot say is that for one plant the tree is trying
+  to remove it.
