@@ -1830,6 +1830,43 @@ static func refusal_corpus() -> Array[String]:
 	]
 
 
+## The ONE plant that could stand on `cell`, or `&""` when the answer is not one
+## (plant-tower-defense-lyj5).
+##
+## WHAT THIS IS FOR. A wrong-ground refusal tells the player their plant does not go here.
+## Sometimes the game also knows exactly what DOES, and can point at it instead of leaving
+## them to read the sentence, look back at the bar and work it out.
+##
+## THE TWO DIRECTIONS ARE NOT SYMMETRIC, and that asymmetry is why this returns a single
+## id rather than a list. `Board.is_buildable_for` gives a road plant `is_path(cell)` and
+## everything else `is_buildable(cell)`, so:
+##
+##   a ROAD cell   -- exactly one plant in the catalogue is legal, the Bramble. One packet
+##                    to point at, and this is the confusing case: the player clicked the
+##                    road, which is where the pests are, which feels like where a defence
+##                    belongs.
+##   a GRASS cell  -- eight of the nine are legal. There is no single packet, and flashing
+##                    eight is noise. The honest cue there is about the ROAD, not about a
+##                    packet, and it is deliberately not built here.
+##
+## DERIVED FROM THE CATALOGUE, never from the Bramble's name. A second road plant makes
+## the answer ambiguous and this returns `&""` on the same day it is added, rather than
+## going on pointing at whichever one was hard-coded.
+##
+## Says nothing about affordability or unlocks on purpose: "which plant goes here" is a
+## fact about the ground, and a player who cannot afford the answer still needs to know
+## what the answer is. The packet tooltip already explains a locked plant.
+func sole_legal_plant_for(cell: Vector2i) -> StringName:
+	var found: StringName = &""
+	for id: StringName in PlantCatalog.ids():
+		if not board.is_buildable_for(cell, id):
+			continue
+		if found != &"":
+			return &""
+		found = id
+	return found
+
+
 ## Places `id` on `cell`, charging the bank. Returns "" on success, or the reason
 ## it refused — the devtools verbs and the tests both read that string.
 func place_plant(id: StringName, cell: Vector2i) -> String:
@@ -3016,6 +3053,18 @@ func _click_at(screen_pos: Vector2) -> void:
 		hud.shake_plant_button(selected_plant)
 	elif refusal != "":
 		hud.show_message(Hud.as_sentence(refusal) + ".")  # message-corpus-check: ok - placement refusals are assembled at runtime, not written here
+		# AND POINT AT THE PLANT THAT WOULD WORK, when there is exactly one
+		# (plant-tower-defense-lyj5). The sentence names the ground; this names the
+		# packet, which is the thing the player has to click next.
+		#
+		# Guarded on the refusal being about the GROUND. "Something is already growing
+		# there" has a sole legal plant too -- the cell is grass, but every plant is
+		# refused by the occupant -- and shaking a packet there would point at a purchase
+		# that is not the problem.
+		if refusal == REFUSAL_ON_GRASS or refusal == REFUSAL_ON_ROAD:
+			var fits: StringName = sole_legal_plant_for(cell)
+			if fits != &"" and fits != selected_plant:
+				hud.shake_plant_button(fits)
 	# The cell under the cursor just changed state — either it now holds a
 	# plant, or the purchase drained the seeds that made it affordable. Either
 	# way the cue on screen is stale until the mouse moves, which it need not.

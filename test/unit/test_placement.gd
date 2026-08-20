@@ -72,6 +72,56 @@ func test_nothing_can_be_planted_on_the_road() -> String:
 	return err
 
 
+## THE GROUND SOMETIMES HAS EXACTLY ONE ANSWER, AND SOMETIMES EIGHT
+## (plant-tower-defense-lyj5).
+##
+## A wrong-ground refusal names the ground. When the game also knows which single plant
+## DOES go there, it can point at the packet instead of leaving the player to read the
+## sentence and work it out. `sole_legal_plant_for` is that question, and its whole value
+## is that it refuses to answer when the answer is not one.
+##
+## THE ASYMMETRY IS THE TEST. `Board.is_buildable_for` gives a road plant `is_path(cell)`
+## and every other plant `is_buildable(cell)`, so a road cell has exactly one candidate
+## and a grass cell has eight. A helper that returned "the first legal plant" would look
+## right on the road and point at an arbitrary packet on the grass — which is why both
+## directions are asserted rather than only the useful one.
+##
+## Counted from `PlantCatalog.ids()` rather than compared against a recorded 1 and 8, so a
+## plant added to the catalogue moves both numbers here on the day it is added.
+func test_the_ground_names_one_plant_on_road_and_refuses_to_name_one_on_grass() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var road_cell: Vector2i = _road(game)
+	var grass_cell: Vector2i = _grass(game)
+	var on_road: int = 0
+	var on_grass: int = 0
+	for id: StringName in PlantCatalog.ids():
+		if game.board.is_buildable_for(road_cell, id):
+			on_road += 1
+		if game.board.is_buildable_for(grass_cell, id):
+			on_grass += 1
+
+	# Vacuity guards. A catalogue that stopped answering, or a board that called every
+	# cell illegal, would make every assertion below true by describing nothing.
+	var err: String = _T.assert_eq(on_road, 1,
+		("exactly one plant is legal on a road cell (%d) -- that is what makes pointing "
+			+ "at a packet honest there") % on_road)
+	if err == "":
+		err = _T.assert_gt(on_grass, 1,
+			("more than one is legal on grass (%d), so there is no single packet to "
+				+ "point at and the cue must decline") % on_grass)
+	if err == "":
+		var fits: StringName = game.sole_legal_plant_for(road_cell)
+		err = _T.assert_true(PlantCatalog.on_road(fits),
+			("the road cell's sole answer is a road plant, derived rather than named: "
+				+ "got '%s'") % fits)
+	if err == "":
+		err = _T.assert_eq(String(game.sole_legal_plant_for(grass_cell)), "",
+			("the grass cell has NO sole answer -- returning the first legal plant would "
+				+ "point the player at an arbitrary packet out of %d") % on_grass)
+	_T.free_ui(game)
+	return err
+
+
 func test_a_cell_holds_one_plant() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var cell: Vector2i = _grass(game)
