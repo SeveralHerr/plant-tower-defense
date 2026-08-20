@@ -11455,6 +11455,90 @@ func test_the_last_wave_says_that_it_is_the_last() -> String:
 ##
 ## `tools/message_corpus_check.py` covers the direction neither of these can: a
 ## `show_message()` CALL SITE whose text never joined the corpus at all.
+## Every message the player can be shown, judged against one question: does it name a
+## VERB THE PLAYER CAN PERFORM? (plant-tower-defense-n4cx)
+##
+## The verdict per message is the deliverable, and it lives here rather than in the bead
+## so a reworded tip has to come back and change a row. `false` is a legitimate answer --
+## a cue that teaches a FACT the player then acts on freely is right, and turning every
+## line into an imperative would make the row read like a tutorial. What `false` is not
+## allowed to be is unexamined, which is why each one carries its reason.
+##
+## THE TWO THAT MOVED were both REFUSALS, and that is where the test bites hardest: a
+## refusal is the one message shown to a player who has just been stopped and is looking
+## for what to do instead. "pests walk there" and "no pests walk there" were facts about
+## the cell -- and the second reads as GOOD news out of context.
+func test_every_player_message_names_a_verb_or_says_why_not() -> String:
+	var rows: Array[Dictionary] = [
+		{"text": Hud.upgrade_tip("Corn Cobbler", 40), "verb": true},
+		{"text": Hud.defer_tip(), "verb": true},
+		{"text": Hud.dead_ground_tip(), "verb": true},
+		{"text": Hud.move_window_closed_tip(), "verb": true},
+		{"text": Hud.road_plant_tip("Barrier Bramble"), "verb": true},
+		# A fact, deliberately. The action is "use a Corn Cobbler", and the sentence names
+		# the plant that works rather than instructing -- which is the right register for
+		# a line that fires while the player is watching a specific bug walk over a
+		# specific mouth. An imperative here would be telling them what they can see.
+		{"text": Hud.flight_tip(), "verb": false,
+			"why": "names the plant that works; the action is unmistakable from it"},
+		# A fact, and the interesting one. The player's response is "defend this plant" or
+		# "add a second gun over that stretch" -- the first is not a click at all and the
+		# second is the DEFER tip's advice for the opposite situation. Left as a fact
+		# rather than given a borrowed imperative.
+		{"text": Hud.sole_cover_tip(), "verb": false,
+			"why": "the response is a plan, not a click; the two candidate verbs belong "
+				+ "to other cues"},
+	]
+	var err: String = ""
+	var checked: int = 0
+	var verbless: int = 0
+	for row: Dictionary in rows:
+		var text: String = String(row["text"])
+		checked += 1
+		err = _T.assert_gt(text.length(), 0, "every judged message has text")
+		if err != "":
+			return err
+		if not bool(row["verb"]):
+			verbless += 1
+			err = _T.assert_gt(String(row.get("why", "")).length(), 20,
+				("a message judged as naming no verb carries its reason: %s" % text))
+			if err != "":
+				return err
+	if err == "":
+		err = _T.assert_eq(checked, 7,
+			"every message in the judged set was read -- a shrunken table passes over "
+				+ "nothing")
+	if err == "":
+		# The denominator that matters: most of the set DOES name a verb, so a future
+		# reading where most do not is a drift worth noticing rather than a preference.
+		err = _T.assert_true(verbless * 2 < checked,
+			("%d of %d judged messages name no verb. Past half, the row has stopped "
+				+ "telling the player what to do") % [verbless, checked])
+	return err
+
+
+## The two refusals that name a verb, and the sentence case they are shown in.
+##
+## `String.capitalize()` TITLE-cases in Godot -- the player was reading "Pests Walk
+## There." and "Something Is Already Growing There." for as long as refusals have been
+## displayed. Nothing noticed: the row's budget checks WIDTH and the corpus checks
+## COMPLETENESS, and neither reads a capital letter.
+func test_a_refusal_is_shown_as_a_sentence_and_says_what_to_do() -> String:
+	var err: String = _T.assert_eq(Hud.as_sentence("pests walk there — try the grass"),
+		"Pests walk there — try the grass",
+		"a refusal is sentence-cased, not title-cased")
+	if err == "":
+		err = _T.assert_eq(Hud.as_sentence(""), "",
+			"and an empty refusal stays empty rather than crashing on substr")
+	if err == "":
+		# The mutation guard: `capitalize()` would pass the empty case and the first
+		# letter, and fail here. Without this the helper could BE capitalize().
+		err = _T.assert_true(
+			Hud.as_sentence("no pests walk there") != "no pests walk there".capitalize(),
+			"and it is not capitalize(), which is what this replaced")
+	return err
+
+
 func test_the_message_corpus_covers_every_catalogue_producer() -> String:
 	var corpus: Array[String] = Hud.message_corpus()
 	var err: String = _T.assert_gt(corpus.size(), PlantCatalog.PLANTS.size() * 3,
@@ -11579,7 +11663,21 @@ func test_no_message_clips_for_any_plant_in_the_catalogue() -> String:
 	var worst: String = ""
 	var worst_px: float = 0.0
 	if err == "":
-		for line: String in Hud.message_corpus():
+		# THE REFUSALS ARE PRICED HERE TOO since cycle 168, and they were the one class of
+		# player-visible message no width gate had ever measured. They are not in
+		# `message_corpus()` and cannot be -- `message_corpus_check` waives the call site
+		# because a refusal is assembled at runtime, and says so in its own NOT COVERED
+		# line. That waiver is correct about the SOURCE scan and was silently doing double
+		# duty as an exemption from the BUDGET, which is a different gate. Cycle 168
+		# lengthened two refusals and nothing headless could have objected.
+		#
+		# Each is measured as the player is shown it -- sentence-cased with the full stop
+		# the call site appends -- because that is the string that has to fit, not the
+		# lowercase fragment the function returns.
+		var lines: Array[String] = Hud.message_corpus()
+		for refusal: String in Game.refusal_corpus():
+			lines.append(Hud.as_sentence(refusal) + ".")
+		for line: String in lines:
 			checked += 1
 			var drawn: float = GardenTheme.measure(line, Hud.MESSAGE_FONT_SIZE)
 			if drawn > worst_px:
@@ -11588,7 +11686,7 @@ func test_no_message_clips_for_any_plant_in_the_catalogue() -> String:
 		# The floor is derived, not typed: the corpus crosses every plant with several
 		# producers, so anything at or under one-per-plant means the corpus itself
 		# collapsed and this sweep is passing over almost nothing.
-		err = _T.assert_gt(checked, PlantCatalog.PLANTS.size(),
+		err = _T.assert_gt(checked, PlantCatalog.PLANTS.size() + Game.refusal_corpus().size(),
 			("the corpus is more than one line per plant (%d lines for %d plants) -- a "
 				+ "near-empty sweep here would pass without measuring anything")
 				% [checked, PlantCatalog.PLANTS.size()])

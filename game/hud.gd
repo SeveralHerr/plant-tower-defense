@@ -3837,6 +3837,24 @@ static func move_window_closed_tip() -> String:
 	return "The move window closed — arm Uproot again to move it."
 
 
+## A refusal rendered as a SENTENCE rather than a headline
+## (plant-tower-defense-n4cx).
+##
+## The two call sites in `Game` used `String.capitalize()`, which in Godot title-cases
+## EVERY word: the player has been reading "Pests Walk There." and "Something Is Already
+## Growing There." for as long as placement refusals have been shown. Measured, not
+## assumed -- a probe printed both forms. Nothing noticed because the message-row budget
+## checks WIDTH and the corpus checks COMPLETENESS, and neither reads a capital letter.
+##
+## `capitalize()` also turns underscores into spaces, which is what it is actually for:
+## making an identifier human. A refusal is already human, so the only thing it needed was
+## its first letter.
+static func as_sentence(text: String) -> String:
+	if text.is_empty():
+		return text
+	return text.substr(0, 1).to_upper() + text.substr(1)
+
+
 static func sole_cover_tip() -> String:
 	return "Ringed road cells are held by this plant alone — lose it and they go unwatched."
 

@@ -1792,6 +1792,44 @@ func would_plant_at(cell: Vector2i) -> bool:
 	return bank.can_afford(selected_plant)
 
 
+## The refusals a player can be SHOWN, as named constants (plant-tower-defense-n4cx).
+##
+## Two of these are returned from BOTH `place_plant` and `commit_move`, and until cycle 168
+## each site wrote its own copy with a comment at `commit_move` claiming they were "the same
+## refusal text". They were, and nothing enforced it -- rewording one in cycle 168 broke the
+## claim in the same edit that read the comment saying it held. A const cannot drift.
+const REFUSAL_ON_GRASS := "pests walk there — try the grass"
+const REFUSAL_ON_ROAD := "this one goes ON the road"
+
+
+## Every refusal string in this file, for the message row's width budget to price.
+##
+## THE REASON THIS EXISTS is a gap that stayed open for the life of the refusals:
+## `test_no_message_clips_for_any_plant_in_the_catalogue` sweeps `Hud.message_corpus()`,
+## and refusals are not in it -- `message_corpus_check` waives the `show_message` call site
+## because these are assembled at runtime, and says in its own NOT COVERED line that it
+## "cannot see a message built at runtime from data (a refusal string...)". So the one class
+## of message the player sees at their most stuck was the one class no width gate priced,
+## and cycle 168 lengthened two of them without any gate that could have objected.
+##
+## Not every entry here is reachable today -- "off the garden" is guarded out by `_click_at`
+## and "not paid for" shakes the plant button instead of printing. They are priced anyway:
+## a refusal that becomes reachable later should not have to remember to be measured.
+static func refusal_corpus() -> Array[String]:
+	return [
+		REFUSAL_ON_GRASS,
+		REFUSAL_ON_ROAD,
+		"the run is over",
+		"off the garden",
+		"something is already growing there",
+		"not paid for",
+		"nothing is selected",
+		"arm the move first",
+		"it is already there",
+		"that is not ground it can take",
+	]
+
+
 ## Places `id` on `cell`, charging the bank. Returns "" on success, or the reason
 ## it refused — the devtools verbs and the tests both read that string.
 func place_plant(id: StringName, cell: Vector2i) -> String:
@@ -1807,9 +1845,15 @@ func place_plant(id: StringName, cell: Vector2i) -> String:
 		# clicked outside the garden is off the garden and not "no pests walk there".
 		if not board.is_inside(cell):
 			return "off the garden"
+		# BOTH NAME THE VERB since cycle 168's tip audit (plant-tower-defense-n4cx).
+		# They used to read "no pests walk there" and "pests walk there" -- facts about
+		# the cell, with nothing the player could do in them, and the first one reads as
+		# GOOD news out of context. A refusal is the one message where naming the action
+		# matters most, because the player has just been stopped and is looking for what
+		# to do instead.
 		if PlantCatalog.on_road(id):
-			return "no pests walk there"
-		return "pests walk there"
+			return REFUSAL_ON_ROAD
+		return REFUSAL_ON_GRASS
 	if _plants.has(cell):
 		return "something is already growing there"
 	# Priced BEFORE the charge, and this order is load-bearing: pay_for_plant()
@@ -2337,10 +2381,11 @@ func commit_move(cell: Vector2i) -> String:
 	if _plants.has(cell):
 		return "something is already growing there"
 	if not board.is_buildable_for(cell, plant.kind):
-		# Same refusal text `place_plant` gives, and for the same reason: whether a
+		# The SAME CONSTANT `place_plant` returns, and for the same reason: whether a
 		# Barrier Bramble may stand here is a fact about the plant and the ground, and a
-		# move must not be a way around it.
-		return "pests walk there" if board.is_path(cell) else "that is not ground it can take"
+		# move must not be a way around it. It was a second copy of the literal until
+		# cycle 168 reworded one of them and left this one behind.
+		return REFUSAL_ON_GRASS if board.is_path(cell) else "that is not ground it can take"
 	var price: int = plant.move_cost()
 	if not bank.spend(price):
 		# Checked by SPENDING rather than by comparing first: `SeedBank.spend` refuses and
@@ -2941,7 +2986,7 @@ func _click_at(screen_pos: Vector2) -> void:
 			hud.shake_plant_button(selected_placed.kind)
 			return
 		if moved != "it is already there":
-			hud.show_message(moved.capitalize() + ".")  # message-corpus-check: ok - move refusals are assembled at runtime, not written here
+			hud.show_message(Hud.as_sentence(moved) + ".")  # message-corpus-check: ok - move refusals are assembled at runtime, not written here
 			return
 		# Clicking the plant's own cell is not a refusal worth a line: it is what a player
 		# does when they change their mind, and the armed window already says how to
@@ -2970,7 +3015,7 @@ func _click_at(screen_pos: Vector2) -> void:
 		# actually names what they were trying to buy.
 		hud.shake_plant_button(selected_plant)
 	elif refusal != "":
-		hud.show_message(refusal.capitalize() + ".")  # message-corpus-check: ok - placement refusals are assembled at runtime, not written here
+		hud.show_message(Hud.as_sentence(refusal) + ".")  # message-corpus-check: ok - placement refusals are assembled at runtime, not written here
 	# The cell under the cursor just changed state — either it now holds a
 	# plant, or the purchase drained the seeds that made it affordable. Either
 	# way the cue on screen is stale until the mouse moves, which it need not.

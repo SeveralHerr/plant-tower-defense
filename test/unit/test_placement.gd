@@ -61,7 +61,10 @@ func test_the_first_corn_cobbler_is_free_and_the_second_is_not() -> String:
 
 func test_nothing_can_be_planted_on_the_road() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
-	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _road(game)), "pests walk there",
+	# The refusal names the verb since cycle 168: it used to be the bare fact "pests walk
+	# there", which told a stopped player nothing about what to do instead.
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, _road(game)),
+		"pests walk there — try the grass",
 		"the road refuses plants, by name")
 	if err == "":
 		err = _T.assert_eq(game.state()["plants"], 0, "and nothing was planted anyway")
