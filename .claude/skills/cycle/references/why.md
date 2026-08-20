@@ -219,6 +219,15 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      of cycle 156's rule that a reasoned EXCLUSION is a claim; together they bracket one
      mistake, which is believing something about a case nobody looked at. The check is
      cheap and the alternative is a bead a later cycle has to disprove.
+   - **WHEN THE PROJECT ALREADY SOLVED THIS PROBLEM SOMEWHERE, THE FIX IS THERE, NOT IN
+     YOUR HEAD.** Cycle 166 spent three cycles of contrast arithmetic arriving at a fix
+     that was documented four lines below the defect: `PIP_RIM_COLOR`'s header says a bare
+     yellow dot dissolves into a grass tile and the rim is what keeps it legible, and the
+     arc was the same yellow with no rim. **Before designing a fix, look at the nearest
+     thing that does the same job and see what treatment it carries** — a rim, a doubled
+     width, a second channel, a derived count. In a codebase that writes its reasoning
+     down, the answer is usually one constant away and comes with the argument attached,
+     which is worth more than an equally good fix you invented.
    - **RUN INDEPENDENT ITEMS IN PARALLEL (asked for directly, cycle 99).** The loop did one
      item at a time for 99 cycles and the queue is 100 deep; most of it does not touch what
      the rest of it touches. Spawn agents for items whose files do not overlap, and say in

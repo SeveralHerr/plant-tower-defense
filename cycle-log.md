@@ -1,4 +1,4 @@
-# Cycle 165
+# Cycle 166
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,29 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 166 taught
+
+**The fix was written in the file, four lines below the defect.** `PIP_RIM_COLOR`'s own
+header says a bare yellow dot "dissolves into both a grass tile and the cob's own sprite,
+and the rim is what keeps it legible" — and the spread arc is the SAME yellow as those
+pips, at a lower alpha, with no rim. Three cycles of contrast arithmetic arrived at a
+diagnosis and a cure that were sitting beside the defect the whole time. Step 5 made it a
+rule: **look at the nearest thing that does the same job and see what treatment it
+carries**, before designing one.
+
+**A colour assertion and a call-site assertion are different claims.** Deleting the rim
+draw left all 1002 tests green — the contrast table asserts `PIP_RIM_COLOR` clears the
+floor, which says nothing about anything drawing with it. The mutation is what found that,
+not the game. Now covered by reading the source with comments blanked, since the paragraph
+above the call names `draw_arc` while explaining why there are two of them.
+
+**And the live pass was the weakest of the three instruments, which the log says out
+loud.** A 34 px arc with a 1.2 px rim did not resolve in any capture, and `sample-pixels`
+cannot separate the arc's rim from the pips' identical ink at the same radius — it answers
+"is this ink in this rect", not "is this ink at this draw". That is
+`plant-tower-defense-0cl8`'s question and now its second sighting. The visual claim rests
+on the file's own precedent, and the ledger records that rather than a look I did not get.
 
 ## What cycle 165 taught
 

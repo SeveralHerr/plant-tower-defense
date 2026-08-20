@@ -218,6 +218,32 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 166 — the fix was written in the file, one mark over
+
+- **The answer to the spread arc dissolving was already documented four lines below it.**
+  `PIP_RIM_COLOR`'s header (`game/corn_cobbler.gd:143`) says a bare yellow dot "dissolves
+  into both a grass tile and the cob's own sprite, and the rim is what keeps it legible" —
+  and the arc is the SAME yellow as those pips, at a lower alpha, with no rim. Three
+  cycles of contrast work found it by arithmetic; the file had the diagnosis and the cure
+  sitting beside the defect the whole time.
+  **The pattern worth chasing: a solved problem next to an unsolved instance of itself.**
+  This project documents its reasoning heavily, which means a fix is often already
+  written down one constant away — and the sweep is not over colours but over PAIRS: two
+  marks that are the same kind of thing where one carries a treatment the other lacks.
+  Rim, doubled width, two-channel escalation, derived count — each of those exists in
+  some places and not others.
+
+- **A colour assertion and a call-site assertion are different claims, and the table only
+  makes the first.** Deleting the rim draw entirely left all 1002 tests green: the
+  contrast table asserts `PIP_RIM_COLOR` clears the floor, which says nothing about
+  anything drawing with it. Now covered by reading the source
+  (`test/unit/test_placement.gd:7153`), which is the same technique
+  `message_corpus_check` uses for the same reason.
+  **The general question: which other rows in that 24-row table assert a colour nothing
+  is proven to draw?** Every one of them is a constant test. The deferred bar and the
+  dead-ground marks have wiring tests elsewhere; the brackets, the rings and the dimmed
+  states may not, and a cue nothing turns on is a failure this project has shipped before.
+
 ### New in cycle 165 — a computed failure is a claim too
 
 - **Two numbers were real and neither described anything, and catching that was most of

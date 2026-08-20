@@ -9249,3 +9249,28 @@ is likely to be at least as productive.
   absence is a choice rather than an omission — this is the third cycle running where the
   right instrument was arithmetic, and saying so is what keeps `overkill` an honest
   category rather than a thing that only appears when a run disappoints.
+
+## 2026-08-20 — Cycle 166: the live pass added the least of the three instruments
+
+- Value: **insufficient** for the live half specifically, and that is the honest word.
+  - Expected: a capture to settle whether a dark rim makes a light arc read heavy.
+  - Got: it did not. The arc is 34 px in radius with a 1.2 px rim, and neither a 200x160
+    crop nor a tighter one resolved the outline. `sample-pixels` over the cob's region
+    reports `darkest r=0.302 g=0.204 b=0.067` — `PIP_RIM_COLOR` composited on grass, so
+    the ink IS in the frame — but the PIPS carry the same ink at the same radius, so it
+    cannot isolate the arc's rim from theirs. It proves presence and nothing finer.
+  - Found: the run's real finding came from a MUTATION, not the game — deleting the rim
+    pass left all 1002 tests green, because the contrast table asserts a colour clears the
+    floor and says nothing about anything drawing with it.
+  - Cheaper: the arithmetic picked the fix and a source-reading test caught the
+    regression. The launch was the weakest of the three and is recorded as such.
+
+- Not a gap, a limit worth naming: **`sample-pixels` answers "is this ink in this rect",
+  not "is this ink at this place".** For a 1.2 px feature adjacent to another mark using
+  the identical colour, that is not enough, and no combination of `--rect` narrowing fixes
+  it because the two marks share a radius. The verb behaved exactly as documented; what
+  was missing was a way to ask about one DRAW rather than one region — which is
+  `plant-tower-defense-0cl8`'s territory ("ask a cell which cues claim it") and is now a
+  second sighting of that need.
+
+- Gap: **no new harness gaps.** [G-143] and [G-144] not re-hit.
