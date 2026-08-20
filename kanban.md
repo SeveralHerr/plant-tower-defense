@@ -218,6 +218,28 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 164 — one colour, two verdicts, decided by alpha alone
+
+- **`SelectionMarker.WARNING_COLOR` is `Color(GardenTheme.DANGER, 0.95)` — the same
+  palette colour the blocked bracket failed with — and it passes.** It clears dirt at
+  0.151 purely because its alpha is 0.95 rather than the bracket's 0.75; at 0.75 it would
+  be 0.119, under the floor (`game/selection_marker.gd:111`). **A colour is not safe or
+  unsafe; a colour AT AN ALPHA ON A GROUND is.** That is why the contrast table prices
+  marks as drawn, and it is worth stating as a rule wherever this project names a palette
+  entry — `GardenTheme`'s own header lists what its floor cannot see, and "the alpha you
+  will draw this at" belongs in that list.
+
+- **Walking a derived list found the one mark nobody would have noticed.**
+  `CornCobbler.SPREAD_ARC_COLOR` clears neither ground (0.064 grass, 0.113 dirt) and is
+  drawn from the muzzle out to `FAN_LENGTH` (`game/corn_cobbler.gd:367`), so it lies
+  across the lane. Nothing prompted the look — it came out of pricing all 25 world-space
+  const colours in one scan, which took one command. **The general form: when a checker
+  gives you a denominator, the cheap move is to walk the whole list once rather than to
+  wait for one member to look wrong.** `gate_aim_check` went 3 of 35 to 8 of 35 as a
+  result, and the two remaining categories it counts — colours declared but never drawn
+  in their own file, and colours reached only through a getter — are the next list worth
+  walking the same way.
+
 ### New in cycle 163 — both grounds are in the middle, so dimming has a direction
 
 - **A palette convention and a legibility floor collided, and the resolution generalises.**

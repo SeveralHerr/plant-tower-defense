@@ -201,6 +201,14 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      **A run that cannot name the question it is for is the run that ends up `overkill`
      in the ledger.** Deciding the split in advance is also what keeps the live pass short:
      one question, one capture.
+   - **WHEN A CHECKER HANDS YOU A DENOMINATOR, WALK THE WHOLE LIST ONCE.** Cycle 164
+     priced all 25 world-space colours against both grounds in a single scan and found a
+     mark that clears NEITHER — the corn's spread arc, lying across the lane at 0.064
+     separation — which nothing had prompted anyone to look at. The cheap move is the
+     sweep, not the wait: a list that a tool already derives costs one command to walk,
+     and the alternative is discovering its members one incident at a time. `gate_aim_check`
+     went 3 of 35 to 8 of 35 as a result, which is the whole reason a coverage ratio is
+     worth printing — it is a number the work MOVES, unlike a pass/fail.
    - **RUN INDEPENDENT ITEMS IN PARALLEL (asked for directly, cycle 99).** The loop did one
      item at a time for 99 cycles and the queue is 100 deep; most of it does not touch what
      the rest of it touches. Spawn agents for items whose files do not overlap, and say in

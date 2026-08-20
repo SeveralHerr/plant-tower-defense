@@ -1,4 +1,4 @@
-# Cycle 163
+# Cycle 164
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,33 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 164 taught
+
+**A colour is not safe or unsafe; a colour AT AN ALPHA ON A GROUND is.**
+`SelectionMarker.WARNING_COLOR` is `Color(GardenTheme.DANGER, 0.95)` — the same palette
+colour the blocked bracket failed with last cycle — and it passes, clearing dirt at 0.151
+purely because its alpha is 0.95 rather than 0.75. At the bracket's alpha it would be
+0.119, under the floor. One colour, two verdicts, decided by alpha alone. That is the
+whole argument for the contrast table pricing marks **as drawn**.
+
+**Walking a derived list found the one mark nobody would have noticed.**
+`CornCobbler.SPREAD_ARC_COLOR` clears neither ground — 0.064 on grass, 0.113 on dirt —
+and is drawn from the muzzle out to `FAN_LENGTH`, so it lies across the lane. Nothing
+prompted the look; it fell out of pricing all 25 world-space colours in one command. Step
+5 made that the rule: **when a checker hands you a denominator, walk the whole list once**,
+because the alternative is discovering its members one incident at a time.
+
+**The triage is the deliverable, and most of it is out-of-scope with reasons.** Fourteen
+colours are drawn on a SPRITE rather than on ground, and `reads_on_ground`'s own header
+says it cannot see a sprite underneath. Four are WASHES rather than marks — the weather
+tints at 0.20 and 0.18, the sundew patch at 0.10, the bomb shadow at 0.22 — and a wash is
+legible as a change to the whole field rather than as a shape against ground, so a mark's
+floor is the wrong question for it. Saying which and why is what stops the next sweep
+re-deriving it.
+
+`gate_aim_check` reads 8 of 35, up from 3. A coverage ratio is worth printing precisely
+because the work moves it, unlike a pass.
 
 ## What cycle 163 taught
 

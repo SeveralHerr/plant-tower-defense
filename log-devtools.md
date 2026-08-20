@@ -9201,3 +9201,27 @@ is likely to be at least as productive.
   than to measuring one.
 
 - Gap: **no new harness gaps.** [G-143] and [G-144] not re-hit.
+
+## 2026-08-20 — Cycle 164: priced 25 colours in one command, no game launched
+
+- Value: **overkill avoided**, and the entry exists to say so. No harness verb ran at all
+  and none should have: the question was "what is the luminance separation of every
+  world-space colour against both grounds at its shipped alpha", which is arithmetic over
+  two const tables.
+  - Expected: a handful of ungated cues, most of them fine.
+  - Got: 25 colours priced in a single scan. Four already gated, four added, two added
+    ungated with their numbers, fourteen out of scope as sprite-drawn, four as washes.
+  - Found: `CornCobbler.SPREAD_ARC_COLOR` clears NEITHER ground and lies across the lane —
+    found by walking the list, not by anything looking wrong. And the sharper one:
+    `WARNING_COLOR` is `Color(GardenTheme.DANGER, 0.95)`, the same palette colour the
+    blocked bracket failed with, clearing dirt at 0.151 purely because of its alpha.
+  - Cheaper: nothing — one command was the whole measurement.
+
+- Worth recording about the HARNESS specifically: `tools/gate_aim_check.py` is now doing
+  the job it was built for. Its ratio moved 3 of 35 to 8 of 35 because of this cycle's
+  work, which is what makes a coverage number worth having — it is watchable. The two
+  categories it counts and this cycle did NOT walk (colours declared but never drawn in
+  their own file, and colours reached only through a getter) are the next list, and they
+  are already derived and printed.
+
+- Gap: **no new harness gaps.** Nothing was asked of the bridge.
