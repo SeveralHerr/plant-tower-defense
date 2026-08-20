@@ -218,6 +218,31 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 165 — a computed failure is a claim too
+
+- **Two numbers were real and neither described anything, and catching that was most of
+  the cycle.** A dimmed WARNING colour fails dirt at 0.075 — and cannot occur, because
+  both call sites refuse it in as many words: "ARMED OUTRANKS HELD"
+  (`game/selection_marker.gd:309`), since a plant one click from destruction must not be
+  dimmed for being the plant being compared against. A dimmed sole-cover ring fails GRASS
+  at 0.103 — and cannot occur either, because those rings mark ROAD cells only
+  (`game/sole_cover_marks.gd:9`). **A computed FAILURE is a claim, and needs its
+  reachability checked before it becomes a finding** — the exact mirror of cycle 156's
+  rule that a reasoned EXCLUSION is a claim. Worth stating as a pair somewhere both are
+  read, because the two failure modes bracket the same mistake: believing an argument
+  about a case nobody checked exists.
+
+- **`held_ink` halves the alpha, and separation scales by exactly alpha, so every
+  held-over mark loses half its contrast.** Nobody had priced that
+  (`game/selection_marker.gd:80` is the constant). The reachable states clear, but the
+  held selection marker on grass is **0.124 against a floor of 0.12** — the tightest pair
+  in a table that now has 22 rows, and a margin that wants a test rather than a memory.
+  **The generalisation: every convention that produces a colour — lighten, darken, halve
+  the alpha, tint — is a transformation whose output nobody prices unless a table forces
+  it.** This project now has three such conventions found in three cycles
+  (`lightened` in 163, `held_ink` here, and `Color(base, alpha)` re-alpha-ing in 164);
+  the question is whether there is a fourth, and where the list of them lives.
+
 ### New in cycle 164 — one colour, two verdicts, decided by alpha alone
 
 - **`SelectionMarker.WARNING_COLOR` is `Color(GardenTheme.DANGER, 0.95)` — the same

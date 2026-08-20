@@ -1,4 +1,4 @@
-# Cycle 164
+# Cycle 165
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,36 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 165 taught
+
+**Two numbers were real and neither described anything.** Pricing the dimmed marks gave
+two failures under the floor: a dimmed WARNING colour at 0.075 on dirt, and a dimmed
+sole-cover ring at 0.103 on grass. Both arithmetic correct. Both **unreachable** — the
+first is refused at both its call sites in as many words ("ARMED OUTRANKS HELD", because a
+plant one click from destruction must not be dimmed for being the plant being compared
+against), and the second prices a ring that marks ROAD cells only against grass. What
+caught them was reading the call site and the class header, not computing harder.
+
+Step 5 made it a rule: **a computed FAILURE is a claim, and its reachability is part of
+it.** A number out of a table looks like evidence in a way an argument does not, which is
+exactly why it needs the same check. It is the mirror of cycle 156's rule about a reasoned
+EXCLUSION, and together they bracket one mistake — believing something about a case nobody
+looked at, once by arguing it away and once by computing it.
+
+**The one real find was a CONVENTION rather than a colour.** `held_ink` halves the alpha,
+separation scales by exactly alpha, so every held-over mark loses half its contrast and
+nobody had priced it. The reachable states clear, but the held selection marker on grass is
+**0.124 against a floor of 0.12** — the tightest pair in a table that now has 22 rows.
+
+**That is three cycles running, each finding a colour transformation nobody had priced** —
+`lightened` in 163, re-alpha-ing a palette entry in 164, `held_ink` here. Filed the
+generalisation: enumerate the TRANSFORMATIONS, not the colours, and write the list where
+someone adding a fourth will read it.
+
+Nothing was asked of the bridge for the third cycle running, and the log says so —
+`overkill` stays an honest category only if it is recorded when the cheap instrument was
+the right one, not only when a run disappoints.
 
 ## What cycle 164 taught
 

@@ -209,6 +209,16 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      and the alternative is discovering its members one incident at a time. `gate_aim_check`
      went 3 of 35 to 8 of 35 as a result, which is the whole reason a coverage ratio is
      worth printing — it is a number the work MOVES, unlike a pass/fail.
+   - **A COMPUTED FAILURE IS A CLAIM, AND ITS REACHABILITY IS PART OF IT.** Cycle 165
+     priced a set of dimmed marks and got two numbers under the floor. Both were correct
+     arithmetic and neither described anything: one combination is refused at both its
+     call sites in as many words, and the other prices a road-only mark against grass. A
+     number that comes out of a table looks like evidence in a way an argument does not,
+     which is exactly why it needs the same check — **before a failing number becomes a
+     finding, go and read whether the state it describes can happen.** This is the mirror
+     of cycle 156's rule that a reasoned EXCLUSION is a claim; together they bracket one
+     mistake, which is believing something about a case nobody looked at. The check is
+     cheap and the alternative is a bead a later cycle has to disprove.
    - **RUN INDEPENDENT ITEMS IN PARALLEL (asked for directly, cycle 99).** The loop did one
      item at a time for 99 cycles and the queue is 100 deep; most of it does not touch what
      the rest of it touches. Spawn agents for items whose files do not overlap, and say in

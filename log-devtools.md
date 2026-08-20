@@ -9225,3 +9225,27 @@ is likely to be at least as productive.
   are already derived and printed.
 
 - Gap: **no new harness gaps.** Nothing was asked of the bridge.
+
+## 2026-08-20 — Cycle 165: two computed failures that could not happen
+
+- Value: **overkill avoided** again, and deliberately. No harness verb ran; the question
+  was arithmetic over const tables plus reading two call sites.
+  - Expected: the remaining two `gate_aim_check` lists to hold something deletable or
+    something failing.
+  - Got: nothing deletable — all seven declared-but-undrawn colours are consumed — and
+    the one real find was a CONVENTION rather than a colour: `SelectionMarker.held_ink`
+    halves the alpha, separation scales by exactly alpha, so every held-over mark loses
+    half its contrast and nobody had priced it.
+  - Found: **two computed failures that described nothing.** A dimmed WARNING fails dirt
+    at 0.075 and cannot occur ("ARMED OUTRANKS HELD" at both call sites); a dimmed
+    sole-cover ring fails grass at 0.103 and cannot occur (road cells only). Both numbers
+    were correct. Neither was a finding. What caught them was READING the call site and
+    the class header, not computing harder.
+  - Cheaper: the scan was one command and the reachability checks were two greps. The
+    expensive version of this cycle would have been filing two beads and having a later
+    cycle disprove them.
+
+- Gap: **no new harness gaps, and nothing was asked of the bridge.** Recording it so the
+  absence is a choice rather than an omission — this is the third cycle running where the
+  right instrument was arithmetic, and saying so is what keeps `overkill` an honest
+  category rather than a thing that only appears when a run disappoints.
