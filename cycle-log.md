@@ -1,4 +1,4 @@
-# Cycle 142
+# Cycle 143
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,49 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 143 taught
+
+**A bead can name the right symptom and the wrong axis, and answering it faithfully ships
+nothing.** `-h5w6` framed moving a plant as a PRICE question — free, full, or
+refund-minus-cost as "the middle" — and refund-minus-cost is four seeds on a healthy Corn
+Cobbler, which is the free option with extra arithmetic. The barrier was never seeds:
+`commit_uproot` frees the plant, so a move destroyed the level, and `uproot_refund` scales
+the base cost. The cost of moving scaled with exactly how much the player cared about the
+plant. **A bead that offers three options has already chosen the axis, and the axis is the
+thing to check first** — the giveaway here was arithmetic the bead never did.
+
+**A clock grew a second job without anyone deciding it should.**
+`UPROOT_CONFIRM_SECONDS` is 4.0, tuned when arming meant "are you sure" — a destructive
+confirm, which wants to be short. This cycle made the same window the gesture for choosing
+a destination, which wants to be long, while the move tip literally asks the player to
+hover and compare. Lose it and the move click silently buys a second plant at full price.
+The code is right and every guard behaved as designed; the interaction is not. **When a
+feature reuses an existing gesture because "every piece already exists", check what the
+pieces were SIZED for.**
+
+**The launch found it by being SLOW, which is the one thing a test never is.** Four bridge
+round-trips ate the window while I read output. No headless test would ever lose it,
+because a test's clock only moves when it says so. Worth keeping as a deliberate technique:
+a paused tree proves the feature works, an unpaused unhurried one proves the WINDOW does.
+And this is the second cycle running where the finding came from the PREDICATE decaying
+rather than the value — cycle 141 read a Chomp's pivot while `is_busy` flipped underneath.
+
+**Mutation is what proved the test pins the right thing.** Reimplementing `commit_move` as
+uproot-and-rebuy-at-a-discount — the feature the bead actually asked for — fails the
+identity assertion on the instance id. A test checking only the price would have passed it,
+and would have been the wrong test written confidently.
+
+**Step 5: I over-applied cycle 141's own escape hatch.** Having a sanctioned heredoc
+pattern for running Python made a heredoc feel like the tool for delivering a 180-line test
+file; bash rejected the whole command. `why.md` now says the hatch legitimises the
+interpreter, never the payload — `Write` the file, then `cat >>` it, which is what the rule
+said in the first place.
+
+**Three invented bead ids in two cycles.** I wrote `-9dq7`, then `-3b0j`, then `-yfzs`,
+each caught only by looking one up for an unrelated reason. `-xnmz` (nothing checks that a
+bead id in prose names a real bead) went to P1 on the strength of it. Cross-references are
+how this project chains evidence, and an invented link reads exactly like a real one.
 
 ## What cycle 142 taught
 

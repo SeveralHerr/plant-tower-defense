@@ -192,6 +192,15 @@ waiting on the user, and how to restart. It is what a human reads without runnin
 
      Same for `bd`: `BID="$b" python - <<'PY'`. If you find yourself typing an unquoted
      heredoc delimiter, that is the signal — not a licence.
+     **AND THAT ESCAPE HATCH IS FOR RUNNING PYTHON, NOT FOR WRITING GDSCRIPT.** Cycle 143
+     over-applied it one step: having a sanctioned heredoc pattern made a heredoc feel like
+     the tool for delivering a 180-line test file, and bash rejected the whole command with
+     `unexpected EOF while looking for matching` — a failure that at least announced itself,
+     which is the good version. The bad version is the one the rule above already documents:
+     it *works* and eats something. **`Write` the file, then `cat >>` it.** Two commands,
+     no shell parsing of the content at all, and it is what the rule says in the first
+     place: Edit/Write for code, always. The env-var pattern legitimises the *interpreter*,
+     never the payload.
      **This includes a Python script in a heredoc that writes the file** — that is the same
      shell, plus a second escaping layer, and it is the shape the rule keeps getting broken
      in because it is what you reach for **when `Edit`'s exact match fails**. Cycle 97 hit a

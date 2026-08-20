@@ -8475,3 +8475,41 @@ status rather than rewriting the entries that recorded these as open.
   says — `userstate: restored 1 file(s) and removed 0 created during the run`. Worth
   recording as a fix that worked rather than as a gap: the flag was already there and the
   only thing missing was the reflex.
+
+## 2026-08-20 — moving a plant keeps the plant (plant-tower-defense-h5w6)
+
+- Value: **warranted** — the launch found a real, player-facing defect that no headless
+  test could have found, and found it by being SLOW.
+  - Expected: that clicking an empty cell while armed MOVES the plant rather than buying a
+    second one. The suite calls `commit_move` directly; nothing in it exercises
+    `_click_at`, where the new branch was inserted ahead of two existing ones
+    (select-a-plant, place-a-plant) and where an ordering mistake would be invisible to
+    every headless assertion.
+  - Got: both answers, and the second was the valuable one. With the tree paused and
+    `uproot_armed()` asserted true in the same breath as the click, the SAME instance
+    `@Node2D@129` moved `(1,0)` → `(5,0)`, kept `level=2`, and seeds went `537 → 529` —
+    exactly the `move_cost()` of 8 the node itself reported. With the window allowed to
+    lapse, the identical click **bought a second level-1 plant at full price, silently**.
+  - Found: **`UPROOT_CONFIRM_SECONDS` is 4.0 and now has two jobs.** It was tuned as a
+    destructive confirm, which wants to be short; cycle 143 made it the gesture for
+    choosing a destination, which wants to be long, and the move tip literally asks the
+    player to hover and compare. I lost it to four bridge round-trips — which is precisely
+    what a hesitating player is — and ended with two plants and no message. The code is
+    correct: the branch is gated on `uproot_armed()` and every guard behaved as designed.
+    The interaction is not. Filed P1.
+    Second finding: `read-a-moving-value`'s trap for the second cycle running, and again in
+    the PREDICATE rather than the value. I armed, ran four commands, clicked, and read the
+    result as a failure of my own branch. The fix both times is to freeze the tree and
+    assert the predicate in the same breath as the action.
+  - Cheaper: nothing. The headless suite cannot reach `_click_at` at all, and the
+    window-expiry finding required a driver slow enough to lose the window — which no test
+    would ever be, because a test's clock only moves when it says so.
+
+- **A technique worth keeping, not a mishap.** Drive a time-gated interaction at human
+  speed once, deliberately, before assuming the gate is generous enough. A paused tree
+  proves the feature works; an unpaused, unhurried one proves the WINDOW does. Two cycles
+  running, the thing worth knowing came from the clock being allowed to run.
+
+- Gap: **no new gaps this turn.** `launch --snapshot-userstate` was used again and again
+  reported `restored 1 file(s)`; the reflex from cycle 141 is holding. `--about` was not
+  needed (the run's subject was one file plus its tests), so [G-140] gets no new sighting.

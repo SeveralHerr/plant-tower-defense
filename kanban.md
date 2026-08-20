@@ -218,6 +218,43 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 143 — a bead asked for the wrong thing, and the window grew a second job
+
+- **The bead asked for a PRICE and the defect was a DESTRUCTION, and answering the asked
+  question would have shipped nothing.** `plant-tower-defense-h5w6` framed moving a plant
+  as free / full / refund-minus-cost, calling the third "the middle". Refund-minus-cost is
+  four seeds on a healthy Corn Cobbler — the free option with extra arithmetic. What made
+  relocating prohibitive was that `Game.commit_uproot` (`game/game.gd:2090`) frees the
+  plant, so a move destroyed the level, while `Plant.uproot_refund`
+  (`game/plant.gd:819-822`) scales the BASE cost: a fully climbed cob cost the rebuy plus
+  every upgrade seed forfeited, AND the climb again. **The cost of moving scaled with
+  exactly how much the player cared about the plant** — the plants worth moving were the
+  ones it was prohibitive to move. The bead's diagnosis of the symptom was right and its
+  diagnosis of the cause was wrong, and the giveaway was arithmetic it never did. Worth
+  generalising: a bead that proposes three options has usually already decided the axis,
+  and the axis is the thing to check first.
+
+- **A clock can grow a second job without anyone deciding it should.**
+  `UPROOT_CONFIRM_SECONDS` (`game/game.gd:24`) is 4.0, tuned when arming meant only "are
+  you sure" — a destructive confirm, which wants to be short. Cycle 143 made the same
+  window the gesture for choosing a destination, which wants to be long, and the move tip
+  (`Hud.uproot_armed_message`, "Hover to compare a new spot") literally asks the player to
+  stop and compare. Lose the window and the move click falls through to `place_plant` and
+  silently buys a second plant. Filed P1 as `plant-tower-defense-b9bl`. **The general
+  shape: when a feature reuses an existing gesture because "every piece already exists",
+  check what the pieces were SIZED for.** Reuse is usually right — arming already selected
+  the plant, started the clock and turned on the destination preview — and the thing it
+  quietly imports is a tuning decision made for a different purpose.
+
+- **The launch found it because the driver was SLOW, which is the one thing a test never
+  is.** Four bridge round-trips ate the window while I read the output. No headless test
+  would ever have lost it, because a test's clock only moves when it says so — and this is
+  the second cycle running where the finding came from the PREDICATE decaying rather than
+  the value (cycle 141 read a Chomp's pivot while `is_busy` flipped underneath). Worth
+  keeping as a runtime technique rather than a mishap: **drive a time-gated interaction at
+  human speed once, deliberately, before assuming the gate is generous enough.** A paused
+  tree proves the feature works; an unpaused, unhurried one proves the window does.
+
 ### New in cycle 142 — the road became a parameter, and a hang was one typo away
 
 - **The road walker would have hung the game on a diagonal, and nothing said so until the
