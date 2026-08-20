@@ -88,9 +88,17 @@ const SHOT_INTERVAL: float = 0.45
 ## they set the whole tempo: a spent head is armed again after
 ## REGROW_DELAY + VOLLEY_MIN_FLUFF * FLUFF_REGROW_SECONDS = 3.6s, and completely
 ## full after REGROW_DELAY + FLUFF_MAX * FLUFF_REGROW_SECONDS = 4.9s. Both are
-## comfortably inside Game.PREP_SECONDS (18), so a Dandelion is always at a full
-## head when a wave arrives — the burst is banked during the calm and spent in the
+## inside the prep gap on EVERY difficulty profile — including `harsh`, whose nine
+## seconds is the tightest gap `Game.DIFFICULTIES` offers — so a Dandelion is always at
+## a full head when a wave arrives. The burst is banked during the calm and spent in the
 ## fight, which is the shape the whole plant is built around.
+##
+## THAT USED TO READ "comfortably inside Game.PREP_SECONDS (18)", and 18 stopped being
+## the only answer in cycle 155. The claim survived the change with room to spare, but it
+## survived by luck rather than by anything checking, so
+## `test_every_prep_relative_claim_survives_the_tightest_profile` now prices it against
+## the SHORTEST prep in the table. A fourth profile with a gap under 4.9 s fails there
+## instead of silently making this paragraph false.
 const REGROW_DELAY: float = 1.0
 const FLUFF_REGROW_SECONDS: float = 1.3
 

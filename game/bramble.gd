@@ -124,9 +124,13 @@ const LEVELS: Array[Dictionary] = [
 ## Read against the two clocks that already exist. `Plant.MAX_HEALTH / Pest.EAT_DPS`
 ## puts an ordinary plant at 2.86s under one mouth; this makes a Bramble 11.4s. Against
 ## the `WaveDirector`'s pressure that is the useful band: one pest is held for most of a
-## prep gap (`Game.PREP_SECONDS` is 18), and a pack of four eating it together is
-## through in 2.9s — so a Bramble buys a lot against a trickle and little against a
-## crush, which is the shape a wall should have. A wall that held a full wave would
+## prep gap (`Game.PREP_SECONDS` is 18, and it is the STANDARD profile's 18 since cycle
+## 155), and a pack of four eating it together is through in 2.9s — so a Bramble buys a
+## lot against a trickle and little against a crush, which is the shape a wall should
+## have. On `harsh`, whose gap is nine seconds, 11.4s is longer than the whole gap and
+## the reading flips: one pest is held for MORE than a prep window. That is a shift in
+## what the wall means rather than a defect, and it is recorded here because the number
+## above is now a comparison against one profile out of three. A wall that held a full wave would
 ## delete the lane rather than lengthen it.
 const BITE_RESISTANCE: float = 0.25
 

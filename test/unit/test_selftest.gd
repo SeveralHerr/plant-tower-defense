@@ -20521,6 +20521,66 @@ func test_the_post_mortem_counts_beds_against_the_beds_the_run_started_with() ->
 	return err
 
 
+## Every prep-relative claim in the codebase, priced against the SHORTEST profile
+## (plant-tower-defense-tczt).
+##
+## The sweep that produced this found no defects in `game/` and that is the honest
+## headline: the running code reads run STATE rather than the constants, so the prep bar
+## divides `prep_left` by `prep_total` and both are per-run, and the only two sites that
+## computed against a const were repaired in cycle 155 as part of shipping the profiles.
+##
+## WHAT THE SWEEP DID FIND IS PROSE. Three headers priced a design claim against
+## "PREP_SECONDS is 18", which stopped being the only answer the moment there were three
+## profiles. `Dandelion`'s is the one that is an INVARIANT rather than a reading — "a
+## Dandelion is always at a full head when a wave arrives" is either true or the plant is
+## a different plant — and it survived the change by luck, with no gate between the claim
+## and the table. This is that gate.
+##
+## PRICED AGAINST THE MINIMUM OF THE TABLE, not against `harsh` by name. A fourth profile
+## with a shorter gap is exactly the change that would silently falsify the header, and
+## naming `harsh` here would leave this test passing while it did.
+func test_every_prep_relative_claim_survives_the_tightest_profile() -> String:
+	var shortest: float = 0.0
+	var tightest: StringName = &""
+	for name: StringName in Game.DIFFICULTY_ORDER:
+		var gap: float = float(Game.DIFFICULTIES[name]["prep_seconds"])
+		if shortest <= 0.0 or gap < shortest:
+			shortest = gap
+			tightest = name
+	var err: String = _T.assert_gt(shortest, 0.0,
+		"some profile has the shortest prep gap -- a zero here means the table is empty "
+			+ "and every assertion below would pass over nothing")
+	if err != "":
+		return err
+
+	# THE INVARIANT. Dandelion's own header says the burst is banked during the calm and
+	# spent in the fight, and the whole plant is built around that.
+	var full_head: float = (Dandelion.REGROW_DELAY
+		+ float(Dandelion.FLUFF_MAX) * Dandelion.FLUFF_REGROW_SECONDS)
+	err = _T.assert_true(full_head <= shortest,
+		("a Dandelion refills a full head (%.1fs) inside the tightest prep gap in the "
+			+ "table (%s, %.1fs). If this failed because a profile got shorter, the "
+			+ "plant is now a different plant on it -- dandelion.gd's header is the "
+			+ "claim that just became false")
+			% [full_head, tightest, shortest])
+	if err == "":
+		# THE URGENCY WINDOW is deliberately ABSOLUTE, like MIN_HUSK_LIFETIME: two seconds
+		# is a reaction time, not a difficulty knob, so it does not scale with the gap.
+		# What it must not become is the WHOLE gap -- a strip that is urgent from the
+		# moment it appears is a strip that says nothing by being there, which is the
+		# exact failure _refresh_prep_bar's own header describes for visibility.
+		err = _T.assert_gt(shortest, Hud.PREP_BAR_URGENT_SECONDS * 3.0,
+			("the urgency window (%.1fs) is a fraction of the tightest gap (%.1fs), not "
+				+ "most of it -- at or under three times it, the strip is urgent for the "
+				+ "whole countdown and stops being a warning")
+				% [Hud.PREP_BAR_URGENT_SECONDS, shortest])
+	if err == "":
+		# The denominator, so a table that lost its rows cannot pass this in silence.
+		err = _T.assert_gt(Game.DIFFICULTIES.size(), 1,
+			"and there is more than one profile to have a tightest member of")
+	return err
+
+
 ## The sixth one-shot names the first cue a player ever meets (plant-tower-defense-bkss).
 ##
 ## Unlike the defer tip above there is NO minimum-guns gate, and that asymmetry is the
