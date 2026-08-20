@@ -164,6 +164,15 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      shrugging off a pass you were surprised by — and the surprise is the whole signal,
      because it means your model of what the gates cover is wrong, which is worth more
      than the bug that revealed it.
+   - **A NEGATIVE RESULT GOES NEXT TO THE THING THAT WILL TEMPT THE NEXT PERSON, not
+     next to the attempt.** Cycle 160 measured that Godot's own unsafe-method warnings do
+     not close a gate blind spot, because lint's compile check is `load()`-based. Written
+     into the closed bead, that is invisible — nobody re-reads a closed bead before trying
+     something. Written only into `log-devtools.md`, it is chronological, and nobody greps
+     a log for "did we already try this". It went into `check_all.py`'s own `NOT COVERED`
+     instead, which is the sentence printed directly under the clean count that invites
+     the wrong conclusion. **Ask where the next person will be standing when they have the
+     idea, and put it there.**
    - **RUN INDEPENDENT ITEMS IN PARALLEL (asked for directly, cycle 99).** The loop did one
      item at a time for 99 cycles and the queue is 100 deep; most of it does not touch what
      the rest of it touches. Spawn agents for items whose files do not overlap, and say in

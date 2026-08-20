@@ -1,4 +1,4 @@
-# Cycle 159
+# Cycle 160
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,32 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 160 taught
+
+**The cheap fix does not work, and knowing that is the deliverable.** Godot's own
+`gdscript/warnings/unsafe_method_access` in `project.godot` changes nothing, because
+`lint_project.gd`'s compile check is `load()`-based: it asks whether the script loaded and
+whether it can instantiate, and a script carrying `x.no_such_method()` does both. The
+analyzer emits the warning; nothing catches it. **So the fix is not a flag, it is a change
+to how lint compiles** — capture the OUTPUT rather than inspect the RESULT, which is what
+`import_check.py` already does one file over. The `--check-only` workaround is unavailable
+too, for the autoload reason `CLAUDE.md` documents and this project hit for the first time.
+
+**Where a negative result lives decides whether it is worth anything.** This one went into
+`check_all.py`'s own `NOT COVERED` — the sentence printed directly under the "22 of 22
+clean" that invites the wrong conclusion. Not the closed bead, because nobody re-reads a
+closed bead before trying something; not only the log, because it is chronological and
+nobody greps a log for "did we already try this". Step 5 made that the rule: **ask where
+the next person will be standing when they have the idea, and put it there.**
+
+**And the shape of the blind spot is now written down where it is read.** Every gate this
+project owns asks about NAMES — does this identifier exist, is it mentioned, is it named
+by a test. Not one asks whether a CALL is well-formed. That is not an accident and it is
+defensible; what was not defensible was `name_check`'s own `NOT COVERED` naming type
+inference and pointing at lint as the backstop, when lint does not catch it either. Filed
+upstream as **gh#64** — the second issue this session against that repo, weighed against
+the one-per-session rule rather than ignoring it.
 
 ## What cycle 159 taught
 

@@ -218,6 +218,30 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 160 — a negative result needs a home the next attempt will open
+
+- **The obvious fix for the missing-method blind spot does not work, and the reason is
+  structural.** Godot's own `gdscript/warnings/unsafe_method_access` in `project.godot`
+  changes nothing, because `lint_project.gd`'s compile check
+  (`tools/lint_project.gd:693`) is `load()`-based: it asks whether the script loaded and
+  whether it can instantiate, and a script carrying `x.no_such_method()` does both. The
+  warning is emitted by the analyzer and never reaches an exit code.
+  **So the fix is not a flag, it is a change to how lint compiles** — capture the
+  analyzer's OUTPUT rather than inspect the load RESULT. That is a bigger piece of work
+  and belongs upstream, and the useful thing this cycle produced is the knowledge that
+  the one-line version is already spent.
+
+- **Where a negative result goes decides whether it is worth anything.** This one went
+  into `tools/check_all.py`'s own `NOT COVERED`, which is the sentence a reader sees
+  immediately after the "22 of 22 clean" that invites the wrong conclusion — not into the
+  bead (closed, and nobody re-reads a closed bead before trying something) and not only
+  into `log-devtools.md` (chronological, and nobody greps it for "did we try this"). The
+  general rule worth adopting: **a "we tried this and it did not work" belongs next to
+  the thing that will tempt the next person, not next to the attempt.** Worth a pass over
+  the other closed-as-refused beads in this repo — `ix76`'s rot floor, `-7bhb`'s husk
+  hold, `-xfbo`'s legend page — asking whether each one's reasoning is readable from the
+  code it is about, or only from `bd`.
+
 ### New in cycle 159 — a method that does not exist passes every gate
 
 - **`game.run_over()` — a call to a method `Game` does not have — is clean to
