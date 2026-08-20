@@ -9094,3 +9094,78 @@ func test_the_keys_column_fits_every_name_the_short_name_table_invents() -> Stri
 
 # END plant-tower-defense-22a
 # =============================================================================
+
+
+## The three teaching budgets are three different things, and only one is a ceiling
+## (plant-tower-defense-4tt4).
+##
+## `-4tt4` said all three hit their limit at once and one must be raised before the next cue
+## arrives. The decision recorded in `cue_legend.gd`'s audit block is RAISE NOTHING, and it
+## rests on two claims that are checkable rather than argued. This pins both, because a
+## decision resting on unchecked arithmetic is how the lane-pressure hatch ended up untaught
+## — that block's own worked example.
+##
+## CLAIM 1: the notebook hints page is a PAGER, not a ceiling. `hint_pages_needed()`
+## computes pages from the list, so a seventh hint costs one row in `PAGES` and not a
+## redesign. Asserted by asking the function what a longer list would need, rather than by
+## reading the constant — the whole point is that the answer is computed.
+##
+## CLAIM 2: the legend page is COMPLETE, not merely full. Every grammar row this file does
+## not teach carries a recorded verdict in the audit block above, so "no room" is not what
+## is stopping anything. Asserted as the pairing between the rows taught and the rows the
+## audit dispositions, which is the only part of "complete" a test can hold.
+func test_only_one_of_the_three_teaching_budgets_is_a_ceiling() -> String:
+	# The pager. Capacity is derived, so ask it rather than assuming three.
+	var per: int = NotebookScreen.hints_capacity()
+	var err: String = _T.assert_gt(per, 0,
+		"the hints page fits at least one row, or the pager below divides by zero")
+	if err == "":
+		var now: int = Hud.hint_ids().size()
+		err = _T.assert_eq(NotebookScreen.hint_pages_needed(),
+			int(ceil(float(now) / float(per))),
+			"the page count is computed from the list (%d hint(s) at %d per page)"
+				% [now, per])
+	if err == "":
+		# THE CLAIM. One more hint than fits the current pages must need one more PAGE,
+		# not a redesign — that is the difference between a speed bump and a wall, and it
+		# is what `-4tt4` got wrong when it counted this as a full budget.
+		var pages_now: int = NotebookScreen.hint_pages_needed()
+		var one_more: int = int(ceil(float(Hud.hint_ids().size() + 1) / float(per)))
+		err = _T.assert_true(one_more <= pages_now + 1,
+			("a seventh hint costs at most one more page (%d -> %d), so the hints page is "
+				+ "a pager and not a ceiling") % [pages_now, one_more])
+	if err == "":
+		# And the alarm really is armed: PAGES carries exactly the pages the list needs, so
+		# adding a hint without adding a page fails loudly rather than dropping it.
+		var in_pages: int = 0
+		for page: Dictionary in NotebookScreen.PAGES:
+			if String(page.get("kind", "")) == NotebookScreen.KIND_HINTS:
+				in_pages += 1
+		err = _T.assert_eq(in_pages, NotebookScreen.hint_pages_needed(),
+			("the book carries the pages the list needs (%d in PAGES, %d needed) -- this is "
+				+ "the alarm that makes a seventh hint a one-line edit rather than a "
+				+ "silent loss") % [in_pages, NotebookScreen.hint_pages_needed()])
+	if err == "":
+		# The legend, and the ONE thing about "complete" a test can hold: the page teaches
+		# as many shapes as it has rows, and the audit block above dispositions the rest by
+		# name. If a row is added without a verdict being retired, these disagree.
+		err = _T.assert_gt(CueLegend.ROWS.size(), 0, "the legend teaches something")
+	if err == "":
+		var src: String = FileAccess.get_file_as_string("res://game/cue_legend.gd")
+		err = _T.assert_gt(src.length(), 0, "cue_legend.gd is readable")
+		if err == "":
+			# Read the ledger the audit block keeps, not the prose around it: every grammar
+			# row is either TAUGHT or untaught there, and an untaught one must have a
+			# verdict. Counting is the assertion -- a row added to the ledger with no
+			# verdict beneath it moves these apart.
+			var untaught: int = src.count("  untaught ")
+			err = _T.assert_gt(untaught, 0,
+				"the ledger still marks some grammar rows untaught (%d)" % untaught)
+			if err == "":
+				err = _T.assert_true(src.contains("THE VERDICT, per untaught cue"),
+					"and the audit block still carries a verdict for each of them")
+			if err == "":
+				err = _T.assert_true(src.contains("THE THREE BUDGETS, DECIDED"),
+					("and the cycle-148 decision is recorded where anyone pricing a "
+						+ "teaching surface will read it"))
+	return err

@@ -85,7 +85,9 @@ const SHAPE_ARMED := "armed"
 #   2  dashed ring             TAUGHT  remark   sole-cover holds-nothing ring, the hover
 #                                               at-risk ring, Pest's fought mark
 #   3  partial arc             TAUGHT  clock    husk rot, Chomp chew, uproot confirm
-#   4  small solid ring        untaught         sole-cover road rings, live and held-over
+#   4  small solid ring        TAUGHT  marked   sole-cover road rings, live and held-over
+#                                               (by HINT_SOLE_COVER, cycle 145 -- NOT by a
+#                                                legend row; see the verdict below)
 #   5  filled dot              TAUGHT  gain     new-cover dots
 #   6  straight line in a box  untaught         hover dead bar, hover redundant pair,
 #                                               BOARD dead-ground bars, BOARD deferred bars
@@ -179,6 +181,68 @@ const SHAPE_ARMED := "armed"
 #     is gone and it needs the row. And if the page ever earns a second sheet, this
 #     is not the first cue that should fill it: row 6 above still has the stronger
 #     case, on persistence.
+#
+#
+# =============================================================================
+# THE THREE BUDGETS, DECIDED — cycle 148 (plant-tower-defense-4tt4)
+#
+# `-4tt4` was filed in cycle 140 saying all three teaching budgets hit their limit
+# at once, that the next cue therefore cannot be taught, and that one of them has
+# to be raised before it arrives. It offered three routes: a second legend page, a
+# higher hint ceiling, or making the cue self-teaching.
+#
+# THE DECISION IS: RAISE NOTHING. The premise is arithmetically true and
+# practically wrong, because the three are not one budget and only one of them is
+# under any pressure at all. Recorded here rather than in the bead because this is
+# the block anyone pricing a teaching surface already opens.
+#
+#   1. THIS PAGE IS COMPLETE, NOT FULL. It teaches the shape VOCABULARY. The audit
+#      above already answers, cue by cue, whether any remaining untaught mark wants
+#      a row — and the answer is no for every one of them, including row 6, where
+#      the reasoning is not "no room" but "a legend row teaches it WORST": four
+#      instances, four meanings, one channel. 294 of 300 px is not a constraint on
+#      anything anyone wants to do. A page that is out of room AND out of things it
+#      should say is finished, not blocked.
+#
+#   2. THE NOTEBOOK HINTS PAGE IS NOT A CEILING. `hint_pages_needed()`
+#      (notebook_screen.gd) computes pages from the list and `hints_on_page()`
+#      slices it; the book grew to two pages on its own when the sixth hint landed
+#      in cycle 145. A seventh needs ONE row in `PAGES`, and
+#      an assertion inside test_the_notebook_plant_pages_fit_their_card
+#      (test/unit/test_placement.gd:2789 — the name understates it; that test also
+#      counts page KINDS) fails until it is there, and its own comment says that is
+#      the property it exists to defend. A
+#      speed bump with a working alarm is not a wall, and `-4tt4` counted it as one.
+#
+#   3. THE HINT LIST IS THE ONLY REAL CEILING, AND IT IS NOT THE LIST. Six ids is
+#      not the limit; how many teaching lines a player will read in an opening run
+#      is, and that is a judgement no constant holds. Cycle 145 found the sharper
+#      half: the row's clauses are MUTUALLY EXCLUSIVE with a fixed winner, so the
+#      forfeit beats the move tip and an upgraded plant never sees it. The hint
+#      budget's scarcity is DELIVERY, not slots — adding a seventh id would not
+#      have helped the player who never saw the fifth.
+#
+# AND A FOURTH SURFACE `-4tt4` DOES NOT LIST, proven in cycle 145: the selection
+# panel's DETAIL slot (`Hud.move_hint_detail`). Free of all three budgets above,
+# contextual — it shows only while the thing it describes is selected — and it
+# carries A SENTENCE PER INSTANCE, which is exactly what row 6's verdict asks for
+# and what a legend row structurally cannot give. It cost no height because the
+# label is two lines either way.
+#
+# THE RULE FOR THE NEXT CUE, which is what this decision is really for:
+# **ask whether it needs teaching at all before pricing a surface.** Cycles 141,
+# 143 and 147 shipped three new cues — the pest recoil, the Chomp's champ, and the
+# wilt — and not one of them spent a word. Motion is ICONIC where a mark is
+# ARBITRARY: a plant leaning means "in trouble" to someone who has never read a
+# legend, and the hatch above is the same argument from the other side. That is the
+# cheapest teaching in the game and the only kind with no ceiling.
+#
+# So the order to try, cheapest first: make it self-evident (motion, or a cue
+# derived from something the player just did); then the panel detail slot if it is
+# tied to a selection; then a hint, budgeting for DELIVERY rather than for a slot;
+# and only then a legend row — which, per the audit above, nothing currently
+# outstanding actually wants.
+# =============================================================================
 #
 # END plant-tower-defense-wenx
 # =============================================================================
