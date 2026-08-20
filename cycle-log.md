@@ -1,4 +1,4 @@
-# Cycle 167
+# Cycle 168
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,41 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 168 taught
+
+**The audit found nothing where it was told to look and three defects one step to the
+side.** `-n4cx` asked whether every tip names a verb the player can perform. The tips are
+fine — five name a verb, two are facts on purpose and now say so in the suite. The
+messages that fail that test are the **refusals**, which the bead never mentioned and which
+are the single place naming a verb matters most: the player has just been stopped and is
+looking for what to do instead.
+
+**Godot's `String.capitalize()` title-cases every word, and both display sites used it.**
+The player has been reading "Pests Walk There." and "Something Is Already Growing There."
+for as long as refusals have existed. Nothing in this repo could have caught it: the row's
+budget checks WIDTH, the corpus check checks COMPLETENESS, `name_check` resolves names,
+lint compiles — and not one of them reads a capital letter. It took calling the function on
+the running game and printing what came back. The whole-repo sweep afterwards found the
+only other `.capitalize()` in `game/` builds a node name, which is what the function is
+for.
+
+**Rewording one string falsified a comment in the same edit that read it and believed it.**
+`commit_move` held a second copy of the `"pests walk there"` literal under a comment saying
+it was "the same refusal text `place_plant` gives". It was. Nothing enforced it. Both sites
+now share `REFUSAL_ON_GRASS`, because a comment asserting two things are identical is a
+test written in the wrong language.
+
+**A waiver written for one gate was silently exempting the string from a different one.**
+`message_corpus_check` waives the refusal call site because refusals are assembled at
+runtime — correct, and its own NOT COVERED line says so. But the width budget sweeps
+`message_corpus()`, and a waived line is not in the corpus, so refusals were the one class
+of player-visible message nothing had ever priced. Now fed by `Game.refusal_corpus()`; a
+refusal lengthened past the row fails at 987px of 876, naming the string.
+
+Step 5 took the rule this keeps producing: **if the bead names a category, enumerate the
+category from the code.** Five cycles running, the derived list has been bigger than the
+bead's. `why.md` §2 carries the evidence.
 
 ## What cycle 167 taught
 
@@ -2295,6 +2330,15 @@ its findings, and the parent owes each lane the parent-owned wiring it was forbi
 tuning, so that lane waited.
 
 ## Waiting on the user
+
+**68 commits are held locally and unpushed, and this is the item to raise first.** Every
+push to `origin/main` auto-deploys to itch.io (`severalherr/pest-control:html5`) via
+`.github/workflows/deploy-to-itchio.yml`, with no paths filter — so pushing is publishing,
+and the loop commits once per bd item rather than once per release. The held work is a
+coherent playable increment by now: difficulty profiles with a title-screen picker, the
+dead-ground hint, three contrast fixes, the spread-arc rim, and cycle 168's refusals. **It
+needs one word from James to go out.**
+
 
 **`-ix76` — ANSWERED in cycle 118, not by James.** The question was whether a 60-seed husk
 should rot faster than a 9-seed one. The answer is no: 4.5s is a reaction time, the richest

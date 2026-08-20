@@ -6219,3 +6219,38 @@ Three findings kept out here rather than buried in a log:
   mutations moved a real finding while the gate stayed green, and `svg_style_check`'s left
   both the per-check count and the sprite map unchanged, so only the **severity totals**
   caught it. Assert the finding count and the named case; the exit code is not enough.
+
+### New in cycle 168 — a message the player reads in Title Case, and the gate that skipped it
+
+- **Every refusal in the game has been shown to the player as a headline, not a sentence.**
+  `String.capitalize()` title-cases every word in Godot, and both display sites used it —
+  `game/game.gd:2989` for a move refusal and `:3018` for a placement one. "Pests Walk
+  There." and "Something Is Already Growing There." Probed on the running game before
+  changing anything. **The whole-repo sweep is done and the answer is that these were the
+  only two**: `grep -rn "\.capitalize()" game/*.gd` returns three hits, of which one is a
+  comment and one is `game/hud.gd:588`, which builds a *node name* (`"%sPacketButton"`) from
+  a tier and is exactly what the function is for. Fixed by `Hud.as_sentence`
+  (`game/hud.gd:3852`), so this entry is a record of the shape rather than an open idea: the
+  next player-visible string assembled at runtime is where to look again.
+
+- **A waiver written for one gate quietly exempted a string from a different one.**
+  `message_corpus_check` waives `game/game.gd:3018` because refusals are assembled at
+  runtime, and its own `NOT COVERED` line says it "cannot see a message built at runtime
+  from data (a refusal string…)" and "does not know the row's WIDTH — that is the budget's
+  job". Both true. But the budget — `test_no_message_clips_for_any_plant_in_the_catalogue`,
+  `test/unit/test_selftest.gd:11653` — sweeps `Hud.message_corpus()`, and refusals are not
+  in it, so *nobody* priced them. **Worth a checker**: any `# <tool>: ok` waiver names one
+  tool, and the question "what else was this string in scope for" is asked nowhere. The
+  denominator is small enough to be honest about — 7 waived call sites in
+  `message_corpus_check` alone — which is the argument for reading them by hand once before
+  building anything.
+
+- **A comment can go false in the same edit that reads it.** `commit_move` held a second
+  copy of the `"pests walk there"` literal under a comment saying it was "the same refusal
+  text `place_plant` gives". It was, and nothing enforced it: rewording `place_plant`'s copy
+  left the comment false, in the edit that had just read it and believed it. Now
+  `Game.REFUSAL_ON_GRASS` (`game/game.gd:1801`), shared by both. **The idea worth taking
+  further**: a comment asserting two things are identical is a test written in the wrong
+  language. A checker could find the phrasings (`same … as`, `mirrors`, `must match`) and
+  ask for a shared symbol — though it would need a real count first, and this is the first
+  sighting of the shape in this repo.

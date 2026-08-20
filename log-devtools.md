@@ -9299,3 +9299,54 @@ is likely to be at least as productive.
   than a defect, and gh#63 and gh#64 are already open against that repo from this session.
 
 - Gap: **no new harness gaps.** [G-143] and [G-144] not re-hit.
+
+## 2026-08-20 — audited every player message for whether it names a verb, and found the defect in the refusals
+
+- Value: **warranted** — the defect this cycle shipped is invisible to every static gate in
+  the project, and the only thing that surfaced it was calling the real function on the
+  running game.
+  - Expected: the tips would mostly pass, one or two would be facts on purpose, and the
+    cycle would end in a verdict table with no code change.
+  - Got: `PROBE: Expected  but got Pests Walk There | No Pests Walk There`. Godot's
+    `String.capitalize()` title-cases every word, so both refusal display sites have been
+    printing headlines at the player since refusals were wired. Then live, through the real
+    `show_message`: `text=Pests walk there — try the grass.  visible_ratio=1.0` in an
+    876px row.
+  - Found: three things, none of which was the thing the bead asked about. (1) The Title
+    Case. (2) `commit_move` held a second copy of the `"pests walk there"` literal under a
+    comment claiming it was "the same refusal text `place_plant` gives" — my own rewording
+    falsified it in the same edit that read it and believed it. (3) Refusals were the one
+    class of player-visible message no width gate priced: `message_corpus_check` waives the
+    call site as runtime-assembled, correctly, and that waiver was silently doing double
+    duty as an exemption from the row budget, which is a different gate.
+  - Cheaper: nothing for (1) — `capitalize()` resolves, lints, and passes 1006 tests, and
+    the only way to see what it returns is to run it. (3) would have come from reading
+    `test_no_message_clips`'s sweep source against the waiver list, ~2 minutes, and I got
+    there by running the tool rather than reading it.
+
+- Gap: **no NEW gap this turn.** Two old ones showed up again.
+  - [G-058] status: open | seen: 3 | harness: 0.38.0 — wrote `"phase": "checks"` in the
+    ledger row for the third time; `record` wants one of `import, lint, tests, runtime,
+    other` and silently recorded all three `found` entries as `null`. It warns, which is
+    why it is caught, but the row keeps the finding text with a null phase. The smallest
+    fix is still the same: `record` should name the legal set in the warning it prints, or
+    accept `checks` as an alias for `other`.
+  - **The version gap is now the biggest single thing about this log.** `harness-version
+    --client` says 0.60.0 is on this machine against 0.38.0 installed — 22 releases. This
+    cycle wanted to evaluate `Hud.as_sentence(x)` against the running game and had to route
+    it through `run-method` on a node that happens to carry the script; a
+    `class_name X extends RefCounted` static utility has no such node and would have been
+    unreachable. 0.60.0 ships `tools/eval.gd`, which this project does not have. I am not
+    filing that as a gap, because filing gaps against an install 22 releases behind is how
+    a project verifies fixes against a harness it does not run.
+  - **And the version gap bit inside this same entry.** `run_json_check.py` — a house
+    checker a previous cycle built for exactly this — reported `unknown key 'tier'`,
+    `'kind'`, `'item'`: the /verify skill on this machine documents `"tier"` as required on
+    every row, and the installed 0.38.0 `verify_ledger` reads it nowhere and drops it
+    silently. Worse, the same run had recorded as `verdict: unknown` with null `lint` and
+    `tests`, because I wrote the fields the newer skill names and not the ones this ledger
+    accepts. Fixed by writing the 0.38.0 schema and re-recording; the blank row was removed
+    rather than left beside its replacement, since it is the same run and would double-count
+    in `stats`. **A checker this project built caught a defect caused by following its own
+    harness documentation** — which is the argument for the refresh, not against the
+    checker.

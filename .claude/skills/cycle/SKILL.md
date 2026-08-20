@@ -62,6 +62,11 @@ to transcribe.
 **2. Do the items one at a time: confirm → claim → implement → `/verify` → commit.** One
 commit per item, never batched. Follow `.claude/skills/verify-bd-item/SKILL.md`.
 
+- **If the bead names a CATEGORY, enumerate the category from the code.** "every tip",
+  "all the cues", "each of the X" — the bead's own list is a snapshot of what its author
+  could see, and five cycles running the derived list has been bigger than it. Cycle 168's
+  tip audit found nothing in the tips and three defects in the **refusals**, the sibling
+  class the bead never mentioned. → `why.md` §2
 - **`confirm` comes before `claim`.** A bead is a claim about the repo made at some past
   cycle, and the repo has moved. Four beads have been claimed whose premise was already
   false; one was shipped by the cycle that filed it.

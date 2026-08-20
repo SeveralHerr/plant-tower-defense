@@ -697,3 +697,37 @@ it belongs with, and it is the same trap as editing anything under `tools/` or
 `addons/` — check `.harness_manifest.json` first. This skill file has no managed
 region; all of it is the project's own and may be edited by step 5.
 
+
+### §2 — enumerate the category from the code, not from the bead
+
+The rule in `SKILL.md` is one line because the evidence is repetitive, which is itself the
+argument: this has now been the deciding move in five consecutive cycles, and each time it
+was rediscovered rather than followed.
+
+Cycle 168 is the clearest case because the bead was well written. `-n4cx` said *"audit every
+tip for whether it names a verb the player can perform"*, listed the tip producers, and set
+an acceptance criterion that each carries a recorded verdict. Working that list took twenty
+minutes and produced five passes and two deliberate facts — a clean audit, and nothing to
+ship.
+
+The tips are not the set. `Hud.show_message` is called from 23 sites, and the ones that
+matter most are the **refusals** — the message shown to a player who has just been stopped
+and is looking for what to do instead. None of them is a tip and the bead named none of
+them. They held three defects: every refusal rendered in Title Case because
+`String.capitalize()` title-cases every word; a duplicated literal under a comment asserting
+it was not duplicated; and a width budget that had never priced any of them.
+
+**The tell is the word in the bead, not a feeling about the bead.** "Every", "all", "each",
+"the N X's" — any of them is a claim that the author knew the boundary of the set. Spend one
+grep on the boundary before spending an hour inside it:
+
+```bash
+grep -rn "show_message(" game/*.gd | wc -l    # the real denominator, not the bead's list
+```
+
+If the derived set matches the bead's, that is a two-minute confirmation and the audit
+proceeds with a denominator it can state. If it does not, the difference is usually the
+work. This is the same failure `kanban-idea-pass` §2 names from the other side — *an
+enumeration over the wrong set is worse than an example, because it looks exhaustive* — and
+a bead's list is someone else's enumeration, inherited without its caveats.
+
