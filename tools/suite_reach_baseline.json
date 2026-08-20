@@ -17,7 +17,6 @@
     "game/kernel.gd::func::reach_at_offset",
     "game/key_binding_screen.gd::func::key_x",
     "game/lane_pressure_overlay.gd::var::pressure",
-    "game/pause_screen.gd::func::card_width",
     "game/pause_screen.gd::func::card_x",
     "game/pause_screen.gd::func::does_column_width",
     "game/pause_screen.gd::func::key_list_offset",

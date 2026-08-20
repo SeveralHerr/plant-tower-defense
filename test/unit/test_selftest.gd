@@ -1116,6 +1116,49 @@ func test_menu_buttons_are_not_left_on_the_default_theme() -> String:
 	return err
 
 
+## THE PAUSE CARD ANSWERS "WHICH DIFFICULTY AM I ON", and its heading has to fit
+## (plant-tower-defense-1hgx).
+##
+## The heading is 32pt on a card whose width is `PauseScreen.card_width()`, and it went
+## from "Paused" to "Paused  .  Standard" -- roughly three times as wide, on a fixed card.
+## Swept over the real profile table so a longer label added later is priced the day it is
+## written, and measured through a real Label rather than a font this test picks.
+func test_the_pause_heading_names_the_profile_and_still_fits_the_card() -> String:
+	var err: String = _T.assert_eq(PauseScreen.heading_text(""), "Paused",
+		"a caller naming no profile gets the bare heading, not a dangling separator")
+	var probe := Label.new()
+	probe.add_theme_font_size_override("font_size", 32)
+	var budget: float = PauseScreen.card_width()
+	if err == "":
+		err = _T.assert_gt(budget, 0.0, "the card has a width to fit inside")
+	var checked: int = 0
+	var worst: String = ""
+	var worst_px: float = 0.0
+	if err == "":
+		for id: StringName in Game.DIFFICULTY_ORDER:
+			var text: String = PauseScreen.heading_text(TitleScreen.difficulty_label(id))
+			err = _T.assert_true(text.contains(TitleScreen.difficulty_label(id)),
+				"the heading for %s names it" % id)
+			if err != "":
+				break
+			probe.text = text
+			var wide: float = probe.get_minimum_size().x
+			checked += 1
+			if wide > worst_px:
+				worst_px = wide
+				worst = text
+	if err == "":
+		err = _T.assert_eq(checked, Game.DIFFICULTY_ORDER.size(),
+			("every profile was priced (%d of %d) -- a shrunken table would make this "
+				+ "measure nothing") % [checked, Game.DIFFICULTY_ORDER.size()])
+	if err == "":
+		err = _T.assert_true(worst_px <= budget,
+			("the widest pause heading fits the card: %.0fpx of %.0f -- '%s'")
+				% [worst_px, budget, worst])
+	probe.free()
+	return err
+
+
 ## THE RECORD LINE SAYS WHICH PROFILE THESE NUMBERS ARE FOR
 ## (plant-tower-defense-1hgx).
 ##

@@ -242,6 +242,30 @@ static func card_width() -> float:
 
 
 ## The card, sized to whatever it actually contains and placed from that size.
+## The pause card's heading, naming the profile this run is on
+## (plant-tower-defense-1hgx).
+##
+## THE ONE PLACE A RUN CAN ANSWER "WHICH DIFFICULTY AM I ON". Before this the answer
+## existed nowhere once the title screen was gone -- `grep -rn "difficulty"` across
+## `hud.gd`, `run_summary.gd` and this file returned nothing -- so a player returning
+## after a break, or wondering why a wave felt wrong, had no way to find out short of
+## abandoning the run.
+##
+## THE PAUSE CARD RATHER THAN THE HUD, and that is a real choice: the HUD's message row
+## is already the binding width constraint on that panel, and a profile is a fact that
+## cannot change during a run. A permanent readout for an unchanging fact is what a pause
+## screen is for and what a HUD row is not.
+##
+## NAMED EVEN ON STANDARD. Showing it only for the unusual profiles would mean a player
+## on Standard cannot confirm they are on Standard, which is the same gap in a smaller
+## place -- and it is exactly the confirmation someone reaches for when a run feels harder
+## than they expected.
+static func heading_text(difficulty_name: String) -> String:
+	if difficulty_name == "":
+		return "Paused"
+	return "Paused  ·  %s" % difficulty_name
+
+
 static func card_rect() -> Rect2:
 	return Rect2(card_x(), card_top(), card_width(), card_height())
 
@@ -503,7 +527,7 @@ func _ready() -> void:
 
 	var heading := Label.new()
 	heading.name = "Heading"
-	heading.text = "Paused"
+	heading.text = heading_text(TitleScreen.difficulty_label(RunConfig.difficulty))
 	heading.position = Vector2(card_rect().position.x, card_rect().position.y + 30.0)
 	heading.size = Vector2(card_rect().size.x, 44.0)
 	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
