@@ -242,9 +242,23 @@ const HINT_ROAD_PLANTS := "seen_road_tip"
 ## channels is a distinction a reader has to already know about to read.
 const HINT_DEFERRED_ROAD := "seen_defer_tip"
 
+## The earliest cue in the game, and the last one to get a name
+## (plant-tower-defense-bkss). The sole-cover rings appear on the first click of the
+## first plant — before the bar above, which waits for `Game.DEFER_HINT_MIN_GUNS`.
+##
+## This one was REFUSED once, on the record, and the refusal is worth reading before
+## anyone reverses it again: `game/cue_legend.gd:134-139` argued the rings needed no
+## teaching because the legend already teaches the DASHED ring ("nothing depends on
+## this plant") and the road rings are the same node's positive case. That is a good
+## argument and it lost to a player, who looked at the board and asked what the marks
+## meant. The condition that note set for revisiting — "if row 4 ever gains an instance
+## that is not SoleCoverMarks" — was a fact about the drawing code; the condition that
+## actually fired was a fact about a person.
+const HINT_SOLE_COVER := "seen_sole_cover_tip"
+
 const HINTS: Array[String] = [
 	HINT_MOVE_PREVIEW, HINT_CHOMP_IGNORES_FLIGHT, HINT_UPGRADE_EXISTS, HINT_ROAD_PLANTS,
-	HINT_DEFERRED_ROAD,
+	HINT_DEFERRED_ROAD, HINT_SOLE_COVER,
 ]
 
 

@@ -137,6 +137,25 @@ const SHAPE_ARMED := "armed"
 #     the dashed ring, "on a plant nothing depends on" -- so the concept is on the
 #     page and the road rings are its positive case. Worth revisiting if row 4 ever
 #     gains an instance that is not SoleCoverMarks.
+#
+#     REVISITED AND OVERTURNED, cycle 140 (plant-tower-defense-bkss). The argument
+#     above is still a good one and it lost to a player, who looked at the board and
+#     asked what the marks meant. The answer was a SIXTH ONE-SHOT HINT
+#     (RunConfig.HINT_SOLE_COVER, Hud.sole_cover_tip) rather than a row here, and the
+#     row is still refused -- not on the reasoning above but on width: this page is
+#     measurably FULL at 294 px of 300, a seventh row prices at 340, and buying it
+#     means the second notebook page, which is its own item
+#     (plant-tower-defense-xfbo). The hint also reaches a player who never opens the
+#     notebook, and still leaves a permanent card there via Hud.HINT_CARDS, so it
+#     buys both surfaces for the width of neither.
+#
+#     READ THE FAILURE, not just the outcome: the revisit condition this note set
+#     itself -- "if row 4 gains an instance that is not SoleCoverMarks" -- is a fact
+#     about the drawing code, and the condition that actually fired was a fact about
+#     a person. A teaching decision cannot set its own trigger in the code it is
+#     about. That is the same shape as cycle 138's lesson one node over: a comment
+#     addressed to a role nobody holds is not a report. This one was addressed to an
+#     event nobody was watching for.
 #   * WEATHER MARKS (row 8) -- no. Whole-screen, unmistakable, and announced.
 #   * HUSK PIPS (row 10) -- no. Late, rare, and a magnitude on a mark already taught.
 #   * LANE-PRESSURE HATCH (row 11) -- no, and it is the only entry here whose "no"

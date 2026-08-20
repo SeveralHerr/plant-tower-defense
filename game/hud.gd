@@ -3702,6 +3702,10 @@ static func message_corpus() -> Array[String]:
 	out.append("Colourblind-safe bars on.")
 	out.append(flight_tip())
 	out.append(defer_tip())
+	# The sixth one-shot (plant-tower-defense-bkss). Priced beside the other two tips
+	# and not per-plant: it names a MARK rather than a plant, so no display name enters
+	# it and there is only the one form to measure.
+	out.append(sole_cover_tip())
 	return out
 
 
@@ -3752,6 +3756,25 @@ static func flight_tip() -> String:
 ## header argues players read as wasted because it gains no new cells.
 static func defer_tip() -> String:
 	return "Bars mark road your plants skip — each is busy with the pest ahead. Add depth there."
+
+
+## The FIRST cue a player ever meets, and until now the only one with no name anywhere
+## in the game (plant-tower-defense-bkss). `SoleCoverMarks` rings every road cell the
+## selected plant alone covers, on the first click of the first plant — before the
+## deferred bar (which waits for DEFER_HINT_MIN_GUNS), before the hatch, before anything.
+##
+## Says what the rings MEAN and then what they are FOR, in that order, because the
+## second half is the reason a one-shot beats a caption. A ring is not decoration on the
+## plant you clicked: it is the set of cells that go unwatched if this plant dies, which
+## is the only sentence that makes the mark worth reading twice. `defer_tip` above is
+## built the same way and its header argues the shape.
+##
+## Deliberately does NOT say "yellow": the ring shares SelectionMarker.MARKER_COLOR with
+## the brackets, so colour is the one channel that cannot separate it from the selection
+## it arrives with, and this project's standing rule is that colour is never the only
+## signal. Shape and position carry it — "ringed", "on the road".
+static func sole_cover_tip() -> String:
+	return "Ringed road cells are held by this plant alone — lose it and they go unwatched."
 
 
 ## Said once ever, the first time the player can actually afford an upgrade on their
@@ -3844,6 +3867,11 @@ const HINT_CARDS: Array[Dictionary] = [
 		"id": "seen_defer_tip",
 		"title": "A bar across the road",
 		"note": "Every plant that reaches that cell shoots at the pest furthest along its range first, so a cell with a busier one ahead of it gets nothing. The bar is drawn square to the lane, on road only. It clears when one more plant covers that stretch — depth, not reach.",
+	},
+	{
+		"id": "seen_sole_cover_tip",
+		"title": "Rings mark what only this plant holds",
+		"note": "Select a plant and rings mark the road cells no other plant of yours reaches — the ones that go unwatched if it dies. Many rings, worth defending; none, safe to move.",
 	},
 ]
 

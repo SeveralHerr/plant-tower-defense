@@ -1467,6 +1467,34 @@ func _offer_defer_hint(deferred: Array[Vector2i], guns: int) -> void:
 	RunConfig.spend_hint(RunConfig.HINT_DEFERRED_ROAD, posted)
 
 
+## Name the sole-cover rings, once ever, the first time the player is looking at some
+## (plant-tower-defense-bkss).
+##
+## Fires on `count > 0` and nothing else: the rings are what the sentence is about, so a
+## tip posted on a selection that drew none would teach a mark the player cannot see —
+## which is the failure `_maybe_teach_upgrading`'s header calls "leaving them hunting".
+## No minimum-guns gate, unlike the bar above: the bar needs two guns before it carries
+## information, while a single plant's rings are meaningful the moment they are drawn
+## and the first plant is exactly when the player has never seen them.
+##
+## `row_is_quiet()` is what keeps this off the opening tutorial's beat, and it is the
+## whole answer to the objection that a sixth hint would put two teaching lines on
+## consecutive clicks. It cannot: a busy row refuses this and the next `_refresh()`
+## offers it again. `_offer_defer_hint` above says the same thing at more length and
+## names the test that measured `refused=11` without it.
+func _offer_sole_cover_hint(count: int) -> void:
+	if hud == null or not is_instance_valid(hud):
+		return
+	if count <= 0:
+		return
+	if RunConfig.has_milestone(RunConfig.HINT_SOLE_COVER):
+		return
+	if not hud.row_is_quiet():
+		return
+	var posted: bool = hud.show_message(Hud.sole_cover_tip())
+	RunConfig.spend_hint(RunConfig.HINT_SOLE_COVER, posted)
+
+
 ## Applied straight away rather than left for the next _refresh(), for the reason
 ## Hud._on_packet_hover spells out: a mouse crossing a button changes no state, so
 ## waiting for a refresh would light the board only when something else happens to
@@ -1540,18 +1568,23 @@ func _apply_held_over(plant: Plant, held: bool) -> void:
 ## _refresh() because there are two of them now -- the selection and the plant held
 ## over beside it -- and two copies of this loop is where the two would start
 ## disagreeing.
-func _push_sole_cover(plant: Plant) -> void:
+## Returns how many rings it actually pushed, so the caller can ask whether the player
+## is looking at any without recomputing `sole_cover_cells`. `0` covers all three ways
+## there are none — no plant, no marks node, or a plant nothing depends on — which is
+## what `_offer_sole_cover_hint` needs and is why this is a count rather than a bool.
+func _push_sole_cover(plant: Plant) -> int:
 	if plant == null or not is_instance_valid(plant):
-		return
+		return 0
 	var marks: SoleCoverMarks = plant.sole_cover_marks()
 	if marks == null:
-		return
+		return 0
 	var at: PackedVector2Array = PackedVector2Array()
 	for cell: Vector2i in sole_cover_cells(plant):
 		# GLOBAL, because SoleCoverMarks._draw hands these to to_local().
 		# cell_to_world is board-local and the marks drew 72 px high for it.
 		at.append(board.cell_to_global(cell))
 	marks.set_points(at)
+	return at.size()
 
 
 func plant_at(cell: Vector2i) -> Plant:
@@ -2813,7 +2846,10 @@ func _refresh() -> void:
 		# them already runs through.
 		if _held_over != null and not is_instance_valid(_held_over):
 			_held_over = null
-		_push_sole_cover(selected_placed)
+		# The SELECTED plant's count only, never the held-over one's: the hover preview
+		# is a question the player is asking, and naming a cue in the middle of it
+		# answers a different question than the one they asked.
+		_offer_sole_cover_hint(_push_sole_cover(selected_placed))
 		_push_sole_cover(_held_over)
 	if hud == null:
 		return

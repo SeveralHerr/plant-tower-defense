@@ -11325,12 +11325,16 @@ func test_the_message_corpus_covers_every_catalogue_producer() -> String:
 	# is the second one-shot with a producer of its own, and it is the widest tip in
 	# the game -- so a corpus without it would report this row roomier than it is on
 	# exactly the line most likely to want the space.
-	return _T.assert_eq(corpus.size() - catalogue_entries, 10,
-		("the corpus carries its 10 non-catalogue entries (prep note, wave-cleared "
-			+ "line, the flight tip, the defer tip, and six literals -- BOTH "
-			+ "colourblind lines, since the checker reads the leading literal of that "
-			+ "ternary). If this moved because you ADDED one, raise the number; if it "
-			+ "moved because one vanished, the row's budget just got quietly optimistic"))
+	# ELEVEN since cycle 140: the sole-cover tip (plant-tower-defense-bkss) is the third,
+	# and unlike the two above it names a MARK rather than a plant -- so no display name
+	# enters it and there is exactly one form to price, which is why it lands here in the
+	# non-catalogue count rather than in the per-plant multiplier.
+	return _T.assert_eq(corpus.size() - catalogue_entries, 11,
+		("the corpus carries its 11 non-catalogue entries (prep note, wave-cleared "
+			+ "line, the flight tip, the defer tip, the sole-cover tip, and six literals "
+			+ "-- BOTH colourblind lines, since the checker reads the leading literal of "
+			+ "that ternary). If this moved because you ADDED one, raise the number; if "
+			+ "it moved because one vanished, the row's budget just got quietly optimistic"))
 ##
 ## The catalogue is SWEPT rather than sampled, and the level table with it — so this
 ## is checked against every name the game can actually produce, not against a worst
@@ -20191,4 +20195,162 @@ func test_the_defer_hint_is_spent_only_once() -> String:
 			"and the bars really were still on the board while it stayed quiet")
 	_T.free_ui(game)
 	RunConfig.earned_milestones = stashed
+	return err
+
+
+## The sixth one-shot names the first cue a player ever meets (plant-tower-defense-bkss).
+##
+## Unlike the defer tip above there is NO minimum-guns gate, and that asymmetry is the
+## thing worth pinning: a lone gun's deferred bars are true of any one-gun board and not
+## yet a fact about this player's garden, while a lone gun's sole-cover rings are exactly
+## a fact about it — the plant holds those cells because nothing else does. So this fires
+## on the FIRST selection, which is when the player has never seen a ring before.
+##
+## Stashes and restores `earned_milestones` for the reason the block above this section
+## gives: it is an autoload Dictionary, a hint is one-shot per save, and a test that
+## spends one and walks away decides the answer for every later test in the run.
+func test_the_sole_cover_tip_fires_on_the_first_selection() -> String:
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	RunConfig.earned_milestones = {}
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(500)
+
+	var first: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, first), "",
+		"a gun goes down")
+	if err == "":
+		err = _T.assert_false(RunConfig.has_milestone(RunConfig.HINT_SOLE_COVER),
+			"placing alone does not spend it — nothing is selected yet")
+	if err == "":
+		var placed: Plant = game.plant_at(first)
+		err = _T.assert_true(placed != null, "the plant is on the board where it was put")
+		if err == "":
+			# The precondition the whole test rests on, asserted rather than assumed:
+			# this plant really does hold road cells alone. A garden where it held none
+			# would make the assertion below pass for the wrong reason — the `count > 0`
+			# guard would decline and the hint would stay unspent, which is exactly what
+			# "did not fire" looks like. See .claude/skills/scope-vs-claim/SKILL.md.
+			err = _T.assert_gt(game.sole_cover_cells(placed).size(), 0,
+				"the only gun on the board holds road cells alone, so there are rings to name")
+	if err == "":
+		# Placing posts its own confirmation, so the row is busy on the refresh the
+		# placement caused. The hint is level-triggered: it declines and stays owed
+		# rather than stacking a copy into the queue. That is `Hud.row_is_quiet`, and it
+		# is the whole answer to "would a sixth hint put two teaching lines on
+		# consecutive clicks" — it cannot.
+		game._select(game.plant_at(first))
+		err = _T.assert_false(RunConfig.has_milestone(RunConfig.HINT_SOLE_COVER),
+			"not while the placement line still has the row — the hint is owed, not lost")
+	if err == "":
+		game.hud._process(9.0)
+		game.hud._message_left = 0.0
+		game.hud._message_queue.clear()
+		game.hud._advance_message_queue()
+		game._refresh()
+		err = _T.assert_true(RunConfig.has_milestone(RunConfig.HINT_SOLE_COVER),
+			"and the next refresh onto a quiet row spends it")
+	if err == "":
+		# The sentence, not just the flag. A hint recorded without its line reaching the
+		# row is the cycle-79 defect RunConfig.HINTS was written to end.
+		var label: Label = game.hud.get_node_or_null("Root/TopBar/MessageLabel") as Label
+		err = _T.assert_true(label != null, "the message row is where the HUD put it")
+		if err == "":
+			err = _T.assert_eq(label.text, Hud.sole_cover_tip(),
+				"the row is showing the sole-cover tip itself — got %s" % label.text)
+	_T.free_ui(game)
+	RunConfig.earned_milestones = stashed
+	return err
+
+
+## A selection that drew no rings must not name them (plant-tower-defense-bkss).
+##
+## The guard half, and it is the one that decides whether the tip teaches or confuses:
+## `_offer_sole_cover_hint` fires on `count > 0` and nothing else, so a plant holding
+## nothing alone leaves the one-shot unspent for a selection that WILL draw rings later.
+## Without this, the single most valuable teaching line in the opening minute is spent
+## pointing at an empty board.
+##
+## Built by putting a SECOND gun on the same cells rather than by finding a plant that
+## covers nothing: two guns over one stretch is how sole-cover actually goes to zero in
+## play, and `_push_sole_cover`'s own header says the count changes when the GARDEN
+## changes rather than when the selection does.
+func test_a_selection_with_no_rings_does_not_spend_the_sole_cover_tip() -> String:
+	var stashed: Dictionary = RunConfig.earned_milestones.duplicate()
+	RunConfig.earned_milestones = {}
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(500)
+
+	var first: Vector2i = _grass(game)
+	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, first), "",
+		"a first gun goes down")
+	var covered: Array[Vector2i] = []
+	if err == "":
+		var placed: Plant = game.plant_at(first)
+		err = _T.assert_true(placed != null, "the first plant is on the board")
+		if err == "":
+			covered = game.sole_cover_cells(placed)
+			err = _T.assert_gt(covered.size(), 0,
+				"it starts out holding cells alone, so there is something to take away")
+	if err == "":
+		# Quiet the row FIRST, so that if the guard were missing the hint would have
+		# every chance to fire. A test that leaves the row busy would pass whether the
+		# `count > 0` guard existed or not — it would be measuring row_is_quiet twice.
+		game.hud._process(9.0)
+		game.hud._message_left = 0.0
+		game.hud._message_queue.clear()
+		game.hud._advance_message_queue()
+		err = _T.assert_true(game.hud.row_is_quiet(),
+			"the row is genuinely free, so only the count guard can refuse the tip")
+	if err == "":
+		# Select something that holds nothing alone. The freshly-placed plant is the
+		# reliable one: with the first gun already covering this stretch, a second gun
+		# beside it adds no cell that only IT reaches.
+		var second: Vector2i = _grass(game)
+		if second != first and game.place_plant(PlantCatalog.CORN, second) == "":
+			var twin: Plant = game.plant_at(second)
+			if twin != null and game.sole_cover_cells(twin).is_empty():
+				game.hud._process(9.0)
+				game.hud._message_left = 0.0
+				game.hud._message_queue.clear()
+				game.hud._advance_message_queue()
+				game._select(twin)
+				game._refresh()
+				err = _T.assert_false(RunConfig.has_milestone(RunConfig.HINT_SOLE_COVER),
+					("a plant holding nothing alone drew no rings, so the tip that names "
+						+ "them stays unspent for the selection that will"))
+	_T.free_ui(game)
+	RunConfig.earned_milestones = stashed
+	return err
+
+
+## The tip says what the rings ARE and does not say what colour they are
+## (plant-tower-defense-bkss).
+##
+## The ring is drawn in `SelectionMarker.MARKER_COLOR`, the same ink as the brackets it
+## arrives with, so colour is the one channel that cannot separate the mark from the
+## selection — and this project's standing rule is that colour is never the only signal.
+## A tip saying "the yellow marks" would be naming the channel that does not distinguish
+## it. Asserted because the sentence is the whole deliverable here and nothing else in
+## the suite reads it.
+func test_the_sole_cover_tip_names_a_shape_and_not_a_colour() -> String:
+	var tip: String = Hud.sole_cover_tip()
+	var err: String = _T.assert_gt(tip.length(), 0, "the tip is a sentence")
+	if err == "":
+		# Every colour word the game's own palette vocabulary could tempt this into.
+		for word: String in ["yellow", "Yellow", "gold", "amber", "orange"]:
+			err = _T.assert_false(tip.contains(word),
+				"the tip must not lean on colour, and it says '%s'" % word)
+			if err != "":
+				return err
+	if err == "":
+		err = _T.assert_true(tip.to_lower().contains("ring"),
+			"it names the SHAPE, which is the channel that separates the mark: %s" % tip)
+	if err == "":
+		# Its own notebook card must exist, in RunConfig.HINTS order, or the hint is a
+		# line the player sees once and can never look up again.
+		err = _T.assert_true(Hud.hint_ids().has(RunConfig.HINT_SOLE_COVER),
+			"the id is in the list the notebook page is rendered off")
+	if err == "":
+		err = _T.assert_gt(Hud.hint_title(RunConfig.HINT_SOLE_COVER).length(), 0,
+			"and it has a card title rather than falling back to the raw id")
 	return err
