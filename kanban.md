@@ -218,6 +218,32 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 167 — nodes are asserted, `_draw()` is not, and the project knew
+
+- **Deleting four draw calls left all 1003 tests green.** The risk ring, the dead bar, the
+  redundant bars and the reach ring, all in `placement_preview.gd`; short-circuiting
+  `SelectionMarker._draw` and `SoleCoverMarks._draw` entirely was also invisible. The same
+  mutation on `Board.mark_dead_ground` fails **four** tests. **The split is structural: a
+  cue pushed onto a NODE is asserted, a cue painted in `_draw()` is not** — and
+  `board.gd:914` states exactly that as its reason for choosing `Line2D`, having been
+  bitten once by "a mark 72 px out of place that every test passed".
+  So the sweep worth doing is the conversion: every `_draw()`-painted cue moved onto real
+  nodes carrying real state, one at a time, each one deleting its row from the census test
+  cycle 167 added. **A shrinking census is the progress signal.** The reach ring is the
+  interesting first candidate — it is already ungated in the contrast table for a separate
+  reason (`plant-tower-defense-qt79`), so converting it settles two questions at once.
+
+- **Three escaping failures in one cycle, and the third was in the sentence describing the
+  first two.** A shell heredoc ate a backslash and put a literal newline inside a GDScript
+  string — it compiled, the suite ran, and the helper silently returned `""`. An equality
+  test against a tab-return line never matched because these files are CRLF. And a
+  backticked keyword in a `bd close` argument was run as command substitution and left a
+  hole in the field. **Every one is a rule this project has already written down**, which
+  is the uncomfortable part: the loop names the heredoc trap and the backtick trap by
+  name. Worth asking whether the rules that keep being broken want a CHECKER rather than
+  another sentence — `bead_prose_check` already exists for the third, and caught nothing
+  because the damage was a deletion rather than a mangling.
+
 ### New in cycle 166 — the fix was written in the file, one mark over
 
 - **The answer to the spread arc dissolving was already documented four lines below it.**

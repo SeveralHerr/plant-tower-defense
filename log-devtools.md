@@ -9274,3 +9274,28 @@ is likely to be at least as productive.
   second sighting of that need.
 
 - Gap: **no new harness gaps.** [G-143] and [G-144] not re-hit.
+
+## 2026-08-20 — Cycle 167: measured coverage by deleting the thing, six times
+
+- Value: **warranted**, and no harness verb was involved — the instrument was
+  `run_tests.py` and a text editor.
+  - Expected: a few of the contrast table's 24 rows to be uncovered.
+  - Got: deleting FOUR draw sites in `placement_preview.gd` left all 1003 tests green, as
+    did short-circuiting `SelectionMarker._draw` and `SoleCoverMarks._draw`. The same
+    mutation on `Board.mark_dead_ground` fails four tests.
+  - Found: the split is STRUCTURAL. A cue pushed onto a node is asserted; a cue painted in
+    `_draw()` is not — and `board.gd:914` says exactly that as its own reason for choosing
+    `Line2D`, having been bitten by "a mark 72 px out of place that every test passed".
+    The rule was written down and applied in one file out of five.
+  - Cheaper: nothing. "Is this cue asserted" has exactly one honest answer and it is
+    deleting the cue.
+
+- Not a harness gap but worth recording as a HARNESS-SHAPED observation: this is the
+  argument for `Line2D`-over-`_draw()` stated in the project's own code, and it generalises
+  past this project. Anything a headless suite must see has to exist as node STATE. The
+  harness's own docs make the point for `capture.gd` and for the UI checks; the inverse —
+  "if you want it assertable, do not paint it" — is a design rule the harness could state
+  once and save every project rediscovering it. Not filing it upstream: it is advice rather
+  than a defect, and gh#63 and gh#64 are already open against that repo from this session.
+
+- Gap: **no new harness gaps.** [G-143] and [G-144] not re-hit.

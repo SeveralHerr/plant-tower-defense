@@ -1,4 +1,4 @@
-# Cycle 166
+# Cycle 167
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,34 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 167 taught
+
+**Deleting four draw calls left all 1003 tests green.** The risk ring, the dead bar, the
+redundant bars and the reach ring — plus, separately, short-circuiting
+`SelectionMarker._draw` and `SoleCoverMarks._draw` entirely. Between them that is eight
+rows of the contrast table and the dead-zone bar three cycles of work went into. The same
+mutation on `Board.mark_dead_ground` fails **four** tests.
+
+**So the split is structural, and the project already knew.** A cue pushed onto a NODE is
+asserted; a cue painted in `_draw()` is not — and `board.gd:914` states exactly that as its
+own reason for choosing `Line2D`, having been bitten once by "a mark 72 px out of place
+that every test passed". The rule was written down, paid for, and applied in one file out
+of five. That is cycle 166's pattern again at a larger size: a solved problem beside
+unsolved instances of itself.
+
+Step 5: **"is this covered?" has one honest answer — delete it and run the suite.** No
+amount of reading the tests produces this; they all look like they cover something, and
+they do, just not the thing. It is one edit and one run per candidate, and it is the only
+measurement of coverage that cannot be argued with.
+
+**Three escaping failures in one cycle, and the third was inside the sentence describing
+the first two.** A heredoc ate a backslash and put a literal newline in a GDScript string —
+compiled, ran, silently returned `""`. An equality test against a tab-return line never
+matched because these files are CRLF. And a backticked keyword in a `bd close` argument was
+run as command substitution and left a hole in the field. **Two of the three are rules this
+project has already written down.** A rule broken by the session that just read it is not
+short of prose, which is what `-po2c` asks about.
 
 ## What cycle 166 taught
 

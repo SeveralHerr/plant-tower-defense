@@ -228,6 +228,15 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      width, a second channel, a derived count. In a codebase that writes its reasoning
      down, the answer is usually one constant away and comes with the argument attached,
      which is worth more than an equally good fix you invented.
+   - **"IS THIS COVERED?" HAS ONE HONEST ANSWER: DELETE IT AND RUN THE SUITE.** Cycle 167
+     asked whether 24 rows of a contrast table were backed by anything, and found that
+     deleting four draw calls left all 1003 tests green — plus two whole `_draw()` bodies
+     on top. No amount of reading the tests would have produced that; they all look like
+     they cover something, and they do, just not the thing. It is one edit and one run per
+     candidate, it batches by file because several cues share a draw site, and it is the
+     only measurement of coverage that cannot be argued with. **Reach for it whenever you
+     are about to claim a thing is tested** — especially when the tests in question assert
+     CONSTANTS, which is where the gap always is.
    - **RUN INDEPENDENT ITEMS IN PARALLEL (asked for directly, cycle 99).** The loop did one
      item at a time for 99 cycles and the queue is 100 deep; most of it does not touch what
      the rest of it touches. Spawn agents for items whose files do not overlap, and say in
