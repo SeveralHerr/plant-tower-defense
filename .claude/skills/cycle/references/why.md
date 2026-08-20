@@ -152,6 +152,18 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      has to say which parts were seen and which were inferred. Either reach the surface or
      leave it and file it. The general form: **a method is a promise about the evidence,
      and mixing in a different kind of evidence spends the promise.**
+   - **A GATE LETTING SOMETHING THROUGH THAT YOU EXPECTED IT TO CATCH IS ITSELF A
+     FINDING, and the moment you notice is the cheapest it will ever be to chase.** Cycle
+     159 wrote `game.run_over()` — a method `Game` does not have — ran `name_check`, got
+     `errors: 0`, found the mistake by reading, fixed it, and could have moved on. Asking
+     "why did that not fire?" instead cost three mutations and turned up a whole class of
+     defect invisible to `name_check`, `import_check` AND `lint` alike: a call to a method
+     that does not exist, on a statically typed receiver, fails at runtime and nowhere
+     else. Filed P1.
+     Most of the rules here are about not believing a PASS. This one is about not
+     shrugging off a pass you were surprised by — and the surprise is the whole signal,
+     because it means your model of what the gates cover is wrong, which is worth more
+     than the bug that revealed it.
    - **RUN INDEPENDENT ITEMS IN PARALLEL (asked for directly, cycle 99).** The loop did one
      item at a time for 99 cycles and the queue is 100 deep; most of it does not touch what
      the rest of it touches. Spawn agents for items whose files do not overlap, and say in

@@ -1,4 +1,4 @@
-# Cycle 158
+# Cycle 159
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,40 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 159 taught
+
+**A call to a method that does not exist passes every gate this project has.** I wrote
+`game.run_over()` in a new verb, ran `name_check`, got `errors: 0`, found it by reading,
+and asked why it had not fired. Three mutations later: bogus method on a project type,
+bogus method on a `Node`-typed receiver with the engine index live, bogus method inside
+`game/` to rule out a scan root — `name_check` clean, `import_check` clean, `lint` 0
+errors and 0 warnings. The line fails at runtime and nowhere else, which for a devtools
+verb means the first time anyone calls it. **`CLAUDE.md` describes `name_check` as
+resolving "engine classes and their MEMBERS", so a careful reader is told the wrong thing
+twice.** Filed P1.
+
+**The finding came from not shrugging off a surprise.** Step 5 spent its change there:
+most rules in this loop are about not believing a PASS; this one is about a pass you did
+not expect. The surprise is the whole signal, because it means your model of what the
+gates cover is wrong — which is worth more than the bug that revealed it, and is never
+cheaper to chase than at the moment you notice.
+
+**And five surfaces stopped being unreachable.** `cmd end_run` puts either card on screen
+in one command, and both were read for the first time. It refuses an unreachable state
+rather than producing one — no victory except at the last wave, no defeat with beds left
+— which is the harness's own rule for a setter verb enforced instead of documented. It
+also writes the real save and cannot not: `_end_run` files the score and the milestone
+flags, because that is what ending a run MEANS. Measured, warned about in every reply,
+and `--snapshot-userstate` put it back.
+
+Cycle 158's blind rename turns out to have been right. That is not the point — the point
+is that it is now an observation.
+
+**An existing test caught the new verb before I could forget it**, failing with
+"commands.gd registers 'end_run' and this test does not classify it" and naming both
+options and where to write the reason. A gate that knows about a file the suite cannot
+otherwise drive.
 
 ## What cycle 158 taught
 

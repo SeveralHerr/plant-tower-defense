@@ -218,6 +218,33 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 159 — a method that does not exist passes every gate
+
+- **`game.run_over()` — a call to a method `Game` does not have — is clean to
+  `name_check`, clean to `import_check`, and clean to `lint_project.gd`.** Measured with
+  three mutations: on a project type, on an ENGINE type with the engine index live, and
+  inside `game/` to rule out a scan-root question. All three pass. The line fails at
+  runtime, the first time it runs — which for a devtools verb is the first time anyone
+  calls it, and is how this was found.
+  **`CLAUDE.md` describes `name_check` as resolving "engine classes and their MEMBERS",
+  which reads as covering exactly this**, and the tool's own `NOT COVERED` names type
+  inference and says nothing about call sites. A careful reader is told the wrong thing
+  twice. Filed P1 as `plant-tower-defense-zlm2` with the likely knob
+  (`debug/gdscript/warnings/`, which `project.godot` currently sets none of) and the
+  warning that the first run will produce a lot of them, because this codebase calls
+  methods on `Variant`-typed Dictionary values everywhere.
+
+- **The gates this project owns are strong on NAMES and blind on CALLS, and that split is
+  worth stating.** `name_check` resolves types, `class_name`s, autoloads, `preload` paths
+  and method names inside string literals. `suite_reach_check` counts whether a symbol is
+  NAMED by a test. `gate_aim_check` counts whether a colour is NAMED in an assertion.
+  Every one of them asks "does this identifier exist and is it mentioned" — and none asks
+  "is this CALL well-formed". That is not an accident: names are cheap to resolve from
+  source and calls need a type system. **Worth writing the split down where a reader
+  decides what a clean run means**, because "all gates green" currently reads as stronger
+  than it is, and the one gate that could close it (`lint_project.gd`, which actually
+  compiles) is not asking Godot for the warnings that would.
+
 ### New in cycle 158 — two screens came back clean, and that is a result
 
 - **A sweep that records only its findings makes the next sweep cost the same again.** Four

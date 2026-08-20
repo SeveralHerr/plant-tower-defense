@@ -9044,3 +9044,43 @@ is likely to be at least as productive.
   than a harness one — the run summary needs a finished run, which no entry point can
   produce because what is missing is a history rather than a scene. Filed as
   `plant-tower-defense-dklv` against `devtools_ext/commands.gd`, not upstream.
+
+## 2026-08-20 — Cycle 159: built a verb to reach the screens a run has to produce
+
+- Value: **warranted**, and the bridge was the only instrument that could have done it.
+  - Expected: `cmd end_run` to put the post-mortem card on screen so the five surfaces
+    behind a finished run could be looked at.
+  - Got: both variants in one command each — "The garden is eaten" at 11 of 22, and "The
+    garden holds!" at 22 of 22 with three beds lost. First time anything in this project
+    has seen either.
+  - Found: three things, and the third is the one that matters.
+    (1) Cycle 158's blind rename was right, and is now SEEN rather than inferred.
+    (2) The verb writes the real save and there is no version of it that does not —
+    `_end_run` files the score and the milestone flags, which is what ending a run MEANS.
+    Measured: the first call changed `highscore.save` and unlocked a milestone off a
+    synthetic run. `launch --snapshot-userstate` restored 1 file on quit, exactly as
+    documented, and the verb's reply now warns on every call.
+    (3) **`game.run_over()` — a method `Game` does not have — passed `name_check`.**
+  - Cheaper: nothing. The card cannot be rendered without a run.
+
+- Gap: **`name_check` does not resolve `x.method()` call sites, and `CLAUDE.md` says it
+  resolves "engine classes and their MEMBERS".** Three mutations, each restored and
+  verified: a bogus method on a project type, one on a `Node`-typed receiver with the
+  engine index live (1036 classes), and one inside `game/` to rule out a scan-root
+  question. `name_check` clean, `import_check` clean, `lint_project.gd` 0 errors 0
+  warnings. The line fails at runtime and nowhere else.
+  - [G-144] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: two, and the first stands alone. **Correct the claim** — `name_check`'s
+    own `NOT COVERED` names type inference and says nothing about call sites, so a
+    careful reader is told the wrong thing twice; it should say a `x.method()` receiver
+    is not checked. **Then consider whether it can be**: Godot has a GDScript warning for
+    unsafe method access under `debug/gdscript/warnings/`, which `project.godot` sets none
+    of, and `lint_project.gd` is the one gate that actually compiles. Expect a large first
+    count — this codebase calls methods on `Variant`-typed Dictionary values everywhere —
+    so the work is finding the gating subset, not flipping a switch.
+
+- Worth recording as the harness working: an EXISTING project test caught the new verb
+  before I could forget it. `test_every_positional_devtools_verb_refuses_a_call_with_no_position`
+  failed with "commands.gd registers 'end_run' and this test does not classify it",
+  naming both options and where the reason goes. That is a gate that knows about a file
+  the suite cannot otherwise drive.
