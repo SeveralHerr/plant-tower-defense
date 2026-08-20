@@ -1177,6 +1177,116 @@ func test_title_controls_all_clear_the_scenery() -> String:
 ## satisfied by a capacity function that always says a large number; the refusal
 ## at capacity + 1 is what proves it is measuring the horizon rather than
 ## returning a constant.
+## The Start row's wave count is DERIVED, and it was a literal "8 waves" while the table
+## held 22 (plant-tower-defense-s1o8.4).
+##
+## Fourteen waves out of date on the first line every player reads, for as long as the
+## table had grown twice without anyone re-reading the sentence about it. Asserted
+## against `WaveDirector.WAVES.size()` rather than against 22, because hard-coding the
+## right number here reproduces the original defect one file over.
+func test_the_start_row_names_the_wave_count_the_table_actually_holds() -> String:
+	var text: String = TitleScreen.start_button_text(Game.DIFFICULTY_STANDARD)
+	var err: String = _T.assert_true(
+		text.contains("%d waves" % WaveDirector.WAVES.size()),
+		("the Start row names the table's own wave count (%d): %s"
+			% [WaveDirector.WAVES.size(), text]))
+	if err == "":
+		# The mutation guard. Without it, a start_button_text that ignored its argument
+		# and returned a fixed string would pass everything above.
+		err = _T.assert_true(text.contains(
+			String(Game.DIFFICULTIES[Game.DIFFICULTY_STANDARD]["label"])),
+			"and the profile it will start: %s" % text)
+	if err == "":
+		var harsh: String = TitleScreen.start_button_text(Game.DIFFICULTY_HARSH)
+		err = _T.assert_true(harsh != text,
+			"and the row changes with the profile -- got the same sentence for both")
+	return err
+
+
+## Both difficulty labels fit the cells they are drawn in.
+##
+## This is the measurement that decided the shape of the feature, kept as an assertion
+## rather than as a sentence in a header. A third PRIMARY row would have given the
+## button the whole band and room for "Difficulty · Standard" (173 px), and it would
+## have dropped `menu_capacity()` from 8 to 5 -- below the six the menu now holds. So
+## the button is a secondary in a 142 px cell and carries the profile's label alone,
+## with the noun supplied by the Start row above it.
+##
+## `GardenTheme.measure`, never `get_minimum_size()`: these are Buttons drawn from the
+## theme, and the project's own note on `clip_text` is what that rule exists for.
+func test_the_difficulty_labels_fit_the_cells_they_are_drawn_in() -> String:
+	var cell: float = TitleScreen.BUTTON_WIDTH / 2.0 - TitleScreen.BUTTON_GAP
+	var band: float = TitleScreen.BUTTON_WIDTH
+	var err: String = _T.assert_gt(cell, 0.0, "a half-band cell has a width")
+	var widest: float = 0.0
+	var worst: String = ""
+	var checked: int = 0
+	if err == "":
+		for name: StringName in Game.DIFFICULTY_ORDER:
+			var short: String = TitleScreen.difficulty_button_text(name)
+			var long: String = TitleScreen.start_button_text(name)
+			checked += 1
+			var w: float = GardenTheme.measure(short, GardenTheme.BUTTON_FONT_SIZE)
+			if w > widest:
+				widest = w
+				worst = short
+			err = _T.assert_true(w <= cell,
+				"%s fits the half-band cell (%.0f of %.0f px)" % [short, w, cell])
+			if err == "":
+				var lw: float = GardenTheme.measure(long, GardenTheme.BUTTON_FONT_SIZE)
+				err = _T.assert_true(lw <= band,
+					"and its Start row fits the band (%.0f of %.0f px): %s"
+						% [lw, band, long])
+			if err != "":
+				break
+	if err == "":
+		err = _T.assert_eq(checked, Game.DIFFICULTY_ORDER.size(),
+			"every profile in the order was measured, not just the first")
+	if err == "":
+		# The headroom, so a profile added with a long label lands here rather than in a
+		# screenshot. Named after the widest actual label so the failure says which.
+		err = _T.assert_gt(cell - widest, 0.0,
+			"the widest label (%s, %.0f px) leaves room in a %.0f px cell"
+				% [worst, widest, cell])
+	return err
+
+
+## Cycling walks every profile once and comes back, and an unknown name enters at the
+## start rather than wrapping from nowhere.
+##
+## Static and pure, so the wrap is assertable without pressing anything -- and a profile
+## added to `DIFFICULTY_ORDER` joins the cycle without `next_difficulty` being touched,
+## which is the whole reason the order lives in one list.
+func test_cycling_the_difficulty_visits_every_profile_and_returns() -> String:
+	var order: Array[StringName] = Game.DIFFICULTY_ORDER
+	var err: String = _T.assert_gt(order.size(), 1,
+		"there is more than one profile to cycle between")
+	if err != "":
+		return err
+	var at: StringName = order[0]
+	var seen: Array[StringName] = [at]
+	for _i: int in order.size() - 1:
+		at = TitleScreen.next_difficulty(at)
+		err = _T.assert_false(seen.has(at),
+			"the cycle does not repeat before it has visited every profile: %s" % at)
+		if err != "":
+			return err
+		seen.append(at)
+	if err == "":
+		err = _T.assert_eq(seen.size(), order.size(),
+			"the cycle visited all %d profiles" % order.size())
+	if err == "":
+		err = _T.assert_eq(TitleScreen.next_difficulty(at), order[0],
+			"and the last one wraps to the first")
+	if err == "":
+		err = _T.assert_eq(TitleScreen.next_difficulty(&"a_name_from_a_later_build"),
+			order[0],
+			("a name this build does not know enters the cycle at the start -- the same "
+				+ "rule Game.difficulty_profile follows, rather than wrapping from an "
+				+ "index of -1"))
+	return err
+
+
 func test_the_title_menu_has_room_for_the_next_destination() -> String:
 	var now: int = TitleScreen.MENU_BUTTON_NAMES.size()
 	var cap: int = TitleScreen.menu_capacity()
@@ -1329,8 +1439,17 @@ func test_title_focus_ring_wraps_in_both_directions() -> String:
 	var last: Button = title.get_node(names[names.size() - 1]) as Button
 	var err: String = _T.assert_gt(names.size(), 1, "there is a column to walk")
 	if err == "":
-		err = _T.assert_eq(String(start.get_node(start.focus_neighbor_top).name), names[names.size() - 1],
-			"Up from the first button reaches the last")
+		# The last ROW, not the last BUTTON, and the two stopped being the same thing in
+		# cycle 157. `_link_focus` wraps Up to the row above and then takes the cell in
+		# the same COLUMN — so with a paired trailing row it lands on that row's left
+		# cell, which is exactly the rule the code states for a narrower neighbour. The
+		# old expectation was true only while the fifth destination sat alone.
+		var rows: Array[PackedInt32Array] = TitleScreen.menu_rows(names.size())
+		var last_row: PackedInt32Array = rows[rows.size() - 1]
+		err = _T.assert_eq(String(start.get_node(start.focus_neighbor_top).name),
+			names[last_row[0]],
+			("Up from the first button reaches the last ROW, at the column it came from "
+				+ "-- %s of %d in that row") % [names[last_row[0]], last_row.size()])
 	if err == "":
 		err = _T.assert_eq(String(last.get_node(last.focus_neighbor_bottom).name), names[0],
 			"and Down from the last returns to the first")
@@ -10443,11 +10562,14 @@ func test_the_title_menu_pairs_its_secondary_destinations_two_to_a_row() -> Stri
 		"an empty menu has no rows — the loop terminates rather than emitting one")
 	if err == "":
 		err = _T.assert_eq(_menu_row_shape(TitleScreen.MENU_BUTTON_NAMES.size()),
-			[[0], [1], [2, 3], [4]],
-			"the shipped menu is two full-width primaries, one pair, and a lone trailing secondary")
+			[[0], [1], [2, 3], [4, 5]],
+			("the shipped menu is two full-width primaries and two pairs. It was "
+				+ "[[0], [1], [2, 3], [4]] until cycle 157 added the difficulty button, "
+				+ "which filled the hole beside Options rather than opening a row -- "
+				+ "which is the prediction the case below has been making all along"))
 	if err == "":
-		err = _T.assert_eq(_menu_row_shape(6), [[0], [1], [2, 3], [4, 5]],
-			"a sixth destination fills the hole beside the fifth rather than opening a new row")
+		err = _T.assert_eq(_menu_row_shape(7), [[0], [1], [2, 3], [4, 5], [6]],
+			"a SEVENTH destination is the one that opens a new row, alone and full-width")
 	if err == "":
 		err = _T.assert_eq(_menu_row_shape(TitleScreen.PRIMARY_COUNT),
 			[[0], [1]],
@@ -11750,8 +11872,12 @@ func test_every_row_limited_surface_is_exactly_full() -> String:
 			"fits": RunSummary.rows_capacity(),
 		},
 		{
+			# 2 since cycle 157, and it was 3: the difficulty button spent one of the
+			# three slots cycle 82 measured. The recorded number moving DOWN is the
+			# expected direction when a destination lands, and this assertion existing
+			# is why that arrives as a decision rather than as a surprise later.
 			"what": "the title screen menu",
-			"spare": 3,
+			"spare": 2,
 			"used": TitleScreen.MENU_BUTTON_NAMES.size(),
 			"fits": TitleScreen.menu_capacity(),
 		},

@@ -93,8 +93,21 @@ const HINT_HEIGHT: float = 22.0
 ## Order is the contract: the first PRIMARY_COUNT are the full-width rows, the
 ## rest fill the grid left-to-right then top-to-bottom, and both the focus ring
 ## and the entrance stagger read it.
+## SIX SINCE CYCLE 157, and the sixth sits at index 2 rather than at the end
+## (plant-tower-defense-s1o8.4). Order is the contract, so the position is a decision:
+## difficulty shapes the two rows above it and belongs beside them, not filed under
+## Options where a player reaches only after starting a run they have already shaped.
+##
+## IT IS A SECONDARY, AND THAT WAS MEASURED RATHER THAN CHOSEN. A third PRIMARY drops
+## `menu_capacity()` from 8 to 5 — one more tall row plus the un-pairing of the
+## secondaries — and five is fewer than the six the menu now holds. So the difficulty
+## button gets a half-band cell, and a half-band cell is 142 px at the theme's button
+## size: "Difficulty · Standard" draws 173 and does not fit, while the profile's own
+## label ("Standard", 80) does. The word the label omits is carried by the Start row
+## above, which names the profile it will start.
 const MENU_BUTTON_NAMES: Array[String] = [
-	"StartButton", "EndlessButton", "NotebookButton", "KeysButton", "OptionsButton",
+	"StartButton", "EndlessButton", "DifficultyButton",
+	"NotebookButton", "KeysButton", "OptionsButton",
 ]
 
 
@@ -354,6 +367,7 @@ const ENTRANCE_STAGGER: float = 0.07
 
 var _start_button: Button
 var _endless_button: Button
+var _difficulty_button: Button
 var _notebook_button: Button
 var _keys_button: Button
 var _options_button: Button
@@ -637,22 +651,34 @@ func _build_buttons() -> void:
 	# Notebook while its own tooltip is up leaves that tooltip floating over the
 	# notebook, because the popup belongs to the Viewport rather than to the
 	# button the overlay covered.
-	_start_button = _make_button(0, count, "Start  ·  8 waves")
+	# THE WAVE COUNT IS DERIVED, and it used to be the literal "8 waves" while
+	# WaveDirector.WAVES held 22 (plant-tower-defense-s1o8.4). Fourteen waves out of date
+	# on the first line every player reads, for as long as the table had grown twice
+	# without anyone re-reading the sentence describing it. A number about a table
+	# belongs to the table.
+	_start_button = _make_button(0, count, start_button_text(RunConfig.difficulty))
 	_start_button.pressed.connect(_start_campaign)
 
 	_endless_button = _make_button(1, count, "Endless  ·  no finish line")
 	_endless_button.pressed.connect(_start_endless)
 
+	# The difficulty cycles in place rather than opening a screen. A screen would be a
+	# sixth DESTINATION for a choice with three values, and the player would have to go
+	# there, decide, come back, and remember what they picked; the Start row above names
+	# the profile, so pressing this changes a sentence the player is already reading.
+	_difficulty_button = _make_button(2, count, difficulty_button_text(RunConfig.difficulty))
+	_difficulty_button.pressed.connect(_cycle_difficulty)
+
 	# "Notebook", not "Designer's Notebook", and only because of the cell width —
 	# see the grid note above BUTTON_TOP. The screen it opens still heads itself
 	# with the whole name, and so does the pause card's button, which sits in a
 	# full-width row and can afford it.
-	_notebook_button = _make_button(2, count, "Notebook")
+	_notebook_button = _make_button(3, count, "Notebook")
 	_notebook_button.pressed.connect(_open_notebook)
 
 	# The keyboard verbs were undiscoverable and unchangeable: the only screen that
 	# named them was the pause card, which needs a run in progress to reach.
-	_keys_button = _make_button(3, count, "Keys")
+	_keys_button = _make_button(4, count, "Keys")
 	_keys_button.pressed.connect(_open_keys)
 
 	# The three persisted switches had exactly one surface between them: a
@@ -660,7 +686,7 @@ func _build_buttons() -> void:
 	# screen could move those keys but not read what they were set to, so the one
 	# screen this game had for configuration was the one place a player could not
 	# see whether the colourblind bars were on.
-	_options_button = _make_button(4, count, "Options")
+	_options_button = _make_button(5, count, "Options")
 	_options_button.pressed.connect(_open_options)
 
 	# Explicit wrap-around, so Down off the last button returns to the first
@@ -670,6 +696,58 @@ func _build_buttons() -> void:
 
 
 ## The column, top to bottom, in MENU_BUTTON_NAMES order.
+## The two sentences the difficulty choice writes, kept as pure statics so the labels
+## are assertable without building a screen — and so the WIDTH each one needs can be
+## measured against the cell it goes in, which is how the sixth button ended up a
+## secondary rather than a primary.
+##
+## THE BUTTON CARRIES THE NOUN AND THE START ROW CARRIES THE VALUE, and the first draft
+## had it the other way round. A half-band cell is 142 px and "Difficulty · Standard"
+## draws 173, so one of the two words has to go somewhere else — and a capture of the
+## shipped menu settled which. A button reading "Standard", sitting in a column with
+## Notebook, Keys and Options, reads as a fourth DESTINATION and announces nothing about
+## what it does. "Difficulty" announces itself, and the value is a row above on the
+## button the player presses next.
+##
+## `name` is still the argument even though the label ignores it: the button's text is
+## about the setting and the SIGNATURE is about the profile, so a later design that puts
+## the value back (a wider band, a shorter label) changes one line rather than every
+## caller. It is also what lets the width test sweep every profile through both labels.
+static func difficulty_button_text(_name: StringName) -> String:
+	return "Difficulty"
+
+
+static func start_button_text(name: StringName) -> String:
+	return "Start  ·  %s  ·  %d waves" % [
+		String(Game.difficulty_profile(name)["label"]), WaveDirector.WAVES.size()]
+
+
+## The next profile in `DIFFICULTY_ORDER`, wrapping. Static and pure, so the wrap is
+## assertable without pressing anything — and so a profile added to the table joins the
+## cycle without this function being touched, which is the whole reason the order lives
+## in one list.
+static func next_difficulty(name: StringName) -> StringName:
+	var order: Array[StringName] = Game.DIFFICULTY_ORDER
+	var at: int = order.find(name)
+	# -1 for a name this build does not know: start the cycle at the beginning rather
+	# than wrapping from nowhere. Same rule as Game.difficulty_profile's fallback.
+	return order[(at + 1) % order.size()] if at >= 0 else order[0]
+
+
+## Cycles the run-shaping profile and re-labels the two rows that name it.
+##
+## Writes RunConfig directly, because that is where Game._ready() reads it from and a
+## copy held here would be a second answer to the same question. Nothing is persisted:
+## a difficulty is a fact about the next run, and RunConfig's header is explicit that
+## only the scores and the earned flags outlive a run.
+func _cycle_difficulty() -> void:
+	RunConfig.difficulty = next_difficulty(RunConfig.difficulty)
+	if _difficulty_button != null and is_instance_valid(_difficulty_button):
+		_difficulty_button.text = difficulty_button_text(RunConfig.difficulty)
+	if _start_button != null and is_instance_valid(_start_button):
+		_start_button.text = start_button_text(RunConfig.difficulty)
+
+
 func menu_buttons() -> Array[Button]:
 	var out: Array[Button] = []
 	for node_name: String in MENU_BUTTON_NAMES:
