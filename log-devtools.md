@@ -8984,3 +8984,33 @@ is likely to be at least as productive.
   where an empty one invites a second look. Caught by asking whether the number was
   plausible for the question rather than whether the command had worked — the first time
   this project has caught that shape mid-flight rather than a cycle later.
+
+## 2026-08-20 — Cycle 157: a difficulty button, decided by a capture rather than by a number
+
+- Value: **warranted**, and the run that mattered was `capture.gd`, not the bridge.
+  - Expected: the sixth menu button to fit and the layout to hold. Both were computed
+    first — `menu_capacity()` is 8 at `PRIMARY_COUNT` 2 and 5 at 3, and a half-band cell
+    is 142 px against "Difficulty · Standard" at 173 — so the shape was decided before
+    anything was built.
+  - Got: a rendered menu that fits, pairs evenly, and clears the lawn. **And a label that
+    was wrong while passing every number.** "Standard" draws 80 in a 142 px cell; in a
+    column with Notebook, Keys and Options it reads as a fourth destination announcing
+    nothing. Swapped so the button carries the noun and the Start row carries the value.
+  - Found: **a width budget is a necessary condition and never a sufficient one.** Both
+    label drafts cleared every measured constraint and only the picture separated them.
+    Also that the Start row had said "8 waves" against a 22-row table.
+  - Cheaper: nothing for the label. The arithmetic decided primary-vs-secondary correctly
+    and could not have decided the wording.
+
+- Technique worth recording, not a gap: **`entry_hook` advances past the title screen
+  automatically, so the bridge cannot see it on a launched game.** The route through is
+  `fire-entry-point notebook` / `keys` / `options` — all three carry
+  `"scene": "res://game/title.tscn"`, so they switch scene first and the title is behind
+  whatever they opened. `capture.gd` was used instead, and for a static layout question it
+  is the better tool anyway: no launch, no hook, one command.
+  - `--frames` matters more than usual here. At the default 3 the entrance stagger has
+    barely started and half the menu is invisible; at 40 two buttons were still fading; 90
+    was clean. A capture of this screen at the default would have shown a menu with holes
+    in it and invited a fix for a bug that does not exist.
+
+- Gap: **no new harness gaps this turn.**

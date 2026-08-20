@@ -134,6 +134,15 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      just as hard to a grep you ran once in a terminal. It was caught mid-flight for the
      first time, by asking whether the number was plausible for the question rather than
      whether the command had worked.
+   - **A BEAD THAT COVERS TWO THINGS CAN SHIP ONE OF THEM. Note the half, leave it open,
+     and never `--force` the close.** Cycle 157 built the difficulty picker and `bd`
+     refused the close: the bead covers a board picker too, and it is blocked by the bead
+     that would produce a second board to pick. The refusal was right, and `--force` would
+     have closed the board half by assertion — the close reason would have described work
+     that does not exist, in the field the next reader trusts most. So: put what shipped on
+     the bead as a note, say what is left and what still blocks it, and let the queue keep
+     showing it. A bead is not a unit of work, it is a unit of CLAIM, and half a claim
+     closed is worse than an open one.
    - **RUN INDEPENDENT ITEMS IN PARALLEL (asked for directly, cycle 99).** The loop did one
      item at a time for 99 cycles and the queue is 100 deep; most of it does not touch what
      the rest of it touches. Spawn agents for items whose files do not overlap, and say in

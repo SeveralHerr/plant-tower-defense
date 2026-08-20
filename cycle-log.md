@@ -1,4 +1,4 @@
-# Cycle 156
+# Cycle 157
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,39 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 157 taught
+
+**Every width number passed and the picture still said no.** The difficulty button sits
+in a 142 px cell; `"Standard"` draws 80 and `"Difficulty"` draws 79, so the width test
+passes for either. Rendered, `"Standard"` sitting in a column with Notebook, Keys and
+Options reads as a **fourth destination that announces nothing**. The numbers answered
+"does it fit" and the question was "does it say what it is". **A width budget is a
+necessary condition and never a sufficient one** — and this project has a lot of
+carefully-measured labels that nobody has looked at rendered.
+
+**The shape, though, was measured before it was built, and that was right.** A third
+PRIMARY row drops `menu_capacity()` from 8 to 5 — below the six the menu now holds — so a
+full-width difficulty row was never available. The arithmetic decided primary-versus-
+secondary correctly and could not have decided the wording. Both halves of the decision
+needed their own kind of evidence.
+
+**And the first line every player reads had been wrong by fourteen.** `"Start · 8 waves"`
+was a literal while `WaveDirector.WAVES` grew to 22. Nothing could catch it: a sentence
+about a table, in another file, and no gate here reads prose. Derived now, and pinned
+against `WAVES.size()` rather than against 22 — hard-coding the right number reproduces
+the defect one file over.
+
+**`bd` refused the close and was right.** The bead covers a board picker as well, and is
+blocked by the bead that would produce a second board to pick. `--force` would have closed
+the board half by assertion, in the field the next reader trusts most. Step 5 wrote that
+down: **a bead is not a unit of work, it is a unit of claim, and half a claim closed is
+worse than an open one.** Note the half, say what still blocks it, leave it in the queue.
+
+Three stale layout expectations were updated with their reasoning rather than their
+numbers — the focus ring wraps to the last ROW, the shipped shape is two pairs, and the
+recorded spare capacity went 3 to 2, which is the direction that assertion exists to
+notice.
 
 ## What cycle 156 taught
 

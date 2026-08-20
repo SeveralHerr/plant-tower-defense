@@ -218,6 +218,32 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 157 — every width number passed and the picture still said no
+
+- **Two labels cleared every measured budget and only a rendered capture separated them.**
+  The difficulty button sits in a 142 px cell. `"Standard"` draws 80 and `"Difficulty"`
+  draws 79 — both fit with room, and the width test would have passed either
+  (`test/unit/test_selftest.gd:1217`). Rendered, `"Standard"` sitting in a column with
+  Notebook, Keys and Options reads as a **fourth destination that announces nothing**.
+  The numbers answered "does it fit" and the question was "does it say what it is".
+  **The generalisable form: a width budget is a necessary condition and never a
+  sufficient one**, and this project has a lot of measured-then-shipped labels that
+  nobody has looked at rendered. Worth a pass with `capture.gd` over each screen, reading
+  the labels as a player rather than as a budget — the pause card, the run summary, the
+  options rows and the packet rack are the candidates, and the cost is one capture each.
+
+- **The first line every player reads had been wrong by fourteen for as long as nobody
+  re-read it.** `"Start · 8 waves"` was a literal while `WaveDirector.WAVES` grew to 22.
+  Nothing could catch it: it is a sentence about a table, in another file, and no gate
+  reads prose. It is now derived and pinned against `WAVES.size()`
+  (`test/unit/test_selftest.gd:1187`).
+  **The sweep: every sentence in the game's own UI that states a number about a table.**
+  This is the player-facing half of `plant-tower-defense-1l2e`, which is the same question
+  for design claims in headers — and it is the more urgent half, because a header lies to
+  a maintainer and a menu lies to a player. Grep the UI strings for digits and check each
+  against the thing it counts; the ones that are already derived will be obvious and the
+  rest are the finding.
+
 ### New in cycle 156 — the sweep found prose, and one line of it was an invariant
 
 - **A design claim in a header is either a READING or an INVARIANT, and only one of them
