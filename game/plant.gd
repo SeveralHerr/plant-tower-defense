@@ -231,6 +231,68 @@ const STEM_PIVOT_Y: float = 25.0
 const FLINCH_RADIANS: float = 0.16
 const FLINCH_RATE: float = 26.0
 const FLINCH_SECONDS: float = 0.32
+
+## THE WILT, and it is the only thing on this plant that says "nearly gone"
+## (plant-tower-defense-tkwf).
+##
+## The flinch above fires on the BITE and decays over 0.32s, so it says "just hit" and
+## never "still in trouble": between bites, a plant at 8% health and one at 95% are the
+## same silhouette. The difference lived entirely in a health bar the player has to be
+## looking at — and `Hud.health_color_on` is a continuous LERP with no threshold in it, so
+## even the bar answers by hue alone, against this project's standing rule that colour is
+## never the only signal.
+##
+## A HELD LEAN, not a third oscillation, and that is the whole design. `_wobble`'s rotation
+## already carries two sinusoids and its own comment records why they run on separate
+## clocks: a third at any frequency phase-locks with one of them sooner or later and reads
+## as "sways oddly" rather than as a state. A DC offset has no frequency to lock with. It
+## also composes correctly by construction — the sway keeps its full range, displaced — so
+## a wilting plant still breathes and still flinches, which a replacement channel would
+## have cost.
+##
+## AND IT IS ROTATION RATHER THAN SCALE deliberately: scale on `_sway_pivot` now has two
+## writers (the breathe and `idle_scale_multiplier`, which the Chomp's champ uses), and
+## `plant-tower-defense-tkwf` names the trap directly — three multiplied sinusoids do not
+## read as three states, they read as noise.
+##
+## THE THRESHOLD IS DERIVED, not chosen: `Pest.EAT_DPS / MAX_HEALTH` is 14/40 = 0.35, i.e.
+## **less than one second of chewing from dead**. That is the number this file's own header
+## already reasons in — it prices a full plant's life at `MAX_HEALTH / Pest.EAT_DPS` =
+## 2.86s — and deriving it means a retune of either constant moves the cue with the danger
+## instead of leaving it pointing at a fraction that used to matter.
+const WILT_RADIANS: float = 0.22
+
+
+## Pure: how far into "nearly gone" this health fraction is, 0.0 to 1.0.
+##
+## Zero above the threshold and ramping below it, rather than a step, for the reason the
+## health bar itself lerps: a plant crossing a line and snapping into a pose reads as a
+## bug, and the player's question is "how bad" rather than "is it bad".
+static func wilt_amount(fraction: float) -> float:
+	var threshold: float = wilt_threshold()
+	if threshold <= 0.0:
+		return 0.0
+	var below: float = threshold - clampf(fraction, 0.0, 1.0)
+	return clampf(below / threshold, 0.0, 1.0)
+
+
+## Pure: the health fraction at which the wilt starts, DERIVED from the damage that causes
+## it. One second of a hungry pest's chewing, as a fraction of a full plant.
+static func wilt_threshold() -> float:
+	return clampf(Pest.EAT_DPS / MAX_HEALTH, 0.0, 1.0)
+
+
+## Pure: the held lean, in radians, for a plant at `amount` of wilt standing on `phase`.
+##
+## The DIRECTION comes from the plant's own sway phase, so neighbouring beds lean opposite
+## ways. A constant sign would make every dying plant in a row tip identically, which reads
+## as a rendering fault rather than as a garden in trouble — the same reason `_wobble_phase`
+## exists at all.
+static func wilt_angle(amount: float, phase: float) -> float:
+	if amount <= 0.0:
+		return 0.0
+	var direction: float = 1.0 if sin(phase) >= 0.0 else -1.0
+	return direction * clampf(amount, 0.0, 1.0) * WILT_RADIANS
 ## The breathe: the sway's second channel, added in cycle 71 because a plant had
 ## one and a pest had two. `Pest._gait` narrows and lengthens the body alongside
 ## its side-to-side swing (`game/pest.gd:743`), which is what stops a walking bug
@@ -516,8 +578,13 @@ func _wobble(delta: float) -> void:
 	# never phase-lock into one larger sway -- which is what a shared clock at a harmonic
 	# ratio would look like, and it would read as "sways more when bitten" instead of
 	# "flinched".
+	# ADDED, not blended: the wilt is a held offset the sway swings ABOUT, so a dying plant
+	# still breathes and still flinches at full amplitude from a leaning rest position.
+	# Replacing the angle instead would have bought the lean by spending the two channels
+	# that say "alive" and "just bitten".
 	var angle: float = (sin(clock) * WOBBLE_RADIANS
-		+ sin(_wobble_time * FLINCH_RATE) * FLINCH_RADIANS * flinch_amount(_flinch_left))
+		+ sin(_wobble_time * FLINCH_RATE) * FLINCH_RADIANS * flinch_amount(_flinch_left)
+		+ wilt_angle(wilt_amount(health / MAX_HEALTH), _wobble_phase(cell)))
 	# One transform rather than `rotation` and `scale` separately, because the pivot
 	# POINT is the third thing being set and there is no property for it — see
 	# `sway_transform`. Both of the reads this replaces still work: Godot decomposes

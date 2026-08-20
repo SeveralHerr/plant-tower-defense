@@ -10841,3 +10841,152 @@ func test_only_the_chomp_overrides_the_idle_scale_hook() -> String:
 				% str(overriding)))
 	_T.free_ui(game)
 	return err
+
+
+## A plant nearly dead leans, and the threshold is DERIVED from what kills it
+## (plant-tower-defense-tkwf).
+##
+## The flinch says "just hit" and decays in 0.32s. Between bites a plant at 8% health and
+## one at 95% were the same silhouette, and the difference lived entirely in a health bar
+## the player has to be looking at — a bar which is itself a continuous lerp
+## (`Hud.health_color_on`), so it answers by hue alone against this project's standing rule
+## that colour is never the only signal.
+##
+## THE DERIVATION IS THE POINT OF THIS TEST. `wilt_threshold()` is `Pest.EAT_DPS /
+## MAX_HEALTH` — one second of a hungry pest's chewing — and pinning it as a literal here
+## would recreate exactly the drift the derivation exists to prevent. Asserted against the
+## two constants it comes from, so a retune of either moves the cue with the danger.
+func test_a_plant_wilts_below_one_second_of_chewing() -> String:
+	var err: String = _T.assert_float_eq(Plant.wilt_threshold(),
+		Pest.EAT_DPS / Plant.MAX_HEALTH, 0.0001,
+		"the wilt starts at one second of chewing, derived rather than typed")
+	if err == "":
+		# And that it is a SANE fraction rather than an accident of two constants: a
+		# threshold at 1.0 would wilt every plant that has ever been touched, and one at
+		# 0.0 would wilt nothing.
+		err = _T.assert_true(Plant.wilt_threshold() > 0.1 and Plant.wilt_threshold() < 0.6,
+			("one second of chewing is %.3f of a plant -- outside 0.1..0.6 the cue is "
+				+ "either constant or unreachable, and the balance moved under it")
+				% Plant.wilt_threshold())
+	if err == "":
+		err = _T.assert_float_eq(Plant.wilt_amount(1.0), 0.0, 0.0001,
+			"a full plant does not lean")
+	if err == "":
+		err = _T.assert_float_eq(Plant.wilt_amount(Plant.wilt_threshold()), 0.0, 0.0001,
+			"and neither does one exactly at the threshold")
+	if err == "":
+		err = _T.assert_float_eq(Plant.wilt_amount(0.0), 1.0, 0.0001,
+			"a plant at zero health is fully wilted")
+	if err == "":
+		# Monotone across the whole band, which a before/after pair cannot see.
+		var previous: float = 0.0
+		for i: int in range(1, 21):
+			var fraction: float = Plant.wilt_threshold() * (1.0 - float(i) / 20.0)
+			var here: float = Plant.wilt_amount(fraction)
+			err = _T.assert_true(here > previous,
+				"the lean only deepens; at %.3f health it went %.3f -> %.3f"
+					% [fraction, previous, here])
+			if err != "":
+				return err
+			previous = here
+	return err
+
+
+## The lean is HELD, big enough to read, and leans different ways on neighbouring beds
+## (plant-tower-defense-tkwf).
+##
+## Held is the design: `_wobble`'s rotation already carries two sinusoids on deliberately
+## separate clocks, and a third at any frequency phase-locks with one of them eventually. A
+## DC offset has no frequency to lock with — so this asserts the OFFSET, and that the sway
+## still swings its full range about it rather than being replaced by it.
+func test_the_wilt_is_a_held_lean_that_neighbours_do_not_share() -> String:
+	# Big enough to out-read the idle sway, or it is not a state, it is a mood. Same rule
+	# FLINCH_RADIANS is pinned by and for the same reason.
+	var err: String = _T.assert_true(Plant.WILT_RADIANS > Plant.WOBBLE_RADIANS * 2.0,
+		"a full lean clearly out-reads the sway (%.3f vs %.3f rad)"
+			% [Plant.WILT_RADIANS, Plant.WOBBLE_RADIANS])
+	if err == "":
+		# The absolute floor in PIXELS, on the corner of a cell-sized sprite. Every
+		# assertion above is relative to WILT_RADIANS and would pass with it set to 0.0 —
+		# the cycle-71 mutation, which survived exactly that shape of test.
+		var lean_px: float = sin(Plant.WILT_RADIANS) * (float(Board.CELL) * 0.5)
+		err = _T.assert_gte(lean_px, 4.0,
+			"and is visible: %.2f px at half a cell out" % lean_px)
+	if err == "":
+		err = _T.assert_float_eq(Plant.wilt_angle(0.0, 0.0), 0.0, 0.0001,
+			"a plant with no wilt has no lean at all")
+	if err == "":
+		# BOTH directions must occur across the phases real cells produce, or every dying
+		# plant in a row tips identically and it reads as a rendering fault.
+		var left: int = 0
+		var right: int = 0
+		var checked: int = 0
+		for y: int in range(Board.ROWS):
+			for x: int in range(Board.COLS):
+				var phase: float = Plant._wobble_phase(Vector2i(x, y))
+				var angle: float = Plant.wilt_angle(1.0, phase)
+				checked += 1
+				if angle > 0.0:
+					right += 1
+				elif angle < 0.0:
+					left += 1
+		err = _T.assert_eq(checked, Board.ROWS * Board.COLS,
+			"every cell on the board was asked (%d)" % checked)
+		if err == "":
+			err = _T.assert_gt(left, 0,
+				"some cells lean one way (%d of %d)" % [left, checked])
+		if err == "":
+			err = _T.assert_gt(right, 0,
+				"and some the other (%d of %d) -- a constant sign reads as a bug"
+					% [right, checked])
+	if err == "":
+		# The composition claim: the sway still swings its FULL range about the lean rather
+		# than being flattened by it. Asserted as the arithmetic `_wobble` performs, since
+		# everything past its animations gate is unreachable headless.
+		var lean: float = Plant.wilt_angle(1.0, 0.0)
+		var high: float = lean + Plant.WOBBLE_RADIANS
+		var low: float = lean - Plant.WOBBLE_RADIANS
+		err = _T.assert_float_eq(high - low, Plant.WOBBLE_RADIANS * 2.0, 0.0001,
+			"a wilting plant still breathes through its whole sway, displaced")
+		if err == "":
+			err = _T.assert_true(low > Plant.WOBBLE_RADIANS,
+				("and never returns to where a healthy plant sits: the leaning range is "
+					+ "%.3f..%.3f against a healthy %.3f..%.3f")
+					% [low, high, -Plant.WOBBLE_RADIANS, Plant.WOBBLE_RADIANS])
+	return err
+
+
+## Only a plant in real danger leans, swept over the catalogue (plant-tower-defense-tkwf).
+##
+## `wilt_amount` is on the base class, so EVERY plant gains this — which is right, and is
+## exactly why it needs the sweep `test_only_the_chomp_overrides_the_idle_scale_hook` does
+## for the other hook: a freshly built plant of any kind must be upright, and the same
+## plant at one hit point must not be.
+func test_every_plant_stands_up_until_it_is_in_danger() -> String:
+	# The literal path, not GAME_SCENE: that constant is test_selftest.gd's and this file
+	# spells the scene out, as test_exactly_two_plants_in_the_catalogue_grow_and_the_rest
+	# _are_born_finished does a few hundred lines up.
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	var err: String = ""
+	var checked: int = 0
+	for id: StringName in PlantCatalog.ids():
+		var plant: Plant = game._new_plant(id)
+		if plant == null:
+			err = "Game._new_plant built nothing for %s" % id
+			break
+		checked += 1
+		err = _T.assert_float_eq(Plant.wilt_amount(plant.health / Plant.MAX_HEALTH),
+			0.0, 0.0001, "%s stands up straight at full health" % id)
+		if err == "":
+			# One hit point: unambiguously in danger for every plant, since MAX_HEALTH is
+			# shared and the threshold is a fraction of it.
+			plant.health = 1.0
+			err = _T.assert_gt(Plant.wilt_amount(plant.health / Plant.MAX_HEALTH), 0.5,
+				"%s leans hard at 1hp" % id)
+		plant.free()
+		if err != "":
+			break
+	if err == "":
+		err = _T.assert_gt(checked, 1, "the catalogue was swept (%d plants)" % checked)
+	_T.free_ui(game)
+	return err
