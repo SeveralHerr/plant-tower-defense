@@ -563,7 +563,18 @@ func _build_text() -> void:
 ## that mutates state cannot be called twice by a test.
 static func high_score_text() -> String:
 	return high_score_text_at(RunConfig.best_for(false), RunConfig.best_for(true),
-		RunConfig.fresh_record)
+		RunConfig.fresh_record, difficulty_label(RunConfig.difficulty))
+
+
+## The picked profile's own name, for the record line to say which run these numbers
+## describe (plant-tower-defense-1hgx).
+##
+## Read through `Game.difficulty_profile` rather than indexing `DIFFICULTIES`, so a name
+## this build has no profile for shows the standard label instead of an empty string --
+## the same fallback the run itself takes, so the line cannot promise a profile the game
+## would not actually play.
+static func difficulty_label(name: StringName) -> String:
+	return String(Game.difficulty_profile(name).get("label", ""))
 
 
 ## The same line for a GIVEN pair of numbers, which is what makes the roll possible:
@@ -571,15 +582,31 @@ static func high_score_text() -> String:
 ## line and the settled one are produced by the same function and cannot disagree
 ## about spacing, separators or which modes are named
 ## (plant-tower-defense-9z1).
-static func high_score_text_at(campaign: int, endless: int, fresh: bool) -> String:
+static func high_score_text_at(campaign: int, endless: int, fresh: bool,
+		difficulty_name: String = "") -> String:
+	# NAMES THE PROFILE, because the numbers are per-profile since v9 and a line that did
+	# not say so would be the same lie in a new place: these two numbers ARE the record
+	# for the difficulty the picker is currently on, and switching the picker changes
+	# them. A player who sees the figures move when they choose Harsh has learnt the rule
+	# without being told it (plant-tower-defense-1hgx).
+	#
+	# Empty `difficulty_name` keeps the pre-v9 wording, which is what the ratchet's own
+	# tests pass and what a caller with no profile in hand should get.
+	var on: String = "" if difficulty_name == "" else " on %s" % difficulty_name
 	if campaign <= 0 and endless <= 0:
-		return "No garden on record yet."
+		# The empty case takes the profile as an ADJECTIVE rather than as a trailing
+		# clause: appending the same " on Harsh" used below produced "No garden on record
+		# yet on Harsh", read live and immediately wrong. The two sentences have different
+		# shapes and only one of them has a spare "on".
+		if difficulty_name == "":
+			return "No garden on record yet."
+		return "No %s garden on record yet." % difficulty_name
 	var parts: PackedStringArray = []
 	if campaign > 0:
 		parts.append("Campaign %d" % campaign)
 	if endless > 0:
 		parts.append("Endless %d" % endless)
-	var line: String = "Best seeds grown  —  %s" % " · ".join(parts)
+	var line: String = "Best seeds grown%s  —  %s" % [on, " · ".join(parts)]
 	if fresh:
 		return "%s   ← just now" % line
 	return line
@@ -746,6 +773,18 @@ func _cycle_difficulty() -> void:
 		_difficulty_button.text = difficulty_button_text(RunConfig.difficulty)
 	if _start_button != null and is_instance_valid(_start_button):
 		_start_button.text = start_button_text(RunConfig.difficulty)
+	# THE RECORD LINE TOO, since v9 made those numbers per-profile
+	# (plant-tower-defense-1hgx). Without this the line keeps whichever profile's figures
+	# it was built with, and goes stale at exactly the moment it matters -- the player is
+	# choosing a difficulty, and the whole point of naming the profile is that the numbers
+	# change when they do. Found live: pressing this button twice left the label reading
+	# "on Standard" both times.
+	#
+	# Looked up rather than cached, matching `menu_buttons()` above: this screen builds its
+	# children in `_ready` and a held reference is one more thing to keep valid.
+	var score := get_node_or_null("HighScoreLabel") as Label
+	if score != null:
+		score.text = high_score_text()
 
 
 func menu_buttons() -> Array[Button]:

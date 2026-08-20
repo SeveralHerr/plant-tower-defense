@@ -95,7 +95,28 @@ const SAVE_PATH := "user://highscore.save"
 ## per-plant setting, anything with its own length. THAT wants a line, because a
 ## variable-length field on a fixed line is the thing the binding block is kept last
 ## to avoid.
-const SAVE_VERSION: int = 8
+const SAVE_VERSION: int = 9
+
+## The version that made the record know which difficulty earned it
+## (plant-tower-defense-1hgx).
+##
+## WHAT V9 CHANGES IS A MEANING, NOT A BYTE. Lines 2 and 3 held "the campaign best" and
+## "the endless best" with no idea which profile was played, so a 5008 set on Gentle
+## (15 lives, 26s of prep, 40 seeds) and a 5008 set on Harsh (5, 9.0, 15) were the same
+## number in the same slot — and beating your own record by picking an easier setting was
+## indistinguishable from beating it by playing better. From v9 those two lines are the
+## STANDARD records specifically, and a new line carries the other profiles.
+##
+## SO THE MIGRATION MOVES NOTHING. A v8 file's two numbers keep their bytes and gain a
+## precise meaning: Standard is what the game shipped as, what the picker defaults to, and
+## therefore what those runs were almost certainly played on. Attributing them anywhere
+## else would be inventing a fact; leaving them unattributed is what v8 already did.
+##
+## THE NEW LINE GOES BEFORE THE BINDING COUNT, never after. The binding block is
+## variable-length and is kept last precisely so a truncation is detectable by comparing
+## its count against what follows — a field appended after it would be read as a binding
+## and would take the count's guard down with it.
+const VERSION_WITH_DIFFICULTY_SCORES: int = 9
 
 ## The version that introduced the milestone line, the options line and the
 ## binding block — all three landed together, so one number covers them.
@@ -457,6 +478,16 @@ var fresh_record_endless: bool = false
 var campaign_high_score: int = 0
 var endless_high_score: int = 0
 
+## The records for every profile OTHER than standard, keyed "<mode>:<difficulty>"
+## (plant-tower-defense-1hgx). Standard's two live in the fields above and are the two
+## lines the save has always had; see `VERSION_WITH_DIFFICULTY_SCORES` for why that split
+## is a meaning rather than a migration.
+##
+## A DICTIONARY RATHER THAN FOUR MORE FIELDS, because the profile set is `Game.DIFFICULTIES`
+## and a fourth profile must not need a field here. `best_for` reads it through
+## `score_key`, so nothing outside this file spells a key.
+var difficulty_high_scores: Dictionary = {}
+
 ## The keys the player has moved, as {action_name: Array[int] of keycodes}. Only
 ## the rows that differ from KeyBindings.ACTIONS live here — see
 ## KeyBindings.overrides() for why the defaults must not be pinned into the save.
@@ -665,10 +696,29 @@ func store_key_bindings(map: Dictionary) -> bool:
 	return _save()
 
 
-## The record for a mode. Takes the flag rather than reading `endless`, so the
-## title screen can show both without having to lie about which mode is selected.
-func best_for(for_endless: bool) -> int:
-	return endless_high_score if for_endless else campaign_high_score
+## The storage key for one (mode, difficulty) pair. Static and pure so a test can name a
+## slot without a live RunConfig, and so nothing outside this file has to know that the
+## standard profile is stored differently from the others.
+static func score_key(for_endless: bool, difficulty_name: StringName) -> String:
+	return "%s:%s" % ["endless" if for_endless else "campaign", difficulty_name]
+
+
+## The record for a mode ON A PROFILE. Takes both rather than reading `endless` and
+## `difficulty`, so the title screen can show any cell without having to lie about which
+## one is selected — the reason the flag was already a parameter.
+##
+## `difficulty_name` DEFAULTS TO THE LIVE PROFILE, which keeps every existing call site
+## meaning what it meant: before v9 there was one record per mode, and the one the player
+## is about to play for is the one those callers wanted.
+##
+## An unknown profile reads 0 rather than falling back to standard's number, and that is
+## deliberate in the opposite direction from `Game.difficulty_profile`: falling back there
+## keeps a run playable, and falling back here would show a player a record they never set.
+func best_for(for_endless: bool, difficulty_name: StringName = &"") -> int:
+	var profile: StringName = difficulty_name if difficulty_name != &"" else difficulty
+	if profile == Game.DIFFICULTY_STANDARD:
+		return endless_high_score if for_endless else campaign_high_score
+	return int(difficulty_high_scores.get(score_key(for_endless, profile), 0))
 
 
 ## Called once a run ends (win or lose). Only ever raises the record — a worse
@@ -679,10 +729,13 @@ func record_score(seeds_earned: int) -> bool:
 		return false
 	previous_best = best_for(endless)
 	fresh_record_endless = endless
-	if endless:
-		endless_high_score = seeds_earned
+	if difficulty == Game.DIFFICULTY_STANDARD:
+		if endless:
+			endless_high_score = seeds_earned
+		else:
+			campaign_high_score = seeds_earned
 	else:
-		campaign_high_score = seeds_earned
+		difficulty_high_scores[score_key(endless, difficulty)] = seeds_earned
 	fresh_record = true
 	_save()
 	return true
@@ -698,13 +751,15 @@ func record_score(seeds_earned: int) -> bool:
 ## consumed them knows exactly where the block starts. Put the bindings in the
 ## middle and every field under them moves whenever a player rebinds a key.
 static func compose_save(campaign: int, endless_best: int, milestone_line: String,
-		preferences_line: String, bindings: Dictionary) -> String:
+		preferences_line: String, bindings: Dictionary,
+		other_difficulties: Dictionary = {}) -> String:
 	var out: PackedStringArray = [
 		"v%d" % SAVE_VERSION,
 		str(campaign),
 		str(endless_best),
 		milestone_line,
 		preferences_line,
+		compose_difficulty_line(other_difficulties),
 		str(bindings.size()),
 	]
 	var names: Array = bindings.keys()
@@ -715,6 +770,58 @@ static func compose_save(campaign: int, endless_best: int, milestone_line: Strin
 			fields.append(str(int(code)))
 		out.append(" ".join(fields))
 	return "\n".join(out) + "\n"
+
+
+## The v9 line carrying every non-standard record (plant-tower-defense-1hgx).
+##
+## COUNT-PREFIXED, like the binding block below it and for the same reason: a line cut in
+## half is otherwise indistinguishable from a player who has only ever played standard.
+## `d0` is the honest empty set and is what a fresh save writes.
+##
+## Sorted, so two saves holding the same records are byte-identical — the property the
+## binding block's own sort exists for, and what makes a save comparable between runs.
+##
+## Zero-valued slots are dropped rather than written as `=0`: a record of nothing is the
+## absence of a record, and keeping them would make the line grow with the profile table
+## for no information.
+static func compose_difficulty_line(scores: Dictionary) -> String:
+	var fields: PackedStringArray = []
+	var names: Array = scores.keys()
+	names.sort()
+	for name: Variant in names:
+		var value: int = int(scores[name])
+		if value > 0:
+			fields.append("%s=%d" % [String(name), value])
+	return " ".join(PackedStringArray(["d%d" % fields.size()]) + fields)
+
+
+## Reads what `compose_difficulty_line` wrote. `null` on anything malformed, which is the
+## convention every other `_parse_*` here follows so `_parse_save` can refuse the file
+## rather than half-read it.
+##
+## A COUNT THAT DISAGREES WITH THE FIELDS IS A REFUSAL, not a truncation to be tolerated.
+## The whole point of writing the count is that it can disagree.
+static func parse_difficulty_line(text: String) -> Variant:
+	var parts: PackedStringArray = text.split(" ", false)
+	if parts.size() == 0 or not parts[0].begins_with("d"):
+		return null
+	var count_text: String = parts[0].substr(1)
+	if not count_text.is_valid_int():
+		return null
+	var count: int = int(count_text)
+	if count < 0 or parts.size() - 1 != count:
+		return null
+	var out: Dictionary = {}
+	for i: int in range(1, parts.size()):
+		var field: String = parts[i]
+		var split: int = field.find("=")
+		if split <= 0:
+			return null
+		var value_text: String = field.substr(split + 1)
+		if not _is_score(value_text):
+			return null
+		out[field.substr(0, split)] = int(value_text)
+	return out
 
 
 ## Has this player ever earned this milestone?
@@ -1222,7 +1329,7 @@ func _parse_failed(reason: String) -> Dictionary:
 	return {"ok": false, "campaign": 0, "endless": 0, "milestones": [],
 		"colorblind_safe": false, "mute_sfx": false, "mute_music": false,
 		"game_speed_step": 0, "sfx_level": 0, "music_level": 0,
-		"bindings": {}, "version": 0, "reason": reason}
+		"bindings": {}, "version": 0, "difficulty_scores": {}, "reason": reason}
 
 
 ## Validates an entire save file and only then hands back its contents.
@@ -1263,7 +1370,7 @@ func _parse_save(path: String) -> Dictionary:
 		return {"ok": true, "campaign": 0, "endless": int(header), "milestones": [],
 			"colorblind_safe": false, "mute_sfx": false, "mute_music": false,
 			"game_speed_step": 0, "sfx_level": 0, "music_level": 0,
-			"bindings": {}, "version": 1, "reason": "v1"}
+			"bindings": {}, "version": 1, "difficulty_scores": {}, "reason": "v1"}
 
 	var version_text: String = header.substr(1)
 	if not version_text.is_valid_int():
@@ -1335,6 +1442,16 @@ func _parse_save(path: String) -> Dictionary:
 		sfx_step = int(prefs["sfx_level"])
 		music_step = int(prefs["music_level"])
 
+	# The v9 line, gated on VERSION_WITH_DIFFICULTY_SCORES for the reason
+	# VERSION_WITH_EXTRAS exists: a v8 file does not have it, and reading one anyway would
+	# consume the binding count as a difficulty line and then refuse the whole save.
+	var difficulty_scores: Dictionary = {}
+	if version >= VERSION_WITH_DIFFICULTY_SCORES:
+		var parsed_diff: Variant = parse_difficulty_line(f.get_line().strip_edges())
+		if parsed_diff == null:
+			return _parse_failed("its difficulty-score line is not a difficulty-score line")
+		difficulty_scores = parsed_diff as Dictionary
+
 	# The count is what makes a truncation here detectable at all — without it, a
 	# file cut after the options line is indistinguishable from a player who never
 	# opened the Keys screen, and the rebindings vanish with no error. Same
@@ -1380,6 +1497,7 @@ func _parse_save(path: String) -> Dictionary:
 		"music_level": music_step,
 		"version": version,
 		"bindings": bindings,
+		"difficulty_scores": difficulty_scores,
 		"reason": "v%d" % version,
 	}
 
@@ -1424,6 +1542,9 @@ func _load() -> void:
 
 	campaign_high_score = int(parsed["campaign"])
 	endless_high_score = int(parsed["endless"])
+	# A pre-v9 save has none, and an empty dictionary is the correct reading rather than a
+	# fallback: before v9 the player could not have had a non-standard record recorded.
+	difficulty_high_scores = parsed.get("difficulty_scores", {}) as Dictionary
 	key_bindings = parsed["bindings"] as Dictionary
 	# Replaced, not merged. A load is "this is what is on disk", and a union with
 	# whatever the process happened to be holding would make a save reloaded twice
@@ -1508,7 +1629,7 @@ func _save() -> bool:
 			% [tmp, error_string(FileAccess.get_open_error())])
 		return false
 	f.store_string(compose_save(campaign_high_score, endless_high_score,
-		_milestone_line(), _preferences_line(), key_bindings))
+		_milestone_line(), _preferences_line(), key_bindings, difficulty_high_scores))
 	f.flush()
 	var write_error: int = f.get_error()
 	f.close()

@@ -819,6 +819,14 @@ func _stash_run_config() -> void:
 		"campaign_high_score": RunConfig.campaign_high_score,
 		"endless_high_score": RunConfig.endless_high_score,
 		"endless": RunConfig.endless,
+		# THE PICKED PROFILE, and the dictionary of records keyed by it
+		# (plant-tower-defense-1hgx). `best_for()` reads `difficulty` when a caller does
+		# not name one, so a test that leaves this on gentle changes what EVERY later
+		# test's `best_for()` answers -- which is how the per-difficulty test broke nine
+		# of its neighbours the first time it ran. Duplicated for the same reason
+		# `earned_milestones` is: `record_score` mutates it in place.
+		"difficulty": RunConfig.difficulty,
+		"difficulty_high_scores": RunConfig.difficulty_high_scores.duplicate(),
 		"fresh_record": RunConfig.fresh_record,
 		"load_status": RunConfig.load_status,
 		# Parsed out of the save alongside the scores, so a scratch fixture that
@@ -870,6 +878,9 @@ func _restore_run_config() -> void:
 	RunConfig.campaign_high_score = int(_stashed_run_config["campaign_high_score"])
 	RunConfig.endless_high_score = int(_stashed_run_config["endless_high_score"])
 	RunConfig.endless = bool(_stashed_run_config["endless"])
+	RunConfig.difficulty = StringName(_stashed_run_config["difficulty"])
+	RunConfig.difficulty_high_scores = (
+		_stashed_run_config["difficulty_high_scores"] as Dictionary).duplicate()
 	RunConfig.fresh_record = bool(_stashed_run_config["fresh_record"])
 	RunConfig.load_status = str(_stashed_run_config["load_status"])
 	RunConfig.key_bindings = _stashed_run_config["key_bindings"] as Dictionary
@@ -1105,6 +1116,131 @@ func test_no_save_at_all_still_means_a_fresh_pair_of_zeros() -> String:
 		return err)
 
 
+## THE RECORD KNOWS WHICH DIFFICULTY EARNED IT (plant-tower-defense-1hgx).
+##
+## The dishonesty this closes, stated as the test that would have failed: a 5008 set on
+## Gentle (15 lives, 26s of prep, 40 seeds) and a 5008 set on Harsh (5, 9.0, 15) were the
+## same number in the same slot, so **beating your own record by picking an easier setting
+## was indistinguishable from beating it by playing better**. That is a correctness
+## question about the score, not a presentation question about a label.
+##
+## Both directions, because they fail differently. A Harsh run must not be judged against
+## a Gentle record (it would almost never be a "record" and the player would stop seeing
+## the message), and a Gentle run must not overwrite a Harsh one (the harder number is the
+## one worth keeping).
+func test_a_record_is_kept_per_difficulty_and_not_shared() -> String:
+	return _with_scratch_save(0, 0, null, func() -> String:
+		RunConfig.endless = false
+		RunConfig.difficulty = Game.DIFFICULTY_GENTLE
+		var err: String = _T.assert_true(RunConfig.record_score(5000),
+			"a first run on gentle sets a record")
+		if err == "":
+			err = _T.assert_eq(RunConfig.best_for(false, Game.DIFFICULTY_GENTLE), 5000,
+				"and the record is filed against gentle")
+		if err == "":
+			# THE assertion. The standard slot is where every pre-v9 score lived, and a
+			# gentle run reaching it is the whole defect.
+			err = _T.assert_eq(RunConfig.best_for(false, Game.DIFFICULTY_STANDARD), 0,
+				"and standard's record is untouched -- a gentle run must not set it")
+		if err == "":
+			RunConfig.difficulty = Game.DIFFICULTY_HARSH
+			err = _T.assert_true(RunConfig.record_score(400),
+				("400 on harsh IS a record, even though it is far under gentle's 5000 -- "
+					+ "judging it against gentle is how a harder run stops counting"))
+		if err == "":
+			err = _T.assert_eq(RunConfig.best_for(false, Game.DIFFICULTY_GENTLE), 5000,
+				"and gentle's record did not move")
+		if err == "":
+			RunConfig.difficulty = Game.DIFFICULTY_GENTLE
+			err = _T.assert_false(RunConfig.record_score(4999),
+				"a worse gentle run still does not overwrite gentle's own record")
+		return err)
+
+
+## The v9 line's own grammar, including the case that makes the count worth writing.
+func test_the_difficulty_score_line_round_trips_and_refuses_a_bad_count() -> String:
+	var line: String = RunConfig.compose_difficulty_line(
+		{"campaign:harsh": 400, "campaign:gentle": 5000, "endless:harsh": 0})
+	# Sorted, and the zero dropped: a record of nothing is the absence of a record, and
+	# sorting is what makes two saves holding the same records byte-identical.
+	var err: String = _T.assert_eq(line, "d2 campaign:gentle=5000 campaign:harsh=400",
+		"the line is count-prefixed, sorted, and drops the slot with no record in it")
+	if err == "":
+		var back: Variant = RunConfig.parse_difficulty_line(line)
+		err = _T.assert_true(back != null, "and it reads back")
+		if err == "":
+			var got: Dictionary = back as Dictionary
+			err = _T.assert_eq(int(got.get("campaign:gentle", -1)), 5000,
+				"with the value it went in with")
+	if err == "":
+		err = _T.assert_eq(RunConfig.compose_difficulty_line({}), "d0",
+			"a player who has only ever played standard writes d0, not an empty line -- "
+				+ "an empty line is indistinguishable from a truncation")
+	if err == "":
+		var empty: Variant = RunConfig.parse_difficulty_line("d0")
+		err = _T.assert_true(empty != null and (empty as Dictionary).is_empty(),
+			"and d0 reads back as no records rather than as a refusal")
+	if err == "":
+		# THE REASON THE COUNT IS WRITTEN AT ALL. A line cut after its first field is
+		# otherwise a valid line describing fewer records.
+		err = _T.assert_true(
+			RunConfig.parse_difficulty_line("d2 campaign:gentle=5000") == null,
+			"a count that disagrees with the fields is refused, not tolerated")
+	if err == "":
+		err = _T.assert_true(RunConfig.parse_difficulty_line("d1 campaign:gentle=x") == null,
+			"and a value that is not a score is refused")
+	# THE KEY IS THE SAVE'S FIELD NAME, so changing its shape silently orphans every
+	# record already on disk -- the stored line would still parse and would simply describe
+	# slots nothing reads. Pinned as a literal for that reason: an assertion written as
+	# `score_key(...) == score_key(...)` would move with the function and never disagree.
+	if err == "":
+		err = _T.assert_eq(RunConfig.score_key(true, Game.DIFFICULTY_HARSH),
+			"endless:harsh", "the key is mode:difficulty, which is what the save writes")
+	if err == "":
+		err = _T.assert_eq(RunConfig.score_key(false, Game.DIFFICULTY_GENTLE),
+			"campaign:gentle", "and campaign is the other mode's word")
+	return err
+
+
+## A v8 SAVE MIGRATES BY GAINING A MEANING, NOT BY MOVING A BYTE
+## (plant-tower-defense-1hgx).
+##
+## Before v9, lines 2 and 3 were "the campaign best" and "the endless best" with no idea
+## which profile was played. From v9 they are STANDARD's records specifically. Standard is
+## what the game shipped as and what the picker defaults to, so those runs were almost
+## certainly played on it — and attributing them anywhere else would be inventing a fact.
+##
+## So this test's real claim is that the numbers do not move and the other profiles start
+## empty, which is the migration being correct rather than absent.
+func test_a_version_eight_save_reads_its_scores_as_standards() -> String:
+	var v8: String = "v8\n4138\n5008\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n"
+	return _with_scratch_save(0, 0, v8, func() -> String:
+		RunConfig._load()
+		var err: String = _T.assert_eq(RunConfig.load_status, "migrated",
+			"a v8 file is migrated rather than refused")
+		if err == "":
+			err = _T.assert_eq(RunConfig.best_for(false, Game.DIFFICULTY_STANDARD), 4138,
+				"its campaign number is standard's campaign record")
+		if err == "":
+			err = _T.assert_eq(RunConfig.best_for(true, Game.DIFFICULTY_STANDARD), 5008,
+				"and its endless number is standard's endless record")
+		if err == "":
+			err = _T.assert_eq(RunConfig.best_for(false, Game.DIFFICULTY_HARSH), 0,
+				("and harsh starts empty -- a player who never played it has no record "
+					+ "there, and copying standard's in would be inventing one"))
+		if err == "":
+			# The rewrite the migration performs must be readable by this build, or the
+			# next launch refuses the file the migration just wrote.
+			RunConfig._save()
+			RunConfig._load()
+			err = _T.assert_eq(RunConfig.load_status, "loaded",
+				"and the file the migration wrote reads back as current")
+		if err == "":
+			err = _T.assert_eq(RunConfig.best_for(false, Game.DIFFICULTY_STANDARD), 4138,
+				"with the number still there after the round trip")
+		return err)
+
+
 func test_a_well_formed_save_round_trips_exactly() -> String:
 	## The happy path, end to end through the real writer and the real reader, and
 	## byte-exact on the file itself — a reader that refused everything would pass
@@ -1112,7 +1248,7 @@ func test_a_well_formed_save_round_trips_exactly() -> String:
 	return _with_scratch_save(1234, 5678, null, func() -> String:
 		RunConfig._save()
 		var err: String = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-			"v%d\n1234\n5678\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
+			"v%d\n1234\n5678\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n0\n" % RunConfig.SAVE_VERSION,
 			"the save is a version stamp, campaign, endless, the milestone set, the options, then a count of rebound keys")
 		if err == "":
 			err = _T.assert_false(FileAccess.file_exists(HIGHSCORE_TEST_PATH + ".tmp"),
@@ -1157,7 +1293,7 @@ func test_a_refused_save_is_not_immediately_overwritten() -> String:
 				"the unreadable file was moved aside, not written over")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n9999\n8765\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n9999\n8765\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n0\n" % RunConfig.SAVE_VERSION,
 				"and the new save kept the endless record the refusal had preserved")
 		return err)
 
@@ -1179,7 +1315,7 @@ func test_a_version_one_save_still_migrates_into_the_endless_slot() -> String:
 		if err == "":
 			# A parse that fully succeeded is the one case that may rewrite the file.
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n0\n31337\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n31337\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n0\n" % RunConfig.SAVE_VERSION,
 				"and the ambiguity is resolved on disk once, not re-guessed every launch")
 		return err)
 
@@ -1231,7 +1367,7 @@ func test_a_run_with_milestones_round_trips_through_the_save() -> String:
 			# Sorted on the way out, so the bytes are a function of the SET rather
 			# than of the order the run happened to earn things in.
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n1234\n5678\nm2:campaign_cleared,hundred_pests\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n1234\n5678\nm2:campaign_cleared,hundred_pests\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n0\n" % RunConfig.SAVE_VERSION,
 				"filing a milestone wrote the file, ids sorted")
 		if err == "":
 			# Deliberately not empty: a `_load` that assigned nothing would pass an
@@ -1406,7 +1542,7 @@ func test_a_version_two_save_migrates_forward_with_an_empty_milestone_set() -> S
 				"a player who predates milestones has earned none of them")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n0\n" % RunConfig.SAVE_VERSION,
 				"and the file is now the current shape, resolved once")
 		return err)
 
@@ -1447,7 +1583,7 @@ func test_a_milestone_id_this_build_has_never_heard_of_survives_a_round_trip() -
 	# carrying the unknown id through a version bump is no longer a thing this test
 	# can express. What it is about — the parser keeping an id it has no rule for —
 	# is unchanged and is what stays asserted here.
-	return _with_scratch_save(0, 0, "v%d\n10\n20\nm2:from_the_future,hundred_pests\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n"
+	return _with_scratch_save(0, 0, "v%d\n10\n20\nm2:from_the_future,hundred_pests\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n0\n"
 			% RunConfig.SAVE_VERSION,
 		func() -> String:
 			RunConfig._load()
@@ -1461,7 +1597,7 @@ func test_a_milestone_id_this_build_has_never_heard_of_survives_a_round_trip() -
 			if err == "":
 				RunConfig.record_milestones(["threat_peak"])
 				err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-					"v%d\n10\n20\nm3:from_the_future,hundred_pests,threat_peak\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n"
+					"v%d\n10\n20\nm3:from_the_future,hundred_pests,threat_peak\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n0\n"
 						% RunConfig.SAVE_VERSION,
 					"and the next save writes it back out rather than eating it")
 			return err)
@@ -1481,7 +1617,7 @@ func test_the_colourblind_option_round_trips_through_the_save() -> String:
 			"one toggle turns the safe ramp on")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb1 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb1 sfx0 mus0 spd0 svol0 mvol0\nd0\n0\n" % RunConfig.SAVE_VERSION,
 				"and wrote it down rather than holding it for the session")
 		if err == "":
 			# Deliberately the wrong value, so a `_load` that assigned nothing at
@@ -1493,7 +1629,7 @@ func test_the_colourblind_option_round_trips_through_the_save() -> String:
 			err = _T.assert_false(RunConfig.toggle_colorblind_safe(), "a second toggle turns it off")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n0\n" % RunConfig.SAVE_VERSION,
 				"and that is written down too -- off is a choice, not an absence")
 		return err)
 
@@ -1587,13 +1723,13 @@ func test_the_two_mutes_round_trip_through_the_save() -> String:
 			err = _T.assert_true(Sfx.is_muted(), "and the flag the player hears moved too")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb0 sfx1 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb0 sfx1 mus0 spd0 svol0 mvol0\nd0\n0\n" % RunConfig.SAVE_VERSION,
 				"the options line carries all three switches, colourblind first")
 		if err == "":
 			err = _T.assert_true(RunConfig.set_mute_music(true), "and the bed mutes independently")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb0 sfx1 mus1 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb0 sfx1 mus1 spd0 svol0 mvol0\nd0\n0\n" % RunConfig.SAVE_VERSION,
 				"which is a third field, not the same field written twice")
 		if err == "":
 			# Deliberately wrong in memory, and deliberately asymmetric: a `_load`
@@ -1631,7 +1767,7 @@ func test_the_two_mutes_round_trip_through_the_save() -> String:
 			err = _T.assert_true(RunConfig.toggle_mute_music(), "and one silences the bed")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n11\n22\nm0\ncb0 sfx0 mus1 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n11\n22\nm0\ncb0 sfx0 mus1 spd0 svol0 mvol0\nd0\n0\n" % RunConfig.SAVE_VERSION,
 				"and both presses were written down, which is the whole point of the issue")
 		if err == "":
 			# Drift, staged deliberately: the live flag says muted, the save says not.
@@ -1702,7 +1838,7 @@ func test_a_version_five_save_reads_forward_into_the_current_version() -> String
 			err = _T.assert_false(RunConfig.mute_music, "both of them")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n70\n80\nm1:threat_peak\ncb1 sfx0 mus0 spd0 svol0 mvol0\n1\ngarden_pause 4194332\n" % RunConfig.SAVE_VERSION,
+				"v%d\n70\n80\nm1:threat_peak\ncb1 sfx0 mus0 spd0 svol0 mvol0\nd0\n1\ngarden_pause 4194332\n" % RunConfig.SAVE_VERSION,
 				"and the file is rewritten in the new shape once, keeping everything it carried")
 		if err == "":
 			# The rewritten file has to be one this build reads back as current,
@@ -3281,7 +3417,7 @@ func test_a_save_written_before_the_speed_field_reads_as_one_x_and_is_rewritten(
 				"and so does its rebound key -- the field under the one that moved")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n70\n80\nm1:threat_peak\ncb1 sfx0 mus0 spd0 svol0 mvol0\n1\ngarden_pause 4194332\n"
+				"v%d\n70\n80\nm1:threat_peak\ncb1 sfx0 mus0 spd0 svol0 mvol0\nd0\n1\ngarden_pause 4194332\n"
 					% RunConfig.SAVE_VERSION,
 				"and it is rewritten once in the new shape, with the speed defaulted in place")
 		if err == "":
@@ -3332,7 +3468,7 @@ func test_a_saved_speed_step_this_build_has_no_step_for_starts_at_one_x() -> Str
 	# and on test_a_save_with_a_broken_speed_field_is_refused_whole — a fixture pinned to
 	# SAVE_VERSION rather than to the version whose shape it is testing goes stale silently
 	# on every bump, and the failure it produces points at the parser instead of at itself.
-	var original: String = "v%d\n70\n80\nm0\ncb0 sfx0 mus0 spd%d svol0 mvol0\n0\n" % [
+	var original: String = "v%d\n70\n80\nm0\ncb0 sfx0 mus0 spd%d svol0 mvol0\nd0\n0\n" % [
 		RunConfig.SAVE_VERSION, future_step]
 	return _with_scratch_save(0, 0, original, func() -> String:
 		RunConfig._load()
@@ -3571,7 +3707,7 @@ func test_the_two_levels_round_trip_through_the_save() -> String:
 			err = _T.assert_eq(RunConfig.set_music_level(1), 1, "and so does the music half")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol2 mvol1\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol2 mvol1\nd0\n0\n" % RunConfig.SAVE_VERSION,
 				"the two levels are the fifth and sixth fields of the preferences line")
 		if err == "":
 			# Wipe first, or a `_load` that never touched them would pass by leaving
@@ -3619,7 +3755,7 @@ func test_a_level_this_build_has_no_step_for_is_refused_by_the_setter_and_kept_f
 ## Read from a save rather than from a caller, which is the other side of the rule
 ## above: a later build's eighth step is data this one must not destroy.
 func test_a_level_from_a_later_build_is_read_and_kept_and_falls_back_to_full() -> String:
-	var future: String = ("v%d\n40\n50\nm0\ncb0 sfx0 mus0 spd0 svol%d mvol0\n0\n"
+	var future: String = ("v%d\n40\n50\nm0\ncb0 sfx0 mus0 spd0 svol%d mvol0\nd0\n0\n"
 		% [RunConfig.SAVE_VERSION, RunConfig.MAX_LEVEL_STEP])
 	return _with_scratch_save(0, 0, future, func() -> String:
 		RunConfig._load()
@@ -3673,7 +3809,7 @@ func test_a_save_written_before_the_levels_reads_as_full_and_is_rewritten() -> S
 				"and so does its rebound key -- the field under the line that moved")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-				"v%d\n70\n80\nm1:threat_peak\ncb1 sfx1 mus0 spd1 svol0 mvol0\n1\ngarden_pause 4194332\n"
+				"v%d\n70\n80\nm1:threat_peak\ncb1 sfx1 mus0 spd1 svol0 mvol0\nd0\n1\ngarden_pause 4194332\n"
 					% RunConfig.SAVE_VERSION,
 				"and it is rewritten once in the new shape, with the levels defaulted in place")
 		if err == "":
@@ -3694,13 +3830,13 @@ func test_a_save_written_before_the_levels_reads_as_full_and_is_rewritten() -> S
 func test_a_save_with_a_broken_level_field_is_refused_whole() -> String:
 	var cases: Dictionary = {
 		"a level field with no digits":
-			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svol mvol0\n" % RunConfig.SAVE_VERSION,
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svol mvol0\nd0\n" % RunConfig.SAVE_VERSION,
 		"a level field that is not a number":
-			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svolx mvol0\n" % RunConfig.SAVE_VERSION,
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svolx mvol0\nd0\n" % RunConfig.SAVE_VERSION,
 		"a negative level":
-			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svol-1 mvol0\n" % RunConfig.SAVE_VERSION,
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svol-1 mvol0\nd0\n" % RunConfig.SAVE_VERSION,
 		"a level past the bound":
-			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svol%d mvol0\n"
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svol%d mvol0\nd0\n"
 				% [RunConfig.SAVE_VERSION, RunConfig.MAX_LEVEL_STEP + 1],
 		# The whole reason each field carries its own marker. The two levels are
 		# adjacent fields about the same subject, so a transposition is the mistake
@@ -3708,7 +3844,7 @@ func test_a_save_with_a_broken_level_field_is_refused_whole() -> String:
 		"the two levels transposed":
 			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 mvol0 svol0\n" % RunConfig.SAVE_VERSION,
 		"a level field wearing the mute's marker":
-			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 sfx0 mvol0\n" % RunConfig.SAVE_VERSION,
+			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 sfx0 mvol0\nd0\n" % RunConfig.SAVE_VERSION,
 		"the music level missing":
 			"v%d\n4321\n8765\nm0\ncb0 sfx0 mus0 spd0 svol0\n" % RunConfig.SAVE_VERSION,
 		"a seventh field":
@@ -3896,7 +4032,7 @@ func test_pressing_a_dial_row_turns_the_volume_down_and_writes_it_down() -> Stri
 		# The half a mixer-only dial would fail: the press has to reach the file, not
 		# just the bus, or the level is gone at the next launch.
 		err = _T.assert_eq(FileAccess.get_file_as_string(HIGHSCORE_TEST_PATH),
-			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol1 mvol1\n0\n" % RunConfig.SAVE_VERSION,
+			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol1 mvol1\nd0\n0\n" % RunConfig.SAVE_VERSION,
 			"and both presses are in the save, not held for the session")
 	if err == "":
 		# `turn` is the screen's own door and the only writer the buttons have; named

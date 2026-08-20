@@ -1116,6 +1116,50 @@ func test_menu_buttons_are_not_left_on_the_default_theme() -> String:
 	return err
 
 
+## THE RECORD LINE SAYS WHICH PROFILE THESE NUMBERS ARE FOR
+## (plant-tower-defense-1hgx).
+##
+## Since v9 the two figures on the title screen are the record for the difficulty the
+## picker is currently on, and switching the picker changes them. A line that did not say
+## so would be the same lie in a new place — the player would watch their best drop when
+## they chose Harsh and conclude the game had lost it.
+##
+## Both the record case and the EMPTY case, because the empty one is what a player sees
+## the first time they pick a harder profile, and "No garden on record yet." with no
+## profile named reads as "your records are gone".
+func test_the_title_record_line_names_the_profile_it_is_reporting() -> String:
+	var err: String = _T.assert_true(
+		TitleScreen.high_score_text_at(400, 0, false, "Harsh").contains("Harsh"),
+		"a record shown while Harsh is picked says Harsh")
+	if err == "":
+		err = _T.assert_true(
+			TitleScreen.high_score_text_at(0, 0, false, "Harsh").contains("Harsh"),
+			("and so does the EMPTY line -- the first Harsh visit shows no numbers, and "
+				+ "an unqualified 'No garden on record yet' reads as records lost"))
+	if err == "":
+		# The pre-v9 wording is still what a caller with no profile gets, which is what
+		# the ratchet's own tests exercise. A default that quietly named a profile would
+		# put a wrong one on the rolling line.
+		err = _T.assert_false(
+			TitleScreen.high_score_text_at(400, 0, false).contains(" on "),
+			"a caller naming no profile gets the unqualified line, not a guessed one")
+	if err == "":
+		# Derived from the real table, so a renamed or added profile is covered without
+		# this test being edited -- and an unknown name must not produce an empty phrase.
+		for id: StringName in Game.DIFFICULTY_ORDER:
+			var label: String = TitleScreen.difficulty_label(id)
+			err = _T.assert_gt(label.length(), 0,
+				"every profile in DIFFICULTY_ORDER has a label to put in the line: %s" % id)
+			if err != "":
+				break
+	if err == "":
+		err = _T.assert_eq(TitleScreen.difficulty_label(&"no_such_profile"),
+			TitleScreen.difficulty_label(Game.DIFFICULTY_STANDARD),
+			("an unknown profile shows standard's label, matching the fallback the RUN "
+				+ "takes -- the line must not promise a profile the game would not play"))
+	return err
+
+
 func test_title_high_score_line_never_reads_as_a_zero_record() -> String:
 	## "Best endless run: 0 seeds grown" on a fresh install reads as a bug, not
 	## as an empty record.
@@ -1853,7 +1897,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 		err = _T.assert_eq(String(Game.key_help()[0]["keys"]), "F1", "the pause card's legend moved")
 	if err == "":
 		err = _T.assert_eq(FileAccess.get_file_as_string(path),
-			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
+			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
 			"and it was written down beside the scores")
 	if err == "":
 		# A key another verb already answers to is refused, and said so.
@@ -1890,7 +1934,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 				"Put them all back restores the shipped keys once confirmed")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(path),
-				"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n0\n" % RunConfig.SAVE_VERSION,
 				"and clears the overrides out of the save rather than pinning the defaults into it")
 
 	_T.free_ui(screen)
@@ -2227,7 +2271,7 @@ func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
 		err = _T.assert_true(RunConfig.colorblind_safe, "the colourblind row sets the flag")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(path),
-				"v%d\n0\n0\nm0\ncb1 sfx0 mus0 spd0 svol0 mvol0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n0\nm0\ncb1 sfx0 mus0 spd0 svol0 mvol0\nd0\n0\n" % RunConfig.SAVE_VERSION,
 				"and it is written down beside the scores, not held for the session")
 	if err == "":
 		# Nothing on the paper may run off it or sit on top of anything else, and the
@@ -5607,12 +5651,12 @@ func test_the_binding_table_answers_about_itself() -> String:
 		# through this, so a field appended in the wrong place fails here.
 		err = _T.assert_eq(
 			RunConfig.compose_save(3, 4, "m0", "cb0 sfx0 mus0 spd0", {"garden_pause": [KEY_F1, KEY_F2]}),
-			"v%d\n3\n4\nm0\ncb0 sfx0 mus0 spd0\n1\ngarden_pause %d %d\n" % [RunConfig.SAVE_VERSION, KEY_F1, KEY_F2],
+			"v%d\n3\n4\nm0\ncb0 sfx0 mus0 spd0\nd0\n1\ngarden_pause %d %d\n" % [RunConfig.SAVE_VERSION, KEY_F1, KEY_F2],
 			"compose_save writes the header, both scores, the milestones, the options, "
 				+ "the count, then the rows")
 	if err == "":
 		err = _T.assert_eq(RunConfig.compose_save(0, 0, "m0", "cb0 sfx0 mus0 spd0", {}),
-			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0\n0\n" % RunConfig.SAVE_VERSION,
+			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0\nd0\n0\n" % RunConfig.SAVE_VERSION,
 			"and an untouched keyboard is a count of zero, not an absent line")
 	KeyBindings.reset_all()
 	return err
@@ -5662,7 +5706,7 @@ func test_rebound_keys_survive_a_save_and_load() -> String:
 	if err == "":
 		RunConfig.store_key_bindings(KeyBindings.overrides())
 		err = _T.assert_eq(FileAccess.get_file_as_string(path),
-			"v%d\n11\n22\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\n1\ngarden_mute_music %d\n" % [RunConfig.SAVE_VERSION, KEY_F7],
+			"v%d\n11\n22\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n1\ngarden_mute_music %d\n" % [RunConfig.SAVE_VERSION, KEY_F7],
 			"the save carries the count and one action row")
 	if err == "":
 		# Wipe every trace from memory, then read it all back off disk.
