@@ -184,9 +184,18 @@ func test_the_corn_ladder_gets_strictly_wider_each_level() -> String:
 
 func test_upgrading_stops_at_the_top_and_costs_nothing_there() -> String:
 	var corn := CornCobbler.new()
-	while corn.upgrade():
-		pass
-	var err: String = _T.assert_true(corn.is_max_level(), "the ladder terminates")
+	# GUARDED, like every other loop in this suite (`guard < 4000`, `waited < 30`). This
+	# one climbed until upgrade() returned false, which is a termination condition owned by
+	# the code under test -- so a defect that stopped `level` advancing would hang here and
+	# take the WHOLE SUITE with it rather than failing. Found in cycle 150 by mutating
+	# `level += 1` away and watching the runner get SIGTERMed at 6m40s
+	# (plant-tower-defense-4uts). The bound is the ladder's own length plus slack, so it
+	# still exercises every rung.
+	var climbs: int = 0
+	while corn.upgrade() and climbs < CornCobbler.LEVELS.size() + 2:
+		climbs += 1
+	var err: String = _T.assert_true(corn.is_max_level(),
+		"the ladder terminates (after %d climb(s))" % climbs)
 	if err == "":
 		err = _T.assert_eq(corn.upgrade_cost(), 0, "a fully grown cob has no price to quote")
 	if err == "":
@@ -6481,7 +6490,10 @@ func test_a_chomp_climbs_its_ladder_and_stops_at_the_top() -> String:
 		err = _T.assert_gt(chomp.upgrade_cost(), 0, "and a price on the next rung")
 	var climbed: int = 0
 	var paid: int = 0
-	while err == "" and chomp.can_upgrade():
+	# Bounded by the counter it already keeps, for the reason the cob's twin in
+	# test_placement.gd now is: `can_upgrade()` belongs to the code under test, so a defect
+	# there hangs the suite instead of failing it (plant-tower-defense-4uts).
+	while err == "" and chomp.can_upgrade() and climbed < ChompFlower.LEVELS.size() + 2:
 		paid += chomp.upgrade_cost()
 		if not chomp.upgrade():
 			err = "upgrade() refused a rung can_upgrade() had just offered"

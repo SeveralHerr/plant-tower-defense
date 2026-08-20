@@ -20516,8 +20516,15 @@ func test_a_move_always_costs_something_and_always_beats_uprooting() -> String:
 		# rather than asserted. A climbed cob is where uproot-and-rebuy is ruinous.
 		var cob: Plant = game._new_plant(PlantCatalog.CORN)
 		cob.setup(PlantCatalog.CORN, Vector2i(0, 0), game.board)
-		while not cob.is_max_level():
+		# GUARDED for the reason test_upgrading_stops_at_the_top_and_costs_nothing_there now
+		# is: `is_max_level()` is a condition the code under test owns, so a defect that
+		# stopped the level advancing would hang the whole suite instead of failing it.
+		# This loop is mine, from cycle 143, and cycle 150's mutation sweep is what found
+		# it (plant-tower-defense-4uts).
+		var climbs: int = 0
+		while not cob.is_max_level() and climbs < CornCobbler.LEVELS.size() + 2:
 			cob.upgrade()
+			climbs += 1
 		var climbed: int = (PlantCatalog.cost(PlantCatalog.CORN) - cob.uproot_refund()
 			+ cob.upgrade_spent())
 		err = _T.assert_gt(climbed, cob.move_cost() * 2,

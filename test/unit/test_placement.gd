@@ -527,7 +527,11 @@ func test_upgrading_a_planted_cobbler_changes_what_it_draws() -> String:
 		corn = game.plant_at(cell) as CornCobbler
 		err = _T.assert_true(corn != null, "and it is a Corn Cobbler")
 	var upgrades: int = 0
-	while err == "" and not corn.is_max_level():
+	# BOUNDED BY THE COUNTER IT ALREADY KEEPS. `is_max_level()` is a condition the code
+	# under test owns, so a defect that stopped the level advancing hung this loop and took
+	# the whole suite with it -- found in cycle 150's reader-mutation sweep
+	# (plant-tower-defense-4uts), where the runner was SIGTERMed rather than failing.
+	while err == "" and not corn.is_max_level() and upgrades < CornCobbler.LEVELS.size() + 2:
 		var before: PackedVector2Array = corn.muzzle_pip_positions()
 		err = _T.assert_true(corn.upgrade(), "level %d buys the next level" % corn.level)
 		if err != "":
