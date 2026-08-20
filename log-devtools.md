@@ -8513,3 +8513,42 @@ status rather than rewriting the entries that recorded these as open.
 - Gap: **no new gaps this turn.** `launch --snapshot-userstate` was used again and again
   reported `restored 1 file(s)`; the reflex from cycle 141 is holding. `--about` was not
   needed (the run's subject was one file plus its tests), so [G-140] gets no new sighting.
+
+## 2026-08-20 — the move window holds while you decide (plant-tower-defense-b9bl)
+
+- Value: **warranted** — the hold is keyed to `_hover_cell`, the unit test sets that field
+  by hand, and only a running game could say whether anything populates it in practice.
+  - Expected: that real cursor motion actually engages the hold. A hold keyed to a field
+    nothing populates would pass every headless assertion and do nothing for a player.
+  - Got: it engages. `_hover_cell` became `(3, 0)` through the real cursor path and
+    `_uproot_left` held at **exactly 4.0 across five reads spanning several seconds** —
+    before this change it would have been 0 within four. Then resumed `3.4 → 3.1 → 2.8`
+    the moment the pointer moved to the plant's own cell.
+  - Found: **the bridge cannot drive an absolute mouse position, so nothing reading
+    `InputEventMouseMotion.position` is reachable at runtime.** See the gap below. Also,
+    self-inflicted and worth writing down: I launched the game before finishing the tests
+    and it played itself to a loss while I worked — `place_plant` came back
+    `refused at (1, 0): the run is over`. The launch belongs at the moment the runtime
+    question is ready to be asked, not at the start of the phase.
+  - Cheaper: nothing for the hold. The second finding was free and my own fault.
+
+- The row is recorded **`partial`**, not `pass`, and that is the ledger working rather than
+  a problem: I marked the event-delivery check `blocked` and `record` downgraded the
+  verdict on its own. A check that could not run is not a check that passed.
+
+- Gap: **`cmd mouse_move` sends `relative` only, so absolute-position input is undrivable.**
+  `python tools/devtools.py cmd mouse_move --args '{"position":[224.0,104.0]}'` is refused
+  by name — `mouse_move needs relative as [dx, dy]` — and the relative form does not carry
+  a position, so a handler doing `_update_cursor(motion.position)` sees `(0, 0)`. Measured:
+  two attempts, `_hover_cell` stayed `(-1, -1)` both times; warping `-4000,-4000` then
+  `+224,+104` changed nothing, because Godot's relative motion never sets `position`.
+  This is not a niche verb — hover cues, tooltips, drag previews, placement previews and
+  cursor-following art are all `position` readers, and this project has four of them.
+  Workaround used: call the handler below the event layer
+  (`run-method --method _update_cursor --args "[[224.0,104.0]]"`), which verifies
+  everything except the delivery and has to be reported as such.
+  - [G-141] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: accept a `position` arg on `mouse_move` and set it on the
+    `InputEventMouseMotion` (with `relative` defaulting to the delta from the previous
+    position, so existing callers are unaffected). Check 0.60.0 first — this project runs
+    0.38.0 and `harness-version --client` says a newer harness is on this machine.

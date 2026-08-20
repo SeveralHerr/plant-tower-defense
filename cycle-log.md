@@ -1,4 +1,4 @@
-# Cycle 143
+# Cycle 144
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,45 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 144 taught
+
+**Finishing the thing you just shipped is worth more than starting the next thing.** Cycle
+143 ended with two P1s against its own mechanic. Taking one of them first closed a defect a
+player would actually hit — arm an uproot, spend four seconds choosing, click, and silently
+buy a second plant — and the fix turned out to be small once the diagnosis was right. The
+queue is 80 deep; none of it was more valuable than the hole in what had just landed.
+
+**Pausing a deadline while the player is visibly deciding is honest, and the drawn
+countdown stopping with it is the honest part.** The uproot clock now holds while a legal
+destination is under the pointer and resumes when it leaves — held at exactly 4.0 across
+five live reads, then 3.4, 3.1, 2.8. The confirm keeps its four seconds for anyone not
+actively choosing, so the destructive half is untouched. Filed the question of whether the
+husk rot timer deserves the same, deliberately as a taste call rather than as a fix.
+
+**A behaviour keyed to a field the tests write directly has a second question, and only the
+running game answers it.** The unit test sets `_hover_cell` by hand; the game sets it from
+`_update_cursor(motion.position)`. "Does the behaviour work" and "does anything set that
+field" are different claims, and a green suite is silent about the second. This is the
+generalisable shape, not a fact about hovering.
+
+**The row says `partial` and that is the ledger working.** I marked the event-delivery
+check `blocked` — the bridge cannot drive an absolute mouse position, so nothing reading
+`InputEventMouseMotion.position` is reachable — and `record` downgraded the verdict on its
+own. A check that could not run is not a check that passed. Filed as `[G-141]` and as a
+bead.
+
+**Citation drift is a function of WHERE a cycle edits, not how much.** Cycle 143 appended
+to the end of `test_selftest.gd` and moved 21 citations; cycle 144 made two MID-FILE edits
+in the same file and moved 71. Nothing about a diff's size predicts which you did, so the
+step-3 threshold fires on edit position — a property nobody chooses deliberately. 105
+across three cycles now.
+
+**Step 5: when to launch, not whether.** Twice this session runtime setup cost state — the
+game played itself to a loss while I finished tests, and before that a 4-second window
+decayed across four bridge round-trips and was misread as a defect. `why.md` now says to
+launch at the moment the question is ready and to set the scenario up in as few round trips
+as possible, because reading a predicate and then acting on it is two different games.
 
 ## What cycle 143 taught
 

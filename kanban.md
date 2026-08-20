@@ -218,6 +218,40 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 144 — a clock that stops while you think, and drift that is about WHERE you edit
+
+- **Pausing a deadline while the player is visibly deciding is a cheap, honest pattern and
+  the game has exactly one of it.** `Game._tick_uproot_confirm` (`game/game.gd:2050`) now
+  skips its decrement while `can_move_to(_uproot_armed, _hover_cell)`
+  (`game/game.gd:2166`) is true, so the uproot window holds while the pointer sits on a
+  legal destination and resumes when it leaves. Measured live: held at exactly 4.0 across
+  five reads spanning seconds, then `3.4 → 3.1 → 2.8`. **The arc stops unwinding, which is
+  the honest part** — the deadline really has stopped, so the drawn countdown is not lying.
+  Other deadlines in this game are candidates for the same treatment and none has it: the
+  packet-open beat (`Game.PACKET_OPEN_STEP_SECONDS`), the message row's own
+  `MESSAGE_DEADLINE`, and the husk rot timer, which is the interesting one — a husk
+  decaying while the player is demonstrably reaching for it is the same shape of unfairness
+  and is worth a look before it is worth a change.
+
+- **A hold keyed to a field nothing populates would pass every headless test.** The unit
+  test sets `_hover_cell` by hand; the game sets it from `_update_cursor(motion.position)`
+  (`game/game.gd:2450`). Those are different claims and only the running game joins them.
+  Generalises past this feature: **whenever a new behaviour reads a field the tests write
+  directly, the runtime question is not "does the behaviour work" but "does anything set
+  that field".** Cheap to check, and it is the half a green suite is silent about.
+
+- **Citation drift is a function of WHERE a cycle edits, not how much.** Cycle 143 appended
+  to the end of `test_selftest.gd` and moved 21 citations. Cycle 144 made two MID-FILE
+  edits in the same ~20,000-line file — a hand-kept count from 11 to 12, and an assertion
+  inside an existing test — and moved **71**. Nothing about the diff's size predicts which
+  one you did, and the loop's step-3 threshold ("more than ten drifted is a work item")
+  therefore fires on edit position, which nobody chooses deliberately. Two consequences
+  worth acting on: appending is nearly free and should be preferred where a choice exists,
+  and the case for `plant-tower-defense-2174` (a relocator that refuses rather than
+  renumbers) is now an arithmetic one rather than a matter of tidiness — 105 drifted
+  citations across three cycles, of which cycles 139-140 suggest roughly half were already
+  wrong before anything moved them.
+
 ### New in cycle 143 — a bead asked for the wrong thing, and the window grew a second job
 
 - **The bead asked for a PRICE and the defect was a DESTRUCTION, and answering the asked

@@ -251,6 +251,20 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      `health`" is such a claim and was worth a launch. "The Label says the right string" is
      not, when a test already instantiates the scene and reads that Label. If you cannot
      name one, the honest tier is headless-only and the row should say so.
+   - **WHEN to launch: at the moment the runtime question is ready to be asked, and not one
+     step earlier.** THE GAME IS A LIVE SIMULATION AND EVERY SECOND COSTS STATE. Cycle 144
+     launched before finishing its tests, worked for a few minutes, and came back to
+     `refused at (1, 0): the run is over` — waves had run, the house had fallen, and the
+     scenario had to be rebuilt from a fresh launch. Cycle 143 lost a 4-second armed window
+     to four bridge round-trips and misread the result as a defect in its own branch.
+     Same root both times: time passes between the launch and the question, and the game
+     spends it.
+     So: finish the headless work first, decide the question, THEN launch. And once up,
+     **set the scenario up in as few round trips as possible** — `batch` exists for
+     exactly this, each bridge call is roughly a second of game time, and anything gated
+     on a clock (an armed window, a chew, a wave) must be `pause`d or read in the same
+     breath as the thing it gates. Reading a predicate and then acting on it is two
+     different games.
    - **If the cycle launched the game at all, run `findings` before quitting it.** It is
      the harness's headline check — every zero-config check at once against the live tree
      — and it was last run in cycle 48. Twelve cycles of runtime work went past on
