@@ -4380,6 +4380,54 @@ func test_the_nettle_targets_through_the_same_rule_the_cob_uses() -> String:
 ## blurb is a literal. This is what stops the literal and `WaveDirector.MUTATION_START_WAVE`
 ## drifting apart: move the wave and the shop's promise fails here rather than quietly
 ## becoming a lie about a plant that costs 40 seeds.
+## The NOTEBOOK's copy of the same number, which the test below pins only in the shop
+## line (plant-tower-defense-bo6h).
+##
+## `PlantCatalog`'s nettle blurb says "wave 8" and is gated against
+## `WaveDirector.MUTATION_START_WAVE` by its twin. `NotebookScreen.PAGES`'s note for the
+## same plant says "before wave 8" and was gated by nothing — so if the constant moved,
+## the shop line would fail the suite and the notebook page would quietly lie. One copy
+## checked and its twin not is worse than neither, because the failing one gets fixed and
+## the silent one is then the only version left saying the old number.
+##
+## SWEPT RATHER THAN NAMED, and the denominator is the point. Every "wave N" in every
+## PAGES note is collected; today there is exactly one, and a SECOND hard-coded wave
+## number added to any note fails here until somebody either derives it or records why it
+## is a fixed number. That is what stops this test being about the Nettle.
+func test_no_notebook_note_hard_codes_a_wave_number_the_game_can_move() -> String:
+	var found: Array[String] = []
+	var mutation: String = "wave %d" % WaveDirector.MUTATION_START_WAVE
+	var pinned: int = 0
+	for page: Dictionary in NotebookScreen.PAGES:
+		var note: String = String(page.get("note", ""))
+		var at: int = note.findn("wave ")
+		while at >= 0:
+			var tail: String = note.substr(at, 12)
+			# A digit right after "wave " is the shape that goes stale; "waves" and
+			# "wave the player" are prose and are not.
+			if tail.length() > 5 and tail[5] >= "0" and tail[5] <= "9":
+				found.append(tail.strip_edges())
+				if note.containsn(mutation):
+					pinned += 1
+			at = note.findn("wave ", at + 5)
+	var err: String = _T.assert_eq(found.size(), 1,
+		("exactly one notebook note names a wave NUMBER (found %d: %s). A new one is not "
+			+ "forbidden -- it has to be derived from the constant it is about, or given a "
+			+ "reason here for being fixed") % [found.size(), ", ".join(found)])
+	if err == "":
+		err = _T.assert_eq(pinned, 1,
+			("and the one that exists is the mutation wave, matching %s -- if this failed, "
+				+ "WaveDirector.MUTATION_START_WAVE moved and the notebook page is now "
+				+ "telling the player a number the game stopped using") % mutation)
+	if err == "":
+		# The pair, asserted together, because the whole finding is that one was gated and
+		# its twin was not. A future edit that fixes one and forgets the other fails here.
+		err = _T.assert_true(
+			PlantCatalog.blurb(PlantCatalog.NETTLE).contains(mutation),
+			"and the shop line still agrees with it -- the two copies move together")
+	return err
+
+
 func test_the_nettle_blurb_warns_it_is_dead_weight_before_mutations() -> String:
 	var blurb: String = PlantCatalog.blurb(PlantCatalog.NETTLE)
 	var err: String = _T.assert_gt(blurb.length(), 0, "the Nettle has a blurb at all")
