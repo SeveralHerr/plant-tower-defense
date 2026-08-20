@@ -57,6 +57,11 @@ with three values in it looks exactly like a line with four: `beads=N ready`,
   historical sections are stale; run `kanban-staleness-audit` before promoting anything.
 - `python tools/mirror_check.py` (`--fix` regenerates `AGENTS.md`'s copy). This guards the
   nine-line pointer to this skill, which has been silently deleted twice.
+- **Snapshot the citations, BEFORE anything is edited** — step 3 checks them against this
+  and cannot take it retroactively:
+  ```bash
+  python tools/citation_check.py --beads --snapshot .devtools/citations.json
+  ```
 - The cycle counter, **derived not read**:
   `git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n | tail -1`
   against `cycle-log.md`'s top line. The MAX, not a count. If they disagree, fix that first.
@@ -110,12 +115,19 @@ read as satisfying it right up until the words were read again. It took a second
   the diff's node is still in the tree** — one capture per screen, not one per run.
 
 **3. Add to `kanban.md` before reflecting** — features, UX, juice, animation, lore, or a
-concrete improvement. Snapshot citations before step 2's edits and check them after:
+concrete improvement. Then check the citations against the snapshot step 0 took:
 
 ```bash
-python tools/citation_check.py --beads --snapshot .devtools/citations.json  # before step 2
-python tools/citation_check.py --beads --against  .devtools/citations.json  # after step 3
+python tools/citation_check.py --beads --against .devtools/citations.json
 ```
+
+**The snapshot half moved to step 0 in cycle 175, and the reason is why it kept being
+skipped:** it said "snapshot before step 2's edits" and it said so *in step 3*, which is
+read after step 2 has already happened. By then the snapshot can only record the damage.
+Cycle 175 found `.devtools/citations.json` seven cycles stale, and `--against` reported
+**98 drifted, 15 of them gating** with `0 no longer resolving` — every one still pointing
+at a real line, just no longer the right one, which is the failure mode that resolves
+clean on a plain run.
 
 Follow `.claude/skills/kanban-idea-pass/SKILL.md`, which holds the five citation rules and
 is not optional reading. Taste needs no citation; a claim about the code does. → `why.md` §3

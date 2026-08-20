@@ -1,4 +1,4 @@
-# Cycle 174
+# Cycle 175
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,38 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 175 taught
+
+**A refusal now points at the packet that would work — when there is exactly one, and the
+count is the whole design.** `Board.is_buildable_for` gives a road plant `is_path(cell)`
+and everything else `is_buildable(cell)`, so a **road cell has one** legal plant of the
+nine and a **grass cell has eight**. Only one direction has a packet to point at. The bead
+flagged that as unverified and it decided everything: `sole_legal_plant_for` returns an id
+only when the answer is one, derived from the catalogue rather than from the Bramble's
+name, so a second road plant makes it decline instead of going on pointing at whichever
+was hard-coded.
+
+**The grass half is missing on purpose, not by omission.** A Bramble refused on grass does
+not need a different plant, it needs different ground — the honest cue there is about the
+road, and it is a different gesture. Filed rather than bolted on.
+
+**Two mistakes driving the bridge, both mine, both worth more than the feature.**
+`_click_at` takes a SCREEN position and subtracts `_entities.position`; fed board-local
+coordinates it returns silently — no message, no cue, no error, indistinguishable from the
+feature being broken. And I read the shake record as a false positive because I compared it
+against a read taken three commands earlier. **A transient effect usually leaves
+bookkeeping** (`Hud._shake_tweens` keeps its tween per control, so "did the right button
+shake" is answerable after the fact), and **bracketing one action with two reads** settles
+in a single command what guessing does not.
+
+**The citation snapshot had been silently skipped for seven cycles, and the reason was
+where the instruction lived.** Step 3 said "snapshot before step 2's edits" — and said it
+in step 3, which is read after step 2 has happened. Moved to step 0. Running `--against`
+the stale file reported **98 drifted, 15 gating, 0 no longer resolving**: every one still
+points at a real line and none point at the right one, which is precisely the failure a
+plain run reports clean. Filed as a work item, which is what that step's own rule says to
+do past ten.
 
 ## What cycle 174 taught
 
@@ -2537,13 +2569,20 @@ tuning, so that lane waited.
 
 ## Waiting on the user
 
-**82 commits are held locally and unpushed, and this is the item to raise first.** Every
-push to `origin/main` auto-deploys to itch.io (`severalherr/pest-control:html5`) via
-`.github/workflows/deploy-to-itchio.yml`, with no paths filter — so pushing is publishing,
-and the loop commits once per bd item rather than once per release. The held work is a
-coherent playable increment by now: difficulty profiles with a title-screen picker, the
-dead-ground hint, three contrast fixes, the spread-arc rim, and cycle 168's refusals. **It
-needs one word from James to go out.**
+**Nothing is waiting to be pushed.** James pushed 83 commits at the end of cycle 174 and
+the itch.io deploy succeeded, so `severalherr/pest-control:html5` is live with everything
+through cycle 174: the difficulty picker and per-difficulty records, the reworded
+refusals, the upgrade button's delta, three contrast fixes and the spread-arc rim.
+
+**The standing fact this section exists to carry:** every push to `origin/main`
+auto-deploys, with no paths filter, so pushing IS publishing. The loop commits once per
+bd item rather than once per release, so cycle 175 onward is again accumulating
+unpublished commits — and going out is James's call, not the loop's.
+
+**Two files sit uncommitted on purpose.** `image.png` and `.agents/skills/beads/image.png`
+are byte-identical 67KB binaries that predate cycle 152 and belong to no cycle's work, one
+of them in the repo root. They were deliberately kept out of the publishing push rather
+than swept in unseen. They are still in the working tree.
 
 
 **`-ix76` — ANSWERED in cycle 118, not by James.** The question was whether a 60-seed husk

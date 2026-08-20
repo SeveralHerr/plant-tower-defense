@@ -6489,3 +6489,41 @@ Three findings kept out here rather than buried in a log:
   acceptance against **what had shipped** rather than against what had been built, which
   is a different act and evidently not an automatic one. No citation, because this is a
   claim about a process rather than about the code.
+
+### New in cycle 175 — the other half of the refusal has no packet to point at
+
+- **A Bramble refused on grass needs a cue about the ROAD, not about a packet.** Cycle 175
+  made a wrong-ground refusal shake the plant that would work — but only when there is
+  exactly one, which `sole_legal_plant_for` (`game/game.gd:1859`) enforces by declining.
+  Measured: a road cell has **1** legal plant of the nine and a grass cell has **8**, so
+  the grass direction has no packet and flashing eight would be noise. **The honest help
+  there is "the road is over there."** The board already knows how to mark road cells —
+  `Board.mark_deferred_road` and `Board.mark_dead_ground` both filter by exactly this
+  predicate — so the machinery is a filter away. **The thing to decide first is whether it
+  should mark ALL road cells or only the ones near the click**: all of them is a
+  board-wide flash for a mis-click, and near-the-click needs a radius nobody has argued
+  for yet. Taste, not arithmetic, and worth arguing before building.
+
+- **Five of the ten refusals still have no gesture at all, and that is probably right for
+  most of them.** `Game.refusal_corpus()` holds ten strings; `grep -n "shake_" game/game.gd`
+  finds four call sites — `shake_upgrade_button` (`:2119`), `shake_packet_button`
+  (`:2480`), and `shake_plant_button` at `:3023`, `:3053` and now `:3067`. So the gestures
+  cover: a refused upgrade, a refused packet buy, a refused uproot/move, "not paid for",
+  and the wrong-ground pair. Unspent: "the run is over", "off the garden", "something is
+  already growing there", "nothing is selected", "arm the move first". **Two of those are
+  unreachable** (cycle 168 established `"off the garden"` is guarded out by `_click_at`
+  and `"not paid for"` never prints), and **"something is already growing there" is the
+  interesting one** — the thing to point at is the plant already in the cell, which is a
+  board cue rather than a bar cue and has no existing gesture. First sighting of that
+  shape; a second unspent refusal wanting a board gesture would justify building one.
+
+- **`_click_at` returns silently for a position outside the board, and that is correct for
+  a player and hostile to anything driving it.** `game/game.gd:2980` rejects
+  `local.y < 0.0 or local.x > board.board_size().x` after subtracting
+  `_entities.position`, which is `(0, 72)` at the shipped layout. Feeding it board-local
+  coordinates — the ones `Board.cell_to_world` returns — produces no message, no cue and
+  no error, which is indistinguishable from the feature under test being broken. It cost
+  two rounds this cycle. **The idea is not to make it noisy**: a player's stray click
+  should stay silent. It is that the bridge has no verb for "click this CELL", so every
+  session re-derives the conversion. `Board.cell_to_global` already exists and its header
+  records the same lesson from the other side.

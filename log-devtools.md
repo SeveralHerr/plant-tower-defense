@@ -9551,3 +9551,45 @@ is likely to be at least as productive.
     file, so acting on the `PROGRESS:` line alone can bank a regression in the same
     stroke. `0 NEW` beside it is what made re-banking safe, and it is printed there
     deliberately.
+
+## 2026-08-20 — made a wrong-ground refusal point at the packet that would work
+
+- Value: **warranted**, and the useful part was not what I expected. The headless test
+  covers the ASYMMETRY, which is the design and is arithmetic. What runtime added was
+  proof that the branch is reached from a real click — and the click path is exactly where
+  I made a mistake the suite could never have shown me.
+  - Expected: a one-line branch, with the interesting decision being which packet to point
+    at.
+  - Got: `_shake_tweens: {"Button_bramble:<Button#77930170130>": "<Tween#...>"}` — one
+    entry, the right control, named. And at `set-game-speed 0.05` the rotation reads
+    `-0.0197` rad, which is the shake caught in flight rather than inferred from the call
+    having happened.
+  - Found: two mistakes, both mine. `_click_at` takes a SCREEN position and subtracts
+    `_entities.position` `(0, 72)`; I fed it board-local coordinates from
+    `cell_to_world` **twice** and got a silent no-op each time — no message, no cue, no
+    error, indistinguishable from the feature being broken. And I read the shake record as
+    a false positive on grass because I compared it against a read taken before an
+    intervening repeat click.
+  - Cheaper: for the asymmetry, yes, and it is now a permanent test. For "does a click
+    reach this branch", nothing.
+
+- Gap: **no new gap this turn.** Three notes about technique, because two of them are what
+  turned a confused reading into a settled one and I want the next session to reach for
+  them sooner.
+  - **`_shake_tweens` is a durable record of a transient event.** `Hud._shake_control`
+    stores its tween per control, so "did the right button shake" is answerable *after*
+    the shake is over. That is worth more than catching the animation: it is a fact rather
+    than a race. Look for the bookkeeping a transient effect leaves behind before trying
+    to photograph the effect.
+  - **Bracket ONE action with two reads.** I had `_shake_tweens` before and after, but the
+    "before" was three commands stale, and a changed tween id read as a false positive.
+    Re-reading immediately either side of a single `run-method` settled it in one command.
+    The `read-a-moving-value` skill asks "what was moving when I read it"; the companion
+    question is "what else happened between my two reads".
+  - **A silent early return is the worst shape to drive blind.** Nothing in the harness can
+    distinguish "your coordinates were wrong" from "the feature does not work", because
+    both produce an unchanged screen. `run-method` reporting `returned_null` +
+    `declared_return` helps for a `-> String`; a `-> void` guard clause offers nothing. The
+    workaround that worked was to call the pure predicate (`sole_legal_plant_for`) directly
+    and compare it against the observed behaviour — i.e. verify the parts separately when
+    the whole is silent.
