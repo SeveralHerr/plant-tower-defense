@@ -1,4 +1,4 @@
-# Cycle 157
+# Cycle 158
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,40 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 158 taught
+
+**Every width budget on the pause card was clear the whole time.** Its first button says
+"Back to the garden" and RESUMES; its last said "Back to the gate" and ABANDONS the run —
+three shared opening words, one differing noun, and a second run-ender ("Start over")
+sitting between them so the two "Back to the" phrases bracket a destructive option. And
+"the gate" was vocabulary this game used on two buttons and nowhere else, so it named the
+destination only to someone who had already pressed it once. No measurement could have
+found that; the instrument is a rendered screen and a person.
+
+**Two screens came back clean and that is a result.** The Keys screen is a **model** and
+nothing had said so: every row is a verb phrase naming an action, so no noun/value
+confusion is available to it. That is the property the pause card lacked, and it
+generalises — **a label naming a VERB cannot be read as a readout; a label naming a NOUN
+or a VALUE can.** Three instances now: this card, cycle 157's difficulty button, and the
+Keys screen as the positive case.
+
+**A suspicion that was not a defect is also written down.** Esc sits on two Keys rows, and
+the data distinguishes them by a `scope` field the screen never renders — which read like
+a table dropping the column that resolves a conflict. Read as a player instead of as a
+table, the two labels are plainly different situations that cannot both apply. Recorded so
+it is not re-suspected; the bead's own line about not reporting "I would have worded it
+differently" is what stopped it becoming a change.
+
+**And the cycle broke its own method.** It renamed the matching button on the RUN SUMMARY —
+a screen it never rendered, because no entry point can produce a finished run — inside a
+bead whose entire claim is "I looked". Step 5 wrote that down: **a method is a promise
+about the evidence, and mixing in a different kind of evidence spends the promise.** Either
+reach the surface or leave it and file it. Filed, along with the route that would fix it:
+five surfaces here need a run to have HAPPENED, not a scene to be loaded.
+
+Left at four of six screens, open, with what is left and why on the bead — which is last
+cycle's partial-close rule getting its first use.
 
 ## What cycle 157 taught
 

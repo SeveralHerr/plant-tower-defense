@@ -9014,3 +9014,33 @@ is likely to be at least as productive.
     in it and invited a fix for a bug that does not exist.
 
 - Gap: **no new harness gaps this turn.**
+
+## 2026-08-20 — Cycle 158: read four screens as a player, using the bridge as a tour bus
+
+- Value: **warranted**, and the harness was used in a shape it is not documented for: not
+  to assert anything, but to GET SOMEWHERE so a human could look.
+  - Expected: label problems on the screens this project measures most carefully.
+  - Got: `fire-entry-point options` / `keys` / `pause` plus one `press` on each Back
+    button walked four screens in about a minute, and the pause card turned up two buttons
+    three words apart doing opposite things — "Back to the garden" resumes, "Back to the
+    gate" abandoned the run, with "Start over" between them.
+  - Found: **every width budget on that card was clear the whole time.** The defect is a
+    reading, and the only instrument that produces it is a rendered screen and a person.
+    Also that neither label had a test.
+  - Cheaper: nothing. `capture.gd` covers the two `.tscn` scenes and no more — the
+    notebook, keys, options, pause and summary are all built in code as children, so the
+    bridge is the only route to them.
+
+- Technique, worth writing down because it is a bridge USE the reference does not describe:
+  **`fire-entry-point` does not re-fire while its screen is already open.** Firing `keys`
+  with the options overlay up printed the fired line and changed nothing, because the entry
+  point only switches SCENE and the title scene was already loaded. The route between two
+  overlays is `press --node .../BackButton` first, then fire. Obvious in hindsight and it
+  cost one confused capture that looked identical to the previous one apart from the
+  background bugs having moved.
+
+- Gap: **no new harness gaps.** [G-143] not re-hit; nothing needed that the bridge lacked
+  for the four screens it can reach. The two it CANNOT reach are a project problem rather
+  than a harness one — the run summary needs a finished run, which no entry point can
+  produce because what is missing is a history rather than a scene. Filed as
+  `plant-tower-defense-dklv` against `devtools_ext/commands.gd`, not upstream.

@@ -143,6 +143,15 @@ waiting on the user, and how to restart. It is what a human reads without runnin
      the bead as a note, say what is left and what still blocks it, and let the queue keep
      showing it. A bead is not a unit of work, it is a unit of CLAIM, and half a claim
      closed is worse than an open one.
+   - **IF THE METHOD IS "LOOK AT IT", DO NOT CHANGE WHAT YOU DID NOT LOOK AT.** Cycle 158
+     was sweeping screens by rendering them and reading them as a player. It found a
+     badly-paired button on the pause card, fixed it — and then renamed the matching
+     button on the RUN SUMMARY, a screen it never rendered, because the rename seemed to
+     follow. It probably does. But a sweep whose whole claim is "I looked" cannot make a
+     change on reasoning without quietly changing what the claim means, and the close then
+     has to say which parts were seen and which were inferred. Either reach the surface or
+     leave it and file it. The general form: **a method is a promise about the evidence,
+     and mixing in a different kind of evidence spends the promise.**
    - **RUN INDEPENDENT ITEMS IN PARALLEL (asked for directly, cycle 99).** The loop did one
      item at a time for 99 cycles and the queue is 100 deep; most of it does not touch what
      the rest of it touches. Spawn agents for items whose files do not overlap, and say in

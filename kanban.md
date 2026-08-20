@@ -218,6 +218,35 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 158 — two screens came back clean, and that is a result
+
+- **A sweep that records only its findings makes the next sweep cost the same again.** Four
+  screens were read as a player this cycle and two came back clean — and one of those,
+  the Keys screen, is a **model worth naming**: every row is a verb phrase describing an
+  action ("hold the garden still", "close what is open"), so no noun/value confusion is
+  available to it. That is the property the pause card lacked
+  (`game/pause_screen.gd:378` is the repaired line). **The generalisation: a label that
+  names a VERB cannot be mistaken for a readout, and a label that names a NOUN can.**
+  Worth checking against the rest of the game's buttons — the packet rack, the HUD's
+  speed and wave controls — as a positive rule rather than as a hunt for defects.
+  A suspicion that turned out to be nothing is also recorded: Esc sits on two Keys rows,
+  distinguished in the data by a `scope` field (`game/key_bindings.gd:45`, `:47`) that the
+  screen never renders — and read as a player the two labels are plainly different
+  situations that cannot both apply. **Not a defect, written down so it is not
+  re-suspected.**
+
+- **Two screens in this game cannot be looked at without playing it, and one of them got
+  changed unseen.** The run summary needs a FINISHED run to render and no entry point
+  produces one, so its button was renamed this cycle (`game/run_summary.gd:1291`) on
+  reasoning alone — inside a bead whose entire method is looking. `entry_points` reaches
+  the title, the notebook, the keys and options screens and a pause; it cannot reach an
+  ENDING. **The ask: a route to the states that need a game to have happened, not just a
+  scene to be loaded.** A devtools verb that ends a run with a chosen outcome would open
+  the summary card, the victory and defeat variants, the new-record path and the
+  milestone shelf — five surfaces currently reachable only by playing, which means in
+  practice never. This is `plant-tower-defense-fs2b`'s shape one level up: not "the
+  capture missed a screen I closed" but "the screen requires a history".
+
 ### New in cycle 157 — every width number passed and the picture still said no
 
 - **Two labels cleared every measured budget and only a rendered capture separated them.**
