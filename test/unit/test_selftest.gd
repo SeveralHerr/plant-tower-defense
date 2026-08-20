@@ -16515,6 +16515,56 @@ func test_the_hint_cards_agree_with_the_tips_the_message_row_posts() -> String:
 	return err
 
 
+## THE POST-MORTEM SAYS WHICH GARDEN IT IS REPORTING ON
+## (plant-tower-defense-4zyp).
+##
+## Save v9 made records per-difficulty, and all three branches of this line over-claimed
+## without the profile. "This garden's first record" on a first Harsh run is not the
+## garden's first score — the garden may hold a much larger campaign number that the
+## sentence silently denies. This is also the screen most likely to be screenshotted and
+## shown to somebody, at which point the number travels without its context.
+##
+## ALL THREE BRANCHES, because each fails differently: the FIRST branch makes a claim
+## about the garden's history, the NEW-BEST branch makes a claim about beating something,
+## and the third quotes a number that is now one of several.
+##
+## The empty default is asserted too. It is what the pre-v9 callers get and what the test
+## above passes; a default that quietly named a profile would put a wrong one on a line
+## nobody passed one to.
+func test_the_post_mortem_score_line_names_the_profile_in_every_branch() -> String:
+	var first: String = RunSummary.score_line_at(308, true, true, 308, false, "Harsh")
+	var best: String = RunSummary.score_line_at(308, true, false, 308, false, "Harsh")
+	var none: String = RunSummary.score_line_at(120, false, false, 308, false, "Harsh")
+	var err: String = _T.assert_true(first.contains("Harsh"),
+		"a FIRST record says which profile's record book just opened: %s" % first)
+	if err == "":
+		err = _T.assert_true(best.contains("Harsh"),
+			"a new best says which profile it beat: %s" % best)
+	if err == "":
+		err = _T.assert_true(none.contains("Harsh"),
+			"and the standing-best line says which best it is quoting: %s" % none)
+	if err == "":
+		# The three must still be three DIFFERENT sentences -- adding the profile to all
+		# of them is exactly the edit that could collapse two into one.
+		err = _T.assert_true(first != best and best != none and first != none,
+			"the three branches stay distinguishable with the profile added")
+	if err == "":
+		err = _T.assert_false(
+			RunSummary.score_line_at(308, true, true, 308, false).contains(" on "),
+			"a caller naming no profile gets the unqualified line, not a guessed one")
+	if err == "":
+		# Swept from the real table, so a renamed or added profile is covered without this
+		# test being edited.
+		for id: StringName in Game.DIFFICULTY_ORDER:
+			var label: String = TitleScreen.difficulty_label(id)
+			var line: String = RunSummary.score_line_at(50, false, false, 90, true, label)
+			err = _T.assert_true(line.contains(label),
+				"the standing-best line names %s" % id)
+			if err != "":
+				break
+	return err
+
+
 ## THE THREE BRANCHES OF THE CARD'S SUBHEADING, asserted off a pure static so all of
 ## them are reachable without a save file, a played run, or a Control.
 ##

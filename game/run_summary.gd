@@ -299,7 +299,8 @@ func first_record() -> bool:
 func _score_line() -> String:
 	return score_line_at(int(_stats.get("seeds_earned_total", 0)),
 		bool(_stats.get("new_record", false)), first_record(),
-		int(_stats.get("high_score", 0)), bool(_stats.get("endless", false)))
+		int(_stats.get("high_score", 0)), bool(_stats.get("endless", false)),
+		TitleScreen.difficulty_label(RunConfig.difficulty))
 
 
 ## The same line for GIVEN numbers, static and pure, which is what lets the suite assert
@@ -310,16 +311,34 @@ func _score_line() -> String:
 ## number than the one before it; there was no number before it, and "a new best" quietly
 ## claims a comparison that did not happen. Naming it as a first is also the channel that
 ## survives colour being discarded — it is the WORDS that differ, not a tint.
+## `difficulty_name` NAMES THE PROFILE, and all three branches need it since save v9 made
+## records per-difficulty (plant-tower-defense-4zyp). Without it every one of them
+## over-claims: "this garden's first record" on a first Harsh run is not the garden's
+## first score, it is the first HARSH one, and the garden may hold a much larger campaign
+## number that this sentence silently denies. "A new best" is the same claim one size
+## smaller. The post-mortem is also the screen most likely to be screenshotted and shown
+## to somebody, at which point the number travels without its context.
+##
+## Empty keeps the pre-v9 wording, which is what a caller with no profile in hand should
+## get and what the suite's existing three-branch assertions pass. Same defaulted shape as
+## `TitleScreen.high_score_text_at` next door, deliberately: the two score lines answer the
+## same question on two screens and should not need reading twice to compare.
 static func score_line_at(earned: int, new_record: bool, first: bool, best: int,
-		endless: bool) -> String:
+		endless: bool, difficulty_name: String = "") -> String:
+	var on: String = "" if difficulty_name == "" else " on %s" % difficulty_name
 	if first:
-		return "%d seeds grown — this garden's first record" % earned
+		# The profile goes on the RECORD rather than after the sentence: "this garden's
+		# first Harsh record" is what happened; "first record on Harsh" reads as though
+		# the garden has a single record book with a Harsh section.
+		var kind: String = "" if difficulty_name == "" else "%s " % difficulty_name
+		return "%d seeds grown — this garden's first %srecord" % [earned, kind]
 	if new_record:
-		return "%d seeds grown — a new best" % earned
+		return "%d seeds grown — a new best%s" % [earned, on]
 	# "your best" is now the record for the mode just played, not a single number
-	# shared between the eight-wave campaign and an unbounded endless run.
+	# shared between the eight-wave campaign and an unbounded endless run — and since v9,
+	# not one shared between the profiles either.
 	var mode: String = "endless" if endless else "campaign"
-	return "%d seeds grown — your best %s is %d" % [earned, mode, best]
+	return "%d seeds grown — your best%s %s is %d" % [earned, on, mode, best]
 
 
 ## Every row is `label: value`, built from one table so the order is readable in
@@ -1016,6 +1035,14 @@ const FIRST_RECORD_ID := "first_record"
 ## in, and adding one to `Milestones.TABLE` would put a score on the achievement shelf
 ## and break the shelf's earned count, which is deliberately taken off TABLE
 ## (`notebook_screen.gd:650`) so a foreign id cannot push the total past its rows.
+## The profile as an adjective for the ribbon note, or "" when there is none
+## (plant-tower-defense-4zyp). Trailing space included so the caller composes one string
+## rather than branching on emptiness twice.
+func _ribbon_profile_word() -> String:
+	var label: String = TitleScreen.difficulty_label(RunConfig.difficulty)
+	return "" if label == "" else "%s " % label
+
+
 func ribbon_entries() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	if first_record():
@@ -1025,8 +1052,12 @@ func ribbon_entries() -> Array[Dictionary]:
 			# The number is in the row because the row is the only place it is a
 			# FIRST. The subheading says the same seeds as a total; here it is the
 			# score the garden will be measured against from now on.
-			"note": ("%d seeds — the first score this garden has kept"
-				% int(_stats.get("seeds_earned_total", 0))),
+			# NAMES THE PROFILE for the same reason the score line does: since v9 this
+			# is the first score kept FOR THIS PROFILE, and a garden with a long
+			# campaign history opening its Harsh record book is not opening its first.
+			"note": ("%d seeds — the first %sscore this garden has kept"
+				% [int(_stats.get("seeds_earned_total", 0)),
+					_ribbon_profile_word()]),
 		})
 	for id: String in new_milestones():
 		out.append({
