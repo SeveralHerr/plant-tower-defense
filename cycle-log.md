@@ -1,4 +1,4 @@
-# Cycle 146
+# Cycle 147
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,42 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 147 taught
+
+**A cue can be aimed at the wrong moment and the arithmetic says so before any playtest
+does.** The wilt's band is exactly `EAT_DPS` worth of health, so during an uninterrupted
+chew it shows for ONE SECOND and then the plant is gone. Where it actually lives is
+recovery: a plant whose attacker dies mid-meal sits in the band for ~12 seconds while
+regrowth climbs out. **A cue tied to a health band has two durations — crossing under attack
+and occupancy during recovery — and they differ here by twelve times.** Nothing in this repo
+computes either, for any banded cue. Filed as a measurement.
+
+**A DC offset is the free channel on a crowded property.** Rotation already carried two
+sinusoids on deliberately separate clocks, and a third wave would phase-lock with one of
+them eventually. A held lean has no frequency to lock with, composes additively, and leaves
+both existing channels at full amplitude. Generalised and filed: ask for the constant term
+before reaching for another wave.
+
+**An equivalent mutation needs a PAIR to tell it from a weak test.** Replacing
+`wilt_threshold()`'s derivation with the literal `0.35` survived — because `EAT_DPS /
+MAX_HEALTH` *is* 0.35 today. The pair that kills it: retune `EAT_DPS` to 20 with the
+derivation (passes, both sides move) and with the literal (fails, `Expected 0.500000 but
+got 0.350000`). **Any derived constant whose derivation currently lands on a round number
+has this property**, and this repo has several — a single mutation against any of them looks
+like a coverage gap and is nothing of the kind.
+
+**Two values that relate to each other must be read on a PAUSED tree.** Third instance in
+seven cycles, third distinct shape: the value and its predicate (141), the value and its
+gate (143), the value and its input (147 — `health` and `rotation` read a second apart while
+regrowth ran, putting the lean 0.007 rad outside its predicted range). Each had a plausible
+wrong conclusion sitting right there. Written into `read-a-moving-value`, which covered
+reading one value across time and not two against each other.
+
+**A test-file constant is not shared.** `GAME_SCENE` lives in `test_selftest.gd`; using it
+from `test_combat.gd` was a parse error, so `run_tests.py` exited **2** and nothing in that
+file ran. Exit 2 is "you verified nothing", and the absence of `[FAIL]` lines would have
+read as success.
 
 ## What cycle 146 taught
 

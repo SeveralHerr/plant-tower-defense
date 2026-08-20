@@ -131,6 +131,34 @@ That near-miss was worth having: it exposed a real inconsistency underneath, whe
 predicate answered for a cell the drawing skipped. The picture and the predicate disagreed,
 and only aiming at the excluded case showed it.
 
+## TWO values that relate to each other must be read on a PAUSED tree, not a stable one
+
+Everything above is about reading ONE value while it moves. The harder case, and the one
+that has now produced three separate near-filings, is reading **two** — where the claim is
+a relationship between them and each bridge call is about a second of game time apart.
+
+Three shapes, same root, none of which announced itself:
+
+- **the value and its PREDICATE.** Cycle 143 read `is_busy() = false` on a Chomp, then read
+  the pivot scale, and got ±7% — which reads exactly like "the idle breathe is three times
+  its own constant". The Chomp had grabbed a pest between the two calls. Fixed by reading
+  the predicate and the value in one poll.
+- **the value and its GATE.** Cycle 143 again: armed an uproot, ran four commands, clicked,
+  and read the result as a defect in the branch under test. The 4-second window had closed
+  during the round trips. The gate was the thing that moved.
+- **the value and its INPUT.** Cycle 147 read a plant's `health`, then its pivot `rotation`,
+  and the lean sat 0.007 rad outside the range the health predicted. Regrowth had added
+  ~1.5hp in between. Nothing was wrong at all.
+
+**`pause` first, then read both.** Not `wait-frames` and not "it looked settled" — a stable
+LOOKING value is not a frozen one, and every one of these had a plausible wrong conclusion
+sitting right there. `step-time --then-pause` is the same tool for a pair that must advance
+between reads. The bridge answers while paused, which is what makes this free.
+
+The tell that you are in this case: your sentence contains "against", "for a", or "while" —
+*rotation 0.22 **for a** plant at 3hp*, *scale ±7% **while** not busy*. Two nouns, one
+claim, two round trips.
+
 ### The design rule that falls out of it
 
 The two sections above are for *reading*. The same ambiguity has an authoring side, and it

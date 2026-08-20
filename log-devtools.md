@@ -8612,3 +8612,40 @@ status rather than rewriting the entries that recorded these as open.
 
 - Gap: **no new gaps this turn.** No launch, no bridge, nothing asked of the harness that it
   could not do.
+
+## 2026-08-20 — a plant in danger leans (plant-tower-defense-tkwf)
+
+- Value: **warranted** — the composition into `_sway_pivot` is unreachable headless, and
+  the run changed what the feature IS rather than merely confirming it works.
+  - Expected: two things the suite structurally cannot say. That the held lean actually
+    reaches `_sway_pivot.rotation`, since everything past `_wobble`'s
+    `animations_enabled()` gate is an early return headless; and the DESIGN question no
+    test can ask — a hungry pest kills a full plant in 2.86s, so is the wilt band ever
+    visible in play or does it flash past?
+  - Got: `rotation: 0.240` at 2hp against a healthy band of ±0.055, `0.034` back at full
+    health, and three neighbours at 2hp reading `+0.240 / -0.204 / -0.237` so a row of
+    dying beds leans different ways rather than tipping identically.
+  - Found: **the cue is mostly about RECOVERY, not death.** The wilt band is exactly
+    `EAT_DPS` worth of health, so an uninterrupted chew shows it for one second. A plant
+    whose attacker dies mid-meal sits in the band for ~12s while regrowth climbs out —
+    which is the intermission, when the player can act. That reframing came from the
+    running game and the balance constants together and from neither alone, and it is now
+    in the bead's close so the next person does not re-derive it.
+  - Cheaper: nothing. No headless reader exists for the composed transform, and the
+    two-window reading needed both halves.
+
+- **Third instance this session of reading two moving values in separate bridge calls.**
+  `health` and `rotation` were read ~1s apart while regrowth ran, so the lean looked
+  0.007 rad outside its predicted range and I nearly filed it. Pausing and reading both on
+  a frozen tree reconciled them exactly. The rule has hardened: **any live claim relating
+  TWO properties must be read on a PAUSED tree, not merely a stable-looking one.** Cycles
+  141, 143 and 147, three different shapes, same root.
+
+- **A test-file constant is not shared, and using one broke the whole FILE.** `GAME_SCENE`
+  is declared in `test_selftest.gd`; referencing it from `test_combat.gd` was a parse error,
+  so `run_tests.py` exited **2** and nothing in that file ran at all. Exit 2 is "you
+  verified nothing", and it would have been easy to read the absence of `[FAIL]` lines as
+  success.
+
+- Gap: **no new gaps this turn.** `launch --snapshot-userstate` again restored 1 file; the
+  reflex is holding four cycles on.

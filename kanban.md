@@ -218,6 +218,42 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 147 — a cue that turned out to be about recovery, not death
+
+- **The wilt is mostly not a death warning, and the arithmetic says so before any playtest
+  does.** `Plant.wilt_threshold()` is `Pest.EAT_DPS / MAX_HEALTH` — the band is exactly one
+  second of chewing wide, so during an uninterrupted meal the lean shows for one second and
+  then the plant is gone. Where it actually lives is the other case: a plant whose attacker
+  is killed mid-meal sits in that band while regrowth climbs out, and `REGROWTH_DELAY` 6s
+  plus `REGROWTH_RATE` 1.5/s is roughly **twelve seconds** of visible lean. So the cue is a
+  "this bed is still hurt" readout for the intermission, when the player can act, rather
+  than a warning during a fight they have already lost. **The general lesson: a cue tied to
+  a health band has TWO durations — how long the band is crossed under attack, and how long
+  it is occupied during recovery — and they can differ by an order of magnitude.** Nothing
+  in this repo computes either. Worth asking of the health bar's own colours, the Chomp's
+  chew ring, and the Dandelion's regrow window, all of which are banded the same way.
+
+- **A DC offset is the free channel on a crowded property.** `_wobble`'s rotation carries
+  two sinusoids on deliberately separate clocks, and its own comment explains that a shared
+  clock at a harmonic ratio reads as "sways more when bitten" rather than as a flinch. A
+  third oscillation would have the same problem against either of them; a HELD offset has no
+  frequency to phase-lock with, composes additively by construction, and leaves both
+  existing channels at full amplitude. **That generalises past this plant**: whenever a
+  property already carries motion and a new state needs saying, ask for the constant term
+  before reaching for another wave. Candidates in this game that are currently unsaid and
+  would suit it: a plant that cannot fire because a Mint buff lapsed, and a Chomp on
+  cooldown.
+
+- **An equivalent mutation is not a weak test, and telling them apart needs a PAIR.**
+  Replacing `wilt_threshold()`'s derivation with the literal `0.35` survived — because
+  `EAT_DPS / MAX_HEALTH` *is* 0.35 today, so the mutant and the original compute the same
+  number. The mutation that proves the derivation is load-bearing is two-sided: retune
+  `EAT_DPS` to 20 **with** the derivation (passes, both sides move) and **with** the literal
+  (fails, `Expected 0.500000 but got 0.350000`). **Any derived constant whose derivation
+  currently evaluates to a round number has this property**, and this repo has several —
+  `Board.road_length_px`, the pest-ceiling density, `Hud.uproot_net`. A single mutation
+  against any of them will look like a coverage gap and be nothing of the kind.
+
 ### New in cycle 146 — a correction that did not hold, and the drift series completes
 
 - **A fix can be believed and not hold, and nothing in this repo could say so until now.**
