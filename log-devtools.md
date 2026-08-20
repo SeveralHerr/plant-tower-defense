@@ -8439,3 +8439,39 @@ status rather than rewriting the entries that recorded these as open.
   (`user:// writes: 0 file(s) changed by the suite`). `launch --snapshot-userstate` is the
   flag that would have avoided it and I did not use it; worth making the default reflex
   for any run that drives a scoring path.
+
+## 2026-08-20 — the road became a parameter (plant-tower-defense-s1o8.1, first half)
+
+- Value: **overkill**, and recorded that way on purpose. The launch answered one narrow
+  question honestly and found nothing; the HEADLESS half — specifically two deliberate
+  mutations — is what did the work.
+  - Expected: one claim only, and it is the one the suite structurally cannot make: the
+    suite builds `Board.new()`, while the GAME uses the Board inside `game.tscn`. If that
+    scene had ever carried its own road configuration, every headless assertion about the
+    default would be true and irrelevant.
+  - Got: `road_corners()` on the live board returns exactly `PATH_CORNERS`
+    (`["(0, 1)", "(6, 1)", "(6, 4)", "(2, 4)", "(2, 7)", "(9, 7)", "(9, 3)", "(13, 3)"]`)
+    and its cells start `(0,1),(1,1),(2,1)…`. `findings` 0 across 5 of 5.
+  - Found: nothing at runtime. What the run DID catch was caught headless and before the
+    launch: mutating `road_cell_count` from `steps + 1` to `steps` failed both the corpus
+    test and the density test, and deleting the diagonal refusal failed its own test. That
+    is the answer to "can these tests fail", and no amount of launching would have produced
+    it.
+  - Cheaper: the headless suite alone. Two mutations, seconds each, restored after. The
+    launch was ~7 minutes for one confirmation.
+
+- The `overkill` here is the useful kind and worth stating plainly: I could name a real
+  claim the suite could not make, the claim was worth checking once, and the answer was
+  "fine". That is what a narrow tier-(c)-plus-one-question launch is FOR, and the row
+  records it as overkill rather than padding `found` to keep a `warranted`. If a stretch of
+  these accumulates, the pattern to read is "scene-vs-code drift has not bitten in N
+  cycles", not "the harness is not earning its keep".
+
+- **[G-140] is closed by its own workaround, not fixed**: `--about` still takes one path,
+  and this run simply did not pass it (the diff was one game file). No new sighting.
+
+- Gap: **no new gaps this turn.** `launch --snapshot-userstate` was used this time after
+  last cycle's run wrote the developer's real `highscore.save`, and it did exactly what it
+  says — `userstate: restored 1 file(s) and removed 0 created during the run`. Worth
+  recording as a fix that worked rather than as a gap: the flag was already there and the
+  only thing missing was the reflex.

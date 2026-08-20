@@ -218,6 +218,47 @@ have rebuilt the same trap.
 
 ## Cool new features (idea backlog)
 
+### New in cycle 142 — the road became a parameter, and a hang was one typo away
+
+- **The road walker would have hung the game on a diagonal, and nothing said so until the
+  road became settable.** `Board._build_path` (`game/board.gd:288`) walks each segment with
+  `while at != to`, stepping `signi` on each axis — so a segment that is not axis-aligned
+  steps diagonally and never arrives. It runs inside `_ready()`, so the failure is a hang
+  with no error and nothing on screen. That was **safe for as long as the corners were a
+  const nobody could change**, which is exactly why it was never a defect and never a
+  finding: the hazard was fenced by immutability rather than by a check. `Board.set_road`
+  (`game/board.gd:100`) refuses it by name now. **The general shape is worth more than the
+  instance: making a constant into a parameter converts every assumption the constant was
+  quietly satisfying into a validation you now owe**, and the assumptions are invisible
+  precisely because nothing ever violated them. Two more in the same function that the
+  const also happened to satisfy: in-bounds corners, and no zero-length segment.
+
+- **A derived test needs an INDEPENDENT derivation, not the same computation twice.** The
+  new corpus test computes expected cells from the corners by arithmetic (one cell per
+  step, plus the one you start on) while the actual comes from the walker, and expected
+  length from `(cells + 1) * CELL` while the actual comes from measuring the route points.
+  Two routes to one number. A test that recomputed the answer the way the code does would
+  have passed the mutation that broke it. **This is the thing to check when converting the
+  four remaining shape-dependent tests** (`plant-tower-defense-s1o8.1`'s note lists them):
+  "which cells are dead ground for reach R on road X" is the same search the game runs, so
+  reproducing it asserts nothing. Each needs either a second algorithm or a PROPERTY a bad
+  road violates — "every stranded cell is further than R from every road cell" is checkable
+  without reproducing the search.
+
+- **`SIMULTANEOUS_PEST_CEILING` is not road-derived, and the bead that asked for it to
+  become so was reading the test's warning rather than the constant.** The test's message
+  says 40 is "reasoned from 32 cells / 2112 px as 3.5 pests per cell of road". The
+  constant's own header (`game/wave_director.gd:187`) says something different: sweeping the
+  real schedule found 115 pests alive at once, "on a 14x9 board with a 32-cell road, i.e.
+  three and a half pests per cell of road" — that is the PROBLEM, stated in road terms, and
+  40 is then set by CONSTRUCTION from the wave table, the two group shares summing to it
+  exactly. **The road decided a ceiling was needed and what it would MEAN; the table decided
+  the number.** A test asserting `ceiling == cells * k` would have invented a derivation the
+  code does not have. What the road genuinely constrains is density, which is what the new
+  test checks across the corpus. Worth noting as a pattern: a warning message written
+  ABOUT a constant drifted from the constant's own argument, and the warning is what the
+  next reader believes, because it is the one that shows up in a failure.
+
 ### New in cycle 141 — a state that reads as a readout, and a checker that hides its own backlog
 
 - **A plant's STATE still mostly reads as a drawn cue rather than as motion, and the Chomp

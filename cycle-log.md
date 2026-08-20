@@ -1,4 +1,4 @@
-# Cycle 141
+# Cycle 142
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -25,6 +25,47 @@ git log --oneline | grep -oE "Close cycle [0-9]+" | awk '{print $3}' | sort -n |
 
 The counter is corrected above. Reconstructing what 107–109 actually taught is real prose
 work and is filed as `plant-tower-defense-p9qo` rather than faked here.
+
+## What cycle 142 taught
+
+**Making a constant into a parameter converts every assumption the constant was quietly
+satisfying into a validation you now owe — and those assumptions are invisible precisely
+because nothing ever violated them.** `Board._build_path` walks each segment with
+`while at != to` stepping `signi` per axis, so a diagonal segment never arrives: an
+infinite loop inside `_ready()`, no error, nothing on screen. That was not a defect while
+the corners were a const nobody could change; it became one the moment `set_road` existed.
+Two more the const also happened to satisfy: in-bounds corners, and no zero-length segment.
+The hazard was fenced by immutability, which is the kind of fence that vanishes silently.
+
+**A derived test needs an INDEPENDENT derivation, not the same computation twice.** The
+corpus test computes expected cells from the corners by arithmetic while the actual comes
+from the walker, and expected length from the cell count while the actual comes from
+measuring route points. Two routes to one number — which is why mutating `steps + 1` to
+`steps` fails it. A test that recomputed the answer the way the code does would have passed
+that mutation and looked identical. This is the whole difficulty in the four
+shape-dependent tests still left: "which cells are dead ground for reach R" is the search
+the game already runs, so each needs a second algorithm or a property a bad road violates.
+
+**A warning message written ABOUT a constant had drifted from the constant's own
+argument, and the warning is what the next reader believes.** The bead asked for
+`SIMULTANEOUS_PEST_CEILING` to become road-derived, quoting a test's failure message that
+says 40 is "reasoned from 32 cells / 2112 px as 3.5 pests per cell of road". The constant's
+own header says something else: the road states the PROBLEM (115 pests alive at once) and
+the wave table sets the number by construction. A test asserting `ceiling == cells * k`
+would have invented a derivation the code does not have. Failure messages are read at
+exactly the moment nobody is checking them against the thing they describe.
+
+**Both rules added in the last two cycles fired and held.** The drift threshold from cycle
+140 hit 16 drifted, so four were fixed (the working bead's own) and thirteen filed, and the
+cycle stayed about the road. The env-var heredoc pattern from cycle 141 was used throughout
+and nothing was eaten. Step 5 changed nothing this cycle, deliberately.
+
+**One near-miss worth a checker: I invented a bead id in a bead description** and caught it
+only by going to look it up for an unrelated reason. `citation_check` reads `file:line`;
+`bead_prose_check` catches what the shell ate; neither asks whether a
+`plant-tower-defense-XXXX` in prose names a real issue. Cross-references between beads are
+how this project chains its evidence, so an invented link is worse than a wrong file
+citation — it sends the reader to a `bd show` miss they will blame on their own typo.
 
 ## What cycle 141 taught
 
