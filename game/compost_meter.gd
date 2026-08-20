@@ -209,6 +209,46 @@ func collect_at(at: Vector2) -> int:
 	return value
 
 
+## Rot, unconditionally. THE DECREMENT HAS NO HOLD AND WILL NOT GET ONE
+## (plant-tower-defense-7bhb), which is a decision rather than an omission.
+##
+## The bead came from the uproot window, where `Game._tick_uproot_confirm` skips its
+## decrement while `can_move_to(_uproot_armed, _hover_cell)` is true — the clock stops
+## while the player hovers a legal destination. It asked whether a husk should likewise
+## stop rotting while the player is reaching for it. DECIDED: NO, for four reasons, in
+## the order they matter.
+##
+##   * THE UPROOT HOLD COVERS A GAP BETWEEN TWO STEPS. Arming is one act and confirming
+##     at a destination is another, and the window exists only to bound the space
+##     between them. Collecting a husk is ONE click. There is no in-between state to
+##     protect, so a hold would not be pausing a decision — it would be pausing the
+##     pressure itself.
+##   * "HOVERING A HUSK" IS NOT A STATE THIS GAME HAS, and building it costs more than
+##     it sounds. `_hover_cell` is a CELL; a husk is swept within `COLLECT_RADIUS` of a
+##     POINT. Those are different queries, and the block above `COLLECT_RADIUS` records
+##     that exactly 4 px separate "this click sweeps a husk" from "this click places a
+##     plant" (32 px half-cell minus 28 px reach). A hold keyed on proximity puts the
+##     pointer's distance to a husk into that 4 px margin as a second meaning.
+##   * IT WOULD FIRE WITHOUT BEING ASKED. Husks drop where pests die, which is on and
+##     beside the road — the same ground the pointer crosses while the player walls a
+##     lane. 28 px is a distance you pass through incidentally, so the clock would stop
+##     for reasons the player never chose and cannot see. The uproot hold is legible
+##     because the player armed it and an arc is unwinding at them; this one would be
+##     invisible causation.
+##   * MOUSE PLAYERS COULD REACH IT AND TOUCH PLAYERS COULD NOT. `game/game.gd:2438`
+##     says it in its own words — the drag branch is "the hover a mouse player has had
+##     all along and a touch player never did". A finger only hovers while it is down,
+##     and a finger down over a husk collects it on release, so the hold would be
+##     structurally unreachable on touch.
+##
+## And the cost of getting it wrong is not symmetric. `MIN_HUSK_LIFETIME` above gives
+## the size/glow cue its second job — a big bright husk is urgent as well as valuable —
+## so a clock that can be stopped by resting the mouse does not merely soften the
+## pressure, it takes one of the two readings back off a cue cycle 88 built precisely
+## because one channel had run out of range.
+##
+## 10 s down to 4.5 s is a reaction time. It is a deadline you lose to by ignoring a
+## husk, not one you lose to while reaching for it, and that is the shape it should keep.
 func _process(delta: float) -> void:
 	var expired: Array = []
 	for id: Variant in _husks:
