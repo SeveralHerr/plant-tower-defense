@@ -157,11 +157,11 @@ def main(argv=None):
     # --- the denominator: colour symbols DECLARED in a world-space script.
     #
     # NOT "symbols appearing inside a draw_* call", which is what the first draft used and
-    # which measured the regex rather than the project. Two of this repo's most-drawn
-    # marks never appear at a draw site in their own file: `deferred_road_color()` and
-    # `board_dead_color()` are handed to `Board.mark_deferred_road` / `mark_dead_ground`,
-    # which push them onto Line2D children one file away. A denominator built from draw
-    # calls silently omits exactly the marks the gate exists for.
+    # which measured the regex rather than the project. One of this repo's most-drawn
+    # marks never appears at a draw site in its own file: `board_dead_color()` is handed
+    # to `Board.mark_dead_ground`, which pushes it onto Line2D children one file away. A
+    # denominator built from draw calls silently omits exactly the marks the gate exists
+    # for.
     #
     # Declaration site is derivable, stable, and slightly generous -- a declared colour
     # nobody draws is counted. That over-count is reported rather than hidden (the

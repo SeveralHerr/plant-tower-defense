@@ -69,9 +69,10 @@ const LIVE_CORNERS: Array[Vector2] = [
 ## what the row means.
 const HELD_CORNERS: Array[Vector2] = [Vector2(-1.0, -1.0), Vector2(1.0, 1.0)]
 
-## What the held-over state does to a cue's alpha. `SoleCoverMarks` borrows this rather
-## than declaring its own, the same way it already borrows `MARKER_COLOR` and
-## `WARNING_COLOR`, so the two halves of one plant's demoted look cannot drift apart.
+## What the held-over state does to a cue's alpha. Declared as a named constant rather
+## than inlined at the one `held_ink` call site: a second cue on a demoted plant has to
+## dim by THIS number or the two halves of one plant's held look drift apart, and the
+## sole-cover rings — removed in cycle 179 — were exactly that second cue.
 ##
 ## Alpha is the SECOND channel here and never the first. A dimmed four-corner bracket
 ## and a bright one differ by a value a screenshot's gamma can eat, and the whole point
@@ -122,9 +123,8 @@ const WARNING_LINE_WIDTH: float = LINE_WIDTH * 2.0
 ## instance of that row rather than a fifth cue. The legend already teaches the shape.
 ##
 ## **It is the missing CHANNEL, not a second copy of the armed cue.** Arming already
-## changes two things on this plant — these brackets go `WARNING_COLOR` at
-## `WARNING_LINE_WIDTH`, and `SoleCoverMarks` escalates with them (`Plant.set_uproot_armed`
-## drives both). Both are BINARY. They say a destructive action is one click away and
+## changes these brackets on this plant — they go `WARNING_COLOR` at
+## `WARNING_LINE_WIDTH` (`Plant.set_uproot_armed` drives it). Both are BINARY. They say a destructive action is one click away and
 ## say nothing at all about how long that stays true, and the window closes in silence:
 ## the player who hesitates finds the next click doing something else. Time was the
 ## channel nothing on screen carried.
@@ -201,8 +201,8 @@ static func bracket_corners(held: bool) -> Array[Vector2]:
 	return HELD_CORNERS if held else LIVE_CORNERS
 
 
-## A cue's ink once the held-over demotion is applied, shared with `SoleCoverMarks` so
-## one plant's brackets and rings dim by the same amount.
+## A cue's ink once the held-over demotion is applied. Public and static so a second
+## cue on a demoted plant dims by exactly this amount rather than by its own.
 ##
 ## ALPHA ONLY, and the RGB is returned untouched on purpose. The held plant is saying
 ## the same thing as the live one — "this is a subject", or "these cells depend on this
@@ -303,12 +303,11 @@ func _draw_uproot_window() -> void:
 ## brackets read as the same cue rather than as a second one: width belongs to the ARMED
 ## row and size belongs to the hover promise, and this cue may borrow neither.
 func _draw_brackets() -> void:
-	# ARMED OUTRANKS HELD, for the reason SoleCoverMarks.ring_color spells out:
-	# a plant one click from destruction must not be dimmed because it is also
-	# the plant being compared against.
-	# ARMED OUTRANKS HELD, for the reason SoleCoverMarks.ring_color spells out: a
-	# plant one click from destruction must not be dimmed because it is also the
-	# plant being compared against. There is no `warning` member here -- set_warning
+	# ARMED OUTRANKS HELD: a plant one click from destruction must not be dimmed
+	# because it is also the plant being compared against.
+	# ARMED OUTRANKS HELD: a plant one click from destruction must not be dimmed
+	# because it is also the plant being compared against.
+	# There is no `warning` member here -- set_warning
 	# stores the state IN marker_color, so that is what the test has to be.
 	var armed: bool = marker_color == WARNING_COLOR
 	var ink: Color = marker_color if armed else held_ink(marker_color, held_over)

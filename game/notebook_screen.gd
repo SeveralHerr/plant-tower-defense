@@ -590,6 +590,12 @@ const PAGES: Array[Dictionary] = [
 		# fourth hint did not; hints_capacity()'s block above records why the pitch could
 		# not simply drop.
 		#
+		# A THIRD page existed from cycle 151 to cycle 179, ordered rather than discovered
+		# by that cycle's budget audit. It went when the two hints it carried went -- the
+		# deferred-road bar and the sole-cover rings were removed from the game, not from
+		# the notebook. The alarm still works in the direction that matters: adding a
+		# seventh hint fails three tests at once, naming the count and the missing row.
+		#
 		# Byte-distinct from every other drawing, which the uniqueness check across PAGES
 		# requires. A bramble chewed through to two stubs is the picture for the page that
 		# now carries the road rule: the plant whose whole existence contradicts "nothing
@@ -599,25 +605,6 @@ const PAGES: Array[Dictionary] = [
 		"caption": "Said once, continued",
 		"note": "The list outgrew one page at the fourth entry. Same rules as the facing side: each is said the frame it becomes true, once, and is written here greyed until then.",
 		"hint_page": 1,
-	},
-	{
-		"kind": KIND_HINTS,
-		"plant": &"",
-		# The THIRD hints page (plant-tower-defense-rr02), and this one was ORDERED
-		# rather than discovered. Cycle 148's budget audit said a seventh hint needs one
-		# row here and that a test fails until it arrives (game/cue_legend.gd:206) —
-		# adding the seventh id failed three tests at once, naming the count and the
-		# missing row. The alarm worked exactly as it was written to.
-		#
-		# Byte-distinct from every other drawing, which the uniqueness check across PAGES
-		# requires. The Corn Cobbler is the picture for the page that carries the
-		# dead-ground bar: the bar marks beds a plant's REACH cannot cover, and this is
-		# the plant whose reach covers the most of them.
-		"drawing": "res://assets/sprites/corn_cobbler.png",
-		"sprite": "res://assets/sprites/corn_cobbler.png",
-		"caption": "Said once, and again",
-		"note": "A third side, at the seventh entry. The last two are about marks the board was already drawing before anything named them — the bar across a lane, and the slanted bars on the grass.",
-		"hint_page": 2,
 	},
 ]
 

@@ -7,12 +7,16 @@ verdict block directly beneath it is where every "should this cue get a legend r
 decision in this project has been made and re-read, and cycle 148 closed a bead by
 reading it.
 
-IT HAS DRIFTED TWICE, BOTH TIMES IN THE SAME DIRECTION. Row 4 read `untaught` for two
-cycles after `RunConfig.HINT_SOLE_COVER` taught it. Row 6 read `untaught` while TWO
-hints taught its two bars — `HINT_DEFERRED_ROAD` from cycle 144 and `HINT_DEAD_GROUND`
-from cycle 151 — and cycle 151 read that block while shipping the second of them. **A
-wrong `untaught` invites work that has already been done**, which is the expensive
-direction: cycle 148 nearly spent a cycle on it.
+IT HAS DRIFTED TWICE, BOTH TIMES IN THE SAME DIRECTION — a row reading `untaught` for
+cycles after a hint had already taught it, and cycle 151 read that block while shipping
+one of them. **A wrong `untaught` invites work that has already been done**, which is
+the expensive direction: cycle 148 nearly spent a cycle on it.
+
+A THIRD DIRECTION THIS DOES NOT CHECK, added to the record by cycle 179: a row can go
+UNDRAWN. The sole-cover rings and the deferred-road bars were removed on a player's
+report, and the ledger's TAUGHT/`untaught` axis has no value for "nothing draws this
+any more". Both ends of the mapping below are about TEACHING SURFACES; neither is about
+whether the cue exists.
 
 BOTH ENDS ARE ENUMERABLE, which is why this is checkable and its sibling
 (`plant-tower-defense-snhb`, the same class for notebook CARDS) is not. A card's claim
@@ -22,7 +26,7 @@ lists:
   * the ledger's own numbered rows and their TAUGHT/`untaught` marking;
   * `CueLegend.ROWS`, six entries each carrying a `shape`, and `Hud.HINT_CARDS`, whose
     `grammar_row` key says which numbered row each hint teaches (0 for a hint about a
-    RULE rather than a mark — four of the seven).
+    RULE rather than a mark — four of the five).
 
 That `grammar_row` key was added for this checker, and it is the whole reason the
 interesting direction is checkable at all. Without it a tool can confirm that a row

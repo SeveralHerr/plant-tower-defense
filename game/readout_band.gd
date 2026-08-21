@@ -23,14 +23,16 @@ extends RefCounted
 ##     the chew ring;
 ##   * `selection_marker.gd`'s uproot clock header argues 16 against `HALF` and against
 ##     the chew ring;
-##   * `sole_cover_marks.gd`'s alone ring header argues 31 against `HALF` — and against
-##     nothing else, which is the hole this file found;
+##   * `sole_cover_marks.gd`'s alone ring header argued 31 against `HALF` — and against
+##     nothing else, which is the hole this file found. That mark was removed in cycle
+##     179 and its row here went with it; the hole it exposed is why this file exists;
 ##   * `test_combat.gd` and `test_placement.gd` then assert nine of those pairs, each
 ##     one naming its two ends by hand.
 ##
 ## N marks written as pairs is N*(N-1)/2 sentences that each have to be remembered.
-## Four marks is six pairs and only five of them were ever written down. The one nobody
-## wrote is a real overlap, and it is recorded in `test_placement.gd` beside the gate.
+## The four marks of the day were six pairs and only five of them were ever written
+## down. The one nobody wrote was a real overlap, and it is recorded in
+## `test_placement.gd` beside the gate.
 ##
 ## ## The rule, in one sentence
 ##
@@ -49,7 +51,7 @@ extends RefCounted
 ##
 ## Not one radius below is written as a literal. Every one is computed from the
 ## constant the draw call itself reads — `ChompFlower.CHEW_RING_RADIUS`,
-## `SelectionMarker.UPROOT_RING_WIDTH`, `SoleCoverMarks.ALONE_RADIUS`, and so on.
+## `SelectionMarker.UPROOT_RING_WIDTH`, `Plant.REACH_RING_WIDTH`, and so on.
 ##
 ## That is deliberate, and it is the opposite of what `Glyphs.TABLE` does one directory
 ## over. `Glyphs` is a CHECKED CACHE: it records a value that also exists as a literal
@@ -125,18 +127,6 @@ static func marks() -> Array[Dictionary]:
 		SWEEPS: false,
 		HALF_ARC: fang_half_arc(),
 		WEARERS: chomp_only,
-	})
-	out.append({
-		NAME: "alone ring",
-		OWNER: "res://game/sole_cover_marks.gd",
-		INNER: SoleCoverMarks.ALONE_RADIUS - SoleCoverMarks.RING_WIDTH * 0.5,
-		OUTER_R: SoleCoverMarks.ALONE_RADIUS + SoleCoverMarks.RING_WIDTH * 0.5,
-		# Dashed, but the dashes are spread over the whole turn, so it can put ink at
-		# any angle a second mark might want. Treated as total on purpose: "our dashes
-		# happen to fall in your gaps" is not a clearance, it is a coincidence.
-		SWEEPS: true,
-		HALF_ARC: PI,
-		WEARERS: every_plant,
 	})
 	out.append({
 		NAME: "reach ring",

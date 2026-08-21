@@ -3776,14 +3776,9 @@ static func message_corpus() -> Array[String]:
 	out.append("Colourblind-safe bars off.")
 	out.append("Colourblind-safe bars on.")
 	out.append(flight_tip())
-	out.append(defer_tip())
-	# The sixth one-shot (plant-tower-defense-bkss). Priced beside the other two tips
-	# and not per-plant: it names a MARK rather than a plant, so no display name enters
-	# it and there is only the one form to measure.
-	out.append(sole_cover_tip())
 	out.append(dead_ground_tip())
-	# The lapsed-move refusal (plant-tower-defense-b9bl). Named a MARK and a verb rather
-	# than a plant, like sole_cover_tip above, so there is one form to measure.
+	# The lapsed-move refusal (plant-tower-defense-b9bl). Names a MARK and a verb rather
+	# than a plant, so there is one form to measure.
 	out.append(move_window_closed_tip())
 	return out
 
@@ -3811,47 +3806,6 @@ static func flight_tip() -> String:
 	return "That pest flies over Chomp Flowers. Corn Cobblers can still hit it."
 
 
-## Said once ever, the first time the board actually draws a bar across the road
-## (plant-tower-defense-0xhf).
-##
-## A zero-argument PRODUCER for the reason `flight_tip` above spells out: the corpus
-## resolves producer calls and literals, and a `const` is invisible to the row's budget.
-##
-## NAMES THE MARK FIRST, which none of the other four tips do. They answer "why did
-## that not work"; this one answers "what is that". A player who cannot pick the bar
-## out of the four straight marks the board can draw gets nothing from a sentence about
-## targeting, so the sentence starts where their eyes are.
-##
-## "the pest ahead" and not "the furthest-along pest in range": the mechanic is
-## `CornCobbler._furthest_along_in_range`, and `placement_preview.gd`'s a6rf block
-## defines a deferred cell exactly — some cell further along the road is covered by
-## EVERY gun that covers this one, so a pest there takes all of them. "Ahead" is the
-## player's word for that and it is the direction they watch pests walk.
-##
-## The second clause is the counter-play, and it is the whole reason this is worth a
-## one-shot rather than a caption. The same a6rf block records the measurement: a cue
-## saying only "this cell is weak" is a complaint. What clears a bar is DEPTH — one
-## more gun over the same stretch, which is the purchase `_draw_new_cover_dots`'s
-## header argues players read as wasted because it gains no new cells.
-static func defer_tip() -> String:
-	return "Bars mark road your plants skip — each is busy with the pest ahead. Add depth there."
-
-
-## The FIRST cue a player ever meets, and until now the only one with no name anywhere
-## in the game (plant-tower-defense-bkss). `SoleCoverMarks` rings every road cell the
-## selected plant alone covers, on the first click of the first plant — before the
-## deferred bar (which waits for DEFER_HINT_MIN_GUNS), before the hatch, before anything.
-##
-## Says what the rings MEAN and then what they are FOR, in that order, because the
-## second half is the reason a one-shot beats a caption. A ring is not decoration on the
-## plant you clicked: it is the set of cells that go unwatched if this plant dies, which
-## is the only sentence that makes the mark worth reading twice. `defer_tip` above is
-## built the same way and its header argues the shape.
-##
-## Deliberately does NOT say "yellow": the ring shares SelectionMarker.MARKER_COLOR with
-## the brackets, so colour is the one channel that cannot separate it from the selection
-## it arrives with, and this project's standing rule is that colour is never the only
-## signal. Shape and position carry it — "ringed", "on the road".
 ## The click that arrived one moment late (plant-tower-defense-b9bl).
 ##
 ## Said INSTEAD of buying a plant, not alongside it. A player who armed an uproot, hovered
@@ -3888,10 +3842,6 @@ static func as_sentence(text: String) -> String:
 	return text.substr(0, 1).to_upper() + text.substr(1)
 
 
-static func sole_cover_tip() -> String:
-	return "Ringed road cells are held by this plant alone — lose it and they go unwatched."
-
-
 ## Said once ever, the first time the player hovers a shop entry while the board is
 ## drawing dead-ground bars for it (plant-tower-defense-rr02).
 ##
@@ -3899,12 +3849,9 @@ static func sole_cover_tip() -> String:
 ## resolves producer calls and literals, and a `const` is invisible to the row's budget.
 ##
 ## NAMES WHERE THE MARK IS, not what shape it is, and that is the one decision in this
-## sentence. `defer_tip` above could open with "Bars mark road" because road is the only
-## place its bar appears; this bar is the same word on the other kind of ground, and a
-## player who has met one has no way to tell it is a different sentence. Angle is what
-## the drawing code uses to keep them apart (-PI/4 here, square to the lane there) and it
-## is the wrong channel to hand a reader — "grass" and "road" are the distinction they
-## can already see.
+## sentence. "Bar" is a word this board has spent on the road before, so the ground is
+## what a reader can use on first sight; angle (-PI/4) is what the drawing code uses,
+## and it is the wrong channel to hand a reader.
 ##
 ## "would never fire from" is `Board.mark_dead_ground`'s own wording, kept verbatim for
 ## the reason `CueLegend.ROWS` keeps the grammar's: two descriptions of one mechanic
@@ -3982,19 +3929,19 @@ static func upgrade_tip(plant_name: String, cost: int) -> String:
 ## autoload with no `class_name`, so `RunConfig.HINT_MOVE_PREVIEW` is an instance read
 ## and cannot initialise a `const`. The drift that buys is closed by the gate rather
 ## than by the compiler — `test_every_hint_has_a_notebook_card` walks `RunConfig.HINTS`
-## and fails on an id with no card AND on a card with no id, so a fourth hint added to
-## the list arrives here or fails the suite.
+## and fails on an id with no card AND on a card with no id, so a hint added to the
+## list arrives here or fails the suite.
 ## `grammar_row` is which numbered row of `OVERLAY_GRAMMAR.md` this hint teaches, or 0
-## for a hint that teaches a RULE rather than a mark — four of the seven, since "some
+## for a hint that teaches a RULE rather than a mark — four of the five, since "some
 ## pests fly over" is not about a shape.
 ##
 ## It exists so the mapping runs BOTH ways (plant-tower-defense-mk1b). `CueLegend`'s
 ## ledger has one line per grammar row saying TAUGHT or untaught, and it is not
 ## decoration: the verdict block beneath it is where every "should this cue get a legend
-## row" decision in this project has been made and re-read. It has now drifted twice in
-## the same direction — row 4 read `untaught` for two cycles after `HINT_SOLE_COVER`
-## taught it, and row 6 read `untaught` while TWO hints taught its two bars — and a wrong
-## `untaught` invites work that has already shipped. Cycle 148 nearly spent a cycle on it.
+## row" decision in this project has been made and re-read. It has drifted twice in the
+## same direction — a row reading `untaught` for two cycles after a hint taught it — and
+## a wrong `untaught` invites work that has already shipped. Cycle 148 nearly spent a
+## cycle on it.
 ##
 ## Without this key the drift is uncheckable in the direction that actually happens: a
 ## checker can confirm that a row claiming to be TAUGHT names a surface that exists, but
@@ -4046,22 +3993,10 @@ const HINT_CARDS: Array[Dictionary] = [
 		"note": "Every other plant is refused on the road — pests walk there. The Barrier Bramble is the exception: it only goes on road cells, and everything walking one stops to chew through it.",
 	},
 	{
-		"id": "seen_defer_tip",
-		"grammar_row": 6,
-		"title": "A bar across the road",
-		"note": "Every plant that reaches that cell shoots at the pest furthest along its range first, so a cell with a busier one ahead of it gets nothing. The bar is drawn square to the lane, on road only. It clears when one more plant covers that stretch — depth, not reach.",
-	},
-	{
-		"id": "seen_sole_cover_tip",
-		"grammar_row": 4,
-		"title": "Rings mark what only this plant holds",
-		"note": "Select a plant and rings mark the road cells no other plant of yours reaches — the ones that go unwatched if it dies. Many rings, worth defending; none, safe to move.",
-	},
-	{
 		"id": "seen_dead_ground_tip",
 		"grammar_row": 6,
 		"title": "Slanted bars on the grass",
-		"note": "A plant only shoots as far as its reach, so beds past that never fire at all. Hover a packet and the bars show which beds are dead for THAT plant — a short-reaching one darkens more of the garden than a Corn Cobbler does. They are drawn slanted, on grass only; the bar square to the lane, on road, is a different sentence.",
+		"note": "A plant only shoots as far as its reach, so beds past that never fire at all. Hover a packet and the bars show which beds are dead for THAT plant — a short-reaching one darkens more of the garden than a Corn Cobbler does. They are drawn slanted, and only ever on grass.",
 	},
 ]
 

@@ -11,7 +11,7 @@ extends Control
 ##
 ## **Every swatch is drawn with the constants the real cue uses**, not with numbers chosen
 ## to look similar. `SelectionMarker.MARKER_COLOR`, `SelectionMarker.LINE_WIDTH`,
-## `SoleCoverMarks.ALONE_DASHES`, `HuskLayer.BRIGHT_RING`, `PlacementPreview.NEW_COVER_DOT`
+## `PlacementPreview.RISK_DASHES`, `HuskLayer.BRIGHT_RING`, `PlacementPreview.NEW_COVER_DOT`
 ## — a legend is a second drawing of something the board already draws, which is a second
 ## source of truth by construction, and sharing the constants is the only part of that
 ## which can be made structural. What is NOT shared is the drawing code: the cues live on
@@ -66,12 +66,11 @@ const SHAPE_ARMED := "armed"
 #      derived" section says to re-run
 #      `grep -n "draw_arc(\|draw_circle(\|draw_line(\|draw_rect(" game/*.gd` and
 #      records 55 calls across 15 files. It is 80 across 20 now -- and, worse, it
-#      is structurally blind to `Board.mark_dead_ground` and
-#      `Board.mark_deferred_road`, which paint Line2D CHILDREN and not a `_draw()`
-#      at all. Board's own header says why they had to: "a headless run paints no
-#      frame, so a `_draw()` here would be a cue no gate could ever see". So the
-#      recipe misses exactly the two cues that were built to be gateable. A census
-#      of one API is a census of the asker's assumption.
+#      is structurally blind to `Board.mark_dead_ground`, which paints Line2D
+#      CHILDREN and not a `_draw()` at all. Board's own header says why it had to:
+#      "a headless run paints no frame, so a `_draw()` here would be a cue no gate
+#      could ever see". So the recipe misses exactly the cue that was built to be
+#      gateable. A census of one API is a census of the asker's assumption.
 #   2. THE LANE-PRESSURE HATCH HAS NO GRAMMAR ROW AT ALL. `lane_pressure_overlay.gd`
 #      is named in that file's cue-file list and its 45-degree stripe lattice
 #      matches none of the ten shapes. That is a hole in the GRAMMAR, not in this
@@ -82,29 +81,27 @@ const SHAPE_ARMED := "armed"
 #
 #   1  solid full ring         TAUGHT  reach    aloe/mint/nettle/corn/dandelion rings,
 #                                               the bomb's blast preview, the hover ring
-#   2  dashed ring             TAUGHT  remark   sole-cover holds-nothing ring, the hover
-#                                               at-risk ring, Pest's fought mark
+#   2  dashed ring             TAUGHT  remark   the hover at-risk ring, Pest's fought mark
 #   3  partial arc             TAUGHT  clock    husk rot, Chomp chew, uproot confirm
-#   4  small solid ring        TAUGHT  marked   sole-cover road rings, live and held-over
-#                                               (by HINT_SOLE_COVER, cycle 145 -- NOT by a
-#                                                legend row; see the verdict below)
+#   4  small solid ring        UNDRAWN          nothing draws this row any more -- the
+#                                               sole-cover road rings were its only
+#                                               instance and cycle 179 removed them
 #   5  filled dot              TAUGHT  gain     new-cover dots
 #   6  straight line in a box  TAUGHT           hover dead bar, hover redundant pair,
-#                                               BOARD dead-ground bars, BOARD deferred bars
-#                                               (by HINT_DEFERRED_ROAD, cycle 144, and
-#                                                HINT_DEAD_GROUND, cycle 151 -- one hint
-#                                                per BAR, which is what the verdict below
-#                                                asks for and a legend row cannot give.
-#                                                It read `untaught` until cycle 154, and
-#                                                that drift is what tools/
+#                                               BOARD dead-ground bars
+#                                               (by HINT_DEAD_GROUND, cycle 151 -- one
+#                                                hint per BAR, which is what the verdict
+#                                                below asks for and a legend row cannot
+#                                                give. It read `untaught` until cycle 154,
+#                                                and that drift is what tools/
 #                                                teaching_ledger_check.py now catches:
 #                                                the verdict beneath this table is read
 #                                                whenever anyone prices a teaching
 #                                                surface, and it was inviting work that
-#                                                had already shipped twice)
+#                                                had already shipped)
 #   7  corner brackets         TAUGHT  subject  live, hover promise, held-over (2 of 4)
 #   8  scattered short marks   untaught         drought dashes, rain streaks
-#   9  doubled line width      TAUGHT  armed    brackets and sole-cover rings, together
+#   9  doubled line width      TAUGHT  armed    the selection brackets
 #  10  a row of small pips     untaught         a husk worth more than CompostMeter.FULL_VALUE
 #  11  hatched road stripes    untaught         lane pressure, at two mirrored angles
 #      (added in cycle 110 -- it was drawn all along, and absent from the grammar,
@@ -120,20 +117,17 @@ const SHAPE_ARMED := "armed"
 #
 # THE VERDICT, per untaught cue, against that price:
 #
-#   * BOARD DEAD-GROUND BARS and BOARD DEFERRED-ROAD BARS (row 6) -- the strongest
-#     case and still no. They are the only untaught cues that are PERSISTENT: both
-#     are repushed from `Game._refresh()` with no hover, the deferred bars from the
-#     garden's shape alone, and up to 24 road cells can carry one at once. A player
-#     meets them without having asked. But row 6 is the row a single legend line
-#     teaches WORST: its four instances mean four different things (this cell
-#     refuses the plant / this second patch buys nothing / this ground fires at
-#     nothing / this road cell is behind a queue), and the grammar defines the row
-#     by its CHANNEL -- "legible with colour discarded" -- rather than by a meaning.
-#     A row reading "a straight line: this one is out of the conversation" is true
-#     of all four and actionable for none. Teaching it honestly is four rows, which
-#     is more than a page. The right home for it is the hints page or a mark-side
-#     tooltip, both of which carry a sentence per instance. Filed as that, not as a
-#     legend row.
+#   * BOARD DEAD-GROUND BARS (row 6) -- the strongest case and still no. It is the
+#     only untaught cue that is PERSISTENT: it is repushed from `Game._refresh()`
+#     with no hover, so a player meets it without having asked. But row 6 is the row
+#     a single legend line teaches WORST: its three instances mean three different
+#     things (this cell refuses the plant / this second patch buys nothing / this
+#     ground fires at nothing), and the grammar defines the row by its CHANNEL --
+#     "legible with colour discarded" -- rather than by a meaning. A row reading "a
+#     straight line: this one is out of the conversation" is true of all three and
+#     actionable for none. Teaching it honestly is three rows, which is more than a
+#     page. The right home for it is the hints page or a mark-side tooltip, both of
+#     which carry a sentence per instance. Filed as that, not as a legend row.
 #   * HELD-OVER BRACKETS (row 7, taught row / untaught state) -- no, confidently.
 #     The cue only ever exists because the player just selected a second plant, and
 #     it appears with the LIVE brackets beside it in the same frame: same shape, one
@@ -144,31 +138,28 @@ const SHAPE_ARMED := "armed"
 #     only in the four seconds after arming, next to the doubled red brackets this
 #     page already teaches as "armed -- one more click does it". The player has the
 #     noun; the arc supplies the tense.
-#   * SOLE-COVER ROAD RINGS (row 4) -- the closest call, and still no. They are met
-#     earliest of anything here: they appear on the first plant the player ever
-#     selects. But this page already teaches the OTHER branch of the same node --
-#     the dashed ring, "on a plant nothing depends on" -- so the concept is on the
-#     page and the road rings are its positive case. Worth revisiting if row 4 ever
-#     gains an instance that is not SoleCoverMarks.
-#
-#     REVISITED AND OVERTURNED, cycle 140 (plant-tower-defense-bkss). The argument
-#     above is still a good one and it lost to a player, who looked at the board and
-#     asked what the marks meant. The answer was a SIXTH ONE-SHOT HINT
-#     (RunConfig.HINT_SOLE_COVER, Hud.sole_cover_tip) rather than a row here, and the
-#     row is still refused -- not on the reasoning above but on width: this page is
-#     measurably FULL at 294 px of 300, a seventh row prices at 340, and buying it
-#     means the second notebook page, which is its own item
-#     (plant-tower-defense-xfbo). The hint also reaches a player who never opens the
-#     notebook, and still leaves a permanent card there via Hud.HINT_CARDS, so it
-#     buys both surfaces for the width of neither.
+#   * SOLE-COVER ROAD RINGS (row 4) -- REMOVED FROM THE GAME, cycle 179, and the
+#     record of the argument is kept because the outcome was not the one either
+#     side of it predicted. This page refused them a row on the reasoning that the
+#     dashed ring already taught the concept and the road rings were its positive
+#     case, with a revisit condition of "if row 4 gains an instance that is not
+#     SoleCoverMarks". Cycle 140 overturned that on a player who looked at the board
+#     and asked what the marks meant, and bought a one-shot hint instead of a row.
+#     Cycle 179 was the same player looking at the same board, and this time the
+#     answer was to stop drawing them: a cue that has to be explained twice is being
+#     priced as a teaching problem when it is a NOISE problem.
 #
 #     READ THE FAILURE, not just the outcome: the revisit condition this note set
-#     itself -- "if row 4 gains an instance that is not SoleCoverMarks" -- is a fact
-#     about the drawing code, and the condition that actually fired was a fact about
-#     a person. A teaching decision cannot set its own trigger in the code it is
-#     about. That is the same shape as cycle 138's lesson one node over: a comment
-#     addressed to a role nobody holds is not a report. This one was addressed to an
-#     event nobody was watching for.
+#     itself was a fact about the drawing code, and both conditions that actually
+#     fired were facts about a person. A teaching decision cannot set its own
+#     trigger in the code it is about. That is the same shape as cycle 138's lesson
+#     one node over: a comment addressed to a role nobody holds is not a report.
+#     This one was addressed to an event nobody was watching for.
+#
+#     AND THE SECOND LESSON, which is this page's own: neither the legend audit nor
+#     the teaching ledger has a column for "should this cue exist". Every verdict
+#     above answers "teach it here, or teach it elsewhere", and a cue nobody wants
+#     on screen scores the same as one that has simply not been explained yet.
 #   * WEATHER MARKS (row 8) -- no. Whole-screen, unmistakable, and announced.
 #   * HUSK PIPS (row 10) -- no. Late, rare, and a magnitude on a mark already taught.
 #   * LANE-PRESSURE HATCH (row 11) -- no, and it is the only entry here whose "no"
@@ -282,7 +273,7 @@ const ROWS: Array[Dictionary] = [
 	{
 		"shape": SHAPE_REMARK,
 		"means": "A remark about what is inside it",
-		"where": "A dashed ring, on a plant nothing depends on",
+		"where": "A dashed ring, on a bed a pest can reach",
 	},
 	{
 		"shape": SHAPE_GAIN,
@@ -423,14 +414,14 @@ func _draw_clock(at: Vector2) -> void:
 		HuskLayer.BRIGHT_RING, HuskLayer.RING_WIDTH_MAX, true)
 
 
-## A dashed ring — an arc loop, not a full circle. `SoleCoverMarks.ALONE_DASHES` is the
+## A dashed ring — an arc loop, not a full circle. `PlacementPreview.RISK_DASHES` is the
 ## dash count the board actually uses, so a change there changes this.
 func _draw_remark(at: Vector2) -> void:
-	var step: float = TAU / float(SoleCoverMarks.ALONE_DASHES)
-	for i: int in SoleCoverMarks.ALONE_DASHES:
+	var step: float = TAU / float(PlacementPreview.RISK_DASHES)
+	for i: int in PlacementPreview.RISK_DASHES:
 		var from: float = float(i) * step
 		draw_arc(at, SWATCH_RADIUS, from, from + step * 0.5, 6,
-			SoleCoverMarks.MARK_COLOR, SoleCoverMarks.RING_WIDTH, true)
+			PlacementPreview.RISK_COLOR, PlacementPreview.RISK_WIDTH, true)
 
 
 ## A filled dot. `PlacementPreview.NEW_COVER_DOT` is a cell-scale radius and the swatch is

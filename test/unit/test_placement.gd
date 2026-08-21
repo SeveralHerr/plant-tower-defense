@@ -1482,136 +1482,6 @@ func test_an_armed_uproot_turns_the_hover_into_a_move_preview() -> String:
 	return err
 
 
-## "What does the garden lose if this one goes?" — the selected half of the same
-## question the hover dots answer for a purchase.
-##
-## Both directions matter and they fail differently. Claiming a cell that another
-## plant also holds overstates what an uproot would cost; dropping a cell nothing
-## else holds hides the only reason to keep the plant where it is.
-##
-## The rings are on a node of their own rather than on the SelectionMarker, and the
-## reason is checkable rather than stylistic: play_entrance() tweens the marker's
-## scale from 0.55, and these marks sit whole cells from the plant's origin, so
-## they would slide on every selection. See SoleCoverMarks' header.
-func test_a_selected_plant_marks_only_the_road_nothing_else_covers() -> String:
-	var game := await _T.instantiate_scene(GAME_SCENE) as Game
-	var here := Vector2i(1, 3)
-	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, here), "",
-		"the first cob goes in at %s" % here)
-	if err != "":
-		_T.free_ui(game)
-		return err
-	var alone: Plant = game.plant_at(here)
-	var reaches: Array[Vector2i] = PlacementPreview.covered_road_cell_list(
-		game.board, here, Game.engagement_reach(PlantCatalog.CORN))
-	if err == "":
-		err = _T.assert_gt(reaches.size(), 1,
-			"a cob on %s reaches more than one road cell, so there is something to mark" % here)
-	if err == "":
-		err = _T.assert_eq(game.sole_cover_cells(alone).size(), reaches.size(),
-			"the only plant in the garden solely holds everything it reaches")
-	# A second cob overlapping it takes cells out of the first one's answer without
-	# the first plant changing at all.
-	if err == "":
-		var beside := Vector2i(0, 5)
-		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, beside), "",
-			"a second cob goes in at %s" % beside)
-		if err == "":
-			var shared: int = 0
-			for cell: Vector2i in PlacementPreview.covered_road_cell_list(
-					game.board, beside, Game.engagement_reach(PlantCatalog.CORN)):
-				if reaches.has(cell):
-					shared += 1
-			err = _T.assert_gt(shared, 0,
-				"the two cobs overlap, or this test measures nothing")
-			if err == "":
-				err = _T.assert_eq(game.sole_cover_cells(alone).size(),
-					reaches.size() - shared,
-					"and the first cob now solely holds only what the second cannot reach")
-	# Selection drives visibility, and deselecting EMPTIES rather than merely hides:
-	# a plant reselected later must not flash the previous garden's rings.
-	if err == "":
-		var marks: SoleCoverMarks = alone.sole_cover_marks()
-		err = _T.assert_true(marks != null, "the plant built its marks node")
-		if err == "":
-			alone.set_selected(true)
-			err = _T.assert_true(marks.visible, "selecting shows them")
-		if err == "":
-			var some := PackedVector2Array([Vector2(10.0, 10.0)])
-			err = _T.assert_true(marks.set_points(some), "new points repaint")
-		if err == "":
-			err = _T.assert_false(marks.set_points(PackedVector2Array([Vector2(10.0, 10.0)])),
-				("the same points do NOT repaint -- this is driven from _refresh(), which "
-					+ "fires on every seed payout"))
-		if err == "":
-			alone.set_selected(false)
-			err = _T.assert_false(marks.visible, "deselecting hides them")
-		if err == "":
-			err = _T.assert_eq(marks.points.size(), 0, "and empties them")
-	# The empty state draws a ring on the plant instead of drawing nothing, so
-	# "no cells depend on this" never looks like "the cue is broken" — the
-	# confusion cycle 55 spent ten minutes on with the hover dots. That only works
-	# if the ring is legible as a separate statement rather than as a fatter
-	# bracket, which is a geometric claim and therefore checkable.
-	if err == "":
-		err = _T.assert_gt(SoleCoverMarks.ALONE_RADIUS, SelectionMarker.HALF,
-			("the holds-nothing ring (%.0f) sits outside the selection brackets (%.0f), "
-				+ "or the two read as one mark")
-				% [SoleCoverMarks.ALONE_RADIUS, SelectionMarker.HALF])
-	if err == "":
-		err = _T.assert_gt(Game.engagement_reach(PlantCatalog.CORN),
-			SoleCoverMarks.ALONE_RADIUS,
-			"and far inside the plant's own range ring, so it is not a second reach")
-	# Arming an uproot escalates the rings with the brackets: the same cells, with
-	# the tense changed from "these depend on you" to "these go bare if you
-	# confirm". Both halves of the toggle, because a warning that cannot be undone
-	# is worse than one that never fired.
-	if err == "":
-		var marks: SoleCoverMarks = alone.sole_cover_marks()
-		alone.set_uproot_armed(true)
-		err = _T.assert_true(marks.warning, "arming an uproot warns the rings")
-		if err == "":
-			err = _T.assert_eq(SoleCoverMarks.WARNING_COLOR, SelectionMarker.WARNING_COLOR,
-				("and in the SAME red as the brackets -- two reds on one plant would read "
-					+ "as two different warnings"))
-		if err == "":
-			err = _T.assert_gt(SoleCoverMarks.WARNING_RING_WIDTH, SoleCoverMarks.RING_WIDTH,
-				("and thicker, so the escalation survives the colour being thrown away -- "
-					+ "the two-channel rule this project holds everywhere else"))
-		# The asymmetry, which is the part most likely to be "tidied" away later: a
-		# plant holding nothing alone costs the road nothing to uproot, so its ring
-		# must NOT redden. That is the one case where uprooting is free, and it is
-		# the case the ring was added to announce.
-		if err == "":
-			marks.set_points(PackedVector2Array([Vector2(64.0, 64.0)]))
-			err = _T.assert_eq(marks.ring_color(), SoleCoverMarks.WARNING_COLOR,
-				"armed with cells to lose, the rings are red")
-		if err == "":
-			marks.set_points(PackedVector2Array())
-			err = _T.assert_eq(marks.ring_color(), SoleCoverMarks.MARK_COLOR,
-				("armed with NOTHING to lose, they are not -- reddening the holds-nothing "
-					+ "ring would warn about the one uproot that costs the road nothing"))
-		if err == "":
-			err = _T.assert_true(is_equal_approx(marks.ring_width(), SoleCoverMarks.RING_WIDTH),
-				"and not thickened either, for the same reason")
-		if err == "":
-			alone.set_uproot_armed(false)
-			err = _T.assert_false(marks.warning, "and letting it lapse takes the warning off")
-		# Directly, because the header claims idempotence and that is a claim about
-		# calling it twice — which the route through set_uproot_armed never does.
-		if err == "":
-			marks.set_warning(true)
-			err = _T.assert_true(marks.warning, "set_warning arms it on its own")
-		if err == "":
-			marks.set_warning(true)
-			err = _T.assert_true(marks.warning, "and arming an armed one is a no-op, not a toggle")
-		if err == "":
-			marks.set_warning(false)
-			err = _T.assert_false(marks.warning, "and it disarms")
-	_T.free_ui(game)
-	return err
-
-
 ## The dots say "this is the road this purchase newly defends", so the two ways of
 ## being wrong are opposite and both matter: marking ground that is already covered
 ## sells a plant that buys nothing, and failing to mark bare ground hides the only
@@ -3999,8 +3869,8 @@ func test_the_legend_swatches_borrow_the_real_cues_constants() -> String:
 		"SelectionMarker.MARKER_COLOR": "the selection brackets' colour",
 		"SelectionMarker.LINE_WIDTH": "their line weight",
 		"SelectionMarker.ARM": "their arm-to-half ratio",
-		"SoleCoverMarks.ALONE_DASHES": "the dashed ring's dash count",
-		"SoleCoverMarks.RING_WIDTH": "its width",
+		"PlacementPreview.RISK_DASHES": "the dashed ring's dash count",
+		"PlacementPreview.RISK_WIDTH": "its width",
 		"HuskLayer.BRIGHT_RING": "the rot clock's colour",
 		"PlacementPreview.NEW_COVER_DOT": "the gained-cell dot's size",
 	}
@@ -5932,9 +5802,8 @@ func test_the_uproot_arc_closes_as_the_confirm_window_runs_out() -> String:
 
 
 func test_the_uproot_arc_is_a_third_channel_and_not_a_second_red_mark() -> String:
-	## Arming this bed ALREADY changed two things before this cue existed: the brackets
-	## go WARNING_COLOR at WARNING_LINE_WIDTH, and SoleCoverMarks escalates with them.
-	## Both are binary. The defect the bead names is not "nothing marks an armed plant"
+	## Arming this bed ALREADY changed the brackets before this cue existed: they go
+	## WARNING_COLOR at WARNING_LINE_WIDTH. That is binary. The defect the bead names is not "nothing marks an armed plant"
 	## — it is that nothing anywhere counts the four seconds down. So the test that
 	## matters is that the new mark carries TIME while the old ones stay exactly as
 	## binary as they were: three cues saying the same one thing would be the failure.
@@ -5990,9 +5859,9 @@ func test_the_uproot_arc_is_a_third_channel_and_not_a_second_red_mark() -> Strin
 		err = _T.assert_float_eq(sweep, TAU * 0.5, 0.02,
 			("while the arc has: %.2f rad of sweep left, which is the half-window the "
 				+ "colour and the weight structurally cannot carry") % sweep)
-	# Directly from here on, the way SoleCoverMarks' idempotence is pinned above: the
-	# route through Game only ever calls these in one order, and the promises the
-	# marker's own headers make are about being called any way at all.
+	# Directly from here on: the route through Game only ever calls these in one order,
+	# and the promises the marker's own headers make are about being called any way at
+	# all.
 	if err == "":
 		marker.set_uproot_window(-0.4, Game.UPROOT_CONFIRM_SECONDS)
 		err = _T.assert_float_eq(marker.uproot_left, 0.0, 0.0001,
@@ -6308,9 +6177,6 @@ func test_the_sway_still_carries_the_sprite_and_nothing_else() -> String:
 	if err == "":
 		err = _T.assert_eq(plant._selection_marker.get_parent(), plant,
 			"and the selection marker, which is drawn around the cell and not the plant")
-	if err == "":
-		err = _T.assert_eq(plant._sole_cover_marks.get_parent(), plant,
-			"and the sole cover marks, which sit whole cells away")
 	plant.free()
 	return err
 
@@ -6832,339 +6698,6 @@ func _a6rf_guns(cells: Array[Vector2i], id: StringName) -> PackedFloat32Array:
 	return out
 
 
-## The whole claim, on the smallest garden that can carry it.
-func test_the_deferred_cue_names_the_road_every_gun_covering_it_looks_past() -> String:
-	var board := Board.new()
-	var guns: Array[Vector2i] = [A6RF_LONE_GUN]
-	var err: String = _T.assert_true(board.is_buildable(A6RF_LONE_GUN),
-		"the recorded gun cell is still ground a plant may stand on")
-	var covers: Array[Vector2i] = PlacementPreview.covered_road_cell_list(board,
-		A6RF_LONE_GUN, Game.engagement_reach(PlantCatalog.CORN))
-	if err == "":
-		err = _T.assert_eq(covers.size(), A6RF_LONE_GUN_COVERS,
-			("the recorded gun still reaches %d road cells -- every count below is "
-				+ "measured against that") % A6RF_LONE_GUN_COVERS)
-	var deferred: Array[Vector2i] = PlacementPreview.deferred_road_cells(board, guns,
-		_a6rf_guns(guns, PlantCatalog.CORN))
-	if err == "":
-		err = _T.assert_eq(deferred.size(), A6RF_LONE_GUN_DEFERS,
-			("%d of the %d cells it covers are behind something in its own queue -- "
-				+ "one pest further along inside the same ring and each of them is "
-				+ "shot at by nothing") % [A6RF_LONE_GUN_DEFERS, A6RF_LONE_GUN_COVERS])
-	if err == "":
-		err = _T.assert_false(deferred.has(A6RF_LONE_GUN_SERVES),
-			("and %s is NOT marked: it is the deepest road the gun reaches, so a pest "
-				+ "standing there is the furthest along in range and gets shot")
-				% A6RF_LONE_GUN_SERVES)
-	if err == "":
-		# The complement, stated as a count so the pair cannot both drift.
-		err = _T.assert_eq(covers.size() - deferred.size(), 1,
-			"exactly one of the ten is served first, which is one per gun")
-	if err == "":
-		# Not a claim about uncovered road. That is the off-aim hatch's subject and
-		# the two sets must never overlap, or the board says both "nothing reaches
-		# here" and "something reaches here but looks past you" on one cell.
-		var reached: Dictionary = {}
-		for cell: Vector2i in covers:
-			reached[cell] = true
-		var strays: int = 0
-		for cell: Vector2i in deferred:
-			if not reached.has(cell):
-				strays += 1
-		err = _T.assert_eq(strays, 0,
-			("every deferred cell is a COVERED cell -- %d of %d were not, which would "
-				+ "put this mark on the hatch's ground") % [strays, deferred.size()])
-	if err == "":
-		err = _T.assert_eq(board.road_cells().size() - covers.size(), 22,
-			("and 22 road cells are covered by nothing at all in this garden, which is "
-				+ "the hatch's set and is disjoint from the 9 above"))
-	board.free()
-	return err
-
-
-## The tutorial, asserted: a second gun behind the first takes a cell OFF the
-## warning list, because the two no longer share a deeper cell to look at.
-##
-## (6, 3) is deferred by the lone cob on (4, 2) -- (6, 4) is further along and
-## inside that cob's ring. Add a cob on (7, 2) and (6, 3) is covered by both,
-## while (6, 4) is inside only the new one's ring, so no single pest can pull
-## both guns away and the mark clears. This is the thing a player is meant to
-## learn by watching, and it is why the cue is shown during prep.
-func test_a_second_gun_behind_the_first_clears_a_deferred_cell() -> String:
-	var board := Board.new()
-	var subject := Vector2i(6, 3)
-	var alone: Array[Vector2i] = [A6RF_LONE_GUN]
-	var paired: Array[Vector2i] = [A6RF_LONE_GUN, Vector2i(7, 2)]
-	var err: String = _T.assert_true(board.is_buildable(paired[1]),
-		"the second gun's cell is still ground a plant may stand on")
-	var before: Array[Vector2i] = PlacementPreview.deferred_road_cells(board, alone,
-		_a6rf_guns(alone, PlantCatalog.CORN))
-	if err == "":
-		err = _T.assert_true(before.has(subject),
-			("%s is deferred with one gun -- the positive control, without which the "
-				+ "assertion below passes against a cue that stopped firing entirely")
-				% subject)
-	var after: Array[Vector2i] = PlacementPreview.deferred_road_cells(board, paired,
-		_a6rf_guns(paired, PlantCatalog.CORN))
-	if err == "":
-		err = _T.assert_false(after.has(subject),
-			("and NOT deferred once a second gun covers it, because no single pest can "
-				+ "pull both guns off it any more"))
-	if err == "":
-		err = _T.assert_true(before != after,
-			"so the marked set moves when the garden does, which is what Game._refresh"
-				+ " repushes it for")
-	board.free()
-	return err
-
-
-## Empty is a real answer, and this is the garden that gives it.
-##
-## A Chomp Flower on (4, 2) reaches exactly one road cell, so that cell is the
-## deepest road it holds and there is nothing further along for it to look at.
-## Nothing is marked -- not because the cue failed to run, which is what the
-## positive control on the same cell rules out.
-func test_a_gun_that_holds_only_its_deepest_cell_defers_nothing() -> String:
-	var board := Board.new()
-	var guns: Array[Vector2i] = [A6RF_LONE_GUN]
-	var chomp: Array[Vector2i] = PlacementPreview.covered_road_cell_list(board,
-		A6RF_LONE_GUN, Game.engagement_reach(PlantCatalog.CHOMP))
-	var err: String = _T.assert_eq(chomp.size(), 1,
-		"a Chomp on (4, 2) reaches exactly one road cell")
-	if err == "":
-		err = _T.assert_eq(PlacementPreview.deferred_road_cells(board, guns,
-			_a6rf_guns(guns, PlantCatalog.CHOMP)).size(), 0,
-			("so it defers nothing -- there is no road further along inside its own "
-				+ "ring for it to turn towards"))
-	if err == "":
-		err = _T.assert_gt(PlacementPreview.deferred_road_cells(board, guns,
-			_a6rf_guns(guns, PlantCatalog.CORN)).size(), 0,
-			("and the SAME cell with a cob's reach does defer -- so the zero above is a "
-				+ "measurement and not a cue that has stopped running"))
-	if err == "":
-		var none: Array[Vector2i] = []
-		err = _T.assert_eq(PlacementPreview.deferred_road_cells(board, none,
-			PackedFloat32Array()).size(), 0,
-			"a garden with no guns defers nothing, which is the empty-board answer")
-	if err == "":
-		err = _T.assert_eq(PlacementPreview.deferred_road_cells(null, guns,
-			_a6rf_guns(guns, PlantCatalog.CORN)).size(), 0,
-			"and a null board answers empty rather than reporting the whole road")
-	board.free()
-	return err
-
-
-## The number worth judging the cue on, on a garden that has already won the
-## coverage argument.
-func test_the_whole_road_garden_still_defers_three_quarters_of_the_road() -> String:
-	var board := Board.new()
-	var road: int = board.road_cells().size()
-	var err: String = _T.assert_eq(road, 32,
-		"the road is still 32 cells, which every count here is a fraction of")
-	for at: Vector2i in A6RF_WHOLE_ROAD_GARDEN:
-		if err != "":
-			break
-		err = _T.assert_true(board.is_buildable(at),
-			("the recorded garden's %s is somewhere a plant may still stand -- a cell "
-				+ "that has become road would make this a smaller garden with every "
-				+ "number still reporting") % at)
-	var reach: float = Game.engagement_reach(PlantCatalog.CORN)
-	if err == "":
-		var union: Dictionary = {}
-		for at: Vector2i in A6RF_WHOLE_ROAD_GARDEN:
-			for cell: Vector2i in PlacementPreview.covered_road_cell_list(board, at, reach):
-				union[cell] = true
-		err = _T.assert_eq(union.size(), road,
-			("the recorded garden still reaches every one of the %d road cells -- that "
-				+ "property is the whole reason it is the garden this is measured on")
-				% road)
-	if err == "":
-		var deferred: Array[Vector2i] = PlacementPreview.deferred_road_cells(board,
-			A6RF_WHOLE_ROAD_GARDEN,
-			_a6rf_guns(A6RF_WHOLE_ROAD_GARDEN, PlantCatalog.CORN))
-		err = _T.assert_eq(deferred.size(), A6RF_WHOLE_ROAD_DEFERS,
-			("%d of the %d road cells are deferred even though all %d are covered -- "
-				+ "this is the board half of RunSummary.reach_note_text(), and if it "
-				+ "ever reads 0 the cue has been deleted rather than satisfied")
-				% [A6RF_WHOLE_ROAD_DEFERS, road, road])
-	if err == "":
-		err = _T.assert_eq(road - A6RF_WHOLE_ROAD_DEFERS, 8,
-			("leaving 8 cells served first against 7 guns -- roughly one apiece, which "
-				+ "is the arithmetic the mechanic actually has"))
-	board.free()
-	return err
-
-
-## The ink, read off the Line2D children the Board builds rather than off a
-## `_draw()` no headless run ever calls.
-##
-## This is the assertion that would have caught the mark drawn 72 px out of place
-## that this repo has already shipped: it pairs each bar's points against
-## Board.lane_bar_points() at that cell's own centre, so a bar in the right shape
-## in the wrong place fails.
-func test_the_board_draws_one_bar_across_the_lane_per_deferred_cell() -> String:
-	var board := Board.new()
-	var guns: Array[Vector2i] = [A6RF_LONE_GUN]
-	# NOT named `arm`: suite_reach_check matches by bare token and SelectionMarker
-	# declares an unreached `arm` that a local of that name silently credits.
-	var arm_px: float = PlacementPreview.DEFERRED_BAR_ARM
-	var ink: Color = PlacementPreview.deferred_road_color()
-	var width: float = PlacementPreview.DEFERRED_BAR_WIDTH
-	var cells: Array[Vector2i] = PlacementPreview.deferred_road_cells(board, guns,
-		_a6rf_guns(guns, PlantCatalog.CORN))
-	var err: String = _T.assert_eq(cells.size(), A6RF_LONE_GUN_DEFERS,
-		"there is deferred road to mark -- an empty set makes every check below vacuous")
-	if err == "":
-		err = _T.assert_true(board.mark_deferred_road(cells, arm_px, ink, width),
-			"marking a fresh board reports the set as changed")
-	if err == "":
-		err = _same_cells(board.deferred_road_marked(), cells,
-			"the board holds exactly the cells it was handed, in walk order")
-	var lines: Array[Line2D] = board.deferred_road_mark_lines()
-	if err == "":
-		err = _T.assert_eq(lines.size(), cells.size(),
-			"one visible bar per deferred cell -- %d bars for %d cells"
-				% [lines.size(), cells.size()])
-	if err == "":
-		for i: int in range(cells.size()):
-			var axis: Vector2 = board.lane_axis(cells[i])
-			var want: PackedVector2Array = Board.lane_bar_points(
-				board.cell_to_world(cells[i]), axis, arm_px)
-			var got: PackedVector2Array = lines[i].points
-			err = _T.assert_eq(got.size(), 2, "bar %d is a two-point stroke" % i)
-			if err == "":
-				err = _T.assert_true(got[0].is_equal_approx(want[0])
-					and got[1].is_equal_approx(want[1]),
-					("bar %d lands on %s's own centre: drew %s..%s, wanted %s..%s")
-						% [i, cells[i], got[0], got[1], want[0], want[1]])
-			if err == "":
-				# ACROSS the lane, which is the channel that survives the colour being
-				# thrown away: nothing else this board draws is square to the road.
-				err = _T.assert_float_eq((got[1] - got[0]).normalized().dot(axis), 0.0,
-					0.001, "bar %d is square to the lane at %s" % [i, cells[i]])
-			if err == "":
-				err = _T.assert_float_eq(got[0].distance_to(got[1]), arm_px * 2.0, 0.001,
-					"bar %d is %.0f px long" % [i, arm_px * 2.0])
-			if err == "":
-				err = _T.assert_float_eq(lines[i].width, width, 0.001,
-					"bar %d carries the cue's width" % i)
-			if err != "":
-				break
-	var pool: int = 0
-	if err == "":
-		var layer: Node2D = board.get_node_or_null(Board.DEFERRED_ROAD_LAYER) as Node2D
-		err = _T.assert_true(layer != null,
-			"the marks live on their own layer, added last so they sit over the hatch")
-		if err == "":
-			pool = layer.get_child_count()
-			err = _T.assert_eq(pool, cells.size(), "the pool is %d nodes" % cells.size())
-	if err == "":
-		err = _T.assert_false(board.mark_deferred_road(cells, arm_px, ink, width),
-			("re-marking the identical set reports no change, so Game._refresh() on "
-				+ "every seed payout does not rebuild the pool several times a second"))
-	if err == "":
-		var narrow: Array[Vector2i] = [cells[0]]
-		err = _T.assert_true(board.mark_deferred_road(narrow, arm_px, ink, width),
-			"shrinking the set does report a change")
-		if err == "":
-			err = _T.assert_eq(board.deferred_road_mark_lines().size(), 1,
-				"and shrinks by HIDING: one bar visible")
-		if err == "":
-			var layer: Node2D = board.get_node_or_null(Board.DEFERRED_ROAD_LAYER) as Node2D
-			err = _T.assert_eq(layer.get_child_count(), pool,
-				"with the pool still %d nodes rather than freed and rebuilt" % pool)
-	if err == "":
-		err = _T.assert_true(board.is_deferred_road(cells[0]),
-			"and the read-back answers from the Board's own copy, not from the layer")
-	if err == "":
-		# Buildable ground is not ground a pest queues on, so it is dropped the way
-		# mark_dead_ground() drops road.
-		var grass: Array[Vector2i] = [Vector2i(0, 0)]
-		board.mark_deferred_road(grass, arm_px, ink, width)
-		err = _T.assert_false(board.is_deferred_road(grass[0]),
-			"a mark handed buildable ground drops it rather than rendering it")
-		if err == "":
-			err = _T.assert_eq(board.deferred_road_mark_lines().size(), 0,
-				"leaving nothing visible, which is also how the cue is cleared")
-	board.free()
-	return err
-
-
-## The two-channel rule, mechanically. This cue and the dead-ground bar are the
-## same grammar row ("straight line through a box = a STATE"), so what separates
-## them has to be something a greyscale screenshot still shows.
-func test_the_deferred_bar_is_a_different_mark_from_the_dead_ground_bar() -> String:
-	var dead: Vector2 = PlacementPreview.dead_bar_arm()
-	# ORIENTATION. The dead bar is a diagonal; every bar this cue draws is square
-	# to a road that only ever steps orthogonally, so it is axis-aligned everywhere.
-	var err: String = _T.assert_true(absf(dead.x) > 0.5 and absf(dead.y) > 0.5,
-		"the dead-ground bar is a diagonal (%s), which is the orientation this cue "
-			% dead + "deliberately does not use")
-	var board := Board.new()
-	var checked: int = 0
-	if err == "":
-		for cell: Vector2i in board.road_cells():
-			var axis: Vector2 = board.lane_axis(cell)
-			checked += 1
-			err = _T.assert_true(absf(axis.x) < 0.001 or absf(axis.y) < 0.001,
-				("the lane at %s runs on an axis (%s) -- an averaged direction would be "
-					+ "diagonal at the road's four corners and the bar would stop being "
-					+ "distinguishable there") % [cell, axis])
-			if err == "":
-				err = _T.assert_float_eq(axis.length(), 1.0, 0.001,
-					"and it is a unit vector at %s" % cell)
-			if err != "":
-				break
-	if err == "":
-		err = _T.assert_eq(checked, board.road_cells().size(),
-			"every one of the %d road cells was checked" % board.road_cells().size())
-	if err == "":
-		err = _T.assert_eq(board.lane_axis(Vector2i(0, 0)), Vector2.ZERO,
-			"and buildable ground has no lane direction at all")
-	# LENGTH and INK. The deferred set is the denser of the two -- 24 cells of 32
-	# against dead ground's 36 of 94 -- so it has to be the lighter mark per cell
-	# or the road reads as covered in warnings.
-	if err == "":
-		var mine: float = PlacementPreview.DEFERRED_BAR_ARM * 2.0 \
-			* PlacementPreview.DEFERRED_BAR_WIDTH
-		var theirs: float = PlacementPreview.PREVIEW_HALF * 2.0 \
-			* PlacementPreview.DEAD_BAR_WIDTH
-		err = _T.assert_gt(theirs, mine * 2.0,
-			("the deferred bar inks %.0f px^2 against the dead bar's %.0f -- less than "
-				+ "half, which is what keeps 24 of them quieter than 36 of those")
-				% [mine, theirs])
-	# And it is thinner than one off-aim hatch stripe, so a lone bar can never read
-	# as a hatch that lost the rest of itself.
-	if err == "":
-		err = _T.assert_gt(LanePressureOverlay.HATCH_WIDTH,
-			PlacementPreview.DEFERRED_BAR_WIDTH,
-			"a deferred bar is thinner than one hatch stripe")
-	board.free()
-	return err
-
-
-## The mark has to survive the ground it is drawn on, which is the dirt tile and
-## not the lawn -- GardenTheme.reads_on_ground() exists because a mark has already
-## disappeared into the playfield here once.
-func test_the_deferred_bar_reads_on_the_road_it_is_drawn_on() -> String:
-	var ink: Color = PlacementPreview.deferred_road_color()
-	var err: String = _T.assert_true(GardenTheme.reads_on_ground(Color(ink, 1.0)),
-		"the deferred ink clears the luminance floor against both tile hues")
-	if err == "":
-		err = _T.assert_true(GardenTheme.reads_on(Color(ink, 1.0), GardenTheme.GROUND_DIRT),
-			"and against the dirt tile specifically, which is the only ground it lands on")
-	if err == "":
-		# Louder than the dead marks and deliberately so: those sit on plain grass,
-		# this sits under the lane-pressure hatch and, during a wave, under the pests.
-		err = _T.assert_gt(PlacementPreview.DEFERRED_ALPHA,
-			PlacementPreview.BOARD_DEAD_ALPHA,
-			"and is carried at a higher alpha than the dead marks on the grass")
-	if err == "":
-		err = _T.assert_float_eq(ink.a, PlacementPreview.DEFERRED_ALPHA, 0.001,
-			"which is the alpha the colour actually ships with")
-	return err
-
-
 ## Every board mark measured as it is actually DRAWN, alpha included
 ## (plant-tower-defense-3h0s).
 ##
@@ -7175,13 +6708,12 @@ func test_the_deferred_bar_reads_on_the_road_it_is_drawn_on() -> String:
 ## The dead-ground slate spent many cycles at 0.086 base separation against grass —
 ## already under the floor at full opacity — and 0.029 as drawn, with a header directly
 ## above it claiming the bar survives colour being thrown away. Nobody had pointed the
-## gate at it; the deferred bar one grammar row over had a test since the day it shipped.
+## gate at it.
 ##
 ## SWEPT FROM A TABLE, and the table names its ground per row rather than asking
 ## `reads_on_ground` for both. That is not a loosening: `Board.mark_dead_ground` drops
-## non-buildable cells and `mark_deferred_road` drops the rest, so each mark has exactly
-## one ground it can land on and pricing the other would refuse a case the game cannot
-## produce. The reach ring is the one that crosses both, and it is priced against both.
+## non-buildable cells, so each mark has exactly one ground it can land on and pricing
+## the other would refuse a case the game cannot produce. The reach ring is the one that crosses both, and it is priced against both.
 ##
 ## The margin is reported on failure rather than just a bool, because the answer "by how
 ## much" is what tells you whether to move the colour or the alpha — and at this floor
@@ -7191,14 +6723,13 @@ func test_the_deferred_bar_reads_on_the_road_it_is_drawn_on() -> String:
 ##
 ## THE MEASUREMENT THAT PRODUCED THIS. Deleting four draw sites in
 ## `PlacementPreview` -- the risk ring, the dead bar, the redundant bars and the reach
-## ring -- left all 1003 tests green. So did short-circuiting `SelectionMarker._draw` and
-## `SoleCoverMarks._draw` entirely. Between them those are eight rows of the contrast
-## table below, plus the dead-zone bar three cycles of work went into.
+## ring -- left all 1003 tests green. So did short-circuiting `SelectionMarker._draw`
+## entirely. Between them those are seven rows of the contrast table below, plus the
+## dead-zone bar three cycles of work went into.
 ##
-## AND THE PROJECT ALREADY KNEW WHY. Doing the same to `Board.mark_dead_ground` and
-## `mark_deferred_road` fails FOUR tests, because those push their marks onto `Line2D`
-## children -- real nodes carrying real `points` -- and `board.gd`'s own header says that
-## is deliberate: "A headless run paints no frame at all, so a `_draw()` here would be a
+## AND THE PROJECT ALREADY KNEW WHY. Doing the same to `Board.mark_dead_ground` fails
+## several tests, because it pushes its marks onto `Line2D` children -- real nodes
+## carrying real `points` -- and `board.gd`'s own header says that is deliberate: "A headless run paints no frame at all, so a `_draw()` here would be a
 ## cue no gate could ever see." The rule was written down and applied in one file.
 ##
 ## SO THIS IS THE BLUNT INSTRUMENT, and it is honest about being one. It reads source and
@@ -7220,7 +6751,6 @@ func test_every_draw_painted_cue_still_issues_its_draw_calls() -> String:
 		{"file": "res://game/selection_marker.gd", "func": "_draw_brackets", "calls": 2},
 		{"file": "res://game/selection_marker.gd", "func": "_draw_uproot_window",
 			"calls": 1},
-		{"file": "res://game/sole_cover_marks.gd", "func": "_draw", "calls": 2},
 	]
 	var err: String = ""
 	var checked: int = 0
@@ -7242,7 +6772,7 @@ func test_every_draw_painted_cue_still_issues_its_draw_calls() -> String:
 				% [row["file"], row["func"], found, int(row["calls"])])
 		if err != "":
 			return err
-	return _T.assert_eq(checked, 7,
+	return _T.assert_eq(checked, 6,
 		"every listed cue was read -- a shrunken table would pass over nothing")
 
 
@@ -7377,9 +6907,6 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 			"alpha": dead.a, "ground": grass, "on": "grass"},
 		{"what": "redundant-patch bars", "mark": dead, "gates": true,
 			"alpha": dead.a, "ground": grass, "on": "grass"},
-		{"what": "deferred-road bar", "mark": PlacementPreview.deferred_road_color(),
-			"alpha": PlacementPreview.DEFERRED_ALPHA, "ground": dirt, "on": "dirt",
-			"gates": true},
 		# BOTH grounds, unlike the bars above, and the difference is geometry rather than
 		# rule: `RISK_RADIUS` is 30 against a 64 px cell, so a ring anchored one cell from
 		# the lane SPILLS onto it. A cue that leaves the cell it is anchored to does not
@@ -7436,18 +6963,10 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 		# `SelectionMarker.held_ink` HALVES the alpha, and separation scales by exactly
 		# alpha, so every held-over mark loses half its contrast. Nobody had priced that.
 		#
-		# WHAT IS REACHABLE IS NOT WHAT IS COMPUTABLE, and this table nearly got four rows
-		# that describe nothing. A dimmed WARNING colour fails dirt at 0.075 -- and cannot
+		# WHAT IS REACHABLE IS NOT WHAT IS COMPUTABLE, and this table nearly got rows that
+		# describe nothing. A dimmed WARNING colour fails dirt at 0.075 -- and cannot
 		# occur: both call sites refuse it in as many words ("ARMED OUTRANKS HELD",
-		# game/selection_marker.gd:309). A dimmed sole-cover ring fails GRASS at 0.103 --
-		# and cannot occur either, because those rings mark ROAD cells only
-		# (game/sole_cover_marks.gd:9). Only the reachable pairs are here.
-		{"what": "sole-cover ring, held over", "gates": true, "on": "dirt", "ground": dirt,
-			"mark": SelectionMarker.held_ink(SoleCoverMarks.MARK_COLOR, true),
-			"alpha": SelectionMarker.held_ink(SoleCoverMarks.MARK_COLOR, true).a},
-		{"what": "sole-cover ring, armed", "gates": true, "on": "dirt", "ground": dirt,
-			"mark": SoleCoverMarks.WARNING_COLOR,
-			"alpha": SoleCoverMarks.WARNING_COLOR.a},
+		# game/selection_marker.gd). Only the reachable pairs are here.
 		# The selection brackets DO reach both grounds -- a Bramble is selected on the
 		# road, everything else on grass. Held on grass is 0.124 against a floor of 0.12,
 		# which is the tightest pair in this whole table and the reason it is in it.
@@ -7515,7 +7034,7 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 			return err
 	# The denominator, because a table that lost its rows would pass in silence.
 	if err == "":
-		err = _T.assert_eq(checked, 24,
+		err = _T.assert_eq(checked, 21,
 			"the sweep visited every board mark and both grounds for the ring")
 	if err == "":
 		# AND the exception set is pinned by membership, not by count alone. A new mark
@@ -7533,39 +7052,6 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 			"and the gate still refuses the lawn's own hue painted on the lawn")
 	return err
 
-
-## The cue and its trigger live in different files, and a cue nothing turns on is
-## a failure this project has shipped before: every gate passes, the marks are
-## correct, and no player ever sees one. So this asserts the JOIN.
-##
-## It goes RED until Game._refresh() calls into the board's deferred marks. That
-## is the point of it -- see test_the_shop_hover_is_wired_to_the_boards_dead_ground
-## above, which exists for the same reason and was written the same way.
-func test_the_deferred_cue_is_wired_to_the_game() -> String:
-	var game := await _T.instantiate_scene(GAME_SCENE) as Game
-	var err: String = _T.assert_true(game != null, "the game scene resolves headlessly")
-	if err != "":
-		return err
-	if err == "":
-		err = _T.assert_eq(game.board.deferred_road_marked().size(), 0,
-			"an empty garden has nothing standing behind anything, so nothing is marked")
-	if err == "":
-		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, A6RF_LONE_GUN), "",
-			"the free starter cob goes in on the recorded gun cell")
-	if err == "":
-		# place_plant() ends in _refresh(), which is the funnel the marks hang off.
-		err = _T.assert_eq(game.board.deferred_road_marked().size(),
-			A6RF_LONE_GUN_DEFERS,
-			("and the board is marked the moment it lands -- %d cells. A zero here is "
-				+ "the wiring, not the derivation: PlacementPreview.deferred_road_cells "
-				+ "is asserted directly above and Game._refresh() is what pushes it")
-				% A6RF_LONE_GUN_DEFERS)
-	if err == "":
-		err = _T.assert_eq(game.board.deferred_road_mark_lines().size(),
-			A6RF_LONE_GUN_DEFERS,
-			"with a visible bar on each of them")
-	_T.free_ui(game)
-	return err
 
 # END plant-tower-defense-a6rf
 # =============================================================================
@@ -8993,22 +8479,17 @@ func test_the_chew_rings_remaining_ink_shrinks_the_way_a_clock_should() -> Strin
 ## commit; leaving the row behind is a red suite, not a quiet lie.
 ##
 ## ---------------------------------------------------------------------------------
-## fang crown + alone ring: they share 0.7 px of radius, and neither can simply move.
-##
-##   ChompFlower.FANG_RADIUS 28 puts a tooth's outer rim at 30.7. SoleCoverMarks
-##   .ALONE_RADIUS 31 puts that ring's inner edge at 30.0. A SELECTED, upgraded Chomp
-##   that holds no road cell alone wears both, and two of its four teeth (the pair at
-##   +-39 degrees, at 231 and 283 degrees round) fall under a dash rather than in a gap.
-##
-##   The crown cannot move out (30.7 is already near the 32 px half-cell) and the ring
-##   cannot move in (25.3 is the crown's inner edge) -- `ReadoutBand.free_slices()`
-##   reports the room left out there as 0.0 px. That is the finding, and it is why the
-##   fix is a design decision rather than a nudge: one of the two marks has to give up
-##   the outer band, and neither file's header knows the other exists.
+## EMPTY TODAY, and the one entry it ever held is worth knowing about. `fang crown +
+## alone ring` shared 0.7 px of radius: ChompFlower.FANG_RADIUS 28 put a tooth's outer
+## rim at 30.7 and the sole-cover alone ring's inner edge sat at 30.0, so a SELECTED,
+## upgraded Chomp holding no road cell alone drew two of its four teeth under a dash.
+## Neither mark could move -- `ReadoutBand.free_slices()` reported 0.0 px of room --
+## and it was closed in cycle 179 by the ring being removed from the game for unrelated
+## reasons. An empty list here is the intended steady state, not a sign the sweep broke:
+## `test_every_mark_a_plant_paints_is_classified_by_the_readout_band` counts what it
+## measured and fails on a short sweep.
 ## ---------------------------------------------------------------------------------
-const READOUT_BAND_KNOWN_COLLISIONS: Array[String] = [
-	"fang crown + alone ring",
-]
+const READOUT_BAND_KNOWN_COLLISIONS: Array[String] = []
 
 
 ## The res:// path of the script that DECLARES `_draw()` for this node, walking up the
@@ -9056,10 +8537,9 @@ func test_every_mark_a_plant_paints_is_classified_by_the_readout_band() -> Strin
 		if text.contains("func _draw("):
 			declares[path] = true
 
-	# Half two: the nodes a plant BUILDS under itself. SelectionMarker and SoleCoverMarks
-	# are not Plant subclasses and no filesystem sweep of the family would ever see them,
-	# yet both paint on the plant's own origin -- and the alone ring is one half of the
-	# collision recorded above. Walked off a real placed plant rather than named here.
+	# Half two: the nodes a plant BUILDS under itself. SelectionMarker is not a Plant
+	# subclass and no filesystem sweep of the family would ever see it, yet it paints on
+	# the plant's own origin. Walked off a real placed plant rather than named here.
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var cell: Vector2i = _grass(game)
 	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, cell), "",
@@ -9074,9 +8554,9 @@ func test_every_mark_a_plant_paints_is_classified_by_the_readout_band() -> Strin
 					declares[declarer] = true
 
 	if err == "":
-		# The vacuous-pass guard. Five plant scripts and two marker scripts draw today;
+		# The vacuous-pass guard. Five plant scripts and one marker script draw today;
 		# a sweep that found three has lost half its input and would still "pass".
-		err = _T.assert_gt(declares.size(), 6,
+		err = _T.assert_gt(declares.size(), 5,
 			("the sweep found only %d scripts that paint under a plant, which is fewer "
 				+ "than the plant family alone has -- an empty or short sweep agrees "
 				+ "with a registry that has forgotten everything. Found %s")
@@ -9162,10 +8642,11 @@ func test_no_two_radial_marks_on_one_plant_can_share_a_radius() -> String:
 			if err != "":
 				return err
 
-	# The denominator. Five marks that can all coexist is ten pairs; a run that checked
-	# three of them has lost most of the band and still reports clean.
+	# The denominator. Four marks that can all coexist is six pairs; a run that checked
+	# two of them has lost most of the band and still reports clean. It was 8 until
+	# cycle 179 removed the alone ring, which took one mark and its three pairs out.
 	if err == "":
-		err = _T.assert_gt(pairs, 8,
+		err = _T.assert_gt(pairs, 2,
 			("only %d pairs could be worn at once, out of %d marks -- if that number "
 				+ "fell, a WEARERS list has narrowed and the gate is checking less than "
 				+ "it looks like it is") % [pairs, marks.size()])
@@ -9216,9 +8697,9 @@ func test_the_readout_band_is_bounded_by_the_cell_and_not_by_the_reach_rings() -
 			if err != "":
 				break
 		if err == "":
-			err = _T.assert_gt(checked, 3,
+			err = _T.assert_gt(checked, 2,
 				("only %d marks were inside the band to check, which is fewer than the "
-					+ "four this bead counted") % checked)
+					+ "three left after cycle 179 removed the alone ring") % checked)
 
 	# Recorded, not gated: how much room is actually left. This is the answer the bead
 	# wanted written down, and it is the reason a comment listing three numbers would not
@@ -9606,7 +9087,7 @@ func test_only_one_of_the_three_teaching_budgets_is_a_ceiling() -> String:
 		var pages_now: int = NotebookScreen.hint_pages_needed()
 		var one_more: int = int(ceil(float(Hud.hint_ids().size() + 1) / float(per)))
 		err = _T.assert_true(one_more <= pages_now + 1,
-			("a seventh hint costs at most one more page (%d -> %d), so the hints page is "
+			("one more hint costs at most one more page (%d -> %d), so the hints page is "
 				+ "a pager and not a ceiling") % [pages_now, one_more])
 	if err == "":
 		# And the alarm really is armed: PAGES carries exactly the pages the list needs, so
@@ -9617,7 +9098,7 @@ func test_only_one_of_the_three_teaching_budgets_is_a_ceiling() -> String:
 				in_pages += 1
 		err = _T.assert_eq(in_pages, NotebookScreen.hint_pages_needed(),
 			("the book carries the pages the list needs (%d in PAGES, %d needed) -- this is "
-				+ "the alarm that makes a seventh hint a one-line edit rather than a "
+				+ "the alarm that makes another hint a one-line edit rather than a "
 				+ "silent loss") % [in_pages, NotebookScreen.hint_pages_needed()])
 	if err == "":
 		# The legend, and the ONE thing about "complete" a test can hold: the page teaches

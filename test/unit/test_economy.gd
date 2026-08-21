@@ -4708,8 +4708,8 @@ func test_the_catalogue_tells_hurting_apart_from_holding() -> String:
 
 ## The one production consumer asks the narrower question now.
 ##
-## `Game.engagement_reach` feeds `covered_road_cells`, `sole_cover_cells` and
-## `_refresh_deferred_road`, and everything they draw is worded "aimed at". It returned
+## `Game.engagement_reach` feeds `covered_road_cells` and the preview's coverage
+## helpers, and everything they draw is worded "aimed at". It returned
 ## 0.0 for a Bramble before this bead too — but only because a Bramble's `reach()`
 ## happens to be 0.0, so a holding plant WITH a reach would have been counted as
 ## covering road it cannot hurt anything on. This asserts the number AND the reason.

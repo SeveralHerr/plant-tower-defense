@@ -389,7 +389,6 @@ var _health_bar: ColorRect = null
 ## the bar is refreshed from take_damage() at sixty calls a second.
 var _health_notches: Array[ColorRect] = []
 var _selection_marker: SelectionMarker = null
-var _sole_cover_marks: SoleCoverMarks = null
 ## Seconds since the last bite, capped at REGROWTH_DELAY. Capped rather than left
 ## to climb because nothing past the threshold reads it — regrowth_in_step() only
 ## cares how much of the step is past the delay — and an uncapped float would
@@ -471,14 +470,6 @@ func _build_visuals() -> void:
 	_selection_marker.name = SelectionMarker.NODE_NAME
 	_selection_marker.visible = false
 	add_child(_selection_marker)
-
-	# A second sibling rather than a child of the marker above, and the reason is
-	# concrete: play_entrance() tweens the marker's `scale`, and these marks sit
-	# whole cells away from this plant's origin. See SoleCoverMarks' header.
-	_sole_cover_marks = SoleCoverMarks.new()
-	_sole_cover_marks.name = SoleCoverMarks.NODE_NAME
-	_sole_cover_marks.visible = false
-	add_child(_sole_cover_marks)
 
 	# Planting pop: the sprites are centred on their own vertical axis, which is
 	# what makes a scale tween land without drifting off the cell.
@@ -1271,18 +1262,6 @@ func is_destroyed() -> bool:
 func set_uproot_armed(armed: bool) -> void:
 	if _selection_marker != null and is_instance_valid(_selection_marker):
 		_selection_marker.set_warning(armed)
-	# The sole-cover rings escalate with the brackets, which turns them from "these
-	# cells depend on you" into "these go bare if you confirm" — the same data with
-	# the tense changed, and the one moment the player is deciding about it.
-	if _sole_cover_marks != null and is_instance_valid(_sole_cover_marks):
-		_sole_cover_marks.set_warning(armed)
-
-
-## The rings showing what only this plant covers, for Game to push into and for a
-## test to read. Null before _ready has built the children, which is the one state
-## a caller has to tolerate rather than assume away.
-func sole_cover_marks() -> SoleCoverMarks:
-	return _sole_cover_marks
 
 
 # ------------------------------------------------------------------- reach ring
@@ -1388,15 +1367,6 @@ func set_selected(value: bool) -> void:
 	if _selected == value:
 		return
 	_selected = value
-	# Hidden on deselect AND emptied, so a plant reselected later never flashes the
-	# previous selection's rings for the frame before Game._refresh pushes the
-	# current ones. The marks are a claim about the garden as it stands, and a
-	# stale one is read as "this is what you would lose", which is the single thing
-	# they must not get wrong.
-	if _sole_cover_marks != null:
-		_sole_cover_marks.visible = value
-		if not value:
-			_sole_cover_marks.set_points(PackedVector2Array())
 	if _selection_marker != null:
 		_selection_marker.visible = value
 		if value:

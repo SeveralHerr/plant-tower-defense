@@ -149,9 +149,11 @@ const RING_COLOR := Color(0.86, 0.44, 0.62, Plant.REACH_RING_ALPHA)
 ##
 ## A fourth constraint this header did not know about, found by `ReadoutBand`
 ## (game/readout_band.gd) the moment the hand-written pairs became a sweep: the crown's
-## outer rim at 30.7 overlaps `SoleCoverMarks.ALONE_RADIUS`'s inner edge at 30.0 by
-## 0.7 px, so a SELECTED, upgraded Chomp holding no road cell alone draws two of its
-## four teeth under a dash. Recorded as a live defect in `test_placement.gd`'s
+## outer rim at 30.7 overlapped the sole-cover alone ring's inner edge at 30.0 by
+## 0.7 px, so a SELECTED, upgraded Chomp holding no road cell alone drew two of its
+## four teeth under a dash. That ring was removed in cycle 179 and the collision went
+## with it; the entry is kept because the SWEEP is what found it, not a reader. It was
+## recorded as a live defect in `test_placement.gd`'s
 ## `READOUT_BAND_KNOWN_COLLISIONS` rather than fixed here: neither mark has anywhere to
 ## go — see that entry — so which of the two gives up the outer band is a decision about
 ## the cue grammar, not a nudge to a number.

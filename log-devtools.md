@@ -9694,3 +9694,52 @@ is likely to be at least as productive.
   - And the rule from cycle 177 held on its first real use: **the fixer said "19 written"
     and the number I believed was `citation_check`'s `1423 resolved, 0 findings`.** Those
     are different claims and only the second one is an invariant.
+
+## 2026-08-20 — Pushed 8 banked commits to origin/main
+
+- Value: **inconclusive** — the harness was not exercised at all; this was a bare `git push` of work already gated in earlier cycles.
+  - Expected: nothing from runtime — no code changed in this response.
+  - Got: `2b53e43..edff14e  main -> main`.
+  - Found: nothing.
+  - Cheaper: `git push` alone, which is exactly what was run.
+
+- Gap: no gaps this turn — no harness command was needed or attempted.
+
+## 2026-08-21 — Removed the sole-cover rings and the deferred-road bars from the lanes
+
+- Value: **warranted** — the request was about what the board LOOKS like, so only a live
+  screenshot could answer it, and the static gates then found a real hole the diff hid.
+  - Expected: a mechanical two-cue deletion whose only complaints would be unresolved
+    names, closed by `name_check` and a test run.
+  - Got: `name_check` clean at 0 errors, `run_tests.py` **1007 passed / 19363
+    assertions / 7 test script(s)**, `findings` **0 across 5 of 5 checks**, and a
+    `scene-tree` under `Board` carrying `DeadGroundMarks` with **no** `DeferredRoadMarks`
+    and **no** `SoleCoverMarks` anywhere under `Entities`, with 6 `SelectionMarker`s still
+    built — which is the claim "the cue is gone and the selection cue is not".
+  - Found: `suite_reach_check.py` caught that the deleted tests were the **only** callers
+    of three still-live public methods — `Plant.set_uproot_armed`,
+    `SelectionMarker.held_over` and `set_held_over`. Deleting a cue silently took live API
+    out of the suite's reach while every remaining assertion stayed green. Replaced with
+    `test_the_held_over_setters_reach_the_state_they_name`, 8 assertions, driving the
+    setters rather than reading the statics beside them.
+    Also: six independent denominator guards fired on the removal rather than passing
+    quietly (draw-call census, ground-contrast sweep, readout-band pair count,
+    band-membership count, judged-message set, notebook hints-page count), and
+    `citation_check` found two `kanban.md` entries citing the deleted file — one of them
+    the backlog entry asking whether the rings needed a sixth hint or a second legend
+    page, which is the question this change answered by deletion.
+  - Cheaper: nothing for the verdict. The gates were the expensive half and they earned
+    it — no reading of the diff would have surfaced live API losing its only test.
+
+- Gap: **no gaps this turn**, but one note the ledger's own contract should carry.
+  - `python tools/devtools.py scripts-seen` prints a human header
+    (`Scripts seen since launch (23):`) and `verify_ledger record` wants JSON, so the
+    obvious `scripts-seen > seen.json` produces an **unreadable capture** — and `record`
+    then writes the row anyway with reach derived from the scene tree alone. That row said
+    6/11 reached; `--json` gave 9/11. The failure is quiet in the direction that matters:
+    an understated reach reads as "this run did not verify those files".
+  - Improvement: `record` already refuses a row with *unknown* reach. It should treat an
+    **unparseable** `--scripts-seen` the same way — exit 1 naming `--json` — rather than
+    degrading to a scene-tree-only number that looks like a measurement. Logged here
+    rather than filed upstream: the harness is `0.60.0` on this machine and this is one
+    flag on one verb, below the bar the global instructions set for an issue.

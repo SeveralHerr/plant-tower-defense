@@ -101,11 +101,6 @@ static func difficulty_profile(name: StringName) -> Dictionary:
 ## mid-decision does not leave a live trigger sitting under the cursor.
 const UPROOT_CONFIRM_SECONDS: float = 4.0
 
-## The fewest guns on the board before the deferred-road one-shot is offered. See
-## `_offer_defer_hint`, which argues why this is 2 by derivation and not by taste.
-## A const rather than a literal in that guard so
-## `test_the_defer_hint_waits_for_a_second_gun` names the same number the game does.
-const DEFER_HINT_MIN_GUNS: int = 2
 ## What `arm_uproot()` returns for the click that ARMED the confirm — a success, not a
 ## refusal, and the one value on Game that breaks the "" == it-worked convention every
 ## other `-> String` method here follows (plant-tower-defense-qewm).
@@ -859,39 +854,6 @@ static func engagement_reach(id: StringName) -> float:
 	return PlantCatalog.reach(id)
 
 
-## The road cells this plant covers that NOTHING else standing covers — what the
-## garden would lose if it were uprooted (plant-tower-defense-nx9o).
-##
-## The mirror of PlacementPreview.new_cover_cells(), which answers the same
-## question about a plant not bought yet. Both exist because a range ring is
-## identical whether it is the only thing holding that road or one of three, and
-## cycle 54 measured that difference as decisive: five cobs covering all 32 road
-## cells lose a pest where seven covering the same 32 do not.
-##
-## Empty is a real answer and NOT a suggestion to uproot: it means everything this
-## plant reaches is backed up, which on a stretch that needs depth is exactly the
-## purchase that was wanted. It is the answer to "can I move this one?", not to
-## "should I?".
-func sole_cover_cells(plant: Plant) -> Array[Vector2i]:
-	var out: Array[Vector2i] = []
-	if board == null or not is_instance_valid(board):
-		return out
-	if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
-		return out
-	var reach: float = engagement_reach(plant.kind)
-	if reach <= 0.0:
-		return out
-	# "Everything except this plant" is covered_road_cells(except) exactly. This was
-	# a second copy of that loop, written before the parameter existed; the two
-	# agreed on every rule, which is precisely why the duplication was easy to keep
-	# and would have been easy to break. One of them is enough.
-	var others: Dictionary = covered_road_cells(plant)
-	for cell: Vector2i in PlacementPreview.covered_road_cell_list(board, plant.cell, reach):
-		if not others.has(cell):
-			out.append(cell)
-	return out
-
-
 ## Every road cell a pest could stand on right now with nothing in the garden able
 ## to touch it — the coverage-hole map, in walk order.
 ##
@@ -918,10 +880,8 @@ func uncovered_road_cells() -> Array[Vector2i]:
 ## cannot disagree about which road a plant reaches. A destroyed plant is skipped:
 ## a hungry pest that ate the cob took its coverage off the board with it.
 ## `except` leaves one plant out of the answer — "what would the garden cover
-## WITHOUT this one". Two callers want that and they want it for the same reason:
-## sole_cover_cells() asks what a plant uniquely holds, and the move preview asks
-## what a plant would newly defend somewhere else, which is a question about the
-## garden it is leaving behind.
+## WITHOUT this one", which is what the move preview asks: what a plant would newly
+## defend somewhere else is a question about the garden it is leaving behind.
 ##
 ## Default null keeps the plain reading, which is what every other caller wants.
 func covered_road_cells(except: Plant = null) -> Dictionary:
@@ -1500,9 +1460,9 @@ func _refresh_dead_ground() -> void:
 ## The one-shot that names the bar on the grass (plant-tower-defense-rr02), offered
 ## the first time it is drawn for a plant the player is actually considering.
 ##
-## THE HOVER IS THE GATE, and it is the whole decision in this function. Unlike the
-## deferred bar's `DEFER_HINT_MIN_GUNS`, there is no count that makes this cue
-## informative — because these bars are on the board from the opening screen. The
+## THE HOVER IS THE GATE, and it is the whole decision in this function. There is no
+## count that makes this cue informative — because these bars are on the board from
+## the opening screen. The
 ## header above says why: with nothing hovered, `board_dead_cells` answers about the
 ## garden's unlocks (g8kc), which resolves to the LONGEST reach the player owns. So an
 ## ungated hint would fire at a board the player has done nothing to, and would teach
@@ -1522,11 +1482,10 @@ func _refresh_dead_ground() -> void:
 ## with one plant unlocked the ambient set IS that plant's set, so the refinement
 ## would never fire for the player who most needs the sentence.
 ##
-## Spent on `show_message`'s RETURN VALUE, as `_offer_defer_hint` and `_offer_road_hint`
-## are: a line the row drops must leave the hint owed rather than burning it unseen.
+## Spent on `show_message`'s RETURN VALUE, as `_offer_road_hint` is: a line the row
+## drops must leave the hint owed rather than burning it unseen.
 ##
-## `row_is_quiet()` before offering, for the reason `_offer_defer_hint`'s own comment
-## records at length — this caller is LEVEL-triggered. A hovered packet keeps its dead
+## `row_is_quiet()` before offering, because this caller is LEVEL-triggered. A hovered packet keeps its dead
 ## set for as long as the cursor rests there and `_refresh()` re-enters here on every
 ## seed payout, so a refused post is re-offered and re-offered until the row's queue
 ## starts dropping. That was measured once already, at `refused=11`.
@@ -1541,130 +1500,6 @@ func _offer_dead_ground_hint(dead: Array[Vector2i]) -> void:
 		return
 	var posted: bool = hud.show_message(Hud.dead_ground_tip())
 	RunConfig.spend_hint(RunConfig.HINT_DEAD_GROUND, posted)
-
-
-## The board's deferred-road bars, repushed. See PlacementPreview.deferred_road_cells
-## for what "deferred" means and why it is a static property of the garden's SHAPE
-## rather than a live read of what each gun is currently shooting at.
-##
-## The guns go in as two parallel lists rather than as the Game itself, because a
-## PlacementPreview naming Game back would be a cyclic class_name reference -- the
-## same seam _refresh_dead_ground() takes `bank.unlocked` across. The filter is
-## covered_road_cells()' filter exactly: standing, not destroyed, engagement_reach
-## above zero.
-func _refresh_deferred_road() -> void:
-	if board == null or not is_instance_valid(board):
-		return
-	var gun_cells: Array[Vector2i] = []
-	var gun_reaches := PackedFloat32Array()
-	for key: Vector2i in _plants:
-		var plant := _plants[key] as Plant
-		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
-			continue
-		var reach: float = engagement_reach(plant.kind)
-		if reach <= 0.0:
-			continue
-		gun_cells.append(plant.cell)
-		gun_reaches.append(reach)
-	var deferred: Array[Vector2i] = PlacementPreview.deferred_road_cells(
-		board, gun_cells, gun_reaches)
-	board.mark_deferred_road(
-		deferred,
-		PlacementPreview.DEFERRED_BAR_ARM,
-		PlacementPreview.deferred_road_color(),
-		PlacementPreview.DEFERRED_BAR_WIDTH)
-	_offer_defer_hint(deferred, gun_cells.size())
-
-
-## The one-shot that names the bar, offered the first time the board actually draws
-## one (plant-tower-defense-0xhf).
-##
-## GATED ON THE CELL LIST AND NOT ON `mark_deferred_road`'s return, which is the near
-## miss worth writing down. That return means the marked SET CHANGED, and the set
-## changes every time a bar appears OR disappears -- including on the refresh that
-## clears the last one. A hint spent there could name a mark that is no longer on the
-## board. `deferred` non-empty is the condition the sentence is actually about.
-##
-## `is_empty()` is also cheaper than the `has_milestone` read in the common case, and
-## this runs from `_refresh()`, which fires on every seed payout.
-##
-## Spent on `show_message`'s RETURN VALUE, exactly as `_offer_road_hint` and
-## `_on_flight_ignored` are: the row drops a line when its queue is full, and a
-## dropped line has to leave the hint owed for the next refresh rather than burning
-## it unseen. Cycle 79 paid for that distinction once already -- see `RunConfig.HINTS`.
-##
-## NOT gated on a wave running. `placement_preview.gd`'s a6rf block argues at length
-## that the cue is a static property of the garden's shape and is shown during PREP
-## for exactly that reason: prep is when another plant can still be bought. A hint
-## held back until a wave started would name the mark at the one moment its
-## counter-play is unavailable.
-## `guns` is the count of standing plants with reach, so the ONE-GUN GARDEN IS
-## EXCLUDED, and that gate is derived rather than tuned. A deferred cell is one with
-## a cell further along covered by every gun that covers it; with a single gun that
-## is every cell it reaches except the furthest one, always, on any board. So at one
-## plant the bars are at their densest and say nothing about this player's garden --
-## they say what one gun looks like. Worse, the tip's counter-play is "add depth
-## there", and depth is not a purchase available to somebody who has just put down
-## their free Corn Cobbler.
-##
-## Two is therefore the first count at which the mark carries information and the
-## advice can be taken, not a number that looked about right. It is also what keeps
-## this out of the opening tutorial's message row, where
-## `test_an_armed_prompt_outranks_a_line_that_is_merely_important` measured it
-## landing: that test drains the row, posts a five-second reveal and arms an uproot
-## on a ONE-PLANT board, and a hint firing there displaced the beat the test exists
-## to protect.
-func _offer_defer_hint(deferred: Array[Vector2i], guns: int) -> void:
-	if hud == null or not is_instance_valid(hud):
-		return
-	if deferred.is_empty() or guns < DEFER_HINT_MIN_GUNS:
-		return
-	if RunConfig.has_milestone(RunConfig.HINT_DEFERRED_ROAD):
-		return
-	# Ask before offering, for the reason `_maybe_teach_upgrading` does and with the
-	# same failure behind it. This caller is LEVEL-triggered -- a garden with a
-	# deferred cell stays deferred until a plant moves -- so a refused post is not a
-	# one-off: the next `_refresh()` offers it again, and the one after that, stacking
-	# copies into the row's queue until `MESSAGE_QUEUE_MAX` starts refusing them.
-	#
-	# That is not a hypothetical here. The version of this without the guard was
-	# caught by `test_a_realistic_run_refuses_no_messages_and_evicts_none` at
-	# `refused=11` over three waves -- the row is busy at exactly the moment a plant
-	# lands, which is exactly the moment the deferred set changes. `Hud.row_is_quiet`
-	# exists for this and its header names this trap; it is worth reading before
-	# adding a sixth hint.
-	if not hud.row_is_quiet():
-		return
-	var posted: bool = hud.show_message(Hud.defer_tip())
-	RunConfig.spend_hint(RunConfig.HINT_DEFERRED_ROAD, posted)
-
-
-## Name the sole-cover rings, once ever, the first time the player is looking at some
-## (plant-tower-defense-bkss).
-##
-## Fires on `count > 0` and nothing else: the rings are what the sentence is about, so a
-## tip posted on a selection that drew none would teach a mark the player cannot see —
-## which is the failure `_maybe_teach_upgrading`'s header calls "leaving them hunting".
-## No minimum-guns gate, unlike the bar above: the bar needs two guns before it carries
-## information, while a single plant's rings are meaningful the moment they are drawn
-## and the first plant is exactly when the player has never seen them.
-##
-## `row_is_quiet()` is what keeps this off the opening tutorial's beat, and it is the
-## whole answer to the objection that a sixth hint would put two teaching lines on
-## consecutive clicks. It cannot: a busy row refuses this and the next `_refresh()`
-## offers it again. `_offer_defer_hint` above says the same thing at more length and
-## names the test that measured `refused=11` without it.
-func _offer_sole_cover_hint(count: int) -> void:
-	if hud == null or not is_instance_valid(hud):
-		return
-	if count <= 0:
-		return
-	if RunConfig.has_milestone(RunConfig.HINT_SOLE_COVER):
-		return
-	if not hud.row_is_quiet():
-		return
-	var posted: bool = hud.show_message(Hud.sole_cover_tip())
-	RunConfig.spend_hint(RunConfig.HINT_SOLE_COVER, posted)
 
 
 ## Applied straight away rather than left for the next _refresh(), for the reason
@@ -1728,35 +1563,6 @@ func _apply_held_over(plant: Plant, held: bool) -> void:
 	if marker != null:
 		marker.set_held_over(held)
 		marker.visible = held or live
-	var marks: SoleCoverMarks = plant.sole_cover_marks()
-	if marks != null:
-		marks.set_held_over(held)
-		marks.visible = held or live
-		if not held and not live:
-			marks.set_points(PackedVector2Array())
-
-
-## One plant's sole-cover rings, pushed from the garden as it now stands. Lifted out of
-## _refresh() because there are two of them now -- the selection and the plant held
-## over beside it -- and two copies of this loop is where the two would start
-## disagreeing.
-## Returns how many rings it actually pushed, so the caller can ask whether the player
-## is looking at any without recomputing `sole_cover_cells`. `0` covers all three ways
-## there are none — no plant, no marks node, or a plant nothing depends on — which is
-## what `_offer_sole_cover_hint` needs and is why this is a count rather than a bool.
-func _push_sole_cover(plant: Plant) -> int:
-	if plant == null or not is_instance_valid(plant):
-		return 0
-	var marks: SoleCoverMarks = plant.sole_cover_marks()
-	if marks == null:
-		return 0
-	var at: PackedVector2Array = PackedVector2Array()
-	for cell: Vector2i in sole_cover_cells(plant):
-		# GLOBAL, because SoleCoverMarks._draw hands these to to_local().
-		# cell_to_world is board-local and the marks drew 72 px high for it.
-		at.append(board.cell_to_global(cell))
-	marks.set_points(at)
-	return at.size()
 
 
 func plant_at(cell: Vector2i) -> Plant:
@@ -3215,10 +3021,6 @@ func _refresh() -> void:
 		# is opened -- not only when the cursor moves. Same funnel and the same
 		# early-return discipline as mark_unaimed_road above.
 		_refresh_dead_ground()
-		# The deferred bars read the standing guns and their reaches, so they move
-		# when the garden does -- a cob bought, uprooted or eaten -- and not only
-		# when the cursor moves. Same funnel, same discipline.
-		_refresh_deferred_road()
 		# The preview's new-cover dots read the same set, and pushing it only from
 		# _update_preview would leave them stale whenever the garden changes while
 		# the cursor is STILL — a plant eaten mid-wave, an uproot committing, a
@@ -3229,22 +3031,11 @@ func _refresh() -> void:
 		if _preview != null and is_instance_valid(_preview) and _preview.visible:
 			_preview.covered_now = covered_road_cells()
 			_preview.queue_redraw()
-		# The selected plant's own half of the same question, and the plant held
-		# over beside it. Pushed here rather than from set_selected() because the
-		# answer changes when the GARDEN changes, not only when the selection does:
-		# plant a second cob beside the selected one and the rings under it should
-		# thin out without the player clicking anything.
-		#
 		# A held plant eaten or uprooted leaves a freed reference behind; cleared here
 		# rather than at each death path, because this is the one funnel every one of
 		# them already runs through.
 		if _held_over != null and not is_instance_valid(_held_over):
 			_held_over = null
-		# The SELECTED plant's count only, never the held-over one's: the hover preview
-		# is a question the player is asking, and naming a cue in the middle of it
-		# answers a different question than the one they asked.
-		_offer_sole_cover_hint(_push_sole_cover(selected_placed))
-		_push_sole_cover(_held_over)
 	if hud == null:
 		return
 	hud.refresh(state())

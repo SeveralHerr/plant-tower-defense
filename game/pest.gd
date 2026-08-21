@@ -428,16 +428,14 @@ const JAW_SPACING: float = 0.40
 ## "a REMARK about the thing inside it", and this is a remark about the pest inside it.
 ## It adds no row to that table — adding one fails
 ## `test_the_legend_names_as_many_shapes_as_the_grammar_documents` until someone decides
-## whether it is taught — it is the third instance of a row that already has two
-## (`placement_preview.gd:320`, `sole_cover_marks.gd:150`), and the dash construction
-## below — count, step, gap, segments — is copied from those two verbatim on purpose,
-## so all three read as one language rather than as three people's idea of "dashed".
+## whether it is taught — it is the second instance of a row that already has one
+## (`placement_preview.gd`'s at-risk ring), and the dash construction below — count,
+## step, gap, segments — is copied from that one verbatim on purpose, so both read as
+## one language rather than as two people's idea of "dashed".
 ##
-## That `SoleCoverMarks.ALONE_RADIUS` remark is 31 px and this one is 29 px on an aphid,
-## which is not a collision: what a remark is ABOUT is the thing inside it, and one of
-## them is drawn on a plant and the other on a bug. Same row, different subject — the
-## same way the reach ring and the marked-cell ring share a shape and are told apart by
-## size and centre.
+## The at-risk remark is 30 px and this one is 29 px on an aphid, which is not a
+## collision: what a remark is ABOUT is the thing inside it, and one of them is drawn
+## on a bed and the other on a bug. Same row, different subject.
 ##
 ## THE TWO-CHANNEL RULE. The signal is the BREAK: a solid ring at this size on a bug
 ## would be read as a reach, a full ring is not what is drawn, and nothing else on a

@@ -276,9 +276,10 @@ have rebuilt the same trap.
   the cycle.** A dimmed WARNING colour fails dirt at 0.075 — and cannot occur, because
   both call sites refuse it in as many words: "ARMED OUTRANKS HELD"
   (`game/selection_marker.gd:309`), since a plant one click from destruction must not be
-  dimmed for being the plant being compared against. A dimmed sole-cover ring fails GRASS
-  at 0.103 — and cannot occur either, because those rings mark ROAD cells only
-  (`game/sole_cover_marks.gd:9`). **A computed FAILURE is a claim, and needs its
+  dimmed for being the plant being compared against. A dimmed sole-cover ring failed
+  GRASS at 0.103 — and could not occur either, because those rings marked ROAD cells only
+  (that cue was removed in cycle 179; the argument is the record, not the file).
+  **A computed FAILURE is a claim, and needs its
   reachability checked before it becomes a finding** — the exact mirror of cycle 156's
   rule that a reasoned EXCLUSION is a claim. Worth stating as a pair somewhere both are
   read, because the two failure modes bracket the same mistake: believing an argument
@@ -1223,15 +1224,16 @@ have rebuilt the same trap.
   table's Instances column is a `tools/` job, and `.claude/skills/house-static-checker`
   is the recipe.
 
-- **The small yellow ring on a road cell is still untaught, and it is the cue a player
-  meets FIRST.** PLAYER-FACING. `SoleCoverMarks` (`game/sole_cover_marks.gd:227`) draws
-  it on every cell the selected plant alone covers — so it appears on the very first
-  click of the very first plant, before the deferred bar, before the hatch, before
-  anything. It has a grammar row ("Small solid ring, cell-sized, centred on a ROAD CELL",
-  `game/OVERLAY_GRAMMAR.md:26`) and no legend row and no hint. Cycle 138's user report
-  named both it and the bar in one breath; only the bar got an answer. Worth deciding
-  whether the answer is a sixth hint or the second legend page above, because two hints
-  fired on consecutive clicks would be the wallpaper the one-shot rule exists to prevent.
+- ~~**The small yellow ring on a road cell is still untaught, and it is the cue a player
+  meets FIRST.**~~ **CLOSED IN CYCLE 179 BY DELETION, and the way it closed is the point.**
+  This entry asked whether the answer was a sixth hint or a second legend page. Cycle 140
+  spent the hint. Cycle 179 got the same report from the same player about the same marks
+  — "these awful yellow circles, lines and other artifacts in the lanes, please remove
+  them" — and the answer was to stop drawing the rings and the deferred bar entirely.
+  **A cue asked about twice is not under-taught, it is unwanted**, and neither the legend
+  audit (`game/cue_legend.gd`) nor `tools/teaching_ledger_check.py` has a column that can
+  say so: every verdict in both answers "where should this be explained", and a cue nobody
+  wants on screen scores exactly like one that has simply not been explained yet.
 
 - **A hint that fires from `_refresh` needs `Hud.row_is_quiet` and there is no gate that
   says so.** `game/hud.gd:3220` documents the rule and the failure exactly; cycle 138

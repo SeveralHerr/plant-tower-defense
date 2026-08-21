@@ -243,59 +243,23 @@ const HINT_UPGRADE_EXISTS := "seen_upgrade_tip"
 ## to be load-bearing, and it is the last of the four to exist.
 const HINT_ROAD_PLANTS := "seen_road_tip"
 
-## The fifth, and the first one about a MARK rather than about a rule
-## (plant-tower-defense-0xhf). Filed off a player's own words, looking at their own
-## board: "what are all these artifacts in the lanes? If they mean something, it is
-## not obvious."
+## The one instance of grammar row 6 left on the board (plant-tower-defense-rr02):
+## the bar on the GRASS. Cycle 144 named a second bar on the ROAD alongside it; a
+## player called that one an artifact in the lanes and it was removed, along with
+## the rings that shared the selection with it.
 ##
-## The other four teach a rule the board does not state. This one names a thing the
-## board is already drawing — `Board._redraw_deferred_road`'s bar across the lane —
-## and that difference is why it is a hint and not a legend row. `CueLegend.ROWS` is
-## measurably full: `OVERLAY_GRAMMAR.md`'s cycle-109 note prices a seventh row at
-## 340 px against the 300 px the page has, and `CueLegend.rows_that_fit` is the
-## function that says so. A cue that arrives on the board with no player action and
-## no name anywhere in the game is exactly what a one-shot is for.
+## `cue_legend.gd:112` is the audit that refused these bars a legend row — "four
+## instances, four meanings, one channel" — and that verdict is why the survivor
+## still needs a sentence of its own rather than a shared row.
 ##
-## It is also the hint whose cue is HARDEST to guess at, because the bar looks like
-## the one mark the player may already have met. `placement_preview.gd`'s a6rf block
-## enumerates the four straight marks the board can draw and the channel that keeps
-## each distinct — position, orientation, length, count — and every one of those
-## channels is a distinction a reader has to already know about to read.
-const HINT_DEFERRED_ROAD := "seen_defer_tip"
-
-## The earliest cue in the game, and the last one to get a name
-## (plant-tower-defense-bkss). The sole-cover rings appear on the first click of the
-## first plant — before the bar above, which waits for `Game.DEFER_HINT_MIN_GUNS`.
-##
-## This one was REFUSED once, on the record, and the refusal is worth reading before
-## anyone reverses it again: `game/cue_legend.gd:134-139` argued the rings needed no
-## teaching because the legend already teaches the DASHED ring ("nothing depends on
-## this plant") and the road rings are the same node's positive case. That is a good
-## argument and it lost to a player, who looked at the board and asked what the marks
-## meant. The condition that note set for revisiting — "if row 4 ever gains an instance
-## that is not SoleCoverMarks" — was a fact about the drawing code; the condition that
-## actually fired was a fact about a person.
-const HINT_SOLE_COVER := "seen_sole_cover_tip"
-
-## The other half of grammar row 6 (plant-tower-defense-rr02). `HINT_DEFERRED_ROAD`
-## above named the bar on the ROAD; this names the bar on the GRASS, and cycle 144
-## named one of the two without noticing there were two.
-##
-## `cue_legend.gd:112` is the audit that priced them together and refused them a
-## legend row — "four instances, four meanings, one channel", which is true of the
-## pair and is exactly why they need a sentence EACH rather than a shared row. Two
-## hints is what that verdict costs when you take it seriously.
-##
-## AND THE TWO BARS ARE TOLD APART BY WHERE THEY ARE, not by their angle, which is
-## why this sentence leads with the ground. `placement_preview.gd`'s a6rf block
-## enumerates the four straight marks and the channel that keeps each distinct;
-## orientation is one a reader has to already know to read, and "on grass" is one
-## they can use on first sight.
+## THE SENTENCE LEADS WITH THE GROUND, which is what tells this mark from every
+## other straight line the board draws: orientation is a channel a reader has to
+## already know to read, and "on grass" is one they can use on first sight.
 const HINT_DEAD_GROUND := "seen_dead_ground_tip"
 
 const HINTS: Array[String] = [
 	HINT_MOVE_PREVIEW, HINT_CHOMP_IGNORES_FLIGHT, HINT_UPGRADE_EXISTS, HINT_ROAD_PLANTS,
-	HINT_DEFERRED_ROAD, HINT_SOLE_COVER, HINT_DEAD_GROUND,
+	HINT_DEAD_GROUND,
 ]
 
 

@@ -140,19 +140,17 @@ const RISK_DASHES: int = 8
 ## `BOARD_DEAD_ALPHA` it was 0.029, a quarter of the floor.
 ##
 ## Nobody had pointed the gate at it. `reads_on_ground` exists precisely because a mark
-## vanished into this lawn once, and the deferred bar one grammar row over has a test
-## naming it (`test_the_deferred_bar_reads_on_the_road_it_is_drawn_on`). This cue had
-## neither, and the two failures compound: the gate was alpha-blind and said so, and
-## alpha is the dominant term for every board mark.
+## vanished into this lawn once, and this cue had no test naming it. The two failures
+## compound: the gate was alpha-blind and said so, and alpha is the dominant term for
+## every board mark.
 ##
 ## WHY DARK RATHER THAN A BRIGHTER PALE. `GardenTheme.reads_on_at`'s header carries the
 ## arithmetic: separation scales by exactly alpha, grass is bright at 0.643, and clearing
 ## the floor at a third of an alpha from the pale side needs a luminance above 1.0. Pale
 ## on this lawn is not a value that was chosen slightly wrong; it is a direction with no
-## room in it. Going dark also puts this bar in the same ink family as the deferred bar,
-## which is not a collision — `OVERLAY_GRAMMAR.md` defines row 6 by its CHANNEL and both
-## bars are that row. They are told apart by the ground they land on and by their angle,
-## which is exactly what `Hud.dead_ground_tip` tells the player.
+## room in it. `OVERLAY_GRAMMAR.md` defines row 6 by its CHANNEL, and this bar is that
+## row's one instance: it is told apart from everything else by the ground it lands on
+## and by its angle, which is exactly what `Hud.dead_ground_tip` tells the player.
 const DEAD_COLOR := Color(0.24, 0.27, 0.36, 0.80)
 const DEAD_BAR_WIDTH: float = 3.0
 ## Bar length is the bracket box, not the ring: a Corn Cobbler's ring is 176 px,
@@ -336,8 +334,8 @@ func _draw_new_cover_dots() -> void:
 	for cell: Vector2i in new_cover_cells():
 		# cell_to_GLOBAL: to_local() measures from the viewport, and cell_to_world is
 		# board-local, so this drew every gained-cell dot 72 px high -- the same defect
-		# as SoleCoverMarks, in the same shape, found by enumerating cell_to_world's
-		# callers after a screenshot caught the other one.
+		# as the sole-cover rings had (removed in cycle 179), in the same shape, found
+		# by enumerating cell_to_world's callers after a screenshot caught that one.
 		draw_circle(to_local(on_board.cell_to_global(cell)), NEW_COVER_DOT, marker_color)
 
 
@@ -907,196 +905,3 @@ static func board_dead_cells(on_board: Board, hovered: StringName,
 # =============================================================================
 
 
-# =============================================================================
-# BEGIN plant-tower-defense-a6rf: covered is not served.
-#
-# APPENDED WHOLE, for the reason the block above gives: nothing already in this
-# file is touched, so a lane working on the hover preview and a lane working on
-# this cue cannot collide.
-#
-# THE MECHANIC, in the words RunSummary.reach_note_text() already uses. A cob
-# shoots the pest furthest along (`Plant._furthest_along_in_range`,
-# game/plant.gd:691), so a cob whose ring sits over eight road cells is busy with
-# one of them and the other seven get nothing. The instrumented run records 3,909
-# of 4,664 stays (84%) on covered ground with nothing touching the pest, 82% of
-# that a cob firing at a DIFFERENT pest. The board paints those cells as aimed at,
-# correctly, and the player loses beds on them anyway. This is the board half of
-# the sentence the run summary prints afterwards; the two must agree, and they do
-# because both are derived from `covered_road_cell_list` rather than recorded.
-#
-# THE CUE IS STATIC, AND THAT IS A DECISION RATHER THAN A SHORTCUT. "Busy" reads
-# like a runtime state -- this cob, this tick, this target -- and a cue built that
-# way is unusable for three separate reasons, each of which was checked before
-# this was written:
-#
-#   1. The game does not record it. The 84% figure comes from instrumentation in
-#      the over-promise tests, not from anything the running game keeps; there is
-#      no per-stay bookkeeping to read. `CornCobbler._act` re-picks its target
-#      every tick and keeps no history of it.
-#   2. A live read flickers by construction. The target changes on every kill and
-#      every overtake, so the marked set would repaint several times a second
-#      during exactly the wave the bead says it must not be noise in. Latching it
-#      per wave does not help: it is monotone, so within one heavy wave it
-#      converges on nearly every covered cell and stops distinguishing anything.
-#   3. It would be untestable here. `GardenTheme.animations_enabled()` is false
-#      for the whole suite and headless paints no frame, so "which cells would be
-#      marked" has to be answerable with no wave, no pest and no frame.
-#
-# What IS static is the shape of the queue, and it is the *cause* of the 84%
-# rather than a proxy for it. A road cell C is DEFERRED when some road cell D
-# further along is covered by EVERY gun that covers C. Put one pest on D and each
-# of C's guns finds a strictly greater `progress()` inside its own radius, so each
-# of them turns away, and a pest standing on C is shot at by nothing. That is not
-# an approximation of the targeting rule -- it is the targeting rule, quantified
-# over the guns that cell actually has.
-#
-# So the cue says "one pest ahead of you and this cell has nothing", which is
-# exactly the sentence the run summary prints in aggregate, and it is true of the
-# garden standing right now whether or not a wave is running. It is therefore
-# shown during PREP too, which is when it can still be acted on -- the same
-# argument LanePressureOverlay makes for the off-aim hatch: watching the marks
-# thin out as a second cob goes down IS the tutorial.
-#
-# WHAT IT DOES NOT CLAIM. Not "this cell is uncovered" -- the uncovered road is
-# the hatch's subject and the two sets are disjoint by construction (a cell with
-# no gun is skipped below). Not "a pest here always survives" -- it survives the
-# guns covering it, and a Kernel overshooting from elsewhere still kills, the same
-# caveat LanePressureOverlay's `unaimed` header spells out. And the rule is
-# `_furthest_along_in_range`, so it is exact for CornCobbler and Nettle, and an
-# UNDERSTATEMENT for ChompFlower (a busy mouth serves nobody at all, deferred or
-# not) and for Dandelion (which picks by clump size and only tie-breaks on
-# progress). Understating is the right direction for a warning.
-#
-# WHY NO NEW GRAMMAR ROW. This is the existing "straight line through a box = a
-# STATE" row (OVERLAY_GRAMMAR.md), whose other two instances are `_draw_dead_bar`
-# and `_draw_redundant_bars` above. Adding a row would fail
-# test_the_legend_names_as_many_shapes_as_the_grammar_documents until somebody
-# decided whether to teach it; adding an INSTANCE to a row does not, because that
-# test counts rows in the "What each shape means" section and nothing else.
-#
-# HOW IT STAYS DISTINCT FROM THE THREE MARKS IT SHARES A BOARD WITH, in the
-# channel that survives colour being discarded:
-#
-#   - the dead-ground bar (same row): POSITION -- that bar only ever lands on
-#     buildable ground and this only ever lands on road, filtered on both sides
-#     (Board.mark_dead_ground drops non-buildable, Board.mark_deferred_road drops
-#     non-road). Also ORIENTATION and LENGTH: the dead bar is a 54 px diagonal at
-#     -PI/4, this is a 28 px bar square to the lane.
-#   - the redundant-patch bars (same row): COUNT, two against one, and position
-#     again.
-#   - the off-aim hatch (LanePressureOverlay): DENSITY and ORIENTATION. The hatch
-#     is six-plus 45-degree stripes per cell and it owns BOTH diagonals already --
-#     `hatch_segments` mirrors the lattice for off-aim cells -- which is precisely
-#     why this bar is axis-aligned instead. It is the only axis-aligned straight
-#     line the board draws. The two are also disjoint: the hatch paints road no
-#     gun covers, this paints road at least one gun covers.
-#
-# The orientation is not a constant, and that is the point of `Board.lane_axis`:
-# the bar is drawn ACROSS the lane, square to the direction a pest leaves the
-# cell. It reads as a bar held up in a queue, it is axis-aligned everywhere
-# because the road only ever steps orthogonally, and the direction of the road is
-# the Board's own knowledge rather than something a caller should be pushing in.
-# =============================================================================
-
-## Half the length of the bar drawn across a deferred lane cell, in pixels.
-##
-## 14.0 puts a 28 px stroke on a 64 px cell -- comfortably inside it, and
-## deliberately about half the dead bar's 54 px so the two are different marks
-## before they are different colours. The ink budget is the number that actually
-## matters here, because up to 24 of the road's 32 cells carry one at once on a
-## garden that covers the whole road: 28 x 2.0 = 56 px^2 against the dead bar's
-## 54 x 3.0 = 162 px^2, so the denser cue is the lighter one per cell by a factor
-## of three. test_the_deferred_bar_is_a_different_mark_from_the_dead_ground_bar
-## pins that, along with the orientation and the length.
-const DEFERRED_BAR_ARM: float = 14.0
-
-## Thinner than DEAD_BAR_WIDTH for the reason above, and thinner than the off-aim
-## hatch's 4.0 px stripes so a lone bar can never read as one stripe of a hatch
-## that lost the rest of itself.
-const DEFERRED_BAR_WIDTH: float = 2.0
-
-## Higher than BOARD_DEAD_ALPHA's 0.34 rather than lower, and the asymmetry is
-## deliberate: the dead marks sit on plain grass and this sits on the kit's dirt
-## tile underneath the lane-pressure hatch and, during a wave, under the pests
-## themselves. The ink budget above is what keeps the set quiet; the alpha is what
-## keeps one mark legible.
-const DEFERRED_ALPHA: float = 0.55
-
-
-## The ink the deferred bar is drawn in: GardenTheme.INK_SOFT at DEFERRED_ALPHA.
-##
-## A function rather than a const for the reason board_dead_color() gives -- a
-## const initialiser cannot call Color's (Color, float) constructor.
-##
-## INK_SOFT rather than the dead cue's slate, and rather than DANGER, which the
-## hatch and the blocked-cell wash have already spent twice over. It clears
-## GardenTheme.reads_on_ground() against both tile hues
-## (test_the_deferred_bar_reads_on_the_road_it_is_drawn_on), which is the gate
-## that exists because a mark has already vanished into the lawn here once.
-static func deferred_road_color() -> Color:
-	return Color(GardenTheme.INK_SOFT, DEFERRED_ALPHA)
-
-
-## Every road cell that every gun covering it will look past -- see this block's
-## header for what that means and why it is the static half of a runtime state.
-##
-## `gun_cells` and `gun_reaches` are parallel: one entry per standing plant that
-## can engage, its cell and its `Game.engagement_reach`. Pushed in rather than
-## read, because "which plants are standing" is Game's knowledge and this class
-## naming Game back would be a cyclic class_name reference -- the same seam
-## board_dead_cells() takes its `unlocked` list across. The shorter of the two
-## lengths wins, so a caller that builds them out of step gets a smaller answer
-## rather than a wrong one.
-##
-## Coverage is derived through covered_road_cell_list(), not recomputed, so this
-## cue and Game.covered_road_cells() cannot disagree about which road a gun holds.
-##
-## In WALK ORDER, because Board.road_cells() is, and because "further along" is
-## the only comparison this function makes -- the index in that list IS the path
-## index, so no sort and no path_index() call is needed.
-##
-## EMPTY is the honest answer for a null board, for no guns, and for a garden
-## whose every covered cell is the deepest its guns reach. The last of those is a
-## real garden and a good one, not a missing case.
-static func deferred_road_cells(on_board: Board, gun_cells: Array[Vector2i],
-		gun_reaches: PackedFloat32Array) -> Array[Vector2i]:
-	var out: Array[Vector2i] = []
-	if on_board == null:
-		return out
-	var guns: int = mini(gun_cells.size(), gun_reaches.size())
-	if guns <= 0:
-		return out
-	var road: Array[Vector2i] = on_board.road_cells()
-	if road.size() <= 1:
-		return out
-	var coverage: Array[Dictionary] = []
-	for i: int in range(guns):
-		var seen: Dictionary = {}
-		for covered_cell: Vector2i in covered_road_cell_list(on_board, gun_cells[i],
-				gun_reaches[i]):
-			seen[covered_cell] = true
-		if not seen.is_empty():
-			coverage.append(seen)
-	for i: int in range(road.size()):
-		var cell: Vector2i = road[i]
-		# The guns that hold THIS cell. A cell no gun holds is the off-aim hatch's
-		# subject and is skipped, which is what makes the two sets disjoint.
-		var here: Array[Dictionary] = []
-		for cover: Dictionary in coverage:
-			if cover.has(cell):
-				here.append(cover)
-		if here.is_empty():
-			continue
-		for j: int in range(i + 1, road.size()):
-			var every: bool = true
-			for held: Dictionary in here:
-				if not held.has(road[j]):
-					every = false
-					break
-			if every:
-				out.append(cell)
-				break
-	return out
-
-# END plant-tower-defense-a6rf
-# =============================================================================

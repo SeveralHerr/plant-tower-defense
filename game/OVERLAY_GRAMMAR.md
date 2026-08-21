@@ -21,14 +21,14 @@ must survive its colour being thrown away.
 | Shape | Means | Instances |
 |---|---|---|
 | **Solid full ring**, plant-sized, centred on a plant | a REACH — "this is how far it acts" | **one implementation**, `Plant.draw_reach_ring`, called by Corn, Chomp, Dandelion and Sundew and inherited by Mint, Nettle and Aloe; plus `dandelion.gd` (the bomb's blast radius, the one instance that keeps a fill — see that file) and `placement_preview.gd:231` (the reach it *would* have) |
-| **Dashed ring** (an arc loop, not a full circle) | a REMARK about the thing inside it | `placement_preview.gd:320` (at risk), `sole_cover_marks.gd:150` (nothing depends on this plant) |
+| **Dashed ring** (an arc loop, not a full circle) | a REMARK about the thing inside it | `placement_preview.gd` (at risk), `pest.gd` (a pest that has been fought) |
 | **Partial arc** at a fixed radius, sweeping closed | TIME REMAINING on a clock that is already running | `husk_layer.gd:113-122` (a husk's rot timer), `chomp_flower.gd:486-487` (a chew), `selection_marker.gd:206-208` (the uproot confirm window) |
-| **Small solid ring**, cell-sized, centred on a ROAD CELL | a MARKED CELL — "this one, specifically" | `sole_cover_marks.gd:154` |
+| **Small solid ring**, cell-sized, centred on a ROAD CELL | a MARKED CELL — "this one, specifically" | **none.** The sole-cover road rings were the only instance and cycle 179 removed them; the row is kept because the CHANNEL is still reserved — a new cell-sized ring means "this cell" and nothing else |
 | **Filled dot**, cell-sized, on a road cell | a CELL YOU WOULD GAIN | `placement_preview.gd:274` |
 | **Straight line through a box** | a STATE, legible with colour discarded | `placement_preview.gd:328` (dead ground), `:337-338` (redundant patch) |
 | **Corner brackets** | the SUBJECT — "this is the thing being talked about" | `selection_marker.gd:100-101`, and `PlacementPreview` inherits them one size larger and dimmer, so a hover reads as a promise of selection |
 | **Scattered short marks**, much smaller than a cell, not aligned to the grid | the WEATHER, a property of the whole garden | `weather_overlay.gd:97-98` (drought, flat dashes), `weather_overlay.gd:103-104` (rain, slanted streaks) |
-| **Doubled line width** | ARMED — a destructive action is one click away | `SelectionMarker.WARNING_LINE_WIDTH`, `SoleCoverMarks.WARNING_RING_WIDTH` |
+| **Doubled line width** | ARMED — a destructive action is one click away | `SelectionMarker.WARNING_LINE_WIDTH` |
 | **A row of small pips** inside a drawn shape | HOW MANY TIMES OVER — a magnitude the shape's own size and brightness have already saturated on | `husk_layer.gd:117-124` (a husk worth more than `CompostMeter.FULL_VALUE`) |
 | **Hatched stripes filling a road cell**, at one of two mirrored angles | TWO readings of the same cell at once — the ALPHA is how much pressure it took, the ANGLE is whether anything currently aims at it | `lane_pressure_overlay.gd:92-96` |
 
@@ -93,12 +93,14 @@ six, and this is the note saying the width is not lying around.
 
 ## Where the grammar does NOT hold, and why that is tolerable
 
-Two solid rings are not reaches, and a reader applying the table naively would misread them:
+Two solid rings were not reaches, and a reader applying the table naively would have
+misread them:
 
-- **`sole_cover_marks.gd:154`** draws a small solid ring on a road cell. It is a mark, not a
-  radius. What disambiguates it is **size and centre**, not shape: 9 px on a cell versus
-  176 px on a plant. That is a real distinction on screen and a weak one in a table, so it
-  gets its own row above rather than an exception note.
+- ~~**`sole_cover_marks.gd`** drew a small solid ring on a road cell. It was a mark, not a
+  radius, disambiguated by **size and centre** rather than by shape: 9 px on a cell versus
+  176 px on a plant.~~ **REMOVED in cycle 179** — a player read the rings as artifacts in
+  the lanes rather than as a cue. The row above survives it because the argument that
+  earned it was about the CHANNEL, not about that one mark.
 - ~~**`chomp_flower.gd`** draws a solid ring whose radius SHRINKS as a chew completes.~~
   **RESOLVED in cycle 78**, and the resolution is the useful part. It is now a partial arc at
   a fixed 22 px sweeping closed (`chomp_flower.gd:164`), which is not an exception at all —
@@ -143,7 +145,7 @@ being thrown away**:
 | Straight line through a box | Its own Means column says so outright: "legible with colour discarded". |
 | Corner brackets | The SHAPE. Four detached corners look like nothing else here. |
 | Scattered short marks | SIZE and SCATTER, argued at length in the section below — a quarter of a cell, unaligned to the grid. |
-| Doubled line width | WIDTH, and it is the only row whose channel is asserted mechanically: `SelectionMarker.WARNING_LINE_WIDTH` and `SoleCoverMarks.WARNING_RING_WIDTH` are each pinned strictly above their base in `test_selftest.gd` and `test_placement.gd`. |
+| Doubled line width | WIDTH, and it is the only row whose channel is asserted mechanically: `SelectionMarker.WARNING_LINE_WIDTH` is pinned strictly above its base in `test_selftest.gd`. |
 | A row of small pips | COUNT. Cycle 88 added pips precisely BECAUSE radius and brightness had both saturated — a magnitude that colour could no longer carry. |
 | Hatched stripes at one of two mirrored angles | ORIENTATION, and it is the only row carrying TWO readings on one mark. Alpha is spent on magnitude and `GardenTheme.DANGER` is spent three times over, so the second reading had to live somewhere that was not hue — and a mirror inks the identical 57%, so discarding colour costs the angle nothing. |
 
@@ -160,12 +162,11 @@ HUD's ramps; the board's cues never needed it because they were built to survive
 `grep -n "draw_arc(\|draw_circle(\|draw_line(\|draw_rect(" game/*.gd` returns **80 calls
 across 20 files** (it said 55 across 15 when this was written).
 
-**AND THAT GREP IS BLIND TO TWO OF THE CUES ON THIS PAGE.** `Board.mark_dead_ground` and
-`Board.mark_deferred_road` paint `Line2D` children rather than calling `draw_*`, which
-`board.gd`'s own header explains was deliberate: "a `_draw()` here would be a cue no gate
-could ever see" headlessly. So the recipe misses precisely the two marks that were built
-to be checkable, and a survey run from it would report the board as drawing fewer cues
-than it does. **Grep `Line2D.new()` as well.** Found by plant-tower-defense-wenx while
+**AND THAT GREP IS BLIND TO A CUE ON THIS PAGE.** `Board.mark_dead_ground` paints
+`Line2D` children rather than calling `draw_*`, which `board.gd`'s own header explains was
+deliberate: "a `_draw()` here would be a cue no gate could ever see" headlessly. So the
+recipe misses precisely the mark that was built to be checkable, and a survey run from it
+would report the board as drawing fewer cues than it does. **Grep `Line2D.new()` as well.** Found by plant-tower-defense-wenx while
 pricing a seventh legend row; the full diff is in `game/cue_legend.gd`'s audit block.
 
 ~~Also unrecorded here: `lane_pressure_overlay.gd`'s hatch matches none of the ten shapes
@@ -178,8 +179,8 @@ That is the same mistake as `husk_layer.gd` below, made a second time, forty cyc
 
 Most of what the grep turns up are sprites drawing themselves (`sunflower.gd`, `seed_glyph.gd`,
 `title_backdrop.gd`, `notebook_page.gd`) and are not cues. The cue files are
-`placement_preview.gd`, `selection_marker.gd`, `sole_cover_marks.gd`,
-`lane_pressure_overlay.gd`, `husk_layer.gd`, and the range rings inside the four plants.
+`placement_preview.gd`, `selection_marker.gd`, `lane_pressure_overlay.gd`,
+`husk_layer.gd`, and the range rings inside the four plants.
 
 **`husk_layer.gd` was in the sprite list until cycle 78 and that was the derivation's one
 real mistake.** It draws an arc whose sweep is a husk's remaining life — a mark carrying

@@ -7541,7 +7541,6 @@ func test_wave_carries_boss_sees_every_boss_species_and_not_just_the_queen() -> 
 	return err
 
 
-
 # -- BEGIN the sting's thrust is aimed (plant-tower-defense-n2wd) ---------------
 
 
@@ -8746,11 +8745,10 @@ func test_the_fought_mark_is_a_broken_ring_clear_of_every_other_mark_on_a_pest()
 # row would fail test_the_legend_names_as_many_shapes_as_the_grammar_documents, and it
 # would deserve to, because the shape has not changed.
 #
-# Everything here is asserted off pure statics -- SelectionMarker.bracket_corners,
-# SelectionMarker.held_ink, SoleCoverMarks.mark_radius -- because
-# GardenTheme.animations_enabled() is false for the whole suite and headless runs no
-# _draw() at all. The composition lives above that gate so deleting the demotion goes
-# red instead of quietly making two ring sets identical.
+# Everything here is asserted off pure statics -- SelectionMarker.bracket_corners and
+# SelectionMarker.held_ink -- because GardenTheme.animations_enabled() is false for the
+# whole suite and headless runs no _draw() at all. The composition lives above that gate
+# so deleting the demotion goes red instead of quietly making the two states identical.
 
 
 ## The corner table, which is the whole cue. Four corners = the subject now; two
@@ -8836,146 +8834,15 @@ func test_the_held_over_look_survives_its_colour_being_thrown_away() -> String:
 		err = _T.assert_eq(SelectionMarker.held_ink(base, false), base,
 			("held_ink is the identity when nothing is held over -- the armed and "
 				+ "selected colours the rest of the suite pins must not move"))
-	# The rings' channel is SIZE, which is the channel that row already declares:
-	# OVERLAY_GRAMMAR.md tells a 9 px cell ring from a 176 px reach by "size and
-	# centre, not shape". A third size inside the same row is that logic once more.
+	# The brackets' own channel is the CORNER COUNT, which is what carries the state
+	# once the colour is gone: four corners live against two held.
 	if err == "":
-		err = _T.assert_gt(SoleCoverMarks.mark_radius(false),
-			SoleCoverMarks.mark_radius(true) * 1.5,
-			("the held ring is under two thirds of the live one (%.1f against %.1f) -- "
-				+ "a ratio no gamma curve or greyscale conversion touches")
-				% [SoleCoverMarks.mark_radius(true), SoleCoverMarks.mark_radius(false)])
-	if err == "":
-		err = _T.assert_gt(SoleCoverMarks.mark_radius(true), PlacementPreview.NEW_COVER_DOT,
-			("and still larger than the hover's gained-cell disc (%.1f against %.1f), so "
-				+ "where the two land near each other they nest rather than coincide")
-				% [SoleCoverMarks.mark_radius(true), PlacementPreview.NEW_COVER_DOT])
-	# WIDTH is the ARMED row's channel -- the only cue guarding an action that cannot be
-	# undone. A held-over ring is not an escalation and must not borrow it.
-	if err == "":
-		var marks := SoleCoverMarks.new()
-		marks.set_points(PackedVector2Array([Vector2(64.0, 64.0)]))
-		marks.set_held_over(true)
-		err = _T.assert_float_eq(marks.ring_width(), SoleCoverMarks.RING_WIDTH, 0.0001,
-			("holding a plant over does not thicken its rings -- doubled width means "
-				+ "ARMED and nothing else may spend that channel"))
-		if err == "":
-			err = _T.assert_true(marks.held_over, "set_held_over took")
-		if err == "":
-			marks.set_held_over(true)
-			err = _T.assert_true(marks.held_over, "and is idempotent, as its header claims")
-		if err == "":
-			err = _T.assert_float_eq(marks.ring_color().a,
-				SoleCoverMarks.MARK_COLOR.a * SoleCoverMarks.HELD_ALPHA_SCALE, 0.0001,
-				"the held rings dim through the same scale the brackets use")
-		if err == "":
-			marks.set_held_over(false)
-			err = _T.assert_eq(marks.ring_color(), SoleCoverMarks.MARK_COLOR,
-				"and restoring gives back exactly the live ink")
-		marks.free()
-	if err == "":
-		err = _T.assert_float_eq(SoleCoverMarks.HELD_ALPHA_SCALE,
-			SelectionMarker.HELD_ALPHA_SCALE, 0.0001,
-			("the rings and the brackets of one held plant dim by ONE number, borrowed "
-				+ "rather than declared twice"))
-	return err
-
-
-## The fact the whole design rests on: two plants' sole-cover sets can never share a
-## cell, so two ring sets on the board are two clusters and never two rings on one cell.
-## If this stopped being true, the reader would be asked to untangle overlapping marks
-## and the size channel above would not be enough.
-func test_two_plants_sole_cover_sets_never_share_a_cell() -> String:
-	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
-	var first := Vector2i(1, 3)
-	var second := Vector2i(0, 5)
-	var err: String = _T.assert_eq(game.place_plant(PlantCatalog.CORN, first), "",
-		"a cob goes in at %s" % first)
-	if err == "":
-		err = _T.assert_eq(game.place_plant(PlantCatalog.CORN, second), "",
-			"and a second at %s" % second)
-	if err != "":
-		_T.free_ui(game)
-		return err
-	var a: Plant = game.plant_at(first)
-	var b: Plant = game.plant_at(second)
-	var a_cells: Array[Vector2i] = game.sole_cover_cells(a)
-	var b_cells: Array[Vector2i] = game.sole_cover_cells(b)
-	# Both non-empty, or the disjointness below is vacuous.
-	err = _T.assert_gt(a_cells.size(), 0, "the first cob solely holds something")
-	if err == "":
-		err = _T.assert_gt(b_cells.size(), 0, "and so does the second")
-	# And they overlap, or `covered_road_cells(except)` removed nothing and the two
-	# answers would be disjoint for the boring reason rather than the real one.
-	if err == "":
-		var shared: int = 0
-		for cell: Vector2i in PlacementPreview.covered_road_cell_list(
-				game.board, first, Game.engagement_reach(PlantCatalog.CORN)):
-			if PlacementPreview.covered_road_cell_list(
-					game.board, second,
-					Game.engagement_reach(PlantCatalog.CORN)).has(cell):
-				shared += 1
-		err = _T.assert_gt(shared, 0,
-			"the two cobs' reaches overlap, so this measures the exclusion and not luck")
-	var collisions: int = 0
-	for cell: Vector2i in a_cells:
-		if b_cells.has(cell):
-			collisions += 1
-	if err == "":
-		err = _T.assert_eq(collisions, 0,
-			("no cell is in both answers (%d were) -- sole cover means nothing else "
-				+ "standing covers it, so the two ring sets are disjoint by construction")
-				% collisions)
-	# Now the two cues side by side, which is what the player sees during a comparison.
-	var a_marks: SoleCoverMarks = a.sole_cover_marks()
-	var b_marks: SoleCoverMarks = b.sole_cover_marks()
-	if err == "":
-		err = _T.assert_true(a_marks != null and b_marks != null,
-			"both plants built their marks nodes")
-	if err == "":
-		a_marks.set_held_over(true)
-		err = _T.assert_gt(SoleCoverMarks.mark_radius(b_marks.held_over),
-			SoleCoverMarks.mark_radius(a_marks.held_over),
-			("with one held over, the live cluster's rings are the bigger ones -- the "
-				+ "reader tells the two apart without reading a colour"))
-	var a_marker := a.get_node_or_null(
-		NodePath(SelectionMarker.NODE_NAME)) as SelectionMarker
-	var b_marker := b.get_node_or_null(
-		NodePath(SelectionMarker.NODE_NAME)) as SelectionMarker
-	if err == "":
-		err = _T.assert_true(a_marker != null and b_marker != null,
-			"and both built their brackets, reachable by SelectionMarker.NODE_NAME")
-	if err == "":
-		a_marker.set_held_over(true)
-		err = _T.assert_gt(
-			SelectionMarker.bracket_corners(b_marker.held_over).size(),
-			SelectionMarker.bracket_corners(a_marker.held_over).size(),
-			"and the held plant's box is the open one")
-	# The precondition the held-over state depends on, and it holds TODAY: moving the
-	# selection off an armed plant disarms it, so the plant that becomes the held-over
-	# one never carries the red brackets or an open confirm arc. Held and armed are
-	# mutually exclusive because Game makes them so, not because either node checks.
-	if err == "":
-		game._select(b)
-		# "confirm needed", not "": arming is the FIRST of two clicks and says so.
-		# An empty string is what a committed uproot returns.
-		err = _T.assert_eq(game.arm_uproot(), "confirm needed",
-			"an uproot arms on the second cob and asks for confirmation")
-	if err == "":
-		err = _T.assert_eq(b_marker.marker_color, SelectionMarker.WARNING_COLOR,
-			"and its brackets go red while it is the selection")
-	if err == "":
-		game._select(a)
-		err = _T.assert_false(game.uproot_armed(),
-			"selecting the other plant disarms it")
-	if err == "":
-		err = _T.assert_eq(b_marker.marker_color, SelectionMarker.MARKER_COLOR,
-			("so the plant now held over wears no warning -- a demoted cue and an armed "
-				+ "one are never the same brackets"))
-	if err == "":
-		err = _T.assert_float_eq(b_marker.uproot_window, 0.0, 0.0001,
-			"and carries no open confirm arc either")
-	_T.free_ui(game)
+		err = _T.assert_gt(SelectionMarker.bracket_corners(false).size(),
+			SelectionMarker.bracket_corners(true).size(),
+			("the held box is drawn from fewer corners than the live one (%d against "
+				+ "%d), which is the reading a greyscale conversion cannot take away")
+				% [SelectionMarker.bracket_corners(true).size(),
+					SelectionMarker.bracket_corners(false).size()])
 	return err
 
 
@@ -8999,18 +8866,61 @@ func test_the_held_over_demotion_is_what_the_cues_actually_paint() -> String:
 		if err == "":
 			err = _T.assert_true(body.contains("held_ink("),
 				"and its ink from held_ink(), so the dimming is not a second rule")
-	if err == "":
-		var marks_src: String = FileAccess.get_file_as_string("res://game/sole_cover_marks.gd")
-		err = _T.assert_gt(marks_src.length(), 0, "sole_cover_marks.gd is readable")
-		if err == "":
-			var painter: int = marks_src.find("func _draw(")
-			err = _T.assert_gt(painter, 0, "the rings have a painter")
-			if err == "":
-				var body: String = marks_src.substr(painter)
-				err = _T.assert_true(body.contains("mark_radius("),
-					("the road rings' radius comes from mark_radius(), not a literal -- "
-						+ "an inlined 9.0 makes the held cluster and the live one one cue"))
 	return err
+
+## The two setters that carry the demoted look, driven rather than read.
+##
+## THEY LOST THEIR ONLY CALLER IN A TEST IN CYCLE 179 and nothing said so: the removed
+## sole-cover checks were what named `set_held_over`, `held_over` and
+## `Plant.set_uproot_armed`, so deleting a cue quietly took three live methods out of the
+## suite's reach while every remaining assertion stayed green. `tools/suite_reach_check.py`
+## is what noticed. Written as a DRIVE rather than a static read for that reason -- the
+## statics above are already pinned, and what was actually lost was the only proof that
+## the setter reaches the state.
+func test_the_held_over_setters_reach_the_state_they_name() -> String:
+	var marker := SelectionMarker.new()
+	var err: String = _T.assert_false(marker.held_over,
+		"a freshly built marker is LIVE -- a plant outside a Game is never demoted")
+	if err == "":
+		marker.set_held_over(true)
+		err = _T.assert_true(marker.held_over, "set_held_over(true) reaches the state")
+	if err == "":
+		# Idempotence is the promise its header makes, and a second call returning early
+		# must not undo the first.
+		marker.set_held_over(true)
+		err = _T.assert_true(marker.held_over,
+			"and calling it again is idempotent rather than a toggle")
+	if err == "":
+		marker.set_held_over(false)
+		err = _T.assert_false(marker.held_over, "and it restores the live look")
+	marker.free()
+
+	# The plant-side driver, which is the seam Game actually uses: arming is reached
+	# through the Plant, not by touching the marker Game never holds a reference to.
+	# `setup()` is what builds the cue children, the way test_placement.gd's sway check
+	# reaches them.
+	if err == "":
+		var plant := Plant.new()
+		plant.setup(PlantCatalog.CORN, Vector2i(3, 5), null)
+		var live: SelectionMarker = plant.get_node_or_null(
+			NodePath(SelectionMarker.NODE_NAME)) as SelectionMarker
+		err = _T.assert_true(live != null,
+			"the plant built its selection marker under the documented node name")
+		if err == "":
+			err = _T.assert_eq(live.marker_color, SelectionMarker.MARKER_COLOR,
+				"and it starts in the unarmed ink")
+		if err == "":
+			plant.set_uproot_armed(true)
+			err = _T.assert_eq(live.marker_color, SelectionMarker.WARNING_COLOR,
+				("set_uproot_armed(true) reddens the brackets THROUGH the plant -- the "
+					+ "only route Game has, since it never holds the marker itself"))
+		if err == "":
+			plant.set_uproot_armed(false)
+			err = _T.assert_eq(live.marker_color, SelectionMarker.MARKER_COLOR,
+				"and disarming puts the live ink back")
+		plant.free()
+	return err
+
 
 # END plant-tower-defense-sleq: the previous selection, held for comparison
 # =============================================================================
