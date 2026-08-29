@@ -22366,6 +22366,114 @@ func test_every_plant_has_a_sport_and_every_sport_is_strictly_better() -> String
 	return ""
 
 
+## Every sport's one buff is big enough to read and small enough not to replace the shop.
+##
+## The band is the design sentence in `PlantMutation`'s header written as numbers, and
+## it exists because the other two tests here cannot see it. "Strictly better" passes
+## at a rate of 0.999, and the seconds band in
+## `test_a_sport_is_rare_enough_to_stay_an_event` grades how OFTEN a sport lands
+## without ever asking what one is worth. Those two numbers were tuned as a pair --
+## rare and large, replacing the frequent and small this shipped with -- and a later
+## hand that walks half the pair back leaves both existing tests green.
+##
+## The FLOOR (0.20) is a legibility claim rather than a balance one: a plant firing
+## 10% faster than the identical plant beside it is a difference no player standing
+## over a 14x9 garden can see, so a sport that small is a free plant that reads as a
+## bug in the sprite. The CEILING is the economy -- a sport is free, and one worth two
+## bought plants makes buying the wrong move.
+##
+## The Mint is the exception at the top and is NAMED rather than skipped, because a
+## loop that quietly excused a row would excuse the next one too. Its `power` is a
+## COUNT that `Game._refresh_neighbour_buffs` rounds to an int, so 2.0 is not the
+## "twice a bought plant" the ceiling is about; it is two neighbours, and the only
+## value above it is three.
+func test_every_sport_buff_is_big_enough_to_read_and_small_enough_to_keep_the_shop() -> String:
+	var NOTICEABLE: float = 0.20
+	var RATE_FLOOR: float = 0.55
+	var POWER_CEILING: float = 1.80
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_gt(ids.size(), 6,
+		"the catalogue really has plants to sweep -- a loop over nothing asserts nothing")
+	if err != "":
+		return err
+	var counted: int = 0
+	for id: StringName in ids:
+		var rate: float = PlantMutation.rate_scale(id)
+		var power: float = PlantMutation.power_scale(id)
+		var moved: float = rate if rate < 1.0 else power
+		counted += 1
+		err = _T.assert_true(absf(1.0 - moved) >= NOTICEABLE,
+			("%s's sport moves its number by %.0f%%. Under %.0f%% is a difference nobody "
+				+ "standing over the board can see, so the sport reads as a recolour bug "
+				+ "rather than as the event `CrossBreeder.CHANCE_PER_TICK` prices it as")
+				% [id, absf(1.0 - moved) * 100.0, NOTICEABLE * 100.0])
+		if err == "" and rate < 1.0:
+			err = _T.assert_true(rate >= RATE_FLOOR,
+				("%s's sport is %.2f of its parent's interval. Past %.2f a free plant is "
+					+ "worth two bought ones and the shop becomes the wrong move")
+					% [id, rate, RATE_FLOOR])
+		if err == "" and power > 1.0 and id != PlantCatalog.MINT:
+			err = _T.assert_true(power <= POWER_CEILING,
+				("%s's sport is %.2fx its parent. Past %.2fx a free plant is worth two "
+					+ "bought ones; the Mint is the one row allowed above this, and only "
+					+ "because its `power` is a neighbour COUNT") % [id, power, POWER_CEILING])
+		if err != "":
+			return err
+	if err == "":
+		err = _T.assert_eq(counted, ids.size(),
+			"and every kind in the catalogue was graded, not a subset of it")
+	if err == "":
+		# Named rather than left to the loop's `!=`, so retiring the exception means
+		# deleting a failing assertion instead of finding a silent skip.
+		err = _T.assert_float_eq(PlantMutation.power_scale(PlantCatalog.MINT), 2.0, 0.0001,
+			("the Mint is still the counted row the exception above is written for -- "
+				+ "`Game._refresh_neighbour_buffs` rounds this to an int, so a value that "
+				+ "is not a whole number of neighbours means something else now"))
+	return err
+
+
+## A Tar Sundew holds harder than a Sundew and still leaks, with the clamp not doing it.
+##
+## `StickySundew.MIN_SLOW_FACTOR` is a floor against a design line -- "a Sundew always
+## leaks; the permanent hold is the Chomp Flower's reason to exist" -- and a floor is
+## the worst place for the shipped value to sit. If `PlantMutation`'s power ever pushes
+## the computed factor to or below 0.30 the clamp catches it, and every test asking
+## "does a sport hold harder" still passes, because the clamped answer is still lower
+## than 0.55. The mechanic would be silently pinned at its bound and the next power
+## increase would do nothing at all.
+##
+## So this asserts the factor is STRICTLY INSIDE the clamp and equal to the unclamped
+## arithmetic, which is the only form of the claim that fails when the tuning walks
+## into it.
+func test_the_tar_sundews_hold_is_inside_its_own_clamp_and_not_resting_on_it() -> String:
+	var plain := StickySundew.new()
+	plain.kind = PlantCatalog.SUNDEW
+	var sport := StickySundew.new()
+	sport.kind = PlantCatalog.SUNDEW
+	sport.is_sport = true
+	var plain_factor: float = plain.slow_factor()
+	var sport_factor: float = sport.slow_factor()
+	var err: String = _T.assert_float_eq(plain_factor, StickySundew.SLOW_FACTOR, 0.0001,
+		"an ordinary Sundew is unchanged by any of this")
+	if err == "":
+		err = _T.assert_true(sport_factor < plain_factor,
+			"a Tar Sundew holds harder: %.4f against %.4f" % [sport_factor, plain_factor])
+	if err == "":
+		err = _T.assert_true(sport_factor > StickySundew.MIN_SLOW_FACTOR,
+			("a Tar Sundew's factor is %.4f against a floor of %.4f. At or under the floor "
+				+ "the clamp is what produces the answer, so the power in `PlantMutation` "
+				+ "has stopped meaning anything and the next increase will be a no-op")
+				% [sport_factor, StickySundew.MIN_SLOW_FACTOR])
+	if err == "":
+		var raw: float = 1.0 - (1.0 - StickySundew.SLOW_FACTOR) * PlantMutation.power_scale(PlantCatalog.SUNDEW)
+		err = _T.assert_float_eq(sport_factor, raw, 0.0001,
+			("the shipped factor is the arithmetic and not the clamp's output -- %.4f "
+				+ "computed, %.4f returned") % [raw, sport_factor])
+	plain.free()
+	sport.free()
+	return err
+
+
 ## No sport is named more widely than the catalogue already is.
 ##
 ## `Hud.selection_corpus` prices the selection panel against every name a plant can

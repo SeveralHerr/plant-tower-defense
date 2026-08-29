@@ -362,8 +362,9 @@ static func slowed_speed(base_speed: float, factor: float = SLOW_FACTOR) -> floa
 ## Sundew always leaks", and that sentence is the plant's design. A power scale that
 ## drove the factor to zero would turn the cheapest support plant in the game into a
 ## permanent hold, which is the Chomp Flower's whole reason to exist. At the shipped
-## power of 1.25 the answer is 0.4375 and this clamp does nothing; it is here so that
-## retuning `PlantMutation` cannot silently cross a line this file draws.
+## power of 1.40 the answer is 0.37 and this clamp does nothing; it is here so that
+## retuning `PlantMutation` cannot silently cross a line this file draws — and the gap
+## is now seven points rather than fourteen, so it is a clamp with something to do.
 const MIN_SLOW_FACTOR: float = 0.30
 
 
@@ -372,7 +373,7 @@ const MIN_SLOW_FACTOR: float = 0.30
 ##
 ## Written as a scale on the CUT (`1.0 - SLOW_FACTOR`) rather than on the factor
 ## itself, because the factor is what is left and the cut is what the plant does.
-## Scaling 0.55 by 1.25 would make a sport SLOWER at slowing; scaling the 0.45 cut
+## Scaling 0.55 by 1.40 would make a sport SLOWER at slowing; scaling the 0.45 cut
 ## is the direction the word "better" points in.
 func slow_factor() -> float:
 	return clampf(1.0 - (1.0 - SLOW_FACTOR) * sport_power_scale(), MIN_SLOW_FACTOR, 1.0)
