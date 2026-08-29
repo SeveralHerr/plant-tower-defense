@@ -8610,6 +8610,29 @@ func test_the_named_constants_still_carry_the_glyph_the_table_gives_them() -> St
 			+ "is how an endless run says it has no last wave") % Glyphs.INFINITY)
 
 
+## plant-tower-defense-c290 — the test above pins Hud.STAT_READOUTS' documentation
+## copy of the endless mark against Glyphs.INFINITY, but that table is a corpus for
+## a width sweep, not the code path that actually paints the live wave slot
+## (Hud.refresh's `_wave_label.text = "Wave  %d ∞" % state["wave"]`). That second
+## copy hard-codes the glyph too and was gated by nothing: move Glyphs.INFINITY and
+## the corpus test above fails, gets fixed, and this second literal is left as the
+## only version on screen with nothing pointing at it. Pinned directly against the
+## live label so both copies move together.
+func test_the_live_wave_label_still_draws_the_named_infinity_glyph() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.director.endless = true
+	game.director.current_wave = WaveDirector.WAVES.size() + 20
+	game._refresh()
+	var label: Label = game.hud.get_node_or_null("Root/TopBar/StatsRow/WaveLabel") as Label
+	var err: String = _T.assert_true(label != null, "the wave label is on the HUD")
+	if err == "":
+		err = _T.assert_true(label.text.contains(Glyphs.INFINITY),
+			("an endless wave's own label no longer draws %s, got: %s")
+				% [Glyphs.INFINITY, label.text])
+	_T.free_ui(game)
+	return err
+
+
 ## Exactly one glyph means two things, and we know which. A second dual-role
 ## glyph is a decision, not an accident — this is where it gets made out loud
 ## rather than discovered in a screenshot.
