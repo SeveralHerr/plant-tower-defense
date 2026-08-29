@@ -10682,3 +10682,37 @@ is likely to be at least as productive.
   running. No file or bead collision occurred; that session had already written up the
   same "check for a peer session before claiming" lesson into `fan-out.md` independently,
   and this session's integration branch merged theirs with zero conflicts.
+
+## 2026-08-29 — a fifth 4-lane fan-out, and a bead the export never carried
+
+- Value: **warranted** — three of four lanes found real, previously-unknown defects
+  (a zero-contrast cursor cue, a documented command that selects nothing, nine failing
+  colour-contrast margins) that no amount of reading the diff would have surfaced, and
+  the merge pass caught a parent-level mistake from two rounds ago.
+  - Expected: another clean 4-lane merge like the last three rounds.
+  - Got: `bead_ref_check.py` (discovered fresh this round — `check_all` now runs 31
+    checkers, up from 30) flagged `log-devtools.md`'s own citation of
+    `plant-tower-defense-grls` as naming no issue in the export. Root cause: `grls` was
+    `bd create`d during round 4's wrap-up, but the resulting `.beads/issues.jsonl` delta
+    was never `git add`ed before the round-4 merge commit — the local Dolt DB had it,
+    the git-tracked export didn't, for two full rounds. Fixed by committing the export
+    directly on `main` before this round's merge.
+  - Found: `tar5`'s split correctly avoided the `class_name`/`suite_reach_check`
+    interaction fan-out.md now documents (checked both hardcoded-file-path checkers
+    BEFORE moving code, not after); `9lie`/`75os`/`w86n` found and fixed 9 real
+    board-mark contrast failures plus flagged a 10th (`Game._update_cursor`, filed as
+    `plant-tower-defense-sv30`) outside their file ownership; `fmzu` found and fixed a
+    real bug in three places (a documented `--filter` command that silently selects
+    zero tests, exit 2) while confirming its own premise.
+  - Cheaper: nothing for any of the four — each finding needed either the real engine
+    (contrast math against `GardenTheme.reads_on_at`, the actual `--filter` selector
+    behavior) or a real merged-tree gate run (`bead_ref_check`) that no single lane's
+    diff could produce alone.
+
+- Gap: **no devtools-harness gap this turn.** The one real process gap this round —
+  a `bd create` whose export delta didn't get committed before a merge, found two
+  rounds later by a checker — is a workflow-discipline issue at the parent level, not a
+  `godot-selftest-harness` bridge/gate defect. Noting it here rather than in
+  `fan-out.md` (already carries three lessons from this session; this one is "commit
+  `.beads/*.jsonl` in the same commit as any `bd create`," not really fan-out-specific)
+  so a future session reads it without another skill-file edit.
