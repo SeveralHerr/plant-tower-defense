@@ -9908,7 +9908,6 @@ is likely to be at least as productive.
   exported-build guard, upstream #58, among them) - exit 1, "would lose". Carried, not
   resolved: plant-tower-defense-abxv already owns that decision and it is not this bead's.
 
-<<<<<<< HEAD
 ## 2026-08-28 — Merged two parallel playtest drivers into one, and fixed what comparing them found
 
 - Value: **warranted** — comparing two independent implementations of the same bead found a
@@ -9951,7 +9950,6 @@ is likely to be at least as productive.
   the same day. `tools/script_entry_check.py` now gates it, which is the right answer;
   this entry records that the error message is the misleading part, since the checker's
   existence does not preserve that.
-=======
 ## 2026-08-28 — A placement ghost under the finger, and a drag that snaps to a cell that will take the plant (plant-tower-defense-bmis)
 
 - Value: **warranted** — the drag branch of the touch layer is the one part of this change
@@ -10014,4 +10012,3 @@ is likely to be at least as productive.
   test-only. The pass is advisory, never gates, and labels itself a heuristic — carried
   here because the direction of the error is the unhelpful one: it cried wolf on a live
   function and stayed quiet on the dead-ish one.
->>>>>>> worktree-drag-ghost
