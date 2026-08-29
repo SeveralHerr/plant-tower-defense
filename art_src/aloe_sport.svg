@@ -27,7 +27,7 @@
        leaves rather than six: an even count reads as a rosette, and eight is what closes
        the ring at this radius without the tips touching. Each leaf is a lozenge with a
        point, which is what a succulent leaf is from above. -->
-  <g transform="translate(32,32)" stroke="#46063B" stroke-width="2" stroke-linejoin="round" fill="#FCB0EF">
+  <g transform="translate(32,32)" stroke="#F56EDE" stroke-width="2" stroke-linejoin="round" fill="#FCB0EF">
     <g><path d="M0 -5 Q -8 -13 0 -23 Q 8 -13 0 -5 Z"/></g>
     <g transform="rotate(45)"><path d="M0 -5 Q -8 -13 0 -23 Q 8 -13 0 -5 Z"/></g>
     <g transform="rotate(90)"><path d="M0 -5 Q -8 -13 0 -23 Q 8 -13 0 -5 Z"/></g>
@@ -42,7 +42,7 @@
        light facet so the rosette has a centre rather than reading as one flat star. Five
        leaves, not eight: an odd inner count is what stops the two rings lining up into
        spokes. -->
-  <g transform="translate(32,32) rotate(22)" stroke="#46063B" stroke-width="1.6" stroke-linejoin="round" fill="#FFCEF7">
+  <g transform="translate(32,32) rotate(22)" stroke="#F56EDE" stroke-width="1.6" stroke-linejoin="round" fill="#FFCEF7">
     <g><path d="M0 -3 Q -5 -8 0 -15 Q 5 -8 0 -3 Z"/></g>
     <g transform="rotate(72)"><path d="M0 -3 Q -5 -8 0 -15 Q 5 -8 0 -3 Z"/></g>
     <g transform="rotate(144)"><path d="M0 -3 Q -5 -8 0 -15 Q 5 -8 0 -3 Z"/></g>
@@ -52,5 +52,5 @@
 
   <!-- The heart. One small filled disc closing the centre, in the rim shade — without it
        the five inner tips meet at a point and the middle of the sprite reads as a hole. -->
-  <circle cx="32" cy="32" r="3.2" fill="#46063B"/>
+  <circle cx="32" cy="32" r="3.2" fill="#F56EDE"/>
 </svg>

@@ -32,7 +32,7 @@
 
     <!-- One thorn per side, on the broken inner ends, which is where a bitten cane would
          splinter. -->
-    <g fill="none" stroke="#46063B" stroke-width="1.6" stroke-linecap="round">
+    <g fill="none" stroke="#F56EDE" stroke-width="1.6" stroke-linecap="round">
       <path d="M-7.5 2 L-6 -2.5"/>
       <path d="M7.5 2 L6 -2.5"/>
     </g>
@@ -40,7 +40,7 @@
     <!-- One leaf per side, kept out at the surviving ends. Two rather than one, because one
          would sit off the centre line and the centring gate measures the whole content box,
          leaves included. -->
-    <g fill="#E7FCB6" stroke="#2A3A05" stroke-width="1.2" stroke-linejoin="round">
+    <g fill="#88BA12" stroke="#597A0B" stroke-width="1.2" stroke-linejoin="round">
       <g transform="translate(-16,9) rotate(-140)">
         <path d="M0 0 Q4 -3.4 8.5 0 Q4 3.4 0 0 Z"/>
       </g>

@@ -22,7 +22,7 @@
   <!-- Stems, drawn first so the leaves sit over their joins. Three, splayed, none vertical:
        a vertical stem would put a hard line down the middle of the tile and read as a stalk
        plant like the Sunflower. -->
-  <g transform="translate(32,32)" stroke="#2A3A05" stroke-width="2.6" stroke-linecap="round" fill="none">
+  <g transform="translate(32,32)" stroke="#597A0B" stroke-width="2.6" stroke-linecap="round" fill="none">
     <path d="M0 22 Q -2 8 -9 -2"/>
     <path d="M0 22 Q 1 6 2 -8"/>
     <path d="M0 22 Q 3 8 11 -1"/>
@@ -32,22 +32,22 @@
        deliberate rather than as a generic bush. Each pair is drawn as one group and
        mirrored, so the clump is symmetric about the vertical axis the way Chomp Flower's
        leaves are. -->
-  <g transform="translate(32,32)" stroke="#597A0B" stroke-width="1.8" stroke-linejoin="round" fill="#E7FCB6">
+  <g transform="translate(32,32)" stroke="#709A0E" stroke-width="1.8" stroke-linejoin="round" fill="#9DD618">
 
     <!-- top pair, smallest, the tip of the clump -->
     <g transform="translate(2,-13)">
       <path d="M0 0 Q -6 -5 -11 -1 Q -6 4 0 0 Z"/>
       <path d="M0 0 Q 6 -5 11 -1 Q 6 4 0 0 Z"/>
-      <path d="M-1.5 -0.4 Q -5 -1.2 -9 -0.8" fill="none" stroke="#597A0B" stroke-width="1.2"/>
-      <path d="M1.5 -0.4 Q 5 -1.2 9 -0.8" fill="none" stroke="#597A0B" stroke-width="1.2"/>
+      <path d="M-1.5 -0.4 Q -5 -1.2 -9 -0.8" fill="none" stroke="#709A0E" stroke-width="1.2"/>
+      <path d="M1.5 -0.4 Q 5 -1.2 9 -0.8" fill="none" stroke="#709A0E" stroke-width="1.2"/>
     </g>
 
     <!-- middle pair, widest, the part that carries the silhouette -->
     <g transform="translate(0,0)">
       <path d="M0 0 Q -8 -7 -15 -1 Q -8 6 0 0 Z"/>
       <path d="M0 0 Q 8 -7 15 -1 Q 8 6 0 0 Z"/>
-      <path d="M-2 -0.5 Q -7 -1.6 -12.5 -1" fill="none" stroke="#597A0B" stroke-width="1.3"/>
-      <path d="M2 -0.5 Q 7 -1.6 12.5 -1" fill="none" stroke="#597A0B" stroke-width="1.3"/>
+      <path d="M-2 -0.5 Q -7 -1.6 -12.5 -1" fill="none" stroke="#709A0E" stroke-width="1.3"/>
+      <path d="M2 -0.5 Q 7 -1.6 12.5 -1" fill="none" stroke="#709A0E" stroke-width="1.3"/>
     </g>
 
     <!-- lower pair, sitting on the ground line, in the mid foliage tone so the clump has
@@ -55,8 +55,8 @@
     <g transform="translate(-1,12)" fill="#88BA12">
       <path d="M0 0 Q -7 -6 -13 -1 Q -7 5 0 0 Z"/>
       <path d="M0 0 Q 7 -6 13 -1 Q 7 5 0 0 Z"/>
-      <path d="M-2 -0.4 Q -6 -1.4 -11 -0.9" fill="none" stroke="#597A0B" stroke-width="1.2"/>
-      <path d="M2 -0.4 Q 6 -1.4 11 -0.9" fill="none" stroke="#597A0B" stroke-width="1.2"/>
+      <path d="M-2 -0.4 Q -6 -1.4 -11 -0.9" fill="none" stroke="#709A0E" stroke-width="1.2"/>
+      <path d="M2 -0.4 Q 6 -1.4 11 -0.9" fill="none" stroke="#709A0E" stroke-width="1.2"/>
     </g>
   </g>
 </svg>

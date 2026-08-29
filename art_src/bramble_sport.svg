@@ -68,7 +68,7 @@
          art_src/nettle.svg uses for its two leaf pairs, and for the same reason: a facet
          inset into a 3px-wide stroked arch would put facet, fill and rim inside one
          anti-aliased pixel. -->
-    <g fill="none" stroke="#46063B" stroke-width="4.2" stroke-linecap="round">
+    <g fill="none" stroke="#F56EDE" stroke-width="4.2" stroke-linecap="round">
       <path d="M-21 6 Q0 -12 21 6"/>
     </g>
 
@@ -83,7 +83,7 @@
     <!-- Thorns, in the canes' own rim colour. Short straight spikes off the upper edge of
          each front cane, alternating side to side so the silhouette is spiky rather than
          combed. 1.6px so they read at 64 and still exist at half that. -->
-    <g fill="none" stroke="#46063B" stroke-width="1.6" stroke-linecap="round">
+    <g fill="none" stroke="#F56EDE" stroke-width="1.6" stroke-linecap="round">
       <path d="M-17 6.5 L-19 1 M-8 -1.5 L-9 -7 M1 -4 L1 -9.5 M10 -1 L12 -6.5 M18 4 L21 -0.5"/>
       <path d="M-14 14 L-16 9.5 M-4 8 L-5 3 M6 6 L6.5 1 M15 9 L17.5 4.5"/>
     </g>
@@ -92,7 +92,7 @@
          hold the shape on its own — see the header. Each is the same rounded blade at a
          different anchor and angle; the shape is symmetric about its own long axis, so
          mirroring is a rotation, which is what art_src/nettle.svg's pairs rely on. -->
-    <g fill="#E7FCB6" stroke="#2A3A05" stroke-width="1.2" stroke-linejoin="round">
+    <g fill="#88BA12" stroke="#597A0B" stroke-width="1.2" stroke-linejoin="round">
       <g transform="translate(-12,3) rotate(-124)">
         <path d="M0 0 Q4 -3.4 8.5 0 Q4 3.4 0 0 Z"/>
       </g>

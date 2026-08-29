@@ -48,9 +48,10 @@ its own stroke in every plant sprite is a same-family pair, which is not a coinc
 fill it outlines, so a cross-family pair could not have shipped. That is what makes a
 per-family remap safe: a pair that was legal before is a pair inside one ramp after.
 
-WITHIN a ramp, a sprite's own distinct colours of that family are sorted by luminance and
-spread across the ramp's anchors by their normalised position in that range, pushed apart
-where two land on the same anchor. Three consequences, and each is load-bearing:
+WITHIN a ramp, each of a sprite's colours takes the anchor NEAREST ITS OWN LUMINANCE,
+pushed apart where two want the same one. So a sport is as bright, in the same places, as
+the plant it came from and only its hue moved. Three consequences, and each is
+load-bearing:
 
   * ORDER IS PRESERVED. The map is monotone in luminance and the ramp is monotone in
     luminance, so a stroke darker than its fill before is darker than its fill after --
@@ -220,40 +221,48 @@ RAMPS = {
 }
 
 
-def assign(colours, slots):
+def assign(colours, ramp):
     """colour -> ramp index, for the colours of ONE family in ONE sprite.
 
-    `colours` arrives as (luminance, hex) pairs, sorted. The index each one WANTS is its
-    normalised luminance position in that sprite's own range, so a family whose shades are
-    bunched dark stays bunched dark rather than being fanned out evenly across the ramp.
+    `colours` arrives as (luminance, hex) pairs, sorted. Each one wants the ANCHOR NEAREST
+    ITS OWN LUMINANCE, so a sport is as bright, in the same places, as the plant it came
+    from -- only the hue moved.
+
+    That is a correction, and the wrong version shipped far enough to be looked at. The
+    first draft normalised each family against THAT SPRITE's own luminance range, which
+    fans a bunched family out across the whole ramp. The Corn Cobbler's two leaf greens
+    are 14 luminance apart in a drawing whose foliage spans 53; normalised, they landed on
+    rungs 5 and 7 of 8 and the plant grew one dark leaf and one nearly white one. A subtle
+    depth cue became a two-tone, on screen, where nothing static could see it. Against the
+    ramp's own luminances the same two greens land on 4 and 5 and stay a pair.
 
     Two passes then make the result usable, and both are needed. Forward guarantees the
-    indices strictly increase, which is the property the outline contract rests on.
-    Backward pulls the tail back inside the ramp when forward overran it: the last index
-    is clamped to the ramp's end and every earlier one is pushed below its successor. The
-    Corn Cobbler is the case that needs it -- its five warm shades want 0,3,6,6,7, forward
-    makes that 0,3,6,7,8, and eight slots stop at 7; the backward pass lands them on
-    0,3,5,6,7. Spreading by RANK instead would never overflow, but it would also throw
-    away the fact that four of those five shades are light, which is most of what makes
-    the drawing read as a cob.
+    indices strictly increase, which is the property the outline contract rests on -- a
+    rim darker than its fill before is darker than its fill after. Backward pulls the tail
+    back inside the ramp when forward overran it: the last index is clamped to the ramp's
+    end and every earlier one is pushed below its successor. The Corn Cobbler is again the
+    case that needs it -- its five warm shades want 4,5,6,7,7, forward makes that 4,5,6,7,8
+    and eight rungs stop at 7, and the backward pass lands them on 3,4,5,6,7.
 
-    The two passes cannot fail while n <= slots: forward leaves idx[i] >= i, backward
-    leaves idx[i] <= slots - 1 - (n - 1 - i), and those brackets are non-empty exactly
-    when n <= slots -- which the caller has already checked.
+    The two passes cannot fail while n <= len(ramp): forward leaves idx[i] >= i, backward
+    leaves idx[i] <= len(ramp) - 1 - (n - 1 - i), and those brackets are non-empty exactly
+    when n <= len(ramp) -- which the caller has already checked.
     """
+    slots = len(ramp)
     n = len(colours)
     if n > slots:
         raise ValueError("%d colour(s) for %d ramp slot(s)" % (n, slots))
     if n == 0:
         return {}
-    if n == 1:
-        return {colours[0][1]: slots // 2}
-    lo, hi = colours[0][0], colours[-1][0]
-    span = hi - lo
+    rungs = [luminance(c) for c in ramp]
     idx = []
     for lum, _hex in colours:
-        pos = 0.0 if span <= 0 else (lum - lo) / span
-        idx.append(int(pos * (slots - 1) + 0.5))
+        best, best_d = 0, None
+        for i, r in enumerate(rungs):
+            d = abs(lum - r)
+            if best_d is None or d < best_d:
+                best, best_d = i, d
+        idx.append(best)
     for i in range(1, n):
         if idx[i] <= idx[i - 1]:
             idx[i] = idx[i - 1] + 1
@@ -284,7 +293,7 @@ def mutate_map(hexes):
     for fam, members in by_family.items():
         members.sort()
         ramp = RAMPS[fam]
-        for h, i in assign(members, len(ramp)).items():
+        for h, i in assign(members, ramp).items():
             out[h] = to_hex(ramp[i])
     return out
 

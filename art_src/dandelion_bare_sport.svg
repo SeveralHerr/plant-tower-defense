@@ -34,7 +34,7 @@
        first so their bases are covered by the receptacle. The zigzag is symmetric
        about its own long axis, which is what makes the rotate(70)/rotate(110) pair
        an exact mirror of each other rather than an approximate one. -->
-  <g transform="translate(32,32)" fill="#E7FCB6" stroke="#2A3A05" stroke-width="2"
+  <g transform="translate(32,32)" fill="#88BA12" stroke="#597A0B" stroke-width="2"
      stroke-linejoin="round" stroke-linecap="round">
     <g transform="rotate(70)">
       <path d="M6 0 L10 -4 L13 -1.5 L17 -5.5 L20 -2 L24 -5 L27 0 L24 5 L20 2 L17 5.5 L13 1.5 L10 4 Z"/>
@@ -50,12 +50,12 @@
 
   <!-- receptacle: the pale disc the seeds sat on. Sand/paper, not green, so the
        bald frame still reads as a dandelion rather than as a stump. -->
-  <circle cx="32" cy="32" r="9.5" fill="#FCB0EF" stroke="#B91A9E" stroke-width="2"/>
+  <circle cx="32" cy="32" r="9.5" fill="#FCB0EF" stroke="#F56EDE" stroke-width="2"/>
   <ellipse cx="28.6" cy="28.6" rx="3.4" ry="2.6" fill="#FFCEF7"/>
 
   <!-- face, in the same extrapolated dark-gold accent Corn Cobbler and Seed
        Sunflower wear theirs in, so the fifth plant is visibly kin to the first. -->
-  <circle cx="28.6" cy="32" r="1.5" fill="#46063B"/>
-  <circle cx="35.4" cy="32" r="1.5" fill="#46063B"/>
-  <path d="M28.8 35.6 Q 32 38.2 35.2 35.6" fill="none" stroke="#46063B" stroke-width="1.8" stroke-linecap="round"/>
+  <circle cx="28.6" cy="32" r="1.5" fill="#DE34C2"/>
+  <circle cx="35.4" cy="32" r="1.5" fill="#DE34C2"/>
+  <path d="M28.8 35.6 Q 32 38.2 35.2 35.6" fill="none" stroke="#DE34C2" stroke-width="1.8" stroke-linecap="round"/>
 </svg>

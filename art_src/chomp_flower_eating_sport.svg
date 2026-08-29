@@ -6,20 +6,20 @@
        whole chew (see ChompFlower._show_eating_sprite) and back on release. -->
 
   <!-- leaves poking out below the petal ring -->
-  <g transform="translate(32,32)" stroke="#2A3A05" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+  <g transform="translate(32,32)" stroke="#597A0B" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <g transform="rotate(125)">
-      <path d="M6 0 Q 19 -9 31 -1 Q 19 8 6 0 Z" fill="#E7FCB6"/>
+      <path d="M6 0 Q 19 -9 31 -1 Q 19 8 6 0 Z" fill="#88BA12"/>
       <path d="M9 -0.5 Q 20 -2 29 -1.5" fill="none" stroke-width="1.4"/>
     </g>
     <g transform="rotate(55)">
-      <path d="M6 0 Q 19 -9 31 -1 Q 19 8 6 0 Z" fill="#E7FCB6"/>
+      <path d="M6 0 Q 19 -9 31 -1 Q 19 8 6 0 Z" fill="#88BA12"/>
       <path d="M9 -0.5 Q 20 -2 29 -1.5" fill="none" stroke-width="1.4"/>
     </g>
   </g>
 
   <!-- petal ring: 9 petals, squashed flatter than idle — the whole head tips
        into the bite -->
-  <g fill="#FFCEF7" stroke="#F56EDE" stroke-width="2">
+  <g fill="#FFCEF7" stroke="#FCB0EF" stroke-width="2">
     <g transform="rotate(0 32 32)"><ellipse cx="32" cy="16" rx="7.5" ry="5.2"/></g>
     <g transform="rotate(40 32 32)"><ellipse cx="32" cy="16" rx="7.5" ry="5.2"/></g>
     <g transform="rotate(80 32 32)"><ellipse cx="32" cy="16" rx="7.5" ry="5.2"/></g>
@@ -32,11 +32,11 @@
   </g>
 
   <!-- maw, wide open (16 vs the idle sprite's 13) -->
-  <circle cx="32" cy="32" r="16" fill="#910C7B" stroke="#690859" stroke-width="2"/>
-  <circle cx="32" cy="32" r="7" fill="#46063B"/>
+  <circle cx="32" cy="32" r="16" fill="#DE34C2" stroke="#B91A9E" stroke-width="2"/>
+  <circle cx="32" cy="32" r="7" fill="#910C7B"/>
 
   <!-- the meal: a bitten-down fragment of prey, mid-swallow -->
-  <ellipse cx="32" cy="33" rx="4.5" ry="5.5" fill="#B91A9E" stroke="#910C7B" stroke-width="1.4"/>
+  <ellipse cx="32" cy="33" rx="4.5" ry="5.5" fill="#F56EDE" stroke="#DE34C2" stroke-width="1.4"/>
 
   <!-- teeth, splayed wider than idle to read as a full bite -->
   <g fill="#FFFFFF">

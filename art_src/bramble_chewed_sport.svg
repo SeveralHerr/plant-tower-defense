@@ -40,14 +40,14 @@
     <!-- Half the thorns, and the ones kept are the outer pairs: a chewed edge loses its
          middle first, and keeping the outermost preserves the spiky silhouette that names
          the plant. -->
-    <g fill="none" stroke="#46063B" stroke-width="1.6" stroke-linecap="round">
+    <g fill="none" stroke="#F56EDE" stroke-width="1.6" stroke-linecap="round">
       <path d="M-15 7 L-17 2.5 M1 -2 L1 -6.5 M16 5 L18.5 1"/>
       <path d="M-12 14.5 L-14 10.5 M14 9.5 L16 5.5"/>
     </g>
 
     <!-- Three leaves, not five, and spaced so the remaining ink still straddles the
          centre line rather than clustering to one side. -->
-    <g fill="#E7FCB6" stroke="#2A3A05" stroke-width="1.2" stroke-linejoin="round">
+    <g fill="#88BA12" stroke="#597A0B" stroke-width="1.2" stroke-linejoin="round">
       <g transform="translate(-10,4) rotate(-124)">
         <path d="M0 0 Q4 -3.4 8.5 0 Q4 3.4 0 0 Z"/>
       </g>

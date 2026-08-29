@@ -24,20 +24,20 @@
        is the one that carries the fragment. -->
 
   <!-- leaves poking out below the petal ring -->
-  <g transform="translate(32,32)" stroke="#2A3A05" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+  <g transform="translate(32,32)" stroke="#597A0B" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <g transform="rotate(125)">
-      <path d="M6 0 Q 19 -9 31 -1 Q 19 8 6 0 Z" fill="#E7FCB6"/>
+      <path d="M6 0 Q 19 -9 31 -1 Q 19 8 6 0 Z" fill="#88BA12"/>
       <path d="M9 -0.5 Q 20 -2 29 -1.5" fill="none" stroke-width="1.4"/>
     </g>
     <g transform="rotate(55)">
-      <path d="M6 0 Q 19 -9 31 -1 Q 19 8 6 0 Z" fill="#E7FCB6"/>
+      <path d="M6 0 Q 19 -9 31 -1 Q 19 8 6 0 Z" fill="#88BA12"/>
       <path d="M9 -0.5 Q 20 -2 29 -1.5" fill="none" stroke-width="1.4"/>
     </g>
   </g>
 
   <!-- petal ring: pushed further out and flatter still than the eating frame, so
        the whole head reads as hinged open rather than merely tipped -->
-  <g fill="#FFCEF7" stroke="#F56EDE" stroke-width="2">
+  <g fill="#FCB0EF" stroke="#F56EDE" stroke-width="2">
     <g transform="rotate(0 32 32)"><ellipse cx="32" cy="14.5" rx="7.8" ry="4.4"/></g>
     <g transform="rotate(40 32 32)"><ellipse cx="32" cy="14.5" rx="7.8" ry="4.4"/></g>
     <g transform="rotate(80 32 32)"><ellipse cx="32" cy="14.5" rx="7.8" ry="4.4"/></g>
@@ -51,10 +51,10 @@
 
   <!-- maw at its widest: 19 against the eating frame's 16 and the idle 13. Outer
        edge with its stroke lands at 20, inside the 32px half-cell. -->
-  <circle cx="32" cy="32" r="19" fill="#910C7B" stroke="#690859" stroke-width="2"/>
+  <circle cx="32" cy="32" r="19" fill="#DE34C2" stroke="#B91A9E" stroke-width="2"/>
   <!-- the throat, deeper and larger than the chewing frame's: this is the frame you
        can see down -->
-  <circle cx="32" cy="32" r="9" fill="#46063B"/>
+  <circle cx="32" cy="32" r="9" fill="#910C7B"/>
 
   <!-- teeth, reaching to the rim. Longer and wider-based than the eating frame's,
        and there are ten rather than eight, so the gape reads as more mouth rather

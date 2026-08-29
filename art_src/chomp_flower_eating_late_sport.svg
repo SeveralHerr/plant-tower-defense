@@ -11,20 +11,20 @@
        back down and almost nothing of the meal is left. -->
 
   <!-- leaves poking out below the petal ring -->
-  <g transform="translate(32,32)" stroke="#2A3A05" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+  <g transform="translate(32,32)" stroke="#597A0B" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
     <g transform="rotate(125)">
-      <path d="M6 0 Q 19 -9 31 -1 Q 19 8 6 0 Z" fill="#E7FCB6"/>
+      <path d="M6 0 Q 19 -9 31 -1 Q 19 8 6 0 Z" fill="#88BA12"/>
       <path d="M9 -0.5 Q 20 -2 29 -1.5" fill="none" stroke-width="1.4"/>
     </g>
     <g transform="rotate(55)">
-      <path d="M6 0 Q 19 -9 31 -1 Q 19 8 6 0 Z" fill="#E7FCB6"/>
+      <path d="M6 0 Q 19 -9 31 -1 Q 19 8 6 0 Z" fill="#88BA12"/>
       <path d="M9 -0.5 Q 20 -2 29 -1.5" fill="none" stroke-width="1.4"/>
     </g>
   </g>
 
   <!-- petal ring: same squashed posture as the mid-bite frame — still
        visibly mid-chew, not back to idle -->
-  <g fill="#FFCEF7" stroke="#F56EDE" stroke-width="2">
+  <g fill="#FFCEF7" stroke="#FCB0EF" stroke-width="2">
     <g transform="rotate(0 32 32)"><ellipse cx="32" cy="16" rx="7.5" ry="5.2"/></g>
     <g transform="rotate(40 32 32)"><ellipse cx="32" cy="16" rx="7.5" ry="5.2"/></g>
     <g transform="rotate(80 32 32)"><ellipse cx="32" cy="16" rx="7.5" ry="5.2"/></g>
@@ -37,11 +37,11 @@
   </g>
 
   <!-- maw, closing back down (14 vs the mid-bite frame's 16, idle's 13) -->
-  <circle cx="32" cy="32" r="14" fill="#910C7B" stroke="#690859" stroke-width="2"/>
-  <circle cx="32" cy="32" r="6" fill="#46063B"/>
+  <circle cx="32" cy="32" r="14" fill="#DE34C2" stroke="#B91A9E" stroke-width="2"/>
+  <circle cx="32" cy="32" r="6" fill="#910C7B"/>
 
   <!-- the meal: almost nothing left of it -->
-  <ellipse cx="32" cy="32.5" rx="2" ry="2.5" fill="#B91A9E" stroke="#910C7B" stroke-width="1.2"/>
+  <ellipse cx="32" cy="32.5" rx="2" ry="2.5" fill="#F56EDE" stroke="#DE34C2" stroke-width="1.2"/>
 
   <!-- teeth, drawing back in toward idle spacing as the bite closes -->
   <g fill="#FFFFFF">
