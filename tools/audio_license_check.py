@@ -81,7 +81,15 @@ file share one section and rule A would pass over everything, so the section
 count is printed on every run and a file named in more than one section is
 reported rather than resolved.
 
-THE FIXTURE, AND WHAT IT COST TO GET RIGHT. Baseline 2 note(s), 6 finding(s).
+THE FIXTURE IS KEPT: `python tools/audio_license_check.py --self-test`, 12 cases.
+Run it after ANY edit to this file. It asserts on the substring that identifies
+each finding, not on a count -- a count going 6 -> 6 while one rule fell silent
+and another double-fired is exactly what a count cannot see -- and it asserts the
+count too, so an EXTRA finding fails as a false positive. The four mutations
+below were re-run against it: each goes red naming the rule it broke, and the
+restore returns 12 of 12.
+
+WHAT IT COST TO GET RIGHT. Baseline 2 note(s), 6 finding(s).
 Three separate times the fixture SILENCED the rule it was built to prove, by
 naming the thing in its own explanatory prose -- `orphan.wav`, then `chop.ogg`,
 then an artist tag of `Nobody` written into the very line that described it.
@@ -295,17 +303,34 @@ def heading_of(section: str) -> str:
     return "(no heading)"
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
-    ap.add_argument("--quiet", action="store_true", help="findings and totals only")
-    args = ap.parse_args()
+def analyse(audio_dir: Path, licence: Path, root: Path, quiet: bool = False,
+            report: bool = True):
+    """The whole check, over a nominated tree rather than this repo's.
+
+    Parameterised for one reason: `--self-test` below runs it against a fixture it
+    builds in a temp directory, so the fixture that proved this checker can fail
+    is KEPT and re-runnable rather than written once and deleted. Returns
+    `(exit_code, findings, notes)` so the self-test can assert on the lists and
+    not on a printed line.
+
+    `quiet` drops the per-file table; `report` drops ALL output. They are not the
+    same switch and conflating them is why the first --self-test printed the
+    fixture's six findings into the middle of its own PASS lines, which reads
+    like a checker failing over the real repo.
+    """
+    def emit(*parts):
+        if report:
+            print(*parts)
+    # Locally shadow the module constants so the body reads the same whether it
+    # is looking at this repo or at a fixture.
+    AUDIO_DIR, LICENCE, ROOT = audio_dir, licence, root
 
     if not AUDIO_DIR.is_dir():
-        print("audio_license_check: COULD NOT RUN -- no %s" % AUDIO_DIR.relative_to(ROOT))
-        return 2
+        emit("audio_license_check: COULD NOT RUN -- no %s" % AUDIO_DIR.relative_to(ROOT))
+        return 2, [], []
     if not LICENCE.is_file():
-        print("audio_license_check: COULD NOT RUN -- no %s" % LICENCE.relative_to(ROOT))
-        return 2
+        emit("audio_license_check: COULD NOT RUN -- no %s" % LICENCE.relative_to(ROOT))
+        return 2, [], []
 
     # No `.replace("\r\n", "\n")` here, deliberately. One was written, and
     # mutating it away against a fixture converted to CRLF changed nothing at
@@ -321,11 +346,11 @@ def main() -> int:
                     if p.is_file() and p.suffix.lower() in AUDIO_EXTS),
                    key=lambda p: p.name.lower())
     if not files:
-        print("audio_license_check: NOTE: nothing to check -- %s holds no audio file."
+        emit("audio_license_check: NOTE: nothing to check -- %s holds no audio file."
               % AUDIO_DIR.relative_to(ROOT))
-        print("      That is a clean result only if you expected none.")
-        print("NOT COVERED: see below.")
-        return 0
+        emit("      That is a clean result only if you expected none.")
+        emit("NOT COVERED: see below.")
+        return 0, [], []
 
     findings, notes = [], []
 
@@ -443,29 +468,29 @@ def main() -> int:
             % (name, " and ".join(marks), title or "<none>"))
 
     # --- report -------------------------------------------------------------
-    if not args.quiet:
+    if not quiet:
         for path in files:
             secs = where[path.name]
-            print("  %-32s %-28s %s"
+            emit("  %-32s %-28s %s"
                   % (path.name,
                      (artists[path.name] or "(no embedded credit)")[:28],
                      heading_of(sections[secs[0]])[:44] if secs else "*** NAMED NOWHERE ***"))
     for note in notes:
-        print(note)
+        emit(note)
     for finding in findings:
-        print(finding)
+        emit(finding)
 
     reachable = sum(1 for p in files if any(t == p.name for _, t in rows))
-    print("audio_license_check: %d audio file(s) in %s, %d with an embedded credit, "
+    emit("audio_license_check: %d audio file(s) in %s, %d with an embedded credit, "
           "%d section(s) in License.txt, %d listing row(s) reaching %d of %d file(s), "
           "%d note(s), %d finding(s)"
           % (len(files), AUDIO_DIR.relative_to(ROOT).as_posix(), len(tagged),
              len(sections), len(rows), reachable, len(files), len(notes), len(findings)))
     if reachable < len(files):
-        print("      %d file(s) are named in prose but not by a listing row -- the "
+        emit("      %d file(s) are named in prose but not by a listing row -- the "
               "DOC -> DISK grammar sees less than the DISK -> DOC substring test does."
               % (len(files) - reachable))
-    print("NOT COVERED: this reads file metadata and one text document. It cannot "
+    emit("NOT COVERED: this reads file metadata and one text document. It cannot "
           "tell whether a stated licence is TRUE -- a file listed under the CC0 "
           "heading that actually came from a paid pack reads clean, because nothing "
           "in the bytes disputes it. Untagged files (every .wav here) carry no "
@@ -474,7 +499,173 @@ def main() -> int:
           "with no licence file of any kind. Nor does it compile anything -- only "
           "import_check.py and lint_project.gd do that, and neither is "
           "parallel-safe.")
-    return 1 if findings else 0
+    return (1 if findings else 0), findings, notes
+
+
+# -- the fixture, KEPT -------------------------------------------------------
+#
+# `.claude/skills/house-static-checker` says write a fixture, watch it go red,
+# then delete it. `rng_seed_check.py --self-test` and `group_leak_check.py
+# --fixture` both keep theirs instead, and this keeps its for the same reason:
+# the mutations recorded in the docstring are re-run after every edit to this
+# file, and re-deriving the fixture each time is most of the cost of having
+# written it. Deleted, the mutation block is prose.
+#
+# Nothing here is a real Ogg or MP3 stream. The readers above scan for a
+# `\x03vorbis` block, an `ID3` header or a `LIST`/`INFO` chunk wherever it sits,
+# so a synthetic blob exercises exactly the parsing path a real file does
+# without vendoring binary test data into the repo.
+
+def _ogg_with(tags) -> bytes:
+    """Bytes carrying a Vorbis comment block, as `read_vorbis_tags` reads one."""
+    body = b"\x03vorbis"
+    vendor = b"self-test"
+    body += struct.pack("<I", len(vendor)) + vendor
+    body += struct.pack("<I", len(tags))
+    for key, val in tags:
+        entry = ("%s=%s" % (key, val)).encode("utf-8")
+        body += struct.pack("<I", len(entry)) + entry
+    return b"OggS\x00\x02" + body + b"\x00" * 8
+
+
+def _wav_bare() -> bytes:
+    """A WAV with no LIST/INFO chunk -- the shape every .wav in this repo has,
+    and the reason rules A and B are silent on three of nineteen files."""
+    return b"RIFF\x24\x00\x00\x00WAVEfmt " + b"\x10\x00\x00\x00" + b"\x01\x00\x02\x00" \
+           + b"\x44\xac\x00\x00" + b"\x10\xb1\x02\x00\x04\x00\x10\x00data\x00\x00\x00\x00"
+
+
+_FIXTURE_LICENCE = """\
+\tFixture licence document
+
+\t\t\t------------------------------
+
+\tKenney portion -- created/distributed by Kenney (www.kenney.nl), CC0
+
+\t  bigchop.ogg                 clean. A shorter file on disk is a SUFFIX of
+\t                              this name and is listed nowhere -- RULE C, and
+\t                              only a word-boundary match can see it.
+\t  stranger.ogg                RULE B: credited to a party this document never names
+\t  ghost.ogg                   RULE D: no such file on disk
+\t  dual.wav                    listed here AND below -- ambiguity guard
+
+\t\t\t------------------------------
+
+\tCUES WRITTEN FOR THIS GAME -- not Kenney's, not CC0
+
+\t  bong_001.ogg                RULE A: tagged Kenney but listed in this section
+\t  plant-place.ogg             RULE E: pack fingerprint, tag NOT quoted here
+\t  dual.wav                    the second sighting
+%s
+\tOne .wav on disk is deliberately unnamed anywhere here -- RULE C. Naming it
+\teven in prose would satisfy the word-boundary test and silence the rule.
+
+\t\t\t------------------------------
+
+\tEnd of fixture.
+"""
+
+# Every finding the fixture must produce, as (rule, a substring that identifies
+# it). Asserting on substrings rather than on a COUNT is deliberate: a count
+# going from 6 to 6 while one rule fell silent and another double-fired is
+# exactly the result a count cannot see.
+_EXPECT = [
+    ("ambiguity", "dual.wav is named in 2 sections"),
+    ("C", "chop.ogg is on disk and named nowhere"),
+    ("C", "orphan.wav is on disk and named nowhere"),
+    ("D", "lists ghost.ogg, which is not in"),
+    ("A", 'the embedded credit "Kenney" but are listed in 2 different sections'),
+    ("B", 'stranger.ogg carries the embedded credit "Zorbat"'),
+]
+_EXPECT_NOTES = [
+    ("suffix guard", "bigchop.ogg ends with chop.ogg"),
+    ("E", "plant-place.ogg is listed as made for this game"),
+]
+
+
+def _build_fixture(root: Path, quote_the_tag: bool) -> tuple:
+    audio = root / "assets" / "audio"
+    audio.mkdir(parents=True, exist_ok=True)
+    kenney = [("ARTIST", "Kenney"), ("COMMENT", "www.kenney.nl")]
+    (audio / "bigchop.ogg").write_bytes(_ogg_with(kenney))
+    (audio / "chop.ogg").write_bytes(_ogg_with(kenney))
+    (audio / "bong_001.ogg").write_bytes(_ogg_with(kenney))
+    (audio / "stranger.ogg").write_bytes(_ogg_with([("ARTIST", "Zorbat")]))
+    (audio / "plant-place.ogg").write_bytes(
+        _ogg_with([("TITLE", "place10"), ("MP3GAIN_UNDO", "+002,+002,N")]))
+    (audio / "orphan.wav").write_bytes(_wav_bare())
+    (audio / "dual.wav").write_bytes(_wav_bare())
+    waiver = ("\n\tplant-place.ogg carries TITLE=place10 from our own take numbering.\n"
+              if quote_the_tag else "")
+    licence = audio / "License.txt"
+    licence.write_text(_FIXTURE_LICENCE % waiver, encoding="utf-8")
+    return audio, licence
+
+
+def self_test() -> int:
+    import tempfile
+
+    bad = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        audio, licence = _build_fixture(root, quote_the_tag=False)
+        code, findings, notes = analyse(audio, licence, root, quiet=True, report=False)
+        blob, noteblob = "\n".join(findings), "\n".join(notes)
+
+        for rule, needle in _EXPECT:
+            ok = needle in blob
+            bad += 0 if ok else 1
+            print("  %-14s rule %-10s %s" % ("PASS" if ok else "FAIL", rule, needle))
+        for rule, needle in _EXPECT_NOTES:
+            ok = needle in noteblob
+            bad += 0 if ok else 1
+            print("  %-14s note %-10s %s" % ("PASS" if ok else "FAIL", rule, needle))
+
+        exact = len(findings) == len(_EXPECT)
+        bad += 0 if exact else 1
+        print("  %-14s %d finding(s), expected exactly %d -- an EXTRA finding is a "
+              "false positive and fails too"
+              % ("PASS" if exact else "FAIL", len(findings), len(_EXPECT)))
+
+        gates = code == 1
+        bad += 0 if gates else 1
+        print("  %-14s exit %d over the fixture, expected 1" % ("PASS" if gates else "FAIL", code))
+
+    # The waiver half: quoting the tag inside the made-here section must drop the
+    # rule E note and change nothing else. Without this the waiver is untested and
+    # rule E could be unwaivable, i.e. a permanently-red advisory.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        audio, licence = _build_fixture(root, quote_the_tag=True)
+        _, findings2, notes2 = analyse(audio, licence, root, quiet=True, report=False)
+        waived = not any("listed as made for this game" in n for n in notes2)
+        same = len(findings2) == len(_EXPECT)
+        bad += 0 if waived else 1
+        bad += 0 if same else 1
+        print("  %-14s rule E waived by quoting TITLE=place10 in its section"
+              % ("PASS" if waived else "FAIL"))
+        print("  %-14s waiving E left the %d finding(s) alone (got %d)"
+              % ("PASS" if same else "FAIL", len(_EXPECT), len(findings2)))
+
+    total = len(_EXPECT) + len(_EXPECT_NOTES) + 4
+    print("audio_license_check --self-test: %d of %d case(s) passed." % (total - bad, total))
+    print("NOT COVERED: the fixture is synthetic. It proves the RULES fire and the "
+          "waiver works; it does not prove the tag readers cope with a real "
+          "container's framing, because it hands them a hand-built comment block "
+          "rather than a genuine Ogg page or ID3 frame. Run without --self-test to "
+          "exercise those against the shipped files.")
+    return 1 if bad else 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
+    ap.add_argument("--quiet", action="store_true", help="findings and totals only")
+    ap.add_argument("--self-test", action="store_true",
+                    help="run the kept fixture and assert every rule fires")
+    args = ap.parse_args()
+    if args.self_test:
+        return self_test()
+    return analyse(AUDIO_DIR, LICENCE, ROOT, args.quiet)[0]
 
 
 if __name__ == "__main__":
