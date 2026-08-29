@@ -314,6 +314,14 @@ def main() -> int:
               "read the diff. And a block deleted from BOTH files at once compares "
               "equal: see the character-count note above, which is the only guard "
               "against that.")
+        # No N-of-M slice to print here (plant-tower-defense-h3jz): FILES is a fixed
+        # pair, always exactly 2 named files being compared, never a sample drawn
+        # from a larger population -- there is no "M" this run could be bigger or
+        # smaller than. The line above already states the whole of what was
+        # compared (both files, full char counts); a manufactured "2 of 2" would
+        # be true on every run this tool could ever make and would carry no
+        # information, which is exactly the fake ratio plant-tower-defense-h3jz
+        # says not to force.
 
     if a == b:
         return 0
