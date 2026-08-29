@@ -95,7 +95,21 @@ const SAVE_PATH := "user://highscore.save"
 ## per-plant setting, anything with its own length. THAT wants a line, because a
 ## variable-length field on a fixed line is the thing the binding block is kept last
 ## to avoid.
-const SAVE_VERSION: int = 9
+##
+## Version 10 is exactly that preference arriving: which cosmetic skin the player has
+## chosen for each plant kind and each pest species (plant-tower-defense-ncfv). A
+## Dictionary keyed per-target with no fixed count is precisely what this paragraph
+## describes, so it gets a LINE of its own — `compose_skins_line` /
+## `parse_skins_line`, count-prefixed and sorted exactly like `compose_difficulty_line`
+## below, which is the closest existing shape (a sparse, count-prefixed set of
+## `key=value` fields) and is copied rather than reinvented.
+##
+## THE NEW LINE GOES BEFORE THE BINDING COUNT, never after — see
+## VERSION_WITH_DIFFICULTY_SCORES for why: the binding block is kept last so its own
+## count can catch a truncation, and a field appended after it would take that guard
+## down with it. So the v10 line order is: milestones, preferences, difficulty
+## scores, SKINS, binding count, bindings.
+const SAVE_VERSION: int = 10
 
 ## The version that made the record know which difficulty earned it
 ## (plant-tower-defense-1hgx).
@@ -117,6 +131,11 @@ const SAVE_VERSION: int = 9
 ## its count against what follows — a field appended after it would be read as a binding
 ## and would take the count's guard down with it.
 const VERSION_WITH_DIFFICULTY_SCORES: int = 9
+
+## The version that put the chosen-skin line in the file. Same role as
+## VERSION_WITH_DIFFICULTY_SCORES: a v9 file does not have it, and reading one anyway
+## would consume the binding count as a skin line and then refuse the whole save.
+const VERSION_WITH_SKINS: int = 10
 
 ## The version that introduced the milestone line, the options line and the
 ## binding block — all three landed together, so one number covers them.
@@ -484,6 +503,16 @@ var key_bindings: Dictionary = {}
 ## exists to refuse.
 var earned_milestones: Dictionary = {}
 
+## The cosmetic skin chosen for each plant kind and pest species, as
+## `Skins.selection_key(kind, id) -> skin id`. Absent means DEFAULT_SKIN — a fresh
+## save and a pre-v10 save both read every target as unskinned, which is the correct
+## reading rather than a fallback: nobody had a choice to lose before this existed.
+##
+## Set only through `set_skin()`, never assigned directly — see that function for why
+## a raw assignment could persist a skin nobody has unlocked, or one no plant/pest
+## this build knows exists.
+var selected_skins: Dictionary = {}
+
 ## Draw the two combat bars — a plant's health fill and the wave readout's threat
 ## tint — on GardenTheme's blue/orange ramp instead of the green/amber/red one.
 ##
@@ -805,7 +834,7 @@ func record_score(seeds_earned: int) -> bool:
 ## middle and every field under them moves whenever a player rebinds a key.
 static func compose_save(campaign: int, endless_best: int, milestone_line: String,
 		preferences_line: String, bindings: Dictionary,
-		other_difficulties: Dictionary = {}) -> String:
+		other_difficulties: Dictionary = {}, skins: Dictionary = {}) -> String:
 	var out: PackedStringArray = [
 		"v%d" % SAVE_VERSION,
 		str(campaign),
@@ -813,6 +842,7 @@ static func compose_save(campaign: int, endless_best: int, milestone_line: Strin
 		milestone_line,
 		preferences_line,
 		compose_difficulty_line(other_difficulties),
+		compose_skins_line(skins),
 		str(bindings.size()),
 	]
 	var names: Array = bindings.keys()
@@ -877,6 +907,80 @@ static func parse_difficulty_line(text: String) -> Variant:
 	return out
 
 
+## The v10 line carrying every chosen skin (plant-tower-defense-ncfv). Same shape as
+## `compose_difficulty_line` immediately above — count-prefixed `key=value` fields,
+## sorted so two saves holding the same choices are byte-identical — with two
+## differences: the value is a skin id (a string), not a score, and a skin set to
+## DEFAULT_SKIN is dropped rather than written, for the same reason
+## `compose_difficulty_line` drops a zero score: the absence of a record already
+## means "nothing chosen", so writing DEFAULT_SKIN out would grow the line for no
+## information the reader does not already infer.
+static func compose_skins_line(selections: Dictionary) -> String:
+	var fields: PackedStringArray = []
+	var keys: Array = selections.keys()
+	keys.sort()
+	for key: Variant in keys:
+		var skin: String = String(selections[key])
+		if skin != "" and skin != String(Skins.DEFAULT_SKIN):
+			fields.append("%s=%s" % [String(key), skin])
+	return " ".join(PackedStringArray(["s%d" % fields.size()]) + fields)
+
+
+## Reads what `compose_skins_line` wrote. `null` on anything malformed — the same
+## convention `parse_difficulty_line` follows, so `_parse_save` can refuse the whole
+## file rather than half-read it.
+##
+## The key ("plant:sunflower") and the value (a skin id) are both validated against
+## MILESTONE_ID_CHARS, plus the ":" that separates a kind from a target id — ids are
+## written by this project, never by a player, so anything else is corruption. The
+## kind half is NOT checked against KIND_PLANT/KIND_PEST here: a save from a later
+## build may name a third kind this build does not have a screen for, and rejecting
+## the whole save over one unfamiliar kind would cost the two scores it cannot
+## refuse away. `Skins.has_target` is where an unknown kind or id is actually turned
+## into "not selectable" — see `selected_skin()`.
+static func parse_skins_line(text: String) -> Variant:
+	var parts: PackedStringArray = text.split(" ", false)
+	if parts.size() == 0 or not parts[0].begins_with("s"):
+		return null
+	var count_text: String = parts[0].substr(1)
+	if not count_text.is_valid_int():
+		return null
+	var count: int = int(count_text)
+	if count < 0 or parts.size() - 1 != count:
+		return null
+	var out: Dictionary = {}
+	for i: int in range(1, parts.size()):
+		var field: String = parts[i]
+		var split: int = field.find("=")
+		if split <= 0:
+			return null
+		var key: String = field.substr(0, split)
+		var value: String = field.substr(split + 1)
+		if value.is_empty() or not _is_id_text(value):
+			return null
+		var colon: int = key.find(":")
+		if colon <= 0 or colon == key.length() - 1:
+			return null
+		if not _is_id_text(key.substr(0, colon)) or not _is_id_text(key.substr(colon + 1)):
+			return null
+		if out.has(key):
+			return null
+		out[key] = value
+	return out
+
+
+## Whether `text` is made only of MILESTONE_ID_CHARS — shared by the skins line's
+## key and value halves, which follow the same "written by this project, never by a
+## player" rule the milestone ids do.
+static func _is_id_text(text: String) -> bool:
+	if text.is_empty():
+		return false
+	for i: int in range(text.length()):
+		if not MILESTONE_ID_CHARS.contains(text[i]):
+			return false
+	return true
+
+
 ## Has this player ever earned this milestone?
 func has_milestone(id: String) -> bool:
 	return earned_milestones.has(id)
@@ -937,6 +1041,51 @@ func record_milestones(ids: Array) -> Array[String]:
 	if not fresh.is_empty():
 		_save()
 	return fresh
+
+
+## The skin currently chosen for `kind`/`id`, or `Skins.DEFAULT_SKIN`.
+##
+## Reads back through `Skins.is_unlocked` rather than trusting the saved value
+## outright: a milestone lost to a refused/quarantined save (see this file's own
+## header) or a skin from a build newer than this one must not leave a plant or
+## pest wearing a colour the player can no longer see a reason for on the Skins
+## screen. Falling back to DEFAULT_SKIN here, rather than erroring, is the same
+## "an unknown reads as off" contract `Milestones.is_met` and `Pest.tint_for` use.
+func selected_skin(kind: StringName, id: StringName) -> StringName:
+	var key: String = Skins.selection_key(kind, id)
+	var chosen: StringName = StringName(selected_skins.get(key, Skins.DEFAULT_SKIN))
+	if chosen == Skins.DEFAULT_SKIN:
+		return chosen
+	if not Skins.is_unlocked(chosen, earned_milestones):
+		return Skins.DEFAULT_SKIN
+	return chosen
+
+
+## Sets the skin for `kind`/`id`, and persists it. Returns whether the choice took —
+## false for an unknown target, an unknown skin, or one not yet unlocked, in which
+## case `selected_skins` is left exactly as it was.
+##
+## THIS IS THE ONLY WRITER. A raw assignment to `selected_skins` could persist a
+## skin the player has not earned, or a target this build does not have — either of
+## which `selected_skin()` would then have to notice and correct on every read
+## instead of being refused once, here, at the door.
+##
+## Idempotent like `record_milestones`: picking the skin already chosen changes
+## nothing and does not touch the file.
+func set_skin(kind: StringName, id: StringName, skin_id: StringName) -> bool:
+	if not Skins.has_target(kind, id):
+		return false
+	if not Skins.is_unlocked(skin_id, earned_milestones):
+		return false
+	var key: String = Skins.selection_key(kind, id)
+	if StringName(selected_skins.get(key, Skins.DEFAULT_SKIN)) == skin_id:
+		return true
+	if skin_id == Skins.DEFAULT_SKIN:
+		selected_skins.erase(key)
+	else:
+		selected_skins[key] = String(skin_id)
+	_save()
+	return true
 
 
 ## Records a one-shot hint as spent — and only if `shown` says the player actually
@@ -1382,7 +1531,7 @@ func _parse_failed(reason: String) -> Dictionary:
 	return {"ok": false, "campaign": 0, "endless": 0, "milestones": [],
 		"colorblind_safe": false, "mute_sfx": false, "mute_music": false,
 		"game_speed_step": 0, "sfx_level": 0, "music_level": 0,
-		"bindings": {}, "version": 0, "difficulty_scores": {}, "reason": reason}
+		"bindings": {}, "version": 0, "difficulty_scores": {}, "skins": {}, "reason": reason}
 
 
 ## Validates an entire save file and only then hands back its contents.
@@ -1423,7 +1572,7 @@ func _parse_save(path: String) -> Dictionary:
 		return {"ok": true, "campaign": 0, "endless": int(header), "milestones": [],
 			"colorblind_safe": false, "mute_sfx": false, "mute_music": false,
 			"game_speed_step": 0, "sfx_level": 0, "music_level": 0,
-			"bindings": {}, "version": 1, "difficulty_scores": {}, "reason": "v1"}
+			"bindings": {}, "version": 1, "difficulty_scores": {}, "skins": {}, "reason": "v1"}
 
 	var version_text: String = header.substr(1)
 	if not version_text.is_valid_int():
@@ -1505,6 +1654,16 @@ func _parse_save(path: String) -> Dictionary:
 			return _parse_failed("its difficulty-score line is not a difficulty-score line")
 		difficulty_scores = parsed_diff as Dictionary
 
+	# The v10 line, gated on VERSION_WITH_SKINS for the reason VERSION_WITH_DIFFICULTY_SCORES
+	# exists one field up: a v9 file does not have it, and reading one anyway would consume
+	# the binding count as a skin line and then refuse the whole save.
+	var skins: Dictionary = {}
+	if version >= VERSION_WITH_SKINS:
+		var parsed_skins: Variant = parse_skins_line(f.get_line().strip_edges())
+		if parsed_skins == null:
+			return _parse_failed("its skin line is not a skin line")
+		skins = parsed_skins as Dictionary
+
 	# The count is what makes a truncation here detectable at all — without it, a
 	# file cut after the options line is indistinguishable from a player who never
 	# opened the Keys screen, and the rebindings vanish with no error. Same
@@ -1551,6 +1710,7 @@ func _parse_save(path: String) -> Dictionary:
 		"version": version,
 		"bindings": bindings,
 		"difficulty_scores": difficulty_scores,
+		"skins": skins,
 		"reason": "v%d" % version,
 	}
 
@@ -1598,6 +1758,9 @@ func _load() -> void:
 	# A pre-v9 save has none, and an empty dictionary is the correct reading rather than a
 	# fallback: before v9 the player could not have had a non-standard record recorded.
 	difficulty_high_scores = parsed.get("difficulty_scores", {}) as Dictionary
+	# A pre-v10 save has none, and an empty dictionary is the correct reading for the
+	# same reason: before v10 there was no Skins screen to have chosen one on.
+	selected_skins = parsed.get("skins", {}) as Dictionary
 	key_bindings = parsed["bindings"] as Dictionary
 	# Replaced, not merged. A load is "this is what is on disk", and a union with
 	# whatever the process happened to be holding would make a save reloaded twice
@@ -1682,7 +1845,8 @@ func _save() -> bool:
 			% [tmp, error_string(FileAccess.get_open_error())])
 		return false
 	f.store_string(compose_save(campaign_high_score, endless_high_score,
-		_milestone_line(), _preferences_line(), key_bindings, difficulty_high_scores))
+		_milestone_line(), _preferences_line(), key_bindings, difficulty_high_scores,
+		selected_skins))
 	f.flush()
 	var write_error: int = f.get_error()
 	f.close()

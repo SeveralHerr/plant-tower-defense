@@ -376,6 +376,11 @@ var _summary_layer: CanvasLayer = null
 var _pause_screen: PauseScreen = null
 var _pause_layer: CanvasLayer = null
 
+## The Skins screen, over the pause layer -- see `_open_skins()` for why it rides
+## on `pause_run()`'s own layer rather than building a second one
+## (plant-tower-defense-ncfv).
+var _skins_screen: SkinsScreen = null
+
 ## Road cell -> how many pests this wave were lost there (killed or escaped).
 ## Committed to the board as one batch when the wave ends; see
 ## Board.record_lane_pressure_wave.
@@ -546,6 +551,7 @@ func _ready() -> void:
 	# see its own header.
 	hud.uproot_requested.connect(arm_uproot)
 	hud.speed_requested.connect(_on_speed_requested)
+	hud.skins_requested.connect(_open_skins)
 
 	# The playfield's own place in the window, and it has to be re-taken whenever the window
 	# changes shape — the HUD reserves a fixed-width panel on the right and a fixed-height
@@ -1618,6 +1624,45 @@ func resume_run() -> void:
 	# where both the card and a focusable HUD are on screen.
 	if hud != null and is_instance_valid(hud):
 		hud.set_active(true)
+
+
+## The Skins screen, over a paused run (plant-tower-defense-ncfv).
+##
+## Rides on `pause_run()`'s own layer rather than building a second one, and is
+## added as a SIBLING of `_pause_screen` under `_pause_layer` rather than as that
+## card's child the way the notebook, Keys and Options screens open over IT
+## (`PauseScreen._open_notebook` etc.) -- this lane does not own `pause_screen.gd`,
+## so a fourth door on that card is not available here. `OverlayScreen._ready()`
+## derives what to hold inert from `get_parent()`, and the parent either way is
+## something the pause card's own buttons sit under, so they still go inert
+## correctly as a sibling: `interactive_under(_pause_layer, self)` walks every
+## descendant of the layer except this screen's own subtree, which reaches
+## `_pause_screen`'s buttons exactly as it would if they were nested one level
+## deeper.
+##
+## The seam this costs: the plain pause card is visible for one frame behind this
+## screen's own backdrop before the backdrop paints over it, where the other three
+## overlays never show their card underneath at all. Accepted rather than fixed
+## here, since fixing it means the fourth door on the card, in a file this lane
+## does not own.
+func _open_skins() -> void:
+	if _skins_screen != null and is_instance_valid(_skins_screen):
+		return
+	pause_run()
+	_skins_screen = SkinsScreen.build()
+	_skins_screen.back_requested.connect(_close_skins, CONNECT_DEFERRED)
+	_pause_layer.add_child(_skins_screen)
+
+
+## Back to the run, not back to the pause card. Pressing Skins from the HUD never
+## goes through the pause card (see `_open_skins`), so there is no card underneath
+## for Back to reveal -- it means "done choosing", and resumes the run the same
+## way the pause card's own Resume button does.
+func _close_skins() -> void:
+	if _skins_screen != null and is_instance_valid(_skins_screen):
+		_skins_screen.close()
+	_skins_screen = null
+	resume_run()
 
 
 ## True while the run is held. Read by the tests; the tree's own `paused` is the
@@ -3762,8 +3807,10 @@ const BUDGET_SPENT_BY_DESIGN: String = "spent_by_design"
 ##
 ## "Warn when a budget is tight" is the obvious rule and it is the wrong one:
 ## three of the four below are ALREADY tight and one is already spent, by design
-## -- 4 px of 32 on the husk sweep, 10 of 171 on the tightest readout, 19 of 1112
-## on the row, and the road sits at exactly its pest ceiling. That rule prints
+## -- 4 px of 32 on the husk sweep, 10 of 171 on the tightest readout, 10 of 1120
+## on the row (plant-tower-defense-ncfv's Skins door is the third fixed control
+## the row now carries, and the ratchet below is that commit's), and the road
+## sits at exactly its pest ceiling. That rule prints
 ## four warnings on every launch of a project that is behaving as intended, and
 ## four warnings that are always there are zero warnings.
 ##
@@ -3818,7 +3865,15 @@ const BUDGET_FLOOR: Dictionary = {
 	# roomy -- and that is the number worth having written down, because "roomy" is
 	# what everyone assumed about the wave slot until it had 10px left.
 	"hud_message_row": 40.0,
-	"hud_stats_row": 19.0,
+	# Ratcheted DOWN from 19.0, the same pattern "hud_readouts" above used going up:
+	# accept a spend by moving the floor to what the build now actually has, in the
+	# same commit that spends it. The Skins door (plant-tower-defense-ncfv) is a
+	# third fixed control on this row -- SKINS_BUTTON_SIZE is already cut to the
+	# narrowest width the design-width floor allows (see its own comment in
+	# hud.gd), so the only honest fix left for the LIVE headroom this specific
+	# viewport measures is to declare what it now is rather than pretend the row
+	# still has 19.
+	"hud_stats_row": 10.0,
 	# ZERO, and it is the news this budget was filed to find (plant-tower-defense-r722).
 	#
 	# Cycle 57 priced the cob's second line against the 232px box BY HAND, wrote
@@ -3971,6 +4026,10 @@ const BUDGET_FLOOR_ACCEPTED: Array[String] = [
 	"run_summary_values",
 	"hud_readouts",
 	"hud_selection_panel",
+	# The Skins door (plant-tower-defense-ncfv): a third fixed control on the stats
+	# row, priced against a floor moved down in the same commit -- see
+	# BUDGET_FLOOR["hud_stats_row"]'s own comment.
+	"hud_stats_row",
 ]
 
 
