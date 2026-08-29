@@ -1202,14 +1202,13 @@ func test_the_bus_can_arm_an_uproot_and_then_cancel_it() -> String:
 
 
 # =============================================================================
-# THE ROAD CORPUS (plant-tower-defense-s1o8.1)
+# THE ROAD CORPUS (plant-tower-defense-s1o8.1, extended by plant-tower-defense-s1o8.2)
 #
 # Board.PATH_CORNERS was a const and every number measured against it was a
 # literal recorded in a test. `Board.set_road()` makes the road a parameter; this
 # corpus is what stops the tests from going on describing one specific snake.
 #
-# THREE roads, chosen to be different in the ways the recorded numbers depend on
-# rather than to be pretty:
+# s1o8.1 shipped THREE roads:
 #   * the DEFAULT, so every derivation is checked against the shape the whole
 #     game was tuned on and a change to the walker shows up here first;
 #   * a SHORT straight run, which is the smallest road the walker can be handed
@@ -1217,6 +1216,32 @@ func test_the_bus_can_arm_an_uproot_and_then_cancel_it() -> String:
 #     40 pests over 14 cells is a different game from 40 over 32;
 #   * a LONG serpentine, more cells than the default, so the derivations are
 #     exercised in both directions rather than only downward.
+#
+# s1o8.2 ADDS THREE MORE, chosen against the axes the bead names rather than to
+# be pretty -- length, corner count, dead ground per plant kind, minimum garden
+# size (a greedy cover), and whether -Y (climbing) shows up anywhere besides the
+# default's single deliberate climb:
+#   * DOUBLE CLIMB, which travels up-down-up across the full board height and
+#     never travels LEFT -- a second, independent exerciser of the up-screen
+#     Pest facing branch this whole file's header warns went unreached for one
+#     hundred cycles, so the corpus does not depend on the default alone to
+#     keep it live;
+#   * TIGHT COIL, a dense four-tooth switchback -- the highest corner count in
+#     the corpus and a road that revisits neither U nor L against DOUBLE_CLIMB's
+#     shape, exercised at a different density;
+#   * LOWER BAND, confined to rows 4-7 rather than spread over the whole board,
+#     so the dead-ground DISTRIBUTION (not just the count) differs -- the top
+#     three rows are untouched, which the other five roads never leave alone.
+#
+# python tools/board_check.py validates every road below (see that file for what
+# it checks and why) -- run it after touching any road in this corpus. It is
+# also how LONG's shape was caught and fixed: the ORIGINAL s1o8.1 serpentine
+# spaced its five full-width rows two apart, which leaves a ONE-row grass band
+# between adjacent road rows -- exactly the "road that doubles back beside
+# itself" case Board.GRASS_EDGE_TILE's own header warns falls back to plain
+# grass with nothing erroring. `board_check.py` catches it (missing masks 5, 7,
+# 13); the corners below are respaced to three rows apart, which leaves a
+# TWO-row band and produces only masks GRASS_EDGE_TILE actually ships.
 #
 # Hand-written rather than derived, and that is the right call here: this is a
 # corpus of INPUTS, and `derive-the-list` is about not hand-typing the answers.
@@ -1230,28 +1255,258 @@ const ROAD_SHORT: Array[Vector2i] = [
 	Vector2i(13, 4),
 ]
 
+## Three full-width rows, three apart (was two -- see the block header above for
+## the render bug that spacing shipped and how board_check.py caught it).
 const ROAD_LONG: Array[Vector2i] = [
 	Vector2i(0, 0),
 	Vector2i(13, 0),
-	Vector2i(13, 2),
-	Vector2i(0, 2),
-	Vector2i(0, 4),
-	Vector2i(13, 4),
-	Vector2i(13, 6),
+	Vector2i(13, 3),
+	Vector2i(0, 3),
 	Vector2i(0, 6),
-	Vector2i(0, 8),
-	Vector2i(13, 8),
+	Vector2i(13, 6),
+]
+
+## Bottom-left to top-right, three climbs (U), never L. Every vertical leg is at
+## least three columns from its neighbour, which is what keeps the grass between
+## them two cells wide instead of one -- see ROAD_LONG's header for why that
+## margin is load-bearing rather than cosmetic.
+const ROAD_DOUBLE_CLIMB: Array[Vector2i] = [
+	Vector2i(0, 7),
+	Vector2i(4, 7),
+	Vector2i(4, 2),
+	Vector2i(8, 2),
+	Vector2i(8, 7),
+	Vector2i(11, 7),
+	Vector2i(11, 1),
+	Vector2i(13, 1),
+]
+
+## Four teeth, each vertical leg three columns from the next -- the densest
+## corner count in the corpus (8 turns over 35 cells).
+const ROAD_TIGHT_COIL: Array[Vector2i] = [
+	Vector2i(0, 4),
+	Vector2i(2, 4),
+	Vector2i(2, 1),
+	Vector2i(5, 1),
+	Vector2i(5, 7),
+	Vector2i(8, 7),
+	Vector2i(8, 1),
+	Vector2i(11, 1),
+	Vector2i(11, 7),
+	Vector2i(13, 7),
+]
+
+## Confined to rows 4-7 -- the top three rows of the board are untouched, which
+## none of the other five roads leave alone. Every dip is at least three columns
+## from the next, and stops one row short of the board's own bottom edge so the
+## ground under a dip is never sealed against it into a pocket.
+const ROAD_LOWER_BAND: Array[Vector2i] = [
+	Vector2i(0, 7),
+	Vector2i(3, 7),
+	Vector2i(3, 4),
+	Vector2i(6, 4),
+	Vector2i(6, 7),
+	Vector2i(9, 7),
+	Vector2i(9, 4),
+	Vector2i(12, 4),
+	Vector2i(12, 7),
+	Vector2i(13, 7),
 ]
 
 
 ## Every road the corpus holds, resolved -- the default expanded to its real corners so a
-## caller never has to know that empty means default.
+## caller never has to know that empty means default. `tools/board_check.py` parses this
+## function directly (the string/constant pairs, not a copy of them), so a road added here
+## is validated automatically and a road named here under a typo'd constant is a parse
+## failure in that tool rather than a silent gap.
 func _road_corpus() -> Array:
 	return [
 		{"name": "default", "corners": Board.PATH_CORNERS},
 		{"name": "short straight", "corners": ROAD_SHORT},
 		{"name": "long serpentine", "corners": ROAD_LONG},
+		{"name": "double climb", "corners": ROAD_DOUBLE_CLIMB},
+		{"name": "tight coil", "corners": ROAD_TIGHT_COIL},
+		{"name": "lower band", "corners": ROAD_LOWER_BAND},
 	]
+
+
+## Number of direction changes among a road's own segments -- a switchback's corner
+## count, computed from the corners rather than hand-counted, so a road edited later
+## cannot drift out of sync with a number recorded beside it.
+func _turn_count(corners: Array[Vector2i]) -> int:
+	var dirs: Array[Vector2i] = []
+	for i: int in range(corners.size() - 1):
+		dirs.append(Vector2i(
+			signi(corners[i + 1].x - corners[i].x), signi(corners[i + 1].y - corners[i].y)))
+	var turns: int = 0
+	for i: int in range(1, dirs.size()):
+		if dirs[i] != dirs[i - 1]:
+			turns += 1
+	return turns
+
+
+## Every distinct unit direction a road's segments travel in, as Vector2i (Board's own
+## UP/RIGHT/DOWN/LEFT are exactly these four vectors).
+func _directions_travelled(corners: Array[Vector2i]) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for i: int in range(corners.size() - 1):
+		var d := Vector2i(
+			signi(corners[i + 1].x - corners[i].x), signi(corners[i + 1].y - corners[i].y))
+		if not out.has(d):
+			out.append(d)
+	return out
+
+
+## The MINIMUM number of Corn Cobblers whose combined range reaches every cell of
+## `board`'s road, by the textbook greedy set cover: repeatedly plant the buildable cell
+## that newly covers the most still-uncovered road, until none is left.
+##
+## Deliberately independent of test_combat.gd's `_whole_road_garden()` / `_mixed_garden()`
+## -- those are RECORDED, taste-based gardens for firepower on the default road specifically
+## (see that file's own comment on why a minimal cover was rejected there). This is the
+## other question, asked of every road in the corpus: how small CAN a full-coverage garden
+## be, which is exactly the number the bead names as "minimum garden size".
+func _greedy_garden_size(board: Board, reach_px: float) -> int:
+	var uncovered: Dictionary = {}
+	for cell: Vector2i in board.road_cells():
+		uncovered[cell] = true
+	var placed: int = 0
+	while not uncovered.is_empty():
+		var best_gain: int = 0
+		var best_cell := Vector2i(-1, -1)
+		for y: int in range(Board.ROWS):
+			for x: int in range(Board.COLS):
+				var at := Vector2i(x, y)
+				if not board.is_buildable(at):
+					continue
+				var gain: int = 0
+				for road_cell: Vector2i in PlacementPreview.covered_road_cell_list(
+						board, at, reach_px):
+					if uncovered.has(road_cell):
+						gain += 1
+				if gain > best_gain:
+					best_gain = gain
+					best_cell = at
+		if best_gain == 0:
+			# Nothing buildable buys any more coverage -- a playability gap, which
+			# test_no_road_in_the_corpus_leaves_a_reaching_plant_with_nothing_to_do
+			# already asserts never happens across this corpus. Stop rather than loop.
+			break
+		placed += 1
+		for road_cell: Vector2i in PlacementPreview.covered_road_cell_list(
+				board, best_cell, reach_px):
+			uncovered.erase(road_cell)
+	return placed
+
+
+## THE SPREAD ITSELF, ASSERTED (plant-tower-defense-s1o8.2).
+##
+## "A variety of different layouts" is the bead's own phrase and it cannot be accepted as
+## prose -- this is the one place that checks the corpus actually VARIES, as opposed to
+## every road in it merely being individually valid (which the five tests above check) or
+## individually correct about dead ground (which
+## test_dead_ground_is_exactly_the_cells_no_road_cell_reaches checks). Every property here
+## is swept once over the same _road_corpus() every other corpus test uses, and every
+## assertion is about the SPREAD -- max minus min, or a union of directions -- never a
+## literal for any one road; the individual numbers are pinned where they already are.
+##
+## THE MARGINS are round numbers well inside what the corpus in fact measures (cells
+## 14..46, turns 0..8, greedy gardens 3..8), not the tightest bound that would pass today
+## -- a corpus that shrinks its spread a little is still a corpus with real variety, and a
+## test pinned to today's exact numbers would fail on the first road anyone reshapes for an
+## unrelated reason.
+func test_the_road_corpus_actually_spans_the_axes_it_claims_to() -> String:
+	var corn_reach: float = PlantCatalog.reach(PlantCatalog.CORN)
+	var chomp_reach: float = PlantCatalog.reach(PlantCatalog.CHOMP)
+	var cell_counts: Array[int] = []
+	var turn_counts: Array[int] = []
+	var garden_sizes: Array[int] = []
+	var corn_dead: Array[int] = []
+	var chomp_dead: Array[int] = []
+	var directions_seen: Dictionary = {}
+	var err: String = ""
+	var checked: int = 0
+	for road: Dictionary in _road_corpus():
+		if err != "":
+			break
+		var name: String = str(road["name"])
+		var road_corners: Array[Vector2i] = road["corners"]
+		var board := Board.new()
+		if name != "default":
+			err = _T.assert_eq(board.set_road(road_corners), "",
+				"the %s road is accepted by set_road" % name)
+			if err != "":
+				board.free()
+				break
+		await _T.instantiate_scene(board)
+		err = _T.assert_gt(board.path_cell_count(), 0,
+			"the %s road built its path before anything was measured" % name)
+		if err == "":
+			checked += 1
+			cell_counts.append(board.path_cell_count())
+			turn_counts.append(_turn_count(road_corners))
+			garden_sizes.append(_greedy_garden_size(board, corn_reach))
+			corn_dead.append(PlacementPreview.dead_ground_cells(board, corn_reach).size())
+			chomp_dead.append(PlacementPreview.dead_ground_cells(board, chomp_reach).size())
+			for d: Vector2i in _directions_travelled(road_corners):
+				directions_seen[d] = true
+		_T.free_ui(board)
+
+	if err == "":
+		err = _T.assert_eq(checked, _road_corpus().size(),
+			"every corpus road was swept for spread (%d of %d)" % [checked, _road_corpus().size()])
+
+	# Length in cells: a short, dense road plays differently from a long, thin one --
+	# this is what WaveDirector.SIMULTANEOUS_PEST_CEILING is reasoned against (see the
+	# density test above).
+	if err == "":
+		err = _T.assert_gte(cell_counts.max() - cell_counts.min(), 20,
+			("road length spans at least 20 cells across the corpus (%d..%d, spread %d) "
+				+ "-- a corpus this narrow would not exercise short-and-dense against "
+				+ "long-and-thin") % [cell_counts.min(), cell_counts.max(),
+					cell_counts.max() - cell_counts.min()])
+
+	# Corner count: a straight run vs a switchback.
+	if err == "":
+		err = _T.assert_gte(turn_counts.max() - turn_counts.min(), 5,
+			("corner count spans at least 5 turns across the corpus (%d..%d, spread %d)")
+				% [turn_counts.min(), turn_counts.max(), turn_counts.max() - turn_counts.min()])
+
+	# Dead ground per plant kind: the number that teaches a player "this corner is
+	# useless" -- kanban.md flags exactly this as a lesson a player wrongly carries
+	# from one board to the next if it never varies.
+	if err == "":
+		err = _T.assert_gte(corn_dead.max() - corn_dead.min(), 10,
+			("dead ground for a Corn Cobbler spans at least 10 cells across the corpus "
+				+ "(%d..%d)") % [corn_dead.min(), corn_dead.max()])
+	if err == "":
+		err = _T.assert_gte(chomp_dead.max() - chomp_dead.min(), 10,
+			("and dead ground for a Chomp Flower spans at least 10 cells (%d..%d)")
+				% [chomp_dead.min(), chomp_dead.max()])
+
+	# Minimum garden size: test_combat.gd's own greedy derivation finds five cobs cover
+	# the default road (a different tie-break from this sweep's row-major one, both
+	# legitimate greedy covers over the same road; see _greedy_garden_size's header). A
+	# road where that number is meaningfully larger or smaller plays differently, per
+	# the bead -- this asserts the corpus actually produces that spread.
+	if err == "":
+		err = _T.assert_gte(garden_sizes.max() - garden_sizes.min(), 3,
+			("the minimum full-coverage garden spans at least 3 cobs across the corpus "
+				+ "(%d..%d)") % [garden_sizes.min(), garden_sizes.max()])
+
+	# Direction coverage: all four cardinal directions, INCLUDING -Y (climbing), appear
+	# somewhere in the corpus -- Pest._update_facing()'s up-screen branch had run in no
+	# real frame before the default road's single deliberate climb (board.gd's own
+	# header). s1o8.2 adds two more climbing roads so that branch does not depend on the
+	# default alone to stay reached.
+	if err == "":
+		err = _T.assert_eq(directions_seen.size(), 4,
+			("all four travel directions appear somewhere in the corpus (%d distinct "
+				+ "found: %s)") % [directions_seen.size(), str(directions_seen.keys())])
+	if err == "":
+		err = _T.assert_true(directions_seen.has(Vector2i.UP),
+			"and -Y (climbing) is one of them, on more than just the default road")
+	return err
 
 
 ## The road is a parameter now, and its length and cell count are DERIVED from it
@@ -1314,8 +1569,8 @@ func test_every_road_in_the_corpus_walks_the_length_its_corners_imply() -> Strin
 		if err != "":
 			return err
 	if err == "":
-		err = _T.assert_eq(checked, 3,
-			"all three corpus roads were walked (%d were)" % checked)
+		err = _T.assert_eq(checked, _road_corpus().size(),
+			"every corpus road was walked (%d of %d)" % [checked, _road_corpus().size()])
 	if err == "":
 		# The default road, by name and by literal, because every constant in the game was
 		# tuned against exactly these two numbers and "the road is a parameter now" must
@@ -1723,6 +1978,10 @@ func test_a_board_in_the_tree_will_not_change_its_road() -> String:
 func test_the_pest_ceiling_stays_a_playable_density_on_every_road_in_the_corpus() -> String:
 	var worst_name: String = ""
 	var worst: float = 0.0
+	# The road whose density is `worst`, tracked alongside it -- the failure message below
+	# names this road's own cell count rather than a fixed corpus index, so a corpus that
+	# grows (s1o8.2 added three roads) cannot make the message quote the wrong road's cells.
+	var worst_cells: int = 0
 	var checked: int = 0
 	for road: Dictionary in _road_corpus():
 		var cells: int = Board.road_cell_count(road["corners"])
@@ -1735,8 +1994,9 @@ func test_the_pest_ceiling_stays_a_playable_density_on_every_road_in_the_corpus(
 		if density > worst:
 			worst = density
 			worst_name = str(road["name"])
-	var err: String = _T.assert_eq(checked, 3,
-		"every corpus road was priced (%d were)" % checked)
+			worst_cells = cells
+	var err: String = _T.assert_eq(checked, _road_corpus().size(),
+		"every corpus road was priced (%d of %d)" % [checked, _road_corpus().size()])
 	if err == "":
 		err = _T.assert_true(worst < 3.5,
 			("%s puts %d pests on %d cells = %.2f per cell, at or past the 3.5 per cell "
@@ -1744,8 +2004,7 @@ func test_the_pest_ceiling_stays_a_playable_density_on_every_road_in_the_corpus(
 				+ "exists to prevent. Either that road leaves the corpus or the ceiling "
 				+ "becomes road-derived -- do not raise this bound without moving the "
 				+ "header's argument first.")
-				% [worst_name, WaveDirector.SIMULTANEOUS_PEST_CEILING,
-					Board.road_cell_count(_road_corpus()[0]["corners"]), worst])
+				% [worst_name, WaveDirector.SIMULTANEOUS_PEST_CEILING, worst_cells, worst])
 	if err == "":
 		# The default road, by name: 40 over 32 cells. Pinned so that a change to the
 		# ceiling or to the default road has to come past this sentence.

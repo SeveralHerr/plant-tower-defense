@@ -2052,7 +2052,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 		err = _T.assert_eq(String(Game.key_help()[0]["keys"]), "F1", "the pause card's legend moved")
 	if err == "":
 		err = _T.assert_eq(FileAccess.get_file_as_string(path),
-			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
+			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\n1\ngarden_pause %d\n" % [RunConfig.SAVE_VERSION, KEY_F1],
 			"and it was written down beside the scores")
 	if err == "":
 		# A key another verb already answers to is refused, and said so.
@@ -2089,7 +2089,7 @@ func test_the_keys_screen_rebinds_a_verb_and_writes_it_down() -> String:
 				"Put them all back restores the shipped keys once confirmed")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(path),
-				"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\n0\n" % RunConfig.SAVE_VERSION,
 				"and clears the overrides out of the save rather than pinning the defaults into it")
 
 	_T.free_ui(screen)
@@ -2426,7 +2426,7 @@ func test_the_options_screen_shows_and_flips_every_persisted_flag() -> String:
 		err = _T.assert_true(RunConfig.colorblind_safe, "the colourblind row sets the flag")
 		if err == "":
 			err = _T.assert_eq(FileAccess.get_file_as_string(path),
-				"v%d\n0\n0\nm0\ncb1 sfx0 mus0 spd0 svol0 mvol0\nd0\n0\n" % RunConfig.SAVE_VERSION,
+				"v%d\n0\n0\nm0\ncb1 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\n0\n" % RunConfig.SAVE_VERSION,
 				"and it is written down beside the scores, not held for the session")
 	if err == "":
 		# Nothing on the paper may run off it or sit on top of anything else, and the
@@ -5944,12 +5944,12 @@ func test_the_binding_table_answers_about_itself() -> String:
 		# through this, so a field appended in the wrong place fails here.
 		err = _T.assert_eq(
 			RunConfig.compose_save(3, 4, "m0", "cb0 sfx0 mus0 spd0", {"garden_pause": [KEY_F1, KEY_F2]}),
-			"v%d\n3\n4\nm0\ncb0 sfx0 mus0 spd0\nd0\n1\ngarden_pause %d %d\n" % [RunConfig.SAVE_VERSION, KEY_F1, KEY_F2],
+			"v%d\n3\n4\nm0\ncb0 sfx0 mus0 spd0\nd0\ns0\n1\ngarden_pause %d %d\n" % [RunConfig.SAVE_VERSION, KEY_F1, KEY_F2],
 			"compose_save writes the header, both scores, the milestones, the options, "
 				+ "the count, then the rows")
 	if err == "":
 		err = _T.assert_eq(RunConfig.compose_save(0, 0, "m0", "cb0 sfx0 mus0 spd0", {}),
-			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0\nd0\n0\n" % RunConfig.SAVE_VERSION,
+			"v%d\n0\n0\nm0\ncb0 sfx0 mus0 spd0\nd0\ns0\n0\n" % RunConfig.SAVE_VERSION,
 			"and an untouched keyboard is a count of zero, not an absent line")
 	KeyBindings.reset_all()
 	return err
@@ -5999,7 +5999,7 @@ func test_rebound_keys_survive_a_save_and_load() -> String:
 	if err == "":
 		RunConfig.store_key_bindings(KeyBindings.overrides())
 		err = _T.assert_eq(FileAccess.get_file_as_string(path),
-			"v%d\n11\n22\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\n1\ngarden_mute_music %d\n" % [RunConfig.SAVE_VERSION, KEY_F7],
+			"v%d\n11\n22\nm0\ncb0 sfx0 mus0 spd0 svol0 mvol0\nd0\ns0\n1\ngarden_mute_music %d\n" % [RunConfig.SAVE_VERSION, KEY_F7],
 			"the save carries the count and one action row")
 	if err == "":
 		# Wipe every trace from memory, then read it all back off disk.
@@ -15988,10 +15988,11 @@ func test_the_stats_row_is_described_by_one_table() -> String:
 	if err != "":
 		return err
 	# The budget spends the table's widths and nothing else. Derived rather than
-	# retyped: stats_row_budget(0) is the four slots plus the two buttons, so backing
-	# the buttons out has to leave exactly the sum above.
+	# retyped: stats_row_budget(0) is the four slots plus the three buttons (the
+	# Skins door joined at plant-tower-defense-ncfv), so backing the buttons out has
+	# to leave exactly the sum above.
 	var spent: float = (Hud.stats_row_budget(0) - Hud.NEXT_WAVE_BUTTON_SIZE.x
-		- GameSpeed.button_size().x)
+		- GameSpeed.button_size().x - Hud.SKINS_BUTTON_SIZE.x)
 	return _T.assert_float_eq(spent, widths, 0.001,
 		("stats_row_budget() spends %.0fpx of readout width and the table declares "
 			+ "%.0f -- the sum is derived from the table, so these can only differ if "
@@ -18619,6 +18620,22 @@ func _overlay_subclass_names() -> Array[String]:
 	return found
 
 
+## Overlay subclasses `test_every_overlay_makes_everything_under_it_unfocusable`
+## deliberately does not sweep, and why -- named here rather than left for that
+## assertion to fail unexplained, exactly as its own failure message asks.
+##
+## SkinsScreen (plant-tower-defense-ncfv) has no door ON THE PAUSE CARD: it opens
+## from a button on the HUD itself (`Game._open_skins`), over `pause_run()`'s own
+## LAYER as a SIBLING of `card` rather than as `card`'s child the way the other
+## three open — the lane that added it owns `game/hud.gd` and `game/game.gd` but
+## not `game/pause_screen.gd`, so a fourth door on the card itself was not
+## available to it. `SkinsScreen`'s own header argues the invariant this sweep
+## polices still holds for it — `OverlayScreen._ready()` derives what to hold
+## inert from its actual parent, not from a list — just not through a door this
+## particular test can press to prove it.
+const OVERLAY_SUBCLASSES_WITH_NO_CARD_DOOR: Array[String] = ["SkinsScreen"]
+
+
 ## Every button on the pause card that the card answers ITSELF -- the doors it opens
 ## over its own face, as against the rows Game answers by ending or leaving the run.
 ##
@@ -18739,13 +18756,20 @@ func test_every_overlay_makes_everything_under_it_unfocusable() -> String:
 
 	if err == "":
 		swept.sort()
-		err = _T.assert_eq(swept, declared,
-			("every OverlayScreen subclass the project declares was opened over the "
-				+ "pause card and measured, and nothing else was. A FOURTH SCREEN NEEDS "
-				+ "NO EDIT HERE -- it needs a door on this card that the card answers "
-				+ "itself. If a fourth deliberately has none, that exemption belongs in "
-				+ "this assertion, where it can be read, rather than in a screen this "
-				+ "sweep quietly never sees."))
+		# Exempt names dropped here, at the assertion, rather than out of `declared`
+		# at its own derivation -- so `declared` still answers "every OverlayScreen
+		# subclass" honestly for anything else that reads it, and this one comparison
+		# is the only place a card-less overlay is subtracted out.
+		var expected: Array[String] = declared.filter(
+			func(cls: String) -> bool: return not OVERLAY_SUBCLASSES_WITH_NO_CARD_DOOR.has(cls))
+		err = _T.assert_eq(swept, expected,
+			("every OverlayScreen subclass the project declares, MINUS "
+				+ "OVERLAY_SUBCLASSES_WITH_NO_CARD_DOOR, was opened over the pause card "
+				+ "and measured, and nothing else was. A FOURTH SCREEN NEEDS NO EDIT HERE "
+				+ "-- it needs a door on this card that the card answers itself. If a "
+				+ "fourth deliberately has none, that exemption belongs in this "
+				+ "assertion, where it can be read, rather than in a screen this sweep "
+				+ "quietly never sees."))
 	game.resume_run()
 	_T.free_ui(game)
 	return err

@@ -1,16 +1,22 @@
 class_name Pest
 extends Node2D
 
-## A bug walking the road. Five species: a small fast one (aphid), a big slow one
-## (beetle), a plated one that shrugs off small hits (the Shield Bug), and two
-## bosses — the Aphid Queen the campaign builds toward, and the Nurse Beetle that
-## walks up the middle of a wave putting back what the garden has chipped off it.
+## A bug walking the road. Seven species: a small fast one (aphid), a big slow one
+## (beetle), a plated one that shrugs off small hits (the Shield Bug), a Leafhopper
+## and a Locust that ask two more questions damage never touches, and two bosses —
+## the Aphid Queen the campaign builds toward, and the Nurse Beetle that walks up
+## the middle of a wave putting back what the garden has chipped off it.
 ##
-## Three of the five are answered by damage and differ only in how much of it they
-## need. The other two each break a rule the garden is built on, and a different
-## rule each: the Shield Bug is answered by a different KIND of damage, and the
+## Three of the seven are answered by damage and differ only in how much of it they
+## need. The other four each break a rule the garden is built on, and a different
+## rule each: the Shield Bug is answered by a different KIND of damage; the
 ## Nurse Beetle is answered by damage aimed somewhere other than the FRONT of the
-## queue. Both arguments are written out on their own SPECIES entries.
+## queue; the Leafhopper is answered by WHEN a hit lands rather than how much or
+## what kind, since its speed itself is not constant (see `hop_speed_multiplier`);
+## and the Locust is answered by WHO you kill first, since a lone one is the
+## slowest ordinary bug on the board and it only picks up danger from the OTHER
+## Locusts near it (see `_swarm_neighbor_count`). Every argument is written out on
+## its own SPECIES entry.
 ##
 ## The interesting state here is `held_by`. A Chomp Flower that grabs a pest does
 ## not delete it — it holds it in place for `chew_seconds` while the pest stays on
@@ -25,11 +31,13 @@ const BEETLE := &"beetle"
 const SHIELDBUG := &"shieldbug"
 const QUEEN := &"queen"
 const NURSE := &"nurse"
+const HOPPER := &"hopper"
+const LOCUST := &"locust"
 
 ## species -> stats. `chew_seconds` is the design doc's "eats small pests easily,
 ## takes a while eating bigger pests" expressed as a number.
 ##
-## Three optional groups sit alongside the stats every species carries, one per
+## Five optional groups sit alongside the stats every species carries, one per
 ## mechanic, and each belongs to exactly one species today:
 ##
 ##   * `split_species` / `split_count` — the Aphid Queen's. A species that names
@@ -37,16 +45,22 @@ const NURSE := &"nurse"
 ##     leaving the board.
 ##   * `shell_absorb` / `shell_hits` — the Shield Bug's plate.
 ##   * `heal_radius` / `heal_amount` / `heal_period` — the Nurse Beetle's aura.
+##   * `hop_period` / `hop_crouch_fraction` — the Leafhopper's rhythm. See
+##     `hop_speed_multiplier`.
+##   * `swarm_radius` / `swarm_cap` / `swarm_step` — the Locust's crowd. See
+##     `_swarm_neighbor_count` / `swarm_speed_multiplier`.
 ##
-## `boss` is the fourth optional key and the only one that is not a mechanic: it
+## `boss` is the sixth optional key and the only one that is not a mechanic: it
 ## is what `WaveDirector.wave_carries_boss` reads, so "which species are bosses"
 ## is a fact stated once, on the species, rather than a name written into a
 ## comparison in another file (which is what it was until the second boss landed).
 ##
 ## Every one of them is read through an accessor below — split_species() /
 ## split_count() / shell_absorb() / shell_hits() / heal_radius() / heal_amount() /
-## heal_period() / is_boss() — and never off the raw Dictionary, so an ordinary
-## pest answers "&"" / 0 / 0.0 / false" instead of erroring on a missing key.
+## heal_period() / hop_period() / hop_crouch_fraction() / hop_leap_multiplier() /
+## swarm_radius() / swarm_cap() / swarm_step() / is_boss() — and never off the raw
+## Dictionary, so an ordinary pest answers "&"" / 0 / 0.0 / false" instead of
+## erroring on a missing key.
 const SPECIES: Dictionary = {
 	APHID: {
 		"display": "Aphid",
@@ -136,6 +150,134 @@ const SPECIES: Dictionary = {
 		"big": true,
 		"shell_absorb": 1.5,
 		"shell_hits": 6,
+	},
+	## The Leafhopper (plant-tower-defense-4zyb). The first pest on the board that
+	## is answered by WHEN a hit lands rather than by how much or what kind — every
+	## other species walks at one constant speed for its whole crossing, and this
+	## one does not.
+	##
+	## ONE SENTENCE: it spends most of its time nearly motionless — an open shot for
+	## anything already in range — then covers a burst of road almost too fast to
+	## follow, which asks the player to notice the rhythm and time a hit to the
+	## still half of it rather than simply pointing a plant at the lane and walking
+	## away.
+	##
+	## The numbers, and what each is for:
+	##   * hop_period 2.0s, hop_crouch_fraction 0.70 — a 1.4s CROUCH followed by a
+	##     0.6s LEAP, on repeat for the whole crossing. 1.4s clears
+	##     `CornCobbler.LEVELS[0]["interval"]` (0.80s) with room to spare, so a
+	##     level-1 cob already locked on gets at least one whole shot cycle inside
+	##     every crouch regardless of where in the cycle it happened to arm; 0.6s
+	##     does NOT clear it, which is what makes the leap a real denial rather than
+	##     a cosmetic wobble.
+	##   * `hop_leap_multiplier()` is not a third stored number — it is DERIVED from
+	##     the two above so the cycle's time-weighted average multiplier is always
+	##     exactly 1.0. That is what keeps `speed` meaning what it means for every
+	##     other species (an average px/s over the whole crossing), so nothing that
+	##     reasons about a species' crossing time — `wave_director.gd`'s road-budget
+	##     arithmetic, most of all — has to special-case this one. At these two
+	##     numbers it works out to 3.10x during the leap against HOP_CROUCH_MULT's
+	##     0.10x during the crouch: 0.70 * 0.10 + 0.30 * 3.10 = 1.0 exactly.
+	##   * speed 40 — a shade above the beetle's 38. Despite reading as erratic, it
+	##     is no faster than a beetle averaged over a full lane; the difficulty is
+	##     entirely in the rhythm, not in a bigger number, the same restraint the
+	##     Shield Bug's SPECIES entry argues for its own speed.
+	##   * health 5.0 — a solo level-1 cob (1.25 dps rated) only gets meaningful
+	##     dwell time during the CROUCH 70% of the cycle, so its effective rate
+	##     against this species is close to 0.70 * 1.25 = 0.875/s. 5.0 / 0.875 is
+	##     about 5.7s of crouch-equivalent time, roughly three hop cycles (6.0s) —
+	##     comparable to the aphid's ~2.4s (3.0 / 1.25) but stretched by the
+	##     species' own mechanic rather than by a bigger health pool.
+	##   * seeds 4 — between the aphid's 3 and the Shield Bug's 6, and chosen
+	##     against `CompostMeter.husk_value_for` the same way every species since
+	##     the Shield Bug has been: at multipliers {1.0, 1.5, 2.0, 3.0} it drops
+	##     husks worth {2, 3, 4, 6} — all comfortably under `CompostMeter.FULL_VALUE`
+	##     (9), so every one of them sits in the smooth radius/glow range and none
+	##     can collide with another species' husk the way a value past
+	##     `HuskLayer.PIP_MAX * CompostMeter.FULL_VALUE` could.
+	##   * chew_seconds 2.2 — clears `test_the_chomps_shop_line_is_true_of_the_chew_table`'s
+	##     4x-the-aphid floor (0.45 * 4 = 1.8) with margin, and sits just under the
+	##     beetle's 2.6: no plate, but the same coiled legs that spring it across the
+	##     road keep kicking against the mouth almost as long as a beetle's whole
+	##     body does.
+	##   * scale 0.80 — between the aphid's 0.72 and the Shield Bug's 0.88. An
+	##     ordinary small pest, not a boss and not armoured.
+	##
+	## Deliberately NOT "an aphid but faster" or "a beetle with a stutter": the
+	## Leafhopper's average speed is unremarkable (see above), and what it changes
+	## is the shape of its exposure over time, which none of the six other rows in
+	## this table do at all.
+	HOPPER: {
+		"display": "Leafhopper",
+		"texture": "res://assets/sprites/pest_hopper.png",
+		"dead_texture": "res://assets/sprites/pest_hopper_dead.png",
+		"health": 5.0,
+		"speed": 40.0,
+		"seeds": 4,
+		"chew_seconds": 2.2,
+		"scale": 0.80,
+		"big": false,
+		"hop_period": 2.0,
+		"hop_crouch_fraction": 0.70,
+	},
+	## The Locust (plant-tower-defense-4zyb). The first pest on the board answered
+	## by WHO you kill first rather than by how much damage lands on any one of
+	## them — every other species is exactly as dangerous alone as it is in a
+	## crowd, and this one is not.
+	##
+	## ONE SENTENCE: alone it is the slowest ORDINARY bug in the game (SHY of even
+	## the queen's 30), and its speed only climbs the more OTHER living Locusts are
+	## near it (see `_swarm_neighbor_count` / `swarm_speed_multiplier`) — so a
+	## garden that thins a Locust group early keeps meeting the slow version, and
+	## one that lets a group survive together meets a fast one, on the exact same
+	## wave row.
+	##
+	## The numbers, and what each is for:
+	##   * speed 24.0 — below the queen's 30, deliberately: alone, this species is
+	##     barely worth the click. The whole point is that the number on this row
+	##     understates the danger the way a Shield Bug's `health` understates its
+	##     plate and a Nurse Beetle's `health` understates its aura.
+	##   * swarm_radius 128.0 — two cells (`Board.CELL` is 64), the same "under the
+	##     lane spacing" guard the Nurse's `heal_radius` uses: `Board.PATH_CORNERS`
+	##     runs its three rows 192px apart, so a Locust never links up with one
+	##     walking a lane it does not share, while a column spawned in single file
+	##     on its own lane (see the wave rows) is well within reach of its
+	##     neighbours the moment it is on the board.
+	##   * swarm_cap 5, swarm_step 0.45 — NOT guessed: chosen so a fully massed
+	##     column tops out at EXACTLY `SPECIES[APHID]["speed"]` (78.0), the fastest
+	##     anything moves in this game today. `1.0 + 5 * 0.45 = 3.25`, and
+	##     `24.0 * 3.25 = 78.0`. However dense the swarm gets, it never outpaces the
+	##     species this game already uses as its speed ceiling — the mechanic asks
+	##     the player to manage the crowd, not to fear a number nothing else in the
+	##     game can already produce.
+	##   * health 4.0 — a shade above the aphid's 3.0. Individually it should die
+	##     about as fast as an aphid, so "kill it before it masses" is a real
+	##     option for a garden that already answers aphids, not a second health
+	##     check layered on top of the crowd mechanic.
+	##   * seeds 5 — against `CompostMeter.husk_value_for` at {1.0, 1.5, 2.0, 3.0}:
+	##     {3, 4, 5, 8}, all under `CompostMeter.FULL_VALUE` (9) for the same
+	##     collision-safety reason the Leafhopper's seeds are.
+	##   * chew_seconds 2.0 — clears the same 1.8s floor the Leafhopper's does, with
+	##     margin; a Chomp holding one silences the whole swarm question for that
+	##     one bug exactly as `held_by` already freezes every other mechanic on this
+	##     board (see `_physics_process`).
+	##   * scale 0.70 — the smallest scale in the game, at or under the aphid's
+	##     0.72. Alone, this species should read as the LEAST threatening thing on
+	##     the board, because the danger is entirely in what it becomes in a crowd
+	##     and never in what it looks like by itself.
+	LOCUST: {
+		"display": "Locust",
+		"texture": "res://assets/sprites/pest_locust.png",
+		"dead_texture": "res://assets/sprites/pest_locust_dead.png",
+		"health": 4.0,
+		"speed": 24.0,
+		"seeds": 5,
+		"chew_seconds": 2.0,
+		"scale": 0.70,
+		"big": false,
+		"swarm_radius": 128.0,
+		"swarm_cap": 5,
+		"swarm_step": 0.45,
 	},
 	## The SECOND boss (plant-tower-defense-gsai), and the whole reason it exists is
 	## that it asks a question the Aphid Queen does not.
@@ -687,6 +829,14 @@ var shell_strength: float = 0.0
 ## player twice for one grab and making the pause longer than the grab was.
 var _heal_clock: float = 0.0
 
+## The Leafhopper's hop clock, in seconds since it last started a cycle. 0.0 and
+## idle for every other species, same reason and same shape as `_heal_clock`
+## above: `hop_period()` answers 0.0 for them, and it only advances in the same
+## branch of `_physics_process` that actually moves the pest — a held Leafhopper
+## does not move, so it does not hop either, and it resumes exactly where its
+## cycle left off rather than being handed a fresh crouch on release.
+var _hop_clock: float = 0.0
+
 ## Set by a Chomp Flower while it is eating this pest. A held pest does not move.
 var held_by: Node = null
 
@@ -706,6 +856,12 @@ var mutations: Array[StringName] = []
 var is_armoured: bool = false
 var is_winged: bool = false
 var is_hungry: bool = false
+
+## The cosmetic skin the player has chosen for this species — purely decorative,
+## picked on the Skins screen and unlocked by Milestones (plant-tower-defense-ncfv).
+## See `game/skins.gd` for the table and `set_pest_skin()` below, which is the only
+## writer, for how it reaches the sprite.
+var skin_id: StringName = Skins.DEFAULT_SKIN
 
 var _route: PackedVector2Array = PackedVector2Array()
 var _leg: int = 1
@@ -910,6 +1066,11 @@ func setup(which: StringName, route: PackedVector2Array) -> void:
 	_gait_phase = gait_phase(_next_gait_index)
 	_next_gait_index = (_next_gait_index + 1) % GAIT_PHASE_PERIOD
 	_build_visuals(String(stats["texture"]), float(stats["scale"]))
+	# After _build_visuals(), which is what builds _sprite -- set_pest_skin()'s tint
+	# is a no-op before it exists. Before any apply_mutation() call, so the ordinary
+	# case just wears the skin; see set_pest_skin()'s own comment for the one that
+	# does not.
+	set_pest_skin(RunConfig.selected_skin(Skins.KIND_PEST, which))
 	var dead_path: String = String(stats.get("dead_texture", ""))
 	if dead_path != "":
 		_dead_texture = load(dead_path) as Texture2D
@@ -1051,6 +1212,95 @@ static func heal_per_second(which: StringName) -> float:
 	return heal_amount(which) / period
 
 
+## How near-motionless the Leafhopper's CROUCH half of its cycle is, as a
+## fraction of its ordinary speed. A mechanic constant rather than a per-species
+## stat — only one species hops today, and this is the definition of what
+## "crouch" means, the same way PLATE_OUTER defines what "plate" means rather
+## than living on the Shield Bug's own row.
+const HOP_CROUCH_MULT: float = 0.10
+
+## Seconds per full crouch-then-leap cycle; 0.0 for every species but the
+## Leafhopper, which is also what `hop_speed_multiplier` and
+## `_physics_process` test to decide whether a pest hops at all.
+static func hop_period(which: StringName) -> float:
+	var stats: Dictionary = SPECIES.get(which, {}) as Dictionary
+	return float(stats.get("hop_period", 0.0))
+
+
+## What fraction of one hop cycle is spent crouched rather than leaping; 0.0
+## without a period. Reads hop_period() first for the same "the gate key comes
+## first" reason shell_hits() reads shell_absorb() and heal_amount() reads
+## heal_radius() — a row naming a fraction and no period never hops at all.
+static func hop_crouch_fraction(which: StringName) -> float:
+	if hop_period(which) <= 0.0:
+		return 0.0
+	var stats: Dictionary = SPECIES.get(which, {}) as Dictionary
+	return float(stats.get("hop_crouch_fraction", 0.0))
+
+
+## The leap's speed multiplier — DERIVED, not a third stored number. Chosen so
+## the cycle's time-weighted average multiplier is always exactly 1.0:
+## `fraction * HOP_CROUCH_MULT + (1.0 - fraction) * hop_leap_multiplier == 1.0`.
+## That is what keeps a hopping species' `speed` meaning the same thing every
+## other species' `speed` means — an average px/s over the whole crossing — so
+## nothing reasoning about crossing time has to special-case this one, and a
+## future tuning pass cannot desync the two halves of the cycle the way two
+## independently hand-picked constants could.
+static func hop_leap_multiplier(which: StringName) -> float:
+	var fraction: float = hop_crouch_fraction(which)
+	if fraction <= 0.0 or fraction >= 1.0:
+		return 1.0
+	return (1.0 - fraction * HOP_CROUCH_MULT) / (1.0 - fraction)
+
+
+## Pure: this species' instantaneous speed multiplier `elapsed` seconds into its
+## hop cycle. 1.0 (an ordinary, constant pace) for every species without a
+## period, so this is safe to call for every species in a sweep the same way
+## heal_per_second() is.
+static func hop_speed_multiplier(which: StringName, elapsed: float) -> float:
+	var period: float = hop_period(which)
+	if period <= 0.0:
+		return 1.0
+	var t: float = fposmod(elapsed, period)
+	if t < period * hop_crouch_fraction(which):
+		return HOP_CROUCH_MULT
+	return hop_leap_multiplier(which)
+
+
+## How far the Locust's crowd sense reaches, in pixels; 0.0 for a species with
+## no swarm mechanic. Same shape and same reason as heal_radius() above — the
+## GATE key, so swarm_cap()/swarm_step() read it first.
+static func swarm_radius(which: StringName) -> float:
+	var stats: Dictionary = SPECIES.get(which, {}) as Dictionary
+	return float(stats.get("swarm_radius", 0.0))
+
+
+## How many nearby Locusts the crowd bonus counts before it stops climbing; 0
+## without a reach.
+static func swarm_cap(which: StringName) -> int:
+	if swarm_radius(which) <= 0.0:
+		return 0
+	var stats: Dictionary = SPECIES.get(which, {}) as Dictionary
+	return int(stats.get("swarm_cap", 0))
+
+
+## How much faster one more nearby Locust makes this one, as a fraction of its
+## own base speed; 0.0 without a reach.
+static func swarm_step(which: StringName) -> float:
+	if swarm_radius(which) <= 0.0:
+		return 0.0
+	var stats: Dictionary = SPECIES.get(which, {}) as Dictionary
+	return float(stats.get("swarm_step", 0.0))
+
+
+## Pure: the speed multiplier for a pest with `neighbor_count` others of its own
+## kind within reach, given a `cap` and a per-neighbor `step`. 1.0 at zero
+## neighbours — alone, a Locust is exactly as fast as its own SPECIES row says
+## and nothing about this mechanic makes it faster than that.
+static func swarm_speed_multiplier(neighbor_count: int, cap: int, step: float) -> float:
+	return 1.0 + float(clampi(neighbor_count, 0, cap)) * step
+
+
 ## Pure: how much of an `amount`-sized hit reaches the flesh under a plate with
 ## `blocks_left` blocks still on it.
 ##
@@ -1137,6 +1387,23 @@ static func tint_for(which: StringName) -> Color:
 func _tint(colour: Color) -> void:
 	if _sprite != null:
 		_sprite.modulate = colour
+
+
+## Sets the cosmetic skin and, unless a mutation has already claimed the sprite's
+## colour, applies its tint through the same `_tint()` a mutation's own hue goes
+## through above.
+##
+## A MUTATION STILL WINS OUTRIGHT, exactly the priority `apply_mutation`'s own
+## comment states for two mutations composing onto one tint: MUTATION_TINT carries
+## gameplay information (see that constant's header) and a skin carries none, so a
+## skin never has an opinion once a mutation has one. `setup()` calls this before
+## any mutation can have landed, so the ordinary case is simply "wear the skin";
+## the guard only matters for a pest skinned and then mutated in the same frame
+## (`Game.spawn_pest` applies mutations after `_new_pest` finishes `setup()`).
+func set_pest_skin(id: StringName) -> void:
+	skin_id = id
+	if mutation == &"":
+		_tint(Skins.tint_for(skin_id))
 
 
 ## Which silhouette marks this pest wears. Pure and flag-driven, so a pest
@@ -1352,7 +1619,14 @@ func _physics_process(delta: float) -> void:
 		if meal != null:
 			meal.take_damage(EAT_DPS * delta)
 			return
-	_advance(delta * speed)
+	# The Leafhopper's clock only advances here, in the one branch that actually
+	# walks the pest — the same rule `_heal_clock` follows and for the same
+	# reason: a held or blocked pest is not hopping either, so its cycle waits
+	# rather than running unseen and handing it a fresh crouch the instant it is
+	# free to move again.
+	if hop_period(species) > 0.0:
+		_hop_clock += delta
+	_advance(delta * _effective_speed())
 
 
 ## The doc's "hungry" trait: eats the plant instead of walking past. Only ever
@@ -1453,6 +1727,48 @@ func pulse_aura() -> void:
 		if other.global_position.distance_to(global_position) > reach:
 			continue
 		other.heal(amount)
+
+
+## How many OTHER living Locusts are within `radius` of this one. The live half
+## of the swarm mechanic — walks the same tree-global "pests" group
+## `pulse_aura()` above already reads, for the same reason: a second, private
+## way to ask "who is nearby" is how the Nurse's aura and a Locust's crowd sense
+## end up disagreeing about what counts as a neighbour.
+##
+## Same species only, deliberately — a Locust does not read a nearby aphid or
+## beetle as part of its crowd, which is what makes this a rule about Locusts
+## interacting with EACH OTHER rather than a second, quieter version of the
+## Nurse's aura reading every pest on the board.
+func _swarm_neighbor_count(radius: float) -> int:
+	if not is_inside_tree():
+		return 0
+	var count: int = 0
+	for node: Node in get_tree().get_nodes_in_group("pests"):
+		var other := node as Pest
+		if other == null or other == self or other.species != species or not other.is_alive():
+			continue
+		if other.global_position.distance_to(global_position) <= radius:
+			count += 1
+	return count
+
+
+## This pest's actual px/s right now, folding in whichever of the two movement
+## mechanics (if either) its species carries. Every other species simply
+## answers `speed`, unmodified — the same "an ordinary pest has nothing to
+## apply" shape `damage_through_shell` and `pulse_aura`'s reach guard both use.
+##
+## The two branches are mutually exclusive by construction (`SPECIES` gives
+## `hop_period` and `swarm_radius` to different rows), so there is no ordering
+## decision buried here the way there is between the Bramble and a hungry
+## pest's meal in `_physics_process`.
+func _effective_speed() -> float:
+	if hop_period(species) > 0.0:
+		return speed * hop_speed_multiplier(species, _hop_clock)
+	var reach: float = swarm_radius(species)
+	if reach > 0.0:
+		var neighbors: int = _swarm_neighbor_count(reach)
+		return speed * swarm_speed_multiplier(neighbors, swarm_cap(species), swarm_step(species))
+	return speed
 
 
 ## Pure: what a pest on `health_now` out of `ceiling` sits at after `amount` of
