@@ -154,7 +154,39 @@ const SAVE_PATH := "user://highscore.save"
 ## The rename is applied to what the two parsers RETURN rather than to the text they read,
 ## so both lines keep exactly one grammar and one validator — the same reason `_save`
 ## reads its own output back through `_parse_save` instead of trusting the writer.
-const SAVE_VERSION: int = 12
+## Version 13 turns the petal balance into a WALLET (plant-tower-defense-il1y). A skin
+## no longer costs one currency, it costs three — petals, compost and heartwood, earned
+## three different ways (`Currency`) — so the scalar `p<n>` line is replaced by a
+## count-prefixed `w<n> id=amount ...` line, the fourth line in this file to take that
+## shape and for the third time the reason `compose_difficulty_line` gives: a line cut
+## in half is otherwise indistinguishable from a player who has only ever earned one
+## thing.
+##
+## A LINE REPLACED, NOT A LINE ADDED, and that is the choice worth writing down. Three
+## sibling scalars would have been three prefixes, three parsers, three fields in
+## `reset_persisted_state` and three chances to forget one — which is exactly the bug
+## `reset_persisted_state`'s own comment records `selected_skins` having. All three are
+## the same SHAPE, unlike the v11 pair, so the argument that split those two into a
+## scalar and a set says these belong on one line. A fourth currency is then a row in
+## `Currency.TABLE` and nothing here at all.
+##
+## THE MIGRATION IS THE OLD LINE READ IN ITS OLD PLACE. A v12 file has `p<n>` where a
+## v13 file has `w<n> ...`, so the parser asks the VERSION which line it is looking at
+## (`VERSION_WITH_WALLET`) and never guesses from the prefix — `p` and `w` are one
+## character apart in a file where the next line down is a bare integer, and a parser
+## that sniffed would read a truncated save as a shorter one that happened to line up.
+## A v12 balance becomes the wallet's petal amount and the other two start at zero,
+## which is the honest reading: nothing before v13 could have earned them.
+##
+## PETALS ARE NOT REVALUED BY THE BUMP. `Skins.PRICES` moved by roughly twenty-four
+## times at the same commit, so a v12 player's 40 petals buy a third of what they used
+## to. That is a balance change and not a data loss — the number on disk is carried
+## across exactly — but it is the one thing in this migration a player can FEEL, so it
+## is said here rather than discovered.
+##
+## So the v13 line order is: milestones, preferences, difficulty scores, skins, WALLET,
+## purchases, binding count, bindings.
+const SAVE_VERSION: int = 13
 
 ## The version that made the record know which difficulty earned it
 ## (plant-tower-defense-1hgx).
@@ -200,12 +232,25 @@ const VERSION_WITH_SHOP: int = 11
 ## value, and nothing anywhere says it has to stay that way.
 const VERSION_WITH_STYLE_SKINS: int = 12
 
+## The version that replaced the petal line with the wallet line
+## (plant-tower-defense-il1y). Same role as VERSION_WITH_SHOP and the three before it:
+## the parser is told which SHAPE the line at that position has, rather than sniffing
+## its prefix or comparing against whatever SAVE_VERSION happens to be. A v12 file has
+## `p<n>` there; a v13 file has `w<n> id=amount ...`.
+const VERSION_WITH_WALLET: int = 13
+
 ## The petal line's leading character, and it has one for the reason MILESTONE_PREFIX
 ## does: `get_line()` returns "" past the end of a truncated file, `int("")` is 0, and 0
 ## is a legal-looking balance. A bare digit here would also be indistinguishable from
 ## the key-binding COUNT line two rows down, so a save truncated mid-file would parse as
 ## a shorter file that happened to line up — the same trap OPTIONS_SPEED_PREFIX names.
 const PETAL_PREFIX := "p"
+
+## The v13 wallet line's leading character, and it replaces PETAL_PREFIX rather than
+## joining it — `p` is still read, but only out of a pre-v13 file. `w` for "wallet";
+## `p` was the balance it supersedes, `s` and `u` are the two lines around it, and `d`
+## is the difficulty line three rows up.
+const WALLET_PREFIX := "w"
 
 ## The wardrobe line's leading character. `u` for "unlocked", which is what a bought
 ## family is from the player's side; `p` was already taken by the balance and `s` by the
@@ -215,10 +260,16 @@ const PURCHASE_PREFIX := "u"
 ## Petals a milestone is worth the first time it is earned.
 ##
 ## Ten against one-per-wave-cleared, so the seven milestones are worth about as much as
-## three campaigns — an achievement pays for most of a plant skin (`Skins.PLANT_SKIN_COST`
-## is 5) or two pest ones. ONCE, and that is `record_milestones`'s contract rather than a
-## check here: it returns only what is fresh, so `Game._end_run` grants against that array
-## and a re-earned milestone is worth nothing, exactly as its flag already was.
+## two and a half campaigns of waves. Against `Skins.PRICES` that is most of a pest
+## skin's petal term and well under a plant skin's — the ten was chosen when a plant
+## skin cost five petals outright, and it is kept rather than rescaled because what it
+## is now is a HEAD START on a price measured in campaigns, which is exactly what an
+## achievement should be worth. `Currency.MILESTONE_HEARTWOOD` is the other half of the
+## same grant.
+##
+## ONCE, and that is `record_milestones`'s contract rather than a check here: it returns
+## only what is fresh, so `Game._end_run` grants against that array and a re-earned
+## milestone is worth nothing, exactly as its flag already was.
 const MILESTONE_PETALS: int = 10
 
 ## The version that introduced the milestone line, the options line and the
@@ -597,20 +648,31 @@ var earned_milestones: Dictionary = {}
 ## knows exists.
 var selected_skins: Dictionary = {}
 
-## The petal balance: the persisted meta-currency the Shop spends
-## (plant-tower-defense-u82u). One per wave cleared, MILESTONE_PETALS per milestone
-## earned for the first time.
+## The wallet: every meta-currency the Shop spends, as `Currency` id -> amount
+## (plant-tower-defense-u82u, widened from one balance to three at
+## plant-tower-defense-il1y). `Currency.TABLE` says what each one is and where it comes
+## from; this is only how much of it this player has.
 ##
-## PERSISTED, and it is the first number in this file that is neither a record nor a
+## PERSISTED, and it is the first thing in this file that is neither a record nor a
 ## preference — it is a BALANCE, and that is a third contract. A lost record is a lost
 ## boast; a lost balance is lost work. It rides in the same file all the same, because a
 ## second file would mean a second half-written-file story and this file's header is
 ## about how expensive that was to get right once.
 ##
-## Never negative. `add_petals` refuses a negative grant and `buy_skin` refuses a price
-## it cannot pay, so the only two writers cannot take it below zero — which is also what
-## lets the save format validate it with the existing `_is_score`.
-var petals: int = 0
+## EVERY KNOWN ID IS PRESENT, at zero if nothing has been earned — that is what
+## `Currency.empty_wallet()` builds and what `reset_persisted_state` restores — so no
+## reader has to tell "this player has no compost" from "this build has no compost".
+##
+## No amount is ever negative. `grant` refuses a negative count and `buy_skin` refuses a
+## price the wallet cannot cover, so the only two writers cannot take one below zero —
+## which is also what lets the save format validate each amount with the existing
+## `_is_score`.
+##
+## A STRING KEY, not a StringName, because that is what the save line parses to: a
+## Dictionary holding both spellings answers `has()` false for whichever one it was not
+## written with, and does it silently. `Currency.amount_in()` is the reader that makes
+## the spelling somebody else's problem.
+var wallet: Dictionary = Currency.empty_wallet()
 
 ## The wardrobe: which families have been BOUGHT for which target, as
 ## `Skins.selection_key(kind, id) -> Array[String]` of family ids.
@@ -799,7 +861,7 @@ func reset_persisted_state() -> void:
 	# the bytes it writes — which is exactly the `d2 campaign:gentle=3453` failure
 	# `discard_scratch_save`'s own header describes, one field along.
 	selected_skins = {}
-	petals = 0
+	wallet = Currency.empty_wallet()
 	purchased_skins = {}
 	colorblind_safe = false
 	mute_sfx = false
@@ -961,7 +1023,7 @@ func record_score(seeds_earned: int) -> bool:
 static func compose_save(campaign: int, endless_best: int, milestone_line: String,
 		preferences_line: String, bindings: Dictionary,
 		other_difficulties: Dictionary = {}, skins: Dictionary = {},
-		petal_count: int = 0, purchases: Dictionary = {}) -> String:
+		wallet_state: Dictionary = {}, purchases: Dictionary = {}) -> String:
 	var out: PackedStringArray = [
 		"v%d" % SAVE_VERSION,
 		str(campaign),
@@ -972,7 +1034,9 @@ static func compose_save(campaign: int, endless_best: int, milestone_line: Strin
 		compose_skins_line(skins),
 		# The two v11 lines, and they go HERE — under the skins, above the count — for
 		# the third time and the same reason the two before them did. See SAVE_VERSION.
-		compose_petal_line(petal_count),
+		# The first of them became the v13 WALLET line in place, so the line ORDER is
+		# v11's and every field under it kept its row.
+		compose_wallet_line(wallet_state),
 		compose_purchase_line(purchases),
 		str(bindings.size()),
 	]
@@ -1102,6 +1166,13 @@ static func parse_skins_line(text: String) -> Variant:
 
 ## The v11 petal line. A prefix and a non-negative integer, nothing else — the
 ## simplest line in the file, and prefixed anyway for the reason PETAL_PREFIX gives.
+##
+## NOTHING WRITES THIS ANY MORE. `compose_save` emits `compose_wallet_line` in its
+## place from v13 on, and this pair stays because the MIGRATION has to be testable: a
+## v12 file is a shape this project must keep being able to build and read back, and a
+## fixture assembled by hand out of a format string is a fixture that stops agreeing
+## with the parser the moment either drifts. Deleting the writer would leave the reader
+## checked only against strings typed into a test.
 static func compose_petal_line(count: int) -> String:
 	return "%s%d" % [PETAL_PREFIX, count]
 
@@ -1112,7 +1183,7 @@ static func compose_petal_line(count: int) -> String:
 ##
 ## Validated by `_is_score`, which is the same function the two high scores go through
 ## and rejects both `""` and a negative. A negative balance is not a shape either writer
-## can produce (`add_petals` refuses a negative grant, `buy_skin` refuses a price it
+## can produce (`grant` refuses a negative grant, `buy_skin` refuses a price it
 ## cannot pay), so one on disk is corruption — and a balance that reads as -3 would let
 ## the shop hand out a free skin the moment the player earned four petals.
 static func parse_petal_line(text: String) -> Variant:
@@ -1122,6 +1193,98 @@ static func parse_petal_line(text: String) -> Variant:
 	if not _is_score(body):
 		return null
 	return int(body)
+
+
+## The v13 wallet line: `w3 compost=40 heartwood=2 petals=118`.
+##
+## Count-prefixed and sorted like every other set line here, so a cut line is
+## detectable and two saves holding the same wallet are byte-identical.
+##
+## EVERY KNOWN CURRENCY IS WRITTEN, including the ones sitting at zero — which is the
+## one place this line deliberately breaks the rule `compose_difficulty_line` and
+## `compose_skins_line` both follow, of dropping a value that means nothing. A zero
+## score is the absence of a record and a DEFAULT_SKIN choice is the absence of a
+## choice, so dropping either loses nothing. A zero BALANCE is not an absence: it is a
+## player who has spent everything, and it is the shape the wallet is in for the whole
+## of a new save. Dropping it would make the commonest wallet in the game an empty line
+## and make `w0` mean both "nothing earned yet" and "a build with no currencies", which
+## is the ambiguity the count prefix exists to remove.
+##
+## An amount from a wallet key this build does not know is written back out verbatim,
+## so a save round-tripped through an older build keeps a newer one's currency instead
+## of silently spending it — the same tolerance `compose_purchase_line` extends to a
+## foreign family id.
+static func compose_wallet_line(amounts: Dictionary) -> String:
+	# LAID OVER A FULL EMPTY WALLET rather than written straight out of `amounts`, so
+	# every currency this build knows appears whatever the caller passed — including the
+	# `{}` that `compose_save`'s own default hands it, which is the shape a test
+	# composing a save with no wallet uses. Without this, that default writes `w0`, and
+	# `w0` would mean both "a build with no currencies" and "a caller who did not
+	# mention them", which is exactly the ambiguity the count prefix exists to remove.
+	var merged: Dictionary = Currency.empty_wallet()
+	for key: Variant in amounts.keys():
+		merged[String(key)] = maxi(0, int(amounts[key]))
+	var fields: PackedStringArray = []
+	var keys: Array = merged.keys()
+	keys.sort()
+	for key: Variant in keys:
+		fields.append("%s=%d" % [String(key), int(merged[key])])
+	return " ".join(PackedStringArray(["%s%d" % [WALLET_PREFIX, fields.size()]]) + fields)
+
+
+## Reads what `compose_wallet_line` wrote, as `id -> int`, or `null` on anything else —
+## the convention every `_parse_*` here follows so `_parse_save` can refuse the whole
+## file rather than half-read it.
+##
+## Each amount goes through `_is_score`, the same validator the two high scores and the
+## old petal line used, and it rejects both `""` and a negative for the reason that line
+## gave: a negative balance is not a shape either writer can produce, so one on disk is
+## corruption — and a wallet reading -3 petals would let the Shop hand out a free skin
+## the moment four were earned.
+##
+## The id is validated against MILESTONE_ID_CHARS and NOT against `Currency.TABLE`. A
+## save from a later build names a currency this one has never had; refusing the whole
+## file over it would cost the two high scores, which cannot be re-earned, to protect a
+## balance which can. `Currency.amount_in` is where an unknown id becomes "zero of a
+## thing you cannot spend".
+static func parse_wallet_line(text: String) -> Variant:
+	var parts: PackedStringArray = text.split(" ", false)
+	if parts.size() == 0 or not parts[0].begins_with(WALLET_PREFIX):
+		return null
+	var count_text: String = parts[0].substr(WALLET_PREFIX.length())
+	if not count_text.is_valid_int():
+		return null
+	var count: int = int(count_text)
+	if count < 0 or parts.size() - 1 != count:
+		return null
+	var out: Dictionary = {}
+	for i: int in range(1, parts.size()):
+		var field: String = parts[i]
+		var split: int = field.find("=")
+		if split <= 0:
+			return null
+		var key: String = field.substr(0, split)
+		var value: String = field.substr(split + 1)
+		if not _is_id_text(key) or not _is_score(value):
+			return null
+		if out.has(key):
+			return null
+		out[key] = int(value)
+	return out
+
+
+## A wallet with every currency this build knows present, built over whatever a save
+## carried — the shape `Currency.empty_wallet()` promises, applied to parsed input.
+##
+## Here rather than in `Currency` because it is a fact about how a SAVE is read: a file
+## missing a currency (every pre-v13 file, and any file written by a build with fewer)
+## reads as zero of it, and a file carrying one this build does not know keeps it, so a
+## round trip through an older build is not a silent confiscation.
+static func wallet_from_parsed(amounts: Dictionary) -> Dictionary:
+	var out: Dictionary = Currency.empty_wallet()
+	for key: Variant in amounts.keys():
+		out[String(key)] = maxi(0, int(amounts[key]))
+	return out
 
 
 ## The v11 wardrobe line. The `s` line's shape with a COMMA LIST for a value:
@@ -1371,15 +1534,16 @@ func owns_skin(kind: StringName, id: StringName, family_id: StringName) -> bool:
 	return Skins.is_owned(kind, id, family_id, purchased_skins)
 
 
-## Buys `family_id` for `kind`/`id`: spends the petals, records the purchase and writes
+## Buys `family_id` for `kind`/`id`: spends the price, records the purchase and writes
 ## the file. Returns whether the purchase happened.
 ##
-## FOUR REFUSALS, in this order, and every one of them leaves `petals` and
+## FOUR REFUSALS, in this order, and every one of them leaves `wallet` and
 ## `purchased_skins` exactly as they were:
 ##   an unknown target — a plant or pest this build does not have;
 ##   an unknown family, or DEFAULT_SKIN, which is not for sale because everyone has it;
 ##   one already owned on this row, so a double press cannot be charged twice;
-##   a price the balance cannot pay.
+##   a price the wallet cannot cover — in EVERY currency at once, never in part, see
+##     `Currency.covers`.
 ##
 ## THE ID GUARD IS AT THE DOOR, and it is here for the reason `record_milestones`
 ## documents at length rather than out of symmetry: this function APPENDS to a line
@@ -1406,8 +1570,8 @@ func buy_skin(kind: StringName, id: StringName, family_id: StringName) -> bool:
 			+ "and accepting this would make every save in this session fail silently.")
 			% [kind, id, family_id, MILESTONE_ID_CHARS])
 		return false
-	var cost: int = Skins.cost_for(kind, family_id)
-	if cost > petals:
+	var price: Dictionary = Skins.price_for(kind, family_id)
+	if not Currency.covers(wallet, price):
 		return false
 	var key: String = Skins.selection_key(kind, id)
 	var owned: Array[String] = []
@@ -1420,7 +1584,10 @@ func buy_skin(kind: StringName, id: StringName, family_id: StringName) -> bool:
 	# anything.
 	owned.sort()
 	purchased_skins[key] = owned
-	petals -= cost
+	# Assigned from `Currency.spend`'s return rather than mutated in place, and only
+	# after every refusal above has passed: the wallet on the failing paths is the same
+	# object it was, not one that was edited and then put back.
+	wallet = Currency.spend(wallet, price)
 	_save()
 	return true
 
@@ -1436,22 +1603,66 @@ static func is_recordable_purchase(kind: StringName, id: StringName,
 		and _is_id_text(String(family_id)))
 
 
-## Adds `count` petals and writes them down. Returns the balance afterwards, so a
-## caller need not read it back.
+## What the wallet holds of one currency. The read every caller outside this file uses,
+## so nothing has to know the wallet is keyed by String — see `wallet`'s own note on
+## why the spelling matters.
+func balance(currency_id: StringName) -> int:
+	return Currency.amount_in(wallet, currency_id)
+
+
+## Adds `count` of `currency_id` and writes it down. Returns that currency's balance
+## afterwards, so a caller need not read it back.
 ##
 ## A NEGATIVE COUNT IS A NO-OP, not a subtraction, and this is the only place the rule
-## lives. Petals are spent through `buy_skin`, which knows the price and refuses one it
-## cannot pay; a general "add a negative" door would be a second spender with no such
-## check, and it is the one that would take the balance below zero — where `_is_score`
-## refuses the line and every save in the session dies silently. `count == 0` is a no-op
-## for the reason `set_colorblind_safe` is: the save file is not a place to record that
-## nothing happened.
-func add_petals(count: int) -> int:
+## lives. A currency is spent through `buy_skin`, which knows the price and refuses one
+## the wallet cannot cover; a general "add a negative" door would be a second spender
+## with no such check, and it is the one that would take a balance below zero — where
+## `_is_score` refuses the line and every save in the session dies silently.
+## `count == 0` is a no-op for the reason `set_colorblind_safe` is: the save file is not
+## a place to record that nothing happened.
+##
+## AN UNKNOWN CURRENCY IS A NO-OP TOO, and it is a warning rather than a silent skip.
+## Every caller names a `Currency` constant, so reaching this means the table lost a row
+## that something still grants against — and a grant that quietly vanished is a player
+## playing for a reward that is not accruing.
+func grant(currency_id: StringName, count: int) -> int:
 	if count <= 0:
-		return petals
-	petals += count
+		return balance(currency_id)
+	if not Currency.has(currency_id):
+		push_warning(("RunConfig: refusing to grant %d %s -- no such currency. "
+			+ "Currency.TABLE is what says one exists.") % [count, currency_id])
+		return 0
+	wallet = Currency.add(wallet, currency_id, count)
 	_save()
-	return petals
+	return balance(currency_id)
+
+
+## Adds several currencies at once and writes ONCE — `id -> count`, the shape a run
+## accumulates in (`Game._earned`).
+##
+## ONE WRITE, and that is the whole reason it exists beside `grant`. A banked run pays
+## petals, compost and heartwood together; three `grant` calls would rewrite
+## `user://highscore.save` three times at the one moment the player is watching a
+## post-mortem animate. Each entry goes through the same refusals `grant` makes, applied
+## to the in-memory wallet, so a bad id costs a warning and not the other two grants.
+func grant_all(counts: Dictionary) -> void:
+	var next: Dictionary = wallet
+	var changed: bool = false
+	for key: Variant in counts.keys():
+		var id := StringName(key)
+		var count: int = int(counts[key])
+		if count <= 0:
+			continue
+		if not Currency.has(id):
+			push_warning(("RunConfig: refusing to grant %d %s -- no such currency. "
+				+ "Currency.TABLE is what says one exists.") % [count, id])
+			continue
+		next = Currency.add(next, id, count)
+		changed = true
+	if not changed:
+		return
+	wallet = next
+	_save()
 
 
 ## Sets the skin for `kind`/`id`, and persists it. Returns whether the choice took —
@@ -1925,7 +2136,7 @@ func _parse_failed(reason: String) -> Dictionary:
 		"colorblind_safe": false, "mute_sfx": false, "mute_music": false,
 		"game_speed_step": 0, "sfx_level": 0, "music_level": 0,
 		"bindings": {}, "version": 0, "difficulty_scores": {}, "skins": {},
-		"petals": 0, "purchases": {}, "reason": reason}
+		"wallet": Currency.empty_wallet(), "purchases": {}, "reason": reason}
 
 
 ## Validates an entire save file and only then hands back its contents.
@@ -1967,7 +2178,7 @@ func _parse_save(path: String) -> Dictionary:
 			"colorblind_safe": false, "mute_sfx": false, "mute_music": false,
 			"game_speed_step": 0, "sfx_level": 0, "music_level": 0,
 			"bindings": {}, "version": 1, "difficulty_scores": {}, "skins": {},
-			"petals": 0, "purchases": {}, "reason": "v1"}
+			"wallet": Currency.empty_wallet(), "purchases": {}, "reason": "v1"}
 
 	var version_text: String = header.substr(1)
 	if not version_text.is_valid_int():
@@ -2065,13 +2276,26 @@ func _parse_save(path: String) -> Dictionary:
 	#
 	# Both or neither, never one: they landed in the same version, so a file that has the
 	# balance and not the wardrobe is not a shape any writer produced.
-	var petal_count: int = 0
+	#
+	# The FIRST of the two changed shape at v13 without changing position: `p<n>` became
+	# `w<n> id=amount ...`. Which one is read is decided by VERSION_WITH_WALLET and never
+	# by looking at the prefix — see SAVE_VERSION. A v11/v12 balance becomes the wallet's
+	# petal amount and the other currencies start at zero, because nothing before v13
+	# could have earned them.
+	var wallet_state: Dictionary = Currency.empty_wallet()
 	var purchases: Dictionary = {}
 	if version >= VERSION_WITH_SHOP:
-		var parsed_petals: Variant = parse_petal_line(f.get_line().strip_edges())
-		if parsed_petals == null:
-			return _parse_failed("its petal line is not a petal line")
-		petal_count = int(parsed_petals)
+		var balance_line: String = f.get_line().strip_edges()
+		if version >= VERSION_WITH_WALLET:
+			var parsed_wallet: Variant = parse_wallet_line(balance_line)
+			if parsed_wallet == null:
+				return _parse_failed("its wallet line is not a wallet line")
+			wallet_state = wallet_from_parsed(parsed_wallet as Dictionary)
+		else:
+			var parsed_petals: Variant = parse_petal_line(balance_line)
+			if parsed_petals == null:
+				return _parse_failed("its petal line is not a petal line")
+			wallet_state = wallet_from_parsed({String(Currency.PETALS): int(parsed_petals)})
 		var parsed_purchases: Variant = parse_purchase_line(f.get_line().strip_edges())
 		if parsed_purchases == null:
 			return _parse_failed("its purchase line is not a purchase line")
@@ -2137,7 +2361,7 @@ func _parse_save(path: String) -> Dictionary:
 		"bindings": bindings,
 		"difficulty_scores": difficulty_scores,
 		"skins": skins,
-		"petals": petal_count,
+		"wallet": wallet_state,
 		"purchases": purchases,
 		"reason": "v%d" % version,
 	}
@@ -2219,7 +2443,7 @@ func _load() -> void:
 	# selections read one line up survive alongside an empty wardrobe and are simply not
 	# selectable until something is bought — see `selected_skin()`, where that fallback
 	# IS the v10 -> v11 migration.
-	petals = int(parsed.get("petals", 0))
+	wallet = wallet_from_parsed(parsed.get("wallet", {}) as Dictionary)
 	purchased_skins = parsed.get("purchases", {}) as Dictionary
 	key_bindings = parsed["bindings"] as Dictionary
 	# Replaced, not merged. A load is "this is what is on disk", and a union with
@@ -2315,7 +2539,7 @@ func _save() -> bool:
 		return false
 	var text: String = compose_save(campaign_high_score, endless_high_score,
 		_milestone_line(), _preferences_line(), key_bindings, difficulty_high_scores,
-		selected_skins, petals, purchased_skins)
+		selected_skins, wallet, purchased_skins)
 	f.store_string(text)
 	f.flush()
 	var write_error: int = f.get_error()

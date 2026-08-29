@@ -9328,7 +9328,7 @@ func test_every_damage_and_fluff_frame_stays_on_the_skin_it_started_in() -> Stri
 func test_a_plant_takes_white_over_real_art_and_the_tint_only_without_it() -> String:
 	var stashed_selections: Dictionary = RunConfig.selected_skins.duplicate()
 	var stashed_purchases: Dictionary = RunConfig.purchased_skins.duplicate()
-	var stashed_petals: int = RunConfig.petals
+	var stashed_wallet: Dictionary = RunConfig.wallet.duplicate(true)
 	var kind: StringName = PlantCatalog.ids()[0]
 	var err: String = ""
 	var checked: int = 0
@@ -9337,10 +9337,13 @@ func test_a_plant_takes_white_over_real_art_and_the_tint_only_without_it() -> St
 		# `purchased_skins` by hand. A selection the player could not have reached is a
 		# fixture that tests a state the game cannot produce; see the setter-verb note
 		# in CLAUDE.md's bridge section, which is the same argument one level down.
-		RunConfig.petals = 999
+		# The plant price exactly, derived rather than a big round number: a wallet
+		# staged from `Skins.PRICES` cannot drift out of step with it the way a typed
+		# 999 did the day a skin stopped costing five.
+		RunConfig.wallet = Skins.price_for(Skins.KIND_PLANT, family)
 		if family != Skins.DEFAULT_SKIN:
 			err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, kind, family),
-				"%s can be bought for %s with petals in hand" % [family, kind])
+				"%s can be bought for %s with its price in hand" % [family, kind])
 			if err != "":
 				break
 		err = _T.assert_true(RunConfig.set_skin(Skins.KIND_PLANT, kind, family),
@@ -9375,7 +9378,7 @@ func test_a_plant_takes_white_over_real_art_and_the_tint_only_without_it() -> St
 		plant.free()
 		if err != "":
 			break
-	RunConfig.petals = stashed_petals
+	RunConfig.wallet = stashed_wallet
 	RunConfig.purchased_skins = stashed_purchases
 	RunConfig.selected_skins = stashed_selections
 	if err != "":
@@ -9394,7 +9397,7 @@ func test_a_plant_takes_white_over_real_art_and_the_tint_only_without_it() -> St
 func test_the_placement_ghost_resolves_the_same_drawing_the_placed_plant_will() -> String:
 	var stashed_selections: Dictionary = RunConfig.selected_skins.duplicate()
 	var stashed_purchases: Dictionary = RunConfig.purchased_skins.duplicate()
-	var stashed_petals: int = RunConfig.petals
+	var stashed_wallet: Dictionary = RunConfig.wallet.duplicate(true)
 	var family: StringName = &""
 	for candidate: StringName in _skin_families():
 		if Skins.has_art(candidate):
@@ -9404,8 +9407,11 @@ func test_the_placement_ghost_resolves_the_same_drawing_the_placed_plant_will() 
 		"the table declares a family with art for this test to wear")
 	var checked: int = 0
 	if err == "":
-		RunConfig.petals = 9999
 		for id: StringName in PlantCatalog.ids():
+			# Topped up per purchase, from the price table rather than from a number
+			# typed here: what is under test is what a plant WEARS, and a wallet that
+			# ran out would turn that into a refusal nobody reads.
+			RunConfig.wallet = Skins.price_for(Skins.KIND_PLANT, family)
 			err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, id, family),
 				"%s is bought for %s" % [family, id])
 			if err == "":
@@ -9430,7 +9436,7 @@ func test_the_placement_ghost_resolves_the_same_drawing_the_placed_plant_will() 
 			checked += 1
 			if err != "":
 				break
-	RunConfig.petals = stashed_petals
+	RunConfig.wallet = stashed_wallet
 	RunConfig.purchased_skins = stashed_purchases
 	RunConfig.selected_skins = stashed_selections
 	if err == "":
