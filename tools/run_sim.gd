@@ -423,14 +423,16 @@ func _collect_garbage() -> void:
 ## Mirrors `Game._new_pest`. One constructor for scheduled pests and for brood, the split
 ## that function names: a pest that arrives because a queen burst is the same object, on
 ## the same route, paying the same seeds.
+##
+## The setup pair itself -- `pest.setup()` and `pest.apply_wave_scaling()` -- is
+## `Game.setup_pest`, the shared static both sides call (plant-tower-defense-b0mp); the
+## parenting, the two signals and the list append below stay here because they differ
+## from `Game`'s (a headless host, no ambience to refresh).
 func _new_pest(species: StringName) -> Pest:
 	var pest := Pest.new()
 	_host.add_child(pest)
 	pest.set_physics_process(false)
-	pest.setup(species, board.route())
-	pest.apply_wave_scaling(
-		WaveDirector.health_scale_for(director.current_wave),
-		WaveDirector.speed_scale_for(director.current_wave))
+	Game.setup_pest(pest, species, board, director.current_wave)
 	pest.died.connect(_on_pest_died)
 	pest.escaped.connect(_on_pest_escaped)
 	_pests.append(pest)
@@ -441,18 +443,16 @@ func _new_pest(species: StringName) -> Pest:
 ## weather on the direct seeds, then the husk, then the brood — in that order, because the
 ## brood is the consequence of the kill rather than part of paying for it.
 ##
-## `seeds_after_yield` is CALLED, not re-derived, and it is applied to `pest.seed_value`
-## ONCE so the husk follows it without a second multiply and a second rounding. Both halves
-## of that sentence are the mirror: see `Game._on_pest_died`, which does the same two things
-## in the same order through the same function.
+## `Game.kill_payout` is CALLED, not re-derived (plant-tower-defense-b0mp) — both the seed
+## price and the husk price are the ONE shared static now, so there is no second copy of
+## either roundings to keep in step. `Game._on_pest_died` calls the same function.
 func _on_pest_died(pest: Pest) -> void:
 	_w["killed"] = int(_w["killed"]) + 1
-	var worth: int = Game.seeds_after_yield(pest.seed_value, seed_yield)
-	var paid: int = Game.weather_seed_value_for(worth, weather)
+	var payout: Dictionary = Game.kill_payout(pest, seed_yield, weather)
+	var paid: int = int(payout["seeds"])
 	bank.add_seeds(paid)
 	_w["seeds_from_kills"] = int(_w["seeds_from_kills"]) + paid
-	compost.drop_husk(pest.position,
-		CompostMeter.husk_value_for(worth, pest.husk_multiplier()))
+	compost.drop_husk(pest.position, int(payout["husk"]))
 	_spawn_brood(pest)
 
 
@@ -465,20 +465,16 @@ func _on_pest_escaped(_pest: Pest) -> void:
 		lives = 0
 
 
-## Mirrors `Game._spawn_brood`. Only a KILLED boss bursts; an escaped one has already
-## taken her bed and three aphids past the exit would have nowhere to walk.
+## Mirrors `Game._spawn_brood`, now `Game.brood_entries` — the shared static both sides
+## call for the split geometry (plant-tower-defense-b0mp). Only a KILLED boss bursts here;
+## an escaped one has already taken her bed and three aphids past the exit would have
+## nowhere to walk, which is why the guard stays behind rather than joining the static.
 func _spawn_brood(parent: Pest) -> void:
 	if lives <= 0:
 		return
-	var species: StringName = Pest.split_species(parent.species)
-	var count: int = Pest.split_count(parent.species)
-	if species == &"" or count <= 0:
-		return
-	var at: Vector2 = parent.position
-	var leg: int = parent.route_leg()
-	for i: int in range(count):
-		var child: Pest = _new_pest(species)
-		child.enter_road_at(at + Vector2(Game.BROOD_SPREAD, 0.0).rotated(TAU * float(i) / float(count)), leg)
+	for entry: Dictionary in Game.brood_entries(parent):
+		var child: Pest = _new_pest(entry["species"])
+		child.enter_road_at(entry["position"], entry["leg"])
 
 
 ## Every husk within reach of itself, swept. Perfect play, on purpose — see `sweep_husks`.
@@ -509,39 +505,19 @@ func _on_plant_destroyed(plant: Plant) -> void:
 	_reap.append(plant)
 
 
-## Mirrors `Game._apply_weather`: the fire-rate multiplier onto every standing plant, and
-## rain's heal once, now.
+## Mirrors `Game._apply_weather`, now `Game.apply_weather_over` — the shared static both
+## sides call for the fire-rate multiplier and rain's heal (plant-tower-defense-b0mp). The
+## banner and the overlay are the game's own half; there is no HUD here to reach them.
 func _apply_weather(next: StringName) -> void:
 	weather = next
-	var scale: float = WaveDirector.fire_interval_scale_for(next)
-	var heal: float = Plant.MAX_HEALTH * WaveDirector.heal_fraction_for(next)
-	for cell: Vector2i in plants:
-		var plant := plants[cell] as Plant
-		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
-			continue
-		plant.fire_interval_scale = scale
-		if heal > 0.0:
-			plant.heal(heal)
+	Game.apply_weather_over(plants, next)
 
 
-## Mirrors `Game._refresh_neighbour_buffs`. A Mint beside a Mint buffs nothing, which is
-## why the second loop skips them.
+## Mirrors `Game._refresh_neighbour_buffs`, now `Game.refresh_neighbour_buffs_over` —
+## the shared static both sides call (plant-tower-defense-b0mp), so the mint-buff rule
+## itself (a Mint beside a Mint buffs nothing) lives in one place rather than two.
 func _refresh_neighbour_buffs() -> void:
-	var mints: Dictionary = {}
-	for cell: Vector2i in plants:
-		var plant := plants[cell] as Plant
-		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
-			continue
-		if plant is Mint:
-			var worth: int = int(round(plant.sport_power_scale()))
-			for near: Vector2i in Mint.neighbours_of(cell):
-				mints[near] = int(mints.get(near, 0)) + worth
-	for cell: Vector2i in plants:
-		var plant := plants[cell] as Plant
-		if plant == null or not is_instance_valid(plant):
-			continue
-		plant.neighbour_interval_scale = (1.0 if plant is Mint
-			else Mint.scale_for(int(mints.get(cell, 0))))
+	Game.refresh_neighbour_buffs_over(plants)
 
 
 ## Mirrors `Game._tick_cross_breeding` and `Game._sprout_sport`. The one planting path
