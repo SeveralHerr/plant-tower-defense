@@ -1261,8 +1261,27 @@ func spawn_pest(species: StringName, mutations: Array = []) -> void:
 ## the same route, with the same signals, as one the wave director asked for —
 ## the alternative is two spawn paths and a brood that quietly stops paying
 ## seeds or stops costing a bed.
+## Which node class a species arrives as. Seven of the eight are a bare `Pest` and are
+## told apart by their `SPECIES` row alone, which is the whole reason this game has one
+## pest script and a table rather than eight scripts.
+##
+## The Cutworm is the one that could not be a table row: its body is 953 px long, so it
+## has its own walk, its own drawing and its own damage zones (`game/cutworm.gd`). The
+## decision lives HERE, at the single spawn funnel, rather than as a static on `Pest` —
+## a base class that names its own subclass is a cycle, and GDScript resolves those at
+## load time in an order nothing in this repo controls.
+##
+## Named rather than inlined so `test_every_species_spawns_the_node_class_it_needs` has
+## something to call: a species added later that quietly comes out as a plain `Pest`
+## when it needed a subclass is invisible at every other seam.
+func _pest_node_for(species: StringName) -> Pest:
+	if species == Pest.CUTWORM:
+		return Cutworm.new()
+	return Pest.new()
+
+
 func _new_pest(species: StringName) -> Pest:
-	var pest := Pest.new()
+	var pest: Pest = _pest_node_for(species)
 	_entities.add_child(pest)
 	# Endless difficulty rides on the wave number, not on the endless flag —
 	# both scales are 1.0 inside the fixed table, so campaign spawns and a

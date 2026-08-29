@@ -849,7 +849,14 @@ func _nearest_free_pest(pests: Array[Pest]) -> Pest:
 	for pest: Pest in pests:
 		# Winged (doc: "ignores ground plants") flies over a Chomp's reach — the
 		# mouth simply cannot close on it. It still walks into Corn's kernels.
-		if pest.held_by != null or pest.is_winged:
+		#
+		# `can_be_held()` is the same refusal for the opposite reason: the Cutworm is not
+		# too high to bite, it is too long to finish. Refused HERE, where the winged case
+		# already is, rather than by giving it an enormous `chew_seconds` — a huge
+		# duration still lets the flower commit, still plays the grab, and still ends
+		# with the boss let go, which is a mouth that wasted the whole fight rather than
+		# a mouth that never opened.
+		if pest.held_by != null or pest.is_winged or not pest.can_be_held():
 			continue
 		# Already chewed once and too big to finish. See `_spat_out`.
 		if pest == _spat_out:
