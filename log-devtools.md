@@ -10751,3 +10751,53 @@ is likely to be at least as productive.
     Chrome with that same connect-hook, and fails when (a) any cycle exists among the
     nodes reaching `AudioDestinationNode`, or (b) the master peak exceeds 1.0. Both are
     cheap, deterministic, and would have caught this the day `ensure_bus` landed.
+
+## 2026-08-29 — press-and-hold reveals a plant/packet button's blurb on touch (crj9)
+
+- Value: **warranted** — the live game caught a regression the headless suite and lint
+  both missed, before it ever reached a commit.
+  - Expected: holding a plant/packet button past HOLD_THRESHOLD_SEC pops its own
+    `tooltip_text` beside it and blocks the release from also buying; a quick tap is
+    unaffected.
+  - Got: first cut parented the new `LongPress` helper INSIDE `_fx_layer` (the existing
+    "paints over everything" layer). Nothing headless caught it — name_check, import,
+    lint and a first `run_tests.py` all passed — because the helper is a permanent child
+    and the two tests that break
+    (`test_a_sunflower_payout_carries_the_flower_it_grew_on`,
+    `test_collecting_a_real_husk_through_game_reaches_fly_seed_glyph_without_error`) only
+    ran once `_fx_layer.get_child_count() == 0` was asserted against a HUD that now had a
+    permanent tenant. Moved `LongPress` to a sibling of `_fx_layer` instead. Live, via the
+    bridge: `run-method emit_signal button_down` -> `step-time --seconds 0.6` (real Timer,
+    not a mocked one) -> popup `visible: true` with `text` byte-identical to the button's
+    own `tooltip_text` -> `button_up` hides it -> a manually re-fired `pressed` afterward
+    left `bank.seeds` and `selected_plant` untouched, then a real `press` on the same
+    button selected it normally.
+  - Found: the `_fx_layer` zero-children assumption, live in the running game before the
+    unit suite even ran a second time — reading the diff alone reads as "add a sibling
+    node", nothing about it says two existing tests encode "this layer is provably empty
+    behind an animation gate".
+  - Cheaper: nothing that would have caught the `_fx_layer` regression — it needed the
+    actual suite run, not a read of the diff. The live bridge pass on top of that (the
+    `step-time` sequence above) was closer to `overkill` on its own, since
+    `test_holding_a_plant_button_reveals_its_tooltip_and_blocks_the_purchase` already
+    proves the same state machine headless; it bought confidence that the REAL Timer and
+    REAL BaseButton press/release cycle behave the same way the direct-call test assumes.
+
+- Gap: **two concurrent Claude Code sessions committed the same uncommitted working tree**
+  — this session wrote `game/hud_long_press.gd`, wired `game/hud.gd`, and added two tests
+  to `test/unit/test_selftest.gd`, all sitting uncommitted while it drove the live game
+  above. Before this session could commit, `git log` showed a NEW commit
+  (`3a16b21`, a different `Claude-Session:` id, same `git` author) whose diff is this
+  session's exact working-tree content plus one `.uid` sidecar this session forgot and
+  one extra directly-naming test for `suite_reach_check.py`. `bd show crj9` had already
+  moved to `CLOSED`. Nothing was lost or corrupted — the other session's close reason
+  independently reports the same `1121/1121` and `lint clean` this session measured — but
+  two sessions reading and writing the same checkout with no coordination is a real
+  hazard the harness has no verb for.
+  - [G-158] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: `ping`'s "DIFFERENT checkout" refusal (CLAUDE.md's worktree-sibling
+    gotcha) covers two sessions racing on the devtools BUS; nothing covers two sessions
+    racing on the WORKING TREE of the identical checkout with no bus involved at all. A
+    `.devtools/session_lock.json` (pid + session id + mtime, written on first Edit/Write
+    and checked on `bd update --claim`) that warns rather than blocks would have named
+    this at claim time instead of at `git log` time.
