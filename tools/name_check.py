@@ -1224,6 +1224,14 @@ class Checker:
         for gd in project.files:
             self._project_funcs |= gd.funcs
             self._project_signals |= gd.signals
+        # The slice this tool actually resolves against, versus every root name it
+        # encountered in a type position or a bare `Name.`/`Name(` reference -- the
+        # denominator "errors: N | warnings: N | advisory: N" never named. See
+        # report()'s "names:" line. Counted at the single funnel both check_types
+        # and check_global_refs call, not at each finding site, so it also counts
+        # every name that resolved clean and never became a finding at all.
+        self.root_checks = 0
+        self.root_resolved = 0
 
     def add(self, *args):
         self.findings.append(finding(*args))
@@ -1232,6 +1240,13 @@ class Checker:
 
     def resolve_root(self, name, gd, scope):
         """Does `name` name anything at all, in this file's scope or the engine's?"""
+        ok = self._resolve_root(name, gd, scope)
+        self.root_checks += 1
+        if ok:
+            self.root_resolved += 1
+        return ok
+
+    def _resolve_root(self, name, gd, scope):
         if name in scope or name in GDSCRIPT_IMPLICIT_NAMES or name in GDSCRIPT_TYPE_KEYWORDS:
             return True
         if name in GDSCRIPT_GLOBAL_CONSTANTS or name in GDSCRIPT_ONLY_FUNCTIONS:
@@ -1531,7 +1546,7 @@ def _resolve_godot(args, project_path):
 
 
 def report(findings, index, project, counts, args, skipped, baseline_info,
-           engine_skew=None, compiled_ok=None):
+           engine_skew=None, compiled_ok=None, root_checks=0, root_resolved=0):
     if args.require_compile:
         n_compiled = len(args.require_compile)
         print("name_check %s - static name resolution PLUS %d file(s) compile-checked "
@@ -1578,6 +1593,19 @@ def report(findings, index, project, counts, args, skipped, baseline_info,
 
     print("errors: %d | warnings: %d | advisory: %d"
           % (counts["error"], counts["warning"], counts["advisory"]))
+    # The denominator "errors: N" never named: how much of the project this run
+    # actually put a resolve/no-resolve verdict on. Raising this ratio toward
+    # 100% IS the goal here (unlike method_call_check's dynamic-typing ceiling,
+    # which is unresolvable in principle) -- every unresolved root already shows
+    # up as one of the errors/warnings/advisories above, so 100% resolved and
+    # 0 errors are the same claim said two ways.
+    if root_checks:
+        print("names: %d of %d root name(s) checked resolved (the rest are the "
+              "findings above)%s"
+              % (root_resolved, root_checks,
+                 " -- NOTE: no engine index, so every root counted as resolved "
+                 "by default; this ratio is not meaningful until --refresh-api"
+                 if index is None else ""))
     if args.require_compile:
         if compiled_ok:
             print("compiled OK: %s" % ", ".join(sorted(compiled_ok)))
@@ -1834,6 +1862,7 @@ def main():
                         "autoloads": len(project.autoloads),
                         "vendored_skipped": project.vendored_dirs},
             "counts": counts,
+            "root_names": {"checked": checker.root_checks, "resolved": checker.root_resolved},
             "skipped": skipped,
             # A machine reader of an all-zero `counts` needs the same caveat the
             # human report prints, or it draws the stronger conclusion silently.
@@ -1845,7 +1874,7 @@ def main():
         }, indent=2))
     else:
         report(findings, index, project, counts, args, skipped, baseline_info,
-               engine_skew, compiled_ok)
+               engine_skew, compiled_ok, checker.root_checks, checker.root_resolved)
 
     return exit_code
 
