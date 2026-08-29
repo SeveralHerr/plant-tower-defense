@@ -541,8 +541,9 @@ func test_the_thickening_policy_plants_past_the_point_greedy_stops() -> String:
 # So the axis had to be one the run keeps spending, and the checks below are the three that
 # make it stay one: it is DERIVED (not a fourth free number), it is READ by the driver (not
 # restated in a table nothing consumes -- the failure mode this bead is about, and which
-# `blurb` in the same table is still an instance of, since nothing in the project displays
-# one), and it SEPARATES a real run rather than only its opening balance.
+# `blurb` in the same table was a second instance of until plant-tower-defense-h5s3 deleted
+# it, nothing in the project ever having displayed one), and it SEPARATES a real run rather
+# than only its opening balance.
 # =============================================================================
 
 
@@ -607,8 +608,9 @@ func test_a_yield_never_rounds_a_kill_down_to_nothing_and_is_identity_at_one() -
 ##
 ## DERIVED FROM THE TABLE, BY TYPE. The axes come out of the standard profile itself --
 ## every numeric value in it except the yield -- so a fifth number added to a profile joins
-## this check the day it is added, and `label` and `blurb` are skipped because they are
-## Strings rather than because they are named here.
+## this check the day it is added, and `label` is skipped because it is a String rather than
+## because it is named here (`blurb` was a second example of this until
+## plant-tower-defense-h5s3 deleted the key).
 ##
 ## The band is what the other axes span, not an exact figure: gentle already runs 1.44 (26s
 ## of 18) to 1.6 (40 seeds of 25) and there is no single ratio to hit. What the band refuses
@@ -639,8 +641,8 @@ func test_the_seed_yield_takes_the_ratio_the_other_axes_take() -> String:
 			if axis == "seed_yield":
 				continue
 			var baseline: Variant = standard[key]
-			# BY TYPE, not by name: `label` and `blurb` are Strings and drop out here
-			# without a list of exclusions anyone has to remember to extend.
+			# BY TYPE, not by name: `label` is a String and drops out here without a
+			# list of exclusions anyone has to remember to extend.
 			if not (baseline is int or baseline is float):
 				continue
 			err = _T.assert_true(profile.has(key),
@@ -664,8 +666,7 @@ func test_the_seed_yield_takes_the_ratio_the_other_axes_take() -> String:
 		err = _T.assert_true(got >= lowest - 0.001 and got <= highest + 0.001,
 			("%s's seed_yield is %.3f and its other %d axes run %.3f to %.3f against "
 				+ "standard. A yield outside the band its own profile already agreed on is "
-				+ "a number with no reason behind it, and the blurb in the same row will "
-				+ "not describe it")
+				+ "a number with no reason behind it")
 				% [profile_name, got, axes, lowest, highest])
 		if err != "":
 			return err

@@ -1203,6 +1203,46 @@ func test_the_title_record_line_names_the_profile_it_is_reporting() -> String:
 	return err
 
 
+## Every key in `Game.DIFFICULTIES` is read by something (plant-tower-defense-h5s3).
+##
+## `blurb` sat in every profile and nothing ever read it -- the picker at
+## `TitleScreen.difficulty_label` reads only `label`, and this screen has no free pixel to
+## show a second line on (every header row is already at its floor; see the layout note
+## above `TitleScreen.BUTTON_TOP`). Deleting the key was the cheaper of the two acceptance
+## paths the bead offered, and this is the gate that keeps a fourth one from arriving the
+## same way: the READ SET below is exhaustive by construction, not a copy of the table --
+## grepping the whole set is what stands in for "and nothing reads it".
+##
+## `label` is a String read by `TitleScreen.difficulty_label` and `start_button_text`;
+## `lives`, `prep_seconds`, `starting_seeds` and `seed_yield` are read by `Game._ready()`
+## seeding a run from the chosen profile. Extending this set is the fix the day a new axis
+## is added with nowhere reading it yet -- it should fail here first.
+func test_no_difficulty_profile_carries_an_unread_key() -> String:
+	var read_keys: Dictionary = {
+		"label": true,
+		"lives": true,
+		"prep_seconds": true,
+		"starting_seeds": true,
+		"seed_yield": true,
+	}
+	var checked: int = 0
+	var err: String = ""
+	for id: StringName in Game.DIFFICULTY_ORDER:
+		var profile: Dictionary = Game.DIFFICULTIES[id]
+		for key: Variant in profile:
+			err = _T.assert_true(read_keys.has(key),
+				("%s carries the key '%s', which nothing in the read set reads -- this is "
+					+ "the exact failure mode plant-tower-defense-h5s3 fixed for 'blurb'; "
+					+ "either wire it up or delete it") % [id, key])
+			if err != "":
+				return err
+			checked += 1
+	# The denominator: five profiles-worth of keys, or the loop above passed over nothing.
+	return _T.assert_eq(checked, Game.DIFFICULTY_ORDER.size() * read_keys.size(),
+		("every key on every profile was checked (%d of %d) -- fewer means a profile is "
+			+ "missing an axis its neighbours have") % [checked, Game.DIFFICULTY_ORDER.size() * read_keys.size()])
+
+
 func test_title_high_score_line_never_reads_as_a_zero_record() -> String:
 	## "Best endless run: 0 seeds grown" on a fresh install reads as a bug, not
 	## as an empty record.
