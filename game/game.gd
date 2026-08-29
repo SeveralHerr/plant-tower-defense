@@ -257,6 +257,35 @@ var prep_seconds: float = PREP_SECONDS
 ## lookup, which is what makes "the profile is applied first" a single statement rather than
 ## three places that could disagree about which run they are in.
 var seed_yield: float = 1.0
+## Which plant a click on empty ground would buy, or `&""` for NONE
+## (plant-tower-defense-vvmy).
+##
+## `&""` IS A LEGAL VALUE NOW, and before this it was not reachable at all: this field was
+## born holding CORN and every assignment to it named another plant, so there was no state
+## in which a click on grass did not spend seeds. On a mouse that is a mild irritation. On
+## a phone it is the defect that was reported — the board is the biggest target on screen,
+## a stray tap is the easiest input there is, and every one of them bought something.
+##
+## The three ways in and out, so the rule is in one place rather than inferred from five
+## call sites:
+##
+##   * ARMED by the plant bar (`_on_plant_chosen`) and by a packet that hands over a plant
+##     the player did not have (`_on_packet_requested`).
+##   * DISARMED by a placement that actually SUCCEEDED (`_commit_placement`), which is the
+##     "lift to plant, then nothing is armed" half of the reported gesture. A REFUSAL does
+##     not disarm: losing your pick because you were five seeds short is a second
+##     punishment for one mistake, and the player's next move is to try again.
+##   * DISARMED by the player saying so — right-click (`_unhandled_input`), or, because a
+##     phone has no right button, a touch that ends off the board (`_on_screen_touch`).
+##     That second one is not a new gesture: sliding off the board was ALREADY the touch
+##     abort, and it already threw the placement away. It now throws the arm away with it.
+##
+## NOTHING NEEDS A `PlantCatalog.has()` GUARD ADDED FOR THIS, which was worth checking
+## rather than assuming. `PlantCatalog.entry()` returns `{}` for an unknown id, so
+## `on_road(&"")` is false, `reach(&"")` is 0.0 and `texture_path(&"")` is `""`; and
+## `would_plant_at` already opened with `if not PlantCatalog.has(selected_plant)`, which
+## is the guard that makes an empty arm refuse a purchase instead of crashing on one. The
+## cue is the only thing that had to change — see `_update_preview`.
 var selected_plant: StringName = PlantCatalog.CORN
 var selected_placed: Plant = null
 ## The plant the player is comparing FROM: the selection before this one, kept on
@@ -3068,14 +3097,53 @@ func _on_screen_touch(touch: InputEventScreenTouch) -> void:
 		return
 	if touch.index != _touch_index:
 		return
-	# The gesture decides whether the release may be snapped; see `_touch_dragged`.
-	_click_at(touch.position, _touch_dragged)
-	# Cleared immediately. An earlier draft deferred this by a frame to keep the emulated
-	# mouse events out; that is no longer this flag's job — `device == -1` does it in
-	# `_unhandled_input`, and it does it for the PRESS, which arrives before any flag could
-	# be set. What is left here is only the one-finger rule.
+	# A FINGER THAT LEFT THE BOARD IS SAYING "NEVER MIND" (plant-tower-defense-vvmy), and
+	# it is the only way a touch player can say it -- there is no right button on a phone,
+	# so the right-click escape in `_unhandled_input` reaches nobody who is actually
+	# playing this on the device the gesture was built for.
+	#
+	# NOT A NEW GESTURE. Sliding off the board was already the abort and already threw the
+	# placement away (see this function's own header); what is new is that it now throws
+	# the ARM away with it, so a player who changes their mind ends up with nothing armed
+	# rather than with a live purchase waiting on their next stray tap.
+	#
+	# `_hover_cell.x < 0` is the same test `_update_cursor` leaves behind when the finger
+	# is off the board, rather than a second bounds check that could disagree with it.
+	# CLEARED BEFORE THE COMMIT, NOT AFTER IT, and that ordering is now load-bearing
+	# (plant-tower-defense-vvmy). `_update_cursor` reads `_touch_index` to decide whether
+	# to lift the ghost clear of the finger, and `_commit_placement` redraws the cue on
+	# its way out. Clearing afterwards -- which is what this did -- left that last redraw
+	# believing a finger was still down, so the ghost stayed lifted a cell above its own
+	# square with nothing touching the screen.
+	#
+	# The comment this replaces is still true of WHY it is not deferred: an earlier draft
+	# held the flag for a frame to keep the emulated mouse events out, and that is no
+	# longer this flag's job -- `device == -1` does it in `_unhandled_input`, for the
+	# PRESS, which arrives before any flag could be set. All this carries is the
+	# one-finger rule, so nothing below needs it and it can go early.
+	var dragged: bool = _touch_dragged
 	_touch_index = -1
 	_touch_dragged = false
+	# A FINGER THAT LEFT THE BOARD IS SAYING "NEVER MIND" (plant-tower-defense-vvmy), and
+	# it is the only way a touch player can say it -- there is no right button on a phone,
+	# so the right-click escape in `_unhandled_input` reaches nobody who is actually
+	# playing this on the device the gesture was built for.
+	#
+	# NOT A NEW GESTURE. Sliding off the board was already the abort and already threw the
+	# placement away (see this function's own header); what is new is that it now throws
+	# the ARM away with it, so a player who changes their mind ends up with nothing armed
+	# rather than with a live purchase waiting on their next stray tap.
+	#
+	# ASKED OF THE RELEASE POSITION, not of `_hover_cell`. Reading the cue's own leftover
+	# state looked like the way to guarantee the abort and the cue could not disagree, and
+	# it is exactly how they disagreed -- a finger dragged off the RIGHT edge crosses onto
+	# the side panel, which swallows the remaining drag events, so the cue is left holding
+	# the last on-board cell it heard about. See `off_board`, which both callers now share.
+	if off_board(touch.position):
+		disarm_plant()
+		return
+	# The gesture decides whether the release may be snapped; see `_touch_dragged`.
+	_click_at(touch.position, dragged)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -3123,10 +3191,25 @@ func _unhandled_input(event: InputEvent) -> void:
 	#
 	# No emulated-device guard, unlike the left branch below: mouse-from-touch emulation
 	# only ever synthesises MOUSE_BUTTON_LEFT, so there is no second event to tell apart.
+	#
+	# IT NOW CLEARS THE SHOP PICK TOO (plant-tower-defense-vvmy), which the paragraph
+	# above did not: it un-selected the plant on the BOARD and left `selected_plant`
+	# holding whatever the bar had armed, so "never mind" only ever meant half of what a
+	# player pressing it means. One gesture, one rule -- right-click clears the selection,
+	# all of it -- beats two gestures a player has to keep straight.
+	#
+	# STILL NOT CONSUMED WHEN THERE WAS NOTHING TO CLEAR, and `disarm_plant()` returning a
+	# bool is what keeps that true now that there are two things to clear rather than one.
 	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_RIGHT:
-		if selected_placed == null or not is_instance_valid(selected_placed):
+		var had_placed: bool = selected_placed != null and is_instance_valid(selected_placed)
+		# BOTH called, and `or` short-circuits -- so `disarm_plant()` goes first. Written
+		# the other way round, a right-click on a board selection would clear the marker
+		# and leave the arm, which is exactly the half-clear this branch is fixing.
+		var cleared: bool = disarm_plant() or had_placed
+		if not cleared:
 			return
-		_select(null)
+		if had_placed:
+			_select(null)
 		_refresh()
 		return
 	if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
@@ -3310,10 +3393,39 @@ const CURSOR_FREE_COLOR := Color(0.06, 0.075, 0.065)
 ## touch player cancels a placement (see `_on_screen_touch`); if the snap ran first, a
 ## finger leaving the board over the last column would be pulled back onto it and the
 ## cancel would be unreachable.
+## Is this screen point outside the playfield? Extracted out of `_update_cursor`'s own
+## opening guard, which is still its only other caller (plant-tower-defense-vvmy).
+##
+## EXTRACTED BECAUSE THE TOUCH ABORT HAD TO ASK THE SAME QUESTION AND ASKED A DIFFERENT
+## ONE. `_on_screen_touch` first tested `_hover_cell.x < 0` -- the state this guard leaves
+## behind -- on the reasoning that reading the cue's own answer could not disagree with
+## the cue. It disagreed, and the running game is what said so.
+##
+## The reason is the SIDE PANEL. Drag a finger off the right-hand edge and it crosses
+## `board_size().x` (896) onto the panel (which begins at 908); the panel is a Control
+## that answers input, so it consumes the `InputEventScreenDrag`s from there on and
+## `_unhandled_input` never sees them. `_hover_cell` is left holding the last cell the
+## cue managed to update to. Measured on the running game after exactly that gesture:
+## `_touch_index=-1  _hover_cell=(13, 8)` -- column 13 of 14, the last column before the
+## edge, and not the `(-1, -1)` the abort was waiting for. Every drag step past the board
+## had been swallowed.
+##
+## So the release asks about the RELEASE POSITION, which it always has, rather than about
+## a cue that may never have been told. This is the same arithmetic either way; making it
+## a named function is what stops the two answers drifting again.
+##
+## The `x >` half is not redundant with `is_inside`: the board is narrower than the
+## window, and a point in the strip between the board's right edge and the panel maps to
+## a column that IS inside the grid.
+func off_board(screen_pos: Vector2) -> bool:
+	var cell: Vector2i = board.world_to_cell(screen_pos - _entities.position)
+	return not board.is_inside(cell) or screen_pos.x > board.board_size().x
+
+
 func _update_cursor(screen_pos: Vector2, snap: bool = false) -> void:
 	var local: Vector2 = screen_pos - _entities.position
 	var cell: Vector2i = board.world_to_cell(local)
-	if not board.is_inside(cell) or screen_pos.x > board.board_size().x:
+	if off_board(screen_pos):
 		_cursor.visible = false
 		_preview.visible = false
 		_hover_cell = Vector2i(-1, -1)
@@ -3341,6 +3453,17 @@ func _update_preview(cell: Vector2i, free: bool) -> void:
 		return
 	_preview.visible = true
 	_preview.position = board.cell_to_world(cell)
+	# The ghost gets out from under the finger, and ONLY when there is a finger
+	# (plant-tower-defense-vvmy). `_touch_index` is the one flag that means "a finger owns
+	# this gesture right now" — it is set on press, cleared on release, and it is already
+	# what the one-finger rule is enforced with, so this cue cannot disagree with the
+	# gesture it is describing.
+	#
+	# AFTER `position`, not before: PlacementPreview.ghost_lift_offset() flips the lift's
+	# direction on row 0, and the setter reads the row out of the position it is given.
+	# Assigned unconditionally rather than only on change, for the same reason — see that
+	# property's own header.
+	_preview.lifted = _touch_index != -1
 	# While an uproot is armed the player is weighing a MOVE, not a purchase, so the
 	# preview describes the plant being moved rather than whatever is selected in the
 	# shop (plant-tower-defense-qk5q). Nothing else about the hover changes: the same
@@ -3356,6 +3479,19 @@ func _update_preview(cell: Vector2i, free: bool) -> void:
 	if moving != null and not is_instance_valid(moving):
 		moving = null
 	var previewing: StringName = moving.kind if moving != null else selected_plant
+	# NOTHING ARMED, NOTHING TO PREVIEW (plant-tower-defense-vvmy). This is the whole cost
+	# of making `&""` a legal `selected_plant`, and it is the branch that makes the empty
+	# state legible rather than merely harmless: the brackets promise "a click here buys
+	# this", and with no plant chosen there is nothing they could be promising.
+	#
+	# THE CURSOR TINT DELIBERATELY STAYS UP -- `_update_cursor` sets it before calling
+	# here and this does not undo it. A click with nothing armed still does things: it
+	# selects a plant already standing there and it sweeps a husk. The square under the
+	# pointer is still where those land, so the cue that says WHICH SQUARE is still true.
+	# What comes down is only the cue that was making a promise about a purchase.
+	if not PlantCatalog.has(previewing):
+		_preview.visible = false
+		return
 	_preview.reach = PlantCatalog.reach(previewing)
 	# Explicit rather than inferred. PlacementPreview falls back to deducing the
 	# kind from `reach`, which works only while no two plants share a radius --
@@ -3561,8 +3697,40 @@ func _click_at(screen_pos: Vector2, snap: bool = false) -> void:
 ## past (plant-tower-defense-bmis). Two callers, one behaviour: a snapped drag and an
 ## ordinary click that reached the bottom of the ladder buy in exactly the same way, and
 ## a refusal reads the same however the cell was chosen.
+## Put the shop pick back to NONE, and say whether that changed anything.
+##
+## The bool is what the right-click branch consumes the event on: a gesture that cleared
+## something was this gesture, and one that cleared nothing was not. See `selected_plant`.
+func disarm_plant() -> bool:
+	if selected_plant == &"":
+		return false
+	selected_plant = &""
+	# The bar's armed ring and the board's brackets are both downstream of `_refresh()`
+	# and `_update_preview()` respectively, and neither notices a field changing under it.
+	# Without this the ring stays lit on a plant that is no longer armed, which is worse
+	# than the no-cue state this whole bead is about -- a wrong cue outranks a missing one.
+	_refresh()
+	if _hover_cell.x >= 0:
+		_update_preview(_hover_cell,
+			board.is_buildable_for(_hover_cell, selected_plant) and not _plants.has(_hover_cell))
+	return true
+
+
 func _commit_placement(cell: Vector2i) -> void:
 	var refusal: String = place_plant(selected_plant, cell)
+	# PLANTED, SO NOTHING IS ARMED (plant-tower-defense-vvmy). Only on the empty string --
+	# every other return is a refusal, and a refusal keeps the pick so the player's next
+	# move is to try again rather than to go back to the bar. See `selected_plant`.
+	#
+	# Through `disarm_plant()` and not a bare assignment, because `place_plant()` has
+	# ALREADY called `_refresh()` by the time it returns "" -- with the old pick still in
+	# the field. Assigning here without a second refresh leaves the bar's armed ring lit
+	# on a plant that is no longer armed until the next unrelated state push.
+	#
+	# Before the refusal branches rather than after them, so the tail's `_update_preview`
+	# below redraws against the arm this call actually left behind.
+	if refusal == "":
+		disarm_plant()
 	if refusal == "not paid for":
 		# The refusal fired on a board click, not a bar click — pay_for_plant()
 		# already told the player why through purchase_failed. What shakes here

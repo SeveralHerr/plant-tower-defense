@@ -1686,6 +1686,15 @@ def cmd_stats(args, root):
 
         failed_checks = [c for c in (row.get("checks") or [])
                          if c.get("result") == "fail"]
+        # Both sides of a same-day collision landed here: `main`'s fix (66b5b4d) guarded
+        # `runtime` alone, this branch's guarded all three through `_row_dict`. Kept the
+        # wider one because row 201 of this ledger records `"lint": 0, "tests": 0` as
+        # well, and kept main's evidence: two rows (sha 200bf86, 2026-08-29) recorded
+        # `runtime` as a plain string -- "windowed", and a sentence about a branch the
+        # bridge cannot reach. Old rows are never rewritten, so every reader has to
+        # survive whatever shape a past session banked; a ledger's whole job is to be the
+        # denominator, and a reader that reports nothing because one row is malformed is
+        # worse than one that reports 206 of 208.
         runtime, runtime_bad = _row_dict(row, "runtime")
         lint, lint_bad = _row_dict(row, "lint")
         tests, tests_bad = _row_dict(row, "tests")

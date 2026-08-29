@@ -10847,8 +10847,80 @@ is likely to be at least as productive.
   - Cheaper: the two headless assertions (`test_an_unaffordable_plant_tints_differently_from_a_locked_one`, `test_the_seeds_readout_flash_differs_between_a_spend_and_a_gain`) already prove the classifiers return the right constants for every input; the live pass adds only "the wiring in `refresh()`/`_ready()` actually reaches the Label/Button nodes with the right node paths and doesn't get shadowed by a later `modulate` write" — worth the ~10 bridge calls it cost, not more.
 
 - Gap: **name_check / lint / run_tests all abort on an unrelated, pre-existing broken commit** — `test/unit/test_selftest.gd` (committed at HEAD, 24028e1) `preload()`s `res://game/hud_long_press.gd`, which has never been committed to any branch (`git log --all -- game/hud_long_press.gd` is empty) — a prior session's `git commit -a` on a dirty tree evidently swept up the *test* half of bead crj9 (the `HudLongPress` const and one whole test function) without the *implementation* half. Every fresh worktree branched from `main` — mine included — fails to compile the entire test suite until that's fixed, not just one test.
-  - [G-082] status: open | seen: 1 | harness: 0.38.0
+  - [G-082] status: open | seen: 2 | harness: 0.38.0 (second sighting 2026-08-29, bead vvmy, in a worktree branched from the same 24028e1 -- reached the same diagnosis and the same copy-the-untracked-file workaround independently; fixed on main by 3a16b21)
   - Improvement: `git commit -a` (or any commit that stages by tracked-vs-modified rather than by an explicit `git add` list) on a tree with untracked new files belonging to the same feature is exactly how this happens; a pre-commit check that greps a commit's new/changed `preload()`/`class_name` references against `git ls-files` (or just runs `name_check.py` in the commit hook) would have caught it before it reached `main`. Worked around this session by copying the two untracked files from the concurrently-running main worktree into mine for local test compilation only, without committing them under this branch — confirmed the resulting 2 residual suite failures (`test_holding_a_plant_button_reveals_its_tooltip_and_blocks_the_purchase`, `test_the_suite_reach_baseline_lists_only_symbols_no_test_names`) reproduce identically with every change from this session's own commits `git stash`ed out, so neither is caused by this session's diff.
+
+
+## 2026-08-29 — vvmy: armed-plant cue, ghost lifted clear of the finger, and an empty arm
+
+- Value: **warranted** — the running game contradicted a headless test that passed, and
+  the contradiction was the actual reported defect rather than a detail.
+  - Expected: that the reported "semi-transparent plant does not appear" meant the ghost
+    was unimplemented, and that the plant-bar cue was merely weak.
+  - Got: both premises were wrong in opposite directions, and the bridge said so in two
+    reads. `node-bounds /root/Game/Entities/PlacementPreview/Ghost` → `Rect: 192, 392,
+    64x64` — the ghost ships, works, follows a simulated finger, and is drawn as exactly
+    one cell at the cell the finger is resting on. `find-nodes --class Button --where
+    name=Button_corn_cobbler --property button_pressed --property toggle_mode` →
+    `button_pressed=false toggle_mode=false` while corn WAS `selected_plant`, so the bar
+    cue was not weak, it was a dead write the engine discards without `toggle_mode`.
+  - Found: **a bug the headless suite passed and the running game failed.** The touch
+    abort ("a finger leaving the board disarms") read `_hover_cell`, on the reasoning
+    that the cue's own leftover state cannot disagree with the cue. A synthetic
+    `InputEventScreenDrag` straight off the edge set it to `(-1, -1)` and the test went
+    green. On the running game, dragging off the RIGHT edge walks onto the side panel,
+    which is a Control that answers input and swallows every remaining drag — measured
+    after that exact gesture: `_touch_index=-1  _hover_cell=(13, 8)`, column 13 of 14,
+    with `selected_plant: corn_cobbler` still armed. Fixed by asking `off_board()` of the
+    RELEASE POSITION, shared with `_update_cursor` so the two cannot drift; the test now
+    withholds the drag on purpose so it reproduces the swallowed-drag state and fails
+    against the implementation that shipped past it. Also found two suite defects:
+    `_declaration_line` matched only `const NAME ` with a trailing space, so every typed
+    `const NAME: Color = ...` returned `""` and read to its caller as "does not alias the
+    palette"; and `test_the_drag_cue_and_the_drag_commit_choose_the_same_cell` armed once
+    for 294 placements, which the new disarm turned into a sweep of nothing — caught by
+    its own `snapped > 0` vacuity guard, which is the one assertion in that test that had
+    never had a reason to fire.
+  - Cheaper: nothing for the abort bug — a synthetic event cannot know that a sibling
+    Control eats the real one, and no reading of the diff would have suggested it. The
+    two premise corrections were cheap once asked: one `node-bounds` and one `find-nodes`,
+    about 20 seconds, before any code was written. Doing that first is what stopped this
+    session from building a ghost that already existed.
+
+- Gap: **`touch drag` interpolates in screen space with no way to ask what the game
+  actually received.** The verb reported `Touch 0 dragged from current position to
+  1000,616 in 6 steps` and returned success; six `InputEventScreenDrag`s were sent and an
+  unknown number reached `_unhandled_input`, because a Control on the way consumed the
+  rest. Nothing in the reply distinguishes "delivered" from "sent". The workaround was to
+  infer it after the fact from a stale `_hover_cell` — which only worked because the game
+  happened to keep a field recording the last position it saw. `input state` exists for
+  actions and has no touch counterpart.
+  - [G-084] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: have `touch drag`/`touch press` report a `delivered` count beside the
+    sent count — the addon can hook `_input` at the viewport and tally which of the events
+    it injected were still unhandled by the time they reached the bottom of the tree. A
+    drag that reports `6 sent, 3 delivered (3 consumed by Control)` turns this session's
+    forty minutes of inference into one line of output, and it is the same question every
+    touch-UI bug in a game with a HUD over the playfield will ask.
+
+
+- Gap: **`verify_ledger.py stats` dies on the whole history when one row is malformed.**
+  `python tools/verify_ledger.py stats` →
+  `AttributeError: 'str' object has no attribute 'get'` at `verify_ledger.py:1664`. Two
+  rows (sha `200bf86`, 2026-08-29, already committed on main) recorded `runtime` as a
+  plain string — `"windowed"`, and a sentence about an unreachable branch — where every
+  other row has a dict. The writer at `:1252` already guards this exact field with
+  `isinstance(runtime, dict)` and the reader did not, so a row the tool itself would now
+  refuse to write is a row it cannot read. The whole point of the ledger is to be the
+  denominator the gaps log lacks, and it was reporting on 0 of 202 runs.
+  - [G-083] status: fixed | seen: 1 | harness: 0.38.0
+  - Improvement: done in-run — the reader now coerces a non-dict `runtime` to `{}`, the
+    same way the writer does, with the reasoning in a comment beside it. `stats` reads all
+    202 rows again. Worth upstreaming as a rule rather than a patch: **every consumer of a
+    ledger field must tolerate every shape a past writer could have banked**, because the
+    file is append-only and old rows are never rewritten. The two other dict-shaped fields
+    read without a guard (`lint`, `tests`, on the following lines) have the same latent
+    hole and were left alone only because nothing has yet written them wrong.
 
 
 ## 2026-08-29 — Chomp Flower: vines lash out, haul the bug onto the plant, and eat it there
@@ -10904,3 +10976,32 @@ is likely to be at least as productive.
     201 also carries `"lint": 0, "tests": 0`, which is why the coercion is not
     `runtime`-only. Left `open` because `record`'s required-key guard still accepts a
     scalar there — the write side is where this should have been stopped.
+
+
+## 2026-08-29 — reconciliation: G-083 and G-158 are the same gap, filed twice in parallel
+
+Two worktrees hit `verify_ledger.py stats`' `AttributeError` on the same afternoon and
+each filed it, each fixed it, and neither could see the other. `vvmy` filed **G-083** and
+guarded `runtime`; this branch filed **G-158** and guarded `runtime`, `lint` and `tests`
+through `_row_dict`. The merge kept the wider guard.
+
+- [G-158] status: superseded | seen: 1 | harness: 0.38.0
+
+Two things worth keeping from the collision, neither of which either session could have
+known alone:
+
+- **G-083's closing claim was wrong on the evidence already in the file.** It says `lint`
+  and `tests` "have the same latent hole and were left alone only because nothing has yet
+  written them wrong" — row 201 of this very ledger records `"lint": 0, "tests": 0`. The
+  hole was not latent; it was one `elif` away from the line that was already crashing. A
+  guard written for the field that *happened to* raise is a guard aimed at the symptom.
+- **Only one of the two fixes was registered in `tools/harness_patch_check.py`.** A local
+  patch to a vendored harness file that is not in that table is reverted, silently, by the
+  next `/scaffold-godot-harness` — which is the exact failure that checker exists for. The
+  surviving patch carries the marker `_row_dict`; the table is now 3 entries.
+
+The general rule, and it is the one G-083 already reached for: **a parallel fan-out can
+fix the same defect twice, so a fix to shared tooling should say in its own commit which
+gap id it closes**, and a merge that finds two should reconcile the ids rather than
+letting both stand as open.
+

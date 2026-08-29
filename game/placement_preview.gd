@@ -357,6 +357,55 @@ const REDUNDANT_BAR_B_NODE_NAME := "RedundantBarB"
 ## plant, not the plant.
 const GHOST_ALPHA: float = 0.45
 
+## How far the ghost is lifted off its own cell while a FINGER is on that cell
+## (plant-tower-defense-vvmy), and the sign is decided per-cell by `_ghost_lift`.
+##
+## THE CUE SHIPPED AND WAS STILL INVISIBLE, which is the whole of why this exists and is
+## worth stating plainly: `GHOST_ALPHA` above argues the ghost answers "which plant am I
+## about to buy" on a phone "where a fingertip covers most of a 64 px cell". It was right
+## about the problem and it then drew the answer inside the same 64 px. Measured on the
+## running game with `node-bounds`, the ghost is `64x64` at the previewed cell's origin —
+## exactly the square the finger is resting on. A player reported it as the cue not
+## existing, which is the correct reading of a cue you cannot see.
+##
+## ONE FULL CELL, not a nudge. Half a cell would put the sprite's lower half still under
+## the contact patch, and the contact patch is not the whole occlusion — the finger and
+## the hand behind it cover well past the point the hardware reports. A full cell clears
+## the square the finger is in, which is the only distance that can be argued for from
+## something other than taste.
+##
+## UP, so the hand (which comes from below on a held phone) is behind it rather than
+## over it. `_ghost_lift` flips to DOWN on row 0, where up would draw the sprite off the
+## board and half of it under the HUD's top bar — the same flip
+## `game/hud_long_press.gd`'s `_reveal` makes when its popup would leave the screen.
+##
+## TOUCH ONLY, and `Game._update_cursor` is the only writer. A mouse cursor is one pixel
+## and occludes nothing, so lifting it there would take the ghost off the cell it is
+## describing and buy nothing for it — the same argument `_update_cursor`'s own header
+## makes about why `snap` is passed by the touch branch and never by the mouse.
+const GHOST_LIFT: float = float(Board.CELL)
+
+## True while a finger is down on the board, which is the only condition under which the
+## ghost is drawn anywhere but on its own origin. See `GHOST_LIFT`.
+##
+## THE CELL DOES NOT MOVE. This offsets the SPRITE inside the preview; the preview node
+## itself, the brackets, the range ring, the cursor tint and the cell the release commits
+## to are all exactly where they were. That separation is the invariant
+## `test_a_lifted_ghost_still_promises_the_cell_the_brackets_are_on` exists to hold —
+## a lift that moved the target would be the "ghost drawn on one cell and a plant
+## appearing on another" failure `test_the_drag_cue_and_the_drag_commit_choose_the_same
+## _cell` was written to rule out, reintroduced as a feature.
+## NO EARLY RETURN ON AN UNCHANGED VALUE, unlike `plant_id`'s setter above, and the
+## difference is the row-0 flip. `plant_id` guards because its work is a `load()`; this
+## one's work is a Vector2 write, and the offset it writes depends on the CELL as well as
+## on the flag. A finger dragging from row 1 to row 0 assigns `true` over `true` — the
+## guarded version would keep the upward lift it computed a cell ago and draw the ghost
+## off the board.
+var lifted: bool = false:
+	set(value):
+		lifted = value
+		_reposition_ghost()
+
 var _resolved_board: Board = null
 
 ## The plant itself, drawn where it would stand. Built in `_init` and kept for the life
@@ -440,6 +489,34 @@ func _refresh_ghost() -> void:
 		return
 	_ghost.texture = load(path) as Texture2D
 	_ghost.visible = _ghost.texture != null
+	_reposition_ghost()
+
+
+## Where the ghost sprite sits INSIDE the preview — `Vector2.ZERO` on its own cell, or
+## one cell clear of it while a finger is down. See `GHOST_LIFT` and `lifted`.
+##
+## PURE, and it takes the cell rather than reading `position`, so the flip is checkable
+## with no node, no board and no frame. `Game` is the only caller that owns the impure
+## half; every test asks this.
+##
+## `row` 0 flips the lift DOWNWARD. Up from the top row draws the sprite past the board's
+## own edge and under the HUD's top bar, which is a cue in the one place the player is
+## not looking. Every other row lifts up, toward the empty board rather than toward the
+## hand.
+static func ghost_lift_offset(lifted_now: bool, row: int) -> Vector2:
+	if not lifted_now:
+		return Vector2.ZERO
+	return Vector2(0.0, GHOST_LIFT if row <= 0 else -GHOST_LIFT)
+
+
+## `ghost_lift_offset` applied to the node, reading the row out of the preview's own
+## position. `Board.CELL` rather than `board.world_to_cell` deliberately: this runs on the
+## mouse-motion path and `_board()` can resolve to null in a detached test, where the row
+## is still perfectly derivable from the position the caller set.
+func _reposition_ghost() -> void:
+	if _ghost == null:
+		return
+	_ghost.position = ghost_lift_offset(lifted, int(floor(position.y / float(Board.CELL))))
 
 
 ## The ghost node, for tests and for anything that needs to ask what is being shown
