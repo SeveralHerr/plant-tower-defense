@@ -1199,16 +1199,16 @@ have rebuilt the same trap.
   colour flash standing in for "no". It is a different claim in motion: a pest stuck in a
   sundew now recoils exactly as if it had been shot. Two honest options, and this is taste
   rather than a defect — give the blocked/undamaged case a smaller `FLINCH_RADIANS` the way
-  `SHELL_FLASH_DIM` (`game/pest.gd:1669`) already dims its colour peak, or accept that
+  `SHELL_FLASH_DIM` (`game/pest.gd:2047`) already dims its colour peak, or accept that
   "something happened to this bug" is one vocabulary word and leave it. The dim-the-blocked
   route is the one that matches the cue this game already ships.
 
 - **A chewed pest is held still, and now it recoils in place — check that before adding
   anything else to the mouth.** `ChompFlower` calls `flash_hit()` on `_held`
   (`game/chomp_flower.gd:551`, `:719`), and a held pest's gait is still running: nothing in
-  `Pest._gait` (`game/pest.gd:1527`) consults the hold, and `_play_death`
-  (`game/pest.gd:1735-1736`) is the only thing that stops the physics process. So the yaw
-  measured this cycle — peak 0.366 rad, 2.8x `GAIT_SWING` (`game/pest.gd:550`) — applies to a
+  `Pest._gait` (`game/pest.gd:1881`) consults the hold, and `_play_death`
+  (`game/pest.gd:2124-2125`) is the only thing that stops the physics process. So the yaw
+  measured this cycle — peak 0.366 rad, 2.8x `GAIT_SWING` (`game/pest.gd:690`) — applies to a
   bug clamped in a mouth, where a player reads it against a stationary flower rather than
   against a walk. Worth one look at the running game before deciding; it may read as
   struggling, which would be a gift, or as a glitch.
@@ -1222,12 +1222,12 @@ have rebuilt the same trap.
   when the snapshot was taken has its wrong text recorded as the baseline and compares clean
   forever. Cycle 139 added 30 lines to `game/pest.gd` and eleven citations moved, which is
   the only reason they were read. What they claimed against where the symbol actually is —
-  three entries claimed `Pest._gait`, which is `game/pest.gd:1527`; three claimed
-  `_update_facing`, which is `game/pest.gd:1502`; one claimed `_apply_facing`
-  (`game/pest.gd:1519`), one `meal.take_damage(EAT_DPS * delta)` (`game/pest.gd:1315`), one
-  `_play_death` (`game/pest.gd:1735`), one `husk_multiplier()` (`game/pest.gd:1957`), one
-  `gait_stretch`'s hungry branch (`game/pest.gd:1582-1584`), and one the `escaped` emit
-  (`game/pest.gd:1968-1969`). The old numbers are deliberately not written out here: a bare
+  three entries claimed `Pest._gait`, which is `game/pest.gd:1881`; three claimed
+  `_update_facing`, which is `game/pest.gd:1856`; one claimed `_apply_facing`
+  (`game/pest.gd:1873`), one `meal.take_damage(EAT_DPS * delta)` (`game/pest.gd:1620`), one
+  `_play_death` (`game/pest.gd:2124`), one `husk_multiplier()` (`game/pest.gd:2346`), one
+  `gait_stretch`'s hungry branch (`game/pest.gd:1960-1962`), and one the `escaped` emit
+  (`game/pest.gd:2357-2358`). The old numbers are deliberately not written out here: a bare
   colon-number in this file binds to the last full path before it, so listing them as prose
   would re-create the eleven dead citations inside the entry that reports them. Two of the
   eleven landed on **blank lines**, which match anything and would have survived a uniform
@@ -1562,7 +1562,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   and pest currently reads as mostly static art with a handful of one-off tweens
   bolted on for specific events", and that has been false since the first playable
   build.** `Plant._wobble` (`game/plant.gd:351`) rocks every planted bed off a
-  per-cell phase, and `Pest._gait` (`game/pest.gd:1527`) gives every pest a walk cycle
+  per-cell phase, and `Pest._gait` (`game/pest.gd:1881`) gives every pest a walk cycle
   with a side-to-side swing, a body stretch at twice the rate, and a per-instance
   phase. Both are `_process`-driven sinusoids, which is why a census of
   `create_tween()` calls — the check that produced the wrong "verified unbuilt" —
@@ -1581,7 +1581,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   was stale for the first of them for fifty-odd cycles:
   * A plant being eaten flinches — `Plant.FLINCH_RADIANS` (`game/plant.gd:231`), re-armed
     every physics frame by `take_damage`, shipped cycle 86.
-  * A pest that survives a hit recoils — `Pest.FLINCH_RADIANS` (`game/pest.gd:602`), armed
+  * A pest that survives a hit recoils — `Pest.FLINCH_RADIANS` (`game/pest.gd:742`), armed
     in `flash_hit`, shipped cycle 139. Not named in the original ask and worth more than
     either: it is the half of the fight the player is aiming at.
   * A Chomp with a full mouth champs — `ChompFlower.champ_scale`
@@ -1626,7 +1626,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   No test coverage claim is made here; that was not checked.
 - **Fix enemy facing direction.** Pests should visually face the way they walk; the art
   style doc calls out up-screen facing as the convention.
-  **AUDITED (cycle 76): SHIPPED.** `Pest._update_facing` (`game/pest.gd:1502-1517`) picks the
+  **AUDITED (cycle 76): SHIPPED.** `Pest._update_facing` (`game/pest.gd:1856-1871`) picks the
   dominant axis and maps all four cardinals onto the up-screen convention, and `_gait`
   composes the walk cycle's sway on top of `_facing` rather than replacing it, so a bug
   leaning into a step still faces where it is going.
@@ -1885,8 +1885,12 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 - **"A hungry pest ate your X!" is honest today, and that is a constraint on every future
   way of losing a plant.** Enumerated rather than assumed: `Plant.destroyed` is emitted from
   exactly one place (`game/plant.gd:1031`, health reaching zero inside `take_damage`), and
-  `Plant.take_damage` has exactly one caller in the whole game — `game/pest.gd:1315`,
-  `meal.take_damage(EAT_DPS * delta)`, the eating path. Uprooting does not go near it:
+  `Plant.take_damage` has exactly one caller in the whole game — `game/pest.gd:1620`,
+  `meal.take_damage(EAT_DPS * delta)`, the eating path. **[plant-tower-defense-grls: line
+  re-pointed, claim unverified — `game/bramble.gd:177` now overrides `take_damage` and its
+  body calls `super.take_damage(...)`, and `game/pest.gd:1615` (`wall.take_damage(...)`) is a
+  second call site added since this was written; whether that makes "exactly one caller"
+  false needs a look, not a citation fix.]** Uprooting does not go near it:
   `commit_uproot` frees the plant with `play_exit_and_free()` (`game/game.gd:1584`), so
   digging up your own Corn Cobbler does not accuse a pest of eating it.
   The message is therefore accurate by a coincidence of there being one cause, and
@@ -2203,7 +2207,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 
 - **The flinch completes the animation ask and exposes what it does not cover.** Sway,
   breathe and now a flinch: `Plant._wobble` (`game/plant.gd:377`) carries all three on one
-  pivot. But **only the plant flinches.** `Pest._gait` (`game/pest.gd:1527`) has the same
+  pivot. But **only the plant flinches.** `Pest._gait` (`game/pest.gd:1881`) has the same
   continuous-sinusoid shape and the same available state — `gait_stretch` already varies when
   a pest is hungry — so a pest taking a kernel to the face reads exactly like one that did
   not. It has a hit flash (`game/pest.gd:247`, `HIT_FLASH_DURATION` 0.10) which is a *colour* channel and the
@@ -2613,7 +2617,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   every pest (`game/pest.gd:200`), and `corpse_rotation()` / `corpse_scale()` vary by CAUSE
   — a Chomp bite squashes, a seed bomb tilts. So an armoured beetle that took four volleys
   leaves the board on exactly the same beat as an aphid that took one. The game already
-  believes harder kills are worth more: `husk_multiplier()` (`game/pest.gd:1957`) pays a
+  believes harder kills are worth more: `husk_multiplier()` (`game/pest.gd:2346`) pays a
   premium per mutation, and `WaveDirector`'s weather payout is the same idea one level up.
   The corpse is the one place that idea is missing, and it is the only place the player
   actually looks. Scaling `DEATH_LINGER` by the same multiplier would cost one line and make
@@ -2647,11 +2651,17 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   `test_a_plant_eaten_down_to_nothing_still_frees_the_node_headless` plus
   `test_uprooting_plays_its_own_cue_and_still_frees_the_node_headless` (both in
   `test/unit/test_placement.gd`) exist because that bug shipped twice. `Pest._play_death`
-  (`game/pest.gd:1735-1752`) takes the other route: it guards `is_inside_tree()`, then queues
+  (`game/pest.gd:2124-2181`) takes the other route: it guards `is_inside_tree()`, then queues
   `tween_interval(DEATH_LINGER)` and a `tween_callback(queue_free)` in **both** branches, so
   headless it depends on a Tween's interval elapsing rather than on an early return. Nothing
   asserts it does. Whether that leaks is a measurement nobody has taken — and this is the
   exact failure class the plant tests were written for, on the object the game creates most.
+  **[plant-tower-defense-grls: line re-pointed, claim only partly re-verified — the
+  `tween_interval(DEATH_LINGER)` this bullet describes is now `tween_interval(death_linger()
+  - DEATH_FADE)` / `tween_interval(death_linger())`, a computed duration, and the
+  `animations_enabled()` branch also tweens `modulate:a` to fade the corpse, which this bullet
+  never mentions. The is_inside_tree/tween_callback shape still holds; the rest wants a fresh
+  read, not a citation fix.]**
 - **The flourishes are asserted to start and end at `Vector2.ONE` and never to reach their
   peak.** The cob's recoil is written to hit `(0.88, 1.14)` (`game/corn_cobbler.gd:183`), the
   Chomp's bite `(1.18, 0.82)` (`game/chomp_flower.gd:155`), the upgrade `(0.72, 1.34)`
@@ -2670,13 +2680,13 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 
 - **Nothing in the garden is ever startled.** The game now has three continuous idle
   animations and they are the same shape: `Plant._wobble` (`game/plant.gd:351`) sways and
-  breathes off `sin(_wobble_time * RATE + phase)`, `Pest._gait` (`game/pest.gd:1527`) swings
+  breathes off `sin(_wobble_time * RATE + phase)`, `Pest._gait` (`game/pest.gd:1881`) swings
   and stretches off `sin(_gait_time * rate + phase)`, and `TitleScreen`'s decorative lawn
   phases the same way. A sinusoid cannot be interrupted, so nothing on the board ever
   flinches — not a plant taking a bite, not a pest walking into sap. **The state to hang a
   flinch on already exists on both sides**: `Plant._quiet_time` (`game/plant.gd:180`) is
   reset by damage and is what gates regrowth, and `Pest` already changes `gait_stretch`
-  when it is hungry (`game/pest.gd:1582-1584`). A one-off amplitude spike decaying back into the
+  when it is hungry (`game/pest.gd:1960-1962`). A one-off amplitude spike decaying back into the
   sine — the same `_wobble_time` clock, one extra term — would make being eaten legible
   from across the board, where today a bed under attack looks exactly like one that is not.
 - **The Sway pivot exists on every plant and only one thing uses it.**
@@ -2878,7 +2888,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
   changes (`game/hud.gd:1216-1217`).
   What is actually missing is narrower and may not be worth fixing: an escape has no beat
   *on the pest itself*. `Pest` emits `escaped` and calls `queue_free()` in the next line
-  (`game/pest.gd:1968-1969`), where a death gets a corpse sprite and `DEATH_LINGER`. Even
+  (`game/pest.gd:2357-2358`), where a death gets a corpse sprite and `DEATH_LINGER`. Even
   that is arguable — the exit bracket sits at x≈928, under the side panel, so a lingering
   escapee would fade where nobody can see it, exactly as cycle 65's corpses turned out to
   land off-board.
@@ -3238,7 +3248,7 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 - **The road never travels up-screen, so a quarter of the pest art is unreachable.**
   `Board._build_route()` (`game/board.gd:162`) walks `_path_order` and the shipped level
   runs right, down, left, down, right — read live off a pest's `_route`, thirty-four
-  points, not one of them a -Y step. `Pest._update_facing()` (`game/pest.gd:1502`) has a
+  points, not one of them a -Y step. `Pest._update_facing()` (`game/pest.gd:1856`) has a
   `_facing = 0.0` branch for up-screen travel that no frame of a real game has ever run,
   and until this cycle no test touched it either. A level whose road **climbs** would use
   art that already exists and a code path that already works — the cheapest new-level
@@ -3261,8 +3271,8 @@ done. Counted afterwards, which is the same mistake the audit was about.)*
 
 - **"Fix enemy facing direction" (in *Requested directly by James*, above) appears to
   already ship — do not start it without looking at the screen first.**
-  `Pest._update_facing()` (`game/pest.gd:1502`) picks all four cardinal rotations from the
-  direction of travel, `_apply_facing()` (`game/pest.gd:1519`) is the single writer of
+  `Pest._update_facing()` (`game/pest.gd:1856`) picks all four cardinal rotations from the
+  direction of travel, `_apply_facing()` (`game/pest.gd:1873`) is the single writer of
   `_sprite.rotation` and composes facing with the gait sway rather than either clobbering
   the other, and `test/unit/test_selftest.gd:8378` asserts exactly that composition.
   The header at `game/pest.gd:1498` names STYLE.md's up-screen (-Y) convention as rotation
