@@ -322,6 +322,17 @@ var _uproot_left: float = 0.0
 const MOVE_LAPSED_GRACE_SECONDS: float = 1.5
 var _move_lapsed_left: float = 0.0
 
+## How long Board's road-answer ring stays lit after a road plant is refused on
+## grass (plant-tower-defense-oxf1). Same countdown-then-clear shape as
+## `_move_lapsed_left` just above: decremented in `_process()`, and the cue is
+## cleared the frame it reaches zero rather than left for the next redraw to
+## notice. Set from `Hud.message_seconds(Hud.ROLE_NOTICE)` rather than a new
+## literal -- this cue IS a notice, in the same sense the role table already
+## names, and reusing that table's number means a future retune of "how long a
+## notice reads" moves this ring with it instead of leaving it stranded at
+## whatever this cycle typed.
+var _road_answer_left: float = 0.0
+
 ## Last health reading of the selected plant, so the panel can follow a chew.
 ##
 ## Plant has no health_changed signal and damage is applied per physics frame by
@@ -608,6 +619,12 @@ func _process(delta: float) -> void:
 	# Decayed here rather than inside _tick_uproot_confirm, which early-returns the moment
 	# `_uproot_left` hits zero — and zero is exactly when this clock starts.
 	_move_lapsed_left = maxf(0.0, _move_lapsed_left - delta)
+	# Same place as the clock above and for the same reason: a run ending mid-flash must
+	# still clear the ring, or it is left lit over the results screen (plant-tower-defense-oxf1).
+	var road_answer_was_showing: bool = _road_answer_left > 0.0
+	_road_answer_left = maxf(0.0, _road_answer_left - delta)
+	if road_answer_was_showing and _road_answer_left <= 0.0:
+		board.mark_road_answer([])
 	_watch_selected_health()
 	if game_over or victory:
 		return
@@ -3471,6 +3488,16 @@ func _commit_placement(cell: Vector2i) -> void:
 			var fits: StringName = sole_legal_plant_for(cell)
 			if fits != &"" and fits != selected_plant:
 				hud.shake_plant_button(fits)
+			elif refusal == REFUSAL_ON_ROAD:
+				# THE GRASS DIRECTION (plant-tower-defense-oxf1): `fits` is always
+				# &"" here -- the clicked cell is grass (REFUSAL_ON_ROAD only fires
+				# when board.is_buildable_for() failed a road-only plant, which on an
+				# in-bounds cell means the cell is not path), and sole_legal_plant_for()
+				# ties past its second non-road candidate on every grass cell in the
+				# catalogue. No packet to point at, so point at the GROUND instead:
+				# every road cell, lit until _road_answer_left lapses in _process().
+				board.mark_road_answer(board.road_cells())
+				_road_answer_left = Hud.message_seconds(Hud.ROLE_NOTICE)
 	# The cell under the cursor just changed state — either it now holds a
 	# plant, or the purchase drained the seeds that made it affordable. Either
 	# way the cue on screen is stale until the mouse moves, which it need not.
