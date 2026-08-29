@@ -131,6 +131,32 @@ const MUTANT_PALETTE: PackedStringArray = [
 	"46063B", "690859", "910C7B", "B91A9E", "DE34C2", "F56EDE", "FCB0EF", "FFCEF7",
 ]
 
+## What makes a stem a skin's, and the only thing SKIN_PALETTES is keyed off.
+## `tools/gen_skin_svg.py` builds `<parent>_skin_<family>` with it and `Skins.texture_path`
+## looks for it; a bare run of that tool fails if this spelling and its own disagree.
+const SKIN_SUFFIX := "_skin_"
+
+## The three skin ramps and the ONLY sprites each is legal in. A plant wearing a bought
+## skin wears a generated DRAWING (`tools/gen_skin_svg.py`), not a tint, and every shade in
+## it comes off its own family's ramp.
+##
+## Scoped per family, not pooled: `_palette_rgb` hands a `_skin_frost` stem the frost ramp
+## and nothing else, so an ember shade that leaked into a frost sprite is still a finding.
+## Pooling all twenty-four would have been one line and would have made the three families
+## one 24-colour palette with every pair-segment between them legal, which is the same
+## mistake in miniature that widening PALETTE itself would have been for the mutants.
+##
+## Eight anchors each, constant-hue by construction and monotone in luminance -- derived,
+## not chosen. `python tools/gen_skin_svg.py --palette` prints this block, and a bare run
+## of that tool fails when this copy and its RAMPS disagree in either direction. The
+## derivation, the hues and why both end rungs stop short of white and black are in that
+## file's docstring and in art_src/STYLE.md.
+const SKIN_PALETTES := {
+	"golden": ["463604", "695006", "8C6B09", "AF870E", "D0A218", "E8BC37", "F5D36E", "FCE8AA"],
+	"frost": ["053046", "084969", "0C618C", "147BAF", "2896CD", "50B3E4", "87CEF2", "B9E4FA"],
+	"ember": ["481504", "6C2108", "902D0C", "B43910", "D6491A", "EC6B40", "F89B7C", "FDC7B5"],
+}
+
 ## An anti-aliased edge between two flat fills lands *on the line between them*
 ## in RGB, so conformance is "within TOLERANCE of some palette-pair segment",
 ## not "exactly a palette entry". Measured worst case across all six sprites is
@@ -331,6 +357,43 @@ func test_no_rendered_png_is_an_orphan() -> String:
 	return ""
 
 
+func test_a_skin_carries_more_ink_than_the_plant_it_dresses() -> String:
+	# The one claim about a skin that no other test in this file can make, and the one
+	# the FEATURE is about: a skin is not a recolour. `tools/gen_skin_svg.py` appends a
+	# family motif as real geometry, so a skin's silhouette is strictly bigger than its
+	# parent's — the crown, the shards, the scorch all paint where the plant does not.
+	#
+	# Every other gate here is satisfied by a pure recolour. The palette test passes on
+	# one, the size and centring and margin tests pass on one, and the generator's own
+	# check compares text and would happily agree with a motif whose `d` Godot silently
+	# refuses to draw. Opaque pixel COUNT is the property that separates "the motif is in
+	# the file" from "the motif reached the raster", and it is measured against the
+	# parent rather than against a number, so a redrawn motif does not need a new
+	# constant here.
+	var stems := _svg_stems()
+	var checked := 0
+	for stem: String in _declared():
+		var at := stem.find(SKIN_SUFFIX)
+		if at < 0:
+			continue
+		var parent: String = stem.substr(0, at)
+		if not stems.has(parent):
+			continue  # named by test_every_svg_source_is_declared instead
+		var skin := _load(stem)
+		var plain := _load(parent)
+		if skin == null or plain == null:
+			return "%s.png or its parent %s.png did not load" % [stem, parent]
+		checked += 1
+		var err: String = _T.assert_gt(_opaque_pixel_count(skin), _opaque_pixel_count(plain),
+			"%s paints more than %s (a skin appends a motif; equal ink means the motif did not render)"
+				% [stem, parent])
+		if err != "":
+			return err
+	# A loop over an empty set returns pass having asserted nothing, which is the
+	# [VACUOUS] failure this suite prints for exactly this shape. Say the number.
+	return _T.assert_gt(checked, 0, "art_src/ carries skin drawings to compare against their parents")
+
+
 func test_every_colour_is_kit_palette_or_a_blend_of_two() -> String:
 	for stem: String in _declared():
 		var pal := _palette_rgb(stem)
@@ -493,6 +556,19 @@ func _opaque_bounds(img: Image) -> Rect2i:
 ##
 ## Same size as the parent by construction, which is the whole of the geometric claim:
 ## the sport shares its parent's geometry byte for byte and differs only in paint.
+##
+## A SKIN is derived the same way and for the same arithmetic — fifty-one more rows whose
+## only content is "the parent's, again" — but it earns the row differently and the
+## difference is worth stating. A skin is NOT its parent's geometry: it appends a motif.
+## What still holds is the only thing this table claims, that the CANVAS is the parent's,
+## because `gen_skin_svg.py` keeps every motif inside the same 64x64 box; and the two
+## clauses that the sport got for free are instead asserted by the generator's own
+## placement rule (mirror-symmetric about x = 32, inside [3, 61]) and re-checked here by
+## test_content_is_bilaterally_centred and test_content_stays_inside_the_canvas, which
+## iterate `_declared()` and therefore iterate the skins.
+##
+## The family list is `SKIN_PALETTES` itself rather than three literals, so a fourth
+## family is one ramp in one place and not an edit here as well.
 func _declared() -> Dictionary:
 	var out: Dictionary = EXPECTED_SIZE.duplicate()
 	var stems := _svg_stems()
@@ -500,6 +576,10 @@ func _declared() -> Dictionary:
 		var sport: String = stem + SPORT_SUFFIX
 		if stems.has(sport):
 			out[sport] = EXPECTED_SIZE[stem]
+		for family: String in SKIN_PALETTES:
+			var skin: String = stem + SKIN_SUFFIX + family
+			if stems.has(skin):
+				out[skin] = EXPECTED_SIZE[stem]
 	return out
 
 
@@ -512,17 +592,33 @@ func _declared() -> Dictionary:
 ## entries" — many hundreds more pair-segments through the middle of the colour space.
 ## Scoping by stem leaves the nine plants, five pests and two projectiles held to exactly
 ## the contract they were held to before the mutants existed.
+##
+## A skin stem gets ITS OWN FAMILY's eight anchors and no others — not the pooled
+## twenty-four. That is the same argument one level down: three ramps handed out together
+## are one 24-entry palette, and because conformance is "near the segment between two
+## entries" it would legalise every blend between an ember shade and a frost one. A frost
+## anchor appearing in an ember sprite is a real defect (a motif written with the wrong
+## index, a family renamed in one file and not the other) and it stays a finding.
 func _palette_rgb(stem: String) -> Array[Vector3]:
 	var out: Array[Vector3] = []
 	for hex in PALETTE:
-		var c := Color.html(hex)
-		out.append(Vector3(c.r, c.g, c.b) * 255.0)
-	if not stem.ends_with(SPORT_SUFFIX):
+		out.append(_rgb255(hex))
+	if stem.ends_with(SPORT_SUFFIX):
+		for hex in MUTANT_PALETTE:
+			out.append(_rgb255(hex))
 		return out
-	for hex in MUTANT_PALETTE:
-		var c := Color.html(hex)
-		out.append(Vector3(c.r, c.g, c.b) * 255.0)
+	for family: String in SKIN_PALETTES:
+		if not stem.ends_with(SKIN_SUFFIX + family):
+			continue
+		for hex: String in SKIN_PALETTES[family]:
+			out.append(_rgb255(hex))
+		return out
 	return out
+
+
+func _rgb255(hex: String) -> Vector3:
+	var c := Color.html(hex)
+	return Vector3(c.r, c.g, c.b) * 255.0
 
 
 ## Shortest distance (0-255 scale) from `c` to the line segment between any two

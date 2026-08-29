@@ -384,6 +384,18 @@ var _weather_overlay: WeatherOverlay = null
 var _bees: BeeSwarm = null
 var _score_recorded: bool = false
 
+## Petals this run has earned from waves, held until `bank_score()` files them
+## (plant-tower-defense-u82u).
+##
+## RUN-LOCAL AND ACCUMULATED, not paid out per wave, and that is one save file write per
+## run instead of one per wave: `RunConfig.add_petals` writes on every change, and a
+## twenty-two wave campaign would otherwise rewrite `user://highscore.save` twenty-two
+## times for a number nothing reads until the run is over.
+##
+## Flushed inside `bank_score()` — see that function. Not persisted: an unbanked run is
+## an unfinished one, and the whole point of the latch there is that a run pays once.
+var _petals_earned: int = 0
+
 ## The plant an Uproot click has armed, and how long it stays armed. Held here
 ## rather than in the Hud because the HUD is deliberately stateless — it renders
 ## whatever state() hands it and keeps no second copy of the truth (see hud.gd).
@@ -892,6 +904,12 @@ func _check_wave_cleared() -> void:
 	_wave_live = false
 	_prep_left = prep_seconds
 	_commit_lane_pressure()
+	# ONE PETAL PER WAVE CLEARED, and it is counted HERE rather than inside the
+	# `has_more_waves()` branch below: the final campaign wave takes the `else` branch
+	# straight to victory, so an award written one line down would silently pay nothing
+	# for the hardest wave in the run. Accumulated rather than filed — see
+	# `_petals_earned` and `bank_score()`.
+	_petals_earned += 1
 	if director.has_more_waves():
 		# The wave that was about to attack got a banner and a bell the instant
 		# it started (_on_wave_started); the wave a player just survived was
@@ -1586,6 +1604,14 @@ func _end_run(_banner: String) -> void:
 	# only what is new, which is the one thing that stops being knowable the instant
 	# it is written down.
 	stats["new_milestones"] = RunConfig.record_milestones(Milestones.earned_by(stats))
+	# MILESTONE_PETALS apiece, once ever, and `record_milestones` is what makes "once"
+	# true: it returns only what is FRESH, so a milestone earned three runs ago is not in
+	# this array and pays nothing. Granted here rather than inside RunConfig because this
+	# is the one place that array is in hand — the newness exists for exactly the instant
+	# after the union, which is the whole reason that function has a return value.
+	var fresh_milestones: Array = stats["new_milestones"] as Array
+	if not fresh_milestones.is_empty():
+		RunConfig.add_petals(fresh_milestones.size() * RunConfig.MILESTONE_PETALS)
 	_summary = RunSummary.build(stats)
 	_summary_layer = CanvasLayer.new()
 	_summary_layer.name = "SummaryLayer"
@@ -1616,6 +1642,12 @@ func _end_run(_banner: String) -> void:
 ##
 ## Shares _score_recorded with _end_run, so quitting and then losing, or losing
 ## and then quitting, still files exactly one score.
+##
+## IT FILES BOTH OF THE RUN'S PERSISTED REWARDS, not just the score: the seed total
+## against the high score, and the petals the run earned by clearing waves
+## (plant-tower-defense-u82u). Widened rather than joined by a second function, because
+## the latch and the four call sites are the valuable part and a sibling call would have
+## to be remembered at every one of them.
 ## What the pause card says about the moment it interrupted. The old text was the
 ## constant "The wave is waiting.", which is false between waves -- and pause can
 ## fire at any moment outside game-over.
@@ -1634,6 +1666,14 @@ func bank_score() -> bool:
 	if _score_recorded:
 		return false
 	_score_recorded = true
+	# THE RUN'S PETALS GO THROUGH THE SAME LATCH, and that is why they are filed here
+	# rather than beside it. This function is already the one place both end paths and
+	# both pause doors reach, and it is already guarded against paying twice; a second
+	# call added next to it at those four sites would be four chances to forget one, and
+	# the one forgotten would be the pause door that the last fix had to add.
+	if _petals_earned > 0:
+		RunConfig.add_petals(_petals_earned)
+		_petals_earned = 0
 	return RunConfig.record_score(bank.seeds_earned_total)
 
 

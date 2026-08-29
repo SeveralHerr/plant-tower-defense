@@ -9854,3 +9854,384 @@ func test_the_grass_direction_shake_still_fires_and_lights_no_ring() -> String:
 
 # END plant-tower-defense-oxf1
 # =============================================================================
+
+
+# =============================================================================
+# The skin funnel — plant-tower-defense-u82u.4, Lane D
+#
+# `Plant.frame_texture_path` is the single door every texture assignment in the
+# game goes through, and it now answers two questions at once: is this plant a
+# sport, and what skin is it wearing. Those two have a PRECEDENCE between them
+# (a sport wins), which is a claim about a relation and not about a set — so the
+# tests below loop the cross product rather than writing three examples. See
+# `.claude/skills/enumerate-the-pairs`.
+#
+# Every assertion here is on the PATH STRING the funnel returns, never on
+# `load()` or `ResourceLoader.exists()`. That is deliberate: the skin PNGs are
+# generated art, and a test that asserts a file exists is a test that fails for
+# the art pipeline's reasons on a day the funnel is perfectly correct.
+# `test_selftest.gd` already owns the "and it actually loads" half for sports.
+
+
+## Every family this build ships, derived rather than typed — three literals here
+## is exactly the list that stops growing when a fourth family lands.
+func _skin_families() -> Array[StringName]:
+	var out: Array[StringName] = []
+	for row: Dictionary in Skins.FAMILIES:
+		out.append(StringName(row["id"]))
+	return out
+
+
+## Every frame a plant can wear, deduped. The same derivation
+## `test_every_frame_a_plant_can_wear_has_a_sport_twin_that_actually_loads` makes in
+## `test_selftest.gd`, and for the same reason: a plant does not have one sprite, so a
+## sweep over `PlantCatalog.ids()` would check nine standing pictures and miss the
+## eight frames a plant swaps to while the player is looking hardest at it.
+func _plant_frames() -> Array[String]:
+	var frames: Array[String] = []
+	for id: StringName in PlantCatalog.ids():
+		frames.append(PlantCatalog.texture_path(id))
+	frames.append_array(Bramble.DAMAGE_TEXTURES)
+	frames.append_array(Dandelion.FLUFF_TEXTURES)
+	frames.append(ChompFlower.GAPE_TEXTURE_PATH)
+	frames.append(ChompFlower.EATING_TEXTURE_PATH)
+	frames.append(ChompFlower.EATING_LATE_TEXTURE_PATH)
+	var seen := {}
+	var out: Array[String] = []
+	for path: String in frames:
+		if seen.has(path):
+			continue
+		seen[path] = true
+		out.append(path)
+	return out
+
+
+## The whole precedence table: family x sport x frame, every cell.
+##
+## The claim is not "a skin resolves a path" — it is that a SPORT BEATS A SKIN, in
+## both directions, on every frame. Three example cases would have covered the three
+## combinations somebody was thinking about while writing `frame_texture_path`; the
+## cell that goes wrong is a sport Chomp mid-bite belonging to a player who chose
+## Hoarfrost, which is a combination nobody writes an example for.
+##
+## The expectation is asserted STRUCTURALLY rather than only by calling the same two
+## helpers the implementation calls — `result == Skins.texture_path(base, family)`
+## alone is a tautology that would still pass if `frame_texture_path` applied the skin
+## to a sport as well. So each cell also asserts what must NOT be in the answer: no
+## skin suffix on a sport's path, no sport suffix on a skinned one.
+func test_a_sport_beats_a_skin_on_every_frame_of_every_family() -> String:
+	var families: Array[StringName] = _skin_families()
+	var frames: Array[String] = _plant_frames()
+
+	var err: String = _T.assert_gte(frames.size(), 17,
+		("all seventeen plant frames were derived; got %d. A shrinking denominator "
+			+ "here is a frame list that stopped being read, not a plant that lost a "
+			+ "frame") % frames.size())
+	if err == "":
+		err = _T.assert_gte(families.size(), 2,
+			("the table has at least a no-art family and an art one; got %d. With one "
+				+ "row this loop runs and proves nothing") % families.size())
+	if err == "":
+		var arts: int = 0
+		for family: StringName in families:
+			if Skins.has_art(family):
+				arts += 1
+		err = _T.assert_gt(arts, 0,
+			"at least one family declares art, or every cell below takes the same branch")
+	if err != "":
+		return err
+
+	var cells: int = 0
+	# Declared typed rather than looped over an inline `[false, true]`: a typed loop
+	# variable over an untyped Array literal is a runtime conversion, and this file is
+	# read by people copying its shape.
+	var sport_states: Array[bool] = [false, true]
+	for family: StringName in families:
+		for is_sport: bool in sport_states:
+			# One plant per (family, sport) pair rather than one per cell: the funnel
+			# reads only these two fields, and 136 nodes spawned and freed to ask 136
+			# string questions is a slow test that checks nothing extra.
+			var plant := Plant.new()
+			plant.skin_id = family
+			plant.is_sport = is_sport
+			for base: String in frames:
+				var got: String = plant.frame_texture_path(base)
+				cells += 1
+				if is_sport:
+					err = _T.assert_eq(got, PlantMutation.sport_texture_path(base),
+						("a sport wears its own drawing for %s even while %s is chosen "
+							+ "-- the run's own state beats a standing preference")
+							% [base, family])
+					if err == "":
+						err = _T.assert_false(got.contains(Skins.SKIN_SUFFIX),
+							("and carries no skin suffix: %s would name art that is "
+								+ "deliberately never generated") % got)
+				elif Skins.has_art(family):
+					err = _T.assert_eq(got, Skins.texture_path(base, family),
+						"a plain plant wearing %s takes the skin's drawing of %s"
+							% [family, base])
+					if err == "":
+						err = _T.assert_true(got != base,
+							"%s in %s really moved off the default art" % [base, family])
+					if err == "":
+						err = _T.assert_true(
+							got.get_basename().ends_with(Skins.SKIN_SUFFIX + String(family)),
+							"%s names its own family at the end of the stem, got %s"
+								% [family, got])
+					if err == "":
+						err = _T.assert_false(
+							got.contains(PlantMutation.SPORT_SUFFIX),
+							"and no sport suffix, since this plant is not one; got %s" % got)
+				else:
+					err = _T.assert_eq(got, base,
+						("a family with no art (%s) hands the frame straight back -- "
+							+ "the tint path, not a path transform") % family)
+				if err != "":
+					break
+			plant.free()
+			if err != "":
+				return err
+	return _T.assert_eq(cells, families.size() * 2 * frames.size(),
+		"every cell of the family x sport x frame table was actually visited")
+
+
+## A Bramble driven through all three damage frames stays skinned, and a Dandelion
+## through all four fluff frames does too.
+##
+## This is the bug the `frame_texture_path` seam exists to prevent, restated for skins:
+## a per-plant answer is correct for the standing sprite and wrong the moment the plant
+## swaps. A wall dropping to `bramble_ragged.png` while the player is watching it hold
+## is the single frame where reverting to default art is most visible, and it is
+## reached by a `load()` inside `_refresh_damage_sprite` that never asks the catalogue
+## again.
+##
+## Driven through the plants' own pure frame choosers (`texture_for_health`,
+## `texture_for_fluff`) rather than through `take_damage`, because the impure path ends
+## in `load()` and a null Texture2D from a PNG that is not rendered yet would fail this
+## test for the art pipeline's reasons rather than the funnel's.
+func test_every_damage_and_fluff_frame_stays_on_the_skin_it_started_in() -> String:
+	var family: StringName = &""
+	for candidate: StringName in _skin_families():
+		if Skins.has_art(candidate):
+			family = candidate
+			break
+	var err: String = _T.assert_true(family != &"",
+		"the table declares a family with art for this test to wear")
+	if err != "":
+		return err
+
+	var bramble := Bramble.new()
+	bramble.skin_id = family
+	var bramble_paths := {}
+	# Full health down to ragged, straddling both DAMAGE_THRESHOLDS. Derived from the
+	# frame count so a fourth damage frame widens the sweep instead of silently
+	# leaving itself unchecked.
+	for step: int in Bramble.DAMAGE_TEXTURES.size():
+		var fraction: float = 1.0 - (float(step) + 0.5) / float(Bramble.DAMAGE_TEXTURES.size())
+		var base: String = Bramble.texture_for_health(fraction)
+		var got: String = bramble.frame_texture_path(base)
+		bramble_paths[got] = true
+		err = _T.assert_eq(got, Skins.texture_path(base, family),
+			"the wall at %.2f health is still wearing %s" % [fraction, family])
+		if err == "":
+			err = _T.assert_true(got.contains(Skins.SKIN_SUFFIX),
+				("and %s did not revert to the default drawing when the picture "
+					+ "changed") % got)
+		if err != "":
+			break
+	bramble.free()
+	if err == "":
+		err = _T.assert_eq(bramble_paths.size(), Bramble.DAMAGE_TEXTURES.size(),
+			("the sweep really visited every damage frame, not the same one three "
+				+ "times -- if this is 1 the fractions no longer straddle "
+				+ "DAMAGE_THRESHOLDS"))
+	if err != "":
+		return err
+
+	var dandelion := Dandelion.new()
+	dandelion.skin_id = family
+	var fluff_paths := {}
+	for fluff: int in Dandelion.FLUFF_TEXTURES.size():
+		var base: String = Dandelion.texture_for_fluff(fluff)
+		var got: String = dandelion.frame_texture_path(base)
+		fluff_paths[got] = true
+		err = _T.assert_eq(got, Skins.texture_path(base, family),
+			"the head at %d fluff is still wearing %s" % [fluff, family])
+		if err != "":
+			break
+	dandelion.free()
+	if err == "":
+		err = _T.assert_eq(fluff_paths.size(), Dandelion.FLUFF_TEXTURES.size(),
+			"and every fluff frame resolved to a DIFFERENT skinned path")
+	return err
+
+
+## A plant wearing a family with real art takes `Color.WHITE`; one wearing a family
+## with none takes that family's tint.
+##
+## The interesting half is the first. `frame_texture_path` has already handed the
+## sprite a drawing painted on that family's own ramp, so multiplying `tint_for()` over
+## it desaturates toward the tint's hue -- three deliberate palettes becoming one muddy
+## one, which is exactly the mistake `PlantMutation.SPORT_MODULATE` was changed to
+## white to stop making.
+##
+## Swept over every family with the expectation COMPUTED from `has_art`, not tabulated,
+## so a fourth family is covered on the day it is added. `DEFAULT_SKIN`'s tint is white
+## and would satisfy either branch, so the loop also asserts that an art family's tint
+## is NOT white -- without that, "took white" is not evidence of anything.
+func test_a_plant_takes_white_over_real_art_and_the_tint_only_without_it() -> String:
+	var stashed_selections: Dictionary = RunConfig.selected_skins.duplicate()
+	var stashed_purchases: Dictionary = RunConfig.purchased_skins.duplicate()
+	var stashed_petals: int = RunConfig.petals
+	var kind: StringName = PlantCatalog.ids()[0]
+	var err: String = ""
+	var checked: int = 0
+	for family: StringName in _skin_families():
+		# Through the game's own doors -- buy, then equip -- rather than by writing
+		# `purchased_skins` by hand. A selection the player could not have reached is a
+		# fixture that tests a state the game cannot produce; see the setter-verb note
+		# in CLAUDE.md's bridge section, which is the same argument one level down.
+		RunConfig.petals = 999
+		if family != Skins.DEFAULT_SKIN:
+			err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, kind, family),
+				"%s can be bought for %s with petals in hand" % [family, kind])
+			if err != "":
+				break
+		err = _T.assert_true(RunConfig.set_skin(Skins.KIND_PLANT, kind, family),
+			"and equipped once owned")
+		if err != "":
+			break
+		var plant := Plant.new()
+		# `null` for the board, as test_skins.gd's own tint test does: setup() only
+		# reaches into it for cell_to_world() when it is not null.
+		plant.setup(kind, Vector2i(1, 1), null)
+		err = _T.assert_eq(plant.skin_id, family,
+			("the plant is actually wearing %s -- if this fails, ownership did not "
+				+ "reach `RunConfig.selected_skin` and nothing below means anything")
+				% family)
+		if err == "":
+			err = _T.assert_true(plant._sprite != null, "the sprite exists to be read")
+		if err == "":
+			if Skins.has_art(family):
+				err = _T.assert_true(Skins.tint_for(family) != Color.WHITE,
+					("%s's tint is not already white, or the assertion below is "
+						+ "satisfied by both branches at once") % family)
+				if err == "":
+					err = _T.assert_eq(plant._sprite.modulate, Color.WHITE,
+						("a plant wearing %s takes WHITE, not its tint: the drawing "
+							+ "IS the colour and a multiplier over it only desaturates")
+							% family)
+			else:
+				err = _T.assert_eq(plant._sprite.modulate, Skins.tint_for(family),
+					("a family with no drawing is still a tint (%s) -- the path a pest "
+						+ "skin takes for all four families") % family)
+		checked += 1
+		plant.free()
+		if err != "":
+			break
+	RunConfig.petals = stashed_petals
+	RunConfig.purchased_skins = stashed_purchases
+	RunConfig.selected_skins = stashed_selections
+	if err != "":
+		return err
+	return _T.assert_eq(checked, Skins.FAMILIES.size(),
+		"every family in the table was placed and read, not just the first")
+
+
+## The ghost and the plant it becomes resolve the SAME file.
+##
+## Asserted as one string equality between the two funnels rather than by comparing two
+## loaded `Texture2D`s, because that is the claim: `PlacementPreview` used to call
+## `PlantCatalog.texture_path` directly, so the cue promising "this is the plant that
+## would go here" drew default art over a garden of skinned ones -- and the one frame a
+## player compares the ghost against its neighbours is the frame the promise is read in.
+func test_the_placement_ghost_resolves_the_same_drawing_the_placed_plant_will() -> String:
+	var stashed_selections: Dictionary = RunConfig.selected_skins.duplicate()
+	var stashed_purchases: Dictionary = RunConfig.purchased_skins.duplicate()
+	var stashed_petals: int = RunConfig.petals
+	var family: StringName = &""
+	for candidate: StringName in _skin_families():
+		if Skins.has_art(candidate):
+			family = candidate
+			break
+	var err: String = _T.assert_true(family != &"",
+		"the table declares a family with art for this test to wear")
+	var checked: int = 0
+	if err == "":
+		RunConfig.petals = 9999
+		for id: StringName in PlantCatalog.ids():
+			err = _T.assert_true(RunConfig.buy_skin(Skins.KIND_PLANT, id, family),
+				"%s is bought for %s" % [family, id])
+			if err == "":
+				err = _T.assert_true(RunConfig.set_skin(Skins.KIND_PLANT, id, family),
+					"and equipped")
+			if err != "":
+				break
+			var plant := Plant.new()
+			plant.setup(id, Vector2i(1, 1), null)
+			var placed: String = plant.frame_texture_path(PlantCatalog.texture_path(id))
+			var ghost: String = PlacementPreview.ghost_texture_path(id)
+			plant.free()
+			err = _T.assert_eq(ghost, placed,
+				("the ghost of %s and the plant it becomes load one file. A ghost "
+					+ "drawn from PlantCatalog directly is a promise the click does "
+					+ "not keep") % id)
+			if err == "":
+				err = _T.assert_true(ghost.contains(Skins.SKIN_SUFFIX),
+					("and it is the SKINNED file, %s -- two funnels agreeing on the "
+						+ "default drawing would pass this without the skin ever "
+						+ "reaching either") % ghost)
+			checked += 1
+			if err != "":
+				break
+	RunConfig.petals = stashed_petals
+	RunConfig.purchased_skins = stashed_purchases
+	RunConfig.selected_skins = stashed_selections
+	if err == "":
+		err = _T.assert_eq(checked, PlantCatalog.ids().size(),
+			"every plant the shop can sell was checked, not just the first")
+	if err == "":
+		err = _T.assert_eq(PlacementPreview.ghost_texture_path(&"not_a_plant"), "",
+			("an id the catalogue does not know returns the empty path so the caller "
+				+ "hides the ghost -- a cue that half-appears is worse than none"))
+	if err == "":
+		err = _T.assert_eq(PlacementPreview.ghost_texture_path(&""), "",
+			"and so does the empty id `plant_id` documents as its resting value")
+	return err
+
+
+## The Skins screen's note still fits the paper it is printed on.
+##
+## `add_note_label` gives the note `clip_text` and OVERRUN_TRIM_ELLIPSIS across the
+## panel's full width, so a sentence over budget does not warn -- it silently loses its
+## end, which after this change is the half naming the Shop as where more skins come
+## from. Measured through `_T.text_width`, which reads the label's own resolved theme
+## font: `Label.get_minimum_size()` reports the clip stub on exactly the labels that
+## need checking, so the obvious assertion would pass unconditionally here.
+func test_the_skins_screen_note_fits_the_paper_it_is_printed_on() -> String:
+	var screen := await _T.instantiate_ui(SkinsScreen.build(), Vector2i(1152, 648)) as SkinsScreen
+	var note: Label = screen.get_node_or_null(OverlayScreen.NOTE_NAME) as Label
+	var err: String = _T.assert_true(note != null,
+		"the note label is where OverlayScreen.NOTE_NAME says it is")
+	if err == "":
+		err = _T.assert_eq(note.text, SkinsScreen.NOTE_TEXT,
+			"and it is showing NOTE_TEXT, so the measurement below is of the real string")
+	if err == "":
+		var width: float = _T.text_width(note)
+		err = _T.assert_true(width <= note.size.x,
+			("the note is %.0fpx wide in a %.0fpx box. Shorten NOTE_TEXT: over budget "
+				+ "it is trimmed with an ellipsis, and the part that goes is the end "
+				+ "-- which is the sentence naming the Shop") % [width, note.size.x])
+		if err == "":
+			err = _T.assert_gt(width, 0.0,
+				("and the measurement is real -- a 0px note means no theme font "
+					+ "resolved and this test proved nothing"))
+	if err == "":
+		err = _T.assert_true(SkinsScreen.NOTE_TEXT.contains("Shop"),
+			("the note names the Shop. This screen counts what is owned and has no "
+				+ "other way to say where the rest come from"))
+	_T.free_ui(screen)
+	return err
+
+# END plant-tower-defense-u82u.4
+# =============================================================================

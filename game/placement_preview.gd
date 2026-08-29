@@ -470,19 +470,45 @@ func _new_cue_line(node_name: String) -> Line2D:
 	return line
 
 
-## Swaps the ghost onto whatever `plant_id` now names, or hides it when that is nothing.
+## The drawing the ghost of `id` should wear: the catalogue's picture, put through the
+## SAME skin funnel the plant itself will go through the instant it is placed
+## (`Plant.setup` reads `RunConfig.selected_skin`, `Plant.frame_texture_path` calls
+## `Skins.texture_path`).
+##
+## THE GHOST IS A PROMISE, and it was breaking it. This cue exists to say "this is the
+## plant that would go here", and it drew default art over a garden of Hoarfrost
+## sunflowers -- the one frame where the player is comparing the ghost against the
+## plants already standing beside it, which is the comparison the whole cue is for.
 ##
 ## `PlantCatalog.texture_path` rather than a table of our own -- the same load
 ## `Hud`'s plant-bar buttons do for their icons, so a plant whose art is replaced is
 ## replaced in three places at once and cannot be replaced in two.
 ##
-## An unknown or empty id hides the ghost rather than drawing a blank: `plant_id` is
-## documented as optional (see its own block), and the brackets, the ring and every
-## warning still work without it. A cue that half-appears is worse than one that does not.
+## STATIC, and not a call to `Plant.frame_texture_path`, for two reasons. That method
+## is an instance method and there is no plant yet -- building one to ask it what it
+## would look like is a node spawned and freed on every mouse move across the board.
+## And it reads `is_sport`, which is a question with no answer here: a sport is thrown
+## by `CrossBreeder` onto a cell that is already empty, never bought, so nothing the
+## shop can place is ever one. Static also means the one claim that matters -- that this
+## resolves the same file the placed plant loads -- is a string comparison a headless
+## test can make with no board and no frame.
+##
+## An unknown or empty id returns "" so the caller hides the ghost rather than drawing a
+## blank: `plant_id` is documented as optional (see its own block), and the brackets, the
+## ring and every warning still work without it. A cue that half-appears is worse than
+## one that does not.
+static func ghost_texture_path(id: StringName) -> String:
+	if not PlantCatalog.has(id):
+		return ""
+	return Skins.texture_path(PlantCatalog.texture_path(id),
+		RunConfig.selected_skin(Skins.KIND_PLANT, id))
+
+
+## Swaps the ghost onto whatever `plant_id` now names, or hides it when that is nothing.
 func _refresh_ghost() -> void:
 	if _ghost == null:
 		return
-	var path: String = PlantCatalog.texture_path(plant_id) if PlantCatalog.has(plant_id) else ""
+	var path: String = ghost_texture_path(plant_id)
 	if path == "":
 		_ghost.texture = null
 		_ghost.visible = false

@@ -899,7 +899,11 @@ var is_winged: bool = false
 var is_hungry: bool = false
 
 ## The cosmetic skin the player has chosen for this species — purely decorative,
-## picked on the Skins screen and unlocked by Milestones (plant-tower-defense-ncfv).
+## picked on the Skins screen and BOUGHT with petals in the Shop. It used to be
+## unlocked by a milestone (plant-tower-defense-ncfv); ownership is now per target
+## and per family, and `RunConfig.selected_skin()` falls back to DEFAULT_SKIN for a
+## family this player has not bought for this species, which is also how a v10 save's
+## selections survive the parse and are simply not worn.
 ## See `game/skins.gd` for the table and `set_pest_skin()` below, which is the only
 ## writer, for how it reaches the sprite.
 var skin_id: StringName = Skins.DEFAULT_SKIN
@@ -1433,6 +1437,17 @@ func _tint(colour: Color) -> void:
 ## Sets the cosmetic skin and, unless a mutation has already claimed the sprite's
 ## colour, applies its tint through the same `_tint()` a mutation's own hue goes
 ## through above.
+##
+## A PEST SKIN IS STILL A TINT, and that is the one place the two sides of the board
+## deliberately differ. `Plant._build_visuals` now takes `Color.WHITE` for a family
+## with real art and loads that art instead, because a plant skin is a generated
+## drawing with its own ramp and its own added geometry. There is no pest equivalent
+## and there is not meant to be: `tools/gen_skin_svg.py` derives its stems from the
+## PLANT catalogue, a pest is drawn at a fraction of a plant's tile (`SPECIES.scale`)
+## where a crown or three ice shards would be noise rather than silhouette, and five
+## species times three families is fifteen more drawings bought for nothing. So this
+## function keeps reading `Skins.tint_for`, which is exactly why `tint` stays on every
+## FAMILIES row even for the families a plant no longer multiplies by.
 ##
 ## A MUTATION STILL WINS OUTRIGHT, exactly the priority `apply_mutation`'s own
 ## comment states for two mutations composing onto one tint: MUTATION_TINT carries
