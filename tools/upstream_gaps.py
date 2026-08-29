@@ -227,6 +227,34 @@ def upstream(source, dest_path, project, include_fixed, dry_run):
     new_blocks = []
     harness_versions = set()
 
+    # STATUS FILTER: log-devtools.md is append-only, so one id's status is
+    # open / open / fixed on three separate blocks over time. Filtering by
+    # the status on THIS block would select the block from an earlier open
+    # mention even after a later block closed it - measured on this
+    # project's own log (plant-tower-defense-0p99): 5 ids the per-block
+    # filter would still select as open despite a later block marking them
+    # fixed (G-024, G-030, G-033, G-077, G-078), which is 5 gaps that would
+    # be re-filed upstream after already being closed. Resolve the status
+    # from the id's LAST mention in file order instead - the same rule
+    # gap_ledger.py documents and names in four words: "last write wins:
+    # entries are chronological".
+    #
+    # This is deliberately a separate, id-keyed pass over ALL blocks (not
+    # threaded into the dedup loop below): the dedup loop's collision
+    # heuristic (`seen: 1` on both sides = two different gaps sharing an
+    # id, see the comment on it) depends on seeing only per-block-open
+    # blocks in file order, and a same-id status-change mention routinely
+    # repeats `seen: 1` (G-024's `fixed` block does) - feeding fixed/wontfix
+    # blocks into that loop too would misread a plain status update as a
+    # second colliding gap and wrongly mint a suffixed id for it. Resolving
+    # status first, per id, keeps the dedup loop's own per-block reading
+    # exactly as it was for every id whose latest status is still open (the
+    # only case a real G-027-style collision can occur in), and only changes
+    # the outcome for ids whose latest block has since closed them.
+    latest_status_by_id = {}
+    for gap in gaps:
+        latest_status_by_id[gap["id"]] = gap["fields"].get("status", "open").lower()
+
     # Collapse repeat sightings within this one source first. A recurrence is
     # supposed to bump `seen:` on the original entry, but a log written before
     # that rule (or by a hand that forgot it) carries the same id twice. Two
@@ -243,9 +271,11 @@ def upstream(source, dest_path, project, include_fixed, dry_run):
     suffixed = []
     for gap in gaps:
         status = gap["fields"].get("status", "open").lower()
-        if status not in ("open", "") and not include_fixed:
-            skipped.append("%s (status: %s)" % (gap["id"], status))
-            continue
+        if not include_fixed:
+            resolved_status = latest_status_by_id.get(gap["id"], status)
+            if resolved_status not in ("open", ""):
+                skipped.append("%s (status: %s)" % (gap["id"], resolved_status))
+                continue
         key = "%s:%s" % (project, gap["id"])
         if key in selected and _seen(gap["fields"]) <= 1 and gap["id_index"] >= 0:
             base = key

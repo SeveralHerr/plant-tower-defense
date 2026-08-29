@@ -10435,3 +10435,67 @@ is likely to be at least as productive.
   `.claude/skills/cycle/references/fan-out.md`'s lane-death section instead, so the next
   parent checks the actual worktree files before assuming a bad report means bad or
   missing work.
+
+## 2026-08-29 — plant-tower-defense-0p99: upstream_gaps.py's status filter read the wrong block
+
+- Value: **warranted** — a small measurement script (not a running game) turned "does
+  this cost anything" into a number, and `gap-reconcile`'s "check the INSTALLED version,
+  not the pinned one" step turned up a live upstream defect this project cannot fix on
+  its own tree alone.
+  - Expected: that the per-block-vs-per-id status question the bead posed would most
+    likely be theoretical on this project's own log (a handful of ids, some old, unlikely
+    to have hit the exact shape).
+  - Got the opposite: reproducing `upstream_gaps.py`'s exact current selection logic
+    against this project's own `log-devtools.md` (160 gap blocks) found **5 ids it
+    currently selects as open despite a LATER block marking them fixed** — `G-024`,
+    `G-030`, `G-033`, `G-077`, `G-078` — all five would be re-filed upstream as open on
+    the next `upstream_gaps.py` run despite already being closed, three of them (`G-024`,
+    `G-030`, `G-033`) the exact ones `gap_ledger.py`'s own docstring already names as
+    living with both an `open` and a `fixed` line in the file at once.
+  - Found: the fix is narrower than "read the id's last mention everywhere" would
+    suggest. `G-024`'s `open` and `fixed` blocks are BOTH `seen: 1` — exactly the shape
+    the tool's own collision heuristic (`seen: 1` on both sides = two different gaps
+    sharing an id number, `G-027b`) keys off of. Folding every block into that dedup
+    loop regardless of status would misread a plain status update as a second colliding
+    gap. The actual fix computes the id's latest status in a *separate* pass first (same
+    rule `gap_ledger.py` already documents: "last write wins: entries are chronological"),
+    uses that only to decide whether a block enters the existing per-block dedup loop at
+    all, and leaves that loop — and the `G-027b` suffixing it does — completely
+    unexercised for any id whose latest status is still open, which is the only case a
+    real collision can occur in. Also checked whether it is already fixed upstream before
+    writing any of this: the harness INSTALLED on this machine (0.66.0, sixteen releases
+    ahead of this project's pinned 0.38.0) still has the identical bug at
+    `tools/upstream_gaps.py:411-413` of that version (`status = gap["fields"].get(...)`
+    read per-block, no id-level resolution), and its own `tools/test_upstream_gaps.py`
+    (14 test methods) has none that opens a gap in one block and closes it in a later
+    one — so this is not a stale-pin false alarm, it is live in the current release too.
+  - Cheaper: nothing — the "is this theoretical" question the bead itself demanded be
+    measured before deciding anything, and the reconcile step against the installed
+    version, both needed reading real files (this log and the plugin cache), not the
+    running game.
+
+- Gap: **`tools/upstream_gaps.py`'s per-block status filter selects a gap from an
+  earlier OPEN block even after a LATER block in the same append-only log marks it
+  fixed**, because it reads `gap["fields"].get("status", "open")` off the block the
+  outer loop happens to be on rather than resolving the id's latest mention first.
+  Fixed in this project's pinned copy (`tools/upstream_gaps.py`, harness-managed per
+  `.harness_manifest.json` — this local fix will be reverted by the next
+  `/scaffold-godot-harness`, written self-contained and stdlib-only so the diff is
+  portable, same caveat cycle 106's `G-077` fix recorded for `verify_ledger.py`) and
+  covered by a new fixture-only checker, `tools/upstream_gaps_status_check.py`, which
+  `check_all.py` picked up on its own via the `NOT COVERED` contract marker with no
+  hand-edited list to update. **Still present in the harness installed on this machine
+  (0.66.0) and not yet reported there** — a `skill-feedback-issue` filing against
+  `godot-selftest-harness` is the right next step; not filed this turn because the
+  installed source has restructured the surrounding function significantly since
+  0.38.0 (an `--unverify`/`stale-since` reconciliation mode, H-069, sits around the
+  same lines now) and adapting the fix to that shape is its own piece of work.
+  - [G-157] status: open | seen: 1 | harness: 0.38.0 (installed 0.66.0 also affected,
+    confirmed at tools/upstream_gaps.py:411-413 of that version)
+  - Improvement: file the `skill-feedback-issue` against `godot-selftest-harness` with
+    this project's fix as a reference patch, adapted to the 0.66.0 function shape (the
+    same id-latest-status precompute, gated before whatever now sits where the
+    collision/`unverified` dedup loop lives), plus a `test_upstream_gaps.py` case
+    matching this project's fixture (an id `open` in one block, `fixed` in a later one,
+    both `seen: 1`, alongside a genuine same-id-text collision that must still survive
+    as two ids).
