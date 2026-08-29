@@ -323,6 +323,15 @@ const NEW_COVER_DOT: float = 4.0
 ## it by name rather than by index among the preview's children.
 const GHOST_NODE_NAME := "Ghost"
 
+## Node names for the three cues converted off `_draw()` onto real children
+## (plant-tower-defense-vlpg) -- the reach ring, the dead-ground lock and the
+## redundant-coverage bars. Same reason GHOST_NODE_NAME exists: a test or
+## `scene-tree` on a running game finds them by name rather than by index.
+const REACH_RING_NODE_NAME := "ReachRing"
+const DEAD_LOCK_NODE_NAME := "DeadLockMark"
+const REDUNDANT_BAR_A_NODE_NAME := "RedundantBarA"
+const REDUNDANT_BAR_B_NODE_NAME := "RedundantBarB"
+
 ## How solid the previewed plant is drawn under the brackets (plant-tower-defense-bmis).
 ##
 ## THE CUE IS THE PLANT ITSELF, which no drawn shape can substitute for. Everything else
@@ -354,6 +363,19 @@ var _resolved_board: Board = null
 ## of the node rather than made and freed per hover: this is on the mouse-motion path.
 var _ghost: Sprite2D = null
 
+## The reach ring, the dead-ground lock and the redundant-coverage bars, as real
+## Line2D children rather than `draw_*()` calls inside `_draw()`
+## (plant-tower-defense-vlpg). Built once in `_init` and kept for the node's whole
+## life, same as `_ghost` above and for the same reason board.gd's own header
+## gives at DEAD_GROUND_LAYER: a headless run paints no frame at all, so a cue
+## that only exists inside `_draw()` is a cue no gate can ever see. A Line2D
+## carries real `points` a test can read with no frame drawn -- see
+## `refresh_cue_nodes()` and the three accessors below it.
+var _reach_ring: Line2D = null
+var _dead_lock_mark: Line2D = null
+var _redundant_bar_a: Line2D = null
+var _redundant_bar_b: Line2D = null
+
 
 func _init() -> void:
 	half = PREVIEW_HALF
@@ -373,6 +395,30 @@ func _init() -> void:
 	_ghost.visible = false
 	add_child(_ghost)
 	_refresh_ghost()
+	_reach_ring = _new_cue_line(REACH_RING_NODE_NAME)
+	_reach_ring.closed = true
+	_dead_lock_mark = _new_cue_line(DEAD_LOCK_NODE_NAME)
+	_redundant_bar_a = _new_cue_line(REDUNDANT_BAR_A_NODE_NAME)
+	_redundant_bar_b = _new_cue_line(REDUNDANT_BAR_B_NODE_NAME)
+
+
+## One Line2D built the way every converted cue in this file wants it: rounded
+## joints so the padlock's corners and the ring's own closing seam do not show a
+## miter spike, `show_behind_parent` so the cue stays under the brackets and the
+## new-cover dots the way its `_draw()`-painted ancestor was (see `_draw()`'s own
+## call order for the ring, dead lock and redundant bars it replaces), and
+## invisible until the first `refresh_cue_nodes()` has an opinion.
+func _new_cue_line(node_name: String) -> Line2D:
+	var line := Line2D.new()
+	line.name = node_name
+	line.joint_mode = Line2D.LINE_JOINT_ROUND
+	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	line.antialiased = true
+	line.show_behind_parent = true
+	line.visible = false
+	add_child(line)
+	return line
 
 
 ## Swaps the ghost onto whatever `plant_id` now names, or hides it when that is nothing.
@@ -435,6 +481,17 @@ func ghost() -> Sprite2D:
 ## plant being picked, and after a click. A cue nobody moves the mouse to refresh
 ## is a cue that goes on claiming something for seconds after it stopped being
 ## true. Game._click_at carries that rule as precedence instead.
+## THE RING, THE LOCK AND THE REDUNDANT BARS ARE NODES NOW, NOT DRAW CALLS
+## (plant-tower-defense-vlpg). `refresh_cue_nodes()` below carries what this
+## function used to compute and paint inline -- `dead`, `redundant`, the ring's
+## colour -- and a headless test calls it directly with no frame ever drawn,
+## the same way board.gd's `mark_dead_ground()` is called with none. The stacking
+## order this function used to guarantee with call sequence (brackets under the
+## ring under the lock/bars under the dots) is now guaranteed by
+## `_new_cue_line()`'s `show_behind_parent = true`: every converted cue sits
+## behind this function's own draw calls, so brackets and the new-cover dots
+## still land on top exactly as they did when the ring was a literal
+## `draw_arc()` here.
 func _draw() -> void:
 	marker_color = OK_COLOR if placeable else BLOCKED_COLOR
 	_draw_brackets()
@@ -443,24 +500,114 @@ func _draw() -> void:
 	# cell that already refuses the click is noise on top of noise.
 	if at_risk and placeable:
 		_draw_risk_ring()
+	refresh_cue_nodes()
 	# No ring on a blocked cell: a coverage circle centred somewhere the plant
 	# cannot go is an answer to a question the player is not asking.
 	if reach <= 0.0 or not placeable:
 		return
-	var dead: bool = shows_dead_zone()
-	var redundant: bool = shows_redundant_patch_coverage()
-	var base: Color = DEAD_COLOR if dead or redundant else marker_color
-	var ring := Color(base.r, base.g, base.b, RING_ALPHA)
-	draw_arc(Vector2.ZERO, reach, 0.0, TAU, 48, ring, RING_WIDTH, true)
-	if dead:
-		_draw_dead_lock()
-	if redundant:
-		_draw_redundant_bars()
 	# Last, so the dots sit over the ring rather than under it. Skipped on dead
 	# ground for the same reason the risk ring is: there is nothing new to cover
 	# there and a second mark on a cell already carrying a warning is noise.
-	if not dead:
+	if not shows_dead_zone():
 		_draw_new_cover_dots()
+
+
+## Recomputes the three cues that used to be painted inline above -- the reach
+## ring, the dead-ground lock and the redundant-coverage bars -- as real Line2D
+## state instead of `draw_*()` calls. Called from `_draw()` so the live game
+## still updates on every real frame (`_draw()` only ever runs when one is
+## painted), and public so a test can call it directly on a fresh preview with
+## `reach`/`placeable`/`covered_now`/etc. set by hand and no frame drawn at all
+## -- see test_the_reach_ring_is_a_real_line2d_carrying_the_radius and its two
+## siblings for the lock and the bars.
+##
+## Hides all three and returns early on the same guard `_draw()` used to return
+## on: a blocked cell or a plant with no reach gets no ring, no lock and no
+## bars, because a coverage cue centred somewhere the plant cannot go is an
+## answer to a question the player is not asking.
+func refresh_cue_nodes() -> void:
+	if reach <= 0.0 or not placeable:
+		_hide_cue_nodes()
+		return
+	var dead: bool = shows_dead_zone()
+	var redundant: bool = shows_redundant_patch_coverage()
+	var base: Color = DEAD_COLOR if dead or redundant else marker_color
+	_refresh_reach_ring(Color(base.r, base.g, base.b, RING_ALPHA))
+	_refresh_dead_lock(dead)
+	_refresh_redundant_bars(redundant)
+
+
+func _hide_cue_nodes() -> void:
+	if _reach_ring != null:
+		_reach_ring.visible = false
+	_refresh_dead_lock(false)
+	_refresh_redundant_bars(false)
+
+
+## The reach ring's own state: a closed Line2D loop at `reach` px, same 48
+## segments `draw_arc()` used to be called with so the converted node draws the
+## same silhouette the arc did. `ring_points()` is the pure half a test can hold
+## against `reach` with no node at all; this is the impure half that pushes the
+## answer onto the node a running game actually paints.
+func _refresh_reach_ring(colour: Color) -> void:
+	if _reach_ring == null:
+		return
+	_reach_ring.points = ring_points(reach)
+	_reach_ring.width = RING_WIDTH
+	_reach_ring.default_color = colour
+	_reach_ring.visible = true
+
+
+## The padlock's state, or hidden when the cell is not dead ground.
+func _refresh_dead_lock(dead: bool) -> void:
+	if _dead_lock_mark == null:
+		return
+	if not dead:
+		_dead_lock_mark.visible = false
+		return
+	_dead_lock_mark.points = dead_lock_points()
+	_dead_lock_mark.width = DEAD_BAR_WIDTH
+	_dead_lock_mark.default_color = DEAD_COLOR
+	_dead_lock_mark.visible = true
+
+
+## The redundant-coverage bars' state, or hidden when the cell is not
+## redundant. Two Line2D children rather than one, because a Line2D always
+## connects its points in order and the equals-sign reading needs two
+## disjoint strokes -- see `redundant_bar_points()` for why they are computed
+## together.
+func _refresh_redundant_bars(redundant: bool) -> void:
+	if _redundant_bar_a == null or _redundant_bar_b == null:
+		return
+	if not redundant:
+		_redundant_bar_a.visible = false
+		_redundant_bar_b.visible = false
+		return
+	var bars: Array[PackedVector2Array] = redundant_bar_points()
+	_redundant_bar_a.points = bars[0]
+	_redundant_bar_b.points = bars[1]
+	for bar: Line2D in [_redundant_bar_a, _redundant_bar_b]:
+		bar.width = DEAD_BAR_WIDTH
+		bar.default_color = DEAD_COLOR
+		bar.visible = true
+
+
+## The reach ring, for a test (or `scene-tree` on a running game) that wants
+## the node itself rather than `ring_points()`'s pure answer. Never null after
+## `_init`.
+func reach_ring() -> Line2D:
+	return _reach_ring
+
+
+## The dead-ground lock, same contract as `reach_ring()`.
+func dead_lock_mark() -> Line2D:
+	return _dead_lock_mark
+
+
+## The redundant-coverage bars, same contract as `reach_ring()`. Always both
+## nodes, whether or not either is currently visible.
+func redundant_bars() -> Array[Line2D]:
+	return [_redundant_bar_a, _redundant_bar_b]
 
 
 ## A dot on every road cell inside the ring that NOTHING standing already covers
@@ -543,13 +690,18 @@ func _draw_risk_ring() -> void:
 		draw_arc(Vector2.ZERO, RISK_RADIUS, from, from + step, 4, RISK_COLOR, RISK_WIDTH, true)
 
 
-## The padlock, drawn at the cell the cursor is on. The same points the board's
-## ambient marks carry, at full DEAD_COLOR rather than at BOARD_DEAD_ALPHA — see
-## that constant for why the hovered one is the louder of the two.
-func _draw_dead_lock() -> void:
-	draw_polyline(dead_lock_points(), DEAD_COLOR, DEAD_BAR_WIDTH, true)
+## THE PADLOCK IS A LINE2D NOW, NOT A `draw_polyline()` CALL HERE
+## (plant-tower-defense-vlpg). `_refresh_dead_lock()` pushes `dead_lock_points()`
+## -- the same points the board's ambient marks carry, per that function's own
+## header -- onto `_dead_lock_mark`, at full DEAD_COLOR rather than
+## BOARD_DEAD_ALPHA, which is still why the hovered one reads louder than the
+## board's. This function name is kept as a comment anchor for the history above
+## rather than as a symbol: nothing calls it any more.
 
-
+## THE REDUNDANT BARS ARE TWO LINE2DS NOW, NOT TWO `draw_line()` CALLS HERE
+## (plant-tower-defense-vlpg). `_refresh_redundant_bars()` pushes
+## `redundant_bar_points()` below onto `_redundant_bar_a`/`_redundant_bar_b`.
+##
 ## TWO PARALLEL BARS, AND THEY NO LONGER CONTRAST WITH THE DEAD MARK. This cue
 ## was built as "dead ground is one straight bar; redundant ground is two
 ## parallel bars on that same angle", so it was counted against a shape that is
@@ -559,11 +711,35 @@ func _draw_dead_lock() -> void:
 ## in a preview. That is a weaker claim than the one this cue shipped with, and
 ## it is written down rather than quietly inherited — the equals-sign reading
 ## ("the same as the patch you already have") is what is carrying it now.
-func _draw_redundant_bars() -> void:
+##
+## Pure and static, the same reason `dead_lock_points()` is: headless never
+## runs `_draw()`, so a composition that lives only inside a paint call is one a
+## test can assert the existence of and nothing more. Two disjoint strokes come
+## back as two separate PackedVector2Arrays rather than one, because a Line2D
+## always connects its own points in order and cannot draw a gap.
+static func redundant_bar_points() -> Array[PackedVector2Array]:
 	var along: Vector2 = dead_bar_arm()
 	var across: Vector2 = along.orthogonal().normalized() * (REDUNDANT_BAR_GAP * 0.5)
-	draw_line(-along + across, along + across, DEAD_COLOR, DEAD_BAR_WIDTH, true)
-	draw_line(-along - across, along - across, DEAD_COLOR, DEAD_BAR_WIDTH, true)
+	var out: Array[PackedVector2Array] = []
+	out.append(PackedVector2Array([-along + across, along + across]))
+	out.append(PackedVector2Array([-along - across, along - across]))
+	return out
+
+
+## The reach ring's own points, at `radius` px around the origin, `segments`
+## evenly spaced same as `draw_arc()` was always called with (48). Pure and
+## static for the reason every other converted cue's geometry function is:
+## headless never runs `_draw()`, so a test holds this against `reach` with no
+## node, no frame and no board at all — `_refresh_reach_ring()` is the only
+## caller that pushes the answer onto a live node.
+static func ring_points(radius: float, segments: int = 48) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	if radius <= 0.0 or segments <= 0:
+		return out
+	for i: int in range(segments):
+		var angle: float = TAU * float(i) / float(segments)
+		out.append(Vector2(cos(angle), sin(angle)) * radius)
+	return out
 
 
 ## Will the player actually see the dead-zone mark? The precedence rule above,
