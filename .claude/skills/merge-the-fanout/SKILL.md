@@ -166,6 +166,40 @@ test that checks it, and read the requirement out of the failure message.
 Three probes, three exact numbers, no arithmetic in your head. Then spend the width where
 it is cheapest and say in the commit which alternative you rejected and why.
 
+## The lane that arrives without its tests
+
+Sometimes what lands is a lane's PRODUCTION code and not its checks — work restored after
+a revert, a lane whose test file conflicted beyond saving, or an explicit "bring the
+feature, write fresh coverage". It looks like a smaller merge. It is a larger one, and the
+two costs are both predictable:
+
+**Failure class 3 arrives all at once.** A lane's unreached public API is normally one or
+two findings. Without the lane's own tests it is every public symbol the lane wrote:
+measured 2026-08-29 restoring one boss, `suite_reach_check` went from 0 NEW to **36 NEW**
+in a single merge. So run it FIRST, before the suite — it is parallel-safe, takes seconds,
+and its finding list is the specification for the tests you now owe. Do not reach for
+`--baseline-write`; the whole point is that these are new debt, not old.
+
+**The production file is the spec, and it is better than the deleted tests were.** This
+repo's comments carry the WHY, name their own constants, and routinely name the test that
+used to hold them (`test_the_peristaltic_swing_is_whatever_the_lane_has_left_after_the_
+girth`). Re-derive from that rather than from the reverted test file: a test restored
+beside its code proves only that the pair was consistent when it was written.
+
+**And the lane's tests were also carrying every OTHER test's accommodation of it.** This
+is the half that surprises. A lane that changes a shared table does not only add tests; it
+edits the ones that assert about that table, and those edits are lost with it. The same
+merge left 18 pre-existing tests failing — a recorded headcount list, four seam
+derivations, five monotonic sweeps, two "the finale is..." claims and two behaviour tests
+for a mechanic reworked in the same commit. **None was a bug.** Each was a test correctly
+asserting the design as it stood before the lane.
+
+Read the restored production code before editing any of them: `health_scale_for`'s header
+already said "a fourth kernel-price boundary at wave 27, and every endless landmark one
+wave later — both are asserted", which named two of the eighteen and settled what the
+right answer was. When the lane's comments state a consequence, the failing test is the
+one that is out of date.
+
 ## Removing the worktrees
 
 **Prove each branch is merged before deleting anything.** `git worktree remove --force`

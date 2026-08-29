@@ -432,10 +432,18 @@ func test_every_wave_in_the_table_sends_someone() -> String:
 func test_the_waves_get_harder() -> String:
 	var director := WaveDirector.new()
 	var first: int = WaveDirector.pests_in_wave(1)
-	var last: int = WaveDirector.pests_in_wave(director.wave_count())
+	# THE LAST SWARM, not the last row. The campaign's final row is one Cutworm and
+	# nothing else, so read literally this test asks whether 1 pest is more than twice 5
+	# -- and the answer "no" says nothing about whether the campaign ramps, because that
+	# row's difficulty is one body's LENGTH and not its headcount. `last_swarm_wave` is
+	# the derivation that names it (see its header on why it is not the number 26), so
+	# appending or removing another solo boss moves this with it.
+	var last_swarm: int = WaveDirector.last_swarm_wave()
+	var last: int = WaveDirector.pests_in_wave(last_swarm)
 	director.free()
 	return _T.assert_gt(last, first * 2,
-		"the last wave (%d pests) is more than twice the first (%d)" % [last, first])
+		"the last swarm, wave %d (%d pests), is more than twice the first (%d)"
+			% [last_swarm, last, first])
 
 
 func test_a_started_wave_schedules_exactly_the_pests_the_table_promises() -> String:
@@ -2370,14 +2378,25 @@ func test_the_threat_readout_prices_the_composition_ramp_exactly() -> String:
 	# And the ranking holds the other way round: a heavier mix always prices above
 	# a lighter one, so the tint and the readout cannot invert against the board.
 	var previous: float = 0.0
+	var previous_wave: int = 0
 	var ranked: int = 0
 	for wave: int in range(1, 301):
+		# The solo boss row is exempt, and `boss_solo_wave` is where the whole argument
+		# lives: `_raw_threat` sums count x health, so that row reads 1800 against the
+		# last swarm's 424 -- honest about what walks in and wrong about what the garden
+		# has to do, since `Cutworm.ZONE_HIDE` means most of what the board fires at it
+		# lands at 0.15. SKIPPED rather than special-cased, so the sweep still compares
+		# the wave before it with the wave after and the seam stays covered.
+		if WaveDirector.boss_solo_wave(wave):
+			continue
 		var threat: float = WaveDirector.threat_for(wave)
 		err = _T.assert_gt(threat, previous,
-			"wave %d (x%.2f) never prices below wave %d (x%.2f)" % [wave, threat, wave - 1, previous])
+			"wave %d (x%.2f) never prices below wave %d (x%.2f)"
+				% [wave, threat, previous_wave, previous])
 		if err != "":
 			return err
 		previous = threat
+		previous_wave = wave
 		ranked += 1
 	if err == "":
 		err = _T.assert_gt(ranked, 100, "the ranking sweep ran (%d waves)" % ranked)
@@ -2473,12 +2492,20 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 	# to a row shows up here as a number a human has to agree with. The property
 	# assertions below (unscaled health, speed and mutation rate; the finale's group
 	# shape) are the other half the skill asks for.
+	#
+	# Wave 27 is 1, and it is the only entry in this list that is not a swarm
+	# (plant-tower-defense-rn4p). ONE PEST: the Cutworm's body already occupies fifteen
+	# of the road's thirty-two cells, so anything walking with it would be walking INSIDE
+	# it. It spends none of the road budget and that is the point -- the difficulty is one
+	# body's length, not the count -- which is why the property assertions below sweep it
+	# like any other row while the SEAM checks in this suite exempt it by name through
+	# `boss_solo_wave`.
 	var expected: Array[int] = [
 		5, 9, 9, 14, 13, 24, 25, 21, 26, 32, 30, 23, 35, 29, 37,
-		37, 33, 32, 31, 36, 38, 36, 39, 34, 33, 34,
+		37, 33, 32, 31, 36, 38, 36, 39, 34, 33, 34, 1,
 	]
 	var err: String = _T.assert_eq(WaveDirector.WAVES.size(), expected.size(),
-		"the campaign is still twenty-six waves long")
+		"the campaign is still %d waves long" % expected.size())
 	if err != "":
 		return err
 	for wave: int in range(1, expected.size() + 1):
@@ -2532,7 +2559,11 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 		compared += 1
 	err = _T.assert_gt(compared, 0, "there were groups to compare, not an empty table passing quietly")
 	if err == "":
-		err = _T.assert_eq(WaveDirector.peak_simultaneous_pests(WaveDirector.WAVES.size()),
+		# The last SWARM, not the last row: the Cutworm's row peaks at 1 of 40 and spends
+		# none of the road budget, which is the point of it -- the difficulty is one body's
+		# length. `last_swarm_wave` names the row this claim was always about.
+		err = _T.assert_eq(
+			WaveDirector.peak_simultaneous_pests(WaveDirector.last_swarm_wave()),
 			WaveDirector.SIMULTANEOUS_PEST_CEILING,
 			("and the campaign finale is sized to land ON the ceiling rather than under it —"
 				+ " it is the wave that spends the road budget now (see"
@@ -6955,8 +6986,24 @@ func test_a_gaping_chomp_gives_the_lane_back_before_a_bud_would() -> String:
 		err = _T.assert_true(bud.is_busy(),
 			"while the bud is still chewing the same beetle %.2fs in" % step)
 	if err == "":
-		err = _T.assert_true(one.is_alive() and not two.is_alive(),
-			"and the difference is a pest that is dead rather than a number that is smaller")
+		# THE DIFFERENCE IS A NUMBER, and that is the bite rework rather than a weakened
+		# claim. A beetle has 16 health against a meal worth `meal_damage()`, so BOTH
+		# survive: the Chomp is a body blocker above that line and always was described as
+		# one -- what changed is that it now actually is. So what the faster mouth bought
+		# is a lane given back sooner and a beetle that walks out already chewed, while the
+		# bud is still holding its own with fewer bites in it.
+		err = _T.assert_false(ChompFlower.dies_in_the_mouth(
+			float(Pest.SPECIES[Pest.BEETLE]["health"])),
+			"a beetle is a meal the mouth cannot finish, which is what this pair measures")
+	if err == "":
+		err = _T.assert_true(one.is_alive() and two.is_alive(),
+			"neither beetle is eaten -- above meal_damage the Chomp buys time, not a kill")
+	if err == "":
+		err = _T.assert_gt(one.health, two.health,
+			("the beetle the gaping mouth finished with is %.1f health down where the"
+				+ " bud's is only %.1f -- the difference the upgrade bought, in the units"
+				+ " it is now paid in") % [two.max_health - two.health,
+					one.max_health - one.health])
 	_T.free_ui(host)
 	return err
 
@@ -7516,7 +7563,15 @@ func test_an_aloe_mends_slower_than_one_pest_eats() -> String:
 
 
 func test_the_shield_bug_was_paid_for_in_beetles_rather_than_out_of_the_finale() -> String:
-	var finale: int = WaveDirector.WAVES.size()
+	# TWO WAVES, and keeping them apart is the whole of what the Cutworm's row cost this
+	# derivation. `campaign_end` is where the multiplier ramp finishes and the endless one
+	# starts -- the seam is still WAVES.size() -> +1 and the two scales still cancel, so the
+	# bound below is unmoved. `finale` is the last row whose `count x health` is COMPARABLE
+	# with the first endless wave's, which is the last swarm: the solo boss row reads 1800
+	# points of one body against 424 of forty, and pricing a Shield Bug's headroom against
+	# that number would be measuring nothing. See `boss_solo_wave`.
+	var campaign_end: int = WaveDirector.WAVES.size()
+	var finale: int = WaveDirector.last_swarm_wave()
 	var waves: Dictionary = _shieldbug_waves()
 	var err: String = _T.assert_gt(waves.size(), 0,
 		"there are Shield Bug waves to check (a zero here is a vacuous pass)")
@@ -7532,7 +7587,7 @@ func test_the_shield_bug_was_paid_for_in_beetles_rather_than_out_of_the_finale()
 	# The headroom itself, computed the way test_economy.gd's seam test does, so the
 	# two cannot disagree about what the bound is.
 	var seam_health: float = 0.0
-	for group: Dictionary in WaveDirector.groups_for(finale + 1):
+	for group: Dictionary in WaveDirector.groups_for(campaign_end + 1):
 		seam_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
 	var finale_health: float = 0.0
 	for group: Dictionary in WaveDirector.groups_for(finale):
@@ -7549,11 +7604,11 @@ func test_the_shield_bug_was_paid_for_in_beetles_rather_than_out_of_the_finale()
 	# endless ramp is a multiple of the campaign's last value precisely so the two
 	# scales cancel here and the bound stays 436.7.
 	var campaign_mult: float = (1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT) \
-		* WaveDirector.health_scale_for(finale)
-	var seam_mult: float = 1.0 + WaveDirector.mutation_chance_for(finale + 1) \
+		* WaveDirector.health_scale_for(campaign_end)
+	var seam_mult: float = 1.0 + WaveDirector.mutation_chance_for(campaign_end + 1) \
 		* WaveDirector.MUTATION_THREAT_WEIGHT
-	var seam_scales: float = WaveDirector.health_scale_for(finale + 1) \
-		* WaveDirector.speed_scale_for(finale + 1)
+	var seam_scales: float = WaveDirector.health_scale_for(campaign_end + 1) \
+		* WaveDirector.speed_scale_for(campaign_end + 1)
 	var bound: float = seam_health * seam_mult * seam_scales / campaign_mult
 	# Derived, not a literal 18.7: the claim is that the headroom is still worth more
 	# than the thing it was NOT spent on, so the choice above stays a choice rather
@@ -8123,6 +8178,14 @@ func test_a_lone_locust_is_the_slowest_ordinary_bug_and_gets_no_crowd_bonus() ->
 		for which: StringName in Pest.SPECIES:
 			if which == Pest.LOCUST:
 				continue
+			# ORDINARY is the word in this test's own name, and a boss is not one. The
+			# Cutworm walks at 20 px/s against the Locust's 24 and is in no sense the
+			# least threatening thing on the board -- it is 1800 health and fifteen cells
+			# of body, and it walks slowly BECAUSE of that rather than in spite of it.
+			# Read off the `boss` flag rather than by name, so the next boss is excluded
+			# without this test being edited again.
+			if Pest.is_boss(which):
+				continue
 			var other_speed: float = float(Pest.SPECIES[which]["speed"])
 			err = _T.assert_gte(other_speed, locust_speed,
 				("%s (%.0f px/s) is not slower than the Locust (%.0f) -- alone, this species"
@@ -8561,17 +8624,27 @@ func test_the_second_act_never_lets_the_threat_curve_fall() -> String:
 		return err
 	var walked: int = 0
 	var previous: float = WaveDirector.threat_for(1)
+	var previous_wave: int = 1
 	for wave: int in range(2, 301):
+		# Skipped, for the reason `boss_solo_wave` is written down: `_raw_threat` sums
+		# count x health, so the Cutworm's row prices at 1800 against the last swarm's 424
+		# -- honest about what walks in and wrong about what the garden has to do, since
+		# `Cutworm.ZONE_HIDE` means most of what the board fires at it lands at 0.15. The
+		# sweep goes on comparing the wave before it with the wave after, so the seam this
+		# test exists for is still covered.
+		if WaveDirector.boss_solo_wave(wave):
+			continue
 		var threat: float = WaveDirector.threat_for(wave)
 		err = _T.assert_gt(threat, previous,
 			("wave %d (x%.2f) must price above wave %d (x%.2f). The campaign health"
 				+ " ramp multiplies the finale, so the seam is the pair to look at"
 				+ " first -- see health_scale_for on why the endless ramp is a"
 				+ " multiple of the campaign's last value and not an addition to it")
-				% [wave, threat, wave - 1, previous])
+				% [wave, threat, previous_wave, previous])
 		if err != "":
 			return err
 		previous = threat
+		previous_wave = wave
 		walked += 1
 	return _T.assert_gt(walked, 250, "the sweep actually walked the curve (%d pairs)" % walked)
 
@@ -8655,20 +8728,25 @@ func test_the_back_half_no_longer_plateaus() -> String:
 ## one Shield Bug, which is what the Shield Bug's own test in this file asserts it
 ## is above. This pins the mechanism, not just the consequence.
 func test_the_second_act_costs_the_seam_bound_nothing() -> String:
-	var finale: int = WaveDirector.WAVES.size()
-	var first_endless: int = finale + 1
+	# `campaign_end` is the ramp's last step and `finale` the last COMPARABLE row -- the
+	# same split the Shield Bug's test above spells out. The seam mechanism asserted first
+	# is about the ramp and reads campaign_end; the headroom asserted last is about points
+	# of health, and reads finale because the solo boss row is 1800 of them in one body.
+	var campaign_end: int = WaveDirector.WAVES.size()
+	var finale: int = WaveDirector.last_swarm_wave()
+	var first_endless: int = campaign_end + 1
 
 	# The mechanism: one endless step of health past the finale is exactly
 	# ENDLESS_HEALTH_STEP *of the finale's scale*, not of 1.0.
 	var seam_ratio: float = WaveDirector.health_scale_for(first_endless) \
-		/ WaveDirector.health_scale_for(finale)
+		/ WaveDirector.health_scale_for(campaign_end)
 	var err: String = _T.assert_float_eq(seam_ratio, 1.0 + WaveDirector.ENDLESS_HEALTH_STEP,
 		0.000001,
 		("the first endless wave's pests are one endless step tougher than the FINALE's"
 			+ " (x%.4f). If this becomes x%.4f the ramp has been made additive and the"
 			+ " seam bound has quietly shrunk")
 			% [seam_ratio, (1.0 + WaveDirector.ENDLESS_HEALTH_STEP)
-				/ WaveDirector.health_scale_for(finale)])
+				/ WaveDirector.health_scale_for(campaign_end)])
 	if err != "":
 		return err
 
@@ -8687,7 +8765,7 @@ func test_the_second_act_costs_the_seam_bound_nothing() -> String:
 	if err != "":
 		return err
 	var campaign_mult: float = (1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT) \
-		* WaveDirector.health_scale_for(finale)
+		* WaveDirector.health_scale_for(campaign_end)
 	var seam_mult: float = 1.0 + WaveDirector.mutation_chance_for(first_endless) \
 		* WaveDirector.MUTATION_THREAT_WEIGHT
 	var seam_scales: float = WaveDirector.health_scale_for(first_endless) \

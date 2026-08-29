@@ -33,6 +33,7 @@ const QUEEN := &"queen"
 const NURSE := &"nurse"
 const HOPPER := &"hopper"
 const LOCUST := &"locust"
+const CUTWORM := &"cutworm"
 
 ## species -> stats. `chew_seconds` is the design doc's "eats small pests easily,
 ## takes a while eating bigger pests" expressed as a number.
@@ -430,6 +431,50 @@ const SPECIES: Dictionary = {
 		"boss": true,
 		"split_species": APHID,
 		"split_count": 3,
+	},
+	## The Cutworm (plant-tower-defense-rn4p), the campaign's third boss and the only
+	## pest whose body is longer than the straights it lies on. Everything about how it
+	## MOVES and DRAWS lives in `Cutworm` (game/cutworm.gd); this row is only the stats,
+	## and it is here rather than in that file so `wave_carries_boss`, the drought rule
+	## and anything iterating SPECIES see it the way they see every other species.
+	##
+	## ONE SENTENCE: 953 px of body across fifteen of the road's thirty-two cells means
+	## every plant on the board is in range of SOME part of it at once, so it is the
+	## first pest that cannot be answered by pointing more guns at the front of the
+	## queue — the soft band rides five stations BEHIND the head, over ground the head
+	## has already chewed.
+	##
+	## The numbers, and what each is for:
+	##   * health 1800 — derived from the exposure window, not picked. Band-only damage
+	##     is what has to kill it: two to four plants cover the band at a time, ~18 DPS
+	##     raw and ~45 after `Cutworm.ZONE_BAND`. At speed 20 the fight lasts 153 s, so a
+	##     well-built kill box lands ~2100 and a badly-built one ~900. 1800 puts the pass
+	##     mark on the box rather than on the plant count.
+	##   * speed 20 — BELOW the Locust's 24, which makes this the slowest thing that has
+	##     ever walked this road. Deliberate, and not the Queen's 30: her fight is a
+	##     burst you survive, this one is a siege you have to keep answering.
+	##     `Board.road_length_px` is 2112 px, so the head is on the board 105.6 s and the
+	##     tail clears 47.7 s after it.
+	##   * seeds 120 — three Queens (40 each). It is the payout that funds rebuilding
+	##     everything the head ate on the way through, so it is scaled to the damage the
+	##     boss does to the garden rather than to its own health.
+	##   * chew_seconds 0.0 — NOT a duration. `can_be_held()` refuses the Chomp outright
+	##     (see cutworm.gd), so nothing ever reads this; a plausible-looking number here
+	##     would be a value the game cannot reach, which is worse than a zero that says
+	##     "this species does not play that game".
+	##   * scale 1.0 — the head sprite is authored at the body's own 58 px width, so it
+	##     needs no scaling to meet the trunk `Cutworm._draw` sweeps in behind it.
+	CUTWORM: {
+		"display": "Cutworm",
+		"texture": "res://assets/sprites/pest_cutworm.png",
+		"health": 1800.0,
+		"speed": 20.0,
+		"seeds": 120,
+		"chew_seconds": 0.0,
+		"scale": 1.0,
+		"big": true,
+		"boss": true,
+		"holdable": false,
 	},
 }
 
@@ -1387,6 +1432,21 @@ static func is_boss(which: StringName) -> bool:
 	return bool(stats.get("boss", false))
 
 
+## May a Chomp Flower's mouth close on `which`? True for everything but the Cutworm.
+##
+## A ROW FLAG rather than only a method on the node, for exactly the reason `boss` is
+## one: the things that need this answer are mostly STATIC sweeps over the table — the
+## Chomp's shop-line check reads every species' `chew_seconds` and must know which of
+## them is a duration nothing can reach, and a chew table containing an unreachable 0.0
+## makes that check quietly false while every number in it stays the same. A method on
+## a node cannot be asked about a species nobody has spawned.
+##
+## `can_be_held()` reads this, so the flag and the behaviour cannot disagree.
+static func is_holdable(which: StringName) -> bool:
+	var stats: Dictionary = SPECIES.get(which, {}) as Dictionary
+	return bool(stats.get("holdable", true))
+
+
 ## Every species that is a boss, derived from the flag above rather than listed.
 ## In `SPECIES` order, which is insertion order and therefore stable to read and to
 ## compare against.
@@ -1859,14 +1919,31 @@ func _physics_process(delta: float) -> void:
 		# engaged -- the same reason `held_by` marks it above. A wave stalled at a wall
 		# and shot dead by the cobs behind it was fought, not ignored.
 		_mark_engaged()
-		_chop(wall, delta)
-		return
-	if is_hungry:
-		var meal: Plant = _adjacent_plant()
-		if meal != null:
-			_chop(meal, delta)
+	var meal: Plant = null
+	if wall == null and eats_in_passing():
+		meal = _adjacent_plant()
+	# ONE target per frame, wall first, and the ternary is what enforces it. Both
+	# branches used to end in their own `_chop(...)` and their own `return`; the return
+	# is gone (see `halts_to_eat()` below), and without it a Cutworm standing beside a
+	# bed with a Bramble in its face would chop both in the same frame -- `_chop_target`
+	# is one slot, so the second call re-arms `_chop_clock` from zero and NEITHER swing
+	# ever completes. Wall wins for the reason stated above: the thing in its way is
+	# what a player watching it expects to see eaten.
+	var bite: Plant = wall if wall != null else meal
+	if bite != null:
+		_chop(bite, delta)
+		# `halts_to_eat()` is where the per-branch `return` went (plant-tower-defense-rn4p).
+		# It is true for every whole-body pest, so this is the same stop it always was; the
+		# Cutworm bites on its way past instead, because a plant in front of its head is not
+		# standing in front of the other fourteen cells of it. Falling through is also why
+		# `_chop_target` is NOT cleared here -- a pest that walks while it chews has to keep
+		# its swing across frames or `_chop` restarts the clock every frame and the strike
+		# never lands.
+		if halts_to_eat():
 			return
-	_chop_target = null
+	else:
+		_chop_target = null
+
 	# The Leafhopper's clock only advances here, in the one branch that actually
 	# walks the pest — the same rule `_heal_clock` follows and for the same
 	# reason: a held or blocked pest is not hopping either, so its cycle waits
@@ -2383,9 +2460,20 @@ static func gait_phase(index: int) -> float:
 ## Chomp finishes ten seconds later. Callers that know where their hit came from build
 ## it with `knockback_offset()` (see `Kernel._physics_process`); `Vector2.ZERO`, the
 ## default, is a corpse that lies where it fell.
-func take_damage(amount: float, cause: StringName = &"", knockback: Vector2 = Vector2.ZERO) -> void:
+##
+## `hit_at` is WHERE the hit landed, in world space, and every species but one ignores
+## it completely. It is on the base class rather than on `Cutworm` because the
+## alternative is three call sites (Kernel, SeedBomb, Nettle) each growing a
+## `pest is Cutworm` branch to decide which overload to call — and a fourth damage
+## source added later would silently take the wrong one. `Vector2.INF` is the sentinel
+## for "the caller does not know", which is what `damage_multiplier_at` reads.
+func take_damage(amount: float, cause: StringName = &"", knockback: Vector2 = Vector2.ZERO,
+		hit_at: Vector2 = Vector2.INF) -> void:
 	if not _alive:
 		return
+	# Whole-body pests answer 1.0 unconditionally, so this line is exactly the arithmetic
+	# that was here before for all seven of them. Only the Cutworm overrides it.
+	amount *= damage_multiplier_at(hit_at)
 	# A zero-damage call is not an engagement. Nothing in the game makes one
 	# today, but `amount` is a float off a kernel and a plant level table, and
 	# "something shot at it" must mean something landed.
@@ -2812,6 +2900,73 @@ func _escape() -> void:
 	_alive = false
 	escaped.emit(self)
 	queue_free()
+
+
+# =============================================================================
+# The six questions a species may answer differently (plant-tower-defense-rn4p).
+#
+# Every one of them returns, on this class, exactly the behaviour that was written
+# inline before the Cutworm existed — so all seven whole-body species are unchanged
+# by their existence, and `test_the_six_species_hooks_are_identity_for_every_whole_
+# body_species` asserts that over the derived species list rather than a sampled pair.
+#
+# They are here, virtual on `Pest`, rather than as `is Cutworm` branches at the call
+# sites, because the call sites are the wrong place to know about a boss: `Kernel`
+# should ask "how much is this hit worth", not "which subclass am I shooting".
+# =============================================================================
+
+## How much of a hit landing at `hit_at` actually reaches this pest, as a multiplier.
+##
+## 1.0 everywhere for a pest that is one 64 px body — there is no "where" to ask about,
+## and `hit_at` is `Vector2.INF` from every caller that does not track it anyway.
+## `Cutworm` overrides it because 953 px of body has a head, a hide and a soft band, and
+## which of the three a kernel found is the entire fight.
+func damage_multiplier_at(_hit_at: Vector2) -> float:
+	return 1.0
+
+
+## How fast this pest chews through a plant or a Barrier Bramble it has reached.
+##
+## Read through a method rather than off `EAT_DPS` directly so a species can be hungrier
+## without a second constant that drifts from the first.
+func eat_dps() -> float:
+	return EAT_DPS
+
+
+## Does this pest STOP while it eats?
+##
+## True for everything with a mouth at the front of a 64 px body: a pest chewing a
+## Bramble is a pest not walking, which is the entire thing the plant sells. The Cutworm
+## says false — it is 953 px of animal and a wall in front of its head does not hold the
+## other fourteen cells of it back.
+func halts_to_eat() -> bool:
+	return true
+
+
+## Does this pest eat plants it passes, rather than only ones in its way?
+##
+## The `is_hungry` mutation's question, asked as a method so the Cutworm can answer yes
+## permanently without wearing a mutation it did not roll.
+func eats_in_passing() -> bool:
+	return is_hungry
+
+
+## May a Chomp Flower's mouth close on this pest?
+##
+## `chew_seconds` is a duration, and a duration is the wrong shape for the answer "no":
+## a very large one still lets the plant commit, still plays the grab, and still ends
+## with the boss released. See `ChompFlower._grab_candidate`.
+func can_be_held() -> bool:
+	return is_holdable(species)
+
+
+## How much of a Sticky Sundew's slow this pest actually takes, 0.0 to 1.0.
+##
+## 1.0 is the full slow every species has always taken. The Cutworm takes half: a boss
+## already on the board for 153 s, stretched by the full 0.55 factor, is a four-minute
+## wave — the slow has to remain worth buying without becoming the answer on its own.
+func slow_resistance() -> float:
+	return 1.0
 
 
 ## 0.0 at the entrance, 1.0 at the exit. Targeting uses this to shoot whichever

@@ -3448,8 +3448,16 @@ func test_the_move_tip_is_spent_only_when_it_is_actually_shown() -> String:
 ## message, at the moment they raise it, instead of a strict-increase test
 ## failing at wave 23 with nothing to say about the cause.
 func test_the_campaign_finale_fits_under_the_endless_seam() -> String:
-	var finale: int = WaveDirector.WAVES.size()
-	var first_endless: int = finale + 1
+	# The ramp's last step and the last COMPARABLE row are two different waves now
+	# (plant-tower-defense-rn4p). The seam is still WAVES.size() -> +1, so the campaign and
+	# endless health scales still cancel and the bound below is unmoved; what may NOT read
+	# WAVES.size() is `finale_health`, because the last row is one Cutworm -- 1800 points of
+	# one body against the last swarm's 424 -- and `Cutworm.ZONE_HIDE` means most of what
+	# the board fires at it lands at 0.15. Comparing that number with a swarm's is the
+	# whole thing `boss_solo_wave` exists to refuse.
+	var campaign_end: int = WaveDirector.WAVES.size()
+	var finale: int = WaveDirector.last_swarm_wave()
+	var first_endless: int = campaign_end + 1
 
 	var seam_health: float = 0.0
 	for group: Dictionary in WaveDirector.groups_for(first_endless):
@@ -3477,7 +3485,7 @@ func test_the_campaign_finale_fits_under_the_endless_seam() -> String:
 	# the campaign's last value precisely so the two cancel here and the seam bound
 	# stays put at any step size.
 	var campaign_mult: float = (1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT) \
-		* WaveDirector.health_scale_for(finale)
+		* WaveDirector.health_scale_for(campaign_end)
 	var seam_mutations: float = 1.0 + WaveDirector.mutation_chance_for(first_endless) \
 		* WaveDirector.MUTATION_THREAT_WEIGHT
 	var seam_scales: float = WaveDirector.health_scale_for(first_endless) \
@@ -3528,7 +3536,11 @@ func test_the_campaign_finale_fits_under_the_endless_seam() -> String:
 ## half of the claim -- "nothing outruns the finale" is -- so the assertion below
 ## now allows a tie and the strict form moved to `>=`.
 func test_only_the_campaign_finale_spends_the_whole_road_budget() -> String:
-	var finale: int = WaveDirector.WAVES.size()
+	# THE FULLEST ROW, which is the last SWARM and no longer the last row. The Cutworm's
+	# solo row spends none of the road budget -- peak 1 of 40 -- and that is the point of
+	# it: the difficulty is one body's length, not the count. Sweeping to WAVES.size() here
+	# would compare every wave against a peak of 1 and fail wave 1. See `boss_solo_wave`.
+	var finale: int = WaveDirector.last_swarm_wave()
 	var err: String = _T.assert_gt(finale, 1, "there is a campaign to sweep")
 	if err != "":
 		return err
@@ -3551,6 +3563,18 @@ func test_only_the_campaign_finale_spends_the_whole_road_budget() -> String:
 		if peak > runner_up:
 			runner_up = peak
 			runner_up_wave = wave
+		checked += 1
+	# The rows AFTER the fullest one still have to be inside the ceiling -- they are just
+	# not required to approach it. Swept separately rather than folded into the loop above,
+	# because "no fuller than the finale" is exactly the claim that does not hold for them.
+	for wave: int in range(finale + 1, WaveDirector.WAVES.size() + 1):
+		err = _T.assert_true(
+			WaveDirector.peak_simultaneous_pests(wave) <= WaveDirector.SIMULTANEOUS_PEST_CEILING,
+			("wave %d is past the last swarm and still fits the road (%d of %d)")
+				% [wave, WaveDirector.peak_simultaneous_pests(wave),
+					WaveDirector.SIMULTANEOUS_PEST_CEILING])
+		if err != "":
+			return err
 		checked += 1
 	err = _T.assert_gt(checked, 1, "the sweep walked a campaign (%d waves)" % checked)
 	if err == "":

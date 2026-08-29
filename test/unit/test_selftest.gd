@@ -638,25 +638,37 @@ func test_a_beetle_shows_the_late_bite_frame_past_60_percent_chew() -> String:
 ## species — an aphid's whole chew is just short enough that reaching it
 ## also means the meal is nearly over, not that the frame never appears.
 func test_the_late_bite_frame_is_showing_by_the_time_any_chew_finishes() -> String:
+	# A BEETLE AND NOT AN APHID, and the swap is the bite rework rather than a preference.
+	# The aphid has 3 health against a meal worth `meal_damage()`, so it is dead on bite 3
+	# of 6 -- at chew_progress 0.5, which is BELOW LATE_BITE_THRESHOLD. Its chew never
+	# reaches the late frame because its chew never finishes: the mouth is empty and free
+	# before the frame is due. So the subject here is a chew that actually runs its length,
+	# which since `dies_in_the_mouth` means a pest the mouth cannot finish.
 	var chomp := ChompFlower.new()
 	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
-	var aphid: Pest = _prey(Pest.APHID, Vector2.ZERO)
-	var host: Node2D = _host([chomp, aphid])
+	var beetle: Pest = _prey(Pest.BEETLE, Vector2.ZERO)
+	var host: Node2D = _host([chomp, beetle])
 	await _T.instantiate_scene(host)
 
+	var err: String = _T.assert_false(ChompFlower.dies_in_the_mouth(
+		float(Pest.SPECIES[Pest.BEETLE]["health"])),
+		"the beetle is a meal the mouth cannot finish, so its chew runs the whole way")
+	if err != "":
+		_T.free_ui(host)
+		return err
 	if not chomp.is_busy():
-		chomp._act(0.016, [aphid])
+		chomp._act(0.016, [beetle])
 	var mid_texture: Texture2D = chomp._sprite.texture
-	var err: String = _T.assert_true(chomp.is_busy(), "grabbed the aphid")
+	err = _T.assert_true(chomp.is_busy(), "grabbed the beetle")
 	if err == "":
 		# Just short of finishing (chew_progress() > LATE_BITE_THRESHOLD by
 		# construction, since LATE_BITE_THRESHOLD < 1.0), without triggering
-		# the kill that a full chew_seconds would.
-		chomp._chew(aphid.chew_seconds * 0.9)
+		# the release that a full chew_seconds would.
+		chomp._chew(beetle.chew_seconds * 0.9)
 		err = _T.assert_true(chomp.is_busy(), "sanity: still chewing")
 	if err == "":
 		err = _T.assert_true(chomp._sprite.texture != mid_texture,
-			"even the aphid's short chew shows the late frame before it ends")
+			"the late frame is showing before the chew ends")
 	_T.free_ui(host)
 	return err
 
@@ -3535,7 +3547,13 @@ func test_threat_climbs_across_every_wave_of_the_fixed_table() -> String:
 func test_threat_keeps_climbing_deep_into_endless() -> String:
 	var table: int = WaveDirector.WAVES.size()
 	var err: String = ""
-	var previous: float = WaveDirector.threat_for(table)
+	# The baseline is the last SWARM, not the last row. `_raw_threat` sums count x health,
+	# so the Cutworm's solo row prices at 1800 against the last swarm's 424 -- a number
+	# that is honest about what walks in and wrong about what the garden has to do, since
+	# `Cutworm.ZONE_HIDE` means most of what the board fires lands at 0.15. Starting the
+	# endless climb from it would demand that endless out-price a body it is not
+	# comparable with. See `boss_solo_wave`.
+	var previous: float = WaveDirector.threat_for(WaveDirector.last_swarm_wave())
 	for w: int in range(table + 1, table + 40):
 		var threat: float = WaveDirector.threat_for(w)
 		err = _T.assert_true(threat > previous,
@@ -3634,16 +3652,20 @@ func test_the_stats_row_budget_fits_the_bar() -> String:
 ## number a player can hold next to the one they saw last wave.
 func test_the_threat_level_stays_a_small_readable_number() -> String:
 	var table: int = WaveDirector.WAVES.size()
+	# `table` is still what the endless landmark below counts from; the CAMPAIGN claim is
+	# about the last swarm. The solo boss row levels at 15 off a raw x253 that no player
+	# fights as a x253 wave -- see `boss_solo_wave` for why that number is not comparable.
+	var campaign: int = WaveDirector.last_swarm_wave()
 	var err: String = _T.assert_eq(WaveDirector.threat_level(1), 1, "wave 1 is level 1")
 	if err == "":
-		err = _T.assert_true(WaveDirector.threat_level(table) <= 12,
+		err = _T.assert_true(WaveDirector.threat_level(campaign) <= 12,
 			("the whole campaign stays a number a player can hold (wave %d is level %d)."
 				+ " It read exactly 10 before plant-tower-defense-iqp8 gave the back half"
 				+ " a second act, and 11 after -- so the old bound of 10 was sitting"
 				+ " precisely on the finale and ANY campaign escalation failed it. 11 is"
 				+ " one below Hud.THREAT_TINT_MAX, so the finale tints at 0.9 of the way"
 				+ " to THREAT_HOT rather than 0.8")
-				% [table, WaveDirector.threat_level(table)])
+				% [campaign, WaveDirector.threat_level(campaign)])
 	if err == "":
 		err = _T.assert_true(WaveDirector.threat_level(table + 100) <= 30,
 			"and 100 waves into endless it is still two digits (level %d, from a raw x%.0f)"
@@ -3657,12 +3679,20 @@ func test_the_threat_level_stays_a_small_readable_number() -> String:
 func test_the_threat_level_never_goes_down_and_does_eventually_climb() -> String:
 	var err: String = ""
 	var previous: int = 0
+	var previous_wave: int = 0
 	for w: int in range(1, WaveDirector.WAVES.size() + 60):
+		# Skipped, not special-cased, so the sweep still compares the wave before the solo
+		# boss with the wave after it and the seam stays covered. `boss_solo_wave` carries
+		# the argument for why that row's raw threat is not on the same scale as a swarm's.
+		if WaveDirector.boss_solo_wave(w):
+			continue
 		var level: int = WaveDirector.threat_level(w)
-		err = _T.assert_true(level >= previous, "wave %d level %d is not below wave %d's %d" % [w, level, w - 1, previous])
+		err = _T.assert_true(level >= previous, "wave %d level %d is not below wave %d's %d"
+			% [w, level, previous_wave, previous])
 		if err != "":
 			return err
 		previous = level
+		previous_wave = w
 	return _T.assert_true(previous > WaveDirector.threat_level(1) + 5,
 		"and it really did climb over 60-odd waves (1 -> %d)" % previous)
 
@@ -10532,10 +10562,23 @@ func test_the_campaign_builds_to_its_boss_rather_than_opening_with_one() -> Stri
 			("the first queen arrives in the second half of the ORIGINAL campaign, at"
 				+ " wave %d of the (now grown) %d") % [boss_waves[0], table])
 	if err == "":
-		err = _T.assert_eq(boss_waves[boss_waves.size() - 1], table,
+		# THE CAMPAIGN ENDS ON A BOSS, asked of the `boss` flag rather than of the queen.
+		# The last row is the Cutworm's (plant-tower-defense-rn4p), so a queen-only reading
+		# of "the finale is a boss wave" is now false about a campaign that ends on a
+		# bigger boss than the one this test was written about. What it is actually for --
+		# the campaign BUILDS to a boss rather than opening with one -- is unchanged.
+		err = _T.assert_true(WaveDirector.wave_carries_boss(table),
 			"and the finale is a boss wave")
 	if err == "":
-		err = _T.assert_gt(WaveDirector.threat_for(table), WaveDirector.threat_for(boss_waves[0]),
+		# The queens' own shape, which is the rest of what this test is about: they are
+		# spread through the run-up rather than bunched at the front of the table.
+		err = _T.assert_gt(boss_waves[boss_waves.size() - 1], boss_waves[0],
+			"and the queens are spread through the campaign rather than bunched")
+	if err == "":
+		# Priced against the last SWARM: the solo boss row's raw threat is 1800 points of
+		# one body and is not on the same scale as a wave of forty. See `boss_solo_wave`.
+		err = _T.assert_gt(WaveDirector.threat_for(WaveDirector.last_swarm_wave()),
+			WaveDirector.threat_for(boss_waves[0]),
 			"which prices above the first one rather than merely repeating it")
 	if err != "":
 		return err
@@ -19747,8 +19790,17 @@ func bad_contains_not_saved(base: String) -> bool:
 ## added to SPECIES, which is the whole reason the bead's "record both durations as numbers"
 ## became a relationship instead of two constants.
 func test_the_chomps_shop_line_is_true_of_the_chew_table() -> String:
+	# ONLY THE SPECIES THE MOUTH CAN CLOSE ON. `is_holdable`'s own header is the argument:
+	# a species the plant refuses carries a chew_seconds nothing can reach, and an
+	# unreachable 0.0 sitting in the table makes "the quickest meal is the smallest pest"
+	# quietly false while every duration in it stays exactly what it was. The Cutworm is
+	# that species -- 0.0 seconds, because 953 px of animal is never in a Chomp's mouth --
+	# so it is filtered by the flag rather than by name, and a second unholdable species
+	# added later is filtered with it.
 	var chews: Dictionary = {}
 	for species: StringName in Pest.SPECIES:
+		if not Pest.is_holdable(species):
+			continue
 		chews[species] = float((Pest.SPECIES[species] as Dictionary)["chew_seconds"])
 	var err: String = _T.assert_gt(chews.size(), 2,
 		"there are several species to compare — two would make 'shortest' meaningless")
@@ -20779,7 +20831,7 @@ func test_the_pause_card_hands_back_the_overlay_that_is_actually_up() -> String:
 ##   * an aphid's price against the starting plant steps 3 -> 4 -> 5 at waves 1,
 ##     10 and 19. This is the bead's whole thesis reduced to an integer, and the
 ##     comment had the last boundary at 17;
-##   * the finale sends x1.469 pests, the one figure a human can hold;
+##   * the finale sends x1.7024 pests, the one figure a human can hold;
 ##   * the campaign's steepest step is wave 12 at +17.0%, still well under wave
 ##     8's +43.3%, which is what "introduces no new cliff" means.
 func test_the_second_act_costs_what_its_comment_says_it_costs() -> String:
@@ -20794,7 +20846,13 @@ func test_the_second_act_costs_what_its_comment_says_it_costs() -> String:
 
 	# The boundaries themselves, not "it rose twice". Every wave is swept so a
 	# boundary that MOVED is caught as well as one that vanished.
-	var expected: Dictionary = {1: 3, 10: 4, 19: 5}
+	# 27 IS THE FOURTH BOUNDARY and it is in health_scale_for's own header, stated rather
+	# than discovered: the ramp runs through the whole table, the Cutworm's solo row
+	# included, so one more row is one more 3% step. Clamping the ramp at the last swarm
+	# was tried and refused there -- it would have kept this dictionary at three entries by
+	# making wave 27 the one campaign wave that does NOT step, which breaks the ramp's own
+	# defining claim in order to protect a sentence about where the boundaries fall.
+	var expected: Dictionary = {1: 3, 10: 4, 19: 5, 27: 6}
 	var priced: int = 0
 	var previous: int = 0
 	for wave: int in range(1, finale + 1):
@@ -20802,8 +20860,8 @@ func test_the_second_act_costs_what_its_comment_says_it_costs() -> String:
 		if kernels != previous:
 			err = _T.assert_true(expected.has(wave),
 				("wave %d is where the aphid's price steps to %d kernels."
-					+ " health_scale_for's comment names 1, 10 and 19 as the only three"
-					+ " boundaries — a fourth, or one in the wrong place, means"
+					+ " health_scale_for's comment names 1, 10, 19 and 27 as the only four"
+					+ " boundaries — a fifth, or one in the wrong place, means"
 					+ " CAMPAIGN_HEALTH_STEP moved and that paragraph is now fiction")
 					% [wave, kernels])
 			if err == "":
@@ -20828,9 +20886,13 @@ func test_the_second_act_costs_what_its_comment_says_it_costs() -> String:
 	# cannot notice the constant changing.
 	# 1.469 (pow(1.03, 13)) until plant-tower-defense-vyov moved the finale from
 	# wave 22 to wave 26 -- the exponent is climbed - SECOND_ACT_START_WAVE, so
-	# four more campaign waves is four more compounding +3% steps: 1.03^17.
-	err = _T.assert_float_eq(WaveDirector.health_scale_for(finale), 1.6528, 0.001,
-		"the finale's pests are x1.6528 of a wave-1 pest, which is the number the"
+	# four more campaign waves is four more compounding +3% steps: 1.03^17 = 1.6528.
+	# Then 1.03^18 when the Cutworm's row appended a 27th (plant-tower-defense-rn4p).
+	# health_scale_for's header refuses to clamp the ramp at the last swarm and says
+	# why: doing so would make wave 27 the one campaign wave that does NOT step, which
+	# breaks the ramp's defining claim to protect a sentence about a boundary.
+	err = _T.assert_float_eq(WaveDirector.health_scale_for(finale), 1.7024, 0.001,
+		"the finale's pests are x1.7024 of a wave-1 pest, which is the number the"
 			+ " SECOND_ACT_START_WAVE block quotes")
 	if err != "":
 		return err
@@ -20841,6 +20903,13 @@ func test_the_second_act_costs_what_its_comment_says_it_costs() -> String:
 	var steepest: float = 0.0
 	var stepped: int = 0
 	for wave: int in range(10, finale + 1):
+		# The solo boss row is not a STEP in this curve and cannot be compared as one:
+		# `_raw_threat` prices it at 1800 points of one body against the previous row's
+		# 424, so it would win "steepest" by a factor of four while describing a wave the
+		# player fights with `Cutworm.ZONE_HIDE` making most of the board's fire land at
+		# 0.15. `boss_solo_wave` is the exemption, named once and read here.
+		if WaveDirector.boss_solo_wave(wave):
+			continue
 		var ratio: float = WaveDirector.threat_for(wave) / WaveDirector.threat_for(wave - 1)
 		if ratio > steepest:
 			steepest = ratio
@@ -20893,9 +20962,10 @@ func test_the_campaign_ramp_spends_the_endless_ceiling_without_reordering_it() -
 		# 62 until plant-tower-defense-vyov grew WAVES from 22 to 26 rows -- the
 		# sweep starts at WAVES.size() + 1, so every endless-relative wave number
 		# (this one included) moved four later with the table, not with the ramp.
-		err = _T.assert_eq(speed_cap, 66,
-			"speed pins at wave 66, four later than before the coda -- untouched by" \
-				+ " the campaign RAMP, only by the table's length")
+		err = _T.assert_eq(speed_cap, 67,
+			"speed pins at wave 67, one later than before the Cutworm's row -- untouched" \
+				+ " by the campaign RAMP, only by the table's length, exactly as it moved"
+				+ " four later when the coda grew WAVES from 22 rows to 26")
 	if err == "":
 		# The invariant that survives the step being retuned. This is the claim
 		# worth keeping if the number above ever has to move again.
