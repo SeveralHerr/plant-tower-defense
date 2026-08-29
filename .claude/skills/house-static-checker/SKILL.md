@@ -31,6 +31,17 @@ probably belongs in the test suite instead.
 **Parallel-safe.** Open no project, write nothing to `.godot/`, take no lock. Stdlib only.
 That is the entire reason these are Python and not another `.gd` under `tools/`.
 
+**Write nothing AT ALL, by default — even outside `.godot/`.** `check_all.py` derives its
+run-set from "every `tools/*.py` whose source declares a `NOT COVERED:` line" and then runs
+each one **bare**, with no arguments, in parallel, on whatever tree the agent happens to
+have. So the contract line is also an enlistment: a tool that writes when run with no
+arguments will write during somebody's routine checker sweep, on a tree they were not
+expecting it to touch. `gen_sport_svg.py` is the case that names this — it is a generator
+first and a checker second, and its first draft regenerated seventeen committed SVGs by
+default. It now takes `--write` to write and reports drift otherwise, which is backwards
+for a generator and correct for anything `check_all` can pick up. If your tool has a fixer
+mode, the check is the default and the fix is the flag.
+
 **Exit codes.** `0` clean, `1` findings, `2` could not run. A `2` means nothing was
 verified — never let a missing input, an unreadable file or a missing `project.godot`
 fall through as a pass.
