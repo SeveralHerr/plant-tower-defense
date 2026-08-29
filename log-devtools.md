@@ -9908,6 +9908,7 @@ is likely to be at least as productive.
   exported-build guard, upstream #58, among them) - exit 1, "would lose". Carried, not
   resolved: plant-tower-defense-abxv already owns that decision and it is not this bead's.
 
+<<<<<<< HEAD
 ## 2026-08-28 — Merged two parallel playtest drivers into one, and fixed what comparing them found
 
 - Value: **warranted** — comparing two independent implementations of the same bead found a
@@ -9950,3 +9951,67 @@ is likely to be at least as productive.
   the same day. `tools/script_entry_check.py` now gates it, which is the right answer;
   this entry records that the error message is the misleading part, since the checker's
   existence does not preserve that.
+=======
+## 2026-08-28 — A placement ghost under the finger, and a drag that snaps to a cell that will take the plant (plant-tower-defense-bmis)
+
+- Value: **warranted** — the drag branch of the touch layer is the one part of this change
+  a headless test structurally cannot reach, and the run both confirmed it works and cost
+  two false alarms that were worth learning.
+  - Expected: that the snap and the ghost would behave in the running game the way the new
+    headless tests describe them, and specifically that `InputEventScreenDrag` reaches
+    `Game._unhandled_input` at all on a build where `DisplayServer.is_touchscreen_available()`
+    is faked true and `emulate_mouse_from_touch` is on — the half the existing touch test
+    says in its own comment it cannot cover.
+  - Got: with a cob standing on (2, 3), a finger dragged to board-local (160, 204) — inside
+    (2, 3) — left `_hover_cell` at **(2, 2)** with `_touch_dragged` true, `PlacementPreview.position`
+    (160, 160), `placeable` true, and `Ghost.texture` `res://assets/sprites/corn_cobbler.png`
+    at `modulate.a` 0.45 with `show_behind_parent` true. The release planted at **(2, 2)**,
+    not under the finger. A press-and-release at (2, 3)'s own centre planted nothing and set
+    `selected_placed` to the cob already there.
+  - Found: nothing wrong with the diff — but two session artefacts that each read exactly
+    like a defect and are worth the entry on their own. **(1)** Four probes in a row said
+    "ScreenDrag never reaches the game", including a poisoned `_touch_index` that stayed
+    poisoned; the run had ENDED while the setup was being typed and the `RunSummary` card
+    was over the board eating every pointer event. `first-frame` named it in one call
+    (`topmost: /root/Game/SummaryLayer/RunSummary/KeyHint`) after `get-state` had said
+    nothing useful four times. **(2)** The poison itself was the second cause: setting
+    `_touch_index` to `-5` to detect the drag branch trips the game's own one-finger guard
+    (`if _touch_index != -1: return`) and silently disables the PRESS handler. A sentinel
+    chosen to be "obviously not a real index" was read by the code as "a finger is already
+    down". Relaunching with `set-game-speed 0.01` so the run could not finish under the
+    test is what made the whole sequence reproducible.
+  - Cheaper: for the ghost half, `get-state` on the `Ghost` node alone — the screenshot only
+    earned its place because `GHOST_ALPHA` is a judgement about whether two things look
+    different, and the capture settled it (faded cob at (2,2) against solid cob at (2,3)).
+    For the drag half, nothing cheaper exists: the headless suite drives `_unhandled_input`
+    with synthetic events, which is precisely what cannot answer whether Godot delivers the
+    real event to that handler.
+
+- Gap: **`first-frame` is the right first call when a live read looks impossible, and
+  nothing says so at the moment it is needed** — four `get-state` probes and a
+  set-state/read cycle were spent proving a negative that `first-frame` answered in one
+  call. The verb's own description ("what IS the screen showing", not "is anything wrong")
+  reads as a composition check, so it was not reached for while diagnosing input. The
+  reference does say a modal surface eats input; what it does not say is that a live read
+  returning a STALE value is the symptom of that, and stale is indistinguishable from
+  "the code never ran".
+  - [G-150] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: one line in `get-state`'s own output — or in the `game not running` /
+    unchanged-value neighbourhood of the docs — to the effect of "a value that did not
+    move after an input verb: run `first-frame`, a modal CanvasLayer takes pointer events
+    before `_unhandled_input`". The information exists; it is filed under composition and
+    the question is asked from input debugging.
+
+- Note, not a gap: `scripts-seen` written with a plain shell redirect is human text and
+  `verify_ledger record --scripts-seen` wants the raw reply, so the row was written with
+  reach derived from the scene-tree alone. `scripts-seen --json` exists and is documented
+  in its own `--help` ("Print the full raw reply (what tools/verify_ledger.py consumes)").
+  Operator error, recorded so the next reader does not file it as a harness defect.
+
+- Note, not a gap: lint's orphan pass reports `snapped_placement_cell()` as "referenced
+  only from tests" while `game.gd` itself calls it twice (`:2927` in `_update_cursor`,
+  `:3091` in `_click_at`), and does NOT report `PlacementPreview.ghost()`, which really is
+  test-only. The pass is advisory, never gates, and labels itself a heuristic — carried
+  here because the direction of the error is the unhelpful one: it cried wolf on a live
+  function and stayed quiet on the dead-ish one.
+>>>>>>> worktree-drag-ghost

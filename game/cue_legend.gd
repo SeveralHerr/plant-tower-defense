@@ -106,6 +106,13 @@ const SHAPE_ARMED := "armed"
 #  11  hatched road stripes    untaught         lane pressure, at two mirrored angles
 #      (added in cycle 110 -- it was drawn all along, and absent from the grammar,
 #       which is why this audit counted ten cues when the board drew eleven)
+#  12  a translucent sprite    untaught         the placement ghost: the plant you picked,
+#                                               drawn at the cell it would go into
+#      (added by plant-tower-defense-bmis, and appended to the grammar's table rather
+#       than slotted in beside the other preview cues on purpose -- the ordinals in
+#       this ledger are positions in that table, so inserting a row in the middle
+#       renumbers five verdicts below and every one is a chance to point at the
+#       wrong cue)
 #
 # WHAT A ROW COSTS, AND HOW MANY ARE LEFT: none. `rows_that_fit()` below answers
 # it mechanically and `test_the_legend_page_is_exactly_full` pins it -- the last
@@ -160,6 +167,25 @@ const SHAPE_ARMED := "armed"
 #     the teaching ledger has a column for "should this cue exist". Every verdict
 #     above answers "teach it here, or teach it elsewhere", and a cue nobody wants
 #     on screen scores the same as one that has simply not been explained yet.
+#   * THE PLACEMENT GHOST (row 12) -- no, and it is the one entry here that would
+#     decline the row even on a page with space. Every other shape in this table is
+#     an ABSTRACTION: an arc, a bar, a dot, a doubled stroke, none of which means
+#     anything until someone says what it means, which is what this page is for. The
+#     ghost is a PICTURE of the plant the player is holding, at the place it would
+#     stand. A legend line reading "a faded cob means a cob" is a caption for a
+#     photograph, and the page would be teaching the one mark that does not need it.
+#
+#     It also arrives under the best possible conditions and cannot be met under any
+#     worse ones: it appears the instant a packet is picked, on the first purchase of
+#     the first run, with the bar icon it was picked from still lit two hundred pixels
+#     away. The player is looking at the same art in two places at once.
+#
+#     WHAT WOULD REOPEN IT is the ghost coming to mean something beyond identity and
+#     position. It carries exactly one channel today -- alpha -- and OVERLAY_GRAMMAR.md
+#     records that as a rule rather than an accident: tint it to say legal or refused
+#     and the tint becomes the only signal, which fails the two-channel rule. A ghost
+#     that started saying something would be a cue rather than a photograph, and would
+#     need this page the way the rest of the table does.
 #   * WEATHER MARKS (row 8) -- no. Whole-screen, unmistakable, and announced.
 #   * HUSK PIPS (row 10) -- no. Late, rare, and a magnitude on a mark already taught.
 #   * LANE-PRESSURE HATCH (row 11) -- no, and it is the only entry here whose "no"

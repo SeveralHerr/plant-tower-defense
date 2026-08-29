@@ -18875,6 +18875,290 @@ func test_a_touch_plants_where_the_finger_lifts_not_where_it_landed() -> String:
 	return err
 
 
+## A cell that is buildable and whose cell directly above it is buildable too, or
+## (-1, -1) if the shipped board has none. Used by the snap tests, which need a raw cell
+## the finger can be over that the placement will have to be pulled OFF of.
+func _buildable_with_free_cell_above(game: Game) -> Vector2i:
+	for y: int in range(1, Board.ROWS):
+		for x: int in range(Board.COLS):
+			var cell := Vector2i(x, y)
+			var above := Vector2i(x, y - 1)
+			if not game.board.is_buildable(cell) or not game.board.is_buildable(above):
+				continue
+			if game.plant_at(cell) != null or game.plant_at(above) != null:
+				continue
+			return cell
+	return Vector2i(-1, -1)
+
+
+## The hover cue shows the PLANT, not just a promise about one (plant-tower-defense-bmis).
+##
+## Everything else PlacementPreview paints answers a question the player knew to ask --
+## how far it reaches, whether the cell is legal, whether the coverage would be wasted.
+## None of it answers "which plant am I about to buy and exactly where does it land",
+## which is the question a fingertip covering most of a 64 px cell makes urgent.
+##
+## Asserts the art is the plant's OWN, out of PlantCatalog, rather than a bespoke preview
+## texture that could drift from what gets planted; that it swaps when the selection does;
+## and the two properties that decide whether it reads correctly on screen -- it is drawn
+## BEHIND the brackets, and at GHOST_ALPHA rather than solid, so a hover can never be
+## mistaken for a plant already standing there in a screenshot.
+func test_the_placement_ghost_wears_the_selected_plants_own_art() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(400)
+	game.bank.unlocked = PlantCatalog.ids()
+	game.selected_plant = PlantCatalog.CORN
+	var cell: Vector2i = _grass(game)
+	game._update_cursor(game.board.cell_to_world(cell) + game._entities.position)
+	var preview: PlacementPreview = game._preview
+	var ghost: Sprite2D = preview.ghost()
+	var err: String = _T.assert_true(ghost != null, "the preview owns a ghost node")
+	if err == "":
+		err = _T.assert_true(preview.visible, "the preview is showing over a legal cell")
+	if err == "":
+		err = _T.assert_true(ghost.visible, "and the ghost with it")
+	if err == "":
+		err = _T.assert_eq(ghost.texture.resource_path,
+			PlantCatalog.texture_path(PlantCatalog.CORN),
+			"the ghost wears the cob's own texture, out of the catalogue -- the same load "
+				+ "the plant bar's icon does, so art replaced in one place is replaced in both")
+	if err == "":
+		err = _T.assert_float_eq(ghost.modulate.a, PlacementPreview.GHOST_ALPHA, 0.001,
+			"half-visible, not solid: at 1.0 a hover is pixel-identical to a plant already "
+				+ "growing there, including in a screenshot where nothing moves to say otherwise")
+	if err == "":
+		err = _T.assert_true(ghost.show_behind_parent,
+			"behind the brackets. A Node2D paints itself before its children, so without "
+				+ "this the 64 px sprite covers the four corner arms it is meant to sit inside")
+	if err == "":
+		err = _T.assert_eq(ghost.position, Vector2.ZERO,
+			"at the preview's own origin, so it lands on the cell the brackets are around "
+				+ "and needs no second position to keep in step")
+	if err == "":
+		err = _T.assert_eq(preview.position, game.board.cell_to_world(cell),
+			"and the preview is on the hovered cell's centre (%s)" % cell)
+	# THE SWAP, which is the half a static texture would pass: picking a different plant
+	# has to change the picture, or the ghost is a decoration rather than an answer.
+	if err == "":
+		game.selected_plant = PlantCatalog.SUNFLOWER
+		game._update_cursor(game.board.cell_to_world(cell) + game._entities.position)
+		err = _T.assert_eq(ghost.texture.resource_path,
+			PlantCatalog.texture_path(PlantCatalog.SUNFLOWER),
+			"picking a sunflower shows a sunflower")
+	_T.free_ui(game)
+	return err
+
+
+## The snap searches one ring, and the radius is what makes that complete
+## (plant-tower-defense-bmis).
+##
+## `Game.snapped_placement_cell` looks at the eight neighbours and no further. That is
+## only correct while the radius cannot reach past them, and the relationship is between
+## TWO constants -- so it is asserted against `Board.CELL` rather than against the literal
+## 72, and a change to either cell size or radius fails here instead of leaving the search
+## quietly half-blind.
+##
+## The three distances, from a touch point to a candidate cell's CENTRE: an orthogonal
+## neighbour is 64 px from the cell's own centre, a diagonal is 90.51, and the nearest
+## point of any cell two away is 96. A radius above 64 can pull a finger off a dead
+## centre; one at or above 96 could want a cell the loop never looks at.
+func test_the_snap_radius_cannot_reach_past_the_ring_it_searches() -> String:
+	var cell: float = float(Board.CELL)
+	var err: String = _T.assert_true(Game.TOUCH_SNAP_RADIUS > cell,
+		("a radius of %.1f reaches an orthogonal neighbour's centre (%.1f) from a dead "
+			+ "centre press; at or under that the snap could never fire from the middle "
+			+ "of a blocked cell, which is where a finger most often lands")
+			% [Game.TOUCH_SNAP_RADIUS, cell])
+	if err == "":
+		err = _T.assert_true(Game.TOUCH_SNAP_RADIUS < cell * 1.5,
+			("and stays under %.1f, the nearest point of a cell TWO away -- past that the "
+				+ "eight-neighbour loop would be searching less than the radius admits, "
+				+ "and a plant could land a cell further than the finger ever pointed")
+				% [cell * 1.5])
+	if err == "":
+		err = _T.assert_true(Game.TOUCH_DRAG_SLOP < cell * 0.5,
+			("a %.1f px slop is under the %.1f px from a cell's centre to its edge, so a "
+				+ "finger that never left the cell it landed on is never read as a drag")
+				% [Game.TOUCH_DRAG_SLOP, cell * 0.5])
+	return err
+
+
+## A dragging finger is pulled onto a cell that would actually take the plant
+## (plant-tower-defense-bmis).
+##
+## The reporter's ask, in one assertion: dragging over ground that refuses the plant
+## should offer the nearest ground that does not, rather than turning the cue red and
+## leaving the player to hunt for a 64 px target under their own fingertip.
+##
+## Aims 20 px ABOVE the centre of an occupied cell, which makes the expected winner
+## unambiguous rather than a tie: the cell above is then 44 px away, left and right are
+## 67, and the diagonals at 90.51 are outside the radius entirely.
+func test_a_dragging_finger_snaps_to_a_cell_that_would_take_the_plant() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(4000)
+	game.bank.unlocked = PlantCatalog.ids()
+	game.selected_plant = PlantCatalog.CORN
+	var blocked: Vector2i = _buildable_with_free_cell_above(game)
+	var err: String = _T.assert_true(blocked != Vector2i(-1, -1),
+		"the shipped board has a buildable cell with a buildable cell above it")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var above := Vector2i(blocked.x, blocked.y - 1)
+	game.place_plant(PlantCatalog.CORN, blocked)
+	if err == "":
+		err = _T.assert_true(game.plant_at(blocked) != null,
+			"a cob stands on %s, so that cell now refuses another" % blocked)
+	if err == "":
+		err = _T.assert_false(game.would_plant_at(blocked),
+			"and would_plant_at agrees -- this is the cell the finger will be over")
+
+	var local: Vector2 = game.board.cell_to_world(blocked) + Vector2(0.0, -20.0)
+	if err == "":
+		err = _T.assert_eq(game.snapped_placement_cell(local), above,
+			("a finger 20 px above the occupied cell's centre is aiming at %s: the cell "
+				+ "above is 44 px away, left and right are 67, and the diagonals at 90.51 "
+				+ "are past the %.0f px radius") % [above, Game.TOUCH_SNAP_RADIUS])
+	# AND THE CUE FOLLOWS IT. A resolver nothing draws through is a function, not a fix.
+	var screen: Vector2 = local + game._entities.position
+	if err == "":
+		game._update_cursor(screen, true)
+		err = _T.assert_eq(game._hover_cell, above,
+			"the preview is drawn on the snapped cell, not on the one under the finger")
+	if err == "":
+		err = _T.assert_eq(game._preview.position, game.board.cell_to_world(above),
+			"and the ghost with it, since it rides the preview's own origin")
+	if err == "":
+		err = _T.assert_true(game._preview.placeable,
+			"drawn as legal, which is the whole point -- the unsnapped cue here was red")
+	# AND THE RELEASE COMMITS THERE. This is the clause the bead is really about: cue and
+	# commit ask one function, so the ghost cannot promise a cell the release declines.
+	if err == "":
+		game._click_at(screen, true)
+		err = _T.assert_true(game.plant_at(above) != null,
+			"the release plants at %s, the cell the cue had been promising" % above)
+	if err == "":
+		err = _T.assert_eq(game.plant_at(blocked).cell, blocked,
+			"and the plant already standing on %s was neither replaced nor disturbed" % blocked)
+	_T.free_ui(game)
+	return err
+
+
+## A TAP is never snapped, which is what keeps select and compost reachable on touch
+## (plant-tower-defense-bmis).
+##
+## The snap fires on "this cell will not take the plant", and an occupied cell is exactly
+## that -- so a snap that applied to taps would make every tap on a plant buy a second one
+## beside it, and selecting a plant with a finger would become impossible. The gesture is
+## the discriminator: a press and release that never travelled is a tap and keeps the
+## behaviour it has always had, to the pixel.
+##
+## Drives the real handler rather than `_click_at` directly, because `_touch_dragged` is
+## set in `_on_screen_touch` and in the drag branch of `_unhandled_input` -- calling the
+## tail by hand would assume the flag this test exists to check is passed correctly.
+func test_a_tap_is_never_snapped_so_a_finger_can_still_select_a_plant() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(4000)
+	game.bank.unlocked = PlantCatalog.ids()
+	game.selected_plant = PlantCatalog.CORN
+	var blocked: Vector2i = _buildable_with_free_cell_above(game)
+	var err: String = _T.assert_true(blocked != Vector2i(-1, -1), "a cell with one above it")
+	if err != "":
+		_T.free_ui(game)
+		return err
+	var above := Vector2i(blocked.x, blocked.y - 1)
+	game.place_plant(PlantCatalog.CORN, blocked)
+	var planted: int = game._plants.size()
+	var screen: Vector2 = game.board.cell_to_world(blocked) + game._entities.position
+
+	var down := InputEventScreenTouch.new()
+	down.index = 0
+	down.pressed = true
+	down.position = screen
+	game._unhandled_input(down)
+	var up := InputEventScreenTouch.new()
+	up.index = 0
+	up.pressed = false
+	up.position = screen
+	game._unhandled_input(up)
+
+	if err == "":
+		err = _T.assert_eq(game._plants.size(), planted,
+			"a tap on an occupied cell buys nothing -- with the snap applied to taps this "
+				+ "would have planted a second cob on %s" % above)
+	if err == "":
+		err = _T.assert_true(game.plant_at(above) == null,
+			"and %s is still empty" % above)
+	if err == "":
+		err = _T.assert_true(game.selected_placed != null
+				and game.selected_placed.cell == blocked,
+			"what the tap did instead is select the plant it landed on, exactly as before")
+	_T.free_ui(game)
+	return err
+
+
+## The cue and the commit cannot disagree, swept rather than sampled
+## (plant-tower-defense-bmis).
+##
+## Two implementations of "the nearest cell that would take this" is the failure this
+## whole design is arranged to rule out -- they agree on the day they are written and
+## drift apart afterwards, and the symptom is a ghost drawn on one cell and a plant
+## appearing on another. `Game.snapped_placement_cell` is the single answer both ask.
+##
+## Sweeps a lattice of touch points across the whole board, and does it against a board
+## that FILLS UP as it goes: every placement makes the next point's answer different, so
+## a resolver that only agreed with the cue on an empty garden fails here. The expectation
+## is recomputed from the live board before each click rather than tabulated up front.
+func test_the_drag_cue_and_the_drag_commit_choose_the_same_cell() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(20000)
+	game.bank.unlocked = PlantCatalog.ids()
+	game.selected_plant = PlantCatalog.CORN
+	var err: String = ""
+	var checked: int = 0
+	var snapped: int = 0
+	# A lattice on a 43 px step against a 64 px cell, so points land at centres, near
+	# edges and in corners rather than all in the same part of every cell.
+	for y: int in range(10, Board.ROWS * Board.CELL, 43):
+		for x: int in range(10, Board.COLS * Board.CELL, 43):
+			if err != "":
+				break
+			var local := Vector2(float(x), float(y))
+			var raw: Vector2i = game.board.world_to_cell(local)
+			if not game.board.is_inside(raw):
+				continue
+			var expected: Vector2i = game.snapped_placement_cell(local)
+			var was_placeable: bool = game.would_plant_at(expected)
+			var screen: Vector2 = local + game._entities.position
+			game._update_cursor(screen, true)
+			if game._hover_cell != expected:
+				err = _T.assert_eq(game._hover_cell, expected,
+					"the cue at %s draws on the cell the resolver named" % local)
+				break
+			checked += 1
+			if expected != raw:
+				snapped += 1
+			game._click_at(screen, true)
+			if was_placeable and game.plant_at(expected) == null:
+				err = _T.assert_true(false,
+					"the drag at %s was promising %s and the release did not plant there"
+						% [local, expected])
+				break
+	# THE DENOMINATOR, both halves. A sweep that agreed everywhere because the snap never
+	# fired would be a test of nothing, and so would one that ran over no points at all.
+	if err == "":
+		err = _T.assert_gt(checked, 50,
+			"the lattice actually reached the board (%d point(s))" % checked)
+	if err == "":
+		err = _T.assert_gt(snapped, 0,
+			("and the snap genuinely fired somewhere in it (%d of %d point(s) resolved to "
+				+ "a cell other than the one under the finger) -- without this the sweep "
+				+ "would pass unchanged on a build with no snap in it at all")
+				% [snapped, checked])
+	_T.free_ui(game)
+	return err
+
+
 ## A binding that did not reach disk says so (plant-tower-defense-bia).
 ##
 ## `RunConfig._save()` has four paths where the record does not land and every one of them

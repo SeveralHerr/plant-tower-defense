@@ -197,7 +197,18 @@ var reach: float = 0.0
 ## The day a second plant is priced at the same radius, the inference starts
 ## warning about the wrong one and that line becomes required rather than
 ## preferable.
-var plant_id: StringName = &""
+##
+## SINCE THE GHOST IT IS ALSO WHAT THE PLAYER SEES. Setting this swaps the translucent
+## plant drawn under the brackets (see `GHOST_ALPHA`), so the inference above is now the
+## fallback for the CUE's shape as well as for the warning's wording. Game sets it on
+## every `_update_preview`, so the assignment is on the hover path and the setter is
+## guarded to reload the texture only when the id actually changes.
+var plant_id: StringName = &"":
+	set(value):
+		if plant_id == value:
+			return
+		plant_id = value
+		_refresh_ghost()
 ## False for a cell that is road, off-board, occupied, or unaffordable. Only
 ## recolours; a blocked preview still draws, because "you cannot put it here"
 ## is the thing worth showing.
@@ -236,12 +247,87 @@ var covered_now: Dictionary = {}
 ## and there can be nine of them at a Corn Cobbler's reach.
 const NEW_COVER_DOT: float = 4.0
 
+## The node name the ghost wears, so a test (or `scene-tree` on a running game) can find
+## it by name rather than by index among the preview's children.
+const GHOST_NODE_NAME := "Ghost"
+
+## How solid the previewed plant is drawn under the brackets (plant-tower-defense-bmis).
+##
+## THE CUE IS THE PLANT ITSELF, which no drawn shape can substitute for. Everything else
+## this node paints answers a question the player already knew to ask -- how far does it
+## reach, is this legal, would it be wasted. The ghost answers the one they should not
+## have to ask on a phone, where a fingertip covers most of a 64 px cell: *which plant am
+## I about to buy, and where exactly does it land*. The bar's icon is 40 px of art behind
+## a finger that has already moved on.
+##
+## HALF-VISIBLE ON PURPOSE, and this is the number that decides whether the cue is honest.
+## At 1.0 a preview is pixel-identical to a plant already standing there, and a board with
+## a hover on it would read as a board with an extra plant on it -- including in a
+## screenshot, where nothing moves to give the game away. At 0.45 the ground and the road
+## read straight through it, which is exactly the difference between "this is here" and
+## "this would be here".
+##
+## THE GHOST NEVER CARRIES A VERDICT. It is one channel -- alpha -- and
+## `OVERLAY_GRAMMAR.md`'s two-channel rule would be broken the moment placeable-vs-blocked
+## was tinted into it, because the tint would be the only signal and a greyscale reader
+## would lose it. The brackets already carry that verdict in colour AND in the ring they
+## do or do not draw, and they keep the whole of it: this sprite is drawn the same on a
+## legal cell and on a refused one. What tells you a cell is refused is the red around the
+## plant, not the plant.
+const GHOST_ALPHA: float = 0.45
+
 var _resolved_board: Board = null
+
+## The plant itself, drawn where it would stand. Built in `_init` and kept for the life
+## of the node rather than made and freed per hover: this is on the mouse-motion path.
+var _ghost: Sprite2D = null
 
 
 func _init() -> void:
 	half = PREVIEW_HALF
 	arm = PREVIEW_ARM
+	_ghost = Sprite2D.new()
+	_ghost.name = GHOST_NODE_NAME
+	# BEHIND THE BRACKETS, and `show_behind_parent` rather than a negative `z_index`.
+	# A Node2D paints its own `_draw` before its children, so at any z of 0 a 64 px
+	# sprite would sit on top of the four corner arms it is supposed to be inside.
+	# `z_index = -1` would fix that and break something worse: z is compared against
+	# this node's SIBLINGS under Entities -- the Board's tiles among them -- so a -1
+	# ghost is drawn under the lawn and is invisible on every cell. This flag reorders
+	# the pair without touching where either sits against the rest of the board.
+	_ghost.show_behind_parent = true
+	# One channel, and it is alpha; see GHOST_ALPHA for why it never carries a verdict.
+	_ghost.modulate = Color(1.0, 1.0, 1.0, GHOST_ALPHA)
+	_ghost.visible = false
+	add_child(_ghost)
+	_refresh_ghost()
+
+
+## Swaps the ghost onto whatever `plant_id` now names, or hides it when that is nothing.
+##
+## `PlantCatalog.texture_path` rather than a table of our own -- the same load
+## `Hud`'s plant-bar buttons do for their icons, so a plant whose art is replaced is
+## replaced in three places at once and cannot be replaced in two.
+##
+## An unknown or empty id hides the ghost rather than drawing a blank: `plant_id` is
+## documented as optional (see its own block), and the brackets, the ring and every
+## warning still work without it. A cue that half-appears is worse than one that does not.
+func _refresh_ghost() -> void:
+	if _ghost == null:
+		return
+	var path: String = PlantCatalog.texture_path(plant_id) if PlantCatalog.has(plant_id) else ""
+	if path == "":
+		_ghost.texture = null
+		_ghost.visible = false
+		return
+	_ghost.texture = load(path) as Texture2D
+	_ghost.visible = _ghost.texture != null
+
+
+## The ghost node, for tests and for anything that needs to ask what is being shown
+## rather than infer it from `plant_id`. Never null after `_init`.
+func ghost() -> Sprite2D:
+	return _ghost
 
 
 ## Precedence, stated in one place, because three cues over one cell is how a

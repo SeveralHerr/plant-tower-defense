@@ -7373,7 +7373,7 @@ func test_the_grammar_rows_the_legend_teaches_are_the_recorded_six() -> String:
 	## `CueLegend.ROWS` shape must be claimed by exactly one recorded row.
 	##
 	## Empty `taught` means the shape is drawn on the board and not on this page. Four of
-	## the five are argued one at a time in cue_legend.gd's wenx block; the short version
+	## the six are argued one at a time in cue_legend.gd's wenx block; the short version
 	## is that none of them earns the layout price the test above measures.
 	##
 	## The fifth is the lane-pressure hatch, and it went red here the moment cycle 110
@@ -7384,6 +7384,15 @@ func test_the_grammar_rows_the_legend_teaches_are_the_recorded_six() -> String:
 	## derived from the plants standing now, so placing a cob over a leaking stretch
 	## rotates the stripes under it while the player watches. OVERLAY_GRAMMAR.md's
 	## board-drawn subsection carries the long version.
+	##
+	## The sixth is the placement ghost (plant-tower-defense-bmis), and it went red here
+	## the same way the hatch did. The page being full decides it again, but this row is
+	## the one that would have least wanted the space anyway: every other shape on the
+	## board is an ABSTRACTION that has to be learned once, and the ghost is a picture of
+	## the plant the player is holding, at the place it would go. A legend row reading
+	## "a faded cob means a cob" is a caption for a photograph. It also cannot be met
+	## before it is understood — it appears the moment a packet is picked, on the first
+	## purchase of the first run, with the bar icon it was picked from still lit.
 	var recorded: Array[Dictionary] = [
 		{"shape": "Solid full ring", "taught": CueLegend.SHAPE_REACH},
 		{"shape": "Dashed ring", "taught": CueLegend.SHAPE_REMARK},
@@ -7396,6 +7405,7 @@ func test_the_grammar_rows_the_legend_teaches_are_the_recorded_six() -> String:
 		{"shape": "Doubled line width", "taught": CueLegend.SHAPE_ARMED},
 		{"shape": "A row of small pips", "taught": ""},
 		{"shape": "Hatched stripes", "taught": ""},
+		{"shape": "A translucent sprite of the thing itself", "taught": ""},
 	]
 
 	# The document's rows, parsed out of the SECTION rather than the file -- the same
@@ -7493,10 +7503,15 @@ func test_the_grammar_rows_the_legend_teaches_are_the_recorded_six() -> String:
 		"the page says it teaches %d shapes and the pairing finds %d"
 			% [CueLegend.row_count(), claimed.size()])
 	if err == "":
-		err = _T.assert_eq(rows.size() - claimed.size(), 5,
+		# A LITERAL ON PURPOSE, and it is the whole mechanism: every untaught row has a
+		# named verdict in cue_legend.gd's wenx audit arguing why a legend row is the
+		# wrong home for it, and the only thing making that true is that adding an
+		# untaught row fails here until someone writes the argument. Derived, it would
+		# rise on its own and the audit would silently fall behind the board.
+		err = _T.assert_eq(rows.size() - claimed.size(), 6,
 			("%d of the board's %d documented shapes go untaught -- the wenx audit "
 				% [rows.size() - claimed.size(), rows.size()])
-				+ "argues each of the five one at a time in cue_legend.gd, so a sixth "
+				+ "argues each of the six one at a time in cue_legend.gd, so a seventh "
 				+ "needs arguing there too")
 	return err
 

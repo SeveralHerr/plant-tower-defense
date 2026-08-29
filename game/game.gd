@@ -1661,6 +1661,55 @@ func would_plant_at(cell: Vector2i) -> bool:
 	return bank.can_afford(selected_plant)
 
 
+## The cell a dragging finger is aiming at: the one it is over, or the nearest one that
+## would actually take the plant (plant-tower-defense-bmis). Board-local `at`.
+##
+## THE ONE FUNCTION BOTH THE CUE AND THE COMMIT ASK, which is the whole of why it is a
+## function and not two loops. `_update_cursor` draws the preview at whatever this
+## returns and `_click_at` plants at whatever this returns, from the same position, so
+## the ghost cannot promise a cell the release then declines to use. Two independent
+## implementations of "nearest placeable" that agreed on the day they were written is
+## precisely the shape of bug the preview's own promise ("if you see the brackets, the
+## click plants it") exists to rule out.
+##
+## FALLS BACK TO THE RAW CELL, never to nothing. A finger over a road cell with no legal
+## neighbour in reach still gets the red brackets on the cell it is actually over, which
+## is the honest answer — the alternative is a cue that vanishes whenever the snap fails
+## and a player who cannot tell "you may not build here" from "the game stopped
+## responding".
+##
+## `would_plant_at` is the filter, not `is_buildable_for`: a cell the player cannot AFFORD
+## is not a cell to drag them onto, and neither is one that already holds a plant. This is
+## the same predicate `_click_at` consults, so a snap target is by construction a cell the
+## click will accept.
+##
+## Only the eight neighbours are searched, and `TOUCH_SNAP_RADIUS` is what makes that
+## complete rather than arbitrary: the nearest point of any cell two away is 96 px and the
+## radius is 72, so a ring-2 candidate could never win. That relationship is pinned by
+## test_the_snap_radius_cannot_reach_past_the_ring_it_searches — widen the radius past 96
+## and the test fails rather than the search quietly going half-blind.
+func snapped_placement_cell(at: Vector2) -> Vector2i:
+	var raw: Vector2i = board.world_to_cell(at)
+	if would_plant_at(raw):
+		return raw
+	var best: Vector2i = raw
+	var best_distance: float = TOUCH_SNAP_RADIUS
+	for dy: int in range(-1, 2):
+		for dx: int in range(-1, 2):
+			var candidate := Vector2i(raw.x + dx, raw.y + dy)
+			if candidate == raw or not board.is_inside(candidate):
+				continue
+			if not would_plant_at(candidate):
+				continue
+			var distance: float = at.distance_to(board.cell_to_world(candidate))
+			# Strictly nearer, so a tie goes to the first candidate in this fixed
+			# scan order and the same finger position always resolves to the same cell.
+			if distance < best_distance:
+				best_distance = distance
+				best = candidate
+	return best
+
+
 ## The refusals a player can be SHOWN, as named constants (plant-tower-defense-n4cx).
 ##
 ## Two of these are returned from BOTH `place_plant` and `commit_move`, and until cycle 168
@@ -2606,6 +2655,54 @@ func _reveal_plant_unlock(id: StringName) -> void:
 ## ignored until it lifts. `touch list` on the bridge is what shows a second index arriving.
 var _touch_index: int = -1
 
+## Where the finger that owns the placement first landed, board-local, and whether it has
+## since moved far enough to count as a DRAG rather than a tap (plant-tower-defense-bmis).
+##
+## THE WHOLE OF THE SNAP'S SCOPE IS THIS FLAG, and the reason is that `_click_at` means
+## four different things depending on what is under it. A tap on a plant selects it; a tap
+## on a husk composts it; a tap on empty ground plants. Snapping a TAP away from the cell
+## it landed on would make the first two unreachable on touch — every tap on a plant would
+## be pulled to the empty grass beside it and buy a second one — because "the cell is
+## occupied" is exactly the condition the snap fires on.
+##
+## A DRAG is not ambiguous in that way. A finger that has travelled across the board with
+## a placement cue under it the whole time is placing, and nothing else; that is the
+## gesture the player described when they asked for this. So the tap keeps today's
+## behaviour to the pixel and the drag gets the help.
+var _touch_start: Vector2 = Vector2.ZERO
+var _touch_dragged: bool = false
+
+## How far a finger must travel before it is a drag and not a tap.
+##
+## Small, and it is a slop rather than a gesture threshold: a real finger jitters by a
+## pixel or two between press and release without any intent to move, and on a device that
+## delivers that jitter as `InputEventScreenDrag` (which is a property of the hardware, not
+## something a test can decide — see plant-tower-defense-bfbb) every tap would otherwise
+## arrive as a drag. 16 px is a quarter of a `Board.CELL` and well under the 32 px from a
+## cell's centre to its edge, so a finger that has not left the cell it landed on is never
+## a drag, and one that has crossed into another cell always is.
+const TOUCH_DRAG_SLOP: float = 16.0
+
+## How far a dragging finger may miss a placeable cell and still be understood to mean it.
+##
+## MEASURED AGAINST `Board.CELL` = 64, and the three distances that matter are from the
+## touch point to a candidate cell's CENTRE:
+##
+##   * an orthogonal neighbour's centre is 32 px away with the finger on the shared edge,
+##     64 from the centre of the cell it is in, and 96 from the far edge;
+##   * a diagonal neighbour's centre is 45.25 px from the shared corner and 90.51 from the
+##     centre;
+##   * the NEAREST point of a cell two away is 96.
+##
+## 72 sits above 64 and below 90.51 and 96, and that buys exactly the rule worth having:
+## an orthogonal neighbour is reachable from anywhere in the near half of the cell and
+## from its centre, a diagonal only while the finger is leaning into that corner, and a
+## cell two away is unreachable from anywhere — a snap that could skip a cell would put a
+## plant somewhere the player never pointed. `test_the_snap_radius_cannot_reach_past_the
+## _ring_it_searches` pins the last of those against `Board.CELL` rather than against 72,
+## so changing the cell size fails the test instead of silently widening the reach.
+const TOUCH_SNAP_RADIUS: float = 72.0
+
 
 ## A finger going down or coming up.
 ##
@@ -2622,18 +2719,23 @@ func _on_screen_touch(touch: InputEventScreenTouch) -> void:
 		if _touch_index != -1:
 			return   # a second finger while one is placing: see _touch_index
 		_touch_index = touch.index
+		_touch_start = touch.position
+		# Not a drag until it has travelled TOUCH_DRAG_SLOP. A press is a press.
+		_touch_dragged = false
 		# Show the cue immediately, so the first thing a finger does is reveal validity
 		# rather than change the board.
 		_update_cursor(touch.position)
 		return
 	if touch.index != _touch_index:
 		return
-	_click_at(touch.position)
+	# The gesture decides whether the release may be snapped; see `_touch_dragged`.
+	_click_at(touch.position, _touch_dragged)
 	# Cleared immediately. An earlier draft deferred this by a frame to keep the emulated
 	# mouse events out; that is no longer this flag's job — `device == -1` does it in
 	# `_unhandled_input`, and it does it for the PRESS, which arrives before any flag could
 	# be set. What is left here is only the one-finger rule.
 	_touch_index = -1
+	_touch_dragged = false
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -2648,7 +2750,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		# along and a touch player never did: the preview follows the finger, so validity
 		# is visible BEFORE the commit rather than being discovered by the result.
 		_touch_index = drag.index
-		_update_cursor(drag.position)
+		# A tap that jitters is still a tap; see TOUCH_DRAG_SLOP. Latched rather than
+		# recomputed per event, so a finger that wanders out and comes back to where it
+		# started does not stop being a drag halfway through the gesture.
+		if not _touch_dragged and _touch_start.distance_to(drag.position) > TOUCH_DRAG_SLOP:
+			_touch_dragged = true
+		_update_cursor(drag.position, _touch_dragged)
 		return
 	var motion := event as InputEventMouseMotion
 	if motion != null:
@@ -2798,13 +2905,26 @@ func repaint_for_palette() -> void:
 		plant.repaint_health_bar()
 
 
-func _update_cursor(screen_pos: Vector2) -> void:
-	var cell: Vector2i = board.world_to_cell(screen_pos - _entities.position)
+## `snap` is passed only by the touch drag branch, and only once the finger has actually
+## travelled — see `_touch_dragged` for why a tap must never snap. A mouse never passes it:
+## a cursor is one pixel, it occludes nothing, and pulling it off the cell the player put
+## it on would be taking away precision they already have.
+##
+## THE ABORT IS DECIDED ON THE RAW CELL, deliberately, and it is the reason the snap is
+## applied after the bounds guard rather than before it. Sliding off the board is how a
+## touch player cancels a placement (see `_on_screen_touch`); if the snap ran first, a
+## finger leaving the board over the last column would be pulled back onto it and the
+## cancel would be unreachable.
+func _update_cursor(screen_pos: Vector2, snap: bool = false) -> void:
+	var local: Vector2 = screen_pos - _entities.position
+	var cell: Vector2i = board.world_to_cell(local)
 	if not board.is_inside(cell) or screen_pos.x > board.board_size().x:
 		_cursor.visible = false
 		_preview.visible = false
 		_hover_cell = Vector2i(-1, -1)
 		return
+	if snap:
+		cell = snapped_placement_cell(local)
 	_hover_cell = cell
 	_cursor.visible = true
 	_cursor.position = Vector2(cell.x * Board.CELL, cell.y * Board.CELL)
@@ -2930,7 +3050,12 @@ func _update_preview(cell: Vector2i, free: bool) -> void:
 ##   * On road, the sweep wins outright. A husk is already-earned seeds and a Bramble
 ##     can be planted a pixel to either side, so the cheap mistake is the one to make
 ##     impossible.
-func _click_at(screen_pos: Vector2) -> void:
+## `snap` is true only for the release of a touch DRAG (see `_touch_dragged`). It changes
+## nothing about a mouse click or a tap, and its branch sits at the very top of the ladder
+## below on purpose: a finger that has been dragging with a placement ghost under it has
+## been shown one promise the whole way, and every branch it skips — the compost sweep,
+## the select, the lapsed-move grace — would answer that promise with something else.
+func _click_at(screen_pos: Vector2, snap: bool = false) -> void:
 	# BOARD-LOCAL, and it has to be. This guard used to read
 	# `screen_pos.y < Hud.BAR_HEIGHT or screen_pos.x > board.board_size().x` — an absolute
 	# screen coordinate compared against a board-LOCAL width, which was correct for exactly
@@ -2952,6 +3077,21 @@ func _click_at(screen_pos: Vector2) -> void:
 	if local.y < 0.0 or local.x > board.board_size().x:
 		return
 	var cell: Vector2i = board.world_to_cell(local)
+	# THE SNAPPED RELEASE, above everything (plant-tower-defense-bmis). Only when the
+	# resolver actually moved the cell: a drag that ends over a perfectly good cell falls
+	# straight through and is handled by the ladder below exactly as it always was, so a
+	# drag onto a plant to select it, or onto a husk that no placement wanted, is
+	# untouched.
+	#
+	# NOT WHILE AN UPROOT IS ARMED. That window owns the click outright (see the branch
+	# further down) and the question it is asking is "move it here?", not "buy one here?".
+	# The cue the player has been watching is the move preview, and `snapped_placement_cell`
+	# filters on `would_plant_at`, which is about buying.
+	if snap and not uproot_armed():
+		var aimed: Vector2i = snapped_placement_cell(local)
+		if aimed != cell:
+			_commit_placement(aimed)
+			return
 	# Ahead of the is_inside() guard below, exactly where the sweep has always
 	# been: Board._build_route brackets the road with an off-board entry and exit,
 	# a Corn Cobbler can shoot a pest standing on either, and the husk that drops
@@ -3016,6 +3156,17 @@ func _click_at(screen_pos: Vector2) -> void:
 		hud.show_message(Hud.move_window_closed_tip(),
 			Hud.message_seconds(Hud.ROLE_CONFIRM))
 		return
+	_commit_placement(cell)
+
+
+## Buy the selected plant for `cell`, say why not, and leave the cue on screen truthful.
+##
+## Split out of `_click_at`'s tail so the snapped release can reach it without either
+## restating the refusal handling or falling through branches it has already been shown
+## past (plant-tower-defense-bmis). Two callers, one behaviour: a snapped drag and an
+## ordinary click that reached the bottom of the ladder buy in exactly the same way, and
+## a refusal reads the same however the cell was chosen.
+func _commit_placement(cell: Vector2i) -> void:
 	var refusal: String = place_plant(selected_plant, cell)
 	if refusal == "not paid for":
 		# The refusal fired on a board click, not a bar click — pay_for_plant()
