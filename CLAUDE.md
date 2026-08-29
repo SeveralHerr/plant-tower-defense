@@ -72,21 +72,61 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
-_Add your build and test commands here_
+There is no build step and no package manager. Everything runs through the Godot binary
+named by `godot_bin` in `addons/godot_selftest/devtools_config.json` — **read it from
+there**; a bare `godot` is not on PATH on the machine this project is developed on, and
+the harness section below spells its examples `godot` for portability rather than because
+that works here.
 
 ```bash
-# Example:
-# npm install
-# npm test
+GODOT=$(python -c "import json;print(json.load(open('addons/godot_selftest/devtools_config.json'))['godot_bin'])")
+
+python tools/check_all.py --quiet                                  # every parallel-safe checker, ~20s
+python tools/run_tests.py --godot "$GODOT"                         # the unit suite, ~3 min
+"$GODOT" --headless --path . --script res://tools/lint_project.gd  # UID + scene + dup-id + shader lint
+"$GODOT" --headless --path . --import                              # after adding a class_name/.tscn/.tres
+"$GODOT" --headless --path . --script res://tools/render_svg.gd    # art_src/*.svg -> assets/sprites/*.png
 ```
+
+`run_tests.py` takes about three minutes on the full suite, which is longer than a default
+command timeout — pass a longer one, or narrow with `-- --file <name>.gd` / `-- --filter
+<substring>` while iterating. See the harness section below for why it is `run_tests.py`
+and never the bare `run_tests.gd`.
 
 ## Architecture Overview
 
-_Add a brief overview of your project architecture_
+A single-scene 2D tower defense. `game/game.tscn` hosts `Game`, which owns a `Board`
+(14x9 grid of 64px cells, grass with a dirt road cut through it), a `SeedBank`, a
+`WaveDirector` and a `Hud` on its own `CanvasLayer`. Plants are `Node2D`s parented to
+`Entities`, one script per kind extending `Plant`; pests are one `Pest` script with a
+`SPECIES` table and trait flags rather than a subclass each. Data that is not behaviour —
+the plant catalogue, the wave table, milestones, skins, mutations — lives in
+`class_name X extends RefCounted` static tables so it is assertable with no scene tree.
+
+Art is authored as SVG in `art_src/` and rasterised to `assets/sprites/` by
+`tools/render_svg.gd`; the SVGs never ship. `art_src/STYLE.md` is the contract, enforced
+by `test/unit/test_sprite_style.gd` (rendered pixels) and `tools/svg_style_check.py`
+(source, parallel-safe).
 
 ## Conventions & Patterns
 
-_Add your project-specific conventions here_
+**Comments carry the WHY.** Production files are heavily commented with the reasoning and
+the refused alternative, not with what the line does. A constant that was tuned says what
+it was tuned against; a shape that was chosen says what shape was rejected and why.
+
+**A cue is a named sibling node, not a branch in somebody's `_draw`.** Seven of the nine
+plant scripts override `_draw`, so anything painted in the base class appears on two kinds
+and silently not on the rest. `SelectionMarker` and `SportMark` are the pattern. Name the
+node — the devtools bridge and the tests both address by path, and `@Node2D@131` is a path
+nothing can be written against.
+
+**Geometry and animation go in a pure `static func`.** Headless executes no `_draw` and
+pumps no frames, so a shape assembled inside `_draw` is a shape no test can reach. See
+`.claude/skills/assert-an-animation`.
+
+**Derive a list rather than typing one.** `.claude/skills/derive-the-list`. If you are
+about to hand-write a table of ids, paths, colours or cases, check whether the source of
+truth can produce it.
 
 **After any balance edit** (wave tables, `Game.DIFFICULTIES`, plant prices/reach), run the
 playtest sweep — `test/unit/test_playtest_sweep.gd`, part of the standing `/verify` suite.

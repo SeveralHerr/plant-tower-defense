@@ -90,15 +90,22 @@
 	                              while any pest is still walking the road (see
 	                              Sfx.AMBIENCE_SOUND — it is the one sound here
 	                              that is not a SOUNDS row)
+	  chomper-bite.wav            a Chomp Flower's jaws closing on the pest its
+	                              vines have hauled into its mouth (Sfx.CHOMP_BITE,
+	                              which borrowed a Kenney impact until this cue
+	                              existed -- named by role, not by filename, so
+	                              that file stays claimed by one section only)
 	  plant-place.ogg             soil closing over a planting
 	  clickanddrag.ogg            a packet picked out of the plant bar, click or
 	                              drag
 
-	ALL FIVE WERE MADE FOR THIS GAME by its owner, James Herr. They are not
+	ALL SIX WERE MADE FOR THIS GAME by its owner, James Herr. They are not
 	vendored from any pack, no third party holds rights in them, and no upstream
 	licence applies to them: the project owns them outright and the only terms
 	they carry are whatever the project itself ships under. Confirmed by the
-	owner 2026-08-29, closing plant-tower-defense-muyk.
+	owner 2026-08-29, closing plant-tower-defense-muyk; chomper-bite.wav was
+	added later the same day and confirmed on the same terms by the owner
+	(plant-tower-defense-tnwd).
 
 	ONE THING THAT LOOKS LIKE A PACK AND IS NOT, recorded here so the question is
 	not re-opened by the next person to run `ogginfo` over this directory. The two
@@ -111,8 +118,10 @@
 	ARTIST -- where every Kenney file in this directory carries ARTIST=Kenney and
 	COMMENT=www.kenney.nl. That combination is the usual fingerprint of a pack
 	file, and it is what prompted the bead. It is an artefact of the owner's own
-	take-numbering and mastering pass, not of a pack. The three .wav cues carry no
-	metadata at all (bare 44.1kHz stereo PCM), so there is nothing to mistake.
+	take-numbering and mastering pass, not of a pack. The four .wav cues carry no
+	metadata at all (bare 44.1kHz stereo PCM), so there is nothing to mistake --
+	chomper-bite.wav was checked the same way when it arrived: RIFF chunks `fmt `
+	and `data` and nothing else, 0.337s of 16-bit stereo at 44.1kHz.
 
 			------------------------------
 

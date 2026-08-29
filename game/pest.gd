@@ -885,6 +885,47 @@ var _hop_clock: float = 0.0
 ## Set by a Chomp Flower while it is eating this pest. A held pest does not move.
 var held_by: Node = null
 
+## Where the Chomp holding this pest has dragged its BODY to, in this node's own space.
+##
+## PURELY COSMETIC, and that split is the entire reason this field exists rather than the
+## flower simply writing `position`. Everything that decides what happens to a pest reads
+## `position` or `global_position` — `Kernel._hit_pests` (game/kernel.gd:69), the escape
+## route in `_advance`, `_adjacent_plant`, `_blocking_plant`, the husk `Game._on_pest_died`
+## drops. Hauling the node one cell off the road onto the flower would silently take a held
+## pest out of every cob's line of fire, which is a nerf to the Chomp/Corn pairing that no
+## balance table records and no test would have caught.
+##
+## So the node stays on the road and the PICTURE moves: this offset is added to `_sprite`,
+## to both health bars, and to the marker ring in `_draw()`. Every reader of the offset is
+## a drawing.
+##
+## It shares `_sprite.position` with the death knockback, which is the one other writer of
+## that channel (see `_play_death`). They do not collide: the carry stops updating the
+## instant `_alive` goes false, and the corpse folds the last carry offset into its shove
+## so a bug eaten on top of a flower does not drop through it to the path.
+var _carry_offset: Vector2 = Vector2.ZERO
+
+## True from the moment a Chomp's vines take hold to the moment it lets go. Distinct from
+## `held_by != null` only in what it is FOR: `held_by` is the mechanic (this pest does not
+## walk), this is the picture (this pest is drawn above the plant eating it, and its body
+## may be somewhere its node is not).
+var _carried: bool = false
+
+## Where the health bars sit at rest, recorded by `_build_visuals`. See `_apply_carry`.
+var _bar_origin: Vector2 = Vector2.ZERO
+
+## What a carried pest's `z_index` becomes, so the bug hauled onto a flower is drawn on
+## top of it rather than behind it.
+##
+## `z_index` is otherwise unused across the whole of `game/` — every other layer question
+## in this project is answered by tree order — so this is not competing with anything. It
+## has to be a z and not a reparent: a pest re-parented mid-run would break `_route`, which
+## is expressed in the parent's space.
+##
+## 1, not a large number: `_entities` holds the board, the plants, the pests and the husk
+## layer, and the intent is "just above the flower", not "above the whole world".
+const CARRY_Z_INDEX: int = 1
+
 ## The PRIMARY mutation — the first one applied, and the one whose hue the sprite wears.
 ## Kept as its own field rather than derived on read because it is what every existing
 ## reader means by "which mutation is this", and because a pest with two of them still has
@@ -1494,7 +1535,11 @@ func _build_visuals(texture_path: String, sprite_scale: float) -> void:
 	_sprite.scale = Vector2(sprite_scale, sprite_scale)
 	add_child(_sprite)
 
-	var bar_origin := Vector2(-HEALTH_BAR_SIZE.x * 0.5, health_bar_top_for(sprite_scale))
+	# Recorded rather than local: `_apply_carry()` re-places both bars at
+	# `_bar_origin + _carry_offset` every frame a Chomp is holding this pest, and it
+	# has no other way to recover where they sit at rest.
+	_bar_origin = Vector2(-HEALTH_BAR_SIZE.x * 0.5, health_bar_top_for(sprite_scale))
+	var bar_origin := _bar_origin
 
 	_health_back = ColorRect.new()
 	_health_back.color = Color(0.12, 0.12, 0.12, 0.65)
@@ -1549,6 +1594,12 @@ func _make_world_controls_click_through() -> void:
 func _draw() -> void:
 	if not _alive:
 		return
+	# The markers, the plates and the fought ring belong to the BODY, and a Chomp can be
+	# holding the body somewhere this node is not. Shifting the whole canvas item once
+	# here keeps every shape below written against Vector2.ZERO, which is what makes them
+	# assertable as geometry rather than as geometry-plus-a-carry.
+	if _carry_offset != Vector2.ZERO:
+		draw_set_transform(_carry_offset)
 	var r: float = SPRITE_HALF * _sprite_scale
 	for marker: StringName in markers():
 		match marker:
@@ -1919,6 +1970,26 @@ func _advance(distance: float) -> void:
 ## other three are 90-degree turns off that art, which Godot's rotation turns
 ## clockwise: +90 deg (PI/2) faces +X (right), 180 deg faces +Y (down), -90 deg
 ## faces -X (left).
+## Which way this pest is walking, as a unit vector in the parent's space.
+##
+## Derived from `_facing` rather than from `_route[_leg] - position`, and the difference
+## matters at exactly one moment: a pest standing ON its next waypoint has a zero-length
+## leg vector and would answer `Vector2.ZERO`, while `_facing` still holds the direction
+## it arrived travelling. `_update_facing` snaps it to one of four cardinals and runs on
+## every advance, including once at spawn (see `_build_route`), so this is exact from the
+## first frame and never mid-turn.
+##
+## Kept through a stall on purpose. A pest held in a Chomp, stopped by a Bramble or
+## chewing a plant bed is not advancing, and the last direction it walked is the honest
+## answer to "which way is this bug facing" — `corpse_rotation()` already relies on the
+## same property.
+##
+## STYLE.md's convention is up-screen at rest, so `Vector2.UP.rotated(_facing)` is the
+## heading `_facing` was built to describe.
+func travel_direction() -> Vector2:
+	return Vector2.UP.rotated(_facing)
+
+
 func _update_facing(direction: Vector2) -> void:
 	if _sprite == null:
 		return
@@ -2225,7 +2296,11 @@ func _play_death() -> void:
 		# (only `_sprite` is), so the global-space direction the killer measured is the
 		# same vector here with no basis change. `_sprite.position` is otherwise
 		# unwritten on a Pest: nothing else in this class can fight it for the channel.
-		_sprite.position = death_knockback()
+		# Plus the carry: a bug killed in a Chomp's mouth is up on the flower, and a
+		# corpse that appeared one cell away on the path at the instant of the kill was
+		# the whole reason `set_carried(false)` refuses to let go of a dead pest.
+		# `_carry_offset` is Vector2.ZERO for every death that is not a Chomp's meal.
+		_sprite.position = death_knockback() + _carry_offset
 	if _dead_texture != null and _sprite != null:
 		_sprite.texture = _dead_texture
 		_sprite.modulate = Color.WHITE
@@ -2271,9 +2346,12 @@ func _play_knockback() -> void:
 		return
 	if not GardenTheme.animations_enabled():
 		return
-	_sprite.position = Vector2.ZERO
+	# From wherever the body actually is, not from the node's origin: a corpse eaten on
+	# top of a flower starts its shove up there.
+	_sprite.position = _carry_offset
 	var shove := create_tween()
-	shove.tween_property(_sprite, "position", _death_knockback, DEATH_KNOCKBACK_TIME)
+	shove.tween_property(_sprite, "position", _death_knockback + _carry_offset,
+		DEATH_KNOCKBACK_TIME)
 
 
 ## How the corpse lies, as a predicate rather than a branch inside `_play_death()`
@@ -2346,6 +2424,64 @@ func set_chewed(fraction: float) -> void:
 
 func chewed_fraction() -> float:
 	return _chewed
+
+
+## Taken hold of, or let go. Called by the ChompFlower on either side of a meal.
+##
+## Turning it OFF puts the body back on the road, but only for a pest that is still
+## alive. A pest that died in the mouth keeps its offset: `Pest.kill()` sets `_alive`
+## false and only then calls `held_by.release()`, so by the time the flower lets go the
+## corpse has already been placed, and zeroing it here would drop the body out of the
+## flower and onto the path a frame before it fades.
+func set_carried(on: bool) -> void:
+	_carried = on
+	if on:
+		z_index = CARRY_Z_INDEX
+		return
+	if not _alive:
+		return
+	z_index = 0
+	_carry_offset = Vector2.ZERO
+	_apply_carry()
+
+
+## True while a Chomp has this pest in its vines.
+func is_carried() -> bool:
+	return _carried
+
+
+## Where the flower has dragged the body to, relative to where the node still stands.
+## `Vector2.ZERO` for every pest that is not in a mouth.
+func carry_offset() -> Vector2:
+	return _carry_offset
+
+
+## Move the drawn body. Ignored once the pest is dead — see `_carry_offset`'s header for
+## the channel it shares with the death knockback.
+##
+## Above every animation gate, deliberately, and it is the same rule `set_chewed` states:
+## the offset is a value a test can read, and only the vines drawn to it are a picture.
+## The flower derives it from its own clock (`ChompFlower.carry_offset_at`), so there is
+## no Tween here that headless would leave unplayed.
+func set_carry_offset(offset: Vector2) -> void:
+	if not _alive:
+		return
+	_carry_offset = offset
+	_apply_carry()
+
+
+## The three places the offset lands. All of them are drawings; none of them is
+## `position`, which is the whole design (see `_carry_offset`).
+func _apply_carry() -> void:
+	if _sprite != null and is_instance_valid(_sprite):
+		_sprite.position = _carry_offset
+	if _health_back != null and is_instance_valid(_health_back):
+		_health_back.position = _bar_origin + _carry_offset
+	if _health_bar != null and is_instance_valid(_health_bar):
+		_health_bar.position = _bar_origin + _carry_offset
+	# The markers and the fought ring are painted on this node's own canvas item, which
+	# `_draw()` shifts by the same offset.
+	queue_redraw()
 
 
 func is_alive() -> bool:

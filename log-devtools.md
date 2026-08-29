@@ -10717,6 +10717,7 @@ is likely to be at least as productive.
   `.beads/*.jsonl` in the same commit as any `bd create`," not really fan-out-specific)
   so a future session reads it without another skill-file edit.
 
+
 ## 2026-08-29 — Web audio investigation: runtime buses build a feedback cycle in WebAudio
 
 - Value: **warranted** — the defect is invisible to every static gate and to every headless
@@ -10846,7 +10847,7 @@ is likely to be at least as productive.
   - Cheaper: the two headless assertions (`test_an_unaffordable_plant_tints_differently_from_a_locked_one`, `test_the_seeds_readout_flash_differs_between_a_spend_and_a_gain`) already prove the classifiers return the right constants for every input; the live pass adds only "the wiring in `refresh()`/`_ready()` actually reaches the Label/Button nodes with the right node paths and doesn't get shadowed by a later `modulate` write" — worth the ~10 bridge calls it cost, not more.
 
 - Gap: **name_check / lint / run_tests all abort on an unrelated, pre-existing broken commit** — `test/unit/test_selftest.gd` (committed at HEAD, 24028e1) `preload()`s `res://game/hud_long_press.gd`, which has never been committed to any branch (`git log --all -- game/hud_long_press.gd` is empty) — a prior session's `git commit -a` on a dirty tree evidently swept up the *test* half of bead crj9 (the `HudLongPress` const and one whole test function) without the *implementation* half. Every fresh worktree branched from `main` — mine included — fails to compile the entire test suite until that's fixed, not just one test.
-  - [G-082] status: open | seen: 1 | harness: 0.38.0
+  - [G-082] status: open | seen: 2 | harness: 0.38.0 (second sighting 2026-08-29, bead vvmy, in a worktree branched from the same 24028e1 -- reached the same diagnosis and the same copy-the-untracked-file workaround independently; fixed on main by 3a16b21)
   - Improvement: `git commit -a` (or any commit that stages by tracked-vs-modified rather than by an explicit `git add` list) on a tree with untracked new files belonging to the same feature is exactly how this happens; a pre-commit check that greps a commit's new/changed `preload()`/`class_name` references against `git ls-files` (or just runs `name_check.py` in the commit hook) would have caught it before it reached `main`. Worked around this session by copying the two untracked files from the concurrently-running main worktree into mine for local test compilation only, without committing them under this branch — confirmed the resulting 2 residual suite failures (`test_holding_a_plant_button_reveals_its_tooltip_and_blocks_the_purchase`, `test_the_suite_reach_baseline_lists_only_symbols_no_test_names`) reproduce identically with every change from this session's own commits `git stash`ed out, so neither is caused by this session's diff.
 
 ## 2026-08-29 — plant-tower-defense-rn4p: the Cutworm, a boss body 953 px long
@@ -10858,13 +10859,287 @@ is likely to be at least as productive.
   - Cheaper: nothing. `_draw` does not execute headless, so neither runtime finding was reachable from the suite, the lint, `check_all` or a diff read. The 16 invariant failures were caught by `run_tests.py` alone and needed no game at all.
 
 - Gap: **`performance` reports FPS and node counts but not DRAW CALLS, so a frame doing 2000 `draw_colored_polygon`s is invisible until the frame rate collapses — and frame rate is a machine fact that cannot be asserted in a suite.** The verb answered `FPS: mean 171.2` on an idle board and `performance=0` inside `findings` while the boss was on screen; the collapse only surfaced because `wait-frames` happens to print its own wall time, which is a side effect rather than a measurement. Godot exposes `Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME`, `RENDER_TOTAL_OBJECTS_IN_FRAME` and `RENDER_TOTAL_PRIMITIVES_IN_FRAME` — all machine-independent, all assertable, none surfaced by the bridge.
-  - [G-083] status: open | seen: 1 | harness: 0.38.0
+  - [G-159] status: open | seen: 1 | harness: 0.38.0
   - Improvement: add the three `RENDER_*_IN_FRAME` counters to the `performance` verb's reply beside `fps`/`Total nodes`, and give `devtools_config.json` a `draw_calls_max` threshold alongside `fps_min` so `findings` can gate on it. A draw-call budget is the check that would have caught this on the first frame instead of on the third relaunch; it is also the only form of it a project can assert without owning the machine. Worked around here by deriving the count statically instead — `Cutworm.body_polygon_cost()` reads the same `sample_count()` the sweep loops over, and `test_the_cutworms_frame_cost_stays_inside_its_budget` gates it against `MAX_BODY_POLYGONS` with no game running.
 
 - Gap: **`python tools/verify_ledger.py stats` crashes on the ledger it is reading.** `AttributeError: 'str' object has no attribute 'get'` at `verify_ledger.py:1664` — `cmd_stats` does `runtime.get("orphan_growth_exceeded")` on a row whose `runtime` field is a string rather than a dict. At least one such row is already committed, so the history cannot be read back at all until it is defended.
-  - [G-084] status: open | seen: 1 | harness: 0.38.0
+  - [G-160] status: open | seen: 1 | harness: 0.38.0
   - Improvement: coerce with `runtime if isinstance(runtime, dict) else {}` at the read, and have `append` reject a non-dict `runtime` at write time so the two cannot disagree. A stats command that dies on its own corpus is worse than one that reports a malformed row, because the ledger's whole purpose is being the denominator nobody else keeps.
 
 - Gap: **`wait-frames N` blocks the single-slot bus for as long as the frames take, so a slow frame rate reads as a dead bus.** `wait-frames 260` on the 8.5 fps board returned `No response from Godot after 30s ... it is hung, still running, or it aborted mid-handler`, and the follow-up `find-nodes` came back `'find_nodes' was never picked up, but the game is ALIVE and busy`. The second message is excellent and named the real state exactly; the first sent me to the stderr log looking for a script error. The two answers are reachable from the same information.
-  - [G-085] status: open | seen: 1 | harness: 0.38.0
+  - [G-161] status: open | seen: 1 | harness: 0.38.0
   - Improvement: `wait_frames` should report progress (`frames done / N`) on the watchdog path so the timeout message can say "still running, 41 of 260 frames in 30s — the game is at ~1.4 fps" instead of offering three possibilities. It already knows both numbers.
+
+## 2026-08-29 — vvmy: armed-plant cue, ghost lifted clear of the finger, and an empty arm
+
+- Value: **warranted** — the running game contradicted a headless test that passed, and
+  the contradiction was the actual reported defect rather than a detail.
+  - Expected: that the reported "semi-transparent plant does not appear" meant the ghost
+    was unimplemented, and that the plant-bar cue was merely weak.
+  - Got: both premises were wrong in opposite directions, and the bridge said so in two
+    reads. `node-bounds /root/Game/Entities/PlacementPreview/Ghost` → `Rect: 192, 392,
+    64x64` — the ghost ships, works, follows a simulated finger, and is drawn as exactly
+    one cell at the cell the finger is resting on. `find-nodes --class Button --where
+    name=Button_corn_cobbler --property button_pressed --property toggle_mode` →
+    `button_pressed=false toggle_mode=false` while corn WAS `selected_plant`, so the bar
+    cue was not weak, it was a dead write the engine discards without `toggle_mode`.
+  - Found: **a bug the headless suite passed and the running game failed.** The touch
+    abort ("a finger leaving the board disarms") read `_hover_cell`, on the reasoning
+    that the cue's own leftover state cannot disagree with the cue. A synthetic
+    `InputEventScreenDrag` straight off the edge set it to `(-1, -1)` and the test went
+    green. On the running game, dragging off the RIGHT edge walks onto the side panel,
+    which is a Control that answers input and swallows every remaining drag — measured
+    after that exact gesture: `_touch_index=-1  _hover_cell=(13, 8)`, column 13 of 14,
+    with `selected_plant: corn_cobbler` still armed. Fixed by asking `off_board()` of the
+    RELEASE POSITION, shared with `_update_cursor` so the two cannot drift; the test now
+    withholds the drag on purpose so it reproduces the swallowed-drag state and fails
+    against the implementation that shipped past it. Also found two suite defects:
+    `_declaration_line` matched only `const NAME ` with a trailing space, so every typed
+    `const NAME: Color = ...` returned `""` and read to its caller as "does not alias the
+    palette"; and `test_the_drag_cue_and_the_drag_commit_choose_the_same_cell` armed once
+    for 294 placements, which the new disarm turned into a sweep of nothing — caught by
+    its own `snapped > 0` vacuity guard, which is the one assertion in that test that had
+    never had a reason to fire.
+  - Cheaper: nothing for the abort bug — a synthetic event cannot know that a sibling
+    Control eats the real one, and no reading of the diff would have suggested it. The
+    two premise corrections were cheap once asked: one `node-bounds` and one `find-nodes`,
+    about 20 seconds, before any code was written. Doing that first is what stopped this
+    session from building a ghost that already existed.
+
+- Gap: **`touch drag` interpolates in screen space with no way to ask what the game
+  actually received.** The verb reported `Touch 0 dragged from current position to
+  1000,616 in 6 steps` and returned success; six `InputEventScreenDrag`s were sent and an
+  unknown number reached `_unhandled_input`, because a Control on the way consumed the
+  rest. Nothing in the reply distinguishes "delivered" from "sent". The workaround was to
+  infer it after the fact from a stale `_hover_cell` — which only worked because the game
+  happened to keep a field recording the last position it saw. `input state` exists for
+  actions and has no touch counterpart.
+  - [G-084] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: have `touch drag`/`touch press` report a `delivered` count beside the
+    sent count — the addon can hook `_input` at the viewport and tally which of the events
+    it injected were still unhandled by the time they reached the bottom of the tree. A
+    drag that reports `6 sent, 3 delivered (3 consumed by Control)` turns this session's
+    forty minutes of inference into one line of output, and it is the same question every
+    touch-UI bug in a game with a HUD over the playfield will ask.
+
+
+- Gap: **`verify_ledger.py stats` dies on the whole history when one row is malformed.**
+  `python tools/verify_ledger.py stats` →
+  `AttributeError: 'str' object has no attribute 'get'` at `verify_ledger.py:1664`. Two
+  rows (sha `200bf86`, 2026-08-29, already committed on main) recorded `runtime` as a
+  plain string — `"windowed"`, and a sentence about an unreachable branch — where every
+  other row has a dict. The writer at `:1252` already guards this exact field with
+  `isinstance(runtime, dict)` and the reader did not, so a row the tool itself would now
+  refuse to write is a row it cannot read. The whole point of the ledger is to be the
+  denominator the gaps log lacks, and it was reporting on 0 of 202 runs.
+  - [G-083] status: fixed | seen: 1 | harness: 0.38.0
+  - Improvement: done in-run — the reader now coerces a non-dict `runtime` to `{}`, the
+    same way the writer does, with the reasoning in a comment beside it. `stats` reads all
+    202 rows again. Worth upstreaming as a rule rather than a patch: **every consumer of a
+    ledger field must tolerate every shape a past writer could have banked**, because the
+    file is append-only and old rows are never rewritten. The two other dict-shaped fields
+    read without a guard (`lint`, `tests`, on the following lines) have the same latent
+    hole and were left alone only because nothing has yet written them wrong.
+
+
+## 2026-08-29 — Chomp Flower: vines lash out, haul the bug onto the plant, and eat it there
+
+- Value: **warranted** — the whole animation is composited pixels from three sources (the
+  flower sprite, the pest sprite the flower is moving, and a drawn vine layer between
+  them), and the one thing that was wrong was invisible to every headless assertion in
+  the change.
+  - Expected: the geometry statics would carry the whole thing, and the live run would be
+    a confirmation pass — the endpoints, the phase boundaries and the curve are all pure
+    functions, all asserted headless with pinned absolutes.
+  - Got: the geometry was right and the picture was still wrong. At `VINE_ROOT_SPREAD 5`
+    / `GRIP_RADIUS 7` every vine, once the bug had landed, lived inside the 24 px the
+    beetle sprite covers — `screenshot --region 175,150,100,100` shows a bug sitting on a
+    flower with nothing visibly holding it, for the whole 2.5 s of a beetle's chew, which
+    is most of what a player actually watches. `carry_offset()` read `{"x":24,"y":44}`
+    against a `position` still at `{"x":200,"y":96}` on the same node, which is the
+    design's core claim (the body moves, the node does not) stated in one line.
+  - Found: (1) the vine-invisibility above, fixed mid-run by widening the roots to 13 and
+    the grips to 11 and raising `VINE_TAUT_SLACK` 0.35 -> 0.45; (2) two of the new tests
+    were settle-frame dependent — `instantiate_scene` pumps enough frames to eat a whole
+    0.45 s aphid — so one passed on its first run and failed on the next with no code
+    change in between. Both restaged to spawn out of reach and walk the pest in, the
+    pattern `test_a_chomps_bite_records_a_lunge_toward_the_meal` already documents.
+  - Cheaper: nothing for (1). It is a question about two sprites and an overlay composited
+    together, and neither a property read nor `node-bounds` can answer it. Everything else
+    in the change was cheaper headless by construction, which is why the catch is derived
+    from `_capture_elapsed` frame by frame rather than tweened — `pause` + `step-time
+    --then-pause` then reads a state that is correct rather than one a tween was mid-way
+    to reaching.
+
+- Gap: **`verify_ledger.py stats` crashes on a row this repo already contains** — run
+  before touching anything this session, so it is not something this change wrote.
+
+      $ python tools/verify_ledger.py stats
+      File "tools/verify_ledger.py", line 1664, in cmd_stats
+        if failed_checks or runtime.get("orphan_growth_exceeded"):
+      AttributeError: 'str' object has no attribute 'get'
+
+  A row whose `runtime` field is a String rather than an object takes the whole aggregate
+  down, so the ledger's own read-back — the denominator the gaps log is supposed to lack —
+  is unavailable to every session until someone finds and edits the offending row by hand.
+  `record` still works, so the ledger keeps growing while nothing can read it.
+  - [G-158] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: **done locally this turn, still open upstream.** `cmd_stats` now reads
+    `lint`/`tests`/`runtime` through a `_row_dict` helper that coerces a scalar to `{}`
+    and COUNTS the row, printing `2 row(s) carry a scalar where lint/tests/runtime should
+    be an object` — the same shape as `findings`' "1 check(s) did NOT run", where a thing
+    that could not be read is named instead of vanishing. Registered in
+    `tools/harness_patch_check.py` (marker `_row_dict`, now 3 guarded patches) so
+    `/scaffold-godot-harness` cannot silently revert it. The offending rows are 201 and
+    202 of this repo's own ledger (`"runtime": "windowed"`, and a sentence about G-152);
+    201 also carries `"lint": 0, "tests": 0`, which is why the coercion is not
+    `runtime`-only. Left `open` because `record`'s required-key guard still accepts a
+    scalar there — the write side is where this should have been stopped.
+
+
+## 2026-08-29 — reconciliation: G-083 and G-158 are the same gap, filed twice in parallel
+
+Two worktrees hit `verify_ledger.py stats`' `AttributeError` on the same afternoon and
+each filed it, each fixed it, and neither could see the other. `vvmy` filed **G-083** and
+guarded `runtime`; this branch filed **G-158** and guarded `runtime`, `lint` and `tests`
+through `_row_dict`. The merge kept the wider guard.
+
+- [G-158] status: superseded | seen: 1 | harness: 0.38.0
+
+Two things worth keeping from the collision, neither of which either session could have
+known alone:
+
+- **G-083's closing claim was wrong on the evidence already in the file.** It says `lint`
+  and `tests` "have the same latent hole and were left alone only because nothing has yet
+  written them wrong" — row 201 of this very ledger records `"lint": 0, "tests": 0`. The
+  hole was not latent; it was one `elif` away from the line that was already crashing. A
+  guard written for the field that *happened to* raise is a guard aimed at the symptom.
+- **Only one of the two fixes was registered in `tools/harness_patch_check.py`.** A local
+  patch to a vendored harness file that is not in that table is reverted, silently, by the
+  next `/scaffold-godot-harness` — which is the exact failure that checker exists for. The
+  surviving patch carries the marker `_row_dict`; the table is now 3 entries.
+
+The general rule, and it is the one G-083 already reached for: **a parallel fan-out can
+fix the same defect twice, so a fix to shared tooling should say in its own commit which
+gap id it closes**, and a merge that finds two should reconcile the ids rather than
+letting both stand as open.
+
+
+
+## 2026-08-29 — plant-tower-defense-bsxh: derived sport sprites, hazard-trefoil badge
+
+- Value: **warranted** — the running game overturned the colour rule the static gates had all passed, and confirmed the frame-swap seam on a code path no headless check reaches.
+  - Expected: a sport Corn would load `corn_cobbler_sport.png` with white modulate and read as clearly mutated beside its parent; a sport Bramble would keep mutant art through all three damage frames.
+  - Got: `get-state .../Sway/@Sprite2D@131 --property texture` returned `(res://assets/sprites/corn_cobbler_sport.png)` with `modulate {r:1,g:1,b:1,a:1}`. Driving the sport Bramble's health to 25 then 8 and calling `_refresh_health_bar` read `bramble_chewed_sport.png` then `bramble_ragged_sport.png` — the swap keeps the mutant art, which is exactly the regression `Plant.frame_texture_path` exists to prevent. A cropped `screenshot --region 160,160,320,280` showed the trefoil badges legible at 18px against both grass and road.
+  - Found: TWO defects, both fixed in this run. (1) The first screenshot showed the Corn's two leaf greens as one dark and one nearly white. The generator normalised each family against THAT SPRITE's own luminance range, which fans a bunched family across the whole ramp — 14 luminance apart in a drawing spanning 53 became rungs 5 and 7 of 8. Every static gate passed it: `svg_style_check` reported 0 errors and `test_sprite_style` all 11 green, because both ask "is this colour legal", never "is this colour the right distance from that one". Changed to nearest-rung-by-luminance. (2) Separately, `test_the_sport_badge_stays_clear_of_the_health_bar` ended `return ""` instead of `return err`, so its clearance assertion had been FAILING on every run since it was written and reporting a pass — the badge at (17,-25) r8 overlapped the health bar by 4px on every damaged sport that ever shipped. Found only because I changed the geometry and expected the test to notice.
+  - Cheaper: nothing for (1) — a colour-distance judgement needs a rendered picture, and the two gates that read the pixels do not ask that question. The texture-path and Bramble-frame checks are now headless in `test_selftest.gd` and did not need the bridge a second time; the bridge earned its keep on the screenshot alone.
+
+- Gap: **no gaps this turn** — `reload res://...png` did not show the re-rendered art, but that is correct behaviour rather than a missing feature: the game holds a `CompressedTexture2D` built from `.godot/imported/*.ctex`, so re-parsing the source PNG cannot reach it. Quit, `--import`, relaunch was the right answer and took under a minute. Worth noting only because the reply's wording ("re-parsed into the cached instance - holders see the new content") is true of the resource and misleading about the pixels.
+  - [G-158] status: open | seen: 3 | harness: 0.38.0 — hit again: `tasklist` showed a Godot at pid 41964 with no bus answering and a stale owner record naming a dead pid 44180. `Get-CimInstance Win32_Process` identified it as the user's own `--editor` on the main checkout, so `quit --kill` would have closed their editor. `launch --isolated` sidestepped the bus, and the launch banner correctly warned that `user://` stays shared with the other checkout.
+
+
+## 2026-08-29 — chomper-bite.wav: wire it into CHOMP_BITE and licence it
+
+- Value: **warranted** — `Sfx` is a `class_name ... extends RefCounted` static utility with
+  no node anywhere in the tree, so the bridge cannot call `stream_for` and the only
+  runtime evidence that the mapping is real is the voice pool after a bite actually lands.
+  - Expected: a formality. The table row is one string and the headless suite already
+    resolves every path in `SOUNDS`.
+  - Got: `/root/SfxPool/Voice1  stream.resource_path=res://assets/audio/chomper-bite.wav
+    pitch_scale=1.0` after stepping one physics frame with a beetle in reach — the real
+    `ChompFlower._bite()` -> `Sfx.play(CHOMP_BITE)` path, not a table read. Worth knowing
+    for next time: the pool does not exist at all under the config's default `--mute`, so
+    the first attempt found only `MusicHost/Bed0` and `Bed1` and would have read as
+    "nothing plays". `launch --no-mute` is what makes this check possible.
+  - Found: (1) **both tests I wrote already existed.**
+    `test_every_pitched_event_moved_off_a_base_it_shares_a_file_with` gates the PITCH twin
+    rule and `test_every_sound_the_game_can_play_actually_loads` gates stream resolution.
+    The first went RED on the rewiring — which is how I found it, after writing a duplicate
+    of it. Deleted both duplicates and amended the real gate with an `EXCUSED` list checked
+    in both directions (mutation-tested: emptying it goes red, and a spurious entry goes
+    red too). (2) `audio_license_check` rejected the first licence row for naming
+    `chop.ogg` inside it — the file then read as claimed by two sections at once, and the
+    continuation line parsed as a row for a file that is not on disk.
+  - Cheaper: grepping `test_combat.gd` for the two invariants before writing them. The
+    mistake was reaching for a new test rather than for the existing gate, which is the
+    same failure `.claude/skills/derive-the-list` names one level up — I hand-wrote a check
+    for a rule the repo already derives.
+
+- Gap: **no devtools-harness gap this turn.** The one friction — `Sfx` being unreachable
+  from the bus because it is a static utility on no node — is already recorded as the
+  `mark_script_reached` shape in CLAUDE.md, and the voice pool gave a better answer than a
+  direct call would have: it proves the game's own call path ran, not just that a function
+  returns the right string.
+
+
+## 2026-08-29 — the Chomp waits until a pest is past it (plant-tower-defense-q9h4)
+
+- Value: **warranted** — and the sharpest thing the bridge did this turn was refuse to
+  agree with a stage I had set up wrong.
+  - Expected: a confirming read. The rule is two pure statics with a four-heading sweep
+    over them, so the geometry was already nailed down headless; the live pass was meant
+    to say only *where on the road* the grab now lands.
+  - Got: my first attempt teleported the beetle to `x=200` and the flower ate it
+    immediately, which looked like the rule not working at all. Reading the state instead
+    of trusting the setup: `find-nodes --class Pest --call travel_direction` came back
+    `{"x": -1.0, "y": 4.37e-08}` with `_leg=1`. The teleport had put the bug PAST its own
+    next waypoint, `_update_facing` had turned it round, and the flower was correctly
+    grabbing a bug that was now walking the other way. The rule was right and my stage was
+    nonsense.
+    Re-run properly — fresh spawn, real road, `step-time` in 0.2s slices — the flower sits
+    at `x=224` and the mouth closes at `x=240.33`, 16.3 px past it, which is `GRAB_LEAD`
+    plus one frame of travel. The beetle walked 189.0, 196.6, 204.2, 211.8, 220.1, 227.7,
+    235.9 with `is_busy()=false` the whole way, including straight through 187.7, which is
+    where the old leading-edge rule would have bitten.
+  - Found: (1) the bad stage above; (2) **17 tests staged their prey level with the
+    flower**, and the ones that stayed GREEN were the worse half —
+    `test_a_busy_chomp_ignores_everything_else_in_reach` went on passing while the flower
+    grabbed neither pest, so "the second bug walks past an occupied mouth" was true of a
+    mouth that was never occupied, and the winged test passed for two reasons instead of
+    the one it names; (3) **the playtest sweep cannot see this change at all** — `RunSim`
+    ranks placements by `Game.engagement_reach` coverage (`tools/run_sim.gd:718`) and never
+    simulates a grab, so an edit to WHEN a plant engages is invisible to it on every board
+    and every difficulty. It ran green and that green means nothing here.
+  - Cheaper: the headless half carried most of the confidence and cost seconds — the
+    four-heading cross product, and two mutations of `GRAB_LEAD` (0.60 cells closes the
+    window; 0.47 leaves it open at 2.4 frames) that each went red with the message they
+    were written for. Nothing cheaper could have given the road position, and nothing
+    cheaper would have caught the bad stage.
+
+- Gap: **no devtools-harness gap this turn.** The one thing that cost time was a stage I
+  built wrong, and the bridge diagnosed it in one read; `find-nodes --call` on a zero-arg
+  getter is exactly the verb for "what does this node think is true", and it worked.
+
+## 2026-08-29 — ambient bees: a cosmetic layer nothing in the game reads (plant-tower-defense-qz4j)
+
+- Value: **warranted** — the whole cost argument for this feature is "an idle garden pays
+  nothing", and that is a claim about `set_process` in a running tree that no headless run
+  and no diff can settle. The bridge answered it directly.
+  - Expected: the eight pure-static tests would carry the flight and the schedule, and the
+    live pass would be a formality confirming a bee is drawn where the maths says.
+  - Got: `bee_state` → `{"flying": 0, "next_bout_seconds": 28.06, "processing": false}`
+    after a bout ended, and `{"flying": 3, "processing": true}` during one. That pair is
+    the cost claim, measured: the layer really does stop stepping between bouts and really
+    does re-arm inside GAP_MIN..GAP_MAX. `run-method _apply_weather ["rain"]` then
+    `cmd bee_bout` → `{"bees": 0, "refused": "weather is rain"}`.
+  - Found: (1) **the wings were wrong on screen and right in every test.** At
+    `BODY_LENGTH * 1.12` and 8.2 px off the centre line the two pale ovals were the biggest
+    shapes in the drawing, so an 18 px bee read as a white moth carrying a gold seed. Only a
+    screenshot could say so — `test_a_bees_two_wings_beat_against_each_other` asserts the
+    beat is opposed and passes at any size. Now 0.72 of the body, tucked at 4.6 px.
+    (2) **my own debug verb reported a confirmed rain rule that had not been exercised.**
+    `cmd bee_bout` returned `sent 0 bee(s)` in rain — and 0 is also what it returns when a
+    bout is already flying, which is what had actually happened. The verb now reads the
+    reason BEFORE forcing and reports `refused`, so the two zeroes are distinguishable.
+    (3) the meta-gate `test_every_positional_devtools_verb_refuses_a_call_with_no_position`
+    caught both new verbs going unclassified, which is the check doing its job.
+  - Cheaper: nothing for (1) — it is a judgement about a rendered picture at its real size,
+    and no gate in this repo asks "does this drawing read as the animal it is". The
+    scheduler half could have been argued from the code; it would not have been *measured*.
+
+- Gap: **no devtools-harness gap this turn.** The bridge had a verb for every question:
+  `run-method` for the weather, `wait-frames` + `pause` for a moving drawing, `screenshot
+  --region` for the crop, and project verbs for the rest. Worth recording that the two
+  project verbs written for this feature were themselves the source of a false pass — a
+  status field that cannot distinguish two causes of the same number is the same defect
+  class the harness's own `findings` denominator exists to prevent, one level down.

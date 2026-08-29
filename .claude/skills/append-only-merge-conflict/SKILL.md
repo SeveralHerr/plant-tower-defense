@@ -22,6 +22,25 @@ back to the nearest `## ` heading**, not just the few lines the diff hunk shows.
 narrow conflict region can start mid-paragraph, and copying only what's inside the
 markers drops the heading and lead-in that make the block make sense standing alone.
 
+## The three files are not all markdown, and the right answer differs
+
+`log-devtools.md`, `kanban.md` and `cycle-log.md` are prose and the procedure below is for
+them. Two more files in this repo conflict the same way and want different resolutions:
+
+- **`.devtools/verify-runs.jsonl`** — one JSON object per run. Keep every row from both
+  sides, then **re-sort by each row's own `ts`**, because the file is read as a
+  chronological ledger and two branches appending concurrently produce rows that interleave
+  rather than stack. Dropping a row is worse here than in a prose log: the ledger's whole
+  purpose is to be the denominator, and a run deleted at merge time is a run that silently
+  never happened.
+- **`.beads/issues.jsonl`** — do **not** merge it at all. It is a *passive export* of the
+  Dolt DB (see CLAUDE.md's one-line architecture note), so neither side is authoritative
+  and hand-picking rows can produce a file that matches no database. Take either side to
+  clear the conflict, then regenerate: `bd export -o .beads/issues.jsonl`. Both branches'
+  beads are already in the shared DB, so the regenerated file carries both by construction.
+  Re-run `python tools/bead_ref_check.py` afterwards — a bead cited in a markdown file but
+  missing from the export is exactly what a stale export looks like.
+
 ## Procedure
 
 1. `grep -n "^<<<<<<<\|^=======\|^>>>>>>>"` to find every conflict region.

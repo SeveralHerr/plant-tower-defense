@@ -84,6 +84,19 @@ func _pest(species: StringName, at: Vector2) -> Pest:
 	return pest
 
 
+## Stage a pest where a Chomp will actually close on it.
+##
+## Since plant-tower-defense-q9h4 a Chomp refuses anything it has not yet let PAST
+## (`ChompFlower.GRAB_LEAD`), and `_pest()` above walks every pest +X. So a test that
+## stages its prey level with the flower is now a test of an idle plant: it does not fail
+## honestly, it passes or fails for a reason it never meant to state, which is worse.
+##
+## This offsets along that same heading by the lead plus a margin and changes nothing
+## else. Where a test's claim IS a distance, it stages by hand instead and says so.
+func _prey(species: StringName, at: Vector2) -> Pest:
+	return _pest(species, at + Vector2(ChompFlower.GRAB_LEAD + 4.0, 0.0))
+
+
 func _grass(game: Game) -> Vector2i:
 	for y: int in range(Board.ROWS):
 		for x: int in range(Board.COLS):
@@ -257,7 +270,9 @@ func test_an_armoured_pest_takes_twice_as_long_to_chew() -> String:
 
 func test_a_winged_pest_flies_over_a_chomps_reach() -> String:
 	var chomp := ChompFlower.new()
-	var pest: Pest = _pest(Pest.APHID, Vector2(0, -Board.CELL))
+	# `_prey` and not `_pest`: staged level with the stem this test would pass because
+	# the bug had not gone by yet, which is a second reason and not the one it names.
+	var pest: Pest = _prey(Pest.APHID, Vector2(0, -Board.CELL))
 	pest.apply_mutation(Pest.MUTATION_WINGED)
 	var host: Node2D = _host([chomp, pest])
 	await _T.instantiate_scene(host)
@@ -529,7 +544,7 @@ func test_game_removes_a_plant_once_its_health_reaches_zero() -> String:
 func test_a_chewing_chomp_releases_its_meal_if_the_flower_itself_is_destroyed() -> String:
 	var chomp := ChompFlower.new()
 	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
-	var beetle: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	var beetle: Pest = _prey(Pest.BEETLE, Vector2.ZERO)
 	var host: Node2D = _host([chomp, beetle])
 	await _T.instantiate_scene(host)
 
@@ -554,7 +569,7 @@ func test_a_chomps_sprite_swaps_while_its_mouth_is_full() -> String:
 	# a real physics tick and grab the in-range aphid before anything else in
 	# this test gets a turn. Grabbing the idle texture up front sidesteps it.
 	var idle_texture: Texture2D = chomp._sprite.texture
-	var aphid: Pest = _pest(Pest.APHID, Vector2.ZERO)
+	var aphid: Pest = _prey(Pest.APHID, Vector2.ZERO)
 	var host: Node2D = _host([chomp, aphid])
 	await _T.instantiate_scene(host)
 
@@ -583,7 +598,7 @@ func test_a_chomps_sprite_swaps_while_its_mouth_is_full() -> String:
 func test_a_beetle_shows_the_late_bite_frame_past_60_percent_chew() -> String:
 	var chomp := ChompFlower.new()
 	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
-	var beetle: Pest = _pest(Pest.BEETLE, Vector2.ZERO)
+	var beetle: Pest = _prey(Pest.BEETLE, Vector2.ZERO)
 	var host: Node2D = _host([chomp, beetle])
 	await _T.instantiate_scene(host)
 
@@ -612,7 +627,7 @@ func test_a_beetle_shows_the_late_bite_frame_past_60_percent_chew() -> String:
 func test_the_late_bite_frame_is_showing_by_the_time_any_chew_finishes() -> String:
 	var chomp := ChompFlower.new()
 	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
-	var aphid: Pest = _pest(Pest.APHID, Vector2.ZERO)
+	var aphid: Pest = _prey(Pest.APHID, Vector2.ZERO)
 	var host: Node2D = _host([chomp, aphid])
 	await _T.instantiate_scene(host)
 
@@ -6576,10 +6591,24 @@ func _colour_constants(script_path: String) -> Dictionary:
 
 ## The line a constant is declared on, so a check can tell an alias
 ## (`const X := GardenTheme.Y`) from a second copy (`const X := Color(...)`).
+## MATCHES THE TYPED FORM TOO (plant-tower-defense-vvmy). This took only
+## `const NAME ` — with a trailing space — so every `const NAME: Color = ...` in the file
+## returned "", and "" reads to the caller as "this line does not name GardenTheme". The
+## HUD's typed colour constants were all second copies rather than aliases, so nothing
+## noticed until the first typed one whose value DID match the palette; that one failed
+## while correctly naming `GardenTheme.LEAF` on its own declaration line.
+##
+## The bug is the shape this repo keeps finding: a check that cannot see a case reports
+## the same clean result as a check that saw it and approved. Returning "" for "no such
+## constant" and for "declared in a form I do not parse" is what made the two
+## indistinguishable, so the two prefixes are both matched here rather than the caller
+## being asked to tell them apart.
 func _declaration_line(source: String, const_name: String) -> String:
 	for line: String in source.split("\n"):
-		if line.strip_edges().begins_with("const %s " % const_name):
-			return line.strip_edges()
+		var trimmed: String = line.strip_edges()
+		if trimmed.begins_with("const %s " % const_name) \
+				or trimmed.begins_with("const %s:" % const_name):
+			return trimmed
 	return ""
 
 
@@ -15913,6 +15942,13 @@ const DEFAULTED_VERBS := [
 	# Same reason `budgets` is here -- a verb that exists so you need not know the names
 	# must not require you to know a name.
 	"messages",
+	# The two bee verbs read no arguments and cannot: `bee_state` reports the whole of what
+	# the layer is doing (flying count, seconds to the next bout, whether it is stepping at
+	# all) because no subset of three fields is worth asking for separately, and `bee_bout`
+	# has exactly one effect. A bout is not parameterised on purpose -- the bees a bout
+	# sends are a hash of its number, so a verb that let a caller pick the count would put
+	# a bout on screen that the game itself can never produce.
+	"bee_state", "bee_bout",
 	# `deselect_plant` takes nothing and can take nothing: clearing the selection is the
 	# whole operation. It is a SEPARATE verb from `select_plant` rather than that verb
 	# with the cell omitted precisely so that this list can hold them apart -- one
@@ -19699,6 +19735,17 @@ func test_the_drag_cue_and_the_drag_commit_choose_the_same_cell() -> String:
 			var raw: Vector2i = game.board.world_to_cell(local)
 			if not game.board.is_inside(raw):
 				continue
+			# RE-ARMED EVERY POINT (plant-tower-defense-vvmy), because a placement now
+			# disarms and this sweep places on almost every iteration. Arming once at the
+			# top -- which is what this did -- left `selected_plant` empty from the first
+			# success onward, `would_plant_at` false on every cell after it, and
+			# `snapped_placement_cell` with nothing to snap TO: the sweep still ran its 294
+			# points and still agreed at all of them, and the `snapped > 0` denominator
+			# below is the only thing that noticed. That is the vacuity guard doing exactly
+			# the job it was written for.
+			#
+			# This is also what a player does now: pick, place, pick again.
+			game.selected_plant = PlantCatalog.CORN
 			var expected: Vector2i = game.snapped_placement_cell(local)
 			var was_placeable: bool = game.would_plant_at(expected)
 			var screen: Vector2 = local + game._entities.position
@@ -19856,7 +19903,7 @@ func test_the_chomps_shop_line_is_true_of_the_chew_table() -> String:
 		# cannot grab, and a cue that vanished would report a busy mouth as a free one.
 		var chomp := ChompFlower.new()
 		chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
-		var pest: Pest = _pest(Pest.APHID, Vector2(0, Board.CELL))
+		var pest: Pest = _prey(Pest.APHID, Vector2(0, Board.CELL))
 		var host: Node2D = _host([chomp, pest])
 		await _T.instantiate_scene(host)
 		chomp._act(0.016, [pest])
@@ -23102,7 +23149,7 @@ func _sport_reading(plant: Plant) -> float:
 ## plant of a different kind -- a player would need the parent two cells away to see
 ## it -- and the mark alone would leave two identical drawings differing by three
 ## small diamonds. This is the test that says a sport is legible at all.
-func test_a_sport_wears_its_tint_and_its_mark_and_an_ordinary_plant_wears_neither() -> String:
+func test_a_sport_wears_its_own_art_and_its_mark_and_an_ordinary_plant_wears_neither() -> String:
 	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
 	var board: Board = game.board
 	var seat: Vector2i = Vector2i(-1, -1)
@@ -23139,10 +23186,19 @@ func test_a_sport_wears_its_tint_and_its_mark_and_an_ordinary_plant_wears_neithe
 	if err == "":
 		var sprites: Array[Node] = sport.find_children("*", "Sprite2D", true, false)
 		var sprite: Sprite2D = null if sprites.is_empty() else sprites[0] as Sprite2D
-		err = _T.assert_true(sprite != null, "and it has a sprite to tint")
+		err = _T.assert_true(sprite != null, "and it has a sprite")
 		if err == "":
-			err = _T.assert_eq(sprite.modulate, PlantMutation.TINT,
-				"which wears the sport tint rather than the default white")
+			err = _T.assert_eq(sprite.texture.resource_path,
+				PlantMutation.sport_texture_path(PlantCatalog.texture_path(PlantCatalog.CORN)),
+				("which loads the sport's OWN drawing. Reading the loaded texture and not "
+					+ "the path it was asked for is the point: a derived sprite that was "
+					+ "generated but never rendered, or rendered but never imported, is a "
+					+ "null texture here and an invisible plant on screen"))
+		if err == "":
+			err = _T.assert_eq(sprite.modulate, PlantMutation.SPORT_MODULATE,
+				("and multiplies nothing over it. A tint over an already-recoloured sprite "
+					+ "does not read as more dramatic, it desaturates three deliberate hues "
+					+ "toward one"))
 	# The control: an ordinary plant of the same kind, planted the ordinary way.
 	if err == "":
 		var free_cell: Vector2i = Vector2i(-1, -1)
@@ -23169,7 +23225,144 @@ func test_a_sport_wears_its_tint_and_its_mark_and_an_ordinary_plant_wears_neithe
 				var plain_sprite: Sprite2D = plain_sprites[0] as Sprite2D
 				err = _T.assert_eq(plain_sprite.modulate, Color.WHITE,
 					"and no tint -- the sports must not have recoloured every plant")
+			if err == "":
+				var plain_sprites2: Array[Node] = plain.find_children("*", "Sprite2D",
+					true, false)
+				var plain_sprite2: Sprite2D = plain_sprites2[0] as Sprite2D
+				err = _T.assert_eq(plain_sprite2.texture.resource_path,
+					PlantCatalog.texture_path(PlantCatalog.CORN),
+					("and its own drawing, not the mutant one -- `frame_texture_path` "
+						+ "returning the sport path unconditionally would be invisible on "
+						+ "a sport and wrong on every plant the player bought"))
 	_T.free_ui(game)
+	return err
+
+
+## EVERY frame a plant can wear has a mutant twin on disk, not just its standing one.
+##
+## This is the test that would have caught the bug the whole `frame_texture_path` seam
+## exists to prevent, and the reason it is written as a sweep over the FRAME LISTS rather
+## than over `PlantCatalog.ids()`. A plant does not have one sprite. The Bramble swaps
+## between three by health, the Dandelion between four by fluff and the Chomp between four
+## by what it is chewing, and every one of those swaps is a `load()` at the moment the
+## player is looking hardest at that plant. A per-kind check passes with nine sports and a
+## mutated Chomp that turns back into an ordinary Chomp the instant it bites.
+##
+## `load()` and not `ResourceLoader.exists()`: a `.import` entry can name a PNG that was
+## generated, never rendered, and never imported, and `exists()` believes the entry. The
+## thing that has to be true is that a texture comes back.
+func test_every_frame_a_plant_can_wear_has_a_sport_twin_that_actually_loads() -> String:
+	var frames: Array[String] = []
+	for id: StringName in PlantCatalog.ids():
+		frames.append(PlantCatalog.texture_path(id))
+	frames.append_array(Bramble.DAMAGE_TEXTURES)
+	frames.append_array(Dandelion.FLUFF_TEXTURES)
+	frames.append(ChompFlower.GAPE_TEXTURE_PATH)
+	frames.append(ChompFlower.EATING_TEXTURE_PATH)
+	frames.append(ChompFlower.EATING_LATE_TEXTURE_PATH)
+
+	var err: String = _T.assert_gt(frames.size(), PlantCatalog.ids().size(),
+		("the sweep covers more than one frame per plant -- if it does not, the frame "
+			+ "constants moved and this test is back to checking nine standing sprites"))
+	if err != "":
+		return err
+	var seen := {}
+	for base: String in frames:
+		if seen.has(base):
+			continue
+		seen[base] = true
+		var sport: String = PlantMutation.sport_texture_path(base)
+		err = _T.assert_true(sport != base,
+			"%s resolves to a DIFFERENT path for a sport, got %s" % [base, sport])
+		if err == "":
+			err = _T.assert_true(load(sport) != null,
+				("%s loads. Generate it with `python tools/gen_sport_svg.py --write`, "
+					+ "render with tools/render_svg.gd, then `godot --headless --import`")
+					% sport)
+		if err == "":
+			err = _T.assert_true(load(base) != null,
+				"%s still loads -- the parent must not have been overwritten" % base)
+		if err != "":
+			return err
+	return _T.assert_gte(seen.size(), 17,
+		("all seventeen frames were reached; got %d. A shrinking denominator here is a "
+			+ "frame list that stopped being read, not a plant that lost a frame")
+			% seen.size())
+
+
+## `frame_texture_path` answers for the plant asking, and the answer is stable.
+##
+## Three properties, and the third is the one a table-shaped implementation would fail.
+## An ordinary plant gets its own path back unchanged; a sport gets the mutant one; and
+## resolving an ALREADY-mutant path returns it rather than appending a second suffix.
+## That last case is not hypothetical -- `ChompFlower._show_idle_sprite` restores a texture
+## it cached earlier, and `Dandelion.head_texture_path` reads back whatever is loaded, so a
+## path that has been through the resolver once can go through it again.
+func test_the_sport_path_resolver_is_stable_and_asks_the_plant_not_the_kind() -> String:
+	var base: String = PlantCatalog.texture_path(PlantCatalog.BRAMBLE)
+	var err: String = _T.assert_eq(PlantMutation.texture_path(base, false), base,
+		"a plain plant is handed its own drawing back untouched")
+	if err == "":
+		err = _T.assert_eq(PlantMutation.texture_path(base, true),
+			PlantMutation.sport_texture_path(base),
+			"and a sport is handed the mutant one")
+	if err == "":
+		var once: String = PlantMutation.sport_texture_path(base)
+		err = _T.assert_eq(PlantMutation.sport_texture_path(once), once,
+			("resolving an already-mutant path is a no-op. Appending a second suffix "
+				+ "gives %s_sport_sport.png, which loads as null and draws nothing")
+				% once.get_basename())
+	if err == "":
+		err = _T.assert_eq(PlantMutation.sport_texture_path(""), "",
+			"and an empty path stays empty rather than becoming '_sport.'")
+	if err == "":
+		# Through the PLANT's own seam, not just the static under it. `frame_texture_path`
+		# is the method every texture load in the game actually calls, and it reads
+		# `is_sport` off the instance -- a static that is correct while the instance method
+		# passes the wrong flag is a bug no assertion on PlantMutation can see.
+		var plain := Bramble.new()
+		var sport := Bramble.new()
+		sport.is_sport = true
+		err = _T.assert_eq(plain.frame_texture_path(base), base,
+			"a plain Bramble asks for its own frame")
+		if err == "":
+			err = _T.assert_eq(sport.frame_texture_path(base),
+				PlantMutation.sport_texture_path(base),
+				"and a sport Bramble asks for the mutant one")
+		if err == "":
+			err = _T.assert_eq(sport.frame_texture_path(Bramble.DAMAGE_TEXTURES[2]),
+				PlantMutation.sport_texture_path(Bramble.DAMAGE_TEXTURES[2]),
+				("including its ragged frame -- the swap a wall makes while the player is "
+					+ "watching it hold"))
+		plain.free()
+		sport.free()
+	if err == "":
+		err = _T.assert_true(PlantMutation.sport_texture_path(base).ends_with(".png"),
+			"the extension survives the rename, or nothing can import the result")
+	return err
+
+
+## The suffix is spelled the same in the three places that have to agree.
+##
+## `PlantMutation.SPORT_SUFFIX` resolves a texture at runtime; `test_sprite_style.gd`'s own
+## SPORT_SUFFIX decides which sprites may use MUTANT_PALETTE; `tools/gen_sport_svg.py`
+## writes the files. The generator already checks itself against the gate on every run, and
+## this is the third edge of that triangle -- without it, renaming the suffix here would
+## leave every sport loading a path nothing generates, silently, with both other checks
+## clean.
+func test_the_sport_suffix_agrees_with_the_sprite_gate() -> String:
+	var gate := load("res://test/unit/test_sprite_style.gd") as GDScript
+	var err: String = _T.assert_true(gate != null, "the sprite gate script loads")
+	if err != "":
+		return err
+	var suffix: Variant = gate.get_script_constant_map().get("SPORT_SUFFIX")
+	if err == "":
+		err = _T.assert_true(suffix != null,
+			"test_sprite_style.gd still declares SPORT_SUFFIX -- MUTANT_PALETTE is keyed off it")
+	if err == "":
+		err = _T.assert_eq(String(suffix), PlantMutation.SPORT_SUFFIX,
+			("the gate and the runtime spell the sport suffix the same way. They do not "
+				+ "read each other, so a rename in one is a silent miss in the other"))
 	return err
 
 
@@ -23214,37 +23407,56 @@ func test_the_sport_message_names_the_plant_and_what_it_does() -> String:
 ## on a plant that was simultaneously damaged and selected -- which is the state a
 ## player is in exactly when they need to read both.
 func test_the_sport_badge_stays_clear_of_the_health_bar_and_never_pulses_away() -> String:
-	var ring: PackedVector2Array = PlantMutation.badge_ring()
-	var err: String = _T.assert_gt(ring.size(), 8,
-		"the badge is drawn as a real ring, not a stub")
+	# The disc and its rim are a draw_circle and a draw_arc at BADGE_RADIUS -- primitives
+	# with nothing to get wrong -- so there is no pure function here to check and none is
+	# kept for the sake of having one. `badge_ring()` used to be exactly that: a polygon
+	# the game never drew with, and a test asserting that every point of a circle is one
+	# radius from its centre. Lint's orphan pass is what named it.
+	var err: String = ""
 	if err == "":
-		for at: Vector2 in ring:
-			err = _T.assert_float_eq(at.distance_to(PlantMutation.BADGE_CENTRE),
-				PlantMutation.BADGE_RADIUS, 0.001,
-				"every point of the ring is one radius from the badge's centre")
-			if err != "":
-				return err
-	if err == "":
-		var star: PackedVector2Array = PlantMutation.badge_star()
-		err = _T.assert_eq(star.size(), PlantMutation.STAR_POINTS * 2,
-			"a four-point star is eight vertices: a spike and a valley each")
+		var blades: Array[PackedVector2Array] = PlantMutation.badge_trefoil()
+		err = _T.assert_eq(blades.size(), PlantMutation.TREFOIL_BLADES,
+			"the trefoil is one polygon per blade")
 		if err == "":
-			err = _T.assert_float_eq(star[0].distance_to(PlantMutation.BADGE_CENTRE),
-				PlantMutation.STAR_OUTER, 0.001,
-				"the first vertex is a spike, at the outer radius")
+			for blade: PackedVector2Array in blades:
+				for at: Vector2 in blade:
+					var r: float = at.distance_to(PlantMutation.BADGE_CENTRE)
+					err = _T.assert_true(
+						r >= PlantMutation.TREFOIL_INNER - 0.001
+							and r <= PlantMutation.TREFOIL_OUTER + 0.001,
+						("every blade vertex sits between the inner and outer radius -- "
+							+ "got %.3f, want %.2f..%.2f") % [r, PlantMutation.TREFOIL_INNER,
+							PlantMutation.TREFOIL_OUTER])
+					if err != "":
+						return err
 		if err == "":
-			err = _T.assert_float_eq(star[1].distance_to(PlantMutation.BADGE_CENTRE),
-				PlantMutation.STAR_INNER, 0.001,
-				"and the second is a valley, at the inner one")
+			# The first blade points up-screen, which art_src/STYLE.md makes the facing of
+			# everything directional in this kit. Read off the blade's own MIDPOINT rather
+			# than a vertex: a sector's vertices sit at the edges of its span, so no vertex
+			# is on the axis and asserting one is on it would fail a correct trefoil.
+			var first: PackedVector2Array = blades[0]
+			var mid: Vector2 = (first[0] + first[first.size() / 2 - 1]) * 0.5
+			err = _T.assert_float_eq(mid.x, PlantMutation.BADGE_CENTRE.x, 0.001,
+				"the first blade is centred on the vertical, got %s" % mid)
+			if err == "":
+				err = _T.assert_true(mid.y < PlantMutation.BADGE_CENTRE.y,
+					"and points up-screen rather than down, got %s" % mid)
 		if err == "":
-			err = _T.assert_true(star[0].x > PlantMutation.BADGE_CENTRE.x - 0.001
-					and star[0].x < PlantMutation.BADGE_CENTRE.x + 0.001
-					and star[0].y < PlantMutation.BADGE_CENTRE.y,
-				("the first spike points up-screen, which art_src/STYLE.md makes the "
-					+ "facing of everything directional in this kit -- got %s") % star[0])
+			err = _T.assert_true(PlantMutation.TREFOIL_OUTER < PlantMutation.BADGE_RADIUS,
+				"and the whole trefoil fits inside the disc it is drawn on")
 		if err == "":
-			err = _T.assert_true(PlantMutation.STAR_OUTER < PlantMutation.BADGE_RADIUS,
-				"and the whole star fits inside the disc it is drawn on")
+			# The gaps are what make this readable at nine pixels: three blades of
+			# TREFOIL_SPAN each must leave at least as much yellow between them as they
+			# cover, or the mark closes into a disc with a hole and stops being a trefoil
+			# at all. Asserted against the blade count rather than against 60 degrees, so
+			# a fourth blade has to re-earn the ratio instead of inheriting it.
+			var gap: float = TAU / float(PlantMutation.TREFOIL_BLADES) - PlantMutation.TREFOIL_SPAN
+			err = _T.assert_true(gap >= PlantMutation.TREFOIL_SPAN - 0.001,
+				("the gap between blades (%.3f rad) is at least as wide as a blade "
+					+ "(%.3f rad)") % [gap, PlantMutation.TREFOIL_SPAN])
+		if err == "":
+			err = _T.assert_true(PlantMutation.TREFOIL_HUB < PlantMutation.TREFOIL_INNER,
+				"and the hub stops short of the blades rather than merging with them")
 	if err == "":
 		# The clearance. The health bar is a rect in the same space the badge is drawn
 		# in, so this is a box against a circle and not an impression.
@@ -23255,7 +23467,22 @@ func test_the_sport_badge_stays_clear_of_the_health_bar_and_never_pulses_away() 
 		err = _T.assert_true(
 			nearest.distance_to(PlantMutation.BADGE_CENTRE) > PlantMutation.BADGE_RADIUS,
 			("the badge clears the health bar %s -- a damaged sport must not have its "
-				+ "remaining health covered by the mark that says it is a sport") % bar)
+				+ "remaining health covered by the mark that says it is a sport. Got "
+				+ "%.2f px between centres against a %.1f px radius")
+				% [bar, nearest.distance_to(PlantMutation.BADGE_CENTRE),
+					PlantMutation.BADGE_RADIUS])
+	if err == "":
+		# And it stays on its own tile. The bar check pushes the badge right and down; far
+		# enough and it lands on the neighbouring cell, where it would read as a mark on
+		# the WRONG plant -- a defect that is invisible on a lone plant and appears only
+		# once the garden is full, which is when nobody is inspecting geometry.
+		var half: float = float(Board.CELL) * 0.5
+		var reach: float = PlantMutation.BADGE_RADIUS
+		err = _T.assert_true(
+			absf(PlantMutation.BADGE_CENTRE.x) + reach <= half
+				and absf(PlantMutation.BADGE_CENTRE.y) + reach <= half,
+			("the whole badge sits inside the %d px cell -- centre %s, radius %.1f")
+				% [Board.CELL, PlantMutation.BADGE_CENTRE, reach])
 	if err == "":
 		# Both extremes of the pulse plus a sample between them, because a floor read
 		# at one instant says nothing about the trough.
@@ -23271,7 +23498,11 @@ func test_the_sport_badge_stays_clear_of_the_health_bar_and_never_pulses_away() 
 			err = _T.assert_float_eq(SportMark.pulse_at(0.0), 1.0, 0.001,
 				"and starts at full, so a mark added mid-frame does not fade in from "
 				+ "nothing")
-	return ""
+	# `err`, not "". This read `return ""` and swallowed every assertion after the ring:
+	# the clearance check, both pulse checks and the whole trefoil block could all fail
+	# and the test reported a pass, which is the exact shape CLAUDE.md warns about for an
+	# aborted coroutine and is worse here because nothing aborts.
+	return err
 
 
 ## The hardest patch holding a pest sets its speed, whichever patch caught it first.
@@ -24123,9 +24354,14 @@ func test_a_chomp_refuses_the_cutworm_and_still_takes_everything_else() -> Strin
 	for species: StringName in Pest.SPECIES:
 		var chomp := ChompFlower.new()
 		chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
-		var pest: Pest = _pest(species, Vector2(0, Board.CELL))
+		var pest: Pest = _pest(species, Vector2.ZERO)
 		var host: Node2D = _host([chomp, pest])
 		await _T.instantiate_scene(host)
+		# Parked one lane across and a little PAST the stem, derived from the plant's own
+		# constants rather than from a literal: `ChompFlower.GRAB_LEAD` (plant-tower-defense
+		# -chomper-anim) means a pest level with the flower is no longer a meal, so a fixed
+		# offset here would test the lead rather than the refusal. Every pest walks +X.
+		pest.position = chomp.position + Vector2(ChompFlower.GRAB_LEAD + 4.0, Board.CELL * 0.5)
 		# Driven through `_act`, the way the mouth is actually driven, rather than through
 		# the candidate helper: what has to be true is that the flower never BECOMES BUSY
 		# on this pest. A mouth that considered the boss, committed and then let go would
@@ -24465,4 +24701,713 @@ func test_the_cutworm_costs_nothing_to_draw_before_it_has_emerged() -> String:
 	if err == "":
 		err = _T.assert_eq(Cutworm.body_polygon_cost(walk + Cutworm.drawn_length() * 2.0, walk),
 			0, "and once the whole animal is past the exit there is nothing left to draw")
+	return err
+
+# -- Arming a plant: the cue, the escape, and the ghost under the finger
+#    (plant-tower-defense-vvmy) -----------------------------------------------
+
+
+## Exactly one plant button wears the armed ring, and NONE do when nothing is armed.
+##
+## THE LINE THIS REPLACES SET NOTHING AT ALL, which is why this test is a sweep rather
+## than a spot check on one button. `Hud.refresh()` did
+## `button.button_pressed = unlocked and id == selected` on Buttons that never had
+## `toggle_mode` set, and Godot's `BaseButton::set_pressed()` returns immediately without
+## it -- so the assignment compiled, read correctly, ran on every refresh and changed
+## nothing. Confirmed on the running game before it was touched: `find-nodes --class
+## Button --where name=Button_corn_cobbler --property button_pressed --property
+## toggle_mode` reported `button_pressed=false toggle_mode=false` while corn WAS
+## `selected_plant`.
+##
+## A test that read `button_pressed` back would have passed against that bug in one
+## direction and failed for the wrong reason in the other. This reads what a player sees
+## -- a visible node -- and it counts ALL the rings on every pass, because "the right one
+## is lit" and "only the right one is lit" are two different claims and the second is the
+## one a stale cue breaks.
+##
+## SWEPT OVER `PlantCatalog.ids()` rather than over a list written here, so a plant added
+## to the catalogue is armed and checked on the day it is added rather than on the day
+## someone remembers to extend an array.
+func test_only_the_armed_plant_wears_the_bar_ring() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.unlocked = PlantCatalog.ids()
+	var ids: Array[StringName] = PlantCatalog.ids()
+	var err: String = _T.assert_true(ids.size() > 1,
+		"the sweep needs more than one plant, or 'only this one' is not a claim")
+	for id: StringName in ids:
+		if err != "":
+			break
+		game.selected_plant = id
+		game._refresh()
+		var lit: Array[StringName] = []
+		for other: StringName in ids:
+			var ring: Panel = game.hud.armed_ring(other)
+			if ring == null:
+				err = _T.assert_true(false, "%s has no armed ring node at all" % other)
+				break
+			if ring.visible:
+				lit.append(other)
+		if err == "":
+			err = _T.assert_eq(lit, [id] as Array[StringName],
+				("arming %s lights %s's ring and no other -- a second lit ring points at "
+					+ "a plant the click will not buy") % [id, id])
+	# AND THE EMPTY ARM, which is the state this bead added and the one a cue is most
+	# likely to be left stale by: nothing is selected, so nothing may be lit.
+	if err == "":
+		game.selected_plant = &""
+		game._refresh()
+		var still_lit: Array[StringName] = []
+		for other: StringName in ids:
+			var ring: Panel = game.hud.armed_ring(other)
+			if ring != null and ring.visible:
+				still_lit.append(other)
+		err = _T.assert_eq(still_lit, [] as Array[StringName],
+			"with nothing armed the bar shows nothing armed -- a ring left over from the "
+				+ "last pick promises that a click on grass will buy it, and it will not")
+	_T.free_ui(game)
+	return err
+
+
+## The armed ring cannot eat the press that arms the next plant.
+##
+## THE FAILURE THIS RULES OUT IS THE CUE DISABLING THE THING IT DECORATES. The ring is a
+## Control laid over its whole Button with `PRESET_FULL_RECT`; a Control that answers
+## mouse events swallows every press aimed at what is underneath it, so a bar with this
+## cue on it would arm one plant and then be unable to arm any other. That is strictly
+## worse than the missing cue it fixes, and it is invisible to every layout assertion --
+## the ring is exactly where it should be, the right size, the right colour.
+func test_the_armed_ring_does_not_swallow_the_button_underneath_it() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.unlocked = PlantCatalog.ids()
+	var err: String = ""
+	var checked: int = 0
+	for id: StringName in PlantCatalog.ids():
+		if err != "":
+			break
+		var ring: Panel = game.hud.armed_ring(id)
+		if ring == null:
+			err = _T.assert_true(false, "%s has no armed ring node" % id)
+			break
+		checked += 1
+		err = _T.assert_eq(ring.mouse_filter, Control.MOUSE_FILTER_IGNORE,
+			("%s's ring passes the mouse through. Anything but IGNORE and the ring covers "
+				+ "its own button -- PRESET_FULL_RECT means it covers ALL of it") % id)
+	if err == "":
+		err = _T.assert_true(checked > 0,
+			"the sweep found rings to check, rather than passing over an empty bar")
+	_T.free_ui(game)
+	return err
+
+
+## The ghost gets out from under the finger, and only when there IS a finger.
+##
+## THE CUE SHIPPED AND WAS STILL REPORTED MISSING, which is the whole point of this test
+## and the reason it is about geometry rather than existence.
+## `test_the_placement_ghost_wears_the_selected_plants_own_art` already held every claim
+## the ghost could make about itself -- right texture, right alpha, behind the brackets,
+## on the preview's origin -- and every one of them was true on the running game. Measured
+## there with `node-bounds`, the ghost was `64x64` at the previewed cell's origin: exactly
+## the square the finger rests on. All the assertions passed and the player could not see
+## it. What nothing asked was where the ghost sits RELATIVE TO THE THING COVERING IT.
+##
+## PURE, over the static resolver rather than through a node, so the row-0 flip is
+## checkable with no board, no viewport and no frame -- and so both directions are held as
+## arithmetic rather than as a screenshot nobody will re-take.
+func test_the_ghost_lifts_clear_of_a_finger_and_never_of_a_cursor() -> String:
+	var err: String = _T.assert_eq(
+		PlacementPreview.ghost_lift_offset(false, 4), Vector2.ZERO,
+		"no finger, no lift: a mouse cursor is one pixel and occludes nothing, so moving "
+			+ "the ghost off its own cell there would cost accuracy and buy nothing")
+	if err == "":
+		err = _T.assert_eq(PlacementPreview.ghost_lift_offset(true, 4),
+			Vector2(0.0, -PlacementPreview.GHOST_LIFT),
+			"a finger on row 4 lifts the ghost UP, toward the empty board and away from "
+				+ "the hand, which comes from below on a held phone")
+	# THE FLIP, which is the branch a lift written as one constant would not have.
+	if err == "":
+		err = _T.assert_eq(PlacementPreview.ghost_lift_offset(true, 0),
+			Vector2(0.0, PlacementPreview.GHOST_LIFT),
+			"on the TOP row it lifts down instead -- up from row 0 draws the sprite off "
+				+ "the board and under the HUD's top bar, which is a cue nowhere useful")
+	# AND IT IS A WHOLE CELL, not a nudge. Half a cell leaves the sprite's lower half
+	# under the contact patch, which is the state that was reported as no cue at all.
+	if err == "":
+		err = _T.assert_float_eq(PlacementPreview.GHOST_LIFT, float(Board.CELL), 0.001,
+			"one full cell, read from Board.CELL -- a lift that does not clear the square "
+				+ "the finger is in has not cleared the finger")
+	return err
+
+
+## Lifting the ghost must not move the cell the release commits to.
+##
+## THE INVARIANT THIS PROTECTS IS THE ONE THE LIFT IS MOST LIKELY TO BREAK.
+## `test_the_drag_cue_and_the_drag_commit_choose_the_same_cell` exists because two
+## implementations of "the nearest cell that would take this" drift apart, and its stated
+## symptom is "a ghost drawn on one cell and a plant appearing on another". A lift IS that
+## symptom, introduced deliberately -- so what makes it honest rather than a regression is
+## that ONLY the sprite moves. The preview node, the brackets around it and the cell
+## `_hover_cell` names all stay exactly where they were.
+func test_a_lifted_ghost_still_promises_the_cell_the_brackets_are_on() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(400)
+	game.bank.unlocked = PlantCatalog.ids()
+	game.selected_plant = PlantCatalog.CORN
+	var cell: Vector2i = _grass(game)
+	var screen: Vector2 = game.board.cell_to_world(cell) + game._entities.position
+	var preview: PlacementPreview = game._preview
+	var ghost: Sprite2D = preview.ghost()
+	game._update_cursor(screen)
+	var resting: Vector2 = preview.position
+	var err: String = _T.assert_eq(ghost.position, Vector2.ZERO,
+		"with no finger down the ghost sits on the preview's own origin")
+	# THE FINGER GOES DOWN. `_touch_index` is what `_update_cursor` reads, so this is the
+	# same state a real press leaves behind rather than a flag invented for the test.
+	if err == "":
+		game._touch_index = 0
+		game._update_cursor(screen)
+		err = _T.assert_true(ghost.position != Vector2.ZERO,
+			"a finger on the cell lifts the sprite off it -- at 64x64 on a 64px cell an "
+				+ "unlifted ghost is entirely under the fingertip that is asking about it")
+	if err == "":
+		err = _T.assert_eq(preview.position, resting,
+			"and the PREVIEW has not moved: the brackets, the range ring and the cell the "
+				+ "release buys are all exactly where the cursor left them")
+	if err == "":
+		err = _T.assert_eq(game._hover_cell, cell,
+			"nor has the cell the commit will use -- the lift is a drawing offset, and a "
+				+ "lift that moved this would be the cue promising a cell it cannot deliver")
+	# AND IT COMES BACK DOWN. A lift latched on after the finger left would be a ghost
+	# hovering a cell above the cursor for the rest of the session.
+	if err == "":
+		game._touch_index = -1
+		game._update_cursor(screen)
+		err = _T.assert_eq(ghost.position, Vector2.ZERO,
+			"the finger lifts and so does the exception -- back on its own origin")
+	_T.free_ui(game)
+	return err
+
+
+## With nothing armed, a click on empty ground buys nothing and promises nothing.
+##
+## `&""` WAS AN UNREACHABLE STATE, so this is the first test that can ask what the game
+## does in it. `selected_plant` was born holding CORN and every assignment named another
+## plant, which is the mechanical reason a stray tap always cost seeds.
+##
+## Asserts both halves, because either alone is a half-fix: the purchase is refused (the
+## money) and the brackets come down (the promise). A game that refused the click while
+## still drawing an encouraging green preview over the cell would be telling the player
+## the opposite of what it was about to do.
+func test_nothing_armed_buys_nothing_and_shows_no_promise() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(400)
+	game.bank.unlocked = PlantCatalog.ids()
+	game.selected_plant = &""
+	var cell: Vector2i = _grass(game)
+	var screen: Vector2 = game.board.cell_to_world(cell) + game._entities.position
+	var seeds_before: int = game.bank.seeds
+	game._update_cursor(screen)
+	var err: String = _T.assert_true(not game._preview.visible,
+		"no brackets over a cell nothing is going to be placed on -- the preview's whole "
+			+ "sentence is 'a click here buys this', and there is no this")
+	if err == "":
+		err = _T.assert_true(not game.would_plant_at(cell),
+			"and the predicate the click consults agrees, rather than the cue and the "
+				+ "commit reaching the same answer by two routes")
+	if err == "":
+		game._click_at(screen)
+		err = _T.assert_true(game.plant_at(cell) == null,
+			"clicking plants nothing on %s" % cell)
+	if err == "":
+		err = _T.assert_eq(game.bank.seeds, seeds_before,
+			"and costs nothing -- the reported defect is that the board is the biggest "
+				+ "target on screen and every stray tap on it used to spend")
+	# THE CURSOR TINT STAYS, deliberately. A click with nothing armed still selects a
+	# plant already there and still sweeps a husk, so the square under the pointer is
+	# still worth marking; it is only the PURCHASE promise that comes down.
+	if err == "":
+		err = _T.assert_true(game._cursor.visible,
+			"the cell marker is still up: an empty arm silences the promise, not the cue "
+				+ "that says which square a click lands on")
+	_T.free_ui(game)
+	return err
+
+
+## Planting disarms; being refused does not.
+##
+## THE ASYMMETRY IS THE DESIGN, and stating it as one test is what stops the next reader
+## "fixing" the second half into the first. A placement that SUCCEEDED has consumed the
+## intent the pick expressed, so leaving it armed is what made every following stray tap
+## buy a second one. A placement that was REFUSED has not: the player still wants that
+## plant, they were five seeds short or aimed at the road, and taking the pick away would
+## punish one mistake twice and send them back to the bar to re-arm.
+func test_planting_disarms_and_a_refusal_leaves_the_pick_alone() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(400)
+	game.bank.unlocked = PlantCatalog.ids()
+	game.selected_plant = PlantCatalog.CORN
+	var cell: Vector2i = _grass(game)
+	game._commit_placement(cell)
+	var err: String = _T.assert_true(game.plant_at(cell) != null,
+		("the cob is planted on %s, so the disarm below is about a placement that "
+			+ "actually happened") % cell)
+	if err == "":
+		err = _T.assert_eq(game.selected_plant, &"",
+			"and nothing is armed afterwards -- 'lift to plant, then nothing is armed', "
+				+ "which is what stops the next tap on grass buying a second cob")
+	if err == "":
+		var ring: Panel = game.hud.armed_ring(PlantCatalog.CORN)
+		err = _T.assert_true(ring != null and not ring.visible,
+			"the bar says so too. place_plant() refreshes the HUD BEFORE it returns, so a "
+				+ "disarm that skipped its own refresh would leave this ring lit")
+	# THE REFUSAL, on the same game: aim at the cell the cob now occupies.
+	if err == "":
+		game.selected_plant = PlantCatalog.CORN
+		game._commit_placement(cell)
+		err = _T.assert_eq(game.selected_plant, PlantCatalog.CORN,
+			"a refused placement keeps the pick. The player's next move is to aim "
+				+ "somewhere else, not to walk back to the bar for the plant they chose")
+	_T.free_ui(game)
+	return err
+
+
+## Right-click clears BOTH halves of the selection, and reports having cleared nothing
+## when there was nothing to clear.
+##
+## IT USED TO CLEAR HALF. The branch returned early unless a plant on the BOARD was
+## selected, and it never touched `selected_plant` at all -- so "never mind" put the
+## board's rings away and left a live purchase armed on the bar, which is the half the
+## player was more likely to mean.
+func test_right_click_clears_the_whole_selection() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(400)
+	game.bank.unlocked = PlantCatalog.ids()
+	game.selected_plant = PlantCatalog.CORN
+	var cell: Vector2i = _grass(game)
+	game.place_plant(PlantCatalog.CORN, cell)
+	game._select(game.plant_at(cell))
+	game.selected_plant = PlantCatalog.SUNFLOWER
+	var err: String = _T.assert_true(game.selected_placed != null,
+		"a plant on the board is selected AND a different plant is armed in the bar -- "
+			+ "the two-selection state the old branch only knew how to half-clear")
+	if err == "":
+		game._unhandled_input(_right_press())
+		err = _T.assert_true(game.selected_placed == null,
+			"the board's selection is gone, which is what this gesture already did")
+	if err == "":
+		err = _T.assert_eq(game.selected_plant, &"",
+			"and so is the bar's, which is what it did not -- one gesture, one rule")
+	# NOTHING LEFT TO CLEAR. `disarm_plant()`'s bool is what the input branch consumes the
+	# event on, so asking it directly is asking the same question the branch asks -- and a
+	# gesture that consumed a press it did nothing about would quietly reserve the right
+	# button against whatever is bound to it next.
+	if err == "":
+		err = _T.assert_true(not game.disarm_plant(),
+			"a second right press finds nothing to clear and says so, rather than "
+				+ "swallowing the press anyway")
+	_T.free_ui(game)
+	return err
+
+
+func _right_press() -> InputEventMouseButton:
+	var event := InputEventMouseButton.new()
+	event.button_index = MOUSE_BUTTON_RIGHT
+	event.pressed = true
+	event.position = Vector2.ZERO
+	return event
+
+
+## A finger that leaves the board disarms, because a phone has no right button.
+##
+## THIS IS THE WHOLE ESCAPE ON TOUCH. The right-click above is unreachable on the device
+## this gesture was built for, so without this a touch player who armed a plant and
+## changed their mind has no way out that does not spend seeds. Sliding off the board was
+## ALREADY the abort and already threw the placement away; this is that same gesture also
+## throwing away the arm behind it.
+##
+## Drives the real events -- press, drag, release -- through the same handlers a finger
+## reaches, rather than setting `_hover_cell` and calling the branch. The drag goes
+## through `_unhandled_input` because that is where the `InputEventScreenDrag` branch
+## lives, and it is the branch that moves `_hover_cell` off the board.
+func test_a_finger_leaving_the_board_disarms_the_pick() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.bank.add_seeds(400)
+	game.bank.unlocked = PlantCatalog.ids()
+	game.selected_plant = PlantCatalog.CORN
+	var cell: Vector2i = _grass(game)
+	var on_board: Vector2 = game.board.cell_to_world(cell) + game._entities.position
+	game._unhandled_input(_touch_event(true, on_board))
+	var err: String = _T.assert_true(game._hover_cell.x >= 0,
+		"the press landed on the board, so the abort below is a finger LEAVING it rather "
+			+ "than one that was never on it")
+	# OFF THE BOARD, past `board.board_size().x`, and the release is delivered with NO
+	# intervening drag event at all. That omission is the point of the test rather than a
+	# shortcut in it.
+	#
+	# THE FIRST VERSION OF THIS TEST DELIVERED THE DRAG AND PASSED, AND THE GAME DID NOT.
+	# The abort used to read `_hover_cell`, on the reasoning that the cue's own leftover
+	# state could not disagree with the cue -- and a synthetic drag straight to the far
+	# side dutifully set it to `(-1, -1)`. On the running game a real finger crossing the
+	# right-hand edge walks onto the SIDE PANEL, which is a Control that answers input and
+	# swallows every remaining `InputEventScreenDrag`, so `_hover_cell` was left holding
+	# the last cell it had been told about: measured live, `_hover_cell=(13, 8)`, column 13
+	# of 14. The abort never fired and the plant stayed armed.
+	#
+	# Withholding the drag reproduces exactly that -- a release whose position is off the
+	# board while the cue still believes the finger is on it -- so this test now fails
+	# against the implementation that shipped past it.
+	var off: Vector2 = Vector2(game.board.board_size().x + 40.0, on_board.y)
+	if err == "":
+		err = _T.assert_true(game._hover_cell.x >= 0,
+			"the cue is still pointing at a cell, because nothing told it otherwise -- "
+				+ "this is the swallowed-drag state, and it is the state that broke")
+	if err == "":
+		game._unhandled_input(_touch_event(false, off))
+		err = _T.assert_eq(game.selected_plant, &"",
+			"lifting off the board un-arms the plant anyway -- the release asks where the "
+				+ "FINGER was, not where the cue last thought it was")
+	if err == "":
+		err = _T.assert_true(game.plant_at(cell) == null,
+			"and nothing was planted on the way out, which the abort already guaranteed")
+	# AND THE PLAIN CASE STILL WORKS, so the fix is not "always abort".
+	if err == "":
+		err = _T.assert_true(not game.off_board(on_board),
+			"a point on the board reads as on the board")
+	if err == "":
+		err = _T.assert_true(game.off_board(off),
+			"and one past the board's right edge reads as off it, which is the strip "
+				+ "between the playfield and the side panel that `is_inside` alone misses")
+	_T.free_ui(game)
+	return err
+
+
+func _touch_event(pressed: bool, at: Vector2) -> InputEventScreenTouch:
+	var event := InputEventScreenTouch.new()
+	event.index = 0
+	event.pressed = pressed
+	event.position = at
+	return event
+
+
+## ---------------------------------------------------------------------------
+## Ambient bees (plant-tower-defense-qz4j). Purely cosmetic, which is exactly why
+## these are written: nothing in the game will ever notice a bee behaving wrongly,
+## so a defect here is invisible until a player sees it. Every claim below is over
+## the pure statics, because `GardenTheme.animations_enabled()` is false for the
+## whole suite -- the node never opens a bout headless, and a test that drove it
+## would be asserting an early return.
+## ---------------------------------------------------------------------------
+
+## The board every bee test flies over: the real one, 14x9 cells of 64 px.
+const BEE_BOARD := Vector2(896.0, 576.0)
+
+
+func test_a_bee_enters_off_the_board_crosses_it_and_leaves_off_it_again() -> String:
+	var err: String = ""
+	var crossed: int = 0
+	var bees: int = 0
+	var board := Rect2(Vector2.ZERO, BEE_BOARD)
+	var reach: float = BeeSwarm.EDGE_MARGIN + BeeSwarm.WANDER_A1 + BeeSwarm.WANDER_A2 + 1.0
+	var bounds := Rect2(Vector2(-reach, -reach), BEE_BOARD + Vector2(reach, reach) * 2.0)
+	for bout: int in range(1, 13):
+		for i: int in range(BeeSwarm.bees_in_bout(bout)):
+			bees += 1
+			# The ends are EXACT, which is the property the sin(PI*t) easing exists for:
+			# a bee that started its wander at t=0 would appear mid-swerve at the rim.
+			if err == "":
+				err = _T.assert_true(
+					BeeSwarm.bee_position(bout, i, 0.0, BEE_BOARD)
+						.is_equal_approx(BeeSwarm.entry_point(bout, i, BEE_BOARD)),
+					"bout %d bee %d starts exactly at its entry point" % [bout, i])
+			if err == "":
+				err = _T.assert_true(
+					BeeSwarm.bee_position(bout, i, 1.0, BEE_BOARD)
+						.is_equal_approx(BeeSwarm.exit_point(bout, i, BEE_BOARD)),
+					"bout %d bee %d ends exactly at its exit point" % [bout, i])
+			if err == "":
+				err = _T.assert_true(not board.has_point(
+						BeeSwarm.bee_position(bout, i, 0.0, BEE_BOARD)),
+					("bout %d bee %d enters from OUTSIDE the board, so it is already "
+						+ "flying by the time anything can see it") % [bout, i])
+			# It actually crosses the garden rather than clipping a corner of it, and it
+			# never sails further out than the wander can carry it.
+			var inside: bool = false
+			for step: int in range(101):
+				var at: Vector2 = BeeSwarm.bee_position(bout, i, float(step) / 100.0, BEE_BOARD)
+				if board.has_point(at):
+					inside = true
+				if err == "" and not bounds.has_point(at):
+					err = "bout %d bee %d left the garden's neighbourhood at t=%.2f (%s)" \
+						% [bout, i, float(step) / 100.0, str(at)]
+			if inside:
+				crossed += 1
+			if err == "":
+				err = _T.assert_true(inside,
+					("bout %d bee %d is over the board at some point in its crossing -- a "
+						+ "bee that only ever skims the outside is an animation nobody sees")
+						% [bout, i])
+	if err == "":
+		err = _T.assert_eq(crossed, bees,
+			"every bee of every sampled bout crossed the board")
+	if err == "":
+		err = _T.assert_true(bees >= 12,
+			"and the sweep had bees to check in the first place (%d)" % bees)
+	return err
+
+
+func test_the_bee_path_never_tears_between_two_frames() -> String:
+	# The wander is two sines in SECONDS of flight, so its speed is set by amplitude times
+	# frequency and not by anything the crossing time normalises away. This is the check
+	# that keeps a future amplitude bump honest: 34 px at 0.21 Hz is 45 px/s of sideways
+	# motion on its own, and a bee that moves more than its own body in one frame is a bee
+	# that teleports.
+	var err: String = ""
+	var worst: float = 0.0
+	for bout: int in range(1, 9):
+		for i: int in range(BeeSwarm.bees_in_bout(bout)):
+			var frames: int = int(BeeSwarm.cross_seconds(bout, i) * 60.0)
+			var previous: Vector2 = BeeSwarm.bee_position(bout, i, 0.0, BEE_BOARD)
+			for f: int in range(1, frames + 1):
+				var at: Vector2 = BeeSwarm.bee_position(
+					bout, i, float(f) / float(frames), BEE_BOARD)
+				worst = maxf(worst, at.distance_to(previous))
+				previous = at
+	err = _T.assert_true(worst < BeeSwarm.BODY_LENGTH,
+		("the furthest a bee moves in one 60 fps frame is %.2f px, under its own %.1f px "
+			+ "body") % [worst, BeeSwarm.BODY_LENGTH])
+	if err == "":
+		err = _T.assert_true(worst > 0.5,
+			("and it is actually moving (%.2f px/frame), which a path collapsed to a point "
+				+ "would not be") % worst)
+	return err
+
+
+func test_a_bout_flies_the_same_way_twice_and_two_bouts_do_not() -> String:
+	# Deterministic by hash rather than by RNG, so `Game.set_seed` still pins everything
+	# random about a run. The second half is the one that matters: a hash that ignored the
+	# bout number would be perfectly reproducible AND identical every time, which is a
+	# failure this cannot tell from success without asking.
+	var a: Vector2 = BeeSwarm.bee_position(4, 0, 0.5, BEE_BOARD)
+	var err: String = _T.assert_true(
+		a.is_equal_approx(BeeSwarm.bee_position(4, 0, 0.5, BEE_BOARD)),
+		"bout 4 flies bout 4's path both times")
+	var differs: int = 0
+	for bout: int in range(1, 20):
+		if bout != 4 and not BeeSwarm.bee_position(bout, 0, 0.5, BEE_BOARD).is_equal_approx(a):
+			differs += 1
+	if err == "":
+		err = _T.assert_true(differs >= 15,
+			("and %d of the other 18 bouts fly somewhere else -- a hash that dropped the "
+				+ "bout number would score 0 here") % differs)
+	return err
+
+
+func test_the_bee_schedule_stays_inside_the_ranges_it_was_tuned_to() -> String:
+	var err: String = ""
+	var counts: Dictionary = {}
+	for bout: int in range(1, 200):
+		var gap: float = BeeSwarm.bout_gap(bout)
+		if err == "" and (gap < BeeSwarm.GAP_MIN or gap > BeeSwarm.GAP_MAX):
+			err = "bout %d waits %.1fs, outside %.0f..%.0f" \
+				% [bout, gap, BeeSwarm.GAP_MIN, BeeSwarm.GAP_MAX]
+		var n: int = BeeSwarm.bees_in_bout(bout)
+		counts[n] = int(counts.get(n, 0)) + 1
+		if err == "" and (n < BeeSwarm.BEES_MIN or n > BeeSwarm.BEES_MAX):
+			err = "bout %d sends %d bees, outside %d..%d" \
+				% [bout, n, BeeSwarm.BEES_MIN, BeeSwarm.BEES_MAX]
+		for i: int in range(n):
+			var cross: float = BeeSwarm.cross_seconds(bout, i)
+			if err == "" and (cross < BeeSwarm.CROSS_SECONDS_MIN
+					or cross > BeeSwarm.CROSS_SECONDS_MAX):
+				err = "bout %d bee %d crosses in %.1fs, outside the tuned range" % [bout, i, cross]
+			var wait: float = BeeSwarm.stagger_seconds(bout, i)
+			if err == "" and (wait < 0.0 or wait > BeeSwarm.STAGGER_MAX):
+				err = "bout %d bee %d waits %.2fs before entering" % [bout, i, wait]
+	# Every size actually occurs. A hash that always returned the same bucket would pass
+	# every range check above and would leave BEES_MIN..BEES_MAX a fiction.
+	if err == "":
+		err = _T.assert_eq(counts.size(), BeeSwarm.BEES_MAX - BeeSwarm.BEES_MIN + 1,
+			("all three bout sizes occur across 199 bouts, rather than the range being "
+				+ "documented and unused: %s") % str(counts))
+	return err
+
+
+func test_a_bee_leaves_by_a_different_edge_than_it_came_in_by() -> String:
+	# A bee that enters and leaves by one edge turns around inside the garden, and a thing
+	# that turns around inside the garden looks like it came for something.
+	var err: String = ""
+	var checked: int = 0
+	for bout: int in range(1, 40):
+		for i: int in range(BeeSwarm.bees_in_bout(bout)):
+			var from: Vector2 = BeeSwarm.entry_point(bout, i, BEE_BOARD)
+			var to: Vector2 = BeeSwarm.exit_point(bout, i, BEE_BOARD)
+			checked += 1
+			if err == "":
+				err = _T.assert_true(_bee_edge(from) != _bee_edge(to),
+					"bout %d bee %d enters on edge %d and leaves on edge %d"
+						% [bout, i, _bee_edge(from), _bee_edge(to)])
+			if err == "":
+				err = _T.assert_true(_bee_edge(from) >= 0 and _bee_edge(to) >= 0,
+					"and both of those points are off the board (bout %d bee %d)" % [bout, i])
+	if err == "":
+		err = _T.assert_true(checked >= 40, "the sweep had %d bees to check" % checked)
+	return err
+
+
+func test_bees_sit_out_the_rain_and_only_the_rain() -> String:
+	var err: String = _T.assert_true(not BeeSwarm.bout_allowed(WaveDirector.WEATHER_RAIN),
+		"no bout opens in the rain")
+	if err == "":
+		err = _T.assert_true(BeeSwarm.bout_allowed(WaveDirector.WEATHER_CLEAR),
+			"a clear wave gets bees")
+	if err == "":
+		# Drought deliberately does NOT stop them: the rule is one line of world logic, not
+		# a general "bad weather" gate, and a drought garden is exactly where a little life
+		# is worth the most.
+		err = _T.assert_true(BeeSwarm.bout_allowed(WaveDirector.WEATHER_DROUGHT),
+			"and so does a drought one")
+	return err
+
+
+func test_the_two_airborne_shadows_in_this_game_are_the_same_shadow() -> String:
+	# A Dandelion's seed in flight and a bee are the only two things in this game that are
+	# ABOVE the board rather than on it, and both say so with an offset ellipse. One value,
+	# or the channel means two slightly different things depending which one you look at.
+	var err: String = _T.assert_true(
+		BeeSwarm.SHADOW_COLOR.is_equal_approx(SeedBomb.SHADOW_COLOR),
+		"the bee's shadow is the seed bomb's shadow (%s vs %s)"
+			% [str(BeeSwarm.SHADOW_COLOR), str(SeedBomb.SHADOW_COLOR)])
+	if err == "":
+		err = _T.assert_true(BeeSwarm.SHADOW_OFFSET.length() > BeeSwarm.BODY_WIDTH * 0.5,
+			("and it is offset clear of the body it belongs to -- a shadow drawn under the "
+				+ "bee is a shadow nobody reads as height"))
+	return err
+
+
+func test_a_bees_two_wings_beat_against_each_other() -> String:
+	# A pair moving together reads as one flapping sheet. The claim is about two numbers,
+	# so it needs no renderer -- which is the only reason it is checkable at all, since
+	# headless never runs _draw.
+	var high: Vector2 = BeeSwarm.wing_offsets(1.0)
+	var low: Vector2 = BeeSwarm.wing_offsets(-1.0)
+	var err: String = _T.assert_true(high.x < 0.0 and high.y > 0.0,
+		"the two wings sit on opposite sides of the body")
+	if err == "":
+		err = _T.assert_true(high.x < low.x and high.y > low.y,
+			"and the beat moves them apart and together, not both the same way")
+	if err == "":
+		err = _T.assert_eq(
+			BeeSwarm.ellipse_points(BeeSwarm.BODY_LENGTH, BeeSwarm.BODY_WIDTH).size(),
+			BeeSwarm.ELLIPSE_SEGMENTS,
+			"the body is an ellipse of the segment count the constant names")
+	if err == "":
+		var span: float = 0.0
+		for point: Vector2 in BeeSwarm.ellipse_points(BeeSwarm.BODY_LENGTH, BeeSwarm.BODY_WIDTH):
+			span = maxf(span, absf(point.x) * 2.0)
+		err = _T.assert_true(absf(span - BeeSwarm.BODY_LENGTH) < 0.001,
+			"and it is BODY_LENGTH long (%.2f), so the approved size is the drawn size" % span)
+	return err
+
+
+## Which edge of the board an off-board point sits past, or -1 for a point that is not past
+## any edge -- which no entry or exit point should ever be.
+func _bee_edge(at: Vector2) -> int:
+	if at.y < 0.0:
+		return 0
+	if at.x > BEE_BOARD.x:
+		return 1
+	if at.y > BEE_BOARD.y:
+		return 2
+	if at.x < 0.0:
+		return 3
+	return -1
+
+
+func test_the_bee_hash_spreads_and_its_edge_points_land_on_the_side_they_name() -> String:
+	# `hash01` is the whole source of variety in this feature -- every bout parameter and
+	# every flight is a call to it -- so "it returns a number" is not the claim. A hash that
+	# returned 0.5 forever would satisfy every range check in this file.
+	var buckets: Dictionary = {}
+	var err: String = ""
+	for i: int in range(400):
+		var v: float = BeeSwarm.hash01(i, i * 3 + 1)
+		if err == "" and (v < 0.0 or v >= 1.0):
+			err = "hash01(%d, %d) returned %f, outside 0..1" % [i, i * 3 + 1, v]
+		buckets[int(v * 10.0)] = true
+	if err == "":
+		err = _T.assert_eq(buckets.size(), 10,
+			"400 samples land in all ten tenths of 0..1, not in a corner of it: %s"
+				% str(buckets.keys()))
+	# And the edges are the sides they claim. Side numbering is used by `entry_point` and
+	# `exit_point` to guarantee a bee does not turn around inside the garden, so a side that
+	# resolved to the wrong edge would break that guarantee silently.
+	var expectations: Array[Dictionary] = [
+		{"side": 0, "what": "above the top", "ok": func(p: Vector2) -> bool: return p.y < 0.0},
+		{"side": 1, "what": "past the right", "ok": func(p: Vector2) -> bool: return p.x > BEE_BOARD.x},
+		{"side": 2, "what": "below the bottom", "ok": func(p: Vector2) -> bool: return p.y > BEE_BOARD.y},
+		{"side": 3, "what": "left of the left", "ok": func(p: Vector2) -> bool: return p.x < 0.0},
+	]
+	for row: Dictionary in expectations:
+		for u: float in [0.0, 0.5, 1.0]:
+			var at: Vector2 = BeeSwarm.edge_point(u, int(row["side"]), BEE_BOARD)
+			var ok: Callable = row["ok"]
+			if err == "":
+				err = _T.assert_true(ok.call(at),
+					"edge_point(%.1f, %d) is %s (%s)" % [u, int(row["side"]), row["what"], str(at)])
+	return err
+
+
+func test_a_bee_points_the_way_it_is_travelling() -> String:
+	# `bee_heading` is what rotates the drawing, and a heading read from the wrong end of the
+	# path draws a bee flying backwards -- which is exactly the kind of defect that looks
+	# fine in a still screenshot and wrong the moment anything moves.
+	var err: String = ""
+	for bout: int in range(1, 10):
+		for i: int in range(BeeSwarm.bees_in_bout(bout)):
+			for t: float in [0.05, 0.35, 0.65, 0.95]:
+				var heading: float = BeeSwarm.bee_heading(bout, i, t, BEE_BOARD)
+				var ahead: Vector2 = BeeSwarm.bee_position(bout, i, minf(1.0, t + 0.02), BEE_BOARD)
+				var here: Vector2 = BeeSwarm.bee_position(bout, i, t, BEE_BOARD)
+				if err == "" and not is_finite(heading):
+					err = "bout %d bee %d has no heading at t=%.2f" % [bout, i, t]
+				if err == "":
+					err = _T.assert_true(
+						Vector2.RIGHT.rotated(heading).dot((ahead - here).normalized()) > 0.7,
+						("bout %d bee %d at t=%.2f faces where it is about to be, within 45 "
+							+ "degrees") % [bout, i, t])
+	return err
+
+
+func test_the_bee_layer_reports_what_it_is_doing_while_it_does_it() -> String:
+	# The three live readouts, which are what `cmd bee_state` and `cmd bee_bout` answer with
+	# -- and the readouts are the only evidence the "an idle garden costs nothing" claim has
+	# in a running game, so a wrong one would make that claim unfalsifiable rather than false.
+	#
+	# Driven on a bare instance rather than through the tree: `_ready` arms nothing headless
+	# (animations are off for the whole suite), and `open_bout_now` on a clear garden touches
+	# no SceneTreeTimer, so this exercises the real path with no frames to pump.
+	var swarm := BeeSwarm.new()
+	swarm.setup(BEE_BOARD)
+	var err: String = _T.assert_eq(swarm.flying_count(), 0,
+		"a layer that has not opened a bout has nothing in the air")
+	if err == "":
+		err = _T.assert_true(swarm.next_bout_seconds() >= 0.0,
+			"and its pending gap is a number rather than a negative sentinel")
+	var sent: int = swarm.open_bout_now()
+	if err == "":
+		err = _T.assert_true(sent >= BeeSwarm.BEES_MIN and sent <= BeeSwarm.BEES_MAX,
+			"a forced bout sends %d bee(s), inside the tuned range" % sent)
+	if err == "":
+		err = _T.assert_eq(swarm.next_bout_seconds(), 0.0,
+			"nothing is pending while a bout is open -- the field means 'waiting', not "
+				+ "'time until something happens'")
+	if err == "":
+		err = _T.assert_true(swarm.is_processing(),
+			"and the layer is stepping, which is the half of the cost claim that says it "
+				+ "only steps when there is something to draw")
+	if err == "":
+		# Forced again mid-bout, it drops the request rather than restarting the flight.
+		err = _T.assert_eq(swarm.open_bout_now(), 0,
+			"a second force while a bout is in the air sends nothing, and says so with a "
+				+ "zero rather than by silently relaunching the same bees")
+	swarm.free()
 	return err

@@ -119,6 +119,25 @@ const PALETTE: PackedStringArray = [
 	"FFFFFF",
 ]
 
+## What makes a stem a sport's, and the only thing MUTANT_PALETTE is keyed off.
+## `tools/gen_sport_svg.py` appends it and `PlantMutation.sport_texture_path` looks for
+## it; `--check` there fails if this spelling and that one disagree.
+const SPORT_SUFFIX := "_sport"
+
+## The two mutant ramps a sport sprite is recoloured onto, and the ONLY sprites they are
+## legal in: `_palette_rgb` hands them out for a `_sport` stem and withholds them for
+## every other, so the kit contract above is exactly as tight for the ordinary sprites
+## after this table existed as it was before.
+##
+## Eight anchors each, constant-hue by construction and monotone in luminance — derived,
+## not chosen. `python tools/gen_sport_svg.py --palette` prints this block, and that
+## tool's `--check` fails when this copy and its RAMPS disagree, so the two cannot drift.
+## The derivation and why it has these properties are in that file's docstring.
+const MUTANT_PALETTE: PackedStringArray = [
+	"2A3A05", "415A08", "597A0B", "709A0E", "88BA12", "9DD618", "C0EC5A", "E7FCB6",
+	"46063B", "690859", "910C7B", "B91A9E", "DE34C2", "F56EDE", "FCB0EF", "FFCEF7",
+]
+
 ## An anti-aliased edge between two flat fills lands *on the line between them*
 ## in RGB, so conformance is "within TOLERANCE of some palette-pair segment",
 ## not "exactly a palette entry". Measured worst case across all six sprites is
@@ -138,21 +157,21 @@ const OPAQUE := 250
 var _T
 
 func test_every_sprite_declared_by_the_contract_exists() -> String:
-	for stem: String in EXPECTED_SIZE:
+	for stem: String in _declared():
 		var img := _load(stem)
 		var err: String = _T.assert_true(img != null, "%s.png is on disk and loads" % stem)
 		if err != "":
 			return err
-	return _T.assert_eq(_stems_on_disk().size(), EXPECTED_SIZE.size(),
+	return _T.assert_eq(_stems_on_disk().size(), _declared().size(),
 		"every PNG in assets/sprites is declared in EXPECTED_SIZE (an undeclared sprite is ungated)")
 
 
 func test_sprites_are_square_and_kit_sized() -> String:
-	for stem: String in EXPECTED_SIZE:
+	for stem: String in _declared():
 		var img := _load(stem)
 		if img == null:
 			return "%s.png did not load" % stem
-		var want: int = EXPECTED_SIZE[stem]
+		var want: int = _declared()[stem]
 		var err: String = _T.assert_eq(Vector2i(img.get_width(), img.get_height()), Vector2i(want, want),
 			"%s is %dx%d" % [stem, want, want])
 		if err != "":
@@ -161,11 +180,11 @@ func test_sprites_are_square_and_kit_sized() -> String:
 
 
 func test_retina_is_exactly_double() -> String:
-	for stem: String in EXPECTED_SIZE:
+	for stem: String in _declared():
 		var img := _load_retina(stem)
 		if img == null:
 			return "%s@2x.png is missing — the kit ships a Retina copy of every sprite" % stem
-		var want: int = int(EXPECTED_SIZE[stem]) * 2
+		var want: int = int(_declared()[stem]) * 2
 		var err: String = _T.assert_eq(Vector2i(img.get_width(), img.get_height()), Vector2i(want, want),
 			"%s@2x is %dx%d" % [stem, want, want])
 		if err != "":
@@ -176,7 +195,7 @@ func test_retina_is_exactly_double() -> String:
 func test_sprites_actually_drew_something() -> String:
 	# A malformed path renders as a fully transparent PNG. Nothing downstream
 	# reports that: the texture loads, the sprite node is there, the screen is empty.
-	for stem: String in EXPECTED_SIZE:
+	for stem: String in _declared():
 		var img := _load(stem)
 		if img == null:
 			return "%s.png did not load" % stem
@@ -192,7 +211,7 @@ func test_sprites_actually_drew_something() -> String:
 func test_content_is_bilaterally_centred() -> String:
 	# The kit's units face up-screen and are symmetric about their vertical axis;
 	# an off-centre sprite rotates about the wrong point the moment anything aims.
-	for stem: String in EXPECTED_SIZE:
+	for stem: String in _declared():
 		var img := _load(stem)
 		if img == null:
 			return "%s.png did not load" % stem
@@ -208,7 +227,7 @@ func test_content_is_bilaterally_centred() -> String:
 func test_content_stays_inside_the_canvas() -> String:
 	# Touching the edge means the art was clipped, which shows up as a flat cut
 	# on one side that reads as a rendering bug rather than a drawing mistake.
-	for stem: String in EXPECTED_SIZE:
+	for stem: String in _declared():
 		var img := _load(stem)
 		if img == null:
 			return "%s.png did not load" % stem
@@ -271,9 +290,9 @@ func test_expected_size_agrees_with_the_authored_svg_canvas() -> String:
 	if err != "":
 		return err
 	for stem: String in stems:
-		if not EXPECTED_SIZE.has(stem):
+		if not _declared().has(stem):
 			continue  # named by test_every_svg_source_is_declared instead
-		var want: int = EXPECTED_SIZE[stem]
+		var want: int = _declared()[stem]
 		err = _T.assert_eq(_svg_canvas(stem), Vector2i(want, want),
 			"art_src/%s.svg declares the %dx%d canvas EXPECTED_SIZE claims for it" % [stem, want, want])
 		if err != "":
@@ -290,11 +309,11 @@ func test_every_svg_source_is_declared() -> String:
 	if err != "":
 		return err
 	for stem: String in stems:
-		err = _T.assert_true(EXPECTED_SIZE.has(stem),
+		err = _T.assert_true(_declared().has(stem),
 			"art_src/%s.svg has an EXPECTED_SIZE row (an undeclared source renders, ships and is ungated)" % stem)
 		if err != "":
 			return err
-	for stem: String in EXPECTED_SIZE:
+	for stem: String in _declared():
 		err = _T.assert_true(stems.has(stem),
 			"EXPECTED_SIZE row '%s' has an art_src/%s.svg to have come from" % [stem, stem])
 		if err != "":
@@ -320,8 +339,8 @@ func test_no_rendered_png_is_an_orphan() -> String:
 
 
 func test_every_colour_is_kit_palette_or_a_blend_of_two() -> String:
-	var pal := _palette_rgb()
-	for stem: String in EXPECTED_SIZE:
+	for stem: String in _declared():
+		var pal := _palette_rgb(stem)
 		var img := _load(stem)
 		if img == null:
 			return "%s.png did not load" % stem
@@ -464,9 +483,50 @@ func _opaque_bounds(img: Image) -> Rect2i:
 	return Rect2i(min_x, min_y, max_x - min_x + 1, max_y - min_y + 1)
 
 
-func _palette_rgb() -> Array[Vector3]:
+## Every stem this file gates, and the canvas each is held to.
+##
+## EXPECTED_SIZE is the hand-declared half — a row per drawing somebody sat down and made,
+## which is what makes an undeclared source a failure rather than a silence. The sport
+## half is DERIVED, and has to be: a sport SVG is a pure function of its parent
+## (`tools/gen_sport_svg.py`), so a hand-typed row per sport would be seventeen rows whose
+## only content is "the parent's, again" — seventeen chances for a canvas to be claimed
+## that nobody drew.
+##
+## Deriving here does not reopen the hole EXPECTED_SIZE exists to close. A sport is only
+## picked up if its PARENT has a declared row, so `foo_sport.svg` beside no `foo` still
+## fails `test_every_svg_source_is_declared`; and which sports may exist at all is not
+## this file's question — `gen_sport_svg.py --check` fails when the set on disk is not
+## exactly the set its own derivation produces.
+##
+## Same size as the parent by construction, which is the whole of the geometric claim:
+## the sport shares its parent's geometry byte for byte and differs only in paint.
+func _declared() -> Dictionary:
+	var out: Dictionary = EXPECTED_SIZE.duplicate()
+	var stems := _svg_stems()
+	for stem: String in EXPECTED_SIZE:
+		var sport: String = stem + SPORT_SUFFIX
+		if stems.has(sport):
+			out[sport] = EXPECTED_SIZE[stem]
+	return out
+
+
+## The colours `stem` may legally be painted in.
+##
+## The kit palette for every drawing, plus the mutant ramps for a sport and ONLY for a
+## sport. Widening PALETTE itself would have been the easy version and it would have cost
+## the thing this test is for: sixteen more entries is sixteen more entries every ordinary
+## sprite may also use, and — because conformance is "near the segment between two
+## entries" — many hundreds more pair-segments through the middle of the colour space.
+## Scoping by stem leaves the nine plants, five pests and two projectiles held to exactly
+## the contract they were held to before the mutants existed.
+func _palette_rgb(stem: String) -> Array[Vector3]:
 	var out: Array[Vector3] = []
 	for hex in PALETTE:
+		var c := Color.html(hex)
+		out.append(Vector3(c.r, c.g, c.b) * 255.0)
+	if not stem.ends_with(SPORT_SUFFIX):
+		return out
+	for hex in MUTANT_PALETTE:
 		var c := Color.html(hex)
 		out.append(Vector3(c.r, c.g, c.b) * 255.0)
 	return out

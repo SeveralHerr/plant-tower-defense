@@ -96,7 +96,7 @@ tree. Both halves of the failure have been paid for:
 
 Neither is a crisis. Both are the cost of an animation that owns its own destination.
 
-## Two ways a check here passes while asserting nothing
+## Three ways a check here passes while asserting nothing
 
 - **Pumping the animation and reading what moved.** Everything past the gate is an early
   return, so the assertion is about the return. Cycle 71 wrote exactly that test for
@@ -106,6 +106,19 @@ Neither is a crisis. Both are the cost of an animation that owns its own destina
 - **Assertions expressed relative to the amplitude.** The same test survived
   `BREATHE_AMOUNT = 0.0`, because every claim in it was written *in terms of*
   `BREATHE_AMOUNT` and zeroing it left them all true. Pin at least one endpoint to a number.
+- **Correct geometry that nothing can see.** Every rung above is about a *value*; a drawn
+  animation also has a *composite*, and no property read reaches it. The Chomp's vines
+  (`game/chomp_flower.gd`, cycle 175) shipped with `vine_curve` endpoints, phase boundaries
+  and carry endpoints all asserted against pinned absolutes and all green — and at the first
+  constants every vine, once the bug had landed, lived inside the 24 px the beetle sprite
+  covers, so the whole chew showed a bug on a flower with nothing visibly holding it.
+  `screenshot --region` was the only thing that could say so.
+
+  So: **if the animation draws on a layer, one of your checks is a cropped screenshot, and
+  it is not optional.** The tell that you need one is a drawn overlay whose target is
+  *another sprite* — an outline, a tether, a grip, a highlight — because the thing that
+  hides it is the sprite it is about, and that relationship exists in no number either
+  object holds. Read [[palette-against-the-background]] for the same failure in colour.
 
 ## Two smaller things worth knowing
 

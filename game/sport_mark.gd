@@ -1,7 +1,7 @@
 class_name SportMark
 extends Node2D
 
-## The three diamonds over a mutated plant. A node rather than something painted
+## The hazard badge over a mutated plant. A node rather than something painted
 ## inside `Plant._draw`, and the reason is coverage rather than taste: seven of the
 ## nine plant scripts override `_draw` and call `draw_reach_ring()` themselves, so a
 ## cue added to the base class's `_draw` would appear on two kinds and silently not
@@ -50,12 +50,14 @@ func _draw() -> void:
 	fill.a *= fade
 	var rim: Color = PlantMutation.BADGE_RIM
 	rim.a *= fade
-	var star: Color = PlantMutation.STAR_COLOR
-	star.a *= fade
+	var ink: Color = PlantMutation.TREFOIL_COLOR
+	ink.a *= fade
 	draw_circle(PlantMutation.BADGE_CENTRE, PlantMutation.BADGE_RADIUS, fill)
 	# The rim as an arc rather than a second, larger disc under the first: a disc
 	# would paint over whatever the badge overlaps, and this cue sits off the plant's
 	# shoulder where the grass and sometimes a neighbour's leaves are.
 	draw_arc(PlantMutation.BADGE_CENTRE, PlantMutation.BADGE_RADIUS, 0.0, TAU, 20, rim,
 		PlantMutation.BADGE_RIM_WIDTH, true)
-	draw_colored_polygon(PlantMutation.badge_star(), star)
+	for blade: PackedVector2Array in PlantMutation.badge_trefoil():
+		draw_colored_polygon(blade, ink)
+	draw_circle(PlantMutation.BADGE_CENTRE, PlantMutation.TREFOIL_HUB, ink)

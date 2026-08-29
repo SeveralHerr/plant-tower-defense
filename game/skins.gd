@@ -59,10 +59,14 @@ const DEFAULT_SKIN := &"default"
 ## which is the only family with no unlock condition.
 ##
 ## Colours are ordinary `Sprite2D.modulate` multipliers, the same mechanism
-## `Pest.MUTATION_TINT` and `PlantMutation.TINT` already use — a value below 1.0
-## darkens that channel, above 1.0 brightens it. Chosen to be visibly distinct from
-## every mutation/sport tint already in the game (Pest.MUTATION_TINT,
-## PlantMutation.TINT) so a skinned plant or pest never reads as a mutated one.
+## `Pest.MUTATION_TINT` uses — a value below 1.0 darkens that channel, above 1.0
+## brightens it. Chosen to be visibly distinct from `Pest.MUTATION_TINT` so a skinned
+## pest never reads as a mutated one.
+##
+## A mutated PLANT is no longer a tint at all and so cannot collide with one of these:
+## a sport wears its own derived drawing and `PlantMutation.SPORT_MODULATE` is white.
+## That also means a sport shows no skin — see that constant for why the run's own state
+## wins over a standing preference, which is the rule the old sport tint already had.
 const FAMILIES: Array[Dictionary] = [
 	{
 		"id": DEFAULT_SKIN,

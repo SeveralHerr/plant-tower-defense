@@ -33,6 +33,25 @@ so regenerating is `git diff`-visible and never a manual copy/paste --
 the two places that can drift are reduced to the one spec. `--check-*`
 compares instead of writing and exits 1 on any mismatch (for a gate); use it
 in `/verify` or a pre-commit hook wherever a *.json spec here changes.
+
+WHAT THIS DOES NOT COVER -- deliberately phrased without the contract marker
+`check_all.py` discovers checkers by, which is the same resolution citation_rebind.py
+and gen_pulse_cue.py reached. A tool carrying that marker is run as a checker, bare;
+this one cannot run bare (every mode needs a spec path), so it is registered in
+check_all.py's NOT_A_CHECKER instead and must not also declare the marker -- carrying
+both makes it UNCLASSIFIED, which is that gate correctly refusing to guess.
+
+The blind spot itself: this is a GENERATOR. It makes a branch table and its assertions
+derive from one spec so the two cannot drift; it says nothing about whether the spec is
+RIGHT. A case list that is complete, ordered, internally consistent and describes the
+WRONG behaviour generates a function and a test that agree with each other perfectly and
+are both wrong -- and that test can never fail, because it came from the same source as
+the code it checks. Generating both halves buys you no independent witness; it only
+guarantees they say the same thing. It compiles nothing either: only import_check.py and
+lint_project.gd do that, and neither is parallel-safe.
+
+`--check-func`/`--check-test` do honour the 0-same/1-drifted exit convention, and they
+are the real gate -- run them from /verify or a hook wherever a spec here changes.
 """
 
 from __future__ import annotations

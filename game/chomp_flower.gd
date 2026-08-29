@@ -18,6 +18,32 @@ extends Plant
 ## cells so it still only covers the lane it is actually next to.
 const GRAB_RADIUS: float = Board.CELL * 1.15
 
+## HOW FAR PAST THE FLOWER a pest has to walk before the mouth will close on it.
+##
+## Without this the Chomp bites at the LEADING edge of its circle — the bug is caught
+## before it is even level with the plant, which reads as a trap rather than as an
+## ambush. The flower now lets them come on a bit and snaps from behind.
+##
+## A quarter of a `Board.CELL`, and it is an ABSOLUTE rather than a fraction of
+## `grab_radius()` on purpose: the ladder buys reach (1.00 -> 1.13 -> 1.26), and a lead
+## scaled to reach would mean a flower that costs more waits LONGER before eating, which
+## is not what any rung is selling. 16 px is "a little past the stem" at every rung.
+##
+## THE ARITHMETIC THIS NUMBER LIVES OR DIES BY, because the failure mode is silence. A
+## Chomp stands on grass and its prey walks the road one `Board.CELL` away, so the reach
+## only covers a chord: at rung 1 the half-width along the road is
+## sqrt(73.6^2 - 64^2) = 36.3 px. Requiring 16 px of it leaves a 20.3 px window. The
+## fastest pest in the table is the aphid at 78 px/s, doubled by `GameSpeed`'s 2x step,
+## which is ~2.6 px per physics frame — about eight frames to notice the bug in the
+## window and close on it.
+##
+## Push this number past the chord's half-width and the flower eats NOTHING, with no
+## error anywhere, because "found no prey" and "there is no prey" look identical — the
+## same failure `GRAB_RADIUS` above records from when it was 62. That is why
+## `test_the_pass_window_stays_open_for_every_species_at_double_speed` exists and why it
+## is written against frames rather than pixels.
+const GRAB_LEAD: float = Board.CELL * 0.25
+
 ## The mouth's ladder — the second one in the game, and the first that is not the
 ## cob's (see `Plant.upgrade_ladder` for the surface this fills in).
 ##
@@ -309,6 +335,125 @@ const BITE_SQUASH_OUT_SECONDS: float = 0.06
 const BITE_LUNGE_BACK_SECONDS: float = 0.13
 const BITE_SQUASH_BACK_SECONDS: float = 0.12
 
+## THE CATCH — the vines, the haul, and where the meal sits while it is eaten.
+##
+## What this replaces: a grab used to be a 0.05s lunge and a texture swap, and the bug
+## simply stopped where it stood on the road. Nothing showed the flower REACHING and
+## nothing showed the bug being TAKEN, so a Chomp at work read as a bug that had halted
+## next to a flower that twitched once.
+##
+## The shape now, in three beats off one clock (`_capture_elapsed`):
+##
+##   lash  — vines shoot from the flower's base out to the bug, curving as they go.
+##   haul  — the vines retract and straighten, and the bug arcs up onto the flower.
+##   chew  — the bug sits in `CARRY_ANCHOR` with the vines clasping it, and the bite,
+##           the champ, the chew ring and the eating sprites all play as before.
+##
+## THE MEAL CLOCK IS NOT TOUCHED. `_chew_left` starts counting on the frame the mouth
+## closes exactly as it always has, and the lash and the haul happen inside the first
+## fraction of it. That is a deliberate refusal to change balance: `chew_seconds` is a
+## table half a dozen tests and the whole playtest sweep assert against, and a catch
+## animation that added a third of a second to every meal would be a nerf hidden in an
+## animation commit.
+##
+## NO TWEEN OWNS ANY OF IT. Everything below is a pure function of `_capture_elapsed`,
+## which `_chew` advances every frame — `.claude/skills/assert-an-animation`'s first
+## rung. The alternative (tween the pest onto the flower, tween it back) puts the pest's
+## drawn position inside something headless never runs, and this project has paid for
+## that shape twice already.
+
+## Where a caught bug is eaten, in the flower's own space. Straight up: STYLE.md puts a
+## plant's long axis up-screen, so this is the mouth, and any sideways component would
+## read as the bug perched on a leaf.
+##
+## -20 rather than something bigger: the flower's petals reach r=24 and the fang crown
+## sits at r=25.3-30.7 (see `_build_chew_layer` for where those numbers were measured),
+## so a bug at 20 px sits INSIDE the crown with its own body overlapping the head. That
+## is the picture — held in the mouth. Lifting it clear of the fangs would read as a bug
+## hovering above a plant that is not touching it.
+const CARRY_ANCHOR := Vector2(0.0, -20.0)
+
+## How high the bug is thrown on the way up, above the straight line from road to mouth.
+## The arc is what makes the haul read as a YANK rather than a slide; at 0 the bug tracks
+## the chord and looks magnetised.
+const HAUL_ARC_HEIGHT: float = 16.0
+
+## The catch's two beats at full length, for a meal long enough to afford them.
+##
+## An aphid's whole `chew_seconds` is 0.45 (`Pest.SPECIES`), so a fixed 0.32s catch would
+## be five sixths of an aphid's life in a mouth — the bug would land on the flower and be
+## killed almost immediately, and the eating sprite would barely appear.
+## `capture_seconds_for` therefore caps the catch at a FRACTION of the meal rather than
+## spending a constant: a beetle gets the full lash-and-haul, an aphid gets a fast snatch
+## at the same shape.
+const LASH_SECONDS: float = 0.10
+const HAUL_SECONDS: float = 0.22
+const CAPTURE_SECONDS: float = LASH_SECONDS + HAUL_SECONDS
+
+## The cap. 0.40 leaves an aphid (0.45s meal) 0.18s of catch and 0.27s of visible eating,
+## which is the smallest split where the eating sprite is still a thing a player sees.
+const CAPTURE_CHEW_FRACTION: float = 0.40
+
+## Three vines, because three is the smallest number that can clasp something from more
+## than one side — two read as a pair of tongs, and the grip pads below are placed on a
+## ring, so two would sit opposite each other and the bug would look pinched rather than
+## held.
+const VINE_COUNT: int = 3
+const VINE_SEGMENTS: int = 10
+
+## How far apart the vines leave the flower, and how far apart they take hold of the bug.
+## The roots fan across the head; the grips sit on a small ring around the meal.
+##
+## MEASURED, and both numbers were moved once for the same reason. At a spread of 5 and a
+## grip radius of 7 the whole vine, once the bug had landed, lived inside the 24 px the
+## beetle sprite covers: the lash and the haul read perfectly and the CHEW -- which is
+## most of a meal, and all of a beetle's two and a half seconds -- showed a bug sitting on
+## a flower with nothing visibly holding it. Photographed at 90x90 px, cycle 175.
+##
+## 13 and 11 put the roots out near the petal line and the grips out on the bug's rim, so
+## three vines are still visible on either side of the meal for the whole chew. Both stay
+## inside the fang crown's band (r=25.3-30.7, see `_build_chew_layer`), so a holding vine
+## never crosses the level readout.
+const VINE_ROOT_SPREAD: float = 13.0
+const GRIP_RADIUS: float = 11.0
+
+## The bow in a vine that is still reaching, in pixels of sideways displacement at its
+## midpoint. Alternating in sign per vine (see `vine_bow`), so the three do not overlay
+## into one thick line.
+const VINE_BOW: float = 9.0
+
+## What the bow shrinks to once the vine is pulling. A vine hauling a bug is under load
+## and a loaded rope is straight; keeping the full bow through the haul reads as three
+## slack ribbons that happen to be moving.
+##
+## Not zero, and that is the same measurement VINE_ROOT_SPREAD records: this is also the
+## bow a vine keeps for the whole CHEW, and three straight lines 20 px long behind a
+## beetle are three lines nobody can see.
+const VINE_TAUT_SLACK: float = 0.45
+
+## The writhe: the bow breathes while the vine is out, so a vine that is holding a beetle
+## for two and a half seconds is not a frozen curve. Faster than the plant's own breathe
+## (`Plant.BREATHE_RATE` 2.0) for the reason the champ is faster than it too — a cue that
+## does not out-read the idle motion reads as nothing.
+const VINE_WRITHE_RATE: float = 7.0
+const VINE_WRITHE_AMOUNT: float = 0.22
+
+## Drawn as a dark rim with a lighter core down the middle, the same two-pass shape the
+## fang crown uses, and for the same reason `.claude/skills/palette-against-the-background`
+## gives: a vine crosses BOTH surfaces of this board on its way to a bug — grass #2ECC71
+## and road dirt #BB8044 (`Board`'s header sampled both) — and no single green is clearly
+## legible on both. A near-black green rim is, on either.
+const VINE_RIM_WIDTH: float = 4.0
+const VINE_CORE_WIDTH: float = 1.8
+const VINE_RIM_COLOR := Color(0.05, 0.18, 0.10, 1.0)
+const VINE_CORE_COLOR := Color(0.29, 0.60, 0.32, 1.0)
+
+## The grip pad at each vine's tip. It wears the reach ring's pink rather than a green,
+## so the point of contact is the one part of the vine that cannot be mistaken for a leaf
+## of the plant or a blade of the grass it is crossing.
+const VINE_TIP_RADIUS: float = 2.6
+const VINE_TIP_COLOR := Color(0.86, 0.44, 0.62, 1.0)
+
 var _held: Pest = null
 var _chew_left: float = 0.0
 ## How many bites of the current meal have landed. Reset per meal, so a flower that
@@ -338,6 +483,24 @@ var _eating_late_texture: Texture2D = null
 ## This is the ONLY source the tween below reads, so the field and the picture cannot
 ## disagree.
 var _bite_lunge: Vector2 = Vector2.ZERO
+
+## Seconds since the mouth closed on the current meal. The single clock every part of the
+## catch is derived from — see the CATCH block above. Reset by `_grab` and by `release`,
+## advanced by `_chew`, and it keeps running past the end of the haul because the vines
+## writhe for the whole meal.
+var _capture_elapsed: float = 0.0
+
+## The vector the current meal's BODY has to travel to reach the mouth, in the pest's own
+## space, recorded once when the mouth closes.
+##
+## Recorded rather than recomputed per frame because the pest's node does not move while
+## it is held, so the answer cannot change — and because recomputing it from the pest's
+## drawn position would make the haul chase its own tail.
+var _carry_travel: Vector2 = Vector2.ZERO
+
+## The canvas the vines paint on. Added BEFORE the chew ring's layer so the countdown
+## reads over the top of them: the vines are flavour and the ring is a number.
+var _vine_layer: Node2D = null
 
 
 ## This flower's ladder. The one override the generic upgrade surface needs — see
@@ -424,6 +587,8 @@ static func fang_offsets(for_level: int) -> PackedFloat32Array:
 ## mouth stuck "busy" pointing at a freed pest.
 func _on_setup() -> void:
 	destroyed.connect(func(_p: Plant) -> void: release())
+	# Vines first, so the chew ring's canvas is added after them and paints on top.
+	_build_vine_layer()
 	_build_chew_layer()
 
 
@@ -511,6 +676,13 @@ func _act(delta: float, pests: Array[Pest]) -> void:
 		if pest.is_winged:
 			winged += 1
 		else:
+			# Counted WITHOUT the lead check above. This number feeds
+			# `idle_only_because_of_flight`, whose whole sentence is "everything in
+			# reach flies" — and a walker that has not gone past yet does not make that
+			# sentence true, it just makes it early. Folding the lead in here would put
+			# the flight hint on screen for the fraction of a second before every
+			# ordinary catch, which is the one thing that signal's rising edge exists
+			# to avoid.
 			grabbable += 1
 	if not idle_only_because_of_flight(winged, grabbable):
 		_flight_noted = false
@@ -535,6 +707,52 @@ static func idle_only_because_of_flight(winged_in_reach: int, grabbable_in_reach
 	return winged_in_reach > 0 and grabbable_in_reach == 0
 
 
+## Pure: how far past this flower the pest has walked, in pixels along its OWN
+## direction of travel. Negative while it is still coming, 0 as it goes by the stem,
+## positive once it is leaving.
+##
+## A projection and not a coordinate comparison, which is the whole reason it is a
+## function: the road turns four times, so "past" is a different axis and a different
+## sign in each leg of it. `PATH_CORNERS` walks +X, then +Y, then -X, then +Y, then +X,
+## then -Y, then +X — a rule written as `pest.x > plant.x` would be correct on the three
+## legs that run +X, backwards on the one that runs -X, and simply meaningless on the
+## three vertical ones.
+##
+## Static and pure so the sign is assertable for all four headings with no board, no
+## pest and no frame — see `test_a_chomp_waits_for_a_pest_to_pass_from_every_direction`.
+static func pass_distance(plant_at: Vector2, pest_at: Vector2, heading: Vector2) -> float:
+	if heading.length_squared() <= 0.0001:
+		return 0.0
+	return (pest_at - plant_at).dot(heading.normalized())
+
+
+## Pure: is this pest far enough past the flower for the mouth to close?
+##
+## A pest with NO heading is grabbable, and that default is deliberate rather than
+## incidental. `travel_direction()` cannot currently answer zero — `_facing` is set at
+## spawn — but if it ever did, the two available failures are "eats slightly early" and
+## "never eats again, silently". This class has already paid for the second one once
+## (see `GRAB_RADIUS`), so the degenerate case falls back to the behaviour that shipped.
+static func is_past_enough(plant_at: Vector2, pest_at: Vector2, heading: Vector2,
+		lead: float) -> bool:
+	if heading.length_squared() <= 0.0001:
+		return true
+	return pass_distance(plant_at, pest_at, heading) >= lead
+
+
+## Pure: the widest a pest can be caught in, along the road, for a flower at `for_level`.
+##
+## Half the chord the reach cuts across a lane one `Board.CELL` away, minus the lead the
+## bug has to spend getting past first. This is the number that goes to zero when the
+## lead is set too long, and `0.0` here means a flower that never eats.
+static func pass_window_for(for_level: int) -> float:
+	var reach: float = grab_radius_for(for_level)
+	var across: float = reach * reach - Board.CELL * Board.CELL
+	if across <= 0.0:
+		return 0.0
+	return maxf(0.0, sqrt(across) - GRAB_LEAD)
+
+
 func _nearest_free_pest(pests: Array[Pest]) -> Pest:
 	var best: Pest = null
 	var best_distance: float = grab_radius()
@@ -549,6 +767,13 @@ func _nearest_free_pest(pests: Array[Pest]) -> Pest:
 		# with the boss let go, which is a mouth that wasted the whole fight rather than
 		# a mouth that never opened.
 		if pest.held_by != null or pest.is_winged or not pest.can_be_held():
+			continue
+		# The ambush. Checked BEFORE the distance so a bug still approaching is not
+		# merely out-ranked by a nearer one — it is not prey yet at all, and a Chomp
+		# with one bug in front of it and nothing else must stay idle rather than
+		# closing early on the only thing it can see.
+		if not is_past_enough(global_position, pest.global_position,
+				pest.travel_direction(), GRAB_LEAD):
 			continue
 		var d: float = pest.global_position.distance_to(global_position)
 		if d <= best_distance:
@@ -578,6 +803,20 @@ func _grab(pest: Pest) -> void:
 	pest.held_by = self
 	_chew_total = chew_seconds_against(pest.chew_seconds)
 	_chew_left = _chew_total
+	# The catch, and note it is composed here rather than inside `_bite()` alongside the
+	# lunge: the lunge is the flower's own head moving and belongs to the bite, while the
+	# haul is a fact about THIS MEAL that outlives the 0.05s the bite lasts.
+	#
+	# Above every animation gate, the same rule `_bite_lunge` follows. The direction and
+	# length of the journey are the part of this animation that can be WRONG, and the
+	# whole of `_draw_vines` is unreachable headless.
+	_capture_elapsed = 0.0
+	_carry_travel = (global_position + CARRY_ANCHOR) - pest.global_position
+	pest.set_carried(true)
+	# Explicitly zero on the frame of the grab rather than left to the first `_chew`:
+	# `carry_offset_at(travel, 0)` IS `Vector2.ZERO`, and writing it makes a flower that
+	# grabs a pest a previous flower had half-hauled put the body back on the road first.
+	pest.set_carry_offset(carry_offset_at(_carry_travel, 0.0))
 	_bite()
 	# ONLY if the gape did not take. `_bite()` wears the open jaw for
 	# BITE_SQUASH_OUT_SECONDS and its own timer hands over to the eating sprite, so
@@ -593,6 +832,7 @@ func _grab(pest: Pest) -> void:
 		_show_eating_sprite()
 	queue_redraw()
 	_redraw_chew_layer()
+	_redraw_vine_layer()
 
 
 func _chew(delta: float) -> void:
@@ -600,6 +840,14 @@ func _chew(delta: float) -> void:
 		release()
 		return
 	_chew_left -= delta
+	# The catch, ABOVE the animation gate and before the bites, for the reason
+	# `.claude/skills/assert-an-animation` gives at its first rung: the body's position is
+	# a pure function of a clock this object already advances, so it is correct on every
+	# frame including the ones a headless run never renders. There is no Tween anywhere in
+	# the haul, which is what makes `release()` able to put the bug back by writing a zero.
+	_capture_elapsed += delta
+	_held.set_carry_offset(carry_offset_at(_carry_travel,
+		haul_progress(_capture_elapsed, _chew_total)))
 	# The bites. Recorded and applied ABOVE the animation gate, because the fraction
 	# eaten is game state the suite reads and only its DRAWING is gated -- the rule
 	# test_combat.gd:6331 states for every animation in this game.
@@ -614,12 +862,23 @@ func _chew(delta: float) -> void:
 		_show_eating_late_sprite()
 	queue_redraw()
 	_redraw_chew_layer()
+	_redraw_vine_layer()
 	if _chew_left <= 0.0:
 		var meal: Pest = _held
-		release()
+		# Killed BEFORE the release, which is a REVERSAL of the order this line had and is
+		# load-bearing. `Pest.kill()` sets `_alive` false and then calls back into
+		# `release()` through `held_by` itself, and `Pest.set_carried(false)` deliberately
+		# refuses to let go of a dead pest's carry offset. In the old order the meal was
+		# put back down on the road and killed one line later, so the corpse of a bug
+		# eaten on top of a flower appeared a cell away on the path.
+		#
 		# Bitten, so the corpse is squashed rather than straight -- a Chomp closes
 		# on the whole pest (plant-tower-defense-f5z6).
 		meal.kill(Pest.DEATH_BITTEN)
+		# The belt to kill()'s braces. A meal that somehow reached here without a
+		# `held_by` pointing back at this flower would leave the mouth wedged shut.
+		if _held != null:
+			release()
 
 
 ## Drops whatever is in the mouth and frees the flower. Called by Pest.kill() too,
@@ -633,13 +892,22 @@ func release() -> void:
 		# the kill ever being scored.
 		if _held.is_alive():
 			_held.set_chewed(0.0)
+		# Back on the road, and instantly rather than over an eased return. The offset is
+		# the only thing standing between where the pest is DRAWN and where every other
+		# system already thinks it is, so an animated climb-down would be a window in
+		# which a kernel passes visibly through a bug it is entitled to hit. A pest
+		# released dead keeps its offset — see `Pest.set_carried`.
+		_held.set_carried(false)
 	_held = null
 	_chew_left = 0.0
 	_bites_taken = 0
 	_chew_total = 0.0
+	_capture_elapsed = 0.0
+	_carry_travel = Vector2.ZERO
 	_show_idle_sprite()
 	queue_redraw()
 	_redraw_chew_layer()
+	_redraw_vine_layer()
 
 
 func is_busy() -> bool:
@@ -767,6 +1035,189 @@ static func lunge_offset(from: Vector2, to: Vector2) -> Vector2:
 	return delta.normalized() * LUNGE_DISTANCE
 
 
+## Pure: how long THIS meal's catch lasts, given the meal's whole chew.
+##
+## The cap is the point — see CAPTURE_CHEW_FRACTION. `maxf(0.0, ...)` rather than trusting
+## the caller: `_chew_total` is 0.0 for a flower with an empty mouth, and every progress
+## function below divides by a span derived from this.
+static func capture_seconds_for(chew_total: float) -> float:
+	return minf(CAPTURE_SECONDS, maxf(0.0, chew_total) * CAPTURE_CHEW_FRACTION)
+
+
+## Pure: how much of that catch is the vines reaching out, the rest being the haul.
+## The two beats keep their full-length RATIO whatever the cap does to their sum, so a
+## snatched aphid and a hauled queen are the same gesture at different speeds rather than
+## two different gestures.
+static func lash_seconds_for(chew_total: float) -> float:
+	return capture_seconds_for(chew_total) * (LASH_SECONDS / CAPTURE_SECONDS)
+
+
+## Pure: 0.0 as the vines leave the flower, 1.0 when they have reached the bug.
+##
+## Answers 1.0 for a zero-length catch rather than dividing by it. That is the correct
+## answer and not a guard: a catch with no time in it is one that has already finished,
+## and the alternative (0.0) would leave the vines permanently retracted on exactly the
+## meals too short to show them.
+static func lash_progress(elapsed: float, chew_total: float) -> float:
+	var span: float = lash_seconds_for(chew_total)
+	if span <= 0.0:
+		return 1.0
+	return clampf(elapsed / span, 0.0, 1.0)
+
+
+## Pure: 0.0 while the vines are still reaching, then 0.0 -> 1.0 as the bug is dragged in,
+## then 1.0 for the whole of the chew.
+static func haul_progress(elapsed: float, chew_total: float) -> float:
+	var lash: float = lash_seconds_for(chew_total)
+	var span: float = capture_seconds_for(chew_total) - lash
+	if span <= 0.0:
+		return 1.0
+	return clampf((elapsed - lash) / span, 0.0, 1.0)
+
+
+## Smoothstep, clamped. Named rather than inlined at its four call sites so a test can pin
+## the endpoints once: `smooth(0) == 0` and `smooth(1) == 1` are what make every geometry
+## function below land EXACTLY on its endpoints instead of near them.
+static func smooth(t: float) -> float:
+	var c: float = clampf(t, 0.0, 1.0)
+	return c * c * (3.0 - 2.0 * c)
+
+
+## Pure: where the meal's body is, relative to where its node stands, at a point in the
+## haul. This is the value `Pest.set_carry_offset` receives.
+##
+## `travel` is the whole journey, road to mouth. At 0 the answer is exactly `Vector2.ZERO`
+## — the bug is still on the road, which is where every other system thinks it is — and at
+## 1 it is exactly `travel`, because `smooth(1)` is 1 and `sin(PI)` is 0. Both endpoints
+## being exact is what lets `release` restore the road position by writing a zero rather
+## than by remembering one.
+##
+## The lift is a half-sine over the whole haul, so it is zero at both ends and highest in
+## the middle: the bug goes UP off the road, over, and down into the mouth.
+static func carry_offset_at(travel: Vector2, haul_t: float) -> Vector2:
+	var t: float = clampf(haul_t, 0.0, 1.0)
+	return travel * smooth(t) + Vector2(0.0, -sin(t * PI) * HAUL_ARC_HEIGHT)
+
+
+## Pure: where vine `index` leaves the flower, in the flower's own space. A fan across the
+## head rather than three vines from one point, which would read as one thick vine.
+static func vine_root(index: int) -> Vector2:
+	if VINE_COUNT <= 1:
+		return Vector2.ZERO
+	var across: float = float(index) / float(VINE_COUNT - 1) - 0.5
+	return Vector2(across * 2.0 * VINE_ROOT_SPREAD, 0.0)
+
+
+## Pure: where vine `index` takes hold of the meal, relative to the meal's centre. A ring,
+## so the three grips clasp the bug from three sides instead of all landing on its middle.
+static func grip_offset(index: int) -> Vector2:
+	var angle: float = TAU * float(index) / float(VINE_COUNT) + PI * 0.5
+	return Vector2(cos(angle), sin(angle)) * GRIP_RADIUS
+
+
+## Pure: where vine `index`'s tip is, in the flower's own space.
+##
+## `prey_local` is where the BODY is being drawn right now — the pest's node position plus
+## whatever `carry_offset_at` has done to it — so this one expression covers all three
+## beats: during the lash it scales out from the flower toward a stationary bug, and from
+## the end of the lash onward (`smooth(1) == 1`) it simply IS the bug's grip point, which
+## the haul is meanwhile dragging home. The vines cannot drift off the meal because they
+## are not independently animated.
+static func vine_tip(index: int, prey_local: Vector2, lash_t: float) -> Vector2:
+	return (prey_local + grip_offset(index)) * smooth(lash_t)
+
+
+## Pure: how much bow is left in a vine at this point in the haul. Full while reaching,
+## VINE_TAUT_SLACK once the load is on. See VINE_TAUT_SLACK.
+static func vine_slack(haul_t: float) -> float:
+	return lerpf(1.0, VINE_TAUT_SLACK, smooth(haul_t))
+
+
+## Pure: the sideways displacement of vine `index`'s midpoint, sign included.
+##
+## Alternating sign is what separates the three; the writhe is what keeps them alive
+## through a long meal. Pinned against VINE_BOW rather than expressed only as a multiple
+## of the writhe, so zeroing VINE_WRITHE_AMOUNT does not leave every claim about this
+## function trivially true (`assert-an-animation`'s second failure mode).
+static func vine_bow(index: int, clock: float, slack: float) -> float:
+	var side: float = 1.0 if index % 2 == 0 else -1.0
+	var writhe: float = 1.0 + sin(clock * VINE_WRITHE_RATE + float(index) * 1.7) * VINE_WRITHE_AMOUNT
+	return side * VINE_BOW * writhe * clampf(slack, 0.0, 1.0)
+
+
+## Pure: one vine, as a polyline. A quadratic Bezier with its control point pushed
+## `bow` px off the perpendicular bisector of `from` -> `to`.
+##
+## The first and last points are EXACTLY `from` and `to` — a Bezier's endpoints are its
+## endpoints — which is the property worth having: a vine that stops short of the bug or
+## starts short of the plant is the failure this shape rules out by construction rather
+## than by tuning.
+##
+## A degenerate span (bug on top of the flower, which `_nearest_free_pest` permits at
+## distance 0) leaves the control point at the midpoint and draws a dot, rather than
+## normalising a zero vector into NaN — the same guard, for the same reason, as
+## `lunge_offset`.
+static func vine_curve(from: Vector2, to: Vector2, bow: float, segments: int) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	var steps: int = maxi(2, segments)
+	var span: Vector2 = to - from
+	var normal := Vector2(-span.y, span.x)
+	if normal.length_squared() > 0.0001:
+		normal = normal.normalized()
+	else:
+		normal = Vector2.ZERO
+	var control: Vector2 = (from + to) * 0.5 + normal * bow
+	for i in range(steps + 1):
+		var t: float = float(i) / float(steps)
+		points.append(from.lerp(control, t).lerp(control.lerp(to, t), t))
+	return points
+
+
+## The vines' own canvas, above the flower and below the chew ring. Same reasoning as
+## `_build_chew_layer`, which measured the problem: a Node2D paints itself before its
+## children, so anything drawn in this class's own `_draw()` lands UNDER `_sprite`. A vine
+## drawn there would be a vine behind the plant.
+func _build_vine_layer() -> void:
+	if _vine_layer != null and is_instance_valid(_vine_layer):
+		return
+	_vine_layer = Node2D.new()
+	_vine_layer.name = "Vines"
+	add_child(_vine_layer)
+	_vine_layer.draw.connect(_draw_vines)
+
+
+## Paired with every `_redraw_chew_layer()` call rather than folded into it: they are two
+## canvases and a Chomp that repaints one and not the other is exactly the bug
+## `_redraw_chew_layer`'s own header was written about.
+func _redraw_vine_layer() -> void:
+	if _vine_layer != null and is_instance_valid(_vine_layer):
+		_vine_layer.queue_redraw()
+
+
+## The vines, drawn frame by frame from `_capture_elapsed`. Every number in here comes
+## from a pure static above; this function decides nothing.
+func _draw_vines() -> void:
+	if _held == null or not is_instance_valid(_held) or not _held.is_alive():
+		return
+	if _vine_layer == null or not is_instance_valid(_vine_layer):
+		return
+	# Where the body is being DRAWN, not where the node stands — the carry offset is the
+	# difference and it is the whole animation. See `Pest._carry_offset`.
+	var prey: Vector2 = _vine_layer.to_local(_held.global_position + _held.carry_offset())
+	var lash_t: float = lash_progress(_capture_elapsed, _chew_total)
+	var slack: float = vine_slack(haul_progress(_capture_elapsed, _chew_total))
+	for index in range(VINE_COUNT):
+		var tip: Vector2 = vine_tip(index, prey, lash_t)
+		var curve: PackedVector2Array = vine_curve(vine_root(index), tip,
+			vine_bow(index, _capture_elapsed, slack), VINE_SEGMENTS)
+		# Rim first, then the core down the middle of it — the fang crown's two-pass
+		# shape. See VINE_RIM_COLOR for the two surfaces this has to survive.
+		_vine_layer.draw_polyline(curve, VINE_RIM_COLOR, VINE_RIM_WIDTH, true)
+		_vine_layer.draw_polyline(curve, VINE_CORE_COLOR, VINE_CORE_WIDTH, true)
+		_vine_layer.draw_circle(tip, VINE_TIP_RADIUS + 1.0, VINE_RIM_COLOR)
+		_vine_layer.draw_circle(tip, VINE_TIP_RADIUS, VINE_TIP_COLOR)
+
+
 func _bite() -> void:
 	# Ahead of the tree-guard below: the mouth closing is the game event, and
 	# it happens whether or not there is a tree to play the squash tween in —
@@ -850,7 +1301,7 @@ func _show_gape_sprite() -> void:
 	if _idle_texture == null:
 		_idle_texture = _sprite.texture
 	if _gape_texture == null:
-		_gape_texture = load(GAPE_TEXTURE_PATH) as Texture2D
+		_gape_texture = load(frame_texture_path(GAPE_TEXTURE_PATH)) as Texture2D
 	if _gape_texture == null:
 		return
 	_sprite.texture = _gape_texture
@@ -870,7 +1321,7 @@ func _show_eating_sprite() -> void:
 	if _idle_texture == null:
 		_idle_texture = _sprite.texture
 	if _eating_texture == null:
-		_eating_texture = load(EATING_TEXTURE_PATH) as Texture2D
+		_eating_texture = load(frame_texture_path(EATING_TEXTURE_PATH)) as Texture2D
 	if _eating_texture != null:
 		_sprite.texture = _eating_texture
 
@@ -881,7 +1332,7 @@ func _show_eating_late_sprite() -> void:
 	if _idle_texture == null:
 		_idle_texture = _sprite.texture
 	if _eating_late_texture == null:
-		_eating_late_texture = load(EATING_LATE_TEXTURE_PATH) as Texture2D
+		_eating_late_texture = load(frame_texture_path(EATING_LATE_TEXTURE_PATH)) as Texture2D
 	if _eating_late_texture != null:
 		_sprite.texture = _eating_late_texture
 
