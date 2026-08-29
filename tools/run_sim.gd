@@ -110,6 +110,13 @@ var director: WaveDirector = null
 var plants: Dictionary = {}
 var lives: int = 0
 var starting_lives: int = 0
+## The profile's `seed_yield`, read in `play()` beside lives and prep, and the thing
+## `_on_pest_died` and `_on_plant_grew_seeds` pay through. Mirrors `Game.seed_yield`.
+##
+## 1.0 UNTIL `play()` READS THE PROFILE, so a policy or a test that reads it before the run
+## starts sees the designed game rather than a zero that would silently make every kill
+## worth one seed.
+var seed_yield: float = 1.0
 var weather: StringName = WaveDirector.WEATHER_CLEAR
 var wave: int = 0
 
@@ -173,6 +180,10 @@ func play(on_host: Node) -> Array[Dictionary]:
 	starting_lives = int(profile["lives"])
 	lives = starting_lives
 	_prep_seconds = float(profile["prep_seconds"])
+	# The economy axis, mirroring `Game._ready`'s read of the same key. Every value this
+	# driver takes from a difficulty is read HERE, off one `difficulty_profile()` lookup, so
+	# there is one place to look when asking what a profile changes about a run.
+	seed_yield = float(profile["seed_yield"])
 	bank = SeedBank.new()
 	bank.set_seed(roll_seed)
 	# The purse is set directly rather than through add_seeds(), so the difficulty's float
@@ -426,16 +437,22 @@ func _new_pest(species: StringName) -> Pest:
 	return pest
 
 
-## Mirrors `Game._on_pest_died`: seeds scaled by this wave's weather, then the husk, then
-## the brood — in that order, because the brood is the consequence of the kill rather than
-## part of paying for it.
+## Mirrors `Game._on_pest_died`: the difficulty's yield on the pest's value, then the
+## weather on the direct seeds, then the husk, then the brood — in that order, because the
+## brood is the consequence of the kill rather than part of paying for it.
+##
+## `seeds_after_yield` is CALLED, not re-derived, and it is applied to `pest.seed_value`
+## ONCE so the husk follows it without a second multiply and a second rounding. Both halves
+## of that sentence are the mirror: see `Game._on_pest_died`, which does the same two things
+## in the same order through the same function.
 func _on_pest_died(pest: Pest) -> void:
 	_w["killed"] = int(_w["killed"]) + 1
-	var paid: int = Game.weather_seed_value_for(pest.seed_value, weather)
+	var worth: int = Game.seeds_after_yield(pest.seed_value, seed_yield)
+	var paid: int = Game.weather_seed_value_for(worth, weather)
 	bank.add_seeds(paid)
 	_w["seeds_from_kills"] = int(_w["seeds_from_kills"]) + paid
 	compost.drop_husk(pest.position,
-		CompostMeter.husk_value_for(pest.seed_value, pest.husk_multiplier()))
+		CompostMeter.husk_value_for(worth, pest.husk_multiplier()))
 	_spawn_brood(pest)
 
 
@@ -476,10 +493,11 @@ func _sweep() -> void:
 		_w["seeds_from_husks"] = int(_w["seeds_from_husks"]) + value
 
 
-## Mirrors `Game._on_plant_grew_seeds` — a Sunflower's payout.
+## Mirrors `Game._on_plant_grew_seeds` — a Sunflower's payout, after the profile's yield.
 func _on_plant_grew_seeds(amount: int) -> void:
-	bank.add_seeds(amount)
-	_w["seeds_from_growth"] = int(_w["seeds_from_growth"]) + amount
+	var paid: int = Game.seeds_after_yield(amount, seed_yield)
+	bank.add_seeds(paid)
+	_w["seeds_from_growth"] = int(_w["seeds_from_growth"]) + paid
 
 
 ## Mirrors `Game._on_plant_destroyed`. No refund: a plant eaten is not a plant sold.

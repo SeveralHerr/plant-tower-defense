@@ -526,3 +526,258 @@ func test_the_thickening_policy_plants_past_the_point_greedy_stops() -> String:
 				+ "policy is then labelling one policy twice.")
 				% [thick, greedy, SHORT_RUN])
 	return err
+
+
+# =============================================================================
+# THE DIFFICULTY SELECTOR, AND WHETHER IT BINDS (plant-tower-defense-i8oh)
+#
+# The measurement that produced these: three profiles, one seed, 22 waves, both policies.
+# Before the `seed_yield` axis, the three ended IDENTICALLY -- overrun on wave 7 with every
+# bed spent under greedy, and reaching the ceiling under thicken having lost nothing and
+# earned 5735 seeds EACH, the same number three times to the digit. Lives cannot separate
+# runs that lose none, prep time cannot separate a policy that spends the instant the window
+# opens, and starting seeds are gone by wave 2.
+#
+# So the axis had to be one the run keeps spending, and the checks below are the three that
+# make it stay one: it is DERIVED (not a fourth free number), it is READ by the driver (not
+# restated in a table nothing consumes -- the failure mode this bead is about, and which
+# `blurb` in the same table is still an instance of, since nothing in the project displays
+# one), and it SEPARATES a real run rather than only its opening balance.
+# =============================================================================
+
+
+## `Game.seeds_after_yield` keeps its two promises across every pest this game ships.
+##
+## THE CORPUS IS `Pest.SPECIES`, not three numbers typed here: these are the actual values
+## the function is asked about at runtime (`Pest.seed_value` is `stats["seeds"]`), so a
+## species added with a seed value of 1 is priced by this test the day it lands rather than
+## the day somebody remembers a list.
+##
+## TWO PROMISES, and both are load-bearing. IDENTITY AT 1.0 is what makes standard bit-for-
+## bit the game it was: if `seeds_after_yield(n, 1.0) != n` for any n in the corpus, the
+## standard campaign was silently rebalanced by an axis that was supposed to leave it alone,
+## and `docs/playtest-runs.jsonl`'s standard rows would not have come back identical. NEVER
+## ZERO is the other: a kill that pays nothing is a kill the player cannot tell from a miss,
+## and the cheapest pest on the leanest profile is exactly where a bare `int(round(...))`
+## rounds a payment out of existence.
+func test_a_yield_never_rounds_a_kill_down_to_nothing_and_is_identity_at_one() -> String:
+	var values: Array[int] = []
+	for id: Variant in Pest.SPECIES:
+		var stats: Dictionary = Pest.SPECIES[id]
+		if stats.has("seeds"):
+			values.append(int(stats["seeds"]))
+	# The denominator. An empty corpus makes every assertion below pass over nothing, which
+	# is the vacuity CLAUDE.md names -- and it is reachable, because this reads a key out of
+	# a table rather than a declared list.
+	var err: String = _T.assert_gte(values.size(), 3,
+		("%d pest seed value(s) came out of Pest.SPECIES -- an empty or near-empty corpus "
+			+ "passes every check below without asking anything") % values.size())
+	if err != "":
+		return err
+	var priced: int = 0
+	for base: int in values:
+		err = _T.assert_eq(Game.seeds_after_yield(base, 1.0), base,
+			("a yield of 1.0 is the identity on %d. Standard's yield IS 1.0, so anything "
+				+ "else here means the standard campaign moved when this axis was added")
+				% base)
+		if err != "":
+			return err
+		for profile_name: StringName in Game.DIFFICULTY_ORDER:
+			var scale: float = float(Game.difficulty_profile(profile_name)["seed_yield"])
+			var paid: int = Game.seeds_after_yield(base, scale)
+			err = _T.assert_gt(paid, 0,
+				("a %d-seed pest on %s (yield %.2f) paid %d. A kill worth nothing is a kill "
+					+ "the player cannot tell from a miss") % [base, profile_name, scale, paid])
+			if err != "":
+				return err
+			priced += 1
+	# Zero passes through untouched: it is a source that produced nothing this frame, not a
+	# payment to be floored up to one. Asserted rather than assumed, because the `maxi(1,
+	# ...)` above would otherwise turn every empty income column in a wave record into a 1.
+	err = _T.assert_eq(Game.seeds_after_yield(0, 0.5), 0,
+		"a zero payment stays zero rather than being floored up to one seed")
+	if err != "":
+		return err
+	return _T.assert_eq(priced, values.size() * Game.DIFFICULTY_ORDER.size(),
+		"every pest value was priced on every profile (%d of %d)"
+			% [priced, values.size() * Game.DIFFICULTY_ORDER.size()])
+
+
+## The yield is the ratio the profile's other axes already take, not a fourth free number.
+##
+## DERIVED FROM THE TABLE, BY TYPE. The axes come out of the standard profile itself --
+## every numeric value in it except the yield -- so a fifth number added to a profile joins
+## this check the day it is added, and `label` and `blurb` are skipped because they are
+## Strings rather than because they are named here.
+##
+## The band is what the other axes span, not an exact figure: gentle already runs 1.44 (26s
+## of 18) to 1.6 (40 seeds of 25) and there is no single ratio to hit. What the band refuses
+## is the thing that has no reason behind it -- a yield of 3.0 on a profile whose every
+## other axis says "half again", which is how a difficulty selector stops being one bundle
+## and becomes a table of unrelated dials.
+func test_the_seed_yield_takes_the_ratio_the_other_axes_take() -> String:
+	var standard: Dictionary = Game.DIFFICULTIES[Game.DIFFICULTY_STANDARD]
+	var err: String = _T.assert_float_eq(float(standard["seed_yield"]), 1.0, 0.0001,
+		("standard's yield is exactly 1.0. `seeds_after_yield(n, 1.0)` returns n for every "
+			+ "n, so the standard campaign is bit-for-bit the game it was before this axis "
+			+ "existed -- any other value here silently rebalances the designed game"))
+	if err != "":
+		return err
+	var profiles_checked: int = 0
+	for profile_name: StringName in Game.DIFFICULTY_ORDER:
+		var profile: Dictionary = Game.difficulty_profile(profile_name)
+		err = _T.assert_true(profile.has("seed_yield"),
+			("%s has no `seed_yield`. Every profile carries every axis or the run reading "
+				+ "it indexes into nothing at _ready time") % profile_name)
+		if err != "":
+			return err
+		var lowest: float = 0.0
+		var highest: float = 0.0
+		var axes: int = 0
+		for key: Variant in standard:
+			var axis: String = String(key)
+			if axis == "seed_yield":
+				continue
+			var baseline: Variant = standard[key]
+			# BY TYPE, not by name: `label` and `blurb` are Strings and drop out here
+			# without a list of exclusions anyone has to remember to extend.
+			if not (baseline is int or baseline is float):
+				continue
+			err = _T.assert_true(profile.has(key),
+				"%s is missing the `%s` axis that standard has" % [profile_name, axis])
+			if err != "":
+				return err
+			var ratio: float = float(profile[key]) / float(baseline)
+			if axes == 0 or ratio < lowest:
+				lowest = ratio
+			if axes == 0 or ratio > highest:
+				highest = ratio
+			axes += 1
+		# The denominator, and not `> 0`: one axis is not a band, it is a coincidence.
+		err = _T.assert_gte(axes, 2,
+			("%s was priced against %d numeric axis(es) of standard's -- a band needs two, "
+				+ "and an empty sweep here would pass every yield there is")
+				% [profile_name, axes])
+		if err != "":
+			return err
+		var got: float = float(profile["seed_yield"])
+		err = _T.assert_true(got >= lowest - 0.001 and got <= highest + 0.001,
+			("%s's seed_yield is %.3f and its other %d axes run %.3f to %.3f against "
+				+ "standard. A yield outside the band its own profile already agreed on is "
+				+ "a number with no reason behind it, and the blurb in the same row will "
+				+ "not describe it")
+				% [profile_name, got, axes, lowest, highest])
+		if err != "":
+			return err
+		profiles_checked += 1
+	return _T.assert_eq(profiles_checked, Game.DIFFICULTY_ORDER.size(),
+		"every ordered profile was priced (%d of %d)"
+			% [profiles_checked, Game.DIFFICULTY_ORDER.size()])
+
+
+## The DRIVER reads the yield off the profile, rather than paying the standard rate.
+##
+## The shape `test_the_difficulty_profile_is_read_rather_than_restated` above uses, for the
+## axis added by plant-tower-defense-i8oh, and for the same reason: an axis written into
+## `DIFFICULTIES` that nothing on the path a run takes ever reads is the exact defect that
+## bead is about. `RunSim.seed_yield` is 1.0 until `play()` reads the profile, so a driver
+## that never made the read fails this on gentle and on harsh and passes on standard --
+## which is why all three are checked and not just one.
+func test_the_run_reads_the_profiles_seed_yield_rather_than_paying_the_standard_rate() -> String:
+	var checked: int = 0
+	for profile_name: StringName in Game.DIFFICULTY_ORDER:
+		var host: Node2D = _host()
+		await _T.instantiate_scene(host)
+		var sim := RunSim.new()
+		sim.wave_ceiling = 1
+		sim.roll_seed = 4242
+		sim.difficulty = profile_name
+		var before: float = sim.seed_yield
+		sim.play(host)
+		var after: float = sim.seed_yield
+		var strays: int = sim.foreign_pests + sim.foreign_plants
+		var failure: String = sim.failure
+		# The host first and the sim's four parentless nodes second, for the reason
+		# `_play()` above gives at length.
+		_T.free_ui(host)
+		sim.dispose()
+
+		var err: String = _T.assert_eq(strays, 0,
+			"%s: a sibling test's nodes were in the tree-global groups" % profile_name)
+		if err == "":
+			err = _T.assert_eq(failure, "", "%s: the driver stopped the run itself -- %s"
+				% [profile_name, failure])
+		if err == "":
+			err = _T.assert_float_eq(before, 1.0, 0.0001,
+				("an unplayed run pays the designed rate rather than zero -- a 0.0 default "
+					+ "would make every kill worth exactly one seed and look like a tuning "
+					+ "choice"))
+		if err == "":
+			err = _T.assert_float_eq(after,
+				float(Game.difficulty_profile(profile_name)["seed_yield"]), 0.0001,
+				("%s did not take its profile's seed_yield into the run. This is the "
+					+ "assertion a driver that ignored the key passes on standard and "
+					+ "fails on the other two") % profile_name)
+		if err != "":
+			return err
+		checked += 1
+	return _T.assert_eq(checked, Game.DIFFICULTY_ORDER.size(),
+		"every ordered profile was played (%d of %d)"
+			% [checked, Game.DIFFICULTY_ORDER.size()])
+
+
+## THE ACCEPTANCE, pinned: the three profiles END a run differently, not only start one.
+##
+## EVERY ORDERED PAIR, under EVERY policy, rather than two example comparisons -- the claim
+## is a relation over the whole profile set and the wrong way to check a relation is to pick
+## two of its members (`.claude/skills/enumerate-the-pairs`). The expectation is DERIVED from
+## the table's own `seed_yield` rather than from the three names, so a retune that reorders
+## the profiles retunes this test with it and a retune that flattens them fails it.
+##
+## SEEDS EARNED, not lives and not the wave reached. Under `greedy` the policy stops buying
+## once the road is covered, so income is not what is binding and all three still fall on
+## the same wave; under `thicken` income is exactly what is binding and the gardens come out
+## 125, 116 and 79 plants over 22 waves. Earnings are the axis that moves under BOTH, which
+## is what makes this assertable inside a `/verify` budget instead of only in a campaign
+## sweep. The campaign numbers live in `docs/playtest-runs.jsonl`.
+func test_the_three_profiles_end_a_run_differently_and_not_only_start_it_differently() -> String:
+	var compared: int = 0
+	for policy_name: StringName in RunSim.POLICY_NAMES:
+		var earned: Dictionary = {}
+		for profile_name: StringName in Game.DIFFICULTY_ORDER:
+			var run: Dictionary = await _play(func(sim: RunSim) -> void:
+				sim.difficulty = profile_name
+				sim.use_policy(policy_name))
+			var err: String = _clean(run, "%s under %s" % [profile_name, policy_name])
+			if err != "":
+				return err
+			var total: int = 0
+			for record: Dictionary in run["records"] as Array:
+				total += int(record[&"seeds_earned"])
+			earned[profile_name] = total
+		for richer: StringName in Game.DIFFICULTY_ORDER:
+			for leaner: StringName in Game.DIFFICULTY_ORDER:
+				var rich_yield: float = float(Game.difficulty_profile(richer)["seed_yield"])
+				var lean_yield: float = float(Game.difficulty_profile(leaner)["seed_yield"])
+				if rich_yield <= lean_yield:
+					continue
+				var err: String = _T.assert_gt(int(earned[richer]), int(earned[leaner]),
+					("under `%s`, %s (yield %.2f) earned %d over %d waves and %s (yield "
+						+ "%.2f) earned %d. Equal here means the selector is back to "
+						+ "changing only the opening balance -- which is a difference no "
+						+ "run shows, and the whole of plant-tower-defense-i8oh")
+						% [policy_name, richer, rich_yield, int(earned[richer]), SHORT_RUN,
+							leaner, lean_yield, int(earned[leaner])])
+				if err != "":
+					return err
+				compared += 1
+	# THE VACUOUS PASS THIS EXISTS TO REFUSE. If every profile carried the same yield, the
+	# `continue` above would skip every pair and this test would report a clean separation
+	# having compared nothing -- which is precisely the state the bead was filed about.
+	var expected: int = RunSim.POLICY_NAMES.size() * (Game.DIFFICULTY_ORDER.size()
+		* (Game.DIFFICULTY_ORDER.size() - 1)) / 2
+	return _T.assert_eq(compared, expected,
+		("%d ordered pair(s) compared and %d expected from %d profile(s) x %d policy(s). "
+			+ "Short means two profiles share a yield and no run can tell them apart; a "
+			+ "zero means none of them can be told apart at all")
+			% [compared, expected, Game.DIFFICULTY_ORDER.size(), RunSim.POLICY_NAMES.size()])
