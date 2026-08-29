@@ -26,13 +26,18 @@ const MAX_HEALTH: float = 40.0
 ##
 ## The two numbers are chosen against the two clocks that already exist:
 ##
-##   * REGROWTH_DELAY is measured against Pest.EAT_DPS. A hungry pest calls
-##     take_damage() every physics frame while it is eating, and every one of
-##     those resets the clock below — so regrowth contributes exactly nothing to a
-##     bed that is under attack right now. A full plant still dies in
-##     MAX_HEALTH / Pest.EAT_DPS = 2.86s if the player does nothing, which is the
-##     same 2.86s it took before this existed. The mutation still takes beds; it
-##     just no longer takes them forever.
+##   * REGROWTH_DELAY is measured against Pest.EAT_DPS, and now also against
+##     Pest.chop_period(). A hungry pest lands one bite per chop rather than one
+##     per physics frame, so the clock below is no longer pinned at zero by a
+##     stream of hits — it runs for the ~1.07s between strikes and is reset by each
+##     one. Six seconds is more than five times that gap, so regrowth still
+##     contributes exactly nothing to a bed under attack RIGHT NOW; the margin is
+##     what makes that true rather than the old accident of a per-frame call, and
+##     test_a_hungry_pest_eats_a_bed_in_exactly_the_time_it_always_did is the gate
+##     on it. A full plant still dies in MAX_HEALTH / Pest.EAT_DPS = 2.86s if the
+##     player does nothing, which is the same 2.86s it took before this existed —
+##     three chops, with the last one landing on that second. The mutation still
+##     takes beds; it just no longer takes them forever.
 ##   * REGROWTH_RATE is measured against Game.PREP_SECONDS (18s, the gap between
 ##     a cleared wave and the next one). One clean intermission is
 ##     18 - 6 = 12 seconds of growing, i.e. 18hp, i.e. 45% of a bed. So a lightly
@@ -283,10 +288,13 @@ const STEM_PIVOT_Y: float = 25.0
 ## `_sway_pivot` — not a Tween, which would fight the pivot the way an idle scale would have
 ## fought `_sprite.scale`.
 ##
-## A hungry pest calls `take_damage` every physics frame, so the flinch is re-armed every
-## frame while a plant is actually being eaten: it reads as a sustained shudder for as long
-## as the biting lasts and decays out over `FLINCH_SECONDS` once it stops. That is the
-## behaviour wanted and it falls out of the trigger rather than needing a state machine.
+## ONE FLINCH PER CHOP, and it stopped being a shudder when the chop landed. A hungry pest
+## used to call `take_damage` on every physics frame, which re-armed this sixty times a
+## second and made a bed being destroyed vibrate continuously — motion that says "something
+## is happening" and never "you were just hit". `Pest.chop_period()` now spaces the bites
+## about 1.07 s apart, comfortably past `FLINCH_SECONDS` (0.32), so each one arms this
+## cleanly and it decays out before the next: three jolts, in time with the pest's swing,
+## instead of a hum. It still falls out of the trigger and still needs no state machine.
 ##
 ## `FLINCH_RADIANS` is deliberately three times `WOBBLE_RADIANS`: a flinch that does not
 ## clearly out-read the idle sway is not a flinch. At 0.16 rad the corner of a 64 px sprite
