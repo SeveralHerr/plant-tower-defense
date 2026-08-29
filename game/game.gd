@@ -93,6 +93,26 @@ const PREP_SECONDS: float = 18.0
 ## measurement of this game could SEE, and a selector nothing can measure is a selector that
 ## drifts. This one is readable off a single run's `seeds_earned`.
 ##
+## WHAT `seed_yield` STILL DOES NOT SEPARATE, AND WHY THAT IS A DECISION, NOT A GAP
+## (plant-tower-defense-fmzu). `RunSim.POLICY_THICKEN` — the strongest built-in garden,
+## used only to prove the campaign is WINNABLE at all — clears every corpus board on every
+## difficulty here with full lives and seeds to spare, because its own stopping rule is
+## board coverage, not the purse (`thicken_cover` in `tools/run_sim.gd` keeps buying the
+## best per-seed placement until no open cell gains anything, then falls through to
+## packets/upgrades — it never stops because harsh's smaller wallet ran out first). Harsh
+## already earns and builds less under THICKEN than gentle does (125 vs 79 plants over the
+## same 22 waves, pinned by
+## `test_the_three_profiles_end_a_run_differently_and_not_only_start_it_differently` in
+## `test/unit/test_playtest.gd`) — the selector is not decoration — but every corpus road's
+## minimum defensible garden is cheap enough that even harsh's economy affords it early and
+## banks the rest. Squeezing `seed_yield`/`lives`/`prep_seconds`/`starting_seeds` further
+## cannot fix that without either a bigger minimum garden (a road/reach change, not a
+## difficulty one) or a harder WAVE CURVE, and the wave curve is deliberately not one of
+## these four keys — see `WaveDirector._raw_threat`'s own header for why a per-difficulty
+## strength scale has to be re-verified against the whole strictly-rising threat curve
+## rather than layered in here. That is real, separate, already-filed work:
+## plant-tower-defense-jyaq. `docs/playtest-sweep.md` carries the full decision.
+##
 ## THE ORDER IS THE ORDER A PICKER SHOWS. `DIFFICULTY_ORDER` exists so the title screen
 ## (bead 4) has one list to iterate instead of sorting a Dictionary, which in GDScript is
 ## insertion-ordered but not documented as a promise anyone should lean on.
