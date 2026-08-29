@@ -819,7 +819,7 @@ func test_a_plant_with_no_reach_is_warned_about_but_never_called_dead_ground() -
 ## A Sundew built directly onto the entities layer rather than through
 ## `Game.place_plant`. Deliberate: everything below is about the mechanic, and
 ## routing it through the catalogue would make every one of these tests also a
-## test of Game._new_plant's match statement. That claim gets its own test, at the
+## test of Game.new_plant's match statement. That claim gets its own test, at the
 ## bottom, so a missing line there fails one test with the fix in the message
 ## instead of failing nine with the same one.
 func _sundew_at(game: Game, cell: Vector2i) -> StickySundew:
@@ -1143,7 +1143,7 @@ func test_a_sundews_previewed_reach_is_the_patch_it_actually_sticks_to() -> Stri
 
 
 ## The one line for this plant that lives outside plant_catalog.gd: the match
-## statement in Game._new_plant. Everything else can be right and a placed Sticky
+## statement in Game.new_plant. Everything else can be right and a placed Sticky
 ## Sundew will still silently be a Corn Cobbler without it — same sprite lookup,
 ## same health bar, same refund, no error anywhere.
 func test_the_catalogue_id_for_a_sundew_builds_a_sticky_sundew() -> String:
@@ -1155,7 +1155,7 @@ func test_the_catalogue_id_for_a_sundew_builds_a_sticky_sundew() -> String:
 		"an unlocked, paid-for sundew goes into the ground")
 	if err == "":
 		err = _T.assert_true(game.plant_at(cell) is StickySundew,
-			"and it is a StickySundew — add `PlantCatalog.SUNDEW: return StickySundew.new()` to Game._new_plant")
+			"and it is a StickySundew — add `PlantCatalog.SUNDEW: return StickySundew.new()` to Game.new_plant")
 	_T.free_ui(game)
 	return err
 
@@ -4421,7 +4421,7 @@ func test_the_nettle_never_out_earns_a_cob_per_seed() -> String:
 	return err
 
 
-## The `_new_plant` arm, and the reason it is worth a test of its own: `Game._new_plant`'s
+## The `new_plant` arm, and the reason it is worth a test of its own: `Game.new_plant`'s
 ## default arm returns a CornCobbler, so a catalogue entry with no arm is planted, paid for,
 ## selected and drawn — as CORN. Nothing errors and nothing in the HUD disagrees.
 func test_planting_a_nettle_does_not_silently_plant_corn() -> String:
@@ -4439,7 +4439,7 @@ func test_planting_a_nettle_does_not_silently_plant_corn() -> String:
 		err = _T.assert_true(planted != null, "and something is standing in that cell")
 		if err == "":
 			err = _T.assert_true(planted is Nettle,
-				"and it is a Nettle -- _new_plant's default arm hands back a CornCobbler, so "
+				"and it is a Nettle -- new_plant's default arm hands back a CornCobbler, so "
 					+ "a missing match arm plants corn and says nothing: got %s"
 					% planted.get_class())
 		if err == "":
@@ -7626,7 +7626,7 @@ const REACH_WITHOUT_A_RING: Array[StringName] = []
 ## claiming a 0 px ring against a real number, which fails. Give it a reach of 0 and it
 ## is asserted to draw nothing, so a Sunflower cannot quietly grow a ring either.
 ##
-## Built through `Game._new_plant` for the same reason
+## Built through `Game.new_plant` for the same reason
 ## `test_exactly_two_plants_in_the_catalogue_grow...` is: the question is about a PLACED
 ## plant, and that match statement is what decides which class a placed id becomes.
 ##
@@ -7641,9 +7641,9 @@ func test_every_plant_with_a_reach_draws_a_ring_at_that_reach() -> String:
 	for id: StringName in ids:
 		if err != "":
 			break
-		var plant: Plant = game._new_plant(id)
+		var plant: Plant = Game.new_plant(id)
 		if plant == null:
-			err = "Game._new_plant built nothing for %s" % id
+			err = "Game.new_plant built nothing for %s" % id
 			break
 		var reach: float = PlantCatalog.reach(id)
 		var drawn: float = plant.reach_ring_radius()
@@ -7706,9 +7706,9 @@ func test_a_reach_ring_appears_on_selection_and_not_before() -> String:
 	for id: StringName in PlantCatalog.ids():
 		if err != "":
 			break
-		var plant: Plant = game._new_plant(id)
+		var plant: Plant = Game.new_plant(id)
 		if plant == null:
-			err = "Game._new_plant built nothing for %s" % id
+			err = "Game.new_plant built nothing for %s" % id
 			break
 		err = _T.assert_false(plant.draws_reach_ring(),
 			("a freshly built %s is unselected and paints no reach ring -- an idle board "
@@ -7754,7 +7754,7 @@ func test_a_reach_ring_appears_on_selection_and_not_before() -> String:
 ## not a call, and every one of these files mentions it in prose.
 ##
 ## The file list is derived, not typed: each script path comes off the instance
-## `Game._new_plant` builds, so a plant added to the catalogue is scanned whether or not
+## `Game.new_plant` builds, so a plant added to the catalogue is scanned whether or not
 ## anyone remembers this test exists.
 func test_every_plant_that_paints_more_than_its_reach_still_calls_the_ring() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
@@ -7766,9 +7766,9 @@ func test_every_plant_that_paints_more_than_its_reach_still_calls_the_ring() -> 
 			break
 		if PlantCatalog.reach(id) <= 0.0 or REACH_WITHOUT_A_RING.has(id):
 			continue
-		var plant: Plant = game._new_plant(id)
+		var plant: Plant = Game.new_plant(id)
 		if plant == null:
-			err = "Game._new_plant built nothing for %s" % id
+			err = "Game.new_plant built nothing for %s" % id
 			break
 		var script: Script = plant.get_script() as Script
 		var path: String = "" if script == null else script.resource_path

@@ -117,7 +117,7 @@ var health: float = MAX_HEALTH
 ## **Set BEFORE `setup()`, never after.** `_build_visuals` reads it to tint the
 ## sprite and to add the mark, and it is the only chance either gets — nothing
 ## repaints a plant that changes its mind about being a sport. `Game._sprout_sport`
-## is the one caller and sets it on the line after `_new_plant`.
+## is the one caller and sets it on the line after `new_plant`.
 ##
 ## An instance flag and not a subclass, for the reason `PlantMutation`'s header
 ## gives at length: a sport has to be the same kind as its parents everywhere that

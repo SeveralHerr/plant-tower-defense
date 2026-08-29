@@ -1,3 +1,8 @@
+---
+name: enumerate-the-pairs
+description: Test a claim about a RELATION between members of a set — a precedence ladder, an override rule, a z-order, a tie-break, a compatibility matrix, which state transitions are refused — by looping the cross product instead of writing two or three example cases. Use when you can phrase the thing as "when A meets B, B wins"; when adding a rung, a tier, a format or a state to something that already has some; when a bug turns out to be a combination nobody wrote a test for; and when a set of example tests reads as coverage of an ordering. Prerequisite: derive-the-list, for getting the member list from the source rather than from memory. Related: scope-vs-claim, for whether the test's name claims more than its body checks.
+---
+
 # Enumerate the pairs
 
 `derive-the-list` covers claims about a **set**: don't say "all the X do Y" from memory,

@@ -5010,7 +5010,7 @@ func test_the_catalogue_and_the_plants_agree_about_which_can_grow() -> String:
 	var checked: int = 0
 	var growers: int = 0
 	for id: StringName in PlantCatalog.ids():
-		var plant: Plant = game._new_plant(id)
+		var plant: Plant = Game.new_plant(id)
 		if plant == null:
 			err = "the catalogue lists %s but Game cannot build one" % id
 			break
@@ -5117,7 +5117,7 @@ func test_every_upgrade_button_face_fits_the_panel() -> String:
 		for id: StringName in PlantCatalog.ids():
 			if err != "":
 				break
-			var plant: Plant = game._new_plant(id)
+			var plant: Plant = Game.new_plant(id)
 			if plant == null:
 				continue
 			if not plant.has_upgrades():
@@ -10170,7 +10170,7 @@ func test_the_dandelions_drawn_head_follows_its_seed_count() -> String:
 	if err == "":
 		plant = game.plant_at(cell) as Dandelion
 		err = _T.assert_true(plant != null,
-			"and Game._new_plant built a Dandelion, not the Corn Cobbler its match falls through to")
+			"and Game.new_plant built a Dandelion, not the Corn Cobbler its match falls through to")
 	if err == "":
 		plant.set_physics_process(false)
 		err = _T.assert_eq(plant.head_texture_path(),
@@ -16955,7 +16955,7 @@ func _rain_mend_percent() -> int:
 ## ladder, a consumable, a per-wave cost -- this test fails and they get to re-read
 ## the paragraph above rather than inheriting a stale conclusion.
 func test_the_seed_sink_is_finite_while_the_seed_income_is_not() -> String:
-	# Hand-built because plants are constructed in code (Game._new_plant), not from
+	# Hand-built because plants are constructed in code (Game.new_plant), not from
 	# scenes -- so the list is checked against the catalogue rather than trusted.
 	var makers: Dictionary = {
 		PlantCatalog.CORN: func() -> Plant: return CornCobbler.new(),
@@ -21332,7 +21332,7 @@ func test_moving_a_plant_keeps_the_same_plant_at_the_new_cell() -> String:
 ##   * A move is cheaper than uproot-and-rebuy wherever anything is invested — otherwise
 ##     the feature is decoration and players go on not moving anything.
 ##
-## Swept over the catalogue through `Game._new_plant`, the same pairing
+## Swept over the catalogue through `Game.new_plant`, the same pairing
 ## `test_exactly_two_plants_in_the_catalogue_grow_and_the_rest_are_born_finished` uses, so
 ## a plant added later is priced here whether or not anyone remembers this test exists.
 func test_a_move_always_costs_something_and_always_beats_uprooting() -> String:
@@ -21340,9 +21340,9 @@ func test_a_move_always_costs_something_and_always_beats_uprooting() -> String:
 	var err: String = ""
 	var checked: int = 0
 	for id: StringName in PlantCatalog.ids():
-		var plant: Plant = game._new_plant(id)
+		var plant: Plant = Game.new_plant(id)
 		if plant == null:
-			err = "Game._new_plant built nothing for %s" % id
+			err = "Game.new_plant built nothing for %s" % id
 			break
 		plant.setup(id, Vector2i(0, 0), game.board)
 		checked += 1
@@ -21373,7 +21373,7 @@ func test_a_move_always_costs_something_and_always_beats_uprooting() -> String:
 	if err == "":
 		# The case the whole feature is for, in numbers, so MOVE_RATE's header is checked
 		# rather than asserted. A climbed cob is where uproot-and-rebuy is ruinous.
-		var cob: Plant = game._new_plant(PlantCatalog.CORN)
+		var cob: Plant = Game.new_plant(PlantCatalog.CORN)
 		cob.setup(PlantCatalog.CORN, Vector2i(0, 0), game.board)
 		# GUARDED for the reason test_upgrading_stops_at_the_top_and_costs_nothing_there now
 		# is: `is_max_level()` is a condition the code under test owns, so a defect that
@@ -21841,9 +21841,9 @@ func test_no_sport_name_is_wider_than_the_catalogue_already_is() -> String:
 ## so a sport excluded here is a sport excluded from every rule below it.
 func test_a_sport_is_never_a_parent() -> String:
 	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
-	var bought: Plant = game._new_plant(PlantCatalog.CORN)
+	var bought: Plant = Game.new_plant(PlantCatalog.CORN)
 	bought.kind = PlantCatalog.CORN
-	var thrown: Plant = game._new_plant(PlantCatalog.CORN)
+	var thrown: Plant = Game.new_plant(PlantCatalog.CORN)
 	thrown.kind = PlantCatalog.CORN
 	thrown.is_sport = true
 	var plants: Dictionary = {Vector2i(2, 2): bought, Vector2i(3, 2): thrown}
@@ -21983,7 +21983,7 @@ func test_a_boxed_in_pair_never_spends_a_tick() -> String:
 			var cell := Vector2i(x, y)
 			if not board.is_buildable_for(cell, PlantCatalog.CORN):
 				continue
-			var plant: Plant = game._new_plant(PlantCatalog.CORN)
+			var plant: Plant = Game.new_plant(PlantCatalog.CORN)
 			plant.kind = PlantCatalog.CORN
 			plants[cell] = plant
 	err = _T.assert_gt(plants.size(), 20,
@@ -22056,7 +22056,7 @@ func test_a_quiet_tick_draws_once_so_a_seed_reproduces_a_garden() -> String:
 		_T.free_ui(game)
 		return err
 	for cell: Vector2i in [seat, seat + Vector2i(1, 0)]:
-		var plant: Plant = game._new_plant(PlantCatalog.CORN)
+		var plant: Plant = Game.new_plant(PlantCatalog.CORN)
 		plant.kind = PlantCatalog.CORN
 		plants[cell] = plant
 
@@ -22103,9 +22103,9 @@ func test_every_sport_reads_its_own_buff_through_its_own_plant() -> String:
 	var err: String = ""
 	var covered: Dictionary = {}
 	for id: StringName in PlantCatalog.ids():
-		var plain: Plant = game._new_plant(id)
+		var plain: Plant = Game.new_plant(id)
 		plain.kind = id
-		var sport: Plant = game._new_plant(id)
+		var sport: Plant = Game.new_plant(id)
 		sport.kind = id
 		sport.is_sport = true
 		# LOWER is better for a rate and HIGHER for a power, so the direction the

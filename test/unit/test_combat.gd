@@ -6292,8 +6292,8 @@ func test_the_cobs_own_spend_static_is_the_generic_one() -> String:
 
 ## Which plants grow, named exactly, over the catalogue the game can actually build.
 ##
-## Built through `Game._new_plant` rather than through a list of classes written here,
-## because the question is about what a PLACED plant does and `_new_plant`'s match is
+## Built through `Game.new_plant` rather than through a list of classes written here,
+## because the question is about what a PLACED plant does and `new_plant`'s match is
 ## what decides that (test_placement has three tests about that match alone). A plant
 ## added to `PlantCatalog` therefore reaches this test whether or not anyone remembers
 ## it exists — and has to be decided about here, positively, like
@@ -6307,9 +6307,9 @@ func test_exactly_two_plants_in_the_catalogue_grow_and_the_rest_are_born_finishe
 	var upgradeable: Array[StringName] = []
 	var err: String = ""
 	for id: StringName in PlantCatalog.ids():
-		var plant: Plant = game._new_plant(id)
+		var plant: Plant = Game.new_plant(id)
 		if plant == null:
-			err = "Game._new_plant built nothing for %s" % id
+			err = "Game.new_plant built nothing for %s" % id
 			break
 		if plant.has_upgrades():
 			upgradeable.append(id)
@@ -6337,7 +6337,7 @@ func test_exactly_two_plants_in_the_catalogue_grow_and_the_rest_are_born_finishe
 		# upgrade instead of being diluted by it.
 		err = _T.assert_eq(upgradeable.size(), 3,
 			("three plants in this catalogue grow, and the list below says which — got %s. "
-			+ "A new id missing from Game._new_plant's match falls through to a CornCobbler "
+			+ "A new id missing from Game.new_plant's match falls through to a CornCobbler "
 			+ "and arrives here wearing the cob's ladder, so check that arm before the ladder")
 				% str(upgradeable))
 	if err == "":
@@ -10807,9 +10807,9 @@ func test_a_chewing_chomp_champs_further_than_it_breathes() -> String:
 ## hook by accident, or a base class that stops returning ONE, fails here instead of
 ## quietly shifting every bed on the board.
 func test_only_the_chomp_overrides_the_idle_scale_hook() -> String:
-	# Through Game._new_plant and over PlantCatalog.ids(), the same pairing
+	# Through Game.new_plant and over PlantCatalog.ids(), the same pairing
 	# test_exactly_two_plants_in_the_catalogue_grow_and_the_rest_are_born_finished uses
-	# and for the same reason: the match in _new_plant is what decides which class a
+	# and for the same reason: the match in new_plant is what decides which class a
 	# placed plant actually gets, so a plant added to the catalogue reaches this test
 	# whether or not anyone remembers it exists.
 	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
@@ -10817,9 +10817,9 @@ func test_only_the_chomp_overrides_the_idle_scale_hook() -> String:
 	var checked: int = 0
 	var err: String = ""
 	for id: StringName in PlantCatalog.ids():
-		var plant: Plant = game._new_plant(id)
+		var plant: Plant = Game.new_plant(id)
 		if plant == null:
-			err = "Game._new_plant built nothing for %s" % id
+			err = "Game.new_plant built nothing for %s" % id
 			break
 		checked += 1
 		# Two clocks, because a hook returning ONE only at zero would pass a single read.
@@ -10968,9 +10968,9 @@ func test_every_plant_stands_up_until_it_is_in_danger() -> String:
 	var err: String = ""
 	var checked: int = 0
 	for id: StringName in PlantCatalog.ids():
-		var plant: Plant = game._new_plant(id)
+		var plant: Plant = Game.new_plant(id)
 		if plant == null:
-			err = "Game._new_plant built nothing for %s" % id
+			err = "Game.new_plant built nothing for %s" % id
 			break
 		checked += 1
 		err = _T.assert_float_eq(Plant.wilt_amount(plant.health / Plant.MAX_HEALTH),

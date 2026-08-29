@@ -4800,3 +4800,54 @@ func test_damages_is_read_off_each_plants_own_damage_constant() -> String:
 
 
 # -- END plant-tower-defense-i8k9 ---------------------------------------------
+
+
+# -- what a kill is worth, in one place (plant-tower-defense-t5yy.1) ----------
+
+## How far the weather sweep below looks. Past the campaign table on purpose: the drought
+## exemption is derived from whether a wave carries a boss, and endless carries none, so a
+## sweep that stopped at the table's end would never see a drought that is only reachable
+## past it.
+const WEATHER_SWEEP_WAVES: int = 40
+
+
+## `Game.weather_seed_value_for` is the ONE place this game decides what a kill pays, and
+## the instance method on a running `Game` has to be the same answer.
+##
+## It exists because `RunSim` pays a kill with no `Game` in the tree at all. A driver
+## holding its own copy of the expression is the drift its header warns about, and this is
+## the assertion that would fail if one of the two were edited alone.
+##
+## The weathers are DERIVED by sweeping `weather_for` rather than listed from the three
+## `WEATHER_*` constants: a fourth weather is swept by this test the day a wave can arrive
+## under it, and a constant declared but unreachable is correctly not swept.
+func test_a_kill_is_priced_in_one_place_under_every_weather_a_wave_can_arrive_under() -> String:
+	var weathers: Dictionary = {}
+	for wave: int in range(1, WEATHER_SWEEP_WAVES + 1):
+		weathers[WaveDirector.weather_for(wave)] = true
+	var err: String = _T.assert_gte(weathers.size(), 2,
+		"the sweep found %d weather(s) in %d waves — one is a vacuous pass"
+			% [weathers.size(), WEATHER_SWEEP_WAVES])
+	if err != "":
+		return err
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	for weather: StringName in weathers:
+		game.weather = weather
+		# Every species' own price, so a species repriced moves this test with it.
+		for species: StringName in Pest.SPECIES:
+			var base: int = int((Pest.SPECIES[species] as Dictionary)["seeds"])
+			err = _T.assert_eq(game.weather_seed_value(base),
+				Game.weather_seed_value_for(base, weather),
+				"a %s killed under %s is worth two different numbers depending on which "
+					% [species, weather] + "of the two callers asks")
+			if err != "":
+				break
+		if err != "":
+			break
+	if err == "":
+		# And the floor, which is the half a multiplier cannot express: a species worth
+		# nothing still pays one seed.
+		err = _T.assert_eq(Game.weather_seed_value_for(0, WaveDirector.WEATHER_CLEAR), 1,
+			"a kill never pays nothing")
+	_T.free_ui(game)
+	return err

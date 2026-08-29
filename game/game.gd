@@ -1079,7 +1079,17 @@ func _on_husk_rotted(_value: int) -> void:
 ## Public and pure so the economy is assertable without killing anything, and so the
 ## HUD could quote it later without duplicating the arithmetic.
 func weather_seed_value(base: int) -> int:
-	return maxi(1, int(round(float(base) * WaveDirector.seed_multiplier_for(weather))))
+	return weather_seed_value_for(base, weather)
+
+
+## The same arithmetic with the weather passed in rather than read off a running run.
+##
+## Split out for `RunSim`, which pays a kill without a `Game` in the tree at all. The
+## instance method above delegates rather than repeating the expression, so the ONE place
+## this game decides what a kill is worth stays one place — a second copy in the driver
+## is exactly the drift its own header warns about.
+static func weather_seed_value_for(base: int, under: StringName) -> int:
+	return maxi(1, int(round(float(base) * WaveDirector.seed_multiplier_for(under))))
 
 
 func _on_pest_died(pest: Pest) -> void:
@@ -1745,7 +1755,7 @@ func place_plant(id: StringName, cell: Vector2i) -> String:
 ## Charges nothing and selects nothing. Both belong to the caller: a purchase pays
 ## and takes the selection, a sport does neither.
 func _install_plant(id: StringName, cell: Vector2i, sport: bool) -> Plant:
-	var plant: Plant = _new_plant(id)
+	var plant: Plant = new_plant(id)
 	plant.is_sport = sport
 	_entities.add_child(plant)
 	plant.setup(id, cell, board)
@@ -1958,7 +1968,11 @@ func _maybe_teach_upgrading() -> void:
 	RunConfig.spend_hint(RunConfig.HINT_UPGRADE_EXISTS, posted)
 
 
-func _new_plant(id: StringName) -> Plant:
+## The id -> class table, as a function. Static and public since `RunSim` builds a garden
+## with no `Game` in the tree: a driver holding its own copy of this match would keep
+## planting Corn the day a tenth plant is added, and the run it reported would be a run of
+## a game nobody can play.
+static func new_plant(id: StringName) -> Plant:
 	match id:
 		PlantCatalog.CHOMP:
 			return ChompFlower.new()

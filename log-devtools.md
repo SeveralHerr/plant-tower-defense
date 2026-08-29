@@ -9779,3 +9779,68 @@ is likely to be at least as productive.
 - Gap: **`devtools_config.json` names a Godot binary and nothing checks it exists until a launch fails** — `python tools/import_check.py` answered `Error: Godot binary not found: C:\Users\gotmi\Downloads\Godot_v4.7.1\Godot_v4.7.1-stable_win64_console.exe`, which is a directory that had been renamed to `Godot_v4.7.1_fixed`. Every gate that opens the project was dead until the config was corrected, and the three that do not (`name_check`, `check_all`, `coverage_check`) reported clean throughout — so the failure looked like a green run with a couple of tools missing.
   - [G-147] status: open | seen: 1 | harness: 0.65.0
   - Improvement: have `check_all.py` stat `godot_bin` and print it as a named skipped check rather than leaving it to the first tool that needs it. The harness already treats "a check that could not run" as a thing to name rather than drop; this is the same idea one level up, and the fix is one `os.path.exists`.
+
+## 2026-08-28 — Filed an epic + four beads for automated playtesting and balance metrics
+
+- Value: **warranted** — no game was launched and none was needed, but the static bead
+  checkers caught a wrong test name before it reached a bead description.
+  - Expected: citation_check --beads would resolve every file:line I wrote, and
+    bead_prose_check would show no NEW findings from the four descriptions.
+  - Got: `citation_check: 1497 citation(s) across 1 file(s) [kanban.md] + 618 bead(s),
+    1485 resolved, 0 finding(s)` on open beads (5 advisories, all pre-existing closed
+    beads). `bead_prose_check` printed 11 findings, all `PRE:`.
+  - Found: while pinning citations by hand, `game/seed_bank.gd:50` names
+    `test_the_packet_tiers_are_listed_cheapest_first`, but the real test is
+    `test_the_packet_tiers_are_listed_cheapest_first_and_none_is_missing`
+    (`test/unit/test_selftest.gd:10487`) — the source comment is stale. Also that
+    `plant-tower-defense-s1o8.5`'s description still claims `_over_promise_run` hardcodes
+    `Board.new()`, which shipped: it takes `road_corners` at `test_combat.gd:4525`. Noted
+    on s1o8.5 rather than silently rewritten.
+  - Cheaper: nothing cheaper for the citations — every one had to be opened and read.
+    The checkers were the cheap half and ran in seconds.
+
+- Gap: **no gaps this turn** — the work was bead intake and repo reading; the bus was not
+  needed and the house checkers covered what could be checked mechanically.
+
+## 2026-08-28 — A whole-run driver (plant-tower-defense-t5yy.1): RunSim, tools/playtest.gd, 11 tests
+
+- Value: **warranted** — the two real defects both came from RUNNING something, and
+  neither would have survived a reading of the diff.
+  - Expected: the live game still places plants of every kind through the renamed static
+    `Game.new_plant`, and `weather_seed_value` on a live Game still pays the drought
+    bonus — i.e. the instance→static split did not break the one call site inside
+    `place_plant`.
+  - Got: `find-nodes --class ChompFlower` / `Sunflower` / `CornCobbler` each matched
+    exactly the node `place_plant` had just built, and
+    `run-method weather_seed_value --args "[4]"` returned `4` clear and `6` after
+    `set-state weather=drought`. The prediction was confirmed and the launch found
+    nothing beyond it.
+  - Found: **`tools/playtest.gd` did not compile at all under `--headless --script`.**
+    In that mode Godot compiles the script before it registers the project's autoloads,
+    so naming `RunSim` (which names `Game`, which names the `RunConfig` singleton) gave
+    `SCRIPT ERROR: Compile Error: Identifier not found: RunConfig` seven times over — and
+    the script then played **zero waves and exited 0**, printing
+    `Playtest: 1 run(s), 0 driver failure(s)`. Fixed by `load()`ing `run_sim.gd` and
+    `game.gd` after the first frames (the trick `tools/run_tests.gd` already uses for its
+    test scripts), and by making a run that played no waves exit `2`. Second find:
+    `suite_reach_check.py` flagged the new static `Game.weather_seed_value_for` as public
+    and named by no test; closed with a test that sweeps every weather
+    `WaveDirector.weather_for` can actually produce against every `Pest.SPECIES` price.
+  - Cheaper: for the `game.gd` half specifically, the headless suite alone — the launch
+    confirmed a prediction and caught nothing. Both real finds came from running
+    `tools/playtest.gd` and from `check_all.py`, neither of which needs a launched game.
+
+- Gap: **`scene-tree`'s stdout is not valid JSON, so the Phase 5 redirect the workflow
+  prescribes cannot be read back** — `python tools/devtools.py scene-tree > .devtools/tree-phase3.json`
+  is the exact command `/verify` Phase 3 gives, and `verify_ledger.py reach` then answers
+  `unreadable scene-tree snapshot .devtools/tree-phase3.json (Extra data: line 2677
+  column 2 (char 82674))` for both snapshots. The verb prints its `N node(s)` denominator
+  after the JSON document on the same stream, so the file holds JSON followed by trailing
+  text. Reach still computed — `scripts-seen.json` carried it — but the two snapshots the
+  workflow spends two bus calls capturing contributed nothing, and a run without
+  `--scripts-seen` would have been refused outright.
+  - [G-148] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: send the denominator to stderr (`scene-tree` already sends its own count
+    there per REFERENCE.md, so this is one stream mixed in the client rather than a design
+    change), or have `verify_ledger.py reach` parse with `json.JSONDecoder().raw_decode`
+    and ignore the tail — the second is one line and fixes every snapshot already on disk.
