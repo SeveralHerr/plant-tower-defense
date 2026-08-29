@@ -1885,21 +1885,45 @@ func _gait(delta: float) -> void:
 	# whatever it held when the toggle went off. Plant._wobble() decays its own for the
 	# same reason.
 	_flinch_left = maxf(0.0, _flinch_left - delta)
+	# Composed ABOVE the gate -- see gait_compute()'s own header for why. Cheap (four
+	# pure calls and two sines) even on the frames it is about to be thrown away.
+	var composed: Dictionary = gait_compute(_gait_time, _gait_phase, speed, is_armoured,
+		is_winged, is_hungry, _flinch_left, _flinch_force)
 	if _sprite == null or not GardenTheme.animations_enabled():
 		return
-	var clock: float = _gait_time * gait_rate(speed, is_armoured, is_winged) + _gait_phase
-	_sway = gait_yaw(sin(clock), gait_swing(is_armoured, is_winged),
-		sin(_gait_time * FLINCH_RATE), flinch_amount(_flinch_left) * _flinch_force)
+	_sway = composed["yaw"]
 	_apply_facing()
 	# Local to the sprite, so it follows the facing rotation: -Y is the body's
 	# long axis (STYLE.md's up-screen convention), which makes +Y stretch a
 	# lengthening and -X squash a narrowing, whichever way the bug is walking.
-	var stretch: float = gait_stretch(sin(clock * GAIT_STRETCH_RATE), is_hungry)
+	var stretch: float = composed["stretch"]
 	# chewed_scale() rides the gait rather than being a separate tween: the gait
 	# rewrites _sprite.scale every frame, so a tween on the same property would be
 	# overwritten within one frame and look like nothing happened.
 	var eaten: float = chewed_scale()
 	_sprite.scale = Vector2(_sprite_scale * eaten * (1.0 - stretch), _sprite_scale * eaten * (1.0 + stretch))
+
+
+## Pure: the whole walk-cycle composition `_gait` writes, with no gate and no sprite.
+## Everything past `animations_enabled()` inside `_gait` used to be unobservable
+## headless -- the four calls this makes (`gait_rate`, `gait_yaw`, `gait_swing`,
+## `flinch_amount`, `gait_stretch`) each already have their own tests, but nothing
+## could assert `_gait` actually reached them rather than a constant
+## (plant-tower-defense-3k81; measured: replacing either the `gait_swing(...)` or the
+## `gait_stretch(...)` call-site result with `0.0` survived the full suite with zero
+## failures). Split out the same way `flash_hit` arms its recoil before its own gate
+## and `ChompFlower.champ_scale` is split from `idle_scale_multiplier`: the
+## composition moves above the gate, the sprite write stays below it, gated.
+##
+## Returns `{"yaw": float, "stretch": float}` -- a Dictionary, this file's own
+## convention for a multi-value pure return, rather than a bespoke struct.
+static func gait_compute(gait_time: float, phase: float, for_speed: float, armoured: bool,
+		winged: bool, hungry: bool, flinch_left: float, flinch_force: float) -> Dictionary:
+	var clock: float = gait_time * gait_rate(for_speed, armoured, winged) + phase
+	var yaw: float = gait_yaw(sin(clock), gait_swing(armoured, winged),
+		sin(gait_time * FLINCH_RATE), flinch_amount(flinch_left) * flinch_force)
+	var stretch: float = gait_stretch(sin(clock * GAIT_STRETCH_RATE), hungry)
+	return {"yaw": yaw, "stretch": stretch}
 
 
 ## Pure: how fast this pest's walk cycle runs, in radians of clock per second.
