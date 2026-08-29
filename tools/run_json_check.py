@@ -23,9 +23,20 @@ that adds or renames a key updates this checker for free. A hand-written copy he
 be a second source of truth about a tool whose entire problem is drift between what you
 write and what it reads.
 
+STRICT (plant-tower-defense-4ulq). Default mode only requires QUIET_DEFAULTS
+(verdict/lint/tests) to be present -- the three named because every other accepted key
+has a real, common, and legitimate reason to be absent (see verify_ledger.py's own
+REQUIRED_RUN_KEYS comment for the historical evidence). `--strict` widens that to every
+key the installed ledger accepts: a run.json meant to be complete right before
+`verify_ledger record` should not silently be missing `runtime` or `duration_s` either,
+even though `record` itself only refuses on the three. Use `--strict` in that position;
+use the default elsewhere, where a genuinely partial run.json is still worth scanning
+for an unknown key or a wrong shape without every optional field also firing.
+
 Usage:
-    python tools/run_json_check.py [PATH]        # default .devtools/run.json
-    python tools/run_json_check.py --fixture     # the synthetic fixture; proves it can FAIL
+    python tools/run_json_check.py [PATH]           # default .devtools/run.json
+    python tools/run_json_check.py --strict [PATH]  # every accepted key is required
+    python tools/run_json_check.py --fixture        # the synthetic fixture; proves it can FAIL
 
 Exit 0 clean, 1 findings, 2 could not run.
 
@@ -41,6 +52,12 @@ Exit 0 clean, 1 findings, 2 could not run.
                Every case asserts the FINDING COUNT, not just the exit code: a rule that
                stops firing while another still fires leaves the gate at 1 and looks
                clean. `group_leak_check` shipped exactly that shape.
+               THREE MORE cases prove `--strict` (plant-tower-defense-4ulq): the same
+               run.json (CLEAN_RUN minus `runtime`) checked once plain and once
+               `--strict` -- plain exits 0, `--strict` exits 1 -- plus CLEAN_RUN itself
+               under `--strict` staying clean. Without the paired plain/strict case on
+               identical content, a `--strict` that quietly did nothing extra would
+               pass every other case here undetected.
     mutations: 5, all RED, restore clean. Measured 2026-08-18; baseline 0 failure(s),
                and the failure counts below are what each mutation actually produced.
                `QUIET_DEFAULTS` -> `()` in the
@@ -73,6 +90,20 @@ Exit 0 clean, 1 findings, 2 could not run.
                                                       the RIGHT exit code for the WRONG
                                                       reason and are caught only by their
                                                       needle assertions
+               `required = sorted(known) if strict else list(QUIET_DEFAULTS)` ->
+                 `required = list(QUIET_DEFAULTS)` (strict silently ignored)
+                                                   -> 1 failure. Measured 2026-08-29.
+                                                      missing_runtime_strict falls to 0
+                                                      findings and exit 0 -- `--strict`
+                                                      would look like it worked (it
+                                                      parses, it does not error) while
+                                                      requiring nothing beyond the
+                                                      default. The other two --strict
+                                                      cases are unaffected, which is the
+                                                      paired plain/strict design earning
+                                                      its keep: only the case that needs
+                                                      the widened set to actually widen
+                                                      goes red.
 """
 
 from __future__ import annotations
@@ -185,6 +216,18 @@ FIXTURE_CASES = [
     ("absent_file", None, None, 2),
 ]
 
+# (label, run.json content, --strict?, want_findings, want_exit). Proves --strict
+# actually widens the required set beyond QUIET_DEFAULTS, and that default mode does
+# NOT: the same content (CLEAN_RUN minus `runtime`) is run twice, once each way, and
+# only one of the two exits nonzero.
+STRICT_FIXTURE_CASES = [
+    ("missing_runtime_default",
+     {k: v for k, v in CLEAN_RUN.items() if k != "runtime"}, False, 0, 0),
+    ("missing_runtime_strict",
+     {k: v for k, v in CLEAN_RUN.items() if k != "runtime"}, True, 1, 1),
+    ("strict_on_a_complete_run", CLEAN_RUN, True, 0, 0),
+]
+
 
 def run_fixture() -> int:
     """Return the failure count. Prints what it compared, never just a verdict."""
@@ -237,6 +280,32 @@ def run_fixture() -> int:
                     fails += 1
                     print("  FAIL   %-16s %r seen=%s (want %s)"
                           % (label, needle, seen, should))
+
+        for label, content, strict, want_findings, want_exit in STRICT_FIXTURE_CASES:
+            run_path = tmp / ("%s.json" % label)
+            run_path.write_text(json.dumps(content), encoding="utf-8")
+            argv = ["run_json_check.py"]
+            if strict:
+                argv.append("--strict")
+            argv.append(str(run_path))
+
+            old_out, old_err = sys.stdout, sys.stderr
+            sys.stdout = io.StringIO()
+            sys.stderr = io.StringIO()
+            try:
+                code = main(argv)
+                out = sys.stdout.getvalue() + sys.stderr.getvalue()
+            finally:
+                sys.stdout, sys.stderr = old_out, old_err
+
+            m = re.search(r"(\d+) finding\(s\)", out)
+            got_findings = int(m.group(1)) if m else None
+            ok = (code == want_exit) and (got_findings == want_findings)
+            if not ok:
+                fails += 1
+            print("  %-6s %-24s strict=%-5s findings=%s (want %s)  exit=%d (want %d)"
+                  % ("ok" if ok else "FAIL", label, strict,
+                     got_findings, want_findings, code, want_exit))
     finally:
         LEDGER = real_ledger
         for child in tmp.iterdir():
@@ -270,11 +339,12 @@ def run_fixture() -> int:
         print("  FAIL   no installed tools/verify_ledger.py -- the derivation half of "
               "this fixture could not run, which is not a pass")
 
-    print("run_json_check fixture: %d case(s) over a synthetic ledger plus the real "
-          "derivation, %d failure(s). Every case asserts the FINDING COUNT beside the "
-          "exit code, because three of the rules here gate at 1 and a rule that "
-          "silently stopped firing would leave the exit code exactly where it was."
-          % (len(FIXTURE_CASES), fails))
+    print("run_json_check fixture: %d case(s) (+%d --strict case(s)) over a synthetic "
+          "ledger plus the real derivation, %d failure(s). Every case asserts the "
+          "FINDING COUNT beside the exit code, because three of the rules here gate at "
+          "1 and a rule that silently stopped firing would leave the exit code exactly "
+          "where it was."
+          % (len(FIXTURE_CASES), len(STRICT_FIXTURE_CASES), fails))
     print("  NOT COVERED: the fixture exercises the rules over hand-written run.json "
           "objects. It says nothing about whether THIS checkout's .devtools/run.json is "
           "right, and a clean fixture is a statement about the rules, not about the "
@@ -285,9 +355,12 @@ def run_fixture() -> int:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) > 1 and argv[1] == "--fixture":
+    args = argv[1:]
+    if "--fixture" in args:
         return 2 if run_fixture() else 0
-    path = Path(argv[1]) if len(argv) > 1 else DEFAULT_RUN
+    strict = "--strict" in args
+    positional = [a for a in args if a != "--strict"]
+    path = Path(positional[0]) if positional else DEFAULT_RUN
     if not LEDGER.is_file():
         print("run_json_check: cannot read %s -- nothing to derive the key list from."
               % LEDGER, file=sys.stderr)
@@ -337,15 +410,19 @@ def main(argv: list[str]) -> int:
                 "  waive: none; the shape is what the readers assume."
                 % (key, type(run[key]).__name__, want.__name__))
 
-    for key in QUIET_DEFAULTS:
+    required = sorted(known) if strict else list(QUIET_DEFAULTS)
+    for key in required:
         if key not in run:
+            strict_note = ("" if key in QUIET_DEFAULTS else
+                           " Required only under --strict: every key the installed "
+                           "verify_ledger accepts, not just verdict/lint/tests.")
             findings.append(
                 "FINDING: %r is absent -- `record` defaults it silently, so the row will "
-                "read as an unknown/blank run rather than as the clean one it was.\n"
-                "  fix: add it. `verdict` is pass|partial|fail; `lint` and `tests` are "
-                "objects (e.g. {\"exit\": 0, \"failed\": 0}).\n"
+                "read as an unknown/blank run rather than as the clean one it was.%s\n"
+                "  fix: add it. `verdict` is pass|partial|fail|aborted; `lint` and "
+                "`tests` are objects (e.g. {\"exit\": 0, \"failed\": 0}).\n"
                 "  waive: omit deliberately only for an aborted run, and say so in the "
-                "log-devtools entry." % key)
+                "log-devtools entry." % (key, strict_note))
 
     if phases:
         for i, item in enumerate(run.get("found") or []):
@@ -359,7 +436,9 @@ def main(argv: list[str]) -> int:
                     "  waive: none." % (i, phase, ", ".join(phases)))
 
     print("run_json_check: %d key(s) in %s, %d accepted by the installed verify_ledger, "
-          "%d finding(s)" % (len(run), path.name, len(known), len(findings)))
+          "%d finding(s)%s"
+          % (len(run), path.name, len(known), len(findings),
+             " (--strict: every accepted key required)" if strict else ""))
     if not run:
         print("NOTE: the run.json is EMPTY. That is a clean result only if you expected "
               "to record a row carrying no evidence at all.")
