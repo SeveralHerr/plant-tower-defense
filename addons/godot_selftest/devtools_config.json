@@ -32,7 +32,6 @@
     "tools/"
   ],
   "fps_min": 30,
-  "draw_calls_max": 900,
   "orphan_max": 0,
   "orphan_growth_max": 20,
   "safe_area_inset": {

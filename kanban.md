@@ -6858,26 +6858,3 @@ Three findings kept out here rather than buried in a log:
   enough: a 6 px window is open and useless. Expressing the gate as *at least four physics
   frames, for every species, at its own top speed and the fastest game speed a player can
   pick* is what makes it fail honestly, and both mutations proved it does.
-
-- **"It takes N ticks" and "it can kill X" are one number, and one number cannot serve
-  both.** With a flat per-bite damage D over B bites, who dies is decided by `B*D` against
-  health and how many ticks the smallest bug takes is `health/D` — so pinning the aphid at
-  three ticks caps D at 1.0, and killing anything above 3 health then requires raising B,
-  not D. That is why `BITES_PER_MEAL` went 3 -> 6 in a change that was nominally about
-  damage. **When two requirements land on the same constant, the free variable is usually
-  the count, not the size.**
-
-- **A "bites taken so far" counter has to be paid in a loop, not an if.** `bites_taken_for`
-  answers how many bites the meal is OWED by now, and the obvious `if taken > _bites_taken`
-  advances the counter to six and pays one. Invisible at 60fps and wrong the moment a frame
-  is long — a stall, a `step-time`, a test stepping a whole chew. `Pest._tick_aura` already
-  loops for this exact reason and says so in its header. **Any "how many of these should
-  have happened by now" function needs a `while`, and the give-away is that the counter and
-  the effect are updated in different statements.**
-
-- **A behaviour change moves the goalposts for cues keyed to progress.** Making the bite
-  lethal by damage rather than by clock means a small pest's meal now ENDS at 50% progress,
-  so `LATE_BITE_THRESHOLD` at 0.6 is unreachable for an aphid and its late-bite frame never
-  shows. Nothing failed except the one test that asserted it. **After changing what ends an
-  interaction, re-check every constant expressed as a fraction of that interaction** — they
-  were all calibrated against an end that has moved.

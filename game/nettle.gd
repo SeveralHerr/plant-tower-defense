@@ -292,10 +292,7 @@ func _act(delta: float, pests: Array[Pest]) -> void:
 ## Unguarded, like every other `Sfx.play()` call site: `play()` owns the headless gate and
 ## the repeat gap, so a guard here would be a second opinion about both.
 func _sting(target: Pest) -> void:
-	# The nettle stings what is beside IT, so its own position is where the hit landed —
-	# which on the Cutworm is the part of the body currently passing this plant, and not
-	# the head 900 px up the road. See `Cutworm.zone_multiplier`.
-	target.take_damage(STING_DAMAGE, &"", Vector2.ZERO, global_position)
+	target.take_damage(STING_DAMAGE)
 	if target.is_alive():
 		target.flash_hit()
 	Sfx.play(Sfx.NETTLE_STING)
