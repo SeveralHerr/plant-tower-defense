@@ -7403,6 +7403,36 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 		{"what": "aloe reach ring (closest of six shared-alpha rings)",
 			"mark": Aloe.RING_COLOR, "gates": false, "alpha": Aloe.RING_COLOR.a,
 			"ground": grass, "on": "grass"},
+		# THE FREE-TO-PLACE CURSOR HOVER WASH (plant-tower-defense-sv30), out of this
+		# same w86n sweep and the worst single number in it: `Game.CURSOR_FREE_COLOR`
+		# was `GardenTheme.LEAF` before this fix, which IS `GardenTheme.GROUND_GRASS`
+		# -- so the free cue and its own background were the SAME colour, 0.0
+		# separation on grass at ANY alpha, not just the alpha it ships at. Fixed by
+		# darkening rather than lightening (see `Game.CURSOR_FREE_COLOR`'s own comment
+		# for why lightening cannot clear this floor at this alpha); both grounds are
+		# checked since a free-to-place cell can be either.
+		{"what": "free cursor hover wash", "mark": Game.CURSOR_FREE_COLOR,
+			"alpha": Game.CURSOR_HOVER_ALPHA, "ground": grass, "on": "grass",
+			"gates": true},
+		{"what": "free cursor hover wash", "mark": Game.CURSOR_FREE_COLOR,
+			"alpha": Game.CURSOR_HOVER_ALPHA, "ground": dirt, "on": "dirt",
+			"gates": true},
+		# THE BLOCKED HALF OF THE SAME CURSOR, `GardenTheme.DANGER` at the same
+		# `Game.CURSOR_HOVER_ALPHA` (0.30) -- checked because -sv30's own description
+		# asks "verify what the other 3 actually measure" rather than assuming only
+		# the exact-zero free/grass case was broken. It is not a true zero the way
+		# that one was, but it clears NEITHER ground at this alpha: -0.0399 margin on
+		# grass, -0.0724 on dirt (both against the 0.12 floor, both a fail). NOT fixed
+		# here -- -sv30's acceptance is the free/grass zero-contrast wash, and
+		# DANGER's alpha is shared with every other live-warning site GardenTheme's
+		# own header names, none of which this bead owns. Recorded, not gated, so the
+		# next darkening pass has the numbers rather than a stumble.
+		{"what": "blocked cursor hover wash", "mark": GardenTheme.DANGER,
+			"alpha": Game.CURSOR_HOVER_ALPHA, "ground": grass, "on": "grass",
+			"gates": false},
+		{"what": "blocked cursor hover wash", "mark": GardenTheme.DANGER,
+			"alpha": Game.CURSOR_HOVER_ALPHA, "ground": dirt, "on": "dirt",
+			"gates": false},
 	]
 	var err: String = ""
 	var checked: int = 0
@@ -7428,16 +7458,18 @@ func test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at()
 			return err
 	# The denominator, because a table that lost its rows would pass in silence.
 	if err == "":
-		err = _T.assert_eq(checked, 39,
+		err = _T.assert_eq(checked, 43,
 			"the sweep visited every board mark and both grounds for the ring")
 	if err == "":
 		# AND the exception set is pinned by membership, not by count alone. A new mark
 		# that fails and is quietly marked `gates: false` is exactly how a gate rots;
 		# this makes doing that a failing test rather than a passing one.
-		err = _T.assert_eq(ungated.size(), 5,
-			("exactly five rows are ungated -- the two dead/redundant reach-ring ones, "
-				+ "the two corn spread-arc ones, and the one shared reach-ring "
-				+ "representative -- and they are: %s") % ", ".join(ungated))
+		err = _T.assert_eq(ungated.size(), 7,
+			("exactly seven rows are ungated -- the two dead/redundant reach-ring ones, "
+				+ "the two corn spread-arc ones, the one shared reach-ring "
+				+ "representative, and the two blocked cursor hover wash ones "
+				+ "(plant-tower-defense-sv30, recorded but not this bead's fix) -- "
+				+ "and they are: %s") % ", ".join(ungated))
 	if err == "":
 		# The mutation guard: without this, replacing reads_on_at with `return true`
 		# leaves every assertion above green. A ring at RING_ALPHA over grass is the

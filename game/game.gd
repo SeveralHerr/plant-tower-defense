@@ -3231,6 +3231,38 @@ func repaint_for_palette() -> void:
 		plant.repaint_health_bar()
 
 
+## The free-to-place cursor hover wash's own alpha, named rather than a bare
+## literal repeated at both call sites below (plant-tower-defense-sv30).
+const CURSOR_HOVER_ALPHA: float = 0.30
+
+## The free-to-place half of the cursor hover wash. NOT `GardenTheme.LEAF`
+## (plant-tower-defense-sv30, out of plant-tower-defense-w86n's colour-margin
+## sweep): `GardenTheme.GROUND_GRASS := GardenTheme.LEAF`, the SAME constant, so
+## painting the free cue in LEAF over grass had 0.0 luminance separation from its
+## own background — not a dim cue, an invisible one, at ANY alpha, because
+## `GardenTheme.composite_over` scales separation by exactly alpha and alpha
+## times zero is zero regardless of which alpha ships.
+##
+## LIGHTENING TOWARD WHITE CANNOT FIX THIS EITHER, which is why the fix below is
+## a darkening rather than the lightening `PlacementPreview.OK_COLOR` used for
+## the brackets this cue sits inside. Clearing `GardenTheme.GROUND_SEPARATION_MIN`
+## (0.12) at `CURSOR_HOVER_ALPHA` (0.30) needs a base separation of at least
+## 0.12 / 0.30 = 0.40 from BOTH grounds, and grass alone already sits at
+## luminance 0.64 of a possible 1.0 — a brighter mark would need luminance
+## >= 1.04, past white. `OK_COLOR` clears its brackets at alpha 0.75, where the
+## same arithmetic only demands 0.16; this wash is drawn dimmer, so it does not
+## have that room.
+##
+## `GardenTheme.INK`, darkened by half: luminance 0.071, against grass (0.642)
+## and dirt (0.534, the tighter of the two grounds). A literal rather than a
+## call to `.darkened()` because a `const` initializer cannot call a method —
+## the same reason `PlacementPreview.OK_COLOR`/`BLOCKED_COLOR` are literals with
+## their derivation in a comment rather than in the expression. The derivation
+## is asserted, not just claimed, by
+## test_every_board_mark_clears_the_ground_floor_at_the_alpha_it_is_drawn_at's
+## "free cursor hover wash" rows.
+const CURSOR_FREE_COLOR := Color(0.06, 0.075, 0.065)
+
 ## `snap` is passed only by the touch drag branch, and only once the finger has actually
 ## travelled — see `_touch_dragged` for why a tap must never snap. A mouse never passes it:
 ## a cursor is one pixel, it occludes nothing, and pulling it off the cell the player put
@@ -3255,7 +3287,7 @@ func _update_cursor(screen_pos: Vector2, snap: bool = false) -> void:
 	_cursor.visible = true
 	_cursor.position = Vector2(cell.x * Board.CELL, cell.y * Board.CELL)
 	var free: bool = board.is_buildable_for(cell, selected_plant) and not _plants.has(cell)
-	_cursor.color = Color(GardenTheme.LEAF, 0.30) if free else Color(GardenTheme.DANGER, 0.30)
+	_cursor.color = Color(CURSOR_FREE_COLOR, CURSOR_HOVER_ALPHA) if free else Color(GardenTheme.DANGER, CURSOR_HOVER_ALPHA)
 	_update_preview(cell, free)
 
 
