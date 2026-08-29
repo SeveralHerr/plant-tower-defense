@@ -22,6 +22,10 @@ extends SceneTree
 ##   --endless          play past the fixed table
 ##   --no-sweep         do not sweep husks, i.e. the floor a player who never clicks gets
 ##   --json             emit every record as one JSON document instead of a table
+##   --out PATH         ALSO append the record to PATH as JSONL, one line per wave plus
+##                      one per run, for `tools/playtest_report.py` to read back. This is
+##                      what makes a balance baseline a committed artefact rather than
+##                      scrollback (plant-tower-defense-t5yy.4).
 ##
 ## READ THE DENOMINATOR, not the exit code. Every run prints `N wave(s) played of M
 ## attempted` and how it ended; a run that played two waves and stopped is not a game that
@@ -61,6 +65,7 @@ func _run() -> void:
 	var endless: bool = false
 	var sweep: bool = true
 	var as_json: bool = false
+	var out_path: String = ""
 	var i: int = 0
 	while i < args.size():
 		var arg: String = args[i]
@@ -87,6 +92,10 @@ func _run() -> void:
 				sweep = false
 			"--json":
 				as_json = true
+			"--out":
+				i += 1
+				if i < args.size():
+					out_path = args[i]
 			_:
 				printerr("playtest: no such flag: %s" % arg)
 				quit(2)
@@ -114,6 +123,7 @@ func _run() -> void:
 	var failures: int = 0
 	var empty: int = 0
 	var all: Array[Dictionary] = []
+	var jsonl: Array[String] = []
 	for difficulty: StringName in difficulties:
 		for roll: int in seeds:
 			var sim: Object = _sim_script.new()
@@ -130,6 +140,8 @@ func _run() -> void:
 				# number is a REAL hazard for the test-suite caller.
 				printerr("playtest: %d foreign pest(s) and %d foreign plant(s) were already in the tree"
 					% [sim.foreign_pests, sim.foreign_plants])
+			if out_path != "":
+				_collect_jsonl(jsonl, difficulty, roll, endless, sweep, sim, records, waves)
 			if as_json:
 				all.append({
 					"difficulty": String(difficulty), "seed": roll, "endless": endless,
@@ -146,6 +158,14 @@ func _run() -> void:
 			sim.dispose()
 	if as_json:
 		print(JSON.stringify(all, "  "))
+	if out_path != "":
+		var wrote: String = _write_jsonl(out_path, jsonl)
+		if wrote != "":
+			printerr("playtest: %s" % wrote)
+			host.queue_free()
+			quit(2)
+			return
+		print("playtest: %d row(s) written to %s" % [jsonl.size(), out_path])
 	host.queue_free()
 	var attempted: int = difficulties.size() * seeds.size()
 	print("Playtest: %d run(s), %d played nothing, %d driver failure(s)"
@@ -159,6 +179,74 @@ func _run() -> void:
 		quit(2)
 		return
 	quit(1 if failures > 0 else 0)
+
+
+## One JSONL row per wave, plus one per run, both carrying the four keys that identify
+## the run they belong to.
+##
+## THE RUN KEYS ARE ON EVERY ROW ON PURPOSE. A wave row that only carried a wave number
+## would need a join to be readable, and the first thing anyone does with a JSONL file is
+## `grep` one line out of it. The wave row is otherwise exactly what `RunSim` recorded --
+## the keys are its `RECORD_KEYS` and this function never names one, so a column added
+## there reaches the committed baseline the same day rather than being silently dropped
+## here. `tools/playtest_report.py` reads `RECORD_KEYS` back out of `run_sim.gd` for the
+## same reason and refuses a row carrying anything else.
+func _collect_jsonl(into: Array[String], difficulty: StringName, roll: int, endless: bool,
+		sweep: bool, sim: Object, records: Array[Dictionary], attempted: int) -> void:
+	var keys: Dictionary = {
+		"difficulty": String(difficulty), "seed": roll, "endless": endless, "swept": sweep,
+	}
+	for record: Dictionary in records:
+		var row: Dictionary = keys.duplicate()
+		row["kind"] = "wave"
+		row.merge(_jsonable_record(record))
+		into.append(JSON.stringify(row))
+	var summary: Dictionary = keys.duplicate()
+	summary["kind"] = "run"
+	summary["ended"] = String(sim.ended)
+	summary["failure"] = sim.failure
+	summary["waves_played"] = sim.waves_played
+	summary["waves_attempted"] = attempted
+	# The contamination census, carried into the record rather than left on stderr. A run
+	# measured on a tree still holding a previous run's plants is not a run, and a reader
+	# of the committed baseline has no other way to know which rows those were.
+	summary["foreign_pests"] = sim.foreign_pests
+	summary["foreign_plants"] = sim.foreign_plants
+	into.append(JSON.stringify(summary))
+
+
+## Writes the rows whole, at the end, rather than a line at a time: a sweep killed
+## half-way then leaves no file rather than a truncated one a reader would take for a
+## complete record of a shorter run.
+func _write_jsonl(path: String, rows: Array[String]) -> String:
+	var dir: String = path.get_base_dir()
+	if dir.begins_with("res://") or dir.begins_with("user://"):
+		DirAccess.make_dir_recursive_absolute(dir)
+	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		return "could not open %s for writing (error %d)" % [path, FileAccess.get_open_error()]
+	for row: String in rows:
+		file.store_line(row)
+	file.close()
+	return ""
+
+
+## One record with every value JSON-safe. Separate from `_jsonable` above, which takes the
+## whole array; this one is the per-row half `_collect_jsonl` needs.
+func _jsonable_record(record: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
+	for key: Variant in record:
+		var value: Variant = record[key]
+		if value is StringName:
+			out[String(key)] = String(value)
+		elif value is Array:
+			var listed: Array = []
+			for item: Variant in value as Array:
+				listed.append(String(item) if item is StringName else item)
+			out[String(key)] = listed
+		else:
+			out[String(key)] = value
+	return out
 
 
 ## One row per wave, columns from `RunSim.RECORD_KEYS` rather than from a header written

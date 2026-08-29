@@ -9907,3 +9907,46 @@ is likely to be at least as productive.
   refresh would remove 70 lines from `dev_tools.gd` not present in 0.65.0 (the
   exported-build guard, upstream #58, among them) - exit 1, "would lose". Carried, not
   resolved: plant-tower-defense-abxv already owns that decision and it is not this bead's.
+
+## 2026-08-28 — Merged two parallel playtest drivers into one, and fixed what comparing them found
+
+- Value: **warranted** — comparing two independent implementations of the same bead found a
+  present defect in the shipped one, and running both on one seed produced a balance
+  reading neither could have produced alone.
+  - Expected: merging my branch would duplicate a driver main already had, so I expected
+    to compare the two and keep one. I did not expect the shipped driver's own output to
+    report cross-run contamination, nor the two drivers to disagree about whether the
+    campaign is winnable.
+  - Got: `playtest: 4 foreign pest(s) and 12 foreign plant(s) were already in the tree` on
+    the third run of a three-difficulty invocation — runs one and two's gardens, still
+    standing, while their records were written anyway. And the two drivers disagreeing:
+    shipped `greedy_cover` is `eaten | wave 7` at every difficulty; a thickening policy
+    reaches `victory | wave 22 | lives 10/10`.
+  - Found: four things.
+    (1) `RunSim.dispose()` cleared the `plants` dictionary without freeing the nodes, so
+    they stayed parented to the shared host and inside the tree-global `plants` group.
+    **No test in `test_playtest.gd` could ever have caught it** — that file's `_play()`
+    helper frees the HOST first, which frees the plants with it; only `tools/playtest.gd`
+    reuses one host across runs, which is the shape a sweep uses.
+    (2) The first fix cast a freed object inside `dispose()`, aborting three coroutines
+    mid-method. `run_tests.gd` printed `ALL TESTS PASSED` at 1036/1036 and `run_tests.py`
+    failed the run on `Errors: 10 emitted during the suite`. That is the exact failure
+    CLAUDE.md documents, met in the wild, and it is the reason the wrapper exists.
+    (3) The two engines substantially agree — the wave-7-versus-wave-22 swing is entirely
+    the policy's stopping rule (`run_sim.gd:667` stops planting once coverage is
+    complete), not a disagreement about the game. The balance bead was rewritten from one
+    measurement to both, because the first version reported half the picture as the whole.
+    (4) `RunSim` re-derives ten of `Game`'s methods and its own header says nothing checks
+    they still agree. Filed as `plant-tower-defense-xca3`.
+  - Cheaper: nothing. The contamination only appears when one host is reused across runs,
+    which no test does and only the sweep tool does; and the policy swing needed both
+    drivers run on the same seed. Reading either file alone would have produced neither.
+
+- Gap: **no gaps this turn**, but one observation worth recording rather than re-deriving.
+  The `--script` autoload trap — a `--script` SceneTree file cannot name any class that
+  references an autoload at compile time, because Godot compiles the script before
+  registering autoloads, and the error it emits (`Nonexistent function 'prepare' in base
+  'GDScript'`) names the wrong cause entirely — was hit independently by two sessions on
+  the same day. `tools/script_entry_check.py` now gates it, which is the right answer;
+  this entry records that the error message is the misleading part, since the checker's
+  existence does not preserve that.

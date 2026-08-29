@@ -380,3 +380,49 @@ func test_the_default_policy_covers_road_it_could_not_reach_before() -> String:
 		return err
 	return _T.assert_gt(int((records[0] as Dictionary)[&"killed"]), 0,
 		"and what it planted killed something")
+
+
+
+## The leak that made a multi-run invocation measure somebody else's garden.
+##
+## `_play()` above frees the HOST before disposing, which frees every plant and pest with
+## it -- so no test in this file could ever have seen this. `tools/playtest.gd` does the
+## other thing, and the thing a sweep has to do: one host, many runs, `dispose()` between.
+## `dispose()` cleared the `plants` dictionary without freeing the nodes in it, so they
+## stayed parented to the shared host and inside the tree-global `plants` group, and the
+## next run's census found them. Measured on a three-difficulty invocation before the
+## fix: "4 foreign pest(s) and 12 foreign plant(s) were already in the tree" on the third
+## run -- runs one and two's gardens, still standing, while their records were written
+## anyway.
+func test_a_disposed_run_leaves_nothing_standing_for_the_next_one() -> String:
+	var host: Node2D = _host()
+	await _T.instantiate_scene(host)
+
+	var first := RunSim.new()
+	first.wave_ceiling = SHORT_RUN
+	first.roll_seed = 4242
+	first.play(host)
+	var planted: int = first.plants.size()
+	first.dispose()
+
+	# Deliberately disposed while the host is still alive, which is the ONE ordering a
+	# sweep uses and the one no other test here exercises.
+	var second := RunSim.new()
+	second.wave_ceiling = 1
+	second.roll_seed = 4242
+	second.play(host)
+	var strays: int = second.foreign_pests + second.foreign_plants
+	var second_pests: int = second.foreign_pests
+	var second_plants: int = second.foreign_plants
+	second.dispose()
+	_T.free_ui(host)
+
+	var err: String = _T.assert_gt(planted, 0,
+		"the first run really did build a garden, so there was something to leak")
+	if err == "":
+		err = _T.assert_eq(strays, 0,
+			("and a disposed run leaves nothing standing: the second run found %d foreign "
+				+ "pest(s) and %d foreign plant(s) on the shared host. Every number a run "
+				+ "records over somebody else's garden is describing that garden.")
+				% [second_pests, second_plants])
+	return err

@@ -224,6 +224,30 @@ func dispose() -> void:
 		if is_instance_valid(node):
 			node.free()
 	_reap.clear()
+	# THE ONES STILL STANDING TOO, and this is not tidiness. Clearing `plants` drops this
+	# object's reference and leaves the NODE parented to the host, inside the tree-global
+	# `plants` and `pests` groups, where the NEXT run's contamination census finds it.
+	# Measured before the fix: a three-difficulty invocation reported "4 foreign pest(s)
+	# and 12 foreign plant(s) were already in the tree" on its third run -- runs one and
+	# two's gardens, still standing. Every number in those two runs described a board
+	# somebody else had planted, and the census said so on stderr while the records were
+	# written anyway.
+	# UNTYPED LOOP VARIABLES AND is_instance_valid BEFORE THE CAST, both load-bearing.
+	# `dispose()` is reached from two orders: a sweep frees nothing first, and
+	# `test_playtest.gd._play` frees the HOST first -- which frees every child with it, so
+	# by the time this runs the dictionary holds freed objects. `var plant := standing as
+	# Node` on one of those is itself the error ("Trying to cast a freed object"), before
+	# any validity check written after it can run, and it aborts the coroutine mid-method
+	# where a `-> String` test reports it as a pass.
+	for standing: Variant in plants.values():
+		if standing != null and is_instance_valid(standing):
+			(standing as Node).free()
+	for pest: Variant in _pests:
+		if pest != null and is_instance_valid(pest):
+			(pest as Node).free()
+	for kernel: Variant in _kernels:
+		if kernel != null and is_instance_valid(kernel):
+			(kernel as Node).free()
 	for owned: Node in [board, bank, compost, director]:
 		if owned != null and is_instance_valid(owned):
 			owned.free()
