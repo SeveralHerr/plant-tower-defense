@@ -85,6 +85,14 @@ const EXPECTED_SIZE := {
 	# nothing here needs a second canvas size to justify.
 	"pest_queen": 64,
 	"pest_queen_dead": 64,
+	# The Leafhopper and the Locust (plant-tower-defense-4zyb) — two more pests,
+	# each asking a question none of the first five do (Pest.SPECIES has both
+	# arguments). Same 64 px canvas as every other pest; neither needs a second
+	# size to justify, exactly like the Queen's and the Nurse's own rows above.
+	"pest_hopper": 64,
+	"pest_hopper_dead": 64,
+	"pest_locust": 64,
+	"pest_locust_dead": 64,
 	"seed_packet": 64,
 	"sticky_sundew": 64,
 	"sunflower": 64,
