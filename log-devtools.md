@@ -10850,6 +10850,27 @@ is likely to be at least as productive.
   - [G-082] status: open | seen: 2 | harness: 0.38.0 (second sighting 2026-08-29, bead vvmy, in a worktree branched from the same 24028e1 -- reached the same diagnosis and the same copy-the-untracked-file workaround independently; fixed on main by 3a16b21)
   - Improvement: `git commit -a` (or any commit that stages by tracked-vs-modified rather than by an explicit `git add` list) on a tree with untracked new files belonging to the same feature is exactly how this happens; a pre-commit check that greps a commit's new/changed `preload()`/`class_name` references against `git ls-files` (or just runs `name_check.py` in the commit hook) would have caught it before it reached `main`. Worked around this session by copying the two untracked files from the concurrently-running main worktree into mine for local test compilation only, without committing them under this branch — confirmed the resulting 2 residual suite failures (`test_holding_a_plant_button_reveals_its_tooltip_and_blocks_the_purchase`, `test_the_suite_reach_baseline_lists_only_symbols_no_test_names`) reproduce identically with every change from this session's own commits `git stash`ed out, so neither is caused by this session's diff.
 
+## 2026-08-29 — plant-tower-defense-rn4p: the Cutworm, a boss body 953 px long
+
+- Value: **warranted** — two defects, both invisible to every headless gate, and both in the one thing headless structurally cannot execute: `_draw`.
+  - Expected: a 953 px body swept along a filleted copy of `Board.route()` lies on the dirt through all five corners, reads as one animal rather than a chain of sprites, and escapes tail-last. The headless suite had already proved the geometry (0 of 104,136 body-edge samples off the road) and the zone table; what was left for the running game was whether it *draws*.
+  - Got: `13,053` lines of `ERROR: Invalid polygon data, triangulation failed.` in a single run's stderr, backtraced to `_fill_strip`. Two distinct causes behind one message: degenerate quads at the tail taper and at the sweep's clamped final sample, and then — after those were gated — SELF-INTERSECTING quads at the corner fillet, where a 29 px offset on a 26 px curvature radius folds the inner edge into a bowtie. The second one cannot be tuned away: the fold clears only above a 31.9 px fillet and `RoadSpine.FILLET_LEG_FRACTION` caps it at 30.7 on 64 px legs. Then, with stderr clean, the *same* `wait-frames 200` call reported `1213ms` with the body still emerging and `23454ms` once it was fully out — 165 fps against 8.5, on a board `performance` measures at `mean 171.2 min 132.4`.
+  - Found: both of the above, plus the thing the screenshot was for — the body does fill the lane and bend correctly through three corners, with no gap on the outside of a turn and no segment square to the screen. Also found headless, and worth recording because it was the larger surprise: appending wave 27 broke **16** balance invariants across three test files, and four of them were not the boss's fault at all but claims that had quietly been about "every species" while meaning "every ordinary bug".
+  - Cheaper: nothing. `_draw` does not execute headless, so neither runtime finding was reachable from the suite, the lint, `check_all` or a diff read. The 16 invariant failures were caught by `run_tests.py` alone and needed no game at all.
+
+- Gap: **`findings` gates FPS and orphan growth but NOT draw calls, which it already collects.** A frame doing 2000 `draw_colored_polygon`s is invisible until the frame rate collapses, and frame rate is a machine fact that cannot be asserted in a suite. `performance` answered `FPS: mean 171.2` on an idle board and `findings` reported `performance=0` while the boss was on screen; the collapse only surfaced because `wait-frames` happens to print its own wall time, which is a side effect rather than a measurement.
+  - CORRECTION, and the correction is the useful half: this entry first said the counter was missing. It is not. `dev_tools.gd:1949` has read `Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME` all along and `tools/devtools.py:1404` prints it as `Draw calls:`. What is missing is any GATE — `_run_findings`' performance block reads `fps` and `orphan_growth` and nothing else, and `devtools_config.json` has `fps_min` and `orphan_growth_max` with no counterpart for the one render metric that is machine-independent. So the fix is much smaller than "add instrumentation", and the gap I nearly filed upstream would have been rejected on sight.
+  - [G-159] status: fixed | seen: 1 | harness: 0.38.0
+  - Improvement: gate it. `draw_calls_max` in `devtools_config.json` beside `fps_min`, read in the same `performance` block of `_run_findings`, defaulting to 0 = off so no existing project starts failing. Done in this repo's vendored copy this session; needs upstreaming (plant-tower-defense-rn4p.9). A draw-call budget is the check that would have caught this on the first frame instead of on the third relaunch, and unlike FPS it is a number a suite can hold. Worked around in the meantime by deriving the count statically — `Cutworm.body_polygon_cost()` reads the same `sample_count()` the sweep loops over, and `test_the_cutworms_frame_cost_stays_inside_its_budget` gates it with no game running.
+
+- Gap: **WITHDRAWN — `python tools/verify_ledger.py stats` crashed with `AttributeError: 'str' object has no attribute 'get'` at `verify_ledger.py:1664`, and it was already fixed on `main`.** The row it died on has `"runtime": "windowed"`, a string where a dict was assumed. Filed as a gap, then found on merging: `verify_ledger.py` carries a `LOCAL PATCH (marker: _row_dict)` block that coerces exactly this and counts the coerced rows rather than swallowing them, and `stats` runs clean on the merged tree.
+  - The lesson is not about the ledger, it is about WHERE THE GAP WAS MEASURED. This worktree was branched from an older `main`, so every harness tool in it was one or more fixes behind, and a crash reproduced here says nothing about the harness anybody else is running. `.claude/skills/gap-reconcile` exists for precisely this and asks the harness version installed on the MACHINE rather than the one the branch pins; it was not consulted before the entry was written. Two minutes of `git log --oneline origin/main -- tools/verify_ledger.py` would have closed it without a filing.
+  - [G-160] status: wontfix | seen: 1 | harness: 0.38.0
+  - Improvement: none for the tool. For the process: reconcile a gap against `origin/main` before writing it down, not after — a stale worktree manufactures gaps that read exactly like real ones.
+
+- Gap: **`wait-frames N` blocks the single-slot bus for as long as the frames take, so a slow frame rate reads as a dead bus.** `wait-frames 260` on the 8.5 fps board returned `No response from Godot after 30s ... it is hung, still running, or it aborted mid-handler`, and the follow-up `find-nodes` came back `'find_nodes' was never picked up, but the game is ALIVE and busy`. The second message is excellent and named the real state exactly; the first sent me to the stderr log looking for a script error. The two answers are reachable from the same information.
+  - [G-161] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: `wait_frames` should report progress (`frames done / N`) on the watchdog path so the timeout message can say "still running, 41 of 260 frames in 30s — the game is at ~1.4 fps" instead of offering three possibilities. It already knows both numbers.
 
 ## 2026-08-29 — vvmy: armed-plant cue, ghost lifted clear of the finger, and an empty arm
 
@@ -11160,6 +11181,7 @@ integrator's, covering the runtime pass none of the four were allowed to run.
   built wrong, and the bridge diagnosed it in one read; `find-nodes --call` on a zero-arg
   getter is exactly the verb for "what does this node think is true", and it worked.
 
+
 ## 2026-08-29 — ambient bees: a cosmetic layer nothing in the game reads (plant-tower-defense-qz4j)
 
 - Value: **warranted** — the whole cost argument for this feature is "an idle garden pays
@@ -11299,3 +11321,38 @@ motif system that existed to make a recolour into more than a recolour came out 
   parallel-safe. Both lanes named it unprompted. That is the documented design, not a
   hole — the integrator's single engine pass is what it trades for — and it cost nothing
   here because lint came back 77 of 77 compiled on the first try.
+
+## 2026-08-29 — the Chomp bites instead of deleting (plant-tower-defense-*, owner request)
+
+- Value: **warranted** — but the two defects it caught were both headless, and the live
+  pass earned its place on one narrow thing.
+  - Expected: the sizing is arithmetic over `Pest.SPECIES` and needed no game at all; the
+    live run was to see the health actually step down on a real bug.
+  - Got: exactly that, and it is the difference between "the numbers are right" and "a
+    player sees a bug being chewed". `step-time` in 0.06s slices, reading `health` each
+    time: an aphid grabbed at `x=241` on 3.0 went 2.0, 1.0, 0.0 — dead on the third bite —
+    and the corpse lingered and freed the mouth. A beetle grabbed at `x=240.33` on 16.0
+    went 15, 14, 13, 12 and was released on exactly 10.0, one meal of six, then walked
+    291 -> 390 with `is_busy()=false` the whole way and its health unchanged.
+  - Found: (1) **the first draft paid one bite of damage per FRAME, not per bite owed** —
+    `bites_taken_for` answers how many the meal is owed by now, so a single long frame
+    advanced the counter to six and dealt 1.0. An existing test caught it; the fix is a
+    `while`, which also matters downstream because `take_damage` spends a Shield Bug plate
+    per hit and six bites owed must cost six plates. (2) **the new tests grabbed off the
+    settle frames**, which feed `_act` the tree-global `pests` group — the tell was the
+    failure moving from the queen test to the aphid test when the only change was a
+    message string. All five now `set_physics_process(false)` and drive `_act` by hand,
+    the guard `test_a_gaping_chomp_grabs_a_pest_the_bud_lets_walk_past` already had.
+    (3) an aphid now dies at bite 3 of 6 — progress 0.5 — so it never reaches
+    `LATE_BITE_THRESHOLD` and the late-bite sprite is never shown for one. Pinned as an
+    exclusion rather than papered over.
+  - Cheaper: both defects were caught by `run_tests.py` in seconds, and the whole "who
+    dies" question is a pure function of the species table. Nothing cheaper than the
+    bridge could show the health stepping down on the real road, which is the only claim
+    the live run was making.
+
+- Gap: **no devtools-harness gap this turn.** `find-nodes --property health` over a
+  `step-time` loop is the right shape for "watch a number change on a real entity", and
+  it worked; the one thing I wanted — a verb that reads a value at every physics frame
+  rather than at every bridge round-trip — is already served well enough by making the
+  slices smaller, and the 0.06s slices resolved bites 0.075s apart without trouble.

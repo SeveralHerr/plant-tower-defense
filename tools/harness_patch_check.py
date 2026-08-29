@@ -83,6 +83,23 @@ PATCHES = [
         ),
         "upstream": "not yet filed (G-158)",
     },
+    {
+        "file": "addons/godot_selftest/dev_tools.gd",
+        "marker": "draw_calls_over_budget",
+        "why": (
+            "`findings` gated fps and orphan growth and nothing else, while "
+            "`_cmd_performance` had collected RENDER_TOTAL_DRAW_CALLS_IN_FRAME all "
+            "along and `devtools.py` had printed it all along. Nothing read it. fps is "
+            "a fact about the MACHINE -- the Cutworm's 2000-draw-call frame reads 165 "
+            "fps on this desktop and 8.5 with the body fully out, so an fps_min tuned "
+            "anywhere useful is noise on one machine and silence on another. The "
+            "draw-call count is the same number everywhere, which is what makes it the "
+            "one render metric a project can hold a budget against. Reads "
+            "draw_calls_max from devtools_config.json, default 0 = off, and records a "
+            "SKIP rather than a silent pass when it is off or when the run is headless"
+        ),
+        "upstream": "not yet filed (G-159)",
+    },
 ]
 
 

@@ -6153,6 +6153,41 @@ func _cmd_findings(args: Dictionary) -> Dictionary:
 	elif fps < fps_min:
 		_append_finding(findings, counts, "performance", "fps_below_min", "warning", "",
 			"FPS %.1f is below fps_min %.0f" % [fps, fps_min])
+	# Draw calls, which this verb has collected since it was written (see _cmd_performance's
+	# "draw_calls") and which nothing has ever gated on.
+	#
+	# WHY IT IS WORTH A GATE OF ITS OWN, next to an fps check that looks like it covers the
+	# same ground: fps is a fact about the MACHINE. A frame doing two thousand
+	# draw_colored_polygon calls reads 165 fps on a fast desktop and 8 on a laptop, so an
+	# fps_min tuned anywhere useful is either noise on one and silence on the other. The
+	# draw-call count is the same number on both, which makes it the render metric a
+	# project can actually hold a budget against.
+	#
+	# Filed from plant-tower-defense-rn4p: a 953 px boss body cost >2000 draw calls per
+	# frame and took a 171 fps board to 8.5. `findings` reported performance=0 throughout,
+	# because the sample landed after the body left the screen and fps was all it looked at.
+	#
+	# DEFAULT 0 = OFF, so no project that has never heard of this starts failing on it. A
+	# skip is recorded rather than nothing, for the reason every other skip here is: a
+	# check that silently does not run is indistinguishable from one that passed.
+	var draw_calls_max: int = int(_config.get("draw_calls_max", 0))
+	var draw_calls: int = int(perf_data.get("draw_calls", 0))
+	if draw_calls_max <= 0:
+		checks_skipped.append({
+			"check": "performance.draw_calls",
+			"reason": ("no draw_calls_max in devtools_config.json (default 0 = off); the "
+				+ "count this run was %d" % draw_calls),
+		})
+	elif DisplayServer.get_name() == "headless":
+		# Headless renders nothing, so the count is 0 for a reason that has nothing to do
+		# with the scene. Reported rather than passed, the same way fps_max_caveat is.
+		checks_skipped.append({
+			"check": "performance.draw_calls",
+			"reason": "measured HEADLESS: no frame is rendered, so draw_calls is not a scene fact",
+		})
+	elif draw_calls > draw_calls_max:
+		_append_finding(findings, counts, "performance", "draw_calls_over_budget", "warning", "",
+			"draw calls %d over draw_calls_max %d" % [draw_calls, draw_calls_max])
 	if not bool(perf_data.get("orphan_baseline_captured", false)):
 		checks_skipped.append({
 			"check": "performance.orphan_growth",

@@ -76,7 +76,12 @@ func _physics_process(delta: float) -> void:
 			#
 			# Costs nothing on a hit the pest survives: `take_damage` only carries it
 			# into `kill()`, and never remembers it.
-			pest.take_damage(damage, &"", Pest.knockback_offset(global_position, pest.global_position))
+			# The kernel's own position is where the hit landed, which for every pest but
+			# the Cutworm is the same thing as "on that pest" and is ignored. On a 953 px
+			# body it decides whether this was the maw, the hide or the soft band — see
+			# `Cutworm.zone_multiplier`.
+			pest.take_damage(damage, &"", Pest.knockback_offset(global_position, pest.global_position),
+				global_position)
 			# A hit that didn't kill gets its own cue; a hit that did already has
 			# one — the corpse swap, fade and Sfx.PEST_KILLED in Pest._play_death
 			# (plant-tower-defense-7o3). Without this split, "connected but the

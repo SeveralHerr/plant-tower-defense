@@ -674,6 +674,19 @@ func route() -> PackedVector2Array:
 	return _route
 
 
+## The same road as a curve rather than a staircase: `route()` with every interior
+## corner cut back and replaced by a Bezier through it. See `RoadSpine.fillet`.
+##
+## A SECOND READER, not a replacement. Every pest on this board walks `route()` and
+## should keep walking it — a 64 px sprite turning a right angle in one frame is
+## correct, and rounding the road under it would change nothing a player can see while
+## quietly shortening the walk by 2.8%. This exists for the one pest whose body is
+## longer than the straights it lies on, and `Cutworm` still takes its *distance* from
+## the unfilleted route so the boss arrives when the wave table says it does.
+func spine(radius: float = RoadSpine.FILLET) -> PackedVector2Array:
+	return RoadSpine.fillet(route(), radius)
+
+
 func board_size() -> Vector2:
 	return Vector2(COLS * CELL, ROWS * CELL)
 

@@ -3544,15 +3544,22 @@ func test_the_campaign_finale_fits_under_the_endless_seam() -> String:
 	var seam_health: float = 0.0
 	for group: Dictionary in WaveDirector.groups_for(first_endless):
 		seam_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
+	# THE LAST SWARM WAVE'S health (plant-tower-defense-rn4p). `campaign_mult` below stays
+	# keyed to `finale`, because the seam really is between the last campaign row and the
+	# first endless one and it is the campaign ramp's LAST value the endless ramp
+	# multiplies -- that cancellation is the mechanism, and it does not care what the last
+	# row contains. What the last row contains is the other half, and the Cutworm's 1800
+	# points of one zoned body is not a swarm's base health and cannot be compared with
+	# one. See `WaveDirector.boss_solo_wave`.
 	var finale_health: float = 0.0
-	for group: Dictionary in WaveDirector.groups_for(finale):
+	for group: Dictionary in WaveDirector.groups_for(WaveDirector.last_swarm_wave()):
 		finale_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
 
 	# Vacuity guard: both sides have to be real waves, or every comparison below
 	# is 0 against 0 and passes for the wrong reason.
 	var err: String = _T.assert_gt(seam_health, 0.0, "the first endless wave has contents")
 	if err == "":
-		err = _T.assert_gt(finale_health, 0.0, "and so does the campaign finale")
+		err = _T.assert_gt(finale_health, 0.0, "and so does the last campaign swarm")
 	if err != "":
 		return err
 
@@ -3589,9 +3596,22 @@ func test_the_campaign_finale_fits_under_the_endless_seam() -> String:
 		err = _T.assert_gt(just_over * campaign_mult, WaveDirector._raw_threat(first_endless),
 			"and the bound is exactly where the seam inverts, not a margin under it")
 	if err == "":
-		# And the thing the bound exists to protect actually holds today.
-		err = _T.assert_gt(WaveDirector.threat_for(first_endless), WaveDirector.threat_for(finale),
-			"so the first endless wave still prices above the campaign finale")
+		# And the thing the bound exists to protect actually holds today -- measured
+		# against the last SWARM wave, for the reason the health total above gives. The
+		# solo-boss finale between them is exempt by construction and asserted separately
+		# in test_combat's threat sweep (plant-tower-defense-rn4p).
+		err = _T.assert_gt(WaveDirector.threat_for(first_endless),
+			WaveDirector.threat_for(WaveDirector.last_swarm_wave()),
+			"so the first endless wave still prices above the last campaign swarm")
+	if err == "":
+		# The concession, written down where the bound is: endless does NOT out-price the
+		# boss finale, and is not meant to. A campaign that ends on a wall and then hands
+		# the player a resumed ramp is the shape here; what would be a defect is endless
+		# falling below the SWARM, which the assertion above forbids.
+		err = _T.assert_true(WaveDirector.boss_solo_wave(finale),
+			("the wave between the last swarm and endless is a solo boss. If it stops"
+				+ " being one, this exemption has outlived its reason and the sweep above"
+				+ " should go back to comparing against WAVES.size()"))
 	return err
 
 
@@ -3618,7 +3638,13 @@ func test_the_campaign_finale_fits_under_the_endless_seam() -> String:
 ## half of the claim -- "nothing outruns the finale" is -- so the assertion below
 ## now allows a tie and the strict form moved to `>=`.
 func test_only_the_campaign_finale_spends_the_whole_road_budget() -> String:
-	var finale: int = WaveDirector.WAVES.size()
+	# THE LAST SWARM WAVE (plant-tower-defense-rn4p). This is a claim about HEADCOUNT --
+	# how much of the road's forty-pest budget a wave spends -- and the campaign's actual
+	# last row is now the Cutworm, which spends one. Measured against that, every wave in
+	# the table is "fuller than the finale" and the check fails twenty-six times over
+	# while nothing about the road budget has changed. Wave 26 is still the wave that
+	# spends it; `boss_solo_wave` is asserted separately at the bottom.
+	var finale: int = WaveDirector.last_swarm_wave()
 	var err: String = _T.assert_gt(finale, 1, "there is a campaign to sweep")
 	if err != "":
 		return err
@@ -3654,6 +3680,24 @@ func test_only_the_campaign_finale_spends_the_whole_road_budget() -> String:
 			float(WaveDirector.SIMULTANEOUS_PEST_CEILING) * 0.5,
 			"and the wave below it (wave %d, %d pests) is still a real second place"
 				% [runner_up_wave, runner_up])
+	if err == "":
+		# The rows the sweep skipped, so the skipping cannot grow quietly. Every wave
+		# above `finale` must be a solo boss -- there is exactly one today -- and it must
+		# spend none of the budget, which is what makes it exempt rather than missing.
+		var exempt: int = 0
+		for wave: int in range(finale + 1, WaveDirector.WAVES.size() + 1):
+			err = _T.assert_true(WaveDirector.boss_solo_wave(wave),
+				("wave %d sits past the last swarm wave and is not a solo boss -- the"
+					+ " sweep above silently stopped covering it") % wave)
+			if err == "":
+				err = _T.assert_eq(WaveDirector.peak_simultaneous_pests(wave), 1,
+					"and wave %d really does put one body on the road" % wave)
+			if err != "":
+				return err
+			exempt += 1
+		if err == "":
+			err = _T.assert_eq(exempt, 1,
+				"exactly one wave is exempt from the road budget, got %d" % exempt)
 	return err
 
 

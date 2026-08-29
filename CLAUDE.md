@@ -464,7 +464,10 @@ A Phase 4 check that failed and was fixed keeps `"result": "fail"` with
 
 ### Config
 `res://addons/godot_selftest/devtools_config.json` holds thresholds and hooks:
-`fps_min`, `orphan_growth_max` (gate on this — `orphan_max: 0` is unreachable),
+`fps_min`, `draw_calls_max` (0 = off; a LOCAL PATCH — fps is a fact about the
+machine, a draw-call count is the same number everywhere, so this is the render
+budget a test can actually hold), `orphan_growth_max` (gate on this — `orphan_max: 0`
+is unreachable),
 `safe_area_inset`, `mute`, `main_scene`, `entry_hook {node_path, method}` (fires
 **automatically, once**, shortly after launch — advances past a menu into the playable
 scene; check `ping`'s `entry_hook_status` if it does not seem to have fired: `fired` /

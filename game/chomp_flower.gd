@@ -261,7 +261,54 @@ const LATE_BITE_THRESHOLD: float = 0.6
 ## together that the pest's own HIT_FLASH_DURATION (0.10) has not finished before the
 ## next one begins, so they smear into one long flash instead of reading as separate
 ## bites.
-const BITES_PER_MEAL: int = 3
+const BITES_PER_MEAL: int = 6
+
+## WHAT A BITE ACTUALLY DOES, and the whole of this plant's kill rule.
+##
+## The Chomp used to deal no damage at all: it held a pest for `chew_seconds` and then
+## called `Pest.kill()` outright, so health, Shield Bug plates and Nurse healing were all
+## irrelevant to it. That is an unblockable delete dressed as a chew, and it is what the
+## catalogue's old "Eats small pests instantly" was describing.
+##
+## Now every bite is a real `take_damage()` and the meal is worth `meal_damage()` -- six
+## bites of 1.0, so **six health**. Nothing about the hold changed: `chew_seconds` still
+## decides how long the mouth is occupied, which is the trade this plant has always sold.
+## What changed is what the pest walks away with, or whether it walks away at all.
+##
+## TWO CONSTRAINTS PIN THESE NUMBERS, and both are read off `Pest.SPECIES` rather than
+## chosen — `test_the_bite_is_sized_off_the_species_table_at_both_ends` derives them:
+##
+##   * **The smallest bug must take a few bites, not one.** The aphid has 3 health, so
+##     `BITE_DAMAGE` has to be at or under 1.0 for it to need three of them. At 1.5 an
+##     aphid dies on the second bite and at 3.0 on the first, which is the instant kill
+##     again with extra steps.
+##   * **The line between "eaten" and "spat out" has to fall in a gap in the table.**
+##     Health runs 3, 4, 5, then 10, 16, 48, 80 — so a meal worth 6 puts the aphid,
+##     locust and hopper inside the mouth and everything from the Shield Bug up outside
+##     it, with a full point of margin under 5 and four points of clearance over 10.
+##     A meal worth 10 or 4 would sit exactly on a species and decide it by rounding.
+##
+## WHO DIES, spelled out because it is the design and not a consequence:
+##
+##     aphid      3 hp   dead on bite 3 of 6
+##     locust     4 hp   dead on bite 4
+##     hopper     5 hp   dead on bite 5
+##     shieldbug 10 hp   SURVIVES -- and see below, it leaves without its plates
+##     beetle    16 hp   survives on 10
+##     nurse     48 hp   survives on 42
+##     queen     80 hp   survives on 74
+##
+## THE SHIELD BUG IS THE INTERESTING ONE. `Pest.take_damage` spends a plate on any
+## damaging hit whether it got through or not, and a plate absorbs 1.5 against a bite of
+## 1.0 — so six bites land nothing at all and cost it all six plates. A Chomp cannot eat
+## a Shield Bug and can strip it bare for the cobs behind, which is a better answer to
+## that species than "the mouth deletes it" ever was.
+##
+## This is why the plant is a BODY BLOCKER and the header at the top of this file says
+## so. Against everything above six health the Chomp buys time and takes a bite out of
+## it; it does not remove it. A big pest in a Chomp's mouth is a lane held open, which is
+## the trade the class was always described as making and now actually makes.
+const BITE_DAMAGE: float = 1.0
 
 
 ## How many bites have been taken by a given point in the chew. Pure and static, so
@@ -273,6 +320,28 @@ const BITES_PER_MEAL: int = 3
 ## this floors a scaled progress rather than rounding: at progress 1.0 the meal ends
 ## and Pest.kill() takes over, so a third bite landing at 0.999 would be a bite the
 ## player never sees separately from the kill.
+## Pure: what a whole meal is worth in health. The number that decides who is small.
+static func meal_damage() -> float:
+	return float(BITES_PER_MEAL) * BITE_DAMAGE
+
+
+## Pure: does a pest with this much health die in the mouth, or get spat out?
+##
+## `<=` and not `<`: a bug on exactly `meal_damage()` health is finished by the last bite,
+## which is what "dead on bite 3 of 6" means for the aphid at 3.0.
+static func dies_in_the_mouth(health: float) -> bool:
+	return health <= meal_damage()
+
+
+## Pure: which bite kills a pest on `health`, counting from 1 — or 0 for one the mouth
+## cannot finish. The `ceil` is the whole point: 3 health against 1.0 bites is three
+## bites, not two and a bit.
+static func bites_to_kill(health: float) -> int:
+	if BITE_DAMAGE <= 0.0 or not dies_in_the_mouth(health):
+		return 0
+	return int(ceil(health / BITE_DAMAGE))
+
+
 static func bites_taken_for(progress: float) -> int:
 	var p: float = clampf(progress, 0.0, 1.0)
 	return mini(int(floorf(p * float(BITES_PER_MEAL))), BITES_PER_MEAL)
@@ -490,6 +559,20 @@ var _bite_lunge: Vector2 = Vector2.ZERO
 ## writhe for the whole meal.
 var _capture_elapsed: float = 0.0
 
+## The pest this flower last spat out alive, held until it has walked clear of the reach.
+##
+## Without this the ambush eats itself: `release()` leaves the bug exactly where it was
+## caught, which is inside the reach and already past `GRAB_LEAD`, so the very next frame
+## `_nearest_free_pest` picks it straight back up. A beetle would be chewed, spat, and
+## re-chewed on the spot until the six-damage meals added up to sixteen — which is the
+## instant kill again, just noisier and slower, and it would look like the plant was
+## stuck in a loop.
+##
+## Held by reference and cleared by DISTANCE rather than by a timer (see `_act`): what
+## makes the bug fair game again is that it has left, and a clock would either free it
+## early on a fast species or hold a slow one hostage.
+var _spat_out: Pest = null
+
 ## The vector the current meal's BODY has to travel to reach the mouth, in the pest's own
 ## space, recorded once when the mouth closes.
 ##
@@ -656,6 +739,13 @@ var _flight_noted: bool = false
 
 
 func _act(delta: float, pests: Array[Pest]) -> void:
+	# Whatever this flower spat out is prey again once it has walked out of range, or
+	# once it is gone. Cleared here rather than in `release()` because the condition is
+	# about where the bug has got to, which only a later frame can know.
+	if _spat_out != null and (not is_instance_valid(_spat_out)
+			or not _spat_out.is_alive()
+			or _spat_out.global_position.distance_to(global_position) > grab_radius()):
+		_spat_out = null
 	if _held != null:
 		_chew(delta)
 		return
@@ -759,7 +849,17 @@ func _nearest_free_pest(pests: Array[Pest]) -> Pest:
 	for pest: Pest in pests:
 		# Winged (doc: "ignores ground plants") flies over a Chomp's reach — the
 		# mouth simply cannot close on it. It still walks into Corn's kernels.
-		if pest.held_by != null or pest.is_winged:
+		#
+		# `can_be_held()` is the same refusal for the opposite reason: the Cutworm is not
+		# too high to bite, it is too long to finish. Refused HERE, where the winged case
+		# already is, rather than by giving it an enormous `chew_seconds` — a huge
+		# duration still lets the flower commit, still plays the grab, and still ends
+		# with the boss let go, which is a mouth that wasted the whole fight rather than
+		# a mouth that never opened.
+		if pest.held_by != null or pest.is_winged or not pest.can_be_held():
+			continue
+		# Already chewed once and too big to finish. See `_spat_out`.
+		if pest == _spat_out:
 			continue
 		# The ambush. Checked BEFORE the distance so a bug still approaching is not
 		# merely out-ranked by a nearer one — it is not prey yet at all, and a Chomp
@@ -844,12 +944,36 @@ func _chew(delta: float) -> void:
 	# The bites. Recorded and applied ABOVE the animation gate, because the fraction
 	# eaten is game state the suite reads and only its DRAWING is gated -- the rule
 	# test_combat.gd:6331 states for every animation in this game.
+	# A WHILE AND NOT AN IF, and the difference is a real defect this shape had for one
+	# run: `bites_taken_for` answers how many bites the meal is OWED by now, and a single
+	# frame long enough to span several of them (a stall, a `step-time` of half a second,
+	# a test stepping the whole chew by hand) used to advance the counter to six and deal
+	# one bite of damage. `Pest._tick_aura` loops for exactly this reason and says so.
+	#
+	# One bite at a time rather than one multiplied call, because a bite is a discrete
+	# event downstream: `Pest.take_damage` spends a Shield Bug plate per hit, so six
+	# bites owed have to cost six plates.
 	var taken: int = bites_taken_for(chew_progress())
-	if taken > _bites_taken:
-		_bites_taken = taken
-		_held.set_chewed(float(taken) / float(BITES_PER_MEAL))
-		# Once per bite, not once per meal. The single grab-time flash was the whole
-		# of the pest's feedback before plant-tower-defense-h4v1.
+	while taken > _bites_taken:
+		_bites_taken += 1
+		_held.set_chewed(float(_bites_taken) / float(BITES_PER_MEAL))
+		# THE BITE, and it is real damage now rather than a flash. Above the animation
+		# gate with the rest of `_chew`'s bookkeeping: how much of a pest is left is
+		# game state, and only its drawing is gated.
+		#
+		# `DEATH_BITTEN` as the cause so a bug finished by the mouth still gets the
+		# squashed corpse -- `take_damage` carries the cause into `kill()` for us, which
+		# is why the meal below no longer calls `kill()` itself.
+		_held.take_damage(BITE_DAMAGE, Pest.DEATH_BITTEN)
+		# The bite killed it. `Pest.kill()` has already called back into `release()`
+		# through `held_by`, so the mouth is free and `_held` is null -- there is nothing
+		# left of this meal to bite, to count down, or to draw.
+		if _held == null or not is_instance_valid(_held) or not _held.is_alive():
+			return
+		# The flash, and only for a bite the pest SURVIVED. `Kernel` makes the same split
+		# at game/kernel.gd:83 for the same reason: a killing bite already has the corpse
+		# swap, the fade and Sfx.PEST_KILLED, and flashing on top of that reads as a hit
+		# that did not land.
 		_held.flash_hit()
 	if chew_progress() > LATE_BITE_THRESHOLD and _sprite != null and _sprite.texture != _eating_late_texture:
 		_show_eating_late_sprite()
@@ -857,21 +981,17 @@ func _chew(delta: float) -> void:
 	_redraw_chew_layer()
 	_redraw_vine_layer()
 	if _chew_left <= 0.0:
-		var meal: Pest = _held
-		# Killed BEFORE the release, which is a REVERSAL of the order this line had and is
-		# load-bearing. `Pest.kill()` sets `_alive` false and then calls back into
-		# `release()` through `held_by` itself, and `Pest.set_carried(false)` deliberately
-		# refuses to let go of a dead pest's carry offset. In the old order the meal was
-		# put back down on the road and killed one line later, so the corpse of a bug
-		# eaten on top of a flower appeared a cell away on the path.
+		# THE MEAL RAN OUT AND THE PEST IS STILL ALIVE, which is now a real outcome and
+		# not an impossible one: anything over `meal_damage()` health outlives its own
+		# chew. It is spat out, damaged, and walks on.
 		#
-		# Bitten, so the corpse is squashed rather than straight -- a Chomp closes
-		# on the whole pest (plant-tower-defense-f5z6).
-		meal.kill(Pest.DEATH_BITTEN)
-		# The belt to kill()'s braces. A meal that somehow reached here without a
-		# `held_by` pointing back at this flower would leave the mouth wedged shut.
-		if _held != null:
-			release()
+		# There is no `kill()` here any more. A pest the mouth CAN finish never reaches
+		# this line — the bite that takes its last health kills it in the loop above,
+		# through `take_damage`, with `DEATH_BITTEN` for the squashed corpse. So the
+		# clock no longer decides who dies; the bites do, and the clock only decides how
+		# long the lane stays blocked.
+		_spat_out = _held
+		release()
 
 
 ## Drops whatever is in the mouth and frees the flower. Called by Pest.kill() too,

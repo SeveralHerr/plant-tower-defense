@@ -26,6 +26,12 @@ var _T
 ## RunConfig method. `tools/save_persist_check.py` requires this of any test
 ## script that can reach `RunConfig._save()`.
 const SUITE_SAVE_PATH := "user://test_selftest_suite.save"
+
+## Hard cap for the Cutworm body sweeps, which step by arc length rather than by index.
+## Generous: the real walk is ~300 head positions x ~240 samples, so hitting this means a
+## step size went to zero and the loop was never going to end. Asserted as unreached, so
+## it cannot quietly turn a full sweep into a prefix of one.
+const MAX_SWEEP_STEPS: int = 20000
 var _suite_stashed_save_path: String = ""
 
 
@@ -630,14 +636,37 @@ func test_the_late_bite_frame_is_showing_by_the_time_any_chew_finishes() -> Stri
 	var mid_texture: Texture2D = chomp._sprite.texture
 	var err: String = _T.assert_true(chomp.is_busy(), "grabbed the aphid")
 	if err == "":
-		# Just short of finishing (chew_progress() > LATE_BITE_THRESHOLD by
-		# construction, since LATE_BITE_THRESHOLD < 1.0), without triggering
-		# the kill that a full chew_seconds would.
-		chomp._chew(aphid.chew_seconds * 0.9)
-		err = _T.assert_true(chomp.is_busy(), "sanity: still chewing")
+		# WHICH CHEWS FINISH CHANGED, and this is where it shows. The clock no longer
+		# decides who dies -- the bites do -- so an aphid is finished on bite
+		# `bites_to_kill()` of `BITES_PER_MEAL`, at a progress of well under 1.0, and
+		# never reaches `LATE_BITE_THRESHOLD` at all. Pinned rather than worked around:
+		# the alternative is somebody "fixing" the late frame later for a case that is
+		# meant not to happen.
+		var dies_at: float = float(ChompFlower.bites_to_kill(aphid.max_health)) 			/ float(ChompFlower.BITES_PER_MEAL)
+		err = _T.assert_gt(ChompFlower.LATE_BITE_THRESHOLD, dies_at,
+			("an aphid is finished at %.2f of its meal, before the late frame's %.2f -- "
+				+ "so the short chew is outside this claim, not a counter-example to it")
+				% [dies_at, ChompFlower.LATE_BITE_THRESHOLD])
 	if err == "":
-		err = _T.assert_true(chomp._sprite.texture != mid_texture,
-			"even the aphid's short chew shows the late frame before it ends")
+		chomp._chew(aphid.chew_seconds * 0.9)
+		err = _T.assert_false(chomp.is_busy(),
+			"and the mouth is free, because the BITES finished it, not the timer")
+	# The claim itself, on a meal that does run its clock out: a beetle survives every
+	# bite, so its chew reaches the end and the late frame has to be up before it does.
+	var beetle: Pest = _prey(Pest.BEETLE, Vector2(0.0, 200.0))
+	if err == "":
+		host.add_child(beetle)
+		chomp.position = Vector2(0.0, 200.0)
+		chomp._act(0.016, [beetle])
+		err = _T.assert_true(chomp.is_busy(), "the mouth closed on a beetle")
+	if err == "":
+		var before: Texture2D = chomp._sprite.texture
+		chomp._chew(beetle.chew_seconds * 0.9)
+		err = _T.assert_true(chomp.is_busy(),
+			"still chewing at 90%, because a beetle outlives a whole meal's damage")
+		if err == "":
+			err = _T.assert_true(chomp._sprite.texture != before,
+				"and the late frame is up before the chew ends")
 	_T.free_ui(host)
 	return err
 
@@ -3516,7 +3545,11 @@ func test_threat_climbs_across_every_wave_of_the_fixed_table() -> String:
 func test_threat_keeps_climbing_deep_into_endless() -> String:
 	var table: int = WaveDirector.WAVES.size()
 	var err: String = ""
-	var previous: float = WaveDirector.threat_for(table)
+	# Seeded from the last SWARM wave, not the last row (plant-tower-defense-rn4p). The
+	# last row is the Cutworm's solo finale, priced by `count x health` against a body
+	# with damage zones -- see `WaveDirector.boss_solo_wave`. This test is about ENDLESS
+	# climbing, and the wave it has to climb away from is the swarm the campaign ramped to.
+	var previous: float = WaveDirector.threat_for(WaveDirector.last_swarm_wave())
 	for w: int in range(table + 1, table + 40):
 		var threat: float = WaveDirector.threat_for(w)
 		err = _T.assert_true(threat > previous,
@@ -3528,6 +3561,11 @@ func test_threat_keeps_climbing_deep_into_endless() -> String:
 		err = _T.assert_true(WaveDirector.threat_for(table + 40) > 10.0,
 			"and 40 waves past the table it is well over x10 (got x%.1f)"
 				% WaveDirector.threat_for(table + 40))
+	if err == "":
+		# The seed above is only legitimate while the last row really is a solo boss.
+		err = _T.assert_true(WaveDirector.boss_solo_wave(table),
+			("the row skipped by the seed is a solo boss. If it stops being one this"
+				+ " test should go back to seeding from WAVES.size()"))
 	return err
 
 
@@ -3617,14 +3655,30 @@ func test_the_threat_level_stays_a_small_readable_number() -> String:
 	var table: int = WaveDirector.WAVES.size()
 	var err: String = _T.assert_eq(WaveDirector.threat_level(1), 1, "wave 1 is level 1")
 	if err == "":
-		err = _T.assert_true(WaveDirector.threat_level(table) <= 12,
+		# `table` is the Cutworm's solo row, which prices at x253 raw. `threat_level` is a
+		# log-ish compression of `threat_for`, so it survives the spike where a linear
+		# reading would not -- and this test is exactly the one that should still be asked
+		# of the real last wave, because the claim is "the number on the HUD stays
+		# readable" and the HUD shows this wave to the player (plant-tower-defense-rn4p).
+		err = _T.assert_true(WaveDirector.threat_level(table) <= 15,
 			("the whole campaign stays a number a player can hold (wave %d is level %d)."
 				+ " It read exactly 10 before plant-tower-defense-iqp8 gave the back half"
 				+ " a second act, and 11 after -- so the old bound of 10 was sitting"
 				+ " precisely on the finale and ANY campaign escalation failed it. 11 is"
 				+ " one below Hud.THREAT_TINT_MAX, so the finale tints at 0.9 of the way"
-				+ " to THREAT_HOT rather than 0.8")
+				+ " to THREAT_HOT rather than 0.8. The bound moved 12 -> 15 when the"
+				+ " Cutworm became the finale (plant-tower-defense-rn4p): its row prices at"
+				+ " 1800 raw against wave 26's 424 and threat_level compresses that to 15."
+				+ " Past Hud.THREAT_TINT_MAX (12) the tint is already clamped, so what is"
+				+ " protected here is that the NUMBER stays two digits, which is the claim"
+				+ " in this test's name")
 				% [table, WaveDirector.threat_level(table)])
+	if err == "":
+		# And the swarm the ramp actually runs through still lands where it always did, so
+		# the bound above was loosened for the boss and not for a ramp running away.
+		err = _T.assert_true(WaveDirector.threat_level(WaveDirector.last_swarm_wave()) <= 12,
+			"the last swarm wave is still level %d, inside the pre-Cutworm bound"
+				% WaveDirector.threat_level(WaveDirector.last_swarm_wave()))
 	if err == "":
 		err = _T.assert_true(WaveDirector.threat_level(table + 100) <= 30,
 			"and 100 waves into endless it is still two digits (level %d, from a raw x%.0f)"
@@ -3640,6 +3694,17 @@ func test_the_threat_level_never_goes_down_and_does_eventually_climb() -> String
 	var previous: int = 0
 	for w: int in range(1, WaveDirector.WAVES.size() + 60):
 		var level: int = WaveDirector.threat_level(w)
+		if WaveDirector.boss_solo_wave(w):
+			# The Cutworm's finale spikes the raw threat and then endless resumes from the
+			# swarm below it, so the LEVEL steps up here and back down after. The floor
+			# claim survives everywhere else; see `WaveDirector.boss_solo_wave` for why the
+			# raw number is not comparable across this row. Still asserted as a step UP,
+			# so a boss that got cheaper than the swarm it follows fails here.
+			err = _T.assert_true(level >= previous,
+				"solo-boss wave %d level %d is not below wave %d's %d" % [w, level, w - 1, previous])
+			if err != "":
+				return err
+			continue
 		err = _T.assert_true(level >= previous, "wave %d level %d is not below wave %d's %d" % [w, level, w - 1, previous])
 		if err != "":
 			return err
@@ -10333,33 +10398,50 @@ func test_the_campaign_builds_to_its_boss_rather_than_opening_with_one() -> Stri
 	## queen placement nobody chose; this keeps the test asking the question it
 	## was written to ask. See MUTATION_START_WAVE for the same call made the
 	## same way when the table grew before.
+	##
+	## SWEPT ON `Pest.is_boss`, NOT ON `Pest.QUEEN` (plant-tower-defense-rn4p). It asked
+	## for the queen by name and so was really two claims wearing one name: "the queens
+	## are placed late" and "the finale is a boss wave". The second stopped being true of
+	## a queen the moment the finale became the Cutworm, while the campaign's shape had
+	## not changed at all — which is the exact failure the `boss` flag exists to prevent
+	## (see `Pest.is_boss`'s header). The queen-specific half is kept below, named.
 	var table: int = WaveDirector.WAVES.size()
 	var boss_waves: Array[int] = []
+	var queen_waves: Array[int] = []
 	for wave: int in range(1, table + 1):
+		var counted: bool = false
 		for group: Dictionary in WaveDirector.groups_for(wave):
-			if StringName(group["species"]) == Pest.QUEEN:
+			var species := StringName(group["species"])
+			if species == Pest.QUEEN and not queen_waves.has(wave):
+				queen_waves.append(wave)
+			if Pest.is_boss(species) and not counted:
 				boss_waves.append(wave)
-				break
+				counted = true
 	var err: String = _T.assert_gt(boss_waves.size(), 1,
 		"the campaign has more than one boss wave (got %s)" % [boss_waves])
 	if err == "":
-		err = _T.assert_gt(boss_waves[0], WaveDirector.SECOND_ACT_ORIGINAL_END_WAVE / 2,
+		err = _T.assert_gt(queen_waves[0], WaveDirector.SECOND_ACT_ORIGINAL_END_WAVE / 2,
 			("the first queen arrives in the second half of the ORIGINAL campaign, at"
-				+ " wave %d of the (now grown) %d") % [boss_waves[0], table])
+				+ " wave %d of the (now grown) %d") % [queen_waves[0], table])
 	if err == "":
 		err = _T.assert_eq(boss_waves[boss_waves.size() - 1], table,
 			"and the finale is a boss wave")
 	if err == "":
 		err = _T.assert_gt(WaveDirector.threat_for(table), WaveDirector.threat_for(boss_waves[0]),
 			"which prices above the first one rather than merely repeating it")
+	if err == "":
+		err = _T.assert_true(WaveDirector.boss_solo_wave(table),
+			("and the finale is the ONE boss that arrives alone — every other boss wave"
+				+ " in the table walks a swarm in with it"))
 	if err != "":
 		return err
 	# Campaign only, on purpose — see _endless_groups for why a periodic boss would
-	# break the two invariants endless is built on.
+	# break the two invariants endless is built on. Asked of every boss species rather
+	# than of the queen, for the reason the sweep above gives.
 	for wave: int in [table + 1, table + 7, 100, 500]:
 		for group: Dictionary in WaveDirector.groups_for(wave):
-			err = _T.assert_false(StringName(group["species"]) == Pest.QUEEN,
-				"endless wave %d sends no queen" % wave)
+			err = _T.assert_false(Pest.is_boss(StringName(group["species"])),
+				"endless wave %d sends no boss (found %s)" % [wave, group["species"]])
 			if err != "":
 				return err
 	return err
@@ -19851,22 +19933,50 @@ func bad_contains_not_saved(base: String) -> bool:
 	return KeyBindingScreen.persisted_note(base, false).contains("NOT saved")
 
 
-## The Chomp's shop line is true of the chew table (plant-tower-defense-l86t).
+## The Chomp's shop line is true of the tables (plant-tower-defense-l86t).
 ##
-## "Eats small pests instantly. Big ones take a while — and it is busy the whole time."
-## Three claims, all checkable against `Pest.SPECIES` rather than against anyone's memory of
-## it, and this is the test that decided the bead: a 0.45s chew reading as a flash is not a
-## broken cue, it is the cue agreeing with the sentence the player was sold before buying.
+## "Chews small pests down over several bites. Big ones survive it — and it is busy the
+## whole time." Every clause checkable against `Pest.SPECIES` rather than against anyone's
+## memory of it.
+##
+## THE SENTENCE CHANGED and this test changed with it. It used to read "Eats small pests
+## instantly. Big ones take a while", which was an accurate description of a plant that
+## held a pest for `chew_seconds` and then called `Pest.kill()` outright — health, plates
+## and healing all irrelevant. Since the bite became real damage the mouth finishes only
+## what it can out-damage, so BOTH halves of the old sentence are now false: small pests
+## take several bites rather than none, and big ones are not eaten at all. The duration
+## claims below are kept as supporting invariants rather than deleted, because
+## `chew_seconds` still decides how long the lane is blocked, which is the trade the third
+## clause is selling.
 ##
 ## Derived, never listed. A new species with a chew time lands in this test the moment it is
 ## added to SPECIES, which is the whole reason the bead's "record both durations as numbers"
 ## became a relationship instead of two constants.
 func test_the_chomps_shop_line_is_true_of_the_chew_table() -> String:
 	var chews: Dictionary = {}
+	var unchewable: Array[StringName] = []
 	for species: StringName in Pest.SPECIES:
+		# A species the mouth REFUSES has no meal to time, and its `chew_seconds` is a
+		# number nothing in the game can reach (plant-tower-defense-rn4p). Left in the
+		# sweep, the Cutworm's placeholder 0.0 became "the quickest thing to eat" and
+		# made this whole check false while every real duration in it stayed correct.
+		#
+		# Filtered on `is_holdable`, which is the same flag `Pest.can_be_held()` reads, so
+		# the exclusion here and the refusal in `ChompFlower._nearest_free_pest` cannot
+		# drift apart. Both directions are asserted below.
+		if not Pest.is_holdable(species):
+			unchewable.append(species)
+			continue
 		chews[species] = float((Pest.SPECIES[species] as Dictionary)["chew_seconds"])
 	var err: String = _T.assert_gt(chews.size(), 2,
 		"there are several species to compare — two would make 'shortest' meaningless")
+	if err == "":
+		err = _T.assert_eq(unchewable.size(), 1,
+			("exactly one species refuses the mouth today; a second added silently would"
+				+ " shrink this sweep without anything saying so, got %s") % [unchewable])
+	if err == "":
+		err = _T.assert_true(not Pest.is_holdable(Pest.CUTWORM),
+			"and it is the Cutworm, which is 953 px of body the mouth cannot finish")
 	if err != "":
 		return err
 
@@ -19881,10 +19991,9 @@ func test_the_chomps_shop_line_is_true_of_the_chew_table() -> String:
 		err = _T.assert_eq(shortest, Pest.APHID,
 			"the quickest thing to eat is the smallest pest, got %s" % shortest)
 	if err == "":
-		# CLAIM 2: "instantly ... big ones take a while". A RELATIVE gap, deliberately,
-		# because "instant" is a fact about perception and this file cannot measure one.
-		# What it can measure is that the short case is in a different league from every
-		# other, which is what makes the two halves of the sentence describe two things.
+		# CLAIM 2: "small pests ... big ones". A RELATIVE gap in DURATION, which the
+		# sentence no longer claims outright but the plant still has, and which is what
+		# gives the chew ring a case worth drawing.
 		for species: StringName in chews:
 			if species == shortest:
 				continue
@@ -19896,7 +20005,32 @@ func test_the_chomps_shop_line_is_true_of_the_chew_table() -> String:
 			if err != "":
 				break
 	if err == "":
-		# CLAIM 3: "it is busy the whole time" -- for EVERY duration, including the short
+		# CLAIM 3: "Chews small pests DOWN OVER SEVERAL BITES" -- the clause that replaced
+		# "instantly", and the one the owner asked for. The smallest pest in the table has
+		# to need at least three of them.
+		var smallest_health: float = 9999.0
+		for species: StringName in Pest.SPECIES:
+			smallest_health = minf(smallest_health,
+				float((Pest.SPECIES[species] as Dictionary)["health"]))
+		err = _T.assert_gte(ChompFlower.bites_to_kill(smallest_health), 3,
+			("the smallest pest (%.0f health) goes down in %d bite(s) -- 'over several "
+				+ "bites' needs at least three, and one is the instant kill the sentence "
+				+ "used to describe") % [smallest_health,
+					ChompFlower.bites_to_kill(smallest_health)])
+	if err == "":
+		# CLAIM 4: "Big ones SURVIVE it". Not merely "take longer" -- the mouth cannot
+		# finish them at all, which is a different promise and a checkable one.
+		var survivors: int = 0
+		for species: StringName in Pest.SPECIES:
+			if not ChompFlower.dies_in_the_mouth(
+					float((Pest.SPECIES[species] as Dictionary)["health"])):
+				survivors += 1
+		err = _T.assert_gt(survivors, 0,
+			("'Big ones survive it' has to be true of something: %d of %d species outlive "
+				+ "a meal worth %.0f") % [survivors, Pest.SPECIES.size(),
+					ChompFlower.meal_damage()])
+	if err == "":
+		# CLAIM 5: "it is busy the whole time" -- for EVERY duration, including the short
 		# one. This is why the ring is not suppressed below a threshold: a Chomp mid-chew
 		# cannot grab, and a cue that vanished would report a busy mouth as a free one.
 		var chomp := ChompFlower.new()
@@ -20891,10 +21025,10 @@ func test_the_pause_card_hands_back_the_overlay_that_is_actually_up() -> String:
 ## What the second act costs, priced the way its comment prices it.
 ##
 ## Three claims off that block, none of which mentions the constant:
-##   * an aphid's price against the starting plant steps 3 -> 4 -> 5 at waves 1,
-##     10 and 19. This is the bead's whole thesis reduced to an integer, and the
+##   * an aphid's price against the starting plant steps 3 -> 4 -> 5 -> 6 at waves 1,
+##     10, 19 and 27. This is the bead's whole thesis reduced to an integer, and the
 ##     comment had the last boundary at 17;
-##   * the finale sends x1.469 pests, the one figure a human can hold;
+##   * the finale sends x1.702 pests, the one figure a human can hold;
 ##   * the campaign's steepest step is wave 12 at +17.0%, still well under wave
 ##     8's +43.3%, which is what "introduces no new cliff" means.
 func test_the_second_act_costs_what_its_comment_says_it_costs() -> String:
@@ -20909,7 +21043,11 @@ func test_the_second_act_costs_what_its_comment_says_it_costs() -> String:
 
 	# The boundaries themselves, not "it rose twice". Every wave is swept so a
 	# boundary that MOVED is caught as well as one that vanished.
-	var expected: Dictionary = {1: 3, 10: 4, 19: 5}
+	# A FOURTH BOUNDARY AT 27, added with the Cutworm's row (plant-tower-defense-rn4p).
+	# The ramp compounds one step per campaign wave and the table grew by one, which is
+	# what every previous growth did too -- see `health_scale_for`, where clamping the ramp
+	# short of the boss row was tried and refused with the reason.
+	var expected: Dictionary = {1: 3, 10: 4, 19: 5, 27: 6}
 	var priced: int = 0
 	var previous: int = 0
 	for wave: int in range(1, finale + 1):
@@ -20944,8 +21082,10 @@ func test_the_second_act_costs_what_its_comment_says_it_costs() -> String:
 	# 1.469 (pow(1.03, 13)) until plant-tower-defense-vyov moved the finale from
 	# wave 22 to wave 26 -- the exponent is climbed - SECOND_ACT_START_WAVE, so
 	# four more campaign waves is four more compounding +3% steps: 1.03^17.
-	err = _T.assert_float_eq(WaveDirector.health_scale_for(finale), 1.6528, 0.001,
-		"the finale's pests are x1.6528 of a wave-1 pest, which is the number the"
+	# 1.6528 (1.03^17) until the Cutworm became wave 27: one more campaign wave is one
+	# more compounding +3% step, so 1.03^18.
+	err = _T.assert_float_eq(WaveDirector.health_scale_for(finale), 1.7024, 0.001,
+		"the finale's pests are x1.7024 of a wave-1 pest, which is the number the"
 			+ " SECOND_ACT_START_WAVE block quotes")
 	if err != "":
 		return err
@@ -20956,6 +21096,8 @@ func test_the_second_act_costs_what_its_comment_says_it_costs() -> String:
 	var steepest: float = 0.0
 	var stepped: int = 0
 	for wave: int in range(10, finale + 1):
+		if WaveDirector.boss_solo_wave(wave):
+			continue
 		var ratio: float = WaveDirector.threat_for(wave) / WaveDirector.threat_for(wave - 1)
 		if ratio > steepest:
 			steepest = ratio
@@ -20963,6 +21105,10 @@ func test_the_second_act_costs_what_its_comment_says_it_costs() -> String:
 		stepped += 1
 	err = _T.assert_gt(stepped, 10, "the back half was actually stepped (%d)" % stepped)
 	if err == "":
+		# Wave 27 is skipped in the sweep below: the Cutworm's row prices at 1800 raw
+		# against wave 26's 424, so it is trivially the steepest step in the campaign and
+		# says nothing about the RAMP, which is what this is measuring. See
+		# `WaveDirector.boss_solo_wave`.
 		err = _T.assert_eq(steepest_wave, 12,
 			"the second act's steepest step is wave 12, the first queen")
 	if err == "":
@@ -21008,8 +21154,13 @@ func test_the_campaign_ramp_spends_the_endless_ceiling_without_reordering_it() -
 		# 62 until plant-tower-defense-vyov grew WAVES from 22 to 26 rows -- the
 		# sweep starts at WAVES.size() + 1, so every endless-relative wave number
 		# (this one included) moved four later with the table, not with the ramp.
-		err = _T.assert_eq(speed_cap, 66,
-			"speed pins at wave 66, four later than before the coda -- untouched by" \
+		# 66 until the Cutworm grew WAVES from 26 to 27 (plant-tower-defense-rn4p). One
+		# later, for the same reason it moved four later before: the sweep starts at
+		# `WAVES.size() + 1`, so every endless-relative wave number moves with the TABLE'S
+		# LENGTH. `health_cap` is unmoved at 40, which is the tell that this is the table
+		# and not the ramp.
+		err = _T.assert_eq(speed_cap, 67,
+			"speed pins at wave 67, one later than before the Cutworm -- untouched by" \
 				+ " the campaign RAMP, only by the table's length")
 	if err == "":
 		# The invariant that survives the step being retuned. This is the claim
@@ -24079,6 +24230,683 @@ func test_web_audio_output_latency_has_mobile_headroom() -> String:
 			+ " which mixes on its own audio thread, must not pay it")
 	return err
 
+
+# ============================================================================
+# The Cutworm (plant-tower-defense-rn4p) -- a boss whose drawn body spans 953 px
+# of a 2112 px road. Grouped here because every check below is pure geometry over
+# `RoadSpine` and `Board`, with no tree and no frames; the live claims that need a
+# playing game are `/verify` Phase 4 bridge checks and are not in this file.
+# ============================================================================
+
+## The two numbers `board.gd`'s PATH_CORNERS header says everything else was measured
+## against, re-derived here THROUGH the route rather than from the corner list, because
+## the Cutworm's own constants are stated against them.
+##
+## `test_the_road_still_has_the_length_and_cell_count_the_constants_were_measured_against`
+## already guards the corner arithmetic. This one guards the WALK: 32 cells bracketed by
+## an entry and an exit is 33 segments of CELL, and if that identity ever stops holding
+## the 953 px body is measured against a road that no longer exists.
+func test_the_walked_route_is_the_2112_px_the_cutworm_was_sized_against() -> String:
+	var board := Board.new()
+	var route: PackedVector2Array = board.route()
+	var err: String = _T.assert_eq(route.size(), 34,
+		"32 road cells plus the off-board entry and exit brackets")
+	if err == "":
+		err = _T.assert_float_eq(RoadSpine.length_of(route), 2112.0, 0.01,
+			"the walked length the Cutworm's 105.6 s traverse is derived from")
+	board.free()
+	return err
+
+
+## The fillet is for drawing, and it MUST NOT become the walk.
+##
+## Cutting corners is shorter. Measured: 2112 px becomes 2053.1 px at radius 26, which
+## is -2.8%. A boss whose walk clock read the filleted length would arrive 2.8% early
+## and would quietly move the timing every number in `wave_director.gd` was measured
+## against -- with no local tell, because the boss would still look right.
+##
+## So this asserts the difference rather than tolerating it: the two lengths DISAGREE by
+## a known amount, and `Cutworm` takes its distance from the unfilleted one.
+func test_the_fillet_shortens_the_spine_and_so_is_not_what_the_walk_is_measured_on() -> String:
+	var board := Board.new()
+	var route: PackedVector2Array = board.route()
+	var spine: PackedVector2Array = board.spine()
+	var walked: float = RoadSpine.length_of(route)
+	var drawn: float = RoadSpine.length_of(spine)
+	var err: String = _T.assert_float_eq(drawn, 2053.1, 0.2,
+		"the filleted spine's length, at RoadSpine.FILLET")
+	if err == "":
+		err = _T.assert_true(drawn < walked,
+			"cutting corners is shorter -- if this ever flips, the fillet is not a fillet")
+	if err == "":
+		err = _T.assert_float_eq((walked - drawn) / walked, 0.028, 0.002,
+			"and it is short by 2.8%, the figure docs/cutworm-design.html states")
+	board.free()
+	return err
+
+
+## A fillet of 0 is the road itself, with the collinear waypoints collapsed.
+##
+## The zero case is what makes `Board.spine()` safe to call unconditionally, and it is
+## the case a caller reaches by accident (a road with no corners, a radius read from a
+## config that defaulted). It must return the same PATH, not an empty list and not a
+## rounded one: same length, same endpoints.
+func test_a_zero_fillet_returns_the_road_unrounded() -> String:
+	var board := Board.new()
+	var route: PackedVector2Array = board.route()
+	var flat: PackedVector2Array = board.spine(0.0)
+	var err: String = _T.assert_float_eq(RoadSpine.length_of(flat), RoadSpine.length_of(route), 0.01,
+		"a zero fillet cuts nothing, so the length is the walked length exactly")
+	if err == "":
+		err = _T.assert_eq(flat[0], route[0], "same entry bracket")
+	if err == "":
+		err = _T.assert_eq(flat[flat.size() - 1], route[route.size() - 1], "same exit bracket")
+	if err == "":
+		# One point per TURN, not per cell: this road's corner list is the 8 PATH_CORNERS
+		# plus the two brackets, and the brackets are collinear with the first and last
+		# legs, so they collapse into them.
+		err = _T.assert_eq(flat.size(), Board.PATH_CORNERS.size(),
+			"the road reduced to the points where it actually turns")
+	board.free()
+	return err
+
+
+## The whole reason the fillet exists: the body has to lie on dirt, all the way round.
+##
+## Swept over the entire walk at RoadSpine.FILLET and Cutworm.GIRTH, sampling both edges
+## of the body every 4 px, NO sample may land on a cell that is not road. The design page
+## measured 0 of 104,136; this re-measures it against the shipped constants so a girth
+## bump, a fillet change or a reshaped road fails here rather than on a screenshot.
+##
+## Deliberately walks the whole road rather than spot-checking one corner: the binding
+## constraint turned out to be the STRAIGHTS (girth <= CELL/2), not the corners, and a
+## test that only looked at corners would have found nothing to say about it.
+func test_no_part_of_the_cutworms_body_ever_leaves_the_dirt() -> String:
+	var board := Board.new()
+	var spine: PackedVector2Array = board.spine()
+	var cum: PackedFloat32Array = RoadSpine.cumulative(spine)
+	var road: Dictionary = {}
+	for cell: Vector2i in board.road_cells():
+		road[cell] = true
+	var total: float = RoadSpine.length_of(spine)
+	var body: float = Cutworm.body_span()
+	var samples: int = 0
+	var off_road: int = 0
+	var worst: Vector2 = Vector2.ZERO
+	var head: float = body
+	var head_steps: int = 0
+	while head <= total and head_steps < MAX_SWEEP_STEPS:
+		head_steps += 1
+		var s: float = head - body
+		var span_steps: int = 0
+		while s <= head and span_steps < MAX_SWEEP_STEPS:
+			span_steps += 1
+			var at: Vector2 = RoadSpine.point_at(spine, cum, s)
+			var normal: Vector2 = RoadSpine.tangent_at(spine, cum, s).orthogonal()
+			var r: float = Cutworm.radius_at(clampf((head - s) / body, 0.0, 1.0), s, 0.0)
+			for edge: Vector2 in [at + normal * r, at - normal * r]:
+				var cell := Vector2i(int(floorf(edge.x / float(Board.CELL))),
+					int(floorf(edge.y / float(Board.CELL))))
+				if cell.x < 0 or cell.x >= Board.COLS or cell.y < 0 or cell.y >= Board.ROWS:
+					continue
+				samples += 1
+				if not road.has(cell):
+					off_road += 1
+					worst = edge
+			s += 4.0
+		head += 7.0
+	board.free()
+	var err: String = _T.assert_gt(MAX_SWEEP_STEPS, head_steps,
+		("the head sweep finished on its own terms rather than on the guard (%d of %d"
+			+ " steps) -- a run that hit the cap measured a prefix of the road")
+			% [head_steps, MAX_SWEEP_STEPS])
+	if err == "":
+		err = _T.assert_gt(samples, 50000,
+			"the sweep really walked the road -- a zero denominator here is a vacuous pass")
+	if err == "":
+		err = _T.assert_eq(off_road, 0,
+			"body-edge samples on grass (worst at %s) of %d swept" % [worst, samples])
+	return err
+
+
+## The girth and the peristaltic amplitude come out of ONE budget, and this is it.
+##
+## `Board.CELL * 0.5` is the lane's half-width. The body's fat phase is
+## GIRTH * (1 + PERISTALSIS_AMPLITUDE), and it has to fit. Measured in the design page:
+## at +/-10% the peak is 31.9 against 32 and 0 of 382,068 edge samples leave the road;
+## at +/-12% the peak is 32.5 and 5,568 samples do.
+##
+## Asserted as the arithmetic rather than as a swept count because the sweep above is
+## already slow, and because this is the form that says WHY 10% -- it is not a taste
+## call, it is whatever the lane has left over after the girth.
+func test_the_peristaltic_swing_is_whatever_the_lane_has_left_after_the_girth() -> String:
+	var half_lane: float = float(Board.CELL) * 0.5
+	var peak: float = Cutworm.GIRTH * (1.0 + Cutworm.PERISTALSIS_AMPLITUDE)
+	var err: String = _T.assert_true(peak <= half_lane,
+		"the fat phase (%.2f) fits the lane's half-width (%.1f)" % [peak, half_lane])
+	if err == "":
+		err = _T.assert_float_eq(peak, 31.9, 0.05,
+			"and it fits by a tenth of a pixel -- this is a ceiling, not a comfortable margin")
+	if err == "":
+		# The other direction: a swing large enough to matter. An amplitude tuned down to
+		# nothing would pass the ceiling above and animate nothing at all.
+		err = _T.assert_gte(Cutworm.PERISTALSIS_AMPLITUDE, 0.08,
+			"and it is a swing a player can see, not a rounding error")
+	return err
+
+
+## Every whole-body species is UNCHANGED by the six hooks the Cutworm needed.
+##
+## The hooks (`Pest.damage_multiplier_at` and friends) each replaced a line that used to
+## be written inline, so the risk is not that the Cutworm behaves wrongly -- it is that
+## seven species that never asked for any of this quietly started behaving differently.
+## Swept over the derived species list rather than a sampled pair, per
+## .claude/skills/derive-the-list.
+func test_the_species_hooks_are_the_identity_for_every_whole_body_pest() -> String:
+	var checked: int = 0
+	var err: String = ""
+	for species: StringName in Pest.SPECIES:
+		if species == Pest.CUTWORM:
+			continue
+		var pest: Pest = _pest(species, Vector2.ZERO)
+		err = _T.assert_float_eq(pest.damage_multiplier_at(Vector2.INF), 1.0, 0.0001,
+			"%s takes a hit at full value wherever it lands" % species)
+		if err == "":
+			err = _T.assert_float_eq(pest.damage_multiplier_at(Vector2(999, 999)), 1.0, 0.0001,
+				"%s does not care WHERE either -- it is one 64 px body" % species)
+		if err == "":
+			err = _T.assert_float_eq(pest.eat_dps(), Pest.EAT_DPS, 0.0001,
+				"%s chews at the shared rate" % species)
+		if err == "":
+			err = _T.assert_true(pest.halts_to_eat(), "%s stops while it eats" % species)
+		if err == "":
+			err = _T.assert_eq(pest.eats_in_passing(), pest.is_hungry,
+				"%s only eats in passing if it rolled the hungry mutation" % species)
+		if err == "":
+			err = _T.assert_true(pest.can_be_held(), "%s can be held by a Chomp" % species)
+		if err == "":
+			err = _T.assert_float_eq(pest.slow_resistance(), 1.0, 0.0001,
+				"%s takes the whole of a Sundew's slow" % species)
+		pest.free()
+		if err != "":
+			return err
+		checked += 1
+	if err == "":
+		err = _T.assert_eq(checked, Pest.SPECIES.size() - 1,
+			("every species but the Cutworm was swept -- a zero or a short count here is"
+				+ " the vacuous pass this sweep exists to avoid, got %d") % checked)
+	return err
+
+
+## The damage zones, at every station along the whole body, from the pure function.
+##
+## Checked as a SWEEP rather than as three sampled points because the interesting part is
+## the boundaries: the station where the maw stops being the maw, and the two where the
+## band starts and stops. A test naming one station inside each zone would pass with the
+## band one station out of place, which is the error that makes the whole fight read as
+## random.
+func test_the_cutworms_zones_are_where_the_body_says_they_are() -> String:
+	var band: Array[int] = []
+	var maw: Array[int] = []
+	var hide: Array[int] = []
+	for station: int in range(0, Cutworm.STATIONS):
+		var behind: float = float(station) * Cutworm.STATION_SPACING
+		var worth: float = Cutworm.zone_multiplier(behind)
+		if is_equal_approx(worth, Cutworm.ZONE_BAND):
+			band.append(station)
+		elif is_equal_approx(worth, Cutworm.ZONE_MAW):
+			maw.append(station)
+		elif is_equal_approx(worth, Cutworm.ZONE_HIDE):
+			hide.append(station)
+		else:
+			return "station %d answered %.3f, which is none of the three zones" % [station, worth]
+	var expected_band: Array[int] = [Cutworm.BAND_FIRST_STATION,
+		Cutworm.BAND_FIRST_STATION + 1, Cutworm.BAND_LAST_STATION]
+	var err: String = _T.assert_eq(band, expected_band,
+		"the soft band is exactly stations %d-%d, got %s"
+			% [Cutworm.BAND_FIRST_STATION, Cutworm.BAND_LAST_STATION, band])
+	if err == "":
+		var expected_maw: Array[int] = [0, 1]
+		err = _T.assert_eq(maw, expected_maw,
+			"the maw is the head cap and the ring behind it, got %s" % [maw])
+	if err == "":
+		err = _T.assert_gt(hide.size(), band.size(),
+			("and most of the animal is hide (%d stations against the band's %d) -- if"
+				+ " that ever inverts, the boss is a health bar with a red stripe")
+				% [hide.size(), band.size()])
+	if err == "":
+		# The ORDER is the fight. The band has to sit BEHIND the head, over road the head
+		# has already walked and already chewed; a band in front of it would make this boss
+		# answerable from the front of the queue like every other pest.
+		err = _T.assert_gt(Cutworm.BAND_FIRST_STATION, maw.size() - 1,
+			"and the band is strictly behind the maw, which is the whole design")
+	if err == "":
+		err = _T.assert_gt(Cutworm.ZONE_BAND, Cutworm.ZONE_MAW,
+			"the band is worth more than the face, so the fight has an answer")
+	if err == "":
+		err = _T.assert_gt(Cutworm.ZONE_MAW, Cutworm.ZONE_HIDE,
+			"and the face is worth more than the hide, so raking the body is not the plan")
+	if err == "":
+		err = _T.assert_gt(Cutworm.ZONE_HIDE, 0.0,
+			("the hide is not zero -- a player raking the body sees chip damage rather"
+				+ " than blanks, which read as a bug"))
+	return err
+
+
+## A hit whose position nobody tracked is worth the HIDE, not the head.
+##
+## The conservative direction, on purpose: a damage source added later and wired up
+## carelessly makes this boss HARDER, which a playtest surfaces, rather than easier,
+## which it does not.
+func test_an_untracked_hit_on_the_cutworm_is_worth_the_hide() -> String:
+	var board := Board.new()
+	var worm := Cutworm.new()
+	worm.setup(Pest.CUTWORM, board.route())
+	var err: String = _T.assert_float_eq(worm.damage_multiplier_at(Vector2.INF),
+		Cutworm.ZONE_HIDE, 0.0001, "an unpositioned hit lands on the hide")
+	worm.free()
+	board.free()
+	return err
+
+
+## The Cutworm escapes TAIL-last: the head leaving the board is not the wave ending.
+##
+## The window this opens is the whole comeback -- 953 px of body at 20 px/s is another
+## 47.7 s of band and tail still crossing plants after the head has gone. A boss that
+## despawned with its head would delete that.
+func test_the_cutworm_is_still_on_the_board_after_its_head_has_left() -> String:
+	var board := Board.new()
+	var worm := Cutworm.new()
+	worm.setup(Pest.CUTWORM, board.route())
+	worm.set_physics_process(false)
+	var host: Node2D = _host([worm])
+	await _T.instantiate_scene(host)
+	var gone: Array[bool] = [false]
+	worm.escaped.connect(func(_p: Pest) -> void: gone[0] = true)
+	var walk: float = Board.road_length_px(board.road_corners())
+
+	# Head exactly at the exit: every station behind it is still on the road.
+	worm._advance(walk)
+	var err: String = _T.assert_false(gone[0],
+		"the head reaching the exit does not end the wave")
+	if err == "":
+		err = _T.assert_float_eq(worm.progress(), 1.0, 0.0001,
+			("and it reads as fully advanced while it is there, so the cobs keep aiming at"
+				+ " it instead of switching to nothing"))
+	if err == "":
+		err = _T.assert_true(worm.is_alive(), "it is alive with its head off the board")
+	if err == "":
+		# One station short of the whole body clearing.
+		worm._advance(Cutworm.drawn_length() - Cutworm.STATION_SPACING)
+		err = _T.assert_false(gone[0],
+			"and with all but one station's worth of body still on the road")
+	if err == "":
+		worm._advance(Cutworm.STATION_SPACING * 2.0)
+		err = _T.assert_true(gone[0], "but once the tail clears, it escapes")
+	_T.free_ui(host)
+	board.free()
+	return err
+
+
+## A Chomp Flower refuses the Cutworm outright, and still takes every other species.
+##
+## Asserted at the CANDIDATE step, not as "held_by stayed null": a mouth that considered
+## it, committed and then let go would also leave held_by null while having wasted the
+## whole fight.
+func test_a_chomp_refuses_the_cutworm_and_still_takes_everything_else() -> String:
+	var considered: int = 0
+	var err: String = ""
+	for species: StringName in Pest.SPECIES:
+		var chomp := ChompFlower.new()
+		chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
+		var pest: Pest = _pest(species, Vector2.ZERO)
+		var host: Node2D = _host([chomp, pest])
+		await _T.instantiate_scene(host)
+		# Parked one lane across and a little PAST the stem, derived from the plant's own
+		# constants rather than from a literal: `ChompFlower.GRAB_LEAD` (plant-tower-defense
+		# -chomper-anim) means a pest level with the flower is no longer a meal, so a fixed
+		# offset here would test the lead rather than the refusal. Every pest walks +X.
+		pest.position = chomp.position + Vector2(ChompFlower.GRAB_LEAD + 4.0, Board.CELL * 0.5)
+		# Driven through `_act`, the way the mouth is actually driven, rather than through
+		# the candidate helper: what has to be true is that the flower never BECOMES BUSY
+		# on this pest. A mouth that considered the boss, committed and then let go would
+		# leave `held_by` null too, while having wasted the whole fight.
+		var candidates: Array[Pest] = [pest]
+		chomp._act(0.016, candidates)
+		if species == Pest.CUTWORM:
+			err = _T.assert_false(chomp.is_busy(),
+				"the mouth never closes on the Cutworm -- 953 px it cannot finish")
+			if err == "":
+				err = _T.assert_true(pest.held_by == null,
+					"and the boss walks on unheld")
+		else:
+			err = _T.assert_true(chomp.is_busy(),
+				"%s is still a meal the mouth will take" % species)
+			considered += 1
+		_T.free_ui(host)
+		if err != "":
+			return err
+	if err == "":
+		err = _T.assert_eq(considered, Pest.SPECIES.size() - 1,
+			("every species but the Cutworm is still grabbable (%d) -- a refusal that"
+				+ " spread would be a silent nerf to the plant") % considered)
+	return err
+
+
+## The Sundew's slow, after resistance, for both answers the game gives.
+##
+## The identity case is the one worth pinning: `resisted_factor(f, 1.0)` must be `f`
+## exactly, or every species on the board just had its slow retuned by a boss.
+func test_a_sundews_slow_is_untouched_for_everything_but_the_cutworm() -> String:
+	var full: float = StickySundew.SLOW_FACTOR
+	var err: String = _T.assert_float_eq(StickySundew.resisted_factor(full, 1.0), full, 0.000001,
+		"a resistance of 1.0 is the slow the plant has always applied")
+	if err == "":
+		err = _T.assert_float_eq(StickySundew.resisted_factor(full, 0.0), 1.0, 0.000001,
+			"and resisting all of it is no slow at all, not a speed-up")
+	if err == "":
+		var half: float = StickySundew.resisted_factor(full, Cutworm.SLOW_RESISTANCE)
+		err = _T.assert_true(half > full and half < 1.0,
+			("the Cutworm is slowed, but less (x%.3f against x%.3f) -- no slow would make"
+				+ " the plant pointless against it and the full slow would make a 153 s"
+				+ " wave into a four-minute one") % [half, full])
+	if err == "":
+		# The trap the "how much of the CUT is taken" form exists to avoid: a naive
+		# `factor / resistance` on 0.55 at 0.5 is 1.10, a Sundew that speeds it up.
+		err = _T.assert_true(StickySundew.resisted_factor(full, Cutworm.SLOW_RESISTANCE) <= 1.0,
+			"and no resistance can ever turn the slow into a boost")
+	return err
+
+
+## The peristaltic wave, as a wave: one period, read directly rather than through the
+## radius it modulates.
+##
+## `Cutworm.peristalsis` is public precisely because `radius_at` and `_effective_speed`
+## BOTH read it -- that is what makes the body's pulse and the animal's lurch one motion
+## instead of two that can drift. A test that only ever saw it through `radius_at` could
+## not tell the difference.
+func test_the_cutworms_pulse_is_one_wave_both_readers_share() -> String:
+	# Fat and thin phases exist, and sit either side of 1.0.
+	var quarter: float = Cutworm.PERISTALSIS_WAVELENGTH * 0.25
+	var fat: float = Cutworm.peristalsis(quarter, 0.0)
+	var thin: float = Cutworm.peristalsis(quarter * 3.0, 0.0)
+	var err: String = _T.assert_float_eq(fat, 1.0 + Cutworm.PERISTALSIS_AMPLITUDE, 0.0001,
+		"a quarter wavelength along the body is the fat phase, at the full amplitude")
+	if err == "":
+		err = _T.assert_float_eq(thin, 1.0 - Cutworm.PERISTALSIS_AMPLITUDE, 0.0001,
+			"and three quarters along is the thin phase, symmetric about 1.0")
+	if err == "":
+		# It is a TRAVELLING wave: the same arc position is at a different phase a moment
+		# later, which is what makes the body ripple rather than breathe in place.
+		err = _T.assert_true(not is_equal_approx(Cutworm.peristalsis(quarter, 0.0),
+				Cutworm.peristalsis(quarter, 0.35)),
+			"the wave moves along the body over time rather than pulsing in place")
+	if err == "":
+		# And it is periodic in ARC LENGTH, so a station keeps its phase relative to its
+		# neighbours however far the animal has walked.
+		err = _T.assert_float_eq(Cutworm.peristalsis(quarter, 0.0),
+			Cutworm.peristalsis(quarter + Cutworm.PERISTALSIS_WAVELENGTH, 0.0), 0.0001,
+			"one wavelength along the body is the same phase again")
+	if err == "":
+		# The radius really is this wave times the profile, rather than a second copy of
+		# the same arithmetic that could be retuned on its own.
+		var at_fat: float = Cutworm.radius_at(0.5, quarter, 0.0)
+		var at_thin: float = Cutworm.radius_at(0.5, quarter * 3.0, 0.0)
+		err = _T.assert_float_eq(at_fat / at_thin, fat / thin, 0.0001,
+			"and radius_at reads exactly this wave, not a private copy of it")
+	return err
+
+
+## The weak band's arc range, and that it tracks the head rather than the road.
+##
+## `band_range` is the seam `_draw_band`, `_draw_ticks` and the zone lookup all read, so
+## it is the one place "where is the soft part" is answered. A band that drifted relative
+## to the head would make the fight unlearnable while every other number stayed right.
+func test_the_cutworms_weak_band_rides_a_fixed_distance_behind_the_head() -> String:
+	var near_gate: Vector2 = Cutworm.band_range(500.0)
+	var far_along: Vector2 = Cutworm.band_range(1500.0)
+	var err: String = _T.assert_float_eq(near_gate.y - near_gate.x,
+		float(Cutworm.BAND_LAST_STATION - Cutworm.BAND_FIRST_STATION) * Cutworm.STATION_SPACING,
+		0.0001, "the band is two stations wide wherever the animal is")
+	if err == "":
+		err = _T.assert_float_eq(far_along.y - far_along.x, near_gate.y - near_gate.x, 0.0001,
+			"and it does not stretch as the worm walks")
+	if err == "":
+		err = _T.assert_float_eq(far_along.x - near_gate.x, 1000.0, 0.0001,
+			"it moves exactly as far as the head does -- it rides the animal, not the road")
+	if err == "":
+		err = _T.assert_true(near_gate.y < 500.0,
+			"and the whole of it sits BEHIND the head, which is the fight")
+	if err == "":
+		# Agreement with the zone lookup, which is the thing that actually pays out
+		# damage: the midpoint of the range must be worth ZONE_BAND.
+		var middle: float = 500.0 - (near_gate.x + near_gate.y) * 0.5
+		err = _T.assert_float_eq(Cutworm.zone_multiplier(middle), Cutworm.ZONE_BAND, 0.0001,
+			"and the middle of that range is what zone_multiplier calls the band")
+	return err
+
+
+## `head_distance()` is the whole state of the animal, and it is what a live bridge
+## session has to read to say where the boss is.
+##
+## Pinned against `progress()` rather than merely called: the two are one number seen
+## twice, and a `progress()` that stopped tracking it would leave every cob on the board
+## aiming at a worm that is not where they think it is.
+func test_the_cutworms_head_distance_is_the_number_progress_reports() -> String:
+	var board := Board.new()
+	var worm := Cutworm.new()
+	worm.setup(Pest.CUTWORM, board.route())
+	worm.set_physics_process(false)
+	var walk: float = Board.road_length_px(board.road_corners())
+	var err: String = _T.assert_float_eq(worm.head_distance(), 0.0, 0.0001,
+		"it starts at the entry bracket, off the west edge of the board")
+	if err == "":
+		err = _T.assert_float_eq(worm.progress(), 0.0, 0.0001, "and reads as no progress")
+	if err == "":
+		worm._advance(walk * 0.25)
+		err = _T.assert_float_eq(worm.head_distance(), walk * 0.25, 0.01,
+			"walking moves it by exactly the distance walked")
+	if err == "":
+		err = _T.assert_float_eq(worm.progress(), 0.25, 0.0001,
+			("and progress() is that distance over the UNFILLETED road (%.1f px). Against"
+				+ " the filleted spine it would read 0.257 and every cob would think the"
+				+ " boss was further along than it is") % walk)
+	worm.free()
+	board.free()
+	return err
+
+
+## `RoadSpine.fillet` named directly, at the two radii that matter.
+##
+## `Board.spine()` exercises it, but only ever at `RoadSpine.FILLET` and only ever on
+## this one road. The function is a static over any corner list -- `Board.set_road` exists
+## and a second board is a filed idea (plant-tower-defense-s1o8) -- so the cases worth
+## pinning are the ones this road never produces.
+func test_the_fillet_handles_the_roads_it_is_not_walking_today() -> String:
+	# A single straight line: two points, no interior corner, nothing to cut.
+	var straight := PackedVector2Array([Vector2(0, 0), Vector2(640, 0)])
+	var err: String = _T.assert_eq(RoadSpine.fillet(straight, RoadSpine.FILLET).size(), 2,
+		"a road with no corner comes back as the two points it was")
+	if err == "":
+		# A leg SHORTER than twice the radius. The road in play is all 64 px legs, so the
+		# clamp never binds there; a one-cell jog would overrun the leg and fold the spine
+		# back on itself without FILLET_LEG_FRACTION.
+		var jog := PackedVector2Array([Vector2(0, 0), Vector2(320, 0), Vector2(320, 32),
+			Vector2(640, 32)])
+		var rounded: PackedVector2Array = RoadSpine.fillet(jog, 100.0)
+		err = _T.assert_gt(RoadSpine.length_of(rounded), 0.0, "the jog still has a length")
+		if err == "":
+			err = _T.assert_true(RoadSpine.length_of(rounded) < RoadSpine.length_of(jog),
+				"a filleted jog is shorter than the jog, not longer or folded")
+		if err == "":
+			# The real failure a missing clamp causes: the cut eats past the far end of a
+			# leg and the spine reverses. Caught by asking that it never travels backwards
+			# along the axis it is meant to be crossing.
+			var backtracked: int = 0
+			for i: int in range(1, rounded.size()):
+				if rounded[i].x < rounded[i - 1].x - 0.001:
+					backtracked += 1
+			err = _T.assert_eq(backtracked, 0,
+				("the filleted jog never doubles back (%d reversals) -- a radius larger"
+					+ " than the leg is exactly how a spine folds") % backtracked)
+	if err == "":
+		# Collinear waypoints are collapsed before anything is cut, which is why a radius
+		# of 26 is reachable at all on a route emitting one point per 64 px cell.
+		var board := Board.new()
+		var reduced: PackedVector2Array = RoadSpine.corners(board.route())
+		err = _T.assert_true(reduced.size() < board.route().size(),
+			"the road's per-cell waypoints collapse to the points where it turns")
+		board.free()
+	return err
+
+
+## The degenerate quads that only a live frame could find.
+##
+## FOUND AT RUNTIME, not by reading the diff (plant-tower-defense-rn4p). `_draw` never
+## executes headless, so the whole body sweep was green in this suite and then printed
+##
+##     ERROR: Invalid polygon data, triangulation failed.
+##        [0] _fill_strip (res://game/cutworm.gd)
+##
+## once per bad quad per frame on the first live spawn. This is the headless half of that
+## fix: the sweep really does produce quads the triangulator would reject, and
+## `quad_area` really does reject them first.
+func test_the_cutworms_body_sweep_produces_quads_a_triangulator_would_refuse() -> String:
+	# A quad with two coincident corners -- the shape the sweep's clamped final sample
+	# makes when a step lands all but exactly on the head.
+	var pinched := PackedVector2Array([Vector2(0, 0), Vector2(0, 0), Vector2(10, 0),
+		Vector2(10, 0)])
+	var err: String = _T.assert_float_eq(Cutworm.quad_area(pinched), 0.0, 0.0001,
+		"a quad folded onto a line has no area")
+	if err == "":
+		err = _T.assert_true(Cutworm.quad_area(pinched) < Cutworm.MIN_QUAD_AREA,
+			"and so it is below the threshold _fill_strip skips at")
+	if err == "":
+		var real := PackedVector2Array([Vector2(0, 0), Vector2(4, 0), Vector2(4, 8),
+			Vector2(0, 8)])
+		err = _T.assert_float_eq(Cutworm.quad_area(real), 32.0, 0.0001,
+			"an ordinary body quad measures its own area")
+	if err == "":
+		err = _T.assert_true(Cutworm.quad_area(real_body_quad()) >= Cutworm.MIN_QUAD_AREA,
+			"and a quad from the widest part of the body is comfortably above the floor")
+	if err == "":
+		# The tail. Its profile tapers to a point, so the LAST quads of a real sweep are
+		# where the area actually goes to zero -- asserted against `radius_at` rather than
+		# against a made-up number, so a retuned taper is re-checked here.
+		var tail_r: float = Cutworm.radius_at(1.0, 0.0, 0.0)
+		var body_r: float = Cutworm.radius_at(0.4, 0.0, 0.0)
+		err = _T.assert_true(tail_r < body_r * 0.25,
+			("the tail really does taper to a point (%.2f px against the trunk's %.2f) --"
+				+ " if it stopped, this whole failure mode would be unreachable and the"
+				+ " guard untested rather than unnecessary") % [tail_r, body_r])
+	return err
+
+
+## One quad from the fattest part of a real body, built the way `_sweep` builds them.
+func real_body_quad() -> PackedVector2Array:
+	var board := Board.new()
+	var spine: PackedVector2Array = board.spine()
+	var cum: PackedFloat32Array = RoadSpine.cumulative(spine)
+	var quad := PackedVector2Array()
+	for s: float in [300.0, 304.0]:
+		var at: Vector2 = RoadSpine.point_at(spine, cum, s)
+		var normal: Vector2 = RoadSpine.tangent_at(spine, cum, s).orthogonal()
+		var r: float = Cutworm.radius_at(0.4, s, 0.0)
+		quad.append(at + normal * r)
+	for s: float in [304.0, 300.0]:
+		var at: Vector2 = RoadSpine.point_at(spine, cum, s)
+		var normal: Vector2 = RoadSpine.tangent_at(spine, cum, s).orthogonal()
+		var r: float = Cutworm.radius_at(0.4, s, 0.0)
+		quad.append(at - normal * r)
+	board.free()
+	return quad
+
+
+## What one frame of this body costs to draw, at every point of the whole walk.
+##
+## FOUND AT RUNTIME AND THEN GATED HERE (plant-tower-defense-rn4p). The first live spawn
+## dropped the board from 171 fps to 8.5 -- measured through the bridge as the same
+## `wait-frames 200` taking 1213 ms with the body emerging and 23454 ms once it was fully
+## out. Nothing in this suite could see it: `_draw` does not execute headless, so every
+## geometry test was green over a frame costing 2000 `draw_colored_polygon` calls.
+##
+## Frame rate is a machine fact and cannot be asserted here. The DRAW-CALL COUNT is not --
+## it is a pure function of the sample step, the number of strips and the body's length,
+## and it is what the budget is written against. `Cutworm.body_polygon_cost` reads the same
+## `sample_count` the sweep loops over, so this measures the drawing rather than a replica
+## of it.
+func test_the_cutworms_frame_cost_stays_inside_its_budget() -> String:
+	var board := Board.new()
+	var walk: float = Board.road_length_px(board.road_corners())
+	board.free()
+	var worst: int = 0
+	var worst_at: float = 0.0
+	var sampled: int = 0
+	# Every head position from the burrow to the tail clearing the exit, which is the whole
+	# life of the animal and therefore every frame it can ever draw.
+	var head: float = 0.0
+	while head <= walk + Cutworm.drawn_length() and sampled < MAX_SWEEP_STEPS:
+		var cost: int = Cutworm.body_polygon_cost(head, walk)
+		if cost > worst:
+			worst = cost
+			worst_at = head
+		sampled += 1
+		head += 8.0
+	var err: String = _T.assert_gt(sampled, 300,
+		"the whole walk was priced (%d head positions) -- a short sweep here is the"
+			% sampled + " vacuous pass this exists to avoid")
+	if err == "":
+		err = _T.assert_true(worst <= Cutworm.MAX_BODY_POLYGONS,
+			("the worst frame costs %d polygons (head at %.0f px) against a budget of %d."
+				+ " At OUTLINE_STEP 4 and a third full-length strip this read over 2000"
+				+ " and the live board ran at 8.5 fps")
+				% [worst, worst_at, Cutworm.MAX_BODY_POLYGONS])
+	if err == "":
+		# The budget is not slack nobody comes near either -- a body that had quietly
+		# stopped being drawn at all would pass the assertion above and fail this one.
+		err = _T.assert_gt(worst, Cutworm.MAX_BODY_POLYGONS / 4,
+			("and the budget is a real ceiling rather than an unreachable one (worst %d of"
+				+ " %d)") % [worst, Cutworm.MAX_BODY_POLYGONS])
+	if err == "":
+		# The relationship the budget is actually about: cost is linear in body length over
+		# sample step, so halving the step doubles the frame. Asserted so the constant
+		# cannot be lowered "just a bit" without the ceiling being re-derived.
+		var gaps: int = int(ceilf(Cutworm.body_span() / Cutworm.OUTLINE_STEP))
+		var predicted: int = gaps * Cutworm.STRIPS_PER_FRAME * 2
+		err = _T.assert_true(worst >= predicted and worst <= predicted + 40,
+			("the worst frame (%d) is the body's own %d gaps x %d strips x 2 triangles"
+				+ " (%d), plus the band -- if it is not, a strip has been added or the"
+				+ " sweep no longer loops over sample_count")
+				% [worst, gaps, Cutworm.STRIPS_PER_FRAME, predicted])
+	if err == "":
+		# And the coarser step did not cost accuracy that matters: chord error against the
+		# tightest curve the body lies on stays under the rim's own width, so the outline
+		# is cheaper without being visibly more angular.
+		var chord_error: float = pow(Cutworm.OUTLINE_STEP, 2.0) / (8.0 * RoadSpine.FILLET)
+		err = _T.assert_true(chord_error < Cutworm.RIM_WIDTH,
+			("a %.2f px chord error against a %.1f px rim -- the sweep is cheaper, not"
+				+ " coarser") % [chord_error, Cutworm.RIM_WIDTH])
+	return err
+
+
+## An empty body costs nothing, and a body that has not emerged costs almost nothing.
+##
+## The boundary cases the sweep above steps straight past, and the ones a `- 1` in
+## `body_polygon_cost` gets wrong in exactly the way that reads as a clean pass.
+func test_the_cutworm_costs_nothing_to_draw_before_it_has_emerged() -> String:
+	var walk: float = 2112.0
+	var err: String = _T.assert_eq(Cutworm.body_polygon_cost(0.0, walk), 0,
+		"a head still at the burrow draws no body")
+	if err == "":
+		err = _T.assert_eq(Cutworm.sample_count(10.0, 10.0), 0,
+			"and a zero-length span takes no samples rather than one")
+	if err == "":
+		err = _T.assert_gt(Cutworm.body_polygon_cost(Cutworm.OUTLINE_STEP * 3.0, walk), 0,
+			"but three steps out of the ground is already something to draw")
+	if err == "":
+		err = _T.assert_eq(Cutworm.body_polygon_cost(walk + Cutworm.drawn_length() * 2.0, walk),
+			0, "and once the whole animal is past the exit there is nothing left to draw")
+	return err
 
 # -- Arming a plant: the cue, the escape, and the ghost under the finger
 #    (plant-tower-defense-vvmy) -----------------------------------------------
