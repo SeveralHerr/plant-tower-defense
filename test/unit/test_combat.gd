@@ -432,23 +432,10 @@ func test_every_wave_in_the_table_sends_someone() -> String:
 func test_the_waves_get_harder() -> String:
 	var director := WaveDirector.new()
 	var first: int = WaveDirector.pests_in_wave(1)
-	# HEADCOUNT, so the wave it asks about has to be one where headcount means something.
-	# `wave_count()` is the Cutworm's solo row (plant-tower-defense-rn4p), which is one
-	# pest and fifteen cells of it; measured that way the campaign would read as having
-	# got four-fifths emptier. `last_swarm_wave` is the last row this claim can be made
-	# of, and it is derived rather than written as 26.
-	var swarm: int = WaveDirector.last_swarm_wave()
-	var last: int = WaveDirector.pests_in_wave(swarm)
-	var err: String = _T.assert_gt(last, first * 2,
-		"the last swarm wave %d (%d pests) is more than twice the first (%d)"
-			% [swarm, last, first])
-	if err == "":
-		# And the thing after it is a step up on the measure that DOES apply to it.
-		err = _T.assert_gt(WaveDirector.threat_for(director.wave_count()),
-			WaveDirector.threat_for(swarm),
-			"and the finale after it still prices above the swarm it follows")
+	var last: int = WaveDirector.pests_in_wave(director.wave_count())
 	director.free()
-	return err
+	return _T.assert_gt(last, first * 2,
+		"the last wave (%d pests) is more than twice the first (%d)" % [last, first])
 
 
 func test_a_started_wave_schedules_exactly_the_pests_the_table_promises() -> String:
@@ -2162,36 +2149,14 @@ func test_the_threat_readout_prices_the_composition_ramp_exactly() -> String:
 	# a lighter one, so the tint and the readout cannot invert against the board.
 	var previous: float = 0.0
 	var ranked: int = 0
-	var spiked: int = 0
 	for wave: int in range(1, 301):
 		var threat: float = WaveDirector.threat_for(wave)
-		if WaveDirector.boss_solo_wave(wave):
-			# The Cutworm's row (plant-tower-defense-rn4p). `_raw_threat` is count x
-			# health, which is the wrong ruler for a body with damage zones — 1800 points
-			# of one animal against 424 points of forty. `WaveDirector.boss_solo_wave` has
-			# the argument in full.
-			#
-			# NOT SIMPLY SKIPPED: it must still price ABOVE the wave before it, so a boss
-			# finale that got quietly cheaper than the swarm it follows still fails here.
-			# What is conceded is only the fall on the far side of it, back into endless.
-			err = _T.assert_gt(threat, previous,
-				("the solo-boss wave %d (x%.2f) still prices above wave %d (x%.2f) --"
-					+ " it is exempt from the RUNNING ramp, not from being a step up")
-					% [wave, threat, wave - 1, previous])
-			if err != "":
-				return err
-			spiked += 1
-			continue
 		err = _T.assert_gt(threat, previous,
 			"wave %d (x%.2f) never prices below wave %d (x%.2f)" % [wave, threat, wave - 1, previous])
 		if err != "":
 			return err
 		previous = threat
 		ranked += 1
-	if err == "":
-		err = _T.assert_eq(spiked, 1,
-			("exactly one wave took the exemption; a second would mean the ramp has holes"
-				+ " nobody argued for, got %d") % spiked)
 	if err == "":
 		err = _T.assert_gt(ranked, 100, "the ranking sweep ran (%d waves)" % ranked)
 	if err == "":
@@ -2286,19 +2251,12 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 	# to a row shows up here as a number a human has to agree with. The property
 	# assertions below (unscaled health, speed and mutation rate; the finale's group
 	# shape) are the other half the skill asks for.
-	#
-	# Wave 27 is the Cutworm, appended after the coda (plant-tower-defense-rn4p), and it
-	# is ONE. Not a typo and not a row that lost its swarm: the boss's own body occupies
-	# fifteen of the road's thirty-two cells, so anything walking with it would be walking
-	# inside it. It is the first entry in this list whose headcount says nothing about how
-	# hard the wave is, which is why `test_the_waves_get_harder` now asks
-	# `last_swarm_wave()` and why `WaveDirector.boss_solo_wave` exists at all.
 	var expected: Array[int] = [
 		5, 9, 9, 14, 13, 24, 25, 21, 26, 32, 30, 23, 35, 29, 37,
-		37, 33, 32, 31, 36, 38, 36, 39, 34, 33, 34, 1,
+		37, 33, 32, 31, 36, 38, 36, 39, 34, 33, 34,
 	]
 	var err: String = _T.assert_eq(WaveDirector.WAVES.size(), expected.size(),
-		"the campaign is still twenty-seven waves long")
+		"the campaign is still twenty-six waves long")
 	if err != "":
 		return err
 	for wave: int in range(1, expected.size() + 1):
@@ -2352,20 +2310,12 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 		compared += 1
 	err = _T.assert_gt(compared, 0, "there were groups to compare, not an empty table passing quietly")
 	if err == "":
-		# THE LAST SWARM WAVE, not the finale. The finale is the Cutworm and it peaks at
-		# one, so asking the ceiling question of it would assert 1 == 40. Wave 26 is still
-		# the wave that spends the road budget; what changed is only that it is no longer
-		# the last row (plant-tower-defense-rn4p).
-		err = _T.assert_eq(WaveDirector.peak_simultaneous_pests(WaveDirector.last_swarm_wave()),
+		err = _T.assert_eq(WaveDirector.peak_simultaneous_pests(WaveDirector.WAVES.size()),
 			WaveDirector.SIMULTANEOUS_PEST_CEILING,
-			("and the last swarm wave is sized to land ON the ceiling rather than under it —"
+			("and the campaign finale is sized to land ON the ceiling rather than under it —"
 				+ " it is the wave that spends the road budget now (see"
 				+ " SIMULTANEOUS_PEST_CEILING), so a row edited without re-checking the peak"
 				+ " shows up here first"))
-	if err == "":
-		err = _T.assert_eq(WaveDirector.peak_simultaneous_pests(WaveDirector.WAVES.size()), 1,
-			("and the finale after it spends none of that budget at all — one body, fifteen"
-				+ " cells of it, which is the entire point of the row"))
 	return err
 
 
@@ -6783,25 +6733,8 @@ func test_a_gaping_chomp_gives_the_lane_back_before_a_bud_would() -> String:
 		err = _T.assert_true(bud.is_busy(),
 			"while the bud is still chewing the same beetle %.2fs in" % step)
 	if err == "":
-		# Both beetles are ALIVE, which is the rule since the bite became damage: 16
-		# health against a meal worth `meal_damage()` means a Chomp cannot finish one.
-		# The difference the rungs buy is visible in the health instead, and it is a
-		# sharper claim than the old "one of them is dead" ever was — it shows the RATE.
-		err = _T.assert_true(one.is_alive() and two.is_alive(),
-			"a beetle outlives either mouth: %.0f health against a meal worth %.0f"
-				% [two.max_health, ChompFlower.meal_damage()])
-	if err == "":
-		err = _T.assert_float_eq(two.health, two.max_health - ChompFlower.meal_damage(),
-			0.0001, "the gaping maw got all %d bites in before it let go, so the beetle "
-				% ChompFlower.BITES_PER_MEAL
-				+ "is down a whole meal (%.1f of %.0f)" % [two.health, two.max_health])
-	if err == "":
-		err = _T.assert_gt(one.health, two.health,
-			("and the bud, still mid-chew at the same instant, has taken less out of its "
-				+ "own beetle — %.1f against %.1f") % [one.health, two.health])
-	if err == "":
-		err = _T.assert_true(two.held_by == null and one.held_by == bud,
-			"one lane is open again and the other is not, which is the whole comparison")
+		err = _T.assert_true(one.is_alive() and not two.is_alive(),
+			"and the difference is a pest that is dead rather than a number that is smaller")
 	_T.free_ui(host)
 	return err
 
@@ -7361,13 +7294,7 @@ func test_an_aloe_mends_slower_than_one_pest_eats() -> String:
 
 
 func test_the_shield_bug_was_paid_for_in_beetles_rather_than_out_of_the_finale() -> String:
-	# THE LAST SWARM WAVE, which was `WAVES.size()` until the Cutworm was appended after
-	# it (plant-tower-defense-rn4p). The bound below is a claim about how much SWARM the
-	# campaign may end on before endless stops out-pricing it, and the boss's 1800 points
-	# of one zoned body is not that quantity — see `WaveDirector.boss_solo_wave`. Wave 26
-	# is still the row with no road slack and the least health headroom.
-	var finale: int = WaveDirector.last_swarm_wave()
-	var seam: int = WaveDirector.WAVES.size() + 1
+	var finale: int = WaveDirector.WAVES.size()
 	var waves: Dictionary = _shieldbug_waves()
 	var err: String = _T.assert_gt(waves.size(), 0,
 		"there are Shield Bug waves to check (a zero here is a vacuous pass)")
@@ -7383,21 +7310,14 @@ func test_the_shield_bug_was_paid_for_in_beetles_rather_than_out_of_the_finale()
 	# The headroom itself, computed the way test_economy.gd's seam test does, so the
 	# two cannot disagree about what the bound is.
 	var seam_health: float = 0.0
-	for group: Dictionary in WaveDirector.groups_for(seam):
+	for group: Dictionary in WaveDirector.groups_for(finale + 1):
 		seam_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
-	# THE LAST SWARM WAVE'S health (plant-tower-defense-rn4p). Any SCALES above stay keyed
-	# to `WAVES.size()`, because the seam really is between the last row and the first
-	# endless one and the campaign ramp's last value is what the endless ramp multiplies —
-	# that cancellation is the mechanism, and it does not care what the last row contains.
-	# What the last row CONTAINS is the other half, and there the Cutworm's 1800 points of
-	# one zoned body is not a swarm's base health and cannot be compared with one. See
-	# `WaveDirector.boss_solo_wave`.
 	var finale_health: float = 0.0
-	for group: Dictionary in WaveDirector.groups_for(WaveDirector.last_swarm_wave()):
+	for group: Dictionary in WaveDirector.groups_for(finale):
 		finale_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
 	err = _T.assert_gt(seam_health, 0.0, "the first endless wave has contents")
 	if err == "":
-		err = _T.assert_gt(finale_health, 0.0, "and so does the last swarm wave")
+		err = _T.assert_gt(finale_health, 0.0, "and so does the finale")
 	if err != "":
 		return err
 	# The finale's own health scale belongs in the campaign multiplier since
@@ -7408,10 +7328,10 @@ func test_the_shield_bug_was_paid_for_in_beetles_rather_than_out_of_the_finale()
 	# scales cancel here and the bound stays 436.7.
 	var campaign_mult: float = (1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT) \
 		* WaveDirector.health_scale_for(finale)
-	var seam_mult: float = 1.0 + WaveDirector.mutation_chance_for(seam) \
+	var seam_mult: float = 1.0 + WaveDirector.mutation_chance_for(finale + 1) \
 		* WaveDirector.MUTATION_THREAT_WEIGHT
-	var seam_scales: float = WaveDirector.health_scale_for(seam) \
-		* WaveDirector.speed_scale_for(seam)
+	var seam_scales: float = WaveDirector.health_scale_for(finale + 1) \
+		* WaveDirector.speed_scale_for(finale + 1)
 	var bound: float = seam_health * seam_mult * seam_scales / campaign_mult
 	# Derived, not a literal 18.7: the claim is that the headroom is still worth more
 	# than the thing it was NOT spent on, so the choice above stays a choice rather
@@ -7792,19 +7712,12 @@ func test_the_nurse_beetle_was_paid_for_in_beetles_rather_than_out_of_the_finale
 	var seam_health: float = 0.0
 	for group: Dictionary in WaveDirector.groups_for(finale + 1):
 		seam_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
-	# THE LAST SWARM WAVE'S health (plant-tower-defense-rn4p). Any SCALES above stay keyed
-	# to `WAVES.size()`, because the seam really is between the last row and the first
-	# endless one and the campaign ramp's last value is what the endless ramp multiplies —
-	# that cancellation is the mechanism, and it does not care what the last row contains.
-	# What the last row CONTAINS is the other half, and there the Cutworm's 1800 points of
-	# one zoned body is not a swarm's base health and cannot be compared with one. See
-	# `WaveDirector.boss_solo_wave`.
 	var finale_health: float = 0.0
-	for group: Dictionary in WaveDirector.groups_for(WaveDirector.last_swarm_wave()):
+	for group: Dictionary in WaveDirector.groups_for(finale):
 		finale_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
 	err = _T.assert_gt(seam_health, 0.0, "the first endless wave has contents")
 	if err == "":
-		err = _T.assert_gt(finale_health, 0.0, "and so does the last swarm wave")
+		err = _T.assert_gt(finale_health, 0.0, "and so does the finale")
 	if err != "":
 		return err
 	# The finale's own health scale belongs in the campaign multiplier since
@@ -7985,20 +7898,8 @@ func test_a_lone_locust_is_the_slowest_ordinary_bug_and_gets_no_crowd_bonus() ->
 			"zero neighbours is the identity multiplier")
 	if err == "":
 		var locust_speed: float = float(Pest.SPECIES[Pest.LOCUST]["speed"])
-		# ORDINARY, which is the word in this test's own name and was doing no work until
-		# the Cutworm arrived at 20 px/s (plant-tower-defense-rn4p). The claim is about
-		# what a wave of ordinary bugs feels like; a boss is not one of those, and the
-		# Cutworm is deliberately the slowest thing that has ever walked this road.
-		#
-		# The filter is derived from `is_boss`, not a name list, and it is checked in both
-		# directions below: it must exclude something, and it must not be quietly hiding
-		# an ordinary bug that has drifted under the Locust.
-		var skipped: int = 0
 		for which: StringName in Pest.SPECIES:
 			if which == Pest.LOCUST:
-				continue
-			if Pest.is_boss(which):
-				skipped += 1
 				continue
 			var other_speed: float = float(Pest.SPECIES[which]["speed"])
 			err = _T.assert_gte(other_speed, locust_speed,
@@ -8007,18 +7908,6 @@ func test_a_lone_locust_is_the_slowest_ordinary_bug_and_gets_no_crowd_bonus() ->
 					% [which, other_speed, locust_speed])
 			if err != "":
 				break
-		if err == "":
-			err = _T.assert_eq(skipped, Pest.boss_species().size(),
-				("the boss filter skipped every boss and nothing else -- a species that"
-					+ " slipped through it would make this claim about ordinary bugs"
-					+ " while measuring something else"))
-	if err == "":
-		# The one boss slower than the Locust is the Cutworm, and it is slower ON PURPOSE
-		# (Pest.SPECIES[CUTWORM] has the reasoning). Asserted rather than merely excluded,
-		# so "a boss may be slower" stays a stated exception instead of a hole.
-		err = _T.assert_true(float(Pest.SPECIES[Pest.CUTWORM]["speed"])
-				< float(Pest.SPECIES[Pest.LOCUST]["speed"]),
-			"the Cutworm is the exception the filter above exists for, and it is real")
 	if err == "":
 		# The cap is derived, not guessed: a fully massed column tops out at exactly
 		# the aphid's own speed, the fastest anything else in this game moves.
@@ -8449,29 +8338,9 @@ func test_the_second_act_never_lets_the_threat_curve_fall() -> String:
 	if err != "":
 		return err
 	var walked: int = 0
-	var exempt: int = 0
 	var previous: float = WaveDirector.threat_for(1)
 	for wave: int in range(2, 301):
 		var threat: float = WaveDirector.threat_for(wave)
-		if WaveDirector.boss_solo_wave(wave):
-			# The Cutworm's finale (plant-tower-defense-rn4p). `_raw_threat` is
-			# `count x health`, and against a body with damage zones that is not the
-			# quantity this curve is about — 1800 points of one animal, most of which the
-			# board's fire meets at `Cutworm.ZONE_HIDE`, against 424 points of forty
-			# ordinary bugs. `WaveDirector.boss_solo_wave` carries the argument in full.
-			#
-			# WHAT IS CONCEDED, exactly: the FALL on the far side of this row, back into
-			# endless. Everything else still holds — the boss still has to price above the
-			# swarm it follows, and the wave after it still has to price above the swarm,
-			# both asserted here. The campaign ends on a wall by design; endless resumes
-			# the ramp from where the swarms left it.
-			err = _T.assert_gt(threat, previous,
-				("the solo-boss wave %d (x%.2f) must still step up from wave %d (x%.2f)")
-					% [wave, threat, wave - 1, previous])
-			if err != "":
-				return err
-			exempt += 1
-			continue
 		err = _T.assert_gt(threat, previous,
 			("wave %d (x%.2f) must price above wave %d (x%.2f). The campaign health"
 				+ " ramp multiplies the finale, so the seam is the pair to look at"
@@ -8482,13 +8351,7 @@ func test_the_second_act_never_lets_the_threat_curve_fall() -> String:
 			return err
 		previous = threat
 		walked += 1
-	if err == "":
-		err = _T.assert_eq(exempt, 1,
-			("exactly one wave in three hundred took the exemption. A second means the"
-				+ " ramp has a hole nobody argued for, got %d") % exempt)
-	if err == "":
-		err = _T.assert_gt(walked, 250, "the sweep actually walked the curve (%d pairs)" % walked)
-	return err
+	return _T.assert_gt(walked, 250, "the sweep actually walked the curve (%d pairs)" % walked)
 
 
 ## The bead's actual complaint, as a gate: no wave in the second act steps by
@@ -8593,19 +8456,12 @@ func test_the_second_act_costs_the_seam_bound_nothing() -> String:
 	var seam_health: float = 0.0
 	for group: Dictionary in WaveDirector.groups_for(first_endless):
 		seam_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
-	# THE LAST SWARM WAVE'S health (plant-tower-defense-rn4p). Any SCALES above stay keyed
-	# to `WAVES.size()`, because the seam really is between the last row and the first
-	# endless one and the campaign ramp's last value is what the endless ramp multiplies —
-	# that cancellation is the mechanism, and it does not care what the last row contains.
-	# What the last row CONTAINS is the other half, and there the Cutworm's 1800 points of
-	# one zoned body is not a swarm's base health and cannot be compared with one. See
-	# `WaveDirector.boss_solo_wave`.
 	var finale_health: float = 0.0
-	for group: Dictionary in WaveDirector.groups_for(WaveDirector.last_swarm_wave()):
+	for group: Dictionary in WaveDirector.groups_for(finale):
 		finale_health += float(group["count"]) * float(Pest.SPECIES[group["species"]]["health"])
 	err = _T.assert_gt(seam_health, 0.0, "the first endless wave has contents")
 	if err == "":
-		err = _T.assert_gt(finale_health, 0.0, "and so does the last swarm wave")
+		err = _T.assert_gt(finale_health, 0.0, "and so does the finale")
 	if err != "":
 		return err
 	var campaign_mult: float = (1.0 + WaveDirector.MUTATION_CHANCE * WaveDirector.MUTATION_THREAT_WEIGHT) \
@@ -12424,323 +12280,5 @@ func test_a_chomp_takes_the_bug_that_has_gone_by_and_leaves_the_one_arriving() -
 		chomp._act(0.016, pests)
 		err = _T.assert_true(chomp.held_pest() == arriving,
 			"the bug it let through is caught on the way out")
-	_T.free_ui(host)
-	return err
-
-
-# -- The bite is damage, not a delete ----------------------------------------
-#
-# The Chomp used to hold a pest for `chew_seconds` and then call `Pest.kill()` outright,
-# so health, plates and healing were all irrelevant to it. Now every bite is a real
-# `take_damage()`, the meal is worth `meal_damage()`, and anything bigger than that is
-# spat out alive.
-
-
-## Both ends of the sizing, derived from `Pest.SPECIES` rather than from the numbers I
-## happened to pick. This is the test `BITE_DAMAGE`'s header points at.
-func test_the_bite_is_sized_off_the_species_table_at_both_ends() -> String:
-	var healths: Dictionary = {}
-	for species: StringName in Pest.SPECIES:
-		healths[species] = float((Pest.SPECIES[species] as Dictionary)["health"])
-	var err: String = _T.assert_gt(healths.size(), 3,
-		"there are several species to draw a line between")
-	if err != "":
-		return err
-
-	var smallest: StringName = &""
-	for species: StringName in healths:
-		if smallest == &"" or healths[species] < healths[smallest]:
-			smallest = species
-	if err == "":
-		err = _T.assert_eq(smallest, Pest.APHID,
-			"the least healthy pest is the aphid, got %s" % smallest)
-	if err == "":
-		# END ONE: the smallest bug takes a FEW bites, not one. This is the constraint
-		# that caps BITE_DAMAGE, and the whole reason BITES_PER_MEAL is 6 rather than 3.
-		err = _T.assert_gte(ChompFlower.bites_to_kill(healths[smallest]), 3,
-			("the smallest pest (%.0f health) dies on bite %d of %d — under three that "
-				+ "is an instant kill with extra steps, which is what a bite of %.2f "
-				+ "buys you") % [healths[smallest],
-					ChompFlower.bites_to_kill(healths[smallest]),
-					ChompFlower.BITES_PER_MEAL, ChompFlower.BITE_DAMAGE])
-	if err == "":
-		err = _T.assert_true(ChompFlower.dies_in_the_mouth(healths[smallest]),
-			"and it does still die in there — a Chomp that cannot finish an aphid is "
-				+ "not the plant the catalogue is selling")
-
-	# END TWO: the line between eaten and spat out falls in a GAP in the table, not on a
-	# species. Every casualty must be strictly smaller than every survivor, and there has
-	# to be daylight either side of `meal_damage()` — a meal worth exactly some species'
-	# health decides that species by float rounding.
-	var eaten: Array[float] = []
-	var spared: Array[float] = []
-	for species: StringName in healths:
-		if ChompFlower.dies_in_the_mouth(healths[species]):
-			eaten.append(healths[species])
-		else:
-			spared.append(healths[species])
-	if err == "":
-		err = _T.assert_gt(eaten.size(), 0, "some pests are small enough to be eaten")
-	if err == "":
-		err = _T.assert_gt(spared.size(), 0,
-			"and some are not — 'Big ones survive it' has to be true of something")
-	if err == "":
-		var biggest_eaten: float = 0.0
-		for h: float in eaten:
-			biggest_eaten = maxf(biggest_eaten, h)
-		var smallest_spared: float = 9999.0
-		for h: float in spared:
-			smallest_spared = minf(smallest_spared, h)
-		err = _T.assert_gt(smallest_spared, biggest_eaten,
-			"the survivors are all bigger than the casualties (%.0f against %.0f)"
-				% [smallest_spared, biggest_eaten])
-		if err == "":
-			err = _T.assert_gte(ChompFlower.meal_damage() - biggest_eaten, 1.0,
-				("the meal clears the biggest thing it eats by at least a point (%.0f "
-					+ "against %.0f) rather than landing on it")
-					% [ChompFlower.meal_damage(), biggest_eaten])
-		if err == "":
-			err = _T.assert_gte(smallest_spared - ChompFlower.meal_damage(), 1.0,
-				("and falls short of the smallest thing it spares by at least a point "
-					+ "(%.0f against %.0f)") % [ChompFlower.meal_damage(), smallest_spared])
-	return err
-
-
-## The rule, driven rather than computed: an aphid is bitten down over several bites and
-## dies to the LAST one, not to the clock.
-func test_a_chomp_bites_a_small_pest_down_over_several_bites() -> String:
-	var chomp := ChompFlower.new()
-	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
-	var aphid: Pest = _prey(Pest.APHID, Vector2.ZERO)
-	var host: Node2D = _host([chomp, aphid])
-	# `Plant._physics_process` feeds `_act` the tree-global "pests" GROUP, so during the
-	# settle this flower can close on another test's pest — or another test's flower can
-	# close on this one first, leaving `held_by` set and this grab refused. Both were seen
-	# while writing these: the failure moved from one test to another when only a message
-	# changed. Same guard, and same reason, as
-	# `test_a_gaping_chomp_grabs_a_pest_the_bud_lets_walk_past` above
-	# (`.claude/skills/godot-test-isolation`).
-	chomp.set_physics_process(false)
-	await _T.instantiate_scene(host)
-
-	var pests: Array[Pest] = [aphid]
-	chomp._act(0.016, pests)
-	var full: float = aphid.max_health
-	var err: String = _T.assert_true(chomp.is_busy(), "the mouth closed on the aphid")
-	if err == "":
-		err = _T.assert_float_eq(aphid.health, full, 0.0001,
-			"and closing on it costs no health by itself — the BITES do the damage")
-	# One bite at a time, in slices too small to span two of them.
-	var seen: Array[float] = []
-	var spent: float = 0.0
-	var slice: float = aphid.chew_seconds / float(ChompFlower.BITES_PER_MEAL) * 0.5
-	while spent < aphid.chew_seconds * 1.2 and err == "" and aphid.is_alive():
-		chomp._act(slice, pests)
-		spent += slice
-		if aphid.is_alive() and (seen.is_empty() or seen[seen.size() - 1] != aphid.health):
-			seen.append(aphid.health)
-	if err == "":
-		err = _T.assert_false(aphid.is_alive(), "the aphid was eaten in the end")
-	if err == "":
-		# The point of the whole change: it came down in steps rather than vanishing.
-		err = _T.assert_gte(seen.size(), 2,
-			("its health was seen at %d distinct values on the way down (%s) — one "
-				+ "would mean it died to a single bite") % [seen.size(), str(seen)])
-	if err == "":
-		var falling: bool = true
-		for i: int in range(1, seen.size()):
-			if seen[i] >= seen[i - 1]:
-				falling = false
-		err = _T.assert_true(falling, "and every step was downwards: %s" % str(seen))
-	if err == "":
-		err = _T.assert_false(chomp.is_busy(), "the mouth is free once the meal is dead")
-	_T.free_ui(host)
-	return err
-
-
-## The other half of the same rule, and the one the old behaviour could not express at
-## all: a pest too big to finish leaves the mouth alive.
-func test_a_chomp_spits_out_a_pest_it_cannot_finish() -> String:
-	var chomp := ChompFlower.new()
-	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
-	var beetle: Pest = _prey(Pest.BEETLE, Vector2.ZERO)
-	var host: Node2D = _host([chomp, beetle])
-	# `Plant._physics_process` feeds `_act` the tree-global "pests" GROUP, so during the
-	# settle this flower can close on another test's pest — or another test's flower can
-	# close on this one first, leaving `held_by` set and this grab refused. Both were seen
-	# while writing these: the failure moved from one test to another when only a message
-	# changed. Same guard, and same reason, as
-	# `test_a_gaping_chomp_grabs_a_pest_the_bud_lets_walk_past` above
-	# (`.claude/skills/godot-test-isolation`).
-	chomp.set_physics_process(false)
-	await _T.instantiate_scene(host)
-
-	var pests: Array[Pest] = [beetle]
-	chomp._act(0.016, pests)
-	var err: String = _T.assert_false(ChompFlower.dies_in_the_mouth(beetle.max_health),
-		"a beetle is too big for one meal, which is what this test is about")
-	if err == "":
-		err = _T.assert_true(chomp.is_busy(), "the mouth closed on it anyway")
-	if err == "":
-		chomp._act(beetle.chew_seconds + 0.01, pests)
-		err = _T.assert_true(beetle.is_alive(), "and it survived the whole chew")
-	if err == "":
-		err = _T.assert_float_eq(beetle.health,
-			beetle.max_health - ChompFlower.meal_damage(), 0.0001,
-			"down by exactly one meal (%.1f of %.0f)" % [beetle.health, beetle.max_health])
-	if err == "":
-		err = _T.assert_false(chomp.is_busy(), "the mouth let it go and is free again")
-	if err == "":
-		err = _T.assert_true(beetle.held_by == null, "and the beetle knows it is loose")
-	if err == "":
-		err = _T.assert_eq(beetle.carry_offset(), Vector2.ZERO,
-			"back down on the road, not left drawn up on the flower")
-	if err == "":
-		err = _T.assert_true(beetle.shows_fought_mark(),
-			"wearing the mark, because a chewed pest has certainly been fought")
-	_T.free_ui(host)
-	return err
-
-
-## THE TRAP THE SPIT-OUT CREATES, and the reason `_spat_out` exists. `release()` leaves
-## the bug exactly where it was caught — inside the reach and already past `GRAB_LEAD` —
-## so without a guard the very next frame picks it straight back up, and a beetle is
-## ground down six health at a time until it dies on the spot. That is the instant kill
-## again wearing a loop.
-func test_a_chomp_does_not_immediately_re_eat_what_it_spat_out() -> String:
-	var chomp := ChompFlower.new()
-	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
-	var beetle: Pest = _prey(Pest.BEETLE, Vector2.ZERO)
-	var host: Node2D = _host([chomp, beetle])
-	# `Plant._physics_process` feeds `_act` the tree-global "pests" GROUP, so during the
-	# settle this flower can close on another test's pest — or another test's flower can
-	# close on this one first, leaving `held_by` set and this grab refused. Both were seen
-	# while writing these: the failure moved from one test to another when only a message
-	# changed. Same guard, and same reason, as
-	# `test_a_gaping_chomp_grabs_a_pest_the_bud_lets_walk_past` above
-	# (`.claude/skills/godot-test-isolation`).
-	chomp.set_physics_process(false)
-	await _T.instantiate_scene(host)
-
-	var pests: Array[Pest] = [beetle]
-	chomp._act(0.016, pests)
-	var err: String = _T.assert_true(chomp.is_busy(), "the first meal started")
-	if err == "":
-		chomp._act(beetle.chew_seconds + 0.01, pests)
-		err = _T.assert_false(chomp.is_busy(), "and ended with the beetle spat out")
-	var after_one: float = beetle.health
-	if err == "":
-		# Twenty frames standing exactly where it was dropped. The old shape would have
-		# re-grabbed on the first of them.
-		for i: int in range(20):
-			chomp._act(0.016, pests)
-		err = _T.assert_false(chomp.is_busy(),
-			"the flower leaves it alone while it is still standing in the reach")
-	if err == "":
-		err = _T.assert_float_eq(beetle.health, after_one, 0.0001,
-			"and takes nothing more off it: %.1f, unchanged" % beetle.health)
-	if err == "":
-		# It is not banished for good. Walk it out of the reach and back in, which is
-		# what a second Chomp downstream is, and the mouth closes again.
-		beetle.position = Vector2(chomp.grab_radius() * 3.0, 0.0)
-		chomp._act(0.016, pests)
-		beetle.position = Vector2(ChompFlower.GRAB_LEAD + 4.0, 0.0)
-		chomp._act(0.016, pests)
-		err = _T.assert_true(chomp.is_busy(),
-			"a bug that has left the reach and come back is prey again")
-	if err == "":
-		err = _T.assert_true(chomp.held_pest() == beetle, "and it is the same beetle")
-	_T.free_ui(host)
-	return err
-
-
-## The Shield Bug, which is the interaction worth having. `Pest.take_damage` spends a
-## plate on any damaging hit whether or not it got through, and a plate absorbs more than
-## a bite is worth — so the mouth lands nothing on it and costs it every plate. A Chomp
-## cannot eat a Shield Bug and can strip it bare for the cobs behind.
-func test_a_chomp_strips_a_shield_bugs_plates_without_landing_a_hit() -> String:
-	var chomp := ChompFlower.new()
-	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
-	var bug: Pest = _prey(Pest.SHIELDBUG, Vector2.ZERO)
-	var host: Node2D = _host([chomp, bug])
-	# `Plant._physics_process` feeds `_act` the tree-global "pests" GROUP, so during the
-	# settle this flower can close on another test's pest — or another test's flower can
-	# close on this one first, leaving `held_by` set and this grab refused. Both were seen
-	# while writing these: the failure moved from one test to another when only a message
-	# changed. Same guard, and same reason, as
-	# `test_a_gaping_chomp_grabs_a_pest_the_bud_lets_walk_past` above
-	# (`.claude/skills/godot-test-isolation`).
-	chomp.set_physics_process(false)
-	await _T.instantiate_scene(host)
-
-	var pests: Array[Pest] = [bug]
-	chomp._act(0.016, pests)
-	var plates: int = bug.shell_blocks
-	var err: String = _T.assert_gt(plates, 0, "a Shield Bug arrives with plates")
-	if err == "":
-		err = _T.assert_gt(bug.shell_strength, ChompFlower.BITE_DAMAGE,
-			("a plate absorbs %.1f against a bite worth %.1f, so the mouth cannot get "
-				+ "through one") % [bug.shell_strength, ChompFlower.BITE_DAMAGE])
-	if err == "":
-		err = _T.assert_gte(plates, ChompFlower.BITES_PER_MEAL,
-			("and it has at least as many plates (%d) as the meal has bites (%d), which "
-				+ "is why it leaves with its health intact")
-				% [plates, ChompFlower.BITES_PER_MEAL])
-	if err == "":
-		chomp._act(bug.chew_seconds + 0.01, pests)
-		err = _T.assert_true(bug.is_alive(), "it survives the mouth")
-	if err == "":
-		err = _T.assert_float_eq(bug.health, bug.max_health, 0.0001,
-			"at full health, because every bite was eaten by a plate")
-	if err == "":
-		err = _T.assert_eq(bug.shell_blocks, plates - ChompFlower.BITES_PER_MEAL,
-			("but down %d plates, one per bite — %d left of %d")
-				% [ChompFlower.BITES_PER_MEAL, bug.shell_blocks, plates])
-	_T.free_ui(host)
-	return err
-
-
-## The long-frame case, which is how the bite loop was found wrong once already. A single
-## `_act` spanning the whole meal owes it every bite, and the first draft advanced the
-## counter to six and dealt one bite of damage.
-func test_a_frame_that_spans_several_bites_owes_the_pest_all_of_them() -> String:
-	var chomp := ChompFlower.new()
-	chomp.setup(PlantCatalog.CHOMP, Vector2i(0, 0), null)
-	var queen: Pest = _prey(Pest.QUEEN, Vector2.ZERO)
-	var host: Node2D = _host([chomp, queen])
-	# `Plant._physics_process` feeds `_act` the tree-global "pests" GROUP, so during the
-	# settle this flower can close on another test's pest — or another test's flower can
-	# close on this one first, leaving `held_by` set and this grab refused. Both were seen
-	# while writing these: the failure moved from one test to another when only a message
-	# changed. Same guard, and same reason, as
-	# `test_a_gaping_chomp_grabs_a_pest_the_bud_lets_walk_past` above
-	# (`.claude/skills/godot-test-isolation`).
-	chomp.set_physics_process(false)
-	await _T.instantiate_scene(host)
-
-	var pests: Array[Pest] = [queen]
-	chomp._act(0.016, pests)
-	var err: String = _T.assert_true(chomp.is_busy(),
-		("the mouth closed on the queen -- queen at %s, chomp at %s, distance %.1f of "
-			+ "reach %.1f, heading %s, past %.1f of lead %.1f, winged=%s, held_by=%s, "
-			+ "in group=%s")
-			% [queen.global_position, chomp.global_position,
-				queen.global_position.distance_to(chomp.global_position),
-				chomp.grab_radius(), queen.travel_direction(),
-				ChompFlower.pass_distance(chomp.global_position, queen.global_position,
-					queen.travel_direction()),
-				ChompFlower.GRAB_LEAD, queen.is_winged, queen.held_by,
-				queen.is_in_group("pests")])
-	if err == "":
-		err = _T.assert_false(ChompFlower.dies_in_the_mouth(queen.max_health),
-			"a queen is far too big to finish, so the whole meal lands as damage")
-	if err == "":
-		# ONE call for the entire chew. Six bites are owed and six must be paid.
-		chomp._act(queen.chew_seconds + 0.01, pests)
-		err = _T.assert_float_eq(queen.health,
-			queen.max_health - ChompFlower.meal_damage(), 0.0001,
-			("one long frame owes every bite it skipped: %.1f of %.0f, expected a full "
-				+ "meal of %.0f off") % [queen.health, queen.max_health,
-					ChompFlower.meal_damage()])
 	_T.free_ui(host)
 	return err
