@@ -1522,6 +1522,98 @@ func test_a_sundews_best_patch_is_worth_laying_on_every_road_and_not_the_same_si
 	return err
 
 
+## PlantCatalog.reaches_over_road() is the exception list playability_gaps()
+## reads (plant-tower-defense-zg6l): true for a real reach measured against the
+## road, false for no reach at all, and false for a reach measured against
+## PLANTS instead. Asserted directly, once each, rather than left to be implied
+## by the corpus test below only ever calling it through playability_gaps().
+func test_reaches_over_road_matches_what_each_plants_reach_actually_measures() -> String:
+	var err: String = _T.assert_true(PlantCatalog.reaches_over_road(PlantCatalog.CORN),
+		"Corn Cobbler has a real reach over the road")
+	if err == "":
+		err = _T.assert_true(PlantCatalog.reaches_over_road(PlantCatalog.SUNDEW),
+			"and so does the Sundew's SAP_RADIUS")
+	if err == "":
+		err = _T.assert_true(not PlantCatalog.reaches_over_road(PlantCatalog.MINT),
+			"but Mint's reach is over plants, not the road, so it is excluded")
+	if err == "":
+		err = _T.assert_true(not PlantCatalog.reaches_over_road(PlantCatalog.ALOE),
+			"and so is Aloe's, for the same reason")
+	if err == "":
+		err = _T.assert_true(not PlantCatalog.reaches_over_road(PlantCatalog.BRAMBLE),
+			"a Bramble's reach() is 0.0 -- no radius, not a road reach")
+	if err == "":
+		err = _T.assert_true(not PlantCatalog.reaches_over_road(PlantCatalog.SUNFLOWER),
+			"and a Sunflower's is 0.0 for the same reason")
+	return err
+
+
+## THE PLAYABILITY PREDICATE, GENERALISED ACROSS EVERY REACHING PLANT
+## (plant-tower-defense-zg6l).
+##
+## The Sundew test just above is cycle 170's worked example for one plant on one
+## kind of reach. Board.playability_gaps() asks the same question -- "is there
+## anywhere on this board worth putting this plant" -- of every catalogue entry
+## PlantCatalog.reaches_over_road() says should be asked, and this asserts it
+## over the same corpus.
+##
+## Two claims, matching the shape of the test above:
+##
+## 1. Nothing in the corpus HAS a gap today. Not guaranteed by construction -- a
+##    road reshaped to hug a corner of the board could strand a short-reach
+##    plant the way it already strands dead-ground cells for a Corn Cobbler --
+##    so this is a real assertion over the actual corpus roads, not a
+##    restatement of the predicate's own logic.
+## 2. Bramble and Sunflower (reach 0.0, "no radius") and Mint and Aloe (reach
+##    over PLANTS, not the road) are never in the answer, on any road, because
+##    they are never asked: PlantCatalog.reaches_over_road() excludes all four
+##    before playability_gaps() ever measures a distance.
+func test_no_road_in_the_corpus_leaves_a_reaching_plant_with_nothing_to_do() -> String:
+	var err: String = ""
+	var checked: int = 0
+	var never_asked: Array[StringName] = [
+		PlantCatalog.BRAMBLE, PlantCatalog.SUNFLOWER, PlantCatalog.MINT, PlantCatalog.ALOE,
+	]
+	for road: Dictionary in _road_corpus():
+		if err != "":
+			break
+		var name: String = str(road["name"])
+		var corners: Array[Vector2i] = road["corners"]
+		var board := Board.new()
+		if name != "default":
+			err = _T.assert_eq(board.set_road(corners), "",
+				"the %s road is accepted by set_road" % name)
+			if err != "":
+				board.free()
+				return err
+		await _T.instantiate_scene(board)
+		err = _T.assert_gt(board.path_cell_count(), 0,
+			"the %s road built its path before anything was measured" % name)
+		if err == "":
+			var gaps: Array[StringName] = board.playability_gaps()
+			checked += 1
+			# Claim 1. A road that strands a plant with nowhere to reach the road
+			# is a road the corpus gate has to know about before a player does.
+			err = _T.assert_eq(gaps.size(), 0,
+				("the %s road leaves every reaching plant something to do -- "
+					+ "playability_gaps() reports %s stranded") % [name, str(gaps)])
+			# Claim 2. The four plants reach() says should never be asked this
+			# question are never in the answer, on any road.
+			for id: StringName in never_asked:
+				if err != "":
+					break
+				err = _T.assert_true(not gaps.has(id),
+					"%s is never asked the road question, on any road"
+						% PlantCatalog.display_name(id))
+		_T.free_ui(board)
+
+	if err == "":
+		err = _T.assert_eq(checked, _road_corpus().size(),
+			("every road in the corpus was measured for a playability gap (%d of %d)")
+				% [checked, _road_corpus().size()])
+	return err
+
+
 ## set_road refuses the road that would HANG, and three that would merely be wrong
 ## (plant-tower-defense-s1o8.1).
 ##
