@@ -89,9 +89,9 @@ def run_one(path: Path, timeout: int) -> dict:
         "seconds": time.monotonic() - started,
         "output": out.rstrip(),
         # The survey's own last non-empty line. For an exit 2 that is its reason, which is
-        # the thing this runner must not invent for it -- `flourish_peak.py` says "no game
-        # on the bus. `python tools/devtools.py launch` first", and paraphrasing that into
-        # "could not run" would throw away the only actionable half.
+        # the thing this runner must not invent for it -- a survey that cannot run says
+        # WHY in that line, and paraphrasing it into a bare "could not run" would throw
+        # away the only actionable half.
         "last_line": next((ln for ln in reversed(out.splitlines()) if ln.strip()), ""),
     }
 

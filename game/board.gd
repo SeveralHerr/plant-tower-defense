@@ -28,7 +28,7 @@ const ROWS: int = 9
 ##   - the Sundew's coverage arithmetic, stated against how much road one
 ##     placement reaches on THIS route.
 ##
-## `python tools/devtools.py cmd board_info` prints the husk click budget, which
+## `Game.budget_entries()` prices the husk click budget, which
 ## is the one that is NOT at risk here — it walks the route, but the walk yields
 ## CELL/2 for any road, so the 4 px clearance is two constants. See
 ## test_the_road_still_has_the_length_and_cell_count_the_constants_were_measured_against,

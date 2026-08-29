@@ -1,0 +1,14 @@
+{
+  "godot_bin": "C:/Users/gotmi/Downloads/Godot_v4.7.1_fixed/Godot_v4.7.1-stable_win64_console.exe",
+  "godot_version": "4.7.1",
+  "test_dir": "res://test/unit",
+  "scan_root": "res://",
+  "uid_check_ignore": [
+    "res://addons/",
+    "res://tools/"
+  ],
+  "name_check_extra_types": [],
+  "name_check_ignore": [],
+  "fps_min": 30,
+  "_note": "Gate configuration for tools/: run_tests.py|gd, lint_project.gd, name_check.py, import_check.py. fps_min is the game's frame budget, derived from by test_web_audio_output_latency_has_mobile_headroom."
+}

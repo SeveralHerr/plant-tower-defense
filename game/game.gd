@@ -4092,10 +4092,10 @@ func state() -> Dictionary:
 # -- budgets ----------------------------------------------------------------
 #
 # Four constants in this project carry a "moving me costs you X" doc comment, and
-# every one of the X's lives in a different file. `python tools/devtools.py cmd
-# budgets` prices all six couplings and prints what is left of each -- but it
-# needs a launched game and a bridge, so the one person who will never run it is
-# the person who is about to spend one.
+# every one of the X's lives in a different file. `Game.budget_entries()` prices
+# all six couplings and reports what is left of each -- but reading it means being
+# in the game already, so the one person who will never read it is the person who
+# is about to spend one.
 #
 # So the pricing lives here, on the run itself, and the run reads it once at
 # startup. `cmd budgets` calls budget_entries() rather than measuring anything of

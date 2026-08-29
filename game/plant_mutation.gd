@@ -110,15 +110,6 @@ static func sport_texture_path(base_path: String) -> String:
 ## so "does this frame have a mutant twin" is asked in one place rather than at four
 ## call sites that each have to remember.
 static func texture_path(base_path: String, is_sport: bool) -> String:
-	# No node ever carries this script -- it is a `class_name ... extends RefCounted`
-	# static utility -- so `scripts-seen` and the verify ledger's `reach` cannot see it
-	# however much of it ran. Measured, not assumed: bsxh's runtime pass sprouted four
-	# sports, read each one's loaded texture, and drove a sport Bramble through all three
-	# damage frames, and the ledger still recorded this file as unreachable by
-	# construction. `texture_path` is the funnel every sprite in the game goes through
-	# (`Plant.frame_texture_path`), so marking it once is enough. Same shape and same
-	# reason as `GameSpeed._apply`.
-	DevTools.mark_script_reached("res://game/plant_mutation.gd")
 	return sport_texture_path(base_path) if is_sport else base_path
 
 

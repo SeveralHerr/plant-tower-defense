@@ -1,11 +1,11 @@
 ---
 name: confirm-the-premise
-description: Check a bead's factual claims before working it, by classifying WHAT KIND of claim each one is — a count, a shape, an absence, a comparison, an ask — because each kind has a different confirming move and a different way of being wrong. Use at the `confirm` step of verify-bd-item, before claiming any bd issue, and whenever a description states something about the repo as though it were a finding. Also use when a bead's cited lines all check out and the work still feels larger or smaller than the bead says.
+description: Check a bead's factual claims before working it, by classifying WHAT KIND of claim each one is — a count, a shape, an absence, a comparison, an ask — because each kind has a different confirming move and a different way of being wrong. Use at the `confirm` step of the cycle loop, before claiming any bd issue, and whenever a description states something about the repo as though it were a finding. Also use when a bead's cited lines all check out and the work still feels larger or smaller than the bead says.
 ---
 
 # Confirming a premise
 
-**Partner skill, and read the division of labour first.** `.claude/skills/verify-bd-item/`
+**Partner reading, and read the division of labour first.** `.claude/cycle/`
 owns the ORDER (`confirm → claim → implement`) and three moves that belong to it and are
 not repeated here: open the code the bead says is missing, run
 `bd search "<phrase>"` to find out whether the absence is an oversight or a recorded

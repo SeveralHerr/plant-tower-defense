@@ -6,7 +6,7 @@ WHY THIS EXISTS, and what was actually wrong.
 `Game` held three streams. Two had public setters -- `WaveDirector.set_seed` and
 `SeedBank.set_seed` -- and the third, `Game._cross_rng`, had none. It was constructed
 at `game/game.gd:218`, drawn from at `_tick_cross_breeding`, and mentioned in exactly
-those two places across `game/`, `test/` and `devtools_ext/`. Godot 4's
+those two places across `game/` and `test/`. Godot 4's
 `RandomNumberGenerator` randomizes its seed on construction, so every run threw a
 different set of sports and nothing anywhere could pin them.
 
@@ -94,7 +94,7 @@ import repo_walk  # noqa: E402
 # Where a run's streams live. Deliberately not the whole repo: `tools/run_sim.gd` is a
 # driver that seeds its own copy by hand, and a test fixture holding a throwaway
 # generator is not a stream a run draws from.
-SCAN_DIRS = ("game", "devtools_ext")
+SCAN_DIRS = ("game",)
 
 # `var _rng := RandomNumberGenerator.new()` and `var _rng: RandomNumberGenerator = ...`
 # and the bare typed declaration. One pattern, because all three declare a field this

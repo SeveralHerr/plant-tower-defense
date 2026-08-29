@@ -18,7 +18,7 @@ arrived from a rebase, a pull or a branch switch. One missing entry in
 `.godot/global_script_class_cache.cfg` cascades into every file that names the type,
 and the tool you ran to fix it told you it had succeeded.
 
-So this wrapper runs the same import, captures stdout and stderr to `.devtools/import.log`,
+So this wrapper runs the same import, captures stdout and stderr to `.gates/import.log`,
 and scans that log for the signals Godot only ever prints on a real failure. Findings
 are quoted back, not counted, so the terminal output is enough to act on.
 
@@ -37,9 +37,9 @@ Usage:
 (`python` on Windows -- `python3` there is a Microsoft Store alias stub that satisfies
 `command -v` and then refuses to run.)
 
-Godot binary resolution matches `devtools.py launch`:
+Godot binary resolution:
     --godot flag  ->  $GODOT_BIN  ->  `godot_bin` in
-    addons/godot_selftest/devtools_config.json
+    tools/gates_config.json
 """
 
 import argparse
@@ -86,15 +86,15 @@ MAX_QUOTED = 40
 
 
 def _read_harness_config(project_path: Path) -> dict:
-    """addons/godot_selftest/devtools_config.json as a dict; {} when unreadable.
+    """tools/gates_config.json as a dict; {} when unreadable.
 
-    Deliberately duplicated from devtools.py rather than imported. This tool has to
+    Read here rather than shared through a helper. This tool has to
     work when the bridge client is the thing that is broken -- a parse error in a
     template, a half-refreshed install, a devtools.py that will not import -- and a
     checker that cannot run when the project is broken checks nothing. It is a dict
     read and a three-line precedence chain; the copy is cheaper than the coupling.
     """
-    cfg_path = project_path / "addons" / "godot_selftest" / "devtools_config.json"
+    cfg_path = project_path / "tools" / "gates_config.json"
     try:
         data = json.loads(cfg_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -108,7 +108,7 @@ def _resolve_godot(args, project_path: Path) -> Path:
     godot = args.godot or os.environ.get("GODOT_BIN") or str(config.get("godot_bin", "") or "")
     if not godot:
         print("Error: no Godot binary found. Pass --godot PATH, set $GODOT_BIN, or set "
-              '"godot_bin" in addons/godot_selftest/devtools_config.json.', file=sys.stderr)
+              '"godot_bin" in tools/gates_config.json.', file=sys.stderr)
         sys.exit(2)
     godot_path = Path(godot).expanduser()
     if not godot_path.is_file():
@@ -218,9 +218,9 @@ def main():
 
     godot_path = _resolve_godot(args, project_path)
 
-    devtools_dir = project_path / ".devtools"
-    devtools_dir.mkdir(exist_ok=True)
-    log_path = devtools_dir / "import.log"
+    log_dir = project_path / ".gates"
+    log_dir.mkdir(exist_ok=True)
+    log_path = log_dir / "import.log"
 
     # plant-tower-defense:G-044: --import segfaulted (exit 139) on its first call of a
     # session and imported clean on an immediate retry with nothing else changed - same

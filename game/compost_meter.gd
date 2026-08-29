@@ -71,7 +71,7 @@ const MIN_HUSK_LIFETIME: float = 4.5
 ## does not currently have.
 ##
 ## Raising this to 32 does not merely narrow the margin, it closes it.
-## `python tools/devtools.py cmd board_info` prints the subtraction with both
+## `Game.budget_entries()`'s husk_click entry prints the subtraction with both
 ## terms; PlacementPreview.husk_click_margin() is the gate.
 const COLLECT_RADIUS: float = 28.0
 

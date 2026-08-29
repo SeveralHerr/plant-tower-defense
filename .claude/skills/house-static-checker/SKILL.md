@@ -48,7 +48,7 @@ fall through as a pass.
 
 **Or advisory: exit `0` always, and report.** Choose this when what you are reporting
 **cannot be actioned by the reader**. `gap_ledger.py` is the worked example: it reports
-superseded `open` lines in `log-devtools.md`, there are thirteen, and the correct
+superseded `open` lines in a status log, there are thirteen, and the correct
 response to every one is to leave it alone — rewriting an old entry would falsify what
 was true the day it was written. Its first draft called those findings and exited 1,
 which is a permanently-red gate, and a permanently-red gate is worse than no gate: it
@@ -111,7 +111,7 @@ measures the row because it names no corpus symbol. **The tell: if you can name 
 you searched for, you have probably searched for an implementation, not the behaviour** —
 grep for the property a defect would move (a pixel, a signal payload, a drawn colour),
 not for the call you imagine implements it. Full write-up, two more instances, and the
-absence-in-prose variant: `.claude/skills/kanban-idea-pass/SKILL.md` rule 2.
+absence-in-prose variant: `.claude/cycle/references/why.md` §3, rule 2.
 
 **Strip comments and string bodies before matching.** A rule satisfied by prose is not a
 rule. This repo has already been bitten the other way round: a test scanned source for a
@@ -165,7 +165,7 @@ miss was larger than the hit:
   neighbours bare, no directory part. The first version demanded one and saw **none** of
   that file's twelve citations. That file is nothing *but* citations.
 - `tools/citation_check.py:90-94` — the continuation form: a full path, then bare `:91`,
-  `:106` inheriting it. 44 of these in `kanban.md`, invisible to the first version — a third
+  `:106` inheriting it. 44 of these in one backlog file, invisible to the first version — a third
   again on top of the 130 it did see, in a form this project invented for itself.
 - `tools/citation_check.py:97-108` — `bd` stores `description` and `close_reason` as PLAIN
   TEXT. Nothing renders them, so nothing rewards backticks: **95 backticked against 495
@@ -190,7 +190,7 @@ count is recorded at `tools/citation_check.py:97-108`. The measurement is the de
 without it you have a guess about someone else's habits.
 
 And scope the loosening to the source that needs it. Making the permissive form the default
-everywhere is the wrong fix — in `kanban.md` the backticks *are* the convention, and a
+everywhere is the wrong fix — in a prose backlog the backticks *are* the convention, and a
 looser pattern there starts matching prose. This repo has the false-positive history to
 match: `heredoc_survey`'s first version reported 554. Per-source, measured, is the answer.
 
@@ -293,7 +293,7 @@ already the codebase's majority. So the rules above are what said don't build it
 denominator has to announce its own emptiness, and a checker nobody has watched fire is prose.
 
 **The deliverable in that case is the written reasoning, not the tool.** Put the enumeration and
-the count in `kanban.md` so the idea is not re-proposed from scratch, and say that the entry is
+the count in the bead so the idea is not re-proposed from scratch, and say that the entry is
 the *first sighting* — a second instance meets the bar, and the record is what lets someone
 recognise it as a second.
 
@@ -505,9 +505,8 @@ known-out beats any statistic over the real corpus.
 
 **You do not register it anywhere.** `check_all.py` derives its run-set from the contract
 marker itself — give the file a `NOT COVERED:` line and it joins the next run. The prose
-list in `.claude/skills/cycle/SKILL.md` is a description of what that command finds, not
-the source of truth, so adding a name there does nothing. Do not edit the harness's managed
-block in `CLAUDE.md`; `/scaffold-godot-harness` regenerates it.
+list in `.claude/cycle/references/gates.md` is a description of what that command finds,
+not the source of truth, so adding a name there does nothing.
 
 **Two corollaries that have both already bitten:**
 

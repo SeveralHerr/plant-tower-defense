@@ -38,9 +38,9 @@ Usage:
 (`python` on Windows -- `python3` there is a Microsoft Store alias stub that satisfies
 `command -v` and then refuses to run.)
 
-Godot binary resolution matches `devtools.py launch` / `import_check.py`:
+Godot binary resolution matches `import_check.py`:
     --godot flag  ->  $GODOT_BIN  ->  `godot_bin` in
-    addons/godot_selftest/devtools_config.json
+    tools/gates_config.json
 """
 
 import argparse
@@ -77,12 +77,12 @@ _AT_RE = re.compile(r"^\s+at: ")
 
 
 def _read_harness_config(project_path: Path) -> dict:
-    """addons/godot_selftest/devtools_config.json as a dict; {} when unreadable.
+    """tools/gates_config.json as a dict; {} when unreadable.
 
-    Deliberately duplicated from devtools.py / import_check.py rather than imported --
+    Deliberately duplicated from import_check.py rather than imported --
     see import_check.py's identical helper for why the copy is cheaper than the coupling.
     """
-    cfg_path = project_path / "addons" / "godot_selftest" / "devtools_config.json"
+    cfg_path = project_path / "tools" / "gates_config.json"
     try:
         data = json.loads(cfg_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -96,7 +96,7 @@ def _resolve_godot(args, project_path: Path) -> Path:
     godot = args.godot or os.environ.get("GODOT_BIN") or str(config.get("godot_bin", "") or "")
     if not godot:
         print("Error: no Godot binary found. Pass --godot PATH, set $GODOT_BIN, or set "
-              '"godot_bin" in addons/godot_selftest/devtools_config.json.', file=sys.stderr)
+              '"godot_bin" in tools/gates_config.json.', file=sys.stderr)
         sys.exit(2)
     godot_path = Path(godot).expanduser()
     if not godot_path.is_file():
@@ -150,19 +150,19 @@ def _user_state_before(project_path: Path):
     say which files the SUITE wrote. Four tests staged low scores through a real
     `record_score()` -> `_save()` and destroyed both high scores across two runs while
     every test restored the in-memory values and the suite said ALL TESTS PASSED.
-    Uses devtools.py's user-dir resolution and stat helpers when they are beside this
-    file; absent, the check is skipped and says so."""
+    Uses tools/userstate.py's user-dir resolution and stat helpers when they are beside
+    this file; absent, the check is skipped and says so."""
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
-        import devtools  # noqa: WPS433 - shipped beside this file
-        user_dir = devtools.get_user_data_path(project_path)
+        import userstate  # noqa: WPS433 - shipped beside this file
+        user_dir = userstate.get_user_data_path(project_path)
     except Exception as exc:  # noqa: BLE001 - advisory; never block the suite on this
         return None, "user:// writes: not checked (%s: %s)" % (type(exc).__name__, exc)
-    n = devtools.userstate_stat_take(project_path, user_dir)
-    return devtools, "%d file(s) in %s" % (n, user_dir)
+    n = userstate.stat_take(project_path, user_dir)
+    return userstate, "%d file(s) in %s" % (n, user_dir)
 
 
-def _user_state_entry(devtools_mod, project_path: Path) -> str:
+def _user_state_entry(state_mod, project_path: Path) -> str:
     """plant-tower-defense:G-149 / -xdp7: name the files that were ALREADY under user://
     when the suite started.
 
@@ -177,10 +177,10 @@ def _user_state_entry(devtools_mod, project_path: Path) -> str:
     Advisory, always. It cannot know whether a pre-existing file mattered; it can only
     stop the question from being invisible.
     """
-    if devtools_mod is None:
+    if state_mod is None:
         return "user:// on entry: not checked (no user-dir resolution available)"
     try:
-        user_dir = devtools_mod.get_user_data_path(project_path)
+        user_dir = state_mod.get_user_data_path(project_path)
         names = sorted(p.name for p in Path(user_dir).iterdir() if p.is_file())
     except Exception as exc:  # noqa: BLE001 - advisory; never block the suite on this
         return "user:// on entry: not checked (%s: %s)" % (type(exc).__name__, exc)
@@ -192,8 +192,8 @@ def _user_state_entry(devtools_mod, project_path: Path) -> str:
             % (len(names), user_dir, ", ".join(names)))
 
 
-def _user_state_after(devtools_mod, project_path: Path) -> str:
-    diff = devtools_mod.userstate_stat_diff(project_path)
+def _user_state_after(state_mod, project_path: Path) -> str:
+    diff = state_mod.stat_diff(project_path)
     if diff is None:
         return "user:// writes: not checked (no record)"
     changed, created, deleted, user_dir = diff
@@ -242,7 +242,7 @@ def run_suite(godot_path: Path, project_path: Path, log_path: Path, passthrough,
 SAVE_PATH_ENV = "PLANT_TD_SAVE_PATH"
 
 
-def scratch_save_env(project_path: Path, devtools_mod) -> tuple:
+def scratch_save_env(project_path: Path, state_mod) -> tuple:
     """Decide this run's save path and return (env_or_None, message).
 
     THE DECISION (plant-tower-defense-l6zo): `run_tests.py` DOES set `PLANT_TD_SAVE_PATH`
@@ -284,9 +284,9 @@ def scratch_save_env(project_path: Path, devtools_mod) -> tuple:
     env = os.environ.copy()
     env[SAVE_PATH_ENV] = rel_path
     abs_hint = ""
-    if devtools_mod is not None:
+    if state_mod is not None:
         try:
-            user_dir = devtools_mod.get_user_data_path(project_path)
+            user_dir = state_mod.get_user_data_path(project_path)
             abs_hint = " (%s)" % (Path(user_dir) / rel_path.replace("user://", "", 1))
         except Exception:  # noqa: BLE001 - the hint is advisory; the env var is what matters
             abs_hint = ""
@@ -309,7 +309,7 @@ def declared_assertions(project_path):
     uses, over comment/string-blanked source, so a doc-comment mentioning
     `_T.assert_eq` is not a declaration. Advisory only: it is printed, never gated.
     """
-    cfg = project_path / "addons" / "godot_selftest" / "devtools_config.json"
+    cfg = project_path / "tools" / "gates_config.json"
     test_dir = "res://test/unit"
     try:
         test_dir = str(json.loads(cfg.read_text(encoding="utf-8")).get("test_dir") or test_dir)
@@ -387,16 +387,16 @@ def main():
 
     godot_path = _resolve_godot(args, project_path)
 
-    devtools_dir = project_path / ".devtools"
-    devtools_dir.mkdir(exist_ok=True)
-    log_path = devtools_dir / "tests.log"
+    log_dir = project_path / ".gates"
+    log_dir.mkdir(exist_ok=True)
+    log_path = log_dir / "tests.log"
 
-    devtools_mod, user_before = _user_state_before(project_path)
+    state_mod, user_before = _user_state_before(project_path)
     # Taken BEFORE the suite and printed after it, beside the writes line it completes.
-    user_entry = _user_state_entry(devtools_mod, project_path)
+    user_entry = _user_state_entry(state_mod, project_path)
     # plant-tower-defense-l6zo: a pid-derived PLANT_TD_SAVE_PATH per invocation, kept and
     # printed -- see scratch_save_env's docstring for the full decision and reasoning.
-    save_env, save_message = scratch_save_env(project_path, devtools_mod)
+    save_env, save_message = scratch_save_env(project_path, state_mod)
     print(save_message)
     try:
         godot_rc = run_suite(godot_path, project_path, log_path, passthrough, args.timeout,
@@ -428,7 +428,7 @@ def main():
 
     findings = scan_output(captured)
     engine_errors = scan_engine_errors(captured)
-    user_writes = _user_state_after(devtools_mod, project_path) if devtools_mod else user_before
+    user_writes = _user_state_after(state_mod, project_path) if state_mod else user_before
     # run_tests.gd's own exit code: 0 all passed, 1 failures/vacuous, 2 could not run.
     # A nonzero error count overrides a reported 0 -- that is the entire point of this
     # wrapper -- but never downgrades a run_tests.gd exit 2 (could not run at all).

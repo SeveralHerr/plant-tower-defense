@@ -7,10 +7,6 @@ extends Control
 ## survives the scene swap; the high score it also carries is read here so a
 ## returning player sees it before they even press Start.
 ##
-## `skip_to_game()` exists for the harness: devtools_config.json's entry_hook
-## calls it so an automated check lands in the playable scene without a real
-## mouse click on a button that only exists after _ready().
-##
 ## Everything here is positioned by hand against the constants below rather than
 ## by a Container. That is deliberate for a fixed-size fullscreen menu — the
 ## numbers are checkable (`node-bounds`, and the tests below) and there is no
@@ -1245,29 +1241,3 @@ func _start_campaign() -> void:
 func _start_endless() -> void:
 	RunConfig.endless = true
 	get_tree().change_scene_to_file(GAME_SCENE)
-
-
-## Harness entry_hook target — see devtools_config.json. Lands in the same
-## place Start does, without needing a pressed signal on a live button.
-##
-## `call_deferred`, and the deferral is the whole point of this wrapper existing
-## rather than pointing the hook straight at `_start_campaign`.
-##
-## The harness fires this from `DevTools._ready()` — the backtrace bottoms out
-## there, so it is a synchronous call made while the root Window is still adding
-## the main scene's subtree. `change_scene_to_file()` frees the outgoing scene
-## through `root.remove_child()`, and a parent mid-add refuses that with
-## `data.blocked > 0`. The scene change still landed; what it printed was one red
-## `ERROR:` into `.devtools/launch_stderr.log` on EVERY windowed launch, which is
-## the file `/verify` reads and the first thing anyone opens when something real
-## has gone wrong. A permanent false positive at the top of that log is worse
-## than the frame this costs.
-##
-## Deferring HERE and not in `_start_campaign` on purpose: the player's path into
-## a run is a button `pressed` signal, which is not mid-add and does not need it.
-## `_cmd_fire_entry_point`'s `scene_changed` field reports the switch TO
-## `title.tscn` it made itself, not this call's, so the on-demand entry point —
-## which was already clean, and is how this was isolated to launch timing —
-## cannot regress on the return value going away.
-func skip_to_game() -> void:
-	_start_campaign.call_deferred()

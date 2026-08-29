@@ -90,7 +90,9 @@ import re
 import repo_walk
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_FILES = ["kanban.md"]
+# No default markdown target since kanban.md was retired: run bare it checks
+# bead prose (with --beads) and any file named on the command line.
+DEFAULT_FILES: list[str] = []
 
 # The bead export. A PASSIVE EXPORT and not the source of truth -- CLAUDE.md's beads block
 # says so and bead_prose_check.py's NOT COVERED line says it again -- so a bead updated but
@@ -377,7 +379,7 @@ def symbol_check(sources: list[tuple[str, str, bool, bool]]) -> int:
             loc = "%s:%d" % (label, c["line"])
             cite = key(c["path"], c["start"], c["end"])
             sink = findings if gating else non_gating
-            src, ambiguous = _resolve(ROOT / "kanban.md", c["path"])
+            src, ambiguous = _resolve(ROOT / "CLAUDE.md", c["path"])
             if ambiguous:
                 sink.append(_printable(
                     "FINDING: %s names `%s` at %s -- that bare name matches %s.\n"
@@ -904,9 +906,9 @@ def self_check() -> int:
         # citation first. Cross-checked on real repo text (kanban.md), not just
         # the synthetic fixture, so a drift between the two loops over messy real
         # input cannot hide behind a clean synthetic case.
-        kanban_text = (ROOT / "kanban.md").read_text(encoding="utf-8", errors="replace")
-        base_set = {(ln, p, s, e) for ln, p, s, e in citations(kanban_text, plain=False)}
-        for c in symbol_citations(kanban_text, plain=False):
+        real_text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8", errors="replace")
+        base_set = {(ln, p, s, e) for ln, p, s, e in citations(real_text, plain=False)}
+        for c in symbol_citations(real_text, plain=False):
             if (c["line"], c["path"], c["start"], c["end"]) not in base_set:
                 problems.append("symbol_citations() reported %r as a citation that "
                                 "citations() itself does not see -- the two loops "
@@ -1102,7 +1104,7 @@ def main(argv: list[str]) -> int:
         # Every source resolves as a root-level document. For a file that is what it
         # already did (`targets` are repo-root paths); for a bead there is no other
         # sensible base, and sharing one keeps ONE resolver rather than a second copy.
-        path = ROOT / "kanban.md"
+        path = ROOT / "CLAUDE.md"
         found = citations(text, plain=not is_file)
         if is_file:
             files_seen += 1

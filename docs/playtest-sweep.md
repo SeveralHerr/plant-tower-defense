@@ -22,12 +22,12 @@ unlosable is exactly what it looks for.
 - **Deterministic** — the same seed on the same board and difficulty produces the
   identical wave-by-wave record set twice.
 - **Winnable** — the strongest built-in garden (`RunSim.POLICY_THICKEN`) actually clears
-  the campaign. Checked for one sample board on every `/verify`; the complete matrix is
+  the campaign. Checked for one sample board on every suite run; the complete matrix is
   gated (see below) because it is expensive.
 
 ## Fast vs full
 
-The `test_fast_*` methods run on every `/verify` (`python tools/run_tests.py`, no
+The `test_fast_*` methods run on every suite run (`python tools/run_tests.py`, no
 selector) — every corpus board x every difficulty, all cheap policies, plus one sample
 board played to a real win. Measured on this machine: roughly 2.5 minutes added to the
 suite.
@@ -80,7 +80,7 @@ repo's own history already lays out:**
   fixed that: under THICKEN today the three difficulties earn and build genuinely
   different amounts (125, 116 and 79 plants over the same 22 waves —
   `test_the_three_profiles_end_a_run_differently_and_not_only_start_it_differently` in
-  `test/unit/test_playtest.gd` pins this every `/verify`). The selector is not decoration;
+  `test/unit/test_playtest.gd` pins this every suite run). The selector is not decoration;
   it measurably changes how much garden a THICKEN policy can afford to build.
 - **What it does not change is whether that garden is *enough*, because THICKEN's own
   stopping rule is board coverage, not the wallet.** `RunSim.thicken_cover` (`tools/run_sim.gd`)

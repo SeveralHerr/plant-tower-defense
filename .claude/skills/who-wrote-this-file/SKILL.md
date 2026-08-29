@@ -56,11 +56,10 @@ produced that, and neither could grepping the tests for the mutator's name.
 
 - **Read the log file, not the console.** Godot's Windows build is frequently the
   non-console one, so a run that printed your trace shows nothing in the terminal.
-  `run_tests.py` captures to `.devtools/tests.log`; a bridge session to
-  `.devtools/launch_stdout.log`.
+  `run_tests.py` captures to `.gates/tests.log`.
 - `get_stack()` returns `[]` in a release build. Debug (which every headless suite run
-  and every `devtools.py launch` is) is what carries frame info — an empty array means
-  the build, not the absence of a caller.
+  is) is what carries frame info — an empty array means the build, not the absence of a
+  caller.
 - A `print` inside a hot function slows a suite enough to matter. Another reason the
   predicate guard is not optional.
 

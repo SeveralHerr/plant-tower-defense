@@ -90,22 +90,14 @@ Worked example: `test_a_finger_leaving_the_board_disarms_the_pick` in
 ## And confirm it on the running game
 
 A synthetic test cannot generate this state on its own — it has to be *told* to, which
-means someone has to already know. So the gesture itself still wants one live pass:
+means someone has to already know. So the gesture itself still wants one live pass: run
+the game, perform the real gesture with a real pointer, and read the *intermediate* field
+beside the outcome. `_hover_cell` holding a real cell after a release that was supposed to
+be off-board is the fingerprint, and it is invisible if you only assert the outcome.
 
-```bash
-python tools/devtools.py ... set-feature --touchscreen true
-python tools/devtools.py ... touch press   --index 0 --pos X,Y
-python tools/devtools.py ... touch drag    --index 0 --to X2,Y2 --steps 6
-python tools/devtools.py ... touch release --index 0 --pos X2,Y2
-python tools/devtools.py ... get-state --node /root/Game --property <the state> --property _hover_cell
-```
-
-Read the *intermediate* field beside the outcome. `_hover_cell` reading a real cell after a
-release that was supposed to be off-board is the fingerprint, and it is invisible if you
-only assert the outcome.
-
-`touch drag` reports what it **sent**, not what was **delivered** — there is no delivered
-count (gap G-084). Inferring it from a stale field is the workaround.
+There is no longer a scripted way to do this — the devtools bridge that drove synthetic
+touch events was removed on 2026-08-29 — so it is a hand pass, which is one more reason to
+push everything that CAN be asserted headless into `test/unit/`.
 
 ## Related
 

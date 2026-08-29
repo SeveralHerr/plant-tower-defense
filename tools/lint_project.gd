@@ -110,9 +110,11 @@ extends SceneTree
 # harness-version: 0.38.0
 ## Harness revision these files were copied from. Printed in the header of every run so
 ## a lint result, and any gap logged from it, can name the version it was produced on.
+## The godot-selftest-harness release this file came from, kept as provenance after
+## the harness itself was removed from the project on 2026-08-29.
 const HARNESS_VERSION: String = "0.38.0"
 
-const CONFIG_PATH: String = "res://addons/godot_selftest/devtools_config.json"
+const CONFIG_PATH: String = "res://tools/gates_config.json"
 const DEFAULT_SCAN_ROOT: String = "res://"
 const DEFAULT_TEST_DIR: String = "res://test/unit"
 
@@ -390,7 +392,7 @@ func _initialize() -> void:
 	else:
 		# Header first: every lint result is evidence, and evidence that cannot name the
 		# version it came from cannot be told apart from a regression later.
-		print("lint: godot-selftest-harness %s | scan_root %s" % [HARNESS_VERSION, scan_root])
+		print("lint: gate tools %s | scan_root %s" % [HARNESS_VERSION, scan_root])
 		for v in _vendored:
 			print("VENDORED (skipped): %s" % String(v).trim_prefix("res://"))
 		if not warnings_only:

@@ -112,12 +112,10 @@ NOT_A_CHECKER = {
                           "it was run as a checker on its first pass and exited 2 on its "
                           "own argparse, because it needs --against and --report. A tool "
                           "that cannot run without arguments can never be a checker here",
+    "userstate.py": "a library, not a tool: the user:// resolution and stat helpers run_tests.py imports to report what a suite wrote. Has no main() and prints nothing",
     "repo_walk.py": "a library, not a tool: the shared directory-exclusion rule the "
                     "rooted checkers import so a nested .claude/worktrees/ checkout "
                     "cannot change their denominators. Has no main() and prints nothing",
-    "check_devtools_log.py": "a Claude Code Stop hook, not a repo checker -- it advises "
-                             "about log-devtools.md and never gates",
-    "devtools.py": "the bridge client; needs a running game",
     "gen_pulse_cue.py": "a GENERATOR, not a check: it prints GDScript boilerplate for "
                         "the edge-detected pulse-cue pattern and writes nothing itself. "
                         "It owes a NOT COVERED line for the same reason citation_rebind.py "
@@ -143,8 +141,6 @@ NOT_A_CHECKER = {
                  "beside a checker reading the same file. Run it by hand: "
                  "`python tools/mutate.py`",
     "run_tests.py": "opens the project and writes .godot/; the parent's, not a fan-out's",
-    "upstream_gaps.py": "files gap reports upstream; writes to the network, not a check",
-    "verify_ledger.py": "reads and appends the verify ledger; a record, not a check",
 }
 
 # A checker whose exit 2 has a known, benign cause the runner can detect for
@@ -159,11 +155,6 @@ CHECKER_ARGS = {
 }
 
 CONDITIONAL_SKIP = {
-    "run_json_check.py": (
-        REPO / ".devtools" / "run.json",
-        "no .devtools/run.json yet -- the normal state at the start of a cycle, "
-        "before /verify has recorded a run",
-    ),
 }
 
 

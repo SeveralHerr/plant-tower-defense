@@ -2,15 +2,15 @@
 
 # workflow
 
-The development loop — pre-flight, `bd ready`, do the items, add to `kanban.md`, reflect on
-the harness, reflect on the workflow, refill the queue, bump `cycle-log.md`, repeat — lives
-in `.claude/skills/cycle/` and runs as `/cycle`. It is a loop that does not end until
-the user stops it. `SKILL.md` there is the loop itself; `references/why.md` is the evidence
-behind each step, `references/gates.md` the checkers, `references/fan-out.md` the parallel
-form. Every rule about how a cycle is worked lives in that
-directory and nowhere else: edit it there, not here. This block is only
-the pointer, and it is mirrored verbatim in `AGENTS.md` (`python tools/mirror_check.py`
-checks, `--fix` regenerates the mirror) so a reader of either file finds the loop.
+The development loop — pre-flight, `bd ready`, do the items, run the gates, reflect on
+the workflow, refill the queue, repeat — lives in `.claude/cycle/` and runs as `/cycle`.
+It is a loop that does not end until the user stops it. `SKILL.md` there is the loop
+itself; `references/why.md` is the evidence behind each step, `references/gates.md` the
+checkers, `references/fan-out.md` the parallel form. Every rule about how a cycle is
+worked lives in that directory and nowhere else: edit it there, not here. This block is
+only the pointer, and it is mirrored verbatim in `AGENTS.md`
+(`python tools/mirror_check.py` checks, `--fix` regenerates the mirror) so a reader of
+either file finds the loop.
 
 ---
 

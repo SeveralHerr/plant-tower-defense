@@ -233,11 +233,3 @@ static func button_tooltip() -> String:
 
 static func _apply() -> void:
 	Engine.time_scale = scale()
-	# No node ever carries this script -- it is a `class_name ... extends
-	# RefCounted` static utility -- so `scripts-seen` and the verify ledger's
-	# `reach` cannot see it however much of it ran. Measured, not assumed: the
-	# runtime pass for plant-tower-defense-03t6 cycled the speed 1x/2x/½x/1x with
-	# the button, watched Engine.time_scale follow, and the ledger still recorded
-	# game_speed.gd as NOT reached. `_apply` is the one funnel every path here
-	# ends in, so marking it once is enough.
-	DevTools.mark_script_reached("res://game/game_speed.gd")

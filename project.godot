@@ -47,7 +47,6 @@ driver/output_latency.web=140
 
 [autoload]
 
-DevTools="*res://addons/godot_selftest/dev_tools.gd"
 RunConfig="*res://game/run_config.gd"
 
 [display]

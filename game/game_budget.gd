@@ -5,7 +5,7 @@ extends RefCounted
 ## "budget" this project tracks — a pixel clearance, a label's worst-case width, a
 ## pest-road ceiling — against a floor declared in `BUDGET_FLOOR`, and reports which
 ## ones have run out. `Game.check_budgets()` calls into this once from `_ready()`;
-## `cmd budgets` (`devtools_ext/commands.gd`) calls `Game.budget_entries()` (itself a
+## `Game.check_budgets()` calls `Game.budget_entries()` (itself a
 ## one-line forward to here) on demand.
 ##
 ## WHY THIS GROUP AND WHY A PLAIN RefCounted, not a new autoload. It was the single
@@ -383,9 +383,9 @@ static func budget_regressions(entries: Array[Dictionary]) -> Array[String]:
 		if headroom >= floor_left - BUDGET_SLIP:
 			continue
 		lines.append(("Budget '%s' (%s, declared in %s) is down to %s %s, under the %s this build "
-			+ "declares. %s. When it runs out: %s. Read it with `python tools/devtools.py cmd "
-			+ "budgets`; if the spend is intended, move Game.BUDGET_FLOOR[\"%s\"] to %s in the "
-			+ "same commit.") % [
+			+ "declares. %s. When it runs out: %s. Read the whole ledger with "
+			+ "Game.budget_entries(); if the spend is intended, move Game.BUDGET_FLOOR[\"%s\"] "
+			+ "to %s in the same commit.") % [
 				id, entry["constant"], entry["declared_in"],
 				budget_number(headroom), entry["units"], budget_number(floor_left),
 				entry["summary"], entry["when_it_runs_out"], id, budget_number(headroom),

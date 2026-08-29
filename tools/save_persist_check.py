@@ -119,7 +119,7 @@ SETUP_FUNC = "setup"
 # Directories whose scripts are the GAME, i.e. the call graph a test reaches into.
 # `test/` is excluded on purpose: a test helper that persists is judged by the same
 # rule as the test that calls it, not treated as part of the game.
-DEFAULT_SOURCES = ("game", "devtools_ext", "ui", "addons/godot_selftest")
+DEFAULT_SOURCES = ("game", "ui")
 
 
 # Comments blanked AND string bodies and their quotes blanked (gdsource.ERASE).

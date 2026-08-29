@@ -2271,29 +2271,6 @@ func test_a_v3_save_is_refused_because_two_builds_each_defined_one() -> String:
 		return err)
 
 
-# -- budget floors ----------------------------------------------------------
-#
-# Game.BUDGET_FLOOR and the startup warning that reads it. In the economy file
-# because that is what a budget is here: a number one part of the game may spend
-# out of another part's ceiling, priced once and checked on the way past.
-#
-# The question these tests settle is not "does a warning appear" but "does it
-# appear ONLY when it should". Three of the four declared budgets are already
-# `tight` and one is already `spent` on an unmodified build, so a rule that fired
-# on either would print four lines on every launch of a project that is behaving
-# as designed -- and four warnings that are always there are zero warnings. So the
-# first test asserts a real launch of the real scene warns about nothing WHILE at
-# least one budget is tight or spent, and the rest stage one budget through its
-# floor and assert the other three stay silent.
-#
-# push_warning() cannot be intercepted from a test, so what is asserted is the
-# list Game.check_budgets() warns from. The push is one line over that list; what
-# goes in it is the whole feature.
-
-
-const DEVTOOLS_EXT := "res://devtools_ext/commands.gd"
-
-
 ## A copy of `entry` with its headroom moved to `headroom`, built through the
 ## same constructor every real measurement goes through.
 ##
@@ -2748,73 +2725,6 @@ func test_the_pest_road_ceiling_reports_spent_by_design_not_a_plain_spent() -> S
 		err = _T.assert_false(mentions_ceiling,
 			("and the renamed state still never warns on its own -- BUDGET_FLOOR declares its "
 				+ "own floor at exactly 0.0: %s") % [lines])
-	_T.free_ui(game)
-	return err
-
-
-## The startup warning and `cmd budgets` are one arithmetic, not two.
-##
-## The reason the ledger moved onto Game at all. If the verb kept its own copy the
-## two would agree on the day they were written and disagree on the day someone
-## edited one of them -- and the day that matters is the second one. So the verb's
-## reply is compared entry for entry against the run's own pricing, and the husk
-## entry against husk_click_margin(), the number its gate fails on.
-func test_the_budgets_verb_and_the_startup_check_price_the_same_budgets() -> String:
-	var game := await _T.instantiate_scene(GAME_SCENE) as Game
-	var err: String = _T.assert_true(game != null and game.board != null,
-		"the main scene loads and brought its board")
-	if err != "":
-		return err
-	var ext = preload(DEVTOOLS_EXT).new()
-	ext._dev = game
-	var reply: Dictionary = ext._cmd_budgets({"waves": 30})
-	err = _T.assert_true(bool(reply["success"]), "the verb answers: %s" % reply["message"])
-	if err != "":
-		_T.free_ui(game)
-		return err
-	var from_verb: Array = reply["data"]["budgets"]
-	var from_run: Array[Dictionary] = game.budget_entries(30)
-	err = _T.assert_gt(from_run.size(), 0, "the run prices budgets of its own")
-	if err == "":
-		err = _T.assert_gt(from_verb.size(), from_run.size(),
-			"and the verb reports those plus the two it needs a bridge for")
-	if err != "":
-		_T.free_ui(game)
-		return err
-
-	var compared: int = 0
-	for entry: Dictionary in from_run:
-		var id: String = str(entry["id"])
-		var mirror: Dictionary = {}
-		for candidate: Dictionary in from_verb:
-			if str(candidate["id"]) == id:
-				mirror = candidate
-				break
-		err = _T.assert_gt(mirror.size(), 0, "the verb reports %s too" % id)
-		if err == "":
-			err = _T.assert_float_eq(float(mirror["headroom"]), float(entry["headroom"]), 0.001,
-				"and prices %s identically (%s vs %s)"
-					% [id, mirror["headroom"], entry["headroom"]])
-		if err == "":
-			err = _T.assert_eq(str(mirror["state"]), str(entry["state"]),
-				"and grades %s the same way" % id)
-		if err != "":
-			break
-		compared += 1
-	if err == "":
-		err = _T.assert_eq(compared, from_run.size(),
-			"every budget the run prices was compared, not an empty loop passing quietly")
-	if err == "":
-		var husk: Dictionary = _entry_by_id(from_run, "husk_click")
-		err = _T.assert_gt(husk.size(), 0, "the run prices the husk sweep")
-		if err == "":
-			err = _T.assert_float_eq(float(husk["headroom"]),
-				PlacementPreview.husk_click_margin(game.board), 0.001,
-				"and it is husk_click_margin() itself, the number the gate fails on")
-	if err == "":
-		err = _T.assert_eq(int(reply["data"]["under_floor"]), 0,
-			"and the verb grades this build against the floors as clean too: %s"
-				% [reply["data"]["warnings"]])
 	_T.free_ui(game)
 	return err
 

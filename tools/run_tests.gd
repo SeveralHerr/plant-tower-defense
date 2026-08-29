@@ -1,7 +1,8 @@
 @tool
 extends SceneTree
 
-## Generic headless unit test runner for the godot_selftest harness.
+## Generic headless unit test runner. Came from godot-selftest-harness 0.38.0; kept
+## when the rest of that harness was removed on 2026-08-29.
 ## Run: godot --headless --script res://tools/run_tests.gd
 ## Args: -- --json          Output results as JSON
 ##       -- --filter NAME   Run only tests whose METHOD NAME or SCRIPT FILENAME
@@ -88,7 +89,7 @@ extends SceneTree
 ## rather than relying on a bad call to fail the test for you.
 ##
 ## Test scripts are auto-discovered by recursively scanning the configured test_dir
-## (res://addons/godot_selftest/devtools_config.json key "test_dir", default
+## (res://tools/gates_config.json key "test_dir", default
 ## "res://test/unit") for files named test_*.gd.
 
 # harness-version: 0.38.0
@@ -96,7 +97,7 @@ extends SceneTree
 ## `harness_version` bus verb; bump with .claude-plugin/plugin.json.
 const HARNESS_VERSION: String = "0.38.0"
 
-const CONFIG_PATH: String = "res://addons/godot_selftest/devtools_config.json"
+const CONFIG_PATH: String = "res://tools/gates_config.json"
 const DEFAULT_TEST_DIR: String = "res://test/unit"
 
 const EXIT_OK: int = 0
@@ -620,7 +621,7 @@ func _print_results() -> void:
 
 	print("")
 	print("=" .repeat(60))
-	print("  %s Unit Tests  (godot-selftest-harness %s)" % [project_name, HARNESS_VERSION])
+	print("  %s Unit Tests  (runner %s)" % [project_name, HARNESS_VERSION])
 	print("=" .repeat(60))
 	print("")
 

@@ -67,7 +67,7 @@ REF = re.compile(r"plant-tower-defense-[a-z0-9]+(?:\.[0-9]+)+|plant-tower-defens
 # waiver cannot silence a whole file the way group_leak_check's first draft did.
 WAIVER = "bead-ref-check: ok"
 
-MARKDOWN_SOURCES = ("kanban.md", "cycle-log.md", "log-devtools.md")
+MARKDOWN_SOURCES = ()
 BEAD_FIELDS = ("description", "close_reason", "design", "notes")
 
 

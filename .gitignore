@@ -5,8 +5,8 @@
 # Self-test harness scratch. The verify ledger is the one file worth keeping —
 # it is the record of how often the harness was load-bearing, and it only has
 # value by being long.
-.devtools/*
-!.devtools/verify-runs.jsonl
+.gates/*
+
 
 # Beads / Dolt files (added by bd init)
 .dolt/

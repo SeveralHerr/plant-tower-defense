@@ -167,10 +167,10 @@ def main(argv=None):
               % api_source)
         return 2
 
-    files = gd_files(args.root, ["game", "devtools_ext"])
+    files = gd_files(args.root, ["game"])
     if not files:
         print("method_call_check: COULD NOT RUN -- no .gd files under game/ or "
-              "devtools_ext/. Nothing was checked; this is not a clean result.")
+              "Nothing was checked; this is not a clean result.")
         return 2
 
     # --- what each project class declares, and what it extends

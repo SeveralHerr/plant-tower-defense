@@ -70,7 +70,7 @@ Usage:
 
 Godot binary resolution (only ever used by --refresh-api) matches `import_check.py`:
     --godot flag  ->  $GODOT_BIN  ->  `godot_bin` in
-    addons/godot_selftest/devtools_config.json
+    tools/gates_config.json
 """
 
 import argparse
@@ -1509,13 +1509,13 @@ SEVERITY_LABEL = {SEVERITY_ERROR: "ERROR", SEVERITY_WARNING: "WARN",
 
 
 def _read_harness_config(project_path):
-    """addons/godot_selftest/devtools_config.json as a dict; {} when unreadable.
+    """tools/gates_config.json as a dict; {} when unreadable.
 
     Duplicated from import_check.py for the same reason it duplicates devtools.py: this
     tool has to work when the bridge client is the thing that is broken, and a checker
     that cannot run on a broken project checks nothing.
     """
-    cfg_path = project_path / "addons" / "godot_selftest" / "devtools_config.json"
+    cfg_path = project_path / "tools" / "gates_config.json"
     try:
         data = json.loads(cfg_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -1729,7 +1729,7 @@ def main():
             if godot_path is None:
                 print("Error: --refresh-api needs a Godot binary. Pass --godot PATH, set "
                       "$GODOT_BIN, or set \"godot_bin\" in "
-                      "addons/godot_selftest/devtools_config.json.", file=sys.stderr)
+                      "tools/gates_config.json.", file=sys.stderr)
                 return EXIT_CANNOT_RUN
             index, note = refresh_index(godot_path, force=args.force_refresh)
             if index is None:
@@ -1791,7 +1791,7 @@ def main():
         if godot_path is None:
             print("Error: --require-compile needs a Godot binary. Pass --godot PATH, set "
                   "$GODOT_BIN, or set \"godot_bin\" in "
-                  "addons/godot_selftest/devtools_config.json.", file=sys.stderr)
+                  "tools/gates_config.json.", file=sys.stderr)
             return EXIT_CANNOT_RUN
         for raw in args.require_compile:
             res_path, abs_path = _resolve_compile_target(project_root, raw)

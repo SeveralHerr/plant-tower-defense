@@ -4089,103 +4089,9 @@ func test_the_selection_box_stays_inside_the_side_panel_when_damaged() -> String
 	return err
 
 
-# --- The project_identity devtools verb ---
-#
-# These are the FIRST tests of any devtools verb in this repo -- every check before
-# this line is of game code, and the extension in res://devtools_ext/ had none at
-# all. The extension is instantiated directly rather than driven over the bus: the
-# bus needs a running game, and the thing being asserted (which checkout is this?)
-# is exactly what you cannot trust a running game to tell you when the wrong one
-# might be answering. That makes it a pure-logic check, so it belongs here.
-
-
-const DEVTOOLS_EXT := "res://devtools_ext/commands.gd"
-
-
-func _identity() -> Dictionary:
-	var ext = preload(DEVTOOLS_EXT).new()
-	return ext._cmd_project_identity({})
-
-
 ## A sha is 40 hex chars; a short one is the same alphabet, fewer of them.
 func _looks_like_sha(text: String) -> bool:
 	return text.length() >= 7 and text.length() <= 40 and text.is_valid_hex_number(false)
-
-
-func test_project_identity_returns_the_three_key_envelope() -> String:
-	var reply: Dictionary = _identity()
-	var err: String = _T.assert_true(reply.has("success") and reply.has("message") and reply.has("data"),
-		"the reply carries success, message and data -- got keys %s" % [reply.keys()])
-	if err == "":
-		err = _T.assert_eq(reply.size(), 3, "and carries nothing else, the way every other handler here does")
-	if err == "":
-		err = _T.assert_true(reply["success"] is bool, "success is a bool")
-	if err == "":
-		err = _T.assert_true(reply["message"] is String, "message is a String")
-	if err == "":
-		err = _T.assert_true(reply["data"] is Dictionary, "data is a Dictionary")
-	if err == "":
-		err = _T.assert_true(bool(reply["success"]), "and it succeeds in a real checkout: %s" % reply["message"])
-	return err
-
-
-## project_root is the whole point of the verb: it is the one field that separates
-## this checkout from a sibling worktree answering on the same user:// bus. A root
-## that does not contain project.godot is a root pointing somewhere that is not a
-## Godot project, which would make every other field a confident lie.
-func test_project_identity_root_points_at_a_real_godot_project() -> String:
-	var data: Dictionary = _identity()["data"]
-	var root: String = str(data.get("project_root", ""))
-	var err: String = _T.assert_false(root.is_empty(), "project_root is not empty")
-	if err == "":
-		err = _T.assert_true(root.is_absolute_path(), "project_root is absolute, not res://-relative: %s" % root)
-	if err == "":
-		err = _T.assert_true(FileAccess.file_exists(root.path_join("project.godot")),
-			"project_root %s holds a project.godot" % root)
-	if err == "":
-		err = _T.assert_true(str(data.get("project_name", "")) != "", "project_name is reported")
-	if err == "":
-		err = _T.assert_true(data.get("pid", 0) is int and int(data["pid"]) > 0,
-			"pid is a positive int -- %s" % [data.get("pid")])
-	if err == "":
-		err = _T.assert_true(str(data.get("engine_version", "")) != "", "engine_version reduces to a string")
-	return err
-
-
-## Either a sha was read off disk or it was not -- "" is the one answer that is not
-## allowed, because an empty string reads as a value rather than as an absence.
-func test_project_identity_reports_a_sha_or_says_it_is_unavailable() -> String:
-	var data: Dictionary = _identity()["data"]
-	var sha: String = str(data.get("git_sha", ""))
-	var branch: String = str(data.get("git_branch", ""))
-	var err: String = _T.assert_true(sha == "unavailable" or _looks_like_sha(sha),
-		"git_sha is 40 hex chars, a short sha, or exactly 'unavailable' -- got '%s'" % sha)
-	if err == "":
-		err = _T.assert_true(branch != "", "git_branch is never blank -- '%s'" % branch)
-	if err == "":
-		err = _T.assert_true(data.get("is_worktree", null) is bool, "is_worktree is a bool")
-	if err == "":
-		# The bus is JSON; a Dictionary or Object in here would not survive the trip.
-		for key: String in data:
-			var value: Variant = data[key]
-			err = _T.assert_true(value is String or value is int or value is float or value is bool,
-				"data.%s is a JSON-safe scalar, got %s" % [key, type_string(typeof(value))])
-			if err != "":
-				break
-	return err
-
-
-## The verb is only discoverable by `list-commands --offline` if it is registered
-## with a literal double-quoted name -- that client parses the script statically and
-## cannot evaluate a constant or a variable. Nothing at runtime would notice the
-## difference, so the check has to be on the source text.
-func test_project_identity_is_registered_with_a_literal_name() -> String:
-	var source: String = FileAccess.get_file_as_string(DEVTOOLS_EXT)
-	var err: String = _T.assert_false(source.is_empty(), "the extension source reads back")
-	if err == "":
-		err = _T.assert_true(source.contains('register_command("project_identity"'),
-			"registered with a literal string so --offline discovery can see it")
-	return err
 
 
 ## The threat ramp, asserted as data. threat_color is static and pure precisely so
@@ -12765,67 +12671,6 @@ func test_rows_that_fit_counts_the_last_row_that_actually_lands() -> String:
 	return err
 
 
-## Every named entry point still resolves (plant-tower-defense-jq4l).
-##
-## `devtools_config.json`'s `entry_points` are the only way a runtime check can reach a
-## screen the automatic hook does not open — and they are a JSON file naming a method by
-## string, so a rename breaks them silently and only shows up as a `fire-entry-point` that
-## does nothing. Cycle 82 measured what that costs: four files changed across three screens,
-## a clean `findings` across all five checks, and `reached 0/4 changed file(s)`.
-##
-## Checks the METHOD, not the node path: resolving `/root/TitleScreen` needs the scene
-## instantiated and made current, which is a different and much heavier test. A method that
-## exists on the right script is the half a rename actually breaks.
-func test_every_devtools_entry_point_names_a_method_that_exists() -> String:
-	var file := FileAccess.open("res://addons/godot_selftest/devtools_config.json",
-		FileAccess.READ)
-	var err: String = _T.assert_true(file != null, "the devtools config is readable")
-	if err != "":
-		return err
-	var parsed: Variant = JSON.parse_string(file.get_as_text())
-	file.close()
-	err = _T.assert_true(parsed is Dictionary, "and is a JSON object")
-	if err != "":
-		return err
-	var points: Dictionary = (parsed as Dictionary).get("entry_points", {})
-	# A denominator: an empty or renamed `entry_points` would otherwise sweep over nothing
-	# and report clean, which is exactly the state cycle 82 was in.
-	err = _T.assert_gte(points.size(), 5,
-		"five entry points -- the board plus every overlay screen, got %d" % points.size())
-	if err != "":
-		return err
-	# node_path -> the script that node runs. Written out because the path is a runtime
-	# fact and this test is static; a path added to the config without a line here fails
-	# below rather than being skipped.
-	var scripts: Dictionary = {
-		"/root/TitleScreen": TitleScreen,
-		"/root/Game": Game,
-	}
-	for name: String in points:
-		var point: Dictionary = points[name]
-		var path: String = str(point.get("node_path", ""))
-		var method: String = str(point.get("method", ""))
-		err = _T.assert_true(scripts.has(path),
-			("entry_points.%s points at %s, which this test does not know the script for -- "
-				+ "add it to the map above rather than letting the entry go unchecked")
-				% [name, path])
-		if err != "":
-			return err
-		var script: Script = scripts[path]
-		err = _T.assert_true(script.has_method(method) or _script_declares(script, method),
-			"entry_points.%s calls %s.%s(), which does not exist" % [name, path, method])
-		if err != "":
-			return err
-		# The scene it switches to has to exist too, or the switch fails before the call.
-		var scene: String = str(point.get("scene", ""))
-		if scene != "":
-			err = _T.assert_true(ResourceLoader.exists(scene),
-				"entry_points.%s switches to %s, which is not a resource" % [name, scene])
-			if err != "":
-				return err
-	return err
-
-
 ## `Script.has_method` only sees methods on the script itself in some builds; this reads
 ## the declaration list, which covers a private method the config names deliberately.
 func _script_declares(script: Script, method: String) -> bool:
@@ -15051,69 +14896,6 @@ func test_the_run_summary_says_where_the_seeds_went_without_grading_it() -> Stri
 	return err
 
 
-## The spend row fits its column at the biggest numbers the game can produce.
-##
-## Measured through `_T.text_width`, which reads the label's own resolved theme
-## font. `get_minimum_size()` would report ~1px here: every value label on this
-## card sets `clip_text` and OVERRUN_TRIM_ELLIPSIS, so the obvious width assertion
-## passes unconditionally on exactly the labels that need checking — and a row that
-## overflows would show as a silently ellipsised number rather than as a failure.
-##
-## The comparison is against the beds row, which the file names as this column's
-## width high-water mark. A new row is affordable precisely while it stays under
-## the row that already sets the ceiling.
-## The devtools bridge must stay out of a build a player can run
-## (plant-tower-defense-kdnl).
-##
-## `dev_tools.gd` carries a local patch gating the bus and the `entry_hook` on
-## `OS.has_feature("template")`. It fixes a defect that took a real itch.io deploy to
-## notice: the hook that skips the title screen for `/verify` was skipping it for every
-## player, so the web build opened straight onto the board.
-##
-## WHY THIS READS SOURCE INSTEAD OF BEHAVIOUR, which is normally the wrong shape: the two
-## branches are IDENTICAL in an editor build. `OS.has_feature("template")` is false here
-## whatever the code says, so a run with the guard and a run without it agree on every
-## observable — there is nothing to assert at runtime, and lint, the suite and `findings`
-## all pass either way. The only witness is the text.
-##
-## AND IT IS LOAD-BEARING BECAUSE THE FILE IS NOT OURS. `dev_tools.gd` is listed in
-## `addons/godot_selftest/.harness_manifest.json`, so `/scaffold-godot-harness` regenerates
-## it and silently reverts this. A newer harness is already on this machine than the
-## project runs, so a refresh is an ordinary thing to do — and this file's recorded sha has
-## already drifted from its manifest once. The failure mode is the bad one: everything
-## keeps building and deploying, and the only symptom is players landing on the board.
-## READ FROM THE CODE, NOT FROM THE FILE (plant-tower-defense-qewq). `--devtools-force`
-## appears TWICE in dev_tools.gd and one of them is the comment on the line above the
-## gate. A version of this test that greps the raw file would pass with the flag deleted
-## from the condition and the comment left behind, which is the cycle-91 shape: a token
-## kept alive by an occurrence that does nothing. `_code_only` truncates `#` comments,
-## so both needles below are asserted against live code.
-func test_the_devtools_bridge_stays_out_of_a_players_build() -> String:
-	var path := "res://addons/godot_selftest/dev_tools.gd"
-	var raw: String = FileAccess.get_file_as_string(path)
-	var err: String = _T.assert_gt(raw.length(), 0, "dev_tools.gd is readable at %s" % path)
-	if err != "":
-		return err
-	var src: String = _code_only(raw)
-	err = _T.assert_gt(src.strip_edges().length(), 0,
-		"and it is not all comments -- an all-blank code half would make both needles"
-			+ " below fail for the wrong reason")
-	if err == "":
-		err = _T.assert_true(src.contains("OS.has_feature(\"template\")"),
-			("the passive gate still tests OS.has_feature(\"template\"). If this went red "
-				+ "after /scaffold-godot-harness, the harness overwrote the patch: "
-				+ "re-apply it and see plant-tower-defense-kdnl. An exported build without "
-				+ "it polls the bus and fires entry_hook for PLAYERS."))
-	if err == "":
-		# The opt-back-in half. Without it the patch is a wall rather than a gate, and
-		# driving a real export from the bridge becomes impossible instead of explicit.
-		err = _T.assert_true(src.contains("--devtools-force"),
-			"and the --devtools-force escape hatch survives IN THE CONDITION and not only "
-				+ "in the comment beside it, so a template build can still be driven "
-				+ "deliberately")
-	return err
-
-
 func test_the_spend_row_fits_its_column_at_endless_magnitudes() -> String:
 	var stats: Dictionary = {
 		"endless": true,
@@ -15900,38 +15682,6 @@ func test_the_title_button_column_reports_the_column_that_is_drawn() -> String:
 	_T.free_ui(title)
 	return err
 
-
-# --- BEGIN plant-tower-defense-nj7w / -wy2v: the project's own devtools verbs ---
-#
-# These reach res://devtools_ext/commands.gd WITHOUT a running game, which is the
-# only reason they can live here at all. Every handler below refuses on the
-# caller's own arguments BEFORE it looks for a Game, so the refusal path runs with
-# `_dev` left null and never touches a tree. Anything past that point (the plant
-# actually landing, the pest actually spawning) is a live-bridge question and stays
-# one -- see the /verify Phase 4 list.
-#
-# DEVTOOLS_EXT is NOT redeclared here: this suite already declares it near the top
-# (the devtools-bridge tests use it). The lane that appended this block did declare
-# its own copy, git merged the two blocks cleanly, and GDScript refused the file
-# outright -- "Constant DEVTOOLS_EXT has the same name as a previously declared
-# constant", which took the whole suite from 746 discovered tests to 375. Two lanes
-# adding the same const to one file is a collision no parallel-safe gate can see.
-
-## The project verbs whose entire effect IS an argument, and the keys they need.
-## Cross-checked below against the register_command() calls in the file itself, so a
-## verb added later fails this test until somebody has classified it as one of these
-## or as deliberately defaulted.
-const POSITIONAL_VERBS := {
-	"place_plant": ["x", "y"],
-	"upgrade_plant": ["x", "y"],
-	"collect_husk": ["x", "y"],
-	# plant-tower-defense-cfvb. Positional for the sharpest reason on this list: a
-	# defaulted cell does not fail, it selects a DIFFERENT plant, and `_select` disarms
-	# any pending uproot on its way past -- so a dropped key would silently cancel the
-	# confirm window this verb exists to make reachable.
-	"select_plant": ["x", "y"],
-}
-
 ## The rest: verbs that read no arguments, or whose defaults are the value a person
 ## means by leaving the key out. The reasoning for each is written next to _require()
 ## in commands.gd; this list only has to stay complete.
@@ -15966,161 +15716,6 @@ const DEFAULTED_VERBS := [
 	# instead of being refused.
 	"deselect_plant",
 ]
-
-
-## Every name passed to _dev.register_command() in commands.gd, read out of the
-## source. Derived rather than transcribed on purpose: a hand-typed verb list is a
-## list that silently stops being the set of verbs the moment one is added.
-func _registered_project_verbs() -> PackedStringArray:
-	var out: PackedStringArray = PackedStringArray()
-	var file: FileAccess = FileAccess.open(DEVTOOLS_EXT, FileAccess.READ)
-	if file == null:
-		return out
-	for line: String in file.get_as_text().split("\n"):
-		var trimmed: String = line.strip_edges()
-		if not trimmed.begins_with("_dev.register_command(\""):
-			continue
-		var rest: String = trimmed.substr(trimmed.find("\"") + 1)
-		var close: int = rest.find("\"")
-		if close > 0:
-			out.append(rest.substr(0, close))
-	file.close()
-	return out
-
-
-## A positional verb with no position is not a call anyone meant.
-##
-## plant-tower-defense-nj7w, from [G-069]. The bus ignores a key a handler does not
-## read -- correct for an optional key, wrong for `place_plant`, which would take
-## `int(args.get("x", 0))` and plant, successfully, at cell (0, 0). The mistake then
-## surfaces several verbs downstream as a game that will not behave.
-##
-## Asserted in both directions: every classified verb is one the file registers, and
-## every verb the file registers is classified -- so this fails on a NEW verb rather
-## than quietly covering the three that happened to be here when it was written.
-func test_every_positional_devtools_verb_refuses_a_call_with_no_position() -> String:
-	var registered: PackedStringArray = _registered_project_verbs()
-	var err: String = _T.assert_gt(registered.size(), 0,
-		"the register_command() calls in %s are readable -- an empty list passes everything below"
-			% DEVTOOLS_EXT)
-	if err != "":
-		return err
-	for verb: String in registered:
-		if err != "":
-			break
-		err = _T.assert_true(POSITIONAL_VERBS.has(verb) or DEFAULTED_VERBS.has(verb),
-			("commands.gd registers '%s' and this test does not classify it. Decide which it "
-				+ "is: a verb whose effect IS an argument goes in POSITIONAL_VERBS and gets a "
-				+ "_require() guard, one with a deliberate default goes in DEFAULTED_VERBS and "
-				+ "gets its reason written next to _require()") % verb)
-	if err == "":
-		err = _T.assert_eq(registered.size(), POSITIONAL_VERBS.size() + DEFAULTED_VERBS.size(),
-			("this test classifies %d verbs but commands.gd registers %d -- a classified verb "
-				+ "that no longer exists is a guard nobody is checking")
-				% [POSITIONAL_VERBS.size() + DEFAULTED_VERBS.size(), registered.size()])
-	if err != "":
-		return err
-
-	# No tree, no Game, `_dev` left null: the guard runs before any of that is
-	# touched, and the fact that this works at all is what makes it testable here.
-	var ext: RefCounted = load(DEVTOOLS_EXT).new()
-	for verb: String in POSITIONAL_VERBS.keys():
-		if err != "":
-			break
-		# Built into a variable rather than concatenated in the call: name_check reads
-		# a literal first argument to call() as a method name and reports the prefix
-		# as unresolved.
-		var handler: String = "_cmd_%s" % verb
-		var reply: Variant = ext.call(handler, {})
-		err = _T.assert_true(reply is Dictionary,
-			"_cmd_%s({}) answered a Dictionary rather than dying inside its own reply" % verb)
-		if err != "":
-			break
-		var body: Dictionary = reply as Dictionary
-		err = _T.assert_false(bool(body.get("success", true)),
-			"%s with no arguments is refused rather than acted on with defaults" % verb)
-		if err != "":
-			break
-		var message: String = str(body.get("message", ""))
-		# The empty-message case is the one that cost the time in cycle 101: a reply
-		# that says only `success: false` reads exactly like the game refusing.
-		err = _T.assert_gt(message.length(), 0,
-			"%s's refusal says something -- an empty message is indistinguishable from a "
-				% verb + "game-level refusal")
-		for key: String in POSITIONAL_VERBS[verb]:
-			if err != "":
-				break
-			err = _T.assert_true(message.contains(key),
-				("%s's refusal names the key it wanted ('%s'); it said: %s")
-					% [verb, key, message])
-		if err == "":
-			err = _T.assert_true(message.contains(verb),
-				"%s's refusal names the verb, so it is readable out of a log: %s" % [verb, message])
-	if err == "":
-		# The other direction, or the whole thing passes by refusing everything: a
-		# complete call is NOT refused. Asserted on the guard itself, because acting
-		# on a complete call needs a Game and this suite has none.
-		err = _T.assert_eq(
-			str(ext._require({"x": 2, "y": 3}, PackedStringArray(["x", "y"]), "place_plant", "z")),
-			"", "a call carrying every required key is not refused")
-	return err
-
-
-## A handler must not die inside its own reply.
-##
-## plant-tower-defense-wy2v. `mutations` used to be `args.get("mutations", []) as
-## Array`, and the arguments arrive as parsed JSON -- so `mutations: "winged"`, one
-## letter from the singular key beside it, cast to null and the `for` over it was a
-## runtime error INSIDE the handler. The bus renders that as `success: false` with an
-## empty message, which reads exactly like the game refusing the spawn; that
-## mis-reading is what cycle 101 lost its time to on `upgrade_plant`.
-##
-## What this asserts is the narrow, checkable half: the handler ANSWERS. A reply that
-## comes back at all, saying which key was wrong, is the whole difference between the
-## two outcomes. Reached with no Game because spawn_pest validates its arguments
-## before it looks for one.
-func test_spawn_pest_answers_a_bad_mutations_argument_instead_of_dying_in_its_reply() -> String:
-	var ext: RefCounted = load(DEVTOOLS_EXT).new()
-	# A String, a Dictionary and a number: three JSON shapes that `as Array` turns
-	# into null, and the first of them ("winged") is the plausible typo -- the
-	# singular key beside it takes exactly that value.
-	var wrong_shapes: Array = ["winged", {"winged": true}, 3]
-	var err: String = _T.assert_gt(wrong_shapes.size(), 0,
-		"there are wrong shapes to try -- an empty list passes this test for free")
-	for shape: Variant in wrong_shapes:
-		if err != "":
-			break
-		var asked: Variant = ext._wanted_mutations("", shape)
-		err = _T.assert_true(asked is Dictionary,
-			("_wanted_mutations answered for mutations=%s rather than dying. A null here is "
-				+ "the handler dying while building its reply, which the bus renders as "
-				+ "success:false with an empty message") % [shape])
-		if err != "":
-			break
-		var body: Dictionary = asked as Dictionary
-		var refusal: String = str(body.get("refusal", ""))
-		err = _T.assert_gt(refusal.length(), 0,
-			"mutations=%s is refused rather than quietly treated as no mutations at all"
-				% [shape])
-		if err == "":
-			err = _T.assert_true(refusal.contains("mutations"),
-				"and the refusal names the key it objected to; it said: %s" % refusal)
-	if err == "":
-		# The other direction, without which the above passes by refusing everything.
-		var good: Dictionary = ext._wanted_mutations("", ["winged", "hungry"])
-		err = _T.assert_eq(str(good["refusal"]), "", "a well-formed array is not refused")
-		if err == "":
-			err = _T.assert_eq((good["mutations"] as Array).size(), 2,
-				"and both names survive the parse")
-	if err == "":
-		# The singular shorthand, which is what every existing script sends.
-		var single: Dictionary = ext._wanted_mutations("winged", [])
-		err = _T.assert_eq(str(single["refusal"]), "",
-			"`mutation` with no `mutations` at all is still a well-formed call")
-		if err == "":
-			err = _T.assert_eq((single["mutations"] as Array).size(), 1,
-				"and it yields the one mutation asked for")
-	return err
 
 # --- END plant-tower-defense-nj7w / -wy2v ---
 
@@ -23695,37 +23290,6 @@ func _sports_thrown(seed_value: int, ticks: int) -> Array:
 	return out
 
 
-func test_two_games_on_one_seed_throw_the_same_sports_in_the_same_cells() -> String:
-	## WHAT WAS ACTUALLY WRONG (plant-tower-defense-4n66). `Game._cross_rng` was
-	## constructed and never seeded -- no setter, no writer, nothing in `game/`,
-	## `test/` or `devtools_ext/` that so much as named it besides the roll. Godot
-	## randomizes a generator on construction, so every run threw a different set of
-	## sports while the block above the field claimed a seed reproduced them. Nothing
-	## asserted a Game replays at all, which is why the comment could be false for
-	## three cycles; this is that assertion.
-	##
-	## It fails on the code before the fix in the strongest available way: without
-	## `set_run_seed` the call below does not compile, and with a `set_run_seed` that
-	## seeds only the two streams that already had setters, the two gardens differ.
-	var first: Array = await _sports_thrown(4242, 400)
-	var second: Array = await _sports_thrown(4242, 400)
-	var err: String = _T.assert_gt(first.size(), 0,
-		("seed 4242 threw at least one sport in 400 ticks -- two empty lists compare "
-			+ "equal and would pass this test having checked nothing. Got %s") % [first])
-	if err == "":
-		err = _T.assert_eq(str(second), str(first),
-			("and a second Game on the same seed grew the identical garden, cell for "
-				+ "cell. This is the claim `_cross_rng`'s header made while the stream "
-				+ "was unseedable"))
-	if err == "":
-		var other: Array = await _sports_thrown(7, 400)
-		err = _T.assert_true(str(other) != str(first),
-			("while seed 7 grew a different one -- without this the test would pass on "
-				+ "a `set_run_seed` that ignored its argument, or on a mechanic that "
-				+ "had stopped drawing at all. Got %s") % [other])
-	return err
-
-
 func test_every_stream_a_run_owns_is_reachable_from_one_seeder() -> String:
 	## The cheap half of the claim above, and the one that names the DEFECT SHAPE:
 	## a run owning three generators where a caller can only pin two. `set_run_seed`
@@ -24007,7 +23571,6 @@ func test_only_the_two_documented_buses_are_created_at_runtime() -> String:
 	return err
 
 
-
 ## The web audio buffer must hold more than Godot's default, because Stream playback made
 ## the buffer a function of FRAME TIME and mobile's frame time is not desktop's.
 ##
@@ -24039,7 +23602,7 @@ func test_web_audio_output_latency_has_mobile_headroom() -> String:
 	# `test_every_devtools_entry_point_names_a_method_that_exists` reads it -- so the
 	# floor below moves with the fps this project actually gates on, and there is no
 	# second copy of `30` to fall out of step with the first.
-	var file := FileAccess.open("res://addons/godot_selftest/devtools_config.json",
+	var file := FileAccess.open("res://tools/gates_config.json",
 		FileAccess.READ)
 	err = _T.assert_true(file != null, "the devtools config is readable")
 	if err != "":
@@ -24463,8 +24026,6 @@ func _touch_event(pressed: bool, at: Vector2) -> InputEventScreenTouch:
 	event.pressed = pressed
 	event.position = at
 	return event
-
-
 
 
 # =============================================================================

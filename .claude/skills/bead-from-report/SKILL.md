@@ -9,7 +9,7 @@ A one-line report is a symptom. A bead is a claim about the repo, read by whoeve
 it — usually cycles later — and trusted **because it looks like a finding rather than a
 memory**. The distance between the two is this procedure.
 
-Related: `kanban-idea-pass` holds the citation rules for any factual sentence about the
+Related: `.claude/cycle/references/why.md` §3 holds the citation rules for any factual sentence about the
 code. This skill is the intake shape that surrounds them.
 
 ## The four steps, in order
@@ -66,8 +66,8 @@ Generic prose acceptance ("the feature works well") cannot be met or refused. Na
 mechanism:
 
 - a headless assertion in `test_dir`, and *which* seam it can reach
-- `python tools/devtools.py findings`, or a specific checker
-- a `/verify` Phase 4 bridge check, if it genuinely needs a live game
+- a specific checker under `tools/`, named
+- a hand pass on the running game, if it genuinely needs one — nothing scripts that any more
 - a screenshot or a measurement — **and see the trap below**
 
 > **An acceptance criterion must be something the closing commit can produce, or you have

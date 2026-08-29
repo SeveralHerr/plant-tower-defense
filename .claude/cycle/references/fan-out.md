@@ -128,16 +128,16 @@ work was fine, the terminal message was not. Each cost the parent a manual recov
 paid once per prompt instead of once per recovery.
 
 **File ownership as a hard boundary.** List what it OWNS, then list what it must NOT edit
-by name — including `kanban.md`, `cycle-log.md`, `log-devtools.md`, `CLAUDE.md`,
-`AGENTS.md`, `.beads/*` — and "do not run any `bd` command that writes; the parent owns the
-tracker." Add: "You may READ anything."
+by name — including `CLAUDE.md`, `AGENTS.md`, `.claude/cycle/*`, `.beads/*` — and "do not
+run any `bd` command that writes; the parent owns the tracker." Add: "You may READ
+anything."
 
 **The gate allowlist, verbatim, and the prohibition.** In this project the allowlist is one
 command — `python tools/check_all.py --quiet`, which derives the parallel-safe set for
 itself — plus `python .claude/surveys/heredoc_survey.py --worktree` for any lane touching
-`.gd`. Then say plainly: do NOT run `lint_project.gd`, `import_check.py`, `run_tests.py`,
-`/verify`, or launch the game — they open the project, write `.godot/`, and would corrupt
-the sibling lanes.
+`.gd`. Then say plainly: do NOT run `lint_project.gd`, `import_check.py`, `run_tests.py`, or
+the game itself — they open the project, write `.godot/`, and would corrupt the sibling
+lanes.
 
 **"A clean `name_check` is not a compile."** Say it in every prompt and require the lane to
 repeat it in its report. It resolves names; it does not type-check.
@@ -188,7 +188,7 @@ The worktrees live INSIDE the repo (`.claude/worktrees/`), and that costs twice.
 - **Every tree-walking checker sees N+1 copies of everything during a fan-out, and only the
   PARENT sees them.** `citation_check.py` resolves a bare filename by unique basename
   anywhere under the root, and `rglob` does not read `.gitignore` — so five lanes turned
-  every citation in `kanban.md` into a six-way ambiguity. A lane inside its own worktree
+  every citation in the file it was reading into a six-way ambiguity. A lane inside its own worktree
   reports clean. If a tree-walking checker starts reporting mass findings mid-cycle, look at
   `.claude/worktrees/` before believing any of it.
 - **Clean the worktrees up when the lanes land** (`git worktree remove`), or the next
@@ -266,8 +266,8 @@ fan-out merge, not just after each worktree's — it is a directory-local cache,
 repo-wide one, and "I already verified this" from a different checkout does not carry
 over.
 
-**Stop hunting for the Godot binary — `addons/godot_selftest/devtools_config.json`'s
-`godot_bin` key already has it.** `python tools/run_tests.py` and `tools/devtools.py`
+**Stop hunting for the Godot binary — `tools/gates_config.json`'s `godot_bin` key
+already has it.** `python tools/run_tests.py` and `tools/import_check.py`
 read it automatically; only a bare `godot --headless ...` invocation (an `--import` or a
 direct `lint_project.gd` run outside those wrappers) needs the path spelled out, and it
 should come from that same config key, not from a fresh `Get-ChildItem`/`find` sweep of
@@ -312,7 +312,6 @@ have when the merge fails. Require:
 - which gates ran, with exit codes, and the not-a-compile caveat
 - **anything it needs in a file it does not own, as an exact copy-pasteable edit**
 - the decisions it made that the bead left open, and why
-- one sentence of harness verdict (`warranted`/`overkill`/`insufficient`/`inconclusive`)
 
 **Tell each lane what the OTHER lanes will need from it.** The prompts are not independent
 even when the files are. Cycle 102's top-bar lane was told a third lane would want a small
@@ -335,17 +334,13 @@ edits. Do NOT fan out:
 Say in the cycle's close which lanes ran together and why they were safe — **and what the
 merge cost**, because that is the number that decides whether to do it again.
 
-**A "check the installed harness, append one log line" bead is still worth a lane, but
-expect it to look identical to its siblings.** Measured: two beads whose whole acceptance
-was `.claude/skills/gap-reconcile/SKILL.md` (check `harness-version --client`, read the
-installed source, append a `[G-NNN]` status line — explicitly forbidden from touching the
-harness-managed tool file itself) produced two lane prompts that differed only in the gap
-number and the file, and both correctly concluded "already fixed upstream, no repo code
-change" independently. That's not wasted parallelism — the worktree isolation cost nothing
-because neither lane touched a shared file except the expected `log-devtools.md` append —
-but it's a sign this shape of bead (owns zero code files, acceptance is a log line or an
-upstream filing) could just as cheaply run sequentially in the parent's own shell without
-a worktree at all, if there's no other reason to keep it isolated from a code-touching
-sibling lane running at the same time. Fan it out anyway when it's running alongside lanes
-that DO touch code — the uniform lane treatment costs nothing there and keeps the merge
-process one shape instead of two.
+**A bead that owns zero code files is still worth a lane, but expect it to look identical
+to its siblings.** Measured on two audit beads whose whole acceptance was "read an
+installed file and record a verdict": the prompts differed only in the file, and both
+correctly concluded "no repo code change" independently. That is not wasted parallelism —
+the worktree isolation cost nothing because neither lane touched a shared file — but it is
+a sign this shape of bead could just as cheaply run sequentially in the parent's own shell
+with no worktree at all, if there is no other reason to keep it isolated from a
+code-touching sibling running at the same time. Fan it out anyway when it is running
+alongside lanes that DO touch code — the uniform treatment costs nothing there and keeps
+the merge one shape instead of two.
