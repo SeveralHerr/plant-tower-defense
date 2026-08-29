@@ -316,6 +316,49 @@ static func _stream_for(track: StringName) -> AudioStream:
 	return stream
 
 
+## How many beds are resident. The observable half of `prewarm`, and the same
+## claim `Sfx.streams_resident` makes for cues: a null cached by a failed load is
+## not a bed, so it does not count.
+static func streams_resident() -> int:
+	var count: int = 0
+	for track: StringName in _streams:
+		if _streams[track] != null:
+			count += 1
+	return count
+
+
+## Drops the bed cache. The twin of `Sfx.forget_streams`, and it exists for the
+## same single reason — see that function's comment.
+static func forget_streams() -> void:
+	_streams.clear()
+
+
+## Decodes every bed in `TRACKS` before one is asked for.
+##
+## The same defect `Sfx.prewarm` fixes, in the place it hurts most. `_stream_for`
+## loads lazily, so the RUN bed's `load()` lands inside the crossfade that starts
+## a run — the one moment TWO streams are decoding at once, and on Web that
+## decode runs on the same main thread that refills the mixer's ring buffer once
+## per frame. The bed the player is leaving stutters as the bed they are arriving
+## at loads.
+##
+## RUN is an mp3 and it is the largest file this project ships by an order of
+## magnitude; TITLE is Vorbis. Neither is a size a loading frame notices and both
+## are sizes a gameplay frame does.
+##
+## No headless gate: this loads and caches, it does not build a host or sound a
+## voice, so there is no scene-tree side effect for a suite to clean up — and a
+## headless test can therefore assert the whole table resolves. `_ensure_host` is
+## left where it is, on the first actual `play_for_scene`, because a run always
+## has a bed and so the host is built in the same loading frame anyway.
+##
+## Returns `streams_resident()`, for the reason `Sfx.prewarm` does.
+static func prewarm() -> int:
+	for track: StringName in TRACKS:
+		_stream_for(track)
+	return streams_resident()
+
+
 ## Builds the two-player host under the scene tree root on first use. Parented
 ## to root rather than to whatever scene requested the track, for the same
 ## reason as Sfx._ensure_pool: a scene swap must not cut the bed off mid-note,

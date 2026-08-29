@@ -12282,3 +12282,99 @@ func test_a_chomp_takes_the_bug_that_has_gone_by_and_leaves_the_one_arriving() -
 			"the bug it let through is caught on the way out")
 	_T.free_ui(host)
 	return err
+
+
+# -- the warm cache ---------------------------------------------------------
+#
+# WHY A LOADING HITCH IS AN AUDIO DEFECT HERE, because that is the part that is not
+# obvious and the part these three tests are guarding.
+#
+# Both stream caches used to fill lazily: `Sfx.stream_for` and `Music._stream_for`
+# call `load()` the first time an id is asked for, which is the frame that first
+# fires the cue -- a run's first kill, first volley, first bite -- and, for the RUN
+# bed, the crossfade that begins a run with a second stream already decoding.
+#
+# On desktop that stall is a frame nobody sees. On the Web build it is crackle, and
+# the chain is written out in project.godot's `[audio]` block: `default_playback_type
+# .web=0` puts every voice through the engine's WASM mixer, `variant/thread_support
+# =false` means that mixer's ring buffer is refilled from the main loop once per
+# rendered frame, so a stalled main thread IS a missed refill. `output_latency.web
+# =140` gave a long frame four frames of headroom; it gives none at all to a frame
+# that has not finished decoding, because that frame does not render until it has.
+#
+# NONE OF THIS IS AUDIBLE TO THE SUITE and no test below pretends otherwise. What is
+# observable is the state that decides it: how many streams are resident, and whether
+# anything warms them before gameplay starts.
+
+
+func test_prewarm_leaves_no_cue_left_to_load() -> String:
+	## Asserts the count against `SOUNDS.size() + 1`, derived rather than typed, so a
+	## seventeenth cue is covered the day it is added.
+	##
+	## The `+ 1` is the ambience bed, and it is the whole reason this is an equality
+	## and not a `>= SOUNDS.size()`. The bed lives outside `SOUNDS` on purpose (see
+	## test_the_bed_is_not_a_cue), it is the longest-running sound the game makes, and
+	## a `prewarm` that looped `SOUNDS` and forgot it would leave the one load that
+	## lands mid-wave exactly where it was.
+	##
+	## Order-independent by construction: it asserts the state AFTER prewarm, which is
+	## the same whether the suite arrived here cold or with the cache already warm from
+	## test_every_sound_the_game_can_play_actually_loads. A test written as "resident
+	## went from 0 to N" would pass or fail on suite order alone.
+	var resident: int = Sfx.prewarm()
+	var err: String = _T.assert_eq(resident, Sfx.SOUNDS.size() + 1,
+		"prewarm reports every cue in the table resident, plus the bed")
+	if err == "":
+		err = _T.assert_eq(Sfx.streams_resident(), Sfx.SOUNDS.size() + 1,
+			"and asking again agrees -- the return value is the cache, not a tally "
+				+ "of what prewarm happened to touch")
+	if err == "":
+		# The denominator. `Sfx.SOUNDS.size() + 1` is a true statement about an empty
+		# table too, and an empty table is how this test goes vacuous.
+		err = _T.assert_gt(Sfx.SOUNDS.size(), 20,
+			"there was a real table to warm (an empty one passes the above trivially)")
+	return err
+
+
+func test_prewarm_covers_the_beds_as_well_as_the_cues() -> String:
+	## The bed cache is the one that hurt most and is the easiest to forget, because
+	## `Music` has two players and looks warm as soon as either has a stream. RUN is an
+	## mp3 and the largest file this project ships; it is loaded during a crossfade, so
+	## its decode overlaps the outgoing bed's.
+	var resident: int = Music.prewarm()
+	var err: String = _T.assert_eq(resident, Music.TRACKS.size(),
+		"every bed in TRACKS is resident after prewarm")
+	if err == "":
+		err = _T.assert_gt(Music.TRACKS.size(), 1,
+			"there is more than one bed, so this is not one lucky load")
+	return err
+
+
+func test_the_game_scene_warms_the_audio_caches_before_it_plays() -> String:
+	## THE CLAIM THE OTHER TWO CANNOT MAKE: that something actually CALLS prewarm.
+	## `Game._ready` deleting those two lines is the regression that puts every load
+	## back into a gameplay frame, and it would leave both tests above green.
+	##
+	## Cold first, via the seam `Sfx.forget_streams` exists for, then build the real
+	## scene and read the caches back. The scene is torn down but the caches are left
+	## warm, which is the state every other test in this file either wants or ignores.
+	Sfx.forget_streams()
+	Music.forget_streams()
+	var err: String = _T.assert_eq(Sfx.streams_resident(), 0,
+		"the cue cache really is cold to start with -- otherwise this test asserts nothing")
+	if err != "":
+		return err
+	err = _T.assert_eq(Music.streams_resident(), 0, "and so is the bed cache")
+	if err != "":
+		return err
+	var game := await _T.instantiate_scene("res://game/game.tscn") as Game
+	err = _T.assert_true(game != null, "the game scene loaded")
+	if err == "":
+		err = _T.assert_eq(Sfx.streams_resident(), Sfx.SOUNDS.size() + 1,
+			"_ready warmed every cue and the bed, so the first kill of the run pays "
+				+ "no load")
+	if err == "":
+		err = _T.assert_eq(Music.streams_resident(), Music.TRACKS.size(),
+			"and every bed, so the crossfade into a run decodes nothing new")
+	_T.free_ui(game)
+	return err
