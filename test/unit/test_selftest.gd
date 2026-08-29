@@ -5298,6 +5298,43 @@ func test_pausing_a_run_actually_stops_the_prep_countdown() -> String:
 	return err
 
 
+## The toggle itself. Off by default: a prep countdown that hits zero waits
+## there for the button rather than starting the wave on its own. See
+## Game.autostart_waves's own doc comment for why this has no key or HUD
+## button to drive it through instead of the field and toggle_autostart_waves()
+## directly.
+func test_autostart_waves_is_off_by_default_and_gates_the_prep_countdown() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var err: String = _T.assert_false(game.autostart_waves,
+		"a fresh run has not opted into autostart")
+	if err == "":
+		game._wave_live = false
+		game._prep_left = 0.5
+		game._process(1.0)
+		err = _T.assert_eq(game.director.current_wave, 0,
+			"prep hitting zero does not start a wave while autostart is off")
+	if err == "":
+		# Clamped at 0, not left negative -- pause_note() reads this value
+		# straight through ("the next wave is N seconds away") and a run left
+		# here forever must not count down through zero into a lie.
+		err = _T.assert_float_eq(game._prep_left, 0.0, 0.001,
+			"and the countdown parks at zero rather than going negative")
+	if err == "":
+		err = _T.assert_true(game.toggle_autostart_waves(),
+			"toggle_autostart_waves() returns the new state")
+	if err == "":
+		game._wave_live = false
+		game._prep_left = 0.5
+		game._process(1.0)
+		err = _T.assert_eq(game.director.current_wave, 1,
+			"and with it on, the same countdown starts the wave unattended")
+	if err == "":
+		err = _T.assert_true(bool(game.state()["autostart_waves"]),
+			"the flag is readable off state(), for the bridge and a future HUD")
+	_T.free_ui(game)
+	return err
+
+
 func test_the_pause_card_keeps_processing_while_the_game_it_paused_does_not() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	game.pause_run()

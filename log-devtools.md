@@ -10209,3 +10209,40 @@ is likely to be at least as productive.
     exit 2 for the reach it could not compute instead of printing a reach report beside the error.
     A report that reads clean next to "unreadable" is the shape this repo's own denominator rule
     exists to prevent.
+
+## 2026-08-29 — Added an autostart-waves toggle (off by default), gated in `Game._process`
+
+- Value: **warranted** — running the real suite is what turned "the top stats row and the
+  Keys screen look tight" into a hard no, before anything shipped.
+  - Expected: reading `Hud.STATS_ROW_*`/`OptionsScreen`/`KeyBindingScreen`'s own doc comments
+    (which state exact headroom numbers) would be enough to size a new control by hand.
+  - Got: the doc comments were right about the FORMULA but the actual live numbers only came
+    from running it — `stats_row_budget()` against `stats.size.x` and `min_viewport_width()`
+    against the narrowest producible canvas (1152px) both had to be read off a real
+    `instantiate_scene(GAME_SCENE)`. A quick `--script` probe of the same scene failed outright
+    (`Identifier not found: RunConfig` — autoloads exist in `--script` mode but are not bound as
+    compile-time globals, exactly as `tools/eval.gd`'s own header says, which I hadn't read yet).
+    `run_tests.py -- --filter stats_row` against a deliberately oversized probe constant was what
+    actually gave usable numbers.
+  - Found: the top HUD stats row has exactly 38px of headroom at the narrowest supported
+    viewport and a bare "Auto" CheckButton needs ~106px there; `KeyBindings.ACTIONS` is already
+    at nine entries against `KeyBindingScreen`'s own documented nine-is-the-last-that-fits
+    ceiling. Both would have shipped a silently-broken-at-narrow-width layout (or a keys panel
+    with its foot off the screen) had I trusted the doc comments' arithmetic without instantiating
+    the real scene and letting `test_the_top_row_fits_the_narrowest_viewport_the_stretch_mode_can_
+    produce` / `test_the_keys_panel_stays_inside_the_viewport` grade it.
+  - Cheaper: nothing, for the two hard-ceiling findings — they are exactly the class of thing
+    the comments predict but only the live layout confirms. The `--script` probe detour was
+    avoidable by reading `tools/eval.gd`'s header first.
+- Gap: **`cmd budgets` answers exactly "how much headroom does X have," unconditionally
+  (its own failure-message text points at it: "Read it with `python tools/devtools.py cmd
+  budgets`") — but it is a bridge verb, so it needs a launched, windowed game to ask. For a
+  layout question with no game running yet, that is a `launch`, a `ping` wait, then the call, for
+  one number.** Cheaper in this session was a wrong-on-purpose test constant plus
+  `run_tests.py -- --filter <name>`, reading the assertion text's "X of Y px max" back out —
+  which worked, but is guess-and-check where a headless equivalent would be a direct answer.
+  - [G-155] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: an offline/headless counterpart for `cmd budgets`, the way `list-commands
+    --offline` already exists beside the live verb — even a partial one covering the budgets
+    whose inputs (STAT_READOUTS, panel constants, viewport floors) are pure data with no live
+    node needed, which is most of the ones this session hit.
