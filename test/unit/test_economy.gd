@@ -9,6 +9,15 @@ extends RefCounted
 
 const GAME_SCENE := "res://game/game.tscn"
 
+## GameBudget carries no class_name deliberately (plant-tower-defense-2dlh split it
+## out of game.gd, and a class_name would trip test_every_game_class_is_at_least_
+## named_somewhere_in_the_test_suite for a purely internal implementation detail),
+## so it is reachable only by the path a Game delegating wrapper already preloads
+## it from. Named directly here, not just through Game.check_budgets()/budget_number(),
+## for suite_reach_check.py -- a real test naming the file by NAME, not just by the
+## effect Game's wrapper produces.
+const GameBudget := preload("res://game/game_budget.gd")
+
 var _T
 
 
@@ -1986,6 +1995,16 @@ func test_a_clean_launch_warns_about_no_budget_at_all() -> String:
 		_T.free_ui(game)
 		return err
 
+	# GameBudget.check_budgets() itself, named directly rather than only through
+	# Game.check_budgets()'s wrapper -- re-run on the same board/hud _ready() already
+	# graded, so this is idempotent and must agree with what game.budget_report holds.
+	var direct_report: Dictionary = GameBudget.check_budgets(game.board, game.hud)
+	err = _T.assert_eq(int(direct_report["declared"]), int(report["declared"]),
+		"GameBudget.check_budgets() called directly agrees with Game._ready()'s own call")
+	if err != "":
+		_T.free_ui(game)
+		return err
+
 	var entries: Array[Dictionary] = game.budget_entries(30)
 	var near_the_end: int = 0
 	for entry: Dictionary in entries:
@@ -2009,6 +2028,22 @@ func test_a_clean_launch_warns_about_no_budget_at_all() -> String:
 				+ "which is the designed state and not a warning) -- %s")
 					% [near_the_end, warnings])
 	_T.free_ui(game)
+	return err
+
+
+## GameBudget.budget_number() named directly and asserted against its own documented
+## rule ("whole numbers print whole") -- pure, no scene, cheap. Closes the other half
+## of suite_reach_check's game_budget.gd finding; check_budgets() is covered above.
+func test_game_budget_number_prints_whole_numbers_whole_and_others_to_one_decimal() -> String:
+	var err: String = _T.assert_eq(GameBudget.budget_number(28.0), "28",
+		"a value equal to its own rounding prints with no decimal")
+	if err == "":
+		err = _T.assert_eq(GameBudget.budget_number(28.0 + 0.0000001), "28",
+			"a value only float-noise away from whole is still is_equal_approx() to its "
+				+ "rounding, and prints with no decimal rather than a false '28.0'")
+	if err == "":
+		err = _T.assert_eq(GameBudget.budget_number(27.5), "27.5",
+			"a genuinely fractional value prints to one decimal place")
 	return err
 
 
