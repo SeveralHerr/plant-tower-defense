@@ -9,6 +9,13 @@ extends CanvasLayer
 ## by path (`press --node .../PlantBar/Button_corn_cobbler`), so renaming one
 ## breaks a test rather than nothing.
 
+## The selection-panel detail subsystem (plant-tower-defense-tar5, the hud.gd
+## split, following game.gd's own -2dlh split). Loaded by `preload` rather than
+## given a `class_name`, on purpose — see that file's own header for why.
+## Everything Hud forwards to it sits in the "-- the selection panel's own corpus
+## and budget --" block further down.
+const HudSelection := preload("res://game/hud_selection.gd")
+
 signal plant_selected(id: StringName)
 signal packet_requested(tier: StringName)
 
@@ -2624,398 +2631,101 @@ func _refresh_health(plant: Plant) -> void:
 	_health_text.text = "Health %d/%d" % [int(ceil(plant.health)), int(Plant.MAX_HEALTH)]
 
 
-# -- the selection panel's own corpus and budget --------------------------------
+# -- the selection panel's own corpus and budget (see game/hud_selection.gd) ----
 #
-# Same shape as `message_corpus()` further down, and for the same reason. The
-# selection panel is a fixed box holding a worst-case set of strings with a failure
-# mode no per-Control check can see: a line too wide to fit 232px does not clip, it
-# WRAPS, the label grows a row, and the VBox pushes Upgrade and Uproot down past the
-# panel's foot. Cycle 57 priced the cob's second line at "~190px of a 232px box" by
-# hand, decided against adding text on the strength of it, and the measurement was
-# gone the next cycle — which is the whole of plant-tower-defense-r722.
+# Moved whole to `game/hud_selection.gd` (plant-tower-defense-tar5, the hud.gd
+# split): every producer below it, the two corpora, and `selection_panel_budget()`
+# itself. Same shape as `message_corpus()` further down (which stays here -- see
+# HudSelection's own header for why this group could move and that one could not),
+# and for the same reason: the selection panel is a fixed box holding a worst-case
+# set of strings with a failure mode no per-Control check can see. Cycle 57 priced
+# the cob's second line at "~190px of a 232px box" by hand, decided against adding
+# text on the strength of it, and the measurement was gone the next cycle — which
+# is the whole of plant-tower-defense-r722.
 #
-# So the panel's text is built by the producers below and nowhere else, the corpus
-# is derived from `PlantCatalog.ids()` and the ladders rather than typed out, and
-# `Game._budget_hud_selection_panel()` prices it on every launch.
-
-
-## The panel's two-line blurb: who this is, and what it is doing right now.
-##
-## `level_name` empty means a plant with no ladder — the em-dash rung is omitted
-## rather than printed empty, which is the `has_upgrades()` branch `_refresh_selection`
-## used to spell out twice.
-## THE ARMED PANEL'S SECOND ENDING (plant-tower-defense-28un).
-##
-## Arming a plant can end three ways since the move shipped — confirm, cancel, move — and
-## every surface named exactly one of them. `uproot_armed_text` says "Really uproot?", the
-## message row says "Click Uproot again to dig up your X", and the click that MOVES it was
-## written down nowhere a player could find.
-##
-## WHY THIS SLOT AND NOT THE MESSAGE ROW, which is where the bead looked first. The row is
-## measurably full: `uproot_armed_message` already carries at most ONE extra clause because
-## `check_budgets` refused the build at 188px over, and the forfeit wins that contest when
-## there is anything to forfeit. So an UPGRADED plant never sees the move tip — and an
-## upgraded plant is precisely the one worth moving, because `Plant.move_cost` prices a
-## quarter of what was put in against a rebuy that forfeits all of it. The row cannot carry
-## this for the plants that need it most.
-##
-## WHY NOT A NEW PANEL ROW: `_health_row`'s header records the panel's real headroom — the
-## damaged box is 168 tall and its foot stays 16px clear — and a damaged plant can be armed
-## at the same time, so the worst case is both. A row does not fit in 16px. This spends the
-## DETAIL slot instead, which costs no height at all: the label is two lines either way.
-##
-## What is given up is the plant's stats for the seconds it is armed, and that is the right
-## trade. The armed question is what to DO with this plant, not what its numbers are, and
-## the button beside this line is already carrying the refund arithmetic.
+# Every symbol below is a one-line forward into `HudSelection` so every external
+# `Hud.corn_detail(...)`, `Hud.selection_corpus()`, `Hud.selection_panel_budget(...)`
+# call site keeps working unchanged. `Game._budget_hud_selection_panel()` prices it
+# on every launch through exactly these wrappers.
 static func move_hint_detail(cost: int) -> String:
-	return "Click a spot to move it (%d)" % cost
+	return HudSelection.move_hint_detail(cost)
 
 
-## The upgrade button's face: the price, and what the price buys
-## (plant-tower-defense-jvnm).
-##
-## ON THE BUTTON RATHER THAN IN THE SELECTION LABEL, and the reason is written above
-## `_refresh_selection`: that label is two lines by force, because the first draft spelled
-## out kernels, damage and interval, wrapped to a third, and pushed `SelectionBox`'s foot
-## to exactly the panel's own 648 — caught by an 8px clearance test. The button is a
-## separate node with a line of its own, and it is also where the player is looking when
-## they decide, because it is the thing they are about to press.
-##
-## `gain` EMPTY FALLS BACK TO THE BARE PRICE, which is what a plant at its top rung and a
-## plant with no ladder both hand back. No branch at the call site.
-##
-## The separator is a middle dot rather than a dash: the gain phrases contain "→" and a
-## dash beside an arrow reads as a range.
 static func upgrade_button_text(cost: int, gain: String) -> String:
-	if gain == "":
-		return "Upgrade (%d)" % cost
-	return "Upgrade (%d) · %s" % [cost, gain]
+	return HudSelection.upgrade_button_text(cost, gain)
 
 
 static func selection_line(display: String, level_name: String, detail: String) -> String:
-	if level_name == "":
-		return "%s\n%s" % [display, detail]
-	return "%s — %s\n%s" % [display, level_name, detail]
+	return HudSelection.selection_line(display, level_name, detail)
 
 
-## Damage per volley, rate, and kernels — the three numbers an upgrade actually moves.
 static func corn_detail(damage_per_volley: float, interval: float, kernels: int) -> String:
-	return "%.1f dmg / %.2fs, %d kernel(s)" % [damage_per_volley, interval, kernels]
+	return HudSelection.corn_detail(damage_per_volley, interval, kernels)
 
 
 static func sunflower_detail(seeds: int, seconds: float) -> String:
-	return "Next %d seeds in %.0fs" % [seeds, seconds]
+	return HudSelection.sunflower_detail(seeds, seconds)
 
 
 static func dandelion_armed_detail(fluff: int, damage: float) -> String:
-	return "%d seed(s) up, %.0f dmg a burst." % [fluff, damage]
+	return HudSelection.dandelion_armed_detail(fluff, damage)
 
 
 static func dandelion_regrowing_detail(fluff: int, fluff_max: int, seconds: float) -> String:
-	return "Regrowing — %d/%d fluff, armed in %.1fs." % [fluff, fluff_max, seconds]
+	return HudSelection.dandelion_regrowing_detail(fluff, fluff_max, seconds)
 
 
 static func chomp_chewing_detail(percent: int) -> String:
-	return "Chewing — %d%% through this one." % percent
+	return HudSelection.chomp_chewing_detail(percent)
 
 
 static func sundew_detail(pests: int, percent: int) -> String:
-	return "Slowing %d pest(s) to %d%% speed." % [pests, percent]
+	return HudSelection.sundew_detail(pests, percent)
 
 
-## What a plant with nothing to say says. A zero-argument PRODUCER and not a `const`,
-## for the reason `flight_tip()` gives beside `message_corpus()`: a const reference is
-## invisible to a corpus sweep, and this is the line seven of the eight plants show.
 static func idle_detail() -> String:
-	return "Idle — waiting for a pest."
+	return HudSelection.idle_detail()
 
 
-## The two support plants, which were showing `idle_detail()` and should never have been.
-##
-## The Sundew already got its own line for exactly this reason, and the comment in
-## `_refresh_selection` says why: *"A Sundew is never busy and never idle — it is always
-## working, and the only question is how many pests are in the patch. 'Idle' was simply the
-## wrong word for the one plant that cannot be."* That argument was correct and was never
-## extended when Mint and Aloe landed, so two plants that never touch a pest at all have
-## been announcing that they are **waiting for one**.
-##
-## It is the same class of defect as `eaten_message` naming the hungry mutation for a wall:
-## a sentence that was true of the catalogue it was written for and quietly stopped being.
-## Nothing can catch either — `message_corpus_check.py` verifies a line is PRICED, never
-## that it is ACCURATE.
-##
-## ZERO-ARGUMENT, like `idle_detail`, and that is a deliberate limit rather than an
-## oversight. Neither plant tracks how many neighbours it is currently affecting; `Game`
-## owns `_plants` and applies the buff, and plumbing a live count up to the panel is a
-## bigger change than the sentence is worth. Both are phrased so **zero neighbours is not a
-## lie**: the plant is doing the thing whether or not anything is receiving it, and "this
-## one is wasted" is already the dead-ground cue's job — both have a real `reach()`, so a
-## Mint or an Aloe touching nothing is flagged on the board before it is ever selected.
 static func mint_detail() -> String:
-	return "Quickening the beds beside it — never the lane."
+	return HudSelection.mint_detail()
 
 
 static func aloe_detail() -> String:
-	return "Mending the beds beside it, slowly."
+	return HudSelection.aloe_detail()
 
 
-## What a plant that RESISTS says: how long the health it has now will actually last.
-##
-## This line exists because "Health 40/40" is true of a Barrier Bramble and misleading
-## about it. That readout is raw health against `Plant.MAX_HEALTH`, which is the same 40
-## every plant has, while `Bramble.bite_resistance()` quarters the bite — so a Bramble
-## and a Corn Cobbler both read 40/40 and one of them lasts four times as long. The panel
-## had no vocabulary for toughness as distinct from health, and this is it.
-##
-## SECONDS, not a multiplier. "x4 tough" is a fact about the plant kind; "holds 11s" is
-## the answer to the question the player is actually asking while looking at a wall with
-## a wave coming, and it moves as the thing is chewed, which a multiplier never would.
-##
-## A SECOND LINE was the obvious shape and is the one thing this must not be. The header
-## above `selection_line` records why: a line too wide for the 232px box does not clip, it
-## WRAPS, the label grows a row, and the VBox pushes Upgrade and Uproot past the panel's
-## foot — and `_health_text`'s own comment records a third text row pushing SelectionBox's
-## foot to exactly 648, flush with the panel edge. So this rides in the existing `detail`
-## slot that seven plants already fill with `idle_detail()`, and costs the layout nothing.
 static func resisting_detail(seconds_left: float) -> String:
-	return "Holds %ds against one pest." % int(round(seconds_left))
+	return HudSelection.resisting_detail(seconds_left)
 
 
-## Every second line the panel can draw, each at the widest its own data allows.
-##
-## Derived, never typed. Corn sweeps its ladder, so a retune moves this number; the
-## rest are priced at the constants that bound them — FLUFF_MAX, SEED_DAMAGE, the
-## Sunflower's whole INTERVAL (the clock counts down from it, so it is the widest
-## the "%.0fs" can read), a full regrow, a chew at 100%, and a Sundew holding a road
-## filled to WaveDirector.SIMULTANEOUS_PEST_CEILING. That last one is another budget's
-## ceiling on purpose: the two are coupled, and pricing the Sundew's line at "9 pests"
-## would be this budget quietly assuming the road's.
 static func selection_detail_corpus() -> Array[String]:
-	var out: Array[String] = []
-	for level: Dictionary in CornCobbler.LEVELS:
-		out.append(corn_detail(
-			float(level.get("damage", 0.0)) * float(int(level.get("kernels", 0))),
-			float(level.get("interval", 0.0)), int(level.get("kernels", 0))))
-	out.append(sunflower_detail(Sunflower.YIELD, Sunflower.INTERVAL))
-	out.append(dandelion_armed_detail(Dandelion.FLUFF_MAX, Dandelion.SEED_DAMAGE))
-	out.append(dandelion_regrowing_detail(Dandelion.FLUFF_MAX, Dandelion.FLUFF_MAX,
-		Dandelion.REGROW_DELAY + float(Dandelion.FLUFF_MAX) * Dandelion.FLUFF_REGROW_SECONDS))
-	out.append(chomp_chewing_detail(100))
-	out.append(sundew_detail(WaveDirector.SIMULTANEOUS_PEST_CEILING,
-		int(round(StickySundew.SLOW_FACTOR * 100.0))))
-	# The armed move hint (plant-tower-defense-28un), priced at a cost far wider than the
-	# game can reach: move_cost() is a quarter of base plus upgrade spend, so three digits
-	# needs an investment no ladder allows. Same over-pricing this corpus already does by
-	# crossing every plant with every detail.
-	out.append(move_hint_detail(999))
-	# Priced at the widest the FORMAT can read, not at what a Bramble actually shows.
-	# `Bramble.hold_seconds(1)` is 11s today, which is two digits; the budget has to
-	# survive a retune that makes it three, and `int(round())` on a float has no natural
-	# ceiling. 999 is the widest a sane balance can reach and is deliberately wider than
-	# the game — the same over-pricing this corpus already does by crossing every plant
-	# with every detail.
-	out.append(mint_detail())
-	out.append(aloe_detail())
-	out.append(resisting_detail(999.0))
-	out.append(idle_detail())
-	return out
+	return HudSelection.selection_detail_corpus()
 
 
-## Every rung name the panel's first line can carry, plus `""` for a plant with no
-## ladder.
-##
-## The two `LEVELS` arrays are named here the same way `message_corpus()` names them,
-## and for the same unglamorous reason: `upgrade_ladder()` is an instance virtual, so
-## there is no static registry of ladders to sweep. Adding a third upgradable plant
-## means adding its ladder here — and `test_every_ladder_in_the_game_is_priced_by_the_
-## selection_corpus` in test_selftest.gd fails until someone does, which is the point
-## of writing it down rather than deriving it from nothing.
 static func selection_level_names() -> Array[String]:
-	var out: Array[String] = [""]
-	for level: Dictionary in CornCobbler.LEVELS:
-		out.append(String(level["name"]))
-	for level: Dictionary in ChompFlower.LEVELS:
-		out.append(String(level["name"]))
-	# The Barrier Bramble's rungs (plant-tower-defense-4u74). Added here because this list
-	# is hand-maintained ON PURPOSE -- upgrade_ladder() is an instance virtual, so there is
-	# no static registry to sweep -- and test_every_ladder_in_the_game_is_priced_by_the
-	# _selection_corpus fails until a new ladder arrives here. That test is what sent me to
-	# this function rather than my remembering it existed.
-	for level: Dictionary in Bramble.LEVELS:
-		out.append(String(level["name"]))
-	return out
+	return HudSelection.selection_level_names()
 
 
-## Every string SelectionLabel can be asked to hold, at its widest.
-##
-## Every plant crossed with every rung and every detail. That is deliberately wider
-## than the game can actually reach — a Sunflower never shows a chew percentage — and
-## it is the same over-pricing `message_corpus()` does when it gives every plant an
-## `upgrade_tip`. A budget is about the worst case the FORMAT allows, and a corpus
-## that reasons about which plant can reach which line is a corpus that will be wrong
-## the first time a plant gains a behaviour.
 static func selection_corpus() -> Array[String]:
-	var out: Array[String] = []
-	var details: Array[String] = selection_detail_corpus()
-	var levels: Array[String] = selection_level_names()
-	for id: StringName in PlantCatalog.ids():
-		# BOTH names for every plant: the one on the packet and the one a sport of it
-		# wears (`PlantMutation`). Neither is derivable from the other and either can
-		# be the wider — "Popcorn Cobbler" is longer than "Corn Cobbler", "Wild Mint"
-		# shorter than "Garden Mint" — so pricing one would leave this budget wrong in
-		# a direction that depends on which plant the player selected.
-		for display: String in [PlantCatalog.display_name(id), PlantMutation.display_name(id)]:
-			for level_name: String in levels:
-				for detail: String in details:
-					out.append(selection_line(display, level_name, detail))
-	return out
+	return HudSelection.selection_corpus()
 
 
-## The fixed rows under SelectionLabel, in VBox order: the health bar and the two
-## buttons. Damaged AND upgradable is the tallest the box ever gets, and it is the
-## only case worth budgeting — priced on the common case, this budget would read
-## clean right up until a plant was bitten.
 static func selection_rows_below_label() -> Array[float]:
-	var rows: Array[float] = [
-		HEALTH_ROW_HEIGHT, SELECTION_BUTTON_HEIGHT, SELECTION_BUTTON_HEIGHT,
-	]
-	return rows
+	return HudSelection.selection_rows_below_label()
 
 
-## How much panel there is under SelectionBox's top edge — the height the whole
-## stack has to fit inside.
-##
-## Measured against the DESIGN canvas, not the live one, and that is the whole
-## point of the number. `stretch/aspect="expand"` never yields a canvas SHORTER
-## than the design size, so the design height is the worst case this budget has to
-## survive; reading `_side_panel.size.y` instead would hand the panel a bigger
-## allowance on every window that is not exactly 16:9 — including the 64x64
-## headless one, where the canvas comes out 1152x1152 and this budget would report
-## 504px of room it does not have. ScreenMetrics' own header makes this argument at
-## length; this is a caller of it.
 static func selection_room_below() -> float:
-	return float(ScreenMetrics.design_height()) - float(BAR_HEIGHT) - SELECTION_BOX_Y
+	return HudSelection.selection_room_below()
 
 
-## How many rows `line` occupies once the label has wrapped it to `box_width`.
-##
-## Greedy word wrap, which is what AUTOWRAP_WORD_SMART does for every string this
-## panel can produce. The one case it under-counts is a single WORD wider than the
-## box, which WORD_SMART breaks mid-word and this returns 1 for — noted rather than
-## handled, because no plant name or detail in the corpus comes close and a budget
-## that mis-priced it would be reporting a string the game cannot build.
 static func wrapped_rows(line: String, font: Font, font_size: int, box_width: float) -> int:
-	if font == null or box_width <= 0.0:
-		return 1
-	var words: PackedStringArray = line.split(" ", false)
-	if words.is_empty():
-		return 1
-	var rows: int = 1
-	var current: String = ""
-	for word: String in words:
-		var candidate: String = word if current == "" else current + " " + word
-		if font.get_string_size(candidate, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x <= box_width:
-			current = candidate
-			continue
-		rows += 1
-		current = word
-	return rows
+	return HudSelection.wrapped_rows(line, font, font_size, box_width)
 
 
-## Price `lines` against the selection panel's box: the widest single line it can be
-## asked to draw, and where the whole stack's foot lands.
-##
-## TWO numbers, because there are two questions and they have different answers.
-##
-##   * `width_left` — how much room the WIDEST single line has in the box. This is the
-##     reading cycle 57 took by hand ("the cob's second line at ~190px of a 232px box")
-##     and lost. On its own it is not a pass/fail: this label AUTOWRAPS, so a line
-##     wider than the box is drawn, not clipped. It is the number a person needs
-##     before adding a word.
-##   * `height_left` — how much panel is left under the stack's foot once the label has
-##     grown to hold every row the wrap produced. THIS is the one that breaks: a
-##     VBoxContainer pushes Upgrade and Uproot down by the extra row, out through the
-##     panel's foot, where they are still pressable by path and invisible to a player.
-##     Nothing overflows its own box at any point, which is why no per-Control check
-##     sees it.
-##
-## The second is not the first restated. A detail producer that grew a third `\n` would
-## move the foot with every line still comfortably inside the box.
-##
-## `label_height` is `rows * (font height + line_spacing) - line_spacing`, floored at
-## SELECTION_LABEL_MIN_HEIGHT — Label's own arithmetic, not an approximation of it. It
-## reproduces both numbers this file already had written down: 2 rows lands the stack's
-## foot at 168 (the "damaged height is unchanged at 168" in `_build_side_panel`) and 3
-## rows lands it at 184, which is exactly the panel's own foot at window y=648 that
-## `_refresh_selection`'s comment records a draft having hit.
-##
-## `lines` is a parameter rather than a call to `selection_corpus()` so a test can hand
-## this a corpus worsened on purpose and watch the number go negative. A budget nobody
-## has ever seen fail is a budget nobody has any reason to believe.
-##
-## Measured through ONE detached Label, resolving exactly the font
-## `GardenTheme.measure` resolves — see its header for why a detached Label rather
-## than a Font loaded by path. Batched because the corpus is hundreds of strings and
-## a probe per string would be a UI built and thrown away for each one.
 static func selection_panel_budget(lines: Array[String], box_width: float,
 		room_below: float) -> Dictionary:
-	var probe := Label.new()
-	probe.add_theme_font_size_override("font_size", SELECTION_LABEL_FONT_SIZE)
-	var font: Font = probe.get_theme_font("font")
-	var font_size: int = probe.get_theme_font_size("font_size")
-	var line_spacing: float = float(probe.get_theme_constant("line_spacing"))
-	var row_height: float = 0.0
-	if font != null:
-		row_height = font.get_height(font_size) + line_spacing
-	probe.free()
-
-	var widest_line: String = ""
-	var widest_px: float = 0.0
-	var tallest_text: String = ""
-	var tallest_rows: int = 0
-	var physical_lines: int = 0
-	for text: String in lines:
-		var rows: int = 0
-		for physical: String in text.split("\n"):
-			physical_lines += 1
-			var drawn: float = 0.0
-			if font != null:
-				drawn = font.get_string_size(physical, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-			if drawn > widest_px:
-				widest_px = drawn
-				widest_line = physical
-			rows += wrapped_rows(physical, font, font_size, box_width)
-		if rows > tallest_rows:
-			tallest_rows = rows
-			tallest_text = text
-	# Label's own formula: the gap between rows is spent between them, not after the
-	# last. Getting this wrong by one `line_spacing` is a 3px error that would have put
-	# the shipped panel 3px past its own foot in the report and nowhere in the game.
-	var label_height: float = maxf(SELECTION_LABEL_MIN_HEIGHT,
-		float(tallest_rows) * row_height - line_spacing)
-	var stack_height: float = label_height
-	for row: float in selection_rows_below_label():
-		stack_height += float(SELECTION_SEPARATION) + row
-	return {
-		# The denominator, not the verdict. A corpus that swept nothing and a font
-		# that failed to resolve both produce a tidy zero-width worst case, which is
-		# indistinguishable from a panel with room to spare.
-		"measured": font != null and physical_lines > 0 and box_width > 0.0,
-		"texts": lines.size(),
-		"physical_lines": physical_lines,
-		"widest_line": widest_line,
-		"widest_px": widest_px,
-		"box_width": box_width,
-		"width_left": box_width - widest_px,
-		"row_height": row_height,
-		"line_spacing": line_spacing,
-		"rows": tallest_rows,
-		"tallest_text": tallest_text,
-		"label_height": label_height,
-		"stack_height": stack_height,
-		"room_below": room_below,
-		"height_left": room_below - stack_height,
-	}
+	return HudSelection.selection_panel_budget(lines, box_width, room_below)
 
 
 ## Puts a line on the status row. Higher `priority` wins ties and can cut a
