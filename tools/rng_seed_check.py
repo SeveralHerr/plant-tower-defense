@@ -56,13 +56,22 @@ Nothing else in the toolchain can see it:
 Parallel-safe by construction: opens no project, writes nothing to `.godot/`, takes
 no lock. Exit codes follow the house contract: 0 clean, 1 findings, 2 could not run.
 
-    fixture:   `--self-test` -- a seeded field / an unseeded one (the historical
-               failure) / a field seeded by an inline assignment rather than a named
-               setter / a `.seed` write that is only a COMMENT (must still be a
+    fixture:   `--self-test` -- ten cases: a seeded field / an unseeded one (the
+               historical failure) / a field seeded by an inline assignment rather than
+               a named setter / a `.seed` write that is only a COMMENT (must still be a
                finding, which is the case a naive grep gets wrong, since the whole
                defect was a comment claiming what the code did not do) / a `.seed`
-               write inside a STRING / a typed declaration with no `.new()` / a file
-               with no streams at all / two streams in one file, one of each.
+               write inside a STRING / a typed declaration seeded later / a typed
+               declaration never seeded / a file with no streams at all / two streams
+               in one file, one of each / a `==` read-back, which is not a write.
+    mutations: RUN THEM: `python tools/mutate.py --target rng_seed`. Five, all RED, and
+               the sweep is what produced the tenth fixture case: "drop the typed-
+               declaration half of DECL" SURVIVED at first, because with that half gone
+               `streams_in` finds nothing and "no streams" and "one seeded stream" both
+               report `[]`. Only an UNSEEDED typed declaration tells them apart, and the
+               nine cases written by hand did not contain one. The fixture also carries
+               a tenth case the `--self-test` list cannot: the zero-stream refusal is
+               about the SCAN, not the rule, so it lives in `mutate.py`'s fixture.
     denominator: prints how many files were scanned and how many streams were found.
                `0 streams` is reported as a REFUSAL (exit 2), not a pass: a scan root
                that matches nothing is the failure mode this repo's own gates warn
@@ -125,9 +134,9 @@ def seed_writes(text, field):
     has no compound assignment worth allowing here -- `seed +=` on a generator is not a
     way to pin a run, it is a way to pin it to something the caller cannot state.)
     """
-    code = gdsource.strip_comments(text, gdsource.ERASE)
+    blanked = gdsource.strip_comments(text, gdsource.ERASE)
     pattern = re.compile(r"\b" + re.escape(field) + r"\.seed[ \t]*=(?!=)")
-    return pattern.search(code) is not None
+    return pattern.search(blanked) is not None
 
 
 def scan(root):
@@ -206,6 +215,17 @@ func start(value: int) -> void:
 \t_rng = RandomNumberGenerator.new()
 \t_rng.seed = value
 """, []),
+    # Added after `mutate.py --target rng_seed` reported the "drop the typed-declaration
+    # half of DECL" mutation as SURVIVED. The seeded typed case above could not kill it:
+    # with that half gone `streams_in` finds nothing, and "no streams" and "one seeded
+    # stream" both report []. Only an UNSEEDED typed declaration tells them apart.
+    ("typed declaration, never seeded", """
+var _rng: RandomNumberGenerator = null
+
+
+func start() -> void:
+	_rng = RandomNumberGenerator.new()
+""", ["_rng"]),
     ("no streams in the file", """
 var lives: int = 10
 

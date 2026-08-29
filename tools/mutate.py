@@ -493,6 +493,50 @@ def _target_mirror():
     return path, mutations, command
 
 
+def _target_rng_seed():
+    """rng_seed_check.py's guards, against its own nine fixture cases.
+
+    Written WITH the checker rather than three sessions later, which is the argument the
+    mirror target above makes in prose. The checker exists because of a defect that was a
+    COMMENT promising a fix, so the mutation that matters most here is the one that stops
+    blanking comments: if that survives, the gate can be satisfied by writing ABOUT the
+    seeding instead of doing it, which is strictly worse than having no gate at all.
+    `seed_writes` names its local `blanked` rather than `code` precisely so that needle is
+    unique -- `streams_in` blanks identically one function above, and a needle matching
+    twice is reported NOT-APPLIED rather than silently mutating the wrong one.
+    """
+    path = TOOLS / "rng_seed_check.py"
+    command = [sys.executable, str(TOOLS / "mutate.py"), "--fixture", "rng_seed"]
+    mutations = [
+        Mutation(
+            "seed_writes: scan RAW source, so a comment or a string satisfies the gate",
+            "    blanked = gdsource.strip_comments(text, gdsource.ERASE)",
+            "    blanked = text  # mutated: comments and strings no longer blanked",
+        ),
+        Mutation(
+            "seed_writes: allow `==`, so reading the seed back counts as seeding it",
+            r'r"\.seed[ \t]*=(?!=)")',
+            r'r"\.seed[ \t]*=")',
+        ),
+        Mutation(
+            "streams_in: drop the typed-declaration half of DECL",
+            r'r"(?::[ \t]*RandomNumberGenerator\b|:=[ \t]*RandomNumberGenerator\.new[ \t]*\()",',
+            r'r"(?::=[ \t]*RandomNumberGenerator\.new[ \t]*\()",',
+        ),
+        Mutation(
+            "seed_writes: always true, so no stream is ever a finding",
+            "    return pattern.search(blanked) is not None",
+            "    return True  # mutated: every stream reported pinnable",
+        ),
+        Mutation(
+            "main: pass over zero streams instead of refusing",
+            "    if streams == 0:",
+            "    if False:  # mutated: zero-stream refusal removed",
+        ),
+    ]
+    return path, mutations, command
+
+
 def _target_self():
     """This file's own guards, addressed by tag (see the module docstring)."""
     path = TOOLS / "mutate.py"
@@ -592,7 +636,8 @@ def _target_contract():
     return path, mutations, command
 
 
-TARGETS = {"contract": _target_contract, "mirror": _target_mirror, "self": _target_self}
+TARGETS = {"contract": _target_contract, "mirror": _target_mirror,
+           "rng_seed": _target_rng_seed, "self": _target_self}
 
 
 # -------------------------------------------------------------------------- fixtures
@@ -799,6 +844,49 @@ def _probe(path: Path):
 
 def _sweep(path: Path, needle, replacement) -> Report:
     return run_sweep(path, [Mutation("case", needle, replacement)], _probe(path), out=_silent)
+
+
+def _fixture_rng_seed() -> int:
+    """rng_seed_check's nine known-in/known-out cases, plus the zero-stream refusal.
+
+    The nine live in the checker itself (its `--self-test`), so they read beside the rule
+    they pin rather than here; this drives them through `_Cases` so the sweep prints the
+    same `N case(s), M failure(s)` denominator every other fixture does.
+
+    The tenth is NOT in the checker's own list and has to be here, because it is about the
+    SCAN rather than the rule: a run whose DECL matched nothing must exit 2, not 0. That
+    guard fired for real on the checker's first run -- the pattern was written against
+    `RandomNumberGenerator(` while the source says `RandomNumberGenerator.new(`, so it
+    found zero streams across fifty-one files. Without the refusal it would have reported
+    a clean gate forever, over nothing.
+    """
+    sys.path.insert(0, str(TOOLS))
+    import rng_seed_check as rsc  # noqa: WPS433 - shipped beside this file
+
+    cases = _Cases("rng_seed")
+
+    for label, text, expected in rsc._CASES:
+        def one(text=text, expected=expected):
+            got = [f for f, _ in rsc.streams_in(text) if not rsc.seed_writes(text, f)]
+            if got != expected:
+                return False, "expected %s, got %s" % (expected, got)
+            return True, ""
+        cases.check(label, one)
+
+    def case_zero_streams_refuses():
+        root = Path(tempfile.mkdtemp(prefix="mutate_rngseed_"))
+        (root / "game").mkdir()
+        _write_text(root / "game" / "quiet.gd",
+                    "extends Node\n\nvar lives: int = 10\n")
+        code = rsc.main(["--root", str(root)])
+        if code != 2:
+            return False, ("a scan that found no streams at all must exit 2 (could not "
+                           "run), got %d" % code)
+        return True, ""
+
+    cases.check("a scan over zero streams refuses rather than passing",
+                case_zero_streams_refuses)
+    return cases.report()
 
 
 def _fixture_self() -> int:
@@ -1058,7 +1146,7 @@ def _fixture_contract() -> int:
 
 
 FIXTURES = {"contract": _fixture_contract, "mirror": _fixture_mirror,
-            "self": _fixture_self}
+            "rng_seed": _fixture_rng_seed, "self": _fixture_self}
 
 
 # ------------------------------------------------------------------------------ main

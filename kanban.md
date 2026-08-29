@@ -6729,3 +6729,13 @@ Three findings kept out here rather than buried in a log:
   it, `test_combat.gd` setup) never clears it. Filed plant-tower-defense-xdp7 (P1), with
   G-149 filed against the harness for the reporting half - the suite reports what it WROTE
   and nothing about what it READ, so inherited state is invisible until it changes a result.
+
+- **The mutation sweep wrote a fixture case that nine hand-written ones missed, and the
+  reason generalises.** `mutate.py --target rng_seed` reported "drop the typed-declaration
+  half of `DECL`" as **SURVIVED**. The nine cases included a typed declaration — but a
+  *seeded* one, and with that half of the pattern gone `streams_in` finds nothing, so "no
+  streams here" and "one seeded stream here" both report `[]`. The two are only
+  distinguishable by an **unseeded** typed declaration, which nobody thinks to write
+  because the seeded one feels like it covers the shape. **A fixture case whose expected
+  value is the EMPTY answer cannot kill a mutation that makes everything empty** — every
+  such case needs a sibling whose expected value is non-empty for the same input shape.

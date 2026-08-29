@@ -9873,6 +9873,10 @@ is likely to be at least as productive.
     (2) `game/game.gd:1792` carried a second false claim the bead did not name -
     `_tick_cross_breeding` said the stream was "the same generator the rest of the run
     uses", contradicting the field's own header nine hundred lines above. Both corrected.
+    (3) Registering the new checker as a `mutate.py` target found a tenth fixture case the
+    nine hand-written ones missed: "drop the typed-declaration half of DECL" SURVIVED,
+    because every existing typed case expected the EMPTY answer and a mutation that makes
+    everything empty cannot be caught by one. Sweep is 5 of 5 RED now.
   - Cheaper: for the diff, the two new headless tests alone - the launch was correctly
     skipped and would have told me nothing. For the finding, the FULL suite rather than
     the `--filter` subset I was iterating on, which is the cheapest thing that would have
