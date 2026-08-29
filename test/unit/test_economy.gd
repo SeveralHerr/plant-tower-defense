@@ -800,6 +800,19 @@ func _with_scratch_save(campaign: int, endless_best: int, contents: Variant, bod
 	# `mvol2` in every byte-exact assertion below without ever having mentioned volume.
 	RunConfig.sfx_level = 0
 	RunConfig.music_level = 0
+	# The tenth and eleventh, and the two this list was missing (plant-tower-defense-xdp7).
+	# They are the reason eleven save tests failed on an unmodified checkout: both are
+	# parsed out of the save and composed back into it by `_save`, and `RunConfig` had
+	# loaded them at process start from a scratch file some earlier headless run left
+	# behind. The failure read `Expected ... d0 ... but got ... d2 campaign:gentle=3453`,
+	# on a line no test in this file had ever written to.
+	#
+	# The boot half of that is fixed in `RunConfig.adopt_save_path`, which throws the
+	# shared scratch file away before loading it. These two lines are the other half and
+	# are not redundant with it: an EARLIER TEST IN THIS RUN can fill either field, and no
+	# amount of cleaning at boot reaches that.
+	RunConfig.difficulty_high_scores = {}
+	RunConfig.key_bindings = {}
 	var err: String = str(body.call())
 	_restore_run_config()
 	return err
@@ -4850,4 +4863,230 @@ func test_a_kill_is_priced_in_one_place_under_every_weather_a_wave_can_arrive_un
 		err = _T.assert_eq(Game.weather_seed_value_for(0, WaveDirector.WEATHER_CLEAR), 1,
 			"a kill never pays nothing")
 	_T.free_ui(game)
+	return err
+
+
+# -- The scratch save is a property of THIS run (plant-tower-defense-xdp7) ---
+
+
+## Where `_persisted_boot_bytes` composes the boot state so it can be compared. Never
+## loaded from, never left behind — it exists only because the writer is the one thing in
+## this project that already knows every field a save carries.
+const BOOT_BYTES_PATH := "user://test_economy_boot_bytes.save"
+
+
+## Everything a headless boot left in RunConfig, as the game's own writer composes it.
+##
+## A BYTE STRING RATHER THAN A HAND-LISTED DICTIONARY, and that is the point of doing it
+## this way: the defect below was one field missing from exactly such a hand-list, twice
+## over — `_with_scratch_save` reset nine of the eleven fields a save carries. `_save`
+## composes every persisted field there is, so a twelfth one joins this comparison the day
+## it is written, with nobody to remember it.
+##
+## Writes to a private path and deletes it again, so the comparison cannot itself become
+## the scratch file this test is about.
+func _persisted_boot_bytes() -> String:
+	var was: String = RunConfig.save_path
+	RunConfig.save_path = BOOT_BYTES_PATH
+	var wrote: bool = RunConfig._save()
+	var text: String = ""
+	if wrote:
+		text = FileAccess.get_file_as_string(BOOT_BYTES_PATH)
+	for path: String in [BOOT_BYTES_PATH, BOOT_BYTES_PATH + ".tmp", BOOT_BYTES_PATH + ".bak"]:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(path)
+	RunConfig.save_path = was
+	return text
+
+
+## Removes the shared headless scratch file through `DirAccess` rather than through the
+## discard these tests assert — a baseline produced by the code under test is not a
+## baseline.
+func _remove_headless_scratch_files() -> void:
+	for path: String in [
+		RunConfig.HEADLESS_SAVE_PATH,
+		RunConfig.HEADLESS_SAVE_PATH + ".tmp",
+		RunConfig.HEADLESS_SAVE_PATH + ".bak",
+	]:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(path)
+
+
+## A POISONED SCRATCH SAVE CANNOT REACH THE NEXT HEADLESS PROCESS
+## (plant-tower-defense-xdp7).
+##
+## THE CLASS, NOT AN INSTANCE OF IT, and that is why this is a test of its own rather than
+## another assertion inside a save test. Eleven save tests failed on an unmodified
+## checkout — every one of them on the difficulty line, `Expected ... d0 ... but got ...
+## d2 campaign:gentle=3453 campaign:harsh=3453` — and every one of them PASSED once
+## `user://headless_scratch.save` was deleted, with no code change. So no assertion inside
+## any of the eleven could have caught it: they all pass on a clean file, and what was
+## broken is a property of the state boot STARTS from. It has to be asserted against a
+## poisoned file written on purpose.
+##
+## It failed in isolation as well as in the full suite, which is what made it expensive:
+## the usual "run it alone to see whether it is pollution" move reported pollution as a
+## real defect.
+##
+## THE FIXTURE IS WRITTEN THROUGH `RunConfig._save()`, not typed as a literal. A hand-typed
+## save that came out malformed would be REFUSED by the reader, leave every field at its
+## default, and pass this test by failing to be poison at all — the vacuous pass this
+## whole class of test is most likely to die of. `_save` reads its own output back through
+## `_parse_save` before returning true, so asserting on that return is the guard.
+func test_a_poisoned_scratch_save_cannot_reach_the_next_headless_process() -> String:
+	_stash_run_config()
+	# What a headless process boots to with no scratch file at all — the baseline the
+	# poisoned one has to match exactly.
+	_remove_headless_scratch_files()
+	RunConfig.adopt_save_path("", "headless")
+	var clean_status: String = RunConfig.load_status
+	var clean_bytes: String = _persisted_boot_bytes()
+	var err: String = _T.assert_eq(clean_status, "absent",
+		"a headless boot with no scratch file finds no save")
+	if err == "":
+		err = _T.assert_true(clean_bytes.ends_with("\nd0\n0\n"),
+			"and holds no per-difficulty records and no rebound keys, got %s" % [clean_bytes])
+	# Now poison it: a d2 difficulty line, a milestone, a rebound key, and four
+	# preferences off their defaults — the shape the real file on this machine had.
+	if err == "":
+		RunConfig.save_path = RunConfig.HEADLESS_SAVE_PATH
+		RunConfig.campaign_high_score = 3453
+		RunConfig.endless_high_score = 11
+		RunConfig.difficulty_high_scores = {
+			RunConfig.score_key(false, &"gentle"): 3453,
+			RunConfig.score_key(false, &"harsh"): 3453,
+		}
+		RunConfig.earned_milestones = {RunConfig.HINT_UPGRADE_EXISTS: true}
+		RunConfig.key_bindings = {"ui_accept": [KEY_J]}
+		RunConfig.colorblind_safe = true
+		RunConfig.mute_sfx = true
+		RunConfig.game_speed_step = 2
+		RunConfig.sfx_level = 3
+		err = _T.assert_true(RunConfig._save(),
+			"the poisoned fixture is a save this build can read back — a malformed one "
+				+ "would be refused on load and pass this test by not being poison")
+	if err == "":
+		var poison: String = FileAccess.get_file_as_string(RunConfig.HEADLESS_SAVE_PATH)
+		err = _T.assert_true(poison.contains("d2 campaign:gentle=3453"),
+			"and it really carries the line that broke the eleven, got %s" % [poison])
+		if err == "":
+			err = _T.assert_true(poison != clean_bytes,
+				"and it differs from a clean boot's state, or there is nothing to prove")
+	# The boot every headless process does, run through the real decision rather than a
+	# copy of it. The three `apply_*` calls `_ready()` makes after this are deliberately
+	# not fired: they reach the InputMap, the AudioServer and `Engine.time_scale`, all
+	# process-global, and none of them is what is under test.
+	if err == "":
+		RunConfig.adopt_save_path("", "headless")
+		err = _T.assert_eq(RunConfig.save_path, RunConfig.HEADLESS_SAVE_PATH,
+			"a headless process still resolves to the shared scratch path")
+	if err == "":
+		err = _T.assert_false(FileAccess.file_exists(RunConfig.HEADLESS_SAVE_PATH),
+			"and the scratch file the previous process left is gone, not merely unread")
+	if err == "":
+		err = _T.assert_eq(RunConfig.load_status, clean_status,
+			"so boot reports what a boot with no file at all reports")
+	if err == "":
+		# The whole assertion, and the reason the comparison is bytes: every persisted
+		# field at once, including the two a hand-written list forgot.
+		err = _T.assert_eq(_persisted_boot_bytes(), clean_bytes,
+			"and this process holds exactly what a process that never saw the file holds")
+	_restore_run_config()
+	_remove_headless_scratch_files()
+	return err
+
+
+## AN EXPLICITLY NAMED SAVE PATH IS NOT THROWN AWAY, which is the other half of the
+## discard's rule and the half that could quietly destroy data.
+##
+## `PLANT_TD_SAVE_PATH` beats everything by design (`resolved_save_path`) precisely so a
+## caller can point this process at a file it chose — and a caller that chose a path may
+## well have staged bytes at it. A discard keyed on "are we headless" rather than on the
+## RESOLVED path would delete those. The player's own `user://highscore.save` is reached
+## through the same branch, so this is also what keeps a windowed launch's save safe.
+func test_a_named_save_path_survives_the_boot_that_clears_the_scratch_one() -> String:
+	_clear_scratch_save()
+	var staged: String = RunConfig.compose_save(770, 880, "m0",
+		"cb0 sfx0 mus0 spd0 svol0 mvol0", {})
+	var f := FileAccess.open(HIGHSCORE_TEST_PATH, FileAccess.WRITE)
+	if f == null:
+		return "could not stage a save at %s" % HIGHSCORE_TEST_PATH
+	f.store_string(staged)
+	f.close()
+	_stash_run_config()
+	RunConfig.adopt_save_path(HIGHSCORE_TEST_PATH, "headless")
+	var err: String = _T.assert_true(FileAccess.file_exists(HIGHSCORE_TEST_PATH),
+		"a path the caller named is still on disk after boot")
+	if err == "":
+		err = _T.assert_eq(RunConfig.load_status, "loaded",
+			"and boot read it rather than finding the hole a discard would have left")
+	if err == "":
+		err = _T.assert_eq(RunConfig.campaign_high_score, 770,
+			"and the record it carried is in this process")
+	if err == "":
+		err = _T.assert_eq(RunConfig.save_path, HIGHSCORE_TEST_PATH,
+			"and the named path beat the headless default, as resolved_save_path says")
+	_restore_run_config()
+	return err
+
+
+## THE TWO HALVES OF THE DISCARD, each asserted on its own.
+##
+## The property test above passes for either of two reasons — the file was thrown away, or
+## the fields were put back — and it cannot say which. That matters, because a discard that
+## deleted the file and left `difficulty_high_scores` populated is the SAME defect one step
+## further in, and it would look exactly like a fix until the next byte-exact assertion.
+##
+## The second half of this also pins what the reset must NOT do. `endless` and `difficulty`
+## are run state, not save state; `_load` never writes them, and a reset that cleared them
+## would end whatever run was in progress with no error anywhere.
+func test_the_discard_throws_away_the_file_and_the_fields_it_had_loaded() -> String:
+	_stash_run_config()
+	_clear_scratch_save()
+	RunConfig.save_path = HIGHSCORE_TEST_PATH
+	RunConfig.campaign_high_score = 99
+	RunConfig.difficulty_high_scores = {RunConfig.score_key(false, &"gentle"): 99}
+	RunConfig.earned_milestones = {RunConfig.HINT_UPGRADE_EXISTS: true}
+	RunConfig.key_bindings = {"ui_accept": [KEY_J]}
+	RunConfig.colorblind_safe = true
+	var err: String = _T.assert_true(RunConfig._save(),
+		"there is a save on disk to throw away")
+	if err == "":
+		err = _T.assert_true(RunConfig.discard_scratch_save(),
+			"the discard reports that it found something — a false here would leave a "
+				+ "caller unable to tell a cleared file from one never written")
+	if err == "":
+		err = _T.assert_false(FileAccess.file_exists(HIGHSCORE_TEST_PATH),
+			"the file is gone")
+	if err == "":
+		err = _T.assert_eq(
+			RunConfig.compose_difficulty_line(RunConfig.difficulty_high_scores), "d0",
+			"and the field that broke the eleven went with it, not just the bytes")
+	if err == "":
+		err = _T.assert_eq(RunConfig.earned_milestones.size(), 0, "as did the milestones")
+	if err == "":
+		err = _T.assert_eq(RunConfig.key_bindings.size(), 0, "and the rebound keys")
+	if err == "":
+		err = _T.assert_eq(RunConfig.campaign_high_score, 0, "and the record")
+	if err == "":
+		err = _T.assert_false(RunConfig.colorblind_safe, "and the preference flags")
+	if err == "":
+		err = _T.assert_false(RunConfig.discard_scratch_save(),
+			"a second discard finds nothing left and says so")
+	# `reset_persisted_state()` alone — the half the discard calls, and the half that has
+	# to be right about which fields are save state and which are the live run's.
+	if err == "":
+		RunConfig.endless = true
+		RunConfig.difficulty = &"harsh"
+		RunConfig.game_speed_step = 2
+		RunConfig.reset_persisted_state()
+		err = _T.assert_eq(RunConfig.game_speed_step, 0,
+			"the reset clears a persisted field")
+	if err == "":
+		err = _T.assert_true(RunConfig.endless,
+			"and leaves the mode this run is being played in alone")
+	if err == "":
+		err = _T.assert_eq(String(RunConfig.difficulty), "harsh",
+			"and the profile it is being played on — run state is not save state")
+	_restore_run_config()
 	return err

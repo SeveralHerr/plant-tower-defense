@@ -623,12 +623,101 @@ static func resolved_save_path(env_path: String, display_name: String) -> String
 	return SAVE_PATH
 
 
-func _ready() -> void:
-	# BEFORE `_load()`, and that ordering is the whole fix: `_load` migrates an old
-	# format and writes it back, so a redirect installed after it has already lost.
-	save_path = resolved_save_path(
-		OS.get_environment(SAVE_PATH_ENV), DisplayServer.get_name())
+## Every field `_load` fills, back to what a process that found no save file holds.
+##
+## Separate from `_load`, and it has to be: `_load` on a missing file returns EARLY with
+## `load_status = "absent"` and assigns nothing at all. That is the right reading for a
+## first launch — the declared defaults above already say it — and it is exactly wrong for
+## the case this exists for, where the fields were filled from a file that is about to
+## stop being this process's truth.
+##
+## RUN STATE IS NOT SAVE STATE and is deliberately untouched. `endless`, `difficulty`,
+## `fresh_record`, `previous_best` and `fresh_record_endless` are what this run is doing;
+## `_load` never writes them, and clearing them here would silently end a run in progress.
+##
+## Data only, exactly like `_load` itself and for the same reason: nothing here calls
+## `apply_key_bindings`, `apply_audio_mutes`, `apply_audio_levels` or `apply_game_speed`.
+## The InputMap, the `AudioServer` buses and `Engine.time_scale` are process-global, so a
+## reset that pushed into them would reach every later test in a run rather than the one
+## that asked.
+func reset_persisted_state() -> void:
+	campaign_high_score = 0
+	endless_high_score = 0
+	difficulty_high_scores = {}
+	key_bindings = {}
+	earned_milestones = {}
+	colorblind_safe = false
+	mute_sfx = false
+	mute_music = false
+	sfx_level = 0
+	music_level = 0
+	game_speed_step = 0
+	load_status = ""
+	loaded_from = ""
+	_refused_path = ""
+
+
+## Throws away the scratch file, so what this process starts holding is a property of THIS
+## process rather than of every headless process before it (plant-tower-defense-xdp7).
+##
+## THE FILE AND THE FIELDS, and the second half is the one that actually bit. Eleven save
+## tests failed on an unmodified checkout against a `d2 campaign:gentle=3453` line no run
+## in the suite wrote. Redirecting `save_path` — which five test scripts already do in
+## their `setup()`, and which is what `tools/save_persist_check.py` enforces — moves the
+## WRITES and cannot undo the load this autoload already did at process start:
+## `difficulty_high_scores` was still sitting there from a scratch file left behind weeks
+## earlier, and `_save` composes it into every byte-exact assertion in the file.
+##
+## `.tmp` AND `.bak` GO TOO. `_load` adopts the temp file when the save is missing, which
+## is the whole point of writing it separately — so deleting only the save would hand the
+## next load the previous process's interrupted write in place of its finished one. That
+## is the same defect wearing a disguise, and a much harder one to spot.
+##
+## Returns whether anything was there to throw away, so a caller can say so.
+func discard_scratch_save() -> bool:
+	var found: bool = false
+	for path: String in [save_path, _tmp_path(), _backup_path()]:
+		if FileAccess.file_exists(path):
+			found = true
+			DirAccess.remove_absolute(path)
+	reset_persisted_state()
+	return found
+
+
+## Where this process persists, and what it starts holding — the whole boot decision,
+## minus the three `apply_*` calls `_ready()` makes after it.
+##
+## A function rather than three lines inline so a test can run the real decision instead
+## of a copy of it: this is the code path that made eleven save tests depend on which
+## tests some earlier process happened to run, and a test that re-implemented it would
+## have gone on passing while it drifted. The `apply_*` calls stay in `_ready()` on
+## purpose — they push into the InputMap, the `AudioServer` and `Engine.time_scale`, all
+## process-global, and a test forced to fire them to reach this would retune its whole run.
+##
+## THE DISCARD IS KEYED ON THE RESOLVED PATH, not on "are we headless". A caller that named
+## a path through `PLANT_TD_SAVE_PATH` has said what it wants and may well have staged a
+## file at it; deleting that would be answering a question nobody asked. Only the shared
+## default — the path nobody chose and every headless process gets — is thrown away, which
+## also leaves `HEADLESS_SAVE_PATH` the one known file a failing run's state can be read
+## out of afterwards (plant-tower-defense-l6zo's argument against a per-run temp path).
+##
+## Concurrency is NOT what this fixes and is still open: two headless processes running at
+## once still share this one path, and the second one's discard now removes the first's
+## file rather than merely racing its writes. `user://` cannot be isolated at all (harness
+## gh#28), so that stays plant-tower-defense-l6zo's question about the runner.
+func adopt_save_path(env_path: String, display_name: String) -> void:
+	save_path = resolved_save_path(env_path, display_name)
+	if save_path == HEADLESS_SAVE_PATH:
+		discard_scratch_save()
 	_load()
+
+
+func _ready() -> void:
+	# The resolve happens BEFORE `_load()`, and that ordering is the whole of the earlier
+	# fix: `_load` migrates an old format and writes it back, so a redirect installed
+	# after it has already lost. `adopt_save_path` holds both halves plus the scratch
+	# discard, so the order cannot come apart in the one caller that matters.
+	adopt_save_path(OS.get_environment(SAVE_PATH_ENV), DisplayServer.get_name())
 	boot_loaded_from = loaded_from
 	apply_key_bindings()
 	apply_audio_mutes()

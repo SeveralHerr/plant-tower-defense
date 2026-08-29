@@ -162,6 +162,36 @@ def _user_state_before(project_path: Path):
     return devtools, "%d file(s) in %s" % (n, user_dir)
 
 
+def _user_state_entry(devtools_mod, project_path: Path) -> str:
+    """plant-tower-defense:G-149 / -xdp7: name the files that were ALREADY under user://
+    when the suite started.
+
+    The `user:// writes` line below reports what the suite CHANGED, and it was telling the
+    truth -- `0 file(s) changed` -- while eleven save tests failed on a
+    `user://headless_scratch.save` some earlier headless process had left behind. A run
+    that inherits poisoned state and a run that starts clean are byte-identical in that
+    output, because the poison is READ at autoload time and never written. Reading the
+    writes line is what pointed the diagnosis AWAY from user:// for the first several
+    minutes. This is the other half of the same os.scandir: what was there to be read.
+
+    Advisory, always. It cannot know whether a pre-existing file mattered; it can only
+    stop the question from being invisible.
+    """
+    if devtools_mod is None:
+        return "user:// on entry: not checked (no user-dir resolution available)"
+    try:
+        user_dir = devtools_mod.get_user_data_path(project_path)
+        names = sorted(p.name for p in Path(user_dir).iterdir() if p.is_file())
+    except Exception as exc:  # noqa: BLE001 - advisory; never block the suite on this
+        return "user:// on entry: not checked (%s: %s)" % (type(exc).__name__, exc)
+    if not names:
+        return "user:// on entry: 0 pre-existing file(s) in %s" % user_dir
+    return ("user:// on entry: %d pre-existing file(s) in %s -- %s. A suite result can "
+            "depend on these; they are read at autoload time and a run that inherits one "
+            "looks identical in the writes line below (advisory)"
+            % (len(names), user_dir, ", ".join(names)))
+
+
 def _user_state_after(devtools_mod, project_path: Path) -> str:
     diff = devtools_mod.userstate_stat_diff(project_path)
     if diff is None:
@@ -298,6 +328,8 @@ def main():
     log_path = devtools_dir / "tests.log"
 
     devtools_mod, user_before = _user_state_before(project_path)
+    # Taken BEFORE the suite and printed after it, beside the writes line it completes.
+    user_entry = _user_state_entry(devtools_mod, project_path)
     try:
         godot_rc = run_suite(godot_path, project_path, log_path, passthrough, args.timeout)
     except subprocess.TimeoutExpired:
@@ -349,6 +381,7 @@ def main():
             "errors": findings,
             "engine_error_count": len(engine_errors),
             "engine_errors": engine_errors,
+            "user_on_entry": user_entry,
             "user_writes": user_writes,
             "exit": exit_code,
         }, indent=2))
@@ -390,6 +423,8 @@ def main():
             print(f"  ... and {len(engine_errors) - 10} more; full log: {log_path}")
     else:
         print("Engine errors: 0 ERROR: line(s) emitted")
+    # plant-tower-defense:G-149: what was already under user:// for the suite to READ.
+    print(user_entry)
     # plant-tower-defense:G-048c: what the suite wrote under user://.
     print(user_writes)
 
