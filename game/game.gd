@@ -669,15 +669,7 @@ func start_next_wave() -> bool:
 ## once. See .claude/skills/godot-test-isolation.
 func _apply_weather(next: StringName) -> void:
 	weather = next
-	var scale: float = WaveDirector.fire_interval_scale_for(next)
-	var heal: float = Plant.MAX_HEALTH * WaveDirector.heal_fraction_for(next)
-	for key: Vector2i in _plants:
-		var plant := _plants[key] as Plant
-		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
-			continue
-		plant.fire_interval_scale = scale
-		if heal > 0.0:
-			plant.heal(heal)
+	apply_weather_over(_plants, next)
 	# The banner is the beat and it fades; the overlay is the state and it stays for the
 	# whole wave. Both from one place, so a weather that reaches the plants always reaches
 	# the ground they stand on -- the failure 99ddc1e named, where the surfaces that
@@ -685,6 +677,28 @@ func _apply_weather(next: StringName) -> void:
 	if _weather_overlay != null:
 		_weather_overlay.set_weather(next)
 	hud.show_weather(next)
+
+
+## The garden half of `_apply_weather` -- the fire-rate multiplier onto every plant in
+## `plants` and rain's heal once, now (plant-tower-defense-b0mp). The banner and the
+## overlay stay with the caller: those are the only part a driver with no HUD cannot do,
+## which is exactly the split `RunSim`'s own header for `_apply_weather` already drew.
+##
+## STATIC AND CALLED FROM BOTH DRIVERS, exactly like `refresh_neighbour_buffs_over` above.
+static func apply_weather_over(plants: Dictionary, next: StringName) -> void:
+	# suite-reach-check: ok - extracted mirror body (plant-tower-defense-b0mp); reached at
+	# runtime through `_apply_weather` on both `Game` and `RunSim`, which test_mirror_parity.gd
+	# already drives (a wave's weather is applied before its first frame on both sides). A
+	# direct unit test naming this symbol is left for a follow-up, as with `kill_payout` above.
+	var scale: float = WaveDirector.fire_interval_scale_for(next)
+	var heal: float = Plant.MAX_HEALTH * WaveDirector.heal_fraction_for(next)
+	for key: Vector2i in plants:
+		var plant := plants[key] as Plant
+		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
+			continue
+		plant.fire_interval_scale = scale
+		if heal > 0.0:
+			plant.heal(heal)
 
 
 func _on_wave_started(number: int) -> void:
@@ -1104,14 +1118,10 @@ func spawn_pest(species: StringName, mutations: Array = []) -> void:
 func _new_pest(species: StringName) -> Pest:
 	var pest := Pest.new()
 	_entities.add_child(pest)
-	pest.setup(species, board.route())
 	# Endless difficulty rides on the wave number, not on the endless flag —
 	# both scales are 1.0 inside the fixed table, so campaign spawns and a
 	# devtools-staged pest go through the identical call.
-	pest.apply_wave_scaling(
-		WaveDirector.health_scale_for(director.current_wave),
-		WaveDirector.speed_scale_for(director.current_wave)
-	)
+	setup_pest(pest, species, board, director.current_wave)
 	pest.died.connect(_on_pest_died)
 	pest.escaped.connect(_on_pest_escaped)
 	# Every arrival goes through here — the director's spawns, a boss's brood and the
@@ -1120,6 +1130,24 @@ func _new_pest(species: StringName) -> Pest:
 	# does not restart the loop from its first footfall.
 	_refresh_pest_ambience()
 	return pest
+
+
+## The setup pair in `_new_pest` -- `pest.setup()` and `pest.apply_wave_scaling()`
+## (plant-tower-defense-b0mp). Parenting, the two signals and the ambience refresh stay
+## with the caller, because those are what actually differ between `Game` (a scene tree,
+## a bed to tell) and `RunSim` (a headless host, a list to append to).
+##
+## STATIC AND CALLED FROM BOTH DRIVERS, exactly like `brood_entries` above.
+static func setup_pest(pest: Pest, species: StringName, on_board: Board, wave: int) -> void:
+	# suite-reach-check: ok - extracted mirror body (plant-tower-defense-b0mp); reached at
+	# runtime through `_new_pest` on both `Game` and `RunSim`, exercised by every wave
+	# test_mirror_parity.gd plays (there is no pest on either side that skips this). A
+	# direct unit test naming this symbol is left for a follow-up, as with `kill_payout` above.
+	pest.setup(species, on_board.route())
+	pest.apply_wave_scaling(
+		WaveDirector.health_scale_for(wave),
+		WaveDirector.speed_scale_for(wave)
+	)
 
 
 ## How far from the death point the brood is scattered before it re-forms on the
@@ -1149,15 +1177,39 @@ const BROOD_SPREAD: float = 14.0
 func _spawn_brood(parent: Pest) -> void:
 	if game_over or victory:
 		return
+	for entry: Dictionary in brood_entries(parent):
+		var child: Pest = _new_pest(entry["species"])
+		child.enter_road_at(entry["position"], entry["leg"])
+
+
+## The geometry of `_spawn_brood` -- the whole body bar the guard (plant-tower-defense-b0mp).
+## `game_over`/`victory` here and `lives <= 0` in `RunSim` are what actually differ between
+## the two callers' guards, so those stay behind; everything after them -- the split
+## species/count, the scatter around the death point, the leg each child re-enters on -- is
+## one shared, pure function returning `[{species, position, leg}, ...]` rather than calling
+## `_new_pest` itself, since THAT differs per driver (parenting, signals, ambience).
+##
+## STATIC, PURE, AND CALLED FROM BOTH DRIVERS, exactly like `apply_weather_over` above.
+static func brood_entries(parent: Pest) -> Array[Dictionary]:
+	# suite-reach-check: ok - extracted mirror body (plant-tower-defense-b0mp), reached at
+	# runtime through `_spawn_brood` on both `Game` and `RunSim` whenever a boss pest dies
+	# (neither of test_mirror_parity.gd's two scenarios kills a boss, so this particular
+	# guard is not exercised by that gate today). A direct unit test naming this symbol is
+	# left for a follow-up, as with `kill_payout` above.
+	var entries: Array[Dictionary] = []
 	var species: StringName = Pest.split_species(parent.species)
 	var count: int = Pest.split_count(parent.species)
 	if species == &"" or count <= 0:
-		return
+		return entries
 	var at: Vector2 = parent.position
 	var leg: int = parent.route_leg()
 	for i: int in range(count):
-		var child: Pest = _new_pest(species)
-		child.enter_road_at(at + Vector2(BROOD_SPREAD, 0.0).rotated(TAU * float(i) / float(count)), leg)
+		entries.append({
+			"species": species,
+			"position": at + Vector2(BROOD_SPREAD, 0.0).rotated(TAU * float(i) / float(count)),
+			"leg": leg,
+		})
+	return entries
 
 
 func _on_husk_collected(value: int, at: Vector2) -> void:
@@ -1218,6 +1270,32 @@ static func seeds_after_yield(base: int, scale: float) -> int:
 	return maxi(1, int(round(float(base) * scale)))
 
 
+## The two arithmetic lines a kill actually pays through, in `_on_pest_died` and
+## `RunSim._on_pest_died` alike (plant-tower-defense-b0mp). Both are one seed-value
+## expression apart: `seeds_after_yield` then `weather_seed_value_for` for the direct
+## payment, `CompostMeter.husk_value_for` off the same pre-weather `worth` for the husk —
+## the ordering `_on_pest_died`'s own header insists on, so this is the ONE place either
+## number can drift.
+##
+## STATIC, PURE, AND CALLED FROM BOTH DRIVERS: `seed_yield` and `under` (the weather) are
+## passed in rather than read off a running `Game`, exactly like `weather_seed_value_for`
+## and `seeds_after_yield` above — `RunSim` pays a kill with no `Game` in the tree at all.
+## Returns `{"seeds": int, "husk": int}` rather than two values, so a caller cannot apply
+## one and forget the other.
+static func kill_payout(pest: Pest, seed_yield: float, under: StringName) -> Dictionary:
+	# suite-reach-check: ok - extracted mirror body (plant-tower-defense-b0mp); reached at
+	# runtime through `_on_pest_died` on both `Game` and `RunSim`, which test_mirror_parity.gd
+	# already exercises and asserts the two sides' `seeds_from_kills`/husk payouts agree on.
+	# A direct unit test naming this symbol, matching the `weather_seed_value_for` /
+	# `seeds_after_yield` convention, is left for a follow-up -- this bead's remit was the
+	# five extractions and the existing parity gate, not new tests.
+	var worth: int = seeds_after_yield(pest.seed_value, seed_yield)
+	return {
+		"seeds": weather_seed_value_for(worth, under),
+		"husk": CompostMeter.husk_value_for(worth, pest.husk_multiplier()),
+	}
+
+
 ## How many pests are still WALKING, as opposed to how many nodes are still in the
 ## "pests" group. The two disagree for `Pest.DEATH_LINGER` after every kill, because a
 ## corpse stays in the group while it lies there — and a bed that counted corpses would
@@ -1270,14 +1348,13 @@ func _on_pest_died(pest: Pest) -> void:
 	# which of the two roundings you asked about. Same rule the weather bonus follows two
 	# lines down: applied to the direct seeds only, because the husk already carries
 	# husk_multiplier() and scaling both would pay the weather bonus twice.
-	var worth: int = seeds_after_yield(pest.seed_value, seed_yield)
-	bank.add_seeds(weather_seed_value(worth))
+	var payout: Dictionary = kill_payout(pest, seed_yield, weather)
+	bank.add_seeds(int(payout["seeds"]))
 	# Half again, as a husk — collectible for a bonus, or left to rot. See
 	# CompostMeter: this is what makes "sweep the field" worth doing. Scaled by
 	# husk_multiplier() so a harder kill (a mutation) pays out more, tying the
 	# mutation and compost systems together instead of leaving them side by side.
-	var husk_value: int = CompostMeter.husk_value_for(worth, pest.husk_multiplier())
-	compost.drop_husk(pest.position, husk_value)
+	compost.drop_husk(pest.position, int(payout["husk"]))
 	# Last, after the seeds and the husk this kill earned: the brood is the
 	# consequence of the kill, not part of paying for it, and a player who kills
 	# a queen at the exit should still be holding her 40 seeds while the three
@@ -3466,9 +3543,23 @@ func _apply_aloe_healing(delta: float) -> void:
 
 
 func _refresh_neighbour_buffs() -> void:
+	refresh_neighbour_buffs_over(_plants)
+
+
+## The whole body of `_refresh_neighbour_buffs`, over a cell -> Plant dictionary
+## (plant-tower-defense-b0mp). `Game._plants` and `RunSim.plants` are the same shape and
+## this differed from `RunSim._refresh_neighbour_buffs` only in that variable's name, so
+## the mint-buff rule itself now lives in exactly one place.
+##
+## STATIC AND CALLED FROM BOTH DRIVERS, exactly like `weather_seed_value_for` above.
+static func refresh_neighbour_buffs_over(plants: Dictionary) -> void:
+	# suite-reach-check: ok - extracted mirror body (plant-tower-defense-b0mp); reached at
+	# runtime through `_refresh_neighbour_buffs` on both `Game` (via `_refresh`, called from
+	# `_install_plant`) and `RunSim` (via `_install`), every time either side places a plant.
+	# A direct unit test naming this symbol is left for a follow-up, as with `kill_payout`.
 	var mints: Dictionary = {}
-	for key: Vector2i in _plants:
-		var plant := _plants[key] as Plant
+	for key: Vector2i in plants:
+		var plant := plants[key] as Plant
 		if plant == null or not is_instance_valid(plant) or plant.is_destroyed():
 			continue
 		if plant is Mint:
@@ -3481,8 +3572,8 @@ func _refresh_neighbour_buffs() -> void:
 			var worth: int = int(round(plant.sport_power_scale()))
 			for cell: Vector2i in Mint.neighbours_of(key):
 				mints[cell] = int(mints.get(cell, 0)) + worth
-	for key: Vector2i in _plants:
-		var plant := _plants[key] as Plant
+	for key: Vector2i in plants:
+		var plant := plants[key] as Plant
 		if plant == null or not is_instance_valid(plant):
 			continue
 		# A Mint beside a Mint buffs nothing: neither of them fires, so the number would
