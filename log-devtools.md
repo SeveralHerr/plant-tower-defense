@@ -10111,3 +10111,55 @@ is likely to be at least as productive.
     `harness-drift` exits 0 but reports 6 files carrying local lines with no 0.38.0 base to
     subtract, so the refresh cost is unknown. Tracked as plant-tower-defense-abxv; not taken here,
     because a 14-file harness refresh inside an audio diff is two changes in one commit.
+
+## 2026-08-29 — Three P1 beads fanned out; muyk and xca3 landed, i8oh still in flight
+
+- Value: **warranted** — the runtime pass produced two claims no diff could: that a poisoned
+  `headless_scratch.save` no longer reaches the next process, and that the new mirror-parity gate
+  actually fails when the mirror drifts. Both were predictions before the run and neither lane
+  could test its own work.
+  - Expected: (a) `run_tests.py` exits 0 twice from a save carrying a `d2` difficulty line, a
+    milestone and a rebound key, and run 2's entry line no longer names the file; (b)
+    `test_mirror_parity` passes, and mutating `run_sim.gd:417` to `+ paid + 1` fails exactly one
+    of its eight axes.
+  - Got: (a) `Total: 1054 | Passed: 1054` twice, exit 0 both times; run 1's
+    `user:// on entry: 4 pre-existing file(s) -- devtools_log.jsonl, devtools_owner.json,
+    headless_scratch.save, highscore.save` became run 2's `3 pre-existing file(s)` with
+    `headless_scratch.save` gone. (b) clean run `Mirror parity: 8 of 8 axes moved across 2
+    scenario(s)`, 83 assertions; mutated run exit 1 with `[defended] seeds_from_kills DRIFTED:
+    tools/run_sim.gd made it 8 and game/game.gd made it 6 on the same wave, the same seed and the
+    same garden` — one arm, not eight. Reverted, `git status` clean.
+  - Found: three defects, all mine, all found by the checker discipline rather than by reading.
+    `audio_license_check`'s doc→disk grammar missed every filename containing a space (all three
+    music tracks) and then matched a whole prose sentence ending in `.wav`; the printed
+    `reaching N of M` ratio is the only thing that showed either, and a denominator over sections
+    would have said nothing. Third: its fixture silenced the rule it was built to prove **three
+    separate times** by naming the absent thing in its own explanatory prose — `orphan.wav`, then
+    `chop.ogg`, then an artist tag of `Nobody` written into the line describing it as a credit
+    nobody names. Each read as a working checker with one rule quietly absent.
+  - Cheaper: nothing for (a) or (b) — both needed the engine, and the lanes were correctly
+    forbidden from running it. For the licence half, `ogginfo` over `assets/audio/` would have
+    given the same answer in one command; the tool is worth its cost only because it re-asks the
+    question on every future run.
+
+- Gap: **the parallel-safe gate set cannot compile, and a lane therefore cannot know whether
+  711 new lines parse.** Lane B wrote `test/unit/test_mirror_parity.gd` and reported its own
+  verdict as `insufficient` for exactly this: `check_all.py` exit 1 (one pre-existing
+  `bead_prose_check` finding in bead prose it was forbidden to touch), `heredoc_survey --worktree`
+  exit 1 (two hits, both pre-existing in `test_placement.gd:7008,7012`), `name_check.py` exit 0
+  with `engine index: Godot Engine v4.7.1.stable.official (1036 classes, 38 builtins)`. All three
+  green-ish, none of them a compile. `--require-compile` is the documented answer and it does not
+  work in a fresh worktree, which has no `.godot/`. The workaround was the parent compiling it
+  after the merge — which worked, but means every lane's central claim is unverified until then,
+  and the parent pass is where the cost lands.
+  - [G-153] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: let a worktree lane borrow the parent's `.godot/` read-only for
+    `--require-compile`. The parent's is already built and the flag already verifies it read-only;
+    what is missing is a way to point at a `.godot/` outside the lane's own root
+    (`--godot-dir PATH`, or honouring one from the config). That turns "no compile at all" into
+    "one `--check-only` per changed file", which is precisely the gap this lane hit.
+
+- Note: this project runs harness 0.38.0 while 0.65.0 is on the machine (27 releases behind), so
+  G-153 may already be closed upstream. Not reconciled here — that is
+  plant-tower-defense-owl6/abxv, and checking twelve gaps inside a three-lane merge is two changes
+  in one commit.
