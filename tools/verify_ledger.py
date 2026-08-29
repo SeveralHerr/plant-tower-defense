@@ -1660,7 +1660,19 @@ def cmd_stats(args, root):
 
         failed_checks = [c for c in (row.get("checks") or [])
                          if c.get("result") == "fail"]
-        runtime = row.get("runtime") or {}
+        # Guarded the same way the writer at `runtime = run.get("runtime")` above already
+        # guards, and for the same reason it gives: old rows are never rewritten, so every
+        # reader has to survive whatever shape a past session banked. Two rows on this
+        # project (sha 200bf86, 2026-08-29) recorded `runtime` as a plain string --
+        # "windowed", and a sentence about a branch the bridge cannot reach -- and this
+        # line raised `AttributeError: 'str' object has no attribute 'get'` on them,
+        # which took `stats` down over the whole 200-row history rather than over the two
+        # rows it could not read. A ledger's entire job is to be the denominator; a reader
+        # that reports nothing because one row is malformed is worse than one that reports
+        # 200 of 202.
+        runtime = row.get("runtime")
+        if not isinstance(runtime, dict):
+            runtime = {}
         if failed_checks or runtime.get("orphan_growth_exceeded"):
             runtime_findings += 1
         else:

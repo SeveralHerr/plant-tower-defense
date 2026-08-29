@@ -10751,3 +10751,75 @@ is likely to be at least as productive.
     Chrome with that same connect-hook, and fails when (a) any cycle exists among the
     nodes reaching `AudioDestinationNode`, or (b) the master peak exceeds 1.0. Both are
     cheap, deterministic, and would have caught this the day `ensure_bus` landed.
+
+
+## 2026-08-29 — vvmy: armed-plant cue, ghost lifted clear of the finger, and an empty arm
+
+- Value: **warranted** — the running game contradicted a headless test that passed, and
+  the contradiction was the actual reported defect rather than a detail.
+  - Expected: that the reported "semi-transparent plant does not appear" meant the ghost
+    was unimplemented, and that the plant-bar cue was merely weak.
+  - Got: both premises were wrong in opposite directions, and the bridge said so in two
+    reads. `node-bounds /root/Game/Entities/PlacementPreview/Ghost` → `Rect: 192, 392,
+    64x64` — the ghost ships, works, follows a simulated finger, and is drawn as exactly
+    one cell at the cell the finger is resting on. `find-nodes --class Button --where
+    name=Button_corn_cobbler --property button_pressed --property toggle_mode` →
+    `button_pressed=false toggle_mode=false` while corn WAS `selected_plant`, so the bar
+    cue was not weak, it was a dead write the engine discards without `toggle_mode`.
+  - Found: **a bug the headless suite passed and the running game failed.** The touch
+    abort ("a finger leaving the board disarms") read `_hover_cell`, on the reasoning
+    that the cue's own leftover state cannot disagree with the cue. A synthetic
+    `InputEventScreenDrag` straight off the edge set it to `(-1, -1)` and the test went
+    green. On the running game, dragging off the RIGHT edge walks onto the side panel,
+    which is a Control that answers input and swallows every remaining drag — measured
+    after that exact gesture: `_touch_index=-1  _hover_cell=(13, 8)`, column 13 of 14,
+    with `selected_plant: corn_cobbler` still armed. Fixed by asking `off_board()` of the
+    RELEASE POSITION, shared with `_update_cursor` so the two cannot drift; the test now
+    withholds the drag on purpose so it reproduces the swallowed-drag state and fails
+    against the implementation that shipped past it. Also found two suite defects:
+    `_declaration_line` matched only `const NAME ` with a trailing space, so every typed
+    `const NAME: Color = ...` returned `""` and read to its caller as "does not alias the
+    palette"; and `test_the_drag_cue_and_the_drag_commit_choose_the_same_cell` armed once
+    for 294 placements, which the new disarm turned into a sweep of nothing — caught by
+    its own `snapped > 0` vacuity guard, which is the one assertion in that test that had
+    never had a reason to fire.
+  - Cheaper: nothing for the abort bug — a synthetic event cannot know that a sibling
+    Control eats the real one, and no reading of the diff would have suggested it. The
+    two premise corrections were cheap once asked: one `node-bounds` and one `find-nodes`,
+    about 20 seconds, before any code was written. Doing that first is what stopped this
+    session from building a ghost that already existed.
+
+- Gap: **`touch drag` interpolates in screen space with no way to ask what the game
+  actually received.** The verb reported `Touch 0 dragged from current position to
+  1000,616 in 6 steps` and returned success; six `InputEventScreenDrag`s were sent and an
+  unknown number reached `_unhandled_input`, because a Control on the way consumed the
+  rest. Nothing in the reply distinguishes "delivered" from "sent". The workaround was to
+  infer it after the fact from a stale `_hover_cell` — which only worked because the game
+  happened to keep a field recording the last position it saw. `input state` exists for
+  actions and has no touch counterpart.
+  - [G-082] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: have `touch drag`/`touch press` report a `delivered` count beside the
+    sent count — the addon can hook `_input` at the viewport and tally which of the events
+    it injected were still unhandled by the time they reached the bottom of the tree. A
+    drag that reports `6 sent, 3 delivered (3 consumed by Control)` turns this session's
+    forty minutes of inference into one line of output, and it is the same question every
+    touch-UI bug in a game with a HUD over the playfield will ask.
+
+
+- Gap: **`verify_ledger.py stats` dies on the whole history when one row is malformed.**
+  `python tools/verify_ledger.py stats` →
+  `AttributeError: 'str' object has no attribute 'get'` at `verify_ledger.py:1664`. Two
+  rows (sha `200bf86`, 2026-08-29, already committed on main) recorded `runtime` as a
+  plain string — `"windowed"`, and a sentence about an unreachable branch — where every
+  other row has a dict. The writer at `:1252` already guards this exact field with
+  `isinstance(runtime, dict)` and the reader did not, so a row the tool itself would now
+  refuse to write is a row it cannot read. The whole point of the ledger is to be the
+  denominator the gaps log lacks, and it was reporting on 0 of 202 runs.
+  - [G-083] status: fixed | seen: 1 | harness: 0.38.0
+  - Improvement: done in-run — the reader now coerces a non-dict `runtime` to `{}`, the
+    same way the writer does, with the reasoning in a comment beside it. `stats` reads all
+    202 rows again. Worth upstreaming as a rule rather than a patch: **every consumer of a
+    ledger field must tolerate every shape a past writer could have banked**, because the
+    file is append-only and old rows are never rewritten. The two other dict-shaped fields
+    read without a guard (`lint`, `tests`, on the following lines) have the same latent
+    hole and were left alone only because nothing has yet written them wrong.
