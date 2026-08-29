@@ -6,6 +6,11 @@ extends RefCounted
 ## feature rather than by file, since that's how the bd issues were scoped.
 
 const GAME_SCENE := "res://game/game.tscn"
+## The selection-panel detail subsystem (plant-tower-defense-tar5, the hud.gd split).
+## Named directly here, by `res://game/hud_selection.gd`, the same way
+## `test_economy.gd` names `game/game_budget.gd` as `GameBudget` -- see
+## `test_hud_selection_producers_agree_with_hud_own_forwarding_wrappers` below for why.
+const HudSelection := preload("res://game/hud_selection.gd")
 ## Clearance the selection box must keep between its own foot and the side panel's.
 ## Non-zero on purpose: a foot resting exactly on the boundary is a button flush
 ## with the bottom edge of the screen, which no `<=` assertion will ever object to.
@@ -17636,6 +17641,42 @@ func test_the_selection_corpus_is_derived_from_the_catalogue_and_both_ladders() 
 		("the rung list is the two ladders in the game plus the no-ladder case. A third "
 			+ "ladder makes this fail, which is the cost of writing the ladders down and "
 			+ "the reason it is worth paying -- there is no static registry of them"))
+
+
+## `HudSelection` named DIRECTLY, closing `suite_reach_check.py`'s "game/hud_selection.gd
+## is a game script no test names" finding -- the same gap `test_game_budget_number_
+## prints_whole_numbers_whole_and_others_to_one_decimal` closed for `game_budget.gd`
+## (plant-tower-defense-2dlh). Every test above and below this one reaches these
+## producers only through `Hud.corn_detail(...)` and friends -- the one-line forwarding
+## wrappers `hud.gd`'s own split left behind -- which is real reach on `Hud` but says
+## nothing about the file the code actually lives in now. This calls `HudSelection`'s
+## own functions by name and checks each forwards its argument through unchanged, so a
+## wrapper that silently stopped delegating (or a future rename that left the two out of
+## step) fails here rather than nowhere.
+func test_hud_selection_producers_agree_with_hud_own_forwarding_wrappers() -> String:
+	var err: String = _T.assert_eq(HudSelection.corn_detail(12.5, 0.75, 4),
+		Hud.corn_detail(12.5, 0.75, 4),
+		"Hud.corn_detail forwards its arguments to HudSelection.corn_detail unchanged")
+	if err == "":
+		err = _T.assert_eq(HudSelection.idle_detail(), Hud.idle_detail(),
+			"Hud.idle_detail forwards to HudSelection.idle_detail with no arguments to drop")
+	if err == "":
+		err = _T.assert_eq(HudSelection.upgrade_button_text(40, "+2 dmg"),
+			Hud.upgrade_button_text(40, "+2 dmg"),
+			"Hud.upgrade_button_text forwards both arguments unchanged")
+	if err == "":
+		# selection_room_below() and selection_rows_below_label() read Hud's OWN layout
+		# consts (BAR_HEIGHT, SELECTION_BOX_Y, HEALTH_ROW_HEIGHT, SELECTION_BUTTON_HEIGHT)
+		# by name -- `Hud.CONST_NAME` from inside a `preload`-only helper with no
+		# `class_name` of its own -- so this also proves that cross-file read resolves at
+		# runtime, not just at parse time.
+		err = _T.assert_eq(HudSelection.selection_room_below(), Hud.selection_room_below(),
+			"HudSelection.selection_room_below reads Hud's own layout consts correctly")
+	if err == "":
+		err = _T.assert_eq(str(HudSelection.selection_rows_below_label()),
+			str(Hud.selection_rows_below_label()),
+			"HudSelection.selection_rows_below_label reads Hud's own layout consts correctly")
+	return err
 
 
 ## Every producer's own worst case is a line the budget actually prices.
