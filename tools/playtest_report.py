@@ -47,9 +47,15 @@ RECORD_KEYS_RE = re.compile(r"const\s+RECORD_KEYS\s*:[^=]*=\s*\[(.*?)\]", re.S)
 CONST_RE = re.compile(r'^const\s+([A-Z_][A-Z0-9_]*)\s*:=\s*&"([^"]+)"', re.M)
 ORDER_RE = re.compile(r"^const\s+ORDER\s*:[^=]*=\s*\[(.*?)\]", re.M | re.S)
 
-# The four keys that identify which run a row belongs to. Written on EVERY row by
+# The five keys that identify which run a row belongs to. Written on EVERY row by
 # `playtest.gd._collect_jsonl` so a single grepped line is readable without a join.
-RUN_KEYS = {"difficulty", "endless", "seed", "swept"}
+#
+# `policy` IS PART OF THE IDENTITY, not decoration (plant-tower-defense-i8oh). The same
+# difficulty on the same seed reaches wave 7 under `greedy` and far past it under
+# `thicken`, so two runs that differ only in policy are two different runs -- and without
+# this key they would collide into one, `cross_check` would report "two 'run' rows", and a
+# table holding both ends of the skill range would be unreadable.
+RUN_KEYS = {"difficulty", "endless", "seed", "swept", "policy"}
 
 SUMMARY_EXTRA = {"kind", "ended", "failure", "waves_played", "waves_attempted",
                  "foreign_pests", "foreign_plants"}
@@ -96,13 +102,14 @@ def catalogue_ids(path=CATALOGUE):
 
 def run_id(row):
     return (row.get("difficulty"), bool(row.get("endless")), row.get("seed"),
-            bool(row.get("swept")))
+            bool(row.get("swept")), row.get("policy"))
 
 
 def label(rid):
-    difficulty, endless, seed, swept = rid
-    return "%s/%s/%s/seed %s" % (difficulty, "endless" if endless else "campaign",
-                                 "swept" if swept else "unswept", seed)
+    difficulty, endless, seed, swept, policy = rid
+    return "%s/%s/%s/%s/seed %s" % (difficulty, policy,
+                                    "endless" if endless else "campaign",
+                                    "swept" if swept else "unswept", seed)
 
 
 def load(path, wave_keys):
@@ -287,7 +294,7 @@ def self_check():
         return 2
     good = {k: 0 for k in keys}
     good.update({"kind": "wave", "difficulty": "standard", "endless": False, "seed": 1,
-                 "swept": True, "weather": "clear", "unlocked": []})
+                 "swept": True, "policy": "greedy", "weather": "clear", "unlocked": []})
     bad = dict(good)
     bad["seeds_wasted"] = 3
     handle, path = tempfile.mkstemp(suffix=".jsonl")
@@ -346,13 +353,16 @@ def main():
         print_unlocks(waves)
 
     difficulties = sorted({str(r.get("difficulty")) for r in summaries})
+    policies = sorted({str(r.get("policy")) for r in summaries})
     modes = sorted({"endless" if r.get("endless") else "campaign" for r in summaries})
     seeds = sorted({r.get("seed") for r in summaries})
     print("")
     print("playtest_report: %d run(s) over %d wave row(s) from %s, against %d RECORD_KEYS "
-          "read from %s; %d difficulty (%s) x %d mode (%s) x %d seed(s); %d finding(s)"
+          "read from %s; %d difficulty (%s) x %d policy (%s) x %d mode (%s) x %d seed(s); "
+          "%d finding(s)"
           % (len(summaries), len(waves), args.path, len(keys), RUN_SIM,
              len(difficulties), ", ".join(difficulties),
+             len(policies), ", ".join(policies),
              len(modes), ", ".join(modes), len(seeds), len(findings)))
     if not summaries:
         print("NOTE: nothing to report -- the record holds no completed run. That is a "
@@ -366,9 +376,10 @@ def main():
           "difficulty indistinguishable from the one below it -- those are "
           "plant-tower-defense-t5yy.2 and .3, and until they exist the tables above are "
           "read by a person. Every number is a statement about the POLICY that produced "
-          "it and not about the game: the shipped `RunSim.greedy_cover` stops planting "
-          "once the road is covered, and a policy that keeps thickening reaches wave 22 "
-          "on the same seed -- so read a depth here as a lower bound, never as the "
+          "it and not about the game, which is why `policy` is part of a run's identity "
+          "here: `RunSim.greedy_cover` stops planting once the road is covered and "
+          "`RunSim.thicken_cover` keeps going, and on one seed those two reach different "
+          "waves -- so read a depth here as a statement about one policy, never as the "
           "curve. The unlock table is the wave a run was HOLDING a plant, at best one "
           "prep window after it could first have afforded it. It cannot tell a stale "
           "record from a fresh one, so re-sweep before believing a number against a "

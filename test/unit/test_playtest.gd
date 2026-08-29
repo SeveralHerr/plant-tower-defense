@@ -426,3 +426,103 @@ func test_a_disposed_run_leaves_nothing_standing_for_the_next_one() -> String:
 				+ "records over somebody else's garden is describing that garden.")
 				% [second_pests, second_plants])
 	return err
+
+
+# =============================================================================
+# THE TWO ENDS OF THE SKILL RANGE (plant-tower-defense-i8oh)
+#
+# The bead's finding is the GAP between two policies: one that stops planting the moment
+# the road is covered, and one that keeps going. Its second table -- the thickening end --
+# was measured with a driver that was never merged, so nothing in the repo could reproduce
+# it and it was recorded as an anecdote. `RunSim.thicken_cover` is that end, and these are
+# the checks that keep BOTH ends playable rather than only the one the default uses.
+# =============================================================================
+
+
+## Every policy this build carries is selectable BY NAME, and a name it does not carry is
+## refused rather than quietly played as greedy.
+##
+## The refusal is the half worth writing down. `Game.difficulty_profile` falls back to
+## standard for an unknown name and that is right, because a difficulty name arrives from a
+## SAVE. A policy name arrives from a command line, where a silent fallback writes a
+## committed baseline row LABELLED with the policy that was typed and holding the numbers
+## of the one that ran -- plausible on the one axis where plausible cannot be told from
+## right.
+func test_every_policy_is_selectable_by_name_and_an_unknown_one_is_refused() -> String:
+	var checked: int = 0
+	for name: StringName in RunSim.POLICY_NAMES:
+		var chosen: Callable = RunSim.policy_named(name)
+		var err: String = _T.assert_true(chosen.is_valid(),
+			("POLICY_NAMES names `%s` and policy_named() hands back nothing for it -- a "
+				+ "policy in the list and not in the match is one no sweep can select")
+				% name)
+		if err != "":
+			return err
+		var sim := RunSim.new()
+		err = _T.assert_eq(sim.use_policy(name), "", "use_policy(%s) took" % name)
+		if err == "":
+			err = _T.assert_eq(String(sim.policy_name), String(name),
+				("and left the LABEL agreeing with the Callable -- these two are written "
+					+ "in one call precisely so a record cannot say `%s` about a run some "
+					+ "other policy played") % name)
+		if err != "":
+			return err
+		checked += 1
+	# The denominator, and it is not `> 0`: this bead is about the interval between TWO
+	# policies, so a list that has lost one of them must not pass here in silence.
+	var err: String = _T.assert_gte(checked, 2,
+		("%d policy(s) checked -- the finding this file pins is the GAP between two of "
+			+ "them, and one policy has no gap") % checked)
+	if err != "":
+		return err
+	err = _T.assert_false(RunSim.policy_named(&"a_policy_from_a_later_build").is_valid(),
+		"an unknown policy name resolves to nothing rather than to the default")
+	if err != "":
+		return err
+	var refused := RunSim.new()
+	var reason: String = refused.use_policy(&"a_policy_from_a_later_build")
+	err = _T.assert_true(reason.begins_with("no such policy:"),
+		"and use_policy says so rather than returning \"\", got: %s" % reason)
+	if err == "":
+		# The message names what this build DOES carry, so a typo is one read away from
+		# fixed instead of one grep away.
+		err = _T.assert_true(reason.contains(String(RunSim.POLICY_THICKEN)),
+			"and the refusal names the policies this build has, got: %s" % reason)
+	if err == "":
+		err = _T.assert_eq(String(refused.policy_name), String(RunSim.POLICY_GREEDY),
+			"and a refused name leaves the label where it was rather than half-applying")
+	return err
+
+
+## The thickening policy plants past the point the greedy one stops, on the same seed.
+##
+## THE ONE PROPERTY, and deliberately not more. "thicken reaches wave 22" is a balance
+## reading and belongs in `docs/playtest-runs.jsonl` where a person reads it; what has to
+## stay true for that record to mean anything is that the two policies are two policies.
+## `best_placement(sim, only_new)` is the single boolean between them, and a refactor that
+## collapsed it would leave every sweep still running, still exiting 0, and quietly
+## measuring one policy twice.
+func test_the_thickening_policy_plants_past_the_point_greedy_stops() -> String:
+	var planted: Dictionary = {}
+	for name: StringName in [RunSim.POLICY_GREEDY, RunSim.POLICY_THICKEN]:
+		var run: Dictionary = await _play(func(sim: RunSim) -> void:
+			sim.use_policy(name))
+		var err: String = _clean(run, "policy %s" % name)
+		if err != "":
+			return err
+		var total: int = 0
+		for record: Dictionary in run["records"] as Array:
+			total += int(record[&"plants_placed"])
+		planted[name] = total
+	var greedy: int = int(planted[RunSim.POLICY_GREEDY])
+	var thick: int = int(planted[RunSim.POLICY_THICKEN])
+	var err: String = _T.assert_gt(greedy, 0,
+		"the greedy run planted something, so there is a floor to be above")
+	if err == "":
+		err = _T.assert_gt(thick, greedy,
+			("thicken planted %d and greedy planted %d over the same %d waves on the same "
+				+ "seed. Equal means the stopping rule is no longer the difference between "
+				+ "them, and every number in docs/playtest-runs.jsonl that is labelled by "
+				+ "policy is then labelling one policy twice.")
+				% [thick, greedy, SHORT_RUN])
+	return err

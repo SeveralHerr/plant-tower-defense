@@ -58,6 +58,16 @@ const OP_PLANT := &"plant"
 const OP_PACKET := &"packet"
 const OP_UPGRADE := &"upgrade"
 
+## The two ends of the skill range this file ships, by the name a caller passes.
+##
+## `tools/playtest.gd --policy NAME` resolves through `policy_named()` rather than naming
+## either of these, so a third policy added here is selectable the day it exists;
+## `POLICY_NAMES` is what a test and the flag's error message both iterate, so a policy
+## added to one and not the other fails loudly instead of being quietly unplayable.
+const POLICY_GREEDY := &"greedy"
+const POLICY_THICKEN := &"thicken"
+const POLICY_NAMES: Array[StringName] = [POLICY_GREEDY, POLICY_THICKEN]
+
 # -- configuration, set before play() ----------------------------------------
 
 var difficulty: StringName = Game.DIFFICULTY_STANDARD
@@ -75,6 +85,15 @@ var road_corners: Array[Vector2i] = []
 ## `func(sim: RunSim) -> Array`, called repeatedly between waves until it returns nothing.
 ## Left unset it is `greedy_cover`.
 var policy: Callable = Callable()
+## Which of `POLICY_NAMES` the run is playing, for the record and the summary line.
+##
+## A LABEL, and it is only trustworthy because `use_policy()` is the one thing that writes
+## it and it writes both halves at once. Every number a sweep records is a statement about
+## the policy that produced it (see `tools/playtest_report.py`'s NOT COVERED note), so a
+## committed baseline that did not say which policy played it is a table of numbers with
+## the most load-bearing column missing. A caller that sets `policy` by hand — every test
+## in `test_playtest.gd` that swaps in a one-liner — leaves this alone and writes no record.
+var policy_name: StringName = POLICY_GREEDY
 ## Whether the driver sweeps every husk the frame it can reach it. TRUE is perfect play
 ## and it is deliberately the default: `seeds_from_husks` is recorded separately, so a
 ## reader can subtract the whole of it and see the floor a player who never sweeps gets.
@@ -211,8 +230,8 @@ func play(on_host: Node) -> Array[Dictionary]:
 ## entered as a clean pass, so a caller has to be able to see the wave count it actually
 ## played beside the one it asked for. See CLAUDE.md's note on vacuity.
 func summary_line() -> String:
-	return "Run: %d wave(s) played of %d attempted | %s | difficulty=%s endless=%s seed=%d | lives %d/%d | seeds earned %d%s" % [
-		waves_played, wave_ceiling, ended, difficulty, str(endless), roll_seed,
+	return "Run: %d wave(s) played of %d attempted | %s | difficulty=%s policy=%s endless=%s seed=%d | lives %d/%d | seeds earned %d%s" % [
+		waves_played, wave_ceiling, ended, difficulty, policy_name, str(endless), roll_seed,
 		lives, starting_lives, (0 if bank == null else bank.seeds_earned_total),
 		("" if failure == "" else " | FAILED: %s" % failure)]
 
@@ -663,26 +682,7 @@ func cover_of(cell: Vector2i, reach: float) -> Array[Vector2i]:
 ## somebody remembers to add it to a list in here.
 static func greedy_cover(sim: RunSim) -> Array:
 	var covered: Dictionary = sim.covered_road_cells()
-	var best: Dictionary = {}
-	var best_gain: float = 0.0
-	for id: StringName in PlantCatalog.ids():
-		if not sim.bank.can_afford(id):
-			continue
-		var reach: float = Game.engagement_reach(id)
-		if reach <= 0.0:
-			continue
-		var price: int = maxi(1, sim.bank.placement_cost(id))
-		for cell: Vector2i in sim.open_cells(id):
-			var gain: int = 0
-			for road: Vector2i in sim.cover_of(cell, reach):
-				if not covered.has(road):
-					gain += 1
-			if gain <= 0:
-				continue
-			var per_seed: float = float(gain) / float(price)
-			if per_seed > best_gain:
-				best_gain = per_seed
-				best = {"op": OP_PLANT, "id": id, "cell": cell}
+	var best: Dictionary = best_placement(sim, true)
 	if not best.is_empty():
 		return [best]
 
@@ -705,6 +705,114 @@ static func greedy_cover(sim: RunSim) -> Array:
 	if grow != Vector2i(-1, -1):
 		return [{"op": OP_UPGRADE, "cell": grow}]
 	return []
+
+
+## The single best plant-and-cell this purse can buy, scored per seed, or {} for none.
+##
+## THE BOOLEAN IS THE WHOLE DIFFERENCE BETWEEN THE TWO POLICIES SHIPPED HERE, which is why
+## it is one function taking a flag rather than two loops that would drift
+## (plant-tower-defense-i8oh). `only_new` scores a placement on the road cells NOTHING
+## reaches yet — the greedy cover, and the clause whose `gain <= 0` is why greedy stops
+## planting the moment the road is covered. `only_new = false` scores it on the road it
+## reaches AT ALL, so a lane that is already covered once is still worth covering twice.
+##
+## Everything else is identical and stays DERIVED: candidates from `open_cells` (which
+## reads `board.is_buildable_for`), prices from `SeedBank.placement_cost`, scores from the
+## real coverage map. A plant added to `PlantCatalog` is played by both policies the day it
+## exists.
+##
+## STRICTLY GREATER, over `PlantCatalog.ids()` and `open_cells` in their fixed orders: two
+## runs on one seed have to build the same garden, and a `>=` would make the winner depend
+## on which of two equally-scored placements happened to be visited last.
+static func best_placement(sim: RunSim, only_new: bool) -> Dictionary:
+	var covered: Dictionary = sim.covered_road_cells() if only_new else {}
+	var best: Dictionary = {}
+	var best_gain: float = 0.0
+	for id: StringName in PlantCatalog.ids():
+		if not sim.bank.can_afford(id):
+			continue
+		var reach: float = Game.engagement_reach(id)
+		if reach <= 0.0:
+			continue
+		var price: int = maxi(1, sim.bank.placement_cost(id))
+		for cell: Vector2i in sim.open_cells(id):
+			var gain: int = 0
+			for road: Vector2i in sim.cover_of(cell, reach):
+				if not covered.has(road):
+					gain += 1
+			if gain <= 0:
+				continue
+			var per_seed: float = float(gain) / float(price)
+			if per_seed > best_gain:
+				best_gain = per_seed
+				best = {"op": OP_PLANT, "id": id, "cell": cell}
+	return best
+
+
+## The OTHER end of the skill range: `greedy_cover` with its stopping rule replaced.
+##
+## `greedy_cover` stops planting the moment `covered.size()` reaches the road, because from
+## there every remaining placement scores `gain <= 0` and `best_placement(sim, true)` comes
+## back empty. From wave 3 on it holds at six plants, replaces what dies and banks the rest.
+## THIS policy, at exactly that moment — when no placement adds NEW coverage — plants for
+## TOTAL coverage instead of stopping, which thickens the lane rather than leaving every
+## cell of road singly covered.
+##
+## THREE LINES, and they are the whole policy. The first is greedy's own first clause,
+## unchanged and reached through the same function greedy reaches it through. The second is
+## the replacement stopping rule. The third hands the rest of the decision — income,
+## packets, upgrades — back to `greedy_cover` unmodified, which re-asks its first clause
+## (empty, by the line above) and falls through to its remaining three. So the ONLY
+## behavioural difference between the two policies is `only_new`, and a run that separates
+## them separated on that.
+##
+## WHY IT EXISTS (plant-tower-defense-i8oh). The finding that bead records is the GAP
+## between these two policies — overrun a third of the way in at one end, a far deeper run
+## at the other — and a gap whose far end nothing in the repo can reproduce is an anecdote
+## rather than a measurement. Both ends now sweep from `tools/playtest.gd --policy`, and
+## `docs/playtest-runs.jsonl` carries both.
+##
+## NOT A RECOMMENDATION. Neither policy is tuned and neither is a claim about how a person
+## plays; both are machines, and the point is the size of the interval between them.
+static func thicken_cover(sim: RunSim) -> Array:
+	var best: Dictionary = best_placement(sim, true)
+	if best.is_empty():
+		best = best_placement(sim, false)
+	if not best.is_empty():
+		return [best]
+	return greedy_cover(sim)
+
+
+## Selects a named policy AND the label that goes into the record, in one call so the two
+## cannot disagree. "" means it took; anything else is the reason it did not, naming every
+## policy this build carries rather than only the one that was refused.
+func use_policy(name: StringName) -> String:
+	var chosen: Callable = policy_named(name)
+	if not chosen.is_valid():
+		var known: PackedStringArray = PackedStringArray()
+		for known_name: StringName in POLICY_NAMES:
+			known.append(String(known_name))
+		return "no such policy: %s (this build carries %s)" % [name, ", ".join(known)]
+	policy = chosen
+	policy_name = name
+	return ""
+
+
+## The policy `name` selects, or an invalid Callable for a name this build does not carry.
+##
+## An INVALID CALLABLE RATHER THAN A FALLBACK, which is the opposite of
+## `Game.difficulty_profile`'s rule and deliberately so. A difficulty name arrives from a
+## SAVE, where the honest answer to "written by a later build" is the designed game; a
+## policy name arrives from a command line a person just typed, where silently measuring a
+## policy they did not ask for produces a plausible number on the one axis where plausible
+## is indistinguishable from right. `tools/playtest.gd` refuses the name and says so.
+static func policy_named(name: StringName) -> Callable:
+	match name:
+		POLICY_GREEDY:
+			return func(sim: RunSim) -> Array: return greedy_cover(sim)
+		POLICY_THICKEN:
+			return func(sim: RunSim) -> Array: return thicken_cover(sim)
+	return Callable()
 
 
 ## Every cell `id` could legally go in right now, in a fixed scan order so two runs on one
