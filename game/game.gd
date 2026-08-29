@@ -66,10 +66,21 @@ const PREP_SECONDS: float = 18.0
 ## already takes a ratio against standard, and it is the same ratio three times over:
 ## gentle has 15 beds of 10 (1.5), 26 seconds of 18 (1.44) and 40 opening seeds of 25 (1.6);
 ## harsh has 5 of 10 (0.5), 9 of 18 (0.5) and 15 of 25 (0.6). So the yield is 1.5 and 0.5 —
-## the ratio those three already agreed on — and the blurbs now say the same sentence the
-## table does. Picking a fourth independent number would have made the yield the one axis
-## with no reason behind it, and `test_the_seed_yield_takes_the_ratio_the_other_axes_take`
-## in `test/unit/test_playtest.gd` is the gate that keeps it derived.
+## the ratio those three already agreed on. Picking a fourth independent number would have
+## made the yield the one axis with no reason behind it, and
+## `test_the_seed_yield_takes_the_ratio_the_other_axes_take` in `test/unit/test_playtest.gd`
+## is the gate that keeps it derived.
+##
+## NO `blurb` KEY (plant-tower-defense-h5s3). Three per-profile sentences lived here once,
+## and nothing ever read them — the title screen's picker (`TitleScreen.difficulty_label`)
+## reads only `label`, and the menu has no free pixel to add a second line to: every
+## header row is already at its floor (see the layout note above `TitleScreen.BUTTON_TOP`)
+## and the difficulty button's own half-band cell cannot fit more than the profile's bare
+## name. A key with no reader is the exact failure mode plant-tower-defense-i8oh's own
+## WHAT TO WATCH named, and this table had already grown one. Deleted rather than wired up,
+## because wiring it up here would mean restructuring a title screen that has no room for
+## it; `test_no_difficulty_profile_carries_an_unread_key` in `test/unit/test_selftest.gd`
+## pins the table to exactly the keys something reads.
 ##
 ## A difficulty that changes only the room is still a real difficulty — on `gentle` a player
 ## who loses four beds to a wave they misread is still in the run — but it is not one any
@@ -88,7 +99,6 @@ const DIFFICULTY_ORDER: Array[StringName] = [
 const DIFFICULTIES: Dictionary = {
 	DIFFICULTY_GENTLE: {
 		"label": "Gentle",
-		"blurb": "Half again the beds, the time and the harvest. The same waves.",
 		"lives": 15,
 		"prep_seconds": 26.0,
 		"starting_seeds": 40,
@@ -96,7 +106,6 @@ const DIFFICULTIES: Dictionary = {
 	},
 	DIFFICULTY_STANDARD: {
 		"label": "Standard",
-		"blurb": "The garden as it was designed.",
 		"lives": LIVES,
 		"prep_seconds": PREP_SECONDS,
 		"starting_seeds": SeedBank.STARTING_SEEDS,
@@ -104,7 +113,6 @@ const DIFFICULTIES: Dictionary = {
 	},
 	DIFFICULTY_HARSH: {
 		"label": "Harsh",
-		"blurb": "Half the beds, half the thinking time, half the harvest.",
 		"lives": 5,
 		"prep_seconds": 9.0,
 		"starting_seeds": 15,

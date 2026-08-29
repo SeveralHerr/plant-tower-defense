@@ -507,6 +507,11 @@ func _build_text() -> void:
 	var subtitle := Label.new()
 	subtitle.name = "SubtitleLabel"
 	subtitle.text = "Plants fight bugs. One free plant to start."
+	# SAVE STATUS OVERRIDES THE TUTORIAL LINE, not adds to it (plant-tower-defense-rfgk).
+	# See save_status_text() for why this is the line that gives way.
+	var status_text: String = save_status_text(RunConfig.load_status)
+	if status_text != "":
+		subtitle.text = status_text
 	subtitle.position = Vector2(0, SUBTITLE_Y)
 	subtitle.size = Vector2(width, 26)
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -544,6 +549,48 @@ func _build_text() -> void:
 	hint.add_theme_font_size_override("font_size", 14)
 	hint.add_theme_color_override("font_color", Color(GardenTheme.PAPER, 0.55))
 	add_child(hint)
+
+
+## THE SAVE-STATUS LINE (plant-tower-defense-rfgk).
+##
+## `RunConfig.load_status` takes five values, and two of them are things that happened
+## TO the player's save that this screen used to say nothing about: "refused" (the file
+## was there and could not be trusted — truncated, or from a newer build, which
+## `test_a_save_from_a_newer_build_is_refused_not_reinterpreted` in `test_economy.gd`
+## pins as deliberate rather than a bug) and "recovered" (an interrupted `_save` left a
+## complete temp file with no save beside it, and the game adopted it). Both leave this
+## screen's own numbers looking wrong for no visible reason — zeros, or an older pair of
+## scores — and the machinery that already knows exactly what happened said nothing.
+## `Hud.message_corpus()` is the wrong home for this: that is the in-run message row,
+## and this is an event about the title screen the player has not started a run from yet.
+##
+## OVERRIDES THE TUTORIAL LINE rather than adding a row, because there is no free pixel
+## to add one to — every header row is already at its floor (see the layout note above
+## `BUTTON_TOP`; `SCORE_Y`'s own bottom edge sits 2px short of it as it is). A player
+## living through the one event this line exists for needs it more than the standing
+## "Plants fight bugs" reminder does.
+##
+## WORDING follows cycle 168's refusal rule — say what happened, not just the fact.
+## "recovered" has a genuinely reassuring answer: the scores kept are the ones from
+## right before the interruption, not stale ones. "refused" is honest instead: the safe
+## fact a player can act on is that their old file was left alone rather than overwritten
+## (`_load` quarantines it; the next `_save` moves it aside rather than replacing it),
+## which is what "from a newer version" tells them without a promise this build cannot
+## keep. Empty for every other status — "", "absent", "loaded" and "migrated" are all a
+## title screen with nothing to report about the load, which is the fallback this had
+## before this bead and keeps having for those four.
+##
+## Pure, matching every other line this screen renders (`high_score_text_at`,
+## `difficulty_label`), so both statuses are assertable without building the screen and
+## a test can reach the branch by constructing the status rather than only the string.
+static func save_status_text(status: String) -> String:
+	match status:
+		"refused":
+			return "Your save couldn't be read — it may be from a newer version of the game, and it hasn't been touched."
+		"recovered":
+			return "Your last save was interrupted — these are the scores from just before it."
+		_:
+			return ""
 
 
 ## Zero is not a score, it is the absence of one, and "Best garden: 0 seeds grown"

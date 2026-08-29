@@ -1203,6 +1203,118 @@ func test_the_title_record_line_names_the_profile_it_is_reporting() -> String:
 	return err
 
 
+## Every key in `Game.DIFFICULTIES` is read by something (plant-tower-defense-h5s3).
+##
+## `blurb` sat in every profile and nothing ever read it -- the picker at
+## `TitleScreen.difficulty_label` reads only `label`, and this screen has no free pixel to
+## show a second line on (every header row is already at its floor; see the layout note
+## above `TitleScreen.BUTTON_TOP`). Deleting the key was the cheaper of the two acceptance
+## paths the bead offered, and this is the gate that keeps a fourth one from arriving the
+## same way: the READ SET below is exhaustive by construction, not a copy of the table --
+## grepping the whole set is what stands in for "and nothing reads it".
+##
+## `label` is a String read by `TitleScreen.difficulty_label` and `start_button_text`;
+## `lives`, `prep_seconds`, `starting_seeds` and `seed_yield` are read by `Game._ready()`
+## seeding a run from the chosen profile. Extending this set is the fix the day a new axis
+## is added with nowhere reading it yet -- it should fail here first.
+func test_no_difficulty_profile_carries_an_unread_key() -> String:
+	var read_keys: Dictionary = {
+		"label": true,
+		"lives": true,
+		"prep_seconds": true,
+		"starting_seeds": true,
+		"seed_yield": true,
+	}
+	var checked: int = 0
+	var err: String = ""
+	for id: StringName in Game.DIFFICULTY_ORDER:
+		var profile: Dictionary = Game.DIFFICULTIES[id]
+		for key: Variant in profile:
+			err = _T.assert_true(read_keys.has(key),
+				("%s carries the key '%s', which nothing in the read set reads -- this is "
+					+ "the exact failure mode plant-tower-defense-h5s3 fixed for 'blurb'; "
+					+ "either wire it up or delete it") % [id, key])
+			if err != "":
+				return err
+			checked += 1
+	# The denominator: five profiles-worth of keys, or the loop above passed over nothing.
+	return _T.assert_eq(checked, Game.DIFFICULTY_ORDER.size() * read_keys.size(),
+		("every key on every profile was checked (%d of %d) -- fewer means a profile is "
+			+ "missing an axis its neighbours have") % [checked, Game.DIFFICULTY_ORDER.size() * read_keys.size()])
+
+
+# =============================================================================
+# THE SAVE-STATUS LINE (plant-tower-defense-rfgk). See TitleScreen.save_status_text.
+# =============================================================================
+
+
+## The wording itself, pure -- both the two statuses that say something and the four
+## that stay silent, matching the fallback `_build_text()` already had before this bead.
+func test_save_status_text_says_what_happened_for_a_refused_or_recovered_load() -> String:
+	var err: String = _T.assert_eq(TitleScreen.save_status_text("refused"),
+		("Your save couldn't be read — it may be from a newer version of the game, and "
+			+ "it hasn't been touched."),
+		"the refused line names what happened and that the old file is safe")
+	if err == "":
+		err = _T.assert_eq(TitleScreen.save_status_text("recovered"),
+			"Your last save was interrupted — these are the scores from just before it.",
+			"the recovered line reassures rather than just stating the fact")
+	if err == "":
+		# "absent" and "loaded" are ordinary; "migrated" is the one the bead itself
+		# called "arguably nothing to say" and this table agrees. "" is `_load` not
+		# having run yet, which a title screen never observes.
+		for status: String in ["", "absent", "loaded", "migrated"]:
+			err = _T.assert_eq(TitleScreen.save_status_text(status), "",
+				"%s has nothing to report on the title screen" % status)
+			if err != "":
+				break
+	return err
+
+
+## Reaches the branch, not just the string (the acceptance's own requirement): builds
+## the real scene with `RunConfig.load_status` set to each status -- the field `_load`
+## actually writes -- rather than asserting `save_status_text()` in isolation, which a
+## `_build_text()` that forgot to call it would still pass. Also the regression this
+## bead must not cause: an ordinary load keeps the tutorial line.
+func test_a_refused_or_recovered_load_is_visible_on_the_title_screen() -> String:
+	var stashed_status: String = RunConfig.load_status
+	var err: String = ""
+	var checked: int = 0
+	for status: String in ["refused", "recovered", "loaded"]:
+		RunConfig.load_status = status
+		var title := await _T.instantiate_ui("res://game/title.tscn", Vector2i(1152, 648)) as TitleScreen
+		var subtitle: Label = title.get_node_or_null("SubtitleLabel") as Label
+		err = _T.assert_true(subtitle != null, "the title screen has its subtitle line")
+		if err == "":
+			var expect: String = TitleScreen.save_status_text(status)
+			if expect == "":
+				expect = "Plants fight bugs. One free plant to start."
+			err = _T.assert_eq(subtitle.text, expect,
+				("a %s load shows the table's own wording, not a restatement of it -- got "
+					+ "%s") % [status, subtitle.text])
+		if err == "" and status != "loaded":
+			# The string on screen equals the string in the table -- the acceptance's
+			# other half. get_minimum_size() would do here since SubtitleLabel is never
+			# clipped, but text_width is what every other fit check in this suite goes
+			# through, so a Label that later picks up clip_text does not silently stop
+			# being measured.
+			var budget: float = float(TitleScreen.viewport_width())
+			var wide: float = _T.text_width(subtitle)
+			err = _T.assert_true(wide <= budget,
+				"the %s line fits the title screen width: %.0fpx of %.0f -- %s"
+					% [status, wide, budget, subtitle.text])
+		_T.free_ui(title)
+		checked += 1
+		if err != "":
+			break
+	RunConfig.load_status = stashed_status
+	if err != "":
+		return err
+	# The denominator: three statuses, or an early break above passed silently.
+	return _T.assert_eq(checked, 3,
+		"all three statuses were driven through a real screen (%d of 3)" % checked)
+
+
 func test_title_high_score_line_never_reads_as_a_zero_record() -> String:
 	## "Best endless run: 0 seeds grown" on a fresh install reads as a bug, not
 	## as an empty record.
