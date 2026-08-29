@@ -52,8 +52,8 @@ extends RefCounted
 ##   - `test_full_every_board_x_difficulty_clears_with_a_thickened_garden` plays the REAL,
 ##     complete WINNABLE matrix -- every board x every difficulty, full campaigns -- and is
 ##     skipped by default, printing exactly what it skipped and how to run it for real:
-##       PowerShell:  $env:PTD_PLAYTEST_FULL_SWEEP=1; python tools/run_tests.py -- --filter playtest_sweep_full
-##       bash:        PTD_PLAYTEST_FULL_SWEEP=1 python tools/run_tests.py -- --filter playtest_sweep_full
+##       PowerShell:  $env:PTD_PLAYTEST_FULL_SWEEP=1; python tools/run_tests.py -- --filter test_full
+##       bash:        PTD_PLAYTEST_FULL_SWEEP=1 python tools/run_tests.py -- --filter test_full
 ##     Measured wall-clock for the real full run: see the commit/report that added this file.
 ##
 ## EVERY RUN ASSERTS `foreign_pests` AND `foreign_plants` ARE ZERO, inheriting `RunSim`'s own
@@ -433,7 +433,7 @@ func test_full_every_board_x_difficulty_clears_with_a_thickened_garden() -> Stri
 		print(("  SKIPPED by default: the full WINNABLE matrix plays every corpus board x "
 			+ "every difficulty to a complete campaign with the thickened garden, and one "
 			+ "of those alone measured 20-60+ seconds -- set %s=1 (or run with "
-			+ "--filter playtest_sweep_full) to actually play it.") % FULL_ENV)
+			+ "--filter test_full) to actually play it.") % FULL_ENV)
 		return _T.assert_true(true,
 			"full WINNABLE sweep intentionally skipped outside an explicit opt-in")
 
