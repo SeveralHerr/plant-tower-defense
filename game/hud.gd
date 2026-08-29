@@ -452,6 +452,13 @@ const PREP_BAR_URGENT_SECONDS: float = 2.0
 const PREP_BAR_PULSE_SECONDS: float = 0.24
 const PREP_BAR_PULSE_DIM: float = 0.45
 
+## Half a pulse cycle for the next-wave button once it becomes pressable
+## (plant-tower-defense-jlsc). Slower than the prep strip's urgency pulse --
+## this one is an invitation to click, not a countdown alarm, so it reads as
+## a calm breathing glow rather than a flashing warning.
+const NEXT_WAVE_PULSE_SECONDS: float = 0.5
+const NEXT_WAVE_PULSE_DIM: float = 0.8
+
 ## How far this wave's stopping depth has to move off the run's average before
 ## the prep line calls it a change rather than noise.
 ##
@@ -1215,6 +1222,11 @@ var _prep_bar_pulse: Tween = null
 ## step -- the same reason _ease_threat_tint below gates on the target
 ## actually changing instead of re-tweening to the same colour every call.
 var _prep_bar_urgent: bool = false
+var _next_wave_pulse: Tween = null
+## Edge-detected the same way _prep_bar_urgent is, for the same reason: refresh()
+## runs every frame the button is enabled, and re-tweening to the same target
+## every one of those frames would never let a cycle advance past its first step.
+var _next_wave_pulse_active: bool = false
 var _threat_tween: Tween = null
 var _threat_tint_target: Color = PAPER
 
@@ -1947,6 +1959,27 @@ func _set_prep_bar_urgent(urgent: bool) -> void:
 	_prep_bar_pulse.tween_property(_prep_bar, "modulate", Color.WHITE, PREP_BAR_PULSE_SECONDS)
 
 
+## Starts or stops the next-wave button's pressable pulse (plant-tower-defense-jlsc),
+## edge-detected the same way _set_prep_bar_urgent is and for the same reason: a
+## refresh() every frame the button stays enabled must not restart the tween on
+## every one of those frames.
+func _set_next_wave_pulse_active(active: bool) -> void:
+	if active == _next_wave_pulse_active:
+		return
+	_next_wave_pulse_active = active
+	if _next_wave_pulse != null and _next_wave_pulse.is_valid():
+		_next_wave_pulse.kill()
+	# Reset first, gate second: a wave that goes live mid-pulse (or a headless
+	# run that never had a Tween) must not freeze the button dim.
+	_next_wave_button.modulate = Color.WHITE
+	if not active or not GardenTheme.animations_enabled():
+		return
+	_next_wave_pulse = create_tween().set_loops()
+	_next_wave_pulse.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_next_wave_pulse.tween_property(_next_wave_button, "modulate", Color(1, 1, 1, NEXT_WAVE_PULSE_DIM), NEXT_WAVE_PULSE_SECONDS)
+	_next_wave_pulse.tween_property(_next_wave_button, "modulate", Color.WHITE, NEXT_WAVE_PULSE_SECONDS)
+
+
 ## How the plant bar arranges `count` plants: one column while they still clear
 ## the 40px touch minimum, two once they do not.
 ##
@@ -2486,7 +2519,9 @@ func refresh(state: Dictionary) -> void:
 		var packet := _packet_buttons.get(tier) as Button
 		if packet != null:
 			_refresh_packet_button(packet, bank, tier)
-	_next_wave_button.disabled = not bool(state["can_start_wave"])
+	var can_start_wave: bool = bool(state["can_start_wave"])
+	_next_wave_button.disabled = not can_start_wave
+	_set_next_wave_pulse_active(can_start_wave)
 	# Rendered from state like every other readout — the HUD keeps no second copy
 	# of the speed, so the button cannot disagree with the engine or read 1x
 	# behind a pause card that is holding the clock.

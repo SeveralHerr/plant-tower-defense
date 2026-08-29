@@ -4503,6 +4503,38 @@ func test_the_prep_strip_pulses_in_its_final_seconds() -> String:
 	return err
 
 
+## Game juice (plant-tower-defense-jlsc): the button looked identical whether it
+## was clickable or not, apart from the greyed-out disabled style -- a player
+## between waves had no cue that clicking is now the thing to do. Pulses it the
+## moment it becomes pressable, the same edge-detected shape
+## test_the_prep_strip_pulses_in_its_final_seconds already proved above.
+func test_the_next_wave_button_pulses_once_it_is_pressable() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	await _pump(game)
+	var button: Button = game.hud.get_node("Root/TopBar/StatsRow/NextWaveButton") as Button
+	var err: String = _T.assert_false(button.disabled, "pressable at the start of a run")
+	if err == "":
+		err = _T.assert_true(game.hud._next_wave_pulse_active, "so the pulse flag is armed")
+	if err == "":
+		err = _T.assert_true(button.modulate.is_equal_approx(Color.WHITE),
+			"headless never pumps the tween, so the button starts fully opaque")
+	if err == "":
+		game._wave_live = true
+		game._refresh()
+		err = _T.assert_true(button.disabled, "and disables while the wave is live")
+	if err == "":
+		err = _T.assert_false(game.hud._next_wave_pulse_active, "clearing the pulse on the same edge")
+	if err == "":
+		err = _T.assert_true(button.modulate.is_equal_approx(Color.WHITE),
+			"and leaves it at full opacity, not wherever the pulse left it")
+	if err == "":
+		game._wave_live = false
+		game._refresh()
+		err = _T.assert_true(game.hud._next_wave_pulse_active, "and re-arms once pressable again")
+	_T.free_ui(game)
+	return err
+
+
 func test_the_prep_strip_wears_the_next_waves_threat_not_the_last_ones() -> String:
 	var game := await _T.instantiate_scene(GAME_SCENE) as Game
 	var bar: ColorRect = game.hud.get_node_or_null("Root/TopBar/PrepBar") as ColorRect
