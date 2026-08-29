@@ -70,14 +70,18 @@ const MUTATION_CHANCE_MAX: float = 0.85
 ## **This is no longer an endless-only trait, and that is the one behaviour change the
 ## campaign's growth to 22 waves carries that is not a new row in the table.** It sat at
 ## 20 while the table ended at 16, so a pair could only ever be met four waves into an
-## endless run; waves 20, 21 and 22 are campaign waves now, so a player who never touches
-## endless will meet one. Deliberate rather than incidental — it is what makes the last
-## three campaign waves ask a question the first nineteen do not, and it costs no road
-## budget and no health to ask it. The frequency is unchanged and small: campaign
-## mutation chance is flat at MUTATION_CHANCE, so 0.4 * 0.08 = 3.2% of pests, and the
-## roll only fires on a pest that already mutated, so a 36-pest wave averages about one.
+## endless run; waves 20, 21 and 22 were campaign waves at that point, so a player who
+## never touches endless would meet one. Deliberate rather than incidental — it is what
+## made the last three campaign waves ask a question the earlier ones do not, and it
+## costs no road budget and no health to ask it. plant-tower-defense-vyov moved the
+## finale from 22 to 26 (four new rows, 23-26); this constant moved with it, 20->24, to
+## keep the SAME relationship — the last three campaign waves (now 24, 25, 26) carry the
+## pair roll, not a fixed wave number that would otherwise land mid-table as the campaign
+## grows again. The frequency is unchanged and small: campaign mutation chance is flat at
+## MUTATION_CHANCE, so 0.4 * 0.08 = 3.2% of pests, and the roll only fires on a pest that
+## already mutated, so a 36-pest wave averages about one.
 ## Unplaytested at the time of writing — see the bead's note about -t52o.
-const SECOND_MUTATION_START_WAVE: int = 20
+const SECOND_MUTATION_START_WAVE: int = 24
 const SECOND_MUTATION_CHANCE: float = 0.08
 
 ## Count, gap and mutation chance all climb past the fixed table, but the pest
@@ -132,13 +136,15 @@ const ENDLESS_SPEED_MAX: float = 1.6
 ##     shape a second act wants. Compounding puts the same +3% on every wave.
 ##
 ## WHAT 0.03 BUYS, priced offline against _raw_threat: the finale's pests are
-## x1.469, the back half's smallest step goes +2.2% -> +5.2% (wave 20) and its
-## average +6.7% -> +9.9%, and no step anywhere in the campaign exceeds +17.0%
-## (wave 12, the first queen) — so this introduces no new cliff, and wave 8's
-## +43.3% is still comfortably the largest step in the game. Against a level-1
-## Corn Cobbler (1.0 damage a kernel) an aphid costs 3 kernels through wave 9,
-## 4 from wave 10 and 5 from wave 19, which is the bead in one sentence: the
-## swarm outgrows the plant the player starts with.
+## x1.6528 (x1.469 before plant-tower-defense-vyov's coda moved the finale from
+## wave 22 to wave 26 -- four more compounding +3% steps), the back half's
+## smallest step goes +2.2% -> +5.2% (wave 20) and its average +6.7% -> +9.9%,
+## and no step anywhere in the campaign exceeds +17.0% (wave 12, the first
+## queen) — so this introduces no new cliff, and wave 8's +43.3% is still
+## comfortably the largest step in the game. Against a level-1 Corn Cobbler
+## (1.0 damage a kernel) an aphid costs 3 kernels through wave 9, 4 from wave
+## 10 and 5 from wave 19, which is the bead in one sentence: the swarm outgrows
+## the plant the player starts with.
 ##
 ## **EVERY NUMBER IN THAT PARAGRAPH WAS WRONG FOR ONE CYCLE AND NOTHING SAID SO
 ## (plant-tower-defense-8v43).** It was written when this constant was 0.04 and
@@ -155,9 +161,14 @@ const ENDLESS_SPEED_MAX: float = 1.6
 ##
 ## WHAT IT COSTS. ENDLESS_HEALTH_MAX is an absolute ceiling on how tough a pest
 ## may ever get, not a budget belonging to endless, and the campaign now spends
-## part of it: endless health reaches the cap at wave 40 instead of wave 56.
-## Speed still pins last, at wave 62, so anything that searches for "the first
-## wave past which nothing per-pest is moving" finds the same wave it did.
+## part of it: endless health reaches the cap at wave 40 instead of wave 56
+## (unmoved by plant-tower-defense-vyov's coda: the campaign multiplier grew
+## enough that fewer endless steps are needed on top of it, landing on the same
+## wave by coincidence, not by construction — see the coda's own comment below).
+## Speed still pins last, now at wave 66 (62 before the coda -- speed's own
+## formula never reads the campaign ramp, so it moved wave-for-wave with
+## WAVES.size()), so anything that searches for "the first wave past which
+## nothing per-pest is moving" finds that wave exactly.
 ##
 ## NOT playtested. Every number above is an offline model of pure functions.
 ## Whether wave 18 is now hard rather than merely long is unknown until someone
@@ -786,10 +797,12 @@ const WAVES: Array[Array] = [
 	# seam bound (ENDLESS_BEETLE_BASE has the derivation) and appending after it
 	# makes a NEW row the finale -- which then has to fit under that same bound
 	# itself. This time the ask ("new waves") was answered by spending part of
-	# that headroom instead of banking it again: the four rows below run 418,
-	# 414, 420, 424 points of base health -- climbing to 424 overall, 6 of the
-	# 18.7 available, comfortably inside the bound with 12.7 points still
-	# unspent for whoever grows this table next. ENDLESS_BEETLE_BASE,
+	# that headroom instead of banking it again: the four rows below run 409,
+	# 414, 406, 424 points of base health (23 and 25 are LOWER than the old
+	# finale's 418 -- see the boss-invariant paragraph below for why, and the
+	# ramp paragraph for why threat_for still rises anyway) -- climbing to 424
+	# overall, 6 of the 18.7 available, comfortably inside the bound with 12.7
+	# points still unspent for whoever grows this table next. ENDLESS_BEETLE_BASE,
 	# ENDLESS_BEETLE_STEP and the two road shares are all unchanged -- the
 	# first endless wave is still 402 points of base health, carried past the
 	# new finale's 424 by the same endless-scale arithmetic the derivation at
@@ -800,13 +813,15 @@ const WAVES: Array[Array] = [
 	# health_scale_for reads WAVES.size() to find where the campaign ends, so
 	# these four rows automatically pick up four more compounding +3% steps
 	# (health_scale_for(26) is 1.03^17 = 1.6528, against the old finale's
-	# 1.03^13 = 1.4685) with no code changing here. That is why the table's own
-	# "points of base health" barely grows: threat_for rises 3.00%, 2.01%,
-	# 4.49% and 3.98% wave over wave into the new finale and 2.98% again
-	# across the seam into endless -- below the +2.0%-to-+13.6% band the
-	# ORIGINAL second act sits in (SECOND_ACT_ORIGINAL_END_WAVE explains why
-	# that specific floor could never survive this budget), but still asserted
-	# STRICTLY RISING out to wave 300 by
+	# 1.03^13 = 1.4685) with no code changing here. That is what lets 23 and 25
+	# UNDER-price the row before them in raw points and still have threat_for
+	# rise: the ramp alone is worth +3% a wave, so any points drop shallower
+	# than -2.9% still nets a rise. Measured, not assumed: threat_for moves
+	# +0.78%, +4.26%, +1.01% and +7.56% wave over wave into the new finale and
+	# +3.00% again across the seam into endless -- below the +2.0%-to-+13.6%
+	# band the ORIGINAL second act sits in (SECOND_ACT_ORIGINAL_END_WAVE
+	# explains why that specific floor could never survive this budget), but
+	# still asserted STRICTLY RISING out to wave 300 by
 	# test_the_second_act_never_lets_the_threat_curve_fall (test_combat.gd),
 	# not eyeballed.
 	#
@@ -817,27 +832,33 @@ const WAVES: Array[Array] = [
 	# fuller than the finale, ties allowed": that was always the true half of
 	# the claim.
 	#
-	# ONE AXIS EACH, reprising the two specialists the run-up introduced rather
-	# than adding a third, every row described as a swap against the old
-	# finale's own shape (2 queens, 22 aphids, 12 beetles = 418), and every one
-	# of the three landing under the 40-pest ceiling with room to spare so the
-	# per-species Shield Bug and Nurse Beetle sweeps in test_combat.gd (which
-	# still require STRICT headroom on every row they name) stay true:
-	#   23  THE NURSE, ALONE, at finale scale. -3 beetles +1 nurse (48 out, 48
-	#       in, so this row still prices at exactly 418) -- the same net-zero
-	#       swap waves 17 and 19 use, now under two queens instead of a plain
-	#       column. 34 pests, peak 38 of 40;
-	#   24  THE SHIELD BUG, ALONE, at finale scale. -4 aphids, -2 beetles,
-	#       +4 shieldbugs (12+32 out, 40 in, -4 points) -- the same swap waves
-	#       15 and 21 use, trimmed further so this row does not also tie the
-	#       ceiling. 34 pests, peak 38 of 40;
-	#   25  BOTH TOGETHER. The first campaign wave to carry a Nurse and a
-	#       Shield Bug in the same schedule -- -2 aphids, -5 beetles, +1 nurse,
-	#       +4 shieldbugs against the finale (6+80 out, 48+40 in, +2 points), so
-	#       the garden has to out-heal an aura AND eat through a plate in the
-	#       same wave. 34 pests, peak 38 of 40. weather_for(25) is rain, unasked
-	#       for the same reason waves 16-21 picked theirs up for free: derived
-	#       from the wave number, not typed;
+	# ONE AXIS EACH, reprising the two specialists the run-up introduced, and
+	# every one of the four landing under the 40-pest ceiling with room to spare
+	# so the per-species Shield Bug and Nurse Beetle sweeps in test_combat.gd
+	# (which still require STRICT headroom on every row they name) stay true.
+	#
+	# 23 and 25 carry NO QUEEN, and that is not a numbers choice -- it is
+	# `test_the_nurse_beetle_lands_late_and_never_shares_a_wave_with_the_queen`
+	# (test_combat.gd), the same invariant waves 17 and 19 already hold: the
+	# queen asks WHERE a kill lands and the Nurse asks WHAT the garden's damage
+	# is aimed at, and a row asking both asks neither. Swapping the two queens
+	# out of a row also removes their `brood_headroom_for` cost (2 slots each,
+	# since a queen splits 3-for-1), which is why 23 and 25 have MORE road
+	# budget to spend per pest than 24 and 26, not less:
+	#   23  THE NURSE, ALONE. Beetle column + Nurse + aphid swarm, the same
+	#       shape waves 17 and 19 use (no queen), scaled to the coda: 19 beetles
+	#       + 1 nurse + 19 aphid = 409 points of base health. 39 pests, peak 39
+	#       of 40 -- no brood headroom needed, so the ceiling is on the walking
+	#       count directly;
+	#   24  THE SHIELD BUG, ALONE, at finale scale, queen kept (no Nurse in this
+	#       row, so no conflict): 2 queens, 18 aphid, 10 beetle, 4 shieldbug =
+	#       414 points. 34 pests + 4 brood headroom, peak 38 of 40;
+	#   25  BOTH TOGETHER, no queen for the same reason as 23. Beetle column +
+	#       Nurse + aphid swarm + 4 Shield Bugs = 406 points -- the first
+	#       campaign wave where the garden has to out-heal an aura AND eat
+	#       through a plate in the same schedule. 33 pests, peak 33 of 40.
+	#       weather_for(25) is rain, unasked for the same reason waves 16-21
+	#       picked theirs up for free: derived from the wave number, not typed;
 	#   26  THE THIRD QUEEN. The new finale, and the old finale's own shape
 	#       (queen-led, aphid swarm, beetle column) one queen heavier -- +1
 	#       queen, +2 aphids, -5 beetles against the old finale (80+6 out, 80
@@ -845,10 +866,9 @@ const WAVES: Array[Array] = [
 	#       since a third queen splits into three more aphids each) at 424
 	#       points of base health.
 	[
-		{"species": &"queen", "count": 2, "gap": 6.00, "lead": 0.5},
-		{"species": &"beetle", "count": 9, "gap": 1.00, "lead": 1.5},
+		{"species": &"beetle", "count": 19, "gap": 0.65, "lead": 0.5},
 		{"species": &"nurse", "count": 1, "gap": 1.00, "lead": 2.0},
-		{"species": &"aphid", "count": 22, "gap": 0.28, "lead": 1.5},
+		{"species": &"aphid", "count": 19, "gap": 0.30, "lead": 1.5},
 	],
 	[
 		{"species": &"queen", "count": 2, "gap": 6.00, "lead": 0.5},
@@ -857,10 +877,9 @@ const WAVES: Array[Array] = [
 		{"species": &"shieldbug", "count": 4, "gap": 1.20, "lead": 2.0},
 	],
 	[
-		{"species": &"queen", "count": 2, "gap": 6.00, "lead": 0.5},
-		{"species": &"beetle", "count": 7, "gap": 1.00, "lead": 1.5},
+		{"species": &"beetle", "count": 18, "gap": 0.65, "lead": 0.5},
 		{"species": &"nurse", "count": 1, "gap": 1.00, "lead": 2.0},
-		{"species": &"aphid", "count": 20, "gap": 0.28, "lead": 1.5},
+		{"species": &"aphid", "count": 10, "gap": 0.30, "lead": 2.0},
 		{"species": &"shieldbug", "count": 4, "gap": 1.20, "lead": 2.0},
 	],
 	[

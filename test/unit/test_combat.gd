@@ -2178,16 +2178,21 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 	# Waves 23-26 are the coda (plant-tower-defense-vyov), APPENDED after wave 22
 	# rather than inserted in front of it -- WAVES' own header has the "why", and
 	# the four-way departure from every growth before it is the reason wave 22 is
-	# still 36 in this list even though it is no longer the last entry. All four
-	# coda rows send 34 pests: 23 trades 3 beetles for a Nurse (net zero, like 17
-	# and 19), 24 trades 4 aphids and 2 beetles for 4 Shield Bugs, 25 carries both
-	# specialists at once, and 26 -- the new finale -- is the old finale's shape
-	# with a third queen and traded beetles for aphids. Re-derived against the
-	# same offline replica as the three growths above, itself re-validated by
-	# reproducing this array, the OLD finale's 40-of-40 peak now sitting at an
-	# interior wave for the first time, the NEW finale's own 40-of-40, the 436.7
-	# seam bound (headroom now 12.7, not 18.7) and endless's first wave still
-	# outpricing the new finale.
+	# still 36 in this list even though it is no longer the last entry. 23 and 25
+	# carry NO QUEEN — test_the_nurse_beetle_lands_late_and_never_shares_a_wave_
+	# with_the_queen forbids it, the same invariant waves 17 and 19 already hold
+	# — so they lose the queen's `brood_headroom_for` slack (2 per queen) and pay
+	# for it in walking headcount instead: 23 is beetle column + Nurse + aphid
+	# swarm at 39 pests (queen-free counterpart of 17/19's shape, scaled to the
+	# coda) and 25 is the same shape plus 4 Shield Bugs at 33. 24 keeps the
+	# finale's two queens (no Nurse in that row, so no conflict) and trades 4
+	# aphids and 2 beetles for 4 Shield Bugs, at 34. 26 -- the new finale -- is
+	# the old finale's shape with a third queen, traded beetles for aphids, also
+	# 34. Re-derived against the same offline replica as the three growths
+	# above, itself re-validated by reproducing this array, the OLD finale's
+	# 40-of-40 peak now sitting at an interior wave for the first time, the NEW
+	# finale's own 40-of-40, the 436.7 seam bound (headroom now 12.7, not 18.7)
+	# and endless's first wave still outpricing the new finale.
 	#
 	# THIS LIST STAYS RECORDED AND MUST NOT BE DERIVED. Its only possible source of
 	# truth is WAVES itself, so `expected[i] = pests_in_wave(i)` would assert a
@@ -2199,7 +2204,7 @@ func test_the_fixed_campaign_is_untouched_by_the_road_budget() -> String:
 	# shape) are the other half the skill asks for.
 	var expected: Array[int] = [
 		5, 9, 9, 14, 13, 19, 19, 21, 26, 32, 30, 23, 35, 29, 37,
-		37, 33, 32, 31, 36, 38, 36, 34, 34, 34, 34,
+		37, 33, 32, 31, 36, 38, 36, 39, 34, 33, 34,
 	]
 	var err: String = _T.assert_eq(WaveDirector.WAVES.size(), expected.size(),
 		"the campaign is still twenty-six waves long")
@@ -8183,10 +8188,14 @@ func test_the_second_act_costs_the_seam_bound_nothing() -> String:
 			+ " to it is a documentation change as much as a balance one")
 			% bound)
 	if err == "":
-		err = _T.assert_float_eq(bound - finale_health, 18.7, 0.5,
-			("and the finale keeps exactly the %.2f points of headroom it had before the"
-				+ " second act -- about one beetle, which is why plant-tower-defense-eeaq"
-				+ " could not append waves to the end of the table")
+		# 18.7 until plant-tower-defense-vyov's coda (waves 23-26) spent 6 of it on
+		# the new finale (queen3+aphid24+beetle7 = 424, up from the old finale's
+		# 418) -- see SECOND_ACT_ORIGINAL_END_WAVE for where that 6 went. The bound
+		# itself (asserted above) is unmoved; only the finale's own share of it grew.
+		err = _T.assert_float_eq(bound - finale_health, 12.7, 0.5,
+			("and the finale keeps exactly the %.2f points of headroom under the seam"
+				+ " bound now that plant-tower-defense-vyov's coda spent 6 of the"
+				+ " original 18.7 on the new finale")
 				% (bound - finale_health))
 	return err
 

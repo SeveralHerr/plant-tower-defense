@@ -20490,8 +20490,11 @@ func test_the_second_act_costs_what_its_comment_says_it_costs() -> String:
 	# The finale multiplier, as a literal rather than as pow(1 + STEP, 13). The
 	# derived form is what test_combat.gd already does and it is exactly what
 	# cannot notice the constant changing.
-	err = _T.assert_float_eq(WaveDirector.health_scale_for(finale), 1.469, 0.001,
-		"the finale's pests are x1.469 of a wave-1 pest, which is the number the"
+	# 1.469 (pow(1.03, 13)) until plant-tower-defense-vyov moved the finale from
+	# wave 22 to wave 26 -- the exponent is climbed - SECOND_ACT_START_WAVE, so
+	# four more campaign waves is four more compounding +3% steps: 1.03^17.
+	err = _T.assert_float_eq(WaveDirector.health_scale_for(finale), 1.6528, 0.001,
+		"the finale's pests are x1.6528 of a wave-1 pest, which is the number the"
 			+ " SECOND_ACT_START_WAVE block quotes")
 	if err != "":
 		return err
@@ -20551,7 +20554,12 @@ func test_the_campaign_ramp_spends_the_endless_ceiling_without_reordering_it() -
 				+ " SECOND_ACT_START_WAVE comment still said so for a cycle; with no"
 				+ " campaign ramp at all it would be 56"))
 	if err == "":
-		err = _T.assert_eq(speed_cap, 62, "speed pins at wave 62, untouched by the campaign")
+		# 62 until plant-tower-defense-vyov grew WAVES from 22 to 26 rows -- the
+		# sweep starts at WAVES.size() + 1, so every endless-relative wave number
+		# (this one included) moved four later with the table, not with the ramp.
+		err = _T.assert_eq(speed_cap, 66,
+			"speed pins at wave 66, four later than before the coda -- untouched by" \
+				+ " the campaign RAMP, only by the table's length")
 	if err == "":
 		# The invariant that survives the step being retuned. This is the claim
 		# worth keeping if the number above ever has to move again.

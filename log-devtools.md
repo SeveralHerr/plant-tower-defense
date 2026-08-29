@@ -10209,3 +10209,59 @@ is likely to be at least as productive.
     exit 2 for the reach it could not compute instead of printing a reach report beside the error.
     A report that reads clean next to "unreadable" is the shape this repo's own denominator rule
     exists to prevent.
+
+## 2026-08-29 — Merged a 4-lane worktree fan-out (6pjd, h5s3+rfgk, vyov, zg6l), fixed what the merge broke, verified live
+
+- Value: **warranted** — the full suite (not any single lane's gates) is what caught that lane C's
+  wave 23 design (queen + Nurse in one row) violated an existing invariant test, and that growing
+  the campaign table from 22 to 26 rows staled three unrelated pre-existing literal assertions
+  (seam headroom 18.7->12.7, finale health multiplier 1.469->1.6528, endless speed-cap wave 62->66).
+  None of that is visible to `name_check`/`heredoc_survey`/`check_all` — every lane's own gates
+  (correctly, per the fan-out rules) reported clean because none of them can compile or run.
+  - Expected: the merged branch compiles and the full suite passes; the new campaign coda (waves
+    23-26) actually schedules in the live WaveDirector node with no engine error.
+  - Got: first `run_tests.py` pass was 5/1066 failing — 2 from the boss-invariant violation, 3 from
+    the stale literals above. After redesigning waves 23/25 to drop the queen (verified against the
+    real `threat_for`/`peak_simultaneous_pests` via a throwaway headless script rather than by hand)
+    and updating the three literals to their now-true values, `Total: 1066 | Passed: 1066 | Failed: 0`.
+    Live: `set-state current_wave=22` then four `start_next_wave` calls on the real `/root/Game/
+    WaveDirector` node walked 23->24->25->26 with an empty stderr log; `findings` came back
+    `0 finding(s) across 5 of 5 checks`.
+  - Found: the queen/nurse conflict and the three stale literals (listed above) — a merge that
+    trusted each lane's "clean" report and skipped the actual test run would have shipped a wave
+    table that fails its own suite.
+  - Cheaper: nothing for the redesign or the literal fixes — both needed the actual engine to
+    compute `threat_for`/`peak_simultaneous_pests` rather than hand-arithmetic. The live
+    `start_next_wave` drive was closer to `overkill` on its own (the headless suite already
+    exercises the same function through the same waves via `WaveDirector.new()`); it earns its
+    keep only as confirmation on the real autoload/node path rather than a fresh instance.
+
+- Gap: **`title_screen.gd`'s two player-facing changes (h5s3's blurb removal, rfgk's save-status
+  message) were never observed live this run.** `entry_hook` (`TitleScreen.skip_to_game`) advances
+  straight past the title screen into `Game` on launch, and `entry_points` only defines `campaign`,
+  which does the same thing — there is no configured way to reach and read the title screen itself
+  through the bridge without editing `devtools_config.json`, which is out of scope for a merge pass.
+  Substituted with the two headless tests lane B wrote (`test_no_difficulty_profile_carries_an_
+  unread_key`, `test_a_refused_or_recovered_load_is_visible_on_the_title_screen`), both of which
+  `_T.instantiate_ui(title.tscn, ...)` and read `SubtitleLabel.text` directly — a real Control tree,
+  just not the live game process.
+  - [G-155] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: add a `title` entry point to `devtools_config.json` (`node_path: /root/TitleScreen`,
+    no method — just the scene switch, no auto-skip) so a session can reach the title screen live
+    via `fire-entry-point title` without disturbing the existing gameplay-skipping default.
+
+- Note (not a gap, my own mistake): captured `scene-tree > file 2>&1`, which merges scene-tree's
+  own `N node(s)` stderr line into the JSON file and corrupts it for `verify_ledger reach`
+  (`Extra data: line 2872 column 2`). `verify_ledger` degraded gracefully — it printed the parse
+  error and fell back to a scripts-seen-only reach report rather than crashing or silently trusting
+  garbage — but the fix is just not redirecting stderr into a JSON capture, which CLAUDE.md already
+  says for `scene-tree`'s node count and I did not apply to my own `>` here.
+
+- Fan-out cost: 4 lanes (`aac97bd3`, `a51ca6cf`, `ab4d215c`, `a5911df1`), each 119k-327k tokens /
+  39-111 tool calls, merged with zero git conflicts across the 4 branches. Merge pass itself: 1
+  boss-invariant redesign (2 wave rows recomposed and re-verified against the real engine
+  functions), 3 stale-literal fixes, 1 full headless suite pass, 1 live bridge pass. Confirms the
+  fan-out doc's own claim: "the lanes are the cheap half, the merge is where the failures are" —
+  every one of the 5 test failures here was a fact about a file the failing lane was correctly
+  forbidden to open (test_combat.gd's golden headcount array, test_selftest.gd's ramp-multiplier
+  pin), not a mistake by the lane that wrote its own piece.
