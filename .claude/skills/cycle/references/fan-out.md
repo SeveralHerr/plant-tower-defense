@@ -197,6 +197,19 @@ integrates, its cost scales with the number of lanes rather than the size of any
 is not optional. Because the lanes compile nothing, expect the parent pass to find tests
 green by construction, layouts with no room, and public surfaces no test names.
 
+**Verifying in an integration worktree does not verify the PARENT'S OWN primary
+checkout.** A lane's `--import` and a subsequent integration-branch `--import` each build
+a `.godot/` class cache local to that directory. When the merge finally lands in the
+primary checkout (the one you started the cycle in), that checkout's own `.godot/` has
+never seen the new `class_name` files the lanes added — `run_tests.py` there fails wide
+(measured: 550 of 1102 in one merge, exit 2) in a way that reads exactly like a real
+regression the integration pass somehow missed. It is not one: `godot --headless --path .
+--import` in the PRIMARY checkout, one more time, after folding the integration branch
+in, and the same green result reappears. Budget this import as its own step after every
+fan-out merge, not just after each worktree's — it is a directory-local cache, not a
+repo-wide one, and "I already verified this" from a different checkout does not carry
+over.
+
 **The parent owes each lane's wiring, not just its merge.** Cycle 101's upgrade lane
 correctly refused to touch `hud.gd` and `game.gd` and listed seven exact edits it needed
 there. Skipping them would have shipped a plant whose upgrade ladder no player could reach —

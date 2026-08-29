@@ -10364,3 +10364,42 @@ is likely to be at least as productive.
   needed: this bead is entirely static data (road corners) plus headless GDScript tests, so
   `launch`/`get-state`/etc. would have added a running-game dependency this task had no use
   for.
+
+## 2026-08-29 — a second 4-lane fan-out, and the checkout the merge didn't verify
+
+- Value: **warranted** — the merge pass's own real-engine gates caught two genuine
+  defects (a corpus road silently rendering fallback grass; a test suite writing the
+  developer's real save file) that no lane, working in isolation, could have seen.
+  - Expected: four disjoint-file lanes (s1o8.2, 4zyb, c290, ncfv) would merge clean like
+    the previous round's four did, needing only the routine post-merge suite run.
+  - Got: `s1o8.2`'s own `tools/board_check.py`, built before touching the engine, found
+    that `s1o8.1`'s "long serpentine" road spaced its rows 2 cells apart, leaving a
+    1-cell grass band between two dirt rows -- neighbour mask `0b0101`, absent from
+    `GRASS_EDGE_TILE`, silently falling back to plain grass with nothing erroring.
+    `save_persist_check.py` caught `ncfv`'s new `test_skins.gd` reaching
+    `RunConfig._save()` through 9 test functions with no `setup()` redirect -- it would
+    have written `user://highscore.save` on every future `run_tests.py`.
+  - Found: both of the above, plus the parent's own mistake below.
+  - Cheaper: nothing for the two real findings -- `board_check.py`'s synthetic-bad-road
+    self-test and `save_persist_check.py`'s static source scan are exactly the class of
+    check that catches this kind of thing before a person would ever notice by eye.
+
+- Gap (my own workflow, not the harness): **verifying a merge inside an integration
+  worktree does not verify the PARENT'S OWN primary checkout.** After folding
+  `integration/fanout2-2026-08-29` into local `main` in the primary checkout,
+  `run_tests.py` there reported `Total: 1077 | Passed: 527 | Failed: 550`, exit 2 --
+  looking exactly like the merge had silently broken something the integration branch's
+  own clean 1102/1102 run had missed. It hadn't: the primary checkout's `.godot/` class
+  cache had never seen the new `class_name` files (`game/skins.gd`, `game/skins_screen.gd`
+  etc.) the lanes added, because every `--import` this cycle had run inside a *different*
+  directory's worktree. One more `godot --headless --path . --import`, this time in the
+  primary checkout, and the true result reappeared. CLAUDE.md already documents "import
+  after adding a class_name file" for a single checkout; it did not say the cache is
+  directory-local and that folding a branch in from elsewhere doesn't inherit another
+  checkout's import. Written into `.claude/skills/cycle/references/fan-out.md`'s "What
+  the parent owes" section so the next fan-out merge budgets this as its own step.
+  - [G-156] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: `run_tests.py`/`lint_project.gd` could print which checkout's `.godot/`
+    they're running against and whether it looks stale relative to the files present
+    (e.g. a `class_name` script with no entry in the class cache) rather than surfacing
+    as several hundred unrelated-looking compile failures with no hint at the cause.
