@@ -6749,3 +6749,83 @@ Three findings kept out here rather than buried in a log:
   because the seeded one feels like it covers the shape. **A fixture case whose expected
   value is the EMPTY answer cannot kill a mutation that makes everything empty** — every
   such case needs a sibling whose expected value is non-empty for the same input shape.
+
+
+## Cycle 180 - a property write the engine silently discards
+
+- **`hud.gd` set the plant bar's selection cue on every refresh for the whole life of the
+  feature, and the engine threw every one of those writes away.** The line was
+  `button.button_pressed = unlocked and id == selected`, on `Button`s that never had
+  `toggle_mode` set; Godot 4's `BaseButton::set_pressed()` opens with
+  `if (!toggle_mode) { return; }`. So the bar had **no** armed cue — not a weak one — and
+  the code that was supposed to provide it read as correct, compiled, and ran. Found live
+  rather than by reading: `find-nodes --class Button --where name=Button_corn_cobbler
+  --property button_pressed --property toggle_mode` returned `button_pressed=false
+  toggle_mode=false` while corn *was* `selected_plant`. Fixed in
+  plant-tower-defense-vvmy with an `ArmedRing` Panel per button (`game/hud.gd:1715-1745`).
+
+- **FIRST SIGHTING of the class, and the checker was deliberately not built.** The class is
+  *a property assignment the engine discards because a companion property is unset* — a
+  perfect fit for `tools/`, because it is invisible to every gate we have: `name_check`
+  resolves `button_pressed` fine, lint compiles it fine, and the assertion a test would
+  naturally write (`assert button.button_pressed == true`) fails in a way that reads as a
+  test bug. Then the enumeration came back **empty**. Counted across `game/`, `tools/` and
+  `addons/` after the fix: one remaining `.button_pressed =` write, at
+  `addons/godot_selftest/dev_tools.gd:5298`, and it is already guarded by
+  `if button.toggle_mode and args.has("toggle")` on the line above. Zero `region_rect`
+  without `region_enabled`, zero `limit_*`, zero `patch_margin`. A checker over a
+  population of one-that-is-already-correct is prose, per
+  `.claude/skills/house-static-checker/SKILL.md`'s own "the procedure legitimately ends in
+  NOT building one".
+
+- **What would make it worth building: a second instance.** This entry exists so the next
+  one is recognised as a second rather than re-argued as a first. The pairs worth grepping
+  when that day comes, because they are the same shape in Godot 4 —
+  `button_pressed`/`toggle_mode`, `region_rect`/`region_enabled`,
+  `Camera2D.limit_*`/`limit_enabled`, `NinePatchRect.patch_margin_*` against a texture that
+  is not nine-patched, and `Timer.wait_time` written after `start()`. That list is
+  hand-written and cannot be derived — Godot ships no machine-readable index of "property X
+  is a no-op unless Y" — which is itself the reason the check has to be a table rather than
+  something `derive-the-list` could generate, and a reason to want more than one instance
+  before committing to maintaining it.
+
+- **The generalisable half, which cost this cycle its biggest detour.** Three of the four
+  reported symptoms in vvmy were about cues, and *two* of the three premises were wrong in
+  opposite directions: the placement ghost was reported missing and was in fact shipped,
+  working, and simply underneath the player's finger (`node-bounds` -> `64x64` at the
+  previewed cell's own origin); the bar cue was reported weak and was in fact absent. **A
+  report about a visual cue is a report about what reached the player's eye, and says
+  nothing about whether the code ran.** Two bridge reads, about twenty seconds, settled
+  both before any code was written — and had they been skipped, this cycle would have built
+  a second ghost beside the working one.
+
+
+- **An animation can move a game object without moving it, and that split is worth reaching
+  for by default.** The Chomp now hauls the bug it catches up onto itself and eats it
+  there (plant-tower-defense-p4f6). The obvious implementation writes `Pest.position`, and
+  it is wrong in a way no test in this repo would have failed: `position` is what
+  `Kernel._hit_pests` (game/kernel.gd:69), `_adjacent_plant`, `_blocking_plant` and the
+  escape route all read, so a bug dragged one cell off the road quietly leaves every cob's
+  line of fire — a real nerf to the Chomp/Corn pairing, delivered in an animation commit,
+  invisible to the balance tables. The fix is a second channel: `Pest._carry_offset` moves
+  the SPRITE, the health bars and the `_draw()` canvas, and the node stays on the road.
+  **When an animation wants to move something the game has opinions about, ask which of the
+  two — the picture or the position — the rest of the code is actually reading.**
+
+- **`instantiate_scene`'s settle frames are long enough to eat a whole aphid, and a test
+  that lets them decide anything is a coin toss.** Two of the new Chomp tests staged a pest
+  in reach at spawn; one passed on its first run and failed on the next with no code change
+  between them, because an aphid's entire 0.45 s meal fits inside the settle. The pattern
+  that works is already in the file (`test_a_chomps_bite_records_a_lunge_toward_the_meal`):
+  spawn at x=-2000, let the tree settle, then walk the pest in and drive `_act` by hand.
+  Worth generalising — **any test whose subject acts every physics frame must not be handed
+  its input before the settle**, and the tell is a test that is green on one run and red on
+  the next without an edit.
+
+- **A geometry test can be exactly right while the picture shows nothing.** The vine
+  animation's endpoints, phases and curve are all pure statics with pinned absolutes, all
+  green — and at the first constants the vines, once the bug had landed, lived entirely
+  inside the 24 px the beetle sprite covers, so the whole chew (most of a meal) showed a bug
+  on a flower with nothing visibly holding it. Only `screenshot --region` could say so.
+  **A drawn overlay's assertions are about the geometry; whether anything is on screen is
+  about what is composited on top of it, and no property read answers that.**

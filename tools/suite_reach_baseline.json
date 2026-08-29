@@ -3,7 +3,6 @@
   "files": [],
   "symbols": [
     "game/board.gd::func::depth_of",
-    "game/chomp_flower.gd::func::held_pest",
     "game/corn_cobbler.gd::func::kernel_damage",
     "game/corn_cobbler.gd::func::spread_degrees",
     "game/game.gd::var::victory",
