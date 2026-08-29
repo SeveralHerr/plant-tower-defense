@@ -4068,7 +4068,18 @@ def cmd_first_frame(args, project_path: Path):
 
 def cmd_project_settings(args, project_path: Path):
     """ProjectSettings as the running game sees them (bus verb: project_settings,
-    dave-game:G-003). Data keys read: settings, count, missing, filter."""
+    dave-game:G-003). Data keys read: settings, defaults, overridden, count, missing,
+    filter.
+
+    Each row prints the engine's own revert value beside the live one and marks the
+    rows where they differ, because "what is this value" and "did anyone CHOOSE this
+    value" are different questions and only the second one is usually being asked
+    (plant-tower-defense:G-159). --overridden-only answers it directly.
+
+    Tolerates a reply with no `defaults` key: an older game-side handler answers the
+    old shape, and the right response to that is the old output plus a note, not an
+    error about a key a running build cannot be asked to have.
+    """
     cmd_args = {}
     if args.names:
         cmd_args["names"] = args.names
@@ -4082,12 +4093,43 @@ def cmd_project_settings(args, project_path: Path):
         sys.exit(1)
     if args.json:
         print(json.dumps(data, indent=2))
-    else:
-        print(result.get("message", ""))
-        for key in sorted(data["settings"]):
-            print(f"  {key} = {_format_value(data['settings'][key])}")
-        for key in data.get("missing") or []:
-            print(f"  {key} = <no such setting>")
+        if not result["success"]:
+            sys.exit(1)
+        return
+
+    defaults = data.get("defaults")
+    overridden = set(data.get("overridden") or [])
+    # A key the engine cannot revert at all. Its own list rather than a null in `defaults`,
+    # because "unchanged" and "there was nothing to change it from" are different answers
+    # and an earlier draft printed the second while counting the first.
+    no_default = set(data.get("no_default") or [])
+    print(result.get("message", ""))
+    keys = sorted(data["settings"])
+    if args.overridden_only:
+        if defaults is None:
+            print("  --overridden-only needs the game-side `defaults` this reply does not"
+                  " carry -- the running build predates it. Relaunch after updating"
+                  " addons/godot_selftest/dev_tools.gd.", file=sys.stderr)
+            sys.exit(2)
+        keys = [k for k in keys if k in overridden]
+        if not keys:
+            print("  (none -- every setting shown is at the engine's own default)")
+    for key in keys:
+        line = f"  {key} = {_format_value(data['settings'][key])}"
+        if key in no_default:
+            line += "   [engine has no default for this key]"
+        elif defaults is not None and key in defaults:
+            if key in overridden:
+                line += f"   [default: {_format_value(defaults[key])}]  OVERRIDDEN"
+            else:
+                line += "   [at default]"
+        print(line)
+    for key in data.get("missing") or []:
+        print(f"  {key} = <no such setting>")
+    if defaults is None:
+        print("  NOTE: this reply carried no `defaults` -- the running game is on an older"
+              " dev_tools.gd, so every row above is a live value with nothing to compare"
+              " it against.", file=sys.stderr)
     if not result["success"]:
         sys.exit(1)
 
@@ -4657,6 +4699,10 @@ def main():
                    help="Only settings under this prefix, e.g. rendering/ or display/window/")
     p.add_argument("--name", dest="names", action="append", metavar="KEY",
                    help="Exact setting key (repeatable); a key no setting has exits 1")
+    p.add_argument("--overridden-only", action="store_true",
+                   help="Only settings whose value differs from the engine's own default "
+                        "-- what this project actually changed, rather than every key it "
+                        "inherits")
     p.add_argument("--json", action="store_true", help="Raw JSON")
     p.set_defaults(func=cmd_project_settings)
 

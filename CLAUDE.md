@@ -318,8 +318,12 @@ so step + read pairs carry no ambient drift), `set-game-speed` (refuses a scale 
 `wait-frames` (advance time deterministically), `pause`/`unpause` (sets
 `SceneTree.paused` directly, bus keeps answering — catch a sub-second effect, poll for
 the moment, pause, then inspect at no rush);
-`project-settings [--filter PREFIX|--name KEY]` (ProjectSettings as the RUNNING game
-sees them — did the value written to `project.godot` actually land?);
+`project-settings [--filter PREFIX|--name KEY] [--overridden-only]` (ProjectSettings as
+the RUNNING game sees them — did the value written to `project.godot` actually land? Each
+row prints the engine's own default beside the live value and marks the ones that differ,
+so `--overridden-only` answers "what does this project actually change"; a platform-suffixed
+key like `audio/driver/output_latency.web` resolves to nothing on desktop and is otherwise
+indistinguishable from one nobody set);
 `contained-in --node PATH --within PATH` (is this Control's box inside that panel's;
 exit 1 with the per-side overhang — `findings` reports the same as `ui_escapes_panel`
 for a sibling panel);

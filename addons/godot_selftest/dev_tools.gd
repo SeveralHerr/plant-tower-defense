@@ -5827,16 +5827,42 @@ func _nearest_scroll_container(control: Control) -> ScrollContainer:
 ##         "names": Array[String] (exact keys; wins over filter) }
 ## data keys: settings ({name: value}), count, missing (names asked for that no
 ##            setting has), filter.
+## Every reply now carries `defaults` and `overridden` beside `settings`, and that is
+## the difference between "what is this value" and "did anyone CHOOSE this value".
+##
+## The resolved value alone cannot answer the second question, and the second question is
+## the first one anyone asks of a `project.godot`. Two ways it misleads, both real:
+##
+##  - A PLATFORM-SUFFIXED key (`audio/driver/output_latency.web`) resolves on desktop to
+##    nothing at all, so a project that overrides it and a project that does not read
+##    identically here. Only `property_get_revert` separates them.
+##  - An engine default is not always the neutral-looking number beside it. Godot ships
+##    `output_latency` at 15 and `output_latency.web` at **50** — a session that assumed
+##    the base value was the web default too would misdiagnose the size of an override by
+##    more than 3x, which is exactly how cycle 90's mobile audio bug was nearly read.
+##
+## `property_get_revert` is the only API that answers this and no verb exposed it, so the
+## workaround was a throwaway `SceneTree` script looping `get_property_list()`. One extra
+## call per row is cheap; a scratch script per question is not.
 func _cmd_project_settings(args: Dictionary) -> Dictionary:
 	var prefix: String = str(args.get("filter", ""))
 	var names: Array = args.get("names", []) if args.get("names") is Array else []
 	var settings: Dictionary = {}
+	var defaults: Dictionary = {}
+	## Keys whose live value differs from the engine's own revert value -- the answer to
+	## "what does this project actually change", which is a SUBSET of `settings` and the
+	## line worth reading first.
+	var overridden: Array = []
+	## Keys the engine cannot revert at all -- `defaults` carries no entry for these, and
+	## they are NOT counted as overridden. Kept as their own list so a reader can tell
+	## "unchanged" from "there was nothing to change it from".
+	var no_default: Array = []
 	var missing: Array = []
 	if not names.is_empty():
 		for entry: Variant in names:
 			var key: String = str(entry)
 			if ProjectSettings.has_setting(key):
-				settings[key] = _serialize_variant(ProjectSettings.get_setting(key))
+				_record_setting(key, settings, defaults, overridden, no_default)
 			else:
 				missing.append(key)
 	else:
@@ -5846,17 +5872,54 @@ func _cmd_project_settings(args: Dictionary) -> Dictionary:
 				continue
 			if not ProjectSettings.has_setting(key):
 				continue
-			settings[key] = _serialize_variant(ProjectSettings.get_setting(key))
+			_record_setting(key, settings, defaults, overridden, no_default)
 	var message: String = "%d setting(s)" % settings.size()
 	if not prefix.is_empty():
 		message += " under %s" % prefix
+	message += ", %d overriding the engine default" % overridden.size()
 	if not missing.is_empty():
 		message += "; %d asked-for name(s) do not exist: %s" % [missing.size(), ", ".join(PackedStringArray(missing))]
 	return {
 		"success": missing.is_empty(),
 		"message": message,
-		"data": {"settings": settings, "count": settings.size(), "missing": missing, "filter": prefix},
+		"data": {
+			"settings": settings,
+			"defaults": defaults,
+			"overridden": overridden,
+			"no_default": no_default,
+			"count": settings.size(),
+			"missing": missing,
+			"filter": prefix,
+		},
 	}
+
+
+## One row of the reply: the live value, the engine's revert value, and whether they differ.
+##
+## The comparison is made on the SERIALIZED pair rather than on the raw Variants, so
+## "differs" means what a reader of the printed output would call differing. Comparing the
+## raw values instead would report a `Color`/`Vector2` as overridden on float noise that
+## the printed rows show as identical, and a diff nobody can see in the output is worse
+## than no diff column at all.
+##
+## "The engine has no opinion" is a THIRD state, reported in its own `no_default` array
+## rather than as a null in `defaults`. The first draft conflated the two and the running
+## game caught it immediately: `autoload/DevTools` CAN revert, and reverts to null, so it
+## landed in `overridden` (correctly -- the project does add it) while printing
+## `[no engine default]` (wrongly -- the engine has a default and it is "absent"). The
+## label and the count disagreed on screen, which is the shape of bug this whole column
+## exists to prevent one level up.
+func _record_setting(key: String, settings: Dictionary, defaults: Dictionary,
+		overridden: Array, no_default: Array) -> void:
+	var live: Variant = _serialize_variant(ProjectSettings.get_setting(key))
+	settings[key] = live
+	if not ProjectSettings.property_can_revert(key):
+		no_default.append(key)
+		return
+	var revert: Variant = _serialize_variant(ProjectSettings.property_get_revert(key))
+	defaults[key] = revert
+	if str(live) != str(revert):
+		overridden.append(key)
 
 
 ## What a player would see right now, in one call (H-059 -- moving-in's second

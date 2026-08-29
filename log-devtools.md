@@ -11227,3 +11227,34 @@ integrator's, covering the runtime pass none of the four were allowed to run.
     `property_get_revert` call per row), and flag the rows where the two differ. That turns
     "which settings does this project actually override, and from what" — the first question
     anyone asks of a `project.godot` — into one call instead of a scratch script.
+
+## 2026-08-29 — closing G-159 in the harness itself: project-settings now prints the default
+
+- Value: **warranted** — the running game killed a bug in the very verb written to stop
+  this class of bug, about ninety seconds after the verb first answered.
+  - Expected: a mechanical change. Add `property_get_revert` beside each row, print a
+    `[default: X]` column, add `--overridden-only`. Nothing to discover.
+  - Got: `project-settings --overridden-only` reported `12 overriding the engine default`
+    over a listing whose rows counted **ten** `OVERRIDDEN` labels and two reading
+    `[no engine default]`. The header and the rows disagreed.
+  - Found: **the label and the count were answering different questions, and the cause was
+    my own conflation of two states.** `autoload/DevTools` returns true from
+    `property_can_revert` and reverts to `null`, so it belongs in `overridden` — the
+    project really does add it — while the client, which inferred "engine has no default"
+    from a null in `defaults`, labelled it as unchanged. Fixed by giving "cannot revert at
+    all" its own `no_default` array in the reply rather than encoding it as a null, which
+    is the same distinction (`absent` vs `zero`) that this whole column exists to draw one
+    level up. Re-run: `12 overriding`, twelve `OVERRIDDEN` rows.
+  - Cheaper: nothing. The two states are indistinguishable in the source — `defaults[key]`
+    is None either way — and only a project that actually contains an autoload separates
+    them. Reading the diff would have shown a correct-looking `if defaults[key] is None`.
+
+- Gap: **[G-159] closed by this turn's own change**, not by an upstream release. This project
+  runs harness 0.38.0 with 0.66.0 sitting on the machine, so the same edit may already exist
+  upstream and may be shaped differently; the local change is written so a reply WITHOUT
+  `defaults` still prints the old output plus a stderr note rather than erroring, so an older
+  running game and a newer client do not have to agree.
+  - [G-159] status: fixed | seen: 1 | harness: 0.38.0
+  - Improvement: shipped here as `project-settings --overridden-only`, and the shape worth
+    upstreaming is the three-state reply (`defaults` / `overridden` / `no_default`) rather
+    than the printing, since that is where the bug was.
