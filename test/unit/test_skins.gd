@@ -15,7 +15,28 @@ extends RefCounted
 
 const GAME_SCENE := "res://game/game.tscn"
 
+## Where this script's RunConfig writes go instead of the player's own save.
+## `set_skin()` reaches `RunConfig._save()` on a successful call, and several tests
+## here call it to prove persistence -- without a redirect those calls write the
+## developer's real `user://highscore.save`. `tools/save_persist_check.py` requires
+## this of any test script that can reach `_save()`.
+const SUITE_SAVE_PATH := "user://test_skins_suite.save"
+var _suite_stashed_save_path: String = ""
+
 var _T
+
+
+func setup() -> void:
+	_suite_stashed_save_path = RunConfig.save_path
+	RunConfig.save_path = SUITE_SAVE_PATH
+
+
+## Called by the runner after every test in this file, including one that aborted
+## on a runtime error.
+func teardown() -> void:
+	if _suite_stashed_save_path != "":
+		RunConfig.save_path = _suite_stashed_save_path
+	DirAccess.remove_absolute(SUITE_SAVE_PATH)
 
 
 # -- Skins: pure data and rule -----------------------------------------------
