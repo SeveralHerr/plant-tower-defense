@@ -634,6 +634,41 @@ static func toggle_muted() -> bool:
 # bus is not undone by anything here, deliberately: `ensure_bus` is idempotent by
 # name, so the cost of a suite that touched it is one bus that was going to exist
 # the moment the game launched anyway.
+#
+# **THESE TWO BUSES ARE WHY `audio/general/default_playback_type.web` IS PINNED TO 0
+# (Stream) IN `project.godot`, and that line is a shipped-bug fix, not tidying.**
+#
+# Godot's default on Web is Sample playback: instead of the engine mixing and handing
+# the browser one buffer, every `AudioStreamPlayer` is baked to a WebAudio AudioBuffer
+# and routed through one GainNode chain per `AudioServer` bus, in the browser's own
+# node graph. A bus that exists before the audio driver starts is mirrored into that
+# graph once. A bus added at RUNTIME -- which is exactly what `ensure_bus` below does,
+# and the whole reason there is no `default_bus_layout.tres` -- is mirrored with a
+# backwards edge. Read off the deployed itch.io build, live:
+#
+#     Gain#0 -> Gain#1 -> Gain#2 -> AudioDestination     Master              correct
+#     Gain#4 -> Gain#5 -> Gain#6 -> Gain#0               Sfx -> Master       correct
+#     Gain#2 -> Gain#4                                   Master OUT -> Sfx IN   WRONG
+#     Gain#7 -> Gain#8 -> Gain#9 -> Gain#4               Music -> Sfx           WRONG
+#     Gain#2 -> Gain#7                                   Master OUT -> Music IN WRONG
+#
+# `#0 -> #1 -> #2 -> #4 -> #5 -> #6 -> #0` is a closed loop and every gain in it is
+# 1.0, so the signal re-circulates and sums forever. Peak amplitude at the destination,
+# against a full scale of 1.0: **1.18 at 18s, 50.5 at 131s, 78.8 at 140s** -- real audio
+# (RMS 28.3, 671 zero crossings in a 2048-sample window), just seventy-eight times too
+# loud and still climbing. A player got a few seconds of correct sound and then a wall
+# of clipping. Desktop was never affected: desktop is already Stream and never builds
+# that graph at all, which is why every gate in this repo and every headless test passed
+# throughout.
+#
+# The fix is the project setting, not a rewrite here: on Stream the mix goes out through
+# the engine's own AudioWorkletNode -- the node that measured exactly 0.0000 for the whole
+# session, because under Sample nothing was using it. The cyclic Gain graph is still
+# built and still cyclic; with no source feeding it, it is silent.
+#
+# **So do not "simplify" this by dropping the project setting**, and be careful adding a
+# third bus: the mis-wiring is a property of adding buses after driver start, so a fourth
+# category would join the same loop the moment web went back to Sample playback.
 
 
 ## The index of `bus_name`, creating the bus if this process has not got one yet.

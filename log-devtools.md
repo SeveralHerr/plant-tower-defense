@@ -10718,6 +10718,139 @@ is likely to be at least as productive.
   so a future session reads it without another skill-file edit.
 
 
+## 2026-08-29 — Web audio investigation: runtime buses build a feedback cycle in WebAudio
+
+- Value: **warranted** — the defect is invisible to every static gate and to every headless
+  test; it only exists in the browser's own audio graph, and only after ~20s of accumulation.
+  - Expected: either a mute flag stuck on, a stream that failed to load, or the browser
+    autoplay policy leaving the AudioContext suspended.
+  - Got: all three ruled out (Options screen reads `Sound effects On / Music On / 100% /
+    100%`; console has zero `Music: no audio stream` warnings; `AudioContext.state` reaches
+    `running` after one click). What the live graph actually shows is a cycle:
+    `Gain#0 -> Gain#1 -> Gain#2 -> Gain#4 -> Gain#5 -> Gain#6 -> Gain#0`, every gain 1.0,
+    plus `Gain#2 -> Gain#7` and `Gain#9 -> Gain#4`. Measured at the master output on the
+    deployed build: peak `1.18` at t=18s, `50.5` at t=131s, `78.8` (RMS `28.3`, 671 zero
+    crossings) at t=140s — real audio, 78x full scale, growing without bound.
+  - Found: the root cause. `audio/general/default_playback_type.web = 1` (Sample) means
+    web plays every AudioStreamPlayer through the browser graph, and
+    `Sfx.ensure_bus()` builds the `Sfx`/`Music` buses at runtime because
+    `res://default_bus_layout.tres` does not exist. The runtime bus additions mirror into
+    WebAudio with a backwards edge, closing a unity-gain loop.
+  - Cheaper: nothing. No gate in this repo can see a WebAudio graph, and the symptom needs
+    ~20s of wall-clock accumulation in a real browser before it is even measurable.
+
+- Gap: **no harness verb, gate or test can observe the exported Web build's audio at all**
+  — everything in `/verify` runs against a desktop or headless instance, where
+  `default_playback_type` is `0` (Stream) and the browser graph does not exist. The whole
+  class "correct on desktop, silent or clipped on web" is unreachable from this project's
+  checks. The workaround was hand-built: seed a same-origin iframe with
+  `document.write` after patching `AudioNode.prototype.connect` and `window.AudioContext`
+  on its `contentWindow`, then tap every node feeding `AudioDestinationNode` with an
+  `AnalyserNode` and read `getFloatTimeDomainData` over time.
+  - [G-081] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: a `tools/web_audio_check.py` that serves `bin/` locally, drives a headless
+    Chrome with that same connect-hook, and fails when (a) any cycle exists among the
+    nodes reaching `AudioDestinationNode`, or (b) the master peak exceeds 1.0. Both are
+    cheap, deterministic, and would have caught this the day `ensure_bus` landed.
+
+## 2026-08-29 — press-and-hold reveals a plant/packet button's blurb on touch (crj9)
+
+- Value: **warranted** — the live game caught a regression the headless suite and lint
+  both missed, before it ever reached a commit.
+  - Expected: holding a plant/packet button past HOLD_THRESHOLD_SEC pops its own
+    `tooltip_text` beside it and blocks the release from also buying; a quick tap is
+    unaffected.
+  - Got: first cut parented the new `LongPress` helper INSIDE `_fx_layer` (the existing
+    "paints over everything" layer). Nothing headless caught it — name_check, import,
+    lint and a first `run_tests.py` all passed — because the helper is a permanent child
+    and the two tests that break
+    (`test_a_sunflower_payout_carries_the_flower_it_grew_on`,
+    `test_collecting_a_real_husk_through_game_reaches_fly_seed_glyph_without_error`) only
+    ran once `_fx_layer.get_child_count() == 0` was asserted against a HUD that now had a
+    permanent tenant. Moved `LongPress` to a sibling of `_fx_layer` instead. Live, via the
+    bridge: `run-method emit_signal button_down` -> `step-time --seconds 0.6` (real Timer,
+    not a mocked one) -> popup `visible: true` with `text` byte-identical to the button's
+    own `tooltip_text` -> `button_up` hides it -> a manually re-fired `pressed` afterward
+    left `bank.seeds` and `selected_plant` untouched, then a real `press` on the same
+    button selected it normally.
+  - Found: the `_fx_layer` zero-children assumption, live in the running game before the
+    unit suite even ran a second time — reading the diff alone reads as "add a sibling
+    node", nothing about it says two existing tests encode "this layer is provably empty
+    behind an animation gate".
+  - Cheaper: nothing that would have caught the `_fx_layer` regression — it needed the
+    actual suite run, not a read of the diff. The live bridge pass on top of that (the
+    `step-time` sequence above) was closer to `overkill` on its own, since
+    `test_holding_a_plant_button_reveals_its_tooltip_and_blocks_the_purchase` already
+    proves the same state machine headless; it bought confidence that the REAL Timer and
+    REAL BaseButton press/release cycle behave the same way the direct-call test assumes.
+
+- Gap: **two concurrent Claude Code sessions committed the same uncommitted working tree**
+  — this session wrote `game/hud_long_press.gd`, wired `game/hud.gd`, and added two tests
+  to `test/unit/test_selftest.gd`, all sitting uncommitted while it drove the live game
+  above. Before this session could commit, `git log` showed a NEW commit
+  (`3a16b21`, a different `Claude-Session:` id, same `git` author) whose diff is this
+  session's exact working-tree content plus one `.uid` sidecar this session forgot and
+  one extra directly-naming test for `suite_reach_check.py`. `bd show crj9` had already
+  moved to `CLOSED`. Nothing was lost or corrupted — the other session's close reason
+  independently reports the same `1121/1121` and `lint clean` this session measured — but
+  two sessions reading and writing the same checkout with no coordination is a real
+  hazard the harness has no verb for.
+  - [G-158] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: `ping`'s "DIFFERENT checkout" refusal (CLAUDE.md's worktree-sibling
+    gotcha) covers two sessions racing on the devtools BUS; nothing covers two sessions
+    racing on the WORKING TREE of the identical checkout with no bus involved at all. A
+    `.devtools/session_lock.json` (pid + session id + mtime, written on first Edit/Write
+    and checked on `bd update --claim`) that warns rather than blocks would have named
+    this at claim time instead of at `git log` time.
+
+## 2026-08-29 — next-wave button pulses once it's pressable (jlsc)
+
+- Value: **warranted** — the live game is the only thing that could confirm the Tween
+  actually animates a real Control's `modulate.a` under a real render loop, since
+  `GardenTheme.animations_enabled()==false` headless means every unit assertion here is
+  necessarily about the edge-detect flag and the at-rest reset, never about the motion
+  itself.
+  - Expected: `_next_wave_button.modulate.a` oscillates between 1.0 and
+    `NEXT_WAVE_PULSE_DIM` while `can_start_wave` is true, and snaps back to 1.0 the
+    instant the button is pressed (wave goes live, `can_start_wave` flips false).
+  - Got: `get-state _next_wave_pulse_active -> true`, `node-bounds` alpha `0.9` and a
+    separate `get-state modulate` read `a: 0.843` mid-cycle — two independent reads
+    catching two different points on the same real, running Tween. `press` on the button
+    then `get-state` showed `disabled: true`, `_next_wave_pulse_active: false`,
+    `modulate.a: 1.0` in the same call — the reset-before-gate ordering holds live, not
+    just in the headless edge-detect test.
+  - Found: nothing wrong — this confirmed the mirrored `_set_prep_bar_urgent` shape
+    behaves identically for a second Control, which is exactly what "mirror the existing
+    pattern" was betting on.
+  - Cheaper: the unit test alone (mirroring
+    `test_the_prep_strip_pulses_in_its_final_seconds`) already proves the edge-detect and
+    the headless-reset; the live pass bought confidence in the actual animation frame
+    values a headless run cannot produce, at the cost of one launch + four bridge calls.
+
+- Gap: no gaps this turn.
+  - [G-158] status: open | seen: 2 | harness: 0.38.0 — same concurrent-session-on-one-
+    checkout hazard the crj9 entry above named: this session and another both had commits
+    to `main` land within the same few minutes (`3a16b21`/`9da3dc4` here vs. the other
+    session's independent `sha 9da3dc4` verify-ledger row above), plus a stray
+    `run_tests.py`/`godot --editor` process count in the double digits from unrelated
+    concurrent worktrees (`chomper-anim`, `currency-juice`, `placement-ghost`,
+    `playtest-driver`) sharing this machine. Nothing was lost, but `git status`/`tasklist`
+    had to be read defensively before any `quit --kill` to avoid hitting someone else's
+    live run.
+
+## 2026-08-29 — plant-tower-defense-q7z6: split unaffordable-vs-locked tint, flash Seeds red/green on spend/gain
+
+- Value: **warranted** — the live read caught the exact colour the pure classifier claims, at the exact moment it claims it, which a headless assertion cannot show on its own.
+  - Expected: `plant_button_tint_on(true, false, false, false)` returns `PLANT_BUTTON_POOR` (GardenTheme.DANGER, 0.85 alpha) and a purchase flashes the Seeds label to `SEEDS_SPEND_TINT` before easing back to PAPER.
+  - Got: live `get-state` on `Button_chomp_flower.modulate` after unlocking it with 5 seeds against a 15 cost read `{r:0.85, g:0.25, b:0.22, a:0.85}` — exactly `GardenTheme.DANGER` at 0.85 alpha, not the locked buttons' `{1,1,1,0.55}`. Toggling `RunConfig.colorblind_safe` and repeating with Bramble (price 20, 5 seeds) read `{r:0.976, g:0.647, b:0.196, a:0.85}` — exactly `SAFE_BAD`. `pause` before `pay_for_plant("chomp_flower")`, then reading `SeedsLabel`'s `theme_override_colors/font_color` while still paused, caught it frozen at exactly `{0.85,0.25,0.22,1.0}` (DANGER) with the text already at "Seeds  40" — the flash landing synchronously with the spend, before the tween had a chance to ease it. `unpause` + a re-read settled it back to PAPER `{0.925,0.863,0.722,1.0}`.
+  - Found: nothing broken — this was a confirming run, not a debugging one. The `pause`-before-trigger trick to freeze a sub-frame tween state was new to me this session; the CLAUDE.md notes pause/read but I had not combined it with "trigger the effect after pausing" to catch a tween's *first* frame specifically before.
+  - Cheaper: the two headless assertions (`test_an_unaffordable_plant_tints_differently_from_a_locked_one`, `test_the_seeds_readout_flash_differs_between_a_spend_and_a_gain`) already prove the classifiers return the right constants for every input; the live pass adds only "the wiring in `refresh()`/`_ready()` actually reaches the Label/Button nodes with the right node paths and doesn't get shadowed by a later `modulate` write" — worth the ~10 bridge calls it cost, not more.
+
+- Gap: **name_check / lint / run_tests all abort on an unrelated, pre-existing broken commit** — `test/unit/test_selftest.gd` (committed at HEAD, 24028e1) `preload()`s `res://game/hud_long_press.gd`, which has never been committed to any branch (`git log --all -- game/hud_long_press.gd` is empty) — a prior session's `git commit -a` on a dirty tree evidently swept up the *test* half of bead crj9 (the `HudLongPress` const and one whole test function) without the *implementation* half. Every fresh worktree branched from `main` — mine included — fails to compile the entire test suite until that's fixed, not just one test.
+  - [G-082] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: `git commit -a` (or any commit that stages by tracked-vs-modified rather than by an explicit `git add` list) on a tree with untracked new files belonging to the same feature is exactly how this happens; a pre-commit check that greps a commit's new/changed `preload()`/`class_name` references against `git ls-files` (or just runs `name_check.py` in the commit hook) would have caught it before it reached `main`. Worked around this session by copying the two untracked files from the concurrently-running main worktree into mine for local test compilation only, without committing them under this branch — confirmed the resulting 2 residual suite failures (`test_holding_a_plant_button_reveals_its_tooltip_and_blocks_the_purchase`, `test_the_suite_reach_baseline_lists_only_symbols_no_test_names`) reproduce identically with every change from this session's own commits `git stash`ed out, so neither is caused by this session's diff.
+
+
 ## 2026-08-29 — Chomp Flower: vines lash out, haul the bug onto the plant, and eat it there
 
 - Value: **warranted** — the whole animation is composited pixels from three sources (the

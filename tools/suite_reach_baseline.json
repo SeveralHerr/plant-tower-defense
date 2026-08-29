@@ -8,7 +8,6 @@
     "game/game.gd::var::victory",
     "game/hud.gd::func::set_active",
     "game/hud.gd::signal::packet_requested",
-    "game/hud.gd::signal::plant_selected",
     "game/hud.gd::signal::upgrade_requested",
     "game/hud.gd::signal::uproot_requested",
     "game/kernel.gd::func::reach_at_offset",

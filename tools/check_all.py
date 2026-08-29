@@ -118,6 +118,12 @@ NOT_A_CHECKER = {
     "check_devtools_log.py": "a Claude Code Stop hook, not a repo checker -- it advises "
                              "about log-devtools.md and never gates",
     "devtools.py": "the bridge client; needs a running game",
+    "gen_pulse_cue.py": "a GENERATOR, not a check: it prints GDScript boilerplate for "
+                        "the edge-detected pulse-cue pattern and writes nothing itself. "
+                        "It owes a NOT COVERED line for the same reason citation_rebind.py "
+                        "does (it is a house tool) and that line reads as a checker "
+                        "contract under marker-based discovery -- run it by hand: "
+                        "`python tools/gen_pulse_cue.py --self-test`",
     "mutate.py": "a mutation harness, not a check: it WRITES tools/*.py in the working "
                  "tree and puts them back, so it must never run in the parallel pool "
                  "beside a checker reading the same file. Run it by hand: "

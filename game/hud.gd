@@ -16,6 +16,12 @@ extends CanvasLayer
 ## and budget --" block further down.
 const HudSelection := preload("res://game/hud_selection.gd")
 
+## The hold-to-reveal subsystem (plant-tower-defense-crj9): touch has no native
+## hover, so a held plant/packet button shows its own `tooltip_text` in a small
+## popup instead. See that file's header for why it is instantiated rather than
+## called statically like `HudSelection`.
+const HudLongPress := preload("res://game/hud_long_press.gd")
+
 signal plant_selected(id: StringName)
 signal packet_requested(tier: StringName)
 
@@ -446,6 +452,13 @@ const PREP_BAR_URGENT_SECONDS: float = 2.0
 const PREP_BAR_PULSE_SECONDS: float = 0.24
 const PREP_BAR_PULSE_DIM: float = 0.45
 
+## Half a pulse cycle for the next-wave button once it becomes pressable
+## (plant-tower-defense-jlsc). Slower than the prep strip's urgency pulse --
+## this one is an invitation to click, not a countdown alarm, so it reads as
+## a calm breathing glow rather than a flashing warning.
+const NEXT_WAVE_PULSE_SECONDS: float = 0.5
+const NEXT_WAVE_PULSE_DIM: float = 0.8
+
 ## How far this wave's stopping depth has to move off the run's average before
 ## the prep line calls it a change rather than noise.
 ##
@@ -579,6 +592,16 @@ const PLANT_BUTTON_DIM: Color = Color(1, 1, 1, 0.55)
 ## channel, matching the seed packet's own paper rather than any threat colour —
 ## nothing here is a warning.
 const PACKET_HINT_TINT: Color = Color(1.0, 0.94, 0.62, 1.0)
+## A plant that IS unlocked but costs more than the bank holds right now
+## (plant-tower-defense-q7z6). Distinct from PLANT_BUTTON_DIM on purpose: the old
+## code tinted "locked" and "too poor" identically, and the only surviving
+## difference — whether a price number is drawn at all — is easy to miss at 55%
+## alpha. This sits at higher alpha (still readable, not a second lock) and
+## carries GardenTheme's own DANGER hue, the same "not yet" the readout flash
+## below borrows for a spend. See plant_button_tint_on / GardenTheme.SAFE_BAD for
+## the colourblind-safe twin.
+const PLANT_BUTTON_POOR: Color = Color(GardenTheme.DANGER, 0.85)
+const PLANT_BUTTON_POOR_SAFE: Color = Color(GardenTheme.SAFE_BAD, 0.85)
 
 
 ## Where the packet button for the `index`th tier sits, in the side panel's own
@@ -1087,6 +1110,26 @@ const SEED_ROLL_STEPS: int = 10
 ## plant price and every wave bonus clears it by a wide margin.
 const SEED_ROLL_MIN_JUMP: int = 5
 
+## THE SPEND/GAIN FLASH (plant-tower-defense-q7z6). The roll above already gives a
+## purchase and a payout different MOTION — the digits visibly count down for a spend
+## and up for a payout, which is the channel that survives the colour being thrown
+## away (see game/OVERLAY_GRAMMAR.md's two-channel rule). This adds colour ON TOP of
+## that, not instead of it: a player watching the number itself, not the roll, still
+## gets the "this cost you seeds" read the report was filed about.
+##
+## Slightly longer than SEED_ROLL_SECONDS so the tint is still visibly lit once the
+## roll has settled on the final digits, rather than fading out under the motion.
+const SEEDS_FLASH_SECONDS: float = 0.45
+## LEAF for a payout, DANGER for a spend — the same pair HEALTH_FULL/HEALTH_LOW
+## already use for "good" and "bad", so the Seeds readout is not inventing a third
+## meaning for either hue. SAFE_GOOD/SAFE_BAD are the colourblind-safe pair for the
+## same reason threat and health have one: green/red is exactly the confusion a
+## deuteranope hits on a currency counter that is otherwise unmarked.
+const SEEDS_GAIN_TINT := GardenTheme.LEAF
+const SEEDS_GAIN_TINT_SAFE := GardenTheme.SAFE_GOOD
+const SEEDS_SPEND_TINT := GardenTheme.DANGER
+const SEEDS_SPEND_TINT_SAFE := GardenTheme.SAFE_BAD
+
 ## The denial shake: rotation, not position. The plant bar's buttons are
 ## GridContainer children, and a Container's sort pass writes `position` and
 ## `size` on every child every time it runs — which a refresh() landing mid-shake
@@ -1138,6 +1181,8 @@ var _banner_note: Label
 ## Last child of `root`, so anything added here draws over every panel and
 ## button — where a travelling seed glyph belongs. See fly_seed_glyph().
 var _fx_layer: Container
+## Hold-to-reveal for touch (plant-tower-defense-crj9). See game/hud_long_press.gd.
+var _long_press: HudLongPress
 
 var _plant_buttons: Dictionary = {}
 ## Which plant button the cursor is on, &"" for none. Needed because two adjacent
@@ -1207,6 +1252,11 @@ var _prep_bar_pulse: Tween = null
 ## step -- the same reason _ease_threat_tint below gates on the target
 ## actually changing instead of re-tweening to the same colour every call.
 var _prep_bar_urgent: bool = false
+var _next_wave_pulse: Tween = null
+## Edge-detected the same way _prep_bar_urgent is, for the same reason: refresh()
+## runs every frame the button is enabled, and re-tweening to the same target
+## every one of those frames would never let a cycle advance past its first step.
+var _next_wave_pulse_active: bool = false
 var _threat_tween: Tween = null
 var _threat_tint_target: Color = PAPER
 
@@ -1229,6 +1279,11 @@ var _seeds_shown: int = 0
 ## `_readout_tweens` exists for one member up. A second roll armed while the first is
 ## mid-count would have two tweens writing the same Label from two different `from`s.
 var _seeds_roll: Tween
+## The live spend/gain flash — killed and restarted for the same reason as
+## `_seeds_roll` one line up: a second purchase landing mid-flash must retarget
+## the colour, not fight the first tween's callback for the last word on
+## `font_color`.
+var _seeds_flash_tween: Tween
 
 ## The three surfaces whose geometry comes from the viewport rather than from a
 ## constant. Held as members for one reason: `_apply_viewport_layout()` has to be
@@ -1258,6 +1313,12 @@ func _ready() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
 
+	# Built before the bars below, which call .watch() on it while wiring up
+	# each button. Parented into the tree further down, once _fx_layer exists —
+	# construction order and tree order are different constraints here.
+	_long_press = HudLongPress.new()
+	_long_press.name = "LongPress"
+
 	_build_top_bar(root)
 	_build_side_panel(root)
 	_build_banner(root)
@@ -1285,6 +1346,13 @@ func _ready() -> void:
 	_fx_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_fx_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(_fx_layer)
+
+	# A sibling of _fx_layer, not a child of it: test_a_sunflower_payout_carries_
+	# the_flower_it_grew_on and its husk-collection twin both assert _fx_layer
+	# ends a run with ZERO children as proof a headless-skipped glyph left no
+	# trace. Added after it regardless, so its popup still paints on top of
+	# every panel, button and glyph the same way _fx_layer's own children do.
+	root.add_child(_long_press)
 
 	# The builders above create nodes and set everything that is a CONSTANT. Every
 	# number that comes from the viewport is written here instead, once, and again
@@ -1623,6 +1691,7 @@ func _build_side_panel(root: Control) -> void:
 		button.pressed.connect(_on_plant_button.bind(id))
 		button.mouse_entered.connect(_on_plant_hover.bind(id, false))
 		button.mouse_exited.connect(_on_plant_hover.bind(id, true))
+		_long_press.watch(button)
 		_plant_bar.add_child(button)
 		_plant_buttons[id] = button
 
@@ -1664,6 +1733,7 @@ func _build_side_panel(root: Control) -> void:
 		# the one mistake this rewrite could make that two hand-written buttons
 		# could not, and it would wire every button to the last tier.
 		packet.pressed.connect(_on_packet_button.bind(tier))
+		_long_press.watch(packet)
 		# Hover, not press: the question "what is in this packet" is asked before
 		# buying, and a cue you only get by spending 90 seeds is not a cue. These
 		# fire on a DISABLED button too, which is the case that matters most — a
@@ -1924,6 +1994,27 @@ func _set_prep_bar_urgent(urgent: bool) -> void:
 	_prep_bar_pulse.tween_property(_prep_bar, "modulate", Color.WHITE, PREP_BAR_PULSE_SECONDS)
 
 
+## Starts or stops the next-wave button's pressable pulse (plant-tower-defense-jlsc),
+## edge-detected the same way _set_prep_bar_urgent is and for the same reason: a
+## refresh() every frame the button stays enabled must not restart the tween on
+## every one of those frames.
+func _set_next_wave_pulse_active(active: bool) -> void:
+	if active == _next_wave_pulse_active:
+		return
+	_next_wave_pulse_active = active
+	if _next_wave_pulse != null and _next_wave_pulse.is_valid():
+		_next_wave_pulse.kill()
+	# Reset first, gate second: a wave that goes live mid-pulse (or a headless
+	# run that never had a Tween) must not freeze the button dim.
+	_next_wave_button.modulate = Color.WHITE
+	if not active or not GardenTheme.animations_enabled():
+		return
+	_next_wave_pulse = create_tween().set_loops()
+	_next_wave_pulse.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_next_wave_pulse.tween_property(_next_wave_button, "modulate", Color(1, 1, 1, NEXT_WAVE_PULSE_DIM), NEXT_WAVE_PULSE_SECONDS)
+	_next_wave_pulse.tween_property(_next_wave_button, "modulate", Color.WHITE, NEXT_WAVE_PULSE_SECONDS)
+
+
 ## How the plant bar arranges `count` plants: one column while they still clear
 ## the 40px touch minimum, two once they do not.
 ##
@@ -2037,7 +2128,7 @@ static func uproot_button_tooltip(plant_name: String, refund: int, replant: int)
 		+ "so the round trip costs you %d.") % [plant_name, refund, replant, -net]
 
 
-## What a plant button is tinted, in the three states it can be in.
+## What a plant button is tinted, in the four states it can be in.
 ##
 ## `hinted` is the packet rack talking to the plant bar: while the cursor rests on
 ## a packet button, every locked plant that packet could still hand over lifts out
@@ -2052,13 +2143,39 @@ static func uproot_button_tooltip(plant_name: String, refund: int, replant: int)
 ## the right edge. `modulate` costs nothing and is already the channel these buttons
 ## speak in.
 ##
-## The lift is brightness first and hue second — a locked button sits at 55% alpha,
-## a hinted one at 100% — because a hue-only cue is the one a colourblind player
-## does not get. See GardenTheme's own note on the threat ramp for the same argument.
+## LOCKED and UNLOCKED-BUT-TOO-POOR used to collapse onto the same PLANT_BUTTON_DIM
+## (plant-tower-defense-q7z6) — the only surviving difference was whether a price
+## number was drawn at all, which a 55%-alpha button makes easy to miss. They are
+## split here: "too poor" carries GardenTheme's DANGER/SAFE_BAD hue at higher
+## alpha, "locked" keeps the plain dim. Hue-plus-brightness for the same reason a
+## hinted button is full alpha, not just warm — a hue-only cue is the one a
+## colourblind player does not get, so `safe` picks the paired colour rather than
+## turning the cue off.
+##
+## `plant_button_tint_on`'s branch table and `test_selftest.gd`'s assertions for it
+## are both generated from tools/specs/plant_button_tint.json via
+## tools/gen_bool_classifier.py — edit the spec and regenerate both rather than
+## hand-editing either; see the spec file for why.
 static func plant_button_tint(unlocked: bool, affordable: bool, hinted: bool) -> Color:
+	return plant_button_tint_on(unlocked, affordable, hinted, RunConfig.colorblind_safe)
+
+
+## Generated by tools/gen_bool_classifier.py from tools/specs/plant_button_tint.json;
+## edit the spec and regenerate with `python tools/gen_bool_classifier.py
+## tools/specs/plant_button_tint.json --write-func game/hud.gd --write-test
+## test/unit/test_selftest.gd` rather than hand-editing the block below.
+# GEN:plant_button_tint_on:BEGIN
+static func plant_button_tint_on(unlocked: bool, affordable: bool, hinted: bool, safe: bool) -> Color:
 	if hinted:
 		return PACKET_HINT_TINT
-	return Color.WHITE if (unlocked and affordable) else PLANT_BUTTON_DIM
+	if not unlocked:
+		return PLANT_BUTTON_DIM
+	if unlocked and not affordable and safe:
+		return PLANT_BUTTON_POOR_SAFE
+	if unlocked and not affordable and not safe:
+		return PLANT_BUTTON_POOR
+	return Color.WHITE
+# GEN:plant_button_tint_on:END
 
 
 ## What a plant button says on hover: its name, its blurb, and — for a plant still
@@ -2272,6 +2389,10 @@ static func design_height() -> int:
 
 
 func _on_plant_button(id: StringName) -> void:
+	# A held press already showed this plant's blurb; the same press must not
+	# also spend seeds on it -- see HudLongPress.consume_suppressed.
+	if _long_press.consume_suppressed(_plant_buttons[id]):
+		return
 	plant_selected.emit(id)
 
 
@@ -2288,6 +2409,8 @@ func _on_plant_hover(id: StringName, leaving: bool) -> void:
 
 
 func _on_packet_button(tier: StringName) -> void:
+	if _long_press.consume_suppressed(_packet_buttons[tier]):
+		return
 	packet_requested.emit(tier)
 
 
@@ -2347,6 +2470,7 @@ func refresh(state: Dictionary) -> void:
 	if seeds_moved:
 		_punch_readout(_seeds_label)
 		_arm_seeds_roll(seeds_from, bank.seeds)
+		_flash_seeds_tint(seeds_flash_tint(bank.seeds > seeds_from))
 	if bool(state.get("endless", false)):
 		# "∞" rather than "— endless": at wave 509 with a threat level appended,
 		# the spelled-out version measured 397px against a 320px budget and was
@@ -2457,7 +2581,9 @@ func refresh(state: Dictionary) -> void:
 		var packet := _packet_buttons.get(tier) as Button
 		if packet != null:
 			_refresh_packet_button(packet, bank, tier)
-	_next_wave_button.disabled = not bool(state["can_start_wave"])
+	var can_start_wave: bool = bool(state["can_start_wave"])
+	_next_wave_button.disabled = not can_start_wave
+	_set_next_wave_pulse_active(can_start_wave)
 	# Rendered from state like every other readout — the HUD keeps no second copy
 	# of the speed, so the button cannot disagree with the engine or read 1x
 	# behind a pause card that is holding the clock.
@@ -2882,6 +3008,57 @@ func _arm_seeds_roll(from_value: int, to_value: int) -> void:
 	counting.set_ease(Tween.EASE_OUT)
 	tween.tween_callback(restore)
 	_seeds_roll = tween
+
+
+## Which colour the Seeds readout flashes for this change's direction. Pure and
+## static for the reason seeds_roll_value is — a Tween does not run headless, so
+## the decision has to live somewhere a test can call it with no HUD, no frame,
+## and no renderer.
+##
+## `seeds_flash_tint_on`'s branch table and `test_selftest.gd`'s assertions for it
+## are both generated from tools/specs/seeds_flash_tint.json via
+## tools/gen_bool_classifier.py — edit the spec and regenerate both rather than
+## hand-editing either; see the spec file for why.
+static func seeds_flash_tint(increased: bool) -> Color:
+	return seeds_flash_tint_on(increased, RunConfig.colorblind_safe)
+
+
+# GEN:seeds_flash_tint_on:BEGIN
+static func seeds_flash_tint_on(increased: bool, safe: bool) -> Color:
+	if increased and not safe:
+		return SEEDS_GAIN_TINT
+	if increased and safe:
+		return SEEDS_GAIN_TINT_SAFE
+	if not increased and not safe:
+		return SEEDS_SPEND_TINT
+	return SEEDS_SPEND_TINT_SAFE
+# GEN:seeds_flash_tint_on:END
+
+
+## Lands the flash colour on the Seeds readout and eases it back to its resting
+## PAPER, the same killed-and-restarted shape every other readout tween in this
+## file uses. `tween_method` rather than `tween_property`, because a Control theme
+## override is not a plain property Tween can address — the same reason
+## `_ease_threat_tint` drives `_tint_wave_label` through a lambda instead of
+## tweening `_wave_label`'s font colour directly.
+##
+## Only `font_color`, not `font_outline_color` too: unlike the wave label, Seeds
+## has no outline override of its own to restore (_make_label sets font_color
+## only), so touching the outline here would leave it needing a value to settle
+## back to that this function has no way to know.
+func _flash_seeds_tint(target: Color) -> void:
+	if not GardenTheme.animations_enabled() or _seeds_label == null:
+		return
+	if _seeds_flash_tween != null and _seeds_flash_tween.is_valid():
+		_seeds_flash_tween.kill()
+	_seeds_label.add_theme_color_override("font_color", target)
+	var apply := func(c: Color) -> void:
+		if is_instance_valid(_seeds_label):
+			_seeds_label.add_theme_color_override("font_color", c)
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_method(apply, target, PAPER, SEEDS_FLASH_SECONDS)
+	_seeds_flash_tween = tween
 
 
 ## A refused plant placement, shaking the bar slot the player picked it from —
