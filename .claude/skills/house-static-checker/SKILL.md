@@ -196,7 +196,16 @@ So: run it verbose, on the real corpus, once. Read some of what it prints.
 ## The fixture is not optional
 
 **Write a synthetic file containing both the bad patterns and the good ones, run the
-checker on it, and confirm it fires on exactly the bad ones.** Then delete it.
+checker on it, and confirm it fires on exactly the bad ones.** Then delete it — or, better,
+**keep it behind a flag**. Three tools here now do: `rng_seed_check.py --self-test`,
+`group_leak_check.py --fixture`, `audio_license_check.py --self-test`. The mutations below
+are re-run after *every* edit to a checker, and rebuilding the fixture each time is most of
+the cost of having written it the first time; deleted, the mutation block is prose. Build
+the fixture in a `tempfile.TemporaryDirectory` from synthetic bytes so nothing is vendored
+into the repo and nothing outlives the run, and factor the checker so its analysis takes
+the tree to scan as a parameter rather than reading a module constant. Give the flag its
+own `NOT COVERED:` line: a synthetic fixture proves the RULES fire, not that the readers
+cope with real input.
 
 This is the step that gets skipped, and it is the step that pays. Writing the fixture for
 `group_leak_check` caught two real bugs *in the checker*: the waiver was being stripped
@@ -207,6 +216,46 @@ correct behaviour, because the file set the property per node.
 
 A checker that has never been observed to fail is not a checker. The same rule as a test:
 **green on first run means nothing until you have watched it go red for the right reason.**
+
+### A fixture that EXPLAINS itself inside the artifact under test disarms itself
+
+The fixture is a file the checker reads. The natural thing to do is label each planted
+defect with a comment saying which rule it is for — and when the checker scans prose, that
+label **is** the thing being searched for. The rule then passes, over a defect that is
+present, for a reason invisible in the output: a `PASS` and a rule that never ran look
+identical.
+
+`audio_license_check` hit this three times in one sitting, each time on the rule the line
+was written to demonstrate:
+
+- `orphan.wav is deliberately absent from this document -- RULE C.` The rule is *is every
+  file on disk named in this document*. Naming it named it.
+- `bigchop.ogg   clean. chop.ogg is on disk, is a SUFFIX of this name, and is listed
+  nowhere.` Same rule, same self-defeat, one indirection further along.
+- an artist tag of `Nobody`, planted to be a credit the document never names, written into
+  the very line describing it: `stranger.ogg   RULE B: tagged ARTIST=Nobody, credited
+  nowhere.`
+
+Each read as a working checker with one rule quietly absent, and each was found only by
+counting which findings came back rather than how many.
+
+Two rules, and the second is the one that generalises:
+
+- **In the fixture, describe the planted defect without spelling it.** "A shorter file on
+  disk is a suffix of this name and is listed nowhere" carries the same meaning to a human
+  and nothing to the scanner. Pick a sentinel value that appears nowhere else, too — an
+  artist string of `Zorbat` cannot be accidentally satisfied the way `Nobody` was.
+- **Assert on WHICH findings came back, not how many.** A count going 6 → 6 while one rule
+  fell silent and another double-fired is exactly the result a count cannot see. Keep a
+  list of `(rule, identifying substring)` and check each one — then check the count as
+  well, so an *extra* finding fails as a false positive. `audio_license_check --self-test`
+  is the worked example; all four of its recorded mutations go red naming the rule they
+  broke, which is only possible because the assertions are per-rule.
+
+The same trap has a version outside fixtures: any file that documents a rule it is itself
+subject to. A `NOT COVERED:` line inside a tool that `check_all` classifies **by** that
+string is the benign case; a test scanning source for a token and matching the comment
+explaining the token's absence is the malignant one, and this repo has already paid for it.
 
 ### The procedure legitimately ends in NOT building one, and that is a success
 
