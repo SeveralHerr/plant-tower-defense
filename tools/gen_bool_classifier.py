@@ -15,9 +15,24 @@ empty "when" is the unconditional default and must be last.
 Usage:
     python tools/gen_bool_classifier.py SPEC.json --print-func
     python tools/gen_bool_classifier.py SPEC.json --print-test
+    python tools/gen_bool_classifier.py SPEC.json --write-func game/hud.gd
+    python tools/gen_bool_classifier.py SPEC.json --write-test test/unit/test_selftest.gd
+    python tools/gen_bool_classifier.py SPEC.json --check-func game/hud.gd --check-test test/unit/test_selftest.gd
 
 The GDScript body and the test body are both derived from `cases` --
 edit the spec, regenerate both, nothing is hand-typed in two places.
+
+`--write-func`/`--write-test` splice the generated block between a pair of
+marker comments in the target file:
+
+    # GEN:<function>:BEGIN
+    ...generated lines replaced here on every --write...
+    # GEN:<function>:END
+
+so regenerating is `git diff`-visible and never a manual copy/paste --
+the two places that can drift are reduced to the one spec. `--check-*`
+compares instead of writing and exits 1 on any mismatch (for a gate); use it
+in `/verify` or a pre-commit hook wherever a *.json spec here changes.
 """
 
 from __future__ import annotations
@@ -25,6 +40,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -116,23 +132,74 @@ def generate_test(spec: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _spliced(target_text: str, marker: str, body: str) -> str:
+    """`target_text` with the block between `# GEN:{marker}:BEGIN` and
+    `# GEN:{marker}:END` replaced by `body`, re-indented to match the BEGIN
+    marker's own indentation (so a block spliced at file scope and one
+    spliced inside a function body both come out looking hand-written)."""
+    begin_re = re.compile(rf"^([ \t]*)# GEN:{re.escape(marker)}:BEGIN[ \t]*$", re.MULTILINE)
+    end_re = re.compile(rf"^[ \t]*# GEN:{re.escape(marker)}:END[ \t]*$", re.MULTILINE)
+    begin = begin_re.search(target_text)
+    if begin is None:
+        raise SystemExit(f"no '# GEN:{marker}:BEGIN' marker found")
+    end = end_re.search(target_text, begin.end())
+    if end is None:
+        raise SystemExit(f"'# GEN:{marker}:BEGIN' found but no matching END marker")
+    indent = begin.group(1)
+    new_body = "".join(f"{indent}{line}\n" if line else "\n" for line in body.rstrip("\n").split("\n"))
+    return target_text[: begin.end() + 1] + new_body + target_text[end.start() :]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("spec", type=Path)
     ap.add_argument("--print-func", action="store_true")
     ap.add_argument("--print-test", action="store_true")
+    ap.add_argument("--write-func", type=Path, metavar="FILE",
+                     help="splice the generated function into FILE at its GEN:<function>:BEGIN/END markers")
+    ap.add_argument("--write-test", type=Path, metavar="FILE",
+                     help="splice the generated test block into FILE at its GEN:<function>:BEGIN/END markers")
+    ap.add_argument("--check-func", type=Path, metavar="FILE",
+                     help="like --write-func but only checks FILE already matches; exits 1 on mismatch")
+    ap.add_argument("--check-test", type=Path, metavar="FILE",
+                     help="like --write-test but only checks FILE already matches; exits 1 on mismatch")
     args = ap.parse_args()
 
-    spec = json.loads(args.spec.read_text())
-
-    if not args.print_func and not args.print_test:
-        args.print_func = args.print_test = True
+    spec = json.loads(args.spec.read_text(encoding="utf-8"))
+    marker = spec["function"]
+    stale = False
 
     if args.print_func:
         print(generate_function(spec))
     if args.print_test:
         print(generate_test(spec))
-    return 0
+    if not any([args.print_func, args.print_test, args.write_func, args.write_test,
+                args.check_func, args.check_test]):
+        print(generate_function(spec))
+        print(generate_test(spec))
+
+    targets = [
+        ("func", args.write_func or args.check_func, generate_function(spec), args.check_func is not None),
+        ("test", args.write_test or args.check_test, generate_test(spec), args.check_test is not None),
+    ]
+    for kind, path, body, check_only in targets:
+        if path is None:
+            continue
+        current = path.read_text(encoding="utf-8")
+        updated = _spliced(current, marker, body)
+        if check_only:
+            if updated != current:
+                print(f"STALE: {path} does not match {args.spec} -- regenerate with --write-{kind}",
+                      file=sys.stderr)
+                stale = True
+            continue
+        if updated != current:
+            path.write_text(updated, encoding="utf-8")
+            print(f"wrote {path} (marker GEN:{marker})")
+        else:
+            print(f"{path} already matches {args.spec} (marker GEN:{marker})")
+
+    return 1 if stale else 0
 
 
 if __name__ == "__main__":
