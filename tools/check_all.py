@@ -75,6 +75,15 @@ CONTRACT_MARKER = "NOT COVERED"
 NOT_PARALLEL_SAFE = {
     "import_check.py": "opens the Godot project and writes .godot/; two at once corrupt "
                        "each other's run",
+    "citation_relocate.py": "a FIXER, not a check: it re-points citations at the line "
+                       "their CITED file's old text moved to via git diff hunks, and "
+                       "WRITES the citing file with --write. Genuinely owes its NOT "
+                       "COVERED line (a house tool per the house-static-checker "
+                       "contract), so it sits here rather than in NOT_A_CHECKER, same "
+                       "shape as import_check.py above -- unlike citation_rebind.py, "
+                       "which resolved the same collision by dropping its marker "
+                       "instead. Needs --base, so run bare it exits 2 on its own "
+                       "argparse -- harmless today, not a guarantee.",
 }
 
 # No NOT COVERED line, and correctly so. Each entry is a claim that this file is
@@ -103,11 +112,6 @@ NOT_A_CHECKER = {
                           "it was run as a checker on its first pass and exited 2 on its "
                           "own argparse, because it needs --against and --report. A tool "
                           "that cannot run without arguments can never be a checker here",
-    "citation_relocate.py": "a FIXER, not a check: it re-points citations at the line "
-                          "their CITED file's old text moved to via git diff hunks, and "
-                          "WRITES the citing file with --write. Needs --base, so run as a "
-                          "checker it exits 2 on its own argparse -- harmless today, not "
-                          "a guarantee, same shape as citation_rebind.py above",
     "repo_walk.py": "a library, not a tool: the shared directory-exclusion rule the "
                     "rooted checkers import so a nested .claude/worktrees/ checkout "
                     "cannot change their denominators. Has no main() and prints nothing",
