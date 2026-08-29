@@ -57,53 +57,131 @@ extends RefCounted
 ## `test_no_sport_name_is_wider_than_the_catalogue_already_is` pins it rather than
 ## leaving it to the eye.
 
-## The single tint every sport wears, and it is ONE colour for all nine on purpose.
+## The suffix that turns a plant sprite's path into its sport's.
 ##
-## The alternative — a per-kind hue — was refused for the reason `Pest`'s markers
-## are the shape they are: a mutation is a piece of VOCABULARY, and a vocabulary
-## with nine words for one idea is nine things to learn instead of one. A player
-## who has seen a single sport can read every other sport on sight.
-##
-## Multiplied into `Sprite2D.modulate`, so it shifts a sprite rather than replacing
-## it — "different but similar" is the requirement, and a sport that shared no
-## colour with its parent would read as a tenth plant. Violet-leaning and slightly
-## brighter than white: green foliage cools toward blue and gold warms toward rose,
-## which is visible on every sprite in `assets/sprites/` without any of them
-## ceasing to be recognisable.
-const TINT := Color(1.10, 0.88, 1.16)
+## One spelling, three readers: `tools/gen_sport_svg.py` appends it when it writes the
+## seventeen derived SVGs, `test_sprite_style.gd` keys MUTANT_PALETTE off it, and this
+## file resolves a texture with it. That tool checks the gate's copy against its own on
+## every run, and `test_selftest.gd` checks this one against both.
+const SPORT_SUFFIX := "_sport"
 
-## The sport's BADGE: a small disc with a star in it, pinned to the plant's shoulder
-## and painted by `SportMark`.
+
+## What a sport's sprite is multiplied by, and it is WHITE deliberately.
 ##
-## The tint alone is not enough and that was the whole lesson of the pest markers: a
-## colour shift is invisible next to a plant of a different KIND, and a player
-## comparing a sport to its own parent two cells away is the only reader who would
-## ever catch it.
+## This used to be Color(1.10, 0.88, 1.16) -- a 12% violet shift over the parent's own
+## drawing -- and the whole of the sport's colour cue. It was a cue you could only read by
+## holding a sport next to its own parent, which is the one comparison a player standing
+## over a 14x9 garden is least likely to make.
 ##
-## A BADGE rather than the row of three loose diamonds this started as. The diamonds
-## were a texture — they read as "something is sparkling here" — where what the cue
-## has to say is "this plant is a different THING". A disc with a rim is a shape
-## nothing else on this board wears, so it reads as an icon rather than as decoration,
-## and it survives being looked at from across a 14x9 garden.
+## A sport now wears its OWN art (`sport_texture_path` below), acid green where the parent
+## was green and hot magenta where it was gold or red, and there is nothing left for a
+## multiplier to add. Multiplying a tint over an already-recoloured sprite does not make it
+## more dramatic; it desaturates toward whatever the tint's own hue is, which is how three
+## deliberate hues become one muddy one.
 ##
-## Pinned to the top-right SHOULDER, not centred over the head. Centred, it collides
-## with the two things already parked above a plant: the health bar
-## (`Plant.HEALTH_BAR_ORIGIN` is y -34, spanning the middle half of the cell) and the
-## selection box. Off to one side it never covers either, and it sits where a corner
-## badge sits on every other piece of UI a player has ever read.
-const BADGE_CENTRE := Vector2(17.0, -25.0)
-const BADGE_RADIUS: float = 8.0
-const BADGE_FILL := Color(0.62, 0.36, 0.85, 0.95)
-const BADGE_RIM := Color(0.30, 0.16, 0.42, 0.98)
+## It also settles what a sport does with a chosen SKIN, and settles it the same way the
+## tint did: the skin is not applied. A sport is the run's own state -- this instance is a
+## mutated survivor, and it is gone the moment CrossBreeder throws a different one -- so it
+## must not be a colour the player has to go and un-pick on the Skins screen to see.
+const SPORT_MODULATE := Color.WHITE
+
+
+## The sport's drawing for a plant sprite path, or the same path back for a kind with no
+## derived art.
+##
+## Pure and path-shaped rather than a table, because a plant does not have ONE sprite: the
+## Bramble swaps between three by health, the Dandelion between four by fluff count, and
+## the Chomp between four by what it is doing. Every one of those has a sport, generated
+## from it by `tools/gen_sport_svg.py`, and a table keyed by PLANT would have covered the
+## nine standing frames and quietly left a mutated Chomp reverting to unmutated colours the
+## moment it bit something.
+static func sport_texture_path(base_path: String) -> String:
+	if base_path.is_empty():
+		return base_path
+	var stem: String = base_path.get_basename()
+	if stem.ends_with(SPORT_SUFFIX):
+		return base_path
+	return "%s%s.%s" % [stem, SPORT_SUFFIX, base_path.get_extension()]
+
+
+## The path a plant should actually load: its sport's when it is one, its own otherwise.
+##
+## The one function every texture assignment in the game goes through (`Plant.frame_texture_path`),
+## so "does this frame have a mutant twin" is asked in one place rather than at four
+## call sites that each have to remember.
+static func texture_path(base_path: String, is_sport: bool) -> String:
+	# No node ever carries this script -- it is a `class_name ... extends RefCounted`
+	# static utility -- so `scripts-seen` and the verify ledger's `reach` cannot see it
+	# however much of it ran. Measured, not assumed: bsxh's runtime pass sprouted four
+	# sports, read each one's loaded texture, and drove a sport Bramble through all three
+	# damage frames, and the ledger still recorded this file as unreachable by
+	# construction. `texture_path` is the funnel every sprite in the game goes through
+	# (`Plant.frame_texture_path`), so marking it once is enough. Same shape and same
+	# reason as `GameSpeed._apply`.
+	DevTools.mark_script_reached("res://game/plant_mutation.gd")
+	return sport_texture_path(base_path) if is_sport else base_path
+
+
+## The sport's BADGE: a hazard trefoil on a disc, pinned to the plant's shoulder and
+## painted by `SportMark`.
+##
+## The art alone is not enough and that is the same lesson the tint taught, one level up: a
+## recolour says "this plant is a different colour", and only a MARK says "this plant is a
+## different thing". A player who has seen one badge can read every sport on the board
+## without learning nine recolours.
+##
+## A TREFOIL, and not the four-point star this started as. The star said "special" -- the
+## vocabulary of a bonus, a rare drop, a favourite -- and a sport is not a reward, it is a
+## mutation. The trefoil is the one shape in general circulation that means exactly
+## "something here has been changed by something you should not touch", and it is the mark
+## a player already knows from a hazard drum. Three blades round a hub is also the more
+## legible shape at this size: it has rotational symmetry, so it survives being glanced at,
+## where a star's points read as noise once they are under about ten pixels.
+##
+## Pinned to the RIGHT SHOULDER, and the exact numbers are load-bearing rather than an eye
+## judgement. The health bar is a 32x5 rect at y -34 (`Plant.HEALTH_BAR_ORIGIN` /
+## `HEALTH_BAR_SIZE`), i.e. x -16..16, y -34..-29, and it carries a quantity the player
+## reads off a damaged plant. From (21, -17) the nearest point of that rect is (16, -29),
+## exactly 13 px away against a 9 px radius: four pixels of clearance, checked by
+## `test_the_sport_badge_stays_clear_of_the_health_bar_and_never_pulses_away`.
+##
+## This was (17, -25) with a radius of 8, which overlapped the bar by four pixels the whole
+## time it shipped. The clearance assertion existed and was correct; the test it sat in
+## ended `return ""` instead of `return err`, so it failed on every run and reported a pass.
+##
+## The badge DOES overlap the selection brackets (`SelectionMarker.LIVE_CORNERS` reach
+## +-22), and that is allowed where the bar is not: the brackets are two-pixel decoration
+## that says "this one is selected", already known to the player who just clicked it, and a
+## badge drawn over a corner of them costs nothing. A bar with its remaining health covered
+## is a readout the player cannot get back. An earlier version of this comment claimed
+## clearance from both, which was never true of either.
+const BADGE_CENTRE := Vector2(21.0, -17.0)
+const BADGE_RADIUS: float = 9.0
+
+## Hazard yellow on near-black, which is the trefoil's own colourway and not a decision
+## this file is free to make differently -- the mark is only borrowed vocabulary if it is
+## borrowed whole.
+##
+## It is also the pair that works on this board. The badge lands on grass (`#2ECC71`), on
+## road (`#BB8044`), and on the sport's own art, which after `gen_sport_svg.py` is acid
+## green or hot magenta; a violet disc, which is what this was, sat inside the mutagen
+## ramp's own hue and vanished into the plant it was marking. Yellow at this value is the
+## one hue on the board nothing else occupies, and near-black is the one value.
+const BADGE_FILL := Color(0.93, 0.97, 0.15, 0.96)
+const BADGE_RIM := Color(0.07, 0.08, 0.02, 0.98)
 const BADGE_RIM_WIDTH: float = 2.0
 
-## The star inside the disc. Four points, which is the fewest that still reads as a
-## star rather than as a blob, and white so it carries at a distance against the
-## violet — the badge's whole job is to be legible small.
-const STAR_POINTS: int = 4
-const STAR_OUTER: float = 5.4
-const STAR_INNER: float = 2.1
-const STAR_COLOR := Color(1.0, 0.98, 1.0, 0.98)
+## The trefoil inside the disc. Three blades and a hub, at the proportions the real mark
+## uses: blades run from 1.5x the hub radius to 4x it, each spanning 60 degrees with 60
+## degrees of gap, so the yellow between them is as wide as the blades themselves. That
+## ratio is what makes the shape readable at a size where the blades are three pixels
+## across; drawn thicker it closes into a disc.
+const TREFOIL_COLOR := Color(0.07, 0.08, 0.02, 0.98)
+const TREFOIL_BLADES: int = 3
+const TREFOIL_HUB: float = 1.7
+const TREFOIL_INNER: float = 2.55
+const TREFOIL_OUTER: float = 6.8
+const TREFOIL_SPAN: float = TAU / 6.0
 
 ## kind -> the sport it throws. Keyed by `PlantCatalog` id, and every id must be
 ## here: `test_every_plant_has_a_sport_and_every_sport_is_strictly_better` walks
@@ -223,30 +301,31 @@ static func note(kind: StringName) -> String:
 	return String(entry(kind).get("note", ""))
 
 
-## The badge's outline, as a polygon rather than an arc call.
+## The trefoil inside the badge: `TREFOIL_BLADES` blades, each an annular sector from
+## `TREFOIL_INNER` to `TREFOIL_OUTER` spanning `TREFOIL_SPAN`, with the first blade
+## pointing up-screen. One polygon per blade, so a caller draws them and nothing else.
+##
+## Up-screen because `art_src/STYLE.md` makes that the facing of everything directional in
+## this kit, and a trefoil rolled a few degrees off is the kind of wrongness a player feels
+## without being able to name. The hub is NOT here: it is a disc, `draw_circle` draws it
+## exactly, and turning a circle into a polygon to keep the shape in one function would
+## make the drawn mark worse to save a line.
 ##
 ## Pure, so what `_draw` paints is checkable in a headless run — the same reason
-## `Sunflower.gauge_fill_rect` is a static rather than a body inside `_draw`. Headless
-## executes no `_draw` at all, so a shape assembled inside one is a shape no test can
-## reach; see `.claude/skills/assert-an-animation`.
-static func badge_ring(segments: int = 20) -> PackedVector2Array:
-	var out := PackedVector2Array()
-	for i: int in range(segments):
-		var angle: float = TAU * float(i) / float(segments)
-		out.append(BADGE_CENTRE + Vector2.RIGHT.rotated(angle) * BADGE_RADIUS)
-	return out
-
-
-## The star inside the badge: `STAR_POINTS` spikes, alternating outer and inner radius,
-## with the first spike pointing up-screen.
-##
-## Up-screen because `art_src/STYLE.md` makes that the facing of everything directional
-## in this kit, and a star tilted a few degrees off vertical is the kind of wrongness a
-## player feels without being able to name.
-static func badge_star() -> PackedVector2Array:
-	var out := PackedVector2Array()
-	for i: int in range(STAR_POINTS * 2):
-		var angle: float = -PI * 0.5 + PI * float(i) / float(STAR_POINTS)
-		var radius: float = STAR_OUTER if i % 2 == 0 else STAR_INNER
-		out.append(BADGE_CENTRE + Vector2.RIGHT.rotated(angle) * radius)
+## `badge_ring` above and `Sunflower.gauge_fill_rect` are statics. Headless executes no
+## `_draw` at all, so a shape assembled inside one is a shape no test can reach; see
+## `.claude/skills/assert-an-animation`.
+static func badge_trefoil(segments: int = 6) -> Array[PackedVector2Array]:
+	var out: Array[PackedVector2Array] = []
+	var steps: int = maxi(segments, 2)
+	for blade: int in range(TREFOIL_BLADES):
+		var mid: float = -PI * 0.5 + TAU * float(blade) / float(TREFOIL_BLADES)
+		var poly := PackedVector2Array()
+		for i: int in range(steps + 1):
+			var angle: float = mid - TREFOIL_SPAN * 0.5 + TREFOIL_SPAN * float(i) / float(steps)
+			poly.append(BADGE_CENTRE + Vector2.RIGHT.rotated(angle) * TREFOIL_OUTER)
+		for i: int in range(steps + 1):
+			var angle: float = mid + TREFOIL_SPAN * 0.5 - TREFOIL_SPAN * float(i) / float(steps)
+			poly.append(BADGE_CENTRE + Vector2.RIGHT.rotated(angle) * TREFOIL_INNER)
+		out.append(poly)
 	return out

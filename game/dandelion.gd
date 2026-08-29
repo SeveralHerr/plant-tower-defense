@@ -416,7 +416,7 @@ func seconds_until_armed() -> float:
 func _refresh_fluff_sprite() -> void:
 	if _sprite == null:
 		return
-	var path: String = texture_for_fluff(_fluff)
+	var path: String = frame_texture_path(texture_for_fluff(_fluff))
 	if not _frames.has(path):
 		_frames[path] = load(path) as Texture2D
 	var texture: Texture2D = _frames[path] as Texture2D
