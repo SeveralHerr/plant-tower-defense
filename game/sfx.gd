@@ -171,9 +171,19 @@ const SOUNDS: Dictionary = {
 	# an impact is a landing and this is a launch. PLANT_BITTEN keeps the soft
 	# impact the two used to share — see NETTLE_STING for who is left on it.
 	CORN_FIRED: "res://assets/audio/shoot.wav",
-	# Reuses PLANT_DESTROYED's stream — both are a chomp, just aimed the other
-	# way: a Chomp Flower's own bite instead of a hungry pest's.
-	CHOMP_BITE: "res://assets/audio/chop.ogg",
+	# The one plant cue with a voice of its own rather than a borrowed one. It used to
+	# reuse PLANT_DESTROYED's `chop.ogg` on the argument that both are a chomp aimed
+	# different ways — which was true and was still the wrong sound: a plant dying and a
+	# plant EATING are the two opposite outcomes of the same collision, and the pair was
+	# separated only by PLANT_DESTROYED's 0.78 in `PITCH`. `chomper-bite.wav` is a bite
+	# recorded for this event (owner's own work, see assets/audio/License.txt).
+	#
+	# It is the longest cue attached to a repeating event: 0.337s against bites that land
+	# ~97ms apart on a gaping maw eating an aphid (`JITTER`'s header does that arithmetic),
+	# so a three-bite meal overlaps itself two deep. That is deliberate and is what a mouth
+	# working sounds like, but it is the reason CHOMP_BITE still has no `JITTER` row —
+	# wobbling the pitch of three overlapping copies is a chorus, not variety.
+	CHOMP_BITE: "res://assets/audio/chomper-bite.wav",
 	# Reuses UPROOT_ARMED's stream — a light chime for a catch that only slows,
 	# not the heavier PEST_KILLED impact a Sundew never earns since it never kills.
 	SUNDEW_CLAIM: "res://assets/audio/question_002.ogg",
@@ -273,6 +283,16 @@ const VOLUME_DB: Dictionary = {
 ## `CHOMP_BITE` were the same `chop.ogg` at the same 0.0. **A pest reaching the
 ## house costs a life; a refused purchase costs nothing**, and a plant dying was
 ## indistinguishable from a plant eating.
+##
+## That second pair has since been separated at the source instead: `CHOMP_BITE` was
+## given `chomper-bite.wav`, a cue of its own, and `PLANT_DESTROYED` now owns `chop.ogg`
+## alone. Its 0.78 row below therefore no longer has a twin to be heard against — kept
+## anyway, because the row is a statement about what a plant dying MEANS (the second
+## gravest loss in the game, under a pest reaching the house) and not a workaround for a
+## collision. The rule the header states two paragraphs down — that every entry here
+## shares a file with an event sitting at 1.0 — is the one thing this change made false,
+## and `test_every_pitched_event_has_a_twin_at_the_base_or_is_a_named_exception` is where
+## the exception is recorded rather than left for a reader to rediscover.
 ##
 ## Volume alone would have satisfied the rule and answered the wrong question: a
 ## quieter version of a sound is the same event, smaller — which is exactly what

@@ -11005,3 +11005,36 @@ fix the same defect twice, so a fix to shared tooling should say in its own comm
 gap id it closes**, and a merge that finds two should reconcile the ids rather than
 letting both stand as open.
 
+
+## 2026-08-29 — chomper-bite.wav: wire it into CHOMP_BITE and licence it
+
+- Value: **warranted** — `Sfx` is a `class_name ... extends RefCounted` static utility with
+  no node anywhere in the tree, so the bridge cannot call `stream_for` and the only
+  runtime evidence that the mapping is real is the voice pool after a bite actually lands.
+  - Expected: a formality. The table row is one string and the headless suite already
+    resolves every path in `SOUNDS`.
+  - Got: `/root/SfxPool/Voice1  stream.resource_path=res://assets/audio/chomper-bite.wav
+    pitch_scale=1.0` after stepping one physics frame with a beetle in reach — the real
+    `ChompFlower._bite()` -> `Sfx.play(CHOMP_BITE)` path, not a table read. Worth knowing
+    for next time: the pool does not exist at all under the config's default `--mute`, so
+    the first attempt found only `MusicHost/Bed0` and `Bed1` and would have read as
+    "nothing plays". `launch --no-mute` is what makes this check possible.
+  - Found: (1) **both tests I wrote already existed.**
+    `test_every_pitched_event_moved_off_a_base_it_shares_a_file_with` gates the PITCH twin
+    rule and `test_every_sound_the_game_can_play_actually_loads` gates stream resolution.
+    The first went RED on the rewiring — which is how I found it, after writing a duplicate
+    of it. Deleted both duplicates and amended the real gate with an `EXCUSED` list checked
+    in both directions (mutation-tested: emptying it goes red, and a spurious entry goes
+    red too). (2) `audio_license_check` rejected the first licence row for naming
+    `chop.ogg` inside it — the file then read as claimed by two sections at once, and the
+    continuation line parsed as a row for a file that is not on disk.
+  - Cheaper: grepping `test_combat.gd` for the two invariants before writing them. The
+    mistake was reaching for a new test rather than for the existing gate, which is the
+    same failure `.claude/skills/derive-the-list` names one level up — I hand-wrote a check
+    for a rule the repo already derives.
+
+- Gap: **no devtools-harness gap this turn.** The one friction — `Sfx` being unreachable
+  from the bus because it is a static utility on no node — is already recorded as the
+  `mark_script_reached` shape in CLAUDE.md, and the voice pool gave a better answer than a
+  direct call would have: it proves the game's own call path ran, not just that a function
+  returns the right string.
