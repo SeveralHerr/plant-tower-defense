@@ -15868,6 +15868,13 @@ const DEFAULTED_VERBS := [
 	# Same reason `budgets` is here -- a verb that exists so you need not know the names
 	# must not require you to know a name.
 	"messages",
+	# The two bee verbs read no arguments and cannot: `bee_state` reports the whole of what
+	# the layer is doing (flying count, seconds to the next bout, whether it is stepping at
+	# all) because no subset of three fields is worth asking for separately, and `bee_bout`
+	# has exactly one effect. A bout is not parameterised on purpose -- the bees a bout
+	# sends are a hash of its number, so a verb that let a caller pick the count would put
+	# a bout on screen that the game itself can never produce.
+	"bee_state", "bee_bout",
 	# `deselect_plant` takes nothing and can take nothing: clearing the selection is the
 	# whole operation. It is a SEPARATE verb from `select_plant` rather than that verb
 	# with the cell omitted precisely so that this list can hold them apart -- one
@@ -24294,3 +24301,326 @@ func _touch_event(pressed: bool, at: Vector2) -> InputEventScreenTouch:
 	return event
 
 
+## ---------------------------------------------------------------------------
+## Ambient bees (plant-tower-defense-qz4j). Purely cosmetic, which is exactly why
+## these are written: nothing in the game will ever notice a bee behaving wrongly,
+## so a defect here is invisible until a player sees it. Every claim below is over
+## the pure statics, because `GardenTheme.animations_enabled()` is false for the
+## whole suite -- the node never opens a bout headless, and a test that drove it
+## would be asserting an early return.
+## ---------------------------------------------------------------------------
+
+## The board every bee test flies over: the real one, 14x9 cells of 64 px.
+const BEE_BOARD := Vector2(896.0, 576.0)
+
+
+func test_a_bee_enters_off_the_board_crosses_it_and_leaves_off_it_again() -> String:
+	var err: String = ""
+	var crossed: int = 0
+	var bees: int = 0
+	var board := Rect2(Vector2.ZERO, BEE_BOARD)
+	var reach: float = BeeSwarm.EDGE_MARGIN + BeeSwarm.WANDER_A1 + BeeSwarm.WANDER_A2 + 1.0
+	var bounds := Rect2(Vector2(-reach, -reach), BEE_BOARD + Vector2(reach, reach) * 2.0)
+	for bout: int in range(1, 13):
+		for i: int in range(BeeSwarm.bees_in_bout(bout)):
+			bees += 1
+			# The ends are EXACT, which is the property the sin(PI*t) easing exists for:
+			# a bee that started its wander at t=0 would appear mid-swerve at the rim.
+			if err == "":
+				err = _T.assert_true(
+					BeeSwarm.bee_position(bout, i, 0.0, BEE_BOARD)
+						.is_equal_approx(BeeSwarm.entry_point(bout, i, BEE_BOARD)),
+					"bout %d bee %d starts exactly at its entry point" % [bout, i])
+			if err == "":
+				err = _T.assert_true(
+					BeeSwarm.bee_position(bout, i, 1.0, BEE_BOARD)
+						.is_equal_approx(BeeSwarm.exit_point(bout, i, BEE_BOARD)),
+					"bout %d bee %d ends exactly at its exit point" % [bout, i])
+			if err == "":
+				err = _T.assert_true(not board.has_point(
+						BeeSwarm.bee_position(bout, i, 0.0, BEE_BOARD)),
+					("bout %d bee %d enters from OUTSIDE the board, so it is already "
+						+ "flying by the time anything can see it") % [bout, i])
+			# It actually crosses the garden rather than clipping a corner of it, and it
+			# never sails further out than the wander can carry it.
+			var inside: bool = false
+			for step: int in range(101):
+				var at: Vector2 = BeeSwarm.bee_position(bout, i, float(step) / 100.0, BEE_BOARD)
+				if board.has_point(at):
+					inside = true
+				if err == "" and not bounds.has_point(at):
+					err = "bout %d bee %d left the garden's neighbourhood at t=%.2f (%s)" \
+						% [bout, i, float(step) / 100.0, str(at)]
+			if inside:
+				crossed += 1
+			if err == "":
+				err = _T.assert_true(inside,
+					("bout %d bee %d is over the board at some point in its crossing -- a "
+						+ "bee that only ever skims the outside is an animation nobody sees")
+						% [bout, i])
+	if err == "":
+		err = _T.assert_eq(crossed, bees,
+			"every bee of every sampled bout crossed the board")
+	if err == "":
+		err = _T.assert_true(bees >= 12,
+			"and the sweep had bees to check in the first place (%d)" % bees)
+	return err
+
+
+func test_the_bee_path_never_tears_between_two_frames() -> String:
+	# The wander is two sines in SECONDS of flight, so its speed is set by amplitude times
+	# frequency and not by anything the crossing time normalises away. This is the check
+	# that keeps a future amplitude bump honest: 34 px at 0.21 Hz is 45 px/s of sideways
+	# motion on its own, and a bee that moves more than its own body in one frame is a bee
+	# that teleports.
+	var err: String = ""
+	var worst: float = 0.0
+	for bout: int in range(1, 9):
+		for i: int in range(BeeSwarm.bees_in_bout(bout)):
+			var frames: int = int(BeeSwarm.cross_seconds(bout, i) * 60.0)
+			var previous: Vector2 = BeeSwarm.bee_position(bout, i, 0.0, BEE_BOARD)
+			for f: int in range(1, frames + 1):
+				var at: Vector2 = BeeSwarm.bee_position(
+					bout, i, float(f) / float(frames), BEE_BOARD)
+				worst = maxf(worst, at.distance_to(previous))
+				previous = at
+	err = _T.assert_true(worst < BeeSwarm.BODY_LENGTH,
+		("the furthest a bee moves in one 60 fps frame is %.2f px, under its own %.1f px "
+			+ "body") % [worst, BeeSwarm.BODY_LENGTH])
+	if err == "":
+		err = _T.assert_true(worst > 0.5,
+			("and it is actually moving (%.2f px/frame), which a path collapsed to a point "
+				+ "would not be") % worst)
+	return err
+
+
+func test_a_bout_flies_the_same_way_twice_and_two_bouts_do_not() -> String:
+	# Deterministic by hash rather than by RNG, so `Game.set_seed` still pins everything
+	# random about a run. The second half is the one that matters: a hash that ignored the
+	# bout number would be perfectly reproducible AND identical every time, which is a
+	# failure this cannot tell from success without asking.
+	var a: Vector2 = BeeSwarm.bee_position(4, 0, 0.5, BEE_BOARD)
+	var err: String = _T.assert_true(
+		a.is_equal_approx(BeeSwarm.bee_position(4, 0, 0.5, BEE_BOARD)),
+		"bout 4 flies bout 4's path both times")
+	var differs: int = 0
+	for bout: int in range(1, 20):
+		if bout != 4 and not BeeSwarm.bee_position(bout, 0, 0.5, BEE_BOARD).is_equal_approx(a):
+			differs += 1
+	if err == "":
+		err = _T.assert_true(differs >= 15,
+			("and %d of the other 18 bouts fly somewhere else -- a hash that dropped the "
+				+ "bout number would score 0 here") % differs)
+	return err
+
+
+func test_the_bee_schedule_stays_inside_the_ranges_it_was_tuned_to() -> String:
+	var err: String = ""
+	var counts: Dictionary = {}
+	for bout: int in range(1, 200):
+		var gap: float = BeeSwarm.bout_gap(bout)
+		if err == "" and (gap < BeeSwarm.GAP_MIN or gap > BeeSwarm.GAP_MAX):
+			err = "bout %d waits %.1fs, outside %.0f..%.0f" \
+				% [bout, gap, BeeSwarm.GAP_MIN, BeeSwarm.GAP_MAX]
+		var n: int = BeeSwarm.bees_in_bout(bout)
+		counts[n] = int(counts.get(n, 0)) + 1
+		if err == "" and (n < BeeSwarm.BEES_MIN or n > BeeSwarm.BEES_MAX):
+			err = "bout %d sends %d bees, outside %d..%d" \
+				% [bout, n, BeeSwarm.BEES_MIN, BeeSwarm.BEES_MAX]
+		for i: int in range(n):
+			var cross: float = BeeSwarm.cross_seconds(bout, i)
+			if err == "" and (cross < BeeSwarm.CROSS_SECONDS_MIN
+					or cross > BeeSwarm.CROSS_SECONDS_MAX):
+				err = "bout %d bee %d crosses in %.1fs, outside the tuned range" % [bout, i, cross]
+			var wait: float = BeeSwarm.stagger_seconds(bout, i)
+			if err == "" and (wait < 0.0 or wait > BeeSwarm.STAGGER_MAX):
+				err = "bout %d bee %d waits %.2fs before entering" % [bout, i, wait]
+	# Every size actually occurs. A hash that always returned the same bucket would pass
+	# every range check above and would leave BEES_MIN..BEES_MAX a fiction.
+	if err == "":
+		err = _T.assert_eq(counts.size(), BeeSwarm.BEES_MAX - BeeSwarm.BEES_MIN + 1,
+			("all three bout sizes occur across 199 bouts, rather than the range being "
+				+ "documented and unused: %s") % str(counts))
+	return err
+
+
+func test_a_bee_leaves_by_a_different_edge_than_it_came_in_by() -> String:
+	# A bee that enters and leaves by one edge turns around inside the garden, and a thing
+	# that turns around inside the garden looks like it came for something.
+	var err: String = ""
+	var checked: int = 0
+	for bout: int in range(1, 40):
+		for i: int in range(BeeSwarm.bees_in_bout(bout)):
+			var from: Vector2 = BeeSwarm.entry_point(bout, i, BEE_BOARD)
+			var to: Vector2 = BeeSwarm.exit_point(bout, i, BEE_BOARD)
+			checked += 1
+			if err == "":
+				err = _T.assert_true(_bee_edge(from) != _bee_edge(to),
+					"bout %d bee %d enters on edge %d and leaves on edge %d"
+						% [bout, i, _bee_edge(from), _bee_edge(to)])
+			if err == "":
+				err = _T.assert_true(_bee_edge(from) >= 0 and _bee_edge(to) >= 0,
+					"and both of those points are off the board (bout %d bee %d)" % [bout, i])
+	if err == "":
+		err = _T.assert_true(checked >= 40, "the sweep had %d bees to check" % checked)
+	return err
+
+
+func test_bees_sit_out_the_rain_and_only_the_rain() -> String:
+	var err: String = _T.assert_true(not BeeSwarm.bout_allowed(WaveDirector.WEATHER_RAIN),
+		"no bout opens in the rain")
+	if err == "":
+		err = _T.assert_true(BeeSwarm.bout_allowed(WaveDirector.WEATHER_CLEAR),
+			"a clear wave gets bees")
+	if err == "":
+		# Drought deliberately does NOT stop them: the rule is one line of world logic, not
+		# a general "bad weather" gate, and a drought garden is exactly where a little life
+		# is worth the most.
+		err = _T.assert_true(BeeSwarm.bout_allowed(WaveDirector.WEATHER_DROUGHT),
+			"and so does a drought one")
+	return err
+
+
+func test_the_two_airborne_shadows_in_this_game_are_the_same_shadow() -> String:
+	# A Dandelion's seed in flight and a bee are the only two things in this game that are
+	# ABOVE the board rather than on it, and both say so with an offset ellipse. One value,
+	# or the channel means two slightly different things depending which one you look at.
+	var err: String = _T.assert_true(
+		BeeSwarm.SHADOW_COLOR.is_equal_approx(SeedBomb.SHADOW_COLOR),
+		"the bee's shadow is the seed bomb's shadow (%s vs %s)"
+			% [str(BeeSwarm.SHADOW_COLOR), str(SeedBomb.SHADOW_COLOR)])
+	if err == "":
+		err = _T.assert_true(BeeSwarm.SHADOW_OFFSET.length() > BeeSwarm.BODY_WIDTH * 0.5,
+			("and it is offset clear of the body it belongs to -- a shadow drawn under the "
+				+ "bee is a shadow nobody reads as height"))
+	return err
+
+
+func test_a_bees_two_wings_beat_against_each_other() -> String:
+	# A pair moving together reads as one flapping sheet. The claim is about two numbers,
+	# so it needs no renderer -- which is the only reason it is checkable at all, since
+	# headless never runs _draw.
+	var high: Vector2 = BeeSwarm.wing_offsets(1.0)
+	var low: Vector2 = BeeSwarm.wing_offsets(-1.0)
+	var err: String = _T.assert_true(high.x < 0.0 and high.y > 0.0,
+		"the two wings sit on opposite sides of the body")
+	if err == "":
+		err = _T.assert_true(high.x < low.x and high.y > low.y,
+			"and the beat moves them apart and together, not both the same way")
+	if err == "":
+		err = _T.assert_eq(
+			BeeSwarm.ellipse_points(BeeSwarm.BODY_LENGTH, BeeSwarm.BODY_WIDTH).size(),
+			BeeSwarm.ELLIPSE_SEGMENTS,
+			"the body is an ellipse of the segment count the constant names")
+	if err == "":
+		var span: float = 0.0
+		for point: Vector2 in BeeSwarm.ellipse_points(BeeSwarm.BODY_LENGTH, BeeSwarm.BODY_WIDTH):
+			span = maxf(span, absf(point.x) * 2.0)
+		err = _T.assert_true(absf(span - BeeSwarm.BODY_LENGTH) < 0.001,
+			"and it is BODY_LENGTH long (%.2f), so the approved size is the drawn size" % span)
+	return err
+
+
+## Which edge of the board an off-board point sits past, or -1 for a point that is not past
+## any edge -- which no entry or exit point should ever be.
+func _bee_edge(at: Vector2) -> int:
+	if at.y < 0.0:
+		return 0
+	if at.x > BEE_BOARD.x:
+		return 1
+	if at.y > BEE_BOARD.y:
+		return 2
+	if at.x < 0.0:
+		return 3
+	return -1
+
+
+func test_the_bee_hash_spreads_and_its_edge_points_land_on_the_side_they_name() -> String:
+	# `hash01` is the whole source of variety in this feature -- every bout parameter and
+	# every flight is a call to it -- so "it returns a number" is not the claim. A hash that
+	# returned 0.5 forever would satisfy every range check in this file.
+	var buckets: Dictionary = {}
+	var err: String = ""
+	for i: int in range(400):
+		var v: float = BeeSwarm.hash01(i, i * 3 + 1)
+		if err == "" and (v < 0.0 or v >= 1.0):
+			err = "hash01(%d, %d) returned %f, outside 0..1" % [i, i * 3 + 1, v]
+		buckets[int(v * 10.0)] = true
+	if err == "":
+		err = _T.assert_eq(buckets.size(), 10,
+			"400 samples land in all ten tenths of 0..1, not in a corner of it: %s"
+				% str(buckets.keys()))
+	# And the edges are the sides they claim. Side numbering is used by `entry_point` and
+	# `exit_point` to guarantee a bee does not turn around inside the garden, so a side that
+	# resolved to the wrong edge would break that guarantee silently.
+	var expectations: Array[Dictionary] = [
+		{"side": 0, "what": "above the top", "ok": func(p: Vector2) -> bool: return p.y < 0.0},
+		{"side": 1, "what": "past the right", "ok": func(p: Vector2) -> bool: return p.x > BEE_BOARD.x},
+		{"side": 2, "what": "below the bottom", "ok": func(p: Vector2) -> bool: return p.y > BEE_BOARD.y},
+		{"side": 3, "what": "left of the left", "ok": func(p: Vector2) -> bool: return p.x < 0.0},
+	]
+	for row: Dictionary in expectations:
+		for u: float in [0.0, 0.5, 1.0]:
+			var at: Vector2 = BeeSwarm.edge_point(u, int(row["side"]), BEE_BOARD)
+			var ok: Callable = row["ok"]
+			if err == "":
+				err = _T.assert_true(ok.call(at),
+					"edge_point(%.1f, %d) is %s (%s)" % [u, int(row["side"]), row["what"], str(at)])
+	return err
+
+
+func test_a_bee_points_the_way_it_is_travelling() -> String:
+	# `bee_heading` is what rotates the drawing, and a heading read from the wrong end of the
+	# path draws a bee flying backwards -- which is exactly the kind of defect that looks
+	# fine in a still screenshot and wrong the moment anything moves.
+	var err: String = ""
+	for bout: int in range(1, 10):
+		for i: int in range(BeeSwarm.bees_in_bout(bout)):
+			for t: float in [0.05, 0.35, 0.65, 0.95]:
+				var heading: float = BeeSwarm.bee_heading(bout, i, t, BEE_BOARD)
+				var ahead: Vector2 = BeeSwarm.bee_position(bout, i, minf(1.0, t + 0.02), BEE_BOARD)
+				var here: Vector2 = BeeSwarm.bee_position(bout, i, t, BEE_BOARD)
+				if err == "" and not is_finite(heading):
+					err = "bout %d bee %d has no heading at t=%.2f" % [bout, i, t]
+				if err == "":
+					err = _T.assert_true(
+						Vector2.RIGHT.rotated(heading).dot((ahead - here).normalized()) > 0.7,
+						("bout %d bee %d at t=%.2f faces where it is about to be, within 45 "
+							+ "degrees") % [bout, i, t])
+	return err
+
+
+func test_the_bee_layer_reports_what_it_is_doing_while_it_does_it() -> String:
+	# The three live readouts, which are what `cmd bee_state` and `cmd bee_bout` answer with
+	# -- and the readouts are the only evidence the "an idle garden costs nothing" claim has
+	# in a running game, so a wrong one would make that claim unfalsifiable rather than false.
+	#
+	# Driven on a bare instance rather than through the tree: `_ready` arms nothing headless
+	# (animations are off for the whole suite), and `open_bout_now` on a clear garden touches
+	# no SceneTreeTimer, so this exercises the real path with no frames to pump.
+	var swarm := BeeSwarm.new()
+	swarm.setup(BEE_BOARD)
+	var err: String = _T.assert_eq(swarm.flying_count(), 0,
+		"a layer that has not opened a bout has nothing in the air")
+	if err == "":
+		err = _T.assert_true(swarm.next_bout_seconds() >= 0.0,
+			"and its pending gap is a number rather than a negative sentinel")
+	var sent: int = swarm.open_bout_now()
+	if err == "":
+		err = _T.assert_true(sent >= BeeSwarm.BEES_MIN and sent <= BeeSwarm.BEES_MAX,
+			"a forced bout sends %d bee(s), inside the tuned range" % sent)
+	if err == "":
+		err = _T.assert_eq(swarm.next_bout_seconds(), 0.0,
+			"nothing is pending while a bout is open -- the field means 'waiting', not "
+				+ "'time until something happens'")
+	if err == "":
+		err = _T.assert_true(swarm.is_processing(),
+			"and the layer is stepping, which is the half of the cost claim that says it "
+				+ "only steps when there is something to draw")
+	if err == "":
+		# Forced again mid-bout, it drops the request rather than restarting the flight.
+		err = _T.assert_eq(swarm.open_bout_now(), 0,
+			"a second force while a bout is in the air sends nothing, and says so with a "
+				+ "zero rather than by silently relaunching the same bees")
+	swarm.free()
+	return err

@@ -142,6 +142,26 @@ scattered, and deliberately unaligned to the grid: nothing about them invites a 
 ask which cell they belong to. `test_drought_and_rain_are_different_textures_before_they_are_different_colours`
 pins the size bound, which is the part that would rot first if someone enlarged them.
 
+**Bees are not in the vocabulary at all, and the shadow is what keeps them out.**
+`game/bee_swarm.gd` draws the one moving thing on this board that means nothing — one to
+three bees crossing the garden every twenty-odd seconds, purely aesthetic. That is a real
+hazard for this grammar rather than a footnote: a moving gold shape on a board where every
+other moving gold shape is information gets read as information by default.
+
+Three properties keep it out, and only the first is a drawing decision. It carries an
+**offset drop shadow**, a channel no row above owns, because every cue in this table lives
+on the ground plane and a shadow says *above the garden, not a mark about the cell under
+me*. It **wanders** — nothing that carries a message meanders on the way to saying it. And
+it is wired so that it *cannot* mean anything: `BeeSwarm.setup()` is handed the board's
+size and nothing else, so a bee cannot bend toward a plant, because nothing in that file
+knows a plant exists.
+
+The size bound runs the other way from weather's. Weather marks are small enough that
+nobody asks which cell they belong to; a bee is 18 px — a quarter of a cell, roughly an
+aphid — and the thing it must not be confused with is a PEST, not a cell marker. The four
+separations are enumerated beside `BeeSwarm.BODY_LENGTH`, and if a bee ever reads as a
+target in play, that constant comes down rather than the shadow coming off.
+
 ## The one rule with teeth
 
 **A cue must be legible when its colour is discarded.** If a proposed cue can only be

@@ -11051,3 +11051,37 @@ letting both stand as open.
   `mark_script_reached` shape in CLAUDE.md, and the voice pool gave a better answer than a
   direct call would have: it proves the game's own call path ran, not just that a function
   returns the right string.
+
+## 2026-08-29 — ambient bees: a cosmetic layer nothing in the game reads (plant-tower-defense-qz4j)
+
+- Value: **warranted** — the whole cost argument for this feature is "an idle garden pays
+  nothing", and that is a claim about `set_process` in a running tree that no headless run
+  and no diff can settle. The bridge answered it directly.
+  - Expected: the eight pure-static tests would carry the flight and the schedule, and the
+    live pass would be a formality confirming a bee is drawn where the maths says.
+  - Got: `bee_state` → `{"flying": 0, "next_bout_seconds": 28.06, "processing": false}`
+    after a bout ended, and `{"flying": 3, "processing": true}` during one. That pair is
+    the cost claim, measured: the layer really does stop stepping between bouts and really
+    does re-arm inside GAP_MIN..GAP_MAX. `run-method _apply_weather ["rain"]` then
+    `cmd bee_bout` → `{"bees": 0, "refused": "weather is rain"}`.
+  - Found: (1) **the wings were wrong on screen and right in every test.** At
+    `BODY_LENGTH * 1.12` and 8.2 px off the centre line the two pale ovals were the biggest
+    shapes in the drawing, so an 18 px bee read as a white moth carrying a gold seed. Only a
+    screenshot could say so — `test_a_bees_two_wings_beat_against_each_other` asserts the
+    beat is opposed and passes at any size. Now 0.72 of the body, tucked at 4.6 px.
+    (2) **my own debug verb reported a confirmed rain rule that had not been exercised.**
+    `cmd bee_bout` returned `sent 0 bee(s)` in rain — and 0 is also what it returns when a
+    bout is already flying, which is what had actually happened. The verb now reads the
+    reason BEFORE forcing and reports `refused`, so the two zeroes are distinguishable.
+    (3) the meta-gate `test_every_positional_devtools_verb_refuses_a_call_with_no_position`
+    caught both new verbs going unclassified, which is the check doing its job.
+  - Cheaper: nothing for (1) — it is a judgement about a rendered picture at its real size,
+    and no gate in this repo asks "does this drawing read as the animal it is". The
+    scheduler half could have been argued from the code; it would not have been *measured*.
+
+- Gap: **no devtools-harness gap this turn.** The bridge had a verb for every question:
+  `run-method` for the weather, `wait-frames` + `pause` for a moving drawing, `screenshot
+  --region` for the crop, and project verbs for the rest. Worth recording that the two
+  project verbs written for this feature were themselves the source of a false pass — a
+  status field that cannot distinguish two causes of the same number is the same defect
+  class the harness's own `findings` denominator exists to prevent, one level down.
