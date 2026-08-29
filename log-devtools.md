@@ -9852,3 +9852,54 @@ is likely to be at least as productive.
     `unreadable ... (trailing non-JSON text; captured with 2>&1?)` — and use the parsed
     document. Two lines, it recovers every snapshot already on disk, and it turns the one
     error message a caller sees into the fix.
+
+## 2026-08-28 - made the garden's second RNG stream seedable, and gated the class
+
+- Value: **warranted** - though not for the reason the run was started. The diff half went
+  exactly as predicted and was overkill; the full suite caught something else entirely.
+  - Expected: nothing runtime-only. The diff is a seeder plus corrected prose; the only
+    claim a launch could add is that a playing session's sports replay, and the
+    hosted-scene tests already drive `Game.set_run_seed` and `_tick_cross_breeding`
+    through the real `game.tscn`. Predicting overkill for the diff half.
+  - Got: that, exactly - `1035 passed, 0 failed, 19858 assertions`, and no launch. But the
+    FULL suite first reported `Total: 1035 | Passed: 1024 | Failed: 11` on an unmodified
+    checkout, every one of them on the same line of the composed save:
+    `Expected ... d0 ... but got ... d2 campaign:gentle=3453 campaign:harsh=3453`.
+  - Found: two things, neither in the bead. (1) `user://headless_scratch.save` is
+    cumulative across suite runs - the redirect from the cycle that introduced it points
+    the WRITES at a scratch path and never clears it, and `RunConfig` is an autoload that
+    loads `difficulty_high_scores` from it at process start. Deleting the file took the
+    subset from 3 failed to 0 with no code change. Filed plant-tower-defense-xdp7 (P1).
+    (2) `game/game.gd:1792` carried a second false claim the bead did not name -
+    `_tick_cross_breeding` said the stream was "the same generator the rest of the run
+    uses", contradicting the field's own header nine hundred lines above. Both corrected.
+  - Cheaper: for the diff, the two new headless tests alone - the launch was correctly
+    skipped and would have told me nothing. For the finding, the FULL suite rather than
+    the `--filter` subset I was iterating on, which is the cheapest thing that would have
+    surfaced it and is already the habit before a commit.
+
+- Gap: **the suite reports what it WROTE to `user://` and nothing about what it READ** -
+  so state left by a previous run is invisible until it changes a result.
+  - `python tools/run_tests.py` prints, at the end of every run:
+    `user:// writes: 0 file(s) changed by the suite (C:\...\plant-tower-defense)`.
+    That line is the reason I did not suspect `user://` for the first several minutes: it
+    said zero, and it was telling the truth. The eleven failures came from a file the run
+    read at autoload time and never touched. A run that inherits poisoned state and a run
+    that starts clean are byte-identical in this output.
+  - The workaround was manual and needed a hypothesis first: `cat` every file in the
+    userdata dir, spot `d2 campaign:gentle=3453` in `headless_scratch.save`, delete it,
+    re-run. Nothing in the harness pointed at it; `run_tests.py`'s own line pointed away.
+  - [G-149] status: open | seen: 1 | harness: 0.38.0
+  - Improvement: have `run_tests.py` stat the `user://` dir BEFORE the suite as well as
+    after, and print one line naming any file that already existed - `user:// on entry: 2
+    pre-existing file(s) (headless_scratch.save, highscore.save); a suite result can
+    depend on them`. It is the same `os.scandir` the "writes" line already does, run once
+    earlier, and it costs nothing on a clean dir. The stronger form - a `--clean-user`
+    flag that moves the dir aside for the run - is a bigger ask and probably belongs to
+    the same decision as harness gh#28 (`user://` cannot be isolated), but the report line
+    alone would have turned ten minutes into ten seconds.
+
+- Note, not a gap: `harness-drift` says this install is 27 releases behind and that a
+  refresh would remove 70 lines from `dev_tools.gd` not present in 0.65.0 (the
+  exported-build guard, upstream #58, among them) - exit 1, "would lose". Carried, not
+  resolved: plant-tower-defense-abxv already owns that decision and it is not this bead's.

@@ -214,6 +214,24 @@ var _plants: Dictionary = {}
 ## garden throws depend on how many mutation rolls the waves happened to make. A seed
 ## that reproduces one run has to reproduce both, which is what two streams give and
 ## one does not.
+##
+## THAT LAST SENTENCE WAS FALSE FOR AS LONG AS THIS STREAM HAD NO SETTER
+## (plant-tower-defense-4n66). Two streams give reproducibility only if BOTH are
+## pinnable; this one was constructed here, drawn from at `_tick_cross_breeding`, and
+## mentioned nowhere else in `game/`, `test/` or `devtools_ext/` -- so every run threw a
+## different set of sports and no seed could pin them, while this block said otherwise.
+## `set_run_seed` below is the setter that makes the paragraph true.
+##
+## WHAT A RUN IS SEEDED BY TODAY: nothing. There is no run seed. `set_run_seed`,
+## `WaveDirector.set_seed` and `SeedBank.set_seed` have test and tool callers only --
+## no code path a PLAYER takes fixes any of the three, so a live run randomizes all of
+## them and a bug report still cannot be reproduced from a seed. That is a design call
+## (a run seed has to be chosen, shown, and carried on `RunConfig` across the scene
+## swap) and is deliberately NOT made here; this block records that it is open rather
+## than implying it is settled. What is settled is that all three streams are now
+## pinnable through one call, so whatever eventually fixes a run's seed has one place
+## to call and cannot fix two of three by accident -- which is the failure that
+## produced this bead.
 var _cross_clock: float = 0.0
 var _cross_rng := RandomNumberGenerator.new()
 var _prep_left: float = 0.0
@@ -492,6 +510,30 @@ func _ready() -> void:
 	# Waiting for a process frame would buy nothing and would put the warning
 	# after the first thing the player sees. See the budgets section below.
 	check_budgets()
+
+
+## Fixes ALL THREE of this run's random streams, in the shape `WaveDirector.set_seed`
+## and `SeedBank.set_seed` already use (plant-tower-defense-4n66).
+##
+## THE POINT IS THAT IT IS ONE CALL. The two streams that had setters were pinnable
+## and the third was not, and nothing said so -- `_cross_rng`'s own block claimed the
+## opposite for as long as it was true. Any caller that pins a run by reaching for
+## `director.set_seed` and `bank.set_seed` reproduces exactly that bug, because it
+## cannot pin a private field. This is the only place that knows how many streams a run
+## has, so a fourth one is added here and every caller inherits it.
+##
+## ONE VALUE FOR THREE STREAMS, DELIBERATELY. The streams stay separate -- see
+## `_cross_rng` for why sharing a generator would couple the sports to the mutation
+## rolls -- but they are all set from the same number, so a run has one seed to quote
+## rather than three. `tools/run_sim.gd` already does this by hand with its `roll_seed`;
+## this is that, in the one place a Game can offer it.
+##
+## Safe to call after `_ready()` only: the two children do not exist before it.
+## No player-facing caller today; see `_cross_rng`'s block on what that leaves open.
+func set_run_seed(value: int) -> void:
+	director.set_seed(value)
+	bank.set_seed(value)
+	_cross_rng.seed = value
 
 
 func _process(delta: float) -> void:
@@ -1789,9 +1831,10 @@ func _install_plant(id: StringName, cell: Vector2i, sport: bool) -> Plant:
 ## pure; what lives here is the clock, the planting and the sentence the player
 ## reads. See that class for why the split is where it is.
 ##
-## Seeded from the same generator the rest of the run uses so a seeded run stays
-## reproducible, and ticked out of `_process` AFTER the game-over return, so a
-## finished run does not keep growing plants under the post-mortem card.
+## Drawn from `_cross_rng` -- a stream of its own, NOT the one the waves use; see that
+## field's block for why, and for what `set_run_seed` does and does not guarantee.
+## Ticked out of `_process` AFTER the game-over return, so a finished run does not keep
+## growing plants under the post-mortem card.
 func _tick_cross_breeding(delta: float) -> void:
 	_cross_clock += delta
 	if _cross_clock < CrossBreeder.TICK_SECONDS:

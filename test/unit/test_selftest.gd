@@ -22522,3 +22522,119 @@ func test_a_sport_is_refused_the_road_unless_it_is_the_plant_that_belongs_there(
 				+ "missing texture")
 	_T.free_ui(game)
 	return err
+
+
+# -- A run's random streams are pinnable (plant-tower-defense-4n66) ----------
+
+
+## The two horizontally adjacent buildable cells with the lowest y then x, or `[]`.
+##
+## Deterministic by construction rather than by luck: the scan order fixes WHICH pair
+## two Games on one seed breed from, and a pair chosen any other way would make the
+## replay assertion below depend on Dictionary iteration order rather than on the RNG.
+func _breedable_pair(game: Game) -> Array:
+	for y: int in range(Board.ROWS):
+		for x: int in range(Board.COLS - 1):
+			var a := Vector2i(x, y)
+			var b := Vector2i(x + 1, y)
+			if (game.board.is_buildable(a) and game.board.is_buildable(b)
+					and game.plant_at(a) == null and game.plant_at(b) == null):
+				return [a, b]
+	return []
+
+
+## Plays the cross-breeding clock forward on a fresh Game and returns every sport it
+## threw, as `["tick:x,y:kind", ...]` in the order they landed.
+##
+## Ticks `_tick_cross_breeding` by hand instead of running frames: the mechanic is on a
+## 6-second clock at a 0.04 chance, so a garden that waits for real time to pass throws
+## its first sport somewhere around 150 seconds of GAME time -- unreachable in a
+## headless suite, and the reason nothing asserted a Game replays before this.
+##
+## THE TICK NUMBER IS IN THE RECORD AND HAS TO BE. The first version of this compared
+## the FINAL garden, and seed 7 grew a garden identical to seed 4242 -- correctly, and
+## for a reason that has nothing to do with the RNG: one hand-planted pair has a small
+## fixed set of legal recipient cells, a sport is never a parent, so every seed that
+## runs long enough converges on the same full neighbourhood. An end-state comparison
+## therefore could not tell a working seeder from one that ignored its argument. WHEN
+## each sport lands is the part the stream actually decides.
+func _sports_thrown(seed_value: int, ticks: int) -> Array:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.set_run_seed(seed_value)
+	game.bank.add_seeds(10000)
+	var pair: Array = _breedable_pair(game)
+	if pair.is_empty():
+		_T.free_ui(game)
+		return []
+	game.place_plant(PlantCatalog.CORN, pair[0])
+	game.place_plant(PlantCatalog.CORN, pair[1])
+	var out: Array = []
+	var known: int = game._plants.size()
+	for tick: int in range(ticks):
+		game._tick_cross_breeding(CrossBreeder.TICK_SECONDS)
+		if game._plants.size() == known:
+			continue
+		known = game._plants.size()
+		# The last key is the sport that just landed: `_plants` is insertion-ordered
+		# and `_tick_cross_breeding` adds at most one plant per call.
+		var newest: Vector2i = game._plants.keys()[game._plants.size() - 1]
+		out.append("%d:%d,%d:%s" % [tick, newest.x, newest.y, game._plants[newest].kind])
+	_T.free_ui(game)
+	return out
+
+
+func test_two_games_on_one_seed_throw_the_same_sports_in_the_same_cells() -> String:
+	## WHAT WAS ACTUALLY WRONG (plant-tower-defense-4n66). `Game._cross_rng` was
+	## constructed and never seeded -- no setter, no writer, nothing in `game/`,
+	## `test/` or `devtools_ext/` that so much as named it besides the roll. Godot
+	## randomizes a generator on construction, so every run threw a different set of
+	## sports while the block above the field claimed a seed reproduced them. Nothing
+	## asserted a Game replays at all, which is why the comment could be false for
+	## three cycles; this is that assertion.
+	##
+	## It fails on the code before the fix in the strongest available way: without
+	## `set_run_seed` the call below does not compile, and with a `set_run_seed` that
+	## seeds only the two streams that already had setters, the two gardens differ.
+	var first: Array = await _sports_thrown(4242, 400)
+	var second: Array = await _sports_thrown(4242, 400)
+	var err: String = _T.assert_gt(first.size(), 0,
+		("seed 4242 threw at least one sport in 400 ticks -- two empty lists compare "
+			+ "equal and would pass this test having checked nothing. Got %s") % [first])
+	if err == "":
+		err = _T.assert_eq(str(second), str(first),
+			("and a second Game on the same seed grew the identical garden, cell for "
+				+ "cell. This is the claim `_cross_rng`'s header made while the stream "
+				+ "was unseedable"))
+	if err == "":
+		var other: Array = await _sports_thrown(7, 400)
+		err = _T.assert_true(str(other) != str(first),
+			("while seed 7 grew a different one -- without this the test would pass on "
+				+ "a `set_run_seed` that ignored its argument, or on a mechanic that "
+				+ "had stopped drawing at all. Got %s") % [other])
+	return err
+
+
+func test_every_stream_a_run_owns_is_reachable_from_one_seeder() -> String:
+	## The cheap half of the claim above, and the one that names the DEFECT SHAPE:
+	## a run owning three generators where a caller can only pin two. `set_run_seed`
+	## exists so there is one call that knows how many there are; this asserts each of
+	## the three actually moved, so a fourth stream added beside them and left out of
+	## the seeder is caught here rather than by a player who cannot reproduce a bug.
+	##
+	## Reads the seeds back off the generators rather than observing behaviour, on
+	## purpose: behaviour is what the test above checks, and it could only ever reach
+	## the streams the mechanic it drives happens to use.
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	game.set_run_seed(31337)
+	var err: String = _T.assert_eq(game._cross_rng.seed, 31337,
+		"set_run_seed pinned the cross-breeding stream, which had no setter at all "
+			+ "before plant-tower-defense-4n66")
+	if err == "":
+		err = _T.assert_eq(game.director._rng.seed, 31337,
+			"and the wave director's mutation stream")
+	if err == "":
+		err = _T.assert_eq(game.bank._rng.seed, 31337,
+			"and the seed bank's packet stream -- three streams, one call, so a "
+				+ "caller cannot pin two of three and believe the run is fixed")
+	_T.free_ui(game)
+	return err

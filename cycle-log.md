@@ -1,4 +1,4 @@
-# Cycle 179
+# Cycle 180
 
 The narrative half of the loop. `bd` is the work queue and the only place items live —
 their status, priority, blockers and close reasons are real fields there. This file holds
@@ -2833,3 +2833,27 @@ how a mutation pass runs in seconds instead of a minute. To walk a sub-second tw
 once-per-save behaviour, `launch --snapshot-userstate` **before** clearing the flag, or the
 run writes the developer's real save. Bump the number at the top of this file every time you
 refill.
+
+## Cycle 180 - the second RNG stream, and a save file nobody wrote
+
+One bead: `-4n66`, the cross-breeding generator that `game/game.gd:218` constructed and
+nothing could ever seed, under a header promising a seed reproduced it. `Game.set_run_seed`
+now pins all three of a run's streams from one value; both false headers are rewritten;
+`tools/rng_seed_check.py` is a new parallel-safe gate that refuses to pass over zero streams
+and reports the pre-fix file as `('_cross_rng', 218)`.
+
+**Say it plainly because the bead asked: a run of this game still has no seed.** All three
+setters have test and tool callers only. Choosing a run seed, showing it, and carrying it on
+`RunConfig` across the scene swap is a design call left open on purpose and written down in
+`_cross_rng`'s block. What is settled is that a future run-seed feature has one call to make
+rather than three to remember.
+
+The cycle's real find was not in the bead. Eleven save tests fail on an unmodified checkout
+because `user://headless_scratch.save` accumulates across suite runs and `RunConfig` reads it
+at autoload; `run_tests.py` reports `user:// writes: 0` and is telling the truth, which is
+what made it slow to find. Filed `-xdp7` (P1) with the harness half as G-149. **If the suite
+comes up eleven-deep in save failures, look in the userdata dir before reading the diff.**
+
+Carried, not resolved: `harness-drift` exit 1 - this install is 27 releases behind and a
+refresh would remove 70 lines from `dev_tools.gd`, the exported-build guard among them.
+`-abxv` owns that decision.

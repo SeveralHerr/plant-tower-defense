@@ -6682,3 +6682,50 @@ Three findings kept out here rather than buried in a log:
   nothing tells them what a second Corn Cobbler costs against upgrading the one they have,
   and cycle 171's upgrade-delta on the button gives half of it. The other half is the price
   of the alternative, which the plant bar already knows.
+
+## Cycle 179 - a promise in a comment that the code had never kept
+
+- **The pure half did its part and the owner never wired it, and that shape is worth
+  looking for.** `CrossBreeder.roll` takes its RNG as a **parameter**, with a header
+  (`game/cross_breeder.gd:186`) saying it does so precisely so a run can pin it. `Game`
+  then held that generator in a private field with no setter and no writer
+  (`game/game.gd:218`), so the parameter's whole purpose was unreachable. Neither file is
+  wrong on its own; the defect lives in the gap between them, and it survived three cycles
+  because the field's own block asserted the guarantee held. **The tell is a header that
+  explains why something is pinnable/injectable/overridable, sitting next to no caller that
+  does it** - the argument for a seam is not evidence the seam is used.
+
+- **A run of this game has no seed at all, and it took writing the seeder to notice.**
+  `WaveDirector.set_seed`, `SeedBank.set_seed` and now `Game.set_run_seed` all exist and
+  all have test and tool callers only. Nothing a player touches fixes any of them, so two
+  players on one "seed" is not a thing that can be said yet. That is a design call - a run
+  seed has to be chosen, shown, and carried on `RunConfig` across the scene swap - and it
+  is deliberately still open, recorded in `_cross_rng`'s block rather than half-built. What
+  cycle 179 settled is only that all three streams are now pinnable **through one call**,
+  so whatever eventually fixes a run's seed cannot fix two of three by accident.
+
+- **`tools/rng_seed_check.py` gates the class, and its interesting fixture is the one that
+  must FAIL.** A `RandomNumberGenerator` field with no `.seed` write in its own file is now
+  a finding. The case the checker exists for is a **comment** claiming the fix: the original
+  defect was prose promising reproducibility, so a grep over raw source would have been
+  satisfied by the very paragraph that was lying. It blanks comments and strings through
+  `gdsource` before scanning, and the self-test pins both the comment-only and string-only
+  cases as findings. Run against `git show HEAD:game/game.gd` it reports exactly
+  `('_cross_rng', 218)` - the reported defect at the reported line.
+
+- **An end-state comparison could not tell a working seeder from one that ignores its
+  argument, and the first version of the replay test did exactly that.** Seed 7 grew a
+  garden identical to seed 4242 - correctly, for a reason with nothing to do with the RNG:
+  one hand-planted pair has a small fixed set of legal recipient cells, a sport is never a
+  parent, so every seed that runs long enough converges on the same full neighbourhood.
+  **WHEN each sport lands is the part the stream decides**, and the test records the tick
+  index. Worth remembering next time a determinism test compares a final state: a converging
+  system launders the seed out of its own answer.
+
+- **Eleven save tests fail on a file no run in the suite wrote, and `run_tests.py` says
+  `user:// writes: 0`.** `user://headless_scratch.save` is cumulative across suite runs;
+  `RunConfig` is an autoload and loads `difficulty_high_scores` from it before the first
+  test method runs. The redirect that points writes at the scratch path (cycle that added
+  it, `test_combat.gd` setup) never clears it. Filed plant-tower-defense-xdp7 (P1), with
+  G-149 filed against the harness for the reporting half - the suite reports what it WROTE
+  and nothing about what it READ, so inherited state is invisible until it changes a result.

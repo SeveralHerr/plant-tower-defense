@@ -165,9 +165,16 @@ func play(on_host: Node) -> Array[Dictionary]:
 	director = WaveDirector.new()
 	director.set_seed(roll_seed)
 	director.endless = endless
-	# A stream of its own, seeded, for the reason `Game._cross_rng`'s header gives — and
-	# seeded HERE where `Game` leaves it randomized, because a driver whose gardens differ
-	# run to run cannot answer the question this bead exists for.
+	# A stream of its own, seeded, for the reason `Game._cross_rng`'s header gives.
+	#
+	# This used to be a WORKAROUND: `Game` left its own copy randomized, so a driver that
+	# wanted reproducible gardens had no choice but to own one. That is fixed
+	# (plant-tower-defense-4n66) — `Game.set_run_seed` now pins all three streams from one
+	# value, which is what the three lines above and this one do by hand. The duplication
+	# stays because RunSim is deliberately not a Game: it hosts no tree, no HUD and no
+	# wave director children, and reaching for `Game.set_run_seed` would mean hosting one.
+	# If a fourth stream is ever added to a run, it has to be added in BOTH places, and
+	# `tools/rng_seed_check.py` is the gate that notices the game half.
 	_cross_rng.seed = roll_seed
 	ended = &"played"
 
