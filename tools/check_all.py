@@ -103,6 +103,11 @@ NOT_A_CHECKER = {
                           "it was run as a checker on its first pass and exited 2 on its "
                           "own argparse, because it needs --against and --report. A tool "
                           "that cannot run without arguments can never be a checker here",
+    "citation_relocate.py": "a FIXER, not a check: it re-points citations at the line "
+                          "their CITED file's old text moved to via git diff hunks, and "
+                          "WRITES the citing file with --write. Needs --base, so run as a "
+                          "checker it exits 2 on its own argparse -- harmless today, not "
+                          "a guarantee, same shape as citation_rebind.py above",
     "repo_walk.py": "a library, not a tool: the shared directory-exclusion rule the "
                     "rooted checkers import so a nested .claude/worktrees/ checkout "
                     "cannot change their denominators. Has no main() and prints nothing",

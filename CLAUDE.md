@@ -88,6 +88,11 @@ _Add a brief overview of your project architecture_
 
 _Add your project-specific conventions here_
 
+**After any balance edit** (wave tables, `Game.DIFFICULTIES`, plant prices/reach), run the
+playtest sweep — `test/unit/test_playtest_sweep.gd`, part of the standing `/verify` suite.
+See `docs/playtest-sweep.md` for what it checks and how to run its full (slow, gated)
+matrix on demand.
+
 <!-- BEGIN godot-selftest-harness -->
 ## Self-Test Harness (godot-selftest-harness)
 

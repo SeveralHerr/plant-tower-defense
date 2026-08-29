@@ -4817,7 +4817,7 @@ func test_a_click_lands_on_its_cell_wherever_the_board_is_centred() -> String:
 	# Walk left along the bottom row to the first plantable cell that is STILL past the old
 	# guard's threshold. Derived rather than hardcoded: the road's shape decides which cells
 	# are plantable and it has been reshaped before.
-	while target.x > 0 and not game.would_plant_at(target):
+	while target.x > 0 and not game.would_plant_at(target):  # loop-bound-check: ok - target.x is floored at 0 regardless of would_plant_at()'s answer.
 		target.x -= 1
 	screen = offset + game.board.cell_to_world(target)
 
@@ -5048,7 +5048,7 @@ func _plant_family_sources() -> Dictionary:
 	var subclass := RegEx.create_from_string("(?m)^extends\\s+Plant\\s*$")
 	dir.list_dir_begin()
 	var entry: String = dir.get_next()
-	while entry != "":
+	while entry != "":  # loop-bound-check: ok - DirAccess.get_next() over a finite real directory; "" is the documented end.
 		if entry.ends_with(".gd"):
 			var path: String = "res://game".path_join(entry)
 			var text: String = FileAccess.get_file_as_string(path)
@@ -5084,7 +5084,7 @@ func _tween_durations(text: String) -> Array[String]:
 		var depth: int = 0
 		var last_comma: int = -1
 		var quote: String = ""
-		while i < code.length():
+		while i < code.length():  # loop-bound-check: ok - a string index bounded by that string's own length.
 			var c: String = code[i]
 			if quote != "":
 				if c == "\\":
@@ -8249,7 +8249,7 @@ func _test_unit_code() -> String:
 		return ""
 	dir.list_dir_begin()
 	var entry: String = dir.get_next()
-	while entry != "":
+	while entry != "":  # loop-bound-check: ok - DirAccess.get_next() over a finite real directory; "" is the documented end.
 		if entry.ends_with(".gd"):
 			chunks.append(_lines_without_comments(
 				FileAccess.get_file_as_string("res://test/unit".path_join(entry))))
@@ -8856,7 +8856,7 @@ const READOUT_BAND_KNOWN_COLLISIONS: Array[String] = []
 ## way, as the unstripped-source scan this file's other source checks warn about.
 func _script_declaring_draw(node: Node) -> String:
 	var script: Script = node.get_script() as Script
-	while script != null:
+	while script != null:  # loop-bound-check: ok - walks get_base_script() up a finite engine class hierarchy, which cannot cycle.
 		var path: String = script.resource_path
 		if path != "":
 			var text: String = _lines_without_comments(FileAccess.get_file_as_string(path))
@@ -9478,3 +9478,228 @@ func test_only_one_of_the_three_teaching_budgets_is_a_ceiling() -> String:
 					("and the cycle-148 decision is recorded where anyone pricing a "
 						+ "teaching surface will read it"))
 	return err
+
+
+# =============================================================================
+# BEGIN plant-tower-defense-oxf1: the road-answer ring -- board.gd's
+# mark_road_answer() and the Game._commit_placement() hook that lights it.
+# Both files' own headers carry the design argument at length; this is what
+# holds it up.
+# =============================================================================
+
+
+## The catalogue's one road-only plant, derived rather than named -- the same
+## reason test_the_ground_names_one_plant_on_road_and_refuses_to_name_one_on_
+## grass() derives instead of hard-coding: a catalogue change moves this with
+## it instead of silently testing the wrong plant.
+func _road_only_plant() -> StringName:
+	for id: StringName in PlantCatalog.ids():
+		if PlantCatalog.on_road(id):
+			return id
+	return &""
+
+
+## Set equality against Board.road_answer_marked(), not list equality --
+## road_cells() walks the path in ROUTE order and road_answer_marked() scans
+## row-major, so comparing the two arrays position-by-position would fail on
+## every board whose road is not already raster-sorted, which is every road
+## this game has ever shipped.
+func _road_answer_matches(board: Board, expected: Array[Vector2i]) -> String:
+	var marked: Array[Vector2i] = board.road_answer_marked()
+	var err: String = _T.assert_eq(marked.size(), expected.size(),
+		("the road-answer ring marks %d cells, expected exactly the %d road cells"
+			% [marked.size(), expected.size()]))
+	if err == "":
+		for cell: Vector2i in expected:
+			err = _T.assert_true(board.is_road_answer_marked(cell),
+				"road cell %s is part of the marked set" % cell)
+			if err != "":
+				break
+	return err
+
+
+## Board.mark_road_answer(), asserted the way mark_dead_ground()'s own sibling
+## test is: the filter, the change-report, and clearing.
+func test_mark_road_answer_marks_exactly_the_road_and_drops_grass() -> String:
+	var board := Board.new()
+	var road: Array[Vector2i] = board.road_cells()
+	var err: String = _T.assert_gt(road.size(), 0, "there is a road to mark")
+	if err == "":
+		err = _T.assert_true(board.mark_road_answer(road),
+			"marking a fresh board reports the set as changed")
+	if err == "":
+		err = _road_answer_matches(board, road)
+	var lines: Array[Line2D] = board.road_answer_mark_lines()
+	if err == "":
+		err = _T.assert_eq(lines.size(), road.size(),
+			"one visible ring per road cell -- %d rings for %d cells"
+				% [lines.size(), road.size()])
+	var grass := Vector2i(-1, -1)
+	if err == "":
+		for y: int in range(Board.ROWS):
+			for x: int in range(Board.COLS):
+				var cell := Vector2i(x, y)
+				if board.is_buildable(cell):
+					grass = cell
+					break
+			if grass.x >= 0:
+				break
+		err = _T.assert_true(grass.x >= 0, "there is a grass cell to test dropping with")
+	if err == "":
+		# A grass cell mixed into an otherwise-unchanged road set is dropped before
+		# the sets are compared, the same way mark_dead_ground() drops a road cell
+		# handed to IT -- so re-marking road-plus-grass reports NO change.
+		var mixed: Array[Vector2i] = road.duplicate()
+		mixed.append(grass)
+		err = _T.assert_false(board.mark_road_answer(mixed),
+			("adding a grass cell to an already-marked road reports no change -- the "
+				+ "grass cell never entered the set being compared"))
+	if err == "":
+		err = _T.assert_false(board.is_road_answer_marked(grass),
+			"and the grass cell was never marked")
+	if err == "":
+		# The ring glyph closes -- the same claim
+		# test_the_board_mark_and_the_hover_bar_are_one_stroke_not_two makes about
+		# the padlock, at this cue's own radius and segment count.
+		var glyph: PackedVector2Array = Board.road_answer_glyph()
+		err = _T.assert_eq(glyph.size(), Board.ROAD_ANSWER_SEGMENTS + 1,
+			"the ring is ROAD_ANSWER_SEGMENTS samples plus the closing repeat")
+		if err == "":
+			err = _T.assert_eq(glyph[0], glyph[glyph.size() - 1],
+				"and the ring glyph closes -- its last point repeats its first")
+		if err == "":
+			var worst: float = 0.0
+			for point: Vector2 in glyph:
+				worst = maxf(worst, absf(point.length() - Board.ROAD_ANSWER_RADIUS))
+			err = _T.assert_float_eq(worst, 0.0, 0.01,
+				"every sample sits exactly ROAD_ANSWER_RADIUS from the cell centre")
+	if err == "":
+		err = _T.assert_true(board.mark_road_answer([]),
+			"clearing the mark (an empty set) reports a change")
+	if err == "":
+		err = _T.assert_eq(board.road_answer_mark_lines().size(), 0,
+			"and leaves nothing visible, which is also how the cue disappears")
+	board.free()
+	return err
+
+
+## The re-mark contract: unchanged set costs nothing, and the pool is reused
+## rather than freed and rebuilt -- same discipline as
+## test_remarking_dead_ground_reuses_its_marks_instead_of_growing_the_board(),
+## because Game re-marks on every refusal, and a spammed misclick must not
+## rebuild the pool.
+func test_remarking_road_answer_with_the_same_set_reports_no_change() -> String:
+	var board := Board.new()
+	var road: Array[Vector2i] = board.road_cells()
+	var err: String = _T.assert_true(board.mark_road_answer(road), "first mark changes")
+	var layer: Node2D = board.get_node_or_null(Board.ROAD_ANSWER_LAYER) as Node2D
+	if err == "":
+		err = _T.assert_true(layer != null, "marking built the marks layer")
+	var pool: int = layer.get_child_count() if layer != null else -1
+	if err == "":
+		err = _T.assert_eq(pool, road.size(), "one Line2D per road cell, %d built" % pool)
+	if err == "":
+		err = _T.assert_false(board.mark_road_answer(road),
+			"re-marking the identical set reports no change")
+	if err == "":
+		err = _T.assert_eq(
+			(board.get_node_or_null(Board.ROAD_ANSWER_LAYER) as Node2D).get_child_count(),
+			pool, "and the pool did not grow")
+	board.free()
+	return err
+
+
+## The wiring, and this bead's acceptance stated directly: a road-only plant
+## refused on grass lights every road cell, because sole_legal_plant_for()
+## finds no single packet to point at instead (plant-tower-defense-lyj5's own
+## deliberately-unbuilt half).
+func test_a_road_only_plant_refused_on_grass_lights_every_road_cell() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var road_plant: StringName = _road_only_plant()
+	var err: String = _T.assert_true(road_plant != &"", "the catalogue names a road plant")
+	var grass_cell: Vector2i = Vector2i(-1, -1)
+	if err == "":
+		grass_cell = _grass(game)
+		err = _T.assert_true(game.board.is_buildable(grass_cell), "the click lands on grass")
+	if err == "":
+		var refusal: String = game.place_plant(road_plant, grass_cell)
+		err = _T.assert_eq(refusal, Game.REFUSAL_ON_ROAD,
+			"a road plant clicked onto grass is refused with the road sentence")
+	if err == "":
+		err = _T.assert_eq(String(game.sole_legal_plant_for(grass_cell)), "",
+			"the vacuity guard: grass has no sole legal plant, so no packet exists to flash")
+	if err == "":
+		# _commit_placement() re-runs place_plant() -- the same call _click_at()
+		# makes -- and is what wires the refusal to the cue.
+		game.selected_plant = road_plant
+		game._commit_placement(grass_cell)
+		err = _road_answer_matches(game.board, game.board.road_cells())
+	if err == "":
+		err = _T.assert_gt(game._road_answer_left, 0.0,
+			("the countdown armed, so _process() will clear the ring rather than "
+				+ "leaving it lit forever"))
+	_T.free_ui(game)
+	return err
+
+
+## The cue disappears on its own -- the countdown this bead's board.gd header
+## argues for over a permanent board-wide mark, the shape SoleCoverMarks did
+## not have and the report that removed it (cff421d) was partly about.
+func test_the_road_answer_ring_clears_itself_after_its_own_window() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var road_plant: StringName = _road_only_plant()
+	var err: String = _T.assert_true(road_plant != &"", "the catalogue names a road plant")
+	if err == "":
+		game.selected_plant = road_plant
+		game._commit_placement(_grass(game))
+		err = _T.assert_gt(game.board.road_answer_marked().size(), 0,
+			"the ring is lit immediately after the refusal")
+	if err == "":
+		# Same idiom test_placement.gd already uses to fast-forward
+		# Game.UPROOT_CONFIRM_SECONDS: call _process() once with the whole window
+		# as delta rather than pumping real frames headless never paints.
+		game._process(Hud.message_seconds(Hud.ROLE_NOTICE) + 0.1)
+		err = _T.assert_eq(game.board.road_answer_marked().size(), 0,
+			"and clears once its own window has fully elapsed")
+	if err == "":
+		err = _T.assert_eq(game._road_answer_left, 0.0,
+			"with the countdown itself at zero, not merely the marks")
+	_T.free_ui(game)
+	return err
+
+
+## The mirror-image guard: the existing branch this `elif` was added beside --
+## a grass-only plant refused ON the road shakes the road plant's own packet
+## (plant-tower-defense-lyj5) -- still fires, and the new ring does NOT light
+## for that direction, because a packet exists to point at there.
+func test_the_grass_direction_shake_still_fires_and_lights_no_ring() -> String:
+	var game := await _T.instantiate_scene(GAME_SCENE) as Game
+	var grass_plant: StringName = &""
+	for id: StringName in PlantCatalog.ids():
+		if not PlantCatalog.on_road(id):
+			grass_plant = id
+			break
+	var err: String = _T.assert_true(grass_plant != &"", "the catalogue names a grass plant")
+	var road_cell: Vector2i = _road(game)
+	if err == "":
+		var refusal: String = game.place_plant(grass_plant, road_cell)
+		err = _T.assert_eq(refusal, Game.REFUSAL_ON_GRASS,
+			"a grass plant clicked onto the road is refused with the grass sentence")
+	if err == "":
+		var fits: StringName = game.sole_legal_plant_for(road_cell)
+		err = _T.assert_true(fits != &"" and fits != grass_plant,
+			"the road cell DOES have a sole legal plant to point at instead")
+	if err == "":
+		game.selected_plant = grass_plant
+		game._commit_placement(road_cell)
+		err = _T.assert_eq(game.board.road_answer_marked().size(), 0,
+			("the packet-pointing branch handled this refusal, so the road-answer "
+				+ "ring -- built for the direction with no packet -- must not light"))
+	if err == "":
+		err = _T.assert_eq(game._road_answer_left, 0.0,
+			"and its countdown was never armed")
+	_T.free_ui(game)
+	return err
+
+# END plant-tower-defense-oxf1
+# =============================================================================

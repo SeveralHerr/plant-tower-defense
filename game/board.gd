@@ -1149,3 +1149,221 @@ func dead_ground_mark_lines() -> Array[Line2D]:
 # =============================================================================
 
 
+# =============================================================================
+# BEGIN plant-tower-defense-oxf1: the road-answer cue -- "this IS the ground a
+# road plant wants", the mirror image of mark_dead_ground's "this is ground it
+# never will".
+#
+# WHAT THIS IS FOR. Game.sole_legal_plant_for()'s own header already spells out
+# the asymmetry: a road cell has exactly one legal plant (the Bramble), so a
+# grass-refusal ("this one goes ON the road") can point at that packet. A
+# road-refusal has no such packet -- eight of the nine plants are legal on
+# grass, sole_legal_plant_for() ties past the second candidate and returns
+# &"", and flashing eight packets is noise. The honest cue there is about the
+# GROUND, and this is it: every road cell, lit for a few seconds after the
+# refusal that needed it. Game._commit_placement is the trigger; see its own
+# header for why this is the ONE branch it fires on.
+#
+# SCOPE DECISION: THE WHOLE ROAD, NOT A RADIUS AROUND THE CLICK. Every cue this
+# grammar already has is predicate-filtered (which cells are dead ground, which
+# are unaimed) rather than distance-filtered from a click point, and a radius
+# would be the first exception with nothing forcing it -- the player did not
+# click "near the road", they clicked grass, and the predicate that answers
+# "where does this plant belong" is `is_path()`, not a distance. A radius is
+# also a second free parameter (how big?) an ALL-road answer does not need to
+# invent. The road filling the screen is the cost of that choice and it is
+# accepted on purpose: a rare, transient, corrective flash earns more latitude
+# than a cue that competes with gameplay for attention every frame.
+#
+# SHAPE: THE RESERVED RING, NOT A NEW ONE. `game/OVERLAY_GRAMMAR.md`'s "Small
+# solid ring, cell-sized, centred on a ROAD CELL" row has stood at "none"
+# since cycle 179 removed `SoleCoverMarks` -- but the row survives because the
+# CHANNEL (size and centre, not shape) is still reserved, and this cue is
+# exactly the shape that channel was reserved to mean: "this cell,
+# specifically". A NEW shape would add a row to that document's table, which
+# `test_the_legend_names_as_many_shapes_as_the_grammar_documents` counts
+# against `NotebookScreen.OVERLAY_GRAMMAR_SHAPES` -- a constant this lane does
+# not own and the legend page has no spare width for regardless (see that
+# file's own note on why a seventh row does not fit). Filling the reserved
+# row costs neither.
+#
+# WHY THIS IS NOT THE CUE THAT GOT REMOVED, three ways, all load-bearing:
+#   PERSISTENCE -- SoleCoverMarks stood the whole time a plant was selected,
+#     which is most of a session. This clears itself; see _road_answer_left in
+#     game.gd, the same countdown-then-clear shape as _move_lapsed_left.
+#   COUNT -- SoleCoverMarks marked the (often large) set of cells only ONE
+#     plant covered, which grew with the garden. This marks the road, which is
+#     fixed and does not grow as the player builds.
+#   COLOUR -- SoleCoverMarks was yellow, and "these awful yellow circles ...
+#     please remove them" was the report cycle 179 was closed on. This is
+#     GardenTheme.LEAF, the same green the road-answer IS an answer of "grass,
+#     the buildable colour" -- not a repaint for its own sake, a different
+#     colour on a mark that is trying to say something the removed one never
+#     did ("build here"), and no signal in this project's own colourblind
+#     ramp needs sparing it, per the two-channel rule below.
+#
+# TWO-CHANNEL RULE: the ring survives colour discarded exactly the way the
+# grammar's own derivation table says it already does -- SIZE and CENTRE, 9 px
+# on a cell against a 176 px reach ring, an outline against the FILLED dot
+# `PlacementPreview._draw_new_cover_dots()` draws for "cell you would gain".
+# Filled and outlined are different marks before they are different colours;
+# this is the outline half of that pair, same as the removed rings were.
+#
+# WHY THIS FUNCTION DOES NOT TAKE A GLYPH, unlike mark_dead_ground(). That
+# function's header explains its own parameter: PlacementPreview owns the
+# padlock's geometry because the SAME shape is drawn twice, at the hover and
+# on the board, and Board must not name PlacementPreview back. This cue has no
+# hover twin -- there is nothing to keep in sync with -- so pushing the
+# geometry in would be borrowing that file's reason without its problem.
+# mark_unaimed_road() is the closer sibling: it also owns its rendering
+# constants rather than taking them as arguments, for the same reason.
+#
+# WHY Line2D AND NOT A `_draw()`, restated because it is the whole reason this
+# cue is checkable at all: board.gd's own header above (line ~1008) already
+# argues headless paints no frame, ever, and this project has shipped a cue
+# drawn 72 px out of place that every test passed because of it. A ring here
+# is real Line2D points, closed by repeating the first point as the last --
+# the same convention `PlacementPreview.dead_lock_points()` closes its body
+# with -- so a test reads where the ink actually lands with no frame drawn.
+# =============================================================================
+
+const ROAD_ANSWER_LAYER := "RoadAnswerMarks"
+## The removed sole-cover ring's own radius (cff421d), reused rather than
+## re-guessed: it was legible at 9 px on a 64 px cell before it was ever
+## unpopular, and the report that ended it was about persistence and colour
+## (see the block above), not about this number.
+const ROAD_ANSWER_RADIUS: float = 9.0
+const ROAD_ANSWER_WIDTH: float = 2.0
+## Matches the removed cue's own segment count, which was legible at this
+## radius and never the thing the report complained about.
+const ROAD_ANSWER_SEGMENTS: int = 20
+## GardenTheme.LEAF: see the COLOUR bullet above for why this and not yellow.
+const ROAD_ANSWER_COLOR := GardenTheme.LEAF
+
+## Every cell the road-answer ring currently marks. Kept on the Board beside
+## _dead_ground and for the same reason its neighbour's header gives: a Board
+## that never entered the tree still answers from its own copy rather than
+## claiming nothing is marked because it has no layer yet.
+var _road_answer: Dictionary = {}
+var _road_answer_layer: Node2D = null
+## Pooled for the same reason `_dead_ground_marks` is: Game re-marks on every
+## _process() tick the cue is live, and a pool that queue_free()d and rebuilt
+## every frame would read as node churn on `performance --by-type`.
+var _road_answer_marks: Array[Line2D] = []
+
+
+## The ring glyph, closed: ROAD_ANSWER_SEGMENTS points around the circle plus
+## the first point repeated, the same closing convention
+## `PlacementPreview.dead_lock_points()` uses for its body. A static func
+## rather than a const for the reason `dead_lock_points()` is one too: it is a
+## loop, not a literal.
+static func road_answer_glyph() -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for i: int in range(ROAD_ANSWER_SEGMENTS + 1):
+		var angle: float = TAU * float(i % ROAD_ANSWER_SEGMENTS) / float(ROAD_ANSWER_SEGMENTS)
+		out.append(Vector2(cos(angle), sin(angle)) * ROAD_ANSWER_RADIUS)
+	return out
+
+
+## Mark `cells` as the road-answer's currently-lit set. Non-road cells are
+## dropped -- this cue answers "where IS the road", so a mark on grass is one
+## nothing can render honestly, the same filter mark_dead_ground() applies to
+## non-buildable cells and for the same reason.
+##
+## Returns whether the marked set changed, so Game's per-frame countdown can
+## call this every _process() tick the cue is live without rebuilding the pool
+## several times a second -- the same contract mark_dead_ground() keeps.
+func mark_road_answer(cells: Array[Vector2i]) -> bool:
+	var next: Dictionary = {}
+	for cell: Vector2i in cells:
+		if is_path(cell):
+			next[cell] = true
+	if not _road_answer_differs(next):
+		return false
+	_road_answer = next
+	_redraw_road_answer()
+	return true
+
+
+func _road_answer_differs(next: Dictionary) -> bool:
+	if next.size() != _road_answer.size():
+		return true
+	for cell: Vector2i in next:
+		if not _road_answer.has(cell):
+			return true
+	return false
+
+
+## Row-major, so the mark at index i is always the same cell for the same set
+## -- no sort, the same reason _redraw_dead_ground() gives.
+func _redraw_road_answer() -> void:
+	var marked: Array[Vector2i] = road_answer_marked()
+	if marked.is_empty() and _road_answer_layer == null:
+		return
+	var glyph: PackedVector2Array = road_answer_glyph()
+	var layer: Node2D = _road_answer_marks_layer()
+	for i: int in range(marked.size()):
+		var mark: Line2D
+		if i < _road_answer_marks.size():
+			mark = _road_answer_marks[i]
+		else:
+			mark = Line2D.new()
+			mark.name = "RoadAnswerMark%d" % i
+			mark.joint_mode = Line2D.LINE_JOINT_ROUND
+			mark.antialiased = true
+			_road_answer_marks.append(mark)
+			layer.add_child(mark)
+		var centre: Vector2 = cell_to_world(marked[i])
+		var at := PackedVector2Array()
+		for point: Vector2 in glyph:
+			at.append(centre + point)
+		mark.points = at
+		mark.width = ROAD_ANSWER_WIDTH
+		mark.default_color = ROAD_ANSWER_COLOR
+		mark.visible = true
+	for i: int in range(marked.size(), _road_answer_marks.size()):
+		_road_answer_marks[i].visible = false
+
+
+## Built on demand and added LAST -- whenever the cue first fires, both the
+## dead-ground layer and the lane-pressure hatch already exist from ordinary
+## play (Game._refresh_dead_ground() runs on every shop hover), so this always
+## lands as the newest child and paints over both, which is where a rare
+## corrective flash belongs.
+func _road_answer_marks_layer() -> Node2D:
+	if _road_answer_layer != null and is_instance_valid(_road_answer_layer):
+		return _road_answer_layer
+	_road_answer_layer = Node2D.new()
+	_road_answer_layer.name = ROAD_ANSWER_LAYER
+	add_child(_road_answer_layer)
+	return _road_answer_layer
+
+
+## The marked cells, row-major. Same read-back contract as dead_ground_marked().
+func road_answer_marked() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for y: int in range(ROWS):
+		for x: int in range(COLS):
+			var cell := Vector2i(x, y)
+			if _road_answer.has(cell):
+				out.append(cell)
+	return out
+
+
+func is_road_answer_marked(cell: Vector2i) -> bool:
+	return _road_answer.has(cell)
+
+
+## The marks actually visible right now -- the list a test (and a player)
+## should read, not the pool. Same contract as dead_ground_mark_lines().
+func road_answer_mark_lines() -> Array[Line2D]:
+	var out: Array[Line2D] = []
+	for mark: Line2D in _road_answer_marks:
+		if is_instance_valid(mark) and mark.visible:
+			out.append(mark)
+	return out
+
+# END plant-tower-defense-oxf1
+# =============================================================================
+
+

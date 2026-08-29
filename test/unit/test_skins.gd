@@ -555,7 +555,7 @@ func test_the_skins_screen_pages_through_every_target_exactly_once() -> String:
 	var seen: Dictionary = {}
 	if err == "":
 		var page: int = 0
-		while page < screen.total_pages() and err == "":
+		while page < screen.total_pages() and err == "":  # loop-bound-check: ok - page counts up against the pager's own fixed total, computed once above.
 			for target: Dictionary in screen.visible_targets():
 				var key: String = Skins.selection_key(target["kind"], target["id"])
 				err = _T.assert_false(seen.has(key), "%s was not already shown on an earlier page" % key)
