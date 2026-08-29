@@ -444,8 +444,16 @@ func _adopt(game: Game, seen: Dictionary, tally: Dictionary, pests: Array[Pest])
 		if pest != null:
 			pest.set_physics_process(false)
 			pests.append(pest)
+			# `seeds_after_yield` FIRST, then the weather scale, in that order -- it is the
+			# order `Game._on_pest_died` pays in, and the two do not commute once the
+			# integer floor is involved. This tally reads 1.0 today because the scenarios
+			# pin DIFFICULTY_STANDARD, whose yield is exactly the identity; without the
+			# call it would silently under-report the moment anyone points this gate at
+			# gentle or harsh, which is the failure the gate exists to catch happening
+			# inside the gate itself.
 			pest.died.connect(func(dead: Pest) -> void:
-				var paid: int = game.weather_seed_value(dead.seed_value)
+				var paid: int = game.weather_seed_value(
+					Game.seeds_after_yield(dead.seed_value, game.seed_yield))
 				tally[&"killed"] = int(tally[&"killed"]) + 1
 				tally[&"seeds_from_kills"] = int(tally[&"seeds_from_kills"]) + paid)
 			pest.escaped.connect(func(_gone: Pest) -> void:
@@ -460,7 +468,8 @@ func _adopt(game: Game, seen: Dictionary, tally: Dictionary, pests: Array[Pest])
 			# only has to declare the signal to be counted here.
 			if plant.has_signal("grew_seeds"):
 				plant.connect("grew_seeds", func(amount: int) -> void:
-					tally[&"seeds_from_growth"] = int(tally[&"seeds_from_growth"]) + amount)
+					var grown: int = Game.seeds_after_yield(amount, game.seed_yield)
+					tally[&"seeds_from_growth"] = int(tally[&"seeds_from_growth"]) + grown)
 
 
 ## One physics frame over the hosted game, in the order `RunSim._step_frame` established:
