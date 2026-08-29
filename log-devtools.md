@@ -9830,17 +9830,25 @@ is likely to be at least as productive.
     confirmed a prediction and caught nothing. Both real finds came from running
     `tools/playtest.gd` and from `check_all.py`, neither of which needs a launched game.
 
-- Gap: **`scene-tree`'s stdout is not valid JSON, so the Phase 5 redirect the workflow
-  prescribes cannot be read back** — `python tools/devtools.py scene-tree > .devtools/tree-phase3.json`
-  is the exact command `/verify` Phase 3 gives, and `verify_ledger.py reach` then answers
-  `unreadable scene-tree snapshot .devtools/tree-phase3.json (Extra data: line 2677
-  column 2 (char 82674))` for both snapshots. The verb prints its `N node(s)` denominator
-  after the JSON document on the same stream, so the file holds JSON followed by trailing
-  text. Reach still computed — `scripts-seen.json` carried it — but the two snapshots the
-  workflow spends two bus calls capturing contributed nothing, and a run without
-  `--scripts-seen` would have been refused outright.
+- Gap: **a capture corrupted by `2>&1` is reported as `Extra data:` with no hint at the
+  cause** — `verify_ledger.py reach` answered `unreadable scene-tree snapshot
+  .devtools/tree-phase3.json (Extra data: line 2677 column 2 (char 82674))` for both
+  snapshots, and the first thing that looked like was a harness defect. It is not:
+  `tools/devtools.py:1293` already prints the `N node(s)` denominator to **stderr**, with
+  a comment saying it is there "so the JSON stays parseable". The corruption was mine —
+  I captured with `scene-tree > file 2>&1` rather than the `> file` the workflow
+  prescribes, which folded the denominator into the document. Recorded rather than
+  dropped because the diagnosis cost several minutes and would have become a bogus
+  upstream issue: `Extra data:` at a character offset three-quarters through a large file
+  reads as a producer bug, and the one thing that would have said otherwise — that the
+  trailing bytes are a line the verb deliberately sends elsewhere — is only visible if
+  you open the file at that offset. Reach still computed from `scripts-seen.json` and
+  reported `nothing left unreached`, so nothing was lost; a run that had passed no
+  `--scripts-seen` would have been refused outright for a self-inflicted reason it could
+  not name.
   - [G-148] status: open | seen: 1 | harness: 0.38.0
-  - Improvement: send the denominator to stderr (`scene-tree` already sends its own count
-    there per REFERENCE.md, so this is one stream mixed in the client rather than a design
-    change), or have `verify_ledger.py reach` parse with `json.JSONDecoder().raw_decode`
-    and ignore the tail — the second is one line and fixes every snapshot already on disk.
+  - Improvement: when a `--scene-tree` file fails to parse, retry with
+    `json.JSONDecoder().raw_decode` and, if that succeeds, say so —
+    `unreadable ... (trailing non-JSON text; captured with 2>&1?)` — and use the parsed
+    document. Two lines, it recovers every snapshot already on disk, and it turns the one
+    error message a caller sees into the fix.
