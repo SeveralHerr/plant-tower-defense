@@ -10521,3 +10521,64 @@ is likely to be at least as productive.
 - Gap: **no new gaps this turn.** `gap-reconcile`'s procedure (read the installed
   source, then actually run it, before believing either the doc or the version number)
   worked exactly as documented and needed no addition.
+
+## 2026-08-29 — plant-tower-defense-l6zo: run_tests.py gets a per-pid save path
+
+- Value: **warranted** — running the actual decision twice, as two real OS processes,
+  is what turned "the paths should differ" into "here are two files on disk with two
+  different pids inside them and no collision."
+  - Expected: `scratch_save_env()` would return a distinct `user://headless_scratch.pid
+    <N>.save` per process, matching each process's own pid.
+  - Got: two parallel processes (pid 14036, pid 41192) each printed
+    `Save state for this run: user://headless_scratch.pid<PID>.save (<real path>) --
+    kept after the run, not deleted`, then each wrote its own file at that real,
+    resolved path under the shared `app_userdata/plant-tower-defense` directory; `diff`
+    on the two files showed exactly one line differing, the pid. A third run with
+    `PLANT_TD_SAVE_PATH` already set in the environment left it untouched and returned
+    `env is None` — the wrapper does not override a caller's own choice.
+  - Found: nothing that reading the diff wouldn't have shown for the pid math itself,
+    but the run is what confirmed `devtools.get_user_data_path()` really does resolve to
+    the one directory every sibling fan-out lane's real Godot process also writes to
+    (`C:\Users\gotmi\AppData\Roaming\Godot\app_userdata\plant-tower-defense`,
+    independent of which worktree asked) — the fact that made running the REAL Godot
+    engine for this demonstration the wrong call.
+  - Cheaper: nothing cheaper gets the same confidence for the collision claim
+    specifically — a single-process test can't demonstrate "two concurrent processes
+    don't collide" by construction.
+
+- Decision (the bead's actual ask): **yes**, `run_tests.py` now sets
+  `PLANT_TD_SAVE_PATH` automatically, to `user://headless_scratch.pid<PID>.save`, kept
+  (never deleted by this wrapper) and printed before the suite runs. Reasoning: FOR —
+  concurrent fan-out lanes (this very session is one of four) currently share
+  `RunConfig.HEADLESS_SAVE_PATH` with no way to isolate `user://` at all (harness
+  gh#28); AGAINST — a per-run temp path loses "it's one known file you can cat" for a
+  failing run's state afterward. Taken the bead's own middle answer rather than either
+  extreme: the path is still one known, catable file per run, just not the SAME file
+  across runs, and the message printed before the suite starts names it so a failing
+  run says where its own state went without anyone having to guess the pid after the
+  fact. The default is untouched — `RunConfig.HEADLESS_SAVE_PATH` still resolves for
+  any bare `godot --headless --script ...` invocation with no wrapper and no env var,
+  exactly as the bead required. A caller that has already set `PLANT_TD_SAVE_PATH`
+  itself is left alone, for the same reason `resolved_save_path` lets an explicit
+  choice beat everything. Residual risk recorded in the code: OS pids recycle, so a
+  kept-forever file could in principle be adopted by a later run drawing the same pid;
+  judged acceptable given a `run_tests.gd` run's short single-process lifetime, and
+  it's still a real, readable save file rather than corruption.
+  - Demonstration did NOT invoke the real Godot engine, deliberately: this lane's
+    GATES instructions call that out explicitly (opening the project risks corrupting
+    sibling lanes' concurrent state), and the run above independently confirmed why —
+    `user://` is keyed by project name, not by worktree path, so a real headless run
+    from this lane would have written into the exact directory three other lanes'
+    real Godot processes may be using right now. The demonstration instead called the
+    two functions `run_tests.py`'s own `main()` now calls (`scratch_save_env`, then a
+    write to the path it names) directly, as two real concurrent OS processes, which
+    exercises the actual new code path without opening the engine. Two throwaway demo
+    files were written to prove the point and removed immediately after
+    (`headless_scratch.pid14036.save`, `headless_scratch.pid41192.save`) — not a
+    genuine `run_tests.py` invocation's output, so deleting them does not contradict
+    the "kept, not deleted" rule that governs a real run's own file.
+
+- Gap: **no devtools-harness gap this turn.** `name_check.py` ran clean (0 errors, 1
+  pre-existing warning, 3 pre-existing advisories, all unrelated to this Python-only
+  change) but that is not a compile check and this change touched no `.gd` file at
+  all, so no engine gate applies here regardless.
