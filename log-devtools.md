@@ -10646,3 +10646,39 @@ is likely to be at least as productive.
     matching this project's fixture (an id `open` in one block, `fixed` in a later one,
     both `seen: 1`, alongside a genuine same-id-text collision that must still survive
     as two ids).
+
+## 2026-08-29 — a fourth 4-lane fan-out, alongside a second live session on the same repo
+
+- Value: **warranted** — the merge pass's own gates caught a real gap the file-split
+  lane's own success created, and citation_check's new --symbol mode found real drift
+  no amount of diff-reading would have (the eleven pest.gd citations, re-pointed at
+  cycle 139, silently drifted again over this session's own commits).
+  - Expected: four more disjoint lanes (2dlh, nalv, 3k81, 4ulq) merging clean like the
+    last three rounds.
+  - Got: all four did, but `check_all --quiet` and `run_tests.py` on the merged tree
+    surfaced two real problems the lanes themselves could not have seen in isolation:
+    `citation_relocate.py` (landed last round) tripped check_all's own NOT_A_CHECKER/
+    NOT-COVERED self-consistency check once merged alongside this round's other tools
+    (moved it to NOT_PARALLEL_SAFE instead, matching import_check.py's shape); and
+    `game_budget.gd` (2dlh's extraction) was invisible to `suite_reach_check.py` despite
+    being genuinely reached through Game's delegating wrappers -- closed with two direct
+    naming tests rather than a waiver, since real behavior existed to assert.
+  - Found: the citation-drift regression (filed as `plant-tower-defense-grls`), and the
+    suite-reach gap in a fresh file split -- both are exactly the class of "a lane can
+    satisfy the gate it was told to watch and still trip a different one" that only a
+    full merged-tree gate run catches.
+  - Cheaper: nothing -- both findings needed the real merged tree and the real checkers
+    run against it; neither is visible from any single lane's own diff.
+
+- Gap: **no devtools-harness gap this turn.** The two real issues this session hit were
+  a repo-tooling classification bug (`check_all.py`) and a merge-time wiring gap (the
+  file-split/suite-reach interaction), both written into
+  `.claude/skills/cycle/references/fan-out.md` rather than logged as `[G-NNN]` -- neither
+  is a `godot-selftest-harness` bridge/gate defect to upstream.
+
+- Note: a second, independent Claude session (different session id, Sonnet 5) was
+  working this same checkout concurrently for part of this round and merged four of its
+  own beads (pvcs, 9vvy, l6zo, 0p99) onto `main` while this session's lanes were still
+  running. No file or bead collision occurred; that session had already written up the
+  same "check for a peer session before claiming" lesson into `fan-out.md` independently,
+  and this session's integration branch merged theirs with zero conflicts.

@@ -261,6 +261,16 @@ there. Skipping them would have shipped a plant whose upgrade ladder no player c
 three files of dead code, all gates green. **A lane that reports "needs these lines in a
 parent-owned file" has not finished until the parent writes them.**
 
+**A file-split lane can satisfy one gate by tripping another.** A lane extracting a
+cohesive chunk of a big file into its own `.gd` correctly avoided giving it `class_name`
+(this repo's own rule: every named class must be named somewhere in the test suite, and a
+purely-internal implementation detail has no business being a public class) — but the new
+FILE was then invisible to `suite_reach_check.py`, which flagged it and its public
+functions as "no test names this" even though they were reached, correctly, through the
+delegating wrapper the split left behind. Run the full gate suite after ANY split, not just
+the mutation-parity proof the split itself was gated on — a second gate can fail for a
+reason the first one's own success actively created.
+
 **Ask for the report you will need at merge time.** A lane's report is the only thing you
 have when the merge fails. Require:
 
